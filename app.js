@@ -652,6 +652,8 @@ function tryConnect(from, to) {
   if (from.nodeId === to.nodeId) return false;
   for (const c of state.conns.values()) {
     if (c.to.nodeId === to.nodeId && c.to.port === to.port) return false;
+    // Выход может иметь только одну исходящую связь
+    if (c.from.nodeId === from.nodeId && c.from.port === from.port) return false;
   }
   if (wouldCreateCycle(from.nodeId, to.nodeId)) return false;
   snapshot();
@@ -2303,8 +2305,7 @@ svg.addEventListener('mousedown', e => {
   }
 
   // Порт — начало/конец связи. Можно начинать С ЛЮБОГО порта.
-  // При клике на второй порт ориентация определяется автоматически:
-  // один из портов должен быть out, другой — in.
+  // При клике на второй порт ориентация определяется автоматически.
   const portEl = e.target.closest('.port');
   if (portEl) {
     if (state.readOnly) return;
@@ -2314,57 +2315,14 @@ svg.addEventListener('mousedown', e => {
     const idx  = Number(portEl.dataset.portIdx);
 
     if (!state.pending) {
-      // Начинаем новую связь — с любого порта
+      // Начинаем новую связь с любого порта — но сразу запоминаем что это drag
       state.pending = { startNodeId: nodeId, startKind: kind, startPort: idx, mouseX: 0, mouseY: 0 };
       const p = clientToSvg(e.clientX, e.clientY);
       state.pending.mouseX = p.x; state.pending.mouseY = p.y;
       svg.classList.add('connecting');
       drawPending();
     } else {
-      // Завершаем связь. Проверяем совместимость концов.
-      const s = state.pending;
-      if (s.startKind === kind) {
-        flash('Соединение возможно только между выходом и входом', 'error');
-        return;
-      }
-      const outEnd = s.startKind === 'out' ? { nodeId: s.startNodeId, port: s.startPort } : { nodeId, port: idx };
-      const inEnd  = s.startKind === 'in'  ? { nodeId: s.startNodeId, port: s.startPort } : { nodeId, port: idx };
-
-      // Если это reconnect существующей связи — обновляем её, не создавая новую
-      if (s.reconnectConnId) {
-        const existing = state.conns.get(s.reconnectConnId);
-        if (existing) {
-          // Проверка: нет ли других связей на целевом in-порту
-          const duplicate = [...state.conns.values()].some(c =>
-            c.id !== existing.id && c.to.nodeId === inEnd.nodeId && c.to.port === inEnd.port);
-          if (duplicate) {
-            flash('На этом входе уже есть связь', 'error');
-            return;
-          }
-          if (inEnd.nodeId === outEnd.nodeId) { flash('Нельзя замыкать узел на себя', 'error'); return; }
-          if (wouldCreateCycle(outEnd.nodeId, inEnd.nodeId)) {
-            flash('Такое соединение создаст цикл', 'error');
-            return;
-          }
-          snapshot();
-          existing.from = outEnd;
-          existing.to = inEnd;
-          state.pending = null;
-          svg.classList.remove('connecting');
-          clearPending();
-          render();
-          notifyChange();
-          return;
-        }
-      }
-
-      // Новая связь
-      const cid = tryConnect(outEnd, inEnd);
-      state.pending = null;
-      svg.classList.remove('connecting');
-      clearPending();
-      if (cid) { selectConn(cid); render(); }
-      else flash('Не удалось соединить (цикл или порт занят)', 'error');
+      finishPendingAtPort(portEl);
     }
     return;
   }
@@ -2458,18 +2416,41 @@ window.addEventListener('mousemove', e => {
   }
   if (state.pending) {
     const p = clientToSvg(e.clientX, e.clientY);
+    // Помечаем, что произошло реальное перемещение (более 3 пикселей)
+    if (!state.pending.moved) {
+      const dx = Math.abs((state.pending.mouseX || 0) - p.x);
+      const dy = Math.abs((state.pending.mouseY || 0) - p.y);
+      if (dx > 3 || dy > 3) state.pending.moved = true;
+    }
     state.pending.mouseX = p.x; state.pending.mouseY = p.y;
     drawPending();
   }
 });
 
-window.addEventListener('mouseup', () => {
+window.addEventListener('mouseup', (e) => {
   if (state.drag) {
     const wasNodeDrag = !!state.drag.nodeId;
     const wasWpDrag = !!state.drag.waypointConnId;
     svg.classList.remove('panning');
     state.drag = null;
     if (wasNodeDrag || wasWpDrag) notifyChange();
+  }
+  // Завершение pending:
+  //  - если ведение связи уже началось и пользователь двигал мышь (moved=true)
+  //    и отпустил над портом → завершаем как drag&drop
+  //  - если курсор не двигался (это был click-start) — оставляем pending
+  //    в режиме «клик-клик», пользователь кликнет вторым щелчком по цели
+  //  - если двигался, но отпустил не над портом → отменяем
+  if (state.pending) {
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    const portEl = target && target.closest && target.closest('.port');
+    const moved = !!state.pending.moved;
+    if (portEl && portEl !== state.pending._startPortEl) {
+      finishPendingAtPort(portEl);
+    } else if (moved) {
+      cancelPending();
+    }
+    // иначе: не двигался — pending живёт, ждём второго клика
   }
 });
 
@@ -2565,6 +2546,85 @@ function cancelPending() {
   clearPending();
   svg.classList.remove('connecting');
   render();
+}
+
+// Завершение pending при отпускании/клике над портом.
+// portEl — DOM-элемент .port, над которым закончилось действие.
+function finishPendingAtPort(portEl) {
+  if (!state.pending) return;
+  if (state.readOnly) { cancelPending(); return; }
+
+  const s = state.pending;
+  const nodeId = portEl.dataset.nodeId;
+  const kind = portEl.dataset.portKind;
+  const idx  = Number(portEl.dataset.portIdx);
+
+  // Концы должны быть разных типов: один out, другой in
+  if (s.startKind === kind) {
+    flash('Соединение возможно только между выходом и входом', 'error');
+    cancelPending();
+    return;
+  }
+  const outEnd = s.startKind === 'out'
+    ? { nodeId: s.startNodeId, port: s.startPort }
+    : { nodeId, port: idx };
+  const inEnd  = s.startKind === 'in'
+    ? { nodeId: s.startNodeId, port: s.startPort }
+    : { nodeId, port: idx };
+
+  if (outEnd.nodeId === inEnd.nodeId) {
+    flash('Нельзя замыкать узел на себя', 'error');
+    cancelPending();
+    return;
+  }
+
+  // === Жёсткие проверки ===
+  // 1) Вход может иметь не более одной входящей связи
+  // 2) Выход может иметь не более одной исходящей связи
+  const existingId = s.reconnectConnId || null;
+  const duplicateIn = [...state.conns.values()].some(c =>
+    c.id !== existingId && c.to.nodeId === inEnd.nodeId && c.to.port === inEnd.port);
+  if (duplicateIn) {
+    flash('На этом входе уже есть линия. Сначала отключите её.', 'error');
+    cancelPending();
+    return;
+  }
+  const duplicateOut = [...state.conns.values()].some(c =>
+    c.id !== existingId && c.from.nodeId === outEnd.nodeId && c.from.port === outEnd.port);
+  if (duplicateOut) {
+    flash('С этого выхода уже идёт линия. От одного выхода можно только одну.', 'error');
+    cancelPending();
+    return;
+  }
+  if (wouldCreateCycle(outEnd.nodeId, inEnd.nodeId)) {
+    flash('Такое соединение создаст цикл', 'error');
+    cancelPending();
+    return;
+  }
+
+  // Reconnect существующей линии (rewire)
+  if (existingId) {
+    const existing = state.conns.get(existingId);
+    if (existing) {
+      snapshot();
+      existing.from = outEnd;
+      existing.to = inEnd;
+      state.pending = null;
+      clearPending();
+      svg.classList.remove('connecting');
+      render();
+      notifyChange();
+      return;
+    }
+  }
+
+  // Новая связь
+  const cid = tryConnect(outEnd, inEnd);
+  state.pending = null;
+  clearPending();
+  svg.classList.remove('connecting');
+  if (cid) { selectConn(cid); render(); }
+  else flash('Не удалось создать связь', 'error');
 }
 
 function drawPending() {
