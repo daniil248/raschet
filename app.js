@@ -441,21 +441,21 @@ function renderNodes() {
     if (n.type === 'source' || n.type === 'generator') {
       if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
       else {
-        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} кВт`;
+        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW`;
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'panel') {
-      loadLine = n._powered ? `${fmt(n._loadKw)} кВт` : 'Без питания';
+      loadLine = n._powered ? `${fmt(n._loadKw)} kW` : 'Без питания';
       if (!n._powered) loadCls += ' off';
     } else if (n.type === 'ups') {
       if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
       else if (!n._powered) { loadLine = 'Без питания'; loadCls += ' off'; }
       else {
-        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} кВт${n._onBattery ? ' · БАТ' : ''}`;
+        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW${n._onBattery ? ' · БАТ' : ''}`;
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'consumer') {
-      loadLine = n._powered ? `${fmt(n.demandKw)} кВт` : `${fmt(n.demandKw)} кВт · нет`;
+      loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
       if (!n._powered) loadCls += ' off';
     }
     g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
@@ -527,7 +527,7 @@ function renderConns() {
     // Подпись мощности на активных линиях
     if (c._active && c._loadKw > 0) {
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      const lbl = text(mid.x, mid.y - 4, `${fmt(c._loadKw)} кВт`, 'conn-label');
+      const lbl = text(mid.x, mid.y - 4, `${fmt(c._loadKw)} kW`, 'conn-label');
       layerConns.appendChild(lbl);
     }
 
@@ -555,9 +555,9 @@ function renderStats() {
     }
   }
   const rows = [];
-  rows.push(`<div class="row"><span>Запрос</span><span>${fmt(totalDemand)} кВт</span></div>`);
-  rows.push(`<div class="row"><span>Источников</span><span>${fmt(totalCap)} кВт</span></div>`);
-  rows.push(`<div class="row"><span>Потребляется</span><span>${fmt(totalDraw)} кВт</span></div>`);
+  rows.push(`<div class="row"><span>Запрос</span><span>${fmt(totalDemand)} kW</span></div>`);
+  rows.push(`<div class="row"><span>Источников</span><span>${fmt(totalCap)} kW</span></div>`);
+  rows.push(`<div class="row"><span>Потребляется</span><span>${fmt(totalDraw)} kW</span></div>`);
   if (unpoweredCount) rows.push(`<div class="row warn"><span>Без питания</span><span>${unpoweredCount}</span></div>`);
   if (overloadCount)  rows.push(`<div class="row warn"><span>Перегруз</span><span>${overloadCount}</span></div>`);
   if (!unpoweredCount && !overloadCount && state.nodes.size) {
@@ -632,10 +632,10 @@ function renderInspectorNode(n) {
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
   if (n.type === 'source') {
-    h.push(field('Мощность, кВт', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
+    h.push(field('Мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
   } else if (n.type === 'generator') {
-    h.push(field('Мощность, кВт', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
+    h.push(field('Мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
     h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
   } else if (n.type === 'panel') {
@@ -644,10 +644,10 @@ function renderInspectorNode(n) {
     h.push(prioritySection(n));
     h.push(statusBlock(n));
   } else if (n.type === 'ups') {
-    h.push(field('Выходная мощность, кВт', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
+    h.push(field('Выходная мощность, kW', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(field('КПД, %', `<input type="number" min="30" max="100" step="1" data-prop="efficiency" value="${n.efficiency}">`));
-    h.push(field('Ток заряда батареи, кВт', `<input type="number" min="0" step="0.1" data-prop="chargeKw" value="${n.chargeKw}">`));
-    h.push(field('Ёмкость батареи, кВт·ч', `<input type="number" min="0" step="0.1" data-prop="batteryKwh" value="${n.batteryKwh}">`));
+    h.push(field('Ток заряда батареи, kW', `<input type="number" min="0" step="0.1" data-prop="chargeKw" value="${n.chargeKw}">`));
+    h.push(field('Ёмкость батареи, kWh', `<input type="number" min="0" step="0.1" data-prop="batteryKwh" value="${n.batteryKwh}">`));
     h.push(field('Заряд батареи, %', `<input type="number" min="0" max="100" step="1" data-prop="batteryChargePct" value="${n.batteryChargePct}">`));
     h.push(field('Входов', `<input type="number" min="1" max="5" step="1" data-prop="inputs" value="${n.inputs}">`));
     h.push(field('Выходов', `<input type="number" min="1" max="20" step="1" data-prop="outputs" value="${n.outputs}">`));
@@ -655,7 +655,7 @@ function renderInspectorNode(n) {
     if (n.inputs > 1) h.push(prioritySection(n));
     h.push(upsStatusBlock(n));
   } else if (n.type === 'consumer') {
-    h.push(field('Потребление, кВт', `<input type="number" min="0" step="0.1" data-prop="demandKw" value="${n.demandKw}">`));
+    h.push(field('Потребление, kW', `<input type="number" min="0" step="0.1" data-prop="demandKw" value="${n.demandKw}">`));
     h.push(field('Входов', `<input type="number" min="1" max="10" step="1" data-prop="inputs" value="${n.inputs}">`));
     if (n.inputs > 1) h.push(prioritySection(n));
     h.push(statusBlock(n));
@@ -719,7 +719,7 @@ function statusBlock(n) {
   const parts = [];
   if (n._powered) parts.push('<span class="badge on">есть питание</span>');
   else parts.push('<span class="badge off">без питания</span>');
-  if (n.type === 'panel') parts.push(` нагрузка: <b>${fmt(n._loadKw)} кВт</b>`);
+  if (n.type === 'panel') parts.push(` нагрузка: <b>${fmt(n._loadKw)} kW</b>`);
   return `<div class="inspector-section"><div class="muted" style="font-size:11px">${parts.join(' ')}</div></div>`;
 }
 
@@ -733,11 +733,11 @@ function upsStatusBlock(n) {
     parts.push(n._onBattery
       ? '<span class="badge backup">работа от батареи</span>'
       : '<span class="badge on">работа от сети</span>');
-    parts.push(`выход: <b>${fmt(n._loadKw)} / ${fmt(n.capacityKw)} кВт</b>`);
-    if (!n._onBattery) parts.push(`потребление на входе: <b>${fmt(n._inputKw)} кВт</b>`);
+    parts.push(`выход: <b>${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW</b>`);
+    if (!n._onBattery) parts.push(`потребление на входе: <b>${fmt(n._inputKw)} kW</b>`);
   }
   const battKwh = (Number(n.batteryKwh) || 0) * (Number(n.batteryChargePct) || 0) / 100;
-  parts.push(`запас батареи: <b>${fmt(battKwh)} кВт·ч</b> (${n.batteryChargePct || 0}%)`);
+  parts.push(`запас батареи: <b>${fmt(battKwh)} kWh</b> (${n.batteryChargePct || 0}%)`);
   if (n._loadKw > 0) {
     const hrs = battKwh / n._loadKw;
     const min = hrs * 60;
@@ -758,7 +758,7 @@ function renderInspectorConn(c) {
   h.push('<div class="muted" style="font-size:12px;margin-bottom:8px">Связь</div>');
   h.push(`<div class="field"><label>Откуда</label><div>${escAttr(fromN?.name || '?')} · выход ${c.from.port + 1}</div></div>`);
   h.push(`<div class="field"><label>Куда</label><div>${escAttr(toN?.name || '?')} · вход ${c.to.port + 1}</div></div>`);
-  h.push(`<div class="field"><label>Нагрузка</label><div>${c._active ? fmt(c._loadKw) + ' кВт' : 'не активна'}</div></div>`);
+  h.push(`<div class="field"><label>Нагрузка</label><div>${c._active ? fmt(c._loadKw) + ' kW' : 'не активна'}</div></div>`);
   h.push('<div class="muted" style="font-size:11px;margin-top:10px">Потяните оранжевую точку на конце линии, чтобы переключить связь на другой вход. Shift+клик — быстрое удаление.</div>');
   h.push('<button class="btn-delete" id="btn-del-conn">Удалить связь</button>');
   inspectorBody.innerHTML = h.join('');
