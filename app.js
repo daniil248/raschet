@@ -31,7 +31,13 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEFAULTS = {
   source:    () => ({ name: 'Ввод ТП',    capacityKw: 100, on: true }),
   generator: () => ({ name: 'ДГУ',         capacityKw: 60,  on: true, backupMode: true }),
-  panel:     () => ({ name: 'ЩС',          inputs: 2, outputs: 2, priorities: [1, 2] }),
+  panel:     () => ({
+    name: 'ЩС',
+    inputs: 2, outputs: 2,
+    priorities: [1, 2],
+    switchMode: 'auto',       // 'auto' — АВР по приоритетам; 'manual' — ручной выбор активного входа
+    manualActiveInput: 0,     // индекс входа в ручном режиме
+  }),
   ups:       () => ({
     name: 'ИБП',
     capacityKw: 10,
@@ -43,7 +49,22 @@ const DEFAULTS = {
     priorities: [1],
     on: true,
   }),
-  consumer:  () => ({ name: 'Потребитель', demandKw: 10, inputs: 2, priorities: [1, 2] }),
+  consumer:  () => ({
+    name: 'Потребитель',
+    demandKw: 10,
+    count: 1,                // число потребителей в группе (1 = обычный потребитель)
+    inputs: 2,
+    priorities: [1, 2],
+  }),
+};
+
+// Префиксы обозначений (tag) по типу узла
+const TAG_PREFIX = {
+  source:    'TR',
+  generator: 'GS',
+  panel:     'PNL',
+  ups:       'UPS',
+  consumer:  'L',
 };
 
 // ================= Состояние =================
@@ -62,6 +83,26 @@ const state = {
 
 let _idSeq = 1;
 const uid = (p = 'n') => `${p}${_idSeq++}`;
+
+// Поиск наименьшего свободного обозначения с заданным префиксом (TR1, TR2, …)
+function nextFreeTag(type) {
+  const prefix = TAG_PREFIX[type] || 'X';
+  const used = new Set();
+  for (const n of state.nodes.values()) {
+    if (n.tag) used.add(n.tag);
+  }
+  let i = 1;
+  while (used.has(prefix + i)) i++;
+  return prefix + i;
+}
+
+// Проверка, что tag не занят другим узлом
+function isTagUnique(tag, exceptId) {
+  for (const n of state.nodes.values()) {
+    if (n.id !== exceptId && n.tag === tag) return false;
+  }
+  return true;
+}
 
 // ================= DOM refs =================
 const svg        = document.getElementById('canvas');
@@ -139,6 +180,7 @@ function portPos(n, kind, idx) {
 function createNode(type, x, y) {
   const id = uid();
   const base = { id, type, x, y, ...DEFAULTS[type]() };
+  base.tag = nextFreeTag(type);
   base.x = x - nodeWidth(base) / 2;
   base.y = y - NODE_H / 2;
   state.nodes.set(id, base);
@@ -254,25 +296,44 @@ function recalc() {
         if (res === null && allowBackup) res = [];
       }
     } else {
+      // panel или consumer
       const ins = edgesIn.get(nid) || [];
       if (ins.length > 0) {
-        const groups = new Map();
-        for (const c of ins) {
-          const prio = (n.priorities?.[c.to.port]) ?? 1;
-          if (!groups.has(prio)) groups.set(prio, []);
-          groups.get(prio).push(c);
-        }
-        const sorted = [...groups.keys()].sort((a, b) => a - b);
-        // Фаза 1: без резерва
-        for (const p of sorted) {
-          const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
-          if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-        }
-        // Фаза 2: с резервом
-        if (res === null && allowBackup) {
+        // Ручной режим щита: работает только явно выбранный вход, без учёта приоритетов.
+        // Если на нём есть напряжение — щит запитан. Иначе щит обесточен, даже если
+        // другие входы живы.
+        if (n.type === 'panel' && n.switchMode === 'manual') {
+          const idx = n.manualActiveInput | 0;
+          const target = ins.find(c => c.to.port === idx);
+          if (target) {
+            const upNoBackup = activeInputs(target.from.nodeId, false);
+            if (upNoBackup !== null) {
+              res = [{ conn: target, share: 1 }];
+            } else if (allowBackup) {
+              const upWithBackup = activeInputs(target.from.nodeId, true);
+              if (upWithBackup !== null) res = [{ conn: target, share: 1 }];
+            }
+          }
+        } else {
+          // Автоматический режим — группировка по приоритетам с параллельной работой
+          const groups = new Map();
+          for (const c of ins) {
+            const prio = (n.priorities?.[c.to.port]) ?? 1;
+            if (!groups.has(prio)) groups.set(prio, []);
+            groups.get(prio).push(c);
+          }
+          const sorted = [...groups.keys()].sort((a, b) => a - b);
+          // Фаза 1: без резерва
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+          }
+          // Фаза 2: с резервом
+          if (res === null && allowBackup) {
+            for (const p of sorted) {
+              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
+              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+            }
           }
         }
       }
@@ -286,7 +347,7 @@ function recalc() {
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
   }
-  for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; }
+  for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; c._state = 'dead'; }
 
   // Распространение нагрузки от потребителей вверх.
   // При прохождении границы ИБП поток вверх увеличивается на 1/КПД — это потери
@@ -321,9 +382,12 @@ function recalc() {
     const ai = activeInputs(n.id, true);
     n._powered = ai !== null;
     if (!n._powered) continue;
-    const d = Number(n.demandKw) || 0;
-    n._loadKw = d;
-    walkUp(n.id, d);
+    // Для группы потребителей: суммарный demand = count × demandKw
+    const per = Number(n.demandKw) || 0;
+    const count = Math.max(1, Number(n.count) || 1);
+    const total = per * count;
+    n._loadKw = total;
+    walkUp(n.id, total);
   }
 
   // Зарядный ток ИБП — накидывается поверх проходной мощности,
@@ -336,6 +400,16 @@ function recalc() {
     const ch = Number(n.chargeKw) || 0;
     if (ch <= 0) continue;
     walkUp(n.id, ch);
+  }
+
+  // Вычисление _state для каждой связи — три цвета:
+  //   active  — красная: есть напряжение И downstream выбрал этот вход
+  //   powered — зелёная: есть напряжение, но downstream не использует этот вход
+  //   dead    — серая пунктирная: upstream без напряжения
+  for (const c of state.conns.values()) {
+    if (c._active) { c._state = 'active'; continue; }
+    const upAi = activeInputs(c.from.nodeId, true);
+    c._state = (upAi !== null) ? 'powered' : 'dead';
   }
 
   // Статусы источников и ИБП
@@ -416,6 +490,7 @@ function renderNodes() {
       n._overload ? 'overload' : '',
       (!n._powered && (n.type === 'panel' || n.type === 'consumer' || n.type === 'ups')) ? 'unpowered' : '',
       (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
+      (n.type === 'panel' && n.switchMode === 'manual') ? 'manual' : '',
     ].filter(Boolean).join(' ');
 
     const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
@@ -423,18 +498,23 @@ function renderNodes() {
 
     g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
 
-    // Заголовок
-    g.appendChild(text(12, 22, n.name || '(без имени)', 'node-title'));
+    // Обозначение (tag) — мелкая надпись сверху
+    if (n.tag) g.appendChild(text(12, 16, n.tag, 'node-tag'));
+
+    // Имя
+    g.appendChild(text(12, 33, n.name || '(без имени)', 'node-title'));
 
     // Подпись типа
     const subTxt = {
       source:    'Источник',
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
-      panel:     `Щит · вх ${n.inputs} · вых ${n.outputs}`,
+      panel:     `Щит · вх ${n.inputs} · вых ${n.outputs}` + (n.switchMode === 'manual' ? ' · руч.' : ''),
       ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%`,
-      consumer:  'Потребитель' + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
+      consumer:  ((n.count || 1) > 1
+                    ? `Группа · ${n.count} × ${fmt(n.demandKw)} kW`
+                    : 'Потребитель') + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
     }[n.type];
-    g.appendChild(text(12, 38, subTxt, 'node-sub'));
+    g.appendChild(text(12, 49, subTxt, 'node-sub'));
 
     // Нагрузка
     let loadLine = '', loadCls = 'node-load';
@@ -462,11 +542,14 @@ function renderNodes() {
 
     // Порты — входы
     const inCount = nodeInputCount(n);
-    // Собираем множество активных входных портов данной ноды
-    const activeInPorts = new Set();
+    // Состояние каждого входного порта: 'active' | 'powered' | undefined
+    const portStates = new Map();
     if (inCount > 1) {
       for (const c of state.conns.values()) {
-        if (c.to.nodeId === n.id && c._active) activeInPorts.add(c.to.port);
+        if (c.to.nodeId !== n.id) continue;
+        if (c._state === 'active' || c._state === 'powered') {
+          portStates.set(c.to.port, c._state);
+        }
       }
     }
     for (let i = 0; i < inCount; i++) {
@@ -479,10 +562,19 @@ function renderNodes() {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
       }
-      // Зелёная «лампочка» на активном входе — только если входов >1
-      if (inCount > 1 && activeInPorts.has(i)) {
-        g.appendChild(el('circle', { class: 'port-lamp', cx: cx + 11, cy: 0, r: 4.5 }));
-        g.appendChild(el('circle', { class: 'port-lamp-core', cx: cx + 11, cy: 0, r: 2 }));
+      // Лампочки (только при inputs > 1):
+      //   зелёная — на красную линию («работает, несёт нагрузку»)
+      //   красная — на зелёную линию («есть напряжение, но не выбрано»)
+      //   нет лампочки — на серую пунктирную
+      if (inCount > 1) {
+        const ps = portStates.get(i);
+        if (ps === 'active') {
+          g.appendChild(el('circle', { class: 'port-lamp green', cx: cx + 11, cy: 0, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core green', cx: cx + 11, cy: 0, r: 2 }));
+        } else if (ps === 'powered') {
+          g.appendChild(el('circle', { class: 'port-lamp red', cx: cx + 11, cy: 0, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core red', cx: cx + 11, cy: 0, r: 2 }));
+        }
       }
     }
     // Порты — выходы
@@ -517,17 +609,27 @@ function renderConns() {
     layerConns.appendChild(hit);
 
     // Видимая линия
+    const stateClass = c._state === 'active' ? ' active'
+                     : c._state === 'powered' ? ' powered'
+                     : ' dead';
     const path = el('path', {
-      class: 'conn' + (c._active ? ' active' : ' dead') + (selected ? ' selected' : ''),
+      class: 'conn' + stateClass + (selected ? ' selected' : ''),
       d,
     });
     path.dataset.connId = c.id;
     layerConns.appendChild(path);
 
-    // Подпись мощности на активных линиях
-    if (c._active && c._loadKw > 0) {
+    // Подпись мощности на активных линиях.
+    // Если подходит к группе потребителей — показываем «N × X kW» вместо суммы.
+    if (c._state === 'active' && c._loadKw > 0) {
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      const lbl = text(mid.x, mid.y - 4, `${fmt(c._loadKw)} kW`, 'conn-label');
+      let labelText;
+      if (toN.type === 'consumer' && (toN.count || 1) > 1) {
+        labelText = `${toN.count} × ${fmt(toN.demandKw)} kW`;
+      } else {
+        labelText = `${fmt(c._loadKw)} kW`;
+      }
+      const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label');
       layerConns.appendChild(lbl);
     }
 
@@ -629,6 +731,7 @@ function renderInspector() {
 
 function renderInspectorNode(n) {
   const h = [];
+  h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
   if (n.type === 'source') {
@@ -641,7 +744,22 @@ function renderInspectorNode(n) {
   } else if (n.type === 'panel') {
     h.push(field('Входов', `<input type="number" min="1" max="30" step="1" data-prop="inputs" value="${n.inputs}">`));
     h.push(field('Выходов', `<input type="number" min="1" max="30" step="1" data-prop="outputs" value="${n.outputs}">`));
-    h.push(prioritySection(n));
+    h.push(field('Режим переключения',
+      `<select data-prop="switchMode">
+        <option value="auto"${n.switchMode !== 'manual' ? ' selected' : ''}>Автоматический (АВР)</option>
+        <option value="manual"${n.switchMode === 'manual' ? ' selected' : ''}>Ручной</option>
+      </select>`));
+    if (n.switchMode === 'manual' && n.inputs > 0) {
+      const opts = [];
+      for (let i = 0; i < n.inputs; i++) {
+        opts.push(`<option value="${i}"${(n.manualActiveInput | 0) === i ? ' selected' : ''}>Вход ${i + 1}</option>`);
+      }
+      h.push(field('Активный вход (ручной)',
+        `<select data-prop="manualActiveInput">${opts.join('')}</select>`));
+      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">В ручном режиме приоритеты и наличие напряжения не учитываются — работает только явно выбранный вход.</div>');
+    } else {
+      h.push(prioritySection(n));
+    }
     h.push(statusBlock(n));
   } else if (n.type === 'ups') {
     h.push(field('Выходная мощность, kW', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
@@ -655,7 +773,13 @@ function renderInspectorNode(n) {
     if (n.inputs > 1) h.push(prioritySection(n));
     h.push(upsStatusBlock(n));
   } else if (n.type === 'consumer') {
-    h.push(field('Потребление, kW', `<input type="number" min="0" step="0.1" data-prop="demandKw" value="${n.demandKw}">`));
+    h.push(field('Количество в группе', `<input type="number" min="1" max="999" step="1" data-prop="count" value="${n.count || 1}">`));
+    h.push(field(((n.count || 1) > 1 ? 'Мощность каждого, kW' : 'Потребление, kW'),
+      `<input type="number" min="0" step="0.1" data-prop="demandKw" value="${n.demandKw}">`));
+    if ((n.count || 1) > 1) {
+      const total = (Number(n.demandKw) || 0) * (n.count | 0);
+      h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Суммарно: <b>${n.count} × ${fmt(n.demandKw)} kW = ${fmt(total)} kW</b></div>`);
+    }
     h.push(field('Входов', `<input type="number" min="1" max="10" step="1" data-prop="inputs" value="${n.inputs}">`));
     if (n.inputs > 1) h.push(prioritySection(n));
     h.push(statusBlock(n));
@@ -677,17 +801,36 @@ function renderInspectorNode(n) {
       if (inp.type === 'checkbox') v = inp.checked;
       else if (inp.type === 'number') v = Number(inp.value);
       else v = inp.value;
-      if (prop === 'on' && (n.type === 'source' || n.type === 'generator')) {
+
+      if (prop === 'tag') {
+        const t = String(v || '').trim();
+        if (!t) return; // пустой tag не разрешаем
+        if (!isTagUnique(t, n.id)) {
+          flash(`Обозначение «${t}» уже занято`);
+          inp.value = n.tag || '';
+          return;
+        }
+        n.tag = t;
+      } else if (prop === 'on' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         setEffectiveOn(n, v);
+      } else if (prop === 'manualActiveInput') {
+        n.manualActiveInput = Number(v) || 0;
+      } else if (prop === 'count') {
+        n.count = Math.max(1, Number(v) || 1);
+      } else if (prop === 'switchMode') {
+        n.switchMode = String(v);
       } else {
         n[prop] = v;
       }
       if (prop === 'inputs' || prop === 'outputs') clampPortsInvolvingNode(n);
       render();
-      if (prop === 'inputs' || prop === 'outputs') renderInspector(); // перерисовать поля приоритетов
+      // Перерисовать инспектор при изменениях, от которых зависят другие поля
+      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count') {
+        renderInspector();
+      }
     };
     inp.addEventListener('input', apply);
-    if (inp.type === 'checkbox') inp.addEventListener('change', apply);
+    inp.addEventListener('change', apply);
   });
   inspectorBody.querySelectorAll('[data-prio]').forEach(inp => {
     inp.addEventListener('input', () => {
@@ -1008,8 +1151,12 @@ document.getElementById('btn-export').onclick = () => {
   const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'raschet-scheme.json';
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
+  a.download = `raschet-scheme_${ts}.json`;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
 document.getElementById('btn-import').onclick = () => document.getElementById('file-input').click();
 document.getElementById('file-input').addEventListener('change', e => {
@@ -1069,6 +1216,17 @@ function deserialize(data) {
   _idSeq = Math.max(data.nextId || 1, 1);
   state.view = data.view || { x: 0, y: 0, zoom: 1 };
   state.selectedKind = null; state.selectedId = null;
+
+  // Миграция старых схем: проставляем отсутствующие поля
+  for (const n of state.nodes.values()) {
+    if (!n.tag) n.tag = nextFreeTag(n.type);
+    if (n.type === 'consumer' && typeof n.count !== 'number') n.count = 1;
+    if (n.type === 'panel') {
+      if (!n.switchMode) n.switchMode = 'auto';
+      if (typeof n.manualActiveInput !== 'number') n.manualActiveInput = 0;
+    }
+  }
+
   updateViewBox();
 }
 

@@ -15,6 +15,10 @@ const screens = {
   editor:   document.getElementById('screen-editor'),
 };
 
+const NEW_PROJECT_PASSWORD = '789456123';
+let _pwdUnlocked = false;
+let _pwdCallback = null;
+
 const $ = (id) => document.getElementById(id);
 const els = {
   header: $('header'),
@@ -22,11 +26,16 @@ const els = {
   projectName: $('project-name'),
   btnShare: $('btn-share'),
   btnSave: $('btn-save'),
+  btnRequestAccess: $('btn-request-access'),
+  btnNotifications: $('btn-notifications'),
+  notifBadge: $('notif-badge'),
   authArea: $('auth-area'),
 
   tabs: document.querySelectorAll('#screen-projects .tab'),
   reqCount: $('req-count'),
   btnNewProject: $('btn-new-project'),
+  btnLoadProject: $('btn-load-project'),
+  loadProjectFile: $('load-project-file'),
   btnLoadDemo: $('btn-load-demo'),
   projectsList: $('projects-list'),
   projectsEmpty: $('projects-empty'),
@@ -50,6 +59,10 @@ const els = {
   newName: $('new-name'),
   newDemo: $('new-demo'),
   newCreate: $('new-create'),
+
+  modalPassword: $('modal-password'),
+  pwdInput: $('pwd-input'),
+  pwdSubmit: $('pwd-submit'),
 };
 
 const state = {
@@ -134,16 +147,26 @@ async function refreshProjects() {
       window.Storage.listAccessRequests().catch(e => { console.error(e); return []; }),
     ]);
     state.tabData = { mine, shared, requests };
-    if (requests.length > 0) {
-      els.reqCount.textContent = String(requests.length);
-      els.reqCount.classList.remove('hidden');
-    } else {
-      els.reqCount.classList.add('hidden');
-    }
+    updateNotificationBadge(requests.length);
     renderCurrentTab();
   } catch (e) {
     console.error('refreshProjects', e);
     flash('Ошибка загрузки проектов', 'error');
+  }
+}
+
+function updateNotificationBadge(count) {
+  if (count > 0) {
+    els.reqCount.textContent = String(count);
+    els.reqCount.classList.remove('hidden');
+    els.notifBadge.textContent = String(count);
+    els.notifBadge.classList.remove('hidden');
+    // Колокольчик показываем только если есть запросы и юзер залогинен
+    els.btnNotifications.classList.toggle('hidden', !state.currentUser);
+  } else {
+    els.reqCount.classList.add('hidden');
+    els.notifBadge.classList.add('hidden');
+    els.btnNotifications.classList.add('hidden');
   }
 }
 
@@ -273,6 +296,11 @@ async function openProject(id) {
     els.projectName.classList.remove('hidden');
     els.btnSave.classList.toggle('hidden', readOnly);
     els.btnShare.classList.toggle('hidden', role !== 'owner');
+    // Запросить доступ — только для гостя залогиненного, не владельца и не участника
+    const canRequestAccess = state.currentUser
+      && role !== 'owner' && role !== 'editor' && role !== 'viewer';
+    els.btnRequestAccess.classList.toggle('hidden', !canRequestAccess);
+    pendingRequestProjectId = canRequestAccess ? id : null;
 
     showScreen('editor');
 
@@ -301,6 +329,7 @@ function backToProjects() {
   els.projectName.classList.add('hidden');
   els.btnSave.classList.add('hidden');
   els.btnShare.classList.add('hidden');
+  els.btnRequestAccess.classList.add('hidden');
   const url = new URL(location.href);
   url.searchParams.delete('project');
   history.replaceState({}, '', url);
@@ -324,12 +353,71 @@ async function saveCurrent() {
   }
 }
 
+// ================= Защита паролем =================
+function withPassword(action) {
+  if (_pwdUnlocked) { action(); return; }
+  _pwdCallback = action;
+  els.pwdInput.value = '';
+  openModal('modal-password');
+  setTimeout(() => els.pwdInput.focus(), 50);
+}
+function submitPassword() {
+  const v = els.pwdInput.value;
+  if (v === NEW_PROJECT_PASSWORD) {
+    _pwdUnlocked = true;
+    closeModal('modal-password');
+    const cb = _pwdCallback;
+    _pwdCallback = null;
+    if (cb) cb();
+  } else {
+    flash('Неверный пароль', 'error');
+    els.pwdInput.value = '';
+    els.pwdInput.focus();
+  }
+}
+
 // ================= Новый проект =================
 function showNewProjectModal() {
-  els.newName.value = 'Новый проект';
-  els.newDemo.checked = true;
-  openModal('modal-new');
-  setTimeout(() => els.newName.select(), 50);
+  withPassword(() => {
+    els.newName.value = 'Новый проект';
+    els.newDemo.checked = true;
+    openModal('modal-new');
+    setTimeout(() => els.newName.select(), 50);
+  });
+}
+
+// ================= Загрузка проекта из файла =================
+function showLoadProject() {
+  withPassword(() => {
+    els.loadProjectFile.value = '';
+    els.loadProjectFile.click();
+  });
+}
+async function handleLoadProjectFile(e) {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  try {
+    const text = await f.text();
+    const scheme = JSON.parse(text);
+    if (!scheme || typeof scheme !== 'object' || !Array.isArray(scheme.nodes) || !Array.isArray(scheme.conns)) {
+      throw new Error('Файл не похож на схему Raschet (нет nodes/conns)');
+    }
+    // Имя проекта: "<имя файла> (импорт DD.MM.YYYY HH:MM)"
+    const base = f.name.replace(/\.json$/i, '');
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const name = `${base} (импорт ${stamp})`;
+    const p = await window.Storage.createProject(name, scheme);
+    flash('Проект загружен');
+    await refreshProjects();
+    openProject(p.id);
+  } catch (err) {
+    console.error('[load project]', err);
+    flash(err.message || 'Не удалось загрузить файл', 'error');
+  } finally {
+    e.target.value = '';
+  }
 }
 async function createNewProject() {
   const name = els.newName.value.trim() || 'Новый проект';
@@ -446,17 +534,31 @@ function buildShareLink(projectId) {
 }
 
 async function addShare() {
-  const email = els.shareEmail.value.trim();
+  const email = (els.shareEmail.value || '').trim().toLowerCase();
   const role = els.shareRole.value;
-  if (!email) return;
+  if (!email) {
+    flash('Введите email', 'error');
+    els.shareEmail.focus();
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    flash('Неверный формат email', 'error');
+    els.shareEmail.focus();
+    return;
+  }
+  if (!window.Auth.isFirebaseReady) {
+    flash('Совместный доступ доступен только после настройки Firebase', 'error');
+    return;
+  }
   try {
     await window.Storage.shareProject(state.currentProject.id, email, role);
     els.shareEmail.value = '';
-    flash('Добавлен участник');
+    flash('Пользователь добавлен');
     await reloadCurrentProjectMeta();
     renderShareMembers();
   } catch (e) {
-    flash(e.message || 'Ошибка', 'error');
+    console.error('[addShare]', e);
+    flash(e.message || 'Ошибка при добавлении', 'error');
   }
 }
 
@@ -515,10 +617,21 @@ async function init() {
   els.btnHome.addEventListener('click', backToProjects);
   els.btnSave.addEventListener('click', saveCurrent);
   els.btnShare.addEventListener('click', openShareModal);
+  els.btnRequestAccess.addEventListener('click', () => openModal('modal-request'));
+  els.btnNotifications.addEventListener('click', () => {
+    backToProjects();
+    selectTab('requests');
+  });
+
+  // Password modal
+  els.pwdSubmit.addEventListener('click', submitPassword);
+  els.pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitPassword(); });
 
   // Projects screen
   els.tabs.forEach(t => t.addEventListener('click', () => selectTab(t.dataset.tab)));
   els.btnNewProject.addEventListener('click', showNewProjectModal);
+  els.btnLoadProject.addEventListener('click', showLoadProject);
+  els.loadProjectFile.addEventListener('change', handleLoadProjectFile);
   els.btnLoadDemo.addEventListener('click', () => {
     window.Raschet.loadDemo();
     state.currentProject = {

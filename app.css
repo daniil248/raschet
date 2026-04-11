@@ -79,6 +79,27 @@ input, select { font: inherit; }
 .hdr-btn.primary:hover { background: #1565c0; }
 .hdr-btn.disabled { opacity: 0.5; cursor: not-allowed; }
 
+.notif-btn { position: relative; }
+.notif-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background: #e53935;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+  line-height: 1;
+  box-sizing: content-box;
+}
+
 /* User menu */
 .user-menu { position: relative; }
 .user-btn {
@@ -491,9 +512,11 @@ input, select { font: inherit; }
 .node.selected.consumer .node-body { stroke: #0d47a1; }
 
 .node.ups.onbattery .node-body { stroke-dasharray: 6 3; }
+.node.panel.manual .node-body { stroke-dasharray: 6 3; }
 .node.overload .node-body { fill: #ffebee; stroke: #c62828 !important; }
 .node.unpowered .node-body { fill: #f5f5f5; stroke: #bdbdbd; opacity: 0.75; }
 
+.node-tag   { font: 700 10px -apple-system, "Segoe UI", sans-serif; fill: #8a93a7; letter-spacing: 0.4px; pointer-events: none; text-transform: uppercase; }
 .node-title { font: 600 13px -apple-system, "Segoe UI", sans-serif; fill: #1f2430; pointer-events: none; }
 .node-sub   { font: 11px -apple-system, "Segoe UI", sans-serif; fill: #5a6271; pointer-events: none; }
 .node-load  { font: 600 11px -apple-system, "Segoe UI", sans-serif; fill: #1976d2; pointer-events: none; }
@@ -523,6 +546,11 @@ input, select { font: inherit; }
   stroke-width: 2.8;
   marker-end: url(#arrActive);
 }
+.conn.powered {
+  stroke: #43a047;
+  stroke-width: 2.4;
+  marker-end: url(#arrPowered);
+}
 .conn.dead { stroke: #d0d4db; stroke-dasharray: 4 4; }
 .conn.selected { stroke: #ef6c00 !important; stroke-width: 3.5; }
 
@@ -548,13 +576,21 @@ input, select { font: inherit; }
 .conn-handle:hover { fill: #ff9800; }
 
 .port-lamp {
-  fill: #43a047;
   stroke: #fff;
   stroke-width: 1.5;
   pointer-events: none;
+}
+.port-lamp.green {
+  fill: #43a047;
   filter: drop-shadow(0 0 3px rgba(67, 160, 71, 0.9));
 }
-.port-lamp-core { fill: #c8f7d0; pointer-events: none; }
+.port-lamp.red {
+  fill: #e53935;
+  filter: drop-shadow(0 0 3px rgba(229, 57, 53, 0.9));
+}
+.port-lamp-core { pointer-events: none; }
+.port-lamp-core.green { fill: #c8f7d0; }
+.port-lamp-core.red   { fill: #ffd7d7; }
 
 .pending-line {
   fill: none;
