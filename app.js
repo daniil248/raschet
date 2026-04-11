@@ -55,6 +55,8 @@ const IEC_TABLES = {
       E:  [[1.5,22],[2.5,30],[4,40],[6,51],[10,70],[16,94],[25,119],[35,148],[50,180],[70,232],[95,282],[120,328],[150,379],[185,434],[240,514],[300,593]],
       F:  [[1.5,26],[2.5,36],[4,49],[6,63],[10,86],[16,115],[25,149],[35,185],[50,225],[70,289],[95,352],[120,410],[150,473],[185,542],[240,641],[300,741]],
       D1: [[1.5,22],[2.5,29],[4,38],[6,47],[10,63],[16,81],[25,104],[35,125],[50,148],[70,183],[95,216],[120,246],[150,278],[185,312],[240,361],[300,408]],
+      // D2 — кабель напрямую в земле (без трубы; ≈0.9 × D1, хуже теплоотвод)
+      D2: [[1.5,20],[2.5,26],[4,34],[6,42],[10,57],[16,73],[25,94],[35,113],[50,133],[70,165],[95,194],[120,221],[150,250],[185,281],[240,325],[300,367]],
     },
     XLPE: {
       // Приближение XLPE ≈ 1.30 × PVC (IEC допускает более высокий нагрев жил)
@@ -64,6 +66,7 @@ const IEC_TABLES = {
       E:  [[1.5,29],[2.5,40],[4,54],[6,68],[10,94],[16,127],[25,161],[35,200],[50,242],[70,311],[95,378],[120,440],[150,508],[185,582],[240,688],[300,793]],
       F:  [[1.5,34],[2.5,47],[4,64],[6,83],[10,114],[16,152],[25,197],[35,245],[50,297],[70,381],[95,463],[120,539],[150,621],[185,712],[240,842],[300,975]],
       D1: [[1.5,29],[2.5,38],[4,49],[6,62],[10,83],[16,106],[25,137],[35,164],[50,195],[70,241],[95,285],[120,324],[150,367],[185,412],[240,476],[300,538]],
+      D2: [[1.5,26],[2.5,34],[4,44],[6,56],[10,75],[16,95],[25,123],[35,148],[50,176],[70,217],[95,257],[120,292],[150,330],[185,371],[240,428],[300,484]],
     },
   },
   Al: {
@@ -75,6 +78,7 @@ const IEC_TABLES = {
       E:  [[2.5,23],[4,31],[6,40],[10,54],[16,73],[25,93],[35,116],[50,140],[70,181],[95,220],[120,256],[150,295],[185,338],[240,400],[300,463]],
       F:  [[2.5,28],[4,38],[6,49],[10,67],[16,90],[25,116],[35,144],[50,176],[70,225],[95,274],[120,320],[150,369],[185,423],[240,500],[300,578]],
       D1: [[2.5,23],[4,30],[6,37],[10,49],[16,63],[25,81],[35,97],[50,115],[70,143],[95,168],[120,192],[150,217],[185,243],[240,282],[300,318]],
+      D2: [[2.5,21],[4,27],[6,33],[10,44],[16,57],[25,73],[35,87],[50,104],[70,129],[95,151],[120,173],[150,195],[185,219],[240,254],[300,286]],
     },
     XLPE: {
       B1: [[2.5,21],[4,29],[6,37],[10,52],[16,69],[25,92],[35,113],[50,137],[70,175],[95,212],[120,245],[150,282],[185,321],[240,378],[300,434]],
@@ -83,6 +87,7 @@ const IEC_TABLES = {
       E:  [[2.5,31],[4,42],[6,53],[10,73],[16,99],[25,126],[35,156],[50,189],[70,243],[95,295],[120,343],[150,396],[185,454],[240,539],[300,621]],
       F:  [[2.5,37],[4,50],[6,65],[10,89],[16,118],[25,154],[35,191],[50,232],[95,361],[120,421],[150,485],[185,555],[240,656],[300,762]],
       D1: [[2.5,30],[4,38],[6,48],[10,64],[16,83],[25,106],[35,128],[50,151],[70,188],[95,222],[120,252],[150,287],[185,322],[240,372],[300,420]],
+      D2: [[2.5,27],[4,34],[6,43],[10,58],[16,75],[25,95],[35,115],[50,136],[70,169],[95,200],[120,227],[150,258],[185,290],[240,335],[300,378]],
     },
   },
 };
@@ -106,13 +111,14 @@ const K_GROUP = { 1: 1.00, 2: 0.80, 3: 0.70, 4: 0.65, 5: 0.60, 6: 0.57, 7: 0.54,
 // Описание типов каналов: тип → метод прокладки по IEC 60364-5-52 + базовое
 // расположение (bundling), которое можно переопределить.
 const CHANNEL_TYPES = {
-  conduit:     { label: 'Труба (на стене / в стене)', method: 'B1', bundlingDefault: 'touching' },
-  tray_perf:   { label: 'Перфорированный лоток',       method: 'E',  bundlingDefault: 'touching' },
-  tray_ladder: { label: 'Лестничный лоток',            method: 'F',  bundlingDefault: 'spaced'   },
-  tray_solid:  { label: 'Сплошной лоток / короб',      method: 'B2', bundlingDefault: 'touching' },
-  ground:      { label: 'В земле',                     method: 'D1', bundlingDefault: 'touching' },
-  wall:        { label: 'Открыто на стене',            method: 'C',  bundlingDefault: 'spaced'   },
-  air:         { label: 'Свободно в воздухе',          method: 'F',  bundlingDefault: 'spaced'   },
+  conduit:     { label: 'B1 — Труба на/в стене',        method: 'B1', bundlingDefault: 'touching' },
+  tray_solid:  { label: 'B2 — Сплошной лоток / короб',  method: 'B2', bundlingDefault: 'touching' },
+  wall:        { label: 'C — Открыто на стене',         method: 'C',  bundlingDefault: 'spaced'   },
+  tray_perf:   { label: 'E — Перфорированный лоток',    method: 'E',  bundlingDefault: 'touching' },
+  tray_ladder: { label: 'F — Лестничный лоток',         method: 'F',  bundlingDefault: 'spaced'   },
+  air:         { label: 'F — Свободно в воздухе',       method: 'F',  bundlingDefault: 'spaced'   },
+  ground:      { label: 'D1 — В трубе в земле',         method: 'D1', bundlingDefault: 'touching' },
+  ground_direct:{ label: 'D2 — Напрямую в земле',       method: 'D2', bundlingDefault: 'touching' },
 };
 
 // Коэффициент расположения кабелей (IEC 60364-5-52, табл. B.52.17 — упрощённо).
@@ -988,12 +994,22 @@ function recalc() {
   // Для группового потребителя (count > 1) — count автоматов одинакового номинала,
   // подобранных по току ОДНОЙ единицы группы.
   // === Расчёт токов, сечений кабелей и подбор автоматов ===
-  // Подсчёт «сколько разных цепей идёт через каждый канал» — для коэффициента группировки
-  const channelCircuits = new Map(); // channelId → count
+  // Подсчёт цепей в канале: для каждой линии добавляем столько цепей, сколько
+  // у неё параллельных жил (для групповых потребителей это count, для
+  // обычных — 1). Если через один канал проходят линия с 3 жилами и линия
+  // с 4 жилами, в канале лежит 7 цепей, и каждая жила должна использовать
+  // K_group для 7.
+  const channelCircuits = new Map(); // channelId → total circuits
   for (const c of state.conns.values()) {
     const ids = Array.isArray(c.channelIds) ? c.channelIds : [];
+    if (!ids.length) continue;
+    const toN = state.nodes.get(c.to.nodeId);
+    let circuits = 1;
+    if (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) {
+      circuits = Number(toN.count) || 1;
+    }
     for (const chId of ids) {
-      channelCircuits.set(chId, (channelCircuits.get(chId) || 0) + 1);
+      channelCircuits.set(chId, (channelCircuits.get(chId) || 0) + circuits);
     }
   }
 
@@ -1054,8 +1070,8 @@ function recalc() {
     let bundling = c.bundling || 'touching';
     let grouping = Number(c.grouping) || GLOBAL.defaultGrouping;
 
-    // Ранг «суровости» метода: чем выше, тем меньше допустимый ток
-    const methodRank = { F: 0, E: 1, C: 2, B1: 3, B2: 3, D1: 4 };
+    // Ранг «суровости» метода: чем выше, тем меньше допустимый ток при равном сечении
+    const methodRank = { F: 0, E: 1, C: 2, B1: 3, B2: 3, D1: 4, D2: 5 };
     const bundlingRank = { spaced: 0, touching: 1, bundled: 2 };
 
     if (channelIds.length) {
@@ -1728,16 +1744,23 @@ function renderInspectorNode(n) {
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-prop="ambientC" value="${n.ambientC || 30}">`));
     h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
 
-    // Статистика использования канала
-    let circuits = 0;
+    // Статистика использования канала — считаем и линии, и суммарные цепи
+    let lines = 0, circuits = 0;
     for (const c of state.conns.values()) {
-      if (Array.isArray(c.channelIds) && c.channelIds.includes(n.id)) circuits++;
+      if (!Array.isArray(c.channelIds) || !c.channelIds.includes(n.id)) continue;
+      lines++;
+      const toN = state.nodes.get(c.to.nodeId);
+      const par = (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1)
+        ? Number(toN.count)
+        : 1;
+      circuits += par;
     }
     const typeInfo = CHANNEL_TYPES[ct] || CHANNEL_TYPES.conduit;
     h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">` +
       `Метод прокладки по IEC: <b>${typeInfo.method}</b><br>` +
-      `Цепей в канале: <b>${circuits}</b><br>` +
-      `<span style="font-size:10px">Канал задаёт только условия прокладки. Материал и изоляция кабелей задаются в каждой линии отдельно.</span>` +
+      `Линий в канале: <b>${lines}</b><br>` +
+      `Параллельных цепей (для K_group): <b>${circuits}</b><br>` +
+      `<span style="font-size:10px">Групповая линия к N потребителям считается как N параллельных цепей. Канал задаёт только условия прокладки — материал и изоляция кабелей задаются в каждой линии отдельно.</span>` +
       `</div></div>`);
 
     h.push('<button class="btn-delete" id="btn-del-node">Удалить канал</button>');
@@ -2239,12 +2262,13 @@ function renderInspectorConn(c) {
   const method = c.installMethod || GLOBAL.defaultInstallMethod;
   h.push(field('Способ прокладки',
     `<select data-conn-prop="installMethod">
-      <option value="B1"${method === 'B1' ? ' selected' : ''}>B1 — в трубе на стене</option>
+      <option value="B1"${method === 'B1' ? ' selected' : ''}>B1 — изолированные в трубе</option>
       <option value="B2"${method === 'B2' ? ' selected' : ''}>B2 — многожильный в трубе</option>
       <option value="C"${method === 'C' ? ' selected' : ''}>C — открыто на стене</option>
-      <option value="E"${method === 'E' ? ' selected' : ''}>E — на лотке (многожильный)</option>
-      <option value="F"${method === 'F' ? ' selected' : ''}>F — на лотке (одножильные)</option>
-      <option value="D1"${method === 'D1' ? ' selected' : ''}>D1 — в земле</option>
+      <option value="E"${method === 'E' ? ' selected' : ''}>E — многожильный на лотке</option>
+      <option value="F"${method === 'F' ? ' selected' : ''}>F — одножильные на лотке / в воздухе</option>
+      <option value="D1"${method === 'D1' ? ' selected' : ''}>D1 — в трубе в земле</option>
+      <option value="D2"${method === 'D2' ? ' selected' : ''}>D2 — напрямую в земле</option>
     </select>`));
   const bundling = c.bundling || 'touching';
   h.push(field('Расположение кабелей',
@@ -3068,10 +3092,12 @@ function deserialize(data) {
     }
     if (n.type === 'channel') {
       // Мигрируем старые поля (material/insulation/method) в новую схему.
-      // Метод прокладки → тип канала обратным маппингом
       if (!n.channelType) {
         const legacyMethod = n.method || 'B1';
-        const methodToType = { B1: 'conduit', B2: 'tray_solid', C: 'wall', E: 'tray_perf', F: 'air', D1: 'ground' };
+        const methodToType = {
+          B1: 'conduit', B2: 'tray_solid', C: 'wall',
+          E: 'tray_perf', F: 'air', D1: 'ground', D2: 'ground_direct',
+        };
         n.channelType = methodToType[legacyMethod] || 'conduit';
       }
       if (!n.bundling) {
