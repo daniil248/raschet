@@ -2305,7 +2305,11 @@ svg.addEventListener('mousedown', e => {
   }
 
   // Порт — начало/конец связи. Можно начинать С ЛЮБОГО порта.
-  // При клике на второй порт ориентация определяется автоматически.
+  // Клик на порт — всегда обрабатываем:
+  //  - если pending пусто и порт СВОБОДНЫЙ → начинаем новую связь, якорь = этот порт
+  //  - если pending пусто и порт УЖЕ ЗАНЯТ → подхватываем существующую связь:
+  //    якорем становится ДРУГОЙ её конец, связь ждёт нового целевого клика
+  //  - если pending активен → завершаем связь в этот порт
   const portEl = e.target.closest('.port');
   if (portEl) {
     if (state.readOnly) return;
@@ -2315,13 +2319,73 @@ svg.addEventListener('mousedown', e => {
     const idx  = Number(portEl.dataset.portIdx);
 
     if (!state.pending) {
-      // Начинаем новую связь с любого порта — но сразу запоминаем что это drag
-      state.pending = { startNodeId: nodeId, startKind: kind, startPort: idx, mouseX: 0, mouseY: 0 };
+      // Ищем уже существующую связь на этом порту
+      let existing = null;
+      for (const c of state.conns.values()) {
+        if (kind === 'in' && c.to.nodeId === nodeId && c.to.port === idx) { existing = c; break; }
+        if (kind === 'out' && c.from.nodeId === nodeId && c.from.port === idx) { existing = c; break; }
+      }
+
       const p = clientToSvg(e.clientX, e.clientY);
-      state.pending.mouseX = p.x; state.pending.mouseY = p.y;
-      svg.classList.add('connecting');
-      drawPending();
+
+      if (existing) {
+        // Подхватываем линию: якорь — противоположный конец, сам клик «отсоединил» её
+        // от того порта, по которому кликнули.
+        if (kind === 'in') {
+          state.pending = {
+            startNodeId: existing.from.nodeId,
+            startKind: 'out',
+            startPort: existing.from.port,
+            reconnectConnId: existing.id,
+            mouseX: p.x, mouseY: p.y, moved: false,
+            _startPortEl: portEl,
+            _clickedPortNodeId: nodeId,
+            _clickedPortKind: kind,
+            _clickedPortIdx: idx,
+          };
+        } else {
+          state.pending = {
+            startNodeId: existing.to.nodeId,
+            startKind: 'in',
+            startPort: existing.to.port,
+            reconnectConnId: existing.id,
+            mouseX: p.x, mouseY: p.y, moved: false,
+            _startPortEl: portEl,
+            _clickedPortNodeId: nodeId,
+            _clickedPortKind: kind,
+            _clickedPortIdx: idx,
+          };
+        }
+        svg.classList.add('connecting');
+        flash('Линия снята. Кликните по новому порту, чтобы переподключить. Esc — отмена.');
+        drawPending();
+      } else {
+        // Свободный порт — начинаем новую связь
+        state.pending = {
+          startNodeId: nodeId, startKind: kind, startPort: idx,
+          mouseX: p.x, mouseY: p.y, moved: false,
+          _startPortEl: portEl,
+        };
+        svg.classList.add('connecting');
+        drawPending();
+      }
     } else {
+      // Pending активен — завершаем связь в этот порт.
+      const s = state.pending;
+      // Клик в якорный порт — отмена
+      if (s.startNodeId === nodeId && s.startKind === kind && s.startPort === idx) {
+        cancelPending();
+        return;
+      }
+      // Клик в тот же порт, с которого подхватили линию (reconnect) — отмена,
+      // линия остаётся на своём месте как и была
+      if (s.reconnectConnId
+          && s._clickedPortNodeId === nodeId
+          && s._clickedPortKind === kind
+          && s._clickedPortIdx === idx) {
+        cancelPending();
+        return;
+      }
       finishPendingAtPort(portEl);
     }
     return;
@@ -2435,22 +2499,20 @@ window.addEventListener('mouseup', (e) => {
     state.drag = null;
     if (wasNodeDrag || wasWpDrag) notifyChange();
   }
-  // Завершение pending:
-  //  - если ведение связи уже началось и пользователь двигал мышь (moved=true)
-  //    и отпустил над портом → завершаем как drag&drop
-  //  - если курсор не двигался (это был click-start) — оставляем pending
-  //    в режиме «клик-клик», пользователь кликнет вторым щелчком по цели
-  //  - если двигался, но отпустил не над портом → отменяем
+  // Завершение pending при отпускании мыши:
+  //  - курсор не двигался → ничего не делаем, pending живёт до второго клика
+  //  - двигался и отпустил над другим портом → drag-drop финиш
+  //  - двигался и отпустил не над портом → отменяем
   if (state.pending) {
+    const moved = !!state.pending.moved;
+    if (!moved) return;
     const target = document.elementFromPoint(e.clientX, e.clientY);
     const portEl = target && target.closest && target.closest('.port');
-    const moved = !!state.pending.moved;
     if (portEl && portEl !== state.pending._startPortEl) {
       finishPendingAtPort(portEl);
-    } else if (moved) {
+    } else {
       cancelPending();
     }
-    // иначе: не двигался — pending живёт, ждём второго клика
   }
 });
 
