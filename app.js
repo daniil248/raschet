@@ -1234,6 +1234,38 @@ function splinePath(a, points, b) {
   }
   return d;
 }
+
+// Средняя точка пути по длине дуги ломаной [a, ...points, b].
+// Это хорошая аппроксимация середины сплайна, и она следует за waypoints.
+function pathMidpoint(a, points, b) {
+  const pts = [a, ...(points || []), b];
+  // Общая длина
+  let total = 0;
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i + 1].x - pts[i].x;
+    const dy = pts[i + 1].y - pts[i].y;
+    const len = Math.hypot(dx, dy);
+    segs.push(len);
+    total += len;
+  }
+  if (total === 0) return { x: a.x, y: a.y };
+  const half = total / 2;
+  // Идём по сегментам, пока не накопится половина длины
+  let acc = 0;
+  for (let i = 0; i < segs.length; i++) {
+    if (acc + segs[i] >= half) {
+      const t = segs[i] > 0 ? (half - acc) / segs[i] : 0;
+      return {
+        x: pts[i].x + (pts[i + 1].x - pts[i].x) * t,
+        y: pts[i].y + (pts[i + 1].y - pts[i].y) * t,
+      };
+    }
+    acc += segs[i];
+  }
+  const last = pts[pts.length - 1];
+  return { x: last.x, y: last.y };
+}
 function fmt(v) {
   const n = Number(v) || 0;
   return (Math.round(n * 10) / 10).toString();
@@ -1469,10 +1501,11 @@ function renderConns() {
     layerConns.appendChild(path);
 
     // Подпись на активных линиях: мощность + ток + сечение.
-    // Для группы: сперва ток одной жилы, потом суммарный: «7.8 A × 10 = 78.4 A»
+    // Для группы: сперва ток одной жилы, потом суммарный.
+    // Позиция — середина реальной траектории (с учётом waypoints).
     if (c._state === 'active' && c._loadKw > 0) {
       const parallel = Math.max(1, c._cableParallel || 1);
-      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const mid = pathMidpoint(a, waypoints, b);
       let power;
       if (toN.type === 'consumer' && (toN.count || 1) > 1) {
         power = `${toN.count}×${fmt(toN.demandKw)} kW`;
@@ -1524,12 +1557,31 @@ function renderConns() {
       }
     }
 
-    // Бейдж автомата на выходе источника/щита/ИБП (ближе к from-концу)
+    // Бейдж автомата на выходе источника/щита/ИБП — ближе к from-концу,
+    // расположение следует за реальной траекторией
     if (c._breakerIn && c._state === 'active') {
-      // Находим точку ~25% пути от a к b
-      const labelPos = waypoints.length
-        ? { x: (a.x + waypoints[0].x) / 2, y: (a.y + waypoints[0].y) / 2 }
-        : { x: a.x + (b.x - a.x) * 0.22, y: a.y + (b.y - a.y) * 0.22 };
+      // Берём точку на 15% от начала ломаной [a, ...waypoints, b]
+      const pts = [a, ...waypoints, b];
+      let total = 0;
+      const segs = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+        segs.push(len); total += len;
+      }
+      const target = total * 0.15;
+      let labelPos = { x: a.x, y: a.y };
+      let acc = 0;
+      for (let i = 0; i < segs.length; i++) {
+        if (acc + segs[i] >= target) {
+          const t = segs[i] > 0 ? (target - acc) / segs[i] : 0;
+          labelPos = {
+            x: pts[i].x + (pts[i + 1].x - pts[i].x) * t,
+            y: pts[i].y + (pts[i + 1].y - pts[i].y) * t,
+          };
+          break;
+        }
+        acc += segs[i];
+      }
       const txt = c._breakerCount > 1
         ? `${c._breakerCount}×C${c._breakerIn}А`
         : `C${c._breakerIn}А`;
