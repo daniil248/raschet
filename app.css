@@ -198,15 +198,15 @@ button { font: inherit; cursor: pointer; }
 /* ---------- Connections ---------- */
 .conn {
   fill: none;
-  stroke: #8a94a6;
+  stroke: #b0b5bf;
   stroke-width: 2;
   marker-end: url(#arr);
   cursor: pointer;
 }
-.conn:hover { stroke: #1976d2; }
+.conn:hover { stroke: #ef6c00; }
 .conn.active {
-  stroke: #1976d2;
-  stroke-width: 2.5;
+  stroke: #e53935;
+  stroke-width: 2.8;
   marker-end: url(#arrActive);
 }
 .conn.dead { stroke: #d0d4db; stroke-dasharray: 4 4; }
@@ -221,7 +221,7 @@ button { font: inherit; cursor: pointer; }
 
 .conn-label {
   font: 600 11px -apple-system, "Segoe UI", sans-serif;
-  fill: #1976d2;
+  fill: #c62828;
   pointer-events: none;
   text-anchor: middle;
   paint-order: stroke;
@@ -230,6 +230,19 @@ button { font: inherit; cursor: pointer; }
   stroke-linejoin: round;
 }
 .conn-label.overload { fill: #c62828; }
+
+/* Активные входные "лампочки" */
+.port-lamp {
+  fill: #43a047;
+  stroke: #fff;
+  stroke-width: 1.5;
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgba(67, 160, 71, 0.9));
+}
+.port-lamp-core {
+  fill: #c8f7d0;
+  pointer-events: none;
+}
 
 .conn-handle {
   fill: #ef6c00;

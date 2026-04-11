@@ -382,6 +382,13 @@ function renderNodes() {
 
     // Порты — входы
     const inCount = nodeInputCount(n);
+    // Собираем множество активных входных портов данной ноды
+    const activeInPorts = new Set();
+    if (inCount > 1) {
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId === n.id && c._active) activeInPorts.add(c.to.port);
+      }
+    }
     for (let i = 0; i < inCount; i++) {
       const cx = w / (inCount + 1) * (i + 1);
       const circ = el('circle', { class: 'port in', cx, cy: 0, r: PORT_R });
@@ -391,6 +398,11 @@ function renderNodes() {
       if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
+      }
+      // Зелёная «лампочка» на активном входе — только если входов >1
+      if (inCount > 1 && activeInPorts.has(i)) {
+        g.appendChild(el('circle', { class: 'port-lamp', cx: cx + 11, cy: 0, r: 4.5 }));
+        g.appendChild(el('circle', { class: 'port-lamp-core', cx: cx + 11, cy: 0, r: 2 }));
       }
     }
     // Порты — выходы
