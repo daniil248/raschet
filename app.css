@@ -79,6 +79,13 @@ input, select { font: inherit; }
 .hdr-btn.primary:hover { background: #1565c0; }
 .hdr-btn.disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Индикаторы состояния автосохранения на кнопке «Сохранить» */
+.hdr-btn.dirty { background: #ef6c00; border-color: #ef6c00; }
+.hdr-btn.dirty:hover { background: #e65100; }
+.hdr-btn.saving { background: #607d8b; border-color: #607d8b; cursor: wait; }
+.hdr-btn.saved { background: #43a047; border-color: #43a047; }
+.hdr-btn.save-error { background: #c62828; border-color: #c62828; }
+
 .notif-btn { position: relative; }
 .notif-badge {
   position: absolute;
@@ -485,9 +492,12 @@ input, select { font: inherit; }
   color: #2b303b;
 }
 #toolbar button:hover { background: #e8ebf0; }
+#toolbar button:disabled { opacity: 0.35; cursor: not-allowed; background: #f4f5f7; }
+#toolbar button:disabled:hover { background: #f4f5f7; }
 #toolbar button.danger { color: #c62828; }
 #toolbar button.danger:hover { background: #fde8e8; border-color: #f4bebe; }
 #toolbar .sep { width: 1px; height: 20px; background: #e0e3ea; margin: 0 2px; }
+#btn-undo, #btn-redo { font-size: 15px; line-height: 1; min-width: 28px; }
 
 #canvas { width: 100%; height: 100%; display: block; cursor: default; touch-action: none; }
 #canvas.panning { cursor: grabbing; }

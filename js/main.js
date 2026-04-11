@@ -70,7 +70,12 @@ const state = {
   currentProject: null,
   currentTab: 'mine',
   tabData: { mine: [], shared: [], requests: [] },
+  dirty: false,      // есть несохранённые изменения
+  saving: false,     // идёт сохранение
+  autoSaveTimer: null,
 };
+
+const AUTO_SAVE_DELAY = 1500; // мс после последнего изменения
 
 // ================= Экраны =================
 function showScreen(name) {
@@ -296,6 +301,11 @@ async function openProject(id) {
     els.projectName.classList.remove('hidden');
     els.btnSave.classList.toggle('hidden', readOnly);
     els.btnShare.classList.toggle('hidden', role !== 'owner');
+    // Сбрасываем состояние автосохранения для свежезагруженного проекта
+    state.dirty = false;
+    state.saving = false;
+    if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
+    updateSaveButton();
     // Запросить доступ — только для гостя залогиненного, не владельца и не участника
     const canRequestAccess = state.currentUser
       && role !== 'owner' && role !== 'editor' && role !== 'viewer';
@@ -324,6 +334,13 @@ async function openProject(id) {
 }
 
 function backToProjects() {
+  // Если есть несохранённые изменения — последний раз пытаемся сохранить синхронно
+  if (state.dirty && state.currentProject && state.currentProject._role !== 'viewer') {
+    saveCurrent(true).catch(() => {});
+  }
+  if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
+  state.dirty = false;
+  state.saving = false;
   state.currentProject = null;
   els.projectName.textContent = '';
   els.projectName.classList.add('hidden');
@@ -339,17 +356,68 @@ function backToProjects() {
 }
 
 // ================= Сохранение текущего проекта =================
-async function saveCurrent() {
+function updateSaveButton() {
+  const btn = els.btnSave;
+  if (!btn || btn.classList.contains('hidden')) return;
+  btn.classList.remove('dirty', 'saving', 'saved', 'save-error');
+  if (state.saving) {
+    btn.classList.add('saving');
+    btn.textContent = 'Сохранение…';
+  } else if (state.dirty) {
+    btn.classList.add('dirty');
+    btn.textContent = '● Сохранить';
+  } else {
+    btn.textContent = 'Сохранено';
+    btn.classList.add('saved');
+  }
+}
+
+function markDirty() {
+  const p = state.currentProject;
+  if (!p || p._role === 'viewer' || String(p.id || '').startsWith('_demo_')) return;
+  state.dirty = true;
+  updateSaveButton();
+  scheduleAutoSave();
+}
+
+function scheduleAutoSave() {
+  if (state.autoSaveTimer) clearTimeout(state.autoSaveTimer);
+  state.autoSaveTimer = setTimeout(() => {
+    state.autoSaveTimer = null;
+    if (state.dirty && !state.saving) saveCurrent(true);
+  }, AUTO_SAVE_DELAY);
+}
+
+async function saveCurrent(isAuto) {
   const p = state.currentProject;
   if (!p) return;
-  if (p._role === 'viewer') { flash('Только просмотр', 'error'); return; }
+  if (p._role === 'viewer') { if (!isAuto) flash('Только просмотр', 'error'); return; }
+  if (String(p.id || '').startsWith('_demo_')) {
+    if (!isAuto) flash('Это демо-схема, её нельзя сохранить. Создайте новый проект.', 'error');
+    return;
+  }
+  if (state.saving) return;
+  if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
+  state.saving = true;
+  updateSaveButton();
   try {
     const scheme = window.Raschet.getScheme();
     await window.Storage.saveProject(p.id, { scheme });
-    flash('Сохранено');
+    state.dirty = false;
+    state.saving = false;
+    updateSaveButton();
+    if (!isAuto) flash('Сохранено');
   } catch (e) {
-    console.error(e);
+    console.error('[saveCurrent]', e);
+    state.saving = false;
+    els.btnSave.classList.remove('dirty', 'saving', 'saved');
+    els.btnSave.classList.add('save-error');
+    els.btnSave.textContent = 'Ошибка';
     flash(e.message || 'Ошибка сохранения', 'error');
+    // Через 3 сек вернёмся к «● Сохранить», если ещё dirty
+    setTimeout(() => {
+      if (!state.saving) updateSaveButton();
+    }, 3000);
   }
 }
 
@@ -615,8 +683,22 @@ async function init() {
 
   // Header
   els.btnHome.addEventListener('click', backToProjects);
-  els.btnSave.addEventListener('click', saveCurrent);
+  els.btnSave.addEventListener('click', () => saveCurrent(false));
   els.btnShare.addEventListener('click', openShareModal);
+
+  // Подписка на изменения редактора → автосохранение
+  if (window.Raschet && typeof window.Raschet.onChange === 'function') {
+    window.Raschet.onChange(() => markDirty());
+  }
+
+  // Предупреждение при закрытии вкладки с несохранёнными изменениями
+  window.addEventListener('beforeunload', e => {
+    if (state.dirty && state.currentProject && state.currentProject._role !== 'viewer') {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+  });
   els.btnRequestAccess.addEventListener('click', () => openModal('modal-request'));
   els.btnNotifications.addEventListener('click', () => {
     backToProjects();

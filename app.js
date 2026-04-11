@@ -84,6 +84,83 @@ const state = {
 let _idSeq = 1;
 const uid = (p = 'n') => `${p}${_idSeq++}`;
 
+// ================= Undo / Redo =================
+// Снапшотный стек: перед каждым мутирующим действием сохраняется JSON
+// текущей схемы. Undo восстанавливает предыдущий снимок, redo — следующий.
+// Tag используется для коалесирования подряд идущих мелких правок (например,
+// последовательные нажатия клавиш в одном поле инспектора даут один снимок).
+const _undoStack = [];
+const _redoStack = [];
+const MAX_UNDO = 100;
+let _suppressSnapshot = false;
+let _lastSnapTag = null;
+let _snapCounter = 0;
+let _changeCb = null;
+
+function snapshot(tag) {
+  if (_suppressSnapshot) return;
+  if (tag && tag === _lastSnapTag) return;
+  _undoStack.push(JSON.stringify(serialize()));
+  if (_undoStack.length > MAX_UNDO) _undoStack.shift();
+  _redoStack.length = 0;
+  _lastSnapTag = tag || ('#' + (++_snapCounter));
+  updateUndoButtons();
+}
+
+function clearUndoStack() {
+  _undoStack.length = 0;
+  _redoStack.length = 0;
+  _lastSnapTag = null;
+  updateUndoButtons();
+}
+
+function undo() {
+  if (_undoStack.length === 0) return;
+  _redoStack.push(JSON.stringify(serialize()));
+  const prev = _undoStack.pop();
+  _suppressSnapshot = true;
+  try {
+    deserialize(JSON.parse(prev));
+    render();
+    renderInspector();
+  } finally {
+    _suppressSnapshot = false;
+  }
+  _lastSnapTag = null;
+  updateUndoButtons();
+  notifyChange();
+}
+
+function redo() {
+  if (_redoStack.length === 0) return;
+  _undoStack.push(JSON.stringify(serialize()));
+  const next = _redoStack.pop();
+  _suppressSnapshot = true;
+  try {
+    deserialize(JSON.parse(next));
+    render();
+    renderInspector();
+  } finally {
+    _suppressSnapshot = false;
+  }
+  _lastSnapTag = null;
+  updateUndoButtons();
+  notifyChange();
+}
+
+function updateUndoButtons() {
+  const u = document.getElementById('btn-undo');
+  const r = document.getElementById('btn-redo');
+  if (u) u.disabled = _undoStack.length === 0;
+  if (r) r.disabled = _redoStack.length === 0;
+}
+
+function notifyChange() {
+  if (_changeCb && !state.readOnly && !_suppressSnapshot) {
+    try { _changeCb(); } catch (e) { console.error('[onChange]', e); }
+  }
+}
+
 // Поиск наименьшего свободного обозначения с заданным префиксом (TR1, TR2, …)
 function nextFreeTag(type) {
   const prefix = TAG_PREFIX[type] || 'X';
@@ -136,16 +213,20 @@ function setEffectiveOn(n, val) {
   }
 }
 function createMode(name) {
+  snapshot();
   const id = uid('m');
   const m = { id, name: name || `Режим ${state.modes.length + 1}`, overrides: {} };
   state.modes.push(m);
   state.activeModeId = id;
   render();
+  notifyChange();
 }
 function deleteMode(id) {
+  snapshot();
   state.modes = state.modes.filter(m => m.id !== id);
   if (state.activeModeId === id) state.activeModeId = null;
   render();
+  notifyChange();
 }
 function selectMode(id) {
   state.activeModeId = id;
@@ -178,6 +259,7 @@ function portPos(n, kind, idx) {
 
 // ================= Создание / удаление =================
 function createNode(type, x, y) {
+  snapshot();
   const id = uid();
   const base = { id, type, x, y, ...DEFAULTS[type]() };
   base.tag = nextFreeTag(type);
@@ -186,9 +268,11 @@ function createNode(type, x, y) {
   state.nodes.set(id, base);
   selectNode(id);
   render();
+  notifyChange();
   return id;
 }
 function deleteNode(id) {
+  snapshot();
   for (const c of Array.from(state.conns.values())) {
     if (c.from.nodeId === id || c.to.nodeId === id) state.conns.delete(c.id);
   }
@@ -199,14 +283,17 @@ function deleteNode(id) {
   }
   render();
   renderInspector();
+  notifyChange();
 }
 function deleteConn(id) {
+  snapshot();
   state.conns.delete(id);
   if (state.selectedKind === 'conn' && state.selectedId === id) {
     state.selectedKind = null; state.selectedId = null;
   }
   render();
   renderInspector();
+  notifyChange();
 }
 function clampPortsInvolvingNode(n) {
   for (const c of Array.from(state.conns.values())) {
@@ -241,8 +328,10 @@ function tryConnect(from, to) {
     if (c.to.nodeId === to.nodeId && c.to.port === to.port) return false;
   }
   if (wouldCreateCycle(from.nodeId, to.nodeId)) return false;
+  snapshot();
   const id = uid('c');
   state.conns.set(id, { id, from, to });
+  notifyChange();
   return id;
 }
 
@@ -694,8 +783,10 @@ function renderModes() {
     const nameInput = row.querySelector('.mode-name');
     if (!nameInput.disabled) {
       nameInput.addEventListener('input', () => {
+        snapshot('mode-name:' + mid);
         const m = state.modes.find(x => x.id === mid);
         if (m) m.name = nameInput.value;
+        notifyChange();
       });
     }
     const del = row.querySelector('.mode-del');
@@ -797,6 +888,7 @@ function renderInspectorNode(n) {
   inspectorBody.querySelectorAll('[data-prop]').forEach(inp => {
     const prop = inp.dataset.prop;
     const apply = () => {
+      snapshot('prop:' + n.id + ':' + prop);
       let v;
       if (inp.type === 'checkbox') v = inp.checked;
       else if (inp.type === 'number') v = Number(inp.value);
@@ -824,6 +916,7 @@ function renderInspectorNode(n) {
       }
       if (prop === 'inputs' || prop === 'outputs') clampPortsInvolvingNode(n);
       render();
+      notifyChange();
       // Перерисовать инспектор при изменениях, от которых зависят другие поля
       if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count') {
         renderInspector();
@@ -835,9 +928,11 @@ function renderInspectorNode(n) {
   inspectorBody.querySelectorAll('[data-prio]').forEach(inp => {
     inp.addEventListener('input', () => {
       const idx = Number(inp.dataset.prio);
+      snapshot('prio:' + n.id + ':' + idx);
       if (!n.priorities) n.priorities = [];
       n.priorities[idx] = Number(inp.value) || 1;
       render();
+      notifyChange();
     });
   });
 
@@ -1030,6 +1125,7 @@ svg.addEventListener('mousedown', e => {
     const id = nodeEl.dataset.nodeId;
     selectNode(id);
     if (!state.readOnly) {
+      snapshot(); // фиксируем позицию ноды до начала перетаскивания
       const n = state.nodes.get(id);
       const p = clientToSvg(e.clientX, e.clientY);
       state.drag = { nodeId: id, dx: p.x - n.x, dy: p.y - n.y };
@@ -1068,7 +1164,12 @@ window.addEventListener('mousemove', e => {
 });
 
 window.addEventListener('mouseup', () => {
-  if (state.drag) { svg.classList.remove('panning'); state.drag = null; }
+  if (state.drag) {
+    const wasNodeDrag = !!state.drag.nodeId;
+    svg.classList.remove('panning');
+    state.drag = null;
+    if (wasNodeDrag) notifyChange();
+  }
 });
 
 // Отмена ведения связи
@@ -1077,6 +1178,19 @@ svg.addEventListener('contextmenu', e => {
   if (state.pending) cancelPending();
 });
 window.addEventListener('keydown', e => {
+  // Undo / Redo работают даже когда фокус в input, это стандартное поведение
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+    if (state.readOnly) return;
+    e.preventDefault();
+    undo();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && ((e.shiftKey && (e.key === 'z' || e.key === 'Z')) || e.key === 'y' || e.key === 'Y')) {
+    if (state.readOnly) return;
+    e.preventDefault();
+    redo();
+    return;
+  }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.key === 'Escape' && state.pending) cancelPending();
   if (state.readOnly) return;
@@ -1143,10 +1257,18 @@ document.getElementById('btn-load-local').onclick  = () => {
 };
 document.getElementById('btn-clear').onclick = () => {
   if (state.nodes.size && !confirm('Очистить схему?')) return;
+  snapshot();
   state.nodes.clear(); state.conns.clear(); state.modes = []; state.activeModeId = null;
   state.selectedKind = null; state.selectedId = null;
   render(); renderInspector();
+  notifyChange();
 };
+// Undo / Redo кнопки в тулбаре (добавлены в index.html)
+const _btnUndo = document.getElementById('btn-undo');
+const _btnRedo = document.getElementById('btn-redo');
+if (_btnUndo) _btnUndo.onclick = undo;
+if (_btnRedo) _btnRedo.onclick = redo;
+updateUndoButtons();
 document.getElementById('btn-export').onclick = () => {
   const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -1349,42 +1471,52 @@ renderInspector();
 // ================= Публичный API (для main.js) =================
 window.Raschet = {
   loadScheme(data) {
-    if (!data) {
+    _suppressSnapshot = true;
+    try {
+      if (!data) {
+        state.nodes.clear();
+        state.conns.clear();
+        state.modes = [];
+        state.activeModeId = null;
+        state.selectedKind = null;
+        state.selectedId = null;
+        state.view = { x: 0, y: 0, zoom: 1 };
+        updateViewBox();
+        render();
+        renderInspector();
+      } else {
+        deserialize(data);
+        render();
+        renderInspector();
+      }
+    } catch (err) {
+      console.error('[Raschet.loadScheme]', err);
+      throw err;
+    } finally {
+      _suppressSnapshot = false;
+    }
+    clearUndoStack();
+  },
+  getScheme() {
+    return serialize();
+  },
+  loadDemo() {
+    _suppressSnapshot = true;
+    try {
       state.nodes.clear();
       state.conns.clear();
       state.modes = [];
       state.activeModeId = null;
       state.selectedKind = null;
       state.selectedId = null;
-      state.view = { x: 0, y: 0, zoom: 1 };
-      updateViewBox();
+      _idSeq = 1;
+      buildDemo();
       render();
       renderInspector();
-      return;
+    } finally {
+      _suppressSnapshot = false;
     }
-    try {
-      deserialize(data);
-      render();
-      renderInspector();
-    } catch (err) {
-      console.error('[Raschet.loadScheme]', err);
-      throw err;
-    }
-  },
-  getScheme() {
-    return serialize();
-  },
-  loadDemo() {
-    state.nodes.clear();
-    state.conns.clear();
-    state.modes = [];
-    state.activeModeId = null;
-    state.selectedKind = null;
-    state.selectedId = null;
-    _idSeq = 1;
-    buildDemo();
-    render();
-    renderInspector();
+    clearUndoStack();
   },
   setReadOnly(flag) {
     state.readOnly = !!flag;
@@ -1401,6 +1533,12 @@ window.Raschet = {
     fitAll();
   },
   isEmpty() { return state.nodes.size === 0; },
+  undo,
+  redo,
+  canUndo() { return _undoStack.length > 0; },
+  canRedo() { return _redoStack.length > 0; },
+  clearHistory: clearUndoStack,
+  onChange(cb) { _changeCb = cb; },
 };
 
 })();
