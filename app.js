@@ -32,6 +32,17 @@ const DEFAULTS = {
   source:    () => ({ name: 'Ввод ТП',    capacityKw: 100, on: true }),
   generator: () => ({ name: 'ДГУ',         capacityKw: 60,  on: true, backupMode: true }),
   panel:     () => ({ name: 'ЩС',          inputs: 2, outputs: 2, priorities: [1, 2] }),
+  ups:       () => ({
+    name: 'ИБП',
+    capacityKw: 10,
+    efficiency: 95,          // КПД, проценты 30–100
+    chargeKw: 0.5,           // мощность, уходящая на заряд батареи
+    batteryKwh: 2,           // ёмкость аккумуляторов
+    batteryChargePct: 100,   // текущий уровень заряда, %
+    inputs: 1, outputs: 1,
+    priorities: [1],
+    on: true,
+  }),
   consumer:  () => ({ name: 'Потребитель', demandKw: 10, inputs: 2, priorities: [1, 2] }),
 };
 
@@ -213,6 +224,34 @@ function recalc() {
       if (!effectiveOn(n)) res = null;
       else if (n.backupMode && !allowBackup) res = null;
       else res = [];
+    } else if (n.type === 'ups') {
+      if (!effectiveOn(n)) {
+        res = null;
+      } else {
+        // Как щит — группировка по приоритетам
+        const ins = edgesIn.get(nid) || [];
+        if (ins.length > 0) {
+          const groups = new Map();
+          for (const c of ins) {
+            const prio = (n.priorities?.[c.to.port]) ?? 1;
+            if (!groups.has(prio)) groups.set(prio, []);
+            groups.get(prio).push(c);
+          }
+          const sorted = [...groups.keys()].sort((a, b) => a - b);
+          for (const p of sorted) {
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+            if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+          }
+          if (res === null && allowBackup) {
+            for (const p of sorted) {
+              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
+              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+            }
+          }
+        }
+        // Батарейный резерв — ИБП играет роль источника, когда вход мёртв
+        if (res === null && allowBackup) res = [];
+      }
     } else {
       const ins = edgesIn.get(nid) || [];
       if (ins.length > 0) {
@@ -248,15 +287,23 @@ function recalc() {
   }
   for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; }
 
-  // Распространение нагрузки от потребителей вверх
+  // Распространение нагрузки от потребителей вверх.
+  // При прохождении границы ИБП поток вверх увеличивается на 1/КПД — это потери
+  // на преобразование. Если ИБП работает от батареи (активные входы пусты),
+  // visit() завершается — вверх ничего не идёт.
   function walkUp(nid, kw) {
     let depth = 0;
     const visit = (id, flow) => {
       if (depth++ > 2000) return;
       const ai = activeInputs(id, true);
       if (!ai || ai.length === 0) return;
+      const nn = state.nodes.get(id);
+      const eff = (nn.type === 'ups')
+        ? Math.max(0.01, (Number(nn.efficiency) || 100) / 100)
+        : 1;
+      const flowUp = flow / eff;
       for (const { conn, share } of ai) {
-        const upKw = flow * share;
+        const upKw = flowUp * share;
         conn._active = true;
         conn._loadKw += upKw;
         const up = state.nodes.get(conn.from.nodeId);
@@ -278,7 +325,19 @@ function recalc() {
     walkUp(n.id, d);
   }
 
-  // Статусы источников
+  // Зарядный ток ИБП — накидывается поверх проходной мощности,
+  // только если ИБП работает от входа (не от батареи).
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'ups') continue;
+    if (!effectiveOn(n)) continue;
+    const ai = activeInputs(n.id, true);
+    if (!ai || ai.length === 0) continue; // мёртв или на батарее
+    const ch = Number(n.chargeKw) || 0;
+    if (ch <= 0) continue;
+    walkUp(n.id, ch);
+  }
+
+  // Статусы источников и ИБП
   for (const n of state.nodes.values()) {
     if (n.type === 'source' || n.type === 'generator') {
       const ai = activeInputs(n.id, true);
@@ -286,6 +345,17 @@ function recalc() {
       if (n._loadKw > Number(n.capacityKw || 0)) n._overload = true;
     } else if (n.type === 'panel') {
       if (!n._powered) n._powered = activeInputs(n.id, true) !== null;
+    } else if (n.type === 'ups') {
+      const ai = activeInputs(n.id, true);
+      n._powered = ai !== null;
+      n._onBattery = ai !== null && ai.length === 0;
+      if (n._powered && !n._onBattery) {
+        const eff = Math.max(0.01, (Number(n.efficiency) || 100) / 100);
+        n._inputKw = n._loadKw / eff + (Number(n.chargeKw) || 0);
+      } else {
+        n._inputKw = 0;
+      }
+      if (n._loadKw > Number(n.capacityKw || 0)) n._overload = true;
     }
   }
 }
@@ -343,7 +413,8 @@ function renderNodes() {
       'node', n.type,
       selected ? 'selected' : '',
       n._overload ? 'overload' : '',
-      (!n._powered && (n.type === 'panel' || n.type === 'consumer')) ? 'unpowered' : '',
+      (!n._powered && (n.type === 'panel' || n.type === 'consumer' || n.type === 'ups')) ? 'unpowered' : '',
+      (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
     ].filter(Boolean).join(' ');
 
     const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
@@ -359,6 +430,7 @@ function renderNodes() {
       source:    'Источник',
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
       panel:     `Щит · вх ${n.inputs} · вых ${n.outputs}`,
+      ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%`,
       consumer:  'Потребитель' + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
     }[n.type];
     g.appendChild(text(12, 38, subTxt, 'node-sub'));
@@ -374,6 +446,13 @@ function renderNodes() {
     } else if (n.type === 'panel') {
       loadLine = n._powered ? `${fmt(n._loadKw)} кВт` : 'Без питания';
       if (!n._powered) loadCls += ' off';
+    } else if (n.type === 'ups') {
+      if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
+      else if (!n._powered) { loadLine = 'Без питания'; loadCls += ' off'; }
+      else {
+        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} кВт${n._onBattery ? ' · БАТ' : ''}`;
+        if (n._overload) loadCls += ' overload';
+      }
     } else if (n.type === 'consumer') {
       loadLine = n._powered ? `${fmt(n.demandKw)} кВт` : `${fmt(n.demandKw)} кВт · нет`;
       if (!n._powered) loadCls += ' off';
@@ -563,6 +642,17 @@ function renderInspectorNode(n) {
     h.push(field('Выходов', `<input type="number" min="1" max="30" step="1" data-prop="outputs" value="${n.outputs}">`));
     h.push(prioritySection(n));
     h.push(statusBlock(n));
+  } else if (n.type === 'ups') {
+    h.push(field('Выходная мощность, кВт', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
+    h.push(field('КПД, %', `<input type="number" min="30" max="100" step="1" data-prop="efficiency" value="${n.efficiency}">`));
+    h.push(field('Ток заряда батареи, кВт', `<input type="number" min="0" step="0.1" data-prop="chargeKw" value="${n.chargeKw}">`));
+    h.push(field('Ёмкость батареи, кВт·ч', `<input type="number" min="0" step="0.1" data-prop="batteryKwh" value="${n.batteryKwh}">`));
+    h.push(field('Заряд батареи, %', `<input type="number" min="0" max="100" step="1" data-prop="batteryChargePct" value="${n.batteryChargePct}">`));
+    h.push(field('Входов', `<input type="number" min="1" max="5" step="1" data-prop="inputs" value="${n.inputs}">`));
+    h.push(field('Выходов', `<input type="number" min="1" max="20" step="1" data-prop="outputs" value="${n.outputs}">`));
+    h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
+    if (n.inputs > 1) h.push(prioritySection(n));
+    h.push(upsStatusBlock(n));
   } else if (n.type === 'consumer') {
     h.push(field('Потребление, кВт', `<input type="number" min="0" step="0.1" data-prop="demandKw" value="${n.demandKw}">`));
     h.push(field('Входов', `<input type="number" min="1" max="10" step="1" data-prop="inputs" value="${n.inputs}">`));
@@ -630,6 +720,34 @@ function statusBlock(n) {
   else parts.push('<span class="badge off">без питания</span>');
   if (n.type === 'panel') parts.push(` нагрузка: <b>${fmt(n._loadKw)} кВт</b>`);
   return `<div class="inspector-section"><div class="muted" style="font-size:11px">${parts.join(' ')}</div></div>`;
+}
+
+function upsStatusBlock(n) {
+  const parts = [];
+  if (!effectiveOn(n)) {
+    parts.push('<span class="badge off">отключён</span>');
+  } else if (!n._powered) {
+    parts.push('<span class="badge off">без питания</span>');
+  } else {
+    parts.push(n._onBattery
+      ? '<span class="badge backup">работа от батареи</span>'
+      : '<span class="badge on">работа от сети</span>');
+    parts.push(`выход: <b>${fmt(n._loadKw)} / ${fmt(n.capacityKw)} кВт</b>`);
+    if (!n._onBattery) parts.push(`потребление на входе: <b>${fmt(n._inputKw)} кВт</b>`);
+  }
+  const battKwh = (Number(n.batteryKwh) || 0) * (Number(n.batteryChargePct) || 0) / 100;
+  parts.push(`запас батареи: <b>${fmt(battKwh)} кВт·ч</b> (${n.batteryChargePct || 0}%)`);
+  if (n._loadKw > 0) {
+    const hrs = battKwh / n._loadKw;
+    const min = hrs * 60;
+    let autTxt;
+    if (min >= 600) autTxt = '> 10 ч';
+    else if (min >= 60) autTxt = (hrs).toFixed(1) + ' ч';
+    else if (min >= 1) autTxt = Math.round(min) + ' мин';
+    else autTxt = '< 1 мин';
+    parts.push(`автономия при текущей нагрузке: <b>${autTxt}</b>`);
+  }
+  return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
 }
 
 function renderInspectorConn(c) {
@@ -946,14 +1064,16 @@ function buildDemo() {
   const g1 = createNode('generator', 760, 100); const g1n = state.nodes.get(g1); g1n.name = 'ДГУ';
   const p1 = createNode('panel',     440, 300); const p1n = state.nodes.get(p1); p1n.name = 'ЩС-1'; p1n.inputs = 3; p1n.outputs = 2; p1n.priorities = [1, 2, 3];
   const p2 = createNode('panel',     640, 480); const p2n = state.nodes.get(p2); p2n.name = 'ЩС-2'; p2n.inputs = 1; p2n.outputs = 2;
-  const c1 = createNode('consumer',  260, 500); const c1n = state.nodes.get(c1); c1n.name = 'Сервер'; c1n.demandKw = 8; c1n.inputs = 2; c1n.priorities = [1, 1];
+  const u1 = createNode('ups',       260, 440); const u1n = state.nodes.get(u1); u1n.name = 'ИБП сервера'; u1n.capacityKw = 12; u1n.efficiency = 94; u1n.chargeKw = 0.6; u1n.batteryKwh = 5; u1n.batteryChargePct = 100;
+  const c1 = createNode('consumer',  260, 600); const c1n = state.nodes.get(c1); c1n.name = 'Сервер'; c1n.demandKw = 8; c1n.inputs = 1; c1n.priorities = [1];
   const c2 = createNode('consumer',  540, 660); const c2n = state.nodes.get(c2); c2n.name = 'Кондиционер'; c2n.demandKw = 20; c2n.inputs = 1;
   const c3 = createNode('consumer',  760, 660); const c3n = state.nodes.get(c3); c3n.name = 'Освещение';   c3n.demandKw = 5;  c3n.inputs = 1;
 
   tryConnect({ nodeId: s1, port: 0 }, { nodeId: p1, port: 0 });
   tryConnect({ nodeId: s2, port: 0 }, { nodeId: p1, port: 1 });
   tryConnect({ nodeId: g1, port: 0 }, { nodeId: p1, port: 2 });
-  tryConnect({ nodeId: p1, port: 0 }, { nodeId: c1, port: 0 });
+  tryConnect({ nodeId: p1, port: 0 }, { nodeId: u1, port: 0 });
+  tryConnect({ nodeId: u1, port: 0 }, { nodeId: c1, port: 0 });
   tryConnect({ nodeId: p1, port: 1 }, { nodeId: p2, port: 0 });
   tryConnect({ nodeId: p2, port: 0 }, { nodeId: c2, port: 0 });
   tryConnect({ nodeId: p2, port: 1 }, { nodeId: c3, port: 0 });
