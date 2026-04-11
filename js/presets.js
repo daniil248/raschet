@@ -213,10 +213,30 @@ function byCategory() {
   return out;
 }
 
+// Подгружаем пользовательские пресеты из localStorage
+try {
+  const stored = localStorage.getItem('raschet.userPresets.v1');
+  if (stored) {
+    const list = JSON.parse(stored);
+    if (Array.isArray(list)) {
+      for (const p of list) PRESETS.push(p);
+    }
+  }
+} catch (e) { console.warn('[presets] cannot load user presets', e); }
+
 window.Presets = {
   all: PRESETS,
   byCategory,
   get(id) { return PRESETS.find(p => p.id === id); },
+  removeUser(id) {
+    const idx = PRESETS.findIndex(p => p.id === id);
+    if (idx >= 0) PRESETS.splice(idx, 1);
+    try {
+      const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+      const filtered = stored.filter(p => p.id !== id);
+      localStorage.setItem('raschet.userPresets.v1', JSON.stringify(filtered));
+    } catch {}
+  },
 };
 
 })();

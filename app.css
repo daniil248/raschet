@@ -400,6 +400,8 @@ input, select { font: inherit; }
 .chip.pnl { background: #607d8b; }
 .chip.ups { background: #9c27b0; }
 .chip.cns { background: #1976d2; }
+.chip.chn { background: #795548; }
+.chip.zne { background: #00838f; }
 
 .stats {
   font-size: 12px;
@@ -513,6 +515,7 @@ input, select { font: inherit; }
 .node.panel    .node-body { fill: #eceff1; stroke: #607d8b; }
 .node.ups      .node-body { fill: #f3e5f5; stroke: #9c27b0; }
 .node.consumer .node-body { fill: #e3f2fd; stroke: #1976d2; }
+.node.channel  .node-body { fill: #efebe9; stroke: #795548; stroke-dasharray: 4 2; }
 
 .node.selected .node-body { stroke-width: 2.5; }
 .node.selected.source   .node-body { stroke: #2e7d32; }
@@ -522,7 +525,96 @@ input, select { font: inherit; }
 .node.selected.consumer .node-body { stroke: #0d47a1; }
 
 .node.ups.onbattery .node-body { stroke-dasharray: 6 3; }
+.node.ups.onbypass .node-body { fill: #fce4ec; stroke: #ec407a; }
 .node.panel.manual .node-body { stroke-dasharray: 6 3; }
+
+/* Zones */
+.node.zone .zone-body {
+  stroke: #00838f;
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+  rx: 10;
+  ry: 10;
+}
+.node.zone.selected .zone-body { stroke-width: 3; stroke: #006064; }
+.zone-prefix {
+  font: 700 14px -apple-system, "Segoe UI", sans-serif;
+  fill: #006064;
+  pointer-events: none;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.zone-name {
+  font: 11px -apple-system, "Segoe UI", sans-serif;
+  fill: #00838f;
+  pointer-events: none;
+}
+.zone-resize {
+  fill: #00838f;
+  fill-opacity: 0.3;
+  stroke: #00838f;
+  stroke-width: 1;
+  cursor: nwse-resize;
+}
+
+/* Connection waypoints */
+.conn-waypoint {
+  fill: #1976d2;
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: grab;
+}
+.conn-waypoint:hover { fill: #0d47a1; r: 6; }
+.conn-waypoint-add {
+  fill: #fff;
+  stroke: #1976d2;
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2;
+  cursor: copy;
+}
+.conn-waypoint-add:hover { fill: #e3f2fd; }
+
+/* Breaker badge on line near 'from' end */
+.breaker-badge {
+  font: 700 10px -apple-system, "Segoe UI", sans-serif;
+  fill: #ef6c00;
+  pointer-events: none;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #fafbfc;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.breaker-badge.overload { fill: #c62828; }
+
+/* Full properties block */
+.inspector-section.full-props h4 { color: #6b7385; }
+.fp-table {
+  width: 100%;
+  font: 11px ui-monospace, "Cascadia Mono", Consolas, monospace;
+  border-collapse: collapse;
+}
+.fp-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #eef0f4;
+  vertical-align: top;
+}
+.fp-table .fp-k {
+  color: #6b7385;
+  width: 40%;
+  word-break: break-all;
+}
+.fp-table .fp-v {
+  color: #1f2430;
+  word-break: break-all;
+}
+.fp-table .fp-sep {
+  color: #9aa3b5;
+  text-align: center;
+  padding: 6px 0 3px;
+  border-bottom: none;
+  font-style: italic;
+}
 .node.overload .node-body { fill: #ffebee; stroke: #c62828 !important; }
 .node.unpowered .node-body { fill: #f5f5f5; stroke: #bdbdbd; opacity: 0.75; }
 
