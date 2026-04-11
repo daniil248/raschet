@@ -100,11 +100,17 @@ const Fs = {
   async listMyProjects() {
     const u = window.Auth.currentUser;
     if (!u) return [];
+    // Без orderBy, чтобы не требовался composite-index. Сортируем на клиенте.
     const snap = await fsDb().collection('projects')
       .where('ownerId', '==', u.uid)
-      .orderBy('updatedAt', 'desc')
       .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data(), _role: 'owner' }));
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data(), _role: 'owner' }));
+    items.sort((a, b) => {
+      const ta = a.updatedAt?.toMillis ? a.updatedAt.toMillis() : (a.updatedAt || 0);
+      const tb = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : (b.updatedAt || 0);
+      return tb - ta;
+    });
+    return items;
   },
 
   async listSharedProjects() {

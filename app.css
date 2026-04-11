@@ -585,6 +585,39 @@ input, select { font: inherit; }
 }
 .conn-handle:hover { fill: #ff9800; }
 
+/* Control-линии (запуск генератора от триггера) */
+.control-line {
+  stroke: #9aa3b5;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  fill: none;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.control-line.started {
+  stroke: #ff9800;
+  stroke-width: 2.2;
+  opacity: 1;
+  animation: ctrlBlink 1.2s ease-in-out infinite;
+}
+@keyframes ctrlBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.control-label {
+  font: 600 10px -apple-system, "Segoe UI", sans-serif;
+  fill: #9aa3b5;
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: #fafbfc;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.control-label.started { fill: #ef6c00; }
+
 .port-lamp {
   stroke: #fff;
   stroke-width: 1.5;

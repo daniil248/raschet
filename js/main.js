@@ -157,10 +157,17 @@ function renderAuthUI() {
 // ================= Список проектов =================
 async function refreshProjects() {
   try {
+    const handleErr = (label) => (e) => {
+      console.error('[refreshProjects:' + label + ']', e);
+      if (String(e && e.message || '').includes('index')) {
+        flash('Ошибка Firestore: требуется индекс. Проверьте консоль (F12).', 'error');
+      }
+      return [];
+    };
     const [mine, shared, requests] = await Promise.all([
-      window.Storage.listMyProjects().catch(e => { console.error(e); return []; }),
-      window.Storage.listSharedProjects().catch(e => { console.error(e); return []; }),
-      window.Storage.listAccessRequests().catch(e => { console.error(e); return []; }),
+      window.Storage.listMyProjects().catch(handleErr('mine')),
+      window.Storage.listSharedProjects().catch(handleErr('shared')),
+      window.Storage.listAccessRequests().catch(handleErr('requests')),
     ]);
     state.tabData = { mine, shared, requests };
     updateNotificationBadge(requests.length);
