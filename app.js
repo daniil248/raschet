@@ -203,6 +203,7 @@ const DEFAULTS = {
     phase: '3ph', voltage: 400, cosPhi: 0.85,
     triggerNodeId: null,
     startDelaySec: 5,
+    stopDelaySec: 2,          // задержка остывания / остановки после восстановления триггера
   }),
   panel:     () => ({
     name: 'ЩС',
@@ -689,7 +690,18 @@ function tryConnect(from, to) {
   if (wouldCreateCycle(from.nodeId, to.nodeId)) return false;
   snapshot();
   const id = uid('c');
-  state.conns.set(id, { id, from, to });
+  const conn = {
+    id, from, to,
+    // Дефолты по умолчанию для вывода ~1 м до щита/потребителя в норм. условиях
+    material: GLOBAL.defaultMaterial,
+    insulation: GLOBAL.defaultInsulation,
+    installMethod: GLOBAL.defaultInstallMethod,
+    ambientC: GLOBAL.defaultAmbient,
+    grouping: GLOBAL.defaultGrouping,
+    bundling: 'touching',
+    lengthM: 1,
+  };
+  state.conns.set(id, conn);
   notifyChange();
   return id;
 }
@@ -1099,6 +1111,7 @@ function recalc() {
     c._cableGrouping = grouping;
     c._cableParallel = conductorsInParallel;
     c._channelChain = channelIds.slice();
+    c._cableLength = c.lengthM ?? (channelIds.length ? 0 : 1);
 
     if (maxCurrent > 0) {
       const sel = selectCableSize(maxCurrent, {
@@ -1317,6 +1330,9 @@ function renderNodes() {
       else if (n.triggerNodeId && n._startCountdown > 0) {
         loadLine = `ПУСК через ${Math.ceil(n._startCountdown)} с`;
         loadCls += ' off';
+      } else if (n.triggerNodeId && n._stopCountdown > 0) {
+        // Остывание — генератор ещё держит нагрузку, но таймер идёт
+        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW · стоп ${Math.ceil(n._stopCountdown)} с`;
       } else if (n.triggerNodeId && !n._running) {
         loadLine = 'Дежурство';
         loadCls += ' off';
@@ -1711,40 +1727,46 @@ function renderInspectorNode(n) {
     h.push('<div class="inspector-section"><h4>Линия запуска</h4>');
     h.push(field('Триггер (запускаться при обесточке)', `<select data-prop="triggerNodeId">${triggerOpts.join('')}</select>`));
     h.push(field('Задержка запуска, сек', `<input type="number" min="0" max="600" step="1" data-prop="startDelaySec" value="${n.startDelaySec || 0}">`));
-    h.push('<div class="muted" style="font-size:11px">Если триггер задан, генератор запускается только когда триггер обесточен. В дежурном состоянии линия запуска серая.</div>');
+    h.push(field('Задержка остановки, сек', `<input type="number" min="0" max="600" step="1" data-prop="stopDelaySec" value="${n.stopDelaySec ?? 2}">`));
+    h.push('<div class="muted" style="font-size:11px">При возврате триггера генератор остывает ещё это время, затем выключается. В дежурном состоянии линия запуска серая.</div>');
     h.push('</div>');
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
     h.push(field('Входов', `<input type="number" min="1" max="30" step="1" data-prop="inputs" value="${n.inputs}">`));
     h.push(field('Выходов', `<input type="number" min="1" max="30" step="1" data-prop="outputs" value="${n.outputs}">`));
     h.push(field('Ксим (коэффициент одновременности)', `<input type="number" min="0" max="1.2" step="0.05" data-prop="kSim" value="${n.kSim ?? 1}">`));
-    const sm = n.switchMode || 'auto';
-    h.push(field('Режим переключения',
-      `<select data-prop="switchMode">
-        <option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>
-        <option value="manual"${sm === 'manual' ? ' selected' : ''}>Ручной — один вход</option>
-        <option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельный — несколько вводов</option>
-      </select>`));
-    if (sm === 'manual' && n.inputs > 0) {
-      const opts = [];
-      for (let i = 0; i < n.inputs; i++) {
-        opts.push(`<option value="${i}"${(n.manualActiveInput | 0) === i ? ' selected' : ''}>Вход ${i + 1}</option>`);
+
+    // Режим переключения и приоритеты имеют смысл только при 2+ входах
+    if (n.inputs > 1) {
+      const sm = n.switchMode || 'auto';
+      h.push(field('Режим переключения',
+        `<select data-prop="switchMode">
+          <option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>
+          <option value="manual"${sm === 'manual' ? ' selected' : ''}>Ручной — один вход</option>
+          <option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельный — несколько вводов</option>
+        </select>`));
+      if (sm === 'manual') {
+        const opts = [];
+        for (let i = 0; i < n.inputs; i++) {
+          opts.push(`<option value="${i}"${(n.manualActiveInput | 0) === i ? ' selected' : ''}>Вход ${i + 1}</option>`);
+        }
+        h.push(field('Активный вход',
+          `<select data-prop="manualActiveInput">${opts.join('')}</select>`));
+        h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Работает только явно выбранный вход. Если на нём нет напряжения — щит обесточен.</div>');
+      } else if (sm === 'parallel') {
+        h.push('<div class="inspector-section"><h4>Включённые вводы</h4>');
+        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Можно включить несколько вводных автоматов одновременно — актуально для шкафов байпаса и параллельной работы ИБП.</div>');
+        const enabled = Array.isArray(n.parallelEnabled) ? n.parallelEnabled : [];
+        for (let i = 0; i < n.inputs; i++) {
+          const on = !!enabled[i];
+          h.push(`<div class="field check"><input type="checkbox" data-parallel="${i}"${on ? ' checked' : ''}><label>Вход ${i + 1}</label></div>`);
+        }
+        h.push('</div>');
+      } else {
+        h.push(prioritySection(n));
       }
-      h.push(field('Активный вход',
-        `<select data-prop="manualActiveInput">${opts.join('')}</select>`));
-      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Работает только явно выбранный вход. Если на нём нет напряжения — щит обесточен.</div>');
-    } else if (sm === 'parallel' && n.inputs > 0) {
-      h.push('<div class="inspector-section"><h4>Включённые вводы</h4>');
-      h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Можно включить несколько вводных автоматов одновременно — актуально для шкафов байпаса и параллельной работы ИБП.</div>');
-      const enabled = Array.isArray(n.parallelEnabled) ? n.parallelEnabled : [];
-      for (let i = 0; i < n.inputs; i++) {
-        const on = !!enabled[i];
-        h.push(`<div class="field check"><input type="checkbox" data-parallel="${i}"${on ? ' checked' : ''}><label>Вход ${i + 1}</label></div>`);
-      }
-      h.push('</div>');
-    } else {
-      h.push(prioritySection(n));
     }
+    // При inputs === 1 никаких приоритетов/режимов не показываем
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
     h.push(field('Выходная мощность, kW', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
@@ -2135,9 +2157,9 @@ function renderInspectorConn(c) {
     h.push('</div>');
   }
 
-  // Параметры кабеля (используются если каналы не назначены)
-  h.push('<div class="inspector-section"><h4>Параметры кабеля</h4>');
-  h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">Если выбраны каналы — эти значения переопределяются параметрами каналов (худший случай).</div>');
+  // === Кабель линии ===
+  // Материал и изоляция — всегда задаются в самой линии, канал их не переопределяет.
+  h.push('<div class="inspector-section"><h4>Кабель</h4>');
   const material = c.material || GLOBAL.defaultMaterial;
   h.push(field('Материал жил',
     `<select data-conn-prop="material">
@@ -2150,6 +2172,18 @@ function renderInspectorConn(c) {
       <option value="PVC"${insulation === 'PVC' ? ' selected' : ''}>ПВХ</option>
       <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
     </select>`));
+  h.push(field('Длина, м', `<input type="number" min="0" max="10000" step="0.5" data-conn-prop="lengthM" value="${c.lengthM ?? 1}">`));
+  h.push('</div>');
+
+  // === Условия прокладки (fallback) ===
+  // Если линия идёт через каналы — эти значения игнорируются.
+  h.push('<div class="inspector-section"><h4>Условия прокладки</h4>');
+  const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
+  if (chainIds.length) {
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия проходит через канал(ы) — параметры ниже переопределяются каналом (худший случай по всей цепочке).</div>');
+  } else {
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия не проходит через каналы — параметры берутся отсюда. Значения по умолчанию соответствуют выводу ~1 м до щита / потребителя в нормальных условиях.</div>');
+  }
   const method = c.installMethod || GLOBAL.defaultInstallMethod;
   h.push(field('Способ прокладки',
     `<select data-conn-prop="installMethod">
@@ -2159,6 +2193,13 @@ function renderInspectorConn(c) {
       <option value="E"${method === 'E' ? ' selected' : ''}>E — на лотке (многожильный)</option>
       <option value="F"${method === 'F' ? ' selected' : ''}>F — на лотке (одножильные)</option>
       <option value="D1"${method === 'D1' ? ' selected' : ''}>D1 — в земле</option>
+    </select>`));
+  const bundling = c.bundling || 'touching';
+  h.push(field('Расположение кабелей',
+    `<select data-conn-prop="bundling">
+      <option value="spaced"${bundling === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
+      <option value="touching"${bundling === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
+      <option value="bundled"${bundling === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
     </select>`));
   h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
   h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
@@ -2170,11 +2211,17 @@ function renderInspectorConn(c) {
     const groupNote = (c._cableParallel && c._cableParallel > 1)
       ? `<br><span class="muted">Групповая линия: ${c._cableParallel} параллельных кабелей</span>`
       : '';
+    const bundlingLabel = {
+      spaced:   'с зазором ≥ Ø',
+      touching: 'плотно',
+      bundled:  'в пучке',
+    }[c._cableBundling || 'touching'] || 'плотно';
     h.push('<div class="inspector-section"><h4>Подобранный кабель</h4>');
     h.push(`<div style="font-size:12px;line-height:1.8">` +
       `Сечение: <b>${c._cableSize} мм²</b>${warn}<br>` +
       `Материал: <b>${c._cableMaterial === 'Al' ? 'Алюминий' : 'Медь'}</b>, изоляция <b>${c._cableInsulation || 'PVC'}</b><br>` +
-      `Метод расчёта: <b>${c._cableMethod || 'B1'}</b>, t=${c._cableAmbient}°C, групп=${c._cableGrouping}<br>` +
+      `Метод: <b>${c._cableMethod || 'B1'}</b>, укладка <b>${bundlingLabel}</b><br>` +
+      `t=${c._cableAmbient}°C, группа=${c._cableGrouping}, длина=${fmt(c._cableLength || 0)} м<br>` +
       `Iдоп на жилу: <b>${fmt(c._cableIz)} A</b><br>` +
       (c._cableParallel > 1 ? `Iдоп всей группы: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
       groupNote +
@@ -2196,6 +2243,10 @@ function renderInspectorConn(c) {
   }
 
   h.push('<div class="muted" style="font-size:11px;margin-top:10px">Рукоятки на концах — переключить связь на другой порт. «+» в середине сегмента — добавить точку сплайна. Shift+клик по точке — удалить. Shift+клик по линии — удалить связь.</div>');
+  // Кнопка сброса точек сплайна — только если точки есть
+  if (Array.isArray(c.waypoints) && c.waypoints.length) {
+    h.push(`<button class="full-btn" id="btn-reset-waypoints" style="margin-top:8px">↺ Сбросить траекторию (${c.waypoints.length} точ.)</button>`);
+  }
   h.push('<button class="btn-delete" id="btn-del-conn">Удалить связь</button>');
   inspectorBody.innerHTML = h.join('');
 
@@ -2227,6 +2278,15 @@ function renderInspectorConn(c) {
     });
   });
   document.getElementById('btn-del-conn').onclick = () => deleteConn(c.id);
+  const resetBtn = document.getElementById('btn-reset-waypoints');
+  if (resetBtn) resetBtn.onclick = () => {
+    snapshot('wp-reset:' + c.id);
+    c.waypoints = [];
+    render();
+    renderInspector();
+    notifyChange();
+    flash('Траектория сброшена');
+  };
 }
 
 function field(label, html) {
@@ -2284,6 +2344,27 @@ svg.addEventListener('drop', e => {
 
 // Мышь
 svg.addEventListener('mousedown', e => {
+  // Ресайз зоны: клик на угловую ручку → тянем правый-нижний угол
+  const zoneResizeEl = e.target.closest('.zone-resize');
+  if (zoneResizeEl) {
+    if (state.readOnly) return;
+    e.stopPropagation();
+    const zoneEl = zoneResizeEl.closest('.node.zone');
+    const zoneId = zoneEl && zoneEl.dataset.nodeId;
+    const zone = zoneId && state.nodes.get(zoneId);
+    if (!zone) return;
+    snapshot();
+    const p = clientToSvg(e.clientX, e.clientY);
+    state.drag = {
+      zoneResizeId: zone.id,
+      startMouse: { x: p.x, y: p.y },
+      startW: Number(zone.width) || 600,
+      startH: Number(zone.height) || 400,
+    };
+    selectNode(zone.id);
+    return;
+  }
+
   // Клик на кнопку «+» в середине сегмента → добавляем waypoint в этой точке
   const addEl = e.target.closest('.conn-waypoint-add');
   if (addEl) {
@@ -2485,6 +2566,24 @@ svg.addEventListener('mousedown', e => {
 });
 
 window.addEventListener('mousemove', e => {
+  if (state.drag && state.drag.zoneResizeId) {
+    const z = state.nodes.get(state.drag.zoneResizeId);
+    if (z) {
+      const p = clientToSvg(e.clientX, e.clientY);
+      const dx = p.x - state.drag.startMouse.x;
+      const dy = p.y - state.drag.startMouse.y;
+      let nw = state.drag.startW + dx;
+      let nh = state.drag.startH + dy;
+      if (!e.altKey) {
+        nw = Math.round(nw / 40) * 40;
+        nh = Math.round(nh / 40) * 40;
+      }
+      z.width = Math.max(200, nw);
+      z.height = Math.max(120, nh);
+      render();
+    }
+    return;
+  }
   if (state.drag && state.drag.waypointConnId) {
     const c = state.conns.get(state.drag.waypointConnId);
     if (c && Array.isArray(c.waypoints)) {
@@ -2546,9 +2645,10 @@ window.addEventListener('mouseup', (e) => {
   if (state.drag) {
     const wasNodeDrag = !!state.drag.nodeId;
     const wasWpDrag = !!state.drag.waypointConnId;
+    const wasZoneResize = !!state.drag.zoneResizeId;
     svg.classList.remove('panning');
     state.drag = null;
-    if (wasNodeDrag || wasWpDrag) notifyChange();
+    if (wasNodeDrag || wasWpDrag || wasZoneResize) notifyChange();
   }
   // Завершение pending при отпускании мыши:
   //  - курсор не двигался → ничего не делаем, pending живёт до второго клика
@@ -2911,16 +3011,26 @@ function deserialize(data) {
     }
     if (n.type === 'generator') {
       if (typeof n.startDelaySec !== 'number') n.startDelaySec = 5;
+      if (typeof n.stopDelaySec !== 'number') n.stopDelaySec = 2;
       if (!('triggerNodeId' in n)) n.triggerNodeId = null;
     }
     if (n.type === 'channel') {
-      if (!n.material) n.material = 'Cu';
-      if (!n.insulation) n.insulation = 'PVC';
-      if (!n.method) n.method = 'B1';
+      // Мигрируем старые поля (material/insulation/method) в новую схему.
+      // Метод прокладки → тип канала обратным маппингом
+      if (!n.channelType) {
+        const legacyMethod = n.method || 'B1';
+        const methodToType = { B1: 'conduit', B2: 'tray_solid', C: 'wall', E: 'tray_perf', F: 'air', D1: 'ground' };
+        n.channelType = methodToType[legacyMethod] || 'conduit';
+      }
+      if (!n.bundling) {
+        n.bundling = CHANNEL_TYPES[n.channelType]?.bundlingDefault || 'touching';
+      }
       if (typeof n.ambientC !== 'number') n.ambientC = 30;
       if (typeof n.lengthM !== 'number') n.lengthM = 10;
       if (typeof n.inputs !== 'number') n.inputs = 1;
       if (typeof n.outputs !== 'number') n.outputs = 1;
+      // Снимаем устаревшие поля — они теперь на линиях
+      delete n.material; delete n.insulation; delete n.method;
     }
     if (n.type === 'zone') {
       if (!n.zonePrefix) n.zonePrefix = n.tag || 'Z1';
@@ -2928,6 +3038,17 @@ function deserialize(data) {
       if (typeof n.height !== 'number') n.height = 400;
       if (!n.color) n.color = '#e3f2fd';
     }
+  }
+
+  // Миграция связей — дефолты для новых полей
+  for (const c of state.conns.values()) {
+    if (!c.material) c.material = GLOBAL.defaultMaterial;
+    if (!c.insulation) c.insulation = GLOBAL.defaultInsulation;
+    if (!c.installMethod) c.installMethod = GLOBAL.defaultInstallMethod;
+    if (typeof c.ambientC !== 'number') c.ambientC = GLOBAL.defaultAmbient;
+    if (typeof c.grouping !== 'number') c.grouping = GLOBAL.defaultGrouping;
+    if (!c.bundling) c.bundling = 'touching';
+    if (typeof c.lengthM !== 'number') c.lengthM = 1;
   }
 
   updateViewBox();
@@ -3109,35 +3230,74 @@ function simTick() {
 
   let changed = false;
 
-  // 1. Генераторы с триггером — учёт задержки старта
+  // 1. Генераторы с триггером — учёт задержек запуска и остановки
   for (const n of state.nodes.values()) {
     if (n.type !== 'generator') continue;
-    if (!n.triggerNodeId) { n._startedAt = 0; n._running = false; continue; }
+    if (!n.triggerNodeId) {
+      n._startedAt = 0; n._stoppingAt = 0;
+      n._running = false; n._startCountdown = 0; n._stopCountdown = 0;
+      continue;
+    }
     const trigger = state.nodes.get(n.triggerNodeId);
-    if (!trigger) { n._startedAt = 0; n._running = false; continue; }
+    if (!trigger) {
+      n._startedAt = 0; n._stoppingAt = 0;
+      n._running = false; n._startCountdown = 0; n._stopCountdown = 0;
+      continue;
+    }
     const triggerPowered = !!trigger._powered;
+
     if (triggerPowered) {
-      // Возврат в дежурство — сбрасываем таймер
-      if (n._startedAt || n._running) {
-        n._startedAt = 0;
-        n._running = false;
-        n._startCountdown = 0;
-        changed = true;
+      // Триггер жив.
+      if (n._running) {
+        // Генератор работает — запускаем таймер остановки (если ещё не запущен)
+        if (!n._stoppingAt) {
+          n._stoppingAt = now;
+          changed = true;
+        }
+        const stopDelay = Math.max(0, Number(n.stopDelaySec) || 0);
+        const stopElapsed = (now - n._stoppingAt) / 1000;
+        if (stopElapsed >= stopDelay) {
+          // Остывание закончено — выключаемся
+          n._running = false;
+          n._stoppingAt = 0;
+          n._stopCountdown = 0;
+          n._startedAt = 0;
+          n._startCountdown = 0;
+          changed = true;
+        } else {
+          n._stopCountdown = Math.max(0, stopDelay - stopElapsed);
+        }
+      } else {
+        // Не работал и не работает — сбрасываем всё
+        if (n._startedAt || n._stoppingAt || n._startCountdown || n._stopCountdown) {
+          n._startedAt = 0; n._stoppingAt = 0;
+          n._startCountdown = 0; n._stopCountdown = 0;
+          changed = true;
+        }
       }
     } else {
-      // Триггер обесточен. Если таймер не запущен — запускаем отсчёт.
-      if (!n._startedAt) {
-        n._startedAt = now;
-        n._running = false;
+      // Триггер обесточен.
+      // Сбрасываем таймер остановки — генератор снова нужен
+      if (n._stoppingAt) {
+        n._stoppingAt = 0;
+        n._stopCountdown = 0;
         changed = true;
       }
-      const delay = Math.max(0, Number(n.startDelaySec) || 0);
-      const elapsed = (now - n._startedAt) / 1000;
-      if (elapsed >= delay) {
-        if (!n._running) { n._running = true; changed = true; }
-        n._startCountdown = 0;
-      } else {
-        n._startCountdown = Math.max(0, delay - elapsed);
+      // Если таймер запуска не запущен И генератор ещё не работает — запускаем отсчёт
+      if (!n._running && !n._startedAt) {
+        n._startedAt = now;
+        changed = true;
+      }
+      if (!n._running) {
+        const delay = Math.max(0, Number(n.startDelaySec) || 0);
+        const elapsed = (now - n._startedAt) / 1000;
+        if (elapsed >= delay) {
+          n._running = true;
+          n._startCountdown = 0;
+          changed = true;
+        } else {
+          n._startCountdown = Math.max(0, delay - elapsed);
+        }
       }
     }
   }
