@@ -27,7 +27,8 @@ const PORT_GAP_MIN = 34;
 const PORT_R = 6;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// Глобальные настройки расчёта
+// Глобальные настройки расчёта. При старте подгружаются из localStorage
+// и применяются ко всей схеме; можно менять через шестерёнку в палитре.
 const GLOBAL = {
   voltage3ph: 400,
   voltage1ph: 230,
@@ -35,8 +36,21 @@ const GLOBAL = {
   defaultInstallMethod: 'B1',
   defaultAmbient: 30,
   defaultGrouping: 1,
-  defaultMaterial: 'Cu',     // Cu | Al
-  defaultInsulation: 'PVC',  // PVC | XLPE
+  defaultMaterial: 'Cu',       // Cu | Al
+  defaultInsulation: 'PVC',    // PVC | XLPE
+  defaultCableType: 'multi',   // multi | single | solid
+  maxCableSize: 240,           // макс. сечение 1 жилы; дальше — auto-parallel
+  maxParallelAuto: 4,          // максимальное число параллельных при авто-подборе
+};
+
+// Описание типов кабельной конструкции по IEC 60228:
+//   multi  — многожильный гибкий / класс 5 (штатная кабельная продукция, F/B2/E/D)
+//   single — одножильный многопроволочный (в одножильной оболочке, в трубах/каналах)
+//   solid  — цельная жила (класс 1-2), применима до 10 мм² (IEC 60228)
+const CABLE_TYPES = {
+  multi:  { label: 'Многожильный (гибкий)', solidMax: null },
+  single: { label: 'Одножильный многопроволочный', solidMax: null },
+  solid:  { label: 'Цельная жила (класс 1–2)', solidMax: 10 },
 };
 
 // Ряд номиналов автоматов защиты
@@ -151,7 +165,11 @@ function kGroupLookup(n) {
 }
 
 // Подбор минимального стандартного сечения.
-// opts: { material, insulation, method, ambientC, grouping, conductorsInParallel, bundling }
+// opts: { material, insulation, method, ambientC, grouping, bundling,
+//         conductorsInParallel, cableType, maxSize, allowAutoParallel }
+// Если заданное conductorsInParallel не выдерживает ток и ни одно сечение
+// до maxSize не подходит, функция автоматически увеличивает параллель
+// до maxParallelAuto — и сообщает autoParallel: true.
 function selectCableSize(I, opts) {
   const o = opts || {};
   const material = o.material || GLOBAL.defaultMaterial;
@@ -159,33 +177,91 @@ function selectCableSize(I, opts) {
   const method = o.method || GLOBAL.defaultInstallMethod;
   const ambient = Number(o.ambientC) || GLOBAL.defaultAmbient;
   const bundling = o.bundling || 'touching';
-  // spaced-укладка — группировка не применяется
   const grouping = kBundlingIgnoresGrouping(bundling)
     ? 1
     : (Number(o.grouping) || GLOBAL.defaultGrouping);
-  const parallel = Math.max(1, Number(o.conductorsInParallel) || 1);
+  const cableType = o.cableType || GLOBAL.defaultCableType;
+  const maxSize = Number(o.maxSize) || GLOBAL.maxCableSize || 240;
+  const allowAutoParallel = o.allowAutoParallel !== false;
+  const basePar = Math.max(1, Number(o.conductorsInParallel) || 1);
 
   const table = cableTable(material, insulation, method);
   const kT = kTempLookup(ambient, insulation);
   const kG = kGroupLookup(grouping) * kBundlingFactor(bundling);
   const k = kT * kG;
 
-  const Iper = I / parallel;
-  for (const [s, iRef] of table) {
-    const iDerated = iRef * k;
-    if (iDerated >= Iper) {
-      return {
-        s, iAllowed: iRef, iDerated, kT, kG,
-        material, insulation, method, bundling, parallel,
-        totalCapacity: iDerated * parallel,
-      };
+  // Для цельных жил — ограничение по max сечению (10 мм² для класса 1-2)
+  const typeInfo = CABLE_TYPES[cableType] || CABLE_TYPES.multi;
+  const typeSolidMax = typeInfo.solidMax;
+
+  function filterTable(t) {
+    return t.filter(([s]) => s <= maxSize && (!typeSolidMax || s <= typeSolidMax));
+  }
+  const effTable = filterTable(table);
+
+  // Пробуем подобрать сечение для заданного числа параллельных жил
+  function tryWithParallel(parallel) {
+    const Iper = I / parallel;
+    for (const [s, iRef] of effTable) {
+      const iDerated = iRef * k;
+      if (iDerated >= Iper) {
+        return { s, iAllowed: iRef, iDerated, parallel };
+      }
+    }
+    return null;
+  }
+
+  // Сначала с базовым параллелизмом
+  let res = tryWithParallel(basePar);
+
+  // Если не хватает — наращиваем параллель. Дополнительные цепи увеличивают
+  // группировку ещё сильнее (если не spaced).
+  let autoParallel = false;
+  if (!res && allowAutoParallel) {
+    const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 4);
+    for (let par = basePar + 1; par <= maxPar; par++) {
+      // Пересчитываем K_group под увеличенную группу
+      let grp2 = grouping;
+      if (!kBundlingIgnoresGrouping(bundling)) {
+        grp2 += (par - basePar);
+      }
+      const kG2 = kGroupLookup(grp2) * kBundlingFactor(bundling);
+      const k2 = kT * kG2;
+      const Iper = I / par;
+      for (const [s, iRef] of effTable) {
+        const iDerated = iRef * k2;
+        if (iDerated >= Iper) {
+          res = { s, iAllowed: iRef, iDerated, parallel: par };
+          autoParallel = true;
+          break;
+        }
+      }
+      if (res) break;
     }
   }
-  const last = table[table.length - 1];
+
+  if (res) {
+    return {
+      s: res.s,
+      iAllowed: res.iAllowed,
+      iDerated: res.iDerated,
+      kT, kG,
+      material, insulation, method, bundling, cableType,
+      parallel: res.parallel,
+      autoParallel,
+      totalCapacity: res.iDerated * res.parallel,
+    };
+  }
+
+  // Не смогли подобрать даже с максимальной параллелью — берём максимум таблицы
+  // (в пределах maxSize) и возвращаем overflow
+  const last = effTable[effTable.length - 1] || table[table.length - 1];
   return {
     s: last[0], iAllowed: last[1], iDerated: last[1] * k, kT, kG,
-    material, insulation, method, bundling, parallel,
-    totalCapacity: last[1] * k * parallel,
+    material, insulation, method, bundling, cableType,
+    parallel: basePar,
+    autoParallel: false,
+    totalCapacity: last[1] * k * basePar,
     overflow: true,
   };
 }
@@ -236,17 +312,19 @@ const DEFAULTS = {
     chargeA: 2,
     batteryKwh: 2,
     batteryChargePct: 100,
-    phase: '3ph', voltage: 400, cosPhi: 0.92,
+    phase: '3ph', voltage: 400,
+    // cos φ ИБП в НОРМАЛЬНОМ режиме (питание через инвертор) — обычно 1.0
+    // т.к. выходной инвертор отдаёт чисто активную мощность. Поле ИБП
+    // используется только как «пережитковый» fallback; в расчёте при работе
+    // через инвертор всегда применяется cos φ = 1.
+    cosPhi: 1.0,
     inputs: 1, outputs: 1,
     priorities: [1],
     on: true,
-    // Внутренний статический байпас — срабатывает при перегрузке или отказе
-    // инвертора, проводит нагрузку напрямую со входа, минуя преобразование.
-    // Не имеет отдельного порта — использует существующий основной вход.
-    staticBypass: true,              // включён ли статический байпас как таковой
-    staticBypassAuto: true,          // автоматический (по перегрузу) или принудительный
-    staticBypassOverloadPct: 110,    // % от capacityKw, выше которого переходит на байпас
-    staticBypassForced: false,       // принудительный байпас (через переключатель)
+    staticBypass: true,
+    staticBypassAuto: true,
+    staticBypassOverloadPct: 110,
+    staticBypassForced: false,
   }),
   consumer:  () => ({
     name: 'Потребитель',
@@ -382,10 +460,15 @@ function maxDownstreamLoad(nodeId) {
 
 // Финальный cos φ щита — взвешенное по активной мощности.
 // Суммирует P и Q = P·tan(acos(cos)) по всем downstream-потребителям, cos_total = P / √(P²+Q²)
-function panelCosPhi(panelId) {
+// Обход downstream-нагрузок. Возвращает суммарные P и Q в точке nodeId.
+// Важная особенность: ИБП в нормальном режиме (через инвертор) «разрывает»
+// реактивную связь — всё, что ниже, подаётся с его выхода при cos φ = 1,
+// поэтому Q обнуляется, а P остаётся прежним. На статическом байпасе реактивная
+// составляющая идёт напрямую со входа, поэтому cos φ потребителей сохраняется.
+function downstreamPQ(nodeId) {
   let P = 0, Q = 0;
   const seen = new Set();
-  const stack = [panelId];
+  const stack = [nodeId];
   while (stack.length) {
     const cur = stack.pop();
     if (seen.has(cur)) continue;
@@ -403,11 +486,30 @@ function panelCosPhi(panelId) {
         const tan = Math.sqrt(1 - cos * cos) / cos;
         P += p;
         Q += p * tan;
-      } else if (to.type === 'panel' || to.type === 'ups') {
+      } else if (to.type === 'panel' || to.type === 'channel') {
         stack.push(to.id);
+      } else if (to.type === 'ups') {
+        // ИБП: считаем его downstream отдельно и смотрим, в каком он режиме.
+        // При работе через инвертор (не на байпасе) cos φ = 1 → Q сбрасывается.
+        const sub = downstreamPQ(to.id);
+        if (to._onStaticBypass) {
+          // Байпас: поток идёт напрямую, реактивка сохраняется
+          P += sub.P;
+          Q += sub.Q;
+        } else {
+          // Нормальный режим: ИБП выходом отдаёт только активную мощность
+          P += sub.P;
+          // Q += 0
+        }
       }
     }
   }
+  return { P, Q };
+}
+
+// Финальный cos φ в произвольной точке схемы (обёртка над downstreamPQ)
+function panelCosPhi(panelId) {
+  const { P, Q } = downstreamPQ(panelId);
   if (P <= 0) return null;
   return P / Math.sqrt(P * P + Q * Q);
 }
@@ -1128,30 +1230,38 @@ function recalc() {
       conductorsInParallel = Number(toN.count) || 1;
     }
 
+    const cableType = c.cableType || GLOBAL.defaultCableType;
+
     c._cableMaterial = material;
     c._cableInsulation = insulation;
     c._cableMethod = method;
     c._cableAmbient = ambient;
     c._cableBundling = bundling;
     c._cableGrouping = grouping;
-    c._cableParallel = conductorsInParallel;
-    c._channelChain = channelIds.slice();
+    c._cableType = cableType;
     c._cableLength = c.lengthM ?? (channelIds.length ? 0 : 1);
+    c._channelChain = channelIds.slice();
 
     if (maxCurrent > 0) {
       const sel = selectCableSize(maxCurrent, {
         material, insulation, method, ambientC: ambient, grouping, bundling,
+        cableType, maxSize: GLOBAL.maxCableSize,
         conductorsInParallel,
       });
       c._cableSize = sel.s;
       c._cableIz = sel.iDerated;
       c._cableTotalIz = sel.totalCapacity;
       c._cableOverflow = !!sel.overflow;
+      c._cableAutoParallel = !!sel.autoParallel;
+      // Если auto-parallel накинул параллель — записываем фактическое число
+      c._cableParallel = sel.parallel;
     } else {
       c._cableSize = null;
       c._cableIz = 0;
       c._cableTotalIz = 0;
       c._cableOverflow = false;
+      c._cableAutoParallel = false;
+      c._cableParallel = conductorsInParallel;
     }
   }
 
@@ -1185,12 +1295,21 @@ function recalc() {
     c._breakerAgainstCable = !!(c._cableIz && c._breakerIn && c._cableIz < c._breakerIn);
   }
 
-  // === Расчёт финального cos φ и токов для щитов / ИБП / источников ===
+  // === Расчёт финального cos φ, P/Q/S и токов для щитов / ИБП / источников ===
+  // Ik считаем упрощённо: при базовом сопротивлении источника.
+  // Zsource_default = 0.05 Ом на фазе (соответствует ~8 кА короткого на 400 В).
+  // Вдоль линии каждый метр добавляет R = ρ × L × 2 / S.
+  const RHO = { Cu: 0.0178, Al: 0.0285 }; // Ом·мм²/м
+  const DEFAULT_SRC_Z = 0.05;
+
   for (const n of state.nodes.values()) {
     if (n.type === 'panel') {
-      n._cosPhi = panelCosPhi(n.id);
-      // Расчётная мощность щита учитывает Ксим
+      const pq = downstreamPQ(n.id);
       const kSim = Number(n.kSim) || 1;
+      n._powerP = pq.P * kSim;
+      n._powerQ = pq.Q * kSim;
+      n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
+      n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : null;
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
 
@@ -1217,16 +1336,100 @@ function recalc() {
         n._marginWarn = null;
       }
     } else if (n.type === 'source' || n.type === 'generator') {
-      n._cosPhi = Number(n.cosPhi) || GLOBAL.defaultCosPhi;
+      // Источник/генератор видит суммарные P/Q всей своей цепи
+      const pq = downstreamPQ(n.id);
+      n._powerP = pq.P;
+      n._powerQ = pq.Q;
+      n._powerS = Math.sqrt(pq.P * pq.P + pq.Q * pq.Q);
+      n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : Number(n.cosPhi) || GLOBAL.defaultCosPhi;
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      // Упрощённый ток КЗ: Ik = U_phase / Z_source
+      // Для 3ф берём U_phase = U_lin / √3
+      const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
+      n._ikA = Uph / DEFAULT_SRC_Z;
     } else if (n.type === 'ups') {
-      n._cosPhi = Number(n.cosPhi) || GLOBAL.defaultCosPhi;
+      // cos φ ИБП зависит от режима:
+      //   норма (через инвертор) → 1
+      //   статический байпас     → cos φ потребителей ниже
+      const sub = downstreamPQ(n.id);
+      n._powerP = sub.P;
+      if (n._onStaticBypass) {
+        // При байпасе реактивка потребителей ложится на ВХОД ИБП и дальше вверх
+        n._powerQ = sub.Q;
+      } else {
+        // Инвертор — чисто активная мощность на выходе
+        n._powerQ = 0;
+      }
+      n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
+      n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : 1.0;
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
     } else if (n.type === 'consumer') {
       n._cosPhi = Number(n.cosPhi) || GLOBAL.defaultCosPhi;
       n._nominalA = consumerNominalCurrent(n);
       n._ratedA = consumerRatedCurrent(n);
       n._inrushA = consumerInrushCurrent(n);
+      // Мгновенные P / Q потребителя
+      const per = Number(n.demandKw) || 0;
+      const cnt = Math.max(1, Number(n.count) || 1);
+      const k = (Number(n.kUse) || 1) * effectiveLoadFactor(n);
+      const p = per * cnt * k;
+      const cos = Math.max(0.1, Math.min(1, n._cosPhi));
+      const tan = Math.sqrt(1 - cos * cos) / cos;
+      n._powerP = p;
+      n._powerQ = p * tan;
+      n._powerS = Math.sqrt(p * p + (p * tan) * (p * tan));
+    }
+  }
+
+  // === Ток КЗ Ik в каждой точке схемы ===
+  // Ik распространяется от источника вниз по активным линиям.
+  // Каждый участок кабеля добавляет сопротивление: R = ρ × L × 2 / S / N
+  // где N — число параллельных жил.
+  // Подход: для каждого узла идём вверх по активному фидеру до источника,
+  // накапливаем импеданс, считаем Ik = Uph / Ztot.
+  function nodeIk(nid, visited) {
+    visited = visited || new Set();
+    if (visited.has(nid)) return Infinity;
+    visited.add(nid);
+    const n = state.nodes.get(nid);
+    if (!n) return Infinity;
+    if (n.type === 'source' || n.type === 'generator') {
+      const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
+      return Uph / DEFAULT_SRC_Z;
+    }
+    // ИБП в норме — сам ограничивает Ik до ~1.5..2× номинала
+    if (n.type === 'ups' && !n._onStaticBypass) {
+      return (n._loadA || 0) * 2 + 50;
+    }
+    // Ищем активный фидер, через него идём вверх
+    for (const c of state.conns.values()) {
+      if (c.to.nodeId !== nid) continue;
+      if (c._state !== 'active') continue;
+      const upIk = nodeIk(c.from.nodeId, visited);
+      if (!isFinite(upIk) || upIk <= 0) continue;
+      // Добавляем сопротивление линии (фаза + ноль, двойная длина жилы)
+      const rho = RHO[c._cableMaterial || 'Cu'] || RHO.Cu;
+      const L = Number(c._cableLength || c.lengthM || 1);
+      const S = Number(c._cableSize) || 1;
+      const par = Math.max(1, c._cableParallel || 1);
+      const rSeg = (rho * L * 2) / S / par; // Ом (простая оценка)
+      // Z_up = Uph / upIk; Z_new = Z_up + rSeg; Ik_new = Uph / Z_new
+      const fromN = state.nodes.get(c.from.nodeId);
+      const Uph = isThreePhase(fromN || n) ? nodeVoltage(fromN || n) / Math.sqrt(3) : nodeVoltage(fromN || n);
+      const Zup = Uph / upIk;
+      const Z = Zup + rSeg;
+      return Z > 0 ? Uph / Z : Infinity;
+    }
+    return 0;
+  }
+  for (const n of state.nodes.values()) {
+    if (n.type === 'panel' || n.type === 'consumer' || n.type === 'ups') {
+      n._ikA = nodeIk(n.id);
+    }
+  }
+  for (const c of state.conns.values()) {
+    if (c._state === 'active') {
+      c._ikA = nodeIk(c.to.nodeId);
     }
   }
 }
@@ -2166,9 +2369,12 @@ function sourceStatusBlock(n) {
   else {
     const pct = (Number(n.capacityKw) || 0) > 0 ? Math.round((n._loadKw || 0) / n.capacityKw * 100) : 0;
     parts.push(n._overload ? '<span class="badge off">перегруз</span>' : '<span class="badge on">в работе</span>');
-    parts.push(`нагрузка: <b>${fmt(n._loadKw || 0)} / ${fmt(n.capacityKw)} kW</b> (${pct}%)`);
-    if (n._loadA > 0) parts.push(`ток: <b>${fmt(n._loadA)} A</b>`);
+    parts.push(`P акт.: <b>${fmt(n._powerP || n._loadKw || 0)} kW</b> / ${fmt(n.capacityKw)} kW (${pct}%)`);
+    if (n._powerQ) parts.push(`Q реакт.: <b>${fmt(n._powerQ)} kvar</b>`);
+    if (n._powerS) parts.push(`S полн.: <b>${fmt(n._powerS)} kVA</b>`);
+    if (n._loadA > 0) parts.push(`Iрасч: <b>${fmt(n._loadA)} A</b>`);
     if (n._cosPhi) parts.push(`cos φ: <b>${n._cosPhi.toFixed(2)}</b>`);
+    if (n._ikA && isFinite(n._ikA)) parts.push(`Ik на шинах: <b>${fmt(n._ikA / 1000)} кА</b>`);
   }
   if (n.type === 'generator' && n.triggerNodeId) {
     const t = state.nodes.get(n.triggerNodeId);
@@ -2184,12 +2390,15 @@ function panelStatusBlock(n) {
   const parts = [];
   if (n._powered) parts.push('<span class="badge on">запитан</span>');
   else parts.push('<span class="badge off">без питания</span>');
-  parts.push(`нагрузка: <b>${fmt(n._loadKw || 0)} kW</b>`);
+  parts.push(`P акт.: <b>${fmt(n._powerP || 0)} kW</b>`);
+  parts.push(`Q реакт.: <b>${fmt(n._powerQ || 0)} kvar</b>`);
+  parts.push(`S полн.: <b>${fmt(n._powerS || 0)} kVA</b>`);
   if (Number(n.kSim) && Number(n.kSim) !== 1) {
     parts.push(`расчётная с Ксим: <b>${fmt(n._calcKw || 0)} kW</b>`);
   }
-  if (n._loadA > 0) parts.push(`ток: <b>${fmt(n._loadA)} A</b>`);
-  if (n._cosPhi) parts.push(`финальный cos φ: <b>${n._cosPhi.toFixed(2)}</b>`);
+  if (n._loadA > 0) parts.push(`Iрасч: <b>${fmt(n._loadA)} A</b>`);
+  if (n._cosPhi) parts.push(`cos φ итог: <b>${n._cosPhi.toFixed(2)}</b>`);
+  if (n._ikA && isFinite(n._ikA)) parts.push(`Ik (ток КЗ): <b>${fmt(n._ikA / 1000)} кА</b>`);
 
   // Запас номинала шкафа
   if (Number(n.capacityKw) > 0) {
@@ -2213,6 +2422,9 @@ function panelStatusBlock(n) {
 // Блок расчётных токов для потребителя
 function consumerCurrentsBlock(n) {
   const parts = [];
+  parts.push(`<b>P акт.:</b> ${fmt(n._powerP || 0)} kW`);
+  parts.push(`<b>Q реакт.:</b> ${fmt(n._powerQ || 0)} kvar`);
+  parts.push(`<b>S полн.:</b> ${fmt(n._powerS || 0)} kVA`);
   parts.push(`<b>Установочный ток:</b> ${fmt(n._nominalA || 0)} А`);
   parts.push(`<b>Расчётный ток:</b> ${fmt(n._ratedA || 0)} А  <span class="muted">(с учётом Ки)</span>`);
   if ((n.inrushFactor || 1) > 1) {
@@ -2255,7 +2467,7 @@ function upsStatusBlock(n) {
     parts.push('<span class="badge off">без питания</span>');
   } else if (n._onStaticBypass) {
     parts.push('<span class="badge backup">статический байпас</span>');
-    parts.push(`<span class="muted">инвертор выключен, поток идёт со входа напрямую</span>`);
+    parts.push(`<span class="muted">инвертор выключен, реактивная мощность потребителей идёт сквозь ИБП</span>`);
     parts.push(`выход: <b>${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW</b>`);
     parts.push(`на входе: <b>${fmt(n._inputKw)} kW</b> (без потерь)`);
   } else {
@@ -2265,6 +2477,14 @@ function upsStatusBlock(n) {
     parts.push(`выход: <b>${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW</b>`);
     if (!n._onBattery) parts.push(`потребление на входе: <b>${fmt(n._inputKw)} kW</b>`);
   }
+  // P/Q/S — как его видит вышестоящая сеть
+  if (typeof n._powerP === 'number') {
+    parts.push(`P акт.: <b>${fmt(n._powerP)} kW</b>`);
+    parts.push(`Q реакт.: <b>${fmt(n._powerQ || 0)} kvar</b> ${n._onStaticBypass ? '' : '<span class="muted">(инвертор — 0)</span>'}`);
+    parts.push(`S полн.: <b>${fmt(n._powerS || 0)} kVA</b>`);
+    parts.push(`cos φ: <b>${n._cosPhi ? n._cosPhi.toFixed(2) : '1.00'}</b> ${n._onStaticBypass ? '<span class="muted">(байпас)</span>' : '<span class="muted">(инвертор)</span>'}`);
+  }
+  if (n._ikA && isFinite(n._ikA)) parts.push(`Ik на выходе: <b>${fmt(n._ikA / 1000)} кА</b>`);
   const battKwh = (Number(n.batteryKwh) || 0) * (Number(n.batteryChargePct) || 0) / 100;
   parts.push(`запас батареи: <b>${fmt(battKwh)} kWh</b> (${n.batteryChargePct || 0}%)`);
   if (n._loadKw > 0) {
@@ -2296,6 +2516,7 @@ function renderInspectorConn(c) {
       `Расчётный I для кабеля: <b>${fmt(c._maxA || 0)} A</b> <span class="muted">(по максимально возможной нагрузке)</span><br>` +
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
       `Напряжение: <b>${c._voltage || '-'} В</b>` +
+      (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div></div>`);
   }
 
@@ -2326,6 +2547,13 @@ function renderInspectorConn(c) {
     `<select data-conn-prop="insulation">
       <option value="PVC"${insulation === 'PVC' ? ' selected' : ''}>ПВХ</option>
       <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
+    </select>`));
+  const ct = c.cableType || GLOBAL.defaultCableType;
+  h.push(field('Тип конструкции',
+    `<select data-conn-prop="cableType">
+      <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный (гибкий)</option>
+      <option value="single"${ct === 'single' ? ' selected' : ''}>Одножильный многопроволочный</option>
+      <option value="solid"${ct === 'solid' ? ' selected' : ''}>Цельная жила (класс 1–2, до 10 мм²)</option>
     </select>`));
   h.push(field('Длина, м', `<input type="number" min="0" max="10000" step="0.5" data-conn-prop="lengthM" value="${c.lengthM ?? 1}">`));
   h.push('</div>');
@@ -2363,25 +2591,42 @@ function renderInspectorConn(c) {
 
   // Результат подбора кабеля
   if (c._state === 'active' && c._cableSize) {
-    const warn = c._cableOverflow ? '<span style="color:#c62828;font-weight:600"> (превышен предел таблицы)</span>' : '';
-    const groupNote = (c._cableParallel && c._cableParallel > 1)
-      ? `<br><span class="muted">Групповая линия: ${c._cableParallel} параллельных кабелей</span>`
-      : '';
+    const warn = c._cableOverflow ? '<span style="color:#c62828;font-weight:600"> (Iрасч > Iдоп даже при макс. сечении и ' + (GLOBAL.maxParallelAuto || 4) + ' параллельных)</span>' : '';
+    const par = c._cableParallel || 1;
+    const typeLabel = {
+      multi: 'многожильный',
+      single: 'одножильный многопр.',
+      solid: 'цельная жила',
+    }[c._cableType || 'multi'] || 'многожильный';
     const bundlingLabel = {
       spaced:   'с зазором ≥ Ø',
       touching: 'плотно',
       bundled:  'в пучке',
     }[c._cableBundling || 'touching'] || 'плотно';
+
     h.push('<div class="inspector-section"><h4>Подобранный кабель</h4>');
     h.push(`<div style="font-size:12px;line-height:1.8">` +
       `Сечение: <b>${c._cableSize} мм²</b>${warn}<br>` +
       `Материал: <b>${c._cableMaterial === 'Al' ? 'Алюминий' : 'Медь'}</b>, изоляция <b>${c._cableInsulation || 'PVC'}</b><br>` +
+      `Конструкция: <b>${typeLabel}</b><br>` +
       `Метод: <b>${c._cableMethod || 'B1'}</b>, укладка <b>${bundlingLabel}</b><br>` +
       `t=${c._cableAmbient}°C, группа=${c._cableGrouping}, длина=${fmt(c._cableLength || 0)} м<br>` +
       `Iдоп на жилу: <b>${fmt(c._cableIz)} A</b><br>` +
-      (c._cableParallel > 1 ? `Iдоп всей группы: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
-      groupNote +
+      (par > 1 ? `Параллельных линий: <b>${par}</b><br>Iдоп всех линий: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
       `</div></div>`);
+
+    if (c._cableAutoParallel) {
+      h.push('<div class="inspector-section" style="background:#fff8e1;border-radius:6px;padding:10px;border:1px solid #ffd54f">');
+      h.push(`<div style="font-size:12px;line-height:1.7">` +
+        `⚠ <b>Авто-параллель:</b> одиночная жила сечением ${GLOBAL.maxCableSize} мм² не проходит по току,<br>` +
+        `поэтому расчёт выбрал <b>${par} параллельных линий ${c._cableSize} мм²</b>.<br>` +
+        `<span class="muted" style="font-size:11px">Рекомендации IEC по прокладке параллельных линий:<br>` +
+        `• Кабели одной фазы — одинаковой длины и сечения<br>` +
+        `• Разносить не более 1 диаметра (вариант &laquo;touching&raquo;) либо с зазором ≥ Ø для лучшего теплоотвода<br>` +
+        `• Использовать общий лоток с симметричной разводкой по фазам (ABC/ABC/...)<br>` +
+        `• На каждую параллельную линию — свой автомат того же номинала в шкафу</span>` +
+        `</div></div>`);
+    }
   }
 
   // Автомат защиты
@@ -4025,6 +4270,15 @@ window.Raschet = {
   generateReport,
   importLoadsTable,
   get3PhaseBalance,
+  getGlobal() { return { ...GLOBAL }; },
+  setGlobal(patch) {
+    if (!patch || typeof patch !== 'object') return;
+    for (const k of Object.keys(patch)) {
+      if (k in GLOBAL) GLOBAL[k] = patch[k];
+    }
+    render();
+    renderInspector();
+  },
 };
 
 })();

@@ -92,6 +92,7 @@
         </div>
 
         <h3>Быстрые действия</h3>
+        <button id="btn-open-settings" class="full-btn">⚙ Начальные условия</button>
         <button id="btn-open-presets" class="full-btn">📚 Библиотека типовых элементов</button>
         <button id="btn-open-report" class="full-btn">📄 Сгенерировать отчёт</button>
         <button id="btn-open-loads-import" class="full-btn">📥 Импорт таблицы нагрузок</button>
@@ -255,6 +256,87 @@
       <div class="modal-foot">
         <button class="modal-close">Отмена</button>
         <button id="request-send" class="primary">Запросить доступ</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-settings" class="modal hidden">
+    <div class="modal-box modal-wide">
+      <div class="modal-head">
+        <h2>Начальные условия расчёта</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin-top:0">Значения применяются ко всем новым линиям и используются как fallback во время расчёта. Сохраняются в браузере.</p>
+
+        <h3>Напряжение и фазность</h3>
+        <div class="field">
+          <label>Номинальное линейное напряжение (3ф), В</label>
+          <input type="number" id="set-voltage3ph" min="100" max="35000" step="1" value="400">
+        </div>
+        <div class="field">
+          <label>Фазное напряжение (1ф), В</label>
+          <input type="number" id="set-voltage1ph" min="100" max="10000" step="1" value="230">
+        </div>
+        <div class="field">
+          <label>cos φ по умолчанию</label>
+          <input type="number" id="set-cosPhi" min="0.1" max="1" step="0.01" value="0.92">
+        </div>
+
+        <h3>Кабели</h3>
+        <div class="field">
+          <label>Материал жил по умолчанию</label>
+          <select id="set-material">
+            <option value="Cu">Медь</option>
+            <option value="Al">Алюминий</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Изоляция по умолчанию</label>
+          <select id="set-insulation">
+            <option value="PVC">ПВХ</option>
+            <option value="XLPE">СПЭ (XLPE)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Тип конструкции по умолчанию</label>
+          <select id="set-cableType">
+            <option value="multi">Многожильный (гибкий)</option>
+            <option value="single">Одножильный многопроволочный</option>
+            <option value="solid">Цельная жила (класс 1–2)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Максимальное сечение одной жилы, мм²</label>
+          <input type="number" id="set-maxCableSize" min="16" max="630" step="1" value="240">
+        </div>
+        <div class="field">
+          <label>Макс. число параллельных линий (авто-подбор)</label>
+          <input type="number" id="set-maxParallelAuto" min="1" max="10" step="1" value="4">
+        </div>
+
+        <h3>Прокладка по умолчанию</h3>
+        <div class="field">
+          <label>Способ прокладки</label>
+          <select id="set-installMethod">
+            <option value="B1">B1 — изолированные в трубе</option>
+            <option value="B2">B2 — многожильный в трубе</option>
+            <option value="C">C — открыто на стене</option>
+            <option value="E">E — многожильный на лотке</option>
+            <option value="F">F — одножильные на лотке / в воздухе</option>
+            <option value="D1">D1 — в трубе в земле</option>
+            <option value="D2">D2 — напрямую в земле</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Температура среды, °C</label>
+          <input type="number" id="set-ambient" min="10" max="70" step="5" value="30">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="modal-close">Отмена</button>
+        <button id="settings-reset">Сброс по умолчанию</button>
+        <button id="settings-save" class="primary">Применить</button>
       </div>
     </div>
   </div>

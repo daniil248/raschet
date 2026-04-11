@@ -64,6 +64,7 @@ const els = {
   pwdInput: $('pwd-input'),
   pwdSubmit: $('pwd-submit'),
 
+  btnOpenSettings: $('btn-open-settings'),
   btnOpenPresets: $('btn-open-presets'),
   btnOpenReport: $('btn-open-report'),
   btnOpenLoadsImport: $('btn-open-loads-import'),
@@ -670,6 +671,80 @@ async function sendAccessRequest() {
   }
 }
 
+// ================= Начальные условия (GLOBAL) =================
+const SETTINGS_KEY = 'raschet.global.v1';
+const SETTINGS_DEFAULTS = {
+  voltage3ph: 400,
+  voltage1ph: 230,
+  defaultCosPhi: 0.92,
+  defaultInstallMethod: 'B1',
+  defaultAmbient: 30,
+  defaultMaterial: 'Cu',
+  defaultInsulation: 'PVC',
+  defaultCableType: 'multi',
+  maxCableSize: 240,
+  maxParallelAuto: 4,
+};
+
+function loadGlobalSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!window.Raschet || typeof window.Raschet.setGlobal !== 'function') return;
+    window.Raschet.setGlobal(saved);
+  } catch (e) { console.warn('[settings] load failed', e); }
+}
+
+function openSettingsModal() {
+  const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('set-voltage3ph',    G.voltage3ph ?? 400);
+  set('set-voltage1ph',    G.voltage1ph ?? 230);
+  set('set-cosPhi',        G.defaultCosPhi ?? 0.92);
+  set('set-material',      G.defaultMaterial ?? 'Cu');
+  set('set-insulation',    G.defaultInsulation ?? 'PVC');
+  set('set-cableType',     G.defaultCableType ?? 'multi');
+  set('set-maxCableSize',  G.maxCableSize ?? 240);
+  set('set-maxParallelAuto', G.maxParallelAuto ?? 4);
+  set('set-installMethod', G.defaultInstallMethod ?? 'B1');
+  set('set-ambient',       G.defaultAmbient ?? 30);
+  openModal('modal-settings');
+}
+
+function saveSettingsModal() {
+  const get = (id) => document.getElementById(id)?.value;
+  const patch = {
+    voltage3ph:         Number(get('set-voltage3ph')) || 400,
+    voltage1ph:         Number(get('set-voltage1ph')) || 230,
+    defaultCosPhi:      Number(get('set-cosPhi')) || 0.92,
+    defaultMaterial:    get('set-material') || 'Cu',
+    defaultInsulation:  get('set-insulation') || 'PVC',
+    defaultCableType:   get('set-cableType') || 'multi',
+    maxCableSize:       Number(get('set-maxCableSize')) || 240,
+    maxParallelAuto:    Number(get('set-maxParallelAuto')) || 4,
+    defaultInstallMethod: get('set-installMethod') || 'B1',
+    defaultAmbient:     Number(get('set-ambient')) || 30,
+  };
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(patch)); }
+  catch (e) { console.warn('[settings] save failed', e); }
+  if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
+    window.Raschet.setGlobal(patch);
+  }
+  closeModal('modal-settings');
+  flash('Настройки применены');
+}
+
+function resetSettingsModal() {
+  if (!confirm('Сбросить все начальные условия к значениям по умолчанию?')) return;
+  try { localStorage.removeItem(SETTINGS_KEY); } catch {}
+  if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
+    window.Raschet.setGlobal(SETTINGS_DEFAULTS);
+  }
+  openSettingsModal();
+  flash('Сброшено');
+}
+
 // ================= Библиотека пресетов =================
 function openPresetsModal() {
   if (state.currentProject && state.currentProject._role === 'viewer') {
@@ -804,6 +879,13 @@ async function init() {
   els.pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitPassword(); });
 
   // P3 buttons
+  if (els.btnOpenSettings) els.btnOpenSettings.addEventListener('click', openSettingsModal);
+  const settingsSave = document.getElementById('settings-save');
+  if (settingsSave) settingsSave.addEventListener('click', saveSettingsModal);
+  const settingsReset = document.getElementById('settings-reset');
+  if (settingsReset) settingsReset.addEventListener('click', resetSettingsModal);
+  // Применяем сохранённые настройки как можно раньше — после загрузки Raschet
+  loadGlobalSettings();
   if (els.btnOpenPresets) els.btnOpenPresets.addEventListener('click', openPresetsModal);
   if (els.btnOpenReport) els.btnOpenReport.addEventListener('click', openReportModal);
   if (els.btnOpenLoadsImport) els.btnOpenLoadsImport.addEventListener('click', openLoadsImportModal);
