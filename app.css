@@ -527,6 +527,23 @@ input, select { font: inherit; }
 .node.ups.onbattery .node-body { stroke-dasharray: 6 3; }
 .node.ups.onbypass .node-body { fill: #fce4ec; stroke: #ec407a; }
 .node.panel.manual .node-body { stroke-dasharray: 6 3; }
+.node.panel.marginwarn .node-body { fill: #f3e5f5; stroke: #8e24aa !important; stroke-width: 2.2; }
+.node.panel.marginwarn.selected .node-body { stroke: #6a1b9a !important; }
+
+/* Margin warning badge: yellow triangle with '!' */
+.margin-warn-tri {
+  fill: #fdd835;
+  stroke: #f57f17;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  cursor: help;
+}
+.margin-warn-bang {
+  font: 800 11px -apple-system, "Segoe UI", sans-serif;
+  fill: #3e2723;
+  text-anchor: middle;
+  pointer-events: none;
+}
 
 /* Zones */
 .node.zone .zone-body {

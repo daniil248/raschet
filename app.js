@@ -219,6 +219,15 @@ const DEFAULTS = {
     manualActiveInput: 0,
     parallelEnabled: [],
     kSim: 1.0,
+    // Номинальная мощность самого шкафа (суммарная пропускная способность
+    // вводных шин/автоматов). Позволяет проверить: шкаф правильно подобран
+    // только если его номинал превышает расчётную нагрузку на marginMinPct
+    // и не превышает её более чем на marginMaxPct — иначе либо мало запаса
+    // (опасность перегрева/перегруза), либо избыточный запас (переплата,
+    // нарушение селективности с вышестоящими автоматами).
+    capacityKw: 100,
+    marginMinPct: 2,
+    marginMaxPct: 30,
   }),
   ups:       () => ({
     name: 'ИБП',
@@ -1184,6 +1193,29 @@ function recalc() {
       const kSim = Number(n.kSim) || 1;
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
+
+      // Проверка номинала шкафа против расчётной нагрузки.
+      // margin% = (capacity - load) / load × 100
+      // Нормально: marginMinPct ≤ margin ≤ marginMaxPct
+      const cap = Number(n.capacityKw) || 0;
+      const load = n._calcKw || 0;
+      if (cap > 0 && load > 0) {
+        const margin = ((cap - load) / load) * 100;
+        n._marginPct = margin;
+        const lo = Number(n.marginMinPct); const hi = Number(n.marginMaxPct);
+        const minP = isFinite(lo) ? lo : 2;
+        const maxP = isFinite(hi) ? hi : 30;
+        if (margin < minP) {
+          n._marginWarn = 'low';   // шкаф впритык / перегружен
+        } else if (margin > maxP) {
+          n._marginWarn = 'high';  // избыточный запас
+        } else {
+          n._marginWarn = null;
+        }
+      } else {
+        n._marginPct = null;
+        n._marginWarn = null;
+      }
     } else if (n.type === 'source' || n.type === 'generator') {
       n._cosPhi = Number(n.cosPhi) || GLOBAL.defaultCosPhi;
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
@@ -1336,6 +1368,7 @@ function renderNodes() {
       (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
       (n.type === 'ups' && n._onStaticBypass) ? 'onbypass' : '',
       (n.type === 'panel' && n.switchMode === 'manual') ? 'manual' : '',
+      (n.type === 'panel' && n._marginWarn) ? 'marginwarn' : '',
     ].filter(Boolean).join(' ');
 
     const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
@@ -1458,6 +1491,24 @@ function renderNodes() {
       const circ = el('circle', { class: 'port out', cx, cy: NODE_H, r: PORT_R });
       circ.dataset.portKind = 'out'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
+    }
+
+    // Жёлтый треугольник с «!» — предупреждение о номинале шкафа
+    if (n.type === 'panel' && n._marginWarn) {
+      const tx = w - 22, ty = 8;
+      const tri = el('path', {
+        class: 'margin-warn-tri',
+        d: `M${tx + 8},${ty} L${tx + 16},${ty + 14} L${tx},${ty + 14} Z`,
+      });
+      g.appendChild(tri);
+      const bang = text(tx + 8, ty + 13, '!', 'margin-warn-bang');
+      g.appendChild(bang);
+      const title = el('title', {});
+      const mp = n._marginPct == null ? '-' : n._marginPct.toFixed(1);
+      title.textContent = n._marginWarn === 'low'
+        ? `Недостаточный запас: номинал шкафа ${fmt(n.capacityKw)} kW, нагрузка ${fmt(n._calcKw || 0)} kW (запас ${mp}%, минимум ${n.marginMinPct}%)`
+        : `Избыточный запас: номинал шкафа ${fmt(n.capacityKw)} kW, нагрузка ${fmt(n._calcKw || 0)} kW (запас ${mp}%, максимум ${n.marginMaxPct}%)`;
+      tri.appendChild(title);
     }
 
     layerNodes.appendChild(g);
@@ -1811,6 +1862,14 @@ function renderInspectorNode(n) {
     h.push(field('Выходов', `<input type="number" min="1" max="30" step="1" data-prop="outputs" value="${n.outputs}">`));
     h.push(field('Ксим (коэффициент одновременности)', `<input type="number" min="0" max="1.2" step="0.05" data-prop="kSim" value="${n.kSim ?? 1}">`));
 
+    // Номинал шкафа и допустимые пределы запаса
+    h.push('<div class="inspector-section"><h4>Номинал шкафа</h4>');
+    h.push(field('Номинальная мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw ?? 100}">`));
+    h.push(field('Мин. запас над нагрузкой, %', `<input type="number" min="0" max="50" step="1" data-prop="marginMinPct" value="${n.marginMinPct ?? 2}">`));
+    h.push(field('Макс. запас над нагрузкой, %', `<input type="number" min="5" max="500" step="1" data-prop="marginMaxPct" value="${n.marginMaxPct ?? 30}">`));
+    h.push('<div class="muted" style="font-size:11px;margin-top:-4px">Шкаф считается правильно подобранным, если его номинал больше расчётной нагрузки на значение в этих пределах. Вне диапазона — шкаф выделяется пурпурным и жёлтым треугольником.</div>');
+    h.push('</div>');
+
     // Режим переключения и приоритеты имеют смысл только при 2+ входах
     if (n.inputs > 1) {
       const sm = n.switchMode || 'auto';
@@ -2126,8 +2185,29 @@ function panelStatusBlock(n) {
   if (n._powered) parts.push('<span class="badge on">запитан</span>');
   else parts.push('<span class="badge off">без питания</span>');
   parts.push(`нагрузка: <b>${fmt(n._loadKw || 0)} kW</b>`);
+  if (Number(n.kSim) && Number(n.kSim) !== 1) {
+    parts.push(`расчётная с Ксим: <b>${fmt(n._calcKw || 0)} kW</b>`);
+  }
   if (n._loadA > 0) parts.push(`ток: <b>${fmt(n._loadA)} A</b>`);
   if (n._cosPhi) parts.push(`финальный cos φ: <b>${n._cosPhi.toFixed(2)}</b>`);
+
+  // Запас номинала шкафа
+  if (Number(n.capacityKw) > 0) {
+    const cap = Number(n.capacityKw);
+    const load = n._calcKw || 0;
+    parts.push(`номинал шкафа: <b>${fmt(cap)} kW</b>`);
+    if (load > 0) {
+      const pct = n._marginPct == null ? 0 : n._marginPct;
+      const pctTxt = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+      if (n._marginWarn === 'low') {
+        parts.push(`запас: <b style="color:#8e24aa">${pctTxt}</b> ⚠ мало (мин. ${n.marginMinPct}%)`);
+      } else if (n._marginWarn === 'high') {
+        parts.push(`запас: <b style="color:#8e24aa">${pctTxt}</b> ⚠ избыточен (макс. ${n.marginMaxPct}%)`);
+      } else {
+        parts.push(`запас: <b style="color:#2e7d32">${pctTxt}</b> ок`);
+      }
+    }
+  }
   return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
 }
 // Блок расчётных токов для потребителя
@@ -3064,6 +3144,9 @@ function deserialize(data) {
       if (typeof n.manualActiveInput !== 'number') n.manualActiveInput = 0;
       if (!Array.isArray(n.parallelEnabled)) n.parallelEnabled = new Array(n.inputs || 0).fill(false);
       if (typeof n.kSim !== 'number') n.kSim = 1.0;
+      if (typeof n.capacityKw !== 'number') n.capacityKw = 100;
+      if (typeof n.marginMinPct !== 'number') n.marginMinPct = 2;
+      if (typeof n.marginMaxPct !== 'number') n.marginMaxPct = 30;
     }
     if (n.type === 'source' || n.type === 'generator' || n.type === 'ups') {
       if (!n.phase) n.phase = '3ph';
