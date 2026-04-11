@@ -57,6 +57,7 @@ const state = {
   view: { x: 0, y: 0, zoom: 1 },
   pending: null,     // { fromNodeId, fromPort, mouseX, mouseY, restoreConn? }
   drag: null,        // { nodeId, dx, dy } | { pan, sx, sy, vx, vy }
+  readOnly: false,   // просмотр без редактирования
 };
 
 let _idSeq = 1;
@@ -783,15 +784,33 @@ function clientToSvg(clientX, clientY) {
   return { x, y };
 }
 
-// Палитра: drag & drop
+// Палитра: drag & drop (десктоп) + click-to-add (мобильный и шорткат)
+let _palDragActive = false;
 document.querySelectorAll('.pal-item').forEach(item => {
   item.addEventListener('dragstart', e => {
+    if (state.readOnly) { e.preventDefault(); return; }
+    _palDragActive = true;
     e.dataTransfer.setData('text/raschet-type', item.dataset.type);
     e.dataTransfer.effectAllowed = 'copy';
   });
+  item.addEventListener('dragend', () => {
+    setTimeout(() => { _palDragActive = false; }, 150);
+  });
+  item.addEventListener('click', () => {
+    if (state.readOnly) return;
+    if (_palDragActive) return; // был настоящий drag — click не обрабатываем
+    const type = item.dataset.type;
+    if (!DEFAULTS[type]) return;
+    const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
+    const cx = state.view.x + (W / 2) / state.view.zoom;
+    const cy = state.view.y + (H / 2) / state.view.zoom;
+    createNode(type, cx, cy);
+    document.body.classList.remove('palette-open');
+  });
 });
-svg.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+svg.addEventListener('dragover', e => { if (state.readOnly) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
 svg.addEventListener('drop', e => {
+  if (state.readOnly) return;
   e.preventDefault();
   const type = e.dataTransfer.getData('text/raschet-type');
   if (!type || !DEFAULTS[type]) return;
@@ -804,6 +823,7 @@ svg.addEventListener('mousedown', e => {
   // Рукоятка reconnection
   const handleEl = e.target.closest('.conn-handle');
   if (handleEl) {
+    if (state.readOnly) return;
     e.stopPropagation();
     const cid = handleEl.dataset.reconnectId;
     const c = state.conns.get(cid);
@@ -827,6 +847,7 @@ svg.addEventListener('mousedown', e => {
   // Порт — начало/конец связи
   const portEl = e.target.closest('.port');
   if (portEl) {
+    if (state.readOnly) return;
     e.stopPropagation();
     const nodeId = portEl.dataset.nodeId;
     const kind = portEl.dataset.portKind;
@@ -854,7 +875,7 @@ svg.addEventListener('mousedown', e => {
   const connEl = e.target.closest('.conn-hit, .conn');
   if (connEl && connEl.dataset.connId) {
     const cid = connEl.dataset.connId;
-    if (e.shiftKey) { deleteConn(cid); return; }
+    if (e.shiftKey && !state.readOnly) { deleteConn(cid); return; }
     selectConn(cid);
     render();
     return;
@@ -864,10 +885,12 @@ svg.addEventListener('mousedown', e => {
   const nodeEl = e.target.closest('.node');
   if (nodeEl) {
     const id = nodeEl.dataset.nodeId;
-    const n = state.nodes.get(id);
-    const p = clientToSvg(e.clientX, e.clientY);
-    state.drag = { nodeId: id, dx: p.x - n.x, dy: p.y - n.y };
     selectNode(id);
+    if (!state.readOnly) {
+      const n = state.nodes.get(id);
+      const p = clientToSvg(e.clientX, e.clientY);
+      state.drag = { nodeId: id, dx: p.x - n.x, dy: p.y - n.y };
+    }
     render();
     return;
   }
@@ -913,6 +936,7 @@ svg.addEventListener('contextmenu', e => {
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.key === 'Escape' && state.pending) cancelPending();
+  if (state.readOnly) return;
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (state.selectedKind === 'node' && state.selectedId) { deleteNode(state.selectedId); e.preventDefault(); }
     else if (state.selectedKind === 'conn' && state.selectedId) { deleteConn(state.selectedId); e.preventDefault(); }
@@ -967,8 +991,8 @@ document.getElementById('btn-zoom-in').onclick  = () => { state.view.zoom = Math
 document.getElementById('btn-zoom-out').onclick = () => { state.view.zoom = Math.max(0.2, state.view.zoom / 1.2); updateViewBox(); };
 document.getElementById('btn-zoom-reset').onclick = () => { state.view.zoom = 1; updateViewBox(); };
 document.getElementById('btn-fit').onclick = fitAll;
-document.getElementById('btn-save').onclick  = () => { localStorage.setItem('raschet.scheme', JSON.stringify(serialize())); flash('Сохранено в браузере'); };
-document.getElementById('btn-load').onclick  = () => {
+document.getElementById('btn-save-local').onclick  = () => { localStorage.setItem('raschet.scheme', JSON.stringify(serialize())); flash('Сохранено в браузере'); };
+document.getElementById('btn-load-local').onclick  = () => {
   const s = localStorage.getItem('raschet.scheme');
   if (!s) return flash('Нет сохранения');
   try { deserialize(JSON.parse(s)); render(); renderInspector(); flash('Загружено'); }
@@ -1085,12 +1109,140 @@ function buildDemo() {
   state.selectedKind = null; state.selectedId = null;
 }
 
-// ================= Инициализация =================
+// ================= Тач-события =================
+// Эмуляция мыши для одного пальца + пинч-зум для двух.
+let _pinch = null;
+
+function synthMouseFromTouch(type, touch) {
+  const target = document.elementFromPoint(touch.clientX, touch.clientY) || svg;
+  const evt = new MouseEvent(type, {
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    button: 0,
+    buttons: type === 'mouseup' ? 0 : 1,
+    bubbles: true,
+    cancelable: true,
+    view: window,
+  });
+  target.dispatchEvent(evt);
+}
+
+svg.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    // Пинч — отменяем любые одно-пальцевые операции
+    if (state.drag) { svg.classList.remove('panning'); state.drag = null; }
+    if (state.pending) cancelPending();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    _pinch = { dist: Math.hypot(dx, dy), zoom: state.view.zoom };
+    e.preventDefault();
+    return;
+  }
+  if (e.touches.length === 1) {
+    e.preventDefault();
+    synthMouseFromTouch('mousedown', e.touches[0]);
+  }
+}, { passive: false });
+
+window.addEventListener('touchmove', e => {
+  if (_pinch && e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    const newZoom = Math.max(0.2, Math.min(4, _pinch.zoom * (dist / _pinch.dist)));
+    const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    const rect = svg.getBoundingClientRect();
+    const before = clientToSvg(cx, cy);
+    state.view.zoom = newZoom;
+    state.view.x = before.x - (cx - rect.left) / newZoom;
+    state.view.y = before.y - (cy - rect.top)  / newZoom;
+    updateViewBox();
+    e.preventDefault();
+    return;
+  }
+  if (!_pinch && e.touches.length === 1 && (state.drag || state.pending)) {
+    e.preventDefault();
+    synthMouseFromTouch('mousemove', e.touches[0]);
+  }
+}, { passive: false });
+
+window.addEventListener('touchend', e => {
+  if (_pinch) {
+    if (e.touches.length < 2) _pinch = null;
+    return;
+  }
+  if (state.drag || state.pending) {
+    const t = e.changedTouches[0];
+    if (t) synthMouseFromTouch('mouseup', t);
+  }
+});
+window.addEventListener('touchcancel', () => {
+  _pinch = null;
+  if (state.drag) { svg.classList.remove('panning'); state.drag = null; }
+});
+
+// ================= Инициализация (холодный старт) =================
 window.addEventListener('resize', updateViewBox);
 updateViewBox();
-buildDemo();
 render();
 renderInspector();
-fitAll();
+
+// ================= Публичный API (для main.js) =================
+window.Raschet = {
+  loadScheme(data) {
+    if (!data) {
+      state.nodes.clear();
+      state.conns.clear();
+      state.modes = [];
+      state.activeModeId = null;
+      state.selectedKind = null;
+      state.selectedId = null;
+      state.view = { x: 0, y: 0, zoom: 1 };
+      updateViewBox();
+      render();
+      renderInspector();
+      return;
+    }
+    try {
+      deserialize(data);
+      render();
+      renderInspector();
+    } catch (err) {
+      console.error('[Raschet.loadScheme]', err);
+      throw err;
+    }
+  },
+  getScheme() {
+    return serialize();
+  },
+  loadDemo() {
+    state.nodes.clear();
+    state.conns.clear();
+    state.modes = [];
+    state.activeModeId = null;
+    state.selectedKind = null;
+    state.selectedId = null;
+    _idSeq = 1;
+    buildDemo();
+    render();
+    renderInspector();
+  },
+  setReadOnly(flag) {
+    state.readOnly = !!flag;
+    document.body.classList.toggle('read-only', state.readOnly);
+    // Перерисуем инспектор — в read-only режиме инпуты должны быть disabled
+    renderInspector();
+  },
+  fit() {
+    // Если canvas только что показан, дадим браузеру посчитать layout
+    if (!svg.clientWidth || !svg.clientHeight) {
+      requestAnimationFrame(() => fitAll());
+      return;
+    }
+    fitAll();
+  },
+  isEmpty() { return state.nodes.size === 0; },
+};
 
 })();

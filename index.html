@@ -2,93 +2,245 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <title>Raschet — конструктор схем электроснабжения</title>
   <link rel="stylesheet" href="app.css">
 </head>
-<body>
-  <div id="app">
-    <aside id="palette">
-      <div class="brand">Raschet</div>
-      <div class="subtitle">Конструктор схем</div>
+<body data-screen="loading">
 
-      <h3>Элементы</h3>
-      <div class="pal-item" data-type="source" draggable="true">
-        <span class="chip src"></span>Источник
-      </div>
-      <div class="pal-item" data-type="generator" draggable="true">
-        <span class="chip gen"></span>Генератор
-      </div>
-      <div class="pal-item" data-type="panel" draggable="true">
-        <span class="chip pnl"></span>Щит
-      </div>
-      <div class="pal-item" data-type="ups" draggable="true">
-        <span class="chip ups"></span>ИБП
-      </div>
-      <div class="pal-item" data-type="consumer" draggable="true">
-        <span class="chip cns"></span>Потребитель
-      </div>
+  <!-- ============================ Header ============================ -->
+  <header id="header">
+    <div class="hdr-left">
+      <button id="btn-home" class="icon-btn" title="К проектам" aria-label="К проектам">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+      </button>
+      <div class="hdr-title">Raschet</div>
+      <div id="project-name" class="hdr-project hidden"></div>
+    </div>
+    <div class="hdr-right">
+      <button id="btn-share" class="hdr-btn hidden">Поделиться</button>
+      <button id="btn-save" class="hdr-btn primary hidden">Сохранить</button>
+      <div id="auth-area"></div>
+    </div>
+  </header>
 
-      <h3>Итого</h3>
-      <div class="stats" id="stats"></div>
+  <!-- ============================ Loading ============================ -->
+  <section id="screen-loading" class="screen">
+    <div class="center-box">
+      <div class="spinner"></div>
+      <div>Загрузка…</div>
+    </div>
+  </section>
 
-      <h3>Режимы работы</h3>
-      <div id="modes-list"></div>
-      <button id="btn-new-mode" class="full-btn">+ новый режим</button>
-
-      <h3>Подсказки</h3>
-      <ul class="hints">
-        <li>Перетащите элемент на холст.</li>
-        <li>Клик по выходу (снизу) → клик по входу (сверху) = связь.</li>
-        <li>Клик по линии — выбрать, Del — удалить.</li>
-        <li>Колесо — зум, пустая область — панорама.</li>
-      </ul>
-    </aside>
-
-    <main id="canvas-wrap">
-      <div id="toolbar">
-        <button id="btn-zoom-in" title="Увеличить">+</button>
-        <button id="btn-zoom-out" title="Уменьшить">−</button>
-        <button id="btn-zoom-reset" title="100%">1:1</button>
-        <span class="sep"></span>
-        <button id="btn-fit" title="Вместить">⤢</button>
-        <span class="sep"></span>
-        <button id="btn-save">Сохранить</button>
-        <button id="btn-load">Загрузить</button>
-        <button id="btn-export">Экспорт JSON</button>
-        <button id="btn-import">Импорт JSON</button>
-        <input type="file" id="file-input" accept="application/json" hidden>
-        <span class="sep"></span>
-        <button id="btn-clear" class="danger">Очистить</button>
+  <!-- ============================ Projects ============================ -->
+  <section id="screen-projects" class="screen hidden">
+    <div class="projects-container">
+      <div class="projects-header">
+        <h1>Мои схемы</h1>
+        <div class="projects-toolbar">
+          <button id="btn-new-project" class="primary">+ Новый проект</button>
+          <button id="btn-load-demo">Открыть пример</button>
+        </div>
       </div>
 
-      <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e6e8ec" stroke-width="1"/>
-          </pattern>
-          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M0,0 L10,5 L0,10 Z" fill="#8a94a6"/>
-          </marker>
-          <marker id="arrActive" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M0,0 L10,5 L0,10 Z" fill="#e53935"/>
-          </marker>
-        </defs>
-        <rect id="bg" width="100%" height="100%" fill="url(#grid)"/>
-        <g id="viewport">
-          <g id="layer-conns"></g>
-          <g id="layer-nodes"></g>
-          <g id="layer-overlay"></g>
-        </g>
-      </svg>
-    </main>
+      <div class="projects-tabs">
+        <button class="tab active" data-tab="mine">Мои проекты</button>
+        <button class="tab" data-tab="shared">Доступные мне</button>
+        <button class="tab" data-tab="requests">Запросы доступа <span id="req-count" class="count hidden"></span></button>
+      </div>
 
-    <aside id="inspector">
-      <h3>Свойства</h3>
-      <div id="inspector-body"><div class="muted">Выберите элемент или перетащите новый из палитры.</div></div>
-    </aside>
+      <div id="projects-list" class="projects-grid"></div>
+      <div id="projects-empty" class="projects-empty hidden"></div>
+    </div>
+  </section>
+
+  <!-- ============================ Editor ============================ -->
+  <section id="screen-editor" class="screen hidden">
+    <div id="app">
+      <aside id="palette">
+        <div class="brand">Raschet</div>
+        <div class="subtitle">Конструктор схем</div>
+
+        <h3>Элементы</h3>
+        <div class="pal-item" data-type="source" draggable="true">
+          <span class="chip src"></span>Источник
+        </div>
+        <div class="pal-item" data-type="generator" draggable="true">
+          <span class="chip gen"></span>Генератор
+        </div>
+        <div class="pal-item" data-type="panel" draggable="true">
+          <span class="chip pnl"></span>Щит
+        </div>
+        <div class="pal-item" data-type="ups" draggable="true">
+          <span class="chip ups"></span>ИБП
+        </div>
+        <div class="pal-item" data-type="consumer" draggable="true">
+          <span class="chip cns"></span>Потребитель
+        </div>
+
+        <h3>Итого</h3>
+        <div class="stats" id="stats"></div>
+
+        <h3>Режимы работы</h3>
+        <div id="modes-list"></div>
+        <button id="btn-new-mode" class="full-btn">+ новый режим</button>
+
+        <h3>Подсказки</h3>
+        <ul class="hints">
+          <li>Перетащите элемент на холст.</li>
+          <li>Клик по выходу → клик по входу = связь.</li>
+          <li>Клик по линии — выбрать, Del — удалить.</li>
+          <li>Колесо / щипок — зум, пустая область — панорама.</li>
+        </ul>
+      </aside>
+
+      <main id="canvas-wrap">
+        <div id="toolbar">
+          <button id="btn-zoom-in" title="Увеличить">+</button>
+          <button id="btn-zoom-out" title="Уменьшить">−</button>
+          <button id="btn-zoom-reset" title="100%">1:1</button>
+          <span class="sep"></span>
+          <button id="btn-fit" title="Вместить">⤢</button>
+          <span class="sep"></span>
+          <button id="btn-save-local">Сохр. локально</button>
+          <button id="btn-load-local">Загр. локально</button>
+          <button id="btn-export">Экспорт JSON</button>
+          <button id="btn-import">Импорт JSON</button>
+          <input type="file" id="file-input" accept="application/json" hidden>
+          <span class="sep"></span>
+          <button id="btn-clear" class="danger">Очистить</button>
+        </div>
+
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e6e8ec" stroke-width="1"/>
+            </pattern>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="#8a94a6"/>
+            </marker>
+            <marker id="arrActive" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="#e53935"/>
+            </marker>
+          </defs>
+          <rect id="bg" width="100%" height="100%" fill="url(#grid)"/>
+          <g id="viewport">
+            <g id="layer-conns"></g>
+            <g id="layer-nodes"></g>
+            <g id="layer-overlay"></g>
+          </g>
+        </svg>
+      </main>
+
+      <aside id="inspector">
+        <h3>Свойства</h3>
+        <div id="inspector-body">
+          <div class="muted">Выберите элемент или связь, либо перетащите новый элемент из палитры.</div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Мобильные кнопки-переключатели боковых панелей -->
+    <button id="btn-toggle-palette" class="mobile-toggle left" aria-label="Палитра">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+    </button>
+    <button id="btn-toggle-inspector" class="mobile-toggle right" aria-label="Свойства">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+    </button>
+  </section>
+
+  <!-- ============================ Modals ============================ -->
+
+  <div id="modal-new" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>Новый проект</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Название</label>
+          <input type="text" id="new-name" value="Новый проект">
+        </div>
+        <div class="field check">
+          <input type="checkbox" id="new-demo" checked>
+          <label for="new-demo">Загрузить пример схемы</label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="modal-close">Отмена</button>
+        <button id="new-create" class="primary">Создать</button>
+      </div>
+    </div>
   </div>
 
+  <div id="modal-share" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>Доступ к проекту</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Добавить пользователя</label>
+          <div class="row">
+            <input type="email" id="share-email" placeholder="user@gmail.com">
+            <select id="share-role">
+              <option value="viewer">Просмотр</option>
+              <option value="editor">Редактирование</option>
+            </select>
+            <button id="share-add" class="primary">Добавить</button>
+          </div>
+          <div class="hint">Пользователь должен хотя бы раз войти в приложение через Gmail, чтобы его можно было добавить.</div>
+        </div>
+        <h3>Пользователи, имеющие доступ</h3>
+        <div id="share-members" class="share-members"></div>
+
+        <h3>Общий доступ</h3>
+        <div class="field">
+          <select id="share-visibility">
+            <option value="private">Доступ ограничен — только участники</option>
+            <option value="link">По ссылке — любой может запросить доступ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Ссылка на проект</label>
+          <div class="row">
+            <input type="text" id="share-link" readonly>
+            <button id="share-copy">Копировать</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="modal-close primary">Готово</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-request" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>Запросить доступ</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <p>У вас нет доступа к этому проекту. Отправить запрос владельцу на просмотр?</p>
+      </div>
+      <div class="modal-foot">
+        <button class="modal-close">Отмена</button>
+        <button id="request-send" class="primary">Запросить доступ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ Scripts ============================ -->
+  <script src="firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/projects.js"></script>
   <script src="app.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>
