@@ -1,20 +1,29 @@
 /* =========================================================================
    Raschet — конструктор принципиальных схем электроснабжения
    ------------------------------------------------------------------------
-   Архитектура:
-     state.nodes : Map<id, Node>     — узлы (источники, генераторы, щиты, потребители)
-     state.conns : Map<id, Conn>     — связи между портами
-     state.view  : {x, y, zoom}      — параметры viewBox
-   Расчёт мощности: recalc() — каскадная передача demand от потребителей
-   вверх по активным цепям с учётом АВР (приоритеты) и резервных генераторов.
+   Состояние:
+     state.nodes         : Map<id, Node>          — источники/генераторы/щиты/потребители
+     state.conns         : Map<id, Conn>          — связи между портами
+     state.modes         : Array<Mode>            — сохранённые режимы работы
+     state.activeModeId  : string|null            — активный режим (null = "Нормальный")
+     state.selectedKind  : 'node'|'conn'|null
+     state.selectedId    : string|null
+     state.view          : { x, y, zoom }         — параметры viewBox
+   Расчёт:
+     recalc() — каскадное распространение demand от потребителей вверх.
+     Приоритеты: входы щита/потребителя группируются по значению priority.
+     Группа с наименьшим номером и хотя бы одним запитанным фидером —
+     активна; внутри группы фидеры делят нагрузку поровну (параллельно).
+     Резервные генераторы включаются, только если основного питания нет.
    ========================================================================= */
 
 (() => {
 'use strict';
 
 // ================= Константы =================
-const NODE_W = 170;
 const NODE_H = 96;
+const NODE_MIN_W = 180;
+const PORT_GAP_MIN = 34;
 const PORT_R = 6;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -22,18 +31,21 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEFAULTS = {
   source:    () => ({ name: 'Ввод ТП',    capacityKw: 100, on: true }),
   generator: () => ({ name: 'ДГУ',         capacityKw: 60,  on: true, backupMode: true }),
-  panel:     () => ({ name: 'ЩС',          inputs: 2, outputs: 2, priorities: [1, 2, 3] }),
-  consumer:  () => ({ name: 'Потребитель', demandKw: 10 }),
+  panel:     () => ({ name: 'ЩС',          inputs: 2, outputs: 2, priorities: [1, 2] }),
+  consumer:  () => ({ name: 'Потребитель', demandKw: 10, inputs: 2, priorities: [1, 2] }),
 };
 
 // ================= Состояние =================
 const state = {
   nodes: new Map(),
   conns: new Map(),
+  modes: [],
+  activeModeId: null,
+  selectedKind: null,
   selectedId: null,
   view: { x: 0, y: 0, zoom: 1 },
-  pending: null, // { fromNodeId, fromPort, mouseX, mouseY }
-  drag: null,    // { nodeId, dx, dy } либо { pan: true, sx, sy, vx, vy }
+  pending: null,     // { fromNodeId, fromPort, mouseX, mouseY, restoreConn? }
+  drag: null,        // { nodeId, dx, dy } | { pan, sx, sy, vx, vy }
 };
 
 let _idSeq = 1;
@@ -41,27 +53,71 @@ const uid = (p = 'n') => `${p}${_idSeq++}`;
 
 // ================= DOM refs =================
 const svg        = document.getElementById('canvas');
-const viewport   = document.getElementById('viewport');
 const layerConns = document.getElementById('layer-conns');
 const layerNodes = document.getElementById('layer-nodes');
 const layerOver  = document.getElementById('layer-overlay');
 const inspectorBody = document.getElementById('inspector-body');
 const statsEl    = document.getElementById('stats');
+const modesListEl = document.getElementById('modes-list');
 
-// ================= Геометрия портов =================
+// ================= Режимы =================
+function effectiveOn(n) {
+  if (!('on' in n)) return true;
+  if (state.activeModeId) {
+    const m = state.modes.find(x => x.id === state.activeModeId);
+    if (m && m.overrides && m.overrides[n.id] && 'on' in m.overrides[n.id]) {
+      return m.overrides[n.id].on;
+    }
+  }
+  return n.on;
+}
+function setEffectiveOn(n, val) {
+  if (state.activeModeId) {
+    const m = state.modes.find(x => x.id === state.activeModeId);
+    if (!m) return;
+    if (!m.overrides) m.overrides = {};
+    if (!m.overrides[n.id]) m.overrides[n.id] = {};
+    m.overrides[n.id].on = val;
+  } else {
+    n.on = val;
+  }
+}
+function createMode(name) {
+  const id = uid('m');
+  const m = { id, name: name || `Режим ${state.modes.length + 1}`, overrides: {} };
+  state.modes.push(m);
+  state.activeModeId = id;
+  render();
+}
+function deleteMode(id) {
+  state.modes = state.modes.filter(m => m.id !== id);
+  if (state.activeModeId === id) state.activeModeId = null;
+  render();
+}
+function selectMode(id) {
+  state.activeModeId = id;
+  render();
+  renderInspector();
+}
+
+// ================= Геометрия узла =================
 function nodeInputCount(n) {
-  if (n.type === 'consumer') return 1;
   if (n.type === 'source' || n.type === 'generator') return 0;
-  return n.inputs;
+  return Math.max(0, n.inputs | 0);
 }
 function nodeOutputCount(n) {
   if (n.type === 'consumer') return 0;
   if (n.type === 'source' || n.type === 'generator') return 1;
-  return n.outputs;
+  return Math.max(0, n.outputs | 0);
+}
+function nodeWidth(n) {
+  const maxPorts = Math.max(nodeInputCount(n), nodeOutputCount(n), 1);
+  return Math.max(NODE_MIN_W, maxPorts * PORT_GAP_MIN + 24);
 }
 function portPos(n, kind, idx) {
+  const w = nodeWidth(n);
   const count = kind === 'in' ? nodeInputCount(n) : nodeOutputCount(n);
-  const gap = NODE_W / (count + 1);
+  const gap = w / (count + 1);
   const px = n.x + gap * (idx + 1);
   const py = kind === 'in' ? n.y : n.y + NODE_H;
   return { x: px, y: py };
@@ -70,39 +126,48 @@ function portPos(n, kind, idx) {
 // ================= Создание / удаление =================
 function createNode(type, x, y) {
   const id = uid();
-  const base = { id, type, x: x - NODE_W / 2, y: y - NODE_H / 2, ...DEFAULTS[type]() };
+  const base = { id, type, x, y, ...DEFAULTS[type]() };
+  base.x = x - nodeWidth(base) / 2;
+  base.y = y - NODE_H / 2;
   state.nodes.set(id, base);
   selectNode(id);
   render();
   return id;
 }
-
 function deleteNode(id) {
   for (const c of Array.from(state.conns.values())) {
     if (c.from.nodeId === id || c.to.nodeId === id) state.conns.delete(c.id);
   }
   state.nodes.delete(id);
-  if (state.selectedId === id) state.selectedId = null;
+  for (const m of state.modes) { if (m.overrides) delete m.overrides[id]; }
+  if (state.selectedKind === 'node' && state.selectedId === id) {
+    state.selectedKind = null; state.selectedId = null;
+  }
   render();
   renderInspector();
 }
-
 function deleteConn(id) {
   state.conns.delete(id);
+  if (state.selectedKind === 'conn' && state.selectedId === id) {
+    state.selectedKind = null; state.selectedId = null;
+  }
   render();
+  renderInspector();
 }
-
-// Обрезка портов при уменьшении их числа у щита
 function clampPortsInvolvingNode(n) {
   for (const c of Array.from(state.conns.values())) {
     if (c.to.nodeId === n.id && c.to.port >= nodeInputCount(n)) state.conns.delete(c.id);
     if (c.from.nodeId === n.id && c.from.port >= nodeOutputCount(n)) state.conns.delete(c.id);
   }
+  // Подрезка массива приоритетов
+  if (Array.isArray(n.priorities)) {
+    while (n.priorities.length < nodeInputCount(n)) n.priorities.push(n.priorities.length + 1);
+    n.priorities.length = nodeInputCount(n);
+  }
 }
 
 // ================= Связи =================
 function wouldCreateCycle(fromNodeId, toNodeId) {
-  // DFS вниз от toNodeId по исходящим связям — если дойдём до fromNodeId, цикл
   const stack = [toNodeId];
   const seen = new Set();
   while (stack.length) {
@@ -116,126 +181,111 @@ function wouldCreateCycle(fromNodeId, toNodeId) {
   }
   return false;
 }
-
 function tryConnect(from, to) {
   if (from.nodeId === to.nodeId) return false;
-  // Проверка: порт уже занят? (один вход — один источник)
   for (const c of state.conns.values()) {
     if (c.to.nodeId === to.nodeId && c.to.port === to.port) return false;
   }
   if (wouldCreateCycle(from.nodeId, to.nodeId)) return false;
   const id = uid('c');
   state.conns.set(id, { id, from, to });
-  return true;
+  return id;
 }
 
 // ================= Расчёт мощности =================
-/*
- * Алгоритм:
- *   1. Строим edgesIn / edgesOut.
- *   2. powerOf(nodeId, allowBackup) — рекурсивно определяет, запитан ли узел,
- *      какая связь на входе выбрана (активный фидер по приоритету АВР),
- *      и учитывает резервные генераторы только при allowBackup=true.
- *   3. Для каждого потребителя идём вверх по активным активным фидерам
- *      и добавляем его demandKw ко всем промежуточным щитам и конечному источнику.
- */
 function recalc() {
   const edgesIn = new Map();
   for (const n of state.nodes.values()) edgesIn.set(n.id, []);
   for (const c of state.conns.values()) edgesIn.get(c.to.nodeId).push(c);
 
   const cache = new Map();
-  function powerOf(nid, allowBackup) {
+  function activeInputs(nid, allowBackup) {
     const key = nid + '|' + (allowBackup ? 1 : 0);
     if (cache.has(key)) return cache.get(key);
-    // Временная метка для предотвращения бесконечной рекурсии (на случай ошибки валидации)
-    cache.set(key, { powered: false, activeIn: null });
+    cache.set(key, null); // placeholder на случай re-entry
 
     const n = state.nodes.get(nid);
-    let res;
+    let res = null;
 
     if (n.type === 'source') {
-      res = { powered: !!n.on, activeIn: null };
-
+      res = effectiveOn(n) ? [] : null;
     } else if (n.type === 'generator') {
-      if (!n.on) res = { powered: false, activeIn: null };
-      else if (n.backupMode && !allowBackup) res = { powered: false, activeIn: null };
-      else res = { powered: true, activeIn: null };
-
+      if (!effectiveOn(n)) res = null;
+      else if (n.backupMode && !allowBackup) res = null;
+      else res = [];
     } else {
-      // panel или consumer: нужен хотя бы один запитанный вход
       const ins = edgesIn.get(nid) || [];
-      // отсортировать по приоритету (для consumer — приоритет не важен, один вход)
-      const ranked = ins.map(c => ({
-        conn: c,
-        prio: (n.type === 'panel' && n.priorities)
-                ? (n.priorities[c.to.port] ?? 99)
-                : 1,
-      })).sort((a, b) => a.prio - b.prio);
-
-      let chosen = null;
-      // Шаг 1: ищем фидер, запитанный БЕЗ резервного генератора
-      for (const r of ranked) {
-        const up = powerOf(r.conn.from.nodeId, false);
-        if (up.powered) { chosen = r.conn; break; }
-      }
-      // Шаг 2: если не нашли и разрешён резерв — пробуем с резервом
-      if (!chosen && allowBackup) {
-        for (const r of ranked) {
-          const up = powerOf(r.conn.from.nodeId, true);
-          if (up.powered) { chosen = r.conn; break; }
+      if (ins.length > 0) {
+        const groups = new Map();
+        for (const c of ins) {
+          const prio = (n.priorities?.[c.to.port]) ?? 1;
+          if (!groups.has(prio)) groups.set(prio, []);
+          groups.get(prio).push(c);
+        }
+        const sorted = [...groups.keys()].sort((a, b) => a - b);
+        // Фаза 1: без резерва
+        for (const p of sorted) {
+          const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+          if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+        }
+        // Фаза 2: с резервом
+        if (res === null && allowBackup) {
+          for (const p of sorted) {
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
+            if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+          }
         }
       }
-      res = { powered: !!chosen, activeIn: chosen };
     }
 
     cache.set(key, res);
     return res;
   }
 
-  // Сброс служебных полей
+  // Сброс расчётных полей
   for (const n of state.nodes.values()) {
-    n._loadKw = 0;
-    n._powered = false;
-    n._overload = false;
+    n._loadKw = 0; n._powered = false; n._overload = false;
   }
-  for (const c of state.conns.values()) c._active = false;
+  for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; }
 
-  // Распространение нагрузки от каждого потребителя вверх
+  // Распространение нагрузки от потребителей вверх
+  function walkUp(nid, kw) {
+    let depth = 0;
+    const visit = (id, flow) => {
+      if (depth++ > 2000) return;
+      const ai = activeInputs(id, true);
+      if (!ai || ai.length === 0) return;
+      for (const { conn, share } of ai) {
+        const upKw = flow * share;
+        conn._active = true;
+        conn._loadKw += upKw;
+        const up = state.nodes.get(conn.from.nodeId);
+        up._loadKw += upKw;
+        up._powered = true;
+        visit(up.id, upKw);
+      }
+    };
+    visit(nid, kw);
+  }
+
   for (const n of state.nodes.values()) {
     if (n.type !== 'consumer') continue;
-    const r = powerOf(n.id, true);
-    n._powered = r.powered;
-    if (!r.powered) continue;
-
-    const demand = Number(n.demandKw) || 0;
-    n._loadKw = demand;
-
-    // идём вверх
-    let curId = n.id;
-    let guard = 0;
-    while (guard++ < 256) {
-      const pr = powerOf(curId, true);
-      if (!pr.activeIn) break;
-      pr.activeIn._active = true;
-      const up = state.nodes.get(pr.activeIn.from.nodeId);
-      up._loadKw = (up._loadKw || 0) + demand;
-      up._powered = true;
-      if (up.type === 'source' || up.type === 'generator') break;
-      curId = up.id;
-    }
+    const ai = activeInputs(n.id, true);
+    n._powered = ai !== null;
+    if (!n._powered) continue;
+    const d = Number(n.demandKw) || 0;
+    n._loadKw = d;
+    walkUp(n.id, d);
   }
 
-  // Пометка источников/щитов, которые запитаны, но без нагрузки
+  // Статусы источников
   for (const n of state.nodes.values()) {
     if (n.type === 'source' || n.type === 'generator') {
-      const pr = powerOf(n.id, true);
-      n._powered = pr.powered;
+      const ai = activeInputs(n.id, true);
+      n._powered = ai !== null;
       if (n._loadKw > Number(n.capacityKw || 0)) n._overload = true;
-    }
-    if (n.type === 'panel') {
-      const pr = powerOf(n.id, true);
-      if (!n._powered) n._powered = pr.powered;
+    } else if (n.type === 'panel') {
+      if (!n._powered) n._powered = activeInputs(n.id, true) !== null;
     }
   }
 }
@@ -246,10 +296,11 @@ function updateViewBox() {
   const vw = W / state.view.zoom;
   const vh = H / state.view.zoom;
   svg.setAttribute('viewBox', `${state.view.x} ${state.view.y} ${vw} ${vh}`);
-  document.getElementById('bg').setAttribute('x', state.view.x);
-  document.getElementById('bg').setAttribute('y', state.view.y);
-  document.getElementById('bg').setAttribute('width', vw);
-  document.getElementById('bg').setAttribute('height', vh);
+  const bg = document.getElementById('bg');
+  bg.setAttribute('x', state.view.x);
+  bg.setAttribute('y', state.view.y);
+  bg.setAttribute('width', vw);
+  bg.setAttribute('height', vh);
 }
 
 function el(tag, attrs = {}, children = []) {
@@ -260,93 +311,94 @@ function el(tag, attrs = {}, children = []) {
   for (const c of children) if (c) e.appendChild(c);
   return e;
 }
+function text(x, y, str, cls) {
+  const t = el('text', { x, y, class: cls });
+  t.textContent = str;
+  return t;
+}
+function bezier(a, b) {
+  const dy = Math.max(40, Math.abs(b.y - a.y) / 2);
+  return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`;
+}
+function fmt(v) {
+  const n = Number(v) || 0;
+  return (Math.round(n * 10) / 10).toString();
+}
 
 function render() {
   recalc();
   renderConns();
   renderNodes();
   renderStats();
+  renderModes();
 }
 
 function renderNodes() {
   while (layerNodes.firstChild) layerNodes.removeChild(layerNodes.firstChild);
 
   for (const n of state.nodes.values()) {
-    const g = el('g', {
-      class: 'node ' + n.type +
-             (state.selectedId === n.id ? ' selected' : '') +
-             (n._overload ? ' overload' : '') +
-             (!n._powered && (n.type === 'panel' || n.type === 'consumer') ? ' unpowered' : ''),
-      transform: `translate(${n.x},${n.y})`,
-    });
+    const w = nodeWidth(n);
+    const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    const cls = [
+      'node', n.type,
+      selected ? 'selected' : '',
+      n._overload ? 'overload' : '',
+      (!n._powered && (n.type === 'panel' || n.type === 'consumer')) ? 'unpowered' : '',
+    ].filter(Boolean).join(' ');
+
+    const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
     g.dataset.nodeId = n.id;
 
-    // Тело
-    g.appendChild(el('rect', {
-      class: 'node-body',
-      x: 0, y: 0, width: NODE_W, height: NODE_H,
-    }));
+    g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
 
     // Заголовок
     g.appendChild(text(12, 22, n.name || '(без имени)', 'node-title'));
 
     // Подпись типа
-    const subText = {
-      source: 'Источник',
+    const subTxt = {
+      source:    'Источник',
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
-      panel: `Щит · вх ${n.inputs} · вых ${n.outputs}`,
-      consumer: 'Потребитель',
+      panel:     `Щит · вх ${n.inputs} · вых ${n.outputs}`,
+      consumer:  'Потребитель' + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
     }[n.type];
-    g.appendChild(text(12, 38, subText, 'node-sub'));
+    g.appendChild(text(12, 38, subTxt, 'node-sub'));
 
-    // Данные мощности
-    let loadLine = '';
-    let loadCls = 'node-load';
+    // Нагрузка
+    let loadLine = '', loadCls = 'node-load';
     if (n.type === 'source' || n.type === 'generator') {
-      if (!n.on) { loadLine = 'Отключён'; loadCls += ' off'; }
+      if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
       else {
         loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} кВт`;
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'panel') {
-      if (!n._powered) { loadLine = 'Без питания'; loadCls += ' off'; }
-      else loadLine = `${fmt(n._loadKw)} кВт`;
+      loadLine = n._powered ? `${fmt(n._loadKw)} кВт` : 'Без питания';
+      if (!n._powered) loadCls += ' off';
     } else if (n.type === 'consumer') {
-      if (!n._powered) { loadLine = `${fmt(n.demandKw)} кВт · нет`; loadCls += ' off'; }
-      else loadLine = `${fmt(n.demandKw)} кВт`;
+      loadLine = n._powered ? `${fmt(n.demandKw)} кВт` : `${fmt(n.demandKw)} кВт · нет`;
+      if (!n._powered) loadCls += ' off';
     }
     g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
 
-    // Порты — входы (сверху)
+    // Порты — входы
     const inCount = nodeInputCount(n);
     for (let i = 0; i < inCount; i++) {
-      const gap = NODE_W / (inCount + 1);
-      const cx = gap * (i + 1);
-      const circ = el('circle', {
-        class: 'port in', cx, cy: 0, r: PORT_R,
-      });
-      circ.dataset.portKind = 'in';
-      circ.dataset.portIdx  = i;
-      circ.dataset.nodeId = n.id;
+      const cx = w / (inCount + 1) * (i + 1);
+      const circ = el('circle', { class: 'port in', cx, cy: 0, r: PORT_R });
+      circ.dataset.portKind = 'in'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
-      // Метка приоритета (если панель с >1 входами)
-      if (n.type === 'panel' && n.inputs > 1) {
+      // Метка приоритета
+      if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
-        g.appendChild(text(cx - 3, -10, String(prio), 'port-label'));
+        g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
       }
     }
-
-    // Порты — выходы (снизу)
+    // Порты — выходы
     const outCount = nodeOutputCount(n);
     for (let i = 0; i < outCount; i++) {
-      const gap = NODE_W / (outCount + 1);
-      const cx = gap * (i + 1);
-      const circ = el('circle', {
-        class: 'port out', cx, cy: NODE_H, r: PORT_R,
-      });
-      circ.dataset.portKind = 'out';
-      circ.dataset.portIdx  = i;
-      circ.dataset.nodeId = n.id;
+      const cx = w / (outCount + 1) * (i + 1);
+      const circ = el('circle', { class: 'port out', cx, cy: NODE_H, r: PORT_R });
+      circ.dataset.portKind = 'out'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
     }
 
@@ -354,40 +406,48 @@ function renderNodes() {
   }
 }
 
-function text(x, y, str, cls) {
-  const t = el('text', { x, y, class: cls });
-  t.textContent = str;
-  return t;
-}
-
 function renderConns() {
   while (layerConns.firstChild) layerConns.removeChild(layerConns.firstChild);
+
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     const toN   = state.nodes.get(c.to.nodeId);
     if (!fromN || !toN) continue;
     const a = portPos(fromN, 'out', c.from.port);
     const b = portPos(toN,   'in',  c.to.port);
+    const d = bezier(a, b);
+
+    const selected = state.selectedKind === 'conn' && state.selectedId === c.id;
+
+    // Невидимая «толстая» дорожка — упрощает попадание кликом
+    const hit = el('path', { class: 'conn-hit', d });
+    hit.dataset.connId = c.id;
+    layerConns.appendChild(hit);
+
+    // Видимая линия
     const path = el('path', {
-      class: 'conn' + (c._active ? ' active' : ' dead'),
-      d: bezier(a, b),
+      class: 'conn' + (c._active ? ' active' : ' dead') + (selected ? ' selected' : ''),
+      d,
     });
     path.dataset.connId = c.id;
     layerConns.appendChild(path);
+
+    // Подпись мощности на активных линиях
+    if (c._active && c._loadKw > 0) {
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const lbl = text(mid.x, mid.y - 4, `${fmt(c._loadKw)} кВт`, 'conn-label');
+      layerConns.appendChild(lbl);
+    }
+
+    // Рукоятка на «to»-конце выделенной связи
+    if (selected) {
+      const h = el('circle', { class: 'conn-handle', cx: b.x, cy: b.y, r: 7 });
+      h.dataset.reconnectId = c.id;
+      layerConns.appendChild(h);
+    }
   }
 }
 
-function bezier(a, b) {
-  const dy = Math.max(40, Math.abs(b.y - a.y) / 2);
-  return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`;
-}
-
-function fmt(v) {
-  const n = Number(v) || 0;
-  return (Math.round(n * 10) / 10).toString();
-}
-
-// ================= Статистика =================
 function renderStats() {
   let totalDemand = 0, totalCap = 0, totalDraw = 0;
   let unpoweredCount = 0, overloadCount = 0;
@@ -397,7 +457,7 @@ function renderStats() {
       if (!n._powered) unpoweredCount++;
     }
     if (n.type === 'source' || n.type === 'generator') {
-      if (n.on) totalCap += Number(n.capacityKw) || 0;
+      if (effectiveOn(n)) totalCap += Number(n.capacityKw) || 0;
       totalDraw += n._loadKw || 0;
       if (n._overload) overloadCount++;
     }
@@ -414,79 +474,164 @@ function renderStats() {
   statsEl.innerHTML = rows.join('');
 }
 
+function renderModes() {
+  const rows = [];
+  const list = [{ id: null, name: 'Нормальный' }, ...state.modes];
+  for (const m of list) {
+    const active = m.id === state.activeModeId;
+    const canDel = m.id !== null;
+    rows.push(
+      `<div class="mode-row${active ? ' active' : ''}" data-mid="${m.id ?? ''}">
+        <input type="radio" name="mode"${active ? ' checked' : ''}>
+        <input type="text" class="mode-name" value="${escAttr(m.name)}"${canDel ? '' : ' disabled'}>
+        <button class="mode-del" ${canDel ? '' : 'disabled'}>×</button>
+      </div>`
+    );
+  }
+  modesListEl.innerHTML = rows.join('');
+
+  modesListEl.querySelectorAll('.mode-row').forEach(row => {
+    const mid = row.dataset.mid || null;
+    row.querySelector('input[type=radio]').addEventListener('change', () => selectMode(mid));
+    row.addEventListener('click', e => {
+      if (e.target.closest('.mode-del') || e.target.classList.contains('mode-name')) return;
+      selectMode(mid);
+    });
+    const nameInput = row.querySelector('.mode-name');
+    if (!nameInput.disabled) {
+      nameInput.addEventListener('input', () => {
+        const m = state.modes.find(x => x.id === mid);
+        if (m) m.name = nameInput.value;
+      });
+    }
+    const del = row.querySelector('.mode-del');
+    if (!del.disabled) del.addEventListener('click', e => { e.stopPropagation(); deleteMode(mid); });
+  });
+}
+
 // ================= Инспектор =================
 function selectNode(id) {
-  state.selectedId = id;
+  state.selectedKind = 'node'; state.selectedId = id;
+  renderInspector();
+}
+function selectConn(id) {
+  state.selectedKind = 'conn'; state.selectedId = id;
   renderInspector();
 }
 
 function renderInspector() {
-  const id = state.selectedId;
-  if (!id || !state.nodes.has(id)) {
-    inspectorBody.innerHTML = '<div class="muted">Выберите элемент или перетащите новый из палитры.</div>';
+  if (!state.selectedKind) {
+    inspectorBody.innerHTML = '<div class="muted">Выберите элемент или связь, либо перетащите новый элемент из палитры.</div>';
     return;
   }
-  const n = state.nodes.get(id);
-  const h = [];
+  if (state.selectedKind === 'node') {
+    const n = state.nodes.get(state.selectedId);
+    if (!n) { inspectorBody.innerHTML = ''; return; }
+    renderInspectorNode(n);
+  } else {
+    const c = state.conns.get(state.selectedId);
+    if (!c) { inspectorBody.innerHTML = ''; return; }
+    renderInspectorConn(c);
+  }
+}
 
+function renderInspectorNode(n) {
+  const h = [];
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
   if (n.type === 'source') {
     h.push(field('Мощность, кВт', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
-    h.push(checkField('В работе', 'on', n.on));
+    h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
   } else if (n.type === 'generator') {
     h.push(field('Мощность, кВт', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
-    h.push(checkField('В работе', 'on', n.on));
+    h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
     h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
   } else if (n.type === 'panel') {
-    h.push(field('Входов', `<select data-prop="inputs"><option${n.inputs===1?' selected':''}>1</option><option${n.inputs===2?' selected':''}>2</option><option${n.inputs===3?' selected':''}>3</option></select>`));
-    h.push(field('Выходов', `<select data-prop="outputs"><option${n.outputs===1?' selected':''}>1</option><option${n.outputs===2?' selected':''}>2</option><option${n.outputs===3?' selected':''}>3</option></select>`));
-    if (n.inputs > 1) {
-      h.push('<div class="inspector-section"><h4>Приоритеты входов (АВР)</h4>');
-      h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">1 = основной, чем больше — тем ниже приоритет</div>');
-      for (let i = 0; i < n.inputs; i++) {
-        const v = n.priorities?.[i] ?? (i + 1);
-        h.push(field(`Вход ${i + 1}`, `<input type="number" min="1" max="9" step="1" data-prio="${i}" value="${v}">`));
-      }
-      h.push('</div>');
-    }
-    h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px">Нагрузка: <b>${fmt(n._loadKw)} кВт</b>${n._powered ? ' <span class="badge on">есть питание</span>' : ' <span class="badge off">без питания</span>'}</div></div>`);
+    h.push(field('Входов', `<input type="number" min="1" max="30" step="1" data-prop="inputs" value="${n.inputs}">`));
+    h.push(field('Выходов', `<input type="number" min="1" max="30" step="1" data-prop="outputs" value="${n.outputs}">`));
+    h.push(prioritySection(n));
+    h.push(statusBlock(n));
   } else if (n.type === 'consumer') {
     h.push(field('Потребление, кВт', `<input type="number" min="0" step="0.1" data-prop="demandKw" value="${n.demandKw}">`));
-    h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px">Статус: ${n._powered ? '<span class="badge on">запитан</span>' : '<span class="badge off">нет питания</span>'}</div></div>`);
+    h.push(field('Входов', `<input type="number" min="1" max="10" step="1" data-prop="inputs" value="${n.inputs}">`));
+    if (n.inputs > 1) h.push(prioritySection(n));
+    h.push(statusBlock(n));
+  }
+
+  if (state.activeModeId) {
+    const m = state.modes.find(x => x.id === state.activeModeId);
+    h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px">Изменения параметра «В работе» сохраняются в режиме <b>${escAttr(m?.name || '')}</b></div></div>`);
   }
 
   h.push('<button class="btn-delete" id="btn-del-node">Удалить элемент</button>');
   inspectorBody.innerHTML = h.join('');
 
-  // Подписки
+  // Подписка
   inspectorBody.querySelectorAll('[data-prop]').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const prop = inp.dataset.prop;
-      let v = inp.type === 'number' ? Number(inp.value) : inp.value;
-      if (inp.tagName === 'SELECT' && (prop === 'inputs' || prop === 'outputs')) v = Number(inp.value);
+    const prop = inp.dataset.prop;
+    const apply = () => {
+      let v;
       if (inp.type === 'checkbox') v = inp.checked;
-      n[prop] = v;
+      else if (inp.type === 'number') v = Number(inp.value);
+      else v = inp.value;
+      if (prop === 'on' && (n.type === 'source' || n.type === 'generator')) {
+        setEffectiveOn(n, v);
+      } else {
+        n[prop] = v;
+      }
       if (prop === 'inputs' || prop === 'outputs') clampPortsInvolvingNode(n);
       render();
-    });
-    if (inp.type === 'checkbox') {
-      inp.addEventListener('change', () => {
-        n[inp.dataset.prop] = inp.checked;
-        render();
-      });
-    }
+      if (prop === 'inputs' || prop === 'outputs') renderInspector(); // перерисовать поля приоритетов
+    };
+    inp.addEventListener('input', apply);
+    if (inp.type === 'checkbox') inp.addEventListener('change', apply);
   });
   inspectorBody.querySelectorAll('[data-prio]').forEach(inp => {
     inp.addEventListener('input', () => {
       const idx = Number(inp.dataset.prio);
-      if (!n.priorities) n.priorities = [1, 2, 3];
+      if (!n.priorities) n.priorities = [];
       n.priorities[idx] = Number(inp.value) || 1;
       render();
     });
   });
+
   const del = document.getElementById('btn-del-node');
   if (del) del.addEventListener('click', () => deleteNode(n.id));
+}
+
+function prioritySection(n) {
+  const ic = nodeInputCount(n);
+  if (ic < 1) return '';
+  const rows = [];
+  rows.push('<div class="inspector-section"><h4>Приоритеты входов</h4>');
+  rows.push('<div class="muted" style="font-size:11px;margin-bottom:8px">1 = высший. Равные значения — параллельная работа с разделением нагрузки.</div>');
+  for (let i = 0; i < ic; i++) {
+    const v = n.priorities?.[i] ?? (i + 1);
+    rows.push(field(`Вход ${i + 1}`, `<input type="number" min="1" max="99" step="1" data-prio="${i}" value="${v}">`));
+  }
+  rows.push('</div>');
+  return rows.join('');
+}
+function statusBlock(n) {
+  const parts = [];
+  if (n._powered) parts.push('<span class="badge on">есть питание</span>');
+  else parts.push('<span class="badge off">без питания</span>');
+  if (n.type === 'panel') parts.push(` нагрузка: <b>${fmt(n._loadKw)} кВт</b>`);
+  return `<div class="inspector-section"><div class="muted" style="font-size:11px">${parts.join(' ')}</div></div>`;
+}
+
+function renderInspectorConn(c) {
+  const fromN = state.nodes.get(c.from.nodeId);
+  const toN   = state.nodes.get(c.to.nodeId);
+  const h = [];
+  h.push('<div class="muted" style="font-size:12px;margin-bottom:8px">Связь</div>');
+  h.push(`<div class="field"><label>Откуда</label><div>${escAttr(fromN?.name || '?')} · выход ${c.from.port + 1}</div></div>`);
+  h.push(`<div class="field"><label>Куда</label><div>${escAttr(toN?.name || '?')} · вход ${c.to.port + 1}</div></div>`);
+  h.push(`<div class="field"><label>Нагрузка</label><div>${c._active ? fmt(c._loadKw) + ' кВт' : 'не активна'}</div></div>`);
+  h.push('<div class="muted" style="font-size:11px;margin-top:10px">Потяните оранжевую точку на конце линии, чтобы переключить связь на другой вход. Shift+клик — быстрое удаление.</div>');
+  h.push('<button class="btn-delete" id="btn-del-conn">Удалить связь</button>');
+  inspectorBody.innerHTML = h.join('');
+  document.getElementById('btn-del-conn').onclick = () => deleteConn(c.id);
 }
 
 function field(label, html) {
@@ -495,11 +640,12 @@ function field(label, html) {
 function checkField(label, prop, val) {
   return `<div class="field check"><input type="checkbox" data-prop="${prop}"${val ? ' checked' : ''}><label>${label}</label></div>`;
 }
-function escAttr(s) { return String(s ?? '').replace(/"/g, '&quot;'); }
+function checkFieldEff(label, n, prop, val) {
+  return `<div class="field check"><input type="checkbox" data-prop="${prop}"${val ? ' checked' : ''}><label>${label}</label></div>`;
+}
+function escAttr(s) { return String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
 
 // ================= Взаимодействие =================
-
-// --- Преобразование клиентских координат в SVG ---
 function clientToSvg(clientX, clientY) {
   const rect = svg.getBoundingClientRect();
   const x = state.view.x + (clientX - rect.left) / state.view.zoom;
@@ -507,7 +653,7 @@ function clientToSvg(clientX, clientY) {
   return { x, y };
 }
 
-// --- Палитра: drag & drop ---
+// Палитра: drag & drop
 document.querySelectorAll('.pal-item').forEach(item => {
   item.addEventListener('dragstart', e => {
     e.dataTransfer.setData('text/raschet-type', item.dataset.type);
@@ -523,34 +669,68 @@ svg.addEventListener('drop', e => {
   createNode(type, p.x, p.y);
 });
 
-// --- Клики / перетаскивание нод ---
+// Мышь
 svg.addEventListener('mousedown', e => {
+  // Рукоятка reconnection
+  const handleEl = e.target.closest('.conn-handle');
+  if (handleEl) {
+    e.stopPropagation();
+    const cid = handleEl.dataset.reconnectId;
+    const c = state.conns.get(cid);
+    if (!c) return;
+    const saved = { id: c.id, from: { ...c.from }, to: { ...c.to } };
+    state.conns.delete(cid);
+    state.pending = {
+      fromNodeId: saved.from.nodeId,
+      fromPort: saved.from.port,
+      restoreConn: saved,
+      mouseX: 0, mouseY: 0,
+    };
+    const p = clientToSvg(e.clientX, e.clientY);
+    state.pending.mouseX = p.x; state.pending.mouseY = p.y;
+    svg.classList.add('connecting');
+    render();
+    drawPending();
+    return;
+  }
+
+  // Порт — начало/конец связи
   const portEl = e.target.closest('.port');
   if (portEl) {
-    // начинаем/завершаем связь
     e.stopPropagation();
     const nodeId = portEl.dataset.nodeId;
     const kind = portEl.dataset.portKind;
     const idx  = Number(portEl.dataset.portIdx);
     if (kind === 'out') {
       state.pending = { fromNodeId: nodeId, fromPort: idx, mouseX: 0, mouseY: 0 };
-      svg.classList.add('connecting');
       const p = clientToSvg(e.clientX, e.clientY);
       state.pending.mouseX = p.x; state.pending.mouseY = p.y;
+      svg.classList.add('connecting');
       drawPending();
     } else if (state.pending && kind === 'in') {
-      const ok = tryConnect(
+      const cid = tryConnect(
         { nodeId: state.pending.fromNodeId, port: state.pending.fromPort },
         { nodeId, port: idx },
       );
       state.pending = null;
       svg.classList.remove('connecting');
       clearPending();
-      if (ok) render();
+      if (cid) { selectConn(cid); render(); }
     }
     return;
   }
 
+  // Связь
+  const connEl = e.target.closest('.conn-hit, .conn');
+  if (connEl && connEl.dataset.connId) {
+    const cid = connEl.dataset.connId;
+    if (e.shiftKey) { deleteConn(cid); return; }
+    selectConn(cid);
+    render();
+    return;
+  }
+
+  // Нода
   const nodeEl = e.target.closest('.node');
   if (nodeEl) {
     const id = nodeEl.dataset.nodeId;
@@ -562,16 +742,10 @@ svg.addEventListener('mousedown', e => {
     return;
   }
 
-  const connEl = e.target.closest('.conn');
-  if (connEl) {
-    if (e.shiftKey || e.button === 2) deleteConn(connEl.dataset.connId);
-    return;
-  }
-
-  // пустое место: пан
+  // Пустое место → пан
   state.drag = { pan: true, sx: e.clientX, sy: e.clientY, vx: state.view.x, vy: state.view.y };
   svg.classList.add('panning');
-  state.selectedId = null;
+  state.selectedKind = null; state.selectedId = null;
   renderInspector();
   render();
 });
@@ -592,30 +766,40 @@ window.addEventListener('mousemove', e => {
   }
   if (state.pending) {
     const p = clientToSvg(e.clientX, e.clientY);
-    state.pending.mouseX = p.x;
-    state.pending.mouseY = p.y;
+    state.pending.mouseX = p.x; state.pending.mouseY = p.y;
     drawPending();
   }
 });
 
 window.addEventListener('mouseup', () => {
-  if (state.drag) {
-    svg.classList.remove('panning');
-    state.drag = null;
+  if (state.drag) { svg.classList.remove('panning'); state.drag = null; }
+});
+
+// Отмена ведения связи
+svg.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (state.pending) cancelPending();
+});
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'Escape' && state.pending) cancelPending();
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (state.selectedKind === 'node' && state.selectedId) { deleteNode(state.selectedId); e.preventDefault(); }
+    else if (state.selectedKind === 'conn' && state.selectedId) { deleteConn(state.selectedId); e.preventDefault(); }
   }
 });
 
-// отмена связи по Escape / правому клику
-svg.addEventListener('contextmenu', e => {
-  e.preventDefault();
-  if (state.pending) { state.pending = null; clearPending(); svg.classList.remove('connecting'); }
-});
-window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    if (state.pending) { state.pending = null; clearPending(); svg.classList.remove('connecting'); }
+function cancelPending() {
+  if (!state.pending) return;
+  if (state.pending.restoreConn) {
+    const r = state.pending.restoreConn;
+    state.conns.set(r.id, { id: r.id, from: r.from, to: r.to });
   }
-  if (e.key === 'Delete' && state.selectedId) deleteNode(state.selectedId);
-});
+  state.pending = null;
+  clearPending();
+  svg.classList.remove('connecting');
+  render();
+}
 
 function drawPending() {
   clearPending();
@@ -635,13 +819,12 @@ function clearPending() {
   if (p) p.remove();
 }
 
-// --- Зум колесом ---
+// Зум колесом
 svg.addEventListener('wheel', e => {
   e.preventDefault();
   const before = clientToSvg(e.clientX, e.clientY);
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
   const newZoom = Math.max(0.2, Math.min(4, state.view.zoom * factor));
-  // Сохраняем точку под курсором
   const rect = svg.getBoundingClientRect();
   state.view.x = before.x - (e.clientX - rect.left) / newZoom;
   state.view.y = before.y - (e.clientY - rect.top)  / newZoom;
@@ -649,7 +832,7 @@ svg.addEventListener('wheel', e => {
   updateViewBox();
 }, { passive: false });
 
-// --- Панель инструментов ---
+// ================= Тулбар =================
 document.getElementById('btn-zoom-in').onclick  = () => { state.view.zoom = Math.min(4, state.view.zoom * 1.2); updateViewBox(); };
 document.getElementById('btn-zoom-out').onclick = () => { state.view.zoom = Math.max(0.2, state.view.zoom / 1.2); updateViewBox(); };
 document.getElementById('btn-zoom-reset').onclick = () => { state.view.zoom = 1; updateViewBox(); };
@@ -658,11 +841,13 @@ document.getElementById('btn-save').onclick  = () => { localStorage.setItem('ras
 document.getElementById('btn-load').onclick  = () => {
   const s = localStorage.getItem('raschet.scheme');
   if (!s) return flash('Нет сохранения');
-  try { deserialize(JSON.parse(s)); render(); renderInspector(); flash('Загружено'); } catch (err) { flash('Ошибка: ' + err.message); }
+  try { deserialize(JSON.parse(s)); render(); renderInspector(); flash('Загружено'); }
+  catch (err) { flash('Ошибка: ' + err.message); }
 };
 document.getElementById('btn-clear').onclick = () => {
   if (state.nodes.size && !confirm('Очистить схему?')) return;
-  state.nodes.clear(); state.conns.clear(); state.selectedId = null;
+  state.nodes.clear(); state.conns.clear(); state.modes = []; state.activeModeId = null;
+  state.selectedKind = null; state.selectedId = null;
   render(); renderInspector();
 };
 document.getElementById('btn-export').onclick = () => {
@@ -677,16 +862,21 @@ document.getElementById('file-input').addEventListener('change', e => {
   const f = e.target.files[0];
   if (!f) return;
   const r = new FileReader();
-  r.onload = () => { try { deserialize(JSON.parse(r.result)); render(); renderInspector(); } catch (err) { alert('Ошибка: ' + err.message); } };
+  r.onload = () => {
+    try { deserialize(JSON.parse(r.result)); render(); renderInspector(); }
+    catch (err) { alert('Ошибка: ' + err.message); }
+  };
   r.readAsText(f);
 });
+document.getElementById('btn-new-mode').onclick = () => createMode();
 
 function fitAll() {
   if (!state.nodes.size) return;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of state.nodes.values()) {
+    const w = nodeWidth(n);
     minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + NODE_W); maxY = Math.max(maxY, n.y + NODE_H);
+    maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + NODE_H);
   }
   const pad = 60;
   const w = maxX - minX + pad * 2;
@@ -698,13 +888,15 @@ function fitAll() {
   updateViewBox();
 }
 
-// ================= Сохранение / загрузка =================
+// ================= Сохранение =================
 function serialize() {
   return {
-    version: 1,
+    version: 2,
     nextId: _idSeq,
     nodes: Array.from(state.nodes.values()).map(stripRuntime),
     conns: Array.from(state.conns.values()).map(c => ({ id: c.id, from: c.from, to: c.to })),
+    modes: state.modes,
+    activeModeId: state.activeModeId,
     view: { ...state.view },
   };
 }
@@ -716,15 +908,17 @@ function stripRuntime(n) {
 function deserialize(data) {
   state.nodes.clear();
   state.conns.clear();
-  for (const n of data.nodes || []) state.nodes.set(n.id, n);
-  for (const c of data.conns || []) state.conns.set(c.id, c);
+  for (const n of (data.nodes || [])) state.nodes.set(n.id, n);
+  for (const c of (data.conns || [])) state.conns.set(c.id, c);
+  state.modes = data.modes || [];
+  state.activeModeId = data.activeModeId || null;
   _idSeq = Math.max(data.nextId || 1, 1);
   state.view = data.view || { x: 0, y: 0, zoom: 1 };
-  state.selectedId = null;
+  state.selectedKind = null; state.selectedId = null;
   updateViewBox();
 }
 
-// ================= Вспомогательное =================
+// ================= Сообщения =================
 function flash(msg) {
   const d = document.createElement('div');
   d.textContent = msg;
@@ -733,16 +927,16 @@ function flash(msg) {
   setTimeout(() => d.remove(), 1500);
 }
 
-// ================= Демо-пример =================
+// ================= Демо =================
 function buildDemo() {
-  const s1 = createNode('source',    260, 80); state.nodes.get(s1).name = 'Ввод 1 (ТП)';
-  const s2 = createNode('source',    480, 80); state.nodes.get(s2).name = 'Ввод 2 (резерв)';
-  const g1 = createNode('generator', 700, 80); state.nodes.get(g1).name = 'ДГУ';
-  const p1 = createNode('panel',     370, 260); state.nodes.get(p1).name = 'ЩС-1'; state.nodes.get(p1).inputs = 3;
-  const p2 = createNode('panel',     600, 420); state.nodes.get(p2).name = 'ЩС-2';
-  const c1 = createNode('consumer',  260, 460); state.nodes.get(c1).name = 'Сервер'; state.nodes.get(c1).demandKw = 8;
-  const c2 = createNode('consumer',  500, 600); state.nodes.get(c2).name = 'Кондиционер'; state.nodes.get(c2).demandKw = 20;
-  const c3 = createNode('consumer',  700, 600); state.nodes.get(c3).name = 'Освещение'; state.nodes.get(c3).demandKw = 5;
+  const s1 = createNode('source',    280, 100); const s1n = state.nodes.get(s1); s1n.name = 'Ввод 1 (ТП)';
+  const s2 = createNode('source',    520, 100); const s2n = state.nodes.get(s2); s2n.name = 'Ввод 2';
+  const g1 = createNode('generator', 760, 100); const g1n = state.nodes.get(g1); g1n.name = 'ДГУ';
+  const p1 = createNode('panel',     440, 300); const p1n = state.nodes.get(p1); p1n.name = 'ЩС-1'; p1n.inputs = 3; p1n.outputs = 2; p1n.priorities = [1, 2, 3];
+  const p2 = createNode('panel',     640, 480); const p2n = state.nodes.get(p2); p2n.name = 'ЩС-2'; p2n.inputs = 1; p2n.outputs = 2;
+  const c1 = createNode('consumer',  260, 500); const c1n = state.nodes.get(c1); c1n.name = 'Сервер'; c1n.demandKw = 8; c1n.inputs = 2; c1n.priorities = [1, 1];
+  const c2 = createNode('consumer',  540, 660); const c2n = state.nodes.get(c2); c2n.name = 'Кондиционер'; c2n.demandKw = 20; c2n.inputs = 1;
+  const c3 = createNode('consumer',  760, 660); const c3n = state.nodes.get(c3); c3n.name = 'Освещение';   c3n.demandKw = 5;  c3n.inputs = 1;
 
   tryConnect({ nodeId: s1, port: 0 }, { nodeId: p1, port: 0 });
   tryConnect({ nodeId: s2, port: 0 }, { nodeId: p1, port: 1 });
@@ -752,7 +946,11 @@ function buildDemo() {
   tryConnect({ nodeId: p2, port: 0 }, { nodeId: c2, port: 0 });
   tryConnect({ nodeId: p2, port: 1 }, { nodeId: c3, port: 0 });
 
-  state.selectedId = null;
+  // Пример режима — Ввод 1 сломан
+  state.modes.push({ id: uid('m'), name: 'Ввод 1 сломан', overrides: { [s1]: { on: false } } });
+  state.modes.push({ id: uid('m'), name: 'Оба ввода сломаны', overrides: { [s1]: { on: false }, [s2]: { on: false } } });
+
+  state.selectedKind = null; state.selectedId = null;
 }
 
 // ================= Инициализация =================

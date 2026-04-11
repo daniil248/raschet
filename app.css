@@ -61,6 +61,56 @@ button { font: inherit; cursor: pointer; }
 .hints { margin: 0; padding-left: 18px; font-size: 11px; color: #8a93a7; line-height: 1.6; }
 .hints li { margin-bottom: 4px; }
 
+/* Modes list */
+#modes-list { margin-bottom: 8px; }
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #2a3140;
+  border: 1px solid #353c4d;
+  border-radius: 5px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.mode-row.active { background: #34506b; border-color: #1976d2; }
+.mode-row input[type=radio] { margin: 0; cursor: pointer; accent-color: #1976d2; }
+.mode-row input.mode-name {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #e6eaf2;
+  font: inherit;
+  padding: 2px 4px;
+  min-width: 0;
+  border-radius: 3px;
+}
+.mode-row input.mode-name:focus { background: #1f2430; outline: 1px solid #4a5369; }
+.mode-row .mode-del {
+  background: transparent;
+  border: none;
+  color: #7d8597;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.mode-row .mode-del:hover { color: #ff7373; background: #3a2a30; }
+.mode-row .mode-del[disabled] { visibility: hidden; }
+.full-btn {
+  width: 100%;
+  padding: 7px;
+  background: #2a3140;
+  border: 1px dashed #4a5369;
+  color: #a9b2c5;
+  font-size: 12px;
+  border-radius: 5px;
+  margin-bottom: 4px;
+}
+.full-btn:hover { background: #323a4d; color: #fff; border-color: #6a7388; }
+
 /* ---------- Canvas (center) ---------- */
 #canvas-wrap {
   position: relative;
@@ -153,13 +203,41 @@ button { font: inherit; cursor: pointer; }
   marker-end: url(#arr);
   cursor: pointer;
 }
-.conn:hover { stroke: #c62828; }
+.conn:hover { stroke: #1976d2; }
 .conn.active {
   stroke: #1976d2;
   stroke-width: 2.5;
   marker-end: url(#arrActive);
 }
 .conn.dead { stroke: #d0d4db; stroke-dasharray: 4 4; }
+.conn.selected { stroke: #ef6c00 !important; stroke-width: 3.5; }
+
+.conn-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+}
+
+.conn-label {
+  font: 600 11px -apple-system, "Segoe UI", sans-serif;
+  fill: #1976d2;
+  pointer-events: none;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #fafbfc;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.conn-label.overload { fill: #c62828; }
+
+.conn-handle {
+  fill: #ef6c00;
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: grab;
+}
+.conn-handle:hover { fill: #ff9800; }
 
 .pending-line {
   fill: none;
