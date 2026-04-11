@@ -103,6 +103,31 @@ const K_TEMP = {
 // Поправка на количество цепей в группе (упрощённо tab B.52.17, методы B-F)
 const K_GROUP = { 1: 1.00, 2: 0.80, 3: 0.70, 4: 0.65, 5: 0.60, 6: 0.57, 7: 0.54, 8: 0.52, 9: 0.50, 10: 0.48, 12: 0.45, 16: 0.41, 20: 0.38 };
 
+// Описание типов каналов: тип → метод прокладки по IEC 60364-5-52 + базовое
+// расположение (bundling), которое можно переопределить.
+const CHANNEL_TYPES = {
+  conduit:     { label: 'Труба (на стене / в стене)', method: 'B1', bundlingDefault: 'touching' },
+  tray_perf:   { label: 'Перфорированный лоток',       method: 'E',  bundlingDefault: 'touching' },
+  tray_ladder: { label: 'Лестничный лоток',            method: 'F',  bundlingDefault: 'spaced'   },
+  tray_solid:  { label: 'Сплошной лоток / короб',      method: 'B2', bundlingDefault: 'touching' },
+  ground:      { label: 'В земле',                     method: 'D1', bundlingDefault: 'touching' },
+  wall:        { label: 'Открыто на стене',            method: 'C',  bundlingDefault: 'spaced'   },
+  air:         { label: 'Свободно в воздухе',          method: 'F',  bundlingDefault: 'spaced'   },
+};
+
+// Коэффициент расположения кабелей (IEC 60364-5-52, табл. B.52.17 — упрощённо).
+//  spaced  — расстояние ≥ диаметр кабеля: группировка не учитывается вовсе
+//  touching— плотно друг к другу: базовый K_group
+//  bundled — в жгуте: дополнительное понижение
+function kBundlingFactor(bundling) {
+  if (bundling === 'spaced') return 1.0;       // без группового ухудшения
+  if (bundling === 'bundled') return 0.85;     // ≈ 0.85 сверх обычного K_group (IEC табл. B.52.20)
+  return 1.0;                                  // touching — базовое, всё в K_group
+}
+function kBundlingIgnoresGrouping(bundling) {
+  return bundling === 'spaced';
+}
+
 function kTempLookup(t, insulation) {
   const tbl = K_TEMP[insulation || 'PVC'] || K_TEMP.PVC;
   const keys = Object.keys(tbl).map(Number).sort((a, b) => a - b);
@@ -120,29 +145,32 @@ function kGroupLookup(n) {
 }
 
 // Подбор минимального стандартного сечения.
-// opts: { material, insulation, method, ambientC, grouping, conductorsInParallel }
+// opts: { material, insulation, method, ambientC, grouping, conductorsInParallel, bundling }
 function selectCableSize(I, opts) {
   const o = opts || {};
   const material = o.material || GLOBAL.defaultMaterial;
   const insulation = o.insulation || GLOBAL.defaultInsulation;
   const method = o.method || GLOBAL.defaultInstallMethod;
   const ambient = Number(o.ambientC) || GLOBAL.defaultAmbient;
-  const grouping = Number(o.grouping) || GLOBAL.defaultGrouping;
+  const bundling = o.bundling || 'touching';
+  // spaced-укладка — группировка не применяется
+  const grouping = kBundlingIgnoresGrouping(bundling)
+    ? 1
+    : (Number(o.grouping) || GLOBAL.defaultGrouping);
   const parallel = Math.max(1, Number(o.conductorsInParallel) || 1);
 
   const table = cableTable(material, insulation, method);
   const kT = kTempLookup(ambient, insulation);
-  const kG = kGroupLookup(grouping);
+  const kG = kGroupLookup(grouping) * kBundlingFactor(bundling);
   const k = kT * kG;
 
-  // Каждая параллельная ветвь несёт I/parallel
   const Iper = I / parallel;
   for (const [s, iRef] of table) {
     const iDerated = iRef * k;
     if (iDerated >= Iper) {
       return {
         s, iAllowed: iRef, iDerated, kT, kG,
-        material, insulation, method, parallel,
+        material, insulation, method, bundling, parallel,
         totalCapacity: iDerated * parallel,
       };
     }
@@ -150,7 +178,7 @@ function selectCableSize(I, opts) {
   const last = table[table.length - 1];
   return {
     s: last[0], iAllowed: last[1], iDerated: last[1] * k, kT, kG,
-    material, insulation, method, parallel,
+    material, insulation, method, bundling, parallel,
     totalCapacity: last[1] * k * parallel,
     overflow: true,
   };
@@ -218,19 +246,22 @@ const DEFAULTS = {
   }),
   // ------- Новые типы -------
   channel:   () => ({
-    // Кабельный канал / трасса — узел-«труба». Может содержать несколько линий
-    // разных потребителей. Все линии, проходящие через один канал, считаются
-    // одной группой для коэффициента группировки.
+    // Кабельный канал / трасса — определяет УСЛОВИЯ ПРОКЛАДКИ для любых
+    // линий, которые через него проходят. Параметры кабелей (материал,
+    // изоляция, сечение) задаются в самих линиях, канал только диктует:
+    //   - тип трассы (труба / лоток / земля / воздух / ...)
+    //   - температуру среды
+    //   - расположение кабелей (в пучке, плотно, с зазором)
     name: 'Кабельный канал',
-    material: 'Cu',
-    insulation: 'PVC',
-    method: 'B1',
+    channelType: 'conduit',   // conduit | tray_perf | tray_ladder | tray_solid | ground | wall | air
     ambientC: 30,
-    // Длина канала (для будущего расчёта падения напряжения), м
     lengthM: 10,
-    // Способность «проходить через себя» — канал не меняет направление, это 1 вход + 1 выход
-    inputs: 1,
-    outputs: 1,
+    // bundling: способ взаимного расположения кабелей в канале:
+    //   touching — плотно друг к другу (базовый K_group)
+    //   spaced   — с зазором ≥ 1 диаметр (коэффициент не применяется)
+    //   bundled  — в пучке (жёсткий коэффициент)
+    bundling: 'touching',
+    inputs: 1, outputs: 1,
   }),
   zone:      () => ({
     // Зона / помещение — контейнер для группировки узлов. Не участвует
@@ -998,74 +1029,80 @@ function recalc() {
       : 0;
     c._maxA = maxCurrent;
 
-    // === Параметры прокладки: худший случай из всех каналов на пути связи ===
-    // Если каналы не назначены — используем параметры самой связи (как раньше).
+    // === Параметры прокладки ===
+    // Материал и изоляция — только из самой связи (канал их НЕ переопределяет).
+    // Метод, температура, bundling — берутся из канала(ов) по пути; если каналов
+    // нет, используются значения по умолчанию в самой связи.
     const channelIds = Array.isArray(c.channelIds) ? c.channelIds : [];
-    let material = c.material || GLOBAL.defaultMaterial;
-    let insulation = c.insulation || GLOBAL.defaultInsulation;
+    const material = c.material || GLOBAL.defaultMaterial;
+    const insulation = c.insulation || GLOBAL.defaultInsulation;
+
     let method = c.installMethod || GLOBAL.defaultInstallMethod;
     let ambient = Number(c.ambientC) || GLOBAL.defaultAmbient;
+    let bundling = c.bundling || 'touching';
     let grouping = Number(c.grouping) || GLOBAL.defaultGrouping;
 
-    // Числовые ранги для сравнения методов прокладки — чем больше ранг, тем «хуже»
-    // (меньший длительно-допустимый ток при равном сечении)
+    // Ранг «суровости» метода: чем выше, тем меньше допустимый ток
     const methodRank = { F: 0, E: 1, C: 2, B1: 3, B2: 3, D1: 4 };
+    const bundlingRank = { spaced: 0, touching: 1, bundled: 2 };
 
     if (channelIds.length) {
-      // Берём первый канал как базу и усугубляем параметры каждым следующим
       let worstMethod = null;
       let worstAmbient = 0;
+      let worstBundling = null;
       let maxGroup = 0;
       let hasChannel = false;
       for (const chId of channelIds) {
         const ch = state.nodes.get(chId);
         if (!ch || ch.type !== 'channel') continue;
         hasChannel = true;
-        const chAmb = Number(ch.ambientC) || 30;
-        if (chAmb > worstAmbient) worstAmbient = chAmb;
-        const chMethod = ch.method || 'B1';
+
+        // Из канала берём method (по его типу), ambient, bundling
+        const chType = CHANNEL_TYPES[ch.channelType] || CHANNEL_TYPES.conduit;
+        const chMethod = chType.method;
         if (worstMethod === null || (methodRank[chMethod] || 0) > (methodRank[worstMethod] || 0)) {
           worstMethod = chMethod;
         }
+        const chAmb = Number(ch.ambientC) || 30;
+        if (chAmb > worstAmbient) worstAmbient = chAmb;
+
+        const chBundling = ch.bundling || chType.bundlingDefault || 'touching';
+        if (worstBundling === null || (bundlingRank[chBundling] || 0) > (bundlingRank[worstBundling] || 0)) {
+          worstBundling = chBundling;
+        }
+
+        // Группировка — сколько ДРУГИХ цепей идёт через этот же канал
         const grpInCh = channelCircuits.get(chId) || 1;
         if (grpInCh > maxGroup) maxGroup = grpInCh;
-        // Материал и изоляция берутся с последнего канала по пути (если разные —
-        // это ошибка монтажа, но усугубление в сторону «хуже» невозможно тривиально,
-        // поэтому используем значения последнего канала)
-        if (ch.material) material = ch.material;
-        if (ch.insulation) insulation = ch.insulation;
       }
       if (hasChannel) {
         method = worstMethod || method;
         ambient = Math.max(ambient, worstAmbient);
+        bundling = worstBundling || bundling;
         grouping = Math.max(grouping, maxGroup);
       }
     }
 
-    // Количество параллельных проводников:
-    // Для группы потребителей (N штук) — каждый требует своей отдельной кабельной
-    // пары. Одна линия к группе из 10 потребителей = 10 параллельных цепей в одном
-    // канале. Это используется и как parallel (для уменьшения тока на жилу),
-    // и как повышение группировки в канале (уже посчитано через channelCircuits —
-    // но если канал не назначен, учитываем группу через parallel).
+    // Количество параллельных проводников зависит ТОЛЬКО от downstream-нагрузки,
+    // а не от канала. Групповой потребитель (count > 1) требует count параллельных
+    // кабельных пар — это физика нагрузки, а не прокладки.
     let conductorsInParallel = 1;
     if (toN.type === 'consumer' && (Number(toN.count) || 1) > 1) {
       conductorsInParallel = Number(toN.count) || 1;
-      // Если канал не назначен, добавим эти цепи в группировку связи
-      if (channelIds.length === 0) grouping = Math.max(grouping, conductorsInParallel);
     }
 
     c._cableMaterial = material;
     c._cableInsulation = insulation;
     c._cableMethod = method;
     c._cableAmbient = ambient;
+    c._cableBundling = bundling;
     c._cableGrouping = grouping;
     c._cableParallel = conductorsInParallel;
     c._channelChain = channelIds.slice();
 
     if (maxCurrent > 0) {
       const sel = selectCableSize(maxCurrent, {
-        material, insulation, method, ambientC: ambient, grouping,
+        material, insulation, method, ambientC: ambient, grouping, bundling,
         conductorsInParallel,
       });
       c._cableSize = sel.s;
@@ -1416,7 +1453,9 @@ function renderConns() {
     layerConns.appendChild(path);
 
     // Подпись на активных линиях: мощность + ток + сечение.
+    // Для группы: сперва ток одной жилы, потом суммарный: «7.8 A × 10 = 78.4 A»
     if (c._state === 'active' && c._loadKw > 0) {
+      const parallel = Math.max(1, c._cableParallel || 1);
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       let power;
       if (toN.type === 'consumer' && (toN.count || 1) > 1) {
@@ -1424,7 +1463,15 @@ function renderConns() {
       } else {
         power = `${fmt(c._loadKw)} kW`;
       }
-      const amps = c._loadA > 0 ? ` · ${fmt(c._loadA)} A` : '';
+      let amps = '';
+      if (c._loadA > 0) {
+        if (parallel > 1) {
+          const perLine = c._loadA / parallel;
+          amps = ` · ${fmt(perLine)} A × ${parallel} = ${fmt(c._loadA)} A`;
+        } else {
+          amps = ` · ${fmt(c._loadA)} A`;
+        }
+      }
       const size = c._cableSize ? ` · ${c._cableSize} мм²` : '';
       const labelText = power + amps + size;
       const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label' + (c._cableOverflow ? ' overload' : ''));
@@ -1589,38 +1636,42 @@ function renderInspectorNode(n) {
     wireInspectorInputs(n);
     return;
   }
-  // Channel — свои поля
+  // Channel — только тип и условия среды; материал/изоляция задаются в линиях
   if (n.type === 'channel') {
     h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
     h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
-    h.push(field('Материал жил',
-      `<select data-prop="material">
-        <option value="Cu"${(n.material || 'Cu') === 'Cu' ? ' selected' : ''}>Медь</option>
-        <option value="Al"${n.material === 'Al' ? ' selected' : ''}>Алюминий</option>
+
+    const ct = n.channelType || 'conduit';
+    const ctOpts = Object.keys(CHANNEL_TYPES).map(key => {
+      const sel = ct === key ? ' selected' : '';
+      return `<option value="${key}"${sel}>${escHtml(CHANNEL_TYPES[key].label)}</option>`;
+    }).join('');
+    h.push(field('Тип канала', `<select data-prop="channelType">${ctOpts}</select>`));
+
+    const bd = n.bundling || CHANNEL_TYPES[ct]?.bundlingDefault || 'touching';
+    h.push(field('Расположение кабелей',
+      `<select data-prop="bundling">
+        <option value="spaced"${bd === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
+        <option value="touching"${bd === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
+        <option value="bundled"${bd === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
       </select>`));
-    h.push(field('Изоляция',
-      `<select data-prop="insulation">
-        <option value="PVC"${(n.insulation || 'PVC') === 'PVC' ? ' selected' : ''}>ПВХ</option>
-        <option value="XLPE"${n.insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
-      </select>`));
-    const mth = n.method || 'B1';
-    h.push(field('Способ прокладки',
-      `<select data-prop="method">
-        <option value="B1"${mth === 'B1' ? ' selected' : ''}>B1 — в трубе на стене</option>
-        <option value="B2"${mth === 'B2' ? ' selected' : ''}>B2 — многожильный в трубе</option>
-        <option value="C"${mth === 'C' ? ' selected' : ''}>C — открыто на стене</option>
-        <option value="E"${mth === 'E' ? ' selected' : ''}>E — на лотке (многожильный)</option>
-        <option value="F"${mth === 'F' ? ' selected' : ''}>F — на лотке (одножильные)</option>
-        <option value="D1"${mth === 'D1' ? ' selected' : ''}>D1 — в земле</option>
-      </select>`));
+    h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">«С зазором» — группировка не учитывается. «Плотно» — базовый K_group. «В пучке» — дополнительное понижение 0.85.</div>');
+
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-prop="ambientC" value="${n.ambientC || 30}">`));
     h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
-    // Показать сколько линий идёт через этот канал
+
+    // Статистика использования канала
     let circuits = 0;
     for (const c of state.conns.values()) {
       if (Array.isArray(c.channelIds) && c.channelIds.includes(n.id)) circuits++;
     }
-    h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px">Цепей в канале: <b>${circuits}</b><br>Коэффициент группировки применяется ко всем кабелям, проходящим через канал.</div></div>`);
+    const typeInfo = CHANNEL_TYPES[ct] || CHANNEL_TYPES.conduit;
+    h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">` +
+      `Метод прокладки по IEC: <b>${typeInfo.method}</b><br>` +
+      `Цепей в канале: <b>${circuits}</b><br>` +
+      `<span style="font-size:10px">Канал задаёт только условия прокладки. Материал и изоляция кабелей задаются в каждой линии отдельно.</span>` +
+      `</div></div>`);
+
     h.push('<button class="btn-delete" id="btn-del-node">Удалить канал</button>');
     inspectorBody.innerHTML = h.join('');
     wireInspectorInputs(n);
@@ -3394,18 +3445,22 @@ function generateReport() {
   const activeCables = [...state.conns.values()].filter(c => c._state === 'active' && c._cableSize);
   if (activeCables.length) {
     lines.push('КАБЕЛЬНЫЕ ЛИНИИ (подбор по IEC 60364-5-52)');
-    lines.push('-'.repeat(84));
-    lines.push('Откуда       →  Куда                P, kW    I, A   Сечение   Метод   Iдоп');
+    lines.push('-'.repeat(96));
+    lines.push('Откуда       →  Куда                P, kW    Iцепи  ×N  Σ, A   Сечение   Метод   Iдоп');
     for (const c of activeCables) {
       const fromN = state.nodes.get(c.from.nodeId);
       const toN = state.nodes.get(c.to.nodeId);
-      const fromLbl = (fromN?.tag || '') + ' ' + (fromN?.name || '');
-      const toLbl = (toN?.tag || '') + ' ' + (toN?.name || '');
+      const fromLbl = (effectiveTag(fromN) || '') + ' ' + (fromN?.name || '');
+      const toLbl = (effectiveTag(toN) || '') + ' ' + (toN?.name || '');
       const warn = c._cableOverflow ? ' ⚠' : '';
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const perLine = (c._loadA || 0) / parallel;
       lines.push(
         fromLbl.slice(0, 12).padEnd(14) +
         toLbl.slice(0, 18).padEnd(20) +
         String(fmt(c._loadKw)).padStart(6) + '  ' +
+        String(fmt(perLine)).padStart(6) + ' ' +
+        (parallel > 1 ? ('×' + parallel).padEnd(3) : '   ') + ' ' +
         String(fmt(c._loadA || 0)).padStart(6) + '  ' +
         (c._cableSize + ' мм²').padStart(8) + '   ' +
         (c._cableMethod || '-').padEnd(6) + '  ' +
