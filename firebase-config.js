@@ -16,10 +16,10 @@
 // =============================================================================
 
 window.FIREBASE_CONFIG = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: '',
+  apiKey: 'AIzaSyD4xXvp_9PBhOaZkHRcy3tt25BD-5K1lXs',
+  authDomain: 'raschet-f1b2e.firebaseapp.com',
+  projectId: 'raschet-f1b2e',
+  storageBucket: 'raschet-f1b2e.firebasestorage.app',
+  messagingSenderId: '959530364083',
+  appId: '1:959530364083:web:7130353a425ad4877894c6',
 };
