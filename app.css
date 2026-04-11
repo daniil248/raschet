@@ -745,6 +745,61 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
   flex-direction: column;
   box-shadow: 0 10px 40px rgba(0,0,0,0.3);
 }
+.modal-box.modal-wide { max-width: 760px; }
+
+.field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  border: 1px solid #d6dae2;
+  border-radius: 5px;
+  background: #fafbfc;
+  color: #222;
+  resize: vertical;
+}
+.field textarea:focus { outline: none; border-color: #1976d2; background: #fff; }
+
+/* Presets list */
+.presets-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.preset-group { grid-column: 1 / -1; }
+.preset-group h4 {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7385;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.preset-card {
+  background: #fafbfc;
+  border: 1px solid #e0e3ea;
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color .12s, transform .12s;
+}
+.preset-card:hover { border-color: #1976d2; background: #fff; transform: translateY(-1px); }
+.preset-card .pc-title { font-size: 13px; font-weight: 600; color: #1f2430; }
+.preset-card .pc-desc { font-size: 11px; color: #8a93a7; margin-top: 2px; }
+
+/* Report */
+.report-body {
+  font: 12px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: #1f2430;
+  white-space: pre-wrap;
+  background: #fafbfc;
+  border: 1px solid #e0e3ea;
+  border-radius: 6px;
+  padding: 14px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
 .modal-head {
   display: flex;
   justify-content: space-between;

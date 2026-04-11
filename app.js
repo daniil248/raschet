@@ -55,6 +55,7 @@ const DEFAULTS = {
     count: 1,                // число потребителей в группе (1 = обычный потребитель)
     inputs: 2,
     priorities: [1, 2],
+    phase: '3ph',            // '3ph' | 'A' | 'B' | 'C' — для 3-фазной балансировки
   }),
 };
 
@@ -211,6 +212,25 @@ function setEffectiveOn(n, val) {
   } else {
     n.on = val;
   }
+}
+
+// Множитель нагрузки потребителя в текущем режиме (сценарий).
+// По умолчанию 1 (100%). Режим «ночь» может выставить 0.2 для освещения и т.д.
+function effectiveLoadFactor(n) {
+  if (!state.activeModeId) return 1;
+  const m = state.modes.find(x => x.id === state.activeModeId);
+  if (m && m.overrides && m.overrides[n.id] && typeof m.overrides[n.id].loadFactor === 'number') {
+    return m.overrides[n.id].loadFactor;
+  }
+  return 1;
+}
+function setEffectiveLoadFactor(n, val) {
+  if (!state.activeModeId) return;
+  const m = state.modes.find(x => x.id === state.activeModeId);
+  if (!m) return;
+  if (!m.overrides) m.overrides = {};
+  if (!m.overrides[n.id]) m.overrides[n.id] = {};
+  m.overrides[n.id].loadFactor = Number(val) || 0;
 }
 function createMode(name) {
   snapshot();
@@ -471,10 +491,11 @@ function recalc() {
     const ai = activeInputs(n.id, true);
     n._powered = ai !== null;
     if (!n._powered) continue;
-    // Для группы потребителей: суммарный demand = count × demandKw
+    // Для группы потребителей: суммарный demand = count × demandKw × loadFactor
     const per = Number(n.demandKw) || 0;
     const count = Math.max(1, Number(n.count) || 1);
-    const total = per * count;
+    const factor = effectiveLoadFactor(n);
+    const total = per * count * factor;
     n._loadKw = total;
     walkUp(n.id, total);
   }
@@ -871,8 +892,24 @@ function renderInspectorNode(n) {
       const total = (Number(n.demandKw) || 0) * (n.count | 0);
       h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Суммарно: <b>${n.count} × ${fmt(n.demandKw)} kW = ${fmt(total)} kW</b></div>`);
     }
+    const ph = n.phase || '3ph';
+    h.push(field('Фаза',
+      `<select data-prop="phase">
+        <option value="3ph"${ph === '3ph' ? ' selected' : ''}>3-фазная</option>
+        <option value="A"${ph === 'A' ? ' selected' : ''}>Фаза A</option>
+        <option value="B"${ph === 'B' ? ' selected' : ''}>Фаза B</option>
+        <option value="C"${ph === 'C' ? ' selected' : ''}>Фаза C</option>
+      </select>`));
     h.push(field('Входов', `<input type="number" min="1" max="10" step="1" data-prop="inputs" value="${n.inputs}">`));
     if (n.inputs > 1) h.push(prioritySection(n));
+    // В активном сценарии — поле множителя нагрузки
+    if (state.activeModeId) {
+      const lf = effectiveLoadFactor(n);
+      h.push('<div class="inspector-section"><h4>В текущем сценарии</h4>');
+      h.push(field('Множитель нагрузки (0–2)', `<input type="number" min="0" max="3" step="0.05" data-loadfactor value="${lf}">`));
+      h.push(`<div class="muted" style="font-size:11px;margin-top:-4px">1.0 = номинал, 0.5 = 50% мощности, 0 = выключено. Применяется только в этом сценарии.</div>`);
+      h.push('</div>');
+    }
     h.push(statusBlock(n));
   }
 
@@ -931,6 +968,14 @@ function renderInspectorNode(n) {
       snapshot('prio:' + n.id + ':' + idx);
       if (!n.priorities) n.priorities = [];
       n.priorities[idx] = Number(inp.value) || 1;
+      render();
+      notifyChange();
+    });
+  });
+  inspectorBody.querySelectorAll('[data-loadfactor]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      snapshot('lf:' + n.id);
+      setEffectiveLoadFactor(n, inp.value);
       render();
       notifyChange();
     });
@@ -1468,6 +1513,364 @@ updateViewBox();
 render();
 renderInspector();
 
+// ================= Библиотека пресетов =================
+function applyPreset(preset) {
+  if (!preset || !preset.type || !DEFAULTS[preset.type]) return null;
+  snapshot();
+  // Создаём узел в центре текущего видимого окна
+  const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
+  const cx = state.view.x + (W / 2) / state.view.zoom;
+  const cy = state.view.y + (H / 2) / state.view.zoom;
+  const id = uid();
+  const base = { id, type: preset.type, ...DEFAULTS[preset.type](), ...preset.params };
+  base.tag = nextFreeTag(preset.type);
+  // Нормализуем массив приоритетов под число входов
+  if (typeof base.inputs === 'number') {
+    if (!Array.isArray(base.priorities)) base.priorities = [];
+    while (base.priorities.length < base.inputs) base.priorities.push(base.priorities.length + 1);
+    base.priorities.length = base.inputs;
+  }
+  base.x = cx - nodeWidth(base) / 2;
+  base.y = cy - NODE_H / 2;
+  state.nodes.set(id, base);
+  selectNode(id);
+  render();
+  notifyChange();
+  return id;
+}
+
+// ================= 3-фазная балансировка =================
+// Для каждого щита считаем суммарную нагрузку по фазам A/B/C (3ф распределяется поровну)
+// и возвращаем максимальный дисбаланс в процентах.
+function get3PhaseBalance() {
+  // Сначала построим map «щит → {a, b, c}»
+  const byPanel = new Map();
+  // Функция «куда прикреплён потребитель» — пройдём вверх по активным связям до первого щита
+  function findPanelForConsumer(consumerId) {
+    const stack = [consumerId];
+    const seen = new Set();
+    while (stack.length) {
+      const cur = stack.pop();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      const n = state.nodes.get(cur);
+      if (!n) continue;
+      if (n.type === 'panel' && cur !== consumerId) return cur;
+      // идём вверх по любым связям (не только active — нас интересует структура)
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId === cur) stack.push(c.from.nodeId);
+      }
+    }
+    return null;
+  }
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'consumer') continue;
+    const per = Number(n.demandKw) || 0;
+    const count = Math.max(1, Number(n.count) || 1);
+    const total = per * count;
+    const panelId = findPanelForConsumer(n.id);
+    if (!panelId) continue;
+    if (!byPanel.has(panelId)) byPanel.set(panelId, { a: 0, b: 0, c: 0 });
+    const g = byPanel.get(panelId);
+    const ph = n.phase || '3ph';
+    if (ph === '3ph') { g.a += total / 3; g.b += total / 3; g.c += total / 3; }
+    else if (ph === 'A') g.a += total;
+    else if (ph === 'B') g.b += total;
+    else if (ph === 'C') g.c += total;
+  }
+  const out = [];
+  for (const [panelId, g] of byPanel) {
+    const panel = state.nodes.get(panelId);
+    const sum = g.a + g.b + g.c;
+    if (sum <= 0) continue;
+    const avg = sum / 3;
+    const max = Math.max(g.a, g.b, g.c);
+    const imbalance = ((max - avg) / avg) * 100;
+    out.push({
+      panelId,
+      tag: panel?.tag || '',
+      name: panel?.name || '',
+      a: g.a, b: g.b, c: g.c,
+      imbalance,
+      warning: imbalance > 15,
+    });
+  }
+  return out;
+}
+
+// ================= Генерация отчёта =================
+function generateReport() {
+  recalc();
+  const lines = [];
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const stamp = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+  lines.push('ОТЧЁТ ПО СХЕМЕ ЭЛЕКТРОСНАБЖЕНИЯ');
+  lines.push('Дата: ' + stamp);
+  if (state.activeModeId) {
+    const m = state.modes.find(x => x.id === state.activeModeId);
+    lines.push('Сценарий: ' + (m?.name || '-'));
+  } else {
+    lines.push('Сценарий: Нормальный режим');
+  }
+  lines.push('='.repeat(60));
+  lines.push('');
+
+  // 1. Источники
+  const sources = [...state.nodes.values()].filter(n => n.type === 'source' || n.type === 'generator');
+  if (sources.length) {
+    lines.push('ИСТОЧНИКИ ПИТАНИЯ');
+    lines.push('-'.repeat(60));
+    lines.push('Обозн.  Имя                        Тип         Ном., kW   Нагр., kW   %');
+    for (const s of sources) {
+      const on = effectiveOn(s);
+      const cap = Number(s.capacityKw) || 0;
+      const load = s._loadKw || 0;
+      const pct = cap > 0 ? (load / cap * 100).toFixed(0) : '-';
+      const type = s.type === 'source' ? 'Источник' : (s.backupMode ? 'Генер.рез.' : 'Генератор');
+      const status = !on ? 'ОТКЛ' : (s._overload ? 'ПЕРЕГР' : (load > 0 ? 'ОК' : 'ожид'));
+      lines.push(
+        (s.tag || '').padEnd(8) +
+        (s.name || '').padEnd(26) +
+        type.padEnd(12) +
+        String(fmt(cap)).padStart(8) + '   ' +
+        String(fmt(load)).padStart(9) + '   ' +
+        (pct + '%').padStart(5) + '  ' + status
+      );
+    }
+    lines.push('');
+  }
+
+  // 2. ИБП
+  const upses = [...state.nodes.values()].filter(n => n.type === 'ups');
+  if (upses.length) {
+    lines.push('ИСТОЧНИКИ БЕСПЕРЕБОЙНОГО ПИТАНИЯ (ИБП)');
+    lines.push('-'.repeat(60));
+    for (const u of upses) {
+      const cap = Number(u.capacityKw) || 0;
+      const load = u._loadKw || 0;
+      const eff = Number(u.efficiency) || 100;
+      const batt = (Number(u.batteryKwh) || 0) * (Number(u.batteryChargePct) || 0) / 100;
+      const aut = load > 0 ? batt / load * 60 : 0;
+      lines.push(`${(u.tag || '').padEnd(8)}${u.name}`);
+      lines.push(`   Выход:      ${fmt(load)} / ${fmt(cap)} kW  (КПД ${eff}%)`);
+      lines.push(`   Батарея:    ${fmt(batt)} kWh · ${u.batteryChargePct || 0}%`);
+      if (load > 0) {
+        lines.push(`   Автономия:  ${aut >= 60 ? (aut / 60).toFixed(1) + ' ч' : Math.round(aut) + ' мин'}`);
+      }
+      if (u._onBattery) lines.push('   Статус:     РАБОТА ОТ БАТАРЕИ');
+      else if (u._powered) lines.push('   Статус:     норма (от сети)');
+      else lines.push('   Статус:     БЕЗ ПИТАНИЯ');
+      lines.push('');
+    }
+  }
+
+  // 3. Щиты
+  const panels = [...state.nodes.values()].filter(n => n.type === 'panel');
+  if (panels.length) {
+    lines.push('РАСПРЕДЕЛИТЕЛЬНЫЕ ЩИТЫ');
+    lines.push('-'.repeat(60));
+    lines.push('Обозн.  Имя                        Вх/Вых  Нагр., kW  Режим');
+    for (const p of panels) {
+      const mode = p.switchMode === 'manual' ? 'РУЧН' : 'АВР';
+      lines.push(
+        (p.tag || '').padEnd(8) +
+        (p.name || '').padEnd(26) +
+        `${p.inputs}/${p.outputs}`.padEnd(8) +
+        String(fmt(p._loadKw || 0)).padStart(9) + '   ' +
+        mode
+      );
+    }
+    lines.push('');
+  }
+
+  // 4. Потребители
+  const consumers = [...state.nodes.values()].filter(n => n.type === 'consumer');
+  if (consumers.length) {
+    lines.push('ПОТРЕБИТЕЛИ');
+    lines.push('-'.repeat(60));
+    lines.push('Обозн.  Имя                        Фаза   kW ед.   Кол  Итого   Статус');
+    let total = 0;
+    for (const c of consumers) {
+      const per = Number(c.demandKw) || 0;
+      const cnt = Math.max(1, Number(c.count) || 1);
+      const factor = effectiveLoadFactor(c);
+      const sum = per * cnt * factor;
+      if (c._powered) total += sum;
+      lines.push(
+        (c.tag || '').padEnd(8) +
+        (c.name || '').padEnd(26) +
+        (c.phase || '3ph').padEnd(7) +
+        String(fmt(per)).padStart(7) + '  ' +
+        String(cnt).padStart(3) + '  ' +
+        String(fmt(sum)).padStart(7) + '  ' +
+        (c._powered ? 'ок' : 'БЕЗ ПИТ')
+      );
+    }
+    lines.push('-'.repeat(60));
+    lines.push('ИТОГО расчётная нагрузка: ' + fmt(total) + ' kW');
+    lines.push('');
+  }
+
+  // 5. 3-фазная балансировка
+  const balance = get3PhaseBalance();
+  if (balance.length) {
+    lines.push('ТРЁХФАЗНЫЙ БАЛАНС ПО ЩИТАМ');
+    lines.push('-'.repeat(60));
+    lines.push('Щит                    A, kW    B, kW    C, kW    Дисбаланс');
+    for (const b of balance) {
+      const warn = b.warning ? '  ⚠ превышен' : '';
+      lines.push(
+        ((b.tag || '') + ' ' + (b.name || '')).padEnd(22) +
+        String(fmt(b.a)).padStart(8) + ' ' +
+        String(fmt(b.b)).padStart(8) + ' ' +
+        String(fmt(b.c)).padStart(8) + '    ' +
+        b.imbalance.toFixed(1) + '%' + warn
+      );
+    }
+    lines.push('Норма: дисбаланс не более 15%.');
+    lines.push('');
+  }
+
+  // 6. Проверки
+  const issues = [];
+  for (const n of state.nodes.values()) {
+    if (n.type === 'consumer') {
+      const hasIn = [...state.conns.values()].some(c => c.to.nodeId === n.id);
+      if (!hasIn) issues.push(`  ⚠ Потребитель ${n.tag || n.name} не подключён`);
+      if (!n._powered) issues.push(`  ⚠ Потребитель ${n.tag || n.name} без питания`);
+    }
+    if (n.type === 'panel') {
+      const hasOut = [...state.conns.values()].some(c => c.from.nodeId === n.id);
+      if (!hasOut) issues.push(`  ⚠ Щит ${n.tag || n.name} не имеет отходящих линий`);
+    }
+    if (n.type === 'ups' && (Number(n.batteryKwh) || 0) <= 0) {
+      issues.push(`  ⚠ ИБП ${n.tag || n.name}: нулевая ёмкость батареи`);
+    }
+    if (n.type === 'generator' && !n.backupMode) {
+      issues.push(`  ℹ Генератор ${n.tag || n.name} работает как основной источник (не резерв)`);
+    }
+    if (n._overload) {
+      issues.push(`  ⚠ ${n.tag || n.name}: перегруз (${fmt(n._loadKw)}/${fmt(n.capacityKw)} kW)`);
+    }
+  }
+  if (issues.length) {
+    lines.push('ПРОВЕРКИ И ПРЕДУПРЕЖДЕНИЯ');
+    lines.push('-'.repeat(60));
+    for (const iss of issues) lines.push(iss);
+    lines.push('');
+  } else {
+    lines.push('ПРОВЕРКИ: замечаний нет.');
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+// ================= Импорт таблицы нагрузок =================
+// Поддерживает CSV с разделителями: табуляция, точка с запятой, запятая.
+// Колонки (первая строка — заголовок): name, kW, count, phase, panel.
+// Возвращает число добавленных потребителей.
+function importLoadsTable(text) {
+  if (!text || typeof text !== 'string') return 0;
+  const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (rawLines.length < 1) return 0;
+
+  // Автоопределение разделителя
+  const first = rawLines[0];
+  let sep = ',';
+  if (first.includes('\t')) sep = '\t';
+  else if (first.includes(';')) sep = ';';
+  else if (!first.includes(',')) sep = '\t';
+
+  const header = rawLines[0].split(sep).map(s => s.trim().toLowerCase());
+  const idxName = header.indexOf('name');
+  const idxKw = header.findIndex(h => h === 'kw' || h === 'квт' || h === 'power');
+  const idxCount = header.indexOf('count');
+  const idxPhase = header.indexOf('phase');
+  const idxPanel = header.indexOf('panel');
+  if (idxName < 0 || idxKw < 0) {
+    throw new Error('В заголовке нужны как минимум колонки name и kW');
+  }
+
+  snapshot();
+  _suppressSnapshot = true;
+  let added = 0;
+  try {
+    // Найдём подходящие щиты по имени/тегу
+    const panelByKey = new Map();
+    for (const n of state.nodes.values()) {
+      if (n.type !== 'panel') continue;
+      if (n.tag) panelByKey.set(n.tag.toLowerCase(), n);
+      if (n.name) panelByKey.set(n.name.toLowerCase(), n);
+    }
+
+    // Расположим новые потребители ниже существующих
+    let maxY = 0, minX = Infinity;
+    for (const n of state.nodes.values()) {
+      maxY = Math.max(maxY, n.y + NODE_H);
+      minX = Math.min(minX, n.x);
+    }
+    if (!isFinite(minX)) minX = 100;
+    const startY = maxY + 60;
+    const step = 190;
+
+    for (let i = 1; i < rawLines.length; i++) {
+      const parts = rawLines[i].split(sep).map(s => s.trim());
+      if (!parts[idxName]) continue;
+      const name = parts[idxName];
+      const kw = Number(String(parts[idxKw]).replace(',', '.')) || 0;
+      const cnt = idxCount >= 0 ? Math.max(1, Number(parts[idxCount]) || 1) : 1;
+      const phase = idxPhase >= 0 ? (parts[idxPhase] || '3ph') : '3ph';
+      const panelKey = idxPanel >= 0 ? String(parts[idxPanel] || '').toLowerCase() : '';
+
+      const id = uid();
+      const base = { id, type: 'consumer', ...DEFAULTS.consumer() };
+      base.name = name;
+      base.demandKw = kw;
+      base.count = cnt;
+      base.phase = (phase === '3ph' || phase === 'A' || phase === 'B' || phase === 'C') ? phase : '3ph';
+      base.inputs = 1;
+      base.priorities = [1];
+      base.tag = nextFreeTag('consumer');
+      base.x = minX + (added % 5) * step;
+      base.y = startY + Math.floor(added / 5) * (NODE_H + 40);
+      state.nodes.set(id, base);
+
+      // Автоподключение к щиту, если указано
+      if (panelKey && panelByKey.has(panelKey)) {
+        const panel = panelByKey.get(panelKey);
+        // Ищем свободный выходной порт
+        const usedPorts = new Set();
+        for (const c of state.conns.values()) {
+          if (c.from.nodeId === panel.id) usedPorts.add(c.from.port);
+        }
+        let freePort = 0;
+        const outCount = nodeOutputCount(panel);
+        for (let p = 0; p < outCount; p++) {
+          if (!usedPorts.has(p)) { freePort = p; break; }
+        }
+        if (usedPorts.size < outCount) {
+          const cid = uid('c');
+          state.conns.set(cid, {
+            id: cid,
+            from: { nodeId: panel.id, port: freePort },
+            to: { nodeId: id, port: 0 },
+          });
+        }
+      }
+      added++;
+    }
+  } finally {
+    _suppressSnapshot = false;
+  }
+  render();
+  renderInspector();
+  notifyChange();
+  return added;
+}
+
 // ================= Публичный API (для main.js) =================
 window.Raschet = {
   loadScheme(data) {
@@ -1539,6 +1942,11 @@ window.Raschet = {
   canRedo() { return _redoStack.length > 0; },
   clearHistory: clearUndoStack,
   onChange(cb) { _changeCb = cb; },
+
+  applyPreset,
+  generateReport,
+  importLoadsTable,
+  get3PhaseBalance,
 };
 
 })();

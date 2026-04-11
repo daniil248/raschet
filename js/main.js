@@ -63,6 +63,17 @@ const els = {
   modalPassword: $('modal-password'),
   pwdInput: $('pwd-input'),
   pwdSubmit: $('pwd-submit'),
+
+  btnOpenPresets: $('btn-open-presets'),
+  btnOpenReport: $('btn-open-report'),
+  btnOpenLoadsImport: $('btn-open-loads-import'),
+  presetsSearch: $('presets-search'),
+  presetsList: $('presets-list'),
+  reportBody: $('report-body'),
+  reportCopy: $('report-copy'),
+  reportDownload: $('report-download'),
+  loadsImportText: $('loads-import-text'),
+  loadsImportApply: $('loads-import-apply'),
 };
 
 const state = {
@@ -652,6 +663,82 @@ async function sendAccessRequest() {
   }
 }
 
+// ================= Библиотека пресетов =================
+function openPresetsModal() {
+  if (state.currentProject && state.currentProject._role === 'viewer') {
+    flash('Только просмотр', 'error'); return;
+  }
+  renderPresets('');
+  els.presetsSearch.value = '';
+  openModal('modal-presets');
+  setTimeout(() => els.presetsSearch.focus(), 50);
+}
+function renderPresets(query) {
+  if (!window.Presets) { els.presetsList.innerHTML = '<div class="muted">Библиотека не загружена</div>'; return; }
+  const q = (query || '').toLowerCase().trim();
+  const groups = window.Presets.byCategory();
+  const parts = [];
+  for (const [cat, list] of groups) {
+    const filtered = q
+      ? list.filter(p => (p.title + ' ' + p.description + ' ' + cat).toLowerCase().includes(q))
+      : list;
+    if (!filtered.length) continue;
+    parts.push(`<div class="preset-group"><h4>${escHtml(cat)}</h4></div>`);
+    for (const p of filtered) {
+      parts.push(
+        `<div class="preset-card" data-id="${escAttr(p.id)}">` +
+        `<div class="pc-title">${escHtml(p.title)}</div>` +
+        `<div class="pc-desc">${escHtml(p.description || '')}</div>` +
+        `</div>`
+      );
+    }
+  }
+  els.presetsList.innerHTML = parts.join('') || '<div class="muted" style="padding:20px;text-align:center">Ничего не найдено</div>';
+  els.presetsList.querySelectorAll('.preset-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const p = window.Presets.get(card.dataset.id);
+      if (!p) return;
+      window.Raschet.applyPreset(p);
+      closeModal('modal-presets');
+      flash(`Добавлено: ${p.title}`);
+    });
+  });
+}
+
+// ================= Отчёт =================
+function openReportModal() {
+  try {
+    const report = window.Raschet.generateReport();
+    els.reportBody.textContent = report;
+    openModal('modal-report');
+  } catch (e) {
+    console.error(e);
+    flash('Ошибка генерации отчёта', 'error');
+  }
+}
+
+// ================= Импорт таблицы нагрузок =================
+function openLoadsImportModal() {
+  if (state.currentProject && state.currentProject._role === 'viewer') {
+    flash('Только просмотр', 'error'); return;
+  }
+  openModal('modal-loads-import');
+  setTimeout(() => els.loadsImportText.focus(), 50);
+}
+function applyLoadsImport() {
+  const text = els.loadsImportText.value;
+  if (!text.trim()) { flash('Вставьте таблицу', 'error'); return; }
+  try {
+    const added = window.Raschet.importLoadsTable(text);
+    closeModal('modal-loads-import');
+    els.loadsImportText.value = '';
+    flash(`Добавлено потребителей: ${added}`);
+    requestAnimationFrame(() => window.Raschet.fit());
+  } catch (e) {
+    flash(e.message || 'Ошибка импорта', 'error');
+  }
+}
+
 // ================= Модалки =================
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
@@ -708,6 +795,27 @@ async function init() {
   // Password modal
   els.pwdSubmit.addEventListener('click', submitPassword);
   els.pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitPassword(); });
+
+  // P3 buttons
+  if (els.btnOpenPresets) els.btnOpenPresets.addEventListener('click', openPresetsModal);
+  if (els.btnOpenReport) els.btnOpenReport.addEventListener('click', openReportModal);
+  if (els.btnOpenLoadsImport) els.btnOpenLoadsImport.addEventListener('click', openLoadsImportModal);
+  if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
+  if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(els.reportBody.textContent); flash('Скопировано'); }
+    catch { flash('Не удалось скопировать', 'error'); }
+  });
+  if (els.reportDownload) els.reportDownload.addEventListener('click', () => {
+    const blob = new Blob([els.reportBody.textContent], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    a.download = `raschet-report_${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  if (els.loadsImportApply) els.loadsImportApply.addEventListener('click', applyLoadsImport);
 
   // Projects screen
   els.tabs.forEach(t => t.addEventListener('click', () => selectTab(t.dataset.tab)));
