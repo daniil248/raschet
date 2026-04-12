@@ -163,6 +163,17 @@ function recalc() {
     edgesIn.get(c.to.nodeId).push(c);
   }
 
+  // Проверка: жива ли конкретная связь? Учитывает _watchdogActivePorts
+  // на upstream-щите — если выходной порт не в activePorts, связь мертва.
+  function isConnLive(c) {
+    if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return false;
+    const fromN = state.nodes.get(c.from.nodeId);
+    if (!fromN) return false;
+    // Если upstream — щит с ограниченными выходами, проверяем порт
+    if (fromN._watchdogActivePorts && !fromN._watchdogActivePorts.has(c.from.port)) return false;
+    return activeInputs(c.from.nodeId) !== null;
+  }
+
   const cache = new Map();
   // Единый проход — если на входе есть напряжение (из ЛЮБОГО источника),
   // на выходе оно тоже есть. Нет двухпроходной логики allowBackup.
@@ -255,7 +266,7 @@ function recalc() {
           }
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
+            const live = groups.get(p).filter(c => isConnLive(c));
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
           }
         }
@@ -268,7 +279,7 @@ function recalc() {
     } else if (n.type === 'channel') {
       const ins = edgesIn.get(nid) || [];
       if (ins.length > 0) {
-        const live = ins.filter(c => activeInputs(c.from.nodeId) !== null);
+        const live = ins.filter(c => isConnLive(c));
         if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
       }
     } else if (n.type === 'zone') {
@@ -283,7 +294,7 @@ function recalc() {
           const idx = n.manualActiveInput | 0;
           const target = ins.find(c => c.to.port === idx);
           if (target) {
-            if (activeInputs(target.from.nodeId) !== null) {
+            if (isConnLive(target)) {
               res = [{ conn: target, share: 1 }];
             }
           }
@@ -291,7 +302,7 @@ function recalc() {
           // Параллельный режим
           const enabledMask = Array.isArray(n.parallelEnabled) ? n.parallelEnabled : [];
           const selected = ins.filter(c => enabledMask[c.to.port]);
-          const live = selected.filter(c => activeInputs(c.from.nodeId) !== null);
+          const live = selected.filter(c => isConnLive(c));
           if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
         } else if (n.type === 'panel' && n.switchMode === 'avr_paired') {
           // АВР с привязкой: каждый выход работает от своей группы входов.
@@ -306,7 +317,7 @@ function recalc() {
           }
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
+            const live = groups.get(p).filter(c => isConnLive(c));
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
           }
           // Определяем какие выходы активны — по outputInputMap
@@ -339,7 +350,7 @@ function recalc() {
           }
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
+            const live = groups.get(p).filter(c => isConnLive(c));
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
           }
           // Определяем какие выходы активны — по activateWhenDead
@@ -393,7 +404,7 @@ function recalc() {
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           // Фаза 1: без резерва
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
+            const live = groups.get(p).filter(c => isConnLive(c));
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
           }
         }
@@ -404,18 +415,26 @@ function recalc() {
     return res;
   }
 
-  // Пост-проход: для генераторов с triggerGroups — передать activateOutputs
-  // в downstream switchover-щит. Генератор → [panel] → activePorts.
+  // Сброс расчётных полей
+  for (const n of state.nodes.values()) {
+    n._loadKw = 0; n._powered = false; n._overload = false;
+    n._watchdogActivePorts = null;
+  }
+  for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; c._state = 'dead'; }
+
+  // Предварительный проход: вычислить activeInputs для ВСЕХ генераторов,
+  // чтобы установить _activeTriggerGroup и _watchdogActivePorts ДО walkUp.
+  for (const n of state.nodes.values()) {
+    if (n.type === 'generator') activeInputs(n.id);
+  }
+  // Установить _watchdogActivePorts на switchover-щитах
   for (const n of state.nodes.values()) {
     if (n.type !== 'generator' || !n._activeTriggerGroup) continue;
     const grp = n._activeTriggerGroup;
     const outputs = Array.isArray(grp.activateOutputs) ? grp.activateOutputs : [];
     if (!outputs.length) continue;
-    // Щит коммутации: явно указанный (switchPanelId) или первый downstream
     let targetPanel = null;
-    if (n.switchPanelId) {
-      targetPanel = state.nodes.get(n.switchPanelId);
-    }
+    if (n.switchPanelId) targetPanel = state.nodes.get(n.switchPanelId);
     if (!targetPanel) {
       for (const c of state.conns.values()) {
         if (c.from.nodeId !== n.id) continue;
@@ -427,20 +446,6 @@ function recalc() {
       targetPanel._watchdogActivePorts = new Set(outputs);
     }
   }
-
-  // Собираем ID щитов, чьи _watchdogActivePorts установлены генераторами
-  const genControlledPanels = new Set();
-  for (const n of state.nodes.values()) {
-    if (n.type === 'panel' && n._watchdogActivePorts) genControlledPanels.add(n.id);
-  }
-
-  // Сброс расчётных полей
-  for (const n of state.nodes.values()) {
-    n._loadKw = 0; n._powered = false; n._overload = false;
-    // _watchdogActivePorts: сбрасываем только если щит НЕ управляется генератором
-    if (!genControlledPanels.has(n.id)) n._watchdogActivePorts = null;
-  }
-  for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; c._state = 'dead'; }
 
   // Распространение нагрузки от потребителей вверх.
   // При прохождении границы ИБП поток вверх увеличивается на 1/КПД — это потери
