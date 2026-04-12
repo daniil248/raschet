@@ -251,9 +251,11 @@ function recalc() {
           } else {
             n._activeTriggerGroup = firedGroup;
             if (n._running || (Number(n.startDelaySec) || 0) === 0) {
-              res = (n.backupMode && !allowBackup) ? null : [];
+              // Генератор запущен — подаёт напряжение как полноценный источник.
+              // backupMode влияет только на условие запуска, не на выдачу энергии.
+              res = [];
             } else {
-              res = null;
+              res = null; // ждём startDelaySec
             }
           }
         } else if (n.backupMode && !allowBackup) {
