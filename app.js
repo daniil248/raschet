@@ -392,7 +392,7 @@ const TAG_PREFIX = {
 // Напряжение потребителя по фазе
 function nodeVoltage(n) {
   if (n.voltage) return Number(n.voltage);
-  return (n.phase === '3ph') ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
+  return ((n.phase || '3ph') === '3ph') ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
 }
 function isThreePhase(n) { return (n.phase || '3ph') === '3ph'; }
 
