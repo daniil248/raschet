@@ -521,9 +521,9 @@ function recalc() {
   // Вычисление _state для каждой связи — три цвета
   for (const c of state.conns.values()) {
     if (c._active) {
-      // Для watchdog-щита: выход i активен только если вход i в _watchdogActivePorts
+      // Для щита с _watchdogActivePorts: выход активен только если порт в activePorts
       const fromN = state.nodes.get(c.from.nodeId);
-      if (fromN && fromN.type === 'panel' && fromN.switchMode === 'watchdog' && fromN._watchdogActivePorts) {
+      if (fromN && fromN.type === 'panel' && fromN._watchdogActivePorts) {
         if (!fromN._watchdogActivePorts.has(c.from.port)) {
           c._active = false;
           c._state = 'dead';
