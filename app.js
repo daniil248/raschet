@@ -1903,12 +1903,13 @@ function renderConns() {
       // Ток макс. режима на ОДНУ параллельную ветвь
       const maxPerBranch = (c._maxA || 0) / parallel;
 
-      // Обозначение кабеля: жилы × [N×] сечение
+      // Обозначение кабеля: [N×](жилы×сечение)
+      // Если параллельных > 1: «3×(5×240 мм²)»
+      // Если одна линия:       «5×240 мм²»
       let cableSpec = '';
       if (c._cableSize) {
-        cableSpec = `${cores}×`;
-        if (parallel > 1) cableSpec += `${parallel}×`;
-        cableSpec += `${c._cableSize} мм²`;
+        const inner = `${cores}×${c._cableSize} мм²`;
+        cableSpec = parallel > 1 ? `${parallel}×(${inner})` : inner;
       }
 
       // Группа потребителей
