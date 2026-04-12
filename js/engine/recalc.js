@@ -459,14 +459,20 @@ function recalc() {
     const grp = n._activeTriggerGroup;
     const outputs = Array.isArray(grp.activateOutputs) ? grp.activateOutputs : [];
     if (!outputs.length) continue;
-    // Ищем первый downstream-щит (через выход генератора → щит)
-    for (const c of state.conns.values()) {
-      if (c.from.nodeId !== n.id) continue;
-      const panel = state.nodes.get(c.to.nodeId);
-      if (!panel || panel.type !== 'panel') continue;
-      // Устанавливаем activePorts на этом щите
-      panel._watchdogActivePorts = new Set(outputs);
-      break;
+    // Щит коммутации: явно указанный (switchPanelId) или первый downstream
+    let targetPanel = null;
+    if (n.switchPanelId) {
+      targetPanel = state.nodes.get(n.switchPanelId);
+    }
+    if (!targetPanel) {
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== n.id) continue;
+        const panel = state.nodes.get(c.to.nodeId);
+        if (panel && panel.type === 'panel') { targetPanel = panel; break; }
+      }
+    }
+    if (targetPanel) {
+      targetPanel._watchdogActivePorts = new Set(outputs);
     }
   }
 

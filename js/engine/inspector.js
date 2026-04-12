@@ -756,16 +756,38 @@ export function openAutomationModal(n) {
   h.push('<h4>Сценарии подмены</h4>');
   h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый сценарий: условие (какой ввод щита мёртв) → какие выходы коммутационного щита включить. Первый сработавший сценарий активируется.</div>');
 
-  // Собираем все щиты с их входами для выбора
-  const panels = [...state.nodes.values()].filter(nn => nn.type === 'panel' && nn.inputs > 0);
-  // Щит, подключённый к выходу генератора (downstream switchover panel)
-  let downstreamPanel = null;
-  for (const c of state.conns.values()) {
-    if (c.from.nodeId === n.id) {
-      const to = state.nodes.get(c.to.nodeId);
-      if (to && to.type === 'panel') { downstreamPanel = to; break; }
+  // Собираем все щиты с входами, сортируем по полному обозначению
+  const panels = [...state.nodes.values()]
+    .filter(nn => nn.type === 'panel' && nn.inputs > 0)
+    .sort((a, b) => (effectiveTag(a) || '').localeCompare(effectiveTag(b) || '', 'ru'));
+
+  // Все щиты с выходами — кандидаты на роль коммутационного щита
+  const switchPanels = [...state.nodes.values()]
+    .filter(nn => nn.type === 'panel' && nn.outputs > 0)
+    .sort((a, b) => (effectiveTag(a) || '').localeCompare(effectiveTag(b) || '', 'ru'));
+
+  // Текущий выбранный коммутационный щит
+  // По умолчанию — первый downstream-щит от генератора
+  let switchPanelId = n.switchPanelId || null;
+  if (!switchPanelId) {
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId === n.id) {
+        const to = state.nodes.get(c.to.nodeId);
+        if (to && to.type === 'panel') { switchPanelId = to.id; break; }
+      }
     }
   }
+
+  // Выбор щита коммутации
+  let switchOpts = '<option value="">— не выбран —</option>';
+  for (const sp of switchPanels) {
+    const sel = sp.id === switchPanelId ? ' selected' : '';
+    switchOpts += `<option value="${escAttr(sp.id)}"${sel}>${escHtml(effectiveTag(sp))} — ${escHtml(sp.name || '')} (${sp.outputs} вых.)</option>`;
+  }
+  h.push(field('Щит коммутации', `<select id="auto-switch-panel">${switchOpts}</select>`));
+  h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Щит, на котором ДГУ коммутирует автоматы. Обычно — нижестоящий щит, подключённый к выходу генератора.</div>');
+
+  const downstreamPanel = switchPanelId ? state.nodes.get(switchPanelId) : null;
 
   const groups = hasTriggerGroups ? n.triggerGroups : [];
   // Рендер каждой группы
@@ -774,12 +796,14 @@ export function openAutomationModal(n) {
     h.push(`<div class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:10px" data-grp-idx="${gi}">`);
     h.push(field(`Сценарий ${gi + 1} — имя`, `<input type="text" data-grp-name="${gi}" value="${escAttr(grp.name || '')}" placeholder="Подмена ДГУ${gi+1}">`));
 
-    // Условия: выбор ввода щита
+    // Условия: выбор ввода щита (отсортированные)
     h.push('<div style="font-size:12px;font-weight:600;margin:8px 0 4px">Условие запуска (ввод щита без питания):</div>');
     const watches = Array.isArray(grp.watchInputs) ? grp.watchInputs : [];
+
+    // Собираем и сортируем все вводы
+    const allInputs = [];
     for (const p of panels) {
       for (let port = 0; port < p.inputs; port++) {
-        // Найдём что подключено к этому вводу
         let feederTag = '—';
         for (const c of state.conns.values()) {
           if (c.to.nodeId === p.id && c.to.port === port) {
@@ -788,23 +812,30 @@ export function openAutomationModal(n) {
             break;
           }
         }
-        const isChecked = watches.some(w => w.panelId === p.id && w.inputPort === port);
-        const label = `${escHtml(effectiveTag(p))} вход ${port + 1} (от ${escHtml(feederTag)})`;
-        h.push(`<div class="field check" style="font-size:11px"><input type="checkbox" data-grp-watch="${gi}" data-panel="${escAttr(p.id)}" data-port="${port}"${isChecked ? ' checked' : ''}><label>${label}</label></div>`);
+        const panelTag = effectiveTag(p) || p.tag || '';
+        allInputs.push({ panelId: p.id, port, panelTag, feederTag });
       }
     }
+    // Сортировка: сначала по щиту, потом по номеру порта
+    allInputs.sort((a, b) => a.panelTag.localeCompare(b.panelTag, 'ru') || a.port - b.port);
+
+    for (const inp of allInputs) {
+      const isChecked = watches.some(w => w.panelId === inp.panelId && w.inputPort === inp.port);
+      const label = `${escHtml(inp.panelTag)} вход ${inp.port + 1} (от ${escHtml(inp.feederTag)})`;
+      h.push(`<div class="field check" style="font-size:11px"><input type="checkbox" data-grp-watch="${gi}" data-panel="${escAttr(inp.panelId)}" data-port="${inp.port}"${isChecked ? ' checked' : ''}><label>${label}</label></div>`);
+    }
+
     const gLogic = grp.logic || 'any';
     h.push(`<select data-grp-logic="${gi}" style="font-size:11px;margin:4px 0">
-      <option value="any"${gLogic === 'any' ? ' selected' : ''}>ANY</option>
-      <option value="all"${gLogic === 'all' ? ' selected' : ''}>ALL</option>
+      <option value="any"${gLogic === 'any' ? ' selected' : ''}>ANY — хотя бы один мёртв</option>
+      <option value="all"${gLogic === 'all' ? ' selected' : ''}>ALL — все мертвы</option>
     </select>`);
 
-    // Выходы switchover-щита для коммутации
+    // Выходы коммутационного щита (отсортированные по номеру)
     if (downstreamPanel) {
-      h.push(`<div style="font-size:12px;font-weight:600;margin:8px 0 4px">Выходы ${escHtml(effectiveTag(downstreamPanel))} для включения:</div>`);
+      h.push(`<div style="font-size:12px;font-weight:600;margin:8px 0 4px">Включить выходы ${escHtml(effectiveTag(downstreamPanel))}:</div>`);
       const activeOuts = new Set(Array.isArray(grp.activateOutputs) ? grp.activateOutputs : []);
       for (let oi = 0; oi < (downstreamPanel.outputs || 0); oi++) {
-        // Куда ведёт этот выход?
         let destTag = '—';
         for (const c of state.conns.values()) {
           if (c.from.nodeId === downstreamPanel.id && c.from.port === oi) {
@@ -816,6 +847,8 @@ export function openAutomationModal(n) {
         const checked = activeOuts.has(oi);
         h.push(`<div class="field check" style="font-size:11px"><input type="checkbox" data-grp-output="${gi}" data-out-idx="${oi}"${checked ? ' checked' : ''}><label>Выход ${oi + 1} → ${escHtml(destTag)}</label></div>`);
       }
+    } else {
+      h.push('<div class="muted" style="font-size:11px;color:#c62828">Выберите щит коммутации выше для настройки выходов.</div>');
     }
     h.push('</div>');
   }
@@ -839,6 +872,15 @@ export function openAutomationModal(n) {
         if (simple) simple.style.display = 'none';
         if (groups) groups.style.display = '';
       }
+    });
+  }
+
+  // Смена щита коммутации → перерисовать модалку
+  const switchPanelSelect = document.getElementById('auto-switch-panel');
+  if (switchPanelSelect) {
+    switchPanelSelect.addEventListener('change', () => {
+      n.switchPanelId = switchPanelSelect.value || null;
+      openAutomationModal(n);
     });
   }
 
@@ -874,6 +916,9 @@ export function openAutomationModal(n) {
         // Подменный режим
         n.triggerNodeIds = [];
         n.triggerNodeId = null;
+        // Сохраняем выбранный щит коммутации
+        const spSel = document.getElementById('auto-switch-panel');
+        n.switchPanelId = spSel ? (spSel.value || null) : null;
         const newGroups = [];
         const grpEls = body.querySelectorAll('[data-grp-idx]');
         grpEls.forEach(el => {
