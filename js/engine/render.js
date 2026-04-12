@@ -209,13 +209,14 @@ export function renderNodes() {
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'generator') {
+      const hasTrigger = (Array.isArray(n.triggerGroups) && n.triggerGroups.length) || n.triggerNodeId;
       if (!effectiveOn(n)) { loadLine = `Отключён · ${fmt(n.capacityKw)} kW`; loadCls += ' off'; }
-      else if (n.triggerNodeId && n._startCountdown > 0) {
+      else if (hasTrigger && n._startCountdown > 0) {
         loadLine = `ПУСК через ${Math.ceil(n._startCountdown)} с · ${fmt(n.capacityKw)} kW`;
         loadCls += ' off';
-      } else if (n.triggerNodeId && n._stopCountdown > 0) {
+      } else if (hasTrigger && n._stopCountdown > 0) {
         loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW · стоп ${Math.ceil(n._stopCountdown)} с`;
-      } else if (n.triggerNodeId && !n._running) {
+      } else if (hasTrigger && !n._running) {
         loadLine = `Дежурство · ${fmt(n.capacityKw)} kW`;
         loadCls += ' off';
       } else {
