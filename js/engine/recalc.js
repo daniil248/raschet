@@ -314,9 +314,10 @@ function recalc() {
             }
           }
         } else if (n.type === 'panel' && n.switchMode === 'parallel') {
-          // Параллельный режим
-          const enabledMask = Array.isArray(n.parallelEnabled) ? n.parallelEnabled : [];
-          const selected = ins.filter(c => enabledMask[c.to.port]);
+          // Щит без АВР — все входы с включёнными автоматами работают
+          const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+          // Если inputBreakerStates не задан — все входы включены
+          const selected = ins.filter(c => inBrk[c.to.port] !== false);
           const live = selected.filter(c => isConnLive(c));
           if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
         } else if (n.type === 'panel' && n.switchMode === 'avr_paired') {

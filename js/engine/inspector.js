@@ -246,28 +246,13 @@ export function renderInspectorNode(n) {
     h.push(`<button type="button" class="full-btn" id="btn-balance-panel" style="margin-top:8px">⚖ Балансировка фаз на щите</button>`);
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
-    h.push(field('Выходная мощность, kW', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
-    h.push(field('КПД, %', `<input type="number" min="30" max="100" step="1" data-prop="efficiency" value="${n.efficiency}">`));
-    h.push(voltageField(n));
-    h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
-    h.push(field('Ток заряда батареи, А (AC из сети)', `<input type="number" min="0" step="0.1" data-prop="chargeA" value="${n.chargeA ?? 2}">`));
-    h.push('<div class="muted" style="font-size:10px;margin-top:-8px;margin-bottom:8px">Ток, потребляемый ИБП из сети переменного тока на заряд батареи. Не путать с DC-током заряда АКБ.</div>');
-    h.push(field('Ёмкость батареи, kWh', `<input type="number" min="0" step="0.1" data-prop="batteryKwh" value="${n.batteryKwh}">`));
-    h.push(field('Заряд батареи, %', `<input type="number" min="0" max="100" step="1" data-prop="batteryChargePct" value="${n.batteryChargePct}">`));
-    h.push(field('Входов', `<input type="number" min="1" max="5" step="1" data-prop="inputs" value="${n.inputs}">`));
-    h.push(field('Выходов', `<input type="number" min="1" max="20" step="1" data-prop="outputs" value="${n.outputs}">`));
+    h.push(`<button class="full-btn" id="btn-open-ups-params" style="margin-bottom:8px">⚙ Параметры ИБП</button>`);
+    // Краткая сводка
+    const battPct = Math.round(n.batteryChargePct || 0);
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
+      `Pном: <b>${fmt(n.capacityKw)} kW</b> · КПД: <b>${n.efficiency || 100}%</b> · АКБ: <b>${fmt(n.batteryKwh || 0)} kWh (${battPct}%)</b>` +
+      `</div>`);
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
-    if (n.inputs > 1) h.push(prioritySection(n));
-
-    // Статический байпас
-    h.push('<div class="inspector-section"><h4>Внутренний статический байпас</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Встроенная функция ИБП: при перегрузке или принудительно переводит нагрузку напрямую со входа, минуя инвертор. КПД = 100%, батарея не заряжается.</div>');
-    h.push(checkField('Байпас разрешён', 'staticBypass', n.staticBypass !== false));
-    h.push(checkField('Автоматический (по перегрузу)', 'staticBypassAuto', n.staticBypassAuto !== false));
-    h.push(field('Порог перехода, % от Pном', `<input type="number" min="80" max="200" step="5" data-prop="staticBypassOverloadPct" value="${n.staticBypassOverloadPct || 110}">`));
-    h.push(checkField('Принудительный байпас (вручную)', 'staticBypassForced', !!n.staticBypassForced));
-    h.push('</div>');
-
     h.push(upsStatusBlock(n));
   } else if (n.type === 'consumer') {
     h.push(field('Количество в группе', `<input type="number" min="1" max="999" step="1" data-prop="count" value="${n.count || 1}">`));
@@ -560,6 +545,10 @@ export function wireInspectorInputs(n) {
   const panelParamsBtn = document.getElementById('btn-open-panel-params');
   if (panelParamsBtn && n.type === 'panel') {
     panelParamsBtn.addEventListener('click', () => openPanelParamsModal(n));
+  }
+  const upsParamsBtn = document.getElementById('btn-open-ups-params');
+  if (upsParamsBtn && n.type === 'ups') {
+    upsParamsBtn.addEventListener('click', () => openUpsParamsModal(n));
   }
 
   // Балансировка фаз на щите
@@ -988,6 +977,69 @@ export function openAutomationModal(n) {
   }
 
   document.getElementById('modal-automation').classList.remove('hidden');
+}
+
+// ================= Модалка «Параметры ИБП» =================
+export function openUpsParamsModal(n) {
+  const body = document.getElementById('ups-params-body');
+  if (!body) return;
+  const h = [];
+  h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+
+  h.push('<h4 style="margin:8px 0">Основные параметры</h4>');
+  h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
+  h.push(field('КПД, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}">`));
+  h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="5" step="1" value="${n.inputs}">`));
+  h.push(field('Выходов', `<input type="number" id="up-outputs" min="1" max="20" step="1" value="${n.outputs}">`));
+
+  // Напряжение
+  const levels = GLOBAL.voltageLevels || [];
+  const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
+  let vOpts = '';
+  for (let i = 0; i < levels.length; i++) {
+    vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(levels[i].label)} (${levels[i].vLL}V)</option>`;
+  }
+  h.push(field('Уровень напряжения', `<select id="up-voltage">${vOpts}</select>`));
+  h.push(field('cos φ', `<input type="number" id="up-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi || 1.0}">`));
+
+  h.push('<h4 style="margin:16px 0 8px">Батарея</h4>');
+  h.push(field('Ёмкость батареи, kWh', `<input type="number" id="up-battKwh" min="0" step="0.1" value="${n.batteryKwh}">`));
+  h.push(field('Заряд батареи, %', `<input type="number" id="up-battPct" min="0" max="100" step="1" value="${n.batteryChargePct}">`));
+  h.push(field('Ток заряда, А (AC)', `<input type="number" id="up-chargeA" min="0" step="0.1" value="${n.chargeA ?? 2}">`));
+  h.push('<div class="muted" style="font-size:10px;margin-top:-8px">Ток из сети на заряд АКБ.</div>');
+
+  h.push('<h4 style="margin:16px 0 8px">Статический байпас</h4>');
+  h.push(`<div class="field check"><input type="checkbox" id="up-bypass"${n.staticBypass !== false ? ' checked' : ''}><label>Байпас разрешён</label></div>`);
+  h.push(`<div class="field check"><input type="checkbox" id="up-bypassAuto"${n.staticBypassAuto !== false ? ' checked' : ''}><label>Автоматический (по перегрузу)</label></div>`);
+  h.push(field('Порог перехода, % от Pном', `<input type="number" id="up-bypassPct" min="80" max="200" step="5" value="${n.staticBypassOverloadPct || 110}">`));
+  h.push(`<div class="field check"><input type="checkbox" id="up-bypassForced"${n.staticBypassForced ? ' checked' : ''}><label>Принудительный байпас</label></div>`);
+
+  body.innerHTML = h.join('');
+
+  const applyBtn = document.getElementById('ups-params-apply');
+  if (applyBtn) applyBtn.onclick = () => {
+    snapshot('ups-params:' + n.id);
+    n.capacityKw = Number(document.getElementById('up-capKw')?.value) || 0;
+    n.efficiency = Number(document.getElementById('up-eff')?.value) || 95;
+    n.inputs = Number(document.getElementById('up-inputs')?.value) || 1;
+    n.outputs = Number(document.getElementById('up-outputs')?.value) || 1;
+    const vIdx = Number(document.getElementById('up-voltage')?.value) || 0;
+    n.voltageLevelIdx = vIdx;
+    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
+    n.cosPhi = Number(document.getElementById('up-cosPhi')?.value) || 1.0;
+    n.batteryKwh = Number(document.getElementById('up-battKwh')?.value) || 0;
+    n.batteryChargePct = Number(document.getElementById('up-battPct')?.value) || 0;
+    n.chargeA = Number(document.getElementById('up-chargeA')?.value) || 0;
+    n.staticBypass = document.getElementById('up-bypass')?.checked !== false;
+    n.staticBypassAuto = document.getElementById('up-bypassAuto')?.checked !== false;
+    n.staticBypassOverloadPct = Number(document.getElementById('up-bypassPct')?.value) || 110;
+    n.staticBypassForced = !!document.getElementById('up-bypassForced')?.checked;
+    _render(); renderInspector(); notifyChange();
+    openUpsParamsModal(n);
+    flash('Параметры ИБП обновлены');
+  };
+
+  document.getElementById('modal-ups-params').classList.remove('hidden');
 }
 
 // ================= Модалка «Параметры щита» =================
