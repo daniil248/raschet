@@ -285,7 +285,7 @@ const DEFAULTS = {
     phase: '3ph', voltage: 400, cosPhi: 0.85,
     triggerNodeId: null,       // legacy single trigger (мигрируется в triggerNodeIds)
     triggerNodeIds: [],        // массив id триггеров
-    triggerLogic: 'any',       // 'any' — запуск если ХОТЯ БЫ один мёртв; 'all' — все мёртвы
+    triggerLogic: 'any',       // 'any' — запуск если ХОТЯ БЫ один отключён; 'all' — все отключены
     startDelaySec: 5,
     stopDelaySec: 2,
   }),
@@ -868,13 +868,13 @@ function recalc() {
           // Проверяем статус каждого триггера
           const statuses = triggers.map(tid => {
             const t = state.nodes.get(tid);
-            if (!t) return 'dead'; // удалён → считаем мёртвым
+            if (!t) return 'dead'; // удалён → считаем отключённым
             return activeInputs(tid, false) !== null ? 'alive' : 'dead';
           });
           const logic = n.triggerLogic || 'any';
           const shouldStart = logic === 'any'
-            ? statuses.some(s => s === 'dead')    // хотя бы один мёртв
-            : statuses.every(s => s === 'dead');   // все мёртвы
+            ? statuses.some(s => s === 'dead')    // хотя бы один отключён
+            : statuses.every(s => s === 'dead');   // все отключены
 
           if (!shouldStart) {
             res = null; // все триггеры живы → дежурство
@@ -967,14 +967,14 @@ function recalc() {
           // Логика: «если на входе i пропал сигнал → включить выход i от ДГУ».
           // Это обратная логика — «нормально-замкнутый» мониторинг.
           // Реализация: для activeInputs щита — мы собираем все входы,
-          // у которых upstream мёртв, и делаем их активными.
+          // у которых upstream отключён, и делаем их активными.
           // downstream (щит → нагрузки) тогда идёт через те выходы, чей
           // индекс совпадает с активным входом.
           const liveIns = [];
           for (const c of ins) {
             const upAlive = activeInputs(c.from.nodeId, false) !== null;
             if (!upAlive) {
-              // upstream мёртв → этот вход (и соответственно выход) активируется
+              // upstream отключён → этот вход (и соответственно выход) активируется
               liveIns.push(c);
             }
           }
@@ -2111,32 +2111,14 @@ function renderInspectorNode(n) {
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.85}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
     h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
-    // Триггеры запуска (можно несколько)
-    const allTriggerCandidates = [];
-    for (const other of state.nodes.values()) {
-      if (other.id === n.id) continue;
-      if (other.type !== 'source' && other.type !== 'panel' && other.type !== 'generator') continue;
-      allTriggerCandidates.push(other);
-    }
-    const currentTriggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
-      ? n.triggerNodeIds
-      : (n.triggerNodeId ? [n.triggerNodeId] : []);
-
-    h.push('<div class="inspector-section"><h4>Линии запуска (watchdog)</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Отметьте узлы, при обесточке которых ДГУ должен запускаться. Можно выбрать несколько — логика определяется переключателем.</div>');
-    for (const cand of allTriggerCandidates) {
-      const checked = currentTriggers.includes(cand.id);
-      h.push(`<div class="field check"><input type="checkbox" data-trigger-id="${escAttr(cand.id)}"${checked ? ' checked' : ''}><label>${escHtml(cand.tag || '')} ${escHtml(cand.name || '')}</label></div>`);
-    }
-    const logic = n.triggerLogic || 'any';
-    h.push(field('Логика запуска',
-      `<select data-prop="triggerLogic">
-        <option value="any"${logic === 'any' ? ' selected' : ''}>ANY — запуск если хотя бы один мёртв</option>
-        <option value="all"${logic === 'all' ? ' selected' : ''}>ALL — запуск только если все мёртвы</option>
-      </select>`));
+    // Кнопка открытия модалки автоматизации
+    const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+      ? n.triggerNodeIds : (n.triggerNodeId ? [n.triggerNodeId] : []);
+    const triggerCount = triggers.length;
+    h.push('<div class="inspector-section">');
+    h.push(`<button class="full-btn" id="btn-open-automation">⚡ Автоматизация${triggerCount ? ` (${triggerCount} триггер${triggerCount > 1 ? 'ов' : ''})` : ''}</button>`);
     h.push(field('Задержка запуска, сек', `<input type="number" min="0" max="600" step="1" data-prop="startDelaySec" value="${n.startDelaySec || 0}">`));
     h.push(field('Задержка остановки, сек', `<input type="number" min="0" max="600" step="1" data-prop="stopDelaySec" value="${n.stopDelaySec ?? 2}">`));
-    h.push('<div class="muted" style="font-size:11px">ANY: запускается, когда хотя бы один триггер обесточен (например, «ДГУ1 ИЛИ ДГУ2 сломались»).<br>ALL: только когда все триггеры обесточены.<br>Задержки моделируются в реальном времени (ускорение ×20).</div>');
     h.push('</div>');
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
@@ -2395,23 +2377,6 @@ function wireInspectorInputs(n) {
     inp.addEventListener('input', apply);
     inp.addEventListener('change', apply);
   });
-  // Чекбоксы триггеров генератора
-  inspectorBody.querySelectorAll('[data-trigger-id]').forEach(inp => {
-    inp.addEventListener('change', () => {
-      snapshot('trigger:' + n.id);
-      const tid = inp.dataset.triggerId;
-      if (!Array.isArray(n.triggerNodeIds)) n.triggerNodeIds = [];
-      if (inp.checked) {
-        if (!n.triggerNodeIds.includes(tid)) n.triggerNodeIds.push(tid);
-      } else {
-        n.triggerNodeIds = n.triggerNodeIds.filter(x => x !== tid);
-      }
-      // Sync legacy field
-      n.triggerNodeId = n.triggerNodeIds[0] || null;
-      render();
-      notifyChange();
-    });
-  });
   // Чекбоксы параллельного режима щита
   inspectorBody.querySelectorAll('[data-parallel]').forEach(inp => {
     inp.addEventListener('change', () => {
@@ -2445,6 +2410,73 @@ function wireInspectorInputs(n) {
 
   const del = document.getElementById('btn-del-node');
   if (del) del.addEventListener('click', () => deleteNode(n.id));
+  const autoBtn = document.getElementById('btn-open-automation');
+  if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
+}
+
+// ================= Модалка «Автоматизация» =================
+function openAutomationModal(n) {
+  const body = document.getElementById('automation-body');
+  if (!body) return;
+  const h = [];
+
+  h.push(`<h3>Триггеры запуска для ${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  h.push('<div class="muted" style="font-size:12px;margin-bottom:12px">Отметьте узлы, при отключении которых ДГУ должен запускаться. Можно выбрать несколько.</div>');
+
+  const allCandidates = [];
+  for (const other of state.nodes.values()) {
+    if (other.id === n.id) continue;
+    if (other.type !== 'source' && other.type !== 'panel' && other.type !== 'generator' && other.type !== 'ups') continue;
+    allCandidates.push(other);
+  }
+  const currentTriggers = new Set(
+    (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+      ? n.triggerNodeIds
+      : (n.triggerNodeId ? [n.triggerNodeId] : [])
+  );
+
+  for (const cand of allCandidates) {
+    const checked = currentTriggers.has(cand.id);
+    h.push(`<div class="field check"><input type="checkbox" data-auto-trigger="${escAttr(cand.id)}"${checked ? ' checked' : ''}><label>${escHtml(effectiveTag(cand))} — ${escHtml(cand.name || '')}</label></div>`);
+  }
+
+  h.push('<div style="margin-top:16px">');
+  const logic = n.triggerLogic || 'any';
+  h.push(field('Логика запуска',
+    `<select id="auto-trigger-logic">
+      <option value="any"${logic === 'any' ? ' selected' : ''}>ANY — запуск если хотя бы один отключён</option>
+      <option value="all"${logic === 'all' ? ' selected' : ''}>ALL — запуск только если все отключены</option>
+    </select>`));
+  h.push('</div>');
+
+  h.push('<div class="muted" style="font-size:11px;margin-top:12px">ANY: ДГУ запускается, когда хотя бы один из выбранных узлов обесточен.<br>ALL: ДГУ запускается только когда все выбранные узлы одновременно обесточены.</div>');
+
+  body.innerHTML = h.join('');
+
+  // Привязка кнопки «Применить»
+  const applyBtn = document.getElementById('automation-apply');
+  if (applyBtn) {
+    applyBtn.onclick = () => {
+      snapshot('automation:' + n.id);
+      // Собираем отмеченные триггеры
+      const selected = [];
+      body.querySelectorAll('[data-auto-trigger]').forEach(inp => {
+        if (inp.checked) selected.push(inp.dataset.autoTrigger);
+      });
+      n.triggerNodeIds = selected;
+      n.triggerNodeId = selected[0] || null;
+      const logicSel = document.getElementById('auto-trigger-logic');
+      n.triggerLogic = logicSel ? logicSel.value : 'any';
+      // Закрываем
+      document.getElementById('modal-automation').classList.add('hidden');
+      render();
+      renderInspector();
+      notifyChange();
+      flash('Автоматизация обновлена');
+    };
+  }
+
+  document.getElementById('modal-automation').classList.remove('hidden');
 }
 
 // Поле фазы 3ph/1ph для источников/генераторов/ИБП
