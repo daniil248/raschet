@@ -6,8 +6,11 @@ import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrent
          upsChargeKw, sourceImpedance } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 
-// Простой подсчёт downstream нагрузки за узлом (без visited, только path для циклов).
-// Используется для определения реальной нагрузки за конкретным UPS.
+// Полная downstream-нагрузка за узлом (без share, без visited-блокировок).
+// Считает суммарную мощность ВСЕХ уникальных потребителей за данным узлом.
+// Используется для определения реальной нагрузки за конкретным UPS:
+//   UPS → UDB (parallel) → потребители = ПОЛНАЯ нагрузка UDB, а не 1/N,
+//   потому что если этот UPS единственный активный — он несёт всё.
 function simpleDownstream(nodeId) {
   const seen = new Set();
   function walk(nid) {
@@ -24,23 +27,12 @@ function simpleDownstream(nodeId) {
         const cnt = Math.max(1, Number(to.count) || 1);
         total += per * cnt;
       } else if (to.type === 'ups') {
-        // Вложенный UPS — берём min(cap, downstream)
         const capKw = Number(to.capacityKw) || 0;
         const down = walk(to.id);
         total += Math.min(capKw, down);
       } else if (to.type === 'panel' || to.type === 'channel') {
-        let share = 1;
-        if (to.type === 'panel' && to.switchMode === 'parallel') {
-          let feeders = 0;
-          const mask = Array.isArray(to.parallelEnabled) ? to.parallelEnabled : [];
-          for (const c2 of state.conns.values()) {
-            if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
-              if (mask[c2.to.port]) feeders++;
-            }
-          }
-          if (feeders > 1) share = 1 / feeders;
-        }
-        total += walk(to.id) * share;
+        // БЕЗ share — считаем полную нагрузку
+        total += walk(to.id);
       }
     }
     return total;
@@ -144,10 +136,27 @@ function maxDownstreamLoad(nodeId) {
         const capKw = Number(to.capacityKw) || 0;
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
-        // Реальная нагрузка ИБП = MIN(номинал, downstream) / КПД + заряд.
-        // Используем simpleDownstream (свой visited) чтобы не мешать основному walk.
+        // Находим все UPS, подключённые к тому же downstream parallel-щиту.
+        // Они делят нагрузку — считаем долю этого UPS.
+        let upsShare = 1;
+        // Куда выход этого UPS ведёт?
+        for (const c2 of state.conns.values()) {
+          if (c2.from.nodeId !== to.id || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
+          const dest = state.nodes.get(c2.to.nodeId);
+          if (!dest || dest.type !== 'panel') continue;
+          // Сколько UPS питают этот же щит из текущего upstream?
+          let upsCount = 0;
+          for (const c3 of state.conns.values()) {
+            if (c3.to.nodeId !== dest.id || c3.lineMode === 'damaged' || c3.lineMode === 'disabled') continue;
+            const feeder = state.nodes.get(c3.from.nodeId);
+            if (feeder && feeder.type === 'ups') upsCount++;
+          }
+          if (upsCount > 1) upsShare = 1 / upsCount;
+          break;
+        }
         const downstream = simpleDownstream(to.id);
-        const actualLoad = Math.min(capKw, downstream);
+        const myShare = downstream * upsShare;
+        const actualLoad = Math.min(capKw, myShare);
         total += actualLoad / eff + chKw;
       } else if (to.type === 'panel' || to.type === 'channel') {
         let share = 1;
