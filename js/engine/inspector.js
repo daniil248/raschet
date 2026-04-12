@@ -1076,8 +1076,8 @@ export function openPanelParamsModal(n) {
     }
     while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
     n.priorities.length = n.inputs;
-    document.getElementById('modal-panel-params').classList.add('hidden');
     _render(); renderInspector(); notifyChange();
+    openPanelParamsModal(n); // перерисовать с актуальными данными
     flash('Параметры щита обновлены');
   };
 
@@ -1152,20 +1152,38 @@ export function openPanelControlModal(n) {
   const svgH = outBrkY + brkH + 50;
 
   // Состояние входов
+  // В авто-режиме: АВР определяет какие входы замкнуты (по приоритетам/логике).
+  // В ручном/щит: из inputBreakerStates.
   const inputStates = [];
   const inBreakers = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+
+  // Определяем какие входы АВР считает активными (по связям active/powered)
+  const avrActiveInputs = new Set();
+  for (const c of state.conns.values()) {
+    if (c.to.nodeId === n.id && (c._state === 'active')) {
+      avrActiveInputs.add(c.to.port);
+    }
+  }
+
   for (let i = 0; i < inCount; i++) {
-    let feederTag = '—', powered = false;
+    let feederTag = '—', hasPower = false;
     for (const c of state.conns.values()) {
       if (c.to.nodeId === n.id && c.to.port === i) {
         const from = state.nodes.get(c.from.nodeId);
         feederTag = from ? (effectiveTag(from) || from.name || '?') : '?';
-        powered = c._state === 'active' || c._state === 'powered';
+        hasPower = c._state === 'active' || c._state === 'powered';
         break;
       }
     }
-    const breakerOn = inBreakers[i] !== false;
-    inputStates.push({ powered, feederTag, breakerOn });
+    let breakerOn;
+    if (isManual) {
+      // Ручной/Щит: из inputBreakerStates
+      breakerOn = inBreakers[i] !== false;
+    } else {
+      // Авто (АВР): замкнут = АВР выбрал этот вход (active)
+      breakerOn = avrActiveInputs.has(i);
+    }
+    inputStates.push({ powered: hasPower, feederTag, breakerOn });
   }
 
   // Состояние выходов
@@ -1363,8 +1381,8 @@ export function openPanelControlModal(n) {
   const applyBtn = document.getElementById('panel-control-apply');
   if (applyBtn) {
     applyBtn.onclick = () => {
-      document.getElementById('modal-panel-control').classList.add('hidden');
-      _render(); renderInspector(); notifyChange();
+      _render(); notifyChange();
+      openPanelControlModal(n); // перерисовать модалку с актуальным состоянием
     };
   }
 
