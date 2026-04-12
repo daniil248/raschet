@@ -1384,14 +1384,15 @@ function recalc() {
       } else {
         n._capacityKwFromA = 0;
       }
-      if (capA > 0 && loadA > 0) {
-        const margin = ((capA - loadA) / loadA) * 100;
+      // Сравниваем номинал с МАКСИМАЛЬНЫМ расчётным током (не текущим)
+      const maxA = n._maxLoadA || 0;
+      if (capA > 0 && maxA > 0) {
+        const margin = ((capA - maxA) / maxA) * 100;
         n._marginPct = margin;
-        const lo = Number(n.marginMinPct); const hi = Number(n.marginMaxPct);
-        const minP = isFinite(lo) ? lo : 2;
+        const hi = Number(n.marginMaxPct);
         const maxP = isFinite(hi) ? hi : 30;
-        if (margin < minP) n._marginWarn = 'low';
-        else if (margin > maxP) n._marginWarn = 'high';
+        if (margin < 0) n._marginWarn = 'undersize';   // номинал < макс.тока → красный
+        else if (margin > maxP) n._marginWarn = 'oversize'; // избыточный запас → фиолетовый
         else n._marginWarn = null;
       } else {
         n._marginPct = null;
@@ -1684,7 +1685,8 @@ function renderNodes() {
       (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
       (n.type === 'ups' && n._onStaticBypass) ? 'onbypass' : '',
       (n.type === 'panel' && n.switchMode === 'manual') ? 'manual' : '',
-      (n.type === 'panel' && n._marginWarn) ? 'marginwarn' : '',
+      (n.type === 'panel' && n._marginWarn === 'undersize') ? 'undersize' : '',
+      (n.type === 'panel' && n._marginWarn === 'oversize') ? 'oversize' : '',
     ].filter(Boolean).join(' ');
 
     const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
@@ -1842,9 +1844,9 @@ function renderNodes() {
       g.appendChild(bang);
       const title = el('title', {});
       const mp = n._marginPct == null ? '-' : n._marginPct.toFixed(1);
-      title.textContent = n._marginWarn === 'low'
-        ? `Недостаточный запас: номинал шкафа ${fmt(n.capacityA)} А, расчётный ток ${fmt(n._loadA || 0)} А (запас ${mp}%, минимум ${n.marginMinPct}%)`
-        : `Избыточный запас: номинал шкафа ${fmt(n.capacityA)} А, расчётный ток ${fmt(n._loadA || 0)} А (запас ${mp}%, максимум ${n.marginMaxPct}%)`;
+      title.textContent = n._marginWarn === 'undersize'
+        ? `Перегруз: номинал ${fmt(n.capacityA)} А < макс.ток ${fmt(n._maxLoadA || 0)} А (${mp}%)`
+        : `Избыточный запас: номинал ${fmt(n.capacityA)} А, макс.ток ${fmt(n._maxLoadA || 0)} А (запас ${mp}%, макс. ${n.marginMaxPct}%)`;
       tri.appendChild(title);
     }
 
@@ -2750,17 +2752,17 @@ function panelStatusBlock(n) {
   if (n._ikA && isFinite(n._ikA)) parts.push(`Ik (ток КЗ): <b>${fmt(n._ikA / 1000)} кА</b>`);
   if (n._deltaUPct > 0) parts.push(`ΔU суммарный: <b>${n._deltaUPct.toFixed(2)}%</b>${n._deltaUPct > 5 ? ' ⚠ > 5%' : ''}`);
 
-  // Запас номинала шкафа — считаем по току.
+  // Запас номинала шкафа — сравниваем с максимальным током.
   if (Number(n.capacityA) > 0) {
     const capA = Number(n.capacityA);
-    const loadA = n._loadA || 0;
-    parts.push(`номинал шкафа: <b>${fmt(capA)} A</b>` + (n._capacityKwFromA ? ` <span class="muted">(≈ ${fmt(n._capacityKwFromA)} kW)</span>` : ''));
-    if (loadA > 0) {
+    const maxA = n._maxLoadA || 0;
+    parts.push(`номинал: <b>${fmt(capA)} A</b>, макс.ток: <b>${fmt(maxA)} A</b>`);
+    if (maxA > 0) {
       const pct = n._marginPct == null ? 0 : n._marginPct;
       const pctTxt = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
-      if (n._marginWarn === 'low') {
-        parts.push(`запас: <b style="color:#8e24aa">${pctTxt}</b> ⚠ мало (мин. ${n.marginMinPct}%)`);
-      } else if (n._marginWarn === 'high') {
+      if (n._marginWarn === 'undersize') {
+        parts.push(`запас: <b style="color:#c62828">${pctTxt}</b> ⚠ перегруз (номинал ниже макс.тока)`);
+      } else if (n._marginWarn === 'oversize') {
         parts.push(`запас: <b style="color:#8e24aa">${pctTxt}</b> ⚠ избыточен (макс. ${n.marginMaxPct}%)`);
       } else {
         parts.push(`запас: <b style="color:#2e7d32">${pctTxt}</b> ок`);

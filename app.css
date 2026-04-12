@@ -527,8 +527,12 @@ input, select { font: inherit; }
 .node.ups.onbattery .node-body { stroke-dasharray: 6 3; }
 .node.ups.onbypass .node-body { fill: #fce4ec; stroke: #ec407a; }
 .node.panel.manual .node-body { stroke-dasharray: 6 3; }
-.node.panel.marginwarn .node-body { fill: #f3e5f5; stroke: #8e24aa !important; stroke-width: 2.2; }
-.node.panel.marginwarn.selected .node-body { stroke: #6a1b9a !important; }
+/* Щит: номинал < макс.тока — красный (перегруз) */
+.node.panel.undersize .node-body { fill: #ffebee; stroke: #c62828 !important; stroke-width: 2.2; }
+.node.panel.undersize.selected .node-body { stroke: #b71c1c !important; }
+/* Щит: номинал > макс.тока на 30%+ — фиолетовый (избыточный запас) */
+.node.panel.oversize .node-body { fill: #f3e5f5; stroke: #8e24aa !important; stroke-width: 2.2; }
+.node.panel.oversize.selected .node-body { stroke: #6a1b9a !important; }
 
 /* Margin warning badge: yellow triangle with '!' */
 .margin-warn-tri {
