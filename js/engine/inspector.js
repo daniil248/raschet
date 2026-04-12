@@ -1056,6 +1056,17 @@ export function openPanelParamsModal(n) {
 
   body.innerHTML = h.join('');
 
+  // Live: переключение типа АВР сразу применяется
+  const smSel = document.getElementById('pp-switchMode');
+  if (smSel) {
+    smSel.addEventListener('change', () => {
+      snapshot('switchMode:' + n.id);
+      n.switchMode = smSel.value;
+      _render(); renderInspector(); notifyChange();
+      openPanelParamsModal(n);
+    });
+  }
+
   const applyBtn = document.getElementById('panel-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
     snapshot('panel-params:' + n.id);
