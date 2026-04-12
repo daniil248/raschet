@@ -882,7 +882,8 @@ function recalc() {
 
           if (!shouldStart) {
             res = null; // все триггеры живы → дежурство
-          } else if (n._running) {
+          } else if (n._running || (Number(n.startDelaySec) || 0) === 0) {
+            // Генератор запущен (или задержка = 0 → мгновенный запуск)
             res = (n.backupMode && !allowBackup) ? null : [];
           } else {
             res = null; // ещё не запустился (ждём startDelaySec)
@@ -1019,6 +1020,7 @@ function recalc() {
   // Сброс расчётных полей
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
+    n._watchdogActivePorts = null;
   }
   for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; c._state = 'dead'; }
 
