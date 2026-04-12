@@ -2227,7 +2227,38 @@ function renderInspectorNode(n) {
         <option value="touching"${bd === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
         <option value="bundled"${bd === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
       </select>`));
-    h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">«С зазором» — группировка не учитывается. «Плотно» — базовый K_group. «В пучке» — дополнительное понижение 0.85.</div>');
+    // SVG-иконка расположения кабелей
+    h.push('<div style="text-align:center;margin:6px 0 10px"><svg width="120" height="36" viewBox="0 0 120 36">');
+    if (bd === 'spaced') {
+      // С зазором: кабели на расстоянии ≥ Ø друг от друга
+      h.push('<circle cx="20" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
+      h.push('<circle cx="60" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
+      h.push('<circle cx="100" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
+      // Стрелка зазора
+      h.push('<line x1="28" y1="8" x2="52" y2="8" stroke="#1976d2" stroke-width="0.8" marker-start="url(#arr)" marker-end="url(#arr)"/>');
+      h.push('<text x="40" y="6" text-anchor="middle" fill="#1976d2" font-size="7">≥Ø</text>');
+    } else if (bd === 'touching') {
+      // Плотно: кабели касаются друг друга
+      h.push('<circle cx="42" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
+      h.push('<circle cx="58" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
+      h.push('<circle cx="74" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
+      // Жилы
+      h.push('<circle cx="42" cy="18" r="2.5" fill="#555"/>');
+      h.push('<circle cx="58" cy="18" r="2.5" fill="#555"/>');
+      h.push('<circle cx="74" cy="18" r="2.5" fill="#555"/>');
+    } else {
+      // В пучке: кабели связаны вместе
+      h.push('<ellipse cx="60" cy="18" rx="22" ry="14" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3 2"/>');
+      h.push('<circle cx="50" cy="14" r="6" fill="none" stroke="#555" stroke-width="1.2"/>');
+      h.push('<circle cx="66" cy="14" r="6" fill="none" stroke="#555" stroke-width="1.2"/>');
+      h.push('<circle cx="58" cy="24" r="6" fill="none" stroke="#555" stroke-width="1.2"/>');
+      // Жилы
+      h.push('<circle cx="50" cy="14" r="2" fill="#555"/>');
+      h.push('<circle cx="66" cy="14" r="2" fill="#555"/>');
+      h.push('<circle cx="58" cy="24" r="2" fill="#555"/>');
+    }
+    h.push('</svg></div>');
+    h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">«С зазором» — группировка не учитывается. «Плотно» — базовый K_group. «В пучке» — дополнительное понижение ×0.85.</div>');
 
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-prop="ambientC" value="${n.ambientC || 30}">`));
     h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
@@ -2558,7 +2589,7 @@ function wireInspectorInputs(n) {
       render();
       notifyChange();
       // Перерисовать инспектор при изменениях, от которых зависят другие поля
-      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType') {
+      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType' || prop === 'bundling') {
         renderInspector();
       }
     };
