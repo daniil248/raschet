@@ -7,15 +7,74 @@ import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrent
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 
 // Максимально возможная нагрузка downstream.
-// Глобальный `visited` предотвращает двойной счёт: если один и тот же
-// потребитель/ИБП достижим через несколько путей от корня (например,
-// MDB → UPS → UDB и MDB → UDB), он считается только один раз.
-// Для ИБП: на ВХОДЕ ИБП считаем capacityKw/КПД + charge (нагрузка на
-// питающий кабель); downstream за ИБП пропускаем — он уже учтён.
-// Для parallel-щитов: входящий фидер несёт свою долю (1/N).
-// Для АВР-щитов: один фидер несёт 100% (worst case).
+//
+// Обнаружение UPS-кластеров:
+//   Если от узла A выходят линии к ИБП (UPS1, UPS2...), и эти ИБП
+//   выходами подключены к щиту P, и при этом A тоже напрямую подключен
+//   к P (байпасная/сервисная линия), то это «UPS-кластер».
+//   В нормальном режиме A несёт входы UPS; в режиме байпаса — нагрузку P.
+//   Оба режима взаимоисключающие → max(сумма_входов_UPS, нагрузка_P).
+//
+// Для остальных выходов:
+//   - Потребитель: P_уст × count
+//   - ИБП (без кластера): capacityKw / КПД + charge
+//   - Parallel-щит: нагрузка × (1/N фидеров)
+//   - АВР-щит: 100% нагрузки (worst case)
 function maxDownstreamLoad(nodeId) {
-  const visited = new Set(); // глобальный для данного вызова — ID узлов-листьев
+  // --- Шаг 1: обнаружить UPS-кластеры от данного узла ---
+  // Собираем: какие UPS выходят из nodeId, и куда ведут их выходы
+  const outConns = [];
+  for (const c of state.conns.values()) {
+    if (c.from.nodeId !== nodeId) continue;
+    if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+    outConns.push(c);
+  }
+
+  // Для каждого UPS, выходящего из nodeId, найдём panel, куда он ведёт
+  const upsToPanel = new Map(); // upsId → panelId (куда выход UPS подключён)
+  for (const c of outConns) {
+    const to = state.nodes.get(c.to.nodeId);
+    if (!to || to.type !== 'ups') continue;
+    // Куда выход этого UPS ведёт?
+    for (const c2 of state.conns.values()) {
+      if (c2.from.nodeId !== to.id) continue;
+      if (c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
+      const dest = state.nodes.get(c2.to.nodeId);
+      if (dest && dest.type === 'panel') {
+        upsToPanel.set(to.id, dest.id);
+      }
+    }
+  }
+
+  // Панели, к которым nodeId подключён НАПРЯМУЮ (не через UPS)
+  const directPanels = new Set();
+  for (const c of outConns) {
+    const to = state.nodes.get(c.to.nodeId);
+    if (to && (to.type === 'panel' || to.type === 'channel')) {
+      directPanels.add(to.id);
+    }
+  }
+
+  // Кластер: панель, к которой идут И UPS-выходы ОТ nodeId, И прямая линия
+  // clusters: Map<panelId, Set<upsId>>
+  const clusters = new Map();
+  for (const [upsId, panelId] of upsToPanel) {
+    if (directPanels.has(panelId)) {
+      if (!clusters.has(panelId)) clusters.set(panelId, new Set());
+      clusters.get(panelId).add(upsId);
+    }
+  }
+
+  // ID узлов, входящих в кластеры (чтобы не считать их повторно в основном walk)
+  const clusteredUps = new Set();
+  const clusteredPanels = new Set();
+  for (const [panelId, upsIds] of clusters) {
+    clusteredPanels.add(panelId);
+    for (const uid of upsIds) clusteredUps.add(uid);
+  }
+
+  // --- Шаг 2: основной walk (без кластерных узлов) ---
+  const visited = new Set();
 
   function walk(nid, path) {
     if (path.has(nid)) return 0;
@@ -27,23 +86,24 @@ function maxDownstreamLoad(nodeId) {
       const to = state.nodes.get(c.to.nodeId);
       if (!to) continue;
 
+      // Пропускаем узлы, входящие в кластер (они считаются отдельно)
+      if (nid === nodeId && clusteredUps.has(to.id)) continue;
+      if (nid === nodeId && clusteredPanels.has(to.id)) continue;
+
       if (to.type === 'consumer') {
-        if (visited.has(to.id)) continue; // уже посчитан через другой путь
+        if (visited.has(to.id)) continue;
         visited.add(to.id);
         const per = Number(to.demandKw) || 0;
         const cnt = Math.max(1, Number(to.count) || 1);
         total += per * cnt;
       } else if (to.type === 'ups') {
-        if (visited.has(to.id)) continue; // уже посчитан через другой путь
+        if (visited.has(to.id)) continue;
         visited.add(to.id);
-        // ИБП ограничен своим номиналом — это его физический предел.
         const capKw = Number(to.capacityKw) || 0;
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
         total += capKw / eff + chKw;
-        // НЕ ходим дальше за ИБП — downstream уже учтён через capacityKw
       } else if (to.type === 'panel' || to.type === 'channel') {
-        // Для parallel-щита: входящий фидер несёт свою долю
         let share = 1;
         if (to.type === 'panel' && to.switchMode === 'parallel') {
           let feeders = 0;
@@ -61,7 +121,30 @@ function maxDownstreamLoad(nodeId) {
     path.delete(nid);
     return total;
   }
-  return walk(nodeId, new Set());
+
+  let total = walk(nodeId, new Set());
+
+  // --- Шаг 3: добавить кластеры ---
+  for (const [panelId, upsIds] of clusters) {
+    // Вариант A (нормальный): сумма входов всех UPS кластера
+    let upsInputSum = 0;
+    for (const uid of upsIds) {
+      const ups = state.nodes.get(uid);
+      if (!ups) continue;
+      const capKw = Number(ups.capacityKw) || 0;
+      const eff = Math.max(0.01, (Number(ups.efficiency) || 100) / 100);
+      const chKw = upsChargeKw(ups);
+      upsInputSum += capKw / eff + chKw;
+    }
+
+    // Вариант B (байпас): полная нагрузка панели напрямую
+    const panelLoad = walk(panelId, new Set());
+
+    // Worst case = MAX из двух режимов (они взаимоисключающие)
+    total += Math.max(upsInputSum, panelLoad);
+  }
+
+  return total;
 }
 
 // Финальный cos φ щита — взвешенное по активной мощности.
