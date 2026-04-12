@@ -820,6 +820,12 @@ input, select { font: inherit; }
 .field input:focus, .field select:focus {
   outline: none; border-color: #1976d2; background: #fff;
 }
+.field input:disabled, .field select:disabled {
+  background: #eef0f4;
+  color: #8a93a7;
+  cursor: not-allowed;
+  border-color: #d6dae2;
+}
 .field.check { display: flex; align-items: center; gap: 8px; }
 .field.check label { margin: 0; text-transform: none; font-weight: 500; font-size: 13px; color: #222; letter-spacing: 0; }
 .field.check input { width: 16px; height: 16px; }
