@@ -169,8 +169,12 @@ function recalc() {
     if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return false;
     const fromN = state.nodes.get(c.from.nodeId);
     if (!fromN) return false;
+    // Режим обслуживания — щит не пропускает ток
+    if (fromN.type === 'panel' && fromN.maintenance) return false;
     // Если upstream — щит с ограниченными выходами, проверяем порт
     if (fromN._watchdogActivePorts && !fromN._watchdogActivePorts.has(c.from.port)) return false;
+    // Автомат выхода отключён
+    if (fromN.type === 'panel' && Array.isArray(fromN.breakerStates) && fromN.breakerStates[c.from.port] === false) return false;
     return activeInputs(c.from.nodeId) !== null;
   }
 
@@ -287,6 +291,12 @@ function recalc() {
       res = null;
     } else {
       // panel или consumer
+      // Режим обслуживания — щит полностью обесточен
+      if (n.type === 'panel' && n.maintenance) {
+        res = null;
+        cache.set(key, res);
+        return res;
+      }
       const ins = edgesIn.get(nid) || [];
       if (ins.length > 0) {
         // Ручной режим щита: работает только явно выбранный вход
@@ -533,12 +543,17 @@ function recalc() {
       c._state = 'active';
       continue;
     }
-    // Проверяем _watchdogActivePorts и для неактивных связей (powered/dead)
+    // Проверяем _watchdogActivePorts и breakerStates для неактивных связей
     const fromN2 = state.nodes.get(c.from.nodeId);
-    if (fromN2 && fromN2.type === 'panel' && fromN2._watchdogActivePorts) {
-      if (!fromN2._watchdogActivePorts.has(c.from.port)) {
-        c._state = 'dead';
-        continue;
+    if (fromN2 && fromN2.type === 'panel') {
+      if (fromN2._watchdogActivePorts && !fromN2._watchdogActivePorts.has(c.from.port)) {
+        c._state = 'dead'; continue;
+      }
+      if (Array.isArray(fromN2.breakerStates) && fromN2.breakerStates[c.from.port] === false) {
+        c._state = 'dead'; continue;
+      }
+      if (fromN2.maintenance) {
+        c._state = 'dead'; continue;
       }
     }
     const upAi = activeInputs(c.from.nodeId);

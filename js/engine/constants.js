@@ -171,8 +171,10 @@ export const DEFAULTS = {
     inputs: 2, outputs: 2,
     priorities: [1, 2],
     switchMode: 'auto',
+    maintenance: false,      // режим обслуживания — щит полностью обесточен
     manualActiveInput: 0,
     parallelEnabled: [],
+    breakerStates: null,     // состояния автоматов выходов: null = все вкл, или Array<boolean>
     avrDelaySec: 2,         // задержка переключения АВР при возврате напряжения, сек
     avrInterlockSec: 1,     // минимальная разбежка между вкл. автоматов двух вводов, сек
     kSim: 1.0,
