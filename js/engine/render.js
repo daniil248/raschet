@@ -1,0 +1,701 @@
+import { state } from './state.js';
+import { svg, layerConns, layerNodes, statsEl, modesListEl } from './state.js';
+import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R } from './constants.js';
+import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
+import { effectiveOn, selectMode, deleteMode } from './modes.js';
+import { recalc } from './recalc.js';
+import { effectiveTag } from './zones.js';
+import { fmt, escHtml, escAttr } from './utils.js';
+import { snapshot, notifyChange } from './history.js';
+import { computeCurrentA, nodeVoltage, isThreePhase } from './electrical.js';
+
+let _renderInspector;
+export function bindRenderDeps({ renderInspector }) { _renderInspector = renderInspector; }
+
+export function updateViewBox() {
+  const W = svg.clientWidth, H = svg.clientHeight;
+  const vw = W / state.view.zoom;
+  const vh = H / state.view.zoom;
+  svg.setAttribute('viewBox', `${state.view.x} ${state.view.y} ${vw} ${vh}`);
+  const bg = document.getElementById('bg');
+  bg.setAttribute('x', state.view.x);
+  bg.setAttribute('y', state.view.y);
+  bg.setAttribute('width', vw);
+  bg.setAttribute('height', vh);
+}
+
+export function el(tag, attrs = {}, children = []) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) {
+    if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]);
+  }
+  for (const c of children) if (c) e.appendChild(c);
+  return e;
+}
+export function text(x, y, str, cls) {
+  const t = el('text', { x, y, class: cls });
+  t.textContent = str;
+  return t;
+}
+export function bezier(a, b) {
+  const dy = Math.max(40, Math.abs(b.y - a.y) / 2);
+  return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`;
+}
+
+// Путь сплайна с промежуточными точками. Использует Catmull-Rom -> Bezier, чтобы
+// линия проходила через все waypoints гладко.
+export function splinePath(a, points, b) {
+  if (!points || points.length === 0) return bezier(a, b);
+  const pts = [a, ...points, b];
+  let d = `M${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    // Catmull-Rom -> cubic Bezier
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+
+// Средняя точка пути по длине дуги ломаной [a, ...points, b].
+// Это хорошая аппроксимация середины сплайна, и она следует за waypoints.
+export function pathMidpoint(a, points, b) {
+  const pts = [a, ...(points || []), b];
+  // Общая длина
+  let total = 0;
+  const segs = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i + 1].x - pts[i].x;
+    const dy = pts[i + 1].y - pts[i].y;
+    const len = Math.hypot(dx, dy);
+    segs.push(len);
+    total += len;
+  }
+  if (total === 0) return { x: a.x, y: a.y };
+  const half = total / 2;
+  // Идём по сегментам, пока не накопится половина длины
+  let acc = 0;
+  for (let i = 0; i < segs.length; i++) {
+    if (acc + segs[i] >= half) {
+      const t = segs[i] > 0 ? (half - acc) / segs[i] : 0;
+      return {
+        x: pts[i].x + (pts[i + 1].x - pts[i].x) * t,
+        y: pts[i].y + (pts[i + 1].y - pts[i].y) * t,
+      };
+    }
+    acc += segs[i];
+  }
+  const last = pts[pts.length - 1];
+  return { x: last.x, y: last.y };
+}
+
+export function render() {
+  recalc();
+  renderConns();
+  renderNodes();
+  renderStats();
+  renderModes();
+}
+
+export function renderNodes() {
+  while (layerNodes.firstChild) layerNodes.removeChild(layerNodes.firstChild);
+
+  // Сначала рисуем зоны (они позади обычных узлов).
+  // Тело зоны — pointer-events: none, чтобы связи и порты внутри неё оставались
+  // кликабельными. Для перетаскивания зоны используется узкая полоса-хэндл сверху.
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'zone') continue;
+    const w = nodeWidth(n), h = nodeHeight(n);
+    const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    const g = el('g', {
+      class: 'node zone' + (selected ? ' selected' : ''),
+      transform: `translate(${n.x},${n.y})`,
+    });
+    g.dataset.nodeId = n.id;
+    // Тело зоны — видимый, но не интерактивный фон
+    g.appendChild(el('rect', {
+      class: 'zone-body',
+      x: 0, y: 0, width: w, height: h,
+      fill: n.color || '#e3f2fd',
+      'fill-opacity': 0.25,
+    }));
+    // Drag-handle — полоса 44px сверху, единственная кликабельная часть для перетаскивания
+    g.appendChild(el('rect', {
+      class: 'zone-drag-handle',
+      x: 0, y: 0, width: w, height: 44,
+    }));
+    // Подпись: префикс зоны крупнее, имя ниже
+    g.appendChild(text(12, 22, n.zonePrefix || n.tag || '', 'zone-prefix'));
+    g.appendChild(text(12, 40, n.name || '', 'zone-name'));
+    // Уголок для ресайза
+    g.appendChild(el('rect', {
+      class: 'zone-resize', x: w - 14, y: h - 14, width: 12, height: 12,
+    }));
+    layerNodes.appendChild(g);
+  }
+
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone') continue;
+    const w = nodeWidth(n);
+    const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    const cls = [
+      'node', n.type,
+      selected ? 'selected' : '',
+      state.selection.has(n.id) ? 'multi-selected' : '',
+      n._overload ? 'overload' : '',
+      (!n._powered && (n.type === 'panel' || n.type === 'consumer' || n.type === 'ups')) ? 'unpowered' : '',
+      (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
+      (n.type === 'ups' && n._onStaticBypass) ? 'onbypass' : '',
+      (n.type === 'panel' && n.switchMode === 'manual') ? 'manual' : '',
+      (n.type === 'panel' && n._marginWarn === 'undersize') ? 'undersize' : '',
+      (n.type === 'panel' && n._marginWarn === 'oversize') ? 'oversize' : '',
+    ].filter(Boolean).join(' ');
+
+    const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
+    g.dataset.nodeId = n.id;
+
+    g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
+
+    // Обозначение — с учётом префикса зоны («P1.MPB1»)
+    const displayTag = effectiveTag(n);
+    if (displayTag) g.appendChild(text(12, 16, displayTag, 'node-tag'));
+
+    // Имя
+    g.appendChild(text(12, 33, n.name || '(без имени)', 'node-title'));
+
+    // IEC условное обозначение для источников (маленький SVG-символ)
+    if (n.type === 'source' || n.type === 'generator') {
+      const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+      const ix = w - 32, iy = 14;
+      if (subtype === 'transformer') {
+        // IEC 60617: два пересекающихся кольца (обмотки)
+        g.appendChild(el('circle', { cx: ix, cy: iy, r: 9, fill: 'none', stroke: '#4caf50', 'stroke-width': 1.5, class: 'node-icon' }));
+        g.appendChild(el('circle', { cx: ix + 10, cy: iy, r: 9, fill: 'none', stroke: '#4caf50', 'stroke-width': 1.5, class: 'node-icon' }));
+      } else {
+        // IEC 60617: кольцо с буквой G
+        g.appendChild(el('circle', { cx: ix + 5, cy: iy, r: 11, fill: 'none', stroke: '#ff9800', 'stroke-width': 1.5, class: 'node-icon' }));
+        const gt = text(ix + 5, iy + 4, 'G', 'node-icon-letter');
+        g.appendChild(gt);
+      }
+    }
+
+    // Подпись типа
+    const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+    const subTxt = {
+      source:    subtype === 'generator' ? 'Генератор' + (n.backupMode ? ' (резерв)' : '') : 'Трансформатор',
+      generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
+      panel:     `In ${fmt(n.capacityA || 0)} A / ${fmt(n._maxLoadA || 0)} A · ${fmt(n._maxLoadKw || 0)} kW`,
+      ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%` +
+                   (n._onStaticBypass ? ' · БАЙПАС' : ''),
+      consumer:  ((n.count || 1) > 1
+                    ? `Группа · ${n.count} × ${fmt(n.demandKw)} kW`
+                    : 'Потребитель') + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
+      channel:   (CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit).label,
+    }[n.type];
+    g.appendChild(text(12, 49, subTxt, 'node-sub'));
+
+    // Нагрузка
+    let loadLine = '', loadCls = 'node-load';
+    if (n.type === 'source') {
+      if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
+      else {
+        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW`;
+        if (n._overload) loadCls += ' overload';
+      }
+    } else if (n.type === 'generator') {
+      if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
+      else if (n.triggerNodeId && n._startCountdown > 0) {
+        loadLine = `ПУСК через ${Math.ceil(n._startCountdown)} с`;
+        loadCls += ' off';
+      } else if (n.triggerNodeId && n._stopCountdown > 0) {
+        // Остывание — генератор ещё держит нагрузку, но таймер идёт
+        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW · стоп ${Math.ceil(n._stopCountdown)} с`;
+      } else if (n.triggerNodeId && !n._running) {
+        loadLine = 'Дежурство';
+        loadCls += ' off';
+      } else {
+        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW`;
+        if (n._overload) loadCls += ' overload';
+      }
+    } else if (n.type === 'panel') {
+      if (!n._powered) {
+        loadLine = 'Без питания';
+        loadCls += ' off';
+      } else {
+        loadLine = `${fmt(n._loadA || 0)} A / ${fmt(n._loadKw || 0)} kW`;
+        if (n._marginWarn === 'low') loadCls += ' overload';
+      }
+    } else if (n.type === 'ups') {
+      if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
+      else if (!n._powered) { loadLine = 'Без питания'; loadCls += ' off'; }
+      else {
+        let suffix = '';
+        if (n._onStaticBypass) suffix = ' · БАЙПАС';
+        else if (n._onBattery) {
+          const sec = Math.max(0, Math.round(n._runtimeLeftSec || 0));
+          const mm = Math.floor(sec / 60);
+          const ss = sec % 60;
+          suffix = ` · БАТ ${mm}:${String(ss).padStart(2, '0')}`;
+        }
+        // Показываем ток / макс.ток и мощность
+        const capA = computeCurrentA(n.capacityKw, nodeVoltage(n), 1.0, isThreePhase(n));
+        loadLine = `${fmt(n._loadA || 0)} / ${fmt(capA)} A · ${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW${suffix}`;
+        if (n._overload) loadCls += ' overload';
+      }
+    } else if (n.type === 'consumer') {
+      loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
+      if (!n._powered) loadCls += ' off';
+    } else if (n.type === 'channel') {
+      loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
+      // IEC 60364-5-52: иконка способа прокладки (справа) + расположения кабелей (левее)
+      drawChannelIcon(g, w, n.channelType || 'conduit');
+      drawBundlingIcon(g, w - 82, n.bundling || 'touching');
+    }
+    g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
+
+    // Порты — входы
+    const inCount = nodeInputCount(n);
+    // Состояние каждого входного порта: 'active' | 'powered' | undefined
+    const portStates = new Map();
+    if (inCount > 1) {
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId !== n.id) continue;
+        if (c._state === 'active' || c._state === 'powered') {
+          portStates.set(c.to.port, c._state);
+        }
+      }
+    }
+    for (let i = 0; i < inCount; i++) {
+      const cx = w / (inCount + 1) * (i + 1);
+      const circ = el('circle', { class: 'port in', cx, cy: 0, r: PORT_R });
+      circ.dataset.portKind = 'in'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
+      g.appendChild(circ);
+      // Метка приоритета
+      if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
+        const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
+        g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
+      }
+      // Лампочки (только при inputs > 1):
+      //   зелёная — на красную линию («работает, несёт нагрузку»)
+      //   красная — на зелёную линию («есть напряжение, но не выбрано»)
+      //   нет лампочки — на серую пунктирную
+      if (inCount > 1) {
+        const ps = portStates.get(i);
+        if (ps === 'active') {
+          g.appendChild(el('circle', { class: 'port-lamp green', cx: cx + 11, cy: 0, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core green', cx: cx + 11, cy: 0, r: 2 }));
+        } else if (ps === 'powered') {
+          g.appendChild(el('circle', { class: 'port-lamp red', cx: cx + 11, cy: 0, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core red', cx: cx + 11, cy: 0, r: 2 }));
+        }
+      }
+    }
+    // Порты — выходы
+    const outCount = nodeOutputCount(n);
+    for (let i = 0; i < outCount; i++) {
+      const cx = w / (outCount + 1) * (i + 1);
+      const circ = el('circle', { class: 'port out', cx, cy: NODE_H, r: PORT_R });
+      circ.dataset.portKind = 'out'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
+      g.appendChild(circ);
+    }
+
+    // Жёлтый треугольник с «!» — предупреждение о номинале шкафа
+    if (n.type === 'panel' && n._marginWarn) {
+      const tx = w - 22, ty = 8;
+      const tri = el('path', {
+        class: 'margin-warn-tri',
+        d: `M${tx + 8},${ty} L${tx + 16},${ty + 14} L${tx},${ty + 14} Z`,
+      });
+      g.appendChild(tri);
+      const bang = text(tx + 8, ty + 13, '!', 'margin-warn-bang');
+      g.appendChild(bang);
+      const title = el('title', {});
+      const mp = n._marginPct == null ? '-' : n._marginPct.toFixed(1);
+      title.textContent = n._marginWarn === 'undersize'
+        ? `Перегруз: номинал ${fmt(n.capacityA)} А < макс.ток ${fmt(n._maxLoadA || 0)} А (${mp}%)`
+        : `Избыточный запас: номинал ${fmt(n.capacityA)} А, макс.ток ${fmt(n._maxLoadA || 0)} А (запас ${mp}%, макс. ${n.marginMaxPct}%)`;
+      tri.appendChild(title);
+    }
+
+    layerNodes.appendChild(g);
+  }
+}
+
+export function renderConns() {
+  while (layerConns.firstChild) layerConns.removeChild(layerConns.firstChild);
+
+  // Control-линии: от каждого триггера к генератору
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'generator') continue;
+    const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+      ? n.triggerNodeIds
+      : (n.triggerNodeId ? [n.triggerNodeId] : []);
+    if (!triggers.length) continue;
+    const genW = nodeWidth(n);
+    for (const tid of triggers) {
+      const trigger = state.nodes.get(tid);
+      if (!trigger) continue;
+      const trigW = nodeWidth(trigger);
+      const a = { x: trigger.x + trigW / 2, y: trigger.y + NODE_H / 2 };
+      const b = { x: n.x + genW / 2, y: n.y + NODE_H / 2 };
+      const triggerAlive = !!trigger._powered;
+      const genRunning = !!n._running;
+      const cls = (!triggerAlive && genRunning) ? 'control-line started' : 'control-line';
+      layerConns.appendChild(el('line', { class: cls, x1: a.x, y1: a.y, x2: b.x, y2: b.y }));
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const label = !triggerAlive ? (genRunning ? 'ПУСК' : 'СИГНАЛ') : 'дежурство';
+      layerConns.appendChild(text(mid.x, mid.y - 4, label, 'control-label' + (!triggerAlive ? ' started' : '')));
+    }
+  }
+
+  for (const c of state.conns.values()) {
+    const fromN = state.nodes.get(c.from.nodeId);
+    const toN   = state.nodes.get(c.to.nodeId);
+    if (!fromN || !toN) continue;
+    const a = portPos(fromN, 'out', c.from.port);
+    const b = portPos(toN,   'in',  c.to.port);
+    const waypoints = Array.isArray(c.waypoints) ? c.waypoints : [];
+    const d = splinePath(a, waypoints, b);
+
+    const selected = state.selectedKind === 'conn' && state.selectedId === c.id;
+
+    // Невидимая «толстая» дорожка — упрощает попадание кликом
+    const hit = el('path', { class: 'conn-hit', d });
+    hit.dataset.connId = c.id;
+    layerConns.appendChild(hit);
+
+    // Видимая линия — повреждённые и отключённые перекрывают электрическое состояние
+    let stateClass;
+    if (c.lineMode === 'damaged') stateClass = ' damaged';
+    else if (c.lineMode === 'disabled') stateClass = ' disabled';
+    else stateClass = c._state === 'active' ? ' active'
+                    : c._state === 'powered' ? ' powered'
+                    : ' dead';
+    const path = el('path', {
+      class: 'conn' + stateClass + (selected ? ' selected' : ''),
+      d,
+    });
+    path.dataset.connId = c.id;
+    layerConns.appendChild(path);
+
+    // Подпись на активных линиях.
+    // Формат: «Imax A / жилы×[N×]сечение мм² [(кол-во шт.)]»
+    //   Imax — ток в максимальном режиме (одна параллельная ветвь)
+    //   жилы — 5 для 3ф (L1+L2+L3+N+PE), 3 для 1ф (L+N+PE)
+    //   N× — количество спаренных кабелей (только если > 1)
+    //   (кол-во шт.) — только для групповых потребителей (count > 1)
+    if (c._state === 'active' && c._loadKw > 0) {
+      const mid = pathMidpoint(a, waypoints, b);
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const cores = c._wireCount || (c._threePhase ? 5 : 3);
+
+      // Ток макс. режима на ОДНУ параллельную ветвь
+      const maxPerBranch = (c._maxA || 0) / parallel;
+
+      // Обозначение кабеля:
+      //   Обычная линия:                   «5×25 мм²»
+      //   Спаренные кабели (auto-parallel): «2×(5×240 мм²)» — расчёт увеличил параллель
+      //   Группа потребителей:             «5×25 мм² (4 шт.)» — БЕЗ множителя перед скобками
+      //   Группа + спаренные:              «2×(5×240 мм²) (4 шт.)»
+      //
+      // Ключевое: множитель N×(...) показывается ТОЛЬКО при auto-parallel
+      // (когда одиночный кабель не проходит по току и расчёт увеличил параллель).
+      // Групповые линии (count > 1) показывают только «(N шт.)» в конце.
+      const isAutoParallel = !!c._cableAutoParallel;
+      let cableSpec = '';
+      if (c._cableSize) {
+        const inner = `${cores}×${c._cableSize} мм²`;
+        cableSpec = (isAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
+      }
+
+      const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1)
+        ? Number(toN.count) : 0;
+
+      // Формат: «полный_ток A · N×ток_на_линию A / кабель (шт.)»
+      // Одиночная:  «173.7 A / 5×240 мм²»
+      // Спаренная:  «1389.6 A · 8×173.7 A / 8×(5×240 мм²)»
+      // Группа:     «173.7 A / 5×240 мм² (8 шт.)»
+      let labelText;
+      if (isAutoParallel && parallel > 1) {
+        const totalA = maxPerBranch * parallel;
+        labelText = `${fmt(totalA)} A · ${parallel}×${fmt(maxPerBranch)} A / ${cableSpec}`;
+      } else {
+        labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
+      }
+      if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
+
+      const lbl = text(mid.x, mid.y - 4, labelText,
+        'conn-label' + (c._cableOverflow ? ' overload' : ''));
+      layerConns.appendChild(lbl);
+    }
+
+    // Подпись макс. режима на неактивных связях
+    if (c._state !== 'active' && c._maxA > 0 && c._cableSize) {
+      const mid = pathMidpoint(a, waypoints, b);
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const maxPerBranch = c._maxA / parallel;
+      const cores = c._threePhase ? 5 : 3;
+      const inner = `${cores}×${c._cableSize} мм²`;
+      const isAutoP = !!c._cableAutoParallel;
+      const spec = (isAutoP && parallel > 1) ? `${parallel}×(${inner})` : inner;
+      const labelText = `[${fmt(maxPerBranch)} A / ${spec}]`;
+      const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label-sub');
+      layerConns.appendChild(lbl);
+    }
+
+    // Рукоятки на обоих концах выделенной связи + точки сплайна
+    if (selected) {
+      const h1 = el('circle', { class: 'conn-handle', cx: b.x, cy: b.y, r: 7 });
+      h1.dataset.reconnectId = c.id;
+      h1.dataset.reconnectEnd = 'to';
+      layerConns.appendChild(h1);
+      const h2 = el('circle', { class: 'conn-handle', cx: a.x, cy: a.y, r: 7 });
+      h2.dataset.reconnectId = c.id;
+      h2.dataset.reconnectEnd = 'from';
+      layerConns.appendChild(h2);
+
+      // Существующие waypoints
+      for (let i = 0; i < waypoints.length; i++) {
+        const wp = waypoints[i];
+        const dot = el('circle', { class: 'conn-waypoint', cx: wp.x, cy: wp.y, r: 5 });
+        dot.dataset.waypointId = c.id;
+        dot.dataset.waypointIdx = i;
+        layerConns.appendChild(dot);
+      }
+      // «Плюсы» для добавления новых waypoints в середине каждого сегмента
+      const chain = [a, ...waypoints, b];
+      for (let i = 0; i < chain.length - 1; i++) {
+        const mid = { x: (chain[i].x + chain[i + 1].x) / 2, y: (chain[i].y + chain[i + 1].y) / 2 };
+        const plus = el('circle', { class: 'conn-waypoint-add', cx: mid.x, cy: mid.y, r: 4 });
+        plus.dataset.waypointAddId = c.id;
+        plus.dataset.waypointAddIdx = i; // вставка перед позицией i в waypoints
+        layerConns.appendChild(plus);
+      }
+    }
+
+    // Бейдж автомата — ближе к from-концу, следует за траекторией
+    const hasBreaker = c._breakerIn || c._breakerPerLine;
+    if (hasBreaker && c._state === 'active') {
+      const pts = [a, ...waypoints, b];
+      let total = 0;
+      const segs = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+        segs.push(len); total += len;
+      }
+      const target = total * 0.15;
+      let labelPos = { x: a.x, y: a.y };
+      let acc = 0;
+      for (let i = 0; i < segs.length; i++) {
+        if (acc + segs[i] >= target) {
+          const t = segs[i] > 0 ? (target - acc) / segs[i] : 0;
+          labelPos = {
+            x: pts[i].x + (pts[i + 1].x - pts[i].x) * t,
+            y: pts[i].y + (pts[i + 1].y - pts[i].y) * t,
+          };
+          break;
+        }
+        acc += segs[i];
+      }
+
+      const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');
+
+      if (c._cableAutoParallel && c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
+        // Спаренные: общий автомат сверху, per-line в скобках снизу
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 10, `C${c._breakerIn}А`, cls));
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 22, `(${c._breakerCount}×C${c._breakerPerLine}А)`, cls));
+      } else if (c._breakerPerLine && c._breakerCount > 1) {
+        // Группа: N×CxxA
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 14, `${c._breakerCount}×C${c._breakerPerLine}А`, cls));
+      } else if (c._breakerIn) {
+        // Одиночная: CxxA
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 14, `C${c._breakerIn}А`, cls));
+      }
+    }
+  }
+}
+
+export function renderStats() {
+  let totalDemand = 0, totalCap = 0, totalDraw = 0;
+  let unpoweredCount = 0, overloadCount = 0;
+  for (const n of state.nodes.values()) {
+    if (n.type === 'consumer') {
+      totalDemand += Number(n.demandKw) || 0;
+      if (!n._powered) unpoweredCount++;
+    }
+    if (n.type === 'source' || n.type === 'generator') {
+      if (effectiveOn(n)) totalCap += Number(n.capacityKw) || 0;
+      totalDraw += n._loadKw || 0;
+      if (n._overload) overloadCount++;
+    }
+  }
+  const rows = [];
+  rows.push(`<div class="row"><span>Запрос</span><span>${fmt(totalDemand)} kW</span></div>`);
+  rows.push(`<div class="row"><span>Источников</span><span>${fmt(totalCap)} kW</span></div>`);
+  rows.push(`<div class="row"><span>Потребляется</span><span>${fmt(totalDraw)} kW</span></div>`);
+  if (unpoweredCount) rows.push(`<div class="row warn"><span>Без питания</span><span>${unpoweredCount}</span></div>`);
+  if (overloadCount)  rows.push(`<div class="row warn"><span>Перегруз</span><span>${overloadCount}</span></div>`);
+  if (!unpoweredCount && !overloadCount && state.nodes.size) {
+    rows.push(`<div class="row ok"><span>Статус</span><span>OK</span></div>`);
+  }
+  statsEl.innerHTML = rows.join('');
+}
+
+export function renderModes() {
+  const rows = [];
+  const list = [{ id: null, name: 'Нормальный' }, ...state.modes];
+  for (const m of list) {
+    const active = m.id === state.activeModeId;
+    const canDel = m.id !== null;
+    rows.push(
+      `<div class="mode-row${active ? ' active' : ''}" data-mid="${m.id ?? ''}">
+        <input type="radio" name="mode"${active ? ' checked' : ''}>
+        <input type="text" class="mode-name" value="${escAttr(m.name)}"${canDel ? '' : ' disabled'}>
+        <button class="mode-del" ${canDel ? '' : 'disabled'}>×</button>
+      </div>`
+    );
+  }
+  modesListEl.innerHTML = rows.join('');
+
+  modesListEl.querySelectorAll('.mode-row').forEach(row => {
+    const mid = row.dataset.mid || null;
+    row.querySelector('input[type=radio]').addEventListener('change', () => selectMode(mid));
+    row.addEventListener('click', e => {
+      if (e.target.closest('.mode-del') || e.target.classList.contains('mode-name')) return;
+      selectMode(mid);
+    });
+    const nameInput = row.querySelector('.mode-name');
+    if (!nameInput.disabled) {
+      nameInput.addEventListener('input', () => {
+        snapshot('mode-name:' + mid);
+        const m = state.modes.find(x => x.id === mid);
+        if (m) m.name = nameInput.value;
+        notifyChange();
+      });
+    }
+    const del = row.querySelector('.mode-del');
+    if (!del.disabled) del.addEventListener('click', e => { e.stopPropagation(); deleteMode(mid); });
+  });
+}
+
+// IEC 60364-5-52 графические обозначения способов прокладки.
+// Рисует SVG-иконку 36×28 px в правом верхнем углу карточки канала.
+export function drawChannelIcon(g, nodeW, channelType) {
+  const ix = nodeW - 44, iy = 6;
+  const ig = el('g', { transform: `translate(${ix},${iy})`, class: 'node-icon' });
+
+  // Общие элементы
+  function cable(cx, cy, r) {
+    // Кабель в разрезе: внешняя оболочка + 3 жилы внутри
+    ig.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: '#555', 'stroke-width': 1.2 }));
+    const jr = r * 0.28;
+    ig.appendChild(el('circle', { cx: cx - jr, cy: cy - jr * 0.5, r: jr, fill: '#555' }));
+    ig.appendChild(el('circle', { cx: cx + jr, cy: cy - jr * 0.5, r: jr, fill: '#555' }));
+    ig.appendChild(el('circle', { cx, cy: cy + jr * 0.7, r: jr, fill: '#555' }));
+  }
+  function wall(x, y, w, h) {
+    // Штриховка стены/грунта
+    ig.appendChild(el('rect', { x, y, width: w, height: h, fill: 'none', stroke: '#888', 'stroke-width': 1 }));
+    for (let i = 0; i < w; i += 4) {
+      ig.appendChild(el('line', { x1: x + i, y1: y + h, x2: x + i + 4, y2: y, stroke: '#bbb', 'stroke-width': 0.5 }));
+    }
+  }
+  function tray(x, y, w) {
+    // Лоток — U-образный профиль
+    ig.appendChild(el('path', { d: `M${x},${y} L${x},${y + 6} L${x + w},${y + 6} L${x + w},${y}`, fill: 'none', stroke: '#666', 'stroke-width': 1.2 }));
+  }
+  function tube(cx, cy, r) {
+    // Труба — круг
+    ig.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: '#888', 'stroke-width': 1.2 }));
+  }
+
+  switch (channelType) {
+    case 'conduit': // B1 — кабель в трубе на стене
+      wall(0, 0, 36, 8);
+      tube(18, 18, 9);
+      cable(18, 18, 5);
+      break;
+    case 'tray_solid': // B2 — сплошной лоток/короб
+      ig.appendChild(el('rect', { x: 2, y: 10, width: 32, height: 14, fill: 'none', stroke: '#666', 'stroke-width': 1.2 }));
+      cable(18, 17, 5);
+      break;
+    case 'wall': // C — открыто на стене
+      wall(0, 0, 36, 8);
+      cable(18, 18, 6);
+      break;
+    case 'tray_perf': // E — перфорированный лоток
+      tray(2, 20, 32);
+      // Отверстия перфорации
+      for (let i = 6; i < 32; i += 8) {
+        ig.appendChild(el('rect', { x: i, y: 22, width: 4, height: 2, fill: '#fff', stroke: '#888', 'stroke-width': 0.5 }));
+      }
+      cable(18, 14, 5);
+      break;
+    case 'tray_wire': // E — проволочный лоток
+      tray(2, 20, 32);
+      // Проволочная сетка
+      for (let i = 4; i < 34; i += 5) {
+        ig.appendChild(el('line', { x1: i, y1: 20, x2: i, y2: 26, stroke: '#aaa', 'stroke-width': 0.5 }));
+      }
+      cable(18, 14, 5);
+      break;
+    case 'tray_ladder': // F — лестничный лоток
+      // Боковины
+      ig.appendChild(el('line', { x1: 4, y1: 16, x2: 4, y2: 26, stroke: '#666', 'stroke-width': 1.5 }));
+      ig.appendChild(el('line', { x1: 32, y1: 16, x2: 32, y2: 26, stroke: '#666', 'stroke-width': 1.5 }));
+      // Перекладины
+      for (let y = 18; y <= 24; y += 6) {
+        ig.appendChild(el('line', { x1: 4, y1: y, x2: 32, y2: y, stroke: '#888', 'stroke-width': 0.8 }));
+      }
+      cable(18, 12, 5);
+      break;
+    case 'air': // F — свободно в воздухе
+      cable(18, 14, 6);
+      // Стрелки воздушного потока
+      ig.appendChild(el('path', { d: 'M6,24 L10,20 L14,24', fill: 'none', stroke: '#aaa', 'stroke-width': 0.8 }));
+      ig.appendChild(el('path', { d: 'M22,24 L26,20 L30,24', fill: 'none', stroke: '#aaa', 'stroke-width': 0.8 }));
+      break;
+    case 'ground': // D1 — в трубе в земле
+      wall(0, 0, 36, 28);
+      tube(18, 14, 8);
+      cable(18, 14, 4.5);
+      break;
+    case 'ground_direct': // D2 — напрямую в земле
+      wall(0, 0, 36, 28);
+      cable(18, 14, 5.5);
+      break;
+    default:
+      cable(18, 14, 6);
+  }
+  g.appendChild(ig);
+}
+
+// Компактная иконка расположения кабелей (bundling) 28×28 px
+export function drawBundlingIcon(g, x, bundling) {
+  const ig = el('g', { transform: `translate(${x},${6})`, class: 'node-icon' });
+  const c = (cx, cy, r) => ig.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: '#555', 'stroke-width': 1 }));
+  const dot = (cx, cy) => ig.appendChild(el('circle', { cx, cy, r: 1.8, fill: '#555' }));
+
+  if (bundling === 'spaced') {
+    c(6, 14, 5); dot(6, 14);
+    c(22, 14, 5); dot(22, 14);
+    // Зазор
+    ig.appendChild(el('line', { x1: 11, y1: 6, x2: 17, y2: 6, stroke: '#1976d2', 'stroke-width': 0.6 }));
+  } else if (bundling === 'bundled') {
+    ig.appendChild(el('ellipse', { cx: 14, cy: 14, rx: 12, ry: 10, fill: 'none', stroke: '#888', 'stroke-width': 0.8, 'stroke-dasharray': '2 1.5' }));
+    c(8, 11, 4); dot(8, 11);
+    c(20, 11, 4); dot(20, 11);
+    c(14, 20, 4); dot(14, 20);
+  } else {
+    // touching
+    c(8, 14, 5); dot(8, 14);
+    c(20, 14, 5); dot(20, 14);
+  }
+  g.appendChild(ig);
+}
