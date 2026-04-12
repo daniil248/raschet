@@ -63,6 +63,7 @@ export function renderInspectorNode(n) {
       }
       h.push('</div></div>');
     }
+    h.push(field('Комментарии', `<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical">${escHtml(n.comment || '')}</textarea>`));
     h.push('<button class="btn-delete" id="btn-del-node">Удалить зону</button>');
     inspectorBody.innerHTML = h.join('');
     wireInspectorInputs(n);
@@ -167,6 +168,7 @@ export function renderInspectorNode(n) {
       h.push('</div></details>');
     }
 
+    h.push(field('Комментарии', `<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical">${escHtml(n.comment || '')}</textarea>`));
     h.push('<button class="btn-delete" id="btn-del-node">Удалить канал</button>');
     inspectorBody.innerHTML = h.join('');
     wireInspectorInputs(n);
@@ -224,99 +226,25 @@ export function renderInspectorNode(n) {
       `</div>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
-    h.push(`<button class="full-btn" id="btn-open-panel-control" style="margin-bottom:8px">🔌 Управление щитом</button>`);
-    h.push(checkField('Режим обслуживания (полностью обесточен)', 'maintenance', !!n.maintenance));
+    // Кнопки управления
+    h.push(`<button class="full-btn" id="btn-open-panel-control" style="margin-bottom:4px">🔌 Управление щитом</button>`);
+    h.push(`<button class="full-btn" id="btn-open-panel-params" style="margin-bottom:8px">⚙ Параметры щита</button>`);
+
     if (n.maintenance) {
       h.push('<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;font-weight:600;color:#e65100">⚠ ЩИТ В РЕЖИМЕ ОБСЛУЖИВАНИЯ — ОБЕСТОЧЕН</div>');
     }
-    h.push(field('Входов', `<input type="number" min="1" max="30" step="1" data-prop="inputs" value="${n.inputs}">`));
-    h.push(field('Выходов', `<input type="number" min="1" max="30" step="1" data-prop="outputs" value="${n.outputs}">`));
+
+    // Краткая сводка
+    const sm = n.switchMode || 'auto';
+    const smLabel = { auto: 'АВР', manual: 'Ручной', parallel: 'Параллельный', avr_paired: 'АВР привязка', switchover: 'Подменный', watchdog: 'Watchdog' }[sm] || sm;
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
+      `Режим: <b>${smLabel}</b> · Вх: <b>${n.inputs}</b> · Вых: <b>${n.outputs}</b> · In: <b>${n.capacityA ?? 160} А</b>` +
+      `</div>`);
+
     h.push(field('Ксим (коэффициент одновременности)', `<input type="number" min="0" max="1.2" step="0.05" data-prop="kSim" value="${n.kSim ?? 1}">`));
 
-    // Номинал шкафа — в амперах. Рядом показываем эквивалент в kW для справки.
-    h.push('<div class="inspector-section"><h4>Номинал шкафа</h4>');
-    h.push(field('Номинальный ток вводного автомата, А', `<input type="number" min="0" step="1" data-prop="capacityA" value="${n.capacityA ?? 160}">`));
-    // Подсказка с эквивалентной мощностью
-    if (n._capacityKwFromA) {
-      h.push(`<div class="muted" style="font-size:11px;margin-top:-8px;margin-bottom:10px">Эквивалентная мощность при ${nodeVoltage(n)} В, cos φ ${(n._cosPhi || GLOBAL.defaultCosPhi).toFixed(2)}: <b>${fmt(n._capacityKwFromA)} kW</b></div>`);
-    }
-    h.push(field('Мин. запас над нагрузкой, %', `<input type="number" min="0" max="50" step="1" data-prop="marginMinPct" value="${n.marginMinPct ?? 2}">`));
-    h.push(field('Макс. запас над нагрузкой, %', `<input type="number" min="5" max="500" step="1" data-prop="marginMaxPct" value="${n.marginMaxPct ?? 30}">`));
-    h.push('<div class="muted" style="font-size:11px;margin-top:-4px">Шкаф считается правильно подобранным, если его номинальный ток превышает расчётный на значение в этих пределах. Вне диапазона — предупреждение.</div>');
-    h.push('</div>');
+    if (n.inputs > 1) h.push(prioritySection(n));
 
-    // Режим переключения и приоритеты имеют смысл только при 2+ входах
-    if (n.inputs > 1) {
-      const sm = n.switchMode || 'auto';
-      h.push(field('Режим переключения',
-        `<select data-prop="switchMode">
-          <option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>
-          <option value="manual"${sm === 'manual' ? ' selected' : ''}>Ручной — один вход</option>
-          <option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельный — несколько вводов</option>
-          <option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов к входам</option>
-          <option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover) — по условию</option>
-          <option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog — вход N → выход N по сигналу</option>
-        </select>`));
-      // Параметры АВР (для режимов auto, avr_paired, switchover)
-      if (sm === 'auto' || sm === 'avr_paired' || sm === 'switchover') {
-        h.push(field('Задержка переключения АВР, сек', `<input type="number" min="0" max="30" step="0.5" data-prop="avrDelaySec" value="${n.avrDelaySec ?? 2}">`));
-        h.push(field('Разбежка между автоматами, сек', `<input type="number" min="0" max="10" step="0.5" data-prop="avrInterlockSec" value="${n.avrInterlockSec ?? 1}">`));
-        h.push('<div class="muted" style="font-size:11px;margin-top:-4px;margin-bottom:8px">Задержка — время до переключения при возврате напряжения. Разбежка — минимальный интервал между вкл./выкл. автоматов двух вводов (предотвращает одновременное включение).</div>');
-      }
-      if (sm === 'manual') {
-        const opts = [];
-        for (let i = 0; i < n.inputs; i++) {
-          opts.push(`<option value="${i}"${(n.manualActiveInput | 0) === i ? ' selected' : ''}>Вход ${i + 1}</option>`);
-        }
-        h.push(field('Активный вход',
-          `<select data-prop="manualActiveInput">${opts.join('')}</select>`));
-        h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Работает только явно выбранный вход. Если на нём нет напряжения — щит обесточен.</div>');
-      } else if (sm === 'avr_paired') {
-        h.push('<div class="inspector-section"><h4>АВР с привязкой</h4>');
-        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый выход привязан к группе входов. Выход работает от того входа из своей группы, у которого есть питание (АВР внутри группы).</div>');
-        const map = Array.isArray(n.outputInputMap) ? n.outputInputMap : [];
-        for (let oi = 0; oi < n.outputs; oi++) {
-          const assigned = map[oi] || [];
-          h.push(`<div class="field"><label>Выход ${oi + 1} ← входы:</label><div>`);
-          for (let ii = 0; ii < n.inputs; ii++) {
-            const checked = assigned.includes(ii);
-            h.push(`<span style="margin-right:8px"><input type="checkbox" data-oim-out="${oi}" data-oim-in="${ii}"${checked ? ' checked' : ''}> Вх${ii + 1}</span>`);
-          }
-          h.push('</div></div>');
-        }
-        h.push('</div>');
-      } else if (sm === 'switchover') {
-        h.push('<div class="inspector-section"><h4>Подменный (switchover)</h4>');
-        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый выход включается только когда указанный узел обесточен. Типичное применение: подменный ДГУ, который заменяет ДГУ1 или ДГУ2.</div>');
-        const whenDead = Array.isArray(n.outputActivateWhenDead) ? n.outputActivateWhenDead : [];
-        const candidates = [...state.nodes.values()].filter(o => o.id !== n.id && (o.type === 'source' || o.type === 'generator' || o.type === 'ups'));
-        for (let oi = 0; oi < n.outputs; oi++) {
-          const curId = whenDead[oi] || '';
-          let opts = '<option value="">— всегда активен —</option>';
-          for (const cand of candidates) {
-            opts += `<option value="${escAttr(cand.id)}"${curId === cand.id ? ' selected' : ''}>${escHtml(effectiveTag(cand))} ${escHtml(cand.name || '')}</option>`;
-          }
-          h.push(field(`Выход ${oi + 1}: включить при обесточке`, `<select data-switchover-out="${oi}">${opts}</select>`));
-        }
-        h.push('</div>');
-      } else if (sm === 'watchdog') {
-        h.push('<div class="inspector-section"><h4>Watchdog</h4>');
-        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Вход i → выход i. Выход активен когда upstream входа i мёртв.</div>');
-        h.push('</div>');
-      } else if (sm === 'parallel') {
-        h.push('<div class="inspector-section"><h4>Включённые вводы</h4>');
-        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Можно включить несколько вводных автоматов одновременно — актуально для шкафов байпаса и параллельной работы ИБП.</div>');
-        const enabled = Array.isArray(n.parallelEnabled) ? n.parallelEnabled : [];
-        for (let i = 0; i < n.inputs; i++) {
-          const on = !!enabled[i];
-          h.push(`<div class="field check"><input type="checkbox" data-parallel="${i}"${on ? ' checked' : ''}><label>Вход ${i + 1}</label></div>`);
-        }
-        h.push('</div>');
-      } else {
-        h.push(prioritySection(n));
-      }
-    }
-    // При inputs === 1 никаких приоритетов/режимов не показываем
     h.push(`<button type="button" class="full-btn" id="btn-balance-panel" style="margin-top:8px">⚖ Балансировка фаз на щите</button>`);
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
@@ -392,6 +320,9 @@ export function renderInspectorNode(n) {
     const m = state.modes.find(x => x.id === state.activeModeId);
     h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px">Изменения параметра «В работе» сохраняются в режиме <b>${escAttr(m?.name || '')}</b></div></div>`);
   }
+
+  // Комментарии — для всех типов элементов
+  h.push(field('Комментарии', `<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical">${escHtml(n.comment || '')}</textarea>`));
 
   // Кнопка сохранения элемента в пользовательскую библиотеку
   if (n.type !== 'zone') {
@@ -626,6 +557,11 @@ export function wireInspectorInputs(n) {
   const panelCtrlBtn = document.getElementById('btn-open-panel-control');
   if (panelCtrlBtn && n.type === 'panel') {
     panelCtrlBtn.addEventListener('click', () => openPanelControlModal(n));
+  }
+  // Параметры щита
+  const panelParamsBtn = document.getElementById('btn-open-panel-params');
+  if (panelParamsBtn && n.type === 'panel') {
+    panelParamsBtn.addEventListener('click', () => openPanelParamsModal(n));
   }
 
   // Балансировка фаз на щите
@@ -1056,6 +992,71 @@ export function openAutomationModal(n) {
   document.getElementById('modal-automation').classList.remove('hidden');
 }
 
+// ================= Модалка «Параметры щита» =================
+export function openPanelParamsModal(n) {
+  const body = document.getElementById('panel-params-body');
+  if (!body) return;
+  const h = [];
+  h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+
+  // Входы / Выходы
+  h.push(field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`));
+  h.push(field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`));
+
+  // Номинал шкафа
+  h.push('<h4 style="margin:16px 0 8px">Номинал шкафа</h4>');
+  h.push(field('Номинальный ток вводного автомата, А', `<input type="number" id="pp-capacityA" min="0" step="1" value="${n.capacityA ?? 160}">`));
+  if (n._capacityKwFromA) {
+    h.push(`<div class="muted" style="font-size:11px;margin-top:-8px;margin-bottom:10px">Эквивалент: <b>${fmt(n._capacityKwFromA)} kW</b></div>`);
+  }
+  h.push(field('Мин. запас над нагрузкой, %', `<input type="number" id="pp-marginMin" min="0" max="50" step="1" value="${n.marginMinPct ?? 2}">`));
+  h.push(field('Макс. запас над нагрузкой, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`));
+
+  // Режим АВР
+  if ((n.inputs || 0) > 1) {
+    h.push('<h4 style="margin:16px 0 8px">Режим АВР</h4>');
+    const sm = n.switchMode || 'auto';
+    h.push(field('Тип коммутации',
+      `<select id="pp-switchMode">
+        <option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>
+        <option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельная работа</option>
+        <option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов</option>
+        <option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover)</option>
+        <option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog</option>
+      </select>`));
+
+    h.push('<h4 style="margin:12px 0 8px">Задержки АВР</h4>');
+    h.push(field('Задержка переключения, сек', `<input type="number" id="pp-avrDelay" min="0" max="30" step="0.5" value="${n.avrDelaySec ?? 2}">`));
+    h.push(field('Разбежка между автоматами, сек', `<input type="number" id="pp-avrInterlock" min="0" max="10" step="0.5" value="${n.avrInterlockSec ?? 1}">`));
+    h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Задержка — время до переключения при возврате напряжения.<br>Разбежка — минимальный интервал между переключениями (блокировка одновременного включения).</div>');
+  }
+
+  body.innerHTML = h.join('');
+
+  const applyBtn = document.getElementById('panel-params-apply');
+  if (applyBtn) applyBtn.onclick = () => {
+    snapshot('panel-params:' + n.id);
+    n.inputs = Number(document.getElementById('pp-inputs')?.value) || 1;
+    n.outputs = Number(document.getElementById('pp-outputs')?.value) || 1;
+    n.capacityA = Number(document.getElementById('pp-capacityA')?.value) || 160;
+    n.marginMinPct = Number(document.getElementById('pp-marginMin')?.value) || 2;
+    n.marginMaxPct = Number(document.getElementById('pp-marginMax')?.value) || 30;
+    const smSel = document.getElementById('pp-switchMode');
+    if (smSel) n.switchMode = smSel.value;
+    n.avrDelaySec = Number(document.getElementById('pp-avrDelay')?.value) ?? 2;
+    n.avrInterlockSec = Number(document.getElementById('pp-avrInterlock')?.value) ?? 1;
+    // Нормализация массивов
+    if (!Array.isArray(n.priorities)) n.priorities = [];
+    while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
+    n.priorities.length = n.inputs;
+    document.getElementById('modal-panel-params').classList.add('hidden');
+    _render(); renderInspector(); notifyChange();
+    flash('Параметры щита обновлены');
+  };
+
+  document.getElementById('modal-panel-params').classList.remove('hidden');
+}
+
 // ================= Модалка «Управление щитом» =================
 // IEC 60617 автоматический выключатель (circuit breaker symbol)
 // Структура сверху вниз:
@@ -1216,26 +1217,19 @@ export function openPanelControlModal(n) {
 
   h += `</svg></div>`;
 
-  // --- Управление АВР ---
+  // --- Переключатель Авто / Ручной ---
   if (inCount > 1) {
-    const sm = n.switchMode || 'auto';
-    h += '<div class="inspector-section" style="margin-top:8px">';
-    h += '<h4 style="margin:0 0 6px">Режим коммутации</h4>';
-    h += `<select id="pc-switch-mode" style="width:100%;padding:6px;font-size:12px;margin-bottom:6px">`;
-    h += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>`;
-    h += `<option value="manual"${sm === 'manual' ? ' selected' : ''}>Ручной — один вход</option>`;
-    h += `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельная работа</option>`;
-    h += `</select>`;
-    if (sm === 'manual') {
-      h += '<div style="font-size:11px;margin-bottom:6px">Активный вход:</div>';
-      h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
-      for (let i = 0; i < inCount; i++) {
-        const active = (n.manualActiveInput | 0) === i;
-        h += `<button type="button" data-manual-input="${i}" style="padding:4px 12px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px">${inputStates[i]?.feederTag || `Вход ${i+1}`}</button>`;
-      }
-      h += '</div>';
-    }
+    const isManual = n.switchMode === 'manual';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px">';
+    h += '<span style="font-size:11px;font-weight:600">Управление:</span>';
+    h += `<button type="button" id="pc-mode-auto" style="padding:4px 14px;border:1px solid ${!isManual ? '#1976d2' : '#ccc'};background:${!isManual ? '#1976d2' : '#fff'};color:${!isManual ? '#fff' : '#333'};border-radius:4px 0 0 4px;cursor:pointer;font-size:11px">Авто</button>`;
+    h += `<button type="button" id="pc-mode-manual" style="padding:4px 14px;border:1px solid ${isManual ? '#ff9800' : '#ccc'};background:${isManual ? '#ff9800' : '#fff'};color:${isManual ? '#fff' : '#333'};border-radius:0 4px 4px 0;cursor:pointer;font-size:11px;margin-left:-1px">Ручной</button>`;
     h += '</div>';
+    if (isManual) {
+      h += '<div style="font-size:11px;margin-bottom:6px;color:#e65100">Ручной режим: входные автоматы переключаются вручную</div>';
+    } else {
+      h += '<div style="font-size:11px;margin-bottom:6px;color:#666">Автоматический режим: АВР переключает вводы по приоритетам</div>';
+    }
   }
 
   // --- Обслуживание ---
@@ -1280,25 +1274,24 @@ export function openPanelControlModal(n) {
     });
   });
 
-  // Режим коммутации
-  const smSel = document.getElementById('pc-switch-mode');
-  if (smSel) {
-    smSel.addEventListener('change', () => {
-      snapshot('switchMode:' + n.id);
-      n.switchMode = smSel.value;
-      openPanelControlModal(n);
-      _render(); renderInspector(); notifyChange();
-    });
-  }
-
-  // Ручной выбор входа
-  body.querySelectorAll('[data-manual-input]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      snapshot('manual:' + n.id);
-      n.manualActiveInput = Number(btn.dataset.manualInput);
-      openPanelControlModal(n);
-      _render(); notifyChange();
-    });
+  // Переключатель Авто / Ручной
+  const autoBtn = document.getElementById('pc-mode-auto');
+  const manualBtn = document.getElementById('pc-mode-manual');
+  if (autoBtn) autoBtn.addEventListener('click', () => {
+    if (n.switchMode === 'manual') return; // уже авто (switchMode хранит тип АВР)
+    snapshot('mode:' + n.id);
+    // Возвращаем предыдущий тип АВР (или auto по умолчанию)
+    n.switchMode = n._prevSwitchMode || 'auto';
+    openPanelControlModal(n);
+    _render(); renderInspector(); notifyChange();
+  });
+  if (manualBtn) manualBtn.addEventListener('click', () => {
+    if (n.switchMode === 'manual') return;
+    snapshot('mode:' + n.id);
+    n._prevSwitchMode = n.switchMode; // запоминаем тип АВР
+    n.switchMode = 'manual';
+    openPanelControlModal(n);
+    _render(); renderInspector(); notifyChange();
   });
 
   // Обслуживание

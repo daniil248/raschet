@@ -137,7 +137,7 @@ export const CHANNEL_TYPES = {
 // Типы узлов и их параметры по умолчанию
 export const DEFAULTS = {
   source:    () => ({
-    name: 'Ввод ТП', capacityKw: 100, on: true,
+    name: 'Ввод ТП', comment: '', capacityKw: 100, on: true,
     sourceSubtype: 'transformer',
     phase: '3ph', voltage: 400, cosPhi: 0.95,
     sscMva: 500,            // мощность КЗ сети, МВА
@@ -148,7 +148,7 @@ export const DEFAULTS = {
     p0W: 1.5,               // потери холостого хода, кВт (P0 / Pfe)
   }),
   generator: () => ({
-    name: 'ДГУ', capacityKw: 60, on: true, backupMode: true,
+    name: 'ДГУ', comment: '', capacityKw: 60, on: true, backupMode: true,
     sourceSubtype: 'generator',
     phase: '3ph', voltage: 400, cosPhi: 0.85,
     sscMva: 10, ukPct: 0, xsRsRatio: 0.5, snomKva: 75,
@@ -167,7 +167,7 @@ export const DEFAULTS = {
     stopDelaySec: 2,
   }),
   panel:     () => ({
-    name: 'ЩС',
+    name: 'ЩС', comment: '',
     inputs: 2, outputs: 2,
     priorities: [1, 2],
     switchMode: 'auto',
@@ -191,7 +191,7 @@ export const DEFAULTS = {
     outputActivateWhenDead: null,
   }),
   ups:       () => ({
-    name: 'ИБП',
+    name: 'ИБП', comment: '',
     capacityKw: 10,
     efficiency: 95,
     chargeA: 2,
@@ -212,7 +212,7 @@ export const DEFAULTS = {
     staticBypassForced: false,
   }),
   consumer:  () => ({
-    name: 'Потребитель',
+    name: 'Потребитель', comment: '',
     demandKw: 10,
     count: 1,
     inputs: 2,
@@ -231,7 +231,7 @@ export const DEFAULTS = {
     //   - тип трассы (труба / лоток / земля / воздух / ...)
     //   - температуру среды
     //   - расположение кабелей (в пучке, плотно, с зазором)
-    name: 'Кабельный канал',
+    name: 'Кабельный канал', comment: '',
     channelType: 'conduit',   // conduit | tray_perf | tray_ladder | tray_solid | ground | wall | air
     ambientC: 30,
     lengthM: 10,
@@ -246,7 +246,7 @@ export const DEFAULTS = {
     // Зона / помещение — контейнер для группировки узлов. Членство явное:
     // только то, что есть в memberIds. Новые узлы добавляются в зону только
     // при полном попадании их bbox внутрь зоны при ручном drop.
-    name: 'Зона',
+    name: 'Зона', comment: '',
     zonePrefix: 'Z1',
     width: 600,
     height: 400,
