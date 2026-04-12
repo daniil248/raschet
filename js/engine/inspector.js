@@ -252,6 +252,12 @@ export function renderInspectorNode(n) {
           <option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover) — по условию</option>
           <option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog — вход N → выход N по сигналу</option>
         </select>`));
+      // Параметры АВР (для режимов auto, avr_paired, switchover)
+      if (sm === 'auto' || sm === 'avr_paired' || sm === 'switchover') {
+        h.push(field('Задержка переключения АВР, сек', `<input type="number" min="0" max="30" step="0.5" data-prop="avrDelaySec" value="${n.avrDelaySec ?? 2}">`));
+        h.push(field('Разбежка между автоматами, сек', `<input type="number" min="0" max="10" step="0.5" data-prop="avrInterlockSec" value="${n.avrInterlockSec ?? 1}">`));
+        h.push('<div class="muted" style="font-size:11px;margin-top:-4px;margin-bottom:8px">Задержка — время до переключения при возврате напряжения. Разбежка — минимальный интервал между вкл./выкл. автоматов двух вводов (предотвращает одновременное включение).</div>');
+      }
       if (sm === 'manual') {
         const opts = [];
         for (let i = 0; i < n.inputs; i++) {
@@ -306,6 +312,7 @@ export function renderInspectorNode(n) {
       }
     }
     // При inputs === 1 никаких приоритетов/режимов не показываем
+    h.push(`<button type="button" class="full-btn" id="btn-balance-panel" style="margin-top:8px">⚖ Балансировка фаз на щите</button>`);
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
     h.push(field('Выходная мощность, kW', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
@@ -341,6 +348,24 @@ export function renderInspectorNode(n) {
     }
     h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi ?? 0.92}">`));
+
+    // Выбор фазы — кнопки
+    const ph = n.phase || '3ph';
+    h.push('<div class="field"><label>Фаза</label>');
+    h.push('<div style="display:flex;gap:4px;flex-wrap:wrap">');
+    const phases = [
+      { val: '3ph', label: '3Ф' },
+      { val: 'A', label: 'A' },
+      { val: 'B', label: 'B' },
+      { val: 'C', label: 'C' },
+    ];
+    for (const p of phases) {
+      const active = ph === p.val;
+      h.push(`<button type="button" data-phase-btn="${p.val}" style="padding:4px 12px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:12px;font-weight:${active ? '600' : '400'}">${p.label}</button>`);
+    }
+    h.push(`<button type="button" id="btn-auto-phase" style="padding:4px 12px;border:1px dashed #999;background:#f5f5f5;border-radius:4px;cursor:pointer;font-size:11px" title="Автоматически выбрать наименее нагруженную фазу">Авто</button>`);
+    h.push('</div></div>');
+
     h.push(field('Ки — коэффициент использования', `<input type="number" min="0" max="1" step="0.05" data-prop="kUse" value="${n.kUse ?? 1}">`));
     h.push(field('Кратность пускового тока', `<input type="number" min="1" max="10" step="0.1" data-prop="inrushFactor" value="${n.inrushFactor ?? 1}">`));
     h.push(field('Входов', `<input type="number" min="1" max="10" step="1" data-prop="inputs" value="${n.inputs}">`));
@@ -591,6 +616,108 @@ export function wireInspectorInputs(n) {
   if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
   const impBtn = document.getElementById('btn-open-impedance');
   if (impBtn) impBtn.addEventListener('click', () => openImpedanceModal(n));
+
+  // Балансировка фаз на щите
+  const balanceBtn = document.getElementById('btn-balance-panel');
+  if (balanceBtn && n.type === 'panel') {
+    balanceBtn.addEventListener('click', () => {
+      snapshot('balance:' + n.id);
+      // Собираем однофазных потребителей на этом щите
+      const singlePhase = [];
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== n.id) continue;
+        const to = state.nodes.get(c.to.nodeId);
+        if (!to || to.type !== 'consumer') continue;
+        const ph = to.phase || '3ph';
+        if (ph !== '3ph') singlePhase.push(to);
+      }
+      if (!singlePhase.length) { flash('Нет однофазных потребителей на щите'); return; }
+      // Жадный алгоритм: сортируем по мощности ↓, назначаем на наименее нагруженную фазу
+      const load = { A: 0, B: 0, C: 0 };
+      // Сначала учтём 3ф нагрузки
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== n.id) continue;
+        const to = state.nodes.get(c.to.nodeId);
+        if (!to || to.type !== 'consumer' || (to.phase || '3ph') !== '3ph') continue;
+        const kw = (Number(to.demandKw) || 0) * Math.max(1, Number(to.count) || 1);
+        load.A += kw/3; load.B += kw/3; load.C += kw/3;
+      }
+      // Сортируем однофазных по убыванию мощности
+      singlePhase.sort((a, b) => {
+        const ka = (Number(a.demandKw)||0) * Math.max(1, Number(a.count)||1);
+        const kb = (Number(b.demandKw)||0) * Math.max(1, Number(b.count)||1);
+        return kb - ka;
+      });
+      for (const cons of singlePhase) {
+        const kw = (Number(cons.demandKw) || 0) * Math.max(1, Number(cons.count) || 1);
+        const min = Math.min(load.A, load.B, load.C);
+        if (load.A === min) { cons.phase = 'A'; load.A += kw; }
+        else if (load.B === min) { cons.phase = 'B'; load.B += kw; }
+        else { cons.phase = 'C'; load.C += kw; }
+      }
+      _render(); renderInspector(); notifyChange();
+      flash(`Баланс: A:${fmt(load.A)} B:${fmt(load.B)} C:${fmt(load.C)} kW`);
+    });
+  }
+
+  // Фазные кнопки для потребителя
+  inspectorBody.querySelectorAll('[data-phase-btn]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      snapshot('phase:' + n.id);
+      n.phase = btn.dataset.phaseBtn;
+      _render(); renderInspector(); notifyChange();
+    });
+  });
+
+  // Авто-балансировка фазы потребителя
+  const autoPhaseBtn = document.getElementById('btn-auto-phase');
+  if (autoPhaseBtn && n.type === 'consumer') {
+    autoPhaseBtn.addEventListener('click', () => {
+      snapshot('auto-phase:' + n.id);
+      // Найдём щит, к которому подключён потребитель
+      let panelId = null;
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId === n.id) {
+          const from = state.nodes.get(c.from.nodeId);
+          if (from && from.type === 'panel') { panelId = from.id; break; }
+          // Может через UPS/канал — идём выше
+          if (from) {
+            for (const c2 of state.conns.values()) {
+              if (c2.to.nodeId === from.id) {
+                const up = state.nodes.get(c2.from.nodeId);
+                if (up && up.type === 'panel') { panelId = up.id; break; }
+              }
+            }
+          }
+          if (panelId) break;
+        }
+      }
+      // Считаем нагрузку по фазам на этом щите (без текущего потребителя)
+      const load = { A: 0, B: 0, C: 0 };
+      for (const other of state.nodes.values()) {
+        if (other.type !== 'consumer' || other.id === n.id) continue;
+        // Проверяем что потребитель на том же щите
+        let samePanel = false;
+        for (const c of state.conns.values()) {
+          if (c.to.nodeId === other.id && c.from.nodeId === panelId) { samePanel = true; break; }
+        }
+        if (!samePanel) continue;
+        const kw = (Number(other.demandKw) || 0) * Math.max(1, Number(other.count) || 1);
+        const ph = other.phase || '3ph';
+        if (ph === '3ph') { load.A += kw/3; load.B += kw/3; load.C += kw/3; }
+        else if (ph === 'A') load.A += kw;
+        else if (ph === 'B') load.B += kw;
+        else if (ph === 'C') load.C += kw;
+      }
+      // Выбираем наименее нагруженную фазу
+      const min = Math.min(load.A, load.B, load.C);
+      if (load.A === min) n.phase = 'A';
+      else if (load.B === min) n.phase = 'B';
+      else n.phase = 'C';
+      _render(); renderInspector(); notifyChange();
+      flash(`Фаза: ${n.phase} (A:${fmt(load.A)} B:${fmt(load.B)} C:${fmt(load.C)} kW)`);
+    });
+  }
 }
 
 // ================= Модалка «Параметры источника» (IEC 60909) =================

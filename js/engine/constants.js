@@ -173,6 +173,8 @@ export const DEFAULTS = {
     switchMode: 'auto',
     manualActiveInput: 0,
     parallelEnabled: [],
+    avrDelaySec: 2,         // задержка переключения АВР при возврате напряжения, сек
+    avrInterlockSec: 1,     // минимальная разбежка между вкл. автоматов двух вводов, сек
     kSim: 1.0,
     capacityA: 160,
     marginMinPct: 2,
