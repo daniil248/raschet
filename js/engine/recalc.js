@@ -169,12 +169,17 @@ function recalc() {
     if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return false;
     const fromN = state.nodes.get(c.from.nodeId);
     if (!fromN) return false;
-    // Режим обслуживания — щит не пропускает ток
+    // Режим обслуживания upstream — щит не пропускает ток
     if (fromN.type === 'panel' && fromN.maintenance) return false;
     // Если upstream — щит с ограниченными выходами, проверяем порт
     if (fromN._watchdogActivePorts && !fromN._watchdogActivePorts.has(c.from.port)) return false;
-    // Автомат выхода отключён
+    // Автомат выхода upstream-щита отключён
     if (fromN.type === 'panel' && Array.isArray(fromN.breakerStates) && fromN.breakerStates[c.from.port] === false) return false;
+    // Автомат входа downstream-щита отключён
+    const toN = state.nodes.get(c.to.nodeId);
+    if (toN && toN.type === 'panel' && Array.isArray(toN.inputBreakerStates) && toN.inputBreakerStates[c.to.port] === false) return false;
+    // Режим обслуживания downstream
+    if (toN && toN.type === 'panel' && toN.maintenance) return false;
     return activeInputs(c.from.nodeId) !== null;
   }
 

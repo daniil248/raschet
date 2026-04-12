@@ -1057,21 +1057,53 @@ export function openAutomationModal(n) {
 }
 
 // ================= Модалка «Управление щитом» =================
+// IEC circuit breaker SVG symbol (автоматический выключатель по IEC 60617)
+// on=true: замкнут (контакт вертикален + крестик механизма)
+// on=false: разомкнут (контакт отклонён)
+function svgBreaker(x, topY, on, color, offColor) {
+  const h = 28;
+  const col = on ? color : (offColor || '#bbb');
+  let s = '';
+  // Верхний контакт (точка подключения)
+  s += `<circle cx="${x}" cy="${topY}" r="2" fill="${col}"/>`;
+  if (on) {
+    // Замкнут: вертикальная линия-контакт + крестик механизма
+    s += `<line x1="${x}" y1="${topY}" x2="${x}" y2="${topY + h}" stroke="${col}" stroke-width="2"/>`;
+    // Крестик (механизм автомата) посередине
+    const my = topY + h / 2;
+    s += `<line x1="${x - 4}" y1="${my - 4}" x2="${x + 4}" y2="${my + 4}" stroke="${col}" stroke-width="1.5"/>`;
+    s += `<line x1="${x + 4}" y1="${my - 4}" x2="${x - 4}" y2="${my + 4}" stroke="${col}" stroke-width="1.5"/>`;
+  } else {
+    // Разомкнут: наклонная линия (контакт откинут) + крестик
+    s += `<line x1="${x}" y1="${topY}" x2="${x - 8}" y2="${topY + h}" stroke="${offColor || '#ff9800'}" stroke-width="2.5"/>`;
+    const my = topY + h * 0.4;
+    const mx = x - 3;
+    s += `<line x1="${mx - 3}" y1="${my - 3}" x2="${mx + 3}" y2="${my + 3}" stroke="${offColor || '#ff9800'}" stroke-width="1.5"/>`;
+    s += `<line x1="${mx + 3}" y1="${my - 3}" x2="${mx - 3}" y2="${my + 3}" stroke="${offColor || '#ff9800'}" stroke-width="1.5"/>`;
+  }
+  // Нижний контакт
+  s += `<circle cx="${x}" cy="${topY + h}" r="2" fill="${col}"/>`;
+  return { svg: s, height: h };
+}
+
 export function openPanelControlModal(n) {
   const body = document.getElementById('panel-control-body');
   if (!body) return;
 
   const inCount = n.inputs || 0;
   const outCount = n.outputs || 0;
-  const colW = 80;
+  const colW = 90;
   const maxCols = Math.max(inCount, outCount, 1);
-  const svgW = maxCols * colW + 40;
-  const busY = 100;
-  const outStartY = 140;
-  const svgH = outStartY + 120;
+  const svgW = Math.max(maxCols * colW + 40, 300);
+  const inBrkY = 30;   // начало автоматов входов
+  const brkH = 28;
+  const busY = inBrkY + brkH + 20;
+  const outBrkY = busY + 20;
+  const svgH = outBrkY + brkH + 50;
 
-  // Определяем состояние каждого входа и выхода
-  const inputStates = []; // { powered, feederTag }
+  // Состояние входов
+  const inputStates = [];
+  const inBreakers = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
   for (let i = 0; i < inCount; i++) {
     let feederTag = '—', powered = false;
     for (const c of state.conns.values()) {
@@ -1082,11 +1114,13 @@ export function openPanelControlModal(n) {
         break;
       }
     }
-    inputStates.push({ powered, feederTag });
+    const breakerOn = inBreakers[i] !== false;
+    inputStates.push({ powered, feederTag, breakerOn });
   }
 
-  const outputStates = []; // { powered, destTag, breakerOn }
-  const breakers = Array.isArray(n.breakerStates) ? n.breakerStates : [];
+  // Состояние выходов
+  const outputStates = [];
+  const outBreakers = Array.isArray(n.breakerStates) ? n.breakerStates : [];
   for (let i = 0; i < outCount; i++) {
     let destTag = '—', powered = false;
     for (const c of state.conns.values()) {
@@ -1097,41 +1131,49 @@ export function openPanelControlModal(n) {
         break;
       }
     }
-    const breakerOn = breakers[i] !== false;
+    const breakerOn = outBreakers[i] !== false;
     outputStates.push({ powered, destTag, breakerOn });
   }
 
-  const busPowered = !n.maintenance && inputStates.some(s => s.powered);
+  const busPowered = !n.maintenance && inputStates.some(s => s.powered && s.breakerOn);
 
   let h = '';
-  h += `<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`;
+  h += `<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`;
+
+  // --- SVG однолинейная схема ---
   h += `<div style="text-align:center;overflow-x:auto;padding:10px 0">`;
   h += `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
 
-  // Шина (bus bar)
-  const busX1 = 20, busX2 = svgW - 20;
+  // Шина
+  const busX1 = 15, busX2 = svgW - 15;
   const busColor = busPowered ? '#e53935' : '#bbb';
-  h += `<rect x="${busX1}" y="${busY - 3}" width="${busX2 - busX1}" height="6" fill="${busColor}" rx="2"/>`;
-  h += `<text x="${svgW / 2}" y="${busY + 16}" text-anchor="middle" fill="#666" font-size="9">Шина</text>`;
+  h += `<rect x="${busX1}" y="${busY - 2}" width="${busX2 - busX1}" height="4" fill="${busColor}" rx="1"/>`;
 
-  // Входы сверху
+  // Входы: линия сверху → автомат → шина
   for (let i = 0; i < inCount; i++) {
     const x = 20 + (i + 0.5) * ((svgW - 40) / Math.max(inCount, 1));
     const s = inputStates[i];
-    const color = s.powered && !n.maintenance ? '#e53935' : '#bbb';
-    // Линия вход → шина
-    h += `<line x1="${x}" y1="10" x2="${x}" y2="${busY - 3}" stroke="${color}" stroke-width="2"/>`;
-    // Метка
-    h += `<text x="${x}" y="8" text-anchor="middle" fill="#333" font-size="9">${escHtml(s.feederTag)}</text>`;
-    // Лампочка — зелёная если active
-    if (s.powered && !n.maintenance) {
-      h += `<circle cx="${x}" cy="30" r="4" fill="#43a047"/>`;
-    } else {
-      h += `<circle cx="${x}" cy="30" r="4" fill="none" stroke="#bbb" stroke-width="1"/>`;
-    }
+    const lineAlive = s.powered && !n.maintenance;
+    const topColor = lineAlive ? '#e53935' : '#bbb';
+    const throughColor = lineAlive && s.breakerOn ? '#e53935' : '#bbb';
+
+    // Метка источника
+    h += `<text x="${x}" y="12" text-anchor="middle" fill="#333" font-size="9" font-weight="600">${escHtml(s.feederTag)}</text>`;
+    // Линия сверху до автомата
+    h += `<line x1="${x}" y1="16" x2="${x}" y2="${inBrkY}" stroke="${topColor}" stroke-width="2"/>`;
+    // Автомат входа (IEC)
+    const brk = svgBreaker(x, inBrkY, s.breakerOn, throughColor, '#ff9800');
+    h += brk.svg;
+    // Линия от автомата до шины
+    h += `<line x1="${x}" y1="${inBrkY + brkH}" x2="${x}" y2="${busY - 2}" stroke="${throughColor}" stroke-width="2"/>`;
+    // Кликабельная зона автомата входа
+    h += `<rect x="${x - 14}" y="${inBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-in-breaker-toggle="${i}"/>`;
+    // Приоритет
+    const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
+    h += `<text x="${x + 12}" y="${inBrkY + brkH / 2 + 3}" fill="#1976d2" font-size="8">P${prio}</text>`;
   }
 
-  // Выходы снизу — с автоматами IEC
+  // Выходы: шина → автомат → линия вниз
   for (let i = 0; i < outCount; i++) {
     const x = 20 + (i + 0.5) * ((svgW - 40) / Math.max(outCount, 1));
     const s = outputStates[i];
@@ -1141,40 +1183,50 @@ export function openPanelControlModal(n) {
     const lineCol = powered ? '#e53935' : '#bbb';
 
     // Линия шина → автомат
-    h += `<line x1="${x}" y1="${busY + 3}" x2="${x}" y2="${outStartY}" stroke="${busCol}" stroke-width="2"/>`;
-
-    // IEC автоматический выключатель (УГО)
-    // Квадрат с крестиком (вкл) или разомкнутая линия (выкл)
-    const brkY = outStartY;
-    const brkH = 20;
-    if (on) {
-      // Включён — прямоугольник с крестиком
-      h += `<rect x="${x - 8}" y="${brkY}" width="16" height="${brkH}" fill="none" stroke="${lineCol}" stroke-width="1.5" rx="2"/>`;
-      h += `<line x1="${x - 5}" y1="${brkY + 4}" x2="${x + 5}" y2="${brkY + brkH - 4}" stroke="${lineCol}" stroke-width="1.2"/>`;
-      h += `<line x1="${x + 5}" y1="${brkY + 4}" x2="${x - 5}" y2="${brkY + brkH - 4}" stroke="${lineCol}" stroke-width="1.2"/>`;
-    } else {
-      // Отключён — разомкнутый контакт
-      h += `<rect x="${x - 8}" y="${brkY}" width="16" height="${brkH}" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5" rx="2"/>`;
-      h += `<line x1="${x}" y1="${brkY + 4}" x2="${x - 4}" y2="${brkY + brkH - 4}" stroke="#ff9800" stroke-width="2"/>`;
-    }
-
-    // Линия автомат → выход
-    h += `<line x1="${x}" y1="${brkY + brkH}" x2="${x}" y2="${svgH - 20}" stroke="${lineCol}" stroke-width="2"/>`;
-
+    h += `<line x1="${x}" y1="${busY + 2}" x2="${x}" y2="${outBrkY}" stroke="${busCol}" stroke-width="2"/>`;
+    // Автомат выхода (IEC)
+    const brk = svgBreaker(x, outBrkY, on, lineCol, '#ff9800');
+    h += brk.svg;
+    // Линия от автомата вниз
+    h += `<line x1="${x}" y1="${outBrkY + brkH}" x2="${x}" y2="${svgH - 16}" stroke="${lineCol}" stroke-width="2"/>`;
     // Метка назначения
-    h += `<text x="${x}" y="${svgH - 6}" text-anchor="middle" fill="#333" font-size="9">${escHtml(s.destTag)}</text>`;
-
-    // Кликабельная область для переключения автомата
-    h += `<rect x="${x - 12}" y="${brkY - 2}" width="24" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-breaker-toggle="${i}"/>`;
+    h += `<text x="${x}" y="${svgH - 4}" text-anchor="middle" fill="#333" font-size="9" font-weight="600">${escHtml(s.destTag)}</text>`;
+    // Кликабельная зона
+    h += `<rect x="${x - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-breaker-toggle="${i}"/>`;
   }
 
   h += `</svg></div>`;
 
-  // Чекбокс обслуживания
-  h += `<div class="field check" style="margin-top:12px"><input type="checkbox" id="pc-maintenance"${n.maintenance ? ' checked' : ''}><label>Режим обслуживания (полностью обесточен)</label></div>`;
+  // --- Управление АВР ---
+  if (inCount > 1) {
+    const sm = n.switchMode || 'auto';
+    h += '<div class="inspector-section" style="margin-top:8px">';
+    h += '<h4 style="margin:0 0 6px">Режим коммутации</h4>';
+    h += `<select id="pc-switch-mode" style="width:100%;padding:6px;font-size:12px;margin-bottom:6px">`;
+    h += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>`;
+    h += `<option value="manual"${sm === 'manual' ? ' selected' : ''}>Ручной — один вход</option>`;
+    h += `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельная работа</option>`;
+    h += `</select>`;
+    if (sm === 'manual') {
+      h += '<div style="font-size:11px;margin-bottom:6px">Активный вход:</div>';
+      h += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
+      for (let i = 0; i < inCount; i++) {
+        const active = (n.manualActiveInput | 0) === i;
+        h += `<button type="button" data-manual-input="${i}" style="padding:4px 12px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px">${inputStates[i]?.feederTag || `Вход ${i+1}`}</button>`;
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+  }
 
-  // Кнопки добавления/удаления входов выходов
-  h += '<div style="display:flex;gap:8px;margin-top:12px;justify-content:center">';
+  // --- Обслуживание ---
+  h += `<div class="field check" style="margin-top:8px"><input type="checkbox" id="pc-maintenance"${n.maintenance ? ' checked' : ''}><label>Режим обслуживания (полностью обесточен)</label></div>`;
+  if (n.maintenance) {
+    h += '<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:6px;font-size:11px;font-weight:600;color:#e65100">⚠ ЩИТ В РЕЖИМЕ ОБСЛУЖИВАНИЯ</div>';
+  }
+
+  // --- +/- входы/выходы ---
+  h += '<div style="display:flex;gap:6px;margin-top:10px;justify-content:center">';
   h += `<button type="button" class="full-btn" id="pc-add-in" style="flex:1;font-size:11px">+ Вход</button>`;
   h += `<button type="button" class="full-btn" id="pc-del-in" style="flex:1;font-size:11px">− Вход</button>`;
   h += `<button type="button" class="full-btn" id="pc-add-out" style="flex:1;font-size:11px">+ Выход</button>`;
@@ -1183,16 +1235,50 @@ export function openPanelControlModal(n) {
 
   body.innerHTML = h;
 
-  // Обработчики кликов по автоматам
+  // Автоматы выходов
   body.querySelectorAll('[data-breaker-toggle]').forEach(el => {
     el.addEventListener('click', () => {
+      snapshot('breaker:' + n.id);
       const idx = Number(el.dataset.breakerToggle);
       if (!Array.isArray(n.breakerStates)) n.breakerStates = new Array(outCount).fill(true);
       while (n.breakerStates.length < outCount) n.breakerStates.push(true);
       n.breakerStates[idx] = !n.breakerStates[idx];
-      openPanelControlModal(n); // перерисовать
-      _render();
-      notifyChange();
+      openPanelControlModal(n);
+      _render(); notifyChange();
+    });
+  });
+
+  // Автоматы входов
+  body.querySelectorAll('[data-in-breaker-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      snapshot('in-breaker:' + n.id);
+      const idx = Number(el.dataset.inBreakerToggle);
+      if (!Array.isArray(n.inputBreakerStates)) n.inputBreakerStates = new Array(inCount).fill(true);
+      while (n.inputBreakerStates.length < inCount) n.inputBreakerStates.push(true);
+      n.inputBreakerStates[idx] = !n.inputBreakerStates[idx];
+      openPanelControlModal(n);
+      _render(); notifyChange();
+    });
+  });
+
+  // Режим коммутации
+  const smSel = document.getElementById('pc-switch-mode');
+  if (smSel) {
+    smSel.addEventListener('change', () => {
+      snapshot('switchMode:' + n.id);
+      n.switchMode = smSel.value;
+      openPanelControlModal(n);
+      _render(); renderInspector(); notifyChange();
+    });
+  }
+
+  // Ручной выбор входа
+  body.querySelectorAll('[data-manual-input]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      snapshot('manual:' + n.id);
+      n.manualActiveInput = Number(btn.dataset.manualInput);
+      openPanelControlModal(n);
+      _render(); notifyChange();
     });
   });
 
@@ -1200,6 +1286,7 @@ export function openPanelControlModal(n) {
   const maintCb = document.getElementById('pc-maintenance');
   if (maintCb) {
     maintCb.addEventListener('change', () => {
+      snapshot('maint:' + n.id);
       n.maintenance = maintCb.checked;
       openPanelControlModal(n);
       _render(); renderInspector(); notifyChange();
@@ -1213,7 +1300,7 @@ export function openPanelControlModal(n) {
   bind('pc-add-out', () => { snapshot('panel-io:' + n.id); n.outputs = (n.outputs || 0) + 1; openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
   bind('pc-del-out', () => { if ((n.outputs || 0) <= 1) return; snapshot('panel-io:' + n.id); n.outputs--; openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
 
-  // Применить
+  // Закрыть
   const applyBtn = document.getElementById('panel-control-apply');
   if (applyBtn) {
     applyBtn.onclick = () => {
