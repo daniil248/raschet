@@ -1827,8 +1827,9 @@ function renderNodes() {
       if (!n._powered) loadCls += ' off';
     } else if (n.type === 'channel') {
       loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
-      // IEC 60364-5-52 графическое обозначение способа прокладки
+      // IEC 60364-5-52: иконка способа прокладки (справа) + расположения кабелей (левее)
       drawChannelIcon(g, w, n.channelType || 'conduit');
+      drawBundlingIcon(g, w - 82, n.bundling || 'touching');
     }
     g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
 
@@ -2275,11 +2276,12 @@ function renderInspectorNode(n) {
       circuits += par;
     }
     const typeInfo = CHANNEL_TYPES[ct] || CHANNEL_TYPES.conduit;
-    h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">` +
+    h.push(`<div class="inspector-section">` +
+      `<div style="display:flex;gap:12px;justify-content:center;margin:8px 0">${channelIconSVG(ct, 56)}${bundlingIconSVG(bd, 56)}</div>` +
+      `<div class="muted" style="font-size:11px;line-height:1.8">` +
       `Метод прокладки по IEC: <b>${typeInfo.method}</b><br>` +
       `Линий в канале: <b>${lines}</b><br>` +
       `Параллельных цепей (для K_group): <b>${circuits}</b><br>` +
-      `<span style="font-size:10px">Групповая линия к N потребителям считается как N параллельных цепей. Канал задаёт только условия прокладки — материал и изоляция кабелей задаются в каждой линии отдельно.</span>` +
       `</div></div>`);
 
     h.push('<button class="btn-delete" id="btn-del-node">Удалить канал</button>');
@@ -2866,6 +2868,82 @@ function drawChannelIcon(g, nodeW, channelType) {
   g.appendChild(ig);
 }
 
+// Компактная иконка расположения кабелей (bundling) 28×28 px
+function drawBundlingIcon(g, x, bundling) {
+  const ig = el('g', { transform: `translate(${x},${6})`, class: 'node-icon' });
+  const c = (cx, cy, r) => ig.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: '#555', 'stroke-width': 1 }));
+  const dot = (cx, cy) => ig.appendChild(el('circle', { cx, cy, r: 1.8, fill: '#555' }));
+
+  if (bundling === 'spaced') {
+    c(6, 14, 5); dot(6, 14);
+    c(22, 14, 5); dot(22, 14);
+    // Зазор
+    ig.appendChild(el('line', { x1: 11, y1: 6, x2: 17, y2: 6, stroke: '#1976d2', 'stroke-width': 0.6 }));
+  } else if (bundling === 'bundled') {
+    ig.appendChild(el('ellipse', { cx: 14, cy: 14, rx: 12, ry: 10, fill: 'none', stroke: '#888', 'stroke-width': 0.8, 'stroke-dasharray': '2 1.5' }));
+    c(8, 11, 4); dot(8, 11);
+    c(20, 11, 4); dot(20, 11);
+    c(14, 20, 4); dot(14, 20);
+  } else {
+    // touching
+    c(8, 14, 5); dot(8, 14);
+    c(20, 14, 5); dot(20, 14);
+  }
+  g.appendChild(ig);
+}
+
+// Возвращает inline SVG строку для иконки способа прокладки (для инспектора)
+function channelIconSVG(channelType, size) {
+  const s = size || 48;
+  const scale = s / 36;
+  let paths = '';
+  // Упрощённые версии иконок как inline SVG строка
+  function circSvg(cx, cy, r, fill, stroke) {
+    return `<circle cx="${cx * scale}" cy="${cy * scale}" r="${r * scale}" fill="${fill || 'none'}" stroke="${stroke || '#555'}" stroke-width="${1.2 * scale}"/>`;
+  }
+  function dotsSvg(cx, cy, r) {
+    const jr = r * 0.28 * scale;
+    return circSvg(cx, cy, r, 'none', '#555') +
+      `<circle cx="${(cx - r * 0.28) * scale}" cy="${(cy - r * 0.14) * scale}" r="${jr}" fill="#555"/>` +
+      `<circle cx="${(cx + r * 0.28) * scale}" cy="${(cy - r * 0.14) * scale}" r="${jr}" fill="#555"/>` +
+      `<circle cx="${cx * scale}" cy="${(cy + r * 0.2) * scale}" r="${jr}" fill="#555"/>`;
+  }
+  function hatch(x, y, w, h) {
+    let r = `<rect x="${x * scale}" y="${y * scale}" width="${w * scale}" height="${h * scale}" fill="none" stroke="#888" stroke-width="${scale}"/>`;
+    for (let i = 0; i < w; i += 4) {
+      r += `<line x1="${(x + i) * scale}" y1="${(y + h) * scale}" x2="${(x + i + 4) * scale}" y2="${y * scale}" stroke="#ccc" stroke-width="${0.5 * scale}"/>`;
+    }
+    return r;
+  }
+
+  switch (channelType) {
+    case 'conduit': paths = hatch(0, 0, 36, 8) + circSvg(18, 18, 9, 'none', '#888') + dotsSvg(18, 18, 5); break;
+    case 'tray_solid': paths = `<rect x="${2 * scale}" y="${10 * scale}" width="${32 * scale}" height="${14 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 17, 5); break;
+    case 'wall': paths = hatch(0, 0, 36, 8) + dotsSvg(18, 18, 6); break;
+    case 'tray_perf': paths = `<path d="M${2 * scale},${20 * scale} L${2 * scale},${26 * scale} L${34 * scale},${26 * scale} L${34 * scale},${20 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 14, 5); break;
+    case 'tray_wire': paths = `<path d="M${2 * scale},${20 * scale} L${2 * scale},${26 * scale} L${34 * scale},${26 * scale} L${34 * scale},${20 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 14, 5); break;
+    case 'tray_ladder': paths = `<line x1="${4 * scale}" y1="${16 * scale}" x2="${4 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${32 * scale}" y1="${16 * scale}" x2="${32 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${4 * scale}" y1="${21 * scale}" x2="${32 * scale}" y2="${21 * scale}" stroke="#888" stroke-width="${0.8 * scale}"/>` + dotsSvg(18, 12, 5); break;
+    case 'ground': paths = hatch(0, 0, 36, 28) + circSvg(18, 14, 8, 'none', '#888') + dotsSvg(18, 14, 4.5); break;
+    case 'ground_direct': paths = hatch(0, 0, 36, 28) + dotsSvg(18, 14, 5.5); break;
+    default: paths = dotsSvg(18, 14, 6);
+  }
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s * 28 / 36}">${paths}</svg>`;
+}
+
+// Inline SVG строка для иконки расположения кабелей (для инспектора)
+function bundlingIconSVG(bundling, size) {
+  const s = size || 48;
+  let svg = '';
+  if (bundling === 'spaced') {
+    svg = `<circle cx="12" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="12" cy="16" r="2" fill="#555"/><circle cx="36" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="36" cy="16" r="2" fill="#555"/><line x1="18" y1="8" x2="30" y2="8" stroke="#1976d2" stroke-width="0.8"/><text x="24" y="7" text-anchor="middle" fill="#1976d2" font-size="6">≥Ø</text>`;
+  } else if (bundling === 'bundled') {
+    svg = `<ellipse cx="24" cy="16" rx="18" ry="12" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="3 2"/><circle cx="16" cy="12" r="5" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="16" cy="12" r="2" fill="#555"/><circle cx="30" cy="12" r="5" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="30" cy="12" r="2" fill="#555"/><circle cx="23" cy="22" r="5" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="23" cy="22" r="2" fill="#555"/>`;
+  } else {
+    svg = `<circle cx="16" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="16" cy="16" r="2" fill="#555"/><circle cx="32" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="32" cy="16" r="2" fill="#555"/>`;
+  }
+  return `<svg width="${s}" height="${s * 32 / 48}" viewBox="0 0 48 32">${svg}</svg>`;
+}
+
 // Поле напряжения: auto-lock при стандартных фазах (3ph / 1ph / A/B/C)
 function voltageField(n) {
   const ph = n.phase || '3ph';
@@ -3109,8 +3187,13 @@ function renderInspectorConn(c) {
   h.push('</div>');
 
   // === Условия прокладки (fallback) ===
-  // Если линия идёт через каналы — эти значения игнорируются.
   h.push('<div class="inspector-section"><h4>Условия прокладки</h4>');
+  // Иконки текущего способа + расположения
+  const curMethod = c.installMethod || GLOBAL.defaultInstallMethod;
+  const curBundling = c.bundling || 'touching';
+  // Маппинг метода → channelType для иконки
+  const methodToChannel = { B1: 'conduit', B2: 'tray_solid', C: 'wall', E: 'tray_perf', F: 'tray_ladder', D1: 'ground', D2: 'ground_direct' };
+  h.push(`<div style="display:flex;gap:10px;justify-content:center;margin:6px 0">${channelIconSVG(methodToChannel[curMethod] || 'conduit', 48)}${bundlingIconSVG(curBundling, 48)}</div>`);
   const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
   if (chainIds.length) {
     h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия проходит через канал(ы) — параметры ниже переопределяются каналом (худший случай по всей цепочке).</div>');
@@ -3210,6 +3293,8 @@ function renderInspectorConn(c) {
       c[prop] = v;
       render();
       notifyChange();
+      // Обновить иконки при смене метода/расположения
+      if (prop === 'installMethod' || prop === 'bundling') renderInspector();
     });
   });
   // Чекбоксы каналов
