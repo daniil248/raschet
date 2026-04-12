@@ -188,7 +188,6 @@ export function renderInspectorNode(n) {
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
       </select>`));
-    h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
 
@@ -208,9 +207,16 @@ export function renderInspectorNode(n) {
     // Все номинальные параметры (мощность, напряжение, Ssc, Uk%, Xs/Rs) — в модалке
     h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
     // Справка: текущие значения из модалки
+    const levels = GLOBAL.voltageLevels || [];
+    const outLevel = levels[n.voltageLevelIdx] || null;
+    const outLabel = outLevel ? outLevel.label : `${nodeVoltage(n)} В`;
+    let voltInfo = `Uвых: <b>${outLabel}</b>`;
+    if (subtype === 'transformer' && typeof n.inputVoltageLevelIdx === 'number' && levels[n.inputVoltageLevelIdx]) {
+      voltInfo = `Uвх: <b>${levels[n.inputVoltageLevelIdx].label}</b> → Uвых: <b>${outLabel}</b>`;
+    }
     h.push(`<div class="muted" style="font-size:11px;margin-top:4px;line-height:1.6">` +
       `Snom: <b>${fmt(n.snomKva || 0)} kVA</b> (${fmt(n.capacityKw || 0)} kW)<br>` +
-      `U: <b>${nodeVoltage(n)} В</b> (${(n.phase || '3ph') === '3ph' ? '3ф' : '1ф'})` +
+      voltInfo +
       `</div>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
@@ -584,24 +590,53 @@ export function wireInspectorInputs(n) {
 }
 
 // ================= Модалка «Параметры источника» (IEC 60909) =================
+
+// Генерация <option> для уровней напряжения с фильтрацией
+function voltageLevelOptions(selectedIdx, filter) {
+  const levels = GLOBAL.voltageLevels || [];
+  let opts = '';
+  for (let i = 0; i < levels.length; i++) {
+    const lv = levels[i];
+    // Фильтр: '3ph' — только 3-фазные, '1ph' — однофазные, 'dc' — DC (wires===2), null — все
+    if (filter === '3ph' && lv.phases !== 3) continue;
+    if (filter === '1ph' && (lv.phases !== 1 || lv.wires === 2)) continue;
+    if (filter === 'dc' && lv.wires !== 2) continue;
+    opts += `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${escHtml(lv.label)} (${lv.vLL}V)</option>`;
+  }
+  return opts;
+}
+
 export function openImpedanceModal(n) {
   const body = document.getElementById('impedance-body');
   if (!body) return;
   const h = [];
+  const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+  const isTransformer = subtype === 'transformer';
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
-  h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Все номинальные параметры источника и данные для расчёта тока КЗ по IEC 60909.</div>');
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Номинальные параметры источника и данные для расчёта тока КЗ по IEC 60909.</div>');
 
-  // Номинальные параметры (мощность, напряжение, фазность)
+  // === Номинальные параметры ===
   h.push('<h4 style="margin:16px 0 8px">Номинальные параметры</h4>');
   h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
-  const ph = n.phase || '3ph';
-  h.push(field('Фазность',
-    `<select id="imp-phase">
-      <option value="3ph"${ph === '3ph' ? ' selected' : ''}>Трёхфазная</option>
-      <option value="1ph"${ph === '1ph' ? ' selected' : ''}>Однофазная</option>
-    </select>`));
-  const autoV = (ph === '3ph') ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
-  h.push(`<div class="muted" style="font-size:11px;margin-bottom:10px">Напряжение: <b>${autoV} В</b> (из «Начальных условий»)</div>`);
+
+  // Выходное напряжение (вторичная обмотка для трансформатора)
+  const outIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
+  h.push(field(isTransformer ? 'Выходное напряжение (вторичная обмотка)' : 'Выходное напряжение',
+    `<select id="imp-voltage-out">${voltageLevelOptions(outIdx, null)}</select>`));
+
+  // Входное напряжение (первичная обмотка) — только для трансформатора
+  if (isTransformer) {
+    const inIdx = (typeof n.inputVoltageLevelIdx === 'number') ? n.inputVoltageLevelIdx : (() => {
+      // По умолчанию ищем 10kV в справочнике
+      const levels = GLOBAL.voltageLevels || [];
+      for (let i = 0; i < levels.length; i++) {
+        if (levels[i].vLL >= 6000) return i;
+      }
+      return 0;
+    })();
+    h.push(field('Входное напряжение (первичная обмотка)',
+      `<select id="imp-voltage-in">${voltageLevelOptions(inIdx, null)}</select>`));
+  }
 
   // Параметры КЗ
   h.push('<h4 style="margin:16px 0 8px">Параметры короткого замыкания</h4>');
@@ -609,21 +644,23 @@ export function openImpedanceModal(n) {
   h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
   h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
 
-  // Потери трансформатора (для точного расчёта)
-  h.push('<h4 style="margin:16px 0 8px">Потери трансформатора</h4>');
-  h.push(field('Потери КЗ (Pk), кВт', `<input type="number" id="imp-pk" min="0" max="100" step="0.1" value="${n.pkW ?? 6}">`));
-  h.push(field('Потери ХХ (P0), кВт', `<input type="number" id="imp-p0" min="0" max="50" step="0.1" value="${n.p0W ?? 1.5}">`));
-  h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Pk — потери короткого замыкания (нагрев обмоток при номинальном токе).<br>P0 — потери холостого хода (нагрев магнитопровода).</div>');
+  // Потери трансформатора (только для трансформатора)
+  if (isTransformer) {
+    h.push('<h4 style="margin:16px 0 8px">Потери трансформатора</h4>');
+    h.push(field('Потери КЗ (Pk), кВт', `<input type="number" id="imp-pk" min="0" max="100" step="0.1" value="${n.pkW ?? 6}">`));
+    h.push(field('Потери ХХ (P0), кВт', `<input type="number" id="imp-p0" min="0" max="50" step="0.1" value="${n.p0W ?? 1.5}">`));
+    h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Pk — потери короткого замыкания (нагрев обмоток при номинальном токе).<br>P0 — потери холостого хода (нагрев магнитопровода).</div>');
+  }
 
   // Вычисленные значения (справка)
   const U = nodeVoltage(n);
   const Zs = sourceImpedance(n);
-  const IkMax = (1.1 * U) / (Math.sqrt(3) * Zs);
+  const IkMax = Zs > 0 ? (1.1 * U) / (Math.sqrt(3) * Zs) : Infinity;
   const Pkw = (n.snomKva || 0) * (Number(n.cosPhi) || 0.92);
   h.push(`<div class="inspector-section"><div style="font-size:12px;line-height:1.8">` +
     `Активная мощность (P = Snom × cos φ): <b>${fmt(Pkw)} kW</b><br>` +
     `Zs (полное сопротивление): <b>${(Zs * 1000).toFixed(2)} мОм</b><br>` +
-    `Ik max (c=1.1): <b>${fmt(IkMax / 1000)} кА</b> при ${U} В` +
+    (isFinite(IkMax) ? `Ik max (c=1.1): <b>${fmt(IkMax / 1000)} кА</b> при ${U} В` : 'Ik: ∞ (Zs = 0)') +
     `</div></div>`);
 
   body.innerHTML = h.join('');
@@ -632,16 +669,31 @@ export function openImpedanceModal(n) {
   if (applyBtn) applyBtn.onclick = () => {
     snapshot('impedance:' + n.id);
     n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
-    const newPhase = document.getElementById('imp-phase')?.value || '3ph';
-    n.phase = newPhase;
-    n.voltage = newPhase === '3ph' ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
-    // capacityKw = Snom × cos φ (активная мощность из полной)
+
+    // Выходное напряжение из справочника
+    const outLevelIdx = Number(document.getElementById('imp-voltage-out')?.value) || 0;
+    const levels = GLOBAL.voltageLevels || [];
+    n.voltageLevelIdx = outLevelIdx;
+    if (levels[outLevelIdx]) {
+      n.voltage = levels[outLevelIdx].vLL;
+      n.phase = levels[outLevelIdx].phases === 3 ? '3ph' : '1ph';
+    }
+
+    // Входное напряжение (только для трансформатора)
+    if (isTransformer) {
+      const inEl = document.getElementById('imp-voltage-in');
+      if (inEl) n.inputVoltageLevelIdx = Number(inEl.value) || 0;
+    }
+
+    // capacityKw = Snom × cos φ
     n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
     n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
     n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
     n.xsRsRatio = Number(document.getElementById('imp-xsrs')?.value) || 10;
-    n.pkW = Number(document.getElementById('imp-pk')?.value) || 0;
-    n.p0W = Number(document.getElementById('imp-p0')?.value) || 0;
+    if (isTransformer) {
+      n.pkW = Number(document.getElementById('imp-pk')?.value) || 0;
+      n.p0W = Number(document.getElementById('imp-p0')?.value) || 0;
+    }
     document.getElementById('modal-impedance').classList.add('hidden');
     _render();
     renderInspector();
