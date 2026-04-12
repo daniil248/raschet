@@ -1017,18 +1017,51 @@ function recalc() {
         for (const grp of genGroups) {
           const outs = Array.isArray(grp.activateOutputs) ? grp.activateOutputs : [];
           if (!outs.length) continue;
-          // Сумма maxDownstreamLoad за каждым включённым выходом щита
-          let scenarioKw = 0;
+          // Собираем все downstream-узлы сценария и считаем
+          // уникальных потребителей через единый walk (один visited set)
+          const scenarioStartNodes = [];
           for (const outPort of outs) {
-            // Находим связь от switchPanel.outPort → downstream
             for (const c of state.conns.values()) {
               if (c.from.nodeId !== switchPanel.id || c.from.port !== outPort) continue;
               if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
               const toN = state.nodes.get(c.to.nodeId);
-              if (!toN) continue;
-              scenarioKw += maxDownstreamLoad(toN.id);
+              if (toN) scenarioStartNodes.push(toN.id);
             }
           }
+          // Единый подсчёт с общим visited — без двойного счёта потребителей
+          const visitedC = new Set();
+          const visitedU = new Set();
+          let directKw = 0, upsConsKw = 0, totalCharge = 0;
+          let sumEff = 0, uCnt = 0;
+          function scenarioWalk(nid, path, throughUps) {
+            if (path.has(nid)) return;
+            path.add(nid);
+            for (const c of state.conns.values()) {
+              if (c.from.nodeId !== nid || c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+              const to = state.nodes.get(c.to.nodeId);
+              if (!to) continue;
+              if (to.type === 'consumer') {
+                if (visitedC.has(to.id)) continue;
+                visitedC.add(to.id);
+                const kw = (Number(to.demandKw) || 0) * Math.max(1, Number(to.count) || 1);
+                if (throughUps) upsConsKw += kw; else directKw += kw;
+              } else if (to.type === 'ups') {
+                if (visitedU.has(to.id)) continue;
+                visitedU.add(to.id);
+                const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
+                totalCharge += upsChargeKw(to);
+                sumEff += eff; uCnt++;
+                scenarioWalk(to.id, new Set(path), true);
+              } else if (to.type === 'panel' || to.type === 'channel') {
+                scenarioWalk(to.id, new Set(path), throughUps);
+              }
+            }
+          }
+          for (const startId of scenarioStartNodes) {
+            scenarioWalk(startId, new Set(), false);
+          }
+          const avgEff = uCnt > 0 ? (sumEff / uCnt) : 1;
+          const scenarioKw = directKw + upsConsKw / avgEff + totalCharge;
           if (scenarioKw > maxScenarioKw) maxScenarioKw = scenarioKw;
         }
         n._maxLoadKw = maxScenarioKw;
