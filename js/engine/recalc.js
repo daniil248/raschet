@@ -669,54 +669,7 @@ function recalc() {
       const actualLoad = Math.min(capKw, myLoad);
       maxKwDownstream = actualLoad / eff + chKw;
     } else if (toN.type === 'panel') {
-      // Для switchover-щита, управляемого генератором: макс. нагрузка
-      // ограничена MAX по сценариям (не все выходы одновременно).
-      // Проверяем: есть ли генератор с switchPanelId === toN.id
-      let scenarioMax = 0;
-      let isSwitchover = false;
-      for (const gen of state.nodes.values()) {
-        if (gen.type !== 'generator' || gen.switchPanelId !== toN.id) continue;
-        const gGroups = Array.isArray(gen.triggerGroups) ? gen.triggerGroups : [];
-        if (!gGroups.length) continue;
-        isSwitchover = true;
-        // Используем тот же алгоритм что для генератора _maxLoadKw
-        for (const grp of gGroups) {
-          const outs = Array.isArray(grp.activateOutputs) ? grp.activateOutputs : [];
-          if (!outs.length) continue;
-          const visitedC = new Set(), visitedU = new Set();
-          let dKw = 0, uKw = 0, chKw = 0, sEff = 0, uCnt = 0;
-          function scW(nid, path, thru) {
-            if (path.has(nid)) return; path.add(nid);
-            for (const cc of state.conns.values()) {
-              if (cc.from.nodeId !== nid || cc.lineMode === 'damaged' || cc.lineMode === 'disabled') continue;
-              const t = state.nodes.get(cc.to.nodeId); if (!t) continue;
-              if (t.type === 'consumer') {
-                if (visitedC.has(t.id)) continue; visitedC.add(t.id);
-                const kw = (Number(t.demandKw)||0) * Math.max(1, Number(t.count)||1);
-                if (thru) uKw += kw; else dKw += kw;
-              } else if (t.type === 'ups') {
-                if (visitedU.has(t.id)) continue; visitedU.add(t.id);
-                sEff += Math.max(0.01, (Number(t.efficiency)||100)/100);
-                chKw += upsChargeKw(t); uCnt++;
-                scW(t.id, new Set(path), true);
-              } else { scW(t.id, new Set(path), thru); }
-            }
-          }
-          for (const op of outs) {
-            for (const cc of state.conns.values()) {
-              if (cc.from.nodeId !== toN.id || cc.from.port !== op) continue;
-              if (cc.lineMode === 'damaged' || cc.lineMode === 'disabled') continue;
-              const t = state.nodes.get(cc.to.nodeId);
-              if (t) scW(t.id, new Set(), false);
-            }
-          }
-          const aEff = uCnt > 0 ? sEff / uCnt : 1;
-          const scKw = dKw + uKw / aEff + chKw;
-          if (scKw > scenarioMax) scenarioMax = scKw;
-        }
-        break;
-      }
-      maxKwDownstream = isSwitchover ? scenarioMax : maxDownstreamLoad(toN.id);
+      maxKwDownstream = maxDownstreamLoad(toN.id);
     } else {
       maxKwDownstream = c._loadKw;
     }
