@@ -329,13 +329,17 @@ const DEFAULTS = {
     manualActiveInput: 0,
     parallelEnabled: [],
     kSim: 1.0,
-    // Номинальный ток вводных шин/автомата шкафа, А (основное поле).
-    // Мощность рассчитывается динамически: P = √3 × U × I × cos φ.
-    // Запас: номинальный ток шкафа должен превышать расчётный ток нагрузки
-    // на marginMinPct..marginMaxPct. Вне диапазона — предупреждение.
     capacityA: 160,
     marginMinPct: 2,
     marginMaxPct: 30,
+    // Для режима avr_paired: привязка выходов к входам.
+    // outputInputMap[outIdx] = [inIdx1, inIdx2, ...] — список входов,
+    // от которых может работать данный выход (с приоритетами внутри списка).
+    outputInputMap: null,
+    // Для режима switchover: per-output условия включения.
+    // outputActivateWhenDead[outIdx] = nodeId — выход включается
+    // когда указанный узел обесточен.
+    outputActivateWhenDead: null,
   }),
   ups:       () => ({
     name: 'ИБП',
@@ -493,8 +497,10 @@ function upsChargeKw(ups) {
 // Максимально возможная нагрузка downstream — то что ВХОДНАЯ линия узла
 // должна выдержать в худшем случае. Учитывает:
 //   - потребители: P_уст × count (без Ки, без loadFactor)
-//   - ИБП: нагрузка / КПД + chargeKw (нормальный режим — худший для кабеля)
-//   - щиты: проход без потерь (Ксим НЕ применяется — максимум)
+//   - ИБП: нагрузка / КПД + chargeKw (нормальный режим)
+//   - щиты: проход без потерь (Ксим НЕ применяется)
+//   - параллельные фидеры: если N фидеров на один узел, каждый несёт 1/N
+//     (например, 2 ИБП на один UDB → каждый несёт половину нагрузки UDB)
 function maxDownstreamLoad(nodeId) {
   const seen = new Set();
   function walk(nid) {
@@ -506,19 +512,27 @@ function maxDownstreamLoad(nodeId) {
       if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
       const to = state.nodes.get(c.to.nodeId);
       if (!to) continue;
+
+      // Считаем сколько АКТИВНЫХ фидеров приходят в to-узел (для определения share)
+      let feedersToTarget = 0;
+      for (const c2 of state.conns.values()) {
+        if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
+          feedersToTarget++;
+        }
+      }
+      const share = feedersToTarget > 1 ? (1 / feedersToTarget) : 1;
+
       if (to.type === 'consumer') {
         const per = Number(to.demandKw) || 0;
         const cnt = Math.max(1, Number(to.count) || 1);
-        total += per * cnt;
+        total += per * cnt * share;
       } else if (to.type === 'ups') {
-        // ИБП потребляет: нагрузка_downstream / КПД + мощность_заряда
-        // Это худший случай (нормальный режим, не байпас).
         const downstream = walk(to.id);
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
-        total += downstream / eff + chKw;
+        total += (downstream / eff + chKw) * share;
       } else if (to.type === 'panel' || to.type === 'channel') {
-        total += walk(to.id);
+        total += walk(to.id) * share;
       }
     }
     return total;
@@ -1032,6 +1046,85 @@ function recalc() {
             live = selected.filter(c => activeInputs(c.from.nodeId, true) !== null);
           }
           if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
+        } else if (n.type === 'panel' && n.switchMode === 'avr_paired') {
+          // АВР с привязкой: каждый выход работает от своей группы входов.
+          // Для activeInputs щита в целом — берём ВСЕ входы, у которых есть
+          // upstream. Но _watchdogActivePorts будет ограничивать выходы
+          // в пост-проходе — только те, чей вход по outputInputMap жив.
+          const groups = new Map();
+          for (const c of ins) {
+            const prio = (n.priorities?.[c.to.port]) ?? 1;
+            if (!groups.has(prio)) groups.set(prio, []);
+            groups.get(prio).push(c);
+          }
+          const sorted = [...groups.keys()].sort((a, b) => a - b);
+          for (const p of sorted) {
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+            if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+          }
+          if (res === null && allowBackup) {
+            for (const p of sorted) {
+              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
+              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+            }
+          }
+          // Определяем какие выходы активны — по outputInputMap
+          if (res) {
+            const map = Array.isArray(n.outputInputMap) ? n.outputInputMap : null;
+            const activeInPorts = new Set(res.map(r => r.conn.to.port));
+            const activePorts = new Set();
+            if (map) {
+              for (let outIdx = 0; outIdx < (n.outputs || 0); outIdx++) {
+                const allowedIns = map[outIdx];
+                if (Array.isArray(allowedIns) && allowedIns.some(i => activeInPorts.has(i))) {
+                  activePorts.add(outIdx);
+                }
+              }
+            } else {
+              // Без карты — все выходы от любого живого входа
+              for (let i = 0; i < (n.outputs || 0); i++) activePorts.add(i);
+            }
+            n._watchdogActivePorts = activePorts;
+          }
+        } else if (n.type === 'panel' && n.switchMode === 'switchover') {
+          // Switchover: один вход (от подменного ДГУ), несколько выходов.
+          // Каждый выход активен ТОЛЬКО когда его outputActivateWhenDead узел мёртв.
+          // Вход работает по обычному АВР.
+          const groups = new Map();
+          for (const c of ins) {
+            const prio = (n.priorities?.[c.to.port]) ?? 1;
+            if (!groups.has(prio)) groups.set(prio, []);
+            groups.get(prio).push(c);
+          }
+          const sorted = [...groups.keys()].sort((a, b) => a - b);
+          for (const p of sorted) {
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+            if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+          }
+          if (res === null && allowBackup) {
+            for (const p of sorted) {
+              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
+              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+            }
+          }
+          // Определяем какие выходы активны — по activateWhenDead
+          if (res) {
+            const whenDead = Array.isArray(n.outputActivateWhenDead) ? n.outputActivateWhenDead : null;
+            const activePorts = new Set();
+            for (let outIdx = 0; outIdx < (n.outputs || 0); outIdx++) {
+              const watchId = whenDead ? whenDead[outIdx] : null;
+              if (!watchId) {
+                // Нет условия — выход всегда активен
+                activePorts.add(outIdx);
+              } else {
+                // Выход активен только если watchId обесточен
+                const watchNode = state.nodes.get(watchId);
+                const watchPowered = watchNode && activeInputs(watchId, true) !== null;
+                if (!watchPowered) activePorts.add(outIdx);
+              }
+            }
+            n._watchdogActivePorts = activePorts;
+          }
         } else if (n.type === 'panel' && n.switchMode === 'watchdog') {
           // Watchdog-режим: каждый ВХОД i жёстко привязан к ВЫХОДУ i.
           // Вход i работает только когда его upstream МЁРТВ (обесточен).
@@ -2434,6 +2527,8 @@ function renderInspectorNode(n) {
           <option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>
           <option value="manual"${sm === 'manual' ? ' selected' : ''}>Ручной — один вход</option>
           <option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельный — несколько вводов</option>
+          <option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов к входам</option>
+          <option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover) — по условию</option>
           <option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog — вход N → выход N по сигналу</option>
         </select>`));
       if (sm === 'manual') {
@@ -2444,9 +2539,37 @@ function renderInspectorNode(n) {
         h.push(field('Активный вход',
           `<select data-prop="manualActiveInput">${opts.join('')}</select>`));
         h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Работает только явно выбранный вход. Если на нём нет напряжения — щит обесточен.</div>');
+      } else if (sm === 'avr_paired') {
+        h.push('<div class="inspector-section"><h4>АВР с привязкой</h4>');
+        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый выход привязан к группе входов. Выход работает от того входа из своей группы, у которого есть питание (АВР внутри группы).</div>');
+        const map = Array.isArray(n.outputInputMap) ? n.outputInputMap : [];
+        for (let oi = 0; oi < n.outputs; oi++) {
+          const assigned = map[oi] || [];
+          h.push(`<div class="field"><label>Выход ${oi + 1} ← входы:</label><div>`);
+          for (let ii = 0; ii < n.inputs; ii++) {
+            const checked = assigned.includes(ii);
+            h.push(`<span style="margin-right:8px"><input type="checkbox" data-oim-out="${oi}" data-oim-in="${ii}"${checked ? ' checked' : ''}> Вх${ii + 1}</span>`);
+          }
+          h.push('</div></div>');
+        }
+        h.push('</div>');
+      } else if (sm === 'switchover') {
+        h.push('<div class="inspector-section"><h4>Подменный (switchover)</h4>');
+        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый выход включается только когда указанный узел обесточен. Типичное применение: подменный ДГУ, который заменяет ДГУ1 или ДГУ2.</div>');
+        const whenDead = Array.isArray(n.outputActivateWhenDead) ? n.outputActivateWhenDead : [];
+        const candidates = [...state.nodes.values()].filter(o => o.id !== n.id && (o.type === 'source' || o.type === 'generator' || o.type === 'ups'));
+        for (let oi = 0; oi < n.outputs; oi++) {
+          const curId = whenDead[oi] || '';
+          let opts = '<option value="">— всегда активен —</option>';
+          for (const cand of candidates) {
+            opts += `<option value="${escAttr(cand.id)}"${curId === cand.id ? ' selected' : ''}>${escHtml(effectiveTag(cand))} ${escHtml(cand.name || '')}</option>`;
+          }
+          h.push(field(`Выход ${oi + 1}: включить при обесточке`, `<select data-switchover-out="${oi}">${opts}</select>`));
+        }
+        h.push('</div>');
       } else if (sm === 'watchdog') {
-        h.push('<div class="inspector-section"><h4>Watchdog-режим</h4>');
-        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый вход i мониторит upstream. Когда upstream пропадает — соответствующий выход i активируется (подключает нагрузку к ДГУ). Остальные выходы остаются обесточенными.<br><br>Типичное применение: щит ДГУ с 4 входами от 4 контролируемых линий и 4 выходами к нагрузкам.</div>');
+        h.push('<div class="inspector-section"><h4>Watchdog</h4>');
+        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Вход i → выход i. Выход активен когда upstream входа i мёртв.</div>');
         h.push('</div>');
       } else if (sm === 'parallel') {
         h.push('<div class="inspector-section"><h4>Включённые вводы</h4>');
@@ -2683,6 +2806,34 @@ function wireInspectorInputs(n) {
     };
     inp.addEventListener('input', apply);
     inp.addEventListener('change', apply);
+  });
+  // Чекбоксы привязки выходов к входам (avr_paired)
+  inspectorBody.querySelectorAll('[data-oim-out]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      snapshot('oim:' + n.id);
+      const oi = Number(inp.dataset.oimOut);
+      const ii = Number(inp.dataset.oimIn);
+      if (!Array.isArray(n.outputInputMap)) n.outputInputMap = [];
+      while (n.outputInputMap.length <= oi) n.outputInputMap.push([]);
+      if (!Array.isArray(n.outputInputMap[oi])) n.outputInputMap[oi] = [];
+      if (inp.checked) {
+        if (!n.outputInputMap[oi].includes(ii)) n.outputInputMap[oi].push(ii);
+      } else {
+        n.outputInputMap[oi] = n.outputInputMap[oi].filter(x => x !== ii);
+      }
+      render(); notifyChange();
+    });
+  });
+  // Селекты switchover per-output
+  inspectorBody.querySelectorAll('[data-switchover-out]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snapshot('switchover:' + n.id);
+      const oi = Number(sel.dataset.switchoverOut);
+      if (!Array.isArray(n.outputActivateWhenDead)) n.outputActivateWhenDead = [];
+      while (n.outputActivateWhenDead.length <= oi) n.outputActivateWhenDead.push(null);
+      n.outputActivateWhenDead[oi] = sel.value || null;
+      render(); notifyChange();
+    });
   });
   // Чекбоксы параллельного режима щита
   inspectorBody.querySelectorAll('[data-parallel]').forEach(inp => {
