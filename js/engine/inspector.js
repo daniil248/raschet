@@ -710,8 +710,23 @@ export function openAutomationModal(n) {
   if (!body) return;
   const h = [];
 
-  h.push(`<h3>Триггеры запуска для ${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
-  h.push('<div class="muted" style="font-size:12px;margin-bottom:12px">Отметьте узлы, при отключении которых ДГУ должен запускаться. Можно выбрать несколько.</div>');
+  const hasTriggerGroups = Array.isArray(n.triggerGroups) && n.triggerGroups.length > 0;
+
+  h.push(`<h3>Автоматизация ${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+
+  // === Режим: простой (legacy) или подменный (triggerGroups) ===
+  const mode = hasTriggerGroups ? 'groups' : 'simple';
+  h.push(field('Режим запуска',
+    `<select id="auto-mode">
+      <option value="simple"${mode === 'simple' ? ' selected' : ''}>Простой (резервный ДГУ)</option>
+      <option value="groups"${mode === 'groups' ? ' selected' : ''}>Подменный ДГУ (несколько сценариев)</option>
+    </select>`));
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Простой: ДГУ запускается при потере питания на выбранных узлах.<br>Подменный: ДГУ подменяет конкретный источник и коммутирует соответствующие выходы.</div>');
+
+  // === Простой режим ===
+  h.push(`<div id="auto-simple" style="${mode === 'simple' ? '' : 'display:none'}">`);
+  h.push('<h4>Триггеры запуска</h4>');
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Отметьте узлы, при отключении которых ДГУ запускается.</div>');
 
   const allCandidates = [];
   for (const other of state.nodes.values()) {
@@ -724,40 +739,170 @@ export function openAutomationModal(n) {
       ? n.triggerNodeIds
       : (n.triggerNodeId ? [n.triggerNodeId] : [])
   );
-
   for (const cand of allCandidates) {
     const checked = currentTriggers.has(cand.id);
     h.push(`<div class="field check"><input type="checkbox" data-auto-trigger="${escAttr(cand.id)}"${checked ? ' checked' : ''}><label>${escHtml(effectiveTag(cand))} — ${escHtml(cand.name || '')}</label></div>`);
   }
-
-  h.push('<div style="margin-top:16px">');
   const logic = n.triggerLogic || 'any';
-  h.push(field('Логика запуска',
+  h.push(field('Логика',
     `<select id="auto-trigger-logic">
-      <option value="any"${logic === 'any' ? ' selected' : ''}>ANY — запуск если хотя бы один отключён</option>
-      <option value="all"${logic === 'all' ? ' selected' : ''}>ALL — запуск только если все отключены</option>
+      <option value="any"${logic === 'any' ? ' selected' : ''}>ANY — хотя бы один отключён</option>
+      <option value="all"${logic === 'all' ? ' selected' : ''}>ALL — все отключены</option>
     </select>`));
   h.push('</div>');
 
-  h.push('<div class="muted" style="font-size:11px;margin-top:12px">ANY: ДГУ запускается, когда хотя бы один из выбранных узлов обесточен.<br>ALL: ДГУ запускается только когда все выбранные узлы одновременно обесточены.</div>');
+  // === Подменный режим (triggerGroups) ===
+  h.push(`<div id="auto-groups" style="${mode === 'groups' ? '' : 'display:none'}">`);
+  h.push('<h4>Сценарии подмены</h4>');
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый сценарий: условие (какой ввод щита мёртв) → какие выходы коммутационного щита включить. Первый сработавший сценарий активируется.</div>');
+
+  // Собираем все щиты с их входами для выбора
+  const panels = [...state.nodes.values()].filter(nn => nn.type === 'panel' && nn.inputs > 0);
+  // Щит, подключённый к выходу генератора (downstream switchover panel)
+  let downstreamPanel = null;
+  for (const c of state.conns.values()) {
+    if (c.from.nodeId === n.id) {
+      const to = state.nodes.get(c.to.nodeId);
+      if (to && to.type === 'panel') { downstreamPanel = to; break; }
+    }
+  }
+
+  const groups = hasTriggerGroups ? n.triggerGroups : [];
+  // Рендер каждой группы
+  for (let gi = 0; gi < Math.max(groups.length, 1); gi++) {
+    const grp = groups[gi] || { name: '', watchInputs: [], logic: 'any', activateOutputs: [] };
+    h.push(`<div class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:10px" data-grp-idx="${gi}">`);
+    h.push(field(`Сценарий ${gi + 1} — имя`, `<input type="text" data-grp-name="${gi}" value="${escAttr(grp.name || '')}" placeholder="Подмена ДГУ${gi+1}">`));
+
+    // Условия: выбор ввода щита
+    h.push('<div style="font-size:12px;font-weight:600;margin:8px 0 4px">Условие запуска (ввод щита без питания):</div>');
+    const watches = Array.isArray(grp.watchInputs) ? grp.watchInputs : [];
+    for (const p of panels) {
+      for (let port = 0; port < p.inputs; port++) {
+        // Найдём что подключено к этому вводу
+        let feederTag = '—';
+        for (const c of state.conns.values()) {
+          if (c.to.nodeId === p.id && c.to.port === port) {
+            const from = state.nodes.get(c.from.nodeId);
+            feederTag = from ? (effectiveTag(from) || from.name || '?') : '?';
+            break;
+          }
+        }
+        const isChecked = watches.some(w => w.panelId === p.id && w.inputPort === port);
+        const label = `${escHtml(effectiveTag(p))} вход ${port + 1} (от ${escHtml(feederTag)})`;
+        h.push(`<div class="field check" style="font-size:11px"><input type="checkbox" data-grp-watch="${gi}" data-panel="${escAttr(p.id)}" data-port="${port}"${isChecked ? ' checked' : ''}><label>${label}</label></div>`);
+      }
+    }
+    const gLogic = grp.logic || 'any';
+    h.push(`<select data-grp-logic="${gi}" style="font-size:11px;margin:4px 0">
+      <option value="any"${gLogic === 'any' ? ' selected' : ''}>ANY</option>
+      <option value="all"${gLogic === 'all' ? ' selected' : ''}>ALL</option>
+    </select>`);
+
+    // Выходы switchover-щита для коммутации
+    if (downstreamPanel) {
+      h.push(`<div style="font-size:12px;font-weight:600;margin:8px 0 4px">Выходы ${escHtml(effectiveTag(downstreamPanel))} для включения:</div>`);
+      const activeOuts = new Set(Array.isArray(grp.activateOutputs) ? grp.activateOutputs : []);
+      for (let oi = 0; oi < (downstreamPanel.outputs || 0); oi++) {
+        // Куда ведёт этот выход?
+        let destTag = '—';
+        for (const c of state.conns.values()) {
+          if (c.from.nodeId === downstreamPanel.id && c.from.port === oi) {
+            const to = state.nodes.get(c.to.nodeId);
+            destTag = to ? (effectiveTag(to) || to.name || '?') : '?';
+            break;
+          }
+        }
+        const checked = activeOuts.has(oi);
+        h.push(`<div class="field check" style="font-size:11px"><input type="checkbox" data-grp-output="${gi}" data-out-idx="${oi}"${checked ? ' checked' : ''}><label>Выход ${oi + 1} → ${escHtml(destTag)}</label></div>`);
+      }
+    }
+    h.push('</div>');
+  }
+
+  // Кнопка «+ Добавить сценарий»
+  h.push(`<button type="button" id="auto-add-group" style="font-size:12px;padding:5px 12px;border:1px dashed #999;background:transparent;border-radius:4px;cursor:pointer;width:100%;margin-top:4px">+ Добавить сценарий</button>`);
+  h.push('</div>');
 
   body.innerHTML = h.join('');
+
+  // Переключение режима
+  const modeSelect = document.getElementById('auto-mode');
+  if (modeSelect) {
+    modeSelect.addEventListener('change', () => {
+      const simple = document.getElementById('auto-simple');
+      const groups = document.getElementById('auto-groups');
+      if (modeSelect.value === 'simple') {
+        if (simple) simple.style.display = '';
+        if (groups) groups.style.display = 'none';
+      } else {
+        if (simple) simple.style.display = 'none';
+        if (groups) groups.style.display = '';
+      }
+    });
+  }
+
+  // + Добавить сценарий
+  const addBtn = document.getElementById('auto-add-group');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      if (!Array.isArray(n.triggerGroups)) n.triggerGroups = [];
+      n.triggerGroups.push({ name: '', watchInputs: [], logic: 'any', activateOutputs: [] });
+      openAutomationModal(n); // перерисовать
+    });
+  }
 
   // Привязка кнопки «Применить»
   const applyBtn = document.getElementById('automation-apply');
   if (applyBtn) {
     applyBtn.onclick = () => {
       snapshot('automation:' + n.id);
-      // Собираем отмеченные триггеры
-      const selected = [];
-      body.querySelectorAll('[data-auto-trigger]').forEach(inp => {
-        if (inp.checked) selected.push(inp.dataset.autoTrigger);
-      });
-      n.triggerNodeIds = selected;
-      n.triggerNodeId = selected[0] || null;
-      const logicSel = document.getElementById('auto-trigger-logic');
-      n.triggerLogic = logicSel ? logicSel.value : 'any';
-      // Закрываем
+      const selectedMode = document.getElementById('auto-mode')?.value || 'simple';
+
+      if (selectedMode === 'simple') {
+        // Простой режим
+        const selected = [];
+        body.querySelectorAll('[data-auto-trigger]').forEach(inp => {
+          if (inp.checked) selected.push(inp.dataset.autoTrigger);
+        });
+        n.triggerNodeIds = selected;
+        n.triggerNodeId = selected[0] || null;
+        const logicSel = document.getElementById('auto-trigger-logic');
+        n.triggerLogic = logicSel ? logicSel.value : 'any';
+        n.triggerGroups = []; // очистить группы
+      } else {
+        // Подменный режим
+        n.triggerNodeIds = [];
+        n.triggerNodeId = null;
+        const newGroups = [];
+        const grpEls = body.querySelectorAll('[data-grp-idx]');
+        grpEls.forEach(el => {
+          const gi = Number(el.dataset.grpIdx);
+          const nameInput = el.querySelector(`[data-grp-name="${gi}"]`);
+          const logicSelect = el.querySelector(`[data-grp-logic="${gi}"]`);
+
+          const watchInputs = [];
+          el.querySelectorAll(`[data-grp-watch="${gi}"]`).forEach(cb => {
+            if (cb.checked) {
+              watchInputs.push({ panelId: cb.dataset.panel, inputPort: Number(cb.dataset.port) });
+            }
+          });
+
+          const activateOutputs = [];
+          el.querySelectorAll(`[data-grp-output="${gi}"]`).forEach(cb => {
+            if (cb.checked) activateOutputs.push(Number(cb.dataset.outIdx));
+          });
+
+          newGroups.push({
+            name: nameInput ? nameInput.value : '',
+            watchInputs,
+            logic: logicSelect ? logicSelect.value : 'any',
+            activateOutputs,
+          });
+        });
+        n.triggerGroups = newGroups;
+      }
+
       document.getElementById('modal-automation').classList.add('hidden');
       _render();
       renderInspector();

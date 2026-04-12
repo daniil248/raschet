@@ -178,35 +178,76 @@ function recalc() {
       if (!effectiveOn(n)) {
         res = null;
       } else {
-        // Список триггеров (поддерживаем и legacy triggerNodeId, и массив)
-        const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
-          ? n.triggerNodeIds
-          : (n.triggerNodeId ? [n.triggerNodeId] : []);
+        const tGroups = Array.isArray(n.triggerGroups) ? n.triggerGroups : [];
 
-        if (triggers.length) {
-          // Проверяем статус каждого триггера
-          const statuses = triggers.map(tid => {
-            const t = state.nodes.get(tid);
-            if (!t) return 'dead'; // удалён → считаем отключённым
-            return activeInputs(tid, false) !== null ? 'alive' : 'dead';
-          });
-          const logic = n.triggerLogic || 'any';
-          const shouldStart = logic === 'any'
-            ? statuses.some(s => s === 'dead')    // хотя бы один отключён
-            : statuses.every(s => s === 'dead');   // все отключены
-
-          if (!shouldStart) {
-            res = null; // все триггеры живы → дежурство
-          } else if (n._running || (Number(n.startDelaySec) || 0) === 0) {
-            // Генератор запущен (или задержка = 0 → мгновенный запуск)
-            res = (n.backupMode && !allowBackup) ? null : [];
-          } else {
-            res = null; // ещё не запустился (ждём startDelaySec)
+        if (tGroups.length) {
+          // === Расширенные группы триггеров (подменный ДГУ) ===
+          // Каждая группа — независимый сценарий. Проверяем по порядку.
+          // Первая сработавшая группа определяет запуск и набор выходов.
+          let firedGroup = null;
+          for (const grp of tGroups) {
+            const watches = Array.isArray(grp.watchInputs) ? grp.watchInputs : [];
+            if (!watches.length) continue;
+            // Проверяем состояние каждого наблюдаемого ввода
+            const statuses = watches.map(w => {
+              // Ищем связь, входящую в panelId на порт inputPort
+              for (const c of state.conns.values()) {
+                if (c.to.nodeId === w.panelId && c.to.port === w.inputPort) {
+                  if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return 'dead';
+                  return activeInputs(c.from.nodeId, false) !== null ? 'alive' : 'dead';
+                }
+              }
+              return 'dead'; // нет связи → считаем мёртвым
+            });
+            const logic = grp.logic || 'any';
+            const fired = logic === 'any'
+              ? statuses.some(s => s === 'dead')
+              : statuses.every(s => s === 'dead');
+            if (fired) { firedGroup = grp; break; }
           }
-        } else if (n.backupMode && !allowBackup) {
-          res = null;
+
+          if (!firedGroup) {
+            n._activeTriggerGroup = null;
+            res = null; // все группы живы → дежурство
+          } else {
+            n._activeTriggerGroup = firedGroup;
+            if (n._running || (Number(n.startDelaySec) || 0) === 0) {
+              res = (n.backupMode && !allowBackup) ? null : [];
+            } else {
+              res = null; // ждём startDelaySec
+            }
+          }
         } else {
-          res = [];
+          // === Legacy триггеры (простой режим) ===
+          const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+            ? n.triggerNodeIds
+            : (n.triggerNodeId ? [n.triggerNodeId] : []);
+
+          n._activeTriggerGroup = null;
+
+          if (triggers.length) {
+            const statuses = triggers.map(tid => {
+              const t = state.nodes.get(tid);
+              if (!t) return 'dead';
+              return activeInputs(tid, false) !== null ? 'alive' : 'dead';
+            });
+            const logic = n.triggerLogic || 'any';
+            const shouldStart = logic === 'any'
+              ? statuses.some(s => s === 'dead')
+              : statuses.every(s => s === 'dead');
+
+            if (!shouldStart) {
+              res = null;
+            } else if (n._running || (Number(n.startDelaySec) || 0) === 0) {
+              res = (n.backupMode && !allowBackup) ? null : [];
+            } else {
+              res = null;
+            }
+          } else if (n.backupMode && !allowBackup) {
+            res = null;
+          } else {
+            res = [];
+          }
         }
       }
     } else if (n.type === 'ups') {
@@ -411,10 +452,35 @@ function recalc() {
     return res;
   }
 
+  // Пост-проход: для генераторов с triggerGroups — передать activateOutputs
+  // в downstream switchover-щит. Генератор → [panel] → activePorts.
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'generator' || !n._activeTriggerGroup) continue;
+    const grp = n._activeTriggerGroup;
+    const outputs = Array.isArray(grp.activateOutputs) ? grp.activateOutputs : [];
+    if (!outputs.length) continue;
+    // Ищем первый downstream-щит (через выход генератора → щит)
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId !== n.id) continue;
+      const panel = state.nodes.get(c.to.nodeId);
+      if (!panel || panel.type !== 'panel') continue;
+      // Устанавливаем activePorts на этом щите
+      panel._watchdogActivePorts = new Set(outputs);
+      break;
+    }
+  }
+
+  // Собираем ID щитов, чьи _watchdogActivePorts установлены генераторами
+  const genControlledPanels = new Set();
+  for (const n of state.nodes.values()) {
+    if (n.type === 'panel' && n._watchdogActivePorts) genControlledPanels.add(n.id);
+  }
+
   // Сброс расчётных полей
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
-    n._watchdogActivePorts = null;
+    // _watchdogActivePorts: сбрасываем только если щит НЕ управляется генератором
+    if (!genControlledPanels.has(n.id)) n._watchdogActivePorts = null;
   }
   for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; c._state = 'dead'; }
 

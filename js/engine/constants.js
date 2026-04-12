@@ -155,6 +155,14 @@ export const DEFAULTS = {
     triggerNodeId: null,       // legacy single trigger (мигрируется в triggerNodeIds)
     triggerNodeIds: [],        // массив id триггеров
     triggerLogic: 'any',       // 'any' — запуск если ХОТЯ БЫ один отключён; 'all' — все отключены
+    // Расширенные группы триггеров (для подменных ДГУ).
+    // Каждая группа — независимый сценарий запуска:
+    //   name            — имя сценария ("Подмена ДГУ1")
+    //   watchInputs     — массив { panelId, inputPort } — следить за конкретными вводами щитов
+    //   logic           — 'any' | 'all' (хотя бы один ввод мёртв / все мертвы)
+    //   activateOutputs — массив номеров выходов switchover-щита, которые нужно включить
+    // Если triggerGroups не пуст — triggerNodeIds игнорируется.
+    triggerGroups: [],
     startDelaySec: 5,
     stopDelaySec: 2,
   }),
