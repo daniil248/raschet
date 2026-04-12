@@ -445,30 +445,40 @@ function upsChargeKw(ups) {
   return (I * U * k) / 1000;
 }
 
-// Максимально возможная нагрузка downstream (без Ки, loadFactor, Ксим).
-// Используется для подбора кабеля — выбираем сечение на «худший» сценарий.
+// Максимально возможная нагрузка downstream — то что ВХОДНАЯ линия узла
+// должна выдержать в худшем случае. Учитывает:
+//   - потребители: P_уст × count (без Ки, без loadFactor)
+//   - ИБП: нагрузка / КПД + chargeKw (нормальный режим — худший для кабеля)
+//   - щиты: проход без потерь (Ксим НЕ применяется — максимум)
 function maxDownstreamLoad(nodeId) {
-  let total = 0;
   const seen = new Set();
-  const stack = [nodeId];
-  while (stack.length) {
-    const cur = stack.pop();
-    if (seen.has(cur)) continue;
-    seen.add(cur);
+  function walk(nid) {
+    if (seen.has(nid)) return 0;
+    seen.add(nid);
+    let total = 0;
     for (const c of state.conns.values()) {
-      if (c.from.nodeId !== cur) continue;
+      if (c.from.nodeId !== nid) continue;
+      if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
       const to = state.nodes.get(c.to.nodeId);
       if (!to) continue;
       if (to.type === 'consumer') {
         const per = Number(to.demandKw) || 0;
         const cnt = Math.max(1, Number(to.count) || 1);
         total += per * cnt;
-      } else if (to.type === 'panel' || to.type === 'ups' || to.type === 'channel') {
-        stack.push(to.id);
+      } else if (to.type === 'ups') {
+        // ИБП потребляет: нагрузка_downstream / КПД + мощность_заряда
+        // Это худший случай (нормальный режим, не байпас).
+        const downstream = walk(to.id);
+        const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
+        const chKw = upsChargeKw(to);
+        total += downstream / eff + chKw;
+      } else if (to.type === 'panel' || to.type === 'channel') {
+        total += walk(to.id);
       }
     }
+    return total;
   }
-  return total;
+  return walk(nodeId);
 }
 
 // Финальный cos φ щита — взвешенное по активной мощности.
@@ -1210,24 +1220,29 @@ function recalc() {
     c._threePhase = threePhase;
     c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase) : 0;
 
-    // === Расчётный ток для подбора кабеля: максимально возможный по всем сценариям ===
-    // Для потребителя: P_уст × count (Ки и loadFactor НЕ учитываем — «максимум»)
-    // Для группы потребителей: то же самое.
-    // Для промежуточных связей (щит→щит, ИБП→щит): берём сумму downstream-максимумов.
+    // === Расчётный ток для подбора кабеля (максимальный по всем сценариям) ===
+    // Кабель должен выдержать максимально возможную нагрузку через ДАННУЮ связь.
     let maxKwDownstream;
     if (toN.type === 'consumer') {
       const per = Number(toN.demandKw) || 0;
       const cnt = Math.max(1, Number(toN.count) || 1);
-      const inrush = Number(toN.inrushFactor) || 1;
-      // Максимум = установочная × кратность пускового (если есть пусковые токи —
-      // нужен запас). Кабель обычно выбирают по длительному, но берём максимум
-      // длительной нагрузки = P_уст × count (без Ки).
       maxKwDownstream = per * cnt;
-    } else if (toN.type === 'panel' || toN.type === 'ups') {
-      // Максимально возможная нагрузка downstream — сумма всех потребителей вниз
+    } else if (toN.type === 'ups') {
+      // Для линии К ИБП: макс. нагрузка = capacityKw / КПД + chargeKw
+      // (ИБП не может выдать больше своего номинала, это его физический предел)
+      const capKw = Number(toN.capacityKw) || 0;
+      const eff = Math.max(0.01, (Number(toN.efficiency) || 100) / 100);
+      const chKw = upsChargeKw(toN);
+      maxKwDownstream = capKw / eff + chKw;
+    } else if (toN.type === 'panel') {
       maxKwDownstream = maxDownstreamLoad(toN.id);
     } else {
       maxKwDownstream = c._loadKw;
+    }
+    // Для линии ОТ ИБП (вниз): ИБП не может выдать больше своего номинала
+    if (fromN.type === 'ups') {
+      const upsCap = Number(fromN.capacityKw) || 0;
+      if (upsCap > 0 && maxKwDownstream > upsCap) maxKwDownstream = upsCap;
     }
     const maxCurrent = maxKwDownstream > 0
       ? computeCurrentA(maxKwDownstream, U, cos, threePhase)
