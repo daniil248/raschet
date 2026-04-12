@@ -552,19 +552,27 @@ input, select { font: inherit; }
   stroke-dasharray: 8 5;
   rx: 10;
   ry: 10;
+  pointer-events: none; /* клики проваливаются к связям под зоной */
+}
+/* Узкая полоса-хэндл сверху зоны — единственная интерактивная часть для перетаскивания */
+.node.zone .zone-drag-handle {
+  fill: transparent;
+  cursor: grab;
+  pointer-events: all;
 }
 .node.zone.selected .zone-body { stroke-width: 3; stroke: #006064; }
+.zone-prefix, .zone-name {
+  pointer-events: none;
+}
 .zone-prefix {
   font: 700 14px -apple-system, "Segoe UI", sans-serif;
   fill: #006064;
-  pointer-events: none;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 .zone-name {
   font: 11px -apple-system, "Segoe UI", sans-serif;
   fill: #00838f;
-  pointer-events: none;
 }
 .zone-resize {
   fill: #00838f;
@@ -572,6 +580,7 @@ input, select { font: inherit; }
   stroke: #00838f;
   stroke-width: 1;
   cursor: nwse-resize;
+  pointer-events: all;
 }
 
 /* Connection waypoints */

@@ -1587,7 +1587,9 @@ function render() {
 function renderNodes() {
   while (layerNodes.firstChild) layerNodes.removeChild(layerNodes.firstChild);
 
-  // Сначала рисуем зоны (они позади обычных узлов)
+  // Сначала рисуем зоны (они позади обычных узлов).
+  // Тело зоны — pointer-events: none, чтобы связи и порты внутри неё оставались
+  // кликабельными. Для перетаскивания зоны используется узкая полоса-хэндл сверху.
   for (const n of state.nodes.values()) {
     if (n.type !== 'zone') continue;
     const w = nodeWidth(n), h = nodeHeight(n);
@@ -1597,11 +1599,17 @@ function renderNodes() {
       transform: `translate(${n.x},${n.y})`,
     });
     g.dataset.nodeId = n.id;
+    // Тело зоны — видимый, но не интерактивный фон
     g.appendChild(el('rect', {
       class: 'zone-body',
       x: 0, y: 0, width: w, height: h,
       fill: n.color || '#e3f2fd',
       'fill-opacity': 0.25,
+    }));
+    // Drag-handle — полоса 44px сверху, единственная кликабельная часть для перетаскивания
+    g.appendChild(el('rect', {
+      class: 'zone-drag-handle',
+      x: 0, y: 0, width: w, height: 44,
     }));
     // Подпись: префикс зоны крупнее, имя ниже
     g.appendChild(text(12, 22, n.zonePrefix || n.tag || '', 'zone-prefix'));
@@ -2882,6 +2890,14 @@ svg.addEventListener('drop', e => {
 
 // Мышь
 svg.addEventListener('mousedown', e => {
+  // Средняя кнопка мыши → всегда пан холста, независимо от того что под курсором
+  if (e.button === 1) {
+    e.preventDefault();
+    state.drag = { pan: true, sx: e.clientX, sy: e.clientY, vx: state.view.x, vy: state.view.y };
+    svg.classList.add('panning');
+    return;
+  }
+
   // Ресайз зоны: клик на угловую ручку → тянем правый-нижний угол
   const zoneResizeEl = e.target.closest('.zone-resize');
   if (zoneResizeEl) {
