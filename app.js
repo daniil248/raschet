@@ -36,11 +36,27 @@ const GLOBAL = {
   defaultInstallMethod: 'B1',
   defaultAmbient: 30,
   defaultGrouping: 1,
-  defaultMaterial: 'Cu',       // Cu | Al
-  defaultInsulation: 'PVC',    // PVC | XLPE
-  defaultCableType: 'multi',   // multi | single | solid
-  maxCableSize: 240,           // макс. сечение 1 жилы; дальше — auto-parallel
-  maxParallelAuto: 4,          // максимальное число параллельных при авто-подборе
+  defaultMaterial: 'Cu',
+  defaultInsulation: 'PVC',
+  defaultCableType: 'multi',
+  maxCableSize: 240,
+  maxParallelAuto: 4,
+  // Справочник уровней напряжения. Каждая запись:
+  //   label  — отображаемое имя ('400V 3P', '10kV 3P')
+  //   vLL    — напряжение линия-линия (межфазное), В
+  //   vLN    — напряжение фаза-ноль, В
+  //   phases — число фаз (3 или 1)
+  //   wires  — число проводов (5 = L1+L2+L3+N+PE, 3 = L+N+PE, 4 = L1+L2+L3+PE)
+  voltageLevels: [
+    { label: '400V 3P+N+PE', vLL: 400, vLN: 230, phases: 3, wires: 5 },
+    { label: '230V 1P+N+PE', vLL: 230, vLN: 230, phases: 1, wires: 3 },
+    { label: '690V 3P+N+PE', vLL: 690, vLN: 400, phases: 3, wires: 5 },
+    { label: '10kV 3P',      vLL: 10000, vLN: 5774, phases: 3, wires: 3 },
+    { label: '6kV 3P',       vLL: 6000, vLN: 3464, phases: 3, wires: 3 },
+    { label: '35kV 3P',      vLL: 35000, vLN: 20207, phases: 3, wires: 3 },
+    { label: '110V DC',      vLL: 110, vLN: 110, phases: 1, wires: 2 },
+    { label: '48V DC',       vLL: 48, vLN: 48, phases: 1, wires: 2 },
+  ],
 };
 
 // Описание типов кабельной конструкции по IEC 60228:
@@ -285,9 +301,14 @@ function selectBreaker(Iload) {
 const DEFAULTS = {
   source:    () => ({
     name: 'Ввод ТП', capacityKw: 100, on: true,
-    sourceSubtype: 'transformer',   // 'transformer' | 'generator'
+    sourceSubtype: 'transformer',
     phase: '3ph', voltage: 400, cosPhi: 0.95,
-    sscMva: 500, ukPct: 6, xsRsRatio: 10, snomKva: 400,
+    sscMva: 500,            // мощность КЗ сети, МВА
+    ukPct: 6,               // напряжение КЗ трансформатора, %
+    xsRsRatio: 10,          // Xs/Rs (для ТП ~10, для ДГУ ~0.5)
+    snomKva: 400,           // номинальная мощность трансформатора, кВА
+    pkW: 6,                 // потери КЗ трансформатора, кВт (Pk)
+    p0W: 1.5,               // потери холостого хода, кВт (P0 / Pfe)
   }),
   generator: () => ({
     name: 'ДГУ', capacityKw: 60, on: true, backupMode: true,
@@ -397,11 +418,35 @@ const TAG_PREFIX = {
 // ================= Электротехнические расчёты =================
 
 // Напряжение потребителя по фазе
+// Возвращает межфазное напряжение (V_LL) для узла
 function nodeVoltage(n) {
+  // Если задан voltageLevel — берём из справочника
+  if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
+    return GLOBAL.voltageLevels[n.voltageLevelIdx].vLL;
+  }
   if (n.voltage) return Number(n.voltage);
   return ((n.phase || '3ph') === '3ph') ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
 }
-function isThreePhase(n) { return (n.phase || '3ph') === '3ph'; }
+// Фазное напряжение (V_LN) для однофазных расчётов
+function nodeVoltageLN(n) {
+  if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
+    return GLOBAL.voltageLevels[n.voltageLevelIdx].vLN;
+  }
+  return ((n.phase || '3ph') === '3ph') ? GLOBAL.voltage1ph : GLOBAL.voltage1ph;
+}
+function isThreePhase(n) {
+  if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
+    return GLOBAL.voltageLevels[n.voltageLevelIdx].phases === 3;
+  }
+  return (n.phase || '3ph') === '3ph';
+}
+// Число проводов (жил) в кабеле для данного узла
+function nodeWireCount(n) {
+  if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
+    return GLOBAL.voltageLevels[n.voltageLevelIdx].wires;
+  }
+  return isThreePhase(n) ? 5 : 3;
+}
 
 // Установочный ток — ток при номинальной мощности
 // I = P / (√3 · U · cos φ)   для 3-фазной
@@ -1223,6 +1268,7 @@ function recalc() {
     c._voltage = U;
     c._cosPhi = cos;
     c._threePhase = threePhase;
+    c._wireCount = nodeWireCount(toN);
     c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase) : 0;
 
     // === Расчётный ток для подбора кабеля (максимальный по всем сценариям) ===
@@ -1851,7 +1897,9 @@ function renderNodes() {
           const ss = sec % 60;
           suffix = ` · БАТ ${mm}:${String(ss).padStart(2, '0')}`;
         }
-        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW${suffix}`;
+        // Показываем ток / макс.ток и мощность
+        const capA = computeCurrentA(n.capacityKw, nodeVoltage(n), 1.0, isThreePhase(n));
+        loadLine = `${fmt(n._loadA || 0)} / ${fmt(capA)} A · ${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW${suffix}`;
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'consumer') {
@@ -1999,8 +2047,7 @@ function renderConns() {
     if (c._state === 'active' && c._loadKw > 0) {
       const mid = pathMidpoint(a, waypoints, b);
       const parallel = Math.max(1, c._cableParallel || 1);
-      const threePhase = !!c._threePhase;
-      const cores = threePhase ? 5 : 3;
+      const cores = c._wireCount || (c._threePhase ? 5 : 3);
 
       // Ток макс. режима на ОДНУ параллельную ветвь
       const maxPerBranch = (c._maxA || 0) / parallel;
@@ -2608,15 +2655,21 @@ function wireInspectorInputs(n) {
         }
       } else if (prop === 'triggerNodeId') {
         n.triggerNodeId = v ? String(v) : null;
+      } else if (prop === 'voltageLevelIdx') {
+        n.voltageLevelIdx = Number(v) || 0;
+        const lv = GLOBAL.voltageLevels[n.voltageLevelIdx];
+        if (lv) {
+          n.voltage = lv.vLL;
+          n.phase = lv.phases === 3 ? '3ph' : '1ph';
+        }
       } else if (prop === 'phase' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         n.phase = v;
-        // Автоматически выставляем напряжение по фазности
-        if (v === '3ph') n.voltage = 400;
-        else if (v === '1ph') n.voltage = 230;
+        if (v === '3ph') n.voltage = GLOBAL.voltage3ph;
+        else if (v === '1ph') n.voltage = GLOBAL.voltage1ph;
       } else if (prop === 'phase' && n.type === 'consumer') {
         n.phase = v;
-        if (v === '3ph') n.voltage = 400;
-        else n.voltage = 230;
+        if (v === '3ph') n.voltage = GLOBAL.voltage3ph;
+        else n.voltage = GLOBAL.voltage1ph;
       } else {
         n[prop] = v;
       }
@@ -2696,6 +2749,12 @@ function openImpedanceModal(n) {
   h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
   h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
 
+  // Потери трансформатора (для точного расчёта)
+  h.push('<h4 style="margin:16px 0 8px">Потери трансформатора</h4>');
+  h.push(field('Потери КЗ (Pk), кВт', `<input type="number" id="imp-pk" min="0" max="100" step="0.1" value="${n.pkW ?? 6}">`));
+  h.push(field('Потери ХХ (P0), кВт', `<input type="number" id="imp-p0" min="0" max="50" step="0.1" value="${n.p0W ?? 1.5}">`));
+  h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Pk — потери короткого замыкания (нагрев обмоток при номинальном токе).<br>P0 — потери холостого хода (нагрев магнитопровода).</div>');
+
   // Вычисленные значения (справка)
   const U = nodeVoltage(n);
   const Zs = sourceImpedance(n);
@@ -2721,6 +2780,8 @@ function openImpedanceModal(n) {
     n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
     n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
     n.xsRsRatio = Number(document.getElementById('imp-xsrs')?.value) || 10;
+    n.pkW = Number(document.getElementById('imp-pk')?.value) || 0;
+    n.p0W = Number(document.getElementById('imp-p0')?.value) || 0;
     document.getElementById('modal-impedance').classList.add('hidden');
     render();
     renderInspector();
@@ -2977,17 +3038,23 @@ function bundlingIconSVG(bundling, size) {
   return `<svg width="${s}" height="${s * 32 / 48}" viewBox="0 0 48 32">${svg}</svg>`;
 }
 
-// Поле напряжения: auto-lock при стандартных фазах (3ph / 1ph / A/B/C)
+// Поле уровня напряжения — выбор из справочника
 function voltageField(n) {
-  const ph = n.phase || '3ph';
-  const isStandard = ['3ph', '1ph', 'A', 'B', 'C'].includes(ph);
-  const autoV = (ph === '3ph') ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
-  if (isStandard) {
-    // Автоматически синхронизируем
-    n.voltage = autoV;
-    return `<div class="field"><label>Напряжение, В</label><input type="number" value="${autoV}" disabled><div class="muted" style="font-size:10px;margin-top:2px">Из «Начальных условий». Измените фазность для ручного ввода.</div></div>`;
+  const levels = GLOBAL.voltageLevels || [];
+  const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
+  // Синхронизируем voltage из уровня
+  if (levels[curIdx]) {
+    n.voltage = levels[curIdx].vLL;
+    n.phase = levels[curIdx].phases === 3 ? '3ph' : '1ph';
   }
-  return field('Напряжение, В', `<input type="number" min="100" max="50000" step="1" data-prop="voltage" value="${n.voltage || 400}">`);
+  let opts = '';
+  for (let i = 0; i < levels.length; i++) {
+    const lv = levels[i];
+    opts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(lv.label)} (${lv.vLL}V)</option>`;
+  }
+  return field('Уровень напряжения',
+    `<select data-prop="voltageLevelIdx">${opts}</select>`) +
+    `<div class="muted" style="font-size:10px;margin-top:-6px;margin-bottom:8px">V_LL: ${levels[curIdx]?.vLL || 400} В, V_LN: ${levels[curIdx]?.vLN || 230} В, ${levels[curIdx]?.wires || 5} проводов. Справочник — в «Начальных условиях».</div>`;
 }
 
 // Поле фазы 3ph/1ph для источников/генераторов/ИБП
@@ -3130,6 +3197,10 @@ function upsStatusBlock(n) {
     parts.push(`выход: <b>${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW</b>`);
     if (!n._onBattery) parts.push(`потребление на входе: <b>${fmt(n._inputKw)} kW</b>`);
   }
+  // Номинальный ток на выходе
+  const capA = computeCurrentA(n.capacityKw, nodeVoltage(n), 1.0, isThreePhase(n));
+  parts.push(`<b>Номинальный ток: ${fmt(capA)} A</b> (при ${fmt(n.capacityKw)} kW, cos φ = 1)`);
+
   // P/Q/S — как его видит вышестоящая сеть
   if (typeof n._powerP === 'number') {
     parts.push(`P акт.: <b>${fmt(n._powerP)} kW</b>`);
@@ -3137,6 +3208,10 @@ function upsStatusBlock(n) {
     parts.push(`S полн.: <b>${fmt(n._powerS || 0)} kVA</b>`);
     parts.push(`cos φ: <b>${n._cosPhi ? n._cosPhi.toFixed(2) : '1.00'}</b> ${n._onStaticBypass ? '<span class="muted">(байпас)</span>' : '<span class="muted">(инвертор)</span>'}`);
   }
+  // Потребление на входе (от сети): макс. = capacityKw/eff + chargeKw
+  const maxInputKw = Number(n.capacityKw) / Math.max(0.01, (Number(n.efficiency) || 100) / 100) + upsChargeKw(n);
+  const maxInputA = computeCurrentA(maxInputKw, nodeVoltage(n), 1.0, isThreePhase(n));
+  parts.push(`макс. потребление на входе: <b>${fmt(maxInputKw)} kW · ${fmt(maxInputA)} A</b>`);
   if (n._ikA && isFinite(n._ikA)) parts.push(`Ik на выходе: <b>${fmt(n._ikA / 1000)} кА</b>`);
   const battKwh = (Number(n.batteryKwh) || 0) * (Number(n.batteryChargePct) || 0) / 100;
   parts.push(`запас батареи: <b>${fmt(battKwh)} kWh</b> (${n.batteryChargePct || 0}%)`);
@@ -4378,6 +4453,11 @@ function deserialize(data) {
     }
     if ((n.type === 'source' || n.type === 'generator') && !n.sourceSubtype) {
       n.sourceSubtype = n.type === 'generator' ? 'generator' : 'transformer';
+    }
+    // Миграция уровня напряжения — если нет voltageLevelIdx, выводим из phase
+    if (typeof n.voltageLevelIdx !== 'number' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups' || n.type === 'consumer')) {
+      const ph = n.phase || '3ph';
+      n.voltageLevelIdx = (ph === '3ph') ? 0 : 1; // 0 = 400V 3P, 1 = 230V 1P
     }
     if (n.type === 'source') {
       if (typeof n.sscMva !== 'number') n.sscMva = 500;
