@@ -1720,8 +1720,7 @@ function renderNodes() {
     const subTxt = {
       source:    subtype === 'generator' ? 'Генератор' + (n.backupMode ? ' (резерв)' : '') : 'Трансформатор',
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
-      panel:     `Щит · вх ${n.inputs} · вых ${n.outputs}` +
-                   (n.switchMode === 'manual' ? ' · руч.' : n.switchMode === 'parallel' ? ' · пар.' : ''),
+      panel:     `In ${fmt(n.capacityA || 0)} A / ${fmt(n._maxLoadA || 0)} A · ${fmt(n._maxLoadKw || 0)} kW`,
       ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%` +
                    (n._onStaticBypass ? ' · БАЙПАС' : ''),
       consumer:  ((n.count || 1) > 1
@@ -1759,8 +1758,7 @@ function renderNodes() {
         loadLine = 'Без питания';
         loadCls += ' off';
       } else {
-        const capA = Number(n.capacityA) || 0;
-        loadLine = `${fmt(n._loadA || 0)} / ${fmt(capA)} A · ${fmt(n._loadKw || 0)} kW`;
+        loadLine = `${fmt(n._loadA || 0)} A / ${fmt(n._loadKw || 0)} kW`;
         if (n._marginWarn === 'low') loadCls += ' overload';
       }
     } else if (n.type === 'ups') {
