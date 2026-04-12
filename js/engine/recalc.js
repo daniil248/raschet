@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { GLOBAL, CHANNEL_TYPES } from './constants.js';
+import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES } from './constants.js';
 import { selectCableSize, selectBreaker } from './cable.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
@@ -660,20 +660,57 @@ function recalc() {
     c._channelChain = channelIds.slice();
 
     if (maxCurrent > 0) {
-      const sel = selectCableSize(maxCurrent, {
-        material, insulation, method, ambientC: ambient, grouping, bundling,
-        cableType, maxSize: GLOBAL.maxCableSize,
-        conductorsInParallel,
-      });
-      c._cableSize = sel.s;
-      c._cableIz = sel.iDerated;
-      c._cableTotalIz = sel.totalCapacity;
-      c._cableOverflow = !!sel.overflow;
-      c._cableAutoParallel = !!sel.autoParallel;
-      // Если auto-parallel накинул параллель — записываем фактическое число
-      c._cableParallel = sel.parallel;
+      if (cableType === 'busbar') {
+        // Шинопровод — подбор номинала с поправочными коэффициентами.
+        // Kt — температурный (Schneider Electric Canalis, IEC 61439):
+        //   базовая t = 35°C; при отклонении In_eff = In × Kt
+        const BUSBAR_KT = { 15: 1.14, 20: 1.11, 25: 1.07, 30: 1.04, 35: 1.00,
+          40: 0.96, 45: 0.92, 50: 0.87, 55: 0.82, 60: 0.76 };
+        const btKeys = Object.keys(BUSBAR_KT).map(Number).sort((a, b) => a - b);
+        let btBest = btKeys[0];
+        for (const k of btKeys) if (Math.abs(k - ambient) < Math.abs(btBest - ambient)) btBest = k;
+        const kt = BUSBAR_KT[btBest];
+
+        // Kl — коэффициент типа нагрузки (Schneider Electric / IEC 61439-6):
+        //   1.0 — чисто активная (cosφ=1); 0.9 — смешанная (cosφ≈0.8);
+        //   0.85 — моторная / индуктивная (cosφ≤0.7)
+        const cos = Number(c._cosPhi) || GLOBAL.defaultCosPhi;
+        const kl = cos >= 0.95 ? 1.0 : cos >= 0.75 ? 0.9 : 0.85;
+
+        const deratingFactor = kt * kl;
+        // Iрасч_eff = Imax / (Kt × Kl) — нужный номинал ДО деретинга
+        const Ieff = maxCurrent / deratingFactor;
+
+        let busbarNom = BUSBAR_SERIES[BUSBAR_SERIES.length - 1];
+        for (const nom of BUSBAR_SERIES) {
+          if (nom >= Ieff) { busbarNom = nom; break; }
+        }
+        c._cableSize = null;
+        c._busbarNom = busbarNom;
+        c._busbarKt = kt;
+        c._busbarKl = kl;
+        c._cableIz = busbarNom * deratingFactor;
+        c._cableTotalIz = c._cableIz;
+        c._cableOverflow = Ieff > BUSBAR_SERIES[BUSBAR_SERIES.length - 1];
+        c._cableAutoParallel = false;
+        c._cableParallel = 1;
+      } else {
+        const sel = selectCableSize(maxCurrent, {
+          material, insulation, method, ambientC: ambient, grouping, bundling,
+          cableType, maxSize: GLOBAL.maxCableSize,
+          conductorsInParallel,
+        });
+        c._cableSize = sel.s;
+        c._busbarNom = null;
+        c._cableIz = sel.iDerated;
+        c._cableTotalIz = sel.totalCapacity;
+        c._cableOverflow = !!sel.overflow;
+        c._cableAutoParallel = !!sel.autoParallel;
+        c._cableParallel = sel.parallel;
+      }
     } else {
       c._cableSize = null;
+      c._busbarNom = null;
       c._cableIz = 0;
       c._cableTotalIz = 0;
       c._cableOverflow = false;

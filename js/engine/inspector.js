@@ -1000,105 +1000,126 @@ export function renderInspectorConn(c) {
     h.push('</div>');
   }
 
-  // === Кабель линии ===
-  // Материал и изоляция — всегда задаются в самой линии, канал их не переопределяет.
-  h.push('<div class="inspector-section"><h4>Кабель</h4>');
-  const material = c.material || GLOBAL.defaultMaterial;
-  h.push(field('Материал жил',
-    `<select data-conn-prop="material">
-      <option value="Cu"${material === 'Cu' ? ' selected' : ''}>Медь</option>
-      <option value="Al"${material === 'Al' ? ' selected' : ''}>Алюминий</option>
-    </select>`));
-  const insulation = c.insulation || GLOBAL.defaultInsulation;
-  h.push(field('Изоляция',
-    `<select data-conn-prop="insulation">
-      <option value="PVC"${insulation === 'PVC' ? ' selected' : ''}>ПВХ</option>
-      <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
-    </select>`));
+  // === Проводник линии ===
   const ct = c.cableType || GLOBAL.defaultCableType;
+  const isBusbar = ct === 'busbar';
+
+  h.push('<div class="inspector-section"><h4>Проводник</h4>');
   h.push(field('Тип проводника',
     `<select data-conn-prop="cableType">
-      <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный (гибкий)</option>
+      <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный кабель (гибкий)</option>
       <option value="single"${ct === 'single' ? ' selected' : ''}>Одножильный многопроволочный</option>
       <option value="solid"${ct === 'solid' ? ' selected' : ''}>Цельная жила (класс 1–2, до 10 мм²)</option>
       <option value="busbar"${ct === 'busbar' ? ' selected' : ''}>Шинопровод</option>
     </select>`));
   h.push(field('Длина, м', `<input type="number" min="0" max="10000" step="0.5" data-conn-prop="lengthM" value="${c.lengthM ?? 1}">`));
-  h.push('</div>');
 
-  // === Условия прокладки (fallback) ===
-  h.push('<div class="inspector-section"><h4>Условия прокладки</h4>');
-  // Иконки текущего способа + расположения
-  const curMethod = c.installMethod || GLOBAL.defaultInstallMethod;
-  const curBundling = c.bundling || 'touching';
-  // Маппинг метода → channelType для иконки
-  const methodToChannel = { B1: 'conduit', B2: 'tray_solid', C: 'wall', E: 'tray_perf', F: 'tray_ladder', D1: 'ground', D2: 'ground_direct' };
-  h.push(`<div style="display:flex;gap:10px;justify-content:center;margin:6px 0">${channelIconSVG(methodToChannel[curMethod] || 'conduit', 48)}${bundlingIconSVG(curBundling, 48)}</div>`);
-  const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
-  if (chainIds.length) {
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия проходит через канал(ы) — параметры ниже переопределяются каналом (худший случай по всей цепочке).</div>');
-  } else {
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия не проходит через каналы — параметры берутся отсюда. Значения по умолчанию соответствуют выводу ~1 м до щита / потребителя в нормальных условиях.</div>');
+  if (!isBusbar) {
+    // Кабельные параметры — только для кабелей
+    const material = c.material || GLOBAL.defaultMaterial;
+    h.push(field('Материал жил',
+      `<select data-conn-prop="material">
+        <option value="Cu"${material === 'Cu' ? ' selected' : ''}>Медь</option>
+        <option value="Al"${material === 'Al' ? ' selected' : ''}>Алюминий</option>
+      </select>`));
+    const insulation = c.insulation || GLOBAL.defaultInsulation;
+    h.push(field('Изоляция',
+      `<select data-conn-prop="insulation">
+        <option value="PVC"${insulation === 'PVC' ? ' selected' : ''}>ПВХ</option>
+        <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
+      </select>`));
   }
-  const method = c.installMethod || GLOBAL.defaultInstallMethod;
-  h.push(field('Способ прокладки',
-    `<select data-conn-prop="installMethod">
-      <option value="B1"${method === 'B1' ? ' selected' : ''}>B1 — изолированные в трубе</option>
-      <option value="B2"${method === 'B2' ? ' selected' : ''}>B2 — многожильный в трубе</option>
-      <option value="C"${method === 'C' ? ' selected' : ''}>C — открыто на стене</option>
-      <option value="E"${method === 'E' ? ' selected' : ''}>E — многожильный на лотке</option>
-      <option value="F"${method === 'F' ? ' selected' : ''}>F — одножильные на лотке / в воздухе</option>
-      <option value="D1"${method === 'D1' ? ' selected' : ''}>D1 — в трубе в земле</option>
-      <option value="D2"${method === 'D2' ? ' selected' : ''}>D2 — напрямую в земле</option>
-    </select>`));
-  const bundling = c.bundling || 'touching';
-  h.push(field('Расположение кабелей',
-    `<select data-conn-prop="bundling">
-      <option value="spaced"${bundling === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
-      <option value="touching"${bundling === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
-      <option value="bundled"${bundling === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
-    </select>`));
-  h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
-  h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
   h.push('</div>');
 
-  // Результат подбора кабеля
-  if (c._state === 'active' && c._cableSize) {
-    const warn = c._cableOverflow ? '<span style="color:#c62828;font-weight:600"> (Iрасч > Iдоп даже при макс. сечении и ' + (GLOBAL.maxParallelAuto || 4) + ' параллельных)</span>' : '';
-    const par = c._cableParallel || 1;
-    const typeLabel = {
-      multi: 'многожильный',
-      single: 'одножильный многопр.',
-      solid: 'цельная жила',
-    }[c._cableType || 'multi'] || 'многожильный';
-    const bundlingLabel = {
-      spaced:   'с зазором ≥ Ø',
-      touching: 'плотно',
-      bundled:  'в пучке',
-    }[c._cableBundling || 'touching'] || 'плотно';
+  if (!isBusbar) {
+    // === Условия прокладки (только для кабелей) ===
+    h.push('<div class="inspector-section"><h4>Условия прокладки</h4>');
+    const curMethod = c.installMethod || GLOBAL.defaultInstallMethod;
+    const curBundling = c.bundling || 'touching';
+    const methodToChannel = { B1: 'conduit', B2: 'tray_solid', C: 'wall', E: 'tray_perf', F: 'tray_ladder', D1: 'ground', D2: 'ground_direct' };
+    h.push(`<div style="display:flex;gap:10px;justify-content:center;margin:6px 0">${channelIconSVG(methodToChannel[curMethod] || 'conduit', 48)}${bundlingIconSVG(curBundling, 48)}</div>`);
+    const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
+    if (chainIds.length) {
+      h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия проходит через канал(ы) — параметры ниже переопределяются каналом (худший случай по всей цепочке).</div>');
+    } else {
+      h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия не проходит через каналы — параметры берутся отсюда.</div>');
+    }
+    const method = c.installMethod || GLOBAL.defaultInstallMethod;
+    h.push(field('Способ прокладки',
+      `<select data-conn-prop="installMethod">
+        <option value="B1"${method === 'B1' ? ' selected' : ''}>B1 — изолированные в трубе</option>
+        <option value="B2"${method === 'B2' ? ' selected' : ''}>B2 — многожильный в трубе</option>
+        <option value="C"${method === 'C' ? ' selected' : ''}>C — открыто на стене</option>
+        <option value="E"${method === 'E' ? ' selected' : ''}>E — многожильный на лотке</option>
+        <option value="F"${method === 'F' ? ' selected' : ''}>F — одножильные на лотке / в воздухе</option>
+        <option value="D1"${method === 'D1' ? ' selected' : ''}>D1 — в трубе в земле</option>
+        <option value="D2"${method === 'D2' ? ' selected' : ''}>D2 — напрямую в земле</option>
+      </select>`));
+    const bundling = c.bundling || 'touching';
+    h.push(field('Расположение кабелей',
+      `<select data-conn-prop="bundling">
+        <option value="spaced"${bundling === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
+        <option value="touching"${bundling === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
+        <option value="bundled"${bundling === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
+      </select>`));
+    h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
+    h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
+  h.push('</div>');
 
-    h.push('<div class="inspector-section"><h4>Подобранный кабель</h4>');
-    h.push(`<div style="font-size:12px;line-height:1.8">` +
-      `Сечение: <b>${c._cableSize} мм²</b>${warn}<br>` +
-      `Материал: <b>${c._cableMaterial === 'Al' ? 'Алюминий' : 'Медь'}</b>, изоляция <b>${c._cableInsulation || 'PVC'}</b><br>` +
-      `Конструкция: <b>${typeLabel}</b><br>` +
-      `Метод: <b>${c._cableMethod || 'B1'}</b>, укладка <b>${bundlingLabel}</b><br>` +
-      `t=${c._cableAmbient}°C, группа=${c._cableGrouping}, длина=${fmt(c._cableLength || 0)} м<br>` +
-      `Iдоп на жилу: <b>${fmt(c._cableIz)} A</b><br>` +
-      (par > 1 ? `Параллельных линий: <b>${par}</b><br>Iдоп всех линий: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
-      `</div></div>`);
-
-    if (c._cableAutoParallel) {
-      h.push('<div class="inspector-section" style="background:#fff8e1;border-radius:6px;padding:10px;border:1px solid #ffd54f">');
-      h.push(`<div style="font-size:12px;line-height:1.7">` +
-        `⚠ <b>Авто-параллель:</b> одиночная жила сечением ${GLOBAL.maxCableSize} мм² не проходит по току,<br>` +
-        `поэтому расчёт выбрал <b>${par} параллельных линий ${c._cableSize} мм²</b>.<br>` +
-        `<span class="muted" style="font-size:11px">Рекомендации IEC по прокладке параллельных линий:<br>` +
-        `• Кабели одной фазы — одинаковой длины и сечения<br>` +
-        `• Разносить не более 1 диаметра (вариант &laquo;touching&raquo;) либо с зазором ≥ Ø для лучшего теплоотвода<br>` +
-        `• Использовать общий лоток с симметричной разводкой по фазам (ABC/ABC/...)<br>` +
-        `• На каждую параллельную линию — свой автомат того же номинала в шкафу</span>` +
+  // Результат подбора проводника
+  if (c._state === 'active' && (c._cableSize || c._busbarNom)) {
+    if (isBusbar && c._busbarNom) {
+      // Шинопровод — номинал
+      const warn = c._cableOverflow ? '<span style="color:#c62828;font-weight:600"> ⚠ превышен макс. номинал ряда</span>' : '';
+      const kTemp = c._busbarKt != null ? c._busbarKt.toFixed(2) : '—';
+      const kLoad = c._busbarKl != null ? c._busbarKl.toFixed(2) : '—';
+      const izDerated = c._cableIz || c._busbarNom;
+      h.push('<div class="inspector-section"><h4>Подобранный шинопровод</h4>');
+      h.push(`<div style="font-size:12px;line-height:1.8">` +
+        `Номинал: <b>${c._busbarNom} А</b>${warn}<br>` +
+        `Imax расчётный: <b>${fmt(c._maxA || 0)} A</b><br>` +
+        `Iдоп (с коэфф.): <b>${fmt(izDerated)} A</b><br>` +
+        `Kt (темп.): <b>${kTemp}</b>, Kl (нагрузка): <b>${kLoad}</b><br>` +
+        `Длина: <b>${fmt(c._cableLength || 0)} м</b>` +
         `</div></div>`);
+    } else if (c._cableSize) {
+      // Кабель
+      const warn = c._cableOverflow ? '<span style="color:#c62828;font-weight:600"> (Iрасч > Iдоп даже при макс. сечении и ' + (GLOBAL.maxParallelAuto || 4) + ' параллельных)</span>' : '';
+      const par = c._cableParallel || 1;
+      const typeLabel = {
+        multi: 'многожильный',
+        single: 'одножильный многопр.',
+        solid: 'цельная жила',
+      }[c._cableType || 'multi'] || 'многожильный';
+      const bundlingLabel = {
+        spaced:   'с зазором ≥ Ø',
+        touching: 'плотно',
+        bundled:  'в пучке',
+      }[c._cableBundling || 'touching'] || 'плотно';
+
+      h.push('<div class="inspector-section"><h4>Подобранный кабель</h4>');
+      h.push(`<div style="font-size:12px;line-height:1.8">` +
+        `Сечение: <b>${c._cableSize} мм²</b>${warn}<br>` +
+        `Материал: <b>${c._cableMaterial === 'Al' ? 'Алюминий' : 'Медь'}</b>, изоляция <b>${c._cableInsulation || 'PVC'}</b><br>` +
+        `Конструкция: <b>${typeLabel}</b><br>` +
+        `Метод: <b>${c._cableMethod || 'B1'}</b>, укладка <b>${bundlingLabel}</b><br>` +
+        `t=${c._cableAmbient}°C, группа=${c._cableGrouping}, длина=${fmt(c._cableLength || 0)} м<br>` +
+        `Iдоп на жилу: <b>${fmt(c._cableIz)} A</b><br>` +
+        (par > 1 ? `Параллельных линий: <b>${par}</b><br>Iдоп всех линий: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
+        `</div></div>`);
+
+      if (c._cableAutoParallel) {
+        h.push('<div class="inspector-section" style="background:#fff8e1;border-radius:6px;padding:10px;border:1px solid #ffd54f">');
+        h.push(`<div style="font-size:12px;line-height:1.7">` +
+          `⚠ <b>Авто-параллель:</b> одиночная жила сечением ${GLOBAL.maxCableSize} мм² не проходит по току,<br>` +
+          `поэтому расчёт выбрал <b>${par} параллельных линий ${c._cableSize} мм²</b>.<br>` +
+          `<span class="muted" style="font-size:11px">Рекомендации IEC по прокладке параллельных линий:<br>` +
+          `• Кабели одной фазы — одинаковой длины и сечения<br>` +
+          `• Разносить не более 1 диаметра (вариант &laquo;touching&raquo;) либо с зазором ≥ Ø для лучшего теплоотвода<br>` +
+          `• Использовать общий лоток с симметричной разводкой по фазам (ABC/ABC/...)<br>` +
+          `• На каждую параллельную линию — свой автомат того же номинала в шкафу</span>` +
+          `</div></div>`);
+      }
     }
   }
 

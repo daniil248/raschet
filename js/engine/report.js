@@ -195,7 +195,7 @@ export function generateReport() {
   }
 
   // 4a. Кабельные линии
-  const activeCables = [...state.conns.values()].filter(c => c._cableSize);
+  const activeCables = [...state.conns.values()].filter(c => c._cableSize || c._busbarNom);
   // Сортировка по обозначению линии
   activeCables.sort((a, b) => {
     const aFrom = effectiveTag(state.nodes.get(a.from.nodeId)) || '';
@@ -207,9 +207,9 @@ export function generateReport() {
     return la.localeCompare(lb, 'ru');
   });
   if (activeCables.length) {
-    lines.push('КАБЕЛЬНЫЕ ЛИНИИ (подбор по IEC 60364-5-52)');
+    lines.push('КАБЕЛЬНЫЕ ЛИНИИ И ШИНОПРОВОДЫ');
     lines.push('-'.repeat(100));
-    lines.push('Обозначение              Сечение     L, м   Imax, A  Iдоп, A  Метод   Каналы');
+    lines.push('Обозначение              Проводник       L, м   Imax, A  Iдоп, A  Метод   Каналы');
     for (const c of activeCables) {
       const fromN = state.nodes.get(c.from.nodeId);
       const toN = state.nodes.get(c.to.nodeId);
@@ -217,11 +217,20 @@ export function generateReport() {
       const toTag = effectiveTag(toN) || toN?.name || '?';
       const lineLabel = c.lineLabel || `W-${fromTag}-${toTag}`;
       const warn = c._cableOverflow ? ' ⚠' : '';
-      const parallel = Math.max(1, c._cableParallel || 1);
-      const cores = c._wireCount || (c._threePhase ? 5 : 3);
-      const inner = `${cores}×${c._cableSize} мм²`;
-      const cableSpec = (c._cableAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
       const length = c._cableLength != null ? c._cableLength : (c.lengthM || 0);
+
+      let conductorSpec;
+      let methodStr;
+      if (c._busbarNom) {
+        conductorSpec = `шинопр. ${c._busbarNom} А`;
+        methodStr = '—';
+      } else {
+        const parallel = Math.max(1, c._cableParallel || 1);
+        const cores = c._wireCount || (c._threePhase ? 5 : 3);
+        const inner = `${cores}×${c._cableSize} мм²`;
+        conductorSpec = (c._cableAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
+        methodStr = c._cableMethod || '-';
+      }
 
       // Каналы, через которые проходит линия
       const channelIds = Array.isArray(c.channelIds) ? c.channelIds : [];
@@ -238,11 +247,11 @@ export function generateReport() {
 
       lines.push(
         lineLabel.slice(0, 24).padEnd(25) +
-        cableSpec.padEnd(12) +
+        conductorSpec.padEnd(16) +
         String(length).padStart(5) + '  ' +
         String(fmt(c._maxA || 0)).padStart(7) + '  ' +
         String(fmt(c._cableIz || 0)).padStart(7) + '  ' +
-        (c._cableMethod || '-').padEnd(6) + '  ' +
+        methodStr.padEnd(6) + '  ' +
         channelStr + warn
       );
     }
