@@ -164,8 +164,11 @@ function recalc() {
   }
 
   const cache = new Map();
+  // Единый проход — если на входе есть напряжение (из ЛЮБОГО источника),
+  // на выходе оно тоже есть. Нет двухпроходной логики allowBackup.
+  // allowBackup сохранён как параметр для совместимости вызовов, но не влияет на логику.
   function activeInputs(nid, allowBackup) {
-    const key = nid + '|' + (allowBackup ? 1 : 0);
+    const key = nid;
     if (cache.has(key)) return cache.get(key);
     cache.set(key, null); // placeholder на случай re-entry
 
@@ -178,66 +181,42 @@ function recalc() {
       if (!effectiveOn(n)) {
         res = null;
       } else {
-        // Собираем эффективные triggerGroups:
-        //   - если triggerGroups заполнены — используем их
-        //   - иначе мигрируем legacy triggerNodeIds в одну группу
         let tGroups = Array.isArray(n.triggerGroups) && n.triggerGroups.length
-          ? n.triggerGroups
-          : [];
+          ? n.triggerGroups : [];
 
         if (!tGroups.length) {
-          // Legacy migration: triggerNodeIds → одна группа watchInputs
           const legacyIds = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
             ? n.triggerNodeIds
             : (n.triggerNodeId ? [n.triggerNodeId] : []);
           if (legacyIds.length) {
-            // Конвертируем: для каждого nodeId ищем все связи,
-            // исходящие от него — это «вводы щитов, на которых мы мониторим напряжение»
-            const watchInputs = [];
-            for (const tid of legacyIds) {
-              // Legacy: мониторим сам узел (есть ли напряжение на нём)
-              // Переводим в формат watchInputs: ищем связь, ведущую на tid
-              // Если tid — источник/генератор, смотрим его состояние напрямую
-              watchInputs.push({ nodeId: tid });
-            }
             tGroups = [{
-              name: '',
-              watchInputs,
-              logic: n.triggerLogic || 'any',
-              activateOutputs: [],
+              name: '', watchInputs: legacyIds.map(id => ({ nodeId: id })),
+              logic: n.triggerLogic || 'any', activateOutputs: [],
             }];
           }
         }
 
         if (tGroups.length) {
-          // Проверяем каждую группу. Первая сработавшая = запуск.
           let firedGroup = null;
           for (const grp of tGroups) {
             const watches = Array.isArray(grp.watchInputs) ? grp.watchInputs : [];
             if (!watches.length) continue;
-
             const statuses = watches.map(w => {
               if (w.panelId && typeof w.inputPort === 'number') {
-                // Новый формат: мониторим конкретный ввод щита.
-                // Проверяем: есть ли напряжение на upstream-узле,
-                // подключённом к этому вводу (NOT состояние порта — именно напряжение).
                 for (const c of state.conns.values()) {
                   if (c.to.nodeId === w.panelId && c.to.port === w.inputPort) {
                     if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return 'dead';
-                    // Есть ли напряжение на upstream-е этой связи?
-                    return activeInputs(c.from.nodeId, false) !== null ? 'alive' : 'dead';
+                    return activeInputs(c.from.nodeId) !== null ? 'alive' : 'dead';
                   }
                 }
-                return 'dead'; // нет связи на этом порту
+                return 'dead';
               } else if (w.nodeId) {
-                // Legacy формат: мониторим узел целиком
                 const t = state.nodes.get(w.nodeId);
                 if (!t) return 'dead';
-                return activeInputs(w.nodeId, false) !== null ? 'alive' : 'dead';
+                return activeInputs(w.nodeId) !== null ? 'alive' : 'dead';
               }
               return 'dead';
             });
-
             const logic = grp.logic || 'any';
             const fired = logic === 'any'
               ? statuses.some(s => s === 'dead')
@@ -247,18 +226,13 @@ function recalc() {
 
           if (!firedGroup) {
             n._activeTriggerGroup = null;
-            res = null; // все группы живы → дежурство
+            res = null; // дежурство
           } else {
             n._activeTriggerGroup = firedGroup;
-            if (n._running || (Number(n.startDelaySec) || 0) === 0) {
-              // Генератор запущен — подаёт напряжение как полноценный источник.
-              // backupMode влияет только на условие запуска, не на выдачу энергии.
-              res = [];
-            } else {
-              res = null; // ждём startDelaySec
-            }
+            res = (n._running || (Number(n.startDelaySec) || 0) === 0) ? [] : null;
           }
-        } else if (n.backupMode && !allowBackup) {
+        } else if (n.backupMode) {
+          // Backup без триггеров — не запускается автоматически
           n._activeTriggerGroup = null;
           res = null;
         } else {
@@ -272,6 +246,7 @@ function recalc() {
       } else {
         const ins = edgesIn.get(nid) || [];
         if (ins.length > 0) {
+          // АВР по приоритетам — один проход
           const groups = new Map();
           for (const c of ins) {
             const prio = (n.priorities?.[c.to.port]) ?? 1;
@@ -280,34 +255,21 @@ function recalc() {
           }
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
           }
-          if (res === null && allowBackup) {
-            for (const p of sorted) {
-              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
-              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-            }
-          }
         }
-        // Батарейный резерв — только если батарея реально есть.
-        // При принудительном статическом байпасе батарея не используется.
-        if (res === null && allowBackup && !n.staticBypassForced) {
+        // Батарейный резерв — если нет питания от входов и батарея есть
+        if (res === null && !n.staticBypassForced) {
           const batt = (Number(n.batteryKwh) || 0) * (Number(n.batteryChargePct) || 0) / 100;
           if (batt > 0) res = [];
         }
       }
     } else if (n.type === 'channel') {
-      // Канал — пассивный узел, просто передаёт питание через себя.
-      // Имеет один вход и один выход, логика как у щита без АВР.
       const ins = edgesIn.get(nid) || [];
       if (ins.length > 0) {
-        const live = ins.filter(c => activeInputs(c.from.nodeId, false) !== null);
+        const live = ins.filter(c => activeInputs(c.from.nodeId) !== null);
         if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
-        else if (allowBackup) {
-          const liveB = ins.filter(c => activeInputs(c.from.nodeId, true) !== null);
-          if (liveB.length) res = liveB.map(c => ({ conn: c, share: 1 / liveB.length }));
-        }
       }
     } else if (n.type === 'zone') {
       // Зона — чисто декоративный контейнер, в расчёте не участвует
@@ -321,22 +283,15 @@ function recalc() {
           const idx = n.manualActiveInput | 0;
           const target = ins.find(c => c.to.port === idx);
           if (target) {
-            const upNoBackup = activeInputs(target.from.nodeId, false);
-            if (upNoBackup !== null) {
+            if (activeInputs(target.from.nodeId) !== null) {
               res = [{ conn: target, share: 1 }];
-            } else if (allowBackup) {
-              const upWithBackup = activeInputs(target.from.nodeId, true);
-              if (upWithBackup !== null) res = [{ conn: target, share: 1 }];
             }
           }
         } else if (n.type === 'panel' && n.switchMode === 'parallel') {
           // Параллельный режим
           const enabledMask = Array.isArray(n.parallelEnabled) ? n.parallelEnabled : [];
           const selected = ins.filter(c => enabledMask[c.to.port]);
-          let live = selected.filter(c => activeInputs(c.from.nodeId, false) !== null);
-          if (live.length === 0 && allowBackup) {
-            live = selected.filter(c => activeInputs(c.from.nodeId, true) !== null);
-          }
+          const live = selected.filter(c => activeInputs(c.from.nodeId) !== null);
           if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
         } else if (n.type === 'panel' && n.switchMode === 'avr_paired') {
           // АВР с привязкой: каждый выход работает от своей группы входов.
@@ -351,14 +306,8 @@ function recalc() {
           }
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-          }
-          if (res === null && allowBackup) {
-            for (const p of sorted) {
-              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
-              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-            }
           }
           // Определяем какие выходы активны — по outputInputMap
           if (res) {
@@ -390,14 +339,8 @@ function recalc() {
           }
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-          }
-          if (res === null && allowBackup) {
-            for (const p of sorted) {
-              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
-              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-            }
           }
           // Определяем какие выходы активны — по activateWhenDead
           if (res) {
@@ -411,7 +354,7 @@ function recalc() {
               } else {
                 // Выход активен только если watchId обесточен
                 const watchNode = state.nodes.get(watchId);
-                const watchPowered = watchNode && activeInputs(watchId, true) !== null;
+                const watchPowered = watchNode && activeInputs(watchId) !== null;
                 if (!watchPowered) activePorts.add(outIdx);
               }
             }
@@ -428,7 +371,7 @@ function recalc() {
           // индекс совпадает с активным входом.
           const liveIns = [];
           for (const c of ins) {
-            const upAlive = activeInputs(c.from.nodeId, false) !== null;
+            const upAlive = activeInputs(c.from.nodeId) !== null;
             if (!upAlive) {
               // upstream отключён → этот вход (и соответственно выход) активируется
               liveIns.push(c);
@@ -450,15 +393,8 @@ function recalc() {
           const sorted = [...groups.keys()].sort((a, b) => a - b);
           // Фаза 1: без резерва
           for (const p of sorted) {
-            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, false) !== null);
+            const live = groups.get(p).filter(c => activeInputs(c.from.nodeId) !== null);
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-          }
-          // Фаза 2: с резервом
-          if (res === null && allowBackup) {
-            for (const p of sorted) {
-              const live = groups.get(p).filter(c => activeInputs(c.from.nodeId, true) !== null);
-              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
-            }
           }
         }
       }
@@ -514,7 +450,7 @@ function recalc() {
     let depth = 0;
     const visit = (id, flow) => {
       if (depth++ > 2000) return;
-      const ai = activeInputs(id, true);
+      const ai = activeInputs(id);
       if (!ai || ai.length === 0) return;
       const nn = state.nodes.get(id);
       // Потери на ИБП применяем только когда он работает через инвертор.
@@ -539,7 +475,7 @@ function recalc() {
 
   for (const n of state.nodes.values()) {
     if (n.type !== 'consumer') continue;
-    const ai = activeInputs(n.id, true);
+    const ai = activeInputs(n.id);
     n._powered = ai !== null;
     if (!n._powered) continue;
     // Для группы потребителей: суммарный demand = count × demandKw × loadFactor
@@ -559,7 +495,7 @@ function recalc() {
   for (const n of state.nodes.values()) {
     if (n.type !== 'ups') continue;
     if (!effectiveOn(n)) continue;
-    const ai = activeInputs(n.id, true);
+    const ai = activeInputs(n.id);
     if (!ai || ai.length === 0) continue;
 
     // Предварительная проверка байпаса ещё до пост-прохода статусов
@@ -592,20 +528,20 @@ function recalc() {
       c._state = 'active';
       continue;
     }
-    const upAi = activeInputs(c.from.nodeId, true);
+    const upAi = activeInputs(c.from.nodeId);
     c._state = (upAi !== null) ? 'powered' : 'dead';
   }
 
   // Статусы источников и ИБП
   for (const n of state.nodes.values()) {
     if (n.type === 'source' || n.type === 'generator') {
-      const ai = activeInputs(n.id, true);
+      const ai = activeInputs(n.id);
       n._powered = ai !== null;
       if (n._loadKw > Number(n.capacityKw || 0)) n._overload = true;
     } else if (n.type === 'panel') {
-      if (!n._powered) n._powered = activeInputs(n.id, true) !== null;
+      if (!n._powered) n._powered = activeInputs(n.id) !== null;
     } else if (n.type === 'ups') {
-      const ai = activeInputs(n.id, true);
+      const ai = activeInputs(n.id);
       n._powered = ai !== null;
       n._onBattery = ai !== null && ai.length === 0;
 
