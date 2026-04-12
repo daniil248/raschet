@@ -2390,7 +2390,8 @@ function renderInspectorNode(n) {
     h.push(phaseField(n));
     h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
-    h.push(field('Ток заряда батареи, А', `<input type="number" min="0" step="0.1" data-prop="chargeA" value="${n.chargeA ?? 2}">`));
+    h.push(field('Ток заряда батареи, А (AC из сети)', `<input type="number" min="0" step="0.1" data-prop="chargeA" value="${n.chargeA ?? 2}">`));
+    h.push('<div class="muted" style="font-size:10px;margin-top:-8px;margin-bottom:8px">Ток, потребляемый ИБП из сети переменного тока на заряд батареи. Не путать с DC-током заряда АКБ.</div>');
     h.push(field('Ёмкость батареи, kWh', `<input type="number" min="0" step="0.1" data-prop="batteryKwh" value="${n.batteryKwh}">`));
     h.push(field('Заряд батареи, %', `<input type="number" min="0" max="100" step="1" data-prop="batteryChargePct" value="${n.batteryChargePct}">`));
     h.push(field('Входов', `<input type="number" min="1" max="5" step="1" data-prop="inputs" value="${n.inputs}">`));
@@ -4645,9 +4646,9 @@ window.addEventListener('touchcancel', () => {
 });
 
 // ================= Симуляция времени =================
-// Тик раз в секунду. Ускорение разряда: реальная автономия / 20 = симуляционная.
-// Например, 20 мин реальной автономии ≈ 1 мин симуляции.
-const TIME_ACCEL = 20;
+// Тик раз в секунду. Ускорение: реальное время / TIME_ACCEL = симуляционное.
+// Разряд и заряд ускоряются одинаково.
+const TIME_ACCEL = 100;
 let _simTickHandle = null;
 let _lastTickAt = 0;
 
@@ -4797,12 +4798,13 @@ function simTick() {
 
   if (changed) {
     render();
-    // Не перерисовываем инспектор целиком — это ломает фокус в инпутах;
-    // только обновляем блок статуса ИБП и таймеры, если выбран ИБП или генератор
-    if (state.selectedKind === 'node') {
+    // Перерисовываем инспектор ТОЛЬКО если пользователь не фокусирован
+    // на поле ввода — иначе simTick сбрасывает его редактирование.
+    const activeEl = document.activeElement;
+    const userEditing = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA');
+    if (!userEditing && state.selectedKind === 'node') {
       const sel = state.nodes.get(state.selectedId);
       if (sel && (sel.type === 'ups' || sel.type === 'generator')) {
-        // Мягкая перерисовка: перезаполняем только статус
         renderInspector();
       }
     }
