@@ -1057,32 +1057,51 @@ export function openAutomationModal(n) {
 }
 
 // ================= Модалка «Управление щитом» =================
-// IEC circuit breaker SVG symbol (автоматический выключатель по IEC 60617)
-// on=true: замкнут (контакт вертикален + крестик механизма)
-// on=false: разомкнут (контакт отклонён)
+// IEC 60617 автоматический выключатель (circuit breaker symbol)
+// Структура сверху вниз:
+//   - верхняя вертикальная линия (подвод)
+//   - крестик (механизм расцепителя) — всегда сверху
+//   - подвижный контакт: ось вращения СНИЗУ
+//     ON:  контакт вертикален (замкнут, совпадает с линией)
+//     OFF: контакт отклонён влево ~30° от оси снизу
+//   - нижняя точка (ось вращения / нижний контакт)
 function svgBreaker(x, topY, on, color, offColor) {
-  const h = 28;
+  const h = 30;
   const col = on ? color : (offColor || '#bbb');
   let s = '';
-  // Верхний контакт (точка подключения)
-  s += `<circle cx="${x}" cy="${topY}" r="2" fill="${col}"/>`;
+
+  // Верхняя точка подключения (неподвижный контакт)
+  const topPt = topY;
+  // Крестик механизма — в верхней трети
+  const crossY = topY + 7;
+  // Ось вращения контакта — внизу
+  const pivotY = topY + h;
+
+  // Верхняя вертикальная линия (от верхней точки до крестика)
+  s += `<line x1="${x}" y1="${topPt}" x2="${x}" y2="${crossY - 4}" stroke="${col}" stroke-width="2"/>`;
+
+  // Крестик механизма (всегда сверху)
+  s += `<line x1="${x - 4}" y1="${crossY - 4}" x2="${x + 4}" y2="${crossY + 4}" stroke="${col}" stroke-width="1.5"/>`;
+  s += `<line x1="${x + 4}" y1="${crossY - 4}" x2="${x - 4}" y2="${crossY + 4}" stroke="${col}" stroke-width="1.5"/>`;
+
   if (on) {
-    // Замкнут: вертикальная линия-контакт + крестик механизма
-    s += `<line x1="${x}" y1="${topY}" x2="${x}" y2="${topY + h}" stroke="${col}" stroke-width="2"/>`;
-    // Крестик (механизм автомата) посередине
-    const my = topY + h / 2;
-    s += `<line x1="${x - 4}" y1="${my - 4}" x2="${x + 4}" y2="${my + 4}" stroke="${col}" stroke-width="1.5"/>`;
-    s += `<line x1="${x + 4}" y1="${my - 4}" x2="${x - 4}" y2="${my + 4}" stroke="${col}" stroke-width="1.5"/>`;
+    // Замкнут: контакт вертикален — от крестика вниз до оси
+    s += `<line x1="${x}" y1="${crossY + 4}" x2="${x}" y2="${pivotY}" stroke="${col}" stroke-width="2.5"/>`;
   } else {
-    // Разомкнут: наклонная линия (контакт откинут) + крестик
-    s += `<line x1="${x}" y1="${topY}" x2="${x - 8}" y2="${topY + h}" stroke="${offColor || '#ff9800'}" stroke-width="2.5"/>`;
-    const my = topY + h * 0.4;
-    const mx = x - 3;
-    s += `<line x1="${mx - 3}" y1="${my - 3}" x2="${mx + 3}" y2="${my + 3}" stroke="${offColor || '#ff9800'}" stroke-width="1.5"/>`;
-    s += `<line x1="${mx + 3}" y1="${my - 3}" x2="${mx - 3}" y2="${my + 3}" stroke="${offColor || '#ff9800'}" stroke-width="1.5"/>`;
+    // Разомкнут: контакт отклонён от оси (снизу) влево вверх ~30°
+    // Ось вращения = pivotY, контакт идёт от pivotY вверх-влево
+    const contactLen = pivotY - crossY - 4;
+    const angle = 30 * Math.PI / 180; // 30 градусов
+    const tipX = x - Math.sin(angle) * contactLen;
+    const tipY = pivotY - Math.cos(angle) * contactLen;
+    s += `<line x1="${x}" y1="${pivotY}" x2="${tipX}" y2="${tipY}" stroke="${offColor || '#ff9800'}" stroke-width="2.5"/>`;
   }
-  // Нижний контакт
-  s += `<circle cx="${x}" cy="${topY + h}" r="2" fill="${col}"/>`;
+
+  // Нижняя точка (ось вращения)
+  s += `<circle cx="${x}" cy="${pivotY}" r="2.5" fill="${col}"/>`;
+  // Верхняя точка
+  s += `<circle cx="${x}" cy="${topPt}" r="2" fill="${col}"/>`;
+
   return { svg: s, height: h };
 }
 
