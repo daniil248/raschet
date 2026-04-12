@@ -1835,40 +1835,39 @@ function renderConns() {
     path.dataset.connId = c.id;
     layerConns.appendChild(path);
 
-    // Подпись на активных линиях — два ряда:
-    //   Верхний (основной): текущая нагрузка — «15 kW · 11 A · 4 мм² [· ×N (Σ)]»
-    //   Нижний (тусклый):  максимальная расчётная — «(макс: 50 kW · 36 A)»
+    // Подпись на активных линиях.
+    // Формат: «Imax A / жилы×[N×]сечение мм² [(кол-во шт.)]»
+    //   Imax — ток в максимальном режиме (одна параллельная ветвь)
+    //   жилы — 5 для 3ф (L1+L2+L3+N+PE), 3 для 1ф (L+N+PE)
+    //   N× — количество спаренных кабелей (только если > 1)
+    //   (кол-во шт.) — только для групповых потребителей (count > 1)
     if (c._state === 'active' && c._loadKw > 0) {
-      const parallel = Math.max(1, c._cableParallel || 1);
       const mid = pathMidpoint(a, waypoints, b);
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const threePhase = !!c._threePhase;
+      const cores = threePhase ? 5 : 3;
 
-      let perLineKw, perLineA;
-      if (toN.type === 'consumer' && (toN.count || 1) > 1) {
-        perLineKw = Number(toN.demandKw) || 0;
-        perLineA = (c._loadA || 0) / parallel;
-      } else {
-        perLineKw = c._loadKw;
-        perLineA = c._loadA || 0;
+      // Ток макс. режима на ОДНУ параллельную ветвь
+      const maxPerBranch = (c._maxA || 0) / parallel;
+
+      // Обозначение кабеля: жилы × [N×] сечение
+      let cableSpec = '';
+      if (c._cableSize) {
+        cableSpec = `${cores}×`;
+        if (parallel > 1) cableSpec += `${parallel}×`;
+        cableSpec += `${c._cableSize} мм²`;
       }
-      const size = c._cableSize ? ` · ${c._cableSize} мм²` : '';
 
-      let line1 = `${fmt(perLineKw)} kW · ${fmt(perLineA)} A${size}`;
-      if (parallel > 1) {
-        line1 += ` · ×${parallel} (${fmt(c._loadKw)} kW · ${fmt(c._loadA || 0)} A)`;
-      }
+      // Группа потребителей
+      const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1)
+        ? Number(toN.count) : 0;
 
-      const lbl = text(mid.x, mid.y - 10, line1, 'conn-label' + (c._cableOverflow ? ' overload' : ''));
+      let labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
+      if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
+
+      const lbl = text(mid.x, mid.y - 4, labelText,
+        'conn-label' + (c._cableOverflow ? ' overload' : ''));
       layerConns.appendChild(lbl);
-
-      // Вторая строка — максимальная расчётная нагрузка (для подбора кабеля)
-      if (c._maxKw && Math.abs(c._maxKw - c._loadKw) > 0.1) {
-        const maxPerLine = (c._maxA || 0) / parallel;
-        let line2 = `(макс: ${fmt(c._maxKw / parallel)} kW · ${fmt(maxPerLine)} A`;
-        if (parallel > 1) line2 += ` · ×${parallel} = ${fmt(c._maxA || 0)} A`;
-        line2 += ')';
-        const lbl2 = text(mid.x, mid.y + 4, line2, 'conn-label-sub');
-        layerConns.appendChild(lbl2);
-      }
     }
 
     // Рукоятки на обоих концах выделенной связи + точки сплайна
