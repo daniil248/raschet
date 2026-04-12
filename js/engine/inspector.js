@@ -1010,18 +1010,19 @@ export function openPanelParamsModal(n) {
   h.push(field('Мин. запас над нагрузкой, %', `<input type="number" id="pp-marginMin" min="0" max="50" step="1" value="${n.marginMinPct ?? 2}">`));
   h.push(field('Макс. запас над нагрузкой, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`));
 
-  // Режим АВР
-  if ((n.inputs || 0) > 1) {
+  // Режим коммутации
+  {
     h.push('<h4 style="margin:16px 0 8px">Режим коммутации</h4>');
     const sm = n.switchMode || 'auto';
-    h.push(field('Тип',
-      `<select id="pp-switchMode">
-        <option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Щит (без АВР) — ручное управление</option>
-        <option value="auto"${sm === 'auto' ? ' selected' : ''}>АВР автоматический</option>
-        <option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов к входам</option>
-        <option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover)</option>
-        <option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog</option>
-      </select>`));
+    const multiInput = (n.inputs || 0) > 1;
+    let smOpts = `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Щит (без АВР) — ручное управление</option>`;
+    if (multiInput) {
+      smOpts += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>АВР автоматический</option>`;
+      smOpts += `<option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов к входам</option>`;
+      smOpts += `<option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover)</option>`;
+      smOpts += `<option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog</option>`;
+    }
+    h.push(field('Тип', `<select id="pp-switchMode">${smOpts}</select>`));
     h.push('<div class="muted" style="font-size:10px;margin-top:-4px;margin-bottom:8px">Щит без АВР: все автоматы управляются только вручную. АВР: автоматическое переключение по приоритетам.</div>');
 
     // Приоритеты — только для режимов с АВР
@@ -1134,6 +1135,9 @@ export function openPanelControlModal(n) {
 
   const inCount = n.inputs || 0;
   const outCount = n.outputs || 0;
+  const isPlainPanel = n.switchMode === 'parallel';
+  const isManual = n.switchMode === 'manual' || isPlainPanel;
+  const hasAVR = !isPlainPanel;
   const colW = 90;
   const maxCols = Math.max(inCount, outCount, 1);
   const svgW = Math.max(maxCols * colW + 40, 300);
@@ -1243,8 +1247,6 @@ export function openPanelControlModal(n) {
   h += `</svg></div>`;
 
   // --- Переключатель Авто / Ручной (только для щитов с АВР) ---
-  const hasAVR = n.switchMode !== 'parallel';
-  const isManual = n.switchMode === 'manual' || n.switchMode === 'parallel';
   if (inCount > 1 && hasAVR) {
     const manualNow = n.switchMode === 'manual';
     h += '<div style="display:flex;align-items:center;gap:10px;margin:10px 0 6px">';
