@@ -188,7 +188,11 @@ export function renderInspectorNode(n) {
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
       </select>`));
-    h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
+    // cos φ источника рассчитывается автоматически из downstream нагрузки.
+    // Для генератора номинальный cos φ задаётся в параметрах источника.
+    if (n._cosPhi) {
+      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">cos φ (расчётный): <b>${n._cosPhi.toFixed(3)}</b></div>`);
+    }
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
 
     // Поля только для генератора
@@ -1069,7 +1073,11 @@ export function panelStatusBlock(n) {
 }
 // Блок расчётных токов для потребителя
 export function consumerCurrentsBlock(n) {
+  const cnt = Math.max(1, Number(n.count) || 1);
+  const isGroup = cnt > 1;
   const parts = [];
+
+  // Суммарные величины (группа или единичный)
   parts.push(`<b>P акт.:</b> ${fmt(n._powerP || 0)} kW`);
   parts.push(`<b>Q реакт.:</b> ${fmt(n._powerQ || 0)} kvar`);
   parts.push(`<b>S полн.:</b> ${fmt(n._powerS || 0)} kVA`);
@@ -1078,7 +1086,27 @@ export function consumerCurrentsBlock(n) {
   if ((n.inrushFactor || 1) > 1) {
     parts.push(`<b>Пусковой ток:</b> ${fmt(n._inrushA || 0)} А`);
   }
-  return `<div class="inspector-section"><h4>Расчётные величины</h4><div style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
+
+  let html = `<div class="inspector-section"><h4>Расчётные величины${isGroup ? ' (группа)' : ''}</h4><div style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div>`;
+
+  // Для групповых — добавить расчёт на единицу
+  if (isGroup) {
+    const perP = (n._powerP || 0) / cnt;
+    const perQ = (n._powerQ || 0) / cnt;
+    const perS = (n._powerS || 0) / cnt;
+    const perNomA = (n._nominalA || 0) / cnt;
+    const perRatedA = (n._ratedA || 0) / cnt;
+    const unitParts = [];
+    unitParts.push(`<b>P акт.:</b> ${fmt(perP)} kW`);
+    unitParts.push(`<b>Q реакт.:</b> ${fmt(perQ)} kvar`);
+    unitParts.push(`<b>S полн.:</b> ${fmt(perS)} kVA`);
+    unitParts.push(`<b>Установочный ток:</b> ${fmt(perNomA)} А`);
+    unitParts.push(`<b>Расчётный ток:</b> ${fmt(perRatedA)} А`);
+    html += `<h4 style="margin-top:10px">На единицу (1 из ${cnt})</h4><div style="font-size:11px;line-height:1.8">${unitParts.join('<br>')}</div>`;
+  }
+
+  html += '</div>';
+  return html;
 }
 
 export function prioritySection(n) {

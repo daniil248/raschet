@@ -9,17 +9,20 @@ import { createMode } from './modes.js';
 import { flash } from './utils.js';
 
 export function initToolbar() {
+  // Zoom
   document.getElementById('btn-zoom-in').onclick  = () => { state.view.zoom = Math.min(4, state.view.zoom * 1.2); updateViewBox(); };
   document.getElementById('btn-zoom-out').onclick = () => { state.view.zoom = Math.max(0.2, state.view.zoom / 1.2); updateViewBox(); };
   document.getElementById('btn-zoom-reset').onclick = () => { state.view.zoom = 1; updateViewBox(); };
   document.getElementById('btn-fit').onclick = fitAll;
-  document.getElementById('btn-save-local').onclick  = () => { localStorage.setItem('raschet.scheme', JSON.stringify(serialize())); flash('Сохранено в браузере'); };
-  document.getElementById('btn-load-local').onclick  = () => {
-    const s = localStorage.getItem('raschet.scheme');
-    if (!s) return flash('Нет сохранения');
-    try { deserialize(JSON.parse(s)); render(); renderInspector(); flash('Загружено'); }
-    catch (err) { flash('Ошибка: ' + err.message); }
-  };
+
+  // Undo / Redo
+  const _btnUndo = document.getElementById('btn-undo');
+  const _btnRedo = document.getElementById('btn-redo');
+  if (_btnUndo) _btnUndo.onclick = undo;
+  if (_btnRedo) _btnRedo.onclick = redo;
+  updateUndoButtons();
+
+  // Clear
   document.getElementById('btn-clear').onclick = () => {
     if (state.nodes.size && !confirm('Очистить схему?')) return;
     snapshot();
@@ -28,13 +31,19 @@ export function initToolbar() {
     render(); renderInspector();
     notifyChange();
   };
-  // Undo / Redo кнопки в тулбаре (добавлены в index.html)
-  const _btnUndo = document.getElementById('btn-undo');
-  const _btnRedo = document.getElementById('btn-redo');
-  if (_btnUndo) _btnUndo.onclick = undo;
-  if (_btnRedo) _btnRedo.onclick = redo;
-  updateUndoButtons();
-  document.getElementById('btn-export').onclick = () => {
+
+  // Modes
+  document.getElementById('btn-new-mode').onclick = () => createMode();
+
+  // === Файловые операции (sidebar + legacy toolbar IDs) ===
+  const saveLocalFn = () => { localStorage.setItem('raschet.scheme', JSON.stringify(serialize())); flash('Сохранено в браузере'); };
+  const loadLocalFn = () => {
+    const s = localStorage.getItem('raschet.scheme');
+    if (!s) return flash('Нет сохранения');
+    try { deserialize(JSON.parse(s)); render(); renderInspector(); flash('Загружено'); }
+    catch (err) { flash('Ошибка: ' + err.message); }
+  };
+  const exportJsonFn = () => {
     const blob = new Blob([JSON.stringify(serialize(), null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -45,7 +54,26 @@ export function initToolbar() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
-  document.getElementById('btn-import').onclick = () => document.getElementById('file-input').click();
+  const importJsonFn = () => document.getElementById('file-input').click();
+
+  // Привязка к sidebar-кнопкам
+  const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+  bind('btn-save-local-side', saveLocalFn);
+  bind('btn-load-local-side', loadLocalFn);
+  bind('btn-export-side', exportJsonFn);
+  bind('btn-import-side', importJsonFn);
+  bind('btn-export-svg-side', () => exportSVG());
+  bind('btn-export-png-side', () => exportPNG());
+
+  // Legacy toolbar IDs (если остались)
+  bind('btn-save-local', saveLocalFn);
+  bind('btn-load-local', loadLocalFn);
+  bind('btn-export', exportJsonFn);
+  bind('btn-import', importJsonFn);
+  bind('btn-export-svg', () => exportSVG());
+  bind('btn-export-png', () => exportPNG());
+
+  // File input handler
   document.getElementById('file-input').addEventListener('change', e => {
     const f = e.target.files[0];
     if (!f) return;
@@ -56,15 +84,6 @@ export function initToolbar() {
     };
     r.readAsText(f);
   });
-  document.getElementById('btn-new-mode').onclick = () => createMode();
-
-  // Авто-раскладка по уровням: источники сверху, потребители снизу
-  const btnAutoLayout = document.getElementById('btn-auto-layout');
-  if (btnAutoLayout) btnAutoLayout.onclick = () => autoLayout();
-
-  // Экспорт SVG / PNG
-  document.getElementById('btn-export-svg').onclick = () => exportSVG();
-  document.getElementById('btn-export-png').onclick = () => exportPNG();
 }
 
 export function autoLayout() {

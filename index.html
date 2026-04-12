@@ -94,6 +94,14 @@
         <button id="btn-open-report" class="full-btn">📄 Сгенерировать отчёт</button>
         <button id="btn-open-loads-import" class="full-btn">📥 Импорт таблицы нагрузок</button>
 
+        <h3>Файл</h3>
+        <button id="btn-save-local-side" class="full-btn">💾 Сохр. локально</button>
+        <button id="btn-load-local-side" class="full-btn">📂 Загр. локально</button>
+        <button id="btn-export-side" class="full-btn">📤 Экспорт JSON</button>
+        <button id="btn-import-side" class="full-btn">📥 Импорт JSON</button>
+        <button id="btn-export-svg-side" class="full-btn">🖼 Экспорт SVG</button>
+        <button id="btn-export-png-side" class="full-btn">🖼 Экспорт PNG</button>
+
         <h3>Итого</h3>
         <div class="stats" id="stats"></div>
 
@@ -121,16 +129,8 @@
           <button id="btn-undo" title="Отменить (Ctrl+Z)" disabled>↶</button>
           <button id="btn-redo" title="Вернуть (Ctrl+Shift+Z)" disabled>↷</button>
           <span class="sep"></span>
-          <button id="btn-save-local">Сохр. локально</button>
-          <button id="btn-load-local">Загр. локально</button>
-          <button id="btn-export">Экспорт JSON</button>
-          <button id="btn-import">Импорт JSON</button>
-          <input type="file" id="file-input" accept="application/json" hidden>
-          <span class="sep"></span>
-<button id="btn-export-svg" title="Экспорт SVG">SVG</button>
-          <button id="btn-export-png" title="Экспорт PNG">PNG</button>
-          <span class="sep"></span>
           <button id="btn-clear" class="danger">Очистить</button>
+          <input type="file" id="file-input" accept="application/json" hidden>
         </div>
 
         <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
