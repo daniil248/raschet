@@ -271,7 +271,7 @@ export function renderNodes() {
     const inCount = nodeInputCount(n);
     // Состояние каждого входного порта: 'active' | 'powered' | undefined
     const portStates = new Map();
-    if (inCount > 1) {
+    {
       for (const c of state.conns.values()) {
         if (c.to.nodeId !== n.id) continue;
         if (c._state === 'active' || c._state === 'powered') {
@@ -289,11 +289,11 @@ export function renderNodes() {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
       }
-      // Лампочки (только при inputs > 1):
-      //   зелёная — на красную линию («работает, несёт нагрузку»)
-      //   красная — на зелёную линию («есть напряжение, но не выбрано»)
-      //   нет лампочки — на серую пунктирную
-      if (inCount > 1) {
+      // Лампочки на всех входах:
+      //   зелёная — работает, несёт нагрузку (active)
+      //   красная — есть напряжение, но не выбрано (powered)
+      //   нет лампочки — нет напряжения (dead)
+      {
         const ps = portStates.get(i);
         if (ps === 'active') {
           g.appendChild(el('circle', { class: 'port-lamp green', cx: cx + 11, cy: 0, r: 4.5 }));
