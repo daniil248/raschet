@@ -849,6 +849,17 @@ async function init() {
     document.body.classList.toggle('inspector-open');
     document.body.classList.remove('palette-open');
   });
+  // Закрытие drawer по клику на затемнённую область
+  const canvasWrap = document.getElementById('canvas-wrap');
+  if (canvasWrap) canvasWrap.addEventListener('click', e => {
+    if (document.body.classList.contains('palette-open') || document.body.classList.contains('inspector-open')) {
+      // Проверяем, что клик по ::after (затемнению), а не по canvas/toolbar
+      const rect = canvasWrap.getBoundingClientRect();
+      if (e.clientX >= rect.left && e.clientX <= rect.right) {
+        document.body.classList.remove('palette-open', 'inspector-open');
+      }
+    }
+  });
 
   // Header
   els.btnHome.addEventListener('click', backToProjects);

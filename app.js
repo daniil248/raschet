@@ -283,9 +283,11 @@ const DEFAULTS = {
   generator: () => ({
     name: 'ДГУ', capacityKw: 60, on: true, backupMode: true,
     phase: '3ph', voltage: 400, cosPhi: 0.85,
-    triggerNodeId: null,
+    triggerNodeId: null,       // legacy single trigger (мигрируется в triggerNodeIds)
+    triggerNodeIds: [],        // массив id триггеров
+    triggerLogic: 'any',       // 'any' — запуск если ХОТЯ БЫ один мёртв; 'all' — все мёртвы
     startDelaySec: 5,
-    stopDelaySec: 2,          // задержка остывания / остановки после восстановления триггера
+    stopDelaySec: 2,
   }),
   panel:     () => ({
     name: 'ЩС',
@@ -526,6 +528,8 @@ const state = {
   pending: null,     // { fromNodeId, fromPort, mouseX, mouseY, restoreConn? }
   drag: null,        // { nodeId, dx, dy } | { pan, sx, sy, vx, vy }
   readOnly: false,   // просмотр без редактирования
+  selection: new Set(), // мульти-выделение: Set<nodeId>
+  rubberBand: null,    // { sx, sy, ex, ey } — рамка мульти-выбора
 };
 
 let _idSeq = 1;
@@ -843,31 +847,36 @@ function recalc() {
     } else if (n.type === 'generator') {
       if (!effectiveOn(n)) {
         res = null;
-      } else if (n.triggerNodeId) {
-        // Генератор с триггером
-        const trigger = state.nodes.get(n.triggerNodeId);
-        if (!trigger) {
-          res = (n.backupMode && !allowBackup) ? null : [];
-        } else {
-          const triggerPowered = activeInputs(n.triggerNodeId, false) !== null;
-          if (triggerPowered) {
-            // Триггер жив → генератор в дежурстве, не питает
-            res = null;
-          } else {
-            // Триггер мёртв: генератор активен только если симуляция уже его запустила.
-            // _running выставляется тиком после startDelaySec.
-            if (n._running) {
-              res = (n.backupMode && !allowBackup) ? null : [];
-            } else {
-              // Ещё не запустился — не питает
-              res = null;
-            }
-          }
-        }
-      } else if (n.backupMode && !allowBackup) {
-        res = null;
       } else {
-        res = [];
+        // Список триггеров (поддерживаем и legacy triggerNodeId, и массив)
+        const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+          ? n.triggerNodeIds
+          : (n.triggerNodeId ? [n.triggerNodeId] : []);
+
+        if (triggers.length) {
+          // Проверяем статус каждого триггера
+          const statuses = triggers.map(tid => {
+            const t = state.nodes.get(tid);
+            if (!t) return 'dead'; // удалён → считаем мёртвым
+            return activeInputs(tid, false) !== null ? 'alive' : 'dead';
+          });
+          const logic = n.triggerLogic || 'any';
+          const shouldStart = logic === 'any'
+            ? statuses.some(s => s === 'dead')    // хотя бы один мёртв
+            : statuses.every(s => s === 'dead');   // все мёртвы
+
+          if (!shouldStart) {
+            res = null; // все триггеры живы → дежурство
+          } else if (n._running) {
+            res = (n.backupMode && !allowBackup) ? null : [];
+          } else {
+            res = null; // ещё не запустился (ждём startDelaySec)
+          }
+        } else if (n.backupMode && !allowBackup) {
+          res = null;
+        } else {
+          res = [];
+        }
       }
     } else if (n.type === 'ups') {
       if (!effectiveOn(n)) {
@@ -933,16 +942,36 @@ function recalc() {
             }
           }
         } else if (n.type === 'panel' && n.switchMode === 'parallel') {
-          // Параллельный режим: работают все явно включённые вводные автоматы
-          // (для шкафов байпаса и параллельной работы ИБП)
+          // Параллельный режим
           const enabledMask = Array.isArray(n.parallelEnabled) ? n.parallelEnabled : [];
           const selected = ins.filter(c => enabledMask[c.to.port]);
-          // Сначала без резерва
           let live = selected.filter(c => activeInputs(c.from.nodeId, false) !== null);
           if (live.length === 0 && allowBackup) {
             live = selected.filter(c => activeInputs(c.from.nodeId, true) !== null);
           }
           if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
+        } else if (n.type === 'panel' && n.switchMode === 'watchdog') {
+          // Watchdog-режим: каждый ВХОД i жёстко привязан к ВЫХОДУ i.
+          // Вход i работает только когда его upstream МЁРТВ (обесточен).
+          // Логика: «если на входе i пропал сигнал → включить выход i от ДГУ».
+          // Это обратная логика — «нормально-замкнутый» мониторинг.
+          // Реализация: для activeInputs щита — мы собираем все входы,
+          // у которых upstream мёртв, и делаем их активными.
+          // downstream (щит → нагрузки) тогда идёт через те выходы, чей
+          // индекс совпадает с активным входом.
+          const liveIns = [];
+          for (const c of ins) {
+            const upAlive = activeInputs(c.from.nodeId, false) !== null;
+            if (!upAlive) {
+              // upstream мёртв → этот вход (и соответственно выход) активируется
+              liveIns.push(c);
+            }
+          }
+          if (liveIns.length) {
+            res = liveIns.map(c => ({ conn: c, share: 1 / liveIns.length }));
+          }
+          // Помечаем какие выходы щита реально работают (для renderConns)
+          n._watchdogActivePorts = new Set(liveIns.map(c => c.to.port));
         } else {
           // Автоматический режим — группировка по приоритетам с параллельной работой
           const groups = new Map();
@@ -1049,12 +1078,21 @@ function recalc() {
     walkUp(n.id, ch);
   }
 
-  // Вычисление _state для каждой связи — три цвета:
-  //   active  — красная: есть напряжение И downstream выбрал этот вход
-  //   powered — зелёная: есть напряжение, но downstream не использует этот вход
-  //   dead    — серая пунктирная: upstream без напряжения
+  // Вычисление _state для каждой связи — три цвета
   for (const c of state.conns.values()) {
-    if (c._active) { c._state = 'active'; continue; }
+    if (c._active) {
+      // Для watchdog-щита: выход i активен только если вход i в _watchdogActivePorts
+      const fromN = state.nodes.get(c.from.nodeId);
+      if (fromN && fromN.type === 'panel' && fromN.switchMode === 'watchdog' && fromN._watchdogActivePorts) {
+        if (!fromN._watchdogActivePorts.has(c.from.port)) {
+          c._active = false;
+          c._state = 'dead';
+          continue;
+        }
+      }
+      c._state = 'active';
+      continue;
+    }
     const upAi = activeInputs(c.from.nodeId, true);
     c._state = (upAi !== null) ? 'powered' : 'dead';
   }
@@ -1166,6 +1204,7 @@ function recalc() {
     const maxCurrent = maxKwDownstream > 0
       ? computeCurrentA(maxKwDownstream, U, cos, threePhase)
       : 0;
+    c._maxKw = maxKwDownstream;
     c._maxA = maxCurrent;
 
     // === Параметры прокладки ===
@@ -1570,6 +1609,7 @@ function renderNodes() {
     const cls = [
       'node', n.type,
       selected ? 'selected' : '',
+      state.selection.has(n.id) ? 'multi-selected' : '',
       n._overload ? 'overload' : '',
       (!n._powered && (n.type === 'panel' || n.type === 'consumer' || n.type === 'ups')) ? 'unpowered' : '',
       (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
@@ -1725,26 +1765,28 @@ function renderNodes() {
 function renderConns() {
   while (layerConns.firstChild) layerConns.removeChild(layerConns.firstChild);
 
-  // Control-линии: от триггера к генератору (тонкая пунктирная)
+  // Control-линии: от каждого триггера к генератору
   for (const n of state.nodes.values()) {
-    if (n.type !== 'generator' || !n.triggerNodeId) continue;
-    const trigger = state.nodes.get(n.triggerNodeId);
-    if (!trigger) continue;
+    if (n.type !== 'generator') continue;
+    const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+      ? n.triggerNodeIds
+      : (n.triggerNodeId ? [n.triggerNodeId] : []);
+    if (!triggers.length) continue;
     const genW = nodeWidth(n);
-    const trigW = nodeWidth(trigger);
-    const a = { x: trigger.x + trigW / 2, y: trigger.y + NODE_H / 2 };
-    const b = { x: n.x + genW / 2, y: n.y + NODE_H / 2 };
-    // Активна линия запуска, когда триггер мёртв и генератор включён
-    const triggerAlive = !!trigger._powered;
-    const started = effectiveOn(n) && !triggerAlive;
-    const cls = started ? 'control-line started' : 'control-line';
-    layerConns.appendChild(el('line', {
-      class: cls, x1: a.x, y1: a.y, x2: b.x, y2: b.y,
-    }));
-    // Ярлык "ПУСК / дежурство"
-    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const label = started ? 'ПУСК' : 'дежурство';
-    layerConns.appendChild(text(mid.x, mid.y - 4, label, 'control-label' + (started ? ' started' : '')));
+    for (const tid of triggers) {
+      const trigger = state.nodes.get(tid);
+      if (!trigger) continue;
+      const trigW = nodeWidth(trigger);
+      const a = { x: trigger.x + trigW / 2, y: trigger.y + NODE_H / 2 };
+      const b = { x: n.x + genW / 2, y: n.y + NODE_H / 2 };
+      const triggerAlive = !!trigger._powered;
+      const genRunning = !!n._running;
+      const cls = (!triggerAlive && genRunning) ? 'control-line started' : 'control-line';
+      layerConns.appendChild(el('line', { class: cls, x1: a.x, y1: a.y, x2: b.x, y2: b.y }));
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const label = !triggerAlive ? (genRunning ? 'ПУСК' : 'СИГНАЛ') : 'дежурство';
+      layerConns.appendChild(text(mid.x, mid.y - 4, label, 'control-label' + (!triggerAlive ? ' started' : '')));
+    }
   }
 
   for (const c of state.conns.values()) {
@@ -1774,17 +1816,13 @@ function renderConns() {
     path.dataset.connId = c.id;
     layerConns.appendChild(path);
 
-    // Подпись на активных линиях.
-    // Для обычной линии:   «15 kW · 11 A · 4 мм²»
-    // Для групповой (N жил): «15 kW · 11 A · 4 мм² · ×10 (150 kW · 110.5 A)»
-    //   — сначала параметры одной жилы, сечение сразу за её током,
-    //     затем множитель и в скобках общие значения группы.
-    // Позиция — середина реальной траектории (с учётом waypoints).
+    // Подпись на активных линиях — два ряда:
+    //   Верхний (основной): текущая нагрузка — «15 kW · 11 A · 4 мм² [· ×N (Σ)]»
+    //   Нижний (тусклый):  максимальная расчётная — «(макс: 50 kW · 36 A)»
     if (c._state === 'active' && c._loadKw > 0) {
       const parallel = Math.max(1, c._cableParallel || 1);
       const mid = pathMidpoint(a, waypoints, b);
 
-      // Параметры одной жилы / одного потребителя в группе
       let perLineKw, perLineA;
       if (toN.type === 'consumer' && (toN.count || 1) > 1) {
         perLineKw = Number(toN.demandKw) || 0;
@@ -1795,13 +1833,23 @@ function renderConns() {
       }
       const size = c._cableSize ? ` · ${c._cableSize} мм²` : '';
 
-      let labelText = `${fmt(perLineKw)} kW · ${fmt(perLineA)} A${size}`;
+      let line1 = `${fmt(perLineKw)} kW · ${fmt(perLineA)} A${size}`;
       if (parallel > 1) {
-        labelText += ` · ×${parallel} (${fmt(c._loadKw)} kW · ${fmt(c._loadA || 0)} A)`;
+        line1 += ` · ×${parallel} (${fmt(c._loadKw)} kW · ${fmt(c._loadA || 0)} A)`;
       }
 
-      const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label' + (c._cableOverflow ? ' overload' : ''));
+      const lbl = text(mid.x, mid.y - 10, line1, 'conn-label' + (c._cableOverflow ? ' overload' : ''));
       layerConns.appendChild(lbl);
+
+      // Вторая строка — максимальная расчётная нагрузка (для подбора кабеля)
+      if (c._maxKw && Math.abs(c._maxKw - c._loadKw) > 0.1) {
+        const maxPerLine = (c._maxA || 0) / parallel;
+        let line2 = `(макс: ${fmt(c._maxKw / parallel)} kW · ${fmt(maxPerLine)} A`;
+        if (parallel > 1) line2 += ` · ×${parallel} = ${fmt(c._maxA || 0)} A`;
+        line2 += ')';
+        const lbl2 = text(mid.x, mid.y + 4, line2, 'conn-label-sub');
+        layerConns.appendChild(lbl2);
+      }
     }
 
     // Рукоятки на обоих концах выделенной связи + точки сплайна
@@ -2052,19 +2100,32 @@ function renderInspectorNode(n) {
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.85}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
     h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
-    // Триггер запуска
-    const triggerOpts = ['<option value="">— не назначен —</option>'];
+    // Триггеры запуска (можно несколько)
+    const allTriggerCandidates = [];
     for (const other of state.nodes.values()) {
       if (other.id === n.id) continue;
-      if (other.type !== 'source' && other.type !== 'panel') continue;
-      const sel = n.triggerNodeId === other.id ? ' selected' : '';
-      triggerOpts.push(`<option value="${escAttr(other.id)}"${sel}>${escHtml(other.tag || '')} ${escHtml(other.name || '')}</option>`);
+      if (other.type !== 'source' && other.type !== 'panel' && other.type !== 'generator') continue;
+      allTriggerCandidates.push(other);
     }
-    h.push('<div class="inspector-section"><h4>Линия запуска</h4>');
-    h.push(field('Триггер (запускаться при обесточке)', `<select data-prop="triggerNodeId">${triggerOpts.join('')}</select>`));
+    const currentTriggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+      ? n.triggerNodeIds
+      : (n.triggerNodeId ? [n.triggerNodeId] : []);
+
+    h.push('<div class="inspector-section"><h4>Линии запуска (watchdog)</h4>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Отметьте узлы, при обесточке которых ДГУ должен запускаться. Можно выбрать несколько — логика определяется переключателем.</div>');
+    for (const cand of allTriggerCandidates) {
+      const checked = currentTriggers.includes(cand.id);
+      h.push(`<div class="field check"><input type="checkbox" data-trigger-id="${escAttr(cand.id)}"${checked ? ' checked' : ''}><label>${escHtml(cand.tag || '')} ${escHtml(cand.name || '')}</label></div>`);
+    }
+    const logic = n.triggerLogic || 'any';
+    h.push(field('Логика запуска',
+      `<select data-prop="triggerLogic">
+        <option value="any"${logic === 'any' ? ' selected' : ''}>ANY — запуск если хотя бы один мёртв</option>
+        <option value="all"${logic === 'all' ? ' selected' : ''}>ALL — запуск только если все мёртвы</option>
+      </select>`));
     h.push(field('Задержка запуска, сек', `<input type="number" min="0" max="600" step="1" data-prop="startDelaySec" value="${n.startDelaySec || 0}">`));
     h.push(field('Задержка остановки, сек', `<input type="number" min="0" max="600" step="1" data-prop="stopDelaySec" value="${n.stopDelaySec ?? 2}">`));
-    h.push('<div class="muted" style="font-size:11px">При возврате триггера генератор остывает ещё это время, затем выключается. В дежурном состоянии линия запуска серая.</div>');
+    h.push('<div class="muted" style="font-size:11px">ANY: запускается, когда хотя бы один триггер обесточен (например, «ДГУ1 ИЛИ ДГУ2 сломались»).<br>ALL: только когда все триггеры обесточены.<br>Задержки моделируются в реальном времени (ускорение ×20).</div>');
     h.push('</div>');
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
@@ -2092,6 +2153,7 @@ function renderInspectorNode(n) {
           <option value="auto"${sm === 'auto' ? ' selected' : ''}>Автоматический (АВР)</option>
           <option value="manual"${sm === 'manual' ? ' selected' : ''}>Ручной — один вход</option>
           <option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Параллельный — несколько вводов</option>
+          <option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog — вход N → выход N по сигналу</option>
         </select>`));
       if (sm === 'manual') {
         const opts = [];
@@ -2101,6 +2163,10 @@ function renderInspectorNode(n) {
         h.push(field('Активный вход',
           `<select data-prop="manualActiveInput">${opts.join('')}</select>`));
         h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Работает только явно выбранный вход. Если на нём нет напряжения — щит обесточен.</div>');
+      } else if (sm === 'watchdog') {
+        h.push('<div class="inspector-section"><h4>Watchdog-режим</h4>');
+        h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Каждый вход i мониторит upstream. Когда upstream пропадает — соответствующий выход i активируется (подключает нагрузку к ДГУ). Остальные выходы остаются обесточенными.<br><br>Типичное применение: щит ДГУ с 4 входами от 4 контролируемых линий и 4 выходами к нагрузкам.</div>');
+        h.push('</div>');
       } else if (sm === 'parallel') {
         h.push('<div class="inspector-section"><h4>Включённые вводы</h4>');
         h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Можно включить несколько вводных автоматов одновременно — актуально для шкафов байпаса и параллельной работы ИБП.</div>');
@@ -2317,6 +2383,23 @@ function wireInspectorInputs(n) {
     };
     inp.addEventListener('input', apply);
     inp.addEventListener('change', apply);
+  });
+  // Чекбоксы триггеров генератора
+  inspectorBody.querySelectorAll('[data-trigger-id]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      snapshot('trigger:' + n.id);
+      const tid = inp.dataset.triggerId;
+      if (!Array.isArray(n.triggerNodeIds)) n.triggerNodeIds = [];
+      if (inp.checked) {
+        if (!n.triggerNodeIds.includes(tid)) n.triggerNodeIds.push(tid);
+      } else {
+        n.triggerNodeIds = n.triggerNodeIds.filter(x => x !== tid);
+      }
+      // Sync legacy field
+      n.triggerNodeId = n.triggerNodeIds[0] || null;
+      render();
+      notifyChange();
+    });
   });
   // Чекбоксы параллельного режима щита
   inspectorBody.querySelectorAll('[data-parallel]').forEach(inp => {
@@ -2949,13 +3032,20 @@ svg.addEventListener('mousedown', e => {
   const nodeEl = e.target.closest('.node');
   if (nodeEl) {
     const id = nodeEl.dataset.nodeId;
+    // Shift+клик — toggle в мульти-выделении
+    if (e.shiftKey) {
+      if (state.selection.has(id)) state.selection.delete(id);
+      else state.selection.add(id);
+      render();
+      return;
+    }
+    // Обычный клик — одиночное выделение
+    state.selection.clear();
     selectNode(id);
     if (!state.readOnly) {
       snapshot();
       const n = state.nodes.get(id);
       const p = clientToSvg(e.clientX, e.clientY);
-      // Для зоны — захватываем все вложенные узлы, чтобы тащить вместе.
-      // Также запоминаем исходные смещения детей относительно зоны.
       if (n.type === 'zone') {
         const children = nodesInZone(n).map(ch => ({
           id: ch.id, dx: ch.x - n.x, dy: ch.y - n.y,
@@ -2969,7 +3059,17 @@ svg.addEventListener('mousedown', e => {
     return;
   }
 
-  // Пустое место → пан
+  // Пустое место
+  if (e.shiftKey) {
+    // Shift + drag по пустому → рамка выделения
+    const p = clientToSvg(e.clientX, e.clientY);
+    state.rubberBand = { sx: p.x, sy: p.y, ex: p.x, ey: p.y };
+    state.selection.clear();
+    svg.classList.add('panning');
+    return;
+  }
+  // Обычный drag → пан
+  state.selection.clear();
   state.drag = { pan: true, sx: e.clientX, sy: e.clientY, vx: state.view.x, vy: state.view.y };
   svg.classList.add('panning');
   state.selectedKind = null; state.selectedId = null;
@@ -2978,6 +3078,14 @@ svg.addEventListener('mousedown', e => {
 });
 
 window.addEventListener('mousemove', e => {
+  // Рамка мульти-выделения
+  if (state.rubberBand) {
+    const p = clientToSvg(e.clientX, e.clientY);
+    state.rubberBand.ex = p.x;
+    state.rubberBand.ey = p.y;
+    drawRubberBand();
+    return;
+  }
   if (state.drag && state.drag.zoneResizeId) {
     const z = state.nodes.get(state.drag.zoneResizeId);
     if (z) {
@@ -3081,6 +3189,27 @@ window.addEventListener('mousemove', e => {
 });
 
 window.addEventListener('mouseup', (e) => {
+  // Завершение рамки выделения
+  if (state.rubberBand) {
+    const rb = state.rubberBand;
+    const x1 = Math.min(rb.sx, rb.ex), y1 = Math.min(rb.sy, rb.ey);
+    const x2 = Math.max(rb.sx, rb.ex), y2 = Math.max(rb.sy, rb.ey);
+    state.selection.clear();
+    for (const n of state.nodes.values()) {
+      if (n.type === 'zone') continue;
+      const nw = nodeWidth(n), nh = nodeHeight(n);
+      // Узел выделяется, если пересекается с рамкой
+      if (n.x + nw >= x1 && n.x <= x2 && n.y + nh >= y1 && n.y <= y2) {
+        state.selection.add(n.id);
+      }
+    }
+    state.rubberBand = null;
+    clearRubberBand();
+    svg.classList.remove('panning');
+    render();
+    if (state.selection.size) flash(`Выделено: ${state.selection.size}`);
+    return;
+  }
   if (state.drag) {
     const wasNodeDrag = !!state.drag.nodeId;
     const wasWpDrag = !!state.drag.waypointConnId;
@@ -3204,8 +3333,16 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape' && state.pending) cancelPending();
   if (state.readOnly) return;
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (state.selectedKind === 'node' && state.selectedId) { deleteNode(state.selectedId); e.preventDefault(); }
-    else if (state.selectedKind === 'conn' && state.selectedId) { deleteConn(state.selectedId); e.preventDefault(); }
+    if (state.selection.size) {
+      snapshot();
+      for (const id of [...state.selection]) deleteNode(id);
+      state.selection.clear();
+      e.preventDefault();
+    } else if (state.selectedKind === 'node' && state.selectedId) {
+      deleteNode(state.selectedId); e.preventDefault();
+    } else if (state.selectedKind === 'conn' && state.selectedId) {
+      deleteConn(state.selectedId); e.preventDefault();
+    }
   }
 });
 
@@ -3314,6 +3451,22 @@ function clearPending() {
   const p = document.getElementById('__pending');
   if (p) p.remove();
 }
+function drawRubberBand() {
+  clearRubberBand();
+  if (!state.rubberBand) return;
+  const rb = state.rubberBand;
+  const x = Math.min(rb.sx, rb.ex), y = Math.min(rb.sy, rb.ey);
+  const w = Math.abs(rb.ex - rb.sx), h = Math.abs(rb.ey - rb.sy);
+  const r = el('rect', {
+    id: '__rubberband', class: 'rubber-band',
+    x, y, width: w, height: h,
+  });
+  layerOver.appendChild(r);
+}
+function clearRubberBand() {
+  const r = document.getElementById('__rubberband');
+  if (r) r.remove();
+}
 
 // Зум колесом
 svg.addEventListener('wheel', e => {
@@ -3377,6 +3530,164 @@ document.getElementById('file-input').addEventListener('change', e => {
   r.readAsText(f);
 });
 document.getElementById('btn-new-mode').onclick = () => createMode();
+
+// Авто-раскладка по уровням: источники сверху, потребители снизу
+document.getElementById('btn-auto-layout').onclick = () => autoLayout();
+function autoLayout() {
+  if (!state.nodes.size) return;
+  snapshot();
+  // Topological sort: определяем уровень каждого узла
+  const levels = new Map();
+  const q = [];
+  // Стартуем с узлов без входных связей (источники, генераторы)
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone') continue;
+    const hasIn = [...state.conns.values()].some(c => c.to.nodeId === n.id);
+    if (!hasIn) { levels.set(n.id, 0); q.push(n.id); }
+  }
+  // BFS вниз
+  let head = 0;
+  while (head < q.length) {
+    const cur = q[head++];
+    const lvl = levels.get(cur);
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId !== cur) continue;
+      const nextLvl = lvl + 1;
+      if (!levels.has(c.to.nodeId) || levels.get(c.to.nodeId) < nextLvl) {
+        levels.set(c.to.nodeId, nextLvl);
+        q.push(c.to.nodeId);
+      }
+    }
+  }
+  // Узлы без связей — уровень 0
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone') continue;
+    if (!levels.has(n.id)) levels.set(n.id, 0);
+  }
+  // Группируем по уровням
+  const byLevel = new Map();
+  for (const [id, lvl] of levels) {
+    if (!byLevel.has(lvl)) byLevel.set(lvl, []);
+    byLevel.get(lvl).push(id);
+  }
+  const sortedLevels = [...byLevel.keys()].sort((a, b) => a - b);
+  const gapY = NODE_H + 80;
+  const gapX = 40;
+  let startY = 80;
+  for (const lvl of sortedLevels) {
+    const ids = byLevel.get(lvl);
+    let totalW = 0;
+    for (const id of ids) totalW += nodeWidth(state.nodes.get(id)) + gapX;
+    let x = 100 - totalW / 2 + 400; // центрируем
+    for (const id of ids) {
+      const n = state.nodes.get(id);
+      n.x = Math.round(x / 40) * 40;
+      n.y = Math.round(startY / 40) * 40;
+      x += nodeWidth(n) + gapX;
+    }
+    startY += gapY;
+  }
+  render();
+  fitAll();
+  notifyChange();
+  flash('Авто-раскладка применена');
+}
+
+// Экспорт SVG / PNG
+document.getElementById('btn-export-svg').onclick = () => exportSVG();
+document.getElementById('btn-export-png').onclick = () => exportPNG();
+
+function exportSVG() {
+  const clone = svg.cloneNode(true);
+  // Убираем интерактивные элементы
+  clone.querySelectorAll('.conn-handle, .conn-waypoint, .conn-waypoint-add, .zone-resize, #__pending, #__rubberband').forEach(e => e.remove());
+  // Вычисляем bbox для viewBox
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of state.nodes.values()) {
+    const w = nodeWidth(n), h = nodeHeight(n);
+    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
+  }
+  const pad = 40;
+  const vw = (maxX - minX) + pad * 2;
+  const vh = (maxY - minY) + pad * 2;
+  clone.setAttribute('viewBox', `${minX - pad} ${minY - pad} ${vw} ${vh}`);
+  clone.setAttribute('width', vw);
+  clone.setAttribute('height', vh);
+  // Встраиваем стили
+  const styleEl = document.createElementNS(SVG_NS, 'style');
+  styleEl.textContent = document.querySelector('link[href="app.css"]')
+    ? '' : ''; // Inline основные стили для SVG
+  // Простой вариант — копируем все правила из <style> и <link>
+  let cssText = '';
+  for (const sheet of document.styleSheets) {
+    try {
+      for (const rule of sheet.cssRules) cssText += rule.cssText + '\n';
+    } catch { /* cross-origin */ }
+  }
+  styleEl.textContent = cssText;
+  clone.insertBefore(styleEl, clone.firstChild);
+  const xml = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const pad2 = n => String(n).padStart(2, '0');
+  a.download = `raschet_${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}.svg`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  flash('SVG сохранён');
+}
+
+function exportPNG() {
+  // Рендерим SVG в canvas, потом toBlob
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of state.nodes.values()) {
+    const w = nodeWidth(n), h = nodeHeight(n);
+    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
+  }
+  if (!isFinite(minX)) { flash('Схема пуста', 'error'); return; }
+  const pad = 40;
+  const vw = (maxX - minX) + pad * 2;
+  const vh = (maxY - minY) + pad * 2;
+  const scale = 2; // retina
+  const clone = svg.cloneNode(true);
+  clone.querySelectorAll('.conn-handle, .conn-waypoint, .conn-waypoint-add, .zone-resize, #__pending, #__rubberband').forEach(e => e.remove());
+  clone.setAttribute('viewBox', `${minX - pad} ${minY - pad} ${vw} ${vh}`);
+  clone.setAttribute('width', vw * scale);
+  clone.setAttribute('height', vh * scale);
+  // Inline стили
+  let cssText = '';
+  for (const sheet of document.styleSheets) {
+    try { for (const rule of sheet.cssRules) cssText += rule.cssText + '\n'; } catch {}
+  }
+  const styleEl = document.createElementNS(SVG_NS, 'style');
+  styleEl.textContent = cssText;
+  clone.insertBefore(styleEl, clone.firstChild);
+  const xml = new XMLSerializer().serializeToString(clone);
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = vw * scale;
+    canvas.height = vh * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const d = new Date();
+      const pad2 = n => String(n).padStart(2, '0');
+      a.download = `raschet_${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      flash('PNG сохранён');
+    }, 'image/png');
+  };
+  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xml)));
+}
 
 function fitAll() {
   if (!state.nodes.size) return;
@@ -3484,6 +3795,11 @@ function deserialize(data) {
       if (typeof n.startDelaySec !== 'number') n.startDelaySec = 5;
       if (typeof n.stopDelaySec !== 'number') n.stopDelaySec = 2;
       if (!('triggerNodeId' in n)) n.triggerNodeId = null;
+      // Миграция legacy triggerNodeId → triggerNodeIds[]
+      if (!Array.isArray(n.triggerNodeIds)) {
+        n.triggerNodeIds = n.triggerNodeId ? [n.triggerNodeId] : [];
+      }
+      if (!n.triggerLogic) n.triggerLogic = 'any';
     }
     if (n.type === 'channel') {
       // Мигрируем старые поля (material/insulation/method) в новую схему.
@@ -3764,20 +4080,26 @@ function simTick() {
   // 1. Генераторы с триггером — учёт задержек запуска и остановки
   for (const n of state.nodes.values()) {
     if (n.type !== 'generator') continue;
-    if (!n.triggerNodeId) {
+    const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+      ? n.triggerNodeIds
+      : (n.triggerNodeId ? [n.triggerNodeId] : []);
+    if (!triggers.length) {
       n._startedAt = 0; n._stoppingAt = 0;
       n._running = false; n._startCountdown = 0; n._stopCountdown = 0;
       continue;
     }
-    const trigger = state.nodes.get(n.triggerNodeId);
-    if (!trigger) {
-      n._startedAt = 0; n._stoppingAt = 0;
-      n._running = false; n._startCountdown = 0; n._stopCountdown = 0;
-      continue;
-    }
-    const triggerPowered = !!trigger._powered;
+    // Проверяем: должен ли генератор работать по логике триггеров
+    const statuses = triggers.map(tid => {
+      const t = state.nodes.get(tid);
+      return (t && t._powered) ? 'alive' : 'dead';
+    });
+    const logic = n.triggerLogic || 'any';
+    const shouldStart = logic === 'any'
+      ? statuses.some(s => s === 'dead')
+      : statuses.every(s => s === 'dead');
+    const allAlive = !shouldStart;
 
-    if (triggerPowered) {
+    if (allAlive) {
       // Триггер жив.
       if (n._running) {
         // Генератор работает — запускаем таймер остановки (если ещё не запущен)

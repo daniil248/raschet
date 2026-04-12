@@ -686,6 +686,17 @@ input, select { font: inherit; }
   stroke-linejoin: round;
 }
 
+.conn-label-sub {
+  font: 10px -apple-system, "Segoe UI", sans-serif;
+  fill: #8a93a7;
+  pointer-events: none;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #fafbfc;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
 .conn-handle {
   fill: #ef6c00;
   stroke: #fff;
@@ -750,6 +761,18 @@ input, select { font: inherit; }
   stroke-width: 2;
   stroke-dasharray: 5 4;
   pointer-events: none;
+}
+.rubber-band {
+  fill: rgba(25, 118, 210, 0.08);
+  stroke: #1976d2;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+.node.multi-selected .node-body {
+  stroke: #1976d2 !important;
+  stroke-width: 3;
+  stroke-dasharray: 6 3;
 }
 
 /* ---------- Inspector (right) ---------- */
@@ -1055,6 +1078,11 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
 @media (max-width: 960px) {
   #screen-editor #app {
     grid-template-columns: 1fr;
+    height: 100%;
+  }
+  #canvas-wrap {
+    position: absolute;
+    inset: 0;
   }
   #palette, #inspector {
     position: fixed;
@@ -1065,6 +1093,8 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
     z-index: 50;
     transition: transform 0.22s ease;
     box-shadow: 0 0 20px rgba(0,0,0,0.15);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   #palette {
     left: 0;
@@ -1086,7 +1116,9 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
     inset: 0;
     background: rgba(30, 40, 55, 0.25);
     z-index: 30;
+    cursor: pointer;
   }
+  /* Клик на затемнение закроет drawer через JS (уже обработано btn-toggle) */
 
   #toolbar {
     top: 8px;
