@@ -279,10 +279,19 @@ const DEFAULTS = {
   source:    () => ({
     name: 'Ввод ТП', capacityKw: 100, on: true,
     phase: '3ph', voltage: 400, cosPhi: 0.95,
+    // Параметры импеданса по IEC 60909
+    sscMva: 500,            // мощность КЗ на шинах питающей сети, МВА
+    ukPct: 6,               // напряжение КЗ трансформатора, %
+    xsRsRatio: 10,          // Xs/Rs отношение (для ТП)
+    snomKva: 400,           // номинальная мощность трансформатора, кВА
   }),
   generator: () => ({
     name: 'ДГУ', capacityKw: 60, on: true, backupMode: true,
     phase: '3ph', voltage: 400, cosPhi: 0.85,
+    sscMva: 10,             // для ДГУ — маленькая мощность КЗ
+    ukPct: 0,               // нет трансформатора
+    xsRsRatio: 0.5,         // Xs/Rs для ДГУ
+    snomKva: 75,
     triggerNodeId: null,       // legacy single trigger (мигрируется в triggerNodeIds)
     triggerNodeIds: [],        // массив id триггеров
     triggerLogic: 'any',       // 'any' — запуск если ХОТЯ БЫ один отключён; 'all' — все отключены
@@ -1350,7 +1359,6 @@ function recalc() {
   // Zsource_default = 0.05 Ом на фазе (соответствует ~8 кА короткого на 400 В).
   // Вдоль линии каждый метр добавляет R = ρ × L × 2 / S.
   const RHO = { Cu: 0.0178, Al: 0.0285 }; // Ом·мм²/м
-  const DEFAULT_SRC_Z = 0.05;
 
   for (const n of state.nodes.values()) {
     if (n.type === 'panel') {
@@ -1362,6 +1370,9 @@ function recalc() {
       n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : null;
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
+      // Максимально возможная нагрузка (все потребители на 100%)
+      n._maxLoadKw = maxDownstreamLoad(n.id);
+      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
 
       // Проверка номинала шкафа — в амперах (основная единица для щитов).
       // margin% = (In - Iрасч) / Iрасч × 100
@@ -1390,17 +1401,19 @@ function recalc() {
         n._marginWarn = null;
       }
     } else if (n.type === 'source' || n.type === 'generator') {
-      // Источник/генератор видит суммарные P/Q всей своей цепи
       const pq = downstreamPQ(n.id);
       n._powerP = pq.P;
       n._powerQ = pq.Q;
       n._powerS = Math.sqrt(pq.P * pq.P + pq.Q * pq.Q);
       n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : Number(n.cosPhi) || GLOBAL.defaultCosPhi;
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
-      // Упрощённый ток КЗ: Ik = U_phase / Z_source
-      // Для 3ф берём U_phase = U_lin / √3
+      // Максимально возможная нагрузка (все потребители на 100% без Ки)
+      n._maxLoadKw = maxDownstreamLoad(n.id);
+      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
       const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
-      n._ikA = Uph / DEFAULT_SRC_Z;
+      const Zs = sourceImpedance(n);
+      n._ikA = Zs > 0 ? (1.1 * Uph / Zs) : Infinity;
     } else if (n.type === 'ups') {
       // cos φ ИБП зависит от режима:
       //   норма (через инвертор) → 1
@@ -1449,7 +1462,8 @@ function recalc() {
     if (!n) return Infinity;
     if (n.type === 'source' || n.type === 'generator') {
       const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
-      return Uph / DEFAULT_SRC_Z;
+      const Zs = sourceImpedance(n);
+      return Zs > 0 ? (1.1 * Uph / Zs) : Infinity;
     }
     // ИБП в норме — сам ограничивает Ik до ~1.5..2× номинала
     if (n.type === 'ups' && !n._onStaticBypass) {
@@ -1485,6 +1499,45 @@ function recalc() {
     if (c._state === 'active') {
       c._ikA = nodeIk(c.to.nodeId);
     }
+  }
+
+  // === ΔU — падение напряжения ===
+  // Для каждой активной связи: ΔU_seg = √3 × I × (R×cosφ + X×sinφ) × L / U × 100% (3ф)
+  // X кабеля ≈ 0.08 мОм/м (типичное для стандартных кабелей)
+  const X_PER_M = 0.00008; // Ом/м
+  for (const c of state.conns.values()) {
+    c._deltaUSegPct = 0;
+    if (c._state !== 'active' || !c._cableSize || !(c._loadA > 0)) continue;
+    const I = c._loadA;
+    const L = Number(c._cableLength || c.lengthM || 1);
+    const S = Number(c._cableSize) || 1;
+    const par = Math.max(1, c._cableParallel || 1);
+    const rho = RHO[c._cableMaterial || 'Cu'] || RHO.Cu;
+    const R = (rho * L) / (S * par); // Ом
+    const X = (X_PER_M * L) / par;
+    const cos = Number(c._cosPhi) || GLOBAL.defaultCosPhi;
+    const sin = Math.sqrt(1 - cos * cos);
+    const U = Number(c._voltage) || GLOBAL.voltage3ph;
+    const k = c._threePhase ? Math.sqrt(3) : 2;
+    c._deltaUSegPct = (k * I * (R * cos + X * sin)) / U * 100;
+  }
+  // Суммарный ΔU на каждом узле — идём от источника вниз по активным связям
+  function nodeDeltaU(nid, visited) {
+    visited = visited || new Set();
+    if (visited.has(nid)) return 0;
+    visited.add(nid);
+    const n = state.nodes.get(nid);
+    if (!n) return 0;
+    if (n.type === 'source' || n.type === 'generator') return 0;
+    // Ищем активный фидер (вход), через который питаемся
+    for (const c of state.conns.values()) {
+      if (c.to.nodeId !== nid || c._state !== 'active') continue;
+      return nodeDeltaU(c.from.nodeId, visited) + (c._deltaUSegPct || 0);
+    }
+    return 0;
+  }
+  for (const n of state.nodes.values()) {
+    n._deltaUPct = nodeDeltaU(n.id);
   }
 }
 
@@ -2107,14 +2160,15 @@ function renderInspectorNode(n) {
   if (n.type === 'source') {
     h.push(field('Мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(phaseField(n));
-    h.push(field('Напряжение, В', `<input type="number" min="100" max="50000" step="1" data-prop="voltage" value="${n.voltage || 400}">`));
+    h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.95}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
+    h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'generator') {
     h.push(field('Мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(phaseField(n));
-    h.push(field('Напряжение, В', `<input type="number" min="100" max="50000" step="1" data-prop="voltage" value="${n.voltage || 400}">`));
+    h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.85}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
     h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
@@ -2127,6 +2181,7 @@ function renderInspectorNode(n) {
     h.push(field('Задержка запуска, сек', `<input type="number" min="0" max="600" step="1" data-prop="startDelaySec" value="${n.startDelaySec || 0}">`));
     h.push(field('Задержка остановки, сек', `<input type="number" min="0" max="600" step="1" data-prop="stopDelaySec" value="${n.stopDelaySec ?? 2}">`));
     h.push('</div>');
+    h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
     h.push(field('Входов', `<input type="number" min="1" max="30" step="1" data-prop="inputs" value="${n.inputs}">`));
@@ -2186,7 +2241,7 @@ function renderInspectorNode(n) {
     h.push(field('Выходная мощность, kW', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(field('КПД, %', `<input type="number" min="30" max="100" step="1" data-prop="efficiency" value="${n.efficiency}">`));
     h.push(phaseField(n));
-    h.push(field('Напряжение, В', `<input type="number" min="100" max="1000" step="1" data-prop="voltage" value="${n.voltage || 400}">`));
+    h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
     h.push(field('Ток заряда батареи, А', `<input type="number" min="0" step="0.1" data-prop="chargeA" value="${n.chargeA ?? 2}">`));
     h.push(field('Ёмкость батареи, kWh', `<input type="number" min="0" step="0.1" data-prop="batteryKwh" value="${n.batteryKwh}">`));
@@ -2215,7 +2270,7 @@ function renderInspectorNode(n) {
       h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Суммарная установленная: <b>${n.count} × ${fmt(n.demandKw)} kW = ${fmt(total)} kW</b></div>`);
     }
     h.push(phaseFieldConsumer(n));
-    h.push(field('Напряжение, В', `<input type="number" min="100" max="50000" step="1" data-prop="voltage" value="${n.voltage || (n.phase === '3ph' ? 400 : 230)}">`));
+    h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi ?? 0.92}">`));
     h.push(field('Ки — коэффициент использования', `<input type="number" min="0" max="1" step="0.05" data-prop="kUse" value="${n.kUse ?? 1}">`));
     h.push(field('Кратность пускового тока', `<input type="number" min="1" max="10" step="0.1" data-prop="inrushFactor" value="${n.inrushFactor ?? 1}">`));
@@ -2419,6 +2474,62 @@ function wireInspectorInputs(n) {
   if (del) del.addEventListener('click', () => deleteNode(n.id));
   const autoBtn = document.getElementById('btn-open-automation');
   if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
+  const impBtn = document.getElementById('btn-open-impedance');
+  if (impBtn) impBtn.addEventListener('click', () => openImpedanceModal(n));
+}
+
+// ================= Модалка «Параметры источника» (IEC 60909) =================
+function openImpedanceModal(n) {
+  const body = document.getElementById('impedance-body');
+  if (!body) return;
+  const h = [];
+  h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Параметры для расчёта тока КЗ по IEC 60909. Сопротивление источника вычисляется автоматически из введённых данных.</div>');
+
+  h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 500}">`));
+  h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
+  h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
+  h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
+
+  // Вычисленные значения (справка)
+  const U = nodeVoltage(n);
+  const Zs = sourceImpedance(n);
+  const IkMax = (1.1 * U) / (Math.sqrt(3) * Zs);
+  h.push(`<div class="inspector-section"><div style="font-size:12px;line-height:1.8">` +
+    `Zs (полное сопротивление): <b>${(Zs * 1000).toFixed(2)} мОм</b><br>` +
+    `Ik max (c=1.1): <b>${fmt(IkMax / 1000)} кА</b> при ${U} В` +
+    `</div></div>`);
+
+  body.innerHTML = h.join('');
+
+  const applyBtn = document.getElementById('impedance-apply');
+  if (applyBtn) applyBtn.onclick = () => {
+    snapshot('impedance:' + n.id);
+    n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
+    n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
+    n.xsRsRatio = Number(document.getElementById('imp-xsrs')?.value) || 10;
+    n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
+    document.getElementById('modal-impedance').classList.add('hidden');
+    render();
+    renderInspector();
+    notifyChange();
+    flash('Параметры источника обновлены');
+  };
+
+  document.getElementById('modal-impedance').classList.remove('hidden');
+}
+
+// Вычисление полного сопротивления источника (Ом) по IEC 60909
+function sourceImpedance(n) {
+  const U = nodeVoltage(n);
+  const Ssc = (Number(n.sscMva) || 500) * 1e6; // ВА
+  // Zq = U² / Ssc — импеданс питающей сети
+  const Zq = (U * U) / Ssc;
+  // Zt = Uk% × U² / (100 × Snom) — импеданс трансформатора
+  const Snom = (Number(n.snomKva) || 400) * 1000;
+  const Uk = Number(n.ukPct) || 0;
+  const Zt = Uk > 0 ? (Uk / 100) * (U * U) / Snom : 0;
+  return Zq + Zt; // Ом (упрощённая сумма)
 }
 
 // ================= Модалка «Автоматизация» =================
@@ -2486,6 +2597,19 @@ function openAutomationModal(n) {
   document.getElementById('modal-automation').classList.remove('hidden');
 }
 
+// Поле напряжения: auto-lock при стандартных фазах (3ph / 1ph / A/B/C)
+function voltageField(n) {
+  const ph = n.phase || '3ph';
+  const isStandard = ['3ph', '1ph', 'A', 'B', 'C'].includes(ph);
+  const autoV = (ph === '3ph') ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
+  if (isStandard) {
+    // Автоматически синхронизируем
+    n.voltage = autoV;
+    return `<div class="field"><label>Напряжение, В</label><input type="number" value="${autoV}" disabled><div class="muted" style="font-size:10px;margin-top:2px">Из «Начальных условий». Измените фазность для ручного ввода.</div></div>`;
+  }
+  return field('Напряжение, В', `<input type="number" min="100" max="50000" step="1" data-prop="voltage" value="${n.voltage || 400}">`);
+}
+
 // Поле фазы 3ph/1ph для источников/генераторов/ИБП
 function phaseField(n) {
   const ph = n.phase || '3ph';
@@ -2513,12 +2637,15 @@ function sourceStatusBlock(n) {
   else {
     const pct = (Number(n.capacityKw) || 0) > 0 ? Math.round((n._loadKw || 0) / n.capacityKw * 100) : 0;
     parts.push(n._overload ? '<span class="badge off">перегруз</span>' : '<span class="badge on">в работе</span>');
-    parts.push(`P акт.: <b>${fmt(n._powerP || n._loadKw || 0)} kW</b> / ${fmt(n.capacityKw)} kW (${pct}%)`);
+    // Максимальная расчётная нагрузка (все потребители 100%)
+    if (n._maxLoadKw) parts.push(`<b>Максимум:</b> ${fmt(n._maxLoadKw)} kW · ${fmt(n._maxLoadA || 0)} A`);
+    // Текущая нагрузка (в текущем режиме/сценарии)
+    parts.push(`<b>Текущая:</b> ${fmt(n._powerP || n._loadKw || 0)} kW · ${fmt(n._loadA || 0)} A <span class="muted">(${pct}%)</span>`);
     if (n._powerQ) parts.push(`Q реакт.: <b>${fmt(n._powerQ)} kvar</b>`);
     if (n._powerS) parts.push(`S полн.: <b>${fmt(n._powerS)} kVA</b>`);
-    if (n._loadA > 0) parts.push(`Iрасч: <b>${fmt(n._loadA)} A</b>`);
     if (n._cosPhi) parts.push(`cos φ: <b>${n._cosPhi.toFixed(2)}</b>`);
     if (n._ikA && isFinite(n._ikA)) parts.push(`Ik на шинах: <b>${fmt(n._ikA / 1000)} кА</b>`);
+    if (n._deltaUPct > 0) parts.push(`ΔU: <b>${n._deltaUPct.toFixed(2)}%</b>`);
   }
   if (n.type === 'generator' && n.triggerNodeId) {
     const t = state.nodes.get(n.triggerNodeId);
@@ -2534,15 +2661,17 @@ function panelStatusBlock(n) {
   const parts = [];
   if (n._powered) parts.push('<span class="badge on">запитан</span>');
   else parts.push('<span class="badge off">без питания</span>');
-  parts.push(`P акт.: <b>${fmt(n._powerP || 0)} kW</b>`);
-  parts.push(`Q реакт.: <b>${fmt(n._powerQ || 0)} kvar</b>`);
-  parts.push(`S полн.: <b>${fmt(n._powerS || 0)} kVA</b>`);
+  // Максимальная расчётная нагрузка
+  if (n._maxLoadKw) parts.push(`<b>Максимум:</b> ${fmt(n._maxLoadKw)} kW · ${fmt(n._maxLoadA || 0)} A`);
+  // Текущая нагрузка
+  parts.push(`<b>Текущая:</b> ${fmt(n._powerP || 0)} kW · ${fmt(n._loadA || 0)} A`);
+  parts.push(`Q реакт.: ${fmt(n._powerQ || 0)} kvar · S полн.: ${fmt(n._powerS || 0)} kVA`);
   if (Number(n.kSim) && Number(n.kSim) !== 1) {
     parts.push(`расчётная с Ксим: <b>${fmt(n._calcKw || 0)} kW</b>`);
   }
-  if (n._loadA > 0) parts.push(`Iрасч: <b>${fmt(n._loadA)} A</b>`);
   if (n._cosPhi) parts.push(`cos φ итог: <b>${n._cosPhi.toFixed(2)}</b>`);
   if (n._ikA && isFinite(n._ikA)) parts.push(`Ik (ток КЗ): <b>${fmt(n._ikA / 1000)} кА</b>`);
+  if (n._deltaUPct > 0) parts.push(`ΔU суммарный: <b>${n._deltaUPct.toFixed(2)}%</b>${n._deltaUPct > 5 ? ' ⚠ > 5%' : ''}`);
 
   // Запас номинала шкафа — считаем по току.
   if (Number(n.capacityA) > 0) {
@@ -3851,6 +3980,18 @@ function deserialize(data) {
       if (!n.phase) n.phase = '3ph';
       if (typeof n.voltage !== 'number') n.voltage = 400;
       if (typeof n.cosPhi !== 'number') n.cosPhi = (n.type === 'generator') ? 0.85 : 0.92;
+    }
+    if (n.type === 'source') {
+      if (typeof n.sscMva !== 'number') n.sscMva = 500;
+      if (typeof n.ukPct !== 'number') n.ukPct = 6;
+      if (typeof n.xsRsRatio !== 'number') n.xsRsRatio = 10;
+      if (typeof n.snomKva !== 'number') n.snomKva = 400;
+    }
+    if (n.type === 'generator') {
+      if (typeof n.sscMva !== 'number') n.sscMva = 10;
+      if (typeof n.ukPct !== 'number') n.ukPct = 0;
+      if (typeof n.xsRsRatio !== 'number') n.xsRsRatio = 0.5;
+      if (typeof n.snomKva !== 'number') n.snomKva = 75;
     }
     if (n.type === 'ups') {
       if (typeof n.chargeA !== 'number') {
