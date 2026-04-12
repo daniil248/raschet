@@ -743,9 +743,9 @@ export function initInteraction() {
   }, { passive: false });
 
   // ---- Тулбар zoom buttons ----
-  document.getElementById('btn-zoom-in').onclick  = () => { state.view.zoom = Math.min(4, state.view.zoom * 1.2); updateViewBox(); };
-  document.getElementById('btn-zoom-out').onclick = () => { state.view.zoom = Math.max(0.2, state.view.zoom / 1.2); updateViewBox(); };
-  document.getElementById('btn-zoom-reset').onclick = () => { state.view.zoom = 1; updateViewBox(); };
-  document.getElementById('btn-fit').onclick = () => _fitAll();
-  document.getElementById('btn-save-local').onclick  = () => { localStorage.setItem('raschet.scheme', JSON.stringify(_serialize())); flash('Сохранено в браузере'); };
+  const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+  bind('btn-zoom-in',    () => { state.view.zoom = Math.min(4, state.view.zoom * 1.2); updateViewBox(); });
+  bind('btn-zoom-out',   () => { state.view.zoom = Math.max(0.2, state.view.zoom / 1.2); updateViewBox(); });
+  bind('btn-zoom-reset', () => { state.view.zoom = 1; updateViewBox(); });
+  bind('btn-fit',        () => _fitAll());
 }
