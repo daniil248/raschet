@@ -410,18 +410,42 @@ function recalc() {
           // Помечаем какие выходы щита реально работают (для renderConns)
           n._watchdogActivePorts = new Set(liveIns.map(c => c.to.port));
         } else {
-          // Автоматический режим — группировка по приоритетам с параллельной работой
-          const groups = new Map();
-          for (const c of ins) {
-            const prio = (n.priorities?.[c.to.port]) ?? 1;
-            if (!groups.has(prio)) groups.set(prio, []);
-            groups.get(prio).push(c);
-          }
-          const sorted = [...groups.keys()].sort((a, b) => a - b);
-          // Фаза 1: без резерва
-          for (const p of sorted) {
-            const live = groups.get(p).filter(c => isConnLive(c));
-            if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+          // Автоматический режим — группировка по приоритетам
+          // Если simTick управляет переключением (задержки АВР),
+          // используем _avrBreakerOverride вместо мгновенного выбора
+          if (Array.isArray(n._avrBreakerOverride) && n._avrBreakerOverride.length) {
+            const overridden = ins.filter(c => n._avrBreakerOverride[c.to.port] === true && isConnLive(c));
+            if (overridden.length) {
+              res = overridden.map(c => ({ conn: c, share: 1 / overridden.length }));
+            } else {
+              // Во время разбежки все автоматы могут быть выключены — щит без питания
+              // Проверяем: есть ли хоть один вход с напряжением (fallback)
+              const anyLive = ins.filter(c => isConnLive(c));
+              if (anyLive.length && !n._avrSwitchStartedAt) {
+                // Нет таймера — мгновенный выбор (первый запуск)
+                res = anyLive.slice(0, 1).map(c => ({ conn: c, share: 1 }));
+              }
+              // Иначе res = null — щит обесточен во время переключения
+            }
+          } else {
+            // Без override — стандартная логика по приоритетам (первый запуск)
+            const groups = new Map();
+            for (const c of ins) {
+              const prio = (n.priorities?.[c.to.port]) ?? 1;
+              if (!groups.has(prio)) groups.set(prio, []);
+              groups.get(prio).push(c);
+            }
+            const sorted = [...groups.keys()].sort((a, b) => a - b);
+            for (const p of sorted) {
+              const live = groups.get(p).filter(c => isConnLive(c));
+              if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
+            }
+            // Инициализация _avrBreakerOverride из результата
+            if (res) {
+              n._avrBreakerOverride = new Array(n.inputs || 0).fill(false);
+              for (const r of res) n._avrBreakerOverride[r.conn.to.port] = true;
+              n._avrActivePort = res[0].conn.to.port;
+            }
           }
         }
       }
