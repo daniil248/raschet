@@ -295,13 +295,11 @@ const DEFAULTS = {
     manualActiveInput: 0,
     parallelEnabled: [],
     kSim: 1.0,
-    // Номинальная мощность самого шкафа (суммарная пропускная способность
-    // вводных шин/автоматов). Позволяет проверить: шкаф правильно подобран
-    // только если его номинал превышает расчётную нагрузку на marginMinPct
-    // и не превышает её более чем на marginMaxPct — иначе либо мало запаса
-    // (опасность перегрева/перегруза), либо избыточный запас (переплата,
-    // нарушение селективности с вышестоящими автоматами).
-    capacityKw: 100,
+    // Номинальный ток вводных шин/автомата шкафа, А (основное поле).
+    // Мощность рассчитывается динамически: P = √3 × U × I × cos φ.
+    // Запас: номинальный ток шкафа должен превышать расчётный ток нагрузки
+    // на marginMinPct..marginMaxPct. Вне диапазона — предупреждение.
+    capacityA: 160,
     marginMinPct: 2,
     marginMaxPct: 30,
   }),
@@ -358,13 +356,15 @@ const DEFAULTS = {
     inputs: 1, outputs: 1,
   }),
   zone:      () => ({
-    // Зона / помещение — контейнер для группировки узлов. Не участвует
-    // в электрическом расчёте, но даёт префикс в обозначении вложенных узлов.
+    // Зона / помещение — контейнер для группировки узлов. Членство явное:
+    // только то, что есть в memberIds. Новые узлы добавляются в зону только
+    // при полном попадании их bbox внутрь зоны при ручном drop.
     name: 'Зона',
-    zonePrefix: 'Z1',        // префикс, добавляется к tag вложенных узлов: Z1.PNL1
+    zonePrefix: 'Z1',
     width: 600,
     height: 400,
     color: '#e3f2fd',
+    memberIds: [],           // явный список ID дочерних узлов
     inputs: 0,
     outputs: 0,
   }),
@@ -1313,24 +1313,28 @@ function recalc() {
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
 
-      // Проверка номинала шкафа против расчётной нагрузки.
-      // margin% = (capacity - load) / load × 100
-      // Нормально: marginMinPct ≤ margin ≤ marginMaxPct
-      const cap = Number(n.capacityKw) || 0;
-      const load = n._calcKw || 0;
-      if (cap > 0 && load > 0) {
-        const margin = ((cap - load) / load) * 100;
+      // Проверка номинала шкафа — в амперах (основная единица для щитов).
+      // margin% = (In - Iрасч) / Iрасч × 100
+      // Параллельно считаем эквивалентную номинальную мощность для справки.
+      const capA = Number(n.capacityA) || 0;
+      const loadA = n._loadA || 0;
+      if (capA > 0) {
+        // Вычисляем эквивалентную номинальную мощность шкафа при текущем
+        // напряжении и cos φ (или default cos φ если downstream пусто).
+        const cos = n._cosPhi || GLOBAL.defaultCosPhi;
+        n._capacityKwFromA = capA * nodeVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cos / 1000;
+      } else {
+        n._capacityKwFromA = 0;
+      }
+      if (capA > 0 && loadA > 0) {
+        const margin = ((capA - loadA) / loadA) * 100;
         n._marginPct = margin;
         const lo = Number(n.marginMinPct); const hi = Number(n.marginMaxPct);
         const minP = isFinite(lo) ? lo : 2;
         const maxP = isFinite(hi) ? hi : 30;
-        if (margin < minP) {
-          n._marginWarn = 'low';   // шкаф впритык / перегружен
-        } else if (margin > maxP) {
-          n._marginWarn = 'high';  // избыточный запас
-        } else {
-          n._marginWarn = null;
-        }
+        if (margin < minP) n._marginWarn = 'low';
+        else if (margin > maxP) n._marginWarn = 'high';
+        else n._marginWarn = null;
       } else {
         n._marginPct = null;
         n._marginWarn = null;
@@ -1709,8 +1713,8 @@ function renderNodes() {
       const title = el('title', {});
       const mp = n._marginPct == null ? '-' : n._marginPct.toFixed(1);
       title.textContent = n._marginWarn === 'low'
-        ? `Недостаточный запас: номинал шкафа ${fmt(n.capacityKw)} kW, нагрузка ${fmt(n._calcKw || 0)} kW (запас ${mp}%, минимум ${n.marginMinPct}%)`
-        : `Избыточный запас: номинал шкафа ${fmt(n.capacityKw)} kW, нагрузка ${fmt(n._calcKw || 0)} kW (запас ${mp}%, максимум ${n.marginMaxPct}%)`;
+        ? `Недостаточный запас: номинал шкафа ${fmt(n.capacityA)} А, расчётный ток ${fmt(n._loadA || 0)} А (запас ${mp}%, минимум ${n.marginMinPct}%)`
+        : `Избыточный запас: номинал шкафа ${fmt(n.capacityA)} А, расчётный ток ${fmt(n._loadA || 0)} А (запас ${mp}%, максимум ${n.marginMaxPct}%)`;
       tri.appendChild(title);
     }
 
@@ -1770,29 +1774,32 @@ function renderConns() {
     path.dataset.connId = c.id;
     layerConns.appendChild(path);
 
-    // Подпись на активных линиях: мощность + ток + сечение.
-    // Для группы: сперва ток одной жилы, потом суммарный.
+    // Подпись на активных линиях.
+    // Для обычной линии:   «15 kW · 11 A · 4 мм²»
+    // Для групповой (N жил): «15 kW · 11 A · 4 мм² · ×10 (150 kW · 110.5 A)»
+    //   — сначала параметры одной жилы, сечение сразу за её током,
+    //     затем множитель и в скобках общие значения группы.
     // Позиция — середина реальной траектории (с учётом waypoints).
     if (c._state === 'active' && c._loadKw > 0) {
       const parallel = Math.max(1, c._cableParallel || 1);
       const mid = pathMidpoint(a, waypoints, b);
-      let power;
+
+      // Параметры одной жилы / одного потребителя в группе
+      let perLineKw, perLineA;
       if (toN.type === 'consumer' && (toN.count || 1) > 1) {
-        power = `${toN.count}×${fmt(toN.demandKw)} kW`;
+        perLineKw = Number(toN.demandKw) || 0;
+        perLineA = (c._loadA || 0) / parallel;
       } else {
-        power = `${fmt(c._loadKw)} kW`;
-      }
-      let amps = '';
-      if (c._loadA > 0) {
-        if (parallel > 1) {
-          const perLine = c._loadA / parallel;
-          amps = ` · ${fmt(perLine)} A × ${parallel} = ${fmt(c._loadA)} A`;
-        } else {
-          amps = ` · ${fmt(c._loadA)} A`;
-        }
+        perLineKw = c._loadKw;
+        perLineA = c._loadA || 0;
       }
       const size = c._cableSize ? ` · ${c._cableSize} мм²` : '';
-      const labelText = power + amps + size;
+
+      let labelText = `${fmt(perLineKw)} kW · ${fmt(perLineA)} A${size}`;
+      if (parallel > 1) {
+        labelText += ` · ×${parallel} (${fmt(c._loadKw)} kW · ${fmt(c._loadA || 0)} A)`;
+      }
+
       const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label' + (c._cableOverflow ? ' overload' : ''));
       layerConns.appendChild(lbl);
     }
@@ -2065,12 +2072,16 @@ function renderInspectorNode(n) {
     h.push(field('Выходов', `<input type="number" min="1" max="30" step="1" data-prop="outputs" value="${n.outputs}">`));
     h.push(field('Ксим (коэффициент одновременности)', `<input type="number" min="0" max="1.2" step="0.05" data-prop="kSim" value="${n.kSim ?? 1}">`));
 
-    // Номинал шкафа и допустимые пределы запаса
+    // Номинал шкафа — в амперах. Рядом показываем эквивалент в kW для справки.
     h.push('<div class="inspector-section"><h4>Номинал шкафа</h4>');
-    h.push(field('Номинальная мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw ?? 100}">`));
+    h.push(field('Номинальный ток вводного автомата, А', `<input type="number" min="0" step="1" data-prop="capacityA" value="${n.capacityA ?? 160}">`));
+    // Подсказка с эквивалентной мощностью
+    if (n._capacityKwFromA) {
+      h.push(`<div class="muted" style="font-size:11px;margin-top:-8px;margin-bottom:10px">Эквивалентная мощность при ${nodeVoltage(n)} В, cos φ ${(n._cosPhi || GLOBAL.defaultCosPhi).toFixed(2)}: <b>${fmt(n._capacityKwFromA)} kW</b></div>`);
+    }
     h.push(field('Мин. запас над нагрузкой, %', `<input type="number" min="0" max="50" step="1" data-prop="marginMinPct" value="${n.marginMinPct ?? 2}">`));
     h.push(field('Макс. запас над нагрузкой, %', `<input type="number" min="5" max="500" step="1" data-prop="marginMaxPct" value="${n.marginMaxPct ?? 30}">`));
-    h.push('<div class="muted" style="font-size:11px;margin-top:-4px">Шкаф считается правильно подобранным, если его номинал больше расчётной нагрузки на значение в этих пределах. Вне диапазона — шкаф выделяется пурпурным и жёлтым треугольником.</div>');
+    h.push('<div class="muted" style="font-size:11px;margin-top:-4px">Шкаф считается правильно подобранным, если его номинальный ток превышает расчётный на значение в этих пределах. Вне диапазона — предупреждение.</div>');
     h.push('</div>');
 
     // Режим переключения и приоритеты имеют смысл только при 2+ входах
@@ -2400,12 +2411,12 @@ function panelStatusBlock(n) {
   if (n._cosPhi) parts.push(`cos φ итог: <b>${n._cosPhi.toFixed(2)}</b>`);
   if (n._ikA && isFinite(n._ikA)) parts.push(`Ik (ток КЗ): <b>${fmt(n._ikA / 1000)} кА</b>`);
 
-  // Запас номинала шкафа
-  if (Number(n.capacityKw) > 0) {
-    const cap = Number(n.capacityKw);
-    const load = n._calcKw || 0;
-    parts.push(`номинал шкафа: <b>${fmt(cap)} kW</b>`);
-    if (load > 0) {
+  // Запас номинала шкафа — считаем по току.
+  if (Number(n.capacityA) > 0) {
+    const capA = Number(n.capacityA);
+    const loadA = n._loadA || 0;
+    parts.push(`номинал шкафа: <b>${fmt(capA)} A</b>` + (n._capacityKwFromA ? ` <span class="muted">(≈ ${fmt(n._capacityKwFromA)} kW)</span>` : ''));
+    if (loadA > 0) {
       const pct = n._marginPct == null ? 0 : n._marginPct;
       const pctTxt = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
       if (n._marginWarn === 'low') {
@@ -2979,8 +2990,35 @@ window.addEventListener('mousemove', e => {
         nw = Math.round(nw / 40) * 40;
         nh = Math.round(nh / 40) * 40;
       }
-      z.width = Math.max(200, nw);
-      z.height = Math.max(120, nh);
+      nw = Math.max(200, nw);
+      nh = Math.max(120, nh);
+
+      // Ограничение: новая рамка не должна перекрывать bbox не-членов.
+      // Проверяем все узлы (кроме самой зоны и её членов):
+      // если bbox узла пересекается с новой рамкой зоны — clamp до границы.
+      const memberSet = new Set(z.memberIds || []);
+      for (const other of state.nodes.values()) {
+        if (other.id === z.id) continue;
+        if (other.type === 'zone') continue;
+        if (memberSet.has(other.id)) continue;
+        const ow = nodeWidth(other), oh = nodeHeight(other);
+        // Проверяем, был ли этот узел уже вне исходной рамки
+        const wasOutsideX = (other.x >= z.x + state.drag.startW) || (other.x + ow <= z.x);
+        const wasOutsideY = (other.y >= z.y + state.drag.startH) || (other.y + oh <= z.y);
+        if (!wasOutsideX && !wasOutsideY) continue; // узел уже пересекал — игнорируем
+        // Если узел справа от исходной правой границы и теперь расширение до него дотянется — clamp
+        if (wasOutsideX && other.x >= z.x + state.drag.startW) {
+          const maxW = other.x - z.x; // не дотрагиваемся до левой кромки соседа
+          if (nw > maxW) nw = Math.max(200, maxW);
+        }
+        if (wasOutsideY && other.y >= z.y + state.drag.startH) {
+          const maxH = other.y - z.y;
+          if (nh > maxH) nh = Math.max(120, maxH);
+        }
+      }
+
+      z.width = nw;
+      z.height = nh;
       render();
     }
     return;
@@ -3047,8 +3085,25 @@ window.addEventListener('mouseup', (e) => {
     const wasNodeDrag = !!state.drag.nodeId;
     const wasWpDrag = !!state.drag.waypointConnId;
     const wasZoneResize = !!state.drag.zoneResizeId;
+    const draggedNodeId = state.drag.nodeId;
+    const hadChildren = !!(state.drag.children && state.drag.children.length);
     svg.classList.remove('panning');
     state.drag = null;
+    // Членство в зоне обновляется только в момент отпускания мыши после
+    // обычного drag'а узла (не самой зоны и не группового drag-all).
+    if (wasNodeDrag && draggedNodeId && !hadChildren) {
+      const dragged = state.nodes.get(draggedNodeId);
+      if (dragged && dragged.type !== 'zone') {
+        const currentZone = findZoneForMember(dragged);
+        if (currentZone && !isNodeFullyInside(dragged, currentZone)) {
+          currentZone.memberIds = (currentZone.memberIds || []).filter(id => id !== dragged.id);
+        }
+        if (!findZoneForMember(dragged)) {
+          tryAttachToZone(dragged);
+        }
+        render();
+      }
+    }
     if (wasNodeDrag || wasWpDrag || wasZoneResize) notifyChange();
   }
   // Завершение pending при отпускании мыши:
@@ -3389,9 +3444,21 @@ function deserialize(data) {
       if (typeof n.manualActiveInput !== 'number') n.manualActiveInput = 0;
       if (!Array.isArray(n.parallelEnabled)) n.parallelEnabled = new Array(n.inputs || 0).fill(false);
       if (typeof n.kSim !== 'number') n.kSim = 1.0;
-      if (typeof n.capacityKw !== 'number') n.capacityKw = 100;
       if (typeof n.marginMinPct !== 'number') n.marginMinPct = 2;
       if (typeof n.marginMaxPct !== 'number') n.marginMaxPct = 30;
+      // Миграция: если было capacityKw, пересчитаем в ток;
+      // иначе — дефолт 160 А
+      if (typeof n.capacityA !== 'number') {
+        if (typeof n.capacityKw === 'number' && n.capacityKw > 0) {
+          const U = 400;  // допущение — миграция ничего не знает о реальном напряжении
+          const cos = 0.92;
+          n.capacityA = (n.capacityKw * 1000) / (Math.sqrt(3) * U * cos);
+        } else {
+          n.capacityA = 160;
+        }
+      }
+      // capacityKw больше не нужен как исходное поле
+      delete n.capacityKw;
     }
     if (n.type === 'source' || n.type === 'generator' || n.type === 'ups') {
       if (!n.phase) n.phase = '3ph';
@@ -3443,6 +3510,24 @@ function deserialize(data) {
       if (typeof n.width !== 'number') n.width = 600;
       if (typeof n.height !== 'number') n.height = 400;
       if (!n.color) n.color = '#e3f2fd';
+      if (!Array.isArray(n.memberIds)) n.memberIds = [];
+    }
+  }
+
+  // Миграция зон: если memberIds пустой, но есть узлы, геометрически лежащие
+  // внутри, считаем их членами (обратная совместимость с предыдущей моделью).
+  for (const z of state.nodes.values()) {
+    if (z.type !== 'zone') continue;
+    if (z.memberIds && z.memberIds.length > 0) continue;
+    z.memberIds = [];
+    for (const other of state.nodes.values()) {
+      if (other.type === 'zone') continue;
+      const cx = other.x + nodeWidth(other) / 2;
+      const cy = other.y + nodeHeight(other) / 2;
+      const zw = nodeWidth(z), zh = nodeHeight(z);
+      if (cx >= z.x && cx <= z.x + zw && cy >= z.y && cy <= z.y + zh) {
+        z.memberIds.push(other.id);
+      }
     }
   }
 
@@ -3461,20 +3546,31 @@ function deserialize(data) {
 }
 
 // === Зоны ===
-// Ищем зону, в которую геометрически попадает центр узла.
-// Если зон несколько вложенных — берём самую «узкую» (меньшей площади).
-function findZoneFor(n) {
+// Членство в зоне — ЯВНОЕ: у зоны есть memberIds, и именно они считаются
+// её детьми. Геометрия проверяется только при drop'е узла (для добавления
+// в зону).
+
+// Полностью ли bbox узла внутри bbox зоны.
+function isNodeFullyInside(n, zone) {
+  if (!n || !zone || zone.type !== 'zone') return false;
+  const nw = nodeWidth(n), nh = nodeHeight(n);
+  const zw = nodeWidth(zone), zh = nodeHeight(zone);
+  return n.x >= zone.x
+      && n.y >= zone.y
+      && n.x + nw <= zone.x + zw
+      && n.y + nh <= zone.y + zh;
+}
+
+// Зона, в которую по членству входит узел. Если узел числится в нескольких
+// (вложенных), берём ту, где bbox зоны меньше.
+function findZoneForMember(n) {
   if (!n || n.type === 'zone') return null;
-  const cx = n.x + nodeWidth(n) / 2;
-  const cy = n.y + nodeHeight(n) / 2;
   let best = null, bestArea = Infinity;
   for (const z of state.nodes.values()) {
     if (z.type !== 'zone') continue;
-    const zw = nodeWidth(z), zh = nodeHeight(z);
-    if (cx >= z.x && cx <= z.x + zw && cy >= z.y && cy <= z.y + zh) {
-      const area = zw * zh;
-      if (area < bestArea) { best = z; bestArea = area; }
-    }
+    if (!Array.isArray(z.memberIds) || !z.memberIds.includes(n.id)) continue;
+    const area = nodeWidth(z) * nodeHeight(z);
+    if (area < bestArea) { best = z; bestArea = area; }
   }
   return best;
 }
@@ -3483,7 +3579,7 @@ function findZoneFor(n) {
 function effectiveTag(n) {
   if (!n) return '';
   if (n.type === 'zone') return n.zonePrefix || n.tag || '';
-  const z = findZoneFor(n);
+  const z = findZoneForMember(n);
   if (z && (z.zonePrefix || z.tag)) {
     const prefix = z.zonePrefix || z.tag;
     return `${prefix}.${n.tag || ''}`;
@@ -3491,14 +3587,43 @@ function effectiveTag(n) {
   return n.tag || '';
 }
 
-// Узлы, принадлежащие зоне (для drag-all)
+// Узлы, принадлежащие зоне (для drag-all / отображения)
 function nodesInZone(zone) {
+  if (!zone || !Array.isArray(zone.memberIds)) return [];
   const result = [];
-  for (const n of state.nodes.values()) {
-    if (n.type === 'zone') continue;
-    if (findZoneFor(n) === zone) result.push(n);
+  for (const id of zone.memberIds) {
+    const n = state.nodes.get(id);
+    if (n) result.push(n);
   }
   return result;
+}
+
+// Попытаться добавить узел в зону, если он полностью внутри неё и ещё
+// не является членом. Берём самую «узкую» подходящую зону.
+function tryAttachToZone(n) {
+  if (!n || n.type === 'zone') return;
+  // Если уже член какой-то зоны — оставляем как есть (узел уже «закреплён»)
+  if (findZoneForMember(n)) return;
+  let best = null, bestArea = Infinity;
+  for (const z of state.nodes.values()) {
+    if (z.type !== 'zone') continue;
+    if (!isNodeFullyInside(n, z)) continue;
+    const area = nodeWidth(z) * nodeHeight(z);
+    if (area < bestArea) { best = z; bestArea = area; }
+  }
+  if (best) {
+    if (!Array.isArray(best.memberIds)) best.memberIds = [];
+    if (!best.memberIds.includes(n.id)) best.memberIds.push(n.id);
+  }
+}
+
+// Убрать узел из всех зон
+function detachFromZones(nodeId) {
+  for (const z of state.nodes.values()) {
+    if (z.type !== 'zone') continue;
+    if (!Array.isArray(z.memberIds)) continue;
+    z.memberIds = z.memberIds.filter(id => id !== nodeId);
+  }
 }
 
 // Проверка: сколько портов данного вида реально занято связями
