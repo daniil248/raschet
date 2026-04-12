@@ -102,7 +102,12 @@ function maxDownstreamLoad(nodeId) {
         const capKw = Number(to.capacityKw) || 0;
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
-        total += capKw / eff + chKw;
+        // Реальная нагрузка ИБП = MIN(номинал, downstream) / КПД + заряд.
+        // ИБП не может выдать больше номинала, но и не нагружается больше
+        // чем фактическая нагрузка за ним.
+        const downstream = walk(to.id, new Set(path));
+        const actualLoad = Math.min(capKw, downstream);
+        total += actualLoad / eff + chKw;
       } else if (to.type === 'panel' || to.type === 'channel') {
         let share = 1;
         if (to.type === 'panel' && to.switchMode === 'parallel') {
@@ -126,7 +131,10 @@ function maxDownstreamLoad(nodeId) {
 
   // --- Шаг 3: добавить кластеры ---
   for (const [panelId, upsIds] of clusters) {
-    // Вариант A (нормальный): сумма входов всех UPS кластера
+    // Вариант B (байпас): полная нагрузка панели напрямую
+    const panelLoad = walk(panelId, new Set());
+
+    // Вариант A (нормальный): для каждого UPS — min(номинал, downstream) / КПД + заряд
     let upsInputSum = 0;
     for (const uid of upsIds) {
       const ups = state.nodes.get(uid);
@@ -134,11 +142,11 @@ function maxDownstreamLoad(nodeId) {
       const capKw = Number(ups.capacityKw) || 0;
       const eff = Math.max(0.01, (Number(ups.efficiency) || 100) / 100);
       const chKw = upsChargeKw(ups);
-      upsInputSum += capKw / eff + chKw;
+      // Downstream за этим ИБП (через его выходы → панель → потребители)
+      const upsDownstream = walk(ups.id, new Set());
+      const actualLoad = Math.min(capKw, upsDownstream);
+      upsInputSum += actualLoad / eff + chKw;
     }
-
-    // Вариант B (байпас): полная нагрузка панели напрямую
-    const panelLoad = walk(panelId, new Set());
 
     // Worst case = MAX из двух режимов (они взаимоисключающие)
     total += Math.max(upsInputSum, panelLoad);
@@ -657,12 +665,13 @@ function recalc() {
       const cnt = Math.max(1, Number(toN.count) || 1);
       maxKwDownstream = per * cnt;
     } else if (toN.type === 'ups') {
-      // Для линии К ИБП: макс. нагрузка = capacityKw / КПД + chargeKw
-      // (ИБП не может выдать больше своего номинала, это его физический предел)
+      // Для линии К ИБП: макс. нагрузка = min(номинал, downstream) / КПД + charge
       const capKw = Number(toN.capacityKw) || 0;
       const eff = Math.max(0.01, (Number(toN.efficiency) || 100) / 100);
       const chKw = upsChargeKw(toN);
-      maxKwDownstream = capKw / eff + chKw;
+      const upsDown = maxDownstreamLoad(toN.id);
+      const actualLoad = Math.min(capKw, upsDown);
+      maxKwDownstream = actualLoad / eff + chKw;
     } else if (toN.type === 'panel') {
       maxKwDownstream = maxDownstreamLoad(toN.id);
     } else {
