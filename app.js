@@ -1826,8 +1826,9 @@ function renderNodes() {
       loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
       if (!n._powered) loadCls += ' off';
     } else if (n.type === 'channel') {
-      const chType = CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit;
-      loadLine = `${chType.icon || ''} ${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
+      loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
+      // IEC 60364-5-52 графическое обозначение способа прокладки
+      drawChannelIcon(g, w, n.channelType || 'conduit');
     }
     g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
 
@@ -2740,6 +2741,98 @@ function openAutomationModal(n) {
   }
 
   document.getElementById('modal-automation').classList.remove('hidden');
+}
+
+// IEC 60364-5-52 графические обозначения способов прокладки.
+// Рисует SVG-иконку 36×28 px в правом верхнем углу карточки канала.
+function drawChannelIcon(g, nodeW, channelType) {
+  const ix = nodeW - 44, iy = 6;
+  const ig = el('g', { transform: `translate(${ix},${iy})`, class: 'node-icon' });
+
+  // Общие элементы
+  function cable(cx, cy, r) {
+    // Кабель в разрезе: внешняя оболочка + 3 жилы внутри
+    ig.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: '#555', 'stroke-width': 1.2 }));
+    const jr = r * 0.28;
+    ig.appendChild(el('circle', { cx: cx - jr, cy: cy - jr * 0.5, r: jr, fill: '#555' }));
+    ig.appendChild(el('circle', { cx: cx + jr, cy: cy - jr * 0.5, r: jr, fill: '#555' }));
+    ig.appendChild(el('circle', { cx, cy: cy + jr * 0.7, r: jr, fill: '#555' }));
+  }
+  function wall(x, y, w, h) {
+    // Штриховка стены/грунта
+    ig.appendChild(el('rect', { x, y, width: w, height: h, fill: 'none', stroke: '#888', 'stroke-width': 1 }));
+    for (let i = 0; i < w; i += 4) {
+      ig.appendChild(el('line', { x1: x + i, y1: y + h, x2: x + i + 4, y2: y, stroke: '#bbb', 'stroke-width': 0.5 }));
+    }
+  }
+  function tray(x, y, w) {
+    // Лоток — U-образный профиль
+    ig.appendChild(el('path', { d: `M${x},${y} L${x},${y + 6} L${x + w},${y + 6} L${x + w},${y}`, fill: 'none', stroke: '#666', 'stroke-width': 1.2 }));
+  }
+  function tube(cx, cy, r) {
+    // Труба — круг
+    ig.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: '#888', 'stroke-width': 1.2 }));
+  }
+
+  switch (channelType) {
+    case 'conduit': // B1 — кабель в трубе на стене
+      wall(0, 0, 36, 8);
+      tube(18, 18, 9);
+      cable(18, 18, 5);
+      break;
+    case 'tray_solid': // B2 — сплошной лоток/короб
+      ig.appendChild(el('rect', { x: 2, y: 10, width: 32, height: 14, fill: 'none', stroke: '#666', 'stroke-width': 1.2 }));
+      cable(18, 17, 5);
+      break;
+    case 'wall': // C — открыто на стене
+      wall(0, 0, 36, 8);
+      cable(18, 18, 6);
+      break;
+    case 'tray_perf': // E — перфорированный лоток
+      tray(2, 20, 32);
+      // Отверстия перфорации
+      for (let i = 6; i < 32; i += 8) {
+        ig.appendChild(el('rect', { x: i, y: 22, width: 4, height: 2, fill: '#fff', stroke: '#888', 'stroke-width': 0.5 }));
+      }
+      cable(18, 14, 5);
+      break;
+    case 'tray_wire': // E — проволочный лоток
+      tray(2, 20, 32);
+      // Проволочная сетка
+      for (let i = 4; i < 34; i += 5) {
+        ig.appendChild(el('line', { x1: i, y1: 20, x2: i, y2: 26, stroke: '#aaa', 'stroke-width': 0.5 }));
+      }
+      cable(18, 14, 5);
+      break;
+    case 'tray_ladder': // F — лестничный лоток
+      // Боковины
+      ig.appendChild(el('line', { x1: 4, y1: 16, x2: 4, y2: 26, stroke: '#666', 'stroke-width': 1.5 }));
+      ig.appendChild(el('line', { x1: 32, y1: 16, x2: 32, y2: 26, stroke: '#666', 'stroke-width': 1.5 }));
+      // Перекладины
+      for (let y = 18; y <= 24; y += 6) {
+        ig.appendChild(el('line', { x1: 4, y1: y, x2: 32, y2: y, stroke: '#888', 'stroke-width': 0.8 }));
+      }
+      cable(18, 12, 5);
+      break;
+    case 'air': // F — свободно в воздухе
+      cable(18, 14, 6);
+      // Стрелки воздушного потока
+      ig.appendChild(el('path', { d: 'M6,24 L10,20 L14,24', fill: 'none', stroke: '#aaa', 'stroke-width': 0.8 }));
+      ig.appendChild(el('path', { d: 'M22,24 L26,20 L30,24', fill: 'none', stroke: '#aaa', 'stroke-width': 0.8 }));
+      break;
+    case 'ground': // D1 — в трубе в земле
+      wall(0, 0, 36, 28);
+      tube(18, 14, 8);
+      cable(18, 14, 4.5);
+      break;
+    case 'ground_direct': // D2 — напрямую в земле
+      wall(0, 0, 36, 28);
+      cable(18, 14, 5.5);
+      break;
+    default:
+      cable(18, 14, 6);
+  }
+  g.appendChild(ig);
 }
 
 // Поле напряжения: auto-lock при стандартных фазах (3ph / 1ph / A/B/C)
