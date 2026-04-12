@@ -1209,10 +1209,15 @@ function recalc() {
     const threePhase = isThreePhase(toN);
     const U = nodeVoltage(toN);
 
-    // Эффективный cos φ линии
+    // Эффективный cos φ линии:
+    //   к потребителю → его cos φ
+    //   к щиту → взвешенный финальный cos φ щита
+    //   к ИБП → 1.0 (выпрямитель потребляет чисто активную мощность из сети)
+    //   к каналу → GLOBAL default
     let cos;
     if (toN.type === 'consumer') cos = Number(toN.cosPhi) || GLOBAL.defaultCosPhi;
     else if (toN.type === 'panel') cos = panelCosPhi(toN.id) || GLOBAL.defaultCosPhi;
+    else if (toN.type === 'ups') cos = 1.0; // ИБП = чисто активная нагрузка для сети
     else cos = GLOBAL.defaultCosPhi;
 
     c._voltage = U;
@@ -1239,10 +1244,12 @@ function recalc() {
     } else {
       maxKwDownstream = c._loadKw;
     }
-    // Для линии ОТ ИБП (вниз): ИБП не может выдать больше своего номинала
+    // Для линии ОТ ИБП (вниз): ИБП не может выдать больше своего номинала.
+    // Также cos φ на выходе ИБП = 1.0 (инвертор) в нормальном режиме.
     if (fromN.type === 'ups') {
       const upsCap = Number(fromN.capacityKw) || 0;
       if (upsCap > 0 && maxKwDownstream > upsCap) maxKwDownstream = upsCap;
+      if (!fromN._onStaticBypass) cos = 1.0; // инвертор → чисто активная мощность
     }
     const maxCurrent = maxKwDownstream > 0
       ? computeCurrentA(maxKwDownstream, U, cos, threePhase)
