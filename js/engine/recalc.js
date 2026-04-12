@@ -6,8 +6,17 @@ import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrent
          upsChargeKw, sourceImpedance } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 
-// раз мы проходим через downstream.
+// Максимально возможная нагрузка downstream.
+// Глобальный `visited` предотвращает двойной счёт: если один и тот же
+// потребитель/ИБП достижим через несколько путей от корня (например,
+// MDB → UPS → UDB и MDB → UDB), он считается только один раз.
+// Для ИБП: на ВХОДЕ ИБП считаем capacityKw/КПД + charge (нагрузка на
+// питающий кабель); downstream за ИБП пропускаем — он уже учтён.
+// Для parallel-щитов: входящий фидер несёт свою долю (1/N).
+// Для АВР-щитов: один фидер несёт 100% (worst case).
 function maxDownstreamLoad(nodeId) {
+  const visited = new Set(); // глобальный для данного вызова — ID узлов-листьев
+
   function walk(nid, path) {
     if (path.has(nid)) return 0;
     path.add(nid);
@@ -19,16 +28,20 @@ function maxDownstreamLoad(nodeId) {
       if (!to) continue;
 
       if (to.type === 'consumer') {
+        if (visited.has(to.id)) continue; // уже посчитан через другой путь
+        visited.add(to.id);
         const per = Number(to.demandKw) || 0;
         const cnt = Math.max(1, Number(to.count) || 1);
         total += per * cnt;
       } else if (to.type === 'ups') {
+        if (visited.has(to.id)) continue; // уже посчитан через другой путь
+        visited.add(to.id);
         // ИБП ограничен своим номиналом — это его физический предел.
-        // Не нужно считать downstream — capacityKw и есть максимум.
         const capKw = Number(to.capacityKw) || 0;
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
         total += capKw / eff + chKw;
+        // НЕ ходим дальше за ИБП — downstream уже учтён через capacityKw
       } else if (to.type === 'panel' || to.type === 'channel') {
         // Для parallel-щита: входящий фидер несёт свою долю
         let share = 1;
