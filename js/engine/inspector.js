@@ -152,14 +152,16 @@ export function renderInspectorNode(n) {
       h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Линии в канале (${channelConns.length})</summary>`);
       h.push('<div style="font-size:11px;line-height:1.8;margin-top:4px">');
       for (const { c, fromN, toN, par } of channelConns) {
-        const fromTag = fromN ? escHtml(effectiveTag(fromN) || fromN.name || '?') : '?';
-        const toTag = toN ? escHtml(effectiveTag(toN) || toN.name || '?') : '?';
+        const fromTag = fromN ? (effectiveTag(fromN) || fromN.name || '?') : '?';
+        const toTag = toN ? (effectiveTag(toN) || toN.name || '?') : '?';
+        const lineLabel = `W-${fromTag}-${toTag}`;
         const cable = c._cableSize ? `${c._wireCount || '?'}×${c._cableSize} мм²` : '—';
         const current = c._maxA ? `${fmt(c._maxA)} A` : '—';
+        const length = c._cableLength != null ? `${c._cableLength} м` : '—';
         const countLabel = par > 1 ? ` (${par} шт.)` : '';
         h.push(`<div style="padding:3px 0;border-bottom:1px solid #eee">`);
-        h.push(`<b>${fromTag}</b> → <b>${toTag}</b>${countLabel}<br>`);
-        h.push(`<span style="color:#666">Кабель: ${cable} · Imax: ${current}</span>`);
+        h.push(`<b>${escHtml(lineLabel)}</b>${countLabel}<br>`);
+        h.push(`<span style="color:#666">${cable} · ${length} · Imax: ${current}</span>`);
         h.push(`</div>`);
       }
       h.push('</div></details>');

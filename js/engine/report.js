@@ -1,8 +1,18 @@
 import { state } from './state.js';
+import { CHANNEL_TYPES } from './constants.js';
 import { recalc } from './recalc.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { effectiveTag } from './zones.js';
 import { fmt } from './utils.js';
+
+// Сортировка по обозначению (tag) в алфавитном порядке
+function sortByTag(arr) {
+  return arr.sort((a, b) => {
+    const ta = (effectiveTag(a) || a.tag || a.name || '').toLowerCase();
+    const tb = (effectiveTag(b) || b.tag || b.name || '').toLowerCase();
+    return ta.localeCompare(tb, 'ru');
+  });
+}
 
 export function get3PhaseBalance() {
   // Сначала построим map «щит → {a, b, c}»
@@ -79,7 +89,7 @@ export function generateReport() {
   lines.push('');
 
   // 1. Источники
-  const sources = [...state.nodes.values()].filter(n => n.type === 'source' || n.type === 'generator');
+  const sources = sortByTag([...state.nodes.values()].filter(n => n.type === 'source' || n.type === 'generator'));
   if (sources.length) {
     lines.push('ИСТОЧНИКИ ПИТАНИЯ');
     lines.push('-'.repeat(78));
@@ -104,7 +114,7 @@ export function generateReport() {
   }
 
   // 2. ИБП
-  const upses = [...state.nodes.values()].filter(n => n.type === 'ups');
+  const upses = sortByTag([...state.nodes.values()].filter(n => n.type === 'ups'));
   if (upses.length) {
     lines.push('ИСТОЧНИКИ БЕСПЕРЕБОЙНОГО ПИТАНИЯ (ИБП)');
     lines.push('-'.repeat(60));
@@ -128,7 +138,7 @@ export function generateReport() {
   }
 
   // 3. Щиты
-  const panels = [...state.nodes.values()].filter(n => n.type === 'panel');
+  const panels = sortByTag([...state.nodes.values()].filter(n => n.type === 'panel'));
   if (panels.length) {
     lines.push('РАСПРЕДЕЛИТЕЛЬНЫЕ ЩИТЫ');
     lines.push('-'.repeat(78));
@@ -152,7 +162,7 @@ export function generateReport() {
   }
 
   // 4. Потребители
-  const consumers = [...state.nodes.values()].filter(n => n.type === 'consumer');
+  const consumers = sortByTag([...state.nodes.values()].filter(n => n.type === 'consumer'));
   if (consumers.length) {
     lines.push('ПОТРЕБИТЕЛИ');
     lines.push('-'.repeat(92));
@@ -185,29 +195,55 @@ export function generateReport() {
   }
 
   // 4a. Кабельные линии
-  const activeCables = [...state.conns.values()].filter(c => c._state === 'active' && c._cableSize);
+  const activeCables = [...state.conns.values()].filter(c => c._cableSize);
+  // Сортировка по обозначению W-from-to
+  activeCables.sort((a, b) => {
+    const aFrom = effectiveTag(state.nodes.get(a.from.nodeId)) || '';
+    const aTo = effectiveTag(state.nodes.get(a.to.nodeId)) || '';
+    const bFrom = effectiveTag(state.nodes.get(b.from.nodeId)) || '';
+    const bTo = effectiveTag(state.nodes.get(b.to.nodeId)) || '';
+    const la = `W-${aFrom}-${aTo}`.toLowerCase();
+    const lb = `W-${bFrom}-${bTo}`.toLowerCase();
+    return la.localeCompare(lb, 'ru');
+  });
   if (activeCables.length) {
     lines.push('КАБЕЛЬНЫЕ ЛИНИИ (подбор по IEC 60364-5-52)');
-    lines.push('-'.repeat(96));
-    lines.push('Откуда       →  Куда                P, kW    Iцепи  ×N  Σ, A   Сечение   Метод   Iдоп');
+    lines.push('-'.repeat(100));
+    lines.push('Обозначение              Сечение     L, м   Imax, A  Iдоп, A  Метод   Каналы');
     for (const c of activeCables) {
       const fromN = state.nodes.get(c.from.nodeId);
       const toN = state.nodes.get(c.to.nodeId);
-      const fromLbl = (effectiveTag(fromN) || '') + ' ' + (fromN?.name || '');
-      const toLbl = (effectiveTag(toN) || '') + ' ' + (toN?.name || '');
+      const fromTag = effectiveTag(fromN) || fromN?.name || '?';
+      const toTag = effectiveTag(toN) || toN?.name || '?';
+      const lineLabel = `W-${fromTag}-${toTag}`;
       const warn = c._cableOverflow ? ' ⚠' : '';
       const parallel = Math.max(1, c._cableParallel || 1);
-      const perLine = (c._loadA || 0) / parallel;
+      const cores = c._wireCount || (c._threePhase ? 5 : 3);
+      const inner = `${cores}×${c._cableSize} мм²`;
+      const cableSpec = (c._cableAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
+      const length = c._cableLength != null ? c._cableLength : (c.lengthM || 0);
+
+      // Каналы, через которые проходит линия
+      const channelIds = Array.isArray(c.channelIds) ? c.channelIds : [];
+      let channelStr = '—';
+      if (channelIds.length) {
+        const chLabels = channelIds.map(chId => {
+          const ch = state.nodes.get(chId);
+          if (!ch || ch.type !== 'channel') return null;
+          const chType = CHANNEL_TYPES[ch.channelType] || CHANNEL_TYPES.conduit;
+          return `${effectiveTag(ch) || ch.name || '?'} (${chType.method})`;
+        }).filter(Boolean);
+        channelStr = chLabels.join(', ') || '—';
+      }
+
       lines.push(
-        fromLbl.slice(0, 12).padEnd(14) +
-        toLbl.slice(0, 18).padEnd(20) +
-        String(fmt(c._loadKw)).padStart(6) + '  ' +
-        String(fmt(perLine)).padStart(6) + ' ' +
-        (parallel > 1 ? ('×' + parallel).padEnd(3) : '   ') + ' ' +
-        String(fmt(c._loadA || 0)).padStart(6) + '  ' +
-        (c._cableSize + ' мм²').padStart(8) + '   ' +
+        lineLabel.slice(0, 24).padEnd(25) +
+        cableSpec.padEnd(12) +
+        String(length).padStart(5) + '  ' +
+        String(fmt(c._maxA || 0)).padStart(7) + '  ' +
+        String(fmt(c._cableIz || 0)).padStart(7) + '  ' +
         (c._cableMethod || '-').padEnd(6) + '  ' +
-        String(fmt(c._cableIz)).padStart(4) + warn
+        channelStr + warn
       );
     }
     lines.push('');
