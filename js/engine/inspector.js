@@ -756,8 +756,7 @@ export function openAutomationModal(n) {
 
   const downstreamPanel = switchPanelId ? state.nodes.get(switchPanelId) : null;
 
-  const groups = hasTriggerGroups ? n.triggerGroups : [];
-  // Рендер каждой группы
+  // Рендер каждой группы (groups уже определена выше)
   for (let gi = 0; gi < Math.max(groups.length, 1); gi++) {
     const grp = groups[gi] || { name: '', watchInputs: [], logic: 'any', activateOutputs: [] };
     h.push(`<div class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:10px" data-grp-idx="${gi}">`);
