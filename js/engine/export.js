@@ -84,6 +84,32 @@ export function initToolbar() {
     };
     r.readAsText(f);
   });
+
+  // Модальные окна — перетаскивание за заголовок
+  document.querySelectorAll('.modal-head').forEach(head => {
+    let dragging = false, dx = 0, dy = 0;
+    const box = head.closest('.modal-box');
+    if (!box) return;
+    head.style.cursor = 'move';
+    head.addEventListener('mousedown', e => {
+      if (e.target.closest('button')) return; // не перетаскивать при клике на кнопку закрытия
+      dragging = true;
+      const rect = box.getBoundingClientRect();
+      dx = e.clientX - rect.left;
+      dy = e.clientY - rect.top;
+      box.style.position = 'fixed';
+      box.style.margin = '0';
+      box.style.left = rect.left + 'px';
+      box.style.top = rect.top + 'px';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      box.style.left = (e.clientX - dx) + 'px';
+      box.style.top = (e.clientY - dy) + 'px';
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+  });
 }
 
 export function autoLayout() {

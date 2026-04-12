@@ -243,8 +243,6 @@ export function renderInspectorNode(n) {
 
     h.push(field('Ксим (коэффициент одновременности)', `<input type="number" min="0" max="1.2" step="0.05" data-prop="kSim" value="${n.kSim ?? 1}">`));
 
-    if (n.inputs > 1) h.push(prioritySection(n));
-
     h.push(`<button type="button" class="full-btn" id="btn-balance-panel" style="margin-top:8px">⚖ Балансировка фаз на щите</button>`);
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
@@ -1026,6 +1024,23 @@ export function openPanelParamsModal(n) {
       </select>`));
 
     h.push('<h4 style="margin:12px 0 8px">Задержки АВР</h4>');
+    // Приоритеты входов
+    h.push('<h4 style="margin:12px 0 8px">Приоритеты входов</h4>');
+    h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные значения — параллельная работа с разделением нагрузки.</div>');
+    for (let i = 0; i < (n.inputs || 0); i++) {
+      const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
+      let feederTag = `Вход ${i + 1}`;
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId === n.id && c.to.port === i) {
+          const from = state.nodes.get(c.from.nodeId);
+          if (from) feederTag = effectiveTag(from) || from.name || feederTag;
+          break;
+        }
+      }
+      h.push(field(`${feederTag} (P${prio})`, `<input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:60px">`));
+    }
+
+    h.push('<h4 style="margin:12px 0 8px">Задержки</h4>');
     h.push(field('Задержка переключения, сек', `<input type="number" id="pp-avrDelay" min="0" max="30" step="0.5" value="${n.avrDelaySec ?? 2}">`));
     h.push(field('Разбежка между автоматами, сек', `<input type="number" id="pp-avrInterlock" min="0" max="10" step="0.5" value="${n.avrInterlockSec ?? 1}">`));
     h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Задержка — время до переключения при возврате напряжения.<br>Разбежка — минимальный интервал между переключениями (блокировка одновременного включения).</div>');
@@ -1045,8 +1060,12 @@ export function openPanelParamsModal(n) {
     if (smSel) n.switchMode = smSel.value;
     n.avrDelaySec = Number(document.getElementById('pp-avrDelay')?.value) ?? 2;
     n.avrInterlockSec = Number(document.getElementById('pp-avrInterlock')?.value) ?? 1;
-    // Нормализация массивов
+    // Приоритеты
     if (!Array.isArray(n.priorities)) n.priorities = [];
+    for (let i = 0; i < n.inputs; i++) {
+      const el = document.getElementById(`pp-prio-${i}`);
+      if (el) n.priorities[i] = Number(el.value) || (i + 1);
+    }
     while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
     n.priorities.length = n.inputs;
     document.getElementById('modal-panel-params').classList.add('hidden');
@@ -1220,16 +1239,14 @@ export function openPanelControlModal(n) {
   // --- Переключатель Авто / Ручной ---
   if (inCount > 1) {
     const isManual = n.switchMode === 'manual';
-    h += '<div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px">';
-    h += '<span style="font-size:11px;font-weight:600">Управление:</span>';
-    h += `<button type="button" id="pc-mode-auto" style="padding:4px 14px;border:1px solid ${!isManual ? '#1976d2' : '#ccc'};background:${!isManual ? '#1976d2' : '#fff'};color:${!isManual ? '#fff' : '#333'};border-radius:4px 0 0 4px;cursor:pointer;font-size:11px">Авто</button>`;
-    h += `<button type="button" id="pc-mode-manual" style="padding:4px 14px;border:1px solid ${isManual ? '#ff9800' : '#ccc'};background:${isManual ? '#ff9800' : '#fff'};color:${isManual ? '#fff' : '#333'};border-radius:0 4px 4px 0;cursor:pointer;font-size:11px;margin-left:-1px">Ручной</button>`;
+    h += '<div style="display:flex;align-items:center;gap:10px;margin:10px 0 6px">';
+    h += '<span style="font-size:11px;color:' + (!isManual ? '#1976d2;font-weight:600' : '#999') + '">Авто</span>';
+    // Toggle switch
+    h += `<div id="pc-toggle" style="position:relative;width:52px;height:26px;border-radius:13px;background:${isManual ? '#ff9800' : '#4caf50'};cursor:pointer;transition:background 0.2s;flex-shrink:0">`;
+    h += `<div style="position:absolute;top:2px;${isManual ? 'right:2px' : 'left:2px'};width:22px;height:22px;border-radius:11px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s"></div>`;
     h += '</div>';
-    if (isManual) {
-      h += '<div style="font-size:11px;margin-bottom:6px;color:#e65100">Ручной режим: входные автоматы переключаются вручную</div>';
-    } else {
-      h += '<div style="font-size:11px;margin-bottom:6px;color:#666">Автоматический режим: АВР переключает вводы по приоритетам</div>';
-    }
+    h += '<span style="font-size:11px;color:' + (isManual ? '#e65100;font-weight:600' : '#999') + '">Ручной</span>';
+    h += '</div>';
   }
 
   // --- Обслуживание ---
@@ -1274,25 +1291,21 @@ export function openPanelControlModal(n) {
     });
   });
 
-  // Переключатель Авто / Ручной
-  const autoBtn = document.getElementById('pc-mode-auto');
-  const manualBtn = document.getElementById('pc-mode-manual');
-  if (autoBtn) autoBtn.addEventListener('click', () => {
-    if (n.switchMode === 'manual') return; // уже авто (switchMode хранит тип АВР)
-    snapshot('mode:' + n.id);
-    // Возвращаем предыдущий тип АВР (или auto по умолчанию)
-    n.switchMode = n._prevSwitchMode || 'auto';
-    openPanelControlModal(n);
-    _render(); renderInspector(); notifyChange();
-  });
-  if (manualBtn) manualBtn.addEventListener('click', () => {
-    if (n.switchMode === 'manual') return;
-    snapshot('mode:' + n.id);
-    n._prevSwitchMode = n.switchMode; // запоминаем тип АВР
-    n.switchMode = 'manual';
-    openPanelControlModal(n);
-    _render(); renderInspector(); notifyChange();
-  });
+  // Переключатель Авто / Ручной (toggle)
+  const toggleEl = document.getElementById('pc-toggle');
+  if (toggleEl) {
+    toggleEl.addEventListener('click', () => {
+      snapshot('mode:' + n.id);
+      if (n.switchMode === 'manual') {
+        n.switchMode = n._prevSwitchMode || 'auto';
+      } else {
+        n._prevSwitchMode = n.switchMode;
+        n.switchMode = 'manual';
+      }
+      openPanelControlModal(n);
+      _render(); renderInspector(); notifyChange();
+    });
+  }
 
   // Обслуживание
   const maintCb = document.getElementById('pc-maintenance');
@@ -1305,12 +1318,29 @@ export function openPanelControlModal(n) {
     });
   }
 
-  // +/- входы/выходы
+  // +/- входы/выходы (с проверкой подключений)
   const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+  function hasConnOnPort(nodeId, kind, port) {
+    for (const c of state.conns.values()) {
+      if (kind === 'in' && c.to.nodeId === nodeId && c.to.port === port) return true;
+      if (kind === 'out' && c.from.nodeId === nodeId && c.from.port === port) return true;
+    }
+    return false;
+  }
   bind('pc-add-in', () => { snapshot('panel-io:' + n.id); n.inputs = (n.inputs || 0) + 1; if (!Array.isArray(n.priorities)) n.priorities = []; n.priorities.push(n.priorities.length + 1); openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
-  bind('pc-del-in', () => { if ((n.inputs || 0) <= 1) return; snapshot('panel-io:' + n.id); n.inputs--; openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
+  bind('pc-del-in', () => {
+    if ((n.inputs || 0) <= 1) return;
+    const lastPort = n.inputs - 1;
+    if (hasConnOnPort(n.id, 'in', lastPort)) { flash('Нельзя удалить вход с подключённой линией'); return; }
+    snapshot('panel-io:' + n.id); n.inputs--; openPanelControlModal(n); _render(); renderInspector(); notifyChange();
+  });
   bind('pc-add-out', () => { snapshot('panel-io:' + n.id); n.outputs = (n.outputs || 0) + 1; openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
-  bind('pc-del-out', () => { if ((n.outputs || 0) <= 1) return; snapshot('panel-io:' + n.id); n.outputs--; openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
+  bind('pc-del-out', () => {
+    if ((n.outputs || 0) <= 1) return;
+    const lastPort = n.outputs - 1;
+    if (hasConnOnPort(n.id, 'out', lastPort)) { flash('Нельзя удалить выход с подключённой линией'); return; }
+    snapshot('panel-io:' + n.id); n.outputs--; openPanelControlModal(n); _render(); renderInspector(); notifyChange();
+  });
 
   // Закрыть
   const applyBtn = document.getElementById('panel-control-apply');
