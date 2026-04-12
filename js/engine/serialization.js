@@ -10,6 +10,16 @@ export function bindSerializationDeps({ clearUndoStack, render, renderInspector,
 
 // ================= Сохранение =================
 export function serialize() {
+  // Сохраняем пользовательские настройки расчёта вместе с проектом
+  const globalSettings = {};
+  const skipKeys = ['voltageLevels']; // voltageLevels сохраняется отдельно
+  for (const k of Object.keys(GLOBAL)) {
+    if (skipKeys.includes(k)) continue;
+    globalSettings[k] = GLOBAL[k];
+  }
+  // voltageLevels — как есть
+  globalSettings.voltageLevels = GLOBAL.voltageLevels;
+
   return {
     version: 3,
     nextId: getIdSeq(),
@@ -18,6 +28,7 @@ export function serialize() {
     modes: state.modes,
     activeModeId: state.activeModeId,
     view: { ...state.view },
+    globalSettings,
   };
 }
 // Удаляет все runtime-поля (с префиксом _) — они вычисляются при загрузке.
@@ -39,6 +50,13 @@ export function deserialize(data) {
   setIdSeq(Math.max(data.nextId || 1, 1));
   state.view = data.view || { x: 0, y: 0, zoom: 1 };
   state.selectedKind = null; state.selectedId = null;
+
+  // Восстановить настройки расчёта из проекта
+  if (data.globalSettings && typeof data.globalSettings === 'object') {
+    for (const k of Object.keys(data.globalSettings)) {
+      if (k in GLOBAL) GLOBAL[k] = data.globalSettings[k];
+    }
+  }
 
   // Миграция старых схем: проставляем отсутствующие поля
   for (const n of state.nodes.values()) {
