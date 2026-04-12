@@ -1059,7 +1059,7 @@ export function renderInspectorConn(c) {
   h.push('<div class="inspector-section"><h4>Проводник</h4>');
   h.push(field('Тип проводника',
     `<select data-conn-prop="cableType">
-      <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный кабель (гибкий)</option>
+      <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный</option>
       <option value="single"${ct === 'single' ? ' selected' : ''}>Одножильный многопроволочный</option>
       <option value="solid"${ct === 'solid' ? ' selected' : ''}>Цельная жила (класс 1–2, до 10 мм²)</option>
       <option value="busbar"${ct === 'busbar' ? ' selected' : ''}>Шинопровод</option>

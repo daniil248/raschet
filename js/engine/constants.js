@@ -49,7 +49,7 @@ export const GLOBAL = {
 //   single — одножильный многопроволочный (в одножильной оболочке, в трубах/каналах)
 //   solid  — цельная жила (класс 1-2), применима до 10 мм² (IEC 60228)
 export const CABLE_TYPES = {
-  multi:  { label: 'Многожильный (гибкий)', solidMax: null },
+  multi:  { label: 'Многожильный', solidMax: null },
   single: { label: 'Одножильный многопроволочный', solidMax: null },
   solid:  { label: 'Цельная жила (класс 1–2)', solidMax: 10 },
   busbar: { label: 'Шинопровод', solidMax: null },
