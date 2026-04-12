@@ -178,27 +178,66 @@ function recalc() {
       if (!effectiveOn(n)) {
         res = null;
       } else {
-        const tGroups = Array.isArray(n.triggerGroups) ? n.triggerGroups : [];
+        // Собираем эффективные triggerGroups:
+        //   - если triggerGroups заполнены — используем их
+        //   - иначе мигрируем legacy triggerNodeIds в одну группу
+        let tGroups = Array.isArray(n.triggerGroups) && n.triggerGroups.length
+          ? n.triggerGroups
+          : [];
+
+        if (!tGroups.length) {
+          // Legacy migration: triggerNodeIds → одна группа watchInputs
+          const legacyIds = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+            ? n.triggerNodeIds
+            : (n.triggerNodeId ? [n.triggerNodeId] : []);
+          if (legacyIds.length) {
+            // Конвертируем: для каждого nodeId ищем все связи,
+            // исходящие от него — это «вводы щитов, на которых мы мониторим напряжение»
+            const watchInputs = [];
+            for (const tid of legacyIds) {
+              // Legacy: мониторим сам узел (есть ли напряжение на нём)
+              // Переводим в формат watchInputs: ищем связь, ведущую на tid
+              // Если tid — источник/генератор, смотрим его состояние напрямую
+              watchInputs.push({ nodeId: tid });
+            }
+            tGroups = [{
+              name: '',
+              watchInputs,
+              logic: n.triggerLogic || 'any',
+              activateOutputs: [],
+            }];
+          }
+        }
 
         if (tGroups.length) {
-          // === Расширенные группы триггеров (подменный ДГУ) ===
-          // Каждая группа — независимый сценарий. Проверяем по порядку.
-          // Первая сработавшая группа определяет запуск и набор выходов.
+          // Проверяем каждую группу. Первая сработавшая = запуск.
           let firedGroup = null;
           for (const grp of tGroups) {
             const watches = Array.isArray(grp.watchInputs) ? grp.watchInputs : [];
             if (!watches.length) continue;
-            // Проверяем состояние каждого наблюдаемого ввода
+
             const statuses = watches.map(w => {
-              // Ищем связь, входящую в panelId на порт inputPort
-              for (const c of state.conns.values()) {
-                if (c.to.nodeId === w.panelId && c.to.port === w.inputPort) {
-                  if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return 'dead';
-                  return activeInputs(c.from.nodeId, false) !== null ? 'alive' : 'dead';
+              if (w.panelId && typeof w.inputPort === 'number') {
+                // Новый формат: мониторим конкретный ввод щита.
+                // Проверяем: есть ли напряжение на upstream-узле,
+                // подключённом к этому вводу (NOT состояние порта — именно напряжение).
+                for (const c of state.conns.values()) {
+                  if (c.to.nodeId === w.panelId && c.to.port === w.inputPort) {
+                    if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return 'dead';
+                    // Есть ли напряжение на upstream-е этой связи?
+                    return activeInputs(c.from.nodeId, false) !== null ? 'alive' : 'dead';
+                  }
                 }
+                return 'dead'; // нет связи на этом порту
+              } else if (w.nodeId) {
+                // Legacy формат: мониторим узел целиком
+                const t = state.nodes.get(w.nodeId);
+                if (!t) return 'dead';
+                return activeInputs(w.nodeId, false) !== null ? 'alive' : 'dead';
               }
-              return 'dead'; // нет связи → считаем мёртвым
+              return 'dead';
             });
+
             const logic = grp.logic || 'any';
             const fired = logic === 'any'
               ? statuses.some(s => s === 'dead')
@@ -214,40 +253,15 @@ function recalc() {
             if (n._running || (Number(n.startDelaySec) || 0) === 0) {
               res = (n.backupMode && !allowBackup) ? null : [];
             } else {
-              res = null; // ждём startDelaySec
+              res = null;
             }
           }
-        } else {
-          // === Legacy триггеры (простой режим) ===
-          const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
-            ? n.triggerNodeIds
-            : (n.triggerNodeId ? [n.triggerNodeId] : []);
-
+        } else if (n.backupMode && !allowBackup) {
           n._activeTriggerGroup = null;
-
-          if (triggers.length) {
-            const statuses = triggers.map(tid => {
-              const t = state.nodes.get(tid);
-              if (!t) return 'dead';
-              return activeInputs(tid, false) !== null ? 'alive' : 'dead';
-            });
-            const logic = n.triggerLogic || 'any';
-            const shouldStart = logic === 'any'
-              ? statuses.some(s => s === 'dead')
-              : statuses.every(s => s === 'dead');
-
-            if (!shouldStart) {
-              res = null;
-            } else if (n._running || (Number(n.startDelaySec) || 0) === 0) {
-              res = (n.backupMode && !allowBackup) ? null : [];
-            } else {
-              res = null;
-            }
-          } else if (n.backupMode && !allowBackup) {
-            res = null;
-          } else {
-            res = [];
-          }
+          res = null;
+        } else {
+          n._activeTriggerGroup = null;
+          res = [];
         }
       }
     } else if (n.type === 'ups') {
@@ -991,10 +1005,36 @@ function recalc() {
       n._powerQ = n._powerP * tan;
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
-      // Максимально возможная нагрузка (все потребители на 100% без Ки)
-      // НЕ ограничиваем номиналом — показываем реальную нагрузку,
-      // а перегруз отображается через _overload флаг.
-      n._maxLoadKw = maxDownstreamLoad(n.id);
+      // Максимально возможная нагрузка.
+      // Для генератора с triggerGroups: MAX по всем сценариям.
+      // Каждый сценарий = сумма нагрузок за выходами switchover-щита,
+      // которые включаются в данном сценарии (activateOutputs).
+      const genGroups = Array.isArray(n.triggerGroups) ? n.triggerGroups : [];
+      const switchPanel = n.switchPanelId ? state.nodes.get(n.switchPanelId) : null;
+
+      if (genGroups.length && switchPanel) {
+        let maxScenarioKw = 0;
+        for (const grp of genGroups) {
+          const outs = Array.isArray(grp.activateOutputs) ? grp.activateOutputs : [];
+          if (!outs.length) continue;
+          // Сумма maxDownstreamLoad за каждым включённым выходом щита
+          let scenarioKw = 0;
+          for (const outPort of outs) {
+            // Находим связь от switchPanel.outPort → downstream
+            for (const c of state.conns.values()) {
+              if (c.from.nodeId !== switchPanel.id || c.from.port !== outPort) continue;
+              if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+              const toN = state.nodes.get(c.to.nodeId);
+              if (!toN) continue;
+              scenarioKw += maxDownstreamLoad(toN.id);
+            }
+          }
+          if (scenarioKw > maxScenarioKw) maxScenarioKw = scenarioKw;
+        }
+        n._maxLoadKw = maxScenarioKw;
+      } else {
+        n._maxLoadKw = maxDownstreamLoad(n.id);
+      }
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
       const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
