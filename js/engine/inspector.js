@@ -1025,24 +1025,28 @@ export function openPanelParamsModal(n) {
     h.push(field('Тип', `<select id="pp-switchMode">${smOpts}</select>`));
     h.push('<div class="muted" style="font-size:10px;margin-top:-4px;margin-bottom:8px">Щит без АВР: все автоматы управляются только вручную. АВР: автоматическое переключение по приоритетам.</div>');
 
-    // Приоритеты — только для режимов с АВР
     const hasAVR = sm !== 'parallel';
+
     if (hasAVR) {
-      h.push('<h4 style="margin:12px 0 8px">Приоритеты входов</h4>');
-      h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные значения — параллельная работа.</div>');
-    for (let i = 0; i < (n.inputs || 0); i++) {
-      const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
-      let feederTag = `Вход ${i + 1}`;
-      for (const c of state.conns.values()) {
-        if (c.to.nodeId === n.id && c.to.port === i) {
-          const from = state.nodes.get(c.from.nodeId);
-          if (from) feederTag = effectiveTag(from) || from.name || feederTag;
-          break;
+      // Приоритеты — только для стандартного АВР (auto)
+      if (sm === 'auto') {
+        h.push('<h4 style="margin:12px 0 8px">Приоритеты входов</h4>');
+        h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные значения — параллельная работа.</div>');
+        for (let i = 0; i < (n.inputs || 0); i++) {
+          const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
+          let feederTag = `Вход ${i + 1}`;
+          for (const c of state.conns.values()) {
+            if (c.to.nodeId === n.id && c.to.port === i) {
+              const from = state.nodes.get(c.from.nodeId);
+              if (from) feederTag = effectiveTag(from) || from.name || feederTag;
+              break;
+            }
+          }
+          h.push(field(`${feederTag} (P${prio})`, `<input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:60px">`));
         }
       }
-      h.push(field(`${feederTag} (P${prio})`, `<input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:60px">`));
-    }
 
+      // Задержки — для всех АВР
       h.push('<h4 style="margin:12px 0 8px">Задержки</h4>');
       h.push(field('Задержка переключения, сек', `<input type="number" id="pp-avrDelay" min="0" max="30" step="0.5" value="${n.avrDelaySec ?? 2}">`));
       h.push(field('Разбежка между автоматами, сек', `<input type="number" id="pp-avrInterlock" min="0" max="10" step="0.5" value="${n.avrInterlockSec ?? 1}">`));
@@ -1309,6 +1313,8 @@ export function openPanelControlModal(n) {
       snapshot('mode:' + n.id);
       if (n.switchMode === 'manual') {
         n.switchMode = n._prevSwitchMode || 'auto';
+        // Сброс входных автоматов — АВР управляет ими автоматически
+        n.inputBreakerStates = null;
       } else {
         n._prevSwitchMode = n.switchMode;
         n.switchMode = 'manual';
