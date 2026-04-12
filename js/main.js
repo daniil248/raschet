@@ -309,8 +309,11 @@ async function openProject(id) {
     // Схему даём редактору
     if (data.scheme) {
       window.Raschet.loadScheme(data.scheme);
+      // Если в проекте нет сохранённых настроек — применить из localStorage
+      if (!data.scheme.globalSettings) loadGlobalSettings();
     } else {
       window.Raschet.loadScheme(null);
+      loadGlobalSettings();
     }
 
     // Роль и режим read-only
