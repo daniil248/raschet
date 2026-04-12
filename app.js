@@ -501,11 +501,17 @@ function upsChargeKw(ups) {
 //   - щиты: проход без потерь (Ксим НЕ применяется)
 //   - параллельные фидеры: если N фидеров на один узел, каждый несёт 1/N
 //     (например, 2 ИБП на один UDB → каждый несёт половину нагрузки UDB)
+// Максимально возможная нагрузка downstream. Учитывает КПД ИБП, заряд,
+// и параллельные фидеры (share).
+//
+// ВАЖНО: нет глобального `seen` — каждый узел может быть посещён
+// несколько раз через разные пути. Это корректно, потому что share
+// уже делит нагрузку (2 ИБП на один UDB → каждый видит 0.5).
+// Защита от циклов — через локальный `path` стек.
 function maxDownstreamLoad(nodeId) {
-  const seen = new Set();
-  function walk(nid) {
-    if (seen.has(nid)) return 0;
-    seen.add(nid);
+  function walk(nid, path) {
+    if (path.has(nid)) return 0; // цикл — выход
+    path.add(nid);
     let total = 0;
     for (const c of state.conns.values()) {
       if (c.from.nodeId !== nid) continue;
@@ -513,7 +519,7 @@ function maxDownstreamLoad(nodeId) {
       const to = state.nodes.get(c.to.nodeId);
       if (!to) continue;
 
-      // Считаем сколько АКТИВНЫХ фидеров приходят в to-узел (для определения share)
+      // Сколько АКТИВНЫХ фидеров приходит в to-узел
       let feedersToTarget = 0;
       for (const c2 of state.conns.values()) {
         if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
@@ -527,17 +533,22 @@ function maxDownstreamLoad(nodeId) {
         const cnt = Math.max(1, Number(to.count) || 1);
         total += per * cnt * share;
       } else if (to.type === 'ups') {
-        const downstream = walk(to.id);
+        // ИБП: ограничен своим номиналом
+        const capKw = Number(to.capacityKw) || 0;
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
-        total += (downstream / eff + chKw) * share;
+        // Максимум что ИБП потребит на входе = min(downstream, capacity) / eff + charge
+        const downstream = walk(to.id, new Set(path));
+        const actualLoad = Math.min(downstream, capKw);
+        total += (actualLoad / eff + chKw);
       } else if (to.type === 'panel' || to.type === 'channel') {
-        total += walk(to.id) * share;
+        total += walk(to.id, new Set(path)) * share;
       }
     }
+    path.delete(nid);
     return total;
   }
-  return walk(nodeId);
+  return walk(nodeId, new Set());
 }
 
 // Финальный cos φ щита — взвешенное по активной мощности.
