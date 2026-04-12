@@ -508,9 +508,17 @@ function upsChargeKw(ups) {
 // несколько раз через разные пути. Это корректно, потому что share
 // уже делит нагрузку (2 ИБП на один UDB → каждый видит 0.5).
 // Защита от циклов — через локальный `path` стек.
+// Максимально возможная нагрузка downstream.
+// Для ИБП: ограничена capacityKw ИБП (не суммой потребителей за ним).
+// Для щитов в parallel: нагрузка делится между параллельными фидерами.
+// Для АВР-щитов: один фидер несёт 100% (worst case).
+// Защита от double-count: глобальный visited не используется,
+// но для ИБП применяется min(downstream, capacityKw) — ИБП физически
+// не может выдать больше своего номинала, независимо от того сколько
+// раз мы проходим через downstream.
 function maxDownstreamLoad(nodeId) {
   function walk(nid, path) {
-    if (path.has(nid)) return 0; // цикл — выход
+    if (path.has(nid)) return 0;
     path.add(nid);
     let total = 0;
     for (const c of state.conns.values()) {
@@ -519,35 +527,30 @@ function maxDownstreamLoad(nodeId) {
       const to = state.nodes.get(c.to.nodeId);
       if (!to) continue;
 
-      // Share: для узлов с параллельным питанием (parallel mode) нагрузка
-      // делится между фидерами. Для АВР — один фидер несёт 100% (worst case).
-      let share = 1;
-      if (to.type === 'panel' && to.switchMode === 'parallel') {
-        let feeders = 0;
-        const enabledMask = Array.isArray(to.parallelEnabled) ? to.parallelEnabled : [];
-        for (const c2 of state.conns.values()) {
-          if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
-            // В parallel-режиме считаем только включённые входы
-            if (enabledMask[c2.to.port]) feeders++;
-          }
-        }
-        if (feeders > 1) share = 1 / feeders;
-      }
-
       if (to.type === 'consumer') {
         const per = Number(to.demandKw) || 0;
         const cnt = Math.max(1, Number(to.count) || 1);
-        total += per * cnt * share;
+        total += per * cnt;
       } else if (to.type === 'ups') {
-        // ИБП: ограничен своим номиналом
+        // ИБП ограничен своим номиналом — это его физический предел.
+        // Не нужно считать downstream — capacityKw и есть максимум.
         const capKw = Number(to.capacityKw) || 0;
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
-        // Максимум что ИБП потребит на входе = min(downstream, capacity) / eff + charge
-        const downstream = walk(to.id, new Set(path));
-        const actualLoad = Math.min(downstream, capKw);
-        total += (actualLoad / eff + chKw);
+        total += capKw / eff + chKw;
       } else if (to.type === 'panel' || to.type === 'channel') {
+        // Для parallel-щита: входящий фидер несёт свою долю
+        let share = 1;
+        if (to.type === 'panel' && to.switchMode === 'parallel') {
+          let feeders = 0;
+          const mask = Array.isArray(to.parallelEnabled) ? to.parallelEnabled : [];
+          for (const c2 of state.conns.values()) {
+            if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
+              if (mask[c2.to.port]) feeders++;
+            }
+          }
+          if (feeders > 1) share = 1 / feeders;
+        }
         total += walk(to.id, new Set(path)) * share;
       }
     }
