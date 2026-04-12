@@ -125,14 +125,17 @@ export function renderInspectorNode(n) {
 
     // Статистика использования канала — считаем и линии, и суммарные цепи
     let lines = 0, circuits = 0;
+    const channelConns = [];
     for (const c of state.conns.values()) {
       if (!Array.isArray(c.channelIds) || !c.channelIds.includes(n.id)) continue;
       lines++;
+      const fromN = state.nodes.get(c.from.nodeId);
       const toN = state.nodes.get(c.to.nodeId);
       const par = (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1)
         ? Number(toN.count)
         : 1;
       circuits += par;
+      channelConns.push({ c, fromN, toN, par });
     }
     const typeInfo = CHANNEL_TYPES[ct] || CHANNEL_TYPES.conduit;
     h.push(`<div class="inspector-section">` +
@@ -142,6 +145,24 @@ export function renderInspectorNode(n) {
       `Линий в канале: <b>${lines}</b><br>` +
       `Параллельных цепей (для K_group): <b>${circuits}</b><br>` +
       `</div></div>`);
+
+    // Перечень линий, проходящих через канал
+    if (channelConns.length) {
+      h.push('<div class="inspector-section"><h4>Линии в канале</h4>');
+      h.push('<div style="font-size:11px;line-height:1.8">');
+      for (const { c, fromN, toN, par } of channelConns) {
+        const fromTag = fromN ? escHtml(effectiveTag(fromN) || fromN.name || '?') : '?';
+        const toTag = toN ? escHtml(effectiveTag(toN) || toN.name || '?') : '?';
+        const cable = c._cableSize ? `${c._wireCount || '?'}×${c._cableSize} мм²` : '—';
+        const current = c._maxA ? `${fmt(c._maxA)} A` : '—';
+        const countLabel = par > 1 ? ` (${par} шт.)` : '';
+        h.push(`<div style="padding:2px 0;border-bottom:1px solid #eee">`);
+        h.push(`<b>${fromTag}</b> → <b>${toTag}</b>${countLabel}<br>`);
+        h.push(`<span style="color:#666">Кабель: ${cable} · Imax: ${current}</span>`);
+        h.push(`</div>`);
+      }
+      h.push('</div></div>');
+    }
 
     h.push('<button class="btn-delete" id="btn-del-node">Удалить канал</button>');
     inspectorBody.innerHTML = h.join('');
