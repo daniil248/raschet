@@ -203,32 +203,31 @@ export function renderNodes() {
     // Нагрузка
     let loadLine = '', loadCls = 'node-load';
     if (n.type === 'source') {
-      if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
+      if (!effectiveOn(n)) { loadLine = `Отключён · ${fmt(n.capacityKw)} kW`; loadCls += ' off'; }
       else {
-        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW`;
+        loadLine = `${fmt(n._loadKw)} (макс ${fmt(n._maxLoadKw || 0)}) / ${fmt(n.capacityKw)} kW`;
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'generator') {
-      if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
+      if (!effectiveOn(n)) { loadLine = `Отключён · ${fmt(n.capacityKw)} kW`; loadCls += ' off'; }
       else if (n.triggerNodeId && n._startCountdown > 0) {
-        loadLine = `ПУСК через ${Math.ceil(n._startCountdown)} с`;
+        loadLine = `ПУСК через ${Math.ceil(n._startCountdown)} с · ${fmt(n.capacityKw)} kW`;
         loadCls += ' off';
       } else if (n.triggerNodeId && n._stopCountdown > 0) {
-        // Остывание — генератор ещё держит нагрузку, но таймер идёт
         loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW · стоп ${Math.ceil(n._stopCountdown)} с`;
       } else if (n.triggerNodeId && !n._running) {
-        loadLine = 'Дежурство';
+        loadLine = `Дежурство · ${fmt(n.capacityKw)} kW`;
         loadCls += ' off';
       } else {
-        loadLine = `${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW`;
+        loadLine = `${fmt(n._loadKw)} (макс ${fmt(n._maxLoadKw || 0)}) / ${fmt(n.capacityKw)} kW`;
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'panel') {
       if (!n._powered) {
-        loadLine = 'Без питания';
+        loadLine = `Без питания · макс ${fmt(n._maxLoadKw || 0)} kW`;
         loadCls += ' off';
       } else {
-        loadLine = `${fmt(n._loadA || 0)} A / ${fmt(n._loadKw || 0)} kW`;
+        loadLine = `${fmt(n._loadA || 0)} A / ${fmt(n._loadKw || 0)} (макс ${fmt(n._maxLoadKw || 0)}) kW`;
         if (n._marginWarn === 'low') loadCls += ' overload';
       }
     } else if (n.type === 'ups') {
@@ -390,63 +389,45 @@ export function renderConns() {
     //   жилы — 5 для 3ф (L1+L2+L3+N+PE), 3 для 1ф (L+N+PE)
     //   N× — количество спаренных кабелей (только если > 1)
     //   (кол-во шт.) — только для групповых потребителей (count > 1)
-    if (c._state === 'active' && c._loadKw > 0) {
+    // Подпись кабеля/шинопровода на ЛЮБОЙ линии с maxA > 0
+    if (c._maxA > 0 && (c._cableSize || c._busbarNom || c._cableOverflow)) {
       const mid = pathMidpoint(a, waypoints, b);
+      const isActive = c._state === 'active' && c._loadKw > 0;
       const parallel = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._threePhase ? 5 : 3);
-
-      // Ток макс. режима на ОДНУ параллельную ветвь
       const maxPerBranch = (c._maxA || 0) / parallel;
 
-      // Обозначение кабеля:
-      //   Обычная линия:                   «5×25 мм²»
-      //   Спаренные кабели (auto-parallel): «2×(5×240 мм²)» — расчёт увеличил параллель
-      //   Группа потребителей:             «5×25 мм² (4 шт.)» — БЕЗ множителя перед скобками
-      //   Группа + спаренные:              «2×(5×240 мм²) (4 шт.)»
-      //
-      // Ключевое: множитель N×(...) показывается ТОЛЬКО при auto-parallel
-      // (когда одиночный кабель не проходит по току и расчёт увеличил параллель).
-      // Групповые линии (count > 1) показывают только «(N шт.)» в конце.
-      const isAutoParallel = !!c._cableAutoParallel;
-      let cableSpec = '';
-      if (c._cableSize) {
-        const inner = `${cores}×${c._cableSize} мм²`;
-        cableSpec = (isAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
-      }
-
-      const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1)
-        ? Number(toN.count) : 0;
-
-      // Формат: «полный_ток A · N×ток_на_линию A / кабель (шт.)»
-      // Одиночная:  «173.7 A / 5×240 мм²»
-      // Спаренная:  «1389.6 A · 8×173.7 A / 8×(5×240 мм²)»
-      // Группа:     «173.7 A / 5×240 мм² (8 шт.)»
       let labelText;
-      if (isAutoParallel && parallel > 1) {
-        const totalA = maxPerBranch * parallel;
-        labelText = `${fmt(totalA)} A · ${parallel}×${fmt(maxPerBranch)} A / ${cableSpec}`;
-      } else {
-        labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
+      if (c._cableOverflow) {
+        // Overflow — не удалось подобрать кабель
+        labelText = `⚠ ${fmt(c._maxA)} A — кабель не подобран!`;
+      } else if (c._busbarNom) {
+        labelText = `${fmt(c._maxA)} A / шинопр. ${c._busbarNom} А`;
+      } else if (c._cableSize) {
+        const isAutoParallel = !!c._cableAutoParallel;
+        const inner = `${cores}×${c._cableSize} мм²`;
+        const cableSpec = (isAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
+        const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1)
+          ? Number(toN.count) : 0;
+
+        if (isAutoParallel && parallel > 1) {
+          const totalA = maxPerBranch * parallel;
+          labelText = `${fmt(totalA)} A · ${parallel}×${fmt(maxPerBranch)} A / ${cableSpec}`;
+        } else {
+          labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
+        }
+        if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
       }
-      if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
 
-      const lbl = text(mid.x, mid.y - 4, labelText,
-        'conn-label' + (c._cableOverflow ? ' overload' : ''));
-      layerConns.appendChild(lbl);
-    }
-
-    // Подпись макс. режима на неактивных связях
-    if (c._state !== 'active' && c._maxA > 0 && c._cableSize) {
-      const mid = pathMidpoint(a, waypoints, b);
-      const parallel = Math.max(1, c._cableParallel || 1);
-      const maxPerBranch = c._maxA / parallel;
-      const cores = c._threePhase ? 5 : 3;
-      const inner = `${cores}×${c._cableSize} мм²`;
-      const isAutoP = !!c._cableAutoParallel;
-      const spec = (isAutoP && parallel > 1) ? `${parallel}×(${inner})` : inner;
-      const labelText = `[${fmt(maxPerBranch)} A / ${spec}]`;
-      const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label-sub');
-      layerConns.appendChild(lbl);
+      if (labelText) {
+        const cls = isActive
+          ? ('conn-label' + (c._cableOverflow ? ' overload' : ''))
+          : ('conn-label-sub' + (c._cableOverflow ? ' overload' : ''));
+        const prefix = isActive ? '' : '[';
+        const suffix = isActive ? '' : ']';
+        const lbl = text(mid.x, mid.y - 4, prefix + labelText + suffix, cls);
+        layerConns.appendChild(lbl);
+      }
     }
 
     // Рукоятки на обоих концах выделенной связи + точки сплайна
