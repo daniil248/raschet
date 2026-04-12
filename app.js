@@ -1326,33 +1326,63 @@ function recalc() {
   }
 
   // === Подбор защитных автоматов на выходах ===
-  // Для каждой связи определяем, является ли она "ответвлением" щита/ИБП/источника.
-  // Если да — подбираем номинал автомата защиты по расчётному току ОДНОЙ жилы
-  // группы (т.к. внутри шкафа на каждую параллельную цепь ставится свой автомат).
+  // Правило защиты кабеля по IEC 60364-4-43: Iрасч ≤ In ≤ Iz
+  //   Iрасч — расчётный ток нагрузки (на одну параллельную линию)
+  //   In    — номинал автомата (ближайший больший стандарт ≥ Iрасч)
+  //   Iz    — допустимый ток кабеля (с поправками)
+  // Если In > Iz — кабель не защищён, нужно увеличить сечение.
+  //
+  // Для спаренных (auto-parallel) линий:
+  //   - Общий автомат = selectBreaker(Iтотал) — на полный ток
+  //   - Per-cable автомат = selectBreaker(Iper) — на каждую параллельную линию
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     if (!fromN) continue;
     if (fromN.type !== 'panel' && fromN.type !== 'ups' && fromN.type !== 'source') {
       c._breakerIn = null;
+      c._breakerPerLine = null;
       c._breakerCount = 0;
       continue;
     }
     const toN = state.nodes.get(c.to.nodeId);
-    if (!toN) { c._breakerIn = null; c._breakerCount = 0; continue; }
+    if (!toN) { c._breakerIn = null; c._breakerPerLine = null; c._breakerCount = 0; continue; }
 
-    // Ток одной жилы внутри группы (для групповых потребителей делим на count)
     const parallel = Math.max(1, c._cableParallel || 1);
-    const Iper = (c._maxA || 0) / parallel;
+    const Itotal = c._maxA || 0;
+    const Iper = Itotal / parallel;
+    const Iz = c._cableIz || 0;
+
     if (Iper <= 0) {
       c._breakerIn = null;
+      c._breakerPerLine = null;
       c._breakerCount = 0;
       continue;
     }
-    c._breakerIn = selectBreaker(Iper);
-    c._breakerCount = parallel;
-    // Проверка: сечение должно выдерживать ток автомата (упрощённая селективность
-    // по току: Iz ≥ In). Если нет — помечаем связь как «не селективно».
-    c._breakerAgainstCable = !!(c._cableIz && c._breakerIn && c._cableIz < c._breakerIn);
+
+    // Автомат на каждую параллельную линию: Iрасч ≤ In ≤ Iz
+    let InPerLine = selectBreaker(Iper);
+    // Если In > Iz — кабель не защищён, помечаем
+    c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
+
+    // Общий автомат = In × parallel (или ближайший стандарт на полный ток)
+    const InTotal = selectBreaker(Itotal);
+
+    if (c._cableAutoParallel && parallel > 1) {
+      // Спаренные: общий + per-line
+      c._breakerIn = InTotal;
+      c._breakerPerLine = InPerLine;
+      c._breakerCount = parallel;
+    } else if (parallel > 1) {
+      // Групповая (не спаренная): один автомат per-line × кол-во
+      c._breakerIn = null;
+      c._breakerPerLine = InPerLine;
+      c._breakerCount = parallel;
+    } else {
+      // Одиночная линия
+      c._breakerIn = InPerLine;
+      c._breakerPerLine = null;
+      c._breakerCount = 1;
+    }
   }
 
   // === Расчёт финального cos φ, P/Q/S и токов для щитов / ИБП / источников ===
@@ -2001,10 +2031,9 @@ function renderConns() {
       }
     }
 
-    // Бейдж автомата на выходе источника/щита/ИБП — ближе к from-концу,
-    // расположение следует за реальной траекторией
-    if (c._breakerIn && c._state === 'active') {
-      // Берём точку на 15% от начала ломаной [a, ...waypoints, b]
+    // Бейдж автомата — ближе к from-концу, следует за траекторией
+    const hasBreaker = c._breakerIn || c._breakerPerLine;
+    if (hasBreaker && c._state === 'active') {
       const pts = [a, ...waypoints, b];
       let total = 0;
       const segs = [];
@@ -2026,11 +2055,20 @@ function renderConns() {
         }
         acc += segs[i];
       }
-      const txt = c._breakerCount > 1
-        ? `${c._breakerCount}×C${c._breakerIn}А`
-        : `C${c._breakerIn}А`;
+
       const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');
-      layerConns.appendChild(text(labelPos.x, labelPos.y + 14, txt, cls));
+
+      if (c._cableAutoParallel && c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
+        // Спаренные: общий автомат сверху, per-line в скобках снизу
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 10, `C${c._breakerIn}А`, cls));
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 22, `(${c._breakerCount}×C${c._breakerPerLine}А)`, cls));
+      } else if (c._breakerPerLine && c._breakerCount > 1) {
+        // Группа: N×CxxA
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 14, `${c._breakerCount}×C${c._breakerPerLine}А`, cls));
+      } else if (c._breakerIn) {
+        // Одиночная: CxxA
+        layerConns.appendChild(text(labelPos.x, labelPos.y + 14, `C${c._breakerIn}А`, cls));
+      }
     }
   }
 }
