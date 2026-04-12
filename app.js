@@ -1923,16 +1923,22 @@ function renderConns() {
       // Ток макс. режима на ОДНУ параллельную ветвь
       const maxPerBranch = (c._maxA || 0) / parallel;
 
-      // Обозначение кабеля: [N×](жилы×сечение)
-      // Если параллельных > 1: «3×(5×240 мм²)»
-      // Если одна линия:       «5×240 мм²»
+      // Обозначение кабеля:
+      //   Обычная линия:                   «5×25 мм²»
+      //   Спаренные кабели (auto-parallel): «2×(5×240 мм²)» — расчёт увеличил параллель
+      //   Группа потребителей:             «5×25 мм² (4 шт.)» — БЕЗ множителя перед скобками
+      //   Группа + спаренные:              «2×(5×240 мм²) (4 шт.)»
+      //
+      // Ключевое: множитель N×(...) показывается ТОЛЬКО при auto-parallel
+      // (когда одиночный кабель не проходит по току и расчёт увеличил параллель).
+      // Групповые линии (count > 1) показывают только «(N шт.)» в конце.
+      const isAutoParallel = !!c._cableAutoParallel;
       let cableSpec = '';
       if (c._cableSize) {
         const inner = `${cores}×${c._cableSize} мм²`;
-        cableSpec = parallel > 1 ? `${parallel}×(${inner})` : inner;
+        cableSpec = (isAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
       }
 
-      // Группа потребителей
       const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1)
         ? Number(toN.count) : 0;
 
@@ -1944,15 +1950,15 @@ function renderConns() {
       layerConns.appendChild(lbl);
     }
 
-    // Подпись макс. режима на неактивных связях (powered/dead) —
-    // справочно, если эта линия в другом режиме могла бы нести ток
+    // Подпись макс. режима на неактивных связях
     if (c._state !== 'active' && c._maxA > 0 && c._cableSize) {
       const mid = pathMidpoint(a, waypoints, b);
       const parallel = Math.max(1, c._cableParallel || 1);
       const maxPerBranch = c._maxA / parallel;
       const cores = c._threePhase ? 5 : 3;
       const inner = `${cores}×${c._cableSize} мм²`;
-      const spec = parallel > 1 ? `${parallel}×(${inner})` : inner;
+      const isAutoP = !!c._cableAutoParallel;
+      const spec = (isAutoP && parallel > 1) ? `${parallel}×(${inner})` : inner;
       const labelText = `[${fmt(maxPerBranch)} A / ${spec}]`;
       const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label-sub');
       layerConns.appendChild(lbl);
