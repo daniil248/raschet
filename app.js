@@ -1979,7 +1979,17 @@ function renderConns() {
       const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1)
         ? Number(toN.count) : 0;
 
-      let labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
+      // Формат: «полный_ток A · N×ток_на_линию A / кабель (шт.)»
+      // Одиночная:  «173.7 A / 5×240 мм²»
+      // Спаренная:  «1389.6 A · 8×173.7 A / 8×(5×240 мм²)»
+      // Группа:     «173.7 A / 5×240 мм² (8 шт.)»
+      let labelText;
+      if (isAutoParallel && parallel > 1) {
+        const totalA = maxPerBranch * parallel;
+        labelText = `${fmt(totalA)} A · ${parallel}×${fmt(maxPerBranch)} A / ${cableSpec}`;
+      } else {
+        labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
+      }
       if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
 
       const lbl = text(mid.x, mid.y - 4, labelText,
