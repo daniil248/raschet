@@ -963,9 +963,55 @@ function recalc() {
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка (все потребители на 100%)
-      // НЕ ограничиваем мощностью источников — показываем реальную downstream нагрузку.
-      // Если она превышает то, что может подать upstream — это видно по перегрузу источников.
-      n._maxLoadKw = maxDownstreamLoad(n.id);
+      // Для щита коммутации (switchPanel) — MAX по сценариям генератора,
+      // т.к. одновременно включаются только выходы одного сценария.
+      let panelMaxKw = null;
+      for (const gen of state.nodes.values()) {
+        if (gen.type !== 'generator' || gen.switchPanelId !== n.id) continue;
+        const gGroups = Array.isArray(gen.triggerGroups) ? gen.triggerGroups : [];
+        if (!gGroups.length) continue;
+        // Этот щит управляется генератором — считаем MAX по сценариям
+        let maxScKw = 0;
+        for (const grp of gGroups) {
+          const outs = Array.isArray(grp.activateOutputs) ? grp.activateOutputs : [];
+          if (!outs.length) continue;
+          const visitedC = new Set(), visitedU = new Set();
+          let dKw = 0, uKw = 0, chKw = 0, sEff = 0, uCnt = 0;
+          function scWalk(nid, path, thruUps) {
+            if (path.has(nid)) return;
+            path.add(nid);
+            for (const c of state.conns.values()) {
+              if (c.from.nodeId !== nid || c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+              const to = state.nodes.get(c.to.nodeId);
+              if (!to) continue;
+              if (to.type === 'consumer') {
+                if (visitedC.has(to.id)) continue; visitedC.add(to.id);
+                const kw = (Number(to.demandKw)||0) * Math.max(1, Number(to.count)||1);
+                if (thruUps) uKw += kw; else dKw += kw;
+              } else if (to.type === 'ups') {
+                if (visitedU.has(to.id)) continue; visitedU.add(to.id);
+                sEff += Math.max(0.01, (Number(to.efficiency)||100)/100);
+                chKw += upsChargeKw(to); uCnt++;
+                scWalk(to.id, new Set(path), true);
+              } else { scWalk(to.id, new Set(path), thruUps); }
+            }
+          }
+          for (const outPort of outs) {
+            for (const c of state.conns.values()) {
+              if (c.from.nodeId !== n.id || c.from.port !== outPort) continue;
+              if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+              const to = state.nodes.get(c.to.nodeId);
+              if (to) scWalk(to.id, new Set(), false);
+            }
+          }
+          const aEff = uCnt > 0 ? sEff / uCnt : 1;
+          const scKw = dKw + uKw / aEff + chKw;
+          if (scKw > maxScKw) maxScKw = scKw;
+        }
+        panelMaxKw = maxScKw;
+        break; // один генератор управляет этим щитом
+      }
+      n._maxLoadKw = panelMaxKw !== null ? panelMaxKw : maxDownstreamLoad(n.id);
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
 
       // Проверка номинала шкафа — в амперах (основная единица для щитов).
