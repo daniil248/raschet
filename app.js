@@ -199,12 +199,17 @@ function selectCableSize(I, opts) {
   }
   const effTable = filterTable(table);
 
-  // Пробуем подобрать сечение для заданного числа параллельных жил
+  // Пробуем подобрать сечение для заданного числа параллельных жил.
+  // Правило IEC 60364-4-43: Iрасч ≤ In ≤ Iz
+  //   — сечение должно быть достаточным, чтобы существовал стандартный
+  //     автомат In ≥ Iрасч, при этом In ≤ Iz (автомат защищает кабель).
   function tryWithParallel(parallel) {
     const Iper = I / parallel;
+    const InNeeded = selectBreaker(Iper); // ближайший стандартный ≥ Iрасч
     for (const [s, iRef] of effTable) {
       const iDerated = iRef * k;
-      if (iDerated >= Iper) {
+      // Iz должен быть ≥ In (автомат защищает кабель)
+      if (iDerated >= InNeeded) {
         return { s, iAllowed: iRef, iDerated, parallel };
       }
     }
@@ -1360,23 +1365,12 @@ function recalc() {
     }
 
     // Автомат на каждую параллельную линию: Iрасч ≤ In ≤ Iz
-    // Сначала ищем ближайший ≥ Iрасч
+    // Кабель уже подобран так, что Iz ≥ In ≥ Iрасч (selectCableSize
+    // теперь проверяет Iz ≥ selectBreaker(Iрасч)).
     let InPerLine = selectBreaker(Iper);
-    // Если In > Iz — автомат не защищает кабель.
-    // Выбираем наибольший стандарт ≤ Iz (кабель определяет максимум автомата).
-    if (Iz > 0 && InPerLine > Iz) {
-      // Ищем наибольший стандарт ≤ Iz
-      let bestFit = BREAKER_SERIES[0];
-      for (const v of BREAKER_SERIES) {
-        if (v <= Iz) bestFit = v;
-        else break;
-      }
-      InPerLine = bestFit;
-      // Если даже наименьший автомат < Iрасч — кабель слишком мал
-      c._breakerAgainstCable = (InPerLine < Iper);
-    } else {
-      c._breakerAgainstCable = false;
-    }
+    // Дополнительная проверка — на случай если кабель задан вручную
+    // или параметры канала изменили Iz после подбора.
+    c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
 
     // Общий автомат = In × parallel (или ближайший стандарт на полный ток)
     const InTotal = selectBreaker(Itotal);
