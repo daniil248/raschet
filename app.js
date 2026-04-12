@@ -125,14 +125,15 @@ const K_GROUP = { 1: 1.00, 2: 0.80, 3: 0.70, 4: 0.65, 5: 0.60, 6: 0.57, 7: 0.54,
 // Описание типов каналов: тип → метод прокладки по IEC 60364-5-52 + базовое
 // расположение (bundling), которое можно переопределить.
 const CHANNEL_TYPES = {
-  conduit:     { label: 'B1 — Труба на/в стене',        method: 'B1', bundlingDefault: 'touching' },
-  tray_solid:  { label: 'B2 — Сплошной лоток / короб',  method: 'B2', bundlingDefault: 'touching' },
-  wall:        { label: 'C — Открыто на стене',         method: 'C',  bundlingDefault: 'spaced'   },
-  tray_perf:   { label: 'E — Перфорированный лоток',    method: 'E',  bundlingDefault: 'touching' },
-  tray_ladder: { label: 'F — Лестничный лоток',         method: 'F',  bundlingDefault: 'spaced'   },
-  air:         { label: 'F — Свободно в воздухе',       method: 'F',  bundlingDefault: 'spaced'   },
-  ground:      { label: 'D1 — В трубе в земле',         method: 'D1', bundlingDefault: 'touching' },
-  ground_direct:{ label: 'D2 — Напрямую в земле',       method: 'D2', bundlingDefault: 'touching' },
+  conduit:      { label: 'B1 — Труба на/в стене',        method: 'B1', bundlingDefault: 'touching', icon: '⊚' },
+  tray_solid:   { label: 'B2 — Сплошной лоток / короб',  method: 'B2', bundlingDefault: 'touching', icon: '▬' },
+  wall:         { label: 'C — Открыто на стене',         method: 'C',  bundlingDefault: 'spaced',   icon: '┃' },
+  tray_perf:    { label: 'E — Перфорированный лоток',    method: 'E',  bundlingDefault: 'touching', icon: '⊞' },
+  tray_wire:    { label: 'E — Проволочный лоток',        method: 'E',  bundlingDefault: 'spaced',   icon: '⊟' },
+  tray_ladder:  { label: 'F — Лестничный лоток',         method: 'F',  bundlingDefault: 'spaced',   icon: '☰' },
+  air:          { label: 'F — Свободно в воздухе',       method: 'F',  bundlingDefault: 'spaced',   icon: '〰' },
+  ground:       { label: 'D1 — В трубе в земле',         method: 'D1', bundlingDefault: 'touching', icon: '⊘' },
+  ground_direct:{ label: 'D2 — Напрямую в земле',        method: 'D2', bundlingDefault: 'touching', icon: '⏚' },
 };
 
 // Коэффициент расположения кабелей (IEC 60364-5-52, табл. B.52.17 — упрощённо).
@@ -1771,7 +1772,7 @@ function renderNodes() {
       consumer:  ((n.count || 1) > 1
                     ? `Группа · ${n.count} × ${fmt(n.demandKw)} kW`
                     : 'Потребитель') + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
-      channel:   `Канал · ${n.material || 'Cu'} / ${n.insulation || 'PVC'} · ${n.method || 'B1'}`,
+      channel:   (CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit).label,
     }[n.type];
     g.appendChild(text(12, 49, subTxt, 'node-sub'));
 
@@ -1825,7 +1826,8 @@ function renderNodes() {
       loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
       if (!n._powered) loadCls += ' off';
     } else if (n.type === 'channel') {
-      loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
+      const chType = CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit;
+      loadLine = `${chType.icon || ''} ${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
     }
     g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
 
@@ -2555,7 +2557,7 @@ function wireInspectorInputs(n) {
       render();
       notifyChange();
       // Перерисовать инспектор при изменениях, от которых зависят другие поля
-      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype') {
+      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType') {
         renderInspector();
       }
     };
