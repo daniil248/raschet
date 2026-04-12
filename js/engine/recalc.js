@@ -42,167 +42,59 @@ function simpleDownstream(nodeId) {
 
 // Максимально возможная нагрузка downstream.
 //
-// Обнаружение UPS-кластеров:
-//   Если от узла A выходят линии к ИБП (UPS1, UPS2...), и эти ИБП
-//   выходами подключены к щиту P, и при этом A тоже напрямую подключен
-//   к P (байпасная/сервисная линия), то это «UPS-кластер».
-//   В нормальном режиме A несёт входы UPS; в режиме байпаса — нагрузку P.
-//   Оба режима взаимоисключающие → max(сумма_входов_UPS, нагрузка_P).
-//
-// Для остальных выходов:
-//   - Потребитель: P_уст × count
-//   - ИБП (без кластера): capacityKw / КПД + charge
-//   - Parallel-щит: нагрузка × (1/N фидеров)
-//   - АВР-щит: 100% нагрузки (worst case)
+// Алгоритм:
+// 1. Собрать ВСЕ уникальные потребители, достижимые из данного узла
+// 2. Для каждого потребителя определить, проходит ли путь через UPS
+// 3. Потребители за UPS: суммарная_мощность / средний_КПД + заряды всех UPS
+// 4. Прямые потребители (не через UPS): суммарная мощность как есть
+// Это даёт корректный результат без двойного счёта при DAG-топологиях.
 function maxDownstreamLoad(nodeId) {
-  // --- Шаг 1: обнаружить UPS-кластеры от данного узла ---
-  // Собираем: какие UPS выходят из nodeId, и куда ведут их выходы
-  const outConns = [];
-  for (const c of state.conns.values()) {
-    if (c.from.nodeId !== nodeId) continue;
-    if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
-    outConns.push(c);
-  }
+  const visitedConsumers = new Set();
+  const visitedUps = new Set();
+  let directKw = 0;       // потребители НЕ через UPS
+  let upsConsumerKw = 0;  // потребители через UPS (до КПД)
+  let totalChargeKw = 0;  // суммарный заряд всех UPS
+  let sumEfficiency = 0;  // для среднего КПД
+  let upsCount = 0;
 
-  // Для каждого UPS, выходящего из nodeId, найдём panel, куда он ведёт
-  const upsToPanel = new Map(); // upsId → panelId (куда выход UPS подключён)
-  for (const c of outConns) {
-    const to = state.nodes.get(c.to.nodeId);
-    if (!to || to.type !== 'ups') continue;
-    // Куда выход этого UPS ведёт?
-    for (const c2 of state.conns.values()) {
-      if (c2.from.nodeId !== to.id) continue;
-      if (c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
-      const dest = state.nodes.get(c2.to.nodeId);
-      if (dest && dest.type === 'panel') {
-        upsToPanel.set(to.id, dest.id);
-      }
-    }
-  }
-
-  // Панели, к которым nodeId подключён НАПРЯМУЮ (не через UPS)
-  const directPanels = new Set();
-  for (const c of outConns) {
-    const to = state.nodes.get(c.to.nodeId);
-    if (to && (to.type === 'panel' || to.type === 'channel')) {
-      directPanels.add(to.id);
-    }
-  }
-
-  // Кластер: панель, к которой идут И UPS-выходы ОТ nodeId, И прямая линия
-  // clusters: Map<panelId, Set<upsId>>
-  const clusters = new Map();
-  for (const [upsId, panelId] of upsToPanel) {
-    if (directPanels.has(panelId)) {
-      if (!clusters.has(panelId)) clusters.set(panelId, new Set());
-      clusters.get(panelId).add(upsId);
-    }
-  }
-
-  // ID узлов, входящих в кластеры (чтобы не считать их повторно в основном walk)
-  const clusteredUps = new Set();
-  const clusteredPanels = new Set();
-  for (const [panelId, upsIds] of clusters) {
-    clusteredPanels.add(panelId);
-    for (const uid of upsIds) clusteredUps.add(uid);
-  }
-
-  // --- Шаг 2: основной walk (без кластерных узлов) ---
-  const visited = new Set();
-
-  function walk(nid, path) {
-    if (path.has(nid)) return 0;
+  // Рекурсивный обход. throughUps = true если мы прошли через хотя бы один UPS
+  function walk(nid, path, throughUps) {
+    if (path.has(nid)) return;
     path.add(nid);
-    let total = 0;
     for (const c of state.conns.values()) {
       if (c.from.nodeId !== nid) continue;
       if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
       const to = state.nodes.get(c.to.nodeId);
       if (!to) continue;
 
-      // Пропускаем узлы, входящие в кластер (они считаются отдельно)
-      if (nid === nodeId && clusteredUps.has(to.id)) continue;
-      if (nid === nodeId && clusteredPanels.has(to.id)) continue;
-
       if (to.type === 'consumer') {
-        if (visited.has(to.id)) continue;
-        visited.add(to.id);
-        const per = Number(to.demandKw) || 0;
-        const cnt = Math.max(1, Number(to.count) || 1);
-        total += per * cnt;
+        if (visitedConsumers.has(to.id)) continue;
+        visitedConsumers.add(to.id);
+        const kw = (Number(to.demandKw) || 0) * Math.max(1, Number(to.count) || 1);
+        if (throughUps) {
+          upsConsumerKw += kw;
+        } else {
+          directKw += kw;
+        }
       } else if (to.type === 'ups') {
-        if (visited.has(to.id)) continue;
-        visited.add(to.id);
-        const capKw = Number(to.capacityKw) || 0;
+        if (visitedUps.has(to.id)) continue;
+        visitedUps.add(to.id);
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
-        const chKw = upsChargeKw(to);
-        // Находим все UPS, подключённые к тому же downstream parallel-щиту.
-        // Они делят нагрузку — считаем долю этого UPS.
-        let upsShare = 1;
-        // Куда выход этого UPS ведёт?
-        for (const c2 of state.conns.values()) {
-          if (c2.from.nodeId !== to.id || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
-          const dest = state.nodes.get(c2.to.nodeId);
-          if (!dest || dest.type !== 'panel') continue;
-          // Сколько UPS питают этот же щит из текущего upstream?
-          let upsCount = 0;
-          for (const c3 of state.conns.values()) {
-            if (c3.to.nodeId !== dest.id || c3.lineMode === 'damaged' || c3.lineMode === 'disabled') continue;
-            const feeder = state.nodes.get(c3.from.nodeId);
-            if (feeder && feeder.type === 'ups') upsCount++;
-          }
-          if (upsCount > 1) upsShare = 1 / upsCount;
-          break;
-        }
-        const downstream = simpleDownstream(to.id);
-        const myShare = downstream * upsShare;
-        const actualLoad = Math.min(capKw, myShare);
-        total += actualLoad / eff + chKw;
+        totalChargeKw += upsChargeKw(to);
+        sumEfficiency += eff;
+        upsCount++;
+        walk(to.id, new Set(path), true);
       } else if (to.type === 'panel' || to.type === 'channel') {
-        let share = 1;
-        if (to.type === 'panel' && to.switchMode === 'parallel') {
-          let feeders = 0;
-          const mask = Array.isArray(to.parallelEnabled) ? to.parallelEnabled : [];
-          for (const c2 of state.conns.values()) {
-            if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
-              if (mask[c2.to.port]) feeders++;
-            }
-          }
-          if (feeders > 1) share = 1 / feeders;
-        }
-        total += walk(to.id, new Set(path)) * share;
+        walk(to.id, new Set(path), throughUps);
       }
     }
     path.delete(nid);
-    return total;
   }
 
-  let total = walk(nodeId, new Set());
+  walk(nodeId, new Set(), false);
 
-  // --- Шаг 3: добавить кластеры ---
-  for (const [panelId, upsIds] of clusters) {
-    // Вариант B (байпас): полная нагрузка панели напрямую
-    const panelLoad = walk(panelId, new Set());
-
-    // Вариант A (нормальный): для каждого UPS — min(номинал, downstream) / КПД + заряд
-    let upsInputSum = 0;
-    for (const uid of upsIds) {
-      const ups = state.nodes.get(uid);
-      if (!ups) continue;
-      const capKw = Number(ups.capacityKw) || 0;
-      const eff = Math.max(0.01, (Number(ups.efficiency) || 100) / 100);
-      const chKw = upsChargeKw(ups);
-      // Downstream за этим ИБП (независимый подсчёт)
-      const upsDownstream = simpleDownstream(ups.id);
-      const actualLoad = Math.min(capKw, upsDownstream);
-      upsInputSum += actualLoad / eff + chKw;
-    }
-
-    // Worst case = MAX из двух режимов (они взаимоисключающие)
-    total += Math.max(upsInputSum, panelLoad);
-  }
-
-  return total;
+  const avgEff = upsCount > 0 ? (sumEfficiency / upsCount) : 1;
+  return directKw + upsConsumerKw / avgEff + totalChargeKw;
 }
 
 // Финальный cos φ щита — взвешенное по активной мощности.
@@ -715,12 +607,29 @@ function recalc() {
       const cnt = Math.max(1, Number(toN.count) || 1);
       maxKwDownstream = per * cnt;
     } else if (toN.type === 'ups') {
-      // Для линии К ИБП: макс. нагрузка = min(номинал, downstream) / КПД + charge
+      // Для линии К ИБП: макс. нагрузка = min(номинал, share_downstream) / КПД + charge
       const capKw = Number(toN.capacityKw) || 0;
       const eff = Math.max(0.01, (Number(toN.efficiency) || 100) / 100);
       const chKw = upsChargeKw(toN);
-      const upsDown = simpleDownstream(toN.id);
-      const actualLoad = Math.min(capKw, upsDown);
+      // Downstream за UPS. Учитываем share если UPS делит нагрузку с другими UPS.
+      const fullDown = simpleDownstream(toN.id);
+      // Сколько UPS подключены к тому же downstream-щиту?
+      let upsShare = 1;
+      for (const c2 of state.conns.values()) {
+        if (c2.from.nodeId !== toN.id || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
+        const dest = state.nodes.get(c2.to.nodeId);
+        if (!dest || dest.type !== 'panel') continue;
+        let peerCount = 0;
+        for (const c3 of state.conns.values()) {
+          if (c3.to.nodeId !== dest.id || c3.lineMode === 'damaged' || c3.lineMode === 'disabled') continue;
+          const feeder = state.nodes.get(c3.from.nodeId);
+          if (feeder && feeder.type === 'ups') peerCount++;
+        }
+        if (peerCount > 1) upsShare = 1 / peerCount;
+        break;
+      }
+      const myLoad = fullDown * upsShare;
+      const actualLoad = Math.min(capKw, myLoad);
       maxKwDownstream = actualLoad / eff + chKw;
     } else if (toN.type === 'panel') {
       maxKwDownstream = maxDownstreamLoad(toN.id);
