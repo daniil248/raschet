@@ -219,8 +219,7 @@ function selectCableSize(I, opts) {
   // Сначала с базовым параллелизмом
   let res = tryWithParallel(basePar);
 
-  // Если не хватает — наращиваем параллель. Дополнительные цепи увеличивают
-  // группировку ещё сильнее (если не spaced).
+  // Если не хватает — наращиваем параллель.
   let autoParallel = false;
   if (!res && allowAutoParallel) {
     const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 4);
@@ -233,9 +232,11 @@ function selectCableSize(I, opts) {
       const kG2 = kGroupLookup(grp2) * kBundlingFactor(bundling);
       const k2 = kT * kG2;
       const Iper = I / par;
+      const InNeeded = selectBreaker(Iper);
       for (const [s, iRef] of effTable) {
         const iDerated = iRef * k2;
-        if (iDerated >= Iper) {
+        // Iz ≥ In ≥ Iрасч — автомат защищает кабель
+        if (iDerated >= InNeeded) {
           res = { s, iAllowed: iRef, iDerated, parallel: par };
           autoParallel = true;
           break;
