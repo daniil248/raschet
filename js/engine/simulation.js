@@ -195,6 +195,118 @@ function simTick() {
     }
   }
 
+  // 4. АВР щитов — задержки переключения при смене приоритета
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'panel') continue;
+    if (n.switchMode === 'parallel' || n.switchMode === 'manual') continue;
+    if (n.maintenance) continue;
+    if ((n.inputs || 0) < 2) continue;
+
+    // Определяем «желаемый» вход по приоритетам (какой АВР ХОЧЕТ включить)
+    const priorities = Array.isArray(n.priorities) ? n.priorities : [];
+    const groups = new Map();
+    for (let i = 0; i < n.inputs; i++) {
+      const prio = priorities[i] ?? (i + 1);
+      if (!groups.has(prio)) groups.set(prio, []);
+      groups.get(prio).push(i);
+    }
+    const sorted = [...groups.keys()].sort((a, b) => a - b);
+
+    // Проверяем напряжение на каждом вводе
+    const inputPowered = new Array(n.inputs).fill(false);
+    for (const c of state.conns.values()) {
+      if (c.to.nodeId === n.id && (c._state === 'active' || c._state === 'powered')) {
+        inputPowered[c.to.port] = true;
+      }
+    }
+
+    // Находим желаемую группу — первая по приоритету с напряжением
+    let desiredPorts = null;
+    for (const p of sorted) {
+      const ports = groups.get(p);
+      if (ports.some(i => inputPowered[i])) {
+        desiredPorts = new Set(ports);
+        break;
+      }
+    }
+    if (!desiredPorts) desiredPorts = new Set(); // всё мёртво
+
+    // Текущий активный порт (что сейчас замкнуто по АВР)
+    if (!n._avrActivePort && n._avrActivePort !== 0) {
+      // Инициализация — ищем текущий active вход
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId === n.id && c._state === 'active') {
+          n._avrActivePort = c.to.port;
+          break;
+        }
+      }
+    }
+    const currentPort = n._avrActivePort ?? -1;
+    const currentInDesired = desiredPorts.has(currentPort);
+
+    // Если текущий порт уже в желаемой группе — ничего делать не нужно
+    if (currentInDesired && desiredPorts.size > 0) {
+      // Сброс таймеров переключения
+      if (n._avrSwitchStartedAt) {
+        n._avrSwitchStartedAt = 0;
+        n._avrSwitchCountdown = 0;
+        n._avrInterlockStartedAt = 0;
+        n._avrInterlockCountdown = 0;
+        changed = true;
+      }
+      continue;
+    }
+
+    // Нужно переключение
+    const avrDelay = Math.max(0, Number(n.avrDelaySec) || 2);
+    const interlockDelay = Math.max(0, Number(n.avrInterlockSec) || 1);
+
+    // Фаза 1: Задержка переключения (ждём avrDelaySec)
+    if (!n._avrSwitchStartedAt) {
+      n._avrSwitchStartedAt = now;
+      changed = true;
+    }
+    const switchElapsed = (now - n._avrSwitchStartedAt) / 1000;
+    n._avrSwitchCountdown = Math.max(0, avrDelay - switchElapsed);
+
+    if (switchElapsed < avrDelay) continue; // ещё ждём
+
+    // Фаза 2: Отключаем текущий автомат
+    if (currentPort >= 0 && !n._avrDisconnected) {
+      n._avrDisconnected = true;
+      // Помечаем входной автомат как отключённый (для отображения)
+      if (!Array.isArray(n._avrBreakerOverride)) n._avrBreakerOverride = [];
+      n._avrBreakerOverride[currentPort] = false;
+      changed = true;
+    }
+
+    // Фаза 3: Разбежка (ждём avrInterlockSec после отключения)
+    if (!n._avrInterlockStartedAt) {
+      n._avrInterlockStartedAt = now;
+      changed = true;
+    }
+    const interlockElapsed = (now - n._avrInterlockStartedAt) / 1000;
+    n._avrInterlockCountdown = Math.max(0, interlockDelay - interlockElapsed);
+
+    if (interlockElapsed < interlockDelay) continue; // ещё ждём разбежку
+
+    // Фаза 4: Включаем новый автомат
+    const newPort = [...desiredPorts].find(i => inputPowered[i]) ?? -1;
+    if (newPort >= 0) {
+      if (!Array.isArray(n._avrBreakerOverride)) n._avrBreakerOverride = [];
+      // Выключаем все, включаем нужный
+      for (let i = 0; i < n.inputs; i++) n._avrBreakerOverride[i] = desiredPorts.has(i);
+      n._avrActivePort = newPort;
+    }
+    // Сброс таймеров
+    n._avrSwitchStartedAt = 0;
+    n._avrSwitchCountdown = 0;
+    n._avrInterlockStartedAt = 0;
+    n._avrInterlockCountdown = 0;
+    n._avrDisconnected = false;
+    changed = true;
+  }
+
   if (changed) {
     render();
     // Перерисовываем инспектор ТОЛЬКО если пользователь не фокусирован
@@ -203,7 +315,7 @@ function simTick() {
     const userEditing = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA');
     if (!userEditing && state.selectedKind === 'node') {
       const sel = state.nodes.get(state.selectedId);
-      if (sel && (sel.type === 'ups' || sel.type === 'generator')) {
+      if (sel && (sel.type === 'ups' || sel.type === 'generator' || sel.type === 'panel')) {
         renderInspector();
       }
     }

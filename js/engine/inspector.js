@@ -1191,8 +1191,12 @@ export function openPanelControlModal(n) {
       // Ручной/Щит: из inputBreakerStates
       breakerOn = inBreakers[i] !== false;
     } else {
-      // Авто (АВР): замкнут = АВР выбрал этот вход (active)
-      breakerOn = avrActiveInputs.has(i);
+      // Авто (АВР): из _avrBreakerOverride (симуляция) или active input
+      if (Array.isArray(n._avrBreakerOverride) && typeof n._avrBreakerOverride[i] === 'boolean') {
+        breakerOn = n._avrBreakerOverride[i];
+      } else {
+        breakerOn = avrActiveInputs.has(i);
+      }
     }
     inputStates.push({ powered: hasPower, feederTag, breakerOn });
   }
@@ -1278,6 +1282,13 @@ export function openPanelControlModal(n) {
   }
 
   h += `</svg></div>`;
+
+  // Таймер АВР
+  if (n._avrSwitchCountdown > 0) {
+    h += `<div style="text-align:center;font-size:12px;color:#1976d2;font-weight:600;margin:4px 0">АВР: задержка переключения ${Math.ceil(n._avrSwitchCountdown)} с</div>`;
+  } else if (n._avrInterlockCountdown > 0) {
+    h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:4px 0">АВР: разбежка ${Math.ceil(n._avrInterlockCountdown)} с</div>`;
+  }
 
   // --- Переключатель Авто / Ручной (только для щитов с АВР) ---
   if (inCount > 1 && hasAVR) {

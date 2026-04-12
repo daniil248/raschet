@@ -224,12 +224,20 @@ export function renderNodes() {
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'panel') {
-      if (!n._powered) {
+      if (n.maintenance) {
+        loadLine = 'Обслуживание'; loadCls += ' off';
+      } else if (!n._powered) {
         loadLine = `Без питания · макс ${fmt(n._maxLoadKw || 0)} kW`;
         loadCls += ' off';
       } else {
         loadLine = `${fmt(n._loadA || 0)} A / ${fmt(n._loadKw || 0)} (макс ${fmt(n._maxLoadKw || 0)}) kW`;
         if (n._marginWarn === 'low') loadCls += ' overload';
+      }
+      // Таймер АВР
+      if (n._avrSwitchCountdown > 0) {
+        loadLine += ` · АВР ${Math.ceil(n._avrSwitchCountdown)}с`;
+      } else if (n._avrInterlockCountdown > 0) {
+        loadLine += ` · разб. ${Math.ceil(n._avrInterlockCountdown)}с`;
       }
     } else if (n.type === 'ups') {
       if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
