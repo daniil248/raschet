@@ -624,10 +624,21 @@ function nextFreeTag(type) {
   return prefix + i;
 }
 
-// Проверка, что tag не занят другим узлом
+// Проверка, что tag не занят другим узлом В ТОЙ ЖЕ ЗОНЕ.
+// Одинаковые теги допустимы в разных зонах (P1.MDB1 и P2.MDB1 — ок).
 function isTagUnique(tag, exceptId) {
+  // Определяем зону кандидата
+  const candidate = state.nodes.get(exceptId);
+  const candidateZone = candidate ? findZoneForMember(candidate) : null;
+  const candidateZoneId = candidateZone ? candidateZone.id : null;
   for (const n of state.nodes.values()) {
-    if (n.id !== exceptId && n.tag === tag) return false;
+    if (n.id === exceptId) continue;
+    if (n.tag !== tag) continue;
+    // Нашли узел с таким же tag — допустим, если он в ДРУГОЙ зоне
+    const nZone = findZoneForMember(n);
+    const nZoneId = nZone ? nZone.id : null;
+    if (nZoneId !== candidateZoneId) continue; // разные зоны → ок
+    return false; // та же зона (или обе без зоны) → конфликт
   }
   return true;
 }
@@ -3038,6 +3049,24 @@ svg.addEventListener('mousedown', e => {
       else state.selection.add(id);
       render();
       return;
+    }
+    // Ctrl+drag — клонировать узел и начать таскать копию
+    if ((e.ctrlKey || e.metaKey) && !state.readOnly) {
+      const original = state.nodes.get(id);
+      if (original && original.type !== 'zone') {
+        snapshot();
+        _clipboardNode = JSON.parse(JSON.stringify(original));
+        pasteNode(0, 0); // вставит со смещением 0,0 — на том же месте
+        // Начинаем drag копии (она стала selectedId)
+        const copyId = state.selectedId;
+        const copy = state.nodes.get(copyId);
+        if (copy) {
+          const p = clientToSvg(e.clientX, e.clientY);
+          state.drag = { nodeId: copyId, dx: p.x - copy.x, dy: p.y - copy.y };
+        }
+        render();
+        return;
+      }
     }
     // Обычный клик — одиночное выделение
     state.selection.clear();
