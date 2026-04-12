@@ -688,7 +688,7 @@ input, select { font: inherit; }
 .conn.dead { stroke: #d0d4db; }
 .conn.damaged { stroke: #c62828; stroke-dasharray: 6 4; stroke-width: 2.5; }
 .conn.disabled { stroke: #bdbdbd; stroke-width: 1.5; }
-.conn.selected { stroke: #ef6c00 !important; stroke-width: 3.5; }
+.conn.selected { stroke: #2979ff !important; stroke-width: 5; filter: drop-shadow(0 0 3px rgba(41,121,255,0.5)); }
 
 .conn-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
 
