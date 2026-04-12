@@ -6,6 +6,48 @@ import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrent
          upsChargeKw, sourceImpedance } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 
+// Простой подсчёт downstream нагрузки за узлом (без visited, только path для циклов).
+// Используется для определения реальной нагрузки за конкретным UPS.
+function simpleDownstream(nodeId) {
+  const seen = new Set();
+  function walk(nid) {
+    if (seen.has(nid)) return 0;
+    seen.add(nid);
+    let total = 0;
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId !== nid) continue;
+      if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+      const to = state.nodes.get(c.to.nodeId);
+      if (!to) continue;
+      if (to.type === 'consumer') {
+        const per = Number(to.demandKw) || 0;
+        const cnt = Math.max(1, Number(to.count) || 1);
+        total += per * cnt;
+      } else if (to.type === 'ups') {
+        // Вложенный UPS — берём min(cap, downstream)
+        const capKw = Number(to.capacityKw) || 0;
+        const down = walk(to.id);
+        total += Math.min(capKw, down);
+      } else if (to.type === 'panel' || to.type === 'channel') {
+        let share = 1;
+        if (to.type === 'panel' && to.switchMode === 'parallel') {
+          let feeders = 0;
+          const mask = Array.isArray(to.parallelEnabled) ? to.parallelEnabled : [];
+          for (const c2 of state.conns.values()) {
+            if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
+              if (mask[c2.to.port]) feeders++;
+            }
+          }
+          if (feeders > 1) share = 1 / feeders;
+        }
+        total += walk(to.id) * share;
+      }
+    }
+    return total;
+  }
+  return walk(nodeId);
+}
+
 // Максимально возможная нагрузка downstream.
 //
 // Обнаружение UPS-кластеров:
@@ -103,9 +145,8 @@ function maxDownstreamLoad(nodeId) {
         const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
         const chKw = upsChargeKw(to);
         // Реальная нагрузка ИБП = MIN(номинал, downstream) / КПД + заряд.
-        // ИБП не может выдать больше номинала, но и не нагружается больше
-        // чем фактическая нагрузка за ним.
-        const downstream = walk(to.id, new Set(path));
+        // Используем simpleDownstream (свой visited) чтобы не мешать основному walk.
+        const downstream = simpleDownstream(to.id);
         const actualLoad = Math.min(capKw, downstream);
         total += actualLoad / eff + chKw;
       } else if (to.type === 'panel' || to.type === 'channel') {
@@ -142,8 +183,8 @@ function maxDownstreamLoad(nodeId) {
       const capKw = Number(ups.capacityKw) || 0;
       const eff = Math.max(0.01, (Number(ups.efficiency) || 100) / 100);
       const chKw = upsChargeKw(ups);
-      // Downstream за этим ИБП (через его выходы → панель → потребители)
-      const upsDownstream = walk(ups.id, new Set());
+      // Downstream за этим ИБП (независимый подсчёт)
+      const upsDownstream = simpleDownstream(ups.id);
       const actualLoad = Math.min(capKw, upsDownstream);
       upsInputSum += actualLoad / eff + chKw;
     }
@@ -669,7 +710,7 @@ function recalc() {
       const capKw = Number(toN.capacityKw) || 0;
       const eff = Math.max(0.01, (Number(toN.efficiency) || 100) / 100);
       const chKw = upsChargeKw(toN);
-      const upsDown = maxDownstreamLoad(toN.id);
+      const upsDown = simpleDownstream(toN.id);
       const actualLoad = Math.min(capKw, upsDown);
       maxKwDownstream = actualLoad / eff + chKw;
     } else if (toN.type === 'panel') {
