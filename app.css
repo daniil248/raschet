@@ -686,6 +686,8 @@ input, select { font: inherit; }
   marker-end: url(#arrActive);
 }
 .conn.dead { stroke: #d0d4db; }
+.conn.damaged { stroke: #c62828; stroke-dasharray: 6 4; stroke-width: 2.5; }
+.conn.disabled { stroke: #bdbdbd; stroke-width: 1.5; }
 .conn.selected { stroke: #ef6c00 !important; stroke-width: 3.5; }
 
 .conn-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }

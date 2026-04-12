@@ -846,7 +846,11 @@ function tryConnect(from, to) {
 function recalc() {
   const edgesIn = new Map();
   for (const n of state.nodes.values()) edgesIn.set(n.id, []);
-  for (const c of state.conns.values()) edgesIn.get(c.to.nodeId).push(c);
+  for (const c of state.conns.values()) {
+    // Повреждённые и отключённые линии не проводят электричество
+    if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+    edgesIn.get(c.to.nodeId).push(c);
+  }
 
   const cache = new Map();
   function activeInputs(nid, allowBackup) {
@@ -1897,10 +1901,13 @@ function renderConns() {
     hit.dataset.connId = c.id;
     layerConns.appendChild(hit);
 
-    // Видимая линия
-    const stateClass = c._state === 'active' ? ' active'
-                     : c._state === 'powered' ? ' powered'
-                     : ' dead';
+    // Видимая линия — повреждённые и отключённые перекрывают электрическое состояние
+    let stateClass;
+    if (c.lineMode === 'damaged') stateClass = ' damaged';
+    else if (c.lineMode === 'disabled') stateClass = ' disabled';
+    else stateClass = c._state === 'active' ? ' active'
+                    : c._state === 'powered' ? ' powered'
+                    : ' dead';
     const path = el('path', {
       class: 'conn' + stateClass + (selected ? ' selected' : ''),
       d,
@@ -2859,6 +2866,14 @@ function renderInspectorConn(c) {
   h.push('<div class="muted" style="font-size:12px;margin-bottom:8px">Линия / связь</div>');
   h.push(`<div class="field"><label>Откуда</label><div>${escHtml(effectiveTag(fromN))} · ${escHtml(fromN?.name || '?')} · выход ${c.from.port + 1}</div></div>`);
   h.push(`<div class="field"><label>Куда</label><div>${escHtml(effectiveTag(toN))} · ${escHtml(toN?.name || '?')} · вход ${c.to.port + 1}</div></div>`);
+
+  const lm = c.lineMode || 'normal';
+  h.push(field('Состояние линии',
+    `<select data-conn-prop="lineMode">
+      <option value="normal"${lm === 'normal' ? ' selected' : ''}>Нормальная</option>
+      <option value="damaged"${lm === 'damaged' ? ' selected' : ''}>Повреждена</option>
+      <option value="disabled"${lm === 'disabled' ? ' selected' : ''}>Отключена</option>
+    </select>`));
 
   if (c._state === 'active') {
     h.push('<div class="inspector-section"><h4>Нагрузка линии</h4>');
