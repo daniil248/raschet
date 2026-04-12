@@ -519,14 +519,20 @@ function maxDownstreamLoad(nodeId) {
       const to = state.nodes.get(c.to.nodeId);
       if (!to) continue;
 
-      // Сколько АКТИВНЫХ фидеров приходит в to-узел
-      let feedersToTarget = 0;
-      for (const c2 of state.conns.values()) {
-        if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
-          feedersToTarget++;
+      // Share: для узлов с параллельным питанием (parallel mode) нагрузка
+      // делится между фидерами. Для АВР — один фидер несёт 100% (worst case).
+      let share = 1;
+      if (to.type === 'panel' && to.switchMode === 'parallel') {
+        let feeders = 0;
+        const enabledMask = Array.isArray(to.parallelEnabled) ? to.parallelEnabled : [];
+        for (const c2 of state.conns.values()) {
+          if (c2.to.nodeId === to.id && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
+            // В parallel-режиме считаем только включённые входы
+            if (enabledMask[c2.to.port]) feeders++;
+          }
         }
+        if (feeders > 1) share = 1 / feeders;
       }
-      const share = feedersToTarget > 1 ? (1 / feedersToTarget) : 1;
 
       if (to.type === 'consumer') {
         const per = Number(to.demandKw) || 0;
