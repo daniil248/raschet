@@ -677,11 +677,11 @@ input, select { font: inherit; }
   marker-end: url(#arrActive);
 }
 .conn.powered {
-  stroke: #43a047;
+  stroke: #e53935;
   stroke-width: 2.4;
-  marker-end: url(#arrPowered);
+  marker-end: url(#arrActive);
 }
-.conn.dead { stroke: #d0d4db; stroke-dasharray: 4 4; }
+.conn.dead { stroke: #d0d4db; }
 .conn.selected { stroke: #ef6c00 !important; stroke-width: 3.5; }
 
 .conn-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
