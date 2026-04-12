@@ -675,12 +675,9 @@ function recalc() {
       if (upsCap > 0 && maxKwDownstream > upsCap) maxKwDownstream = upsCap;
       if (!fromN._onStaticBypass) cos = 1.0; // инвертор → чисто активная мощность
     }
-    // Для линии ОТ источника/генератора: источник не может выдать больше
-    // своего номинала capacityKw. Ограничиваем downstream этим значением.
-    if (fromN.type === 'source' || fromN.type === 'generator') {
-      const srcCap = Number(fromN.capacityKw) || 0;
-      if (srcCap > 0 && maxKwDownstream > srcCap) maxKwDownstream = srcCap;
-    }
+    // Источник/генератор: НЕ ограничиваем downstream его номиналом.
+    // Кабель должен быть рассчитан на реальную нагрузку. Если нагрузка
+    // превышает номинал источника — это показывается как перегруз (_overload).
     const maxCurrent = maxKwDownstream > 0
       ? computeCurrentA(maxKwDownstream, U, cos, threePhase)
       : 0;
@@ -912,50 +909,9 @@ function recalc() {
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка (все потребители на 100%)
-      let rawMaxLoad = maxDownstreamLoad(n.id);
-      // Ограничение: щит не может получить больше, чем суммарная мощность
-      // его upstream-источников (через все входы, worst case).
-      // Для АВР: один вход — берём max номинал среди источников.
-      // Для parallel: сумма номиналов всех параллельных источников.
-      // Если upstream — не источник, а другой щит, ограничение не применяется.
-      {
-        let upstreamCap = 0;
-        let hasSourceUpstream = false;
-        const panelInConns = [];
-        for (const ci of state.conns.values()) {
-          if (ci.to.nodeId === n.id && ci.lineMode !== 'damaged' && ci.lineMode !== 'disabled') panelInConns.push(ci);
-        }
-        for (const ci of panelInConns) {
-          // Идём вверх до ближайшего источника/генератора
-          let cur = ci.from.nodeId;
-          const seen = new Set();
-          while (cur && !seen.has(cur)) {
-            seen.add(cur);
-            const nn = state.nodes.get(cur);
-            if (!nn) break;
-            if (nn.type === 'source' || nn.type === 'generator') {
-              hasSourceUpstream = true;
-              const cap = Number(nn.capacityKw) || 0;
-              upstreamCap = Math.max(upstreamCap, cap);
-              break;
-            }
-            // Идём дальше вверх по первому входу
-            let found = false;
-            for (const c2 of state.conns.values()) {
-              if (c2.to.nodeId === cur && c2.lineMode !== 'damaged' && c2.lineMode !== 'disabled') {
-                cur = c2.from.nodeId;
-                found = true;
-                break;
-              }
-            }
-            if (!found) break;
-          }
-        }
-        if (hasSourceUpstream && upstreamCap > 0 && rawMaxLoad > upstreamCap) {
-          rawMaxLoad = upstreamCap;
-        }
-      }
-      n._maxLoadKw = rawMaxLoad;
+      // НЕ ограничиваем мощностью источников — показываем реальную downstream нагрузку.
+      // Если она превышает то, что может подать upstream — это видно по перегрузу источников.
+      n._maxLoadKw = maxDownstreamLoad(n.id);
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
 
       // Проверка номинала шкафа — в амперах (основная единица для щитов).
@@ -996,8 +952,9 @@ function recalc() {
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка (все потребители на 100% без Ки)
-      // Ограничена номиналом источника — он физически не может выдать больше
-      n._maxLoadKw = Math.min(maxDownstreamLoad(n.id), Number(n.capacityKw) || Infinity);
+      // НЕ ограничиваем номиналом — показываем реальную нагрузку,
+      // а перегруз отображается через _overload флаг.
+      n._maxLoadKw = maxDownstreamLoad(n.id);
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
       const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
