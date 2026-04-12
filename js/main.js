@@ -696,12 +696,62 @@ function loadGlobalSettings() {
   } catch (e) { console.warn('[settings] load failed', e); }
 }
 
+function renderVoltageLevelsTable() {
+  const container = document.getElementById('voltage-levels-table');
+  if (!container) return;
+  const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
+  const levels = G.voltageLevels || [];
+  let html = '<table style="width:100%;font-size:11px;border-collapse:collapse">';
+  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Название</th><th>V_LL</th><th>V_LN</th><th>Фазы</th><th>Жилы</th><th></th></tr>';
+  for (let i = 0; i < levels.length; i++) {
+    const lv = levels[i];
+    html += `<tr style="border-bottom:1px solid #eee">
+      <td><input type="text" data-vl-idx="${i}" data-vl-field="label" value="${escHtml(lv.label)}" style="width:100%;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="vLL" value="${lv.vLL}" style="width:60px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="vLN" value="${lv.vLN}" style="width:60px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="phases" value="${lv.phases}" style="width:30px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="wires" value="${lv.wires}" style="width:30px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td><button type="button" data-vl-del="${i}" style="background:transparent;border:none;color:#c62828;cursor:pointer;font-size:14px" title="Удалить">×</button></td>
+    </tr>`;
+  }
+  html += '</table>';
+  container.innerHTML = html;
+
+  // Обработчики
+  container.querySelectorAll('[data-vl-idx]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const idx = Number(inp.dataset.vlIdx);
+      const field = inp.dataset.vlField;
+      const G2 = window.Raschet.getGlobal();
+      if (G2.voltageLevels[idx]) {
+        G2.voltageLevels[idx][field] = inp.type === 'number' ? Number(inp.value) : inp.value;
+        window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
+      }
+    });
+  });
+  container.querySelectorAll('[data-vl-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.vlDel);
+      const G2 = window.Raschet.getGlobal();
+      G2.voltageLevels.splice(idx, 1);
+      window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
+      renderVoltageLevelsTable();
+    });
+  });
+}
+
 function openSettingsModal() {
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-  set('set-voltage3ph',    G.voltage3ph ?? 400);
-  set('set-voltage1ph',    G.voltage1ph ?? 230);
   set('set-cosPhi',        G.defaultCosPhi ?? 0.92);
+  renderVoltageLevelsTable();
+  const addBtn = document.getElementById('voltage-levels-add');
+  if (addBtn) addBtn.onclick = () => {
+    const G2 = window.Raschet.getGlobal();
+    G2.voltageLevels.push({ label: 'New', vLL: 400, vLN: 230, phases: 3, wires: 5 });
+    window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
+    renderVoltageLevelsTable();
+  };
   set('set-material',      G.defaultMaterial ?? 'Cu');
   set('set-insulation',    G.defaultInsulation ?? 'PVC');
   set('set-cableType',     G.defaultCableType ?? 'multi');
@@ -714,9 +764,9 @@ function openSettingsModal() {
 
 function saveSettingsModal() {
   const get = (id) => document.getElementById(id)?.value;
+  const G = window.Raschet.getGlobal();
   const patch = {
-    voltage3ph:         Number(get('set-voltage3ph')) || 400,
-    voltage1ph:         Number(get('set-voltage1ph')) || 230,
+    voltageLevels:      G.voltageLevels, // уже обновлены через inline-редактирование
     defaultCosPhi:      Number(get('set-cosPhi')) || 0.92,
     defaultMaterial:    get('set-material') || 'Cu',
     defaultInsulation:  get('set-insulation') || 'PVC',

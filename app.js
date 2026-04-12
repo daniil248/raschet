@@ -2482,13 +2482,13 @@ function renderInspectorNode(n) {
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
   if (n.type === 'source' || n.type === 'generator') {
-    // Объединённый блок «Источник питания» с выбором подтипа
     const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
     h.push(field('Тип источника',
       `<select data-prop="sourceSubtype">
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
       </select>`));
+    h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
 
@@ -2600,7 +2600,6 @@ function renderInspectorNode(n) {
   } else if (n.type === 'ups') {
     h.push(field('Выходная мощность, kW', `<input type="number" min="0" step="0.1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(field('КПД, %', `<input type="number" min="30" max="100" step="1" data-prop="efficiency" value="${n.efficiency}">`));
-    h.push(phaseField(n));
     h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
     h.push(field('Ток заряда батареи, А (AC из сети)', `<input type="number" min="0" step="0.1" data-prop="chargeA" value="${n.chargeA ?? 2}">`));
@@ -2630,7 +2629,6 @@ function renderInspectorNode(n) {
       const total = (Number(n.demandKw) || 0) * (n.count | 0);
       h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Суммарная установленная: <b>${n.count} × ${fmt(n.demandKw)} kW = ${fmt(total)} kW</b></div>`);
     }
-    h.push(phaseFieldConsumer(n));
     h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi ?? 0.92}">`));
     h.push(field('Ки — коэффициент использования', `<input type="number" min="0" max="1" step="0.05" data-prop="kUse" value="${n.kUse ?? 1}">`));
