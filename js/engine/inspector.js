@@ -1116,7 +1116,8 @@ export function renderInspectorConn(c) {
       </select>`));
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
     h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
-  h.push('</div>');
+    h.push('</div>');
+  }
 
   // Результат подбора проводника
   if (c._state === 'active' && (c._cableSize || c._busbarNom)) {
