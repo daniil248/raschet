@@ -692,7 +692,13 @@ function recalc() {
     let method = c.installMethod || GLOBAL.defaultInstallMethod;
     let ambient = Number(c.ambientC) || GLOBAL.defaultAmbient;
     let bundling = c.bundling || 'touching';
-    let grouping = Number(c.grouping) || GLOBAL.defaultGrouping;
+    // Группировка: для групповых потребителей (count > 1) базовое число цепей = count,
+    // т.к. каждая единица группы — отдельный кабель в том же лотке/канале.
+    let baseGrouping = Number(c.grouping) || GLOBAL.defaultGrouping;
+    if (toN.type === 'consumer' && (Number(toN.count) || 1) > 1) {
+      baseGrouping = Math.max(baseGrouping, Number(toN.count) || 1);
+    }
+    let grouping = baseGrouping;
 
     // Ранг «суровости» метода: чем выше, тем меньше допустимый ток при равном сечении
     const methodRank = { F: 0, E: 1, C: 2, B1: 3, B2: 3, D1: 4, D2: 5 };
