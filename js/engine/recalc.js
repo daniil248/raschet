@@ -533,6 +533,14 @@ function recalc() {
       c._state = 'active';
       continue;
     }
+    // Проверяем _watchdogActivePorts и для неактивных связей (powered/dead)
+    const fromN2 = state.nodes.get(c.from.nodeId);
+    if (fromN2 && fromN2.type === 'panel' && fromN2._watchdogActivePorts) {
+      if (!fromN2._watchdogActivePorts.has(c.from.port)) {
+        c._state = 'dead';
+        continue;
+      }
+    }
     const upAi = activeInputs(c.from.nodeId);
     c._state = (upAi !== null) ? 'powered' : 'dead';
   }
