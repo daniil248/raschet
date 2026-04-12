@@ -52,6 +52,7 @@ export const CABLE_TYPES = {
   multi:  { label: 'Многожильный (гибкий)', solidMax: null },
   single: { label: 'Одножильный многопроволочный', solidMax: null },
   solid:  { label: 'Цельная жила (класс 1–2)', solidMax: 10 },
+  busbar: { label: 'Шинопровод', solidMax: null },
 };
 
 // Ряд номиналов автоматов защиты

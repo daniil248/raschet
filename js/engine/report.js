@@ -196,14 +196,14 @@ export function generateReport() {
 
   // 4a. Кабельные линии
   const activeCables = [...state.conns.values()].filter(c => c._cableSize);
-  // Сортировка по обозначению W-from-to
+  // Сортировка по обозначению линии
   activeCables.sort((a, b) => {
     const aFrom = effectiveTag(state.nodes.get(a.from.nodeId)) || '';
     const aTo = effectiveTag(state.nodes.get(a.to.nodeId)) || '';
     const bFrom = effectiveTag(state.nodes.get(b.from.nodeId)) || '';
     const bTo = effectiveTag(state.nodes.get(b.to.nodeId)) || '';
-    const la = `W-${aFrom}-${aTo}`.toLowerCase();
-    const lb = `W-${bFrom}-${bTo}`.toLowerCase();
+    const la = (a.lineLabel || `W-${aFrom}-${aTo}`).toLowerCase();
+    const lb = (b.lineLabel || `W-${bFrom}-${bTo}`).toLowerCase();
     return la.localeCompare(lb, 'ru');
   });
   if (activeCables.length) {
@@ -215,7 +215,7 @@ export function generateReport() {
       const toN = state.nodes.get(c.to.nodeId);
       const fromTag = effectiveTag(fromN) || fromN?.name || '?';
       const toTag = effectiveTag(toN) || toN?.name || '?';
-      const lineLabel = `W-${fromTag}-${toTag}`;
+      const lineLabel = c.lineLabel || `W-${fromTag}-${toTag}`;
       const warn = c._cableOverflow ? ' ⚠' : '';
       const parallel = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._threePhase ? 5 : 3);

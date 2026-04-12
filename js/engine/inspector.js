@@ -958,9 +958,14 @@ export function renderInspectorConn(c) {
   const fromN = state.nodes.get(c.from.nodeId);
   const toN   = state.nodes.get(c.to.nodeId);
   const h = [];
+  const fromTag = effectiveTag(fromN) || fromN?.name || '?';
+  const toTag = effectiveTag(toN) || toN?.name || '?';
+  const autoLineLabel = `W-${fromTag}-${toTag}`;
+  const lineLabel = c.lineLabel || autoLineLabel;
   h.push('<div class="muted" style="font-size:12px;margin-bottom:8px">Линия / связь</div>');
-  h.push(`<div class="field"><label>Откуда</label><div>${escHtml(effectiveTag(fromN))} · ${escHtml(fromN?.name || '?')} · выход ${c.from.port + 1}</div></div>`);
-  h.push(`<div class="field"><label>Куда</label><div>${escHtml(effectiveTag(toN))} · ${escHtml(toN?.name || '?')} · вход ${c.to.port + 1}</div></div>`);
+  h.push(field('Обозначение', `<input type="text" data-conn-prop="lineLabel" value="${escAttr(lineLabel)}" placeholder="${escAttr(autoLineLabel)}">`));
+  h.push(`<div class="field"><label>Откуда</label><div>${escHtml(fromTag)} · ${escHtml(fromN?.name || '?')} · выход ${c.from.port + 1}</div></div>`);
+  h.push(`<div class="field"><label>Куда</label><div>${escHtml(toTag)} · ${escHtml(toN?.name || '?')} · вход ${c.to.port + 1}</div></div>`);
 
   const lm = c.lineMode || 'normal';
   h.push(field('Состояние линии',
@@ -1011,11 +1016,12 @@ export function renderInspectorConn(c) {
       <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
     </select>`));
   const ct = c.cableType || GLOBAL.defaultCableType;
-  h.push(field('Тип конструкции',
+  h.push(field('Тип проводника',
     `<select data-conn-prop="cableType">
       <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный (гибкий)</option>
       <option value="single"${ct === 'single' ? ' selected' : ''}>Одножильный многопроволочный</option>
       <option value="solid"${ct === 'solid' ? ' selected' : ''}>Цельная жила (класс 1–2, до 10 мм²)</option>
+      <option value="busbar"${ct === 'busbar' ? ' selected' : ''}>Шинопровод</option>
     </select>`));
   h.push(field('Длина, м', `<input type="number" min="0" max="10000" step="0.5" data-conn-prop="lengthM" value="${c.lengthM ?? 1}">`));
   h.push('</div>');
