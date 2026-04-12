@@ -2206,9 +2206,6 @@ function renderInspectorNode(n) {
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
       </select>`));
-    h.push(field('Номинальная мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
-    h.push(phaseField(n));
-    h.push(voltageField(n));
     h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
 
@@ -2225,7 +2222,13 @@ function renderInspectorNode(n) {
       h.push('</div>');
     }
 
+    // Все номинальные параметры (мощность, напряжение, Ssc, Uk%, Xs/Rs) — в модалке
     h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
+    // Справка: текущие значения из модалки
+    h.push(`<div class="muted" style="font-size:11px;margin-top:4px;line-height:1.6">` +
+      `Snom: <b>${fmt(n.snomKva || 0)} kVA</b> (${fmt(n.capacityKw || 0)} kW)<br>` +
+      `U: <b>${nodeVoltage(n)} В</b> (${(n.phase || '3ph') === '3ph' ? '3ф' : '1ф'})` +
+      `</div>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
     h.push(field('Входов', `<input type="number" min="1" max="30" step="1" data-prop="inputs" value="${n.inputs}">`));
@@ -2540,18 +2543,33 @@ function openImpedanceModal(n) {
   if (!body) return;
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
-  h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Параметры для расчёта тока КЗ по IEC 60909. Сопротивление источника вычисляется автоматически из введённых данных.</div>');
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Все номинальные параметры источника и данные для расчёта тока КЗ по IEC 60909.</div>');
 
+  // Номинальные параметры (мощность, напряжение, фазность)
+  h.push('<h4 style="margin:16px 0 8px">Номинальные параметры</h4>');
+  h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
+  const ph = n.phase || '3ph';
+  h.push(field('Фазность',
+    `<select id="imp-phase">
+      <option value="3ph"${ph === '3ph' ? ' selected' : ''}>Трёхфазная</option>
+      <option value="1ph"${ph === '1ph' ? ' selected' : ''}>Однофазная</option>
+    </select>`));
+  const autoV = (ph === '3ph') ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
+  h.push(`<div class="muted" style="font-size:11px;margin-bottom:10px">Напряжение: <b>${autoV} В</b> (из «Начальных условий»)</div>`);
+
+  // Параметры КЗ
+  h.push('<h4 style="margin:16px 0 8px">Параметры короткого замыкания</h4>');
   h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 500}">`));
   h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
   h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
-  h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
 
   // Вычисленные значения (справка)
   const U = nodeVoltage(n);
   const Zs = sourceImpedance(n);
   const IkMax = (1.1 * U) / (Math.sqrt(3) * Zs);
+  const Pkw = (n.snomKva || 0) * (Number(n.cosPhi) || 0.92);
   h.push(`<div class="inspector-section"><div style="font-size:12px;line-height:1.8">` +
+    `Активная мощность (P = Snom × cos φ): <b>${fmt(Pkw)} kW</b><br>` +
     `Zs (полное сопротивление): <b>${(Zs * 1000).toFixed(2)} мОм</b><br>` +
     `Ik max (c=1.1): <b>${fmt(IkMax / 1000)} кА</b> при ${U} В` +
     `</div></div>`);
@@ -2561,10 +2579,15 @@ function openImpedanceModal(n) {
   const applyBtn = document.getElementById('impedance-apply');
   if (applyBtn) applyBtn.onclick = () => {
     snapshot('impedance:' + n.id);
+    n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
+    const newPhase = document.getElementById('imp-phase')?.value || '3ph';
+    n.phase = newPhase;
+    n.voltage = newPhase === '3ph' ? GLOBAL.voltage3ph : GLOBAL.voltage1ph;
+    // capacityKw = Snom × cos φ (активная мощность из полной)
+    n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
     n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
     n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
     n.xsRsRatio = Number(document.getElementById('imp-xsrs')?.value) || 10;
-    n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
     document.getElementById('modal-impedance').classList.add('hidden');
     render();
     renderInspector();
