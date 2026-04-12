@@ -1403,12 +1403,17 @@ function recalc() {
 
   for (const n of state.nodes.values()) {
     if (n.type === 'panel') {
+      // cos φ из downstream PQ (для взвешенного среднего),
+      // но P/Q/S привязаны к фактической _loadKw (walkUp уже учёл share)
       const pq = downstreamPQ(n.id);
+      n._cosPhi = (pq.P > 0) ? (pq.P / Math.sqrt(pq.P * pq.P + pq.Q * pq.Q)) : null;
+      const cos = n._cosPhi || GLOBAL.defaultCosPhi;
       const kSim = Number(n.kSim) || 1;
-      n._powerP = pq.P * kSim;
-      n._powerQ = pq.Q * kSim;
+      const P = (n._loadKw || 0) * kSim;
+      const tan = Math.sqrt(1 - cos * cos) / cos;
+      n._powerP = P;
+      n._powerQ = P * tan;
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
-      n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : null;
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка (все потребители на 100%)
@@ -1443,11 +1448,14 @@ function recalc() {
         n._marginWarn = null;
       }
     } else if (n.type === 'source' || n.type === 'generator') {
+      // cos φ из downstream PQ, но P/S привязаны к _loadKw (walkUp result)
       const pq = downstreamPQ(n.id);
-      n._powerP = pq.P;
-      n._powerQ = pq.Q;
-      n._powerS = Math.sqrt(pq.P * pq.P + pq.Q * pq.Q);
-      n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : Number(n.cosPhi) || GLOBAL.defaultCosPhi;
+      n._cosPhi = (pq.P > 0) ? (pq.P / Math.sqrt(pq.P * pq.P + pq.Q * pq.Q)) : Number(n.cosPhi) || GLOBAL.defaultCosPhi;
+      const cos = n._cosPhi;
+      const tan = Math.sqrt(1 - cos * cos) / cos;
+      n._powerP = n._loadKw || 0;
+      n._powerQ = n._powerP * tan;
+      n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка (все потребители на 100% без Ки)
       n._maxLoadKw = maxDownstreamLoad(n.id);
@@ -1457,16 +1465,18 @@ function recalc() {
       const Zs = sourceImpedance(n);
       n._ikA = Zs > 0 ? (1.1 * Uph / Zs) : Infinity;
     } else if (n.type === 'ups') {
-      // cos φ ИБП зависит от режима:
-      //   норма (через инвертор) → 1
-      //   статический байпас     → cos φ потребителей ниже
-      const sub = downstreamPQ(n.id);
-      n._powerP = sub.P;
+      // P/Q для ИБП берём из фактической нагрузки (_loadKw), а не из
+      // downstreamPQ — потому что downstream может быть общим с
+      // параллельным ИБП (два ИБП на один щит), и downstreamPQ
+      // посчитает полную нагрузку обоих, а не долю этого ИБП.
+      n._powerP = n._loadKw || 0;
       if (n._onStaticBypass) {
-        // При байпасе реактивка потребителей ложится на ВХОД ИБП и дальше вверх
-        n._powerQ = sub.Q;
+        // При байпасе cos φ = от потребителей → вычисляем Q из downstream
+        const sub = downstreamPQ(n.id);
+        const ratio = (sub.P > 0 && n._loadKw > 0) ? (n._loadKw / sub.P) : 1;
+        n._powerQ = sub.Q * ratio; // пропорционально доле этого ИБП
       } else {
-        // Инвертор — чисто активная мощность на выходе
+        // Инвертор — чисто активная мощность, Q = 0
         n._powerQ = 0;
       }
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
