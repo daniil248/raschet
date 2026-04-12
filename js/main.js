@@ -6,6 +6,9 @@
      - шаринг и запросы доступа
      - запись/чтение текущего проекта через window.Raschet API
    ========================================================================= */
+// Ensure engine modules are loaded and window.Raschet is available
+import './engine/index.js';
+
 (function () {
 'use strict';
 
