@@ -659,6 +659,8 @@ input, select { font: inherit; }
 }
 .port:hover, .port.hot { fill: #1976d2; stroke: #0d47a1; }
 .port-label { font: 10px -apple-system, sans-serif; fill: #8a94a6; pointer-events: none; text-anchor: middle; }
+.node-icon { pointer-events: none; }
+.node-icon-letter { font: 700 12px -apple-system, sans-serif; fill: #ff9800; text-anchor: middle; pointer-events: none; }
 
 /* ---------- Connections ---------- */
 .conn {

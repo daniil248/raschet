@@ -278,20 +278,15 @@ function selectBreaker(Iload) {
 const DEFAULTS = {
   source:    () => ({
     name: 'Ввод ТП', capacityKw: 100, on: true,
+    sourceSubtype: 'transformer',   // 'transformer' | 'generator'
     phase: '3ph', voltage: 400, cosPhi: 0.95,
-    // Параметры импеданса по IEC 60909
-    sscMva: 500,            // мощность КЗ на шинах питающей сети, МВА
-    ukPct: 6,               // напряжение КЗ трансформатора, %
-    xsRsRatio: 10,          // Xs/Rs отношение (для ТП)
-    snomKva: 400,           // номинальная мощность трансформатора, кВА
+    sscMva: 500, ukPct: 6, xsRsRatio: 10, snomKva: 400,
   }),
   generator: () => ({
     name: 'ДГУ', capacityKw: 60, on: true, backupMode: true,
+    sourceSubtype: 'generator',
     phase: '3ph', voltage: 400, cosPhi: 0.85,
-    sscMva: 10,             // для ДГУ — маленькая мощность КЗ
-    ukPct: 0,               // нет трансформатора
-    xsRsRatio: 0.5,         // Xs/Rs для ДГУ
-    snomKva: 75,
+    sscMva: 10, ukPct: 0, xsRsRatio: 0.5, snomKva: 75,
     triggerNodeId: null,       // legacy single trigger (мигрируется в triggerNodeIds)
     triggerNodeIds: [],        // массив id триггеров
     triggerLogic: 'any',       // 'any' — запуск если ХОТЯ БЫ один отключён; 'all' — все отключены
@@ -1702,9 +1697,26 @@ function renderNodes() {
     // Имя
     g.appendChild(text(12, 33, n.name || '(без имени)', 'node-title'));
 
+    // IEC условное обозначение для источников (маленький SVG-символ)
+    if (n.type === 'source' || n.type === 'generator') {
+      const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+      const ix = w - 32, iy = 14;
+      if (subtype === 'transformer') {
+        // IEC 60617: два пересекающихся кольца (обмотки)
+        g.appendChild(el('circle', { cx: ix, cy: iy, r: 9, fill: 'none', stroke: '#4caf50', 'stroke-width': 1.5, class: 'node-icon' }));
+        g.appendChild(el('circle', { cx: ix + 10, cy: iy, r: 9, fill: 'none', stroke: '#4caf50', 'stroke-width': 1.5, class: 'node-icon' }));
+      } else {
+        // IEC 60617: кольцо с буквой G
+        g.appendChild(el('circle', { cx: ix + 5, cy: iy, r: 11, fill: 'none', stroke: '#ff9800', 'stroke-width': 1.5, class: 'node-icon' }));
+        const gt = text(ix + 5, iy + 4, 'G', 'node-icon-letter');
+        g.appendChild(gt);
+      }
+    }
+
     // Подпись типа
+    const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
     const subTxt = {
-      source:    'Источник',
+      source:    subtype === 'generator' ? 'Генератор' + (n.backupMode ? ' (резерв)' : '') : 'Трансформатор',
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
       panel:     `Щит · вх ${n.inputs} · вых ${n.outputs}` +
                    (n.switchMode === 'manual' ? ' · руч.' : n.switchMode === 'parallel' ? ' · пар.' : ''),
@@ -1741,8 +1753,14 @@ function renderNodes() {
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'panel') {
-      loadLine = n._powered ? `${fmt(n._loadKw)} kW` : 'Без питания';
-      if (!n._powered) loadCls += ' off';
+      if (!n._powered) {
+        loadLine = 'Без питания';
+        loadCls += ' off';
+      } else {
+        const capA = Number(n.capacityA) || 0;
+        loadLine = `${fmt(n._loadA || 0)} / ${fmt(capA)} A · ${fmt(n._loadKw || 0)} kW`;
+        if (n._marginWarn === 'low') loadCls += ' overload';
+      }
     } else if (n.type === 'ups') {
       if (!effectiveOn(n)) { loadLine = 'Отключён'; loadCls += ' off'; }
       else if (!n._powered) { loadLine = 'Без питания'; loadCls += ' off'; }
@@ -1921,6 +1939,20 @@ function renderConns() {
 
       const lbl = text(mid.x, mid.y - 4, labelText,
         'conn-label' + (c._cableOverflow ? ' overload' : ''));
+      layerConns.appendChild(lbl);
+    }
+
+    // Подпись макс. режима на неактивных связях (powered/dead) —
+    // справочно, если эта линия в другом режиме могла бы нести ток
+    if (c._state !== 'active' && c._maxA > 0 && c._cableSize) {
+      const mid = pathMidpoint(a, waypoints, b);
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const maxPerBranch = c._maxA / parallel;
+      const cores = c._threePhase ? 5 : 3;
+      const inner = `${cores}×${c._cableSize} мм²`;
+      const spec = parallel > 1 ? `${parallel}×(${inner})` : inner;
+      const labelText = `[${fmt(maxPerBranch)} A / ${spec}]`;
+      const lbl = text(mid.x, mid.y - 4, labelText, 'conn-label-sub');
       layerConns.appendChild(lbl);
     }
 
@@ -2158,30 +2190,33 @@ function renderInspectorNode(n) {
   }
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
-  if (n.type === 'source') {
-    h.push(field('Мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
+  if (n.type === 'source' || n.type === 'generator') {
+    // Объединённый блок «Источник питания» с выбором подтипа
+    const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+    h.push(field('Тип источника',
+      `<select data-prop="sourceSubtype">
+        <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
+        <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
+      </select>`));
+    h.push(field('Номинальная мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
     h.push(phaseField(n));
     h.push(voltageField(n));
-    h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.95}">`));
+    h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.92}">`));
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
-    h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
-    h.push(sourceStatusBlock(n));
-  } else if (n.type === 'generator') {
-    h.push(field('Мощность, kW', `<input type="number" min="0" step="1" data-prop="capacityKw" value="${n.capacityKw}">`));
-    h.push(phaseField(n));
-    h.push(voltageField(n));
-    h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi || 0.85}">`));
-    h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
-    h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
-    // Кнопка открытия модалки автоматизации
-    const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
-      ? n.triggerNodeIds : (n.triggerNodeId ? [n.triggerNodeId] : []);
-    const triggerCount = triggers.length;
-    h.push('<div class="inspector-section">');
-    h.push(`<button class="full-btn" id="btn-open-automation">⚡ Автоматизация${triggerCount ? ` (${triggerCount} триггер${triggerCount > 1 ? 'ов' : ''})` : ''}</button>`);
-    h.push(field('Задержка запуска, сек', `<input type="number" min="0" max="600" step="1" data-prop="startDelaySec" value="${n.startDelaySec || 0}">`));
-    h.push(field('Задержка остановки, сек', `<input type="number" min="0" max="600" step="1" data-prop="stopDelaySec" value="${n.stopDelaySec ?? 2}">`));
-    h.push('</div>');
+
+    // Поля только для генератора
+    if (subtype === 'generator') {
+      h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
+      const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+        ? n.triggerNodeIds : (n.triggerNodeId ? [n.triggerNodeId] : []);
+      const triggerCount = triggers.length;
+      h.push('<div class="inspector-section">');
+      h.push(`<button class="full-btn" id="btn-open-automation">⚡ Автоматизация${triggerCount ? ` (${triggerCount} триггер${triggerCount > 1 ? 'ов' : ''})` : ''}</button>`);
+      h.push(field('Задержка запуска, сек', `<input type="number" min="0" max="600" step="1" data-prop="startDelaySec" value="${n.startDelaySec || 0}">`));
+      h.push(field('Задержка остановки, сек', `<input type="number" min="0" max="600" step="1" data-prop="stopDelaySec" value="${n.stopDelaySec ?? 2}">`));
+      h.push('</div>');
+    }
+
     h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
@@ -2414,8 +2449,20 @@ function wireInspectorInputs(n) {
           return;
         }
         n[prop] = newN;
+      } else if (prop === 'sourceSubtype') {
+        n.sourceSubtype = v;
+        // Конвертируем внутренний type для совместимости расчётной логики
+        if (v === 'generator') {
+          n.type = 'generator';
+          if (typeof n.backupMode !== 'boolean') n.backupMode = true;
+          if (!Array.isArray(n.triggerNodeIds)) n.triggerNodeIds = [];
+          if (typeof n.startDelaySec !== 'number') n.startDelaySec = 5;
+          if (typeof n.stopDelaySec !== 'number') n.stopDelaySec = 2;
+          if (!n.triggerLogic) n.triggerLogic = 'any';
+        } else {
+          n.type = 'source';
+        }
       } else if (prop === 'triggerNodeId') {
-        // Пустая строка → null, иначе id
         n.triggerNodeId = v ? String(v) : null;
       } else if (prop === 'phase' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         n.phase = v;
@@ -2433,7 +2480,7 @@ function wireInspectorInputs(n) {
       render();
       notifyChange();
       // Перерисовать инспектор при изменениях, от которых зависят другие поля
-      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId') {
+      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype') {
         renderInspector();
       }
     };
@@ -3981,6 +4028,9 @@ function deserialize(data) {
       if (!n.phase) n.phase = '3ph';
       if (typeof n.voltage !== 'number') n.voltage = 400;
       if (typeof n.cosPhi !== 'number') n.cosPhi = (n.type === 'generator') ? 0.85 : 0.92;
+    }
+    if ((n.type === 'source' || n.type === 'generator') && !n.sourceSubtype) {
+      n.sourceSubtype = n.type === 'generator' ? 'generator' : 'transformer';
     }
     if (n.type === 'source') {
       if (typeof n.sscMva !== 'number') n.sscMva = 500;
