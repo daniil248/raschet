@@ -59,7 +59,8 @@ export function initToolbar() {
   document.getElementById('btn-new-mode').onclick = () => createMode();
 
   // Авто-раскладка по уровням: источники сверху, потребители снизу
-  document.getElementById('btn-auto-layout').onclick = () => autoLayout();
+  const btnAutoLayout = document.getElementById('btn-auto-layout');
+  if (btnAutoLayout) btnAutoLayout.onclick = () => autoLayout();
 
   // Экспорт SVG / PNG
   document.getElementById('btn-export-svg').onclick = () => exportSVG();
