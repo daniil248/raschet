@@ -1360,9 +1360,23 @@ function recalc() {
     }
 
     // Автомат на каждую параллельную линию: Iрасч ≤ In ≤ Iz
+    // Сначала ищем ближайший ≥ Iрасч
     let InPerLine = selectBreaker(Iper);
-    // Если In > Iz — кабель не защищён, помечаем
-    c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
+    // Если In > Iz — автомат не защищает кабель.
+    // Выбираем наибольший стандарт ≤ Iz (кабель определяет максимум автомата).
+    if (Iz > 0 && InPerLine > Iz) {
+      // Ищем наибольший стандарт ≤ Iz
+      let bestFit = BREAKER_SERIES[0];
+      for (const v of BREAKER_SERIES) {
+        if (v <= Iz) bestFit = v;
+        else break;
+      }
+      InPerLine = bestFit;
+      // Если даже наименьший автомат < Iрасч — кабель слишком мал
+      c._breakerAgainstCable = (InPerLine < Iper);
+    } else {
+      c._breakerAgainstCable = false;
+    }
 
     // Общий автомат = In × parallel (или ближайший стандарт на полный ток)
     const InTotal = selectBreaker(Itotal);
