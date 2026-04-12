@@ -18,23 +18,67 @@ function simTick() {
   // 1. Генераторы с триггером — учёт задержек запуска и остановки
   for (const n of state.nodes.values()) {
     if (n.type !== 'generator') continue;
-    const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
-      ? n.triggerNodeIds
-      : (n.triggerNodeId ? [n.triggerNodeId] : []);
-    if (!triggers.length) {
+
+    // Определяем shouldStart — используя triggerGroups (новый формат)
+    // или triggerNodeIds (legacy). Логика идентична recalc.activeInputs.
+    let shouldStart = false;
+    let hasTriggers = false;
+
+    const tGroups = Array.isArray(n.triggerGroups) && n.triggerGroups.length
+      ? n.triggerGroups : [];
+
+    if (tGroups.length) {
+      hasTriggers = true;
+      for (const grp of tGroups) {
+        const watches = Array.isArray(grp.watchInputs) ? grp.watchInputs : [];
+        if (!watches.length) continue;
+        const statuses = watches.map(w => {
+          if (w.panelId && typeof w.inputPort === 'number') {
+            // Мониторим напряжение на конкретном вводе щита
+            for (const c of state.conns.values()) {
+              if (c.to.nodeId === w.panelId && c.to.port === w.inputPort) {
+                if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return 'dead';
+                const fromN = state.nodes.get(c.from.nodeId);
+                return (fromN && fromN._powered) ? 'alive' : 'dead';
+              }
+            }
+            return 'dead';
+          } else if (w.nodeId) {
+            const t = state.nodes.get(w.nodeId);
+            return (t && t._powered) ? 'alive' : 'dead';
+          }
+          return 'dead';
+        });
+        const logic = grp.logic || 'any';
+        const fired = logic === 'any'
+          ? statuses.some(s => s === 'dead')
+          : statuses.every(s => s === 'dead');
+        if (fired) { shouldStart = true; break; }
+      }
+    } else {
+      // Legacy: triggerNodeIds
+      const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
+        ? n.triggerNodeIds
+        : (n.triggerNodeId ? [n.triggerNodeId] : []);
+      if (triggers.length) {
+        hasTriggers = true;
+        const statuses = triggers.map(tid => {
+          const t = state.nodes.get(tid);
+          return (t && t._powered) ? 'alive' : 'dead';
+        });
+        const logic = n.triggerLogic || 'any';
+        shouldStart = logic === 'any'
+          ? statuses.some(s => s === 'dead')
+          : statuses.every(s => s === 'dead');
+      }
+    }
+
+    if (!hasTriggers) {
       n._startedAt = 0; n._stoppingAt = 0;
       n._running = false; n._startCountdown = 0; n._stopCountdown = 0;
       continue;
     }
-    // Проверяем: должен ли генератор работать по логике триггеров
-    const statuses = triggers.map(tid => {
-      const t = state.nodes.get(tid);
-      return (t && t._powered) ? 'alive' : 'dead';
-    });
-    const logic = n.triggerLogic || 'any';
-    const shouldStart = logic === 'any'
-      ? statuses.some(s => s === 'dead')
-      : statuses.every(s => s === 'dead');
+
     const allAlive = !shouldStart;
 
     if (allAlive) {
