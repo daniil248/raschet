@@ -260,21 +260,23 @@ export function renderInspectorNode(n) {
       ` · ${phLabel} · cos φ: <b>${(n.cosPhi ?? 0.92).toFixed(2)}</b> · Ки: <b>${(n.kUse ?? 1).toFixed(2)}</b>` +
       `</div>`);
 
-    // Фаза — кнопки (только если НЕ 3Ф или пользователь хочет переключить)
-    h.push('<div class="field"><label>Фаза</label>');
-    h.push('<div style="display:flex;gap:4px;flex-wrap:wrap">');
-    const phases = [
-      { val: '3ph', label: '3Ф' },
-      { val: 'A', label: 'A' },
-      { val: 'B', label: 'B' },
-      { val: 'C', label: 'C' },
-    ];
-    for (const p of phases) {
-      const active = ph === p.val;
-      h.push(`<button type="button" data-phase-btn="${p.val}" style="padding:4px 12px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:12px;font-weight:${active ? '600' : '400'}">${p.label}</button>`);
+    // Фаза — только для однофазных потребителей
+    if (ph !== '3ph') {
+      h.push('<div class="field"><label>Фаза</label>');
+      h.push('<div style="display:flex;gap:4px;flex-wrap:wrap">');
+      const phases = [
+        { val: '3ph', label: '3Ф' },
+        { val: 'A', label: 'A' },
+        { val: 'B', label: 'B' },
+        { val: 'C', label: 'C' },
+      ];
+      for (const p of phases) {
+        const active = ph === p.val;
+        h.push(`<button type="button" data-phase-btn="${p.val}" style="padding:4px 12px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:12px;font-weight:${active ? '600' : '400'}">${p.label}</button>`);
+      }
+      h.push(`<button type="button" id="btn-auto-phase" style="padding:4px 12px;border:1px dashed #999;background:#f5f5f5;border-radius:4px;cursor:pointer;font-size:11px" title="Наименее нагруженная фаза">Авто</button>`);
+      h.push('</div></div>');
     }
-    h.push(`<button type="button" id="btn-auto-phase" style="padding:4px 12px;border:1px dashed #999;background:#f5f5f5;border-radius:4px;cursor:pointer;font-size:11px" title="Наименее нагруженная фаза">Авто</button>`);
-    h.push('</div></div>');
 
     h.push(consumerCurrentsBlock(n));
     // Множитель нагрузки — только в активном сценарии
