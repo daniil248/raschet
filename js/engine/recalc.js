@@ -754,7 +754,8 @@ function recalc() {
     let grouping = baseGrouping;
 
     // Ранг «суровости» метода: чем выше, тем меньше допустимый ток при равном сечении
-    const methodRank = { F: 0, E: 1, C: 2, B1: 3, B2: 3, D1: 4, D2: 5 };
+    // Ранг суровости: больше = хуже теплоотвод = меньше допустимый ток
+    const methodRank = { G: 0, F: 0, E: 1, C: 2, B1: 3, B2: 3, A1: 4, A2: 4, D1: 5, D2: 6 };
     const bundlingRank = { spaced: 0, touching: 1, bundled: 2 };
 
     if (channelIds.length) {

@@ -1997,11 +1997,14 @@ export function renderInspectorConn(c) {
     const method = c.installMethod || GLOBAL.defaultInstallMethod;
     h.push(field('Способ прокладки',
       `<select data-conn-prop="installMethod">
-        <option value="B1"${method === 'B1' ? ' selected' : ''}>B1 — изолированные в трубе</option>
-        <option value="B2"${method === 'B2' ? ' selected' : ''}>B2 — многожильный в трубе</option>
+        <option value="A1"${method === 'A1' ? ' selected' : ''}>A1 — в трубе в теплоизол. стене</option>
+        <option value="A2"${method === 'A2' ? ' selected' : ''}>A2 — кабель в теплоизол. стене</option>
+        <option value="B1"${method === 'B1' ? ' selected' : ''}>B1 — в трубе на стене</option>
+        <option value="B2"${method === 'B2' ? ' selected' : ''}>B2 — в коробе / сплошном лотке</option>
         <option value="C"${method === 'C' ? ' selected' : ''}>C — открыто на стене</option>
-        <option value="E"${method === 'E' ? ' selected' : ''}>E — многожильный на лотке</option>
-        <option value="F"${method === 'F' ? ' selected' : ''}>F — одножильные на лотке / в воздухе</option>
+        <option value="E"${method === 'E' ? ' selected' : ''}>E — многожильный в воздухе</option>
+        <option value="F"${method === 'F' ? ' selected' : ''}>F — одножильные касающиеся в воздухе</option>
+        <option value="G"${method === 'G' ? ' selected' : ''}>G — одножильные с интервалами</option>
         <option value="D1"${method === 'D1' ? ' selected' : ''}>D1 — в трубе в земле</option>
         <option value="D2"${method === 'D2' ? ' selected' : ''}>D2 — напрямую в земле</option>
       </select>`));
