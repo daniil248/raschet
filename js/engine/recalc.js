@@ -878,7 +878,12 @@ function recalc() {
         c._cableAutoParallel = false;
         c._cableParallel = 1;
       } else {
-        const sel = selectCableSize(maxCurrent, {
+        // Если ручной автомат > расчётного тока, кабель должен выдержать In автомата
+        let sizingCurrent = maxCurrent;
+        if (c.manualBreakerIn && c.manualBreakerIn > maxCurrent) {
+          sizingCurrent = c.manualBreakerIn;
+        }
+        const sel = selectCableSize(sizingCurrent, {
           material, insulation, method, ambientC: ambient, grouping, bundling,
           cableType, maxSize: GLOBAL.maxCableSize,
           conductorsInParallel,
