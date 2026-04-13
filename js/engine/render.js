@@ -42,28 +42,37 @@ export function bezier(a, b) {
   return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`;
 }
 
-// Путь сплайна с промежуточными точками. Использует Catmull-Rom -> Bezier, чтобы
-// линия проходила через все waypoints гладко.
-// Первые STUB_LEN px от output порта (a) — строго вниз.
-// Последние STUB_LEN px до input порта (b) — строго вверх.
-const STUB_LEN = 40;
+// Путь сплайна с промежуточными точками. Catmull-Rom -> Bezier.
+// Первый сегмент: cp1 строго вниз от a (output-порт).
+// Последний сегмент: cp2 строго вверх от b (input-порт).
 export function splinePath(a, points, b) {
   if (!points || points.length === 0) return bezier(a, b);
-  // Добавляем stub-точки: a→aStub (вниз), bStub→b (вверх)
-  const aStub = { x: a.x, y: a.y + STUB_LEN };
-  const bStub = { x: b.x, y: b.y - STUB_LEN };
-  const pts = [a, aStub, ...points, bStub, b];
-  let d = `M${pts[0].x},${pts[0].y}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] || pts[i];
+  const pts = [a, ...points, b];
+  const n = pts.length;
+  const STUB = 40;
+  let d = `M${a.x},${a.y}`;
+  for (let i = 0; i < n - 1; i++) {
     const p1 = pts[i];
     const p2 = pts[i + 1];
-    const p3 = pts[i + 2] || p2;
-    // Catmull-Rom -> cubic Bezier
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    let cp1x, cp1y, cp2x, cp2y;
+    if (i === 0) {
+      // Первый сегмент: выход строго вниз из порта
+      cp1x = a.x;
+      cp1y = a.y + STUB;
+    } else {
+      const p0 = pts[i - 1];
+      cp1x = p1.x + (p2.x - p0.x) / 6;
+      cp1y = p1.y + (p2.y - p0.y) / 6;
+    }
+    if (i === n - 2) {
+      // Последний сегмент: вход строго сверху в порт
+      cp2x = b.x;
+      cp2y = b.y - STUB;
+    } else {
+      const p3 = pts[i + 2];
+      cp2x = p2.x - (p3.x - p1.x) / 6;
+      cp2y = p2.y - (p3.y - p1.y) / 6;
+    }
     d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
   }
   return d;
@@ -538,16 +547,10 @@ export function renderConns() {
         // Выбираем порядок: ближний конец к prev = entry
         const dEntry = Math.hypot(prev.x - entryEnd.x, prev.y - entryEnd.y);
         const dExit  = Math.hypot(prev.x - exitEnd.x, prev.y - exitEnd.y);
-        // Stub-точки на 40px дальше от канала вдоль оси — для перпендикулярного входа
-        const stub = STUB_LEN;
         if (dEntry <= dExit) {
-          const entryStub = { x: entryEnd.x - axX * stub, y: entryEnd.y - axY * stub };
-          const exitStub  = { x: exitEnd.x + axX * stub, y: exitEnd.y + axY * stub };
-          result.push(entryStub, entryEnd, exitEnd, exitStub);
+          result.push(entryEnd, exitEnd);
         } else {
-          const entryStub = { x: exitEnd.x + axX * stub, y: exitEnd.y + axY * stub };
-          const exitStub  = { x: entryEnd.x - axX * stub, y: entryEnd.y - axY * stub };
-          result.push(entryStub, exitEnd, entryEnd, exitStub);
+          result.push(exitEnd, entryEnd);
         }
         break;
       }
