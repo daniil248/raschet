@@ -455,6 +455,8 @@ export function wireInspectorInputs(n) {
         else n.voltage = GLOBAL.voltage1ph;
       } else {
         n[prop] = v;
+        // Синхронизация цвета ИБП на одном parallel-щите
+        if (prop === 'lineColor' && n.type === 'ups') syncUpsColors(n, v);
       }
       if (prop === 'inputs' || prop === 'outputs') clampPortsInvolvingNode(n);
       _render();
@@ -599,7 +601,10 @@ export function wireInspectorInputs(n) {
   inspectorBody.querySelectorAll('[data-color-pick]').forEach(swatch => {
     swatch.addEventListener('click', () => {
       snapshot('color:' + n.id);
-      n.lineColor = swatch.dataset.colorPick;
+      const newColor = swatch.dataset.colorPick;
+      n.lineColor = newColor;
+      // Для ИБП: синхронизировать цвет с другими ИБП на том же parallel-щите
+      if (n.type === 'ups') syncUpsColors(n, newColor);
       _render(); renderInspector(); notifyChange();
     });
   });
@@ -1680,6 +1685,29 @@ export function bundlingIconSVG(bundling, size) {
 }
 
 // Поле уровня напряжения — выбор из справочника
+// Синхронизация цвета ИБП: все ИБП, подключённые к одному downstream
+// parallel-щиту, должны иметь одинаковый цвет линии
+function syncUpsColors(ups, color) {
+  // Найдём downstream-щит этого ИБП
+  let targetPanelId = null;
+  for (const c of state.conns.values()) {
+    if (c.from.nodeId === ups.id) {
+      const to = state.nodes.get(c.to.nodeId);
+      if (to && to.type === 'panel') { targetPanelId = to.id; break; }
+    }
+  }
+  if (!targetPanelId) return;
+  // Найдём все другие ИБП, подключённые к этому же щиту
+  for (const c of state.conns.values()) {
+    if (c.to.nodeId === targetPanelId) {
+      const from = state.nodes.get(c.from.nodeId);
+      if (from && from.type === 'ups' && from.id !== ups.id) {
+        from.lineColor = color;
+      }
+    }
+  }
+}
+
 // Палитра цветов: 16 стандартных + до 8 пользовательских
 function buildColorPalette(n) {
   const curColor = n.lineColor || '#e53935';
