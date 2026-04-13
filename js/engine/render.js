@@ -497,23 +497,31 @@ export function renderConns() {
       }
       if (brkText) {
         const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');
-        // Белая подложка (rect за текстом)
-        const bgW = brkText.length * 5.5 + 6;
+        const textLen = brkText.length * 5.8;
+        const padX = 3, padY = 2;
+        const bgH = 12;
+        const offsetY = 12; // отступ от порта чтобы не перекрывать
+        // Позиция: центр текста на оси порта (bx), начало ниже порта
+        const tx = bx;
+        const ty = by + offsetY + textLen / 2; // центр текста по вертикали (после поворота)
+        // Подложка — прямоугольник, центрированный по оси порта
         const bg = el('rect', {
-          x: bx - 3, y: by - 1,
-          width: bgW, height: 11,
-          fill: '#fff', 'fill-opacity': '0.85',
-          rx: 2,
-          transform: `rotate(-90 ${bx} ${by})`,
+          x: tx - bgH / 2,
+          y: by + offsetY,
+          width: bgH,
+          height: textLen + padX * 2,
+          fill: '#fff', 'fill-opacity': '0.9',
+          rx: 2, ry: 2,
         });
         layerConns.appendChild(bg);
-        // Текст
+        // Текст — повёрнут -90°, центрирован по оси порта
         const lbl = el('text', {
-          x: bx, y: by + 8,
+          x: tx,
+          y: ty,
           class: cls,
-          'text-anchor': 'start',
-          'dominant-baseline': 'auto',
-          transform: `rotate(-90 ${bx} ${by})`,
+          'text-anchor': 'middle',
+          'dominant-baseline': 'central',
+          transform: `rotate(-90 ${tx} ${ty})`,
         });
         lbl.textContent = brkText;
         layerConns.appendChild(lbl);
