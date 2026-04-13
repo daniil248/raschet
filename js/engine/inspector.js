@@ -506,12 +506,37 @@ export function wireInspectorInputs(n) {
         n[prop] = v;
         // Синхронизация цвета ИБП на одном parallel-щите
         if (prop === 'lineColor' && n.type === 'ups') syncUpsColors(n, v);
+        // При включении trayMode — пересвязать waypoints к центру канала
+        if (prop === 'trayMode' && n.type === 'channel' && v) {
+          const tw = n.trayWidth || 40;
+          const tl = Math.max(80, (n.lengthM || 10) * 4);
+          const cx = n.x + tw / 2;
+          const cy = n.y + tl / 2;
+          for (const c of state.conns.values()) {
+            if (!Array.isArray(c.channelIds) || !c.channelIds.includes(n.id)) continue;
+            if (!Array.isArray(c.waypoints)) continue;
+            // Проверяем, есть ли уже waypoint около центра
+            const hasSnap = c.waypoints.some(wp => Math.hypot(wp.x - cx, wp.y - cy) < 30);
+            if (!hasSnap) {
+              // Добавляем waypoint в центр канала
+              c.waypoints.push({ x: cx, y: cy });
+            } else {
+              // Перемещаем существующий ближайший waypoint точно в центр
+              let best = null, bestDist = Infinity;
+              for (const wp of c.waypoints) {
+                const d = Math.hypot(wp.x - cx, wp.y - cy);
+                if (d < bestDist) { best = wp; bestDist = d; }
+              }
+              if (best && bestDist < 100) { best.x = cx; best.y = cy; }
+            }
+          }
+        }
       }
       if (prop === 'inputs' || prop === 'outputs') clampPortsInvolvingNode(n);
       _render();
       notifyChange();
       // Перерисовать инспектор при изменениях, от которых зависят другие поля
-      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType' || prop === 'bundling') {
+      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType' || prop === 'bundling' || prop === 'trayMode') {
         renderInspector();
       }
     };

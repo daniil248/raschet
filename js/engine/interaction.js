@@ -581,16 +581,40 @@ export function initInteraction() {
       const ch = state.nodes.get(state.drag.lengthNodeId);
       if (ch) {
         const p = clientToSvg(e.clientX, e.clientY);
+        const tw = ch.trayWidth || 40;
+        // Центр канала
+        const cx = ch.x + tw / 2;
+        const startTl = Math.max(80, (state.drag.startLengthM || 10) * 4);
+        const cy = ch.y + startTl / 2;
         const angle = state.drag.channelAngle;
-        // Project mouse movement onto channel axis
-        const dx = p.x - (state.drag.channelX + (ch.trayWidth || 40) / 2);
-        const dy = p.y - (state.drag.channelY + Math.max(80, state.drag.startLengthM * 4) / 2);
-        // Distance along axis from center (positive = towards bottom end)
+        // Ось канала: для angle=0 ось направлена вниз (y+)
         const axX = Math.sin(angle);
-        const axY = -Math.cos(angle);
+        const axY = Math.cos(angle);  // положительное направление = вниз при 0°
+        // Вектор от центра к мыши
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        // Проекция на ось
         const proj = dx * axX + dy * axY;
-        // Convert to meters: halfLength in px = proj, so totalLength = 2*proj/4
-        const newLengthM = Math.max(1, Math.round(proj * 2 / 4));
+        // proj = расстояние от центра до handle (= tl/2),
+        // поэтому tl = |proj| * 2, lengthM = tl / 4
+        const newLengthM = Math.max(1, Math.round(Math.abs(proj) * 2 / 4));
+        // Обновить waypoints: центр канала сдвигается при изменении длины
+        const oldTl = Math.max(80, (ch.lengthM || 10) * 4);
+        const newTl = Math.max(80, newLengthM * 4);
+        if (oldTl !== newTl) {
+          const oldCx = ch.x + tw / 2;
+          const oldCy = ch.y + oldTl / 2;
+          const newCy = ch.y + newTl / 2;
+          for (const conn of state.conns.values()) {
+            const wps = Array.isArray(conn.waypoints) ? conn.waypoints : [];
+            for (const wp of wps) {
+              if (Math.hypot(wp.x - oldCx, wp.y - oldCy) < 5) {
+                wp.x = oldCx;
+                wp.y = newCy;
+              }
+            }
+          }
+        }
         ch.lengthM = newLengthM;
         render();
       }

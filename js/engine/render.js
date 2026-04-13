@@ -529,13 +529,13 @@ export function renderConns() {
         const entryEnd = { x: cx + px - axX * halfLen, y: cy + py - axY * halfLen };
         const exitEnd  = { x: cx + px + axX * halfLen, y: cy + py + axY * halfLen };
 
-        // Choose order: which end is closer to prev?
+        // Выбираем порядок: ближний конец к prev = entry
         const dEntry = Math.hypot(prev.x - entryEnd.x, prev.y - entryEnd.y);
         const dExit  = Math.hypot(prev.x - exitEnd.x, prev.y - exitEnd.y);
         if (dEntry <= dExit) {
-          result.push(entryEnd, { x: cx + px, y: cy + py }, exitEnd);
+          result.push(entryEnd, exitEnd);
         } else {
-          result.push(exitEnd, { x: cx + px, y: cy + py }, entryEnd);
+          result.push(exitEnd, entryEnd);
         }
         break;
       }

@@ -930,7 +930,7 @@ function openPresetEditor(preset) {
   const type = preset.type;
   const TYPE_LABELS = { source: 'Источник', generator: 'Генератор', panel: 'Щит', ups: 'ИБП', consumer: 'Потребитель', channel: 'Канал' };
 
-  // Helper
+  // Helpers
   const fld = (label, input) => `<div style="margin-bottom:8px"><label style="display:block;font-size:11px;text-transform:uppercase;color:#666;margin-bottom:2px">${escHtml(label)}</label>${input}</div>`;
   const inp = (key, val, opts) => {
     const t = opts?.type || (typeof val === 'number' ? 'number' : 'text');
@@ -941,49 +941,76 @@ function openPresetEditor(preset) {
   };
   const sel = (key, options, val) => {
     let h = `<select data-edit-key="${key}" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px">`;
-    for (const o of options) h += `<option value="${escAttr(o.v)}"${o.v === val ? ' selected' : ''}>${escHtml(o.l)}</option>`;
+    for (const o of options) h += `<option value="${escAttr(o.v)}"${String(o.v) === String(val) ? ' selected' : ''}>${escHtml(o.l)}</option>`;
     h += '</select>';
     return h;
   };
+  const chk = (key, label, checked) => `<div class="field check" style="margin-bottom:6px"><input type="checkbox" data-edit-key="${key}" ${checked ? 'checked' : ''}><label>${escHtml(label)}</label></div>`;
+  const row = (...cells) => `<div style="display:flex;gap:8px">${cells.map(c => `<div style="flex:1">${c}</div>`).join('')}</div>`;
 
   let html = `<div style="padding:12px">`;
-  html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:11px;color:#999;text-transform:uppercase">${escHtml(TYPE_LABELS[type] || type)}</span></div>`;
+  html += `<div style="margin-bottom:12px"><span style="font-size:11px;color:#999;text-transform:uppercase">${escHtml(TYPE_LABELS[type] || type)}</span></div>`;
 
   // Общие поля
   html += fld('Название в библиотеке', inp('title', preset.title));
   html += fld('Описание', inp('description', preset.description || ''));
   html += fld('Имя элемента на схеме', inp('name', p.name || ''));
 
-  // Поля по типу
+  // === Источник / Генератор ===
   if (type === 'source' || type === 'generator') {
-    html += fld('Мощность, kW', inp('capacityKw', p.capacityKw || 0));
+    html += fld('Номинальная мощность (Snom), кВА', inp('snomKva', p.snomKva || p.capacityKw || 400, {min:1}));
+    html += fld('Мощность (P), kW', inp('capacityKw', p.capacityKw || 0));
     if (type === 'generator') {
       html += fld('Режим', sel('backupMode', [{v:'true',l:'Резерв'},{v:'false',l:'Основной'}], String(p.backupMode !== false)));
     }
+    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Параметры КЗ</summary>';
+    html += fld('Мощность КЗ сети (Ssc), МВА', inp('sscMva', p.sscMva ?? (type === 'source' ? 500 : 10)));
+    html += fld('Напряжение КЗ (Uk), %', inp('ukPct', p.ukPct ?? 6, {min:0,max:25,step:0.5}));
+    html += fld('Отношение Xs/Rs', inp('xsRsRatio', p.xsRsRatio ?? 10, {min:0.1,max:50,step:0.1}));
+    html += '</details>';
   }
 
+  // === Щит ===
   if (type === 'panel') {
-    html += fld('Номинальный ток, А', inp('capacityA', p.capacityA || 0));
-    html += '<div style="display:flex;gap:8px">';
-    html += '<div style="flex:1">' + fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:10,step:1})) + '</div>';
-    html += '<div style="flex:1">' + fld('Выходов', inp('outputs', p.outputs || 4, {min:1,max:30,step:1})) + '</div>';
-    html += '</div>';
-    html += fld('Режим АВР', sel('switchMode', [{v:'auto',l:'Авто (АВР)'},{v:'manual',l:'Ручной'},{v:'parallel',l:'Параллельный'}], p.switchMode || 'auto'));
+    html += row(fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:30,step:1})),
+                fld('Выходов', inp('outputs', p.outputs || 4, {min:1,max:30,step:1})));
+    html += row(fld('In, А', inp('capacityA', p.capacityA || 160, {min:0,step:1})),
+                fld('Ксим', inp('kSim', p.kSim ?? 1, {min:0,max:1.2,step:0.05})));
+    html += fld('Режим коммутации', sel('switchMode', [
+      {v:'parallel',l:'Щит (без АВР)'}, {v:'auto',l:'АВР автоматический'},
+      {v:'avr_paired',l:'АВР с привязкой'}, {v:'switchover',l:'Подменный'}
+    ], p.switchMode || 'auto'));
+    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Запасы</summary>';
+    html += row(fld('Мин. запас, %', inp('marginMinPct', p.marginMinPct ?? 2, {min:0,max:50,step:1})),
+                fld('Макс. запас, %', inp('marginMaxPct', p.marginMaxPct ?? 30, {min:5,max:500,step:1})));
+    html += '</details>';
+    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Задержки АВР</summary>';
+    html += row(fld('Переключение, сек', inp('avrDelaySec', p.avrDelaySec ?? 2, {min:0,max:30,step:0.5})),
+                fld('Разбежка, сек', inp('avrInterlockSec', p.avrInterlockSec ?? 1, {min:0,max:10,step:0.5})));
+    html += '</details>';
   }
 
+  // === ИБП ===
   if (type === 'ups') {
     html += fld('Выходная мощность, kW', inp('capacityKw', p.capacityKw || 0));
     html += fld('КПД, %', inp('efficiency', p.efficiency || 94, {min:50,max:100,step:1}));
-    html += '<div style="display:flex;gap:8px">';
-    html += '<div style="flex:1">' + fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:5,step:1})) + '</div>';
-    html += '<div style="flex:1">' + fld('Выходов', inp('outputs', p.outputs || 2, {min:1,max:20,step:1})) + '</div>';
-    html += '</div>';
+    html += row(fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:5,step:1})),
+                fld('Выходов', inp('outputs', p.outputs || 2, {min:1,max:20,step:1})));
+    html += fld('cos φ', inp('cosPhi', p.cosPhi ?? 1.0, {min:0.1,max:1,step:0.01}));
+    html += '<details style="margin:8px 0" open><summary style="cursor:pointer;font-size:12px;font-weight:600">Батарея</summary>';
     html += fld('Ёмкость АКБ, kWh', inp('batteryKwh', p.batteryKwh || 0));
-    html += fld('Ток заряда, kW', inp('chargeKw', p.chargeKw || 0));
+    html += fld('Заряд, %', inp('batteryChargePct', p.batteryChargePct ?? 100, {min:0,max:100,step:1}));
+    html += fld('Ток заряда, А (AC)', inp('chargeA', p.chargeA ?? 2, {min:0,step:0.1}));
+    html += '</details>';
+    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Статический байпас</summary>';
+    html += chk('staticBypass', 'Байпас разрешён', p.staticBypass !== false);
+    html += chk('staticBypassAuto', 'Автоматический (по перегрузу)', p.staticBypassAuto !== false);
+    html += fld('Порог перехода, % от Pном', inp('staticBypassOverloadPct', p.staticBypassOverloadPct || 110, {min:80,max:200,step:5}));
+    html += '</details>';
   }
 
+  // === Потребитель ===
   if (type === 'consumer') {
-    // Тип оборудования из каталога
     const catalog = window.Raschet?.getConsumerCatalog?.() || [];
     if (catalog.length) {
       let catOpts = [{v:'custom',l:'Произвольный'}];
@@ -991,18 +1018,21 @@ function openPresetEditor(preset) {
       html += fld('Тип оборудования', sel('consumerSubtype', catOpts, p.consumerSubtype || 'custom'));
     }
     html += fld('Мощность, kW', inp('demandKw', p.demandKw || 10));
-    html += '<div style="display:flex;gap:8px">';
-    html += '<div style="flex:1">' + fld('Количество', inp('count', p.count || 1, {min:1,step:1})) + '</div>';
-    html += '<div style="flex:1">' + fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:10,step:1})) + '</div>';
-    html += '</div>';
-    html += '<div style="display:flex;gap:8px">';
-    html += '<div style="flex:1">' + fld('cos φ', inp('cosPhi', p.cosPhi ?? 0.92, {min:0.1,max:1,step:0.01})) + '</div>';
-    html += '<div style="flex:1">' + fld('Ки', inp('kUse', p.kUse ?? 1, {min:0,max:1,step:0.05})) + '</div>';
-    html += '</div>';
+    html += row(fld('Количество', inp('count', p.count || 1, {min:1,step:1})),
+                fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:10,step:1})));
+    html += row(fld('cos φ', inp('cosPhi', p.cosPhi ?? 0.92, {min:0.1,max:1,step:0.01})),
+                fld('Ки', inp('kUse', p.kUse ?? 1, {min:0,max:1,step:0.05})));
     html += fld('Кратность пускового тока', inp('inrushFactor', p.inrushFactor || 1, {min:1,max:10,step:0.1}));
-    html += fld('Фаза', sel('phase', [{v:'3ph',l:'3Ф'},{v:'1ph',l:'1Ф'},{v:'A',l:'A'},{v:'B',l:'B'},{v:'C',l:'C'}], p.phase || '3ph'));
+    // Кондиционер — наружный блок
+    if (p.consumerSubtype === 'conditioner' || (p.isConditioner)) {
+      html += '<details style="margin:8px 0" open><summary style="cursor:pointer;font-size:12px;font-weight:600">Наружный блок</summary>';
+      html += fld('Мощность наруж. блока, kW', inp('outdoorKw', p.outdoorKw || 0.3, {min:0,step:0.1}));
+      html += fld('cos φ наруж. блока', inp('outdoorCosPhi', p.outdoorCosPhi || 0.85, {min:0.1,max:1,step:0.01}));
+      html += '</details>';
+    }
   }
 
+  // === Канал ===
   if (type === 'channel') {
     html += fld('Длина, м', inp('lengthM', p.lengthM || 10, {min:0}));
   }
@@ -1024,7 +1054,10 @@ function openPresetEditor(preset) {
     const container = els.presetsList;
     container.querySelectorAll('[data-edit-key]').forEach(el => {
       const key = el.dataset.editKey;
-      let val = el.type === 'number' ? Number(el.value) : el.value;
+      let val;
+      if (el.type === 'checkbox') val = el.checked;
+      else if (el.type === 'number') val = Number(el.value);
+      else val = el.value;
       // Boolean selects
       if (val === 'true') val = true;
       if (val === 'false') val = false;
