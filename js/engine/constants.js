@@ -6,15 +6,20 @@
    ========================================================================= */
 
 // ================= Константы =================
-export const NODE_H = 96;
-export const NODE_MIN_W = 180;
-export const PORT_GAP_MIN = 34;
+export const NODE_H = 120;      // 3 × 40px grid
+export const NODE_MIN_W = 200;  // 5 × 40px grid
+export const PORT_GAP_MIN = 40; // = grid step
 export const PORT_R = 6;
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Глобальные настройки расчёта. При старте подгружаются из localStorage
 // и применяются ко всей схеме; можно менять через шестерёнку в палитре.
 export const GLOBAL = {
+  // Настройки отображения
+  showGrid: true,
+  snapToGrid: true,
+  gridStep: 40,
+  // Расчётные параметры
   voltage3ph: 400,
   voltage1ph: 230,
   defaultCosPhi: 0.92,

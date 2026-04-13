@@ -1,5 +1,5 @@
 import { state, svg } from './state.js';
-import { NODE_H, SVG_NS } from './constants.js';
+import { NODE_H, SVG_NS, GLOBAL } from './constants.js';
 import { nodeWidth, nodeHeight } from './geometry.js';
 import { updateViewBox, render } from './render.js';
 import { snapshot, undo, redo, updateUndoButtons, notifyChange } from './history.js';
@@ -85,6 +85,9 @@ export function initToolbar() {
     r.readAsText(f);
   });
 
+  // Кнопка настроек отображения
+  bind('btn-display-settings', () => openDisplaySettings());
+
   // Модальные окна — перетаскивание за заголовок
   document.querySelectorAll('.modal-head').forEach(head => {
     let dragging = false, dx = 0, dy = 0;
@@ -110,6 +113,55 @@ export function initToolbar() {
     });
     window.addEventListener('mouseup', () => { dragging = false; });
   });
+}
+
+function openDisplaySettings() {
+  const body = document.getElementById('display-settings-body');
+  if (!body) return;
+  let h = '';
+
+  h += '<div class="field check"><input type="checkbox" id="ds-showGrid"' + (GLOBAL.showGrid !== false ? ' checked' : '') + '><label>Показывать сетку</label></div>';
+  h += '<div class="field check"><input type="checkbox" id="ds-snapToGrid"' + (GLOBAL.snapToGrid !== false ? ' checked' : '') + '><label>Привязка к сетке</label></div>';
+
+  const step = GLOBAL.gridStep || 40;
+  h += '<div class="field"><label>Шаг сетки, px</label>';
+  h += '<select id="ds-gridStep">';
+  for (const s of [20, 40, 60, 80]) {
+    h += `<option value="${s}"${s === step ? ' selected' : ''}>${s} px</option>`;
+  }
+  h += '</select></div>';
+
+  h += '<hr style="margin:12px 0">';
+  h += '<div class="field check"><input type="checkbox" id="ds-showCableLabels" checked><label>Подписи кабелей на линиях</label></div>';
+  h += '<div class="field check"><input type="checkbox" id="ds-showBreakerBadges" checked><label>Номиналы автоматов на линиях</label></div>';
+
+  body.innerHTML = h;
+
+  // Live обработчики
+  const gridCb = document.getElementById('ds-showGrid');
+  if (gridCb) gridCb.addEventListener('change', () => {
+    GLOBAL.showGrid = gridCb.checked;
+    const bg = document.getElementById('bg');
+    if (bg) bg.setAttribute('fill', GLOBAL.showGrid ? 'url(#grid)' : '#fff');
+  });
+
+  const snapCb = document.getElementById('ds-snapToGrid');
+  if (snapCb) snapCb.addEventListener('change', () => { GLOBAL.snapToGrid = snapCb.checked; });
+
+  const stepSel = document.getElementById('ds-gridStep');
+  if (stepSel) stepSel.addEventListener('change', () => {
+    GLOBAL.gridStep = Number(stepSel.value) || 40;
+    // Обновляем паттерн сетки
+    const pattern = document.getElementById('grid');
+    if (pattern) {
+      const s = GLOBAL.gridStep;
+      pattern.setAttribute('width', s);
+      pattern.setAttribute('height', s);
+      pattern.querySelector('path')?.setAttribute('d', `M ${s} 0 L 0 0 0 ${s}`);
+    }
+  });
+
+  document.getElementById('modal-display-settings').classList.remove('hidden');
 }
 
 export function autoLayout() {

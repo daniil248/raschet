@@ -1,7 +1,7 @@
 /* interaction.js -- all canvas/palette event handling (ES module) */
 
 import { state, svg, layerOver, uid } from './state.js';
-import { NODE_H, SVG_NS, DEFAULTS } from './constants.js';
+import { NODE_H, SVG_NS, DEFAULTS, GLOBAL } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { snapshot, notifyChange } from './history.js';
 import { selectNode, selectConn, renderInspector, clientToSvg } from './inspector.js';
@@ -514,8 +514,8 @@ export function initInteraction() {
         let nw = state.drag.startW + dx;
         let nh = state.drag.startH + dy;
         if (!e.altKey) {
-          nw = Math.round(nw / 40) * 40;
-          nh = Math.round(nh / 40) * 40;
+          nw = (GLOBAL.snapToGrid !== false ? Math.round(nw / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nw);
+          nh = (GLOBAL.snapToGrid !== false ? Math.round(nh / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nh);
         }
         nw = Math.max(200, nw);
         nh = Math.max(120, nh);
@@ -556,8 +556,8 @@ export function initInteraction() {
         const p = clientToSvg(e.clientX, e.clientY);
         let nx = p.x, ny = p.y;
         if (!e.altKey) {
-          nx = Math.round(nx / 40) * 40;
-          ny = Math.round(ny / 40) * 40;
+          nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
+          ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
         }
         c.waypoints[state.drag.waypointIdx] = { x: nx, y: ny };
         render();
@@ -571,8 +571,8 @@ export function initInteraction() {
       let ny = p.y - state.drag.dy;
       // Snap to grid 40 -- держим Alt чтобы отключить привязку
       if (!e.altKey) {
-        nx = Math.round(nx / 40) * 40;
-        ny = Math.round(ny / 40) * 40;
+        nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
+        ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
       }
       n.x = nx;
       n.y = ny;
