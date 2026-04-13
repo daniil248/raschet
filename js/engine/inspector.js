@@ -75,6 +75,13 @@ export function renderInspectorNode(n) {
     h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
     h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
+    h.push(checkField('Режим трассы (визуальный канал)', 'trayMode', !!n.trayMode));
+    if (n.trayMode) {
+      h.push('<div style="display:flex;gap:8px">');
+      h.push('<div style="flex:1">' + field('Ширина, px', `<input type="number" min="20" max="200" step="10" data-prop="trayWidth" value="${n.trayWidth || 40}">`) + '</div>');
+      h.push('<div style="flex:1">' + field('Угол, °', `<input type="number" min="0" max="345" step="15" data-prop="trayAngle" value="${n.trayAngle || 0}">`) + '</div>');
+      h.push('</div>');
+    }
 
     // Условия прокладки — сворачиваемый (включая тип канала)
     const ct = n.channelType || 'conduit';

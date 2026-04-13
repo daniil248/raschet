@@ -148,8 +148,45 @@ export function renderNodes() {
     layerNodes.appendChild(g);
   }
 
+  // Каналы в режиме трассы (trayMode) — рисуем как повёрнутые прямоугольники
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'channel' || !n.trayMode) continue;
+    const tw = n.trayWidth || 40;
+    const tl = Math.max(80, (n.lengthM || 10) * 4); // длина пропорционально метрам
+    const angle = n.trayAngle || 0;
+    const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    const cx = n.x + tw / 2;
+    const cy = n.y + tl / 2;
+
+    const g = el('g', {
+      class: 'node channel' + (selected ? ' selected' : ''),
+      transform: `translate(${n.x},${n.y}) rotate(${angle} ${tw/2} ${tl/2})`,
+    });
+    g.dataset.nodeId = n.id;
+    // Тело трассы
+    g.appendChild(el('rect', {
+      class: 'node-body',
+      x: 0, y: 0, width: tw, height: tl,
+      fill: '#fff3e0', 'fill-opacity': '0.6',
+      stroke: '#a1887f', 'stroke-width': selected ? 2.5 : 1.5,
+      'stroke-dasharray': '6 3', rx: 4,
+    }));
+    // Метка
+    const label = n.tag || n.name || 'CH';
+    g.appendChild(text(tw / 2, tl / 2, label, 'node-tag'));
+    // Центральный кружок — точка привязки для сплайнов
+    g.appendChild(el('circle', {
+      cx: tw / 2, cy: tl / 2, r: 6,
+      fill: '#a1887f', 'fill-opacity': '0.3',
+      stroke: '#a1887f', 'stroke-width': 1,
+      class: 'channel-snap-point',
+    }));
+    layerNodes.appendChild(g);
+  }
+
   for (const n of state.nodes.values()) {
     if (n.type === 'zone') continue;
+    if (n.type === 'channel' && n.trayMode) continue; // уже нарисован выше
     const w = nodeWidth(n);
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const cls = [

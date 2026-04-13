@@ -285,15 +285,15 @@ export const DEFAULTS = {
     //   - температуру среды
     //   - расположение кабелей (в пучке, плотно, с зазором)
     name: 'Кабельный канал', comment: '',
-    channelType: 'conduit',   // conduit | tray_perf | tray_ladder | tray_solid | ground | wall | air
+    channelType: 'conduit',
     ambientC: 30,
     lengthM: 10,
-    // bundling: способ взаимного расположения кабелей в канале:
-    //   touching — плотно друг к другу (базовый K_group)
-    //   spaced   — с зазором ≥ 1 диаметр (коэффициент не применяется)
-    //   bundled  — в пучке (жёсткий коэффициент)
     bundling: 'touching',
     inputs: 1, outputs: 1,
+    // Визуальная трасса
+    trayWidth: 40,           // ширина трассы, px
+    trayAngle: 0,            // угол поворота, градусы (шаг 15°)
+    trayMode: false,         // true = визуальная трасса, false = обычный элемент
   }),
   zone:      () => ({
     // Зона / помещение — контейнер для группировки узлов. Членство явное:
