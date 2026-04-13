@@ -287,8 +287,10 @@ export function renderNodes() {
         }
       }
     }
+    const gs = 40; // GLOBAL.gridStep
     for (let i = 0; i < inCount; i++) {
-      const cx = w / (inCount + 1) * (i + 1);
+      const totalW = inCount * gs;
+      const cx = (w - totalW) / 2 + gs / 2 + i * gs;
       const circ = el('circle', { class: 'port in', cx, cy: 0, r: PORT_R });
       circ.dataset.portKind = 'in'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
@@ -315,7 +317,8 @@ export function renderNodes() {
     // Порты — выходы
     const outCount = nodeOutputCount(n);
     for (let i = 0; i < outCount; i++) {
-      const cx = w / (outCount + 1) * (i + 1);
+      const totalOutW = outCount * gs;
+      const cx = (w - totalOutW) / 2 + gs / 2 + i * gs;
       const circ = el('circle', { class: 'port out', cx, cy: NODE_H, r: PORT_R });
       circ.dataset.portKind = 'out'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
