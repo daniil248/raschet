@@ -646,7 +646,10 @@ function recalc() {
     c._mixedSources = false;
   }
 
-  function propagateColor(startId, color) {
+  // Фаза 1: раскрасить ВСЕ входящие линии цветом источника (независимо от автоматов).
+  // Линии, у которых на конце открыт вводной автомат, всё равно показывают цвет
+  // того источника, от которого они идут.
+  function colorIncomingLines(startId, color) {
     const queue = [{ nid: startId, color }];
     const visited = new Set();
     while (queue.length) {
@@ -657,23 +660,30 @@ function recalc() {
       const n = state.nodes.get(nid);
       if (!n) continue;
 
-      if (!n._sourceColors) n._sourceColors = new Set();
-      n._sourceColors.add(col);
-      if (!n._sourceColor) n._sourceColor = col;
-
       let outColor = col;
       if (n.type === 'ups') {
-        if (n._onStaticBypass) {
-          outColor = col; // bypass — цвет входящей линии
-        } else if (n.lineColor) {
-          outColor = n.lineColor; // инвертор — собственный цвет ИБП
-        }
+        if (n._onStaticBypass) outColor = col;
+        else if (n.lineColor) outColor = n.lineColor;
       }
 
       for (const c of state.conns.values()) {
         if (c.from.nodeId !== nid) continue;
         if (c._state !== 'active' && c._state !== 'powered') continue;
-        c._sourceColor = outColor;
+        // Раскрашиваем линию цветом источника
+        if (!c._sourceColor) c._sourceColor = outColor;
+        // Для downstream-узла: отслеживаем какие цвета РЕАЛЬНО активны
+        // (с учётом вводных автоматов)
+        const toN = state.nodes.get(c.to.nodeId);
+        if (toN) {
+          if (!toN._sourceColors) toN._sourceColors = new Set();
+          // Проверяем вводной автомат
+          const inBrk = Array.isArray(toN.inputBreakerStates) ? toN.inputBreakerStates : [];
+          const breakerClosed = inBrk[c.to.port] !== false;
+          if (breakerClosed) {
+            toN._sourceColors.add(outColor);
+            if (!toN._sourceColor) toN._sourceColor = outColor;
+          }
+        }
         queue.push({ nid: c.to.nodeId, color: outColor });
       }
     }
@@ -681,7 +691,50 @@ function recalc() {
 
   for (const n of state.nodes.values()) {
     if ((n.type === 'source' || n.type === 'generator') && n._powered) {
-      propagateColor(n.id, n.lineColor || '#e53935');
+      if (!n._sourceColors) n._sourceColors = new Set();
+      n._sourceColors.add(n.lineColor || '#e53935');
+      if (!n._sourceColor) n._sourceColor = n.lineColor || '#e53935';
+      colorIncomingLines(n.id, n.lineColor || '#e53935');
+    }
+  }
+
+  // Фаза 2: перекрасить выходные линии цветом активного источника (BFS).
+  // Панели, получившие _sourceColor от closed-breaker входов, распространяют
+  // этот цвет на свои выходы и далее вниз по цепочке.
+  {
+    const colorQueue = [];
+    for (const n of state.nodes.values()) {
+      if (!n._sourceColor) continue;
+      if (n.type === 'panel' || n.type === 'ups' || n.type === 'consumer') {
+        colorQueue.push(n.id);
+      }
+    }
+    const colorVisited = new Set();
+    while (colorQueue.length) {
+      const nid = colorQueue.shift();
+      if (colorVisited.has(nid)) continue;
+      colorVisited.add(nid);
+      const n = state.nodes.get(nid);
+      if (!n || !n._sourceColor) continue;
+      let outColor = n._sourceColor;
+      if (n.type === 'ups') {
+        if (n._onStaticBypass) { /* keep incoming color */ }
+        else if (n.lineColor) outColor = n.lineColor;
+      }
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== nid) continue;
+        if (c._state !== 'active' && c._state !== 'powered') continue;
+        c._sourceColor = outColor;
+        const toN = state.nodes.get(c.to.nodeId);
+        if (toN && !colorVisited.has(toN.id)) {
+          // Обновляем _sourceColor downstream-узла, учитывая вводные автоматы
+          const inBrk = Array.isArray(toN.inputBreakerStates) ? toN.inputBreakerStates : [];
+          if (inBrk[c.to.port] !== false) {
+            toN._sourceColor = outColor;
+            colorQueue.push(toN.id);
+          }
+        }
+      }
     }
   }
 

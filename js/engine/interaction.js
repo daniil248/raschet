@@ -7,7 +7,7 @@ import { snapshot, notifyChange } from './history.js';
 import { selectNode, selectConn, renderInspector, clientToSvg } from './inspector.js';
 import { render, updateViewBox, el, bezier } from './render.js';
 import { createNode, deleteNode, deleteConn, tryConnect, wouldCreateCycle, nextFreeTag } from './graph.js';
-import { tryAttachToZone, detachFromZones, findZoneForMember, isNodeFullyInside, nodesInZone } from './zones.js';
+import { tryAttachToZone, detachFromZones, findZoneForMember, findParentZone, isNodeFullyInside, nodesInZone } from './zones.js';
 import { flash } from './utils.js';
 
 /* ---- late-bound deps (set via bindInteractionDeps) ---- */
@@ -604,12 +604,8 @@ export function initInteraction() {
       if (c && Array.isArray(c.waypoints)) {
         const p = clientToSvg(e.clientX, e.clientY);
         let nx = p.x, ny = p.y;
-        if (!e.altKey) {
-          nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
-          ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
-        }
-        // Snap waypoint to tray-mode channel center
-        const SNAP_R = 20;
+        // Сначала проверяем привязку к центру канала-трассы (приоритет)
+        const SNAP_R = 25;
         let snapped = false;
         for (const ch of state.nodes.values()) {
           if (ch.type !== 'channel' || !ch.trayMode) continue;
@@ -619,14 +615,17 @@ export function initInteraction() {
           const cy = ch.y + tl / 2;
           if (Math.hypot(nx - cx, ny - cy) < SNAP_R) {
             nx = cx; ny = cy;
-            // Auto-add channel to connection's channelIds
             if (!Array.isArray(c.channelIds)) c.channelIds = [];
             if (!c.channelIds.includes(ch.id)) c.channelIds.push(ch.id);
             snapped = true;
             break;
           }
         }
-        // If waypoint moved away from channel center, auto-remove channelId
+        // Если не привязались к каналу — привязка к сетке
+        if (!snapped && !e.altKey) {
+          nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
+          ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
+        }
         if (!snapped) {
           _removeWaypointChannelSnap(c);
         }
@@ -644,6 +643,38 @@ export function initInteraction() {
       if (!e.altKey) {
         nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
         ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
+      }
+      // Для каналов в режиме трассы — привязка ЦЕНТРА к сетке
+      if (n.type === 'channel' && n.trayMode && !e.altKey && GLOBAL.snapToGrid !== false) {
+        const gs = GLOBAL.gridStep || 40;
+        const tw = n.trayWidth || 40;
+        const tl = Math.max(80, (n.lengthM || 10) * 4);
+        const cx = Math.round((nx + tw / 2) / gs) * gs;
+        const cy = Math.round((ny + tl / 2) / gs) * gs;
+        nx = cx - tw / 2;
+        ny = cy - tl / 2;
+      }
+      // Перемещение канала-трассы перемещает привязанные waypoints
+      if (n.type === 'channel' && n.trayMode) {
+        const dx = nx - n.x;
+        const dy = ny - n.y;
+        if (dx !== 0 || dy !== 0) {
+          const tw = n.trayWidth || 40;
+          const tl = Math.max(80, (n.lengthM || 10) * 4);
+          const oldCx = n.x + tw / 2;
+          const oldCy = n.y + tl / 2;
+          const newCx = nx + tw / 2;
+          const newCy = ny + tl / 2;
+          for (const c of state.conns.values()) {
+            const wps = Array.isArray(c.waypoints) ? c.waypoints : [];
+            for (const wp of wps) {
+              if (Math.hypot(wp.x - oldCx, wp.y - oldCy) < 5) {
+                wp.x = newCx;
+                wp.y = newCy;
+              }
+            }
+          }
+        }
       }
       n.x = nx;
       n.y = ny;
@@ -714,13 +745,24 @@ export function initInteraction() {
       // обычного drag'а узла (не самой зоны и не группового drag-all).
       if (wasNodeDrag && draggedNodeId && !hadChildren) {
         const dragged = state.nodes.get(draggedNodeId);
-        if (dragged && dragged.type !== 'zone') {
-          const currentZone = findZoneForMember(dragged);
-          if (currentZone && !isNodeFullyInside(dragged, currentZone)) {
-            currentZone.memberIds = (currentZone.memberIds || []).filter(id => id !== dragged.id);
-          }
-          if (!findZoneForMember(dragged)) {
-            tryAttachToZone(dragged);
+        if (dragged) {
+          if (dragged.type === 'zone') {
+            // Зона: проверяем вложенность в родительскую зону
+            const parentZone = findParentZone(dragged);
+            if (parentZone && !isNodeFullyInside(dragged, parentZone)) {
+              parentZone.memberIds = (parentZone.memberIds || []).filter(id => id !== dragged.id);
+            }
+            if (!findParentZone(dragged)) {
+              tryAttachToZone(dragged);
+            }
+          } else {
+            const currentZone = findZoneForMember(dragged);
+            if (currentZone && !isNodeFullyInside(dragged, currentZone)) {
+              currentZone.memberIds = (currentZone.memberIds || []).filter(id => id !== dragged.id);
+            }
+            if (!findZoneForMember(dragged)) {
+              tryAttachToZone(dragged);
+            }
           }
           render();
         }

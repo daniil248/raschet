@@ -171,9 +171,10 @@ export function renderInspectorNode(n) {
         const current = c._maxA ? `${fmt(c._maxA)} A` : '—';
         const length = c._cableLength != null ? `${c._cableLength} м` : '—';
         const countLabel = par > 1 ? ` (${par} шт.)` : '';
-        h.push(`<div style="padding:3px 0;border-bottom:1px solid #eee">`);
-        h.push(`<b>${escHtml(lineLabel)}</b>${countLabel}<br>`);
-        h.push(`<span style="color:#666">${cable} · ${length} · Imax: ${current}</span>`);
+        h.push(`<div style="padding:3px 0;border-bottom:1px solid #eee;display:flex;align-items:center;gap:4px">`);
+        h.push(`<div style="flex:1"><b>${escHtml(lineLabel)}</b>${countLabel}<br>`);
+        h.push(`<span style="color:#666">${cable} · ${length} · Imax: ${current}</span></div>`);
+        h.push(`<button class="ch-line-remove" data-ch-remove-conn="${c.id}" data-ch-remove-ch="${n.id}" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:#999;font-size:14px" title="Убрать из канала">✕</button>`);
         h.push(`</div>`);
       }
       h.push('</div></details>');
@@ -183,6 +184,28 @@ export function renderInspectorNode(n) {
     h.push('<button class="btn-delete" id="btn-del-node">Удалить канал</button>');
     inspectorBody.innerHTML = h.join('');
     wireInspectorInputs(n);
+    // Кнопки удаления линии из канала
+    inspectorBody.querySelectorAll('.ch-line-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const connId = btn.dataset.chRemoveConn;
+        const chId = btn.dataset.chRemoveCh;
+        const conn = state.conns.get(connId);
+        if (conn && Array.isArray(conn.channelIds)) {
+          snapshot('ch-remove-line:' + connId);
+          conn.channelIds = conn.channelIds.filter(id => id !== chId);
+          // Убрать waypoint из центра канала
+          const ch = state.nodes.get(chId);
+          if (ch && ch.trayMode && Array.isArray(conn.waypoints)) {
+            const tw = ch.trayWidth || 40;
+            const tl = Math.max(80, (ch.lengthM || 10) * 4);
+            const cx = ch.x + tw / 2;
+            const cy = ch.y + tl / 2;
+            conn.waypoints = conn.waypoints.filter(wp => Math.hypot(wp.x - cx, wp.y - cy) > 5);
+          }
+          _render(); renderInspector(); notifyChange();
+        }
+      });
+    });
     return;
   }
 
@@ -292,6 +315,10 @@ export function renderInspectorNode(n) {
     }
 
     h.push(consumerCurrentsBlock(n));
+    // Приоритеты входов — если больше 1 ввода
+    if ((n.inputs || 1) > 1) {
+      h.push(prioritySection(n));
+    }
     // Множитель нагрузки — только в активном сценарии
     if (state.activeModeId) {
       const lf = effectiveLoadFactor(n);
@@ -1021,10 +1048,11 @@ export function openConsumerParamsModal(n) {
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
 
   // Справочник типовых потребителей (не показываем для наружного блока)
+  const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];
   if (!isOutdoor) {
     const curSub = n.consumerSubtype || 'custom';
     let catOpts = '';
-    for (const cat of CONSUMER_CATALOG) {
+    for (const cat of fullCatalog) {
       catOpts += `<option value="${cat.id}"${cat.id === curSub ? ' selected' : ''}>${escHtml(cat.label)}</option>`;
     }
     h.push(field('Тип потребителя', `<select id="cp-catalog">${catOpts}</select>`));
@@ -1064,13 +1092,43 @@ export function openConsumerParamsModal(n) {
     h.push('</details>');
   }
 
+  // Кнопка сохранения текущих параметров в справочник проекта
+  if (!isOutdoor) {
+    h.push('<div style="margin-top:12px;padding-top:8px;border-top:1px solid #eee">');
+    h.push('<button type="button" id="cp-save-catalog" style="font-size:11px;padding:4px 8px;border:1px dashed #999;background:#f9f9f9;border-radius:4px;cursor:pointer">+ Сохранить как тип в проект</button>');
+    h.push('</div>');
+  }
+
   body.innerHTML = h.join('');
+
+  // Кнопка сохранения в справочник
+  const saveBtn = document.getElementById('cp-save-catalog');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const label = prompt('Название типа потребителя:');
+      if (!label) return;
+      const id = 'user_' + Date.now();
+      const entry = {
+        id, label,
+        demandKw: Number(document.getElementById('cp-demandKw')?.value) || 10,
+        cosPhi: Number(document.getElementById('cp-cosPhi')?.value) || 0.92,
+        kUse: Number(document.getElementById('cp-kUse')?.value) ?? 1,
+        inrushFactor: Number(document.getElementById('cp-inrush')?.value) || 1,
+        phase: '3ph',
+      };
+      if (!Array.isArray(GLOBAL.customConsumerCatalog)) GLOBAL.customConsumerCatalog = [];
+      GLOBAL.customConsumerCatalog.push(entry);
+      notifyChange();
+      openConsumerParamsModal(n);
+      flash('Тип сохранён в проект');
+    });
+  }
 
   // Обработчик смены типа из справочника
   const catSelect = document.getElementById('cp-catalog');
   if (catSelect) {
     catSelect.addEventListener('change', () => {
-      const cat = CONSUMER_CATALOG.find(c => c.id === catSelect.value);
+      const cat = fullCatalog.find(c => c.id === catSelect.value);
       if (!cat) return;
       const demEl = document.getElementById('cp-demandKw');
       const cosEl = document.getElementById('cp-cosPhi');
@@ -1100,7 +1158,7 @@ export function openConsumerParamsModal(n) {
   if (applyBtn) applyBtn.onclick = () => {
     snapshot('consumer-params:' + n.id);
     const catId = document.getElementById('cp-catalog')?.value || n.consumerSubtype || 'custom';
-    const cat = CONSUMER_CATALOG.find(c => c.id === catId);
+    const cat = fullCatalog.find(c => c.id === catId);
     n.consumerSubtype = catId;
     if (cat) n.name = cat.label;
     n.count = Number(document.getElementById('cp-count')?.value) || 1;

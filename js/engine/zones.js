@@ -26,14 +26,49 @@ export function findZoneForMember(n) {
   return best;
 }
 
-// Эффективное обозначение с учётом префикса зоны: «P1.MPB1»
+// Родительская зона для зоны (зона, содержащая другую зону как member)
+export function findParentZone(zone) {
+  if (!zone || zone.type !== 'zone') return null;
+  let best = null, bestArea = Infinity;
+  for (const z of state.nodes.values()) {
+    if (z.type !== 'zone' || z.id === zone.id) continue;
+    if (!Array.isArray(z.memberIds) || !z.memberIds.includes(zone.id)) continue;
+    const area = nodeWidth(z) * nodeHeight(z);
+    if (area < bestArea) { best = z; bestArea = area; }
+  }
+  return best;
+}
+
+// Полная цепочка зон от корневой до текущей (включая саму зону)
+function zoneChain(zone) {
+  const chain = [];
+  let cur = zone;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    chain.unshift(cur);
+    cur = findParentZone(cur);
+  }
+  return chain;
+}
+
+// Полный префикс зоны с учётом вложенности: «G1.S2»
+export function zonePrefix(zone) {
+  const chain = zoneChain(zone);
+  return chain.map(z => z.zonePrefix || z.tag || '').filter(Boolean).join('.');
+}
+
+// Эффективное обозначение с учётом полной цепочки зон: «G1.S2.PNL1»
 export function effectiveTag(n) {
   if (!n) return '';
-  if (n.type === 'zone') return n.zonePrefix || n.tag || '';
+  if (n.type === 'zone') {
+    const chain = zoneChain(n);
+    return chain.map(z => z.zonePrefix || z.tag || '').filter(Boolean).join('.');
+  }
   const z = findZoneForMember(n);
-  if (z && (z.zonePrefix || z.tag)) {
-    const prefix = z.zonePrefix || z.tag;
-    return `${prefix}.${n.tag || ''}`;
+  if (z) {
+    const prefix = zonePrefix(z);
+    if (prefix) return `${prefix}.${n.tag || ''}`;
   }
   return n.tag || '';
 }
@@ -52,12 +87,16 @@ export function nodesInZone(zone) {
 // Попытаться добавить узел в зону, если он полностью внутри неё и ещё
 // не является членом. Берём самую «узкую» подходящую зону.
 export function tryAttachToZone(n) {
-  if (!n || n.type === 'zone') return;
-  // Если уже член какой-то зоны — оставляем как есть (узел уже «закреплён»)
-  if (findZoneForMember(n)) return;
+  if (!n) return;
+  // Зона не прикрепляется к самой себе
+  // Для обычных узлов: если уже член зоны — не трогаем
+  if (n.type !== 'zone' && findZoneForMember(n)) return;
+  // Для зон: если уже вложена — не трогаем
+  if (n.type === 'zone' && findParentZone(n)) return;
   let best = null, bestArea = Infinity;
   for (const z of state.nodes.values()) {
     if (z.type !== 'zone') continue;
+    if (z.id === n.id) continue; // не к самой себе
     if (!isNodeFullyInside(n, z)) continue;
     const area = nodeWidth(z) * nodeHeight(z);
     if (area < bestArea) { best = z; bestArea = area; }
