@@ -1020,7 +1020,7 @@ function recalc() {
         const table = cableTable(material, insulation, method);
         const kT = kTempLookup(ambient, insulation);
         const effGrouping = kBundlingIgnoresGrouping(bundling) ? 1 : grouping;
-        const kG = kGroupLookup(effGrouping) * kBundlingFactor(bundling);
+        const kG = kGroupLookup(effGrouping, method) * kBundlingFactor(bundling);
         const k = kT * kG;
         const mSize = Number(c.manualCableSize) || 240;
         const mPar = Math.max(1, Number(c.manualCableParallel) || 1);

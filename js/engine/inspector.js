@@ -168,7 +168,8 @@ export function renderInspectorNode(n) {
         const toN = state.nodes.get(c.to?.nodeId);
         chCircuits += (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) ? Number(toN.count) : 1;
       }
-      const kg = kGroupLookup(Math.max(1, chCircuits));
+      const chMethod = (CHANNEL_TYPES[ct] || CHANNEL_TYPES.conduit).method;
+      const kg = kGroupLookup(Math.max(1, chCircuits), chMethod);
       const kb = kBundlingFactor(bd);
       const ktotal = kt * kg * kb;
       h.push(`<div class="muted" style="font-size:11px;line-height:1.8;margin-top:6px">` +

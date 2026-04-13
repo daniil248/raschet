@@ -1,4 +1,4 @@
-import { GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP, CABLE_TYPES } from './constants.js';
+import { GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP, K_GROUP_TABLES, METHOD_GROUP_TYPE, CABLE_TYPES } from './constants.js';
 
 export function cableTable(material, insulation, method) {
   const m = IEC_TABLES[material] || IEC_TABLES.Cu;
@@ -25,12 +25,15 @@ export function kTempLookup(t, insulation) {
   return tbl[best];
 }
 
-export function kGroupLookup(n) {
-  const keys = Object.keys(K_GROUP).map(Number).sort((a, b) => a - b);
+// method — метод прокладки IEC (A1, B1, C, E, F, G, D1, D2)
+// Определяет какую таблицу K_GROUP использовать
+export function kGroupLookup(n, method) {
+  const groupType = (method && METHOD_GROUP_TYPE[method]) || 'bundle';
+  const table = K_GROUP_TABLES[groupType] || K_GROUP_TABLES.bundle;
+  const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
   const v = Math.max(1, n | 0);
-  // Находим ближайший ключ не меньше v
-  let best = K_GROUP[1];
-  for (const k of keys) { if (k <= v) best = K_GROUP[k]; }
+  let best = table[1];
+  for (const k of keys) { if (k <= v) best = table[k]; }
   return best;
 }
 
@@ -57,7 +60,7 @@ export function selectCableSize(I, opts) {
 
   const table = cableTable(material, insulation, method);
   const kT = kTempLookup(ambient, insulation);
-  const kG = kGroupLookup(grouping) * kBundlingFactor(bundling);
+  const kG = kGroupLookup(grouping, method) * kBundlingFactor(bundling);
   const k = kT * kG;
 
   // Для цельных жил — ограничение по max сечению (10 мм² для класса 1-2)
@@ -99,7 +102,7 @@ export function selectCableSize(I, opts) {
       if (!kBundlingIgnoresGrouping(bundling)) {
         grp2 += (par - basePar);
       }
-      const kG2 = kGroupLookup(grp2) * kBundlingFactor(bundling);
+      const kG2 = kGroupLookup(grp2, method) * kBundlingFactor(bundling);
       const k2 = kT * kG2;
       const Iper = I / par;
       const InNeeded = selectBreaker(Iper);
