@@ -1439,8 +1439,8 @@ export function openPanelControlModal(n) {
       if (!Array.isArray(n.breakerStates)) n.breakerStates = new Array(outCount).fill(true);
       while (n.breakerStates.length < outCount) n.breakerStates.push(true);
       n.breakerStates[idx] = !n.breakerStates[idx];
-      openPanelControlModal(n);
       _render(); notifyChange();
+      openPanelControlModal(n);
     });
   });
 
@@ -1477,8 +1477,8 @@ export function openPanelControlModal(n) {
       if (n.switchMode === 'manual') {
         n._avrBreakerOverride = [...n.inputBreakerStates];
       }
-      openPanelControlModal(n);
       _render(); notifyChange();
+      openPanelControlModal(n);
     });
   });
 
@@ -1513,8 +1513,8 @@ export function openPanelControlModal(n) {
         }
         n.switchMode = 'manual';
       }
+      _render(); notifyChange();
       openPanelControlModal(n);
-      _render(); renderInspector(); notifyChange();
     });
   }
 
@@ -1524,8 +1524,8 @@ export function openPanelControlModal(n) {
     maintCb.addEventListener('change', () => {
       snapshot('maint:' + n.id);
       n.maintenance = maintCb.checked;
-      openPanelControlModal(n);
       _render(); renderInspector(); notifyChange();
+      openPanelControlModal(n);
     });
   }
 
