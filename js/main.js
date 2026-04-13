@@ -823,24 +823,141 @@ function renderPresets(query) {
     if (!filtered.length) continue;
     parts.push(`<div class="preset-group"><h4>${escHtml(cat)}</h4></div>`);
     for (const p of filtered) {
+      const isCustom = !!(p.custom);
       parts.push(
-        `<div class="preset-card" data-id="${escAttr(p.id)}">` +
+        `<div class="preset-card" data-id="${escAttr(p.id)}" draggable="true">` +
+        `<div class="pc-body">` +
         `<div class="pc-title">${escHtml(p.title)}</div>` +
         `<div class="pc-desc">${escHtml(p.description || '')}</div>` +
+        `</div>` +
+        `<div class="pc-actions">` +
+        `<button class="pc-btn pc-add" data-add-id="${escAttr(p.id)}" title="Вставить на холст">⎘</button>` +
+        `<button class="pc-btn pc-edit" data-edit-id="${escAttr(p.id)}" title="Редактировать параметры">✎</button>` +
+        (isCustom ? `<button class="pc-btn pc-del" data-del-id="${escAttr(p.id)}" title="Удалить">✕</button>` : '') +
+        `</div>` +
         `</div>`
       );
     }
   }
   els.presetsList.innerHTML = parts.join('') || '<div class="muted" style="padding:20px;text-align:center">Ничего не найдено</div>';
+
+  // Drag from library to canvas
   els.presetsList.querySelectorAll('.preset-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const p = window.Presets.get(card.dataset.id);
+    card.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/raschet-preset', card.dataset.id);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+  });
+
+  // Click copy button → insert at center
+  els.presetsList.querySelectorAll('.pc-add').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const p = window.Presets.get(btn.dataset.addId);
       if (!p) return;
       window.Raschet.applyPreset(p);
       closeModal('modal-presets');
-      flash(`Добавлено: ${p.title}`);
+      flash('Добавлено: ' + p.title);
     });
   });
+
+  // Click edit button → edit preset params
+  els.presetsList.querySelectorAll('.pc-edit').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const p = window.Presets.get(btn.dataset.editId);
+      if (!p) return;
+      openPresetEditor(p);
+    });
+  });
+
+  // Click delete button → remove custom preset
+  els.presetsList.querySelectorAll('.pc-del').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!confirm('Удалить этот элемент из библиотеки?')) return;
+      window.Presets.removeUser(btn.dataset.delId);
+      renderPresets(els.presetsSearch.value);
+      flash('Удалено');
+    });
+  });
+}
+
+function openPresetEditor(preset) {
+  const params = preset.params || {};
+  const type = preset.type;
+  // Build simple editor fields based on type
+  const fields = [];
+  fields.push({ key: 'title', label: 'Название', value: preset.title, onPreset: true });
+  fields.push({ key: 'description', label: 'Описание', value: preset.description || '', onPreset: true });
+  if ('name' in params) fields.push({ key: 'name', label: 'Имя элемента', value: params.name || '' });
+  if (type === 'source' || type === 'generator') {
+    fields.push({ key: 'capacityKw', label: 'Мощность, kW', value: params.capacityKw || 0, num: true });
+  }
+  if (type === 'panel') {
+    fields.push({ key: 'inputs', label: 'Входов', value: params.inputs || 1, num: true });
+    fields.push({ key: 'outputs', label: 'Выходов', value: params.outputs || 4, num: true });
+    fields.push({ key: 'capacityA', label: 'Номинал, А', value: params.capacityA || 0, num: true });
+  }
+  if (type === 'ups') {
+    fields.push({ key: 'capacityKw', label: 'Мощность, kW', value: params.capacityKw || 0, num: true });
+    fields.push({ key: 'efficiency', label: 'КПД, %', value: params.efficiency || 94, num: true });
+    fields.push({ key: 'inputs', label: 'Входов', value: params.inputs || 1, num: true });
+    fields.push({ key: 'outputs', label: 'Выходов', value: params.outputs || 2, num: true });
+  }
+  if (type === 'consumer') {
+    fields.push({ key: 'demandKw', label: 'Мощность, kW', value: params.demandKw || 10, num: true });
+    fields.push({ key: 'count', label: 'Количество', value: params.count || 1, num: true });
+    fields.push({ key: 'cosPhi', label: 'cos φ', value: params.cosPhi || 0.92, num: true });
+    fields.push({ key: 'kUse', label: 'Ки', value: params.kUse ?? 1, num: true });
+    fields.push({ key: 'inrushFactor', label: 'Кратность пуска', value: params.inrushFactor || 1, num: true });
+    fields.push({ key: 'inputs', label: 'Входов', value: params.inputs || 1, num: true });
+  }
+
+  let html = `<div style="padding:12px"><h3 style="margin:0 0 12px">${escHtml(preset.title)}</h3>`;
+  for (const f of fields) {
+    const inputType = f.num ? 'number' : 'text';
+    html += `<div style="margin-bottom:8px"><label style="display:block;font-size:11px;text-transform:uppercase;color:#666;margin-bottom:2px">${escHtml(f.label)}</label>`;
+    html += `<input type="${inputType}" data-edit-key="${f.key}" ${f.onPreset ? 'data-on-preset="1"' : ''} value="${escAttr(String(f.value))}" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px"></div>`;
+  }
+  html += `<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">`;
+  html += `<button id="pe-cancel" style="padding:6px 16px;border:1px solid #ccc;background:#fff;border-radius:4px;cursor:pointer">Отмена</button>`;
+  html += `<button id="pe-save" style="padding:6px 16px;border:none;background:#1976d2;color:#fff;border-radius:4px;cursor:pointer">Сохранить</button>`;
+  html += `</div></div>`;
+
+  // Show in presets modal body
+  const container = els.presetsList;
+  const prevHTML = container.innerHTML;
+  container.innerHTML = html;
+
+  document.getElementById('pe-cancel').onclick = () => {
+    renderPresets(els.presetsSearch.value);
+  };
+  document.getElementById('pe-save').onclick = () => {
+    container.querySelectorAll('[data-edit-key]').forEach(inp => {
+      const key = inp.dataset.editKey;
+      const isOnPreset = inp.dataset.onPreset === '1';
+      const val = inp.type === 'number' ? Number(inp.value) : inp.value;
+      if (isOnPreset) {
+        preset[key] = val;
+      } else {
+        if (!preset.params) preset.params = {};
+        preset.params[key] = val;
+      }
+    });
+    // Save custom presets to localStorage
+    if (preset.custom) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+        const idx = stored.findIndex(p => p.id === preset.id);
+        if (idx >= 0) stored[idx] = preset;
+        else stored.push(preset);
+        localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+      } catch {}
+    }
+    renderPresets(els.presetsSearch.value);
+    flash('Параметры обновлены');
+  };
 }
 
 // ================= Отчёт =================

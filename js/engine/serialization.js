@@ -3,10 +3,10 @@ import { DEFAULTS, GLOBAL, CHANNEL_TYPES } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight } from './geometry.js';
 import { nextFreeTag } from './graph.js';
 
-let _clearUndoStack, _render, _renderInspector, _updateViewBox, _renderConsumerCatalog;
-export function bindSerializationDeps({ clearUndoStack, render, renderInspector, updateViewBox, renderConsumerCatalog }) {
+let _clearUndoStack, _render, _renderInspector, _updateViewBox;
+export function bindSerializationDeps({ clearUndoStack, render, renderInspector, updateViewBox }) {
   _clearUndoStack = clearUndoStack; _render = render; _renderInspector = renderInspector;
-  _updateViewBox = updateViewBox; _renderConsumerCatalog = renderConsumerCatalog;
+  _updateViewBox = updateViewBox;
 }
 
 // ================= Сохранение =================
@@ -199,5 +199,4 @@ export function deserialize(data) {
   }
 
   _updateViewBox();
-  if (_renderConsumerCatalog) _renderConsumerCatalog();
 }

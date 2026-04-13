@@ -975,13 +975,25 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
   background: #fafbfc;
   border: 1px solid #e0e3ea;
   border-radius: 6px;
-  padding: 10px 12px;
-  cursor: pointer;
+  padding: 8px 10px;
+  cursor: grab;
   transition: border-color .12s, transform .12s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .preset-card:hover { border-color: #1976d2; background: #fff; transform: translateY(-1px); }
+.preset-card .pc-body { flex: 1; min-width: 0; }
 .preset-card .pc-title { font-size: 13px; font-weight: 600; color: #1f2430; }
-.preset-card .pc-desc { font-size: 11px; color: #8a93a7; margin-top: 2px; }
+.preset-card .pc-desc { font-size: 11px; color: #8a93a7; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-card .pc-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.pc-btn {
+  background: none; border: none; cursor: pointer; padding: 4px 6px;
+  font-size: 14px; color: #999; border-radius: 4px;
+  transition: background .1s, color .1s;
+}
+.pc-btn:hover { background: #e3f2fd; color: #1976d2; }
+.pc-del:hover { background: #ffebee; color: #d32f2f; }
 
 /* Report */
 .report-body {

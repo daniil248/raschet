@@ -240,6 +240,17 @@ export function initInteraction() {
   svg.addEventListener('drop', e => {
     if (state.readOnly) return;
     e.preventDefault();
+    // Preset drag from library
+    const presetId = e.dataTransfer.getData('text/raschet-preset');
+    if (presetId && window.Presets) {
+      const preset = window.Presets.get(presetId);
+      if (preset && window.Raschet && window.Raschet.applyPresetAt) {
+        const p = clientToSvg(e.clientX, e.clientY);
+        window.Raschet.applyPresetAt(preset, p.x, p.y);
+        return;
+      }
+    }
+    // Normal palette drag
     const type = e.dataTransfer.getData('text/raschet-type');
     if (!type || !DEFAULTS[type]) return;
     const p = clientToSvg(e.clientX, e.clientY);

@@ -10,13 +10,12 @@ import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort } from './zones.js';
 
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
-let _render, _deleteNode, _deleteConn, _isTagUnique, _renderConsumerCatalog;
-export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique, renderConsumerCatalog }) {
+let _render, _deleteNode, _deleteConn, _isTagUnique;
+export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique }) {
   _render = render;
   _deleteNode = deleteNode;
   _deleteConn = deleteConn;
   _isTagUnique = isTagUnique;
-  if (renderConsumerCatalog) _renderConsumerCatalog = renderConsumerCatalog;
 }
 
 // ================= Инспектор =================
@@ -1138,7 +1137,6 @@ export function openConsumerParamsModal(n) {
       if (!Array.isArray(GLOBAL.customConsumerCatalog)) GLOBAL.customConsumerCatalog = [];
       GLOBAL.customConsumerCatalog.push(entry);
       notifyChange();
-      if (_renderConsumerCatalog) _renderConsumerCatalog();
       openConsumerParamsModal(n);
       flash('Тип сохранён в проект');
     });
