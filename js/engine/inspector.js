@@ -1490,6 +1490,20 @@ export function openPanelControlModal(n) {
         n._avrDisconnected = false;
       } else {
         n._prevSwitchMode = n.switchMode;
+        // Копируем текущее состояние автоматов АВР в ручное управление
+        // чтобы при переключении ничего не менялось
+        if (Array.isArray(n._avrBreakerOverride)) {
+          n.inputBreakerStates = [...n._avrBreakerOverride];
+        } else {
+          // Определяем из текущих active связей
+          const states = new Array(n.inputs || 0).fill(false);
+          for (const c of state.conns.values()) {
+            if (c.to.nodeId === n.id && c._state === 'active') {
+              states[c.to.port] = true;
+            }
+          }
+          n.inputBreakerStates = states;
+        }
         n.switchMode = 'manual';
       }
       openPanelControlModal(n);
