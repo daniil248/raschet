@@ -248,6 +248,15 @@ export function renderNodes() {
       }
     }
 
+    // Маркер цвета линии для источников/генераторов
+    if ((n.type === 'source' || n.type === 'generator') && GLOBAL.showSourceColors) {
+      const color = n.lineColor || '#e53935';
+      g.appendChild(el('circle', {
+        cx: w - 14, cy: NODE_H - 14, r: 7,
+        fill: color, stroke: '#fff', 'stroke-width': 1.5,
+      }));
+    }
+
     // Подпись типа
     const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
     const subTxt = {

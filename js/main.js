@@ -690,6 +690,7 @@ const SETTINGS_DEFAULTS = {
   defaultCableType: 'multi',
   maxCableSize: 240,
   maxParallelAuto: 4,
+  maxVdropPct: 5,
 };
 
 function loadGlobalSettings() {
@@ -763,6 +764,7 @@ function openSettingsModal() {
   set('set-cableType',     G.defaultCableType ?? 'multi');
   set('set-maxCableSize',  G.maxCableSize ?? 240);
   set('set-maxParallelAuto', G.maxParallelAuto ?? 4);
+  set('set-maxVdropPct', G.maxVdropPct ?? 5);
   set('set-installMethod', G.defaultInstallMethod ?? 'B1');
   set('set-ambient',       G.defaultAmbient ?? 30);
   openModal('modal-settings');
@@ -779,6 +781,7 @@ function saveSettingsModal() {
     defaultCableType:   get('set-cableType') || 'multi',
     maxCableSize:       Number(get('set-maxCableSize')) || 240,
     maxParallelAuto:    Number(get('set-maxParallelAuto')) || 4,
+    maxVdropPct:        Number(get('set-maxVdropPct')) || 5,
     defaultInstallMethod: get('set-installMethod') || 'B1',
     defaultAmbient:     Number(get('set-ambient')) || 30,
   };
@@ -821,7 +824,9 @@ function renderPresets(query) {
       ? list.filter(p => (p.title + ' ' + p.description + ' ' + cat).toLowerCase().includes(q))
       : list;
     if (!filtered.length) continue;
-    parts.push(`<div class="preset-group"><h4>${escHtml(cat)}</h4></div>`);
+    const CAT_TYPE = { 'Источники': 'source', 'Генераторы': 'generator', 'Щиты': 'panel', 'ИБП': 'ups', 'Потребители': 'consumer', 'Каналы': 'channel' };
+    const catType = CAT_TYPE[cat] || 'consumer';
+    parts.push(`<div class="preset-group" style="display:flex;align-items:center;justify-content:space-between"><h4 style="margin:0">${escHtml(cat)}</h4><button class="pc-btn pc-cat-add" data-cat-type="${catType}" data-cat-name="${escAttr(cat)}" title="Добавить новый элемент в ${escAttr(cat)}" style="font-size:16px">+</button></div>`);
     for (const p of filtered) {
       const isCustom = !!(p.custom);
       parts.push(
@@ -879,6 +884,43 @@ function renderPresets(query) {
       window.Presets.removeUser(btn.dataset.delId);
       renderPresets(els.presetsSearch.value);
       flash('Удалено');
+    });
+  });
+
+  // "+" button in category headers — add new custom preset of that type
+  els.presetsList.querySelectorAll('.pc-cat-add').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const type = btn.dataset.catType;
+      const catName = btn.dataset.catName;
+      const title = prompt('Название нового элемента:');
+      if (!title) return;
+      const DEFAULTS_MAP = {
+        source:    { name: title, capacityKw: 400, on: true },
+        generator: { name: title, capacityKw: 100, on: true, backupMode: true },
+        panel:     { name: title, inputs: 1, outputs: 4, switchMode: 'auto' },
+        ups:       { name: title, capacityKw: 10, efficiency: 94, inputs: 1, outputs: 2 },
+        consumer:  { name: title, demandKw: 10, count: 1, cosPhi: 0.92, kUse: 1, inrushFactor: 1, inputs: 1 },
+        channel:   { name: title },
+      };
+      const preset = {
+        id: 'user-' + Date.now().toString(36),
+        category: catName,
+        title,
+        description: '',
+        type,
+        params: DEFAULTS_MAP[type] || { name: title },
+        custom: true,
+      };
+      window.Presets.all.push(preset);
+      try {
+        const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+        stored.push(preset);
+        localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+      } catch {}
+      renderPresets(els.presetsSearch.value);
+      // Open editor immediately
+      openPresetEditor(preset);
     });
   });
 }

@@ -1399,6 +1399,8 @@ function recalc() {
   }
   for (const n of state.nodes.values()) {
     n._deltaUPct = nodeDeltaU(n.id);
+    // Превышение допустимого падения напряжения
+    n._vdropOverLimit = n._deltaUPct > (GLOBAL.maxVdropPct || 5);
   }
 }
 

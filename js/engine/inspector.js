@@ -333,10 +333,6 @@ export function renderInspectorNode(n) {
     }
 
     h.push(consumerCurrentsBlock(n));
-    // Приоритеты входов — если больше 1 ввода
-    if ((n.inputs || 1) > 1) {
-      h.push(prioritySection(n));
-    }
     // Множитель нагрузки — только в активном сценарии
     if (state.activeModeId) {
       const lf = effectiveLoadFactor(n);
@@ -421,9 +417,10 @@ export function saveNodeAsPreset(n) {
   delete params.id; delete params.x; delete params.y; delete params.tag;
   for (const k of Object.keys(params)) if (k.startsWith('_')) delete params[k];
   const list = loadUserPresets();
+  const TYPE_CATEGORY = { source: 'Источники', generator: 'Генераторы', panel: 'Щиты', ups: 'ИБП', consumer: 'Потребители', channel: 'Каналы' };
   list.push({
     id: 'user-' + Date.now().toString(36),
-    category: 'Мои',
+    category: TYPE_CATEGORY[n.type] || 'Прочее',
     title,
     description: `Сохранено ${new Date().toLocaleString()}`,
     type: n.type,
@@ -1095,6 +1092,22 @@ export function openConsumerParamsModal(n) {
   h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="10" step="1" value="${n.inputs}">`));
 
+  // Приоритеты входов (горизонтально) — только если больше 1 входа
+  const inputCount = n.inputs || 1;
+  if (inputCount > 1) {
+    h.push('<div class="field"><label style="text-transform:uppercase;font-size:11px;color:#666">Приоритеты входов</label>');
+    h.push('<div style="display:flex;gap:6px;flex-wrap:wrap">');
+    for (let i = 0; i < inputCount; i++) {
+      const v = (n.priorities && n.priorities[i]) ?? (i + 1);
+      h.push(`<div style="text-align:center"><div style="font-size:10px;color:#999;margin-bottom:2px">Вх ${i + 1}</div>`);
+      h.push(`<input type="number" id="cp-prio-${i}" min="1" max="99" step="1" value="${v}" style="width:48px;text-align:center;padding:4px">`);
+      h.push('</div>');
+    }
+    h.push('</div>');
+    h.push('<div class="muted" style="font-size:10px;margin-top:2px">1 = высший. Равные значения = параллельная работа.</div>');
+    h.push('</div>');
+  }
+
   // Параметры наружного блока (только для кондиционера)
   if (!isOutdoor && (n.consumerSubtype === 'conditioner')) {
     h.push('<details class="inspector-section" open>');
@@ -1189,6 +1202,15 @@ export function openConsumerParamsModal(n) {
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
     n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
 
+    // Сохранить приоритеты
+    if (!Array.isArray(n.priorities)) n.priorities = [];
+    for (let i = 0; i < n.inputs; i++) {
+      const el = document.getElementById('cp-prio-' + i);
+      n.priorities[i] = el ? (Number(el.value) || (i + 1)) : (i + 1);
+    }
+    while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
+    n.priorities.length = n.inputs;
+
     // Кондиционер: создание / обновление наружного блока
     if (catId === 'conditioner') {
       n.outdoorKw = Number(document.getElementById('cp-outdoorKw')?.value) || 0.3;
@@ -1199,8 +1221,8 @@ export function openConsumerParamsModal(n) {
         const outId = uid();
         const outdoor = {
           id: outId, type: 'consumer',
-          x: n.x + nodeWidth(n) + 80,
-          y: n.y,
+          x: n.x,
+          y: n.y + NODE_H + 80,
           ...DEFAULTS.consumer(),
           name: 'Наруж. блок',
           consumerSubtype: 'outdoor_unit',
