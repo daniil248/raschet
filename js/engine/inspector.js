@@ -1278,7 +1278,7 @@ export function openPanelControlModal(n) {
   const brkH = 28;
   const busY = inBrkY + brkH + 20;
   const outBrkY = busY + 20;
-  const svgH = outBrkY + brkH + 50;
+  const svgH = outBrkY + brkH + 80; // увеличено для вертикальных подписей
 
   // Состояние входов
   // В авто-режиме: АВР определяет какие входы замкнуты (по приоритетам/логике).
@@ -1396,9 +1396,18 @@ export function openPanelControlModal(n) {
     const brk = svgBreaker(x, outBrkY, on, lineCol, '#ff9800');
     h += brk.svg;
     // Линия от автомата вниз
-    h += `<line x1="${x}" y1="${outBrkY + brkH}" x2="${x}" y2="${svgH - 16}" stroke="${lineCol}" stroke-width="2"/>`;
-    // Метка назначения
-    h += `<text x="${x}" y="${svgH - 4}" text-anchor="middle" fill="#333" font-size="9" font-weight="600">${escHtml(s.destTag)}</text>`;
+    h += `<line x1="${x}" y1="${outBrkY + brkH}" x2="${x}" y2="${outBrkY + brkH + 14}" stroke="${lineCol}" stroke-width="2"/>`;
+    // Метка назначения — вертикальная, с номером входа
+    // Определяем номер входа у цели
+    let inPortNum = '';
+    for (const cc of state.conns.values()) {
+      if (cc.from.nodeId === n.id && cc.from.port === i) {
+        inPortNum = `-вх${cc.to.port + 1}`;
+        break;
+      }
+    }
+    const outLabel = s.destTag + inPortNum;
+    h += `<text x="${x + 4}" y="${outBrkY + brkH + 18}" fill="#333" font-size="8" font-weight="600" transform="rotate(90 ${x + 4} ${outBrkY + brkH + 18})">${escHtml(outLabel)}</text>`;
     // Кликабельная зона
     h += `<rect x="${x - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-breaker-toggle="${i}"/>`;
   }
@@ -1412,13 +1421,14 @@ export function openPanelControlModal(n) {
     h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:4px 0">АВР: разбежка ${Math.ceil(n._avrInterlockCountdown)} с</div>`;
   }
 
-  // --- Переключатель Авто / Ручной (только для щитов с АВР) ---
+  // --- Переключатель Авто / Ручной (под SVG) ---
   if (inCount > 1 && hasAVR) {
     const manualNow = n.switchMode === 'manual';
-    h += '<div style="display:flex;align-items:center;gap:10px;margin:10px 0 6px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin:8px 0 6px">';
+    h += '<span style="font-size:11px;font-weight:600;color:#666">Режим работы АВР:</span>';
     h += '<span style="font-size:11px;color:' + (!manualNow ? '#4caf50;font-weight:600' : '#999') + '">Авто</span>';
-    h += `<div id="pc-toggle" style="position:relative;width:52px;height:26px;border-radius:13px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;transition:background 0.2s;flex-shrink:0">`;
-    h += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:22px;height:22px;border-radius:11px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+    h += `<div id="pc-toggle" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
+    h += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
     h += '</div>';
     h += '<span style="font-size:11px;color:' + (manualNow ? '#e65100;font-weight:600' : '#999') + '">Ручной</span>';
     h += '</div>';
@@ -1868,7 +1878,8 @@ export function renderInspectorConn(c) {
   const ct = c.cableType || GLOBAL.defaultCableType;
   const isBusbar = ct === 'busbar';
 
-  h.push('<div class="inspector-section"><h4>Проводник</h4>');
+  h.push('<details class="inspector-section">');
+  h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Проводник</summary>');
   h.push(field('Тип проводника',
     `<select data-conn-prop="cableType">
       <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный</option>
@@ -1893,7 +1904,7 @@ export function renderInspectorConn(c) {
         <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
       </select>`));
   }
-  h.push('</div>');
+  h.push('</details>');
 
   if (!isBusbar) {
     // === Условия прокладки (сворачиваемый) ===
