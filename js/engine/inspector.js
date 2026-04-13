@@ -1463,17 +1463,24 @@ export function openPanelControlModal(n) {
     h += brk.svg;
     // Линия от автомата вниз
     h += `<line x1="${x}" y1="${outBrkY + brkH}" x2="${x}" y2="${outBrkY + brkH + 14}" stroke="${lineCol}" stroke-width="2"/>`;
-    // Метка назначения — вертикальная, номер входа через дефис
-    let inPortNum = '';
-    for (const cc of state.conns.values()) {
-      if (cc.from.nodeId === n.id && cc.from.port === i) {
-        inPortNum = `-${cc.to.port + 1}`;
-        break;
+    // Метка назначения / "Резерв"
+    let outLabel;
+    let labelColor = '#333';
+    if (s.destTag === '—') {
+      outLabel = 'Резерв';
+      labelColor = '#bbb';
+    } else {
+      let inPortNum = '';
+      for (const cc of state.conns.values()) {
+        if (cc.from.nodeId === n.id && cc.from.port === i) {
+          inPortNum = `-${cc.to.port + 1}`;
+          break;
+        }
       }
+      outLabel = s.destTag + inPortNum;
     }
-    const outLabel = s.destTag + inPortNum;
     const labelY = outBrkY + brkH + 16;
-    h += `<text x="${x}" y="${labelY}" fill="#333" font-size="9" font-weight="600" text-anchor="end" dominant-baseline="central" transform="rotate(-90 ${x} ${labelY})">${escHtml(outLabel)}</text>`;
+    h += `<text x="${x}" y="${labelY}" fill="${labelColor}" font-size="9" font-weight="600" text-anchor="end" dominant-baseline="central" transform="rotate(-90 ${x} ${labelY})">${escHtml(outLabel)}</text>`;
     // Кликабельная зона
     h += `<rect x="${x - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-breaker-toggle="${i}"/>`;
   }

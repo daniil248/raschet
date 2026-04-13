@@ -325,12 +325,20 @@ export function renderNodes() {
           if (c.from.nodeId === n.id && c.from.port === i) { hasConn = true; break; }
         }
         if (!hasConn) {
-          const ry = NODE_H + 18;
-          const rbg = el('rect', { x: cx - 5, y: NODE_H + 8, width: 10, height: 36, fill: '#fff', 'fill-opacity': '0.85', rx: 2 });
-          g.appendChild(rbg);
-          const rl = el('text', { x: cx, y: ry, class: 'port-label', 'text-anchor': 'middle', 'dominant-baseline': 'central', transform: `rotate(-90 ${cx} ${ry})`, 'font-size': '8', fill: '#999' });
-          rl.textContent = 'Резерв';
-          g.appendChild(rl);
+          // "Резерв" — те же отступы и стиль что breaker badge
+          const rText = 'Резерв';
+          const rLen = rText.length * 5.8;
+          const rH = 12;
+          const rOff = 12; // отступ от порта
+          const rbx = n.x + cx; // абсолютная X (для layerConns)
+          const rby = n.y + NODE_H + 6;
+          const rty = rby + rOff + rLen / 2;
+          // Рисуем в layerConns (поверх связей) для правильного z-order
+          const rbg = el('rect', { x: rbx - rH/2, y: rby + rOff, width: rH, height: rLen + 6, fill: '#fff', 'fill-opacity': '0.85', rx: 2 });
+          layerConns.appendChild(rbg);
+          const rl = el('text', { x: rbx, y: rty, class: 'breaker-badge', 'text-anchor': 'middle', 'dominant-baseline': 'central', transform: `rotate(-90 ${rbx} ${rty})`, fill: '#bbb' });
+          rl.textContent = rText;
+          layerConns.appendChild(rl);
         }
       }
     }
