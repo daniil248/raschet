@@ -44,9 +44,15 @@ export function bezier(a, b) {
 
 // Путь сплайна с промежуточными точками. Использует Catmull-Rom -> Bezier, чтобы
 // линия проходила через все waypoints гладко.
+// Первые STUB_LEN px от output порта (a) — строго вниз.
+// Последние STUB_LEN px до input порта (b) — строго вверх.
+const STUB_LEN = 40;
 export function splinePath(a, points, b) {
   if (!points || points.length === 0) return bezier(a, b);
-  const pts = [a, ...points, b];
+  // Добавляем stub-точки: a→aStub (вниз), bStub→b (вверх)
+  const aStub = { x: a.x, y: a.y + STUB_LEN };
+  const bStub = { x: b.x, y: b.y - STUB_LEN };
+  const pts = [a, aStub, ...points, bStub, b];
   let d = `M${pts[0].x},${pts[0].y}`;
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i - 1] || pts[i];
@@ -532,10 +538,16 @@ export function renderConns() {
         // Выбираем порядок: ближний конец к prev = entry
         const dEntry = Math.hypot(prev.x - entryEnd.x, prev.y - entryEnd.y);
         const dExit  = Math.hypot(prev.x - exitEnd.x, prev.y - exitEnd.y);
+        // Stub-точки на 40px дальше от канала вдоль оси — для перпендикулярного входа
+        const stub = STUB_LEN;
         if (dEntry <= dExit) {
-          result.push(entryEnd, exitEnd);
+          const entryStub = { x: entryEnd.x - axX * stub, y: entryEnd.y - axY * stub };
+          const exitStub  = { x: exitEnd.x + axX * stub, y: exitEnd.y + axY * stub };
+          result.push(entryStub, entryEnd, exitEnd, exitStub);
         } else {
-          result.push(exitEnd, entryEnd);
+          const entryStub = { x: exitEnd.x + axX * stub, y: exitEnd.y + axY * stub };
+          const exitStub  = { x: entryEnd.x - axX * stub, y: entryEnd.y - axY * stub };
+          result.push(entryStub, exitEnd, entryEnd, exitStub);
         }
         break;
       }
