@@ -1341,6 +1341,21 @@ export function openPanelControlModal(n) {
   let h = '';
   h += `<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`;
 
+  // --- Переключатель Авто / Ручной (наверху, перед SVG) ---
+  if (inCount > 1 && hasAVR) {
+    const manualNow = n.switchMode === 'manual';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0 8px">';
+    h += '<span style="font-size:11px;font-weight:600;color:#666">Режим работы АВР:</span>';
+    h += `<span style="font-size:11px;color:${!manualNow ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
+    h += `<div id="pc-toggle" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
+    h += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+    h += '</div>';
+    h += `<span style="font-size:11px;color:${manualNow ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
+    h += '</div>';
+  } else if (isPlainPanel) {
+    h += '<div style="font-size:11px;color:#666;margin:4px 0 8px">Щит без АВР — все автоматы управляются вручную</div>';
+  }
+
   // --- SVG однолинейная схема ---
   h += `<div style="text-align:center;overflow-x:auto;padding:10px 0">`;
   h += `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
@@ -1397,17 +1412,17 @@ export function openPanelControlModal(n) {
     h += brk.svg;
     // Линия от автомата вниз
     h += `<line x1="${x}" y1="${outBrkY + brkH}" x2="${x}" y2="${outBrkY + brkH + 14}" stroke="${lineCol}" stroke-width="2"/>`;
-    // Метка назначения — вертикальная, с номером входа
-    // Определяем номер входа у цели
+    // Метка назначения — вертикальная, номер входа через дефис
     let inPortNum = '';
     for (const cc of state.conns.values()) {
       if (cc.from.nodeId === n.id && cc.from.port === i) {
-        inPortNum = `-вх${cc.to.port + 1}`;
+        inPortNum = `-${cc.to.port + 1}`;
         break;
       }
     }
     const outLabel = s.destTag + inPortNum;
-    h += `<text x="${x + 4}" y="${outBrkY + brkH + 18}" fill="#333" font-size="8" font-weight="600" transform="rotate(90 ${x + 4} ${outBrkY + brkH + 18})">${escHtml(outLabel)}</text>`;
+    const labelY = outBrkY + brkH + 16;
+    h += `<text x="${x}" y="${labelY}" fill="#333" font-size="9" font-weight="600" text-anchor="start" dominant-baseline="central" transform="rotate(90 ${x} ${labelY})">${escHtml(outLabel)}</text>`;
     // Кликабельная зона
     h += `<rect x="${x - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-breaker-toggle="${i}"/>`;
   }
@@ -1421,8 +1436,8 @@ export function openPanelControlModal(n) {
     h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:4px 0">АВР: разбежка ${Math.ceil(n._avrInterlockCountdown)} с</div>`;
   }
 
-  // --- Переключатель Авто / Ручной (под SVG) ---
-  if (inCount > 1 && hasAVR) {
+  // (переключатель перенесён наверх)
+  if (false && inCount > 1 && hasAVR) {
     const manualNow = n.switchMode === 'manual';
     h += '<div style="display:flex;align-items:center;gap:10px;margin:8px 0 6px">';
     h += '<span style="font-size:11px;font-weight:600;color:#666">Режим работы АВР:</span>';
@@ -1859,21 +1874,6 @@ export function renderInspectorConn(c) {
       `</div></div>`);
   }
 
-  // Выбор каналов на пути линии
-  const channels = [...state.nodes.values()].filter(n => n.type === 'channel');
-  if (channels.length) {
-    const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
-    const chCount = chainIds.length;
-    h.push(`<details class="inspector-section" style="margin-top:8px"${chCount ? ' open' : ''}>`);
-    h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Кабельные каналы (${chCount})</summary>`);
-    h.push('<div class="muted" style="font-size:10px;margin:4px 0 6px">Отметьте каналы, через которые проходит линия.</div>');
-    for (const ch of channels) {
-      const checked = chainIds.includes(ch.id);
-      h.push(`<div class="field check"><input type="checkbox" data-conn-channel="${escAttr(ch.id)}"${checked ? ' checked' : ''}><label>${escHtml(ch.tag || '')} — ${escHtml(ch.name || '')}</label></div>`);
-    }
-    h.push('</details>');
-  }
-
   // === Проводник линии ===
   const ct = c.cableType || GLOBAL.defaultCableType;
   const isBusbar = ct === 'busbar';
@@ -1940,6 +1940,21 @@ export function renderInspectorConn(c) {
       </select>`));
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
     h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
+    h.push('</details>');
+  }
+
+  // Кабельные каналы — после условий прокладки
+  const channels = [...state.nodes.values()].filter(nn => nn.type === 'channel');
+  if (channels.length) {
+    const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
+    const chCount = chainIds.length;
+    h.push(`<details class="inspector-section"${chCount ? ' open' : ''}>`);
+    h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Кабельные каналы (${chCount})</summary>`);
+    h.push('<div class="muted" style="font-size:10px;margin:4px 0 6px">Отметьте каналы, через которые проходит линия.</div>');
+    for (const ch of channels) {
+      const checked = chainIds.includes(ch.id);
+      h.push(`<div class="field check"><input type="checkbox" data-conn-channel="${escAttr(ch.id)}"${checked ? ' checked' : ''}><label>${escHtml(ch.tag || '')} — ${escHtml(ch.name || '')}</label></div>`);
+    }
     h.push('</details>');
   }
 
