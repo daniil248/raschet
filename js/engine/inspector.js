@@ -2623,12 +2623,16 @@ export function renderInspectorConn(c) {
     inp.addEventListener('input', () => {
       snapshot('conn:' + c.id + ':' + inp.dataset.connProp);
       const prop = inp.dataset.connProp;
-      const v = inp.type === 'number' ? Number(inp.value) : inp.value;
+      let v = inp.type === 'number' ? Number(inp.value) : inp.value;
+      // Числовые свойства из select: manualBreakerIn, manualCableSize, manualCableParallel, grouping
+      if (['manualBreakerIn', 'manualCableSize', 'manualCableParallel', 'grouping', 'ambientC', 'lengthM'].includes(prop)) {
+        v = Number(v) || 0;
+      }
       c[prop] = v;
       _render();
       notifyChange();
       // Обновить иконки при смене метода/расположения
-      if (prop === 'installMethod' || prop === 'bundling' || prop === 'breakerCurve') renderInspector();
+      if (prop === 'installMethod' || prop === 'bundling' || prop === 'breakerCurve' || prop === 'manualBreakerIn' || prop === 'manualCableSize' || prop === 'manualCableParallel') renderInspector();
     });
   });
   // Чекбоксы каналов

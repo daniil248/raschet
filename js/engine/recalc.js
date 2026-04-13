@@ -1115,9 +1115,13 @@ function recalc() {
     // Кабель уже подобран так, что Iz ≥ In ≥ Iрасч (selectCableSize
     // теперь проверяет Iz ≥ selectBreaker(Iрасч)).
     let InPerLine = selectBreaker(Iper);
-    // Дополнительная проверка — на случай если кабель задан вручную
-    // или параметры канала изменили Iz после подбора.
+    // IEC 60364-4-43: проверка координации автомата и кабеля
+    const brkCurve = c.breakerCurve || 'MCB_C';
+    const brkI2r = (BREAKER_TYPES[brkCurve] || BREAKER_TYPES.MCB_C).I2ratio;
+    // Условие 1: In ≤ Iz
     c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
+    // Условие 2: I2 ≤ 1.45 × Iz
+    c._breakerI2fail = !!(Iz > 0 && brkI2r * InPerLine > 1.45 * Iz);
 
     // Общий автомат = In × parallel (или ближайший стандарт на полный ток)
     const InTotal = selectBreaker(Itotal);
