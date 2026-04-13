@@ -1433,6 +1433,23 @@ export function openPanelControlModal(n) {
     // Автомат выхода (IEC)
     const brk = svgBreaker(x, outBrkY, on, lineCol, '#ff9800');
     h += brk.svg;
+    // Подпись номинала автомата (слева от автомата)
+    {
+      let brkLabel = '';
+      for (const cc of state.conns.values()) {
+        if (cc.from.nodeId === n.id && cc.from.port === i) {
+          if (cc._breakerIn) {
+            const cnt = cc._breakerCount || 1;
+            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×C${cc._breakerPerLine}А`;
+            else brkLabel = `C${cc._breakerIn}А`;
+          }
+          break;
+        }
+      }
+      if (brkLabel) {
+        h += `<text x="${x - 12}" y="${outBrkY + brkH/2}" fill="#ef6c00" font-size="8" font-weight="600" text-anchor="end" dominant-baseline="central">${brkLabel}</text>`;
+      }
+    }
     // Линия от автомата вниз
     h += `<line x1="${x}" y1="${outBrkY + brkH}" x2="${x}" y2="${outBrkY + brkH + 14}" stroke="${lineCol}" stroke-width="2"/>`;
     // Метка назначения / "Резерв"
