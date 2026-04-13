@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { svg, layerConns, layerNodes, statsEl, modesListEl } from './state.js';
-import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL } from './constants.js';
+import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL, CONSUMER_CATALOG } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
 import { recalc } from './recalc.js';
@@ -250,7 +250,9 @@ export function renderNodes() {
                    (n._onStaticBypass ? ' · БАЙПАС' : ''),
       consumer:  ((n.count || 1) > 1
                     ? `Группа · ${n.count} × ${fmt(n.demandKw)} kW`
-                    : 'Потребитель') + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
+                    : (n.consumerSubtype === 'outdoor_unit' ? 'Наруж. блок'
+                      : (CONSUMER_CATALOG.find(c => c.id === n.consumerSubtype) || {}).label || 'Потребитель'))
+                  + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
       channel:   (CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit).label,
     }[n.type];
     g.appendChild(text(12, 49, subTxt, 'node-sub'));

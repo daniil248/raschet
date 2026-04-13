@@ -55,6 +55,26 @@ export function createNode(type, x, y) {
 }
 export function deleteNode(id) {
   _snapshot();
+  const n = state.nodes.get(id);
+  // Каскадное удаление парного блока кондиционера
+  const linkedIds = [];
+  if (n) {
+    if (n.linkedOutdoorId) linkedIds.push(n.linkedOutdoorId);
+    if (n.linkedIndoorId) linkedIds.push(n.linkedIndoorId);
+  }
+  for (const lid of linkedIds) {
+    const linked = state.nodes.get(lid);
+    if (linked) {
+      // Очистить обратную ссылку, чтобы не было рекурсии
+      linked.linkedOutdoorId = null;
+      linked.linkedIndoorId = null;
+      for (const c of Array.from(state.conns.values())) {
+        if (c.from.nodeId === lid || c.to.nodeId === lid) state.conns.delete(c.id);
+      }
+      state.nodes.delete(lid);
+      for (const m of state.modes) { if (m.overrides) delete m.overrides[lid]; }
+    }
+  }
   for (const c of Array.from(state.conns.values())) {
     if (c.from.nodeId === id || c.to.nodeId === id) state.conns.delete(c.id);
   }

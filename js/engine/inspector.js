@@ -1,11 +1,11 @@
-import { state, svg, inspectorBody } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS } from './constants.js';
+import { state, svg, inspectorBody, uid } from './state.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
 import { effectiveOn, setEffectiveOn, effectiveLoadFactor, setEffectiveLoadFactor } from './modes.js';
 import { snapshot, notifyChange } from './history.js';
-import { clampPortsInvolvingNode } from './graph.js';
+import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
 import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort } from './zones.js';
 
@@ -1016,8 +1016,22 @@ export function openAutomationModal(n) {
 export function openConsumerParamsModal(n) {
   const body = document.getElementById('consumer-params-body');
   if (!body) return;
+  const isOutdoor = n.consumerSubtype === 'outdoor_unit';
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+
+  // Справочник типовых потребителей (не показываем для наружного блока)
+  if (!isOutdoor) {
+    const curSub = n.consumerSubtype || 'custom';
+    let catOpts = '';
+    for (const cat of CONSUMER_CATALOG) {
+      catOpts += `<option value="${cat.id}"${cat.id === curSub ? ' selected' : ''}>${escHtml(cat.label)}</option>`;
+    }
+    h.push(field('Тип потребителя', `<select id="cp-catalog">${catOpts}</select>`));
+  } else {
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">Наружный блок кондиционера</div>`);
+  }
+
   h.push(field('Количество в группе', `<input type="number" id="cp-count" min="1" max="999" step="1" value="${n.count || 1}">`));
   h.push(field((n.count || 1) > 1 ? 'Мощность каждого, kW' : 'Установленная мощность, kW',
     `<input type="number" id="cp-demandKw" min="0" step="0.1" value="${n.demandKw}">`));
@@ -1035,10 +1049,60 @@ export function openConsumerParamsModal(n) {
   h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="10" step="1" value="${n.inputs}">`));
 
+  // Параметры наружного блока (только для кондиционера)
+  if (!isOutdoor && (n.consumerSubtype === 'conditioner')) {
+    h.push('<details class="inspector-section" open>');
+    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Наружный блок</summary>');
+    h.push(field('Мощность наружного блока, kW', `<input type="number" id="cp-outdoorKw" min="0" step="0.1" value="${n.outdoorKw || 0.3}">`));
+    h.push(field('cos φ наружного блока', `<input type="number" id="cp-outdoorCosPhi" min="0.1" max="1" step="0.01" value="${n.outdoorCosPhi || 0.85}">`));
+    if (n.linkedOutdoorId) {
+      const outdoor = state.nodes.get(n.linkedOutdoorId);
+      if (outdoor) {
+        h.push(`<div class="muted" style="font-size:11px">Наружный блок: ${escHtml(effectiveTag(outdoor))} ${escHtml(outdoor.name)}</div>`);
+      }
+    }
+    h.push('</details>');
+  }
+
   body.innerHTML = h.join('');
+
+  // Обработчик смены типа из справочника
+  const catSelect = document.getElementById('cp-catalog');
+  if (catSelect) {
+    catSelect.addEventListener('change', () => {
+      const cat = CONSUMER_CATALOG.find(c => c.id === catSelect.value);
+      if (!cat) return;
+      const demEl = document.getElementById('cp-demandKw');
+      const cosEl = document.getElementById('cp-cosPhi');
+      const kUseEl = document.getElementById('cp-kUse');
+      const inrEl = document.getElementById('cp-inrush');
+      if (demEl) demEl.value = cat.demandKw;
+      if (cosEl) cosEl.value = cat.cosPhi;
+      if (kUseEl) kUseEl.value = cat.kUse;
+      if (inrEl) inrEl.value = cat.inrushFactor;
+      // Перерисовать модалку для показа/скрытия секции наружного блока
+      // если тип сменился на/с кондиционера
+      const wasCond = n.consumerSubtype === 'conditioner';
+      const isCond = cat.id === 'conditioner';
+      if (wasCond !== isCond) {
+        // Применим тип сразу, чтобы UI обновился
+        n.consumerSubtype = cat.id;
+        if (isCond) {
+          n.outdoorKw = cat.outdoorKw || 0.3;
+          n.outdoorCosPhi = cat.outdoorCosPhi || 0.85;
+        }
+        openConsumerParamsModal(n); // перерисовать
+      }
+    });
+  }
+
   const applyBtn = document.getElementById('consumer-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
     snapshot('consumer-params:' + n.id);
+    const catId = document.getElementById('cp-catalog')?.value || n.consumerSubtype || 'custom';
+    const cat = CONSUMER_CATALOG.find(c => c.id === catId);
+    n.consumerSubtype = catId;
+    if (cat) n.name = cat.label;
     n.count = Number(document.getElementById('cp-count')?.value) || 1;
     n.demandKw = Number(document.getElementById('cp-demandKw')?.value) || 0;
     const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
@@ -1048,6 +1112,66 @@ export function openConsumerParamsModal(n) {
     n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
     n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
+
+    // Кондиционер: создание / обновление наружного блока
+    if (catId === 'conditioner') {
+      n.outdoorKw = Number(document.getElementById('cp-outdoorKw')?.value) || 0.3;
+      n.outdoorCosPhi = Number(document.getElementById('cp-outdoorCosPhi')?.value) || 0.85;
+      n.outputs = 1;
+      if (!n.linkedOutdoorId || !state.nodes.get(n.linkedOutdoorId)) {
+        // Создать наружный блок
+        const outId = uid();
+        const outdoor = {
+          id: outId, type: 'consumer',
+          x: n.x + nodeWidth(n) + 80,
+          y: n.y,
+          ...DEFAULTS.consumer(),
+          name: 'Наруж. блок',
+          consumerSubtype: 'outdoor_unit',
+          demandKw: n.outdoorKw,
+          cosPhi: n.outdoorCosPhi,
+          linkedIndoorId: n.id,
+          inputs: 1, outputs: 0, count: 1,
+        };
+        outdoor.tag = nextFreeTag('consumer');
+        state.nodes.set(outId, outdoor);
+        n.linkedOutdoorId = outId;
+        // Создать связь indoor→outdoor
+        const connId = uid('c');
+        state.conns.set(connId, {
+          id: connId,
+          from: { nodeId: n.id, port: 0 },
+          to: { nodeId: outId, port: 0 },
+          material: GLOBAL.defaultMaterial,
+          insulation: GLOBAL.defaultInsulation,
+          installMethod: GLOBAL.defaultInstallMethod,
+          ambientC: GLOBAL.defaultAmbient,
+          grouping: GLOBAL.defaultGrouping,
+          bundling: 'touching',
+          lengthM: 5,
+        });
+      } else {
+        // Обновить существующий наружный блок
+        const outdoor = state.nodes.get(n.linkedOutdoorId);
+        if (outdoor) {
+          outdoor.demandKw = n.outdoorKw;
+          outdoor.cosPhi = n.outdoorCosPhi;
+        }
+      }
+    } else {
+      // Если сменили с кондиционера на другой тип — удалить наружный блок
+      if (n.linkedOutdoorId) {
+        const outId = n.linkedOutdoorId;
+        // Удалить связи наружного блока
+        for (const c of Array.from(state.conns.values())) {
+          if (c.from.nodeId === outId || c.to.nodeId === outId) state.conns.delete(c.id);
+        }
+        state.nodes.delete(outId);
+        n.linkedOutdoorId = null;
+      }
+      n.outputs = 0;
+    }
+
     _render(); renderInspector(); notifyChange();
     openConsumerParamsModal(n);
     flash('Параметры обновлены');

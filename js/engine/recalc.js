@@ -685,12 +685,22 @@ function recalc() {
     }
   }
 
-  // Смешанные источники: BFS вниз помечает все выходные линии как _mixedSources
+  // Смешанные источники: пунктир только если на входах щита (без АВР) ЗАМКНУТЫ
+  // автоматы от разных источников. Открытые вводные автоматы не считаются.
   {
     const mixQueue = [];
     for (const n of state.nodes.values()) {
       if (n.type !== 'panel') continue;
-      if (n._sourceColors && n._sourceColors.size > 1 && n.switchMode !== 'auto') {
+      if (n.switchMode === 'auto') continue; // АВР сам разберётся
+      const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+      const activeColors = new Set();
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId !== n.id) continue;
+        if (c._state !== 'active' && c._state !== 'powered') continue;
+        if (inBrk[c.to.port] === false) continue; // автомат открыт — не считаем
+        if (c._sourceColor) activeColors.add(c._sourceColor);
+      }
+      if (activeColors.size > 1) {
         n._mixedSources = true;
         mixQueue.push(n.id);
       }

@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.9.0';
+export const APP_VERSION = '0.9.1';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -269,15 +269,21 @@ export const DEFAULTS = {
   }),
   consumer:  () => ({
     name: 'Потребитель', comment: '',
+    consumerSubtype: 'custom',
     demandKw: 10,
     count: 1,
     inputs: 2,
+    outputs: 0,
     priorities: [1, 2],
     phase: '3ph',
     voltage: 400,
     cosPhi: 0.92,
     kUse: 1.0,
     inrushFactor: 1,
+    linkedOutdoorId: null,  // для кондиционера — id наружного блока
+    linkedIndoorId: null,   // для наружного блока — id внутреннего
+    outdoorKw: 0,           // мощность наружного блока
+    outdoorCosPhi: 0.85,
   }),
   // ------- Новые типы -------
   channel:   () => ({
@@ -312,6 +318,21 @@ export const DEFAULTS = {
     outputs: 0,
   }),
 };
+
+// Справочник типовых потребителей
+export const CONSUMER_CATALOG = [
+  { id: 'custom',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, phase: '3ph' },
+  { id: 'lighting',    label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, phase: '1ph' },
+  { id: 'socket',      label: 'Розеточная группа',   demandKw: 3.5,  cosPhi: 0.95, kUse: 0.3,  inrushFactor: 1, phase: '1ph' },
+  { id: 'motor',       label: 'Электродвигатель',    demandKw: 15,   cosPhi: 0.85, kUse: 0.7,  inrushFactor: 7, phase: '3ph' },
+  { id: 'heater',      label: 'Электрообогрев',      demandKw: 5,    cosPhi: 1,    kUse: 0.8,  inrushFactor: 1, phase: '1ph' },
+  { id: 'pump',        label: 'Насос',               demandKw: 7.5,  cosPhi: 0.85, kUse: 0.7,  inrushFactor: 6, phase: '3ph' },
+  { id: 'fan',         label: 'Вентилятор',          demandKw: 5,    cosPhi: 0.8,  kUse: 0.65, inrushFactor: 5, phase: '3ph' },
+  { id: 'server',      label: 'Серверная стойка',    demandKw: 10,   cosPhi: 0.98, kUse: 0.8,  inrushFactor: 1, phase: '3ph' },
+  { id: 'elevator',    label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, phase: '3ph' },
+  { id: 'conditioner', label: 'Кондиционер',         demandKw: 5,    cosPhi: 0.85, kUse: 0.7,  inrushFactor: 3, phase: '1ph',
+    isConditioner: true, outdoorKw: 0.3, outdoorCosPhi: 0.85 },
+];
 
 // Префиксы обозначений (tag) по типу узла
 export const TAG_PREFIX = {

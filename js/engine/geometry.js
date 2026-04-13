@@ -7,7 +7,7 @@ export function nodeInputCount(n) {
   return Math.max(0, n.inputs | 0);
 }
 export function nodeOutputCount(n) {
-  if (n.type === 'consumer') return 0;
+  if (n.type === 'consumer') return Math.max(0, n.outputs | 0);
   if (n.type === 'source' || n.type === 'generator') return 1;
   if (n.type === 'zone') return 0;
   return Math.max(0, n.outputs | 0);
