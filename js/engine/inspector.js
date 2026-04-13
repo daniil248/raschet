@@ -1377,6 +1377,18 @@ export function openPanelControlModal(n) {
     h += `<text x="${x}" y="12" text-anchor="middle" fill="#333" font-size="9" font-weight="600">${escHtml(s.feederTag)}</text>`;
     // Линия сверху до автомата
     h += `<line x1="${x}" y1="16" x2="${x}" y2="${inBrkY}" stroke="${topColor}" stroke-width="2"/>`;
+    // Лампочка состояния ввода
+    const lampY = 22;
+    if (lineAlive && s.breakerOn) {
+      // Зелёная — запитан и замкнут
+      h += `<circle cx="${x}" cy="${lampY}" r="4" fill="#43a047" opacity="0.8"/>`;
+    } else if (lineAlive) {
+      // Красная — есть напряжение, но разомкнут
+      h += `<circle cx="${x}" cy="${lampY}" r="4" fill="#e53935" opacity="0.8"/>`;
+    } else {
+      // Серая — нет напряжения
+      h += `<circle cx="${x}" cy="${lampY}" r="4" fill="none" stroke="#ccc" stroke-width="1"/>`;
+    }
     // Автомат входа (IEC)
     const brk = svgBreaker(x, inBrkY, s.breakerOn, throughColor, '#ff9800');
     h += brk.svg;
