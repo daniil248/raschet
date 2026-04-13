@@ -976,17 +976,24 @@ function openPresetEditor(preset) {
                 fld('Выходов', inp('outputs', p.outputs || 4, {min:1,max:30,step:1})));
     html += row(fld('In, А', inp('capacityA', p.capacityA || 160, {min:0,step:1})),
                 fld('Ксим', inp('kSim', p.kSim ?? 1, {min:0,max:1.2,step:0.05})));
-    html += fld('Режим коммутации', sel('switchMode', [
-      {v:'parallel',l:'Щит (без АВР)'}, {v:'auto',l:'АВР автоматический'},
-      {v:'avr_paired',l:'АВР с привязкой'}, {v:'switchover',l:'Подменный'}
-    ], p.switchMode || 'auto'));
+    const panelInputs = Number(p.inputs) || 1;
+    const panelSm = p.switchMode || 'auto';
+    if (panelInputs > 1) {
+      html += fld('Режим коммутации', sel('switchMode', [
+        {v:'parallel',l:'Щит'}, {v:'auto',l:'Щит с АВР'},
+        {v:'avr_paired',l:'АВР с привязкой'}, {v:'switchover',l:'Подменный'},
+        {v:'watchdog',l:'Watchdog'}
+      ], panelSm));
+      if (panelSm !== 'parallel') {
+        html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Задержки АВР</summary>';
+        html += row(fld('Переключение, сек', inp('avrDelaySec', p.avrDelaySec ?? 2, {min:0,max:30,step:0.5})),
+                    fld('Разбежка, сек', inp('avrInterlockSec', p.avrInterlockSec ?? 1, {min:0,max:10,step:0.5})));
+        html += '</details>';
+      }
+    }
     html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Запасы</summary>';
     html += row(fld('Мин. запас, %', inp('marginMinPct', p.marginMinPct ?? 2, {min:0,max:50,step:1})),
                 fld('Макс. запас, %', inp('marginMaxPct', p.marginMaxPct ?? 30, {min:5,max:500,step:1})));
-    html += '</details>';
-    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Задержки АВР</summary>';
-    html += row(fld('Переключение, сек', inp('avrDelaySec', p.avrDelaySec ?? 2, {min:0,max:30,step:0.5})),
-                fld('Разбежка, сек', inp('avrInterlockSec', p.avrInterlockSec ?? 1, {min:0,max:10,step:0.5})));
     html += '</details>';
   }
 

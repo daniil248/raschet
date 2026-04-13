@@ -283,10 +283,12 @@ export function renderInspectorNode(n) {
     }
 
     // Краткая сводка
+    const multiInput = (n.inputs || 1) > 1;
     const sm = n.switchMode || 'auto';
-    const smLabel = { auto: 'АВР', manual: 'Ручной', parallel: 'Щит', avr_paired: 'АВР привязка', switchover: 'Подменный', watchdog: 'Watchdog' }[sm] || sm;
+    const smLabel = !multiInput ? '' : ({ auto: 'АВР', manual: 'Ручной', parallel: 'Щит', avr_paired: 'АВР привязка', switchover: 'Подменный', watchdog: 'Watchdog' }[sm] || sm);
+    const modeStr = multiInput ? `Режим: <b>${smLabel}</b> · ` : '';
     h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
-      `Режим: <b>${smLabel}</b> · Вх: <b>${n.inputs}</b> · Вых: <b>${n.outputs}</b> · In: <b>${n.capacityA ?? 160} А</b>` +
+      `${modeStr}Вх: <b>${n.inputs}</b> · Вых: <b>${n.outputs}</b> · In: <b>${n.capacityA ?? 160} А</b>` +
       `</div>`);
 
     // Ксим перенесён в параметры щита
@@ -1393,52 +1395,51 @@ export function openPanelParamsModal(n) {
   h.push('<div style="flex:1">' + field('Макс. запас, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`) + '</div>');
   h.push('</div>');
 
-  // Режим коммутации
+  // Режим коммутации — только для щитов с несколькими входами
   {
-    h.push('<h4 style="margin:16px 0 8px">Режим коммутации</h4>');
     const sm = n.switchMode || 'auto';
     const multiInput = (n.inputs || 0) > 1;
-    let smOpts = `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Щит (без АВР) — ручное управление</option>`;
+
     if (multiInput) {
-      smOpts += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>АВР автоматический</option>`;
+      h.push('<h4 style="margin:16px 0 8px">Режим коммутации</h4>');
+      let smOpts = `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Щит</option>`;
+      smOpts += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>Щит с АВР</option>`;
       smOpts += `<option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов к входам</option>`;
       smOpts += `<option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover)</option>`;
       smOpts += `<option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog</option>`;
-    }
-    h.push(field('Тип', `<select id="pp-switchMode">${smOpts}</select>`));
-    h.push('<div class="muted" style="font-size:10px;margin-top:-4px;margin-bottom:8px">Щит без АВР: все автоматы управляются только вручную. АВР: автоматическое переключение по приоритетам.</div>');
+      h.push(field('Тип', `<select id="pp-switchMode">${smOpts}</select>`));
 
-    const hasAVR = sm !== 'parallel';
+      const hasAVR = sm !== 'parallel';
 
-    if (hasAVR) {
-      // Приоритеты — только для стандартного АВР (auto)
-      if (sm === 'auto') {
-        h.push('<h4 style="margin:12px 0 8px">Приоритеты входов</h4>');
-        h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные = параллельная работа.</div>');
-        h.push('<div style="display:flex;gap:8px;flex-wrap:wrap">');
-        for (let i = 0; i < (n.inputs || 0); i++) {
-          const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
-          let feederTag = `Вх${i + 1}`;
-          for (const c of state.conns.values()) {
-            if (c.to.nodeId === n.id && c.to.port === i) {
-              const from = state.nodes.get(c.from.nodeId);
-              if (from) feederTag = effectiveTag(from) || from.name || feederTag;
-              break;
+      if (hasAVR) {
+        // Приоритеты — только для стандартного АВР (auto)
+        if (sm === 'auto') {
+          h.push('<h4 style="margin:12px 0 8px">Приоритеты входов</h4>');
+          h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные = параллельная работа.</div>');
+          h.push('<div style="display:flex;gap:8px;flex-wrap:wrap">');
+          for (let i = 0; i < (n.inputs || 0); i++) {
+            const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
+            let feederTag = `Вх${i + 1}`;
+            for (const c of state.conns.values()) {
+              if (c.to.nodeId === n.id && c.to.port === i) {
+                const from = state.nodes.get(c.from.nodeId);
+                if (from) feederTag = effectiveTag(from) || from.name || feederTag;
+                break;
+              }
             }
+            h.push(`<div style="text-align:center"><div style="font-size:9px;color:#666;margin-bottom:2px">${escHtml(feederTag)}</div><input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:44px;text-align:center;font-size:12px"></div>`);
           }
-          h.push(`<div style="text-align:center"><div style="font-size:9px;color:#666;margin-bottom:2px">${escHtml(feederTag)}</div><input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:44px;text-align:center;font-size:12px"></div>`);
+          h.push('</div>');
         }
-        h.push('</div>');
-      }
 
-      // Задержки — для всех АВР
-      h.push('<h4 style="margin:12px 0 8px">Задержки</h4>');
-      h.push('<div style="display:flex;gap:12px">');
-      h.push('<div style="flex:1">' + field('Переключение, сек', `<input type="number" id="pp-avrDelay" min="0" max="30" step="0.5" value="${n.avrDelaySec ?? 2}">`) + '</div>');
-      h.push('<div style="flex:1">' + field('Разбежка, сек', `<input type="number" id="pp-avrInterlock" min="0" max="10" step="0.5" value="${n.avrInterlockSec ?? 1}">`) + '</div>');
-      h.push('</div>');
-      h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Переключение — задержка при возврате напряжения. Разбежка — интервал между автоматами.</div>');
-    } // end hasAVR
+        // Задержки — для всех АВР
+        h.push('<h4 style="margin:12px 0 8px">Задержки</h4>');
+        h.push('<div style="display:flex;gap:12px">');
+        h.push('<div style="flex:1">' + field('Переключение, сек', `<input type="number" id="pp-avrDelay" min="0" max="30" step="0.5" value="${n.avrDelaySec ?? 2}">`) + '</div>');
+        h.push('<div style="flex:1">' + field('Разбежка, сек', `<input type="number" id="pp-avrInterlock" min="0" max="10" step="0.5" value="${n.avrInterlockSec ?? 1}">`) + '</div>');
+        h.push('</div>');
+      } // end hasAVR
+    } // end multiInput
   }
 
   body.innerHTML = h.join('');
@@ -1622,8 +1623,6 @@ export function openPanelControlModal(n) {
     h += '</div>';
     h += `<span style="font-size:11px;color:${manualNow ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
     h += '</div>';
-  } else if (isPlainPanel) {
-    h += '<div style="font-size:11px;color:#666;margin:4px 0 8px">Щит без АВР — все автоматы управляются вручную</div>';
   }
 
   // --- SVG однолинейная схема ---
@@ -1753,8 +1752,6 @@ export function openPanelControlModal(n) {
     h += '</div>';
     h += '<span style="font-size:11px;color:' + (manualNow ? '#e65100;font-weight:600' : '#999') + '">Ручной</span>';
     h += '</div>';
-  } else if (n.switchMode === 'parallel') {
-    h += '<div style="font-size:11px;color:#666;margin:8px 0">Щит без АВР — все автоматы управляются вручную</div>';
   }
 
   // --- Обслуживание ---
