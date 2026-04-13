@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.12.4';
+export const APP_VERSION = '0.12.5';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -156,30 +156,39 @@ export const K_GROUP_TABLES = {
   layer:  { 1: 1.00, 2: 0.85, 3: 0.79, 4: 0.75, 5: 0.73, 6: 0.72, 7: 0.72, 8: 0.71, 9: 0.70, 12: 0.70, 16: 0.70, 20: 0.70 },
   perf:   { 1: 1.00, 2: 0.88, 3: 0.82, 4: 0.77, 5: 0.75, 6: 0.73, 7: 0.73, 8: 0.72, 9: 0.72, 12: 0.72, 16: 0.72, 20: 0.72 },
 };
-// Маппинг метода прокладки → тип групповой таблицы
-export const METHOD_GROUP_TYPE = {
-  A1: 'bundle', A2: 'bundle', B1: 'bundle', B2: 'bundle',
-  C: 'layer', E: 'perf', F: 'perf', G: 'perf',
-  D1: 'bundle', D2: 'bundle',
-};
-// Legacy совместимость: K_GROUP = bundle (самый жёсткий)
+// Legacy совместимость
 export const K_GROUP = K_GROUP_TABLES.bundle;
 
-// Описание типов каналов: тип → метод прокладки по IEC 60364-5-52 + базовое
-// расположение (bundling), которое можно переопределить.
+// Единый справочник методов прокладки IEC 60364-5-52.
+// Используется И для каналов (channelType → method), И для линий (installMethod).
+// method = ключ IEC, label = описание, bundlingDefault = укладка по умолчанию,
+// groupType = тип таблицы K_GROUP (bundle/layer/perf).
+export const INSTALL_METHODS = {
+  A1: { label: 'A1 — Труба в теплоизол. стене',            bundlingDefault: 'touching', groupType: 'bundle' },
+  A2: { label: 'A2 — Кабель в теплоизол. стене',           bundlingDefault: 'touching', groupType: 'bundle' },
+  B1: { label: 'B1 — Труба на/в стене',                    bundlingDefault: 'touching', groupType: 'bundle' },
+  B2: { label: 'B2 — Короб / сплошной лоток',              bundlingDefault: 'touching', groupType: 'bundle' },
+  C:  { label: 'C — Открыто на стене',                     bundlingDefault: 'spaced',   groupType: 'layer'  },
+  E:  { label: 'E — Перфорированный лоток / в воздухе',    bundlingDefault: 'touching', groupType: 'perf'   },
+  F:  { label: 'F — Лестничный лоток / одножильные касающиеся', bundlingDefault: 'spaced', groupType: 'perf' },
+  G:  { label: 'G — Одножильные с интервалами',            bundlingDefault: 'spaced',   groupType: 'perf'   },
+  D1: { label: 'D1 — В трубе в земле',                     bundlingDefault: 'touching', groupType: 'bundle' },
+  D2: { label: 'D2 — Напрямую в земле',                    bundlingDefault: 'touching', groupType: 'bundle' },
+};
+// CHANNEL_TYPES — legacy-совместимость: маппинг старых id → метод IEC
 export const CHANNEL_TYPES = {
-  insulated_conduit:  { label: 'A1 — Труба в теплоизол. стене',  method: 'A1', bundlingDefault: 'touching', icon: '\u2302' },
-  insulated_cable:    { label: 'A2 — Кабель в теплоизол. стене', method: 'A2', bundlingDefault: 'touching', icon: '\u2302' },
-  conduit:      { label: 'B1 — Труба на/в стене',        method: 'B1', bundlingDefault: 'touching', icon: '\u229A' },
-  tray_solid:   { label: 'B2 — Сплошной лоток / короб',  method: 'B2', bundlingDefault: 'touching', icon: '\u25AC' },
-  wall:         { label: 'C — Открыто на стене',         method: 'C',  bundlingDefault: 'spaced',   icon: '\u2503' },
-  tray_perf:    { label: 'E — Перфорированный лоток',    method: 'E',  bundlingDefault: 'touching', icon: '\u229E' },
-  tray_wire:    { label: 'E — Проволочный лоток',        method: 'E',  bundlingDefault: 'spaced',   icon: '\u229F' },
-  tray_ladder:  { label: 'F — Лестничный лоток',         method: 'F',  bundlingDefault: 'spaced',   icon: '\u2630' },
-  air:          { label: 'F — Одножильные касающиеся в воздухе', method: 'F',  bundlingDefault: 'spaced',   icon: '\u3030' },
-  air_spaced:   { label: 'G — Одножильные с интервалами',     method: 'G',  bundlingDefault: 'spaced',   icon: '\u2261' },
-  ground:       { label: 'D1 — В трубе в земле',         method: 'D1', bundlingDefault: 'touching', icon: '\u2298' },
-  ground_direct:{ label: 'D2 — Напрямую в земле',        method: 'D2', bundlingDefault: 'touching', icon: '\u23DA' },
+  insulated_conduit: { label: 'A1 — Труба в теплоизол. стене',  method: 'A1', bundlingDefault: 'touching' },
+  insulated_cable:   { label: 'A2 — Кабель в теплоизол. стене', method: 'A2', bundlingDefault: 'touching' },
+  conduit:     { label: 'B1 — Труба на/в стене',        method: 'B1', bundlingDefault: 'touching' },
+  tray_solid:  { label: 'B2 — Короб / сплошной лоток',  method: 'B2', bundlingDefault: 'touching' },
+  wall:        { label: 'C — Открыто на стене',          method: 'C',  bundlingDefault: 'spaced'   },
+  tray_perf:   { label: 'E — Перфорированный лоток',     method: 'E',  bundlingDefault: 'touching' },
+  tray_wire:   { label: 'E — Проволочный лоток',         method: 'E',  bundlingDefault: 'spaced'   },
+  tray_ladder: { label: 'F — Лестничный лоток',          method: 'F',  bundlingDefault: 'spaced'   },
+  air:         { label: 'F — Одножильные касающиеся',    method: 'F',  bundlingDefault: 'spaced'   },
+  air_spaced:  { label: 'G — Одножильные с интервалами', method: 'G',  bundlingDefault: 'spaced'   },
+  ground:      { label: 'D1 — В трубе в земле',          method: 'D1', bundlingDefault: 'touching' },
+  ground_direct:{ label: 'D2 — Напрямую в земле',        method: 'D2', bundlingDefault: 'touching' },
 };
 
 // Палитра цветов для линий (источники и ИБП)

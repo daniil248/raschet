@@ -1,5 +1,5 @@
 import { state, svg, inspectorBody, uid } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG } from './constants.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, INSTALL_METHODS } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
@@ -2520,19 +2520,9 @@ export function renderInspectorConn(c) {
       h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия не проходит через каналы — параметры берутся отсюда.</div>');
     }
     const method = c.installMethod || GLOBAL.defaultInstallMethod;
-    h.push(field('Способ прокладки',
-      `<select data-conn-prop="installMethod">
-        <option value="A1"${method === 'A1' ? ' selected' : ''}>A1 — в трубе в теплоизол. стене</option>
-        <option value="A2"${method === 'A2' ? ' selected' : ''}>A2 — кабель в теплоизол. стене</option>
-        <option value="B1"${method === 'B1' ? ' selected' : ''}>B1 — в трубе на стене</option>
-        <option value="B2"${method === 'B2' ? ' selected' : ''}>B2 — в коробе / сплошном лотке</option>
-        <option value="C"${method === 'C' ? ' selected' : ''}>C — открыто на стене</option>
-        <option value="E"${method === 'E' ? ' selected' : ''}>E — многожильный в воздухе</option>
-        <option value="F"${method === 'F' ? ' selected' : ''}>F — одножильные касающиеся в воздухе</option>
-        <option value="G"${method === 'G' ? ' selected' : ''}>G — одножильные с интервалами</option>
-        <option value="D1"${method === 'D1' ? ' selected' : ''}>D1 — в трубе в земле</option>
-        <option value="D2"${method === 'D2' ? ' selected' : ''}>D2 — напрямую в земле</option>
-      </select>`));
+    const methodOpts = Object.entries(INSTALL_METHODS).map(([k, v]) =>
+      `<option value="${k}"${method === k ? ' selected' : ''}>${escHtml(v.label)}</option>`).join('');
+    h.push(field('Способ прокладки', `<select data-conn-prop="installMethod">${methodOpts}</select>`));
     const bundling = c.bundling || 'touching';
     h.push(field('Расположение кабелей',
       `<select data-conn-prop="bundling">

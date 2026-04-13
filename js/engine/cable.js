@@ -1,4 +1,4 @@
-import { GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP, K_GROUP_TABLES, METHOD_GROUP_TYPE, CABLE_TYPES } from './constants.js';
+import { GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP, K_GROUP_TABLES, INSTALL_METHODS, CABLE_TYPES } from './constants.js';
 
 export function cableTable(material, insulation, method) {
   const m = IEC_TABLES[material] || IEC_TABLES.Cu;
@@ -28,7 +28,8 @@ export function kTempLookup(t, insulation) {
 // method — метод прокладки IEC (A1, B1, C, E, F, G, D1, D2)
 // Определяет какую таблицу K_GROUP использовать
 export function kGroupLookup(n, method) {
-  const groupType = (method && METHOD_GROUP_TYPE[method]) || 'bundle';
+  const im = method && INSTALL_METHODS[method];
+  const groupType = im ? im.groupType : 'bundle';
   const table = K_GROUP_TABLES[groupType] || K_GROUP_TABLES.bundle;
   const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
   const v = Math.max(1, n | 0);
