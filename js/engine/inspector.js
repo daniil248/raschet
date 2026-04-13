@@ -30,17 +30,21 @@ export function selectConn(id) {
 }
 
 // Сохранить состояние open/closed всех <details> в инспекторе
+function _detailsKey(summary, idx) {
+  // Нормализуем ключ: убираем числа в скобках чтобы "Линии в канале (1)" = "Линии в канале (0)"
+  const raw = summary?.textContent?.trim() || '';
+  return raw.replace(/\s*\(\d+\)\s*$/, '') || `__${idx}`;
+}
 function _saveDetailsState() {
   const map = {};
   inspectorBody.querySelectorAll('details').forEach((det, i) => {
-    const key = det.querySelector('summary')?.textContent?.trim() || `__${i}`;
-    map[key] = det.open;
+    map[_detailsKey(det.querySelector('summary'), i)] = det.open;
   });
   return map;
 }
 function _restoreDetailsState(map) {
   inspectorBody.querySelectorAll('details').forEach((det, i) => {
-    const key = det.querySelector('summary')?.textContent?.trim() || `__${i}`;
+    const key = _detailsKey(det.querySelector('summary'), i);
     if (key in map) det.open = map[key];
   });
 }

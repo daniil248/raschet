@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.11.7';
+export const APP_VERSION = '0.11.9';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -277,6 +277,7 @@ export const DEFAULTS = {
     count: 1,
     inputs: 2,
     outputs: 0,
+    inputSide: 'top',        // 'top' | 'left' | 'right' | 'split' (1-й слева, 2-й справа)
     priorities: [1, 2],
     phase: '3ph',
     voltage: 400,

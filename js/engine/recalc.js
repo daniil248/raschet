@@ -459,9 +459,15 @@ function recalc() {
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
     n._watchdogActivePorts = null;
-    // Consumer: всегда пересчитывать по приоритетам (нет симуляции АВР)
+    // Сброс _avrBreakerOverride для ВСЕХ кроме панелей в активной фазе переключения.
+    // Фаза переключения определяется ТОЛЬКО наличием _avrSwitchCountdown > 0 или _avrInterlockCountdown > 0.
     if (n.type === 'consumer') {
       n._avrBreakerOverride = null;
+    } else if (n.type === 'panel') {
+      const switching = (n._avrSwitchCountdown > 0) || (n._avrInterlockCountdown > 0);
+      if (!switching) {
+        n._avrBreakerOverride = null;
+      }
     }
   }
   for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; c._state = 'dead'; }
