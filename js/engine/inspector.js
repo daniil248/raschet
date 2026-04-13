@@ -334,6 +334,20 @@ export function renderInspectorNode(n) {
     h.push(upsStatusBlock(n));
   } else if (n.type === 'consumer') {
     h.push(`<button class="full-btn" id="btn-open-consumer-params" style="margin-bottom:8px">⚙ Параметры потребителя</button>`);
+    // Расположение входов
+    if ((n.inputs || 1) >= 1) {
+      const side = n.inputSide || 'top';
+      const opts = (n.inputs || 1) <= 1
+        ? [['top','↑ Сверху'],['left','← Слева'],['right','→ Справа']]
+        : [['top','↑ Сверху'],['left','← Слева'],['right','→ Справа'],['split','↔ По бокам']];
+      h.push('<div class="field"><label>Расположение входов</label>');
+      h.push('<div style="display:flex;gap:4px;flex-wrap:wrap">');
+      for (const [val, label] of opts) {
+        const active = side === val;
+        h.push(`<button type="button" data-input-side="${val}" style="padding:3px 10px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px;font-weight:${active ? '600' : '400'}">${label}</button>`);
+      }
+      h.push('</div></div>');
+    }
     // Краткая сводка
     const cnt = Math.max(1, n.count || 1);
     const ph = n.phase || '3ph';
@@ -718,6 +732,15 @@ export function wireInspectorInputs(n) {
     btn.addEventListener('click', () => {
       snapshot('phase:' + n.id);
       n.phase = btn.dataset.phaseBtn;
+      _render(); renderInspector(); notifyChange();
+    });
+  });
+
+  // Расположение входов потребителя
+  inspectorBody.querySelectorAll('[data-input-side]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      snapshot('inputSide:' + n.id);
+      n.inputSide = btn.dataset.inputSide;
       _render(); renderInspector(); notifyChange();
     });
   });
@@ -1154,7 +1177,7 @@ export function openConsumerParamsModal(n) {
   h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
   h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
   h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
-  h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="10" step="1" value="${n.inputs}">`));
+  h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
 
   // Приоритеты входов (горизонтально) — только если больше 1 входа
   const inputCount = n.inputs || 1;

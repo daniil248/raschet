@@ -37,19 +37,26 @@ export function text(x, y, str, cls) {
   t.textContent = str;
   return t;
 }
-export function bezier(a, b) {
-  const dy = Math.max(40, Math.abs(b.y - a.y) / 2);
-  return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`;
+export function bezier(a, b, opts) {
+  const aDir = opts?.aDir || { x: 0, y: 1 };
+  const bDir = opts?.bDir || { x: 0, y: -1 };
+  const dist = Math.max(40, Math.hypot(b.x - a.x, b.y - a.y) / 2);
+  const cp1x = a.x + aDir.x * dist;
+  const cp1y = a.y + aDir.y * dist;
+  const cp2x = b.x + bDir.x * dist;
+  const cp2y = b.y + bDir.y * dist;
+  return `M${a.x},${a.y} C${cp1x},${cp1y} ${cp2x},${cp2y} ${b.x},${b.y}`;
 }
 
-// Сплайн с waypoints. Output порт → строго вниз, input порт → строго сверху.
-// Промежуточные участки — Catmull-Rom с высоким натяжением (1/4) для плавности
-// без петель.
-export function splinePath(a, points, b) {
-  if (!points || points.length === 0) return bezier(a, b);
+// opts: { aDir: {x,y}, bDir: {x,y} }
+export function splinePath(a, points, b, opts) {
+  if (!points || points.length === 0) return bezier(a, b, opts);
   const pts = [a, ...points, b];
   const last = pts.length - 1;
-  const T = 0.25; // tension (1/6=мягкий, 1/4=умеренный, 1/2=жёсткий)
+  const T = 0.25;
+  // Направление выхода из a (default: вниз) и входа в b (default: сверху)
+  const aDir = opts?.aDir || { x: 0, y: 1 };
+  const bDir = opts?.bDir || { x: 0, y: -1 };
   let d = `M${a.x},${a.y}`;
 
   for (let i = 0; i < last; i++) {
@@ -59,9 +66,9 @@ export function splinePath(a, points, b) {
 
     // --- cp1: касательная ВЫХОДА из p1 ---
     if (i === 0) {
-      // Из output-порта: строго вниз
-      cp1x = p1.x;
-      cp1y = p1.y + Math.min(40, Math.abs(p2.y - p1.y) / 2 || 40);
+      const stub = Math.min(40, Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 || 40);
+      cp1x = p1.x + aDir.x * stub;
+      cp1y = p1.y + aDir.y * stub;
     } else {
       const p0 = pts[i - 1];
       cp1x = p1.x + (p2.x - p0.x) * T;
@@ -70,9 +77,10 @@ export function splinePath(a, points, b) {
 
     // --- cp2: касательная ВХОДА в p2 ---
     if (i === last - 1) {
-      // В input-порт: строго сверху
-      cp2x = p2.x;
-      cp2y = p2.y - Math.min(40, Math.abs(p2.y - p1.y) / 2 || 40);
+      // В input-порт: направление bDir
+      const stub = Math.min(40, Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 || 40);
+      cp2x = p2.x + bDir.x * stub;
+      cp2y = p2.y + bDir.y * stub;
     } else {
       const p3 = pts[i + 2];
       cp2x = p2.x - (p3.x - p1.x) * T;
@@ -370,26 +378,45 @@ export function renderNodes() {
       if (c.to.nodeId === n.id) portConns.set(c.to.port, c);
     }
     const gs = 40; // GLOBAL.gridStep
+    const isSideInput = n.type === 'consumer' && n.inputSide && n.inputSide !== 'top';
     for (let i = 0; i < inCount; i++) {
-      const totalW = inCount * gs;
-      const cx = (w - totalW) / 2 + gs / 2 + i * gs;
-      const circ = el('circle', { class: 'port in', cx, cy: 0, r: PORT_R });
+      let cx, cy;
+      if (isSideInput) {
+        // Порты сбоку
+        const side = n.inputSide;
+        if (side === 'left') {
+          cx = 0;
+          cy = NODE_H / (inCount + 1) * (i + 1);
+        } else if (side === 'right') {
+          cx = w;
+          cy = NODE_H / (inCount + 1) * (i + 1);
+        } else if (side === 'split') {
+          cx = i === 0 ? 0 : w;
+          cy = NODE_H / 2;
+        }
+      } else {
+        const totalW = inCount * gs;
+        cx = (w - totalW) / 2 + gs / 2 + i * gs;
+        cy = 0;
+      }
+      const circ = el('circle', { class: 'port in', cx, cy, r: PORT_R });
       circ.dataset.portKind = 'in'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
       // Метка приоритета
       if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
-        g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
+        if (isSideInput) {
+          const lx = cx === 0 ? cx - 12 : cx + 12;
+          g.appendChild(text(lx, cy, `P${prio}`, 'port-label'));
+        } else {
+          g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
+        }
       }
-      // Лампочки — показывают ФИЗИЧЕСКОЕ СОСТОЯНИЕ АВТОМАТА:
-      //   зелёная — автомат замкнут
-      //   красная — автомат разомкнут
+      // Лампочки — показывают состояние автомата
       const conn = portConns.get(i);
       if (conn) {
-        // Состояние вводного автомата на панели
         const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
         const avrBrk = Array.isArray(n._avrBreakerOverride) ? n._avrBreakerOverride : [];
-        // Для АВР: используем _avrBreakerOverride, для ручного: inputBreakerStates
         let breakerClosed;
         if ((n.type === 'panel' || n.type === 'consumer') && n.switchMode !== 'parallel' && n.switchMode !== 'manual' && avrBrk.length) {
           breakerClosed = avrBrk[i] !== false;
@@ -397,11 +424,11 @@ export function renderNodes() {
           breakerClosed = inBrk[i] !== false;
         }
         if (breakerClosed) {
-          g.appendChild(el('circle', { class: 'port-lamp green', cx, cy: 0, r: 4.5 }));
-          g.appendChild(el('circle', { class: 'port-lamp-core green', cx, cy: 0, r: 2 }));
+          g.appendChild(el('circle', { class: 'port-lamp green', cx, cy, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core green', cx, cy, r: 2 }));
         } else {
-          g.appendChild(el('circle', { class: 'port-lamp red', cx, cy: 0, r: 4.5 }));
-          g.appendChild(el('circle', { class: 'port-lamp-core red', cx, cy: 0, r: 2 }));
+          g.appendChild(el('circle', { class: 'port-lamp red', cx, cy, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core red', cx, cy, r: 2 }));
         }
       }
     }
@@ -581,7 +608,16 @@ export function renderConns() {
     const b = portPos(toN,   'in',  c.to.port);
     const rawWaypoints = Array.isArray(c.waypoints) ? c.waypoints : [];
     const waypoints = _adjustedWaypoints(c, a, b);
-    const d = splinePath(a, waypoints, b);
+    // Определяем направление выхода/входа для боковых портов
+    const aDir = { x: 0, y: 1 }; // output всегда вниз
+    let bDir = { x: 0, y: -1 };  // input по умолчанию сверху
+    if (toN.type === 'consumer' && toN.inputSide && toN.inputSide !== 'top') {
+      const side = toN.inputSide;
+      if (side === 'left') bDir = { x: -1, y: 0 };
+      else if (side === 'right') bDir = { x: 1, y: 0 };
+      else if (side === 'split') bDir = c.to.port === 0 ? { x: -1, y: 0 } : { x: 1, y: 0 };
+    }
+    const d = splinePath(a, waypoints, b, { aDir, bDir });
 
     const selected = state.selectedKind === 'conn' && state.selectedId === c.id;
 

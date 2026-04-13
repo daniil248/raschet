@@ -1010,6 +1010,9 @@ function recalc() {
         c._cableIz = busbarNom * deratingFactor;
         c._cableTotalIz = c._cableIz;
         c._cableOverflow = Ieff > BUSBAR_SERIES[BUSBAR_SERIES.length - 1];
+        c._cableKt = kt;
+        c._cableKg = kl; // для шинопровода Kg = Kl (тип нагрузки)
+        c._cableKtotal = deratingFactor;
         c._cableAutoParallel = false;
         c._cableParallel = 1;
       } else if (c.manualCableSize) {
@@ -1065,6 +1068,9 @@ function recalc() {
       c._cableOverflow = false;
       c._cableAutoParallel = false;
       c._cableParallel = conductorsInParallel;
+      c._cableKt = null;
+      c._cableKg = null;
+      c._cableKtotal = null;
     }
   }
 
