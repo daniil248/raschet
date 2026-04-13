@@ -77,13 +77,24 @@ export function selectCableSize(I, opts) {
   // Правило IEC 60364-4-43: Iрасч ≤ In ≤ Iz
   //   — сечение должно быть достаточным, чтобы существовал стандартный
   //     автомат In ≥ Iрасч, при этом In ≤ Iz (автомат защищает кабель).
+  // IEC 60364-4-43: координация автомата и кабеля
+  // Условие 1: Ib ≤ In ≤ Iz
+  // Условие 2: I2 ≤ 1.45 × Iz
+  //   MCB (IEC 60898): I2 = 1.45 × In → In ≤ Iz
+  //   gG  (IEC 60269): I2 = 1.6 × In  → In ≤ 0.906 × Iz
+  // Используем MCB по умолчанию (I2/In = 1.45)
+  const I2ratio = 1.45; // для MCB
+  const protectionFactor = I2ratio / 1.45; // = 1.0 для MCB, = 1.103 для gG(1.6/1.45)
+
   function tryWithParallel(parallel) {
     const Iper = I / parallel;
-    const InNeeded = selectBreaker(Iper); // ближайший стандартный ≥ Iрасч
+    const InNeeded = selectBreaker(Iper);
     for (const [s, iRef] of effTable) {
       const iDerated = iRef * k;
-      // Iz должен быть ≥ In (автомат защищает кабель)
-      if (iDerated >= InNeeded) {
+      // IEC 60364-4-43: In ≤ Iz AND I2 ≤ 1.45 × Iz
+      // Для MCB: In ≤ Iz (т.к. I2 = 1.45*In, условие 2 автоматически)
+      // Проверяем оба условия явно:
+      if (iDerated >= InNeeded && I2ratio * InNeeded <= 1.45 * iDerated) {
         return { s, iAllowed: iRef, iDerated, parallel };
       }
     }

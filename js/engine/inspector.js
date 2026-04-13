@@ -2362,12 +2362,14 @@ export function renderInspectorConn(c) {
   if (c._state === 'active') {
     h.push('<div class="inspector-section"><h4>Нагрузка линии</h4>');
     const _par = Math.max(1, c._cableParallel || 1);
+    const loadPerLine = (c._loadA || 0) / _par;
+    const maxPerLine = (c._maxA || 0) / _par;
+    const kwPerLine = (c._loadKw || 0) / _par;
     h.push(`<div style="font-size:12px;line-height:1.8">` +
-      `Текущая P: <b>${fmt(c._loadKw)} kW</b><br>` +
-      `Текущий I: <b>${fmt(c._loadA || 0)} A</b>` +
-      (_par > 1 ? ` <span class="muted">(на линию: ${fmt((c._loadA || 0) / _par)} A)</span>` : '') + `<br>` +
-      `Расчётный I для кабеля: <b>${fmt(c._maxA || 0)} A</b>` +
-      (_par > 1 ? ` <span class="muted">(на линию: ${fmt((c._maxA || 0) / _par)} A)</span>` : '') + `<br>` +
+      (_par > 1 ? `Линий: <b>${_par}</b><br>` : '') +
+      `Текущая P: <b>${fmt(kwPerLine)} kW</b><br>` +
+      `Текущий I: <b>${fmt(loadPerLine)} A</b><br>` +
+      `Расчётный I: <b>${fmt(maxPerLine)} A</b> <span class="muted">(по макс. нагрузке)</span><br>` +
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
       `Напряжение: <b>${c._voltage || '-'} В</b>` +
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
@@ -2384,12 +2386,16 @@ export function renderInspectorConn(c) {
         cableSpec = par > 1 ? `Кабель: <b>${par}×(${spec})</b>` : `Кабель: <b>${spec}</b>`;
       }
       const brkIn = c._breakerIn || c._breakerPerLine || 0;
-      h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:#f5f5f5;border-radius:4px">` +
+      const Iz = c._cableIz || 0;
+      const I2 = brkIn * 1.45; // MCB: I2 = 1.45 × In
+      const protOk = !brkIn || !Iz || (brkIn <= Iz && I2 <= 1.45 * Iz);
+      h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${protOk ? '#f5f5f5' : '#fff3e0'};border-radius:4px">` +
         (cableSpec ? cableSpec + '<br>' : '') +
         (brkIn ? `Автомат: <b>C${brkIn} A</b>` + (c._breakerCount > 1 ? ` (${c._breakerCount} шт.)` : '') + '<br>' : '') +
-        (c._cableIz ? `Iдоп на жилу (Iz): <b>${fmt(c._cableIz)} A</b><br>` : '') +
+        (Iz ? `Iдоп на жилу (Iz): <b>${fmt(Iz)} A</b><br>` : '') +
+        (brkIn && Iz ? `I2 (1.45×In): <b>${fmt(I2)} A</b> ≤ 1.45×Iz: <b>${fmt(1.45 * Iz)} A</b> ${I2 <= 1.45 * Iz ? '<span style="color:#2e7d32">✓</span>' : '<span style="color:#c62828">✗ кабель не защищён!</span>'}<br>` : '') +
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
-        `<span class="muted">Правило IEC: Iрасч ≤ In ≤ Iz</span>` +
+        `<span class="muted">IEC 60364-4-43: Ib ≤ In ≤ Iz, I2 ≤ 1.45×Iz</span>` +
         `</div>`);
     }
     h.push('</div>');
