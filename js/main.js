@@ -926,68 +926,116 @@ function renderPresets(query) {
 }
 
 function openPresetEditor(preset) {
-  const params = preset.params || {};
+  const p = preset.params || {};
   const type = preset.type;
-  // Build simple editor fields based on type
-  const fields = [];
-  fields.push({ key: 'title', label: 'Название', value: preset.title, onPreset: true });
-  fields.push({ key: 'description', label: 'Описание', value: preset.description || '', onPreset: true });
-  if ('name' in params) fields.push({ key: 'name', label: 'Имя элемента', value: params.name || '' });
+  const TYPE_LABELS = { source: 'Источник', generator: 'Генератор', panel: 'Щит', ups: 'ИБП', consumer: 'Потребитель', channel: 'Канал' };
+
+  // Helper
+  const fld = (label, input) => `<div style="margin-bottom:8px"><label style="display:block;font-size:11px;text-transform:uppercase;color:#666;margin-bottom:2px">${escHtml(label)}</label>${input}</div>`;
+  const inp = (key, val, opts) => {
+    const t = opts?.type || (typeof val === 'number' ? 'number' : 'text');
+    const extra = opts?.step ? ` step="${opts.step}"` : (t === 'number' ? ' step="any"' : '');
+    const min = opts?.min != null ? ` min="${opts.min}"` : '';
+    const max = opts?.max != null ? ` max="${opts.max}"` : '';
+    return `<input type="${t}" data-edit-key="${key}" value="${escAttr(String(val ?? ''))}"${extra}${min}${max} style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px">`;
+  };
+  const sel = (key, options, val) => {
+    let h = `<select data-edit-key="${key}" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px">`;
+    for (const o of options) h += `<option value="${escAttr(o.v)}"${o.v === val ? ' selected' : ''}>${escHtml(o.l)}</option>`;
+    h += '</select>';
+    return h;
+  };
+
+  let html = `<div style="padding:12px">`;
+  html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:11px;color:#999;text-transform:uppercase">${escHtml(TYPE_LABELS[type] || type)}</span></div>`;
+
+  // Общие поля
+  html += fld('Название в библиотеке', inp('title', preset.title));
+  html += fld('Описание', inp('description', preset.description || ''));
+  html += fld('Имя элемента на схеме', inp('name', p.name || ''));
+
+  // Поля по типу
   if (type === 'source' || type === 'generator') {
-    fields.push({ key: 'capacityKw', label: 'Мощность, kW', value: params.capacityKw || 0, num: true });
-  }
-  if (type === 'panel') {
-    fields.push({ key: 'inputs', label: 'Входов', value: params.inputs || 1, num: true });
-    fields.push({ key: 'outputs', label: 'Выходов', value: params.outputs || 4, num: true });
-    fields.push({ key: 'capacityA', label: 'Номинал, А', value: params.capacityA || 0, num: true });
-  }
-  if (type === 'ups') {
-    fields.push({ key: 'capacityKw', label: 'Мощность, kW', value: params.capacityKw || 0, num: true });
-    fields.push({ key: 'efficiency', label: 'КПД, %', value: params.efficiency || 94, num: true });
-    fields.push({ key: 'inputs', label: 'Входов', value: params.inputs || 1, num: true });
-    fields.push({ key: 'outputs', label: 'Выходов', value: params.outputs || 2, num: true });
-  }
-  if (type === 'consumer') {
-    fields.push({ key: 'demandKw', label: 'Мощность, kW', value: params.demandKw || 10, num: true });
-    fields.push({ key: 'count', label: 'Количество', value: params.count || 1, num: true });
-    fields.push({ key: 'cosPhi', label: 'cos φ', value: params.cosPhi || 0.92, num: true });
-    fields.push({ key: 'kUse', label: 'Ки', value: params.kUse ?? 1, num: true });
-    fields.push({ key: 'inrushFactor', label: 'Кратность пуска', value: params.inrushFactor || 1, num: true });
-    fields.push({ key: 'inputs', label: 'Входов', value: params.inputs || 1, num: true });
+    html += fld('Мощность, kW', inp('capacityKw', p.capacityKw || 0));
+    if (type === 'generator') {
+      html += fld('Режим', sel('backupMode', [{v:'true',l:'Резерв'},{v:'false',l:'Основной'}], String(p.backupMode !== false)));
+    }
   }
 
-  let html = `<div style="padding:12px"><h3 style="margin:0 0 12px">${escHtml(preset.title)}</h3>`;
-  for (const f of fields) {
-    const inputType = f.num ? 'number' : 'text';
-    html += `<div style="margin-bottom:8px"><label style="display:block;font-size:11px;text-transform:uppercase;color:#666;margin-bottom:2px">${escHtml(f.label)}</label>`;
-    html += `<input type="${inputType}" data-edit-key="${f.key}" ${f.onPreset ? 'data-on-preset="1"' : ''} value="${escAttr(String(f.value))}" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px"></div>`;
+  if (type === 'panel') {
+    html += fld('Номинальный ток, А', inp('capacityA', p.capacityA || 0));
+    html += '<div style="display:flex;gap:8px">';
+    html += '<div style="flex:1">' + fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:10,step:1})) + '</div>';
+    html += '<div style="flex:1">' + fld('Выходов', inp('outputs', p.outputs || 4, {min:1,max:30,step:1})) + '</div>';
+    html += '</div>';
+    html += fld('Режим АВР', sel('switchMode', [{v:'auto',l:'Авто (АВР)'},{v:'manual',l:'Ручной'},{v:'parallel',l:'Параллельный'}], p.switchMode || 'auto'));
   }
+
+  if (type === 'ups') {
+    html += fld('Выходная мощность, kW', inp('capacityKw', p.capacityKw || 0));
+    html += fld('КПД, %', inp('efficiency', p.efficiency || 94, {min:50,max:100,step:1}));
+    html += '<div style="display:flex;gap:8px">';
+    html += '<div style="flex:1">' + fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:5,step:1})) + '</div>';
+    html += '<div style="flex:1">' + fld('Выходов', inp('outputs', p.outputs || 2, {min:1,max:20,step:1})) + '</div>';
+    html += '</div>';
+    html += fld('Ёмкость АКБ, kWh', inp('batteryKwh', p.batteryKwh || 0));
+    html += fld('Ток заряда, kW', inp('chargeKw', p.chargeKw || 0));
+  }
+
+  if (type === 'consumer') {
+    // Тип оборудования из каталога
+    const catalog = window.Raschet?.getConsumerCatalog?.() || [];
+    if (catalog.length) {
+      let catOpts = [{v:'custom',l:'Произвольный'}];
+      for (const c of catalog) catOpts.push({v:c.id,l:c.label});
+      html += fld('Тип оборудования', sel('consumerSubtype', catOpts, p.consumerSubtype || 'custom'));
+    }
+    html += fld('Мощность, kW', inp('demandKw', p.demandKw || 10));
+    html += '<div style="display:flex;gap:8px">';
+    html += '<div style="flex:1">' + fld('Количество', inp('count', p.count || 1, {min:1,step:1})) + '</div>';
+    html += '<div style="flex:1">' + fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:10,step:1})) + '</div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px">';
+    html += '<div style="flex:1">' + fld('cos φ', inp('cosPhi', p.cosPhi ?? 0.92, {min:0.1,max:1,step:0.01})) + '</div>';
+    html += '<div style="flex:1">' + fld('Ки', inp('kUse', p.kUse ?? 1, {min:0,max:1,step:0.05})) + '</div>';
+    html += '</div>';
+    html += fld('Кратность пускового тока', inp('inrushFactor', p.inrushFactor || 1, {min:1,max:10,step:0.1}));
+    html += fld('Фаза', sel('phase', [{v:'3ph',l:'3Ф'},{v:'1ph',l:'1Ф'},{v:'A',l:'A'},{v:'B',l:'B'},{v:'C',l:'C'}], p.phase || '3ph'));
+  }
+
+  if (type === 'channel') {
+    html += fld('Длина, м', inp('lengthM', p.lengthM || 10, {min:0}));
+  }
+
   html += `<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">`;
   html += `<button id="pe-cancel" style="padding:6px 16px;border:1px solid #ccc;background:#fff;border-radius:4px;cursor:pointer">Отмена</button>`;
   html += `<button id="pe-save" style="padding:6px 16px;border:none;background:#1976d2;color:#fff;border-radius:4px;cursor:pointer">Сохранить</button>`;
   html += `</div></div>`;
 
-  // Show in presets modal body
-  const container = els.presetsList;
-  const prevHTML = container.innerHTML;
-  container.innerHTML = html;
+  // Hide search, show editor
+  els.presetsSearch.style.display = 'none';
+  els.presetsList.innerHTML = html;
 
   document.getElementById('pe-cancel').onclick = () => {
+    els.presetsSearch.style.display = '';
     renderPresets(els.presetsSearch.value);
   };
   document.getElementById('pe-save').onclick = () => {
-    container.querySelectorAll('[data-edit-key]').forEach(inp => {
-      const key = inp.dataset.editKey;
-      const isOnPreset = inp.dataset.onPreset === '1';
-      const val = inp.type === 'number' ? Number(inp.value) : inp.value;
-      if (isOnPreset) {
-        preset[key] = val;
-      } else {
-        if (!preset.params) preset.params = {};
-        preset.params[key] = val;
-      }
+    const container = els.presetsList;
+    container.querySelectorAll('[data-edit-key]').forEach(el => {
+      const key = el.dataset.editKey;
+      let val = el.type === 'number' ? Number(el.value) : el.value;
+      // Boolean selects
+      if (val === 'true') val = true;
+      if (val === 'false') val = false;
+      if (key === 'title') { preset.title = val; return; }
+      if (key === 'description') { preset.description = val; return; }
+      if (!preset.params) preset.params = {};
+      preset.params[key] = val;
     });
-    // Save custom presets to localStorage
+    // Sync name to title if not set
+    if (!preset.params.name) preset.params.name = preset.title;
+    // Save to localStorage
     if (preset.custom) {
       try {
         const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
@@ -997,6 +1045,7 @@ function openPresetEditor(preset) {
         localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
       } catch {}
     }
+    els.presetsSearch.style.display = '';
     renderPresets(els.presetsSearch.value);
     flash('Параметры обновлены');
   };

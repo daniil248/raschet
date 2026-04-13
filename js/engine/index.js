@@ -4,7 +4,7 @@
    ========================================================================= */
 
 // === Импорты ===
-import { GLOBAL, DEFAULTS, NODE_H, APP_VERSION } from './constants.js';
+import { GLOBAL, DEFAULTS, NODE_H, APP_VERSION, CONSUMER_CATALOG } from './constants.js';
 import { state, uid, initDOM, setChangeCb, svg, setIdSeq } from './state.js';
 import { escHtml, escAttr, fmt, flash, field, checkField } from './utils.js';
 import { selectCableSize, selectBreaker } from './cable.js';
@@ -228,6 +228,9 @@ window.Raschet = {
   importLoadsTable,
   get3PhaseBalance,
   getGlobal() { return { ...GLOBAL }; },
+  getConsumerCatalog() {
+    return [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];
+  },
   setGlobal(patch) {
     if (!patch || typeof patch !== 'object') return;
     for (const k of Object.keys(patch)) {

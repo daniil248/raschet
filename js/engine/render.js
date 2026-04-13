@@ -248,8 +248,8 @@ export function renderNodes() {
       }
     }
 
-    // Маркер цвета линии для источников/генераторов
-    if ((n.type === 'source' || n.type === 'generator') && GLOBAL.showSourceColors) {
+    // Маркер цвета линии для источников/генераторов/ИБП
+    if ((n.type === 'source' || n.type === 'generator' || (n.type === 'ups' && n.lineColor)) && GLOBAL.showSourceColors) {
       const color = n.lineColor || '#e53935';
       g.appendChild(el('circle', {
         cx: w - 14, cy: NODE_H - 14, r: 7,

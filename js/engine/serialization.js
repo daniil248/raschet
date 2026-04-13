@@ -156,8 +156,9 @@ export function deserialize(data) {
       }
       if (typeof n.ambientC !== 'number') n.ambientC = 30;
       if (typeof n.lengthM !== 'number') n.lengthM = 10;
-      if (typeof n.inputs !== 'number') n.inputs = 1;
-      if (typeof n.outputs !== 'number') n.outputs = 1;
+      // Каналы не имеют электрических портов — линии проходят через channelIds
+      n.inputs = 0;
+      n.outputs = 0;
       // Снимаем устаревшие поля — они теперь на линиях
       delete n.material; delete n.insulation; delete n.method;
     }
@@ -196,6 +197,13 @@ export function deserialize(data) {
     if (typeof c.grouping !== 'number') c.grouping = GLOBAL.defaultGrouping;
     if (!c.bundling) c.bundling = 'touching';
     if (typeof c.lengthM !== 'number') c.lengthM = 1;
+    // Удалить связи, подключённые к каналам (каналы больше не имеют портов)
+    const fromN = state.nodes.get(c.from?.nodeId);
+    const toN = state.nodes.get(c.to?.nodeId);
+    if ((fromN && fromN.type === 'channel') || (toN && toN.type === 'channel')) {
+      state.conns.delete(c.id);
+      continue;
+    }
   }
 
   _updateViewBox();
