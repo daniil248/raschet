@@ -194,6 +194,7 @@ export function renderInspectorNode(n) {
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
       </select>`));
+    h.push(field('Цвет линии', `<input type="color" data-prop="lineColor" value="${n.lineColor || '#e53935'}" style="width:40px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`));
     // cos φ источника рассчитывается автоматически из downstream нагрузки.
     // Для генератора номинальный cos φ задаётся в параметрах источника.
     if (n._cosPhi) {
@@ -246,6 +247,7 @@ export function renderInspectorNode(n) {
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
     h.push(`<button class="full-btn" id="btn-open-ups-params" style="margin-bottom:8px">⚙ Параметры ИБП</button>`);
+    h.push(field('Цвет линии', `<input type="color" data-prop="lineColor" value="${n.lineColor || '#7b1fa2'}" style="width:40px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`));
     // Краткая сводка
     const battPct = Math.round(n.batteryChargePct || 0);
     h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +

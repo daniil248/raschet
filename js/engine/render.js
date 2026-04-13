@@ -277,15 +277,10 @@ export function renderNodes() {
 
     // Порты — входы
     const inCount = nodeInputCount(n);
-    // Состояние каждого входного порта: 'active' | 'powered' | undefined
-    const portStates = new Map();
-    {
-      for (const c of state.conns.values()) {
-        if (c.to.nodeId !== n.id) continue;
-        if (c._state === 'active' || c._state === 'powered') {
-          portStates.set(c.to.port, c._state);
-        }
-      }
+    // Определяем состояние автомата и наличие подключения для каждого порта
+    const portConns = new Map(); // port → conn
+    for (const c of state.conns.values()) {
+      if (c.to.nodeId === n.id) portConns.set(c.to.port, c);
     }
     const gs = 40; // GLOBAL.gridStep
     for (let i = 0; i < inCount; i++) {
@@ -299,21 +294,19 @@ export function renderNodes() {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
       }
-      // Лампочки на всех входах — центр совмещён с портом:
-      //   зелёная — active (несёт нагрузку)
-      //   красная — powered (напряжение есть, но не выбран АВР)
-      //   серая — dead (нет напряжения)
-      {
-        const ps = portStates.get(i);
-        if (ps === 'active') {
+      // Лампочки — показывают СОСТОЯНИЕ АВТОМАТА (не напряжение):
+      //   зелёная — автомат замкнут (ввод активен)
+      //   красная — автомат разомкнут (ввод не выбран)
+      //   только для портов с подключением
+      const conn = portConns.get(i);
+      if (conn) {
+        const breakerClosed = conn._state === 'active';
+        if (breakerClosed) {
           g.appendChild(el('circle', { class: 'port-lamp green', cx, cy: 0, r: 4.5 }));
           g.appendChild(el('circle', { class: 'port-lamp-core green', cx, cy: 0, r: 2 }));
-        } else if (ps === 'powered') {
+        } else {
           g.appendChild(el('circle', { class: 'port-lamp red', cx, cy: 0, r: 4.5 }));
           g.appendChild(el('circle', { class: 'port-lamp-core red', cx, cy: 0, r: 2 }));
-        } else {
-          // Dead / не подключен — серая лампочка
-          g.appendChild(el('circle', { class: 'port-lamp', cx, cy: 0, r: 4.5, fill: 'none', stroke: '#bbb', 'stroke-width': 1 }));
         }
       }
     }
@@ -325,6 +318,21 @@ export function renderNodes() {
       const circ = el('circle', { class: 'port out', cx, cy: NODE_H, r: PORT_R });
       circ.dataset.portKind = 'out'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
+      // "Резерв" на пустых выходных портах (без подключения)
+      if (GLOBAL.showBreakerLabels !== false) {
+        let hasConn = false;
+        for (const c of state.conns.values()) {
+          if (c.from.nodeId === n.id && c.from.port === i) { hasConn = true; break; }
+        }
+        if (!hasConn) {
+          const ry = NODE_H + 18;
+          const rbg = el('rect', { x: cx - 5, y: NODE_H + 8, width: 10, height: 36, fill: '#fff', 'fill-opacity': '0.85', rx: 2 });
+          g.appendChild(rbg);
+          const rl = el('text', { x: cx, y: ry, class: 'port-label', 'text-anchor': 'middle', 'dominant-baseline': 'central', transform: `rotate(-90 ${cx} ${ry})`, 'font-size': '8', fill: '#999' });
+          rl.textContent = 'Резерв';
+          g.appendChild(rl);
+        }
+      }
     }
 
     // Жёлтый треугольник с «!» — предупреждение о номинале шкафа
@@ -403,6 +411,10 @@ export function renderConns() {
       class: 'conn' + stateClass + (selected ? ' selected' : ''),
       d,
     });
+    // Цвет по источнику (если включен режим)
+    if (GLOBAL.showSourceColors && c._sourceColor && (c._state === 'active' || c._state === 'powered')) {
+      path.setAttribute('style', `stroke: ${c._sourceColor}`);
+    }
     path.dataset.connId = c.id;
     layerConns.appendChild(path);
 

@@ -108,6 +108,14 @@ export function initToolbar() {
     };
   }
 
+  // Toolbar: цвета по источникам
+  const colorsBtn = document.getElementById('btn-toggle-colors');
+  if (colorsBtn) {
+    const updateColorsBtn = () => { colorsBtn.style.opacity = GLOBAL.showSourceColors ? '1' : '0.4'; };
+    updateColorsBtn();
+    colorsBtn.onclick = () => { GLOBAL.showSourceColors = !GLOBAL.showSourceColors; updateColorsBtn(); render(); };
+  }
+
   // Toolbar: подписи кабелей / автоматов
   const cablesBtn = document.getElementById('btn-toggle-cables');
   if (cablesBtn) {

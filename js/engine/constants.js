@@ -19,6 +19,7 @@ export const GLOBAL = {
   showGrid: true,
   snapToGrid: true,
   gridStep: 40,
+  showSourceColors: false,  // false = все красным, true = по цвету источника
   // Расчётные параметры
   voltage3ph: 400,
   voltage1ph: 230,
@@ -162,7 +163,7 @@ export const CHANNEL_TYPES = {
 // Типы узлов и их параметры по умолчанию
 export const DEFAULTS = {
   source:    () => ({
-    name: 'Ввод ТП', comment: '', capacityKw: 100, on: true,
+    name: 'Ввод ТП', comment: '', lineColor: '#e53935', capacityKw: 100, on: true,
     sourceSubtype: 'transformer',
     phase: '3ph', voltage: 400, cosPhi: 0.95,
     sscMva: 500,            // мощность КЗ сети, МВА
@@ -173,7 +174,7 @@ export const DEFAULTS = {
     p0W: 1.5,               // потери холостого хода, кВт (P0 / Pfe)
   }),
   generator: () => ({
-    name: 'ДГУ', comment: '', capacityKw: 60, on: true, backupMode: true,
+    name: 'ДГУ', comment: '', lineColor: '#ff9800', capacityKw: 60, on: true, backupMode: true,
     sourceSubtype: 'generator',
     phase: '3ph', voltage: 400, cosPhi: 0.85,
     sscMva: 10, ukPct: 0, xsRsRatio: 0.5, snomKva: 75,
@@ -216,7 +217,7 @@ export const DEFAULTS = {
     outputActivateWhenDead: null,
   }),
   ups:       () => ({
-    name: 'ИБП', comment: '',
+    name: 'ИБП', comment: '', lineColor: '#7b1fa2',
     capacityKw: 10,
     efficiency: 95,
     chargeA: 2,

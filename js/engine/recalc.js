@@ -590,6 +590,33 @@ function recalc() {
     c._state = (upAi !== null) ? 'powered' : 'dead';
   }
 
+  // Определение цвета источника для каждого узла (для режима showSourceColors)
+  // Идём от каждого источника вниз по active связям, помечая _sourceColor
+  for (const n of state.nodes.values()) {
+    n._sourceColor = null;
+  }
+  for (const c of state.conns.values()) {
+    c._sourceColor = null;
+  }
+  function propagateColor(nid, color) {
+    const n = state.nodes.get(nid);
+    if (!n || n._sourceColor) return;
+    n._sourceColor = color;
+    // ИБП меняет цвет на свой
+    if (n.type === 'ups' && n.lineColor) color = n.lineColor;
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId === nid && c._state === 'active') {
+        c._sourceColor = color;
+        propagateColor(c.to.nodeId, color);
+      }
+    }
+  }
+  for (const n of state.nodes.values()) {
+    if ((n.type === 'source' || n.type === 'generator') && n._powered) {
+      propagateColor(n.id, n.lineColor || '#e53935');
+    }
+  }
+
   // Статусы источников и ИБП
   for (const n of state.nodes.values()) {
     if (n.type === 'source' || n.type === 'generator') {

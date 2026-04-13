@@ -531,8 +531,8 @@ input, select { font: inherit; }
 .node.panel.undersize .node-body { fill: #ffebee; stroke: #c62828 !important; stroke-width: 2.2; }
 .node.panel.undersize.selected .node-body { stroke: #b71c1c !important; }
 /* Щит: номинал > макс.тока на 30%+ — фиолетовый (избыточный запас) */
-.node.panel.oversize .node-body { fill: #f3e5f5; stroke: #8e24aa !important; stroke-width: 2.2; }
-.node.panel.oversize.selected .node-body { stroke: #6a1b9a !important; }
+.node.panel.oversize .node-body { fill: #e3f2fd; stroke: #1565c0 !important; stroke-width: 2.2; }
+.node.panel.oversize.selected .node-body { stroke: #0d47a1 !important; }
 
 /* Margin warning badge: yellow triangle with '!' */
 .margin-warn-tri {
