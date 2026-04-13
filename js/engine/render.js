@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { svg, layerConns, layerNodes, statsEl, modesListEl } from './state.js';
-import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R } from './constants.js';
+import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
 import { recalc } from './recalc.js';
@@ -410,7 +410,7 @@ export function renderConns() {
     //   N× — количество спаренных кабелей (только если > 1)
     //   (кол-во шт.) — только для групповых потребителей (count > 1)
     // Подпись кабеля/шинопровода на ЛЮБОЙ линии с maxA > 0
-    if (c._maxA > 0 && (c._cableSize || c._busbarNom || c._cableOverflow)) {
+    if (GLOBAL.showCableLabels !== false && c._maxA > 0 && (c._cableSize || c._busbarNom || c._cableOverflow)) {
       const mid = pathMidpoint(a, waypoints, b);
       const isActive = c._state === 'active' && c._loadKw > 0;
       const parallel = Math.max(1, c._cableParallel || 1);
@@ -480,9 +480,9 @@ export function renderConns() {
       }
     }
 
-    // Бейдж автомата — ближе к from-концу, следует за траекторией
+    // Бейдж автомата — ближе к from-концу, на ВСЕХ линиях с автоматом
     const hasBreaker = c._breakerIn || c._breakerPerLine;
-    if (hasBreaker && c._state === 'active') {
+    if (GLOBAL.showBreakerLabels !== false && hasBreaker) {
       const pts = [a, ...waypoints, b];
       let total = 0;
       const segs = [];

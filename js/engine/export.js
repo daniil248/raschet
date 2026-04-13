@@ -108,6 +108,22 @@ export function initToolbar() {
     };
   }
 
+  // Toolbar: подписи кабелей / автоматов
+  const cablesBtn = document.getElementById('btn-toggle-cables');
+  if (cablesBtn) {
+    if (!('showCableLabels' in GLOBAL)) GLOBAL.showCableLabels = true;
+    const updateCablesBtn = () => { cablesBtn.style.opacity = GLOBAL.showCableLabels !== false ? '1' : '0.4'; };
+    updateCablesBtn();
+    cablesBtn.onclick = () => { GLOBAL.showCableLabels = !GLOBAL.showCableLabels; updateCablesBtn(); render(); };
+  }
+  const breakersBtn = document.getElementById('btn-toggle-breakers');
+  if (breakersBtn) {
+    if (!('showBreakerLabels' in GLOBAL)) GLOBAL.showBreakerLabels = true;
+    const updateBreakersBtn = () => { breakersBtn.style.opacity = GLOBAL.showBreakerLabels !== false ? '1' : '0.4'; };
+    updateBreakersBtn();
+    breakersBtn.onclick = () => { GLOBAL.showBreakerLabels = !GLOBAL.showBreakerLabels; updateBreakersBtn(); render(); };
+  }
+
   // Модальные окна — перетаскивание за заголовок
   document.querySelectorAll('.modal-head').forEach(head => {
     let dragging = false, dx = 0, dy = 0;

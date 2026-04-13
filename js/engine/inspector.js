@@ -1883,7 +1883,17 @@ export function renderInspectorConn(c) {
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
       `Напряжение: <b>${c._voltage || '-'} В</b>` +
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
-      `</div></div>`);
+      `</div>`);
+    // Допустимая нагрузка с учётом автомата и кабеля
+    if (c._breakerIn || c._cableIz) {
+      h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:#f5f5f5;border-radius:4px">` +
+        (c._breakerIn ? `Автомат: <b>C${c._breakerIn} A</b><br>` : '') +
+        (c._cableIz ? `Допустимый ток кабеля (Iz): <b>${fmt(c._cableIz)} A</b><br>` : '') +
+        (c._cableTotalIz && c._cableTotalIz !== c._cableIz ? `Iz всех параллельных: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
+        `<span class="muted">Правило IEC: Iрасч ≤ In ≤ Iz</span>` +
+        `</div>`);
+    }
+    h.push('</div>');
   }
 
   // === Проводник линии ===
@@ -2047,18 +2057,50 @@ export function renderInspectorConn(c) {
     h.push('</details>');
   }
 
-  // Автомат защиты
-  if (c._breakerIn) {
+  // Автомат защиты — для всех линий (не только активных)
+  {
+    const BREAKER_NOMS = [6,10,13,16,20,25,32,40,50,63,80,100,125,160,200,250,400,630,800,1000,1250,1600];
+    const autoIn = c._breakerIn || 0;
+    const manualBreaker = !!c.manualBreakerIn;
+    const effectiveIn = manualBreaker ? (c.manualBreakerIn || autoIn) : autoIn;
     const cnt = c._breakerCount || 1;
-    const badge = c._breakerAgainstCable
-      ? '<span class="badge off">селект. нарушена</span>'
-      : '<span class="badge on">ок</span>';
-    h.push('<div class="inspector-section"><h4>Защитный аппарат</h4>');
-    h.push(`<div style="font-size:12px;line-height:1.8">` +
-      `Номинал: <b>C${c._breakerIn} А</b> ${badge}<br>` +
-      (cnt > 1 ? `В шкафу: <b>${cnt} × C${c._breakerIn} А</b> <span class="muted">(по одному на каждую параллельную линию группы)</span><br>` : '') +
-      (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">Ток автомата превышает допустимую нагрузку кабеля (${fmt(c._cableIz)} А). Увеличьте сечение или уменьшите номинал.</span>` : '') +
-      `</div></div>`);
+
+    h.push('<div class="inspector-section">');
+    // Toggle авто/ручной
+    h.push('<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">');
+    h.push('<h4 style="margin:0;font-size:12px">Защитный аппарат</h4>');
+    h.push(`<span style="font-size:10px;color:${!manualBreaker ? '#4caf50' : '#999'}">авто</span>`);
+    h.push(`<div data-breaker-mode-toggle style="position:relative;width:36px;height:18px;border-radius:9px;background:${manualBreaker ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`);
+    h.push(`<div style="position:absolute;top:2px;${manualBreaker ? 'right:2px' : 'left:2px'};width:14px;height:14px;border-radius:7px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`);
+    h.push('</div>');
+    h.push(`<span style="font-size:10px;color:${manualBreaker ? '#e65100' : '#999'}">ручной</span>`);
+    h.push('</div>');
+
+    if (manualBreaker) {
+      let brkOpts = '';
+      for (const nom of BREAKER_NOMS) {
+        brkOpts += `<option value="${nom}"${nom === (c.manualBreakerIn || autoIn) ? ' selected' : ''}>C${nom} А</option>`;
+      }
+      h.push(field('Номинал автомата', `<select data-conn-prop="manualBreakerIn">${brkOpts}</select>`));
+      if (autoIn) {
+        h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>C${autoIn} А</b></div>`);
+      }
+      // Предупреждения
+      if (c._cableIz && effectiveIn > c._cableIz) {
+        h.push('<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ Автомат > Iz кабеля — кабель не защищён! Увеличьте сечение.</div>');
+      }
+    } else {
+      // Авто
+      const badge = c._breakerAgainstCable
+        ? '<span class="badge off">селект. нарушена</span>'
+        : (effectiveIn ? '<span class="badge on">ок</span>' : '');
+      h.push(`<div style="font-size:12px;line-height:1.8">` +
+        (effectiveIn ? `Номинал: <b>C${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
+        (cnt > 1 ? `В шкафу: <b>${cnt} × C${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
+        (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${fmt(c._cableIz || 0)} А) — увеличьте сечение</span>` : '') +
+        `</div>`);
+    }
+    h.push('</div>');
   }
 
   h.push('<div class="muted" style="font-size:11px;margin-top:10px">Рукоятки на концах — переключить связь на другой порт. «+» в середине сегмента — добавить точку сплайна. Shift+клик по точке — удалить. Shift+клик по линии — удалить связь.</div>');
@@ -2111,6 +2153,20 @@ export function renderInspectorConn(c) {
         // Переключаем на ручной — копируем текущий авто-подбор
         c.manualCableSize = c._cableSize || 240;
         c.manualCableParallel = c._cableParallel || 1;
+      }
+      _render(); renderInspector(); notifyChange();
+    });
+  }
+
+  // Toggle авто/ручной автомат
+  const breakerModeToggle = inspectorBody.querySelector('[data-breaker-mode-toggle]');
+  if (breakerModeToggle) {
+    breakerModeToggle.addEventListener('click', () => {
+      snapshot('breaker-mode:' + c.id);
+      if (c.manualBreakerIn) {
+        delete c.manualBreakerIn;
+      } else {
+        c.manualBreakerIn = c._breakerIn || 100;
       }
       _render(); renderInspector(); notifyChange();
     });
