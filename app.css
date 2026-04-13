@@ -602,6 +602,15 @@ input, select { font: inherit; }
   cursor: grab;
 }
 .conn-waypoint:hover { fill: #0d47a1; r: 6; }
+.conn-waypoint-del {
+  fill: #fff; stroke: #e53935; stroke-width: 1.5;
+  cursor: pointer; opacity: 0.6; pointer-events: all;
+}
+.conn-waypoint-del:hover { fill: #ffebee; opacity: 1; r: 6; }
+.conn-waypoint-del-text {
+  font-size: 9px; fill: #e53935; text-anchor: middle;
+  pointer-events: none; font-weight: bold;
+}
 .conn-waypoint-add {
   fill: #fff;
   stroke: #1976d2;

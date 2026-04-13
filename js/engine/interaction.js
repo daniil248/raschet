@@ -349,8 +349,24 @@ export function initInteraction() {
       notifyChange();
       return;
     }
+    // Кнопка × для удаления waypoint
+    const delEl = e.target.closest('.conn-waypoint-del') || e.target.closest('.conn-waypoint-del-text');
+    if (delEl) {
+      if (state.readOnly) return;
+      e.stopPropagation();
+      const cid = delEl.dataset.waypointDelId;
+      const idx = Number(delEl.dataset.waypointDelIdx);
+      const c = state.conns.get(cid);
+      if (!c || !Array.isArray(c.waypoints)) return;
+      snapshot();
+      c.waypoints.splice(idx, 1);
+      _removeWaypointChannelSnap(c);
+      render();
+      notifyChange();
+      return;
+    }
     // Клик на существующий waypoint -> перетаскиваем его.
-    // Shift+клик удаляет waypoint.
+    // Shift+клик или правый клик удаляет waypoint.
     const wpEl = e.target.closest('.conn-waypoint');
     if (wpEl) {
       if (state.readOnly) return;

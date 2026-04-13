@@ -42,37 +42,43 @@ export function bezier(a, b) {
   return `M${a.x},${a.y} C${a.x},${a.y + dy} ${b.x},${b.y - dy} ${b.x},${b.y}`;
 }
 
-// Путь сплайна с промежуточными точками. Catmull-Rom -> Bezier.
-// Первый сегмент: cp1 строго вниз от a (output-порт).
-// Последний сегмент: cp2 строго вверх от b (input-порт).
+// Сплайн с waypoints. Output порт → строго вниз, input порт → строго сверху.
+// Промежуточные участки — Catmull-Rom с высоким натяжением (1/4) для плавности
+// без петель.
 export function splinePath(a, points, b) {
   if (!points || points.length === 0) return bezier(a, b);
   const pts = [a, ...points, b];
-  const n = pts.length;
-  const STUB = 40;
+  const last = pts.length - 1;
+  const T = 0.25; // tension (1/6=мягкий, 1/4=умеренный, 1/2=жёсткий)
   let d = `M${a.x},${a.y}`;
-  for (let i = 0; i < n - 1; i++) {
+
+  for (let i = 0; i < last; i++) {
     const p1 = pts[i];
     const p2 = pts[i + 1];
     let cp1x, cp1y, cp2x, cp2y;
+
+    // --- cp1: касательная ВЫХОДА из p1 ---
     if (i === 0) {
-      // Первый сегмент: выход строго вниз из порта
-      cp1x = a.x;
-      cp1y = a.y + STUB;
+      // Из output-порта: строго вниз
+      cp1x = p1.x;
+      cp1y = p1.y + Math.min(40, Math.abs(p2.y - p1.y) / 2 || 40);
     } else {
       const p0 = pts[i - 1];
-      cp1x = p1.x + (p2.x - p0.x) / 6;
-      cp1y = p1.y + (p2.y - p0.y) / 6;
+      cp1x = p1.x + (p2.x - p0.x) * T;
+      cp1y = p1.y + (p2.y - p0.y) * T;
     }
-    if (i === n - 2) {
-      // Последний сегмент: вход строго сверху в порт
-      cp2x = b.x;
-      cp2y = b.y - STUB;
+
+    // --- cp2: касательная ВХОДА в p2 ---
+    if (i === last - 1) {
+      // В input-порт: строго сверху
+      cp2x = p2.x;
+      cp2y = p2.y - Math.min(40, Math.abs(p2.y - p1.y) / 2 || 40);
     } else {
       const p3 = pts[i + 2];
-      cp2x = p2.x - (p3.x - p1.x) / 6;
-      cp2y = p2.y - (p3.y - p1.y) / 6;
+      cp2x = p2.x - (p3.x - p1.x) * T;
+      cp2y = p2.y - (p3.y - p1.y) * T;
     }
+
     d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
   }
   return d;
@@ -655,13 +661,24 @@ export function renderConns() {
       h2.dataset.reconnectEnd = 'from';
       layerConns.appendChild(h2);
 
-      // Существующие waypoints (raw positions for dragging)
+      // Существующие waypoints (raw positions for dragging) + кнопка удаления
       for (let i = 0; i < rawWaypoints.length; i++) {
         const wp = rawWaypoints[i];
         const dot = el('circle', { class: 'conn-waypoint', cx: wp.x, cy: wp.y, r: 5 });
         dot.dataset.waypointId = c.id;
         dot.dataset.waypointIdx = i;
         layerConns.appendChild(dot);
+        // Кнопка удаления (×) справа-сверху от точки
+        const del = el('circle', {
+          class: 'conn-waypoint-del', cx: wp.x + 8, cy: wp.y - 8, r: 5,
+        });
+        del.dataset.waypointDelId = c.id;
+        del.dataset.waypointDelIdx = i;
+        layerConns.appendChild(del);
+        const delX = text(wp.x + 8, wp.y - 5, '×', 'conn-waypoint-del-text');
+        delX.dataset.waypointDelId = c.id;
+        delX.dataset.waypointDelIdx = i;
+        layerConns.appendChild(delX);
       }
       // «Плюсы» для добавления новых waypoints в середине каждого сегмента
       const chain = [a, ...waypoints, b];
