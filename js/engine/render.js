@@ -40,7 +40,7 @@ export function text(x, y, str, cls) {
 export function bezier(a, b, opts) {
   const aDir = opts?.aDir || { x: 0, y: 1 };
   const bDir = opts?.bDir || { x: 0, y: -1 };
-  const dist = Math.max(40, Math.hypot(b.x - a.x, b.y - a.y) / 2);
+  const dist = Math.max(30, Math.hypot(b.x - a.x, b.y - a.y) / 3);
   const cp1x = a.x + aDir.x * dist;
   const cp1y = a.y + aDir.y * dist;
   const cp2x = b.x + bDir.x * dist;
@@ -53,8 +53,8 @@ export function splinePath(a, points, b, opts) {
   if (!points || points.length === 0) return bezier(a, b, opts);
   const pts = [a, ...points, b];
   const last = pts.length - 1;
-  const T = 0.25;
-  // Направление выхода из a (default: вниз) и входа в b (default: сверху)
+  const T = 0.15; // натяжение Catmull-Rom (меньше = плотнее кривые)
+  const STUB = 30; // длина перпендикулярного участка у порта
   const aDir = opts?.aDir || { x: 0, y: 1 };
   const bDir = opts?.bDir || { x: 0, y: -1 };
   let d = `M${a.x},${a.y}`;
@@ -64,9 +64,8 @@ export function splinePath(a, points, b, opts) {
     const p2 = pts[i + 1];
     let cp1x, cp1y, cp2x, cp2y;
 
-    // --- cp1: касательная ВЫХОДА из p1 ---
     if (i === 0) {
-      const stub = Math.min(40, Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 || 40);
+      const stub = Math.min(STUB, Math.hypot(p2.x - p1.x, p2.y - p1.y) / 3 || STUB);
       cp1x = p1.x + aDir.x * stub;
       cp1y = p1.y + aDir.y * stub;
     } else {
@@ -78,7 +77,7 @@ export function splinePath(a, points, b, opts) {
     // --- cp2: касательная ВХОДА в p2 ---
     if (i === last - 1) {
       // В input-порт: направление bDir
-      const stub = Math.min(40, Math.hypot(p2.x - p1.x, p2.y - p1.y) / 2 || 40);
+      const stub = Math.min(STUB, Math.hypot(p2.x - p1.x, p2.y - p1.y) / 3 || STUB);
       cp2x = p2.x + bDir.x * stub;
       cp2y = p2.y + bDir.y * stub;
     } else {

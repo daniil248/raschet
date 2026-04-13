@@ -2628,7 +2628,7 @@ export function renderInspectorConn(c) {
       _render();
       notifyChange();
       // Обновить иконки при смене метода/расположения
-      if (prop === 'installMethod' || prop === 'bundling') renderInspector();
+      if (prop === 'installMethod' || prop === 'bundling' || prop === 'breakerCurve') renderInspector();
     });
   });
   // Чекбоксы каналов
