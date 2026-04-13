@@ -381,13 +381,21 @@ export function renderNodes() {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
       }
-      // Лампочки — показывают СОСТОЯНИЕ АВТОМАТА (не напряжение):
-      //   зелёная — автомат замкнут (ввод активен)
-      //   красная — автомат разомкнут (ввод не выбран)
-      //   только для портов с подключением
+      // Лампочки — показывают ФИЗИЧЕСКОЕ СОСТОЯНИЕ АВТОМАТА:
+      //   зелёная — автомат замкнут
+      //   красная — автомат разомкнут
       const conn = portConns.get(i);
       if (conn) {
-        const breakerClosed = conn._state === 'active';
+        // Состояние вводного автомата на панели
+        const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+        const avrBrk = Array.isArray(n._avrBreakerOverride) ? n._avrBreakerOverride : [];
+        // Для АВР: используем _avrBreakerOverride, для ручного: inputBreakerStates
+        let breakerClosed;
+        if (n.type === 'panel' && n.switchMode !== 'parallel' && n.switchMode !== 'manual' && avrBrk.length) {
+          breakerClosed = avrBrk[i] !== false;
+        } else {
+          breakerClosed = inBrk[i] !== false;
+        }
         if (breakerClosed) {
           g.appendChild(el('circle', { class: 'port-lamp green', cx, cy: 0, r: 4.5 }));
           g.appendChild(el('circle', { class: 'port-lamp-core green', cx, cy: 0, r: 2 }));

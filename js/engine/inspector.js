@@ -1533,6 +1533,9 @@ function svgBreaker(x, topY, on, color, offColor) {
   return { svg: s, height: h };
 }
 
+// Сохраняемое состояние зума модалки управления щитом
+let _pcZoomState = { zoom: 1, fullscreen: false };
+
 export function openPanelControlModal(n) {
   const body = document.getElementById('panel-control-body');
   if (!body) return;
@@ -1771,9 +1774,9 @@ export function openPanelControlModal(n) {
 
   body.innerHTML = h;
 
-  // Зум однолинейной схемы
+  // Зум однолинейной схемы — восстанавливаем сохранённый зум
   {
-    let pcZoom = 1;
+    let pcZoom = _pcZoomState.zoom;
     const pcSvg = document.getElementById('pc-svg');
     const pcLabel = document.getElementById('pc-zoom-label');
     const pcWrap = document.getElementById('pc-svg-wrap');
@@ -1783,7 +1786,9 @@ export function openPanelControlModal(n) {
         pcSvg.style.height = (svgH * pcZoom) + 'px';
       }
       if (pcLabel) pcLabel.textContent = Math.round(pcZoom * 100) + '%';
+      _pcZoomState.zoom = pcZoom;
     };
+    applyZoom(); // применить сохранённый зум сразу
     const zoomIn = document.getElementById('pc-zoom-in');
     const zoomOut = document.getElementById('pc-zoom-out');
     if (zoomIn) zoomIn.onclick = () => { pcZoom = Math.min(3, pcZoom * 1.25); applyZoom(); };
@@ -1794,6 +1799,21 @@ export function openPanelControlModal(n) {
       pcZoom = e.deltaY < 0 ? Math.min(3, pcZoom * 1.1) : Math.max(0.3, pcZoom / 1.1);
       applyZoom();
     }, { passive: false });
+  }
+
+  // Fullscreen toggle — восстанавливаем сохранённое состояние
+  const fsBtn = document.getElementById('pc-fullscreen');
+  const modalBox = body.closest('.modal-box');
+  if (fsBtn && modalBox) {
+    if (_pcZoomState.fullscreen) {
+      modalBox.classList.add('modal-fullscreen');
+      fsBtn.textContent = '⤡';
+    }
+    fsBtn.onclick = () => {
+      modalBox.classList.toggle('modal-fullscreen');
+      _pcZoomState.fullscreen = modalBox.classList.contains('modal-fullscreen');
+      fsBtn.textContent = _pcZoomState.fullscreen ? '⤡' : '⤢';
+    };
   }
 
   // Автоматы выходов
@@ -1813,8 +1833,8 @@ export function openPanelControlModal(n) {
   body.querySelectorAll('[data-in-breaker-toggle]').forEach(el => {
     el.addEventListener('click', () => {
       const idx = Number(el.dataset.inBreakerToggle);
-      if (!Array.isArray(n.inputBreakerStates)) n.inputBreakerStates = new Array(inCount).fill(false);
-      while (n.inputBreakerStates.length < inCount) n.inputBreakerStates.push(false);
+      if (!Array.isArray(n.inputBreakerStates)) n.inputBreakerStates = new Array(inCount).fill(true);
+      while (n.inputBreakerStates.length < inCount) n.inputBreakerStates.push(true);
 
       const wantOn = !n.inputBreakerStates[idx];
 

@@ -97,6 +97,7 @@
 
         <h3>Файл</h3>
         <button id="btn-save-local-side" class="full-btn">💾 Сохр. локально</button>
+        <button id="btn-save-as" class="full-btn">💾 Сохранить как…</button>
         <button id="btn-load-local-side" class="full-btn">📂 Загр. локально</button>
         <button id="btn-export-side" class="full-btn">📤 Экспорт JSON</button>
         <button id="btn-import-side" class="full-btn">📥 Импорт JSON</button>
@@ -522,9 +523,10 @@
   </div>
 
   <div id="modal-panel-control" class="modal hidden">
-    <div class="modal-box modal-wide">
+    <div class="modal-box modal-wide modal-resizable">
       <div class="modal-head">
         <h2>Управление щитом</h2>
+        <button id="pc-fullscreen" style="background:none;border:none;cursor:pointer;font-size:16px;padding:4px 8px;color:#666" title="На весь экран">⤢</button>
         <button class="modal-close" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body" id="panel-control-body"></div>

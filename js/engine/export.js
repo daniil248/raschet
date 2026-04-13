@@ -65,6 +65,38 @@ export function initToolbar() {
   bind('btn-export-svg-side', () => exportSVG());
   bind('btn-export-png-side', () => exportPNG());
 
+  // «Сохранить как…» — копия проекта с новым именем
+  bind('btn-save-as', async () => {
+    const curName = document.getElementById('project-name')?.textContent || 'Проект';
+    const newName = prompt('Сохранить копию проекта как:', curName + ' (копия)');
+    if (!newName) return;
+    try {
+      const scheme = serialize();
+      if (window.Storage && window.Storage.createProject) {
+        const p = await window.Storage.createProject(newName, scheme);
+        flash('Проект сохранён: ' + newName);
+        // Переключиться на новый проект
+        if (window.location) {
+          const url = new URL(window.location.href);
+          url.searchParams.set('project', p.id);
+          window.location.href = url.toString();
+        }
+      } else {
+        // Fallback: скачать как JSON
+        const blob = new Blob([JSON.stringify({ name: newName, scheme }, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = newName.replace(/[^\w\s\-а-яёА-ЯЁ]/g, '_') + '.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        flash('Скачан: ' + a.download);
+      }
+    } catch (e) {
+      console.error('[saveAs]', e);
+      flash('Ошибка сохранения', 'error');
+    }
+  });
+
   // Legacy toolbar IDs (если остались)
   bind('btn-save-local', saveLocalFn);
   bind('btn-load-local', loadLocalFn);
