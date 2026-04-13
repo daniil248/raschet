@@ -2360,20 +2360,34 @@ export function renderInspectorConn(c) {
 
   if (c._state === 'active') {
     h.push('<div class="inspector-section"><h4>Нагрузка линии</h4>');
+    const _par = Math.max(1, c._cableParallel || 1);
     h.push(`<div style="font-size:12px;line-height:1.8">` +
       `Текущая P: <b>${fmt(c._loadKw)} kW</b><br>` +
-      `Текущий I: <b>${fmt(c._loadA || 0)} A</b><br>` +
-      `Расчётный I для кабеля: <b>${fmt(c._maxA || 0)} A</b> <span class="muted">(по максимально возможной нагрузке)</span><br>` +
+      `Текущий I: <b>${fmt(c._loadA || 0)} A</b>` +
+      (_par > 1 ? ` <span class="muted">(на линию: ${fmt((c._loadA || 0) / _par)} A)</span>` : '') + `<br>` +
+      `Расчётный I для кабеля: <b>${fmt(c._maxA || 0)} A</b>` +
+      (_par > 1 ? ` <span class="muted">(на линию: ${fmt((c._maxA || 0) / _par)} A)</span>` : '') + `<br>` +
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
       `Напряжение: <b>${c._voltage || '-'} В</b>` +
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div>`);
     // Допустимая нагрузка с учётом автомата и кабеля
-    if (c._breakerIn || c._cableIz) {
+    if (c._cableSize || c._busbarNom || c._cableIz) {
+      const par = Math.max(1, c._cableParallel || 1);
+      const cores = c._wireCount || (c._threePhase ? 5 : 3);
+      let cableSpec = '';
+      if (c._busbarNom) {
+        cableSpec = `Шинопровод: <b>${c._busbarNom} А</b>`;
+      } else if (c._cableSize) {
+        const spec = `${cores}×${c._cableSize} мм²`;
+        cableSpec = par > 1 ? `Кабель: <b>${par}×(${spec})</b>` : `Кабель: <b>${spec}</b>`;
+      }
+      const brkIn = c._breakerIn || c._breakerPerLine || 0;
       h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:#f5f5f5;border-radius:4px">` +
-        (c._breakerIn ? `Автомат: <b>C${c._breakerIn} A</b><br>` : '') +
-        (c._cableIz ? `Допустимый ток кабеля (Iz): <b>${fmt(c._cableIz)} A</b><br>` : '') +
-        (c._cableTotalIz && c._cableTotalIz !== c._cableIz ? `Iz всех параллельных: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
+        (cableSpec ? cableSpec + '<br>' : '') +
+        (brkIn ? `Автомат: <b>C${brkIn} A</b>` + (c._breakerCount > 1 ? ` (${c._breakerCount} шт.)` : '') + '<br>' : '') +
+        (c._cableIz ? `Iдоп на жилу (Iz): <b>${fmt(c._cableIz)} A</b><br>` : '') +
+        (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
         `<span class="muted">Правило IEC: Iрасч ≤ In ≤ Iz</span>` +
         `</div>`);
     }
@@ -2548,7 +2562,7 @@ export function renderInspectorConn(c) {
   // Автомат защиты — для всех линий (не только активных)
   {
     const BREAKER_NOMS = [6,10,13,16,20,25,32,40,50,63,80,100,125,160,200,250,400,630,800,1000,1250,1600];
-    const autoIn = c._breakerIn || 0;
+    const autoIn = c._breakerIn || c._breakerPerLine || 0;
     const manualBreaker = !!c.manualBreakerIn;
     const effectiveIn = manualBreaker ? (c.manualBreakerIn || autoIn) : autoIn;
     const cnt = c._breakerCount || 1;
