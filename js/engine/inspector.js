@@ -107,66 +107,19 @@ export function renderInspectorNode(n) {
       h.push('</div>');
     }
 
-    // Условия прокладки — сворачиваемый
+    // Условия прокладки — единый блок
     const chMethod = n.installMethod || 'B1';
-    h.push('<details class="inspector-section">');
-    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
-    const chMethodOpts = Object.entries(INSTALL_METHODS).map(([k, v]) =>
-      `<option value="${k}"${chMethod === k ? ' selected' : ''}>${escHtml(v.label)}</option>`).join('');
-    h.push(field('Способ прокладки', `<select data-prop="installMethod">${chMethodOpts}</select>`));
     const imInfo = INSTALL_METHODS[chMethod] || INSTALL_METHODS.B1;
     const bd = n.bundling || imInfo.bundlingDefault || 'touching';
-    h.push(field('Расположение кабелей',
-      `<select data-prop="bundling">
-        <option value="spaced"${bd === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
-        <option value="touching"${bd === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
-        <option value="bundled"${bd === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
-      </select>`));
-    // SVG-иконка расположения кабелей
-    h.push('<div style="text-align:center;margin:6px 0 10px"><svg width="120" height="36" viewBox="0 0 120 36">');
-    if (bd === 'spaced') {
-      // С зазором: кабели на расстоянии ≥ Ø друг от друга
-      h.push('<circle cx="20" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
-      h.push('<circle cx="60" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
-      h.push('<circle cx="100" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
-      // Стрелка зазора
-      h.push('<line x1="28" y1="8" x2="52" y2="8" stroke="#1976d2" stroke-width="0.8" marker-start="url(#arr)" marker-end="url(#arr)"/>');
-      h.push('<text x="40" y="6" text-anchor="middle" fill="#1976d2" font-size="7">≥Ø</text>');
-    } else if (bd === 'touching') {
-      // Плотно: кабели касаются друг друга
-      h.push('<circle cx="42" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
-      h.push('<circle cx="58" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
-      h.push('<circle cx="74" cy="18" r="8" fill="none" stroke="#555" stroke-width="1.2"/>');
-      // Жилы
-      h.push('<circle cx="42" cy="18" r="2.5" fill="#555"/>');
-      h.push('<circle cx="58" cy="18" r="2.5" fill="#555"/>');
-      h.push('<circle cx="74" cy="18" r="2.5" fill="#555"/>');
-    } else {
-      // В пучке: кабели связаны вместе
-      h.push('<ellipse cx="60" cy="18" rx="22" ry="14" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="3 2"/>');
-      h.push('<circle cx="50" cy="14" r="6" fill="none" stroke="#555" stroke-width="1.2"/>');
-      h.push('<circle cx="66" cy="14" r="6" fill="none" stroke="#555" stroke-width="1.2"/>');
-      h.push('<circle cx="58" cy="24" r="6" fill="none" stroke="#555" stroke-width="1.2"/>');
-      // Жилы
-      h.push('<circle cx="50" cy="14" r="2" fill="#555"/>');
-      h.push('<circle cx="66" cy="14" r="2" fill="#555"/>');
-      h.push('<circle cx="58" cy="24" r="2" fill="#555"/>');
+    // Считаем цепи в канале
+    let chCircuits = 0;
+    for (const c of state.conns.values()) {
+      if (!Array.isArray(c.channelIds) || !c.channelIds.includes(n.id)) continue;
+      const toN = state.nodes.get(c.to?.nodeId);
+      chCircuits += (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) ? Number(toN.count) : 1;
     }
-    h.push('</svg></div>');
-    h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">«С зазором» — группировка не учитывается. «Плотно» — базовый K_group. «В пучке» — дополнительное понижение ×0.85.</div>');
-
-    h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-prop="ambientC" value="${n.ambientC || 30}">`));
-    // Справочные коэффициенты
-    {
-      let chCircuits = 0;
-      for (const c of state.conns.values()) {
-        if (!Array.isArray(c.channelIds) || !c.channelIds.includes(n.id)) continue;
-        const toN = state.nodes.get(c.to?.nodeId);
-        chCircuits += (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) ? Number(toN.count) : 1;
-      }
-      h.push(installCoefficientBlock(chMethod, n.ambientC, chCircuits, bd, 'PVC'));
-    }
-    h.push('</details>');
+    if (!n.grouping) n.grouping = Math.max(1, chCircuits);
+    h.push(buildInstallConditionsBlock(chMethod, bd, n.ambientC || 30, n.grouping || 1, chCircuits, 'PVC', 'data-prop'));
 
     // Статистика использования канала — считаем и линии, и суммарные цепи
     let lines = 0, circuits = 0;
@@ -2324,6 +2277,29 @@ export function upsStatusBlock(n) {
   return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
 }
 
+// Общая функция: блок «Условия прокладки» — идентичный для канала и линии
+// propPrefix: 'data-prop' для канала, 'data-conn-prop' для линии
+function buildInstallConditionsBlock(method, bundling, ambientC, grouping, circuits, insulation, propPrefix) {
+  const h = [];
+  h.push('<details class="inspector-section">');
+  h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
+  const methodOpts = Object.entries(INSTALL_METHODS).map(([k, v]) =>
+    `<option value="${k}"${method === k ? ' selected' : ''}>${escHtml(v.label)}</option>`).join('');
+  h.push(field('Способ прокладки', `<select ${propPrefix}="installMethod">${methodOpts}</select>`));
+  h.push(field('Расположение кабелей',
+    `<select ${propPrefix}="bundling">
+      <option value="spaced"${bundling === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
+      <option value="touching"${bundling === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
+      <option value="bundled"${bundling === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
+    </select>`));
+  h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" ${propPrefix}="ambientC" value="${ambientC || 30}">`));
+  h.push(field('Цепей в группе', `<input type="number" min="1" max="50" step="1" ${propPrefix}="grouping" value="${grouping || 1}">`));
+  // Коэффициенты
+  h.push(installCoefficientBlock(method, ambientC, circuits, bundling, insulation || 'PVC'));
+  h.push('</details>');
+  return h.join('');
+}
+
 // Общая функция: справочные коэффициенты прокладки
 // method — IEC метод, ambient — °C, circuits — кол-во цепей, bundling — укладка, insulation — PVC/XLPE
 function installCoefficientBlock(method, ambient, circuits, bundling, insulation) {
@@ -2546,43 +2522,20 @@ export function renderInspectorConn(c) {
   h.push('</details>');
 
   if (!isBusbar) {
-    // === Условия прокладки (сворачиваемый) ===
-    h.push('<details class="inspector-section">')
-    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
-    const curMethod = c.installMethod || GLOBAL.defaultInstallMethod;
-    const curBundling = c.bundling || 'touching';
-    const methodToChannel = { B1: 'conduit', B2: 'tray_solid', C: 'wall', E: 'tray_perf', F: 'tray_ladder', D1: 'ground', D2: 'ground_direct' };
-    h.push(`<div style="display:flex;gap:10px;justify-content:center;margin:6px 0">${channelIconSVG(methodToChannel[curMethod] || 'conduit', 48)}${bundlingIconSVG(curBundling, 48)}</div>`);
-    const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
-    if (chainIds.length) {
-      h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия проходит через канал(ы) — параметры ниже переопределяются каналом (худший случай по всей цепочке).</div>');
-    } else {
-      h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Линия не проходит через каналы — параметры берутся отсюда.</div>');
-    }
-    const method = c.installMethod || GLOBAL.defaultInstallMethod;
-    const methodOpts = Object.entries(INSTALL_METHODS).map(([k, v]) =>
-      `<option value="${k}"${method === k ? ' selected' : ''}>${escHtml(v.label)}</option>`).join('');
-    h.push(field('Способ прокладки', `<select data-conn-prop="installMethod">${methodOpts}</select>`));
-    const bundling = c.bundling || 'touching';
-    h.push(field('Расположение кабелей',
-      `<select data-conn-prop="bundling">
-        <option value="spaced"${bundling === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
-        <option value="touching"${bundling === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
-        <option value="bundled"${bundling === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
-      </select>`));
-    h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
-    h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
-    // Справочные коэффициенты (расчётные, из recalc)
-    if (c._cableKtotal) {
-      h.push(installCoefficientBlock(
-        c._cableMethod || method,
-        c._cableAmbient || c.ambientC || GLOBAL.defaultAmbient,
-        c._cableGrouping || c.grouping || GLOBAL.defaultGrouping,
-        c._cableBundling || bundling,
-        c.insulation || GLOBAL.defaultInsulation
-      ));
-    }
-    h.push('</details>');
+    // === Условия прокладки — единый блок (идентичный каналу) ===
+    const curMethod = c._cableMethod || c.installMethod || GLOBAL.defaultInstallMethod;
+    const curBundling = c._cableBundling || c.bundling || 'touching';
+    const curAmbient = c._cableAmbient || c.ambientC || GLOBAL.defaultAmbient;
+    const curGrouping = c._cableGrouping || c.grouping || GLOBAL.defaultGrouping;
+    h.push(buildInstallConditionsBlock(
+      c.installMethod || GLOBAL.defaultInstallMethod,
+      c.bundling || 'touching',
+      c.ambientC || GLOBAL.defaultAmbient,
+      c.grouping || GLOBAL.defaultGrouping,
+      curGrouping,
+      c.insulation || GLOBAL.defaultInsulation,
+      'data-conn-prop'
+    ));
   }
 
   // Кабельные каналы — после условий прокладки
@@ -2634,7 +2587,8 @@ export function renderInspectorConn(c) {
       }
       h.push(field('Номинал автомата', `<select data-conn-prop="manualBreakerIn">${brkOpts}</select>`));
       if (autoIn) {
-        h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>C${autoIn} А</b></div>`);
+        const recPrefix = (BREAKER_TYPES[curCurve] || {}).prefix || '';
+        h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${recPrefix}${autoIn} А</b></div>`);
       }
       // Предупреждения
       if (c._cableIz && effectiveIn > c._cableIz) {
@@ -2645,9 +2599,10 @@ export function renderInspectorConn(c) {
       const badge = c._breakerAgainstCable
         ? '<span class="badge off">селект. нарушена</span>'
         : (effectiveIn ? '<span class="badge on">ок</span>' : '');
+      const autoPrefix = (BREAKER_TYPES[curCurve] || {}).prefix || '';
       h.push(`<div style="font-size:12px;line-height:1.8">` +
-        (effectiveIn ? `Номинал: <b>C${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
-        (cnt > 1 ? `В шкафу: <b>${cnt} × C${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
+        (effectiveIn ? `Номинал: <b>${autoPrefix}${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
+        (cnt > 1 ? `В шкафу: <b>${cnt} × ${autoPrefix}${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
         (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${fmt(c._cableIz || 0)} А) — увеличьте сечение</span>` : '') +
         `</div>`);
     }

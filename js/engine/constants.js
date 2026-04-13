@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.13.6';
+export const APP_VERSION = '0.13.8';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -341,6 +341,7 @@ export const DEFAULTS = {
     name: 'Кабельный канал', comment: '',
     installMethod: 'B1',     // метод прокладки IEC (ключ из INSTALL_METHODS)
     ambientC: 30,
+    grouping: 1,              // цепей в группе
     lengthM: 10,
     bundling: 'touching',
     inputs: 0, outputs: 0,
