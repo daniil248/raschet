@@ -1,5 +1,5 @@
 import { state, svg, inspectorBody, uid } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, INSTALL_METHODS } from './constants.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
@@ -107,16 +107,15 @@ export function renderInspectorNode(n) {
       h.push('</div>');
     }
 
-    // Условия прокладки — сворачиваемый (включая тип канала)
-    const ct = n.channelType || 'conduit';
+    // Условия прокладки — сворачиваемый
+    const chMethod = n.installMethod || 'B1';
     h.push('<details class="inspector-section">');
     h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
-    const ctOpts = Object.keys(CHANNEL_TYPES).map(key => {
-      const sel = ct === key ? ' selected' : '';
-      return `<option value="${key}"${sel}>${escHtml(CHANNEL_TYPES[key].label)}</option>`;
-    }).join('');
-    h.push(field('Тип канала', `<select data-prop="channelType">${ctOpts}</select>`));
-    const bd = n.bundling || CHANNEL_TYPES[ct]?.bundlingDefault || 'touching';
+    const chMethodOpts = Object.entries(INSTALL_METHODS).map(([k, v]) =>
+      `<option value="${k}"${chMethod === k ? ' selected' : ''}>${escHtml(v.label)}</option>`).join('');
+    h.push(field('Способ прокладки', `<select data-prop="installMethod">${chMethodOpts}</select>`));
+    const imInfo = INSTALL_METHODS[chMethod] || INSTALL_METHODS.B1;
+    const bd = n.bundling || imInfo.bundlingDefault || 'touching';
     h.push(field('Расположение кабелей',
       `<select data-prop="bundling">
         <option value="spaced"${bd === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
@@ -168,7 +167,6 @@ export function renderInspectorNode(n) {
         const toN = state.nodes.get(c.to?.nodeId);
         chCircuits += (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) ? Number(toN.count) : 1;
       }
-      const chMethod = (CHANNEL_TYPES[ct] || CHANNEL_TYPES.conduit).method;
       const kg = kGroupLookup(Math.max(1, chCircuits), chMethod);
       const kb = kBundlingFactor(bd);
       const ktotal = kt * kg * kb;
@@ -195,11 +193,10 @@ export function renderInspectorNode(n) {
       circuits += par;
       channelConns.push({ c, fromN, toN, par });
     }
-    const typeInfo = CHANNEL_TYPES[ct] || CHANNEL_TYPES.conduit;
     h.push(`<div class="inspector-section">` +
-      `<div style="display:flex;gap:12px;justify-content:center;margin:8px 0">${channelIconSVG(ct, 56)}${bundlingIconSVG(bd, 56)}</div>` +
+      `<div style="display:flex;gap:12px;justify-content:center;margin:8px 0">${channelIconSVG(chMethod, 56)}${bundlingIconSVG(bd, 56)}</div>` +
       `<div class="muted" style="font-size:11px;line-height:1.8">` +
-      `Метод прокладки по IEC: <b>${typeInfo.method}</b><br>` +
+      `Метод прокладки по IEC: <b>${chMethod}</b><br>` +
       `Линий в канале: <b>${lines}</b><br>` +
       `Параллельных цепей (для K_group): <b>${circuits}</b><br>` +
       `</div></div>`);
@@ -2387,13 +2384,16 @@ export function renderInspectorConn(c) {
       }
       const brkIn = c._breakerIn || c._breakerPerLine || 0;
       const Iz = c._cableIz || 0;
-      const I2 = brkIn * 1.45; // MCB: I2 = 1.45 × In
+      const i2r = c._I2ratio || 1.45;
+      const I2 = brkIn * i2r;
       const protOk = !brkIn || !Iz || (brkIn <= Iz && I2 <= 1.45 * Iz);
-      h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${protOk ? '#f5f5f5' : '#fff3e0'};border-radius:4px">` +
+      const curveLabel = (BREAKER_TYPES[c._breakerCurve] || {}).label || '';
+      const brkPrefix = (c._breakerCurve || 'MCB_C').startsWith('MCB_') ? (c._breakerCurve || 'MCB_C').slice(4) : '';
+      h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${protOk ? '#f5f5f5' : '#ffebee'};border-radius:4px">` +
         (cableSpec ? cableSpec + '<br>' : '') +
-        (brkIn ? `Автомат: <b>C${brkIn} A</b>` + (c._breakerCount > 1 ? ` (${c._breakerCount} шт.)` : '') + '<br>' : '') +
+        (brkIn ? `Автомат: <b>${brkPrefix}${brkIn} A</b> ${curveLabel ? `<span class="muted">(${curveLabel})</span>` : ''}<br>` : '') +
         (Iz ? `Iдоп на жилу (Iz): <b>${fmt(Iz)} A</b><br>` : '') +
-        (brkIn && Iz ? `I2 (1.45×In): <b>${fmt(I2)} A</b> ≤ 1.45×Iz: <b>${fmt(1.45 * Iz)} A</b> ${I2 <= 1.45 * Iz ? '<span style="color:#2e7d32">✓</span>' : '<span style="color:#c62828">✗ кабель не защищён!</span>'}<br>` : '') +
+        (brkIn && Iz ? `I2 (${i2r}×In): <b>${fmt(I2)} A</b> ≤ 1.45×Iz: <b>${fmt(1.45 * Iz)} A</b> ${I2 <= 1.45 * Iz ? '<span style="color:#2e7d32">✓</span>' : '<span style="color:#c62828">✗ кабель не защищён!</span>'}<br>` : '') +
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
         `<span class="muted">IEC 60364-4-43: Ib ≤ In ≤ Iz, I2 ≤ 1.45×Iz</span>` +
         `</div>`);
@@ -2558,7 +2558,7 @@ export function renderInspectorConn(c) {
 
   // Автомат защиты — для всех линий (не только активных)
   {
-    const BREAKER_NOMS = [6,10,13,16,20,25,32,40,50,63,80,100,125,160,200,250,400,630,800,1000,1250,1600];
+    // Используем единый справочник из constants.js
     const autoIn = c._breakerIn || c._breakerPerLine || 0;
     const manualBreaker = !!c.manualBreakerIn;
     const effectiveIn = manualBreaker ? (c.manualBreakerIn || autoIn) : autoIn;
@@ -2575,10 +2575,18 @@ export function renderInspectorConn(c) {
     h.push(`<span style="font-size:10px;color:${manualBreaker ? '#e65100' : '#999'}">ручной</span>`);
     h.push('</div>');
 
+    // Кривая отключения
+    const curCurve = c.breakerCurve || 'MCB_C';
+    const curveOpts = Object.entries(BREAKER_TYPES).map(([k, v]) =>
+      `<option value="${k}"${k === curCurve ? ' selected' : ''}>${escHtml(v.label)} — ${escHtml(v.desc)}</option>`).join('');
+    h.push(field('Кривая / тип', `<select data-conn-prop="breakerCurve">${curveOpts}</select>`));
+
     if (manualBreaker) {
+      const curvePrefix = curCurve.startsWith('MCB_') ? curCurve.slice(4) : '';
       let brkOpts = '';
-      for (const nom of BREAKER_NOMS) {
-        brkOpts += `<option value="${nom}"${nom === (c.manualBreakerIn || autoIn) ? ' selected' : ''}>C${nom} А</option>`;
+      for (const nom of BREAKER_SERIES) {
+        const label = curvePrefix ? `${curvePrefix}${nom} А` : `${nom} А`;
+        brkOpts += `<option value="${nom}"${nom === (c.manualBreakerIn || autoIn) ? ' selected' : ''}>${label}</option>`;
       }
       h.push(field('Номинал автомата', `<select data-conn-prop="manualBreakerIn">${brkOpts}</select>`));
       if (autoIn) {

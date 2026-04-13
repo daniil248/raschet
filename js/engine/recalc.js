@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES } from './constants.js';
+import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, INSTALL_METHODS, BREAKER_TYPES } from './constants.js';
 import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable } from './cable.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
@@ -925,15 +925,15 @@ function recalc() {
         hasChannel = true;
 
         // Из канала берём method (по его типу), ambient, bundling
-        const chType = CHANNEL_TYPES[ch.channelType] || CHANNEL_TYPES.conduit;
-        const chMethod = chType.method;
+        const chMethod = ch.installMethod || 'B1';
+        const chIMInfo = INSTALL_METHODS[chMethod] || INSTALL_METHODS.B1;
         if (worstMethod === null || (methodRank[chMethod] || 0) > (methodRank[worstMethod] || 0)) {
           worstMethod = chMethod;
         }
         const chAmb = Number(ch.ambientC) || 30;
         if (chAmb > worstAmbient) worstAmbient = chAmb;
 
-        const chBundling = ch.bundling || chType.bundlingDefault || 'touching';
+        const chBundling = ch.bundling || chIMInfo.bundlingDefault || 'touching';
         if (worstBundling === null || (bundlingRank[chBundling] || 0) > (bundlingRank[worstBundling] || 0)) {
           worstBundling = chBundling;
         }
@@ -1044,10 +1044,11 @@ function recalc() {
         if (c.manualBreakerIn && c.manualBreakerIn > maxCurrent) {
           sizingCurrent = c.manualBreakerIn;
         }
+        const breakerCurve = c.breakerCurve || 'MCB_C';
         const sel = selectCableSize(sizingCurrent, {
           material, insulation, method, ambientC: ambient, grouping, bundling,
           cableType, maxSize: GLOBAL.maxCableSize,
-          conductorsInParallel,
+          conductorsInParallel, breakerCurve,
         });
         c._cableSize = sel.s;
         c._busbarNom = null;
@@ -1059,6 +1060,8 @@ function recalc() {
         c._cableKt = sel.kT;
         c._cableKg = sel.kG;
         c._cableKtotal = sel.kT * sel.kG;
+        c._breakerCurve = breakerCurve;
+        c._I2ratio = sel.I2ratio;
       }
     } else {
       c._cableSize = null;

@@ -159,8 +159,20 @@ export function deserialize(data) {
       // Каналы не имеют электрических портов — линии проходят через channelIds
       n.inputs = 0;
       n.outputs = 0;
-      // Снимаем устаревшие поля — они теперь на линиях
-      delete n.material; delete n.insulation; delete n.method;
+      // Миграция channelType → installMethod (единый справочник)
+      if (n.channelType && !n.installMethod) {
+        const CT_TO_METHOD = {
+          insulated_conduit: 'A1', insulated_cable: 'A2',
+          conduit: 'B1', tray_solid: 'B2', wall: 'C',
+          tray_perf: 'E', tray_wire: 'E', tray_ladder: 'F',
+          air: 'F', air_spaced: 'G',
+          ground: 'D1', ground_direct: 'D2',
+        };
+        n.installMethod = CT_TO_METHOD[n.channelType] || 'B1';
+      }
+      if (!n.installMethod) n.installMethod = 'B1';
+      // Снимаем устаревшие поля
+      delete n.material; delete n.insulation; delete n.method; delete n.channelType;
     }
     if (n.type === 'zone') {
       if (!n.zonePrefix) n.zonePrefix = n.tag || 'Z1';

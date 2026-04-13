@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.12.6';
+export const APP_VERSION = '0.13.0';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -72,6 +72,17 @@ export const BUSBAR_SERIES = [250, 400, 630, 800, 1000, 1250, 1600, 2000, 2500, 
 
 // Ряд номиналов автоматов защиты
 export const BREAKER_SERIES = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 400, 630, 800, 1000, 1250, 1600];
+
+// Типы защитных устройств (IEC 60898 / IEC 60269)
+// I2ratio — коэфф. условного срабатывания (I2 = I2ratio × In)
+// magMin/magMax — диапазон мгновенного расцепления (кратность In)
+export const BREAKER_TYPES = {
+  MCB_B: { label: 'MCB кр. B', I2ratio: 1.45, magMin: 3,  magMax: 5,  desc: 'Освещение, розетки, длинные линии' },
+  MCB_C: { label: 'MCB кр. C', I2ratio: 1.45, magMin: 5,  magMax: 10, desc: 'Общее назначение, двигатели' },
+  MCB_D: { label: 'MCB кр. D', I2ratio: 1.45, magMin: 10, magMax: 20, desc: 'Тяжёлый пуск, трансформаторы' },
+  gG:    { label: 'Пр-ль gG',  I2ratio: 1.6,  magMin: 0,  magMax: 0,  desc: 'Предохранитель общего назначения' },
+  aM:    { label: 'Пр-ль aM',  I2ratio: 1.6,  magMin: 0,  magMax: 0,  desc: 'Предохранитель для двигателей' },
+};
 
 // IEC 60364-5-52 — допустимые длительные токи.
 // Структура: IEC_TABLES[material][insulation][method] = [[s_mm2, I_A], ...]
@@ -323,7 +334,7 @@ export const DEFAULTS = {
     //   - температуру среды
     //   - расположение кабелей (в пучке, плотно, с зазором)
     name: 'Кабельный канал', comment: '',
-    channelType: 'conduit',
+    installMethod: 'B1',     // метод прокладки IEC (ключ из INSTALL_METHODS)
     ambientC: 30,
     lengthM: 10,
     bundling: 'touching',

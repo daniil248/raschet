@@ -1,4 +1,4 @@
-import { GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP, K_GROUP_TABLES, INSTALL_METHODS, CABLE_TYPES } from './constants.js';
+import { GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP_TABLES, INSTALL_METHODS, CABLE_TYPES, BREAKER_TYPES } from './constants.js';
 
 export function cableTable(material, insulation, method) {
   const m = IEC_TABLES[material] || IEC_TABLES.Cu;
@@ -79,12 +79,10 @@ export function selectCableSize(I, opts) {
   //     автомат In ≥ Iрасч, при этом In ≤ Iz (автомат защищает кабель).
   // IEC 60364-4-43: координация автомата и кабеля
   // Условие 1: Ib ≤ In ≤ Iz
-  // Условие 2: I2 ≤ 1.45 × Iz
-  //   MCB (IEC 60898): I2 = 1.45 × In → In ≤ Iz
-  //   gG  (IEC 60269): I2 = 1.6 × In  → In ≤ 0.906 × Iz
-  // Используем MCB по умолчанию (I2/In = 1.45)
-  const I2ratio = 1.45; // для MCB
-  const protectionFactor = I2ratio / 1.45; // = 1.0 для MCB, = 1.103 для gG(1.6/1.45)
+  // Условие 2: I2 ≤ 1.45 × Iz, где I2 = I2ratio × In
+  const breakerCurve = o.breakerCurve || 'MCB_C';
+  const brkType = BREAKER_TYPES[breakerCurve] || BREAKER_TYPES.MCB_C;
+  const I2ratio = brkType.I2ratio;
 
   function tryWithParallel(parallel) {
     const Iper = I / parallel;
@@ -136,7 +134,7 @@ export function selectCableSize(I, opts) {
       s: res.s,
       iAllowed: res.iAllowed,
       iDerated: res.iDerated,
-      kT, kG,
+      kT, kG, I2ratio, breakerCurve,
       material, insulation, method, bundling, cableType,
       parallel: res.parallel,
       autoParallel,
