@@ -1944,60 +1944,66 @@ export function renderInspectorConn(c) {
   }
 
   // Результат подбора проводника
-  if (c._state === 'active' && (c._cableSize || c._busbarNom)) {
-    if (isBusbar && c._busbarNom) {
-      // Шинопровод — номинал
-      const warn = c._cableOverflow ? '<span style="color:#c62828;font-weight:600"> ⚠ превышен макс. номинал ряда</span>' : '';
-      const kTemp = c._busbarKt != null ? c._busbarKt.toFixed(2) : '—';
-      const kLoad = c._busbarKl != null ? c._busbarKl.toFixed(2) : '—';
-      const izDerated = c._cableIz || c._busbarNom;
-      h.push('<div class="inspector-section"><h4>Подобранный шинопровод</h4>');
-      h.push(`<div style="font-size:12px;line-height:1.8">` +
-        `Номинал: <b>${c._busbarNom} А</b>${warn}<br>` +
-        `Imax расчётный: <b>${fmt(c._maxA || 0)} A</b><br>` +
-        `Iдоп (с коэфф.): <b>${fmt(izDerated)} A</b><br>` +
-        `Kt (темп.): <b>${kTemp}</b>, Kl (нагрузка): <b>${kLoad}</b><br>` +
-        `Длина: <b>${fmt(c._cableLength || 0)} м</b>` +
-        `</div></div>`);
-    } else if (c._cableSize) {
-      // Кабель
-      const warn = c._cableOverflow ? '<span style="color:#c62828;font-weight:600"> (Iрасч > Iдоп даже при макс. сечении и ' + (GLOBAL.maxParallelAuto || 4) + ' параллельных)</span>' : '';
-      const par = c._cableParallel || 1;
-      const typeLabel = {
-        multi: 'многожильный',
-        single: 'одножильный многопр.',
-        solid: 'цельная жила',
-      }[c._cableType || 'multi'] || 'многожильный';
-      const bundlingLabel = {
-        spaced:   'с зазором ≥ Ø',
-        touching: 'плотно',
-        bundled:  'в пучке',
-      }[c._cableBundling || 'touching'] || 'плотно';
+  if (c._cableSize || c._busbarNom || c._maxA > 0) {
+    const manualCable = !!c.manualCableSize;
+    const autoSize = c._cableSize;
+    const autoPar = c._cableParallel || 1;
+    const autoIz = c._cableIz || 0;
 
-      h.push('<div class="inspector-section"><h4>Подобранный кабель</h4>');
-      h.push(`<div style="font-size:12px;line-height:1.8">` +
-        `Сечение: <b>${c._cableSize} мм²</b>${warn}<br>` +
-        `Материал: <b>${c._cableMaterial === 'Al' ? 'Алюминий' : 'Медь'}</b>, изоляция <b>${c._cableInsulation || 'PVC'}</b><br>` +
-        `Конструкция: <b>${typeLabel}</b><br>` +
-        `Метод: <b>${c._cableMethod || 'B1'}</b>, укладка <b>${bundlingLabel}</b><br>` +
-        `t=${c._cableAmbient}°C, группа=${c._cableGrouping}, длина=${fmt(c._cableLength || 0)} м<br>` +
-        `Iдоп на жилу: <b>${fmt(c._cableIz)} A</b><br>` +
-        (par > 1 ? `Параллельных линий: <b>${par}</b><br>Iдоп всех линий: <b>${fmt(c._cableTotalIz)} A</b><br>` : '') +
-        `</div></div>`);
+    h.push('<div class="inspector-section">');
+    // Переключатель Авто/Ручной подбор
+    h.push('<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">');
+    h.push('<h4 style="margin:0">Сечение кабеля</h4>');
+    h.push(`<span style="font-size:10px;color:${!manualCable ? '#4caf50' : '#999'}">авто</span>`);
+    h.push(`<div data-cable-mode-toggle style="position:relative;width:36px;height:18px;border-radius:9px;background:${manualCable ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`);
+    h.push(`<div style="position:absolute;top:2px;${manualCable ? 'right:2px' : 'left:2px'};width:14px;height:14px;border-radius:7px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`);
+    h.push('</div>');
+    h.push(`<span style="font-size:10px;color:${manualCable ? '#e65100' : '#999'}">ручной</span>`);
+    h.push('</div>');
 
-      if (c._cableAutoParallel) {
-        h.push('<div class="inspector-section" style="background:#fff8e1;border-radius:6px;padding:10px;border:1px solid #ffd54f">');
-        h.push(`<div style="font-size:12px;line-height:1.7">` +
-          `⚠ <b>Авто-параллель:</b> одиночная жила сечением ${GLOBAL.maxCableSize} мм² не проходит по току,<br>` +
-          `поэтому расчёт выбрал <b>${par} параллельных линий ${c._cableSize} мм²</b>.<br>` +
-          `<span class="muted" style="font-size:11px">Рекомендации IEC по прокладке параллельных линий:<br>` +
-          `• Кабели одной фазы — одинаковой длины и сечения<br>` +
-          `• Разносить не более 1 диаметра (вариант &laquo;touching&raquo;) либо с зазором ≥ Ø для лучшего теплоотвода<br>` +
-          `• Использовать общий лоток с симметричной разводкой по фазам (ABC/ABC/...)<br>` +
-          `• На каждую параллельную линию — свой автомат того же номинала в шкафу</span>` +
-          `</div></div>`);
+    if (manualCable) {
+      // Ручной ввод сечения и количества
+      const mSize = c.manualCableSize || autoSize || 240;
+      const mPar = c.manualCableParallel || autoPar || 1;
+      h.push('<div style="display:flex;gap:8px">');
+      h.push('<div style="flex:1">' + field('Сечение, мм²', `<input type="number" data-conn-prop="manualCableSize" min="1.5" max="630" step="0.5" value="${mSize}">`) + '</div>');
+      h.push('<div style="flex:1">' + field('Параллельных', `<input type="number" data-conn-prop="manualCableParallel" min="1" max="20" step="1" value="${mPar}">`) + '</div>');
+      h.push('</div>');
+
+      // Подсказка: авто-подбор рекомендует
+      if (autoSize) {
+        const recSpec = autoPar > 1 ? `${autoPar}×${autoSize} мм²` : `${autoSize} мм²`;
+        h.push(`<div class="muted" style="font-size:10px;margin-top:4px">Рекомендация (авто): <b>${recSpec}</b>, Iдоп: ${fmt(autoIz)} A</div>`);
+      }
+
+      // Проверка: достаточно ли ручного выбора
+      if (c._maxA > 0 && autoIz > 0) {
+        const manualIz = autoIz; // TODO: пересчитать для ручного сечения
+        if (mSize < (autoSize || 0)) {
+          h.push('<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ Сечение меньше рекомендуемого — кабель может быть перегружен</div>');
+        } else if (mSize > (autoSize || 0) * 2) {
+          h.push('<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;padding:6px;font-size:11px;color:#2e7d32;margin-top:4px">ℹ Сечение значительно превышает необходимое</div>');
+        }
+      }
+    } else {
+      // Автоматический подбор — показываем результат
+      if (isBusbar && c._busbarNom) {
+        const warn = c._cableOverflow ? ' ⚠ превышен макс.' : '';
+        h.push(`<div style="font-size:12px;line-height:1.8">` +
+          `Номинал: <b>${c._busbarNom} А</b>${warn}<br>` +
+          `Imax: <b>${fmt(c._maxA || 0)} A</b>` +
+          `</div>`);
+      } else if (autoSize) {
+        const warn = c._cableOverflow ? '<span style="color:#c62828"> ⚠ не проходит</span>' : '';
+        const par = autoPar;
+        h.push(`<div style="font-size:12px;line-height:1.8">` +
+          `Сечение: <b>${par > 1 ? par + '×' : ''}${autoSize} мм²</b>${warn}<br>` +
+          `Iдоп: <b>${fmt(autoIz)} A</b>` +
+          (par > 1 ? ` · всего: <b>${fmt(c._cableTotalIz || 0)} A</b>` : '') +
+          `</div>`);
       }
     }
+    h.push('</div>');
   }
 
   // Автомат защиты
@@ -2051,6 +2057,24 @@ export function renderInspectorConn(c) {
       notifyChange();
     });
   });
+  // Toggle авто/ручной подбор кабеля
+  const cableModeToggle = inspectorBody.querySelector('[data-cable-mode-toggle]');
+  if (cableModeToggle) {
+    cableModeToggle.addEventListener('click', () => {
+      snapshot('cable-mode:' + c.id);
+      if (c.manualCableSize) {
+        // Переключаем на авто
+        delete c.manualCableSize;
+        delete c.manualCableParallel;
+      } else {
+        // Переключаем на ручной — копируем текущий авто-подбор
+        c.manualCableSize = c._cableSize || 240;
+        c.manualCableParallel = c._cableParallel || 1;
+      }
+      _render(); renderInspector(); notifyChange();
+    });
+  }
+
   document.getElementById('btn-del-conn').onclick = () => _deleteConn(c.id);
   const resetBtn = document.getElementById('btn-reset-waypoints');
   if (resetBtn) resetBtn.onclick = () => {
