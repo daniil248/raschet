@@ -1,5 +1,5 @@
 import { state, svg, inspectorBody } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H } from './constants.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
@@ -194,21 +194,7 @@ export function renderInspectorNode(n) {
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
       </select>`));
-    // Цвет линии с палитрой используемых цветов
-    {
-      const curColor = n.lineColor || '#e53935';
-      const usedColors = new Set();
-      for (const nn of state.nodes.values()) {
-        if (nn.lineColor && nn.id !== n.id) usedColors.add(nn.lineColor);
-      }
-      let colorHtml = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">`;
-      colorHtml += `<input type="color" data-prop="lineColor" value="${curColor}" style="width:32px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`;
-      for (const uc of usedColors) {
-        colorHtml += `<div data-color-pick="${uc}" style="width:20px;height:20px;border-radius:3px;background:${uc};border:2px solid ${uc === curColor ? '#333' : '#ddd'};cursor:pointer" title="${uc}"></div>`;
-      }
-      colorHtml += '</div>';
-      h.push(field('Цвет линии', colorHtml));
-    }
+    h.push(field('Цвет линии', buildColorPalette(n)));
     // cos φ источника рассчитывается автоматически из downstream нагрузки.
     // Для генератора номинальный cos φ задаётся в параметрах источника.
     if (n._cosPhi) {
@@ -261,21 +247,7 @@ export function renderInspectorNode(n) {
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
     h.push(`<button class="full-btn" id="btn-open-ups-params" style="margin-bottom:8px">⚙ Параметры ИБП</button>`);
-    // Цвет линии с палитрой
-    {
-      const curColor = n.lineColor || '#7b1fa2';
-      const usedColors = new Set();
-      for (const nn of state.nodes.values()) {
-        if (nn.lineColor && nn.id !== n.id) usedColors.add(nn.lineColor);
-      }
-      let colorHtml = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">`;
-      colorHtml += `<input type="color" data-prop="lineColor" value="${curColor}" style="width:32px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`;
-      for (const uc of usedColors) {
-        colorHtml += `<div data-color-pick="${uc}" style="width:20px;height:20px;border-radius:3px;background:${uc};border:2px solid ${uc === curColor ? '#333' : '#ddd'};cursor:pointer" title="${uc}"></div>`;
-      }
-      colorHtml += '</div>';
-      h.push(field('Цвет линии', colorHtml));
-    }
+    h.push(field('Цвет линии', buildColorPalette(n)));
     // Краткая сводка
     const battPct = Math.round(n.batteryChargePct || 0);
     h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
@@ -1691,6 +1663,41 @@ export function bundlingIconSVG(bundling, size) {
 }
 
 // Поле уровня напряжения — выбор из справочника
+// Палитра цветов: 16 стандартных + до 8 пользовательских
+function buildColorPalette(n) {
+  const curColor = n.lineColor || '#e53935';
+  const paletteSet = new Set(LINE_COLORS);
+  // Собираем пользовательские цвета (используемые в проекте, не входящие в палитру)
+  const userColors = [];
+  for (const nn of state.nodes.values()) {
+    if (nn.lineColor && !paletteSet.has(nn.lineColor) && nn.lineColor !== curColor) {
+      if (!userColors.includes(nn.lineColor) && userColors.length < 8) {
+        userColors.push(nn.lineColor);
+      }
+    }
+  }
+  const sz = 18; // размер квадратика
+  let h = `<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:4px">`;
+  // 16 палитры
+  for (const c of LINE_COLORS) {
+    const sel = c === curColor;
+    h += `<div data-color-pick="${c}" style="width:${sz}px;height:${sz}px;border-radius:2px;background:${c};border:2px solid ${sel ? '#000' : 'transparent'};cursor:pointer;${sel ? 'box-shadow:0 0 0 1px #fff inset' : ''}" title="${c}"></div>`;
+  }
+  h += '</div>';
+  // Пользовательские (если есть)
+  if (userColors.length) {
+    h += `<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:4px">`;
+    for (const c of userColors) {
+      const sel = c === curColor;
+      h += `<div data-color-pick="${c}" style="width:${sz}px;height:${sz}px;border-radius:2px;background:${c};border:2px solid ${sel ? '#000' : '#ddd'};cursor:pointer" title="${c}"></div>`;
+    }
+    h += '</div>';
+  }
+  // Произвольный цвет
+  h += `<input type="color" data-prop="lineColor" value="${curColor}" style="width:${sz + 4}px;height:${sz + 4}px;padding:0;border:1px solid #ccc;border-radius:3px;cursor:pointer" title="Произвольный цвет">`;
+  return h;
+}
+
 export function voltageField(n) {
   const levels = GLOBAL.voltageLevels || [];
   const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
