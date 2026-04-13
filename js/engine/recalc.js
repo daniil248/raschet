@@ -459,9 +459,8 @@ function recalc() {
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
     n._watchdogActivePorts = null;
-    // Сбросить _avrBreakerOverride если нет активной симуляции АВР
-    // (consumer всегда сбрасывается, panel — только если нет countdown)
-    if (n.type === 'consumer' || (n.type === 'panel' && !n._avrSwitchCountdown && !n._avrInterlockCountdown)) {
+    // Consumer: всегда пересчитывать по приоритетам (нет симуляции АВР)
+    if (n.type === 'consumer') {
       n._avrBreakerOverride = null;
     }
   }
