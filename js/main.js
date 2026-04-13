@@ -814,6 +814,42 @@ function openPresetsModal() {
   openModal('modal-presets');
   setTimeout(() => els.presetsSearch.focus(), 50);
 }
+// Генерация описания пресета из его параметров
+function presetAutoDesc(p) {
+  const pr = p.params || {};
+  const type = p.type;
+  const parts = [];
+  if (type === 'source' || type === 'generator') {
+    if (pr.capacityKw) parts.push(`${pr.capacityKw} kW`);
+    if (pr.snomKva) parts.push(`${pr.snomKva} кВА`);
+    if (type === 'generator' && pr.backupMode) parts.push('резерв');
+  } else if (type === 'panel') {
+    if (pr.capacityA) parts.push(`In ${pr.capacityA} А`);
+    parts.push(`вх ${pr.inputs || 1}, вых ${pr.outputs || 4}`);
+    const modes = { auto: 'АВР', parallel: '', avr_paired: 'АВР привязка', switchover: 'подменный' };
+    if (pr.switchMode && modes[pr.switchMode]) parts.push(modes[pr.switchMode]);
+  } else if (type === 'ups') {
+    if (pr.capacityKw) parts.push(`${pr.capacityKw} kW`);
+    if (pr.efficiency) parts.push(`КПД ${pr.efficiency}%`);
+    if (pr.batteryKwh) parts.push(`АКБ ${pr.batteryKwh} kWh`);
+  } else if (type === 'consumer') {
+    const cnt = pr.count || 1;
+    const kw = pr.demandKw || 0;
+    if (cnt > 1) parts.push(`${cnt} × ${kw} kW`);
+    else if (kw) parts.push(`${kw} kW`);
+    if (pr.cosPhi && pr.cosPhi !== 0.92) parts.push(`cos φ ${pr.cosPhi}`);
+    if (pr.inputs > 1) parts.push(`вх ${pr.inputs}`);
+  } else if (type === 'channel') {
+    if (pr.lengthM) parts.push(`${pr.lengthM} м`);
+  }
+  return parts.join(', ');
+}
+
+// Получить отображаемое имя пресета (= params.name или title)
+function presetDisplayName(p) {
+  return p.params?.name || p.title || '(без имени)';
+}
+
 function renderPresets(query) {
   if (!window.Presets) { els.presetsList.innerHTML = '<div class="muted">Библиотека не загружена</div>'; return; }
   const q = (query || '').toLowerCase().trim();
@@ -832,8 +868,8 @@ function renderPresets(query) {
       parts.push(
         `<div class="preset-card" data-id="${escAttr(p.id)}" draggable="true">` +
         `<div class="pc-body">` +
-        `<div class="pc-title">${escHtml(p.title)}</div>` +
-        `<div class="pc-desc">${escHtml(p.description || '')}</div>` +
+        `<div class="pc-title">${escHtml(presetDisplayName(p))}</div>` +
+        `<div class="pc-desc">${escHtml(presetAutoDesc(p))}</div>` +
         `</div>` +
         `<div class="pc-actions">` +
         `<button class="pc-btn pc-add" data-add-id="${escAttr(p.id)}" title="Вставить на холст">⎘</button>` +
@@ -863,7 +899,7 @@ function renderPresets(query) {
       if (!p) return;
       window.Raschet.applyPreset(p);
       closeModal('modal-presets');
-      flash('Добавлено: ' + p.title);
+      flash('Добавлено: ' + presetDisplayName(p));
     });
   });
 
@@ -894,15 +930,18 @@ function renderPresets(query) {
       e.stopPropagation();
       const src = window.Presets.get(btn.dataset.dupId);
       if (!src) return;
+      const srcName = src.params?.name || src.title;
+      const dupName = srcName + ' (копия)';
       const dup = {
         id: 'user-' + Date.now().toString(36),
         category: src.category,
-        title: src.title + ' (копия)',
-        description: src.description || '',
+        title: dupName,
+        description: '',
         type: src.type,
         params: JSON.parse(JSON.stringify(src.params || {})),
         custom: true,
       };
+      dup.params.name = dupName;
       window.Presets.all.push(dup);
       try {
         const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
@@ -975,9 +1014,11 @@ function editPresetViaModal(preset) {
       if (skip.has(k) || k.startsWith('_')) continue;
       preset.params[k] = node[k];
     }
-    // Sync name/title
-    if (node.name && node.name !== 'LIB') preset.params.name = node.name;
-    if (!preset.title || preset.title === preset.params.name) preset.title = node.name || preset.title;
+    // Title = name (всегда синхронизировано)
+    if (node.name && node.name !== 'LIB') {
+      preset.params.name = node.name;
+      preset.title = node.name;
+    }
     // Save to localStorage
     if (preset.custom) {
       try {

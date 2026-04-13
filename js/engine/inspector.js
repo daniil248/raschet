@@ -412,19 +412,20 @@ export function saveUserPresets(list) {
   catch (e) { console.error('[userPresets]', e); }
 }
 export function saveNodeAsPreset(n) {
-  const title = prompt('Название пресета:', `${n.name || n.type}`);
-  if (!title) return;
+  const name = n.name || n.type;
+  if (!confirm(`Сохранить «${name}» в библиотеку?`)) return;
   const params = JSON.parse(JSON.stringify(n));
-  // Чистим технические поля
   delete params.id; delete params.x; delete params.y; delete params.tag;
   for (const k of Object.keys(params)) if (k.startsWith('_')) delete params[k];
+  // Убираем привязки к конкретным элементам схемы
+  delete params.linkedOutdoorId; delete params.linkedIndoorId;
   const list = loadUserPresets();
   const TYPE_CATEGORY = { source: 'Источники', generator: 'Генераторы', panel: 'Щиты', ups: 'ИБП', consumer: 'Потребители', channel: 'Каналы' };
   list.push({
     id: 'user-' + Date.now().toString(36),
     category: TYPE_CATEGORY[n.type] || 'Прочее',
-    title,
-    description: `Сохранено ${new Date().toLocaleString()}`,
+    title: name,
+    description: '',
     type: n.type,
     params,
     custom: true,
@@ -1220,7 +1221,7 @@ export function openConsumerParamsModal(n) {
 
   const applyBtn = document.getElementById('consumer-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
-    snapshot('consumer-params:' + n.id);
+    if (n.id !== '__preset_edit__') snapshot('consumer-params:' + n.id);
     const catId = document.getElementById('cp-catalog')?.value || n.consumerSubtype || 'custom';
     const cat = fullCatalog.find(c => c.id === catId);
     n.consumerSubtype = catId;
@@ -1245,12 +1246,12 @@ export function openConsumerParamsModal(n) {
     while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
     n.priorities.length = n.inputs;
 
-    // Кондиционер: создание / обновление наружного блока
+    // Кондиционер: создание / обновление наружного блока (не для виртуальных узлов)
     if (catId === 'conditioner') {
       n.outdoorKw = Number(document.getElementById('cp-outdoorKw')?.value) || 0.3;
       n.outdoorCosPhi = Number(document.getElementById('cp-outdoorCosPhi')?.value) || 0.85;
       n.outputs = 1;
-      if (!n.linkedOutdoorId || !state.nodes.get(n.linkedOutdoorId)) {
+      if (n.id !== '__preset_edit__' && (!n.linkedOutdoorId || !state.nodes.get(n.linkedOutdoorId))) {
         // Создать наружный блок
         const outId = uid();
         const outdoor = {
@@ -1290,7 +1291,7 @@ export function openConsumerParamsModal(n) {
           outdoor.cosPhi = n.outdoorCosPhi;
         }
       }
-    } else {
+    } else if (n.id !== '__preset_edit__') {
       // Если сменили с кондиционера на другой тип — удалить наружный блок
       if (n.linkedOutdoorId) {
         const outId = n.linkedOutdoorId;

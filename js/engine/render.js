@@ -391,7 +391,7 @@ export function renderNodes() {
         const avrBrk = Array.isArray(n._avrBreakerOverride) ? n._avrBreakerOverride : [];
         // Для АВР: используем _avrBreakerOverride, для ручного: inputBreakerStates
         let breakerClosed;
-        if (n.type === 'panel' && n.switchMode !== 'parallel' && n.switchMode !== 'manual' && avrBrk.length) {
+        if ((n.type === 'panel' || n.type === 'consumer') && n.switchMode !== 'parallel' && n.switchMode !== 'manual' && avrBrk.length) {
           breakerClosed = avrBrk[i] !== false;
         } else {
           breakerClosed = inBrk[i] !== false;

@@ -188,6 +188,17 @@ export function deserialize(data) {
     }
   }
 
+  // Удалить связи, подключённые к каналам (каналы больше не имеют портов)
+  const channelConnIds = [];
+  for (const c of state.conns.values()) {
+    const fromN = state.nodes.get(c.from?.nodeId);
+    const toN = state.nodes.get(c.to?.nodeId);
+    if ((fromN && fromN.type === 'channel') || (toN && toN.type === 'channel')) {
+      channelConnIds.push(c.id);
+    }
+  }
+  for (const id of channelConnIds) state.conns.delete(id);
+
   // Миграция связей — дефолты для новых полей
   for (const c of state.conns.values()) {
     if (!c.material) c.material = GLOBAL.defaultMaterial;
@@ -197,13 +208,6 @@ export function deserialize(data) {
     if (typeof c.grouping !== 'number') c.grouping = GLOBAL.defaultGrouping;
     if (!c.bundling) c.bundling = 'touching';
     if (typeof c.lengthM !== 'number') c.lengthM = 1;
-    // Удалить связи, подключённые к каналам (каналы больше не имеют портов)
-    const fromN = state.nodes.get(c.from?.nodeId);
-    const toN = state.nodes.get(c.to?.nodeId);
-    if ((fromN && fromN.type === 'channel') || (toN && toN.type === 'channel')) {
-      state.conns.delete(c.id);
-      continue;
-    }
   }
 
   _updateViewBox();
