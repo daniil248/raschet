@@ -1036,7 +1036,7 @@ function renderConsumerCatalogModal() {
   for (const cat of CATALOG) {
     if (cat.id.startsWith('user_')) continue;
     h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">`);
-    h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">${cat.demandKw} kW, cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
+    h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
     h.push('</div>');
   }
   // Пользовательские (редактируемые/удаляемые)
@@ -1045,7 +1045,7 @@ function renderConsumerCatalogModal() {
     for (let ci = 0; ci < customs.length; ci++) {
       const cat = customs[ci];
       h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">`);
-      h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">${cat.demandKw} kW, cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
+      h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
       h.push(`<button class="cc-edit" data-cc-idx="${ci}" style="background:none;border:none;cursor:pointer;font-size:14px;color:#666" title="Редактировать">✎</button>`);
       h.push(`<button class="cc-del" data-cc-idx="${ci}" style="background:none;border:none;cursor:pointer;font-size:14px;color:#ccc" title="Удалить">✕</button>`);
       h.push('</div>');
@@ -1061,14 +1061,10 @@ function renderConsumerCatalogModal() {
       const label = prompt('Название:', cat.label);
       if (label === null) return;
       cat.label = label;
-      const kw = prompt('Мощность, kW:', cat.demandKw);
-      if (kw !== null) cat.demandKw = Number(kw) || cat.demandKw;
       const cos = prompt('cos φ:', cat.cosPhi);
       if (cos !== null) cat.cosPhi = Number(cos) || cat.cosPhi;
       const ku = prompt('Ки:', cat.kUse);
       if (ku !== null) cat.kUse = Number(ku) ?? cat.kUse;
-      const inr = prompt('Кратность пуска:', cat.inrushFactor);
-      if (inr !== null) cat.inrushFactor = Number(inr) || cat.inrushFactor;
       window.Raschet.setGlobal({ customConsumerCatalog: customs });
       renderConsumerCatalogModal();
     });
@@ -1204,7 +1200,7 @@ async function init() {
     if (!label) return;
     const G = window.Raschet.getGlobal();
     if (!Array.isArray(G.customConsumerCatalog)) G.customConsumerCatalog = [];
-    G.customConsumerCatalog.push({ id: 'user_' + Date.now(), label, demandKw: 10, cosPhi: 0.92, kUse: 1, inrushFactor: 1, phase: '3ph' });
+    G.customConsumerCatalog.push({ id: 'user_' + Date.now(), label, cosPhi: 0.92, kUse: 1 });
     window.Raschet.setGlobal({ customConsumerCatalog: G.customConsumerCatalog });
     renderConsumerCatalogModal();
   });

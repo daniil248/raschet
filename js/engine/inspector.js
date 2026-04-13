@@ -850,6 +850,11 @@ export function openImpedanceModal(n) {
       n.pkW = Number(document.getElementById('imp-pk')?.value) || 0;
       n.p0W = Number(document.getElementById('imp-p0')?.value) || 0;
     }
+    if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
+      window.Raschet._presetEditCallback(n);
+      document.getElementById('modal-impedance').classList.add('hidden');
+      return;
+    }
     document.getElementById('modal-impedance').classList.add('hidden');
     _render();
     renderInspector();
@@ -1088,6 +1093,7 @@ export function openConsumerParamsModal(n) {
   const isOutdoor = n.consumerSubtype === 'outdoor_unit';
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  h.push(field('Имя', `<input type="text" id="cp-name" value="${escAttr(n.name || '')}">`));
 
   // Справочник типовых потребителей (не показываем для наружного блока)
   const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];
@@ -1218,7 +1224,8 @@ export function openConsumerParamsModal(n) {
     const catId = document.getElementById('cp-catalog')?.value || n.consumerSubtype || 'custom';
     const cat = fullCatalog.find(c => c.id === catId);
     n.consumerSubtype = catId;
-    if (cat) n.name = cat.label;
+    const nameInput = document.getElementById('cp-name')?.value?.trim();
+    n.name = nameInput || (cat ? cat.label : n.name || 'Потребитель');
     n.count = Number(document.getElementById('cp-count')?.value) || 1;
     n.demandKw = Number(document.getElementById('cp-demandKw')?.value) || 0;
     const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
@@ -1297,6 +1304,11 @@ export function openConsumerParamsModal(n) {
       n.outputs = 0;
     }
 
+    if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
+      window.Raschet._presetEditCallback(n);
+      document.getElementById('modal-consumer-params').classList.add('hidden');
+      return;
+    }
     _render(); renderInspector(); notifyChange();
     openConsumerParamsModal(n);
     flash('Параметры обновлены');
@@ -1359,6 +1371,11 @@ export function openUpsParamsModal(n) {
     n.staticBypassAuto = document.getElementById('up-bypassAuto')?.checked !== false;
     n.staticBypassOverloadPct = Number(document.getElementById('up-bypassPct')?.value) || 110;
     n.staticBypassForced = !!document.getElementById('up-bypassForced')?.checked;
+    if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
+      window.Raschet._presetEditCallback(n);
+      document.getElementById('modal-ups-params').classList.add('hidden');
+      return;
+    }
     _render(); renderInspector(); notifyChange();
     openUpsParamsModal(n);
     flash('Параметры ИБП обновлены');
@@ -1476,8 +1493,13 @@ export function openPanelParamsModal(n) {
     }
     while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
     n.priorities.length = n.inputs;
+    if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
+      window.Raschet._presetEditCallback(n);
+      document.getElementById('modal-panel-params').classList.add('hidden');
+      return;
+    }
     _render(); renderInspector(); notifyChange();
-    openPanelParamsModal(n); // перерисовать с актуальными данными
+    openPanelParamsModal(n);
     flash('Параметры щита обновлены');
   };
 
