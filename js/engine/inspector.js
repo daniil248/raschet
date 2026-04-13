@@ -200,14 +200,9 @@ export function renderInspectorNode(n) {
     // Поля только для генератора
     if (subtype === 'generator') {
       h.push(checkField('Резервный (АВР)', 'backupMode', n.backupMode));
-      const triggers = (Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length)
-        ? n.triggerNodeIds : (n.triggerNodeId ? [n.triggerNodeId] : []);
-      const triggerCount = triggers.length;
-      h.push('<div class="inspector-section">');
-      h.push(`<button class="full-btn" id="btn-open-automation">⚡ Автоматизация${triggerCount ? ` (${triggerCount} триггер${triggerCount > 1 ? 'ов' : ''})` : ''}</button>`);
-      h.push(field('Задержка запуска, сек', `<input type="number" min="0" max="600" step="1" data-prop="startDelaySec" value="${n.startDelaySec || 0}">`));
-      h.push(field('Задержка остановки, сек', `<input type="number" min="0" max="600" step="1" data-prop="stopDelaySec" value="${n.stopDelaySec ?? 2}">`));
-      h.push('</div>');
+      const tgLen = (Array.isArray(n.triggerGroups) && n.triggerGroups.length) ||
+        ((Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length) ? 1 : 0);
+      h.push(`<button class="full-btn" id="btn-open-automation">⚡ Автоматизация${tgLen ? ` (${tgLen} сценар.)` : ''}</button>`);
     }
 
     // Все номинальные параметры (мощность, напряжение, Ssc, Uk%, Xs/Rs) — в модалке
@@ -241,7 +236,7 @@ export function renderInspectorNode(n) {
       `Режим: <b>${smLabel}</b> · Вх: <b>${n.inputs}</b> · Вых: <b>${n.outputs}</b> · In: <b>${n.capacityA ?? 160} А</b>` +
       `</div>`);
 
-    h.push(field('Ксим (коэффициент одновременности)', `<input type="number" min="0" max="1.2" step="0.05" data-prop="kSim" value="${n.kSim ?? 1}">`));
+    // Ксим перенесён в параметры щита
 
     h.push(`<button type="button" class="full-btn" id="btn-balance-panel" style="margin-top:8px">⚖ Балансировка фаз на щите</button>`);
     h.push(panelStatusBlock(n));
@@ -255,18 +250,17 @@ export function renderInspectorNode(n) {
     h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
     h.push(upsStatusBlock(n));
   } else if (n.type === 'consumer') {
-    h.push(field('Количество в группе', `<input type="number" min="1" max="999" step="1" data-prop="count" value="${n.count || 1}">`));
-    h.push(field(((n.count || 1) > 1 ? 'Мощность каждого, kW' : 'Установленная мощность, kW'),
-      `<input type="number" min="0" step="0.1" data-prop="demandKw" value="${n.demandKw}">`));
-    if ((n.count || 1) > 1) {
-      const total = (Number(n.demandKw) || 0) * (n.count | 0);
-      h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">Суммарная установленная: <b>${n.count} × ${fmt(n.demandKw)} kW = ${fmt(total)} kW</b></div>`);
-    }
-    h.push(voltageField(n));
-    h.push(field('cos φ', `<input type="number" min="0.1" max="1" step="0.01" data-prop="cosPhi" value="${n.cosPhi ?? 0.92}">`));
-
-    // Выбор фазы — кнопки
+    h.push(`<button class="full-btn" id="btn-open-consumer-params" style="margin-bottom:8px">⚙ Параметры потребителя</button>`);
+    // Краткая сводка
+    const cnt = Math.max(1, n.count || 1);
     const ph = n.phase || '3ph';
+    const phLabel = ph === '3ph' ? '3Ф' : ph;
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
+      (cnt > 1 ? `Группа: <b>${cnt} × ${fmt(n.demandKw)} kW = ${fmt(cnt * (n.demandKw || 0))} kW</b>` : `P: <b>${fmt(n.demandKw)} kW</b>`) +
+      ` · ${phLabel} · cos φ: <b>${(n.cosPhi ?? 0.92).toFixed(2)}</b> · Ки: <b>${(n.kUse ?? 1).toFixed(2)}</b>` +
+      `</div>`);
+
+    // Фаза — кнопки (только если НЕ 3Ф или пользователь хочет переключить)
     h.push('<div class="field"><label>Фаза</label>');
     h.push('<div style="display:flex;gap:4px;flex-wrap:wrap">');
     const phases = [
@@ -279,21 +273,16 @@ export function renderInspectorNode(n) {
       const active = ph === p.val;
       h.push(`<button type="button" data-phase-btn="${p.val}" style="padding:4px 12px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:12px;font-weight:${active ? '600' : '400'}">${p.label}</button>`);
     }
-    h.push(`<button type="button" id="btn-auto-phase" style="padding:4px 12px;border:1px dashed #999;background:#f5f5f5;border-radius:4px;cursor:pointer;font-size:11px" title="Автоматически выбрать наименее нагруженную фазу">Авто</button>`);
+    h.push(`<button type="button" id="btn-auto-phase" style="padding:4px 12px;border:1px dashed #999;background:#f5f5f5;border-radius:4px;cursor:pointer;font-size:11px" title="Наименее нагруженная фаза">Авто</button>`);
     h.push('</div></div>');
 
-    h.push(field('Ки — коэффициент использования', `<input type="number" min="0" max="1" step="0.05" data-prop="kUse" value="${n.kUse ?? 1}">`));
-    h.push(field('Кратность пускового тока', `<input type="number" min="1" max="10" step="0.1" data-prop="inrushFactor" value="${n.inrushFactor ?? 1}">`));
-    h.push(field('Входов', `<input type="number" min="1" max="10" step="1" data-prop="inputs" value="${n.inputs}">`));
-    if (n.inputs > 1) h.push(prioritySection(n));
-    // Расчётные величины
     h.push(consumerCurrentsBlock(n));
-    // В активном сценарии — поле множителя нагрузки
+    // Множитель нагрузки — только в активном сценарии
     if (state.activeModeId) {
       const lf = effectiveLoadFactor(n);
       h.push('<div class="inspector-section"><h4>В текущем сценарии</h4>');
       h.push(field('Множитель нагрузки (0–3)', `<input type="number" min="0" max="3" step="0.05" data-loadfactor value="${lf}">`));
-      h.push(`<div class="muted" style="font-size:11px;margin-top:-4px">1.0 = номинал, 0.5 = 50% мощности, 0 = выключено.</div>`);
+      h.push(`<div class="muted" style="font-size:11px;margin-top:-4px">1.0 = номинал, 0.5 = 50%, 0 = выключено.</div>`);
       h.push('</div>');
     }
     h.push(statusBlock(n));
@@ -549,6 +538,10 @@ export function wireInspectorInputs(n) {
   const upsParamsBtn = document.getElementById('btn-open-ups-params');
   if (upsParamsBtn && n.type === 'ups') {
     upsParamsBtn.addEventListener('click', () => openUpsParamsModal(n));
+  }
+  const consParamsBtn = document.getElementById('btn-open-consumer-params');
+  if (consParamsBtn && n.type === 'consumer') {
+    consParamsBtn.addEventListener('click', () => openConsumerParamsModal(n));
   }
 
   // Балансировка фаз на щите
@@ -824,14 +817,15 @@ export function openAutomationModal(n) {
   // Рендер каждой группы (groups уже определена выше)
   for (let gi = 0; gi < Math.max(groups.length, 1); gi++) {
     const grp = groups[gi] || { name: '', watchInputs: [], logic: 'any', activateOutputs: [] };
-    h.push(`<div class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:10px" data-grp-idx="${gi}">`);
-    h.push(`<div style="display:flex;align-items:center;gap:8px"><div style="flex:1">`);
-    h.push(field(`Сценарий ${gi + 1} — имя`, `<input type="text" data-grp-name="${gi}" value="${escAttr(grp.name || '')}" placeholder="Сценарий ${gi+1}">`));
-    h.push(`</div>`);
+    const grpName = grp.name || `Сценарий ${gi + 1}`;
+    h.push(`<details class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:10px" data-grp-idx="${gi}"${gi === 0 ? ' open' : ''}>`);
+    h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="flex:1">${escHtml(grpName)}</span>`);
     if (groups.length > 1) {
-      h.push(`<button type="button" data-grp-delete="${gi}" style="font-size:16px;color:#c62828;background:none;border:none;cursor:pointer;padding:4px" title="Удалить сценарий">×</button>`);
+      h.push(`<button type="button" data-grp-delete="${gi}" style="font-size:14px;color:#c62828;background:none;border:none;cursor:pointer;padding:2px" title="Удалить">×</button>`);
     }
-    h.push(`</div>`);
+    h.push('</summary>');
+    h.push(`<div style="margin-top:8px">`);
+    h.push(field('Имя', `<input type="text" data-grp-name="${gi}" value="${escAttr(grp.name || '')}" placeholder="Сценарий ${gi+1}">`));
 
     // Условия: выбор ввода щита (отсортированные)
     h.push('<div style="font-size:12px;font-weight:600;margin:8px 0 4px">Условие запуска (ввод щита без питания):</div>');
@@ -885,13 +879,19 @@ export function openAutomationModal(n) {
         h.push(`<div class="field check" style="font-size:11px"><input type="checkbox" data-grp-output="${gi}" data-out-idx="${oi}"${checked ? ' checked' : ''}><label>Выход ${oi + 1} → ${escHtml(destTag)}</label></div>`);
       }
     } else {
-      h.push('<div class="muted" style="font-size:11px;color:#c62828">Выберите щит коммутации выше для настройки выходов.</div>');
+      h.push('<div class="muted" style="font-size:11px;color:#c62828">Выберите щит коммутации выше.</div>');
     }
-    h.push('</div>');
+    h.push('</div></details>');
   }
 
   // Кнопка «+ Добавить сценарий»
   h.push(`<button type="button" id="auto-add-group" style="font-size:12px;padding:5px 12px;border:1px dashed #999;background:transparent;border-radius:4px;cursor:pointer;width:100%;margin-top:4px">+ Добавить сценарий</button>`);
+
+  // Задержки запуска и остановки
+  h.push('<h4 style="margin:16px 0 8px">Задержки</h4>');
+  h.push(field('Задержка запуска, сек', `<input type="number" id="auto-startDelay" min="0" max="600" step="1" value="${n.startDelaySec || 0}">`));
+  h.push(field('Задержка остановки, сек', `<input type="number" id="auto-stopDelay" min="0" max="600" step="1" value="${n.stopDelaySec ?? 2}">`));
+  h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Задержка запуска — время до выхода на рабочий режим.<br>Задержка остановки — время остывания после снятия нагрузки.</div>');
   h.push('</div>');
 
   body.innerHTML = h.join('');
@@ -968,6 +968,10 @@ export function openAutomationModal(n) {
       n.triggerNodeIds = [];
       n.triggerNodeId = null;
 
+      // Задержки
+      n.startDelaySec = Number(document.getElementById('auto-startDelay')?.value) || 0;
+      n.stopDelaySec = Number(document.getElementById('auto-stopDelay')?.value) ?? 2;
+
       document.getElementById('modal-automation').classList.add('hidden');
       _render();
       renderInspector();
@@ -977,6 +981,49 @@ export function openAutomationModal(n) {
   }
 
   document.getElementById('modal-automation').classList.remove('hidden');
+}
+
+// ================= Модалка «Параметры потребителя» =================
+export function openConsumerParamsModal(n) {
+  const body = document.getElementById('consumer-params-body');
+  if (!body) return;
+  const h = [];
+  h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  h.push(field('Количество в группе', `<input type="number" id="cp-count" min="1" max="999" step="1" value="${n.count || 1}">`));
+  h.push(field((n.count || 1) > 1 ? 'Мощность каждого, kW' : 'Установленная мощность, kW',
+    `<input type="number" id="cp-demandKw" min="0" step="0.1" value="${n.demandKw}">`));
+
+  // Напряжение
+  const levels = GLOBAL.voltageLevels || [];
+  const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
+  let vOpts = '';
+  for (let i = 0; i < levels.length; i++) {
+    vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(levels[i].label)} (${levels[i].vLL}V)</option>`;
+  }
+  h.push(field('Уровень напряжения', `<select id="cp-voltage">${vOpts}</select>`));
+  h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
+  h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
+  h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
+  h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="10" step="1" value="${n.inputs}">`));
+
+  body.innerHTML = h.join('');
+  const applyBtn = document.getElementById('consumer-params-apply');
+  if (applyBtn) applyBtn.onclick = () => {
+    snapshot('consumer-params:' + n.id);
+    n.count = Number(document.getElementById('cp-count')?.value) || 1;
+    n.demandKw = Number(document.getElementById('cp-demandKw')?.value) || 0;
+    const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
+    n.voltageLevelIdx = vIdx;
+    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
+    n.cosPhi = Number(document.getElementById('cp-cosPhi')?.value) || 0.92;
+    n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
+    n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
+    n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
+    _render(); renderInspector(); notifyChange();
+    openConsumerParamsModal(n);
+    flash('Параметры обновлены');
+  };
+  document.getElementById('modal-consumer-params').classList.remove('hidden');
 }
 
 // ================= Модалка «Параметры ИБП» =================
@@ -1053,6 +1100,9 @@ export function openPanelParamsModal(n) {
   h.push(field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`));
   h.push(field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`));
 
+  // Расчётные коэффициенты
+  h.push(field('Ксим (коэффициент одновременности)', `<input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}">`));
+
   // Номинал шкафа
   h.push('<h4 style="margin:16px 0 8px">Номинал шкафа</h4>');
   h.push(field('Номинальный ток вводного автомата, А', `<input type="number" id="pp-capacityA" min="0" step="1" value="${n.capacityA ?? 160}">`));
@@ -1083,10 +1133,11 @@ export function openPanelParamsModal(n) {
       // Приоритеты — только для стандартного АВР (auto)
       if (sm === 'auto') {
         h.push('<h4 style="margin:12px 0 8px">Приоритеты входов</h4>');
-        h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные значения — параллельная работа.</div>');
+        h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные = параллельная работа.</div>');
+        h.push('<div style="display:flex;gap:8px;flex-wrap:wrap">');
         for (let i = 0; i < (n.inputs || 0); i++) {
           const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
-          let feederTag = `Вход ${i + 1}`;
+          let feederTag = `Вх${i + 1}`;
           for (const c of state.conns.values()) {
             if (c.to.nodeId === n.id && c.to.port === i) {
               const from = state.nodes.get(c.from.nodeId);
@@ -1094,8 +1145,9 @@ export function openPanelParamsModal(n) {
               break;
             }
           }
-          h.push(field(`${feederTag} (P${prio})`, `<input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:60px">`));
+          h.push(`<div style="text-align:center"><div style="font-size:9px;color:#666;margin-bottom:2px">${escHtml(feederTag)}</div><input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:44px;text-align:center;font-size:12px"></div>`);
         }
+        h.push('</div>');
       }
 
       // Задержки — для всех АВР
@@ -1124,6 +1176,7 @@ export function openPanelParamsModal(n) {
     snapshot('panel-params:' + n.id);
     n.inputs = Number(document.getElementById('pp-inputs')?.value) || 1;
     n.outputs = Number(document.getElementById('pp-outputs')?.value) || 1;
+    n.kSim = Number(document.getElementById('pp-kSim')?.value) ?? 1;
     n.capacityA = Number(document.getElementById('pp-capacityA')?.value) || 160;
     n.marginMinPct = Number(document.getElementById('pp-marginMin')?.value) || 2;
     n.marginMaxPct = Number(document.getElementById('pp-marginMax')?.value) || 30;
@@ -1733,7 +1786,7 @@ export function renderInspectorConn(c) {
   const autoLineLabel = `W-${fromTag}-${toTag}`;
   const lineLabel = c.lineLabel || autoLineLabel;
   h.push('<div class="muted" style="font-size:12px;margin-bottom:8px">Линия / связь</div>');
-  h.push(field('Обозначение', `<input type="text" data-conn-prop="lineLabel" value="${escAttr(lineLabel)}" placeholder="${escAttr(autoLineLabel)}">`));
+  h.push(`<div class="field"><label>Обозначение</label><div style="font-size:12px;font-weight:600">${escHtml(autoLineLabel)}</div></div>`);
   h.push(`<div class="field"><label>Откуда</label><div>${escHtml(fromTag)} · ${escHtml(fromN?.name || '?')} · выход ${c.from.port + 1}</div></div>`);
   h.push(`<div class="field"><label>Куда</label><div>${escHtml(toTag)} · ${escHtml(toN?.name || '?')} · вход ${c.to.port + 1}</div></div>`);
 
@@ -1760,14 +1813,16 @@ export function renderInspectorConn(c) {
   // Выбор каналов на пути линии
   const channels = [...state.nodes.values()].filter(n => n.type === 'channel');
   if (channels.length) {
-    h.push('<div class="inspector-section"><h4>Кабельные каналы на пути</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Отметьте каналы, через которые проходит линия. Расчёт возьмёт самые худшие параметры прокладки и учтёт группировку цепей в каждом канале.</div>');
     const chainIds = Array.isArray(c.channelIds) ? c.channelIds : [];
+    const chCount = chainIds.length;
+    h.push(`<details class="inspector-section" style="margin-top:8px"${chCount ? ' open' : ''}>`);
+    h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Кабельные каналы (${chCount})</summary>`);
+    h.push('<div class="muted" style="font-size:10px;margin:4px 0 6px">Отметьте каналы, через которые проходит линия.</div>');
     for (const ch of channels) {
       const checked = chainIds.includes(ch.id);
-      h.push(`<div class="field check"><input type="checkbox" data-conn-channel="${escAttr(ch.id)}"${checked ? ' checked' : ''}><label>${escHtml(ch.tag || '')} — ${escHtml(ch.name || '')} (${escHtml(ch.material || 'Cu')}/${escHtml(ch.insulation || 'PVC')}, ${escHtml(ch.method || 'B1')}, ${ch.ambientC || 30}°C)</label></div>`);
+      h.push(`<div class="field check"><input type="checkbox" data-conn-channel="${escAttr(ch.id)}"${checked ? ' checked' : ''}><label>${escHtml(ch.tag || '')} — ${escHtml(ch.name || '')}</label></div>`);
     }
-    h.push('</div>');
+    h.push('</details>');
   }
 
   // === Проводник линии ===
