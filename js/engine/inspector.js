@@ -1354,9 +1354,13 @@ export function openPanelControlModal(n) {
     h += brk.svg;
     // Линия от автомата до шины
     h += `<line x1="${x}" y1="${inBrkY + brkH}" x2="${x}" y2="${busY - 2}" stroke="${throughColor}" stroke-width="2"/>`;
-    // Кликабельная зона автомата входа
-    // Входные автоматы кликабельны только в ручном режиме или для щита без АВР
-    if (isManual) {
+    // Кликабельная зона автомата входа:
+    // - Щит без АВР: всегда кликабельно
+    // - АВР ручной режим: кликабельно (с блокировкой приоритетов)
+    // - АВР авто: НЕ кликабельно (управляет АВР)
+    // - 1 вход: всегда кликабельно (нечего переключать)
+    const inputClickable = isManual || inCount <= 1;
+    if (inputClickable) {
       h += `<rect x="${x - 14}" y="${inBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-in-breaker-toggle="${i}"/>`;
     }
     // Приоритет
@@ -1441,11 +1445,36 @@ export function openPanelControlModal(n) {
   // Автоматы входов
   body.querySelectorAll('[data-in-breaker-toggle]').forEach(el => {
     el.addEventListener('click', () => {
-      snapshot('in-breaker:' + n.id);
       const idx = Number(el.dataset.inBreakerToggle);
-      if (!Array.isArray(n.inputBreakerStates)) n.inputBreakerStates = new Array(inCount).fill(true);
-      while (n.inputBreakerStates.length < inCount) n.inputBreakerStates.push(true);
-      n.inputBreakerStates[idx] = !n.inputBreakerStates[idx];
+      if (!Array.isArray(n.inputBreakerStates)) n.inputBreakerStates = new Array(inCount).fill(false);
+      while (n.inputBreakerStates.length < inCount) n.inputBreakerStates.push(false);
+
+      const wantOn = !n.inputBreakerStates[idx];
+
+      // Блокировка для АВР в ручном режиме: нельзя включить автомат
+      // другого приоритета пока текущий не выключен
+      if (hasAVR && n.switchMode === 'manual' && wantOn) {
+        const priorities = Array.isArray(n.priorities) ? n.priorities : [];
+        const myPrio = priorities[idx] ?? (idx + 1);
+        // Проверяем: есть ли включённый автомат с ДРУГИМ приоритетом?
+        for (let i = 0; i < inCount; i++) {
+          if (i === idx) continue;
+          if (n.inputBreakerStates[i]) {
+            const otherPrio = priorities[i] ?? (i + 1);
+            if (otherPrio !== myPrio) {
+              flash('Блокировка: сперва выключите другой ввод (P' + otherPrio + ')');
+              return;
+            }
+          }
+        }
+      }
+
+      snapshot('in-breaker:' + n.id);
+      n.inputBreakerStates[idx] = wantOn;
+      // Для АВР: сбросить _avrBreakerOverride при ручном переключении
+      if (n.switchMode === 'manual') {
+        n._avrBreakerOverride = [...n.inputBreakerStates];
+      }
       openPanelControlModal(n);
       _render(); notifyChange();
     });
