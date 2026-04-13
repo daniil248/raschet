@@ -770,6 +770,7 @@ export function openImpedanceModal(n) {
   const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
   const isTransformer = subtype === 'transformer';
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  h.push(field('Имя', `<input type="text" id="imp-name" value="${escAttr(n.name || '')}">`));
   h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Номинальные параметры источника и данные для расчёта тока КЗ по IEC 60909.</div>');
 
   // === Номинальные параметры ===
@@ -824,7 +825,9 @@ export function openImpedanceModal(n) {
 
   const applyBtn = document.getElementById('impedance-apply');
   if (applyBtn) applyBtn.onclick = () => {
-    snapshot('impedance:' + n.id);
+    if (n.id !== '__preset_edit__') snapshot('impedance:' + n.id);
+    const impName = document.getElementById('imp-name')?.value?.trim();
+    if (impName) n.name = impName;
     n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
 
     // Выходное напряжение из справочника
@@ -1323,6 +1326,7 @@ export function openUpsParamsModal(n) {
   if (!body) return;
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  h.push(field('Имя', `<input type="text" id="up-name" value="${escAttr(n.name || '')}">`));
 
   h.push('<h4 style="margin:8px 0">Основные параметры</h4>');
   h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
@@ -1356,7 +1360,9 @@ export function openUpsParamsModal(n) {
 
   const applyBtn = document.getElementById('ups-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
-    snapshot('ups-params:' + n.id);
+    if (n.id !== '__preset_edit__') snapshot('ups-params:' + n.id);
+    const upName = document.getElementById('up-name')?.value?.trim();
+    if (upName) n.name = upName;
     n.capacityKw = Number(document.getElementById('up-capKw')?.value) || 0;
     n.efficiency = Number(document.getElementById('up-eff')?.value) || 95;
     n.inputs = Number(document.getElementById('up-inputs')?.value) || 1;
@@ -1391,6 +1397,7 @@ export function openPanelParamsModal(n) {
   if (!body) return;
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  h.push(field('Имя', `<input type="text" id="pp-name" value="${escAttr(n.name || '')}">`));
 
   // Входы / Выходы — в ряд
   h.push('<div style="display:flex;gap:12px">');
@@ -1475,7 +1482,9 @@ export function openPanelParamsModal(n) {
 
   const applyBtn = document.getElementById('panel-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
-    snapshot('panel-params:' + n.id);
+    if (n.id !== '__preset_edit__') snapshot('panel-params:' + n.id);
+    const ppName = document.getElementById('pp-name')?.value?.trim();
+    if (ppName) n.name = ppName;
     n.inputs = Number(document.getElementById('pp-inputs')?.value) || 1;
     n.outputs = Number(document.getElementById('pp-outputs')?.value) || 1;
     n.kSim = Number(document.getElementById('pp-kSim')?.value) ?? 1;
