@@ -1098,21 +1098,26 @@ export function openPanelParamsModal(n) {
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
 
-  // Входы / Выходы
-  h.push(field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`));
-  h.push(field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`));
+  // Входы / Выходы — в ряд
+  h.push('<div style="display:flex;gap:12px">');
+  h.push('<div style="flex:1">' + field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`) + '</div>');
+  h.push('<div style="flex:1">' + field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`) + '</div>');
+  h.push('</div>');
 
-  // Расчётные коэффициенты
-  h.push(field('Ксим (коэффициент одновременности)', `<input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}">`));
-
-  // Номинал шкафа
-  h.push('<h4 style="margin:16px 0 8px">Номинал шкафа</h4>');
-  h.push(field('Номинальный ток вводного автомата, А', `<input type="number" id="pp-capacityA" min="0" step="1" value="${n.capacityA ?? 160}">`));
+  // Ксим + Номинал — в ряд
+  h.push('<div style="display:flex;gap:12px">');
+  h.push('<div style="flex:1">' + field('Ксим', `<input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}">`) + '</div>');
+  h.push('<div style="flex:1">' + field('In, А', `<input type="number" id="pp-capacityA" min="0" step="1" value="${n.capacityA ?? 160}">`) + '</div>');
+  h.push('</div>');
   if (n._capacityKwFromA) {
     h.push(`<div class="muted" style="font-size:11px;margin-top:-8px;margin-bottom:10px">Эквивалент: <b>${fmt(n._capacityKwFromA)} kW</b></div>`);
   }
-  h.push(field('Мин. запас над нагрузкой, %', `<input type="number" id="pp-marginMin" min="0" max="50" step="1" value="${n.marginMinPct ?? 2}">`));
-  h.push(field('Макс. запас над нагрузкой, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`));
+
+  // Запасы — в ряд
+  h.push('<div style="display:flex;gap:12px">');
+  h.push('<div style="flex:1">' + field('Мин. запас, %', `<input type="number" id="pp-marginMin" min="0" max="50" step="1" value="${n.marginMinPct ?? 2}">`) + '</div>');
+  h.push('<div style="flex:1">' + field('Макс. запас, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`) + '</div>');
+  h.push('</div>');
 
   // Режим коммутации
   {
@@ -1154,9 +1159,11 @@ export function openPanelParamsModal(n) {
 
       // Задержки — для всех АВР
       h.push('<h4 style="margin:12px 0 8px">Задержки</h4>');
-      h.push(field('Задержка переключения, сек', `<input type="number" id="pp-avrDelay" min="0" max="30" step="0.5" value="${n.avrDelaySec ?? 2}">`));
-      h.push(field('Разбежка между автоматами, сек', `<input type="number" id="pp-avrInterlock" min="0" max="10" step="0.5" value="${n.avrInterlockSec ?? 1}">`));
-      h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Задержка — время до переключения при возврате напряжения.<br>Разбежка — минимальный интервал между переключениями.</div>');
+      h.push('<div style="display:flex;gap:12px">');
+      h.push('<div style="flex:1">' + field('Переключение, сек', `<input type="number" id="pp-avrDelay" min="0" max="30" step="0.5" value="${n.avrDelaySec ?? 2}">`) + '</div>');
+      h.push('<div style="flex:1">' + field('Разбежка, сек', `<input type="number" id="pp-avrInterlock" min="0" max="10" step="0.5" value="${n.avrInterlockSec ?? 1}">`) + '</div>');
+      h.push('</div>');
+      h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Переключение — задержка при возврате напряжения. Разбежка — интервал между автоматами.</div>');
     } // end hasAVR
   }
 
