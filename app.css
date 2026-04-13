@@ -519,6 +519,8 @@ input, select { font: inherit; }
 .channel-snap-point { cursor: crosshair; pointer-events: all; }
 .channel-rotate-handle { cursor: grab; pointer-events: all; }
 .channel-rotate-handle:hover { fill: #e65100; r: 6; }
+.channel-length-handle { cursor: ns-resize; pointer-events: all; }
+.channel-length-handle:hover { fill: #0d47a1; r: 6; }
 
 .node.selected .node-body { stroke-width: 2.5; }
 .node.selected.source   .node-body { stroke: #2e7d32; }

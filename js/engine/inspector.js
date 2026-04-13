@@ -28,11 +28,28 @@ export function selectConn(id) {
   renderInspector();
 }
 
+// Сохранить состояние open/closed всех <details> в инспекторе
+function _saveDetailsState() {
+  const map = {};
+  inspectorBody.querySelectorAll('details').forEach((det, i) => {
+    const key = det.querySelector('summary')?.textContent?.trim() || `__${i}`;
+    map[key] = det.open;
+  });
+  return map;
+}
+function _restoreDetailsState(map) {
+  inspectorBody.querySelectorAll('details').forEach((det, i) => {
+    const key = det.querySelector('summary')?.textContent?.trim() || `__${i}`;
+    if (key in map) det.open = map[key];
+  });
+}
+
 export function renderInspector() {
   if (!state.selectedKind) {
     inspectorBody.innerHTML = '<div class="muted">Выберите элемент или связь, либо перетащите новый элемент из палитры.</div>';
     return;
   }
+  const detailsState = _saveDetailsState();
   if (state.selectedKind === 'node') {
     const n = state.nodes.get(state.selectedId);
     if (!n) { inspectorBody.innerHTML = ''; return; }
@@ -42,6 +59,7 @@ export function renderInspector() {
     if (!c) { inspectorBody.innerHTML = ''; return; }
     renderInspectorConn(c);
   }
+  _restoreDetailsState(detailsState);
 }
 
 export function renderInspectorNode(n) {

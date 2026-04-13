@@ -957,7 +957,14 @@ function recalc() {
     c._cableBundling = bundling;
     c._cableGrouping = grouping;
     c._cableType = cableType;
-    c._cableLength = c.lengthM ?? (channelIds.length ? 0 : 1);
+    // Полная длина кабеля = собственная длина + сумма длин всех каналов
+    const ownLength = c.lengthM ?? (channelIds.length ? 0 : 1);
+    let channelLengthSum = 0;
+    for (const chId of channelIds) {
+      const ch = state.nodes.get(chId);
+      if (ch) channelLengthSum += Number(ch.lengthM) || 0;
+    }
+    c._cableLength = ownLength + channelLengthSum;
     c._channelChain = channelIds.slice();
 
     if (maxCurrent > 0) {

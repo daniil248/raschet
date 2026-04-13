@@ -190,6 +190,14 @@ export function renderNodes() {
       });
       rh.dataset.rotateNodeId = n.id;
       g.appendChild(rh);
+      // Ручка изменения длины — внизу канала
+      const lh = el('circle', {
+        cx: tw / 2, cy: tl + 8, r: 5,
+        fill: '#1976d2', stroke: '#0d47a1', 'stroke-width': 1.5,
+        class: 'channel-length-handle', cursor: 'ns-resize',
+      });
+      lh.dataset.lengthNodeId = n.id;
+      g.appendChild(lh);
     }
     layerNodes.appendChild(g);
   }
@@ -465,27 +473,66 @@ export function renderConns() {
     }
   }
 
-  // Get adjusted waypoints for a connection, applying tray offsets
-  function _adjustedWaypoints(c) {
+  // Get adjusted waypoints for a connection, applying tray offsets.
+  // A single waypoint at a channel center expands to 3 points:
+  //   entry (beyond channel bounds) → center → exit (beyond channel bounds)
+  // The direction is along the channel's long axis.
+  function _adjustedWaypoints(c, startPt, endPt) {
     const wps = Array.isArray(c.waypoints) ? c.waypoints : [];
-    if (!_trayOffsets.size) return wps;
-    return wps.map(wp => {
-      for (const [chId, info] of _trayOffsets) {
-        if (Math.hypot(wp.x - info.cx, wp.y - info.cy) < 5) {
-          const idx = info.conns.indexOf(c.id);
-          if (idx < 0) continue;
-          const n = info.conns.length;
-          const offset = (idx - (n - 1) / 2) * info.spacing;
-          // Offset perpendicular to channel axis (axis = angle, perp = angle+90°)
-          const perpAngle = info.angle + Math.PI / 2;
-          return {
-            x: wp.x + Math.cos(perpAngle) * offset,
-            y: wp.y + Math.sin(perpAngle) * offset,
-          };
+    const result = [];
+    const chain = [startPt, ...wps, endPt]; // full point chain for direction
+    for (let wi = 0; wi < wps.length; wi++) {
+      const wp = wps[wi];
+      let matched = false;
+      // Check all tray channels
+      for (const ch of state.nodes.values()) {
+        if (ch.type !== 'channel' || !ch.trayMode) continue;
+        const tw = ch.trayWidth || 40;
+        const tl = Math.max(80, (ch.lengthM || 10) * 4);
+        const cx = ch.x + tw / 2;
+        const cy = ch.y + tl / 2;
+        if (Math.hypot(wp.x - cx, wp.y - cy) > 5) continue;
+        matched = true;
+        const angle = (ch.trayAngle || 0) * Math.PI / 180;
+        // Channel axis direction (along long side = angle direction, 0° = up)
+        const axX = Math.sin(angle);
+        const axY = -Math.cos(angle);
+        // Half-length + overshoot (10px beyond bounds)
+        const halfLen = tl / 2 + 10;
+
+        // Perpendicular offset for multiple lines
+        let perpOff = 0;
+        const trayInfo = _trayOffsets.get(ch.id);
+        if (trayInfo) {
+          const idx = trayInfo.conns.indexOf(c.id);
+          if (idx >= 0) {
+            const n = trayInfo.conns.length;
+            perpOff = (idx - (n - 1) / 2) * trayInfo.spacing;
+          }
         }
+        const perpAngle = angle + Math.PI / 2;
+        const px = Math.cos(perpAngle) * perpOff;
+        const py = Math.sin(perpAngle) * perpOff;
+
+        // Determine which end is entry and which is exit based on prev/next points
+        const prev = chain[wi]; // point before this waypoint in chain
+        const next = chain[wi + 2]; // point after this waypoint in chain
+        const entryEnd = { x: cx + px - axX * halfLen, y: cy + py - axY * halfLen };
+        const exitEnd  = { x: cx + px + axX * halfLen, y: cy + py + axY * halfLen };
+
+        // Choose order: which end is closer to prev?
+        const dEntry = Math.hypot(prev.x - entryEnd.x, prev.y - entryEnd.y);
+        const dExit  = Math.hypot(prev.x - exitEnd.x, prev.y - exitEnd.y);
+        if (dEntry <= dExit) {
+          result.push(entryEnd, { x: cx + px, y: cy + py }, exitEnd);
+        } else {
+          result.push(exitEnd, { x: cx + px, y: cy + py }, entryEnd);
+        }
+        break;
       }
-      return wp;
-    });
+      if (!matched) result.push(wp);
+    }
+    return result;
   }
 
   for (const c of state.conns.values()) {
@@ -495,7 +542,7 @@ export function renderConns() {
     const a = portPos(fromN, 'out', c.from.port);
     const b = portPos(toN,   'in',  c.to.port);
     const rawWaypoints = Array.isArray(c.waypoints) ? c.waypoints : [];
-    const waypoints = _adjustedWaypoints(c);
+    const waypoints = _adjustedWaypoints(c, a, b);
     const d = splinePath(a, waypoints, b);
 
     const selected = state.selectedKind === 'conn' && state.selectedId === c.id;

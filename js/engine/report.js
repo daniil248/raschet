@@ -310,5 +310,40 @@ export function generateReport() {
     lines.push('');
   }
 
+  // Перечень каналов с кабельными линиями
+  const channels = sortByTag([...state.nodes.values()].filter(n => n.type === 'channel'));
+  if (channels.length) {
+    lines.push('КАБЕЛЬНЫЕ КАНАЛЫ И ТРАССЫ');
+    lines.push('-'.repeat(78));
+    for (const ch of channels) {
+      const tag = effectiveTag(ch) || ch.tag || '';
+      const name = ch.name || '';
+      const typeInfo = CHANNEL_TYPES[ch.channelType] || CHANNEL_TYPES.conduit;
+      const lengthM = ch.lengthM || 0;
+      lines.push(`${tag}  ${name}  (${typeInfo.label}, ${lengthM} м, метод ${typeInfo.method})`);
+      // Все линии в канале — по channelIds
+      const chConns = [];
+      for (const c of state.conns.values()) {
+        if (!Array.isArray(c.channelIds) || !c.channelIds.includes(ch.id)) continue;
+        chConns.push(c);
+      }
+      if (chConns.length) {
+        for (const c of chConns) {
+          const fromN = state.nodes.get(c.from.nodeId);
+          const toN = state.nodes.get(c.to.nodeId);
+          const fromTag = fromN ? (effectiveTag(fromN) || fromN.name || '?') : '?';
+          const toTag = toN ? (effectiveTag(toN) || toN.name || '?') : '?';
+          const cable = c._cableSize ? `${c._wireCount || '?'}×${c._cableSize} мм²` : '—';
+          const current = c._maxA ? `${fmt(c._maxA)} A` : '—';
+          const length = c._cableLength != null ? `${c._cableLength} м` : '—';
+          lines.push(`    W-${fromTag}-${toTag}  ${cable}  ${length}  Imax: ${current}`);
+        }
+      } else {
+        lines.push('    (нет линий)');
+      }
+      lines.push('');
+    }
+  }
+
   return lines.join('\n');
 }

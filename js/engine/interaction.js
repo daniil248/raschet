@@ -300,6 +300,26 @@ export function initInteraction() {
       return;
     }
 
+    // Length handle on tray-mode channel
+    const lenEl = e.target.closest('.channel-length-handle');
+    if (lenEl) {
+      if (state.readOnly) return;
+      e.stopPropagation();
+      const nodeId = lenEl.dataset.lengthNodeId;
+      const ch = nodeId && state.nodes.get(nodeId);
+      if (!ch) return;
+      snapshot();
+      const p = clientToSvg(e.clientX, e.clientY);
+      state.drag = {
+        lengthNodeId: ch.id,
+        startMouseY: p.y,
+        startLengthM: ch.lengthM || 10,
+        channelAngle: (ch.trayAngle || 0) * Math.PI / 180,
+        channelX: ch.x, channelY: ch.y,
+      };
+      return;
+    }
+
     // Клик на кнопку '+' в середине сегмента -> добавляем waypoint в этой точке
     const addEl = e.target.closest('.conn-waypoint-add');
     if (addEl) {
@@ -545,6 +565,26 @@ export function initInteraction() {
       drawRubberBand();
       return;
     }
+    // Length drag for tray-mode channels
+    if (state.drag && state.drag.lengthNodeId) {
+      const ch = state.nodes.get(state.drag.lengthNodeId);
+      if (ch) {
+        const p = clientToSvg(e.clientX, e.clientY);
+        const angle = state.drag.channelAngle;
+        // Project mouse movement onto channel axis
+        const dx = p.x - (state.drag.channelX + (ch.trayWidth || 40) / 2);
+        const dy = p.y - (state.drag.channelY + Math.max(80, state.drag.startLengthM * 4) / 2);
+        // Distance along axis from center (positive = towards bottom end)
+        const axX = Math.sin(angle);
+        const axY = -Math.cos(angle);
+        const proj = dx * axX + dy * axY;
+        // Convert to meters: halfLength in px = proj, so totalLength = 2*proj/4
+        const newLengthM = Math.max(1, Math.round(proj * 2 / 4));
+        ch.lengthM = newLengthM;
+        render();
+      }
+      return;
+    }
     // Rotation drag for tray-mode channels
     if (state.drag && state.drag.rotateNodeId) {
       const ch = state.nodes.get(state.drag.rotateNodeId);
@@ -737,6 +777,7 @@ export function initInteraction() {
       const wasWpDrag = !!state.drag.waypointConnId;
       const wasZoneResize = !!state.drag.zoneResizeId;
       const wasRotate = !!state.drag.rotateNodeId;
+      const wasLength = !!state.drag.lengthNodeId;
       const draggedNodeId = state.drag.nodeId;
       const hadChildren = !!(state.drag.children && state.drag.children.length);
       svg.classList.remove('panning');
@@ -767,7 +808,7 @@ export function initInteraction() {
           render();
         }
       }
-      if (wasNodeDrag || wasWpDrag || wasZoneResize || wasRotate) notifyChange();
+      if (wasNodeDrag || wasWpDrag || wasZoneResize || wasRotate || wasLength) notifyChange();
     }
     // Завершение pending при отпускании мыши:
     //  - курсор не двигался -> ничего не делаем, pending живёт до второго клика
