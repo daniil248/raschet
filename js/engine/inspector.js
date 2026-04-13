@@ -8,6 +8,7 @@ import { snapshot, notifyChange } from './history.js';
 import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
 import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort } from './zones.js';
+import { kTempLookup, kGroupLookup, kBundlingFactor } from './cable.js';
 
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
 let _render, _deleteNode, _deleteConn, _isTagUnique;
@@ -97,6 +98,7 @@ export function renderInspectorNode(n) {
     if (n.trayMode) {
       h.push('<div style="display:flex;gap:8px">');
       h.push('<div style="flex:1">' + field('Ширина, px', `<input type="number" min="20" max="200" step="10" data-prop="trayWidth" value="${n.trayWidth || 40}">`) + '</div>');
+      h.push('<div style="flex:1">' + field('Длина, px', `<input type="number" min="40" max="1000" step="10" data-prop="trayLength" value="${n.trayLength || 120}">`) + '</div>');
       h.push('<div style="flex:1">' + field('Угол, °', `<input type="number" min="0" max="345" step="15" data-prop="trayAngle" value="${n.trayAngle || 0}">`) + '</div>');
       h.push('</div>');
     }
@@ -151,6 +153,27 @@ export function renderInspectorNode(n) {
     h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">«С зазором» — группировка не учитывается. «Плотно» — базовый K_group. «В пучке» — дополнительное понижение ×0.85.</div>');
 
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-prop="ambientC" value="${n.ambientC || 30}">`));
+    // Справочные коэффициенты
+    {
+      const kt = kTempLookup(n.ambientC || 30, 'PVC');
+      const bd = n.bundling || 'touching';
+      // Считаем кол-во цепей в канале
+      let chCircuits = 0;
+      for (const c of state.conns.values()) {
+        if (!Array.isArray(c.channelIds) || !c.channelIds.includes(n.id)) continue;
+        const toN = state.nodes.get(c.to?.nodeId);
+        chCircuits += (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) ? Number(toN.count) : 1;
+      }
+      const kg = kGroupLookup(Math.max(1, chCircuits));
+      const kb = kBundlingFactor(bd);
+      const ktotal = kt * kg * kb;
+      h.push(`<div class="muted" style="font-size:11px;line-height:1.8;margin-top:6px">` +
+        `Kt (темп.) = <b>${kt.toFixed(2)}</b> · ` +
+        `Kg (группа, ${chCircuits} цеп.) = <b>${kg.toFixed(2)}</b> · ` +
+        `Kb (укладка) = <b>${kb.toFixed(2)}</b><br>` +
+        `<b>Kобщ = ${ktotal.toFixed(3)}</b>` +
+        `</div>`);
+    }
     h.push('</details>');
 
     // Статистика использования канала — считаем и линии, и суммарные цепи
@@ -215,7 +238,7 @@ export function renderInspectorNode(n) {
           const ch = state.nodes.get(chId);
           if (ch && ch.trayMode && Array.isArray(conn.waypoints)) {
             const tw = ch.trayWidth || 40;
-            const tl = Math.max(80, (ch.lengthM || 10) * 4);
+            const tl = (ch.trayLength || 120);
             const cx = ch.x + tw / 2;
             const cy = ch.y + tl / 2;
             conn.waypoints = conn.waypoints.filter(wp => Math.hypot(wp.x - cx, wp.y - cy) > 5);
@@ -512,7 +535,7 @@ export function wireInspectorInputs(n) {
         // При включении trayMode — пересвязать waypoints к центру канала
         if (prop === 'trayMode' && n.type === 'channel' && v) {
           const tw = n.trayWidth || 40;
-          const tl = Math.max(80, (n.lengthM || 10) * 4);
+          const tl = (n.trayLength || 120);
           const cx = n.x + tw / 2;
           const cy = n.y + tl / 2;
           for (const c of state.conns.values()) {
@@ -2399,6 +2422,8 @@ export function renderInspectorConn(c) {
           `Метод: <b>${c._cableMethod || 'B1'}</b>, укладка <b>${bundlingLabel}</b>, t=${c._cableAmbient}°C, группа=${c._cableGrouping}<br>` +
           `Iдоп на жилу: <b>${fmt(autoIz)} A</b>` +
           (autoPar > 1 ? `<br>⚠ Авто-параллель: ${autoPar} линий (одиночная ${GLOBAL.maxCableSize} мм² не проходит)` : '') +
+          (c._cableKtotal ? `<br><span style="color:#666">Kобщ = <b>${c._cableKtotal.toFixed(3)}</b></span>` +
+            ` <span style="color:#999">(Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span>` : '') +
           `</div>`);
       }
       if (mSize < (autoSize || 0)) {
@@ -2418,6 +2443,8 @@ export function renderInspectorConn(c) {
           `t=${c._cableAmbient}°C, группа=${c._cableGrouping}, длина=${fmt(c._cableLength || 0)} м<br>` +
           `Iдоп на жилу: <b>${fmt(autoIz)} A</b>` +
           (autoPar > 1 ? `<br>Параллельных линий: <b>${autoPar}</b> · Iдоп всего: <b>${fmt(c._cableTotalIz || 0)} A</b>` : '') +
+          (c._cableKtotal ? `<br><span style="color:#666">Kобщ = <b>${c._cableKtotal.toFixed(3)}</b></span>` +
+            ` <span style="color:#999">(Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span>` : '') +
           `</div>`);
         if (c._cableAutoParallel && autoPar > 1) {
           h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px;line-height:1.6">` +

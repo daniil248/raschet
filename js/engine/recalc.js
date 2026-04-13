@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES } from './constants.js';
-import { selectCableSize, selectBreaker } from './cable.js';
+import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable } from './cable.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          upsChargeKw, sourceImpedance } from './electrical.js';
@@ -1006,7 +1006,30 @@ function recalc() {
         c._cableOverflow = Ieff > BUSBAR_SERIES[BUSBAR_SERIES.length - 1];
         c._cableAutoParallel = false;
         c._cableParallel = 1;
+      } else if (c.manualCableSize) {
+        // Ручной кабель: используем заданное сечение, рассчитываем Iz
+        const table = cableTable(material, insulation, method);
+        const kT = kTempLookup(ambient, insulation);
+        const effGrouping = kBundlingIgnoresGrouping(bundling) ? 1 : grouping;
+        const kG = kGroupLookup(effGrouping) * kBundlingFactor(bundling);
+        const k = kT * kG;
+        const mSize = Number(c.manualCableSize) || 240;
+        const mPar = Math.max(1, Number(c.manualCableParallel) || 1);
+        // Находим Iref из таблицы для данного сечения
+        let iRef = 0;
+        for (const [s, i] of table) { if (s === mSize) { iRef = i; break; } }
+        c._cableSize = mSize;
+        c._busbarNom = null;
+        c._cableIz = iRef * k;
+        c._cableTotalIz = c._cableIz * mPar;
+        c._cableOverflow = false;
+        c._cableAutoParallel = false;
+        c._cableParallel = mPar;
+        c._cableKt = kT;
+        c._cableKg = kG;
+        c._cableKtotal = kT * kG;
       } else {
+        // Авто-подбор кабеля
         // Если ручной автомат > расчётного тока, кабель должен выдержать In автомата
         let sizingCurrent = maxCurrent;
         if (c.manualBreakerIn && c.manualBreakerIn > maxCurrent) {
@@ -1024,6 +1047,9 @@ function recalc() {
         c._cableOverflow = !!sel.overflow;
         c._cableAutoParallel = !!sel.autoParallel;
         c._cableParallel = sel.parallel;
+        c._cableKt = sel.kT;
+        c._cableKg = sel.kG;
+        c._cableKtotal = sel.kT * sel.kG;
       }
     } else {
       c._cableSize = null;

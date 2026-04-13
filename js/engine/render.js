@@ -173,7 +173,7 @@ export function renderNodes() {
   for (const n of state.nodes.values()) {
     if (n.type !== 'channel' || !n.trayMode) continue;
     const tw = n.trayWidth || 40;
-    const tl = Math.max(80, (n.lengthM || 10) * 4); // длина пропорционально метрам
+    const tl = (n.trayLength || 120); // длина пропорционально метрам
     const angle = n.trayAngle || 0;
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const cx = n.x + tw / 2;
@@ -494,7 +494,7 @@ export function renderConns() {
   for (const ch of state.nodes.values()) {
     if (ch.type !== 'channel' || !ch.trayMode) continue;
     const tw = ch.trayWidth || 40;
-    const tl = Math.max(80, (ch.lengthM || 10) * 4);
+    const tl = (ch.trayLength || 120);
     const cx = ch.x + tw / 2;
     const cy = ch.y + tl / 2;
     const angle = (ch.trayAngle || 0) * Math.PI / 180;
@@ -526,7 +526,7 @@ export function renderConns() {
       for (const ch of state.nodes.values()) {
         if (ch.type !== 'channel' || !ch.trayMode) continue;
         const tw = ch.trayWidth || 40;
-        const tl = Math.max(80, (ch.lengthM || 10) * 4);
+        const tl = (ch.trayLength || 120);
         const cx = ch.x + tw / 2;
         const cy = ch.y + tl / 2;
         if (Math.hypot(wp.x - cx, wp.y - cy) > 5) continue;

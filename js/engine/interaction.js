@@ -33,7 +33,7 @@ function _removeWaypointChannelSnap(c) {
     const ch = state.nodes.get(chId);
     if (!ch || !ch.trayMode) return true; // keep non-tray channels (assigned manually)
     const tw = ch.trayWidth || 40;
-    const tl = Math.max(80, (ch.lengthM || 10) * 4);
+    const tl = (ch.trayLength || 120);
     const cx = ch.x + tw / 2;
     const cy = ch.y + tl / 2;
     return wps.some(wp => Math.hypot(wp.x - cx, wp.y - cy) < SNAP_R);
@@ -302,7 +302,7 @@ export function initInteraction() {
       if (!ch) return;
       snapshot();
       const tw = ch.trayWidth || 40;
-      const tl = Math.max(80, (ch.lengthM || 10) * 4);
+      const tl = (ch.trayLength || 120);
       state.drag = {
         rotateNodeId: ch.id,
         rotateCx: ch.x + tw / 2,
@@ -324,7 +324,7 @@ export function initInteraction() {
       state.drag = {
         lengthNodeId: ch.id,
         startMouseY: p.y,
-        startLengthM: ch.lengthM || 10,
+        startTrayLength: ch.trayLength || 120,
         channelAngle: (ch.trayAngle || 0) * Math.PI / 180,
         channelX: ch.x, channelY: ch.y,
       };
@@ -600,23 +600,17 @@ export function initInteraction() {
         const tw = ch.trayWidth || 40;
         // Центр канала
         const cx = ch.x + tw / 2;
-        const startTl = Math.max(80, (state.drag.startLengthM || 10) * 4);
+        const startTl = state.drag.startTrayLength || 120;
         const cy = ch.y + startTl / 2;
         const angle = state.drag.channelAngle;
-        // Ось канала: для angle=0 ось направлена вниз (y+)
         const axX = Math.sin(angle);
-        const axY = Math.cos(angle);  // положительное направление = вниз при 0°
-        // Вектор от центра к мыши
+        const axY = Math.cos(angle);
         const dx = p.x - cx;
         const dy = p.y - cy;
-        // Проекция на ось
         const proj = dx * axX + dy * axY;
-        // proj = расстояние от центра до handle (= tl/2),
-        // поэтому tl = |proj| * 2, lengthM = tl / 4
-        const newLengthM = Math.max(1, Math.round(Math.abs(proj) * 2 / 4));
+        const newTl = Math.max(40, Math.round(Math.abs(proj) * 2));
         // Обновить waypoints: центр канала сдвигается при изменении длины
-        const oldTl = Math.max(80, (ch.lengthM || 10) * 4);
-        const newTl = Math.max(80, newLengthM * 4);
+        const oldTl = ch.trayLength || 120;
         if (oldTl !== newTl) {
           const oldCx = ch.x + tw / 2;
           const oldCy = ch.y + oldTl / 2;
@@ -631,7 +625,7 @@ export function initInteraction() {
             }
           }
         }
-        ch.lengthM = newLengthM;
+        ch.trayLength = newTl;
         render();
       }
       return;
@@ -701,7 +695,7 @@ export function initInteraction() {
         for (const ch of state.nodes.values()) {
           if (ch.type !== 'channel' || !ch.trayMode) continue;
           const tw = ch.trayWidth || 40;
-          const tl = Math.max(80, (ch.lengthM || 10) * 4);
+          const tl = (ch.trayLength || 120);
           const cx = ch.x + tw / 2;
           const cy = ch.y + tl / 2;
           if (Math.hypot(nx - cx, ny - cy) < SNAP_R) {
@@ -739,7 +733,7 @@ export function initInteraction() {
       if (n.type === 'channel' && n.trayMode && !e.altKey && GLOBAL.snapToGrid !== false) {
         const gs = GLOBAL.gridStep || 40;
         const tw = n.trayWidth || 40;
-        const tl = Math.max(80, (n.lengthM || 10) * 4);
+        const tl = (n.trayLength || 120);
         const cx = Math.round((nx + tw / 2) / gs) * gs;
         const cy = Math.round((ny + tl / 2) / gs) * gs;
         nx = cx - tw / 2;
@@ -751,7 +745,7 @@ export function initInteraction() {
         const dy = ny - n.y;
         if (dx !== 0 || dy !== 0) {
           const tw = n.trayWidth || 40;
-          const tl = Math.max(80, (n.lengthM || 10) * 4);
+          const tl = (n.trayLength || 120);
           const oldCx = n.x + tw / 2;
           const oldCy = n.y + tl / 2;
           const newCx = nx + tw / 2;
