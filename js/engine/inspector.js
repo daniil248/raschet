@@ -1982,15 +1982,28 @@ export function channelIconSVG(channelType, size) {
     return r;
   }
 
-  switch (channelType) {
-    case 'conduit': paths = hatch(0, 0, 36, 8) + circSvg(18, 18, 9, 'none', '#888') + dotsSvg(18, 18, 5); break;
-    case 'tray_solid': paths = `<rect x="${2 * scale}" y="${10 * scale}" width="${32 * scale}" height="${14 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 17, 5); break;
-    case 'wall': paths = hatch(0, 0, 36, 8) + dotsSvg(18, 18, 6); break;
-    case 'tray_perf': paths = `<path d="M${2 * scale},${20 * scale} L${2 * scale},${26 * scale} L${34 * scale},${26 * scale} L${34 * scale},${20 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 14, 5); break;
-    case 'tray_wire': paths = `<path d="M${2 * scale},${20 * scale} L${2 * scale},${26 * scale} L${34 * scale},${26 * scale} L${34 * scale},${20 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 14, 5); break;
-    case 'tray_ladder': paths = `<line x1="${4 * scale}" y1="${16 * scale}" x2="${4 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${32 * scale}" y1="${16 * scale}" x2="${32 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${4 * scale}" y1="${21 * scale}" x2="${32 * scale}" y2="${21 * scale}" stroke="#888" stroke-width="${0.8 * scale}"/>` + dotsSvg(18, 12, 5); break;
-    case 'ground': paths = hatch(0, 0, 36, 28) + circSvg(18, 14, 8, 'none', '#888') + dotsSvg(18, 14, 4.5); break;
-    case 'ground_direct': paths = hatch(0, 0, 36, 28) + dotsSvg(18, 14, 5.5); break;
+  // Поддержка и channelType (legacy), и IEC метода
+  const ct = ({
+    A1: 'conduit', A2: 'conduit', B1: 'conduit', B2: 'tray_solid',
+    C: 'wall', E: 'tray_perf', F: 'tray_ladder', G: 'wall',
+    D1: 'ground', D2: 'ground_direct',
+  })[channelType] || channelType || 'conduit';
+
+  switch (ct) {
+    case 'conduit': case 'insulated_conduit': case 'insulated_cable':
+      paths = hatch(0, 0, 36, 8) + circSvg(18, 18, 9, 'none', '#888') + dotsSvg(18, 18, 5); break;
+    case 'tray_solid':
+      paths = `<rect x="${2 * scale}" y="${10 * scale}" width="${32 * scale}" height="${14 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 17, 5); break;
+    case 'wall':
+      paths = hatch(0, 0, 36, 8) + dotsSvg(18, 18, 6); break;
+    case 'tray_perf': case 'tray_wire':
+      paths = `<path d="M${2 * scale},${20 * scale} L${2 * scale},${26 * scale} L${34 * scale},${26 * scale} L${34 * scale},${20 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 14, 5); break;
+    case 'tray_ladder': case 'air':
+      paths = `<line x1="${4 * scale}" y1="${16 * scale}" x2="${4 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${32 * scale}" y1="${16 * scale}" x2="${32 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${4 * scale}" y1="${21 * scale}" x2="${32 * scale}" y2="${21 * scale}" stroke="#888" stroke-width="${0.8 * scale}"/>` + dotsSvg(18, 12, 5); break;
+    case 'ground':
+      paths = hatch(0, 0, 36, 28) + circSvg(18, 14, 8, 'none', '#888') + dotsSvg(18, 14, 4.5); break;
+    case 'ground_direct':
+      paths = hatch(0, 0, 36, 28) + dotsSvg(18, 14, 5.5); break;
     default: paths = dotsSvg(18, 14, 6);
   }
   return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s * 28 / 36}">${paths}</svg>`;
@@ -2292,6 +2305,8 @@ function buildInstallConditionsBlock(method, bundling, ambientC, grouping, circu
       <option value="touching"${bundling === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
       <option value="bundled"${bundling === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
     </select>`));
+  // Иконки способа прокладки и расположения
+  h.push(`<div style="display:flex;gap:12px;justify-content:center;margin:8px 0">${channelIconSVG(method, 48)}${bundlingIconSVG(bundling, 48)}</div>`);
   h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" ${propPrefix}="ambientC" value="${ambientC || 30}">`));
   h.push(field('Цепей в группе', `<input type="number" min="1" max="50" step="1" ${propPrefix}="grouping" value="${grouping || 1}">`));
   // Коэффициенты

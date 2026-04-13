@@ -1256,6 +1256,8 @@ function recalc() {
         n._marginPct = null;
         n._marginWarn = null;
       }
+    } else if (n.type === 'ups') {
+      n._maxLoadKw = maxDownstreamLoad(n.id);
     } else if (n.type === 'source' || n.type === 'generator') {
       // cos φ из downstream PQ, но P/S привязаны к _loadKw (walkUp result)
       const pq = downstreamPQ(n.id);

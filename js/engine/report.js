@@ -125,7 +125,10 @@ export function generateReport() {
       const batt = (Number(u.batteryKwh) || 0) * (Number(u.batteryChargePct) || 0) / 100;
       const aut = load > 0 ? batt / load * 60 : 0;
       lines.push(`${(u.tag || '').padEnd(8)}${u.name}`);
-      lines.push(`   Выход:      ${fmt(load)} / ${fmt(cap)} kW  (КПД ${eff}%)`);
+      const maxLoad = u._maxLoadKw || load;
+      lines.push(`   Pном:       ${fmt(cap)} kW  (КПД ${eff}%)`);
+      lines.push(`   Текущая:    ${fmt(load)} kW`);
+      lines.push(`   Макс нагр.: ${fmt(maxLoad)} kW  (${cap > 0 ? Math.round(maxLoad / cap * 100) : 0}%)`);
       lines.push(`   Батарея:    ${fmt(batt)} kWh · ${u.batteryChargePct || 0}%`);
       if (load > 0) {
         lines.push(`   Автономия:  ${aut >= 60 ? (aut / 60).toFixed(1) + ' ч' : Math.round(aut) + ' мин'}`);
@@ -142,14 +145,17 @@ export function generateReport() {
   if (panels.length) {
     lines.push('РАСПРЕДЕЛИТЕЛЬНЫЕ ЩИТЫ');
     lines.push('-'.repeat(78));
-    lines.push('Обозн.  Имя                  Вх/Вых  Pрасч, kW  Iрасч, A  Ксим  cos φ  Режим');
+    lines.push('Обозн.  Имя                  In, А  Вх/Вых  Pрасч, kW  Iрасч, A  Ксим  cos φ  Режим');
     for (const p of panels) {
       const mode = p.switchMode === 'manual' ? 'РУЧН'
-                 : p.switchMode === 'parallel' ? 'ПАРАЛ'
+                 : p.switchMode === 'parallel' ? 'ЩИТ'
+                 : (p.inputs || 1) <= 1 ? 'ЩИТ'
                  : 'АВР';
+      const capA = p.capacityA || 0;
       lines.push(
         (p.tag || '').padEnd(8) +
         (p.name || '').padEnd(21) +
+        String(capA).padStart(5) + '  ' +
         `${p.inputs}/${p.outputs}`.padEnd(8) +
         String(fmt(p._calcKw || p._loadKw || 0)).padStart(9) + '  ' +
         String(fmt(p._loadA || 0)).padStart(8) + '  ' +
