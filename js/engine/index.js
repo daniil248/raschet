@@ -4,7 +4,7 @@
    ========================================================================= */
 
 // === Импорты ===
-import { GLOBAL, DEFAULTS, NODE_H } from './constants.js';
+import { GLOBAL, DEFAULTS, NODE_H, APP_VERSION } from './constants.js';
 import { state, uid, initDOM, setChangeCb, svg, setIdSeq } from './state.js';
 import { escHtml, escAttr, fmt, flash, field, checkField } from './utils.js';
 import { selectCableSize, selectBreaker } from './cable.js';
@@ -75,6 +75,10 @@ updateViewBox();
 render();
 renderInspector();
 startSimLoop();
+
+// === Версия ===
+const vEl = document.getElementById('app-version');
+if (vEl) vEl.textContent = 'v' + APP_VERSION;
 
 // === Библиотека пресетов ===
 function applyPreset(preset) {

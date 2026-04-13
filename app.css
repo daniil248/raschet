@@ -517,6 +517,8 @@ input, select { font: inherit; }
 .node.consumer .node-body { fill: #e3f2fd; stroke: #1976d2; }
 .node.channel  .node-body { fill: #efebe9; stroke: #795548; stroke-dasharray: 4 2; }
 .channel-snap-point { cursor: crosshair; pointer-events: all; }
+.channel-rotate-handle { cursor: grab; pointer-events: all; }
+.channel-rotate-handle:hover { fill: #e65100; r: 6; }
 
 .node.selected .node-body { stroke-width: 2.5; }
 .node.selected.source   .node-body { stroke: #2e7d32; }

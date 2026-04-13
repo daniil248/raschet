@@ -590,33 +590,6 @@ function recalc() {
     c._state = (upAi !== null) ? 'powered' : 'dead';
   }
 
-  // Определение цвета источника для каждого узла (для режима showSourceColors)
-  // Идём от каждого источника вниз по active связям, помечая _sourceColor
-  for (const n of state.nodes.values()) {
-    n._sourceColor = null;
-  }
-  for (const c of state.conns.values()) {
-    c._sourceColor = null;
-  }
-  function propagateColor(nid, color) {
-    const n = state.nodes.get(nid);
-    if (!n || n._sourceColor) return;
-    n._sourceColor = color;
-    // ИБП меняет цвет на свой
-    if (n.type === 'ups' && n.lineColor) color = n.lineColor;
-    for (const c of state.conns.values()) {
-      if (c.from.nodeId === nid && c._state === 'active') {
-        c._sourceColor = color;
-        propagateColor(c.to.nodeId, color);
-      }
-    }
-  }
-  for (const n of state.nodes.values()) {
-    if ((n.type === 'source' || n.type === 'generator') && n._powered) {
-      propagateColor(n.id, n.lineColor || '#e53935');
-    }
-  }
-
   // Статусы источников и ИБП
   for (const n of state.nodes.values()) {
     if (n.type === 'source' || n.type === 'generator') {
@@ -655,6 +628,88 @@ function recalc() {
         n._inputKw = 0;
       }
       if (n._loadKw > Number(n.capacityKw || 0)) n._overload = true;
+    }
+  }
+
+  // Определение цвета источника для каждого узла и связи.
+  // Цвет определяется источником питания и распространяется по ВСЕМ живым связям
+  // (active + powered), не только по активным. ИБП в режиме инвертора меняет цвет
+  // на свой lineColor, а на байпасе — транслирует цвет входящей линии.
+  // Размещено ПОСЛЕ вычисления _onStaticBypass, чтобы bypass-логика работала.
+  for (const n of state.nodes.values()) {
+    n._sourceColor = null;
+    n._sourceColors = null;
+    n._mixedSources = false;
+  }
+  for (const c of state.conns.values()) {
+    c._sourceColor = null;
+    c._mixedSources = false;
+  }
+
+  function propagateColor(startId, color) {
+    const queue = [{ nid: startId, color }];
+    const visited = new Set();
+    while (queue.length) {
+      const { nid, color: col } = queue.shift();
+      const key = nid + ':' + col;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const n = state.nodes.get(nid);
+      if (!n) continue;
+
+      if (!n._sourceColors) n._sourceColors = new Set();
+      n._sourceColors.add(col);
+      if (!n._sourceColor) n._sourceColor = col;
+
+      let outColor = col;
+      if (n.type === 'ups') {
+        if (n._onStaticBypass) {
+          outColor = col; // bypass — цвет входящей линии
+        } else if (n.lineColor) {
+          outColor = n.lineColor; // инвертор — собственный цвет ИБП
+        }
+      }
+
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== nid) continue;
+        if (c._state !== 'active' && c._state !== 'powered') continue;
+        c._sourceColor = outColor;
+        queue.push({ nid: c.to.nodeId, color: outColor });
+      }
+    }
+  }
+
+  for (const n of state.nodes.values()) {
+    if ((n.type === 'source' || n.type === 'generator') && n._powered) {
+      propagateColor(n.id, n.lineColor || '#e53935');
+    }
+  }
+
+  // Смешанные источники: BFS вниз помечает все выходные линии как _mixedSources
+  {
+    const mixQueue = [];
+    for (const n of state.nodes.values()) {
+      if (n.type !== 'panel') continue;
+      if (n._sourceColors && n._sourceColors.size > 1 && n.switchMode !== 'auto') {
+        n._mixedSources = true;
+        mixQueue.push(n.id);
+      }
+    }
+    const mixVisited = new Set();
+    while (mixQueue.length) {
+      const nid = mixQueue.shift();
+      if (mixVisited.has(nid)) continue;
+      mixVisited.add(nid);
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== nid) continue;
+        if (c._state !== 'active' && c._state !== 'powered') continue;
+        c._mixedSources = true;
+        const downstream = state.nodes.get(c.to.nodeId);
+        if (downstream) {
+          downstream._mixedSources = true;
+          mixQueue.push(downstream.id);
+        }
+      }
     }
   }
 

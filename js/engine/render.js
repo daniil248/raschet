@@ -181,6 +181,16 @@ export function renderNodes() {
       stroke: '#a1887f', 'stroke-width': 1,
       class: 'channel-snap-point',
     }));
+    // Рукоятка поворота — маленький кружок на торце трассы
+    if (selected) {
+      const rh = el('circle', {
+        cx: tw / 2, cy: -8, r: 5,
+        fill: '#ff9800', stroke: '#e65100', 'stroke-width': 1.5,
+        class: 'channel-rotate-handle', cursor: 'grab',
+      });
+      rh.dataset.rotateNodeId = n.id;
+      g.appendChild(rh);
+    }
     layerNodes.appendChild(g);
   }
 
@@ -429,13 +439,61 @@ export function renderConns() {
     }
   }
 
+  // Build per-channel offset map: for tray-mode channels with multiple
+  // connections sharing a waypoint at the center, spread them across the width.
+  // Key = channelId, value = Map<connId, offsetIndex>
+  const _trayOffsets = new Map(); // channelId → { conns: connId[], angle, spacing }
+  for (const ch of state.nodes.values()) {
+    if (ch.type !== 'channel' || !ch.trayMode) continue;
+    const tw = ch.trayWidth || 40;
+    const tl = Math.max(80, (ch.lengthM || 10) * 4);
+    const cx = ch.x + tw / 2;
+    const cy = ch.y + tl / 2;
+    const angle = (ch.trayAngle || 0) * Math.PI / 180;
+    const connsInCh = [];
+    for (const c of state.conns.values()) {
+      const wps = Array.isArray(c.waypoints) ? c.waypoints : [];
+      if (wps.some(wp => Math.hypot(wp.x - cx, wp.y - cy) < 5)) {
+        connsInCh.push(c.id);
+      }
+    }
+    if (connsInCh.length > 1) {
+      const spacing = Math.min(8, (tw - 4) / connsInCh.length);
+      _trayOffsets.set(ch.id, { conns: connsInCh, angle, spacing, cx, cy });
+    }
+  }
+
+  // Get adjusted waypoints for a connection, applying tray offsets
+  function _adjustedWaypoints(c) {
+    const wps = Array.isArray(c.waypoints) ? c.waypoints : [];
+    if (!_trayOffsets.size) return wps;
+    return wps.map(wp => {
+      for (const [chId, info] of _trayOffsets) {
+        if (Math.hypot(wp.x - info.cx, wp.y - info.cy) < 5) {
+          const idx = info.conns.indexOf(c.id);
+          if (idx < 0) continue;
+          const n = info.conns.length;
+          const offset = (idx - (n - 1) / 2) * info.spacing;
+          // Offset perpendicular to channel axis (axis = angle, perp = angle+90°)
+          const perpAngle = info.angle + Math.PI / 2;
+          return {
+            x: wp.x + Math.cos(perpAngle) * offset,
+            y: wp.y + Math.sin(perpAngle) * offset,
+          };
+        }
+      }
+      return wp;
+    });
+  }
+
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     const toN   = state.nodes.get(c.to.nodeId);
     if (!fromN || !toN) continue;
     const a = portPos(fromN, 'out', c.from.port);
     const b = portPos(toN,   'in',  c.to.port);
-    const waypoints = Array.isArray(c.waypoints) ? c.waypoints : [];
+    const rawWaypoints = Array.isArray(c.waypoints) ? c.waypoints : [];
+    const waypoints = _adjustedWaypoints(c);
     const d = splinePath(a, waypoints, b);
 
     const selected = state.selectedKind === 'conn' && state.selectedId === c.id;
@@ -456,9 +514,12 @@ export function renderConns() {
       class: 'conn' + stateClass + (selected ? ' selected' : ''),
       d,
     });
-    // Цвет по источнику (если включен режим)
+    // Цвет по источнику (если включен режим) — на ВСЕХ живых линиях
     if (GLOBAL.showSourceColors && c._sourceColor && (c._state === 'active' || c._state === 'powered')) {
-      path.setAttribute('style', `stroke: ${c._sourceColor}`);
+      let style = `stroke: ${c._sourceColor}`;
+      // Пунктир для смешанных источников (два разных ввода в простом щите)
+      if (c._mixedSources) style += '; stroke-dasharray: 8 4';
+      path.setAttribute('style', style);
     }
     path.dataset.connId = c.id;
     layerConns.appendChild(path);
@@ -521,9 +582,9 @@ export function renderConns() {
       h2.dataset.reconnectEnd = 'from';
       layerConns.appendChild(h2);
 
-      // Существующие waypoints
-      for (let i = 0; i < waypoints.length; i++) {
-        const wp = waypoints[i];
+      // Существующие waypoints (raw positions for dragging)
+      for (let i = 0; i < rawWaypoints.length; i++) {
+        const wp = rawWaypoints[i];
         const dot = el('circle', { class: 'conn-waypoint', cx: wp.x, cy: wp.y, r: 5 });
         dot.dataset.waypointId = c.id;
         dot.dataset.waypointIdx = i;

@@ -23,6 +23,23 @@ export function bindInteractionDeps({ undo, redo, fitAll, serialize }) {
   if (serialize) _serialize = serialize;
 }
 
+/* ---- helpers ---- */
+// Remove channelIds that no longer have a waypoint snapped to their center
+function _removeWaypointChannelSnap(c) {
+  if (!Array.isArray(c.channelIds) || !c.channelIds.length) return;
+  const wps = Array.isArray(c.waypoints) ? c.waypoints : [];
+  const SNAP_R = 5;
+  c.channelIds = c.channelIds.filter(chId => {
+    const ch = state.nodes.get(chId);
+    if (!ch || !ch.trayMode) return true; // keep non-tray channels (assigned manually)
+    const tw = ch.trayWidth || 40;
+    const tl = Math.max(80, (ch.lengthM || 10) * 4);
+    const cx = ch.x + tw / 2;
+    const cy = ch.y + tl / 2;
+    return wps.some(wp => Math.hypot(wp.x - cx, wp.y - cy) < SNAP_R);
+  });
+}
+
 /* ---- clipboard state (module-private) ---- */
 let _clipboardNode = null;
 
@@ -261,6 +278,25 @@ export function initInteraction() {
         startH: Number(zone.height) || 400,
       };
       selectNode(zone.id);
+      return;
+    }
+
+    // Rotation handle on tray-mode channel
+    const rotEl = e.target.closest('.channel-rotate-handle');
+    if (rotEl) {
+      if (state.readOnly) return;
+      e.stopPropagation();
+      const nodeId = rotEl.dataset.rotateNodeId;
+      const ch = nodeId && state.nodes.get(nodeId);
+      if (!ch) return;
+      snapshot();
+      const tw = ch.trayWidth || 40;
+      const tl = Math.max(80, (ch.lengthM || 10) * 4);
+      state.drag = {
+        rotateNodeId: ch.id,
+        rotateCx: ch.x + tw / 2,
+        rotateCy: ch.y + tl / 2,
+      };
       return;
     }
 
@@ -509,6 +545,25 @@ export function initInteraction() {
       drawRubberBand();
       return;
     }
+    // Rotation drag for tray-mode channels
+    if (state.drag && state.drag.rotateNodeId) {
+      const ch = state.nodes.get(state.drag.rotateNodeId);
+      if (ch) {
+        const p = clientToSvg(e.clientX, e.clientY);
+        const cx = state.drag.rotateCx;
+        const cy = state.drag.rotateCy;
+        let angle = Math.atan2(p.x - cx, -(p.y - cy)) * 180 / Math.PI; // 0° = up
+        // Snap to 15° increments unless Alt key held
+        if (!e.altKey) {
+          angle = Math.round(angle / 15) * 15;
+        }
+        // Normalize to 0-360
+        angle = ((angle % 360) + 360) % 360;
+        ch.trayAngle = angle;
+        render();
+      }
+      return;
+    }
     if (state.drag && state.drag.zoneResizeId) {
       const z = state.nodes.get(state.drag.zoneResizeId);
       if (z) {
@@ -552,6 +607,28 @@ export function initInteraction() {
         if (!e.altKey) {
           nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
           ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
+        }
+        // Snap waypoint to tray-mode channel center
+        const SNAP_R = 20;
+        let snapped = false;
+        for (const ch of state.nodes.values()) {
+          if (ch.type !== 'channel' || !ch.trayMode) continue;
+          const tw = ch.trayWidth || 40;
+          const tl = Math.max(80, (ch.lengthM || 10) * 4);
+          const cx = ch.x + tw / 2;
+          const cy = ch.y + tl / 2;
+          if (Math.hypot(nx - cx, ny - cy) < SNAP_R) {
+            nx = cx; ny = cy;
+            // Auto-add channel to connection's channelIds
+            if (!Array.isArray(c.channelIds)) c.channelIds = [];
+            if (!c.channelIds.includes(ch.id)) c.channelIds.push(ch.id);
+            snapped = true;
+            break;
+          }
+        }
+        // If waypoint moved away from channel center, auto-remove channelId
+        if (!snapped) {
+          _removeWaypointChannelSnap(c);
         }
         c.waypoints[state.drag.waypointIdx] = { x: nx, y: ny };
         render();
@@ -628,6 +705,7 @@ export function initInteraction() {
       const wasNodeDrag = !!state.drag.nodeId;
       const wasWpDrag = !!state.drag.waypointConnId;
       const wasZoneResize = !!state.drag.zoneResizeId;
+      const wasRotate = !!state.drag.rotateNodeId;
       const draggedNodeId = state.drag.nodeId;
       const hadChildren = !!(state.drag.children && state.drag.children.length);
       svg.classList.remove('panning');
@@ -647,7 +725,7 @@ export function initInteraction() {
           render();
         }
       }
-      if (wasNodeDrag || wasWpDrag || wasZoneResize) notifyChange();
+      if (wasNodeDrag || wasWpDrag || wasZoneResize || wasRotate) notifyChange();
     }
     // Завершение pending при отпускании мыши:
     //  - курсор не двигался -> ничего не делаем, pending живёт до второго клика
