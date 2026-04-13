@@ -74,17 +74,17 @@ export function renderInspectorNode(n) {
     h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
     h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
+    h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
+
+    // Условия прокладки — сворачиваемый (включая тип канала)
     const ct = n.channelType || 'conduit';
+    h.push('<details class="inspector-section">');
+    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
     const ctOpts = Object.keys(CHANNEL_TYPES).map(key => {
       const sel = ct === key ? ' selected' : '';
       return `<option value="${key}"${sel}>${escHtml(CHANNEL_TYPES[key].label)}</option>`;
     }).join('');
     h.push(field('Тип канала', `<select data-prop="channelType">${ctOpts}</select>`));
-    h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
-
-    // Условия прокладки — сворачиваемый
-    h.push('<details class="inspector-section">');
-    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
     const bd = n.bundling || CHANNEL_TYPES[ct]?.bundlingDefault || 'touching';
     h.push(field('Расположение кабелей',
       `<select data-prop="bundling">
