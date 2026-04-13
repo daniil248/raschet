@@ -551,40 +551,42 @@ input, select { font: inherit; }
 
 /* Zones */
 .node.zone .zone-body {
-  stroke: #00838f;
-  stroke-width: 2;
-  stroke-dasharray: 8 5;
-  rx: 10;
-  ry: 10;
-  pointer-events: none; /* клики проваливаются к связям под зоной */
+  stroke: #bbb;
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+  rx: 6;
+  ry: 6;
+  pointer-events: none;
 }
-/* Узкая полоса-хэндл сверху зоны — единственная интерактивная часть для перетаскивания */
 .node.zone .zone-drag-handle {
   fill: transparent;
   cursor: grab;
   pointer-events: all;
 }
-.node.zone.selected .zone-body { stroke-width: 3; stroke: #006064; }
+/* Выделенная зона — толстая рамка и видимые зоны ресайза */
+.node.zone.selected .zone-body { stroke-width: 2.5; stroke: #006064; stroke-dasharray: 8 5; }
+.zone-resize {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+  opacity: 0; /* невидимы по умолчанию */
+}
+.node.zone.selected .zone-resize { opacity: 1; fill: #00838f; fill-opacity: 0.15; stroke: #00838f; stroke-width: 0.5; }
 .zone-prefix, .zone-name {
   pointer-events: none;
 }
 .zone-prefix {
   font: 700 14px -apple-system, "Segoe UI", sans-serif;
-  fill: #006064;
+  fill: #888;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
+.node.zone.selected .zone-prefix { fill: #006064; }
 .zone-name {
   font: 11px -apple-system, "Segoe UI", sans-serif;
-  fill: #00838f;
+  fill: #999;
 }
-.zone-resize {
-  fill: #00838f;
-  fill-opacity: 0.3;
-  stroke: #00838f;
-  stroke-width: 1;
-  cursor: nwse-resize;
-  pointer-events: all;
+.node.zone.selected .zone-name { fill: #00838f; }
 }
 
 /* Connection waypoints */
