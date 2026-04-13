@@ -160,10 +160,24 @@ export const CHANNEL_TYPES = {
   ground_direct:{ label: 'D2 — Напрямую в земле',        method: 'D2', bundlingDefault: 'touching', icon: '\u23DA' },
 };
 
+// Палитра цветов для линий (источники и ИБП)
+export const LINE_COLORS = [
+  '#e53935', '#d81b60', '#8e24aa', '#5e35b1', '#3949ab',
+  '#1e88e5', '#039be5', '#00acc1', '#00897b', '#43a047',
+  '#7cb342', '#c0ca33', '#fdd835', '#ffb300', '#fb8c00',
+  '#f4511e', '#6d4c41', '#546e7a', '#78909c', '#ec407a',
+];
+let _colorIdx = 0;
+function nextLineColor() {
+  const c = LINE_COLORS[_colorIdx % LINE_COLORS.length];
+  _colorIdx++;
+  return c;
+}
+
 // Типы узлов и их параметры по умолчанию
 export const DEFAULTS = {
   source:    () => ({
-    name: 'Ввод ТП', comment: '', lineColor: '#e53935', capacityKw: 100, on: true,
+    name: 'Ввод ТП', comment: '', lineColor: nextLineColor(), capacityKw: 100, on: true,
     sourceSubtype: 'transformer',
     phase: '3ph', voltage: 400, cosPhi: 0.95,
     sscMva: 500,            // мощность КЗ сети, МВА
@@ -174,7 +188,7 @@ export const DEFAULTS = {
     p0W: 1.5,               // потери холостого хода, кВт (P0 / Pfe)
   }),
   generator: () => ({
-    name: 'ДГУ', comment: '', lineColor: '#ff9800', capacityKw: 60, on: true, backupMode: true,
+    name: 'ДГУ', comment: '', lineColor: nextLineColor(), capacityKw: 60, on: true, backupMode: true,
     sourceSubtype: 'generator',
     phase: '3ph', voltage: 400, cosPhi: 0.85,
     sscMva: 10, ukPct: 0, xsRsRatio: 0.5, snomKva: 75,
@@ -217,7 +231,7 @@ export const DEFAULTS = {
     outputActivateWhenDead: null,
   }),
   ups:       () => ({
-    name: 'ИБП', comment: '', lineColor: '#7b1fa2',
+    name: 'ИБП', comment: '', lineColor: nextLineColor(),
     capacityKw: 10,
     efficiency: 95,
     chargeA: 2,

@@ -194,7 +194,21 @@ export function renderInspectorNode(n) {
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
       </select>`));
-    h.push(field('Цвет линии', `<input type="color" data-prop="lineColor" value="${n.lineColor || '#e53935'}" style="width:40px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`));
+    // Цвет линии с палитрой используемых цветов
+    {
+      const curColor = n.lineColor || '#e53935';
+      const usedColors = new Set();
+      for (const nn of state.nodes.values()) {
+        if (nn.lineColor && nn.id !== n.id) usedColors.add(nn.lineColor);
+      }
+      let colorHtml = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">`;
+      colorHtml += `<input type="color" data-prop="lineColor" value="${curColor}" style="width:32px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`;
+      for (const uc of usedColors) {
+        colorHtml += `<div data-color-pick="${uc}" style="width:20px;height:20px;border-radius:3px;background:${uc};border:2px solid ${uc === curColor ? '#333' : '#ddd'};cursor:pointer" title="${uc}"></div>`;
+      }
+      colorHtml += '</div>';
+      h.push(field('Цвет линии', colorHtml));
+    }
     // cos φ источника рассчитывается автоматически из downstream нагрузки.
     // Для генератора номинальный cos φ задаётся в параметрах источника.
     if (n._cosPhi) {
@@ -247,7 +261,21 @@ export function renderInspectorNode(n) {
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
     h.push(`<button class="full-btn" id="btn-open-ups-params" style="margin-bottom:8px">⚙ Параметры ИБП</button>`);
-    h.push(field('Цвет линии', `<input type="color" data-prop="lineColor" value="${n.lineColor || '#7b1fa2'}" style="width:40px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`));
+    // Цвет линии с палитрой
+    {
+      const curColor = n.lineColor || '#7b1fa2';
+      const usedColors = new Set();
+      for (const nn of state.nodes.values()) {
+        if (nn.lineColor && nn.id !== n.id) usedColors.add(nn.lineColor);
+      }
+      let colorHtml = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">`;
+      colorHtml += `<input type="color" data-prop="lineColor" value="${curColor}" style="width:32px;height:28px;padding:0;border:1px solid #ccc;border-radius:4px;cursor:pointer">`;
+      for (const uc of usedColors) {
+        colorHtml += `<div data-color-pick="${uc}" style="width:20px;height:20px;border-radius:3px;background:${uc};border:2px solid ${uc === curColor ? '#333' : '#ddd'};cursor:pointer" title="${uc}"></div>`;
+      }
+      colorHtml += '</div>';
+      h.push(field('Цвет линии', colorHtml));
+    }
     // Краткая сводка
     const battPct = Math.round(n.batteryChargePct || 0);
     h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
@@ -594,6 +622,15 @@ export function wireInspectorInputs(n) {
       flash(`Баланс: A:${fmt(load.A)} B:${fmt(load.B)} C:${fmt(load.C)} kW`);
     });
   }
+
+  // Палитра цветов — клик по квадратику
+  inspectorBody.querySelectorAll('[data-color-pick]').forEach(swatch => {
+    swatch.addEventListener('click', () => {
+      snapshot('color:' + n.id);
+      n.lineColor = swatch.dataset.colorPick;
+      _render(); renderInspector(); notifyChange();
+    });
+  });
 
   // Фазные кнопки для потребителя
   inspectorBody.querySelectorAll('[data-phase-btn]').forEach(btn => {
