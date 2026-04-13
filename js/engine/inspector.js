@@ -1489,8 +1489,12 @@ export function openPanelControlModal(n) {
       snapshot('mode:' + n.id);
       if (n.switchMode === 'manual') {
         n.switchMode = n._prevSwitchMode || 'auto';
-        // Сброс входных автоматов — АВР управляет ими автоматически
+        // Сброс — АВР управляет автоматами
         n.inputBreakerStates = null;
+        n._avrBreakerOverride = null;
+        n._avrActivePort = undefined;
+        n._avrSwitchStartedAt = 0;
+        n._avrDisconnected = false;
       } else {
         n._prevSwitchMode = n.switchMode;
         n.switchMode = 'manual';
