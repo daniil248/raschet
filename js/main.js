@@ -837,6 +837,7 @@ function renderPresets(query) {
         `</div>` +
         `<div class="pc-actions">` +
         `<button class="pc-btn pc-add" data-add-id="${escAttr(p.id)}" title="Вставить на холст">⎘</button>` +
+        `<button class="pc-btn pc-dup" data-dup-id="${escAttr(p.id)}" title="Дублировать">⧉</button>` +
         `<button class="pc-btn pc-edit" data-edit-id="${escAttr(p.id)}" title="Редактировать параметры">✎</button>` +
         (isCustom ? `<button class="pc-btn pc-del" data-del-id="${escAttr(p.id)}" title="Удалить">✕</button>` : '') +
         `</div>` +
@@ -866,13 +867,13 @@ function renderPresets(query) {
     });
   });
 
-  // Click edit button → edit preset params
+  // Click edit button → edit via real parameter modal
   els.presetsList.querySelectorAll('.pc-edit').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      const p = window.Presets.get(btn.dataset.editId);
-      if (!p) return;
-      openPresetEditor(p);
+      const preset = window.Presets.get(btn.dataset.editId);
+      if (!preset) return;
+      editPresetViaModal(preset);
     });
   });
 
@@ -884,6 +885,32 @@ function renderPresets(query) {
       window.Presets.removeUser(btn.dataset.delId);
       renderPresets(els.presetsSearch.value);
       flash('Удалено');
+    });
+  });
+
+  // Duplicate button
+  els.presetsList.querySelectorAll('.pc-dup').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const src = window.Presets.get(btn.dataset.dupId);
+      if (!src) return;
+      const dup = {
+        id: 'user-' + Date.now().toString(36),
+        category: src.category,
+        title: src.title + ' (копия)',
+        description: src.description || '',
+        type: src.type,
+        params: JSON.parse(JSON.stringify(src.params || {})),
+        custom: true,
+      };
+      window.Presets.all.push(dup);
+      try {
+        const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+        stored.push(dup);
+        localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+      } catch {}
+      renderPresets(els.presetsSearch.value);
+      flash('Дублировано: ' + dup.title);
     });
   });
 
@@ -925,156 +952,32 @@ function renderPresets(query) {
   });
 }
 
-function openPresetEditor(preset) {
-  const p = preset.params || {};
+// Редактирование пресета через реальные модалки параметров.
+// Создаём виртуальный узел из preset.params, открываем модалку,
+// при Apply — сохраняем params обратно в preset.
+function editPresetViaModal(preset) {
+  if (!window.Raschet) return;
+  const R = window.Raschet;
   const type = preset.type;
-  const TYPE_LABELS = { source: 'Источник', generator: 'Генератор', panel: 'Щит', ups: 'ИБП', consumer: 'Потребитель', channel: 'Канал' };
+  const params = preset.params || {};
 
-  // Helpers
-  const fld = (label, input) => `<div style="margin-bottom:8px"><label style="display:block;font-size:11px;text-transform:uppercase;color:#666;margin-bottom:2px">${escHtml(label)}</label>${input}</div>`;
-  const inp = (key, val, opts) => {
-    const t = opts?.type || (typeof val === 'number' ? 'number' : 'text');
-    const extra = opts?.step ? ` step="${opts.step}"` : (t === 'number' ? ' step="any"' : '');
-    const min = opts?.min != null ? ` min="${opts.min}"` : '';
-    const max = opts?.max != null ? ` max="${opts.max}"` : '';
-    return `<input type="${t}" data-edit-key="${key}" value="${escAttr(String(val ?? ''))}"${extra}${min}${max} style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px">`;
-  };
-  const sel = (key, options, val) => {
-    let h = `<select data-edit-key="${key}" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px">`;
-    for (const o of options) h += `<option value="${escAttr(o.v)}"${String(o.v) === String(val) ? ' selected' : ''}>${escHtml(o.l)}</option>`;
-    h += '</select>';
-    return h;
-  };
-  const chk = (key, label, checked) => `<div class="field check" style="margin-bottom:6px"><input type="checkbox" data-edit-key="${key}" ${checked ? 'checked' : ''}><label>${escHtml(label)}</label></div>`;
-  const row = (...cells) => `<div style="display:flex;gap:8px">${cells.map(c => `<div style="flex:1">${c}</div>`).join('')}</div>`;
+  // Создаём виртуальный узел (не добавляется в state)
+  const defaults = R.getDefaults?.(type) || {};
+  const vNode = { id: '__preset_edit__', type, ...defaults, ...params, tag: 'LIB', x: 0, y: 0 };
 
-  let html = `<div style="padding:12px">`;
-  html += `<div style="margin-bottom:12px"><span style="font-size:11px;color:#999;text-transform:uppercase">${escHtml(TYPE_LABELS[type] || type)}</span></div>`;
-
-  // Общие поля
-  html += fld('Название в библиотеке', inp('title', preset.title));
-  html += fld('Описание', inp('description', preset.description || ''));
-  html += fld('Имя элемента на схеме', inp('name', p.name || ''));
-
-  // === Источник / Генератор ===
-  if (type === 'source' || type === 'generator') {
-    html += fld('Номинальная мощность (Snom), кВА', inp('snomKva', p.snomKva || p.capacityKw || 400, {min:1}));
-    html += fld('Мощность (P), kW', inp('capacityKw', p.capacityKw || 0));
-    if (type === 'generator') {
-      html += fld('Режим', sel('backupMode', [{v:'true',l:'Резерв'},{v:'false',l:'Основной'}], String(p.backupMode !== false)));
+  // Подменяем Apply-callback: вместо сохранения в state — сохраняем в preset
+  const origApply = R._presetEditCallback;
+  R._presetEditCallback = (node) => {
+    // Копируем все параметры из виртуального узла обратно в preset
+    const skip = new Set(['id', 'x', 'y', 'tag', 'type']);
+    if (!preset.params) preset.params = {};
+    for (const k of Object.keys(node)) {
+      if (skip.has(k) || k.startsWith('_')) continue;
+      preset.params[k] = node[k];
     }
-    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Параметры КЗ</summary>';
-    html += fld('Мощность КЗ сети (Ssc), МВА', inp('sscMva', p.sscMva ?? (type === 'source' ? 500 : 10)));
-    html += fld('Напряжение КЗ (Uk), %', inp('ukPct', p.ukPct ?? 6, {min:0,max:25,step:0.5}));
-    html += fld('Отношение Xs/Rs', inp('xsRsRatio', p.xsRsRatio ?? 10, {min:0.1,max:50,step:0.1}));
-    html += '</details>';
-  }
-
-  // === Щит ===
-  if (type === 'panel') {
-    html += row(fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:30,step:1})),
-                fld('Выходов', inp('outputs', p.outputs || 4, {min:1,max:30,step:1})));
-    html += row(fld('In, А', inp('capacityA', p.capacityA || 160, {min:0,step:1})),
-                fld('Ксим', inp('kSim', p.kSim ?? 1, {min:0,max:1.2,step:0.05})));
-    const panelInputs = Number(p.inputs) || 1;
-    const panelSm = p.switchMode || 'auto';
-    if (panelInputs > 1) {
-      html += fld('Режим коммутации', sel('switchMode', [
-        {v:'parallel',l:'Щит'}, {v:'auto',l:'Щит с АВР'},
-        {v:'avr_paired',l:'АВР с привязкой'}, {v:'switchover',l:'Подменный'},
-        {v:'watchdog',l:'Watchdog'}
-      ], panelSm));
-      if (panelSm !== 'parallel') {
-        html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Задержки АВР</summary>';
-        html += row(fld('Переключение, сек', inp('avrDelaySec', p.avrDelaySec ?? 2, {min:0,max:30,step:0.5})),
-                    fld('Разбежка, сек', inp('avrInterlockSec', p.avrInterlockSec ?? 1, {min:0,max:10,step:0.5})));
-        html += '</details>';
-      }
-    }
-    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Запасы</summary>';
-    html += row(fld('Мин. запас, %', inp('marginMinPct', p.marginMinPct ?? 2, {min:0,max:50,step:1})),
-                fld('Макс. запас, %', inp('marginMaxPct', p.marginMaxPct ?? 30, {min:5,max:500,step:1})));
-    html += '</details>';
-  }
-
-  // === ИБП ===
-  if (type === 'ups') {
-    html += fld('Выходная мощность, kW', inp('capacityKw', p.capacityKw || 0));
-    html += fld('КПД, %', inp('efficiency', p.efficiency || 94, {min:50,max:100,step:1}));
-    html += row(fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:5,step:1})),
-                fld('Выходов', inp('outputs', p.outputs || 2, {min:1,max:20,step:1})));
-    html += fld('cos φ', inp('cosPhi', p.cosPhi ?? 1.0, {min:0.1,max:1,step:0.01}));
-    html += '<details style="margin:8px 0" open><summary style="cursor:pointer;font-size:12px;font-weight:600">Батарея</summary>';
-    html += fld('Ёмкость АКБ, kWh', inp('batteryKwh', p.batteryKwh || 0));
-    html += fld('Заряд, %', inp('batteryChargePct', p.batteryChargePct ?? 100, {min:0,max:100,step:1}));
-    html += fld('Ток заряда, А (AC)', inp('chargeA', p.chargeA ?? 2, {min:0,step:0.1}));
-    html += '</details>';
-    html += '<details style="margin:8px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600">Статический байпас</summary>';
-    html += chk('staticBypass', 'Байпас разрешён', p.staticBypass !== false);
-    html += chk('staticBypassAuto', 'Автоматический (по перегрузу)', p.staticBypassAuto !== false);
-    html += fld('Порог перехода, % от Pном', inp('staticBypassOverloadPct', p.staticBypassOverloadPct || 110, {min:80,max:200,step:5}));
-    html += '</details>';
-  }
-
-  // === Потребитель ===
-  if (type === 'consumer') {
-    const catalog = window.Raschet?.getConsumerCatalog?.() || [];
-    if (catalog.length) {
-      let catOpts = [{v:'custom',l:'Произвольный'}];
-      for (const c of catalog) catOpts.push({v:c.id,l:c.label});
-      html += fld('Тип оборудования', sel('consumerSubtype', catOpts, p.consumerSubtype || 'custom'));
-    }
-    html += fld('Мощность, kW', inp('demandKw', p.demandKw || 10));
-    html += row(fld('Количество', inp('count', p.count || 1, {min:1,step:1})),
-                fld('Входов', inp('inputs', p.inputs || 1, {min:1,max:10,step:1})));
-    html += row(fld('cos φ', inp('cosPhi', p.cosPhi ?? 0.92, {min:0.1,max:1,step:0.01})),
-                fld('Ки', inp('kUse', p.kUse ?? 1, {min:0,max:1,step:0.05})));
-    html += fld('Кратность пускового тока', inp('inrushFactor', p.inrushFactor || 1, {min:1,max:10,step:0.1}));
-    // Кондиционер — наружный блок
-    if (p.consumerSubtype === 'conditioner' || (p.isConditioner)) {
-      html += '<details style="margin:8px 0" open><summary style="cursor:pointer;font-size:12px;font-weight:600">Наружный блок</summary>';
-      html += fld('Мощность наруж. блока, kW', inp('outdoorKw', p.outdoorKw || 0.3, {min:0,step:0.1}));
-      html += fld('cos φ наруж. блока', inp('outdoorCosPhi', p.outdoorCosPhi || 0.85, {min:0.1,max:1,step:0.01}));
-      html += '</details>';
-    }
-  }
-
-  // === Канал ===
-  if (type === 'channel') {
-    html += fld('Длина, м', inp('lengthM', p.lengthM || 10, {min:0}));
-  }
-
-  html += `<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">`;
-  html += `<button id="pe-cancel" style="padding:6px 16px;border:1px solid #ccc;background:#fff;border-radius:4px;cursor:pointer">Отмена</button>`;
-  html += `<button id="pe-save" style="padding:6px 16px;border:none;background:#1976d2;color:#fff;border-radius:4px;cursor:pointer">Сохранить</button>`;
-  html += `</div></div>`;
-
-  // Hide search, show editor
-  els.presetsSearch.style.display = 'none';
-  els.presetsList.innerHTML = html;
-
-  document.getElementById('pe-cancel').onclick = () => {
-    els.presetsSearch.style.display = '';
-    renderPresets(els.presetsSearch.value);
-  };
-  document.getElementById('pe-save').onclick = () => {
-    const container = els.presetsList;
-    container.querySelectorAll('[data-edit-key]').forEach(el => {
-      const key = el.dataset.editKey;
-      let val;
-      if (el.type === 'checkbox') val = el.checked;
-      else if (el.type === 'number') val = Number(el.value);
-      else val = el.value;
-      // Boolean selects
-      if (val === 'true') val = true;
-      if (val === 'false') val = false;
-      if (key === 'title') { preset.title = val; return; }
-      if (key === 'description') { preset.description = val; return; }
-      if (!preset.params) preset.params = {};
-      preset.params[key] = val;
-    });
-    // Sync name to title if not set
-    if (!preset.params.name) preset.params.name = preset.title;
+    // Sync name/title
+    if (node.name && node.name !== 'LIB') preset.params.name = node.name;
+    if (!preset.title || preset.title === preset.params.name) preset.title = node.name || preset.title;
     // Save to localStorage
     if (preset.custom) {
       try {
@@ -1085,10 +988,101 @@ function openPresetEditor(preset) {
         localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
       } catch {}
     }
-    els.presetsSearch.style.display = '';
     renderPresets(els.presetsSearch.value);
     flash('Параметры обновлены');
+    R._presetEditCallback = null;
   };
+
+  // Открываем соответствующую модалку
+  if (type === 'consumer') R.openConsumerParamsModal(vNode);
+  else if (type === 'ups') R.openUpsParamsModal(vNode);
+  else if (type === 'panel') R.openPanelParamsModal(vNode);
+  else if (type === 'source' || type === 'generator') R.openImpedanceModal(vNode);
+  else {
+    // Для типов без модалки — простой prompt
+    const name = prompt('Имя элемента:', params.name || preset.title);
+    if (name !== null) {
+      preset.params.name = name;
+      preset.title = name;
+      if (preset.custom) {
+        try {
+          const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+          const idx = stored.findIndex(p => p.id === preset.id);
+          if (idx >= 0) stored[idx] = preset;
+          else stored.push(preset);
+          localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+        } catch {}
+      }
+      renderPresets(els.presetsSearch.value);
+    }
+    R._presetEditCallback = null;
+  }
+}
+
+// ================= Справочник типов потребителей =================
+function openConsumerCatalogModal() {
+  renderConsumerCatalogModal();
+  openModal('modal-consumer-catalog');
+}
+function renderConsumerCatalogModal() {
+  const body = document.getElementById('consumer-catalog-body');
+  if (!body) return;
+  const G = window.Raschet.getGlobal();
+  const CATALOG = window.Raschet.getConsumerCatalog();
+  const customs = G.customConsumerCatalog || [];
+  const h = [];
+  // Базовые (нередактируемые)
+  h.push('<h4 style="margin:0 0 8px;font-size:12px;color:#666">Базовые типы</h4>');
+  for (const cat of CATALOG) {
+    if (cat.id.startsWith('user_')) continue;
+    h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">`);
+    h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">${cat.demandKw} kW, cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
+    h.push('</div>');
+  }
+  // Пользовательские (редактируемые/удаляемые)
+  if (customs.length) {
+    h.push('<h4 style="margin:16px 0 8px;font-size:12px;color:#666">Пользовательские типы</h4>');
+    for (let ci = 0; ci < customs.length; ci++) {
+      const cat = customs[ci];
+      h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">`);
+      h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">${cat.demandKw} kW, cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
+      h.push(`<button class="cc-edit" data-cc-idx="${ci}" style="background:none;border:none;cursor:pointer;font-size:14px;color:#666" title="Редактировать">✎</button>`);
+      h.push(`<button class="cc-del" data-cc-idx="${ci}" style="background:none;border:none;cursor:pointer;font-size:14px;color:#ccc" title="Удалить">✕</button>`);
+      h.push('</div>');
+    }
+  }
+  body.innerHTML = h.join('');
+  // Wire edit/delete
+  body.querySelectorAll('.cc-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.ccIdx);
+      const cat = customs[idx];
+      if (!cat) return;
+      const label = prompt('Название:', cat.label);
+      if (label === null) return;
+      cat.label = label;
+      const kw = prompt('Мощность, kW:', cat.demandKw);
+      if (kw !== null) cat.demandKw = Number(kw) || cat.demandKw;
+      const cos = prompt('cos φ:', cat.cosPhi);
+      if (cos !== null) cat.cosPhi = Number(cos) || cat.cosPhi;
+      const ku = prompt('Ки:', cat.kUse);
+      if (ku !== null) cat.kUse = Number(ku) ?? cat.kUse;
+      const inr = prompt('Кратность пуска:', cat.inrushFactor);
+      if (inr !== null) cat.inrushFactor = Number(inr) || cat.inrushFactor;
+      window.Raschet.setGlobal({ customConsumerCatalog: customs });
+      renderConsumerCatalogModal();
+    });
+  });
+  body.querySelectorAll('.cc-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.ccIdx);
+      if (!confirm('Удалить тип «' + (customs[idx]?.label || '') + '»?')) return;
+      customs.splice(idx, 1);
+      window.Raschet.setGlobal({ customConsumerCatalog: customs });
+      renderConsumerCatalogModal();
+      flash('Тип удалён');
+    });
+  });
 }
 
 // ================= Отчёт =================
@@ -1202,6 +1196,18 @@ async function init() {
   // Применяем сохранённые настройки как можно раньше — после загрузки Raschet
   loadGlobalSettings();
   if (els.btnOpenPresets) els.btnOpenPresets.addEventListener('click', openPresetsModal);
+  const btnCatalog = document.getElementById('btn-open-consumer-catalog');
+  if (btnCatalog) btnCatalog.addEventListener('click', openConsumerCatalogModal);
+  const btnCatalogAdd = document.getElementById('consumer-catalog-add');
+  if (btnCatalogAdd) btnCatalogAdd.addEventListener('click', () => {
+    const label = prompt('Название нового типа:');
+    if (!label) return;
+    const G = window.Raschet.getGlobal();
+    if (!Array.isArray(G.customConsumerCatalog)) G.customConsumerCatalog = [];
+    G.customConsumerCatalog.push({ id: 'user_' + Date.now(), label, demandKw: 10, cosPhi: 0.92, kUse: 1, inrushFactor: 1, phase: '3ph' });
+    window.Raschet.setGlobal({ customConsumerCatalog: G.customConsumerCatalog });
+    renderConsumerCatalogModal();
+  });
   if (els.btnOpenReport) els.btnOpenReport.addEventListener('click', openReportModal);
   if (els.btnOpenLoadsImport) els.btnOpenLoadsImport.addEventListener('click', openLoadsImportModal);
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));

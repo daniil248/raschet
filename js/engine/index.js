@@ -41,7 +41,8 @@ import {
 import {
   selectNode, selectConn, renderInspector, renderInspectorNode,
   renderInspectorConn, wireInspectorInputs, clientToSvg,
-  openImpedanceModal, openAutomationModal, checkFieldEff,
+  openImpedanceModal, openAutomationModal, openConsumerParamsModal,
+  openUpsParamsModal, openPanelParamsModal, checkFieldEff,
   channelIconSVG, bundlingIconSVG, voltageField, phaseField,
   phaseFieldConsumer, sourceStatusBlock, panelStatusBlock,
   consumerCurrentsBlock, prioritySection, statusBlock, upsStatusBlock,
@@ -239,4 +240,11 @@ window.Raschet = {
     render();
     renderInspector();
   },
+  // Модалки параметров — для редактирования пресетов
+  openConsumerParamsModal,
+  openUpsParamsModal,
+  openPanelParamsModal,
+  openImpedanceModal,
+  getDefaults(type) { return DEFAULTS[type] ? DEFAULTS[type]() : {}; },
+  _presetEditCallback: null,
 };

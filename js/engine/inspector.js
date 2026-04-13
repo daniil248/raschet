@@ -1625,9 +1625,14 @@ export function openPanelControlModal(n) {
     h += '</div>';
   }
 
-  // --- SVG однолинейная схема ---
-  h += `<div style="text-align:center;overflow-x:auto;padding:10px 0">`;
-  h += `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
+  // --- SVG однолинейная схема с зумом ---
+  h += `<div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:4px 0">`;
+  h += `<button type="button" id="pc-zoom-out" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">−</button>`;
+  h += `<span id="pc-zoom-label" style="font-size:11px;color:#666;min-width:36px;text-align:center">100%</span>`;
+  h += `<button type="button" id="pc-zoom-in" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">+</button>`;
+  h += `</div>`;
+  h += `<div id="pc-svg-wrap" style="text-align:center;overflow:auto;padding:10px 0;max-height:50vh">`;
+  h += `<svg id="pc-svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
 
   // Шина
   const busX1 = 15, busX2 = svgW - 15;
@@ -1700,6 +1705,9 @@ export function openPanelControlModal(n) {
             const cnt = cc._breakerCount || 1;
             if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×C${cc._breakerPerLine}А`;
             else brkLabel = `C${cc._breakerIn}А`;
+          } else if (cc._breakerPerLine) {
+            const cnt = cc._breakerCount || 1;
+            brkLabel = cnt > 1 ? `${cnt}×C${cc._breakerPerLine}А` : `C${cc._breakerPerLine}А`;
           }
           break;
         }
@@ -1762,6 +1770,31 @@ export function openPanelControlModal(n) {
 
 
   body.innerHTML = h;
+
+  // Зум однолинейной схемы
+  {
+    let pcZoom = 1;
+    const pcSvg = document.getElementById('pc-svg');
+    const pcLabel = document.getElementById('pc-zoom-label');
+    const pcWrap = document.getElementById('pc-svg-wrap');
+    const applyZoom = () => {
+      if (pcSvg) {
+        pcSvg.style.width = (svgW * pcZoom) + 'px';
+        pcSvg.style.height = (svgH * pcZoom) + 'px';
+      }
+      if (pcLabel) pcLabel.textContent = Math.round(pcZoom * 100) + '%';
+    };
+    const zoomIn = document.getElementById('pc-zoom-in');
+    const zoomOut = document.getElementById('pc-zoom-out');
+    if (zoomIn) zoomIn.onclick = () => { pcZoom = Math.min(3, pcZoom * 1.25); applyZoom(); };
+    if (zoomOut) zoomOut.onclick = () => { pcZoom = Math.max(0.3, pcZoom / 1.25); applyZoom(); };
+    if (pcWrap) pcWrap.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      pcZoom = e.deltaY < 0 ? Math.min(3, pcZoom * 1.1) : Math.max(0.3, pcZoom / 1.1);
+      applyZoom();
+    }, { passive: false });
+  }
 
   // Автоматы выходов
   body.querySelectorAll('[data-breaker-toggle]').forEach(el => {

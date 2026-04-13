@@ -91,6 +91,7 @@
         <h3>Быстрые действия</h3>
         <button id="btn-open-settings" class="full-btn">⚙ Параметры расчёта</button>
         <button id="btn-open-presets" class="full-btn">📚 Библиотека типовых элементов</button>
+        <button id="btn-open-consumer-catalog" class="full-btn">📋 Справочник типов потребителей</button>
         <button id="btn-open-report" class="full-btn">📄 Сгенерировать отчёт</button>
         <button id="btn-open-loads-import" class="full-btn">📥 Импорт таблицы нагрузок</button>
 
@@ -385,6 +386,20 @@
         <button class="modal-close">Отмена</button>
         <button id="settings-reset">Сброс по умолчанию</button>
         <button id="settings-save" class="primary">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-consumer-catalog" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>Справочник типов потребителей</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body" id="consumer-catalog-body"></div>
+      <div class="modal-foot">
+        <button class="modal-close">Закрыть</button>
+        <button id="consumer-catalog-add" class="primary">+ Добавить тип</button>
       </div>
     </div>
   </div>
