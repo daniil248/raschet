@@ -480,43 +480,43 @@ export function renderConns() {
       }
     }
 
-    // Бейдж автомата — ближе к from-концу, на ВСЕХ линиях с автоматом
+    // Бейдж автомата — под выходным портом, повёрнут -90°, с белой подложкой
     const hasBreaker = c._breakerIn || c._breakerPerLine;
     if (GLOBAL.showBreakerLabels !== false && hasBreaker) {
-      const pts = [a, ...waypoints, b];
-      let total = 0;
-      const segs = [];
-      for (let i = 0; i < pts.length - 1; i++) {
-        const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
-        segs.push(len); total += len;
-      }
-      const target = total * 0.15;
-      let labelPos = { x: a.x, y: a.y };
-      let acc = 0;
-      for (let i = 0; i < segs.length; i++) {
-        if (acc + segs[i] >= target) {
-          const t = segs[i] > 0 ? (target - acc) / segs[i] : 0;
-          labelPos = {
-            x: pts[i].x + (pts[i + 1].x - pts[i].x) * t,
-            y: pts[i].y + (pts[i + 1].y - pts[i].y) * t,
-          };
-          break;
-        }
-        acc += segs[i];
-      }
+      // Позиция = выходной порт (from)
+      const bx = a.x;
+      const by = a.y + 6; // чуть ниже порта
 
-      const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');
-
+      let brkText;
       if (c._cableAutoParallel && c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
-        // Спаренные: общий автомат сверху, per-line в скобках снизу
-        layerConns.appendChild(text(labelPos.x, labelPos.y + 10, `C${c._breakerIn}А`, cls));
-        layerConns.appendChild(text(labelPos.x, labelPos.y + 22, `(${c._breakerCount}×C${c._breakerPerLine}А)`, cls));
+        brkText = `C${c._breakerIn}А (${c._breakerCount}×C${c._breakerPerLine}А)`;
       } else if (c._breakerPerLine && c._breakerCount > 1) {
-        // Группа: N×CxxA
-        layerConns.appendChild(text(labelPos.x, labelPos.y + 14, `${c._breakerCount}×C${c._breakerPerLine}А`, cls));
+        brkText = `${c._breakerCount}×C${c._breakerPerLine}А`;
       } else if (c._breakerIn) {
-        // Одиночная: CxxA
-        layerConns.appendChild(text(labelPos.x, labelPos.y + 14, `C${c._breakerIn}А`, cls));
+        brkText = `C${c._breakerIn}А`;
+      }
+      if (brkText) {
+        const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');
+        // Белая подложка (rect за текстом)
+        const bgW = brkText.length * 5.5 + 6;
+        const bg = el('rect', {
+          x: bx - 3, y: by - 1,
+          width: bgW, height: 11,
+          fill: '#fff', 'fill-opacity': '0.85',
+          rx: 2,
+          transform: `rotate(-90 ${bx} ${by})`,
+        });
+        layerConns.appendChild(bg);
+        // Текст
+        const lbl = el('text', {
+          x: bx, y: by + 8,
+          class: cls,
+          'text-anchor': 'start',
+          'dominant-baseline': 'auto',
+          transform: `rotate(-90 ${bx} ${by})`,
+        });
+        lbl.textContent = brkText;
+        layerConns.appendChild(lbl);
       }
     }
   }
