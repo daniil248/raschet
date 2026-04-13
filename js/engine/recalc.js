@@ -459,6 +459,11 @@ function recalc() {
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
     n._watchdogActivePorts = null;
+    // Сбросить _avrBreakerOverride если нет активной симуляции АВР
+    // (consumer всегда сбрасывается, panel — только если нет countdown)
+    if (n.type === 'consumer' || (n.type === 'panel' && !n._avrSwitchCountdown && !n._avrInterlockCountdown)) {
+      n._avrBreakerOverride = null;
+    }
   }
   for (const c of state.conns.values()) { c._active = false; c._loadKw = 0; c._state = 'dead'; }
 
