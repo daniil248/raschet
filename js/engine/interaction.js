@@ -250,9 +250,13 @@ export function initInteraction() {
       if (!zone) return;
       snapshot();
       const p = clientToSvg(e.clientX, e.clientY);
+      const dir = zoneResizeEl.getAttribute('data-rz') || 'se';
       state.drag = {
         zoneResizeId: zone.id,
+        zoneResizeDir: dir,
         startMouse: { x: p.x, y: p.y },
+        startX: zone.x,
+        startY: zone.y,
         startW: Number(zone.width) || 600,
         startH: Number(zone.height) || 400,
       };
@@ -511,39 +515,29 @@ export function initInteraction() {
         const p = clientToSvg(e.clientX, e.clientY);
         const dx = p.x - state.drag.startMouse.x;
         const dy = p.y - state.drag.startMouse.y;
-        let nw = state.drag.startW + dx;
-        let nh = state.drag.startH + dy;
-        if (!e.altKey) {
-          nw = (GLOBAL.snapToGrid !== false ? Math.round(nw / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nw);
-          nh = (GLOBAL.snapToGrid !== false ? Math.round(nh / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nh);
-        }
+        const dir = state.drag.zoneResizeDir || 'se';
+        const gs = GLOBAL.gridStep || 40;
+        const snap = (v) => GLOBAL.snapToGrid !== false && !e.altKey ? Math.round(v / gs) * gs : v;
+
+        let nx = state.drag.startX;
+        let ny = state.drag.startY;
+        let nw = state.drag.startW;
+        let nh = state.drag.startH;
+
+        // Восток (правая граница)
+        if (dir.includes('e')) nw = snap(state.drag.startW + dx);
+        // Запад (левая граница — сдвигает x и уменьшает w)
+        if (dir.includes('w')) { nx = snap(state.drag.startX + dx); nw = state.drag.startW - (nx - state.drag.startX); }
+        // Юг (нижняя граница)
+        if (dir.includes('s')) nh = snap(state.drag.startH + dy);
+        // Север (верхняя граница — сдвигает y и уменьшает h)
+        if (dir === 'n' || dir === 'nw' || dir === 'ne') { ny = snap(state.drag.startY + dy); nh = state.drag.startH - (ny - state.drag.startY); }
+
         nw = Math.max(200, nw);
         nh = Math.max(120, nh);
 
-        // Ограничение: новая рамка не должна перекрывать bbox не-членов.
-        // Проверяем все узлы (кроме самой зоны и её членов):
-        // если bbox узла пересекается с новой рамкой зоны -- clamp до границы.
-        const memberSet = new Set(z.memberIds || []);
-        for (const other of state.nodes.values()) {
-          if (other.id === z.id) continue;
-          if (other.type === 'zone') continue;
-          if (memberSet.has(other.id)) continue;
-          const ow = nodeWidth(other), oh = nodeHeight(other);
-          // Проверяем, был ли этот узел уже вне исходной рамки
-          const wasOutsideX = (other.x >= z.x + state.drag.startW) || (other.x + ow <= z.x);
-          const wasOutsideY = (other.y >= z.y + state.drag.startH) || (other.y + oh <= z.y);
-          if (!wasOutsideX && !wasOutsideY) continue; // узел уже пересекал -- игнорируем
-          // Если узел справа от исходной правой границы и теперь расширение до него дотянется -- clamp
-          if (wasOutsideX && other.x >= z.x + state.drag.startW) {
-            const maxW = other.x - z.x; // не дотрагиваемся до левой кромки соседа
-            if (nw > maxW) nw = Math.max(200, maxW);
-          }
-          if (wasOutsideY && other.y >= z.y + state.drag.startH) {
-            const maxH = other.y - z.y;
-            if (nh > maxH) nh = Math.max(120, maxH);
-          }
-        }
-
+        z.x = nx;
+        z.y = ny;
         z.width = nw;
         z.height = nh;
         render();
