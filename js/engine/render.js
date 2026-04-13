@@ -190,7 +190,7 @@ export function renderNodes() {
     const subTxt = {
       source:    subtype === 'generator' ? 'Генератор' + (n.backupMode ? ' (резерв)' : '') : 'Трансформатор',
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
-      panel:     `In ${fmt(n.capacityA || 0)} A / ${fmt(n._maxLoadA || 0)} A · ${fmt(n._maxLoadKw || 0)} kW`,
+      panel:     `In ${fmt(n.capacityA || 0)} A · Макс: ${fmt(n._maxLoadA || 0)} A / ${fmt(n._maxLoadKw || 0)} kW`,
       ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%` +
                    (n._onStaticBypass ? ' · БАЙПАС' : ''),
       consumer:  ((n.count || 1) > 1
@@ -227,10 +227,10 @@ export function renderNodes() {
       if (n.maintenance) {
         loadLine = 'Обслуживание'; loadCls += ' off';
       } else if (!n._powered) {
-        loadLine = `Без питания · макс ${fmt(n._maxLoadKw || 0)} kW`;
+        loadLine = 'Без питания';
         loadCls += ' off';
       } else {
-        loadLine = `${fmt(n._loadA || 0)} A / ${fmt(n._loadKw || 0)} (макс ${fmt(n._maxLoadKw || 0)}) kW`;
+        loadLine = `Текущее: ${fmt(n._loadA || 0)} A / ${fmt(n._loadKw || 0)} kW`;
         if (n._marginWarn === 'low') loadCls += ' overload';
       }
       // Таймер АВР
