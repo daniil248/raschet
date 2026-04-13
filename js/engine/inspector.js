@@ -158,24 +158,13 @@ export function renderInspectorNode(n) {
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-prop="ambientC" value="${n.ambientC || 30}">`));
     // Справочные коэффициенты
     {
-      const kt = kTempLookup(n.ambientC || 30, 'PVC');
-      const bd = n.bundling || 'touching';
-      // Считаем кол-во цепей в канале
       let chCircuits = 0;
       for (const c of state.conns.values()) {
         if (!Array.isArray(c.channelIds) || !c.channelIds.includes(n.id)) continue;
         const toN = state.nodes.get(c.to?.nodeId);
         chCircuits += (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) ? Number(toN.count) : 1;
       }
-      const kg = kGroupLookup(Math.max(1, chCircuits), chMethod);
-      const kb = kBundlingFactor(bd);
-      const ktotal = kt * kg * kb;
-      h.push(`<div class="muted" style="font-size:11px;line-height:1.8;margin-top:6px">` +
-        `Kt (темп.) = <b>${kt.toFixed(2)}</b> · ` +
-        `Kg (группа, ${chCircuits} цеп.) = <b>${kg.toFixed(2)}</b> · ` +
-        `Kb (укладка) = <b>${kb.toFixed(2)}</b><br>` +
-        `<b>Kобщ = ${ktotal.toFixed(3)}</b>` +
-        `</div>`);
+      h.push(installCoefficientBlock(chMethod, n.ambientC, chCircuits, bd, 'PVC'));
     }
     h.push('</details>');
 
@@ -2335,6 +2324,21 @@ export function upsStatusBlock(n) {
   return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
 }
 
+// Общая функция: справочные коэффициенты прокладки
+// method — IEC метод, ambient — °C, circuits — кол-во цепей, bundling — укладка, insulation — PVC/XLPE
+function installCoefficientBlock(method, ambient, circuits, bundling, insulation) {
+  const kt = kTempLookup(ambient || 30, insulation || 'PVC');
+  const kg = kGroupLookup(Math.max(1, circuits || 0), method || 'B1');
+  const kb = kBundlingFactor(bundling || 'touching');
+  const ktotal = kt * kg * kb;
+  return `<div class="muted" style="font-size:11px;line-height:1.8;margin-top:6px">` +
+    `Kt (темп.) = <b>${kt.toFixed(2)}</b> · ` +
+    `Kg (группа, ${circuits || 0} цеп.) = <b>${kg.toFixed(2)}</b> · ` +
+    `Kb (укладка) = <b>${kb.toFixed(2)}</b><br>` +
+    `<b>Kобщ = ${ktotal.toFixed(3)}</b>` +
+    `</div>`;
+}
+
 export function renderInspectorConn(c) {
   const fromN = state.nodes.get(c.from.nodeId);
   const toN   = state.nodes.get(c.to.nodeId);
@@ -2568,6 +2572,16 @@ export function renderInspectorConn(c) {
       </select>`));
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
     h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
+    // Справочные коэффициенты (расчётные, из recalc)
+    if (c._cableKtotal) {
+      h.push(installCoefficientBlock(
+        c._cableMethod || method,
+        c._cableAmbient || c.ambientC || GLOBAL.defaultAmbient,
+        c._cableGrouping || c.grouping || GLOBAL.defaultGrouping,
+        c._cableBundling || bundling,
+        c.insulation || GLOBAL.defaultInsulation
+      ));
+    }
     h.push('</details>');
   }
 
@@ -2662,7 +2676,8 @@ export function renderInspectorConn(c) {
       _render();
       notifyChange();
       // Обновить иконки при смене метода/расположения
-      if (prop === 'installMethod' || prop === 'bundling' || prop === 'breakerCurve' || prop === 'manualBreakerIn' || prop === 'manualCableSize' || prop === 'manualCableParallel') renderInspector();
+      // Перерисовать инспектор при любом изменении расчётных параметров
+      renderInspector();
     });
   });
   // Чекбоксы каналов
