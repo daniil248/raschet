@@ -299,18 +299,21 @@ export function renderNodes() {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
       }
-      // Лампочки на всех входах:
-      //   зелёная — работает, несёт нагрузку (active)
-      //   красная — есть напряжение, но не выбрано (powered)
-      //   нет лампочки — нет напряжения (dead)
+      // Лампочки на всех входах — центр совмещён с портом:
+      //   зелёная — active (несёт нагрузку)
+      //   красная — powered (напряжение есть, но не выбран АВР)
+      //   серая — dead (нет напряжения)
       {
         const ps = portStates.get(i);
         if (ps === 'active') {
-          g.appendChild(el('circle', { class: 'port-lamp green', cx: cx + 11, cy: 0, r: 4.5 }));
-          g.appendChild(el('circle', { class: 'port-lamp-core green', cx: cx + 11, cy: 0, r: 2 }));
+          g.appendChild(el('circle', { class: 'port-lamp green', cx, cy: 0, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core green', cx, cy: 0, r: 2 }));
         } else if (ps === 'powered') {
-          g.appendChild(el('circle', { class: 'port-lamp red', cx: cx + 11, cy: 0, r: 4.5 }));
-          g.appendChild(el('circle', { class: 'port-lamp-core red', cx: cx + 11, cy: 0, r: 2 }));
+          g.appendChild(el('circle', { class: 'port-lamp red', cx, cy: 0, r: 4.5 }));
+          g.appendChild(el('circle', { class: 'port-lamp-core red', cx, cy: 0, r: 2 }));
+        } else {
+          // Dead / не подключен — серая лампочка
+          g.appendChild(el('circle', { class: 'port-lamp', cx, cy: 0, r: 4.5, fill: 'none', stroke: '#bbb', 'stroke-width': 1 }));
         }
       }
     }
