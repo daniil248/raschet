@@ -8,7 +8,7 @@ import { snapshot, notifyChange } from './history.js';
 import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
 import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort } from './zones.js';
-import { kTempLookup, kGroupLookup, kBundlingFactor } from './cable.js';
+import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './cable.js';
 
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
 let _render, _deleteNode, _deleteConn, _isTagUnique;
@@ -2382,18 +2382,26 @@ export function renderInspectorConn(c) {
         const spec = `${cores}×${c._cableSize} мм²`;
         cableSpec = par > 1 ? `Кабель: <b>${par}×(${spec})</b>` : `Кабель: <b>${spec}</b>`;
       }
-      const brkIn = c._breakerIn || c._breakerPerLine || 0;
+      const effectiveBrkIn = c.manualBreakerIn || c._breakerIn || c._breakerPerLine || 0;
       const Iz = c._cableIz || 0;
-      const i2r = c._I2ratio || 1.45;
-      const I2 = brkIn * i2r;
-      const protOk = !brkIn || !Iz || (brkIn <= Iz && I2 <= 1.45 * Iz);
-      const curveLabel = (BREAKER_TYPES[c._breakerCurve] || {}).label || '';
-      const brkPrefix = (c._breakerCurve || 'MCB_C').startsWith('MCB_') ? (c._breakerCurve || 'MCB_C').slice(4) : '';
-      h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${protOk ? '#f5f5f5' : '#ffebee'};border-radius:4px">` +
+      const brkCurveId = c.breakerCurve || c._breakerCurve || 'MCB_C';
+      const brkTypeInfo = BREAKER_TYPES[brkCurveId] || BREAKER_TYPES.MCB_C;
+      const i2r = brkTypeInfo.I2ratio;
+      const brkPrefix = brkTypeInfo.prefix || '';
+      const I2 = effectiveBrkIn * i2r;
+      const inLeIz = !effectiveBrkIn || !Iz || effectiveBrkIn <= Iz;
+      const i2LeIz = !effectiveBrkIn || !Iz || I2 <= 1.45 * Iz;
+      const protOk = inLeIz && i2LeIz;
+      const oversize = Iz > 0 && effectiveBrkIn > 0 && Iz > effectiveBrkIn * 2;
+      const bgColor = !protOk ? '#ffebee' : oversize ? '#fff8e1' : '#f5f5f5';
+      h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${bgColor};border-radius:4px">` +
         (cableSpec ? cableSpec + '<br>' : '') +
-        (brkIn ? `Автомат: <b>${brkPrefix}${brkIn} A</b> ${curveLabel ? `<span class="muted">(${curveLabel})</span>` : ''}<br>` : '') +
+        (effectiveBrkIn ? `Автомат: <b>${brkPrefix}${effectiveBrkIn} A</b> <span class="muted">(${brkTypeInfo.label})</span><br>` : '') +
         (Iz ? `Iдоп на жилу (Iz): <b>${fmt(Iz)} A</b><br>` : '') +
-        (brkIn && Iz ? `I2 (${i2r}×In): <b>${fmt(I2)} A</b> ≤ 1.45×Iz: <b>${fmt(1.45 * Iz)} A</b> ${I2 <= 1.45 * Iz ? '<span style="color:#2e7d32">✓</span>' : '<span style="color:#c62828">✗ кабель не защищён!</span>'}<br>` : '') +
+        (effectiveBrkIn && Iz ? `I2 (${i2r}×In): <b>${fmt(I2)} A</b> ≤ 1.45×Iz: <b>${fmt(1.45 * Iz)} A</b> ${i2LeIz ? '<span style="color:#2e7d32">✓</span>' : '<span style="color:#c62828">✗</span>'}<br>` : '') +
+        (!inLeIz ? '<span style="color:#c62828;font-weight:600">⚠ In > Iz — кабель не защищён автоматом!</span><br>' : '') +
+        (!i2LeIz ? '<span style="color:#c62828;font-weight:600">⚠ I2 > 1.45×Iz — перегрузка не отключится вовремя!</span><br>' : '') +
+        (oversize ? '<span style="color:#e65100">ℹ Кабель значительно завышен (Iz > 2×In)</span><br>' : '') +
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
         `<span class="muted">IEC 60364-4-43: Ib ≤ In ≤ Iz, I2 ≤ 1.45×Iz</span>` +
         `</div>`);
@@ -2434,9 +2442,29 @@ export function renderInspectorConn(c) {
   // Секция сечения — ВНУТРИ details "Проводник"
   if ((c._cableSize || c._busbarNom || c._maxA > 0) && !isBusbar) {
     const manualCable = !!c.manualCableSize;
-    const autoSize = c._cableSize;
-    const autoPar = c._cableParallel || 1;
-    const autoIz = c._cableIz || 0;
+    // Для рекомендации при ручном кабеле — пересчитываем авто
+    let autoSize, autoPar, autoIz;
+    if (manualCable && c._maxA > 0) {
+      const recSel = selectCableSize(c._maxA || 0, {
+        material: c.material || GLOBAL.defaultMaterial,
+        insulation: c.insulation || GLOBAL.defaultInsulation,
+        method: c._cableMethod || GLOBAL.defaultInstallMethod,
+        ambientC: c._cableAmbient || GLOBAL.defaultAmbient,
+        grouping: c._cableGrouping || GLOBAL.defaultGrouping,
+        bundling: c._cableBundling || 'touching',
+        cableType: c.cableType || GLOBAL.defaultCableType,
+        maxSize: GLOBAL.maxCableSize,
+        conductorsInParallel: c._cableParallel || 1,
+        breakerCurve: c.breakerCurve || 'MCB_C',
+      });
+      autoSize = recSel.s;
+      autoPar = recSel.parallel;
+      autoIz = recSel.iDerated;
+    } else {
+      autoSize = c._cableSize;
+      autoPar = c._cableParallel || 1;
+      autoIz = c._cableIz || 0;
+    }
     const SECTIONS = [1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300];
     const typeLabel = { multi: 'многожильный', single: 'одножильный многопр.', solid: 'цельная жила' }[c._cableType || 'multi'] || 'многожильный';
     const bundlingLabel = { spaced: 'с зазором', touching: 'плотно', bundled: 'в пучке' }[c._cableBundling || 'touching'] || 'плотно';

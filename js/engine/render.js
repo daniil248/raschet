@@ -40,7 +40,7 @@ export function text(x, y, str, cls) {
 export function bezier(a, b, opts) {
   const aDir = opts?.aDir || { x: 0, y: 1 };
   const bDir = opts?.bDir || { x: 0, y: -1 };
-  const dist = Math.max(30, Math.hypot(b.x - a.x, b.y - a.y) / 3);
+  const dist = Math.max(25, Math.hypot(b.x - a.x, b.y - a.y) / 4);
   const cp1x = a.x + aDir.x * dist;
   const cp1y = a.y + aDir.y * dist;
   const cp2x = b.x + bDir.x * dist;
@@ -53,8 +53,8 @@ export function splinePath(a, points, b, opts) {
   if (!points || points.length === 0) return bezier(a, b, opts);
   const pts = [a, ...points, b];
   const last = pts.length - 1;
-  const T = 0.15; // натяжение Catmull-Rom (меньше = плотнее кривые)
-  const STUB = 30; // длина перпендикулярного участка у порта
+  const T = 0.10; // натяжение Catmull-Rom (меньше = плотнее кривые)
+  const STUB = 25; // длина перпендикулярного участка у порта
   const aDir = opts?.aDir || { x: 0, y: 1 };
   const bDir = opts?.bDir || { x: 0, y: -1 };
   let d = `M${a.x},${a.y}`;

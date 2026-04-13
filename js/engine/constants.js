@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.13.2';
+export const APP_VERSION = '0.13.3';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -76,12 +76,17 @@ export const BREAKER_SERIES = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 1
 // Типы защитных устройств (IEC 60898 / IEC 60269)
 // I2ratio — коэфф. условного срабатывания (I2 = I2ratio × In)
 // magMin/magMax — диапазон мгновенного расцепления (кратность In)
+// Типы защитных устройств (IEC 60898 / IEC 60947 / IEC 60269)
+// I2ratio — коэфф. условного срабатывания (I2 = I2ratio × In)
+// prefix — буква/обозначение перед номиналом (B32, C100, D250...)
 export const BREAKER_TYPES = {
-  MCB_B: { label: 'MCB кр. B', I2ratio: 1.45, magMin: 3,  magMax: 5,  desc: 'Освещение, розетки, длинные линии' },
-  MCB_C: { label: 'MCB кр. C', I2ratio: 1.45, magMin: 5,  magMax: 10, desc: 'Общее назначение, двигатели' },
-  MCB_D: { label: 'MCB кр. D', I2ratio: 1.45, magMin: 10, magMax: 20, desc: 'Тяжёлый пуск, трансформаторы' },
-  gG:    { label: 'Пр-ль gG',  I2ratio: 1.6,  magMin: 0,  magMax: 0,  desc: 'Предохранитель общего назначения' },
-  aM:    { label: 'Пр-ль aM',  I2ratio: 1.6,  magMin: 0,  magMax: 0,  desc: 'Предохранитель для двигателей' },
+  MCB_B:  { label: 'MCB кр. B',  prefix: 'B',  I2ratio: 1.45, magMin: 3,  magMax: 5,   desc: 'Освещение, розетки, длинные линии', maxIn: 63 },
+  MCB_C:  { label: 'MCB кр. C',  prefix: 'C',  I2ratio: 1.45, magMin: 5,  magMax: 10,  desc: 'Общее назначение', maxIn: 63 },
+  MCB_D:  { label: 'MCB кр. D',  prefix: 'D',  I2ratio: 1.45, magMin: 10, magMax: 20,  desc: 'Тяжёлый пуск, трансформаторы', maxIn: 63 },
+  MCCB:   { label: 'MCCB',       prefix: '',    I2ratio: 1.3,  magMin: 5,  magMax: 10,  desc: 'Автомат в литом корпусе (100-1600 А)', maxIn: 1600 },
+  ACB:    { label: 'ACB',        prefix: '',    I2ratio: 1.3,  magMin: 2,  magMax: 10,  desc: 'Воздушный автомат (630-6300 А)', maxIn: 6300 },
+  gG:     { label: 'Пр-ль gG',   prefix: '',    I2ratio: 1.6,  magMin: 0,  magMax: 0,   desc: 'Предохранитель общего назначения', maxIn: 1600 },
+  aM:     { label: 'Пр-ль aM',   prefix: '',    I2ratio: 1.6,  magMin: 0,  magMax: 0,   desc: 'Предохранитель для двигателей', maxIn: 1600 },
 };
 
 // IEC 60364-5-52 — допустимые длительные токи.
