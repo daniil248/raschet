@@ -784,7 +784,7 @@ export function initInteraction() {
       state.drag = null;
       // Членство в зоне обновляется только в момент отпускания мыши после
       // обычного drag'а узла (не самой зоны и не группового drag-all).
-      if (wasNodeDrag && draggedNodeId && !hadChildren) {
+      if (wasNodeDrag && draggedNodeId) {
         const dragged = state.nodes.get(draggedNodeId);
         if (dragged) {
           if (dragged.type === 'zone') {
@@ -796,7 +796,8 @@ export function initInteraction() {
             if (!findParentZone(dragged)) {
               tryAttachToZone(dragged);
             }
-          } else {
+          } else if (!hadChildren) {
+            // Обычные узлы (не зоны и не групповой drag)
             const currentZone = findZoneForMember(dragged);
             if (currentZone && !isNodeFullyInside(dragged, currentZone)) {
               currentZone.memberIds = (currentZone.memberIds || []).filter(id => id !== dragged.id);

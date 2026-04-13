@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.9.3';
+export const APP_VERSION = '0.9.4';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -300,7 +300,7 @@ export const DEFAULTS = {
     ambientC: 30,
     lengthM: 10,
     bundling: 'touching',
-    inputs: 1, outputs: 1,
+    inputs: 0, outputs: 0,
     // Визуальная трасса
     trayWidth: 40,           // ширина трассы, px
     trayAngle: 0,            // угол поворота, градусы (шаг 15°)

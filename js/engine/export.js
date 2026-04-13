@@ -1,12 +1,13 @@
-import { state, svg } from './state.js';
-import { NODE_H, SVG_NS, GLOBAL } from './constants.js';
+import { state, svg, uid } from './state.js';
+import { NODE_H, SVG_NS, GLOBAL, CONSUMER_CATALOG, DEFAULTS } from './constants.js';
 import { nodeWidth, nodeHeight } from './geometry.js';
 import { updateViewBox, render } from './render.js';
 import { snapshot, undo, redo, updateUndoButtons, notifyChange } from './history.js';
 import { serialize, deserialize } from './serialization.js';
 import { renderInspector } from './inspector.js';
 import { createMode } from './modes.js';
-import { flash } from './utils.js';
+import { flash, escHtml } from './utils.js';
+import { createNode } from './graph.js';
 
 export function initToolbar() {
   // Zoom
@@ -156,6 +157,131 @@ export function initToolbar() {
       box.style.top = (e.clientY - dy) + 'px';
     });
     window.addEventListener('mouseup', () => { dragging = false; });
+  });
+
+  // Справочник потребителей в левом меню
+  renderConsumerCatalog();
+  const addCatBtn = document.getElementById('btn-add-catalog-entry');
+  if (addCatBtn) {
+    addCatBtn.addEventListener('click', () => {
+      const label = prompt('Название нового типа потребителя:');
+      if (!label) return;
+      if (!Array.isArray(GLOBAL.customConsumerCatalog)) GLOBAL.customConsumerCatalog = [];
+      GLOBAL.customConsumerCatalog.push({
+        id: 'user_' + Date.now(),
+        label,
+        demandKw: 10, cosPhi: 0.92, kUse: 1, inrushFactor: 1, phase: '3ph',
+      });
+      notifyChange();
+      renderConsumerCatalog();
+    });
+  }
+}
+
+export function renderConsumerCatalog() {
+  const container = document.getElementById('consumer-catalog-list');
+  if (!container) return;
+  const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];
+  const h = [];
+  for (const cat of fullCatalog) {
+    const isCustom = cat.id.startsWith('user_');
+    h.push(`<div class="cat-item" data-cat-id="${cat.id}" draggable="true" style="display:flex;align-items:center;gap:4px;padding:4px 6px;margin:2px 0;border:1px solid #e0e0e0;border-radius:4px;cursor:grab;background:#fafafa">`);
+    h.push(`<span class="chip cns" style="flex-shrink:0"></span>`);
+    h.push(`<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(cat.label)}\n${cat.demandKw} kW, cos φ ${cat.cosPhi}, Ки ${cat.kUse}">${escHtml(cat.label)}</span>`);
+    h.push(`<span style="color:#999;font-size:10px;flex-shrink:0">${cat.demandKw}kW</span>`);
+    if (isCustom) {
+      h.push(`<button class="cat-edit" data-cat-edit="${cat.id}" style="background:none;border:none;cursor:pointer;padding:0 2px;font-size:12px;color:#999" title="Редактировать">✎</button>`);
+      h.push(`<button class="cat-del" data-cat-del="${cat.id}" style="background:none;border:none;cursor:pointer;padding:0 2px;font-size:12px;color:#ccc" title="Удалить">✕</button>`);
+    }
+    h.push('</div>');
+  }
+  container.innerHTML = h.join('');
+
+  // Drag & drop — при перетаскивании на холст создаётся потребитель с параметрами из каталога
+  container.querySelectorAll('.cat-item').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/raschet-catalog', item.dataset.catId);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+    item.addEventListener('click', e => {
+      if (e.target.closest('.cat-edit') || e.target.closest('.cat-del')) return;
+      // Click-to-add (mobile/shortcut)
+      const catId = item.dataset.catId;
+      const cat = fullCatalog.find(c => c.id === catId);
+      if (!cat) return;
+      const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
+      const cx = state.view.x + (W / 2) / state.view.zoom;
+      const cy = state.view.y + (H / 2) / state.view.zoom;
+      const nodeId = createNode('consumer', cx, cy);
+      const n = state.nodes.get(nodeId);
+      if (n) {
+        n.name = cat.label;
+        n.consumerSubtype = cat.id;
+        n.demandKw = cat.demandKw;
+        n.cosPhi = cat.cosPhi;
+        n.kUse = cat.kUse;
+        n.inrushFactor = cat.inrushFactor;
+        if (cat.phase) n.phase = cat.phase;
+        render();
+      }
+      document.body.classList.remove('palette-open');
+    });
+  });
+
+  // SVG drop handler for catalog items
+  svg.addEventListener('drop', e => {
+    const catId = e.dataTransfer.getData('text/raschet-catalog');
+    if (!catId) return;
+    e.preventDefault();
+    const cat = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])].find(c => c.id === catId);
+    if (!cat) return;
+    const rect = svg.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / state.view.zoom + state.view.x;
+    const y = (e.clientY - rect.top) / state.view.zoom + state.view.y;
+    const nodeId = createNode('consumer', x, y);
+    const n = state.nodes.get(nodeId);
+    if (n) {
+      n.name = cat.label;
+      n.consumerSubtype = cat.id;
+      n.demandKw = cat.demandKw;
+      n.cosPhi = cat.cosPhi;
+      n.kUse = cat.kUse;
+      n.inrushFactor = cat.inrushFactor;
+      if (cat.phase) n.phase = cat.phase;
+      render();
+    }
+  });
+
+  // Edit/delete for custom entries
+  container.querySelectorAll('.cat-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const catId = btn.dataset.catEdit;
+      const customs = GLOBAL.customConsumerCatalog || [];
+      const cat = customs.find(c => c.id === catId);
+      if (!cat) return;
+      const label = prompt('Название:', cat.label);
+      if (label === null) return;
+      cat.label = label;
+      const kw = prompt('Мощность, kW:', cat.demandKw);
+      if (kw !== null) cat.demandKw = Number(kw) || cat.demandKw;
+      const cos = prompt('cos φ:', cat.cosPhi);
+      if (cos !== null) cat.cosPhi = Number(cos) || cat.cosPhi;
+      const ku = prompt('Ки:', cat.kUse);
+      if (ku !== null) cat.kUse = Number(ku) ?? cat.kUse;
+      const inr = prompt('Кратность пуска:', cat.inrushFactor);
+      if (inr !== null) cat.inrushFactor = Number(inr) || cat.inrushFactor;
+      notifyChange();
+      renderConsumerCatalog();
+    });
+  });
+  container.querySelectorAll('.cat-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const catId = btn.dataset.catDel;
+      if (!confirm('Удалить тип из справочника?')) return;
+      GLOBAL.customConsumerCatalog = (GLOBAL.customConsumerCatalog || []).filter(c => c.id !== catId);
+      notifyChange();
+      renderConsumerCatalog();
+    });
   });
 }
 

@@ -48,7 +48,7 @@ import {
   saveNodeAsPreset, bindInspectorDeps,
 } from './inspector.js';
 import { initInteraction, bindInteractionDeps } from './interaction.js';
-import { initToolbar, autoLayout, exportSVG, exportPNG, fitAll } from './export.js';
+import { initToolbar, autoLayout, exportSVG, exportPNG, fitAll, renderConsumerCatalog } from './export.js';
 import { simTick, startSimLoop, stopSimLoop } from './simulation.js';
 import { generateReport, get3PhaseBalance } from './report.js';
 import { importLoadsTable } from './import.js';
@@ -60,9 +60,9 @@ initDOM();
 bindModeDeps({ snapshot, render, renderInspector, notifyChange });
 bindHistoryDeps({ serialize, deserialize, render, renderInspector });
 bindGraphDeps({ snapshot, render, renderInspector, notifyChange, selectNode, findZoneForMember });
-bindSerializationDeps({ clearUndoStack, render, renderInspector, updateViewBox });
+bindSerializationDeps({ clearUndoStack, render, renderInspector, updateViewBox, renderConsumerCatalog });
 bindRenderDeps({ renderInspector });
-bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique });
+bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique, renderConsumerCatalog });
 bindInteractionDeps({ undo, redo, fitAll, serialize });
 
 // === Инициализация UI ===
