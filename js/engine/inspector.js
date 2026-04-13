@@ -2371,7 +2371,8 @@ export function renderInspectorConn(c) {
       `Напряжение: <b>${c._voltage || '-'} В</b>` +
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div>`);
-    // Допустимая нагрузка с учётом автомата и кабеля
+    // Блок ПРОВОДНИК — справочная информация
+    h.push('<h4 style="margin:12px 0 6px;font-size:12px">Проводник</h4>');
     if (c._cableSize || c._busbarNom || c._cableIz) {
       const par = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._threePhase ? 5 : 3);
@@ -2415,7 +2416,7 @@ export function renderInspectorConn(c) {
   const isBusbar = ct === 'busbar';
 
   h.push('<details class="inspector-section">');
-  h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Проводник</summary>');
+  h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Подбор проводника</summary>');
   h.push(field('Тип проводника',
     `<select data-conn-prop="cableType">
       <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный</option>
