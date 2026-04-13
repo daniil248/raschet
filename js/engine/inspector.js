@@ -2402,6 +2402,7 @@ export function renderInspectorConn(c) {
         (!inLeIz ? '<span style="color:#c62828;font-weight:600">⚠ In > Iz — кабель не защищён автоматом!</span><br>' : '') +
         (!i2LeIz ? '<span style="color:#c62828;font-weight:600">⚠ I2 > 1.45×Iz — перегрузка не отключится вовремя!</span><br>' : '') +
         (oversize ? '<span style="color:#e65100">ℹ Кабель значительно завышен (Iz > 2×In)</span><br>' : '') +
+        (c._breakerUndersize ? '<span style="color:#c62828;font-weight:600">⚠ Автомат меньше расчётного тока — возможно ложное срабатывание!</span><br>' : '') +
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
         `<span class="muted">IEC 60364-4-43: Ib ≤ In ≤ Iz, I2 ≤ 1.45×Iz</span>` +
         `</div>`);

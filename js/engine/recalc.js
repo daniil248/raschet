@@ -1039,12 +1039,24 @@ function recalc() {
         c._cableKtotal = kT * kG;
       } else {
         // Авто-подбор кабеля
-        // Если ручной автомат > расчётного тока, кабель должен выдержать In автомата
-        let sizingCurrent = maxCurrent;
-        if (c.manualBreakerIn && c.manualBreakerIn > maxCurrent) {
-          sizingCurrent = c.manualBreakerIn;
-        }
+        // IEC 60364-4-43: Iz ≥ In ≥ Ib
+        // При ручном автомате: кабель должен выдержать In автомата на КАЖДУЮ линию.
+        // sizingCurrent = max(Ib, In_per_line × parallel) — передаём как полный ток,
+        // selectCableSize разделит на parallel и подберёт кабель.
         const breakerCurve = c.breakerCurve || 'MCB_C';
+        const brkI2r = (BREAKER_TYPES[breakerCurve] || BREAKER_TYPES.MCB_C).I2ratio;
+        let sizingCurrent = maxCurrent;
+        if (c.manualBreakerIn) {
+          // Ручной автомат задаёт In на ОДНУ линию. Кабель должен обеспечить Iz ≥ In.
+          // Для gG/aM (I2ratio=1.6): Iz ≥ In × I2ratio/1.45
+          const minIzPerLine = c.manualBreakerIn * brkI2r / 1.45;
+          const minTotalCurrent = minIzPerLine * conductorsInParallel;
+          sizingCurrent = Math.max(maxCurrent, minTotalCurrent);
+          // Предупреждение: автомат меньше расчётного тока
+          c._breakerUndersize = (c.manualBreakerIn < (maxCurrent / conductorsInParallel));
+        } else {
+          c._breakerUndersize = false;
+        }
         const sel = selectCableSize(sizingCurrent, {
           material, insulation, method, ambientC: ambient, grouping, bundling,
           cableType, maxSize: GLOBAL.maxCableSize,
