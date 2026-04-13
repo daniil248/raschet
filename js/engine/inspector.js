@@ -80,7 +80,11 @@ export function renderInspectorNode(n) {
       return `<option value="${key}"${sel}>${escHtml(CHANNEL_TYPES[key].label)}</option>`;
     }).join('');
     h.push(field('Тип канала', `<select data-prop="channelType">${ctOpts}</select>`));
+    h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
 
+    // Условия прокладки — сворачиваемый
+    h.push('<details class="inspector-section">');
+    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
     const bd = n.bundling || CHANNEL_TYPES[ct]?.bundlingDefault || 'touching';
     h.push(field('Расположение кабелей',
       `<select data-prop="bundling">
@@ -122,7 +126,7 @@ export function renderInspectorNode(n) {
     h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:10px">«С зазором» — группировка не учитывается. «Плотно» — базовый K_group. «В пучке» — дополнительное понижение ×0.85.</div>');
 
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-prop="ambientC" value="${n.ambientC || 30}">`));
-    h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
+    h.push('</details>');
 
     // Статистика использования канала — считаем и линии, и суммарные цепи
     let lines = 0, circuits = 0;
@@ -1892,8 +1896,9 @@ export function renderInspectorConn(c) {
   h.push('</div>');
 
   if (!isBusbar) {
-    // === Условия прокладки (только для кабелей) ===
-    h.push('<div class="inspector-section"><h4>Условия прокладки</h4>');
+    // === Условия прокладки (сворачиваемый) ===
+    h.push('<details class="inspector-section">')
+    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
     const curMethod = c.installMethod || GLOBAL.defaultInstallMethod;
     const curBundling = c.bundling || 'touching';
     const methodToChannel = { B1: 'conduit', B2: 'tray_solid', C: 'wall', E: 'tray_perf', F: 'tray_ladder', D1: 'ground', D2: 'ground_direct' };
@@ -1924,7 +1929,7 @@ export function renderInspectorConn(c) {
       </select>`));
     h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" data-conn-prop="ambientC" value="${c.ambientC || GLOBAL.defaultAmbient}">`));
     h.push(field('Цепей в группе', `<input type="number" min="1" max="20" step="1" data-conn-prop="grouping" value="${c.grouping || GLOBAL.defaultGrouping}">`));
-    h.push('</div>');
+    h.push('</details>');
   }
 
   // Результат подбора проводника
