@@ -1421,13 +1421,6 @@ export function openPanelControlModal(n) {
     h += '<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:6px;font-size:11px;font-weight:600;color:#e65100">⚠ ЩИТ В РЕЖИМЕ ОБСЛУЖИВАНИЯ</div>';
   }
 
-  // --- +/- входы/выходы ---
-  h += '<div style="display:flex;gap:6px;margin-top:10px;justify-content:center">';
-  h += `<button type="button" class="full-btn" id="pc-add-in" style="flex:1;font-size:11px">+ Вход</button>`;
-  h += `<button type="button" class="full-btn" id="pc-del-in" style="flex:1;font-size:11px">− Вход</button>`;
-  h += `<button type="button" class="full-btn" id="pc-add-out" style="flex:1;font-size:11px">+ Выход</button>`;
-  h += `<button type="button" class="full-btn" id="pc-del-out" style="flex:1;font-size:11px">− Выход</button>`;
-  h += '</div>';
 
   body.innerHTML = h;
 
@@ -1524,20 +1517,6 @@ export function openPanelControlModal(n) {
     }
     return false;
   }
-  bind('pc-add-in', () => { snapshot('panel-io:' + n.id); n.inputs = (n.inputs || 0) + 1; if (!Array.isArray(n.priorities)) n.priorities = []; n.priorities.push(n.priorities.length + 1); openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
-  bind('pc-del-in', () => {
-    if ((n.inputs || 0) <= 1) return;
-    const lastPort = n.inputs - 1;
-    if (hasConnOnPort(n.id, 'in', lastPort)) { flash('Нельзя удалить вход с подключённой линией'); return; }
-    snapshot('panel-io:' + n.id); n.inputs--; openPanelControlModal(n); _render(); renderInspector(); notifyChange();
-  });
-  bind('pc-add-out', () => { snapshot('panel-io:' + n.id); n.outputs = (n.outputs || 0) + 1; openPanelControlModal(n); _render(); renderInspector(); notifyChange(); });
-  bind('pc-del-out', () => {
-    if ((n.outputs || 0) <= 1) return;
-    const lastPort = n.outputs - 1;
-    if (hasConnOnPort(n.id, 'out', lastPort)) { flash('Нельзя удалить выход с подключённой линией'); return; }
-    snapshot('panel-io:' + n.id); n.outputs--; openPanelControlModal(n); _render(); renderInspector(); notifyChange();
-  });
 
   // Закрыть
   const applyBtn = document.getElementById('panel-control-apply');
