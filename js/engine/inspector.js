@@ -1442,8 +1442,14 @@ export function openPanelParamsModal(n) {
   const body = document.getElementById('panel-params-body');
   if (!body) return;
   const h = [];
-  // Обозначение + Имя
-  h.push(field('Обозначение', `<div style="font-size:13px;font-weight:600">${escHtml(effectiveTag(n))}</div>`));
+  // Обозначение (редактируемое) + Имя
+  h.push(field('Обозначение', `<input type="text" id="pp-tag" value="${escAttr(n.tag || '')}">`));
+  {
+    const eff = effectiveTag(n);
+    if (eff && eff !== n.tag) {
+      h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Полное: <b>${escHtml(eff)}</b></div>`);
+    }
+  }
   h.push(field('Имя', `<input type="text" id="pp-name" value="${escAttr(n.name || '')}">`));
 
   // Тип щита — всегда виден
@@ -1471,7 +1477,17 @@ export function openPanelParamsModal(n) {
     h.push('</div>');
     h.push('<div style="display:flex;gap:12px">');
     h.push('<div style="flex:1">' + field('Ксим', `<input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}">`) + '</div>');
-    h.push('<div style="flex:1">' + field('In, А', `<input type="number" id="pp-capacityA" min="0" step="1" value="${n.capacityA ?? 160}">`) + '</div>');
+    {
+      const curA = n.capacityA ?? 160;
+      let opts = '';
+      let hasCur = false;
+      for (const v of BREAKER_SERIES) {
+        if (v === curA) hasCur = true;
+        opts += `<option value="${v}"${v === curA ? ' selected' : ''}>${v} А</option>`;
+      }
+      if (!hasCur) opts = `<option value="${curA}" selected>${curA} А</option>` + opts;
+      h.push('<div style="flex:1">' + field('In, А', `<select id="pp-capacityA">${opts}</select>`) + '</div>');
+    }
     h.push('</div>');
     if (n._capacityKwFromA) {
       h.push(`<div class="muted" style="font-size:11px;margin-top:-8px;margin-bottom:10px">Эквивалент: <b>${fmt(n._capacityKwFromA)} kW</b></div>`);
@@ -1716,6 +1732,16 @@ export function openPanelParamsModal(n) {
   const applyBtn = document.getElementById('panel-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
     if (n.id !== '__preset_edit__') snapshot('panel-params:' + n.id);
+    // Обозначение
+    const ppTag = document.getElementById('pp-tag')?.value?.trim();
+    if (ppTag && ppTag !== n.tag) {
+      if (_isTagUnique(ppTag, n.id)) {
+        n.tag = ppTag;
+      } else {
+        flash(`Обозначение «${ppTag}» уже занято`, 'error');
+        return;
+      }
+    }
     const ppName = document.getElementById('pp-name')?.value?.trim();
     if (ppName) n.name = ppName;
     const curSm = document.getElementById('pp-switchMode')?.value || n.switchMode;
