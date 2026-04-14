@@ -1612,12 +1612,320 @@ function svgBreaker(x, topY, on, color, offColor) {
   return { svg: s, height: h };
 }
 
+// ================= Секционный щит — SVG визуализация =================
+function _renderSectionedPanelControl(n, body) {
+  const sections = Array.isArray(n.sections) ? n.sections : [];
+  const busTies = Array.isArray(n.busTies) ? n.busTies : [];
+  if (!sections.length) {
+    body.innerHTML = '<div class="muted" style="padding:20px;text-align:center">Секции не настроены. Откройте «Параметры щита» и задайте секции.</div>';
+    document.getElementById('modal-panel-control').classList.remove('hidden');
+    return;
+  }
+  const tieStates = Array.isArray(n._busTieStates) ? n._busTieStates : busTies.map(t => !!t.closed);
+  if (!Array.isArray(n._busTieStates)) n._busTieStates = tieStates;
+
+  // Размеры
+  const secW = 140; // ширина секции
+  const tieW = 50;  // промежуток для СВ
+  const totalW = sections.length * secW + (sections.length - 1) * tieW + 40;
+  const brkH = 28;
+  const inBrkY = 30;
+  const busY = inBrkY + brkH + 20;
+  const outBrkY = busY + 20;
+  const maxOuts = Math.max(...sections.map(s => (s.outputPorts || []).length), 1);
+  const svgH = outBrkY + brkH + 20 + maxOuts * 14;
+
+  // Определяем питание секций
+  const sectionPowered = new Array(sections.length).fill(false);
+  for (let si = 0; si < sections.length; si++) {
+    for (const inPort of (sections[si].inputPorts || [])) {
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId === n.id && c.to.port === inPort && (c._state === 'active' || c._state === 'powered')) {
+          sectionPowered[si] = true;
+        }
+      }
+    }
+  }
+
+  // BFS: через замкнутые СВ определяем какие секции запитаны
+  const sectionFed = new Array(sections.length).fill(false);
+  for (let si = 0; si < sections.length; si++) {
+    if (!sectionPowered[si]) continue;
+    // BFS от запитанной секции через замкнутые СВ
+    const queue = [si];
+    const visited = new Set();
+    while (queue.length) {
+      const cur = queue.shift();
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      sectionFed[cur] = true;
+      for (let ti = 0; ti < busTies.length; ti++) {
+        if (!tieStates[ti]) continue;
+        const [a, b] = busTies[ti].between;
+        if (a === cur && !visited.has(b)) queue.push(b);
+        if (b === cur && !visited.has(a)) queue.push(a);
+      }
+    }
+  }
+
+  let h = '';
+  h += `<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`;
+  h += `<div class="muted" style="font-size:11px;margin-bottom:8px">Секционный щит · ${sections.length} секций · ${busTies.length} СВ</div>`;
+
+  // Зум
+  h += `<div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:4px 0">`;
+  h += `<button type="button" id="pc-zoom-out" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">−</button>`;
+  h += `<span id="pc-zoom-label" style="font-size:11px;color:#666;min-width:36px;text-align:center">100%</span>`;
+  h += `<button type="button" id="pc-zoom-in" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">+</button>`;
+  h += `</div>`;
+  h += `<div id="pc-svg-wrap" style="text-align:center;overflow:auto;padding:10px 0;max-height:50vh">`;
+  h += `<svg id="pc-svg" width="${totalW}" height="${svgH}" viewBox="0 0 ${totalW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
+
+  // Рисуем каждую секцию
+  for (let si = 0; si < sections.length; si++) {
+    const sec = sections[si];
+    const sx = 20 + si * (secW + tieW); // начало секции по X
+    const fed = sectionFed[si];
+    const hasPower = sectionPowered[si];
+    const busCol = fed ? '#e53935' : '#bbb';
+
+    // Шина секции
+    h += `<rect x="${sx}" y="${busY - 3}" width="${secW}" height="6" fill="${busCol}" rx="1"/>`;
+    h += `<text x="${sx + secW / 2}" y="${busY + 16}" text-anchor="middle" fill="#666" font-size="9">Секция ${si + 1}</text>`;
+
+    // Входы секции
+    const inPorts = sec.inputPorts || [];
+    for (let ii = 0; ii < inPorts.length; ii++) {
+      const port = inPorts[ii];
+      const ix = sx + secW / (inPorts.length + 1) * (ii + 1);
+      // Линия сверху → автомат → шина
+      h += `<line x1="${ix}" y1="2" x2="${ix}" y2="${inBrkY}" stroke="#999" stroke-width="2"/>`;
+      // Лампочка
+      const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+      const brkOn = inBrk[port] !== false;
+      const lampCol = brkOn && hasPower ? '#4caf50' : '#e53935';
+      h += `<circle cx="${ix}" cy="6" r="4" fill="${lampCol}" opacity="0.6"/>`;
+      // Автомат IEC
+      const brk = svgBreaker(ix, inBrkY, brkOn, busCol, '#ff9800');
+      h += brk.svg;
+      // Подпись
+      let feederTag = `Вх${port + 1}`;
+      for (const c of state.conns.values()) {
+        if (c.to.nodeId === n.id && c.to.port === port) {
+          const from = state.nodes.get(c.from.nodeId);
+          if (from) feederTag = effectiveTag(from) || from.name || feederTag;
+          break;
+        }
+      }
+      h += `<text x="${ix}" y="${inBrkY - 6}" text-anchor="middle" fill="#333" font-size="8">${escHtml(feederTag)}</text>`;
+      // Клик-зона
+      h += `<rect x="${ix - 14}" y="${inBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-in-toggle="${port}"/>`;
+    }
+
+    // Выходы секции
+    const outPorts = sec.outputPorts || [];
+    for (let oi = 0; oi < outPorts.length; oi++) {
+      const port = outPorts[oi];
+      const ox = sx + secW / (outPorts.length + 1) * (oi + 1);
+      // Линия шина → автомат → вниз
+      h += `<line x1="${ox}" y1="${busY + 3}" x2="${ox}" y2="${outBrkY}" stroke="${busCol}" stroke-width="2"/>`;
+      const outBrk = Array.isArray(n.breakerStates) ? n.breakerStates : [];
+      const outOn = outBrk[port] !== false;
+      const brk = svgBreaker(ox, outBrkY, outOn, busCol, '#ff9800');
+      h += brk.svg;
+
+      // Номинал автомата
+      let brkLabel = '';
+      for (const cc of state.conns.values()) {
+        if (cc.from.nodeId === n.id && cc.from.port === port) {
+          if (cc._breakerIn) brkLabel = `C${cc._breakerIn}А`;
+          else if (cc._breakerPerLine) brkLabel = `C${cc._breakerPerLine}А`;
+          break;
+        }
+      }
+      if (brkLabel) {
+        h += `<text x="${ox - 12}" y="${outBrkY + brkH / 2}" fill="#ef6c00" font-size="7" text-anchor="end" dominant-baseline="central">${brkLabel}</text>`;
+      }
+
+      // Подпись выхода
+      let destTag = '';
+      for (const cc of state.conns.values()) {
+        if (cc.from.nodeId === n.id && cc.from.port === port) {
+          const to = state.nodes.get(cc.to.nodeId);
+          destTag = to ? (effectiveTag(to) || to.name || '') : '';
+          break;
+        }
+      }
+      h += `<line x1="${ox}" y1="${outBrkY + brkH}" x2="${ox}" y2="${outBrkY + brkH + 10}" stroke="${outOn && fed ? busCol : '#bbb'}" stroke-width="2"/>`;
+      if (destTag) {
+        h += `<text x="${ox}" y="${outBrkY + brkH + 18}" text-anchor="middle" fill="#666" font-size="7" transform="rotate(-90 ${ox} ${outBrkY + brkH + 18})">${escHtml(destTag)}</text>`;
+      }
+      // Клик-зона
+      h += `<rect x="${ox - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-out-toggle="${port}"/>`;
+    }
+  }
+
+  // Рисуем СВ между секциями
+  for (let ti = 0; ti < busTies.length; ti++) {
+    const tie = busTies[ti];
+    const [secA, secB] = tie.between;
+    const tieOn = tieStates[ti];
+    // X позиция: между секциями secA и secB
+    const xA = 20 + secA * (secW + tieW) + secW;
+    const xB = 20 + secB * (secW + tieW);
+    const mx = (xA + xB) / 2;
+
+    const col = tieOn ? '#e53935' : '#bbb';
+    // Горизонтальные линии от шин к СВ
+    h += `<line x1="${xA}" y1="${busY}" x2="${mx - 10}" y2="${busY}" stroke="${col}" stroke-width="2"/>`;
+    h += `<line x1="${mx + 10}" y1="${busY}" x2="${xB}" y2="${busY}" stroke="${col}" stroke-width="2"/>`;
+
+    // СВ символ (горизонтальный автомат)
+    if (tieOn) {
+      h += `<line x1="${mx - 10}" y1="${busY}" x2="${mx + 10}" y2="${busY}" stroke="${col}" stroke-width="3"/>`;
+    } else {
+      h += `<line x1="${mx - 10}" y1="${busY}" x2="${mx + 4}" y2="${busY - 10}" stroke="${col}" stroke-width="2.5"/>`;
+    }
+    // Крестик
+    h += `<line x1="${mx - 3}" y1="${busY - 4}" x2="${mx + 3}" y2="${busY + 4}" stroke="${col}" stroke-width="1.5"/>`;
+    h += `<line x1="${mx + 3}" y1="${busY - 4}" x2="${mx - 3}" y2="${busY + 4}" stroke="${col}" stroke-width="1.5"/>`;
+
+    // Подпись
+    h += `<text x="${mx}" y="${busY - 14}" text-anchor="middle" fill="${tie.auto ? '#1976d2' : '#666'}" font-size="8">${tie.auto ? 'авто' : 'ручн.'}</text>`;
+    h += `<text x="${mx}" y="${busY + 24}" text-anchor="middle" fill="#666" font-size="8">СВ${ti + 1}</text>`;
+
+    // Клик-зона
+    h += `<rect x="${mx - 16}" y="${busY - 16}" width="32" height="32" fill="transparent" style="cursor:pointer" data-sec-tie-toggle="${ti}"/>`;
+  }
+
+  h += '</svg></div>';
+
+  // Обслуживание
+  h += `<div class="field check" style="margin-top:8px"><input type="checkbox" id="pc-maintenance"${n.maintenance ? ' checked' : ''}><label>Режим обслуживания (полностью обесточен)</label></div>`;
+
+  body.innerHTML = h;
+
+  // Зум
+  {
+    let pcZoom = _pcZoomState.zoom;
+    const pcSvg = document.getElementById('pc-svg');
+    const pcLabel = document.getElementById('pc-zoom-label');
+    const pcWrap = document.getElementById('pc-svg-wrap');
+    const applyZoom = () => {
+      if (pcSvg) { pcSvg.style.width = (totalW * pcZoom) + 'px'; pcSvg.style.height = (svgH * pcZoom) + 'px'; }
+      if (pcLabel) pcLabel.textContent = Math.round(pcZoom * 100) + '%';
+      _pcZoomState.zoom = pcZoom;
+    };
+    applyZoom();
+    const zIn = document.getElementById('pc-zoom-in');
+    const zOut = document.getElementById('pc-zoom-out');
+    if (zIn) zIn.onclick = () => { pcZoom = Math.min(3, pcZoom * 1.25); applyZoom(); };
+    if (zOut) zOut.onclick = () => { pcZoom = Math.max(0.3, pcZoom / 1.25); applyZoom(); };
+  }
+
+  // Fullscreen
+  const fsBtn = document.getElementById('pc-fullscreen');
+  const modalBox = body.closest('.modal-box');
+  if (fsBtn && modalBox) {
+    if (_pcZoomState.fullscreen) { modalBox.classList.add('modal-fullscreen'); fsBtn.textContent = '⤡'; }
+    fsBtn.onclick = () => { modalBox.classList.toggle('modal-fullscreen'); _pcZoomState.fullscreen = modalBox.classList.contains('modal-fullscreen'); fsBtn.textContent = _pcZoomState.fullscreen ? '⤡' : '⤢'; };
+  }
+
+  // Клик по входным автоматам
+  body.querySelectorAll('[data-sec-in-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const port = Number(el.dataset.secInToggle);
+      if (!Array.isArray(n.inputBreakerStates)) n.inputBreakerStates = new Array(n.inputs || 0).fill(true);
+      while (n.inputBreakerStates.length < (n.inputs || 0)) n.inputBreakerStates.push(true);
+      snapshot('sec-in:' + n.id + ':' + port);
+      n.inputBreakerStates[port] = !n.inputBreakerStates[port];
+      _render(); notifyChange();
+      openPanelControlModal(n);
+    });
+  });
+
+  // Клик по выходным автоматам
+  body.querySelectorAll('[data-sec-out-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const port = Number(el.dataset.secOutToggle);
+      if (!Array.isArray(n.breakerStates)) n.breakerStates = new Array(n.outputs || 0).fill(true);
+      while (n.breakerStates.length < (n.outputs || 0)) n.breakerStates.push(true);
+      snapshot('sec-out:' + n.id + ':' + port);
+      n.breakerStates[port] = !n.breakerStates[port];
+      _render(); notifyChange();
+      openPanelControlModal(n);
+    });
+  });
+
+  // Клик по СВ — с блокировкой
+  body.querySelectorAll('[data-sec-tie-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ti = Number(el.dataset.secTieToggle);
+      const tie = busTies[ti];
+      if (!tie) return;
+      const wantClose = !tieStates[ti];
+      // Блокировка: нельзя замкнуть СВ если оба ввода секций живы
+      if (wantClose) {
+        const [secA, secB] = tie.between;
+        // BFS: найти все секции, которые будут соединены через этот СВ
+        const connected = new Set();
+        const q = [secA, secB];
+        const newStates = [...tieStates];
+        newStates[ti] = true;
+        while (q.length) {
+          const cur = q.shift();
+          if (connected.has(cur)) continue;
+          connected.add(cur);
+          for (let tj = 0; tj < busTies.length; tj++) {
+            if (!newStates[tj]) continue;
+            const [a, b] = busTies[tj].between;
+            if (a === cur && !connected.has(b)) q.push(b);
+            if (b === cur && !connected.has(a)) q.push(a);
+          }
+        }
+        // Считаем живые вводы в объединённой группе
+        let liveCount = 0;
+        for (const si of connected) {
+          if (sectionPowered[si]) liveCount++;
+        }
+        if (liveCount > 1) {
+          flash('Блокировка: нельзя замкнуть СВ — два живых ввода будут соединены!', 'error');
+          return;
+        }
+      }
+      snapshot('sec-tie:' + n.id + ':' + ti);
+      n._busTieStates[ti] = wantClose;
+      _render(); notifyChange();
+      openPanelControlModal(n);
+    });
+  });
+
+  // Обслуживание
+  const maintCb = document.getElementById('pc-maintenance');
+  if (maintCb) {
+    maintCb.addEventListener('change', () => {
+      snapshot('maintenance:' + n.id);
+      n.maintenance = maintCb.checked;
+      _render(); notifyChange();
+      openPanelControlModal(n);
+    });
+  }
+
+  document.getElementById('modal-panel-control').classList.remove('hidden');
+}
+
 // Сохраняемое состояние зума модалки управления щитом
 let _pcZoomState = { zoom: 1, fullscreen: false };
 
 export function openPanelControlModal(n) {
   const body = document.getElementById('panel-control-body');
   if (!body) return;
+
+  // Секционный щит — отдельный рендер
+  if (n.switchMode === 'sectioned') {
+    _renderSectionedPanelControl(n, body);
+    return;
+  }
 
   const inCount = n.inputs || 0;
   const outCount = n.outputs || 0;
