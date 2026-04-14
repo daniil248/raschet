@@ -1845,11 +1845,9 @@ function _renderSectionedPanelControl(n, body) {
   const sectionPowered = new Array(sections.length).fill(false);
   for (let si = 0; si < sections.length; si++) {
     const secNode = sections[si];
-    // Секция запитана если хотя бы один вход имеет активную связь
     for (const c of state.conns.values()) {
       if (c.to.nodeId === secNode.id && (c._state === 'active' || c._state === 'powered') && !c._virtual) {
         sectionPowered[si] = true;
-        }
       }
     }
   }
@@ -1915,7 +1913,7 @@ function _renderSectionedPanelControl(n, body) {
     const inCount = sec.inputs || 1;
     for (let ii = 0; ii < inCount; ii++) {
       const port = ii;
-      const ix = sx + secW / (inPorts.length + 1) * (ii + 1);
+      const ix = sx + secW / (inCount + 1) * (ii + 1);
       // Линия сверху → автомат → шина
       h += `<line x1="${ix}" y1="2" x2="${ix}" y2="${inBrkY}" stroke="#999" stroke-width="2"/>`;
       // Лампочка
@@ -1944,7 +1942,7 @@ function _renderSectionedPanelControl(n, body) {
     const outCount = sec.outputs || 1;
     for (let oi = 0; oi < outCount; oi++) {
       const port = oi;
-      const ox = sx + secW / (outPorts.length + 1) * (oi + 1);
+      const ox = sx + secW / (outCount + 1) * (oi + 1);
       // Линия шина → автомат → вниз
       h += `<line x1="${ox}" y1="${busY + 3}" x2="${ox}" y2="${outBrkY}" stroke="${busCol}" stroke-width="2"/>`;
       const outBrk = Array.isArray(sec.breakerStates) ? sec.breakerStates : [];
