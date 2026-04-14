@@ -310,17 +310,25 @@ export function renderNodes() {
 
     // Групповой потребитель — стопка карточек
     const isGroup = n.type === 'consumer' && (n.count || 1) > 1;
-    const groupPeek = isGroup ? 24 : 0; // высота выступающей части нижней карточки
+    const hasOuts = nodeOutputCount(n) > 0;
+    const groupBarH = 20; // высота нижней полоски
+    const groupBarY = hasOuts ? NODE_H + PORT_R * 2 + 2 : NODE_H; // ниже порта если есть выходы
     if (isGroup) {
-      const ox = 6, oy = groupPeek; // сдвиг нижней карточки
-      // Нижняя карточка (полная высота, сдвинута вниз и вправо)
+      const ox = 4; // сдвиг нижней карточки вправо
+      // Тень стопки — прямоугольник сзади, сдвинутый вправо и вниз
       g.appendChild(el('rect', {
-        class: 'node-body', x: ox, y: oy, width: w, height: NODE_H, rx: 6,
+        class: 'node-body', x: ox, y: ox, width: w, height: NODE_H, rx: 6,
       }));
-      // Текст группы на выступающей части нижней карточки
+      // Нижняя полоска с данными группы
+      g.appendChild(el('rect', {
+        class: 'node-body', x: ox, y: groupBarY, width: w, height: groupBarH, rx: 4,
+      }));
+      // Текст группы — выровнен по правому краю
       const totalKw = (n.count || 1) * (n.demandKw || 0);
-      g.appendChild(text(12 + ox, NODE_H + oy - 6,
-        `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`, 'node-load'));
+      const gt = text(w + ox - 8, groupBarY + groupBarH - 5,
+        `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`, 'node-load');
+      gt.setAttribute('text-anchor', 'end');
+      g.appendChild(gt);
     }
     // Верхняя карточка (основная, полностью непрозрачная)
     g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));

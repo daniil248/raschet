@@ -1261,7 +1261,7 @@ export function openConsumerParamsModal(n) {
           demandKw: n.outdoorKw,
           cosPhi: n.outdoorCosPhi,
           linkedIndoorId: n.id,
-          inputs: 1, outputs: 0, count: 1,
+          inputs: 1, outputs: 0, count: n.count || 1,
         };
         outdoor.tag = nextFreeTag('consumer');
         state.nodes.set(outId, outdoor);
@@ -1286,6 +1286,7 @@ export function openConsumerParamsModal(n) {
         if (outdoor) {
           outdoor.demandKw = n.outdoorKw;
           outdoor.cosPhi = n.outdoorCosPhi;
+          outdoor.count = n.count || 1;
         }
       }
     } else if (n.id !== '__preset_edit__') {
