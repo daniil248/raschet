@@ -257,6 +257,19 @@ function simTick() {
       continue;
     }
 
+    // Все входы мёртвые — некуда переключать, сброс таймеров
+    if (desiredPorts.size === 0) {
+      if (n._avrSwitchStartedAt) {
+        n._avrSwitchStartedAt = 0;
+        n._avrSwitchCountdown = 0;
+        n._avrInterlockStartedAt = 0;
+        n._avrInterlockCountdown = 0;
+        n._avrDisconnected = false;
+        changed = true;
+      }
+      continue;
+    }
+
     // Нужно переключение
     const avrDelay = Math.max(0, Number(n.avrDelaySec) || 2);
     const interlockDelay = Math.max(0, Number(n.avrInterlockSec) || 1);
