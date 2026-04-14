@@ -1278,7 +1278,21 @@ function recalc() {
   const RHO = { Cu: 0.0178, Al: 0.0285 }; // Ом·мм²/м
 
   for (const n of state.nodes.values()) {
-    if (n.type === 'panel') {
+    if (n.type === 'panel' && n.switchMode === 'sectioned') {
+      // Многосекционный контейнер — суммируем нагрузку секций
+      const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
+      let totalLoad = 0, totalMax = 0;
+      for (const sid of secIds) {
+        const s = state.nodes.get(sid);
+        if (s) {
+          totalLoad += s._loadKw || 0;
+          totalMax += s._maxLoadKw || 0;
+        }
+      }
+      n._loadKw = totalLoad;
+      n._maxLoadKw = totalMax;
+      n._powered = secIds.some(sid => state.nodes.get(sid)?._powered);
+    } else if (n.type === 'panel') {
       // cos φ из downstream PQ (для взвешенного среднего),
       // но P/Q/S привязаны к фактической _loadKw (walkUp уже учёл share)
       const pq = downstreamPQ(n.id);

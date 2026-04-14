@@ -1928,8 +1928,6 @@ function _renderSectionedPanelControl(n, body) {
     const hasPower = sectionPowered[si];
     const busCol = fed ? '#e53935' : '#bbb';
 
-    // Рамка секции (пунктирная)
-    h += `<rect x="${sx - 4}" y="0" width="${secW + 8}" height="${svgH - 2}" fill="none" stroke="#ccc" stroke-width="1" stroke-dasharray="4 3" rx="4"/>`;
     // Подпись секции
     const secLabel = sec.name || `Секция ${si + 1}`;
     h += `<text x="${sx + secW / 2}" y="${svgH - 4}" text-anchor="middle" fill="#999" font-size="8">${escHtml(secLabel)}</text>`;
@@ -2090,8 +2088,28 @@ function _renderSectionedPanelControl(n, body) {
       if (!sec) return;
       if (!Array.isArray(sec.inputBreakerStates)) sec.inputBreakerStates = new Array(sec.inputs || 0).fill(true);
       while (sec.inputBreakerStates.length < (sec.inputs || 0)) sec.inputBreakerStates.push(true);
+      const wantOn = !sec.inputBreakerStates[port];
+      // Блокировка: при включении автомата — проверить что СВ к смежной секции
+      // не соединит два источника
+      if (wantOn) {
+        for (let ti = 0; ti < busTies.length; ti++) {
+          if (!tieStates[ti]) continue; // СВ разомкнут — ОК
+          const [a, b] = busTies[ti].between;
+          const otherSi = a === si ? b : (b === si ? a : -1);
+          if (otherSi < 0) continue;
+          const otherSec = sections[otherSi];
+          if (!otherSec) continue;
+          // Проверяем: есть ли у смежной секции включённые автоматы?
+          const otherBrk = Array.isArray(otherSec.inputBreakerStates) ? otherSec.inputBreakerStates : [];
+          const otherHasOn = Array.from({length: otherSec.inputs || 1}, (_, i) => otherBrk[i] !== false).some(Boolean);
+          if (otherHasOn) {
+            flash('Блокировка: СВ замкнут — сначала отключите СВ или вводные автоматы смежной секции!', 'error');
+            return;
+          }
+        }
+      }
       snapshot('sec-in:' + sec.id + ':' + port);
-      sec.inputBreakerStates[port] = !sec.inputBreakerStates[port];
+      sec.inputBreakerStates[port] = wantOn;
       _render(); notifyChange();
       openPanelControlModal(n);
     });
@@ -2120,32 +2138,22 @@ function _renderSectionedPanelControl(n, body) {
       const tie = busTies[ti];
       if (!tie) return;
       const wantClose = !tieStates[ti];
-      // Блокировка: нельзя замкнуть СВ если оба ввода секций живы
+      // Блокировка: СВ можно замкнуть только если ВСЕ вводные автоматы
+      // хотя бы ОДНОЙ из смежных секций выключены
       if (wantClose) {
-        const [secA, secB] = tie.between;
-        // BFS: найти все секции, которые будут соединены через этот СВ
-        const connected = new Set();
-        const q = [secA, secB];
-        const newStates = [...tieStates];
-        newStates[ti] = true;
-        while (q.length) {
-          const cur = q.shift();
-          if (connected.has(cur)) continue;
-          connected.add(cur);
-          for (let tj = 0; tj < busTies.length; tj++) {
-            if (!newStates[tj]) continue;
-            const [a, b] = busTies[tj].between;
-            if (a === cur && !connected.has(b)) q.push(b);
-            if (b === cur && !connected.has(a)) q.push(a);
+        const [siA, siB] = tie.between;
+        const secA = sections[siA], secB = sections[siB];
+        // Проверяем: все ли вводные автоматы секции выключены?
+        const allBrkOff = (sec) => {
+          if (!sec) return true;
+          const brk = Array.isArray(sec.inputBreakerStates) ? sec.inputBreakerStates : [];
+          for (let i = 0; i < (sec.inputs || 1); i++) {
+            if (brk[i] !== false) return false; // автомат включён
           }
-        }
-        // Считаем живые вводы в объединённой группе
-        let liveCount = 0;
-        for (const si of connected) {
-          if (sectionPowered[si]) liveCount++;
-        }
-        if (liveCount > 1) {
-          flash('Блокировка: нельзя замкнуть СВ — два живых ввода будут соединены!', 'error');
+          return true; // все выключены
+        };
+        if (!allBrkOff(secA) && !allBrkOff(secB)) {
+          flash('Блокировка: выключите все вводные автоматы одной из секций перед включением СВ!', 'error');
           return;
         }
       }

@@ -736,6 +736,18 @@ export function initInteraction() {
         nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
         ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
       }
+      // Секция многосекционного щита — только горизонтальное перемещение
+      if (n.type === 'panel' && n._parentSectioned) {
+        const parent = state.nodes.get(n._parentSectioned);
+        if (parent) {
+          // Фиксируем Y — все секции на одной линии
+          const firstSecId = parent.sectionIds?.[0];
+          const firstSec = firstSecId && state.nodes.get(firstSecId);
+          if (firstSec && firstSec.id !== n.id) {
+            ny = firstSec.y; // привязка к Y первой секции
+          }
+        }
+      }
       // Для каналов в режиме трассы — привязка ЦЕНТРА к сетке
       if (n.type === 'channel' && n.trayMode && !e.altKey && GLOBAL.snapToGrid !== false) {
         const gs = GLOBAL.gridStep || 40;
