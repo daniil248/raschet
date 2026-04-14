@@ -95,6 +95,11 @@ export function renderInspectorNode(n) {
   // Channel — только тип и условия среды; материал/изоляция задаются в линиях
   if (n.type === 'channel') {
     h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
+    { const eff = effectiveTag(n);
+      if (eff && eff !== n.tag) {
+        h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Полное обозначение: <b>${escHtml(eff)}</b></div>`);
+      }
+    }
     h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
     h.push(field('Длина канала, м', `<input type="number" min="0" max="10000" step="1" data-prop="lengthM" value="${n.lengthM || 0}">`));
@@ -223,6 +228,19 @@ export function renderInspectorNode(n) {
       const tgLen = (Array.isArray(n.triggerGroups) && n.triggerGroups.length) ||
         ((Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length) ? 1 : 0);
       h.push(`<button class="full-btn" id="btn-open-automation">⚡ Автоматизация${tgLen ? ` (${tgLen} сценар.)` : ''}</button>`);
+      // Собственные нужды
+      h.push(checkField('Порт собственных нужд', 'auxInput', !!n.auxInput));
+      if (n.auxInput) {
+        const side = n.auxInputSide || 'left';
+        h.push('<div style="display:flex;gap:8px;margin-bottom:8px">');
+        for (const [val, label] of [['left','← Слева'],['right','→ Справа']]) {
+          const active = side === val;
+          h.push(`<button type="button" data-aux-side="${val}" style="padding:3px 10px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px;font-weight:${active ? '600' : '400'}">${label}</button>`);
+        }
+        h.push('</div>');
+        h.push(field('Мощность СН, kW', `<input type="number" min="0" max="1000" step="0.1" data-prop="auxDemandKw" value="${n.auxDemandKw || 0}">`));
+        h.push(field('cos φ СН', `<input type="number" min="0.1" max="1" step="0.01" data-prop="auxCosPhi" value="${n.auxCosPhi || 0.85}">`));
+      }
     }
 
     // Все номинальные параметры (мощность, напряжение, Ssc, Uk%, Xs/Rs) — в модалке
@@ -524,7 +542,7 @@ export function wireInspectorInputs(n) {
       _render();
       notifyChange();
       // Перерисовать инспектор при изменениях, от которых зависят другие поля
-      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType' || prop === 'bundling' || prop === 'trayMode') {
+      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType' || prop === 'bundling' || prop === 'installMethod' || prop === 'trayMode' || prop === 'auxInput') {
         renderInspector();
       }
     };
@@ -667,6 +685,15 @@ export function wireInspectorInputs(n) {
       n.lineColor = newColor;
       // Для ИБП: синхронизировать цвет с другими ИБП на том же parallel-щите
       if (n.type === 'ups') syncUpsColors(n, newColor);
+      _render(); renderInspector(); notifyChange();
+    });
+  });
+
+  // Генератор: сторона порта СН
+  inspectorBody.querySelectorAll('[data-aux-side]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      snapshot('auxSide:' + n.id);
+      n.auxInputSide = btn.dataset.auxSide;
       _render(); renderInspector(); notifyChange();
     });
   });

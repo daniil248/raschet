@@ -669,6 +669,26 @@ function recalc() {
     walkUp(n.id, total);
   }
 
+  // Собственные нужды генераторов (auxInput)
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'generator' || !n.auxInput) continue;
+    if (!n.auxBreakerOn) continue;
+    const auxKw = Number(n.auxDemandKw) || 0;
+    if (auxKw <= 0) continue;
+    // Ищем входящую связь к порту 0 (auxInput)
+    const ins = edgesIn.get(n.id) || [];
+    const auxConn = ins.find(c => !c._virtual && c.to.port === 0);
+    if (!auxConn) continue;
+    // Проверяем что источник запитан
+    const fromNode = state.nodes.get(auxConn.from.nodeId);
+    if (!fromNode || activeInputs(auxConn.from.nodeId) === null) continue;
+    // Нагрузка СН идёт вверх от генератора через auxInput
+    auxConn._active = true;
+    auxConn._loadKw += auxKw;
+    fromNode._loadKw += auxKw;
+    walkUp(fromNode.id, auxKw);
+  }
+
   // Зарядный ток ИБП — накидывается поверх проходной мощности, только если:
   // - ИБП включён
   // - Работает от входа (не от батареи)

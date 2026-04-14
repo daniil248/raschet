@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.17.0';
+export const APP_VERSION = '0.17.1';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -265,6 +265,12 @@ export const DEFAULTS = {
     triggerGroups: [],
     startDelaySec: 5,
     stopDelaySec: 2,
+    // Порт собственных нужд (вход для подключения нагрузки СН)
+    auxInput: false,          // включить вход СН
+    auxInputSide: 'left',     // сторона: 'left' | 'right'
+    auxBreakerOn: true,       // автомат СН включен
+    auxDemandKw: 0,           // мощность СН (как у потребителя)
+    auxCosPhi: 0.85,
   }),
   panel:     () => ({
     name: 'ЩС', comment: '',

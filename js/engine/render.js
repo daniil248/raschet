@@ -449,10 +449,16 @@ export function renderNodes() {
       if (c.to.nodeId === n.id) portConns.set(c.to.port, c);
     }
     const gs = 40; // GLOBAL.gridStep
-    const isSideInput = n.type === 'consumer' && n.inputSide && n.inputSide !== 'top';
+    const isSideInput = (n.type === 'consumer' && n.inputSide && n.inputSide !== 'top')
+                      || (n.type === 'generator' && n.auxInput);
     for (let i = 0; i < inCount; i++) {
       let cx, cy;
-      if (isSideInput) {
+      if (n.type === 'generator' && n.auxInput) {
+        // Генератор: порт СН сбоку
+        const side = n.auxInputSide || 'left';
+        cx = side === 'left' ? 0 : w;
+        cy = NODE_H / 2;
+      } else if (isSideInput) {
         // Порты сбоку
         const side = n.inputSide;
         if (side === 'left') {
@@ -473,6 +479,13 @@ export function renderNodes() {
       const circ = el('circle', { class: 'port in', cx, cy, r: PORT_R });
       circ.dataset.portKind = 'in'; circ.dataset.portIdx = i; circ.dataset.nodeId = n.id;
       g.appendChild(circ);
+      // Метка "СН" для генератора
+      if (n.type === 'generator' && n.auxInput) {
+        const lx = cx === 0 ? cx - 14 : cx + 14;
+        const t = text(lx, cy + 4, 'СН', 'port-label');
+        t.setAttribute('text-anchor', cx === 0 ? 'end' : 'start');
+        g.appendChild(t);
+      }
       // Метка приоритета
       if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);

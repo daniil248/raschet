@@ -2,7 +2,8 @@ import { NODE_H, NODE_MIN_W, PORT_GAP_MIN, GLOBAL } from './constants.js';
 
 // ================= Геометрия узла =================
 export function nodeInputCount(n) {
-  if (n.type === 'source' || n.type === 'generator') return 0;
+  if (n.type === 'source') return 0;
+  if (n.type === 'generator') return n.auxInput ? 1 : 0;
   if (n.type === 'zone') return 0;
   return Math.max(0, n.inputs | 0);
 }
@@ -34,6 +35,13 @@ export function portPos(n, kind, idx) {
   const w = nodeWidth(n);
   const h = nodeHeight(n);
   const gs = GLOBAL.gridStep || 40;
+
+  // Генератор auxInput: вход СН сбоку
+  if (n.type === 'generator' && kind === 'in' && n.auxInput) {
+    const side = n.auxInputSide || 'left';
+    if (side === 'left') return { x: n.x, y: n.y + h / 2 };
+    else return { x: n.x + w, y: n.y + h / 2 };
+  }
 
   // Consumer inputSide: входы сбоку
   if (n.type === 'consumer' && kind === 'in' && n.inputSide && n.inputSide !== 'top') {
