@@ -1781,10 +1781,14 @@ function _renderSectionedPanelControl(n, body) {
   const tieStates = Array.isArray(n._busTieStates) ? n._busTieStates : busTies.map(t => !!t.closed);
   if (!Array.isArray(n._busTieStates)) n._busTieStates = tieStates;
 
-  // Размеры
-  const secW = 140; // ширина секции
-  const tieW = 50;  // промежуток для СВ
-  const totalW = sections.length * secW + (sections.length - 1) * tieW + 40;
+  // Размеры — ширина секции пропорциональна количеству выходов/входов (как у простого щита)
+  const portGap = 40; // расстояние между портами
+  const secWidths = sections.map(sec => {
+    const pins = Math.max(sec.inputs || 1, sec.outputs || 1, 2);
+    return pins * portGap + 40;
+  });
+  const tieW = 60;  // промежуток для СВ
+  const totalW = secWidths.reduce((s, w) => s + w, 0) + (sections.length - 1) * tieW + 40;
   const brkH = 28;
   const inBrkY = 30;
   const busY = inBrkY + brkH + 20;
@@ -1850,17 +1854,27 @@ function _renderSectionedPanelControl(n, body) {
   h += `<div id="pc-svg-wrap" style="text-align:center;overflow:auto;padding:10px 0;max-height:50vh">`;
   h += `<svg id="pc-svg" width="${totalW}" height="${svgH}" viewBox="0 0 ${totalW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
 
-  // Рисуем каждую секцию
+  // Вычисляем X-позиции начала каждой секции
+  const secStartX = [];
+  let cx = 20;
+  for (let si = 0; si < sections.length; si++) {
+    secStartX.push(cx);
+    cx += secWidths[si];
+    if (si < sections.length - 1) cx += tieW;
+  }
+
+  // Рисуем каждую секцию (стиль идентичен простому щиту)
   for (let si = 0; si < sections.length; si++) {
     const sec = sections[si];
-    const sx = 20 + si * (secW + tieW); // начало секции по X
+    const secW = secWidths[si];
+    const sx = secStartX[si];
     const fed = sectionFed[si];
     const hasPower = sectionPowered[si];
     const busCol = fed ? '#e53935' : '#bbb';
 
     // Подпись секции
     const secLabel = sec.name || `Секция ${si + 1}`;
-    h += `<text x="${sx + secW / 2}" y="${svgH - 4}" text-anchor="middle" fill="#999" font-size="8">${escHtml(secLabel)}</text>`;
+    h += `<text x="${sx + secW / 2}" y="${svgH - 4}" text-anchor="middle" fill="#999" font-size="9">${escHtml(secLabel)}</text>`;
     // Нагрузка секции
     let secLoadKw = 0;
     for (const cc of state.conns.values()) {
@@ -1869,26 +1883,14 @@ function _renderSectionedPanelControl(n, body) {
     const capA = sec.capacityA || 0;
     h += `<text x="${sx + secW / 2}" y="${busY + 16}" text-anchor="middle" fill="${fed ? '#333' : '#999'}" font-size="8">${capA ? 'In ' + capA + 'А · ' : ''}${fmt(secLoadKw)} kW</text>`;
     // Шина секции
-    h += `<rect x="${sx}" y="${busY - 3}" width="${secW}" height="6" fill="${busCol}" rx="1"/>`;
+    h += `<rect x="${sx}" y="${busY - 2}" width="${secW}" height="4" fill="${busCol}" rx="1"/>`;
 
-    // Входы секции (из section node)
+    // Входы секции (стиль как у простого щита)
     const inCount = sec.inputs || 1;
     for (let ii = 0; ii < inCount; ii++) {
       const port = ii;
-      const ix = sx + secW / (inCount + 1) * (ii + 1);
-      // Линия сверху → автомат → шина
-      h += `<line x1="${ix}" y1="2" x2="${ix}" y2="${inBrkY}" stroke="#999" stroke-width="2"/>`;
-      // Лампочка
-      const inBrk = Array.isArray(sec.inputBreakerStates) ? sec.inputBreakerStates : [];
-      const brkOn = inBrk[port] !== false;
-      const lampCol = brkOn && hasPower ? '#4caf50' : '#e53935';
-      h += `<circle cx="${ix}" cy="6" r="4" fill="${lampCol}" opacity="0.6"/>`;
-      // Автомат IEC
-      const brk = svgBreaker(ix, inBrkY, brkOn, busCol, '#ff9800');
-      h += brk.svg;
-      // Линия от автомата до шины
-      h += `<line x1="${ix}" y1="${inBrkY + brkH}" x2="${ix}" y2="${busY - 3}" stroke="${brkOn ? busCol : '#bbb'}" stroke-width="2"/>`;
-      // Подпись
+      const ix = sx + 20 + (ii + 0.5) * ((secW - 40) / Math.max(inCount, 1));
+      // Подпись источника
       let feederTag = `Вх${port + 1}`;
       for (const c of state.conns.values()) {
         if (c.to.nodeId === sec.id && c.to.port === port && !c._virtual) {
@@ -1897,49 +1899,85 @@ function _renderSectionedPanelControl(n, body) {
           break;
         }
       }
-      h += `<text x="${ix}" y="${inBrkY - 6}" text-anchor="middle" fill="#333" font-size="8">${escHtml(feederTag)}</text>`;
+      h += `<text x="${ix}" y="12" text-anchor="middle" fill="#333" font-size="9" font-weight="600">${escHtml(feederTag)}</text>`;
+      // Линия сверху → автомат
+      const inBrk = Array.isArray(sec.inputBreakerStates) ? sec.inputBreakerStates : [];
+      const brkOn = inBrk[port] !== false;
+      const lineAlive = hasPower;
+      const topColor = lineAlive ? '#e53935' : '#bbb';
+      const throughColor = lineAlive && brkOn ? '#e53935' : '#bbb';
+      h += `<line x1="${ix}" y1="16" x2="${ix}" y2="${inBrkY}" stroke="${topColor}" stroke-width="2"/>`;
+      // Лампочка (идентична простому щиту)
+      const lampY = 22;
+      if (lineAlive && brkOn) {
+        h += `<circle cx="${ix}" cy="${lampY}" r="4" fill="#43a047" opacity="0.8"/>`;
+      } else if (lineAlive) {
+        h += `<circle cx="${ix}" cy="${lampY}" r="4" fill="#e53935" opacity="0.8"/>`;
+      } else {
+        h += `<circle cx="${ix}" cy="${lampY}" r="4" fill="none" stroke="#ccc" stroke-width="1"/>`;
+      }
+      // Автомат IEC
+      const brk = svgBreaker(ix, inBrkY, brkOn, throughColor, '#ff9800');
+      h += brk.svg;
+      // Линия от автомата до шины
+      h += `<line x1="${ix}" y1="${inBrkY + brkH}" x2="${ix}" y2="${busY - 2}" stroke="${throughColor}" stroke-width="2"/>`;
+      // Приоритет
+      const prio = (sec.priorities && sec.priorities[ii]) ?? (ii + 1);
+      h += `<text x="${ix + 12}" y="${inBrkY + brkH / 2 + 3}" fill="#1976d2" font-size="8">P${prio}</text>`;
       // Клик-зона
       h += `<rect x="${ix - 14}" y="${inBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-in-toggle="${si}:${port}"/>`;
     }
 
-    // Выходы секции (из section node)
+    // Выходы секции (стиль как у простого щита)
     const outCount = sec.outputs || 1;
     for (let oi = 0; oi < outCount; oi++) {
       const port = oi;
-      const ox = sx + secW / (outCount + 1) * (oi + 1);
-      // Линия шина → автомат → вниз
-      h += `<line x1="${ox}" y1="${busY + 3}" x2="${ox}" y2="${outBrkY}" stroke="${busCol}" stroke-width="2"/>`;
+      const ox = sx + 20 + (oi + 0.5) * ((secW - 40) / Math.max(outCount, 1));
       const outBrk = Array.isArray(sec.breakerStates) ? sec.breakerStates : [];
       const outOn = outBrk[port] !== false;
-      const brk = svgBreaker(ox, outBrkY, outOn, busCol, '#ff9800');
+      const powered = fed && outOn;
+      const lineCol = powered ? '#e53935' : '#bbb';
+      // Линия шина → автомат
+      h += `<line x1="${ox}" y1="${busY + 2}" x2="${ox}" y2="${outBrkY}" stroke="${busCol}" stroke-width="2"/>`;
+      const brk = svgBreaker(ox, outBrkY, outOn, lineCol, '#ff9800');
       h += brk.svg;
 
-      // Номинал автомата
+      // Номинал автомата (как у простого щита — с _breakerCount)
       let brkLabel = '';
       for (const cc of state.conns.values()) {
         if (cc.from.nodeId === sec.id && cc.from.port === port) {
-          if (cc._breakerIn) brkLabel = `C${cc._breakerIn}А`;
-          else if (cc._breakerPerLine) brkLabel = `C${cc._breakerPerLine}А`;
+          if (cc._breakerIn) {
+            const cnt = cc._breakerCount || 1;
+            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×C${cc._breakerPerLine}А`;
+            else brkLabel = `C${cc._breakerIn}А`;
+          } else if (cc._breakerPerLine) {
+            const cnt = cc._breakerCount || 1;
+            brkLabel = cnt > 1 ? `${cnt}×C${cc._breakerPerLine}А` : `C${cc._breakerPerLine}А`;
+          }
           break;
         }
       }
       if (brkLabel) {
-        h += `<text x="${ox - 12}" y="${outBrkY + brkH / 2}" fill="#ef6c00" font-size="7" text-anchor="end" dominant-baseline="central">${brkLabel}</text>`;
+        h += `<text x="${ox - 12}" y="${outBrkY + brkH / 2}" fill="#ef6c00" font-size="8" font-weight="600" text-anchor="end" dominant-baseline="central">${brkLabel}</text>`;
       }
-
-      // Подпись выхода
-      let destTag = '';
+      // Линия от автомата вниз
+      h += `<line x1="${ox}" y1="${outBrkY + brkH}" x2="${ox}" y2="${outBrkY + brkH + 14}" stroke="${lineCol}" stroke-width="2"/>`;
+      // Метка назначения (как у простого щита)
+      let outLabel = '';
+      let labelColor = '#333';
+      let hasConn = false;
       for (const cc of state.conns.values()) {
         if (cc.from.nodeId === sec.id && cc.from.port === port && !cc._virtual) {
+          hasConn = true;
           const to = state.nodes.get(cc.to.nodeId);
-          destTag = to ? (effectiveTag(to) || to.name || '') : '';
+          outLabel = to ? (effectiveTag(to) || to.name || '') : '';
+          outLabel += `-${cc.to.port + 1}`;
           break;
         }
       }
-      h += `<line x1="${ox}" y1="${outBrkY + brkH}" x2="${ox}" y2="${outBrkY + brkH + 10}" stroke="${outOn && fed ? busCol : '#bbb'}" stroke-width="2"/>`;
-      if (destTag) {
-        h += `<text x="${ox}" y="${outBrkY + brkH + 18}" text-anchor="middle" fill="#666" font-size="7" transform="rotate(-90 ${ox} ${outBrkY + brkH + 18})">${escHtml(destTag)}</text>`;
-      }
+      if (!hasConn) { outLabel = 'Резерв'; labelColor = '#bbb'; }
+      const labelY = outBrkY + brkH + 16;
+      h += `<text x="${ox}" y="${labelY}" fill="${labelColor}" font-size="9" font-weight="600" text-anchor="end" dominant-baseline="central" transform="rotate(-90 ${ox} ${labelY})">${escHtml(outLabel)}</text>`;
       // Клик-зона
       h += `<rect x="${ox - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-out-toggle="${si}:${port}"/>`;
     }
@@ -1951,8 +1989,8 @@ function _renderSectionedPanelControl(n, body) {
     const [secA, secB] = tie.between;
     const tieOn = tieStates[ti];
     // X позиция: между секциями secA и secB
-    const xA = 20 + secA * (secW + tieW) + secW;
-    const xB = 20 + secB * (secW + tieW);
+    const xA = secStartX[secA] + secWidths[secA];
+    const xB = secStartX[secB];
     const mx = (xA + xB) / 2;
 
     const col = tieOn ? '#e53935' : '#bbb';
@@ -1997,7 +2035,10 @@ function _renderSectionedPanelControl(n, body) {
       // Таймеры переключения
       const swCd = Array.isArray(n._busTieSwitchCountdown) ? (n._busTieSwitchCountdown[ti] || 0) : 0;
       const ilCd = Array.isArray(n._busTieInterlockCountdown) ? (n._busTieInterlockCountdown[ti] || 0) : 0;
-      if (swCd > 0) {
+      const swStarted = Array.isArray(n._busTieSwitchStartedAt) ? (n._busTieSwitchStartedAt[ti] || 0) : 0;
+      const swElapsed = swStarted > 0 ? (Date.now() - swStarted) / 1000 : 0;
+      // Показываем таймер только если процесс идёт >0.5с (debounce мигания)
+      if (swCd > 0 && swElapsed > 0.5) {
         h += `<div style="text-align:center;font-size:12px;color:#1976d2;font-weight:600;margin:2px 0">СВ${ti + 1}: задержка ${Math.ceil(swCd)} с</div>`;
       } else if (ilCd > 0) {
         h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">СВ${ti + 1}: разбежка ${Math.ceil(ilCd)} с</div>`;
@@ -2046,6 +2087,16 @@ function _renderSectionedPanelControl(n, body) {
       if (!sec) return;
       if (!Array.isArray(sec.inputBreakerStates)) sec.inputBreakerStates = new Array(sec.inputs || 0).fill(true);
       while (sec.inputBreakerStates.length < (sec.inputs || 0)) sec.inputBreakerStates.push(true);
+      // Блокировка: если СВ к этой секции в авто-режиме — автоматика управляет вводами
+      for (let ti = 0; ti < busTies.length; ti++) {
+        const tie = busTies[ti];
+        if (!tie.auto) continue;
+        const [a, b] = tie.between;
+        if (a === si || b === si) {
+          flash('Вводные автоматы управляются автоматикой СВ. Переключите СВ в ручной режим.', 'error');
+          return;
+        }
+      }
       const wantOn = !sec.inputBreakerStates[port];
       // Блокировка: при включении автомата — проверить что СВ к смежной секции
       // не соединит два источника
@@ -2095,6 +2146,11 @@ function _renderSectionedPanelControl(n, body) {
       const ti = Number(el.dataset.secTieToggle);
       const tie = busTies[ti];
       if (!tie) return;
+      // Блокировка ручного управления в режиме Авто
+      if (tie.auto) {
+        flash('СВ в автоматическом режиме. Переключите в ручной для управления.', 'error');
+        return;
+      }
       const wantClose = !tieStates[ti];
       // Блокировка: СВ можно замкнуть только если ВСЕ вводные автоматы
       // хотя бы ОДНОЙ из смежных секций выключены
@@ -2984,7 +3040,7 @@ export function renderInspectorConn(c) {
         cableSpec = `Шинопровод: <b>${c._busbarNom} А</b>`;
       } else if (c._cableSize) {
         const spec = `${cores}×${c._cableSize} мм²`;
-        cableSpec = par > 1 ? `Кабель: <b>${par}×(${spec})</b>` : `Кабель: <b>${spec}</b>`;
+        cableSpec = par > 1 ? `Кабель: <b>${spec}</b> (${par} линии)` : `Кабель: <b>${spec}</b>`;
       }
       const effectiveBrkIn = c.manualBreakerIn || c._breakerIn || c._breakerPerLine || 0;
       const Iz = c._cableIz || 0;
