@@ -1894,14 +1894,7 @@ function _renderSectionedPanelControl(n, body) {
   let h = '';
   h += `<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`;
   h += `<div class="muted" style="font-size:11px;margin-bottom:8px">Многосекционный щит · ${sections.length} секций · ${busTies.length} СВ</div>`;
-
-  // Зум
-  h += `<div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:4px 0">`;
-  h += `<button type="button" id="pc-zoom-out" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">−</button>`;
-  h += `<span id="pc-zoom-label" style="font-size:11px;color:#666;min-width:36px;text-align:center">100%</span>`;
-  h += `<button type="button" id="pc-zoom-in" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">+</button>`;
-  h += `</div>`;
-  h += `<div id="pc-svg-wrap" style="text-align:center;overflow:auto;padding:10px 0;max-height:50vh">`;
+  h += `<div id="pc-svg-wrap" style="display:flex;justify-content:center;align-items:flex-start;overflow:auto;flex:1">`;
   h += `<svg id="pc-svg" width="${totalW}" height="${svgH}" viewBox="0 0 ${totalW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
 
   // Вычисляем X-позиции начала каждой секции
@@ -2150,11 +2143,12 @@ function _renderSectionedPanelControl(n, body) {
   // Записываем настройки в нижнюю панель с кнопкой сворачивания
   const settingsPanel = document.getElementById('pc-settings-panel');
   if (settingsPanel && sh) {
-    settingsPanel.innerHTML = `<div style="border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;padding:0;max-width:320px">` +
-      `<div id="pc-settings-toggle" style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:pointer;user-select:none">` +
-      `<span style="font-size:12px;font-weight:600;color:#555">Настройки</span>` +
-      `<span style="font-size:14px;color:#999" id="pc-settings-arrow">▲</span></div>` +
-      `<div id="pc-settings-content" style="padding:4px 10px 8px">${sh}</div></div>`;
+    settingsPanel.innerHTML =
+      `<div style="width:280px;border:1px solid #d0d0d0;border-radius:8px;background:rgba(255,255,255,0.92);backdrop-filter:blur(6px);box-shadow:0 2px 12px rgba(0,0,0,0.1)">` +
+      `<div id="pc-settings-toggle" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;user-select:none">` +
+      `<span style="font-size:12px;font-weight:700;color:#444">⚙ Настройки</span>` +
+      `<span style="font-size:12px;color:#999" id="pc-settings-arrow">▲</span></div>` +
+      `<div id="pc-settings-content" style="padding:4px 12px 10px;border-top:1px solid #eee">${sh}</div></div>`;
     const toggle = document.getElementById('pc-settings-toggle');
     const content = document.getElementById('pc-settings-content');
     const arrow = document.getElementById('pc-settings-arrow');
