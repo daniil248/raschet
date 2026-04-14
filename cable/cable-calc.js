@@ -1,6 +1,12 @@
 import { GLOBAL } from '../js/engine/constants.js';
 import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../js/methods/index.js';
 
+// Load saved global settings from localStorage (shared with constructor)
+try {
+  const raw = localStorage.getItem('raschet.global.v1');
+  if (raw) { const saved = JSON.parse(raw); Object.assign(GLOBAL, saved); }
+} catch (e) { /* ignore */ }
+
 // ============ DOM refs ============
 const $ = id => document.getElementById(id);
 

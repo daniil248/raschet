@@ -1315,11 +1315,11 @@ function recalc() {
       continue;
     }
 
-    let InPerLine = _calcMethod.selectBreaker(Iper);
-    // Координация: In ≤ Iz
+    // Ручной автомат: используем его номинал, иначе — авто
+    let InPerLine = c.manualBreakerIn ? Number(c.manualBreakerIn) : _calcMethod.selectBreaker(Iper);
+    // Координация: In ≤ Iz (автомат должен быть ≤ Iz кабеля)
     c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
-    // I2 ≤ 1.45 × Iz (для MCB I2=1.45×In)
-    c._breakerI2fail = !!(Iz > 0 && 1.45 * InPerLine > 1.45 * Iz);
+    c._breakerI2fail = false;
 
     const InTotal = _calcMethod.selectBreaker(Itotal);
 

@@ -305,98 +305,44 @@
         <button class="modal-close" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body">
-        <p class="muted" style="margin-top:0">Значения применяются ко всем новым линиям и используются как fallback во время расчёта. Сохраняются в браузере.</p>
+        <p class="muted" style="margin-top:0">Значения применяются ко всем новым линиям. Сохраняются в браузере.</p>
 
         <h3>Справочник уровней напряжения</h3>
-        <p class="muted" style="margin-top:0;font-size:11px">Добавляйте и удаляйте строки. Эти значения доступны в поле «Уровень напряжения» у каждого элемента.</p>
-        <div id="voltage-levels-table" style="max-height:200px;overflow-y:auto;margin-bottom:8px"></div>
-        <button type="button" id="voltage-levels-add" style="font-size:12px;padding:5px 12px;border:1px dashed #999;background:transparent;border-radius:4px;cursor:pointer;width:100%">+ Добавить уровень</button>
+        <div id="voltage-levels-table" style="max-height:160px;overflow-y:auto;margin-bottom:6px"></div>
+        <button type="button" id="voltage-levels-add" style="font-size:12px;padding:4px 10px;border:1px dashed #999;background:transparent;border-radius:4px;cursor:pointer;width:100%">+ Добавить</button>
 
-        <h3>Расчётные параметры по умолчанию</h3>
-        <div class="field">
-          <label>cos φ по умолчанию</label>
-          <input type="number" id="set-cosPhi" min="0.1" max="1" step="0.01" value="0.92">
+        <h3>Методика и защита</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Методика расчёта</label>
+            <select id="set-calcMethod"><option value="iec">IEC 60364-5-52</option><option value="pue">ПУЭ 7</option></select></div>
+          <div class="field"><label>Защита парал. линий</label>
+            <select id="set-parallelProtection"><option value="individual">Индивидуальная</option><option value="common">Общая</option></select></div>
         </div>
 
         <h3>Кабели</h3>
-        <div class="field">
-          <label>Материал жил по умолчанию</label>
-          <select id="set-material">
-            <option value="Cu">Медь</option>
-            <option value="Al">Алюминий</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Изоляция по умолчанию</label>
-          <select id="set-insulation">
-            <option value="PVC">ПВХ</option>
-            <option value="XLPE">СПЭ (XLPE)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Тип конструкции по умолчанию</label>
-          <select id="set-cableType">
-            <option value="multi">Многожильный</option>
-            <option value="single">Одножильный многопроволочный</option>
-            <option value="solid">Цельная жила (класс 1–2)</option>
-            <option value="busbar">Шинопровод</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Максимальное сечение одной жилы, мм²</label>
-          <select id="set-maxCableSize">
-            <option value="1.5">1.5</option><option value="2.5">2.5</option><option value="4">4</option>
-            <option value="6">6</option><option value="10">10</option><option value="16">16</option>
-            <option value="25">25</option><option value="35">35</option><option value="50">50</option>
-            <option value="70">70</option><option value="95">95</option><option value="120">120</option>
-            <option value="150">150</option><option value="185">185</option>
-            <option value="240" selected>240</option><option value="300">300</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Макс. число параллельных линий (авто-подбор)</label>
-          <input type="number" id="set-maxParallelAuto" min="1" max="10" step="1" value="4">
-        </div>
-        <div class="field">
-          <label>Макс. допустимое падение напряжения, % (IEC 60364-5-52)</label>
-          <input type="number" id="set-maxVdropPct" min="0.5" max="15" step="0.5" value="5">
-        </div>
-
-        <h3>Методика и защита</h3>
-        <div class="field">
-          <label>Методика расчёта кабеля</label>
-          <select id="set-calcMethod">
-            <option value="iec">IEC 60364-5-52</option>
-            <option value="pue">ПУЭ 7</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Защита параллельных линий</label>
-          <select id="set-parallelProtection">
-            <option value="individual">Индивидуальная (каждый кабель)</option>
-            <option value="common">Общая (на группу)</option>
-          </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Материал жил</label>
+            <select id="set-material"><option value="Cu">Медь</option><option value="Al">Алюминий</option></select></div>
+          <div class="field"><label>Изоляция</label>
+            <select id="set-insulation"><option value="PVC">ПВХ</option><option value="XLPE">СПЭ (XLPE)</option></select></div>
+          <div class="field"><label>Тип конструкции</label>
+            <select id="set-cableType"><option value="multi">Многожильный</option><option value="single">Одножильный</option><option value="solid">Цельная жила</option><option value="busbar">Шинопровод</option></select></div>
+          <div class="field"><label>Макс. сечение, мм²</label>
+            <select id="set-maxCableSize"><option value="10">10</option><option value="16">16</option><option value="25">25</option><option value="35">35</option><option value="50">50</option><option value="70">70</option><option value="95">95</option><option value="120">120</option><option value="150">150</option><option value="185">185</option><option value="240" selected>240</option><option value="300">300</option></select></div>
+          <div class="field"><label>Макс. параллельных линий</label>
+            <input type="number" id="set-maxParallelAuto" min="1" max="10" step="1" value="4"></div>
+          <div class="field"><label>Макс. падение напр., %</label>
+            <input type="number" id="set-maxVdropPct" min="0.5" max="15" step="0.5" value="5"></div>
+          <div class="field"><label>cos φ по умолчанию</label>
+            <input type="number" id="set-cosPhi" min="0.1" max="1" step="0.01" value="0.92"></div>
         </div>
 
         <h3>Прокладка по умолчанию</h3>
-        <div class="field">
-          <label>Способ прокладки</label>
-          <select id="set-installMethod">
-            <option value="A1">A1 — Труба в теплоизол. стене</option>
-            <option value="A2">A2 — Кабель в теплоизол. стене</option>
-            <option value="B1">B1 — Труба на/в стене</option>
-            <option value="B2">B2 — Короб / сплошной лоток</option>
-            <option value="C">C — Открыто на стене</option>
-            <option value="E">E — Перфорированный лоток / в воздухе</option>
-            <option value="F">F — Лестничный лоток / одножильные касающиеся</option>
-            <option value="G">G — Одножильные с интервалами</option>
-            <option value="D1">D1 — В трубе в земле</option>
-            <option value="D2">D2 — Напрямую в земле</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Температура среды, °C</label>
-          <input type="number" id="set-ambient" min="10" max="70" step="5" value="30">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Способ прокладки</label>
+            <select id="set-installMethod"></select></div>
+          <div class="field"><label>Температура среды, °C</label>
+            <input type="number" id="set-ambient" min="10" max="70" step="5" value="30"></div>
         </div>
       </div>
       <div class="modal-foot">

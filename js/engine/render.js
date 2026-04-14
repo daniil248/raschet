@@ -826,15 +826,13 @@ export function renderConns() {
       const bx = a.x;
       const by = a.y + 6; // чуть ниже порта
 
-      const brkCurveId = c.breakerCurve || c._breakerCurve || 'MCB_C';
-      const brkPfx = (BREAKER_TYPES[brkCurveId] || BREAKER_TYPES.MCB_C).prefix || '';
       let brkText;
-      if (c._cableAutoParallel && c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
-        brkText = `${brkPfx}${c._breakerIn}А (${c._breakerCount}×${brkPfx}${c._breakerPerLine}А)`;
+      if (c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
+        brkText = `${c._breakerIn}А (${c._breakerCount}×${c._breakerPerLine}А)`;
       } else if (c._breakerPerLine && c._breakerCount > 1) {
-        brkText = `${c._breakerCount}×${brkPfx}${c._breakerPerLine}А`;
+        brkText = `${c._breakerCount}×${c._breakerPerLine}А`;
       } else if (c._breakerIn) {
-        brkText = `${brkPfx}${c._breakerIn}А`;
+        brkText = `${c._breakerIn}А`;
       }
       if (brkText) {
         const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');

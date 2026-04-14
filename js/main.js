@@ -8,6 +8,7 @@
    ========================================================================= */
 // Ensure engine modules are loaded and window.Raschet is available
 import './engine/index.js';
+import { getMethod, listMethods } from './methods/index.js';
 
 (function () {
 'use strict';
@@ -756,6 +757,18 @@ function renderVoltageLevelsTable() {
   });
 }
 
+function updateInstallMethodOptions(methodId) {
+  const sel = document.getElementById('set-installMethod');
+  if (!sel) return;
+  const m = getMethod(methodId || 'iec');
+  const prev = sel.value;
+  sel.innerHTML = Object.entries(m.installMethods).map(([k, v]) =>
+    `<option value="${k}">${v}</option>`
+  ).join('');
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  else if (m.defaultMethod) sel.value = m.defaultMethod;
+}
+
 function openSettingsModal() {
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
@@ -774,10 +787,14 @@ function openSettingsModal() {
   set('set-maxCableSize',  G.maxCableSize ?? 240);
   set('set-maxParallelAuto', G.maxParallelAuto ?? 4);
   set('set-maxVdropPct', G.maxVdropPct ?? 5);
+  set('set-calcMethod',    G.calcMethod ?? 'iec');
+  updateInstallMethodOptions(G.calcMethod ?? 'iec');
   set('set-installMethod', G.defaultInstallMethod ?? 'B1');
   set('set-ambient',       G.defaultAmbient ?? 30);
-  set('set-calcMethod',    G.calcMethod ?? 'iec');
   set('set-parallelProtection', G.parallelProtection ?? 'individual');
+  // При смене методики — обновить список способов прокладки
+  const calcMethodEl = document.getElementById('set-calcMethod');
+  if (calcMethodEl) calcMethodEl.onchange = () => updateInstallMethodOptions(calcMethodEl.value);
   openModal('modal-settings');
 }
 
