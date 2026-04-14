@@ -137,6 +137,10 @@
           <button id="btn-toggle-breakers" title="Номиналы автоматов">А</button>
           <button id="btn-toggle-colors" title="Цвета по источникам">🎨</button>
           <span class="sep"></span>
+          <button id="btn-links-hide-all" title="Временно скрыть все линии (показать ссылками)">🔗✕</button>
+          <button id="btn-links-show-all" title="Временно показать все линии">🔗✓</button>
+          <button id="btn-links-normal" title="Восстановить нормальный вид">🔗↺</button>
+          <span class="sep"></span>
           <button id="btn-clear" class="danger">Очистить</button>
           <input type="file" id="file-input" accept="application/json" hidden>
         </div>
@@ -154,6 +158,9 @@
             </marker>
             <marker id="arrPowered" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
               <path d="M0,0 L10,5 L0,10 Z" fill="#43a047"/>
+            </marker>
+            <marker id="arrow-link" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="context-stroke"/>
             </marker>
           </defs>
           <rect id="bg" width="100%" height="100%" fill="url(#grid)"/>

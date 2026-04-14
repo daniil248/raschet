@@ -7,6 +7,8 @@ export const state = {
   selectedKind: null,
   selectedId: null,
   view: { x: 0, y: 0, zoom: 1 },
+  // linksOverride: null — нормальный вид (по настройке линии), 'all-links' — все скрыть, 'all-lines' — все показать
+  linksOverride: null,
   pending: null,     // { fromNodeId, fromPort, mouseX, mouseY, restoreConn? }
   drag: null,        // { nodeId, dx, dy } | { pan, sx, sy, vx, vy }
   readOnly: false,   // read-only view

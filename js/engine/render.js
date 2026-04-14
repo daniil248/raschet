@@ -705,6 +705,15 @@ export function renderConns() {
 
     const selected = state.selectedKind === 'conn' && state.selectedId === c.id;
 
+    // Определяем эффективный режим "разрыва" (link mode):
+    // state.linksOverride: 'all-links' → скрыть все, 'all-lines' → показать все, null → по c.linkMode
+    // c._linkPreview (runtime) — временный пунктирный показ при клике
+    let effLinkMode;
+    if (state.linksOverride === 'all-links') effLinkMode = true;
+    else if (state.linksOverride === 'all-lines') effLinkMode = false;
+    else effLinkMode = !!c.linkMode;
+    const linkPreview = !!c._linkPreview; // временное отображение скрытой линии пунктиром
+
     // Невидимая «толстая» дорожка — упрощает попадание кликом
     const hit = el('path', { class: 'conn-hit', d });
     hit.dataset.connId = c.id;
@@ -717,19 +726,54 @@ export function renderConns() {
     else stateClass = c._state === 'active' ? ' active'
                     : c._state === 'powered' ? ' powered'
                     : ' dead';
-    const path = el('path', {
-      class: 'conn' + stateClass + (selected ? ' selected' : ''),
-      d,
-    });
-    // Цвет по источнику (если включен режим) — на ВСЕХ живых линиях
-    if (GLOBAL.showSourceColors && c._sourceColor && (c._state === 'active' || c._state === 'powered')) {
-      let style = `stroke: ${c._sourceColor}`;
-      // Пунктир для смешанных источников (два разных ввода в простом щите)
-      if (c._mixedSources) style += '; stroke-dasharray: 8 4';
-      path.setAttribute('style', style);
+
+    // Режим разрыва: скрываем основную линию, рисуем две короткие стрелки с подписями
+    if (effLinkMode && !linkPreview) {
+      const fromTag = (effectiveTag(fromN) || fromN.name || '?') + '-' + (c.from.port + 1);
+      const toTag = (effectiveTag(toN) || toN.name || '?') + '-' + (c.to.port + 1);
+      // Короткая линия от выхода вниз (24px) со стрелкой вниз + подпись назначения
+      const stubLen = 24;
+      const strokeCol = (c._state === 'active' || c._state === 'powered')
+        ? (c._sourceColor || '#e53935') : '#bbb';
+      // from-конец
+      const af = el('line', {
+        x1: a.x, y1: a.y, x2: a.x + aDir.x * stubLen, y2: a.y + aDir.y * stubLen,
+        stroke: strokeCol, 'stroke-width': 2, 'marker-end': 'url(#arrow-link)',
+      });
+      af.dataset.connId = c.id;
+      layerConns.appendChild(af);
+      const fromLbl = text(a.x + aDir.x * (stubLen + 4), a.y + aDir.y * (stubLen + 4) + 10,
+        `→ ${toTag}`, 'conn-link-label');
+      fromLbl.setAttribute('text-anchor', 'middle');
+      layerConns.appendChild(fromLbl);
+      // to-конец
+      const ab = el('line', {
+        x1: b.x + bDir.x * stubLen, y1: b.y + bDir.y * stubLen, x2: b.x, y2: b.y,
+        stroke: strokeCol, 'stroke-width': 2, 'marker-end': 'url(#arrow-link)',
+      });
+      ab.dataset.connId = c.id;
+      layerConns.appendChild(ab);
+      const toLbl = text(b.x + bDir.x * (stubLen + 4), b.y + bDir.y * (stubLen + 4) - 4,
+        `← ${fromTag}`, 'conn-link-label');
+      toLbl.setAttribute('text-anchor', 'middle');
+      layerConns.appendChild(toLbl);
+    } else {
+      const path = el('path', {
+        class: 'conn' + stateClass + (selected ? ' selected' : ''),
+        d,
+      });
+      // Цвет по источнику
+      if (GLOBAL.showSourceColors && c._sourceColor && (c._state === 'active' || c._state === 'powered')) {
+        let style = `stroke: ${c._sourceColor}`;
+        if (c._mixedSources) style += '; stroke-dasharray: 8 4';
+        else if (linkPreview) style += '; stroke-dasharray: 6 4; opacity: 0.6';
+        path.setAttribute('style', style);
+      } else if (linkPreview) {
+        path.setAttribute('style', 'stroke-dasharray: 6 4; opacity: 0.6');
+      }
+      path.dataset.connId = c.id;
+      layerConns.appendChild(path);
     }
-    path.dataset.connId = c.id;
-    layerConns.appendChild(path);
 
     // Подпись на активных линиях.
     // Формат: «Imax A / жилы×[N×]сечение мм² [(кол-во шт.)]»
@@ -737,8 +781,8 @@ export function renderConns() {
     //   жилы — 5 для 3ф (L1+L2+L3+N+PE), 3 для 1ф (L+N+PE)
     //   N× — количество спаренных кабелей (только если > 1)
     //   (кол-во шт.) — только для групповых потребителей (count > 1)
-    // Подпись кабеля/шинопровода на ЛЮБОЙ линии с maxA > 0
-    if (GLOBAL.showCableLabels !== false && c._maxA > 0 && (c._cableSize || c._busbarNom || c._cableOverflow)) {
+    // Подпись кабеля/шинопровода на ЛЮБОЙ линии с maxA > 0 (не показываем в режиме разрыва)
+    if (!effLinkMode && GLOBAL.showCableLabels !== false && c._maxA > 0 && (c._cableSize || c._busbarNom || c._cableOverflow)) {
       const mid = pathMidpoint(a, waypoints, b);
       const isActive = c._state === 'active' && c._loadKw > 0;
       const parallel = Math.max(1, c._cableParallel || 1);
@@ -821,7 +865,7 @@ export function renderConns() {
 
     // Бейдж автомата — под выходным портом, повёрнут -90°, с белой подложкой
     const hasBreaker = c._breakerIn || c._breakerPerLine;
-    if (GLOBAL.showBreakerLabels !== false && hasBreaker) {
+    if (!effLinkMode && GLOBAL.showBreakerLabels !== false && hasBreaker) {
       // Позиция = выходной порт (from)
       const bx = a.x;
       const by = a.y + 6; // чуть ниже порта

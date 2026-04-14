@@ -164,6 +164,24 @@ export function initToolbar() {
     breakersBtn.onclick = () => { GLOBAL.showBreakerLabels = !GLOBAL.showBreakerLabels; updateBreakersBtn(); render(); };
   }
 
+  // Линии-ссылки: временно скрыть все / показать все / восстановить нормальный вид
+  const updateLinksBtns = () => {
+    const ov = state.linksOverride;
+    const a = document.getElementById('btn-links-hide-all');
+    const b = document.getElementById('btn-links-show-all');
+    const c = document.getElementById('btn-links-normal');
+    if (a) a.style.opacity = ov === 'all-links' ? '1' : '0.55';
+    if (b) b.style.opacity = ov === 'all-lines' ? '1' : '0.55';
+    if (c) c.style.opacity = ov === null ? '1' : '0.55';
+  };
+  updateLinksBtns();
+  const hideAllBtn = document.getElementById('btn-links-hide-all');
+  if (hideAllBtn) hideAllBtn.onclick = () => { state.linksOverride = 'all-links'; updateLinksBtns(); render(); };
+  const showAllBtn = document.getElementById('btn-links-show-all');
+  if (showAllBtn) showAllBtn.onclick = () => { state.linksOverride = 'all-lines'; updateLinksBtns(); render(); };
+  const normalBtn = document.getElementById('btn-links-normal');
+  if (normalBtn) normalBtn.onclick = () => { state.linksOverride = null; updateLinksBtns(); render(); };
+
   // Модальные окна — перетаскивание за заголовок
   document.querySelectorAll('.modal-head').forEach(head => {
     let dragging = false, dx = 0, dy = 0;

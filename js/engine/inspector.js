@@ -3184,6 +3184,13 @@ export function renderInspectorConn(c) {
       <option value="disabled"${lm === 'disabled' ? ' selected' : ''}>Отключена</option>
     </select>`));
 
+  // Режим разрыва (link mode) — линия скрывается, показываются ссылки на концах
+  h.push(`<div class="field check"><input type="checkbox" id="cp-linkMode"${c.linkMode ? ' checked' : ''}><label>Скрыть линию (показать ссылками)</label></div>`);
+  if (c.linkMode) {
+    const previewOn = !!c._linkPreview;
+    h.push(`<button type="button" id="cp-link-preview" class="full-btn" style="margin-bottom:8px">${previewOn ? '✓ Скрыть путь' : '👁 Показать путь (пунктир)'}</button>`);
+  }
+
   if (c._state === 'active') {
     h.push('<div class="inspector-section"><h4>Нагрузка линии</h4>');
     const _par = Math.max(1, c._cableParallel || 1);
@@ -3479,6 +3486,25 @@ export function renderInspectorConn(c) {
       renderInspector();
     });
   });
+  // Режим разрыва (link mode)
+  {
+    const lmCb = document.getElementById('cp-linkMode');
+    if (lmCb) {
+      lmCb.addEventListener('change', () => {
+        snapshot('conn-linkMode:' + c.id);
+        c.linkMode = lmCb.checked;
+        if (!c.linkMode) c._linkPreview = false;
+        _render(); notifyChange(); renderInspector();
+      });
+    }
+    const lpBtn = document.getElementById('cp-link-preview');
+    if (lpBtn) {
+      lpBtn.addEventListener('click', () => {
+        c._linkPreview = !c._linkPreview;
+        _render(); renderInspector();
+      });
+    }
+  }
   // Чекбоксы каналов
   inspectorBody.querySelectorAll('[data-conn-channel]').forEach(inp => {
     inp.addEventListener('change', () => {
