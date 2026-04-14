@@ -731,31 +731,55 @@ export function renderConns() {
     if (effLinkMode && !linkPreview) {
       const fromTag = (effectiveTag(fromN) || fromN.name || '?') + '-' + (c.from.port + 1);
       const toTag = (effectiveTag(toN) || toN.name || '?') + '-' + (c.to.port + 1);
-      // Короткая линия от выхода вниз (24px) со стрелкой вниз + подпись назначения
-      const stubLen = 24;
+      // Короткие линии ×2 длиннее (было 24, стало 48) со стрелкой на конце.
+      // Подписи — вертикальные (rotate -90), как port-label/breaker-badge,
+      // с таким же отступом от порта: rOff=12.
+      const stubLen = 48;
+      const rOff = 12; // отступ от конца стаба до начала текста (как у breaker badge)
+      const charW = 5.8;
       const strokeCol = (c._state === 'active' || c._state === 'powered')
         ? (c._sourceColor || '#e53935') : '#bbb';
-      // from-конец
+
+      // from-конец: стаб от порта в направлении aDir
       const af = el('line', {
         x1: a.x, y1: a.y, x2: a.x + aDir.x * stubLen, y2: a.y + aDir.y * stubLen,
         stroke: strokeCol, 'stroke-width': 2, 'marker-end': 'url(#arrow-link)',
       });
       af.dataset.connId = c.id;
       layerConns.appendChild(af);
-      const fromLbl = text(a.x + aDir.x * (stubLen + 4), a.y + aDir.y * (stubLen + 4) + 10,
-        `→ ${toTag}`, 'conn-link-label');
-      fromLbl.setAttribute('text-anchor', 'middle');
+      // Подпись: центр на оси стаба, сдвинута на (rOff + rLen/2) ЗА стрелкой
+      const fromTxt = `→ ${toTag}`;
+      const fromLen = fromTxt.length * charW;
+      const fsx = a.x + aDir.x * (stubLen + rOff + fromLen / 2);
+      const fsy = a.y + aDir.y * (stubLen + rOff + fromLen / 2);
+      const fromLbl = el('text', {
+        x: fsx, y: fsy, class: 'conn-link-label',
+        'text-anchor': 'middle', 'dominant-baseline': 'central',
+        transform: `rotate(-90 ${fsx} ${fsy})`,
+      });
+      fromLbl.textContent = fromTxt;
+      fromLbl.dataset.connId = c.id;
       layerConns.appendChild(fromLbl);
-      // to-конец
+
+      // to-конец: стаб заходит в порт (stub-end в точке b, stub-start в bDir*stubLen от b)
       const ab = el('line', {
         x1: b.x + bDir.x * stubLen, y1: b.y + bDir.y * stubLen, x2: b.x, y2: b.y,
         stroke: strokeCol, 'stroke-width': 2, 'marker-end': 'url(#arrow-link)',
       });
       ab.dataset.connId = c.id;
       layerConns.appendChild(ab);
-      const toLbl = text(b.x + bDir.x * (stubLen + 4), b.y + bDir.y * (stubLen + 4) - 4,
-        `← ${fromTag}`, 'conn-link-label');
-      toLbl.setAttribute('text-anchor', 'middle');
+      // Подпись у to-конца: сдвинута ОТ порта в направлении bDir на (stubLen + rOff + rLen/2)
+      const toTxt = `← ${fromTag}`;
+      const toLen = toTxt.length * charW;
+      const tsx = b.x + bDir.x * (stubLen + rOff + toLen / 2);
+      const tsy = b.y + bDir.y * (stubLen + rOff + toLen / 2);
+      const toLbl = el('text', {
+        x: tsx, y: tsy, class: 'conn-link-label',
+        'text-anchor': 'middle', 'dominant-baseline': 'central',
+        transform: `rotate(-90 ${tsx} ${tsy})`,
+      });
+      toLbl.textContent = toTxt;
+      toLbl.dataset.connId = c.id;
       layerConns.appendChild(toLbl);
     } else {
       const path = el('path', {
