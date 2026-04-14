@@ -265,10 +265,6 @@ export function renderInspectorNode(n) {
     }
     h.push(`<button class="full-btn" id="btn-open-panel-params" style="margin-bottom:8px">⚙ Параметры ${isSection ? 'секции' : 'щита'}</button>`);
 
-    if (n.maintenance) {
-      h.push('<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;font-weight:600;color:#e65100">⚠ ЩИТ В РЕЖИМЕ ОБСЛУЖИВАНИЯ — ОБЕСТОЧЕН</div>');
-    }
-
     // Краткая сводка
     const multiInput = (n.inputs || 1) > 1;
     const sm = n.switchMode || 'auto';
@@ -1928,7 +1924,7 @@ function _renderSectionedPanelControl(n, body) {
       if (cc.from.nodeId === sec.id && cc._loadKw) secLoadKw += cc._loadKw;
     }
     const capA = sec.capacityA || 0;
-    h += `<text x="${sx + secW / 2}" y="${busY + 16}" text-anchor="middle" fill="${fed ? '#333' : '#999'}" font-size="8">${capA ? 'In ' + capA + 'А · ' : ''}${fmt(secLoadKw)} kW</text>`;
+    h += `<text x="${sx + secW / 2}" y="${busY - 6}" text-anchor="middle" fill="${fed ? '#333' : '#999'}" font-size="8">${capA ? 'In ' + capA + 'А · ' : ''}${fmt(secLoadKw)} kW</text>`;
     // Шина секции
     h += `<rect x="${sx}" y="${busY - 2}" width="${secW}" height="4" fill="${busCol}" rx="1"/>`;
 
@@ -1989,17 +1985,19 @@ function _renderSectionedPanelControl(n, body) {
       const brk = svgBreaker(ox, outBrkY, outOn, lineCol, '#ff9800');
       h += brk.svg;
 
-      // Номинал автомата (как у простого щита — с _breakerCount)
+      // Номинал автомата (как у простого щита — с _breakerCount и кривой)
       let brkLabel = '';
       for (const cc of state.conns.values()) {
         if (cc.from.nodeId === sec.id && cc.from.port === port) {
+          const brkCurve = cc.breakerCurve || cc._breakerCurve || 'MCB_C';
+          const brkPfx = (BREAKER_TYPES[brkCurve] || BREAKER_TYPES.MCB_C).prefix || '';
           if (cc._breakerIn) {
             const cnt = cc._breakerCount || 1;
-            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×C${cc._breakerPerLine}А`;
-            else brkLabel = `C${cc._breakerIn}А`;
+            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×${brkPfx}${cc._breakerPerLine}А`;
+            else brkLabel = `${brkPfx}${cc._breakerIn}А`;
           } else if (cc._breakerPerLine) {
             const cnt = cc._breakerCount || 1;
-            brkLabel = cnt > 1 ? `${cnt}×C${cc._breakerPerLine}А` : `C${cc._breakerPerLine}А`;
+            brkLabel = cnt > 1 ? `${cnt}×${brkPfx}${cc._breakerPerLine}А` : `${brkPfx}${cc._breakerPerLine}А`;
           }
           break;
         }
@@ -2091,11 +2089,42 @@ function _renderSectionedPanelControl(n, body) {
         h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">СВ${ti + 1}: разбежка ${Math.ceil(ilCd)} с</div>`;
       }
     }
+    // Приоритет: ввод или СВ
+    const prio = n.busTiePriority || 'input';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin:8px 0 0">';
+    h += '<span style="font-size:11px;font-weight:600;color:#666">Приоритет:</span>';
+    h += `<button type="button" data-tie-priority="input" style="padding:3px 10px;border:1px solid ${prio === 'input' ? '#1976d2' : '#ccc'};background:${prio === 'input' ? '#1976d2' : '#fff'};color:${prio === 'input' ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px;font-weight:${prio === 'input' ? '600' : '400'}">Ввод</button>`;
+    h += `<button type="button" data-tie-priority="tie" style="padding:3px 10px;border:1px solid ${prio === 'tie' ? '#1976d2' : '#ccc'};background:${prio === 'tie' ? '#1976d2' : '#fff'};color:${prio === 'tie' ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px;font-weight:${prio === 'tie' ? '600' : '400'}">СВ</button>`;
+    h += '</div>';
     h += '</div>';
   }
-
-  // Обслуживание
-  h += `<div class="field check" style="margin-top:8px"><input type="checkbox" id="pc-maintenance"${n.maintenance ? ' checked' : ''}><label>Режим обслуживания (полностью обесточен)</label></div>`;
+  // АВР для секций с несколькими вводами
+  const avrSections = sections.filter(s => (s.inputs || 1) > 1);
+  if (avrSections.length) {
+    h += '<div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">';
+    h += '<div style="font-size:11px;font-weight:600;color:#666;margin-bottom:4px">Режим работы АВР секций:</div>';
+    for (let si = 0; si < sections.length; si++) {
+      const sec = sections[si];
+      if ((sec.inputs || 1) <= 1) continue;
+      const manualNow = sec.switchMode === 'manual';
+      const secLabel = sec.name || `Секция ${si + 1}`;
+      h += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0">';
+      h += `<span style="font-size:11px;font-weight:600;color:#666;min-width:70px">${escHtml(secLabel)}:</span>`;
+      h += `<span style="font-size:11px;color:${!manualNow ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
+      h += `<div data-sec-avr-toggle="${si}" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
+      h += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+      h += '</div>';
+      h += `<span style="font-size:11px;color:${manualNow ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
+      h += '</div>';
+      // Таймер АВР секции
+      if (sec._avrSwitchCountdown > 0) {
+        h += `<div style="text-align:center;font-size:12px;color:#1976d2;font-weight:600;margin:2px 0">${escHtml(secLabel)}: задержка ${Math.ceil(sec._avrSwitchCountdown)} с</div>`;
+      } else if (sec._avrInterlockCountdown > 0) {
+        h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">${escHtml(secLabel)}: разбежка ${Math.ceil(sec._avrInterlockCountdown)} с</div>`;
+      }
+    }
+    h += '</div>';
+  }
 
   body.innerHTML = h;
 
@@ -2134,6 +2163,11 @@ function _renderSectionedPanelControl(n, body) {
       if (!sec) return;
       if (!Array.isArray(sec.inputBreakerStates)) sec.inputBreakerStates = new Array(sec.inputs || 0).fill(true);
       while (sec.inputBreakerStates.length < (sec.inputs || 0)) sec.inputBreakerStates.push(true);
+      // Блокировка: если секция имеет АВР в авто-режиме
+      if ((sec.inputs || 1) > 1 && sec.switchMode !== 'manual' && sec.switchMode !== 'parallel') {
+        flash('Вводные автоматы управляются АВР секции. Переключите в ручной режим.', 'error');
+        return;
+      }
       // Блокировка: если СВ к этой секции в авто-режиме — автоматика управляет вводами
       for (let ti = 0; ti < busTies.length; ti++) {
         const tie = busTies[ti];
@@ -2246,16 +2280,47 @@ function _renderSectionedPanelControl(n, body) {
     });
   });
 
-  // Обслуживание
-  const maintCb = document.getElementById('pc-maintenance');
-  if (maintCb) {
-    maintCb.addEventListener('change', () => {
-      snapshot('maintenance:' + n.id);
-      n.maintenance = maintCb.checked;
+  // Приоритет ввод/СВ
+  body.querySelectorAll('[data-tie-priority]').forEach(el => {
+    el.addEventListener('click', () => {
+      snapshot('tiePriority:' + n.id);
+      n.busTiePriority = el.dataset.tiePriority;
       _render(); notifyChange();
       openPanelControlModal(n);
     });
-  }
+  });
+
+  // АВР секций: Авто/Ручной toggle
+  body.querySelectorAll('[data-sec-avr-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const si = Number(el.dataset.secAvrToggle);
+      const sec = sections[si];
+      if (!sec) return;
+      snapshot('sec-avr:' + sec.id);
+      if (sec.switchMode === 'manual') {
+        sec.switchMode = sec._prevSwitchMode || 'auto';
+        sec.inputBreakerStates = null;
+        sec._avrBreakerOverride = null;
+        sec._avrActivePort = undefined;
+        sec._avrSwitchStartedAt = 0;
+        sec._avrDisconnected = false;
+      } else {
+        sec._prevSwitchMode = sec.switchMode;
+        if (Array.isArray(sec._avrBreakerOverride)) {
+          sec.inputBreakerStates = [...sec._avrBreakerOverride];
+        } else {
+          const states = new Array(sec.inputs || 0).fill(false);
+          for (const c of state.conns.values()) {
+            if (c.to.nodeId === sec.id && c._state === 'active') states[c.to.port] = true;
+          }
+          sec.inputBreakerStates = states;
+        }
+        sec.switchMode = 'manual';
+      }
+      _render(); notifyChange();
+      openPanelControlModal(n);
+    });
+  });
 
   document.getElementById('modal-panel-control').classList.remove('hidden');
 }
@@ -2437,13 +2502,15 @@ export function openPanelControlModal(n) {
       let brkLabel = '';
       for (const cc of state.conns.values()) {
         if (cc.from.nodeId === n.id && cc.from.port === i) {
+          const brkCurve = cc.breakerCurve || cc._breakerCurve || 'MCB_C';
+          const brkPfx = (BREAKER_TYPES[brkCurve] || BREAKER_TYPES.MCB_C).prefix || '';
           if (cc._breakerIn) {
             const cnt = cc._breakerCount || 1;
-            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×C${cc._breakerPerLine}А`;
-            else brkLabel = `C${cc._breakerIn}А`;
+            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×${brkPfx}${cc._breakerPerLine}А`;
+            else brkLabel = `${brkPfx}${cc._breakerIn}А`;
           } else if (cc._breakerPerLine) {
             const cnt = cc._breakerCount || 1;
-            brkLabel = cnt > 1 ? `${cnt}×C${cc._breakerPerLine}А` : `C${cc._breakerPerLine}А`;
+            brkLabel = cnt > 1 ? `${cnt}×${brkPfx}${cc._breakerPerLine}А` : `${brkPfx}${cc._breakerPerLine}А`;
           }
           break;
         }
@@ -2497,13 +2564,6 @@ export function openPanelControlModal(n) {
     h += '<span style="font-size:11px;color:' + (manualNow ? '#e65100;font-weight:600' : '#999') + '">Ручной</span>';
     h += '</div>';
   }
-
-  // --- Обслуживание ---
-  h += `<div class="field check" style="margin-top:8px"><input type="checkbox" id="pc-maintenance"${n.maintenance ? ' checked' : ''}><label>Режим обслуживания (полностью обесточен)</label></div>`;
-  if (n.maintenance) {
-    h += '<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:6px;font-size:11px;font-weight:600;color:#e65100">⚠ ЩИТ В РЕЖИМЕ ОБСЛУЖИВАНИЯ</div>';
-  }
-
 
   body.innerHTML = h;
 

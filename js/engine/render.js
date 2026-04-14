@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { svg, layerConns, layerNodes, statsEl, modesListEl } from './state.js';
-import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL, CONSUMER_CATALOG } from './constants.js';
+import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
 import { recalc } from './recalc.js';
@@ -826,13 +826,15 @@ export function renderConns() {
       const bx = a.x;
       const by = a.y + 6; // чуть ниже порта
 
+      const brkCurveId = c.breakerCurve || c._breakerCurve || 'MCB_C';
+      const brkPfx = (BREAKER_TYPES[brkCurveId] || BREAKER_TYPES.MCB_C).prefix || '';
       let brkText;
       if (c._cableAutoParallel && c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
-        brkText = `C${c._breakerIn}А (${c._breakerCount}×C${c._breakerPerLine}А)`;
+        brkText = `${brkPfx}${c._breakerIn}А (${c._breakerCount}×${brkPfx}${c._breakerPerLine}А)`;
       } else if (c._breakerPerLine && c._breakerCount > 1) {
-        brkText = `${c._breakerCount}×C${c._breakerPerLine}А`;
+        brkText = `${c._breakerCount}×${brkPfx}${c._breakerPerLine}А`;
       } else if (c._breakerIn) {
-        brkText = `C${c._breakerIn}А`;
+        brkText = `${brkPfx}${c._breakerIn}А`;
       }
       if (brkText) {
         const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');

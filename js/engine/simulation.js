@@ -381,6 +381,8 @@ function simTick() {
       const delay = Math.max(0, Number(tie.delaySec) || 2);
       const interlock = Math.max(0, Number(tie.interlockSec) || 1);
 
+      const priority = n.busTiePriority || 'input';
+
       if (!tieOn) {
         // === СВ РАЗОМКНУТ — проверяем нужно ли замкнуть ===
 
@@ -389,6 +391,31 @@ function simTick() {
           resetTie(ti);
           continue;
         }
+
+        // Приоритет ввод: если секция не запитана но питание доступно — включить автомат
+        // Только для секций БЕЗ собственного АВР (простые секции с 1 вводом или parallel/manual)
+        if (priority === 'input') {
+          let restored = false;
+          for (const [sec, avail, pow] of [[secA, ownAvailA, ownPowA], [secB, ownAvailB, ownPowB]]) {
+            if (!pow && avail) {
+              // Не трогаем секции с собственным АВР (switchMode auto/switchover + inputs>1)
+              const hasOwnAvr = (sec.inputs || 1) > 1
+                && sec.switchMode !== 'manual' && sec.switchMode !== 'parallel';
+              if (hasOwnAvr) continue;
+              if (!Array.isArray(sec.inputBreakerStates)) sec.inputBreakerStates = new Array(sec.inputs || 0).fill(true);
+              let anyOff = false;
+              for (let i = 0; i < (sec.inputs || 0); i++) {
+                if (sec.inputBreakerStates[i] === false) { anyOff = true; break; }
+              }
+              if (anyOff) {
+                for (let i = 0; i < (sec.inputs || 0); i++) sec.inputBreakerStates[i] = true;
+                restored = true; changed = true;
+              }
+            }
+          }
+          if (restored) { resetTie(ti); continue; }
+        }
+
         if (!ownPowA && !ownPowB) {
           // Обе мертвы — СВ не поможет
           resetTie(ti);

@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.17.5';
+export const APP_VERSION = '0.17.8';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -294,6 +294,7 @@ export const DEFAULTS = {
     // busTies[i] = { between: [sectionIdx, sectionIdx], closed: false, auto: true,
     //               delaySec: 2, interlockSec: 1 }
     busTies: null,
+    busTiePriority: 'input', // 'input' — приоритет ввод (при наличии питания на вводе СВ размыкается), 'tie' — приоритет СВ
     // Для режима avr_paired: привязка выходов к входам.
     // outputInputMap[outIdx] = [inIdx1, inIdx2, ...] — список входов,
     // от которых может работать данный выход (с приоритетами внутри списка).
