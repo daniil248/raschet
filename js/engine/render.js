@@ -310,27 +310,19 @@ export function renderNodes() {
 
     // Групповой потребитель — стопка карточек
     const isGroup = n.type === 'consumer' && (n.count || 1) > 1;
+    const groupPeek = isGroup ? 24 : 0; // высота выступающей части нижней карточки
     if (isGroup) {
-      const stackOff = 6;
-      const layers = Math.min(n.count || 1, 3);
-      // Нижняя плашка с данными группы
-      const groupH = 22;
+      const ox = 6, oy = groupPeek; // сдвиг нижней карточки
+      // Нижняя карточка (полная высота, сдвинута вниз и вправо)
       g.appendChild(el('rect', {
-        class: 'node-body', x: stackOff, y: NODE_H - 2,
-        width: w, height: groupH, rx: 4, opacity: 0.85,
+        class: 'node-body', x: ox, y: oy, width: w, height: NODE_H, rx: 6,
       }));
+      // Текст группы на выступающей части нижней карточки
       const totalKw = (n.count || 1) * (n.demandKw || 0);
-      g.appendChild(text(12 + stackOff, NODE_H + 13,
+      g.appendChild(text(12 + ox, NODE_H + oy - 6,
         `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`, 'node-load'));
-      // Тени стопки (слои сзади карточки)
-      for (let layer = layers - 1; layer >= 1; layer--) {
-        const off = layer * 4;
-        g.appendChild(el('rect', {
-          class: 'node-body', x: off, y: off, width: w, height: NODE_H,
-          opacity: 0.4,
-        }));
-      }
     }
+    // Верхняя карточка (основная, полностью непрозрачная)
     g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
 
     // Обозначение — с учётом префикса зоны («P1.MPB1»)
