@@ -1,84 +1,134 @@
-import {
-  GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP_TABLES,
-  INSTALL_METHODS, CABLE_TYPES, BREAKER_TYPES
-} from '../js/engine/constants.js';
-
-import {
-  selectCableSize, selectBreaker, cableTable,
-  kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping
-} from '../js/engine/cable.js';
+import { GLOBAL } from '../js/engine/constants.js';
+import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop } from '../js/methods/index.js';
 
 // ============ DOM refs ============
 const $ = id => document.getElementById(id);
 
 const els = {
-  inputMode:    $('input-mode'),
-  fieldsCurrent: $('fields-current'),
-  fieldsPower:   $('fields-power'),
-  current:      $('in-current'),
-  power:        $('in-power'),
-  voltage:      $('in-voltage'),
-  cosphi:       $('in-cosphi'),
-  material:     $('in-material'),
-  insulation:   $('in-insulation'),
-  cableType:    $('in-cableType'),
-  maxSize:      $('in-maxSize'),
-  method:       $('in-method'),
-  ambient:      $('in-ambient'),
-  grouping:     $('in-grouping'),
-  bundling:     $('in-bundling'),
-  breaker:      $('in-breaker'),
-  parallel:     $('in-parallel'),
-  length:       $('in-length'),
-  vdropVoltage: $('in-vdrop-voltage'),
-  vdropPhases:  $('in-vdrop-phases'),
-  vdropCosphi:  $('in-vdrop-cosphi'),
-  btnCalc:      $('btn-calc'),
-  resultArea:   $('result-area'),
+  methodStandard: $('in-method-standard'),
+  methodLabel:    $('method-label'),
+  inputMode:      $('input-mode'),
+  fieldsCurrent:  $('fields-current'),
+  fieldsPower:    $('fields-power'),
+  current:        $('in-current'),
+  power:          $('in-power'),
+  voltageLevel:   $('in-voltage-level'),
+  cosphi:         $('in-cosphi'),
+  material:       $('in-material'),
+  insulation:     $('in-insulation'),
+  cableType:      $('in-cableType'),
+  maxSize:        $('in-maxSize'),
+  method:         $('in-method'),
+  ambient:        $('in-ambient'),
+  grouping:       $('in-grouping'),
+  bundling:       $('in-bundling'),
+  bundlingField:  $('bundling-field'),
+  parallel:       $('in-parallel'),
+  length:         $('in-length'),
+  maxVdrop:       $('in-max-vdrop'),
+  btnCalc:        $('btn-calc'),
+  resultArea:     $('result-area'),
 };
 
-// ============ Input mode toggle ============
 let mode = 'current';
-els.inputMode.addEventListener('click', e => {
-  const lbl = e.target.closest('label');
-  if (!lbl) return;
-  mode = lbl.dataset.mode;
-  els.inputMode.querySelectorAll('label').forEach(l => l.classList.toggle('active', l === lbl));
-  els.fieldsCurrent.style.display = mode === 'current' ? '' : 'none';
-  els.fieldsPower.style.display   = mode === 'power'   ? '' : 'none';
-});
+let currentMethod = null;
+
+// ============ Init ============
+function init() {
+  // Populate method selector
+  const methods = listMethods();
+  els.methodStandard.innerHTML = methods.map(m =>
+    `<option value="${m.id}">${m.label}</option>`
+  ).join('');
+
+  // Populate voltage levels from GLOBAL
+  els.voltageLevel.innerHTML = GLOBAL.voltageLevels.map((v, i) =>
+    `<option value="${i}">${v.label}</option>`
+  ).join('');
+
+  // Switch method
+  els.methodStandard.addEventListener('change', () => switchMethod(els.methodStandard.value));
+
+  // Input mode toggle
+  els.inputMode.addEventListener('click', e => {
+    const lbl = e.target.closest('label');
+    if (!lbl) return;
+    mode = lbl.dataset.mode;
+    els.inputMode.querySelectorAll('label').forEach(l => l.classList.toggle('active', l === lbl));
+    els.fieldsCurrent.style.display = mode === 'current' ? '' : 'none';
+    els.fieldsPower.style.display   = mode === 'power'   ? '' : 'none';
+  });
+
+  // Calc button
+  els.btnCalc.addEventListener('click', calculate);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') calculate();
+  });
+
+  // Initial method
+  switchMethod('iec');
+  calculate();
+}
+
+// ============ Switch method ============
+function switchMethod(id) {
+  currentMethod = getMethod(id);
+  els.methodLabel.textContent = currentMethod.label;
+
+  // Materials
+  fillSelect(els.material, currentMethod.materials);
+
+  // Insulations
+  fillSelect(els.insulation, currentMethod.insulations);
+
+  // Cable types
+  fillSelect(els.cableType, currentMethod.cableTypes);
+
+  // Install methods
+  fillSelect(els.method, currentMethod.installMethods);
+  if (currentMethod.defaultMethod) els.method.value = currentMethod.defaultMethod;
+
+  // Bundling
+  if (currentMethod.hasBundling) {
+    els.bundlingField.style.display = '';
+    fillSelect(els.bundling, currentMethod.bundlingOptions);
+  } else {
+    els.bundlingField.style.display = 'none';
+  }
+}
+
+function fillSelect(el, map) {
+  const prev = el.value;
+  el.innerHTML = Object.entries(map).map(([k, v]) =>
+    `<option value="${k}">${v}</option>`
+  ).join('');
+  // Restore previous value if still valid
+  if ([...el.options].some(o => o.value === prev)) el.value = prev;
+}
 
 // ============ Compute sizing current ============
+function getVoltageInfo() {
+  const idx = Number(els.voltageLevel.value) || 0;
+  const vl = GLOBAL.voltageLevels[idx] || GLOBAL.voltageLevels[0];
+  return vl;
+}
+
 function getSizingCurrent() {
   if (mode === 'current') {
     return Number(els.current.value) || 0;
   }
   const P = Number(els.power.value) || 0;
-  const [vStr, phStr] = els.voltage.value.split('_');
-  const V = Number(vStr);
-  const phases = Number(phStr);
+  const vl = getVoltageInfo();
   const cos = Number(els.cosphi.value) || 0.92;
-  if (P <= 0 || V <= 0) return 0;
-  const k = phases === 3 ? Math.sqrt(3) : 1;
-  return (P * 1000) / (k * V * cos);
-}
-
-// ============ Voltage drop calculation ============
-// IEC 60364-5-52: dU = (b * rho * L * I * cos) / (n * S)
-// rho Cu = 0.0175 Ohm*mm2/m, Al = 0.028
-// b = 2 for 1ph, sqrt(3) for 3ph
-function calcVoltageDrop(I, S, material, lengthM, voltage, phases, cosPhi, parallel) {
-  if (S <= 0 || lengthM <= 0 || voltage <= 0) return { dU: 0, dUpct: 0 };
-  const rho = material === 'Al' ? 0.028 : 0.0175;
-  const b = phases === 3 ? Math.sqrt(3) : 2;
-  const cos = cosPhi || 0.92;
-  const n = Math.max(1, parallel);
-  const dU = (b * rho * lengthM * I * cos) / (n * S);
-  return { dU, dUpct: (dU / voltage) * 100 };
+  if (P <= 0) return 0;
+  const k = vl.phases === 3 ? Math.sqrt(3) : 1;
+  return (P * 1000) / (k * vl.vLL * cos);
 }
 
 // ============ Main calculation ============
 function calculate() {
+  if (!currentMethod) return;
+
   const I = getSizingCurrent();
   if (I <= 0) {
     els.resultArea.innerHTML = '<div class="result-empty">Ток должен быть больше 0</div>';
@@ -88,65 +138,99 @@ function calculate() {
   const material   = els.material.value;
   const insulation = els.insulation.value;
   const method     = els.method.value;
+  const cableType  = els.cableType.value;
   const ambient    = Number(els.ambient.value) || 30;
   const grouping   = Number(els.grouping.value) || 1;
-  const bundling   = els.bundling.value;
-  const cableType  = els.cableType.value;
+  const bundling   = currentMethod.hasBundling ? els.bundling.value : 'touching';
   const maxSize    = Number(els.maxSize.value) || 240;
-  const breakerCurve = els.breaker.value;
   const parallel   = Number(els.parallel.value) || 1;
   const lengthM    = Number(els.length.value) || 0;
-  const vdropV     = Number(els.vdropVoltage.value) || 400;
-  const vdropPh    = Number(els.vdropPhases.value) || 3;
-  const vdropCos   = Number(els.vdropCosphi.value) || 0.92;
+  const maxVdropPct = Number(els.maxVdrop.value) || 5;
+  const vl         = getVoltageInfo();
+  const cosPhi     = Number(els.cosphi.value) || 0.92;
 
-  const result = selectCableSize(I, {
-    material, insulation, method,
-    ambientC: ambient, grouping, bundling,
-    cableType, maxSize,
-    conductorsInParallel: parallel,
-    breakerCurve,
-    allowAutoParallel: true,
+  // 1. Подбор по токовой нагрузке
+  const resByAmp = currentMethod.selectCable(I, {
+    material, insulation, method, cableType,
+    ambient, grouping, bundling, maxSize, parallel,
   });
 
-  const In = selectBreaker(I / result.parallel);
-  const brkType = BREAKER_TYPES[breakerCurve] || BREAKER_TYPES.MCB_C;
-  const kTotal = result.kT * result.kG;
+  // 2. Расчёт Vdrop для подобранного сечения
+  const vdropAmp = calcVoltageDrop(I, resByAmp.s, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
 
-  // Voltage drop
-  const vdrop = calcVoltageDrop(I, result.s, material, lengthM, vdropV, vdropPh, vdropCos, result.parallel);
-  const vdropOk = vdrop.dUpct <= 5;
+  // 3. Подбор по Vdrop (если есть длина)
+  let sizeByVdrop = null;
+  let resByVdrop = null;
+  let vdropFinal = vdropAmp;
 
-  renderResult(I, result, In, brkType, kTotal, vdrop, vdropOk, {
-    material, insulation, method, ambient, grouping, bundling, cableType, breakerCurve, lengthM, vdropV
+  if (lengthM > 0 && vdropAmp.dUpct > maxVdropPct) {
+    const sizes = currentMethod.availableSizes(material, insulation, method).filter(s => s <= maxSize);
+    sizeByVdrop = findMinSizeForVdrop(I, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel, maxVdropPct, sizes);
+
+    if (sizeByVdrop && sizeByVdrop > resByAmp.s) {
+      // Пересчитываем с увеличенным сечением — нужно подтвердить что метод тоже выдаёт ≥
+      resByVdrop = { s: sizeByVdrop };
+      vdropFinal = calcVoltageDrop(I, sizeByVdrop, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
+    }
+  }
+
+  const finalSize = (resByVdrop && resByVdrop.s > resByAmp.s) ? resByVdrop.s : resByAmp.s;
+  const increased = finalSize > resByAmp.s;
+
+  // Финальный Vdrop
+  if (increased) {
+    vdropFinal = calcVoltageDrop(I, finalSize, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
+  }
+
+  const In = currentMethod.selectBreaker(I / resByAmp.parallel);
+
+  renderResult(I, resByAmp, finalSize, increased, In, vdropAmp, vdropFinal, maxVdropPct, {
+    material, insulation, method, cableType, ambient, grouping, bundling, lengthM, vl, cosPhi,
   });
 }
 
 // ============ Render results ============
-function renderResult(I, res, In, brkType, kTotal, vdrop, vdropOk, params) {
-  const matLabel = params.material === 'Cu' ? 'Медь' : 'Алюминий';
-  const insLabel = params.insulation === 'PVC' ? 'ПВХ' : 'СПЭ (XLPE)';
-  const methLabel = (INSTALL_METHODS[params.method] || {}).label || params.method;
-  const typeLabel = (CABLE_TYPES[params.cableType] || {}).label || params.cableType;
-  const brkLabel = brkType.label || params.breakerCurve;
-  const prefix = brkType.prefix || '';
+function renderResult(I, res, finalSize, increased, In, vdropAmp, vdropFinal, maxVdropPct, params) {
+  const matLabel = currentMethod.materials[params.material] || params.material;
+  const insLabel = currentMethod.insulations[params.insulation] || params.insulation;
+  const methLabel = currentMethod.installMethods[params.method] || params.method;
+  const typeLabel = currentMethod.cableTypes[params.cableType] || params.cableType;
+  const kTotal = res.kT * res.kG;
+  const vdropOk = vdropFinal.dUpct <= maxVdropPct;
 
   const overflowHtml = res.overflow
-    ? `<div class="result-detail tag-overflow">Внимание: не удалось подобрать кабель, взято максимальное сечение!</div>`
+    ? `<div class="result-detail tag-overflow">Не удалось подобрать кабель, взято макс. сечение!</div>`
     : '';
 
   const autoParHtml = res.autoParallel
     ? `<div class="result-detail tag-warn">Авто-увеличение до ${res.parallel} параллельных линий</div>`
     : '';
 
+  // Рекомендация по Vdrop
+  let recommendHtml = '';
+  if (increased) {
+    recommendHtml = `
+      <div class="result-card recommend">
+        <h3>Рекомендация</h3>
+        <div class="result-detail">
+          По токовой нагрузке достаточно <strong>${res.s} мм&sup2;</strong>, но при длине ${params.lengthM} м
+          падение напряжения составит <strong>${vdropAmp.dUpct.toFixed(2)}%</strong> (больше ${maxVdropPct}%).<br><br>
+          Рекомендуется увеличить сечение до <strong>${finalSize} мм&sup2;</strong> — при этом
+          &Delta;U = <strong>${vdropFinal.dUpct.toFixed(2)}%</strong>.
+        </div>
+      </div>
+    `;
+  }
+
   const html = `
     <div class="result-grid">
       <div class="result-card highlight">
-        <h3>Сечение кабеля</h3>
-        <div class="result-value">${res.s}<span class="unit">мм&sup2;</span></div>
+        <h3>Сечение кабеля ${increased ? '(итоговое)' : ''}</h3>
+        <div class="result-value">${finalSize}<span class="unit">мм&sup2;</span></div>
         <div class="result-detail">
           ${matLabel}, ${insLabel}, ${typeLabel}<br>
           ${res.parallel > 1 ? res.parallel + ' параллельных линий' : '1 линия'}
+          ${increased ? '<br><span class="tag-warn">Увеличено по Vdrop</span>' : ''}
         </div>
         ${overflowHtml}
         ${autoParHtml}
@@ -154,56 +238,59 @@ function renderResult(I, res, In, brkType, kTotal, vdrop, vdropOk, params) {
 
       <div class="result-card">
         <h3>Автомат защиты</h3>
-        <div class="result-value">${prefix}${In}<span class="unit">А</span></div>
+        <div class="result-value">${In}<span class="unit">А</span></div>
         <div class="result-detail">
-          ${brkLabel}<br>
-          I<sub>2</sub> / I<sub>n</sub> = ${brkType.I2ratio}
+          Ближайший &ge; I<sub>расч</sub>/n
         </div>
       </div>
 
       <div class="result-card">
-        <h3>Допустимый ток кабеля</h3>
+        <h3>Допустимый ток</h3>
         <div class="result-value">${res.iDerated.toFixed(1)}<span class="unit">А/линию</span></div>
         <div class="result-detail">
           Табличный: <strong>${res.iAllowed} А</strong><br>
-          После снижения: <strong>${res.iDerated.toFixed(1)} А</strong><br>
-          ${res.parallel > 1 ? 'Суммарно: <strong>' + res.totalCapacity.toFixed(1) + ' А</strong>' : ''}
+          После снижения: <strong>${res.iDerated.toFixed(1)} А</strong>
+          ${res.parallel > 1 ? '<br>Суммарно: <strong>' + res.totalCapacity.toFixed(1) + ' А</strong>' : ''}
         </div>
       </div>
 
       <div class="result-card ${!vdropOk ? 'warn' : ''}">
         <h3>Падение напряжения</h3>
-        <div class="result-value ${!vdropOk ? 'tag-warn' : ''}">${vdrop.dUpct.toFixed(2)}<span class="unit">%</span></div>
+        <div class="result-value ${!vdropOk ? 'tag-warn' : ''}">${vdropFinal.dUpct.toFixed(2)}<span class="unit">%</span></div>
         <div class="result-detail">
-          &Delta;U = ${vdrop.dU.toFixed(2)} В при ${params.lengthM} м<br>
-          <span class="${vdropOk ? 'tag-ok' : 'tag-overflow'}">${vdropOk ? 'В норме (\u22645%)' : 'Превышение допустимого!'}</span>
+          &Delta;U = ${vdropFinal.dU.toFixed(2)} В при ${params.lengthM} м<br>
+          ${params.vl.label}, cos&phi; = ${params.cosPhi}<br>
+          <span class="${vdropOk ? 'tag-ok' : 'tag-overflow'}">${vdropOk ? 'В норме (\u2264' + maxVdropPct + '%)' : 'Превышение!'}</span>
         </div>
       </div>
     </div>
 
-    <h3 style="margin:0 0 12px;font-size:14px;font-weight:600;color:#1f2430">Детали расчёта</h3>
+    ${recommendHtml}
+
+    <h3 style="margin:20px 0 12px;font-size:14px;font-weight:600;color:#1f2430">Детали расчёта (${currentMethod.label})</h3>
     <table class="detail-table">
-      <tr><th colspan="2">Параметры расчёта</th></tr>
+      <tr><th colspan="2">Параметры</th></tr>
       <tr><td>Расчётный ток (I<sub>расч</sub>)</td><td>${I.toFixed(2)} А</td></tr>
       <tr><td>Ток на линию (I / n)</td><td>${(I / res.parallel).toFixed(2)} А</td></tr>
       <tr><td>Номинал автомата (I<sub>n</sub>)</td><td>${In} А</td></tr>
       <tr><td>Способ прокладки</td><td>${methLabel}</td></tr>
       <tr><td>Температура среды</td><td>${params.ambient} &deg;C</td></tr>
       <tr><td>Кабелей в группе</td><td>${params.grouping}</td></tr>
-      <tr><td>Укладка</td><td>${params.bundling}</td></tr>
+      ${currentMethod.hasBundling ? `<tr><td>Укладка</td><td>${params.bundling}</td></tr>` : ''}
       <tr><th colspan="2">Коэффициенты снижения</th></tr>
       <tr><td>K<sub>t</sub> (температура)</td><td>${res.kT.toFixed(3)}</td></tr>
-      <tr><td>K<sub>g</sub> (группирование + укладка)</td><td>${res.kG.toFixed(3)}</td></tr>
+      <tr><td>K<sub>g</sub> (группирование)</td><td>${res.kG.toFixed(3)}</td></tr>
       <tr><td>K<sub>total</sub> = K<sub>t</sub> &times; K<sub>g</sub></td><td><strong>${kTotal.toFixed(3)}</strong></td></tr>
-      <tr><th colspan="2">Проверка по IEC 60364-4-43</th></tr>
-      <tr><td>I<sub>расч</sub> &le; I<sub>n</sub> &le; I<sub>z</sub></td>
-        <td>${(I / res.parallel).toFixed(1)} &le; ${In} &le; ${res.iDerated.toFixed(1)}
-          — <span class="${In <= res.iDerated ? 'tag-ok' : 'tag-overflow'}">${In <= res.iDerated ? 'OK' : 'НЕТ'}</span>
-        </td>
-      </tr>
-      <tr><td>I<sub>2</sub> = ${brkType.I2ratio} &times; ${In} = ${(brkType.I2ratio * In).toFixed(1)} А &le; 1.45 &times; ${res.iDerated.toFixed(1)} = ${(1.45 * res.iDerated).toFixed(1)} А</td>
-        <td><span class="${brkType.I2ratio * In <= 1.45 * res.iDerated ? 'tag-ok' : 'tag-overflow'}">${brkType.I2ratio * In <= 1.45 * res.iDerated ? 'OK' : 'НЕТ'}</span></td>
-      </tr>
+      <tr><th colspan="2">Подбор сечения</th></tr>
+      <tr><td>По токовой нагрузке</td><td>${res.s} мм&sup2;</td></tr>
+      ${increased ? `<tr><td>По падению напряжения</td><td>${finalSize} мм&sup2;</td></tr>` : ''}
+      <tr><td>Итоговое сечение</td><td><strong>${finalSize} мм&sup2;</strong>${increased ? ' (увеличено по &Delta;U)' : ''}</td></tr>
+      ${params.lengthM > 0 ? `
+      <tr><th colspan="2">Падение напряжения</th></tr>
+      <tr><td>&Delta;U при ${res.s} мм&sup2;</td><td>${vdropAmp.dUpct.toFixed(2)}% (${vdropAmp.dU.toFixed(2)} В)</td></tr>
+      ${increased ? `<tr><td>&Delta;U при ${finalSize} мм&sup2;</td><td>${vdropFinal.dUpct.toFixed(2)}% (${vdropFinal.dU.toFixed(2)} В)</td></tr>` : ''}
+      <tr><td>Допустимо</td><td>&le; ${maxVdropPct}% — <span class="${vdropOk ? 'tag-ok' : 'tag-overflow'}">${vdropOk ? 'OK' : 'НЕТ'}</span></td></tr>
+      ` : ''}
     </table>
   `;
 
@@ -211,22 +298,4 @@ function renderResult(I, res, In, brkType, kTotal, vdrop, vdropOk, params) {
 }
 
 // ============ Events ============
-els.btnCalc.addEventListener('click', calculate);
-
-// Enter key triggers calculation
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') calculate();
-});
-
-// Auto-sync voltage drop fields from power fields
-els.voltage.addEventListener('change', () => {
-  const [v, ph] = els.voltage.value.split('_');
-  els.vdropVoltage.value = v;
-  els.vdropPhases.value = ph;
-});
-els.cosphi.addEventListener('change', () => {
-  els.vdropCosphi.value = els.cosphi.value;
-});
-
-// Run initial calculation
-calculate();
+init();

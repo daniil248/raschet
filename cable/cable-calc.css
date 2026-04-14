@@ -248,6 +248,13 @@ main {
 .tag-warn { color: #e65100; }
 .tag-overflow { color: #c62828; font-weight: 600; }
 
+/* Recommendation card */
+.result-card.recommend {
+  border-color: #0288d1;
+  background: #e1f5fe;
+  grid-column: 1 / -1;
+}
+
 /* Responsive */
 @media (max-width: 800px) {
   main { flex-direction: column; }
