@@ -526,8 +526,10 @@
     <div class="modal-box modal-wide modal-resizable">
       <div class="modal-head">
         <h2>Управление щитом</h2>
-        <button id="pc-fullscreen" style="background:none;border:none;cursor:pointer;font-size:16px;padding:4px 8px;color:#666" title="На весь экран">⤢</button>
-        <button class="modal-close" aria-label="Закрыть">×</button>
+        <div style="display:flex;gap:2px;align-items:center">
+          <button id="pc-fullscreen" style="background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;color:#666;line-height:1" title="На весь экран">⤢</button>
+          <button class="modal-close" style="font-size:22px;line-height:1;padding:4px 8px" aria-label="Закрыть">×</button>
+        </div>
       </div>
       <div class="modal-body" id="panel-control-body"></div>
       <div class="modal-foot">

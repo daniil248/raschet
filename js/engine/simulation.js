@@ -351,13 +351,22 @@ function simTick() {
     }
 
     // Хелпер: есть ли конфликтующий замкнутый/замыкающийся СВ с общей секцией
+    // Не считаем конфликтом СВ между двумя мёртвыми секциями (бесполезный)
     function hasConflict(ti) {
       const [a, b] = busTies[ti].between;
       for (let oti = 0; oti < busTies.length; oti++) {
         if (oti === ti) continue;
         const [oa, ob] = busTies[oti].between;
         if (oa === a || oa === b || ob === a || ob === b) {
-          if (n._busTieStates[oti] || n._busTieSwitchStartedAt[oti] > 0) return true;
+          if (n._busTieStates[oti] || n._busTieSwitchStartedAt[oti] > 0) {
+            // Проверяем: если этот СВ между двумя мёртвыми — не конфликт
+            const oSecA = state.nodes.get(secIds[oa]);
+            const oSecB = state.nodes.get(secIds[ob]);
+            const oPowA = oSecA && oSecA._ownInputPowered;
+            const oPowB = oSecB && oSecB._ownInputPowered;
+            if (!oPowA && !oPowB) continue; // бесполезный СВ — не блокирует
+            return true;
+          }
         }
       }
       return false;
@@ -381,8 +390,6 @@ function simTick() {
       const delay = Math.max(0, Number(tie.delaySec) || 2);
       const interlock = Math.max(0, Number(tie.interlockSec) || 1);
 
-      const priority = n.busTiePriority || 'input';
-
       if (!tieOn) {
         // === СВ РАЗОМКНУТ — проверяем нужно ли замкнуть ===
 
@@ -393,11 +400,14 @@ function simTick() {
         }
 
         // Приоритет ввод: если секция не запитана но питание доступно — включить автомат
-        // Только для секций БЕЗ собственного АВР (простые секции с 1 вводом или parallel/manual)
-        if (priority === 'input') {
+        // Приоритет берётся с каждой секции отдельно (sectionInputPriority)
+        // Только для секций БЕЗ собственного АВР
+        {
           let restored = false;
           for (const [sec, avail, pow] of [[secA, ownAvailA, ownPowA], [secB, ownAvailB, ownPowB]]) {
             if (!pow && avail) {
+              const secPriority = sec.sectionInputPriority || n.busTiePriority || 'input';
+              if (secPriority !== 'input') continue;
               // Не трогаем секции с собственным АВР (switchMode auto/switchover + inputs>1)
               const hasOwnAvr = (sec.inputs || 1) > 1
                 && sec.switchMode !== 'manual' && sec.switchMode !== 'parallel';
@@ -469,14 +479,29 @@ function simTick() {
       } else {
         // === СВ ЗАМКНУТ — проверяем нужно ли разомкнуть ===
 
+        // Если обе секции мёртвые (ни одна не питает через ввод) — разомкнуть немедленно
+        if (!ownPowA && !ownPowB && !ownAvailA && !ownAvailB) {
+          n._busTieStates[ti] = false;
+          resetTie(ti);
+          n._busTieDeadSec[ti] = -1;
+          changed = true;
+          continue;
+        }
+
         const deadSecIdx = n._busTieDeadSec[ti];
         if (deadSecIdx < 0) {
           // Не знаем какая секция была мёртвой — определяем
           if (ownAvailA && ownAvailB) {
             // Обе имеют напряжение на вводах — нужно разомкнуть
-            n._busTieDeadSec[ti] = secIdxB; // запомним какую восстанавливать
+            n._busTieDeadSec[ti] = secIdxB;
+          } else if (!ownPowA && !ownPowB) {
+            // Обе мёртвые, хотя бы одна без доступного питания — разомкнуть
+            n._busTieStates[ti] = false;
+            resetTie(ti);
+            changed = true;
+            continue;
           } else {
-            continue; // Оставляем как есть
+            continue;
           }
         }
 

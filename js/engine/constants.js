@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.17.8';
+export const APP_VERSION = '0.18.1';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -284,6 +284,7 @@ export const DEFAULTS = {
     avrDelaySec: 2,         // задержка переключения АВР при возврате напряжения, сек
     avrInterlockSec: 1,     // минимальная разбежка между вкл. автоматов двух вводов, сек
     kSim: 1.0,
+    sectionInputPriority: 'input', // 'input' — приоритет ввод, 'tie' — приоритет СВ
     capacityA: 160,
     marginMinPct: 2,
     marginMaxPct: 30,

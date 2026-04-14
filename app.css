@@ -951,7 +951,13 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
 }
 .modal-box.modal-wide { max-width: 760px; }
 .modal-box.modal-resizable { resize: both; overflow: auto; min-width: 360px; min-height: 300px; }
-.modal-box.modal-fullscreen { width: 96vw !important; height: 92vh !important; max-width: 96vw !important; max-height: 92vh !important; }
+.modal-box.modal-fullscreen {
+  width: 96vw !important; height: 92vh !important;
+  max-width: 96vw !important; max-height: 92vh !important;
+  margin: 4vh auto !important;
+  position: relative !important;
+  left: 0 !important; top: 0 !important;
+}
 
 .field textarea {
   width: 100%;

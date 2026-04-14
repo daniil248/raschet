@@ -265,14 +265,21 @@ export function renderInspectorNode(n) {
     }
     h.push(`<button class="full-btn" id="btn-open-panel-params" style="margin-bottom:8px">⚙ Параметры ${isSection ? 'секции' : 'щита'}</button>`);
 
-    // Краткая сводка
-    const multiInput = (n.inputs || 1) > 1;
+    // Краткая сводка (не для секционного контейнера — у него всё на секциях)
     const sm = n.switchMode || 'auto';
-    const smLabel = !multiInput ? '' : ({ auto: 'АВР', manual: 'Ручной', parallel: 'Щит', avr_paired: 'АВР привязка', switchover: 'Подменный', watchdog: 'Watchdog', sectioned: 'Секционный' }[sm] || sm);
-    const modeStr = multiInput ? `Режим: <b>${smLabel}</b> · ` : '';
-    h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
-      `${modeStr}Вх: <b>${n.inputs}</b> · Вых: <b>${n.outputs}</b> · In: <b>${n.capacityA ?? 160} А</b>` +
-      `</div>`);
+    if (sm !== 'sectioned') {
+      const multiInput = (n.inputs || 1) > 1;
+      const smLabel = !multiInput ? '' : ({ auto: 'АВР', manual: 'Ручной', parallel: 'Щит', avr_paired: 'АВР привязка', switchover: 'Подменный', watchdog: 'Watchdog' }[sm] || sm);
+      const modeStr = multiInput ? `Режим: <b>${smLabel}</b> · ` : '';
+      h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
+        `${modeStr}Вх: <b>${n.inputs}</b> · Вых: <b>${n.outputs}</b> · In: <b>${n.capacityA ?? 160} А</b>` +
+        `</div>`);
+    } else {
+      const secCount = Array.isArray(n.sectionIds) ? n.sectionIds.length : 0;
+      const tieCount = Array.isArray(n.busTies) ? n.busTies.length : 0;
+      h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
+        `Многосекционный · ${secCount} секций · ${tieCount} СВ</div>`);
+    }
 
     // Ксим перенесён в параметры щита
 
@@ -1924,7 +1931,9 @@ function _renderSectionedPanelControl(n, body) {
       if (cc.from.nodeId === sec.id && cc._loadKw) secLoadKw += cc._loadKw;
     }
     const capA = sec.capacityA || 0;
-    h += `<text x="${sx + secW / 2}" y="${busY - 6}" text-anchor="middle" fill="${fed ? '#333' : '#999'}" font-size="8">${capA ? 'In ' + capA + 'А · ' : ''}${fmt(secLoadKw)} kW</text>`;
+    const maxA = sec._maxLoadA || 0;
+    if (capA) h += `<text x="${sx + 4}" y="${busY - 14}" text-anchor="start" fill="${fed ? '#333' : '#999'}" font-size="8">In ${capA}А</text>`;
+    if (maxA) h += `<text x="${sx + 4}" y="${busY - 5}" text-anchor="start" fill="${fed ? '#333' : '#999'}" font-size="8">Макс: ${fmt(maxA)}А</text>`;
     // Шина секции
     h += `<rect x="${sx}" y="${busY - 2}" width="${secW}" height="4" fill="${busCol}" rx="1"/>`;
 
@@ -2089,13 +2098,6 @@ function _renderSectionedPanelControl(n, body) {
         h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">СВ${ti + 1}: разбежка ${Math.ceil(ilCd)} с</div>`;
       }
     }
-    // Приоритет: ввод или СВ
-    const prio = n.busTiePriority || 'input';
-    h += '<div style="display:flex;align-items:center;gap:8px;margin:8px 0 0">';
-    h += '<span style="font-size:11px;font-weight:600;color:#666">Приоритет:</span>';
-    h += `<button type="button" data-tie-priority="input" style="padding:3px 10px;border:1px solid ${prio === 'input' ? '#1976d2' : '#ccc'};background:${prio === 'input' ? '#1976d2' : '#fff'};color:${prio === 'input' ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px;font-weight:${prio === 'input' ? '600' : '400'}">Ввод</button>`;
-    h += `<button type="button" data-tie-priority="tie" style="padding:3px 10px;border:1px solid ${prio === 'tie' ? '#1976d2' : '#ccc'};background:${prio === 'tie' ? '#1976d2' : '#fff'};color:${prio === 'tie' ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px;font-weight:${prio === 'tie' ? '600' : '400'}">СВ</button>`;
-    h += '</div>';
     h += '</div>';
   }
   // АВР для секций с несколькими вводами
@@ -2122,6 +2124,24 @@ function _renderSectionedPanelControl(n, body) {
       } else if (sec._avrInterlockCountdown > 0) {
         h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">${escHtml(secLabel)}: разбежка ${Math.ceil(sec._avrInterlockCountdown)} с</div>`;
       }
+    }
+    h += '</div>';
+  }
+
+  // Приоритет ввода для каждой секции (при наличии автоматических СВ)
+  const hasAutoTie = busTies.some(t => t.auto);
+  if (hasAutoTie) {
+    h += '<div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">';
+    h += '<div style="font-size:11px;font-weight:600;color:#666;margin-bottom:4px">Приоритет при восстановлении:</div>';
+    for (let si = 0; si < sections.length; si++) {
+      const sec = sections[si];
+      const secLabel = sec.name || `Секция ${si + 1}`;
+      const prio = sec.sectionInputPriority || 'input';
+      h += '<div style="display:flex;align-items:center;gap:6px;margin:3px 0">';
+      h += `<span style="font-size:11px;color:#666;min-width:70px">${escHtml(secLabel)}:</span>`;
+      h += `<button type="button" data-sec-priority="${si}:input" style="padding:2px 8px;border:1px solid ${prio === 'input' ? '#1976d2' : '#ccc'};background:${prio === 'input' ? '#1976d2' : '#fff'};color:${prio === 'input' ? '#fff' : '#333'};border-radius:3px;cursor:pointer;font-size:10px">Ввод</button>`;
+      h += `<button type="button" data-sec-priority="${si}:tie" style="padding:2px 8px;border:1px solid ${prio === 'tie' ? '#1976d2' : '#ccc'};background:${prio === 'tie' ? '#1976d2' : '#fff'};color:${prio === 'tie' ? '#fff' : '#333'};border-radius:3px;cursor:pointer;font-size:10px">СВ</button>`;
+      h += '</div>';
     }
     h += '</div>';
   }
@@ -2280,11 +2300,14 @@ function _renderSectionedPanelControl(n, body) {
     });
   });
 
-  // Приоритет ввод/СВ
-  body.querySelectorAll('[data-tie-priority]').forEach(el => {
+  // Приоритет ввод/СВ для секций
+  body.querySelectorAll('[data-sec-priority]').forEach(el => {
     el.addEventListener('click', () => {
-      snapshot('tiePriority:' + n.id);
-      n.busTiePriority = el.dataset.tiePriority;
+      const [siStr, val] = el.dataset.secPriority.split(':');
+      const sec = sections[Number(siStr)];
+      if (!sec) return;
+      snapshot('secPriority:' + sec.id);
+      sec.sectionInputPriority = val;
       _render(); notifyChange();
       openPanelControlModal(n);
     });
