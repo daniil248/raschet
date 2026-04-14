@@ -66,8 +66,8 @@ export function effectiveTag(n) {
     return chain.map(z => z.zonePrefix || z.tag || '').filter(Boolean).join('.');
   }
   // Секция многосекционного щита: PNL1.P1
-  if (n._parentSectioned) {
-    const parent = state.nodes.get(n._parentSectioned);
+  if (n.parentSectionedId) {
+    const parent = state.nodes.get(n.parentSectionedId);
     if (parent) {
       const parentTag = effectiveTag(parent);
       // Секция использует свой tag как суффикс (P1, P2...)
@@ -78,6 +78,17 @@ export function effectiveTag(n) {
   if (z) {
     const prefix = zonePrefix(z);
     if (prefix) return `${prefix}.${n.tag || ''}`;
+  }
+  // Многосекционный контейнер: если сам не в зоне, проверить зону первой секции
+  if (n.type === 'panel' && n.switchMode === 'sectioned' && Array.isArray(n.sectionIds) && n.sectionIds.length) {
+    const firstSec = state.nodes.get(n.sectionIds[0]);
+    if (firstSec) {
+      const secZone = findZoneForMember(firstSec);
+      if (secZone) {
+        const prefix = zonePrefix(secZone);
+        if (prefix) return `${prefix}.${n.tag || ''}`;
+      }
+    }
   }
   return n.tag || '';
 }

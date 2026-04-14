@@ -241,7 +241,7 @@ export function renderInspectorNode(n) {
       `</div>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
-    const isSection = !!n._parentSectioned;
+    const isSection = !!n.parentSectionedId;
     const isSectionedContainer = n.switchMode === 'sectioned';
     // Кнопки управления
     if (!isSection) {
@@ -1397,7 +1397,7 @@ export function openPanelParamsModal(n) {
   // Тип щита — всегда виден
   const sm = n.switchMode || 'auto';
   {
-    const isSubSection = !!n._parentSectioned;
+    const isSubSection = !!n.parentSectionedId;
     let smOpts = `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Щит</option>`;
     smOpts += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>Щит с АВР</option>`;
     if (!isSubSection) smOpts += `<option value="sectioned"${sm === 'sectioned' ? ' selected' : ''}>Многосекционный щит</option>`;
@@ -1552,7 +1552,7 @@ export function openPanelParamsModal(n) {
           switchMode: (n.inputs || 1) > 1 ? 'auto' : 'parallel',
           capacityA: n.capacityA || 160,
           priorities: n.priorities ? [...n.priorities] : [1],
-          _parentSectioned: n.id,
+          parentSectionedId: n.id,
         };
         secNode.tag = 'P1';
         state.nodes.set(secId, secNode);
@@ -1599,7 +1599,7 @@ export function openPanelParamsModal(n) {
         inputs: 1, outputs: 4,
         switchMode: 'parallel',
         capacityA: 160,
-        _parentSectioned: n.id,
+        parentSectionedId: n.id,
       };
       secNode.tag = `P${n.sectionIds.length + 1}`;
       state.nodes.set(secId, secNode);

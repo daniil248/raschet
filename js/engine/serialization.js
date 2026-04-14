@@ -72,6 +72,13 @@ export function deserialize(data) {
     }
     if (n.type === 'panel') {
       if (!n.switchMode) n.switchMode = 'auto';
+      // Восстановить parentSectionedId для секций многосекционного щита
+      if (n.switchMode === 'sectioned' && Array.isArray(n.sectionIds)) {
+        for (const sid of n.sectionIds) {
+          const sec = state.nodes.get(sid);
+          if (sec) sec.parentSectionedId = n.id;
+        }
+      }
       if (typeof n.manualActiveInput !== 'number') n.manualActiveInput = 0;
       if (!Array.isArray(n.parallelEnabled)) n.parallelEnabled = new Array(n.inputs || 0).fill(false);
       if (typeof n.kSim !== 'number') n.kSim = 1.0;

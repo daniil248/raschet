@@ -737,8 +737,8 @@ export function initInteraction() {
         ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
       }
       // Секция многосекционного щита — только горизонтальное перемещение
-      if (n.type === 'panel' && n._parentSectioned) {
-        const parent = state.nodes.get(n._parentSectioned);
+      if (n.type === 'panel' && n.parentSectionedId) {
+        const parent = state.nodes.get(n.parentSectionedId);
         if (parent) {
           // Фиксируем Y — все секции на одной линии
           const firstSecId = parent.sectionIds?.[0];

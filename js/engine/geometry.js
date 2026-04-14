@@ -14,6 +14,8 @@ export function nodeOutputCount(n) {
 }
 export function nodeWidth(n) {
   if (n.type === 'zone') return Math.max(200, Number(n.width) || 600);
+  // Многосекционный контейнер — размер по секциям
+  if (n.type === 'panel' && n.switchMode === 'sectioned') return Number(n._wrapW) || 400;
   const gs = GLOBAL.gridStep || 40;
   // Для consumer с боковыми портами — входы не влияют на ширину
   const inTop = (n.type !== 'consumer' || !n.inputSide || n.inputSide === 'top');
@@ -25,6 +27,7 @@ export function nodeWidth(n) {
 }
 export function nodeHeight(n) {
   if (n.type === 'zone') return Math.max(120, Number(n.height) || 400);
+  if (n.type === 'panel' && n.switchMode === 'sectioned') return Number(n._wrapH) || 200;
   return NODE_H;
 }
 export function portPos(n, kind, idx) {

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Расчёт единичного кабеля — Raschet</title>
+  <link rel="stylesheet" href="cable-calc.css">
+</head>
+<body>
+  <header>
+    <a class="btn-back" href="../hub.html" title="К главной">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+    </a>
+    <span class="hdr-title">Расчёт единичного кабеля</span>
+    <span class="hdr-sub">IEC 60364-5-52</span>
+  </header>
+
+  <main>
+    <!-- Left panel: inputs -->
+    <div class="panel-input">
+
+      <div class="section-title">Способ задания нагрузки</div>
+      <div class="input-mode" id="input-mode">
+        <label class="active" data-mode="current"><input type="radio" name="mode" value="current" checked><span>Ток (А)</span></label>
+        <label data-mode="power"><input type="radio" name="mode" value="power"><span>Мощность (кВт)</span></label>
+      </div>
+
+      <div id="fields-current">
+        <div class="field">
+          <label>Расчётный ток, А</label>
+          <input type="number" id="in-current" min="0" step="0.1" value="100">
+        </div>
+      </div>
+
+      <div id="fields-power" style="display:none">
+        <div class="field">
+          <label>Мощность, кВт</label>
+          <input type="number" id="in-power" min="0" step="0.1" value="30">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Напряжение, В</label>
+            <select id="in-voltage">
+              <option value="400_3">400 В, 3 фазы</option>
+              <option value="230_1">230 В, 1 фаза</option>
+              <option value="690_3">690 В, 3 фазы</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>cos &phi;</label>
+            <input type="number" id="in-cosphi" min="0.1" max="1" step="0.01" value="0.92">
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Кабель</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Материал жил</label>
+          <select id="in-material">
+            <option value="Cu">Медь (Cu)</option>
+            <option value="Al">Алюминий (Al)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Изоляция</label>
+          <select id="in-insulation">
+            <option value="PVC">ПВХ</option>
+            <option value="XLPE">СПЭ (XLPE)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Тип конструкции</label>
+          <select id="in-cableType">
+            <option value="multi">Многожильный</option>
+            <option value="single">Одножильный</option>
+            <option value="solid">Цельная жила</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Макс. сечение, мм&sup2;</label>
+          <select id="in-maxSize">
+            <option value="10">10</option>
+            <option value="16">16</option>
+            <option value="25">25</option>
+            <option value="35">35</option>
+            <option value="50">50</option>
+            <option value="70">70</option>
+            <option value="95">95</option>
+            <option value="120">120</option>
+            <option value="150">150</option>
+            <option value="185">185</option>
+            <option value="240" selected>240</option>
+            <option value="300">300</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section-title">Прокладка</div>
+      <div class="field">
+        <label>Способ прокладки</label>
+        <select id="in-method">
+          <option value="A1">A1 — Труба в теплоизол. стене</option>
+          <option value="A2">A2 — Кабель в теплоизол. стене</option>
+          <option value="B1" selected>B1 — Труба на/в стене</option>
+          <option value="B2">B2 — Короб / сплошной лоток</option>
+          <option value="C">C — Открыто на стене</option>
+          <option value="E">E — Перфорированный лоток</option>
+          <option value="F">F — Лестничный лоток</option>
+          <option value="G">G — Одножильные с интервалами</option>
+          <option value="D1">D1 — В трубе в земле</option>
+          <option value="D2">D2 — Напрямую в земле</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Температура среды, &deg;C</label>
+          <input type="number" id="in-ambient" min="10" max="70" step="5" value="30">
+        </div>
+        <div class="field">
+          <label>Кабелей в группе</label>
+          <input type="number" id="in-grouping" min="1" max="20" step="1" value="1">
+        </div>
+      </div>
+      <div class="field">
+        <label>Укладка в группе</label>
+        <select id="in-bundling">
+          <option value="touching">Вплотную (touching)</option>
+          <option value="spaced">С зазором (spaced)</option>
+          <option value="bundled">В пучке (bundled)</option>
+        </select>
+      </div>
+
+      <div class="section-title">Защита</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Тип защитного аппарата</label>
+          <select id="in-breaker">
+            <option value="MCB_B">MCB кр. B</option>
+            <option value="MCB_C" selected>MCB кр. C</option>
+            <option value="MCB_D">MCB кр. D</option>
+            <option value="MCCB">MCCB (литой корпус)</option>
+            <option value="ACB">ACB (воздушный)</option>
+            <option value="gG">Предохранитель gG</option>
+            <option value="aM">Предохранитель aM</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Параллельных линий</label>
+          <input type="number" id="in-parallel" min="1" max="10" step="1" value="1">
+        </div>
+      </div>
+
+      <div class="section-title">Падение напряжения</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Длина линии, м</label>
+          <input type="number" id="in-length" min="0" step="1" value="30">
+        </div>
+        <div class="field">
+          <label>Напряжение линии, В</label>
+          <input type="number" id="in-vdrop-voltage" min="1" step="1" value="400">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Число фаз (для Vdrop)</label>
+          <select id="in-vdrop-phases">
+            <option value="3" selected>3 фазы</option>
+            <option value="1">1 фаза</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>cos &phi; (для Vdrop)</label>
+          <input type="number" id="in-vdrop-cosphi" min="0.1" max="1" step="0.01" value="0.92">
+        </div>
+      </div>
+
+      <button class="btn-calc" id="btn-calc">Рассчитать</button>
+    </div>
+
+    <!-- Right panel: results -->
+    <div class="panel-result" id="result-area">
+      <div class="result-empty">
+        Задайте параметры и нажмите <strong>Рассчитать</strong>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="cable-calc.js"></script>
+</body>
+</html>

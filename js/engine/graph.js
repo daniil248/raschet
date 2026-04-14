@@ -85,8 +85,8 @@ export function deleteNode(id) {
   state.nodes.delete(id);
   for (const m of state.modes) { if (m.overrides) delete m.overrides[id]; }
   // Убрать из sectionIds контейнера
-  if (n && n._parentSectioned) {
-    const parent = state.nodes.get(n._parentSectioned);
+  if (n && n.parentSectionedId) {
+    const parent = state.nodes.get(n.parentSectionedId);
     if (parent && Array.isArray(parent.sectionIds)) {
       parent.sectionIds = parent.sectionIds.filter(sid => sid !== id);
     }

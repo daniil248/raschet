@@ -195,7 +195,7 @@ export function renderNodes() {
     const pad = 20;
     const wx = minX - pad, wy = minY - pad - 20;
     const ww = maxX - minX + pad * 2, wh = maxY - minY + pad * 2 + 20;
-    n.x = wx; n.y = wy; // sync position
+    n.x = wx; n.y = wy; n._wrapW = ww; n._wrapH = wh; // sync position & size
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const g = el('g', {
       class: 'node panel sectioned-wrapper' + (selected ? ' selected' : ''),

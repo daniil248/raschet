@@ -366,18 +366,25 @@ function backToProjects() {
   if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
   state.dirty = false;
   state.saving = false;
-  state.currentProject = null;
-  els.projectName.textContent = '';
-  els.projectName.classList.add('hidden');
-  els.btnSave.classList.add('hidden');
-  els.btnShare.classList.add('hidden');
-  els.btnRequestAccess.classList.add('hidden');
-  const url = new URL(location.href);
-  url.searchParams.delete('project');
-  history.replaceState({}, '', url);
-  document.body.classList.remove('palette-open', 'inspector-open');
-  showScreen('projects');
-  refreshProjects();
+
+  // Если находимся в редакторе проекта — возвращаемся к списку проектов
+  // Если на экране проектов — переходим на главную (hub)
+  if (state.currentProject) {
+    state.currentProject = null;
+    els.projectName.textContent = '';
+    els.projectName.classList.add('hidden');
+    els.btnSave.classList.add('hidden');
+    els.btnShare.classList.add('hidden');
+    els.btnRequestAccess.classList.add('hidden');
+    const url = new URL(location.href);
+    url.searchParams.delete('project');
+    history.replaceState({}, '', url);
+    document.body.classList.remove('palette-open', 'inspector-open');
+    showScreen('projects');
+    refreshProjects();
+  } else {
+    window.location.href = 'hub.html';
+  }
 }
 
 // ================= Сохранение текущего проекта =================
