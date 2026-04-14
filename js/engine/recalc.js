@@ -163,17 +163,43 @@ function recalc() {
     edgesIn.get(c.to.nodeId).push(c);
   }
 
+  // Виртуальные связи через замкнутые СВ многосекционных щитов
+  // При замкнутом СВ — создаём bidirectional виртуальные connections
+  // между секциями, чтобы питание могло проходить через СВ.
+  const virtualConns = [];
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
+    const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
+    const ties = Array.isArray(n.busTies) ? n.busTies : [];
+    const tieStates = Array.isArray(n._busTieStates) ? n._busTieStates : ties.map(t => !!t.closed);
+    for (let ti = 0; ti < ties.length; ti++) {
+      if (!tieStates[ti]) continue; // СВ разомкнут
+      const [siA, siB] = ties[ti].between;
+      const idA = secIds[siA], idB = secIds[siB];
+      if (!idA || !idB) continue;
+      const nodeA = state.nodes.get(idA), nodeB = state.nodes.get(idB);
+      if (!nodeA || !nodeB) continue;
+      // Виртуальная связь A→B (от выхода A[0] к входу B[последний+1])
+      // и B→A (от выхода B[0] к входу A[последний+1])
+      const vcAB = { id: `__vt_${idA}_${idB}`, from: { nodeId: idA, port: 9999 }, to: { nodeId: idB, port: 9999 }, _virtual: true, _state: 'powered' };
+      const vcBA = { id: `__vt_${idB}_${idA}`, from: { nodeId: idB, port: 9999 }, to: { nodeId: idA, port: 9999 }, _virtual: true, _state: 'powered' };
+      virtualConns.push(vcAB, vcBA);
+      if (!edgesIn.has(idB)) edgesIn.set(idB, []);
+      if (!edgesIn.has(idA)) edgesIn.set(idA, []);
+      edgesIn.get(idB).push(vcAB);
+      edgesIn.get(idA).push(vcBA);
+    }
+  }
+
   // Проверка: жива ли конкретная связь? Учитывает _watchdogActivePorts
   // на upstream-щите — если выходной порт не в activePorts, связь мертва.
   function isConnLive(c) {
+    if (c._virtual) return activeInputs(c.from.nodeId) !== null; // виртуальная связь через СВ
     if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return false;
     const fromN = state.nodes.get(c.from.nodeId);
     if (!fromN) return false;
-    // Режим обслуживания upstream — щит не пропускает ток
     if (fromN.type === 'panel' && fromN.maintenance) return false;
-    // Если upstream — щит с ограниченными выходами, проверяем порт
     if (fromN._watchdogActivePorts && !fromN._watchdogActivePorts.has(c.from.port)) return false;
-    // Автомат выхода upstream-щита отключён
     if (fromN.type === 'panel' && Array.isArray(fromN.breakerStates) && fromN.breakerStates[c.from.port] === false) return false;
     // Автомат входа downstream-щита отключён
     const toN = state.nodes.get(c.to.nodeId);

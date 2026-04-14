@@ -232,7 +232,8 @@ export function renderNodes() {
 
   for (const n of state.nodes.values()) {
     if (n.type === 'zone') continue;
-    if (n.type === 'channel' && n.trayMode) continue; // уже нарисован выше
+    if (n.type === 'channel' && n.trayMode) continue;
+    if (n.type === 'panel' && n.switchMode === 'sectioned') continue; // контейнер не рендерится
     const w = nodeWidth(n);
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const cls = [

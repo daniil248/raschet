@@ -1813,10 +1813,17 @@ function svgBreaker(x, topY, on, color, offColor) {
 
 // ================= Многосекционный щит — SVG визуализация =================
 function _renderSectionedPanelControl(n, body) {
-  const sections = Array.isArray(n.sections) ? n.sections : [];
+  const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
   const busTies = Array.isArray(n.busTies) ? n.busTies : [];
+  if (!secIds.length) {
+    body.innerHTML = '<div class="muted" style="padding:20px;text-align:center">Секции не настроены. Откройте «Параметры щита» и добавьте секции.</div>';
+    document.getElementById('modal-panel-control').classList.remove('hidden');
+    return;
+  }
+  // Собираем section nodes
+  const sections = secIds.map(id => state.nodes.get(id)).filter(Boolean);
   if (!sections.length) {
-    body.innerHTML = '<div class="muted" style="padding:20px;text-align:center">Секции не настроены. Откройте «Параметры щита» и задайте секции.</div>';
+    body.innerHTML = '<div class="muted" style="padding:20px">Секции не найдены.</div>';
     document.getElementById('modal-panel-control').classList.remove('hidden');
     return;
   }
@@ -1831,16 +1838,17 @@ function _renderSectionedPanelControl(n, body) {
   const inBrkY = 30;
   const busY = inBrkY + brkH + 20;
   const outBrkY = busY + 20;
-  const maxOuts = Math.max(...sections.map(s => (s.outputPorts || []).length), 1);
+  const maxOuts = Math.max(...sections.map(s => s.outputs || 1), 1);
   const svgH = outBrkY + brkH + 20 + maxOuts * 14;
 
-  // Определяем питание секций
+  // Определяем питание секций (каждая секция — отдельный panel node)
   const sectionPowered = new Array(sections.length).fill(false);
   for (let si = 0; si < sections.length; si++) {
-    for (const inPort of (sections[si].inputPorts || [])) {
-      for (const c of state.conns.values()) {
-        if (c.to.nodeId === n.id && c.to.port === inPort && (c._state === 'active' || c._state === 'powered')) {
-          sectionPowered[si] = true;
+    const secNode = sections[si];
+    // Секция запитана если хотя бы один вход имеет активную связь
+    for (const c of state.conns.values()) {
+      if (c.to.nodeId === secNode.id && (c._state === 'active' || c._state === 'powered') && !c._virtual) {
+        sectionPowered[si] = true;
         }
       }
     }
@@ -1895,27 +1903,23 @@ function _renderSectionedPanelControl(n, body) {
     h += `<text x="${sx + secW / 2}" y="${svgH - 4}" text-anchor="middle" fill="#999" font-size="8">${escHtml(secLabel)}</text>`;
     // Нагрузка секции
     let secLoadKw = 0;
-    for (const outPort of (sec.outputPorts || [])) {
-      for (const cc of state.conns.values()) {
-        if (cc.from.nodeId === n.id && cc.from.port === outPort && cc._loadKw) {
-          secLoadKw += cc._loadKw;
-        }
-      }
+    for (const cc of state.conns.values()) {
+      if (cc.from.nodeId === sec.id && cc._loadKw) secLoadKw += cc._loadKw;
     }
     const capA = sec.capacityA || 0;
     h += `<text x="${sx + secW / 2}" y="${busY + 16}" text-anchor="middle" fill="${fed ? '#333' : '#999'}" font-size="8">${capA ? 'In ' + capA + 'А · ' : ''}${fmt(secLoadKw)} kW</text>`;
     // Шина секции
     h += `<rect x="${sx}" y="${busY - 3}" width="${secW}" height="6" fill="${busCol}" rx="1"/>`;
 
-    // Входы секции
-    const inPorts = sec.inputPorts || [];
-    for (let ii = 0; ii < inPorts.length; ii++) {
-      const port = inPorts[ii];
+    // Входы секции (из section node)
+    const inCount = sec.inputs || 1;
+    for (let ii = 0; ii < inCount; ii++) {
+      const port = ii;
       const ix = sx + secW / (inPorts.length + 1) * (ii + 1);
       // Линия сверху → автомат → шина
       h += `<line x1="${ix}" y1="2" x2="${ix}" y2="${inBrkY}" stroke="#999" stroke-width="2"/>`;
       // Лампочка
-      const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+      const inBrk = Array.isArray(sec.inputBreakerStates) ? sec.inputBreakerStates : [];
       const brkOn = inBrk[port] !== false;
       const lampCol = brkOn && hasPower ? '#4caf50' : '#e53935';
       h += `<circle cx="${ix}" cy="6" r="4" fill="${lampCol}" opacity="0.6"/>`;
@@ -1925,7 +1929,7 @@ function _renderSectionedPanelControl(n, body) {
       // Подпись
       let feederTag = `Вх${port + 1}`;
       for (const c of state.conns.values()) {
-        if (c.to.nodeId === n.id && c.to.port === port) {
+        if (c.to.nodeId === sec.id && c.to.port === port && !c._virtual) {
           const from = state.nodes.get(c.from.nodeId);
           if (from) feederTag = effectiveTag(from) || from.name || feederTag;
           break;
@@ -1933,17 +1937,17 @@ function _renderSectionedPanelControl(n, body) {
       }
       h += `<text x="${ix}" y="${inBrkY - 6}" text-anchor="middle" fill="#333" font-size="8">${escHtml(feederTag)}</text>`;
       // Клик-зона
-      h += `<rect x="${ix - 14}" y="${inBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-in-toggle="${port}"/>`;
+      h += `<rect x="${ix - 14}" y="${inBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-in-toggle="${si}:${port}"/>`;
     }
 
-    // Выходы секции
-    const outPorts = sec.outputPorts || [];
-    for (let oi = 0; oi < outPorts.length; oi++) {
-      const port = outPorts[oi];
+    // Выходы секции (из section node)
+    const outCount = sec.outputs || 1;
+    for (let oi = 0; oi < outCount; oi++) {
+      const port = oi;
       const ox = sx + secW / (outPorts.length + 1) * (oi + 1);
       // Линия шина → автомат → вниз
       h += `<line x1="${ox}" y1="${busY + 3}" x2="${ox}" y2="${outBrkY}" stroke="${busCol}" stroke-width="2"/>`;
-      const outBrk = Array.isArray(n.breakerStates) ? n.breakerStates : [];
+      const outBrk = Array.isArray(sec.breakerStates) ? sec.breakerStates : [];
       const outOn = outBrk[port] !== false;
       const brk = svgBreaker(ox, outBrkY, outOn, busCol, '#ff9800');
       h += brk.svg;
@@ -1951,7 +1955,7 @@ function _renderSectionedPanelControl(n, body) {
       // Номинал автомата
       let brkLabel = '';
       for (const cc of state.conns.values()) {
-        if (cc.from.nodeId === n.id && cc.from.port === port) {
+        if (cc.from.nodeId === sec.id && cc.from.port === port) {
           if (cc._breakerIn) brkLabel = `C${cc._breakerIn}А`;
           else if (cc._breakerPerLine) brkLabel = `C${cc._breakerPerLine}А`;
           break;
@@ -1964,7 +1968,7 @@ function _renderSectionedPanelControl(n, body) {
       // Подпись выхода
       let destTag = '';
       for (const cc of state.conns.values()) {
-        if (cc.from.nodeId === n.id && cc.from.port === port) {
+        if (cc.from.nodeId === sec.id && cc.from.port === port && !cc._virtual) {
           const to = state.nodes.get(cc.to.nodeId);
           destTag = to ? (effectiveTag(to) || to.name || '') : '';
           break;
@@ -1975,7 +1979,7 @@ function _renderSectionedPanelControl(n, body) {
         h += `<text x="${ox}" y="${outBrkY + brkH + 18}" text-anchor="middle" fill="#666" font-size="7" transform="rotate(-90 ${ox} ${outBrkY + brkH + 18})">${escHtml(destTag)}</text>`;
       }
       // Клик-зона
-      h += `<rect x="${ox - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-out-toggle="${port}"/>`;
+      h += `<rect x="${ox - 14}" y="${outBrkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-sec-out-toggle="${si}:${port}"/>`;
     }
   }
 
@@ -2045,27 +2049,33 @@ function _renderSectionedPanelControl(n, body) {
     fsBtn.onclick = () => { modalBox.classList.toggle('modal-fullscreen'); _pcZoomState.fullscreen = modalBox.classList.contains('modal-fullscreen'); fsBtn.textContent = _pcZoomState.fullscreen ? '⤡' : '⤢'; };
   }
 
-  // Клик по входным автоматам
+  // Клик по входным автоматам секций
   body.querySelectorAll('[data-sec-in-toggle]').forEach(el => {
     el.addEventListener('click', () => {
-      const port = Number(el.dataset.secInToggle);
-      if (!Array.isArray(n.inputBreakerStates)) n.inputBreakerStates = new Array(n.inputs || 0).fill(true);
-      while (n.inputBreakerStates.length < (n.inputs || 0)) n.inputBreakerStates.push(true);
-      snapshot('sec-in:' + n.id + ':' + port);
-      n.inputBreakerStates[port] = !n.inputBreakerStates[port];
+      const [siStr, portStr] = el.dataset.secInToggle.split(':');
+      const si = Number(siStr), port = Number(portStr);
+      const sec = sections[si];
+      if (!sec) return;
+      if (!Array.isArray(sec.inputBreakerStates)) sec.inputBreakerStates = new Array(sec.inputs || 0).fill(true);
+      while (sec.inputBreakerStates.length < (sec.inputs || 0)) sec.inputBreakerStates.push(true);
+      snapshot('sec-in:' + sec.id + ':' + port);
+      sec.inputBreakerStates[port] = !sec.inputBreakerStates[port];
       _render(); notifyChange();
       openPanelControlModal(n);
     });
   });
 
-  // Клик по выходным автоматам
+  // Клик по выходным автоматам секций
   body.querySelectorAll('[data-sec-out-toggle]').forEach(el => {
     el.addEventListener('click', () => {
-      const port = Number(el.dataset.secOutToggle);
-      if (!Array.isArray(n.breakerStates)) n.breakerStates = new Array(n.outputs || 0).fill(true);
-      while (n.breakerStates.length < (n.outputs || 0)) n.breakerStates.push(true);
-      snapshot('sec-out:' + n.id + ':' + port);
-      n.breakerStates[port] = !n.breakerStates[port];
+      const [siStr, portStr] = el.dataset.secOutToggle.split(':');
+      const si = Number(siStr), port = Number(portStr);
+      const sec = sections[si];
+      if (!sec) return;
+      if (!Array.isArray(sec.breakerStates)) sec.breakerStates = new Array(sec.outputs || 0).fill(true);
+      while (sec.breakerStates.length < (sec.outputs || 0)) sec.breakerStates.push(true);
+      snapshot('sec-out:' + sec.id + ':' + port);
+      sec.breakerStates[port] = !sec.breakerStates[port];
       _render(); notifyChange();
       openPanelControlModal(n);
     });
