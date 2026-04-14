@@ -487,24 +487,24 @@ export function renderNodes() {
         t.setAttribute('text-anchor', cx === 0 ? 'end' : 'start');
         g.appendChild(t);
       }
-      // Метка приоритета — располагается СЛЕВА от порта на его же высоте,
-      // чтобы никогда не пересекать приходящую линию/стрелку (которая идёт
-      // вертикально через ось порта для top-input, или вбок для side-input).
+      // Метка приоритета — размещается ВЫШЕ и ЛЕВЕЕ порта, чтобы не пересекать
+      // ни порт, ни приходящую к нему линию/стрелку.
+      // Важно: .port-label в CSS имеет text-anchor:middle, поэтому переопределяем
+      // через inline style (attribute setAttribute тут CSS перекрывает).
       if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         if (isSideInput) {
-          // Боковой вход: подпись вне узла, в сторону от блока
-          const lx = cx === 0 ? cx - 12 : cx + 12;
-          const t = text(lx, cy, `P${prio}`, 'port-label');
-          t.setAttribute('text-anchor', cx === 0 ? 'end' : 'start');
+          // Боковой вход: подпись левее/правее порта на его высоте
+          const lx = cx === 0 ? cx - 14 : cx + 14;
+          const t = text(lx, cy - 10, `P${prio}`, 'port-label');
+          t.style.textAnchor = cx === 0 ? 'end' : 'start';
           t.setAttribute('dominant-baseline', 'central');
           g.appendChild(t);
         } else {
-          // Топ-вход: строго слева от порта на одной высоте с центром порта.
-          // Текст-anchor end → правый край текста в 14px от оси порта,
-          // минуя тело стрелки marker-end (ширина ~14px).
-          const t = text(cx - 14, cy, `P${prio}`, 'port-label');
-          t.setAttribute('text-anchor', 'end');
+          // Топ-вход: выше и ЛЕВЕЕ оси порта — диагонально вверх-влево.
+          // y = -16 (16px выше верхнего края блока), x = cx - 16 с anchor=end.
+          const t = text(cx - 16, -16, `P${prio}`, 'port-label');
+          t.style.textAnchor = 'end';
           t.setAttribute('dominant-baseline', 'central');
           g.appendChild(t);
         }
