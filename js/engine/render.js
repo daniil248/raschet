@@ -310,22 +310,16 @@ export function renderNodes() {
 
     // Групповой потребитель — стопка карточек
     const isGroup = n.type === 'consumer' && (n.count || 1) > 1;
-    const hasOuts = nodeOutputCount(n) > 0;
-    const groupBarH = 20; // высота нижней полоски
-    const groupBarY = hasOuts ? NODE_H + PORT_R * 2 + 2 : NODE_H; // ниже порта если есть выходы
+    const groupPeek = isGroup ? 24 : 0;
     if (isGroup) {
-      const ox = 4; // сдвиг нижней карточки вправо
-      // Тень стопки — прямоугольник сзади, сдвинутый вправо и вниз
+      const ox = 6, oy = groupPeek;
+      // Нижняя карточка (полная высота, сдвинута вниз и вправо)
       g.appendChild(el('rect', {
-        class: 'node-body', x: ox, y: ox, width: w, height: NODE_H, rx: 6,
+        class: 'node-body group-back', x: ox, y: oy, width: w, height: NODE_H, rx: 6,
       }));
-      // Нижняя полоска с данными группы
-      g.appendChild(el('rect', {
-        class: 'node-body', x: ox, y: groupBarY, width: w, height: groupBarH, rx: 4,
-      }));
-      // Текст группы — выровнен по правому краю
+      // Текст группы на выступающей части — выровнен по правому краю
       const totalKw = (n.count || 1) * (n.demandKw || 0);
-      const gt = text(w + ox - 8, groupBarY + groupBarH - 5,
+      const gt = text(w + ox - 8, NODE_H + oy - 6,
         `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`, 'node-load');
       gt.setAttribute('text-anchor', 'end');
       g.appendChild(gt);

@@ -860,14 +860,28 @@ export function initInteraction() {
             if (!findParentZone(dragged)) {
               tryAttachToZone(dragged);
             }
-          } else if (!hadChildren) {
-            // Обычные узлы (не зоны и не групповой drag)
+          } else {
+            // Обычные узлы и многосекционные щиты (с children)
             const currentZone = findZoneForMember(dragged);
             if (currentZone && !isNodeFullyInside(dragged, currentZone)) {
               currentZone.memberIds = (currentZone.memberIds || []).filter(id => id !== dragged.id);
             }
             if (!findZoneForMember(dragged)) {
               tryAttachToZone(dragged);
+            }
+            // Для многосекционного щита: обновить зону для всех секций
+            if (dragged.type === 'panel' && dragged.switchMode === 'sectioned' && Array.isArray(dragged.sectionIds)) {
+              for (const sid of dragged.sectionIds) {
+                const sec = state.nodes.get(sid);
+                if (!sec) continue;
+                const secZone = findZoneForMember(sec);
+                if (secZone && !isNodeFullyInside(sec, secZone)) {
+                  secZone.memberIds = (secZone.memberIds || []).filter(id => id !== sid);
+                }
+                if (!findZoneForMember(sec)) {
+                  tryAttachToZone(sec);
+                }
+              }
             }
           }
           render();

@@ -662,7 +662,7 @@ input, select { font: inherit; }
   font-style: italic;
 }
 .node.overload .node-body { fill: #ffebee; stroke: #c62828 !important; }
-.node.unpowered .node-body { fill: #f5f5f5; stroke: #bdbdbd; opacity: 0.75; }
+.node.unpowered .node-body { fill: #f5f5f5; stroke: #bdbdbd; }
 
 .node-tag   { font: 700 10px -apple-system, "Segoe UI", sans-serif; fill: #8a93a7; letter-spacing: 0.4px; pointer-events: none; text-transform: uppercase; }
 .node-title { font: 600 13px -apple-system, "Segoe UI", sans-serif; fill: #1f2430; pointer-events: none; }
