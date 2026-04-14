@@ -1460,67 +1460,6 @@ export function openPanelParamsModal(n) {
         }
 
         // (секционный щит реализован как отдельные panel nodes — см. блок isSectioned ниже)
-        if (false) { // legacy code removed
-            const secName = '';
-            // Проверяем можно ли удалить секцию (нет подключённых линий)
-            const allPorts = [...(sec.inputPorts || []), ...(sec.outputPorts || [])];
-            let hasConns = false;
-            for (const c of state.conns.values()) {
-              if (c.to.nodeId === n.id && allPorts.includes(c.to.port)) { hasConns = true; break; }
-              if (c.from.nodeId === n.id && allPorts.includes(c.from.port)) { hasConns = true; break; }
-            }
-
-            h.push(`<details class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:6px" data-sec-idx="${si}"${si === 0 ? ' open' : ''}>`);
-            h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600">${escHtml(secName)}</summary>`);
-            h.push(`<div style="font-size:11px;margin-top:6px">`);
-            h.push(field('Имя секции', `<input type="text" data-sec-name="${si}" value="${escAttr(secName)}">`));
-            h.push('<div style="display:flex;gap:8px">');
-            h.push('<div style="flex:1">' + field('Входов', `<input type="number" data-sec-inputs="${si}" min="1" max="10" step="1" value="${sec.inputs || 1}">`) + '</div>');
-            h.push('<div style="flex:1">' + field('Выходов', `<input type="number" data-sec-outputs="${si}" min="1" max="20" step="1" value="${sec.outputs || 4}">`) + '</div>');
-            h.push('</div>');
-            h.push(field('In, А', `<input type="number" data-sec-capacity="${si}" min="0" step="1" value="${sec.capacityA || 160}">`));
-            // Режим АВР секции (если больше 1 входа)
-            if ((sec.inputs || 1) > 1) {
-              const secSm = sec.switchMode || 'parallel';
-              h.push(field('Режим секции', `<select data-sec-mode="${si}">
-                <option value="parallel"${secSm === 'parallel' ? ' selected' : ''}>Щит</option>
-                <option value="auto"${secSm === 'auto' ? ' selected' : ''}>Щит с АВР</option>
-              </select>`));
-            }
-            h.push(`<div class="muted" style="font-size:10px;margin-top:4px">Порты: входы [${(sec.inputPorts || []).map(p => p + 1).join(', ')}], выходы [${(sec.outputPorts || []).map(p => p + 1).join(', ')}]</div>`);
-            // Кнопка удаления секции
-            if (n.sections.length > 1) {
-              if (hasConns) {
-                h.push(`<div class="muted" style="font-size:10px;color:#999;margin-top:4px">Нельзя удалить — есть подключённые линии</div>`);
-              } else {
-                h.push(`<button type="button" data-sec-delete="${si}" style="font-size:11px;padding:3px 8px;border:1px solid #ef9a9a;background:#fff;border-radius:4px;cursor:pointer;color:#c62828;margin-top:4px">✕ Удалить секцию</button>`);
-              }
-            }
-            h.push('</div></details>');
-
-            // СВ между секциями (кнопка добавления/управления)
-            if (si < n.sections.length - 1) {
-              const tieIdx = ties.findIndex(t => (t.between[0] === si && t.between[1] === si + 1) || (t.between[0] === si + 1 && t.between[1] === si));
-              const hasTie = tieIdx >= 0;
-              h.push(`<div style="text-align:center;margin:4px 0;padding:4px;background:#f0f0f0;border-radius:4px">`);
-              if (hasTie) {
-                const tie = ties[tieIdx];
-                h.push(`<span style="font-size:11px;font-weight:600">СВ: секция ${si + 1} ↔ ${si + 2}</span> `);
-                h.push(`<select data-tie-mode="${tieIdx}" style="font-size:11px;padding:2px 6px;border:1px solid #ccc;border-radius:3px">`);
-                h.push(`<option value="auto"${tie.auto ? ' selected' : ''}>Авто</option>`);
-                h.push(`<option value="manual"${!tie.auto ? ' selected' : ''}>Ручной</option>`);
-                h.push(`</select> `);
-                h.push(`<button type="button" data-tie-remove="${tieIdx}" style="font-size:11px;padding:2px 6px;border:1px solid #ef9a9a;background:#fff;border-radius:3px;cursor:pointer;color:#c62828">✕</button>`);
-              } else {
-                h.push(`<button type="button" data-tie-add="${si}" style="font-size:11px;padding:3px 10px;border:1px dashed #999;background:#fff;border-radius:4px;cursor:pointer">+ Добавить СВ между секциями ${si + 1} и ${si + 2}</button>`);
-              }
-              h.push('</div>');
-            }
-          }
-
-          // Кнопка добавления новой секции
-          h.push(`<button type="button" id="pp-addSection" style="width:100%;font-size:11px;padding:6px;border:1px dashed #999;background:#f9f9f9;border-radius:4px;cursor:pointer;margin-top:8px">+ Добавить секцию</button>`);
-        }
 
         // Задержки — для всех АВР
         h.push('<h4 style="margin:12px 0 8px">Задержки</h4>');
