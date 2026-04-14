@@ -3101,15 +3101,17 @@ function buildInstallConditionsBlock(method, bundling, ambientC, grouping, circu
   const h = [];
   h.push('<details class="inspector-section">');
   h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
-  const methodOpts = Object.entries(INSTALL_METHODS).map(([k, v]) =>
-    `<option value="${k}"${method === k ? ' selected' : ''}>${escHtml(v.label)}</option>`).join('');
+  // Способы прокладки из текущей методики
+  const cm = getMethod(GLOBAL.calcMethod);
+  const methodOpts = Object.entries(cm.installMethods).map(([k, v]) =>
+    `<option value="${k}"${method === k ? ' selected' : ''}>${escHtml(v)}</option>`).join('');
   h.push(field('Способ прокладки', `<select ${propPrefix}="installMethod">${methodOpts}</select>`));
-  h.push(field('Расположение кабелей',
-    `<select ${propPrefix}="bundling">
-      <option value="spaced"${bundling === 'spaced' ? ' selected' : ''}>С зазором ≥ Ø кабеля</option>
-      <option value="touching"${bundling === 'touching' ? ' selected' : ''}>Плотно друг к другу</option>
-      <option value="bundled"${bundling === 'bundled' ? ' selected' : ''}>В пучке / жгуте</option>
-    </select>`));
+  // Укладка из текущей методики
+  const bundOpts = cm.hasBundling
+    ? Object.entries(cm.bundlingOptions).map(([k, v]) =>
+        `<option value="${k}"${bundling === k ? ' selected' : ''}>${escHtml(v)}</option>`).join('')
+    : `<option value="touching" selected>Стандарт</option>`;
+  h.push(field('Расположение кабелей', `<select ${propPrefix}="bundling">${bundOpts}</select>`));
   // Иконки способа прокладки и расположения
   h.push(`<div style="display:flex;gap:12px;justify-content:center;margin:8px 0">${channelIconSVG(method, 48)}${bundlingIconSVG(bundling, 48)}</div>`);
   h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" ${propPrefix}="ambientC" value="${ambientC || 30}">`));

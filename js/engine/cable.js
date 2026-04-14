@@ -103,22 +103,16 @@ export function selectCableSize(I, opts) {
   let res = tryWithParallel(basePar);
 
   // Если не хватает — наращиваем параллель.
+  // Параллельные жилы одной цепи НЕ увеличивают группировку (IEC 60364-5-52 Annex E).
+  // K_group остаётся от базового grouping.
   let autoParallel = false;
   if (!res && allowAutoParallel) {
-    const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 4);
+    const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 10);
     for (let par = basePar + 1; par <= maxPar; par++) {
-      // Пересчитываем K_group под увеличенную группу
-      let grp2 = grouping;
-      if (!kBundlingIgnoresGrouping(bundling)) {
-        grp2 += (par - basePar);
-      }
-      const kG2 = kGroupLookup(grp2, method) * kBundlingFactor(bundling);
-      const k2 = kT * kG2;
       const Iper = I / par;
       const InNeeded = selectBreaker(Iper);
       for (const [s, iRef] of effTable) {
-        const iDerated = iRef * k2;
-        // Iz ≥ In ≥ Iрасч — автомат защищает кабель
+        const iDerated = iRef * k;
         if (iDerated >= InNeeded) {
           res = { s, iAllowed: iRef, iDerated, parallel: par };
           autoParallel = true;

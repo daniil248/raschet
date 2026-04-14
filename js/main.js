@@ -697,7 +697,7 @@ const SETTINGS_DEFAULTS = {
   defaultInsulation: 'PVC',
   defaultCableType: 'multi',
   maxCableSize: 240,
-  maxParallelAuto: 4,
+  maxParallelAuto: 10,
   maxVdropPct: 5,
   calcMethod: 'iec',
   parallelProtection: 'individual',
@@ -785,7 +785,7 @@ function openSettingsModal() {
   set('set-insulation',    G.defaultInsulation ?? 'PVC');
   set('set-cableType',     G.defaultCableType ?? 'multi');
   set('set-maxCableSize',  G.maxCableSize ?? 240);
-  set('set-maxParallelAuto', G.maxParallelAuto ?? 4);
+  set('set-maxParallelAuto', G.maxParallelAuto ?? 10);
   set('set-maxVdropPct', G.maxVdropPct ?? 5);
   set('set-calcMethod',    G.calcMethod ?? 'iec');
   updateInstallMethodOptions(G.calcMethod ?? 'iec');
@@ -808,7 +808,7 @@ function saveSettingsModal() {
     defaultInsulation:  get('set-insulation') || 'PVC',
     defaultCableType:   get('set-cableType') || 'multi',
     maxCableSize:       Number(get('set-maxCableSize')) || 240,
-    maxParallelAuto:    Number(get('set-maxParallelAuto')) || 4,
+    maxParallelAuto:    Number(get('set-maxParallelAuto')) || 10,
     maxVdropPct:        Number(get('set-maxVdropPct')) || 5,
     defaultInstallMethod: get('set-installMethod') || 'B1',
     defaultAmbient:     Number(get('set-ambient')) || 30,

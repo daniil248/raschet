@@ -272,7 +272,7 @@ export default {
     let autoParallel = false;
 
     if (!res) {
-      const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 4);
+      const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 10);
       for (let par = basePar + 1; par <= maxPar; par++) {
         res = tryWithParallel(par);
         if (res) { autoParallel = true; break; }

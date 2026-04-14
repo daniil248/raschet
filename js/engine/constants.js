@@ -34,7 +34,7 @@ export const GLOBAL = {
   defaultInsulation: 'PVC',
   defaultCableType: 'multi',
   maxCableSize: 240,
-  maxParallelAuto: 4,
+  maxParallelAuto: 10,
   maxVdropPct: 5,           // макс. допустимое падение напряжения, % (IEC 60364-5-52)
   calcMethod: 'iec',        // методика расчёта кабеля: 'iec' | 'pue'
   parallelProtection: 'individual', // защита параллельных линий: 'individual' | 'common'
