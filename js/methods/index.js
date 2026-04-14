@@ -7,6 +7,7 @@ import iec from './iec.js';
 import pue from './pue.js';
 
 export { calcVoltageDrop, findMinSizeForVdrop } from './vdrop.js';
+export { getEcoMethod, listEcoMethods } from './economic/index.js';
 
 /** Все зарегистрированные методики */
 export const METHODS = { iec, pue };

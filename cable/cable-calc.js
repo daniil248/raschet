@@ -1,55 +1,62 @@
 import { GLOBAL } from '../js/engine/constants.js';
-import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop } from '../js/methods/index.js';
+import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../js/methods/index.js';
 
 // ============ DOM refs ============
 const $ = id => document.getElementById(id);
 
 const els = {
-  methodStandard: $('in-method-standard'),
-  methodLabel:    $('method-label'),
-  inputMode:      $('input-mode'),
-  fieldsCurrent:  $('fields-current'),
-  fieldsPower:    $('fields-power'),
-  current:        $('in-current'),
-  power:          $('in-power'),
-  voltageLevel:   $('in-voltage-level'),
-  cosphi:         $('in-cosphi'),
-  material:       $('in-material'),
-  insulation:     $('in-insulation'),
-  cableType:      $('in-cableType'),
-  maxSize:        $('in-maxSize'),
-  method:         $('in-method'),
-  ambient:        $('in-ambient'),
-  grouping:       $('in-grouping'),
-  bundling:       $('in-bundling'),
-  bundlingField:  $('bundling-field'),
-  parallel:       $('in-parallel'),
-  length:         $('in-length'),
-  maxVdrop:       $('in-max-vdrop'),
-  btnCalc:        $('btn-calc'),
-  resultArea:     $('result-area'),
+  methodStandard:    $('in-method-standard'),
+  methodLabel:       $('method-label'),
+  inputMode:         $('input-mode'),
+  fieldsCurrent:     $('fields-current'),
+  fieldsPower:       $('fields-power'),
+  current:           $('in-current'),
+  power:             $('in-power'),
+  voltageLevel:      $('in-voltage-level'),
+  cosphi:            $('in-cosphi'),
+  material:          $('in-material'),
+  insulation:        $('in-insulation'),
+  cableType:         $('in-cableType'),
+  maxSize:           $('in-maxSize'),
+  method:            $('in-method'),
+  ambient:           $('in-ambient'),
+  grouping:          $('in-grouping'),
+  bundling:          $('in-bundling'),
+  bundlingField:     $('bundling-field'),
+  length:            $('in-length'),
+  maxVdrop:          $('in-max-vdrop'),
+  parallelProtection: $('in-parallel-protection'),
+  ecoEnabled:        $('in-eco-enabled'),
+  ecoFields:         $('eco-fields'),
+  ecoMethod:         $('in-eco-method'),
+  ecoParams:         $('eco-params'),
+  btnCalc:           $('btn-calc'),
+  resultArea:        $('result-area'),
 };
 
 let mode = 'current';
 let currentMethod = null;
+let currentEcoMethod = null;
 
 // ============ Init ============
 function init() {
   // Populate method selector
-  const methods = listMethods();
-  els.methodStandard.innerHTML = methods.map(m =>
+  els.methodStandard.innerHTML = listMethods().map(m =>
     `<option value="${m.id}">${m.label}</option>`
   ).join('');
 
-  // Populate voltage levels from GLOBAL
+  // Populate voltage levels
   els.voltageLevel.innerHTML = GLOBAL.voltageLevels.map((v, i) =>
     `<option value="${i}">${v.label}</option>`
   ).join('');
 
-  // Switch method
-  els.methodStandard.addEventListener('change', () => switchMethod(els.methodStandard.value));
+  // Populate economic methods
+  els.ecoMethod.innerHTML = listEcoMethods().map(m =>
+    `<option value="${m.id}">${m.label}</option>`
+  ).join('');
 
-  // Input mode toggle
+  // Events
+  els.methodStandard.addEventListener('change', () => switchMethod(els.methodStandard.value));
   els.inputMode.addEventListener('click', e => {
     const lbl = e.target.closest('label');
     if (!lbl) return;
@@ -58,37 +65,31 @@ function init() {
     els.fieldsCurrent.style.display = mode === 'current' ? '' : 'none';
     els.fieldsPower.style.display   = mode === 'power'   ? '' : 'none';
   });
-
-  // Calc button
+  els.ecoEnabled.addEventListener('change', () => {
+    els.ecoFields.style.display = els.ecoEnabled.checked ? '' : 'none';
+    if (els.ecoEnabled.checked) switchEcoMethod(els.ecoMethod.value);
+  });
+  els.ecoMethod.addEventListener('change', () => switchEcoMethod(els.ecoMethod.value));
   els.btnCalc.addEventListener('click', calculate);
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') calculate();
   });
 
-  // Initial method
   switchMethod('iec');
+  switchEcoMethod('pue_eco');
   calculate();
 }
 
-// ============ Switch method ============
+// ============ Switch cable method ============
 function switchMethod(id) {
   currentMethod = getMethod(id);
   els.methodLabel.textContent = currentMethod.label;
-
-  // Materials
   fillSelect(els.material, currentMethod.materials);
-
-  // Insulations
   fillSelect(els.insulation, currentMethod.insulations);
-
-  // Cable types
   fillSelect(els.cableType, currentMethod.cableTypes);
-
-  // Install methods
   fillSelect(els.method, currentMethod.installMethods);
   if (currentMethod.defaultMethod) els.method.value = currentMethod.defaultMethod;
 
-  // Bundling
   if (currentMethod.hasBundling) {
     els.bundlingField.style.display = '';
     fillSelect(els.bundling, currentMethod.bundlingOptions);
@@ -97,32 +98,51 @@ function switchMethod(id) {
   }
 }
 
+// ============ Switch economic method ============
+function switchEcoMethod(id) {
+  currentEcoMethod = getEcoMethod(id);
+  // Render dynamic params
+  els.ecoParams.innerHTML = (currentEcoMethod.params || []).map(p => {
+    if (p.type === 'select') {
+      const opts = p.options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+      return `<div class="field"><label>${p.label}</label><select id="eco-param-${p.id}">${opts}</select></div>`;
+    }
+    return `<div class="field"><label>${p.label}</label><input type="number" id="eco-param-${p.id}" value="${p.default || 0}"></div>`;
+  }).join('');
+}
+
 function fillSelect(el, map) {
   const prev = el.value;
   el.innerHTML = Object.entries(map).map(([k, v]) =>
     `<option value="${k}">${v}</option>`
   ).join('');
-  // Restore previous value if still valid
   if ([...el.options].some(o => o.value === prev)) el.value = prev;
 }
 
 // ============ Compute sizing current ============
 function getVoltageInfo() {
   const idx = Number(els.voltageLevel.value) || 0;
-  const vl = GLOBAL.voltageLevels[idx] || GLOBAL.voltageLevels[0];
-  return vl;
+  return GLOBAL.voltageLevels[idx] || GLOBAL.voltageLevels[0];
 }
 
 function getSizingCurrent() {
-  if (mode === 'current') {
-    return Number(els.current.value) || 0;
-  }
+  if (mode === 'current') return Number(els.current.value) || 0;
   const P = Number(els.power.value) || 0;
   const vl = getVoltageInfo();
   const cos = Number(els.cosphi.value) || 0.92;
   if (P <= 0) return 0;
   const k = vl.phases === 3 ? Math.sqrt(3) : 1;
   return (P * 1000) / (k * vl.vLL * cos);
+}
+
+// ============ Gather economic params ============
+function getEcoParams() {
+  const params = {};
+  for (const p of (currentEcoMethod.params || [])) {
+    const el = document.getElementById(`eco-param-${p.id}`);
+    params[p.id] = el ? Number(el.value) : (p.default || 0);
+  }
+  return params;
 }
 
 // ============ Main calculation ============
@@ -135,92 +155,111 @@ function calculate() {
     return;
   }
 
-  const material   = els.material.value;
-  const insulation = els.insulation.value;
-  const method     = els.method.value;
-  const cableType  = els.cableType.value;
-  const ambient    = Number(els.ambient.value) || 30;
-  const grouping   = Number(els.grouping.value) || 1;
-  const bundling   = currentMethod.hasBundling ? els.bundling.value : 'touching';
-  const maxSize    = Number(els.maxSize.value) || 240;
-  const parallel   = Number(els.parallel.value) || 1;
-  const lengthM    = Number(els.length.value) || 0;
+  const material    = els.material.value;
+  const insulation  = els.insulation.value;
+  const method      = els.method.value;
+  const cableType   = els.cableType.value;
+  const ambient     = Number(els.ambient.value) || 30;
+  const grouping    = Number(els.grouping.value) || 1;
+  const bundling    = currentMethod.hasBundling ? els.bundling.value : 'touching';
+  const maxSize     = Number(els.maxSize.value) || 240;
+  const lengthM     = Number(els.length.value) || 0;
   const maxVdropPct = Number(els.maxVdrop.value) || 5;
-  const vl         = getVoltageInfo();
-  const cosPhi     = Number(els.cosphi.value) || 0.92;
+  const protection  = els.parallelProtection.value;
+  const vl          = getVoltageInfo();
+  const cosPhi      = Number(els.cosphi.value) || 0.92;
 
-  // 1. Подбор по токовой нагрузке
+  // 1. Подбор по токовой нагрузке (parallel=1, auto-increment)
   const resByAmp = currentMethod.selectCable(I, {
     material, insulation, method, cableType,
-    ambient, grouping, bundling, maxSize, parallel,
+    ambient, grouping, bundling, maxSize, parallel: 1,
   });
 
-  // 2. Расчёт Vdrop для подобранного сечения
+  // 2. Vdrop
   const vdropAmp = calcVoltageDrop(I, resByAmp.s, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
 
-  // 3. Подбор по Vdrop (если есть длина)
   let sizeByVdrop = null;
-  let resByVdrop = null;
   let vdropFinal = vdropAmp;
 
   if (lengthM > 0 && vdropAmp.dUpct > maxVdropPct) {
     const sizes = currentMethod.availableSizes(material, insulation, method).filter(s => s <= maxSize);
     sizeByVdrop = findMinSizeForVdrop(I, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel, maxVdropPct, sizes);
-
-    if (sizeByVdrop && sizeByVdrop > resByAmp.s) {
-      // Пересчитываем с увеличенным сечением — нужно подтвердить что метод тоже выдаёт ≥
-      resByVdrop = { s: sizeByVdrop };
-      vdropFinal = calcVoltageDrop(I, sizeByVdrop, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
-    }
   }
 
-  const finalSize = (resByVdrop && resByVdrop.s > resByAmp.s) ? resByVdrop.s : resByAmp.s;
-  const increased = finalSize > resByAmp.s;
+  // 3. Экономическая плотность тока
+  let ecoResult = null;
+  if (els.ecoEnabled.checked && currentEcoMethod) {
+    const sizes = currentMethod.availableSizes(material, insulation, method).filter(s => s <= maxSize);
+    const insulated = true; // кабели с изоляцией
+    ecoResult = currentEcoMethod.calcEconomicSize(I, material, insulated, getEcoParams(), sizes);
+  }
 
-  // Финальный Vdrop
-  if (increased) {
+  // 4. Итоговое сечение = max(по току, по Vdrop, по экон.плотности)
+  let finalSize = resByAmp.s;
+  let increasedBy = null;
+  if (sizeByVdrop && sizeByVdrop > finalSize) { finalSize = sizeByVdrop; increasedBy = 'vdrop'; }
+  if (ecoResult && ecoResult.sStandard > finalSize) { finalSize = ecoResult.sStandard; increasedBy = 'economic'; }
+
+  if (finalSize > resByAmp.s) {
     vdropFinal = calcVoltageDrop(I, finalSize, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
   }
 
-  const In = currentMethod.selectBreaker(I / resByAmp.parallel);
+  // 5. Автомат
+  const parallel = resByAmp.parallel;
+  let In;
+  if (protection === 'individual') {
+    In = currentMethod.selectBreaker(I / parallel);
+  } else {
+    In = currentMethod.selectBreaker(I);
+  }
 
-  renderResult(I, resByAmp, finalSize, increased, In, vdropAmp, vdropFinal, maxVdropPct, {
+  renderResult(I, resByAmp, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, {
     material, insulation, method, cableType, ambient, grouping, bundling, lengthM, vl, cosPhi,
   });
 }
 
 // ============ Render results ============
-function renderResult(I, res, finalSize, increased, In, vdropAmp, vdropFinal, maxVdropPct, params) {
+function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, params) {
   const matLabel = currentMethod.materials[params.material] || params.material;
   const insLabel = currentMethod.insulations[params.insulation] || params.insulation;
   const methLabel = currentMethod.installMethods[params.method] || params.method;
   const typeLabel = currentMethod.cableTypes[params.cableType] || params.cableType;
   const kTotal = res.kT * res.kG;
   const vdropOk = vdropFinal.dUpct <= maxVdropPct;
+  const increased = finalSize > res.s;
 
   const overflowHtml = res.overflow
-    ? `<div class="result-detail tag-overflow">Не удалось подобрать кабель, взято макс. сечение!</div>`
-    : '';
-
+    ? `<div class="result-detail tag-overflow">Не удалось подобрать кабель, взято макс. сечение!</div>` : '';
   const autoParHtml = res.autoParallel
-    ? `<div class="result-detail tag-warn">Авто-увеличение до ${res.parallel} параллельных линий</div>`
-    : '';
+    ? `<div class="result-detail tag-warn">Авто: ${res.parallel} параллельных линий</div>` : '';
 
-  // Рекомендация по Vdrop
   let recommendHtml = '';
   if (increased) {
-    recommendHtml = `
-      <div class="result-card recommend">
-        <h3>Рекомендация</h3>
-        <div class="result-detail">
-          По токовой нагрузке достаточно <strong>${res.s} мм&sup2;</strong>, но при длине ${params.lengthM} м
-          падение напряжения составит <strong>${vdropAmp.dUpct.toFixed(2)}%</strong> (больше ${maxVdropPct}%).<br><br>
-          Рекомендуется увеличить сечение до <strong>${finalSize} мм&sup2;</strong> — при этом
-          &Delta;U = <strong>${vdropFinal.dUpct.toFixed(2)}%</strong>.
-        </div>
-      </div>
-    `;
+    let reason = '';
+    if (increasedBy === 'vdrop') {
+      reason = `При ${res.s} мм&sup2; падение напряжения ${vdropAmp.dUpct.toFixed(2)}% > ${maxVdropPct}%. Увеличено до ${finalSize} мм&sup2; (&Delta;U = ${vdropFinal.dUpct.toFixed(2)}%).`;
+    } else if (increasedBy === 'economic') {
+      reason = `По экономической плотности тока требуется ${finalSize} мм&sup2; (j<sub>эк</sub> = ${ecoResult.jEk} А/мм&sup2;, S<sub>расч</sub> = ${ecoResult.sCalc} мм&sup2;).`;
+    }
+    recommendHtml = `<div class="result-card recommend"><h3>Рекомендация</h3><div class="result-detail">${reason}</div></div>`;
   }
+
+  // Economic card
+  let ecoHtml = '';
+  if (ecoResult) {
+    ecoHtml = `
+      <div class="result-card ${ecoResult.sStandard > res.s ? 'warn' : ''}">
+        <h3>Экономическая плотность</h3>
+        <div class="result-value">${ecoResult.sStandard}<span class="unit">мм&sup2;</span></div>
+        <div class="result-detail">
+          j<sub>эк</sub> = ${ecoResult.jEk} А/мм&sup2;<br>
+          S<sub>расч</sub> = ${ecoResult.sCalc} мм&sup2;<br>
+          ${ecoResult.description}
+        </div>
+      </div>`;
+  }
+
+  const protLabel = protection === 'individual' ? 'Индивид. (I/n)' : 'Общая (I)';
 
   const html = `
     <div class="result-grid">
@@ -230,18 +269,15 @@ function renderResult(I, res, finalSize, increased, In, vdropAmp, vdropFinal, ma
         <div class="result-detail">
           ${matLabel}, ${insLabel}, ${typeLabel}<br>
           ${res.parallel > 1 ? res.parallel + ' параллельных линий' : '1 линия'}
-          ${increased ? '<br><span class="tag-warn">Увеличено по Vdrop</span>' : ''}
+          ${increased ? '<br><span class="tag-warn">Увеличено (' + (increasedBy === 'vdrop' ? '&Delta;U' : 'j<sub>эк</sub>') + ')</span>' : ''}
         </div>
-        ${overflowHtml}
-        ${autoParHtml}
+        ${overflowHtml}${autoParHtml}
       </div>
 
       <div class="result-card">
         <h3>Автомат защиты</h3>
         <div class="result-value">${In}<span class="unit">А</span></div>
-        <div class="result-detail">
-          Ближайший &ge; I<sub>расч</sub>/n
-        </div>
+        <div class="result-detail">${protLabel}</div>
       </div>
 
       <div class="result-card">
@@ -263,6 +299,8 @@ function renderResult(I, res, finalSize, increased, In, vdropAmp, vdropFinal, ma
           <span class="${vdropOk ? 'tag-ok' : 'tag-overflow'}">${vdropOk ? 'В норме (\u2264' + maxVdropPct + '%)' : 'Превышение!'}</span>
         </div>
       </div>
+
+      ${ecoHtml}
     </div>
 
     ${recommendHtml}
@@ -272,7 +310,8 @@ function renderResult(I, res, finalSize, increased, In, vdropAmp, vdropFinal, ma
       <tr><th colspan="2">Параметры</th></tr>
       <tr><td>Расчётный ток (I<sub>расч</sub>)</td><td>${I.toFixed(2)} А</td></tr>
       <tr><td>Ток на линию (I / n)</td><td>${(I / res.parallel).toFixed(2)} А</td></tr>
-      <tr><td>Номинал автомата (I<sub>n</sub>)</td><td>${In} А</td></tr>
+      <tr><td>Номинал автомата (I<sub>n</sub>)</td><td>${In} А (${protLabel})</td></tr>
+      <tr><td>Параллельных линий</td><td>${res.parallel}${res.autoParallel ? ' (авто)' : ''}</td></tr>
       <tr><td>Способ прокладки</td><td>${methLabel}</td></tr>
       <tr><td>Температура среды</td><td>${params.ambient} &deg;C</td></tr>
       <tr><td>Кабелей в группе</td><td>${params.grouping}</td></tr>
@@ -280,16 +319,16 @@ function renderResult(I, res, finalSize, increased, In, vdropAmp, vdropFinal, ma
       <tr><th colspan="2">Коэффициенты снижения</th></tr>
       <tr><td>K<sub>t</sub> (температура)</td><td>${res.kT.toFixed(3)}</td></tr>
       <tr><td>K<sub>g</sub> (группирование)</td><td>${res.kG.toFixed(3)}</td></tr>
-      <tr><td>K<sub>total</sub> = K<sub>t</sub> &times; K<sub>g</sub></td><td><strong>${kTotal.toFixed(3)}</strong></td></tr>
+      <tr><td>K<sub>total</sub></td><td><strong>${kTotal.toFixed(3)}</strong></td></tr>
       <tr><th colspan="2">Подбор сечения</th></tr>
       <tr><td>По токовой нагрузке</td><td>${res.s} мм&sup2;</td></tr>
-      ${increased ? `<tr><td>По падению напряжения</td><td>${finalSize} мм&sup2;</td></tr>` : ''}
-      <tr><td>Итоговое сечение</td><td><strong>${finalSize} мм&sup2;</strong>${increased ? ' (увеличено по &Delta;U)' : ''}</td></tr>
+      ${increased && increasedBy === 'vdrop' ? `<tr><td>По &Delta;U</td><td>${finalSize} мм&sup2;</td></tr>` : ''}
+      ${ecoResult ? `<tr><td>По экон. плотности (j<sub>эк</sub>=${ecoResult.jEk})</td><td>${ecoResult.sStandard} мм&sup2;</td></tr>` : ''}
+      <tr><td>Итоговое</td><td><strong>${finalSize} мм&sup2;</strong></td></tr>
       ${params.lengthM > 0 ? `
       <tr><th colspan="2">Падение напряжения</th></tr>
-      <tr><td>&Delta;U при ${res.s} мм&sup2;</td><td>${vdropAmp.dUpct.toFixed(2)}% (${vdropAmp.dU.toFixed(2)} В)</td></tr>
-      ${increased ? `<tr><td>&Delta;U при ${finalSize} мм&sup2;</td><td>${vdropFinal.dUpct.toFixed(2)}% (${vdropFinal.dU.toFixed(2)} В)</td></tr>` : ''}
-      <tr><td>Допустимо</td><td>&le; ${maxVdropPct}% — <span class="${vdropOk ? 'tag-ok' : 'tag-overflow'}">${vdropOk ? 'OK' : 'НЕТ'}</span></td></tr>
+      <tr><td>&Delta;U при ${finalSize} мм&sup2;</td><td>${vdropFinal.dUpct.toFixed(2)}% (${vdropFinal.dU.toFixed(2)} В)</td></tr>
+      <tr><td>Допустимо &le; ${maxVdropPct}%</td><td><span class="${vdropOk ? 'tag-ok' : 'tag-overflow'}">${vdropOk ? 'OK' : 'НЕТ'}</span></td></tr>
       ` : ''}
     </table>
   `;
@@ -297,5 +336,5 @@ function renderResult(I, res, finalSize, increased, In, vdropAmp, vdropFinal, ma
   els.resultArea.innerHTML = html;
 }
 
-// ============ Events ============
+// ============ Start ============
 init();

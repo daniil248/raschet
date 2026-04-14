@@ -698,6 +698,8 @@ const SETTINGS_DEFAULTS = {
   maxCableSize: 240,
   maxParallelAuto: 4,
   maxVdropPct: 5,
+  calcMethod: 'iec',
+  parallelProtection: 'individual',
 };
 
 function loadGlobalSettings() {
@@ -774,6 +776,8 @@ function openSettingsModal() {
   set('set-maxVdropPct', G.maxVdropPct ?? 5);
   set('set-installMethod', G.defaultInstallMethod ?? 'B1');
   set('set-ambient',       G.defaultAmbient ?? 30);
+  set('set-calcMethod',    G.calcMethod ?? 'iec');
+  set('set-parallelProtection', G.parallelProtection ?? 'individual');
   openModal('modal-settings');
 }
 
@@ -791,6 +795,8 @@ function saveSettingsModal() {
     maxVdropPct:        Number(get('set-maxVdropPct')) || 5,
     defaultInstallMethod: get('set-installMethod') || 'B1',
     defaultAmbient:     Number(get('set-ambient')) || 30,
+    calcMethod:         get('set-calcMethod') || 'iec',
+    parallelProtection: get('set-parallelProtection') || 'individual',
   };
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(patch)); }
   catch (e) { console.warn('[settings] save failed', e); }

@@ -137,9 +137,13 @@ const K_TEMP_PUE = {
 };
 
 // Таблица 1.3.26 ПУЭ — поправка на число кабелей в группе
-// (для прокладки в трубе / коробе)
-const K_GROUP_PUE = {
+// В пучке (bundle) — аналог IEC bundle
+const K_GROUP_PUE_BUNDLE = {
   1: 1.00, 2: 0.80, 3: 0.70, 4: 0.65, 5: 0.60, 6: 0.55,
+};
+// В ряд однослойно (rows) — аналог IEC layer
+const K_GROUP_PUE_ROWS = {
+  1: 1.00, 2: 0.85, 3: 0.79, 4: 0.75, 5: 0.73, 6: 0.72,
 };
 
 // ================= Внутренние функции =================
@@ -152,11 +156,13 @@ function kTempPue(t, insulation) {
   return tbl[best];
 }
 
-function kGroupPue(n) {
-  const keys = Object.keys(K_GROUP_PUE).map(Number).sort((a, b) => a - b);
+function kGroupPue(n, bundling) {
+  if (bundling === 'spaced') return 1.0; // с зазором — без снижения
+  const table = bundling === 'rows' ? K_GROUP_PUE_ROWS : K_GROUP_PUE_BUNDLE;
+  const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
   const v = Math.max(1, n | 0);
-  let best = K_GROUP_PUE[1];
-  for (const k of keys) { if (k <= v) best = K_GROUP_PUE[k]; }
+  let best = table[1];
+  for (const k of keys) { if (k <= v) best = table[k]; }
   return best;
 }
 
@@ -216,7 +222,12 @@ export default {
   },
   defaultMethod: 'pipe',
 
-  hasBundling: false,
+  hasBundling: true,
+  bundlingOptions: {
+    bundle: 'В пучке',
+    rows:   'В ряд (однослойно)',
+    spaced: 'С зазором',
+  },
 
   availableSizes(material, insulation, method) {
     const t = getTable(material || 'Cu', method || 'pipe', 'multi');
@@ -235,12 +246,13 @@ export default {
     const cableType  = o.cableType || 'multi';
     const ambient    = Number(o.ambient) || 25;
     const grouping   = Number(o.grouping) || 1;
+    const bundling   = o.bundling || 'bundle';
     const maxSize    = Number(o.maxSize) || 240;
     const basePar    = Math.max(1, Number(o.parallel) || 1);
 
     const table = getTable(material, method, cableType);
     const kT = kTempPue(ambient, insulation);
-    const kG = method !== 'ground' ? kGroupPue(grouping) : 1.0;
+    const kG = method !== 'ground' ? kGroupPue(grouping, bundling) : 1.0;
     const k = kT * kG;
 
     const effTable = table.filter(([s]) => s <= maxSize);
@@ -273,7 +285,7 @@ export default {
         iAllowed: res.iAllowed,
         iDerated: res.iDerated,
         kT, kG,
-        material, insulation, method,
+        material, insulation, method, bundling,
         cableType,
         parallel: res.parallel,
         autoParallel,
@@ -286,7 +298,7 @@ export default {
     return {
       s: last[0], iAllowed: last[1], iDerated: last[1] * k,
       kT, kG,
-      material, insulation, method, cableType,
+      material, insulation, method, bundling, cableType,
       parallel: basePar,
       autoParallel: false,
       totalCapacity: last[1] * k * basePar,
