@@ -350,10 +350,9 @@ export function renderNodes() {
       panel:     `In ${fmt(n.capacityA || 0)} A · Макс: ${fmt(n._maxLoadA || 0)} A / ${fmt(n._maxLoadKw || 0)} kW`,
       ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%` +
                    (n._onStaticBypass ? ' · БАЙПАС' : ''),
-      consumer:  ((n.count || 1) > 1
-                    ? `Группа · ${n.count} × ${fmt(n.demandKw)} kW`
-                    : (n.consumerSubtype === 'outdoor_unit' ? 'Наруж. блок'
-                      : (CONSUMER_CATALOG.find(c => c.id === n.consumerSubtype) || {}).label || 'Потребитель'))
+      consumer:  ((n.consumerSubtype === 'outdoor_unit' ? 'Наруж. блок'
+                    : (CONSUMER_CATALOG.find(c => c.id === n.consumerSubtype) || {}).label || 'Потребитель'))
+                  + ((n.count || 1) > 1 ? ` · ${n.count} шт.` : '')
                   + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
       channel:   (CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit).label,
     }[n.type];
@@ -416,7 +415,13 @@ export function renderNodes() {
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'consumer') {
-      loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
+      const cnt = Math.max(1, n.count || 1);
+      if (cnt > 1) {
+        const total = cnt * (n.demandKw || 0);
+        loadLine = n._powered ? `${cnt} × ${fmt(n.demandKw)} = ${fmt(total)} kW` : `${cnt} × ${fmt(n.demandKw)} = ${fmt(total)} kW · нет`;
+      } else {
+        loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
+      }
       if (!n._powered) loadCls += ' off';
     } else if (n.type === 'channel') {
       loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;

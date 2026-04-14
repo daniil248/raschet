@@ -856,6 +856,20 @@ function recalc() {
       const n = state.nodes.get(nid);
       if (!n || !n._sourceColor) continue;
       let outColor = n._sourceColor;
+      // Для секций через СВ: если все вводные автоматы выключены, цвет берём
+      // от виртуальной связи (от смежной секции через СВ)
+      if (n.type === 'panel' && n._sourceColors && n._sourceColors.size > 1) {
+        // Определяем какой цвет пришёл через АКТИВНЫЙ ввод
+        const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+        let activeColor = null;
+        for (const c of _allConnsForColor) {
+          if (c.to.nodeId !== nid) continue;
+          if (c._state !== 'active' && c._state !== 'powered') continue;
+          if (!c._virtual && inBrk[c.to.port] === false) continue; // выключенный автомат
+          if (c._sourceColor) { activeColor = c._sourceColor; break; }
+        }
+        if (activeColor) outColor = activeColor;
+      }
       if (n.type === 'ups') {
         if (n._onStaticBypass) { /* keep incoming color */ }
         else if (n.lineColor) outColor = n.lineColor;
@@ -1473,6 +1487,22 @@ function recalc() {
         n._maxLoadKw = maxScenarioKw;
       } else {
         n._maxLoadKw = maxDownstreamLoad(n.id);
+      }
+      // Если downstream — секция многосекционного щита с СВ,
+      // макс. нагрузка включает возможную нагрузку через СВ
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== n.id) continue;
+        const downN = state.nodes.get(c.to.nodeId);
+        if (!downN || !downN.parentSectionedId) continue;
+        const container = state.nodes.get(downN.parentSectionedId);
+        if (!container || !container.busTies?.length) continue;
+        // Суммируем макс. нагрузку всех секций через СВ
+        let totalSecMax = 0;
+        for (const sid of (container.sectionIds || [])) {
+          const sec = state.nodes.get(sid);
+          if (sec) totalSecMax += maxDownstreamLoad(sec.id);
+        }
+        if (totalSecMax > n._maxLoadKw) n._maxLoadKw = totalSecMax;
       }
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
