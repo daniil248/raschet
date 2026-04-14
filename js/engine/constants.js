@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.17.2';
+export const APP_VERSION = '0.17.4';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -251,7 +251,7 @@ export const DEFAULTS = {
     name: 'ДГУ', comment: '', lineColor: nextLineColor(), capacityKw: 60, on: true, backupMode: true,
     sourceSubtype: 'generator',
     phase: '3ph', voltage: 400, cosPhi: 0.85,
-    sscMva: 10, ukPct: 0, xsRsRatio: 0.5, snomKva: 75,
+    sscMva: 10, ukPct: 0, xdpp: 0.15, xsRsRatio: 0.5, snomKva: 75,
     triggerNodeId: null,       // legacy single trigger (мигрируется в triggerNodeIds)
     triggerNodeIds: [],        // массив id триггеров
     triggerLogic: 'any',       // 'any' — запуск если ХОТЯ БЫ один отключён; 'all' — все отключены

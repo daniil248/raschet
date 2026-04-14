@@ -1,6 +1,7 @@
 import { state, uid } from './state.js';
 import { GLOBAL, DEFAULTS, TAG_PREFIX, NODE_H } from './constants.js';
 import { nodeWidth, nodeInputCount } from './geometry.js';
+import { effectiveTag } from './zones.js';
 
 let _snapshot, _render, _renderInspector, _notifyChange, _selectNode, _findZoneForMember;
 export function bindGraphDeps({ snapshot, render, renderInspector, notifyChange, selectNode, findZoneForMember }) {
@@ -23,18 +24,18 @@ export function nextFreeTag(type) {
 // Проверка, что tag не занят другим узлом В ТОЙ ЖЕ ЗОНЕ.
 // Одинаковые теги допустимы в разных зонах (P1.MDB1 и P2.MDB1 — ок).
 export function isTagUnique(tag, exceptId) {
-  // Определяем зону кандидата
+  // Проверяем что ПОЛНОЕ обозначение (effectiveTag) уникально
   const candidate = state.nodes.get(exceptId);
-  const candidateZone = candidate ? _findZoneForMember(candidate) : null;
-  const candidateZoneId = candidateZone ? candidateZone.id : null;
+  // Вычисляем будущий effectiveTag если бы tag стал = tag
+  const oldTag = candidate ? candidate.tag : '';
+  if (candidate) candidate.tag = tag;
+  const candidateEff = candidate ? effectiveTag(candidate) : tag;
+  if (candidate) candidate.tag = oldTag; // восстановить
   for (const n of state.nodes.values()) {
     if (n.id === exceptId) continue;
-    if (n.tag !== tag) continue;
-    // Нашли узел с таким же tag — допустим, если он в ДРУГОЙ зоне
-    const nZone = _findZoneForMember(n);
-    const nZoneId = nZone ? nZone.id : null;
-    if (nZoneId !== candidateZoneId) continue; // разные зоны → ок
-    return false; // та же зона (или обе без зоны) → конфликт
+    if (n.type === 'zone') continue;
+    const nEff = effectiveTag(n);
+    if (nEff === candidateEff) return false;
   }
   return true;
 }

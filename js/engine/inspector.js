@@ -228,7 +228,7 @@ export function renderInspectorNode(n) {
       const tgLen = (Array.isArray(n.triggerGroups) && n.triggerGroups.length) ||
         ((Array.isArray(n.triggerNodeIds) && n.triggerNodeIds.length) ? 1 : 0);
       h.push(`<button class="full-btn" id="btn-open-automation">⚡ Автоматизация${tgLen ? ` (${tgLen} сценар.)` : ''}</button>`);
-      // Собственные нужды
+      // Собственные нужды — чекбокс и сторона порта
       h.push(checkField('Порт собственных нужд', 'auxInput', !!n.auxInput));
       if (n.auxInput) {
         const side = n.auxInputSide || 'left';
@@ -238,8 +238,6 @@ export function renderInspectorNode(n) {
           h.push(`<button type="button" data-aux-side="${val}" style="padding:3px 10px;border:1px solid ${active ? '#1976d2' : '#ccc'};background:${active ? '#1976d2' : '#fff'};color:${active ? '#fff' : '#333'};border-radius:4px;cursor:pointer;font-size:11px;font-weight:${active ? '600' : '400'}">${label}</button>`);
         }
         h.push('</div>');
-        h.push(field('Мощность СН, kW', `<input type="number" min="0" max="1000" step="0.1" data-prop="auxDemandKw" value="${n.auxDemandKw || 0}">`));
-        h.push(field('cos φ СН', `<input type="number" min="0.1" max="1" step="0.01" data-prop="auxCosPhi" value="${n.auxCosPhi || 0.85}">`));
       }
     }
 
@@ -820,7 +818,11 @@ export function openImpedanceModal(n) {
   // Параметры КЗ
   h.push('<h4 style="margin:16px 0 8px">Параметры короткого замыкания</h4>');
   h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 500}">`));
-  h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
+  if (isTransformer) {
+    h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
+  } else {
+    h.push(field('Xd\'\' (сверхпереходное), о.е.', `<input type="number" id="imp-xdpp" min="0.01" max="1" step="0.01" value="${n.xdpp ?? 0.15}">`));
+  }
   h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
 
   // Потери трансформатора (только для трансформатора)
@@ -829,6 +831,14 @@ export function openImpedanceModal(n) {
     h.push(field('Потери КЗ (Pk), кВт', `<input type="number" id="imp-pk" min="0" max="100" step="0.1" value="${n.pkW ?? 6}">`));
     h.push(field('Потери ХХ (P0), кВт', `<input type="number" id="imp-p0" min="0" max="50" step="0.1" value="${n.p0W ?? 1.5}">`));
     h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Pk — потери короткого замыкания (нагрев обмоток при номинальном токе).<br>P0 — потери холостого хода (нагрев магнитопровода).</div>');
+  }
+
+  // Собственные нужды (только для генератора с auxInput)
+  if (!isTransformer && n.auxInput) {
+    h.push('<h4 style="margin:16px 0 8px">Собственные нужды</h4>');
+    h.push(field('Мощность СН, kW', `<input type="number" id="imp-auxKw" min="0" max="1000" step="0.1" value="${n.auxDemandKw || 0}">`));
+    h.push(field('cos φ СН', `<input type="number" id="imp-auxCos" min="0.1" max="1" step="0.01" value="${n.auxCosPhi || 0.85}">`));
+    h.push(`<div class="field check"><input type="checkbox" id="imp-auxBrk"${n.auxBreakerOn !== false ? ' checked' : ''}><label>Автомат СН включён</label></div>`);
   }
 
   // Вычисленные значения (справка)
@@ -869,11 +879,21 @@ export function openImpedanceModal(n) {
     // capacityKw = Snom × cos φ
     n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
     n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
-    n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
+    if (isTransformer) {
+      n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
+    } else {
+      n.xdpp = Number(document.getElementById('imp-xdpp')?.value) || 0.15;
+    }
     n.xsRsRatio = Number(document.getElementById('imp-xsrs')?.value) || 10;
     if (isTransformer) {
       n.pkW = Number(document.getElementById('imp-pk')?.value) || 0;
       n.p0W = Number(document.getElementById('imp-p0')?.value) || 0;
+    }
+    // Собственные нужды
+    if (!isTransformer && n.auxInput) {
+      n.auxDemandKw = Number(document.getElementById('imp-auxKw')?.value) || 0;
+      n.auxCosPhi = Number(document.getElementById('imp-auxCos')?.value) || 0.85;
+      n.auxBreakerOn = document.getElementById('imp-auxBrk')?.checked !== false;
     }
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);

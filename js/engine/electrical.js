@@ -87,8 +87,15 @@ export function sourceImpedance(n) {
   const Ssc = (Number(n.sscMva) || 500) * 1e6; // ВА
   // Zq = U² / Ssc — импеданс питающей сети
   const Zq = (U * U) / Ssc;
-  // Zt = Uk% × U² / (100 × Snom) — импеданс трансформатора
   const Snom = (Number(n.snomKva) || 400) * 1000;
+  const isGen = n.type === 'generator' || (n.sourceSubtype === 'generator');
+  if (isGen) {
+    // Zg = Xd'' × U² / Snom — сверхпереходный импеданс генератора
+    const xdpp = Number(n.xdpp) || 0.15;
+    const Zg = xdpp * (U * U) / Snom;
+    return Zq + Zg;
+  }
+  // Zt = Uk% × U² / (100 × Snom) — импеданс трансформатора
   const Uk = Number(n.ukPct) || 0;
   const Zt = Uk > 0 ? (Uk / 100) * (U * U) / Snom : 0;
   return Zq + Zt; // Ом (упрощённая сумма)
