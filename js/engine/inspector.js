@@ -252,7 +252,7 @@ export function renderInspectorNode(n) {
     // Краткая сводка
     const multiInput = (n.inputs || 1) > 1;
     const sm = n.switchMode || 'auto';
-    const smLabel = !multiInput ? '' : ({ auto: 'АВР', manual: 'Ручной', parallel: 'Щит', avr_paired: 'АВР привязка', switchover: 'Подменный', watchdog: 'Watchdog' }[sm] || sm);
+    const smLabel = !multiInput ? '' : ({ auto: 'АВР', manual: 'Ручной', parallel: 'Щит', avr_paired: 'АВР привязка', switchover: 'Подменный', watchdog: 'Watchdog', sectioned: 'Секционный' }[sm] || sm);
     const modeStr = multiInput ? `Режим: <b>${smLabel}</b> · ` : '';
     h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
       `${modeStr}Вх: <b>${n.inputs}</b> · Вых: <b>${n.outputs}</b> · In: <b>${n.capacityA ?? 160} А</b>` +
@@ -1422,6 +1422,7 @@ export function openPanelParamsModal(n) {
       smOpts += `<option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов к входам</option>`;
       smOpts += `<option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover)</option>`;
       smOpts += `<option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog</option>`;
+      smOpts += `<option value="sectioned"${sm === 'sectioned' ? ' selected' : ''}>Секционный щит</option>`;
       h.push(field('Тип', `<select id="pp-switchMode">${smOpts}</select>`));
 
       const hasAVR = sm !== 'parallel';
@@ -1445,6 +1446,35 @@ export function openPanelParamsModal(n) {
             h.push(`<div style="text-align:center"><div style="font-size:9px;color:#666;margin-bottom:2px">${escHtml(feederTag)}</div><input type="number" id="pp-prio-${i}" min="1" max="20" step="1" value="${prio}" style="width:44px;text-align:center;font-size:12px"></div>`);
           }
           h.push('</div>');
+        }
+
+        // Секционный щит: конфигурация секций
+        if (sm === 'sectioned') {
+          h.push('<h4 style="margin:12px 0 8px">Секции шин</h4>');
+          const secs = Array.isArray(n.sections) ? n.sections : [];
+          const ties = Array.isArray(n.busTies) ? n.busTies : [];
+          h.push(`<div class="muted" style="font-size:10px;margin-bottom:6px">Каждая секция имеет свои входы и выходы. Между секциями — секционные выключатели (СВ).</div>`);
+          // Количество секций
+          h.push(field('Количество секций', `<input type="number" id="pp-numSections" min="2" max="10" step="1" value="${secs.length || 2}">`));
+          // Автогенерация секций
+          h.push(`<button type="button" id="pp-autoSections" style="font-size:11px;padding:4px 8px;border:1px dashed #999;background:#f9f9f9;border-radius:4px;cursor:pointer;margin-bottom:8px">↻ Распределить входы/выходы по секциям равномерно</button>`);
+          // Таблица секций
+          if (secs.length) {
+            for (let si = 0; si < secs.length; si++) {
+              const sec = secs[si];
+              h.push(`<div style="background:#f5f5f5;border-radius:4px;padding:6px;margin-bottom:4px;font-size:11px">`);
+              h.push(`<b>Секция ${si + 1}</b>: входы [${(sec.inputPorts || []).map(p => p + 1).join(', ')}], выходы [${(sec.outputPorts || []).map(p => p + 1).join(', ')}]`);
+              h.push('</div>');
+            }
+            // СВ
+            if (ties.length) {
+              h.push('<h4 style="margin:8px 0 4px;font-size:11px">Секционные выключатели</h4>');
+              for (let ti = 0; ti < ties.length; ti++) {
+                const tie = ties[ti];
+                h.push(`<div style="font-size:11px;padding:2px 0">СВ${ti + 1}: секция ${tie.between[0] + 1} ↔ ${tie.between[1] + 1} (${tie.auto ? 'авто' : 'ручной'})</div>`);
+              }
+            }
+          }
         }
 
         // Задержки — для всех АВР
@@ -1493,6 +1523,33 @@ export function openPanelParamsModal(n) {
     }
     while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
     n.priorities.length = n.inputs;
+    // Секционный щит: генерация секций
+    if (n.switchMode === 'sectioned') {
+      const numSec = Number(document.getElementById('pp-numSections')?.value) || 2;
+      // Авто-генерация если секций нет или число изменилось
+      if (!Array.isArray(n.sections) || n.sections.length !== numSec) {
+        const inPerSec = Math.max(1, Math.floor(n.inputs / numSec));
+        const outPerSec = Math.max(1, Math.floor(n.outputs / numSec));
+        n.sections = [];
+        let inIdx = 0, outIdx = 0;
+        for (let si = 0; si < numSec; si++) {
+          const isLast = si === numSec - 1;
+          const inCount = isLast ? n.inputs - inIdx : inPerSec;
+          const outCount = isLast ? n.outputs - outIdx : outPerSec;
+          const inputPorts = [];
+          for (let j = 0; j < inCount; j++) inputPorts.push(inIdx++);
+          const outputPorts = [];
+          for (let j = 0; j < outCount; j++) outputPorts.push(outIdx++);
+          n.sections.push({ inputPorts, outputPorts });
+        }
+        // СВ между смежными секциями
+        n.busTies = [];
+        for (let si = 0; si < numSec - 1; si++) {
+          n.busTies.push({ between: [si, si + 1], closed: false, auto: true });
+        }
+        n._busTieStates = null; // сброс runtime
+      }
+    }
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
       document.getElementById('modal-panel-params').classList.add('hidden');

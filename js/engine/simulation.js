@@ -198,7 +198,7 @@ function simTick() {
   // 4. АВР щитов — задержки переключения при смене приоритета
   for (const n of state.nodes.values()) {
     if (n.type !== 'panel') continue;
-    if (n.switchMode === 'parallel' || n.switchMode === 'manual') continue;
+    if (n.switchMode === 'parallel' || n.switchMode === 'manual' || n.switchMode === 'sectioned') continue;
     if (n.maintenance) continue;
     if ((n.inputs || 0) < 2) continue;
 
@@ -305,6 +305,57 @@ function simTick() {
     n._avrInterlockCountdown = 0;
     n._avrDisconnected = false;
     changed = true;
+  }
+
+  // 5. Секционные щиты — автоматика СВ
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
+    if (n.maintenance) continue;
+    const sections = Array.isArray(n.sections) ? n.sections : [];
+    const busTies = Array.isArray(n.busTies) ? n.busTies : [];
+    if (!busTies.length) continue;
+
+    // Инициализация runtime-состояния СВ
+    if (!Array.isArray(n._busTieStates)) {
+      n._busTieStates = busTies.map(t => !!t.closed);
+    }
+
+    // Определяем напряжение на каждом вводе секции
+    const sectionHasPower = new Array(sections.length).fill(false);
+    for (let si = 0; si < sections.length; si++) {
+      for (const inPort of (sections[si]?.inputPorts || [])) {
+        for (const c of state.conns.values()) {
+          if (c.to.nodeId === n.id && c.to.port === inPort && (c._state === 'active' || c._state === 'powered')) {
+            sectionHasPower[si] = true;
+          }
+        }
+      }
+    }
+
+    // Для каждого СВ в автоматическом режиме
+    for (let ti = 0; ti < busTies.length; ti++) {
+      const tie = busTies[ti];
+      if (!tie.auto) continue;
+      const [secA, secB] = tie.between;
+      const powA = sectionHasPower[secA];
+      const powB = sectionHasPower[secB];
+
+      if (powA && powB) {
+        // Оба ввода живы → СВ должен быть разомкнут (блокировка)
+        if (n._busTieStates[ti]) {
+          n._busTieStates[ti] = false;
+          changed = true;
+        }
+      } else if (!powA && !powB) {
+        // Оба мертвы → СВ не помогает, оставляем как есть
+      } else {
+        // Один жив, другой мёртв → замкнуть СВ (питание через смежную секцию)
+        if (!n._busTieStates[ti]) {
+          n._busTieStates[ti] = true;
+          changed = true;
+        }
+      }
+    }
   }
 
   if (changed) {

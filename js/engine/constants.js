@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.14.0';
+export const APP_VERSION = '0.15.0';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -281,6 +281,11 @@ export const DEFAULTS = {
     capacityA: 160,
     marginMinPct: 2,
     marginMaxPct: 30,
+    // Для режима 'sectioned': секционный щит
+    // sections[i] = { inputPorts: [portIdx...], outputPorts: [portIdx...] }
+    sections: null,
+    // busTies[i] = { between: [sectionIdx, sectionIdx], closed: false, auto: true }
+    busTies: null,
     // Для режима avr_paired: привязка выходов к входам.
     // outputInputMap[outIdx] = [inIdx1, inIdx2, ...] — список входов,
     // от которых может работать данный выход (с приоритетами внутри списка).

@@ -387,6 +387,74 @@ function recalc() {
             }
             n._watchdogActivePorts = activePorts;
           }
+        } else if (n.type === 'panel' && n.switchMode === 'sectioned') {
+          // Секционный щит: каждая секция имеет свои входы и выходы.
+          // Между секциями — секционные выключатели (СВ).
+          // Секция питается от своего ввода ИЛИ через замкнутый СВ от смежной секции.
+          const sections = Array.isArray(n.sections) ? n.sections : [];
+          const busTies = Array.isArray(n.busTies) ? n.busTies : [];
+          const tieStates = Array.isArray(n._busTieStates) ? n._busTieStates : busTies.map(t => !!t.closed);
+
+          // Определяем какие секции имеют живой собственный ввод
+          const sectionPowered = new Array(sections.length).fill(false);
+          const sectionConns = new Array(sections.length).fill(null);
+          for (let si = 0; si < sections.length; si++) {
+            const sec = sections[si];
+            for (const inPort of (sec.inputPorts || [])) {
+              const inConn = ins.find(c => c.to.port === inPort);
+              if (inConn && isConnLive(inConn)) {
+                sectionPowered[si] = true;
+                sectionConns[si] = inConn;
+                break;
+              }
+            }
+          }
+
+          // BFS: через замкнутые СВ определяем группы связанных секций
+          // Внутри группы — только ОДИН живой ввод допускается
+          const visited = new Set();
+          const activePorts = new Set();
+          const allRes = [];
+
+          for (let si = 0; si < sections.length; si++) {
+            if (visited.has(si)) continue;
+            // BFS по секциям через замкнутые СВ
+            const group = [];
+            const queue = [si];
+            while (queue.length) {
+              const cur = queue.shift();
+              if (visited.has(cur)) continue;
+              visited.add(cur);
+              group.push(cur);
+              for (let ti = 0; ti < busTies.length; ti++) {
+                if (!tieStates[ti]) continue; // СВ разомкнут
+                const [a, b] = busTies[ti].between;
+                if (a === cur && !visited.has(b)) queue.push(b);
+                if (b === cur && !visited.has(a)) queue.push(a);
+              }
+            }
+            // В группе ищем первую секцию с живым вводом
+            let feedConn = null;
+            for (const gi of group) {
+              if (sectionPowered[gi] && sectionConns[gi]) {
+                feedConn = sectionConns[gi];
+                break;
+              }
+            }
+            if (feedConn) {
+              allRes.push({ conn: feedConn, share: 1 });
+              // Все выходы всех секций в группе — активны
+              for (const gi of group) {
+                for (const outPort of (sections[gi]?.outputPorts || [])) {
+                  activePorts.add(outPort);
+                }
+              }
+            }
+          }
+
+          if (allRes.length) res = allRes;
+          n._watchdogActivePorts = activePorts.size ? activePorts : null;
+
         } else if (n.type === 'panel' && n.switchMode === 'watchdog') {
           // Watchdog-режим: каждый ВХОД i жёстко привязан к ВЫХОДУ i.
           // Вход i работает только когда его upstream МЁРТВ (обесточен).
