@@ -308,6 +308,29 @@ export function renderNodes() {
     const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
     g.dataset.nodeId = n.id;
 
+    // Групповой потребитель — стопка карточек
+    const isGroup = n.type === 'consumer' && (n.count || 1) > 1;
+    if (isGroup) {
+      const stackOff = 6;
+      const layers = Math.min(n.count || 1, 3);
+      // Нижняя плашка с данными группы
+      const groupH = 22;
+      g.appendChild(el('rect', {
+        class: 'node-body', x: stackOff, y: NODE_H - 2,
+        width: w, height: groupH, rx: 4, opacity: 0.85,
+      }));
+      const totalKw = (n.count || 1) * (n.demandKw || 0);
+      g.appendChild(text(12 + stackOff, NODE_H + 13,
+        `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`, 'node-load'));
+      // Тени стопки (слои сзади карточки)
+      for (let layer = layers - 1; layer >= 1; layer--) {
+        const off = layer * 4;
+        g.appendChild(el('rect', {
+          class: 'node-body', x: off, y: off, width: w, height: NODE_H,
+          opacity: 0.4,
+        }));
+      }
+    }
     g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
 
     // Обозначение — с учётом префикса зоны («P1.MPB1»)
@@ -352,7 +375,6 @@ export function renderNodes() {
                    (n._onStaticBypass ? ' · БАЙПАС' : ''),
       consumer:  ((n.consumerSubtype === 'outdoor_unit' ? 'Наруж. блок'
                     : (CONSUMER_CATALOG.find(c => c.id === n.consumerSubtype) || {}).label || 'Потребитель'))
-                  + ((n.count || 1) > 1 ? ` · ${n.count} шт.` : '')
                   + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
       channel:   (CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit).label,
     }[n.type];
@@ -415,13 +437,7 @@ export function renderNodes() {
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'consumer') {
-      const cnt = Math.max(1, n.count || 1);
-      if (cnt > 1) {
-        const total = cnt * (n.demandKw || 0);
-        loadLine = n._powered ? `${cnt} × ${fmt(n.demandKw)} = ${fmt(total)} kW` : `${cnt} × ${fmt(n.demandKw)} = ${fmt(total)} kW · нет`;
-      } else {
-        loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
-      }
+      loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
       if (!n._powered) loadCls += ' off';
     } else if (n.type === 'channel') {
       loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;

@@ -823,7 +823,12 @@ function recalc() {
             if (!toN._sourceColor) toN._sourceColor = outColor;
           }
         }
-        queue.push({ nid: c.to.nodeId, color: outColor });
+        // Распространяем дальше только если breaker открыт (цвет проходит)
+        const toInBrk = Array.isArray(toN?.inputBreakerStates) ? toN.inputBreakerStates : [];
+        const toBreaker = toInBrk[c.to.port] !== false;
+        if (toBreaker) {
+          queue.push({ nid: c.to.nodeId, color: outColor });
+        }
       }
     }
   }
@@ -1496,7 +1501,12 @@ function recalc() {
         if (!downN || !downN.parentSectionedId) continue;
         const container = state.nodes.get(downN.parentSectionedId);
         if (!container || !container.busTies?.length) continue;
-        // Суммируем макс. нагрузку всех секций через СВ
+        // Проверяем есть ли хотя бы один замкнутый СВ
+        const ties = Array.isArray(container.busTies) ? container.busTies : [];
+        const tieStates = Array.isArray(container._busTieStates) ? container._busTieStates : ties.map(t => !!t.closed);
+        const hasClosedTie = tieStates.some(s => s);
+        if (!hasClosedTie) continue;
+        // Суммируем макс. нагрузку всех секций, соединённых через замкнутые СВ
         let totalSecMax = 0;
         for (const sid of (container.sectionIds || [])) {
           const sec = state.nodes.get(sid);
