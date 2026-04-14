@@ -65,6 +65,15 @@ export function effectiveTag(n) {
     const chain = zoneChain(n);
     return chain.map(z => z.zonePrefix || z.tag || '').filter(Boolean).join('.');
   }
+  // Секция многосекционного щита: PNL1.P1
+  if (n._parentSectioned) {
+    const parent = state.nodes.get(n._parentSectioned);
+    if (parent) {
+      const parentTag = effectiveTag(parent);
+      // Секция использует свой tag как суффикс (P1, P2...)
+      return parentTag ? `${parentTag}.${n.tag || ''}` : (n.tag || '');
+    }
+  }
   const z = findZoneForMember(n);
   if (z) {
     const prefix = zonePrefix(z);
@@ -73,14 +82,30 @@ export function effectiveTag(n) {
   return n.tag || '';
 }
 
-// Узлы, принадлежащие зоне (для drag-all / отображения)
+// Узлы, принадлежащие зоне РЕКУРСИВНО (включая потомков дочерних зон
+// и секции многосекционных щитов)
 export function nodesInZone(zone) {
   if (!zone || !Array.isArray(zone.memberIds)) return [];
   const result = [];
-  for (const id of zone.memberIds) {
-    const n = state.nodes.get(id);
-    if (n) result.push(n);
-  }
+  const visited = new Set();
+  const collect = (ids) => {
+    for (const id of ids) {
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const n = state.nodes.get(id);
+      if (!n) continue;
+      result.push(n);
+      // Рекурсия: дочерняя зона → её члены
+      if (n.type === 'zone' && Array.isArray(n.memberIds)) {
+        collect(n.memberIds);
+      }
+      // Рекурсия: многосекционный щит → его секции
+      if (n.type === 'panel' && n.switchMode === 'sectioned' && Array.isArray(n.sectionIds)) {
+        collect(n.sectionIds);
+      }
+    }
+  };
+  collect(zone.memberIds);
   return result;
 }
 

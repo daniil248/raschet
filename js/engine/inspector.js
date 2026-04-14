@@ -1634,7 +1634,7 @@ export function openPanelParamsModal(n) {
           priorities: n.priorities ? [...n.priorities] : [1],
           _parentSectioned: n.id,
         };
-        secNode.tag = nextFreeTag('panel');
+        secNode.tag = 'P1';
         state.nodes.set(secId, secNode);
         n.sectionIds = [secId];
         n.busTies = [];
@@ -1681,7 +1681,7 @@ export function openPanelParamsModal(n) {
         capacityA: 160,
         _parentSectioned: n.id,
       };
-      secNode.tag = nextFreeTag('panel');
+      secNode.tag = `P${n.sectionIds.length + 1}`;
       state.nodes.set(secId, secNode);
       n.sectionIds.push(secId);
       _render(); notifyChange();
