@@ -241,9 +241,13 @@ export function renderInspectorNode(n) {
       `</div>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
+    const isSection = !!n._parentSectioned;
+    const isSectionedContainer = n.switchMode === 'sectioned';
     // Кнопки управления
-    h.push(`<button class="full-btn" id="btn-open-panel-control" style="margin-bottom:4px">🔌 Управление щитом</button>`);
-    h.push(`<button class="full-btn" id="btn-open-panel-params" style="margin-bottom:8px">⚙ Параметры щита</button>`);
+    if (!isSection) {
+      h.push(`<button class="full-btn" id="btn-open-panel-control" style="margin-bottom:4px">🔌 ${isSectionedContainer ? 'Управление многосекционным щитом' : 'Управление щитом'}</button>`);
+    }
+    h.push(`<button class="full-btn" id="btn-open-panel-params" style="margin-bottom:8px">⚙ Параметры ${isSection ? 'секции' : 'щита'}</button>`);
 
     if (n.maintenance) {
       h.push('<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;font-weight:600;color:#e65100">⚠ ЩИТ В РЕЖИМЕ ОБСЛУЖИВАНИЯ — ОБЕСТОЧЕН</div>');
@@ -1641,9 +1645,15 @@ export function openPanelParamsModal(n) {
       if (!Array.isArray(n.sectionIds)) n.sectionIds = [];
       const secId = uid();
       const secNum = n.sectionIds.length + 1;
+      // Позиция: правее последней секции
+      let sx = n.x || 0, sy = n.y || 0;
+      if (n.sectionIds.length > 0) {
+        const lastSec = state.nodes.get(n.sectionIds[n.sectionIds.length - 1]);
+        if (lastSec) { sx = lastSec.x + nodeWidth(lastSec) + 40; sy = lastSec.y; }
+      }
       const secNode = {
         id: secId, type: 'panel',
-        x: n.x + (secNum - 1) * 250, y: n.y + 160,
+        x: sx, y: sy,
         ...DEFAULTS.panel(),
         name: `Секция ${secNum}`,
         inputs: 1, outputs: 4,

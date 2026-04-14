@@ -176,6 +176,62 @@ export function renderNodes() {
     layerNodes.appendChild(g);
   }
 
+  // Многосекционные щиты — обёртка-контейнер (рисуется как зона)
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
+    const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
+    if (!secIds.length) continue;
+    // Вычисляем bounds по дочерним секциям
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const sid of secIds) {
+      const s = state.nodes.get(sid);
+      if (!s) continue;
+      const sw = nodeWidth(s), sh = nodeHeight(s);
+      if (s.x < minX) minX = s.x;
+      if (s.y < minY) minY = s.y;
+      if (s.x + sw > maxX) maxX = s.x + sw;
+      if (s.y + sh > maxY) maxY = s.y + sh;
+    }
+    const pad = 20;
+    const wx = minX - pad, wy = minY - pad - 20;
+    const ww = maxX - minX + pad * 2, wh = maxY - minY + pad * 2 + 20;
+    n.x = wx; n.y = wy; // sync position
+    const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    const g = el('g', {
+      class: 'node panel sectioned-wrapper' + (selected ? ' selected' : ''),
+      transform: `translate(${wx},${wy})`,
+    });
+    g.dataset.nodeId = n.id;
+    // Фон обёртки
+    g.appendChild(el('rect', { x: 0, y: 0, width: ww, height: wh,
+      fill: '#f3e5f5', 'fill-opacity': '0.3', stroke: '#9c27b0', 'stroke-width': selected ? 2 : 1,
+      'stroke-dasharray': '6 3', rx: 8, 'pointer-events': 'none' }));
+    // Заголовок
+    const tag = effectiveTag(n) || n.tag || '';
+    g.appendChild(text(8, 14, `${tag} ${n.name || ''}`, 'node-tag'));
+    // СВ лампочки между секциями
+    const busTies = Array.isArray(n.busTies) ? n.busTies : [];
+    const tieStates = Array.isArray(n._busTieStates) ? n._busTieStates : busTies.map(t => !!t.closed);
+    for (let ti = 0; ti < busTies.length; ti++) {
+      const [siA, siB] = busTies[ti].between;
+      const nodeA = state.nodes.get(secIds[siA]);
+      const nodeB = state.nodes.get(secIds[siB]);
+      if (!nodeA || !nodeB) continue;
+      const ax = nodeA.x + nodeWidth(nodeA), ay = nodeA.y + nodeHeight(nodeA) / 2;
+      const bx = nodeB.x, by = nodeB.y + nodeHeight(nodeB) / 2;
+      const mx = (ax + bx) / 2 - wx, my = (ay + by) / 2 - wy;
+      const tieOn = tieStates[ti];
+      const col = tieOn ? '#4caf50' : '#e53935';
+      g.appendChild(el('circle', { cx: mx, cy: my, r: 6, fill: col, stroke: '#fff', 'stroke-width': 1.5, opacity: 0.8 }));
+      g.appendChild(el('line', { x1: ax - wx, y1: ay - wy, x2: mx - 6, y2: my, stroke: '#999', 'stroke-width': 1, 'stroke-dasharray': '3 2' }));
+      g.appendChild(el('line', { x1: mx + 6, y1: my, x2: bx - wx, y2: by - wy, stroke: '#999', 'stroke-width': 1, 'stroke-dasharray': '3 2' }));
+    }
+    // Хэндл для перетаскивания (полоса сверху)
+    g.appendChild(el('rect', { x: 0, y: 0, width: ww, height: 20,
+      fill: 'transparent', style: 'cursor:move', class: 'zone-drag-handle' }));
+    layerNodes.appendChild(g);
+  }
+
   // Каналы в режиме трассы (trayMode) — рисуем как повёрнутые прямоугольники
   for (const n of state.nodes.values()) {
     if (n.type !== 'channel' || !n.trayMode) continue;
@@ -233,7 +289,7 @@ export function renderNodes() {
   for (const n of state.nodes.values()) {
     if (n.type === 'zone') continue;
     if (n.type === 'channel' && n.trayMode) continue;
-    if (n.type === 'panel' && n.switchMode === 'sectioned') continue; // контейнер не рендерится
+    if (n.type === 'panel' && n.switchMode === 'sectioned') continue; // контейнер рисуется выше
     const w = nodeWidth(n);
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const cls = [
