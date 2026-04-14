@@ -311,25 +311,22 @@ function simTick() {
   for (const n of state.nodes.values()) {
     if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
     if (n.maintenance) continue;
-    const sections = Array.isArray(n.sections) ? n.sections : [];
+    const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
     const busTies = Array.isArray(n.busTies) ? n.busTies : [];
-    if (!busTies.length) continue;
+    if (!busTies.length || !secIds.length) continue;
 
     // Инициализация runtime-состояния СВ
     if (!Array.isArray(n._busTieStates)) {
       n._busTieStates = busTies.map(t => !!t.closed);
     }
 
-    // Определяем напряжение на каждом вводе секции
-    const sectionHasPower = new Array(sections.length).fill(false);
-    for (let si = 0; si < sections.length; si++) {
-      for (const inPort of (sections[si]?.inputPorts || [])) {
-        for (const c of state.conns.values()) {
-          if (c.to.nodeId === n.id && c.to.port === inPort && (c._state === 'active' || c._state === 'powered')) {
-            sectionHasPower[si] = true;
-          }
-        }
-      }
+    // Определяем напряжение на каждой секции (отдельный panel node)
+    const sectionHasPower = new Array(secIds.length).fill(false);
+    for (let si = 0; si < secIds.length; si++) {
+      const secNode = state.nodes.get(secIds[si]);
+      if (!secNode) continue;
+      // Секция запитана если у неё _powered (от обычного recalc)
+      if (secNode._powered) sectionHasPower[si] = true;
     }
 
     // Для каждого СВ в автоматическом режиме

@@ -1620,6 +1620,26 @@ export function openPanelParamsModal(n) {
     smSel.addEventListener('change', () => {
       snapshot('switchMode:' + n.id);
       n.switchMode = smSel.value;
+      // При переходе на sectioned — автосоздание первой секции
+      if (smSel.value === 'sectioned' && (!n.sectionIds || !n.sectionIds.length)) {
+        const secId = uid();
+        const secNode = {
+          id: secId, type: 'panel',
+          x: n.x, y: n.y,
+          ...DEFAULTS.panel(),
+          name: 'Секция 1',
+          inputs: n.inputs || 1, outputs: n.outputs || 4,
+          switchMode: (n.inputs || 1) > 1 ? 'auto' : 'parallel',
+          capacityA: n.capacityA || 160,
+          priorities: n.priorities ? [...n.priorities] : [1],
+          _parentSectioned: n.id,
+        };
+        secNode.tag = nextFreeTag('panel');
+        state.nodes.set(secId, secNode);
+        n.sectionIds = [secId];
+        n.busTies = [];
+        n.inputs = 0; n.outputs = 0;
+      }
       _render(); renderInspector(); notifyChange();
       openPanelParamsModal(n);
     });
@@ -1862,6 +1882,10 @@ function _renderSectionedPanelControl(n, body) {
     }
   }
 
+  // Также учитываем _powered от recalc (виртуальные связи)
+  for (let si = 0; si < sections.length; si++) {
+    if (sections[si]._powered) sectionPowered[si] = true;
+  }
   // BFS: через замкнутые СВ определяем какие секции запитаны
   const sectionFed = new Array(sections.length).fill(false);
   for (let si = 0; si < sections.length; si++) {

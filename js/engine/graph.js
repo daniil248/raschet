@@ -56,11 +56,15 @@ export function createNode(type, x, y) {
 export function deleteNode(id) {
   _snapshot();
   const n = state.nodes.get(id);
-  // Каскадное удаление парного блока кондиционера
+  // Каскадное удаление
   const linkedIds = [];
   if (n) {
     if (n.linkedOutdoorId) linkedIds.push(n.linkedOutdoorId);
     if (n.linkedIndoorId) linkedIds.push(n.linkedIndoorId);
+    // Многосекционный щит — удаляем все секции
+    if (n.switchMode === 'sectioned' && Array.isArray(n.sectionIds)) {
+      for (const sid of n.sectionIds) linkedIds.push(sid);
+    }
   }
   for (const lid of linkedIds) {
     const linked = state.nodes.get(lid);
@@ -80,6 +84,13 @@ export function deleteNode(id) {
   }
   state.nodes.delete(id);
   for (const m of state.modes) { if (m.overrides) delete m.overrides[id]; }
+  // Убрать из sectionIds контейнера
+  if (n && n._parentSectioned) {
+    const parent = state.nodes.get(n._parentSectioned);
+    if (parent && Array.isArray(parent.sectionIds)) {
+      parent.sectionIds = parent.sectionIds.filter(sid => sid !== id);
+    }
+  }
   if (state.selectedKind === 'node' && state.selectedId === id) {
     state.selectedKind = null; state.selectedId = null;
   }

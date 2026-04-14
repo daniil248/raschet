@@ -556,6 +556,13 @@ export function initInteraction() {
             id: ch.id, dx: ch.x - n.x, dy: ch.y - n.y,
           }));
           state.drag = { nodeId: id, dx: p.x - n.x, dy: p.y - n.y, children };
+        } else if (n.type === 'panel' && n.switchMode === 'sectioned' && Array.isArray(n.sectionIds)) {
+          // Многосекционный щит — двигаем секции вместе с контейнером
+          const children = n.sectionIds.map(sid => {
+            const s = state.nodes.get(sid);
+            return s ? { id: sid, dx: s.x - n.x, dy: s.y - n.y } : null;
+          }).filter(Boolean);
+          state.drag = { nodeId: id, dx: p.x - n.x, dy: p.y - n.y, children };
         } else {
           state.drag = { nodeId: id, dx: p.x - n.x, dy: p.y - n.y };
         }
