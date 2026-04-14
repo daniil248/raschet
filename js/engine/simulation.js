@@ -307,7 +307,7 @@ function simTick() {
     changed = true;
   }
 
-  // 5. Секционные щиты — автоматика СВ
+  // 5. Секционные щиты — автоматика СВ (АВР-подобная 4-фазная логика)
   for (const n of state.nodes.values()) {
     if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
     if (n.maintenance) continue;
@@ -315,42 +315,177 @@ function simTick() {
     const busTies = Array.isArray(n.busTies) ? n.busTies : [];
     if (!busTies.length || !secIds.length) continue;
 
-    // Инициализация runtime-состояния СВ
-    if (!Array.isArray(n._busTieStates)) {
+    // Инициализация runtime-состояния
+    if (!Array.isArray(n._busTieStates))
       n._busTieStates = busTies.map(t => !!t.closed);
+    if (!Array.isArray(n._busTieSwitchStartedAt)) {
+      const len = busTies.length;
+      n._busTieSwitchStartedAt = new Array(len).fill(0);
+      n._busTieSwitchCountdown = new Array(len).fill(0);
+      n._busTieInterlockStartedAt = new Array(len).fill(0);
+      n._busTieInterlockCountdown = new Array(len).fill(0);
+      n._busTieDisconnected = new Array(len).fill(false);
+      n._busTieDeadSec = new Array(len).fill(-1);
     }
 
-    // Определяем напряжение на каждой секции (отдельный panel node)
-    const sectionHasPower = new Array(secIds.length).fill(false);
-    for (let si = 0; si < secIds.length; si++) {
-      const secNode = state.nodes.get(secIds[si]);
-      if (!secNode) continue;
-      // Секция запитана если у неё _powered (от обычного recalc)
-      if (secNode._powered) sectionHasPower[si] = true;
+    // Хелпер: сброс таймеров для СВ ti
+    function resetTie(ti) {
+      n._busTieSwitchStartedAt[ti] = 0;
+      n._busTieSwitchCountdown[ti] = 0;
+      n._busTieInterlockStartedAt[ti] = 0;
+      n._busTieInterlockCountdown[ti] = 0;
+      n._busTieDisconnected[ti] = false;
     }
 
-    // Для каждого СВ в автоматическом режиме
+    // Хелпер: есть ли конфликтующий замкнутый/замыкающийся СВ с общей секцией
+    function hasConflict(ti) {
+      const [a, b] = busTies[ti].between;
+      for (let oti = 0; oti < busTies.length; oti++) {
+        if (oti === ti) continue;
+        const [oa, ob] = busTies[oti].between;
+        if (oa === a || oa === b || ob === a || ob === b) {
+          if (n._busTieStates[oti] || n._busTieSwitchStartedAt[oti] > 0) return true;
+        }
+      }
+      return false;
+    }
+
     for (let ti = 0; ti < busTies.length; ti++) {
       const tie = busTies[ti];
       if (!tie.auto) continue;
-      const [secA, secB] = tie.between;
-      const powA = sectionHasPower[secA];
-      const powB = sectionHasPower[secB];
 
-      if (powA && powB) {
-        // Оба ввода живы → СВ должен быть разомкнут (блокировка)
-        if (n._busTieStates[ti]) {
+      const [secIdxA, secIdxB] = tie.between;
+      const secA = state.nodes.get(secIds[secIdxA]);
+      const secB = state.nodes.get(secIds[secIdxB]);
+      if (!secA || !secB) continue;
+
+      const ownPowA = !!secA._ownInputPowered;
+      const ownPowB = !!secB._ownInputPowered;
+      const ownAvailA = !!secA._ownInputAvailable;
+      const ownAvailB = !!secB._ownInputAvailable;
+      const tieOn = n._busTieStates[ti];
+
+      const delay = Math.max(0, Number(tie.delaySec) || 2);
+      const interlock = Math.max(0, Number(tie.interlockSec) || 1);
+
+      if (!tieOn) {
+        // === СВ РАЗОМКНУТ — проверяем нужно ли замкнуть ===
+
+        if (ownPowA && ownPowB) {
+          // Обе секции питаются от своих вводов — всё ок
+          resetTie(ti);
+          continue;
+        }
+        if (!ownPowA && !ownPowB) {
+          // Обе мертвы — СВ не поможет
+          resetTie(ti);
+          continue;
+        }
+
+        // Одна секция запитана, другая нет — нужно замкнуть СВ
+        const deadSecIdx = ownPowA ? secIdxB : secIdxA;
+        const deadSec = ownPowA ? secB : secA;
+
+        // Взаимная блокировка: нельзя замкнуть если конфликтующий СВ уже замкнут
+        if (hasConflict(ti)) {
+          resetTie(ti);
+          continue;
+        }
+
+        // Фаза 1: задержка переключения
+        if (!n._busTieSwitchStartedAt[ti]) {
+          n._busTieSwitchStartedAt[ti] = now;
+          n._busTieDeadSec[ti] = deadSecIdx;
+          changed = true;
+        }
+        const swElapsed = (now - n._busTieSwitchStartedAt[ti]) / 1000;
+        n._busTieSwitchCountdown[ti] = Math.max(0, delay - swElapsed);
+        if (swElapsed < delay) continue;
+
+        // Фаза 2: отключить вводные автоматы мёртвой секции
+        if (!n._busTieDisconnected[ti]) {
+          n._busTieDisconnected[ti] = true;
+          if (!Array.isArray(deadSec.inputBreakerStates))
+            deadSec.inputBreakerStates = new Array(deadSec.inputs || 0).fill(true);
+          for (let i = 0; i < (deadSec.inputs || 0); i++)
+            deadSec.inputBreakerStates[i] = false;
+          changed = true;
+        }
+
+        // Фаза 3: разбежка
+        if (!n._busTieInterlockStartedAt[ti]) {
+          n._busTieInterlockStartedAt[ti] = now;
+          changed = true;
+        }
+        const ilElapsed = (now - n._busTieInterlockStartedAt[ti]) / 1000;
+        n._busTieInterlockCountdown[ti] = Math.max(0, interlock - ilElapsed);
+        if (ilElapsed < interlock) continue;
+
+        // Фаза 4: замкнуть СВ
+        n._busTieStates[ti] = true;
+        resetTie(ti);
+        changed = true;
+
+      } else {
+        // === СВ ЗАМКНУТ — проверяем нужно ли разомкнуть ===
+
+        const deadSecIdx = n._busTieDeadSec[ti];
+        if (deadSecIdx < 0) {
+          // Не знаем какая секция была мёртвой — определяем
+          if (ownAvailA && ownAvailB) {
+            // Обе имеют напряжение на вводах — нужно разомкнуть
+            n._busTieDeadSec[ti] = secIdxB; // запомним какую восстанавливать
+          } else {
+            continue; // Оставляем как есть
+          }
+        }
+
+        const restoredSec = state.nodes.get(secIds[n._busTieDeadSec[ti]]);
+        const restoredAvailable = restoredSec ? !!restoredSec._ownInputAvailable : false;
+
+        if (!restoredAvailable) {
+          // Питание ещё не вернулось — СВ остаётся замкнутым
+          if (n._busTieSwitchStartedAt[ti]) { resetTie(ti); changed = true; }
+          continue;
+        }
+
+        // Питание восстановилось — начинаем размыкание
+
+        // Фаза 1: задержка
+        if (!n._busTieSwitchStartedAt[ti]) {
+          n._busTieSwitchStartedAt[ti] = now;
+          changed = true;
+        }
+        const swElapsed = (now - n._busTieSwitchStartedAt[ti]) / 1000;
+        n._busTieSwitchCountdown[ti] = Math.max(0, delay - swElapsed);
+        if (swElapsed < delay) continue;
+
+        // Фаза 2: разомкнуть СВ
+        if (!n._busTieDisconnected[ti]) {
+          n._busTieDisconnected[ti] = true;
           n._busTieStates[ti] = false;
           changed = true;
         }
-      } else if (!powA && !powB) {
-        // Оба мертвы → СВ не помогает, оставляем как есть
-      } else {
-        // Один жив, другой мёртв → замкнуть СВ (питание через смежную секцию)
-        if (!n._busTieStates[ti]) {
-          n._busTieStates[ti] = true;
+
+        // Фаза 3: разбежка
+        if (!n._busTieInterlockStartedAt[ti]) {
+          n._busTieInterlockStartedAt[ti] = now;
           changed = true;
         }
+        const ilElapsed = (now - n._busTieInterlockStartedAt[ti]) / 1000;
+        n._busTieInterlockCountdown[ti] = Math.max(0, interlock - ilElapsed);
+        if (ilElapsed < interlock) continue;
+
+        // Фаза 4: включить вводные автоматы восстановленной секции
+        if (restoredSec) {
+          if (!Array.isArray(restoredSec.inputBreakerStates))
+            restoredSec.inputBreakerStates = new Array(restoredSec.inputs || 0).fill(false);
+          for (let i = 0; i < (restoredSec.inputs || 0); i++)
+            restoredSec.inputBreakerStates[i] = true;
+        }
+        resetTie(ti);
+        n._busTieDeadSec[ti] = -1;
+        changed = true;
       }
     }
   }

@@ -1623,7 +1623,7 @@ export function openPanelParamsModal(n) {
         // Удалить СВ ссылающиеся на эту секцию
         n.busTies = (n.busTies || []).filter(t => t.between[0] !== si && t.between[1] !== si)
           .map(t => ({ ...t, between: t.between.map(i => i > si ? i - 1 : i) }));
-        n._busTieStates = null;
+        n._busTieStates = null; n._busTieSwitchStartedAt = null; n._busTieInterlockStartedAt = null; n._busTieDisconnected = null; n._busTieDeadSec = null;
         _render(); notifyChange();
         openPanelParamsModal(n);
       });
@@ -1635,7 +1635,7 @@ export function openPanelParamsModal(n) {
         snapshot('addTie:' + n.id);
         if (!Array.isArray(n.busTies)) n.busTies = [];
         n.busTies.push({ between: [si, si + 1], closed: false, auto: true });
-        n._busTieStates = null;
+        n._busTieStates = null; n._busTieSwitchStartedAt = null; n._busTieInterlockStartedAt = null; n._busTieDisconnected = null; n._busTieDeadSec = null;
         _render(); notifyChange();
         openPanelParamsModal(n);
       });
@@ -1646,7 +1646,7 @@ export function openPanelParamsModal(n) {
         const ti = Number(btn.dataset.tieRemove);
         snapshot('delTie:' + n.id);
         n.busTies.splice(ti, 1);
-        n._busTieStates = null;
+        n._busTieStates = null; n._busTieSwitchStartedAt = null; n._busTieInterlockStartedAt = null; n._busTieDisconnected = null; n._busTieDeadSec = null;
         _render(); notifyChange();
         openPanelParamsModal(n);
       });
@@ -1688,7 +1688,7 @@ export function openPanelParamsModal(n) {
     n.priorities.length = n.inputs;
     // Многосекционный щит: сохранить задержки СВ
     if (n.switchMode === 'sectioned') {
-      n._busTieStates = null;
+      n._busTieStates = null; n._busTieSwitchStartedAt = null; n._busTieInterlockStartedAt = null; n._busTieDisconnected = null; n._busTieDeadSec = null;
       // Сохранить задержки СВ
       if (Array.isArray(n.busTies)) {
         for (let ti = 0; ti < n.busTies.length; ti++) {
@@ -1979,6 +1979,32 @@ function _renderSectionedPanelControl(n, body) {
 
   h += '</svg></div>';
 
+  // Переключатели Авто/Ручной для каждого СВ + таймеры
+  if (busTies.length) {
+    h += '<div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">';
+    for (let ti = 0; ti < busTies.length; ti++) {
+      const tie = busTies[ti];
+      const isAuto = !!tie.auto;
+      h += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0">';
+      h += `<span style="font-size:11px;font-weight:600;color:#666;min-width:36px">СВ${ti + 1}:</span>`;
+      h += `<span style="font-size:11px;color:${isAuto ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
+      h += `<div data-tie-auto-toggle="${ti}" style="position:relative;width:44px;height:22px;border-radius:11px;background:${isAuto ? '#4caf50' : '#ff9800'};cursor:pointer;flex-shrink:0">`;
+      h += `<div style="position:absolute;top:2px;${isAuto ? 'left:2px' : 'right:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+      h += '</div>';
+      h += `<span style="font-size:11px;color:${!isAuto ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
+      h += '</div>';
+      // Таймеры переключения
+      const swCd = Array.isArray(n._busTieSwitchCountdown) ? (n._busTieSwitchCountdown[ti] || 0) : 0;
+      const ilCd = Array.isArray(n._busTieInterlockCountdown) ? (n._busTieInterlockCountdown[ti] || 0) : 0;
+      if (swCd > 0) {
+        h += `<div style="text-align:center;font-size:12px;color:#1976d2;font-weight:600;margin:2px 0">СВ${ti + 1}: задержка ${Math.ceil(swCd)} с</div>`;
+      } else if (ilCd > 0) {
+        h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">СВ${ti + 1}: разбежка ${Math.ceil(ilCd)} с</div>`;
+      }
+    }
+    h += '</div>';
+  }
+
   // Обслуживание
   h += `<div class="field check" style="margin-top:8px"><input type="checkbox" id="pc-maintenance"${n.maintenance ? ' checked' : ''}><label>Режим обслуживания (полностью обесточен)</label></div>`;
 
@@ -2090,6 +2116,27 @@ function _renderSectionedPanelControl(n, body) {
       }
       snapshot('sec-tie:' + n.id + ':' + ti);
       n._busTieStates[ti] = wantClose;
+      _render(); notifyChange();
+      openPanelControlModal(n);
+    });
+  });
+
+  // Переключатель Авто/Ручной для СВ
+  body.querySelectorAll('[data-tie-auto-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ti = Number(el.dataset.tieAutoToggle);
+      const tie = busTies[ti];
+      if (!tie) return;
+      snapshot('sec-tie-mode:' + n.id + ':' + ti);
+      tie.auto = !tie.auto;
+      // Сброс таймеров при переключении режима
+      if (Array.isArray(n._busTieSwitchStartedAt)) {
+        n._busTieSwitchStartedAt[ti] = 0;
+        n._busTieSwitchCountdown[ti] = 0;
+        n._busTieInterlockStartedAt[ti] = 0;
+        n._busTieInterlockCountdown[ti] = 0;
+        n._busTieDisconnected[ti] = false;
+      }
       _render(); notifyChange();
       openPanelControlModal(n);
     });

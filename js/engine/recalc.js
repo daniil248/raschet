@@ -585,6 +585,7 @@ function recalc() {
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
     n._watchdogActivePorts = null;
+    n._ownInputPowered = false; n._ownInputAvailable = false;
     // Сброс _avrBreakerOverride для ВСЕХ кроме панелей в активной фазе переключения.
     // Фаза переключения определяется ТОЛЬКО наличием _avrSwitchCountdown > 0 или _avrInterlockCountdown > 0.
     if (n.type === 'consumer') {
@@ -764,6 +765,22 @@ function recalc() {
         n._inputKw = 0;
       }
       if (n._loadKw > Number(n.capacityKw || 0)) n._overload = true;
+    }
+  }
+
+  // Вычисляем _ownInputPowered и _ownInputAvailable для секций многосекционных щитов.
+  // _ownInputPowered = секция запитана от своих реальных вводов (не через СВ)
+  // _ownInputAvailable = на реальных вводах секции есть напряжение (неважно, автомат вкл/выкл)
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'panel' || !n.parentSectionedId) continue;
+    const realIns = (edgesIn.get(n.id) || []).filter(c => !c._virtual);
+    const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
+    for (const c of realIns) {
+      const live = c._state === 'active' || c._state === 'powered';
+      if (live) {
+        n._ownInputAvailable = true;
+        if (inBrk[c.to.port] !== false) n._ownInputPowered = true;
+      }
     }
   }
 
