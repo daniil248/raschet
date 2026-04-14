@@ -1393,9 +1393,10 @@ export function openPanelParamsModal(n) {
   // Тип щита — всегда виден
   const sm = n.switchMode || 'auto';
   {
+    const isSubSection = !!n._parentSectioned;
     let smOpts = `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Щит</option>`;
     smOpts += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>Щит с АВР</option>`;
-    smOpts += `<option value="sectioned"${sm === 'sectioned' ? ' selected' : ''}>Многосекционный щит</option>`;
+    if (!isSubSection) smOpts += `<option value="sectioned"${sm === 'sectioned' ? ' selected' : ''}>Многосекционный щит</option>`;
     if ((n.inputs || 0) > 1) {
       smOpts += `<option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой</option>`;
       smOpts += `<option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный</option>`;
@@ -1546,94 +1547,60 @@ export function openPanelParamsModal(n) {
     } // end multiInput
   }
 
-  // === Многосекционный щит — вне блока multiInput ===
+  // === Многосекционный щит — секции как отдельные panel-узлы ===
   if (isSectioned) {
-    const secs = Array.isArray(n.sections) ? n.sections : [];
+    const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
     const ties = Array.isArray(n.busTies) ? n.busTies : [];
 
-    if (!secs.length) {
-      n.sections = [{
-        name: 'Секция 1', inputs: n.inputs || 1, outputs: n.outputs || 4,
-        inputPorts: Array.from({length: n.inputs || 1}, (_, i) => i),
-        outputPorts: Array.from({length: n.outputs || 4}, (_, i) => i),
-        capacityA: n.capacityA || 160, switchMode: 'parallel', priorities: [1],
-        kSim: n.kSim ?? 1, marginMinPct: n.marginMinPct ?? 2, marginMaxPct: n.marginMaxPct ?? 30,
-      }];
-      n.busTies = [];
-    }
-
     h.push('<h4 style="margin:12px 0 8px">Секции</h4>');
-    h.push(`<div class="muted" style="font-size:10px;margin-bottom:8px">Каждая секция — отдельный щит. Между секциями можно добавить секционный выключатель.</div>`);
+    h.push(`<div class="muted" style="font-size:10px;margin-bottom:8px">Каждая секция — отдельный щит. Клик по секции открывает параметры.</div>`);
 
-    for (let si = 0; si < n.sections.length; si++) {
-      const sec = n.sections[si];
-      const secName = sec.name || `Секция ${si + 1}`;
-      const secMultiIn = (sec.inputs || 1) > 1;
-      const secSm = sec.switchMode || 'parallel';
+    for (let si = 0; si < secIds.length; si++) {
+      const secNode = state.nodes.get(secIds[si]);
+      if (!secNode) continue;
+      const secName = secNode.name || `Секция ${si + 1}`;
+      const secTag = effectiveTag(secNode) || secNode.tag || '';
+      const secSm = secNode.switchMode || 'parallel';
+      const smLabel = secSm === 'auto' ? 'АВР' : 'Щит';
       // Проверяем подключения
-      const allPorts = [...(sec.inputPorts || []), ...(sec.outputPorts || [])];
       let hasConns = false;
       for (const c of state.conns.values()) {
-        if ((c.to.nodeId === n.id && allPorts.includes(c.to.port)) || (c.from.nodeId === n.id && allPorts.includes(c.from.port))) { hasConns = true; break; }
+        if (c.to.nodeId === secNode.id || c.from.nodeId === secNode.id) { hasConns = true; break; }
       }
 
-      h.push(`<details class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:6px" data-sec-idx="${si}"${si === 0 ? ' open' : ''}>`);
-      h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600">${escHtml(secName)}</summary>`);
-      h.push(`<div style="font-size:11px;margin-top:6px">`);
-      h.push(field('Имя секции', `<input type="text" data-sec-name="${si}" value="${escAttr(secName)}">`));
-      h.push('<div style="display:flex;gap:8px">');
-      h.push('<div style="flex:1">' + field('Входов', `<input type="number" data-sec-inputs="${si}" min="1" max="10" step="1" value="${sec.inputs || 1}">`) + '</div>');
-      h.push('<div style="flex:1">' + field('Выходов', `<input type="number" data-sec-outputs="${si}" min="1" max="20" step="1" value="${sec.outputs || 4}">`) + '</div>');
+      h.push(`<div style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:6px">`);
+      h.push(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">`);
+      h.push(`<span style="font-size:12px;font-weight:600">${escHtml(secName)}</span>`);
+      h.push(`<span style="font-size:10px;color:#999">${secTag} · ${smLabel} · In ${secNode.capacityA || 0}А · вх${secNode.inputs} вых${secNode.outputs}</span>`);
+      h.push(`<button type="button" data-sec-open="${secIds[si]}" style="margin-left:auto;font-size:11px;padding:3px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:4px;cursor:pointer">⚙ Параметры</button>`);
       h.push('</div>');
-      h.push('<div style="display:flex;gap:8px">');
-      h.push('<div style="flex:1">' + field('In, А', `<input type="number" data-sec-capacity="${si}" min="0" step="1" value="${sec.capacityA || 160}">`) + '</div>');
-      h.push('<div style="flex:1">' + field('Ксим', `<input type="number" data-sec-ksim="${si}" min="0" max="1.2" step="0.05" value="${sec.kSim ?? 1}">`) + '</div>');
+      if (secIds.length > 1 && !hasConns) {
+        h.push(`<button type="button" data-sec-delete="${si}" style="font-size:10px;padding:2px 6px;border:1px solid #ef9a9a;background:#fff;border-radius:3px;cursor:pointer;color:#c62828">✕ Удалить</button>`);
+      } else if (secIds.length > 1 && hasConns) {
+        h.push(`<span class="muted" style="font-size:10px">Нельзя удалить — есть линии</span>`);
+      }
       h.push('</div>');
-      // Режим секции
-      if (secMultiIn) {
-        h.push(field('Режим секции', `<select data-sec-mode="${si}">
-          <option value="parallel"${secSm === 'parallel' ? ' selected' : ''}>Щит</option>
-          <option value="auto"${secSm === 'auto' ? ' selected' : ''}>Щит с АВР</option>
-        </select>`));
-        if (secSm === 'auto') {
-          h.push('<div style="display:flex;gap:8px">');
-          h.push('<div style="flex:1">' + field('Задержка АВР, с', `<input type="number" data-sec-delay="${si}" min="0" max="30" step="0.5" value="${sec.avrDelaySec ?? 2}">`) + '</div>');
-          h.push('<div style="flex:1">' + field('Разбежка, с', `<input type="number" data-sec-interlock="${si}" min="0" max="10" step="0.5" value="${sec.avrInterlockSec ?? 1}">`) + '</div>');
-          h.push('</div>');
-        }
-      }
-      h.push(`<div class="muted" style="font-size:10px;margin-top:4px">Порты: входы [${(sec.inputPorts || []).map(p => p + 1).join(', ')}], выходы [${(sec.outputPorts || []).map(p => p + 1).join(', ')}]</div>`);
-      if (n.sections.length > 1) {
-        if (hasConns) {
-          h.push(`<div class="muted" style="font-size:10px;color:#999;margin-top:4px">Нельзя удалить — есть подключённые линии</div>`);
-        } else {
-          h.push(`<button type="button" data-sec-delete="${si}" style="font-size:11px;padding:3px 8px;border:1px solid #ef9a9a;background:#fff;border-radius:4px;cursor:pointer;color:#c62828;margin-top:4px">✕ Удалить секцию</button>`);
-        }
-      }
-      h.push('</div></details>');
 
       // СВ между секциями
-      if (si < n.sections.length - 1) {
+      if (si < secIds.length - 1) {
         const tieIdx = ties.findIndex(t => (t.between[0] === si && t.between[1] === si + 1) || (t.between[0] === si + 1 && t.between[1] === si));
         h.push(`<div style="text-align:center;margin:4px 0;padding:6px;background:#f0f0f0;border-radius:4px">`);
         if (tieIdx >= 0) {
           const tie = ties[tieIdx];
-          h.push(`<div style="font-size:11px;font-weight:600;margin-bottom:4px">СВ: ${n.sections[si].name || 'С' + (si+1)} ↔ ${n.sections[si+1].name || 'С' + (si+2)}</div>`);
+          h.push(`<div style="font-size:11px;font-weight:600;margin-bottom:4px">СВ${tieIdx + 1}</div>`);
           h.push('<div style="display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap">');
           h.push(`<select data-tie-mode="${tieIdx}" style="font-size:11px;padding:3px 8px;border:1px solid #ccc;border-radius:3px">`);
           h.push(`<option value="auto"${tie.auto ? ' selected' : ''}>Авто</option>`);
-          h.push(`<option value="manual"${!tie.auto ? ' selected' : ''}>Ручной</option>`);
-          h.push(`</select>`);
+          h.push(`<option value="manual"${!tie.auto ? ' selected' : ''}>Ручной</option></select>`);
           if (tie.auto) {
-            h.push('<div style="display:flex;gap:4px;align-items:center">');
             h.push(`<label style="font-size:10px;color:#666">Ts</label><input type="number" data-tie-delay="${tieIdx}" min="0" max="30" step="0.5" value="${tie.delaySec ?? 2}" style="width:50px;font-size:11px;padding:3px">`);
             h.push(`<label style="font-size:10px;color:#666">Tr</label><input type="number" data-tie-interlock="${tieIdx}" min="0" max="10" step="0.5" value="${tie.interlockSec ?? 1}" style="width:50px;font-size:11px;padding:3px">`);
-            h.push('</div>');
           }
-          h.push(`<button type="button" data-tie-remove="${tieIdx}" style="font-size:11px;padding:3px 8px;border:1px solid #ef9a9a;background:#fff;border-radius:3px;cursor:pointer;color:#c62828">✕</button>`);
+          h.push(`<button type="button" data-tie-remove="${tieIdx}" style="font-size:11px;padding:3px 6px;border:1px solid #ef9a9a;background:#fff;border-radius:3px;cursor:pointer;color:#c62828">✕</button>`);
           h.push('</div>');
         } else {
-          h.push(`<button type="button" data-tie-add="${si}" style="font-size:11px;padding:4px 12px;border:1px dashed #999;background:#fff;border-radius:4px;cursor:pointer">+ СВ между ${n.sections[si].name || 'С' + (si+1)} и ${n.sections[si+1]?.name || 'С' + (si+2)}</button>`);
+          const nextSec = state.nodes.get(secIds[si + 1]);
+          h.push(`<button type="button" data-tie-add="${si}" style="font-size:11px;padding:4px 12px;border:1px dashed #999;background:#fff;border-radius:4px;cursor:pointer">+ СВ</button>`);
         }
         h.push('</div>');
       }
@@ -1656,23 +1623,37 @@ export function openPanelParamsModal(n) {
 
   // Обработчики секционного щита
   if (n.switchMode === 'sectioned') {
-    // Добавить секцию
+    // Открыть параметры секции
+    body.querySelectorAll('[data-sec-open]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const secId = btn.dataset.secOpen;
+        const secNode = state.nodes.get(secId);
+        if (secNode) {
+          document.getElementById('modal-panel-params').classList.add('hidden');
+          openPanelParamsModal(secNode);
+        }
+      });
+    });
+    // Добавить секцию — создаёт отдельный panel node
     const addSecBtn = document.getElementById('pp-addSection');
     if (addSecBtn) addSecBtn.addEventListener('click', () => {
       snapshot('addSection:' + n.id);
-      if (!Array.isArray(n.sections)) n.sections = [];
-      const nextIn = (n.inputs || 0);
-      const nextOut = (n.outputs || 0);
-      // Добавляем порты
-      n.inputs = nextIn + 1;
-      n.outputs = nextOut + 4;
-      n.sections.push({
-        name: `Секция ${n.sections.length + 1}`,
+      if (!Array.isArray(n.sectionIds)) n.sectionIds = [];
+      const secId = uid();
+      const secNum = n.sectionIds.length + 1;
+      const secNode = {
+        id: secId, type: 'panel',
+        x: n.x + (secNum - 1) * 250, y: n.y + 160,
+        ...DEFAULTS.panel(),
+        name: `Секция ${secNum}`,
         inputs: 1, outputs: 4,
-        inputPorts: [nextIn],
-        outputPorts: Array.from({length: 4}, (_, i) => nextOut + i),
-        capacityA: 160, switchMode: 'parallel', priorities: [1],
-      });
+        switchMode: 'parallel',
+        capacityA: 160,
+        _parentSectioned: n.id,
+      };
+      secNode.tag = nextFreeTag('panel');
+      state.nodes.set(secId, secNode);
+      n.sectionIds.push(secId);
       _render(); notifyChange();
       openPanelParamsModal(n);
     });
@@ -1680,22 +1661,15 @@ export function openPanelParamsModal(n) {
     body.querySelectorAll('[data-sec-delete]').forEach(btn => {
       btn.addEventListener('click', () => {
         const si = Number(btn.dataset.secDelete);
-        const sec = n.sections[si];
-        if (!sec) return;
+        const secId = n.sectionIds[si];
+        if (!secId) return;
         snapshot('delSection:' + n.id);
-        // Убираем порты секции
-        const inPorts = sec.inputPorts || [];
-        const outPorts = sec.outputPorts || [];
-        // Пересчитываем inputs/outputs
-        n.sections.splice(si, 1);
-        // Пересобираем порты
-        let inIdx = 0, outIdx = 0;
-        for (const s of n.sections) {
-          s.inputPorts = Array.from({length: s.inputs || 1}, () => inIdx++);
-          s.outputPorts = Array.from({length: s.outputs || 1}, () => outIdx++);
+        // Удалить связи секции
+        for (const c of Array.from(state.conns.values())) {
+          if (c.from.nodeId === secId || c.to.nodeId === secId) state.conns.delete(c.id);
         }
-        n.inputs = inIdx;
-        n.outputs = outIdx;
+        state.nodes.delete(secId);
+        n.sectionIds.splice(si, 1);
         // Удалить СВ ссылающиеся на эту секцию
         n.busTies = (n.busTies || []).filter(t => t.between[0] !== si && t.between[1] !== si)
           .map(t => ({ ...t, between: t.between.map(i => i > si ? i - 1 : i) }));
@@ -1742,7 +1716,9 @@ export function openPanelParamsModal(n) {
     if (n.id !== '__preset_edit__') snapshot('panel-params:' + n.id);
     const ppName = document.getElementById('pp-name')?.value?.trim();
     if (ppName) n.name = ppName;
-    n.inputs = Number(document.getElementById('pp-inputs')?.value) || 1;
+    const curSm = document.getElementById('pp-switchMode')?.value || n.switchMode;
+    if (curSm !== 'sectioned') n.inputs = Number(document.getElementById('pp-inputs')?.value) || 1;
+    else { n.inputs = 0; n.outputs = 0; }
     n.outputs = Number(document.getElementById('pp-outputs')?.value) || 1;
     n.kSim = Number(document.getElementById('pp-kSim')?.value) ?? 1;
     n.capacityA = Number(document.getElementById('pp-capacityA')?.value) || 160;
@@ -1760,33 +1736,8 @@ export function openPanelParamsModal(n) {
     }
     while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
     n.priorities.length = n.inputs;
-    // Многосекционный щит: сохранение параметров секций из полей
-    if (n.switchMode === 'sectioned' && Array.isArray(n.sections)) {
-      let inIdx = 0, outIdx = 0;
-      for (let si = 0; si < n.sections.length; si++) {
-        const sec = n.sections[si];
-        const nameEl = body.querySelector(`[data-sec-name="${si}"]`);
-        if (nameEl) sec.name = nameEl.value || `Секция ${si + 1}`;
-        const inEl = body.querySelector(`[data-sec-inputs="${si}"]`);
-        if (inEl) sec.inputs = Math.max(1, Number(inEl.value) || 1);
-        const outEl = body.querySelector(`[data-sec-outputs="${si}"]`);
-        if (outEl) sec.outputs = Math.max(1, Number(outEl.value) || 1);
-        const capEl = body.querySelector(`[data-sec-capacity="${si}"]`);
-        if (capEl) sec.capacityA = Number(capEl.value) || 160;
-        const modeEl = body.querySelector(`[data-sec-mode="${si}"]`);
-        if (modeEl) sec.switchMode = modeEl.value;
-        const ksimEl = body.querySelector(`[data-sec-ksim="${si}"]`);
-        if (ksimEl) sec.kSim = Number(ksimEl.value) ?? 1;
-        const delayEl = body.querySelector(`[data-sec-delay="${si}"]`);
-        if (delayEl) sec.avrDelaySec = Number(delayEl.value) ?? 2;
-        const interlockEl = body.querySelector(`[data-sec-interlock="${si}"]`);
-        if (interlockEl) sec.avrInterlockSec = Number(interlockEl.value) ?? 1;
-        // Пересобираем порты
-        sec.inputPorts = Array.from({length: sec.inputs}, () => inIdx++);
-        sec.outputPorts = Array.from({length: sec.outputs}, () => outIdx++);
-      }
-      n.inputs = inIdx;
-      n.outputs = outIdx;
+    // Многосекционный щит: сохранить задержки СВ
+    if (n.switchMode === 'sectioned') {
       n._busTieStates = null;
       // Сохранить задержки СВ
       if (Array.isArray(n.busTies)) {

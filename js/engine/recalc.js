@@ -388,6 +388,13 @@ function recalc() {
             n._watchdogActivePorts = activePorts;
           }
         } else if (n.type === 'panel' && n.switchMode === 'sectioned') {
+          // Многосекционный щит-контейнер: сам не участвует в расчёте.
+          // Секции — отдельные panel nodes, обрабатываются как обычные.
+          // СВ управляет связью между секциями (TODO: электрика через СВ).
+          res = null;
+          cache.set(key, res);
+          return res;
+        } else if (false && n.type === 'panel' && n.switchMode === '__old_sectioned__') {
           // Многосекционный щит: каждая секция — изолированный щит.
           // Без замкнутого СВ — секции полностью разделены.
           // С замкнутым СВ — секции объединяются, питание от одного ввода.
