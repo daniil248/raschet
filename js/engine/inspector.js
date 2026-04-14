@@ -1422,7 +1422,7 @@ export function openPanelParamsModal(n) {
       smOpts += `<option value="avr_paired"${sm === 'avr_paired' ? ' selected' : ''}>АВР с привязкой выходов к входам</option>`;
       smOpts += `<option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный (switchover)</option>`;
       smOpts += `<option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog</option>`;
-      smOpts += `<option value="sectioned"${sm === 'sectioned' ? ' selected' : ''}>Секционный щит</option>`;
+      smOpts += `<option value="sectioned"${sm === 'sectioned' ? ' selected' : ''}>Многосекционный щит</option>`;
       h.push(field('Тип', `<select id="pp-switchMode">${smOpts}</select>`));
 
       const hasAVR = sm !== 'parallel';
@@ -1448,33 +1448,86 @@ export function openPanelParamsModal(n) {
           h.push('</div>');
         }
 
-        // Секционный щит: конфигурация секций
+        // Многосекционный щит: конфигурация секций
         if (sm === 'sectioned') {
-          h.push('<h4 style="margin:12px 0 8px">Секции шин</h4>');
           const secs = Array.isArray(n.sections) ? n.sections : [];
           const ties = Array.isArray(n.busTies) ? n.busTies : [];
-          h.push(`<div class="muted" style="font-size:10px;margin-bottom:6px">Каждая секция имеет свои входы и выходы. Между секциями — секционные выключатели (СВ).</div>`);
-          // Количество секций
-          h.push(field('Количество секций', `<input type="number" id="pp-numSections" min="2" max="10" step="1" value="${secs.length || 2}">`));
-          // Автогенерация секций
-          h.push(`<button type="button" id="pp-autoSections" style="font-size:11px;padding:4px 8px;border:1px dashed #999;background:#f9f9f9;border-radius:4px;cursor:pointer;margin-bottom:8px">↻ Распределить входы/выходы по секциям равномерно</button>`);
-          // Таблица секций
-          if (secs.length) {
-            for (let si = 0; si < secs.length; si++) {
-              const sec = secs[si];
-              h.push(`<div style="background:#f5f5f5;border-radius:4px;padding:6px;margin-bottom:4px;font-size:11px">`);
-              h.push(`<b>Секция ${si + 1}</b>: входы [${(sec.inputPorts || []).map(p => p + 1).join(', ')}], выходы [${(sec.outputPorts || []).map(p => p + 1).join(', ')}]`);
-              h.push('</div>');
+
+          // Если секции ещё не созданы — автосоздание 1 секции со всеми портами
+          if (!secs.length) {
+            n.sections = [{
+              name: 'Секция 1', inputs: n.inputs || 1, outputs: n.outputs || 4,
+              inputPorts: Array.from({length: n.inputs || 1}, (_, i) => i),
+              outputPorts: Array.from({length: n.outputs || 4}, (_, i) => i),
+              capacityA: n.capacityA || 160, switchMode: 'parallel', priorities: [1],
+            }];
+            n.busTies = [];
+          }
+
+          h.push('<h4 style="margin:12px 0 8px">Секции</h4>');
+          h.push(`<div class="muted" style="font-size:10px;margin-bottom:8px">Каждая секция — отдельный щит со своими параметрами. Между секциями можно добавить секционный выключатель (СВ).</div>`);
+
+          for (let si = 0; si < n.sections.length; si++) {
+            const sec = n.sections[si];
+            const secName = sec.name || `Секция ${si + 1}`;
+            // Проверяем можно ли удалить секцию (нет подключённых линий)
+            const allPorts = [...(sec.inputPorts || []), ...(sec.outputPorts || [])];
+            let hasConns = false;
+            for (const c of state.conns.values()) {
+              if (c.to.nodeId === n.id && allPorts.includes(c.to.port)) { hasConns = true; break; }
+              if (c.from.nodeId === n.id && allPorts.includes(c.from.port)) { hasConns = true; break; }
             }
-            // СВ
-            if (ties.length) {
-              h.push('<h4 style="margin:8px 0 4px;font-size:11px">Секционные выключатели</h4>');
-              for (let ti = 0; ti < ties.length; ti++) {
-                const tie = ties[ti];
-                h.push(`<div style="font-size:11px;padding:2px 0">СВ${ti + 1}: секция ${tie.between[0] + 1} ↔ ${tie.between[1] + 1} (${tie.auto ? 'авто' : 'ручной'})</div>`);
+
+            h.push(`<details class="inspector-section" style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:6px" data-sec-idx="${si}"${si === 0 ? ' open' : ''}>`);
+            h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600">${escHtml(secName)}</summary>`);
+            h.push(`<div style="font-size:11px;margin-top:6px">`);
+            h.push(field('Имя секции', `<input type="text" data-sec-name="${si}" value="${escAttr(secName)}">`));
+            h.push('<div style="display:flex;gap:8px">');
+            h.push('<div style="flex:1">' + field('Входов', `<input type="number" data-sec-inputs="${si}" min="1" max="10" step="1" value="${sec.inputs || 1}">`) + '</div>');
+            h.push('<div style="flex:1">' + field('Выходов', `<input type="number" data-sec-outputs="${si}" min="1" max="20" step="1" value="${sec.outputs || 4}">`) + '</div>');
+            h.push('</div>');
+            h.push(field('In, А', `<input type="number" data-sec-capacity="${si}" min="0" step="1" value="${sec.capacityA || 160}">`));
+            // Режим АВР секции (если больше 1 входа)
+            if ((sec.inputs || 1) > 1) {
+              const secSm = sec.switchMode || 'parallel';
+              h.push(field('Режим секции', `<select data-sec-mode="${si}">
+                <option value="parallel"${secSm === 'parallel' ? ' selected' : ''}>Щит</option>
+                <option value="auto"${secSm === 'auto' ? ' selected' : ''}>Щит с АВР</option>
+              </select>`));
+            }
+            h.push(`<div class="muted" style="font-size:10px;margin-top:4px">Порты: входы [${(sec.inputPorts || []).map(p => p + 1).join(', ')}], выходы [${(sec.outputPorts || []).map(p => p + 1).join(', ')}]</div>`);
+            // Кнопка удаления секции
+            if (n.sections.length > 1) {
+              if (hasConns) {
+                h.push(`<div class="muted" style="font-size:10px;color:#999;margin-top:4px">Нельзя удалить — есть подключённые линии</div>`);
+              } else {
+                h.push(`<button type="button" data-sec-delete="${si}" style="font-size:11px;padding:3px 8px;border:1px solid #ef9a9a;background:#fff;border-radius:4px;cursor:pointer;color:#c62828;margin-top:4px">✕ Удалить секцию</button>`);
               }
             }
+            h.push('</div></details>');
+
+            // СВ между секциями (кнопка добавления/управления)
+            if (si < n.sections.length - 1) {
+              const tieIdx = ties.findIndex(t => (t.between[0] === si && t.between[1] === si + 1) || (t.between[0] === si + 1 && t.between[1] === si));
+              const hasTie = tieIdx >= 0;
+              h.push(`<div style="text-align:center;margin:4px 0;padding:4px;background:#f0f0f0;border-radius:4px">`);
+              if (hasTie) {
+                const tie = ties[tieIdx];
+                h.push(`<span style="font-size:11px;font-weight:600">СВ: секция ${si + 1} ↔ ${si + 2}</span> `);
+                h.push(`<select data-tie-mode="${tieIdx}" style="font-size:11px;padding:2px 6px;border:1px solid #ccc;border-radius:3px">`);
+                h.push(`<option value="auto"${tie.auto ? ' selected' : ''}>Авто</option>`);
+                h.push(`<option value="manual"${!tie.auto ? ' selected' : ''}>Ручной</option>`);
+                h.push(`</select> `);
+                h.push(`<button type="button" data-tie-remove="${tieIdx}" style="font-size:11px;padding:2px 6px;border:1px solid #ef9a9a;background:#fff;border-radius:3px;cursor:pointer;color:#c62828">✕</button>`);
+              } else {
+                h.push(`<button type="button" data-tie-add="${si}" style="font-size:11px;padding:3px 10px;border:1px dashed #999;background:#fff;border-radius:4px;cursor:pointer">+ Добавить СВ между секциями ${si + 1} и ${si + 2}</button>`);
+              }
+              h.push('</div>');
+            }
           }
+
+          // Кнопка добавления новой секции
+          h.push(`<button type="button" id="pp-addSection" style="width:100%;font-size:11px;padding:6px;border:1px dashed #999;background:#f9f9f9;border-radius:4px;cursor:pointer;margin-top:8px">+ Добавить секцию</button>`);
         }
 
         // Задержки — для всех АВР
@@ -1497,6 +1550,89 @@ export function openPanelParamsModal(n) {
       n.switchMode = smSel.value;
       _render(); renderInspector(); notifyChange();
       openPanelParamsModal(n);
+    });
+  }
+
+  // Обработчики секционного щита
+  if (n.switchMode === 'sectioned') {
+    // Добавить секцию
+    const addSecBtn = document.getElementById('pp-addSection');
+    if (addSecBtn) addSecBtn.addEventListener('click', () => {
+      snapshot('addSection:' + n.id);
+      if (!Array.isArray(n.sections)) n.sections = [];
+      const nextIn = (n.inputs || 0);
+      const nextOut = (n.outputs || 0);
+      // Добавляем порты
+      n.inputs = nextIn + 1;
+      n.outputs = nextOut + 4;
+      n.sections.push({
+        name: `Секция ${n.sections.length + 1}`,
+        inputs: 1, outputs: 4,
+        inputPorts: [nextIn],
+        outputPorts: Array.from({length: 4}, (_, i) => nextOut + i),
+        capacityA: 160, switchMode: 'parallel', priorities: [1],
+      });
+      _render(); notifyChange();
+      openPanelParamsModal(n);
+    });
+    // Удалить секцию
+    body.querySelectorAll('[data-sec-delete]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const si = Number(btn.dataset.secDelete);
+        const sec = n.sections[si];
+        if (!sec) return;
+        snapshot('delSection:' + n.id);
+        // Убираем порты секции
+        const inPorts = sec.inputPorts || [];
+        const outPorts = sec.outputPorts || [];
+        // Пересчитываем inputs/outputs
+        n.sections.splice(si, 1);
+        // Пересобираем порты
+        let inIdx = 0, outIdx = 0;
+        for (const s of n.sections) {
+          s.inputPorts = Array.from({length: s.inputs || 1}, () => inIdx++);
+          s.outputPorts = Array.from({length: s.outputs || 1}, () => outIdx++);
+        }
+        n.inputs = inIdx;
+        n.outputs = outIdx;
+        // Удалить СВ ссылающиеся на эту секцию
+        n.busTies = (n.busTies || []).filter(t => t.between[0] !== si && t.between[1] !== si)
+          .map(t => ({ ...t, between: t.between.map(i => i > si ? i - 1 : i) }));
+        n._busTieStates = null;
+        _render(); notifyChange();
+        openPanelParamsModal(n);
+      });
+    });
+    // Добавить СВ
+    body.querySelectorAll('[data-tie-add]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const si = Number(btn.dataset.tieAdd);
+        snapshot('addTie:' + n.id);
+        if (!Array.isArray(n.busTies)) n.busTies = [];
+        n.busTies.push({ between: [si, si + 1], closed: false, auto: true });
+        n._busTieStates = null;
+        _render(); notifyChange();
+        openPanelParamsModal(n);
+      });
+    });
+    // Удалить СВ
+    body.querySelectorAll('[data-tie-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ti = Number(btn.dataset.tieRemove);
+        snapshot('delTie:' + n.id);
+        n.busTies.splice(ti, 1);
+        n._busTieStates = null;
+        _render(); notifyChange();
+        openPanelParamsModal(n);
+      });
+    });
+    // Режим СВ
+    body.querySelectorAll('[data-tie-mode]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const ti = Number(sel.dataset.tieMode);
+        n.busTies[ti].auto = sel.value === 'auto';
+        notifyChange();
+      });
     });
   }
 
@@ -1523,32 +1659,28 @@ export function openPanelParamsModal(n) {
     }
     while (n.priorities.length < n.inputs) n.priorities.push(n.priorities.length + 1);
     n.priorities.length = n.inputs;
-    // Секционный щит: генерация секций
-    if (n.switchMode === 'sectioned') {
-      const numSec = Number(document.getElementById('pp-numSections')?.value) || 2;
-      // Авто-генерация если секций нет или число изменилось
-      if (!Array.isArray(n.sections) || n.sections.length !== numSec) {
-        const inPerSec = Math.max(1, Math.floor(n.inputs / numSec));
-        const outPerSec = Math.max(1, Math.floor(n.outputs / numSec));
-        n.sections = [];
-        let inIdx = 0, outIdx = 0;
-        for (let si = 0; si < numSec; si++) {
-          const isLast = si === numSec - 1;
-          const inCount = isLast ? n.inputs - inIdx : inPerSec;
-          const outCount = isLast ? n.outputs - outIdx : outPerSec;
-          const inputPorts = [];
-          for (let j = 0; j < inCount; j++) inputPorts.push(inIdx++);
-          const outputPorts = [];
-          for (let j = 0; j < outCount; j++) outputPorts.push(outIdx++);
-          n.sections.push({ inputPorts, outputPorts });
-        }
-        // СВ между смежными секциями
-        n.busTies = [];
-        for (let si = 0; si < numSec - 1; si++) {
-          n.busTies.push({ between: [si, si + 1], closed: false, auto: true });
-        }
-        n._busTieStates = null; // сброс runtime
+    // Многосекционный щит: сохранение параметров секций из полей
+    if (n.switchMode === 'sectioned' && Array.isArray(n.sections)) {
+      let inIdx = 0, outIdx = 0;
+      for (let si = 0; si < n.sections.length; si++) {
+        const sec = n.sections[si];
+        const nameEl = body.querySelector(`[data-sec-name="${si}"]`);
+        if (nameEl) sec.name = nameEl.value || `Секция ${si + 1}`;
+        const inEl = body.querySelector(`[data-sec-inputs="${si}"]`);
+        if (inEl) sec.inputs = Math.max(1, Number(inEl.value) || 1);
+        const outEl = body.querySelector(`[data-sec-outputs="${si}"]`);
+        if (outEl) sec.outputs = Math.max(1, Number(outEl.value) || 1);
+        const capEl = body.querySelector(`[data-sec-capacity="${si}"]`);
+        if (capEl) sec.capacityA = Number(capEl.value) || 160;
+        const modeEl = body.querySelector(`[data-sec-mode="${si}"]`);
+        if (modeEl) sec.switchMode = modeEl.value;
+        // Пересобираем порты
+        sec.inputPorts = Array.from({length: sec.inputs}, () => inIdx++);
+        sec.outputPorts = Array.from({length: sec.outputs}, () => outIdx++);
       }
+      n.inputs = inIdx;
+      n.outputs = outIdx;
+      n._busTieStates = null;
     }
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
@@ -1612,7 +1744,7 @@ function svgBreaker(x, topY, on, color, offColor) {
   return { svg: s, height: h };
 }
 
-// ================= Секционный щит — SVG визуализация =================
+// ================= Многосекционный щит — SVG визуализация =================
 function _renderSectionedPanelControl(n, body) {
   const sections = Array.isArray(n.sections) ? n.sections : [];
   const busTies = Array.isArray(n.busTies) ? n.busTies : [];
@@ -1670,7 +1802,7 @@ function _renderSectionedPanelControl(n, body) {
 
   let h = '';
   h += `<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`;
-  h += `<div class="muted" style="font-size:11px;margin-bottom:8px">Секционный щит · ${sections.length} секций · ${busTies.length} СВ</div>`;
+  h += `<div class="muted" style="font-size:11px;margin-bottom:8px">Многосекционный щит · ${sections.length} секций · ${busTies.length} СВ</div>`;
 
   // Зум
   h += `<div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:4px 0">`;
@@ -1921,7 +2053,7 @@ export function openPanelControlModal(n) {
   const body = document.getElementById('panel-control-body');
   if (!body) return;
 
-  // Секционный щит — отдельный рендер
+  // Многосекционный щит — отдельный рендер
   if (n.switchMode === 'sectioned') {
     _renderSectionedPanelControl(n, body);
     return;
