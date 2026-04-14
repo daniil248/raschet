@@ -707,7 +707,8 @@ input, select { font: inherit; }
 .conn.selected { stroke: #2979ff !important; stroke-width: 5; filter: drop-shadow(0 0 3px rgba(41,121,255,0.5)); }
 
 .conn-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
-.conn-link-label { font: 600 10px -apple-system, "Segoe UI", sans-serif; fill: #1565c0; pointer-events: none; }
+.conn-link-label { font: 600 10px -apple-system, "Segoe UI", sans-serif; fill: #1565c0; cursor: pointer; }
+.conn-link-label:hover { fill: #0d47a1; text-decoration: underline; }
 
 .conn-label {
   font: 600 11px -apple-system, "Segoe UI", sans-serif;

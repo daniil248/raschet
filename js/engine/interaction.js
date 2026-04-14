@@ -263,6 +263,31 @@ export function initInteraction() {
       return;
     }
 
+    // В режиме разрыва элементы с data-link-jump — это стабы/подписи ссылок.
+    // Клик по ним = прыжок к противоположному концу (без изменения zoom).
+    const jumpEl = e.target.closest('[data-link-jump]');
+    if (jumpEl && jumpEl.dataset.linkJump && jumpEl.dataset.connId) {
+      e.preventDefault();
+      e.stopPropagation();
+      const cid = jumpEl.dataset.connId;
+      const conn = state.conns.get(cid);
+      if (conn) {
+        const which = jumpEl.dataset.linkJump; // 'from' или 'to'
+        const targetNode = state.nodes.get(which === 'from' ? conn.from.nodeId : conn.to.nodeId);
+        if (targetNode) {
+          const tx = targetNode.x + (targetNode.width || 200) / 2;
+          const ty = targetNode.y + 60;
+          const W = svg.clientWidth, H = svg.clientHeight;
+          state.view.x = tx - (W / 2) / state.view.zoom;
+          state.view.y = ty - (H / 2) / state.view.zoom;
+          updateViewBox();
+          selectConn(cid);
+          render();
+        }
+      }
+      return;
+    }
+
     // Ресайз зоны: клик на угловую ручку -> тянем правый-нижний угол
     const zoneResizeEl = e.target.closest('.zone-resize');
     if (zoneResizeEl) {
@@ -946,6 +971,40 @@ export function initInteraction() {
         deleteConn(state.selectedId); e.preventDefault();
       }
     }
+  });
+
+  // ---- Hover-preview для ссылок в режиме разрыва ----
+  // Наведение на стаб/подпись ссылки -> добавляем пунктирный путь скрытой линии.
+  // Уход курсора -> убираем. Без полного render().
+  let _linkHoverPath = null;
+  const clearLinkHover = () => {
+    if (_linkHoverPath) { _linkHoverPath.remove(); _linkHoverPath = null; }
+  };
+  svg.addEventListener('mouseover', e => {
+    const tgt = e.target.closest('[data-link-jump]');
+    if (!tgt || !tgt.dataset.connId) return;
+    const c = state.conns.get(tgt.dataset.connId);
+    if (!c || !c._linkD) return;
+    clearLinkHover();
+    const p = el('path', {
+      d: c._linkD,
+      fill: 'none',
+      stroke: '#1565c0',
+      'stroke-width': 3,
+      'stroke-dasharray': '6 4',
+      opacity: '0.7',
+      'pointer-events': 'none',
+    });
+    // Кладём в тот же layer что и conns, чтобы трансформы viewport совпадали.
+    const layerConns = document.getElementById('layer-conns');
+    if (layerConns) layerConns.appendChild(p);
+    _linkHoverPath = p;
+  });
+  svg.addEventListener('mouseout', e => {
+    // Снимаем превью только если курсор ушёл ИЗ подписи/стаба
+    const from = e.target.closest('[data-link-jump]');
+    const to = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-link-jump]');
+    if (from && !to) clearLinkHover();
   });
 
   // ---- Зум колесом ----

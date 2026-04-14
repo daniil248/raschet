@@ -731,56 +731,117 @@ export function renderConns() {
     if (effLinkMode && !linkPreview) {
       const fromTag = (effectiveTag(fromN) || fromN.name || '?') + '-' + (c.from.port + 1);
       const toTag = (effectiveTag(toN) || toN.name || '?') + '-' + (c.to.port + 1);
-      // Короткие линии ×2 длиннее (было 24, стало 48) со стрелкой на конце.
-      // Подписи — вертикальные (rotate -90), как port-label/breaker-badge,
-      // с таким же отступом от порта: rOff=12.
       const stubLen = 48;
-      const rOff = 12; // отступ от конца стаба до начала текста (как у breaker badge)
+      const rOff = 12;
       const charW = 5.8;
       const strokeCol = (c._state === 'active' || c._state === 'powered')
         ? (c._sourceColor || '#e53935') : '#bbb';
 
-      // from-конец: стаб от порта в направлении aDir
-      const af = el('line', {
-        x1: a.x, y1: a.y, x2: a.x + aDir.x * stubLen, y2: a.y + aDir.y * stubLen,
-        stroke: strokeCol, 'stroke-width': 2, 'marker-end': 'url(#arrow-link)',
-      });
-      af.dataset.connId = c.id;
-      layerConns.appendChild(af);
-      // Подпись: центр на оси стаба, сдвинута на (rOff + rLen/2) ЗА стрелкой
-      const fromTxt = `→ ${toTag}`;
-      const fromLen = fromTxt.length * charW;
-      const fsx = a.x + aDir.x * (stubLen + rOff + fromLen / 2);
-      const fsy = a.y + aDir.y * (stubLen + rOff + fromLen / 2);
-      const fromLbl = el('text', {
-        x: fsx, y: fsy, class: 'conn-link-label',
-        'text-anchor': 'middle', 'dominant-baseline': 'central',
-        transform: `rotate(-90 ${fsx} ${fsy})`,
-      });
-      fromLbl.textContent = fromTxt;
-      fromLbl.dataset.connId = c.id;
-      layerConns.appendChild(fromLbl);
+      // Сохраняем путь для hover-preview (пунктир при наведении)
+      c._linkD = d;
 
-      // to-конец: стаб заходит в порт (stub-end в точке b, stub-start в bDir*stubLen от b)
-      const ab = el('line', {
-        x1: b.x + bDir.x * stubLen, y1: b.y + bDir.y * stubLen, x2: b.x, y2: b.y,
-        stroke: strokeCol, 'stroke-width': 2, 'marker-end': 'url(#arrow-link)',
-      });
-      ab.dataset.connId = c.id;
-      layerConns.appendChild(ab);
-      // Подпись у to-конца: сдвинута ОТ порта в направлении bDir на (stubLen + rOff + rLen/2)
-      const toTxt = `← ${fromTag}`;
-      const toLen = toTxt.length * charW;
-      const tsx = b.x + bDir.x * (stubLen + rOff + toLen / 2);
-      const tsy = b.y + bDir.y * (stubLen + rOff + toLen / 2);
-      const toLbl = el('text', {
-        x: tsx, y: tsy, class: 'conn-link-label',
-        'text-anchor': 'middle', 'dominant-baseline': 'central',
-        transform: `rotate(-90 ${tsx} ${tsy})`,
-      });
-      toLbl.textContent = toTxt;
-      toLbl.dataset.connId = c.id;
-      layerConns.appendChild(toLbl);
+      // Формируем текст автомата (если включено)
+      let brkTxt = null;
+      if (GLOBAL.showLinkBreakers && (c._breakerIn || c._breakerPerLine)) {
+        if (c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
+          brkTxt = `${c._breakerIn}А (${c._breakerCount}×${c._breakerPerLine}А)`;
+        } else if (c._breakerPerLine && c._breakerCount > 1) {
+          brkTxt = `${c._breakerCount}×${c._breakerPerLine}А`;
+        } else if (c._breakerIn) {
+          brkTxt = `${c._breakerIn}А`;
+        }
+      }
+      const brkLen = brkTxt ? brkTxt.length * charW : 0;
+
+      // Хелпер: создаёт подпись (горизонтальную или вертикальную)
+      // offset — смещение центра вдоль dir от точки p
+      const makeLabel = (p, dir, txt, offset, cls, clickTarget) => {
+        const horizontal = Math.abs(dir.x) > Math.abs(dir.y);
+        let lbl;
+        if (horizontal) {
+          const anchor = dir.x > 0 ? 'start' : 'end';
+          // Для горизонтального текста offset = расстояние от p до левого/правого края
+          const lx = p.x + dir.x * offset;
+          const ly = p.y + dir.y * offset;
+          lbl = el('text', {
+            x: lx, y: ly, class: cls,
+            'text-anchor': anchor, 'dominant-baseline': 'central',
+          });
+        } else {
+          // Вертикальный: offset = расстояние от p до ЦЕНТРА текста
+          const rLen = txt.length * charW;
+          const cxp = p.x + dir.x * (offset + rLen / 2);
+          const cyp = p.y + dir.y * (offset + rLen / 2);
+          lbl = el('text', {
+            x: cxp, y: cyp, class: cls,
+            'text-anchor': 'middle', 'dominant-baseline': 'central',
+            transform: `rotate(-90 ${cxp} ${cyp})`,
+          });
+        }
+        lbl.textContent = txt;
+        lbl.dataset.connId = c.id;
+        if (clickTarget) {
+          lbl.dataset.linkJump = clickTarget;
+          lbl.style.cursor = 'pointer';
+        }
+        return lbl;
+      };
+
+      // Для горизонтального расположения "конец текста" у подписи = start+length*charW
+      // Нам нужно знать где КОНЧАЕТСЯ breaker, чтобы разместить ref-label после него.
+      // Упрощение: смещение center для вертикали = offset+len/2, а для горизонтали
+      // end = offset+len. В обоих случаях "длина занятая подписью" = txtLen.
+
+      // Хелпер рисует стаб + (опц.) брекер + ref-label
+      const drawEnd = (p, dir, txt, lineSpec, jumpTo) => {
+        // Стаб со стрелкой
+        const ln = el('line', Object.assign({
+          stroke: strokeCol, 'stroke-width': 2, 'marker-end': 'url(#arrow-link)',
+        }, lineSpec));
+        ln.dataset.connId = c.id;
+        ln.dataset.linkJump = jumpTo;
+        ln.style.cursor = 'pointer';
+        layerConns.appendChild(ln);
+
+        // Брекер (ближе к порту) — только на from-end, где реально стоит автомат
+        let usedLen = 0; // расстояние занятое под брекер (для сдвига ref-label)
+        if (brkTxt && dir === aDir) {
+          const brkOffset = stubLen + rOff; // ближе к порту — сразу за стрелкой
+          const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');
+          // Белая подложка под брекер — маленький rect
+          // (только для вертикали — там текст узкий, подложка помогает на темных)
+          const horizontal = Math.abs(dir.x) > Math.abs(dir.y);
+          if (!horizontal) {
+            const bgSize = 12;
+            const bgX = (p.x + dir.x * brkOffset) - bgSize / 2;
+            const bgY = p.y + dir.y * brkOffset;
+            const bg = el('rect', {
+              x: bgX, y: bgY, width: bgSize, height: brkLen + 4,
+              fill: '#fff', 'fill-opacity': '0.9', rx: 2,
+            });
+            layerConns.appendChild(bg);
+          }
+          const brkLbl = makeLabel(p, dir, brkTxt, brkOffset, cls);
+          layerConns.appendChild(brkLbl);
+          usedLen = brkLen + rOff; // занимаем длину брекера + отступ
+        }
+
+        // Ref-label — дальше от порта, с гиперссылочным стилем
+        const refOffset = stubLen + rOff + usedLen;
+        const refLbl = makeLabel(p, dir, txt, refOffset, 'conn-link-label', jumpTo);
+        layerConns.appendChild(refLbl);
+      };
+
+      // from-конец: стаб от порта в направлении aDir; клик/наведение переходит к to-концу
+      drawEnd(a, aDir, `→ ${toTag}`, {
+        x1: a.x, y1: a.y,
+        x2: a.x + aDir.x * stubLen, y2: a.y + aDir.y * stubLen,
+      }, 'to');
+      // to-конец: стаб входит в порт; клик/наведение переходит к from-концу
+      drawEnd(b, bDir, `← ${fromTag}`, {
+        x1: b.x + bDir.x * stubLen, y1: b.y + bDir.y * stubLen,
+        x2: b.x, y2: b.y,
+      }, 'from');
     } else {
       const path = el('path', {
         class: 'conn' + stateClass + (selected ? ' selected' : ''),

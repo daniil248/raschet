@@ -182,6 +182,13 @@ export function initToolbar() {
   const normalBtn = document.getElementById('btn-links-normal');
   if (normalBtn) normalBtn.onclick = () => { state.linksOverride = null; updateLinksBtns(); render(); };
 
+  // Номиналы автоматов на разорванных линиях
+  if (!('showLinkBreakers' in GLOBAL)) GLOBAL.showLinkBreakers = false;
+  const linkBrkBtn = document.getElementById('btn-links-breakers');
+  const updateLinkBrkBtn = () => { if (linkBrkBtn) linkBrkBtn.style.opacity = GLOBAL.showLinkBreakers ? '1' : '0.55'; };
+  updateLinkBrkBtn();
+  if (linkBrkBtn) linkBrkBtn.onclick = () => { GLOBAL.showLinkBreakers = !GLOBAL.showLinkBreakers; updateLinkBrkBtn(); render(); };
+
   // Модальные окна — перетаскивание за заголовок
   document.querySelectorAll('.modal-head').forEach(head => {
     let dragging = false, dx = 0, dy = 0;
