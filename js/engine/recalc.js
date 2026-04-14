@@ -1544,27 +1544,27 @@ function recalc() {
         // Есть ли хотя бы один замкнутый или автоматический СВ
         const hasActiveOrAutoTie = ties.some((t, i) => tieStates[i] || t.auto);
         if (!hasActiveOrAutoTie) continue;
-        // BFS: находим все секции достижимые через замкнутые/автоматические СВ
+        // Находим макс нагрузку через СВ.
+        // Два СВ к одной секции не могут быть замкнуты одновременно.
+        // Из стартовой секции можем пройти через ОДИН СВ к соседней.
+        // Берём вариант с максимальной суммарной нагрузкой.
         const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
         const downSecIdx = secIds.indexOf(downN.id);
         if (downSecIdx < 0) continue;
-        const reachable = new Set([downSecIdx]);
-        const queue = [downSecIdx];
-        while (queue.length) {
-          const cur = queue.shift();
-          for (let ti = 0; ti < ties.length; ti++) {
-            if (!tieStates[ti] && !ties[ti].auto) continue; // только замкнутые или авто
-            const [a, b] = ties[ti].between;
-            const next = a === cur ? b : (b === cur ? a : -1);
-            if (next >= 0 && !reachable.has(next)) { reachable.add(next); queue.push(next); }
-          }
+        const ownLoad = maxDownstreamLoad(downN.id);
+        let bestTotalWithTie = ownLoad;
+        // Перебираем каждый доступный СВ от стартовой секции
+        for (let ti = 0; ti < ties.length; ti++) {
+          if (!tieStates[ti] && !ties[ti].auto) continue;
+          const [a, b] = ties[ti].between;
+          const neighbor = a === downSecIdx ? b : (b === downSecIdx ? a : -1);
+          if (neighbor < 0) continue;
+          const neighborSec = state.nodes.get(secIds[neighbor]);
+          if (!neighborSec) continue;
+          const variant = ownLoad + maxDownstreamLoad(neighborSec.id);
+          if (variant > bestTotalWithTie) bestTotalWithTie = variant;
         }
-        let totalSecMax = 0;
-        for (const si of reachable) {
-          const sec = state.nodes.get(secIds[si]);
-          if (sec) totalSecMax += maxDownstreamLoad(sec.id);
-        }
-        if (totalSecMax > n._maxLoadKw) n._maxLoadKw = totalSecMax;
+        if (bestTotalWithTie > n._maxLoadKw) n._maxLoadKw = bestTotalWithTie;
       }
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
