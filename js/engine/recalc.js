@@ -194,7 +194,18 @@ function recalc() {
   // Проверка: жива ли конкретная связь? Учитывает _watchdogActivePorts
   // на upstream-щите — если выходной порт не в activePorts, связь мертва.
   function isConnLive(c) {
-    if (c._virtual) return activeInputs(c.from.nodeId) !== null; // виртуальная связь через СВ
+    if (c._virtual) {
+      // Виртуальная связь через СВ: проверяем есть ли питание у секции-источника
+      // через РЕАЛЬНЫЕ входы (чтобы избежать рекурсии через виртуальные связи)
+      const fromId = c.from.nodeId;
+      const realIns = (edgesIn.get(fromId) || []).filter(ic => !ic._virtual);
+      return realIns.some(ic => {
+        if (ic.lineMode === 'damaged' || ic.lineMode === 'disabled') return false;
+        const fn = state.nodes.get(ic.from.nodeId);
+        if (!fn) return false;
+        return activeInputs(ic.from.nodeId) !== null;
+      });
+    }
     if (c.lineMode === 'damaged' || c.lineMode === 'disabled') return false;
     const fromN = state.nodes.get(c.from.nodeId);
     if (!fromN) return false;
@@ -774,6 +785,9 @@ function recalc() {
   // Фаза 1: раскрасить ВСЕ входящие линии цветом источника (независимо от автоматов).
   // Линии, у которых на конце открыт вводной автомат, всё равно показывают цвет
   // того источника, от которого они идут.
+  // Все связи для обхода цвета (реальные + виртуальные)
+  const _allConnsForColor = [...state.conns.values(), ...virtualConns];
+
   function colorIncomingLines(startId, color) {
     const queue = [{ nid: startId, color }];
     const visited = new Set();
@@ -791,7 +805,7 @@ function recalc() {
         else if (n.lineColor) outColor = n.lineColor;
       }
 
-      for (const c of state.conns.values()) {
+      for (const c of _allConnsForColor) {
         if (c.from.nodeId !== nid) continue;
         if (c._state !== 'active' && c._state !== 'powered') continue;
         // Раскрашиваем линию цветом источника

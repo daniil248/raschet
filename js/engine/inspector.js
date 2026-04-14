@@ -1459,28 +1459,9 @@ export function openPanelParamsModal(n) {
           h.push('</div>');
         }
 
-        // (секционный щит вынесен за пределы этого блока)
-        if (false) {
-          const secs = Array.isArray(n.sections) ? n.sections : [];
-          const ties = Array.isArray(n.busTies) ? n.busTies : [];
-
-          // Если секции ещё не созданы — автосоздание 1 секции со всеми портами
-          if (!secs.length) {
-            n.sections = [{
-              name: 'Секция 1', inputs: n.inputs || 1, outputs: n.outputs || 4,
-              inputPorts: Array.from({length: n.inputs || 1}, (_, i) => i),
-              outputPorts: Array.from({length: n.outputs || 4}, (_, i) => i),
-              capacityA: n.capacityA || 160, switchMode: 'parallel', priorities: [1],
-            }];
-            n.busTies = [];
-          }
-
-          h.push('<h4 style="margin:12px 0 8px">Секции</h4>');
-          h.push(`<div class="muted" style="font-size:10px;margin-bottom:8px">Каждая секция — отдельный щит со своими параметрами. Между секциями можно добавить секционный выключатель (СВ).</div>`);
-
-          for (let si = 0; si < n.sections.length; si++) {
-            const sec = n.sections[si];
-            const secName = sec.name || `Секция ${si + 1}`;
+        // (секционный щит реализован как отдельные panel nodes — см. блок isSectioned ниже)
+        if (false) { // legacy code removed
+            const secName = '';
             // Проверяем можно ли удалить секцию (нет подключённых линий)
             const allPorts = [...(sec.inputPorts || []), ...(sec.outputPorts || [])];
             let hasConns = false;
@@ -1871,20 +1852,29 @@ function _renderSectionedPanelControl(n, body) {
   const maxOuts = Math.max(...sections.map(s => s.outputs || 1), 1);
   const svgH = outBrkY + brkH + 20 + maxOuts * 14;
 
-  // Определяем питание секций (каждая секция — отдельный panel node)
+  // Определяем питание секций: секция запитана если _powered И хотя бы один вводной автомат включён
   const sectionPowered = new Array(sections.length).fill(false);
   for (let si = 0; si < sections.length; si++) {
-    const secNode = sections[si];
-    for (const c of state.conns.values()) {
-      if (c.to.nodeId === secNode.id && (c._state === 'active' || c._state === 'powered') && !c._virtual) {
-        sectionPowered[si] = true;
+    const sec = sections[si];
+    if (!sec._powered) continue;
+    // Проверяем что хотя бы один вводной автомат включён
+    const inBrk = Array.isArray(sec.inputBreakerStates) ? sec.inputBreakerStates : [];
+    let hasClosedBreaker = false;
+    for (let i = 0; i < (sec.inputs || 1); i++) {
+      if (inBrk[i] !== false) { hasClosedBreaker = true; break; }
+    }
+    // Или питание через виртуальную связь (СВ) — тоже считаем
+    if (hasClosedBreaker) {
+      sectionPowered[si] = true;
+    } else {
+      // Может быть запитана через СВ
+      for (const c of state.conns.values()) {
+        if (c._virtual && c.to.nodeId === sec.id && (c._state === 'active' || c._state === 'powered')) {
+          sectionPowered[si] = true;
+          break;
+        }
       }
     }
-  }
-
-  // Также учитываем _powered от recalc (виртуальные связи)
-  for (let si = 0; si < sections.length; si++) {
-    if (sections[si]._powered) sectionPowered[si] = true;
   }
   // BFS: через замкнутые СВ определяем какие секции запитаны
   const sectionFed = new Array(sections.length).fill(false);
@@ -1956,6 +1946,8 @@ function _renderSectionedPanelControl(n, body) {
       // Автомат IEC
       const brk = svgBreaker(ix, inBrkY, brkOn, busCol, '#ff9800');
       h += brk.svg;
+      // Линия от автомата до шины
+      h += `<line x1="${ix}" y1="${inBrkY + brkH}" x2="${ix}" y2="${busY - 3}" stroke="${brkOn ? busCol : '#bbb'}" stroke-width="2"/>`;
       // Подпись
       let feederTag = `Вх${port + 1}`;
       for (const c of state.conns.values()) {
