@@ -138,11 +138,7 @@ function finishPendingAtPort(portEl) {
     cancelPending();
     return;
   }
-  if (wouldCreateCycle(outEnd.nodeId, inEnd.nodeId)) {
-    flash('Такое соединение создаст цикл', 'error');
-    cancelPending();
-    return;
-  }
+  // Проверка цикличности отключена — допускаются схемы с АВР и встречными линиями
 
   // Reconnect существующей линии (rewire)
   if (existingId) {

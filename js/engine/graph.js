@@ -143,7 +143,7 @@ export function tryConnect(from, to) {
     // Выход может иметь только одну исходящую связь
     if (c.from.nodeId === from.nodeId && c.from.port === from.port) return false;
   }
-  if (wouldCreateCycle(from.nodeId, to.nodeId)) return false;
+  // Проверка цикличности отключена — схемы с АВР и встречными линиями допустимы
   _snapshot();
   const id = uid('c');
   const conn = {
