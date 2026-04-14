@@ -264,7 +264,9 @@ export function initInteraction() {
     }
 
     // В режиме разрыва элементы с data-link-jump — это стабы/подписи ссылок.
-    // Клик по ним = прыжок к противоположному концу (без изменения zoom).
+    // Клик по ним = прыжок к противоположному концу БЕЗ изменения zoom.
+    // Вью сдвигается так, чтобы перекрёстная подпись оказалась точно под курсором —
+    // целевые SVG-координаты взяты из data-target-x/y (проставлены в render.js).
     const jumpEl = e.target.closest('[data-link-jump]');
     if (jumpEl && jumpEl.dataset.linkJump && jumpEl.dataset.connId) {
       e.preventDefault();
@@ -272,14 +274,14 @@ export function initInteraction() {
       const cid = jumpEl.dataset.connId;
       const conn = state.conns.get(cid);
       if (conn) {
-        const which = jumpEl.dataset.linkJump; // 'from' или 'to'
-        const targetNode = state.nodes.get(which === 'from' ? conn.from.nodeId : conn.to.nodeId);
-        if (targetNode) {
-          const tx = targetNode.x + (targetNode.width || 200) / 2;
-          const ty = targetNode.y + 60;
-          const W = svg.clientWidth, H = svg.clientHeight;
-          state.view.x = tx - (W / 2) / state.view.zoom;
-          state.view.y = ty - (H / 2) / state.view.zoom;
+        const tx = parseFloat(jumpEl.dataset.targetX);
+        const ty = parseFloat(jumpEl.dataset.targetY);
+        if (Number.isFinite(tx) && Number.isFinite(ty)) {
+          const rect = svg.getBoundingClientRect();
+          // Пан: (tx,ty) должна отобразиться в (e.clientX, e.clientY).
+          // Формула: view.x = tx - (screenX - rect.left) / zoom
+          state.view.x = tx - (e.clientX - rect.left) / state.view.zoom;
+          state.view.y = ty - (e.clientY - rect.top)  / state.view.zoom;
           updateViewBox();
           selectConn(cid);
           render();

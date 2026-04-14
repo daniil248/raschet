@@ -709,6 +709,13 @@ input, select { font: inherit; }
 .conn-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
 .conn-link-label { font: 600 10px -apple-system, "Segoe UI", sans-serif; fill: #1565c0; cursor: pointer; }
 .conn-link-label:hover { fill: #0d47a1; text-decoration: underline; }
+/* В режиме "Показать все" подсвечиваем связи с linkMode=true: штрих + свечение.
+   ПКМ по такой связи восстанавливает её нормальный вид (снимает linkMode). */
+.conn.link-hidden {
+  stroke-dasharray: 10 6 !important;
+  filter: drop-shadow(0 0 3px rgba(255,152,0,0.8));
+  opacity: 0.85;
+}
 
 .conn-label {
   font: 600 11px -apple-system, "Segoe UI", sans-serif;

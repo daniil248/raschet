@@ -142,7 +142,7 @@
           <button id="btn-links-normal" title="Восстановить нормальный вид">🔗↺</button>
           <button id="btn-links-breakers" title="Номиналы автоматов на разорванных линиях">🔗А</button>
           <span class="sep"></span>
-          <button id="btn-clear" class="danger">Очистить</button>
+          <button id="btn-clear" class="danger" disabled>Очистить</button>
           <input type="file" id="file-input" accept="application/json" hidden>
         </div>
 
@@ -166,6 +166,7 @@
           </defs>
           <rect id="bg" width="100%" height="100%" fill="url(#grid)"/>
           <g id="viewport">
+            <g id="layer-zones"></g>
             <g id="layer-conns"></g>
             <g id="layer-nodes"></g>
             <g id="layer-overlay"></g>

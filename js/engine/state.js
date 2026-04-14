@@ -28,10 +28,11 @@ export function setChangeCb(cb) { _changeCb = cb; }
 export function getChangeCb() { return _changeCb; }
 
 // ================= DOM refs (lazy) =================
-export let svg, layerConns, layerNodes, layerOver, inspectorBody, statsEl, modesListEl;
+export let svg, layerZones, layerConns, layerNodes, layerOver, inspectorBody, statsEl, modesListEl;
 
 export function initDOM() {
   svg           = document.getElementById('canvas');
+  layerZones    = document.getElementById('layer-zones');
   layerConns    = document.getElementById('layer-conns');
   layerNodes    = document.getElementById('layer-nodes');
   layerOver     = document.getElementById('layer-overlay');
