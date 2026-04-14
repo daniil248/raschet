@@ -1,6 +1,8 @@
 import { state } from './state.js';
 import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, INSTALL_METHODS, BREAKER_TYPES } from './constants.js';
 import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable } from './cable.js';
+import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
+import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          upsChargeKw, sourceImpedance } from './electrical.js';
@@ -1223,31 +1225,43 @@ function recalc() {
         c._cableKg = kG;
         c._cableKtotal = kT * kG;
       } else {
-        // Авто-подбор кабеля
-        // IEC 60364-4-43: Iz ≥ In ≥ Ib
-        // При ручном автомате: кабель должен выдержать In автомата на КАЖДУЮ линию.
-        // sizingCurrent = max(Ib, In_per_line × parallel) — передаём как полный ток,
-        // selectCableSize разделит на parallel и подберёт кабель.
-        const breakerCurve = c.breakerCurve || 'MCB_C';
-        const brkI2r = (BREAKER_TYPES[breakerCurve] || BREAKER_TYPES.MCB_C).I2ratio;
+        // Авто-подбор кабеля через общий модуль методики (IEC / ПУЭ)
+        const calcMethod = getMethod(GLOBAL.calcMethod);
         let sizingCurrent = maxCurrent;
         if (c.manualBreakerIn) {
-          // Ручной автомат задаёт In на ОДНУ линию. Кабель должен обеспечить Iz ≥ In.
-          // Для gG/aM (I2ratio=1.6): Iz ≥ In × I2ratio/1.45
-          const minIzPerLine = c.manualBreakerIn * brkI2r / 1.45;
+          const minIzPerLine = c.manualBreakerIn * 1.45 / 1.45; // In ≤ Iz
           const minTotalCurrent = minIzPerLine * conductorsInParallel;
           sizingCurrent = Math.max(maxCurrent, minTotalCurrent);
-          // Предупреждение: автомат меньше расчётного тока
           c._breakerUndersize = (c.manualBreakerIn < (maxCurrent / conductorsInParallel));
         } else {
           c._breakerUndersize = false;
         }
-        const sel = selectCableSize(sizingCurrent, {
-          material, insulation, method, ambientC: ambient, grouping, bundling,
+        const sel = calcMethod.selectCable(sizingCurrent, {
+          material, insulation, method, ambient, grouping, bundling,
           cableType, maxSize: GLOBAL.maxCableSize,
-          conductorsInParallel, breakerCurve,
+          parallel: conductorsInParallel,
         });
-        c._cableSize = sel.s;
+
+        // Экономическая плотность тока (per-connection option)
+        let finalSize = sel.s;
+        c._ecoSize = null;
+        if (c.economicDensity && sizingCurrent > 0) {
+          try {
+            const ecoMethod = getEcoMethod('pue_eco');
+            const sizes = calcMethod.availableSizes(material, insulation, method)
+              .filter(s => s <= (GLOBAL.maxCableSize || 240));
+            const eco = ecoMethod.calcEconomicSize(
+              sizingCurrent / sel.parallel, material, true,
+              { hours: c.economicHours || 5000 }, sizes
+            );
+            c._ecoSize = eco.sStandard;
+            c._ecoJek = eco.jEk;
+            c._ecoSCalc = eco.sCalc;
+            if (eco.sStandard > finalSize) finalSize = eco.sStandard;
+          } catch (e) { /* eco calc optional */ }
+        }
+
+        c._cableSize = finalSize;
         c._busbarNom = null;
         c._cableIz = sel.iDerated;
         c._cableTotalIz = sel.totalCapacity;
@@ -1257,8 +1271,6 @@ function recalc() {
         c._cableKt = sel.kT;
         c._cableKg = sel.kG;
         c._cableKtotal = sel.kT * sel.kG;
-        c._breakerCurve = breakerCurve;
-        c._I2ratio = sel.I2ratio;
       }
     } else {
       c._cableSize = null;
@@ -1275,15 +1287,10 @@ function recalc() {
   }
 
   // === Подбор защитных автоматов на выходах ===
-  // Правило защиты кабеля по IEC 60364-4-43: Iрасч ≤ In ≤ Iz
-  //   Iрасч — расчётный ток нагрузки (на одну параллельную линию)
-  //   In    — номинал автомата (ближайший больший стандарт ≥ Iрасч)
-  //   Iz    — допустимый ток кабеля (с поправками)
-  // Если In > Iz — кабель не защищён, нужно увеличить сечение.
-  //
-  // Для спаренных (auto-parallel) линий:
-  //   - Общий автомат = selectBreaker(Iтотал) — на полный ток
-  //   - Per-cable автомат = selectBreaker(Iper) — на каждую параллельную линию
+  // Правило: Iрасч ≤ In ≤ Iz
+  // GLOBAL.parallelProtection: 'individual' — автомат на каждую линию, 'common' — один на группу
+  const _calcMethod = getMethod(GLOBAL.calcMethod);
+  const _protIndiv = GLOBAL.parallelProtection === 'individual';
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     if (!fromN) continue;
@@ -1308,33 +1315,28 @@ function recalc() {
       continue;
     }
 
-    // Автомат на каждую параллельную линию: Iрасч ≤ In ≤ Iz
-    // Кабель уже подобран так, что Iz ≥ In ≥ Iрасч (selectCableSize
-    // теперь проверяет Iz ≥ selectBreaker(Iрасч)).
-    let InPerLine = selectBreaker(Iper);
-    // IEC 60364-4-43: проверка координации автомата и кабеля
-    const brkCurve = c.breakerCurve || 'MCB_C';
-    const brkI2r = (BREAKER_TYPES[brkCurve] || BREAKER_TYPES.MCB_C).I2ratio;
-    // Условие 1: In ≤ Iz
+    let InPerLine = _calcMethod.selectBreaker(Iper);
+    // Координация: In ≤ Iz
     c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
-    // Условие 2: I2 ≤ 1.45 × Iz
-    c._breakerI2fail = !!(Iz > 0 && brkI2r * InPerLine > 1.45 * Iz);
+    // I2 ≤ 1.45 × Iz (для MCB I2=1.45×In)
+    c._breakerI2fail = !!(Iz > 0 && 1.45 * InPerLine > 1.45 * Iz);
 
-    // Общий автомат = In × parallel (или ближайший стандарт на полный ток)
-    const InTotal = selectBreaker(Itotal);
+    const InTotal = _calcMethod.selectBreaker(Itotal);
 
-    if (c._cableAutoParallel && parallel > 1) {
-      // Спаренные: общий + per-line
+    if (parallel > 1 && _protIndiv) {
+      // Индивидуальная защита: per-line автоматы
       c._breakerIn = InTotal;
       c._breakerPerLine = InPerLine;
       c._breakerCount = parallel;
     } else if (parallel > 1) {
-      // Групповая (не спаренная): один автомат per-line × кол-во
-      c._breakerIn = null;
-      c._breakerPerLine = InPerLine;
-      c._breakerCount = parallel;
+      // Общая защита: один автомат на полный ток
+      c._breakerIn = InTotal;
+      c._breakerPerLine = null;
+      c._breakerCount = 1;
+      // Координация: общий автомат vs per-line Iz
+      c._breakerAgainstCable = !!(Iz > 0 && InTotal > Iz * parallel);
+      c._breakerI2fail = false;
     } else {
-      // Одиночная линия
       c._breakerIn = InPerLine;
       c._breakerPerLine = null;
       c._breakerCount = 1;

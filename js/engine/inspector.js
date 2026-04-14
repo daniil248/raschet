@@ -9,6 +9,7 @@ import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
 import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort } from './zones.js';
 import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './cable.js';
+import { getMethod } from '../methods/index.js';
 
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
 let _render, _deleteNode, _deleteConn, _isTagUnique;
@@ -1991,15 +1992,13 @@ function _renderSectionedPanelControl(n, body) {
       let brkLabel = '';
       for (const cc of state.conns.values()) {
         if (cc.from.nodeId === sec.id && cc.from.port === port) {
-          const brkCurve = cc.breakerCurve || cc._breakerCurve || 'MCB_C';
-          const brkPfx = (BREAKER_TYPES[brkCurve] || BREAKER_TYPES.MCB_C).prefix || '';
           if (cc._breakerIn) {
             const cnt = cc._breakerCount || 1;
-            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×${brkPfx}${cc._breakerPerLine}А`;
-            else brkLabel = `${brkPfx}${cc._breakerIn}А`;
+            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×${cc._breakerPerLine}А`;
+            else brkLabel = `${cc._breakerIn}А`;
           } else if (cc._breakerPerLine) {
             const cnt = cc._breakerCount || 1;
-            brkLabel = cnt > 1 ? `${cnt}×${brkPfx}${cc._breakerPerLine}А` : `${brkPfx}${cc._breakerPerLine}А`;
+            brkLabel = cnt > 1 ? `${cnt}×${cc._breakerPerLine}А` : `${cc._breakerPerLine}А`;
           }
           break;
         }
@@ -2522,15 +2521,13 @@ export function openPanelControlModal(n) {
       let brkLabel = '';
       for (const cc of state.conns.values()) {
         if (cc.from.nodeId === n.id && cc.from.port === i) {
-          const brkCurve = cc.breakerCurve || cc._breakerCurve || 'MCB_C';
-          const brkPfx = (BREAKER_TYPES[brkCurve] || BREAKER_TYPES.MCB_C).prefix || '';
           if (cc._breakerIn) {
             const cnt = cc._breakerCount || 1;
-            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×${brkPfx}${cc._breakerPerLine}А`;
-            else brkLabel = `${brkPfx}${cc._breakerIn}А`;
+            if (cnt > 1 && cc._breakerPerLine) brkLabel = `${cnt}×${cc._breakerPerLine}А`;
+            else brkLabel = `${cc._breakerIn}А`;
           } else if (cc._breakerPerLine) {
             const cnt = cc._breakerCount || 1;
-            brkLabel = cnt > 1 ? `${cnt}×${brkPfx}${cc._breakerPerLine}А` : `${brkPfx}${cc._breakerPerLine}А`;
+            brkLabel = cnt > 1 ? `${cnt}×${cc._breakerPerLine}А` : `${cc._breakerPerLine}А`;
           }
           break;
         }
@@ -3188,27 +3185,21 @@ export function renderInspectorConn(c) {
       }
       const effectiveBrkIn = c.manualBreakerIn || c._breakerIn || c._breakerPerLine || 0;
       const Iz = c._cableIz || 0;
-      const brkCurveId = c.breakerCurve || c._breakerCurve || 'MCB_C';
-      const brkTypeInfo = BREAKER_TYPES[brkCurveId] || BREAKER_TYPES.MCB_C;
-      const i2r = brkTypeInfo.I2ratio;
-      const brkPrefix = brkTypeInfo.prefix || '';
-      const I2 = effectiveBrkIn * i2r;
       const inLeIz = !effectiveBrkIn || !Iz || effectiveBrkIn <= Iz;
-      const i2LeIz = !effectiveBrkIn || !Iz || I2 <= 1.45 * Iz;
-      const protOk = inLeIz && i2LeIz;
+      const protOk = inLeIz;
       const oversize = Iz > 0 && effectiveBrkIn > 0 && Iz > effectiveBrkIn * 2;
       const bgColor = !protOk ? '#ffebee' : oversize ? '#fff8e1' : '#f5f5f5';
+      const methodLabel = GLOBAL.calcMethod === 'pue' ? 'ПУЭ' : 'IEC 60364';
       h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${bgColor};border-radius:4px">` +
         (cableSpec ? cableSpec + '<br>' : '') +
-        (effectiveBrkIn ? `Автомат: <b>${brkPrefix}${effectiveBrkIn} A</b> <span class="muted">(${brkTypeInfo.label})</span><br>` : '') +
+        (effectiveBrkIn ? `Автомат: <b>${effectiveBrkIn} A</b><br>` : '') +
         (Iz ? `Iдоп на жилу (Iz): <b>${fmt(Iz)} A</b><br>` : '') +
-        (effectiveBrkIn && Iz ? `I2 (${i2r}×In): <b>${fmt(I2)} A</b> ≤ 1.45×Iz: <b>${fmt(1.45 * Iz)} A</b> ${i2LeIz ? '<span style="color:#2e7d32">✓</span>' : '<span style="color:#c62828">✗</span>'}<br>` : '') +
         (!inLeIz ? '<span style="color:#c62828;font-weight:600">⚠ In > Iz — кабель не защищён автоматом!</span><br>' : '') +
-        (!i2LeIz ? '<span style="color:#c62828;font-weight:600">⚠ I2 > 1.45×Iz — перегрузка не отключится вовремя!</span><br>' : '') +
         (oversize ? '<span style="color:#e65100">ℹ Кабель значительно завышен (Iz > 2×In)</span><br>' : '') +
-        (c._breakerUndersize ? '<span style="color:#c62828;font-weight:600">⚠ Автомат меньше расчётного тока — возможно ложное срабатывание!</span><br>' : '') +
+        (c._breakerUndersize ? '<span style="color:#c62828;font-weight:600">⚠ Автомат меньше расчётного тока!</span><br>' : '') +
+        (c._ecoSize ? `<span style="color:#0277bd">Экон. плотность: <b>${c._ecoSize} мм²</b> (j<sub>эк</sub>=${c._ecoJek})</span><br>` : '') +
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
-        `<span class="muted">IEC 60364-4-43: Ib ≤ In ≤ Iz, I2 ≤ 1.45×Iz</span>` +
+        `<span class="muted">Методика: ${methodLabel}</span>` +
         `</div>`);
     }
     h.push('</div>');
@@ -3243,6 +3234,20 @@ export function renderInspectorConn(c) {
         <option value="PVC"${insulation === 'PVC' ? ' selected' : ''}>ПВХ</option>
         <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
       </select>`));
+    // Экономическая плотность тока — per-connection
+    const ecoChecked = !!c.economicDensity;
+    h.push(`<div class="field" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-conn-prop="economicDensity" ${ecoChecked ? 'checked' : ''}> Расчёт по экон. плотности тока</label></div>`);
+    if (ecoChecked) {
+      const ecoHours = c.economicHours || 5000;
+      h.push(field('Часы макс. нагрузки/год', `<select data-conn-prop="economicHours">
+        <option value="3000"${ecoHours <= 3000 ? ' selected' : ''}>До 3000 ч</option>
+        <option value="5000"${ecoHours > 3000 && ecoHours <= 5000 ? ' selected' : ''}>3000–5000 ч</option>
+        <option value="8000"${ecoHours > 5000 ? ' selected' : ''}>Более 5000 ч</option>
+      </select>`));
+      if (c._ecoSize) {
+        h.push(`<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">j<sub>эк</sub> = ${c._ecoJek || '?'} А/мм², S<sub>эк</sub> = ${c._ecoSize} мм²</div>`);
+      }
+    }
   }
   // Секция сечения — ВНУТРИ details "Проводник"
   if ((c._cableSize || c._busbarNom || c._maxA > 0) && !isBusbar) {
@@ -3250,17 +3255,17 @@ export function renderInspectorConn(c) {
     // Для рекомендации при ручном кабеле — пересчитываем авто
     let autoSize, autoPar, autoIz;
     if (manualCable && c._maxA > 0) {
-      const recSel = selectCableSize(c._maxA || 0, {
+      const _m = getMethod(GLOBAL.calcMethod);
+      const recSel = _m.selectCable(c._maxA || 0, {
         material: c.material || GLOBAL.defaultMaterial,
         insulation: c.insulation || GLOBAL.defaultInsulation,
         method: c._cableMethod || GLOBAL.defaultInstallMethod,
-        ambientC: c._cableAmbient || GLOBAL.defaultAmbient,
+        ambient: c._cableAmbient || GLOBAL.defaultAmbient,
         grouping: c._cableGrouping || GLOBAL.defaultGrouping,
         bundling: c._cableBundling || 'touching',
         cableType: c.cableType || GLOBAL.defaultCableType,
         maxSize: GLOBAL.maxCableSize,
-        conductorsInParallel: c._cableParallel || 1,
-        breakerCurve: c.breakerCurve || 'MCB_C',
+        parallel: c._cableParallel || 1,
       });
       autoSize = recSel.s;
       autoPar = recSel.parallel;
@@ -3395,37 +3400,25 @@ export function renderInspectorConn(c) {
     h.push(`<span style="font-size:10px;color:${manualBreaker ? '#e65100' : '#999'}">ручной</span>`);
     h.push('</div>');
 
-    // Кривая отключения
-    const curCurve = c.breakerCurve || 'MCB_C';
-    const curveOpts = Object.entries(BREAKER_TYPES).map(([k, v]) =>
-      `<option value="${k}"${k === curCurve ? ' selected' : ''}>${escHtml(v.label)} — ${escHtml(v.desc)}</option>`).join('');
-    h.push(field('Кривая / тип', `<select data-conn-prop="breakerCurve">${curveOpts}</select>`));
-
     if (manualBreaker) {
-      const curvePrefix = curCurve.startsWith('MCB_') ? curCurve.slice(4) : '';
       let brkOpts = '';
       for (const nom of BREAKER_SERIES) {
-        const label = curvePrefix ? `${curvePrefix}${nom} А` : `${nom} А`;
-        brkOpts += `<option value="${nom}"${nom === (c.manualBreakerIn || autoIn) ? ' selected' : ''}>${label}</option>`;
+        brkOpts += `<option value="${nom}"${nom === (c.manualBreakerIn || autoIn) ? ' selected' : ''}>${nom} А</option>`;
       }
       h.push(field('Номинал автомата', `<select data-conn-prop="manualBreakerIn">${brkOpts}</select>`));
       if (autoIn) {
-        const recPrefix = (BREAKER_TYPES[curCurve] || {}).prefix || '';
-        h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${recPrefix}${autoIn} А</b></div>`);
+        h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${autoIn} А</b></div>`);
       }
-      // Предупреждения
       if (c._cableIz && effectiveIn > c._cableIz) {
         h.push('<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ Автомат > Iz кабеля — кабель не защищён! Увеличьте сечение.</div>');
       }
     } else {
-      // Авто
       const badge = c._breakerAgainstCable
-        ? '<span class="badge off">селект. нарушена</span>'
+        ? '<span class="badge off">нарушена</span>'
         : (effectiveIn ? '<span class="badge on">ок</span>' : '');
-      const autoPrefix = (BREAKER_TYPES[curCurve] || {}).prefix || '';
       h.push(`<div style="font-size:12px;line-height:1.8">` +
-        (effectiveIn ? `Номинал: <b>${autoPrefix}${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
-        (cnt > 1 ? `В шкафу: <b>${cnt} × ${autoPrefix}${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
+        (effectiveIn ? `Номинал: <b>${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
+        (cnt > 1 ? `В шкафу: <b>${cnt} × ${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
         (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${fmt(c._cableIz || 0)} А) — увеличьте сечение</span>` : '') +
         `</div>`);
     }
@@ -3442,12 +3435,12 @@ export function renderInspectorConn(c) {
 
   // Подписка на поля связи
   inspectorBody.querySelectorAll('[data-conn-prop]').forEach(inp => {
-    inp.addEventListener('input', () => {
+    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
       snapshot('conn:' + c.id + ':' + inp.dataset.connProp);
       const prop = inp.dataset.connProp;
-      let v = inp.type === 'number' ? Number(inp.value) : inp.value;
+      let v = inp.type === 'checkbox' ? inp.checked : (inp.type === 'number' ? Number(inp.value) : inp.value);
       // Числовые свойства из select: manualBreakerIn, manualCableSize, manualCableParallel, grouping
-      if (['manualBreakerIn', 'manualCableSize', 'manualCableParallel', 'grouping', 'ambientC', 'lengthM'].includes(prop)) {
+      if (['manualBreakerIn', 'manualCableSize', 'manualCableParallel', 'grouping', 'ambientC', 'lengthM', 'economicHours'].includes(prop)) {
         v = Number(v) || 0;
       }
       c[prop] = v;
