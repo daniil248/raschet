@@ -535,8 +535,10 @@
           <button class="modal-close" style="font-size:22px;line-height:1;padding:4px 6px" aria-label="Закрыть">×</button>
         </div>
       </div>
-      <div class="modal-body" id="panel-control-body" style="position:relative;flex:1;overflow:auto"></div>
-      <div id="pc-settings-panel" style="position:absolute;bottom:56px;left:16px;z-index:10"></div>
+      <div style="position:relative;flex:1;overflow:hidden">
+        <div class="modal-body" id="panel-control-body" style="position:absolute;inset:0;overflow:auto"></div>
+        <div id="pc-settings-panel" style="position:absolute;bottom:8px;left:8px;z-index:10"></div>
+      </div>
       <div class="modal-foot" style="flex-shrink:0;display:flex;justify-content:flex-end;gap:8px">
         <button class="modal-close">Закрыть</button>
         <button id="panel-control-apply" class="primary">Применить</button>

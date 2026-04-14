@@ -1531,22 +1531,37 @@ function recalc() {
         n._maxLoadKw = maxDownstreamLoad(n.id);
       }
       // Если downstream — секция многосекционного щита с СВ,
-      // макс. нагрузка включает возможную нагрузку через СВ
+      // макс. нагрузка включает возможную нагрузку через СВ.
+      // Учитываем замкнутые СВ И автоматические (могут замкнуться при аварии).
       for (const c of state.conns.values()) {
         if (c.from.nodeId !== n.id) continue;
         const downN = state.nodes.get(c.to.nodeId);
         if (!downN || !downN.parentSectionedId) continue;
         const container = state.nodes.get(downN.parentSectionedId);
         if (!container || !container.busTies?.length) continue;
-        // Проверяем есть ли хотя бы один замкнутый СВ
         const ties = Array.isArray(container.busTies) ? container.busTies : [];
         const tieStates = Array.isArray(container._busTieStates) ? container._busTieStates : ties.map(t => !!t.closed);
-        const hasClosedTie = tieStates.some(s => s);
-        if (!hasClosedTie) continue;
-        // Суммируем макс. нагрузку всех секций, соединённых через замкнутые СВ
+        // Есть ли хотя бы один замкнутый или автоматический СВ
+        const hasActiveOrAutoTie = ties.some((t, i) => tieStates[i] || t.auto);
+        if (!hasActiveOrAutoTie) continue;
+        // BFS: находим все секции достижимые через замкнутые/автоматические СВ
+        const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
+        const downSecIdx = secIds.indexOf(downN.id);
+        if (downSecIdx < 0) continue;
+        const reachable = new Set([downSecIdx]);
+        const queue = [downSecIdx];
+        while (queue.length) {
+          const cur = queue.shift();
+          for (let ti = 0; ti < ties.length; ti++) {
+            if (!tieStates[ti] && !ties[ti].auto) continue; // только замкнутые или авто
+            const [a, b] = ties[ti].between;
+            const next = a === cur ? b : (b === cur ? a : -1);
+            if (next >= 0 && !reachable.has(next)) { reachable.add(next); queue.push(next); }
+          }
+        }
         let totalSecMax = 0;
-        for (const sid of (container.sectionIds || [])) {
-          const sec = state.nodes.get(sid);
+        for (const si of reachable) {
+          const sec = state.nodes.get(secIds[si]);
           if (sec) totalSecMax += maxDownstreamLoad(sec.id);
         }
         if (totalSecMax > n._maxLoadKw) n._maxLoadKw = totalSecMax;

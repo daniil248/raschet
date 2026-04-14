@@ -2451,26 +2451,8 @@ export function openPanelControlModal(n) {
   let h = '';
   h += `<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`;
 
-  // --- Переключатель Авто / Ручной (наверху, перед SVG) ---
-  if (inCount > 1 && hasAVR) {
-    const manualNow = n.switchMode === 'manual';
-    h += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0 8px">';
-    h += '<span style="font-size:11px;font-weight:600;color:#666">Режим работы АВР:</span>';
-    h += `<span style="font-size:11px;color:${!manualNow ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
-    h += `<div id="pc-toggle" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
-    h += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
-    h += '</div>';
-    h += `<span style="font-size:11px;color:${manualNow ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
-    h += '</div>';
-  }
-
-  // --- SVG однолинейная схема с зумом ---
-  h += `<div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:4px 0">`;
-  h += `<button type="button" id="pc-zoom-out" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">−</button>`;
-  h += `<span id="pc-zoom-label" style="font-size:11px;color:#666;min-width:36px;text-align:center">100%</span>`;
-  h += `<button type="button" id="pc-zoom-in" style="width:24px;height:24px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;line-height:1">+</button>`;
-  h += `</div>`;
-  h += `<div id="pc-svg-wrap" style="text-align:center;overflow:auto;padding:10px 0;max-height:50vh">`;
+  // --- SVG однолинейная схема (зум в header, АВР toggle в settings panel) ---
+  h += `<div id="pc-svg-wrap" style="display:flex;justify-content:center;align-items:flex-start;overflow:auto;flex:1">`;
   h += `<svg id="pc-svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
 
   // Шина
@@ -2583,27 +2565,44 @@ export function openPanelControlModal(n) {
 
   h += `</svg></div>`;
 
-  // Таймер АВР
-  if (n._avrSwitchCountdown > 0) {
-    h += `<div style="text-align:center;font-size:12px;color:#1976d2;font-weight:600;margin:4px 0">АВР: задержка переключения ${Math.ceil(n._avrSwitchCountdown)} с</div>`;
-  } else if (n._avrInterlockCountdown > 0) {
-    h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:4px 0">АВР: разбежка ${Math.ceil(n._avrInterlockCountdown)} с</div>`;
-  }
-
-  // (переключатель перенесён наверх)
-  if (false && inCount > 1 && hasAVR) {
-    const manualNow = n.switchMode === 'manual';
-    h += '<div style="display:flex;align-items:center;gap:10px;margin:8px 0 6px">';
-    h += '<span style="font-size:11px;font-weight:600;color:#666">Режим работы АВР:</span>';
-    h += '<span style="font-size:11px;color:' + (!manualNow ? '#4caf50;font-weight:600' : '#999') + '">Авто</span>';
-    h += `<div id="pc-toggle" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
-    h += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
-    h += '</div>';
-    h += '<span style="font-size:11px;color:' + (manualNow ? '#e65100;font-weight:600' : '#999') + '">Ручной</span>';
-    h += '</div>';
-  }
-
   body.innerHTML = h;
+
+  // Настройки простого щита — в settings panel
+  {
+    const sp = document.getElementById('pc-settings-panel');
+    let sh2 = '';
+    if (inCount > 1 && hasAVR) {
+      const manualNow = n.switchMode === 'manual';
+      sh2 += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0">';
+      sh2 += `<span style="font-size:11px;font-weight:600;color:#666">АВР:</span>`;
+      sh2 += `<span style="font-size:11px;color:${!manualNow ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
+      sh2 += `<div id="pc-toggle" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
+      sh2 += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+      sh2 += '</div>';
+      sh2 += `<span style="font-size:11px;color:${manualNow ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
+      sh2 += '</div>';
+      if (n._avrSwitchCountdown > 0) {
+        sh2 += `<div style="font-size:11px;color:#1976d2;font-weight:600;margin:2px 0">Задержка ${Math.ceil(n._avrSwitchCountdown)} с</div>`;
+      } else if (n._avrInterlockCountdown > 0) {
+        sh2 += `<div style="font-size:11px;color:#ff9800;font-weight:600;margin:2px 0">Разбежка ${Math.ceil(n._avrInterlockCountdown)} с</div>`;
+      }
+    }
+    if (sp && sh2) {
+      sp.innerHTML = `<div style="width:240px;border:1px solid #d0d0d0;border-radius:8px;background:rgba(255,255,255,0.92);backdrop-filter:blur(6px);box-shadow:0 2px 12px rgba(0,0,0,0.1)">` +
+        `<div id="pc-settings-toggle" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;user-select:none">` +
+        `<span style="font-size:12px;font-weight:700;color:#444">⚙ Настройки</span>` +
+        `<span style="font-size:12px;color:#999" id="pc-settings-arrow">▲</span></div>` +
+        `<div id="pc-settings-content" style="padding:4px 12px 10px;border-top:1px solid #eee">${sh2}</div></div>`;
+      const toggle = document.getElementById('pc-settings-toggle');
+      const content = document.getElementById('pc-settings-content');
+      const arrow = document.getElementById('pc-settings-arrow');
+      if (toggle && content) {
+        toggle.onclick = () => { const h = content.style.display === 'none'; content.style.display = h ? '' : 'none'; if (arrow) arrow.textContent = h ? '▲' : '▼'; };
+      }
+    } else if (sp) {
+      sp.innerHTML = '';
+    }
+  }
 
   // Зум однолинейной схемы — восстанавливаем сохранённый зум
   {
