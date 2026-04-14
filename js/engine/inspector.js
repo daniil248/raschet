@@ -1619,15 +1619,17 @@ export function openPanelParamsModal(n) {
         if (tieIdx >= 0) {
           const tie = ties[tieIdx];
           h.push(`<div style="font-size:11px;font-weight:600;margin-bottom:4px">СВ: ${n.sections[si].name || 'С' + (si+1)} ↔ ${n.sections[si+1].name || 'С' + (si+2)}</div>`);
-          h.push('<div style="display:flex;gap:8px;justify-content:center;align-items:center">');
+          h.push('<div style="display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap">');
           h.push(`<select data-tie-mode="${tieIdx}" style="font-size:11px;padding:3px 8px;border:1px solid #ccc;border-radius:3px">`);
           h.push(`<option value="auto"${tie.auto ? ' selected' : ''}>Авто</option>`);
           h.push(`<option value="manual"${!tie.auto ? ' selected' : ''}>Ручной</option>`);
           h.push(`</select>`);
-          h.push('<div style="display:flex;gap:4px">');
-          h.push('<div style="flex:1">' + `<input type="number" data-tie-delay="${tieIdx}" min="0" max="30" step="0.5" value="${tie.delaySec ?? 2}" style="width:60px;font-size:11px;padding:3px" title="Задержка, с">` + '</div>');
-          h.push('<div style="flex:1">' + `<input type="number" data-tie-interlock="${tieIdx}" min="0" max="10" step="0.5" value="${tie.interlockSec ?? 1}" style="width:60px;font-size:11px;padding:3px" title="Разбежка, с">` + '</div>');
-          h.push('</div>');
+          if (tie.auto) {
+            h.push('<div style="display:flex;gap:4px;align-items:center">');
+            h.push(`<label style="font-size:10px;color:#666">Ts</label><input type="number" data-tie-delay="${tieIdx}" min="0" max="30" step="0.5" value="${tie.delaySec ?? 2}" style="width:50px;font-size:11px;padding:3px">`);
+            h.push(`<label style="font-size:10px;color:#666">Tr</label><input type="number" data-tie-interlock="${tieIdx}" min="0" max="10" step="0.5" value="${tie.interlockSec ?? 1}" style="width:50px;font-size:11px;padding:3px">`);
+            h.push('</div>');
+          }
           h.push(`<button type="button" data-tie-remove="${tieIdx}" style="font-size:11px;padding:3px 8px;border:1px solid #ef9a9a;background:#fff;border-radius:3px;cursor:pointer;color:#c62828">✕</button>`);
           h.push('</div>');
         } else {
@@ -1935,9 +1937,24 @@ function _renderSectionedPanelControl(n, body) {
     const hasPower = sectionPowered[si];
     const busCol = fed ? '#e53935' : '#bbb';
 
+    // Рамка секции (пунктирная)
+    h += `<rect x="${sx - 4}" y="0" width="${secW + 8}" height="${svgH - 2}" fill="none" stroke="#ccc" stroke-width="1" stroke-dasharray="4 3" rx="4"/>`;
+    // Подпись секции
+    const secLabel = sec.name || `Секция ${si + 1}`;
+    h += `<text x="${sx + secW / 2}" y="${svgH - 4}" text-anchor="middle" fill="#999" font-size="8">${escHtml(secLabel)}</text>`;
+    // Нагрузка секции
+    let secLoadKw = 0;
+    for (const outPort of (sec.outputPorts || [])) {
+      for (const cc of state.conns.values()) {
+        if (cc.from.nodeId === n.id && cc.from.port === outPort && cc._loadKw) {
+          secLoadKw += cc._loadKw;
+        }
+      }
+    }
+    const capA = sec.capacityA || 0;
+    h += `<text x="${sx + secW / 2}" y="${busY + 16}" text-anchor="middle" fill="${fed ? '#333' : '#999'}" font-size="8">${capA ? 'In ' + capA + 'А · ' : ''}${fmt(secLoadKw)} kW</text>`;
     // Шина секции
     h += `<rect x="${sx}" y="${busY - 3}" width="${secW}" height="6" fill="${busCol}" rx="1"/>`;
-    h += `<text x="${sx + secW / 2}" y="${busY + 16}" text-anchor="middle" fill="#666" font-size="9">Секция ${si + 1}</text>`;
 
     // Входы секции
     const inPorts = sec.inputPorts || [];
