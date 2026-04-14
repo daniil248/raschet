@@ -2072,81 +2072,102 @@ function _renderSectionedPanelControl(n, body) {
 
   h += '</svg></div>';
 
+  // Настройки выносим в отдельную панель (pc-settings-panel)
+  let sh = '';
+
   // Переключатели Авто/Ручной для каждого СВ + таймеры
   if (busTies.length) {
-    h += '<div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">';
+    sh += '<div>';
     for (let ti = 0; ti < busTies.length; ti++) {
       const tie = busTies[ti];
       const isAuto = !!tie.auto;
-      h += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0">';
-      h += `<span style="font-size:11px;font-weight:600;color:#666;min-width:36px">СВ${ti + 1}:</span>`;
-      h += `<span style="font-size:11px;color:${isAuto ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
-      h += `<div data-tie-auto-toggle="${ti}" style="position:relative;width:44px;height:22px;border-radius:11px;background:${isAuto ? '#4caf50' : '#ff9800'};cursor:pointer;flex-shrink:0">`;
-      h += `<div style="position:absolute;top:2px;${isAuto ? 'left:2px' : 'right:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
-      h += '</div>';
-      h += `<span style="font-size:11px;color:${!isAuto ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
-      h += '</div>';
-      // Таймеры переключения
+      sh += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0">';
+      sh += `<span style="font-size:11px;font-weight:600;color:#666;min-width:36px">СВ${ti + 1}:</span>`;
+      sh += `<span style="font-size:11px;color:${isAuto ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
+      sh += `<div data-tie-auto-toggle="${ti}" style="position:relative;width:44px;height:22px;border-radius:11px;background:${isAuto ? '#4caf50' : '#ff9800'};cursor:pointer;flex-shrink:0">`;
+      sh += `<div style="position:absolute;top:2px;${isAuto ? 'left:2px' : 'right:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+      sh += '</div>';
+      sh += `<span style="font-size:11px;color:${!isAuto ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
+      sh += '</div>';
       const swCd = Array.isArray(n._busTieSwitchCountdown) ? (n._busTieSwitchCountdown[ti] || 0) : 0;
       const ilCd = Array.isArray(n._busTieInterlockCountdown) ? (n._busTieInterlockCountdown[ti] || 0) : 0;
       const swStarted = Array.isArray(n._busTieSwitchStartedAt) ? (n._busTieSwitchStartedAt[ti] || 0) : 0;
       const swElapsed = swStarted > 0 ? (Date.now() - swStarted) / 1000 : 0;
-      // Показываем таймер только если процесс идёт >0.5с (debounce мигания)
       if (swCd > 0 && swElapsed > 0.5) {
-        h += `<div style="text-align:center;font-size:12px;color:#1976d2;font-weight:600;margin:2px 0">СВ${ti + 1}: задержка ${Math.ceil(swCd)} с</div>`;
+        sh += `<div style="font-size:11px;color:#1976d2;font-weight:600;margin:2px 0">СВ${ti + 1}: задержка ${Math.ceil(swCd)} с</div>`;
       } else if (ilCd > 0) {
-        h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">СВ${ti + 1}: разбежка ${Math.ceil(ilCd)} с</div>`;
+        sh += `<div style="font-size:11px;color:#ff9800;font-weight:600;margin:2px 0">СВ${ti + 1}: разбежка ${Math.ceil(ilCd)} с</div>`;
       }
     }
-    h += '</div>';
+    sh += '</div>';
   }
   // АВР для секций с несколькими вводами
   const avrSections = sections.filter(s => (s.inputs || 1) > 1);
   if (avrSections.length) {
-    h += '<div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">';
-    h += '<div style="font-size:11px;font-weight:600;color:#666;margin-bottom:4px">Режим работы АВР секций:</div>';
+    sh += '<div style="margin-top:6px;border-top:1px solid #eee;padding-top:6px">';
+    sh += '<div style="font-size:11px;font-weight:600;color:#666;margin-bottom:4px">АВР секций:</div>';
     for (let si = 0; si < sections.length; si++) {
       const sec = sections[si];
       if ((sec.inputs || 1) <= 1) continue;
       const manualNow = sec.switchMode === 'manual';
       const secLabel = sec.name || `Секция ${si + 1}`;
-      h += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0">';
-      h += `<span style="font-size:11px;font-weight:600;color:#666;min-width:70px">${escHtml(secLabel)}:</span>`;
-      h += `<span style="font-size:11px;color:${!manualNow ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
-      h += `<div data-sec-avr-toggle="${si}" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
-      h += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
-      h += '</div>';
-      h += `<span style="font-size:11px;color:${manualNow ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
-      h += '</div>';
-      // Таймер АВР секции
+      sh += '<div style="display:flex;align-items:center;gap:8px;margin:3px 0">';
+      sh += `<span style="font-size:11px;font-weight:600;color:#666;min-width:70px">${escHtml(secLabel)}:</span>`;
+      sh += `<span style="font-size:11px;color:${!manualNow ? '#4caf50;font-weight:600' : '#999'}">Авто</span>`;
+      sh += `<div data-sec-avr-toggle="${si}" style="position:relative;width:44px;height:22px;border-radius:11px;background:${manualNow ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`;
+      sh += `<div style="position:absolute;top:2px;${manualNow ? 'right:2px' : 'left:2px'};width:18px;height:18px;border-radius:9px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>`;
+      sh += '</div>';
+      sh += `<span style="font-size:11px;color:${manualNow ? '#e65100;font-weight:600' : '#999'}">Ручной</span>`;
+      sh += '</div>';
       if (sec._avrSwitchCountdown > 0) {
-        h += `<div style="text-align:center;font-size:12px;color:#1976d2;font-weight:600;margin:2px 0">${escHtml(secLabel)}: задержка ${Math.ceil(sec._avrSwitchCountdown)} с</div>`;
+        sh += `<div style="font-size:11px;color:#1976d2;font-weight:600;margin:2px 0">${escHtml(secLabel)}: задержка ${Math.ceil(sec._avrSwitchCountdown)} с</div>`;
       } else if (sec._avrInterlockCountdown > 0) {
-        h += `<div style="text-align:center;font-size:12px;color:#ff9800;font-weight:600;margin:2px 0">${escHtml(secLabel)}: разбежка ${Math.ceil(sec._avrInterlockCountdown)} с</div>`;
+        sh += `<div style="font-size:11px;color:#ff9800;font-weight:600;margin:2px 0">${escHtml(secLabel)}: разбежка ${Math.ceil(sec._avrInterlockCountdown)} с</div>`;
       }
     }
-    h += '</div>';
+    sh += '</div>';
   }
-
-  // Приоритет ввода для каждой секции (при наличии автоматических СВ)
+  // Приоритет ввода для каждой секции
   const hasAutoTie = busTies.some(t => t.auto);
   if (hasAutoTie) {
-    h += '<div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">';
-    h += '<div style="font-size:11px;font-weight:600;color:#666;margin-bottom:4px">Приоритет при восстановлении:</div>';
+    sh += '<div style="margin-top:6px;border-top:1px solid #eee;padding-top:6px">';
+    sh += '<div style="font-size:11px;font-weight:600;color:#666;margin-bottom:4px">Приоритет:</div>';
     for (let si = 0; si < sections.length; si++) {
       const sec = sections[si];
       const secLabel = sec.name || `Секция ${si + 1}`;
       const prio = sec.sectionInputPriority || 'input';
-      h += '<div style="display:flex;align-items:center;gap:6px;margin:3px 0">';
-      h += `<span style="font-size:11px;color:#666;min-width:70px">${escHtml(secLabel)}:</span>`;
-      h += `<button type="button" data-sec-priority="${si}:input" style="padding:2px 8px;border:1px solid ${prio === 'input' ? '#1976d2' : '#ccc'};background:${prio === 'input' ? '#1976d2' : '#fff'};color:${prio === 'input' ? '#fff' : '#333'};border-radius:3px;cursor:pointer;font-size:10px">Ввод</button>`;
-      h += `<button type="button" data-sec-priority="${si}:tie" style="padding:2px 8px;border:1px solid ${prio === 'tie' ? '#1976d2' : '#ccc'};background:${prio === 'tie' ? '#1976d2' : '#fff'};color:${prio === 'tie' ? '#fff' : '#333'};border-radius:3px;cursor:pointer;font-size:10px">СВ</button>`;
-      h += '</div>';
+      sh += '<div style="display:flex;align-items:center;gap:6px;margin:3px 0">';
+      sh += `<span style="font-size:11px;color:#666;min-width:70px">${escHtml(secLabel)}:</span>`;
+      sh += `<button type="button" data-sec-priority="${si}:input" style="padding:2px 8px;border:1px solid ${prio === 'input' ? '#1976d2' : '#ccc'};background:${prio === 'input' ? '#1976d2' : '#fff'};color:${prio === 'input' ? '#fff' : '#333'};border-radius:3px;cursor:pointer;font-size:10px">Ввод</button>`;
+      sh += `<button type="button" data-sec-priority="${si}:tie" style="padding:2px 8px;border:1px solid ${prio === 'tie' ? '#1976d2' : '#ccc'};background:${prio === 'tie' ? '#1976d2' : '#fff'};color:${prio === 'tie' ? '#fff' : '#333'};border-radius:3px;cursor:pointer;font-size:10px">СВ</button>`;
+      sh += '</div>';
     }
-    h += '</div>';
+    sh += '</div>';
   }
 
   body.innerHTML = h;
+
+  // Записываем настройки в нижнюю панель с кнопкой сворачивания
+  const settingsPanel = document.getElementById('pc-settings-panel');
+  if (settingsPanel && sh) {
+    settingsPanel.innerHTML = `<div style="border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;padding:0;max-width:320px">` +
+      `<div id="pc-settings-toggle" style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:pointer;user-select:none">` +
+      `<span style="font-size:12px;font-weight:600;color:#555">Настройки</span>` +
+      `<span style="font-size:14px;color:#999" id="pc-settings-arrow">▲</span></div>` +
+      `<div id="pc-settings-content" style="padding:4px 10px 8px">${sh}</div></div>`;
+    const toggle = document.getElementById('pc-settings-toggle');
+    const content = document.getElementById('pc-settings-content');
+    const arrow = document.getElementById('pc-settings-arrow');
+    if (toggle && content) {
+      toggle.onclick = () => {
+        const hidden = content.style.display === 'none';
+        content.style.display = hidden ? '' : 'none';
+        if (arrow) arrow.textContent = hidden ? '▲' : '▼';
+      };
+    }
+  } else if (settingsPanel) {
+    settingsPanel.innerHTML = '';
+  }
 
   // Зум
   {
@@ -2279,8 +2300,8 @@ function _renderSectionedPanelControl(n, body) {
     });
   });
 
-  // Переключатель Авто/Ручной для СВ
-  body.querySelectorAll('[data-tie-auto-toggle]').forEach(el => {
+  // Переключатель Авто/Ручной для СВ (в settings panel)
+  document.querySelectorAll('[data-tie-auto-toggle]').forEach(el => {
     el.addEventListener('click', () => {
       const ti = Number(el.dataset.tieAutoToggle);
       const tie = busTies[ti];
@@ -2300,8 +2321,8 @@ function _renderSectionedPanelControl(n, body) {
     });
   });
 
-  // Приоритет ввод/СВ для секций
-  body.querySelectorAll('[data-sec-priority]').forEach(el => {
+  // Приоритет ввод/СВ для секций (в settings panel)
+  document.querySelectorAll('[data-sec-priority]').forEach(el => {
     el.addEventListener('click', () => {
       const [siStr, val] = el.dataset.secPriority.split(':');
       const sec = sections[Number(siStr)];
@@ -2313,8 +2334,8 @@ function _renderSectionedPanelControl(n, body) {
     });
   });
 
-  // АВР секций: Авто/Ручной toggle
-  body.querySelectorAll('[data-sec-avr-toggle]').forEach(el => {
+  // АВР секций: Авто/Ручной toggle (в settings panel)
+  document.querySelectorAll('[data-sec-avr-toggle]').forEach(el => {
     el.addEventListener('click', () => {
       const si = Number(el.dataset.secAvrToggle);
       const sec = sections[si];
