@@ -916,10 +916,25 @@ export function initInteraction() {
     }
   });
 
-  // Отмена ведения связи
+  // Правый клик:
+  //  1) если ведётся pending — отменяем его
+  //  2) если клик по связи (.conn / .conn-hit) — toggle linkMode (скрыть/показать ссылкой)
   svg.addEventListener('contextmenu', e => {
     e.preventDefault();
-    if (state.pending) cancelPending();
+    if (state.pending) { cancelPending(); return; }
+    if (state.readOnly) return;
+    // Клик по стабу/подписи в режиме разрыва — тоже считаем кликом по связи
+    const jumpEl = e.target.closest('[data-link-jump]');
+    const connEl = e.target.closest('.conn-hit, .conn');
+    const cid = (jumpEl && jumpEl.dataset.connId) || (connEl && connEl.dataset.connId);
+    if (!cid) return;
+    const c = state.conns.get(cid);
+    if (!c) return;
+    snapshot('conn-linkMode-toggle:' + cid);
+    c.linkMode = !c.linkMode;
+    if (!c.linkMode) c._linkPreview = false;
+    render();
+    notifyChange();
   });
 
   // ---- keydown ----

@@ -486,14 +486,22 @@ export function renderNodes() {
         t.setAttribute('text-anchor', cx === 0 ? 'end' : 'start');
         g.appendChild(t);
       }
-      // Метка приоритета
+      // Метка приоритета — всегда слева от порта, чтобы не пересекать
+      // приходящую линию/стрелку. Для топ-портов: слева-сверху со сдвигом;
+      // для боковых портов: справа от left / слева от right.
       if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         if (isSideInput) {
+          // Боковой вход: подпись вне узла, в сторону от блока
           const lx = cx === 0 ? cx - 12 : cx + 12;
-          g.appendChild(text(lx, cy, `P${prio}`, 'port-label'));
+          const t = text(lx, cy, `P${prio}`, 'port-label');
+          t.setAttribute('text-anchor', cx === 0 ? 'end' : 'start');
+          g.appendChild(t);
         } else {
-          g.appendChild(text(cx, -10, `P${prio}`, 'port-label'));
+          // Топ-вход: смещаем ВЛЕВО от оси порта, правый край текста = cx - 10
+          const t = text(cx - 10, -4, `P${prio}`, 'port-label');
+          t.setAttribute('text-anchor', 'end');
+          g.appendChild(t);
         }
       }
       // Лампочки — показывают состояние автомата
@@ -692,14 +700,20 @@ export function renderConns() {
     const b = portPos(toN,   'in',  c.to.port);
     const rawWaypoints = Array.isArray(c.waypoints) ? c.waypoints : [];
     const waypoints = _adjustedWaypoints(c, a, b);
-    // Определяем направление выхода/входа для боковых портов
-    const aDir = { x: 0, y: 1 }; // output всегда вниз
-    let bDir = { x: 0, y: -1 };  // input по умолчанию сверху
+    // Определяем направление выхода/входа для боковых портов.
+    // Выходы всегда снизу (aDir=0,1). Входы могут быть сверху или сбоку:
+    //   - consumer с inputSide left/right/split
+    //   - generator с auxInput (порт СН) на auxInputSide left/right
+    const aDir = { x: 0, y: 1 };
+    let bDir = { x: 0, y: -1 };
     if (toN.type === 'consumer' && toN.inputSide && toN.inputSide !== 'top') {
       const side = toN.inputSide;
       if (side === 'left') bDir = { x: -1, y: 0 };
       else if (side === 'right') bDir = { x: 1, y: 0 };
       else if (side === 'split') bDir = c.to.port === 0 ? { x: -1, y: 0 } : { x: 1, y: 0 };
+    } else if (toN.type === 'generator' && toN.auxInput) {
+      const side = toN.auxInputSide || 'left';
+      bDir = side === 'left' ? { x: -1, y: 0 } : { x: 1, y: 0 };
     }
     const d = splinePath(a, waypoints, b, { aDir, bDir });
 
