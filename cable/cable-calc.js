@@ -135,8 +135,12 @@ function getSizingCurrent() {
   if (mode === 'current') return Number(els.current.value) || 0;
   const P = Number(els.power.value) || 0;
   const vl = getVoltageInfo();
-  const cos = Number(els.cosphi.value) || 0.92;
   if (P <= 0) return 0;
+  if (vl.dc) {
+    // DC: I = P / U
+    return (P * 1000) / vl.vLL;
+  }
+  const cos = Number(els.cosphi.value) || 0.92;
   const k = vl.phases === 3 ? Math.sqrt(3) : 1;
   return (P * 1000) / (k * vl.vLL * cos);
 }
@@ -182,14 +186,16 @@ function calculate() {
   });
 
   // 2. Vdrop
-  const vdropAmp = calcVoltageDrop(I, resByAmp.s, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
+  const isDC = !!vl.dc;
+  const effCosPhi = isDC ? 1 : cosPhi;
+  const vdropAmp = calcVoltageDrop(I, resByAmp.s, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, isDC);
 
   let sizeByVdrop = null;
   let vdropFinal = vdropAmp;
 
   if (lengthM > 0 && vdropAmp.dUpct > maxVdropPct) {
     const sizes = currentMethod.availableSizes(material, insulation, method).filter(s => s <= maxSize);
-    sizeByVdrop = findMinSizeForVdrop(I, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel, maxVdropPct, sizes);
+    sizeByVdrop = findMinSizeForVdrop(I, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, maxVdropPct, sizes, isDC);
   }
 
   // 3. Экономическая плотность тока
@@ -207,7 +213,7 @@ function calculate() {
   if (ecoResult && ecoResult.sStandard > finalSize) { finalSize = ecoResult.sStandard; increasedBy = 'economic'; }
 
   if (finalSize > resByAmp.s) {
-    vdropFinal = calcVoltageDrop(I, finalSize, material, lengthM, vl.vLL, vl.phases, cosPhi, resByAmp.parallel);
+    vdropFinal = calcVoltageDrop(I, finalSize, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, isDC);
   }
 
   // 5. Автомат
@@ -218,14 +224,18 @@ function calculate() {
   } else {
     In = currentMethod.selectBreaker(I);
   }
+  // Проверка: автомат покрывает ток?
+  const breakerOverflow = (protection === 'individual')
+    ? (In < (I / parallel))
+    : (In < I);
 
-  renderResult(I, resByAmp, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, {
+  renderResult(I, resByAmp, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, {
     material, insulation, method, cableType, ambient, grouping, bundling, lengthM, vl, cosPhi,
   });
 }
 
 // ============ Render results ============
-function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, params) {
+function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, params) {
   const matLabel = currentMethod.materials[params.material] || params.material;
   const insLabel = currentMethod.insulations[params.insulation] || params.insulation;
   const methLabel = currentMethod.installMethods[params.method] || params.method;
@@ -280,10 +290,10 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
         ${overflowHtml}${autoParHtml}
       </div>
 
-      <div class="result-card">
+      <div class="result-card ${breakerOverflow ? 'warn' : ''}">
         <h3>Автомат защиты</h3>
-        <div class="result-value">${In}<span class="unit">А</span></div>
-        <div class="result-detail">${protLabel}</div>
+        <div class="result-value ${breakerOverflow ? 'tag-overflow' : ''}">${In}<span class="unit">А</span></div>
+        <div class="result-detail">${protLabel}${breakerOverflow ? '<br><span class="tag-overflow">Номинал автомата недостаточен!</span>' : ''}</div>
       </div>
 
       <div class="result-card">
@@ -301,7 +311,7 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
         <div class="result-value ${!vdropOk ? 'tag-warn' : ''}">${vdropFinal.dUpct.toFixed(2)}<span class="unit">%</span></div>
         <div class="result-detail">
           &Delta;U = ${vdropFinal.dU.toFixed(2)} В при ${params.lengthM} м<br>
-          ${params.vl.label}, cos&phi; = ${params.cosPhi}<br>
+          ${params.vl.label}${isDC ? ' (DC)' : ', cos&phi; = ' + params.cosPhi}<br>
           <span class="${vdropOk ? 'tag-ok' : 'tag-overflow'}">${vdropOk ? 'В норме (\u2264' + maxVdropPct + '%)' : 'Превышение!'}</span>
         </div>
       </div>

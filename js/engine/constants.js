@@ -44,6 +44,7 @@ export const GLOBAL = {
   //   vLN    — напряжение фаза-ноль, В
   //   phases — число фаз (3 или 1)
   //   wires  — число проводов (5 = L1+L2+L3+N+PE, 3 = L+N+PE, 4 = L1+L2+L3+PE)
+  //   dc     — true для постоянного тока (меняет формулу Vdrop и расчёт тока)
   voltageLevels: [
     { label: '400V 3P+N+PE', vLL: 400, vLN: 230, phases: 3, wires: 5 },
     { label: '230V 1P+N+PE', vLL: 230, vLN: 230, phases: 1, wires: 3 },
@@ -51,8 +52,9 @@ export const GLOBAL = {
     { label: '10kV 3P',      vLL: 10000, vLN: 5774, phases: 3, wires: 3 },
     { label: '6kV 3P',       vLL: 6000, vLN: 3464, phases: 3, wires: 3 },
     { label: '35kV 3P',      vLL: 35000, vLN: 20207, phases: 3, wires: 3 },
-    { label: '110V DC',      vLL: 110, vLN: 110, phases: 1, wires: 2 },
-    { label: '48V DC',       vLL: 48, vLN: 48, phases: 1, wires: 2 },
+    { label: '110V DC',      vLL: 110, vLN: 110, phases: 1, wires: 2, dc: true },
+    { label: '48V DC',       vLL: 48, vLN: 48, phases: 1, wires: 2, dc: true },
+    { label: '24V DC',       vLL: 24, vLN: 24, phases: 1, wires: 2, dc: true },
   ],
   // Пользовательские типы потребителей (добавляются в проекте, сохраняются с проектом)
   customConsumerCatalog: [],
@@ -72,8 +74,8 @@ export const CABLE_TYPES = {
 // Ряд номиналов шинопроводов, А (IEC 61439 / типовой)
 export const BUSBAR_SERIES = [250, 400, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300];
 
-// Ряд номиналов автоматов защиты
-export const BREAKER_SERIES = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 400, 630, 800, 1000, 1250, 1600];
+// Ряд номиналов автоматов защиты (MCB до 63А, MCCB до 1600А, ACB до 6300А)
+export const BREAKER_SERIES = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 400, 630, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000, 5000, 6300];
 
 // Типы защитных устройств (IEC 60898 / IEC 60269)
 // I2ratio — коэфф. условного срабатывания (I2 = I2ratio × In)
