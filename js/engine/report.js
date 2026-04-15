@@ -328,17 +328,21 @@ export function generateReport() {
   });
   if (activeCables.length) {
     lines.push('КАБЕЛЬНЫЕ ЛИНИИ И ШИНОПРОВОДЫ');
-    lines.push('-'.repeat(110));
+    lines.push('-'.repeat(120));
+    // BOM-подобный порядок:
+    // Обозначение | Проводник | Кол-во (шт.) | L, м | Итого, м | Imax | Iдоп | Метод | Каналы
     lines.push(
       'Обозначение'.padEnd(25) +
+      'Проводник'.padEnd(20) +
       'Кол-во'.padStart(7) + '  ' +
-      'Проводник'.padEnd(18) +
-      'L, м'.padStart(5) + '  ' +
+      'L, м'.padStart(7) + '  ' +
+      'Итого, м'.padStart(9) + '  ' +
       'Imax, A'.padStart(7) + '  ' +
       'Iдоп, A'.padStart(7) + '  ' +
       'Метод'.padEnd(6) + '  ' +
       'Каналы'
     );
+    let bomTotalLength = 0;
     for (const c of activeCables) {
       const fromN = state.nodes.get(c.from.nodeId);
       const toN = state.nodes.get(c.to.nodeId);
@@ -348,35 +352,29 @@ export function generateReport() {
       const warn = c._cableOverflow ? ' ⚠' : '';
       const length = c._cableLength != null ? c._cableLength : (c.lengthM || 0);
 
-      // Кол-во и Проводник разделены на две колонки.
-      // «Кол-во» — число параллельных кабелей (cableParallel). Для
-      // групповых линий к нему добавляется индикация «гр.» если линия
-      // идёт на группу потребителей (одно сечение × N кабелей по ветке).
-      let qtyStr;
+      // Кол-во: всегда в штуках. Параллельные кабели + групповая
+      // линия дают суммарное число физических отрезков.
+      let qty;
       let conductorSpec;
       let methodStr;
       if (c._busbarNom) {
-        qtyStr = '1';
+        qty = 1;
         conductorSpec = `шинопр. ${c._busbarNom} А`;
         methodStr = '—';
       } else {
         const parallel = Math.max(1, c._cableParallel || 1);
         const isGroup = Array.isArray(c._groupCables) && c._groupCables.length > 1;
-        const groupCount = isGroup ? c._groupCables.length : 0;
-        if (isGroup) {
-          // Групповая линия на N потребителей, каждый со своим кабелем
-          qtyStr = `${groupCount} гр.`;
-        } else if (parallel > 1) {
-          qtyStr = `${parallel} пар.`;
-        } else {
-          qtyStr = '1';
-        }
+        const groupCount = isGroup ? c._groupCables.length : 1;
+        qty = parallel * groupCount;
         const cores = c._wireCount || (c._threePhase ? 5 : 3);
         conductorSpec = `${cores}×${c._cableSize} мм²`;
         // IEC 60502-2 класс напряжения для HV-кабелей
         if (c._isHV) conductorSpec = cableVoltageClass(c._voltage || 0) + ' · ' + conductorSpec;
         methodStr = c._cableMethod || '-';
       }
+
+      const totalM = Number(length) * qty;
+      bomTotalLength += totalM;
 
       // Каналы, через которые проходит линия
       const channelIds = Array.isArray(c.channelIds) ? c.channelIds : [];
@@ -393,15 +391,18 @@ export function generateReport() {
 
       lines.push(
         lineLabel.slice(0, 24).padEnd(25) +
-        qtyStr.padStart(7) + '  ' +
-        conductorSpec.padEnd(18) +
-        String(length).padStart(5) + '  ' +
+        conductorSpec.padEnd(20) +
+        (String(qty) + ' шт.').padStart(7) + '  ' +
+        String(fmt(length)).padStart(7) + '  ' +
+        String(fmt(totalM)).padStart(9) + '  ' +
         String(fmt(c._maxA || 0)).padStart(7) + '  ' +
         String(fmt(c._cableIz || 0)).padStart(7) + '  ' +
         methodStr.padEnd(6) + '  ' +
         channelStr + warn
       );
     }
+    lines.push('-'.repeat(120));
+    lines.push('ИТОГО кабеля / шинопровода: ' + fmt(bomTotalLength) + ' м');
     lines.push('');
   }
 
