@@ -15,6 +15,7 @@ import * as B      from '../shared/report/blocks.js';
 let lastBatteryCalc = null;
 import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
 import { KEHUA_S3_BATTERIES } from '../shared/kehua-s3-data.js';
+import { listUpses, getUps } from '../shared/ups-catalog.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -1138,6 +1139,66 @@ function wireRackForm() {
     g('rack-Wt', b.weightKg);
     if (b.terminalClearanceMm) g('rack-termClear', b.terminalClearanceMm);
   });
+  // Селектор VRLA-шкафа из ups-catalog. При выборе записи подставляем
+  // её внутренние габариты + ограничение по числу блоков (rackSlots).
+  const cabSel = document.getElementById('rack-cabinet');
+  if (cabSel) {
+    populateRackCabinetSelect(cabSel);
+    cabSel.addEventListener('change', () => {
+      const id = cabSel.value;
+      if (!id) return;
+      const rec = getUps(id);
+      if (!rec) return;
+      const g = (x, v) => { const el = document.getElementById(x); if (el && v != null) el.value = v; };
+      // Kehua-каталог хранит внешние габариты; для компоновки лучше брать
+      // внутренние (internal*) если заданы, иначе габариты со скидкой на
+      // толщину стенки (~25 мм с каждой стороны).
+      const innerW = rec.internalWidthMm  || (rec.cabinetWidthMm  ? rec.cabinetWidthMm  - 50 : null);
+      const innerD = rec.internalDepthMm  || (rec.cabinetDepthMm  ? rec.cabinetDepthMm  - 50 : null);
+      const innerH = rec.internalHeightMm || (rec.cabinetHeightMm ? rec.cabinetHeightMm - 50 : null);
+      if (innerW) g('rack-cabW', innerW);
+      if (innerD) g('rack-cabD', innerD);
+      if (innerH) g('rack-cabH', innerH);
+      // Подсказка по лимиту числа блоков
+      const maxBlocks = rec.rackSlots || 0;
+      const nInput = document.getElementById('rack-N');
+      if (nInput && maxBlocks > 0) {
+        nInput.title = `Паспортный лимит шкафа ${rec.model}: ${maxBlocks} блоков`;
+        if (Number(nInput.value) > maxBlocks) nInput.value = maxBlocks;
+      }
+    });
+  }
+}
+
+// Заполняет <select id="rack-cabinet"> всеми записями с
+// kind === 'batt-cabinet-vrla' из текущего ups-catalog пользователя.
+// Группирует по supplier для удобства.
+function populateRackCabinetSelect(sel) {
+  const all = listUpses().filter(r => r.kind === 'batt-cabinet-vrla');
+  if (!all.length) {
+    sel.innerHTML = '<option value="">— каталог ИБП пуст, откройте ups-config/ и загрузите Kehua —</option>';
+    return;
+  }
+  // Группируем по supplier
+  const bySup = new Map();
+  for (const r of all) {
+    const s = r.supplier || 'прочие';
+    if (!bySup.has(s)) bySup.set(s, []);
+    bySup.get(s).push(r);
+  }
+  const parts = ['<option value="">— задать размеры шкафа вручную —</option>'];
+  for (const [sup, list] of bySup.entries()) {
+    parts.push(`<optgroup label="${sup}">`);
+    for (const r of list) {
+      const slots = r.rackSlots ? ` · ${r.rackSlots} блоков` : '';
+      const dims = (r.cabinetWidthMm && r.cabinetDepthMm && r.cabinetHeightMm)
+        ? ` · ${r.cabinetWidthMm}×${r.cabinetDepthMm}×${r.cabinetHeightMm}`
+        : '';
+      parts.push(`<option value="${r.id}">${r.model}${slots}${dims}</option>`);
+    }
+    parts.push('</optgroup>');
+  }
+  sel.innerHTML = parts.join('');
 }
 
 // ================= Bootstrap =================
