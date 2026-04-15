@@ -30,12 +30,36 @@ function flash(msg, kind = 'info') {
 }
 
 // ================= Каталог =================
+function _getCatalogFilters() {
+  return {
+    text: (document.getElementById('cat-filter-text')?.value || '').trim().toLowerCase(),
+    chem: document.getElementById('cat-filter-chem')?.value || '',
+    custom: document.getElementById('cat-filter-custom')?.value || '',
+  };
+}
+
 function renderCatalog() {
   const wrap = document.getElementById('catalog-list');
   if (!wrap) return;
-  const list = listBatteries();
+  const all = listBatteries();
+  const { text, chem, custom } = _getCatalogFilters();
+  // Применяем фильтры
+  const list = all.filter(b => {
+    if (chem && (b.chemistry || '').toLowerCase() !== chem) return false;
+    if (custom === 'imported' && b.custom === true) return false;
+    if (custom === 'custom' && b.custom !== true) return false;
+    if (text) {
+      const hay = `${b.supplier} ${b.type} ${b.chemistry || ''} ${b.source || ''}`.toLowerCase();
+      if (!hay.includes(text)) return false;
+    }
+    return true;
+  });
+  if (!all.length) {
+    wrap.innerHTML = `<div class="empty">Справочник пуст. Загрузите XLSX-файлы через «+ Загрузить» или добавьте запись вручную.</div>`;
+    return;
+  }
   if (!list.length) {
-    wrap.innerHTML = `<div class="empty">Справочник пуст. Загрузите XLSX-файлы через «+ Загрузить» или используйте расчёт по усреднённой модели.</div>`;
+    wrap.innerHTML = `<div class="empty">По заданным фильтрам ничего не найдено. Попробуйте очистить поиск.</div>`;
     return;
   }
   const h = ['<table class="cat-table">'];
@@ -314,6 +338,14 @@ function wireUpload() {
 
   const addBtn = document.getElementById('btn-add-manual');
   if (addBtn) addBtn.addEventListener('click', () => openManualBatteryModal());
+
+  // Фильтры каталога — перерисовываем при любом изменении
+  ['cat-filter-text', 'cat-filter-chem', 'cat-filter-custom'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const evt = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(evt, () => renderCatalog());
+  });
 }
 
 // ================= Селектор батареи в калькуляторе =================

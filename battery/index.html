@@ -37,6 +37,22 @@
           <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить справочник</button>
         </div>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <input id="cat-filter-text" type="search" placeholder="🔍 Поиск по поставщику / модели / источнику…"
+               style="flex:1;min-width:240px;padding:8px 12px;font:inherit;font-size:13px;border:1px solid #d0d0d0;border-radius:5px">
+        <select id="cat-filter-chem" style="padding:8px 10px;font:inherit;font-size:13px;border:1px solid #d0d0d0;border-radius:5px">
+          <option value="">Вся химия</option>
+          <option value="vrla">VRLA</option>
+          <option value="li-ion">Li-Ion</option>
+          <option value="nicd">NiCd</option>
+          <option value="nimh">NiMH</option>
+        </select>
+        <select id="cat-filter-custom" style="padding:8px 10px;font:inherit;font-size:13px;border:1px solid #d0d0d0;border-radius:5px">
+          <option value="">Все записи</option>
+          <option value="imported">Только импорт</option>
+          <option value="custom">Только ручные</option>
+        </select>
+      </div>
       <div id="catalog-list"></div>
     </section>
 
