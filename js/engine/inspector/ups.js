@@ -311,6 +311,21 @@ function _renderUpsControlBody(n) {
     <div>АКБ: <b>${battPctHdr}%</b></div>
   </div>`);
 
+  // Предупреждение про синхронизацию с сетью — когда активирован байпас
+  // (механический maintenance через QF4 ИЛИ статический через SBS).
+  // Физически это параллельное соединение входа и выхода ИБП, и если
+  // инвертор остаётся в работе, его выход должен быть синхронизирован
+  // с сетью по фазе, частоте и амплитуде — иначе большие уравнительные
+  // токи и повреждение инвертора.
+  const maintQF4On = n.hasBypassBreaker !== false && n.bypassBreakerOn !== false;
+  if (onBypass || maintQF4On) {
+    h.push(`<div style="margin-bottom:12px;padding:8px 12px;background:#fff3e0;border:1px solid #ef6c00;border-radius:6px;font-size:12px;line-height:1.6;color:#bf360c">
+      ⚠ <b>ИБП должен быть синхронизирован с сетью</b>: активна ${onBypass ? 'статическая байпас-цепь (SBS)' : 'механическая байпас-перемычка (QF4)'}
+      — вход и выход ИБП параллелятся по сети. Инвертор обязан отслеживать
+      фазу, частоту и амплитуду Mains, иначе возможны уравнительные токи.
+    </div>`);
+  }
+
   // Предупреждение о перегрузе / недостаточной мощности ИБП
   if (overload) {
     const deficit = load - cap;
@@ -608,33 +623,69 @@ function _upsStructSvg(n, flows) {
   const colIdle = '#cfd4e0';
   const fmtA = (a) => a > 0 ? `${fmt(a)} A` : '';
 
-  const mainCol = (onBypass || onBattery) ? colIdle : colActive;
-  const battLineCol = onBattery ? colBatt : colIdle;
-  const outCol = onBattery ? colBatt : onBypass ? colBypass : colActive;
+  // Новая цветовая модель с раздельными цветами для каждой фазы напряжения:
+  //   синий    — Mains (AC вход)
+  //   зелёный  — Battery (постоянный ток от АКБ через DC/DC)
+  //   фиолетовый — DC bus (после выпрямителя, между REC/DC/DC/INV)
+  //   бирюзовый — Output (AC после инвертора, «чистая синусоида»)
+  //   оранжевый — SBS-тиристор в пиктограмме Bypass module (только символ)
+  const colDC = '#7e57c2';   // DC внутренняя шина
+  const colOut = '#00bcd4';  // выход инвертора / output bus в инверторном режиме
+
   // Состояния автоматов
   const qf1on = n.hasInputBreaker !== false && n.inputBreakerOn !== false;
   const qf2on = n.hasInputBypassBreaker !== false && n.inputBypassBreakerOn !== false;
   const qf3on = n.hasOutputBreaker !== false && n.outputBreakerOn !== false;
   const qf4on = n.hasBypassBreaker !== false && n.bypassBreakerOn !== false;
   const qbon = n.hasBatteryBreaker !== false && n.batteryBreakerOn !== false;
-  // Есть ли вообще напряжение со стороны Mains (effectiveOn и не в режиме
-  // работы от батареи — т.к. в режиме батареи вход обесточен).
+  // Mains доступен (не в режиме батареи)
   const mainsFed = effectiveOn(n) && !onBattery;
-  // Участок ДО QF1: живой, если есть mains. Участок ПОСЛЕ QF1 к инверторам:
-  // живой когда QF1 замкнут и работаем в инверторном режиме.
+  // Maintenance bypass замкнут (QF4 on) — физическое короткое замыкание
+  // входа на выход. В этом режиме выход виден «сырым mains».
+  const maintBypassActive = mainsFed && qf4on;
+  // Static bypass (SBS) проводит: форсированный или авто-перегруз или oneBypass
+  const sbsConducting = mainsFed && qf2on && onBypass;
+  // Обобщённое «байпас активен» (либо maint, либо SBS) — выход = mains
+  const bypassOutputActive = maintBypassActive || sbsConducting;
+
+  // Участок ДО QF1 — живой, пока есть mains (до всех точек ветвления).
   const mainsPreCol = mainsFed ? colActive : colIdle;
-  const mainsOn = qf1on && !onBypass && !onBattery;
-  const mainsLineCol = mainsOn ? colActive : colIdle;
-  // Байпасная ветка: от jumper до SBS-модуля (и после модуля к выходу) —
-  // «живая» когда есть mains И QF2 замкнут. Сам SBS-модуль проводит ток
-  // только при onBypass (см. ниже — цвет символа тиристора).
-  const bypassWireCol = (mainsFed && qf2on) ? colBypass : colIdle;
-  // Maintenance bypass: живой когда есть mains И QF4 замкнут.
-  const maintWireCol = (mainsFed && qf4on) ? colBypass : colIdle;
+  // Участок после QF1 к mains-шине (к AC/DC модулей) — живой когда QF1 замкнут.
+  const afterQF1Col = (mainsFed && qf1on) ? colActive : colIdle;
+  // Обратная совместимость с переменной mainsLineCol — используется в mains-шине.
+  const mainsLineCol = afterQF1Col;
+
+  // Байпасная ветка ДО QF2 (от jumper до левой клеммы QF2) — mains (синий),
+  // т.к. это физически провод с напряжением сети.
+  const preQF2Col = mainsFed ? colActive : colIdle;
+  // Байпасная ветка ПОСЛЕ QF2 через SBS к xOutBus — живая (синяя, т.к.
+  // тоже mains-проводник) когда mainsFed && qf2on.
+  const postQF2Col = (mainsFed && qf2on) ? colActive : colIdle;
+  // Общий цвет для обратной совместимости (вызовов bypassWireCol в старом коде)
+  const bypassWireCol = postQF2Col;
+
+  // Maintenance bypass (верхняя горизонталь) — синий (mains) когда живой.
+  const maintWireCol = maintBypassActive ? colActive : colIdle;
+
+  // Battery
   const battOn = qbon && onBattery;
   const battCableCol = battOn ? colBatt : colIdle;
-  // Цвет инвертора: активен в режимах ИНВЕРТОР и БАТАРЕЯ, выключен на байпасе
-  const invActiveCol = onBattery ? colBatt : onBypass ? colIdle : colActive;
+
+  // Внутренний DC bus каждого модуля:
+  //   — инверторный режим: AC/DC выпрямляет mains → фиолетовый
+  //   — батарея: DC/DC поднимает напряжение от АКБ → фиолетовый
+  //   — байпас (SBS/maint): инвертор простаивает → DC bus серый
+  const dcBusActive = (mainsFed && qf1on && !bypassOutputActive) || onBattery;
+  const dcBusCol = dcBusActive ? colDC : colIdle;
+  // Выход инвертора: бирюзовый когда инвертор работает (нормальный или батарейный),
+  // серый на байпасе.
+  const invOutActive = dcBusActive && !bypassOutputActive;
+  const invOutCol = invOutActive ? colOut : colIdle;
+  // Output bus + вся выходная цепь до клеммы Output:
+  //   — на байпасе (maint или SBS) — синий (mains pass-through)
+  //   — иначе когда инвертор работает — бирюзовый
+  //   — иначе серый
+  const outCol = bypassOutputActive ? colActive : (invOutActive ? colOut : colIdle);
 
   const bypassSeparate = n.bypassFeedMode === 'separate';
   const isModular = n.upsType === 'modular';
@@ -856,9 +907,17 @@ function _upsStructSvg(n, flows) {
     const modActive = isModular
       ? (Array.isArray(n.modulesActive) ? n.modulesActive[realIdx] !== false : true)
       : true;
-    const modMainCol = (modActive && mainsOn) ? colActive : colIdle;
-    const modInvCol = (modActive && !onBypass) ? invActiveCol : colIdle;
-    const modBattCol = (modActive && qbon) ? (onBattery ? colBatt : colIdle) : colIdle;
+    // Per-module цвета:
+    //   modMainCol — синий mains на AC/DC входе
+    //   modDcCol   — фиолетовый на внутренней DC-шине (REC → DC bus ↔ DC/DC)
+    //   modOutCol  — бирюзовый на выходе DC/AC → output bus
+    //   modBattCol — зелёный на линии battery bus → DC/DC
+    const modMainCol = (modActive && mainsFed && qf1on && !bypassOutputActive) ? colActive : colIdle;
+    const modDcCol   = (modActive && dcBusActive) ? colDC : colIdle;
+    const modOutCol  = (modActive && invOutActive) ? colOut : colIdle;
+    const modBattCol = (modActive && onBattery && qbon) ? colBatt : colIdle;
+    // Старые имена — для случайных ссылок ниже (оставляем как aliases)
+    const modInvCol = modOutCol;
 
     // Рамка модуля (пунктирная светло-серая)
     parts.push(`<rect x="${modX}" y="${mY}" width="${modW}" height="${modH}" fill="#fafafa" stroke="#aaa" stroke-width="1" stroke-dasharray="3 3" rx="5"/>`);
@@ -877,26 +936,28 @@ function _upsStructSvg(n, flows) {
     parts.push(`<line x1="${recX + 8}" y1="${recY + recH - 8}" x2="${recX + recW - 8}" y2="${recY + 8}" stroke="#777" stroke-width="1"/>`);
     parts.push(`<text x="${recX + recW - 16}" y="${recY + recH - 5}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
 
-    // DC/AC inverter
+    // DC/AC inverter — обводка = output color (бирюзовый)
     const invX = modX + modW - 104, invY = mY + 20, invW = 64, invH = 40;
-    parts.push(`<rect x="${invX}" y="${invY}" width="${invW}" height="${invH}" fill="#fff" stroke="${modInvCol === colIdle ? '#aaa' : modInvCol}" stroke-width="1.8" rx="3"/>`);
+    parts.push(`<rect x="${invX}" y="${invY}" width="${invW}" height="${invH}" fill="#fff" stroke="${modOutCol === colIdle ? '#aaa' : modOutCol}" stroke-width="1.8" rx="3"/>`);
     parts.push(`<text x="${invX + 16}" y="${invY + 17}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
     parts.push(`<line x1="${invX + 8}" y1="${invY + invH - 8}" x2="${invX + invW - 8}" y2="${invY + 8}" stroke="#777" stroke-width="1"/>`);
     parts.push(`<text x="${invX + invW - 16}" y="${invY + invH - 5}" font-size="10" fill="#2b303b" font-weight="700">AC</text>`);
 
-    // DC/DC charger (центр снизу)
+    // DC/DC charger (центр снизу) — обводка = battery (зелёный) или DC (фиолетовый)
     const ddX = modX + modW / 2 - 32, ddY = mY + modH - 54, ddW = 64, ddH = 38;
-    parts.push(`<rect x="${ddX}" y="${ddY}" width="${ddW}" height="${ddH}" fill="#fff" stroke="${modBattCol === colIdle ? '#aaa' : modBattCol}" stroke-width="1.8" rx="3"/>`);
+    const ddStroke = modBattCol !== colIdle ? modBattCol : (modDcCol !== colIdle ? modDcCol : '#aaa');
+    parts.push(`<rect x="${ddX}" y="${ddY}" width="${ddW}" height="${ddH}" fill="#fff" stroke="${ddStroke}" stroke-width="1.8" rx="3"/>`);
     parts.push(`<text x="${ddX + 16}" y="${ddY + 15}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
     parts.push(`<line x1="${ddX + 8}" y1="${ddY + ddH - 6}" x2="${ddX + ddW - 8}" y2="${ddY + 6}" stroke="#777" stroke-width="1"/>`);
     parts.push(`<text x="${ddX + ddW - 16}" y="${ddY + ddH - 5}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
 
-    // Внутренняя DC-шина REC ↔ INV
+    // Внутренняя DC-шина REC → DC bus → INV (inверторный вход) — ФИОЛЕТОВАЯ.
+    // НЕ проходит сквозь DC/AC (для выхода используется modOutCol ниже).
     const dcBusY = recY + recH / 2;
-    parts.push(`<line x1="${recX + recW}" y1="${dcBusY}" x2="${invX}" y2="${dcBusY}" stroke="${modMainCol}" stroke-width="2"/>`);
-    // DC/DC ↕ внутренняя DC-шина (узел)
-    parts.push(`<line x1="${ddX + ddW / 2}" y1="${ddY}" x2="${ddX + ddW / 2}" y2="${dcBusY}" stroke="${modBattCol}" stroke-width="2"/>`);
-    parts.push(`<circle cx="${ddX + ddW / 2}" cy="${dcBusY}" r="2.8" fill="${modMainCol}"/>`);
+    parts.push(`<line x1="${recX + recW}" y1="${dcBusY}" x2="${invX}" y2="${dcBusY}" stroke="${modDcCol}" stroke-width="2"/>`);
+    // DC/DC ↕ внутренняя DC-шина — тоже фиолетовая (DC сторона DC/DC)
+    parts.push(`<line x1="${ddX + ddW / 2}" y1="${ddY}" x2="${ddX + ddW / 2}" y2="${dcBusY}" stroke="${modDcCol}" stroke-width="2"/>`);
+    parts.push(`<circle cx="${ddX + ddW / 2}" cy="${dcBusY}" r="2.8" fill="${modDcCol}"/>`);
 
     // Внешние подключения к шинам
     // AC/DC ← mains bus
@@ -905,10 +966,9 @@ function _upsStructSvg(n, flows) {
     // DC/DC ← battery bus
     parts.push(`<line x1="${xBattBus}" y1="${ddY + ddH / 2}" x2="${ddX}" y2="${ddY + ddH / 2}" stroke="${modBattCol}" stroke-width="2.5"/>`);
     parts.push(`<circle cx="${xBattBus}" cy="${ddY + ddH / 2}" r="2.5" fill="${battCableCol}"/>`);
-    // DC/AC → output bus
-    parts.push(`<line x1="${invX + invW}" y1="${invY + invH / 2}" x2="${xOutBus}" y2="${invY + invH / 2}" stroke="${modInvCol}" stroke-width="2.5"/>`);
-    parts.push(`<circle cx="${xOutBus}" cy="${invY + invH / 2}" r="2.5" fill="${modInvCol === colIdle ? colIdle : outCol}"/>`);
-
+    // DC/AC → output bus — бирюзовый в инверторном режиме, серый на байпасе
+    parts.push(`<line x1="${invX + invW}" y1="${invY + invH / 2}" x2="${xOutBus}" y2="${invY + invH / 2}" stroke="${modOutCol}" stroke-width="2.5"/>`);
+    parts.push(`<circle cx="${xOutBus}" cy="${invY + invH / 2}" r="2.5" fill="${modOutCol === colIdle ? colIdle : colOut}"/>`);
   }
 
   // Компактный блок «пропущенные модули» — без внутренностей, мало
