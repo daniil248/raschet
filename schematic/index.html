@@ -57,6 +57,12 @@
           <button class="sch-tool" id="sch-btn-delete" title="Удалить (Del)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
           </button>
+          <button class="sch-tool" id="sch-btn-undo" title="Отменить (Ctrl+Z)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/></svg>
+          </button>
+          <button class="sch-tool" id="sch-btn-redo" title="Повторить (Ctrl+Y)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a6 6 0 0 0 0 12h6"/></svg>
+          </button>
         </div>
 
         <div class="sch-tool-sep"></div>
@@ -117,6 +123,15 @@
           <!-- вспомогательные линии -->
           <g id="sch-overlay"></g>
         </svg>
+
+        <!-- строка состояния -->
+        <div class="sch-statusbar" id="sch-statusbar">
+          <span id="sch-sb-tool">Инструмент: Выбор</span>
+          <span class="sch-sb-sep">·</span>
+          <span id="sch-sb-xy">X: 0.0  Y: 0.0 мм</span>
+          <span class="sch-sb-sep">·</span>
+          <span id="sch-sb-hint">Ctrl+колесо — зум, средняя кнопка — панорама</span>
+        </div>
 
         <!-- список листов -->
         <div class="sch-sheets-bar" id="sch-sheets-bar">

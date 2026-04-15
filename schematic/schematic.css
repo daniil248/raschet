@@ -272,14 +272,51 @@ html, body {
   stroke-width: 0.5;
   fill: none;
   stroke-linecap: square;
+  pointer-events: none;
 }
 .sch-wire.selected { stroke: #5e35b1; }
+.sch-wire-hit {
+  stroke: transparent;
+  stroke-width: 2.2;
+  fill: none;
+  cursor: pointer;
+  pointer-events: stroke;
+}
 .sch-junction { fill: #1f2430; }
 .sch-ghost {
   opacity: 0.55;
   pointer-events: none;
 }
-.sch-ghost .sch-comp-body { stroke: #5e35b1; }
+.sch-ghost .sch-comp-body,
+.sch-ghost .sch-pin-connector { stroke: #5e35b1; }
+
+.sch-palette-item.active {
+  border-color: #5e35b1;
+  background: #ede7f6;
+  box-shadow: 0 0 0 2px rgba(94,53,177,.2);
+}
+
+/* строка состояния */
+.sch-statusbar {
+  position: absolute;
+  left: 24px; right: 24px;
+  bottom: 28px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 10px;
+  background: rgba(255,255,255,.92);
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #4a5161;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(20,25,40,0.06);
+  z-index: 3;
+}
+.sch-sb-sep { color: #c7ccd6; }
+#sch-sb-tool { font-weight: 600; color: #5e35b1; }
+#sch-sb-xy { font-variant-numeric: tabular-nums; }
 
 /* листы внизу */
 .sch-sheets-bar {

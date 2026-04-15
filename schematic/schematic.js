@@ -32,8 +32,13 @@ const state = {
   },
   // wire-in-progress
   wireDraft: null,               // { points: [{x,y}...] }
-  // ghost при drag из палитры
-  dragGhost: null,
+  // «палец из палитры»: символ, который размещается по курсору
+  placing: null,                 // { symbolId, rot, mirror }
+  // последние координаты мыши в мм (для ghost-рендера и строки состояния)
+  mouseMM: { x: 0, y: 0 },
+  // undo/redo
+  history: [],
+  historyIdx: -1,
   nextId: 1,
 };
 
@@ -61,10 +66,58 @@ function init() {
   loadTitleFromInputs();
   relayoutSheet();
   render();
+  updateStatusBar();
+  pushHistory();
 }
 
 function genId(prefix = 'el') {
   return `${prefix}${state.nextId++}`;
+}
+
+// --------------------------- undo / redo ------------------------------------
+function snapshot() {
+  return JSON.stringify({
+    paperSize: state.paperSize,
+    paperOrient: state.paperOrient,
+    sheets: state.sheets,
+    titleBlock: state.titleBlock,
+    activeSheet: state.activeSheet,
+    nextId: state.nextId,
+  });
+}
+function restore(snap) {
+  const d = JSON.parse(snap);
+  state.paperSize   = d.paperSize;
+  state.paperOrient = d.paperOrient;
+  state.sheets      = d.sheets;
+  state.titleBlock  = d.titleBlock;
+  state.activeSheet = d.activeSheet;
+  state.nextId      = d.nextId;
+  state.selection   = null;
+  state.wireDraft   = null;
+  $('#sch-paper-size').value   = state.paperSize;
+  $('#sch-paper-orient').value = state.paperOrient;
+  loadTitleFromInputs();
+  relayoutSheet();
+  render();
+}
+function pushHistory() {
+  // обрезать «будущее» после текущего индекса
+  state.history = state.history.slice(0, state.historyIdx + 1);
+  state.history.push(snapshot());
+  // ограничим глубину
+  if (state.history.length > 200) state.history.shift();
+  state.historyIdx = state.history.length - 1;
+}
+function undo() {
+  if (state.historyIdx <= 0) return;
+  state.historyIdx--;
+  restore(state.history[state.historyIdx]);
+}
+function redo() {
+  if (state.historyIdx >= state.history.length - 1) return;
+  state.historyIdx++;
+  restore(state.history[state.historyIdx]);
 }
 
 // ============================================================================
@@ -97,12 +150,16 @@ function renderPalette() {
       ev.dataTransfer.effectAllowed = 'copy';
     });
     el.addEventListener('click', () => {
-      // одиночный клик — в центр листа
+      // EPLAN-style: одиночный клик по символу — «взять в руку»,
+      // курсор по листу показывает ghost, следующий клик ставит.
       const sym = getSymbolById(el.dataset.symbol);
       if (!sym) return;
-      const size = getSheetSize(state.paperSize, state.paperOrient);
-      placeComponent(sym.id, snap(size.w / 2), snap(size.h / 2));
-      render();
+      state.placing = { symbolId: sym.id, rot: 0, mirror: false };
+      state.tool = 'select';
+      document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === 'select'));
+      document.querySelectorAll('.sch-palette-item').forEach(p => p.classList.toggle('active', p === el));
+      updateStatusBar();
+      renderGhost();
     });
   });
 
@@ -140,6 +197,8 @@ function bindToolbar() {
   $('#sch-btn-rotate').addEventListener('click', rotateSelection);
   $('#sch-btn-mirror').addEventListener('click', mirrorSelection);
   $('#sch-btn-delete').addEventListener('click', deleteSelection);
+  $('#sch-btn-undo').addEventListener('click', undo);
+  $('#sch-btn-redo').addEventListener('click', redo);
 
   // zoom
   $('#sch-btn-zoom-in').addEventListener('click',  () => setZoom(state.zoom * 1.25));
@@ -156,15 +215,31 @@ function bindToolbar() {
   // горячие клавиши
   window.addEventListener('keydown', ev => {
     if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
-    switch (ev.key.toLowerCase()) {
+    const k = ev.key.toLowerCase();
+    if ((ev.ctrlKey || ev.metaKey) && k === 'z') { ev.preventDefault(); undo(); return; }
+    if ((ev.ctrlKey || ev.metaKey) && (k === 'y' || (k === 'z' && ev.shiftKey))) { ev.preventDefault(); redo(); return; }
+    switch (k) {
       case 's': setTool('select'); break;
       case 'w': setTool('wire'); break;
       case 'j': setTool('junction'); break;
       case 't': setTool('text'); break;
-      case 'r': rotateSelection(); break;
-      case 'm': mirrorSelection(); break;
+      case 'r':
+        if (state.placing) { state.placing.rot = (state.placing.rot + 90) % 360; renderGhost(); }
+        else rotateSelection();
+        break;
+      case 'm':
+        if (state.placing) { state.placing.mirror = !state.placing.mirror; renderGhost(); }
+        else mirrorSelection();
+        break;
       case 'delete': case 'backspace': deleteSelection(); break;
-      case 'escape': state.wireDraft = null; state.selection = null; render(); break;
+      case 'escape':
+        state.wireDraft = null;
+        state.selection = null;
+        state.placing = null;
+        document.querySelectorAll('.sch-palette-item.active').forEach(p => p.classList.remove('active'));
+        overlayG.innerHTML = '';
+        render();
+        break;
     }
   });
 }
@@ -175,7 +250,46 @@ function setTool(t) {
     b.classList.toggle('active', b.dataset.tool === t);
   });
   state.wireDraft = null;
+  state.placing = null;
+  document.querySelectorAll('.sch-palette-item.active').forEach(p => p.classList.remove('active'));
+  overlayG.innerHTML = '';
+  updateStatusBar();
   render();
+}
+
+function updateStatusBar() {
+  const tools = { select: 'Выбор', wire: 'Провод', junction: 'Соединение', text: 'Текст' };
+  const tb = $('#sch-sb-tool');
+  const xy = $('#sch-sb-xy');
+  const hint = $('#sch-sb-hint');
+  if (!tb) return;
+  if (state.placing) {
+    const sym = getSymbolById(state.placing.symbolId);
+    tb.textContent = `Размещение: ${sym?.name || ''}`;
+    hint.textContent = 'R — поворот · M — зеркало · Esc — отмена · клик — поставить';
+  } else {
+    tb.textContent = 'Инструмент: ' + (tools[state.tool] || state.tool);
+    hint.textContent = state.tool === 'wire'
+      ? 'клик — точка · двойной клик / по выводу — завершить · Esc — отмена'
+      : 'Ctrl+колесо — зум · средняя кнопка — панорама · Ctrl+Z/Y — отмена/повтор';
+  }
+  xy.textContent = `X: ${state.mouseMM.x.toFixed(1)}  Y: ${state.mouseMM.y.toFixed(1)} мм`;
+}
+
+function renderGhost() {
+  if (!state.placing) { overlayG.innerHTML = ''; return; }
+  const sym = getSymbolById(state.placing.symbolId);
+  if (!sym) return;
+  const x = snap(state.mouseMM.x);
+  const y = snap(state.mouseMM.y);
+  const sc = state.placing.mirror ? 'scale(-1,1)' : '';
+  overlayG.innerHTML = `
+    <g class="sch-comp sch-ghost"
+       transform="translate(${x} ${y}) rotate(${state.placing.rot}) ${sc}">
+      ${sym.draw()}
+      ${(sym.pins || []).map(p => `<circle class="sch-pin-connector" cx="${p.x}" cy="${p.y}" r="0.7"/>`).join('')}
+    </g>
+  `;
 }
 
 // ============================================================================
@@ -502,6 +616,15 @@ function onCanvasDown(ev) {
   const pt = mouseToMM(ev);
   const sheet = activeSheet();
 
+  // режим размещения из палитры — ставим компонент и остаёмся в режиме
+  if (state.placing) {
+    placeComponent(state.placing.symbolId, snap(pt.x), snap(pt.y), state.placing.rot, state.placing.mirror);
+    pushHistory();
+    render();
+    renderGhost();
+    return;
+  }
+
   if (state.tool === 'wire') {
     // EPLAN-style: если рядом вывод — прицепиться к нему, иначе — к сетке.
     const pin = findPinNear(pt.x, pt.y, 2.5);
@@ -529,6 +652,7 @@ function onCanvasDown(ev) {
       id: genId('j'), symbolId: '__junction__',
       x: snap(pt.x), y: snap(pt.y), rot: 0, mirror: false,
     });
+    pushHistory();
     render();
     return;
   }
@@ -537,13 +661,14 @@ function onCanvasDown(ev) {
     const txt = prompt('Текст:');
     if (txt) {
       sheet.texts.push({ id: genId('t'), x: snap(pt.x), y: snap(pt.y), text: txt });
+      pushHistory();
       render();
     }
     return;
   }
 
-  // select tool: попытаться зацепить компонент
-  const target = ev.target.closest('.sch-comp, .sch-wire');
+  // select tool: попытаться зацепить компонент или провод
+  const target = ev.target.closest('.sch-comp, .sch-wire, .sch-wire-hit');
   if (target) {
     const kind = target.classList.contains('sch-comp') ? 'component' : 'wire';
     state.selection = { type: kind, id: target.dataset.id };
@@ -561,6 +686,11 @@ function onCanvasDown(ev) {
 
 function onCanvasMove(ev) {
   const pt = mouseToMM(ev);
+  state.mouseMM = pt;
+  updateStatusBar();
+
+  // ghost из палитры следует за курсором
+  if (state.placing) { renderGhost(); return; }
 
   // Подсветить ближайший вывод под курсором (EPLAN-style).
   if (state.tool === 'wire' || state.tool === 'select') {
@@ -594,22 +724,67 @@ function onCanvasMove(ev) {
 }
 
 function onCanvasUp() {
-  if (dragState) dragState = null;
+  if (dragState) {
+    const wasDrag = dragState.type === 'move';
+    dragState = null;
+    if (wasDrag) pushHistory();
+  }
 }
 
 function finalizeWire() {
   if (state.wireDraft && state.wireDraft.points.length >= 2) {
     activeSheet().wires.push({ id: genId('w'), points: state.wireDraft.points });
+    autoJunctions();
+    pushHistory();
   }
   state.wireDraft = null;
   overlayG.innerHTML = '';
   render();
 }
 
+// При T-образном соединении конца одного провода с серединой другого —
+// автоматически добавить точку-соединение (junction).
+function autoJunctions() {
+  const sheet = activeSheet();
+  const existing = new Set(
+    sheet.components.filter(c => c.symbolId === '__junction__').map(c => `${c.x}|${c.y}`)
+  );
+  const endpoints = [];
+  sheet.wires.forEach(w => {
+    const pts = w.points.map(resolveWirePoint);
+    if (pts.length) {
+      endpoints.push(pts[0]);
+      endpoints.push(pts[pts.length - 1]);
+    }
+  });
+  // для каждого конца проверим, лежит ли он на средине ортогонального
+  // сегмента другого провода
+  for (const ep of endpoints) {
+    let onSegment = false;
+    for (const w of sheet.wires) {
+      const pts = w.points.map(resolveWirePoint);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        if (a.x === b.x && a.x === ep.x && ep.y > Math.min(a.y, b.y) && ep.y < Math.max(a.y, b.y)) { onSegment = true; break; }
+        if (a.y === b.y && a.y === ep.y && ep.x > Math.min(a.x, b.x) && ep.x < Math.max(a.x, b.x)) { onSegment = true; break; }
+      }
+      if (onSegment) break;
+    }
+    const key = `${ep.x}|${ep.y}`;
+    if (onSegment && !existing.has(key)) {
+      sheet.components.push({
+        id: genId('j'), symbolId: '__junction__',
+        x: ep.x, y: ep.y, rot: 0, mirror: false,
+      });
+      existing.add(key);
+    }
+  }
+}
+
 // ============================================================================
 // Действия
 // ============================================================================
-function placeComponent(symbolId, x, y) {
+function placeComponent(symbolId, x, y, rot = 0, mirror = false) {
   const sym = getSymbolById(symbolId);
   if (!sym) return;
   const sheet = activeSheet();
@@ -621,8 +796,7 @@ function placeComponent(symbolId, x, y) {
     id: genId('c'),
     symbolId,
     x, y,
-    rot: 0,
-    mirror: false,
+    rot, mirror,
     ref: `${sym.refPrefix}${n}`,
     value: '',
   });
@@ -633,6 +807,7 @@ function rotateSelection() {
   const comp = activeSheet().components.find(c => c.id === state.selection.id);
   if (!comp) return;
   comp.rot = ((comp.rot || 0) + 90) % 360;
+  pushHistory();
   render();
 }
 function mirrorSelection() {
@@ -640,6 +815,7 @@ function mirrorSelection() {
   const comp = activeSheet().components.find(c => c.id === state.selection.id);
   if (!comp) return;
   comp.mirror = !comp.mirror;
+  pushHistory();
   render();
 }
 function deleteSelection() {
@@ -647,10 +823,16 @@ function deleteSelection() {
   const sheet = activeSheet();
   if (state.selection.type === 'component') {
     sheet.components = sheet.components.filter(c => c.id !== state.selection.id);
+    // удалить провода, которые опирались на выводы этого компонента
+    sheet.wires.forEach(w => {
+      w.points = w.points.map(p => p && p.ref && p.ref.comp === state.selection.id
+        ? { x: p.x, y: p.y } : p);
+    });
   } else if (state.selection.type === 'wire') {
     sheet.wires = sheet.wires.filter(w => w.id !== state.selection.id);
   }
   state.selection = null;
+  pushHistory();
   render();
 }
 
@@ -687,12 +869,13 @@ function renderContent() {
   // компоненты
   const comps = sheet.components.map(c => renderComponent(c, connected)).join('');
   compsG.innerHTML = comps;
-  // провода
+  // провода: невидимый толстый «hit» под видимой линией
   const wires = sheet.wires.map(w => {
     const pts = w.points.map(resolveWirePoint);
-    return `<polyline class="sch-wire ${state.selection && state.selection.type==='wire' && state.selection.id===w.id ? 'selected' : ''}"
-              data-id="${w.id}"
-              points="${pts.map(p => `${p.x},${p.y}`).join(' ')}"/>`;
+    const ptsStr = pts.map(p => `${p.x},${p.y}`).join(' ');
+    const sel = state.selection && state.selection.type==='wire' && state.selection.id===w.id ? 'selected' : '';
+    return `<polyline class="sch-wire-hit" data-id="${w.id}" points="${ptsStr}"/>
+            <polyline class="sch-wire ${sel}" data-id="${w.id}" points="${ptsStr}"/>`;
   }).join('');
   wiresG.innerHTML = wires;
   // тексты
