@@ -193,6 +193,8 @@ export function initToolbar() {
   ensureDefaultPage();
   const pageTabsList = document.getElementById('page-tabs-list');
   const pageAddBtn = document.getElementById('page-tab-add');
+  const escapePage = (s) => String(s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
+
   const renderPageTabs = () => {
     if (!pageTabsList) return;
     pageTabsList.innerHTML = '';
@@ -202,15 +204,27 @@ export function initToolbar() {
       tab.dataset.pageId = p.id;
       const typeLabel = p.type === 'linked' ? 'ССЫЛ' : 'НЕЗ';
       tab.innerHTML = `<span class="page-tab-name">${escapePage(p.name || p.id)}</span> <span class="page-tab-type">${typeLabel}</span>`;
-      tab.onclick = () => switchPage(p.id);
-      tab.oncontextmenu = (e) => { e.preventDefault(); showPageMenu(e, p.id); };
+      tab.onclick = (e) => {
+        // Если клик пришёл по inline-input (ещё идёт переименование) — не переключаем
+        if (e.target.classList && e.target.classList.contains('page-tab-rename')) return;
+        switchPage(p.id);
+      };
+      tab.ondblclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startInlineRename(tab, p.id);
+      };
+      tab.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showPageMenu(e.clientX, e.clientY, p.id);
+      };
       pageTabsList.appendChild(tab);
     }
   };
-  const escapePage = (s) => String(s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
+
   const switchPage = (pageId) => {
     if (pageId === state.currentPageId) return;
-    // Сохранить view текущей страницы
     const cur = getCurrentPage();
     if (cur) cur.view = { ...state.view };
     state.currentPageId = pageId;
@@ -221,8 +235,8 @@ export function initToolbar() {
     renderPageTabs();
     render();
   };
+
   const addPage = (type = 'independent') => {
-    // Сохранить view текущей
     const cur = getCurrentPage();
     if (cur) cur.view = { ...state.view };
     const newId = nextPageId();
@@ -240,24 +254,48 @@ export function initToolbar() {
     renderPageTabs();
     render();
   };
-  const renamePage = (pageId) => {
+
+  const duplicatePage = (pageId) => {
     const p = state.pages.find(p => p.id === pageId);
     if (!p) return;
-    const name = prompt('Название страницы:', p.name || p.id);
-    if (name && name.trim()) { p.name = name.trim(); renderPageTabs(); }
-  };
-  const changePageType = (pageId) => {
-    const p = state.pages.find(p => p.id === pageId);
-    if (!p) return;
-    p.type = p.type === 'linked' ? 'independent' : 'linked';
+    const newId = nextPageId();
+    state.pages.push({
+      id: newId,
+      name: (p.name || 'Страница') + ' (копия)',
+      type: p.type || 'independent',
+      view: { ...(p.view || state.view) },
+    });
+    // Копируем pageIds: каждый узел который есть на p, также станет на newId
+    for (const n of state.nodes.values()) {
+      if (Array.isArray(n.pageIds) && n.pageIds.includes(pageId)) {
+        if (!n.pageIds.includes(newId)) n.pageIds.push(newId);
+      }
+    }
     renderPageTabs();
   };
+
+  const setPageType = (pageId, type) => {
+    const p = state.pages.find(p => p.id === pageId);
+    if (!p) return;
+    p.type = type;
+    renderPageTabs();
+  };
+
+  const movePage = (pageId, dir) => {
+    const idx = state.pages.findIndex(p => p.id === pageId);
+    if (idx < 0) return;
+    const to = idx + dir;
+    if (to < 0 || to >= state.pages.length) return;
+    const [it] = state.pages.splice(idx, 1);
+    state.pages.splice(to, 0, it);
+    renderPageTabs();
+  };
+
   const deletePage = (pageId) => {
     if ((state.pages || []).length <= 1) { alert('Нельзя удалить единственную страницу'); return; }
     const p = state.pages.find(p => p.id === pageId);
     if (!p) return;
-    if (!confirm(`Удалить страницу "${p.name || p.id}"?\n\nУзлы, принадлежавшие ТОЛЬКО этой странице, будут удалены. Узлы, которые также есть на других страницах, останутся.`)) return;
-    // Удалить nodeId этой страницы из всех узлов; узлы, у которых pageIds стал пустым, удалить.
+    if (!confirm(`Удалить страницу "${p.name || p.id}"?\n\nУзлы, принадлежавшие ТОЛЬКО этой странице, будут удалены. Узлы, которые есть и на других страницах, останутся.`)) return;
     const toDelete = [];
     for (const n of state.nodes.values()) {
       if (Array.isArray(n.pageIds)) {
@@ -266,32 +304,154 @@ export function initToolbar() {
       }
     }
     for (const id of toDelete) state.nodes.delete(id);
-    // Удалить связи, чьи узлы удалены
     for (const [cid, c] of Array.from(state.conns.entries())) {
       if (!state.nodes.has(c.from.nodeId) || !state.nodes.has(c.to.nodeId)) state.conns.delete(cid);
     }
     state.pages = state.pages.filter(x => x.id !== pageId);
-    state.currentPageId = state.pages[0].id;
-    const next = getCurrentPage();
-    if (next && next.view) state.view = { ...next.view };
+    if (state.currentPageId === pageId) {
+      state.currentPageId = state.pages[0].id;
+      const next = getCurrentPage();
+      if (next && next.view) state.view = { ...next.view };
+    }
     renderPageTabs();
     render();
   };
-  // Простое контекстное меню — через prompt-подобные шаги
-  const showPageMenu = (e, pageId) => {
+
+  // Inline-переименование по двойному клику
+  const startInlineRename = (tabEl, pageId) => {
     const p = state.pages.find(p => p.id === pageId);
     if (!p) return;
-    const action = prompt(
-      `Страница: ${p.name}\nТип: ${p.type === 'linked' ? 'Ссылочная' : 'Независимая'}\n\nДействие:\n1 — переименовать\n2 — сменить тип\n3 — удалить\n\nВведите число:`
-    );
-    if (action === '1') renamePage(pageId);
-    else if (action === '2') changePageType(pageId);
-    else if (action === '3') deletePage(pageId);
+    const nameEl = tabEl.querySelector('.page-tab-name');
+    if (!nameEl) return;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'page-tab-rename';
+    input.value = p.name || p.id;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    const commit = () => {
+      const v = input.value.trim();
+      if (v) p.name = v;
+      renderPageTabs();
+    };
+    const cancel = () => renderPageTabs();
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', commit);
+    input.addEventListener('click', (e) => e.stopPropagation());
   };
+
+  // Custom контекстное меню (вместо prompt)
+  let _pageMenu = null;
+  const closePageMenu = () => {
+    if (_pageMenu) { _pageMenu.remove(); _pageMenu = null; }
+  };
+  const showPageMenu = (x, y, pageId) => {
+    closePageMenu();
+    const p = state.pages.find(p => p.id === pageId);
+    if (!p) return;
+    const pages = state.pages || [];
+    const idx = pages.findIndex(pp => pp.id === pageId);
+    const menu = document.createElement('div');
+    menu.className = 'page-tab-menu';
+    const item = (label, handler, opts = {}) => {
+      const it = document.createElement('div');
+      it.className = 'pm-item' + (opts.checked ? ' pm-checked' : '') + (opts.danger ? ' pm-danger' : '');
+      it.innerHTML = `<span>${escapePage(label)}</span>${opts.shortcut ? `<span class="pm-shortcut">${opts.shortcut}</span>` : ''}`;
+      it.onclick = (ev) => { ev.stopPropagation(); closePageMenu(); handler(); };
+      menu.appendChild(it);
+    };
+    const sep = () => {
+      const s = document.createElement('div');
+      s.className = 'pm-sep';
+      menu.appendChild(s);
+    };
+    const group = (label) => {
+      const g = document.createElement('div');
+      g.className = 'pm-group-label';
+      g.textContent = label;
+      menu.appendChild(g);
+    };
+    item('Переименовать', () => {
+      const tabEl = pageTabsList.querySelector(`.page-tab[data-page-id="${pageId}"]`);
+      if (tabEl) startInlineRename(tabEl, pageId);
+    }, { shortcut: 'F2' });
+    item('Дублировать', () => duplicatePage(pageId));
+    sep();
+    group('Тип страницы');
+    item('Независимая', () => setPageType(pageId, 'independent'), { checked: p.type !== 'linked' });
+    item('Ссылочная',   () => setPageType(pageId, 'linked'),      { checked: p.type === 'linked' });
+    sep();
+    group('Порядок');
+    const leftDisabled = idx <= 0;
+    const rightDisabled = idx >= pages.length - 1;
+    if (!leftDisabled) item('← Переместить влево', () => movePage(pageId, -1));
+    if (!rightDisabled) item('Переместить вправо →', () => movePage(pageId, 1));
+    sep();
+    item('Удалить страницу', () => deletePage(pageId), { danger: true, shortcut: 'Del' });
+
+    document.body.appendChild(menu);
+    // Позиционирование с учётом краёв экрана
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    const ww = window.innerWidth, wh = window.innerHeight;
+    menu.style.left = Math.max(4, Math.min(x, ww - mw - 4)) + 'px';
+    menu.style.top  = Math.max(4, Math.min(y, wh - mh - 4)) + 'px';
+    _pageMenu = menu;
+    // Закрытие по клику в любом месте
+    setTimeout(() => {
+      const onDown = (ev) => {
+        if (_pageMenu && !_pageMenu.contains(ev.target)) {
+          closePageMenu();
+          document.removeEventListener('mousedown', onDown, true);
+          document.removeEventListener('contextmenu', onDown, true);
+        }
+      };
+      document.addEventListener('mousedown', onDown, true);
+      document.addEventListener('contextmenu', onDown, true);
+    }, 0);
+  };
+  // Esc — закрытие меню
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _pageMenu) closePageMenu();
+  });
+
   if (pageAddBtn) {
-    pageAddBtn.onclick = () => {
-      const t = confirm('OK — Независимая (свои узлы)\nОтмена — Ссылочная (можно добавлять узлы из других страниц)');
-      addPage(t ? 'independent' : 'linked');
+    // Клик по + — показать мини-меню для выбора типа новой страницы
+    pageAddBtn.onclick = (e) => {
+      const rect = pageAddBtn.getBoundingClientRect();
+      const menu = document.createElement('div');
+      menu.className = 'page-tab-menu';
+      const mkItem = (label, handler) => {
+        const it = document.createElement('div');
+        it.className = 'pm-item';
+        it.textContent = label;
+        it.onclick = (ev) => { ev.stopPropagation(); closePageMenu(); handler(); };
+        menu.appendChild(it);
+      };
+      closePageMenu();
+      const g = document.createElement('div');
+      g.className = 'pm-group-label';
+      g.textContent = 'Новая страница';
+      menu.appendChild(g);
+      mkItem('Независимая', () => addPage('independent'));
+      mkItem('Ссылочная', () => addPage('linked'));
+      document.body.appendChild(menu);
+      const mw = menu.offsetWidth, mh = menu.offsetHeight;
+      menu.style.left = Math.min(rect.left, window.innerWidth - mw - 4) + 'px';
+      menu.style.top  = Math.max(4, rect.top - mh - 4) + 'px';
+      _pageMenu = menu;
+      setTimeout(() => {
+        const onDown = (ev) => {
+          if (_pageMenu && !_pageMenu.contains(ev.target)) {
+            closePageMenu();
+            document.removeEventListener('mousedown', onDown, true);
+          }
+        };
+        document.addEventListener('mousedown', onDown, true);
+      }, 0);
     };
   }
   renderPageTabs();

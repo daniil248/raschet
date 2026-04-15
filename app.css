@@ -796,6 +796,55 @@ input, select { font: inherit; }
 /* Сдвигаем svg, чтобы вкладки не перекрывали */
 #canvas-wrap > svg#canvas { bottom: 28px !important; }
 
+/* Inline-редактирование названия вкладки */
+.page-tab input.page-tab-rename {
+  background: #fff;
+  border: 1px solid #2979ff;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 12px;
+  color: #2b303b;
+  padding: 1px 4px;
+  width: 120px;
+  outline: none;
+}
+
+/* Контекстное меню вкладки (как в drawio) */
+.page-tab-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #dfe2e8;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  padding: 4px 0;
+  font-size: 12px;
+  user-select: none;
+}
+.page-tab-menu .pm-item {
+  padding: 6px 14px;
+  cursor: pointer;
+  color: #2b303b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.page-tab-menu .pm-item:hover { background: #eef5ff; }
+.page-tab-menu .pm-item .pm-shortcut { color: #9aa0a6; font-size: 11px; }
+.page-tab-menu .pm-item.pm-danger { color: #c62828; }
+.page-tab-menu .pm-item.pm-danger:hover { background: #ffebee; }
+.page-tab-menu .pm-item.pm-checked::before { content: '✓ '; color: #2979ff; font-weight: 700; }
+.page-tab-menu .pm-sep { height: 1px; background: #eef1f6; margin: 4px 0; }
+.page-tab-menu .pm-group-label {
+  padding: 4px 14px 2px;
+  font-size: 10px;
+  color: #9aa0a6;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
 .conn-label {
   font: 600 11px -apple-system, "Segoe UI", sans-serif;
   fill: #c62828;
