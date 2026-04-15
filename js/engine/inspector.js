@@ -1188,21 +1188,20 @@ export function openConsumerParamsModal(n) {
 
   h.push(field('Количество в группе', `<input type="number" id="cp-count" min="1" max="999" step="1" value="${n.count || 1}">`));
   // Чекбокс «Последовательное соединение» — активен только при count > 1.
-  // Электрически группа всё равно одна линия / один автомат / один кабель,
-  // флаг меняет: (а) визуал (иконки цепочкой); (б) режим указания нагрузки
-  // (На каждый / На всю группу); (в) балансировку фаз (serial не разбивается).
+  // Поле «Указание нагрузки» всегда присутствует, но скрывается CSS когда !serialMode,
+  // чтобы показываться/прятаться сразу при клике на чекбокс (без кнопки Применить).
   const _cpCount = Math.max(1, Number(n.count) || 1);
   const _serial = _cpCount > 1 && !!n.serialMode;
   const _loadSpec = (n.loadSpec === 'total') ? 'total' : 'per-unit';
   if (_cpCount > 1) {
     h.push(`<div class="field check"><input type="checkbox" id="cp-serialMode"${n.serialMode ? ' checked' : ''}><label>Последовательное соединение (цепочка)</label></div>`);
-    if (_serial) {
-      h.push(field('Указание нагрузки', `
-        <select id="cp-loadSpec">
-          <option value="per-unit"${_loadSpec === 'per-unit' ? ' selected' : ''}>На каждый элемент</option>
-          <option value="total"${_loadSpec === 'total' ? ' selected' : ''}>На всю группу</option>
-        </select>`));
-    }
+    h.push(`<div id="cp-loadSpec-wrap" class="field" style="${_serial ? '' : 'display:none'}">
+      <label>Указание нагрузки</label>
+      <select id="cp-loadSpec">
+        <option value="per-unit"${_loadSpec === 'per-unit' ? ' selected' : ''}>На каждый элемент</option>
+        <option value="total"${_loadSpec === 'total' ? ' selected' : ''}>На всю группу</option>
+      </select>
+    </div>`);
   }
   // Значение в поле demandKw показываем как total или per-unit в зависимости
   // от режима loadSpec. Внутренне n.demandKw ВСЕГДА хранится per-unit.
@@ -1212,8 +1211,10 @@ export function openConsumerParamsModal(n) {
   const _demandLabel = (_cpCount > 1)
     ? ((_serial && _loadSpec === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
     : 'Установленная мощность, kW';
-  h.push(field(_demandLabel,
-    `<input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}">`));
+  h.push(`<div id="cp-demandKw-wrap" class="field">
+    <label id="cp-demandKw-label">${_demandLabel}</label>
+    <input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}">
+  </div>`);
 
   // Напряжение
   const levels = GLOBAL.voltageLevels || [];
@@ -1319,6 +1320,55 @@ export function openConsumerParamsModal(n) {
         openConsumerParamsModal(n); // перерисовать
       }
     });
+  }
+
+  // Live-обновление полей serial/loadSpec: показываем/скрываем «Указание нагрузки»
+  // и переименовываем label «Мощность ...» сразу по клику, без Apply.
+  // Также конвертируем значение demandKw при переключении per-unit ↔ total,
+  // чтобы пользователь видел корректное число для выбранного режима.
+  const serialCb = document.getElementById('cp-serialMode');
+  const loadSpecSel = document.getElementById('cp-loadSpec');
+  const loadSpecWrap = document.getElementById('cp-loadSpec-wrap');
+  const demandInput = document.getElementById('cp-demandKw');
+  const demandLabel = document.getElementById('cp-demandKw-label');
+  const countInput = document.getElementById('cp-count');
+  const updateDemandUi = (prevSerial, prevLoadSpec) => {
+    const cnt = Math.max(1, Number(countInput?.value) || 1);
+    const serial = !!serialCb?.checked;
+    const ls = (loadSpecSel?.value === 'total') ? 'total' : 'per-unit';
+    if (loadSpecWrap) loadSpecWrap.style.display = serial ? '' : 'none';
+    if (demandLabel) {
+      demandLabel.textContent = (cnt > 1)
+        ? ((serial && ls === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
+        : 'Установленная мощность, kW';
+    }
+    // Конвертируем значение в поле при смене режима, чтобы юзер видел согласованную цифру
+    if (demandInput) {
+      const cur = Number(demandInput.value) || 0;
+      const wasTotal = !!prevSerial && prevLoadSpec === 'total' && cnt > 1;
+      const isTotal = serial && ls === 'total' && cnt > 1;
+      if (wasTotal !== isTotal) {
+        if (isTotal) demandInput.value = (cur * cnt).toFixed(2).replace(/\.00$/, '');
+        else demandInput.value = (cur / cnt).toFixed(2).replace(/\.00$/, '');
+      }
+    }
+  };
+  if (serialCb) {
+    // Храним предыдущее состояние, чтобы знать «было / стало» для конвертации.
+    let _prevSerial = serialCb.checked;
+    let _prevLS = loadSpecSel?.value || 'per-unit';
+    serialCb.addEventListener('change', () => {
+      updateDemandUi(_prevSerial, _prevLS);
+      _prevSerial = serialCb.checked;
+      _prevLS = loadSpecSel?.value || 'per-unit';
+    });
+    if (loadSpecSel) {
+      loadSpecSel.addEventListener('change', () => {
+        updateDemandUi(_prevSerial, _prevLS);
+        _prevSerial = serialCb.checked;
+        _prevLS = loadSpecSel.value || 'per-unit';
+      });
+    }
   }
 
   const applyBtn = document.getElementById('consumer-params-apply');

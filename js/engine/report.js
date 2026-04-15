@@ -5,6 +5,13 @@ import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { effectiveTag } from './zones.js';
 import { fmt } from './utils.js';
 
+// Полное обозначение узла — всегда с префиксом зоны (например «P1.MPB1»),
+// чтобы в отчёте не было дубликатов при одинаковых коротких tag в разных зонах.
+function fullTag(n) {
+  if (!n) return '';
+  return effectiveTag(n) || n.tag || '';
+}
+
 // Сортировка по обозначению (tag) в алфавитном порядке
 function sortByTag(arr) {
   return arr.sort((a, b) => {
@@ -60,7 +67,7 @@ export function get3PhaseBalance() {
     const imbalance = ((max - avg) / avg) * 100;
     out.push({
       panelId,
-      tag: panel?.tag || '',
+      tag: fullTag(panel),
       name: panel?.name || '',
       a: g.a, b: g.b, c: g.c,
       imbalance,
@@ -101,7 +108,7 @@ export function generateReport() {
       const type = s.type === 'source' ? 'Источник' : (s.backupMode ? 'Генер.рез.' : 'Генератор');
       const status = !on ? ' ОТКЛ' : (s._overload ? ' ПЕРЕГР' : '');
       lines.push(
-        (s.tag || '').padEnd(8) +
+        fullTag(s).padEnd(12) +
         (s.name || '').padEnd(21) +
         type.padEnd(12) +
         String(fmt(cap)).padStart(8) + '  ' +
@@ -124,7 +131,7 @@ export function generateReport() {
       const eff = Number(u.efficiency) || 100;
       const batt = (Number(u.batteryKwh) || 0) * (Number(u.batteryChargePct) || 0) / 100;
       const aut = load > 0 ? batt / load * 60 : 0;
-      lines.push(`${(u.tag || '').padEnd(8)}${u.name}`);
+      lines.push(`${fullTag(u).padEnd(12)}${u.name}`);
       const maxLoad = u._maxLoadKw || load;
       lines.push(`   Pном:       ${fmt(cap)} kW  (КПД ${eff}%)`);
       lines.push(`   Текущая:    ${fmt(load)} kW`);
@@ -153,7 +160,7 @@ export function generateReport() {
                  : 'АВР';
       const capA = p.capacityA || 0;
       lines.push(
-        (p.tag || '').padEnd(8) +
+        fullTag(p).padEnd(12) +
         (p.name || '').padEnd(21) +
         String(capA).padStart(5) + '  ' +
         `${p.inputs}/${p.outputs}`.padEnd(8) +
@@ -182,7 +189,7 @@ export function generateReport() {
       const sum = per * cnt * k;
       if (c._powered) total += sum;
       lines.push(
-        (c.tag || '').padEnd(8) +
+        fullTag(c).padEnd(12) +
         (c.name || '').padEnd(21) +
         (c.phase || '3ph').padEnd(5) + ' ' +
         String(fmt(per)).padStart(6) + ' ' +
@@ -273,7 +280,7 @@ export function generateReport() {
     for (const b of balance) {
       const warn = b.warning ? '  ⚠ превышен' : '';
       lines.push(
-        ((b.tag || '') + ' ' + (b.name || '')).padEnd(22) +
+        ((b.tag || '') + ' ' + (b.name || '')).padEnd(26) +
         String(fmt(b.a)).padStart(8) + ' ' +
         String(fmt(b.b)).padStart(8) + ' ' +
         String(fmt(b.c)).padStart(8) + '    ' +
@@ -289,21 +296,21 @@ export function generateReport() {
   for (const n of state.nodes.values()) {
     if (n.type === 'consumer') {
       const hasIn = [...state.conns.values()].some(c => c.to.nodeId === n.id);
-      if (!hasIn) issues.push(`  ⚠ Потребитель ${n.tag || n.name} не подключён`);
-      if (!n._powered) issues.push(`  ⚠ Потребитель ${n.tag || n.name} без питания`);
+      if (!hasIn) issues.push(`  ⚠ Потребитель ${fullTag(n) || n.name} не подключён`);
+      if (!n._powered) issues.push(`  ⚠ Потребитель ${fullTag(n) || n.name} без питания`);
     }
     if (n.type === 'panel') {
       const hasOut = [...state.conns.values()].some(c => c.from.nodeId === n.id);
-      if (!hasOut) issues.push(`  ⚠ Щит ${n.tag || n.name} не имеет отходящих линий`);
+      if (!hasOut) issues.push(`  ⚠ Щит ${fullTag(n) || n.name} не имеет отходящих линий`);
     }
     if (n.type === 'ups' && (Number(n.batteryKwh) || 0) <= 0) {
-      issues.push(`  ⚠ ИБП ${n.tag || n.name}: нулевая ёмкость батареи`);
+      issues.push(`  ⚠ ИБП ${fullTag(n) || n.name}: нулевая ёмкость батареи`);
     }
     if (n.type === 'generator' && !n.backupMode) {
-      issues.push(`  ℹ Генератор ${n.tag || n.name} работает как основной источник (не резерв)`);
+      issues.push(`  ℹ Генератор ${fullTag(n) || n.name} работает как основной источник (не резерв)`);
     }
     if (n._overload) {
-      issues.push(`  ⚠ ${n.tag || n.name}: перегруз (${fmt(n._loadKw)}/${fmt(n.capacityKw)} kW)`);
+      issues.push(`  ⚠ ${fullTag(n) || n.name}: перегруз (${fmt(n._loadKw)}/${fmt(n.capacityKw)} kW)`);
     }
   }
   if (issues.length) {
