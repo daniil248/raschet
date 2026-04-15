@@ -1245,6 +1245,11 @@ export function renderConns() {
           const vc = cableVoltageClass(c._voltage || 0);
           labelText = vc + ' · ' + labelText;
         }
+        // DC-линии: префикс "=" (ГОСТ/IEC стандарт для постоянного тока).
+        if (c._isDC) {
+          const uDc = Math.round(Number(c._voltage) || 0);
+          labelText = `= ${uDc} В · ` + labelText;
+        }
       }
 
       if (labelText) {

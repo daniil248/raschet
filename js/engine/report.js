@@ -322,8 +322,8 @@ export function generateReport() {
     const aTo = effectiveTag(state.nodes.get(a.to.nodeId)) || '';
     const bFrom = effectiveTag(state.nodes.get(b.from.nodeId)) || '';
     const bTo = effectiveTag(state.nodes.get(b.to.nodeId)) || '';
-    const aPre = a._isHV ? 'WH' : 'W';
-    const bPre = b._isHV ? 'WH' : 'W';
+    const aPre = a._isHV ? 'WH' : (a._isDC ? 'WD' : 'W');
+    const bPre = b._isHV ? 'WH' : (b._isDC ? 'WD' : 'W');
     const la = (a.lineLabel || `${aPre}-${aFrom}-${aTo}`).toLowerCase();
     const lb = (b.lineLabel || `${bPre}-${bFrom}-${bTo}`).toLowerCase();
     return la.localeCompare(lb, 'ru', { numeric: true, sensitivity: 'base' });
@@ -350,7 +350,7 @@ export function generateReport() {
       const toN = state.nodes.get(c.to.nodeId);
       const fromTag = effectiveTag(fromN) || fromN?.name || '?';
       const toTag = effectiveTag(toN) || toN?.name || '?';
-      const linePrefix = c._isHV ? 'WH' : 'W';
+      const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
       const lineLabel = c.lineLabel || `${linePrefix}-${fromTag}-${toTag}`;
       const warn = c._cableOverflow ? ' ⚠' : '';
       const length = c._cableLength != null ? c._cableLength : (c.lengthM || 0);
@@ -373,6 +373,8 @@ export function generateReport() {
         conductorSpec = `${cores}×${c._cableSize} мм²`;
         // IEC 60502-2 класс напряжения для HV-кабелей
         if (c._isHV) conductorSpec = cableVoltageClass(c._voltage || 0) + ' · ' + conductorSpec;
+        // DC-префикс (постоянный ток АКБ / Li-Ion)
+        if (c._isDC) conductorSpec = `= ${Math.round(Number(c._voltage) || 0)} В · ` + conductorSpec;
         methodStr = c._cableMethod || '-';
       }
 
