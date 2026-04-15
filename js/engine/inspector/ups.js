@@ -177,6 +177,67 @@ export function openUpsParamsModal(n) {
 
   body.innerHTML = h.join('');
 
+  // Живой перерисовщик при смене зависимых селектов (тип ИБП, режим
+  // байпаса). Сохраняет все уже введённые видимые поля — иначе ввод
+  // сбрасывался бы на дефолты. Никакого snapshot/recalc не делает.
+  const snapshotVisibleFields = () => {
+    const grab = (id, key, numeric = false, checkbox = false) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (checkbox) n[key] = !!el.checked;
+      else if (numeric) { const v = Number(el.value); if (!Number.isNaN(v)) n[key] = v; }
+      else n[key] = el.value;
+    };
+    grab('up-name', 'name');
+    grab('up-capKw', 'capacityKw', true);
+    grab('up-eff', 'efficiency', true);
+    grab('up-inputs', 'inputs', true);
+    grab('up-outputs', 'outputs', true);
+    // Модульные поля
+    grab('up-frameKw', 'frameKw', true);
+    grab('up-modKwRated', 'moduleKwRated', true);
+    grab('up-slots', 'moduleSlots', true);
+    grab('up-installed', 'moduleInstalled', true);
+    grab('up-redund', 'redundancyScheme');
+    // Батарея
+    grab('up-battType', 'batteryType');
+    grab('up-battCells', 'batteryCellCount', true);
+    grab('up-battCellV', 'batteryCellVoltage', true);
+    grab('up-battAh', 'batteryCapacityAh', true);
+    grab('up-battStr', 'batteryStringCount', true);
+    grab('up-battPct', 'batteryChargePct', true);
+    // Напряжение и cos
+    grab('up-cosPhi', 'cosPhi', true);
+    // Байпас
+    grab('up-bypass', 'staticBypass', false, true);
+    grab('up-bypassAuto', 'staticBypassAuto', false, true);
+    grab('up-bypassPct', 'staticBypassOverloadPct', true);
+    grab('up-bypassForced', 'staticBypassForced', false, true);
+    // Флаги автоматов
+    for (const flag of ['hasInputBreaker','hasInputBypassBreaker','hasOutputBreaker','hasBypassBreaker','hasBatteryBreaker']) {
+      grab('up-' + flag, flag, false, true);
+    }
+  };
+  const upsTypeSel = document.getElementById('up-upsType');
+  if (upsTypeSel) {
+    upsTypeSel.addEventListener('change', () => {
+      snapshotVisibleFields();
+      n.upsType = upsTypeSel.value || 'monoblock';
+      openUpsParamsModal(n);
+    });
+  }
+  const bypassModeSel = document.getElementById('up-bypassMode');
+  if (bypassModeSel) {
+    bypassModeSel.addEventListener('change', () => {
+      snapshotVisibleFields();
+      n.bypassFeedMode = bypassModeSel.value === 'separate' ? 'separate' : 'jumper';
+      if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
+        n.inputs = 2;
+      }
+      openUpsParamsModal(n);
+    });
+  }
+
   const applyBtn = document.getElementById('ups-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
     if (n.id !== '__preset_edit__') snapshot('ups-params:' + n.id);
