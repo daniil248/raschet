@@ -202,7 +202,9 @@ export function initToolbar() {
       const tab = document.createElement('div');
       tab.className = 'page-tab' + (p.id === state.currentPageId ? ' active' : '') + (p.type === 'linked' ? ' linked' : '');
       tab.dataset.pageId = p.id;
-      // Для независимых страниц — без метки, только название.
+      // Префикс номера листа, если задан
+      const sheetPrefix = p.sheetNo ? `${escapePage(p.sheetNo)}. ` : '';
+      // Для независимых страниц — без метки типа, только № + имя.
       // Для ссылочных — показываем «→ имя родителя».
       let typeHtml = '';
       if (p.type === 'linked') {
@@ -210,7 +212,13 @@ export function initToolbar() {
         const parentName = src ? (src.name || src.id) : '?';
         typeHtml = ` <span class="page-tab-type">→ ${escapePage(parentName)}</span>`;
       }
-      tab.innerHTML = `<span class="page-tab-name">${escapePage(p.name || p.id)}</span>${typeHtml}`;
+      tab.innerHTML = `<span class="page-tab-name">${sheetPrefix}${escapePage(p.name || p.id)}</span>${typeHtml}`;
+      // Tooltip с полной инфой листа
+      const tipParts = [];
+      if (p.title) tipParts.push(p.title);
+      if (p.revision) tipParts.push('ревизия ' + p.revision);
+      if (p.description) tipParts.push(p.description);
+      if (tipParts.length) tab.title = tipParts.join(' · ');
       tab.onclick = (e) => {
         // Если клик пришёл по inline-input (ещё идёт переименование) — не переключаем
         if (e.target.classList && e.target.classList.contains('page-tab-rename')) return;
@@ -249,6 +257,16 @@ export function initToolbar() {
     } catch {}
   };
 
+  // Авто-назначение № листа: максимальный числовой sheetNo + 1
+  const _nextSheetNo = () => {
+    let mx = 0;
+    for (const p of (state.pages || [])) {
+      const n = parseInt(String(p.sheetNo || '').match(/^\d+/)?.[0] || '0', 10);
+      if (n > mx) mx = n;
+    }
+    return String(mx + 1);
+  };
+
   const addPage = (type = 'independent', sourcePageId = null) => {
     // Ссылочная страница ОБЯЗАНА быть привязана к существующей independent странице.
     if (type === 'linked') {
@@ -267,6 +285,10 @@ export function initToolbar() {
       name: `Страница ${nextNum}`,
       type,
       view: { x: 0, y: 0, zoom: 1 },
+      sheetNo: _nextSheetNo(),
+      title: '',
+      revision: '',
+      description: '',
     };
     if (type === 'linked') newPage.sourcePageId = sourcePageId;
     state.pages.push(newPage);
@@ -286,7 +308,12 @@ export function initToolbar() {
       id: newId,
       name: (p.name || 'Страница') + ' (копия)',
       type: p.type || 'independent',
+      sourcePageId: p.sourcePageId || null,
       view: { ...(p.view || state.view) },
+      sheetNo: _nextSheetNo(),
+      title: p.title || '',
+      revision: p.revision || '',
+      description: p.description || '',
     });
     // Копируем pageIds: каждый узел который есть на p, также станет на newId
     for (const n of state.nodes.values()) {

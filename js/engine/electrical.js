@@ -4,6 +4,32 @@ import { GLOBAL } from './constants.js';
 import { effectiveLoadFactor } from './modes.js';
 import { state } from './state.js';
 
+// Обозначение класса напряжения кабеля по IEC 60502-2:
+// U₀/U (Um) — фаза-земля / фаза-фаза / макс. рабочее.
+// Возвращает строку типа "6/10 (12) кВ" для линий 10 кВ.
+// Для LV (≤ 1 кВ) — "0.6/1 (1.2) кВ".
+export function cableVoltageClass(U) {
+  const ull = Number(U) || 0;
+  // Таблица по стандартным рабочим напряжениям
+  // [fromKv, U0Kv, UKv, UmKv]
+  const table = [
+    [0,     0.6,  1,    1.2],
+    [1100,  3.6,  6,    7.2],
+    [6500,  6,    10,   12],
+    [11000, 8.7,  15,   17.5],
+    [16000, 12,   20,   24],
+    [22000, 18,   30,   36],
+    [33000, 20.5, 35,   42],
+    [42000, 26,   45,   52],
+  ];
+  let pick = table[0];
+  for (const row of table) {
+    if (ull >= row[0]) pick = row;
+  }
+  const fmt = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1);
+  return `${fmt(pick[1])}/${fmt(pick[2])} (${fmt(pick[3])}) кВ`;
+}
+
 // Напряжение потребителя по фазе
 // Возвращает межфазное напряжение (V_LL) для узла
 export function nodeVoltage(n) {

@@ -7,7 +7,7 @@ import { recalc } from './recalc.js';
 import { effectiveTag } from './zones.js';
 import { fmt, escHtml, escAttr } from './utils.js';
 import { snapshot, notifyChange } from './history.js';
-import { computeCurrentA, nodeVoltage, isThreePhase } from './electrical.js';
+import { computeCurrentA, nodeVoltage, isThreePhase, cableVoltageClass } from './electrical.js';
 
 let _renderInspector;
 export function bindRenderDeps({ renderInspector }) { _renderInspector = renderInspector; }
@@ -465,13 +465,20 @@ export function renderNodes() {
       }));
     }
 
-    // Подпись TAG снизу (под башней)
+    // Подпись TAG снизу (под башней) + класс напряжения по IEC 60502-2
     const tag = effectiveTag(n) || n.tag || '';
+    const uVal = nodeVoltage(n);
+    const vClass = cableVoltageClass(uVal);
     if (tag) {
-      const t = text(cx, h - 6, tag, 'node-tag');
+      const t = text(cx, h - 14, tag, 'node-tag');
       t.setAttribute('text-anchor', 'middle');
       g.appendChild(t);
     }
+    // Класс напряжения — мелким шрифтом под тегом
+    const vt = text(cx, h - 2, vClass, 'node-sub');
+    vt.setAttribute('text-anchor', 'middle');
+    vt.setAttribute('style', 'font-size:9px;fill:#546e7a');
+    g.appendChild(vt);
     // Выходной порт — внизу на оси башни (ровно по центру w)
     const outCirc = el('circle', { class: 'port out', cx: portX, cy: h, r: PORT_R });
     outCirc.dataset.portKind = 'out';
@@ -1179,8 +1186,12 @@ export function renderConns() {
           labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
         }
         if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
-        // HV-префикс — для линий > 1 кВ
-        if (c._isHV) labelText = '(ВН) ' + labelText;
+        // Обозначение класса напряжения по IEC 60502-2 для HV-линий:
+        // U₀/U (Um) кВ — ставим перед током и сечением.
+        if (c._isHV) {
+          const vc = cableVoltageClass(c._voltage || 0);
+          labelText = vc + ' · ' + labelText;
+        }
       }
 
       if (labelText) {

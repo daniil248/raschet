@@ -1,8 +1,9 @@
 import { state } from './state.js';
-import { CHANNEL_TYPES } from './constants.js';
+import { CHANNEL_TYPES, GLOBAL } from './constants.js';
 import { recalc } from './recalc.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { effectiveTag } from './zones.js';
+import { cableVoltageClass, nodeVoltage } from './electrical.js';
 import { fmt } from './utils.js';
 
 // Полное обозначение узла — всегда с префиксом зоны (например «P1.MPB1»),
@@ -156,20 +157,37 @@ export function generateReport() {
   const sources = sortByTag([...state.nodes.values()].filter(n => (n.type === 'source' || n.type === 'generator') && _inSpace(n)));
   if (sources.length) {
     lines.push('ИСТОЧНИКИ ПИТАНИЯ');
-    lines.push('-'.repeat(78));
-    lines.push('Обозн.  Имя                  Тип         Pном, kW  Pнаг, kW   Iр, A   cos φ');
+    lines.push('-'.repeat(92));
+    lines.push('Обозн.  Имя                  Тип          U, IEC            Pном,kW  Pнаг,kW   Iр,A   cosφ');
     for (const s of sources) {
       const on = effectiveOn(s);
       const cap = Number(s.capacityKw) || 0;
       const load = s._loadKw || 0;
-      const type = s.type === 'source' ? 'Источник' : (s.backupMode ? 'Генер.рез.' : 'Генератор');
+      const subtype = s.sourceSubtype || (s.type === 'generator' ? 'generator' : 'transformer');
+      let type;
+      if (subtype === 'utility') type = 'Гор. сеть';
+      else if (subtype === 'other') type = 'Прочий';
+      else if (s.type === 'generator') type = s.backupMode ? 'Генер.рез.' : 'Генератор';
+      else type = 'Трансформ.';
       const status = !on ? ' ОТКЛ' : (s._overload ? ' ПЕРЕГР' : '');
+      // Для utility показываем класс по IEC 60502-2; для трансформатора — вторичн./первичн.
+      let vStr;
+      if (subtype === 'utility') {
+        vStr = cableVoltageClass(nodeVoltage(s));
+      } else if (subtype === 'transformer' && typeof s.inputVoltageLevelIdx === 'number') {
+        const levels = GLOBAL.voltageLevels || [];
+        const lvl = levels[s.inputVoltageLevelIdx];
+        vStr = lvl ? `${lvl.vLL}/${nodeVoltage(s)}В` : `${nodeVoltage(s)}В`;
+      } else {
+        vStr = `${nodeVoltage(s)}В`;
+      }
       lines.push(
         fullTag(s).padEnd(12) +
         (s.name || '').padEnd(21) +
         type.padEnd(12) +
-        String(fmt(cap)).padStart(8) + '  ' +
-        String(fmt(load)).padStart(8) + '  ' +
+        vStr.padEnd(18) +
+        String(fmt(cap)).padStart(7) + '  ' +
+        String(fmt(load)).padStart(7) + '  ' +
         String(fmt(s._loadA || 0)).padStart(6) + '   ' +
         ((s._cosPhi || 0).toFixed(2)) + status
       );
@@ -299,7 +317,8 @@ export function generateReport() {
         const cores = c._wireCount || (c._threePhase ? 5 : 3);
         const inner = `${cores}×${c._cableSize} мм²`;
         conductorSpec = (c._cableAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
-        if (c._isHV) conductorSpec = '(ВН) ' + conductorSpec;
+        // IEC 60502-2 класс напряжения для HV-кабелей
+        if (c._isHV) conductorSpec = cableVoltageClass(c._voltage || 0) + ' · ' + conductorSpec;
         methodStr = c._cableMethod || '-';
       }
 

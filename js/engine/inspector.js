@@ -1,7 +1,7 @@
 import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
 import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
-import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount } from './electrical.js';
+import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount, cableVoltageClass } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
 import { effectiveOn, setEffectiveOn, effectiveLoadFactor, setEffectiveLoadFactor } from './modes.js';
 import { snapshot, notifyChange } from './history.js';
@@ -357,9 +357,28 @@ export function renderInspectorNode(n) {
     if (subtype === 'transformer' && typeof n.inputVoltageLevelIdx === 'number' && levels[n.inputVoltageLevelIdx]) {
       voltInfo = `Uвх: <b>${levels[n.inputVoltageLevelIdx].label}</b> → Uвых: <b>${outLabel}</b>`;
     }
+    // Класс напряжения по IEC 60502-2 — для utility, а также для трансформатора
+    // (на первичной и вторичной сторонах).
+    const iecBlock = (() => {
+      if (subtype === 'utility') {
+        return `<br>Класс по IEC 60502-2: <b>${escHtml(cableVoltageClass(nodeVoltage(n)))}</b>`;
+      }
+      if (subtype === 'transformer' && typeof n.inputVoltageLevelIdx === 'number' && levels[n.inputVoltageLevelIdx]) {
+        const Uprim = levels[n.inputVoltageLevelIdx].vLL;
+        const Usec = nodeVoltage(n);
+        return `<br>IEC 60502-2 первич.: <b>${escHtml(cableVoltageClass(Uprim))}</b>` +
+               `<br>IEC 60502-2 вторич.: <b>${escHtml(cableVoltageClass(Usec))}</b>`;
+      }
+      return `<br>Класс по IEC 60502-2: <b>${escHtml(cableVoltageClass(nodeVoltage(n)))}</b>`;
+    })();
+    // Snom скрываем для utility (нет номинальной мощности)
+    const snomLine = (subtype === 'utility')
+      ? ''
+      : `Snom: <b>${fmt(n.snomKva || 0)} kVA</b> (${fmt(n.capacityKw || 0)} kW)<br>`;
     h.push(`<div class="muted" style="font-size:11px;margin-top:4px;line-height:1.6">` +
-      `Snom: <b>${fmt(n.snomKva || 0)} kVA</b> (${fmt(n.capacityKw || 0)} kW)<br>` +
+      snomLine +
       voltInfo +
+      iecBlock +
       `</div>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
@@ -3548,7 +3567,12 @@ export function renderInspectorConn(c) {
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div>`);
     // Блок ПРОВОДНИК — справочная информация
-    h.push('<h4 style="margin:12px 0 6px;font-size:12px">Проводник' + (c._isHV ? ' <span style="font-size:10px;background:#ef6c00;color:#fff;padding:1px 6px;border-radius:3px">ВН</span>' : '') + '</h4>');
+    {
+      const hvBadge = c._isHV
+        ? ` <span style="font-size:10px;background:#ef6c00;color:#fff;padding:1px 6px;border-radius:3px">ВН · ${escHtml(cableVoltageClass(c._voltage || 0))}</span>`
+        : '';
+      h.push(`<h4 style="margin:12px 0 6px;font-size:12px">Проводник${hvBadge}</h4>`);
+    }
     if (c._cableSize || c._busbarNom || c._cableIz) {
       const par = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._threePhase ? 5 : 3);
