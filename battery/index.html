@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Расчёт АКБ</title>
+  <link rel="stylesheet" href="battery-calc.css">
+  <!-- SheetJS (xlsx.full.min.js) для парсинга XLSX в браузере -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <header>
+    <div style="display:flex;align-items:center">
+      <span class="hdr-title">Raschet</span>
+      <span class="hdr-sub">Расчёт АКБ</span>
+    </div>
+    <a class="hdr-home" href="../hub.html">← К программам</a>
+  </header>
+
+  <main>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-catalog">Справочник АКБ</button>
+      <button class="tab-btn" data-tab="tab-calc">Расчёт разряда</button>
+    </div>
+
+    <!-- ================== Справочник АКБ ================== -->
+    <section id="tab-catalog" class="tab-panel active">
+      <div id="upload-zone" class="upload-zone">
+        <div><strong>+ Загрузить</strong> XLSX-файлы с таблицами разряда</div>
+        <div class="hint">Перетащите файлы или кликните. Формат: Battery_Supplier | Battery_Type | Capacity | End_Voltage | Time_Value | Power_Value.</div>
+        <input id="upload-input" type="file" accept=".xlsx" multiple style="display:none">
+      </div>
+
+      <div class="cat-controls">
+        <h3>Загруженные модели АКБ</h3>
+        <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить справочник</button>
+      </div>
+      <div id="catalog-list"></div>
+    </section>
+
+    <!-- ================== Расчёт разряда ================== -->
+    <section id="tab-calc" class="tab-panel">
+      <form id="calc-form" class="calc-form">
+        <div class="field-full">
+          <label>Модель АКБ</label>
+          <select id="calc-battery"></select>
+        </div>
+
+        <div>
+          <label>Режим расчёта</label>
+          <select id="calc-mode">
+            <option value="autonomy">Автономия при заданных блоках</option>
+            <option value="required">Сколько блоков для целевого времени</option>
+          </select>
+        </div>
+        <div>
+          <label>Химия (если таблицы нет)</label>
+          <select id="calc-chem">
+            <option value="vrla">Свинцово-кислотные (VRLA)</option>
+            <option value="li-ion">Литий-ионные (LiFePO4)</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Нагрузка, kW</label>
+          <input id="calc-load" type="number" min="0" step="0.1" value="10">
+        </div>
+        <div>
+          <label>Напряжение блока DC, В</label>
+          <input id="calc-dcv" type="number" min="12" step="1" value="384">
+        </div>
+
+        <div>
+          <label>Цепочек параллельно</label>
+          <input id="calc-strings" type="number" min="1" step="1" value="1">
+        </div>
+        <div>
+          <label>Напряжение одного блока, В</label>
+          <input id="calc-blockv" type="number" min="2" step="1" value="12">
+        </div>
+
+        <div>
+          <label>Ёмкость блока, А·ч (fallback)</label>
+          <input id="calc-capAh" type="number" min="1" step="1" value="100">
+        </div>
+        <div>
+          <label>End voltage (В/элемент)</label>
+          <select id="calc-endv">
+            <option value="1.6">1.60</option>
+            <option value="1.65">1.65</option>
+            <option value="1.7">1.70</option>
+            <option value="1.75" selected>1.75</option>
+            <option value="1.8">1.80</option>
+            <option value="1.85">1.85</option>
+          </select>
+        </div>
+
+        <div>
+          <label>КПД инвертора ИБП, %</label>
+          <input id="calc-inveff" type="number" min="50" max="100" step="1" value="94">
+        </div>
+        <div data-mode-only="required">
+          <label>Целевая автономия, мин</label>
+          <input id="calc-target" type="number" min="1" step="1" value="10">
+        </div>
+
+        <button type="submit">Рассчитать</button>
+      </form>
+
+      <div id="calc-result"></div>
+    </section>
+  </main>
+
+  <div id="flash" class="flash"></div>
+
+  <script type="module" src="battery-calc.js"></script>
+</body>
+</html>
