@@ -223,7 +223,15 @@ export function generateReport() {
       lines.push(`${fullTag(u).padEnd(12)}${u.name}`);
       lines.push(`   Pном:       ${fmt(cap)} kW  (КПД ${eff}%)`);
       lines.push(`   Текущая:    ${fmt(load)} kW`);
+      // Максимальная нагрузка: сколько ИБП должен реально отдать. Лимитирована
+      // номиналом (_maxLoadKw уже capped в recalc.js). Если downstream по
+      // сценариям превышает номинал, выводим предупреждение с uncapped-значением.
       lines.push(`   Макс нагр.: ${fmt(maxLoad)} kW  (${cap > 0 ? Math.round(maxLoad / cap * 100) : 0}%)`);
+      if (u._maxOverload) {
+        const uncapped = Number(u._maxDownstreamUncapped) || 0;
+        lines.push(`   ⚠ ПЕРЕГРУЗ: downstream по макс-сценарию = ${fmt(uncapped)} kW (${cap > 0 ? Math.round(uncapped / cap * 100) : 0}% от номинала)`);
+        lines.push(`              ИБП физически не выдаст больше ${fmt(cap)} kW — требуется увеличить номинал или распределить нагрузку.`);
+      }
       lines.push(`   Батарея:    ${fmt(batt)} kWh · ${u.batteryChargePct || 0}%`);
       // Детали АКБ (каталожный режим): модель, конфигурация, напряжение DC,
       // мощность/блок, автономия по методу (таблица / усреднённая модель).

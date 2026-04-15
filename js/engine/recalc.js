@@ -1798,7 +1798,36 @@ function recalc() {
         n._marginWarn = null;
       }
     } else if (n.type === 'ups') {
-      n._maxLoadKw = maxDownstreamLoad(n.id);
+      // Максимальная нагрузка на ИБП с учётом:
+      //  1) share между параллельными ИБП на одном downstream-щите (если
+      //     2 ИБП питают общий щит, каждый видит половину макс. нагрузки),
+      //  2) физического лимита: ИБП не может выдать больше capacityKw.
+      //     Если downstream-share > capacityKw — это сценарий перегруза,
+      //     ставим флаг n._maxOverload.
+      const cap = Number(n.capacityKw) || 0;
+      const rawMax = maxDownstreamLoad(n.id);
+      // Определяем кол-во параллельных ИБП на одном downstream-щите
+      let upsShare = 1;
+      for (const c2 of state.conns.values()) {
+        if (c2.from.nodeId !== n.id || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
+        const dest = state.nodes.get(c2.to.nodeId);
+        if (!dest || dest.type !== 'panel') continue;
+        let peerCount = 0;
+        for (const c3 of state.conns.values()) {
+          if (c3.to.nodeId !== dest.id || c3.lineMode === 'damaged' || c3.lineMode === 'disabled') continue;
+          const feeder = state.nodes.get(c3.from.nodeId);
+          if (feeder && feeder.type === 'ups') peerCount++;
+        }
+        if (peerCount > 1) upsShare = 1 / peerCount;
+        break;
+      }
+      const sharedMax = rawMax * upsShare;
+      // Физический лимит ИБП: нельзя отдать больше номинала.
+      // Если downstream-share > cap → перегруз.
+      n._maxDownstreamUncapped = sharedMax;
+      n._maxOverload = cap > 0 && sharedMax > cap;
+      n._maxLoadKw = cap > 0 ? Math.min(sharedMax, cap) : sharedMax;
+      if (n._maxOverload) n._overload = true;
     } else if (n.type === 'source' || n.type === 'generator') {
       // cos φ из downstream PQ, но P/S привязаны к _loadKw (walkUp result)
       const pq = downstreamPQ(n.id);
