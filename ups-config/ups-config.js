@@ -197,10 +197,18 @@ function renderSelected(list) {
       <div>КПД:</div><div><b>${fmt(u.efficiency, 0)}%</b></div>`;
   } else if (isBattVrla) {
     rows += `
-      <div>Посадочных мест:</div><div><b>${u.rackSlots || '?'} блоков</b></div>
+      <div>Посадочных мест:</div><div><b>${u.rackSlots || '?'} блоков</b> макс.</div>
       <div>Макс. ёмкость блока:</div><div><b>${u.maxBlockAh || '?'} А·ч</b></div>
-      <div>DC шина:</div><div><b>${u.dcVoltage || '?'} В</b></div>
-      <div>Батареи:</div><div><span class="muted">VRLA/AGM заказываются отдельно</span></div>`;
+      <div>Полок:</div><div><b>${u.batteryLayers || '?'}</b></div>
+      ${u.cabinetWidthMm ? `<div>Габариты (Ш×Г×В):</div><div><b>${u.cabinetWidthMm}×${u.cabinetDepthMm}×${u.cabinetHeightMm} мм</b></div>` : ''}
+      ${u.cabinetWeightKg ? `<div>Масса (пустой):</div><div><b>${u.cabinetWeightKg} кг</b></div>` : ''}
+      ${u.ipRating ? `<div>Степень защиты:</div><div>${esc(u.ipRating)}</div>` : ''}
+      <div>Батареи:</div><div><span class="muted">VRLA/AGM GFM-series заказываются отдельно</span></div>`;
+    // Таблица «Мест по ёмкости блока»
+    if (u.rackSlotsByCap) {
+      const caps = Object.entries(u.rackSlotsByCap).map(([k, v]) => `<span style="display:inline-block;padding:2px 8px;margin:2px;background:#eef4fb;border-radius:3px;font-size:11px">${esc(k)}: <b>${v}</b></span>`).join('');
+      rows += `<div>Мест по ёмкости:</div><div>${caps}</div>`;
+    }
   } else if (isBattS3) {
     rows += `
       <div>Ёмкость шкафа:</div><div><b>${fmt(u.cabinetKwh)} kWh</b></div>

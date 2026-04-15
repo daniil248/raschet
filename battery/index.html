@@ -206,6 +206,13 @@
         <div class="field-full" style="margin-top:6px;padding-top:10px;border-top:1px dashed #d0d0d0">
           <label style="font-size:11px;color:#1976d2;font-weight:600">Шкаф и зазоры</label>
         </div>
+        <div class="field-full">
+          <label>Шкаф из справочника ИБП (опц.)</label>
+          <select id="rack-cabinet">
+            <option value="">— задать размеры шкафа вручную —</option>
+          </select>
+          <div class="muted" style="font-size:10px;margin-top:2px">Загружаются все записи kind='batt-cabinet-vrla' из ups-catalog (Kehua B4/B8/B16/B20/B32, S32/S48 и пользовательские).</div>
+        </div>
         <div>
           <label>Внутр. ширина шкафа, мм</label>
           <input id="rack-cabW" type="number" min="0" step="10" value="600">
