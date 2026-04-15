@@ -8,6 +8,7 @@ import { effectiveTag } from '../zones.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw } from '../electrical.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
+import { mountBatteryPicker } from '../../../shared/battery-picker.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -591,67 +592,12 @@ function _renderUpsBatteryBody(n) {
     <span id="ups-batt-autonomy-method" class="muted" style="font-size:10px;margin-left:4px">(по kWh)</span>
   </div>`);
 
-  // Выбор модели из справочника АКБ — каскад supplier → series → model
-  // (если справочник не пуст).
+  // Выбор модели из справочника АКБ — единый shared/battery-picker.js
+  // (тот же компонент используется в подпрограмме «Расчёт АКБ»).
   if (catalog.length) {
-    const curId = n.batteryCatalogId || '';
-    const picked = curId ? catalog.find(b => b.id === curId) : null;
-    // Группировка по поставщику → серии → модели
-    // Серия извлекается эвристикой из type: префикс до первой цифры,
-    // если type заканчивается на буквы/хоть частично, иначе 4 первых символа.
-    const extractSeries = (type) => {
-      const s = String(type || '').trim();
-      if (!s) return 'Other';
-      // Случай «6-GFM150» → «6-GFM», «LC-P127R2PG1» → «LC-P», «VP12100/N» → «VP»
-      const m = s.match(/^([A-Za-z0-9-]*?[A-Za-z])(?=\d)/);
-      if (m && m[1]) return m[1];
-      // Если модель целиком из букв — возвращаем её как серию
-      const onlyLetters = s.match(/^[A-Za-z-]+$/);
-      if (onlyLetters) return s;
-      return s.slice(0, 4);
-    };
-    const bySupplier = new Map();
-    for (const b of catalog) {
-      const sup = b.supplier || 'Unknown';
-      if (!bySupplier.has(sup)) bySupplier.set(sup, new Map());
-      const series = extractSeries(b.type);
-      const byS = bySupplier.get(sup);
-      if (!byS.has(series)) byS.set(series, []);
-      byS.get(series).push(b);
-    }
-    // Текущие выбранные supplier/series (от batteryCatalogId или из n._battSelSupplier/_battSelSeries)
-    let curSupplier = n._battSelSupplier || (picked ? picked.supplier : '');
-    let curSeries   = n._battSelSeries   || (picked ? extractSeries(picked.type) : '');
-    if (!curSupplier || !bySupplier.has(curSupplier)) curSupplier = '';
-    if (curSupplier && (!curSeries || !bySupplier.get(curSupplier).has(curSeries))) curSeries = '';
-
     h.push('<h4 style="margin:8px 0 6px">Модель из справочника</h4>');
-    // Supplier
-    let supOpts = `<option value="">— не выбрано —</option>`;
-    for (const sup of bySupplier.keys()) {
-      supOpts += `<option value="${escHtml(sup)}"${sup === curSupplier ? ' selected' : ''}>${escHtml(sup)}</option>`;
-    }
-    // Series (зависит от supplier)
-    let serOpts = `<option value="">— не выбрано —</option>`;
-    if (curSupplier && bySupplier.has(curSupplier)) {
-      for (const ser of bySupplier.get(curSupplier).keys()) {
-        serOpts += `<option value="${escHtml(ser)}"${ser === curSeries ? ' selected' : ''}>${escHtml(ser)}</option>`;
-      }
-    }
-    // Model (зависит от supplier+series)
-    let modOpts = `<option value="">— свой состав —</option>`;
-    if (curSupplier && curSeries && bySupplier.has(curSupplier) && bySupplier.get(curSupplier).has(curSeries)) {
-      for (const b of bySupplier.get(curSupplier).get(curSeries)) {
-        const label = `${b.type} · ${b.blockVoltage ? fmt(b.blockVoltage) + ' В' : '—'}${b.capacityAh ? ' · ' + fmt(b.capacityAh) + ' А·ч' : ''}`;
-        modOpts += `<option value="${escHtml(b.id)}"${b.id === curId ? ' selected' : ''}>${escHtml(label)}</option>`;
-      }
-    }
-    h.push('<div style="display:flex;gap:6px;margin-bottom:6px">');
-    h.push(`<div style="flex:1">${field('Производитель', `<select id="ups-batt-cat-supplier">${supOpts}</select>`)}</div>`);
-    h.push(`<div style="flex:1">${field('Серия', `<select id="ups-batt-cat-series"${curSupplier ? '' : ' disabled'}>${serOpts}</select>`)}</div>`);
-    h.push('</div>');
-    h.push(field('Модель', `<select id="ups-batt-catalog"${curSupplier && curSeries ? '' : ' disabled'}>${modOpts}</select>`));
-    h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">При выборе модели автоматически заполняются тип / напряжение / количество элементов / ёмкость. Каталог пополняется в подпрограмме <a href="battery/" target="_blank" style="color:#1976d2">«Расчёт АКБ»</a>.</div>`);
+    h.push('<div id="ups-batt-picker-mount" style="margin-bottom:6px"></div>');
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">При выборе модели автоматически заполняются тип / напряжение / количество элементов / ёмкость. Каталог пополняется в подпрограмме <a href="battery/" target="_blank" style="color:#1976d2">«Расчёт АКБ»</a>.</div>`);
   } else {
     h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
       Справочник АКБ пуст. Загрузите XLSX-данные производителя в подпрограмме
@@ -861,50 +807,40 @@ function _renderUpsBatteryBody(n) {
       render(); notifyChange(); _renderUpsBatteryBody(n);
     });
   };
-  // Каскадный селектор справочника АКБ: supplier → series → model.
-  // Изменение supplier или series НЕ трогает batteryCatalogId — только
-  // состояние UI (n._battSelSupplier / n._battSelSeries), чтобы
-  // пересчёт в rerender'е показал соответствующие опции. Выбор модели
-  // применяет характеристики к узлу.
-  const supSel = document.getElementById('ups-batt-cat-supplier');
-  if (supSel) {
-    supSel.addEventListener('change', () => {
-      n._battSelSupplier = supSel.value || null;
-      n._battSelSeries = null;   // сбросить серию при смене поставщика
-      _renderUpsBatteryBody(n);
-    });
-  }
-  const serSel = document.getElementById('ups-batt-cat-series');
-  if (serSel) {
-    serSel.addEventListener('change', () => {
-      n._battSelSeries = serSel.value || null;
-      _renderUpsBatteryBody(n);
-    });
-  }
-  const catalogSel = document.getElementById('ups-batt-catalog');
-  if (catalogSel) {
-    catalogSel.addEventListener('change', () => {
-      snapshot('ups-batt:' + n.id + ':catalog');
-      const id = catalogSel.value || '';
-      n.batteryCatalogId = id || null;
-      if (id) {
-        const cat = _loadBatteryCatalog();
-        const picked = cat.find(b => b.id === id);
-        if (picked) {
-          // Применяем характеристики выбранной модели. Количество
-          // элементов в блоке, напряжение элемента и ёмкость берутся
-          // напрямую из каталога. Тип батареи — из chemistry.
-          n.batteryType = picked.chemistry === 'li-ion' ? 'li-ion' : 'lead-acid';
-          if (picked.cellCount) n.batteryCellCount = picked.cellCount;
-          if (picked.cellVoltage) n.batteryCellVoltage = picked.cellVoltage;
-          if (picked.capacityAh) n.batteryCapacityAh = picked.capacityAh;
-          // batteryKwh пересчитаем из новых полей
-          const _blockV = (Number(n.batteryCellCount) || 0) * (Number(n.batteryCellVoltage) || 0);
-          const _totalAh = (Number(n.batteryCapacityAh) || 0) * (Number(n.batteryStringCount) || 1);
-          n.batteryKwh = (_blockV * _totalAh) / 1000;
+  // Каскадный селектор справочника АКБ — единый компонент shared/battery-picker.js.
+  // Состояние выбора supplier/series хранится на узле (_battSelSupplier /
+  // _battSelSeries), чтобы переживать перерендер модалки. При выборе модели
+  // применяем её характеристики к узлу и пересобираем тело.
+  const pickerMount = document.getElementById('ups-batt-picker-mount');
+  if (pickerMount) {
+    mountBatteryPicker(pickerMount, {
+      list: catalog,
+      selectedId: n.batteryCatalogId || null,
+      currentSupplier: n._battSelSupplier || '',
+      currentSeries: n._battSelSeries || '',
+      placeholders: { supplier: '— не выбрано —', series: '— не выбрано —', model: '— свой состав —' },
+      labels: { supplier: 'Производитель', series: 'Серия', model: 'Модель' },
+      idPrefix: 'ups-batt-cat',
+      onChange: (st) => {
+        n._battSelSupplier = st.supplier || null;
+        n._battSelSeries = st.series || null;
+        if (st.modelId !== n.batteryCatalogId) {
+          snapshot('ups-batt:' + n.id + ':catalog');
+          n.batteryCatalogId = st.modelId || null;
+          if (st.battery) {
+            // Применяем характеристики выбранной модели.
+            n.batteryType = st.battery.chemistry === 'li-ion' ? 'li-ion' : 'lead-acid';
+            if (st.battery.cellCount)   n.batteryCellCount   = st.battery.cellCount;
+            if (st.battery.cellVoltage) n.batteryCellVoltage = st.battery.cellVoltage;
+            if (st.battery.capacityAh)  n.batteryCapacityAh  = st.battery.capacityAh;
+            const _blockV = (Number(n.batteryCellCount) || 0) * (Number(n.batteryCellVoltage) || 0);
+            const _totalAh = (Number(n.batteryCapacityAh) || 0) * (Number(n.batteryStringCount) || 1);
+            n.batteryKwh = (_blockV * _totalAh) / 1000;
+          }
+          render(); notifyChange();
         }
-      }
-      render(); notifyChange(); _renderUpsBatteryBody(n);
+        _renderUpsBatteryBody(n);
+      },
     });
   }
 

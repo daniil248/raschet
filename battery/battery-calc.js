@@ -8,6 +8,7 @@
 import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId } from './battery-catalog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
 import { calcAutonomy, calcRequiredBlocks } from './battery-discharge.js';
+import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -30,6 +31,31 @@ function flash(msg, kind = 'info') {
 }
 
 // ================= Каталог =================
+// Состояние каскадного пикера справочника (persist между рендерами).
+// Используется ТОТ ЖЕ shared/battery-picker.js, что и в UPS-инспекторе, —
+// модуль подбора АКБ идентичен во всех подпрограммах.
+const _catCascade = { supplier: '', series: '', modelId: '' };
+let _catPickerHandle = null;
+function _mountCatalogPicker(all) {
+  const mount = document.getElementById('cat-cascade-mount');
+  if (!mount) return;
+  _catPickerHandle = mountBatteryPicker(mount, {
+    list: all,
+    selectedId: _catCascade.modelId || null,
+    currentSupplier: _catCascade.supplier,
+    currentSeries: _catCascade.series,
+    placeholders: { supplier: 'Все производители', series: 'Все серии', model: 'Все модели' },
+    labels: { supplier: 'Производитель', series: 'Серия', model: 'Модель' },
+    idPrefix: 'cat',
+    onChange: (st) => {
+      _catCascade.supplier = st.supplier || '';
+      _catCascade.series   = st.series   || '';
+      _catCascade.modelId  = st.modelId  || '';
+      renderCatalog();
+    },
+  });
+}
+
 function _getCatalogFilters() {
   return {
     text: (document.getElementById('cat-filter-text')?.value || '').trim().toLowerCase(),
@@ -42,12 +68,19 @@ function renderCatalog() {
   const wrap = document.getElementById('catalog-list');
   if (!wrap) return;
   const all = listBatteries();
+  // Монтируем/обновляем каскадный пикер справочника
+  if (!_catPickerHandle) _mountCatalogPicker(all);
+  else _catPickerHandle.refresh(all);
+
   const { text, chem, custom } = _getCatalogFilters();
-  // Применяем фильтры
+  // Применяем фильтры (включая каскад Производитель → Серия → Модель)
   const list = all.filter(b => {
     if (chem && (b.chemistry || '').toLowerCase() !== chem) return false;
     if (custom === 'imported' && b.custom === true) return false;
     if (custom === 'custom' && b.custom !== true) return false;
+    if (_catCascade.supplier && (b.supplier || 'Unknown') !== _catCascade.supplier) return false;
+    if (_catCascade.series && extractBatterySeries(b.type) !== _catCascade.series) return false;
+    if (_catCascade.modelId && b.id !== _catCascade.modelId) return false;
     if (text) {
       const hay = `${b.supplier} ${b.type} ${b.chemistry || ''} ${b.source || ''}`.toLowerCase();
       if (!hay.includes(text)) return false;
@@ -79,6 +112,7 @@ function renderCatalog() {
       <td>${b.dischargeTable?.length || 0}</td>
       <td class="src">${escHtml(b.source || '')}</td>
       <td>
+        <button class="btn-sm btn-copy" data-copy="${escHtml(b.id)}" title="Создать редактируемую копию">Копировать</button>
         ${isCustom ? `<button class="btn-sm btn-edit" data-edit="${escHtml(b.id)}">Изменить</button>` : ''}
         <button class="btn-sm btn-del" data-del="${escHtml(b.id)}">Удалить</button>
       </td>
@@ -105,6 +139,33 @@ function renderCatalog() {
       if (b) openManualBatteryModal(b);
     });
   });
+  // Копирование записи (в т.ч. импортированной) → новая редактируемая строка.
+  // Модалка ручного ввода открывается с pre-filled полями, но без existing →
+  // при сохранении создастся новая запись с custom:true и новым id.
+  wrap.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = btn.dataset.copy;
+      const src = listBatteries().find(x => x.id === id);
+      if (!src) return;
+      const copy = {
+        // Сохраняем все поля кроме id / custom / source / importedAt
+        supplier: src.supplier || '',
+        type: (src.type || '') + ' (копия)',
+        chemistry: src.chemistry || 'vrla',
+        blockVoltage: src.blockVoltage,
+        cellCount: src.cellCount,
+        cellVoltage: src.cellVoltage,
+        capacityAh: src.capacityAh,
+        dischargeTable: Array.isArray(src.dischargeTable)
+          ? src.dischargeTable.map(p => ({ ...p }))
+          : [],
+        // custom/id/source будут проставлены при сохранении
+      };
+      // existing=null → модалка создаст новую запись
+      openManualBatteryModal(null, copy);
+    });
+  });
   // Клик по строке → модалка просмотра таблицы разряда
   wrap.querySelectorAll('.cat-row').forEach(row => {
     row.addEventListener('click', () => {
@@ -116,7 +177,10 @@ function renderCatalog() {
 }
 
 // ================= Ручное добавление / редактирование АКБ =================
-function openManualBatteryModal(existing = null) {
+// existing — запись для редактирования (режим UPDATE, ID сохраняется).
+// prefill  — данные для заполнения полей при СОЗДАНИИ новой записи (режим
+//            COPY): существующая запись копируется в новую редактируемую.
+function openManualBatteryModal(existing = null, prefill = null) {
   let modal = document.getElementById('manual-batt-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -136,9 +200,12 @@ function openManualBatteryModal(existing = null) {
   }
   const title = document.getElementById('manual-batt-title');
   const body = document.getElementById('manual-batt-body');
-  title.textContent = existing ? `Редактировать: ${existing.supplier} · ${existing.type}` : 'Добавить АКБ вручную';
+  title.textContent = existing
+    ? `Редактировать: ${existing.supplier} · ${existing.type}`
+    : (prefill ? `Копия: ${prefill.supplier} · ${prefill.type}` : 'Добавить АКБ вручную');
 
-  const e = existing || {};
+  // Источник данных для полей: existing (edit) → prefill (copy) → {} (new)
+  const e = existing || prefill || {};
   // Таблица разряда → CSV (endV,tMin,powerW по строке)
   const tableCsv = Array.isArray(e.dischargeTable)
     ? e.dischargeTable.map(p => `${p.endV},${p.tMin},${p.powerW}`).join('\n')
