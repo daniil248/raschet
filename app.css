@@ -1542,3 +1542,28 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
   .mobile-toggle.right { right: max(16px, env(safe-area-inset-right)); }
   .mobile-toggle { bottom: max(16px, env(safe-area-inset-bottom)); }
 }
+
+/* ================= Палитра цветов зоны (инспектор) ================= */
+.zone-palette {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+.zone-swatch {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.zone-swatch:hover {
+  transform: scale(1.12);
+  border-color: #1976d2;
+}
+.zone-swatch.sel {
+  border: 2px solid #1976d2;
+  box-shadow: 0 0 0 2px rgba(25,118,210,0.25);
+}

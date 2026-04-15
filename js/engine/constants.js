@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.28.4';
+export const APP_VERSION = '0.28.5';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -527,3 +527,14 @@ export const SOURCE_SUBTYPE_PREFIX = {
   utility:     'UT',
   other:       'SRC',
 };
+
+// Палитра пастельных цветов для зон (24 цвета). Все — светлые, мягкие,
+// не перекрывают содержимое. Распределены по кругу HSL: 12 оттенков,
+// каждый в двух вариантах light/mid. Используется в инспекторе зоны
+// как селектор 24 swatch'ей.
+export const ZONE_PASTEL_PALETTE = [
+  '#ffebee', '#fce4ec', '#f3e5f5', '#ede7f6', '#e8eaf6', '#e3f2fd',
+  '#e1f5fe', '#e0f7fa', '#e0f2f1', '#e8f5e9', '#f1f8e9', '#f9fbe7',
+  '#fffde7', '#fff8e1', '#fff3e0', '#fbe9e7', '#efebe9', '#f5f5f5',
+  '#ffd6d6', '#ffe0b2', '#fff9c4', '#dcedc8', '#c8e6c9', '#bbdefb',
+];

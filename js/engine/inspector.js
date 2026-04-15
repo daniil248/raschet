@@ -1,5 +1,5 @@
 import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES } from './constants.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
@@ -66,6 +66,22 @@ export function selectNode(id) {
 export function selectConn(id) {
   state.selectedKind = 'conn'; state.selectedId = id;
   renderInspector();
+}
+
+// =============== Синхронизация зон с одинаковым effectiveTag ===============
+// Два экземпляра зоны (root или sub) с совпадающим полным обозначением
+// («P1» или «P1.S2») считаются одной логической зоной. Изменение name /
+// color в одном экземпляре пробрасывается на все остальные. Сама функция
+// безопасна к зонам без effectiveTag — просто ничего не делает.
+function _syncZoneByEffectiveTag(src, patch) {
+  if (!src || src.type !== 'zone') return;
+  const srcTag = effectiveTag(src);
+  if (!srcTag) return;
+  for (const other of state.nodes.values()) {
+    if (other.id === src.id || other.type !== 'zone') continue;
+    if (effectiveTag(other) !== srcTag) continue;
+    for (const [k, v] of Object.entries(patch)) other[k] = v;
+  }
 }
 
 // Сохранить состояние open/closed всех <details> в инспекторе
@@ -215,7 +231,19 @@ export function renderInspectorNode(n) {
     h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
     h.push(field('Ширина, px', `<input type="number" min="200" max="4000" step="40" data-prop="width" value="${n.width || 600}">`));
     h.push(field('Высота, px', `<input type="number" min="120" max="4000" step="40" data-prop="height" value="${n.height || 400}">`));
-    h.push(field('Цвет фона', `<input type="text" data-prop="color" value="${escAttr(n.color || '#e3f2fd')}">`));
+    // Палитра пастельных цветов (24 swatch). Клик по swatch ставит
+    // color в n и пробрасывает на все зоны с тем же effectiveTag.
+    {
+      const cur = (n.color || '#e3f2fd').toLowerCase();
+      const swatches = ZONE_PASTEL_PALETTE.map(c => {
+        const sel = c.toLowerCase() === cur;
+        return `<button type="button" class="zone-swatch${sel ? ' sel' : ''}" data-zone-color="${c}" style="background:${c}" title="${c}"></button>`;
+      }).join('');
+      h.push(`<div class="field"><label>Цвет фона</label>
+        <div class="zone-palette">${swatches}</div>
+        <input type="hidden" data-prop="color" value="${escAttr(n.color || '#e3f2fd')}">
+      </div>`);
+    }
     // Показать какие узлы принадлежат зоне
     const children = nodesInZone(n);
     if (children.length) {
@@ -230,6 +258,19 @@ export function renderInspectorNode(n) {
     h.push('<button class="btn-delete" id="btn-del-node">Удалить зону</button>');
     inspectorBody.innerHTML = h.join('');
     wireInspectorInputs(n);
+    // Клики по swatch палитры цвета зоны
+    inspectorBody.querySelectorAll('[data-zone-color]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        snapshot('zone-color:' + n.id);
+        const newCol = btn.dataset.zoneColor;
+        n.color = newCol;
+        // Синхронизация цвета на все зоны с тем же effectiveTag
+        _syncZoneByEffectiveTag(n, { color: newCol });
+        _render();
+        notifyChange();
+        renderInspector();
+      });
+    });
     return;
   }
   // Channel — только тип и условия среды; материал/изоляция задаются в линиях
@@ -671,18 +712,6 @@ export function wireInspectorInputs(n) {
           return;
         }
         n.tag = t;
-        // Зоны с одинаковым tag считаются одной сущностью — при смене
-        // tag на значение, совпадающее с другой зоной, подхватываем её
-        // имя (чтобы сохранить консистентность «одна зона — одно имя»).
-        if (n.type === 'zone') {
-          for (const other of state.nodes.values()) {
-            if (other.id === n.id || other.type !== 'zone') continue;
-            if (other.tag === t) {
-              if (other.name) n.name = other.name;
-              break;
-            }
-          }
-        }
       } else if (prop === 'on' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         setEffectiveOn(n, v);
       } else if (prop === 'manualActiveInput') {
@@ -752,12 +781,27 @@ export function wireInspectorInputs(n) {
         n[prop] = v;
         // Синхронизация цвета ИБП на одном parallel-щите
         if (prop === 'lineColor' && n.type === 'ups') syncUpsColors(n, v);
-        // Зоны: имя всех зон с тем же tag синхронизируется автоматически.
-        if (prop === 'name' && n.type === 'zone' && n.tag) {
-          for (const other of state.nodes.values()) {
-            if (other.id === n.id || other.type !== 'zone') continue;
-            if (other.tag === n.tag) other.name = v;
+        // Зоны: смена zonePrefix → если такой же effectiveTag уже есть
+        // у другой зоны, копируем её name/color в текущую (подхват).
+        // Затем в любом случае пробрасываем текущие значения на все
+        // зоны с этим же effectiveTag — чтобы ничего не разъехалось.
+        if (n.type === 'zone' && prop === 'zonePrefix') {
+          const eff = effectiveTag(n);
+          if (eff) {
+            for (const other of state.nodes.values()) {
+              if (other.id === n.id || other.type !== 'zone') continue;
+              if (effectiveTag(other) !== eff) continue;
+              if (other.name) n.name = other.name;
+              if (other.color) n.color = other.color;
+              break;
+            }
+            _syncZoneByEffectiveTag(n, { name: n.name, color: n.color });
           }
+        }
+        // Зоны: при смене name или color — проброс на все зоны с тем же
+        // полным обозначением (effectiveTag учитывает и подзоны).
+        if (n.type === 'zone' && (prop === 'name' || prop === 'color')) {
+          _syncZoneByEffectiveTag(n, { [prop]: v });
         }
         // При включении trayMode — пересвязать waypoints к центру канала
         if (prop === 'trayMode' && n.type === 'channel' && v) {
