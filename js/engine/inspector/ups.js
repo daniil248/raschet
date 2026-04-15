@@ -609,19 +609,28 @@ function _upsStructSvg(n, flows) {
   const fmtA = (a) => a > 0 ? `${fmt(a)} A` : '';
 
   const mainCol = (onBypass || onBattery) ? colIdle : colActive;
-  const bypassLineCol = onBypass ? colBypass : colIdle;
   const battLineCol = onBattery ? colBatt : colIdle;
   const outCol = onBattery ? colBatt : onBypass ? colBypass : colActive;
-  // Цвет линии сетевого входа — жив если QF1 замкнут и не на байпасе/батарее
+  // Состояния автоматов
   const qf1on = n.hasInputBreaker !== false && n.inputBreakerOn !== false;
   const qf2on = n.hasInputBypassBreaker !== false && n.inputBypassBreakerOn !== false;
   const qf3on = n.hasOutputBreaker !== false && n.outputBreakerOn !== false;
   const qf4on = n.hasBypassBreaker !== false && n.bypassBreakerOn !== false;
   const qbon = n.hasBatteryBreaker !== false && n.batteryBreakerOn !== false;
+  // Есть ли вообще напряжение со стороны Mains (effectiveOn и не в режиме
+  // работы от батареи — т.к. в режиме батареи вход обесточен).
+  const mainsFed = effectiveOn(n) && !onBattery;
+  // Участок ДО QF1: живой, если есть mains. Участок ПОСЛЕ QF1 к инверторам:
+  // живой когда QF1 замкнут и работаем в инверторном режиме.
+  const mainsPreCol = mainsFed ? colActive : colIdle;
   const mainsOn = qf1on && !onBypass && !onBattery;
   const mainsLineCol = mainsOn ? colActive : colIdle;
-  const bypassOn = qf2on && onBypass;
-  const bypassCableCol = bypassOn ? colBypass : colIdle;
+  // Байпасная ветка: от jumper до SBS-модуля (и после модуля к выходу) —
+  // «живая» когда есть mains И QF2 замкнут. Сам SBS-модуль проводит ток
+  // только при onBypass (см. ниже — цвет символа тиристора).
+  const bypassWireCol = (mainsFed && qf2on) ? colBypass : colIdle;
+  // Maintenance bypass: живой когда есть mains И QF4 замкнут.
+  const maintWireCol = (mainsFed && qf4on) ? colBypass : colIdle;
   const battOn = qbon && onBattery;
   const battCableCol = battOn ? colBatt : colIdle;
   // Цвет инвертора: активен в режимах ИНВЕРТОР и БАТАРЕЯ, выключен на байпасе
@@ -696,16 +705,23 @@ function _upsStructSvg(n, flows) {
   parts.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fafbfc"/>`);
 
   // === Maintenance bypass (верхняя обходная линия) ===
-  // Рисуем только если QF4 физически присутствует (hasBypassBreaker === true).
+  // Физически это одна линия с перемычкой ДО QF2 (и в jumper-режиме —
+  // ДО QF1). Т.е. отключение QF2/QF1 не мешает maintenance bypass
+  // выполнять свою работу. Точка ответвления:
+  //   - в jumper-режиме (один ввод) — тот же jumperX, что и обычная
+  //     байпасная ветка (xQF1 − 50, на mains-кабеле до QF1);
+  //   - в separate-режиме (отдельный bypass input) — на байпасном
+  //     кабеле до QF2.
   const hasQF4 = n.hasBypassBreaker !== false;
+  const jumperForBypass = xQF1 - 50;
+  const xMaintTap = bypassSeparate ? (xInputTerm + 70) : jumperForBypass;
   if (hasQF4) {
-    const maintCol = qf4on ? colBypass : colIdle;
     const xQF4 = (xQF1 + xOutBus) / 2;
     parts.push(`<text x="${xQF4}" y="${yMaint - 30}" text-anchor="middle" font-size="11" fill="#546e7a">Maintenance bypass</text>`);
-    parts.push(`<line x1="${xQF1 + 22}" y1="${yBypass}" x2="${xQF1 + 22}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
-    parts.push(`<line x1="${xQF1 + 22}" y1="${yMaint}" x2="${xQF4 - 20}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
+    parts.push(`<line x1="${xMaintTap}" y1="${yBypass}" x2="${xMaintTap}" y2="${yMaint}" stroke="${maintWireCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
+    parts.push(`<line x1="${xMaintTap}" y1="${yMaint}" x2="${xQF4 - 20}" y2="${yMaint}" stroke="${maintWireCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
     parts.push(_svgBreaker(xQF4, yMaint, 'QF4', colBypass, qf4on, true, 'bypassBreakerOn'));
-    parts.push(`<line x1="${xQF4 + 20}" y1="${yMaint}" x2="${xOutBus}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
+    parts.push(`<line x1="${xQF4 + 20}" y1="${yMaint}" x2="${xOutBus}" y2="${yMaint}" stroke="${maintWireCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
     if (n.bypassBreakerIn) {
       parts.push(`<text x="${xQF4 + 25}" y="${yMaint + 5}" font-size="9" fill="#777">${n.bypassBreakerIn}A</text>`);
     }
@@ -718,28 +734,35 @@ function _upsStructSvg(n, flows) {
   if (bypassSeparate) {
     parts.push(`<text x="${xLeftLabel + 10}" y="${yBypass - 8}" font-size="11" fill="#546e7a">Bypass input</text>`);
     parts.push(`<circle cx="${xInputTerm}" cy="${yBypass}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
-    parts.push(`<line x1="${xInputTerm + 5}" y1="${yBypass}" x2="${hasQF2 ? xQF1 - 20 : 460}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+    parts.push(`<line x1="${xInputTerm + 5}" y1="${yBypass}" x2="${hasQF2 ? xQF1 - 20 : 460}" y2="${yBypass}" stroke="${bypassWireCol}" stroke-width="3"/>`);
     if (hasQF2) {
       parts.push(_svgBreaker(xQF1, yBypass, 'QF2', colBypass, qf2on, true, 'inputBypassBreakerOn'));
       if (n.inputBypassBreakerIn) parts.push(`<text x="${xQF1 + 25}" y="${yBypass + 5}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
-      parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+      parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassWireCol}" stroke-width="3"/>`);
     }
   } else {
     // Jumper: перемычка от mains-линии до байпасной ветки.
     // Ответвление делается ПЕРЕД QF1 (на участке кабеля от клеммы
-    // Mains input до QF1), а не после, чтобы QF1 не отключал байпас.
-    // Вертикаль от yMains к yBypass в точке jumperX = xQF1 − 50.
-    const jumperX = xQF1 - 50;
+    // Mains input до QF1), чтобы QF1 не отключал байпас / maint bypass.
+    // Физически это одно ответвление на байпасную ветку, из которого
+    // далее уходит и maintenance bypass (выше), и обычная байпасная
+    // ветка через QF2 и SBS-модуль.
+    const jumperX = jumperForBypass;
     parts.push(`<text x="${jumperX - 6}" y="${yBypass - 8}" text-anchor="end" font-size="10" fill="#888">перемычка от Mains</text>`);
-    parts.push(`<line x1="${jumperX}" y1="${yMains}" x2="${jumperX}" y2="${yBypass}" stroke="${mainsLineCol}" stroke-width="2"/>`);
-    parts.push(`<circle cx="${jumperX}" cy="${yMains}" r="3" fill="${mainsLineCol}"/>`);
+    // Вертикаль jumper'а: «живая» пока есть mains (до QF1 — до QF2).
+    const jumperVertCol = mainsFed ? colActive : colIdle;
+    parts.push(`<line x1="${jumperX}" y1="${yMains}" x2="${jumperX}" y2="${yBypass}" stroke="${jumperVertCol}" stroke-width="2"/>`);
+    parts.push(`<circle cx="${jumperX}" cy="${yMains}" r="3" fill="${jumperVertCol}"/>`);
+    // Горизонталь от jumper до QF2 — тоже «живая» когда есть mains
+    // (до QF2 ветка ещё не зависит от QF2).
+    const preQF2Col = mainsFed ? colBypass : colIdle;
     if (hasQF2) {
       parts.push(_svgBreaker(xQF1, yBypass, 'QF2', colBypass, qf2on, true, 'inputBypassBreakerOn'));
       if (n.inputBypassBreakerIn) parts.push(`<text x="${xQF1 + 25}" y="${yBypass + 5}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
-      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="${xQF1 - 20}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
-      parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="${xQF1 - 20}" y2="${yBypass}" stroke="${preQF2Col}" stroke-width="3"/>`);
+      parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassWireCol}" stroke-width="3"/>`);
     } else {
-      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassWireCol}" stroke-width="3"/>`);
     }
   }
   // Bypass module: пунктирная рамка с SCR-тиристором внутри
@@ -748,19 +771,22 @@ function _upsStructSvg(n, flows) {
   parts.push(`<text x="${bmX + bmW - 8}" y="${bmY + bmH - 6}" text-anchor="end" font-size="10" fill="#777">Bypass module</text>`);
   // SCR-тиристор (треугольник + катод + gate)
   const scrX = bmX + bmW / 2, scrY = yBypass;
-  parts.push(`<polygon points="${scrX - 10},${scrY - 10} ${scrX - 10},${scrY + 10} ${scrX + 6},${scrY}" fill="none" stroke="${bypassCableCol}" stroke-width="1.5"/>`);
-  parts.push(`<line x1="${scrX + 6}" y1="${scrY - 10}" x2="${scrX + 6}" y2="${scrY + 10}" stroke="${bypassCableCol}" stroke-width="1.5"/>`);
-  parts.push(`<line x1="${scrX + 8}" y1="${scrY - 3}" x2="${scrX + 16}" y2="${scrY - 11}" stroke="${bypassCableCol}" stroke-width="1.2"/>`);
-  parts.push(`<line x1="${bmX}" y1="${yBypass}" x2="${scrX - 10}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="2"/>`);
-  parts.push(`<line x1="${scrX + 6}" y1="${yBypass}" x2="${bmX + bmW}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="2"/>`);
-  parts.push(`<line x1="${bmX + bmW}" y1="${yBypass}" x2="${xOutBus}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+  parts.push(`<polygon points="${scrX - 10},${scrY - 10} ${scrX - 10},${scrY + 10} ${scrX + 6},${scrY}" fill="none" stroke="${bypassWireCol}" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${scrX + 6}" y1="${scrY - 10}" x2="${scrX + 6}" y2="${scrY + 10}" stroke="${bypassWireCol}" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${scrX + 8}" y1="${scrY - 3}" x2="${scrX + 16}" y2="${scrY - 11}" stroke="${bypassWireCol}" stroke-width="1.2"/>`);
+  parts.push(`<line x1="${bmX}" y1="${yBypass}" x2="${scrX - 10}" y2="${yBypass}" stroke="${bypassWireCol}" stroke-width="2"/>`);
+  parts.push(`<line x1="${scrX + 6}" y1="${yBypass}" x2="${bmX + bmW}" y2="${yBypass}" stroke="${bypassWireCol}" stroke-width="2"/>`);
+  parts.push(`<line x1="${bmX + bmW}" y1="${yBypass}" x2="${xOutBus}" y2="${yBypass}" stroke="${bypassWireCol}" stroke-width="3"/>`);
   if (inBypassA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yBypass - 8}" font-size="10" fill="${colBypass}" font-weight="600">${fmtA(inBypassA)}</text>`);
 
   // === Mains input ===
+  // Участок ДО QF1 (от клеммы до jumper и далее до QF1) живой пока есть
+  // mains (mainsPreCol). После QF1 — только если QF1 замкнут и работаем
+  // в инверторном режиме (mainsLineCol).
   const hasQF1 = n.hasInputBreaker !== false;
   parts.push(`<text x="${xLeftLabel + 10}" y="${yMains - 8}" font-size="11" fill="#546e7a">Mains input${bypassSeparate ? ' (осн.)' : ''}</text>`);
   parts.push(`<circle cx="${xInputTerm}" cy="${yMains}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
-  parts.push(`<line x1="${xInputTerm + 5}" y1="${yMains}" x2="${hasQF1 ? xQF1 - 20 : xMainsBus}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
+  parts.push(`<line x1="${xInputTerm + 5}" y1="${yMains}" x2="${hasQF1 ? xQF1 - 20 : xMainsBus}" y2="${yMains}" stroke="${mainsPreCol}" stroke-width="3"/>`);
   if (hasQF1) {
     parts.push(_svgBreaker(xQF1, yMains, 'QF1', colActive, qf1on, true, 'inputBreakerOn'));
     if (n.inputBreakerIn) parts.push(`<text x="${xQF1 + 25}" y="${yMains + 5}" font-size="9" fill="#777">${n.inputBreakerIn}A</text>`);
