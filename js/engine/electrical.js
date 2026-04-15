@@ -168,16 +168,17 @@ export function computeCurrentA(P_kW, voltage, cosPhi, threePhase, dc) {
 // жил (N, PE, +N+PE) отсюда исключено — это вычисляется отдельно через
 // cableWireCount/effectiveWireFlags по системе заземления узла-источника.
 //
-//   { vLL: 400, phases: 3 }  → '400 В · 3ф'
-//   { vLL: 230, phases: 1 }  → '230 В · 1ф'
-//   { vLL: 10000, phases: 3} → '10 кВ · 3ф'
-//   { vLL: 48, dc: true }    → '48 В DC'
+// SI-единицы (V / kV / ph / DC) — единый формат для всех модулей:
+//   { vLL: 400,   phases: 3 } → '400 V · 3ph'
+//   { vLL: 230,   phases: 1 } → '230 V · 1ph'
+//   { vLL: 10000, phases: 3 } → '10 kV · 3ph'
+//   { vLL: 48,    dc: true  } → '48 V DC'
 export function formatVoltageLevelLabel(lv) {
   if (!lv) return '—';
   const v = Number(lv.vLL) || 0;
-  const vStr = v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 2) + ' кВ' : v + ' В';
+  const vStr = v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 2) + ' kV' : v + ' V';
   if (lv.dc) return vStr + ' DC';
-  const ph = Number(lv.phases) === 3 ? '3ф' : '1ф';
+  const ph = Number(lv.phases) === 3 ? '3ph' : '1ph';
   return vStr + ' · ' + ph;
 }
 
