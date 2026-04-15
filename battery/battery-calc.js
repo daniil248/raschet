@@ -246,6 +246,21 @@ function openManualBatteryModal(existing = null, prefill = null) {
       <label>Ёмкость блока, А·ч<input id="mb-capAh" type="number" min="1" step="1" value="${e.capacityAh ?? 100}"></label>
       <label>Элементов в блоке<input id="mb-cellCount" type="number" min="1" step="1" value="${e.cellCount ?? 6}"></label>
     </div>
+    <div style="margin-top:10px;padding:8px 10px;background:#f6f8fa;border-radius:4px">
+      <div style="font-size:11px;font-weight:600;color:#1976d2;margin-bottom:6px">Габариты и монтаж (для компоновки VRLA-шкафа)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px 14px">
+        <label>Длина, мм<input id="mb-lengthMm" type="number" min="0" step="1" value="${e.lengthMm ?? ''}"></label>
+        <label>Ширина, мм<input id="mb-widthMm" type="number" min="0" step="1" value="${e.widthMm ?? ''}"></label>
+        <label>Высота, мм<input id="mb-heightMm" type="number" min="0" step="1" value="${e.heightMm ?? ''}"></label>
+        <label>Масса, кг<input id="mb-weightKg" type="number" min="0" step="0.1" value="${e.weightKg ?? ''}"></label>
+        <label>Зазор до клемм, мм<input id="mb-termClear" type="number" min="0" step="1" value="${e.terminalClearanceMm ?? 15}" title="Минимальный зазор между токоведущими клеммами и металлом корпуса/полки (электробезопасность)"></label>
+        <label>Клеммы<select id="mb-termPos">
+          <option value="top"${e.terminalPosition === 'top' ? ' selected' : ''}>сверху</option>
+          <option value="front"${e.terminalPosition === 'front' ? ' selected' : ''}>спереди</option>
+          <option value="side"${e.terminalPosition === 'side' ? ' selected' : ''}>сбоку</option>
+        </select></label>
+      </div>
+    </div>
     <div style="margin-top:12px">
       <label style="display:block;margin-bottom:4px;font-size:12px;color:#6b7280">
         Таблица разряда (Constant Power Discharge) — опционально.<br>
@@ -287,6 +302,13 @@ function openManualBatteryModal(existing = null, prefill = null) {
       }
       table.sort((a, b) => (a.endV - b.endV) || (a.tMin - b.tMin));
     }
+    // Габариты и монтаж (опционально — для компоновки VRLA-шкафа)
+    const lengthMm = Number(g('mb-lengthMm').value) || null;
+    const widthMm = Number(g('mb-widthMm').value) || null;
+    const heightMm = Number(g('mb-heightMm').value) || null;
+    const weightKg = Number(g('mb-weightKg').value) || null;
+    const terminalClearanceMm = Number(g('mb-termClear').value) || 15;
+    const terminalPosition = g('mb-termPos').value || 'top';
     const id = existing ? existing.id : makeBatteryId(supplier, type);
     const entry = {
       id,
@@ -298,6 +320,12 @@ function openManualBatteryModal(existing = null, prefill = null) {
       cellVoltage,
       capacityAh,
       dischargeTable: table,
+      lengthMm,
+      widthMm,
+      heightMm,
+      weightKg,
+      terminalClearanceMm,
+      terminalPosition,
       source: existing ? existing.source : 'ручной ввод',
       importedAt: existing ? existing.importedAt : Date.now(),
       custom: true,
@@ -823,11 +851,183 @@ function wireTabs() {
   });
 }
 
+// ================= Rack layout calculator (VRLA) =================
+// Расчёт компоновки батарейного шкафа: размещение блоков на полках,
+// проверка зазоров до клемм, оценка массы шкафа.
+//
+// Нормы:
+//   IEC 62485-2 §5 / ГОСТ Р МЭК 62485-2 — расстояние между смежными
+//     батареями, минимум до токоведущих частей.
+//   ПУЭ 4.4.12 — «Расстояние между батареями и стеной … не менее
+//     50 мм, между полками — не менее 50 мм (лучше больше), зазор
+//     между клеммами и металлом — не менее 15 мм».
+//
+// Алгоритм:
+//   1) Выбираем ориентацию (long / short) и считаем footprint одного блока
+//   2) По внутр. ширине шкафа — blocksPerRow = floor((cabW - 2×wall + gap) / (blockW + gap))
+//   3) По внутр. глубине — rowsPerShelf = floor((cabD - 2×wall + gap) / (blockD + gap))
+//   4) Мест на полке = blocksPerRow × rowsPerShelf
+//   5) Полок = ceil(N / blocksPerShelf)
+//   6) Высота от пола = shelfTotalHeight × полок + зазор сверху
+//      shelfTotalHeight = blockH + shelfClear + shelfThickness
+//   7) Проверки: помещаются ли все блоки, укладывается ли высота в cabH,
+//      есть ли конфликт terminalClearanceMm > shelfClearance (клеммы
+//      уткнутся в полку сверху).
+function renderRackBatterySelector() {
+  const sel = document.getElementById('rack-battery');
+  if (!sel) return;
+  const list = listBatteries().filter(b => b.chemistry === 'vrla');
+  const cur = sel.value;
+  let h = '<option value="">— задать габариты вручную —</option>';
+  for (const b of list) {
+    if (!b.lengthMm && !b.widthMm) continue; // без габаритов не показываем
+    h += `<option value="${escHtml(b.id)}">${escHtml(b.supplier)} · ${escHtml(b.type)} (${b.lengthMm}×${b.widthMm}×${b.heightMm} мм, ${b.weightKg || '?'} кг)</option>`;
+  }
+  sel.innerHTML = h;
+  if (cur) sel.value = cur;
+}
+
+function doRackCalc() {
+  const out = document.getElementById('rack-result');
+  if (!out) return;
+  const g = id => document.getElementById(id);
+  const L = Number(g('rack-L').value) || 0;
+  const W = Number(g('rack-W').value) || 0;
+  const H = Number(g('rack-H').value) || 0;
+  const Wt = Number(g('rack-Wt').value) || 0;
+  const N = Math.max(1, Number(g('rack-N').value) || 1);
+  const orient = g('rack-orient').value;
+  const cabW = Number(g('rack-cabW').value) || 0;
+  const cabD = Number(g('rack-cabD').value) || 0;
+  const cabH = Number(g('rack-cabH').value) || 0;
+  const gap  = Number(g('rack-gap').value) || 0;
+  const wall = Number(g('rack-wall').value) || 0;
+  const shelf = Number(g('rack-shelf').value) || 0;
+  const shelfT = Number(g('rack-shelfT').value) || 0;
+  const termClear = Number(g('rack-termClear').value) || 0;
+
+  // Ориентация: блок на полке лежит длинной стороной вдоль ширины
+  // шкафа («long») или поперёк («short»). Footprint на полке:
+  //   long:  ширина = L, глубина = W
+  //   short: ширина = W, глубина = L
+  const blockW_shelf = orient === 'long' ? L : W;
+  const blockD_shelf = orient === 'long' ? W : L;
+
+  const errors = [];
+  const warns = [];
+  if (L <= 0 || W <= 0 || H <= 0) errors.push('Задайте габариты блока (L, W, H > 0).');
+  if (cabW <= 0 || cabD <= 0 || cabH <= 0) errors.push('Задайте внутренние размеры шкафа.');
+
+  // Помещается ли один блок в шкаф?
+  const usableW = cabW - 2 * wall;
+  const usableD = cabD - 2 * wall;
+  if (blockW_shelf > usableW) errors.push(`Блок (${blockW_shelf} мм по ширине) не проходит в шкаф (полезная ширина ${usableW} мм после зазоров ${wall} мм до стенок).`);
+  if (blockD_shelf > usableD) errors.push(`Блок (${blockD_shelf} мм по глубине) не проходит в шкаф (полезная глубина ${usableD} мм).`);
+
+  // Блоков на ряд и рядов на полку
+  const blocksPerRow = Math.max(0, Math.floor((usableW + gap) / (blockW_shelf + gap)));
+  const rowsPerShelf = Math.max(0, Math.floor((usableD + gap) / (blockD_shelf + gap)));
+  const blocksPerShelf = blocksPerRow * rowsPerShelf;
+
+  if (blocksPerShelf === 0 && errors.length === 0) {
+    errors.push('С заданными зазорами на полку не помещается ни одного блока.');
+  }
+
+  // Полок
+  const shelves = blocksPerShelf > 0 ? Math.ceil(N / blocksPerShelf) : 0;
+  // Полная высота: shelves × (H + shelfClear + shelfThickness) + нижний зазор
+  const shelfUnitH = H + shelf + shelfT;
+  const rackTotalH = shelves * shelfUnitH + wall;
+  if (rackTotalH > cabH) {
+    errors.push(`Требуется ${shelves} полок × ${shelfUnitH} мм = ${rackTotalH} мм, шкаф высотой ${cabH} мм не вмещает.`);
+  }
+
+  // Проверка зазора до клемм: клеммы должны быть ниже полки выше
+  // как минимум на termClear. shelf — вертикальный зазор над блоком
+  // (пространство между верхом блока и низом следующей полки).
+  // Если termClear > shelf — проблема.
+  if (termClear > shelf) {
+    errors.push(`Зазор между блоком и следующей полкой (${shelf} мм) меньше требуемого зазора до клемм (${termClear} мм). Клеммы могут замкнуться на металл полки.`);
+  } else if (termClear > shelf - 20) {
+    warns.push(`Зазор до клемм (${termClear} мм) близок к пределу (${shelf} мм). Рекомендуется увеличить зазор между полками.`);
+  }
+
+  const totalMassKg = N * Wt;
+  const shelfLoadKg = blocksPerShelf > 0 ? blocksPerShelf * Wt : 0;
+
+  let html = '';
+  if (errors.length) {
+    html += `<div class="result-block error"><div class="result-title">⛔ Размещение невозможно</div>`;
+    html += errors.map(e => `<div>• ${escHtml(e)}</div>`).join('');
+    html += `</div>`;
+  }
+  if (!errors.length) {
+    const usedBlocks = Math.min(N, blocksPerShelf * shelves);
+    const sparePlaces = blocksPerShelf * shelves - N;
+    html += `<div class="result-block">`;
+    html += `<div class="result-title">✓ Компоновка рассчитана</div>`;
+    html += `<table class="detail-table" style="margin-top:8px">`;
+    html += `<tr><th colspan="2">Полка</th></tr>`;
+    html += `<tr><td>Блоков на ряд (по ширине)</td><td><b>${blocksPerRow}</b></td></tr>`;
+    html += `<tr><td>Рядов на полку (по глубине)</td><td><b>${rowsPerShelf}</b></td></tr>`;
+    html += `<tr><td>Блоков на полке</td><td><b>${blocksPerShelf}</b></td></tr>`;
+    html += `<tr><td>Нагрузка на полку</td><td><b>${shelfLoadKg.toFixed(1)} кг</b></td></tr>`;
+    html += `<tr><th colspan="2">Шкаф</th></tr>`;
+    html += `<tr><td>Полок</td><td><b>${shelves}</b></td></tr>`;
+    html += `<tr><td>Высота компоновки</td><td><b>${rackTotalH} мм</b> из ${cabH} мм</td></tr>`;
+    html += `<tr><td>Запас по высоте</td><td>${cabH - rackTotalH} мм</td></tr>`;
+    html += `<tr><td>Свободных мест</td><td>${sparePlaces}</td></tr>`;
+    html += `<tr><th colspan="2">Масса и BOM</th></tr>`;
+    html += `<tr><td>Всего блоков</td><td><b>${N}</b></td></tr>`;
+    html += `<tr><td>Масса АКБ</td><td><b>${totalMassKg.toFixed(1)} кг</b></td></tr>`;
+    html += `</table></div>`;
+    if (warns.length) {
+      html += `<div class="result-block warn"><div class="result-title">⚠ Предупреждения</div>`;
+      html += warns.map(w => `<div>• ${escHtml(w)}</div>`).join('');
+      html += `</div>`;
+    }
+    // ASCII-схематичная визуализация одной полки
+    if (blocksPerRow > 0 && rowsPerShelf > 0) {
+      const cell = '[■]';
+      const row = cell.repeat(blocksPerRow);
+      const rows = Array(rowsPerShelf).fill(row).join('\n');
+      html += `<div class="result-block">
+        <div class="result-title">Схема полки (вид сверху)</div>
+        <pre style="font:12px/1.4 ui-monospace,Consolas,monospace;margin-top:6px">${rows}</pre>
+        <div class="muted" style="font-size:11px">Ширина шкафа →, глубина ↓. Один «[■]» = один блок ${L}×${W} мм.</div>
+      </div>`;
+    }
+  }
+  out.innerHTML = html;
+}
+
+function wireRackForm() {
+  const form = document.getElementById('rack-form');
+  if (!form) return;
+  form.addEventListener('submit', e => { e.preventDefault(); doRackCalc(); });
+  // Подстановка габаритов из справочника при выборе модели
+  const sel = document.getElementById('rack-battery');
+  if (sel) sel.addEventListener('change', () => {
+    const id = sel.value;
+    if (!id) return;
+    const b = getBattery(id);
+    if (!b) return;
+    const g = (x, v) => { const el = document.getElementById(x); if (el && v != null) el.value = v; };
+    g('rack-L', b.lengthMm);
+    g('rack-W', b.widthMm);
+    g('rack-H', b.heightMm);
+    g('rack-Wt', b.weightKg);
+    if (b.terminalClearanceMm) g('rack-termClear', b.terminalClearanceMm);
+  });
+}
+
 // ================= Bootstrap =================
 window.addEventListener('DOMContentLoaded', () => {
   wireTabs();
   wireUpload();
   wireCalcForm();
+  wireRackForm();
   renderCatalog();
   renderBatterySelector();
+  renderRackBatterySelector();
 });

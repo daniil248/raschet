@@ -34,6 +34,7 @@
     <div class="tabs">
       <button class="tab-btn active" data-tab="tab-catalog">Справочник АКБ</button>
       <button class="tab-btn" data-tab="tab-calc">Расчёт разряда</button>
+      <button class="tab-btn" data-tab="tab-rack">Компоновка VRLA-шкафа</button>
     </div>
 
     <!-- ================== Справочник АКБ ================== -->
@@ -145,10 +146,105 @@
           <input id="calc-target" type="number" min="1" step="1" value="10">
         </div>
 
-        <button type="submit">Рассчитать</button>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button type="submit" style="flex:1">Рассчитать</button>
+          <button type="button" id="btn-battery-report"
+                  title="Сформировать PDF-отчёт по текущему расчёту"
+                  disabled>📄 Отчёт</button>
+        </div>
       </form>
 
       <div id="calc-result"></div>
+    </section>
+
+    <!-- ================== Компоновка VRLA-шкафа ================== -->
+    <section id="tab-rack" class="tab-panel">
+      <p class="muted" style="font-size:12px;max-width:720px;margin-bottom:14px">
+        Расчёт компоновки батарейного шкафа под VRLA/AGM блоки. Задайте
+        модель блока (или габариты вручную), число блоков и минимальные
+        зазоры. Модуль проверит, помещаются ли блоки в шкаф указанного
+        размера, рассчитает число полок и даст ориентировочную массу.
+        Зазоры до клемм — критичный параметр электробезопасности:
+        клеммы должны быть изолированы от металла корпуса минимум на
+        указанное расстояние, иначе при сотрясениях возможно замыкание.
+      </p>
+      <form id="rack-form" class="calc-form">
+        <div class="field-full">
+          <label>Модель блока из справочника (опц.)</label>
+          <select id="rack-battery">
+            <option value="">— задать габариты вручную —</option>
+          </select>
+        </div>
+        <div>
+          <label>Длина блока L, мм</label>
+          <input id="rack-L" type="number" min="0" step="1" value="181">
+        </div>
+        <div>
+          <label>Ширина блока W, мм</label>
+          <input id="rack-W" type="number" min="0" step="1" value="77">
+        </div>
+        <div>
+          <label>Высота блока H, мм</label>
+          <input id="rack-H" type="number" min="0" step="1" value="167">
+        </div>
+        <div>
+          <label>Масса блока, кг</label>
+          <input id="rack-Wt" type="number" min="0" step="0.1" value="4.5">
+        </div>
+        <div>
+          <label>Кол-во блоков</label>
+          <input id="rack-N" type="number" min="1" step="1" value="40">
+        </div>
+        <div>
+          <label>Ориентация на полке</label>
+          <select id="rack-orient">
+            <option value="long">Длиной вдоль полки (L × W площадь)</option>
+            <option value="short">Шириной вдоль полки (W × L площадь)</option>
+          </select>
+        </div>
+
+        <div class="field-full" style="margin-top:6px;padding-top:10px;border-top:1px dashed #d0d0d0">
+          <label style="font-size:11px;color:#1976d2;font-weight:600">Шкаф и зазоры</label>
+        </div>
+        <div>
+          <label>Внутр. ширина шкафа, мм</label>
+          <input id="rack-cabW" type="number" min="0" step="10" value="600">
+        </div>
+        <div>
+          <label>Внутр. глубина шкафа, мм</label>
+          <input id="rack-cabD" type="number" min="0" step="10" value="800">
+        </div>
+        <div>
+          <label>Внутр. высота шкафа, мм</label>
+          <input id="rack-cabH" type="number" min="0" step="10" value="2000">
+        </div>
+        <div>
+          <label>Зазор блок-блок, мм</label>
+          <input id="rack-gap" type="number" min="0" step="1" value="10"
+            title="Минимальный зазор между соседними блоками (для вентиляции и изоляции)">
+        </div>
+        <div>
+          <label>Зазор до стенок, мм</label>
+          <input id="rack-wall" type="number" min="0" step="1" value="20">
+        </div>
+        <div>
+          <label>Зазор между полками, мм</label>
+          <input id="rack-shelf" type="number" min="0" step="1" value="80"
+            title="Вертикальный зазор над блоком для доступа к клеммам и обслуживания">
+        </div>
+        <div>
+          <label>Толщина полки, мм</label>
+          <input id="rack-shelfT" type="number" min="0" step="1" value="25">
+        </div>
+        <div>
+          <label>Зазор до клемм, мм</label>
+          <input id="rack-termClear" type="number" min="0" step="1" value="15"
+            title="Минимум от токоведущих клемм до металла полки/корпуса (ПУЭ 4.4.12, IEC 62485-2)">
+        </div>
+
+        <button type="submit">🧮 Рассчитать компоновку</button>
+      </form>
+      <div id="rack-result"></div>
     </section>
   </main>
 
