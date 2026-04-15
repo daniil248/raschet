@@ -792,6 +792,9 @@ function openSettingsModal() {
   set('set-installMethod', G.defaultInstallMethod ?? 'B1');
   set('set-ambient',       G.defaultAmbient ?? 30);
   set('set-parallelProtection', G.parallelProtection ?? 'individual');
+  // Чекбокс: показывать справочную информацию
+  const showHelpEl = document.getElementById('set-showHelp');
+  if (showHelpEl) showHelpEl.checked = G.showHelp !== false;
   // При смене методики — обновить список способов прокладки
   const calcMethodEl = document.getElementById('set-calcMethod');
   if (calcMethodEl) calcMethodEl.onchange = () => updateInstallMethodOptions(calcMethodEl.value);
@@ -814,6 +817,7 @@ function saveSettingsModal() {
     defaultAmbient:     Number(get('set-ambient')) || 30,
     calcMethod:         get('set-calcMethod') || 'iec',
     parallelProtection: get('set-parallelProtection') || 'individual',
+    showHelp:           !!document.getElementById('set-showHelp')?.checked,
   };
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(patch)); }
   catch (e) { console.warn('[settings] save failed', e); }

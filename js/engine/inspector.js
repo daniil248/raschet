@@ -3330,15 +3330,18 @@ export function renderInspectorConn(c) {
       }
       const effectiveBrkIn = c.manualBreakerIn || c._breakerIn || c._breakerPerLine || 0;
       const Iz = c._cableIz || 0;
-      const inLeIz = !effectiveBrkIn || !Iz || effectiveBrkIn <= Iz;
+      const IzTotal = Iz * par;
+      // Координация по полному Iz при параллельных жилах, а не per-line
+      const _pm = c.protectionMode || 'full';
+      const inLeIz = (_pm === 'sc-only') || !effectiveBrkIn || !IzTotal || effectiveBrkIn <= IzTotal;
       const protOk = inLeIz;
-      const oversize = Iz > 0 && effectiveBrkIn > 0 && Iz > effectiveBrkIn * 2;
+      const oversize = IzTotal > 0 && effectiveBrkIn > 0 && IzTotal > effectiveBrkIn * 2;
       const bgColor = !protOk ? '#ffebee' : oversize ? '#fff8e1' : '#f5f5f5';
       const methodLabel = GLOBAL.calcMethod === 'pue' ? 'ПУЭ' : 'IEC 60364';
       h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${bgColor};border-radius:4px">` +
         (cableSpec ? cableSpec + '<br>' : '') +
         (effectiveBrkIn ? `Автомат: <b>${effectiveBrkIn} A</b><br>` : '') +
-        (Iz ? `Iдоп на жилу (Iz): <b>${fmt(Iz)} A</b><br>` : '') +
+        (Iz ? `Iдоп на жилу (Iz): <b>${fmt(Iz)} A</b>${par > 1 ? ` · суммарно <b>${fmt(IzTotal)} А</b>` : ''}<br>` : '') +
         (!inLeIz ? '<span style="color:#c62828;font-weight:600">⚠ In > Iz — кабель не защищён автоматом!</span><br>' : '') +
         (oversize ? '<span style="color:#e65100">ℹ Кабель значительно завышен (Iz > 2×In)</span><br>' : '') +
         (c._breakerUndersize ? '<span style="color:#c62828;font-weight:600">⚠ Автомат меньше расчётного тока!</span><br>' : '') +
@@ -3346,6 +3349,21 @@ export function renderInspectorConn(c) {
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
         `<span class="muted">Методика: ${methodLabel}</span>` +
         `</div>`);
+
+      // Справка: как подбирался кабель
+      if (GLOBAL.showHelp !== false && c._cableSize) {
+        const Iraw = c._maxA || 0;
+        const IperNeeded = Iraw / par;
+        h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
+          <b>Как подбирался кабель:</b><br>
+          1) Расчётный ток линии Iрасч = <b>${fmt(Iraw)} А</b><br>
+          ${par > 1 ? `2) Параллельных жил — <b>${par}</b>, на жилу Iрасч/n = <b>${fmt(IperNeeded)} А</b><br>` : ''}
+          ${_pm !== 'sc-only' && effectiveBrkIn ? `3) Координация с автоматом: Iz·n ≥ In, требуется Iz·n ≥ <b>${effectiveBrkIn} А</b><br>` : ''}
+          4) Коэффициенты условий прокладки: Kt=${(c._cableKt||1).toFixed(2)}, Kg=${(c._cableKg||1).toFixed(2)}, K=${(c._cableKtotal||1).toFixed(3)}<br>
+          5) Для ${methodLabel} выбрано ближайшее стандартное сечение <b>${c._cableSize} мм²</b>${par > 1 ? ` × ${par}` : ''}, дающее Iz=<b>${fmt(Iz)} А</b>${par > 1 ? ` (суммарно ${fmt(IzTotal)} А)` : ''}<br>
+          Правило: Iрасч ≤ Iz·n${_pm !== 'sc-only' ? ' и In ≤ Iz·n' : ''}.
+        </div>`);
+      }
     }
     h.push('</div>');
   }
@@ -3555,6 +3573,14 @@ export function renderInspectorConn(c) {
         <option value="sc-only"${_pm === 'sc-only' ? ' selected' : ''}>Только КЗ</option>
       </select>`));
 
+    // Эффективный Iz для координации (учитываем параллельные жилы)
+    const _parBrk = Math.max(1, c._cableParallel || 1);
+    const _IzTotal = (c._cableIz || 0) * _parBrk;
+    const _Imax = c._maxA || 0;
+    const _IperLine = _Imax / _parBrk;
+    const _pmFlag = c.protectionMode || 'full';
+    const _showHelp = GLOBAL.showHelp !== false;
+
     if (manualBreaker) {
       let brkOpts = '';
       for (const nom of BREAKER_SERIES) {
@@ -3563,9 +3589,24 @@ export function renderInspectorConn(c) {
       h.push(field('Номинал автомата', `<select data-conn-prop="manualBreakerIn">${brkOpts}</select>`));
       if (autoIn) {
         h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${autoIn} А</b></div>`);
+        if (_showHelp) {
+          const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
+          h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:4px;color:#1565c0;line-height:1.5">
+            <b>Как получено:</b><br>
+            Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
+            Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
+            Правило: Iрасч ≤ In ≤ Iz. Выбран ближайший стандартный номинал из ряда.
+            ${_pmFlag === 'sc-only' ? '<br>Режим: <b>Только КЗ</b> — координация с Iz не требуется.' : ''}
+          </div>`);
+        }
       }
-      if (c._cableIz && effectiveIn > c._cableIz) {
-        h.push('<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ Автомат > Iz кабеля — кабель не защищён! Увеличьте сечение.</div>');
+      // Warning 1: автомат > Iz (кабель не защищён от перегрузки) — только при full
+      if (_pmFlag !== 'sc-only' && _IzTotal > 0 && effectiveIn > _IzTotal) {
+        h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${effectiveIn} А) > Iz (${fmt(_IzTotal)} А${_parBrk > 1 ? ' суммарно' : ''}) — кабель не защищён от перегрузки! Увеличьте сечение или режим «Только КЗ».</div>`);
+      }
+      // Warning 2: автомат < Iрасч (сработает при нормальной нагрузке, нагрузка будет отключена)
+      if (_Imax > 0 && effectiveIn > 0 && effectiveIn < _Imax * 0.95) {
+        h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${effectiveIn} А) &lt; Iрасч (${fmt(_Imax)} А) — автомат будет срабатывать при штатной нагрузке! Нагрузка будет отключена.</div>`);
       }
     } else {
       const badge = c._breakerAgainstCable
@@ -3574,8 +3615,18 @@ export function renderInspectorConn(c) {
       h.push(`<div style="font-size:12px;line-height:1.8">` +
         (effectiveIn ? `Номинал: <b>${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
         (cnt > 1 ? `В шкафу: <b>${cnt} × ${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
-        (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${fmt(c._cableIz || 0)} А) — увеличьте сечение</span>` : '') +
+        (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${fmt(_IzTotal)} А${_parBrk > 1 ? ' суммарно' : ''}) — увеличьте сечение</span>` : '') +
         `</div>`);
+      if (_showHelp && effectiveIn) {
+        const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
+        h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
+          <b>Как получено:</b><br>
+          Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
+          Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
+          Правило: Iрасч ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный из ряда, удовлетворяющий условию.
+          ${_pmFlag === 'sc-only' ? '<br>Режим: <b>Только КЗ</b> — условие In ≤ Iz не принуждается.' : ''}
+        </div>`);
+      }
     }
     h.push('</div>');
   }
