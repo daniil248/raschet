@@ -1,0 +1,59 @@
+/* Подпрограмма «Конфигуратор щита» — специфичные стили.
+   Базовые (токены, кнопки, .empty) — в shared/styles/base.css. */
+
+* { margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; min-height: 100vh; }
+
+main {
+  flex: 1;
+  padding: 24px;
+  max-width: 1000px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.page-intro { margin-bottom: 24px; }
+.page-intro h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--rs-fg);
+  margin-bottom: 6px;
+}
+.page-intro p {
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 640px;
+}
+
+.stub-card {
+  background: var(--rs-bg-card);
+  border: 1px solid var(--rs-border-soft);
+  border-radius: var(--rs-radius-lg);
+  padding: 24px 28px;
+  box-shadow: var(--rs-shadow-card);
+}
+.stub-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--rs-accent);
+  margin-bottom: 10px;
+}
+.stub-card p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--rs-fg);
+  margin-bottom: 10px;
+}
+.stub-card ul {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--rs-fg-muted);
+  margin: 0 0 10px 20px;
+}
+.stub-card code {
+  font: 12px var(--rs-font-mono);
+  background: var(--rs-bg-soft);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
