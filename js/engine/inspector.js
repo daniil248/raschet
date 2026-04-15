@@ -1158,6 +1158,12 @@ export function openConsumerParamsModal(n) {
   }
 
   h.push(field('Количество в группе', `<input type="number" id="cp-count" min="1" max="999" step="1" value="${n.count || 1}">`));
+  // Чекбокс «Последовательное соединение» — активен только при count > 1.
+  // Электрически группа всё равно одна линия / один автомат / один кабель,
+  // флаг меняет только визуальное представление (иконки в ряд).
+  if ((n.count || 1) > 1) {
+    h.push(`<div class="field check"><input type="checkbox" id="cp-serialMode"${n.serialMode ? ' checked' : ''}><label>Последовательное соединение (цепочка)</label></div>`);
+  }
   h.push(field((n.count || 1) > 1 ? 'Мощность каждого, kW' : 'Установленная мощность, kW',
     `<input type="number" id="cp-demandKw" min="0" step="0.1" value="${n.demandKw}">`));
 
@@ -1276,6 +1282,7 @@ export function openConsumerParamsModal(n) {
     const nameInput = document.getElementById('cp-name')?.value?.trim();
     n.name = nameInput || (cat ? cat.label : n.name || 'Потребитель');
     n.count = Number(document.getElementById('cp-count')?.value) || 1;
+    n.serialMode = !!document.getElementById('cp-serialMode')?.checked;
     n.demandKw = Number(document.getElementById('cp-demandKw')?.value) || 0;
     const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
     n.voltageLevelIdx = vIdx;

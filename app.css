@@ -501,6 +501,30 @@ input, select { font: inherit; }
 #toolbar .sep { width: 1px; height: 20px; background: #e0e3ea; margin: 0 2px; }
 #btn-undo, #btn-redo { font-size: 15px; line-height: 1; min-width: 28px; }
 
+/* Группировка команд в тулбаре */
+#toolbar .tb-toggle {
+  background: #eef1f6 !important;
+  font-size: 15px;
+  min-width: 32px;
+  font-weight: 700;
+}
+#toolbar .tb-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#toolbar.collapsed .tb-body { display: none; }
+#toolbar .tb-group { display: flex; align-items: center; gap: 4px; padding: 2px 4px; border: 1px solid #eef1f6; border-radius: 6px; background: #fafbfd; }
+#toolbar .tb-group .tb-head {
+  background: transparent !important;
+  border: none !important;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: #546e7a;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+#toolbar .tb-group .tb-head:hover { color: #2b303b; background: transparent !important; }
+#toolbar .tb-group .tb-items { display: flex; align-items: center; gap: 4px; }
+#toolbar .tb-group.collapsed .tb-items { display: none; }
+#toolbar .tb-group.collapsed .tb-head::after { content: ''; }
+
 #canvas { width: 100%; height: 100%; display: block; cursor: default; touch-action: none; }
 #canvas.panning { cursor: grabbing; }
 #canvas.connecting { cursor: crosshair; }

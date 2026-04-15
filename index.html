@@ -122,28 +122,52 @@
 
       <main id="canvas-wrap">
         <div id="toolbar">
-          <button id="btn-zoom-in" title="Увеличить">+</button>
-          <button id="btn-zoom-out" title="Уменьшить">−</button>
-          <button id="btn-zoom-reset" title="100%">1:1</button>
-          <span class="sep"></span>
-          <button id="btn-fit" title="Вместить">⤢</button>
-          <span class="sep"></span>
-          <button id="btn-undo" title="Отменить (Ctrl+Z)" disabled>↶</button>
-          <button id="btn-redo" title="Вернуть (Ctrl+Shift+Z)" disabled>↷</button>
-          <span class="sep"></span>
-          <button id="btn-toggle-grid" title="Сетка">⊞</button>
-          <button id="btn-toggle-snap" title="Привязка к сетке">⊡</button>
-          <button id="btn-toggle-cables" title="Подписи кабелей">W</button>
-          <button id="btn-toggle-breakers" title="Номиналы автоматов">А</button>
-          <button id="btn-toggle-colors" title="Цвета по источникам">🎨</button>
-          <span class="sep"></span>
-          <button id="btn-links-hide-all" title="Временно скрыть все линии (показать ссылками)">🔗✕</button>
-          <button id="btn-links-show-all" title="Временно показать все линии">🔗✓</button>
-          <button id="btn-links-normal" title="Восстановить нормальный вид">🔗↺</button>
-          <button id="btn-links-breakers" title="Номиналы автоматов на разорванных линиях">🔗А</button>
-          <span class="sep"></span>
-          <button id="btn-clear" class="danger" disabled>Очистить</button>
-          <input type="file" id="file-input" accept="application/json" hidden>
+          <button id="btn-toolbar-toggle" class="tb-toggle" title="Свернуть панель инструментов">☰</button>
+          <div class="tb-body">
+            <div class="tb-group" data-group="view">
+              <button class="tb-head" type="button" title="Просмотр">Просмотр ▾</button>
+              <div class="tb-items">
+                <button id="btn-zoom-in" title="Увеличить">+</button>
+                <button id="btn-zoom-out" title="Уменьшить">−</button>
+                <button id="btn-zoom-reset" title="100%">1:1</button>
+                <button id="btn-fit" title="Вместить">⤢</button>
+              </div>
+            </div>
+            <div class="tb-group" data-group="history">
+              <button class="tb-head" type="button" title="История">История ▾</button>
+              <div class="tb-items">
+                <button id="btn-undo" title="Отменить (Ctrl+Z)" disabled>↶</button>
+                <button id="btn-redo" title="Вернуть (Ctrl+Shift+Z)" disabled>↷</button>
+              </div>
+            </div>
+            <div class="tb-group" data-group="display">
+              <button class="tb-head" type="button" title="Отображение">Отображение ▾</button>
+              <div class="tb-items">
+                <button id="btn-toggle-grid" title="Сетка">⊞</button>
+                <button id="btn-toggle-snap" title="Привязка к сетке">⊡</button>
+                <button id="btn-toggle-cables" title="Подписи кабелей">W</button>
+                <button id="btn-toggle-breakers" title="Номиналы автоматов">А</button>
+                <button id="btn-toggle-colors" title="Цвета по источникам">🎨</button>
+                <button id="btn-toggle-icons" title="Иконки потребителей">⚙</button>
+              </div>
+            </div>
+            <div class="tb-group" data-group="links">
+              <button class="tb-head" type="button" title="Ссылки/разрывы">Ссылки ▾</button>
+              <div class="tb-items">
+                <button id="btn-links-hide-all" title="Временно скрыть все линии (показать ссылками)">🔗✕</button>
+                <button id="btn-links-show-all" title="Временно показать все линии">🔗✓</button>
+                <button id="btn-links-normal" title="Восстановить нормальный вид">🔗↺</button>
+                <button id="btn-links-breakers" title="Номиналы автоматов на разорванных линиях">🔗А</button>
+              </div>
+            </div>
+            <div class="tb-group" data-group="actions">
+              <button class="tb-head" type="button" title="Действия">Действия ▾</button>
+              <div class="tb-items">
+                <button id="btn-clear" class="danger" disabled>Очистить</button>
+                <input type="file" id="file-input" accept="application/json" hidden>
+              </div>
+            </div>
+          </div>
         </div>
 
         <svg id="canvas" xmlns="http://www.w3.org/2000/svg">

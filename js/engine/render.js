@@ -123,6 +123,100 @@ export function pathMidpoint(a, points, b) {
   return { x: last.x, y: last.y };
 }
 
+// Иконки потребителей по consumerSubtype — рисуем в заданную <g> группу
+// с локальными координатами (0,0) = центр иконки. Размер базовый ~22px.
+// Цвет берём из текущей темы — #546e7a.
+function drawConsumerIconTo(g, subtype, color = '#546e7a') {
+  const mk = (tag, attrs) => el(tag, Object.assign({ class: 'node-icon' }, attrs));
+  switch (subtype) {
+    case 'lighting': {
+      // Лампочка: круг + маленькая «колба»
+      g.appendChild(mk('circle', { cx: 0, cy: -1, r: 7, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('line', { x1: -3, y1: 7, x2: 3, y2: 7, stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('line', { x1: -2, y1: 9, x2: 2, y2: 9, stroke: color, 'stroke-width': 1.5 }));
+      break;
+    }
+    case 'socket': {
+      // Розетка: скруглённый квадрат + две дырки
+      g.appendChild(mk('rect', { x: -9, y: -8, width: 18, height: 16, rx: 3, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('circle', { cx: -4, cy: 0, r: 1.8, fill: color }));
+      g.appendChild(mk('circle', { cx:  4, cy: 0, r: 1.8, fill: color }));
+      break;
+    }
+    case 'motor': {
+      g.appendChild(mk('circle', { cx: 0, cy: 0, r: 9, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      const t = text(0, 4, 'M', 'node-icon-letter');
+      t.style.fill = color;
+      g.appendChild(t);
+      break;
+    }
+    case 'pump': {
+      g.appendChild(mk('circle', { cx: 0, cy: 0, r: 9, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      // Капля
+      g.appendChild(mk('path', { d: 'M0,-5 C 4,0 4,4 0,5 C -4,4 -4,0 0,-5 Z', fill: color }));
+      break;
+    }
+    case 'fan': {
+      // Три лопасти — маленькие эллипсы вокруг центра
+      for (let k = 0; k < 3; k++) {
+        const a = (k * 2 * Math.PI) / 3;
+        g.appendChild(mk('ellipse', {
+          cx: Math.cos(a) * 4, cy: Math.sin(a) * 4,
+          rx: 4, ry: 1.8, fill: color,
+          transform: `rotate(${k * 120} ${Math.cos(a) * 4} ${Math.sin(a) * 4})`,
+        }));
+      }
+      g.appendChild(mk('circle', { cx: 0, cy: 0, r: 1.5, fill: '#fff', stroke: color, 'stroke-width': 1 }));
+      break;
+    }
+    case 'server': {
+      // Серверная стойка: 3 горизонтальные планки
+      g.appendChild(mk('rect', { x: -8, y: -9, width: 16, height: 18, rx: 1, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('line', { x1: -5, y1: -4, x2: 5, y2: -4, stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('line', { x1: -5, y1:  0, x2: 5, y2:  0, stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('line', { x1: -5, y1:  4, x2: 5, y2:  4, stroke: color, 'stroke-width': 1.5 }));
+      break;
+    }
+    case 'heater': {
+      // Обогрев: волнистые линии
+      g.appendChild(mk('path', { d: 'M-8,-4 Q -4,-8 0,-4 T 8,-4', fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('path', { d: 'M-8, 0 Q -4,-4 0, 0 T 8, 0', fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('path', { d: 'M-8, 4 Q -4, 0 0, 4 T 8, 4', fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      break;
+    }
+    case 'conditioner': {
+      // Кондиционер: прямоугольник + 3 диагональных штриха
+      g.appendChild(mk('rect', { x: -9, y: -5, width: 18, height: 10, rx: 2, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('line', { x1: -5, y1: -2, x2: -2, y2: 2, stroke: color, 'stroke-width': 1 }));
+      g.appendChild(mk('line', { x1: -1, y1: -2, x2:  2, y2: 2, stroke: color, 'stroke-width': 1 }));
+      g.appendChild(mk('line', { x1:  3, y1: -2, x2:  6, y2: 2, stroke: color, 'stroke-width': 1 }));
+      break;
+    }
+    case 'elevator': {
+      // Лифт: квадрат со стрелкой вверх и вниз
+      g.appendChild(mk('rect', { x: -8, y: -9, width: 16, height: 18, rx: 1, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('path', { d: 'M-3,-2 L0,-6 L3,-2 Z', fill: color }));
+      g.appendChild(mk('path', { d: 'M-3, 2 L0, 6 L3, 2 Z', fill: color }));
+      break;
+    }
+    case 'outdoor_unit': {
+      // Наружный блок: прямоугольник с решёткой
+      g.appendChild(mk('rect', { x: -9, y: -7, width: 18, height: 14, rx: 2, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      g.appendChild(mk('circle', { cx: 0, cy: 0, r: 4, fill: 'none', stroke: color, 'stroke-width': 1 }));
+      g.appendChild(mk('line', { x1: -4, y1: 0, x2: 4, y2: 0, stroke: color, 'stroke-width': 1 }));
+      g.appendChild(mk('line', { x1: 0, y1: -4, x2: 0, y2: 4, stroke: color, 'stroke-width': 1 }));
+      break;
+    }
+    default: {
+      // custom / неизвестный: круг с вопросом
+      g.appendChild(mk('circle', { cx: 0, cy: 0, r: 9, fill: 'none', stroke: color, 'stroke-width': 1.5 }));
+      const t = text(0, 4, '?', 'node-icon-letter');
+      t.style.fill = color;
+      g.appendChild(t);
+    }
+  }
+}
+
 export function render() {
   recalc();
   renderConns();
@@ -334,6 +428,43 @@ export function renderNodes() {
 
     // Имя
     g.appendChild(text(12, 33, n.name || '(без имени)', 'node-title'));
+
+    // Иконка потребителя по подтипу — в правом верхнем углу карточки.
+    // Для группы с serialMode — дополнительно ряд мелких иконок вдоль нижнего края.
+    if (n.type === 'consumer' && GLOBAL.showConsumerIcons !== false) {
+      const iconG = el('g', { transform: `translate(${w - 22},16)`, class: 'node-icon' });
+      drawConsumerIconTo(iconG, n.consumerSubtype || 'custom');
+      g.appendChild(iconG);
+      // Serial-mode: нарисовать ряд мелких иконок по низу карточки
+      const count = Math.max(1, Number(n.count) || 1);
+      if (n.serialMode && count > 1) {
+        const maxShown = Math.min(count, 6);
+        const step = Math.min(22, (w - 24) / maxShown);
+        const startX = 12 + step / 2;
+        const cy = NODE_H - 30;
+        for (let k = 0; k < maxShown; k++) {
+          const cx = startX + k * step;
+          const sg = el('g', { transform: `translate(${cx},${cy}) scale(0.55)`, class: 'node-icon' });
+          drawConsumerIconTo(sg, n.consumerSubtype || 'custom', '#90a4ae');
+          g.appendChild(sg);
+          // Соединительная линия между иконками
+          if (k < maxShown - 1) {
+            g.appendChild(el('line', {
+              x1: cx + step * 0.3, y1: cy,
+              x2: cx + step * 0.7, y2: cy,
+              stroke: '#90a4ae', 'stroke-width': 1.2,
+              class: 'node-icon',
+            }));
+          }
+        }
+        if (count > maxShown) {
+          const t = text(w - 12, cy + 4, `+${count - maxShown}`, 'node-icon-letter');
+          t.setAttribute('text-anchor', 'end');
+          t.style.fill = '#90a4ae';
+          g.appendChild(t);
+        }
+      }
+    }
 
     // IEC условное обозначение для источников (маленький SVG-символ)
     if (n.type === 'source' || n.type === 'generator') {

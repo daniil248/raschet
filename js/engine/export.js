@@ -189,6 +189,36 @@ export function initToolbar() {
   updateLinkBrkBtn();
   if (linkBrkBtn) linkBrkBtn.onclick = () => { GLOBAL.showLinkBreakers = !GLOBAL.showLinkBreakers; updateLinkBrkBtn(); render(); };
 
+  // Иконки потребителей — глобальный toggle
+  if (!('showConsumerIcons' in GLOBAL)) GLOBAL.showConsumerIcons = true;
+  const iconsBtn = document.getElementById('btn-toggle-icons');
+  const updateIconsBtn = () => { if (iconsBtn) iconsBtn.style.opacity = GLOBAL.showConsumerIcons ? '1' : '0.4'; };
+  updateIconsBtn();
+  if (iconsBtn) iconsBtn.onclick = () => { GLOBAL.showConsumerIcons = !GLOBAL.showConsumerIcons; updateIconsBtn(); render(); };
+
+  // Toolbar: сворачивание групп и всей панели
+  const toolbar = document.getElementById('toolbar');
+  const tbToggle = document.getElementById('btn-toolbar-toggle');
+  if (tbToggle && toolbar) {
+    tbToggle.onclick = () => {
+      toolbar.classList.toggle('collapsed');
+      tbToggle.textContent = toolbar.classList.contains('collapsed') ? '☰' : '×';
+      tbToggle.title = toolbar.classList.contains('collapsed')
+        ? 'Развернуть панель инструментов'
+        : 'Свернуть панель инструментов';
+    };
+  }
+  document.querySelectorAll('#toolbar .tb-group .tb-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const grp = head.closest('.tb-group');
+      if (!grp) return;
+      grp.classList.toggle('collapsed');
+      // Меняем стрелку ▾/▸
+      const label = head.textContent.replace(/[\s▾▸]+$/, '');
+      head.textContent = label + (grp.classList.contains('collapsed') ? ' ▸' : ' ▾');
+    });
+  });
+
   // Модальные окна — перетаскивание за заголовок
   document.querySelectorAll('.modal-head').forEach(head => {
     let dragging = false, dx = 0, dy = 0;
