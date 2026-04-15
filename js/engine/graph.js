@@ -48,8 +48,17 @@ export function createNode(type, x, y) {
   base.tag = nextFreeTag(type);
   base.x = x - nodeWidth(base) / 2;
   base.y = y - NODE_H / 2;
-  // Новый узел — только на текущей странице
-  if (state.currentPageId) base.pageIds = [state.currentPageId];
+  // Новый узел привязывается к home-странице (independent).
+  // Если текущая страница — linked, то home = её sourcePageId, и узел
+  // получит pageIds=[home, currentLinked] чтобы сразу быть виден на ней.
+  if (state.currentPageId) {
+    const cur = (state.pages || []).find(p => p.id === state.currentPageId);
+    if (cur && cur.type === 'linked' && cur.sourcePageId) {
+      base.pageIds = [cur.sourcePageId, cur.id];
+    } else {
+      base.pageIds = [state.currentPageId];
+    }
+  }
   state.nodes.set(id, base);
   _selectNode(id);
   _render();

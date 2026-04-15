@@ -54,6 +54,33 @@ export function nextPageId() {
   while (used.has('p' + k)) k++;
   return 'p' + k;
 }
+// Вернуть home-страницу узла. Home = первая INDEPENDENT страница в pageIds.
+// Если ни одной нет — считаем что home = первая страница из pageIds.
+export function nodeHomePageId(node) {
+  const pids = Array.isArray(node?.pageIds) ? node.pageIds : [];
+  if (!pids.length) return null;
+  for (const pid of pids) {
+    const p = (state.pages || []).find(pp => pp.id === pid);
+    if (p && p.type !== 'linked') return pid;
+  }
+  // Если нет independent — берём sourcePageId первой linked
+  for (const pid of pids) {
+    const p = (state.pages || []).find(pp => pp.id === pid);
+    if (p && p.type === 'linked' && p.sourcePageId) return p.sourcePageId;
+  }
+  return pids[0];
+}
+// Список страниц, на которые МОЖНО поместить узел (home + linked-потомки home).
+export function pagesForNode(node) {
+  const home = nodeHomePageId(node);
+  if (!home) return state.pages || [];
+  const res = [];
+  for (const p of (state.pages || [])) {
+    if (p.id === home) res.push(p);
+    else if (p.type === 'linked' && p.sourcePageId === home) res.push(p);
+  }
+  return res;
+}
 
 // ================= UID generator =================
 let _idSeq = 1;

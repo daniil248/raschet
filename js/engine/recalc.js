@@ -50,50 +50,88 @@ function simpleDownstream(nodeId) {
 // 3. Потребители за UPS: суммарная_мощность / средний_КПД + заряды всех UPS
 // 4. Прямые потребители (не через UPS): суммарная мощность как есть
 // Это даёт корректный результат без двойного счёта при DAG-топологиях.
+// Макс. нагрузка, которая может прийти к узлу с учётом:
+//  - рекурсивного обхода через реальные conns
+//  - расширения между секциями многосекционного щита через замкнутые И автоматические bus-ties
+//  - уникального счёта каждого потребителя (visitedConsumers)
+//  - UPS эффективности и заряда батарей
+// Используется И для source max, И для cable max (куда cable идёт).
 function maxDownstreamLoad(nodeId) {
   const visitedConsumers = new Set();
   const visitedUps = new Set();
-  let directKw = 0;       // потребители НЕ через UPS
-  let upsConsumerKw = 0;  // потребители через UPS (до КПД)
-  let totalChargeKw = 0;  // суммарный заряд всех UPS
-  let sumEfficiency = 0;  // для среднего КПД
+  const visited = new Set();
+  let directKw = 0;
+  let upsConsumerKw = 0;
+  let totalChargeKw = 0;
+  let sumEfficiency = 0;
   let upsCount = 0;
 
-  // Рекурсивный обход. throughUps = true если мы прошли через хотя бы один UPS
-  function walk(nid, path, throughUps) {
-    if (path.has(nid)) return;
-    path.add(nid);
-    for (const c of state.conns.values()) {
-      if (c.from.nodeId !== nid) continue;
-      if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
-      const to = state.nodes.get(c.to.nodeId);
-      if (!to) continue;
+  const queue = [{ id: nodeId, throughUps: false }];
+  visited.add(nodeId);
 
-      if (to.type === 'consumer') {
-        if (visitedConsumers.has(to.id)) continue;
-        visitedConsumers.add(to.id);
-        const kw = (Number(to.demandKw) || 0) * Math.max(1, Number(to.count) || 1);
-        if (throughUps) {
-          upsConsumerKw += kw;
-        } else {
-          directKw += kw;
-        }
-      } else if (to.type === 'ups') {
-        if (visitedUps.has(to.id)) continue;
-        visitedUps.add(to.id);
-        const eff = Math.max(0.01, (Number(to.efficiency) || 100) / 100);
-        totalChargeKw += upsChargeKw(to);
-        sumEfficiency += eff;
+  while (queue.length) {
+    const { id: curId, throughUps } = queue.shift();
+    const cur = state.nodes.get(curId);
+    if (!cur) continue;
+    if (cur.type === 'consumer') {
+      if (!visitedConsumers.has(curId)) {
+        visitedConsumers.add(curId);
+        const kw = (Number(cur.demandKw) || 0) * Math.max(1, Number(cur.count) || 1);
+        if (throughUps) upsConsumerKw += kw; else directKw += kw;
+      }
+      continue;
+    }
+    if (cur.type === 'ups') {
+      if (!visitedUps.has(curId)) {
+        visitedUps.add(curId);
+        totalChargeKw += upsChargeKw(cur);
+        sumEfficiency += Math.max(0.01, (Number(cur.efficiency) || 100) / 100);
         upsCount++;
-        walk(to.id, new Set(path), true);
-      } else if (to.type === 'panel' || to.type === 'channel') {
-        walk(to.id, new Set(path), throughUps);
+      }
+      // Downstream от ИБП идёт с флагом throughUps=true
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== curId) continue;
+        if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+        if (!visited.has(c.to.nodeId)) {
+          visited.add(c.to.nodeId);
+          queue.push({ id: c.to.nodeId, throughUps: true });
+        }
+      }
+      continue;
+    }
+    // Обычный узел: проходим по исходящим conns
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId !== curId) continue;
+      if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+      if (!visited.has(c.to.nodeId)) {
+        visited.add(c.to.nodeId);
+        queue.push({ id: c.to.nodeId, throughUps });
       }
     }
-    path.delete(nid);
+    // Расширяемся через bus-tie если узел — секция многосекционного щита
+    if (cur.parentSectionedId) {
+      const container = state.nodes.get(cur.parentSectionedId);
+      const ties = Array.isArray(container?.busTies) ? container.busTies : [];
+      if (ties.length) {
+        const tieStates = Array.isArray(container._busTieStates) ? container._busTieStates : ties.map(t => !!t.closed);
+        const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
+        const myIdx = secIds.indexOf(curId);
+        if (myIdx >= 0) {
+          for (let ti = 0; ti < ties.length; ti++) {
+            if (!tieStates[ti] && !ties[ti].auto) continue;
+            const [a, b] = ties[ti].between;
+            const other = a === myIdx ? b : (b === myIdx ? a : -1);
+            if (other < 0) continue;
+            const otherId = secIds[other];
+            if (otherId && !visited.has(otherId)) {
+              visited.add(otherId);
+              queue.push({ id: otherId, throughUps });
+            }
+          }
+        }
+      }
+    }
   }
-
-  walk(nodeId, new Set(), false);
 
   const avgEff = upsCount > 0 ? (sumEfficiency / upsCount) : 1;
   return directKw + upsConsumerKw / avgEff + totalChargeKw;
@@ -1556,82 +1594,10 @@ function recalc() {
         }
         n._maxLoadKw = maxScenarioKw;
       } else {
-        // Единый обход вперёд с учётом bus-tie между секциями:
-        // из любой достигнутой секции многосекционного щита расширяемся через
-        // её замкнутые/авто СВ в соседние секции. Все потребители считаются
-        // РОВНО ОДИН РАЗ через общие visited-set, что исключает двойной счёт.
-        const visitedConsumers = new Set();
-        const visitedUps = new Set();
-        const visited = new Set();
-        let directKw = 0, upsConsKw = 0, totalCharge = 0;
-        let sumEff = 0, upsCnt = 0;
-        const queue = [{ id: n.id, throughUps: false }];
-        visited.add(n.id);
-        while (queue.length) {
-          const { id: curId, throughUps } = queue.shift();
-          const cur = state.nodes.get(curId);
-          if (!cur) continue;
-          if (cur.type === 'consumer') {
-            if (!visitedConsumers.has(curId)) {
-              visitedConsumers.add(curId);
-              const kw = (Number(cur.demandKw) || 0) * Math.max(1, Number(cur.count) || 1);
-              if (throughUps) upsConsKw += kw; else directKw += kw;
-            }
-            continue;
-          }
-          if (cur.type === 'ups') {
-            if (!visitedUps.has(curId)) {
-              visitedUps.add(curId);
-              totalCharge += upsChargeKw(cur);
-              sumEff += Math.max(0.01, (Number(cur.efficiency) || 100) / 100);
-              upsCnt++;
-            }
-            // Продолжаем обход за ИБП — все downstream-нагрузки с флагом throughUps
-            for (const c of state.conns.values()) {
-              if (c.from.nodeId !== curId) continue;
-              if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
-              if (!visited.has(c.to.nodeId)) {
-                visited.add(c.to.nodeId);
-                queue.push({ id: c.to.nodeId, throughUps: true });
-              }
-            }
-            continue;
-          }
-          // Обычный узел (source/generator/panel/channel/section)
-          for (const c of state.conns.values()) {
-            if (c.from.nodeId !== curId) continue;
-            if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
-            if (!visited.has(c.to.nodeId)) {
-              visited.add(c.to.nodeId);
-              queue.push({ id: c.to.nodeId, throughUps });
-            }
-          }
-          // Расширение через bus-ties: если текущий узел — секция многосекционного щита
-          if (cur.parentSectionedId) {
-            const container = state.nodes.get(cur.parentSectionedId);
-            const ties = Array.isArray(container?.busTies) ? container.busTies : [];
-            if (ties.length) {
-              const tieStates = Array.isArray(container._busTieStates) ? container._busTieStates : ties.map(t => !!t.closed);
-              const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
-              const myIdx = secIds.indexOf(curId);
-              if (myIdx >= 0) {
-                for (let ti = 0; ti < ties.length; ti++) {
-                  if (!tieStates[ti] && !ties[ti].auto) continue;
-                  const [a, b] = ties[ti].between;
-                  const other = a === myIdx ? b : (b === myIdx ? a : -1);
-                  if (other < 0) continue;
-                  const otherId = secIds[other];
-                  if (otherId && !visited.has(otherId)) {
-                    visited.add(otherId);
-                    queue.push({ id: otherId, throughUps });
-                  }
-                }
-              }
-            }
-          }
-        }
-        const avgEff = upsCnt > 0 ? sumEff / upsCnt : 1;
-        n._maxLoadKw = directKw + upsConsKw / avgEff + totalCharge;
+        // Единый обход через maxDownstreamLoad — учитывает bus-tie между секциями
+        // и дедуплицирует потребителей, поэтому никаких отдельных tie-сценариев
+        // складывать сверху НЕ нужно.
+        n._maxLoadKw = maxDownstreamLoad(n.id);
       }
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)

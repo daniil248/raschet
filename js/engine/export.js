@@ -202,8 +202,15 @@ export function initToolbar() {
       const tab = document.createElement('div');
       tab.className = 'page-tab' + (p.id === state.currentPageId ? ' active' : '') + (p.type === 'linked' ? ' linked' : '');
       tab.dataset.pageId = p.id;
-      const typeLabel = p.type === 'linked' ? 'ССЫЛ' : 'НЕЗ';
-      tab.innerHTML = `<span class="page-tab-name">${escapePage(p.name || p.id)}</span> <span class="page-tab-type">${typeLabel}</span>`;
+      // Для независимых страниц — без метки, только название.
+      // Для ссылочных — показываем «→ имя родителя».
+      let typeHtml = '';
+      if (p.type === 'linked') {
+        const src = (state.pages || []).find(pp => pp.id === p.sourcePageId);
+        const parentName = src ? (src.name || src.id) : '?';
+        typeHtml = ` <span class="page-tab-type">→ ${escapePage(parentName)}</span>`;
+      }
+      tab.innerHTML = `<span class="page-tab-name">${escapePage(p.name || p.id)}</span>${typeHtml}`;
       tab.onclick = (e) => {
         // Если клик пришёл по inline-input (ещё идёт переименование) — не переключаем
         if (e.target.classList && e.target.classList.contains('page-tab-rename')) return;
@@ -236,17 +243,27 @@ export function initToolbar() {
     render();
   };
 
-  const addPage = (type = 'independent') => {
+  const addPage = (type = 'independent', sourcePageId = null) => {
+    // Ссылочная страница ОБЯЗАНА быть привязана к существующей independent странице.
+    if (type === 'linked') {
+      const src = (state.pages || []).find(p => p.id === sourcePageId && p.type !== 'linked');
+      if (!src) {
+        alert('Для ссылочной страницы нужно выбрать родительскую независимую страницу.');
+        return;
+      }
+    }
     const cur = getCurrentPage();
     if (cur) cur.view = { ...state.view };
     const newId = nextPageId();
     const nextNum = (state.pages || []).length + 1;
-    state.pages.push({
+    const newPage = {
       id: newId,
       name: `Страница ${nextNum}`,
       type,
       view: { x: 0, y: 0, zoom: 1 },
-    });
+    };
+    if (type === 'linked') newPage.sourcePageId = sourcePageId;
+    state.pages.push(newPage);
     state.currentPageId = newId;
     state.view = { x: 0, y: 0, zoom: 1 };
     state.selectedKind = null; state.selectedId = null;
@@ -274,10 +291,22 @@ export function initToolbar() {
     renderPageTabs();
   };
 
-  const setPageType = (pageId, type) => {
+  const setPageType = (pageId, type, sourcePageId = null) => {
     const p = state.pages.find(p => p.id === pageId);
     if (!p) return;
-    p.type = type;
+    if (type === 'linked') {
+      if (!sourcePageId || sourcePageId === pageId) {
+        alert('Выберите родительскую независимую страницу.');
+        return;
+      }
+      const src = state.pages.find(x => x.id === sourcePageId && x.type !== 'linked');
+      if (!src) { alert('Родитель должен быть независимой страницей.'); return; }
+      p.type = 'linked';
+      p.sourcePageId = sourcePageId;
+    } else {
+      p.type = 'independent';
+      delete p.sourcePageId;
+    }
     renderPageTabs();
   };
 
@@ -383,7 +412,14 @@ export function initToolbar() {
     sep();
     group('Тип страницы');
     item('Независимая', () => setPageType(pageId, 'independent'), { checked: p.type !== 'linked' });
-    item('Ссылочная',   () => setPageType(pageId, 'linked'),      { checked: p.type === 'linked' });
+    // Ссылочная → вложенный выбор parent (только независимые, кроме самой себя)
+    const parentCandidates = (state.pages || []).filter(pp => pp.type !== 'linked' && pp.id !== pageId);
+    for (const parent of parentCandidates) {
+      const isCurrentSource = p.type === 'linked' && p.sourcePageId === parent.id;
+      item(`Ссылочная → ${parent.name || parent.id}`,
+        () => setPageType(pageId, 'linked', parent.id),
+        { checked: isCurrentSource });
+    }
     sep();
     group('Порядок');
     const leftDisabled = idx <= 0;
@@ -418,41 +454,54 @@ export function initToolbar() {
     if (e.key === 'Escape' && _pageMenu) closePageMenu();
   });
 
-  if (pageAddBtn) {
-    // Клик по + — показать мини-меню для выбора типа новой страницы
-    pageAddBtn.onclick = (e) => {
-      const rect = pageAddBtn.getBoundingClientRect();
-      const menu = document.createElement('div');
-      menu.className = 'page-tab-menu';
-      const mkItem = (label, handler) => {
-        const it = document.createElement('div');
-        it.className = 'pm-item';
-        it.textContent = label;
-        it.onclick = (ev) => { ev.stopPropagation(); closePageMenu(); handler(); };
-        menu.appendChild(it);
-      };
-      closePageMenu();
-      const g = document.createElement('div');
-      g.className = 'pm-group-label';
-      g.textContent = 'Новая страница';
-      menu.appendChild(g);
-      mkItem('Независимая', () => addPage('independent'));
-      mkItem('Ссылочная', () => addPage('linked'));
-      document.body.appendChild(menu);
-      const mw = menu.offsetWidth, mh = menu.offsetHeight;
-      menu.style.left = Math.min(rect.left, window.innerWidth - mw - 4) + 'px';
-      menu.style.top  = Math.max(4, rect.top - mh - 4) + 'px';
-      _pageMenu = menu;
-      setTimeout(() => {
-        const onDown = (ev) => {
-          if (_pageMenu && !_pageMenu.contains(ev.target)) {
-            closePageMenu();
-            document.removeEventListener('mousedown', onDown, true);
-          }
-        };
-        document.addEventListener('mousedown', onDown, true);
-      }, 0);
+  const showAddPageMenu = (anchorRect) => {
+    closePageMenu();
+    const menu = document.createElement('div');
+    menu.className = 'page-tab-menu';
+    const g = document.createElement('div');
+    g.className = 'pm-group-label';
+    g.textContent = 'Новая страница';
+    menu.appendChild(g);
+    const mkItem = (label, handler) => {
+      const it = document.createElement('div');
+      it.className = 'pm-item';
+      it.textContent = label;
+      it.onclick = (ev) => { ev.stopPropagation(); closePageMenu(); handler(); };
+      menu.appendChild(it);
     };
+    mkItem('Независимая', () => addPage('independent'));
+    // Для ссылочной — сперва выбор родительской independent страницы
+    const independents = (state.pages || []).filter(p => p.type !== 'linked');
+    if (independents.length) {
+      const sep = document.createElement('div');
+      sep.className = 'pm-sep';
+      menu.appendChild(sep);
+      const g2 = document.createElement('div');
+      g2.className = 'pm-group-label';
+      g2.textContent = 'Ссылочная на';
+      menu.appendChild(g2);
+      for (const parent of independents) {
+        mkItem(parent.name || parent.id, () => addPage('linked', parent.id));
+      }
+    }
+    document.body.appendChild(menu);
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    menu.style.left = Math.min(anchorRect.left, window.innerWidth - mw - 4) + 'px';
+    menu.style.top  = Math.max(4, anchorRect.top - mh - 4) + 'px';
+    _pageMenu = menu;
+    setTimeout(() => {
+      const onDown = (ev) => {
+        if (_pageMenu && !_pageMenu.contains(ev.target)) {
+          closePageMenu();
+          document.removeEventListener('mousedown', onDown, true);
+        }
+      };
+      document.addEventListener('mousedown', onDown, true);
+    }, 0);
+  };
+
+  if (pageAddBtn) {
+    pageAddBtn.onclick = () => showAddPageMenu(pageAddBtn.getBoundingClientRect());
   }
   renderPageTabs();
   // Экспонируем для вызова после десериализации / undo

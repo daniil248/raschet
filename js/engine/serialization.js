@@ -31,7 +31,9 @@ export function serialize() {
     nodes: Array.from(state.nodes.values()).map(stripRuntime),
     conns: Array.from(state.conns.values()).map(stripRuntime),
     pages: (state.pages || []).map(p => ({
-      id: p.id, name: p.name, type: p.type || 'independent', view: p.view || { x: 0, y: 0, zoom: 1 },
+      id: p.id, name: p.name, type: p.type || 'independent',
+      sourcePageId: p.sourcePageId || null,
+      view: p.view || { x: 0, y: 0, zoom: 1 },
     })),
     currentPageId: state.currentPageId,
     modes: state.modes,
@@ -64,6 +66,7 @@ export function deserialize(data) {
   if (Array.isArray(data.pages) && data.pages.length) {
     state.pages = data.pages.map(p => ({
       id: p.id, name: p.name || p.id, type: p.type || 'independent',
+      sourcePageId: p.sourcePageId || null,
       view: p.view || { x: 0, y: 0, zoom: 1 },
     }));
     state.currentPageId = data.currentPageId && state.pages.find(p => p.id === data.currentPageId)

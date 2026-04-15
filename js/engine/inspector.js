@@ -1,4 +1,4 @@
-import { state, svg, inspectorBody, uid } from './state.js';
+import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
 import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount } from './electrical.js';
@@ -367,15 +367,22 @@ export function renderInspectorNode(n) {
   h.push('<button class="btn-delete" id="btn-del-node">Удалить элемент</button>');
 
   // === Страницы, на которых показан элемент ===
-  if (Array.isArray(state.pages) && state.pages.length > 1) {
-    const curPids = Array.isArray(n.pageIds) ? n.pageIds : (state.currentPageId ? [state.currentPageId] : []);
-    h.push('<div class="inspector-section"><h4>Страницы</h4>');
-    h.push('<div style="font-size:11px;color:#546e7a;margin-bottom:4px">Отметьте страницы, на которых виден этот узел.</div>');
-    for (const p of state.pages) {
-      const checked = curPids.includes(p.id);
-      h.push(`<div class="field check"><input type="checkbox" data-page-id="${escAttr(p.id)}"${checked ? ' checked' : ''}><label>${escHtml(p.name || p.id)} <span class="muted" style="font-size:10px">(${p.type === 'linked' ? 'ссыл.' : 'нез.'})</span></label></div>`);
+  // Показываем только home-страницу узла + linked-страницы того же родителя.
+  // Независимые страницы НЕ могут обмениваться узлами — только через ссылочную.
+  {
+    const allowed = pagesForNode(n);
+    if (allowed.length > 1) {
+      const curPids = Array.isArray(n.pageIds) ? n.pageIds : (state.currentPageId ? [state.currentPageId] : []);
+      h.push('<div class="inspector-section"><h4>Страницы</h4>');
+      h.push('<div style="font-size:11px;color:#546e7a;margin-bottom:4px">Отметьте ссылочные страницы, на которых виден этот узел. Home (независимая) — обязательна.</div>');
+      for (const p of allowed) {
+        const checked = curPids.includes(p.id);
+        const isHome = p.type !== 'linked';
+        const disabled = isHome ? ' disabled' : '';
+        h.push(`<div class="field check"><input type="checkbox" data-page-id="${escAttr(p.id)}"${checked ? ' checked' : ''}${disabled}><label>${escHtml(p.name || p.id)}${isHome ? ' <span class="muted" style="font-size:10px">(home)</span>' : ' <span class="muted" style="font-size:10px">(ссыл.)</span>'}</label></div>`);
+      }
+      h.push('</div>');
     }
-    h.push('</div>');
   }
 
   // Полный дамп параметров узла
