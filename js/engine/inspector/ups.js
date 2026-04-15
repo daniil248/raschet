@@ -779,17 +779,16 @@ function _renderUpsBatteryBody(n) {
     }
 
     // Для S³ модулей auto-init числа шкафов: минимум, чтобы покрыть
-    // нагрузку с учётом лимита мощности одного шкафа. Делается только
-    // один раз (если batteryStringCount не задан или равен 1 и S³).
+    // нагрузку с учётом паспортной мощности одного шкафа (200 или 60 кВт,
+    // System rated output power). Число модулей в шкафу к мощности
+    // отношения не имеет — только к автономии. Делается один раз.
     let stringsCat = Math.max(1, Number(n.batteryStringCount) || 1);
     if (isS3Module && !n._s3StringsAutoInit && loadKw > 0) {
       const pk = picked.packaging;
-      const cabPowerLimit = pk.cabinetPowerKw || 200;
-      const cabPowerByModules = (pk.maxPerCabinet || 20) * (picked.moduleRatedKw || 10);
-      const cabPower = Math.min(cabPowerByModules, cabPowerLimit);
+      const cabPowerKw = Number(pk.cabinetPowerKw) || 200;
       const invEffLocal = Math.max(0.5, Math.min(1, upsDc.efficiency / 100));
       const requiredKw = loadKw / invEffLocal;
-      const minCabinets = Math.max(1, Math.ceil(requiredKw / cabPower));
+      const minCabinets = Math.max(1, Math.ceil(requiredKw / cabPowerKw));
       const maxCab = Number(pk.maxCabinets) || 15;
       if (minCabinets > stringsCat) {
         stringsCat = Math.min(minCabinets, maxCab);
@@ -914,12 +913,10 @@ function _renderUpsBatteryBody(n) {
     const stringsMax = isS3Module ? (Number(picked.packaging.maxCabinets) || 15) : 16;
     const stringsLabel = isS3Module ? `Шкафов в параллель (1…${stringsMax})` : 'Параллельных цепочек';
     // Предварительный расчёт перегруза: нужен для красной рамки input'а.
-    // Это дубликат логики из results-панели ниже (там считается ещё раз
-    // для BOM-блока); тут только чтобы знать, подсвечивать ли поле.
+    // Мощность шкафа — паспортная константа из cabinetPowerKw.
     let s3OverloadForInput = false;
     if (isS3Module) {
-      const pk = picked.packaging;
-      const _cabPower = Math.min(blocksPerString * (picked.moduleRatedKw || 10), pk.cabinetPowerKw || 200);
+      const _cabPower = Number(picked.packaging.cabinetPowerKw) || 200;
       s3OverloadForInput = (batteryPwrReqKw > _cabPower * stringsCat);
     }
     const stringsInputStyle = s3OverloadForInput
@@ -996,32 +993,30 @@ function _renderUpsBatteryBody(n) {
       //                              cabinetPowerKw из паспорта).
       // cabinetPowerKw (200 / 60 кВт) — это System rated output power:
       // физический лимит DC/DC-преобразователей и шин шкафа.
-      const cabPowerByModules = blocksPerString * (picked.moduleRatedKw || 10);
-      const cabPowerLimit = pk.cabinetPowerKw || 200;
-      const cabPower = Math.min(cabPowerByModules, cabPowerLimit);
-      const systemPower = cabPower * stringsCat;
-      const capped = cabPowerByModules > cabPowerLimit;
+      // ВАЖНО: мощность шкафа — КОНСТАНТА из паспорта (System rated
+      // output power: 200 кВт для S3C040/050, 60 кВт для S3C100).
+      // Она НЕ зависит от числа модулей в шкафу. Модули в шкафу включены
+      // параллельно, и DC/DC-преобразователи суммарно могут выдать
+      // максимум 200 (60) кВт независимо от того, 2 в шкафу или 20.
+      // Число модулей определяет только АВТОНОМИЮ — сколько энергии
+      // (кВт·ч) шкаф способен отдать на этой мощности до разряда.
+      const cabPowerKw = Number(pk.cabinetPowerKw) || 200;
+      const systemPower = cabPowerKw * stringsCat;
       // Нагрузка, которую система должна отдать (со стороны АКБ, после КПД)
       const loadPerSystemKw = batteryPwrReqKw;
       const s3Overload = loadPerSystemKw > systemPower;
       bomBlock = `
         <div>Шкафов:</div><div><b>${stringsCat}</b> × ${escHtml(pk.cabinetModel || '—')}</div>
         <div>Модулей/шкаф:</div><div><b>${blocksPerString}</b> из ${pk.maxPerCabinet}</div>
-        <div>P<sub>лимит</sub> шкафа:</div><div><b>${fmt(cabPowerLimit)} кВт</b> (паспорт System rated output)</div>
-        <div>P шкафа (факт.):</div><div><b>${fmt(cabPower)} кВт</b>${capped ? ' <span style="color:#e65100">(лимит шкафа)</span>' : ''}</div>
-        <div>P системы:</div><div><b${s3Overload ? ' style="color:#c62828"' : ''}>${fmt(systemPower)} кВт</b> (${fmt(cabPower)} × ${stringsCat})</div>
+        <div>P шкафа:</div><div><b>${fmt(cabPowerKw)} кВт</b> (паспорт System rated output)</div>
+        <div>P системы:</div><div><b${s3Overload ? ' style="color:#c62828"' : ''}>${fmt(systemPower)} кВт</b> (${fmt(cabPowerKw)} × ${stringsCat})</div>
         <div>P<sub>треб.</sub> от АКБ:</div><div><b${s3Overload ? ' style="color:#c62828"' : ''}>${fmt(loadPerSystemKw)} кВт</b></div>`;
       if (s3Overload) {
-        const minCabinets = Math.ceil(loadPerSystemKw / cabPower);
+        const minCabinets = Math.ceil(loadPerSystemKw / cabPowerKw);
         s3OverloadBlock = `<div style="margin-top:8px;padding:8px 12px;background:#ffebee;border-left:3px solid #c62828;border-radius:4px;font-size:11px;color:#c62828;line-height:1.6">
           <b>⛔ Лимит системы превышен.</b> Требуемая мощность АКБ <b>${fmt(loadPerSystemKw)} кВт</b>
-          превышает суммарную мощность ${stringsCat} шкаф(ов) × ${fmt(cabPower)} кВт = <b>${fmt(systemPower)} кВт</b>.<br>
-          Увеличьте число шкафов минимум до <b>${minCabinets}</b> или выберите
-          ${picked.type.startsWith('S3M100') ? 'модули S3M040/S3M050 (200 кВт на шкаф)' : 'более мощный тип модулей'}.
-        </div>`;
-      } else if (capped) {
-        s3OverloadBlock = `<div style="margin-top:8px;padding:6px 10px;background:#fff8e1;border-left:3px solid #e65100;border-radius:3px;font-size:11px;color:#e65100">
-          ⚠ Мощность шкафа ограничена паспортом (${fmt(cabPowerLimit)} кВт). Дополнительные модули не увеличат P шкафа, но увеличат автономию.
+          превышает суммарную мощность ${stringsCat} шкаф(ов) × ${fmt(cabPowerKw)} кВт = <b>${fmt(systemPower)} кВт</b>.<br>
+          Увеличьте число шкафов минимум до <b>${minCabinets}</b>${picked.type.startsWith('S3M100') ? ' или выберите модули S3M040/S3M050 (200 кВт на шкаф вместо 60)' : ''}.
         </div>`;
       }
     }
@@ -1279,40 +1274,43 @@ function _renderUpsBatteryBody(n) {
         const pk = picked.packaging;
         const maxPer = Number(pk.maxPerCabinet) || 20;
         const maxCab = Number(pk.maxCabinets) || 15;
-        const cabLimitKw = Number(pk.cabinetPowerKw) || 200;
-        const moduleRatedKw = Number(picked.moduleRatedKw) || 10;
-        // Перебираем от минимума: сначала наращиваем модули в шкафу
-        // (до maxPer), потом число шкафов. Для каждой пары проверяем
-        // (a) мощностный лимит (min(mods × rated, cabLimit) × cabs ≥ req)
-        // (b) автономию через calcAutonomy по per-module таблице.
+        const cabPowerKw = Number(pk.cabinetPowerKw) || 200;
+        // Мощностный лимит: cabs × cabPowerKw ≥ reqKw. Модули к мощности
+        // не относятся — только к автономии. Минимум шкафов считается
+        // напрямую: minCabs = ceil(reqKw / cabPowerKw).
         const reqKw = loadKw / invEff;
-        outer: for (let cabs = 1; cabs <= maxCab; cabs++) {
-          for (let mods = 1; mods <= maxPer; mods++) {
-            const cabPower = Math.min(mods * moduleRatedKw, cabLimitKw);
-            if (cabPower * cabs < reqKw) continue; // power limit не выполнен
-            const dcV = s3Wiring === 'series' ? (blockVnom * 2) : blockVnom;
-            const r = mod.calcAutonomy({
-              ...commonInput,
-              dcVoltage: dcV,
-              strings: cabs,
-              blocksPerString: mods,
-            });
-            if (r.feasible && r.autonomyMin >= target) {
-              best = {
-                ok: true,
+        const minCabs = Math.max(1, Math.ceil(reqKw / cabPowerKw));
+        if (minCabs > maxCab) {
+          best = { ok: false, reason: `Нагрузка ${fmt(loadKw)} кВт требует минимум ${minCabs} шкафов (${fmt(cabPowerKw)} кВт на шкаф), но паспортный максимум параллели — ${maxCab}. ${picked.type.startsWith('S3M100') ? 'Выберите S3M040/S3M050 (200 кВт на шкаф).' : 'Уменьшите нагрузку или выберите другую серию.'}` };
+        } else {
+          // Перебираем (cabs ≥ minCabs, mods 1…maxPer) ища минимальное
+          // суммарное число модулей для target автономии. Для каждого
+          // cabs число модулей растёт пропорционально нагрузке/модуль.
+          outer: for (let cabs = minCabs; cabs <= maxCab; cabs++) {
+            for (let mods = 1; mods <= maxPer; mods++) {
+              const dcV = s3Wiring === 'series' ? (blockVnom * 2) : blockVnom;
+              const r = mod.calcAutonomy({
+                ...commonInput,
+                dcVoltage: dcV,
                 strings: cabs,
                 blocksPerString: mods,
-                total: cabs * mods,
-                autonomyMin: r.autonomyMin,
-                target,
-                limitedByPower: (mods * moduleRatedKw) >= cabLimitKw,
-              };
-              break outer;
+              });
+              if (r.feasible && r.autonomyMin >= target) {
+                best = {
+                  ok: true,
+                  strings: cabs,
+                  blocksPerString: mods,
+                  total: cabs * mods,
+                  autonomyMin: r.autonomyMin,
+                  target,
+                };
+                break outer;
+              }
             }
           }
-        }
-        if (!best) {
-          best = { ok: false, reason: `Не удалось подобрать: даже ${maxCab} шкафов × ${maxPer} модулей не дают ${target} мин при нагрузке ${fmt(loadKw)} кВт. Попробуйте модули S3M050 или S3M040 (больше мощности на шкаф) либо уменьшите нагрузку.` };
+          if (!best) {
+            best = { ok: false, reason: `Не удалось подобрать: даже ${maxCab} шкафов × ${maxPer} модулей не дают ${target} мин при нагрузке ${fmt(loadKw)} кВт. Попробуйте другую серию или уменьшите нагрузку.` };
+          }
         }
       } else {
         // Обычные АКБ — calcRequiredBlocks
