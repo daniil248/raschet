@@ -224,6 +224,31 @@ export function deserialize(data) {
       if (typeof n.snomKva !== 'number') n.snomKva = 75;
     }
     if (n.type === 'ups') {
+      // Миграция: новые поля для типа ИБП и автоматов
+      if (!n.upsType) n.upsType = 'monoblock';
+      if (typeof n.moduleCount !== 'number') n.moduleCount = 4;
+      if (typeof n.moduleKw !== 'number') n.moduleKw = Math.max(5, Math.round((Number(n.capacityKw) || 10) / 4));
+      if (!Array.isArray(n.modulesActive)) n.modulesActive = [];
+      // Флаги наличия автоматов — по умолчанию все есть (для старых проектов)
+      for (const [flag, def] of [
+        ['hasInputBreaker', true],
+        ['hasInputBypassBreaker', true],
+        ['hasOutputBreaker', true],
+        ['hasBypassBreaker', true],
+        ['hasBatteryBreaker', true],
+      ]) {
+        if (typeof n[flag] !== 'boolean') n[flag] = def;
+      }
+      // Состояния автоматов
+      for (const [flag, def] of [
+        ['inputBreakerOn', true],
+        ['inputBypassBreakerOn', true],
+        ['outputBreakerOn', true],
+        ['bypassBreakerOn', false],
+        ['batteryBreakerOn', true],
+      ]) {
+        if (typeof n[flag] !== 'boolean') n[flag] = def;
+      }
       if (typeof n.chargeA !== 'number') {
         if (typeof n.chargeKw === 'number' && n.chargeKw > 0) {
           const U = n.voltage || 400;

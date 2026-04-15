@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.23.4';
+export const APP_VERSION = '0.24.0';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -331,20 +331,43 @@ export const DEFAULTS = {
   }),
   ups:       () => ({
     name: 'ИБП', comment: '', lineColor: nextLineColor(),
+    // Тип ИБП: 'monoblock' — моноблок (один неделимый блок),
+    //          'modular' — модульный (N независимых силовых модулей)
+    upsType: 'monoblock',
+    // Для модульного ИБП:
+    moduleCount: 4,           // общее кол-во модулей
+    moduleKw: 25,             // мощность одного модуля, кВт
+    modulesActive: [],        // массив активных модулей (заполняется автоматически)
     capacityKw: 10,
     efficiency: 95,
     chargeA: 2,
     batteryKwh: 2,
     batteryChargePct: 100,
     phase: '3ph', voltage: 400,
-    // cos φ ИБП в НОРМАЛЬНОМ режиме (питание через инвертор) — обычно 1.0
-    // т.к. выходной инвертор отдаёт чисто активную мощность. Поле ИБП
-    // используется только как «пережитковый» fallback; в расчёте при работе
-    // через инвертор всегда применяется cos φ = 1.
     cosPhi: 1.0,
     inputs: 1, outputs: 1,
     priorities: [1],
     on: true,
+    // --- Состав защитных аппаратов ---
+    // Флаги наличия каждого автомата в ИБП (физически он может отсутствовать).
+    hasInputBreaker:       true,   // вводной автомат основного питания
+    hasInputBypassBreaker: true,   // вводной автомат байпаса (у онлайн-ИБП)
+    hasOutputBreaker:      true,   // выходной автомат
+    hasBypassBreaker:      true,   // байпасный автомат (ручной / механический)
+    hasBatteryBreaker:     true,   // батарейный автомат (QB)
+    // Рабочие состояния автоматов (true = замкнут/вкл)
+    inputBreakerOn:       true,
+    inputBypassBreakerOn: true,
+    outputBreakerOn:      true,
+    bypassBreakerOn:      false,  // механический байпас по умолчанию разомкнут
+    batteryBreakerOn:     true,
+    // Номиналы автоматов (А) — опциональные, ручные
+    inputBreakerIn:       null,
+    inputBypassBreakerIn: null,
+    outputBreakerIn:      null,
+    bypassBreakerIn:      null,
+    batteryBreakerIn:     null,
+    // Статический байпас
     staticBypass: true,
     staticBypassAuto: true,
     staticBypassOverloadPct: 110,
