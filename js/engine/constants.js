@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.31.7';
+export const APP_VERSION = '0.31.8';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -67,6 +67,10 @@ export const GLOBAL = {
     { label: '10 kV 3P',     vLL: 10000, vLN: 5774, phases: 3 },
     { label: '6 kV 3P',      vLL: 6000, vLN: 3464, phases: 3 },
     { label: '35 kV 3P',     vLL: 35000, vLN: 20207, phases: 3 },
+    { label: '512V DC (Li-Ion)', vLL: 512, vLN: 512, phases: 1, dc: true },
+    { label: '384V DC (VRLA)',   vLL: 384, vLN: 384, phases: 1, dc: true },
+    { label: '240V DC',      vLL: 240, vLN: 240, phases: 1, dc: true },
+    { label: '220V DC',      vLL: 220, vLN: 220, phases: 1, dc: true },
     { label: '110V DC',      vLL: 110, vLN: 110, phases: 1, dc: true },
     { label: '48V DC',       vLL: 48, vLN: 48, phases: 1, dc: true },
     { label: '24V DC',       vLL: 24, vLN: 24, phases: 1, dc: true },
