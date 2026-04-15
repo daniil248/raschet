@@ -659,21 +659,122 @@ function _renderUpsBatteryBody(n) {
     </div>`);
   }
 
-  // Состав блока АКБ (редактируемые поля)
-  h.push('<h4 style="margin:8px 0 6px">Состав блока</h4>');
-  h.push(field('Тип батарей', `
-    <select id="ups-batt-type">
-      <option value="lead-acid"${bt === 'lead-acid' ? ' selected' : ''}>Свинцово-кислотные (VRLA/AGM), 2 В</option>
-      <option value="li-ion"${bt === 'li-ion' ? ' selected' : ''}>Литий-ионные (LiFePO4), 3.2 В</option>
-    </select>`));
-  h.push('<div style="display:flex;gap:8px">');
-  h.push(`<div style="flex:1">${field('Элементов в блоке', `<input type="number" id="ups-batt-cells" min="1" max="400" step="1" value="${cells}">`)}</div>`);
-  h.push(`<div style="flex:1">${field('Напр. элемента, В', `<input type="number" id="ups-batt-cellV" min="0.5" max="5" step="0.1" value="${cellV}">`)}</div>`);
-  h.push('</div>');
-  h.push('<div style="display:flex;gap:8px">');
-  h.push(`<div style="flex:1">${field('Ёмкость элемента, А·ч', `<input type="number" id="ups-batt-ah" min="1" step="1" value="${ah}">`)}</div>`);
-  h.push(`<div style="flex:1">${field('Параллельных цепочек', `<input type="number" id="ups-batt-str" min="1" max="16" step="1" value="${strs}">`)}</div>`);
-  h.push('</div>');
+  if (selectedBattery) {
+    // КАТАЛОЖНЫЙ режим: характеристики блока фиксированы из справочника,
+    // пользователь задаёт Vdc-диапазон ИБП, число блоков в цепочке,
+    // параллели, end-voltage, температуру и целевую автономию.
+    // Автоматически считается min/max количество блоков в цепочке,
+    // мощность на блок, ток цепочки, автономия и строится кривая разряда.
+    const picked = selectedBattery;
+    const cellsPerBlock = Number(picked.cellCount) || 6;
+    const blockVnom = Number(picked.blockVoltage) || (cellsPerBlock * (Number(picked.cellVoltage) || 2));
+    const capAhBlock = Number(picked.capacityAh) || 100;
+
+    const vdcMin = Number(n.batteryVdcMin ?? 340);
+    const vdcMax = Number(n.batteryVdcMax ?? 480);
+    const endVcell = Number(n.batteryEndVperCell ?? 1.75);
+    const tempC = Number(n.batteryTempC ?? 20);
+    const invEff = Math.max(0.5, Math.min(1, (Number(n.efficiency) || 94) / 100));
+    const cosPhi = Number(n.cosPhi) || 1;
+    const targetMin = Number(n.batteryTargetMin ?? 10);
+
+    // Диапазон допустимого числа блоков в цепочке:
+    //   N_max = floor(Vmax / Vblock_nominal)
+    //   N_min = ceil (Vmin / (cellsPerBlock × endVcell))
+    const nMax = Math.max(1, Math.floor(vdcMax / Math.max(0.1, blockVnom)));
+    const nMinV = cellsPerBlock * endVcell;
+    const nMin = Math.max(1, Math.ceil(vdcMin / Math.max(0.1, nMinV)));
+    // Пользовательское число блоков (или автоматическое = nMax)
+    let blocksPerString = Number(n.batteryBlocksPerString) || 0;
+    if (!blocksPerString || blocksPerString < nMin) blocksPerString = nMax;
+    if (blocksPerString > nMax) blocksPerString = nMax;
+
+    const stringsCat = Math.max(1, Number(n.batteryStringCount) || 1);
+
+    // Активная мощность нагрузки (из load, kW) с учётом cos φ и КПД инвертора
+    const activePowerKw = loadKw * (cosPhi || 1);
+    const batteryPwrReqKw = activePowerKw / invEff;
+    const powerPerBlockW = (batteryPwrReqKw * 1000) / (stringsCat * blocksPerString);
+    const vdcOper = blockVnom * blocksPerString;
+    const stringCurrentA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / stringsCat : 0;
+
+    h.push('<h4 style="margin:12px 0 6px">Параметры ИБП</h4>');
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('V<sub>DC</sub> min, В', `<input type="number" id="ups-batt-vdcmin" min="24" max="1200" step="1" value="${vdcMin}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('V<sub>DC</sub> max, В', `<input type="number" id="ups-batt-vdcmax" min="24" max="1200" step="1" value="${vdcMax}">`)}</div>`);
+    h.push('</div>');
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('КПД DC–AC, %', `<input type="number" id="ups-batt-inveff" min="50" max="99" step="1" value="${Math.round(invEff*100)}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('cos φ', `<input type="number" id="ups-batt-cosphi" min="0.5" max="1" step="0.01" value="${cosPhi.toFixed(2)}">`)}</div>`);
+    h.push('</div>');
+
+    h.push('<h4 style="margin:12px 0 6px">Конфигурация АКБ (' + escHtml(picked.type) + ')</h4>');
+    h.push(`<div class="muted" style="font-size:11px;padding:6px 10px;background:#eef4fb;border-left:3px solid #1976d2;border-radius:4px;margin-bottom:8px">
+      ${escHtml(picked.supplier || '')} · ${escHtml(picked.type)} · ${fmt(blockVnom)} В / ${fmt(capAhBlock)} А·ч · ${cellsPerBlock} эл.
+    </div>`);
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field(`Блоков в цепочке (${nMin}…${nMax})`,
+      `<input type="number" id="ups-batt-nblocks" min="${nMin}" max="${nMax}" step="1" value="${blocksPerString}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('Параллельных цепочек',
+      `<input type="number" id="ups-batt-str" min="1" max="16" step="1" value="${stringsCat}">`)}</div>`);
+    h.push('</div>');
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('End V / элемент', `
+      <select id="ups-batt-endv">
+        ${[1.60,1.65,1.70,1.75,1.80,1.85].map(v =>
+          `<option value="${v}"${Math.abs(v-endVcell)<0.001?' selected':''}>${v.toFixed(2)} В</option>`
+        ).join('')}
+      </select>`)}</div>`);
+    h.push(`<div style="flex:1">${field('Температура, °C', `<input type="number" id="ups-batt-temp" min="-20" max="60" step="1" value="${tempC}">`)}</div>`);
+    h.push('</div>');
+    h.push(field('Требуемая автономия, мин', `<input type="number" id="ups-batt-target" min="1" max="1440" step="1" value="${targetMin}">`));
+
+    // Результаты расчёта (сразу основные цифры; кривая — async ниже)
+    h.push('<h4 style="margin:14px 0 6px">Результаты расчёта</h4>');
+    h.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
+      <div>U<sub>DC раб</sub>:</div><div><b>${fmt(vdcOper)} В</b></div>
+      <div>Мощность/блок:</div><div><b id="ups-batt-pperblock">${fmt(powerPerBlockW)} Вт</b></div>
+      <div>Ток цепочки:</div><div><b id="ups-batt-istring">${fmt(stringCurrentA)} А</b></div>
+      <div>Всего блоков:</div><div><b>${stringsCat * blocksPerString}</b></div>
+      <div>Автономия (расч.):</div><div><b id="ups-batt-autonomy2">—</b>
+        <span id="ups-batt-autonomy-method2" class="muted" style="font-size:10px;margin-left:4px"></span></div>
+    </div>`);
+
+    // Сохраняем в узле ключевые параметры для rerender после изменения
+    n.batteryVdcMin = vdcMin;
+    n.batteryVdcMax = vdcMax;
+    n.batteryEndVperCell = endVcell;
+    n.batteryTempC = tempC;
+    n.batteryBlocksPerString = blocksPerString;
+    n.batteryTargetMin = targetMin;
+    // Автоматически пересчитаем batteryCellCount = cellsPerBlock * blocksPerString,
+    // чтобы legacy-расчёт kWh (верхняя плашка) оставался корректным.
+    n.batteryCellCount = cellsPerBlock * blocksPerString;
+    n.batteryCellVoltage = Number(picked.cellVoltage) || 2;
+    n.batteryCapacityAh = capAhBlock;
+    n.batteryKwh = (blockVnom * blocksPerString * capAhBlock * stringsCat) / 1000;
+
+    // Контейнер для кривой разряда
+    h.push('<h4 style="margin:14px 0 6px">Кривая разряда</h4>');
+    h.push('<div id="ups-batt-chart" style="width:100%;min-height:220px;background:#fff;border:1px solid #d6dbe4;border-radius:4px;padding:6px"></div>');
+
+  } else {
+    // Ручной режим (без выбранной модели из каталога) — старые поля
+    h.push('<h4 style="margin:8px 0 6px">Состав блока</h4>');
+    h.push(field('Тип батарей', `
+      <select id="ups-batt-type">
+        <option value="lead-acid"${bt === 'lead-acid' ? ' selected' : ''}>Свинцово-кислотные (VRLA/AGM), 2 В</option>
+        <option value="li-ion"${bt === 'li-ion' ? ' selected' : ''}>Литий-ионные (LiFePO4), 3.2 В</option>
+      </select>`));
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('Элементов в блоке', `<input type="number" id="ups-batt-cells" min="1" max="400" step="1" value="${cells}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('Напр. элемента, В', `<input type="number" id="ups-batt-cellV" min="0.5" max="5" step="0.1" value="${cellV}">`)}</div>`);
+    h.push('</div>');
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('Ёмкость элемента, А·ч', `<input type="number" id="ups-batt-ah" min="1" step="1" value="${ah}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('Параллельных цепочек', `<input type="number" id="ups-batt-str" min="1" max="16" step="1" value="${strs}">`)}</div>`);
+    h.push('</div>');
+  }
 
   // Ток заряда
   h.push('<h4 style="margin:16px 0 6px">Ток заряда</h4>');
@@ -832,6 +933,66 @@ function _renderUpsBatteryBody(n) {
   bindNum('ups-batt-cellV', 'batteryCellVoltage', 0.1);
   bindNum('ups-batt-ah', 'batteryCapacityAh', 1);
   bindNum('ups-batt-str', 'batteryStringCount', 1);
+  // Каталожный режим: обработчики новых полей + точный пересчёт автономии
+  // и кривая разряда.
+  if (selectedBattery) {
+    bindNum('ups-batt-vdcmin', 'batteryVdcMin', 24);
+    bindNum('ups-batt-vdcmax', 'batteryVdcMax', 24);
+    bindNum('ups-batt-nblocks', 'batteryBlocksPerString', 1);
+    bindNum('ups-batt-temp', 'batteryTempC', -20);
+    bindNum('ups-batt-target', 'batteryTargetMin', 1);
+    const invEffEl = document.getElementById('ups-batt-inveff');
+    if (invEffEl) invEffEl.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':eff');
+      n.efficiency = Math.max(50, Math.min(99, Number(invEffEl.value) || 94));
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
+    const cosPhiEl = document.getElementById('ups-batt-cosphi');
+    if (cosPhiEl) cosPhiEl.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':cosphi');
+      n.cosPhi = Math.max(0.5, Math.min(1, Number(cosPhiEl.value) || 1));
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
+    const endVEl = document.getElementById('ups-batt-endv');
+    if (endVEl) endVEl.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':endv');
+      n.batteryEndVperCell = Number(endVEl.value) || 1.75;
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
+    // Точный расчёт автономии + кривая разряда
+    _loadDischargeModule().then(mod => {
+      if (!mod || typeof mod.calcAutonomy !== 'function') return;
+      const picked = selectedBattery;
+      const blockVnom = Number(picked.blockVoltage) || ((Number(picked.cellCount) || 6) * (Number(picked.cellVoltage) || 2));
+      const blocksPer = Number(n.batteryBlocksPerString) || 1;
+      const dcVoltage = blockVnom * blocksPer;
+      const strings = Math.max(1, Number(n.batteryStringCount) || 1);
+      const invEff = Math.max(0.5, Math.min(1, (Number(n.efficiency) || 94) / 100));
+      const endV = Number(n.batteryEndVperCell) || 1.75;
+      const r = mod.calcAutonomy({
+        battery: picked, loadKw, dcVoltage, strings,
+        blocksPerString: blocksPer, endV, invEff,
+        chemistry: picked.chemistry,
+      });
+      const span = document.getElementById('ups-batt-autonomy2');
+      const method = document.getElementById('ups-batt-autonomy-method2');
+      if (span) {
+        if (!r.feasible) { span.textContent = '—'; span.style.color = '#c62828'; }
+        else if (!Number.isFinite(r.autonomyMin)) span.textContent = '∞';
+        else span.textContent = fmt(r.autonomyMin) + ' мин';
+      }
+      if (method) {
+        method.textContent = r.method === 'table' ? '(по таблице)' : '(усреднённая)';
+        method.style.color = r.method === 'table' ? '#2e7d32' : '#9aa3b5';
+      }
+      // Рисуем кривую разряда
+      _drawDischargeChart(document.getElementById('ups-batt-chart'), picked, {
+        operPowerW: r.blockPowerW,
+        operTimeMin: r.autonomyMin,
+        selectedEndV: endV,
+      });
+    });
+  }
 
   // Ток заряда
   const chargeAInput = document.getElementById('ups-batt-chargeA');
@@ -862,6 +1023,188 @@ function _renderUpsBatteryBody(n) {
       render(); notifyChange(); _renderUpsBatteryBody(n);
     });
   });
+}
+
+// Кривая разряда АКБ (log-log SVG): мощность/блок (W) vs время разряда (мин)
+// для нескольких end-voltage кривых. Красная точка = рабочая точка.
+function _drawDischargeChart(mount, battery, opts = {}) {
+  if (!mount) return;
+  mount.innerHTML = '';
+  const tbl = Array.isArray(battery && battery.dischargeTable) ? battery.dischargeTable : [];
+  if (!tbl.length) {
+    mount.innerHTML = '<div class="muted" style="font-size:11px;text-align:center;padding:30px 10px">Таблица разряда недоступна — расчёт по усреднённой модели.</div>';
+    return;
+  }
+  const W = 560, H = 240;
+  const padL = 52, padR = 12, padT = 14, padB = 34;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  // Сгруппируем по endV
+  const byEv = new Map();
+  for (const p of tbl) {
+    if (!byEv.has(p.endV)) byEv.set(p.endV, []);
+    byEv.get(p.endV).push(p);
+  }
+  for (const arr of byEv.values()) arr.sort((a, b) => a.tMin - b.tMin);
+  const endVs = [...byEv.keys()].sort((a, b) => a - b);
+
+  // Диапазоны (log-log)
+  let tMin = Infinity, tMax = 0, pMin = Infinity, pMax = 0;
+  for (const p of tbl) {
+    if (p.tMin > 0) tMin = Math.min(tMin, p.tMin);
+    tMax = Math.max(tMax, p.tMin);
+    if (p.powerW > 0) pMin = Math.min(pMin, p.powerW);
+    pMax = Math.max(pMax, p.powerW);
+  }
+  if (!Number.isFinite(tMin) || tMax <= tMin) { tMin = 1; tMax = 1000; }
+  if (!Number.isFinite(pMin) || pMax <= pMin) { pMin = 1; pMax = 10000; }
+  // Включаем рабочую точку
+  if (opts.operTimeMin > 0 && Number.isFinite(opts.operTimeMin)) {
+    tMin = Math.min(tMin, opts.operTimeMin * 0.9);
+    tMax = Math.max(tMax, opts.operTimeMin * 1.1);
+  }
+  if (opts.operPowerW > 0) {
+    pMin = Math.min(pMin, opts.operPowerW * 0.9);
+    pMax = Math.max(pMax, opts.operPowerW * 1.1);
+  }
+  const logT0 = Math.log10(tMin), logT1 = Math.log10(tMax);
+  const logP0 = Math.log10(pMin), logP1 = Math.log10(pMax);
+  const xOf = t => padL + ((Math.log10(t) - logT0) / (logT1 - logT0)) * plotW;
+  const yOf = p => padT + plotH - ((Math.log10(p) - logP0) / (logP1 - logP0)) * plotH;
+
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNs, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('style', 'max-width:100%;height:auto');
+
+  // Оси
+  const axis = document.createElementNS(svgNs, 'g');
+  axis.setAttribute('stroke', '#9aa3b5');
+  axis.setAttribute('fill', 'none');
+  const lx = document.createElementNS(svgNs, 'line');
+  lx.setAttribute('x1', padL); lx.setAttribute('y1', padT + plotH);
+  lx.setAttribute('x2', padL + plotW); lx.setAttribute('y2', padT + plotH);
+  axis.appendChild(lx);
+  const ly = document.createElementNS(svgNs, 'line');
+  ly.setAttribute('x1', padL); ly.setAttribute('y1', padT);
+  ly.setAttribute('x2', padL); ly.setAttribute('y2', padT + plotH);
+  axis.appendChild(ly);
+  svg.appendChild(axis);
+
+  // Риски по X (декады)
+  const xTicks = [1, 3, 5, 10, 15, 30, 60, 120, 180, 300, 600, 1200];
+  for (const t of xTicks) {
+    if (t < tMin || t > tMax) continue;
+    const x = xOf(t);
+    const tk = document.createElementNS(svgNs, 'line');
+    tk.setAttribute('x1', x); tk.setAttribute('y1', padT + plotH);
+    tk.setAttribute('x2', x); tk.setAttribute('y2', padT + plotH + 4);
+    tk.setAttribute('stroke', '#9aa3b5');
+    svg.appendChild(tk);
+    const tx = document.createElementNS(svgNs, 'text');
+    tx.setAttribute('x', x); tx.setAttribute('y', padT + plotH + 16);
+    tx.setAttribute('font-size', '10'); tx.setAttribute('fill', '#5a6374');
+    tx.setAttribute('text-anchor', 'middle');
+    tx.textContent = t;
+    svg.appendChild(tx);
+  }
+  // Риски по Y (мощность)
+  const pStep = Math.pow(10, Math.floor(Math.log10(pMax)));
+  const yTicks = [];
+  for (let v = pStep; v <= pMax * 1.1; v += pStep) yTicks.push(v);
+  if (yTicks.length < 3) yTicks.unshift(pStep / 2);
+  for (const p of yTicks) {
+    if (p < pMin * 0.9) continue;
+    const y = yOf(p);
+    const tk = document.createElementNS(svgNs, 'line');
+    tk.setAttribute('x1', padL - 4); tk.setAttribute('y1', y);
+    tk.setAttribute('x2', padL); tk.setAttribute('y2', y);
+    tk.setAttribute('stroke', '#9aa3b5');
+    svg.appendChild(tk);
+    const tx = document.createElementNS(svgNs, 'text');
+    tx.setAttribute('x', padL - 6); tx.setAttribute('y', y + 3);
+    tx.setAttribute('font-size', '10'); tx.setAttribute('fill', '#5a6374');
+    tx.setAttribute('text-anchor', 'end');
+    tx.textContent = p >= 1000 ? (p / 1000).toFixed(0) + 'k' : p.toFixed(0);
+    svg.appendChild(tx);
+  }
+  // Подпись осей
+  const xlab = document.createElementNS(svgNs, 'text');
+  xlab.setAttribute('x', padL + plotW / 2); xlab.setAttribute('y', H - 4);
+  xlab.setAttribute('font-size', '10'); xlab.setAttribute('fill', '#5a6374');
+  xlab.setAttribute('text-anchor', 'middle');
+  xlab.textContent = 'Время разряда, мин (log)';
+  svg.appendChild(xlab);
+  const ylab = document.createElementNS(svgNs, 'text');
+  ylab.setAttribute('x', 10); ylab.setAttribute('y', padT + plotH / 2);
+  ylab.setAttribute('font-size', '10'); ylab.setAttribute('fill', '#5a6374');
+  ylab.setAttribute('transform', `rotate(-90 10 ${padT + plotH / 2})`);
+  ylab.setAttribute('text-anchor', 'middle');
+  ylab.textContent = 'Мощность/блок, Вт (log)';
+  svg.appendChild(ylab);
+
+  // Кривые endV (выбранная — синяя, остальные — серые)
+  const palette = ['#1976d2', '#2e7d32', '#ef6c00', '#7e57c2', '#00838f', '#c62828'];
+  endVs.forEach((ev, i) => {
+    const pts = byEv.get(ev);
+    const isSelected = Math.abs(ev - (opts.selectedEndV || 0)) < 0.001;
+    const color = isSelected ? '#1976d2' : palette[i % palette.length];
+    const d = pts.map((p, idx) => {
+      if (p.tMin <= 0 || p.powerW <= 0) return '';
+      return (idx === 0 ? 'M' : 'L') + xOf(p.tMin).toFixed(1) + ',' + yOf(p.powerW).toFixed(1);
+    }).filter(Boolean).join(' ');
+    if (!d) return;
+    const path = document.createElementNS(svgNs, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', isSelected ? 2 : 1);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('opacity', isSelected ? 1 : 0.5);
+    svg.appendChild(path);
+    // Подпись кривой справа
+    const last = pts[pts.length - 1];
+    if (last) {
+      const t = document.createElementNS(svgNs, 'text');
+      t.setAttribute('x', xOf(last.tMin) + 3);
+      t.setAttribute('y', yOf(last.powerW) + 3);
+      t.setAttribute('font-size', '9');
+      t.setAttribute('fill', color);
+      t.textContent = ev.toFixed(2) + ' В';
+      svg.appendChild(t);
+    }
+  });
+
+  // Рабочая точка
+  if (opts.operPowerW > 0 && opts.operTimeMin > 0 && Number.isFinite(opts.operTimeMin)) {
+    const x = xOf(opts.operTimeMin), y = yOf(opts.operPowerW);
+    const vline = document.createElementNS(svgNs, 'line');
+    vline.setAttribute('x1', x); vline.setAttribute('y1', padT);
+    vline.setAttribute('x2', x); vline.setAttribute('y2', padT + plotH);
+    vline.setAttribute('stroke', '#c62828');
+    vline.setAttribute('stroke-dasharray', '3,2');
+    svg.appendChild(vline);
+    const hline = document.createElementNS(svgNs, 'line');
+    hline.setAttribute('x1', padL); hline.setAttribute('y1', y);
+    hline.setAttribute('x2', padL + plotW); hline.setAttribute('y2', y);
+    hline.setAttribute('stroke', '#c62828');
+    hline.setAttribute('stroke-dasharray', '3,2');
+    svg.appendChild(hline);
+    const dot = document.createElementNS(svgNs, 'circle');
+    dot.setAttribute('cx', x); dot.setAttribute('cy', y);
+    dot.setAttribute('r', 4);
+    dot.setAttribute('fill', '#c62828');
+    svg.appendChild(dot);
+    const lab = document.createElementNS(svgNs, 'text');
+    lab.setAttribute('x', x + 6); lab.setAttribute('y', y - 6);
+    lab.setAttribute('font-size', '10');
+    lab.setAttribute('fill', '#c62828');
+    lab.setAttribute('font-weight', '600');
+    lab.textContent = fmt(opts.operPowerW) + ' Вт · ' + fmt(opts.operTimeMin) + ' мин';
+    svg.appendChild(lab);
+  }
+
+  mount.appendChild(svg);
 }
 
 // Структурная схема ИБП (SVG).
