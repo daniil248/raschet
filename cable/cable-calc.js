@@ -1,6 +1,8 @@
 import { GLOBAL } from '../js/engine/constants.js';
 import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../js/methods/index.js';
 import { runModules, listModules } from '../shared/calc-modules/index.js';
+import * as Report from '../shared/report/index.js';
+import * as B      from '../shared/report/blocks.js';
 
 // Load saved global settings from localStorage (shared with constructor)
 try {
@@ -38,12 +40,17 @@ const els = {
   ecoMethod:         $('in-eco-method'),
   ecoParams:         $('eco-params'),
   btnCalc:           $('btn-calc'),
+  btnReport:         $('btn-report'),
   resultArea:        $('result-area'),
 };
 
 let mode = 'current';
 let currentMethod = null;
 let currentEcoMethod = null;
+
+// Последнее состояние расчёта для экспорта отчёта. Пока пользователь
+// не нажал «Рассчитать» — null, и кнопка отчёта заблокирована.
+let lastCalc = null;
 
 // Состояние включённых опциональных модулей (mandatory всегда on).
 // id → bool. Инициализируется из defaultOn при первом рендере.
@@ -107,6 +114,7 @@ function init() {
   });
   els.ecoMethod.addEventListener('change', () => switchEcoMethod(els.ecoMethod.value));
   els.btnCalc.addEventListener('click', calculate);
+  if (els.btnReport) els.btnReport.addEventListener('click', exportReport);
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') calculate();
   });
@@ -292,9 +300,18 @@ function calculate() {
   };
   const moduleResults = runModules(moduleInput, enabledSet);
 
-  renderResult(I, resByAmp, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, {
-    material, insulation, method, cableType, ambient, grouping, bundling, lengthM, vl, cosPhi,
-  }, moduleResults);
+  const renderParams = { material, insulation, method, cableType, ambient, grouping, bundling, lengthM, vl, cosPhi };
+  renderResult(I, resByAmp, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC,
+    renderParams, moduleResults);
+
+  // Запомнить состояние для экспорта отчёта
+  lastCalc = {
+    I, res: resByAmp, finalSize, increasedBy, In,
+    vdropAmp, vdropFinal, maxVdropPct, ecoResult,
+    protection, breakerOverflow, isDC,
+    params: renderParams, moduleResults,
+  };
+  if (els.btnReport) els.btnReport.disabled = false;
 }
 
 // ============ Render module cards ============
@@ -476,6 +493,143 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
   `;
 
   els.resultArea.innerHTML = html;
+}
+
+// ============ Экспорт отчёта ============
+// Пользователь выбирает шаблон из каталога (shared/report-catalog.js),
+// подпрограмма собирает блоки содержимого из lastCalc и рендерит PDF
+// через shared/report/. Для DOCX можно заменить exportPDF на exportDOCX.
+async function exportReport() {
+  if (!lastCalc) {
+    alert('Сначала выполните расчёт.');
+    return;
+  }
+  const rec = await Report.pickTemplate({
+    title: 'Выбор шаблона для отчёта по расчёту кабеля',
+    tags:  ['кабель','расчёты','общее','инженерный'],
+  });
+  if (!rec) return;
+
+  const tpl = Report.createTemplate(rec.template);
+  tpl.meta.title  = 'Расчёт кабельной линии';
+  tpl.meta.author = tpl.meta.author || '';
+  tpl.content = buildCableReportBlocks(lastCalc);
+
+  try {
+    await Report.exportPDF(tpl, 'Расчёт кабельной линии');
+  } catch (e) {
+    alert('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e));
+  }
+}
+
+/** Преобразует lastCalc в массив блоков отчёта. */
+function buildCableReportBlocks(c) {
+  const p = c.params;
+  const matLabel = currentMethod.materials[p.material] || p.material;
+  const insLabel = currentMethod.insulations[p.insulation] || p.insulation;
+  const methLabel = currentMethod.installMethods[p.method] || p.method;
+  const typeLabel = currentMethod.cableTypes[p.cableType] || p.cableType;
+  const fix = (v, d = 2) => (typeof v === 'number' ? v.toFixed(d) : String(v));
+  const maxVdropPct = c.maxVdropPct;
+  const vdropOk = c.vdropFinal.dUpct <= maxVdropPct;
+
+  const blocks = [
+    B.h1('Отчёт о расчёте кабельной линии'),
+    B.caption('Методика: ' + (currentMethod.label || '—')),
+
+    B.h2('1. Исходные данные'),
+    B.table(
+      [
+        { text: 'Параметр',  width: 80 },
+        { text: 'Значение', align: 'right', width: 40 },
+        { text: 'Ед.',      align: 'center', width: 18 },
+      ],
+      [
+        ['Расчётный ток нагрузки',  fix(c.I),     'А'],
+        ['Напряжение системы',      String(p.vl.label || ''), ''],
+        ['Длина линии',             String(p.lengthM), 'м'],
+        ['cos φ',                   c.isDC ? '—' : String(p.cosPhi), '—'],
+        ['Материал жилы',           matLabel,   ''],
+        ['Изоляция',                insLabel,   ''],
+        ['Тип кабеля',              typeLabel,  ''],
+        ['Способ прокладки',        methLabel,  ''],
+        ['Температура среды',       String(p.ambient), '°C'],
+        ['Кабелей в группе',        String(p.grouping), ''],
+        ['Допустимое ΔU',           String(maxVdropPct), '%'],
+      ],
+    ),
+
+    B.h2('2. Коэффициенты снижения'),
+    B.table(
+      [
+        { text: 'Параметр',  width: 80 },
+        { text: 'Значение', align: 'right', width: 40 },
+      ],
+      [
+        ['K_t (температура)',   fix(c.res.kT, 3)],
+        ['K_g (группирование)', fix(c.res.kG, 3)],
+        ['K_total',             fix(c.res.kT * c.res.kG, 3)],
+      ],
+    ),
+
+    B.h2('3. Результаты подбора'),
+    B.table(
+      [
+        { text: 'Параметр',  width: 80 },
+        { text: 'Значение', align: 'right', width: 40 },
+        { text: 'Ед.',      align: 'center', width: 18 },
+      ],
+      [
+        ['По длительному току',          String(c.res.s),         'мм²'],
+        ['Итоговое сечение',             String(c.finalSize),     'мм²'],
+        ['Параллельных линий',           String(c.res.parallel),  ''],
+        ['Допустимый ток (табличный)',   String(c.res.iAllowed),  'А'],
+        ['Допустимый ток с поправками',  fix(c.res.iDerated, 1),  'А'],
+        ['Номинал автомата',             String(c.In),            'А'],
+        ['Падение напряжения ΔU',        fix(c.vdropFinal.dUpct, 2), '%'],
+        ['Падение напряжения ΔU',        fix(c.vdropFinal.dU, 2), 'В'],
+      ],
+    ),
+    B.paragraph('Проверка по падению напряжения: ' + (vdropOk
+      ? 'в норме (≤ ' + maxVdropPct + '%).'
+      : 'ПРЕВЫШЕНИЕ (> ' + maxVdropPct + '%).')),
+  ];
+
+  // Карточки модулей, если они были запущены
+  if (Array.isArray(c.moduleResults) && c.moduleResults.length) {
+    blocks.push(B.h2('4. Результаты расчётных модулей'));
+    for (const m of c.moduleResults) {
+      const status = m.result.details && m.result.details.skipped
+        ? 'пропущен'
+        : (m.result.pass ? 'OK' : 'проблема');
+      blocks.push(B.h3(m.label + ' — ' + status));
+      const d = m.result.details || {};
+      const lines = [];
+      if (m.id === 'ampacity' && !d.skipped) {
+        lines.push('S = ' + d.s + ' мм²  ·  I_z = ' + (d.iDerated != null ? d.iDerated.toFixed(1) : '—') + ' А  ·  параллель: ' + (d.parallel || 1));
+      } else if (m.id === 'vdrop' && !d.skipped) {
+        lines.push('ΔU = ' + (d.dUpct != null ? d.dUpct.toFixed(2) : '—') + ' % (допустимо ≤ ' + d.maxPct + ' %)');
+        if (d.bumpedTo) lines.push('Рекомендовано увеличить до ' + d.bumpedTo + ' мм²');
+      } else if (m.id === 'economic' && !d.skipped) {
+        lines.push('j_эк = ' + d.jEk + ' А/мм²  ·  S_расч = ' + d.sCalc + ' мм²  ·  S_станд = ' + d.sStandard + ' мм²');
+      } else if (m.id === 'shortCircuit' && !d.skipped) {
+        lines.push('I_k = ' + d.IkA + ' А  ·  t_k = ' + d.tkS + ' с  ·  S_min = ' + d.sRequired + ' мм²');
+      } else if (m.id === 'phaseLoop' && !d.skipped) {
+        lines.push('Система заземления: ' + d.earthing + '  ·  Z_loop = ' + d.Zloop + ' Ом');
+        lines.push('I_k1 = ' + d.Ik1 + ' А  ·  I_a = ' + d.Ia + ' А (' + d.breakerCurve + ' ' + d.In + ' А × ' + d.multiplier + ')');
+      } else if (d.skipped) {
+        lines.push('Пропущен: ' + (d.reason || 'нет данных'));
+      }
+      if (lines.length) blocks.push(B.paragraph(lines.join('\n')));
+      if (m.result.warnings && m.result.warnings.length) {
+        blocks.push(B.list(m.result.warnings.map(w => '⚠ ' + w)));
+      }
+    }
+  }
+
+  blocks.push(B.hr());
+  blocks.push(B.caption('Документ сформирован автоматически.'));
+  return blocks;
 }
 
 // ============ Start ============

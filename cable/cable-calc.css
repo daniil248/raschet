@@ -120,9 +120,14 @@ main {
   color: #fff;
 }
 
-/* Calculate button */
+/* Calculate + report buttons */
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
 .btn-calc {
-  width: 100%;
+  flex: 1;
   padding: 12px;
   background: #1976d2;
   color: #fff;
@@ -131,10 +136,30 @@ main {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 20px;
   transition: background 0.15s;
 }
 .btn-calc:hover { background: #1565c0; }
+.btn-report {
+  flex: none;
+  padding: 12px 18px;
+  background: #fff;
+  color: #1f2430;
+  border: 1px solid #d0d5de;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-report:hover:not(:disabled) {
+  background: #e3f2fd;
+  border-color: #1976d2;
+  color: #1976d2;
+}
+.btn-report:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* Result cards */
 .result-empty {
