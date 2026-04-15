@@ -7,7 +7,7 @@ import { snapshot, notifyChange } from './history.js';
 import { selectNode, selectConn, renderInspector, clientToSvg } from './inspector.js';
 import { render, updateViewBox, el, bezier } from './render.js';
 import { createNode, deleteNode, deleteConn, tryConnect, wouldCreateCycle, nextFreeTag } from './graph.js';
-import { tryAttachToZone, detachFromZones, findZoneForMember, findParentZone, isNodeFullyInside, nodesInZone } from './zones.js';
+import { tryAttachToZone, detachFromZones, findZoneForMember, findParentZone, isNodeFullyInside, nodesInZone, copyZoneWithMembers } from './zones.js';
 import { flash } from './utils.js';
 
 /* ---- late-bound deps (set via bindInteractionDeps) ---- */
@@ -570,6 +570,26 @@ export function initInteraction() {
       // Ctrl+drag -- клонировать узел и начать таскать копию
       if ((e.ctrlKey || e.metaKey) && !state.readOnly) {
         const original = state.nodes.get(id);
+        if (original && original.type === 'zone') {
+          // Зона: полное копирование всех вложенных элементов с
+          // автоинкрементом zonePrefix и сохранением привязки детей.
+          snapshot();
+          const newId = copyZoneWithMembers(id);
+          if (newId) {
+            selectNode(newId);
+            const newZone = state.nodes.get(newId);
+            if (newZone) {
+              // Готовим drag с children-пакетом (как обычное перемещение зоны)
+              const p = clientToSvg(e.clientX, e.clientY);
+              const children = nodesInZone(newZone).map(ch => ({
+                id: ch.id, dx: ch.x - newZone.x, dy: ch.y - newZone.y,
+              }));
+              state.drag = { nodeId: newId, dx: p.x - newZone.x, dy: p.y - newZone.y, children };
+            }
+          }
+          render();
+          return;
+        }
         if (original && original.type !== 'zone') {
           snapshot();
           _clipboardNode = JSON.parse(JSON.stringify(original));
@@ -943,6 +963,16 @@ export function initInteraction() {
     e.preventDefault();
     if (state.pending) { cancelPending(); return; }
     if (state.readOnly) return;
+    // Клик по зоне → контекстное меню с опцией «Копировать зону»
+    const zoneEl = e.target.closest('.node');
+    if (zoneEl) {
+      const nid = zoneEl.dataset.nodeId;
+      const nn = state.nodes.get(nid);
+      if (nn && nn.type === 'zone') {
+        _showNodeContextMenu(e.clientX, e.clientY, nn);
+        return;
+      }
+    }
     // Клик по стабу/подписи в режиме разрыва — тоже считаем кликом по связи
     const jumpEl = e.target.closest('[data-link-jump]');
     const connEl = e.target.closest('.conn-hit, .conn');
@@ -955,6 +985,66 @@ export function initInteraction() {
     if (!c.linkMode) c._linkPreview = false;
     render();
     notifyChange();
+  });
+
+  // Контекстное меню для узла (пока только зоны — копирование со всеми
+  // вложенными элементами).
+  function _showNodeContextMenu(clientX, clientY, node) {
+    _hideNodeContextMenu();
+    const menu = document.createElement('div');
+    menu.id = '__node-context-menu';
+    menu.style.cssText = `
+      position: fixed; left: ${clientX}px; top: ${clientY}px;
+      background: #fff; border: 1px solid #d0d0d0; border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 4px 0;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 13px;
+      z-index: 1000; min-width: 220px; user-select: none;
+    `;
+    const items = [];
+    if (node.type === 'zone') {
+      items.push({
+        label: '📋 Копировать зону со всеми элементами',
+        action: () => {
+          snapshot('copy-zone:' + node.id);
+          const newId = copyZoneWithMembers(node.id);
+          if (newId) {
+            selectNode(newId);
+            render();
+            notifyChange();
+          }
+        },
+      });
+    }
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.textContent = it.label;
+      row.style.cssText = 'padding: 8px 16px; cursor: pointer; color: #1f2430;';
+      row.addEventListener('mouseenter', () => { row.style.background = '#f0f4fa'; });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      row.addEventListener('click', () => {
+        _hideNodeContextMenu();
+        try { it.action(); } catch (err) { console.error(err); }
+      });
+      menu.appendChild(row);
+    }
+    document.body.appendChild(menu);
+    // Корректируем позицию если меню выходит за viewport
+    requestAnimationFrame(() => {
+      const r = menu.getBoundingClientRect();
+      if (r.right > window.innerWidth) menu.style.left = (window.innerWidth - r.width - 4) + 'px';
+      if (r.bottom > window.innerHeight) menu.style.top = (window.innerHeight - r.height - 4) + 'px';
+    });
+    // Закрытие по клику вне меню или по Escape
+    setTimeout(() => {
+      document.addEventListener('mousedown', _hideNodeContextMenu, { once: true });
+    }, 0);
+  }
+  function _hideNodeContextMenu() {
+    const el = document.getElementById('__node-context-menu');
+    if (el) el.remove();
+  }
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') _hideNodeContextMenu();
   });
 
   // ---- keydown ----
