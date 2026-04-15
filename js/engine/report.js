@@ -114,8 +114,17 @@ export function generateReport() {
   const curPage = (state.pages || []).find(p => p.id === state.currentPageId);
   if (curPage) {
     const linkedChildren = (state.pages || []).filter(p => p.type === 'linked' && p.sourcePageId === curPage.id);
-    const pagesLine = curPage.name + (linkedChildren.length ? ` (+ ${linkedChildren.map(p => p.name).join(', ')})` : '');
-    lines.push('Страница:          ' + pagesLine);
+    lines.push('Страница:          ' + (curPage.name || curPage.id));
+    if (curPage.sheetNo) lines.push('№ листа:           ' + curPage.sheetNo);
+    if (curPage.title)   lines.push('Наим. чертежа:     ' + curPage.title);
+    if (curPage.revision)lines.push('Ревизия:           ' + curPage.revision);
+    if (curPage.description) {
+      lines.push('Описание листа:');
+      for (const ln of String(curPage.description).split(/\r?\n/)) lines.push('  ' + ln);
+    }
+    if (linkedChildren.length) {
+      lines.push('Ссылочные стр.:    ' + linkedChildren.map(p => p.name).join(', '));
+    }
   }
   lines.push('='.repeat(78));
   lines.push('');

@@ -241,6 +241,12 @@ export function initToolbar() {
     state.selection.clear();
     renderPageTabs();
     render();
+    // Обновим inspector — теперь он покажет свойства новой страницы
+    try {
+      if (typeof window !== 'undefined' && typeof window.__raschetRenderInspector === 'function') {
+        window.__raschetRenderInspector();
+      }
+    } catch {}
   };
 
   const addPage = (type = 'independent', sourcePageId = null) => {

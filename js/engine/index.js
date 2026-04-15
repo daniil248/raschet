@@ -58,6 +58,8 @@ import { importLoadsTable } from './import.js';
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница
 ensureDefaultPage();
+// Экспонируем renderInspector для export.js page switching
+if (typeof window !== 'undefined') window.__raschetRenderInspector = () => renderInspector();
 
 // === Связывание зависимостей (late-binding) ===
 bindModeDeps({ snapshot, render, renderInspector, notifyChange });

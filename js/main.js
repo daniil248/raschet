@@ -830,6 +830,8 @@ function saveSettingsModal() {
   flash('Настройки применены');
 }
 
+window.__raschetOpenProjectInfo = function() { openProjectInfoModal(); };
+
 function openProjectInfoModal() {
   const pi = (window.Raschet?._state?.project) || {};
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };

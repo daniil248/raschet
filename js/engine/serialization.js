@@ -34,6 +34,10 @@ export function serialize() {
       id: p.id, name: p.name, type: p.type || 'independent',
       sourcePageId: p.sourcePageId || null,
       view: p.view || { x: 0, y: 0, zoom: 1 },
+      sheetNo: p.sheetNo || '',
+      title: p.title || '',
+      revision: p.revision || '',
+      description: p.description || '',
     })),
     currentPageId: state.currentPageId,
     project: { ...(state.project || {}) },
@@ -84,6 +88,10 @@ export function deserialize(data) {
       id: p.id, name: p.name || p.id, type: p.type || 'independent',
       sourcePageId: p.sourcePageId || null,
       view: p.view || { x: 0, y: 0, zoom: 1 },
+      sheetNo: p.sheetNo || '',
+      title: p.title || '',
+      revision: p.revision || '',
+      description: p.description || '',
     }));
     state.currentPageId = data.currentPageId && state.pages.find(p => p.id === data.currentPageId)
       ? data.currentPageId : state.pages[0].id;

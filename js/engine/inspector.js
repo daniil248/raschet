@@ -52,7 +52,8 @@ function _restoreDetailsState(map) {
 
 export function renderInspector() {
   if (!state.selectedKind) {
-    inspectorBody.innerHTML = '<div class="muted">Выберите элемент или связь, либо перетащите новый элемент из палитры.</div>';
+    // Ничего не выбрано — показываем свойства ТЕКУЩЕЙ СТРАНИЦЫ
+    renderInspectorPage();
     return;
   }
   const detailsState = _saveDetailsState();
@@ -66,6 +67,104 @@ export function renderInspector() {
     renderInspectorConn(c);
   }
   _restoreDetailsState(detailsState);
+}
+
+function renderInspectorPage() {
+  const page = (state.pages || []).find(p => p.id === state.currentPageId);
+  if (!page) {
+    inspectorBody.innerHTML = '<div class="muted">Нет активной страницы.</div>';
+    return;
+  }
+  const h = [];
+  h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">Свойства страницы</div>`);
+  h.push(field('Название', `<input type="text" id="pg-name" value="${escAttr(page.name || '')}">`));
+  h.push(field('№ листа', `<input type="text" id="pg-sheet" value="${escAttr(page.sheetNo || '')}" placeholder="1">`));
+  h.push(field('Наименование чертежа', `<input type="text" id="pg-title" value="${escAttr(page.title || '')}" placeholder="Принципиальная схема">`));
+  h.push(field('Ревизия', `<input type="text" id="pg-rev" value="${escAttr(page.revision || '')}" placeholder="0">`));
+  h.push(field('Описание страницы', `<textarea id="pg-desc" rows="3" style="width:100%;font:inherit;font-size:12px;resize:vertical" placeholder="Описание этого листа">${escHtml(page.description || '')}</textarea>`));
+
+  // Тип страницы + parent для ссылочной
+  const independents = (state.pages || []).filter(p => p.type !== 'linked' && p.id !== page.id);
+  let typeHtml = `
+    <select id="pg-type">
+      <option value="independent"${page.type !== 'linked' ? ' selected' : ''}>Независимая</option>`;
+  for (const parent of independents) {
+    const sel = page.type === 'linked' && page.sourcePageId === parent.id;
+    typeHtml += `<option value="linked:${escAttr(parent.id)}"${sel ? ' selected' : ''}>Ссылочная → ${escHtml(parent.name || parent.id)}</option>`;
+  }
+  typeHtml += `</select>`;
+  h.push(field('Тип', typeHtml));
+
+  // Статистика страницы
+  const nodeCount = [...state.nodes.values()].filter(n => {
+    const pids = Array.isArray(n.pageIds) ? n.pageIds : null;
+    return !pids || pids.length === 0 || pids.includes(page.id);
+  }).length;
+  h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-top:8px">` +
+    `Узлов на странице: <b>${nodeCount}</b>` +
+    `</div>`);
+
+  // Блок параметров проекта (краткое превью)
+  const proj = state.project || {};
+  if (proj.designation || proj.name || proj.customer) {
+    h.push('<div class="inspector-section"><h4>Проект</h4>');
+    h.push('<div style="font-size:11px;line-height:1.7">');
+    if (proj.designation) h.push(`<div>Обозначение: <b>${escHtml(proj.designation)}</b></div>`);
+    if (proj.name) h.push(`<div>Наименование: ${escHtml(proj.name)}</div>`);
+    if (proj.customer) h.push(`<div>Заказчик: ${escHtml(proj.customer)}</div>`);
+    if (proj.stage) h.push(`<div>Стадия: ${escHtml(proj.stage)}</div>`);
+    h.push('</div></div>');
+  }
+  h.push(`<button class="full-btn" id="pg-open-project" style="margin-top:8px">📋 Параметры проекта…</button>`);
+
+  inspectorBody.innerHTML = h.join('');
+
+  // Handlers
+  const bindInput = (id, setter) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      snapshot('page:' + page.id);
+      setter(el.value);
+      notifyChange();
+      // Перерисуем tabs
+      if (typeof window !== 'undefined' && typeof window.__raschetRenderPageTabs === 'function') {
+        try { window.__raschetRenderPageTabs(); } catch {}
+      }
+    });
+  };
+  bindInput('pg-name', v => { page.name = String(v).trim() || page.id; });
+  bindInput('pg-sheet', v => { page.sheetNo = String(v).trim(); });
+  bindInput('pg-title', v => { page.title = String(v).trim(); });
+  bindInput('pg-rev',   v => { page.revision = String(v).trim(); });
+  bindInput('pg-desc',  v => { page.description = String(v); });
+
+  const typeSel = document.getElementById('pg-type');
+  if (typeSel) {
+    typeSel.addEventListener('change', () => {
+      snapshot('page-type:' + page.id);
+      const val = typeSel.value;
+      if (val === 'independent') {
+        page.type = 'independent';
+        delete page.sourcePageId;
+      } else if (val.startsWith('linked:')) {
+        const parentId = val.substring('linked:'.length);
+        page.type = 'linked';
+        page.sourcePageId = parentId;
+      }
+      notifyChange();
+      if (typeof window !== 'undefined' && typeof window.__raschetRenderPageTabs === 'function') {
+        try { window.__raschetRenderPageTabs(); } catch {}
+      }
+      _render();
+      renderInspector();
+    });
+  }
+
+  const openProjBtn = document.getElementById('pg-open-project');
+  if (openProjBtn && typeof window !== 'undefined' && typeof window.__raschetOpenProjectInfo === 'function') {
+    openProjBtn.addEventListener('click', () => window.__raschetOpenProjectInfo());
+  }
 }
 
 export function renderInspectorNode(n) {
