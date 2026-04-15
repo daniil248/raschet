@@ -1,4 +1,4 @@
-import { state } from './state.js';
+import { state, uid } from './state.js';
 import { nodeWidth, nodeHeight } from './geometry.js';
 
 // Полностью ли bbox узла внутри bbox зоны.
@@ -150,6 +150,136 @@ export function detachFromZones(nodeId) {
     if (!Array.isArray(z.memberIds)) continue;
     z.memberIds = z.memberIds.filter(id => id !== nodeId);
   }
+}
+
+// ======================================================================
+// Копирование зоны со всеми элементами
+// ======================================================================
+//
+// Создаёт полный клон зоны (корневой) со всеми вложенными элементами
+// и подзонами. Внутренние элементы КЛОНИРУЮТСЯ ЦЕЛИКОМ но сохраняют
+// свои tag'и (обозначения) — уникальность обеспечивается тем, что
+// effectiveTag() включает префикс корневой зоны, который меняется.
+//
+// Корневая новая зона получает zonePrefix следующего незанятого
+// номера с тем же буквенным префиксом (P1 → P2 если P2 свободен).
+//
+// Также клонируются все внутренние связи (обе конечные ноды которых
+// входят в клонируемое множество). Связи, выходящие за пределы зоны,
+// НЕ клонируются.
+//
+// Возвращает id новой корневой зоны (или null при ошибке).
+// ======================================================================
+export function copyZoneWithMembers(zoneId) {
+  const src = state.nodes.get(zoneId);
+  if (!src || src.type !== 'zone') return null;
+
+  // 1. Собираем полный набор клонируемых нод (зона + рекурсивно все
+  //    memberIds, включая подзоны и секции щитов).
+  const srcIds = new Set([src.id]);
+  const walk = (ids) => {
+    for (const id of ids || []) {
+      if (srcIds.has(id)) continue;
+      srcIds.add(id);
+      const nn = state.nodes.get(id);
+      if (!nn) continue;
+      if (nn.type === 'zone' && Array.isArray(nn.memberIds)) walk(nn.memberIds);
+      if (nn.type === 'panel' && nn.switchMode === 'sectioned' && Array.isArray(nn.sectionIds)) walk(nn.sectionIds);
+    }
+  };
+  walk(src.memberIds);
+
+  // 2. Вычисляем новый zonePrefix корневой зоны. Отделяем буквенный
+  //    префикс от числового суффикса: «P12» → ('P', 12). Перебираем
+  //    номера от N+1 до первой свободной комбинации.
+  const srcPrefix = String(src.zonePrefix || src.tag || 'Z1');
+  const m = srcPrefix.match(/^(\D*)(\d+)$/);
+  let basePrefix = 'Z';
+  let startNum = 1;
+  if (m) { basePrefix = m[1] || 'Z'; startNum = Number(m[2]) || 1; }
+  else { basePrefix = srcPrefix; startNum = 1; }
+
+  const usedZonePrefixes = new Set();
+  for (const nn of state.nodes.values()) {
+    if (nn.type === 'zone' && nn.zonePrefix) usedZonePrefixes.add(nn.zonePrefix);
+  }
+  let newNum = startNum + 1;
+  let newZonePrefix;
+  while (true) {
+    newZonePrefix = basePrefix + newNum;
+    if (!usedZonePrefixes.has(newZonePrefix)) break;
+    newNum++;
+    if (newNum > 99999) { newZonePrefix = basePrefix + Date.now(); break; }
+  }
+
+  // 3. Определяем оффсет: справа от исходной зоны + 40 px.
+  const dx = (Number(nodeWidth(src)) || 600) + 40;
+  const dy = 0;
+
+  // 4. Создаём мапу старый id → новый id ДО клонирования, чтобы
+  //    потом можно было переписать все кросс-ссылки (memberIds,
+  //    sectionIds, parentSectionedId, linked*Id и т.п.).
+  const idMap = new Map();
+  for (const oldId of srcIds) idMap.set(oldId, uid());
+
+  // 5. Клонируем каждый узел.
+  const skipRuntime = new Set([
+    '_loadKw','_loadA','_powered','_overload','_cosPhi','_onBattery',
+    '_inputKw','_nominalA','_ratedA','_inrushA','_calcKw','_maxLoadKw','_maxLoadA',
+    '_avrBreakerOverride','_avrActivePort','_avrSwitchCountdown','_avrInterlockCountdown',
+    '_avrDisconnected','_prevSwitchMode','_onStaticBypass','_trafoP0Kw','_trafoPkKw',
+    '_watchdogActivePorts','_ownInputPowered','_ownInputAvailable','_activeTriggerGroup',
+    '_running','_startCountdown','_stopCountdown','_avrSwitchStartedAt','_ikA','_deltaUPct',
+    '_marginPct','_marginWarn','_powerP','_powerQ','_powerS','_linkD','_linkPreview',
+  ]);
+  for (const oldId of srcIds) {
+    const srcNode = state.nodes.get(oldId);
+    if (!srcNode) continue;
+    const copy = JSON.parse(JSON.stringify(srcNode));
+    // Чистим runtime-поля
+    for (const k of Object.keys(copy)) {
+      if (skipRuntime.has(k) || k.startsWith('_')) delete copy[k];
+    }
+    copy.id = idMap.get(oldId);
+    // Смещение координат
+    if (typeof copy.x === 'number') copy.x += dx;
+    if (typeof copy.y === 'number') copy.y += dy;
+    // Переписать кросс-ссылки по idMap
+    if (Array.isArray(copy.memberIds)) {
+      copy.memberIds = copy.memberIds.map(id => idMap.get(id) || id).filter(id => idMap.has(id) || state.nodes.has(id));
+      // После фильтра оставляем только те, что действительно в idMap
+      copy.memberIds = copy.memberIds.filter(id => [...idMap.values()].includes(id));
+    }
+    if (Array.isArray(copy.sectionIds)) {
+      copy.sectionIds = copy.sectionIds.map(id => idMap.get(id) || id);
+    }
+    if (copy.parentSectionedId) {
+      copy.parentSectionedId = idMap.get(copy.parentSectionedId) || copy.parentSectionedId;
+    }
+    if (copy.linkedOutdoorId) copy.linkedOutdoorId = idMap.get(copy.linkedOutdoorId) || copy.linkedOutdoorId;
+    if (copy.linkedIndoorId) copy.linkedIndoorId = idMap.get(copy.linkedIndoorId) || copy.linkedIndoorId;
+
+    // Для корневой зоны копии назначаем новый zonePrefix.
+    if (oldId === src.id) {
+      copy.zonePrefix = newZonePrefix;
+    }
+    state.nodes.set(copy.id, copy);
+  }
+
+  // 6. Клонируем связи, у которых оба конца внутри srcIds.
+  for (const c of state.conns.values()) {
+    if (!srcIds.has(c.from.nodeId) || !srcIds.has(c.to.nodeId)) continue;
+    const newConn = JSON.parse(JSON.stringify(c));
+    for (const k of Object.keys(newConn)) {
+      if (k.startsWith('_')) delete newConn[k];
+    }
+    newConn.id = uid('c');
+    newConn.from = { nodeId: idMap.get(c.from.nodeId), port: c.from.port };
+    newConn.to   = { nodeId: idMap.get(c.to.nodeId),   port: c.to.port };
+    state.conns.set(newConn.id, newConn);
+  }
+
+  return idMap.get(src.id);
 }
 
 // Проверка: сколько портов данного вида реально занято связями

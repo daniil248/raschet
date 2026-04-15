@@ -7,7 +7,7 @@ import { effectiveOn, setEffectiveOn, effectiveLoadFactor, setEffectiveLoadFacto
 import { snapshot, notifyChange } from './history.js';
 import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
 import { panelCosPhi, downstreamPQ } from './recalc.js';
-import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort } from './zones.js';
+import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort, copyZoneWithMembers } from './zones.js';
 import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './cable.js';
 import { getMethod } from '../methods/index.js';
 
@@ -255,6 +255,7 @@ export function renderInspectorNode(n) {
       h.push('</div></div>');
     }
     h.push(field('Комментарии', `<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical">${escHtml(n.comment || '')}</textarea>`));
+    h.push(`<button class="full-btn" id="btn-copy-zone" style="margin-top:8px">📋 Копировать зону со всеми элементами</button>`);
     h.push('<button class="btn-delete" id="btn-del-node">Удалить зону</button>');
     inspectorBody.innerHTML = h.join('');
     wireInspectorInputs(n);
@@ -271,6 +272,25 @@ export function renderInspectorNode(n) {
         renderInspector();
       });
     });
+    // Копирование зоны со всеми вложенными элементами
+    const copyZoneBtn = document.getElementById('btn-copy-zone');
+    if (copyZoneBtn) {
+      copyZoneBtn.addEventListener('click', () => {
+        snapshot('copy-zone:' + n.id);
+        const newId = copyZoneWithMembers(n.id);
+        if (newId) {
+          state.selectedKind = 'node';
+          state.selectedId = newId;
+          _render();
+          notifyChange();
+          renderInspector();
+          const newZone = state.nodes.get(newId);
+          flash('Зона скопирована: ' + (newZone?.zonePrefix || newId));
+        } else {
+          flash('Не удалось скопировать зону', 'error');
+        }
+      });
+    }
     return;
   }
   // Channel — только тип и условия среды; материал/изоляция задаются в линиях
