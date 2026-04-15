@@ -65,6 +65,7 @@
   <section id="screen-editor" class="screen hidden">
     <div id="app">
       <aside id="palette">
+        <div id="palette-resizer"></div>
         <div class="brand">Raschet</div>
         <div class="subtitle">Конструктор схем</div>
 
@@ -489,6 +490,10 @@
           <input type="checkbox" id="set-showHelp">
           <label>Показывать справочную информацию (пояснения под авто-расчётом автомата и кабеля)</label>
         </div>
+
+        <h3>Библиотека элементов</h3>
+        <div class="muted" style="font-size:11px;margin-bottom:6px">Базовые элементы поставки можно скрывать и редактировать — изменения сохраняются локально. «Сбросить» вернёт базовые пресеты к изначальным значениям и покажет скрытые.</div>
+        <button type="button" id="btn-presets-reset-builtins" class="full-btn">↺ Сбросить базовые пресеты библиотеки</button>
       </div>
       <div class="modal-foot">
         <button class="modal-close">Отмена</button>

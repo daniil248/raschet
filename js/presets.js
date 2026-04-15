@@ -213,29 +213,115 @@ function byCategory() {
   return out;
 }
 
-// Подгружаем пользовательские пресеты из localStorage
-try {
-  const stored = localStorage.getItem('raschet.userPresets.v1');
-  if (stored) {
-    const list = JSON.parse(stored);
-    if (Array.isArray(list)) {
-      for (const p of list) PRESETS.push(p);
+// Модификации пользователя поверх base-набора:
+//  - deleted: Set<id> — удалённые (в том числе базовые)
+//  - overrides: Map<id, preset> — изменённые (замещают оригинал)
+//  - added: Array<preset> — новые user-presets (id "up_*" или "user_*")
+// Все три — в localStorage под своими ключами.
+let _deletedIds = new Set();
+let _overrides = new Map();
+let _added = [];
+
+function _loadMods() {
+  try {
+    const del = JSON.parse(localStorage.getItem('raschet.presetsDeleted.v1') || '[]');
+    if (Array.isArray(del)) _deletedIds = new Set(del);
+  } catch {}
+  try {
+    const ov = JSON.parse(localStorage.getItem('raschet.presetsOverrides.v1') || '{}');
+    if (ov && typeof ov === 'object') {
+      for (const [k, v] of Object.entries(ov)) _overrides.set(k, v);
     }
+  } catch {}
+  // Совместимость: старый ключ userPresets.v1 = список новых
+  try {
+    const old = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+    if (Array.isArray(old)) _added = old;
+  } catch {}
+}
+function _saveDeleted() {
+  try { localStorage.setItem('raschet.presetsDeleted.v1', JSON.stringify([..._deletedIds])); } catch {}
+}
+function _saveOverrides() {
+  try {
+    const obj = {};
+    for (const [k, v] of _overrides) obj[k] = v;
+    localStorage.setItem('raschet.presetsOverrides.v1', JSON.stringify(obj));
+  } catch {}
+}
+function _saveAdded() {
+  try { localStorage.setItem('raschet.userPresets.v1', JSON.stringify(_added)); } catch {}
+}
+
+// Вычисляет финальный список пресетов, применяя deleted/overrides/added
+function _resolve() {
+  const result = [];
+  for (const p of PRESETS) {
+    if (_deletedIds.has(p.id)) continue;
+    result.push(_overrides.has(p.id) ? _overrides.get(p.id) : p);
   }
-} catch (e) { console.warn('[presets] cannot load user presets', e); }
+  for (const p of _added) {
+    if (_deletedIds.has(p.id)) continue;
+    result.push(_overrides.has(p.id) ? _overrides.get(p.id) : p);
+  }
+  return result;
+}
+
+_loadMods();
+
+// Список id «базовых» пресетов из комплекта — чтобы при сбросе уметь вернуть их.
+const BUILTIN_IDS = new Set(PRESETS.map(p => p.id));
 
 window.Presets = {
-  all: PRESETS,
-  byCategory,
-  get(id) { return PRESETS.find(p => p.id === id); },
-  removeUser(id) {
-    const idx = PRESETS.findIndex(p => p.id === id);
-    if (idx >= 0) PRESETS.splice(idx, 1);
-    try {
-      const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-      const filtered = stored.filter(p => p.id !== id);
-      localStorage.setItem('raschet.userPresets.v1', JSON.stringify(filtered));
-    } catch {}
+  get all() { return _resolve(); },
+  byCategory() {
+    const out = new Map();
+    for (const p of _resolve()) {
+      if (!out.has(p.category)) out.set(p.category, []);
+      out.get(p.category).push(p);
+    }
+    return out;
+  },
+  get(id) { return _resolve().find(p => p.id === id); },
+  // Проверка: пресет входит в базовую поставку?
+  isBuiltin(id) { return BUILTIN_IDS.has(id); },
+  // Добавить новый user-пресет
+  add(preset) {
+    _added.push(preset);
+    _saveAdded();
+  },
+  // Изменить пресет (базовый — через overrides; user-added — в самом массиве)
+  update(id, patch) {
+    if (BUILTIN_IDS.has(id)) {
+      const base = _overrides.get(id) || PRESETS.find(p => p.id === id);
+      if (!base) return;
+      const merged = { ...base, ...patch, id, params: { ...(base.params || {}), ...(patch.params || {}) } };
+      _overrides.set(id, merged);
+      _saveOverrides();
+    } else {
+      const idx = _added.findIndex(p => p.id === id);
+      if (idx >= 0) {
+        _added[idx] = { ..._added[idx], ...patch, id, params: { ..._added[idx].params, ...(patch.params || {}) } };
+        _saveAdded();
+      }
+    }
+  },
+  // Удалить пресет: базовый → в deleted-set; user — удаляем из added
+  remove(id) {
+    if (BUILTIN_IDS.has(id)) {
+      _deletedIds.add(id);
+      _saveDeleted();
+    } else {
+      const idx = _added.findIndex(p => p.id === id);
+      if (idx >= 0) { _added.splice(idx, 1); _saveAdded(); }
+    }
+  },
+  // Для совместимости со старым кодом
+  removeUser(id) { this.remove(id); },
+  // Восстановление всех базовых — очистка deleted и overrides
+  resetBuiltins() {
+    _deletedIds.clear(); _overrides.clear();
+    _saveDeleted(); _saveOverrides();
   },
 };
 

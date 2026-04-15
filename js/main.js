@@ -937,9 +937,10 @@ function renderPalettePresets() {
     const list = byType.get(type) || [];
     container.innerHTML = '';
     for (const p of list) {
-      const isUser = String(p.id || '').startsWith('user_') || String(p.id || '').startsWith('up_');
+      const isBuiltin = typeof window.Presets.isBuiltin === 'function' && window.Presets.isBuiltin(p.id);
       const item = document.createElement('div');
-      item.className = 'pal-item pal-preset' + (isUser ? ' user-preset' : '');
+      // user-preset класс = не-базовые (новые или изменённые) — для визуального маркера
+      item.className = 'pal-item pal-preset' + (isBuiltin ? '' : ' user-preset');
       item.draggable = true;
       item.dataset.presetId = p.id;
       item.dataset.type = p.type;
@@ -949,11 +950,10 @@ function renderPalettePresets() {
         `<span class="pp-meta">${escHtml(presetAutoDesc(p).slice(0, 24))}</span>` +
         `<span class="pp-actions">` +
         `<button class="pp-btn pp-dup" title="Дублировать">⧉</button>` +
-        (isUser ? `<button class="pp-btn pp-edit" title="Редактировать">✎</button>` : '') +
-        (isUser ? `<button class="pp-btn pp-del" title="Удалить">✕</button>` : '') +
+        `<button class="pp-btn pp-edit" title="Редактировать">✎</button>` +
+        `<button class="pp-btn pp-del" title="Удалить">✕</button>` +
         `</span>`;
       container.appendChild(item);
-      // Bind drag handlers через экспонированную функцию из interaction.js
       if (typeof window.__raschetBindPalItem === 'function') {
         window.__raschetBindPalItem(item);
       }
@@ -990,11 +990,11 @@ function wirePalettePresetActions() {
     });
     if (editBtn) editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      editUserPreset(presetId);
+      editPresetLabel(presetId);
     });
     if (delBtn) delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      deleteUserPreset(presetId);
+      deletePreset(presetId);
     });
   });
 }
@@ -1013,51 +1013,38 @@ function duplicatePresetToUser(presetId) {
     type: src.type,
     params: { ...(src.params || {}), name: label },
   };
-  try {
-    const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-    stored.push(newPreset);
-    localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
-  } catch {}
-  window.Presets.all.push(newPreset);
+  window.Presets.add(newPreset);
   renderPalettePresets();
   flash('Сохранён как пользовательский пресет');
 }
 
-function editUserPreset(presetId) {
+// Редактирование имени пресета (работает для базовых и user — базовый сохранится в overrides)
+function editPresetLabel(presetId) {
   if (!window.Presets) return;
   const p = window.Presets.get(presetId);
   if (!p) return;
   const label = prompt('Название:', p.params?.name || p.title || '');
   if (label === null) return;
-  p.title = label;
-  if (!p.params) p.params = {};
-  p.params.name = label;
-  try {
-    const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-    const idx = stored.findIndex(x => x.id === presetId);
-    if (idx >= 0) stored[idx] = p;
-    localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
-  } catch {}
+  const patch = { title: label, params: { ...(p.params || {}), name: label } };
+  window.Presets.update(presetId, patch);
   renderPalettePresets();
 }
 
-function deleteUserPreset(presetId) {
+function deletePreset(presetId) {
   if (!window.Presets) return;
   const p = window.Presets.get(presetId);
   if (!p) return;
-  if (!confirm(`Удалить пресет «${presetDisplayName(p)}»?`)) return;
-  if (typeof window.Presets.removeUser === 'function') {
-    window.Presets.removeUser(presetId);
-  } else {
-    const idx = window.Presets.all.findIndex(x => x.id === presetId);
-    if (idx >= 0) window.Presets.all.splice(idx, 1);
-  }
+  const isBuiltin = window.Presets.isBuiltin && window.Presets.isBuiltin(presetId);
+  const msg = isBuiltin
+    ? `Удалить базовый пресет «${presetDisplayName(p)}»?\n\nПресет скроется из палитры. Восстановить его можно через «Сбросить библиотеку» в настройках.`
+    : `Удалить пресет «${presetDisplayName(p)}»?`;
+  if (!confirm(msg)) return;
+  window.Presets.remove(presetId);
   renderPalettePresets();
-  flash('Пресет удалён');
+  flash(isBuiltin ? 'Пресет скрыт' : 'Пресет удалён');
 }
 
 function savePresetFromCurrentSelection(type) {
-  // Пытаемся взять текущий выделенный узел нужного типа
   const sel = window.Raschet?._state?.selectedId;
   const node = sel && window.Raschet?._state?.nodes?.get(sel);
   if (!node || node.type !== type) {
@@ -1066,7 +1053,6 @@ function savePresetFromCurrentSelection(type) {
   }
   const label = prompt('Название нового пресета:', node.name || type);
   if (!label) return;
-  // Копируем params без runtime-полей (_*)
   const params = {};
   for (const k of Object.keys(node)) {
     if (k.startsWith('_') || k === 'id' || k === 'x' || k === 'y' || k === 'tag' || k === 'pageIds') continue;
@@ -1081,14 +1067,57 @@ function savePresetFromCurrentSelection(type) {
     type,
     params,
   };
-  try {
-    const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-    stored.push(newPreset);
-    localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
-  } catch {}
-  if (window.Presets) window.Presets.all.push(newPreset);
+  if (window.Presets) window.Presets.add(newPreset);
   renderPalettePresets();
   flash('Сохранено в библиотеку');
+}
+
+// Ресайз левой палитры через drag ручки, с сохранением в localStorage
+function wirePaletteResizer() {
+  const resizer = document.getElementById('palette-resizer');
+  if (!resizer) return;
+  // Применяем сохранённую ширину
+  try {
+    const savedW = parseInt(localStorage.getItem('raschet.paletteWidth') || '0', 10);
+    if (savedW >= 200 && savedW <= 600) {
+      document.documentElement.style.setProperty('--palette-w', savedW + 'px');
+    }
+  } catch {}
+  let startX = 0, startW = 0, dragging = false;
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    resizer.classList.add('dragging');
+    startX = e.clientX;
+    const palette = document.getElementById('palette');
+    startW = palette ? palette.getBoundingClientRect().width : 280;
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const newW = Math.max(200, Math.min(600, startW + dx));
+    document.documentElement.style.setProperty('--palette-w', newW + 'px');
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    // Сохранить
+    try {
+      const w = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--palette-w'), 10);
+      if (w >= 200 && w <= 600) {
+        localStorage.setItem('raschet.paletteWidth', String(w));
+      }
+    } catch {}
+    // Обновить viewBox холста на случай изменения ширины
+    if (window.Raschet?._state && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('resize'));
+    }
+  });
 }
 
 // Поиск по палитре — фильтрует видимость элементов и секций
@@ -1507,11 +1536,22 @@ async function init() {
   if (btnProjectInfo) btnProjectInfo.addEventListener('click', openProjectInfoModal);
   const projectInfoSave = document.getElementById('project-info-save');
   if (projectInfoSave) projectInfoSave.addEventListener('click', saveProjectInfoModal);
+  // Сброс базовых пресетов
+  const btnPresetsReset = document.getElementById('btn-presets-reset-builtins');
+  if (btnPresetsReset) btnPresetsReset.addEventListener('click', () => {
+    if (!confirm('Восстановить все скрытые базовые пресеты и сбросить их изменения?')) return;
+    if (window.Presets && typeof window.Presets.resetBuiltins === 'function') {
+      window.Presets.resetBuiltins();
+      renderPalettePresets();
+      flash('Базовые пресеты восстановлены');
+    }
+  });
   // Применяем сохранённые настройки как можно раньше — после загрузки Raschet
   loadGlobalSettings();
-  // Рендер библиотечных пресетов в палитру + поиск
+  // Рендер библиотечных пресетов в палитру + поиск + ресайз
   renderPalettePresets();
   wirePaletteSearch();
+  wirePaletteResizer();
   if (els.btnOpenPresets) els.btnOpenPresets.addEventListener('click', openPresetsModal);
   const btnCatalog = document.getElementById('btn-open-consumer-catalog');
   if (btnCatalog) btnCatalog.addEventListener('click', openConsumerCatalogModal);
