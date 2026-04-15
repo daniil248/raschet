@@ -672,6 +672,36 @@ function _renderUpsBatteryBody(n) {
     h.push(`<div class="muted" style="font-size:11px;padding:6px 10px;background:#eef4fb;border-left:3px solid #1976d2;border-radius:4px;margin-bottom:8px">
       ${escHtml(picked.supplier || '')} · ${escHtml(picked.type)} · ${fmt(blockVnom)} В / ${fmt(capAhBlock)} А·ч · ${cellsPerBlock} эл.
     </div>`);
+
+    // Параметры блока из справочника (read-only по умолчанию).
+    // Пользователь может разблокировать их кнопкой «Ручной ввод», тогда
+    // значения на узле перестают синхронизироваться со справочником
+    // (n.batteryManualOverride = true).
+    const manualOverride = !!n.batteryManualOverride;
+    const lockBtnTxt = manualOverride ? '🔒 Вернуть из справочника' : '✏ Ручной ввод';
+    const disAttr = manualOverride ? '' : ' disabled';
+    const readOnlyBg = manualOverride ? '' : ' style="background:#f6f8fa;color:#555"';
+    h.push(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:11px;font-weight:600;color:${manualOverride ? '#e65100' : '#1976d2'}">
+        ${manualOverride ? '✏ Ручной режим (справочник игнорируется)' : '🔒 Из справочника'}
+      </span>
+      <button type="button" id="ups-batt-lock-toggle" class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px">${lockBtnTxt}</button>
+    </div>`);
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('Элементов в блоке',
+      `<input type="number" id="ups-batt-cells" min="1" max="400" step="1" value="${Number(n.batteryCellCount) || cellsPerBlock * blocksPerString}"${disAttr}${readOnlyBg}>`)}</div>`);
+    h.push(`<div style="flex:1">${field('Напр. элемента, В',
+      `<input type="number" id="ups-batt-cellV" min="0.5" max="5" step="0.1" value="${Number(n.batteryCellVoltage) || picked.cellVoltage || 2}"${disAttr}${readOnlyBg}>`)}</div>`);
+    h.push('</div>');
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('Ёмкость блока, А·ч',
+      `<input type="number" id="ups-batt-ah" min="1" step="1" value="${Number(n.batteryCapacityAh) || capAhBlock}"${disAttr}${readOnlyBg}>`)}</div>`);
+    h.push(`<div style="flex:1">${field('Тип батарей',
+      `<select id="ups-batt-type"${disAttr}${readOnlyBg}>
+        <option value="lead-acid"${bt === 'lead-acid' ? ' selected' : ''}>VRLA / AGM (2 В)</option>
+        <option value="li-ion"${bt === 'li-ion' ? ' selected' : ''}>Li-Ion LiFePO4 (3.2 В)</option>
+      </select>`)}</div>`);
+    h.push('</div>');
     h.push('<div style="display:flex;gap:8px">');
     const blocksInputStyle = clampHint ? ' style="border-color:#e65100;background:#fff8e1"' : '';
     h.push(`<div style="flex:1">${field(`Блоков в цепочке (${nMin}…${nMax})`,
@@ -716,12 +746,20 @@ function _renderUpsBatteryBody(n) {
     n.batteryTempC = tempC;
     n.batteryBlocksPerString = blocksPerString;
     n.batteryTargetMin = targetMin;
-    // Автоматически пересчитаем batteryCellCount = cellsPerBlock * blocksPerString,
-    // чтобы legacy-расчёт kWh (верхняя плашка) оставался корректным.
-    n.batteryCellCount = cellsPerBlock * blocksPerString;
-    n.batteryCellVoltage = Number(picked.cellVoltage) || 2;
-    n.batteryCapacityAh = capAhBlock;
-    n.batteryKwh = (blockVnom * blocksPerString * capAhBlock * stringsCat) / 1000;
+    // Авто-синхронизация состава блока из справочника — ТОЛЬКО если пользователь
+    // не включил ручной режим (n.batteryManualOverride). В ручном режиме мы
+    // сохраняем введённые значения и пересчитываем kWh из них.
+    if (!manualOverride) {
+      n.batteryCellCount = cellsPerBlock * blocksPerString;
+      n.batteryCellVoltage = Number(picked.cellVoltage) || 2;
+      n.batteryCapacityAh = capAhBlock;
+      n.batteryKwh = (blockVnom * blocksPerString * capAhBlock * stringsCat) / 1000;
+    } else {
+      // Ручной режим: kWh считается из введённых пользователем значений
+      const _blockV = (Number(n.batteryCellCount) || 0) * (Number(n.batteryCellVoltage) || 0);
+      const _totalAh = (Number(n.batteryCapacityAh) || 0) * stringsCat;
+      n.batteryKwh = (_blockV * _totalAh) / 1000;
+    }
 
     // Контейнер для кривой разряда
     h.push('<h4 style="margin:14px 0 6px">Кривая разряда</h4>');
@@ -904,6 +942,25 @@ function _renderUpsBatteryBody(n) {
     bindNum('ups-batt-nblocks', 'batteryBlocksPerString', 1);
     bindNum('ups-batt-temp', 'batteryTempC', -20);
     bindNum('ups-batt-target', 'batteryTargetMin', 1);
+    // Toggle lock: переключение между read-only справочником и ручным вводом
+    // параметров блока (cellCount / cellVoltage / capacityAh / type).
+    // При переходе в lock → значения пересинхронизируются из selectedBattery.
+    const lockBtn = document.getElementById('ups-batt-lock-toggle');
+    if (lockBtn) lockBtn.addEventListener('click', () => {
+      snapshot('ups-batt:' + n.id + ':override');
+      n.batteryManualOverride = !n.batteryManualOverride;
+      if (!n.batteryManualOverride) {
+        // Возвращаемся к справочнику: перезатираем поля из picked
+        if (selectedBattery.cellCount)   n.batteryCellCount   = selectedBattery.cellCount;
+        if (selectedBattery.cellVoltage) n.batteryCellVoltage = selectedBattery.cellVoltage;
+        if (selectedBattery.capacityAh)  n.batteryCapacityAh  = selectedBattery.capacityAh;
+        n.batteryType = selectedBattery.chemistry === 'li-ion' ? 'li-ion' : 'lead-acid';
+        const _blockV = (Number(n.batteryCellCount) || 0) * (Number(n.batteryCellVoltage) || 0);
+        const _totalAh = (Number(n.batteryCapacityAh) || 0) * (Number(n.batteryStringCount) || 1);
+        n.batteryKwh = (_blockV * _totalAh) / 1000;
+      }
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
     const invEffEl = document.getElementById('ups-batt-inveff');
     if (invEffEl) invEffEl.addEventListener('change', () => {
       snapshot('ups-batt:' + n.id + ':eff');
