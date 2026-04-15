@@ -1241,12 +1241,7 @@ function renderPresets(query) {
         custom: true,
       };
       dup.params.name = dupName;
-      window.Presets.all.push(dup);
-      try {
-        const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-        stored.push(dup);
-        localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
-      } catch {}
+      if (typeof window.Presets.add === 'function') window.Presets.add(dup);
       renderPresets(els.presetsSearch.value);
       flash('Дублировано: ' + dup.title);
     });
@@ -1277,12 +1272,7 @@ function renderPresets(query) {
         params: DEFAULTS_MAP[type] || { name: title },
         custom: true,
       };
-      window.Presets.all.push(preset);
-      try {
-        const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-        stored.push(preset);
-        localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
-      } catch {}
+      if (typeof window.Presets.add === 'function') window.Presets.add(preset);
       renderPresets(els.presetsSearch.value);
       // Open editor immediately
       openPresetEditor(preset);
@@ -1549,9 +1539,10 @@ async function init() {
   // Применяем сохранённые настройки как можно раньше — после загрузки Raschet
   loadGlobalSettings();
   // Рендер библиотечных пресетов в палитру + поиск + ресайз
-  renderPalettePresets();
-  wirePaletteSearch();
-  wirePaletteResizer();
+  // Каждый вызов в try/catch — одиночный сбой не должен ломать всю инициализацию.
+  try { renderPalettePresets(); } catch (e) { console.warn('[renderPalettePresets]', e); }
+  try { wirePaletteSearch(); } catch (e) { console.warn('[wirePaletteSearch]', e); }
+  try { wirePaletteResizer(); } catch (e) { console.warn('[wirePaletteResizer]', e); }
   if (els.btnOpenPresets) els.btnOpenPresets.addEventListener('click', openPresetsModal);
   const btnCatalog = document.getElementById('btn-open-consumer-catalog');
   if (btnCatalog) btnCatalog.addEventListener('click', openConsumerCatalogModal);

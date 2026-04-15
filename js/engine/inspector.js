@@ -603,9 +603,9 @@ export function saveNodeAsPreset(n) {
     custom: true,
   });
   saveUserPresets(list);
-  // Регистрируем в общем каталоге пресетов, если Presets уже загружен
-  if (window.Presets && window.Presets.all) {
-    window.Presets.all.push(list[list.length - 1]);
+  // Регистрируем в общем каталоге пресетов
+  if (window.Presets && typeof window.Presets.add === 'function') {
+    window.Presets.add(list[list.length - 1]);
   }
   flash('Сохранено в библиотеку: ' + title);
 }
