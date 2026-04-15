@@ -1,0 +1,370 @@
+/* ================================================================
+   schematic.css — редактор принципиальных схем (IEC 60617 / ISO 7200)
+   ================================================================ */
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1f2430;
+  background: #eef0f4;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sch-app {
+  position: fixed;
+  top: 56px; left: 0; right: 0; bottom: 0;
+  display: grid;
+  grid-template-columns: 240px 1fr 300px;
+  background: #eef0f4;
+}
+
+/* ---------------------------- Палитра ---------------------------- */
+.sch-palette {
+  background: #fff;
+  border-right: 1px solid #d9dde5;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.sch-palette-head {
+  flex: none;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #eef0f4;
+}
+.sch-palette-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  margin-bottom: 6px;
+}
+.sch-palette-head input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+  outline: none;
+}
+.sch-palette-head input:focus { border-color: #5e35b1; }
+.sch-palette-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.sch-palette-group {
+  margin-bottom: 10px;
+}
+.sch-palette-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #9aa3b5;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding: 4px 4px 6px;
+}
+.sch-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.sch-palette-item {
+  aspect-ratio: 1 / 1;
+  background: #f7f8fa;
+  border: 1px solid #e3e6ee;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  transition: border-color .12s, background .12s;
+  position: relative;
+}
+.sch-palette-item:hover {
+  border-color: #5e35b1;
+  background: #fff;
+}
+.sch-palette-item:active { cursor: grabbing; }
+.sch-palette-item svg {
+  width: 78%; height: 78%;
+  pointer-events: none;
+}
+.sch-palette-item[title]::after {
+  content: attr(data-label);
+  position: absolute;
+  bottom: 2px;
+  left: 2px; right: 2px;
+  text-align: center;
+  font-size: 9px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------- Центр ---------------------------- */
+.sch-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #e5e8ee;
+}
+
+.sch-toolbar {
+  flex: none;
+  height: 44px;
+  background: #fff;
+  border-bottom: 1px solid #d9dde5;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+}
+.sch-tool-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sch-tool-sep {
+  width: 1px; height: 24px; background: #e3e6ee;
+  margin: 0 4px;
+}
+.sch-tool-spacer { flex: 1; }
+.sch-tool {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #4a5161;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.sch-tool svg { width: 18px; height: 18px; }
+.sch-tool:hover { background: #f0f2f7; color: #1f2430; }
+.sch-tool.active {
+  background: #ede7f6;
+  color: #5e35b1;
+  border-color: #d1c4e9;
+}
+.sch-tool.primary {
+  background: #5e35b1;
+  color: #fff;
+  border-color: #5e35b1;
+}
+.sch-tool.primary:hover { background: #512da8; }
+.sch-tool-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-right: 4px;
+}
+.sch-toolbar select {
+  height: 28px;
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 12px;
+  background: #fff;
+  outline: none;
+}
+.sch-toolbar select:focus { border-color: #5e35b1; }
+.sch-zoom-value {
+  font-size: 12px;
+  color: #6b7280;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* ---------------------------- Canvas ---------------------------- */
+.sch-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  padding: 24px;
+  background:
+    linear-gradient(#e5e8ee, #e5e8ee);
+}
+#sch-canvas {
+  display: block;
+  margin: 0 auto;
+  box-shadow: 0 4px 24px rgba(20,25,40,0.14);
+  background: #fff;
+}
+.sch-sheet-bg { fill: #ffffff; }
+.sch-sheet-frame {
+  fill: none;
+  stroke: #1f2430;
+  stroke-width: 0.7;
+}
+#sch-grid-layer .sch-grid-dot { fill: #c7ccd6; }
+#sch-sheet-zones text {
+  font-family: "Arial", sans-serif;
+  font-size: 3.5px;
+  fill: #1f2430;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+#sch-sheet-zones line { stroke: #1f2430; stroke-width: 0.35; }
+
+/* title block */
+#sch-title-block rect { fill: #fff; stroke: #1f2430; stroke-width: 0.35; }
+#sch-title-block .tb-frame { stroke-width: 0.7; }
+#sch-title-block text {
+  font-family: "Arial", sans-serif;
+  fill: #1f2430;
+}
+#sch-title-block .tb-label {
+  font-size: 2.2px;
+  fill: #6b7280;
+}
+#sch-title-block .tb-value { font-size: 3.2px; font-weight: 600; }
+#sch-title-block .tb-value-big { font-size: 4.4px; font-weight: 700; }
+
+/* components */
+.sch-comp {
+  cursor: move;
+}
+.sch-comp .sch-comp-body {
+  fill: none;
+  stroke: #1f2430;
+  stroke-width: 0.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sch-comp.selected .sch-comp-body,
+.sch-comp.selected .sch-comp-pin {
+  stroke: #5e35b1;
+}
+.sch-comp .sch-comp-pin {
+  stroke: #1f2430;
+  stroke-width: 0.45;
+  fill: none;
+}
+.sch-comp .sch-comp-pin-dot {
+  fill: #1f2430;
+  r: 0.35;
+}
+.sch-comp text {
+  font-family: "Arial", sans-serif;
+  font-size: 2.6px;
+  fill: #1f2430;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+.sch-wire {
+  stroke: #1f2430;
+  stroke-width: 0.5;
+  fill: none;
+  stroke-linecap: square;
+}
+.sch-wire.selected { stroke: #5e35b1; }
+.sch-junction { fill: #1f2430; }
+.sch-ghost {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.sch-ghost .sch-comp-body { stroke: #5e35b1; }
+
+/* листы внизу */
+.sch-sheets-bar {
+  position: absolute;
+  left: 24px; right: 24px; bottom: 4px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  pointer-events: none;
+}
+.sch-sheet-tab, .sch-sheet-add {
+  pointer-events: auto;
+  border: 1px solid #d9dde5;
+  background: #fff;
+  border-radius: 6px 6px 0 0;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #4a5161;
+  cursor: pointer;
+}
+.sch-sheet-tab.active {
+  background: #ede7f6;
+  color: #5e35b1;
+  border-color: #d1c4e9;
+  font-weight: 600;
+}
+.sch-sheet-add { padding: 4px 10px; font-weight: 700; }
+
+/* ---------------------------- Properties ---------------------------- */
+.sch-props {
+  background: #fff;
+  border-left: 1px solid #d9dde5;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sch-props-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  padding: 12px 14px 6px;
+  border-bottom: 1px solid #eef0f4;
+}
+.sch-props-body {
+  padding: 10px 14px 14px;
+  border-bottom: 1px solid #eef0f4;
+}
+.sch-props-empty {
+  font-size: 12px;
+  color: #9aa3b5;
+  padding: 6px 0;
+  font-style: italic;
+}
+.sch-field {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.sch-field > span {
+  display: block;
+  color: #6b7280;
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+.sch-field input, .sch-field select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+  background: #fff;
+}
+.sch-field input:focus, .sch-field select:focus { border-color: #5e35b1; }
+.sch-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* ---------------------------- Print ---------------------------- */
+@media print {
+  body { background: #fff; }
+  .rs-header, .sch-palette, .sch-toolbar, .sch-props,
+  .sch-sheets-bar { display: none !important; }
+  .sch-app { position: static; display: block; top: 0; }
+  .sch-center { background: #fff; }
+  .sch-canvas-wrap { padding: 0; overflow: visible; background: #fff; }
+  #sch-canvas { box-shadow: none; margin: 0; }
+  #sch-grid-layer { display: none; }
+}
+
+/* узкие экраны */
+@media (max-width: 1100px) {
+  .sch-app { grid-template-columns: 200px 1fr 240px; }
+}
+@media (max-width: 860px) {
+  .sch-app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+  .sch-palette, .sch-props { max-height: 180px; }
+}
