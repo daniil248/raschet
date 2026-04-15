@@ -69,11 +69,25 @@
         <div class="subtitle">Конструктор схем</div>
 
         <h3>Элементы</h3>
-        <div class="pal-item" data-type="source" data-subtype="utility" draggable="true">
-          <span class="chip utl"></span>Городская сеть (ЛЭП)
+        <div class="pal-group" data-pal-group="source">
+          <div class="pal-item pal-item-head" data-type="source" draggable="true">
+            <span class="chip src"></span>Источник питания
+            <button class="pal-expand" type="button" aria-label="Показать подтипы">▸</button>
+          </div>
+          <div class="pal-sub">
+            <div class="pal-item pal-item-sub" data-type="source" data-subtype="transformer" draggable="true">
+              <span class="pal-sub-icon src"></span>Трансформатор
+            </div>
+            <div class="pal-item pal-item-sub" data-type="source" data-subtype="utility" draggable="true">
+              <span class="pal-sub-icon utl"></span>Городская сеть (ЛЭП)
+            </div>
+            <div class="pal-item pal-item-sub" data-type="source" data-subtype="other" draggable="true">
+              <span class="pal-sub-icon oth"></span>Прочий ввод
+            </div>
+          </div>
         </div>
-        <div class="pal-item" data-type="source" draggable="true">
-          <span class="chip src"></span>Источник питания
+        <div class="pal-item" data-type="generator" draggable="true">
+          <span class="chip gen"></span>Генератор (ДГУ)
         </div>
         <div class="pal-item" data-type="panel" draggable="true">
           <span class="chip pnl"></span>Щит

@@ -1513,9 +1513,13 @@ export function openConsumerParamsModal(n) {
       };
       if (!Array.isArray(GLOBAL.customConsumerCatalog)) GLOBAL.customConsumerCatalog = [];
       GLOBAL.customConsumerCatalog.push(entry);
+      // Сохранение в пользовательской библиотеке (user-scoped, localStorage)
+      if (typeof window !== 'undefined' && typeof window.__raschetPersistUserCatalog === 'function') {
+        window.__raschetPersistUserCatalog();
+      }
       notifyChange();
       openConsumerParamsModal(n);
-      flash('Тип сохранён в проект');
+      flash('Тип сохранён в мою библиотеку');
     });
   }
 

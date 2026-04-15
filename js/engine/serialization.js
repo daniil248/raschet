@@ -11,9 +11,13 @@ export function bindSerializationDeps({ clearUndoStack, render, renderInspector,
 
 // ================= Сохранение =================
 export function serialize() {
-  // Сохраняем пользовательские настройки расчёта вместе с проектом
+  // Сохраняем пользовательские настройки расчёта вместе с проектом,
+  // кроме пользовательских библиотек (они хранятся в localStorage).
   const globalSettings = {};
-  const skipKeys = ['voltageLevels']; // voltageLevels сохраняется отдельно
+  const skipKeys = [
+    'voltageLevels',          // сохраняется отдельно (ниже)
+    'customConsumerCatalog',  // user-scoped, в localStorage
+  ];
   for (const k of Object.keys(GLOBAL)) {
     if (skipKeys.includes(k)) continue;
     globalSettings[k] = GLOBAL[k];
@@ -115,9 +119,11 @@ export function deserialize(data) {
     try { window.__raschetRenderPageTabs(); } catch {}
   }
 
-  // Восстановить настройки расчёта из проекта
+  // Восстановить настройки расчёта из проекта (пользовательскую библиотеку
+  // НЕ трогаем — она user-scoped в localStorage).
   if (data.globalSettings && typeof data.globalSettings === 'object') {
     for (const k of Object.keys(data.globalSettings)) {
+      if (k === 'customConsumerCatalog') continue;
       if (k in GLOBAL) GLOBAL[k] = data.globalSettings[k];
     }
   }

@@ -58,8 +58,30 @@ import { importLoadsTable } from './import.js';
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница
 ensureDefaultPage();
+
+// Загрузка пользовательской библиотеки типов потребителей из localStorage
+// (user-scoped, не привязано к проекту).
+try {
+  const stored = localStorage.getItem('raschet.userConsumerCatalog.v1');
+  if (stored) {
+    const arr = JSON.parse(stored);
+    if (Array.isArray(arr)) GLOBAL.customConsumerCatalog = arr;
+  }
+} catch (e) { console.warn('[userCatalog] cannot load', e); }
+
+// Хелпер для сохранения пользовательской библиотеки
+function persistUserConsumerCatalog() {
+  try {
+    localStorage.setItem('raschet.userConsumerCatalog.v1',
+      JSON.stringify(GLOBAL.customConsumerCatalog || []));
+  } catch (e) { console.warn('[userCatalog] cannot save', e); }
+}
+
 // Экспонируем renderInspector для export.js page switching
-if (typeof window !== 'undefined') window.__raschetRenderInspector = () => renderInspector();
+if (typeof window !== 'undefined') {
+  window.__raschetRenderInspector = () => renderInspector();
+  window.__raschetPersistUserCatalog = persistUserConsumerCatalog;
+}
 
 // === Связывание зависимостей (late-binding) ===
 bindModeDeps({ snapshot, render, renderInspector, notifyChange });

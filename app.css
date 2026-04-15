@@ -404,6 +404,44 @@ input, select { font: inherit; }
 .chip.zne { background: #00838f; }
 .chip.utl { background: #455a64; }
 
+/* Расширяемая группа палитры (burger) */
+.pal-group { margin-bottom: 6px; }
+.pal-item.pal-item-head { margin-bottom: 0; position: relative; }
+.pal-item.pal-item-head .pal-expand {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #9aa3b5;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 3px;
+}
+.pal-item.pal-item-head .pal-expand:hover { background: #353c4d; color: #fff; }
+.pal-group.expanded .pal-expand { transform: rotate(90deg); display: inline-block; }
+.pal-sub {
+  display: none;
+  margin: 4px 0 6px 14px;
+  padding-left: 10px;
+  border-left: 2px solid #3a4150;
+}
+.pal-group.expanded .pal-sub { display: block; }
+.pal-item.pal-item-sub {
+  padding: 7px 10px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  background: #242a37;
+}
+.pal-item.pal-item-sub:hover { background: #2c3444; }
+.pal-item.pal-item-sub .pal-sub-icon {
+  width: 10px; height: 10px; border-radius: 50%;
+  display: inline-block; margin-right: 4px;
+}
+.pal-sub-icon.src { background: #4caf50; }
+.pal-sub-icon.utl { background: #455a64; }
+.pal-sub-icon.oth { background: #8a94a6; }
+
 .stats {
   font-size: 12px;
   color: #c3c9d6;

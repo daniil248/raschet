@@ -210,6 +210,15 @@ export function initInteraction() {
 
   // ---- Палитра: drag & drop (десктоп) + click-to-add (мобильный и шорткат) ----
   let _palDragActive = false;
+  // Раскрытие burger-групп палитры
+  document.querySelectorAll('.pal-group .pal-expand').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const group = btn.closest('.pal-group');
+      if (group) group.classList.toggle('expanded');
+    });
+  });
   document.querySelectorAll('.pal-item').forEach(item => {
     item.addEventListener('dragstart', e => {
       if (state.readOnly) { e.preventDefault(); return; }

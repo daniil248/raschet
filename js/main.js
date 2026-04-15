@@ -1176,6 +1176,7 @@ function renderConsumerCatalogModal() {
       const ku = prompt('Ки:', cat.kUse);
       if (ku !== null) cat.kUse = Number(ku) ?? cat.kUse;
       window.Raschet.setGlobal({ customConsumerCatalog: customs });
+      if (typeof window.__raschetPersistUserCatalog === 'function') window.__raschetPersistUserCatalog();
       renderConsumerCatalogModal();
     });
   });
@@ -1185,6 +1186,7 @@ function renderConsumerCatalogModal() {
       if (!confirm('Удалить тип «' + (customs[idx]?.label || '') + '»?')) return;
       customs.splice(idx, 1);
       window.Raschet.setGlobal({ customConsumerCatalog: customs });
+      if (typeof window.__raschetPersistUserCatalog === 'function') window.__raschetPersistUserCatalog();
       renderConsumerCatalogModal();
       flash('Тип удалён');
     });
@@ -1317,6 +1319,7 @@ async function init() {
     if (!Array.isArray(G.customConsumerCatalog)) G.customConsumerCatalog = [];
     G.customConsumerCatalog.push({ id: 'user_' + Date.now(), label, cosPhi: 0.92, kUse: 1 });
     window.Raschet.setGlobal({ customConsumerCatalog: G.customConsumerCatalog });
+    if (typeof window.__raschetPersistUserCatalog === 'function') window.__raschetPersistUserCatalog();
     renderConsumerCatalogModal();
   });
   if (els.btnOpenReport) els.btnOpenReport.addEventListener('click', openReportModal);
