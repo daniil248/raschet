@@ -124,6 +124,7 @@ function renderList(list) {
         <td>${u.vdcMin ? fmt(u.vdcMin, 0) + '…' + fmt(u.vdcMax, 0) + ' В' : '—'}</td>
         <td style="white-space:nowrap">
           <button class="btn-sm" data-view="${esc(u.id)}" title="Показать карточку">👁 Просмотр</button>
+          ${u.custom ? `<button class="btn-sm" data-edit="${esc(u.id)}" title="Редактировать запись">✎ Правка</button>` : ''}
           <button class="btn-sm" data-copy="${esc(u.id)}" title="Создать копию записи">⧉ Копия</button>
           <button class="btn-sm btn-del" data-del="${esc(u.id)}">Удалить</button>
         </td>
@@ -156,6 +157,19 @@ function renderList(list) {
       render();
       const box = document.getElementById('selected-ups-details');
       if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+  wrap.querySelectorAll('[data-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.edit;
+      const u = list.find(x => x.id === id);
+      if (!u) return;
+      const kind = u.kind || 'ups';
+      if (kind !== 'ups') {
+        alert('Редактирование записей типа «' + kind + '» через эту форму пока не поддерживается. Удалите и создайте заново.');
+        return;
+      }
+      openManualModal(u);
     });
   });
   wrap.querySelectorAll('[data-copy]').forEach(btn => {
@@ -274,8 +288,9 @@ function renderSelected(list) {
   `;
 }
 
-// ====================== Модалка ручного добавления ======================
-function openManualModal() {
+// ====================== Модалка ручного добавления / редактирования ======================
+function openManualModal(existing) {
+  const isEdit = !!(existing && existing.id);
   let modal = document.getElementById('manual-ups-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -284,7 +299,7 @@ function openManualModal() {
     modal.innerHTML = `
       <div class="ups-modal-box">
         <div class="ups-modal-head">
-          <h3>Добавить ИБП вручную</h3>
+          <h3 id="manual-ups-title">Добавить ИБП вручную</h3>
           <button class="ups-modal-close" aria-label="Закрыть">×</button>
         </div>
         <div class="ups-modal-body" id="manual-ups-body"></div>
@@ -293,35 +308,39 @@ function openManualModal() {
     modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
     modal.querySelector('.ups-modal-close').addEventListener('click', () => modal.classList.remove('show'));
   }
+  const titleEl = document.getElementById('manual-ups-title');
+  if (titleEl) titleEl.textContent = isEdit ? 'Редактировать ИБП' : 'Добавить ИБП вручную';
+  const v = (x, d) => (x == null || x === '' ? d : x);
+  const src = existing || {};
   const body = document.getElementById('manual-ups-body');
   body.innerHTML = `
     <div class="form-grid">
-      <label>Производитель<input id="mu-supplier" type="text" placeholder="ABB"></label>
-      <label>Модель<input id="mu-model" type="text" placeholder="PowerWave 33 300 kW"></label>
+      <label>Производитель<input id="mu-supplier" type="text" placeholder="ABB" value="${esc(v(src.supplier, ''))}"></label>
+      <label>Модель<input id="mu-model" type="text" placeholder="PowerWave 33 300 kW" value="${esc(v(src.model, ''))}"></label>
       <label>Тип
         <select id="mu-type">
-          <option value="monoblock" selected>Моноблок</option>
-          <option value="modular">Модульный</option>
+          <option value="monoblock" ${src.upsType === 'modular' ? '' : 'selected'}>Моноблок</option>
+          <option value="modular" ${src.upsType === 'modular' ? 'selected' : ''}>Модульный</option>
         </select>
       </label>
-      <label>Номинал, kW<input id="mu-cap" type="number" min="1" step="1" value="100"></label>
-      <label>КПД DC–AC, %<input id="mu-eff" type="number" min="50" max="99" step="1" value="95"></label>
-      <label>cos φ<input id="mu-cosphi" type="number" min="0.5" max="1" step="0.01" value="0.99"></label>
-      <label>V<sub>DC</sub> min, В<input id="mu-vdcmin" type="number" min="24" max="1200" step="1" value="340"></label>
-      <label>V<sub>DC</sub> max, В<input id="mu-vdcmax" type="number" min="24" max="1200" step="1" value="480"></label>
-      <label>Входов<input id="mu-inputs" type="number" min="1" max="2" step="1" value="1"></label>
-      <label>Выходов<input id="mu-outputs" type="number" min="1" max="20" step="1" value="1"></label>
+      <label>Номинал, kW<input id="mu-cap" type="number" min="1" step="1" value="${v(src.capacityKw, 100)}"></label>
+      <label>КПД DC–AC, %<input id="mu-eff" type="number" min="50" max="99" step="1" value="${v(src.efficiency, 95)}"></label>
+      <label>cos φ<input id="mu-cosphi" type="number" min="0.5" max="1" step="0.01" value="${v(src.cosPhi, 0.99)}"></label>
+      <label>V<sub>DC</sub> min, В<input id="mu-vdcmin" type="number" min="24" max="1200" step="1" value="${v(src.vdcMin, 340)}"></label>
+      <label>V<sub>DC</sub> max, В<input id="mu-vdcmax" type="number" min="24" max="1200" step="1" value="${v(src.vdcMax, 480)}"></label>
+      <label>Входов<input id="mu-inputs" type="number" min="1" max="2" step="1" value="${v(src.inputs, 1)}"></label>
+      <label>Выходов<input id="mu-outputs" type="number" min="1" max="20" step="1" value="${v(src.outputs, 1)}"></label>
       <div id="mu-modular-fields" style="display:none;grid-column:1/-1">
         <div class="form-grid">
-          <label>Корпус, kW<input id="mu-frame" type="number" min="1" step="5" value="200"></label>
-          <label>Модуль, kW<input id="mu-modkw" type="number" min="1" step="1" value="25"></label>
-          <label>Слотов в корпусе<input id="mu-slots" type="number" min="1" max="32" step="1" value="8"></label>
+          <label>Корпус, kW<input id="mu-frame" type="number" min="1" step="5" value="${v(src.frameKw, 200)}"></label>
+          <label>Модуль, kW<input id="mu-modkw" type="number" min="1" step="1" value="${v(src.moduleKwRated, 25)}"></label>
+          <label>Слотов в корпусе<input id="mu-slots" type="number" min="1" max="32" step="1" value="${v(src.moduleSlots, 8)}"></label>
         </div>
       </div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
       <button type="button" id="mu-cancel" class="btn-sm">Отмена</button>
-      <button type="button" id="mu-save" class="btn-sm btn-primary">Добавить</button>
+      <button type="button" id="mu-save" class="btn-sm btn-primary">${isEdit ? 'Сохранить' : 'Добавить'}</button>
     </div>
   `;
   const g = id => document.getElementById(id);
@@ -337,8 +356,10 @@ function openManualModal() {
     const supplier = g('mu-supplier').value.trim();
     const model = g('mu-model').value.trim();
     if (!supplier || !model) { alert('Заполните Производителя и Модель'); return; }
+    const newId = makeUpsId(supplier, model);
     const record = {
-      id: makeUpsId(supplier, model),
+      ...(isEdit ? existing : {}),
+      id: newId,
       supplier, model,
       upsType: g('mu-type').value || 'monoblock',
       capacityKw: Number(g('mu-cap').value) || 0,
@@ -348,7 +369,7 @@ function openManualModal() {
       vdcMax: Number(g('mu-vdcmax').value) || 480,
       inputs: Number(g('mu-inputs').value) || 1,
       outputs: Number(g('mu-outputs').value) || 1,
-      source: 'ручной ввод',
+      source: isEdit ? (existing.source || 'ручной ввод') : 'ручной ввод',
       importedAt: Date.now(),
       custom: true,
     };
@@ -356,10 +377,21 @@ function openManualModal() {
       record.frameKw = Number(g('mu-frame').value) || 200;
       record.moduleKwRated = Number(g('mu-modkw').value) || 25;
       record.moduleSlots = Number(g('mu-slots').value) || 8;
+    } else {
+      delete record.frameKw;
+      delete record.moduleKwRated;
+      delete record.moduleSlots;
+    }
+    // Если id сменился (переименование) — убираем старую запись
+    if (isEdit && existing.id !== newId) {
+      removeUps(existing.id);
     }
     addUps(record);
+    if (isEdit && cascadeState.modelId === existing.id) {
+      cascadeState.modelId = newId;
+    }
     modal.classList.remove('show');
-    flash('Добавлено: ' + model, 'success');
+    flash(isEdit ? ('Сохранено: ' + model) : ('Добавлено: ' + model), 'success');
     render();
   });
   modal.classList.add('show');
