@@ -246,9 +246,19 @@ html, body {
   stroke-width: 0.45;
   fill: none;
 }
-.sch-comp .sch-comp-pin-dot {
-  fill: #1f2430;
-  r: 0.35;
+.sch-pin-connector {
+  fill: #fff;
+  stroke: #d32f2f;
+  stroke-width: 0.3;
+  cursor: crosshair;
+}
+.sch-pin-connector.hover,
+.sch-pin-connector.connected {
+  fill: #d32f2f;
+}
+.sch-pin-connector.snap {
+  fill: #5e35b1;
+  stroke: #5e35b1;
 }
 .sch-comp text {
   font-family: "Arial", sans-serif;

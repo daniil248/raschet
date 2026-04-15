@@ -367,6 +367,63 @@ function mouseToMM(ev) {
 }
 function snap(v) { return Math.round(v / GRID_MM) * GRID_MM; }
 
+// Мировая точка вывода компонента с учётом rotate/mirror.
+function worldPin(comp, pin) {
+  let px = pin.x, py = pin.y;
+  if (comp.mirror) px = -px;
+  const rad = ((comp.rot || 0) * Math.PI) / 180;
+  const cs = Math.cos(rad), sn = Math.sin(rad);
+  return {
+    x: comp.x + px * cs - py * sn,
+    y: comp.y + px * sn + py * cs,
+  };
+}
+
+// Найти ближайший вывод к точке (x,y) в мм, в пределах threshold.
+function findPinNear(x, y, threshold = 2) {
+  const sheet = activeSheet();
+  let best = null, bestD = threshold;
+  for (const c of sheet.components) {
+    if (c.symbolId === '__junction__') continue;
+    const sym = getSymbolById(c.symbolId);
+    if (!sym || !sym.pins) continue;
+    for (const p of sym.pins) {
+      const w = worldPin(c, p);
+      const d = Math.hypot(w.x - x, w.y - y);
+      if (d <= bestD) {
+        bestD = d;
+        best = { comp: c.id, pin: p.id, x: w.x, y: w.y };
+      }
+    }
+  }
+  return best;
+}
+
+// Разрешить точку провода: {ref:{comp,pin}} → текущие мировые координаты.
+function resolveWirePoint(p) {
+  if (p && p.ref) {
+    const sheet = activeSheet();
+    const comp = sheet.components.find(c => c.id === p.ref.comp);
+    if (!comp) return { x: p.x || 0, y: p.y || 0 };
+    const sym = getSymbolById(comp.symbolId);
+    const pin = sym?.pins?.find(pp => pp.id === p.ref.pin);
+    if (!pin) return { x: p.x || 0, y: p.y || 0 };
+    return worldPin(comp, pin);
+  }
+  return { x: p.x, y: p.y };
+}
+
+// Собрать множество "ref:comp|pin" всех подключённых выводов — для отрисовки.
+function collectConnectedPins() {
+  const set = new Set();
+  for (const w of activeSheet().wires) {
+    for (const pt of w.points) {
+      if (pt && pt.ref) set.add(pt.ref.comp + '|' + pt.ref.pin);
+    }
+  }
+  return set;
+}
+
 // ============================================================================
 // Canvas events
 // ============================================================================
@@ -388,6 +445,47 @@ function bindCanvas() {
   svg.addEventListener('mousemove', onCanvasMove);
   window.addEventListener('mouseup', onCanvasUp);
 
+  // Ctrl+колесо = зум с фиксацией точки под курсором.
+  // Обычное колесо — стандартная прокрутка (overflow:auto).
+  wrap.addEventListener('wheel', ev => {
+    if (!ev.ctrlKey && !ev.metaKey) return;            // обычная прокрутка
+    ev.preventDefault();
+    const prev = state.zoom;
+    const factor = ev.deltaY < 0 ? 1.2 : 1 / 1.2;
+    const next = Math.max(0.3, Math.min(8, prev * factor));
+    if (next === prev) return;
+    // координаты точки под курсором в системе wrap до зума
+    const wrapRect = wrap.getBoundingClientRect();
+    const mx = ev.clientX - wrapRect.left + wrap.scrollLeft;
+    const my = ev.clientY - wrapRect.top  + wrap.scrollTop;
+    state.zoom = next;
+    relayoutSheet();
+    // скорректировать scroll так, чтобы точка под курсором осталась на месте
+    const k = next / prev;
+    wrap.scrollLeft = mx * k - (ev.clientX - wrapRect.left);
+    wrap.scrollTop  = my * k - (ev.clientY - wrapRect.top);
+  }, { passive: false });
+
+  // Панорамирование средней кнопкой мыши.
+  wrap.addEventListener('mousedown', ev => {
+    if (ev.button !== 1) return;
+    ev.preventDefault();
+    const startX = ev.clientX, startY = ev.clientY;
+    const startL = wrap.scrollLeft, startT = wrap.scrollTop;
+    wrap.style.cursor = 'grabbing';
+    const move = (e) => {
+      wrap.scrollLeft = startL - (e.clientX - startX);
+      wrap.scrollTop  = startT - (e.clientY - startY);
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      wrap.style.cursor = '';
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+
   // листы
   $('#sch-sheet-add').addEventListener('click', addSheet);
   $('#sch-sheets-bar').addEventListener('click', ev => {
@@ -405,18 +503,22 @@ function onCanvasDown(ev) {
   const sheet = activeSheet();
 
   if (state.tool === 'wire') {
-    const sp = { x: snap(pt.x), y: snap(pt.y) };
+    // EPLAN-style: если рядом вывод — прицепиться к нему, иначе — к сетке.
+    const pin = findPinNear(pt.x, pt.y, 2.5);
+    const sp = pin
+      ? { x: pin.x, y: pin.y, ref: { comp: pin.comp, pin: pin.pin } }
+      : { x: snap(pt.x), y: snap(pt.y) };
+
     if (!state.wireDraft) {
       state.wireDraft = { points: [sp] };
     } else {
       const last = state.wireDraft.points[state.wireDraft.points.length - 1];
-      // ортогональный угол — добавим точку излома по X, потом по Y
       if (last.x !== sp.x && last.y !== sp.y) {
         state.wireDraft.points.push({ x: sp.x, y: last.y });
       }
       state.wireDraft.points.push(sp);
-      // двойной клик / повторный клик в ту же точку — завершение
-      if (ev.detail > 1) finalizeWire();
+      // завершение: двойной клик ИЛИ клик по выводу
+      if (ev.detail > 1 || pin) finalizeWire();
     }
     render();
     return;
@@ -458,22 +560,35 @@ function onCanvasDown(ev) {
 }
 
 function onCanvasMove(ev) {
+  const pt = mouseToMM(ev);
+
+  // Подсветить ближайший вывод под курсором (EPLAN-style).
+  if (state.tool === 'wire' || state.tool === 'select') {
+    const pin = findPinNear(pt.x, pt.y, 2.5);
+    document.querySelectorAll('.sch-pin-connector.snap').forEach(el => el.classList.remove('snap'));
+    if (pin) {
+      const el = document.querySelector(`.sch-pin-connector[data-comp="${pin.comp}"][data-pin="${pin.pin}"]`);
+      if (el) el.classList.add('snap');
+    }
+  }
+
   if (state.tool === 'wire' && state.wireDraft) {
-    const pt = mouseToMM(ev);
-    const sp = { x: snap(pt.x), y: snap(pt.y) };
+    const pin = findPinNear(pt.x, pt.y, 2.5);
+    const sp = pin ? { x: pin.x, y: pin.y } : { x: snap(pt.x), y: snap(pt.y) };
     const last = state.wireDraft.points[state.wireDraft.points.length - 1];
-    // показываем предварительный сегмент в overlay
-    overlayG.innerHTML = `<polyline class="sch-wire" points="${[...state.wireDraft.points, { x: sp.x, y: last.y }, sp].map(p => `${p.x},${p.y}`).join(' ')}"/>`;
+    const lastXY = resolveWirePoint(last);
+    const preview = [...state.wireDraft.points.map(resolveWirePoint), { x: sp.x, y: lastXY.y }, sp];
+    overlayG.innerHTML = `<polyline class="sch-wire" points="${preview.map(p => `${p.x},${p.y}`).join(' ')}"/>`;
     return;
   }
+
   if (dragState && dragState.type === 'move') {
-    const pt = mouseToMM(ev);
     const sheet = activeSheet();
     const comp = sheet.components.find(c => c.id === dragState.id);
     if (comp) {
       comp.x = snap(dragState.origX + (pt.x - dragState.start.x));
       comp.y = snap(dragState.origY + (pt.y - dragState.start.y));
-      renderContent();
+      renderContent();  // провода с ref-точками автоматически обновятся
     }
   }
 }
@@ -568,15 +683,17 @@ function render() {
 
 function renderContent() {
   const sheet = activeSheet();
+  const connected = collectConnectedPins();
   // компоненты
-  const comps = sheet.components.map(c => renderComponent(c)).join('');
+  const comps = sheet.components.map(c => renderComponent(c, connected)).join('');
   compsG.innerHTML = comps;
   // провода
-  const wires = sheet.wires.map(w => `
-    <polyline class="sch-wire ${state.selection && state.selection.type==='wire' && state.selection.id===w.id ? 'selected' : ''}"
+  const wires = sheet.wires.map(w => {
+    const pts = w.points.map(resolveWirePoint);
+    return `<polyline class="sch-wire ${state.selection && state.selection.type==='wire' && state.selection.id===w.id ? 'selected' : ''}"
               data-id="${w.id}"
-              points="${w.points.map(p => `${p.x},${p.y}`).join(' ')}"/>
-  `).join('');
+              points="${pts.map(p => `${p.x},${p.y}`).join(' ')}"/>`;
+  }).join('');
   wiresG.innerHTML = wires;
   // тексты
   textsG.innerHTML = sheet.texts.map(t =>
@@ -584,7 +701,7 @@ function renderContent() {
   ).join('');
 }
 
-function renderComponent(comp) {
+function renderComponent(comp, connected = new Set()) {
   if (comp.symbolId === '__junction__') {
     return `<g class="sch-comp ${state.selection && state.selection.id===comp.id ? 'selected':''}"
                data-id="${comp.id}"
@@ -596,10 +713,16 @@ function renderComponent(comp) {
   if (!sym) return '';
   const selected = state.selection && state.selection.id === comp.id ? ' selected' : '';
   const sc = comp.mirror ? 'scale(-1,1)' : '';
+  const pins = (sym.pins || []).map(p => {
+    const isConnected = connected.has(comp.id + '|' + p.id);
+    return `<circle class="sch-pin-connector${isConnected ? ' connected' : ''}"
+                    data-comp="${comp.id}" data-pin="${p.id}"
+                    cx="${p.x}" cy="${p.y}" r="0.7"/>`;
+  }).join('');
   return `<g class="sch-comp${selected}" data-id="${comp.id}"
              transform="translate(${comp.x} ${comp.y}) rotate(${comp.rot || 0}) ${sc}">
     ${sym.draw()}
-    ${sym.pins.map(p => `<circle class="sch-comp-pin-dot" cx="${p.x}" cy="${p.y}" r="0.35"/>`).join('')}
+    ${pins}
     <text x="0" y="${-sym.h/2 - 2}" text-anchor="middle">${escapeXml(comp.ref || '')}</text>
     ${comp.value ? `<text x="0" y="${sym.h/2 + 4}" text-anchor="middle">${escapeXml(comp.value)}</text>` : ''}
   </g>`;
@@ -716,5 +839,17 @@ window.RaschetSchematic = {
   },
 };
 
+// автоподгон начального масштаба по окну
+function initialFit() {
+  const wrap = $('#sch-canvas-wrap');
+  const { w, h } = getSheetSize(state.paperSize, state.paperOrient);
+  const zx = (wrap.clientWidth - 48) / w;
+  const zy = (wrap.clientHeight - 48) / h;
+  state.zoom = Math.min(zx, zy) * 1.4;   // чуть больше fit — чтобы появилась прокрутка
+  if (state.zoom < 1) state.zoom = 1;
+  relayoutSheet();
+}
+
 // ============================================================================
 init();
+initialFit();
