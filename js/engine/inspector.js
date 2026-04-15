@@ -3548,7 +3548,7 @@ export function renderInspectorConn(c) {
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div>`);
     // Блок ПРОВОДНИК — справочная информация
-    h.push('<h4 style="margin:12px 0 6px;font-size:12px">Проводник</h4>');
+    h.push('<h4 style="margin:12px 0 6px;font-size:12px">Проводник' + (c._isHV ? ' <span style="font-size:10px;background:#ef6c00;color:#fff;padding:1px 6px;border-radius:3px">ВН</span>' : '') + '</h4>');
     if (c._cableSize || c._busbarNom || c._cableIz) {
       const par = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._threePhase ? 5 : 3);

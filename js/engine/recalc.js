@@ -1142,6 +1142,11 @@ function recalc() {
     c._voltage = U;
     c._cosPhi = cos;
     c._threePhase = threePhase;
+    // Высоковольтная линия (> 1 кВ). Подбор кабеля/автомата для HV отличается
+    // от LV (другие таблицы XLPE 6/10 кВ, вакуумные выключатели вместо MCCB).
+    // Пока используем LV-методику, но принудительно задаём минимальное сечение
+    // HV-кабеля (25 мм² XLPE) и помечаем линию флагом — отчёт/рендер покажут (ВН).
+    c._isHV = U > 1000;
     c._wireCount = nodeWireCount(toN);
     c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase) : 0;
 
@@ -1413,6 +1418,11 @@ function recalc() {
         c._cableKt = sel.kT;
         c._cableKg = sel.kG;
         c._cableKtotal = sel.kT * sel.kG;
+        // HV: минимальное сечение по механической прочности и толщине изоляции.
+        // Для XLPE 6/10 кВ минимум обычно 25 мм² Cu. Простое принуждение снизу.
+        if (c._isHV && c._cableSize && c._cableSize < 25) {
+          c._cableSize = 25;
+        }
       }
     } else {
       c._cableSize = null;
@@ -1457,6 +1467,21 @@ function recalc() {
     }
     const toN = state.nodes.get(c.to.nodeId);
     if (!toN) { c._breakerIn = null; c._breakerPerLine = null; c._breakerCount = 0; continue; }
+
+    // Для HV (> 1 кВ) автоматика выбора LV-MCCB неприменима — используются
+    // VCB/SF6 высоковольтные аппараты. Оставляем _breakerIn=null, если только
+    // пользователь не задал номинал вручную; тогда берём его как есть.
+    if (c._isHV) {
+      if (c.manualBreakerIn) {
+        c._breakerIn = Number(c.manualBreakerIn);
+      } else {
+        c._breakerIn = null;
+      }
+      c._breakerPerLine = null;
+      c._breakerCount = c._breakerIn ? 1 : 0;
+      c._breakerAgainstCable = false;
+      continue;
+    }
 
     const parallel = Math.max(1, c._cableParallel || 1);
     const Itotal = c._maxA || 0;

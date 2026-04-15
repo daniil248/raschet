@@ -1179,6 +1179,8 @@ export function renderConns() {
           labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
         }
         if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
+        // HV-префикс — для линий > 1 кВ
+        if (c._isHV) labelText = '(ВН) ' + labelText;
       }
 
       if (labelText) {

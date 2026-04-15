@@ -299,6 +299,7 @@ export function generateReport() {
         const cores = c._wireCount || (c._threePhase ? 5 : 3);
         const inner = `${cores}×${c._cableSize} мм²`;
         conductorSpec = (c._cableAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
+        if (c._isHV) conductorSpec = '(ВН) ' + conductorSpec;
         methodStr = c._cableMethod || '-';
       }
 
