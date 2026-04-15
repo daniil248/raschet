@@ -7,6 +7,7 @@ import { serialize, deserialize } from './serialization.js';
 import { renderInspector } from './inspector.js';
 import { createMode } from './modes.js';
 import { flash } from './utils.js';
+import { exportBomXlsx, exportBomCsv } from './bom.js';
 
 export function initToolbar() {
   // Zoom
@@ -64,6 +65,25 @@ export function initToolbar() {
   bind('btn-import-side', importJsonFn);
   bind('btn-export-svg-side', () => exportSVG());
   bind('btn-export-png-side', () => exportPNG());
+
+  // === Экспорт спецификации (BOM) в XLSX / CSV ===
+  const exportBomFn = () => {
+    const projName = document.getElementById('project-name')?.textContent || 'Raschet';
+    try {
+      if (typeof window !== 'undefined' && window.XLSX) {
+        const r = exportBomXlsx(projName);
+        flash(`Спецификация: ${r.rows} строк → ${r.fname}`, 'success');
+      } else {
+        const r = exportBomCsv(projName);
+        flash(`Спецификация: ${r.rows} строк → ${r.fname}`, 'success');
+      }
+    } catch (e) {
+      console.error('[bom] export failed', e);
+      flash('Ошибка экспорта BOM: ' + (e.message || e), 'error');
+    }
+  };
+  bind('btn-export-bom-side', exportBomFn);
+  bind('btn-export-bom', exportBomFn);
 
   // «Сохранить как…» — копия проекта с новым именем
   bind('btn-save-as', async () => {
