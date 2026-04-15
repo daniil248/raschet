@@ -720,7 +720,7 @@ function renderVoltageLevelsTable() {
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const levels = G.voltageLevels || [];
   let html = '<table style="width:100%;font-size:11px;border-collapse:collapse">';
-  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Название</th><th>V_LL</th><th>V_LN</th><th>Фазы</th><th>Жилы</th><th></th></tr>';
+  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Название</th><th>V_LL</th><th>V_LN</th><th>Фазы</th><th>DC</th><th></th></tr>';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
     html += `<tr style="border-bottom:1px solid #eee">
@@ -728,7 +728,7 @@ function renderVoltageLevelsTable() {
       <td><input type="number" data-vl-idx="${i}" data-vl-field="vLL" value="${lv.vLL}" style="width:60px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
       <td><input type="number" data-vl-idx="${i}" data-vl-field="vLN" value="${lv.vLN}" style="width:60px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
       <td><input type="number" data-vl-idx="${i}" data-vl-field="phases" value="${lv.phases}" style="width:30px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
-      <td><input type="number" data-vl-idx="${i}" data-vl-field="wires" value="${lv.wires}" style="width:30px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td style="text-align:center"><input type="checkbox" data-vl-idx="${i}" data-vl-field="dc"${lv.dc ? ' checked' : ''}></td>
       <td><button type="button" data-vl-del="${i}" style="background:transparent;border:none;color:#c62828;cursor:pointer;font-size:14px" title="Удалить">×</button></td>
     </tr>`;
   }
@@ -737,12 +737,17 @@ function renderVoltageLevelsTable() {
 
   // Обработчики
   container.querySelectorAll('[data-vl-idx]').forEach(inp => {
-    inp.addEventListener('input', () => {
+    const evt = (inp.type === 'checkbox') ? 'change' : 'input';
+    inp.addEventListener(evt, () => {
       const idx = Number(inp.dataset.vlIdx);
       const field = inp.dataset.vlField;
       const G2 = window.Raschet.getGlobal();
       if (G2.voltageLevels[idx]) {
-        G2.voltageLevels[idx][field] = inp.type === 'number' ? Number(inp.value) : inp.value;
+        let v;
+        if (inp.type === 'checkbox') v = inp.checked;
+        else if (inp.type === 'number') v = Number(inp.value);
+        else v = inp.value;
+        G2.voltageLevels[idx][field] = v;
         window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
       }
     });
@@ -779,7 +784,7 @@ function openSettingsModal() {
   const addBtn = document.getElementById('voltage-levels-add');
   if (addBtn) addBtn.onclick = () => {
     const G2 = window.Raschet.getGlobal();
-    G2.voltageLevels.push({ label: 'New', vLL: 400, vLN: 230, phases: 3, wires: 5 });
+    G2.voltageLevels.push({ label: 'New', vLL: 400, vLN: 230, phases: 3 });
     window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
     renderVoltageLevelsTable();
   };

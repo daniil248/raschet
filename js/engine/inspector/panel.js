@@ -79,13 +79,13 @@ export function openPanelParamsModal(n) {
     h.push('</div>');
 
     // Система заземления для линий, ВЫХОДЯЩИХ из этого щита.
-    // Определяет базовое число жил кабелей: TN-S=5, TN-C=4, IT=4, TT=5 (3ф).
-    // «(по умолчанию)» — наследуется от GLOBAL.earthingSystem.
+    // Доступны: наследование от глобальной + все варианты IEC 60364-4-41.
+    // Дополнительно — tri-state флаги N/PE для нюансов перехода.
     {
       const eo = n.earthingOut || '';
       h.push(field('Система заземления на выходе', `
         <select id="pp-earthingOut">
-          <option value=""${eo === '' ? ' selected' : ''}>(по умолчанию — TN-S)</option>
+          <option value=""${eo === '' ? ' selected' : ''}>(по умолчанию — глобальная)</option>
           <option value="TN-S"${eo === 'TN-S' ? ' selected' : ''}>TN-S (3L+N+PE)</option>
           <option value="TN-C"${eo === 'TN-C' ? ' selected' : ''}>TN-C (3L+PEN)</option>
           <option value="TN-C-S"${eo === 'TN-C-S' ? ' selected' : ''}>TN-C-S (разделение PE на этом щите)</option>
@@ -93,7 +93,7 @@ export function openPanelParamsModal(n) {
           <option value="IT-N"${eo === 'IT-N' ? ' selected' : ''}>IT с нейтралью (3L+N+PE)</option>
           <option value="IT"${eo === 'IT' ? ' selected' : ''}>IT без нейтрали (3L+PE)</option>
         </select>`));
-      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Определяет число жил кабелей, выходящих из щита (4 vs 5 жил). Можно переопределить для каждого потребителя индивидуально.</div>');
+      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Система заземления определяет дефолтные флаги N/PE для всех кабелей, выходящих из щита. Потребитель может переопределить индивидуально.</div>');
     }
   }
 

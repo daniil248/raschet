@@ -56,46 +56,69 @@ export function isThreePhase(n) {
   return (n.phase || '3ph') === '3ph';
 }
 
-// Число проводов (жил) в кабеле для данного узла (legacy — использует
-// wires из voltageLevels либо phase). Сохранено для обратной совместимости.
-export function nodeWireCount(n) {
-  if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
-    return GLOBAL.voltageLevels[n.voltageLevelIdx].wires;
-  }
-  return isThreePhase(n) ? 5 : 3;
-}
+// ==========================================================================
+// Жилы кабеля — централизованная логика
+// ==========================================================================
+// Модель: число жил кабеля складывается из фазности (из voltageLevel
+// узла-цели) плюс флагов hasNeutral / hasGround. Флаги хранятся на
+// узле (hasNeutral / hasGround, bool). Если флаг не задан — подставляется
+// дефолт по системе заземления из GLOBAL.earthingSystem или
+// panel.earthingOut (если источник — щит).
+//
+// Уровень напряжения теперь НЕ содержит wires; только vLL/vLN/phases/dc.
+// ==========================================================================
 
-// Количество жил кабеля по системе заземления и числу фаз (IEC 60364-4-41).
-// phases — 1 или 3 (или 'dc' для постоянного тока)
-// system — 'TN-S' | 'TN-C' | 'TN-C-S' | 'TT' | 'IT' | 'IT-N'
-export function earthingWires(phases, system = 'TN-S') {
-  if (phases === 'dc' || phases === 0) return 2; // DC: L+ и L−
+// Дефолты hasNeutral/hasGround по системе заземления IEC 60364-4-41.
+// Возвращает { hasNeutral, hasGround, pen } где pen=true означает что
+// N и PE физически один провод (TN-C).
+export function earthingDefaults(system = 'TN-S') {
   const sys = String(system || 'TN-S').toUpperCase();
-  if (phases === 3) {
-    if (sys === 'TN-C') return 4;             // 3L + PEN
-    if (sys === 'IT') return 4;               // 3L + PE (без N)
-    // TN-S, TN-C-S (после разделения), TT, IT-N → 3L + N + PE
-    return 5;
+  switch (sys) {
+    case 'TN-C':   return { hasNeutral: true,  hasGround: true,  pen: true };
+    case 'TN-C-S': return { hasNeutral: true,  hasGround: true,  pen: false };
+    case 'TN-S':   return { hasNeutral: true,  hasGround: true,  pen: false };
+    case 'TT':     return { hasNeutral: true,  hasGround: true,  pen: false };
+    case 'IT-N':   return { hasNeutral: true,  hasGround: true,  pen: false };
+    case 'IT':     return { hasNeutral: false, hasGround: true,  pen: false };
+    default:       return { hasNeutral: true,  hasGround: true,  pen: false };
   }
-  // 1-фазное
-  if (sys === 'TN-C') return 2;               // L + PEN
-  if (sys === 'IT') return 2;                 // L + PE (без N)
-  return 3;                                    // L + N + PE
 }
 
 // Определение эффективной системы заземления для кабеля, идущего ИЗ
 // узла fromN. Для щита берём panel.earthingOut (если задан), иначе
-// GLOBAL.earthingSystem. Для остальных типов — глобальная система.
+// GLOBAL.earthingSystem.
 export function effectiveEarthingOut(fromN) {
   if (fromN && fromN.type === 'panel' && fromN.earthingOut) return fromN.earthingOut;
   return GLOBAL.earthingSystem || 'TN-S';
 }
 
-// Число жил кабеля между fromN и toN. Приоритеты:
-//   1. Явная переопределённая величина на самом соединении (c._wireCountManual)
-//   2. Явная величина на целевом потребителе (toN.wireCount, 2..5)
-//   3. HV-кабели (> 1000 В): 3 жилы (3L, без N и PE — PE уравнительной связью)
-//   4. Автовычисление по числу фаз toN и системе заземления fromN
+// Эффективные флаги hasNeutral/hasGround/pen для целевого узла:
+// 1) Если у узла явно заданы hasNeutral/hasGround — используем их
+// 2) Иначе берём дефолты по системе заземления из fromN (или глобальной)
+export function effectiveWireFlags(fromN, toN) {
+  const sys = effectiveEarthingOut(fromN);
+  const d = earthingDefaults(sys);
+  const hasNeutral = (toN && typeof toN.hasNeutral === 'boolean') ? toN.hasNeutral : d.hasNeutral;
+  const hasGround  = (toN && typeof toN.hasGround  === 'boolean') ? toN.hasGround  : d.hasGround;
+  return { hasNeutral, hasGround, pen: d.pen && hasNeutral && hasGround };
+}
+
+// Количество жил кабеля из (phases, hasNeutral, hasGround, pen, dc).
+// DC-линия — всегда 2 провода (L+, L−).
+export function countWires({ phases, hasNeutral, hasGround, pen, dc }) {
+  if (dc) return 2;
+  const base = phases === 3 ? 3 : 1;
+  // PEN — N и PE на одном проводе
+  if (pen && hasNeutral && hasGround) return base + 1;
+  return base + (hasNeutral ? 1 : 0) + (hasGround ? 1 : 0);
+}
+
+// Главная функция — количество жил кабеля между fromN и toN.
+// Приоритеты:
+//   1. Ручное переопределение на связи (conn._wireCountManual)
+//   2. Ручное переопределение на цели (toN.wireCount)
+//   3. HV-кабели (U > 1000 В): 3 жилы (линейная часть без N/PE)
+//   4. Авто: фазы из toN + hasNeutral/hasGround/pen (effectiveWireFlags)
 export function cableWireCount(fromN, toN, conn) {
   if (conn && Number.isFinite(Number(conn._wireCountManual)) && Number(conn._wireCountManual) > 0) {
     return Number(conn._wireCountManual);
@@ -103,13 +126,27 @@ export function cableWireCount(fromN, toN, conn) {
   if (toN && Number.isFinite(Number(toN.wireCount)) && Number(toN.wireCount) > 0) {
     return Number(toN.wireCount);
   }
-  // HV: 3 жилы (без N и без отдельного PE-провода в линейной части)
   const U = toN ? nodeVoltage(toN) : 0;
   if (U >= 1000) return 3;
-  // Фазность целевого узла
+  // Определяем DC из voltageLevel целевого узла
+  const levels = GLOBAL.voltageLevels || [];
+  const lv = toN && typeof toN.voltageLevelIdx === 'number' ? levels[toN.voltageLevelIdx] : null;
+  const dc = !!(lv && lv.dc);
   const phases = toN && isThreePhase(toN) ? 3 : 1;
-  const sys = effectiveEarthingOut(fromN);
-  return earthingWires(phases, sys);
+  const flags = effectiveWireFlags(fromN, toN);
+  return countWires({ phases, dc, ...flags });
+}
+
+// Legacy-совместимость — nodeWireCount теперь просто оценивает по фазам
+// и глобальным дефолтам. Новый код должен использовать cableWireCount.
+export function nodeWireCount(n) {
+  const levels = GLOBAL.voltageLevels || [];
+  const lv = n && typeof n.voltageLevelIdx === 'number' ? levels[n.voltageLevelIdx] : null;
+  if (lv && lv.dc) return 2;
+  const phases = n && isThreePhase(n) ? 3 : 1;
+  const sys = GLOBAL.earthingSystem || 'TN-S';
+  const d = earthingDefaults(sys);
+  return countWires({ phases, dc: false, hasNeutral: d.hasNeutral, hasGround: d.hasGround, pen: d.pen });
 }
 
 // Установочный ток — ток при номинальной мощности

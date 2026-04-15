@@ -26,8 +26,8 @@ export function voltageLevelOptions(selectedIdx, filter) {
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
     if (filter === '3ph' && lv.phases !== 3) continue;
-    if (filter === '1ph' && (lv.phases !== 1 || lv.wires === 2)) continue;
-    if (filter === 'dc' && lv.wires !== 2) continue;
+    if (filter === '1ph' && (lv.phases !== 1 || lv.dc)) continue;
+    if (filter === 'dc' && !lv.dc) continue;
     opts += `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${escHtml(lv.label)} (${lv.vLL}V)</option>`;
   }
   return opts;

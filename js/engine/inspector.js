@@ -1227,7 +1227,7 @@ export function voltageField(n) {
   }
   return field('Уровень напряжения',
     `<select data-prop="voltageLevelIdx">${opts}</select>`) +
-    `<div class="muted" style="font-size:10px;margin-top:-6px;margin-bottom:8px">V_LL: ${levels[curIdx]?.vLL || 400} В, V_LN: ${levels[curIdx]?.vLN || 230} В, ${levels[curIdx]?.wires || 5} проводов. Справочник — в «Начальных условиях».</div>`;
+    `<div class="muted" style="font-size:10px;margin-top:-6px;margin-bottom:8px">V_LL: ${levels[curIdx]?.vLL || 400} В, V_LN: ${levels[curIdx]?.vLN || 230} В, фаз: ${levels[curIdx]?.phases || 3}. Число жил — по наличию N/PE (в параметрах узла). Справочник — в «Начальных условиях».</div>`;
 }
 
 // Поле фазы 3ph/1ph для источников/генераторов/ИБП

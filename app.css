@@ -1337,13 +1337,16 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
 .report-body {
   font: 12px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
   color: #1f2430;
-  white-space: pre-wrap;
+  /* pre (не pre-wrap): длинные строки не переносятся, появляется
+     горизонтальная прокрутка. BOM-таблица кабелей ~120 символов
+     должна помещаться без налезания. */
+  white-space: pre;
   background: #fafbfc;
   border: 1px solid #e0e3ea;
   border-radius: 6px;
   padding: 14px;
-  max-height: 60vh;
-  overflow-y: auto;
+  max-height: 65vh;
+  overflow: auto;
 }
 .modal-head {
   display: flex;
