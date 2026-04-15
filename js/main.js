@@ -1084,7 +1084,7 @@ function wirePaletteResizer() {
   // Применяем сохранённую ширину
   try {
     const savedW = parseInt(localStorage.getItem('raschet.paletteWidth') || '0', 10);
-    if (savedW >= 200 && savedW <= 600) {
+    if (savedW >= 200 && savedW <= 800) {
       document.documentElement.style.setProperty('--palette-w', savedW + 'px');
     }
   } catch {}
@@ -1102,7 +1102,7 @@ function wirePaletteResizer() {
   document.addEventListener('mousemove', (e) => {
     if (!dragging) return;
     const dx = e.clientX - startX;
-    const newW = Math.max(200, Math.min(600, startW + dx));
+    const newW = Math.max(200, Math.min(800, startW + dx));
     document.documentElement.style.setProperty('--palette-w', newW + 'px');
   });
   document.addEventListener('mouseup', () => {
@@ -1114,7 +1114,7 @@ function wirePaletteResizer() {
     // Сохранить
     try {
       const w = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--palette-w'), 10);
-      if (w >= 200 && w <= 600) {
+      if (w >= 200 && w <= 800) {
         localStorage.setItem('raschet.paletteWidth', String(w));
       }
     } catch {}

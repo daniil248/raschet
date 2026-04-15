@@ -599,6 +599,21 @@ export function renderNodes() {
       }
     }
 
+    // Класс напряжения по IEC 60502-2 НАД объектом (для источников/генератора/ИБП).
+    // Пример: "0.4 kV", "6/10 (12) kV". Компактный серый текст.
+    if (n.type === 'source' || n.type === 'generator' || n.type === 'ups') {
+      const uVal = nodeVoltage(n);
+      if (uVal > 0) {
+        const vClass = cableVoltageClass(uVal);
+        if (vClass) {
+          const vt = text(w / 2, -4, vClass, 'node-sub');
+          vt.setAttribute('text-anchor', 'middle');
+          vt.setAttribute('style', 'font-size:10px;fill:#546e7a;font-weight:600');
+          g.appendChild(vt);
+        }
+      }
+    }
+
     // IEC условное обозначение для источников (маленький SVG-символ)
     if (n.type === 'source' || n.type === 'generator') {
       const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
