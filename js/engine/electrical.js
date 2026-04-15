@@ -163,6 +163,45 @@ export function computeCurrentA(P_kW, voltage, cosPhi, threePhase, dc) {
   return (P * 1000) / (k * U * cos);
 }
 
+// Формирует чистый лейбл уровня напряжения ТОЛЬКО из значимых полей
+// (vLL, phases, dc). Всё что относится к системе заземления и количеству
+// жил (N, PE, +N+PE) отсюда исключено — это вычисляется отдельно через
+// cableWireCount/effectiveWireFlags по системе заземления узла-источника.
+//
+//   { vLL: 400, phases: 3 }  → '400 В · 3ф'
+//   { vLL: 230, phases: 1 }  → '230 В · 1ф'
+//   { vLL: 10000, phases: 3} → '10 кВ · 3ф'
+//   { vLL: 48, dc: true }    → '48 В DC'
+export function formatVoltageLevelLabel(lv) {
+  if (!lv) return '—';
+  const v = Number(lv.vLL) || 0;
+  const vStr = v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 2) + ' кВ' : v + ' В';
+  if (lv.dc) return vStr + ' DC';
+  const ph = Number(lv.phases) === 3 ? '3ф' : '1ф';
+  return vStr + ' · ' + ph;
+}
+
+// Одноразовая миграция пользовательских меток уровней напряжения:
+// вырезает из lv.label устаревшие суффиксы типа " 3P+N+PE", "+N+PE",
+// "+N", "+PE", "3L+N+PE" и т.п. Вызывается при старте приложения,
+// модифицирует массив levels НА МЕСТЕ.
+export function migrateVoltageLevelLabels(levels) {
+  if (!Array.isArray(levels)) return;
+  const strip = /\s*[+\s]?(\d?[LP]\s*)?[+\s]?(N|PE|N\+PE|N\s*\+\s*PE)\b/gi;
+  for (const lv of levels) {
+    if (!lv || typeof lv.label !== 'string') continue;
+    let s = lv.label
+      .replace(/\+N\+PE/gi, '')
+      .replace(/\+N\b/gi, '')
+      .replace(/\+PE\b/gi, '')
+      .replace(/3L\+N\+PE/gi, '')
+      .replace(/L\+N\+PE/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    lv.label = s || formatVoltageLevelLabel(lv);
+  }
+}
+
 // DC-детектор для узла по его voltageLevel
 export function isNodeDC(n) {
   if (!n) return false;

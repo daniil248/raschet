@@ -7,6 +7,7 @@ import { effectiveTag } from '../zones.js';
 import { nextFreeTag } from '../graph.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
+import { formatVoltageLevelLabel } from '../electrical.js';
 
 let _renderInspector = null;
 export function bindInspectorConsumerDeps({ renderInspector }) {
@@ -62,7 +63,7 @@ export function openConsumerParamsModal(n) {
   const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
   let vOpts = '';
   for (let i = 0; i < levels.length; i++) {
-    vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(levels[i].label)} (${levels[i].vLL}V)</option>`;
+    vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
   }
   h.push(field('Уровень напряжения', `<select id="cp-voltage">${vOpts}</select>`));
   h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
