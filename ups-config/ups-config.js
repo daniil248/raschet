@@ -253,16 +253,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const addBtn = document.getElementById('btn-add-manual');
   if (addBtn) addBtn.addEventListener('click', openManualModal);
 
-  // Kehua MR33 defaults — загружает MR33 200/300/400/500 со всеми
-  // паспортными параметрами (capacityKw, КПД, V_DC ±180…±300, совместимость
-  // с S³). Идемпотентно через upsert по id в ups-catalog.
+  // Kehua UPS defaults — загружает ВСЮ линейку Kehua из каталога
+  // 2024-10-22: KR-RM 10-40 kVA, Myria 60-200 kW, MR33 120-1200 kVA
+  // (30/50/100K модули), FR-UK33 GEL, FR-UK33, KR33, KR33-H. Все
+  // имеют флаг compatibleS3:true для совместимости с системой
+  // Kehua S³ Li-Ion. Идемпотентно через upsert по id.
   const kehuaBtn = document.getElementById('btn-seed-kehua');
   if (kehuaBtn) kehuaBtn.addEventListener('click', () => {
     const n = KEHUA_MR33_UPSES.length;
     for (const rec of KEHUA_MR33_UPSES) {
       addUps({ ...rec, importedAt: Date.now() });
     }
-    flash(`Загружено Kehua MR33: ${n} моделей`, 'success');
+    flash(`Загружено Kehua UPS: ${n} моделей`, 'success');
     render();
   });
   const clrBtn = document.getElementById('btn-clear-catalog');
