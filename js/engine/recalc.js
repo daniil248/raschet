@@ -5,7 +5,7 @@ import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/inde
 import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
-         upsChargeKw, sourceImpedance } from './electrical.js';
+         upsChargeKw, sourceImpedance, isNodeDC } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 
 // Полная downstream-нагрузка за узлом (без share, без visited-блокировок).
@@ -1222,17 +1222,21 @@ function recalc() {
     c._voltage = U;
     c._cosPhi = cos;
     c._threePhase = threePhase;
+    // DC-линия: detected по voltageLevel целевого узла (АКБ, DC-шины UPS).
+    // Для DC токоведущих жил — 2 (L+, L−), cos φ не применяется, I=P/U.
+    const _isDC = isNodeDC(isUtilityToTransformer ? fromN : toN);
+    c._isDC = _isDC;
     // Высоковольтная линия (> 1 кВ). Подбор кабеля/автомата для HV отличается
     // от LV (другие таблицы XLPE 6/10 кВ, вакуумные выключатели вместо MCCB).
     // Пока используем LV-методику, но принудительно задаём минимальное сечение
     // HV-кабеля (25 мм² XLPE) и помечаем линию флагом — отчёт/рендер покажут (ВН).
-    c._isHV = U > 1000;
+    c._isHV = U > 1000 && !_isDC;
     // Количество жил — через cableWireCount: учитывает систему заземления
     // узла-источника (panel.earthingOut или GLOBAL.earthingSystem), фазность
     // целевого узла, ручные переопределения consumer.wireCount и
     // conn._wireCountManual. HV-линии всегда 3 жилы.
     c._wireCount = cableWireCount(fromN, toN, c);
-    c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase) : 0;
+    c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase, _isDC) : 0;
 
     // === Расчётный ток для подбора кабеля (максимальный по всем сценариям) ===
     // Кабель должен выдержать максимально возможную нагрузку через ДАННУЮ связь.
@@ -1282,7 +1286,7 @@ function recalc() {
     // Кабель должен быть рассчитан на реальную нагрузку. Если нагрузка
     // превышает номинал источника — это показывается как перегруз (_overload).
     const maxCurrent = maxKwDownstream > 0
-      ? computeCurrentA(maxKwDownstream, U, cos, threePhase)
+      ? computeCurrentA(maxKwDownstream, U, cos, threePhase, _isDC)
       : 0;
     c._maxKw = maxKwDownstream;
     c._maxA = maxCurrent;

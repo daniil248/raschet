@@ -150,15 +150,25 @@ export function nodeWireCount(n) {
 }
 
 // Установочный ток — ток при номинальной мощности
-// I = P / (√3 · U · cos φ)   для 3-фазной
-// I = P / (U · cos φ)        для 1-фазной (A/B/C)
-export function computeCurrentA(P_kW, voltage, cosPhi, threePhase) {
+// I = P / (√3 · U · cos φ)   для 3-фазной AC
+// I = P / (U · cos φ)        для 1-фазной AC
+// I = P / U                  для DC (cos φ и √3 не применяются)
+export function computeCurrentA(P_kW, voltage, cosPhi, threePhase, dc) {
   const P = Number(P_kW) || 0;
   const U = Number(voltage) || 400;
+  if (P <= 0 || U <= 0) return 0;
+  if (dc) return (P * 1000) / U;
   const cos = Number(cosPhi) || 0.92;
-  if (P <= 0) return 0;
   const k = threePhase ? Math.sqrt(3) : 1;
   return (P * 1000) / (k * U * cos);
+}
+
+// DC-детектор для узла по его voltageLevel
+export function isNodeDC(n) {
+  if (!n) return false;
+  const levels = GLOBAL.voltageLevels || [];
+  const lv = typeof n.voltageLevelIdx === 'number' ? levels[n.voltageLevelIdx] : null;
+  return !!(lv && lv.dc);
 }
 
 // Номинальный (установочный) ток потребителя или группы
@@ -166,7 +176,7 @@ export function consumerNominalCurrent(n) {
   const per = Number(n.demandKw) || 0;
   const cnt = Math.max(1, Number(n.count) || 1);
   const P = per * cnt;
-  return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n));
+  return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n), isNodeDC(n));
 }
 
 // Расчётный ток (с учётом Ки и loadFactor сценария)
@@ -175,7 +185,7 @@ export function consumerRatedCurrent(n) {
   const cnt = Math.max(1, Number(n.count) || 1);
   const k = (Number(n.kUse) || 1) * effectiveLoadFactor(n);
   const P = per * cnt * k;
-  return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n));
+  return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n), isNodeDC(n));
 }
 
 // Пусковой ток
