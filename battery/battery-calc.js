@@ -794,6 +794,7 @@ function doCalc() {
   const blocksPerString = Math.max(1, Math.round(dcVoltage / blockV) || 1);
 
   let html = '';
+  let calcResult = null;
   if (mode === 'autonomy') {
     // Прямая задача: дано — сколько блоков, нагрузка → автономия
     const r = calcAutonomy({
@@ -801,6 +802,7 @@ function doCalc() {
       endV, invEff, chemistry,
       capacityAh: battery ? battery.capacityAh : capacityAh,
     });
+    calcResult = { kind: 'autonomy', r, blocksPerString };
     html += `<div class="result-block">`;
     html += `<div class="result-title">Автономия системы</div>`;
     html += `<div class="result-value">${Number.isFinite(r.autonomyMin) ? fmt(r.autonomyMin) + ' мин' : '∞'}</div>`;
@@ -816,6 +818,7 @@ function doCalc() {
       blocksPerString,
       targetMin,
     });
+    calcResult = { kind: 'required', found, blocksPerString };
     if (found) {
       html += `<div class="result-block">`;
       html += `<div class="result-title">Минимум блоков для автономии ≥ ${targetMin} мин</div>`;
@@ -828,6 +831,11 @@ function doCalc() {
     }
   }
   out.innerHTML = html;
+
+  // Сохраняем состояние для экспорта отчёта и разблокируем кнопку
+  lastBatteryCalc = { params, calcResult };
+  const btnRpt = document.getElementById('btn-battery-report');
+  if (btnRpt) btnRpt.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
 }
 
 function wireCalcForm() {
@@ -843,6 +851,111 @@ function wireCalcForm() {
     });
   });
   modeSel.dispatchEvent(new Event('change'));
+  const btnRpt = document.getElementById('btn-battery-report');
+  if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
+}
+
+// ================ Экспорт отчёта АКБ ================
+async function exportBatteryReport() {
+  if (!lastBatteryCalc) {
+    alert('Сначала выполните расчёт.');
+    return;
+  }
+  const rec = await Report.pickTemplate({
+    title: 'Выбор шаблона для отчёта по расчёту АКБ',
+    tags:  ['акб','батарея','расчёты','общее','инженерный'],
+  });
+  if (!rec) return;
+  const tpl = Report.createTemplate(rec.template);
+  tpl.meta.title = 'Расчёт аккумуляторной батареи';
+  tpl.content = buildBatteryReportBlocks(lastBatteryCalc);
+  try { await Report.exportPDF(tpl, 'Расчёт АКБ'); }
+  catch (e) { alert('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e)); }
+}
+
+function buildBatteryReportBlocks(state) {
+  const p = state.params;
+  const r = state.calcResult;
+  const batName = p.battery
+    ? [p.battery.supplier, p.battery.model].filter(Boolean).join(' ')
+    : 'усреднённая модель, химия ' + p.chemistry;
+  const capAh = p.battery ? p.battery.capacityAh : p.capacityAh;
+  const blockV = p.battery ? p.battery.blockVoltage : 12;
+  const blocksPerString = r ? r.blocksPerString : Math.max(1, Math.round(p.dcVoltage / blockV) || 1);
+
+  const blocks = [
+    B.h1('Отчёт о расчёте аккумуляторной батареи'),
+    B.caption('Модель: ' + batName),
+
+    B.h2('1. Исходные данные'),
+    B.table(
+      [
+        { text: 'Параметр', width: 80 },
+        { text: 'Значение', align: 'right', width: 40 },
+        { text: 'Ед.', align: 'center', width: 18 },
+      ],
+      [
+        ['Мощность нагрузки',           String(p.loadKw),               'кВт'],
+        ['КПД инвертора',               (p.invEff * 100).toFixed(0),    '%'],
+        ['Напряжение DC-шины',          String(p.dcVoltage),            'В'],
+        ['Конечное напряжение элемента', String(p.endV),                'В'],
+        ['Ёмкость блока',               String(capAh),                  'Ач'],
+        ['Номинальное напряжение блока',String(blockV),                 'В'],
+        ['Параллельных цепочек',        String(p.strings),              '—'],
+        ['Блоков в цепочке',            String(blocksPerString),        '—'],
+        ['Режим расчёта', p.mode === 'autonomy' ? 'Прямой (автономия по блокам)' : 'Обратный (блоки по автономии)', ''],
+        p.mode === 'required' ? ['Требуемая автономия', String(p.targetMin), 'мин'] : null,
+      ].filter(Boolean),
+    ),
+
+    B.h2('2. Результаты'),
+  ];
+
+  if (r.kind === 'autonomy' && r.r) {
+    blocks.push(B.table(
+      [
+        { text: 'Параметр', width: 80 },
+        { text: 'Значение', align: 'right', width: 40 },
+        { text: 'Ед.', align: 'center', width: 18 },
+      ],
+      [
+        ['Автономия',       Number.isFinite(r.r.autonomyMin) ? fmt(r.r.autonomyMin) : '∞', 'мин'],
+        ['Метод',           r.r.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель', ''],
+        ['Мощность на блок', fmt(r.r.blockPowerW), 'Вт'],
+        ['Всего блоков',    String(p.strings * blocksPerString), 'шт.'],
+        ['Конфигурация',    p.strings + ' цеп. × ' + blocksPerString + ' блоков', ''],
+      ],
+    ));
+    if (r.r.warnings && r.r.warnings.length) {
+      blocks.push(B.h3('Предупреждения'));
+      blocks.push(B.list(r.r.warnings.map(w => '⚠ ' + w)));
+    }
+  } else if (r.kind === 'required') {
+    if (r.found) {
+      const f = r.found;
+      blocks.push(B.table(
+        [
+          { text: 'Параметр', width: 80 },
+          { text: 'Значение', align: 'right', width: 40 },
+          { text: 'Ед.', align: 'center', width: 18 },
+        ],
+        [
+          ['Минимум блоков',      String(f.totalBlocks), 'шт.'],
+          ['Параллельных цепочек', String(f.strings),    '—'],
+          ['Блоков в цепочке',    String(f.blocksPerString), '—'],
+          ['Реальная автономия',  fmt(f.result.autonomyMin), 'мин'],
+          ['Метод',               f.result.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель', ''],
+        ],
+      ));
+      blocks.push(B.paragraph('Конфигурация удовлетворяет требованию ≥ ' + p.targetMin + ' мин.'));
+    } else {
+      blocks.push(B.paragraph('Не удалось подобрать конфигурацию в пределах 2000 блоков. Проверьте нагрузку и параметры.'));
+    }
+  }
+
+  blocks.push(B.hr());
+  blocks.push(B.caption('Документ сформирован автоматически.'));
+  return blocks;
 }
 
 // ================= Вкладки =================
