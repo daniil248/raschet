@@ -280,3 +280,75 @@ export function parseTransformerXlsx(arrayBuffer, filename = 'transformers.xlsx'
   if (!out.length) throw new Error('В файле не найдено ни одной записи трансформатора (ожидаются колонки Supplier / S_kVA / Uhv_kV / Ulv_V …)');
   return out;
 }
+
+// ================== Генерация шаблонов ==================
+// Возвращают Workbook через SheetJS с заголовком колонок и 2–3 примерами
+// строк. Используются кнопкой «⬇ Шаблон XLSX» в каждом конфигураторе,
+// чтобы пользователь видел ожидаемый формат до импорта.
+
+function _canonicalHeader(schema) {
+  // Первая запись в массиве альтернатив считается каноническим именем
+  return Object.fromEntries(Object.entries(schema.columns).map(([k, arr]) => [k, arr[0]]));
+}
+
+/**
+ * Формирует Workbook с одним листом для указанного каталога.
+ * kind: 'ups' | 'panel' | 'transformer'
+ */
+export function makeCatalogTemplate(kind) {
+  if (typeof window === 'undefined' || !window.XLSX) {
+    throw new Error('SheetJS (window.XLSX) не подключён');
+  }
+  let schema, examples, sheetName;
+  if (kind === 'ups') {
+    schema = UPS_SCHEMA;
+    sheetName = 'UPS Catalog';
+    examples = [
+      { supplier: 'ABB', model: 'PowerValue 11 RT 6 kVA', upsType: 'monoblock', capacityKw: 6, capacityKva: 6, efficiency: 94, cosPhi: 1.0, vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1 },
+      { supplier: 'Schneider', model: 'Galaxy VM 100 kW', upsType: 'monoblock', capacityKw: 100, capacityKva: 100, efficiency: 96, cosPhi: 1.0, vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 2 },
+      { supplier: 'Vertiv', model: 'Liebert APM 300', upsType: 'modular', capacityKw: 300, frameKw: 300, moduleKwRated: 30, moduleSlots: 10, efficiency: 96.5, cosPhi: 1.0, vdcMin: 320, vdcMax: 448, inputs: 2, outputs: 2 },
+    ];
+  } else if (kind === 'panel') {
+    schema = PANEL_SCHEMA;
+    sheetName = 'Panel Catalog';
+    examples = [
+      { supplier: 'ABB', series: 'ArTu M', variant: 'M40830', inNominal: 800, inputs: 1, outputs: 24, sections: 1, ipRating: 'IP31', form: 'Form 2b', width: 600, height: 2000, depth: 400 },
+      { supplier: 'Schneider', series: 'Prisma P', variant: 'P630-AVR', inNominal: 630, inputs: 2, outputs: 18, sections: 2, ipRating: 'IP54', form: 'Form 3b', width: 800, height: 2100, depth: 600 },
+      { supplier: 'KEAZ', series: 'OptiBox', variant: 'OB-P-160', inNominal: 160, inputs: 1, outputs: 12, sections: 1, ipRating: 'IP40', form: 'Form 1', width: 400, height: 600, depth: 200 },
+    ];
+  } else if (kind === 'transformer') {
+    schema = TRANSFORMER_SCHEMA;
+    sheetName = 'Transformer Catalog';
+    examples = [
+      { supplier: 'ABB', series: 'TRIHAL', variant: 'TH 1000', sKva: 1000, uhvKv: 10, ulvV: 400, vectorGroup: 'Dyn11', ukPct: 6, p0Kw: 1.7, pkKw: 9.2, cooling: 'AN', insulation: 'dry', weight: 3200 },
+      { supplier: 'Siemens', series: 'GEAFOL', variant: 'GF-1600', sKva: 1600, uhvKv: 10, ulvV: 400, vectorGroup: 'Dyn11', ukPct: 6, p0Kw: 2.4, pkKw: 13.5, cooling: 'AN', insulation: 'epoxy', weight: 4600 },
+      { supplier: 'Тольятти', series: 'ТМГ', variant: 'ТМГ-630/10', sKva: 630, uhvKv: 10, ulvV: 400, vectorGroup: 'Dyn11', ukPct: 5.5, p0Kw: 1.05, pkKw: 7.6, cooling: 'ONAN', insulation: 'oil', weight: 2100 },
+    ];
+  } else {
+    throw new Error('makeCatalogTemplate: kind должен быть "ups" | "panel" | "transformer"');
+  }
+  const canonical = _canonicalHeader(schema);
+  const fieldKeys = Object.keys(canonical);
+  const header = fieldKeys.map(k => canonical[k]);
+  const rows = examples.map(ex => fieldKeys.map(k => ex[k] ?? ''));
+  const aoa = [header, ...rows];
+  const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+  // Ширина колонок по макс. длине заголовка
+  ws['!cols'] = header.map(h => ({ wch: Math.max(12, String(h).length + 2) }));
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  return wb;
+}
+
+/**
+ * Генерирует шаблон и скачивает его в браузере.
+ */
+export function downloadCatalogTemplate(kind) {
+  const wb = makeCatalogTemplate(kind);
+  const fname = {
+    ups:         'ups-catalog-template.xlsx',
+    panel:       'panel-catalog-template.xlsx',
+    transformer: 'transformer-catalog-template.xlsx',
+  }[kind] || 'catalog-template.xlsx';
+  window.XLSX.writeFile(wb, fname);
+}

@@ -7,7 +7,7 @@
 // ======================================================================
 
 import { listPanels, addPanel, removePanel, clearCatalog, makePanelId } from '../shared/panel-catalog.js';
-import { parsePanelXlsx } from '../shared/catalog-xlsx-parser.js';
+import { parsePanelXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountPanelPicker } from '../shared/panel-picker.js';
 
 let cascadeHandle = null;
@@ -244,6 +244,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  const tplBtn = document.getElementById('btn-template-xlsx');
+  if (tplBtn) tplBtn.addEventListener('click', () => {
+    try { downloadCatalogTemplate('panel'); flash('Шаблон скачан', 'success'); }
+    catch (e) { flash('Ошибка: ' + (e.message || e), 'error'); }
+  });
 
   const clrBtn = document.getElementById('btn-clear-catalog');
   if (clrBtn) clrBtn.addEventListener('click', () => {

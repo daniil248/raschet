@@ -10,7 +10,7 @@ import {
   listTransformers, addTransformer, removeTransformer, clearCatalog, makeTransformerId,
 } from '../shared/transformer-catalog.js';
 import { mountTransformerPicker, computeTransformerIk } from '../shared/transformer-picker.js';
-import { parseTransformerXlsx } from '../shared/catalog-xlsx-parser.js';
+import { parseTransformerXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -262,6 +262,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  const tplBtn = document.getElementById('btn-template-xlsx');
+  if (tplBtn) tplBtn.addEventListener('click', () => {
+    try { downloadCatalogTemplate('transformer'); flash('Шаблон скачан', 'success'); }
+    catch (e) { flash('Ошибка: ' + (e.message || e), 'error'); }
+  });
 
   const clrBtn = document.getElementById('btn-clear-catalog');
   if (clrBtn) clrBtn.addEventListener('click', () => {

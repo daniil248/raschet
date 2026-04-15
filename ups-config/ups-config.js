@@ -7,7 +7,7 @@
 // ======================================================================
 
 import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from '../shared/ups-catalog.js';
-import { parseUpsXlsx } from '../shared/catalog-xlsx-parser.js';
+import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/kehua-mr33-data.js';
 
@@ -360,6 +360,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // Скачать шаблон XLSX
+  const tplBtn = document.getElementById('btn-template-xlsx');
+  if (tplBtn) tplBtn.addEventListener('click', () => {
+    try { downloadCatalogTemplate('ups'); flash('Шаблон скачан', 'success'); }
+    catch (e) { flash('Ошибка: ' + (e.message || e), 'error'); }
+  });
 
   const kehuaBtn = document.getElementById('btn-seed-kehua');
   if (kehuaBtn) kehuaBtn.addEventListener('click', () => {
