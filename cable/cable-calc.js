@@ -218,42 +218,143 @@ function calculate() {
   const vl          = getVoltageInfo();
   const cosPhi      = Number(els.cosphi.value) || 0.92;
 
-  // 1. Подбор по токовой нагрузке (parallel=1, auto-increment)
-  const resByAmp = currentMethod.selectCable(I, {
-    material, insulation, method, cableType,
-    ambient, grouping, bundling, maxSize, parallel: 1,
-  });
-
-  // 2. Vdrop
   const isDC = !!vl.dc;
   const effCosPhi = isDC ? 1 : cosPhi;
-  const vdropAmp = calcVoltageDrop(I, resByAmp.s, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, isDC);
+  const sizes = currentMethod.availableSizes(material, insulation, method).filter(s => s <= maxSize);
+  const maxSizeInTable = sizes.length ? sizes[sizes.length - 1] : maxSize;
 
-  let sizeByVdrop = null;
-  let vdropFinal = vdropAmp;
+  // Константа k для термической проверки на КЗ (IEC 60364-4-43 Table A54).
+  const K_SC = { Cu: { PVC: 115, XLPE: 143 }, Al: { PVC: 76, XLPE: 94 } };
+  const kSC = (K_SC[material] || K_SC.Cu)[insulation] || 115;
+  // Входные для КЗ — kA из формы. Используем и в солвере, и ниже
+  // в moduleInput (чтобы не читать DOM дважды).
+  const Ik_kA = Number(document.getElementById('in-ik')?.value) || 0;
+  const tk_s  = Number(document.getElementById('in-tk')?.value) || 0;
+  const breakerCurve   = document.getElementById('in-breakerCurve')?.value || 'MCB_C';
+  const earthingSystem = document.getElementById('in-earthing')?.value   || 'TN-S';
+  // Ik_A — ток КЗ в амперах (в форме пользователь вводит kA)
+  const Ik_A = Ik_kA * 1000;
+  const sBySc = (Ik_A > 0 && tk_s > 0)
+    ? (Ik_A * Math.sqrt(tk_s)) / kSC
+    : 0;
+  const sBySCstd = sBySc > 0
+    ? (sizes.find(s => s >= sBySc) || null)
+    : null;
 
-  if (lengthM > 0 && vdropAmp.dUpct > maxVdropPct) {
-    const sizes = currentMethod.availableSizes(material, insulation, method).filter(s => s <= maxSize);
-    sizeByVdrop = findMinSizeForVdrop(I, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, maxVdropPct, sizes, isDC);
-  }
-
-  // 3. Экономическая плотность тока
+  // Экономическая плотность тока (не зависит от параллели в PUE-трактовке,
+  // считаем один раз).
   let ecoResult = null;
   if (els.ecoEnabled.checked && currentEcoMethod) {
-    const sizes = currentMethod.availableSizes(material, insulation, method).filter(s => s <= maxSize);
-    const insulated = true; // кабели с изоляцией
-    ecoResult = currentEcoMethod.calcEconomicSize(I, material, insulated, getEcoParams(), sizes);
+    ecoResult = currentEcoMethod.calcEconomicSize(I, material, true, getEcoParams(), sizes);
   }
 
-  // 4. Итоговое сечение = max(по току, по Vdrop, по экон.плотности)
-  let finalSize = resByAmp.s;
+  // ============ Итеративный подбор ============
+  // Для текущего числа параллельных линий подбираем сечение, которое
+  // удовлетворяет ВСЕМ ограничениям: ампаситет, ΔU, экон. плотность,
+  // термическая стойкость к КЗ. Если ни одно стандартное сечение (в
+  // пределах maxSize) не проходит — наращиваем параллель.
+  const maxPar = Number(GLOBAL.maxParallelAuto) || 10;
+  let resByAmp = null;
+  let finalSize = 0;
+  let vdropFinal = { dU: 0, dUpct: 0 };
   let increasedBy = null;
-  if (sizeByVdrop && sizeByVdrop > finalSize) { finalSize = sizeByVdrop; increasedBy = 'vdrop'; }
-  if (ecoResult && ecoResult.sStandard > finalSize) { finalSize = ecoResult.sStandard; increasedBy = 'economic'; }
+  let vdropOverflow = false;
+  let scOverflow    = false;
+  let ecoOverflow   = false;
 
-  if (finalSize > resByAmp.s) {
-    vdropFinal = calcVoltageDrop(I, finalSize, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, isDC);
+  for (let par = 1; par <= maxPar; par++) {
+    // 1. Подбор по токовой нагрузке с фиксированной параллелью
+    const sel = currentMethod.selectCable(I, {
+      material, insulation, method, cableType,
+      ambient, grouping, bundling, maxSize, parallel: par,
+    });
+    // Игнорируем auto-parallel внутри selectCable — мы управляем
+    // параллелью сами, чтобы одновременно выдержать ΔU и КЗ.
+    if (sel.autoParallel) {
+      // selectCable сам нарастил — принимаем новое значение параллели
+      par = sel.parallel;
+    }
+    let s = sel.s;
+    let bumpedBy = null;
+
+    // 2. ΔU
+    let vdropCheck = null;
+    if (lengthM > 0) {
+      vdropCheck = calcVoltageDrop(I, s, material, lengthM, vl.vLL, vl.phases, effCosPhi, par, isDC);
+      if (vdropCheck.dUpct > maxVdropPct) {
+        const sV = findMinSizeForVdrop(I, material, lengthM, vl.vLL, vl.phases, effCosPhi, par, maxVdropPct, sizes, isDC);
+        if (sV == null) {
+          // даже максимальное сечение не тянет ΔU при этой параллели —
+          // пробуем больше линий
+          continue;
+        }
+        if (sV > s) { s = sV; bumpedBy = 'vdrop'; }
+      }
+    }
+
+    // 3. Экономическая плотность тока
+    if (ecoResult && ecoResult.sStandard) {
+      if (ecoResult.sStandard > maxSizeInTable) {
+        // не поместится в maxSize → нужен ещё один параллельный путь
+        // экон. плотность делится между линиями: I/par
+        // пересчитаем для новой параллели в отдельном блоке ниже
+      }
+      // Экон.плотность проверяем как порог для I/par — считаем заново
+      // через ту же методику
+      const ecoPerLine = currentEcoMethod.calcEconomicSize(I / par, material, true, getEcoParams(), sizes);
+      if (ecoPerLine && ecoPerLine.sStandard && ecoPerLine.sStandard > s) {
+        if (ecoPerLine.sStandard > maxSizeInTable) { continue; }
+        s = ecoPerLine.sStandard;
+        if (!bumpedBy) bumpedBy = 'economic';
+      }
+      // сохраним для отображения пересчитанный результат
+      ecoResult = ecoPerLine || ecoResult;
+    }
+
+    // 4. Термическая стойкость к КЗ: S ≥ Ik·√tk / k
+    if (sBySc > 0) {
+      // Ток КЗ на одну линию делится на параллель (грубо, допустимо
+      // для одинаковых линий одинаковой длины)
+      const sScPar = (Ik_A * Math.sqrt(tk_s)) / kSC / par;
+      const sScStd = sizes.find(sz => sz >= sScPar);
+      if (sScStd == null) { continue; }
+      if (sScStd > s) { s = sScStd; if (!bumpedBy) bumpedBy = 'shortCircuit'; }
+    }
+
+    // Все ограничения прошли — фиксируем результат
+    resByAmp = sel;
+    resByAmp.parallel = par;
+    finalSize = s;
+    increasedBy = bumpedBy;
+    vdropFinal = lengthM > 0
+      ? calcVoltageDrop(I, finalSize, material, lengthM, vl.vLL, vl.phases, effCosPhi, par, isDC)
+      : { dU: 0, dUpct: 0 };
+    break;
   }
+
+  // Fallback если солвер не сошёлся (par>maxPar): используем ampacity-only
+  // и помечаем проблемы — пользователь увидит красные теги.
+  if (!resByAmp) {
+    resByAmp = currentMethod.selectCable(I, {
+      material, insulation, method, cableType,
+      ambient, grouping, bundling, maxSize, parallel: 1,
+    });
+    finalSize = resByAmp.s;
+    vdropFinal = lengthM > 0
+      ? calcVoltageDrop(I, finalSize, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, isDC)
+      : { dU: 0, dUpct: 0 };
+    vdropOverflow = lengthM > 0 && vdropFinal.dUpct > maxVdropPct;
+    scOverflow = sBySc > 0 && sBySCstd == null;
+    ecoOverflow = !!(ecoResult && ecoResult.sStandard > maxSizeInTable);
+  }
+
+  // vdropAmp = vdrop при подборе ТОЛЬКО по току (для отображения «до
+  // увеличения»). Считаем один раз от resByAmp.s
+  const vdropAmp = lengthM > 0
+    ? calcVoltageDrop(I, resByAmp.s, material, lengthM, vl.vLL, vl.phases, effCosPhi, resByAmp.parallel, isDC)
+    : { dU: 0, dUpct: 0 };
+  // если вдруг итог совпал с ampacity — sizeByVdrop = null, иначе показываем
+  const sizeByVdrop = (increasedBy === 'vdrop') ? finalSize : null;
 
   // 5. Автомат
   const parallel = resByAmp.parallel;
@@ -271,11 +372,8 @@ function calculate() {
   // === Запуск расчётных модулей из shared/calc-modules/ ===
   // Обязательные (ampacity, vdrop, shortCircuit, phaseLoop) запускаются
   // всегда; опциональные (economic) — только если пользователь включил
-  // в блоке «Расчётные модули».
-  const Ik_kA = Number(document.getElementById('in-ik')?.value) || 0;
-  const tk_s  = Number(document.getElementById('in-tk')?.value) || 0;
-  const breakerCurve = document.getElementById('in-breakerCurve')?.value || 'MCB_C';
-  const earthingSystem = document.getElementById('in-earthing')?.value || 'TN-S';
+  // в блоке «Расчётные модули». Ik_kA/tk_s/breakerCurve/earthingSystem
+  // объявлены выше — переиспользуем.
   const enabledSet = new Set();
   for (const [id, on] of moduleEnabled.entries()) if (on) enabledSet.add(id);
 
@@ -301,8 +399,9 @@ function calculate() {
   const moduleResults = runModules(moduleInput, enabledSet);
 
   const renderParams = { material, insulation, method, cableType, ambient, grouping, bundling, lengthM, vl, cosPhi };
+  const overflowFlags = { vdropOverflow, scOverflow, ecoOverflow };
   renderResult(I, resByAmp, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC,
-    renderParams, moduleResults);
+    renderParams, moduleResults, overflowFlags);
 
   // Запомнить состояние для экспорта отчёта
   lastCalc = {
@@ -310,6 +409,7 @@ function calculate() {
     vdropAmp, vdropFinal, maxVdropPct, ecoResult,
     protection, breakerOverflow, isDC,
     params: renderParams, moduleResults,
+    overflowFlags,
   };
   if (els.btnReport) els.btnReport.disabled = false;
 }
@@ -376,7 +476,8 @@ function renderModuleCards(moduleResults) {
 }
 
 // ============ Render results ============
-function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, params, moduleResults) {
+function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, params, moduleResults, overflowFlags) {
+  overflowFlags = overflowFlags || {};
   const matLabel = currentMethod.materials[params.material] || params.material;
   const insLabel = currentMethod.insulations[params.insulation] || params.insulation;
   const methLabel = currentMethod.installMethods[params.method] || params.method;
@@ -387,8 +488,15 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
 
   const overflowHtml = res.overflow
     ? `<div class="result-detail tag-overflow">Не удалось подобрать кабель, взято макс. сечение!</div>` : '';
-  const autoParHtml = res.autoParallel
-    ? `<div class="result-detail tag-warn">Авто: ${res.parallel} параллельных линий</div>` : '';
+  const autoParHtml = res.parallel > 1
+    ? `<div class="result-detail tag-warn">${res.autoParallel ? 'Авто' : 'Солвер'}: ${res.parallel} параллельных линий</div>` : '';
+  // Явные сообщения, когда солвер не сошёлся по какому-то из ограничений
+  // даже при maxPar параллельных линий.
+  const solverFailHtml = [
+    overflowFlags.vdropOverflow ? '<div class="result-detail tag-overflow">⛔ ΔU не укладывается даже при максимальной параллели — увеличьте maxSize, выбирайте более крупный автомат или сокращайте длину.</div>' : '',
+    overflowFlags.scOverflow    ? '<div class="result-detail tag-overflow">⛔ Термическая стойкость к КЗ не проходит — увеличьте maxSize или ускорьте отключение автомата (t_k).</div>' : '',
+    overflowFlags.ecoOverflow   ? '<div class="result-detail tag-warn">⚠ Экон. плотность требует сечение больше maxSize — добавьте параллельные линии вручную.</div>' : '',
+  ].filter(Boolean).join('');
 
   let recommendHtml = '';
   if (increased) {
@@ -428,7 +536,7 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
           ${res.parallel > 1 ? res.parallel + ' параллельных линий' : '1 линия'}
           ${increased ? '<br><span class="tag-warn">Увеличено (' + (increasedBy === 'vdrop' ? '&Delta;U' : 'j<sub>эк</sub>') + ')</span>' : ''}
         </div>
-        ${overflowHtml}${autoParHtml}
+        ${overflowHtml}${autoParHtml}${solverFailHtml}
       </div>
 
       <div class="result-card ${breakerOverflow ? 'warn' : ''}">

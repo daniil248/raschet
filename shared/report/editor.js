@@ -136,12 +136,44 @@ export function openTemplateEditor(tpl, opts = {}) {
   });
 
   // ——— клавиатурные сокращения ———
-  // Работают только когда выделена зона И фокус НЕ внутри текстового поля
-  // (иначе пользователь не сможет ввести текст в textarea, а Escape
-  // закрыл бы редактор во время правки).
+  // Работают только когда фокус НЕ внутри текстового поля (иначе
+  // пользователь не сможет ввести текст в textarea, а Escape закрыл бы
+  // редактор во время правки). Ctrl+S / Ctrl+D обрабатываются всегда,
+  // потому что браузерное действие по Ctrl+S/Ctrl+D надо
+  // предотвращать независимо от фокуса.
   function onKeyDown(e) {
     const ae = document.activeElement;
     const inField = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT');
+    const mod = e.ctrlKey || e.metaKey;
+
+    // Ctrl+S — сохранить шаблон (как клик по «Сохранить»).
+    if (mod && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      if (inField) ae.blur();
+      closeEditor(true);
+      return;
+    }
+
+    // Ctrl+D — дублировать выделенную зону (логотип не дублируется).
+    if (mod && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault();
+      const id = state.selectedId;
+      if (!id || id === 'logo') return;
+      const ov = working.overlays.find(o => o.id === id);
+      if (!ov) return;
+      const copy = JSON.parse(JSON.stringify(ov));
+      copy.id = 'ov-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+      // Смещаем копию на 4 мм вниз-вправо и клэмпаем по полям
+      const clamped = clampBox(copy.x + 4, copy.y + 4, copy.width, copy.height);
+      copy.x = round1(clamped.x);
+      copy.y = round1(clamped.y);
+      working.overlays.push(copy);
+      state.selectedId = copy.id;
+      if (state.activeTab === 'props' || state.activeTab === 'zones') rebuildTab();
+      redrawCanvas();
+      return;
+    }
+
     if (e.key === 'Escape') {
       if (inField) { ae.blur(); return; }
       if (state.selectedId) {

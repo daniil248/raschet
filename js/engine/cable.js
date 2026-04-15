@@ -133,7 +133,11 @@ export function selectCableSize(I, opts) {
       const InNeeded = selectBreaker(Iper);
       for (const [s, iRef] of effTable) {
         const iDerated = iRef * k;
-        if (iDerated >= InNeeded) {
+        // IEC 60364-4-43: In ≤ Iz AND I2 ≤ 1.45 × Iz — проверка та же,
+        // что и в tryWithParallel (было расхождение: auto-ветвь не
+        // проверяла I2, из-за чего подбор мог дать несогласованный
+        // с автоматом кабель).
+        if (iDerated >= InNeeded && I2ratio * InNeeded <= 1.45 * iDerated) {
           res = { s, iAllowed: iRef, iDerated, parallel: par };
           autoParallel = true;
           break;
