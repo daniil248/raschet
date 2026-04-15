@@ -7,6 +7,8 @@ import { effectiveTag } from '../zones.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { isTagUnique } from '../graph.js';
+import { listPanels } from '../../../shared/panel-catalog.js';
+import { mountPanelPicker, applyPanelModel } from '../../../shared/panel-picker.js';
 
 let _renderInspector = null;
 export function bindInspectorPanelDeps({ renderInspector }) {
@@ -32,6 +34,23 @@ export function openPanelParamsModal(n) {
     }
   }
   h.push(field('Имя', `<input type="text" id="pp-name" value="${escAttr(n.name || '')}">`));
+
+  // === Модель из справочника щитов (shared/panel-catalog + panel-picker) ===
+  // Тот же каскадный пикер, что и в подпрограмме panel-config/. При
+  // выборе модели её паспортные параметры (inNominal, inputs, outputs,
+  // ipRating, form) применяются к узлу через applyPanelModel().
+  try {
+    const panelCatalog = listPanels();
+    if (panelCatalog.length) {
+      h.push('<h4 style="margin:14px 0 6px">Модель из справочника</h4>');
+      h.push('<div id="pp-cat-picker-mount" style="margin-bottom:4px"></div>');
+      h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">При выборе модели автоматически заполняются I<sub>ном</sub>, число входов / выходов, IP, форма разделения. Справочник пополняется в <a href="panel-config/" target="_blank" style="color:#1976d2">«Конфигураторе щита»</a>.</div>`);
+    } else {
+      h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
+        Справочник щитов пуст. Добавьте модели в <a href="panel-config/" target="_blank" style="color:#1976d2">«Конфигураторе щита»</a>, чтобы выбирать их здесь одним кликом.
+      </div>`);
+    }
+  } catch (e) { /* опционально */ }
 
   // Тип щита — всегда виден
   const sm = n.switchMode || 'auto';
@@ -200,6 +219,36 @@ export function openPanelParamsModal(n) {
   }
 
   body.innerHTML = h.join('');
+
+  // Монтируем каскадный пикер щитов (если справочник не пуст)
+  try {
+    const panelCatalog = listPanels();
+    const pickerMount = document.getElementById('pp-cat-picker-mount');
+    if (panelCatalog.length && pickerMount) {
+      mountPanelPicker(pickerMount, {
+        list: panelCatalog,
+        selectedId: n.panelCatalogId || null,
+        currentSupplier: n._panelSelSupplier || '',
+        currentSeries: n._panelSelSeries || '',
+        placeholders: { supplier: '— не выбрано —', series: '— не выбрано —', model: '— свой состав —' },
+        labels: { supplier: 'Производитель', series: 'Серия', model: 'Типоразмер' },
+        idPrefix: 'pp-cat',
+        onChange: (st) => {
+          n._panelSelSupplier = st.supplier || null;
+          n._panelSelSeries = st.series || null;
+          if (st.modelId && st.panel && st.modelId !== n.panelCatalogId) {
+            snapshot('panel-params:' + n.id + ':catalog');
+            applyPanelModel(n, st.panel);
+            render(); notifyChange();
+            openPanelParamsModal(n);
+          } else if (!st.modelId && n.panelCatalogId) {
+            n.panelCatalogId = null;
+            openPanelParamsModal(n);
+          }
+        },
+      });
+    }
+  } catch (e) { /* опционально */ }
 
   // Live: переключение типа АВР сразу применяется
   const smSel = document.getElementById('pp-switchMode');
