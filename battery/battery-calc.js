@@ -285,9 +285,116 @@ function openDischargeTableModal(battery) {
     html += '</tbody></table>';
     html += '</div>';
     html += '<div class="muted" style="font-size:11px;margin-top:8px">Значения в ячейках — мощность (W) на блок, которую АКБ может отдать за указанное время до конечного напряжения на элемент.</div>';
+    // График разряда — одна кривая на каждое endV
+    html += '<h4 style="margin:18px 0 6px;font-size:13px">График разряда</h4>';
+    html += `<div id="dtable-chart-wrap" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div>`;
     bodyEl.innerHTML = html;
+    // Отрисовка SVG-графика
+    _renderDischargeChart(
+      document.getElementById('dtable-chart-wrap'),
+      rows, endVs
+    );
   }
   modal.classList.add('show');
+}
+
+// Рисует SVG-кривые разряда: X = время (log), Y = мощность (log),
+// одна кривая на каждое endV. Линия + маркеры точек.
+function _renderDischargeChart(mount, rows, endVs) {
+  if (!mount) return;
+  // Палитра цветов по endV (холодный→тёплый)
+  const palette = ['#1565c0', '#2e7d32', '#f57f17', '#c62828', '#6a1b9a', '#00695c'];
+  const W = 860, H = 360;
+  const padL = 60, padR = 20, padT = 20, padB = 44;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  const allT = rows.map(p => p.tMin).filter(v => v > 0);
+  const allP = rows.map(p => p.powerW).filter(v => v > 0);
+  if (!allT.length || !allP.length) {
+    mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет данных для графика</div>';
+    return;
+  }
+  const tMin = Math.min(...allT);
+  const tMax = Math.max(...allT);
+  const pMin = Math.min(...allP);
+  const pMax = Math.max(...allP);
+
+  // Логарифмические оси для лучшего распределения точек
+  const logTMin = Math.log10(tMin);
+  const logTMax = Math.log10(tMax);
+  const logPMin = Math.log10(pMin);
+  const logPMax = Math.log10(pMax);
+  const xOf = (t) => padL + ((Math.log10(t) - logTMin) / Math.max(0.001, logTMax - logTMin)) * plotW;
+  const yOf = (p) => padT + plotH - ((Math.log10(p) - logPMin) / Math.max(0.001, logPMax - logPMin)) * plotH;
+
+  // Тики по X (целые степени 10 и промежуточные)
+  const xTicks = [];
+  const tickCandidates = [1, 3, 5, 10, 15, 30, 60, 120, 180, 300, 600, 1200, 1800, 3600];
+  for (const t of tickCandidates) {
+    if (t >= tMin && t <= tMax) xTicks.push(t);
+  }
+  if (!xTicks.length) xTicks.push(tMin, tMax);
+  // Тики по Y
+  const yTicks = [];
+  const yTickCandidates = [10, 30, 100, 300, 1000, 3000, 10000];
+  for (const p of yTickCandidates) {
+    if (p >= pMin * 0.8 && p <= pMax * 1.2) yTicks.push(p);
+  }
+  if (!yTicks.length) yTicks.push(pMin, pMax);
+
+  const parts = [`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;font-family:-apple-system,sans-serif;font-size:11px">`];
+
+  // Фон графика
+  parts.push(`<rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="#fff" stroke="#e0e3ea" stroke-width="1"/>`);
+
+  // Сетка + тики X
+  for (const t of xTicks) {
+    const x = xOf(t);
+    parts.push(`<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + plotH}" stroke="#f0f0f0" stroke-width="1"/>`);
+    parts.push(`<text x="${x}" y="${padT + plotH + 16}" text-anchor="middle" fill="#6b7280">${t}</text>`);
+  }
+  // Сетка + тики Y
+  for (const p of yTicks) {
+    const y = yOf(p);
+    parts.push(`<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" stroke="#f0f0f0" stroke-width="1"/>`);
+    parts.push(`<text x="${padL - 6}" y="${y + 4}" text-anchor="end" fill="#6b7280">${p >= 1000 ? (p / 1000).toFixed(0) + 'k' : p}</text>`);
+  }
+
+  // Подписи осей
+  parts.push(`<text x="${padL + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#1f2430" font-weight="600">Время разряда, мин (log)</text>`);
+  parts.push(`<text transform="rotate(-90 16 ${padT + plotH / 2})" x="16" y="${padT + plotH / 2}" text-anchor="middle" fill="#1f2430" font-weight="600">Мощность на блок, W (log)</text>`);
+
+  // Кривые по каждому endV
+  endVs.forEach((ev, idx) => {
+    const color = palette[idx % palette.length];
+    const curve = rows.filter(r => r.endV === ev)
+      .filter(r => r.powerW > 0 && r.tMin > 0)
+      .sort((a, b) => a.tMin - b.tMin);
+    if (!curve.length) return;
+    // Линия
+    const d = curve.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(p.tMin).toFixed(1)},${yOf(p.powerW).toFixed(1)}`).join(' ');
+    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`);
+    // Маркеры
+    for (const p of curve) {
+      parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1"><title>${ev} В · ${p.tMin} мин · ${p.powerW} W</title></circle>`);
+    }
+  });
+
+  // Легенда справа вверху
+  const legendX = W - padR - 110;
+  const legendY = padT + 8;
+  parts.push(`<rect x="${legendX - 6}" y="${legendY - 12}" width="110" height="${endVs.length * 16 + 8}" fill="#fff" stroke="#e0e3ea" rx="4"/>`);
+  endVs.forEach((ev, idx) => {
+    const color = palette[idx % palette.length];
+    const y = legendY + idx * 16 + 4;
+    parts.push(`<line x1="${legendX}" y1="${y}" x2="${legendX + 16}" y2="${y}" stroke="${color}" stroke-width="2"/>`);
+    parts.push(`<circle cx="${legendX + 8}" cy="${y}" r="3" fill="${color}" stroke="#fff" stroke-width="1"/>`);
+    parts.push(`<text x="${legendX + 22}" y="${y + 4}" fill="#1f2430">${ev} В/эл</text>`);
+  });
+
+  parts.push('</svg>');
+  mount.innerHTML = parts.join('');
 }
 
 async function handleFiles(fileList) {
