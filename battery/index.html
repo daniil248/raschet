@@ -8,12 +8,25 @@
   <link rel="stylesheet" href="battery-calc.css">
   <!-- SheetJS (xlsx.full.min.js) для парсинга XLSX в браузере -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Firebase Auth (опционально). Если firebase-config.js пуст или SDK
+       не загрузился — shared/auth.js работает в локальном режиме, а
+       подпрограмма продолжает работать с uid='anonymous'. -->
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
 </head>
 <body>
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     mountHeader({ title: 'Расчёт АКБ', home: '../hub.html' });
+    // Инициализируем auth (если Firebase доступен) — чтобы per-user
+    // справочник АКБ работал даже когда подпрограмма открыта напрямую
+    // без main.js главного приложения.
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[battery] auth init failed', e));
+    }
   </script>
 
   <main>
