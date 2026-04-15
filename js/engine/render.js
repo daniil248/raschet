@@ -412,10 +412,16 @@ export function renderNodes() {
       g.appendChild(el('rect', {
         class: 'node-body group-back', x: ox, y: oy, width: w, height: NODE_H, rx: 6,
       }));
-      // Текст группы на выступающей части — выровнен по правому краю
+      // Текст группы на выступающей части — выровнен по правому краю.
+      // Если задано распределение по фазам (результат балансировки для
+      // параллельной 1ф группы) — дописываем A/B/C-счётчики.
       const totalKw = (n.count || 1) * (n.demandKw || 0);
-      const gt = text(w + ox - 8, NODE_H + oy - 6,
-        `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`, 'node-load');
+      let gLabel = `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`;
+      if (n.phaseDistribution && !n.serialMode) {
+        const pd = n.phaseDistribution;
+        gLabel += `  · A${pd.A || 0}/B${pd.B || 0}/C${pd.C || 0}`;
+      }
+      const gt = text(w + ox - 8, NODE_H + oy - 6, gLabel, 'node-load');
       gt.setAttribute('text-anchor', 'end');
       g.appendChild(gt);
     }

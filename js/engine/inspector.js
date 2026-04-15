@@ -651,9 +651,12 @@ export function wireInspectorInputs(n) {
         if (ph !== '3ph') singlePhase.push(to);
       }
       if (!singlePhase.length) { flash('Нет однофазных потребителей на щите'); return; }
-      // Жадный алгоритм: сортируем по мощности ↓, назначаем на наименее нагруженную фазу
+      // Жадный алгоритм с учётом групп:
+      //  - Последовательная группа (serialMode) = один неделимый загруз (всю группу на одну фазу)
+      //  - Параллельная группа (count>1, !serialMode) = N отдельных элементов,
+      //    распределяем по фазам так, чтобы не все сидели на одной фазе.
       const load = { A: 0, B: 0, C: 0 };
-      // Сначала учтём 3ф нагрузки
+      // 3ф нагрузки равномерно в трёх фазах
       for (const c of state.conns.values()) {
         if (c.from.nodeId !== n.id) continue;
         const to = state.nodes.get(c.to.nodeId);
@@ -661,18 +664,44 @@ export function wireInspectorInputs(n) {
         const kw = (Number(to.demandKw) || 0) * Math.max(1, Number(to.count) || 1);
         load.A += kw/3; load.B += kw/3; load.C += kw/3;
       }
-      // Сортируем однофазных по убыванию мощности
-      singlePhase.sort((a, b) => {
-        const ka = (Number(a.demandKw)||0) * Math.max(1, Number(a.count)||1);
-        const kb = (Number(b.demandKw)||0) * Math.max(1, Number(b.count)||1);
-        return kb - ka;
-      });
+      // Разворачиваем однофазных в поэлементный список (1 атом = 1 физический прибор)
+      const units = []; // { cons, unitKw, groupIdx }
       for (const cons of singlePhase) {
-        const kw = (Number(cons.demandKw) || 0) * Math.max(1, Number(cons.count) || 1);
+        const cnt = Math.max(1, Number(cons.count) || 1);
+        const perUnit = Number(cons.demandKw) || 0;
+        cons._balCounts = { A: 0, B: 0, C: 0 };
+        if (cnt > 1 && !cons.serialMode) {
+          // Разбиваем параллельную группу на cnt независимых элементов
+          for (let k = 0; k < cnt; k++) units.push({ cons, unitKw: perUnit });
+        } else {
+          // serialMode или одиночный потребитель — единый атом
+          units.push({ cons, unitKw: perUnit * cnt });
+        }
+      }
+      // Сортируем элементы по убыванию мощности
+      units.sort((a, b) => b.unitKw - a.unitKw);
+      // Жадно назначаем на наименее нагруженную фазу
+      for (const u of units) {
         const min = Math.min(load.A, load.B, load.C);
-        if (load.A === min) { cons.phase = 'A'; load.A += kw; }
-        else if (load.B === min) { cons.phase = 'B'; load.B += kw; }
-        else { cons.phase = 'C'; load.C += kw; }
+        const ph = load.A === min ? 'A' : (load.B === min ? 'B' : 'C');
+        load[ph] += u.unitKw;
+        u.cons._balCounts[ph] += 1;
+      }
+      // Записываем результат назад на потребителей
+      for (const cons of singlePhase) {
+        const bc = cons._balCounts;
+        delete cons._balCounts;
+        const cnt = Math.max(1, Number(cons.count) || 1);
+        if (cnt > 1 && !cons.serialMode) {
+          // Параллельная группа — сохраняем распределение, доминирующая фаза
+          cons.phaseDistribution = { A: bc.A, B: bc.B, C: bc.C };
+          const maxC = Math.max(bc.A, bc.B, bc.C);
+          cons.phase = bc.A === maxC ? 'A' : (bc.B === maxC ? 'B' : 'C');
+        } else {
+          // Одиночный / serial — одна фаза, распределение не нужно
+          delete cons.phaseDistribution;
+          cons.phase = bc.A > 0 ? 'A' : (bc.B > 0 ? 'B' : 'C');
+        }
       }
       _render(); renderInspector(); notifyChange();
       flash(`Баланс: A:${fmt(load.A)} B:${fmt(load.B)} C:${fmt(load.C)} kW`);
@@ -1160,12 +1189,31 @@ export function openConsumerParamsModal(n) {
   h.push(field('Количество в группе', `<input type="number" id="cp-count" min="1" max="999" step="1" value="${n.count || 1}">`));
   // Чекбокс «Последовательное соединение» — активен только при count > 1.
   // Электрически группа всё равно одна линия / один автомат / один кабель,
-  // флаг меняет только визуальное представление (иконки в ряд).
-  if ((n.count || 1) > 1) {
+  // флаг меняет: (а) визуал (иконки цепочкой); (б) режим указания нагрузки
+  // (На каждый / На всю группу); (в) балансировку фаз (serial не разбивается).
+  const _cpCount = Math.max(1, Number(n.count) || 1);
+  const _serial = _cpCount > 1 && !!n.serialMode;
+  const _loadSpec = (n.loadSpec === 'total') ? 'total' : 'per-unit';
+  if (_cpCount > 1) {
     h.push(`<div class="field check"><input type="checkbox" id="cp-serialMode"${n.serialMode ? ' checked' : ''}><label>Последовательное соединение (цепочка)</label></div>`);
+    if (_serial) {
+      h.push(field('Указание нагрузки', `
+        <select id="cp-loadSpec">
+          <option value="per-unit"${_loadSpec === 'per-unit' ? ' selected' : ''}>На каждый элемент</option>
+          <option value="total"${_loadSpec === 'total' ? ' selected' : ''}>На всю группу</option>
+        </select>`));
+    }
   }
-  h.push(field((n.count || 1) > 1 ? 'Мощность каждого, kW' : 'Установленная мощность, kW',
-    `<input type="number" id="cp-demandKw" min="0" step="0.1" value="${n.demandKw}">`));
+  // Значение в поле demandKw показываем как total или per-unit в зависимости
+  // от режима loadSpec. Внутренне n.demandKw ВСЕГДА хранится per-unit.
+  const _displayDemand = (_serial && _loadSpec === 'total')
+    ? (Number(n.demandKw || 0) * _cpCount)
+    : Number(n.demandKw || 0);
+  const _demandLabel = (_cpCount > 1)
+    ? ((_serial && _loadSpec === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
+    : 'Установленная мощность, kW';
+  h.push(field(_demandLabel,
+    `<input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}">`));
 
   // Напряжение
   const levels = GLOBAL.voltageLevels || [];
@@ -1283,7 +1331,12 @@ export function openConsumerParamsModal(n) {
     n.name = nameInput || (cat ? cat.label : n.name || 'Потребитель');
     n.count = Number(document.getElementById('cp-count')?.value) || 1;
     n.serialMode = !!document.getElementById('cp-serialMode')?.checked;
-    n.demandKw = Number(document.getElementById('cp-demandKw')?.value) || 0;
+    n.loadSpec = (document.getElementById('cp-loadSpec')?.value === 'total') ? 'total' : 'per-unit';
+    const _rawDemand = Number(document.getElementById('cp-demandKw')?.value) || 0;
+    // Всегда храним per-unit. Если пользователь ввёл total — делим на count.
+    n.demandKw = (n.serialMode && n.loadSpec === 'total' && n.count > 1)
+      ? (_rawDemand / n.count)
+      : _rawDemand;
     const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
     n.voltageLevelIdx = vIdx;
     if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
