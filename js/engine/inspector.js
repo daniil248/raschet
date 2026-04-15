@@ -671,6 +671,18 @@ export function wireInspectorInputs(n) {
           return;
         }
         n.tag = t;
+        // Зоны с одинаковым tag считаются одной сущностью — при смене
+        // tag на значение, совпадающее с другой зоной, подхватываем её
+        // имя (чтобы сохранить консистентность «одна зона — одно имя»).
+        if (n.type === 'zone') {
+          for (const other of state.nodes.values()) {
+            if (other.id === n.id || other.type !== 'zone') continue;
+            if (other.tag === t) {
+              if (other.name) n.name = other.name;
+              break;
+            }
+          }
+        }
       } else if (prop === 'on' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         setEffectiveOn(n, v);
       } else if (prop === 'manualActiveInput') {
@@ -740,6 +752,13 @@ export function wireInspectorInputs(n) {
         n[prop] = v;
         // Синхронизация цвета ИБП на одном parallel-щите
         if (prop === 'lineColor' && n.type === 'ups') syncUpsColors(n, v);
+        // Зоны: имя всех зон с тем же tag синхронизируется автоматически.
+        if (prop === 'name' && n.type === 'zone' && n.tag) {
+          for (const other of state.nodes.values()) {
+            if (other.id === n.id || other.type !== 'zone') continue;
+            if (other.tag === n.tag) other.name = v;
+          }
+        }
         // При включении trayMode — пересвязать waypoints к центру канала
         if (prop === 'trayMode' && n.type === 'channel' && v) {
           const tw = n.trayWidth || 40;
