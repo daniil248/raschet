@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Отчёт — демо-страница модуля</title>
+  <link rel="stylesheet" href="./editor.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font: 14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #1f2430;
+      background: #f4f5f7;
+    }
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+    header {
+      flex: none;
+      height: 56px;
+      background: #fff;
+      border-bottom: 1px solid #e0e3ea;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+    header h1 { font-size: 18px; font-weight: 600; color: #1f2430; }
+    .toolbar { display: flex; gap: 8px; }
+    .toolbar button {
+      background: #eef0f4;
+      border: 1px solid #d0d5de;
+      color: #1f2430;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font: 13px/1 inherit;
+      cursor: pointer;
+    }
+    .toolbar button.primary { background: #1976d2; border-color: #1976d2; color: #fff; }
+    .toolbar button:hover { filter: brightness(0.96); }
+    main {
+      flex: 1;
+      overflow: auto;
+      background: #e8eaee;
+    }
+    .hint {
+      max-width: 760px;
+      margin: 24px auto 8px;
+      padding: 12px 16px;
+      background: #fff;
+      border: 1px solid #e0e3ea;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #4a5160;
+    }
+    .hint code {
+      background: #f1f3f7;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font: 12px/1 Menlo, Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Модуль «Отчёт» — демо</h1>
+    <div class="toolbar">
+      <button id="btn-edit">Настроить шаблон…</button>
+      <button id="btn-pdf" class="primary">Скачать PDF</button>
+      <button id="btn-docx" class="primary">Скачать DOCX</button>
+    </div>
+  </header>
+  <main>
+    <div class="hint">
+      Этот демо-файл показывает, как подпрограммы могут собирать отчёт.
+      Подпрограмма не открывает <code>demo.html</code> у пользователя —
+      она импортирует <code>shared/report/index.js</code> и вызывает
+      <code>createTemplate / openTemplateEditor / exportPDF / exportDOCX</code>.
+    </div>
+    <div id="preview"></div>
+  </main>
+
+  <script type="module">
+    import * as Report from './index.js';
+    import * as B from './blocks.js';
+
+    // Стартовый шаблон с демо-содержимым
+    const tpl = Report.createTemplate({
+      meta: {
+        title:   'Отчёт о расчёте кабельной линии',
+        author:  'Raschet',
+        subject: 'Пример документа, сформированного через shared/report',
+      },
+      content: [
+        B.h1('Отчёт о расчёте кабельной линии'),
+        B.paragraph('Документ сформирован модулем shared/report и демонстрирует основные типы блоков: заголовки, абзацы, списки, таблицы и разделители.'),
+        B.h2('1. Исходные данные'),
+        B.list([
+          'Расчётный ток линии: 120 А',
+          'Номинальное напряжение: 400 В, 3 фазы',
+          'Длина линии: 80 м',
+          'Способ прокладки: E (в кабельном лотке)',
+          'Температура окружающей среды: +30 °C',
+        ]),
+        B.h2('2. Результаты расчётов'),
+        B.h3('2.1 Подбор по току нагрузки'),
+        B.paragraph('Модуль выполнен успешно. Рекомендованное минимальное сечение — 25 мм².'),
+        B.table(
+          [
+            { text: 'Параметр', width: 60 },
+            { text: 'Значение', align: 'right', width: 30 },
+            { text: 'Ед.',      align: 'center', width: 20 },
+          ],
+          [
+            ['Ток нагрузки',         '120',  'А'],
+            ['Допустимый ток',       '145',  'А'],
+            ['Коэф. коррекции',      '0.92', '—'],
+            ['Расчётное сечение',    '25',   'мм²'],
+          ],
+        ),
+        B.h3('2.2 Падение напряжения'),
+        B.paragraph('Расчётное падение напряжения составляет 2.1 %, что укладывается в норму 5 %.'),
+        B.hr(),
+        B.caption('Документ сформирован автоматически. Значения носят демонстрационный характер.'),
+      ],
+    });
+
+    const previewEl = document.getElementById('preview');
+    function redraw() { Report.renderPreview(tpl, previewEl, { mode: 'edit' }); }
+    redraw();
+
+    document.getElementById('btn-edit').addEventListener('click', () => {
+      Report.openTemplateEditor(tpl, {
+        onSave(updated) {
+          Object.assign(tpl, updated);
+          redraw();
+        },
+      });
+    });
+    document.getElementById('btn-pdf').addEventListener('click', () => {
+      Report.exportPDF(tpl, 'demo-report.pdf').catch(err => alert('PDF: ' + err.message));
+    });
+    document.getElementById('btn-docx').addEventListener('click', () => {
+      Report.exportDOCX(tpl, 'demo-report.docx').catch(err => alert('DOCX: ' + err.message));
+    });
+  </script>
+</body>
+</html>

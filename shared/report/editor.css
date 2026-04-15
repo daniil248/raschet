@@ -1,0 +1,231 @@
+/* ======================================================================
+   shared/report/editor.css
+   Стили редактора шаблона отчёта и HTML-превью страниц.
+   ====================================================================== */
+
+/* ——— превью страниц ——— */
+.rpt-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: #e8eaee;
+}
+.rpt-page {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  overflow: hidden;
+  color: #222;
+}
+.rpt-preview--edit .rpt-page {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 0 0 1px #c0c6d2;
+}
+.rpt-page__margins {
+  position: absolute;
+  border: 1px dashed #b0c4de;
+  pointer-events: none;
+}
+.rpt-page__header,
+.rpt-page__footer,
+.rpt-page__body {
+  position: absolute;
+  overflow: hidden;
+}
+.rpt-page__body { /* для прокрутки превью не нужно — обрезается */ }
+
+.rpt-zone--edit {
+  outline: 1px dashed #8ab4f8;
+  outline-offset: -1px;
+  background: rgba(138,180,248,0.04);
+}
+.rpt-body--edit {
+  outline: 1px dashed #c0c6d2;
+  outline-offset: -1px;
+}
+.rpt-page__label {
+  position: absolute;
+  bottom: 4px; left: 50%;
+  transform: translateX(-50%);
+  font: 10px/1 -apple-system, "Segoe UI", sans-serif;
+  color: #6b7280;
+  background: rgba(255,255,255,0.9);
+  padding: 1px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.rpt-logo {
+  position: absolute;
+  object-fit: contain;
+}
+.rpt-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2mm 0;
+}
+.rpt-hr { border: none; }
+.rpt-list { margin: 0; padding-left: 7mm; }
+
+/* ——— модальное окно редактора ——— */
+.rpt-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(20,25,35,0.55);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rpt-modal {
+  width: min(1200px, 95vw);
+  height: min(820px, 92vh);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font: 14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1f2430;
+}
+.rpt-modal__hdr {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid #e0e3ea;
+  background: #fafbfc;
+}
+.rpt-modal__title { font-size: 16px; font-weight: 600; }
+.rpt-modal__hdr button {
+  background: #eef0f4;
+  border: 1px solid #d0d5de;
+  color: #1f2430;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-left: 6px;
+}
+.rpt-modal__hdr button.primary {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #fff;
+}
+.rpt-modal__hdr button:hover { filter: brightness(0.96); }
+
+.rpt-modal__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.rpt-modal__tabs {
+  flex: none;
+  width: 180px;
+  border-right: 1px solid #e0e3ea;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+.rpt-modal__tabs button {
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 10px 18px;
+  font-size: 13px;
+  color: #1f2430;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.rpt-modal__tabs button:hover { background: #eef0f4; }
+.rpt-modal__tabs button.active {
+  background: #fff;
+  border-left-color: #1976d2;
+  font-weight: 600;
+}
+
+.rpt-modal__main {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+.rpt-modal__form {
+  flex: none;
+  width: 360px;
+  overflow-y: auto;
+  padding: 16px 18px;
+  border-right: 1px solid #e0e3ea;
+  background: #fff;
+}
+.rpt-modal__preview {
+  flex: 1;
+  overflow: auto;
+  background: #e8eaee;
+}
+
+/* ——— формы ——— */
+.rpt-field { margin-bottom: 12px; }
+.rpt-field > label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+.rpt-field input[type="text"],
+.rpt-field input[type="number"],
+.rpt-field select,
+.rpt-field textarea {
+  width: 100%;
+  border: 1px solid #d0d5de;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  color: #1f2430;
+  background: #fff;
+}
+.rpt-field input[type="color"] {
+  width: 44px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #d0d5de;
+  border-radius: 6px;
+  background: #fff;
+}
+.rpt-field textarea { min-height: 80px; resize: vertical; }
+.rpt-row { display: flex; gap: 8px; }
+.rpt-row > .rpt-field { flex: 1; }
+.rpt-field label.chk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1f2430;
+  font-size: 13px;
+}
+.rpt-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6b7280;
+  margin: 16px 0 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e8eaee;
+}
+.rpt-section-title:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+.rpt-style-card {
+  background: #f7f8fa;
+  border: 1px solid #e0e3ea;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.rpt-style-card h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #1f2430;
+}
