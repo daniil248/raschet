@@ -778,7 +778,25 @@ function _renderUpsBatteryBody(n) {
       clampHint = `Клэмп ↓ до ${nMax} (max по Vdc max ${vdcMax} В и ${blockVnom} В/блок)`;
     }
 
-    const stringsCat = Math.max(1, Number(n.batteryStringCount) || 1);
+    // Для S³ модулей auto-init числа шкафов: минимум, чтобы покрыть
+    // нагрузку с учётом лимита мощности одного шкафа. Делается только
+    // один раз (если batteryStringCount не задан или равен 1 и S³).
+    let stringsCat = Math.max(1, Number(n.batteryStringCount) || 1);
+    if (isS3Module && !n._s3StringsAutoInit && loadKw > 0) {
+      const pk = picked.packaging;
+      const cabPowerLimit = pk.cabinetPowerKw || 200;
+      const cabPowerByModules = (pk.maxPerCabinet || 20) * (picked.moduleRatedKw || 10);
+      const cabPower = Math.min(cabPowerByModules, cabPowerLimit);
+      const invEffLocal = Math.max(0.5, Math.min(1, upsDc.efficiency / 100));
+      const requiredKw = loadKw / invEffLocal;
+      const minCabinets = Math.max(1, Math.ceil(requiredKw / cabPower));
+      const maxCab = Number(pk.maxCabinets) || 15;
+      if (minCabinets > stringsCat) {
+        stringsCat = Math.min(minCabinets, maxCab);
+        n.batteryStringCount = stringsCat;
+      }
+      n._s3StringsAutoInit = true;
+    }
 
     // Активная мощность нагрузки (из load, kW) с учётом cos φ и КПД инвертора
     const activePowerKw = loadKw * (cosPhi || 1);
@@ -895,8 +913,19 @@ function _renderUpsBatteryBody(n) {
       `<input type="number" id="ups-batt-nblocks" min="${nMin}" max="${nMax}" step="1" value="${blocksPerString}"${blocksInputStyle}>`)}</div>`);
     const stringsMax = isS3Module ? (Number(picked.packaging.maxCabinets) || 15) : 16;
     const stringsLabel = isS3Module ? `Шкафов в параллель (1…${stringsMax})` : 'Параллельных цепочек';
+    // Предварительный расчёт перегруза: нужен для красной рамки input'а.
+    // Это дубликат логики из results-панели ниже (там считается ещё раз
+    // для BOM-блока); тут только чтобы знать, подсвечивать ли поле.
+    let s3OverloadForInput = false;
+    if (isS3Module) {
+      const pk = picked.packaging;
+      const _cabPower = Math.min(blocksPerString * (picked.moduleRatedKw || 10), pk.cabinetPowerKw || 200);
+      s3OverloadForInput = (batteryPwrReqKw > _cabPower * stringsCat);
+    }
+    const stringsInputStyle = s3OverloadForInput
+      ? ' style="border-color:#c62828;background:#ffebee"' : '';
     h.push(`<div style="flex:1">${field(stringsLabel,
-      `<input type="number" id="ups-batt-str" min="1" max="${stringsMax}" step="1" value="${stringsCat}">`)}</div>`);
+      `<input type="number" id="ups-batt-str" min="1" max="${stringsMax}" step="1" value="${stringsCat}"${stringsInputStyle}>`)}</div>`);
     h.push('</div>');
     if (clampHint) {
       h.push(`<div style="font-size:11px;color:#e65100;background:#fff8e1;border-left:3px solid #e65100;padding:4px 8px;border-radius:3px;margin-top:-4px;margin-bottom:6px">⚠ ${escHtml(clampHint)}</div>`);
@@ -1130,6 +1159,8 @@ function _renderUpsBatteryBody(n) {
         if (st.modelId !== n.batteryCatalogId) {
           snapshot('ups-batt:' + n.id + ':catalog');
           n.batteryCatalogId = st.modelId || null;
+          // Сбрасываем флаг auto-init S³ — новая модель = новый auto-расчёт
+          n._s3StringsAutoInit = false;
           if (st.battery) {
             // Применяем характеристики выбранной модели.
             const newType = st.battery.chemistry === 'li-ion' ? 'li-ion' : 'lead-acid';
