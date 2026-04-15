@@ -534,6 +534,23 @@ button.danger:hover { background: #fdecea; }
 }
 .rpt-picker-item__badge.builtin { background: #e8f5e9; color: #2e7d32; }
 .rpt-picker-item__badge.user    { background: #e3f2fd; color: #1976d2; }
+.rpt-picker-item__badge.recommended {
+  background: #fff3e0;
+  color: #e65100;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.rpt-picker-section {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #9aa3b5;
+  padding: 10px 18px 4px;
+  border-top: 1px solid #f1f3f7;
+  background: #fafbfc;
+}
+.rpt-picker-section:first-child { border-top: none; }
 .rpt-picker-footer {
   flex: none;
   display: flex;

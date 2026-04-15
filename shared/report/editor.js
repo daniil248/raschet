@@ -925,11 +925,17 @@ export function openTemplateEditor(tpl, opts = {}) {
   }
 
   function clampBox(x, y, w, h) {
+    // Overlay-зоны (логотип, шапка, футер, произвольный текст) могут
+    // лежать ГДЕ УГОДНО на странице, включая верхнее и нижнее поля —
+    // это аналог колонтитулов Word, которые по определению в margin
+    // region. Ограничение — только 2 мм safety border от краёв листа,
+    // чтобы зона не оказалась под физическим обрезом.
     const { width, height } = pageSizeMm(working.page);
-    const m = working.page.margins;
-    const minX = m.left, minY = m.top;
-    const maxX = width  - m.right  - w;
-    const maxY = height - m.bottom - h;
+    const SAFETY = 2;
+    const minX = SAFETY;
+    const minY = SAFETY;
+    const maxX = width  - SAFETY - w;
+    const maxY = height - SAFETY - h;
     return {
       x: Math.min(Math.max(x, minX), Math.max(minX, maxX)),
       y: Math.min(Math.max(y, minY), Math.max(minY, maxY)),
@@ -951,21 +957,23 @@ export function openTemplateEditor(tpl, opts = {}) {
   // визуально не вылезала за границу печати.
   function fitAllZonesToPage() {
     const { width, height } = pageSizeMm(working.page);
-    const m = working.page.margins;
-    const printW = Math.max(10, width  - m.left - m.right);
-    const printH = Math.max(5,  height - m.top  - m.bottom);
+    const SAFETY = 2;
+    const pageW = Math.max(10, width  - 2 * SAFETY);
+    const pageH = Math.max(5,  height - 2 * SAFETY);
 
     const fit = (box) => {
-      // Если зона шире / выше печатной области — уменьшаем
-      const w = Math.min(box.width  ?? printW, printW);
-      const h = Math.min(box.height ?? printH, printH);
-      const maxX = width  - m.right  - w;
-      const maxY = height - m.bottom - h;
+      // Зона ограничивается полной страницей с safety-рамкой 2 мм —
+      // такая же модель, как в clampBox. Колонтитульные зоны
+      // располагаются в верхнем/нижнем поле (вне body area).
+      const w = Math.min(box.width  ?? pageW, pageW);
+      const h = Math.min(box.height ?? pageH, pageH);
+      const maxX = width  - SAFETY - w;
+      const maxY = height - SAFETY - h;
       return {
         width:  round1(w),
         height: round1(h),
-        x: round1(Math.min(Math.max(box.x ?? m.left, m.left), Math.max(m.left, maxX))),
-        y: round1(Math.min(Math.max(box.y ?? m.top,  m.top),  Math.max(m.top,  maxY))),
+        x: round1(Math.min(Math.max(box.x ?? SAFETY, SAFETY), Math.max(SAFETY, maxX))),
+        y: round1(Math.min(Math.max(box.y ?? SAFETY, SAFETY), Math.max(SAFETY, maxY))),
       };
     };
 

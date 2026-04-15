@@ -45,13 +45,19 @@ export function pickTemplate(opts = {}) {
     ensureCss();
     const all = listTemplates();
     const tags = Array.isArray(opts.tags) ? opts.tags : null;
-    let filtered = all;
-    if (tags && tags.length) {
-      filtered = all.filter(t =>
-        tags.some(tg => (t.tags || []).includes(tg))
-      );
-      if (filtered.length === 0) filtered = all;
-    }
+
+    // В picker показываем ВСЕГДА все шаблоны — чтобы пользователь мог
+    // выбрать любой, даже если его теги не совпадают с ожиданием
+    // подпрограммы. Шаблоны, теги которых пересекаются с opts.tags,
+    // помечаются как рекомендованные и идут первыми в списке.
+    const isRecommended = (t) => {
+      if (!tags || !tags.length) return false;
+      return tags.some(tg => (t.tags || []).includes(tg));
+    };
+    const filtered = [
+      ...all.filter(isRecommended),
+      ...all.filter(t => !isRecommended(t)),
+    ];
 
     const backdrop = el('div', 'rpt-modal-backdrop');
     const modal = el('div', 'rpt-picker-modal');
@@ -106,11 +112,29 @@ export function pickTemplate(opts = {}) {
         body.appendChild(empty);
         return;
       }
-      for (const t of filtered) {
+      const recommendedCount = filtered.filter(isRecommended).length;
+      // Заголовок секции «Рекомендованные для этой задачи», если есть
+      if (recommendedCount > 0) {
+        const sec = el('div', 'rpt-picker-section');
+        sec.textContent = 'Рекомендованные для этой задачи';
+        body.appendChild(sec);
+      }
+      filtered.forEach((t, idx) => {
+        // Разделитель между рекомендованными и остальными
+        if (recommendedCount > 0 && idx === recommendedCount) {
+          const sec = el('div', 'rpt-picker-section');
+          sec.textContent = 'Остальные шаблоны';
+          body.appendChild(sec);
+        }
         const item = el('div', 'rpt-picker-item');
         if (t.id === selectedId) item.classList.add('active');
         const name = el('div', 'rpt-picker-item__name');
         name.textContent = t.name;
+        if (isRecommended(t)) {
+          const rec = el('span', 'rpt-picker-item__badge recommended');
+          rec.textContent = '✓ рекомендован';
+          name.appendChild(rec);
+        }
         const badge = el('span', 'rpt-picker-item__badge ' + (t.source === 'builtin' ? 'builtin' : 'user'));
         badge.textContent = t.source === 'builtin' ? 'Встроенный' : 'Мой';
         name.appendChild(badge);
@@ -127,7 +151,7 @@ export function pickTemplate(opts = {}) {
         });
         item.addEventListener('dblclick', ok);
         body.appendChild(item);
-      }
+      });
     };
 
     const finish = (val) => {

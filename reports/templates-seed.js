@@ -7,11 +7,15 @@
 // Пользователь не может удалять эти шаблоны — но может клонировать
 // любой из них и править клон под свои нужды.
 //
-// Для каждого шаблона предусмотрен getDemoContent(id) — персональный
-// демо-контент, который используется на странице reports/ для превью
-// и при экспорте «PDF / DOCX» из детали шаблона. Это даёт пользователю
-// реалистичное представление о том, как будет выглядеть настоящий
-// отчёт подпрограммы, построенный на этом шаблоне.
+// Модель шаблонов — «canvas-native»: колонтитулы (шапка / подвал /
+// номер страницы / дата / автор) задаются ЯВНО как overlay-зоны в
+// margin region страницы — то есть в верхнем и нижнем полях, ВНЕ
+// body area. Тело отчёта, которое подпрограмма наполнит своим
+// content'ом, никогда не наезжает на зоны. Это аналог колонтитулов
+// Word.
+//
+// Legacy поля tpl.header / tpl.footer оставлены отключёнными, чтобы
+// автомиграция в createTemplate не создавала дубли.
 //
 // Палитра выдержана в спокойных «инженерных» тонах (без ярких акцентов):
 // основной текст тёмно-серый, подписи средне-серые, таблицы с бледно-
@@ -21,7 +25,8 @@
 import * as Report from '../shared/report/index.js';
 
 // Смена версии → переcев встроенных (пользовательские не трогаем).
-export const BUILTIN_VERSION = 2;
+// v3 — все шаблоны на чистой canvas-модели (overlays в margin).
+export const BUILTIN_VERSION = 3;
 
 // ——— палитра ———
 const INK       = '#1f2430';
@@ -30,10 +35,31 @@ const MUTED     = '#6b7280';
 const BORDER    = '#c0c6d2';
 const TABLE_HEAD= '#f1f3f7';
 
-// ——— хелпер: создать Template поверх дефолтов + общего базиса ———
+// ——— отключённые legacy-колонтитулы (чтобы миграция их не тронула) ———
+const NO_LEGACY = {
+  header: {
+    firstPage:  { enabled: false, height: 0, blocks: [] },
+    otherPages: { enabled: false, height: 0, blocks: [] },
+  },
+  footer: {
+    firstPage:  { enabled: false, height: 0, blocks: [] },
+    otherPages: { enabled: false, height: 0, blocks: [] },
+  },
+};
+
+// ——— хелпер построения overlay-зоны ———
+// Короткий конструктор: hdr('scope','align','text','style') + геометрия.
+function zone(id, scope, x, y, w, h, text, styleRef = 'caption', align = 'left') {
+  return {
+    id, type: 'text', scope,
+    x, y, width: w, height: h,
+    content: { text, styleRef, align },
+  };
+}
+
+// ——— хелпер: T({page, styles, overlays}) создаёт полный шаблон ———
+// Базис с аккуратными цветами + наполненные пользователем поля.
 function T(patch) {
-  // Единый базис для всех встроенных шаблонов: аккуратные цвета,
-  // стандартные таблицы. Конкретный шаблон перекрывает что нужно.
   const base = {
     styles: {
       body:    { color: INK,      lineHeight: 1.4 },
@@ -44,8 +70,8 @@ function T(patch) {
       list:    { color: INK },
       table:   { color: INK, headBg: TABLE_HEAD, borderColor: BORDER, cellPadding: 1.8 },
     },
+    ...NO_LEGACY,
   };
-  // deep-merge через createTemplate (он использует merge поверх defaultTemplate)
   return Report.createTemplate(deepMerge(base, patch || {}));
 }
 
@@ -59,44 +85,19 @@ function deepMerge(a, b) {
   return b === undefined ? a : b;
 }
 
-// ——— колонтитулы-пресеты ———
-const noHeaderFooter = {
-  header: {
-    firstPage:  { enabled: false, height: 0, blocks: [] },
-    otherPages: { enabled: false, height: 0, blocks: [] },
-  },
-  footer: {
-    firstPage:  { enabled: false, height: 0, blocks: [] },
-    otherPages: { enabled: false, height: 0, blocks: [] },
-  },
-};
-
-const softHeaderFooter = (titleAlign = 'right') => ({
-  header: {
-    firstPage:  { enabled: true, height: 14, blocks: [
-      { type: 'paragraph', align: titleAlign, style: 'caption', text: '{{meta.title}}' },
-    ]},
-    otherPages: { enabled: true, height: 12, blocks: [
-      { type: 'paragraph', align: titleAlign, style: 'caption', text: '{{meta.title}}' },
-    ]},
-  },
-  footer: {
-    firstPage:  { enabled: true, height: 12, blocks: [
-      { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
-    ]},
-    otherPages: { enabled: true, height: 12, blocks: [
-      { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-    ]},
-  },
-});
-
 // ——————————————————————————————————————————————————————————————————————
-// Встроенные шаблоны. ID — стабильные (не меняются между версиями, иначе
-// пропадёт привязка пользователей к шаблону).
+// 12 встроенных шаблонов. ID стабильные между версиями — не меняйте.
+// Координаты overlay-зон указаны в мм для каждого формата отдельно.
+//
+// Word-подобная модель:
+//   header overlay  → y ∈ [4 .. m.top - 4]   (в верхнем margin)
+//   footer overlay  → y ∈ [h - m.bottom + 4 .. h - 4]  (в нижнем margin)
+//   margins.top/bottom подобраны так, чтобы body имел воздух и
+//   overlays помещались выше/ниже body без наезда.
 // ——————————————————————————————————————————————————————————————————————
 export const BUILTIN_TEMPLATES = [
 
-  // 1. Пустой A4 — стартовая точка без декора
+  // 1. Пустой A4 — вообще без overlays
   {
     id: 'builtin-blank-a4',
     name: 'Пустой A4',
@@ -105,11 +106,12 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Отчёт' },
-      ...noHeaderFooter,
+      page: { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      overlays: [],
     }),
   },
 
-  // 2. Простой A4 — минимум оформления, заголовок справа и номер страниц
+  // 2. Простой A4 — заголовок справа в шапке + дата и номер страницы в футере
   {
     id: 'builtin-simple-a4',
     name: 'Простой отчёт (A4)',
@@ -118,46 +120,40 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Отчёт' },
-      ...softHeaderFooter('right'),
+      page: { margins: { top: 24, right: 18, bottom: 22, left: 22 } },
+      overlays: [
+        // Шапка, y=10 (в верхнем 24-мм поле)
+        zone('hdr-title', 'all', 22, 10, 170, 6, '{{meta.title}}', 'caption', 'right'),
+        // Футер, y=283 (в нижнем 22-мм поле при высоте 297)
+        zone('ftr-meta',  'all', 22, 283, 170, 6, '{{date}}  ·  стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 3. Инженерный A4 — трёхуровневая иерархия заголовков, плотная вёрстка
+  // 3. Инженерный A4 — сильная типографика, 3 уровня заголовков
   {
     id: 'builtin-engineering-a4',
     name: 'Инженерный отчёт (A4)',
     description: 'A4, Helvetica 11 pt, три уровня заголовков. Для технических расчётов и рабочих документов.',
-    tags: ['расчёты','инженерный'],
+    tags: ['расчёты','инженерный','общее'],
     source: 'builtin',
     template: T({
       meta: { title: 'Инженерный отчёт' },
-      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      page: { margins: { top: 26, right: 18, bottom: 22, left: 22 } },
       styles: {
         h1: { size: 16, bold: true, spaceBefore: 2, spaceAfter: 4 },
         h2: { size: 13, bold: true, spaceBefore: 5, spaceAfter: 2 },
         h3: { size: 11, bold: true, spaceBefore: 3, spaceAfter: 1 },
         body: { size: 11, lineHeight: 1.4 },
       },
-      header: {
-        firstPage:  { enabled: true, height: 14, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
-        ]},
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
-        ]},
-      },
-      footer: {
-        firstPage:  { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
-        ]},
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
-        ]},
-      },
+      overlays: [
+        zone('hdr-title', 'all', 22, 11, 170, 6, '{{meta.title}}', 'caption', 'left'),
+        zone('ftr-date',  'all', 22, 283, 170, 6, '{{date}}  ·  стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 4. Расчёт кабельной линии (для cable/)
+  // 4. Расчёт кабельной линии
   {
     id: 'builtin-cable-report',
     name: 'Расчёт кабельной линии',
@@ -166,32 +162,21 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Расчёт кабельной линии' },
-      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      page: { margins: { top: 24, right: 18, bottom: 22, left: 22 } },
       styles: {
         h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
         h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
         h3: { size: 11, bold: true, spaceBefore: 3, spaceAfter: 1 },
       },
-      header: {
-        firstPage:  { enabled: true, height: 14, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт кабельной линии  ·  {{date}}' },
-        ]},
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт кабельной линии' },
-        ]},
-      },
-      footer: {
-        firstPage:  { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-        ]},
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-        ]},
-      },
+      overlays: [
+        zone('hdr-first', 'first', 22, 10, 170, 6, 'Расчёт кабельной линии  ·  {{date}}', 'caption', 'left'),
+        zone('hdr-other', 'other', 22, 10, 170, 6, 'Расчёт кабельной линии', 'caption', 'left'),
+        zone('ftr',       'all',   22, 283, 170, 6, 'стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 5. Расчёт АКБ (для battery/)
+  // 5. Расчёт АКБ
   {
     id: 'builtin-battery-report',
     name: 'Расчёт аккумуляторной батареи',
@@ -200,31 +185,20 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Расчёт аккумуляторной батареи' },
-      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      page: { margins: { top: 24, right: 18, bottom: 22, left: 22 } },
       styles: {
         h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
         h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
       },
-      header: {
-        firstPage:  { enabled: true, height: 14, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт АКБ  ·  {{date}}' },
-        ]},
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт АКБ' },
-        ]},
-      },
-      footer: {
-        firstPage:  { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-        ]},
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-        ]},
-      },
+      overlays: [
+        zone('hdr-first', 'first', 22, 10, 170, 6, 'Расчёт АКБ  ·  {{date}}', 'caption', 'left'),
+        zone('hdr-other', 'other', 22, 10, 170, 6, 'Расчёт АКБ', 'caption', 'left'),
+        zone('ftr',       'all',   22, 283, 170, 6, 'стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 6. Конфигурация ИБП (для ups-config/)
+  // 6. Конфигурация ИБП
   {
     id: 'builtin-ups-report',
     name: 'Конфигурация ИБП',
@@ -233,16 +207,19 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Конфигурация ИБП' },
-      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      page: { margins: { top: 24, right: 18, bottom: 22, left: 22 } },
       styles: {
         h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
         h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
       },
-      ...softHeaderFooter('left'),
+      overlays: [
+        zone('hdr-title', 'all', 22, 10, 170, 6, '{{meta.title}}', 'caption', 'left'),
+        zone('ftr',       'all', 22, 283, 170, 6, '{{date}}  ·  стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 7. Конфигурация щита (для panel-config/)
+  // 7. Конфигурация щита
   {
     id: 'builtin-panel-report',
     name: 'Конфигурация щита',
@@ -251,16 +228,19 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Конфигурация щита' },
-      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      page: { margins: { top: 24, right: 18, bottom: 22, left: 22 } },
       styles: {
         h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
         h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
       },
-      ...softHeaderFooter('left'),
+      overlays: [
+        zone('hdr-title', 'all', 22, 10, 170, 6, '{{meta.title}}', 'caption', 'left'),
+        zone('ftr',       'all', 22, 283, 170, 6, '{{date}}  ·  стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 8. Расчёт трансформатора (для transformer-config/)
+  // 8. Расчёт трансформатора
   {
     id: 'builtin-transformer-report',
     name: 'Расчёт трансформатора',
@@ -269,16 +249,19 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Расчёт силового трансформатора' },
-      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      page: { margins: { top: 24, right: 18, bottom: 22, left: 22 } },
       styles: {
         h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
         h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
       },
-      ...softHeaderFooter('left'),
+      overlays: [
+        zone('hdr-title', 'all', 22, 10, 170, 6, '{{meta.title}}', 'caption', 'left'),
+        zone('ftr',       'all', 22, 283, 170, 6, '{{date}}  ·  стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 9. Официальный документ (пояснительная записка, ГОСТ-стиль)
+  // 9. Официальный документ (ГОСТ-стиль)
   {
     id: 'builtin-formal-a4',
     name: 'Официальный документ (A4)',
@@ -287,97 +270,72 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Пояснительная записка' },
-      page:  { margins: { top: 25, right: 20, bottom: 25, left: 25 } },
+      page: { margins: { top: 30, right: 20, bottom: 28, left: 25 } },
       styles: {
         body:    { font: 'Times', size: 12, lineHeight: 1.5, align: 'justify', spaceAfter: 3 },
-        h1:      { font: 'Times', size: 16, bold: true, align: 'center', spaceBefore: 8, spaceAfter: 6 },
+        h1:      { font: 'Times', size: 16, bold: true, align: 'center', spaceBefore: 6, spaceAfter: 6 },
         h2:      { font: 'Times', size: 13, bold: true, spaceBefore: 5, spaceAfter: 3 },
         h3:      { font: 'Times', size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
         list:    { font: 'Times', size: 12 },
         caption: { font: 'Times', size: 10, italic: true },
         table:   { font: 'Times', size: 11, headBg: TABLE_HEAD, borderColor: BORDER },
       },
-      header: {
-        firstPage:  { enabled: false, height: 0, blocks: [] },
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: '{{meta.title}}' },
-        ]},
-      },
-      footer: {
-        firstPage:  { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}' },
-        ]},
-        otherPages: { enabled: true, height: 12, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-        ]},
-      },
+      overlays: [
+        // На первой странице только футер с датой — шапка пустая
+        zone('ftr-first', 'first', 25, 282, 165, 6, '{{date}}', 'caption', 'center'),
+        // На последующих — шапка с заголовком и футер с номером страницы
+        zone('hdr-other', 'other', 25, 14, 165, 6, '{{meta.title}}', 'caption', 'center'),
+        zone('ftr-other', 'other', 25, 282, 165, 6, 'стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 10. Техническая записка — компактный рабочий документ
+  // 10. Техническая записка — компактная рабочая
   {
     id: 'builtin-technical-note',
     name: 'Техническая записка',
     description: 'A4, Helvetica 11 pt, компактная вёрстка с подписью-предупреждением. Для рабочих заметок и черновых решений.',
-    tags: ['записка','рабочий'],
+    tags: ['записка','рабочий','общее'],
     source: 'builtin',
     template: T({
       meta: { title: 'Техническая записка' },
-      page:  { margins: { top: 18, right: 18, bottom: 18, left: 20 } },
+      page: { margins: { top: 22, right: 18, bottom: 20, left: 20 } },
       styles: {
         h1: { size: 14, bold: true, spaceBefore: 0, spaceAfter: 3 },
         h2: { size: 11, bold: true, spaceBefore: 3, spaceAfter: 1 },
         body: { size: 11, lineHeight: 1.35, spaceAfter: 2 },
         caption: { size: 9, italic: true },
       },
-      header: {
-        firstPage:  { enabled: false, height: 0, blocks: [] },
-        otherPages: { enabled: true, height: 10, blocks: [
-          { type: 'paragraph', align: 'right', style: 'caption', text: '{{meta.title}}  ·  {{date}}' },
-        ]},
-      },
-      footer: {
-        firstPage:  { enabled: true, height: 10, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
-        ]},
-        otherPages: { enabled: true, height: 10, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-        ]},
-      },
+      overlays: [
+        zone('hdr', 'other', 20, 10, 172, 6, '{{meta.title}}  ·  {{date}}', 'caption', 'right'),
+        zone('ftr', 'all',   20, 285, 172, 6, 'стр. {{page}} из {{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 
-  // 11. Ведомость (A4 альбомная) — плотная таблица с узкими полями
+  // 11. Ведомость (A4 альбомная) — плотные таблицы на широкий лист
   {
     id: 'builtin-bom-landscape',
     name: 'Ведомость (A4 альбомная)',
-    description: 'A4 альбомная, узкие поля 12 мм. Для спецификаций, кабельных журналов, ведомостей материалов.',
+    description: 'A4 альбомная, узкие поля. Для спецификаций, кабельных журналов, ведомостей материалов.',
     tags: ['ведомость','таблица','спецификация'],
     source: 'builtin',
     template: T({
       meta: { title: 'Ведомость материалов' },
-      page: { format: 'A4', orientation: 'landscape', margins: { top: 12, right: 12, bottom: 12, left: 15 } },
+      page: {
+        format: 'A4', orientation: 'landscape',
+        margins: { top: 16, right: 12, bottom: 16, left: 15 },
+      },
       styles: {
         h1: { size: 14, bold: true, spaceBefore: 0, spaceAfter: 3 },
         body: { size: 10, lineHeight: 1.3 },
         table: { font: 'Helvetica', size: 9, cellPadding: 1.5, headBg: TABLE_HEAD, borderColor: BORDER },
       },
-      header: {
-        firstPage:  { enabled: true, height: 10, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
-        ]},
-        otherPages: { enabled: true, height: 10, blocks: [
-          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
-        ]},
-      },
-      footer: {
-        firstPage:  { enabled: true, height: 10, blocks: [
-          { type: 'paragraph', align: 'right', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
-        ]},
-        otherPages: { enabled: true, height: 10, blocks: [
-          { type: 'paragraph', align: 'right', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
-        ]},
-      },
+      overlays: [
+        // Landscape A4: 297 × 210. Печатная ширина 297 - 15 - 12 = 270
+        zone('hdr', 'all', 15, 7,   270, 6, '{{meta.title}}', 'caption', 'left'),
+        zone('ftr', 'all', 15, 199, 270, 6, '{{date}}  ·  стр. {{page}} из {{pages}}', 'caption', 'right'),
+      ],
     }),
   },
 
@@ -390,7 +348,10 @@ export const BUILTIN_TEMPLATES = [
     source: 'builtin',
     template: T({
       meta: { title: 'Справка' },
-      page: { format: 'A5', orientation: 'portrait', margins: { top: 12, right: 10, bottom: 12, left: 12 } },
+      page: {
+        format: 'A5', orientation: 'portrait',
+        margins: { top: 14, right: 10, bottom: 14, left: 12 },
+      },
       styles: {
         h1: { size: 13, bold: true, spaceBefore: 0, spaceAfter: 2 },
         h2: { size: 10, bold: true, spaceBefore: 2, spaceAfter: 1 },
@@ -399,26 +360,16 @@ export const BUILTIN_TEMPLATES = [
         caption: { size: 8, italic: true },
         table: { size: 9, cellPadding: 1.2, headBg: TABLE_HEAD, borderColor: BORDER },
       },
-      header: {
-        firstPage:  { enabled: false, height: 0, blocks: [] },
-        otherPages: { enabled: false, height: 0, blocks: [] },
-      },
-      footer: {
-        firstPage:  { enabled: true, height: 8, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}' },
-        ]},
-        otherPages: { enabled: true, height: 8, blocks: [
-          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  {{page}}/{{pages}}' },
-        ]},
-      },
+      overlays: [
+        // A5: 148 × 210. Печатная ширина 148 - 12 - 10 = 126
+        zone('ftr', 'all', 12, 201, 126, 5, '{{date}}  ·  {{page}}/{{pages}}', 'caption', 'center'),
+      ],
     }),
   },
 ];
 
 // ——————————————————————————————————————————————————————————————————————
-// Демо-контент под каждый встроенный шаблон. Функция не мутирует шаблон —
-// она возвращает массив блоков, который страница reports/ вставляет в
-// клон шаблона для превью и экспорта PDF / DOCX.
+// Демо-контент под каждый встроенный шаблон (без изменений — ниже)
 // ——————————————————————————————————————————————————————————————————————
 export function getDemoContent(builtinId) {
   const B = BH;
