@@ -277,11 +277,38 @@ function _renderUpsControlBody(n) {
   const inBypassA = onBypass ? outA : 0;
   const battA = onBattery ? outA : 0;
 
-  h.push(`<div style="display:flex;gap:16px;margin-bottom:12px;padding:8px;background:#f5f7fa;border-radius:6px">
+  const overload = cap > 0 && load > cap;
+  const battPctHdr = Math.round(Number(n.batteryChargePct) || 0);
+  h.push(`<div style="display:flex;gap:16px;margin-bottom:12px;padding:8px;background:${overload ? '#ffebee' : '#f5f7fa'};border-radius:6px;${overload ? 'border:1px solid #c62828;' : ''}">
     <div>Режим: <b>${onBattery ? 'БАТАРЕЯ' : onBypass ? 'БАЙПАС' : 'ИНВЕРТОР'}</b></div>
-    <div>Нагрузка: <b>${fmt(load)} kW / ${fmt(cap)} kW (${loadPct.toFixed(0)}%)</b></div>
-    <div>АКБ: <b>${n.batteryChargePct || 0}%</b></div>
+    <div>Нагрузка: <b style="${overload ? 'color:#c62828' : ''}">${fmt(load)} kW / ${fmt(cap)} kW (${loadPct.toFixed(0)}%)</b></div>
+    <div>АКБ: <b>${battPctHdr}%</b></div>
   </div>`);
+
+  // Предупреждение о перегрузе / недостаточной мощности ИБП
+  if (overload) {
+    const deficit = load - cap;
+    let causeHint = '';
+    if (n.upsType === 'modular') {
+      const modKw = Number(n.moduleKwRated ?? n.moduleKw) || 0;
+      const installed = Number(n.moduleInstalled ?? n.moduleCount) || 0;
+      const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
+      const activeCount = Array.isArray(n.modulesActive)
+        ? n.modulesActive.filter(v => v !== false).length : installed;
+      const offCount = installed - activeCount;
+      if (offCount > 0) {
+        const needMore = modKw > 0 ? Math.ceil(deficit / modKw) : 0;
+        causeHint = ` Отключено модулей: <b>${offCount}/${installed}</b>` +
+          (redundN > 0 ? ` (из них в резерве ${redundN} по схеме ${n.redundancyScheme})` : '') +
+          (needMore > 0 ? `. Для покрытия дефицита нужно включить ещё <b>${needMore}</b> модуль(я) × ${fmt(modKw)} kW.` : '');
+      }
+    }
+    h.push(`<div style="margin-bottom:12px;padding:8px 12px;background:#fff3e0;border:1px solid #ef6c00;border-radius:6px;font-size:12px;line-height:1.7;color:#bf360c">
+      ⚠ <b>Недостаточно мощности ИБП</b>: нагрузка ${fmt(load)} kW превышает номинал ${fmt(cap)} kW на <b>${fmt(deficit)} kW</b> (${(loadPct - 100).toFixed(0)} % сверх).
+      ${causeHint}
+      ${n.staticBypass ? ' При превышении порога авто-байпаса (' + (n.staticBypassOverloadPct || 110) + ' %) ИБП перейдёт на статический байпас.' : ''}
+    </div>`);
+  }
 
   h.push(`<div style="background:#fff;border:1px solid #dfe2e8;border-radius:6px;padding:12px;margin-bottom:12px">
     <svg viewBox="0 0 780 220" style="width:100%;height:220px" xmlns="http://www.w3.org/2000/svg">${_upsStructSvg(n, { outA, inA, inBypassA, battA, onBypass, onBattery })}</svg>
