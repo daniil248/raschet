@@ -1243,11 +1243,13 @@ function recalc() {
           c._breakerUndersize = (c.manualBreakerIn < (maxCurrent / conductorsInParallel));
         } else {
           // АВТО-режим: координируем кабель и автомат, чтобы In ≤ Iz.
-          // Шаг 1: подбираем предварительный автомат по расчётному току.
+          // Шаг 1: подбираем предварительный автомат по расчётному току
+          //         С учётом минимального запаса breakerMinMarginPct.
           // Шаг 2: bump sizingCurrent до этого In, чтобы кабель вместил автомат.
           // Шаг делается только если режим 'full' (перегрузка учитывается).
           if (protMode !== 'sc-only' && maxCurrent > 0) {
-            const preBreakerIn = calcMethod.selectBreaker(maxCurrent);
+            const marginK = 1 + (Number(GLOBAL.breakerMinMarginPct) || 0) / 100;
+            const preBreakerIn = calcMethod.selectBreaker(maxCurrent * marginK);
             if (preBreakerIn > 0) {
               sizingCurrent = Math.max(maxCurrent, preBreakerIn);
             }
@@ -1333,8 +1335,11 @@ function recalc() {
       continue;
     }
 
-    // Ручной автомат: используем его номинал, иначе — авто
-    let InPerLine = c.manualBreakerIn ? Number(c.manualBreakerIn) : _calcMethod.selectBreaker(Iper);
+    // Ручной автомат: используем его номинал, иначе — авто с учётом минимального запаса.
+    const _marginK = 1 + (Number(GLOBAL.breakerMinMarginPct) || 0) / 100;
+    let InPerLine = c.manualBreakerIn
+      ? Number(c.manualBreakerIn)
+      : _calcMethod.selectBreaker(Iper * _marginK);
     // Режим защиты: 'full' (по умолчанию) — и КЗ, и перегрузка;
     //              'sc-only' — только КЗ (не проверяем In ≤ Iz)
     const _protMode = c.protectionMode || 'full';
@@ -1342,7 +1347,7 @@ function recalc() {
     c._breakerAgainstCable = _coordOverload && !!(Iz > 0 && InPerLine > Iz);
     c._breakerI2fail = false;
 
-    const InTotal = _calcMethod.selectBreaker(Itotal);
+    const InTotal = _calcMethod.selectBreaker(Itotal * _marginK);
 
     if (parallel > 1 && _protIndiv) {
       // Индивидуальная защита: per-line автоматы

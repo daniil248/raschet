@@ -792,6 +792,7 @@ function openSettingsModal() {
   set('set-installMethod', G.defaultInstallMethod ?? 'B1');
   set('set-ambient',       G.defaultAmbient ?? 30);
   set('set-parallelProtection', G.parallelProtection ?? 'individual');
+  set('set-breakerMinMarginPct', G.breakerMinMarginPct ?? 0);
   // Чекбокс: показывать справочную информацию
   const showHelpEl = document.getElementById('set-showHelp');
   if (showHelpEl) showHelpEl.checked = G.showHelp !== false;
@@ -817,6 +818,7 @@ function saveSettingsModal() {
     defaultAmbient:     Number(get('set-ambient')) || 30,
     calcMethod:         get('set-calcMethod') || 'iec',
     parallelProtection: get('set-parallelProtection') || 'individual',
+    breakerMinMarginPct: Math.max(0, Number(get('set-breakerMinMarginPct')) || 0),
     showHelp:           !!document.getElementById('set-showHelp')?.checked,
   };
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(patch)); }

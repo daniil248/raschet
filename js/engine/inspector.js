@@ -3580,6 +3580,33 @@ export function renderInspectorConn(c) {
     const _IperLine = _Imax / _parBrk;
     const _pmFlag = c.protectionMode || 'full';
     const _showHelp = GLOBAL.showHelp !== false;
+    // Минимальный запас автомата (%) из глобальных настроек
+    const _minMarginPct = Math.max(0, Number(GLOBAL.breakerMinMarginPct) || 0);
+    // Запасы:
+    //  - по автомату: (In - Iрасч) / Iрасч · 100
+    //  - по кабелю:   (Iz_total - Iрасч) / Iрасч · 100
+    const _brkMarginPct = (_Imax > 0 && effectiveIn > 0)
+      ? ((effectiveIn - _Imax) / _Imax) * 100
+      : null;
+    const _cableMarginPct = (_Imax > 0 && _IzTotal > 0)
+      ? ((_IzTotal - _Imax) / _Imax) * 100
+      : null;
+    const _fmtPct = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + '%');
+    const _marginColor = (v) => {
+      if (v == null) return '#999';
+      if (v < 0) return '#c62828';
+      if (v < _minMarginPct) return '#e65100';
+      return '#2e7d32';
+    };
+
+    // Блок запасов (и для auto, и для manual)
+    const marginBlock = () => `
+      <div style="display:flex;gap:12px;font-size:11px;margin-top:4px;padding:4px 0;border-top:1px dashed #e0e3ea">
+        <div>Запас по автомату:
+          <b style="color:${_marginColor(_brkMarginPct)}">${_fmtPct(_brkMarginPct)}</b></div>
+        <div>Запас по кабелю:
+          <b style="color:${_marginColor(_cableMarginPct)}">${_fmtPct(_cableMarginPct)}</b></div>
+      </div>`;
 
     if (manualBreaker) {
       let brkOpts = '';
@@ -3587,8 +3614,13 @@ export function renderInspectorConn(c) {
         brkOpts += `<option value="${nom}"${nom === (c.manualBreakerIn || autoIn) ? ' selected' : ''}>${nom} А</option>`;
       }
       h.push(field('Номинал автомата', `<select data-conn-prop="manualBreakerIn">${brkOpts}</select>`));
+      h.push(marginBlock());
+      // Warning если запас по автомату меньше заданного минимума
+      if (_brkMarginPct != null && _brkMarginPct >= 0 && _brkMarginPct < _minMarginPct) {
+        h.push(`<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:4px;padding:6px;font-size:11px;color:#e65100;margin-top:4px">⚠ Запас по автомату ${_brkMarginPct.toFixed(1)}% меньше минимального ${_minMarginPct}%. Повысьте номинал.</div>`);
+      }
       if (autoIn) {
-        h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${autoIn} А</b></div>`);
+        h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${autoIn} А</b>${_minMarginPct > 0 ? ` <span class="muted">(с запасом ≥${_minMarginPct}%)</span>` : ''}</div>`);
         if (_showHelp) {
           const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:4px;color:#1565c0;line-height:1.5">
@@ -3617,6 +3649,8 @@ export function renderInspectorConn(c) {
         (cnt > 1 ? `В шкафу: <b>${cnt} × ${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
         (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${fmt(_IzTotal)} А${_parBrk > 1 ? ' суммарно' : ''}) — увеличьте сечение</span>` : '') +
         `</div>`);
+      // Запасы по автомату и кабелю
+      if (effectiveIn) h.push(marginBlock());
       if (_showHelp && effectiveIn) {
         const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
         h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
