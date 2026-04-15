@@ -226,6 +226,145 @@ function openManualBatteryModal(existing = null) {
   modal.classList.add('show');
 }
 
+// ================= Модалка справки =================
+// Две секции: format (формат XLSX для загрузки) и method (методика расчёта).
+function openHelpModal(which = 'format') {
+  let modal = document.getElementById('help-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'help-modal';
+    modal.className = 'dtable-modal';
+    modal.innerHTML = `
+      <div class="dtable-box" style="max-width:820px">
+        <div class="dtable-head">
+          <h3 id="help-title"></h3>
+          <button class="dtable-close" aria-label="Закрыть">×</button>
+        </div>
+        <div class="dtable-body help-body" id="help-body"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
+    modal.querySelector('.dtable-close').addEventListener('click', () => modal.classList.remove('show'));
+  }
+  const title = document.getElementById('help-title');
+  const body = document.getElementById('help-body');
+  if (which === 'format') {
+    title.textContent = 'Формат XLSX-файлов справочника АКБ';
+    body.innerHTML = `
+      <p>Справочник импортирует таблицы Constant Power Discharge Table в
+      «long-format». Каждая строка — одна точка (endV, tMin, powerW)
+      для одной модели.</p>
+
+      <h4>Обязательные колонки</h4>
+      <table class="dtable-grid" style="margin-bottom:12px">
+        <thead><tr><th>Колонка</th><th>Тип</th><th>Описание</th></tr></thead>
+        <tbody>
+          <tr><th>Battery_Supplier</th><td>текст</td><td>Производитель (например, Kehua, Panasonic, Sonnenschein)</td></tr>
+          <tr><th>Battery_Type</th><td>текст</td><td>Модель / артикул (например, 6-GFM150, LC-P127R2PG1)</td></tr>
+          <tr><th>Capacity</th><td>число</td><td>Номинальная ёмкость блока, А·ч</td></tr>
+          <tr><th>End_Voltage</th><td>число</td><td>Конечное напряжение на элемент, В (обычно 1.60 / 1.65 / 1.70 / 1.75 / 1.80 / 1.85)</td></tr>
+          <tr><th>Time_Value</th><td>число</td><td>Длительность разряда, мин (3, 5, 10, 15, 30, 60, 120, 180, 300, 600, 1200…)</td></tr>
+          <tr><th>Power_Value</th><td>число</td><td>Мощность, W, которую отдаёт БЛОК за указанное время</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Пример строки</h4>
+      <div style="font:11px/1.5 ui-monospace,Consolas,monospace;background:#f6f8fa;padding:8px 12px;border-radius:4px;margin-bottom:12px">
+        Kehua&nbsp;&nbsp;6-GFM150&nbsp;&nbsp;150&nbsp;&nbsp;1.65&nbsp;&nbsp;60&nbsp;&nbsp;1186
+      </div>
+      <p>→ блок Kehua 6-GFM150 (150 А·ч) отдаёт 1186 W в течение 60 минут
+      при разряде до 1.65 В/элемент.</p>
+
+      <h4>Несколько моделей в одном файле</h4>
+      <p>Файл может содержать строки разных моделей — парсер автоматически
+      сгруппирует их по (Battery_Supplier, Battery_Type) и создаст отдельную
+      запись в справочнике для каждой комбинации. Для каждой группы
+      определяется химия (по имени модели: Li/LFP → li-ion, иначе VRLA),
+      напряжение блока (эвристика по имени / End_Voltage диапазону) и
+      количество элементов в блоке.</p>
+
+      <h4>Где взять данные</h4>
+      <p>Datasheets производителей АКБ. Почти у всех есть Constant Power
+      Discharge Table на данных страницах — нужно лишь перенести в XLSX
+      с указанными колонками. Проверенные источники: Kehua, Panasonic,
+      SVC, Sonnenschein, Leoch, CSB, Yuasa, Fiamm.</p>
+
+      <h4>Импортированные vs ручные записи</h4>
+      <p>Записи из XLSX помечаются замком 🔒 — они read-only. Записи,
+      созданные через «+ Добавить вручную», помечаются иконкой ✎ —
+      их можно редактировать и удалять.</p>
+    `;
+  } else if (which === 'method') {
+    title.textContent = 'Методика расчёта разряда АКБ';
+    body.innerHTML = `
+      <h4>Две модели расчёта</h4>
+      <p>Расчётный движок (<code>battery-discharge.js</code>) работает в двух режимах:</p>
+      <ol>
+        <li><b>По таблице</b> — если у выбранной модели есть Constant Power
+          Discharge Table, берутся значения прямо из неё с линейной
+          интерполяцией по времени для выбранного конечного напряжения
+          на элемент. Это точный метод, рекомендуется.</li>
+        <li><b>Усреднённая модель</b> (fallback) — если таблицы нет,
+          используется энергобалансовая формула с коэффициентом эффективности
+          разряда, учитывающим эффект Пойкерта по химии и времени.</li>
+      </ol>
+
+      <h4>Мощность на блок</h4>
+      <p>При заданной нагрузке <code>P<sub>load</sub></code> (кВт), КПД инвертора
+      <code>η<sub>inv</sub></code>, числе параллельных цепочек <code>N<sub>str</sub></code>
+      и числе блоков в цепочке <code>M<sub>blk</sub></code>:</p>
+      <div style="font:13px/1.6 ui-monospace,Consolas,monospace;background:#f6f8fa;padding:10px 14px;border-radius:4px;margin:8px 0">
+        P<sub>block</sub> = (P<sub>load</sub> × 1000 / η<sub>inv</sub>) / (N<sub>str</sub> × M<sub>blk</sub>) [W]
+      </div>
+      <p>Все блоки в цепочке несут одинаковый ток, поэтому на каждый блок
+      приходится равная доля мощности с учётом КПД инвертора.</p>
+
+      <h4>Режим «по таблице»</h4>
+      <p>Обратная интерполяция: при заданной мощности <code>P<sub>block</sub></code> и
+      выбранном <code>endV</code> находим ближайшую кривую <code>endV</code> в таблице
+      и ищем отрезок [t<sub>i</sub>, t<sub>i+1</sub>], в который попадает мощность
+      (с учётом того, что мощность монотонно убывает с ростом времени разряда):</p>
+      <div style="font:13px/1.6 ui-monospace,Consolas,monospace;background:#f6f8fa;padding:10px 14px;border-radius:4px;margin:8px 0">
+        k = (P<sub>i</sub> − P<sub>block</sub>) / (P<sub>i</sub> − P<sub>i+1</sub>)<br>
+        t = t<sub>i</sub> + (t<sub>i+1</sub> − t<sub>i</sub>) × k [мин]
+      </div>
+      <p>Если <code>P<sub>block</sub></code> больше максимальной точки кривой (слишком
+      большая нагрузка на блок) — возвращается 0 (неосуществимо). Если
+      меньше минимальной — ∞.</p>
+
+      <h4>Режим «усреднённая модель»</h4>
+      <p>Энергия блока: <code>E = V<sub>blk</sub> × C × η<sub>bat</sub>(t)</code>, где
+      <code>η<sub>bat</sub>(t)</code> — доступная доля ёмкости при данном времени
+      разряда (эффект Пойкерта). Для VRLA:</p>
+      <table class="dtable-grid" style="font-size:11px;margin-bottom:12px">
+        <thead><tr><th>t, мин</th><th>&lt; 5</th><th>5–15</th><th>15–30</th><th>30–60</th><th>60–180</th><th>≥ 180</th></tr></thead>
+        <tbody><tr><th>η<sub>bat</sub></th><td>0.45</td><td>0.58</td><td>0.68</td><td>0.78</td><td>0.85</td><td>0.90</td></tr></tbody>
+      </table>
+      <p>Для Li-Ion эффект Пойкерта слабее: η<sub>bat</sub> = 0.88…0.96
+      в том же диапазоне.</p>
+      <p>Далее итеративно подбирается время (t зависит от η<sub>bat</sub>, которое
+      зависит от t) через 5 итераций сходимости:</p>
+      <div style="font:13px/1.6 ui-monospace,Consolas,monospace;background:#f6f8fa;padding:10px 14px;border-radius:4px;margin:8px 0">
+        t<sub>n+1</sub> = (V<sub>blk</sub> × C × η<sub>bat</sub>(t<sub>n</sub>) / P<sub>block</sub>) × 60
+      </div>
+
+      <h4>Обратная задача</h4>
+      <p>Сколько блоков нужно для целевой автономии <code>t<sub>target</sub></code>?
+      Функция <code>calcRequiredBlocks</code> перебирает <code>N<sub>str</sub></code> от 1
+      вверх при фиксированном <code>M<sub>blk</sub></code> (из <code>dcVoltage /
+      battery.blockVoltage</code>) до первого <code>t ≥ t<sub>target</sub></code>, либо
+      пока totalBlocks не превысит 2000.</p>
+
+      <h4>Интеграция с конструктором схем</h4>
+      <p>В инспекторе ИБП конструктора есть модалка «🔋 АКБ» с селектором
+      моделей из справочника. Если выбрана модель с таблицей — автономия
+      считается через <code>calcAutonomy</code> с указанием «по таблице разряда»
+      (зелёный), иначе «усреднённая модель» (серый).</p>
+    `;
+  }
+  modal.classList.add('show');
+}
+
 // ================= Модалка просмотра таблицы разряда =================
 function openDischargeTableModal(battery) {
   let modal = document.getElementById('dtable-modal');
@@ -445,6 +584,11 @@ function wireUpload() {
 
   const addBtn = document.getElementById('btn-add-manual');
   if (addBtn) addBtn.addEventListener('click', () => openManualBatteryModal());
+
+  const helpFmt = document.getElementById('btn-help-format');
+  if (helpFmt) helpFmt.addEventListener('click', () => openHelpModal('format'));
+  const helpMet = document.getElementById('btn-help-method');
+  if (helpMet) helpMet.addEventListener('click', () => openHelpModal('method'));
 
   // Фильтры каталога — перерисовываем при любом изменении
   ['cat-filter-text', 'cat-filter-chem', 'cat-filter-custom'].forEach(id => {

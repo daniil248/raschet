@@ -29,6 +29,9 @@
         <div class="hint">Перетащите файлы или кликните. Формат: Battery_Supplier | Battery_Type | Capacity | End_Voltage | Time_Value | Power_Value.</div>
         <input id="upload-input" type="file" accept=".xlsx" multiple style="display:none">
       </div>
+      <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end">
+        <button type="button" id="btn-help-format" class="btn-sm">📄 Справка по формату</button>
+      </div>
 
       <div class="cat-controls">
         <h3>Модели АКБ</h3>
@@ -58,6 +61,9 @@
 
     <!-- ================== Расчёт разряда ================== -->
     <section id="tab-calc" class="tab-panel">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button type="button" id="btn-help-method" class="btn-sm">📐 Справка по методике</button>
+      </div>
       <form id="calc-form" class="calc-form">
         <div class="field-full">
           <label>Модель АКБ</label>
