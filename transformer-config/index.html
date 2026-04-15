@@ -26,32 +26,37 @@
     <div class="page-intro">
       <h2>Конфигуратор трансформатора</h2>
       <p class="muted">
-        Подбор силового трансформатора: мощность, первичное / вторичное
-        напряжение, группа соединений, потери ХХ / КЗ, напряжение КЗ u<sub>k</sub>,
-        тип охлаждения. Результат применим к любому узлу «Источник →
-        Трансформатор» в главной схеме.
+        Справочник силовых трансформаторов: мощность, первичное / вторичное
+        напряжение, группа соединений, u<sub>k</sub>, потери, охлаждение.
+        Расчёт I<sub>k</sub> по паспортным данным. Данные хранятся per-user
+        и доступны в инспекторе источника главной схемы через общий
+        <code>shared/transformer-picker.js</code>.
       </p>
     </div>
 
-    <section class="stub-card">
-      <h3>⚙ В разработке</h3>
-      <p>Подпрограмма на этапе скелета. Используемая инфраструктура:</p>
-      <ul>
-        <li><code>shared/auth.js</code> — Firebase Auth</li>
-        <li><code>shared/styles/base.css</code> — дизайн-токены</li>
-        <li><code>shared/app-header.css</code> / <code>app-header.js</code></li>
-      </ul>
-      <p>
-        Будущее наполнение: каталог трансформаторов (ABB, Siemens, ЭТК, Тольятти)
-        с XLSX-импортом, каскадный пикер Производитель → Серия → Типоразмер,
-        автоматический расчёт I<sub>k</sub> по u<sub>k</sub>, интеграция с
-        TRANSFORMER_CATALOG главного приложения.
-      </p>
-      <div style="margin-top:18px">
-        <button id="btn-back" class="btn-sm">← Вернуться в хаб</button>
+    <section class="panel">
+      <div class="panel-head">
+        <h3>Справочник трансформаторов</h3>
+        <div style="display:flex;gap:8px">
+          <button id="btn-add-manual" class="btn-sm">+ Добавить вручную</button>
+          <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить</button>
+        </div>
       </div>
+
+      <div id="tx-cascade-mount" style="margin-bottom:10px"></div>
+
+      <div id="catalog-list"></div>
+    </section>
+
+    <section class="panel" style="margin-top:20px">
+      <div class="panel-head">
+        <h3>Выбранная модель</h3>
+      </div>
+      <div id="selected-tx-details" class="empty">Выберите модель в каскаде выше.</div>
     </section>
   </main>
+
+  <div id="flash" class="flash"></div>
 
   <script type="module" src="transformer-config.js"></script>
 </body>
