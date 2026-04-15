@@ -1,5 +1,6 @@
 import { GLOBAL } from '../js/engine/constants.js';
 import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../js/methods/index.js';
+import { runModules, listModules } from '../shared/calc-modules/index.js';
 
 // Load saved global settings from localStorage (shared with constructor)
 try {
@@ -44,6 +45,35 @@ let mode = 'current';
 let currentMethod = null;
 let currentEcoMethod = null;
 
+// Состояние включённых опциональных модулей (mandatory всегда on).
+// id → bool. Инициализируется из defaultOn при первом рендере.
+const moduleEnabled = new Map();
+
+// Рендерит список модулей с чекбоксами. Mandatory — чекбокс disabled
+// + пометка 🔒, opt-модули — редактируемые.
+function renderModulesList() {
+  const wrap = document.getElementById('modules-list');
+  if (!wrap) return;
+  const items = listModules().map(mod => {
+    if (!moduleEnabled.has(mod.id)) {
+      moduleEnabled.set(mod.id, mod.mandatory || mod.defaultOn);
+    }
+    const on = moduleEnabled.get(mod.id);
+    const lockIcon = mod.mandatory ? '🔒' : '';
+    const disabled = mod.mandatory ? 'disabled' : '';
+    return `<label class="mod-item" title="${mod.description.replace(/"/g, '&quot;')}">
+      <input type="checkbox" data-mod="${mod.id}" ${on ? 'checked' : ''} ${disabled}>
+      <span class="mod-label">${lockIcon} ${mod.label}</span>
+    </label>`;
+  }).join('');
+  wrap.innerHTML = items;
+  wrap.querySelectorAll('input[data-mod]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      moduleEnabled.set(inp.dataset.mod, inp.checked);
+    });
+  });
+}
+
 // ============ Init ============
 function init() {
   // Populate method selector
@@ -83,6 +113,7 @@ function init() {
 
   switchMethod('iec');
   switchEcoMethod('pue_eco');
+  renderModulesList();
   calculate();
 }
 
@@ -229,13 +260,106 @@ function calculate() {
     ? (In < (I / parallel))
     : (In < I);
 
+  // === Запуск расчётных модулей из shared/calc-modules/ ===
+  // Обязательные (ampacity, vdrop, shortCircuit, phaseLoop) запускаются
+  // всегда; опциональные (economic) — только если пользователь включил
+  // в блоке «Расчётные модули».
+  const Ik_kA = Number(document.getElementById('in-ik')?.value) || 0;
+  const tk_s  = Number(document.getElementById('in-tk')?.value) || 0;
+  const breakerCurve = document.getElementById('in-breakerCurve')?.value || 'MCB_C';
+  const earthingSystem = document.getElementById('in-earthing')?.value || 'TN-S';
+  const enabledSet = new Set();
+  for (const [id, on] of moduleEnabled.entries()) if (on) enabledSet.add(id);
+
+  const moduleInput = {
+    I, U: vl.vLL, phases: vl.phases, dc: isDC, cosPhi: effCosPhi,
+    lengthM, maxVdropPct,
+    material, insulation, method, cableType,
+    ambient, grouping, bundling, maxSize,
+    parallel: resByAmp.parallel,
+    currentSize: finalSize,
+    calcMethod: currentMethod.id || 'iec',
+    ecoMethod: currentEcoMethod?.id || 'pue_eco',
+    economicHours: (getEcoParams().hours || 5000),
+    // КЗ
+    IkA: Ik_kA * 1000,
+    tkS: tk_s,
+    // Петля фаза-ноль
+    earthingSystem,
+    breakerIn: In,
+    breakerCurve,
+    Uph: vl.vLN || (vl.phases === 3 ? vl.vLL / Math.sqrt(3) : vl.vLL),
+  };
+  const moduleResults = runModules(moduleInput, enabledSet);
+
   renderResult(I, resByAmp, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, {
     material, insulation, method, cableType, ambient, grouping, bundling, lengthM, vl, cosPhi,
-  });
+  }, moduleResults);
+}
+
+// ============ Render module cards ============
+// Выводит карточку на каждый запущенный модуль — пользователь видит
+// влияние каждого расчёта независимо. Mandatory-модули помечены 🔒.
+function renderModuleCards(moduleResults) {
+  if (!moduleResults || !moduleResults.length) return '';
+  const cards = moduleResults.map(m => {
+    const { result } = m;
+    const passCls = result.pass ? 'ok' : 'warn';
+    const icon = m.mandatory ? '🔒 ' : '';
+    const status = result.details?.skipped
+      ? '<span class="tag-muted">пропущен</span>'
+      : (result.pass ? '<span class="tag-ok">OK</span>' : '<span class="tag-overflow">проблема</span>');
+    const warnsHtml = (result.warnings || []).map(w =>
+      `<div class="mod-warn">⚠ ${w}</div>`).join('');
+    let detailsHtml = '';
+    const d = result.details || {};
+    if (m.id === 'ampacity' && !d.skipped) {
+      detailsHtml = `
+        <div>S: <b>${d.s} мм²</b> · I<sub>z</sub>: <b>${d.iDerated?.toFixed(1)} А</b>
+          · K<sub>T</sub>×K<sub>G</sub> = ${d.kTotal?.toFixed(3) || '—'}
+          · параллель: ${d.parallel || 1}</div>`;
+    } else if (m.id === 'vdrop' && !d.skipped) {
+      detailsHtml = `
+        <div>ΔU = <b>${d.dUpct?.toFixed(2)}%</b> (${d.dUvolts?.toFixed(2)} В)
+          при ${d.s} мм² · допустимо ≤ ${d.maxPct}%</div>
+        ${d.bumpedTo ? `<div>Рекомендуется увеличить до <b>${d.bumpedTo} мм²</b></div>` : ''}`;
+    } else if (m.id === 'economic' && !d.skipped) {
+      detailsHtml = `
+        <div>j<sub>эк</sub> = <b>${d.jEk} А/мм²</b>
+          · S<sub>расч</sub> = ${d.sCalc} мм²
+          · S<sub>станд</sub> = <b>${d.sStandard} мм²</b>
+          · часов/год: ${d.hours}</div>`;
+    } else if (m.id === 'shortCircuit' && !d.skipped) {
+      detailsHtml = `
+        <div>I<sub>k</sub> = <b>${d.IkA} А</b> · t<sub>k</sub> = ${d.tkS} с
+          · k = ${d.k} (${d.material}/${d.insulation})</div>
+        <div>S<sub>min</sub> = <b>${d.sRequired} мм²</b> · текущее ${d.sCurrent} мм²</div>`;
+    } else if (m.id === 'phaseLoop' && !d.skipped) {
+      detailsHtml = `
+        <div>Система: <b>${d.earthing}</b>
+          · Z<sub>loop</sub> = <b>${d.Zloop} Ом</b>
+          · U<sub>ф</sub> = ${d.Uph} В</div>
+        <div>I<sub>k1</sub> = <b>${d.Ik1} А</b>
+          · I<sub>a</sub> = ${d.Ia} А (${d.breakerCurve} ${d.In}А × ${d.multiplier})</div>`;
+    } else if (d.skipped) {
+      detailsHtml = `<div class="muted">Пропущен: ${d.reason || 'нет данных'}</div>`;
+    }
+    return `
+      <div class="mod-card ${passCls}">
+        <div class="mod-head">
+          <span class="mod-title">${icon}${m.label}</span>
+          ${status}
+        </div>
+        <div class="mod-body">${detailsHtml}</div>
+        ${warnsHtml}
+      </div>`;
+  }).join('');
+  return `<h3 style="margin:24px 0 10px;font-size:14px;font-weight:600;color:#1f2430">Результаты расчётных модулей</h3>
+    <div class="mod-list">${cards}</div>`;
 }
 
 // ============ Render results ============
-function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, params) {
+function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, maxVdropPct, ecoResult, protection, breakerOverflow, isDC, params, moduleResults) {
   const matLabel = currentMethod.materials[params.material] || params.material;
   const insLabel = currentMethod.insulations[params.insulation] || params.insulation;
   const methLabel = currentMethod.installMethods[params.method] || params.method;
@@ -320,6 +444,8 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
     </div>
 
     ${recommendHtml}
+
+    ${renderModuleCards(moduleResults)}
 
     <h3 style="margin:20px 0 12px;font-size:14px;font-weight:600;color:#1f2430">Детали расчёта (${currentMethod.label})</h3>
     <table class="detail-table">

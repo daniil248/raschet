@@ -242,3 +242,78 @@ main {
   .panel-result { padding: 20px; }
   .result-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== Calc modules list (в форме слева) ===== */
+#modules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.mod-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+}
+.mod-item:hover { background: var(--rs-bg-hover); }
+.mod-item input[type=checkbox]:disabled + .mod-label { color: var(--rs-fg); }
+.mod-item input[type=checkbox]:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* ===== Module result cards (в панели результатов) ===== */
+.mod-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mod-card {
+  background: var(--rs-bg-card);
+  border: 1px solid var(--rs-border-soft);
+  border-left: 3px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  padding: 10px 14px;
+}
+.mod-card.ok   { border-left-color: var(--rs-success); }
+.mod-card.warn { border-left-color: var(--rs-danger); background: #fff7f7; }
+.mod-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.mod-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rs-fg);
+}
+.mod-body {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--rs-fg-muted);
+}
+.mod-body b { color: var(--rs-fg); }
+.mod-warn {
+  font-size: 11px;
+  color: var(--rs-danger);
+  margin-top: 4px;
+}
+.tag-ok {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--rs-success-bg);
+  color: var(--rs-success);
+  border-radius: 3px;
+}
+.tag-muted {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--rs-bg-soft);
+  color: var(--rs-fg-subtle);
+  border-radius: 3px;
+}
