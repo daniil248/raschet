@@ -10,6 +10,8 @@ import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort, copyZoneWithMembers } from './zones.js';
 import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './cable.js';
 import { getMethod } from '../methods/index.js';
+import { listTransformers } from '../../shared/transformer-catalog.js';
+import { mountTransformerPicker, applyTransformerModel } from '../../shared/transformer-picker.js';
 
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
 import {
@@ -420,6 +422,19 @@ export function renderInspectorNode(n) {
     // Для трансформатора: опциональный вход первичной обмотки
     if (subtype === 'transformer') {
       h.push(`<div class="field check"><input type="checkbox" data-prop="inputs" data-as-bool="1"${(n.inputs | 0) > 0 ? ' checked' : ''}><label>Вход первичной обмотки (подключение к utility)</label></div>`);
+      // === Модель из справочника трансформаторов ===
+      try {
+        const txCat = listTransformers();
+        if (txCat.length) {
+          h.push('<h4 style="margin:10px 0 4px">Модель из справочника</h4>');
+          h.push('<div id="tx-cat-picker-mount" style="margin-bottom:4px"></div>');
+          h.push(`<div class="muted" style="font-size:11px;margin-bottom:6px">Паспортные данные (S, U, u<sub>k</sub>, потери, группа) применяются к источнику. Справочник — в <a href="transformer-config/" target="_blank" style="color:#1976d2">«Конфигураторе трансформатора»</a>.</div>`);
+        } else {
+          h.push(`<div class="muted" style="font-size:11px;margin:6px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
+            Справочник трансформаторов пуст. Добавьте модели в <a href="transformer-config/" target="_blank" style="color:#1976d2">«Конфигураторе трансформатора»</a>.
+          </div>`);
+        }
+      } catch (e) { /* опционально */ }
     }
     h.push(field('Цвет линии', buildColorPalette(n)));
     // cos φ источника рассчитывается автоматически из downstream нагрузки.
@@ -615,6 +630,40 @@ export function renderInspectorNode(n) {
   h.push(renderFullPropsBlock(n));
 
   inspectorBody.innerHTML = h.join('');
+
+  // Монтируем каскадный пикер трансформаторов (если узел — источник-
+  // трансформатор и справочник не пуст).
+  try {
+    if ((n.type === 'source' || n.type === 'generator') &&
+        (n.sourceSubtype || 'transformer') === 'transformer') {
+      const txMount = document.getElementById('tx-cat-picker-mount');
+      const txCat = listTransformers();
+      if (txMount && txCat.length) {
+        mountTransformerPicker(txMount, {
+          list: txCat,
+          selectedId: n.transformerCatalogId || null,
+          currentSupplier: n._txSelSupplier || '',
+          currentSeries: n._txSelSeries || '',
+          placeholders: { supplier: '— не выбрано —', series: '— не выбрано —', model: '— не выбрано —' },
+          labels: { supplier: 'Производитель', series: 'Серия', model: 'Типоразмер' },
+          idPrefix: 'tx-cat',
+          onChange: (st) => {
+            n._txSelSupplier = st.supplier || null;
+            n._txSelSeries = st.series || null;
+            if (st.modelId && st.transformer && st.modelId !== n.transformerCatalogId) {
+              snapshot('source-params:' + n.id + ':tx-catalog');
+              applyTransformerModel(n, st.transformer);
+              _render(); notifyChange();
+              renderInspector();
+            } else if (!st.modelId && n.transformerCatalogId) {
+              n.transformerCatalogId = null;
+              renderInspector();
+            }
+          },
+        });
+      }
+    }
+  } catch (e) { /* опционально */ }
 
   // Обработчики чекбоксов страниц
   inspectorBody.querySelectorAll('[data-page-id]').forEach(cb => {
