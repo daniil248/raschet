@@ -990,7 +990,12 @@ function wirePalettePresetActions() {
     });
     if (editBtn) editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      editPresetLabel(presetId);
+      // Открываем полноценный редактор через реальные модалки параметров
+      // (тип-специфические, с валидацией и всеми полями), а не простой
+      // prompt для переименования. После сохранения палитра обновляется.
+      const preset = window.Presets?.get(presetId);
+      if (!preset) return;
+      editPresetViaModal(preset);
     });
     if (delBtn) delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1274,8 +1279,9 @@ function renderPresets(query) {
       };
       if (typeof window.Presets.add === 'function') window.Presets.add(preset);
       renderPresets(els.presetsSearch.value);
-      // Open editor immediately
-      openPresetEditor(preset);
+      // Open editor immediately — используем общий редактор через реальные
+      // модалки параметров (openPresetEditor в коде не существует).
+      editPresetViaModal(preset);
     });
   });
 }
@@ -1298,27 +1304,50 @@ function editPresetViaModal(preset) {
   R._presetEditCallback = (node) => {
     // Копируем все параметры из виртуального узла обратно в preset
     const skip = new Set(['id', 'x', 'y', 'tag', 'type']);
-    if (!preset.params) preset.params = {};
+    const newParams = { ...(preset.params || {}) };
     for (const k of Object.keys(node)) {
       if (skip.has(k) || k.startsWith('_')) continue;
-      preset.params[k] = node[k];
+      newParams[k] = node[k];
     }
-    // Title = name (всегда синхронизировано)
+    let newTitle = preset.title;
     if (node.name && node.name !== 'LIB') {
-      preset.params.name = node.name;
-      preset.title = node.name;
+      newParams.name = node.name;
+      newTitle = node.name;
     }
-    // Save to localStorage
-    if (preset.custom) {
+    // Сохраняем через публичный Presets API — работает для user-пресетов
+    // и для встроенных (через overrides). Fallback на старую логику с
+    // localStorage сохраняется на случай если Presets.update отсутствует.
+    let saved = false;
+    if (window.Presets && typeof window.Presets.update === 'function') {
       try {
-        const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-        const idx = stored.findIndex(p => p.id === preset.id);
-        if (idx >= 0) stored[idx] = preset;
-        else stored.push(preset);
-        localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
-      } catch {}
+        window.Presets.update(preset.id, { title: newTitle, params: newParams });
+        // Обновляем переданный объект preset inline — чтобы вызывающая
+        // сторона видела актуальные данные.
+        preset.title = newTitle;
+        preset.params = newParams;
+        saved = true;
+      } catch (e) { console.warn('Presets.update failed, fallback', e); }
     }
-    renderPresets(els.presetsSearch.value);
+    if (!saved) {
+      preset.title = newTitle;
+      preset.params = newParams;
+      if (preset.custom) {
+        try {
+          const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+          const idx = stored.findIndex(p => p.id === preset.id);
+          if (idx >= 0) stored[idx] = preset;
+          else stored.push(preset);
+          localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+        } catch {}
+      }
+    }
+    // Обновляем обе панели с пресетами — модальная библиотека и сайдбар
+    if (els?.presetsSearch && typeof renderPresets === 'function') {
+      renderPresets(els.presetsSearch.value);
+    }
+    if (typeof renderPalettePresets === 'function') {
+      renderPalettePresets();
+    }
     flash('Параметры обновлены');
     R._presetEditCallback = null;
   };
