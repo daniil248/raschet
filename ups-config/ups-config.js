@@ -85,17 +85,42 @@ function renderList(list) {
     wrap.innerHTML = `<div class="empty">По фильтру ничего не найдено. Очистите каскад.</div>`;
     return;
   }
+  const kindIcon = (k) => {
+    switch (k) {
+      case 'frame':              return '📦';
+      case 'power-module':       return '🔌';
+      case 'batt-cabinet-vrla':  return '🔋';
+      case 'batt-cabinet-s3':    return '🏛';
+      default:                   return '⚡'; // готовый ИБП
+    }
+  };
+  const kindLabel = (u) => {
+    const k = u.kind || 'ups';
+    if (k === 'frame')             return 'Фрейм';
+    if (k === 'power-module')      return 'Силовой модуль';
+    if (k === 'batt-cabinet-vrla') return 'Шкаф VRLA';
+    if (k === 'batt-cabinet-s3')   return 'Шкаф S³';
+    return u.upsType === 'modular' ? 'ИБП (модульный)' : 'ИБП (моноблок)';
+  };
+  const mainValue = (u) => {
+    const k = u.kind || 'ups';
+    if (k === 'frame')        return fmt(u.frameKw) + ' kW (корпус)';
+    if (k === 'power-module') return fmt(u.moduleKwRated) + ' kW (модуль)';
+    if (k === 'batt-cabinet-vrla') return (u.rackSlots || '?') + ' блоков';
+    if (k === 'batt-cabinet-s3')   return fmt(u.cabinetKwh) + ' kWh / ' + fmt(u.cabinetPowerKw) + ' kW';
+    return fmt(u.capacityKw) + ' kW';
+  };
   const rows = filtered.map(u => {
-    const typeLabel = u.upsType === 'modular' ? 'модульный' : 'моноблок';
+    const k = u.kind || 'ups';
     return `
       <tr data-id="${esc(u.id)}">
+        <td style="text-align:center;font-size:14px" title="${esc(kindLabel(u))}">${kindIcon(k)}</td>
         <td><b>${esc(u.supplier)}</b></td>
         <td>${esc(u.model)}</td>
-        <td>${esc(typeLabel)}</td>
-        <td>${fmt(u.capacityKw)} kW</td>
-        <td>${fmt(u.efficiency, 0)}%</td>
-        <td>${fmt(u.cosPhi, 2)}</td>
-        <td>${fmt(u.vdcMin, 0)}…${fmt(u.vdcMax, 0)} В</td>
+        <td>${esc(kindLabel(u))}</td>
+        <td>${mainValue(u)}</td>
+        <td>${u.efficiency ? fmt(u.efficiency, 0) + '%' : '—'}</td>
+        <td>${u.vdcMin ? fmt(u.vdcMin, 0) + '…' + fmt(u.vdcMax, 0) + ' В' : '—'}</td>
         <td>
           <button class="btn-sm btn-del" data-del="${esc(u.id)}">Удалить</button>
         </td>
@@ -104,8 +129,8 @@ function renderList(list) {
   wrap.innerHTML = `
     <table class="cat-table">
       <thead><tr>
-        <th>Производитель</th><th>Модель</th><th>Тип</th><th>P ном</th>
-        <th>КПД</th><th>cos φ</th><th>V<sub>DC</sub></th><th></th>
+        <th></th><th>Производитель</th><th>Модель</th><th>Тип</th><th>Основной параметр</th>
+        <th>КПД</th><th>V<sub>DC</sub></th><th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -134,10 +159,22 @@ function renderSelected(list) {
     return;
   }
   box.className = 'details-card';
-  box.innerHTML = `
-    <h4>${esc(u.supplier)} · ${esc(u.model)}</h4>
-    <div class="grid">
-      <div>Тип:</div><div><b>${u.upsType === 'modular' ? 'Модульный' : 'Моноблок'}</b></div>
+  const k = u.kind || 'ups';
+  const isFrame  = k === 'frame';
+  const isModule = k === 'power-module';
+  const isBattVrla = k === 'batt-cabinet-vrla';
+  const isBattS3   = k === 'batt-cabinet-s3';
+  let typeTitle;
+  if (isFrame)        typeTitle = '📦 Фрейм (корпус модульного ИБП)';
+  else if (isModule)  typeTitle = '🔌 Силовой модуль';
+  else if (isBattVrla) typeTitle = '🔋 Шкаф батарейный (VRLA/AGM)';
+  else if (isBattS3)   typeTitle = '🏛 Шкаф батарейный (Kehua S³)';
+  else typeTitle = u.upsType === 'modular' ? '⚡ ИБП (модульный)' : '⚡ ИБП (моноблок)';
+
+  let rows = `<div>Тип записи:</div><div><b>${typeTitle}</b></div>`;
+  if (!isFrame && !isModule && !isBattVrla && !isBattS3) {
+    // Готовый ИБП
+    rows += `
       <div>Номинал:</div><div><b>${fmt(u.capacityKw)} kW</b></div>
       ${u.upsType === 'modular' ? `
       <div>Корпус:</div><div><b>${fmt(u.frameKw)} kW</b> · ${u.moduleSlots || '—'} слотов</div>
@@ -146,14 +183,42 @@ function renderSelected(list) {
       <div>КПД DC–AC:</div><div><b>${fmt(u.efficiency, 0)}%</b></div>
       <div>cos φ:</div><div><b>${fmt(u.cosPhi, 2)}</b></div>
       <div>V<sub>DC</sub>:</div><div><b>${fmt(u.vdcMin, 0)}…${fmt(u.vdcMax, 0)} В</b></div>
-      <div>Входов / выходов:</div><div><b>${u.inputs || 1} / ${u.outputs || 1}</b></div>
-      <div>Источник:</div><div class="muted">${esc(u.source || '—')}</div>
-    </div>
-    <p class="muted" style="font-size:11px;margin-top:10px">
-      В будущих итерациях здесь появится кнопка «Применить к узлу схемы»,
-      которая через <code>applyUpsModel</code> из <code>shared/ups-picker.js</code>
-      обновит выбранный узел ИБП в главном приложении.
-    </p>
+      <div>Входов / выходов:</div><div><b>${u.inputs || 1} / ${u.outputs || 1}</b></div>`;
+  } else if (isFrame) {
+    rows += `
+      <div>Мощность корпуса:</div><div><b>${fmt(u.frameKw)} kW</b></div>
+      <div>Слотов под модули:</div><div><b>${u.moduleSlots || '?'}</b></div>
+      <div>Комплектация:</div><div><span class="muted">Поставляется ПУСТЫМ — силовые модули заказываются отдельно</span></div>`;
+  } else if (isModule) {
+    rows += `
+      <div>Мощность модуля:</div><div><b>${fmt(u.moduleKwRated)} kW</b></div>
+      <div>Габариты:</div><div>${esc(u.physicalDims || '—')}</div>
+      <div>Масса:</div><div>${u.weightKg ? u.weightKg + ' кг' : '—'}</div>
+      <div>КПД:</div><div><b>${fmt(u.efficiency, 0)}%</b></div>`;
+  } else if (isBattVrla) {
+    rows += `
+      <div>Посадочных мест:</div><div><b>${u.rackSlots || '?'} блоков</b></div>
+      <div>Макс. ёмкость блока:</div><div><b>${u.maxBlockAh || '?'} А·ч</b></div>
+      <div>DC шина:</div><div><b>${u.dcVoltage || '?'} В</b></div>
+      <div>Батареи:</div><div><span class="muted">VRLA/AGM заказываются отдельно</span></div>`;
+  } else if (isBattS3) {
+    rows += `
+      <div>Ёмкость шкафа:</div><div><b>${fmt(u.cabinetKwh)} kWh</b></div>
+      <div>Мощность шкафа:</div><div><b>${fmt(u.cabinetPowerKw)} kW</b> (паспорт)</div>
+      <div>Мест под модули:</div><div><b>${u.modulesPerCabinet || '?'}</b></div>
+      <div>Модель модуля:</div><div><b>${esc(u.moduleModel || '—')}</b></div>
+      <div>Модули:</div><div><span class="muted">Заказываются отдельно (см. справочник АКБ)</span></div>`;
+  }
+  rows += `<div>Источник:</div><div class="muted">${esc(u.source || '—')}</div>`;
+  if (u.notes) rows += `<div>Примечание:</div><div class="muted" style="font-size:11px">${esc(u.notes)}</div>`;
+
+  box.innerHTML = `
+    <h4>${esc(u.supplier)} · ${esc(u.model)}</h4>
+    <div class="grid">${rows}</div>
+    ${(isFrame || isModule || isBattVrla || isBattS3) ? `
+    <p class="muted" style="font-size:11px;margin-top:10px;padding:6px 10px;background:#fff8e1;border-left:3px solid #e65100;border-radius:3px">
+      ℹ Это BOM-запись (${typeTitle.replace(/^[^\s]+\s/, '')}). Она не применяется к узлу ИБП напрямую, а используется для спецификации и сметы. Расчёт автономии для S³ шкафов ведётся через модули в справочнике АКБ.
+    </p>` : ''}
   `;
 }
 

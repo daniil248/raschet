@@ -13,6 +13,21 @@
 // Источник-ссылка: страницы каталога указаны в source.
 // ======================================================================
 
+// Типы записей (поле `kind`):
+//   'ups'              — готовый ИБП (моноблок или комплектный модульный)
+//   'frame'            — пустой корпус модульного ИБП (frame), отдельный
+//                        артикул. Поле frameKw = номинал корпуса.
+//   'power-module'     — силовой модуль (power module) для модульного
+//                        ИБП. Поле moduleKwRated = номинал одного модуля.
+//   'batt-cabinet-vrla'— батарейный шкаф под VRLA/AGM блоки (12V/100Ah,
+//                        12V/150Ah и т.п.). Отдельный артикул, не S³.
+//                        Поля: rackSlots (число мест), maxBlockAh, voltage.
+//   'batt-cabinet-s3'  — батарейный шкаф под S³ модули (metadata-дубликат
+//                        записей из battery-catalog, для BOM в ups-config).
+//
+// Все эти записи хранятся в одном ups-catalog, пользователь видит их
+// через тот же каскадный пикер. В таблице деталей отображается поле
+// «Тип» (🏛 ИБП / 📦 Фрейм / 🔌 Силовой модуль / 🔋 Шкаф АКБ).
 export const KEHUA_MR33_UPSES = [
   // ================== MR33 Series Modular UPS ==================
   // MR33120 (30 kW module, 120 kVA, Industrial)
@@ -469,5 +484,173 @@ export const KEHUA_MR33_UPSES = [
     source: 'Kehua UPS Catalog 2024-10-22, p.31', importedAt: 0, custom: false,
     batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
     notes: 'KR33 стандарт 1200 кВА. Макс. моноблок в линейке KR33.',
+  },
+
+  // ==================== FRAMES (корпуса модульных ИБП) ====================
+  // Пустой корпус — отдельный артикул. Мощность корпуса (frameKw) — это
+  // максимум, который можно установить в данный frame модулями.
+  // Поле kind:'frame' помечает запись как фрейм.
+  {
+    id: 'kehua-mr33-frame-500k',
+    kind: 'frame',
+    supplier: 'Kehua', model: 'MR33 Frame 500K',
+    upsType: 'modular',
+    capacityKw: 0, frameKw: 500, moduleSlots: 10,
+    efficiency: 0, cosPhi: 0, vdcMin: 360, vdcMax: 600, inputs: 2, outputs: 1,
+    source: 'Kehua UPS Catalog 2024-10-22, p.19', importedAt: 0, custom: false,
+    batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
+    notes: 'ПУСТОЙ корпус MR33 на 500 кВт (10 слотов × 50 кВт или 10 × 30 кВт). Габариты 600×860×2000 мм, масса 224 кг. Требует отдельно силовые модули (MR33 PM 50K / 30K).',
+  },
+  {
+    id: 'kehua-mr33-frame-1000k',
+    kind: 'frame',
+    supplier: 'Kehua', model: 'MR33 Frame 1000K',
+    upsType: 'modular',
+    capacityKw: 0, frameKw: 1000, moduleSlots: 10,
+    efficiency: 0, cosPhi: 0, vdcMin: 360, vdcMax: 600, inputs: 2, outputs: 1,
+    source: 'Kehua UPS Catalog 2024-10-22, p.20', importedAt: 0, custom: false,
+    batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
+    notes: 'ПУСТОЙ корпус MR33 на 1000 кВт (10 слотов × 100 кВт). Габариты 800×1000×2000 мм, масса 417 кг. Требует отдельно силовые модули MR33 PM 100K.',
+  },
+  {
+    id: 'kehua-mr33-frame-1200k',
+    kind: 'frame',
+    supplier: 'Kehua', model: 'MR33 Frame 1200K',
+    upsType: 'modular',
+    capacityKw: 0, frameKw: 1200, moduleSlots: 12,
+    efficiency: 0, cosPhi: 0, vdcMin: 360, vdcMax: 600, inputs: 2, outputs: 1,
+    source: 'Kehua UPS Catalog 2024-10-22, p.20', importedAt: 0, custom: false,
+    batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
+    notes: 'ПУСТОЙ корпус MR33 на 1200 кВт (12 слотов × 100 кВт). Габариты 1400×1000×2000 мм, масса 580 кг.',
+  },
+
+  // ==================== POWER MODULES (силовые модули) ====================
+  // Отдельный артикул. Устанавливается в соответствующий фрейм.
+  // kind:'power-module', moduleKwRated = номинал одного модуля.
+  {
+    id: 'kehua-mr33-pm-30k',
+    kind: 'power-module',
+    supplier: 'Kehua', model: 'MR33 PM 30K',
+    upsType: 'modular',
+    capacityKw: 0, moduleKwRated: 30,
+    efficiency: 96, cosPhi: 1.0, vdcMin: 336, vdcMax: 552,
+    inputs: 0, outputs: 0,
+    source: 'Kehua UPS Catalog 2024-10-22, p.19', importedAt: 0, custom: false,
+    batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
+    notes: 'Силовой модуль 30 кВт, 2U, 440×640×86 мм, 24 кг. Ставится в MR33 Frame 120/500 (до 10 шт). КПД до 96%.',
+    physicalDims: '440×640×86 мм',
+    weightKg: 24,
+  },
+  {
+    id: 'kehua-mr33-pm-50k',
+    kind: 'power-module',
+    supplier: 'Kehua', model: 'MR33 PM 50K',
+    upsType: 'modular',
+    capacityKw: 0, moduleKwRated: 50,
+    efficiency: 96, cosPhi: 1.0, vdcMin: 360, vdcMax: 552,
+    inputs: 0, outputs: 0,
+    source: 'Kehua UPS Catalog 2024-10-22, p.19', importedAt: 0, custom: false,
+    batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
+    notes: 'Силовой модуль 50 кВт, 3U, 440×640×130 мм, 33 кг. Ставится в MR33 Frame 500 (до 10 шт = 500 кВт). КПД до 96%.',
+    physicalDims: '440×640×130 мм',
+    weightKg: 33,
+  },
+  {
+    id: 'kehua-mr33-pm-100k',
+    kind: 'power-module',
+    supplier: 'Kehua', model: 'MR33 PM 100K',
+    upsType: 'modular',
+    capacityKw: 0, moduleKwRated: 100,
+    efficiency: 97, cosPhi: 1.0, vdcMin: 360, vdcMax: 600,
+    inputs: 0, outputs: 0,
+    source: 'Kehua UPS Catalog 2024-10-22, p.20', importedAt: 0, custom: false,
+    batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
+    notes: 'Силовой модуль 100 кВт, 3U, 440×750×130 мм, 47 кг. Ставится в MR33 Frame 1000/1200. КПД до 97%. High-density дизайн.',
+    physicalDims: '440×750×130 мм',
+    weightKg: 47,
+  },
+
+  // ==================== BATTERY CABINETS (шкафы под VRLA / под S³) ==================
+  // Шкафы под VRLA/AGM блоки — стандартные стальные корпуса с полками.
+  // Число посадочных мест (rackSlots) и максимальная ёмкость блока зависят
+  // от модели. Эти записи — заготовки, реальные артикулы пользователь
+  // добавит через «+ Добавить вручную» под свой проект.
+  {
+    id: 'generic-vrla-cab-40blocks',
+    kind: 'batt-cabinet-vrla',
+    supplier: 'Generic', model: 'VRLA-Cab 40 blocks',
+    upsType: 'monoblock',
+    capacityKw: 0,
+    efficiency: 0, cosPhi: 0, vdcMin: 0, vdcMax: 0, inputs: 0, outputs: 0,
+    source: 'Типовой шкаф под VRLA', importedAt: 0, custom: false,
+    batteryTypes: ['vrla'], compatibleS3: false,
+    notes: 'Типовой металлический шкаф под VRLA/AGM до 40 блоков 12V (например 40×12V100Ah = 480V строка). Без модулей DC/DC — батареи подключаются напрямую к QB ИБП. Поставляется пустым, VRLA заказываются отдельно.',
+    rackSlots: 40,
+    maxBlockAh: 200,
+    dcVoltage: 480,
+  },
+  {
+    id: 'generic-vrla-cab-60blocks',
+    kind: 'batt-cabinet-vrla',
+    supplier: 'Generic', model: 'VRLA-Cab 60 blocks',
+    upsType: 'monoblock',
+    capacityKw: 0,
+    efficiency: 0, cosPhi: 0, vdcMin: 0, vdcMax: 0, inputs: 0, outputs: 0,
+    source: 'Типовой шкаф под VRLA', importedAt: 0, custom: false,
+    batteryTypes: ['vrla'], compatibleS3: false,
+    notes: 'Расширенный шкаф под VRLA до 60 блоков 12V (например 60×12V100Ah, если нужно 720V или несколько цепочек). Обычно используется для длительной автономии.',
+    rackSlots: 60,
+    maxBlockAh: 250,
+    dcVoltage: 720,
+  },
+
+  // S³ battery cabinets — metadata-дубликат записей из battery-catalog,
+  // нужен для BOM в ups-config (чтобы вся спецификация ИБП+АКБ была
+  // в одном месте). Реальная логика расчёта автономии — по записям
+  // модулей в battery-catalog.
+  {
+    id: 'kehua-s3c040-cabinet',
+    kind: 'batt-cabinet-s3',
+    supplier: 'Kehua', model: 'S3C040-6C-20-M',
+    upsType: 'monoblock',
+    capacityKw: 200,
+    efficiency: 0, cosPhi: 0, vdcMin: 240, vdcMax: 480, inputs: 0, outputs: 0,
+    source: 'Kehua UPS Catalog 2024-10-22, p.39', importedAt: 0, custom: false,
+    batteryTypes: ['li-ion-s3'], compatibleS3: true,
+    notes: 'Шкаф S³ 41 кВт·ч / 200 кВт. 20 посадочных мест под модули S3M040-6C-240-X (40 А·ч, 10 кВт, short-time backup). Габариты 600×860×2000 мм, масса 965 кг (пустой). Поставляется с SBMU и распределением; модули — отдельно.',
+    cabinetKwh: 41,
+    cabinetPowerKw: 200,
+    modulesPerCabinet: 20,
+    moduleModel: 'S3M040-6C-240-X',
+  },
+  {
+    id: 'kehua-s3c050-cabinet',
+    kind: 'batt-cabinet-s3',
+    supplier: 'Kehua', model: 'S3C050-4C-20-M',
+    upsType: 'monoblock',
+    capacityKw: 200,
+    efficiency: 0, cosPhi: 0, vdcMin: 240, vdcMax: 480, inputs: 0, outputs: 0,
+    source: 'Kehua UPS Catalog 2024-10-22, p.39', importedAt: 0, custom: false,
+    batteryTypes: ['li-ion-s3'], compatibleS3: true,
+    notes: 'Шкаф S³ 58 кВт·ч / 200 кВт. 20 мест под S3M050-4C-240-X (50 А·ч, 10 кВт, medium-time). Габариты 600×860×2000 мм, масса 1000 кг.',
+    cabinetKwh: 58,
+    cabinetPowerKw: 200,
+    modulesPerCabinet: 20,
+    moduleModel: 'S3M050-4C-240-X',
+  },
+  {
+    id: 'kehua-s3c100-cabinet',
+    kind: 'batt-cabinet-s3',
+    supplier: 'Kehua', model: 'S3C100-1C-12-M',
+    upsType: 'monoblock',
+    capacityKw: 60,
+    efficiency: 0, cosPhi: 0, vdcMin: 240, vdcMax: 480, inputs: 0, outputs: 0,
+    source: 'Kehua UPS Catalog 2024-10-22, p.39', importedAt: 0, custom: false,
+    batteryTypes: ['li-ion-s3'], compatibleS3: true,
+    notes: 'Шкаф S³ 69 кВт·ч / 60 кВт. 12 мест под S3M100-1C-240-X (100 А·ч, 5 кВт, long-time backup 1…4 ч). Габариты 600×860×2000 мм, масса 860 кг.',
+    cabinetKwh: 69,
+    cabinetPowerKw: 60,
+    modulesPerCabinet: 12,
+    moduleModel: 'S3M100-1C-240-X',
   },
 ];
