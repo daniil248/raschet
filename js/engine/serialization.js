@@ -145,6 +145,19 @@ export function deserialize(data) {
     if ((n.type === 'source' || n.type === 'generator') && !n.sourceSubtype) {
       n.sourceSubtype = n.type === 'generator' ? 'generator' : 'transformer';
     }
+    // Миграция: трансформатору присваиваем inputs=1 (первичная обмотка)
+    if (n.type === 'source' && (n.sourceSubtype || 'transformer') === 'transformer') {
+      if (typeof n.inputs !== 'number' || n.inputs < 1) n.inputs = 1;
+      if (typeof n.inputVoltageLevelIdx !== 'number') n.inputVoltageLevelIdx = 3;
+    }
+    // Миграция utility: гарантируем базовые поля
+    if (n.type === 'utility') {
+      if (typeof n.inputs !== 'number') n.inputs = 0;
+      if (typeof n.outputs !== 'number') n.outputs = 1;
+      if (!n.phase) n.phase = '3ph';
+      if (typeof n.voltageLevelIdx !== 'number') n.voltageLevelIdx = 3;
+      if (typeof n.xsRsRatio !== 'number') n.xsRsRatio = 10;
+    }
     // Миграция уровня напряжения — если нет voltageLevelIdx, выводим из phase
     if (typeof n.voltageLevelIdx !== 'number' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups' || n.type === 'consumer')) {
       const ph = n.phase || '3ph';

@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.21.6';
+export const APP_VERSION = '0.22.0';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -245,13 +245,37 @@ export const DEFAULTS = {
   source:    () => ({
     name: 'Ввод ТП', comment: '', lineColor: nextLineColor(), capacityKw: 100, on: true,
     sourceSubtype: 'transformer',
+    // Трансформатор имеет ОДИН вход (первичная обмотка) для подключения к
+    // городской сети / внешнему источнику ВН. По умолчанию не используется,
+    // но порт присутствует чтобы можно было привязать utility.
+    inputs: 1,
+    outputs: 1,
     phase: '3ph', voltage: 400, cosPhi: 0.95,
-    sscMva: 500,            // мощность КЗ сети, МВА
+    voltageLevelIdx: 0,     // вторичная обмотка (LV)
+    inputVoltageLevelIdx: 3, // первичная (10kV по умолчанию)
+    sscMva: 500,            // мощность КЗ сети, МВА (если нет utility — fallback)
     ukPct: 6,               // напряжение КЗ трансформатора, %
     xsRsRatio: 10,          // Xs/Rs (для ТП ~10, для ДГУ ~0.5)
     snomKva: 400,           // номинальная мощность трансформатора, кВА
     pkW: 6,                 // потери КЗ трансформатора, кВт (Pk)
     p0W: 1.5,               // потери холостого хода, кВт (P0 / Pfe)
+  }),
+  // Utility — «городская сеть» / ЛЭП. Не отображается карточкой, рисуется
+  // компактным символом опоры ЛЭП. Подключается к входу трансформатора.
+  utility:   () => ({
+    name: 'Городская сеть', comment: '', lineColor: nextLineColor(), on: true,
+    sourceSubtype: 'utility',
+    inputs: 0,
+    outputs: 1,
+    phase: '3ph', voltage: 10000, cosPhi: 1,
+    voltageLevelIdx: 3,     // 10kV 3P по умолчанию (высоковольтный ввод)
+    // Параметры для расчёта КЗ на шинах utility:
+    //   Ikka  — ток трёхфазного КЗ в точке подключения, кА (приоритет)
+    //   sscMva— мощность КЗ сети, МВА (альтернатива)
+    //   xsRsRatio — отношение X/R
+    ikKA: 10,
+    sscMva: 250,
+    xsRsRatio: 10,
   }),
   generator: () => ({
     name: 'ДГУ', comment: '', lineColor: nextLineColor(), capacityKw: 60, on: true, backupMode: true,
@@ -430,4 +454,5 @@ export const TAG_PREFIX = {
   consumer:  'L',
   channel:   'CH',
   zone:      'Z',
+  utility:   'UT',
 };

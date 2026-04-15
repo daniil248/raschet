@@ -402,6 +402,7 @@ input, select { font: inherit; }
 .chip.cns { background: #1976d2; }
 .chip.chn { background: #795548; }
 .chip.zne { background: #00838f; }
+.chip.utl { background: #455a64; }
 
 .stats {
   font-size: 12px;
@@ -536,6 +537,8 @@ input, select { font: inherit; }
 
 .node.source   .node-body { fill: #e8f5e9; stroke: #4caf50; }
 .node.generator .node-body { fill: #fff3e0; stroke: #ff9800; }
+.node.utility { cursor: move; }
+.node.utility .node-tag { font: 700 11px -apple-system, sans-serif; fill: #455a64; text-anchor: middle; }
 .node.panel    .node-body { fill: #eceff1; stroke: #607d8b; }
 .node.ups      .node-body { fill: #f3e5f5; stroke: #9c27b0; }
 .node.consumer .node-body { fill: #e3f2fd; stroke: #1976d2; }

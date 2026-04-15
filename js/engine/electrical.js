@@ -2,6 +2,7 @@
 
 import { GLOBAL } from './constants.js';
 import { effectiveLoadFactor } from './modes.js';
+import { state } from './state.js';
 
 // Напряжение потребителя по фазе
 // Возвращает межфазное напряжение (V_LL) для узла
@@ -85,31 +86,70 @@ export function upsChargeKw(ups) {
 export function sourceImpedance(n) {
   const U = nodeVoltage(n);
   const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
-  // Прочий источник (городская сеть / ВРУ) — импеданс выводится напрямую
-  // из Ik или Ssc, без доп. трансформатора/генератора.
-  if (subtype === 'other') {
+
+  // Utility (городская сеть / ЛЭП) — импеданс на стороне её собственного
+  // напряжения (обычно HV). Приоритет у Ik (IEC 60909).
+  if (n.type === 'utility') {
     const ikA = (Number(n.ikKA) || 0) * 1000;
-    if (ikA > 0) {
-      // Z = c·U / (√3 · Ik), c=1.1 (IEC 60909)
-      return (1.1 * U) / (Math.sqrt(3) * ikA);
-    }
+    if (ikA > 0) return (1.1 * U) / (Math.sqrt(3) * ikA);
     const Ssc = (Number(n.sscMva) || 0) * 1e6;
     if (Ssc > 0) return (U * U) / Ssc;
-    return 0.05; // fallback
+    return 1e-6;
   }
-  const Ssc = (Number(n.sscMva) || 500) * 1e6; // ВА
-  // Zq = U² / Ssc — импеданс питающей сети
+
+  // Прочий источник — как раньше.
+  if (subtype === 'other') {
+    const ikA = (Number(n.ikKA) || 0) * 1000;
+    if (ikA > 0) return (1.1 * U) / (Math.sqrt(3) * ikA);
+    const Ssc = (Number(n.sscMva) || 0) * 1e6;
+    if (Ssc > 0) return (U * U) / Ssc;
+    return 0.05;
+  }
+
+  // Трансформатор: Zs_total = Zt (собственный) + Z_upstream (приведённая
+  // от первичной к вторичной стороне).
+  // Если на входе трансформатора есть utility — приводим её Zs с HV к LV
+  // по квадрату коэффициента трансформации.
+  if (n.type === 'source' && subtype === 'transformer') {
+    const Snom = (Number(n.snomKva) || 400) * 1000;
+    const Uk = Number(n.ukPct) || 0;
+    const Zt = Uk > 0 ? (Uk / 100) * (U * U) / Snom : 0; // на стороне LV
+
+    // Найти upstream utility через state.conns
+    let Zup = 0;
+    for (const c of state.conns.values()) {
+      if (c.to?.nodeId !== n.id) continue;
+      if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+      const up = state.nodes.get(c.from.nodeId);
+      if (up && up.type === 'utility') {
+        const Zup_hv = sourceImpedance(up); // на HV стороне
+        const levels = GLOBAL.voltageLevels || [];
+        const priIdx = typeof n.inputVoltageLevelIdx === 'number' ? n.inputVoltageLevelIdx : 3;
+        const Uprim = (levels[priIdx] && levels[priIdx].vLL) || 10000;
+        const Usec = U;
+        // Приведение к вторичной стороне: Z' = Z × (Usec/Uprim)²
+        const ratio = Usec / Uprim;
+        Zup = Zup_hv * ratio * ratio;
+        break;
+      }
+    }
+    if (Zup === 0) {
+      // Fallback: старая модель с sscMva (если utility не подключена)
+      const Ssc = (Number(n.sscMva) || 500) * 1e6;
+      Zup = (U * U) / Ssc;
+    }
+    return Zup + Zt;
+  }
+
+  // Generator
+  const Ssc = (Number(n.sscMva) || 500) * 1e6;
   const Zq = (U * U) / Ssc;
   const Snom = (Number(n.snomKva) || 400) * 1000;
   const isGen = n.type === 'generator' || (subtype === 'generator');
   if (isGen) {
-    // Zg = Xd'' × U² / Snom — сверхпереходный импеданс генератора
     const xdpp = Number(n.xdpp) || 0.15;
     const Zg = xdpp * (U * U) / Snom;
     return Zq + Zg;
   }
-  // Zt = Uk% × U² / (100 × Snom) — импеданс трансформатора
-  const Uk = Number(n.ukPct) || 0;
-  const Zt = Uk > 0 ? (Uk / 100) * (U * U) / Snom : 0;
-  return Zq + Zt; // Ом (упрощённая сумма)
+  return Zq;
 }

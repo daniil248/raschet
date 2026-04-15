@@ -1118,9 +1118,15 @@ function recalc() {
     const toN = state.nodes.get(c.to.nodeId);
     if (!fromN || !toN) continue;
 
-    // Характеристики линии — берутся с downstream-узла
-    const threePhase = isThreePhase(toN);
-    const U = nodeVoltage(toN);
+    // Характеристики линии — берутся с downstream-узла.
+    // Исключение: связь utility → трансформатор идёт на ПЕРВИЧНОЙ стороне
+    // трансформатора (HV). Тогда напряжение и фазность берутся с utility
+    // (= первичное напряжение трансформатора).
+    const isUtilityToTransformer = fromN.type === 'utility'
+      && toN.type === 'source'
+      && (toN.sourceSubtype || 'transformer') === 'transformer';
+    const threePhase = isUtilityToTransformer ? isThreePhase(fromN) : isThreePhase(toN);
+    const U = isUtilityToTransformer ? nodeVoltage(fromN) : nodeVoltage(toN);
 
     // Эффективный cos φ линии:
     //   к потребителю → его cos φ

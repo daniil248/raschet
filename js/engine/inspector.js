@@ -208,6 +208,68 @@ export function renderInspectorNode(n) {
   }
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
+  if (n.type === 'utility') {
+    // Utility — компактные параметры прямо в инспекторе
+    const levels = GLOBAL.voltageLevels || [];
+    const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 3;
+    let vOpts = '';
+    for (let i = 0; i < levels.length; i++) {
+      vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(levels[i].label)} (${levels[i].vLL}V)</option>`;
+    }
+    h.push(field('Напряжение сети', `<select data-prop="voltageLevelIdx">${vOpts}</select>`));
+    h.push(field('Ток трёхфазного КЗ Ik, кА', `<input type="number" data-prop="ikKA" min="0" max="200" step="0.1" value="${n.ikKA ?? 10}">`));
+    h.push(field('ИЛИ Мощность КЗ сети Ssc, МВА', `<input type="number" data-prop="sscMva" min="0" max="10000" step="1" value="${n.sscMva ?? 250}">`));
+    h.push(field('Отношение Xs/Rs', `<input type="number" data-prop="xsRsRatio" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
+    // Вычисленные значения
+    const U = nodeVoltage(n);
+    const Zs = sourceImpedance(n);
+    const IkMax = Zs > 0 ? (1.1 * U) / (Math.sqrt(3) * Zs) : Infinity;
+    h.push(`<div class="inspector-section"><div style="font-size:12px;line-height:1.8">` +
+      `Zs: <b>${(Zs * 1000).toFixed(2)} мОм</b><br>` +
+      (isFinite(IkMax) ? `Ik max: <b>${fmt(IkMax / 1000)} кА</b> при ${U} В` : 'Ik: ∞') +
+      `</div></div>`);
+    h.push(field('Комментарии', `<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical">${escHtml(n.comment || '')}</textarea>`));
+    h.push('<button class="btn-delete" id="btn-del-node">Удалить элемент</button>');
+
+    // === Страницы ===
+    {
+      const allowed = pagesForNode(n);
+      if (allowed.length > 1) {
+        const curPids = Array.isArray(n.pageIds) ? n.pageIds : (state.currentPageId ? [state.currentPageId] : []);
+        h.push('<div class="inspector-section"><h4>Страницы</h4>');
+        for (const p of allowed) {
+          const checked = curPids.includes(p.id);
+          const isHome = p.type !== 'linked';
+          const disabled = isHome ? ' disabled' : '';
+          h.push(`<div class="field check"><input type="checkbox" data-page-id="${escAttr(p.id)}"${checked ? ' checked' : ''}${disabled}><label>${escHtml(p.name || p.id)}${isHome ? ' <span class="muted" style="font-size:10px">(home)</span>' : ' <span class="muted" style="font-size:10px">(ссыл.)</span>'}</label></div>`);
+        }
+        h.push('</div>');
+      }
+    }
+
+    inspectorBody.innerHTML = h.join('');
+    wireInspectorInputs(n);
+    // Handlers pageIds (копия из базового блока)
+    inspectorBody.querySelectorAll('[data-page-id]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        snapshot('node-pages:' + n.id);
+        const pid = cb.dataset.pageId;
+        let pids = Array.isArray(n.pageIds) ? n.pageIds.slice() : (state.currentPageId ? [state.currentPageId] : []);
+        if (cb.checked) {
+          if (!pids.includes(pid)) pids.push(pid);
+        } else {
+          pids = pids.filter(x => x !== pid);
+          if (pids.length === 0) { pids = [state.currentPageId]; cb.checked = true; }
+        }
+        n.pageIds = pids;
+        notifyChange();
+        _render();
+        renderInspector();
+      });
+    });
+    return;
+  }
+
   if (n.type === 'source' || n.type === 'generator') {
     const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
     h.push(field('Тип источника',
