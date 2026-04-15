@@ -571,7 +571,13 @@ function _renderUpsBatteryBody(n) {
 
   const U = nodeVoltage(n);
   const k3 = isThreePhase(n) ? Math.sqrt(3) : 1;
-  const load = n._loadKw || 0;
+  // Для расчёта АКБ всегда используем МАКСИМАЛЬНУЮ нагрузку на ИБП
+  // (n._maxLoadKw), а не текущую (_loadKw) — батарея должна выдержать
+  // наихудший сценарий, а не мгновенное потребление.
+  //   _maxLoadKw — максимум по всем сценариям (см. recalc.js)
+  //   _loadKw    — текущая (расчётная) нагрузка
+  //   capacityKw — номинал ИБП (fallback, если downstream не посчитан)
+  const load = n._maxLoadKw || n._loadKw || 0;
   const cap = Number(n.capacityKw) || 0;
 
   const bt = n.batteryType || 'lead-acid';
@@ -608,7 +614,7 @@ function _renderUpsBatteryBody(n) {
     Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
     Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> / <b>${fmt(kwh)} kWh</b><br>
     Заряд: <b>${pct}%</b> → запас <b>${fmt(storedKwh)} kWh</b><br>
-    Оценка автономии на нагрузке ${fmt(loadKw)} kW:
+    Оценка автономии на <b>макс.</b> нагрузке ${fmt(loadKw)} kW:
     <b id="ups-batt-autonomy">${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
     <span id="ups-batt-autonomy-method" class="muted" style="font-size:10px;margin-left:4px">(по kWh)</span>
   </div>`);
@@ -1801,15 +1807,22 @@ export function upsStatusBlock(n) {
   if (n._ikA && isFinite(n._ikA)) parts.push(`Ik на выходе: <b>${fmt(n._ikA / 1000)} кА</b>`);
   const battKwh = (Number(n.batteryKwh) || 0) * (Number(n.batteryChargePct) || 0) / 100;
   parts.push(`запас батареи: <b>${fmt(battKwh)} kWh</b> (${n.batteryChargePct || 0}%)`);
-  if (n._loadKw > 0) {
-    const hrs = battKwh / n._loadKw;
+  // Автономия: основной показатель — при МАКСИМАЛЬНОЙ нагрузке
+  // (расчётный случай для АКБ), дополнительно показываем при текущей.
+  const _autonomyFmt = (loadKwRef) => {
+    if (!(loadKwRef > 0)) return null;
+    const hrs = battKwh / loadKwRef;
     const min = hrs * 60;
-    let autTxt;
-    if (min >= 600) autTxt = '> 10 ч';
-    else if (min >= 60) autTxt = (hrs).toFixed(1) + ' ч';
-    else if (min >= 1) autTxt = Math.round(min) + ' мин';
-    else autTxt = '< 1 мин';
-    parts.push(`автономия при текущей нагрузке: <b>${autTxt}</b>`);
+    if (min >= 600) return '> 10 ч';
+    if (min >= 60)  return hrs.toFixed(1) + ' ч';
+    if (min >= 1)   return Math.round(min) + ' мин';
+    return '< 1 мин';
+  };
+  const maxAut = _autonomyFmt(n._maxLoadKw || n._loadKw);
+  if (maxAut) parts.push(`<b>автономия при макс. нагрузке: ${maxAut}</b>`);
+  if (n._loadKw > 0 && (n._maxLoadKw || 0) > n._loadKw) {
+    const curAut = _autonomyFmt(n._loadKw);
+    if (curAut) parts.push(`<span class="muted">автономия при текущей (${fmt(n._loadKw)} kW): ${curAut}</span>`);
   }
   return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
 }

@@ -213,11 +213,14 @@ export function generateReport() {
     for (const u of upses) {
       const cap = Number(u.capacityKw) || 0;
       const load = u._loadKw || 0;
+      const maxLoad = u._maxLoadKw || load;
       const eff = Number(u.efficiency) || 100;
       const batt = (Number(u.batteryKwh) || 0) * (Number(u.batteryChargePct) || 0) / 100;
-      const aut = load > 0 ? batt / load * 60 : 0;
+      // Автономия считается по МАКСИМАЛЬНОЙ нагрузке — АКБ должна выдержать
+      // наихудший сценарий, а не мгновенное потребление.
+      const autLoad = maxLoad > 0 ? maxLoad : load;
+      const aut = autLoad > 0 ? batt / autLoad * 60 : 0;
       lines.push(`${fullTag(u).padEnd(12)}${u.name}`);
-      const maxLoad = u._maxLoadKw || load;
       lines.push(`   Pном:       ${fmt(cap)} kW  (КПД ${eff}%)`);
       lines.push(`   Текущая:    ${fmt(load)} kW`);
       lines.push(`   Макс нагр.: ${fmt(maxLoad)} kW  (${cap > 0 ? Math.round(maxLoad / cap * 100) : 0}%)`);
@@ -244,18 +247,19 @@ export function generateReport() {
           lines.push(`   V_DC раб.:  ${vdcOper} В`);
         }
         lines.push(`   Конфиг.:    ${strings} × ${blocksPer} блок = ${totalBlocks} шт. · endV ${endV.toFixed(2)} В/эл.`);
-        if (totalBlocks > 0 && load > 0) {
-          const batteryPwrReqKw = load / Math.max(0.5, eff / 100);
+        if (totalBlocks > 0 && autLoad > 0) {
+          // P/блок и ток цепочки считаются по МАКС. нагрузке — как и автономия
+          const batteryPwrReqKw = autLoad / Math.max(0.5, eff / 100);
           const powerPerBlockW = (batteryPwrReqKw * 1000) / totalBlocks;
           const stringA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / strings : 0;
-          lines.push(`   P/блок:     ${fmt(powerPerBlockW)} Вт · I цеп.: ${fmt(stringA)} А`);
+          lines.push(`   P/блок:     ${fmt(powerPerBlockW)} Вт · I цеп.: ${fmt(stringA)} А  (по макс. нагр.)`);
         }
         if (Number.isFinite(Number(u.batteryTargetMin))) {
           lines.push(`   Цель авт.:  ${u.batteryTargetMin} мин`);
         }
       }
-      if (load > 0) {
-        lines.push(`   Автономия:  ${aut >= 60 ? (aut / 60).toFixed(1) + ' ч' : Math.round(aut) + ' мин'}`);
+      if (autLoad > 0) {
+        lines.push(`   Автономия:  ${aut >= 60 ? (aut / 60).toFixed(1) + ' ч' : Math.round(aut) + ' мин'}  (при макс. нагр. ${fmt(autLoad)} kW)`);
       }
       if (u._onBattery) lines.push('   Статус:     РАБОТА ОТ БАТАРЕИ');
       else if (u._powered) lines.push('   Статус:     норма (от сети)');
