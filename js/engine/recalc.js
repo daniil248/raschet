@@ -7,6 +7,7 @@ import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          upsChargeKw, sourceImpedance, isNodeDC } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
+import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
 // Полная downstream-нагрузка за узлом (без share, без visited-блокировок).
 // Считает суммарную мощность ВСЕХ уникальных потребителей за данным узлом.
@@ -1965,6 +1966,62 @@ function recalc() {
   for (const c of state.conns.values()) {
     if (c._state === 'active') {
       c._ikA = nodeIk(c.to.nodeId);
+    }
+  }
+
+  // === Прогон расчётных модулей shared/calc-modules ===
+  // Для каждой активной линии прогоняем полный набор mandatory-модулей
+  // (ampacity, vdrop, shortCircuit, phaseLoop) + optional по флагам из
+  // conn/GLOBAL. Результат сохраняется в c._moduleResults — массив
+  // {id, label, mandatory, result: {pass, bump, details, warnings}}.
+  // Отчёт и inspector могут потом показать результаты каждого модуля
+  // независимо.
+  for (const c of state.conns.values()) {
+    if (c._state !== 'active' || !c._cableSize) { c._moduleResults = null; continue; }
+    const toN = state.nodes.get(c.to.nodeId);
+    if (!toN) { c._moduleResults = null; continue; }
+    const U = c._voltage || 400;
+    const phases = c._threePhase ? 3 : 1;
+    const isDC = !!c._isDC;
+    // Опциональные модули — пока только economic, управляется per-conn
+    // флагом c.economicDensity (или GLOBAL.enforceEconomicDensity)
+    const enabledSet = new Set();
+    if (c.economicDensity || GLOBAL.enforceEconomicDensity) enabledSet.add('economic');
+    // t_k по умолчанию: характеристика автомата и номинал → время
+    // расцепления. Для mag-размыкания MCB ≈ 0.02-0.1 с, для selective ≈ 0.3-1 с.
+    const defaultTk = 0.1;
+    const tkS = Number(c.tkS) || Number(GLOBAL.defaultTkS) || defaultTk;
+    const modInput = {
+      I: Number(c._maxA) || 0,
+      U, phases, dc: isDC,
+      cosPhi: Number(c._cosPhi) || 0.92,
+      lengthM: Number(c._cableLength || c.lengthM || 0),
+      maxVdropPct: Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5,
+      material: c._cableMaterial || GLOBAL.defaultMaterial,
+      insulation: c._cableInsulation || GLOBAL.defaultInsulation,
+      method: c._cableMethod || GLOBAL.defaultInstallMethod,
+      cableType: c.cableType || GLOBAL.defaultCableType,
+      ambient: Number(c._cableAmbient) || GLOBAL.defaultAmbient,
+      grouping: Number(c._cableGrouping) || 1,
+      bundling: c.bundling || 'touching',
+      maxSize: GLOBAL.maxCableSize || 240,
+      parallel: Math.max(1, c._cableParallel || 1),
+      currentSize: Number(c._cableSize) || 0,
+      calcMethod: GLOBAL.calcMethod || 'iec',
+      ecoMethod: GLOBAL.economicMethod || 'pue_eco',
+      economicHours: Number(c.economicHours) || 5000,
+      IkA: Number(c._ikA) || 0,
+      tkS,
+      earthingSystem: (fromN => (fromN?.type === 'panel' && fromN.earthingOut) || GLOBAL.earthingSystem || 'TN-S')(state.nodes.get(c.from.nodeId)),
+      breakerIn: Number(c._breakerIn) || Number(c._breakerPerLine) || 0,
+      breakerCurve: c.breakerCurve || 'MCB_C',
+      Uph: phases === 3 ? (U / Math.sqrt(3)) : U,
+    };
+    try {
+      c._moduleResults = runCalcModules(modInput, enabledSet);
+    } catch (e) {
+      console.warn('[recalc] calc-modules failed', e);
+      c._moduleResults = null;
     }
   }
 

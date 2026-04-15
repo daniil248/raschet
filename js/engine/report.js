@@ -447,6 +447,58 @@ export function generateReport() {
     lines.push('');
   }
 
+  // 4b. Расчётные модули по линиям (shared/calc-modules)
+  // Для каждой активной линии выводим результат КАЖДОГО включённого
+  // модуля независимо — пользователь видит влияние mandatory (ampacity,
+  // vdrop, shortCircuit, phaseLoop) и optional (economic).
+  const linesWithModules = activeCables.filter(c => Array.isArray(c._moduleResults) && c._moduleResults.length);
+  if (linesWithModules.length) {
+    lines.push('РАСЧЁТНЫЕ МОДУЛИ ПО ЛИНИЯМ');
+    lines.push('-'.repeat(92));
+    lines.push('Обязательные (🔒): подбор по току (IEC 60364-5-52), падение напряжения,');
+    lines.push('термическая стойкость к КЗ (IEC 60364-4-43), петля фаза-ноль (IEC 60364-4-41).');
+    lines.push('Опциональные: экономическая плотность тока (ПУЭ 1.3.25) — по выбору пользователя.');
+    lines.push('');
+    for (const c of linesWithModules) {
+      const fromN = state.nodes.get(c.from.nodeId);
+      const toN = state.nodes.get(c.to.nodeId);
+      const fromTag = effectiveTag(fromN) || fromN?.name || '?';
+      const toTag = effectiveTag(toN) || toN?.name || '?';
+      const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
+      const lineLabel = c.lineLabel || `${linePrefix}-${fromTag}-${toTag}`;
+      lines.push(`  ${lineLabel}`);
+      for (const m of c._moduleResults) {
+        const r = m.result || {};
+        const d = r.details || {};
+        const iconLock = m.mandatory ? '🔒' : ' ';
+        let status;
+        if (d.skipped) status = 'пропущен';
+        else if (r.pass) status = 'OK';
+        else status = 'ПРОБЛЕМА';
+        let detail = '';
+        if (m.id === 'ampacity' && !d.skipped) {
+          detail = `S=${d.s}мм² Iz=${d.iDerated?.toFixed(0)}А Kt·Kg=${d.kTotal?.toFixed(2)}`;
+        } else if (m.id === 'vdrop' && !d.skipped) {
+          detail = `ΔU=${d.dUpct?.toFixed(2)}% ≤ ${d.maxPct}%`;
+          if (d.bumpedTo) detail += ` → ${d.bumpedTo}мм²`;
+        } else if (m.id === 'economic' && !d.skipped) {
+          detail = `jэк=${d.jEk} Sрасч=${d.sCalc}мм² Sст=${d.sStandard}мм²`;
+        } else if (m.id === 'shortCircuit' && !d.skipped) {
+          detail = `Ik=${d.IkA}А tk=${d.tkS}с → Smin=${d.sRequired}мм²`;
+        } else if (m.id === 'phaseLoop' && !d.skipped) {
+          detail = `${d.earthing} Zloop=${d.Zloop}Ом Ik1=${d.Ik1}А ≥ Ia=${d.Ia}А`;
+        } else if (d.skipped) {
+          detail = d.reason || 'нет данных';
+        }
+        lines.push(`    ${iconLock} ${m.label.padEnd(36)}${status.padEnd(10)} ${detail}`);
+        for (const w of (r.warnings || [])) {
+          lines.push(`       ⚠ ${w}`);
+        }
+      }
+      lines.push('');
+    }
+  }
+
   // 5. 3-фазная балансировка
   const balance = get3PhaseBalance();
   if (balance.length) {
