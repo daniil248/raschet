@@ -709,9 +709,6 @@ function _renderUpsBatteryBody(n) {
     const cellsPerBlock = Number(picked.cellCount) || 6;
     const blockVnom = Number(picked.blockVoltage) || (cellsPerBlock * (Number(picked.cellVoltage) || 2));
     const capAhBlock = Number(picked.capacityAh) || 100;
-    // S³ модуль: при изменении числа модулей в шкафу DC/DC выход остаётся
-    // тем же (модули параллельно), поэтому vdcOper = blockVnom (240 В)
-    // независимо от blocksPerString. Для обычных АКБ — vdcOper = blockVnom × N.
     const isS3Module = picked.isSystem && picked.systemSubtype === 'module' && picked.packaging;
 
     // Параметры ИБП для подбора АКБ — читаются через единый shared-хелпер.
@@ -722,6 +719,26 @@ function _renderUpsBatteryBody(n) {
     const vdcMax = upsDc.vdcMax;
     const invEff = Math.max(0.5, Math.min(1, upsDc.efficiency / 100));
     const cosPhi = upsDc.cosPhi;
+
+    // Режим подключения DC/DC выходов модулей S³ (IEC Brochure: «DC/DC
+    // rated output voltage — 240*2 (In series or parallel)»):
+    //   'parallel' — оба выхода 240 В параллельно → Vdc = 240 В, двойной ток
+    //   'series'   — оба выхода 240 В последовательно → Vdc = 480 В
+    // Хранится в n.batteryDcWiring. Дефолт: если Vdc min ИБП ≥ 320 В
+    // (≈ MR33 с ±240 В шиной) — series; иначе parallel. Пользователь
+    // может переключить вручную.
+    let s3Wiring = n.batteryDcWiring || (isS3Module ? (vdcMin >= 320 ? 'series' : 'parallel') : null);
+    // Проверка: если series даёт Vdc вне допустимого диапазона ИБП —
+    // форсим parallel, и наоборот. Форс нужен, чтобы не рассчитывать
+    // с невалидной конфигурацией.
+    if (isS3Module) {
+      const vSeries = blockVnom * 2, vParallel = blockVnom;
+      const seriesOk = vSeries >= vdcMin && vSeries <= vdcMax;
+      const parallelOk = vParallel >= vdcMin && vParallel <= vdcMax;
+      if (s3Wiring === 'series' && !seriesOk && parallelOk) s3Wiring = 'parallel';
+      if (s3Wiring === 'parallel' && !parallelOk && seriesOk) s3Wiring = 'series';
+    }
+    const s3Vdc = s3Wiring === 'series' ? (blockVnom * 2) : blockVnom;
     // Дефолт end-voltage на элемент зависит от химии:
     //   VRLA (свинцово-кислотные, 2 В/эл.) → 1.75 В/элемент (~87%)
     //   Li-Ion LiFePO4 (3.2 В/эл.)         → 2.80 В/элемент (cut-off ~87% от 3.2)
@@ -767,9 +784,9 @@ function _renderUpsBatteryBody(n) {
     const activePowerKw = loadKw * (cosPhi || 1);
     const batteryPwrReqKw = activePowerKw / invEff;
     const powerPerBlockW = (batteryPwrReqKw * 1000) / (stringsCat * blocksPerString);
-    // S³: DC/DC выход фиксирован на 240 В (модули в шкафу в параллель).
-    // Обычные АКБ: v = blockVnom × блоков в цепочке.
-    const vdcOper = isS3Module ? blockVnom : (blockVnom * blocksPerString);
+    // S³: Vdc = 240 или 480 в зависимости от выбранного режима подключения
+    //      DC/DC выходов (parallel / series). Обычные АКБ: v = blockVnom × N.
+    const vdcOper = isS3Module ? s3Vdc : (blockVnom * blocksPerString);
     // Ток на шкаф (S³) или цепочку (VRLA): мощность шкафа / Vdc / stringsCat
     const stringCurrentA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / stringsCat : 0;
 
@@ -859,6 +876,18 @@ function _renderUpsBatteryBody(n) {
         <option value="li-ion"${bt === 'li-ion' ? ' selected' : ''}>Li-Ion LiFePO4 (3.2 В)</option>
       </select>`)}</div>`);
     h.push('</div>');
+    // Селектор режима подключения DC/DC выходов для S³ модулей
+    if (isS3Module) {
+      const vP = blockVnom, vS = blockVnom * 2;
+      const parOk = vP >= vdcMin && vP <= vdcMax;
+      const serOk = vS >= vdcMin && vS <= vdcMax;
+      h.push(field('Подключение DC/DC (240 В × 2)', `
+        <select id="ups-batt-s3wiring">
+          <option value="parallel"${s3Wiring === 'parallel' ? ' selected' : ''}${parOk ? '' : ' disabled'}>Параллельно → Vdc = ${vP} В${parOk ? '' : ' (вне диапазона ИБП)'}</option>
+          <option value="series"${s3Wiring === 'series' ? ' selected' : ''}${serOk ? '' : ' disabled'}>Последовательно → Vdc = ${vS} В${serOk ? '' : ' (вне диапазона ИБП)'}</option>
+        </select>`));
+      h.push(`<div class="muted" style="font-size:10px;margin-top:-6px;margin-bottom:8px">Каждый модуль имеет два DC/DC выхода 240 В. Их можно соединить параллельно (240 В, удвоенный ток) или последовательно (480 В). Выбор должен попадать в диапазон Vdc ИБП (${vdcMin}…${vdcMax} В).</div>`);
+    }
     h.push('<div style="display:flex;gap:8px">');
     const blocksInputStyle = clampHint ? ' style="border-color:#e65100;background:#fff8e1"' : '';
     const blocksLabel = isS3Module ? `Модулей в шкафу (${nMin}…${nMax})` : `Блоков в цепочке (${nMin}…${nMax})`;
@@ -923,6 +952,7 @@ function _renderUpsBatteryBody(n) {
     n.batteryTempC = tempC;
     n.batteryBlocksPerString = blocksPerString;
     n.batteryTargetMin = targetMin;
+    if (isS3Module) n.batteryDcWiring = s3Wiring;
     // Авто-синхронизация состава блока из справочника — ТОЛЬКО если пользователь
     // не включил ручной режим (n.batteryManualOverride). В ручном режиме мы
     // сохраняем введённые значения и пересчитываем kWh из них.
@@ -1122,6 +1152,13 @@ function _renderUpsBatteryBody(n) {
     bindNum('ups-batt-nblocks', 'batteryBlocksPerString', 1);
     bindNum('ups-batt-temp', 'batteryTempC', -20);
     bindNum('ups-batt-target', 'batteryTargetMin', 1);
+    // Селектор режима подключения DC/DC выходов S³ модулей
+    const s3WiringEl = document.getElementById('ups-batt-s3wiring');
+    if (s3WiringEl) s3WiringEl.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':s3wiring');
+      n.batteryDcWiring = s3WiringEl.value === 'series' ? 'series' : 'parallel';
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
     // Кнопка «⚙ Изменить в Параметры ИБП»: закрывает АКБ-модалку и
     // открывает основную модалку параметров ИБП.
     const gotoParamsBtn = document.getElementById('ups-batt-goto-params');
@@ -1161,9 +1198,13 @@ function _renderUpsBatteryBody(n) {
       const picked = selectedBattery;
       const blockVnom = Number(picked.blockVoltage) || ((Number(picked.cellCount) || 6) * (Number(picked.cellVoltage) || 2));
       const blocksPer = Number(n.batteryBlocksPerString) || 1;
-      // S³ модуль: DC/DC выход фиксирован (240 В), независимо от числа модулей.
+      // S³ модуль: DC/DC выход = 240 (parallel) или 480 (series).
+      // Обычные АКБ: dcVoltage = blockVnom × блоков в цепочке.
       const _isS3ModAsync = picked.isSystem && picked.systemSubtype === 'module' && picked.packaging;
-      const dcVoltage = _isS3ModAsync ? blockVnom : (blockVnom * blocksPer);
+      const _s3Wire = n.batteryDcWiring === 'series' ? 'series' : 'parallel';
+      const dcVoltage = _isS3ModAsync
+        ? (_s3Wire === 'series' ? blockVnom * 2 : blockVnom)
+        : (blockVnom * blocksPer);
       const strings = Math.max(1, Number(n.batteryStringCount) || 1);
       const invEff = Math.max(0.5, Math.min(1, (Number(n.efficiency) || 94) / 100));
       const endV = Number(n.batteryEndVperCell) || 1.75;
