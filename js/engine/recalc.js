@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, INSTALL_METHODS, BREAKER_TYPES } from './constants.js';
-import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable } from './cable.js';
+import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
@@ -1502,10 +1502,44 @@ function recalc() {
         c._cableKt = sel.kT;
         c._cableKg = sel.kG;
         c._cableKtotal = sel.kT * sel.kG;
-        // HV: минимальное сечение по механической прочности и толщине изоляции.
-        // Для XLPE 6/10 кВ минимум обычно 25 мм² Cu. Простое принуждение снизу.
-        if (c._isHV && c._cableSize && c._cableSize < 25) {
-          c._cableSize = 25;
+        // HV: переподбор по реальной таблице XLPE 6/10/35 кВ (IEC 60502-2).
+        // Используем ту же методику derating (kT, kG) и тот же I2-критерий, что
+        // и для LV, но ампасити берём из HV_TABLES по классу напряжения.
+        if (c._isHV) {
+          try {
+            const hvTbl = hvCableTable(U, material);
+            if (hvTbl && hvTbl.length) {
+              const kT = sel.kT || 1;
+              const kG = sel.kG || 1;
+              const k = kT * kG;
+              // Минимальное сечение HV — 25 мм² XLPE (механическая прочность).
+              const filtered = hvTbl.filter(([s]) => s >= 25 && s <= (GLOBAL.maxCableSize || 800));
+              const parallel = sel.parallel || conductorsInParallel || 1;
+              const Iper = sizingCurrent / parallel;
+              let hvSel = null;
+              for (const [s, iRef] of filtered) {
+                const iDerated = iRef * k;
+                if (iDerated >= Iper) {
+                  hvSel = { s, iRef, iDerated };
+                  break;
+                }
+              }
+              if (!hvSel && filtered.length) {
+                const last = filtered[filtered.length - 1];
+                hvSel = { s: last[0], iRef: last[1], iDerated: last[1] * k };
+                c._cableOverflow = true;
+              }
+              if (hvSel) {
+                c._cableSize = hvSel.s;
+                c._cableIz = hvSel.iDerated;
+                c._cableTotalIz = hvSel.iDerated * parallel;
+              }
+            } else if (c._cableSize && c._cableSize < 25) {
+              c._cableSize = 25;
+            }
+          } catch (e) {
+            if (c._cableSize && c._cableSize < 25) c._cableSize = 25;
+          }
         }
       }
     } else {

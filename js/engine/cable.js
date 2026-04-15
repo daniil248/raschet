@@ -1,10 +1,30 @@
-import { GLOBAL, IEC_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP_TABLES, INSTALL_METHODS, CABLE_TYPES, BREAKER_TYPES } from './constants.js';
+import { GLOBAL, IEC_TABLES, HV_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP_TABLES, INSTALL_METHODS, CABLE_TYPES, BREAKER_TYPES } from './constants.js';
 
 export function cableTable(material, insulation, method) {
   const m = IEC_TABLES[material] || IEC_TABLES.Cu;
   const i = m[insulation] || m.PVC || Object.values(m)[0];
   const t = i[method] || i.B1 || Object.values(i)[0];
   return t;
+}
+
+// Подбор таблицы для HV-кабелей (XLPE 6/10/35 кВ, IEC 60502-2).
+// Возвращает массив [[s_mm2, I_A], ...] для ближайшего класса
+// напряжения. По умолчанию — XLPE Cu, прокладка в земле (D2).
+export function hvCableTable(voltageV, material = 'Cu') {
+  if (!HV_TABLES) return null;
+  const m = HV_TABLES[material] || HV_TABLES.Cu;
+  if (!m) return null;
+  // Ближайший класс напряжения (6 / 10 / 35 кВ)
+  const vKv = Number(voltageV) / 1000;
+  const classes = Object.keys(m).map(Number).sort((a, b) => a - b);
+  if (!classes.length) return null;
+  let best = classes[0];
+  for (const c of classes) {
+    if (c <= vKv) best = c;
+  }
+  // Если напряжение больше максимального класса в таблице — берём максимальный
+  if (vKv > classes[classes.length - 1]) best = classes[classes.length - 1];
+  return m[best] || null;
 }
 
 export function kBundlingFactor(bundling) {
