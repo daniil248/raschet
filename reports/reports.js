@@ -4,11 +4,21 @@
 // (страница, поля, логотип, колонтитулы, стили), сохраняет их в
 // per-user каталог и потом выбирает в подпрограммах (cable/, schematic/,
 // battery/ и т.д.) при экспорте отчёта.
+//
+// Инструкция для пользователя доступна по кнопке «?» в тулбаре слева
+// (см. reports/help.js). Инструкция для разработчиков, встраивающих
+// модуль в свои подпрограммы — shared/report/README.md.
 // ======================================================================
 
 import * as Report   from '../shared/report/index.js';
 import * as B        from '../shared/report/blocks.js';
 import * as Catalog  from '../shared/report-catalog.js';
+import { BUILTIN_TEMPLATES, BUILTIN_VERSION, getDemoContent } from './templates-seed.js';
+import { openHelp }  from './help.js';
+
+// Версия встроенных шаблонов хранится отдельно — при смене перезаседаем
+// только builtin-записи, пользовательские не трогаем.
+const BUILTIN_VER_KEY = 'raschet.reportCatalog.builtinVersion';
 
 // ——— состояние страницы ———
 const state = {
@@ -36,89 +46,52 @@ const $btnDelete   = document.getElementById('btn-delete');
 const $btnExportOne= document.getElementById('btn-export-one');
 const $btnPdf      = document.getElementById('btn-pdf');
 const $btnDocx     = document.getElementById('btn-docx');
+const $btnHelp     = document.getElementById('btn-help');
 
-// ——— встроенные шаблоны (seed при пустом каталоге) ———
-function builtinTemplates() {
-  const blank = Report.createTemplate({
-    meta: { title: 'Пустой шаблон', author: '', subject: '' },
-    content: [],
-  });
-  const simple = Report.createTemplate({
-    meta: { title: 'Простой отчёт', author: '', subject: '' },
-    header: {
-      firstPage:  { enabled: true, height: 14, blocks: [
-        { type: 'paragraph', align: 'right', style: 'caption', text: '{{meta.title}}' },
-      ]},
-      otherPages: { enabled: true, height: 12, blocks: [
-        { type: 'paragraph', align: 'right', style: 'caption', text: '{{meta.title}}' },
-      ]},
-    },
-  });
-  const formal = Report.createTemplate({
-    meta: { title: 'Официальный документ', author: '', subject: '' },
-    page: { format: 'A4', orientation: 'portrait', margins: { top: 25, right: 20, bottom: 25, left: 25 } },
-    styles: {
-      h1: { size: 16, bold: true, align: 'center', spaceBefore: 8, spaceAfter: 6 },
-      h2: { size: 13, bold: true, spaceBefore: 5, spaceAfter: 3 },
-      body: { size: 12, lineHeight: 1.5, align: 'justify', spaceAfter: 3 },
-    },
-    header: {
-      firstPage:  { enabled: false, height: 0, blocks: [] },
-      otherPages: { enabled: true, height: 12, blocks: [
-        { type: 'paragraph', align: 'center', style: 'caption', text: '{{meta.title}}' },
-      ]},
-    },
-    footer: {
-      firstPage:  { enabled: true, height: 12, blocks: [
-        { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
-      ]},
-      otherPages: { enabled: true, height: 12, blocks: [
-        { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
-      ]},
-    },
-  });
-  return [
-    { id: 'builtin-blank',  name: 'Пустой шаблон',        description: 'Стартовый шаблон без оформления', tags: ['builtin'], source: 'builtin', template: blank  },
-    { id: 'builtin-simple', name: 'Простой отчёт',        description: 'A4, минимальная шапка, нумерация страниц', tags: ['builtin'], source: 'builtin', template: simple },
-    { id: 'builtin-formal', name: 'Официальный документ', description: 'A4, широкие поля, выравнивание по ширине, колонтитулы', tags: ['builtin'], source: 'builtin', template: formal },
-  ];
-}
-
+// ——— сидинг встроенных шаблонов ———
+// Список берётся из reports/templates-seed.js. При смене BUILTIN_VERSION
+// все builtin-записи пересеиваются (удаляются старые, вставляются новые),
+// пользовательские шаблоны не затрагиваются.
 function seedBuiltinsIfNeeded() {
-  const existing = Catalog.listTemplates();
-  const haveBuiltin = existing.some(t => t.source === 'builtin');
-  if (!haveBuiltin) {
-    for (const rec of builtinTemplates()) {
-      Catalog.saveTemplate(rec);
+  let storedVer = null;
+  try { storedVer = parseInt(localStorage.getItem(BUILTIN_VER_KEY) || '0', 10) || 0; }
+  catch { storedVer = 0; }
+
+  if (storedVer >= BUILTIN_VERSION) return;
+
+  // Удаляем старые встроенные (они source==='builtin'), чтобы при
+  // обновлении не плодились дубли и не оставались устаревшие настройки.
+  // removeTemplate блокирует удаление builtin — поэтому идём прямо в
+  // localStorage через clearUserTemplates-подобный приём: перечитываем
+  // каталог, фильтруем, записываем обратно.
+  const userOnly = Catalog.listTemplates().filter(t => t.source !== 'builtin');
+  // clearUserTemplates оставляет только builtin; нам нужно наоборот —
+  // поэтому сразу перезаписываем весь каталог.
+  for (const rec of Catalog.listTemplates()) {
+    if (rec.source === 'builtin') {
+      // Временно помечаем как user, чтобы removeTemplate пропустил удаление
+      Catalog.saveTemplate({ ...rec, source: 'user' });
+      Catalog.removeTemplate(rec.id);
     }
   }
+  // Пользовательские могли потеряться при пересохранении builtin-как-user —
+  // восстановим их обратно.
+  for (const rec of userOnly) Catalog.saveTemplate(rec);
+
+  // Сеем новые встроенные
+  for (const rec of BUILTIN_TEMPLATES) {
+    Catalog.saveTemplate(rec);
+  }
+
+  try { localStorage.setItem(BUILTIN_VER_KEY, String(BUILTIN_VERSION)); }
+  catch { /* noop */ }
 }
 
-// ——— демо-контент, чтобы в превью было что показать ———
-function demoContent() {
-  return [
-    B.h1('Заголовок отчёта'),
-    B.paragraph('Это превью шаблона. Когда подпрограмма применит этот шаблон, на месте этих блоков будут её данные.'),
-    B.h2('Раздел 1. Исходные данные'),
-    B.list([
-      'Параметр 1 — значение',
-      'Параметр 2 — значение',
-      'Параметр 3 — значение',
-    ]),
-    B.h2('Раздел 2. Результаты'),
-    B.table(
-      ['Параметр', 'Значение', 'Ед.'],
-      [
-        ['Первый', '10', 'шт.'],
-        ['Второй', '25.5', 'кВт'],
-        ['Третий', '0.92', '—'],
-      ],
-    ),
-    B.h3('2.1. Комментарий'),
-    B.paragraph('Абзац пояснений с деталями расчёта. Стиль «body» — базовый размер и межстрочный интервал.'),
-    B.hr(),
-    B.caption('Превью формируется модулем shared/report/preview.js.'),
-  ];
+// ——— демо-контент для превью и тестового экспорта ———
+// Для встроенных шаблонов берём персональный набор блоков из seed-файла,
+// для пользовательских — общий fallback (он же в getDemoContent).
+function demoContentFor(rec) {
+  return getDemoContent(rec && rec.id);
 }
 
 // ——— рендер списка ———
@@ -197,10 +170,12 @@ function renderDetail() {
   $btnEdit.disabled   = false;
   $btnRename.disabled = rec.source === 'builtin';
 
-  // Превью: клонируем шаблон, вливаем демо-контент (если контент пуст)
+  // Превью: клонируем шаблон, вливаем демо-контент (если контент пуст).
+  // Для встроенных шаблонов demoContentFor отдаёт персональный набор —
+  // так пользователь видит реалистичное представление отчёта под задачу.
   const previewTpl = Report.createTemplate(rec.template);
   if (!previewTpl.content || previewTpl.content.length === 0) {
-    previewTpl.content = demoContent();
+    previewTpl.content = demoContentFor(rec);
   }
   Report.renderPreview(previewTpl, $preview, { mode: 'edit' });
 }
@@ -357,7 +332,7 @@ async function onPdf() {
   const rec = state.selectedId ? Catalog.getTemplate(state.selectedId) : null;
   if (!rec) return;
   const tpl = Report.createTemplate(rec.template);
-  if (!tpl.content || tpl.content.length === 0) tpl.content = demoContent();
+  if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
   try { await Report.exportPDF(tpl, rec.name || 'report'); }
   catch (e) { alert('Не удалось сформировать PDF: ' + e.message); }
 }
@@ -366,7 +341,7 @@ async function onDocx() {
   const rec = state.selectedId ? Catalog.getTemplate(state.selectedId) : null;
   if (!rec) return;
   const tpl = Report.createTemplate(rec.template);
-  if (!tpl.content || tpl.content.length === 0) tpl.content = demoContent();
+  if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
   try { await Report.exportDOCX(tpl, rec.name || 'report'); }
   catch (e) { alert('Не удалось сформировать DOCX: ' + e.message); }
 }
@@ -383,6 +358,7 @@ $btnDelete  .addEventListener('click', onDelete);
 $btnExportOne.addEventListener('click', onExportOne);
 $btnPdf     .addEventListener('click', onPdf);
 $btnDocx    .addEventListener('click', onDocx);
+if ($btnHelp) $btnHelp.addEventListener('click', openHelp);
 
 // ——— запуск ———
 seedBuiltinsIfNeeded();

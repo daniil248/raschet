@@ -1,0 +1,782 @@
+// ======================================================================
+// reports/templates-seed.js
+// Встроенные шаблоны отчётов (source: 'builtin'). При первом запуске
+// страницы reports/ и при смене BUILTIN_VERSION они автоматически
+// засеиваются в per-user каталог (shared/report-catalog.js).
+//
+// Пользователь не может удалять эти шаблоны — но может клонировать
+// любой из них и править клон под свои нужды.
+//
+// Для каждого шаблона предусмотрен getDemoContent(id) — персональный
+// демо-контент, который используется на странице reports/ для превью
+// и при экспорте «PDF / DOCX» из детали шаблона. Это даёт пользователю
+// реалистичное представление о том, как будет выглядеть настоящий
+// отчёт подпрограммы, построенный на этом шаблоне.
+//
+// Палитра выдержана в спокойных «инженерных» тонах (без ярких акцентов):
+// основной текст тёмно-серый, подписи средне-серые, таблицы с бледно-
+// серой шапкой и тонкими границами.
+// ======================================================================
+
+import * as Report from '../shared/report/index.js';
+
+// Смена версии → переcев встроенных (пользовательские не трогаем).
+export const BUILTIN_VERSION = 2;
+
+// ——— палитра ———
+const INK       = '#1f2430';
+const INK_SOFT  = '#3a4050';
+const MUTED     = '#6b7280';
+const BORDER    = '#c0c6d2';
+const TABLE_HEAD= '#f1f3f7';
+
+// ——— хелпер: создать Template поверх дефолтов + общего базиса ———
+function T(patch) {
+  // Единый базис для всех встроенных шаблонов: аккуратные цвета,
+  // стандартные таблицы. Конкретный шаблон перекрывает что нужно.
+  const base = {
+    styles: {
+      body:    { color: INK,      lineHeight: 1.4 },
+      h1:      { color: INK },
+      h2:      { color: INK },
+      h3:      { color: INK_SOFT },
+      caption: { color: MUTED },
+      list:    { color: INK },
+      table:   { color: INK, headBg: TABLE_HEAD, borderColor: BORDER, cellPadding: 1.8 },
+    },
+  };
+  // deep-merge через createTemplate (он использует merge поверх defaultTemplate)
+  return Report.createTemplate(deepMerge(base, patch || {}));
+}
+
+function deepMerge(a, b) {
+  if (Array.isArray(b)) return b.slice();
+  if (b && typeof b === 'object') {
+    const out = Array.isArray(a) ? a.slice() : Object.assign({}, a);
+    for (const k of Object.keys(b)) out[k] = deepMerge(a ? a[k] : undefined, b[k]);
+    return out;
+  }
+  return b === undefined ? a : b;
+}
+
+// ——— колонтитулы-пресеты ———
+const noHeaderFooter = {
+  header: {
+    firstPage:  { enabled: false, height: 0, blocks: [] },
+    otherPages: { enabled: false, height: 0, blocks: [] },
+  },
+  footer: {
+    firstPage:  { enabled: false, height: 0, blocks: [] },
+    otherPages: { enabled: false, height: 0, blocks: [] },
+  },
+};
+
+const softHeaderFooter = (titleAlign = 'right') => ({
+  header: {
+    firstPage:  { enabled: true, height: 14, blocks: [
+      { type: 'paragraph', align: titleAlign, style: 'caption', text: '{{meta.title}}' },
+    ]},
+    otherPages: { enabled: true, height: 12, blocks: [
+      { type: 'paragraph', align: titleAlign, style: 'caption', text: '{{meta.title}}' },
+    ]},
+  },
+  footer: {
+    firstPage:  { enabled: true, height: 12, blocks: [
+      { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
+    ]},
+    otherPages: { enabled: true, height: 12, blocks: [
+      { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
+    ]},
+  },
+});
+
+// ——————————————————————————————————————————————————————————————————————
+// Встроенные шаблоны. ID — стабильные (не меняются между версиями, иначе
+// пропадёт привязка пользователей к шаблону).
+// ——————————————————————————————————————————————————————————————————————
+export const BUILTIN_TEMPLATES = [
+
+  // 1. Пустой A4 — стартовая точка без декора
+  {
+    id: 'builtin-blank-a4',
+    name: 'Пустой A4',
+    description: 'Чистый A4 без колонтитулов. Стартовая точка, когда нужно настроить всё оформление с нуля.',
+    tags: ['общее','пустой'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Отчёт' },
+      ...noHeaderFooter,
+    }),
+  },
+
+  // 2. Простой A4 — минимум оформления, заголовок справа и номер страниц
+  {
+    id: 'builtin-simple-a4',
+    name: 'Простой отчёт (A4)',
+    description: 'A4, Helvetica 11 pt. Компактная шапка с заголовком и футер с датой и нумерацией страниц.',
+    tags: ['общее','простой'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Отчёт' },
+      ...softHeaderFooter('right'),
+    }),
+  },
+
+  // 3. Инженерный A4 — трёхуровневая иерархия заголовков, плотная вёрстка
+  {
+    id: 'builtin-engineering-a4',
+    name: 'Инженерный отчёт (A4)',
+    description: 'A4, Helvetica 11 pt, три уровня заголовков. Для технических расчётов и рабочих документов.',
+    tags: ['расчёты','инженерный'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Инженерный отчёт' },
+      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      styles: {
+        h1: { size: 16, bold: true, spaceBefore: 2, spaceAfter: 4 },
+        h2: { size: 13, bold: true, spaceBefore: 5, spaceAfter: 2 },
+        h3: { size: 11, bold: true, spaceBefore: 3, spaceAfter: 1 },
+        body: { size: 11, lineHeight: 1.4 },
+      },
+      header: {
+        firstPage:  { enabled: true, height: 14, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
+        ]},
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
+        ]},
+      },
+      footer: {
+        firstPage:  { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
+        ]},
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
+        ]},
+      },
+    }),
+  },
+
+  // 4. Расчёт кабельной линии (для cable/)
+  {
+    id: 'builtin-cable-report',
+    name: 'Расчёт кабельной линии',
+    description: 'Шаблон для подпрограммы «Расчёт кабельной линии». Техническая вёрстка, шапка с темой расчёта.',
+    tags: ['кабель','расчёты'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Расчёт кабельной линии' },
+      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      styles: {
+        h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
+        h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
+        h3: { size: 11, bold: true, spaceBefore: 3, spaceAfter: 1 },
+      },
+      header: {
+        firstPage:  { enabled: true, height: 14, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт кабельной линии  ·  {{date}}' },
+        ]},
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт кабельной линии' },
+        ]},
+      },
+      footer: {
+        firstPage:  { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
+        ]},
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
+        ]},
+      },
+    }),
+  },
+
+  // 5. Расчёт АКБ (для battery/)
+  {
+    id: 'builtin-battery-report',
+    name: 'Расчёт аккумуляторной батареи',
+    description: 'Шаблон для подпрограммы «Расчёт АКБ». Таблицы характеристик и времени разряда.',
+    tags: ['акб','батарея','расчёты'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Расчёт аккумуляторной батареи' },
+      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      styles: {
+        h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
+        h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
+      },
+      header: {
+        firstPage:  { enabled: true, height: 14, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт АКБ  ·  {{date}}' },
+        ]},
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: 'Расчёт АКБ' },
+        ]},
+      },
+      footer: {
+        firstPage:  { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
+        ]},
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
+        ]},
+      },
+    }),
+  },
+
+  // 6. Конфигурация ИБП (для ups-config/)
+  {
+    id: 'builtin-ups-report',
+    name: 'Конфигурация ИБП',
+    description: 'Шаблон для подпрограммы «Конфигуратор ИБП». Параметры нагрузки, модульность, характеристики.',
+    tags: ['ибп','ups','конфигурация'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Конфигурация ИБП' },
+      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      styles: {
+        h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
+        h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
+      },
+      ...softHeaderFooter('left'),
+    }),
+  },
+
+  // 7. Конфигурация щита (для panel-config/)
+  {
+    id: 'builtin-panel-report',
+    name: 'Конфигурация щита',
+    description: 'Шаблон для подпрограммы «Конфигуратор щита». Состав, отходящие группы, корпус.',
+    tags: ['щит','panel','конфигурация'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Конфигурация щита' },
+      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      styles: {
+        h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
+        h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
+      },
+      ...softHeaderFooter('left'),
+    }),
+  },
+
+  // 8. Расчёт трансформатора (для transformer-config/)
+  {
+    id: 'builtin-transformer-report',
+    name: 'Расчёт трансформатора',
+    description: 'Шаблон для подпрограммы «Конфигуратор трансформатора». Нагрузка, модель, паспортные данные.',
+    tags: ['трансформатор','расчёты'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Расчёт силового трансформатора' },
+      page:  { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
+      styles: {
+        h1: { size: 15, bold: true, spaceBefore: 2, spaceAfter: 4 },
+        h2: { size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
+      },
+      ...softHeaderFooter('left'),
+    }),
+  },
+
+  // 9. Официальный документ (пояснительная записка, ГОСТ-стиль)
+  {
+    id: 'builtin-formal-a4',
+    name: 'Официальный документ (A4)',
+    description: 'A4, Times 12 pt, широкие поля 25 мм, выравнивание по ширине. Для пояснительных записок и протоколов.',
+    tags: ['официальный','документ','гост'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Пояснительная записка' },
+      page:  { margins: { top: 25, right: 20, bottom: 25, left: 25 } },
+      styles: {
+        body:    { font: 'Times', size: 12, lineHeight: 1.5, align: 'justify', spaceAfter: 3 },
+        h1:      { font: 'Times', size: 16, bold: true, align: 'center', spaceBefore: 8, spaceAfter: 6 },
+        h2:      { font: 'Times', size: 13, bold: true, spaceBefore: 5, spaceAfter: 3 },
+        h3:      { font: 'Times', size: 12, bold: true, spaceBefore: 4, spaceAfter: 2 },
+        list:    { font: 'Times', size: 12 },
+        caption: { font: 'Times', size: 10, italic: true },
+        table:   { font: 'Times', size: 11, headBg: TABLE_HEAD, borderColor: BORDER },
+      },
+      header: {
+        firstPage:  { enabled: false, height: 0, blocks: [] },
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: '{{meta.title}}' },
+        ]},
+      },
+      footer: {
+        firstPage:  { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}' },
+        ]},
+        otherPages: { enabled: true, height: 12, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
+        ]},
+      },
+    }),
+  },
+
+  // 10. Техническая записка — компактный рабочий документ
+  {
+    id: 'builtin-technical-note',
+    name: 'Техническая записка',
+    description: 'A4, Helvetica 11 pt, компактная вёрстка с подписью-предупреждением. Для рабочих заметок и черновых решений.',
+    tags: ['записка','рабочий'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Техническая записка' },
+      page:  { margins: { top: 18, right: 18, bottom: 18, left: 20 } },
+      styles: {
+        h1: { size: 14, bold: true, spaceBefore: 0, spaceAfter: 3 },
+        h2: { size: 11, bold: true, spaceBefore: 3, spaceAfter: 1 },
+        body: { size: 11, lineHeight: 1.35, spaceAfter: 2 },
+        caption: { size: 9, italic: true },
+      },
+      header: {
+        firstPage:  { enabled: false, height: 0, blocks: [] },
+        otherPages: { enabled: true, height: 10, blocks: [
+          { type: 'paragraph', align: 'right', style: 'caption', text: '{{meta.title}}  ·  {{date}}' },
+        ]},
+      },
+      footer: {
+        firstPage:  { enabled: true, height: 10, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
+        ]},
+        otherPages: { enabled: true, height: 10, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: 'стр. {{page}} из {{pages}}' },
+        ]},
+      },
+    }),
+  },
+
+  // 11. Ведомость (A4 альбомная) — плотная таблица с узкими полями
+  {
+    id: 'builtin-bom-landscape',
+    name: 'Ведомость (A4 альбомная)',
+    description: 'A4 альбомная, узкие поля 12 мм. Для спецификаций, кабельных журналов, ведомостей материалов.',
+    tags: ['ведомость','таблица','спецификация'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Ведомость материалов' },
+      page: { format: 'A4', orientation: 'landscape', margins: { top: 12, right: 12, bottom: 12, left: 15 } },
+      styles: {
+        h1: { size: 14, bold: true, spaceBefore: 0, spaceAfter: 3 },
+        body: { size: 10, lineHeight: 1.3 },
+        table: { font: 'Helvetica', size: 9, cellPadding: 1.5, headBg: TABLE_HEAD, borderColor: BORDER },
+      },
+      header: {
+        firstPage:  { enabled: true, height: 10, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
+        ]},
+        otherPages: { enabled: true, height: 10, blocks: [
+          { type: 'paragraph', align: 'left', style: 'caption', text: '{{meta.title}}' },
+        ]},
+      },
+      footer: {
+        firstPage:  { enabled: true, height: 10, blocks: [
+          { type: 'paragraph', align: 'right', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
+        ]},
+        otherPages: { enabled: true, height: 10, blocks: [
+          { type: 'paragraph', align: 'right', style: 'caption', text: '{{date}}  ·  стр. {{page}} из {{pages}}' },
+        ]},
+      },
+    }),
+  },
+
+  // 12. Краткая справка (A5) — карманный формат
+  {
+    id: 'builtin-compact-a5',
+    name: 'Краткая справка (A5)',
+    description: 'A5 портрет, Helvetica 9 pt. Минимальные поля. Для памяток, карточек расчётов, полевых распечаток.',
+    tags: ['a5','справка','карточка'],
+    source: 'builtin',
+    template: T({
+      meta: { title: 'Справка' },
+      page: { format: 'A5', orientation: 'portrait', margins: { top: 12, right: 10, bottom: 12, left: 12 } },
+      styles: {
+        h1: { size: 13, bold: true, spaceBefore: 0, spaceAfter: 2 },
+        h2: { size: 10, bold: true, spaceBefore: 2, spaceAfter: 1 },
+        body: { size: 9, lineHeight: 1.3, spaceAfter: 1 },
+        list: { size: 9 },
+        caption: { size: 8, italic: true },
+        table: { size: 9, cellPadding: 1.2, headBg: TABLE_HEAD, borderColor: BORDER },
+      },
+      header: {
+        firstPage:  { enabled: false, height: 0, blocks: [] },
+        otherPages: { enabled: false, height: 0, blocks: [] },
+      },
+      footer: {
+        firstPage:  { enabled: true, height: 8, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}' },
+        ]},
+        otherPages: { enabled: true, height: 8, blocks: [
+          { type: 'paragraph', align: 'center', style: 'caption', text: '{{date}}  ·  {{page}}/{{pages}}' },
+        ]},
+      },
+    }),
+  },
+];
+
+// ——————————————————————————————————————————————————————————————————————
+// Демо-контент под каждый встроенный шаблон. Функция не мутирует шаблон —
+// она возвращает массив блоков, который страница reports/ вставляет в
+// клон шаблона для превью и экспорта PDF / DOCX.
+// ——————————————————————————————————————————————————————————————————————
+export function getDemoContent(builtinId) {
+  const B = BH;
+  switch (builtinId) {
+
+    case 'builtin-blank-a4':
+      return [
+        B.h1('Заголовок отчёта'),
+        B.p('Это пустой шаблон без колонтитулов. В нём нет шапки, подвала и нумерации — оформление настраивается с нуля.'),
+        B.p('Когда подпрограмма применит шаблон, на место этих абзацев встанет её содержимое.'),
+      ];
+
+    case 'builtin-simple-a4':
+      return [
+        B.h1('Простой отчёт'),
+        B.p('Базовый документ с минимальным оформлением: компактная шапка с заголовком и футер с датой и нумерацией страниц.'),
+        B.h2('1. Назначение'),
+        B.p('Подходит для рабочих распечаток, служебных записок и черновых результатов расчётов.'),
+        B.h2('2. Структура'),
+        B.list([
+          'Шапка содержит только название документа',
+          'Футер — дату и номер страницы',
+          'Основной текст — Helvetica 11 pt, межстрочный 1,35',
+        ]),
+      ];
+
+    case 'builtin-engineering-a4':
+      return [
+        B.h1('Инженерный отчёт'),
+        B.p('Шаблон для технических расчётов с трёхуровневой иерархией заголовков и компактной табличной вёрсткой.'),
+        B.h2('1. Исходные данные'),
+        B.table(
+          [{text:'Параметр',width:75},{text:'Значение',align:'right',width:35},{text:'Ед.',align:'center',width:20}],
+          [
+            ['Расчётная нагрузка',     '125',  'кВт'],
+            ['Коэффициент мощности',   '0,90', '—'],
+            ['Расчётный ток',          '200',  'А'],
+            ['Длина линии',            '48',   'м'],
+            ['Температура среды',      '+30',  '°C'],
+          ],
+        ),
+        B.h2('2. Расчёт'),
+        B.h3('2.1. Методика'),
+        B.p('Расчёт выполнен в соответствии с ПУЭ (7-я редакция) и IEC 60364-5-52. Учтены поправочные коэффициенты по температуре, способу прокладки и группированию кабелей.'),
+        B.h3('2.2. Результаты'),
+        B.table(
+          [{text:'Этап',width:75},{text:'Значение',align:'right',width:35},{text:'Проход'}],
+          [
+            ['Сечение по длительному току', '70 мм²', '✓'],
+            ['Падение напряжения',          '2,3 %',  '✓'],
+            ['Ток короткого замыкания',     '6,8 кА', '✓'],
+          ],
+        ),
+        B.h2('3. Заключение'),
+        B.p('Принятое решение удовлетворяет всем проверкам.'),
+      ];
+
+    case 'builtin-cable-report':
+      return [
+        B.h1('Расчёт линии L-12'),
+        B.p('Кабельная линия от щита ЩС-2 (секция 1) до электродвигателя M-14 насосной группы №3.'),
+        B.h2('1. Исходные данные'),
+        B.table(
+          [{text:'Параметр',width:75},{text:'Значение',align:'right',width:35},{text:'Ед.',align:'center',width:20}],
+          [
+            ['Расчётный ток нагрузки',   '182',    'А'],
+            ['Номинальное напряжение',   '400',    'В'],
+            ['Количество фаз',           '3',      '—'],
+            ['Длина линии',              '62',     'м'],
+            ['cos φ',                    '0,87',   '—'],
+            ['Способ прокладки (IEC)',   'E',      '—'],
+            ['Температура среды',        '+30',    '°C'],
+            ['Группирование',            '3 цепи', '—'],
+          ],
+        ),
+        B.h2('2. Подбор сечения'),
+        B.h3('2.1. По длительно допустимому току'),
+        B.p('Суммарный коэффициент коррекции с учётом температуры и группирования — 0,78.'),
+        B.table(
+          [{text:'Сечение, мм²',align:'right',width:30},{text:'I_доп, А',align:'right',width:30},{text:'I_доп · K, А',align:'right',width:35},{text:'Результат',align:'center'}],
+          [
+            ['50', '177', '138', 'недостаточно'],
+            ['70', '210', '164', 'недостаточно'],
+            ['95', '253', '197', 'подходит'],
+          ],
+        ),
+        B.h3('2.2. По падению напряжения'),
+        B.p('Расчётное падение напряжения на выбранном сечении 95 мм² составляет 2,1 %, что удовлетворяет норме 5 % по ГОСТ 32144-2013.'),
+        B.h3('2.3. По току короткого замыкания'),
+        B.p('Ток однофазного короткого замыкания в конце линии — 3,4 кА. Выбранное сечение 95 мм² термически устойчиво при отключении за 0,4 с.'),
+        B.h2('3. Заключение'),
+        B.p('К прокладке принимается кабель ВВГнг(А)-LS 4×95 мм² длиной 62 м. Защита — автоматический выключатель 3P, I_н = 200 А, кривая C.'),
+      ];
+
+    case 'builtin-battery-report':
+      return [
+        B.h1('Расчёт АКБ для ИБП UPS-1'),
+        B.p('Батарея для источника бесперебойного питания UPS-1. Нагрузка — серверное оборудование ЦОД, категория I.'),
+        B.h2('1. Исходные данные'),
+        B.table(
+          [{text:'Параметр',width:80},{text:'Значение',align:'right',width:35},{text:'Ед.',align:'center',width:20}],
+          [
+            ['Активная мощность нагрузки',      '30',    'кВт'],
+            ['КПД инвертора',                   '0,95',  '—'],
+            ['Расчётная мощность с запасом',    '31,6',  'кВт'],
+            ['Напряжение DC-шины',              '384',   'В'],
+            ['Конечное напряжение элемента',    '1,67',  'В'],
+            ['Требуемое время автономии',       '15',    'мин'],
+            ['Количество элементов в цепи',     '192',   'шт.'],
+          ],
+        ),
+        B.h2('2. Выбранная модель'),
+        B.p('Panasonic LC-P1265, VRLA, 12 В, 65 Ач. Конфигурация: 32 блока × 2 параллельные цепи.'),
+        B.h2('3. Результаты расчёта'),
+        B.table(
+          [{text:'Параметр',width:80},{text:'Значение',align:'right',width:35},{text:'Ед.',align:'center',width:20}],
+          [
+            ['Требуемый ток разряда',      '82,2', 'А'],
+            ['Ток одной цепи',             '41,1', 'А'],
+            ['Время разряда (по каталогу)','16,5', 'мин'],
+            ['Запас по времени',           '10',   '%'],
+            ['Срок службы (25 °C)',        '10',   'лет'],
+          ],
+        ),
+        B.h2('4. Заключение'),
+        B.p('Принимается 64 блока LC-P1265 (2 цепи × 32 блока). Решение удовлетворяет требованию по времени автономии с запасом 10 %.'),
+      ];
+
+    case 'builtin-ups-report':
+      return [
+        B.h1('Конфигурация ИБП'),
+        B.p('Источник бесперебойного питания для технологической нагрузки здания АБК.'),
+        B.h2('1. Параметры нагрузки'),
+        B.table(
+          [{text:'Параметр',width:80},{text:'Значение',align:'right',width:35},{text:'Ед.',align:'center',width:20}],
+          [
+            ['Активная мощность',           '40',    'кВт'],
+            ['Коэффициент мощности',        '0,90',  '—'],
+            ['Полная мощность',             '44,4',  'кВА'],
+            ['Категория электроснабжения',  'I',     '—'],
+            ['Требуемое время автономии',   '10',    'мин'],
+            ['Запас по мощности',           '25',    '%'],
+            ['Расчётная мощность ИБП',      '55,5',  'кВА'],
+          ],
+        ),
+        B.h2('2. Принятое решение'),
+        B.p('Модульный ИБП с силовыми модулями 25 кВА, конфигурация 3+1 (N+1), номинальная полная мощность 75 кВА.'),
+        B.h2('3. Характеристики'),
+        B.list([
+          'Тип: онлайн с двойным преобразованием (VFI-SS-111)',
+          'КПД в режиме двойного преобразования: до 96,5 %',
+          'КПД в эко-режиме: до 98,5 %',
+          'Входной коэффициент мощности: ≥ 0,99',
+          'Коэффициент нелинейных искажений входного тока (THDi): < 3 %',
+          'Байпасный вход: встроенный',
+          'Горячая замена силовых модулей: поддерживается',
+        ]),
+      ];
+
+    case 'builtin-panel-report':
+      return [
+        B.h1('Распределительный щит ЩС-1'),
+        B.p('Главный распределительный щит напольного исполнения для административно-бытового корпуса.'),
+        B.h2('1. Общие данные'),
+        B.table(
+          [{text:'Параметр',width:75},{text:'Значение',align:'right',width:55}],
+          [
+            ['Номинальный ток вводного', '250 А'],
+            ['Число вводов',             '2 (АВР)'],
+            ['Число секций',             '2'],
+            ['Степень защиты',           'IP31'],
+            ['Форма разделения (IEC 61439)', '2b'],
+            ['Габариты (Ш × В × Г), мм', '800 × 2000 × 400'],
+          ],
+        ),
+        B.h2('2. Состав'),
+        B.table(
+          [
+            {text:'Поз.', align:'center', width:12},
+            {text:'Наименование', width:90},
+            {text:'I_н, А', align:'right', width:18},
+            {text:'Кол.', align:'center', width:15},
+          ],
+          [
+            ['1', 'Выключатель автоматический вводной, 3P', '250', '2'],
+            ['2', 'Переключатель ввода резерва, 3P',        '250', '1'],
+            ['3', 'УЗИП класса I+II, 4P',                    '—',   '1'],
+            ['4', 'Счётчик электроэнергии 3-фазный',         '—',   '1'],
+            ['5', 'Автомат отходящий 3P C63',                '63',  '4'],
+            ['6', 'Автомат отходящий 3P C32',                '32',  '6'],
+            ['7', 'Автомат отходящий 1P C16',                '16',  '12'],
+          ],
+        ),
+      ];
+
+    case 'builtin-transformer-report':
+      return [
+        B.h1('Расчёт силового трансформатора ТП-1'),
+        B.p('Силовой трансформатор для трансформаторной подстанции ТП-1. Нагрузка — потребители первой и второй категории.'),
+        B.h2('1. Исходные данные'),
+        B.table(
+          [{text:'Параметр',width:80},{text:'Значение',align:'right',width:35},{text:'Ед.',align:'center',width:20}],
+          [
+            ['Расчётная нагрузка',          '520',  'кВт'],
+            ['Коэффициент мощности',        '0,92', '—'],
+            ['Полная мощность нагрузки',    '565',  'кВА'],
+            ['Коэффициент загрузки',        '0,70', '—'],
+            ['Требуемая номинальная мощность','808','кВА'],
+          ],
+        ),
+        B.h2('2. Выбранная модель'),
+        B.p('ТМГ-1000/10-0,4 УХЛ1. Первичное 10 кВ, вторичное 0,4 кВ, группа соединений Δ/Yн-11, охлаждение ONAN.'),
+        B.h2('3. Паспортные данные'),
+        B.table(
+          [{text:'Параметр',width:80},{text:'Значение',align:'right',width:35},{text:'Ед.',align:'center',width:20}],
+          [
+            ['Номинальная мощность',         '1000', 'кВА'],
+            ['Потери холостого хода',        '1,55', 'кВт'],
+            ['Потери короткого замыкания',   '10,8', 'кВт'],
+            ['Напряжение КЗ u_k',            '5,5',  '%'],
+            ['Ток холостого хода',           '0,6',  '%'],
+            ['Ток КЗ на стороне 0,4 кВ',     '26,2', 'кА'],
+          ],
+        ),
+        B.h2('4. Заключение'),
+        B.p('Фактический коэффициент загрузки при выбранном трансформаторе — 0,56, что обеспечивает необходимый резерв для развития и двукратную работу при отключении параллельного трансформатора.'),
+      ];
+
+    case 'builtin-formal-a4':
+      return [
+        B.h1('Пояснительная записка'),
+        B.h2('1. Общие сведения'),
+        B.p('Настоящий документ содержит описание принятых проектных решений и результаты расчётов систем электроснабжения объекта. Документ оформлен в соответствии с требованиями ГОСТ 2.105 и ГОСТ Р 21.101.'),
+        B.h2('2. Исходные данные'),
+        B.p('В качестве исходных данных приняты нагрузки, определённые по техническому заданию заказчика, а также категория надёжности электроснабжения, согласованная в установленном порядке с сетевой организацией.'),
+        B.h2('3. Принятые технические решения'),
+        B.ol([
+          'Электроснабжение объекта предусмотрено от двух независимых источников с устройством автоматического включения резерва на стороне 0,4 кВ.',
+          'Распределение электроэнергии выполнено по радиально-магистральной схеме с применением распределительных щитов, установленных в кабельных галереях и электротехнических помещениях.',
+          'Для потребителей первой категории надёжности предусмотрено резервное электроснабжение от агрегата бесперебойного питания и дизель-генераторной установки.',
+          'Учёт электроэнергии выполнен в точке балансового разграничения с сетевой организацией, а также на вводах каждого распределительного щита.',
+        ]),
+        B.h2('4. Перечень принятых ссылочных документов'),
+        B.list([
+          'ГОСТ 32144-2013 — Нормы качества электрической энергии',
+          'СП 256.1325800.2016 — Электроустановки жилых и общественных зданий',
+          'ПУЭ, 7-я редакция',
+        ]),
+      ];
+
+    case 'builtin-technical-note':
+      return [
+        B.h1('Техническая записка'),
+        B.caption('Документ носит рабочий характер и подлежит уточнению по мере продвижения проекта.'),
+        B.h2('Предмет'),
+        B.p('Проверка достаточности сечения существующей кабельной линии L-07 при увеличении нагрузки на 18 %.'),
+        B.h2('Исходные условия'),
+        B.list([
+          'Тип кабеля: ВВГнг-LS 4×50 мм²',
+          'Длина: 74 м, прокладка в лотке (способ E)',
+          'Старый ток нагрузки: 128 А',
+          'Новый ток нагрузки: 151 А',
+        ]),
+        B.h2('Выводы'),
+        B.p('Сечение 50 мм² удовлетворяет новому току нагрузки с запасом 12 %. Падение напряжения увеличивается с 2,4 % до 2,8 % (норма 5 %). Замена кабеля не требуется.'),
+        B.caption('Подготовлено для внутреннего согласования.'),
+      ];
+
+    case 'builtin-bom-landscape':
+      return [
+        B.h1('Ведомость материалов'),
+        B.p('Объект: реконструкция главного распределительного щита ГРЩ 0,4 кВ.'),
+        B.table(
+          [
+            {text:'Поз.', align:'center', width:15},
+            {text:'Наименование', width:125},
+            {text:'Тип / артикул', width:55},
+            {text:'Ед.', align:'center', width:18},
+            {text:'Кол.', align:'right', width:18},
+            {text:'Примечание', width:40},
+          ],
+          [
+            ['1', 'Выключатель автоматический вводной, 3P, 400 А',     'Tmax T5N 400',        'шт.','1', 'I_cu = 36 кА'],
+            ['2', 'Выключатель автоматический секционный, 3P, 400 А',  'Tmax T5N 400',        'шт.','1', 'моторизованный'],
+            ['3', 'Выключатель автоматический, 3P, 160 А',             'Tmax T3N 160',        'шт.','6', ''],
+            ['4', 'Выключатель автоматический, 3P, 63 А',              'S203 C63',            'шт.','12',''],
+            ['5', 'Выключатель автоматический, 1P, 16 А',              'S201 C16',            'шт.','24',''],
+            ['6', 'Устройство защиты от импульсных перенапряжений',    'OVR T1+2 4L 25-275',  'шт.','1', 'класс I+II'],
+            ['7', 'Счётчик электроэнергии 3-фазный',                   'Меркурий 234 AR',     'шт.','1', 'класс 0,5S'],
+            ['8', 'Трансформатор тока 400/5',                          'ТТИ-А 400/5',         'шт.','3', ''],
+            ['9', 'Шкаф распределительный напольный',                  'ArTu L 2000×800×400', 'шт.','1', 'IP31, форма 2b'],
+            ['10','Кабель ВВГнг(А)-LS 4×95',                           '',                    'м',  '62','фидер L-12'],
+            ['11','Кабель ВВГнг(А)-LS 5×16',                           '',                    'м',  '180','отходящие'],
+          ],
+        ),
+      ];
+
+    case 'builtin-compact-a5':
+      return [
+        B.h1('Карточка линии L-14'),
+        B.caption('Полевая памятка, формат A5'),
+        B.h2('Параметры'),
+        B.table(
+          [{text:'Параметр',width:45},{text:'Значение',align:'right',width:40}],
+          [
+            ['Ток', '32 А'],
+            ['Напряжение', '400 В'],
+            ['Сечение', '10 мм²'],
+            ['Длина', '24 м'],
+            ['ΔU', '2,4 %'],
+            ['Защита', '3P C40'],
+          ],
+        ),
+        B.h2('Примечания'),
+        B.list([
+          'Прокладка в лотке (способ E)',
+          'Группа из 3 цепей',
+          'Температура среды +30 °C',
+        ]),
+      ];
+  }
+
+  // fallback — общий демо-контент для пользовательских шаблонов
+  return [
+    B.h1('Заголовок отчёта'),
+    B.p('Это превью шаблона. Когда подпрограмма применит этот шаблон, на место этих блоков встанут её данные.'),
+    B.h2('Раздел 1. Исходные данные'),
+    B.list([
+      'Параметр 1 — значение',
+      'Параметр 2 — значение',
+      'Параметр 3 — значение',
+    ]),
+    B.h2('Раздел 2. Результаты'),
+    B.table(
+      ['Параметр','Значение','Ед.'],
+      [
+        ['Первый', '10',   'шт.'],
+        ['Второй', '25,5', 'кВт'],
+        ['Третий', '0,92', '—'],
+      ],
+    ),
+    B.h3('2.1. Комментарий'),
+    B.p('Абзац пояснений с деталями расчёта.'),
+    B.hr(),
+    B.caption('Превью формируется модулем shared/report/preview.js.'),
+  ];
+}
+
+// ——— локальные хелперы для демо-контента ———
+const BH = {
+  h1: (text) => ({ type: 'heading', level: 1, text }),
+  h2: (text) => ({ type: 'heading', level: 2, text }),
+  h3: (text) => ({ type: 'heading', level: 3, text }),
+  p:  (text) => ({ type: 'paragraph', text }),
+  caption: (text) => ({ type: 'paragraph', style: 'caption', text }),
+  list:    (items) => ({ type: 'list', ordered: false, items }),
+  ol:      (items) => ({ type: 'list', ordered: true,  items }),
+  table:   (columns, rows) => ({ type: 'table', columns, rows }),
+  hr:      () => ({ type: 'hr' }),
+  spacer:  (h = 3) => ({ type: 'spacer', height: h }),
+};

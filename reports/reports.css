@@ -226,3 +226,53 @@ main {
   justify-content: flex-end;
   margin-top: 4px;
 }
+
+/* ——— справка ——— */
+.rpt-help-body {
+  padding: 18px 24px 22px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #1f2430;
+}
+.rpt-help-body section { margin-bottom: 18px; }
+.rpt-help-body section:last-child { margin-bottom: 0; }
+.rpt-help-body h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2430;
+}
+.rpt-help-body p { margin: 0 0 6px; }
+.rpt-help-body ul,
+.rpt-help-body ol {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+.rpt-help-body li { margin-bottom: 3px; }
+.rpt-help-body code {
+  background: #f1f3f7;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font: 12px/1 Menlo, Consolas, monospace;
+}
+.rpt-help-body b { color: #1f2430; }
+
+/* ——— круглая кнопка «?» ——— */
+.btn-help {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 700;
+  background: #eef0f4;
+  border: 1px solid #d0d5de;
+  color: #1f2430;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
+.btn-help:hover { background: #e3f2fd; border-color: #1976d2; color: #1976d2; }
