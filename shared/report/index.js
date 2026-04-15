@@ -55,6 +55,10 @@ export { renderPreview, paginate, estimateBlockHeight, renderBlock } from './pre
 
 export { openTemplateEditor } from './editor.js';
 
+// Picker шаблонов — модалка выбора шаблона из каталога. Используется
+// подпрограммами при экспорте отчёта.
+export { pickTemplate } from './picker.js';
+
 // Экспортёры грузят тяжёлые CDN-зависимости лениво (jsPDF / docx.js),
 // поэтому их функции async.
 export { exportPDF }  from './export-pdf.js';

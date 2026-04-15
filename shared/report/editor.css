@@ -452,3 +452,101 @@ button.danger {
   margin-top: 10px;
 }
 button.danger:hover { background: #fdecea; }
+
+/* ——— picker шаблонов ——— */
+.rpt-picker-modal {
+  width: min(560px, 94vw);
+  max-height: 84vh;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font: 14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1f2430;
+}
+.rpt-picker-hdr {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e0e3ea;
+  background: #fafbfc;
+}
+.rpt-picker-title { font-size: 15px; font-weight: 600; }
+.rpt-picker-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.rpt-picker-close:hover { color: #1f2430; }
+.rpt-picker-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.rpt-picker-empty {
+  padding: 24px 18px;
+  color: #9aa3b5;
+  font-size: 13px;
+  text-align: center;
+}
+.rpt-picker-item {
+  padding: 10px 18px;
+  border-bottom: 1px solid #f1f3f7;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rpt-picker-item:hover { background: #f7f9fc; }
+.rpt-picker-item.active {
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+  padding-left: 15px;
+}
+.rpt-picker-item__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2430;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rpt-picker-item__desc {
+  font-size: 12px;
+  color: #6b7280;
+}
+.rpt-picker-item__badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+.rpt-picker-item__badge.builtin { background: #e8f5e9; color: #2e7d32; }
+.rpt-picker-item__badge.user    { background: #e3f2fd; color: #1976d2; }
+.rpt-picker-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #e0e3ea;
+  background: #fafbfc;
+}
+.rpt-picker-link {
+  flex: 1;
+  font-size: 12px;
+  color: #1976d2;
+  text-decoration: none;
+}
+.rpt-picker-link:hover { text-decoration: underline; }
