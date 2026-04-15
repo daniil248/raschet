@@ -35,7 +35,7 @@ export function openUpsParamsModal(n) {
     h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
   }
   h.push(field('КПД, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}">`));
-  h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="5" step="1" value="${n.inputs}">`));
+  h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="2" step="1" value="${Math.min(2, Math.max(1, Number(n.inputs) || 1))}">`));
   h.push(field('Выходов', `<input type="number" id="up-outputs" min="1" max="20" step="1" value="${n.outputs}">`));
 
   // Параметры модульного ИБП: frame + installed + redundancy N+X
@@ -235,7 +235,7 @@ export function openUpsParamsModal(n) {
       n.capacityKw = Number(document.getElementById('up-capKw')?.value) || 0;
     }
     n.efficiency = Number(document.getElementById('up-eff')?.value) || 95;
-    n.inputs = Number(document.getElementById('up-inputs')?.value) || 1;
+    n.inputs = Math.min(2, Math.max(1, Number(document.getElementById('up-inputs')?.value) || 1));
     n.outputs = Number(document.getElementById('up-outputs')?.value) || 1;
     // Флаги состава автоматов
     for (const flag of ['hasInputBreaker','hasInputBypassBreaker','hasOutputBreaker','hasBypassBreaker','hasBatteryBreaker']) {
@@ -344,26 +344,8 @@ function _renderUpsControlBody(n) {
     </div>`);
   }
 
-  h.push('<h4 style="margin:12px 0 6px">Защитные аппараты</h4>');
-  const brkRow = (key, label, onKey, nominalKey, branchA) => {
-    if (n[key] === false) return '';
-    const isOn = n[onKey] !== false;
-    const nom = n[nominalKey];
-    const nomStr = nom ? `${nom} А` : '—';
-    return `<div class="ups-ctl-row">
-      <div class="ups-ctl-label">${escHtml(label)}</div>
-      <div class="ups-ctl-nominal">In: <b>${nomStr}</b></div>
-      <div class="ups-ctl-current">Iтек: <b>${fmt(branchA)} А</b></div>
-      <button class="ups-ctl-toggle ${isOn ? 'on' : 'off'}" data-ups-brk="${onKey}">${isOn ? 'ВКЛ' : 'ОТКЛ'}</button>
-    </div>`;
-  };
-  h.push('<div class="ups-ctl-grid">');
-  h.push(brkRow('hasInputBreaker',       'QF1 · Вводной',           'inputBreakerOn',       'inputBreakerIn',       inA));
-  h.push(brkRow('hasInputBypassBreaker', 'QF2 · Вводной байпаса',   'inputBypassBreakerOn', 'inputBypassBreakerIn', inBypassA));
-  h.push(brkRow('hasOutputBreaker',      'QF3 · Выходной',          'outputBreakerOn',      'outputBreakerIn',      outA));
-  h.push(brkRow('hasBypassBreaker',      'QF4 · Байпас (механ.)',   'bypassBreakerOn',      'bypassBreakerIn',      0));
-  h.push(brkRow('hasBatteryBreaker',     'QB · Батарейный',         'batteryBreakerOn',     'batteryBreakerIn',     battA));
-  h.push('</div>');
+  // Список «Защитные аппараты» удалён — управление автоматами перенесено
+  // на клик прямо по автоматам на SVG-схеме (см. data-ups-brk в _svgBreaker).
 
   h.push('<h4 style="margin:16px 0 6px">Статический байпас</h4>');
   h.push(`<div class="ups-ctl-row">
@@ -719,13 +701,13 @@ function _upsStructSvg(n, flows) {
   if (hasQF4) {
     const maintCol = qf4on ? colBypass : colIdle;
     const xQF4 = (xQF1 + xOutBus) / 2;
-    parts.push(`<text x="${xQF4}" y="${yMaint - 14}" text-anchor="middle" font-size="11" fill="#546e7a">Maintenance bypass</text>`);
+    parts.push(`<text x="${xQF4}" y="${yMaint - 30}" text-anchor="middle" font-size="11" fill="#546e7a">Maintenance bypass</text>`);
     parts.push(`<line x1="${xQF1 + 22}" y1="${yBypass}" x2="${xQF1 + 22}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
     parts.push(`<line x1="${xQF1 + 22}" y1="${yMaint}" x2="${xQF4 - 20}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
     parts.push(_svgBreaker(xQF4, yMaint, 'QF4', colBypass, qf4on, true, 'bypassBreakerOn'));
     parts.push(`<line x1="${xQF4 + 20}" y1="${yMaint}" x2="${xOutBus}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
     if (n.bypassBreakerIn) {
-      parts.push(`<text x="${xQF4 + 22}" y="${yMaint - 6}" font-size="9" fill="#777">${n.bypassBreakerIn}A</text>`);
+      parts.push(`<text x="${xQF4 + 25}" y="${yMaint + 5}" font-size="9" fill="#777">${n.bypassBreakerIn}A</text>`);
     }
   }
 
@@ -739,22 +721,23 @@ function _upsStructSvg(n, flows) {
     parts.push(`<line x1="${xInputTerm + 5}" y1="${yBypass}" x2="${hasQF2 ? xQF1 - 20 : 460}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
     if (hasQF2) {
       parts.push(_svgBreaker(xQF1, yBypass, 'QF2', colBypass, qf2on, true, 'inputBypassBreakerOn'));
-      if (n.inputBypassBreakerIn) parts.push(`<text x="${xQF1 + 22}" y="${yBypass - 6}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
+      if (n.inputBypassBreakerIn) parts.push(`<text x="${xQF1 + 25}" y="${yBypass + 5}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
       parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
     }
   } else {
-    // Jumper: перемычка от mains-линии до байпасной ветки. Тянем вертикальную
-    // линию от mains-линии (yMains) вверх к yBypass в точке сразу после QF1,
-    // затем горизонталь к байпасному автомату / bypass module.
-    const jumperX = xQF1 + 35;
-    parts.push(`<text x="${jumperX + 8}" y="${yBypass - 8}" font-size="10" fill="#888">перемычка от Mains</text>`);
+    // Jumper: перемычка от mains-линии до байпасной ветки.
+    // Ответвление делается ПЕРЕД QF1 (на участке кабеля от клеммы
+    // Mains input до QF1), а не после, чтобы QF1 не отключал байпас.
+    // Вертикаль от yMains к yBypass в точке jumperX = xQF1 − 50.
+    const jumperX = xQF1 - 50;
+    parts.push(`<text x="${jumperX - 6}" y="${yBypass - 8}" text-anchor="end" font-size="10" fill="#888">перемычка от Mains</text>`);
     parts.push(`<line x1="${jumperX}" y1="${yMains}" x2="${jumperX}" y2="${yBypass}" stroke="${mainsLineCol}" stroke-width="2"/>`);
     parts.push(`<circle cx="${jumperX}" cy="${yMains}" r="3" fill="${mainsLineCol}"/>`);
     if (hasQF2) {
-      parts.push(_svgBreaker(jumperX + 40, yBypass, 'QF2', colBypass, qf2on, true, 'inputBypassBreakerOn'));
-      if (n.inputBypassBreakerIn) parts.push(`<text x="${jumperX + 62}" y="${yBypass - 6}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
-      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="${jumperX + 20}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
-      parts.push(`<line x1="${jumperX + 60}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+      parts.push(_svgBreaker(xQF1, yBypass, 'QF2', colBypass, qf2on, true, 'inputBypassBreakerOn'));
+      if (n.inputBypassBreakerIn) parts.push(`<text x="${xQF1 + 25}" y="${yBypass + 5}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
+      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="${xQF1 - 20}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+      parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
     } else {
       parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
     }
@@ -780,7 +763,7 @@ function _upsStructSvg(n, flows) {
   parts.push(`<line x1="${xInputTerm + 5}" y1="${yMains}" x2="${hasQF1 ? xQF1 - 20 : xMainsBus}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
   if (hasQF1) {
     parts.push(_svgBreaker(xQF1, yMains, 'QF1', colActive, qf1on, true, 'inputBreakerOn'));
-    if (n.inputBreakerIn) parts.push(`<text x="${xQF1 + 22}" y="${yMains - 6}" font-size="9" fill="#777">${n.inputBreakerIn}A</text>`);
+    if (n.inputBreakerIn) parts.push(`<text x="${xQF1 + 25}" y="${yMains + 5}" font-size="9" fill="#777">${n.inputBreakerIn}A</text>`);
     parts.push(`<line x1="${xQF1 + 20}" y1="${yMains}" x2="${xMainsBus}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
   }
   if (inA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yMains + 18}" font-size="10" fill="${colActive}" font-weight="600">${fmtA(inA)}</text>`);
@@ -810,7 +793,7 @@ function _upsStructSvg(n, flows) {
     parts.push(`<line id="ups-batt-anim-a" x1="${battWireX1}" y1="${yBatt}" x2="${battWireX2}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
     if (hasQB) {
       parts.push(_svgBreaker(xQF1, yBatt, 'QB', colBatt, qbon, true, 'batteryBreakerOn'));
-      if (n.batteryBreakerIn) parts.push(`<text x="${xQF1 + 22}" y="${yBatt - 6}" font-size="9" fill="#777">${n.batteryBreakerIn}A</text>`);
+      if (n.batteryBreakerIn) parts.push(`<text x="${xQF1 + 25}" y="${yBatt + 5}" font-size="9" fill="#777">${n.batteryBreakerIn}A</text>`);
       parts.push(`<line id="ups-batt-anim-b" x1="${xQF1 + 20}" y1="${yBatt}" x2="${xBattBus}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
     }
   }
@@ -927,7 +910,7 @@ function _upsStructSvg(n, flows) {
   if (hasQF3) {
     parts.push(`<line x1="${xOutBus}" y1="${qf3Y}" x2="${xQF3 - 20}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
     parts.push(_svgBreaker(xQF3, qf3Y, 'QF3', colActive, qf3on, true, 'outputBreakerOn'));
-    if (n.outputBreakerIn) parts.push(`<text x="${xQF3 + 22}" y="${qf3Y - 6}" font-size="9" fill="#777">${n.outputBreakerIn}A</text>`);
+    if (n.outputBreakerIn) parts.push(`<text x="${xQF3 + 25}" y="${qf3Y + 5}" font-size="9" fill="#777">${n.outputBreakerIn}A</text>`);
     parts.push(`<line x1="${xQF3 + 20}" y1="${qf3Y}" x2="${xOutTerm - 5}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
   } else {
     parts.push(`<line x1="${xOutBus}" y1="${qf3Y}" x2="${xOutTerm - 5}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
@@ -1045,8 +1028,10 @@ function _svgBreakerBody(cx, cy, label, color, on, present = true) {
   // Точки: левая клемма и ось вращения
   s += `<circle cx="${leftTerm}" cy="${cy}" r="2" fill="${wireCol}"/>`;
   s += `<circle cx="${pivotX}" cy="${cy}" r="2.5" fill="${col}"/>`;
-  // Лейбл под крестиком
-  s += `<text x="${crossX}" y="${cy - 10}" text-anchor="middle" font-size="10" fill="#546e7a">${label}</text>`;
+  // Лейбл — НАД автоматом, чуть выше чтобы не перекрывать механизм
+  // и возможную верхнюю клемму в разомкнутом состоянии (контакт уходит
+  // вверх-влево ~30°, tipY = cy − sin(30°)·20 ≈ cy − 10).
+  s += `<text x="${crossX}" y="${cy - 18}" text-anchor="middle" font-size="10" fill="#546e7a">${label}</text>`;
   return s;
 }
 
