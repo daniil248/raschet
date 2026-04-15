@@ -506,6 +506,18 @@ export function openUpsBatteryModal(n) {
   modal.classList.remove('hidden');
 }
 
+// Загрузка справочника АКБ из localStorage. Ключ совпадает с тем, что
+// использует подпрограмма «Расчёт АКБ» (battery/battery-catalog.js).
+// Возвращает массив записей или [].
+function _loadBatteryCatalog() {
+  try {
+    const raw = localStorage.getItem('raschet.batteryCatalog.v1');
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
 function _renderUpsBatteryBody(n) {
   const body = document.getElementById('ups-battery-body');
   if (!body) return;
@@ -520,6 +532,9 @@ function _renderUpsBatteryBody(n) {
   const cellV = Number(n.batteryCellVoltage ?? 2.0) || 0;
   const ah = Number(n.batteryCapacityAh ?? 100) || 0;
   const strs = Number(n.batteryStringCount ?? 1) || 1;
+
+  // Справочник АКБ (из подпрограммы «Расчёт АКБ»)
+  const catalog = _loadBatteryCatalog();
   const blockV = cells * cellV;
   const totalAh = ah * strs;
   const kwh = (blockV * totalAh) / 1000;
@@ -539,6 +554,35 @@ function _renderUpsBatteryBody(n) {
     Заряд: <b>${pct}%</b> → запас <b>${fmt(storedKwh)} kWh</b><br>
     Оценка автономии на нагрузке ${fmt(loadKw)} kW: <b>${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
   </div>`);
+
+  // Выбор модели из справочника АКБ (если справочник не пуст)
+  if (catalog.length) {
+    const curId = n.batteryCatalogId || '';
+    let opts = `<option value="">— свой состав (без выбора из справочника) —</option>`;
+    // Группировка по поставщику
+    const bySupplier = new Map();
+    for (const b of catalog) {
+      const sup = b.supplier || 'Unknown';
+      if (!bySupplier.has(sup)) bySupplier.set(sup, []);
+      bySupplier.get(sup).push(b);
+    }
+    for (const [sup, list] of bySupplier) {
+      opts += `<optgroup label="${escHtml(sup)}">`;
+      for (const b of list) {
+        const label = `${b.type} · ${b.blockVoltage ? fmt(b.blockVoltage) + ' В' : '—'}${b.capacityAh ? ' · ' + fmt(b.capacityAh) + ' А·ч' : ''}`;
+        opts += `<option value="${escHtml(b.id)}"${b.id === curId ? ' selected' : ''}>${escHtml(label)}</option>`;
+      }
+      opts += '</optgroup>';
+    }
+    h.push('<h4 style="margin:8px 0 6px">Модель из справочника</h4>');
+    h.push(field('Выбрать АКБ', `<select id="ups-batt-catalog">${opts}</select>`));
+    h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">При выборе автоматически заполняются тип / напряжение / количество элементов / ёмкость. Каталог пополняется в подпрограмме <a href="battery/" target="_blank" style="color:#1976d2">«Расчёт АКБ»</a>.</div>`);
+  } else {
+    h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
+      Справочник АКБ пуст. Загрузите XLSX-данные производителя в подпрограмме
+      <a href="battery/" target="_blank" style="color:#1976d2">«Расчёт АКБ»</a>, чтобы выбирать модели из каталога и считать разряд по реальным таблицам.
+    </div>`);
+  }
 
   // Состав блока АКБ (редактируемые поля)
   h.push('<h4 style="margin:8px 0 6px">Состав блока</h4>');
@@ -599,6 +643,34 @@ function _renderUpsBatteryBody(n) {
       render(); notifyChange(); _renderUpsBatteryBody(n);
     });
   };
+  // Селектор модели из справочника АКБ
+  const catalogSel = document.getElementById('ups-batt-catalog');
+  if (catalogSel) {
+    catalogSel.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':catalog');
+      const id = catalogSel.value || '';
+      n.batteryCatalogId = id || null;
+      if (id) {
+        const cat = _loadBatteryCatalog();
+        const picked = cat.find(b => b.id === id);
+        if (picked) {
+          // Применяем характеристики выбранной модели. Количество
+          // элементов в блоке, напряжение элемента и ёмкость берутся
+          // напрямую из каталога. Тип батареи — из chemistry.
+          n.batteryType = picked.chemistry === 'li-ion' ? 'li-ion' : 'lead-acid';
+          if (picked.cellCount) n.batteryCellCount = picked.cellCount;
+          if (picked.cellVoltage) n.batteryCellVoltage = picked.cellVoltage;
+          if (picked.capacityAh) n.batteryCapacityAh = picked.capacityAh;
+          // batteryKwh пересчитаем из новых полей
+          const _blockV = (Number(n.batteryCellCount) || 0) * (Number(n.batteryCellVoltage) || 0);
+          const _totalAh = (Number(n.batteryCapacityAh) || 0) * (Number(n.batteryStringCount) || 1);
+          n.batteryKwh = (_blockV * _totalAh) / 1000;
+        }
+      }
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
+  }
+
   const typeSel = document.getElementById('ups-batt-type');
   if (typeSel) {
     typeSel.addEventListener('change', () => {
