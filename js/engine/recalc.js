@@ -1516,11 +1516,13 @@ function recalc() {
 
     if (parallel > 1 && isGroupLoad) {
       // ГРУППОВАЯ нагрузка (N отдельных приборов, каждый на своём кабеле):
-      // показываем ТОЛЬКО номинал одной линии. Общего автомата сверху не ставим —
-      // на панели для этой линии один автомат на per-line ток одного прибора.
-      c._breakerIn = InPerLine;
-      c._breakerPerLine = null;
-      c._breakerCount = 1;
+      // В щите стоит по автомату на КАЖДУЮ линию (parallel штук по InPerLine).
+      // Общего вышестоящего автомата на объединении линий нет.
+      // _breakerIn=null, _breakerPerLine=InPerLine, _breakerCount=parallel
+      // → рендер покажет «N × InA» как и просил пользователь.
+      c._breakerIn = null;
+      c._breakerPerLine = InPerLine;
+      c._breakerCount = parallel;
     } else if (parallel > 1 && _protIndivGlobal) {
       // ПАРЦЕЛЛЬНАЯ линия, режим individual: каждая жила своим автоматом + общий
       c._breakerIn = InTotal;

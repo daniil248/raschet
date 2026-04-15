@@ -462,12 +462,21 @@ export function renderInspectorConn(c) {
   h.push('<button class="btn-delete" id="btn-del-conn">Удалить связь</button>');
   inspectorBody.innerHTML = h.join('');
 
-  // Подписка на поля связи
+  // Подписка на поля связи.
+  // Баг-фикс (фокус): для text/number используем событие 'input' + вызываем
+  // только render() — без renderInspector(), иначе каждый символ пересобирает
+  // DOM и input теряет фокус. Для select/checkbox используем 'change' и
+  // renderInspector() разрешён (эти контролы теряют фокус штатно, а нам нужно
+  // перерисовать зависимые блоки — иконки, справочные значения и т.п.).
   inspectorBody.querySelectorAll('[data-conn-prop]').forEach(inp => {
-    inp.addEventListener(inp.type === 'checkbox' ? 'change' : 'input', () => {
+    const isSelect = inp.tagName === 'SELECT';
+    const isCheckbox = inp.type === 'checkbox';
+    const isTextLike = !isSelect && !isCheckbox; // input[type=text|number|...]
+    const evt = isTextLike ? 'input' : 'change';
+    inp.addEventListener(evt, () => {
       snapshot('conn:' + c.id + ':' + inp.dataset.connProp);
       const prop = inp.dataset.connProp;
-      let v = inp.type === 'checkbox' ? inp.checked : (inp.type === 'number' ? Number(inp.value) : inp.value);
+      let v = isCheckbox ? inp.checked : (inp.type === 'number' ? Number(inp.value) : inp.value);
       // Числовые свойства из select: manualBreakerIn, manualCableSize, manualCableParallel, grouping
       if (['manualBreakerIn', 'manualCableSize', 'manualCableParallel', 'grouping', 'ambientC', 'lengthM', 'economicHours'].includes(prop)) {
         v = Number(v) || 0;
@@ -475,9 +484,10 @@ export function renderInspectorConn(c) {
       c[prop] = v;
       render();
       notifyChange();
-      // Обновить иконки при смене метода/расположения
-      // Перерисовать инспектор при любом изменении расчётных параметров
-      renderInspector();
+      // renderInspector ТОЛЬКО для select/checkbox — они могут показать/скрыть
+      // зависимые блоки (иконки прокладки, манула кабеля и т.п.), а для
+      // текстовых полей это ломает фокус/каретку.
+      if (!isTextLike) renderInspector();
     });
   });
   // Режим разрыва (link mode)

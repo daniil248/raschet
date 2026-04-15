@@ -772,7 +772,9 @@ export function wireInspectorInputs(n) {
         renderInspector();
       }
     };
-    inp.addEventListener('input', apply);
+    // Фикс фокуса: для всех полей используем только 'change' (срабатывает на
+    // blur / Enter), без 'input' — иначе каждый символ перерисовывает DOM и
+    // сбрасывает фокус/каретку в text/number input'ах.
     inp.addEventListener('change', apply);
   });
   // Чекбоксы привязки выходов к входам (avr_paired)
