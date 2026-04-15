@@ -1,0 +1,135 @@
+/* =========================================================================
+   shared/styles/base.css
+   Базовые стили и дизайн-токены для всех подпрограмм Raschet.
+   Подключается в любой подпрограмме ПЕРЕД её собственным CSS:
+     <link rel="stylesheet" href="../shared/styles/base.css">
+     <link rel="stylesheet" href="../shared/app-header.css">
+     <link rel="stylesheet" href="моя-подпрограмма.css">
+   Главное приложение (index.html) тоже подключает этот файл, чтобы
+   единая палитра и кнопки были во всех местах.
+   ========================================================================= */
+
+:root {
+  /* ===== Палитра ===== */
+  --rs-bg:           #f4f5f7;
+  --rs-bg-card:      #ffffff;
+  --rs-bg-soft:      #f6f8fa;
+  --rs-bg-hover:     #f0f0f0;
+  --rs-fg:           #222222;
+  --rs-fg-muted:     #6b7280;
+  --rs-fg-subtle:    #9aa3b5;
+  --rs-border:       #d0d0d0;
+  --rs-border-soft:  #e0e3ea;
+  --rs-border-hair:  #f0f0f0;
+
+  /* Акцентные цвета */
+  --rs-accent:       #1976d2;
+  --rs-accent-hover: #1565c0;
+  --rs-accent-bg:    #e3f2fd;
+  --rs-danger:       #c62828;
+  --rs-danger-bg:    #ffebee;
+  --rs-success:      #2e7d32;
+  --rs-success-bg:   #e8f5e9;
+  --rs-warn:         #e65100;
+  --rs-warn-bg:      #fff8e1;
+
+  /* ===== Типографика ===== */
+  --rs-font:         -apple-system, "Segoe UI", Roboto, sans-serif;
+  --rs-font-mono:    ui-monospace, Consolas, "SF Mono", monospace;
+
+  /* ===== Радиусы / тени ===== */
+  --rs-radius-sm:    4px;
+  --rs-radius:       6px;
+  --rs-radius-lg:    10px;
+  --rs-shadow-card:  0 1px 3px rgba(0, 0, 0, 0.04);
+  --rs-shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== Reset + базовый фон ===== */
+* { box-sizing: border-box; }
+html, body {
+  font-family: var(--rs-font);
+  color: var(--rs-fg);
+  background: var(--rs-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Общие кнопки .btn-sm / .btn-danger =====
+   Используются и в главном приложении, и в подпрограммах.
+   Небольшие компактные кнопки для тулбаров и таблиц. */
+.btn-sm {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--rs-radius-sm);
+  border: 1px solid var(--rs-border);
+  background: var(--rs-bg-card);
+  color: var(--rs-fg);
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn-sm:hover   { background: var(--rs-bg-hover); }
+.btn-sm:active  { background: #e8e8e8; }
+.btn-sm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--rs-bg-card);
+}
+.btn-sm.btn-primary {
+  background: var(--rs-accent);
+  border-color: var(--rs-accent);
+  color: #fff;
+}
+.btn-sm.btn-primary:hover { background: var(--rs-accent-hover); border-color: var(--rs-accent-hover); }
+
+.btn-danger,
+.btn-sm.btn-danger {
+  background: var(--rs-bg-card);
+  border-color: var(--rs-danger);
+  color: var(--rs-danger);
+}
+.btn-danger:hover,
+.btn-sm.btn-danger:hover { background: var(--rs-danger-bg); }
+
+/* Кнопка «Удалить» в строках таблиц — тот же стиль, мягкая подсветка */
+.btn-sm.btn-del:hover {
+  background: var(--rs-danger-bg);
+  border-color: var(--rs-danger);
+  color: var(--rs-danger);
+}
+
+/* ===== Пустой state ===== */
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--rs-fg-subtle);
+  font-size: 13px;
+  background: var(--rs-bg-card);
+  border: 1px dashed var(--rs-border);
+  border-radius: var(--rs-radius-lg);
+}
+
+/* ===== Флеш-уведомления (всплывающие подсказки после действий) ===== */
+.flash {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  background: #323232;
+  color: #fff;
+  border-radius: var(--rs-radius);
+  font-size: 13px;
+  box-shadow: var(--rs-shadow-modal);
+  z-index: 10000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.flash.show { opacity: 1; }
+.flash.success { background: var(--rs-success); }
+.flash.error   { background: var(--rs-danger); }
+
+/* ===== Утилитарные классы ===== */
+.muted { color: var(--rs-fg-muted); }
+.subtle { color: var(--rs-fg-subtle); }
