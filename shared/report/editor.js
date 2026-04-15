@@ -123,20 +123,70 @@ export function openTemplateEditor(tpl, opts = {}) {
   redrawCanvas();
 
   // ——— события кнопок ———
-  btnCancel.addEventListener('click', () => {
+  const closeEditor = (save) => {
     backdrop.remove();
-    if (opts.onCancel) opts.onCancel();
-  });
-  btnSave.addEventListener('click', () => {
-    backdrop.remove();
-    if (opts.onSave) opts.onSave(working);
-  });
+    window.removeEventListener('keydown', onKeyDown);
+    if (save) { if (opts.onSave) opts.onSave(working); }
+    else      { if (opts.onCancel) opts.onCancel(); }
+  };
+  btnCancel.addEventListener('click', () => closeEditor(false));
+  btnSave.addEventListener('click',   () => closeEditor(true));
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) {
-      backdrop.remove();
-      if (opts.onCancel) opts.onCancel();
-    }
+    if (e.target === backdrop) closeEditor(false);
   });
+
+  // ——— клавиатурные сокращения ———
+  // Работают только когда выделена зона И фокус НЕ внутри текстового поля
+  // (иначе пользователь не сможет ввести текст в textarea, а Escape
+  // закрыл бы редактор во время правки).
+  function onKeyDown(e) {
+    const ae = document.activeElement;
+    const inField = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT');
+    if (e.key === 'Escape') {
+      if (inField) { ae.blur(); return; }
+      if (state.selectedId) {
+        state.selectedId = null;
+        if (state.activeTab === 'props') rebuildTab();
+        redrawCanvas();
+        e.preventDefault();
+        return;
+      }
+      closeEditor(false);
+      e.preventDefault();
+      return;
+    }
+    if (inField) return;
+    const id = state.selectedId;
+    if (!id) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (id === 'logo' && working.logo.src) {
+        working.logo.src = null;
+        state.selectedId = null;
+      } else {
+        working.overlays = working.overlays.filter(o => o.id !== id);
+        state.selectedId = null;
+      }
+      if (state.activeTab === 'props' || state.activeTab === 'zones') rebuildTab();
+      redrawCanvas();
+      e.preventDefault();
+      return;
+    }
+    // Стрелки — nudge. Shift = 10 мм, иначе 1 мм.
+    const step = e.shiftKey ? 10 : 1;
+    let dx = 0, dy = 0;
+    if (e.key === 'ArrowLeft')  dx = -step;
+    if (e.key === 'ArrowRight') dx =  step;
+    if (e.key === 'ArrowUp')    dy = -step;
+    if (e.key === 'ArrowDown')  dy =  step;
+    if (dx === 0 && dy === 0) return;
+    const snap = snapshot(id);
+    if (!snap) return;
+    const clamped = clampBox(snap.x + dx, snap.y + dy, snap.width, snap.height);
+    applyPos(id, clamped.x, clamped.y);
+    redrawCanvas();
+    e.preventDefault();
+  }
+  window.addEventListener('keydown', onKeyDown);
 
   // Пересчёт масштаба при ресайзе окна
   const resizeObs = new ResizeObserver(() => {

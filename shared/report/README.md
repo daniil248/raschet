@@ -39,14 +39,29 @@ battery/, ups-config/, panel-config/, transformer-config/ и т.д.
 | Файл | Назначение |
 |---|---|
 | [`index.js`](index.js) | Публичный API — единственное, что импортируют подпрограммы |
-| [`template.js`](template.js) | Структура шаблона, значения по умолчанию, хелперы `pageSizeMm / contentBox / overlaysForPage / substitute` |
+| [`template.js`](template.js) | Структура шаблона, значения по умолчанию, хелперы `pageSizeMm / contentBox / overlaysForPage / substitute`, автомиграция legacy-колонтитулов |
 | [`blocks.js`](blocks.js) | Конструкторы блоков содержимого: `h1/h2/h3 / paragraph / list / orderedList / table / image / spacer / hr / pageBreak / caption / custom` |
-| [`preview.js`](preview.js) | HTML-рендер шаблона + пагинация потокового содержимого |
-| [`editor.js`](editor.js) | Canvas-редактор шаблона с перетаскиванием зон |
-| [`editor.css`](editor.css) | Стили редактора и HTML-превью |
+| [`preview.js`](preview.js) | HTML-рендер шаблона + пагинация потокового содержимого + рендер overlays |
+| [`editor.js`](editor.js) | Canvas-редактор шаблона с перетаскиванием зон, resize, клавиатурными сокращениями |
+| [`editor.css`](editor.css) | Стили редактора, HTML-превью и picker |
+| [`picker.js`](picker.js) | Модальное окно выбора шаблона из каталога (для подпрограмм) |
 | [`export-pdf.js`](export-pdf.js) | Экспорт в PDF |
 | [`export-docx.js`](export-docx.js) | Экспорт в DOCX |
 | [`demo.html`](demo.html) | Самодостаточная демо-страница модуля |
+
+## Клавиатурные сокращения в canvas-редакторе
+
+Когда фокус вне текстовых полей и выделена зона:
+
+| Клавиша | Действие |
+|---|---|
+| `Delete` / `Backspace` | Удалить выбранную зону (или логотип) |
+| `←` `→` `↑` `↓` | Сдвиг на 1 мм с клэмпом по полям печати |
+| `Shift` + стрелки | Сдвиг на 10 мм |
+| `Escape` (1-й раз) | Снять выделение |
+| `Escape` (2-й раз) | Закрыть редактор (как «Отмена») |
+
+В текстовых полях (INPUT / TEXTAREA / SELECT) все клавиши работают стандартно; `Escape` там вызывает `blur()` вместо закрытия редактора.
 
 ---
 
@@ -86,29 +101,33 @@ await Report.exportDOCX(tpl, line.name + '.docx');
 
 ## Установка с пользовательским выбором шаблона
 
-Если нужно дать пользователю выбрать один из его сохранённых шаблонов —
-используйте справочник `shared/report-catalog.js` вместе с модулем.
+Для выбора шаблона из каталога используйте встроенный picker — не
+пишите свой UI. Он отфильтровывает шаблоны по тегам, даёт ссылку на
+/reports/ и обрабатывает отмену.
 
 ```js
-import * as Report  from '../shared/report/index.js';
-import * as B       from '../shared/report/blocks.js';
-import * as Catalog from '../shared/report-catalog.js';
+import * as Report from '../shared/report/index.js';
+import * as B      from '../shared/report/blocks.js';
 
 async function exportReport(line, result) {
-  // 1. Дать пользователю выбрать шаблон
-  const templates = Catalog.listTemplates();
-  const chosen = await pickTemplateFromList(templates);  // ваш UI
-  if (!chosen) return;
+  // 1. Открыть picker с фильтром по тегам. Пользователь увидит только
+  //    подходящие шаблоны (встроенные и свои).
+  const rec = await Report.pickTemplate({
+    title: 'Выбор шаблона для отчёта по расчёту линии',
+    tags:  ['кабель','расчёты','общее','инженерный'],
+  });
+  if (!rec) return;   // отмена
 
-  // 2. Клонировать (чтобы правки контента не попали обратно в каталог)
-  const tpl = Report.createTemplate(chosen.template);
+  // 2. Клонировать шаблон (автомиграция legacy → overlays выполняется
+  //    автоматически внутри createTemplate).
+  const tpl = Report.createTemplate(rec.template);
 
   // 3. Передать метаданные подпрограммы — они подставятся в зоны
-  //    через плейсхолдеры {{meta.title}}, {{meta.author}}, и т.д.
+  //    через плейсхолдеры {{meta.title}}, {{meta.author}}, ...
   tpl.meta.title  = 'Расчёт линии ' + line.name;
   tpl.meta.author = currentUser.displayName;
 
-  // 4. Собрать содержимое
+  // 4. Собрать содержимое — подпрограмма отвечает только за эти блоки
   tpl.content = buildContentBlocks(line, result);
 
   // 5. Экспорт
@@ -119,13 +138,28 @@ async function exportReport(line, result) {
 Дать пользователю также открыть canvas-редактор прямо из подпрограммы:
 
 ```js
-Report.openTemplateEditor(tpl, {
+import * as Catalog from '../shared/report-catalog.js';
+
+Report.openTemplateEditor(rec.template, {
   onSave(updated) {
     // сохранить правки обратно в каталог
-    Catalog.saveTemplate({ ...chosen, template: updated });
+    Catalog.saveTemplate({ ...rec, template: updated });
   },
 });
 ```
+
+## Подпрограммы, уже использующие модуль
+
+| Подпрограмма | Файлы интеграции | Теги picker'а |
+|---|---|---|
+| [`cable/`](../../cable/) — Расчёт кабельной линии | [cable-calc.js:481-640](../../cable/cable-calc.js) | `['кабель','расчёты','общее','инженерный']` |
+| [`battery/`](../../battery/) — Расчёт АКБ       | [battery-calc.js:exportBatteryReport](../../battery/battery-calc.js) | `['акб','батарея','расчёты','общее','инженерный']` |
+
+Референс-паттерн интеграции — 3 шага на любой подпрограмме:
+
+1. `import * as Report from '../shared/report/index.js'` + `import * as B from '../shared/report/blocks.js'`
+2. Переменная `lastCalc` хранит состояние последнего расчёта; в обработчике «Рассчитать» она записывается, кнопка «📄 Отчёт» разблокируется
+3. Функция `exportReport()` вызывает `Report.pickTemplate` → `createTemplate` → формирует `tpl.content` через `B.*` → `Report.exportPDF`
 
 ---
 
