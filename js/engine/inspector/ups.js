@@ -9,7 +9,8 @@ import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw } from '../elec
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { mountBatteryPicker } from '../../../shared/battery-picker.js';
-import { readUpsDcParams } from '../../../shared/ups-picker.js';
+import { readUpsDcParams, mountUpsPicker, applyUpsModel } from '../../../shared/ups-picker.js';
+import { listUpses } from '../../../shared/ups-catalog.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -24,6 +25,24 @@ export function openUpsParamsModal(n) {
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
   h.push(field('Имя', `<input type="text" id="up-name" value="${escAttr(n.name || '')}">`));
+
+  // === Модель из справочника ИБП (shared/ups-catalog + shared/ups-picker) ===
+  // Тот же каскадный пикер, что и в подпрограмме «Конфигуратор ИБП». При
+  // выборе модели её паспортные параметры (capacityKw, efficiency, cosPhi,
+  // vdcMin/max, frame/module) применяются к узлу через applyUpsModel().
+  try {
+    const upsCatalog = listUpses();
+    if (upsCatalog.length) {
+      h.push('<h4 style="margin:14px 0 6px">Модель из справочника</h4>');
+      h.push('<div id="up-cat-picker-mount" style="margin-bottom:4px"></div>');
+      h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">При выборе модели автоматически заполняются тип / номинал / КПД / cos φ / V<sub>DC</sub>. Справочник пополняется в подпрограмме <a href="ups-config/" target="_blank" style="color:#1976d2">«Конфигуратор ИБП»</a>.</div>`);
+    } else {
+      h.push(`<div class="muted" style="font-size:11px;margin:10px 0 6px;padding:8px 10px;background:#f6f8fa;border-radius:4px">
+        Справочник ИБП пуст. Добавьте модели в подпрограмме
+        <a href="ups-config/" target="_blank" style="color:#1976d2">«Конфигуратор ИБП»</a>, чтобы выбирать их здесь одним кликом.
+      </div>`);
+    }
+  } catch (e) { /* модуль опционален */ }
 
   h.push('<h4 style="margin:8px 0">Основные параметры</h4>');
   // Тип ИБП
@@ -177,6 +196,38 @@ export function openUpsParamsModal(n) {
   h.push('<div class="muted" style="font-size:11px;margin-top:-6px">Принудительная активация SBS, разрешение авто-перехода и порог перегруза — в модалке <b>«🔌 Управление ИБП»</b>.</div>');
 
   body.innerHTML = h.join('');
+
+  // Монтируем каскадный пикер ИБП (если справочник не пуст).
+  try {
+    const upsCatalog = listUpses();
+    const upsPickerMount = document.getElementById('up-cat-picker-mount');
+    if (upsCatalog.length && upsPickerMount) {
+      mountUpsPicker(upsPickerMount, {
+        list: upsCatalog,
+        selectedId: n.upsCatalogId || null,
+        currentSupplier: n._upsSelSupplier || '',
+        currentSeries: n._upsSelSeries || '',
+        placeholders: { supplier: '— не выбрано —', series: '— не выбрано —', model: '— свой состав —' },
+        labels: { supplier: 'Производитель', series: 'Серия', model: 'Модель' },
+        idPrefix: 'up-cat',
+        onChange: (st) => {
+          n._upsSelSupplier = st.supplier || null;
+          n._upsSelSeries = st.series || null;
+          if (st.modelId && st.ups && st.modelId !== n.upsCatalogId) {
+            snapshot('ups-params:' + n.id + ':catalog');
+            applyUpsModel(n, st.ups);
+            render(); notifyChange();
+            openUpsParamsModal(n);
+          } else if (!st.modelId && n.upsCatalogId) {
+            // Сбрасываем привязку к каталогу, но не трогаем уже
+            // применённые паспортные параметры.
+            n.upsCatalogId = null;
+            openUpsParamsModal(n);
+          }
+        },
+      });
+    }
+  } catch (e) { /* опционально */ }
 
   // Живой перерисовщик при смене зависимых селектов (тип ИБП, режим
   // байпаса). Сохраняет все уже введённые видимые поля — иначе ввод
