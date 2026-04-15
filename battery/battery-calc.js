@@ -42,7 +42,7 @@ function renderCatalog() {
   h.push('<thead><tr><th>Поставщик</th><th>Модель</th><th>Химия</th><th>Блок</th><th>Ёмкость</th><th>Точек</th><th>Источник</th><th></th></tr></thead>');
   h.push('<tbody>');
   for (const b of list) {
-    h.push(`<tr data-id="${escHtml(b.id)}">
+    h.push(`<tr data-id="${escHtml(b.id)}" class="cat-row" title="Клик — посмотреть таблицу разряда">
       <td>${escHtml(b.supplier)}</td>
       <td><b>${escHtml(b.type)}</b></td>
       <td>${escHtml(b.chemistry || '—')}</td>
@@ -56,7 +56,8 @@ function renderCatalog() {
   h.push('</tbody></table>');
   wrap.innerHTML = h.join('');
   wrap.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
       const id = btn.dataset.del;
       if (!confirm('Удалить эту запись из справочника?')) return;
       removeBattery(id);
@@ -65,6 +66,78 @@ function renderCatalog() {
       flash('Удалено');
     });
   });
+  // Клик по строке → модалка просмотра таблицы разряда
+  wrap.querySelectorAll('.cat-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = row.dataset.id;
+      const b = listBatteries().find(x => x.id === id);
+      if (b) openDischargeTableModal(b);
+    });
+  });
+}
+
+// ================= Модалка просмотра таблицы разряда =================
+function openDischargeTableModal(battery) {
+  let modal = document.getElementById('dtable-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'dtable-modal';
+    modal.className = 'dtable-modal';
+    modal.innerHTML = `
+      <div class="dtable-box">
+        <div class="dtable-head">
+          <h3 id="dtable-title"></h3>
+          <button class="dtable-close" aria-label="Закрыть">×</button>
+        </div>
+        <div class="dtable-body" id="dtable-body"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
+    modal.querySelector('.dtable-close').addEventListener('click', () => modal.classList.remove('show'));
+  }
+  const title = document.getElementById('dtable-title');
+  const bodyEl = document.getElementById('dtable-body');
+  title.textContent = `${battery.supplier} · ${battery.type}`;
+
+  const rows = (battery.dischargeTable || []).slice();
+  if (!rows.length) {
+    bodyEl.innerHTML = '<div class="empty">В записи нет точек таблицы разряда.</div>';
+  } else {
+    // Сводка
+    const endVs = [...new Set(rows.map(p => p.endV))].sort((a, b) => a - b);
+    const tMins = [...new Set(rows.map(p => p.tMin))].sort((a, b) => a - b);
+    // Строим wide-таблицу: строки = tMin, колонки = endV
+    const grid = new Map();
+    for (const p of rows) grid.set(`${p.endV}|${p.tMin}`, p.powerW);
+
+    let html = `<div class="muted" style="font-size:11px;margin-bottom:8px">
+      Модель: <b>${escHtml(battery.type)}</b>
+      · Поставщик: <b>${escHtml(battery.supplier)}</b>
+      · Химия: <b>${escHtml(battery.chemistry || '—')}</b>
+      · Напр. блока: <b>${fmt(battery.blockVoltage)} В</b>
+      ${battery.capacityAh != null ? '· Ёмкость: <b>' + fmt(battery.capacityAh) + ' А·ч</b>' : ''}
+      · Точек: <b>${rows.length}</b>
+      · Источник: <b>${escHtml(battery.source || '—')}</b>
+    </div>`;
+    html += '<div style="overflow:auto;max-height:60vh">';
+    html += '<table class="dtable-grid"><thead><tr>';
+    html += '<th>t, мин \\ Uэл, В</th>';
+    for (const ev of endVs) html += `<th>${fmt(ev)}</th>`;
+    html += '</tr></thead><tbody>';
+    for (const tm of tMins) {
+      html += `<tr><th>${tm}</th>`;
+      for (const ev of endVs) {
+        const v = grid.get(`${ev}|${tm}`);
+        html += `<td>${v != null ? fmt(v) : '—'}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    html += '</div>';
+    html += '<div class="muted" style="font-size:11px;margin-top:8px">Значения в ячейках — мощность (W) на блок, которую АКБ может отдать за указанное время до конечного напряжения на элемент.</div>';
+    bodyEl.innerHTML = html;
+  }
+  modal.classList.add('show');
 }
 
 async function handleFiles(fileList) {

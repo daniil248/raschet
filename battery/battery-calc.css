@@ -217,3 +217,71 @@ main {
 }
 .flash.success { background: #2e7d32; }
 .flash.error { background: #c62828; }
+
+/* ================= Модалка таблицы разряда ================= */
+.cat-row { cursor: pointer; transition: background 0.1s; }
+.cat-row:hover { background: #f5f7fa; }
+.dtable-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.dtable-modal.show { display: flex; }
+.dtable-box {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 920px;
+  width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dtable-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e0e3ea;
+}
+.dtable-head h3 { font-size: 16px; font-weight: 600; color: #1f2430; }
+.dtable-close {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+  width: 32px;
+  height: 32px;
+}
+.dtable-close:hover { color: #1f2430; }
+.dtable-body { padding: 18px 20px; overflow: auto; }
+.dtable-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.dtable-grid th, .dtable-grid td {
+  border: 1px solid #e0e3ea;
+  padding: 6px 10px;
+  text-align: right;
+}
+.dtable-grid thead th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #1565c0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.dtable-grid tbody th {
+  background: #f8f9fa;
+  font-weight: 600;
+  text-align: left;
+  color: #546e7a;
+}
