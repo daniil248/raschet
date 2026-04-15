@@ -1,7 +1,16 @@
 // ================= State =================
+// Модель страниц:
+//  state.pages = [{ id, name, type: 'independent'|'linked', view: {x,y,zoom} }]
+//  state.currentPageId — активная страница
+//  У каждого node и conn есть поле pageIds: string[] — на каких страницах он виден.
+//    'independent' страница: новые узлы получают [pageId] — видны только здесь.
+//    'linked' страница: узлы могут быть из других страниц (добавляются в pageIds существующих узлов).
+//  Рендер фильтрует узлы/связи по currentPageId.
 export const state = {
   nodes: new Map(),
   conns: new Map(),
+  pages: [],              // массив страниц
+  currentPageId: null,    // id активной страницы
   modes: [],
   activeModeId: null,
   selectedKind: null,
@@ -15,6 +24,36 @@ export const state = {
   selection: new Set(), // multi-selection: Set<nodeId>
   rubberBand: null,    // { sx, sy, ex, ey }
 };
+
+// ===== Helpers для работы со страницами =====
+export function ensureDefaultPage() {
+  if (!state.pages || !state.pages.length) {
+    const p = { id: 'p1', name: 'Страница 1', type: 'independent', view: { x: 0, y: 0, zoom: 1 } };
+    state.pages = [p];
+    state.currentPageId = p.id;
+  }
+  if (!state.currentPageId || !state.pages.find(p => p.id === state.currentPageId)) {
+    state.currentPageId = state.pages[0].id;
+  }
+}
+export function getCurrentPage() {
+  return state.pages.find(p => p.id === state.currentPageId) || null;
+}
+// Виден ли node/conn на текущей странице (проверка по pageIds).
+// Если pageIds отсутствует — считаем что узел на всех страницах (legacy-миграция).
+export function isOnCurrentPage(obj) {
+  if (!obj) return false;
+  const pids = obj.pageIds;
+  if (!Array.isArray(pids) || pids.length === 0) return true;
+  return pids.includes(state.currentPageId);
+}
+// Следующий свободный id страницы
+export function nextPageId() {
+  let k = 1;
+  const used = new Set((state.pages || []).map(p => p.id));
+  while (used.has('p' + k)) k++;
+  return 'p' + k;
+}
 
 // ================= UID generator =================
 let _idSeq = 1;

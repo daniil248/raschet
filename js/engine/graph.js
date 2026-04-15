@@ -48,6 +48,8 @@ export function createNode(type, x, y) {
   base.tag = nextFreeTag(type);
   base.x = x - nodeWidth(base) / 2;
   base.y = y - NODE_H / 2;
+  // Новый узел — только на текущей странице
+  if (state.currentPageId) base.pageIds = [state.currentPageId];
   state.nodes.set(id, base);
   _selectNode(id);
   _render();

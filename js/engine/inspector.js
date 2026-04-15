@@ -365,10 +365,46 @@ export function renderInspectorNode(n) {
   }
   h.push('<button class="btn-delete" id="btn-del-node">Удалить элемент</button>');
 
+  // === Страницы, на которых показан элемент ===
+  if (Array.isArray(state.pages) && state.pages.length > 1) {
+    const curPids = Array.isArray(n.pageIds) ? n.pageIds : (state.currentPageId ? [state.currentPageId] : []);
+    h.push('<div class="inspector-section"><h4>Страницы</h4>');
+    h.push('<div style="font-size:11px;color:#546e7a;margin-bottom:4px">Отметьте страницы, на которых виден этот узел.</div>');
+    for (const p of state.pages) {
+      const checked = curPids.includes(p.id);
+      h.push(`<div class="field check"><input type="checkbox" data-page-id="${escAttr(p.id)}"${checked ? ' checked' : ''}><label>${escHtml(p.name || p.id)} <span class="muted" style="font-size:10px">(${p.type === 'linked' ? 'ссыл.' : 'нез.'})</span></label></div>`);
+    }
+    h.push('</div>');
+  }
+
   // Полный дамп параметров узла
   h.push(renderFullPropsBlock(n));
 
   inspectorBody.innerHTML = h.join('');
+
+  // Обработчики чекбоксов страниц
+  inspectorBody.querySelectorAll('[data-page-id]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      snapshot('node-pages:' + n.id);
+      const pid = cb.dataset.pageId;
+      let pids = Array.isArray(n.pageIds) ? n.pageIds.slice() : (state.currentPageId ? [state.currentPageId] : []);
+      if (cb.checked) {
+        if (!pids.includes(pid)) pids.push(pid);
+      } else {
+        pids = pids.filter(x => x !== pid);
+        if (pids.length === 0) {
+          // Нельзя убрать со всех страниц — вернём текущую
+          pids = [state.currentPageId];
+          cb.checked = true;
+          flash('Нельзя убрать узел со всех страниц. Удалите узел целиком или оставьте минимум одну.');
+        }
+      }
+      n.pageIds = pids;
+      notifyChange();
+      _render();
+      renderInspector();
+    });
+  });
 
   wireInspectorInputs(n);
 

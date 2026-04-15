@@ -1,4 +1,4 @@
-import { state, svg } from './state.js';
+import { state, svg, ensureDefaultPage, getCurrentPage, nextPageId } from './state.js';
 import { NODE_H, SVG_NS, GLOBAL } from './constants.js';
 import { nodeWidth, nodeHeight } from './geometry.js';
 import { updateViewBox, render } from './render.js';
@@ -188,6 +188,115 @@ export function initToolbar() {
   const updateLinkBrkBtn = () => { if (linkBrkBtn) linkBrkBtn.style.opacity = GLOBAL.showLinkBreakers ? '1' : '0.55'; };
   updateLinkBrkBtn();
   if (linkBrkBtn) linkBrkBtn.onclick = () => { GLOBAL.showLinkBreakers = !GLOBAL.showLinkBreakers; updateLinkBrkBtn(); render(); };
+
+  // ===== Вкладки страниц =====
+  ensureDefaultPage();
+  const pageTabsList = document.getElementById('page-tabs-list');
+  const pageAddBtn = document.getElementById('page-tab-add');
+  const renderPageTabs = () => {
+    if (!pageTabsList) return;
+    pageTabsList.innerHTML = '';
+    for (const p of (state.pages || [])) {
+      const tab = document.createElement('div');
+      tab.className = 'page-tab' + (p.id === state.currentPageId ? ' active' : '') + (p.type === 'linked' ? ' linked' : '');
+      tab.dataset.pageId = p.id;
+      const typeLabel = p.type === 'linked' ? 'ССЫЛ' : 'НЕЗ';
+      tab.innerHTML = `<span class="page-tab-name">${escapePage(p.name || p.id)}</span> <span class="page-tab-type">${typeLabel}</span>`;
+      tab.onclick = () => switchPage(p.id);
+      tab.oncontextmenu = (e) => { e.preventDefault(); showPageMenu(e, p.id); };
+      pageTabsList.appendChild(tab);
+    }
+  };
+  const escapePage = (s) => String(s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
+  const switchPage = (pageId) => {
+    if (pageId === state.currentPageId) return;
+    // Сохранить view текущей страницы
+    const cur = getCurrentPage();
+    if (cur) cur.view = { ...state.view };
+    state.currentPageId = pageId;
+    const next = getCurrentPage();
+    if (next && next.view) state.view = { ...next.view };
+    state.selectedKind = null; state.selectedId = null;
+    state.selection.clear();
+    renderPageTabs();
+    render();
+  };
+  const addPage = (type = 'independent') => {
+    // Сохранить view текущей
+    const cur = getCurrentPage();
+    if (cur) cur.view = { ...state.view };
+    const newId = nextPageId();
+    const nextNum = (state.pages || []).length + 1;
+    state.pages.push({
+      id: newId,
+      name: `Страница ${nextNum}`,
+      type,
+      view: { x: 0, y: 0, zoom: 1 },
+    });
+    state.currentPageId = newId;
+    state.view = { x: 0, y: 0, zoom: 1 };
+    state.selectedKind = null; state.selectedId = null;
+    state.selection.clear();
+    renderPageTabs();
+    render();
+  };
+  const renamePage = (pageId) => {
+    const p = state.pages.find(p => p.id === pageId);
+    if (!p) return;
+    const name = prompt('Название страницы:', p.name || p.id);
+    if (name && name.trim()) { p.name = name.trim(); renderPageTabs(); }
+  };
+  const changePageType = (pageId) => {
+    const p = state.pages.find(p => p.id === pageId);
+    if (!p) return;
+    p.type = p.type === 'linked' ? 'independent' : 'linked';
+    renderPageTabs();
+  };
+  const deletePage = (pageId) => {
+    if ((state.pages || []).length <= 1) { alert('Нельзя удалить единственную страницу'); return; }
+    const p = state.pages.find(p => p.id === pageId);
+    if (!p) return;
+    if (!confirm(`Удалить страницу "${p.name || p.id}"?\n\nУзлы, принадлежавшие ТОЛЬКО этой странице, будут удалены. Узлы, которые также есть на других страницах, останутся.`)) return;
+    // Удалить nodeId этой страницы из всех узлов; узлы, у которых pageIds стал пустым, удалить.
+    const toDelete = [];
+    for (const n of state.nodes.values()) {
+      if (Array.isArray(n.pageIds)) {
+        n.pageIds = n.pageIds.filter(id => id !== pageId);
+        if (n.pageIds.length === 0) toDelete.push(n.id);
+      }
+    }
+    for (const id of toDelete) state.nodes.delete(id);
+    // Удалить связи, чьи узлы удалены
+    for (const [cid, c] of Array.from(state.conns.entries())) {
+      if (!state.nodes.has(c.from.nodeId) || !state.nodes.has(c.to.nodeId)) state.conns.delete(cid);
+    }
+    state.pages = state.pages.filter(x => x.id !== pageId);
+    state.currentPageId = state.pages[0].id;
+    const next = getCurrentPage();
+    if (next && next.view) state.view = { ...next.view };
+    renderPageTabs();
+    render();
+  };
+  // Простое контекстное меню — через prompt-подобные шаги
+  const showPageMenu = (e, pageId) => {
+    const p = state.pages.find(p => p.id === pageId);
+    if (!p) return;
+    const action = prompt(
+      `Страница: ${p.name}\nТип: ${p.type === 'linked' ? 'Ссылочная' : 'Независимая'}\n\nДействие:\n1 — переименовать\n2 — сменить тип\n3 — удалить\n\nВведите число:`
+    );
+    if (action === '1') renamePage(pageId);
+    else if (action === '2') changePageType(pageId);
+    else if (action === '3') deletePage(pageId);
+  };
+  if (pageAddBtn) {
+    pageAddBtn.onclick = () => {
+      const t = confirm('OK — Независимая (свои узлы)\nОтмена — Ссылочная (можно добавлять узлы из других страниц)');
+      addPage(t ? 'independent' : 'linked');
+    };
+  }
+  renderPageTabs();
+  // Экспонируем для вызова после десериализации / undo
+  window.__raschetRenderPageTabs = renderPageTabs;
 
   // Иконки потребителей — глобальный toggle
   if (!('showConsumerIcons' in GLOBAL)) GLOBAL.showConsumerIcons = true;

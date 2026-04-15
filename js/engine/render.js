@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { svg, layerZones, layerConns, layerNodes, statsEl, modesListEl } from './state.js';
+import { svg, layerZones, layerConns, layerNodes, statsEl, modesListEl, isOnCurrentPage } from './state.js';
 import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
@@ -234,6 +234,7 @@ export function renderNodes() {
   const zoneParent = layerZones || layerNodes;
   for (const n of state.nodes.values()) {
     if (n.type !== 'zone') continue;
+    if (!isOnCurrentPage(n)) continue;
     const w = nodeWidth(n), h = nodeHeight(n);
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const g = el('g', {
@@ -274,6 +275,7 @@ export function renderNodes() {
   // Многосекционные щиты — обёртка-контейнер (рисуется как зона)
   for (const n of state.nodes.values()) {
     if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
+    if (!isOnCurrentPage(n)) continue;
     const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
     if (!secIds.length) continue;
     // Вычисляем bounds по дочерним секциям
@@ -330,6 +332,7 @@ export function renderNodes() {
   // Каналы в режиме трассы (trayMode) — рисуем как повёрнутые прямоугольники
   for (const n of state.nodes.values()) {
     if (n.type !== 'channel' || !n.trayMode) continue;
+    if (!isOnCurrentPage(n)) continue;
     const tw = n.trayWidth || 40;
     const tl = (n.trayLength || 120); // длина пропорционально метрам
     const angle = n.trayAngle || 0;
@@ -385,6 +388,7 @@ export function renderNodes() {
     if (n.type === 'zone') continue;
     if (n.type === 'channel' && n.trayMode) continue;
     if (n.type === 'panel' && n.switchMode === 'sectioned') continue; // контейнер рисуется выше
+    if (!isOnCurrentPage(n)) continue;
     const w = nodeWidth(n);
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const cls = [
@@ -838,6 +842,8 @@ export function renderConns() {
     const fromN = state.nodes.get(c.from.nodeId);
     const toN   = state.nodes.get(c.to.nodeId);
     if (!fromN || !toN) continue;
+    // Связь видна только если оба её конца видны на текущей странице
+    if (!isOnCurrentPage(fromN) || !isOnCurrentPage(toN)) continue;
     const a = portPos(fromN, 'out', c.from.port);
     const b = portPos(toN,   'in',  c.to.port);
     const rawWaypoints = Array.isArray(c.waypoints) ? c.waypoints : [];

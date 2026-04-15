@@ -5,7 +5,7 @@
 
 // === Импорты ===
 import { GLOBAL, DEFAULTS, NODE_H, APP_VERSION, CONSUMER_CATALOG } from './constants.js';
-import { state, uid, initDOM, setChangeCb, svg, setIdSeq } from './state.js';
+import { state, uid, initDOM, setChangeCb, svg, setIdSeq, ensureDefaultPage } from './state.js';
 import { escHtml, escAttr, fmt, flash, field, checkField } from './utils.js';
 import { selectCableSize, selectBreaker } from './cable.js';
 import {
@@ -56,6 +56,8 @@ import { importLoadsTable } from './import.js';
 
 // === Инициализация DOM ===
 initDOM();
+// Гарантируем что всегда есть хотя бы одна страница
+ensureDefaultPage();
 
 // === Связывание зависимостей (late-binding) ===
 bindModeDeps({ snapshot, render, renderInspector, notifyChange });

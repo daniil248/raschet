@@ -1,4 +1,4 @@
-import { state, uid, getIdSeq, setIdSeq } from './state.js';
+import { state, uid, getIdSeq, setIdSeq, ensureDefaultPage } from './state.js';
 import { DEFAULTS, GLOBAL, CHANNEL_TYPES } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight } from './geometry.js';
 import { nextFreeTag } from './graph.js';
@@ -21,11 +21,19 @@ export function serialize() {
   // voltageLevels — как есть
   globalSettings.voltageLevels = GLOBAL.voltageLevels;
 
+  // Перед сериализацией — сохранить текущий view в текущую страницу
+  const cur = state.pages.find(p => p.id === state.currentPageId);
+  if (cur) cur.view = { ...state.view };
+
   return {
-    version: 3,
+    version: 4,
     nextId: getIdSeq(),
     nodes: Array.from(state.nodes.values()).map(stripRuntime),
     conns: Array.from(state.conns.values()).map(stripRuntime),
+    pages: (state.pages || []).map(p => ({
+      id: p.id, name: p.name, type: p.type || 'independent', view: p.view || { x: 0, y: 0, zoom: 1 },
+    })),
+    currentPageId: state.currentPageId,
     modes: state.modes,
     activeModeId: state.activeModeId,
     view: { ...state.view },
@@ -51,6 +59,34 @@ export function deserialize(data) {
   setIdSeq(Math.max(data.nextId || 1, 1));
   state.view = data.view || { x: 0, y: 0, zoom: 1 };
   state.selectedKind = null; state.selectedId = null;
+
+  // Загрузка страниц (v4+). Если их нет — создаём одну и приписываем все узлы к ней.
+  if (Array.isArray(data.pages) && data.pages.length) {
+    state.pages = data.pages.map(p => ({
+      id: p.id, name: p.name || p.id, type: p.type || 'independent',
+      view: p.view || { x: 0, y: 0, zoom: 1 },
+    }));
+    state.currentPageId = data.currentPageId && state.pages.find(p => p.id === data.currentPageId)
+      ? data.currentPageId : state.pages[0].id;
+  } else {
+    state.pages = [];
+    state.currentPageId = null;
+    ensureDefaultPage();
+    const defId = state.currentPageId;
+    for (const n of state.nodes.values()) {
+      if (!Array.isArray(n.pageIds) || !n.pageIds.length) n.pageIds = [defId];
+    }
+    for (const c of state.conns.values()) {
+      if (!Array.isArray(c.pageIds) || !c.pageIds.length) c.pageIds = [defId];
+    }
+  }
+  // Применяем view текущей страницы
+  const cur = state.pages.find(p => p.id === state.currentPageId);
+  if (cur && cur.view) state.view = { ...cur.view };
+  // Перерисовать вкладки страниц если они уже инициализированы
+  if (typeof window !== 'undefined' && typeof window.__raschetRenderPageTabs === 'function') {
+    try { window.__raschetRenderPageTabs(); } catch {}
+  }
 
   // Восстановить настройки расчёта из проекта
   if (data.globalSettings && typeof data.globalSettings === 'object') {
