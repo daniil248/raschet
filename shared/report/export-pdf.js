@@ -3,12 +3,31 @@
 // Экспорт шаблона отчёта в PDF через jsPDF (UMD-сборка с CDN).
 // Библиотека загружается лениво при первом вызове — страницы
 // подпрограмм не тянут её, если пользователь не нажал «скачать PDF».
+//
+// Кириллица: встроенные шрифты jsPDF (Helvetica/Times/Courier) содержат
+// только Latin-1 — русские буквы в них рисуются как кракозябры. Поэтому
+// при первом экспорте мы дополнительно подгружаем TTF шрифты с Google
+// Fonts (PT Sans Regular + Bold — кириллический sans-serif) и
+// регистрируем их в каждом jsPDF-документе через addFileToVFS /
+// addFont. Стили шаблона (Helvetica/Times/Courier) при этом игнорируются
+// — в PDF используется единый PT Sans, чтобы кириллица отображалась
+// корректно во всех случаях. Жирность (bold) поддерживается через
+// второй TTF.
 // ======================================================================
 
 import { pageSizeMm, contentBox, substitute, overlaysForPage } from './template.js';
 import { paginate, estimateBlockHeight }       from './preview.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
+
+// PT Sans, Regular + Bold (кириллический сабсет). TTF-файлы лежат в
+// самом репозитории: shared/report/fonts/. Это даёт стабильный
+// оффлайн-работающий путь и исключает зависимость от актуальности
+// хэшей Google Fonts. Размер ~130 КБ на оба файла — приемлемо.
+// Лицензия: SIL Open Font License, Copyright © ParaType.
+const FONT_REGULAR_URL = new URL('./fonts/PTSans-Regular.ttf', import.meta.url).href;
+const FONT_BOLD_URL    = new URL('./fonts/PTSans-Bold.ttf',    import.meta.url).href;
+const RPT_FONT_FAMILY  = 'rpt-sans';
 
 let _jspdfPromise = null;
 function loadJsPDF() {
@@ -24,9 +43,54 @@ function loadJsPDF() {
   return _jspdfPromise;
 }
 
+// Кэш base64-версий TTF. Загружаем один раз за время жизни страницы.
+let _fontPromise = null;
+async function loadCyrillicFont() {
+  if (_fontPromise) return _fontPromise;
+  _fontPromise = (async () => {
+    try {
+      const [regBuf, boldBuf] = await Promise.all([
+        fetch(FONT_REGULAR_URL).then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status + ' — PT Sans Regular');
+          return r.arrayBuffer();
+        }),
+        fetch(FONT_BOLD_URL).then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status + ' — PT Sans Bold');
+          return r.arrayBuffer();
+        }),
+      ]);
+      return { regular: bufferToBase64(regBuf), bold: bufferToBase64(boldBuf) };
+    } catch (e) {
+      _fontPromise = null;  // позволить повтор при следующем вызове
+      throw new Error('Не удалось загрузить кириллический шрифт: ' + e.message);
+    }
+  })();
+  return _fontPromise;
+}
+
+// Chunked base64 — обычный btoa(String.fromCharCode(...arr)) ломается
+// на больших TTF из-за лимита аргументов apply.
+function bufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+function registerCyrillicFont(doc, fontCache) {
+  doc.addFileToVFS('rpt-sans-regular.ttf', fontCache.regular);
+  doc.addFont('rpt-sans-regular.ttf', RPT_FONT_FAMILY, 'normal');
+  doc.addFileToVFS('rpt-sans-bold.ttf', fontCache.bold);
+  doc.addFont('rpt-sans-bold.ttf', RPT_FONT_FAMILY, 'bold');
+}
+
 /** Главный экспорт. filename — имя файла (с .pdf или без). */
 export async function exportPDF(tpl, filename) {
   const JsPDF = await loadJsPDF();
+  const fontCache = await loadCyrillicFont();
   const { width, height } = pageSizeMm(tpl.page);
   const doc = new JsPDF({
     unit: 'mm',
@@ -34,6 +98,9 @@ export async function exportPDF(tpl, filename) {
     orientation: width > height ? 'l' : 'p',
     compress: true,
   });
+
+  // Регистрируем кириллический шрифт в этом документе
+  registerCyrillicFont(doc, fontCache);
 
   // Метаданные документа
   if (tpl.meta) {
@@ -89,11 +156,8 @@ function drawOverlays(doc, tpl, isFirst, pageNum, total) {
   const ctx = { page: pageNum, pages: total };
   for (const ov of ovs) {
     const s = tpl.styles[ov.content?.styleRef || 'body'] || tpl.styles.body;
-    const font = (s.font || 'Helvetica').toLowerCase();
-    const style = s.bold && s.italic ? 'bolditalic' : s.bold ? 'bold' : s.italic ? 'italic' : 'normal';
-    doc.setFont(font, style);
-    doc.setFontSize(s.size);
-    doc.setTextColor(s.color || '#222');
+    // Через общий setFont — гарантированно RPT_FONT_FAMILY с кириллицей
+    setFont(doc, s);
     const text = substitute(ov.content?.text || '', tpl, ctx);
     const lines = doc.splitTextToSize(text, Math.max(1, ov.width));
     const lineH = s.size * s.lineHeight * 0.3528;
@@ -236,9 +300,13 @@ function drawBlock(doc, tpl, block, box, ctx) {
 // Текст и таблица
 // ——————————————————————————————————————————————————————————————————————
 function setFont(doc, s) {
-  const style = s.bold && s.italic ? 'bolditalic' : s.bold ? 'bold' : s.italic ? 'italic' : 'normal';
-  // jsPDF знает 'helvetica' | 'times' | 'courier'
-  doc.setFont((s.font || 'Helvetica').toLowerCase(), style);
+  // Встроенный PT Sans поддерживает только 'normal' и 'bold'.
+  // Курсив (italic) не поддерживается — графически он почти не
+  // используется в инженерных отчётах, а для caption достаточно
+  // изменения цвета/размера. Имя шрифта из стилей шаблона
+  // (Helvetica/Times/Courier) игнорируется — всегда PT Sans.
+  const style = s.bold ? 'bold' : 'normal';
+  doc.setFont(RPT_FONT_FAMILY, style);
   doc.setFontSize(s.size);
   doc.setTextColor(s.color || '#222222');
 }
