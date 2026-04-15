@@ -618,7 +618,12 @@ function _renderUpsBatteryBody(n) {
 
     const vdcMin = Number(n.batteryVdcMin ?? 340);
     const vdcMax = Number(n.batteryVdcMax ?? 480);
-    const endVcell = Number(n.batteryEndVperCell ?? 1.75);
+    // Дефолт end-voltage на элемент зависит от химии:
+    //   VRLA (свинцово-кислотные, 2 В/эл.) → 1.75 В/элемент (~87%)
+    //   Li-Ion LiFePO4 (3.2 В/эл.)         → 2.80 В/элемент (cut-off ~87% от 3.2)
+    const isLiIon = picked.chemistry === 'li-ion';
+    const defaultEndV = isLiIon ? 2.80 : 1.75;
+    const endVcell = Number(n.batteryEndVperCell ?? defaultEndV);
     const tempC = Number(n.batteryTempC ?? 20);
     const invEff = Math.max(0.5, Math.min(1, (Number(n.efficiency) || 94) / 100));
     const cosPhi = Number(n.cosPhi) || 1;
@@ -631,9 +636,18 @@ function _renderUpsBatteryBody(n) {
     const nMinV = cellsPerBlock * endVcell;
     const nMin = Math.max(1, Math.ceil(vdcMin / Math.max(0.1, nMinV)));
     // Пользовательское число блоков (или автоматическое = nMax)
-    let blocksPerString = Number(n.batteryBlocksPerString) || 0;
-    if (!blocksPerString || blocksPerString < nMin) blocksPerString = nMax;
-    if (blocksPerString > nMax) blocksPerString = nMax;
+    const userBlocks = Number(n.batteryBlocksPerString) || 0;
+    let blocksPerString = userBlocks;
+    let clampHint = '';
+    if (!blocksPerString) {
+      blocksPerString = nMax;  // первая инициализация
+    } else if (blocksPerString < nMin) {
+      blocksPerString = nMin;
+      clampHint = `Клэмп ↑ до ${nMin} (min по Vdc min ${vdcMin} В и endV ${endVcell} В/эл.)`;
+    } else if (blocksPerString > nMax) {
+      blocksPerString = nMax;
+      clampHint = `Клэмп ↓ до ${nMax} (max по Vdc max ${vdcMax} В и ${blockVnom} В/блок)`;
+    }
 
     const stringsCat = Math.max(1, Number(n.batteryStringCount) || 1);
 
@@ -659,15 +673,24 @@ function _renderUpsBatteryBody(n) {
       ${escHtml(picked.supplier || '')} · ${escHtml(picked.type)} · ${fmt(blockVnom)} В / ${fmt(capAhBlock)} А·ч · ${cellsPerBlock} эл.
     </div>`);
     h.push('<div style="display:flex;gap:8px">');
+    const blocksInputStyle = clampHint ? ' style="border-color:#e65100;background:#fff8e1"' : '';
     h.push(`<div style="flex:1">${field(`Блоков в цепочке (${nMin}…${nMax})`,
-      `<input type="number" id="ups-batt-nblocks" min="${nMin}" max="${nMax}" step="1" value="${blocksPerString}">`)}</div>`);
+      `<input type="number" id="ups-batt-nblocks" min="${nMin}" max="${nMax}" step="1" value="${blocksPerString}"${blocksInputStyle}>`)}</div>`);
     h.push(`<div style="flex:1">${field('Параллельных цепочек',
       `<input type="number" id="ups-batt-str" min="1" max="16" step="1" value="${stringsCat}">`)}</div>`);
     h.push('</div>');
+    if (clampHint) {
+      h.push(`<div style="font-size:11px;color:#e65100;background:#fff8e1;border-left:3px solid #e65100;padding:4px 8px;border-radius:3px;margin-top:-4px;margin-bottom:6px">⚠ ${escHtml(clampHint)}</div>`);
+    }
     h.push('<div style="display:flex;gap:8px">');
+    // Диапазон end-voltage зависит от химии: у VRLA узкий (1.60…1.85 В/эл.),
+    // у Li-Ion LiFePO4 — широкий (2.50…3.00 В/эл., рабочий разряд до cut-off)
+    const endVopts = isLiIon
+      ? [2.50, 2.60, 2.70, 2.80, 2.90, 3.00]
+      : [1.60, 1.65, 1.70, 1.75, 1.80, 1.85];
     h.push(`<div style="flex:1">${field('End V / элемент', `
       <select id="ups-batt-endv">
-        ${[1.60,1.65,1.70,1.75,1.80,1.85].map(v =>
+        ${endVopts.map(v =>
           `<option value="${v}"${Math.abs(v-endVcell)<0.001?' selected':''}>${v.toFixed(2)} В</option>`
         ).join('')}
       </select>`)}</div>`);
@@ -829,7 +852,11 @@ function _renderUpsBatteryBody(n) {
           n.batteryCatalogId = st.modelId || null;
           if (st.battery) {
             // Применяем характеристики выбранной модели.
-            n.batteryType = st.battery.chemistry === 'li-ion' ? 'li-ion' : 'lead-acid';
+            const newType = st.battery.chemistry === 'li-ion' ? 'li-ion' : 'lead-acid';
+            // Если химия поменялась — сбрасываем endV, чтобы следующий рендер
+            // подставил корректный дефолт (VRLA: 1.75, Li-Ion: 2.80 В/эл.)
+            if (n.batteryType !== newType) n.batteryEndVperCell = null;
+            n.batteryType = newType;
             if (st.battery.cellCount)   n.batteryCellCount   = st.battery.cellCount;
             if (st.battery.cellVoltage) n.batteryCellVoltage = st.battery.cellVoltage;
             if (st.battery.capacityAh)  n.batteryCapacityAh  = st.battery.capacityAh;

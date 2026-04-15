@@ -1675,6 +1675,11 @@ function recalc() {
       c._breakerPerLine = null;
       c._breakerCount = 1;
     }
+    // DC-линии требуют DC-rated автомата (иначе дуга не гасится).
+    // Стандартный MCCB рассчитан на AC; для DC нужен MCCB с маркировкой
+    // DC (напр. ABB Tmax XT DC, Schneider Compact NSX DC) или специальный
+    // DC-автомат. Флаг используется в рендере/отчёте для предупреждения.
+    c._breakerDcRequired = !!c._isDC;
   }
 
   // === Расчёт финального cos φ, P/Q/S и токов для щитов / ИБП / источников ===

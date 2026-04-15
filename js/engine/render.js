@@ -1077,6 +1077,8 @@ export function renderConns() {
         } else if (c._breakerIn) {
           brkTxt = `${c._breakerIn}А`;
         }
+        // Для DC-линий — суффикс DC (указывает на необходимость DC-rated MCCB)
+        if (brkTxt && c._breakerDcRequired) brkTxt += ' DC';
       }
       const brkLen = brkTxt ? brkTxt.length * charW : 0;
       // Длина брекера + отступ (только на from-end): сдвигает ref-label дальше.
@@ -1319,6 +1321,8 @@ export function renderConns() {
       } else if (c._breakerIn) {
         brkText = `${c._breakerIn}А`;
       }
+      // DC-линии требуют DC-rated автомата (IEC 60947-2 / MCCB DC)
+      if (brkText && c._breakerDcRequired) brkText += ' DC';
       if (brkText) {
         const cls = 'breaker-badge' + (c._breakerAgainstCable ? ' overload' : '');
         const textLen = brkText.length * 5.8;
