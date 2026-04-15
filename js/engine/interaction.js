@@ -215,6 +215,9 @@ export function initInteraction() {
       if (state.readOnly) { e.preventDefault(); return; }
       _palDragActive = true;
       e.dataTransfer.setData('text/raschet-type', item.dataset.type);
+      if (item.dataset.subtype) {
+        e.dataTransfer.setData('text/raschet-subtype', item.dataset.subtype);
+      }
       e.dataTransfer.effectAllowed = 'copy';
     });
     item.addEventListener('dragend', () => {
@@ -222,13 +225,14 @@ export function initInteraction() {
     });
     item.addEventListener('click', () => {
       if (state.readOnly) return;
-      if (_palDragActive) return; // был настоящий drag -- click не обрабатываем
+      if (_palDragActive) return;
       const type = item.dataset.type;
+      const subtype = item.dataset.subtype;
       if (!DEFAULTS[type]) return;
       const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
       const cx = state.view.x + (W / 2) / state.view.zoom;
       const cy = state.view.y + (H / 2) / state.view.zoom;
-      createNode(type, cx, cy);
+      createNode(type, cx, cy, subtype ? { subtype } : undefined);
       document.body.classList.remove('palette-open');
     });
   });
@@ -236,7 +240,6 @@ export function initInteraction() {
   svg.addEventListener('drop', e => {
     if (state.readOnly) return;
     e.preventDefault();
-    // Preset drag from library
     const presetId = e.dataTransfer.getData('text/raschet-preset');
     if (presetId && window.Presets) {
       const preset = window.Presets.get(presetId);
@@ -246,11 +249,11 @@ export function initInteraction() {
         return;
       }
     }
-    // Normal palette drag
     const type = e.dataTransfer.getData('text/raschet-type');
+    const subtype = e.dataTransfer.getData('text/raschet-subtype');
     if (!type || !DEFAULTS[type]) return;
     const p = clientToSvg(e.clientX, e.clientY);
-    createNode(type, p.x, p.y);
+    createNode(type, p.x, p.y, subtype ? { subtype } : undefined);
   });
 
   // ---- Мышь: mousedown ----

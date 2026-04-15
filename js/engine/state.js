@@ -11,6 +11,16 @@ export const state = {
   conns: new Map(),
   pages: [],              // массив страниц
   currentPageId: null,    // id активной страницы
+  // Параметры проекта (идут в шапку отчёта)
+  project: {
+    designation: '',      // обозначение (шифр) проекта
+    name: '',             // наименование проекта
+    customer: '',         // заказчик
+    object: '',           // объект / адрес
+    stage: '',            // стадия (П / РД / ...)
+    author: '',           // ГИП / исполнитель
+    description: '',      // общее описание
+  },
   modes: [],
   activeModeId: null,
   selectedKind: null,

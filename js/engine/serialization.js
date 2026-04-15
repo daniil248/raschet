@@ -36,6 +36,7 @@ export function serialize() {
       view: p.view || { x: 0, y: 0, zoom: 1 },
     })),
     currentPageId: state.currentPageId,
+    project: { ...(state.project || {}) },
     modes: state.modes,
     activeModeId: state.activeModeId,
     view: { ...state.view },
@@ -61,6 +62,21 @@ export function deserialize(data) {
   setIdSeq(Math.max(data.nextId || 1, 1));
   state.view = data.view || { x: 0, y: 0, zoom: 1 };
   state.selectedKind = null; state.selectedId = null;
+
+  // Загрузка параметров проекта
+  if (data.project && typeof data.project === 'object') {
+    state.project = {
+      designation: data.project.designation || '',
+      name: data.project.name || '',
+      customer: data.project.customer || '',
+      object: data.project.object || '',
+      stage: data.project.stage || '',
+      author: data.project.author || '',
+      description: data.project.description || '',
+    };
+  } else {
+    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '' };
+  }
 
   // Загрузка страниц (v4+). Если их нет — создаём одну и приписываем все узлы к ней.
   if (Array.isArray(data.pages) && data.pages.length) {
@@ -145,15 +161,21 @@ export function deserialize(data) {
     if ((n.type === 'source' || n.type === 'generator') && !n.sourceSubtype) {
       n.sourceSubtype = n.type === 'generator' ? 'generator' : 'transformer';
     }
-    // Миграция: трансформатору присваиваем inputs=1 (первичная обмотка)
+    // Миграция: старые utility как отдельный type → source с subtype='utility'
+    if (n.type === 'utility') {
+      n.type = 'source';
+      n.sourceSubtype = 'utility';
+    }
+    // Трансформатор: inputs ТЕПЕРЬ опционален, оставляем как есть если было;
+    // если поле отсутствует — ставим 0 (старое поведение без входа)
     if (n.type === 'source' && (n.sourceSubtype || 'transformer') === 'transformer') {
-      if (typeof n.inputs !== 'number' || n.inputs < 1) n.inputs = 1;
+      if (typeof n.inputs !== 'number') n.inputs = 0;
       if (typeof n.inputVoltageLevelIdx !== 'number') n.inputVoltageLevelIdx = 3;
     }
-    // Миграция utility: гарантируем базовые поля
-    if (n.type === 'utility') {
-      if (typeof n.inputs !== 'number') n.inputs = 0;
-      if (typeof n.outputs !== 'number') n.outputs = 1;
+    // Utility (как subtype): базовые поля
+    if (n.type === 'source' && n.sourceSubtype === 'utility') {
+      n.inputs = 0;
+      n.outputs = 1;
       if (!n.phase) n.phase = '3ph';
       if (typeof n.voltageLevelIdx !== 'number') n.voltageLevelIdx = 3;
       if (typeof n.xsRsRatio !== 'number') n.xsRsRatio = 10;

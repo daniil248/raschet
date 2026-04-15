@@ -208,76 +208,19 @@ export function renderInspectorNode(n) {
   }
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
 
-  if (n.type === 'utility') {
-    // Utility — компактные параметры прямо в инспекторе
-    const levels = GLOBAL.voltageLevels || [];
-    const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 3;
-    let vOpts = '';
-    for (let i = 0; i < levels.length; i++) {
-      vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(levels[i].label)} (${levels[i].vLL}V)</option>`;
-    }
-    h.push(field('Напряжение сети', `<select data-prop="voltageLevelIdx">${vOpts}</select>`));
-    h.push(field('Ток трёхфазного КЗ Ik, кА', `<input type="number" data-prop="ikKA" min="0" max="200" step="0.1" value="${n.ikKA ?? 10}">`));
-    h.push(field('ИЛИ Мощность КЗ сети Ssc, МВА', `<input type="number" data-prop="sscMva" min="0" max="10000" step="1" value="${n.sscMva ?? 250}">`));
-    h.push(field('Отношение Xs/Rs', `<input type="number" data-prop="xsRsRatio" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
-    // Вычисленные значения
-    const U = nodeVoltage(n);
-    const Zs = sourceImpedance(n);
-    const IkMax = Zs > 0 ? (1.1 * U) / (Math.sqrt(3) * Zs) : Infinity;
-    h.push(`<div class="inspector-section"><div style="font-size:12px;line-height:1.8">` +
-      `Zs: <b>${(Zs * 1000).toFixed(2)} мОм</b><br>` +
-      (isFinite(IkMax) ? `Ik max: <b>${fmt(IkMax / 1000)} кА</b> при ${U} В` : 'Ik: ∞') +
-      `</div></div>`);
-    h.push(field('Комментарии', `<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical">${escHtml(n.comment || '')}</textarea>`));
-    h.push('<button class="btn-delete" id="btn-del-node">Удалить элемент</button>');
-
-    // === Страницы ===
-    {
-      const allowed = pagesForNode(n);
-      if (allowed.length > 1) {
-        const curPids = Array.isArray(n.pageIds) ? n.pageIds : (state.currentPageId ? [state.currentPageId] : []);
-        h.push('<div class="inspector-section"><h4>Страницы</h4>');
-        for (const p of allowed) {
-          const checked = curPids.includes(p.id);
-          const isHome = p.type !== 'linked';
-          const disabled = isHome ? ' disabled' : '';
-          h.push(`<div class="field check"><input type="checkbox" data-page-id="${escAttr(p.id)}"${checked ? ' checked' : ''}${disabled}><label>${escHtml(p.name || p.id)}${isHome ? ' <span class="muted" style="font-size:10px">(home)</span>' : ' <span class="muted" style="font-size:10px">(ссыл.)</span>'}</label></div>`);
-        }
-        h.push('</div>');
-      }
-    }
-
-    inspectorBody.innerHTML = h.join('');
-    wireInspectorInputs(n);
-    // Handlers pageIds (копия из базового блока)
-    inspectorBody.querySelectorAll('[data-page-id]').forEach(cb => {
-      cb.addEventListener('change', () => {
-        snapshot('node-pages:' + n.id);
-        const pid = cb.dataset.pageId;
-        let pids = Array.isArray(n.pageIds) ? n.pageIds.slice() : (state.currentPageId ? [state.currentPageId] : []);
-        if (cb.checked) {
-          if (!pids.includes(pid)) pids.push(pid);
-        } else {
-          pids = pids.filter(x => x !== pid);
-          if (pids.length === 0) { pids = [state.currentPageId]; cb.checked = true; }
-        }
-        n.pageIds = pids;
-        notifyChange();
-        _render();
-        renderInspector();
-      });
-    });
-    return;
-  }
-
   if (n.type === 'source' || n.type === 'generator') {
     const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
     h.push(field('Тип источника',
       `<select data-prop="sourceSubtype">
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
-        <option value="other"${subtype === 'other' ? ' selected' : ''}>Прочий (гор. сеть, ВРУ)</option>
+        <option value="utility"${subtype === 'utility' ? ' selected' : ''}>Городская сеть (ЛЭП)</option>
+        <option value="other"${subtype === 'other' ? ' selected' : ''}>Прочий</option>
       </select>`));
+    // Для трансформатора: опциональный вход первичной обмотки
+    if (subtype === 'transformer') {
+      h.push(`<div class="field check"><input type="checkbox" data-prop="inputs" data-as-bool="1"${(n.inputs | 0) > 0 ? ' checked' : ''}><label>Вход первичной обмотки (подключение к utility)</label></div>`);
+    }
     h.push(field('Цвет линии', buildColorPalette(n)));
     // cos φ источника рассчитывается автоматически из downstream нагрузки.
     // Для генератора номинальный cos φ задаётся в параметрах источника.
@@ -577,6 +520,23 @@ export function wireInspectorInputs(n) {
       } else if (prop === 'switchMode') {
         n.switchMode = String(v);
       } else if (prop === 'inputs' || prop === 'outputs') {
+        // Особый случай: чекбокс с data-as-bool="1" — переключает 0/1 (для input трансформатора)
+        if (inp.type === 'checkbox' && inp.dataset.asBool === '1') {
+          const target = v ? 1 : 0;
+          // Проверяем что при уменьшении не отключаем занятый порт
+          const kind = prop === 'inputs' ? 'in' : 'out';
+          const maxUsed = maxOccupiedPort(n.id, kind);
+          if (target === 0 && maxUsed >= 0) {
+            flash('Сначала отключите связь со входа', 'error');
+            inp.checked = true;
+            return;
+          }
+          n[prop] = target;
+          _render();
+          notifyChange();
+          renderInspector();
+          return;
+        }
         const newN = Math.max(1, Number(v) || 1);
         const kind = prop === 'inputs' ? 'in' : 'out';
         const maxUsed = maxOccupiedPort(n.id, kind);
@@ -928,6 +888,7 @@ export function openImpedanceModal(n) {
   const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
   const isTransformer = subtype === 'transformer';
   const isOther = subtype === 'other';
+  const isUtility = subtype === 'utility';
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
   h.push(field('Имя', `<input type="text" id="imp-name" value="${escAttr(n.name || '')}">`));
   h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Номинальные параметры источника и данные для расчёта тока КЗ по IEC 60909.</div>');
@@ -935,7 +896,10 @@ export function openImpedanceModal(n) {
   // === Номинальные параметры ===
   h.push('<h4 style="margin:16px 0 8px">Номинальные параметры</h4>');
 
-  if (isTransformer) {
+  if (isUtility) {
+    // Utility не имеет номинальной мощности — только параметры КЗ
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Городская сеть / ЛЭП. Параметры КЗ задаются напрямую.</div>');
+  } else if (isTransformer) {
     // Трансформатор: выбор из типового ряда
     let tOpts = '<option value="">— выберите —</option>';
     for (const t of TRANSFORMER_CATALOG) {
@@ -971,10 +935,12 @@ export function openImpedanceModal(n) {
 
   // Параметры КЗ
   h.push('<h4 style="margin:16px 0 8px">Параметры короткого замыкания</h4>');
-  if (isOther) {
-    // Для "прочего" источника достаточно ввода одного параметра — тока КЗ
-    // на шинах в точке подключения (или Ssc сети). Всё остальное неактуально.
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Для стороннего источника (городская сеть, ВРУ) задайте либо ток трёхфазного КЗ в точке подключения, либо мощность КЗ питающей сети.</div>');
+  if (isOther || isUtility) {
+    // Для городской сети / стороннего источника — прямые параметры КЗ
+    const hint = isUtility
+      ? 'Задайте ток трёхфазного КЗ в точке подключения ЛЭП (или Ssc системы).'
+      : 'Для стороннего источника задайте ток 3ф КЗ в точке подключения или Ssc сети.';
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">${hint}</div>`);
     h.push(field('Ток трёхфазного КЗ Ik, кА', `<input type="number" id="imp-ikka" min="0" max="200" step="0.1" value="${n.ikKA ?? 10}">`));
     h.push(field('ИЛИ Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="0" max="10000" step="1" value="${n.sscMva ?? 0}">`));
     h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
@@ -1039,7 +1005,9 @@ export function openImpedanceModal(n) {
     if (n.id !== '__preset_edit__') snapshot('impedance:' + n.id);
     const impName = document.getElementById('imp-name')?.value?.trim();
     if (impName) n.name = impName;
-    n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
+    if (!isUtility) {
+      n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
+    }
 
     // Выходное напряжение из справочника
     const outLevelIdx = Number(document.getElementById('imp-voltage-out')?.value) || 0;
@@ -1056,17 +1024,19 @@ export function openImpedanceModal(n) {
       if (inEl) n.inputVoltageLevelIdx = Number(inEl.value) || 0;
     }
 
-    // capacityKw = Snom × cos φ
-    n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
-    if (isOther) {
-      // Прочий источник: сохраняем Ik и/или Ssc; Uk/Xd'' не используются.
+    // capacityKw = Snom × cos φ (только для источников с номиналом)
+    if (!isUtility) {
+      n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
+    }
+    if (isOther || isUtility) {
+      // Прочий / utility: Ik и/или Ssc; Uk/Xd'' не используются.
       n.ikKA = Number(document.getElementById('imp-ikka')?.value) || 0;
       n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 0;
       delete n.ukPct;
       delete n.xdpp;
       delete n.pkW;
       delete n.p0W;
-      delete n.inputVoltageLevelIdx;
+      if (isUtility) delete n.inputVoltageLevelIdx;
     } else {
       n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
       if (isTransformer) {

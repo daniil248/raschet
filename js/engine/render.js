@@ -384,14 +384,14 @@ export function renderNodes() {
     layerNodes.appendChild(g);
   }
 
-  // Utility — рисуется компактным символом ЛЭП (опора с проводами), не карточкой
+  // Utility — source с sourceSubtype='utility', рисуется стальной опорой-башней ЛЭП
   for (const n of state.nodes.values()) {
-    if (n.type !== 'utility') continue;
+    if (!(n.type === 'source' && n.sourceSubtype === 'utility')) continue;
     if (!isOnCurrentPage(n)) continue;
     const w = nodeWidth(n), h = nodeHeight(n);
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
     const g = el('g', {
-      class: 'node utility' + (selected ? ' selected' : ''),
+      class: 'node source utility' + (selected ? ' selected' : ''),
       transform: `translate(${n.x},${n.y})`,
     });
     g.dataset.nodeId = n.id;
@@ -404,36 +404,75 @@ export function renderNodes() {
       'stroke-dasharray': selected ? '4 4' : '0',
       rx: 4,
     }));
-    // Символ опоры ЛЭП: столб + 3 горизонтальные перекладины + провода вниз
+    // === Стальная решётчатая опора-башня ===
     const cx = w / 2;
-    const poleTop = 14, poleBot = h - 20;
-    // Стойка опоры
-    g.appendChild(el('line', { x1: cx, y1: poleTop, x2: cx, y2: poleBot, stroke: '#455a64', 'stroke-width': 2.5, class: 'node-icon' }));
-    // Три перекладины с изоляторами
-    const crossY = [poleTop + 4, poleTop + 16, poleTop + 28];
-    for (const cy of crossY) {
-      g.appendChild(el('line', { x1: cx - 18, y1: cy, x2: cx + 18, y2: cy, stroke: '#455a64', 'stroke-width': 1.8, class: 'node-icon' }));
-      g.appendChild(el('circle', { cx: cx - 18, cy: cy, r: 2, fill: '#90a4ae', class: 'node-icon' }));
-      g.appendChild(el('circle', { cx: cx + 18, cy: cy, r: 2, fill: '#90a4ae', class: 'node-icon' }));
+    const topY = 10;                 // верх пирамидки
+    const crossY = 22;               // нижний изолятор 1
+    const crossY2 = 34;              // изолятор 2
+    const crossY3 = 46;              // изолятор 3
+    const baseY = h - 24;            // основание башни (низ контура)
+    const halfTop = 8;               // ширина башни сверху
+    const halfBase = 28;             // ширина у основания
+    const stroke = '#455a64';
+
+    // Контур башни — трапеция
+    g.appendChild(el('path', {
+      d: `M${cx - halfTop},${topY} L${cx + halfTop},${topY} L${cx + halfBase},${baseY} L${cx - halfBase},${baseY} Z`,
+      fill: 'none', stroke, 'stroke-width': 2, class: 'node-icon',
+    }));
+    // Решётчатая диагональная структура внутри (X-кресты по высоте)
+    const lattice = 5;
+    for (let i = 0; i < lattice; i++) {
+      const t1 = i / lattice;
+      const t2 = (i + 1) / lattice;
+      const y1 = topY + (baseY - topY) * t1;
+      const y2 = topY + (baseY - topY) * t2;
+      const hw1 = halfTop + (halfBase - halfTop) * t1;
+      const hw2 = halfTop + (halfBase - halfTop) * t2;
+      // Горизонтальные пояса
+      g.appendChild(el('line', { x1: cx - hw1, y1, x2: cx + hw1, y2: y1, stroke, 'stroke-width': 1, class: 'node-icon' }));
+      // Диагонали X
+      g.appendChild(el('line', { x1: cx - hw1, y1, x2: cx + hw2, y2: y2, stroke, 'stroke-width': 0.8, class: 'node-icon' }));
+      g.appendChild(el('line', { x1: cx + hw1, y1, x2: cx - hw2, y2: y2, stroke, 'stroke-width': 0.8, class: 'node-icon' }));
     }
-    // Провода от изоляторов вниз к порту (собираются в точке поля порта)
-    const portX = cx, portY = poleBot + 2;
-    for (let i = 0; i < 3; i++) {
-      const sxL = cx - 18, sxR = cx + 18;
-      const cy = crossY[i];
-      g.appendChild(el('path', { d: `M${sxL},${cy} Q${cx},${(cy + portY) / 2 + 4} ${portX},${portY}`,
-        fill: 'none', stroke: '#455a64', 'stroke-width': 1, class: 'node-icon' }));
-      g.appendChild(el('path', { d: `M${sxR},${cy} Q${cx},${(cy + portY) / 2 + 4} ${portX},${portY}`,
-        fill: 'none', stroke: '#455a64', 'stroke-width': 1, class: 'node-icon' }));
+    // Нижний пояс
+    g.appendChild(el('line', { x1: cx - halfBase, y1: baseY, x2: cx + halfBase, y2: baseY, stroke, 'stroke-width': 1.5, class: 'node-icon' }));
+
+    // Три перекладины с изоляторами (на вершине)
+    const armW = 22;
+    const armsY = [crossY, crossY2, crossY3];
+    for (const ay of armsY) {
+      g.appendChild(el('line', { x1: cx - armW, y1: ay, x2: cx + armW, y2: ay, stroke, 'stroke-width': 1.5, class: 'node-icon' }));
+      // Изоляторы (свисают с концов перекладины)
+      g.appendChild(el('line', { x1: cx - armW, y1: ay, x2: cx - armW, y2: ay + 4, stroke, 'stroke-width': 1, class: 'node-icon' }));
+      g.appendChild(el('line', { x1: cx + armW, y1: ay, x2: cx + armW, y2: ay + 4, stroke, 'stroke-width': 1, class: 'node-icon' }));
+      g.appendChild(el('circle', { cx: cx - armW, cy: ay + 5, r: 1.6, fill: '#90a4ae', class: 'node-icon' }));
+      g.appendChild(el('circle', { cx: cx + armW, cy: ay + 5, r: 1.6, fill: '#90a4ae', class: 'node-icon' }));
     }
-    // Подпись TAG + имя снизу
+
+    // Провода от изоляторов вниз, сходящиеся к выходному порту
+    const portX = cx, portY = h;
+    for (const ay of armsY) {
+      const sxL = cx - armW, sxR = cx + armW;
+      const isoY = ay + 5;
+      g.appendChild(el('path', {
+        d: `M${sxL},${isoY} Q${(sxL + portX) / 2},${isoY + 20} ${portX},${portY}`,
+        fill: 'none', stroke, 'stroke-width': 0.9, class: 'node-icon',
+      }));
+      g.appendChild(el('path', {
+        d: `M${sxR},${isoY} Q${(sxR + portX) / 2},${isoY + 20} ${portX},${portY}`,
+        fill: 'none', stroke, 'stroke-width': 0.9, class: 'node-icon',
+      }));
+    }
+
+    // Подпись TAG снизу (под башней)
     const tag = effectiveTag(n) || n.tag || '';
     if (tag) {
       const t = text(cx, h - 6, tag, 'node-tag');
       t.setAttribute('text-anchor', 'middle');
       g.appendChild(t);
     }
-    // Выходной порт — внизу на оси столба
+    // Выходной порт — внизу на оси башни (ровно по центру w)
     const outCirc = el('circle', { class: 'port out', cx: portX, cy: h, r: PORT_R });
     outCirc.dataset.portKind = 'out';
     outCirc.dataset.portIdx = 0;
@@ -444,7 +483,7 @@ export function renderNodes() {
 
   for (const n of state.nodes.values()) {
     if (n.type === 'zone') continue;
-    if (n.type === 'utility') continue;
+    if (n.type === 'source' && n.sourceSubtype === 'utility') continue; // уже отрисован выше
     if (n.type === 'channel' && n.trayMode) continue;
     if (n.type === 'panel' && n.switchMode === 'sectioned') continue; // контейнер рисуется выше
     if (!isOnCurrentPage(n)) continue;

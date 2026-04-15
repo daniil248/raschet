@@ -1122,9 +1122,9 @@ function recalc() {
     // Исключение: связь utility → трансформатор идёт на ПЕРВИЧНОЙ стороне
     // трансформатора (HV). Тогда напряжение и фазность берутся с utility
     // (= первичное напряжение трансформатора).
-    const isUtilityToTransformer = fromN.type === 'utility'
-      && toN.type === 'source'
-      && (toN.sourceSubtype || 'transformer') === 'transformer';
+    const isUtilityToTransformer =
+      fromN.type === 'source' && fromN.sourceSubtype === 'utility'
+      && toN.type === 'source' && (toN.sourceSubtype || 'transformer') === 'transformer';
     const threePhase = isUtilityToTransformer ? isThreePhase(fromN) : isThreePhase(toN);
     const U = isUtilityToTransformer ? nodeVoltage(fromN) : nodeVoltage(toN);
 
@@ -1488,12 +1488,16 @@ function recalc() {
     const isGroupLoad = (toN.type === 'consumer'
       && (Number(toN.count) || 1) > 1
       && !toN.serialMode);
-    // Для групповой — всегда per-line автоматы. Для парцелльной — по глобальной настройке.
-    const useIndividual = isGroupLoad || _protIndivGlobal;
 
-    if (parallel > 1 && useIndividual) {
-      // Индивидуальная защита: per-line автоматы на каждом кабеле +
-      // общий (вышестоящий) автомат по суммарному току.
+    if (parallel > 1 && isGroupLoad) {
+      // ГРУППОВАЯ нагрузка (N отдельных приборов, каждый на своём кабеле):
+      // показываем ТОЛЬКО номинал одной линии. Общего автомата сверху не ставим —
+      // на панели для этой линии один автомат на per-line ток одного прибора.
+      c._breakerIn = InPerLine;
+      c._breakerPerLine = null;
+      c._breakerCount = 1;
+    } else if (parallel > 1 && _protIndivGlobal) {
+      // ПАРЦЕЛЛЬНАЯ линия, режим individual: каждая жила своим автоматом + общий
       c._breakerIn = InTotal;
       c._breakerPerLine = InPerLine;
       c._breakerCount = parallel;

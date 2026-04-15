@@ -87,9 +87,9 @@ export function sourceImpedance(n) {
   const U = nodeVoltage(n);
   const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
 
-  // Utility (городская сеть / ЛЭП) — импеданс на стороне её собственного
-  // напряжения (обычно HV). Приоритет у Ik (IEC 60909).
-  if (n.type === 'utility') {
+  // Utility (городская сеть / ЛЭП) — source с подтипом 'utility'.
+  // Импеданс на стороне её собственного напряжения (обычно HV). Приоритет Ik.
+  if (n.type === 'source' && subtype === 'utility') {
     const ikA = (Number(n.ikKA) || 0) * 1000;
     if (ikA > 0) return (1.1 * U) / (Math.sqrt(3) * ikA);
     const Ssc = (Number(n.sscMva) || 0) * 1e6;
@@ -121,7 +121,7 @@ export function sourceImpedance(n) {
       if (c.to?.nodeId !== n.id) continue;
       if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
       const up = state.nodes.get(c.from.nodeId);
-      if (up && up.type === 'utility') {
+      if (up && up.type === 'source' && up.sourceSubtype === 'utility') {
         const Zup_hv = sourceImpedance(up); // на HV стороне
         const levels = GLOBAL.voltageLevels || [];
         const priIdx = typeof n.inputVoltageLevelIdx === 'number' ? n.inputVoltageLevelIdx : 3;

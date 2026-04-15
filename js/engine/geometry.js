@@ -2,31 +2,32 @@ import { NODE_H, NODE_MIN_W, PORT_GAP_MIN, GLOBAL } from './constants.js';
 
 // ================= Геометрия узла =================
 export function nodeInputCount(n) {
-  // Трансформатор имеет вход (первичная обмотка) для подключения utility.
   if (n.type === 'source') {
     const st = n.sourceSubtype || 'transformer';
-    if (st === 'transformer') return 1;
-    return 0; // generator-like source без входа
+    if (st === 'utility') return 0;
+    // Трансформатор и прочие — вход опционален через n.inputs (0 или 1).
+    return Math.max(0, Math.min(1, n.inputs | 0));
   }
   if (n.type === 'generator') return n.auxInput ? 1 : 0;
   if (n.type === 'zone') return 0;
-  if (n.type === 'utility') return 0;
   return Math.max(0, n.inputs | 0);
 }
 export function nodeOutputCount(n) {
   if (n.type === 'consumer') return Math.max(0, n.outputs | 0);
   if (n.type === 'source' || n.type === 'generator') return 1;
-  if (n.type === 'utility') return 1;
   if (n.type === 'zone') return 0;
   return Math.max(0, n.outputs | 0);
 }
+// Проверка: является ли source utility-подтипом (компактный визуал)
+export function isUtilitySource(n) {
+  return n && n.type === 'source' && n.sourceSubtype === 'utility';
+}
 export function nodeWidth(n) {
   if (n.type === 'zone') return Math.max(200, Number(n.width) || 600);
-  if (n.type === 'utility') return 80;
+  if (isUtilitySource(n)) return 120;  // 3 клетки по 40px — чтобы порт был по центру
   // Многосекционный контейнер — размер по секциям
   if (n.type === 'panel' && n.switchMode === 'sectioned') return Number(n._wrapW) || 400;
   const gs = GLOBAL.gridStep || 40;
-  // Для consumer с боковыми портами — входы не влияют на ширину
   const inTop = (n.type !== 'consumer' || !n.inputSide || n.inputSide === 'top');
   const inPorts = inTop ? nodeInputCount(n) : 0;
   const maxPorts = Math.max(inPorts, nodeOutputCount(n), 1);
@@ -37,7 +38,7 @@ export function nodeWidth(n) {
 export function nodeHeight(n) {
   if (n.type === 'zone') return Math.max(120, Number(n.height) || 400);
   if (n.type === 'panel' && n.switchMode === 'sectioned') return Number(n._wrapH) || 200;
-  if (n.type === 'utility') return 120;
+  if (isUtilitySource(n)) return 140;
   return NODE_H;
 }
 export function portPos(n, kind, idx) {

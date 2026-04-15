@@ -1,5 +1,5 @@
 import { state, uid } from './state.js';
-import { GLOBAL, DEFAULTS, TAG_PREFIX, NODE_H } from './constants.js';
+import { GLOBAL, DEFAULTS, TAG_PREFIX, SOURCE_SUBTYPE_PREFIX, NODE_H } from './constants.js';
 import { nodeWidth, nodeInputCount } from './geometry.js';
 import { effectiveTag } from './zones.js';
 
@@ -12,6 +12,9 @@ export function bindGraphDeps({ snapshot, render, renderInspector, notifyChange,
 // Поиск наименьшего свободного обозначения с заданным префиксом (TR1, TR2, …)
 export function nextFreeTag(type) {
   const prefix = TAG_PREFIX[type] || 'X';
+  return nextFreeTagWithPrefix(prefix);
+}
+export function nextFreeTagWithPrefix(prefix) {
   const used = new Set();
   for (const n of state.nodes.values()) {
     if (n.tag) used.add(n.tag);
@@ -21,19 +24,43 @@ export function nextFreeTag(type) {
   return prefix + i;
 }
 
-// Проверка, что tag не занят другим узлом В ТОЙ ЖЕ ЗОНЕ.
-// Одинаковые теги допустимы в разных зонах (P1.MDB1 и P2.MDB1 — ок).
+// Проверка, что tag не занят другим узлом В ТОМ ЖЕ ПРОСТРАНСТВЕ СТРАНИЦЫ.
+// Пространство = independent home + её linked-потомки. На разных независимых
+// страницах допустимы одинаковые обозначения (они «не видят» друг друга).
+// Плюс внутри одного пространства — старое правило «одинаковые теги в разных
+// зонах допустимы» (через effectiveTag).
 export function isTagUnique(tag, exceptId) {
-  // Проверяем что ПОЛНОЕ обозначение (effectiveTag) уникально
   const candidate = state.nodes.get(exceptId);
-  // Вычисляем будущий effectiveTag если бы tag стал = tag
   const oldTag = candidate ? candidate.tag : '';
   if (candidate) candidate.tag = tag;
   const candidateEff = candidate ? effectiveTag(candidate) : tag;
-  if (candidate) candidate.tag = oldTag; // восстановить
+  if (candidate) candidate.tag = oldTag;
+
+  // Вычисляем пространство страницы для candidate
+  const candPids = Array.isArray(candidate?.pageIds) ? candidate.pageIds : [];
+  // Для каждой pageId в candidate находим home (independent или sourcePageId если linked)
+  const candHomes = new Set();
+  for (const pid of candPids) {
+    const p = (state.pages || []).find(x => x.id === pid);
+    if (!p) continue;
+    if (p.type === 'linked' && p.sourcePageId) candHomes.add(p.sourcePageId);
+    else candHomes.add(p.id);
+  }
+  // Пространство candidate = все его home + их linked-потомки
+  const candSpace = new Set(candHomes);
+  for (const p of (state.pages || [])) {
+    if (p.type === 'linked' && candHomes.has(p.sourcePageId)) candSpace.add(p.id);
+  }
+  const inCandSpace = (n) => {
+    const pids = Array.isArray(n?.pageIds) ? n.pageIds : null;
+    if (!pids || pids.length === 0) return true; // legacy
+    for (const pid of pids) if (candSpace.has(pid)) return true;
+    return false;
+  };
   for (const n of state.nodes.values()) {
     if (n.id === exceptId) continue;
     if (n.type === 'zone') continue;
+    if (candSpace.size > 0 && !inCandSpace(n)) continue;
     const nEff = effectiveTag(n);
     if (nEff === candidateEff) return false;
   }
@@ -41,11 +68,20 @@ export function isTagUnique(tag, exceptId) {
 }
 
 // ================= Создание / удаление =================
-export function createNode(type, x, y) {
+export function createNode(type, x, y, opts) {
   _snapshot();
   const id = uid();
-  const base = { id, type, x, y, ...DEFAULTS[type]() };
-  base.tag = nextFreeTag(type);
+  const subtype = opts && opts.subtype;
+  const defaults = typeof DEFAULTS[type] === 'function'
+    ? DEFAULTS[type](subtype)
+    : {};
+  const base = { id, type, x, y, ...defaults };
+  // Префикс тега — для source с подтипом берём SOURCE_SUBTYPE_PREFIX
+  let tagPrefix = null;
+  if (type === 'source' && subtype && SOURCE_SUBTYPE_PREFIX[subtype]) {
+    tagPrefix = SOURCE_SUBTYPE_PREFIX[subtype];
+  }
+  base.tag = tagPrefix ? nextFreeTagWithPrefix(tagPrefix) : nextFreeTag(type);
   base.x = x - nodeWidth(base) / 2;
   base.y = y - NODE_H / 2;
   // Новый узел привязывается к home-странице (independent).

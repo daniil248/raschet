@@ -69,7 +69,7 @@
         <div class="subtitle">Конструктор схем</div>
 
         <h3>Элементы</h3>
-        <div class="pal-item" data-type="utility" draggable="true">
+        <div class="pal-item" data-type="source" data-subtype="utility" draggable="true">
           <span class="chip utl"></span>Городская сеть (ЛЭП)
         </div>
         <div class="pal-item" data-type="source" draggable="true">
@@ -92,6 +92,7 @@
         </div>
 
         <h3>Быстрые действия</h3>
+        <button id="btn-open-project-info" class="full-btn">📋 Параметры проекта</button>
         <button id="btn-open-settings" class="full-btn">⚙ Параметры расчёта</button>
         <button id="btn-open-presets" class="full-btn">📚 Библиотека типовых элементов</button>
         <button id="btn-open-consumer-catalog" class="full-btn">📋 Справочник типов потребителей</button>
@@ -335,6 +336,38 @@
       <div class="modal-foot">
         <button class="modal-close">Закрыть</button>
         <button id="automation-apply" class="primary">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-project-info" class="modal hidden">
+    <div class="modal-box modal-wide">
+      <div class="modal-head">
+        <h2>Параметры проекта</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin-top:0">Реквизиты проекта — выводятся в шапку отчёта и сохраняются вместе со схемой.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Обозначение (шифр)</label>
+            <input type="text" id="pi-designation" placeholder="25006-GEP-GEN-ELC-901"></div>
+          <div class="field"><label>Наименование проекта</label>
+            <input type="text" id="pi-name" placeholder="Электроснабжение …"></div>
+          <div class="field"><label>Заказчик</label>
+            <input type="text" id="pi-customer" placeholder="АО …"></div>
+          <div class="field"><label>Объект / адрес</label>
+            <input type="text" id="pi-object" placeholder="г. … ул. …"></div>
+          <div class="field"><label>Стадия</label>
+            <input type="text" id="pi-stage" placeholder="П / РД"></div>
+          <div class="field"><label>ГИП / Исполнитель</label>
+            <input type="text" id="pi-author" placeholder="Иванов И.И."></div>
+        </div>
+        <div class="field"><label>Общее описание</label>
+          <textarea id="pi-description" rows="4" style="width:100%;font:inherit;font-size:12px;resize:vertical" placeholder="Краткое описание проекта"></textarea></div>
+      </div>
+      <div class="modal-foot">
+        <button class="modal-close">Отмена</button>
+        <button id="project-info-save" class="primary">Применить</button>
       </div>
     </div>
   </div>

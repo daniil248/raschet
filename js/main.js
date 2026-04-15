@@ -830,6 +830,37 @@ function saveSettingsModal() {
   flash('Настройки применены');
 }
 
+function openProjectInfoModal() {
+  const pi = (window.Raschet?._state?.project) || {};
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('pi-designation', pi.designation);
+  set('pi-name',        pi.name);
+  set('pi-customer',    pi.customer);
+  set('pi-object',      pi.object);
+  set('pi-stage',       pi.stage);
+  set('pi-author',      pi.author);
+  set('pi-description', pi.description);
+  openModal('modal-project-info');
+}
+
+function saveProjectInfoModal() {
+  const get = (id) => document.getElementById(id)?.value || '';
+  if (!window.Raschet?._state) return;
+  window.Raschet._state.project = {
+    designation: get('pi-designation').trim(),
+    name:        get('pi-name').trim(),
+    customer:    get('pi-customer').trim(),
+    object:      get('pi-object').trim(),
+    stage:       get('pi-stage').trim(),
+    author:      get('pi-author').trim(),
+    description: get('pi-description').trim(),
+  };
+  closeModal('modal-project-info');
+  flash('Параметры проекта сохранены');
+  // Нотификация о смене для сохранения в БД / localStorage
+  if (typeof window.Raschet.notifyChange === 'function') window.Raschet.notifyChange();
+}
+
 function resetSettingsModal() {
   if (!confirm('Сбросить все начальные условия к значениям по умолчанию?')) return;
   try { localStorage.removeItem(SETTINGS_KEY); } catch {}
@@ -1266,6 +1297,11 @@ async function init() {
   if (settingsSave) settingsSave.addEventListener('click', saveSettingsModal);
   const settingsReset = document.getElementById('settings-reset');
   if (settingsReset) settingsReset.addEventListener('click', resetSettingsModal);
+  // Project info modal
+  const btnProjectInfo = document.getElementById('btn-open-project-info');
+  if (btnProjectInfo) btnProjectInfo.addEventListener('click', openProjectInfoModal);
+  const projectInfoSave = document.getElementById('project-info-save');
+  if (projectInfoSave) projectInfoSave.addEventListener('click', saveProjectInfoModal);
   // Применяем сохранённые настройки как можно раньше — после загрузки Raschet
   loadGlobalSettings();
   if (els.btnOpenPresets) els.btnOpenPresets.addEventListener('click', openPresetsModal);

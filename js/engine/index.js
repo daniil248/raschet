@@ -5,7 +5,7 @@
 
 // === Импорты ===
 import { GLOBAL, DEFAULTS, NODE_H, APP_VERSION, CONSUMER_CATALOG } from './constants.js';
-import { state, uid, initDOM, setChangeCb, svg, setIdSeq, ensureDefaultPage } from './state.js';
+import { state, uid, initDOM, setChangeCb, getChangeCb, svg, setIdSeq, ensureDefaultPage } from './state.js';
 import { escHtml, escAttr, fmt, flash, field, checkField } from './utils.js';
 import { selectCableSize, selectBreaker } from './cable.js';
 import {
@@ -228,6 +228,12 @@ window.Raschet = {
   applyPreset,
   applyPresetAt,
   generateReport,
+  // Прямой доступ к state (для модалки параметров проекта и т.п.)
+  _state: state,
+  notifyChange: () => {
+    const cb = (typeof getChangeCb === 'function' ? getChangeCb() : null);
+    if (typeof cb === 'function') cb();
+  },
   importLoadsTable,
   get3PhaseBalance,
   getGlobal() { return { ...GLOBAL }; },

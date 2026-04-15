@@ -86,19 +86,65 @@ export function generateReport() {
   const pad = n => String(n).padStart(2, '0');
   const stamp = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
+  // === ШАПКА ПРОЕКТА ===
+  const proj = state.project || {};
+  lines.push('='.repeat(78));
   lines.push('ОТЧЁТ ПО СХЕМЕ ЭЛЕКТРОСНАБЖЕНИЯ');
-  lines.push('Дата: ' + stamp);
-  if (state.activeModeId) {
-    const m = state.modes.find(x => x.id === state.activeModeId);
-    lines.push('Сценарий: ' + (m?.name || '-'));
-  } else {
-    lines.push('Сценарий: Нормальный режим');
+  lines.push('='.repeat(78));
+  if (proj.designation) lines.push('Обозначение:    ' + proj.designation);
+  if (proj.name)        lines.push('Наименование:   ' + proj.name);
+  if (proj.customer)    lines.push('Заказчик:       ' + proj.customer);
+  if (proj.object)      lines.push('Объект:         ' + proj.object);
+  if (proj.stage)       lines.push('Стадия:         ' + proj.stage);
+  if (proj.author)      lines.push('ГИП / Исполн.:  ' + proj.author);
+  if (proj.description) {
+    lines.push('Описание:');
+    for (const line of String(proj.description).split(/\r?\n/)) lines.push('  ' + line);
   }
-  lines.push('='.repeat(60));
+  lines.push('-'.repeat(78));
+  lines.push('Дата формирования: ' + stamp);
+  // Активный режим работы
+  if (state.activeModeId) {
+    const m = (state.modes || []).find(x => x.id === state.activeModeId);
+    lines.push('Режим работы:      ' + (m?.name || '-'));
+  } else {
+    lines.push('Режим работы:      Нормальный режим');
+  }
+  // Текущая страница + ссылочные
+  const curPage = (state.pages || []).find(p => p.id === state.currentPageId);
+  if (curPage) {
+    const linkedChildren = (state.pages || []).filter(p => p.type === 'linked' && p.sourcePageId === curPage.id);
+    const pagesLine = curPage.name + (linkedChildren.length ? ` (+ ${linkedChildren.map(p => p.name).join(', ')})` : '');
+    lines.push('Страница:          ' + pagesLine);
+  }
+  lines.push('='.repeat(78));
   lines.push('');
 
+  // === ФИЛЬТР ПО СТРАНИЦАМ ===
+  // В отчёт включаются узлы, которые видны на текущей странице ИЛИ на любой
+  // из её ссылочных потомков (т.е. в «пространстве листа»).
+  const _pageSpace = new Set();
+  if (curPage) {
+    _pageSpace.add(curPage.id);
+    for (const p of (state.pages || [])) {
+      if (p.type === 'linked' && p.sourcePageId === curPage.id) _pageSpace.add(p.id);
+    }
+  }
+  const _inSpace = (node) => {
+    if (!curPage) return true;
+    const pids = Array.isArray(node?.pageIds) ? node.pageIds : null;
+    if (!pids || pids.length === 0) return true; // legacy — везде
+    for (const pid of pids) if (_pageSpace.has(pid)) return true;
+    return false;
+  };
+  const _connInSpace = (c) => {
+    const fromN = state.nodes.get(c.from.nodeId);
+    const toN = state.nodes.get(c.to.nodeId);
+    return fromN && toN && _inSpace(fromN) && _inSpace(toN);
+  };
+
   // 1. Источники
-  const sources = sortByTag([...state.nodes.values()].filter(n => n.type === 'source' || n.type === 'generator'));
+  const sources = sortByTag([...state.nodes.values()].filter(n => (n.type === 'source' || n.type === 'generator') && _inSpace(n)));
   if (sources.length) {
     lines.push('ИСТОЧНИКИ ПИТАНИЯ');
     lines.push('-'.repeat(78));
@@ -123,7 +169,7 @@ export function generateReport() {
   }
 
   // 2. ИБП
-  const upses = sortByTag([...state.nodes.values()].filter(n => n.type === 'ups'));
+  const upses = sortByTag([...state.nodes.values()].filter(n => n.type === 'ups' && _inSpace(n)));
   if (upses.length) {
     lines.push('ИСТОЧНИКИ БЕСПЕРЕБОЙНОГО ПИТАНИЯ (ИБП)');
     lines.push('-'.repeat(60));
@@ -150,7 +196,7 @@ export function generateReport() {
   }
 
   // 3. Щиты
-  const panels = sortByTag([...state.nodes.values()].filter(n => n.type === 'panel'));
+  const panels = sortByTag([...state.nodes.values()].filter(n => n.type === 'panel' && _inSpace(n)));
   if (panels.length) {
     lines.push('РАСПРЕДЕЛИТЕЛЬНЫЕ ЩИТЫ');
     lines.push('-'.repeat(78));
@@ -177,7 +223,7 @@ export function generateReport() {
   }
 
   // 4. Потребители
-  const consumers = sortByTag([...state.nodes.values()].filter(n => n.type === 'consumer'));
+  const consumers = sortByTag([...state.nodes.values()].filter(n => n.type === 'consumer' && _inSpace(n)));
   if (consumers.length) {
     lines.push('ПОТРЕБИТЕЛИ');
     lines.push('-'.repeat(92));
@@ -210,7 +256,7 @@ export function generateReport() {
   }
 
   // 4a. Кабельные линии
-  const activeCables = [...state.conns.values()].filter(c => c._cableSize || c._busbarNom);
+  const activeCables = [...state.conns.values()].filter(c => (c._cableSize || c._busbarNom) && _connInSpace(c));
   // Сортировка по обозначению линии
   activeCables.sort((a, b) => {
     const aFrom = effectiveTag(state.nodes.get(a.from.nodeId)) || '';
@@ -296,6 +342,7 @@ export function generateReport() {
   // 6. Проверки
   const issues = [];
   for (const n of state.nodes.values()) {
+    if (!_inSpace(n)) continue;
     if (n.type === 'consumer') {
       const hasIn = [...state.conns.values()].some(c => c.to.nodeId === n.id);
       if (!hasIn) issues.push(`  ⚠ Потребитель ${fullTag(n) || n.name} не подключён`);
@@ -326,7 +373,7 @@ export function generateReport() {
   }
 
   // Перечень каналов с кабельными линиями
-  const channels = sortByTag([...state.nodes.values()].filter(n => n.type === 'channel'));
+  const channels = sortByTag([...state.nodes.values()].filter(n => n.type === 'channel' && _inSpace(n)));
   if (channels.length) {
     lines.push('КАБЕЛЬНЫЕ КАНАЛЫ И ТРАССЫ');
     lines.push('-'.repeat(78));
