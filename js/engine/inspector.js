@@ -17,24 +17,24 @@ import {
   openUpsParamsModal,
   openUpsControlModal,
   upsStatusBlock,
-} from './inspector-ups.js';
+} from './inspector/ups.js';
 import {
   bindInspectorConsumerDeps,
   openConsumerParamsModal,
-} from './inspector-consumer.js';
+} from './inspector/consumer.js';
 import {
   bindInspectorSourceDeps,
   openImpedanceModal,
   openAutomationModal,
   sourceStatusBlock,
   voltageLevelOptions,
-} from './inspector-source.js';
+} from './inspector/source.js';
 import {
   bindInspectorPanelDeps,
   openPanelParamsModal,
   openPanelControlModal,
   panelStatusBlock,
-} from './inspector-panel.js';
+} from './inspector/panel.js';
 import {
   bindInspectorConnDeps,
   renderInspectorConn,
@@ -42,7 +42,7 @@ import {
   installCoefficientBlock,
   channelIconSVG,
   bundlingIconSVG,
-} from './inspector-conn.js';
+} from './inspector/conn.js';
 let _render, _deleteNode, _deleteConn, _isTagUnique;
 export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique }) {
   _render = render;

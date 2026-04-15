@@ -1,13 +1,13 @@
 // Инспектор и модалки для ИБП: параметры, управление, статус-блок.
 // Выделено из inspector.js для поддержки. Использует прямые импорты
 // зависимостей (render/history/utils) — инъекция не нужна.
-import { GLOBAL } from './constants.js';
-import { escHtml, escAttr, fmt, field, flash } from './utils.js';
-import { effectiveOn } from './modes.js';
-import { effectiveTag } from './zones.js';
-import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw } from './electrical.js';
-import { snapshot, notifyChange } from './history.js';
-import { render } from './render.js';
+import { GLOBAL } from '../constants.js';
+import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
+import { effectiveOn } from '../modes.js';
+import { effectiveTag } from '../zones.js';
+import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw } from '../electrical.js';
+import { snapshot, notifyChange } from '../history.js';
+import { render } from '../render.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;

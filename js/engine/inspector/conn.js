@@ -1,15 +1,15 @@
 // Инспектор связи (линии) и общие хелперы условий прокладки.
 // Выделено из inspector.js.
-import { GLOBAL, BREAKER_SERIES } from './constants.js';
-import { state } from './state.js';
-import { escHtml, escAttr, fmt, field, flash } from './utils.js';
-import { effectiveTag } from './zones.js';
-import { cableVoltageClass } from './electrical.js';
-import { snapshot, notifyChange } from './history.js';
-import { render } from './render.js';
-import { deleteConn } from './graph.js';
-import { kTempLookup, kGroupLookup, kBundlingFactor } from './cable.js';
-import { getMethod } from '../methods/index.js';
+import { GLOBAL, BREAKER_SERIES } from '../constants.js';
+import { state } from '../state.js';
+import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
+import { effectiveTag } from '../zones.js';
+import { cableVoltageClass } from '../electrical.js';
+import { snapshot, notifyChange } from '../history.js';
+import { render } from '../render.js';
+import { deleteConn } from '../graph.js';
+import { kTempLookup, kGroupLookup, kBundlingFactor } from '../cable.js';
+import { getMethod } from '../../methods/index.js';
 
 let _renderInspector = null;
 export function bindInspectorConnDeps({ renderInspector }) {

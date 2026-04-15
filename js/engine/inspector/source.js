@@ -4,14 +4,14 @@
 //  - sourceStatusBlock — блок статуса в sidebar
 //  - voltageLevelOptions — helper генерации опций для select напряжений
 // Выделено из inspector.js.
-import { GLOBAL, TRANSFORMER_CATALOG } from './constants.js';
-import { state } from './state.js';
-import { escHtml, escAttr, fmt, field, flash } from './utils.js';
-import { effectiveTag } from './zones.js';
-import { effectiveOn } from './modes.js';
-import { nodeVoltage, sourceImpedance } from './electrical.js';
-import { snapshot, notifyChange } from './history.js';
-import { render } from './render.js';
+import { GLOBAL, TRANSFORMER_CATALOG } from '../constants.js';
+import { state } from '../state.js';
+import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
+import { effectiveTag } from '../zones.js';
+import { effectiveOn } from '../modes.js';
+import { nodeVoltage, sourceImpedance } from '../electrical.js';
+import { snapshot, notifyChange } from '../history.js';
+import { render } from '../render.js';
 
 let _renderInspector = null;
 export function bindInspectorSourceDeps({ renderInspector }) {

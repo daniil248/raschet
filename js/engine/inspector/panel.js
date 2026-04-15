@@ -1,12 +1,12 @@
 // Инспектор: модалки щитов (секционные/обычные), управление щитом,
 // вспомогательные функции отрисовки. Выделено из inspector.js.
-import { DEFAULTS, BREAKER_SERIES } from './constants.js';
-import { state, uid } from './state.js';
-import { escHtml, escAttr, fmt, field, flash } from './utils.js';
-import { effectiveTag } from './zones.js';
-import { snapshot, notifyChange } from './history.js';
-import { render } from './render.js';
-import { isTagUnique } from './graph.js';
+import { DEFAULTS, BREAKER_SERIES } from '../constants.js';
+import { state, uid } from '../state.js';
+import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
+import { effectiveTag } from '../zones.js';
+import { snapshot, notifyChange } from '../history.js';
+import { render } from '../render.js';
+import { isTagUnique } from '../graph.js';
 
 let _renderInspector = null;
 export function bindInspectorPanelDeps({ renderInspector }) {

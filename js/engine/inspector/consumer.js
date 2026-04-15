@@ -1,12 +1,12 @@
 // Инспектор: модалка «Параметры потребителя».
 // Выделено из inspector.js. Использует прямые импорты зависимостей.
-import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, NODE_H } from './constants.js';
-import { state, uid } from './state.js';
-import { escHtml, escAttr, fmt, field, flash } from './utils.js';
-import { effectiveTag } from './zones.js';
-import { nextFreeTag } from './graph.js';
-import { snapshot, notifyChange } from './history.js';
-import { render } from './render.js';
+import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, NODE_H } from '../constants.js';
+import { state, uid } from '../state.js';
+import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
+import { effectiveTag } from '../zones.js';
+import { nextFreeTag } from '../graph.js';
+import { snapshot, notifyChange } from '../history.js';
+import { render } from '../render.js';
 
 let _renderInspector = null;
 export function bindInspectorConsumerDeps({ renderInspector }) {
