@@ -1591,3 +1591,77 @@ body.read-only #palette select { pointer-events: none; background: #f4f5f7; }
 .port-btn-add:hover line { stroke: #2e7d32; }
 .port-btn-del:hover circle { fill: #ffebee; stroke: #c62828; }
 .port-btn-del:hover line { stroke: #c62828; }
+
+/* ================= Раздел отчётов ================= */
+.reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.reports-list .rpt-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid #e0e3ea;
+  border-radius: 8px;
+  background: #fff;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.reports-list .rpt-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-color: #c8d0dc;
+}
+.reports-list .rpt-item__main {
+  min-width: 0;
+}
+.reports-list .rpt-item__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2430;
+  margin-bottom: 4px;
+}
+.reports-list .rpt-item__desc {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.reports-list .rpt-item__tpl {
+  font-size: 11px;
+  color: #8a94a6;
+}
+.reports-list .rpt-item__tpl b {
+  color: #546e7a;
+  font-weight: 600;
+}
+.reports-list .rpt-item__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 110px;
+}
+.reports-list .rpt-item__actions button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #c8d0dc;
+  background: #fff;
+  color: #1f2430;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.reports-list .rpt-item__actions button:hover {
+  background: #f1f3f7;
+  border-color: #8a94a6;
+}
+.reports-list .rpt-item__actions button.primary {
+  background: #1976d2;
+  color: #fff;
+  border-color: #1976d2;
+}
+.reports-list .rpt-item__actions button.primary:hover {
+  background: #1565c0;
+  border-color: #1565c0;
+}

@@ -9,6 +9,9 @@
 // Ensure engine modules are loaded and window.Raschet is available
 import './engine/index.js';
 import { getMethod, listMethods } from './methods/index.js';
+import * as Report from '../shared/report/index.js';
+import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } from '../shared/report-catalog.js';
+import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
 
 (function () {
 'use strict';
@@ -70,11 +73,13 @@ const els = {
 
   btnOpenSettings: $('btn-open-settings'),
   btnOpenPresets: $('btn-open-presets'),
-  btnOpenReport: $('btn-open-report'),
+  btnOpenReports: $('btn-open-reports'),
   btnOpenLoadsImport: $('btn-open-loads-import'),
   presetsSearch: $('presets-search'),
   presetsList: $('presets-list'),
+  reportsList: $('reports-list'),
   reportBody: $('report-body'),
+  reportTitle: $('report-title'),
   reportCopy: $('report-copy'),
   reportDownload: $('report-download'),
   loadsImportText: $('loads-import-text'),
@@ -1467,15 +1472,128 @@ function renderConsumerCatalogModal() {
   });
 }
 
-// ================= Отчёт =================
-function openReportModal() {
+// ================= Отчёты =================
+// Кэш сформированных секций: строим один раз на открытие модалки,
+// чтобы каждая кнопка (Текст / PDF / DOCX) оперировала одним снимком.
+let _reportSections = null;
+let _reportBuiltinsSeeded = false;
+
+// Встроенные шаблоны отчётов сидятся на странице reports/ при первом
+// её открытии. Конструктор схем может быть открыт раньше — тогда
+// каталог пуст и pickTemplate покажет подсказку. Чтобы этого избежать,
+// при первом открытии модалки отчётов досеиваем встроенные шаблоны,
+// если их в каталоге пользователя ещё нет.
+function ensureReportBuiltinsSeeded() {
+  if (_reportBuiltinsSeeded) return;
+  _reportBuiltinsSeeded = true;
   try {
-    const report = window.Raschet.generateReport();
-    els.reportBody.textContent = report;
-    openModal('modal-report');
+    for (const rec of REPORT_BUILTIN_TEMPLATES) {
+      if (!getReportTemplate(rec.id)) saveReportTemplate(rec);
+    }
+  } catch (e) {
+    console.warn('[reports] seed builtins failed', e);
+  }
+}
+
+function openReportsModal() {
+  ensureReportBuiltinsSeeded();
+  try {
+    _reportSections = window.Raschet.getReportSections();
   } catch (e) {
     console.error(e);
-    flash('Ошибка генерации отчёта', 'error');
+    flash('Ошибка формирования отчётов: ' + (e && e.message ? e.message : e), 'error');
+    return;
+  }
+  renderReportsList();
+  openModal('modal-reports');
+}
+
+function renderReportsList() {
+  const host = els.reportsList;
+  if (!host) return;
+  host.innerHTML = '';
+  if (!_reportSections || !_reportSections.length) {
+    host.innerHTML = '<div class="muted">Нет данных для отчётов.</div>';
+    return;
+  }
+  for (const sec of _reportSections) {
+    const tplRec = sec.defaultTemplateId ? getReportTemplate(sec.defaultTemplateId) : null;
+    const tplName = tplRec ? tplRec.name : '—';
+    const item = document.createElement('div');
+    item.className = 'rpt-item';
+    const main = document.createElement('div');
+    main.className = 'rpt-item__main';
+    const title = document.createElement('div');
+    title.className = 'rpt-item__title';
+    title.textContent = sec.title;
+    main.appendChild(title);
+    if (sec.description) {
+      const d = document.createElement('div');
+      d.className = 'rpt-item__desc';
+      d.textContent = sec.description;
+      main.appendChild(d);
+    }
+    const tpl = document.createElement('div');
+    tpl.className = 'rpt-item__tpl';
+    tpl.innerHTML = 'Шаблон по умолчанию: <b>' + escHtml(tplName) + '</b>';
+    main.appendChild(tpl);
+    item.appendChild(main);
+
+    const actions = document.createElement('div');
+    actions.className = 'rpt-item__actions';
+    const btnText = document.createElement('button');
+    btnText.type = 'button';
+    btnText.textContent = 'Текст';
+    btnText.title = 'Быстрое текстовое превью';
+    btnText.addEventListener('click', () => showReportText(sec));
+    actions.appendChild(btnText);
+    const btnPdf = document.createElement('button');
+    btnPdf.type = 'button';
+    btnPdf.className = 'primary';
+    btnPdf.textContent = 'PDF';
+    btnPdf.addEventListener('click', () => exportReportSection(sec, 'pdf'));
+    actions.appendChild(btnPdf);
+    const btnDocx = document.createElement('button');
+    btnDocx.type = 'button';
+    btnDocx.textContent = 'DOCX';
+    btnDocx.addEventListener('click', () => exportReportSection(sec, 'docx'));
+    actions.appendChild(btnDocx);
+    item.appendChild(actions);
+    host.appendChild(item);
+  }
+}
+
+function showReportText(sec) {
+  if (els.reportTitle) els.reportTitle.textContent = sec.title;
+  els.reportBody.textContent = sec.text || '(пусто)';
+  openModal('modal-report');
+}
+
+async function exportReportSection(sec, kind) {
+  try {
+    const rec = await Report.pickTemplate({
+      title: 'Выбор шаблона: ' + sec.title,
+      tags: sec.tags,
+      defaultId: sec.defaultTemplateId,
+    });
+    if (!rec) return;
+    const tpl = Report.createTemplate(rec.template);
+    tpl.meta = tpl.meta || {};
+    tpl.meta.title = sec.title;
+    if (!tpl.meta.author) {
+      const proj = (window.Raschet && window.Raschet._state && window.Raschet._state.project) || {};
+      tpl.meta.author = proj.author || '';
+    }
+    tpl.content = sec.blocks;
+    const filename = sec.title.replace(/[\\/:*?"<>|]+/g, ' ').trim();
+    if (kind === 'docx') {
+      await Report.exportDOCX(tpl, filename);
+    } else {
+      await Report.exportPDF(tpl, filename);
+    }
+  } catch (e) {
+    console.error(e);
+    flash('Не удалось сформировать ' + kind.toUpperCase() + ': ' + (e && e.message ? e.message : e), 'error');
   }
 }
 
@@ -1611,7 +1729,7 @@ async function init() {
     if (typeof window.__raschetPersistUserCatalog === 'function') window.__raschetPersistUserCatalog();
     renderConsumerCatalogModal();
   });
-  if (els.btnOpenReport) els.btnOpenReport.addEventListener('click', openReportModal);
+  if (els.btnOpenReports) els.btnOpenReports.addEventListener('click', openReportsModal);
   if (els.btnOpenLoadsImport) els.btnOpenLoadsImport.addEventListener('click', openLoadsImportModal);
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
   if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {

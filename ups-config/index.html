@@ -11,6 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="../shared/auth.js"></script>
+  <!-- SheetJS для импорта XLSX-каталогов -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -37,6 +39,8 @@
         <h3>Справочник моделей ИБП</h3>
         <div style="display:flex;gap:8px">
           <button id="btn-add-manual" class="btn-sm">+ Добавить вручную</button>
+          <button id="btn-import-xlsx" class="btn-sm" title="Импорт XLSX-каталога: плоская таблица с колонками Supplier, Model, Capacity_kW и т.д. (рус./англ.)">📊 Импорт XLSX</button>
+          <input id="import-xlsx-input" type="file" accept=".xlsx" multiple style="display:none">
           <button id="btn-seed-kehua" class="btn-sm" title="Загрузить всю линейку Kehua UPS из каталога 2024-10-22: KR-RM, Myria 60-200, MR33 (30/50/100K), FR-UK33 GEL/стандарт, KR33, KR33-H — с совместимостью с S³">⚡ Kehua UPS</button>
           <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить</button>
         </div>

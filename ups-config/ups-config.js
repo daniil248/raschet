@@ -7,6 +7,7 @@
 // ======================================================================
 
 import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from '../shared/ups-catalog.js';
+import { parseUpsXlsx } from '../shared/catalog-xlsx-parser.js';
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/kehua-mr33-data.js';
 
@@ -331,6 +332,35 @@ document.addEventListener('DOMContentLoaded', () => {
   // (30/50/100K модули), FR-UK33 GEL, FR-UK33, KR33, KR33-H. Все
   // имеют флаг compatibleS3:true для совместимости с системой
   // Kehua S³ Li-Ion. Идемпотентно через upsert по id.
+  // Импорт XLSX — плоская таблица моделей, см. shared/catalog-xlsx-parser.js
+  const importBtn = document.getElementById('btn-import-xlsx');
+  const importInput = document.getElementById('import-xlsx-input');
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', async () => {
+      const files = Array.from(importInput.files || []);
+      if (!files.length) return;
+      let added = 0, errors = [];
+      for (const f of files) {
+        try {
+          const buf = await f.arrayBuffer();
+          const records = parseUpsXlsx(buf, f.name);
+          for (const rec of records) { addUps(rec); added++; }
+        } catch (e) {
+          errors.push(`${f.name}: ${e.message || e}`);
+        }
+      }
+      importInput.value = '';
+      render();
+      if (errors.length) {
+        flash(`Импортировано ${added}. Ошибок: ${errors.length}`, 'warn');
+        console.warn('[ups-config] xlsx import errors:', errors);
+      } else {
+        flash(`Импортировано ${added} записей ИБП`, 'success');
+      }
+    });
+  }
+
   const kehuaBtn = document.getElementById('btn-seed-kehua');
   if (kehuaBtn) kehuaBtn.addEventListener('click', () => {
     const n = KEHUA_MR33_UPSES.length;

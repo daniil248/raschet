@@ -11,6 +11,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="../shared/auth.js"></script>
+  <!-- SheetJS для импорта XLSX-каталогов -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -39,6 +41,8 @@
         <h3>Справочник трансформаторов</h3>
         <div style="display:flex;gap:8px">
           <button id="btn-add-manual" class="btn-sm">+ Добавить вручную</button>
+          <button id="btn-import-xlsx" class="btn-sm" title="Импорт XLSX-каталога: Supplier, Series, S_kVA, Uhv_kV, Ulv_V, uk, P0, Pk и т.д.">📊 Импорт XLSX</button>
+          <input id="import-xlsx-input" type="file" accept=".xlsx" multiple style="display:none">
           <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить</button>
         </div>
       </div>
