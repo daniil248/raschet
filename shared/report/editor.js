@@ -277,6 +277,7 @@ export function openTemplateEditor(tpl, opts = {}) {
       }
       inpW.disabled = working.page.format !== 'Custom';
       inpH.disabled = working.page.format !== 'Custom';
+      fitAllZonesToPage();
       computeScale(); redrawCanvas();
     });
     fmtField.appendChild(fmtSel);
@@ -284,13 +285,17 @@ export function openTemplateEditor(tpl, opts = {}) {
     const row = el('div', 'rpt-row');
     const fw = field(row, 'Ширина, мм');
     const inpW = numInput(working.page.width, v => {
-      working.page.width = v; computeScale(); redrawCanvas();
+      working.page.width = v;
+      fitAllZonesToPage();
+      computeScale(); redrawCanvas();
     });
     inpW.disabled = working.page.format !== 'Custom';
     fw.appendChild(inpW);
     const fh = field(row, 'Высота, мм');
     const inpH = numInput(working.page.height, v => {
-      working.page.height = v; computeScale(); redrawCanvas();
+      working.page.height = v;
+      fitAllZonesToPage();
+      computeScale(); redrawCanvas();
     });
     inpH.disabled = working.page.format !== 'Custom';
     fh.appendChild(inpH);
@@ -304,6 +309,7 @@ export function openTemplateEditor(tpl, opts = {}) {
     so.value = working.page.orientation;
     so.addEventListener('change', () => {
       working.page.orientation = so.value;
+      fitAllZonesToPage();
       computeScale(); redrawCanvas();
     });
     fo.appendChild(so);
@@ -313,6 +319,7 @@ export function openTemplateEditor(tpl, opts = {}) {
       const f = field(parent, labelForMargin(k));
       f.appendChild(numInput(working.page.margins[k], v => {
         working.page.margins[k] = v;
+        fitAllZonesToPage();
         redrawCanvas();
       }));
     });
@@ -838,6 +845,12 @@ export function openTemplateEditor(tpl, opts = {}) {
         const dyMm = (ev.clientY - startY) / s;
         let nx = start.x + dxMm;
         let ny = start.y + dyMm;
+        // Снап к сетке 5 мм — можно временно отключить удержанием Alt,
+        // если нужно тонкое позиционирование.
+        if (!ev.altKey) {
+          nx = snapMm(nx);
+          ny = snapMm(ny);
+        }
         const clamped = clampBox(nx, ny, start.width, start.height);
         applyPos(id, clamped.x, clamped.y);
         redrawCanvas();
@@ -865,6 +878,13 @@ export function openTemplateEditor(tpl, opts = {}) {
         const dyMm = (ev.clientY - startY) / s;
         let nw = Math.max(10, start.width  + dxMm);
         let nh = Math.max(4,  start.height + dyMm);
+        // Снап размеров к сетке 5 мм (Alt отключает)
+        if (!ev.altKey) {
+          nw = snapMm(nw);
+          nh = snapMm(nh);
+          if (nw < 10) nw = 10;
+          if (nh < 5)  nh = 5;
+        }
         // не вылезаем за печатную область
         const { width, height } = pageSizeMm(working.page);
         const m = working.page.margins;
@@ -920,6 +940,49 @@ export function openTemplateEditor(tpl, opts = {}) {
   }
   function clampY(y, ov) {
     return clampBox(ov.x, y, ov.width, ov.height).y;
+  }
+
+  // Снап к сетке 5 мм при перетаскивании.
+  function snapMm(v) { return Math.round(v / 5) * 5; }
+
+  // Автоматически подгоняет все зоны (overlays + logo) под текущие
+  // размеры листа и поля печати. Вызывается, когда пользователь меняет
+  // формат, ориентацию, ширину/высоту или margins — чтобы ни одна зона
+  // визуально не вылезала за границу печати.
+  function fitAllZonesToPage() {
+    const { width, height } = pageSizeMm(working.page);
+    const m = working.page.margins;
+    const printW = Math.max(10, width  - m.left - m.right);
+    const printH = Math.max(5,  height - m.top  - m.bottom);
+
+    const fit = (box) => {
+      // Если зона шире / выше печатной области — уменьшаем
+      const w = Math.min(box.width  ?? printW, printW);
+      const h = Math.min(box.height ?? printH, printH);
+      const maxX = width  - m.right  - w;
+      const maxY = height - m.bottom - h;
+      return {
+        width:  round1(w),
+        height: round1(h),
+        x: round1(Math.min(Math.max(box.x ?? m.left, m.left), Math.max(m.left, maxX))),
+        y: round1(Math.min(Math.max(box.y ?? m.top,  m.top),  Math.max(m.top,  maxY))),
+      };
+    };
+
+    for (const ov of working.overlays) {
+      const f = fit(ov);
+      ov.x = f.x; ov.y = f.y; ov.width = f.width; ov.height = f.height;
+    }
+    if (working.logo && working.logo.src) {
+      // Подтянем координаты из legacy position, если ещё не было x/y
+      if (typeof working.logo.x !== 'number' || typeof working.logo.y !== 'number') {
+        const p = getLogoXY();
+        working.logo.x = p.x; working.logo.y = p.y;
+      }
+      const f = fit(working.logo);
+      working.logo.x = f.x; working.logo.y = f.y;
+      working.logo.width = f.width; working.logo.height = f.height;
+    }
   }
 }
 
