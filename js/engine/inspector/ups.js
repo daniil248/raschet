@@ -996,7 +996,11 @@ function _upsStructSvg(n, flows) {
   const W = 980;
 
   const parts = [];
-  parts.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fafbfc"/>`);
+  // Группа-обёртка с дефолтным сглаживанием: shape-rendering
+  // geometricPrecision (плавные диагонали), линии с закруглёнными концами
+  // и сочленениями — для аккуратного вида на retina и zoom.
+  parts.push(`<g shape-rendering="geometricPrecision" stroke-linecap="round" stroke-linejoin="round" text-rendering="optimizeLegibility">`);
+  parts.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fafbfc" rx="6" ry="6"/>`);
 
   // === Maintenance bypass (верхняя обходная линия) ===
   // Физически это одна линия с перемычкой ДО QF2 (и в jumper-режиме —
@@ -1061,7 +1065,7 @@ function _upsStructSvg(n, flows) {
   }
   // Bypass module: пунктирная рамка с SCR-тиристором внутри
   const bmX = 460, bmW = 200, bmY = yBypass - 28, bmH = 56;
-  parts.push(`<rect x="${bmX}" y="${bmY}" width="${bmW}" height="${bmH}" fill="#fff" stroke="#9aa3ad" stroke-width="1" stroke-dasharray="3 3" rx="4"/>`);
+  parts.push(`<rect x="${bmX}" y="${bmY}" width="${bmW}" height="${bmH}" fill="#fff" stroke="#9aa3ad" stroke-width="1" stroke-dasharray="3 3" rx="6" ry="6"/>`);
   parts.push(`<text x="${bmX + bmW - 8}" y="${bmY + bmH - 6}" text-anchor="end" font-size="10" fill="#777">Bypass module</text>`);
   // SCR-тиристор (треугольник + катод + gate)
   const scrX = bmX + bmW / 2, scrY = yBypass;
@@ -1162,8 +1166,8 @@ function _upsStructSvg(n, flows) {
     // Старые имена — для случайных ссылок ниже (оставляем как aliases)
     const modInvCol = modOutCol;
 
-    // Рамка модуля (пунктирная светло-серая)
-    parts.push(`<rect x="${modX}" y="${mY}" width="${modW}" height="${modH}" fill="#fafafa" stroke="#aaa" stroke-width="1" stroke-dasharray="3 3" rx="5"/>`);
+    // Рамка модуля (пунктирная светло-серая, со скруглением)
+    parts.push(`<rect x="${modX}" y="${mY}" width="${modW}" height="${modH}" fill="#fafafa" stroke="#aaa" stroke-width="1" stroke-dasharray="3 3" rx="8" ry="8"/>`);
     const label = totalModules === 1
       ? 'Power module'
       : `Power module ${realIdx + 1}${drawDots && i === showCount - 1 ? ' (из ' + totalModules + ')' : ''}`;
@@ -1174,14 +1178,14 @@ function _upsStructSvg(n, flows) {
 
     // AC/DC rectifier
     const recX = modX + 40, recY = mY + 20, recW = 64, recH = 40;
-    parts.push(`<rect x="${recX}" y="${recY}" width="${recW}" height="${recH}" fill="#fff" stroke="${modMainCol === colIdle ? '#aaa' : modMainCol}" stroke-width="1.8" rx="3"/>`);
+    parts.push(`<rect x="${recX}" y="${recY}" width="${recW}" height="${recH}" fill="#fff" stroke="${modMainCol === colIdle ? '#aaa' : modMainCol}" stroke-width="1.8" rx="5" ry="5"/>`);
     parts.push(`<text x="${recX + 16}" y="${recY + 17}" font-size="10" fill="#2b303b" font-weight="700">AC</text>`);
     parts.push(`<line x1="${recX + 8}" y1="${recY + recH - 8}" x2="${recX + recW - 8}" y2="${recY + 8}" stroke="#777" stroke-width="1"/>`);
     parts.push(`<text x="${recX + recW - 16}" y="${recY + recH - 5}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
 
     // DC/AC inverter — обводка = output color (бирюзовый)
     const invX = modX + modW - 104, invY = mY + 20, invW = 64, invH = 40;
-    parts.push(`<rect x="${invX}" y="${invY}" width="${invW}" height="${invH}" fill="#fff" stroke="${modOutCol === colIdle ? '#aaa' : modOutCol}" stroke-width="1.8" rx="3"/>`);
+    parts.push(`<rect x="${invX}" y="${invY}" width="${invW}" height="${invH}" fill="#fff" stroke="${modOutCol === colIdle ? '#aaa' : modOutCol}" stroke-width="1.8" rx="5" ry="5"/>`);
     parts.push(`<text x="${invX + 16}" y="${invY + 17}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
     parts.push(`<line x1="${invX + 8}" y1="${invY + invH - 8}" x2="${invX + invW - 8}" y2="${invY + 8}" stroke="#777" stroke-width="1"/>`);
     parts.push(`<text x="${invX + invW - 16}" y="${invY + invH - 5}" font-size="10" fill="#2b303b" font-weight="700">AC</text>`);
@@ -1189,7 +1193,7 @@ function _upsStructSvg(n, flows) {
     // DC/DC charger (центр снизу) — обводка = battery (зелёный) или DC (фиолетовый)
     const ddX = modX + modW / 2 - 32, ddY = mY + modH - 54, ddW = 64, ddH = 38;
     const ddStroke = modBattCol !== colIdle ? modBattCol : (modDcCol !== colIdle ? modDcCol : '#aaa');
-    parts.push(`<rect x="${ddX}" y="${ddY}" width="${ddW}" height="${ddH}" fill="#fff" stroke="${ddStroke}" stroke-width="1.8" rx="3"/>`);
+    parts.push(`<rect x="${ddX}" y="${ddY}" width="${ddW}" height="${ddH}" fill="#fff" stroke="${ddStroke}" stroke-width="1.8" rx="5" ry="5"/>`);
     parts.push(`<text x="${ddX + 16}" y="${ddY + 15}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
     parts.push(`<line x1="${ddX + 8}" y1="${ddY + ddH - 6}" x2="${ddX + ddW - 8}" y2="${ddY + 6}" stroke="#777" stroke-width="1"/>`);
     parts.push(`<text x="${ddX + ddW - 16}" y="${ddY + ddH - 5}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
@@ -1302,6 +1306,9 @@ function _upsStructSvg(n, flows) {
       </line>`);
     }
   }
+
+  // Закрываем общую группу сглаживания
+  parts.push(`</g>`);
 
   return { svg: parts.join(''), width: W, height: H };
 }
