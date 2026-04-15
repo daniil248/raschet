@@ -9,6 +9,7 @@ import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw } from '../elec
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { mountBatteryPicker } from '../../../shared/battery-picker.js';
+import { readUpsDcParams } from '../../../shared/ups-picker.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -35,9 +36,21 @@ export function openUpsParamsModal(n) {
   if (n.upsType !== 'modular') {
     h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
   }
-  h.push(field('КПД, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}">`));
+  h.push(field('КПД DC–AC, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}">`));
   h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="2" step="1" value="${Math.min(2, Math.max(1, Number(n.inputs) || 1))}">`));
   h.push(field('Выходов', `<input type="number" id="up-outputs" min="1" max="20" step="1" value="${n.outputs}">`));
+
+  // Параметры DC-входа (батарейной цепи): диапазон напряжения инвертора.
+  // Используется при каталожном подборе АКБ для расчёта min/max числа
+  // блоков в цепочке (см. UPS battery modal, каталожный режим).
+  h.push('<h4 style="margin:16px 0 8px">Параметры DC-входа (батарейная цепь)</h4>');
+  h.push('<div style="display:flex;gap:8px">');
+  h.push(`<div style="flex:1">${field('V<sub>DC</sub> min, В',
+    `<input type="number" id="up-vdcMin" min="24" max="1200" step="1" value="${Number(n.batteryVdcMin ?? 340)}">`)}</div>`);
+  h.push(`<div style="flex:1">${field('V<sub>DC</sub> max, В',
+    `<input type="number" id="up-vdcMax" min="24" max="1200" step="1" value="${Number(n.batteryVdcMax ?? 480)}">`)}</div>`);
+  h.push('</div>');
+  h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Рабочий диапазон напряжения инвертора на стороне АКБ. Определяет допустимое число блоков в цепочке при подборе АКБ из справочника.</div>');
 
   // Параметры модульного ИБП: frame + installed + redundancy N+X
   if (n.upsType === 'modular') {
@@ -187,7 +200,10 @@ export function openUpsParamsModal(n) {
     grab('up-slots', 'moduleSlots', true);
     grab('up-installed', 'moduleInstalled', true);
     grab('up-redund', 'redundancyScheme');
-    // (Поля АКБ вынесены в отдельную модалку «АКБ».)
+    // (Поля состава АКБ вынесены в отдельную модалку «АКБ».)
+    // DC-вход батарейной цепи — здесь, в параметрах ИБП.
+    grab('up-vdcMin', 'batteryVdcMin', true);
+    grab('up-vdcMax', 'batteryVdcMax', true);
     // Напряжение и cos
     grab('up-cosPhi', 'cosPhi', true);
     // Байпас (только конфигурационный флаг «разрешён»; авто/порог/принуд.
@@ -255,6 +271,11 @@ export function openUpsParamsModal(n) {
     n.voltageLevelIdx = vIdx;
     if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
     n.cosPhi = Number(document.getElementById('up-cosPhi')?.value) || 1.0;
+    // DC-вход батарейной цепи (V_DC min / max)
+    const _vdcMin = Number(document.getElementById('up-vdcMin')?.value);
+    const _vdcMax = Number(document.getElementById('up-vdcMax')?.value);
+    if (Number.isFinite(_vdcMin) && _vdcMin > 0) n.batteryVdcMin = _vdcMin;
+    if (Number.isFinite(_vdcMax) && _vdcMax > 0) n.batteryVdcMax = _vdcMax;
     // Параметры АКБ (batteryType/CellCount/CellVoltage/CapacityAh/
     // StringCount/ChargePct/chargeA) — целиком в отдельной модалке «АКБ».
     // Статический байпас: только конфигурационный флаг «разрешён».
@@ -616,8 +637,14 @@ function _renderUpsBatteryBody(n) {
     const blockVnom = Number(picked.blockVoltage) || (cellsPerBlock * (Number(picked.cellVoltage) || 2));
     const capAhBlock = Number(picked.capacityAh) || 100;
 
-    const vdcMin = Number(n.batteryVdcMin ?? 340);
-    const vdcMax = Number(n.batteryVdcMax ?? 480);
+    // Параметры ИБП для подбора АКБ — читаются через единый shared-хелпер.
+    // Редактирование этих полей — ТОЛЬКО в основной модалке «Параметры ИБП»;
+    // здесь они отображаются read-only, чтобы один источник правды.
+    const upsDc = readUpsDcParams(n);
+    const vdcMin = upsDc.vdcMin;
+    const vdcMax = upsDc.vdcMax;
+    const invEff = Math.max(0.5, Math.min(1, upsDc.efficiency / 100));
+    const cosPhi = upsDc.cosPhi;
     // Дефолт end-voltage на элемент зависит от химии:
     //   VRLA (свинцово-кислотные, 2 В/эл.) → 1.75 В/элемент (~87%)
     //   Li-Ion LiFePO4 (3.2 В/эл.)         → 2.80 В/элемент (cut-off ~87% от 3.2)
@@ -625,8 +652,6 @@ function _renderUpsBatteryBody(n) {
     const defaultEndV = isLiIon ? 2.80 : 1.75;
     const endVcell = Number(n.batteryEndVperCell ?? defaultEndV);
     const tempC = Number(n.batteryTempC ?? 20);
-    const invEff = Math.max(0.5, Math.min(1, (Number(n.efficiency) || 94) / 100));
-    const cosPhi = Number(n.cosPhi) || 1;
     const targetMin = Number(n.batteryTargetMin ?? 10);
 
     // Диапазон допустимого числа блоков в цепочке:
@@ -658,15 +683,17 @@ function _renderUpsBatteryBody(n) {
     const vdcOper = blockVnom * blocksPerString;
     const stringCurrentA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / stringsCat : 0;
 
-    h.push('<h4 style="margin:12px 0 6px">Параметры ИБП</h4>');
-    h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('V<sub>DC</sub> min, В', `<input type="number" id="ups-batt-vdcmin" min="24" max="1200" step="1" value="${vdcMin}">`)}</div>`);
-    h.push(`<div style="flex:1">${field('V<sub>DC</sub> max, В', `<input type="number" id="ups-batt-vdcmax" min="24" max="1200" step="1" value="${vdcMax}">`)}</div>`);
-    h.push('</div>');
-    h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('КПД DC–AC, %', `<input type="number" id="ups-batt-inveff" min="50" max="99" step="1" value="${Math.round(invEff*100)}">`)}</div>`);
-    h.push(`<div style="flex:1">${field('cos φ', `<input type="number" id="ups-batt-cosphi" min="0.5" max="1" step="0.01" value="${cosPhi.toFixed(2)}">`)}</div>`);
-    h.push('</div>');
+    // Параметры ИБП — read-only, редактируются в основной модалке
+    // «⚙ Параметры ИБП». Здесь только отображение текущих значений,
+    // чтобы не дублировать источник правды.
+    h.push('<h4 style="margin:12px 0 6px">Параметры ИБП <span style="font-size:11px;font-weight:400;color:#6b7280">(из «⚙ Параметры ИБП»)</span></h4>');
+    h.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;padding:8px 12px;background:#f6f8fa;border-radius:6px;margin-bottom:10px">
+      <div>V<sub>DC</sub> min:</div><div><b>${vdcMin} В</b></div>
+      <div>V<sub>DC</sub> max:</div><div><b>${vdcMax} В</b></div>
+      <div>КПД DC–AC:</div><div><b>${Math.round(invEff*100)}%</b></div>
+      <div>cos φ:</div><div><b>${cosPhi.toFixed(2)}</b></div>
+    </div>
+    <button type="button" id="ups-batt-goto-params" class="btn-sm" style="margin-bottom:12px;font-size:11px;padding:3px 10px">⚙ Изменить в «Параметры ИБП»</button>`);
 
     h.push('<h4 style="margin:12px 0 6px">Конфигурация АКБ (' + escHtml(picked.type) + ')</h4>');
     h.push(`<div class="muted" style="font-size:11px;padding:6px 10px;background:#eef4fb;border-left:3px solid #1976d2;border-radius:4px;margin-bottom:8px">
@@ -937,11 +964,19 @@ function _renderUpsBatteryBody(n) {
   // Каталожный режим: обработчики новых полей + точный пересчёт автономии
   // и кривая разряда.
   if (selectedBattery) {
-    bindNum('ups-batt-vdcmin', 'batteryVdcMin', 24);
-    bindNum('ups-batt-vdcmax', 'batteryVdcMax', 24);
+    // V_DC min/max/КПД/cosPhi редактируются в openUpsParamsModal (единая
+    // точка правды); здесь они read-only и не имеют bind-обработчиков.
     bindNum('ups-batt-nblocks', 'batteryBlocksPerString', 1);
     bindNum('ups-batt-temp', 'batteryTempC', -20);
     bindNum('ups-batt-target', 'batteryTargetMin', 1);
+    // Кнопка «⚙ Изменить в Параметры ИБП»: закрывает АКБ-модалку и
+    // открывает основную модалку параметров ИБП.
+    const gotoParamsBtn = document.getElementById('ups-batt-goto-params');
+    if (gotoParamsBtn) gotoParamsBtn.addEventListener('click', () => {
+      const battModal = document.getElementById('modal-ups-battery');
+      if (battModal) battModal.classList.add('hidden');
+      openUpsParamsModal(n);
+    });
     // Toggle lock: переключение между read-only справочником и ручным вводом
     // параметров блока (cellCount / cellVoltage / capacityAh / type).
     // При переходе в lock → значения пересинхронизируются из selectedBattery.
@@ -959,18 +994,6 @@ function _renderUpsBatteryBody(n) {
         const _totalAh = (Number(n.batteryCapacityAh) || 0) * (Number(n.batteryStringCount) || 1);
         n.batteryKwh = (_blockV * _totalAh) / 1000;
       }
-      render(); notifyChange(); _renderUpsBatteryBody(n);
-    });
-    const invEffEl = document.getElementById('ups-batt-inveff');
-    if (invEffEl) invEffEl.addEventListener('change', () => {
-      snapshot('ups-batt:' + n.id + ':eff');
-      n.efficiency = Math.max(50, Math.min(99, Number(invEffEl.value) || 94));
-      render(); notifyChange(); _renderUpsBatteryBody(n);
-    });
-    const cosPhiEl = document.getElementById('ups-batt-cosphi');
-    if (cosPhiEl) cosPhiEl.addEventListener('change', () => {
-      snapshot('ups-batt:' + n.id + ':cosphi');
-      n.cosPhi = Math.max(0.5, Math.min(1, Number(cosPhiEl.value) || 1));
       render(); notifyChange(); _renderUpsBatteryBody(n);
     });
     const endVEl = document.getElementById('ups-batt-endv');
