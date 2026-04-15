@@ -1,0 +1,228 @@
+/* ==========================================================================
+   reports/reports.css
+   Стили страницы «Шаблоны отчётов».
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  font: 14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1f2430;
+  background: #f4f5f7;
+}
+body { display: flex; flex-direction: column; min-height: 100vh; }
+
+main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ——— левая колонка: список шаблонов ——— */
+.rpt-cat-sidebar {
+  flex: none;
+  width: 340px;
+  background: #fff;
+  border-right: 1px solid #e0e3ea;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rpt-cat-sidebar__hdr {
+  flex: none;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #e8eaee;
+}
+.rpt-cat-sidebar__hdr h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.rpt-cat-sidebar__search {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d0d5de;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+}
+.rpt-cat-sidebar__toolbar {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e8eaee;
+  flex-wrap: wrap;
+}
+.rpt-cat-sidebar__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.rpt-cat-item {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f1f3f7;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rpt-cat-item:hover { background: #f7f9fc; }
+.rpt-cat-item.active {
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+  padding-left: 13px;
+}
+.rpt-cat-item__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2430;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rpt-cat-item__desc {
+  font-size: 12px;
+  color: #6b7280;
+}
+.rpt-cat-item__meta {
+  font-size: 11px;
+  color: #9aa3b5;
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.rpt-cat-item__badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #eef0f4;
+  color: #6b7280;
+}
+.rpt-cat-item__badge.builtin { background: #e8f5e9; color: #2e7d32; }
+.rpt-cat-item__badge.user    { background: #e3f2fd; color: #1976d2; }
+
+.rpt-cat-empty {
+  padding: 20px 16px;
+  color: #9aa3b5;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ——— правая колонка: детали + превью ——— */
+.rpt-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rpt-detail__hdr {
+  flex: none;
+  padding: 14px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e0e3ea;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.rpt-detail__title-block { flex: 1; min-width: 0; }
+.rpt-detail__title {
+  margin: 0 0 2px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2430;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rpt-detail__subtitle {
+  font-size: 12px;
+  color: #6b7280;
+}
+.rpt-detail__actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.rpt-detail__body {
+  flex: 1;
+  overflow-y: auto;
+  background: #e8eaee;
+}
+.rpt-detail__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa3b5;
+  font-size: 14px;
+  background: #f4f5f7;
+}
+
+/* ——— кнопки ——— */
+.btn {
+  background: #eef0f4;
+  border: 1px solid #d0d5de;
+  color: #1f2430;
+  border-radius: 6px;
+  padding: 7px 13px;
+  font: 13px/1 inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { filter: brightness(0.96); }
+.btn.primary { background: #1976d2; border-color: #1976d2; color: #fff; }
+.btn.danger  { background: #fff; color: #c62828; border-color: #f3c0c0; }
+.btn.danger:hover { background: #fdecea; }
+.btn-sm { padding: 6px 10px; font-size: 12px; }
+.btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+/* ——— модалка «Новый / переименовать» ——— */
+.rpt-prompt-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(20,25,35,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9500;
+}
+.rpt-prompt {
+  background: #fff;
+  width: min(420px, 92vw);
+  border-radius: 10px;
+  padding: 20px 22px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+}
+.rpt-prompt h3 { margin: 0 0 14px; font-size: 16px; }
+.rpt-prompt label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+.rpt-prompt input[type="text"],
+.rpt-prompt textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #d0d5de;
+  border-radius: 6px;
+  font: inherit;
+  margin-bottom: 12px;
+}
+.rpt-prompt textarea { min-height: 70px; resize: vertical; }
+.rpt-prompt__buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}

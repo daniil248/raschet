@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Шаблоны отчётов</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="../shared/report/editor.css">
+  <link rel="stylesheet" href="reports.css">
+  <!-- Firebase Auth (опционально). shared/auth.js работает и в локальном режиме. -->
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Шаблоны отчётов', home: '../hub.html' });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[reports] auth init failed', e));
+    }
+  </script>
+
+  <main>
+    <!-- ======== Левая колонка: каталог ======== -->
+    <aside class="rpt-cat-sidebar">
+      <div class="rpt-cat-sidebar__hdr">
+        <h2>Мои шаблоны</h2>
+        <input type="search" id="cat-search" class="rpt-cat-sidebar__search"
+               placeholder="🔍 Поиск по имени / описанию / тегу…">
+      </div>
+      <div class="rpt-cat-sidebar__toolbar">
+        <button class="btn primary btn-sm" id="btn-new">+ Новый</button>
+        <button class="btn btn-sm" id="btn-import">Импорт…</button>
+        <button class="btn btn-sm" id="btn-export">Экспорт всех</button>
+        <input type="file" id="file-import" accept=".json" style="display:none">
+      </div>
+      <div class="rpt-cat-sidebar__list" id="cat-list"></div>
+    </aside>
+
+    <!-- ======== Правая колонка: детали ======== -->
+    <section class="rpt-detail" id="detail">
+      <div class="rpt-detail__empty" id="detail-empty">
+        Выберите шаблон слева или создайте новый.
+      </div>
+      <div class="rpt-detail__full" id="detail-full" style="display:none;flex:1;flex-direction:column;min-height:0">
+        <div class="rpt-detail__hdr">
+          <div class="rpt-detail__title-block">
+            <h1 class="rpt-detail__title" id="detail-title"></h1>
+            <div class="rpt-detail__subtitle" id="detail-subtitle"></div>
+          </div>
+          <div class="rpt-detail__actions">
+            <button class="btn primary btn-sm" id="btn-edit">Редактировать оформление</button>
+            <button class="btn btn-sm" id="btn-rename">Переименовать</button>
+            <button class="btn btn-sm" id="btn-clone">Клонировать</button>
+            <button class="btn btn-sm" id="btn-export-one">Экспорт JSON</button>
+            <button class="btn btn-sm" id="btn-pdf">PDF</button>
+            <button class="btn btn-sm" id="btn-docx">DOCX</button>
+            <button class="btn danger btn-sm" id="btn-delete">Удалить</button>
+          </div>
+        </div>
+        <div class="rpt-detail__body" id="detail-preview"></div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./reports.js"></script>
+</body>
+</html>
