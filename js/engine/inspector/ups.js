@@ -1335,7 +1335,7 @@ function _upsStructSvg(n, flows) {
     // далее уходит и maintenance bypass (выше), и обычная байпасная
     // ветка через QF2 и SBS-модуль.
     const jumperX = jumperForBypass;
-    parts.push(`<text x="${jumperX - 6}" y="${yBypass - 8}" text-anchor="end" font-size="10" fill="#888">перемычка от Mains</text>`);
+    parts.push(`<text x="${jumperX - 6}" y="${yBypass - 8}" text-anchor="end" font-size="10" fill="#888">перемычка maint-bypass</text>`);
     // Вертикаль jumper'а: «живая» пока есть mains (до QF1 — до QF2).
     const jumperVertCol = mainsFed ? colActive : colIdle;
     parts.push(`<line x1="${jumperX}" y1="${yMains}" x2="${jumperX}" y2="${yBypass}" stroke="${jumperVertCol}" stroke-width="2"/>`);

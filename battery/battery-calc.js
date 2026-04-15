@@ -112,6 +112,7 @@ function renderCatalog() {
       <td>${b.dischargeTable?.length || 0}</td>
       <td class="src">${escHtml(b.source || '')}</td>
       <td>
+        <button class="btn-sm btn-curve" data-curve="${escHtml(b.id)}" title="Открыть таблицу и кривую разряда">📈 Кривая</button>
         <button class="btn-sm btn-copy" data-copy="${escHtml(b.id)}" title="Создать редактируемую копию">Копировать</button>
         ${isCustom ? `<button class="btn-sm btn-edit" data-edit="${escHtml(b.id)}">Изменить</button>` : ''}
         <button class="btn-sm btn-del" data-del="${escHtml(b.id)}">Удалить</button>
@@ -137,6 +138,16 @@ function renderCatalog() {
       const id = btn.dataset.edit;
       const b = listBatteries().find(x => x.id === id);
       if (b) openManualBatteryModal(b);
+    });
+  });
+  // Явная кнопка «Кривая» — открывает модалку таблицы/кривой разряда
+  // (то же действие, что и клик по строке, но без неявности).
+  wrap.querySelectorAll('[data-curve]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = btn.dataset.curve;
+      const b = listBatteries().find(x => x.id === id);
+      if (b) openDischargeTableModal(b);
     });
   });
   // Копирование записи (в т.ч. импортированной) → новая редактируемая строка.
