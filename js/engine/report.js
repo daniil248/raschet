@@ -222,6 +222,38 @@ export function generateReport() {
       lines.push(`   Текущая:    ${fmt(load)} kW`);
       lines.push(`   Макс нагр.: ${fmt(maxLoad)} kW  (${cap > 0 ? Math.round(maxLoad / cap * 100) : 0}%)`);
       lines.push(`   Батарея:    ${fmt(batt)} kWh · ${u.batteryChargePct || 0}%`);
+      // Детали АКБ (каталожный режим): модель, конфигурация, напряжение DC,
+      // мощность/блок, автономия по методу (таблица / усреднённая модель).
+      if (u.batteryCatalogId) {
+        const blocksPer = Number(u.batteryBlocksPerString) || 0;
+        const strings = Number(u.batteryStringCount) || 1;
+        const cellV = Number(u.batteryCellVoltage) || 2;
+        const cellsPerBlock = Number(u.batteryCellCount) && blocksPer
+          ? Math.round(u.batteryCellCount / blocksPer) : 0;
+        const blockVnom = cellsPerBlock * cellV;
+        const vdcOper = blockVnom * blocksPer;
+        const totalBlocks = strings * blocksPer;
+        const capAh = Number(u.batteryCapacityAh) || 0;
+        const endV = Number(u.batteryEndVperCell) || 1.75;
+        const vdcMin = Number(u.batteryVdcMin) || 0;
+        const vdcMax = Number(u.batteryVdcMax) || 0;
+        lines.push(`   Модель АКБ: [из справочника] · ${capAh || '—'} А·ч · ${blockVnom || '—'} В блок`);
+        if (vdcMin && vdcMax) {
+          lines.push(`   V_DC диап.: ${vdcMin}…${vdcMax} В  (раб. ${vdcOper || '—'} В)`);
+        } else if (vdcOper) {
+          lines.push(`   V_DC раб.:  ${vdcOper} В`);
+        }
+        lines.push(`   Конфиг.:    ${strings} × ${blocksPer} блок = ${totalBlocks} шт. · endV ${endV.toFixed(2)} В/эл.`);
+        if (totalBlocks > 0 && load > 0) {
+          const batteryPwrReqKw = load / Math.max(0.5, eff / 100);
+          const powerPerBlockW = (batteryPwrReqKw * 1000) / totalBlocks;
+          const stringA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / strings : 0;
+          lines.push(`   P/блок:     ${fmt(powerPerBlockW)} Вт · I цеп.: ${fmt(stringA)} А`);
+        }
+        if (Number.isFinite(Number(u.batteryTargetMin))) {
+          lines.push(`   Цель авт.:  ${u.batteryTargetMin} мин`);
+        }
+      }
       if (load > 0) {
         lines.push(`   Автономия:  ${aut >= 60 ? (aut / 60).toFixed(1) + ' ч' : Math.round(aut) + ' мин'}`);
       }
