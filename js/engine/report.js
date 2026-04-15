@@ -322,8 +322,10 @@ export function generateReport() {
     const aTo = effectiveTag(state.nodes.get(a.to.nodeId)) || '';
     const bFrom = effectiveTag(state.nodes.get(b.from.nodeId)) || '';
     const bTo = effectiveTag(state.nodes.get(b.to.nodeId)) || '';
-    const la = (a.lineLabel || `W-${aFrom}-${aTo}`).toLowerCase();
-    const lb = (b.lineLabel || `W-${bFrom}-${bTo}`).toLowerCase();
+    const aPre = a._isHV ? 'WH' : 'W';
+    const bPre = b._isHV ? 'WH' : 'W';
+    const la = (a.lineLabel || `${aPre}-${aFrom}-${aTo}`).toLowerCase();
+    const lb = (b.lineLabel || `${bPre}-${bFrom}-${bTo}`).toLowerCase();
     return la.localeCompare(lb, 'ru', { numeric: true, sensitivity: 'base' });
   });
   if (activeCables.length) {
@@ -348,7 +350,8 @@ export function generateReport() {
       const toN = state.nodes.get(c.to.nodeId);
       const fromTag = effectiveTag(fromN) || fromN?.name || '?';
       const toTag = effectiveTag(toN) || toN?.name || '?';
-      const lineLabel = c.lineLabel || `W-${fromTag}-${toTag}`;
+      const linePrefix = c._isHV ? 'WH' : 'W';
+      const lineLabel = c.lineLabel || `${linePrefix}-${fromTag}-${toTag}`;
       const warn = c._cableOverflow ? ' ⚠' : '';
       const length = c._cableLength != null ? c._cableLength : (c.lengthM || 0);
 

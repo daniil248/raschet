@@ -357,7 +357,7 @@ export function renderInspectorNode(n) {
       for (const { c, fromN, toN, par } of channelConns) {
         const fromTag = fromN ? (effectiveTag(fromN) || fromN.name || '?') : '?';
         const toTag = toN ? (effectiveTag(toN) || toN.name || '?') : '?';
-        const lineLabel = `W-${fromTag}-${toTag}`;
+        const lineLabel = `${c._isHV ? 'WH' : 'W'}-${fromTag}-${toTag}`;
         const cable = c._cableSize ? `${c._wireCount || '?'}×${c._cableSize} мм²` : '—';
         const current = c._maxA ? `${fmt(c._maxA)} A` : '—';
         const length = c._cableLength != null ? `${c._cableLength} м` : '—';

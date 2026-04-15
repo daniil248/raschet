@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.31.2';
+export const APP_VERSION = '0.31.3';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -523,21 +523,34 @@ export const CONSUMER_CATALOG = [
     isConditioner: true, outdoorKw: 0.3, outdoorCosPhi: 0.85 },
 ];
 
-// Префиксы обозначений (tag) по типу узла
+// Префиксы обозначений (tag) по типу узла (IEC 81346-2 где возможно)
+//   T   — transformer (IEC letter class «T»)
+//   G   — generator
+//   PNL — панель / распределительный щит (не IEC; оставлено как внутренний префикс)
+//   UPS — ИБП (принятое обозначение)
+//   L   — consumer (IEC letter class «E» или «L», берём L — «light/load»)
+//   CH  — кабельный канал / трасса
+//   Z   — zone / объём группировки
 export const TAG_PREFIX = {
-  source:    'TR',
-  generator: 'GS',
+  source:    'T',
+  generator: 'G',
   panel:     'PNL',
   ups:       'UPS',
   consumer:  'L',
   channel:   'CH',
   zone:      'Z',
 };
-// Префикс для source по подтипу (используется в графе/отчётах)
+// Префикс для source по подтипу (IEC 81346-2 — буквенные коды
+// электрооборудования). Используется при автогенерации обозначения
+// нового узла и в отчётах:
+//   T  — transformer (трансформатор, IEC 81346-2 letter class «T»)
+//   G  — generator (генератор, IEC 81346-2 letter class «G»)
+//   W  — городская сеть / внешний ввод (провод/фидер, letter class «W»)
+//   SRC — прочие источники (не стандартный IEC)
 export const SOURCE_SUBTYPE_PREFIX = {
-  transformer: 'TR',
-  generator:   'GS',
-  utility:     'UT',
+  transformer: 'T',
+  generator:   'G',
+  utility:     'W',
   other:       'SRC',
 };
 

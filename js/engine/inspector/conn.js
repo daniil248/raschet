@@ -63,7 +63,10 @@ export function renderInspectorConn(c) {
   const h = [];
   const fromTag = effectiveTag(fromN) || fromN?.name || '?';
   const toTag = effectiveTag(toN) || toN?.name || '?';
-  const autoLineLabel = `W-${fromTag}-${toTag}`;
+  // Префикс по IEC 81346-2: «W» для обычных силовых линий, «WH» для
+  // высоковольтных (U > 1000 В). Флаг _isHV проставляется recalc.js.
+  const linePrefix = c._isHV ? 'WH' : 'W';
+  const autoLineLabel = `${linePrefix}-${fromTag}-${toTag}`;
   const lineLabel = c.lineLabel || autoLineLabel;
   h.push('<div class="muted" style="font-size:12px;margin-bottom:8px">Линия / связь</div>');
   h.push(`<div class="field"><label>Обозначение</label><div style="font-size:12px;font-weight:600">${escHtml(autoLineLabel)}</div></div>`);
