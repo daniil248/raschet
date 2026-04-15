@@ -52,6 +52,7 @@ import { initInteraction, bindInteractionDeps } from './interaction.js';
 import { initToolbar, autoLayout, exportSVG, exportPNG, fitAll } from './export.js';
 import { simTick, startSimLoop, stopSimLoop } from './simulation.js';
 import { generateReport, get3PhaseBalance } from './report.js';
+import { getReportSections } from './report-sections.js';
 import { importLoadsTable } from './import.js';
 
 // === Инициализация DOM ===
@@ -270,6 +271,7 @@ window.Raschet = {
   applyPreset,
   applyPresetAt,
   generateReport,
+  getReportSections,
   // Прямой доступ к state (для модалки параметров проекта и т.п.)
   _state: state,
   notifyChange: () => {

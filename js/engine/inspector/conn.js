@@ -158,6 +158,14 @@ export function renderInspectorConn(c) {
       }
     }
     h.push('</div>');
+
+    // === Результаты расчётных модулей (ampacity / vdrop / shortCircuit / phaseLoop / economic) ===
+    // recalc.js прогоняет каждую активную линию через shared/calc-modules
+    // и сохраняет результат в c._moduleResults. Здесь показываем каждый
+    // модуль отдельной строчкой с иконкой статуса (OK / warn / skip).
+    if (Array.isArray(c._moduleResults) && c._moduleResults.length) {
+      h.push(renderConnModuleResultsBlock(c._moduleResults));
+    }
   }
 
   // === Проводник линии ===
@@ -570,6 +578,69 @@ export function renderInspectorConn(c) {
     notifyChange();
     flash('Траектория сброшена');
   };
+}
+
+// ===== Рендер блока «Расчётные модули» в инспекторе линии =====
+// Получает c._moduleResults (массив из runCalcModules) и возвращает HTML
+// collapsed <details> со списком модулей. Каждый модуль — компактная
+// строка с иконкой статуса (OK/warn/skip) и ключевыми показателями.
+// Нажатие «▸» разворачивает подробности каждого модуля.
+function renderConnModuleResultsBlock(modResults) {
+  const fmtN = (v, d) => (typeof v === 'number' && isFinite(v)) ? v.toFixed(d ?? 2) : '—';
+  // Сводка: сколько прошло / провалило / пропущено
+  let okCount = 0, failCount = 0, skipCount = 0;
+  for (const m of modResults) {
+    const d = m.result && m.result.details || {};
+    if (d.skipped) skipCount++;
+    else if (m.result && m.result.pass) okCount++;
+    else failCount++;
+  }
+  const summaryBadge = failCount > 0
+    ? `<span style="background:#ffebee;color:#c62828;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">⚠ ${failCount} проблем</span>`
+    : (okCount > 0 ? `<span style="background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">✓ OK</span>` : '');
+  const subtle = `<span class="muted" style="font-size:10px">${okCount} OK${failCount ? ' · ' + failCount + ' fail' : ''}${skipCount ? ' · ' + skipCount + ' skip' : ''}</span>`;
+
+  const rows = modResults.map(m => {
+    const r = m.result || {};
+    const d = r.details || {};
+    let icon, color;
+    if (d.skipped)  { icon = '○'; color = '#9e9e9e'; }
+    else if (r.pass){ icon = '✓'; color = '#2e7d32'; }
+    else            { icon = '⚠'; color = '#c62828'; }
+    const lockIcon = m.mandatory ? '🔒' : '';
+    let keyInfo = '';
+    if (m.id === 'ampacity' && !d.skipped) {
+      keyInfo = `S=${d.s} мм² · Iz=${fmtN(d.iDerated, 1)} А · n=${d.parallel || 1}`;
+    } else if (m.id === 'vdrop' && !d.skipped) {
+      keyInfo = `ΔU=${fmtN(d.dUpct)}% (≤${d.maxPct}%)`;
+      if (d.bumpedTo) keyInfo += ` → рекомендуется ${d.bumpedTo} мм²`;
+    } else if (m.id === 'economic' && !d.skipped) {
+      keyInfo = `j=${d.jEk} А/мм² · S=${d.sStandard} мм²`;
+    } else if (m.id === 'shortCircuit' && !d.skipped) {
+      keyInfo = `Smin=${d.sRequired} мм² при Ik=${d.IkA} А, tk=${d.tkS} с`;
+    } else if (m.id === 'phaseLoop' && !d.skipped) {
+      keyInfo = `Zloop=${d.Zloop} Ом · Ik1=${d.Ik1} А · Ia=${d.Ia} А`;
+    } else if (d.skipped) {
+      keyInfo = `<span class="muted">${d.reason || 'нет данных'}</span>`;
+    }
+    const warnsHtml = (r.warnings && r.warnings.length)
+      ? `<div style="margin-top:2px;font-size:10px;color:#c62828">⚠ ${r.warnings.map(escHtml).join('<br>⚠ ')}</div>`
+      : '';
+    return `<div style="padding:4px 6px;border-bottom:1px solid #f0f0f0;font-size:11px;line-height:1.5">
+      <div><span style="color:${color};font-weight:600">${icon}</span> ${lockIcon} <b>${escHtml(m.label)}</b></div>
+      <div style="padding-left:16px;color:#555">${keyInfo}</div>
+      ${warnsHtml}
+    </div>`;
+  }).join('');
+
+  return `<details class="inspector-section" ${failCount > 0 ? 'open' : ''}>
+    <summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">
+      Расчётные модули ${summaryBadge} ${subtle}
+    </summary>
+    <div style="margin-top:4px;background:#fafafa;border:1px solid #e0e0e0;border-radius:4px">
+      ${rows}
+    </div>
+  </details>`;
 }
 
 // ===== icon helpers (moved from inspector.js) =====
