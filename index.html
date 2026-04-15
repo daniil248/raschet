@@ -475,6 +475,16 @@
             <input type="number" id="set-maxVdropPct" min="0.5" max="15" step="0.5" value="5"></div>
           <div class="field"><label>cos φ по умолчанию</label>
             <input type="number" id="set-cosPhi" min="0.1" max="1" step="0.01" value="0.92"></div>
+          <div class="field"><label>Система заземления (IEC 60364-4-41)</label>
+            <select id="set-earthingSystem">
+              <option value="TN-S">TN-S (3L+N+PE, 5 жил)</option>
+              <option value="TN-C">TN-C (3L+PEN, 4 жилы)</option>
+              <option value="TN-C-S">TN-C-S (с разделением)</option>
+              <option value="TT">TT (3L+N+PE, локальный PE)</option>
+              <option value="IT-N">IT с нейтралью (3L+N+PE)</option>
+              <option value="IT">IT без нейтрали (3L+PE, 4 жилы)</option>
+            </select>
+          </div>
         </div>
 
         <h3>Прокладка по умолчанию</h3>

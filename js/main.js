@@ -701,6 +701,7 @@ const SETTINGS_DEFAULTS = {
   maxVdropPct: 5,
   calcMethod: 'iec',
   parallelProtection: 'individual',
+  earthingSystem: 'TN-S',
 };
 
 function loadGlobalSettings() {
@@ -773,6 +774,7 @@ function openSettingsModal() {
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
   set('set-cosPhi',        G.defaultCosPhi ?? 0.92);
+  set('set-earthingSystem', G.earthingSystem ?? 'TN-S');
   renderVoltageLevelsTable();
   const addBtn = document.getElementById('voltage-levels-add');
   if (addBtn) addBtn.onclick = () => {
@@ -808,6 +810,7 @@ function saveSettingsModal() {
   const patch = {
     voltageLevels:      G.voltageLevels, // уже обновлены через inline-редактирование
     defaultCosPhi:      Number(get('set-cosPhi')) || 0.92,
+    earthingSystem:     get('set-earthingSystem') || 'TN-S',
     defaultMaterial:    get('set-material') || 'Cu',
     defaultInsulation:  get('set-insulation') || 'PVC',
     defaultCableType:   get('set-cableType') || 'multi',
