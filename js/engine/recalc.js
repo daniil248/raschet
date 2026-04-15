@@ -1424,9 +1424,22 @@ function recalc() {
 
   // === Подбор защитных автоматов на выходах ===
   // Правило: Iрасч ≤ In ≤ Iz
-  // GLOBAL.parallelProtection: 'individual' — автомат на каждую линию, 'common' — один на группу
+  //
+  // Два физически разных случая параллельности:
+  //  A) PARCELLATED (парцелльная линия): один потребитель, кабель разделён
+  //     на N жил из-за ампасити → ОДИН общий автомат (общая защита). Признак:
+  //     `c._cableAutoParallel === true` — алгоритм сам нарастил параллельность.
+  //  B) GROUP (групповая нагрузка): потребитель count > 1 (не serial) —
+  //     N отдельных приборов на своих кабелях от общего порта щита. Каждая
+  //     линия ЗАЩИЩАЕТСЯ СВОИМ автоматом по току одного прибора; общий
+  //     автомат вышестоящего уровня — по суммарному току. Признак:
+  //     `toN.type==='consumer' && count>1 && !serialMode`.
+  //
+  // GLOBAL.parallelProtection: 'individual' | 'common' — применяется ТОЛЬКО к
+  // парцелльным линиям (случай A). Групповые нагрузки (случай B) ВСЕГДА
+  // защищаются индивидуально, независимо от настройки.
   const _calcMethod = getMethod(GLOBAL.calcMethod);
-  const _protIndiv = GLOBAL.parallelProtection === 'individual';
+  const _protIndivGlobal = GLOBAL.parallelProtection === 'individual';
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     if (!fromN) continue;
@@ -1465,13 +1478,21 @@ function recalc() {
 
     const InTotal = _calcMethod.selectBreaker(Itotal * _marginK);
 
-    if (parallel > 1 && _protIndiv) {
-      // Индивидуальная защита: per-line автоматы
+    // Определяем тип параллельности: групповая нагрузка или парцелльная линия
+    const isGroupLoad = (toN.type === 'consumer'
+      && (Number(toN.count) || 1) > 1
+      && !toN.serialMode);
+    // Для групповой — всегда per-line автоматы. Для парцелльной — по глобальной настройке.
+    const useIndividual = isGroupLoad || _protIndivGlobal;
+
+    if (parallel > 1 && useIndividual) {
+      // Индивидуальная защита: per-line автоматы на каждом кабеле +
+      // общий (вышестоящий) автомат по суммарному току.
       c._breakerIn = InTotal;
       c._breakerPerLine = InPerLine;
       c._breakerCount = parallel;
     } else if (parallel > 1) {
-      // Общая защита: один автомат на полный ток
+      // Общая защита (парцелльная линия с common-режимом): один автомат на полный ток
       c._breakerIn = InTotal;
       c._breakerPerLine = null;
       c._breakerCount = 1;
