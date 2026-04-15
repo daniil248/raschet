@@ -919,21 +919,52 @@ function _renderUpsBatteryBody(n) {
 
     // Результаты расчёта (сразу основные цифры; кривая — async ниже).
     // Для S³ модулей дополнительно выводим полезную BOM-информацию:
-    // всего модулей, шкафов, полная мощность шкафа в конфигурации.
+    // всего модулей, шкафов, полная мощность шкафа в конфигурации и
+    // ЯВНЫЙ ЛИМИТ МОЩНОСТИ СИСТЕМЫ. Каждый шкаф ограничен паспортным
+    // System rated output power: 200 кВт для S3C040/S3C050 и 60 кВт
+    // для S3C100 (из брошюры Kehua S³). Если нагрузка превышает
+    // suммарный лимит — показываем красную плашку.
     h.push('<h4 style="margin:14px 0 6px">Результаты расчёта</h4>');
     const totalModules = stringsCat * blocksPerString;
     const moduleLabel = isS3Module ? 'Мощность/модуль' : 'Мощность/блок';
     const totalLabel = isS3Module ? 'Всего модулей' : 'Всего блоков';
     const currentLabel = isS3Module ? 'Ток шкафа' : 'Ток цепочки';
     let bomBlock = '';
+    let s3OverloadBlock = '';
     if (isS3Module) {
       const pk = picked.packaging;
-      const cabPower = Math.min(blocksPerString * (picked.moduleRatedKw || 10), pk.cabinetPowerKw || 200);
+      // Мощность одного шкафа = min(modulesInCabinet × rated_per_module,
+      //                              cabinetPowerKw из паспорта).
+      // cabinetPowerKw (200 / 60 кВт) — это System rated output power:
+      // физический лимит DC/DC-преобразователей и шин шкафа.
+      const cabPowerByModules = blocksPerString * (picked.moduleRatedKw || 10);
+      const cabPowerLimit = pk.cabinetPowerKw || 200;
+      const cabPower = Math.min(cabPowerByModules, cabPowerLimit);
       const systemPower = cabPower * stringsCat;
+      const capped = cabPowerByModules > cabPowerLimit;
+      // Нагрузка, которую система должна отдать (со стороны АКБ, после КПД)
+      const loadPerSystemKw = batteryPwrReqKw;
+      const s3Overload = loadPerSystemKw > systemPower;
       bomBlock = `
         <div>Шкафов:</div><div><b>${stringsCat}</b> × ${escHtml(pk.cabinetModel || '—')}</div>
         <div>Модулей/шкаф:</div><div><b>${blocksPerString}</b> из ${pk.maxPerCabinet}</div>
-        <div>P системы:</div><div><b>${fmt(systemPower)} кВт</b> (${fmt(cabPower)} кВт × ${stringsCat})</div>`;
+        <div>P<sub>лимит</sub> шкафа:</div><div><b>${fmt(cabPowerLimit)} кВт</b> (паспорт System rated output)</div>
+        <div>P шкафа (факт.):</div><div><b>${fmt(cabPower)} кВт</b>${capped ? ' <span style="color:#e65100">(лимит шкафа)</span>' : ''}</div>
+        <div>P системы:</div><div><b${s3Overload ? ' style="color:#c62828"' : ''}>${fmt(systemPower)} кВт</b> (${fmt(cabPower)} × ${stringsCat})</div>
+        <div>P<sub>треб.</sub> от АКБ:</div><div><b${s3Overload ? ' style="color:#c62828"' : ''}>${fmt(loadPerSystemKw)} кВт</b></div>`;
+      if (s3Overload) {
+        const minCabinets = Math.ceil(loadPerSystemKw / cabPower);
+        s3OverloadBlock = `<div style="margin-top:8px;padding:8px 12px;background:#ffebee;border-left:3px solid #c62828;border-radius:4px;font-size:11px;color:#c62828;line-height:1.6">
+          <b>⛔ Лимит системы превышен.</b> Требуемая мощность АКБ <b>${fmt(loadPerSystemKw)} кВт</b>
+          превышает суммарную мощность ${stringsCat} шкаф(ов) × ${fmt(cabPower)} кВт = <b>${fmt(systemPower)} кВт</b>.<br>
+          Увеличьте число шкафов минимум до <b>${minCabinets}</b> или выберите
+          ${picked.type.startsWith('S3M100') ? 'модули S3M040/S3M050 (200 кВт на шкаф)' : 'более мощный тип модулей'}.
+        </div>`;
+      } else if (capped) {
+        s3OverloadBlock = `<div style="margin-top:8px;padding:6px 10px;background:#fff8e1;border-left:3px solid #e65100;border-radius:3px;font-size:11px;color:#e65100">
+          ⚠ Мощность шкафа ограничена паспортом (${fmt(cabPowerLimit)} кВт). Дополнительные модули не увеличат P шкафа, но увеличат автономию.
+        </div>`;
+      }
     }
     h.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
       <div>U<sub>DC раб</sub>:</div><div><b>${fmt(vdcOper)} В</b></div>
@@ -943,7 +974,8 @@ function _renderUpsBatteryBody(n) {
       ${bomBlock}
       <div>Автономия (расч.):</div><div><b id="ups-batt-autonomy2">—</b>
         <span id="ups-batt-autonomy-method2" class="muted" style="font-size:10px;margin-left:4px"></span></div>
-    </div>`);
+    </div>
+    ${s3OverloadBlock}`);
 
     // Сохраняем в узле ключевые параметры для rerender после изменения
     n.batteryVdcMin = vdcMin;
