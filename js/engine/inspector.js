@@ -1,7 +1,7 @@
 import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
 import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
-import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass } from './electrical.js';
+import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
 import { effectiveOn, setEffectiveOn, effectiveLoadFactor, setEffectiveLoadFactor } from './modes.js';
 import { snapshot, notifyChange } from './history.js';
@@ -468,10 +468,10 @@ export function renderInspectorNode(n) {
     // Справка: текущие значения из модалки
     const levels = GLOBAL.voltageLevels || [];
     const outLevel = levels[n.voltageLevelIdx] || null;
-    const outLabel = outLevel ? outLevel.label : `${nodeVoltage(n)} В`;
+    const outLabel = outLevel ? formatVoltageLevelLabel(outLevel) : `${nodeVoltage(n)} В`;
     let voltInfo = `Uвых: <b>${outLabel}</b>`;
     if (subtype === 'transformer' && typeof n.inputVoltageLevelIdx === 'number' && levels[n.inputVoltageLevelIdx]) {
-      voltInfo = `Uвх: <b>${levels[n.inputVoltageLevelIdx].label}</b> → Uвых: <b>${outLabel}</b>`;
+      voltInfo = `Uвх: <b>${formatVoltageLevelLabel(levels[n.inputVoltageLevelIdx])}</b> → Uвых: <b>${outLabel}</b>`;
     }
     // Класс напряжения по IEC 60502-2 — для utility, а также для трансформатора
     // (на первичной и вторичной сторонах).
@@ -1272,7 +1272,7 @@ export function voltageField(n) {
   let opts = '';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
-    opts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(lv.label)} (${lv.vLL}V)</option>`;
+    opts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(lv))}</option>`;
   }
   return field('Уровень напряжения',
     `<select data-prop="voltageLevelIdx">${opts}</select>`) +

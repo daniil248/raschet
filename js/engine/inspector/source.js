@@ -9,7 +9,7 @@ import { state } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveTag } from '../zones.js';
 import { effectiveOn } from '../modes.js';
-import { nodeVoltage, sourceImpedance } from '../electrical.js';
+import { nodeVoltage, sourceImpedance, formatVoltageLevelLabel } from '../electrical.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 
@@ -28,7 +28,7 @@ export function voltageLevelOptions(selectedIdx, filter) {
     if (filter === '3ph' && lv.phases !== 3) continue;
     if (filter === '1ph' && (lv.phases !== 1 || lv.dc)) continue;
     if (filter === 'dc' && !lv.dc) continue;
-    opts += `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${escHtml(lv.label)} (${lv.vLL}V)</option>`;
+    opts += `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(lv))}</option>`;
   }
   return opts;
 }

@@ -709,6 +709,23 @@ function loadGlobalSettings() {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return;
     const saved = JSON.parse(raw);
+    // Миграция устаревших меток voltageLevels: вырезаем из lv.label
+    // суффиксы N+PE/3P+N+PE и т.п. (договорились избавиться от полюсов
+    // и жил N/PE в справочнике напряжений — фазность и DC-флаг достаточно).
+    if (Array.isArray(saved.voltageLevels)) {
+      for (const lv of saved.voltageLevels) {
+        if (lv && typeof lv.label === 'string') {
+          lv.label = lv.label
+            .replace(/\+N\+PE/gi, '')
+            .replace(/3L\+N\+PE/gi, '')
+            .replace(/L\+N\+PE/gi, '')
+            .replace(/\+N\b/gi, '')
+            .replace(/\+PE\b/gi, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        }
+      }
+    }
     if (!window.Raschet || typeof window.Raschet.setGlobal !== 'function') return;
     window.Raschet.setGlobal(saved);
   } catch (e) { console.warn('[settings] load failed', e); }
