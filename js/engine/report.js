@@ -115,6 +115,7 @@ export function generateReport() {
   const curPage = (state.pages || []).find(p => p.id === state.currentPageId);
   if (curPage) {
     const linkedChildren = (state.pages || []).filter(p => p.type === 'linked' && p.sourcePageId === curPage.id);
+    if (curPage.designation) lines.push('Обозн. листа:      ' + curPage.designation);
     lines.push('Страница:          ' + (curPage.name || curPage.id));
     if (curPage.sheetNo) lines.push('№ листа:           ' + curPage.sheetNo);
     if (curPage.title)   lines.push('Наим. чертежа:     ' + curPage.title);

@@ -752,18 +752,40 @@ export function exportPNG() {
 
 export function fitAll() {
   if (!state.nodes.size) return;
+  // Учитываем только узлы ТЕКУЩЕЙ страницы (legacy без pageIds — считаем что
+  // видны везде).
+  const onPage = (n) => {
+    const pids = Array.isArray(n.pageIds) ? n.pageIds : null;
+    if (!pids || pids.length === 0) return true;
+    return pids.includes(state.currentPageId);
+  };
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let count = 0;
   for (const n of state.nodes.values()) {
+    if (!onPage(n)) continue;
     const w = nodeWidth(n);
-    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + NODE_H);
+    const h = (typeof n.height === 'number') ? n.height : NODE_H;
+    if (Number.isFinite(n.x) && Number.isFinite(n.y)) {
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
+      count++;
+    }
   }
+  if (count === 0 || !Number.isFinite(minX)) return;
   const pad = 60;
-  const w = maxX - minX + pad * 2;
-  const h = maxY - minY + pad * 2;
-  const W = svg.clientWidth, H = svg.clientHeight;
-  state.view.zoom = Math.min(W / w, H / h, 2);
-  state.view.x = minX - pad;
-  state.view.y = minY - pad;
+  const bboxW = (maxX - minX) + pad * 2;
+  const bboxH = (maxY - minY) + pad * 2;
+  const W = svg.clientWidth || 800;
+  const H = svg.clientHeight || 600;
+  // zoom по наименьшему измерению, капы как раньше [0.2..2]
+  let zoom = Math.min(W / bboxW, H / bboxH, 2);
+  if (!Number.isFinite(zoom) || zoom <= 0) zoom = 1;
+  if (zoom < 0.2) zoom = 0.2;
+  state.view.zoom = zoom;
+  // ЦЕНТРИРУЕМ: центр bbox должен быть в центре viewport.
+  const bboxCx = (minX + maxX) / 2;
+  const bboxCy = (minY + maxY) / 2;
+  state.view.x = bboxCx - (W / 2) / zoom;
+  state.view.y = bboxCy - (H / 2) / zoom;
   updateViewBox();
 }
