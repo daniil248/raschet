@@ -349,6 +349,8 @@ function recalc() {
     if (fromN.type === 'panel' && fromN.maintenance) return false;
     if (fromN._watchdogActivePorts && !fromN._watchdogActivePorts.has(c.from.port)) return false;
     if (fromN.type === 'panel' && Array.isArray(fromN.breakerStates) && fromN.breakerStates[c.from.port] === false) return false;
+    // Выходной автомат QF3 ИБП разомкнут — питание на downstream не идёт
+    if (fromN.type === 'ups' && fromN.hasOutputBreaker !== false && fromN.outputBreakerOn === false) return false;
     // Автомат входа downstream-щита отключён
     const toN = state.nodes.get(c.to.nodeId);
     if (toN && toN.type === 'panel' && Array.isArray(toN.inputBreakerStates) && toN.inputBreakerStates[c.to.port] === false) return false;
@@ -451,11 +453,31 @@ function recalc() {
       if (!effectiveOn(n)) {
         res = null;
       } else {
+        // Состояние защитных аппаратов ИБП:
+        // Основной вводной путь QF1: вход допускается только когда QF1
+        // физически присутствует (hasInputBreaker !== false) и замкнут
+        // (inputBreakerOn !== false). Если QF1 разомкнут — ИБП с основного
+        // ввода питания не берёт, но может перейти на батарею.
+        const qf1Closed = n.hasInputBreaker === false || n.inputBreakerOn !== false;
+        // Вход байпаса QF2 — аналогично. В режиме 'separate' (отдельный
+        // кабель на байпас) QF2 — это отдельный второй ввод. В режиме
+        // 'jumper' (перемычка от основного) QF2 гейтит bypass-ветку,
+        // но не основной тракт.
+        const qf2Closed = n.hasInputBypassBreaker === false || n.inputBypassBreakerOn !== false;
+        const bypassSeparate = n.bypassFeedMode === 'separate';
+
         const ins = edgesIn.get(nid) || [];
-        if (ins.length > 0) {
+        // Фильтр: в режиме 'separate' порт 1 (index 1) считается bypass-вводом
+        // и гейтится QF2, остальные — основным QF1.
+        const eligible = ins.filter(c => {
+          const isBypassPort = bypassSeparate && c.to.port === 1;
+          return isBypassPort ? qf2Closed : qf1Closed;
+        });
+
+        if (eligible.length > 0) {
           // АВР по приоритетам — один проход
           const groups = new Map();
-          for (const c of ins) {
+          for (const c of eligible) {
             const prio = (n.priorities?.[c.to.port]) ?? 1;
             if (!groups.has(prio)) groups.set(prio, []);
             groups.get(prio).push(c);
@@ -466,8 +488,10 @@ function recalc() {
             if (live.length) { res = live.map(c => ({ conn: c, share: 1 / live.length })); break; }
           }
         }
-        // Батарейный резерв — если нет питания от входов и батарея есть
-        if (res === null && !n.staticBypassForced) {
+        // Батарейный резерв — если нет питания от входов и батарея есть.
+        // Гейтится батарейным автоматом QB.
+        const qbClosed = n.hasBatteryBreaker === false || n.batteryBreakerOn !== false;
+        if (res === null && !n.staticBypassForced && qbClosed) {
           const batt = (Number(n.batteryKwh) || 0) * (Number(n.batteryChargePct) || 0) / 100;
           if (batt > 0) res = [];
         }
