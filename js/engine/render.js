@@ -406,11 +406,12 @@ export function renderNodes() {
     }));
     // === Стальная решётчатая опора-башня ===
     const cx = w / 2;
-    const topY = 10;                 // верх пирамидки
-    const crossY = 22;               // нижний изолятор 1
-    const crossY2 = 34;              // изолятор 2
-    const crossY3 = 46;              // изолятор 3
-    const baseY = h - 24;            // основание башни (низ контура)
+    // Класс напряжения по IEC рисуется НАД башней, поэтому оставляем место сверху.
+    const topY = 22;                 // верх пирамидки (смещено вниз на 12px)
+    const crossY = 34;               // нижний изолятор 1
+    const crossY2 = 46;              // изолятор 2
+    const crossY3 = 58;              // изолятор 3
+    const baseY = h - 16;            // основание башни (низ контура)
     const halfTop = 8;               // ширина башни сверху
     const halfBase = 28;             // ширина у основания
     const stroke = '#455a64';
@@ -465,20 +466,21 @@ export function renderNodes() {
       }));
     }
 
-    // Подпись TAG снизу (под башней) + класс напряжения по IEC 60502-2
-    const tag = effectiveTag(n) || n.tag || '';
+    // Класс напряжения по IEC 60502-2 — НАД башней (компактный серый текст)
     const uVal = nodeVoltage(n);
     const vClass = cableVoltageClass(uVal);
+    const vt = text(cx, 12, vClass, 'node-sub');
+    vt.setAttribute('text-anchor', 'middle');
+    vt.setAttribute('style', 'font-size:9px;fill:#546e7a;font-weight:600');
+    g.appendChild(vt);
+
+    // Подпись TAG снизу (под башней)
+    const tag = effectiveTag(n) || n.tag || '';
     if (tag) {
-      const t = text(cx, h - 14, tag, 'node-tag');
+      const t = text(cx, h - 3, tag, 'node-tag');
       t.setAttribute('text-anchor', 'middle');
       g.appendChild(t);
     }
-    // Класс напряжения — мелким шрифтом под тегом
-    const vt = text(cx, h - 2, vClass, 'node-sub');
-    vt.setAttribute('text-anchor', 'middle');
-    vt.setAttribute('style', 'font-size:9px;fill:#546e7a');
-    g.appendChild(vt);
     // Выходной порт — внизу на оси башни (ровно по центру w)
     const outCirc = el('circle', { class: 'port out', cx: portX, cy: h, r: PORT_R });
     outCirc.dataset.portKind = 'out';

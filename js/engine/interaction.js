@@ -208,9 +208,16 @@ function clearRubberBand() {
    ================================================================== */
 export function initInteraction() {
 
-  // ---- Палитра: drag & drop (десктоп) + click-to-add (мобильный и шорткат) ----
+  // ---- Палитра: только drag & drop (click-to-add удалён по запросу) ----
   let _palDragActive = false;
-  // Раскрытие burger-групп палитры
+  // Раскрытие type-секций палитры
+  document.querySelectorAll('.pal-type-head').forEach(head => {
+    head.addEventListener('click', (e) => {
+      const sec = head.closest('.pal-type');
+      if (sec) sec.classList.toggle('collapsed');
+    });
+  });
+  // Раскрытие burger-групп внутри секций (для source с подтипами)
   document.querySelectorAll('.pal-group .pal-expand').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -219,32 +226,31 @@ export function initInteraction() {
       if (group) group.classList.toggle('expanded');
     });
   });
-  document.querySelectorAll('.pal-item').forEach(item => {
+  // dragstart / dragend для всех pal-items (базовые + пресеты)
+  const bindPalItem = (item) => {
+    if (item._palBound) return;
+    item._palBound = true;
     item.addEventListener('dragstart', e => {
       if (state.readOnly) { e.preventDefault(); return; }
       _palDragActive = true;
-      e.dataTransfer.setData('text/raschet-type', item.dataset.type);
-      if (item.dataset.subtype) {
-        e.dataTransfer.setData('text/raschet-subtype', item.dataset.subtype);
+      const presetId = item.dataset.presetId;
+      if (presetId) {
+        e.dataTransfer.setData('text/raschet-preset', presetId);
+      } else {
+        e.dataTransfer.setData('text/raschet-type', item.dataset.type || '');
+        if (item.dataset.subtype) {
+          e.dataTransfer.setData('text/raschet-subtype', item.dataset.subtype);
+        }
       }
       e.dataTransfer.effectAllowed = 'copy';
     });
     item.addEventListener('dragend', () => {
       setTimeout(() => { _palDragActive = false; }, 150);
     });
-    item.addEventListener('click', () => {
-      if (state.readOnly) return;
-      if (_palDragActive) return;
-      const type = item.dataset.type;
-      const subtype = item.dataset.subtype;
-      if (!DEFAULTS[type]) return;
-      const W = svg.clientWidth || 800, H = svg.clientHeight || 600;
-      const cx = state.view.x + (W / 2) / state.view.zoom;
-      const cy = state.view.y + (H / 2) / state.view.zoom;
-      createNode(type, cx, cy, subtype ? { subtype } : undefined);
-      document.body.classList.remove('palette-open');
-    });
-  });
+  };
+  document.querySelectorAll('.pal-item').forEach(bindPalItem);
+  // Эскпонируем для повторного применения после render пресетов
+  if (typeof window !== 'undefined') window.__raschetBindPalItem = bindPalItem;
   svg.addEventListener('dragover', e => { if (state.readOnly) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
   svg.addEventListener('drop', e => {
     if (state.readOnly) return;

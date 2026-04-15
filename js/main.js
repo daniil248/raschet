@@ -919,6 +919,207 @@ function presetDisplayName(p) {
   return p.params?.name || p.title || '(без имени)';
 }
 
+// Рендер пресетов в левой палитре по type-секциям.
+// Базовые пресеты + пользовательские (PRESETS из presets.js)
+function renderPalettePresets() {
+  if (!window.Presets) return;
+  const presets = window.Presets.all || [];
+  // Группируем по type
+  const byType = new Map();
+  for (const p of presets) {
+    if (!p.type) continue;
+    if (!byType.has(p.type)) byType.set(p.type, []);
+    byType.get(p.type).push(p);
+  }
+  // Рендер в каждый контейнер .pal-presets[data-pal-presets-type]
+  document.querySelectorAll('.pal-presets').forEach(container => {
+    const type = container.dataset.palPresetsType;
+    const list = byType.get(type) || [];
+    container.innerHTML = '';
+    for (const p of list) {
+      const isUser = String(p.id || '').startsWith('user_') || String(p.id || '').startsWith('up_');
+      const item = document.createElement('div');
+      item.className = 'pal-item pal-preset' + (isUser ? ' user-preset' : '');
+      item.draggable = true;
+      item.dataset.presetId = p.id;
+      item.dataset.type = p.type;
+      item.title = (p.description || '') + (p.description ? ' · ' : '') + presetAutoDesc(p);
+      item.innerHTML =
+        `<span class="pp-title">${escHtml(presetDisplayName(p))}</span>` +
+        `<span class="pp-meta">${escHtml(presetAutoDesc(p).slice(0, 24))}</span>` +
+        `<span class="pp-actions">` +
+        `<button class="pp-btn pp-dup" title="Дублировать">⧉</button>` +
+        (isUser ? `<button class="pp-btn pp-edit" title="Редактировать">✎</button>` : '') +
+        (isUser ? `<button class="pp-btn pp-del" title="Удалить">✕</button>` : '') +
+        `</span>`;
+      container.appendChild(item);
+      // Bind drag handlers через экспонированную функцию из interaction.js
+      if (typeof window.__raschetBindPalItem === 'function') {
+        window.__raschetBindPalItem(item);
+      }
+    }
+  });
+  // Добавим кнопку «+ новый пресет» в конец каждой секции, если она ещё не добавлена
+  document.querySelectorAll('.pal-type-items').forEach(section => {
+    if (section.querySelector('.pal-add-preset-btn')) return;
+    const type = section.closest('.pal-type')?.dataset.palType;
+    if (!type) return;
+    const btn = document.createElement('button');
+    btn.className = 'pal-add-preset-btn';
+    btn.type = 'button';
+    btn.textContent = '+ Сохранить текущий выбранный в библиотеку';
+    btn.style.cssText = 'width:100%;margin-top:4px;padding:5px;font-size:10px;background:transparent;border:1px dashed #3a4150;border-radius:4px;color:#6b7280;cursor:pointer';
+    btn.addEventListener('click', () => savePresetFromCurrentSelection(type));
+    section.appendChild(btn);
+  });
+  wirePalettePresetActions();
+}
+
+// Handler для кнопок действий пресетов
+function wirePalettePresetActions() {
+  document.querySelectorAll('.pal-preset').forEach(item => {
+    if (item._wiredActions) return;
+    item._wiredActions = true;
+    const presetId = item.dataset.presetId;
+    const dupBtn = item.querySelector('.pp-dup');
+    const editBtn = item.querySelector('.pp-edit');
+    const delBtn = item.querySelector('.pp-del');
+    if (dupBtn) dupBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      duplicatePresetToUser(presetId);
+    });
+    if (editBtn) editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      editUserPreset(presetId);
+    });
+    if (delBtn) delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteUserPreset(presetId);
+    });
+  });
+}
+
+function duplicatePresetToUser(presetId) {
+  if (!window.Presets) return;
+  const src = window.Presets.get(presetId);
+  if (!src) return;
+  const label = prompt('Название копии:', (src.params?.name || src.title || 'Копия') + ' (копия)');
+  if (!label) return;
+  const newPreset = {
+    id: 'up_' + Date.now(),
+    category: src.category || 'Пользовательские',
+    title: label,
+    description: src.description || '',
+    type: src.type,
+    params: { ...(src.params || {}), name: label },
+  };
+  try {
+    const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+    stored.push(newPreset);
+    localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+  } catch {}
+  window.Presets.all.push(newPreset);
+  renderPalettePresets();
+  flash('Сохранён как пользовательский пресет');
+}
+
+function editUserPreset(presetId) {
+  if (!window.Presets) return;
+  const p = window.Presets.get(presetId);
+  if (!p) return;
+  const label = prompt('Название:', p.params?.name || p.title || '');
+  if (label === null) return;
+  p.title = label;
+  if (!p.params) p.params = {};
+  p.params.name = label;
+  try {
+    const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+    const idx = stored.findIndex(x => x.id === presetId);
+    if (idx >= 0) stored[idx] = p;
+    localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+  } catch {}
+  renderPalettePresets();
+}
+
+function deleteUserPreset(presetId) {
+  if (!window.Presets) return;
+  const p = window.Presets.get(presetId);
+  if (!p) return;
+  if (!confirm(`Удалить пресет «${presetDisplayName(p)}»?`)) return;
+  if (typeof window.Presets.removeUser === 'function') {
+    window.Presets.removeUser(presetId);
+  } else {
+    const idx = window.Presets.all.findIndex(x => x.id === presetId);
+    if (idx >= 0) window.Presets.all.splice(idx, 1);
+  }
+  renderPalettePresets();
+  flash('Пресет удалён');
+}
+
+function savePresetFromCurrentSelection(type) {
+  // Пытаемся взять текущий выделенный узел нужного типа
+  const sel = window.Raschet?._state?.selectedId;
+  const node = sel && window.Raschet?._state?.nodes?.get(sel);
+  if (!node || node.type !== type) {
+    flash(`Сначала выделите на холсте объект типа «${type}», затем нажмите эту кнопку`, 'warn');
+    return;
+  }
+  const label = prompt('Название нового пресета:', node.name || type);
+  if (!label) return;
+  // Копируем params без runtime-полей (_*)
+  const params = {};
+  for (const k of Object.keys(node)) {
+    if (k.startsWith('_') || k === 'id' || k === 'x' || k === 'y' || k === 'tag' || k === 'pageIds') continue;
+    params[k] = node[k];
+  }
+  params.name = label;
+  const newPreset = {
+    id: 'up_' + Date.now(),
+    category: 'Пользовательские',
+    title: label,
+    description: '',
+    type,
+    params,
+  };
+  try {
+    const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+    stored.push(newPreset);
+    localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+  } catch {}
+  if (window.Presets) window.Presets.all.push(newPreset);
+  renderPalettePresets();
+  flash('Сохранено в библиотеку');
+}
+
+// Поиск по палитре — фильтрует видимость элементов и секций
+function wirePaletteSearch() {
+  const input = document.getElementById('palette-search');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    const types = document.querySelectorAll('.pal-type');
+    types.forEach(typeSec => {
+      let anyVisible = false;
+      const items = typeSec.querySelectorAll('.pal-item, .pal-preset');
+      items.forEach(it => {
+        if (!q) {
+          it.classList.remove('hidden');
+          anyVisible = true;
+          return;
+        }
+        const text = it.textContent.toLowerCase();
+        const titleAttr = (it.getAttribute('title') || '').toLowerCase();
+        const matches = text.includes(q) || titleAttr.includes(q);
+        it.classList.toggle('hidden', !matches);
+        if (matches) anyVisible = true;
+      });
+      typeSec.classList.toggle('hidden', !!q && !anyVisible);
+      // При поиске автоматически раскрываем секции где есть совпадения
+      if (q && anyVisible) typeSec.classList.remove('collapsed');
+    });
+  });
+}
+
 function renderPresets(query) {
   if (!window.Presets) { els.presetsList.innerHTML = '<div class="muted">Библиотека не загружена</div>'; return; }
   const q = (query || '').toLowerCase().trim();
@@ -1308,6 +1509,9 @@ async function init() {
   if (projectInfoSave) projectInfoSave.addEventListener('click', saveProjectInfoModal);
   // Применяем сохранённые настройки как можно раньше — после загрузки Raschet
   loadGlobalSettings();
+  // Рендер библиотечных пресетов в палитру + поиск
+  renderPalettePresets();
+  wirePaletteSearch();
   if (els.btnOpenPresets) els.btnOpenPresets.addEventListener('click', openPresetsModal);
   const btnCatalog = document.getElementById('btn-open-consumer-catalog');
   if (btnCatalog) btnCatalog.addEventListener('click', openConsumerCatalogModal);

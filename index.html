@@ -69,40 +69,89 @@
         <div class="subtitle">Конструктор схем</div>
 
         <h3>Элементы</h3>
-        <div class="pal-group" data-pal-group="source">
-          <div class="pal-item pal-item-head" data-type="source" draggable="true">
-            <span class="chip src"></span>Источник питания
-            <button class="pal-expand" type="button" aria-label="Показать подтипы">▸</button>
+        <div class="pal-search-wrap">
+          <input type="search" id="palette-search" placeholder="Поиск в библиотеке…" autocomplete="off">
+        </div>
+        <div id="palette-sections">
+
+          <div class="pal-type" data-pal-type="source">
+            <div class="pal-type-head"><span class="chip src"></span>Источники питания<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-group" data-pal-group="source">
+                <div class="pal-item pal-item-head" data-type="source" draggable="true">
+                  <span class="chip src"></span>Источник питания
+                  <button class="pal-expand" type="button" aria-label="Показать подтипы">▸</button>
+                </div>
+                <div class="pal-sub">
+                  <div class="pal-item pal-item-sub" data-type="source" data-subtype="transformer" draggable="true">
+                    <span class="pal-sub-icon src"></span>Трансформатор
+                  </div>
+                  <div class="pal-item pal-item-sub" data-type="source" data-subtype="utility" draggable="true">
+                    <span class="pal-sub-icon utl"></span>Городская сеть (ЛЭП)
+                  </div>
+                  <div class="pal-item pal-item-sub" data-type="source" data-subtype="other" draggable="true">
+                    <span class="pal-sub-icon oth"></span>Прочий ввод
+                  </div>
+                </div>
+              </div>
+              <div class="pal-item" data-type="generator" draggable="true">
+                <span class="chip gen"></span>Генератор (ДГУ)
+              </div>
+              <div class="pal-presets" data-pal-presets-type="source"></div>
+              <div class="pal-presets" data-pal-presets-type="generator"></div>
+            </div>
           </div>
-          <div class="pal-sub">
-            <div class="pal-item pal-item-sub" data-type="source" data-subtype="transformer" draggable="true">
-              <span class="pal-sub-icon src"></span>Трансформатор
-            </div>
-            <div class="pal-item pal-item-sub" data-type="source" data-subtype="utility" draggable="true">
-              <span class="pal-sub-icon utl"></span>Городская сеть (ЛЭП)
-            </div>
-            <div class="pal-item pal-item-sub" data-type="source" data-subtype="other" draggable="true">
-              <span class="pal-sub-icon oth"></span>Прочий ввод
+
+          <div class="pal-type" data-pal-type="panel">
+            <div class="pal-type-head"><span class="chip pnl"></span>Щиты<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="panel" draggable="true">
+                <span class="chip pnl"></span>Щит (базовый)
+              </div>
+              <div class="pal-presets" data-pal-presets-type="panel"></div>
             </div>
           </div>
-        </div>
-        <div class="pal-item" data-type="generator" draggable="true">
-          <span class="chip gen"></span>Генератор (ДГУ)
-        </div>
-        <div class="pal-item" data-type="panel" draggable="true">
-          <span class="chip pnl"></span>Щит
-        </div>
-        <div class="pal-item" data-type="ups" draggable="true">
-          <span class="chip ups"></span>ИБП
-        </div>
-        <div class="pal-item" data-type="consumer" draggable="true">
-          <span class="chip cns"></span>Потребитель
-        </div>
-        <div class="pal-item" data-type="channel" draggable="true">
-          <span class="chip chn"></span>Кабельный канал
-        </div>
-        <div class="pal-item" data-type="zone" draggable="true">
-          <span class="chip zne"></span>Зона / помещение
+
+          <div class="pal-type" data-pal-type="ups">
+            <div class="pal-type-head"><span class="chip ups"></span>ИБП<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="ups" draggable="true">
+                <span class="chip ups"></span>ИБП (базовый)
+              </div>
+              <div class="pal-presets" data-pal-presets-type="ups"></div>
+            </div>
+          </div>
+
+          <div class="pal-type" data-pal-type="consumer">
+            <div class="pal-type-head"><span class="chip cns"></span>Потребители<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="consumer" draggable="true">
+                <span class="chip cns"></span>Потребитель (базовый)
+              </div>
+              <div class="pal-presets" data-pal-presets-type="consumer"></div>
+            </div>
+          </div>
+
+          <div class="pal-type" data-pal-type="channel">
+            <div class="pal-type-head"><span class="chip chn"></span>Кабельные каналы<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="channel" draggable="true">
+                <span class="chip chn"></span>Кабельный канал
+              </div>
+              <div class="pal-presets" data-pal-presets-type="channel"></div>
+            </div>
+          </div>
+
+          <div class="pal-type" data-pal-type="zone">
+            <div class="pal-type-head"><span class="chip zne"></span>Зоны / помещения<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="zone" draggable="true">
+                <span class="chip zne"></span>Зона / помещение
+              </div>
+              <div class="pal-presets" data-pal-presets-type="zone"></div>
+            </div>
+          </div>
+
         </div>
 
         <h3>Быстрые действия</h3>

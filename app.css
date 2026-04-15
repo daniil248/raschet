@@ -442,6 +442,86 @@ input, select { font: inherit; }
 .pal-sub-icon.utl { background: #455a64; }
 .pal-sub-icon.oth { background: #8a94a6; }
 
+/* Поиск по библиотеке */
+.pal-search-wrap { margin: 4px 0 10px; }
+#palette-search {
+  width: 100%;
+  background: #1d222d;
+  border: 1px solid #353c4d;
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: #cfd4e0;
+  font-size: 12px;
+  outline: none;
+}
+#palette-search:focus { border-color: #2979ff; }
+#palette-search::placeholder { color: #6b7280; }
+
+/* Секции по типам (collapsible) */
+.pal-type { margin-bottom: 8px; }
+.pal-type-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #9aa3b5;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid #2a3140;
+}
+.pal-type-head:hover { color: #cfd4e0; }
+.pal-type-head .chip { width: 10px; height: 10px; border-radius: 2px; }
+.pal-type-head .pal-type-arrow { margin-left: auto; font-size: 10px; color: #6b7280; }
+.pal-type.collapsed .pal-type-head .pal-type-arrow { transform: rotate(-90deg); display: inline-block; }
+.pal-type-items { padding: 6px 0 2px; }
+.pal-type.collapsed .pal-type-items { display: none; }
+.pal-type.hidden { display: none; }
+
+/* Пресеты внутри секции */
+.pal-presets { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.pal-preset {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  background: #242a37;
+  border: 1px solid #2f3646;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+.pal-preset:hover { background: #2c3444; border-color: #3d4560; }
+.pal-preset:active { cursor: grabbing; }
+.pal-preset .pp-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cfd4e0; }
+.pal-preset .pp-meta { font-size: 10px; color: #6b7280; margin-left: 4px; }
+.pal-preset .pp-actions {
+  display: none;
+  gap: 2px;
+  margin-left: 4px;
+}
+.pal-preset:hover .pp-actions { display: flex; }
+.pal-preset .pp-btn {
+  background: transparent;
+  border: none;
+  color: #9aa3b5;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1;
+}
+.pal-preset .pp-btn:hover { background: #353c4d; color: #fff; }
+.pal-preset .pp-btn.pp-del:hover { background: #4a1c1c; color: #ff8a80; }
+.pal-preset.user-preset { border-left: 2px solid #2979ff; }
+.pal-preset.hidden { display: none; }
+.pal-item.hidden { display: none; }
+
 .stats {
   font-size: 12px;
   color: #c3c9d6;
