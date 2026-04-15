@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.31.4';
+export const APP_VERSION = '0.31.5';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -106,7 +106,12 @@ export const BREAKER_TYPES = {
   ACB:    { label: 'ACB',        prefix: '',    I2ratio: 1.3,  magMin: 2,  magMax: 10,  desc: 'Воздушный автомат (630-6300 А)', maxIn: 6300 },
   gG:     { label: 'Пр-ль gG',   prefix: '',    I2ratio: 1.6,  magMin: 0,  magMax: 0,   desc: 'Предохранитель общего назначения', maxIn: 1600 },
   aM:     { label: 'Пр-ль aM',   prefix: '',    I2ratio: 1.6,  magMin: 0,  magMax: 0,   desc: 'Предохранитель для двигателей', maxIn: 1600 },
+  VCB:    { label: 'VCB',        prefix: '',    I2ratio: 1.2,  magMin: 5,  magMax: 15,  desc: 'Вакуумный выключатель 6/10/35 кВ (IEC 62271-100)', maxIn: 4000, hv: true },
+  SF6:    { label: 'SF6',        prefix: '',    I2ratio: 1.2,  magMin: 5,  magMax: 15,  desc: 'Элегазовый выключатель 6/35 кВ (IEC 62271-100)', maxIn: 4000, hv: true },
 };
+
+// Ряд номиналов HV-выключателей (IEC 62271-100): VCB/SF6 6/10/35 кВ
+export const HV_BREAKER_SERIES = [200, 400, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000];
 
 // IEC 60364-5-52 — допустимые длительные токи.
 // Структура: IEC_TABLES[material][insulation][method] = [[s_mm2, I_A], ...]

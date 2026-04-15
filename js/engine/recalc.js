@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, INSTALL_METHODS, BREAKER_TYPES } from './constants.js';
-import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable } from './cable.js';
+import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
@@ -1586,18 +1586,30 @@ function recalc() {
     const toN = state.nodes.get(c.to.nodeId);
     if (!toN) { c._breakerIn = null; c._breakerPerLine = null; c._breakerCount = 0; continue; }
 
-    // Для HV (> 1 кВ) автоматика выбора LV-MCCB неприменима — используются
-    // VCB/SF6 высоковольтные аппараты. Оставляем _breakerIn=null, если только
-    // пользователь не задал номинал вручную; тогда берём его как есть.
+    // Для HV (> 1 кВ) — VCB/SF6 высоковольтные аппараты (IEC 62271-100).
+    // Ряд номиналов 200..4000 А. Подбор — ближайший больший к расчётному току.
+    // По умолчанию для HV берётся VCB (_breakerType='VCB'), если не задан иной.
     if (c._isHV) {
+      const IhvTotal = c._maxA || 0;
+      const hvParallel = Math.max(1, c._cableParallel || 1);
+      const IhvPer = IhvTotal / hvParallel;
+      const _hvMarginK = 1 + (Number(GLOBAL.breakerMinMarginPct) || 0) / 100;
       if (c.manualBreakerIn) {
         c._breakerIn = Number(c.manualBreakerIn);
+      } else if (IhvPer > 0) {
+        c._breakerIn = selectHvBreaker(IhvTotal * _hvMarginK);
       } else {
         c._breakerIn = null;
       }
+      if (!c.breakerCurve || !String(c.breakerCurve).startsWith('VCB') && !String(c.breakerCurve).startsWith('SF6')) {
+        c._breakerCurveEff = 'VCB';
+      } else {
+        c._breakerCurveEff = c.breakerCurve;
+      }
       c._breakerPerLine = null;
       c._breakerCount = c._breakerIn ? 1 : 0;
-      c._breakerAgainstCable = false;
+      const IzHv = c._cableIz || 0;
+      c._breakerAgainstCable = !!(IzHv > 0 && c._breakerIn && c._breakerIn > IzHv * hvParallel);
       continue;
     }
 

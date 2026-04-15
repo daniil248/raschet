@@ -1,4 +1,4 @@
-import { GLOBAL, IEC_TABLES, HV_TABLES, BREAKER_SERIES, K_TEMP, K_GROUP_TABLES, INSTALL_METHODS, CABLE_TYPES, BREAKER_TYPES } from './constants.js';
+import { GLOBAL, IEC_TABLES, HV_TABLES, BREAKER_SERIES, HV_BREAKER_SERIES, K_TEMP, K_GROUP_TABLES, INSTALL_METHODS, CABLE_TYPES, BREAKER_TYPES } from './constants.js';
 
 export function cableTable(material, insulation, method) {
   const m = IEC_TABLES[material] || IEC_TABLES.Cu;
@@ -175,4 +175,14 @@ export function selectBreaker(Iload) {
     if (In >= Iload) return In;
   }
   return BREAKER_SERIES[BREAKER_SERIES.length - 1];
+}
+
+// HV-выключатель (VCB / SF6, IEC 62271-100) — ряд номиналов 200..4000 А.
+// Выбирается ближайший больший номинал к расчётному току Iрасч.
+export function selectHvBreaker(Iload) {
+  const arr = HV_BREAKER_SERIES || [];
+  for (const In of arr) {
+    if (In >= Iload) return In;
+  }
+  return arr[arr.length - 1] || 4000;
 }
