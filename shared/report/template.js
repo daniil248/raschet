@@ -143,10 +143,120 @@ export function defaultTemplate() {
   };
 }
 
-/** Глубокое слияние (частичный patch поверх шаблона по умолчанию). */
+/** Глубокое слияние (частичный patch поверх шаблона по умолчанию).
+ *  Дополнительно выполняет автомиграцию legacy-колонтитулов в новую
+ *  overlays-модель — чтобы canvas-редактор показывал их как зоны на
+ *  холсте. Миграция идемпотентна: если overlays уже непусты, она
+ *  пропускается. */
 export function createTemplate(patch) {
-  return mergeDeep(defaultTemplate(), patch || {});
+  const merged = mergeDeep(defaultTemplate(), patch || {});
+  return migrateLegacyToOverlays(merged);
 }
+
+/** Преобразует legacy-колонтитулы (tpl.header.*.blocks, tpl.footer.*.blocks)
+ *  и legacy-позицию логотипа (tpl.logo.position) в новую модель overlays
+ *  + logo.x/y. После миграции legacy-поля колонтитулов отключаются
+ *  (enabled=false), чтобы не было двойного рендера. */
+export function migrateLegacyToOverlays(tpl) {
+  if (!Array.isArray(tpl.overlays)) tpl.overlays = [];
+  // Уже мигрировано / пользователь задал свои overlays — не трогаем.
+  if (tpl.overlays.length > 0) {
+    migrateLogoPosition(tpl);
+    return tpl;
+  }
+
+  const { width, height } = pageSizeMm(tpl.page);
+  const m = tpl.page.margins;
+  const printW = width - m.left - m.right;
+  let nextId = 1;
+  const overlays = [];
+
+  const addFromBlock = (block, y, h, scope) => {
+    if (!block || block.type !== 'paragraph') return;
+    overlays.push({
+      id: 'mig-' + (nextId++),
+      type: 'text',
+      scope,
+      x: round1(m.left),
+      y: round1(y),
+      width:  round1(printW),
+      height: round1(h),
+      content: {
+        text:     block.text || '',
+        styleRef: block.style || 'caption',
+        align:    block.align || 'left',
+      },
+    });
+  };
+
+  // ——— Header ———
+  const hdrF = tpl.header?.firstPage;
+  const hdrO = tpl.header?.otherPages;
+  const headerSame = blocksEqual(hdrF?.blocks, hdrO?.blocks);
+  const headerY = m.top;
+  if (hdrF?.enabled && Array.isArray(hdrF.blocks)) {
+    const scope = headerSame && hdrO?.enabled ? 'all' : 'first';
+    for (const b of hdrF.blocks) addFromBlock(b, headerY, hdrF.height || 12, scope);
+  }
+  if (hdrO?.enabled && !headerSame && Array.isArray(hdrO.blocks)) {
+    for (const b of hdrO.blocks) addFromBlock(b, headerY, hdrO.height || 12, 'other');
+  }
+
+  // ——— Footer ———
+  const ftrF = tpl.footer?.firstPage;
+  const ftrO = tpl.footer?.otherPages;
+  const footerSame = blocksEqual(ftrF?.blocks, ftrO?.blocks);
+  if (ftrF?.enabled && Array.isArray(ftrF.blocks)) {
+    const h = ftrF.height || 10;
+    const y = height - m.bottom - h;
+    const scope = footerSame && ftrO?.enabled ? 'all' : 'first';
+    for (const b of ftrF.blocks) addFromBlock(b, y, h, scope);
+  }
+  if (ftrO?.enabled && !footerSame && Array.isArray(ftrO.blocks)) {
+    const h = ftrO.height || 10;
+    const y = height - m.bottom - h;
+    for (const b of ftrO.blocks) addFromBlock(b, y, h, 'other');
+  }
+
+  migrateLogoPosition(tpl);
+
+  if (overlays.length > 0) {
+    tpl.overlays = overlays;
+    // Отключаем legacy-колонтитулы, чтобы рендерер не выводил их повторно.
+    if (tpl.header) {
+      tpl.header.firstPage  = { ...tpl.header.firstPage,  enabled: false };
+      tpl.header.otherPages = { ...tpl.header.otherPages, enabled: false };
+    }
+    if (tpl.footer) {
+      tpl.footer.firstPage  = { ...tpl.footer.firstPage,  enabled: false };
+      tpl.footer.otherPages = { ...tpl.footer.otherPages, enabled: false };
+    }
+  }
+  return tpl;
+}
+
+function migrateLogoPosition(tpl) {
+  // Если логотип уже имеет абсолютные координаты — не трогаем.
+  if (!tpl.logo || !tpl.logo.src) return;
+  if (typeof tpl.logo.x === 'number' && typeof tpl.logo.y === 'number') return;
+  const { width, height } = pageSizeMm(tpl.page);
+  const m = tpl.page.margins;
+  const pos = tpl.logo.position || 'header-left';
+  const isHeader = pos.startsWith('header');
+  let y = isHeader ? m.top : (height - m.bottom - tpl.logo.height);
+  let x = m.left;
+  if (pos.endsWith('center')) x = (width - tpl.logo.width) / 2;
+  if (pos.endsWith('right'))  x = width - m.right - tpl.logo.width;
+  tpl.logo.x = round1(x);
+  tpl.logo.y = round1(y);
+}
+
+function blocksEqual(a, b) {
+  try { return JSON.stringify(a || []) === JSON.stringify(b || []); }
+  catch { return false; }
+}
+
+function round1(v) { return Math.round(v * 10) / 10; }
 
 /** Возвращает {width, height} страницы в мм с учётом orientation. */
 export function pageSizeMm(page) {
