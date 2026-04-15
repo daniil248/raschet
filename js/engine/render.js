@@ -1334,7 +1334,12 @@ export function renderStats() {
   let unpoweredCount = 0, overloadCount = 0;
   for (const n of state.nodes.values()) {
     if (n.type === 'consumer') {
-      totalDemand += Number(n.demandKw) || 0;
+      // «Запрос» — установленная (паспортная) мощность всех потребителей:
+      //   demandKw × count  без учёта Ки и loadFactor.
+      // Отличается от «Потребляется» (_loadKw), где уже применён Ки × Кс.
+      const per = Number(n.demandKw) || 0;
+      const cnt = Math.max(1, Number(n.count) || 1);
+      totalDemand += per * cnt;
       if (!n._powered) unpoweredCount++;
     }
     if (n.type === 'source' || n.type === 'generator') {

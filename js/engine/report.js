@@ -159,7 +159,16 @@ export function generateReport() {
   if (sources.length) {
     lines.push('ИСТОЧНИКИ ПИТАНИЯ');
     lines.push('-'.repeat(92));
-    lines.push('Обозн.  Имя                  Тип          U, IEC            Pном,kW  Pнаг,kW   Iр,A   cosφ');
+    lines.push(
+      'Обозн.'.padEnd(12) +
+      'Имя'.padEnd(21) +
+      'Тип'.padEnd(12) +
+      'U, IEC'.padEnd(18) +
+      'Pном,kW'.padStart(7) + '  ' +
+      'Pнаг,kW'.padStart(7) + '  ' +
+      'Iр,A'.padStart(6) + '   ' +
+      'cosφ'
+    );
     for (const s of sources) {
       const on = effectiveOn(s);
       const cap = Number(s.capacityKw) || 0;
@@ -227,8 +236,18 @@ export function generateReport() {
   const panels = sortByTag([...state.nodes.values()].filter(n => n.type === 'panel' && _inSpace(n)));
   if (panels.length) {
     lines.push('РАСПРЕДЕЛИТЕЛЬНЫЕ ЩИТЫ');
-    lines.push('-'.repeat(78));
-    lines.push('Обозн.  Имя                  In, А  Вх/Вых  Pрасч, kW  Iрасч, A  Ксим  cos φ  Режим');
+    lines.push('-'.repeat(92));
+    lines.push(
+      'Обозн.'.padEnd(12) +
+      'Имя'.padEnd(21) +
+      'In, А'.padStart(5) + '  ' +
+      'Вх/Вых'.padEnd(8) +
+      'Pрасч, kW'.padStart(9) + '  ' +
+      'Iрасч, A'.padStart(8) + '  ' +
+      'Ксим'.padStart(4) + '  ' +
+      'cos φ'.padEnd(6) + ' ' +
+      'Режим'
+    );
     for (const p of panels) {
       const mode = p.switchMode === 'manual' ? 'РУЧН'
                  : p.switchMode === 'parallel' ? 'ЩИТ'
@@ -254,8 +273,20 @@ export function generateReport() {
   const consumers = sortByTag([...state.nodes.values()].filter(n => n.type === 'consumer' && _inSpace(n)));
   if (consumers.length) {
     lines.push('ПОТРЕБИТЕЛИ');
-    lines.push('-'.repeat(92));
-    lines.push('Обозн.  Имя                  Фаза  kW ед  Кол  Pрасч  cos φ  Iуст  Iрасч  Iпуск  Статус');
+    lines.push('-'.repeat(100));
+    lines.push(
+      'Обозн.'.padEnd(12) +
+      'Имя'.padEnd(21) +
+      'Фаза'.padEnd(5) + ' ' +
+      'kW ед'.padStart(6) + ' ' +
+      'Кол'.padStart(4) + ' ' +
+      'Pрасч'.padStart(6) + ' ' +
+      'cos φ'.padStart(6) + ' ' +
+      'Iуст'.padStart(5) + ' ' +
+      'Iрасч'.padStart(6) + ' ' +
+      'Iпуск'.padStart(6) + '  ' +
+      'Статус'
+    );
     let total = 0;
     for (const c of consumers) {
       const per = Number(c.demandKw) || 0;

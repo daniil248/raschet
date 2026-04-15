@@ -853,11 +853,16 @@ function recalc() {
     const ai = activeInputs(n.id);
     n._powered = ai !== null;
     if (!n._powered) continue;
-    // Для группы потребителей: суммарный demand = count × demandKw × loadFactor
+    // Суммарная расчётная мощность потребителя:
+    //   Pрасч = demandKw × count × Ки × loadFactor
+    // Раньше здесь НЕ учитывался Ки — из-за этого сумма по источникам
+    // расходилась с полем Pрасч в отчёте и с _powerP на самом потребителе.
+    // Теперь всё считается по одной формуле.
     const per = Number(n.demandKw) || 0;
     const count = Math.max(1, Number(n.count) || 1);
+    const kUse = Number(n.kUse) || 1;
     const factor = effectiveLoadFactor(n);
-    const total = per * count * factor;
+    const total = per * count * kUse * factor;
     n._loadKw = total;
     walkUp(n.id, total);
   }
