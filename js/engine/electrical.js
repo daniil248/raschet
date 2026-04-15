@@ -56,12 +56,60 @@ export function isThreePhase(n) {
   return (n.phase || '3ph') === '3ph';
 }
 
-// Число проводов (жил) в кабеле для данного узла
+// Число проводов (жил) в кабеле для данного узла (legacy — использует
+// wires из voltageLevels либо phase). Сохранено для обратной совместимости.
 export function nodeWireCount(n) {
   if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
     return GLOBAL.voltageLevels[n.voltageLevelIdx].wires;
   }
   return isThreePhase(n) ? 5 : 3;
+}
+
+// Количество жил кабеля по системе заземления и числу фаз (IEC 60364-4-41).
+// phases — 1 или 3 (или 'dc' для постоянного тока)
+// system — 'TN-S' | 'TN-C' | 'TN-C-S' | 'TT' | 'IT' | 'IT-N'
+export function earthingWires(phases, system = 'TN-S') {
+  if (phases === 'dc' || phases === 0) return 2; // DC: L+ и L−
+  const sys = String(system || 'TN-S').toUpperCase();
+  if (phases === 3) {
+    if (sys === 'TN-C') return 4;             // 3L + PEN
+    if (sys === 'IT') return 4;               // 3L + PE (без N)
+    // TN-S, TN-C-S (после разделения), TT, IT-N → 3L + N + PE
+    return 5;
+  }
+  // 1-фазное
+  if (sys === 'TN-C') return 2;               // L + PEN
+  if (sys === 'IT') return 2;                 // L + PE (без N)
+  return 3;                                    // L + N + PE
+}
+
+// Определение эффективной системы заземления для кабеля, идущего ИЗ
+// узла fromN. Для щита берём panel.earthingOut (если задан), иначе
+// GLOBAL.earthingSystem. Для остальных типов — глобальная система.
+export function effectiveEarthingOut(fromN) {
+  if (fromN && fromN.type === 'panel' && fromN.earthingOut) return fromN.earthingOut;
+  return GLOBAL.earthingSystem || 'TN-S';
+}
+
+// Число жил кабеля между fromN и toN. Приоритеты:
+//   1. Явная переопределённая величина на самом соединении (c._wireCountManual)
+//   2. Явная величина на целевом потребителе (toN.wireCount, 2..5)
+//   3. HV-кабели (> 1000 В): 3 жилы (3L, без N и PE — PE уравнительной связью)
+//   4. Автовычисление по числу фаз toN и системе заземления fromN
+export function cableWireCount(fromN, toN, conn) {
+  if (conn && Number.isFinite(Number(conn._wireCountManual)) && Number(conn._wireCountManual) > 0) {
+    return Number(conn._wireCountManual);
+  }
+  if (toN && Number.isFinite(Number(toN.wireCount)) && Number(toN.wireCount) > 0) {
+    return Number(toN.wireCount);
+  }
+  // HV: 3 жилы (без N и без отдельного PE-провода в линейной части)
+  const U = toN ? nodeVoltage(toN) : 0;
+  if (U >= 1000) return 3;
+  // Фазность целевого узла
+  const phases = toN && isThreePhase(toN) ? 3 : 1;
+  const sys = effectiveEarthingOut(fromN);
+  return earthingWires(phases, sys);
 }
 
 // Установочный ток — ток при номинальной мощности

@@ -69,6 +69,20 @@ export function openConsumerParamsModal(n) {
   h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
   h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
+  // Ручное переопределение количества жил питающего кабеля. По умолчанию
+  // считается автоматически по системе заземления питающего щита и
+  // числу фаз потребителя. Пустое = авто.
+  {
+    const wc = Number(n.wireCount) || 0;
+    h.push(field('Жил кабеля (авто если пусто)', `
+      <select id="cp-wireCount">
+        <option value=""${!wc ? ' selected' : ''}>Авто (по системе заземления)</option>
+        <option value="2"${wc === 2 ? ' selected' : ''}>2 (L+N или L+PEN)</option>
+        <option value="3"${wc === 3 ? ' selected' : ''}>3 (L+N+PE)</option>
+        <option value="4"${wc === 4 ? ' selected' : ''}>4 (3L+PE или 3L+PEN)</option>
+        <option value="5"${wc === 5 ? ' selected' : ''}>5 (3L+N+PE)</option>
+      </select>`));
+  }
 
   const inputCount = n.inputs || 1;
   if (inputCount > 1) {
@@ -224,6 +238,14 @@ export function openConsumerParamsModal(n) {
     n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
     n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
+    // Ручное число жил (пусто = авто по системе заземления питающего щита)
+    const wcVal = document.getElementById('cp-wireCount')?.value;
+    if (wcVal === '' || wcVal == null) delete n.wireCount;
+    else {
+      const wcNum = Number(wcVal);
+      if (wcNum > 0) n.wireCount = wcNum;
+      else delete n.wireCount;
+    }
 
     if (!Array.isArray(n.priorities)) n.priorities = [];
     for (let i = 0; i < n.inputs; i++) {

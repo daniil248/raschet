@@ -3,7 +3,7 @@ import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, INSTALL_METHODS, BREAKER_TYPES } 
 import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
-import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, computeCurrentA,
+import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          upsChargeKw, sourceImpedance } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
@@ -1227,7 +1227,11 @@ function recalc() {
     // Пока используем LV-методику, но принудительно задаём минимальное сечение
     // HV-кабеля (25 мм² XLPE) и помечаем линию флагом — отчёт/рендер покажут (ВН).
     c._isHV = U > 1000;
-    c._wireCount = nodeWireCount(toN);
+    // Количество жил — через cableWireCount: учитывает систему заземления
+    // узла-источника (panel.earthingOut или GLOBAL.earthingSystem), фазность
+    // целевого узла, ручные переопределения consumer.wireCount и
+    // conn._wireCountManual. HV-линии всегда 3 жилы.
+    c._wireCount = cableWireCount(fromN, toN, c);
     c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase) : 0;
 
     // === Расчётный ток для подбора кабеля (максимальный по всем сценариям) ===

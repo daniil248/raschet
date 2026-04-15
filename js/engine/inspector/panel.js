@@ -77,6 +77,24 @@ export function openPanelParamsModal(n) {
     h.push('<div style="flex:1">' + field('Мин. запас, %', `<input type="number" id="pp-marginMin" min="0" max="50" step="1" value="${n.marginMinPct ?? 2}">`) + '</div>');
     h.push('<div style="flex:1">' + field('Макс. запас, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`) + '</div>');
     h.push('</div>');
+
+    // Система заземления для линий, ВЫХОДЯЩИХ из этого щита.
+    // Определяет базовое число жил кабелей: TN-S=5, TN-C=4, IT=4, TT=5 (3ф).
+    // «(по умолчанию)» — наследуется от GLOBAL.earthingSystem.
+    {
+      const eo = n.earthingOut || '';
+      h.push(field('Система заземления на выходе', `
+        <select id="pp-earthingOut">
+          <option value=""${eo === '' ? ' selected' : ''}>(по умолчанию — TN-S)</option>
+          <option value="TN-S"${eo === 'TN-S' ? ' selected' : ''}>TN-S (3L+N+PE)</option>
+          <option value="TN-C"${eo === 'TN-C' ? ' selected' : ''}>TN-C (3L+PEN)</option>
+          <option value="TN-C-S"${eo === 'TN-C-S' ? ' selected' : ''}>TN-C-S (разделение PE на этом щите)</option>
+          <option value="TT"${eo === 'TT' ? ' selected' : ''}>TT (3L+N+PE, локальный PE)</option>
+          <option value="IT-N"${eo === 'IT-N' ? ' selected' : ''}>IT с нейтралью (3L+N+PE)</option>
+          <option value="IT"${eo === 'IT' ? ' selected' : ''}>IT без нейтрали (3L+PE)</option>
+        </select>`));
+      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Определяет число жил кабелей, выходящих из щита (4 vs 5 жил). Можно переопределить для каждого потребителя индивидуально.</div>');
+    }
   }
 
   // Режимы переключения для несекционных щитов
@@ -333,6 +351,10 @@ export function openPanelParamsModal(n) {
     n.capacityA = Number(document.getElementById('pp-capacityA')?.value) || 160;
     n.marginMinPct = Number(document.getElementById('pp-marginMin')?.value) || 2;
     n.marginMaxPct = Number(document.getElementById('pp-marginMax')?.value) || 30;
+    // Система заземления на выходе щита (пусто = наследовать глобальную)
+    const eoVal = document.getElementById('pp-earthingOut')?.value;
+    if (eoVal === '' || eoVal == null) delete n.earthingOut;
+    else n.earthingOut = eoVal;
     const smSel = document.getElementById('pp-switchMode');
     if (smSel) n.switchMode = smSel.value;
     n.avrDelaySec = Number(document.getElementById('pp-avrDelay')?.value) ?? 2;
