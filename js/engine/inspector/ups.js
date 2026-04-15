@@ -136,11 +136,14 @@ export function openUpsParamsModal(n) {
     </div>`);
   }
 
-  h.push('<h4 style="margin:16px 0 8px">Статический байпас</h4>');
-  // Режим подключения байпасного ввода
+  // ================= Байпас обслуживания (Maintenance bypass) =================
+  // К maintenance-байпасу относится выбор «перемычка / отдельный кабель»:
+  // по физике это механическая перемычка вокруг ИБП (или отдельный
+  // кабель), а не статический электронный SBS.
+  h.push('<h4 style="margin:16px 0 8px">Байпас обслуживания (QF4)</h4>');
   {
     const mode = n.bypassFeedMode || 'jumper';
-    h.push(field('Байпасный ввод',
+    h.push(field('Подключение байпаса',
       `<select id="up-bypassMode">
         <option value="jumper"${mode === 'jumper' ? ' selected' : ''}>Перемычка от основного ввода</option>
         <option value="separate"${mode === 'separate' ? ' selected' : ''}>Отдельный кабель</option>
@@ -148,13 +151,16 @@ export function openUpsParamsModal(n) {
     if (mode === 'separate') {
       h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px;color:#1565c0">В режиме «отдельный кабель» у ИБП должно быть ≥ 2 входов: порт 1 — основной, порт 2 — байпасный. Подведите два независимых фидера.</div>');
     } else {
-      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Байпас питается от того же ввода, что и основной тракт (один кабель на ИБП).</div>');
+      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Байпас подключён перемычкой от основного ввода (один кабель на ИБП).</div>');
     }
   }
-  h.push(`<div class="field check"><input type="checkbox" id="up-bypass"${n.staticBypass !== false ? ' checked' : ''}><label>Байпас разрешён</label></div>`);
-  h.push(`<div class="field check"><input type="checkbox" id="up-bypassAuto"${n.staticBypassAuto !== false ? ' checked' : ''}><label>Автоматический (по перегрузу)</label></div>`);
-  h.push(field('Порог перехода, % от Pном', `<input type="number" id="up-bypassPct" min="80" max="200" step="5" value="${n.staticBypassOverloadPct || 110}">`));
-  h.push(`<div class="field check"><input type="checkbox" id="up-bypassForced"${n.staticBypassForced ? ' checked' : ''}><label>Принудительный байпас</label></div>`);
+
+  // ================= Статический байпас (SBS) =================
+  // Только конфигурационные флаги. Оперативные команды (принудительный
+  // байпас, авто-переход по перегрузу с порогом) — в «Управлении ИБП».
+  h.push('<h4 style="margin:16px 0 8px">Статический байпас (SBS)</h4>');
+  h.push(`<div class="field check"><input type="checkbox" id="up-bypass"${n.staticBypass !== false ? ' checked' : ''}><label>Байпас разрешён (допускается переход на SBS)</label></div>`);
+  h.push('<div class="muted" style="font-size:11px;margin-top:-6px">Принудительная активация SBS, разрешение авто-перехода и порог перегруза — в модалке <b>«🔌 Управление ИБП»</b>.</div>');
 
   body.innerHTML = h.join('');
 
@@ -183,11 +189,9 @@ export function openUpsParamsModal(n) {
     // (Поля АКБ вынесены в отдельную модалку «АКБ».)
     // Напряжение и cos
     grab('up-cosPhi', 'cosPhi', true);
-    // Байпас
+    // Байпас (только конфигурационный флаг «разрешён»; авто/порог/принуд.
+    // — в модалке Управление ИБП).
     grab('up-bypass', 'staticBypass', false, true);
-    grab('up-bypassAuto', 'staticBypassAuto', false, true);
-    grab('up-bypassPct', 'staticBypassOverloadPct', true);
-    grab('up-bypassForced', 'staticBypassForced', false, true);
     // Флаги автоматов
     for (const flag of ['hasInputBreaker','hasInputBypassBreaker','hasOutputBreaker','hasBypassBreaker','hasBatteryBreaker']) {
       grab('up-' + flag, flag, false, true);
@@ -252,10 +256,10 @@ export function openUpsParamsModal(n) {
     n.cosPhi = Number(document.getElementById('up-cosPhi')?.value) || 1.0;
     // Параметры АКБ (batteryType/CellCount/CellVoltage/CapacityAh/
     // StringCount/ChargePct/chargeA) — целиком в отдельной модалке «АКБ».
+    // Статический байпас: только конфигурационный флаг «разрешён».
+    // staticBypassAuto / staticBypassOverloadPct / staticBypassForced —
+    // управляются из модалки «🔌 Управление ИБП», здесь не трогаем.
     n.staticBypass = document.getElementById('up-bypass')?.checked !== false;
-    n.staticBypassAuto = document.getElementById('up-bypassAuto')?.checked !== false;
-    n.staticBypassOverloadPct = Number(document.getElementById('up-bypassPct')?.value) || 110;
-    n.staticBypassForced = !!document.getElementById('up-bypassForced')?.checked;
     n.bypassFeedMode = document.getElementById('up-bypassMode')?.value === 'separate' ? 'separate' : 'jumper';
     // В режиме 'separate' ИБП должен иметь как минимум 2 входа
     if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
@@ -363,16 +367,28 @@ function _renderUpsControlBody(n) {
   // на клик прямо по автоматам на SVG-схеме (см. data-ups-brk в _svgBreaker).
 
   h.push('<h4 style="margin:16px 0 6px">Статический байпас</h4>');
-  h.push(`<div class="ups-ctl-row">
-    <div class="ups-ctl-label">Принудительный режим</div>
-    <div class="ups-ctl-current">${onBypass ? 'Активен' : 'Неактивен'}</div>
-    <button class="ups-ctl-toggle ${n.staticBypassForced ? 'on' : 'off'}" data-ups-flag="staticBypassForced">${n.staticBypassForced ? 'ВКЛ' : 'ОТКЛ'}</button>
-  </div>`);
-  h.push(`<div class="ups-ctl-row">
-    <div class="ups-ctl-label">Авто-переход при перегрузе</div>
-    <div class="ups-ctl-current">Порог ${n.staticBypassOverloadPct || 110}%</div>
-    <button class="ups-ctl-toggle ${n.staticBypassAuto !== false ? 'on' : 'off'}" data-ups-flag="staticBypassAuto">${n.staticBypassAuto !== false ? 'ВКЛ' : 'ОТКЛ'}</button>
-  </div>`);
+  if (n.staticBypass === false) {
+    h.push(`<div class="muted" style="font-size:11px;padding:8px 10px;background:#f6f8fa;border-radius:6px;margin-bottom:6px">SBS запрещён в «Параметры ИБП» — принудительный переход и авто-переход недоступны.</div>`);
+  } else {
+    // Принудительная активация SBS
+    h.push(`<div class="ups-ctl-row">
+      <div class="ups-ctl-label">Принудительный режим</div>
+      <div class="ups-ctl-current">${onBypass ? 'Активен' : 'Неактивен'}</div>
+      <button class="ups-ctl-toggle ${n.staticBypassForced ? 'on' : 'off'}" data-ups-flag="staticBypassForced">${n.staticBypassForced ? 'ВКЛ' : 'ОТКЛ'}</button>
+    </div>`);
+    // Авто-переход + редактируемый порог (в одной строке — toggle и input)
+    h.push(`<div class="ups-ctl-row">
+      <div class="ups-ctl-label">Авто-переход при перегрузе</div>
+      <div class="ups-ctl-current" style="display:flex;align-items:center;gap:6px">
+        Порог
+        <input type="number" id="ups-ctl-bypassPct" min="80" max="200" step="5"
+          value="${n.staticBypassOverloadPct || 110}"
+          style="width:60px;padding:3px 6px;font:inherit;font-size:12px;text-align:right">
+        %
+      </div>
+      <button class="ups-ctl-toggle ${n.staticBypassAuto !== false ? 'on' : 'off'}" data-ups-flag="staticBypassAuto">${n.staticBypassAuto !== false ? 'ВКЛ' : 'ОТКЛ'}</button>
+    </div>`);
+  }
 
   if (n.upsType === 'modular') {
     h.push('<h4 style="margin:16px 0 6px">Модули</h4>');
@@ -431,6 +447,16 @@ function _renderUpsControlBody(n) {
       render(); notifyChange(); _renderUpsControlBody(n);
     });
   });
+  // Редактируемый порог перегруза (перенесён из Параметров ИБП)
+  const bypassPctInput = document.getElementById('ups-ctl-bypassPct');
+  if (bypassPctInput) {
+    bypassPctInput.addEventListener('change', () => {
+      snapshot('ups-ctl:' + n.id + ':bypassPct');
+      const v = Math.max(80, Math.min(200, Number(bypassPctInput.value) || 110));
+      n.staticBypassOverloadPct = v;
+      render(); notifyChange(); _renderUpsControlBody(n);
+    });
+  }
   body.querySelectorAll('[data-ups-module]').forEach(btn => {
     btn.addEventListener('click', () => {
       const idx = Number(btn.dataset.upsModule);
