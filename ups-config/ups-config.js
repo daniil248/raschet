@@ -122,7 +122,9 @@ function renderList(list) {
         <td>${mainValue(u)}</td>
         <td>${u.efficiency ? fmt(u.efficiency, 0) + '%' : '—'}</td>
         <td>${u.vdcMin ? fmt(u.vdcMin, 0) + '…' + fmt(u.vdcMax, 0) + ' В' : '—'}</td>
-        <td>
+        <td style="white-space:nowrap">
+          <button class="btn-sm" data-view="${esc(u.id)}" title="Показать карточку">👁 Просмотр</button>
+          <button class="btn-sm" data-copy="${esc(u.id)}" title="Создать копию записи">⧉ Копия</button>
           <button class="btn-sm btn-del" data-del="${esc(u.id)}">Удалить</button>
         </td>
       </tr>`;
@@ -140,6 +142,47 @@ function renderList(list) {
       if (!confirm('Удалить эту запись?')) return;
       removeUps(btn.dataset.del);
       flash('Удалено');
+      render();
+    });
+  });
+  wrap.querySelectorAll('[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.view;
+      const u = list.find(x => x.id === id);
+      if (!u) return;
+      cascadeState.supplier = u.supplier || '';
+      cascadeState.series   = extractUpsSeries(u.model) || '';
+      cascadeState.modelId  = id;
+      render();
+      const box = document.getElementById('selected-ups-details');
+      if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+  wrap.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.copy;
+      const u = list.find(x => x.id === id);
+      if (!u) return;
+      const suggested = (u.model || '') + ' (копия)';
+      const newModel = prompt('Название новой модели:', suggested);
+      if (newModel == null) return;
+      const trimmed = newModel.trim();
+      if (!trimmed) { flash('Пустое имя модели', 'warn'); return; }
+      const copy = {
+        ...u,
+        model: trimmed,
+        id: makeUpsId(u.supplier, trimmed),
+        source: 'копия: ' + (u.source || u.model || ''),
+        importedAt: Date.now(),
+        custom: true,
+      };
+      if (copy.id === u.id) {
+        flash('Имя копии совпадает с оригиналом', 'warn');
+        return;
+      }
+      addUps(copy);
+      flash('Скопировано: ' + trimmed, 'success');
+      cascadeState.modelId = copy.id;
       render();
     });
   });

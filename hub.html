@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Raschet — платформа электротехнических расчётов</title>
+  <link rel="stylesheet" href="shared/app-header.css">
+  <script src="firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="shared/auth.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -17,27 +22,6 @@
       display: flex;
       flex-direction: column;
       min-height: 100vh;
-    }
-    header {
-      flex: none;
-      height: 56px;
-      background: #fff;
-      border-bottom: 1px solid #e0e3ea;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 24px;
-    }
-    .hdr-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: #1f2430;
-      letter-spacing: 0.3px;
-    }
-    .hdr-version {
-      font-size: 12px;
-      color: #9aa3b5;
-      margin-left: 10px;
     }
     main {
       flex: 1;
@@ -118,12 +102,14 @@
   </style>
 </head>
 <body>
-  <header>
-    <div style="display:flex;align-items:center;">
-      <span class="hdr-title">Raschet</span>
-      <span class="hdr-version">платформа</span>
-    </div>
-  </header>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from './shared/app-header.js';
+    mountHeader({ title: 'платформа', showHome: false, home: 'hub.html' });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[hub] auth init failed', e));
+    }
+  </script>
 
   <main>
     <div class="hub-grid">

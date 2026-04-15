@@ -9,6 +9,7 @@
 // Ensure engine modules are loaded and window.Raschet is available
 import './engine/index.js';
 import { getMethod, listMethods } from './methods/index.js';
+import { formatVoltageLevelLabel } from './engine/electrical.js';
 import * as Report from '../shared/report/index.js';
 import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } from '../shared/report-catalog.js';
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
@@ -742,14 +743,14 @@ function renderVoltageLevelsTable() {
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const levels = G.voltageLevels || [];
   let html = '<table style="width:100%;font-size:11px;border-collapse:collapse">';
-  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Название</th><th>V_LL</th><th>V_LN</th><th>Фазы</th><th>DC</th><th></th></tr>';
+  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>ph</th><th>DC</th><th></th></tr>';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
     html += `<tr style="border-bottom:1px solid #eee">
-      <td><input type="text" data-vl-idx="${i}" data-vl-field="label" value="${escHtml(lv.label)}" style="width:100%;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
-      <td><input type="number" data-vl-idx="${i}" data-vl-field="vLL" value="${lv.vLL}" style="width:60px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
-      <td><input type="number" data-vl-idx="${i}" data-vl-field="vLN" value="${lv.vLN}" style="width:60px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
-      <td><input type="number" data-vl-idx="${i}" data-vl-field="phases" value="${lv.phases}" style="width:30px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td style="padding:4px;font-family:ui-monospace,Consolas,monospace;color:#1976d2;font-weight:600">${escHtml(formatVoltageLevelLabel(lv))}</td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="vLL" value="${lv.vLL}" style="width:70px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="vLN" value="${lv.vLN}" style="width:70px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="phases" value="${lv.phases}" style="width:40px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
       <td style="text-align:center"><input type="checkbox" data-vl-idx="${i}" data-vl-field="dc"${lv.dc ? ' checked' : ''}></td>
       <td><button type="button" data-vl-del="${i}" style="background:transparent;border:none;color:#c62828;cursor:pointer;font-size:14px" title="Удалить">×</button></td>
     </tr>`;
@@ -770,7 +771,11 @@ function renderVoltageLevelsTable() {
         else if (inp.type === 'number') v = Number(inp.value);
         else v = inp.value;
         G2.voltageLevels[idx][field] = v;
+        // lv.label больше не хранится — метка вычисляется из полей
+        // через formatVoltageLevelLabel. Удаляем на всякий случай.
+        if ('label' in G2.voltageLevels[idx]) delete G2.voltageLevels[idx].label;
         window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
+        renderVoltageLevelsTable();
       }
     });
   });
@@ -1689,6 +1694,10 @@ async function init() {
 
   // P3 buttons
   if (els.btnOpenSettings) els.btnOpenSettings.addEventListener('click', openSettingsModal);
+  // Шестерёнка в хедере — те же глобальные настройки, что доступны
+  // из шестерёнки shared/app-header.js на подпрограммах.
+  const btnGlobalSettings = document.getElementById('btn-global-settings');
+  if (btnGlobalSettings) btnGlobalSettings.addEventListener('click', openSettingsModal);
   const settingsSave = document.getElementById('settings-save');
   if (settingsSave) settingsSave.addEventListener('click', saveSettingsModal);
   const settingsReset = document.getElementById('settings-reset');
