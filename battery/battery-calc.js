@@ -8,6 +8,11 @@
 import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId } from './battery-catalog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
 import { calcAutonomy, calcRequiredBlocks } from './battery-discharge.js';
+import * as Report from '../shared/report/index.js';
+import * as B      from '../shared/report/blocks.js';
+
+// Последнее состояние расчёта АКБ для экспорта отчёта
+let lastBatteryCalc = null;
 import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
 import { KEHUA_S3_BATTERIES } from '../shared/kehua-s3-data.js';
 
@@ -782,6 +787,7 @@ function doCalc() {
   const mode = get('calc-mode').value;
   const targetMin = Number(get('calc-target').value) || 10;
   const capacityAh = Number(get('calc-capAh').value) || 100;
+  const params = { battery, chemistry, loadKw, dcVoltage, strings, endV, invEff, mode, targetMin, capacityAh };
 
   // Блоков в цепочке определяем из dcVoltage / blockVoltage
   const blockV = battery ? battery.blockVoltage : (Number(get('calc-blockv').value) || 12);
