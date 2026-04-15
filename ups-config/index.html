@@ -7,8 +7,6 @@
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="ups-config.css">
-  <!-- Firebase Auth (опционально). Если firebase-config.js пуст или SDK
-       не загрузился — shared/auth.js работает в локальном режиме. -->
   <script src="../firebase-config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
@@ -28,34 +26,35 @@
     <div class="page-intro">
       <h2>Конфигуратор ИБП</h2>
       <p class="muted">
-        Подбор конфигурации ИБП по нагрузке: тип (моноблок / модульный),
-        резервирование N+X, параметры входа и батарейной цепи. Результат
-        можно применить к любому узлу ИБП в главной схеме.
+        Справочник моделей ИБП и подбор по параметрам. Данные хранятся
+        per-user в localStorage и доступны в инспекторе ИБП на главной
+        схеме через общий <code>shared/ups-picker.js</code>.
       </p>
     </div>
 
-    <section class="stub-card">
-      <h3>⚙ В разработке</h3>
-      <p>
-        Подпрограмма на этапе скелета. Инфраструктура уже работает:
-      </p>
-      <ul>
-        <li><code>shared/auth.js</code> — Firebase Auth (инициализирован)</li>
-        <li><code>shared/styles/base.css</code> — дизайн-токены и кнопки</li>
-        <li><code>shared/app-header.css</code> / <code>app-header.js</code> — единый хедер</li>
-        <li><code>shared/ups-picker.js</code> — API для чтения параметров ИБП с узла</li>
-      </ul>
-      <p>
-        Будущее наполнение: каскадный пикер моделей ИБП (Производитель → Серия
-        → Модель) + применение к узлу, расчёт резервирования, предпросмотр
-        структурной схемы.
-      </p>
-      <div id="ups-picker-demo" style="margin-top:16px"></div>
-      <div style="margin-top:18px">
-        <button id="btn-back" class="btn-sm">← Вернуться в хаб</button>
+    <section class="panel">
+      <div class="panel-head">
+        <h3>Справочник моделей ИБП</h3>
+        <div style="display:flex;gap:8px">
+          <button id="btn-add-manual" class="btn-sm">+ Добавить вручную</button>
+          <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить</button>
+        </div>
       </div>
+
+      <div id="ups-cascade-mount" style="margin-bottom:10px"></div>
+
+      <div id="catalog-list"></div>
+    </section>
+
+    <section class="panel" style="margin-top:20px">
+      <div class="panel-head">
+        <h3>Выбранная модель</h3>
+      </div>
+      <div id="selected-ups-details" class="empty">Выберите модель в каскаде выше.</div>
     </section>
   </main>
+
+  <div id="flash" class="flash"></div>
 
   <script type="module" src="ups-config.js"></script>
 </body>
