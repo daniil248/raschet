@@ -1137,11 +1137,14 @@ function recalc() {
       }
     }
 
-    // Количество параллельных проводников зависит ТОЛЬКО от downstream-нагрузки,
-    // а не от канала. Групповой потребитель (count > 1) требует count параллельных
-    // кабельных пар — это физика нагрузки, а не прокладки.
+    // Количество параллельных проводников зависит от типа группы:
+    //  - параллельная (count > 1, !serialMode) — каждый прибор по своей кабельной
+    //    паре от общего автомата; conductorsInParallel = count
+    //  - последовательная (serialMode) — ОДИН кабель, один автомат, ток суммарный;
+    //    conductorsInParallel = 1
+    //  - одиночный потребитель — 1 проводник
     let conductorsInParallel = 1;
-    if (toN.type === 'consumer' && (Number(toN.count) || 1) > 1) {
+    if (toN.type === 'consumer' && (Number(toN.count) || 1) > 1 && !toN.serialMode) {
       conductorsInParallel = Number(toN.count) || 1;
     }
 

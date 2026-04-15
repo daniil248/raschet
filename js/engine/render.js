@@ -1055,7 +1055,10 @@ export function renderConns() {
         const isAutoParallel = !!c._cableAutoParallel;
         const inner = `${cores}×${c._cableSize} мм²`;
         const cableSpec = (isAutoParallel && parallel > 1) ? `${parallel}×(${inner})` : inner;
-        const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1)
+        // «N шт.» — показываем ТОЛЬКО для параллельной группы (несколько приборов
+        // на отдельных кабельных линиях). Для serialMode это один кабель — суффикс
+        // не нужен и был бы визуально обманчив.
+        const groupCount = (toN.type === 'consumer' && (toN.count || 1) > 1 && !toN.serialMode)
           ? Number(toN.count) : 0;
 
         if (isAutoParallel && parallel > 1) {
