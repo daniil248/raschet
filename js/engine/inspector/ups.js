@@ -696,22 +696,51 @@ function _upsStructSvg(n, flows) {
   parts.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fafbfc"/>`);
 
   // === Maintenance bypass (верхняя обходная линия) ===
-  if (n.hasBypassBreaker !== false) {
+  // Рисуем только если QF4 физически присутствует (hasBypassBreaker === true).
+  const hasQF4 = n.hasBypassBreaker !== false;
+  if (hasQF4) {
     const maintCol = qf4on ? colBypass : colIdle;
     const xQF4 = (xQF1 + xOutBus) / 2;
-    parts.push(`<text x="${xQF4}" y="${yMaint - 10}" text-anchor="middle" font-size="11" fill="#546e7a">Maintenance bypass</text>`);
+    parts.push(`<text x="${xQF4}" y="${yMaint - 14}" text-anchor="middle" font-size="11" fill="#546e7a">Maintenance bypass</text>`);
     parts.push(`<line x1="${xQF1 + 22}" y1="${yBypass}" x2="${xQF1 + 22}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
     parts.push(`<line x1="${xQF1 + 22}" y1="${yMaint}" x2="${xQF4 - 20}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
-    parts.push(_svgBreaker(xQF4, yMaint, 'QF4', maintCol, true));
+    parts.push(_svgBreaker(xQF4, yMaint, 'QF4', colBypass, qf4on, true));
     parts.push(`<line x1="${xQF4 + 20}" y1="${yMaint}" x2="${xOutBus}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
+    if (n.bypassBreakerIn) {
+      parts.push(`<text x="${xQF4 + 22}" y="${yMaint - 6}" font-size="9" fill="#777">${n.bypassBreakerIn}A</text>`);
+    }
   }
 
   // === Bypass input ===
-  parts.push(`<text x="${xLeftLabel + 10}" y="${yBypass - 8}" font-size="11" fill="#546e7a">Bypass input</text>`);
-  parts.push(`<circle cx="${xInputTerm}" cy="${yBypass}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
-  parts.push(`<line x1="${xInputTerm + 5}" y1="${yBypass}" x2="${xQF1 - 20}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
-  parts.push(_svgBreaker(xQF1, yBypass, 'QF2', bypassCableCol, n.hasInputBypassBreaker !== false));
-  parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+  // В режиме 'separate' — отдельный кабель и терминал «Bypass input».
+  // В режиме 'jumper'   — перемычка от шины mains (сверху), без отдельного входа.
+  const hasQF2 = n.hasInputBypassBreaker !== false;
+  if (bypassSeparate) {
+    parts.push(`<text x="${xLeftLabel + 10}" y="${yBypass - 8}" font-size="11" fill="#546e7a">Bypass input</text>`);
+    parts.push(`<circle cx="${xInputTerm}" cy="${yBypass}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
+    parts.push(`<line x1="${xInputTerm + 5}" y1="${yBypass}" x2="${hasQF2 ? xQF1 - 20 : 460}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+    if (hasQF2) {
+      parts.push(_svgBreaker(xQF1, yBypass, 'QF2', colBypass, qf2on, true));
+      if (n.inputBypassBreakerIn) parts.push(`<text x="${xQF1 + 22}" y="${yBypass - 6}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
+      parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+    }
+  } else {
+    // Jumper: перемычка от mains-линии до байпасной ветки. Тянем вертикальную
+    // линию от mains-линии (yMains) вверх к yBypass в точке сразу после QF1,
+    // затем горизонталь к байпасному автомату / bypass module.
+    const jumperX = xQF1 + 35;
+    parts.push(`<text x="${jumperX + 8}" y="${yBypass - 8}" font-size="10" fill="#888">перемычка от Mains</text>`);
+    parts.push(`<line x1="${jumperX}" y1="${yMains}" x2="${jumperX}" y2="${yBypass}" stroke="${mainsLineCol}" stroke-width="2"/>`);
+    parts.push(`<circle cx="${jumperX}" cy="${yMains}" r="3" fill="${mainsLineCol}"/>`);
+    if (hasQF2) {
+      parts.push(_svgBreaker(jumperX + 40, yBypass, 'QF2', colBypass, qf2on, true));
+      if (n.inputBypassBreakerIn) parts.push(`<text x="${jumperX + 62}" y="${yBypass - 6}" font-size="9" fill="#777">${n.inputBypassBreakerIn}A</text>`);
+      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="${jumperX + 20}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+      parts.push(`<line x1="${jumperX + 60}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+    } else {
+      parts.push(`<line x1="${jumperX}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+    }
+  }
   // Bypass module: пунктирная рамка с SCR-тиристором внутри
   const bmX = 460, bmW = 200, bmY = yBypass - 28, bmH = 56;
   parts.push(`<rect x="${bmX}" y="${bmY}" width="${bmW}" height="${bmH}" fill="#fff" stroke="#9aa3ad" stroke-width="1" stroke-dasharray="3 3" rx="4"/>`);
@@ -727,20 +756,47 @@ function _upsStructSvg(n, flows) {
   if (inBypassA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yBypass - 8}" font-size="10" fill="${colBypass}" font-weight="600">${fmtA(inBypassA)}</text>`);
 
   // === Mains input ===
+  const hasQF1 = n.hasInputBreaker !== false;
   parts.push(`<text x="${xLeftLabel + 10}" y="${yMains - 8}" font-size="11" fill="#546e7a">Mains input${bypassSeparate ? ' (осн.)' : ''}</text>`);
   parts.push(`<circle cx="${xInputTerm}" cy="${yMains}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
-  parts.push(`<line x1="${xInputTerm + 5}" y1="${yMains}" x2="${xQF1 - 20}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
-  parts.push(_svgBreaker(xQF1, yMains, 'QF1', mainsLineCol, n.hasInputBreaker !== false));
-  parts.push(`<line x1="${xQF1 + 20}" y1="${yMains}" x2="${xMainsBus}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
-  if (inA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yMains - 8}" font-size="10" fill="${colActive}" font-weight="600">${fmtA(inA)}</text>`);
+  parts.push(`<line x1="${xInputTerm + 5}" y1="${yMains}" x2="${hasQF1 ? xQF1 - 20 : xMainsBus}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
+  if (hasQF1) {
+    parts.push(_svgBreaker(xQF1, yMains, 'QF1', colActive, qf1on, true));
+    if (n.inputBreakerIn) parts.push(`<text x="${xQF1 + 22}" y="${yMains - 6}" font-size="9" fill="#777">${n.inputBreakerIn}A</text>`);
+    parts.push(`<line x1="${xQF1 + 20}" y1="${yMains}" x2="${xMainsBus}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
+  }
+  if (inA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yMains + 18}" font-size="10" fill="${colActive}" font-weight="600">${fmtA(inA)}</text>`);
 
-  // === Battery input ===
-  parts.push(`<text x="${xLeftLabel + 10}" y="${yBatt - 8}" font-size="11" fill="#546e7a">Battery input</text>`);
-  parts.push(`<circle cx="${xInputTerm}" cy="${yBatt}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
-  parts.push(`<line x1="${xInputTerm + 5}" y1="${yBatt}" x2="${xQF1 - 20}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
-  parts.push(_svgBreaker(xQF1, yBatt, 'QB', battCableCol, n.hasBatteryBreaker !== false));
-  parts.push(`<line x1="${xQF1 + 20}" y1="${yBatt}" x2="${xBattBus}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
-  if (battA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yBatt - 8}" font-size="10" fill="${colBatt}" font-weight="600">${fmtA(battA)}</text>`);
+  // === Battery input + символ АКБ ===
+  // Рисуем реальный условный символ батареи (несколько пар пластин +/−)
+  // слева от QB. Под схемой — лейбл «АКБ».
+  const hasQB = n.hasBatteryBreaker !== false;
+  {
+    // Батарея: 3 пары пластин (+ длинная, − короткая), ширина ~40 px
+    const battAnchorX = 12;
+    const pitch = 10;
+    for (let k = 0; k < 3; k++) {
+      const px = battAnchorX + k * pitch;
+      // + (длинная)
+      parts.push(`<line x1="${px}" y1="${yBatt - 12}" x2="${px}" y2="${yBatt + 12}" stroke="#263238" stroke-width="3"/>`);
+      // − (короткая)
+      parts.push(`<line x1="${px + 4}" y1="${yBatt - 7}" x2="${px + 4}" y2="${yBatt + 7}" stroke="#263238" stroke-width="2"/>`);
+    }
+    parts.push(`<text x="${battAnchorX + 13}" y="${yBatt - 16}" text-anchor="middle" font-size="11" fill="#546e7a" font-weight="600">АКБ</text>`);
+    // Подпись напряжения блока DC
+    const blockV = (Number(n.batteryCellCount) || 0) * (Number(n.batteryCellVoltage) || 0);
+    if (blockV > 0) parts.push(`<text x="${battAnchorX + 13}" y="${yBatt + 24}" text-anchor="middle" font-size="9" fill="#777">${fmt(blockV)} В DC</text>`);
+    // Провод от АКБ к QB (или к xBattBus если QB нет). Делаем id для анимации.
+    const battWireX1 = battAnchorX + 28; // после правой пластины
+    const battWireX2 = hasQB ? xQF1 - 20 : xBattBus;
+    parts.push(`<line id="ups-batt-anim-a" x1="${battWireX1}" y1="${yBatt}" x2="${battWireX2}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
+    if (hasQB) {
+      parts.push(_svgBreaker(xQF1, yBatt, 'QB', colBatt, qbon, true));
+      if (n.batteryBreakerIn) parts.push(`<text x="${xQF1 + 22}" y="${yBatt - 6}" font-size="9" fill="#777">${n.batteryBreakerIn}A</text>`);
+      parts.push(`<line id="ups-batt-anim-b" x1="${xQF1 + 20}" y1="${yBatt}" x2="${xBattBus}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
+    }
+  }
+  if (battA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yBatt + 18}" font-size="10" fill="${colBatt}" font-weight="600">${fmtA(battA)}</text>`);
 
   // Предварительные координаты середины REC/INV/DC-DC у каждого модуля
   const recRowY = (mY) => mY + 35;
@@ -822,34 +878,124 @@ function _upsStructSvg(n, flows) {
     parts.push(`<line x1="${invX + invW}" y1="${invY + invH / 2}" x2="${xOutBus}" y2="${invY + invH / 2}" stroke="${modInvCol}" stroke-width="2.5"/>`);
     parts.push(`<circle cx="${xOutBus}" cy="${invY + invH / 2}" r="2.5" fill="${modInvCol === colIdle ? colIdle : outCol}"/>`);
 
-    // "⋮" между модулем 2 и последним при drawDots
-    if (drawDots && i === 1) {
+    // "⋮" МЕЖДУ первым и последним модулем (визуально обозначает пропуск)
+    if (drawDots && i === 0) {
       const dotY = mY + modH + modGap / 2 + 4;
-      parts.push(`<text x="${modX + modW / 2}" y="${dotY}" text-anchor="middle" font-size="18" fill="#888">⋮</text>`);
+      parts.push(`<text x="${modX + modW / 2}" y="${dotY}" text-anchor="middle" font-size="20" fill="#888">⋮</text>`);
     }
   }
 
   // === Output switch QF3 + клемма ===
+  const hasQF3 = n.hasOutputBreaker !== false;
   const qf3Y = modulePositions[0] ? (modulePositions[0] + 40) : 210; // уровень первого инвертора
-  parts.push(`<line x1="${xOutBus}" y1="${qf3Y}" x2="${xQF3 - 20}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
-  parts.push(_svgBreaker(xQF3, qf3Y, 'QF3', qf3on ? outCol : colIdle, n.hasOutputBreaker !== false));
-  parts.push(`<line x1="${xQF3 + 20}" y1="${qf3Y}" x2="${xOutTerm - 5}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
+  if (hasQF3) {
+    parts.push(`<line x1="${xOutBus}" y1="${qf3Y}" x2="${xQF3 - 20}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
+    parts.push(_svgBreaker(xQF3, qf3Y, 'QF3', colActive, qf3on, true));
+    if (n.outputBreakerIn) parts.push(`<text x="${xQF3 + 22}" y="${qf3Y - 6}" font-size="9" fill="#777">${n.outputBreakerIn}A</text>`);
+    parts.push(`<line x1="${xQF3 + 20}" y1="${qf3Y}" x2="${xOutTerm - 5}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
+  } else {
+    parts.push(`<line x1="${xOutBus}" y1="${qf3Y}" x2="${xOutTerm - 5}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
+  }
   parts.push(`<circle cx="${xOutTerm}" cy="${qf3Y}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
   parts.push(`<text x="${xOutTerm + 8}" y="${qf3Y + 4}" font-size="11" fill="#546e7a">Output</text>`);
-  if (outA > 0) parts.push(`<text x="${xQF3 - 36}" y="${qf3Y - 8}" font-size="10" fill="${outCol}" font-weight="600">${fmtA(outA)}</text>`);
+  if (outA > 0) parts.push(`<text x="${xQF3 - 36}" y="${qf3Y + 18}" font-size="10" fill="${outCol}" font-weight="600">${fmtA(outA)}</text>`);
+
+  // === Анимация тока заряда/разряда АКБ ===
+  // Charging: ток течёт ИЗ mains → DC/DC → АКБ (направление вправо→влево).
+  // Discharging: ток течёт ИЗ АКБ → DC/DC → INV → Output (направление влево→вправо).
+  const isCharging = mainsOn && qbon && (Number(n.batteryChargePct) || 0) < 100 && (Number(n.chargeA) || 0) > 0;
+  const isDischarging = onBattery && qbon;
+  if (isCharging || isDischarging) {
+    // Скорость зависит от величины тока: charging → chargeA, discharging → battA
+    const I = isCharging ? (Number(n.chargeA) || 1) : Math.max(1, battA || 1);
+    const dur = Math.max(0.4, Math.min(3.5, 20 / I));
+    // Направление: charging — dashoffset возрастает (dashes едут справа налево),
+    //               discharging — dashoffset убывает (dashes едут слева направо).
+    const from = isCharging ? '0' : '0';
+    const to   = isCharging ? '20' : '-20';
+    // Добавляем общий style для всех элементов батарейной цепи
+    const animColor = isCharging ? colBatt : colBatt;
+    // Применяем stroke-dasharray к видимым сегментам батарейной цепи.
+    // Переопределяем stroke тех line-элементов, которые мы пометили id'ами
+    // (ups-batt-anim-a/b), и рисуем поверх них тонкую «бегущую» штриховую линию.
+    const animLines = [];
+    // 1) АКБ → QB (или до шины если QB нет)
+    // 2) QB → xBattBus (если QB есть)
+    // 3) Вертикальная шина xBattBus
+    // 4) Горизонтали xBattBus → ddX у каждого видимого модуля
+    const battAnchorX = 12 + 2 * 10 + 28; // правая пластина + отступ = battWireX1 из блока выше
+    const battWireEndA = hasQB ? xQF1 - 20 : xBattBus;
+    animLines.push({ x1: battAnchorX, y1: yBatt, x2: battWireEndA, y2: yBatt });
+    if (hasQB) animLines.push({ x1: xQF1 + 20, y1: yBatt, x2: xBattBus, y2: yBatt });
+    // Вертикаль шины (от yBatt вверх до самого верхнего модуля DC/DC)
+    const ddYs = modulePositions.map(ddRowY);
+    if (ddYs.length) {
+      const topY = Math.min(yBatt, ...ddYs);
+      const botY = Math.max(yBatt, ...ddYs);
+      animLines.push({ x1: xBattBus, y1: topY, x2: xBattBus, y2: botY });
+    }
+    // Горизонтали к каждому модулю (только для активных модулей)
+    for (let i = 0; i < showCount; i++) {
+      const mY = modulePositions[i];
+      const realIdx = visibleModuleIndices[i];
+      const modActive = isModular
+        ? (Array.isArray(n.modulesActive) ? n.modulesActive[realIdx] !== false : true)
+        : true;
+      if (!modActive) continue;
+      const ddX = modX + modW / 2 - 32;
+      animLines.push({ x1: xBattBus, y1: ddRowY(mY) + 19, x2: ddX, y2: ddRowY(mY) + 19 });
+    }
+    for (const ln of animLines) {
+      parts.push(`<line x1="${ln.x1}" y1="${ln.y1}" x2="${ln.x2}" y2="${ln.y2}" stroke="${animColor}" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round" opacity="0.9">
+        <animate attributeName="stroke-dashoffset" from="${from}" to="${to}" dur="${dur}s" repeatCount="indefinite"/>
+      </line>`);
+    }
+  }
 
   return { svg: parts.join(''), width: W, height: H };
 }
 
-function _svgBreaker(cx, cy, label, color, present /*, orient = 'right' */) {
+// Горизонтальный автомат в стиле однолинейок щитов: верхний контакт (круг),
+// механизм-крестик, контакт (замкнут — прямая; разомкнут — отклонён на 30°
+// вверх-влево от правой точки оси), ось вращения. Ширина ≈ 40 px.
+// Когда present=false — штрих-пунктирная линия с лейблом (место зарезервировано).
+function _svgBreaker(cx, cy, label, color, on, present = true) {
   if (!present) {
-    return `<line x1="${cx - 20}" y1="${cy}" x2="${cx + 20}" y2="${cy}" stroke="${color}" stroke-width="2" stroke-dasharray="2 2"/>
-            <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="9" fill="#999">${label}</text>`;
+    return `<line x1="${cx - 20}" y1="${cy}" x2="${cx + 20}" y2="${cy}" stroke="#ccc" stroke-width="2" stroke-dasharray="2 2"/>
+            <text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="9" fill="#999">${label}</text>`;
   }
-  return `<line x1="${cx - 20}" y1="${cy}" x2="${cx - 8}" y2="${cy}" stroke="${color}" stroke-width="3"/>
-          <circle cx="${cx}" cy="${cy}" r="4" fill="#fff" stroke="${color}" stroke-width="2"/>
-          <line x1="${cx + 8}" y1="${cy}" x2="${cx + 20}" y2="${cy}" stroke="${color}" stroke-width="3"/>
-          <text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="10" fill="#546e7a">${label}</text>`;
+  const col = on ? color : '#ff9800';
+  const wireCol = on ? color : '#bbb';
+  // Геометрия (горизонталь)
+  const leftTerm = cx - 20;          // левый неподвижный контакт
+  const crossX = cx - 7;             // крестик механизма
+  const pivotX = cx + 13;            // ось вращения (правая сторона)
+  const rightTerm = cx + 20;         // правый выход
+  let s = '';
+  // Левый провод до крестика
+  s += `<line x1="${leftTerm}" y1="${cy}" x2="${crossX - 4}" y2="${cy}" stroke="${wireCol}" stroke-width="2"/>`;
+  // Крестик механизма
+  s += `<line x1="${crossX - 4}" y1="${cy - 4}" x2="${crossX + 4}" y2="${cy + 4}" stroke="${col}" stroke-width="1.5"/>`;
+  s += `<line x1="${crossX + 4}" y1="${cy - 4}" x2="${crossX - 4}" y2="${cy + 4}" stroke="${col}" stroke-width="1.5"/>`;
+  if (on) {
+    // Замкнут: контакт от крестика к оси — горизонталь
+    s += `<line x1="${crossX + 4}" y1="${cy}" x2="${pivotX}" y2="${cy}" stroke="${col}" stroke-width="2.5"/>`;
+  } else {
+    // Разомкнут: от оси вращения (справа) тяга уходит вверх-влево ~30°
+    const contactLen = pivotX - (crossX + 4);
+    const ang = 30 * Math.PI / 180;
+    const tipX = pivotX - Math.cos(ang) * contactLen;
+    const tipY = cy - Math.sin(ang) * contactLen;
+    s += `<line x1="${pivotX}" y1="${cy}" x2="${tipX}" y2="${tipY}" stroke="${col}" stroke-width="2.5"/>`;
+  }
+  // Правый провод от оси
+  s += `<line x1="${pivotX}" y1="${cy}" x2="${rightTerm}" y2="${cy}" stroke="${wireCol}" stroke-width="2"/>`;
+  // Точки: левая клемма и ось вращения
+  s += `<circle cx="${leftTerm}" cy="${cy}" r="2" fill="${wireCol}"/>`;
+  s += `<circle cx="${pivotX}" cy="${cy}" r="2.5" fill="${col}"/>`;
+  // Лейбл под крестиком
+  s += `<text x="${crossX}" y="${cy - 10}" text-anchor="middle" font-size="10" fill="#546e7a">${label}</text>`;
+  return s;
 }
 
 // ================= Статус-блок ИБП (в инспекторе) =================
