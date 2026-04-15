@@ -12,33 +12,7 @@ body {
   min-height: 100vh;
 }
 
-/* Header */
-header {
-  flex: none;
-  height: 56px;
-  background: #fff;
-  border-bottom: 1px solid #e0e3ea;
-  display: flex;
-  align-items: center;
-  padding: 0 24px;
-  gap: 12px;
-}
-.btn-back {
-  width: 36px;
-  height: 36px;
-  border: 1px solid #e0e3ea;
-  background: #fafbfc;
-  border-radius: 6px;
-  color: #5a6271;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  text-decoration: none;
-}
-.btn-back:hover { background: #eef1f5; }
-.hdr-title { font-size: 18px; font-weight: 700; color: #1f2430; }
-.hdr-sub { font-size: 13px; color: #9aa3b5; margin-left: 8px; }
+/* Header вынесен в shared/app-header.css — общий для всех подпрограмм */
 
 /* Main layout */
 main {

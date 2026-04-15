@@ -89,7 +89,7 @@ function init() {
 // ============ Switch cable method ============
 function switchMethod(id) {
   currentMethod = getMethod(id);
-  els.methodLabel.textContent = currentMethod.label;
+  if (els.methodLabel) els.methodLabel.textContent = currentMethod.label;
   fillSelect(els.material, currentMethod.materials);
   fillSelect(els.insulation, currentMethod.insulations);
   fillSelect(els.cableType, currentMethod.cableTypes);

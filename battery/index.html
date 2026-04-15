@@ -4,18 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Raschet · Расчёт АКБ</title>
+  <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="battery-calc.css">
   <!-- SheetJS (xlsx.full.min.js) для парсинга XLSX в браузере -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-  <header>
-    <div style="display:flex;align-items:center">
-      <span class="hdr-title">Raschet</span>
-      <span class="hdr-sub">Расчёт АКБ</span>
-    </div>
-    <a class="hdr-home" href="../hub.html">← К программам</a>
-  </header>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Расчёт АКБ', home: '../hub.html' });
+  </script>
 
   <main>
     <div class="tabs">

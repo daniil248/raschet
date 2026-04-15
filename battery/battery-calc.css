@@ -11,23 +11,7 @@ body {
   flex-direction: column;
   min-height: 100vh;
 }
-header {
-  flex: none;
-  height: 56px;
-  background: #fff;
-  border-bottom: 1px solid #e0e3ea;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-}
-.hdr-title { font-size: 20px; font-weight: 700; color: #1f2430; }
-.hdr-sub { font-size: 12px; color: #9aa3b5; margin-left: 10px; }
-.hdr-home {
-  font-size: 13px; color: #546e7a; text-decoration: none;
-  padding: 6px 12px; border-radius: 6px; border: 1px solid #d0d0d0;
-}
-.hdr-home:hover { background: #f0f0f0; }
+/* Header вынесен в shared/app-header.css — общий для всех подпрограмм */
 
 main {
   flex: 1;

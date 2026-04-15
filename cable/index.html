@@ -4,16 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Расчёт кабельной линии — Raschet</title>
+  <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="cable-calc.css">
 </head>
 <body>
-  <header>
-    <a class="btn-back" href="../hub.html" title="К главной">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
-    </a>
-    <span class="hdr-title">Расчёт кабельной линии</span>
-    <span class="hdr-sub" id="method-label">IEC 60364-5-52</span>
-  </header>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Расчёт кабельной линии', home: '../hub.html' });
+  </script>
 
   <main>
     <div class="panel-input">
