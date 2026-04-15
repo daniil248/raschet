@@ -238,6 +238,13 @@ function buildPageShell(tpl, scale, mode, isFirst, pageNum, totalPages) {
 }
 
 function positionLogo(img, tpl, scale) {
+  // Абсолютные координаты из canvas-редактора имеют приоритет над legacy
+  // position ('header-left' и т.п.), которая оставлена для совместимости.
+  if (typeof tpl.logo.x === 'number' && typeof tpl.logo.y === 'number') {
+    img.style.left = (tpl.logo.x * scale) + 'px';
+    img.style.top  = (tpl.logo.y * scale) + 'px';
+    return;
+  }
   const { width, height } = pageSizeMm(tpl.page);
   const m = tpl.page.margins;
   const pos = tpl.logo.position || 'header-left';

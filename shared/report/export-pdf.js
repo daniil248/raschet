@@ -116,11 +116,21 @@ function drawLogo(doc, tpl, isFirst) {
   if (l.onFirstPageOnly && !isFirst) return;
   const m = tpl.page.margins;
   const { width, height } = pageSizeMm(tpl.page);
-  const isHeader = (l.position || 'header-left').startsWith('header');
-  const y = isHeader ? m.top : (height - m.bottom - l.height);
-  let x = m.left;
-  if (l.position.endsWith('center')) x = (width - l.width) / 2;
-  if (l.position.endsWith('right'))  x = width - m.right - l.width;
+
+  // Абсолютные координаты из canvas-редактора имеют приоритет над legacy
+  // position ('header-left' и т.п.), которая оставлена для совместимости.
+  let x, y;
+  if (typeof l.x === 'number' && typeof l.y === 'number') {
+    x = l.x;
+    y = l.y;
+  } else {
+    const pos = l.position || 'header-left';
+    const isHeader = pos.startsWith('header');
+    y = isHeader ? m.top : (height - m.bottom - l.height);
+    x = m.left;
+    if (pos.endsWith('center')) x = (width - l.width) / 2;
+    if (pos.endsWith('right'))  x = width - m.right - l.width;
+  }
   try {
     const fmt = /^data:image\/(png|jpeg|jpg)/i.exec(l.src);
     const type = fmt ? fmt[1].toUpperCase().replace('JPG', 'JPEG') : 'PNG';

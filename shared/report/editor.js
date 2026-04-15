@@ -92,9 +92,10 @@ export function openTemplateEditor(tpl, opts = {}) {
   sidebar.appendChild(tabContent);
 
   const TABS = [
-    { id: 'page',  label: 'Лист' },
-    { id: 'zones', label: 'Зоны' },
-    { id: 'props', label: 'Свойства' },
+    { id: 'page',   label: 'Лист' },
+    { id: 'zones',  label: 'Зоны' },
+    { id: 'styles', label: 'Стили' },
+    { id: 'props',  label: 'Свойства' },
   ];
   const tabButtons = {};
   for (const t of TABS) {
@@ -167,9 +168,10 @@ export function openTemplateEditor(tpl, opts = {}) {
   // ——— перестройка формы (только при смене вкладки/выделения) ———
   function rebuildTab() {
     tabContent.innerHTML = '';
-    if (state.activeTab === 'page')  buildPageTab(tabContent);
-    if (state.activeTab === 'zones') buildZonesTab(tabContent);
-    if (state.activeTab === 'props') buildPropsTab(tabContent);
+    if (state.activeTab === 'page')   buildPageTab(tabContent);
+    if (state.activeTab === 'zones')  buildZonesTab(tabContent);
+    if (state.activeTab === 'styles') buildStylesTab(tabContent);
+    if (state.activeTab === 'props')  buildPropsTab(tabContent);
   }
 
   // ——————————————————————————————————————————————————————
@@ -358,6 +360,123 @@ export function openTemplateEditor(tpl, opts = {}) {
       redrawCanvas();
     });
     inp.click();
+  }
+
+  // ——————————————————————————————————————————————————————
+  // Вкладка «Стили» — настройка типографики
+  // ——————————————————————————————————————————————————————
+  function buildStylesTab(parent) {
+    const STYLES = [
+      ['h1',      'Заголовок 1'],
+      ['h2',      'Заголовок 2'],
+      ['h3',      'Заголовок 3'],
+      ['body',    'Основной текст'],
+      ['caption', 'Подпись'],
+      ['list',    'Элемент списка'],
+    ];
+    STYLES.forEach(([key, label]) => buildStyleCard(parent, key, label));
+
+    // Стиль таблицы отдельно — у него другие поля
+    const card = el('div', 'rpt-style-card');
+    const h = document.createElement('h4');
+    h.textContent = 'Таблица';
+    card.appendChild(h);
+
+    const row1 = el('div', 'rpt-row');
+    const f1 = field(row1, 'Шрифт');
+    const sf = document.createElement('select');
+    FONT_FAMILIES.forEach(f => {
+      const o = document.createElement('option'); o.value = f; o.textContent = f; sf.appendChild(o);
+    });
+    sf.value = working.styles.table.font || 'Helvetica';
+    sf.addEventListener('change', () => {
+      working.styles.table.font = sf.value; redrawCanvas();
+    });
+    f1.appendChild(sf);
+    const f2 = field(row1, 'Размер, pt');
+    f2.appendChild(numInput(working.styles.table.size, v => {
+      working.styles.table.size = v; redrawCanvas();
+    }, { step: 0.5 }));
+    card.appendChild(row1);
+
+    const row2 = el('div', 'rpt-row');
+    const fC = field(row2, 'Цвет');
+    fC.appendChild(colorInput(working.styles.table.color || '#222222', v => {
+      working.styles.table.color = v; redrawCanvas();
+    }));
+    const fB = field(row2, 'Фон шапки');
+    fB.appendChild(colorInput(working.styles.table.headBg, v => {
+      working.styles.table.headBg = v; redrawCanvas();
+    }));
+    const fBr = field(row2, 'Границы');
+    fBr.appendChild(colorInput(working.styles.table.borderColor, v => {
+      working.styles.table.borderColor = v; redrawCanvas();
+    }));
+    card.appendChild(row2);
+
+    const row3 = el('div', 'rpt-row');
+    const fP = field(row3, 'Поля ячеек, мм');
+    fP.appendChild(numInput(working.styles.table.cellPadding || 1.8, v => {
+      working.styles.table.cellPadding = v; redrawCanvas();
+    }, { step: 0.2 }));
+    const fHB = field(row3, '');
+    fHB.appendChild(checkbox('Жирная шапка', !!working.styles.table.headBold, v => {
+      working.styles.table.headBold = v; redrawCanvas();
+    }));
+    card.appendChild(row3);
+
+    parent.appendChild(card);
+  }
+
+  function buildStyleCard(parent, key, label) {
+    const s = working.styles[key];
+    const card = el('div', 'rpt-style-card');
+    const h = document.createElement('h4');
+    h.textContent = label;
+    card.appendChild(h);
+
+    const rFont = el('div', 'rpt-row');
+    const fF = field(rFont, 'Шрифт');
+    const sf = document.createElement('select');
+    FONT_FAMILIES.forEach(f => {
+      const o = document.createElement('option'); o.value = f; o.textContent = f; sf.appendChild(o);
+    });
+    sf.value = s.font;
+    sf.addEventListener('change', () => {
+      s.font = sf.value; redrawCanvas();
+    });
+    fF.appendChild(sf);
+
+    const fSz = field(rFont, 'Размер, pt');
+    fSz.appendChild(numInput(s.size, v => {
+      s.size = v; redrawCanvas();
+    }, { step: 0.5 }));
+
+    const fCl = field(rFont, 'Цвет');
+    fCl.appendChild(colorInput(s.color, v => {
+      s.color = v; redrawCanvas();
+    }));
+    card.appendChild(rFont);
+
+    const rToggles = el('div', 'rpt-row');
+    const fB = field(rToggles, '');
+    fB.appendChild(checkbox('Жирный', s.bold, v => { s.bold = v; redrawCanvas(); }));
+    const fI = field(rToggles, '');
+    fI.appendChild(checkbox('Курсив', s.italic, v => { s.italic = v; redrawCanvas(); }));
+    card.appendChild(rToggles);
+
+    const rSpace = el('div', 'rpt-row');
+    const fBf = field(rSpace, 'Отступ до, мм');
+    fBf.appendChild(numInput(s.spaceBefore || 0, v => {
+      s.spaceBefore = v; redrawCanvas();
+    }, { step: 0.5 }));
+    const fAf = field(rSpace, 'Отступ после, мм');
+    fAf.appendChild(numInput(s.spaceAfter || 0, v => {
+      s.spaceAfter = v; redrawCanvas();
+    }, { step: 0.5 }));
+    card.appendChild(rSpace);
+
+    parent.appendChild(card);
   }
 
   // ——————————————————————————————————————————————————————
@@ -765,6 +884,26 @@ function textInput(value, onChange) {
   i.value = value || '';
   i.addEventListener('input', () => onChange(i.value));
   return i;
+}
+function colorInput(value, onChange) {
+  const i = document.createElement('input');
+  i.type = 'color';
+  i.value = value || '#222222';
+  i.addEventListener('input', () => onChange(i.value));
+  return i;
+}
+function checkbox(label, value, onChange) {
+  const l = document.createElement('label');
+  l.className = 'chk';
+  const i = document.createElement('input');
+  i.type = 'checkbox';
+  i.checked = !!value;
+  i.addEventListener('change', () => onChange(i.checked));
+  l.appendChild(i);
+  const s = document.createElement('span');
+  s.textContent = label;
+  l.appendChild(s);
+  return l;
 }
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
