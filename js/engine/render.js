@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { svg, layerZones, layerConns, layerNodes, statsEl, modesListEl, isOnCurrentPage } from './state.js';
+import { svg, layerZones, layerConns, layerNodes, statsEl, modesListEl, isOnCurrentPage, sanitizeView } from './state.js';
 import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
@@ -14,14 +14,23 @@ export function bindRenderDeps({ renderInspector }) { _renderInspector = renderI
 
 export function updateViewBox() {
   const W = svg.clientWidth, H = svg.clientHeight;
-  const vw = W / state.view.zoom;
-  const vh = H / state.view.zoom;
-  svg.setAttribute('viewBox', `${state.view.x} ${state.view.y} ${vw} ${vh}`);
+  // Дефенсивно санитируем state.view: если за время жизни сессии
+  // что-то сделало zoom/x/y невалидными (NaN / Infinity / undefined),
+  // нормализуем тут чтобы не ломать SVG атрибуты.
+  const safe = sanitizeView(state.view);
+  if (state.view.x !== safe.x || state.view.y !== safe.y || state.view.zoom !== safe.zoom) {
+    state.view.x = safe.x; state.view.y = safe.y; state.view.zoom = safe.zoom;
+  }
+  const vw = W / safe.zoom;
+  const vh = H / safe.zoom;
+  svg.setAttribute('viewBox', `${safe.x} ${safe.y} ${vw} ${vh}`);
   const bg = document.getElementById('bg');
-  bg.setAttribute('x', state.view.x);
-  bg.setAttribute('y', state.view.y);
-  bg.setAttribute('width', vw);
-  bg.setAttribute('height', vh);
+  if (bg) {
+    bg.setAttribute('x', safe.x);
+    bg.setAttribute('y', safe.y);
+    bg.setAttribute('width', vw);
+    bg.setAttribute('height', vh);
+  }
 }
 
 export function el(tag, attrs = {}, children = []) {
@@ -228,6 +237,13 @@ export function render() {
 export function renderNodes() {
   while (layerNodes.firstChild) layerNodes.removeChild(layerNodes.firstChild);
   if (layerZones) while (layerZones.firstChild) layerZones.removeChild(layerZones.firstChild);
+
+  // Санитация x/y всех узлов — если данные повреждены, заменяем на 0.
+  // Предотвращает translate(NaN/Infinity/null) которые ломают SVG.
+  for (const n of state.nodes.values()) {
+    if (!Number.isFinite(n.x)) n.x = 0;
+    if (!Number.isFinite(n.y)) n.y = 0;
+  }
 
   // Зоны рендерим в ОТДЕЛЬНЫЙ слой layerZones — он ниже layerConns,
   // поэтому фон зоны не тонирует связи и подписи.

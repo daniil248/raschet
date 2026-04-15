@@ -35,6 +35,21 @@ export const state = {
   rubberBand: null,    // { sx, sy, ex, ey }
 };
 
+// Валидация view — гарантирует конечные числа и минимальный zoom.
+// Спасает от случаев когда проект был сохранён с повреждённым view
+// (например {}, {x,y} без zoom, или zoom = 0 / NaN / Infinity).
+export function sanitizeView(v) {
+  const src = (v && typeof v === 'object') ? v : {};
+  const x = Number.isFinite(src.x) ? src.x : 0;
+  const y = Number.isFinite(src.y) ? src.y : 0;
+  let zoom = Number(src.zoom);
+  if (!Number.isFinite(zoom) || zoom <= 0) zoom = 1;
+  // Соблюдаем границы зума как в wheel-обработчике
+  if (zoom < 0.2) zoom = 0.2;
+  if (zoom > 4) zoom = 4;
+  return { x, y, zoom };
+}
+
 // ===== Helpers для работы со страницами =====
 export function ensureDefaultPage() {
   if (!state.pages || !state.pages.length) {

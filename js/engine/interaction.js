@@ -1045,6 +1045,12 @@ export function initInteraction() {
   // ---- Зум колесом ----
   svg.addEventListener('wheel', e => {
     e.preventDefault();
+    // Если текущий zoom повреждён (NaN/Infinity/0) — принудительно сбросим
+    if (!Number.isFinite(state.view.zoom) || state.view.zoom <= 0) {
+      state.view.zoom = 1;
+      if (!Number.isFinite(state.view.x)) state.view.x = 0;
+      if (!Number.isFinite(state.view.y)) state.view.y = 0;
+    }
     const before = clientToSvg(e.clientX, e.clientY);
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     const newZoom = Math.max(0.2, Math.min(4, state.view.zoom * factor));

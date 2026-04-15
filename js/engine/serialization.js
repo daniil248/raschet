@@ -1,4 +1,4 @@
-import { state, uid, getIdSeq, setIdSeq, ensureDefaultPage } from './state.js';
+import { state, uid, getIdSeq, setIdSeq, ensureDefaultPage, sanitizeView } from './state.js';
 import { DEFAULTS, GLOBAL, CHANNEL_TYPES } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight } from './geometry.js';
 import { nextFreeTag } from './graph.js';
@@ -63,12 +63,24 @@ export function stripRuntime(obj) {
 export function deserialize(data) {
   state.nodes.clear();
   state.conns.clear();
-  for (const n of (data.nodes || [])) state.nodes.set(n.id, n);
-  for (const c of (data.conns || [])) state.conns.set(c.id, c);
+  for (const n of (data.nodes || [])) {
+    // Санитация координат — если проект сохранён с NaN/Infinity/null,
+    // узел должен всё-равно быть загружаем (иначе весь рендер ломается).
+    if (!Number.isFinite(n.x)) n.x = 0;
+    if (!Number.isFinite(n.y)) n.y = 0;
+    state.nodes.set(n.id, n);
+  }
+  for (const c of (data.conns || [])) {
+    // Санитация waypoints
+    if (Array.isArray(c.waypoints)) {
+      c.waypoints = c.waypoints.filter(wp => wp && Number.isFinite(wp.x) && Number.isFinite(wp.y));
+    }
+    state.conns.set(c.id, c);
+  }
   state.modes = data.modes || [];
   state.activeModeId = data.activeModeId || null;
   setIdSeq(Math.max(data.nextId || 1, 1));
-  state.view = data.view || { x: 0, y: 0, zoom: 1 };
+  state.view = sanitizeView(data.view);
   state.selectedKind = null; state.selectedId = null;
 
   // Загрузка параметров проекта
@@ -91,7 +103,7 @@ export function deserialize(data) {
     state.pages = data.pages.map(p => ({
       id: p.id, name: p.name || p.id, type: p.type || 'independent',
       sourcePageId: p.sourcePageId || null,
-      view: p.view || { x: 0, y: 0, zoom: 1 },
+      view: sanitizeView(p.view),
       sheetNo: p.sheetNo || '',
       title: p.title || '',
       revision: p.revision || '',
@@ -111,9 +123,9 @@ export function deserialize(data) {
       if (!Array.isArray(c.pageIds) || !c.pageIds.length) c.pageIds = [defId];
     }
   }
-  // Применяем view текущей страницы
+  // Применяем view текущей страницы (с санитацией)
   const cur = state.pages.find(p => p.id === state.currentPageId);
-  if (cur && cur.view) state.view = { ...cur.view };
+  if (cur) state.view = sanitizeView(cur.view);
   // Перерисовать вкладки страниц если они уже инициализированы
   if (typeof window !== 'undefined' && typeof window.__raschetRenderPageTabs === 'function') {
     try { window.__raschetRenderPageTabs(); } catch {}
