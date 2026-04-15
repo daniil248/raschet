@@ -202,8 +202,12 @@ export function openUpsParamsModal(n) {
     const upsCatalog = listUpses();
     const upsPickerMount = document.getElementById('up-cat-picker-mount');
     if (upsCatalog.length && upsPickerMount) {
+      // В инспекторе ИБП показываем ТОЛЬКО готовые ИБП (kind==='ups' или
+      // без kind), исключая BOM-заготовки: фреймы, силовые модули,
+      // батарейные шкафы. Их пользователь видит в подпрограмме ups-config/.
+      const upsOnly = upsCatalog.filter(u => !u.kind || u.kind === 'ups');
       mountUpsPicker(upsPickerMount, {
-        list: upsCatalog,
+        list: upsOnly,
         selectedId: n.upsCatalogId || null,
         currentSupplier: n._upsSelSupplier || '',
         currentSeries: n._upsSelSeries || '',
