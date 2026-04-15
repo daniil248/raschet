@@ -10,6 +10,13 @@ export function nodeInputCount(n) {
   }
   if (n.type === 'generator') return n.auxInput ? 1 : 0;
   if (n.type === 'zone') return 0;
+  // ИБП в режиме 'jumper' (байпас подключён перемычкой от основного
+  // ввода) — у ИБП физически только ОДИН кабель; второй порт на
+  // карточке не показывается. В режиме 'separate' — сколько задано
+  // в n.inputs (до 2).
+  if (n.type === 'ups' && n.bypassFeedMode !== 'separate') {
+    return Math.max(0, Math.min(1, n.inputs | 0));
+  }
   return Math.max(0, n.inputs | 0);
 }
 export function nodeOutputCount(n) {
