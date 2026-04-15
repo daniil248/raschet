@@ -1053,7 +1053,7 @@ function _upsStructSvg(n, flows) {
   // === Анимация тока заряда/разряда АКБ ===
   // Charging: ток течёт ИЗ mains → DC/DC → АКБ (направление вправо→влево).
   // Discharging: ток течёт ИЗ АКБ → DC/DC → INV → Output (направление влево→вправо).
-  const isCharging = mainsOn && qbon && (Number(n.batteryChargePct) || 0) < 100 && (Number(n.chargeA) || 0) > 0;
+  const isCharging = mainsFed && qf1on && qbon && (Number(n.batteryChargePct) || 0) < 100 && (Number(n.chargeA) || 0) > 0;
   const isDischarging = onBattery && qbon;
   if (isCharging || isDischarging) {
     // Скорость зависит от величины тока: charging → chargeA, discharging → battA
