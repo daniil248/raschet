@@ -652,6 +652,31 @@ function wireUpload() {
   const addBtn = document.getElementById('btn-add-manual');
   if (addBtn) addBtn.addEventListener('click', () => openManualBatteryModal());
 
+  // Экспорт пустого шаблона XLSX с нужными колонками — чтобы пользователь
+  // мог скачать файл-болванку, заполнить в Excel и загрузить через drop-zone.
+  const tplBtn = document.getElementById('btn-export-template');
+  if (tplBtn) tplBtn.addEventListener('click', () => {
+    const XLSX = (typeof window !== 'undefined') ? window.XLSX : null;
+    if (!XLSX) { flash('SheetJS не загружен', 'error'); return; }
+    const headers = ['Battery_Supplier', 'Battery_Type', 'Capacity', 'End_Voltage', 'Time_Value', 'Power_Value'];
+    // Пример из 6 строк (одна модель × две кривые endV × три точки по времени)
+    const sample = [
+      ['Example',  'EX-12100', 100, 1.65, 10,  3474],
+      ['Example',  'EX-12100', 100, 1.65, 60,   880],
+      ['Example',  'EX-12100', 100, 1.65, 180,  320],
+      ['Example',  'EX-12100', 100, 1.75, 10,  3300],
+      ['Example',  'EX-12100', 100, 1.75, 60,   820],
+      ['Example',  'EX-12100', 100, 1.75, 180,  290],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sample]);
+    // Ширина столбцов для читабельности
+    ws['!cols'] = [{ wch: 18 }, { wch: 16 }, { wch: 10 }, { wch: 11 }, { wch: 11 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Battery Data');
+    XLSX.writeFile(wb, 'battery-template.xlsx');
+    flash('Шаблон скачан: battery-template.xlsx', 'success');
+  });
+
   const helpFmt = document.getElementById('btn-help-format');
   if (helpFmt) helpFmt.addEventListener('click', () => openHelpModal('format'));
   const helpMet = document.getElementById('btn-help-method');
