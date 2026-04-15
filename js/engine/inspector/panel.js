@@ -15,6 +15,10 @@ export function bindInspectorPanelDeps({ renderInspector }) {
 // forward-reference для renderInspector() вызовов внутри перенесённого кода
 function renderInspector() { if (_renderInspector) _renderInspector(); }
 
+// Состояние зума и полноэкранного режима для модалки "Управление щитом".
+// Общее для обычных и секционных щитов, сохраняется между перерисовками.
+const _pcZoomState = { zoom: 1, fullscreen: false };
+
 export function openPanelParamsModal(n) {
   const body = document.getElementById('panel-params-body');
   if (!body) return;
