@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор ИБП</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="ups-config.css">
+  <!-- Firebase Auth (опционально). Если firebase-config.js пуст или SDK
+       не загрузился — shared/auth.js работает в локальном режиме. -->
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Конфигуратор ИБП', home: '../hub.html' });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[ups-config] auth init failed', e));
+    }
+  </script>
+
+  <main>
+    <div class="page-intro">
+      <h2>Конфигуратор ИБП</h2>
+      <p class="muted">
+        Подбор конфигурации ИБП по нагрузке: тип (моноблок / модульный),
+        резервирование N+X, параметры входа и батарейной цепи. Результат
+        можно применить к любому узлу ИБП в главной схеме.
+      </p>
+    </div>
+
+    <section class="stub-card">
+      <h3>⚙ В разработке</h3>
+      <p>
+        Подпрограмма на этапе скелета. Инфраструктура уже работает:
+      </p>
+      <ul>
+        <li><code>shared/auth.js</code> — Firebase Auth (инициализирован)</li>
+        <li><code>shared/styles/base.css</code> — дизайн-токены и кнопки</li>
+        <li><code>shared/app-header.css</code> / <code>app-header.js</code> — единый хедер</li>
+        <li><code>shared/ups-picker.js</code> — API для чтения параметров ИБП с узла</li>
+      </ul>
+      <p>
+        Будущее наполнение: каскадный пикер моделей ИБП (Производитель → Серия
+        → Модель) + применение к узлу, расчёт резервирования, предпросмотр
+        структурной схемы.
+      </p>
+      <div id="ups-picker-demo" style="margin-top:16px"></div>
+      <div style="margin-top:18px">
+        <button id="btn-back" class="btn-sm">← Вернуться в хаб</button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="ups-config.js"></script>
+</body>
+</html>
