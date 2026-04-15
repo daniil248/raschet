@@ -459,6 +459,39 @@ export function initInteraction() {
       return;
     }
 
+    // Кнопки +/- для добавления/удаления выходных портов щита.
+    const portBtnEl = e.target.closest('[data-port-add], [data-port-del]');
+    if (portBtnEl && !state.readOnly) {
+      e.stopPropagation();
+      const addId = portBtnEl.getAttribute('data-port-add');
+      const delId = portBtnEl.getAttribute('data-port-del');
+      const nid = addId || delId;
+      const nn = state.nodes.get(nid);
+      if (nn && nn.type === 'panel') {
+        if (addId) {
+          snapshot('port-add:' + nid);
+          nn.outputs = Math.min(30, (Number(nn.outputs) || 0) + 1);
+          render(); notifyChange();
+          renderInspector();
+        } else if (delId) {
+          const cur = Number(nn.outputs) || 0;
+          if (cur <= 1) { flash('Должен остаться хотя бы один выход'); return; }
+          // Проверяем, занят ли последний выходной порт
+          const lastIdx = cur - 1;
+          const used = [...state.conns.values()].some(c => c.from.nodeId === nid && c.from.port === lastIdx);
+          if (used) {
+            flash('Сначала отключите линию с выхода №' + cur, 'error');
+            return;
+          }
+          snapshot('port-del:' + nid);
+          nn.outputs = cur - 1;
+          render(); notifyChange();
+          renderInspector();
+        }
+      }
+      return;
+    }
+
     // Порт -- начало/конец связи. Можно начинать С ЛЮБОГО порта.
     // Клик на порт -- всегда обрабатываем:
     //  - если pending пусто и порт СВОБОДНЫЙ -> начинаем новую связь, якорь = этот порт

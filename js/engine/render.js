@@ -848,6 +848,26 @@ export function renderNodes() {
       }
     }
 
+    // Кнопки +/- для добавления/удаления выходных портов щита.
+    // Рисуются снизу справа, под правым краем карточки. Только для
+    // обычных (несекционных) панелей.
+    if (n.type === 'panel' && n.switchMode !== 'sectioned' && !state.readOnly) {
+      const btnY = NODE_H - 14;
+      const btnRx = w - 32;
+      const btnRp = w - 14;
+      // Минус
+      const minusG = el('g', { class: 'port-btn port-btn-del', 'data-port-del': n.id });
+      minusG.appendChild(el('circle', { cx: btnRx, cy: btnY, r: 8 }));
+      minusG.appendChild(el('line', { x1: btnRx - 4, y1: btnY, x2: btnRx + 4, y2: btnY }));
+      g.appendChild(minusG);
+      // Плюс
+      const plusG = el('g', { class: 'port-btn port-btn-add', 'data-port-add': n.id });
+      plusG.appendChild(el('circle', { cx: btnRp, cy: btnY, r: 8 }));
+      plusG.appendChild(el('line', { x1: btnRp - 4, y1: btnY, x2: btnRp + 4, y2: btnY }));
+      plusG.appendChild(el('line', { x1: btnRp, y1: btnY - 4, x2: btnRp, y2: btnY + 4 }));
+      g.appendChild(plusG);
+    }
+
     // Жёлтый треугольник с «!» — предупреждение о номинале шкафа
     if (n.type === 'panel' && n._marginWarn) {
       const tx = w - 22, ty = 8;
