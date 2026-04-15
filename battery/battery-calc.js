@@ -5,7 +5,7 @@
 //   2. Расчёт разряда — выбор АКБ + параметры нагрузки → автономия
 // ======================================================================
 
-import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery } from './battery-catalog.js';
+import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId } from './battery-catalog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
 import { calcAutonomy, calcRequiredBlocks } from './battery-discharge.js';
 
@@ -39,10 +39,14 @@ function renderCatalog() {
     return;
   }
   const h = ['<table class="cat-table">'];
-  h.push('<thead><tr><th>Поставщик</th><th>Модель</th><th>Химия</th><th>Блок</th><th>Ёмкость</th><th>Точек</th><th>Источник</th><th></th></tr></thead>');
+  h.push('<thead><tr><th></th><th>Поставщик</th><th>Модель</th><th>Химия</th><th>Блок</th><th>Ёмкость</th><th>Точек</th><th>Источник</th><th></th></tr></thead>');
   h.push('<tbody>');
   for (const b of list) {
+    const isCustom = b.custom === true;
+    const lockIcon = isCustom ? '✎' : '🔒';
+    const lockTitle = isCustom ? 'Ручная запись — редактируется' : 'Импортированная запись — только чтение';
     h.push(`<tr data-id="${escHtml(b.id)}" class="cat-row" title="Клик — посмотреть таблицу разряда">
+      <td title="${escHtml(lockTitle)}" style="text-align:center;font-size:14px;color:${isCustom ? '#2e7d32' : '#90a4ae'}">${lockIcon}</td>
       <td>${escHtml(b.supplier)}</td>
       <td><b>${escHtml(b.type)}</b></td>
       <td>${escHtml(b.chemistry || '—')}</td>
@@ -50,7 +54,10 @@ function renderCatalog() {
       <td>${b.capacityAh != null ? fmt(b.capacityAh) + ' А·ч' : '—'}</td>
       <td>${b.dischargeTable?.length || 0}</td>
       <td class="src">${escHtml(b.source || '')}</td>
-      <td><button class="btn-sm btn-del" data-del="${escHtml(b.id)}">Удалить</button></td>
+      <td>
+        ${isCustom ? `<button class="btn-sm btn-edit" data-edit="${escHtml(b.id)}">Изменить</button>` : ''}
+        <button class="btn-sm btn-del" data-del="${escHtml(b.id)}">Удалить</button>
+      </td>
     </tr>`);
   }
   h.push('</tbody></table>');
@@ -66,6 +73,14 @@ function renderCatalog() {
       flash('Удалено');
     });
   });
+  wrap.querySelectorAll('[data-edit]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = btn.dataset.edit;
+      const b = listBatteries().find(x => x.id === id);
+      if (b) openManualBatteryModal(b);
+    });
+  });
   // Клик по строке → модалка просмотра таблицы разряда
   wrap.querySelectorAll('.cat-row').forEach(row => {
     row.addEventListener('click', () => {
@@ -74,6 +89,117 @@ function renderCatalog() {
       if (b) openDischargeTableModal(b);
     });
   });
+}
+
+// ================= Ручное добавление / редактирование АКБ =================
+function openManualBatteryModal(existing = null) {
+  let modal = document.getElementById('manual-batt-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'manual-batt-modal';
+    modal.className = 'dtable-modal';
+    modal.innerHTML = `
+      <div class="dtable-box" style="max-width:680px">
+        <div class="dtable-head">
+          <h3 id="manual-batt-title">Добавить АКБ вручную</h3>
+          <button class="dtable-close" aria-label="Закрыть">×</button>
+        </div>
+        <div class="dtable-body" id="manual-batt-body"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
+    modal.querySelector('.dtable-close').addEventListener('click', () => modal.classList.remove('show'));
+  }
+  const title = document.getElementById('manual-batt-title');
+  const body = document.getElementById('manual-batt-body');
+  title.textContent = existing ? `Редактировать: ${existing.supplier} · ${existing.type}` : 'Добавить АКБ вручную';
+
+  const e = existing || {};
+  // Таблица разряда → CSV (endV,tMin,powerW по строке)
+  const tableCsv = Array.isArray(e.dischargeTable)
+    ? e.dischargeTable.map(p => `${p.endV},${p.tMin},${p.powerW}`).join('\n')
+    : '';
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px">
+      <label>Поставщик<input id="mb-supplier" type="text" value="${escHtml(e.supplier || '')}" ${existing ? 'disabled' : ''}></label>
+      <label>Модель<input id="mb-type" type="text" value="${escHtml(e.type || '')}" ${existing ? 'disabled' : ''}></label>
+      <label>Химия
+        <select id="mb-chemistry">
+          <option value="vrla"${e.chemistry === 'vrla' ? ' selected' : ''}>Свинцово-кислотные (VRLA/AGM)</option>
+          <option value="li-ion"${e.chemistry === 'li-ion' ? ' selected' : ''}>Литий-ионные (LiFePO4)</option>
+          <option value="nicd"${e.chemistry === 'nicd' ? ' selected' : ''}>Никель-кадмиевые</option>
+          <option value="nimh"${e.chemistry === 'nimh' ? ' selected' : ''}>Никель-металлогидридные</option>
+        </select>
+      </label>
+      <label>Напряжение блока, В<input id="mb-blockV" type="number" min="1" step="0.5" value="${e.blockVoltage ?? 12}"></label>
+      <label>Ёмкость блока, А·ч<input id="mb-capAh" type="number" min="1" step="1" value="${e.capacityAh ?? 100}"></label>
+      <label>Элементов в блоке<input id="mb-cellCount" type="number" min="1" step="1" value="${e.cellCount ?? 6}"></label>
+    </div>
+    <div style="margin-top:12px">
+      <label style="display:block;margin-bottom:4px;font-size:12px;color:#6b7280">
+        Таблица разряда (Constant Power Discharge) — опционально.<br>
+        Формат: <code>endV,tMin,powerW</code> — по строке. Например:
+        <code>1.6,10,3474</code>
+      </label>
+      <textarea id="mb-table" rows="10" style="width:100%;font:11px/1.4 ui-monospace,Consolas,monospace;padding:8px;border:1px solid #d0d0d0;border-radius:5px;resize:vertical">${escHtml(tableCsv)}</textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+      <button type="button" id="mb-cancel" class="btn-sm">Отмена</button>
+      <button type="button" id="mb-save" class="btn-sm" style="background:#1976d2;color:#fff;border-color:#1976d2">${existing ? 'Сохранить' : 'Добавить'}</button>
+    </div>
+  `;
+
+  const g = id => document.getElementById(id);
+  g('mb-cancel').addEventListener('click', () => modal.classList.remove('show'));
+  g('mb-save').addEventListener('click', () => {
+    const supplier = g('mb-supplier').value.trim() || 'Custom';
+    const type = g('mb-type').value.trim();
+    if (!type) { alert('Заполните поле «Модель»'); return; }
+    const chemistry = g('mb-chemistry').value;
+    const blockVoltage = Number(g('mb-blockV').value) || 12;
+    const capacityAh = Number(g('mb-capAh').value) || 0;
+    const cellCount = Math.max(1, Number(g('mb-cellCount').value) || Math.round(blockVoltage / 2));
+    const cellVoltage = blockVoltage / cellCount;
+    // Парсим таблицу разряда из CSV
+    const raw = g('mb-table').value.trim();
+    const table = [];
+    if (raw) {
+      for (const line of raw.split(/\r?\n/)) {
+        const parts = line.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+        if (parts.length < 3) continue;
+        const endV = Number(parts[0]);
+        const tMin = Number(parts[1]);
+        const powerW = Number(parts[2]);
+        if (Number.isFinite(endV) && Number.isFinite(tMin) && Number.isFinite(powerW)) {
+          table.push({ endV, tMin, powerW });
+        }
+      }
+      table.sort((a, b) => (a.endV - b.endV) || (a.tMin - b.tMin));
+    }
+    const id = existing ? existing.id : makeBatteryId(supplier, type);
+    const entry = {
+      id,
+      supplier,
+      type,
+      chemistry,
+      blockVoltage,
+      cellCount,
+      cellVoltage,
+      capacityAh,
+      dischargeTable: table,
+      source: existing ? existing.source : 'ручной ввод',
+      importedAt: existing ? existing.importedAt : Date.now(),
+      custom: true,
+    };
+    addBattery(entry);
+    renderCatalog();
+    renderBatterySelector();
+    modal.classList.remove('show');
+    flash(existing ? 'Запись обновлена' : 'Добавлено: ' + type, 'success');
+  });
+
+  modal.classList.add('show');
 }
 
 // ================= Модалка просмотра таблицы разряда =================
@@ -185,6 +311,9 @@ function wireUpload() {
     renderBatterySelector();
     flash('Справочник очищен');
   });
+
+  const addBtn = document.getElementById('btn-add-manual');
+  if (addBtn) addBtn.addEventListener('click', () => openManualBatteryModal());
 }
 
 // ================= Селектор батареи в калькуляторе =================

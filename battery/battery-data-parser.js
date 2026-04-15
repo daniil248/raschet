@@ -171,6 +171,9 @@ export function parseBatteryXlsx(arrayBuffer, filename = 'upload.xlsx') {
       cellVoltage,
       source: filename,
       importedAt: Date.now(),
+      // Импортированные записи read-only — редактировать нельзя,
+      // можно только удалить. Вручную добавленные — custom:true.
+      custom: false,
     });
   }
   return out;
