@@ -601,6 +601,22 @@ function _loadBatteryCatalog() {
   } catch { return []; }
 }
 
+// Пытается определить supplier ИБП для проверки совместимости с S³.
+// Читает ups-catalog (shared), если узел привязан через upsCatalogId.
+// Возвращает строку supplier или null.
+function _getUpsSupplierGuess(n) {
+  if (!n || !n.upsCatalogId) return null;
+  try {
+    const uid = localStorage.getItem('raschet.currentUserId') || 'anonymous';
+    const raw = localStorage.getItem('raschet.upsCatalog.v1.' + uid)
+             || localStorage.getItem('raschet.upsCatalog.v1');
+    if (!raw) return null;
+    const arr = JSON.parse(raw);
+    const found = Array.isArray(arr) ? arr.find(u => u.id === n.upsCatalogId) : null;
+    return found?.supplier || null;
+  } catch { return null; }
+}
+
 // Асинхронный динамический импорт battery-discharge.js из подпрограммы
 // battery/. Модуль импортируется лениво (только когда реально нужно
 // считать по таблице), чтобы конструктор схем не тащил его при загрузке.
@@ -753,9 +769,33 @@ function _renderUpsBatteryBody(n) {
     <button type="button" id="ups-batt-goto-params" class="btn-sm" style="margin-bottom:12px;font-size:11px;padding:3px 10px">⚙ Изменить в «Параметры ИБП»</button>`);
 
     h.push('<h4 style="margin:12px 0 6px">Конфигурация АКБ (' + escHtml(picked.type) + ')</h4>');
-    h.push(`<div class="muted" style="font-size:11px;padding:6px 10px;background:#eef4fb;border-left:3px solid #1976d2;border-radius:4px;margin-bottom:8px">
-      ${escHtml(picked.supplier || '')} · ${escHtml(picked.type)} · ${fmt(blockVnom)} В / ${fmt(capAhBlock)} А·ч · ${cellsPerBlock} эл.
-    </div>`);
+    // Карточка описания с признаком "система" (Kehua S³ и подобные) —
+    // оранжевая рамка, компактный блок спецификации шкафа и предупреждение
+    // о совместимости, если совместимость ограничена одним производителем.
+    if (picked.isSystem) {
+      const mrModulesInCabinet = picked.modulesPerCabinet || '?';
+      const mrModel = picked.moduleModel || '';
+      const cabPowKw = picked.cabinetPowerKw || '?';
+      const cabKwh = picked.cabinetKwh || '?';
+      const maxPar = picked.maxParallelCabinets || 15;
+      const compatible = picked.compatibleSupplier || picked.supplier;
+      // Проверяем совместимость с производителем ИБП (если оба заданы).
+      // При несовпадении — красная предупредительная плашка.
+      const upsSupplier = _getUpsSupplierGuess(n);
+      const compatMismatch = compatible && upsSupplier && compatible.toLowerCase() !== upsSupplier.toLowerCase();
+      h.push(`<div style="font-size:11px;padding:8px 12px;background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;margin-bottom:8px;line-height:1.6">
+        <div style="font-weight:600;color:#e65100;margin-bottom:4px">🏛 Система ${escHtml(picked.supplier || '')} ${escHtml(picked.type)}</div>
+        <div>Шкаф: <b>${cabKwh} кВт·ч / ${cabPowKw} кВт</b> · ${mrModulesInCabinet} модулей ${escHtml(mrModel)}</div>
+        <div>DC выход: <b>${fmt(blockVnom)} В</b> · макс. параллель: <b>${maxPar} шкафов</b></div>
+        ${picked.systemDescription ? `<div class="muted" style="margin-top:4px;font-size:10px">${escHtml(picked.systemDescription)}</div>` : ''}
+        ${picked.compatibleNotes ? `<div class="muted" style="margin-top:3px;font-size:10px">⚠ ${escHtml(picked.compatibleNotes)}</div>` : ''}
+        ${compatMismatch ? `<div style="margin-top:6px;padding:4px 8px;background:#ffebee;border-radius:3px;color:#c62828;font-weight:600">⛔ ИБП производителя «${escHtml(upsSupplier)}» — несовместим с этой системой (требуется «${escHtml(compatible)}»).</div>` : ''}
+      </div>`);
+    } else {
+      h.push(`<div class="muted" style="font-size:11px;padding:6px 10px;background:#eef4fb;border-left:3px solid #1976d2;border-radius:4px;margin-bottom:8px">
+        ${escHtml(picked.supplier || '')} · ${escHtml(picked.type)} · ${fmt(blockVnom)} В / ${fmt(capAhBlock)} А·ч · ${cellsPerBlock} эл.
+      </div>`);
+    }
 
     // Параметры блока из справочника (read-only по умолчанию).
     // Пользователь может разблокировать их кнопкой «Ручной ввод», тогда

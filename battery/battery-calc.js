@@ -9,6 +9,7 @@ import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, mak
 import { parseBatteryXlsx } from './battery-data-parser.js';
 import { calcAutonomy, calcRequiredBlocks } from './battery-discharge.js';
 import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
+import { KEHUA_S3_BATTERIES } from '../shared/kehua-s3-data.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -100,12 +101,19 @@ function renderCatalog() {
   h.push('<tbody>');
   for (const b of list) {
     const isCustom = b.custom === true;
-    const lockIcon = isCustom ? '✎' : '🔒';
-    const lockTitle = isCustom ? 'Ручная запись — редактируется' : 'Импортированная запись — только чтение';
+    const isSystem = b.isSystem === true;
+    const lockIcon = isSystem ? '🏛' : (isCustom ? '✎' : '🔒');
+    const lockTitle = isSystem
+      ? `Готовая система (${b.systemType || 'system'}) — шкаф с модульной архитектурой. ${b.compatibleNotes || ''}`
+      : (isCustom ? 'Ручная запись — редактируется' : 'Импортированная запись — только чтение');
+    const iconColor = isSystem ? '#e65100' : (isCustom ? '#2e7d32' : '#90a4ae');
+    const typeLabel = isSystem
+      ? `<b>${escHtml(b.type)}</b><br><span class="muted" style="font-size:10px">Шкаф ${b.cabinetKwh || '?'} кВт·ч / ${b.cabinetPowerKw || '?'} кВт</span>`
+      : `<b>${escHtml(b.type)}</b>`;
     h.push(`<tr data-id="${escHtml(b.id)}" class="cat-row" title="Клик — посмотреть таблицу разряда">
-      <td title="${escHtml(lockTitle)}" style="text-align:center;font-size:14px;color:${isCustom ? '#2e7d32' : '#90a4ae'}">${lockIcon}</td>
+      <td title="${escHtml(lockTitle)}" style="text-align:center;font-size:14px;color:${iconColor}">${lockIcon}</td>
       <td>${escHtml(b.supplier)}</td>
-      <td><b>${escHtml(b.type)}</b></td>
+      <td>${typeLabel}</td>
       <td>${escHtml(b.chemistry || '—')}</td>
       <td>${fmt(b.blockVoltage)} В</td>
       <td>${b.capacityAh != null ? fmt(b.capacityAh) + ' А·ч' : '—'}</td>
@@ -662,6 +670,21 @@ function wireUpload() {
 
   const addBtn = document.getElementById('btn-add-manual');
   if (addBtn) addBtn.addEventListener('click', () => openManualBatteryModal());
+
+  // Kehua S³ defaults — загружает 3 шкафа Kehua S³ Li-Ion из встроенных
+  // данных (shared/kehua-s3-data.js). Идемпотентно: повторное нажатие
+  // просто обновит существующие записи (addBattery делает upsert по id).
+  const kehuaBtn = document.getElementById('btn-seed-kehua');
+  if (kehuaBtn) kehuaBtn.addEventListener('click', () => {
+    const n = KEHUA_S3_BATTERIES.length;
+    for (const rec of KEHUA_S3_BATTERIES) {
+      // Обновляем importedAt на текущее время
+      addBattery({ ...rec, importedAt: Date.now() });
+    }
+    flash(`Загружено Kehua S³: ${n} шкафов`, 'success');
+    renderCatalog();
+    renderBatterySelector();
+  });
 
   // Экспорт пустого шаблона XLSX с нужными колонками — чтобы пользователь
   // мог скачать файл-болванку, заполнить в Excel и загрузить через drop-zone.
