@@ -108,6 +108,17 @@ const vEl = document.getElementById('app-version');
 if (vEl) vEl.textContent = 'v' + APP_VERSION;
 
 // === Библиотека пресетов ===
+// Привязывает узел к текущей странице (home + linked если current — ссылочная)
+function _assignCurrentPageIds(base) {
+  if (!state.currentPageId) return;
+  const cur = (state.pages || []).find(p => p.id === state.currentPageId);
+  if (cur && cur.type === 'linked' && cur.sourcePageId) {
+    base.pageIds = [cur.sourcePageId, cur.id];
+  } else {
+    base.pageIds = [state.currentPageId];
+  }
+}
+
 function applyPreset(preset) {
   if (!preset || !preset.type || !DEFAULTS[preset.type]) return null;
   snapshot();
@@ -116,7 +127,10 @@ function applyPreset(preset) {
   const cx = state.view.x + (W / 2) / state.view.zoom;
   const cy = state.view.y + (H / 2) / state.view.zoom;
   const id = uid();
-  const base = { id, type: preset.type, ...DEFAULTS[preset.type](), ...preset.params };
+  // Если пресет имеет sourceSubtype (utility/other) — передаём его в DEFAULTS
+  const subtype = preset.params?.sourceSubtype;
+  const defs = DEFAULTS[preset.type](subtype);
+  const base = { id, type: preset.type, ...defs, ...preset.params };
   base.tag = nextFreeTag(preset.type);
   if (typeof base.inputs === 'number') {
     if (!Array.isArray(base.priorities)) base.priorities = [];
@@ -125,6 +139,7 @@ function applyPreset(preset) {
   }
   base.x = cx - nodeWidth(base) / 2;
   base.y = cy - NODE_H / 2;
+  _assignCurrentPageIds(base);
   state.nodes.set(id, base);
   selectNode(id);
   render();
@@ -136,7 +151,9 @@ function applyPresetAt(preset, x, y) {
   if (!preset || !preset.type || !DEFAULTS[preset.type]) return null;
   snapshot();
   const id = uid();
-  const base = { id, type: preset.type, ...DEFAULTS[preset.type](), ...preset.params };
+  const subtype = preset.params?.sourceSubtype;
+  const defs = DEFAULTS[preset.type](subtype);
+  const base = { id, type: preset.type, ...defs, ...preset.params };
   base.tag = nextFreeTag(preset.type);
   if (typeof base.inputs === 'number') {
     if (!Array.isArray(base.priorities)) base.priorities = [];
@@ -145,6 +162,7 @@ function applyPresetAt(preset, x, y) {
   }
   base.x = x - nodeWidth(base) / 2;
   base.y = y - NODE_H / 2;
+  _assignCurrentPageIds(base);
   state.nodes.set(id, base);
   selectNode(id);
   render();
