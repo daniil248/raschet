@@ -709,6 +709,10 @@ function _renderUpsBatteryBody(n) {
     const cellsPerBlock = Number(picked.cellCount) || 6;
     const blockVnom = Number(picked.blockVoltage) || (cellsPerBlock * (Number(picked.cellVoltage) || 2));
     const capAhBlock = Number(picked.capacityAh) || 100;
+    // S³ модуль: при изменении числа модулей в шкафу DC/DC выход остаётся
+    // тем же (модули параллельно), поэтому vdcOper = blockVnom (240 В)
+    // независимо от blocksPerString. Для обычных АКБ — vdcOper = blockVnom × N.
+    const isS3Module = picked.isSystem && picked.systemSubtype === 'module' && picked.packaging;
 
     // Параметры ИБП для подбора АКБ — читаются через единый shared-хелпер.
     // Редактирование этих полей — ТОЛЬКО в основной модалке «Параметры ИБП»;
@@ -728,11 +732,21 @@ function _renderUpsBatteryBody(n) {
     const targetMin = Number(n.batteryTargetMin ?? 10);
 
     // Диапазон допустимого числа блоков в цепочке:
-    //   N_max = floor(Vmax / Vblock_nominal)
-    //   N_min = ceil (Vmin / (cellsPerBlock × endVcell))
-    const nMax = Math.max(1, Math.floor(vdcMax / Math.max(0.1, blockVnom)));
-    const nMinV = cellsPerBlock * endVcell;
-    const nMin = Math.max(1, Math.ceil(vdcMin / Math.max(0.1, nMinV)));
+    //   Обычные VRLA / Li-Ion:
+    //     N_max = floor(Vmax / Vblock_nominal)
+    //     N_min = ceil (Vmin / (cellsPerBlock × endVcell))
+    //   S³ модули (Kehua): N интерпретируется как «модулей в шкафу».
+    //     Границы заданы жёстко упаковкой: 1 ≤ N ≤ maxPerCabinet.
+    //     Напряжение DC — фиксированное (выход DC/DC 240 В), независимо от N.
+    let nMax, nMin;
+    if (isS3Module) {
+      nMax = Number(picked.packaging.maxPerCabinet) || 20;
+      nMin = 1;
+    } else {
+      nMax = Math.max(1, Math.floor(vdcMax / Math.max(0.1, blockVnom)));
+      const nMinV = cellsPerBlock * endVcell;
+      nMin = Math.max(1, Math.ceil(vdcMin / Math.max(0.1, nMinV)));
+    }
     // Пользовательское число блоков (или автоматическое = nMax)
     const userBlocks = Number(n.batteryBlocksPerString) || 0;
     let blocksPerString = userBlocks;
@@ -753,7 +767,10 @@ function _renderUpsBatteryBody(n) {
     const activePowerKw = loadKw * (cosPhi || 1);
     const batteryPwrReqKw = activePowerKw / invEff;
     const powerPerBlockW = (batteryPwrReqKw * 1000) / (stringsCat * blocksPerString);
-    const vdcOper = blockVnom * blocksPerString;
+    // S³: DC/DC выход фиксирован на 240 В (модули в шкафу в параллель).
+    // Обычные АКБ: v = blockVnom × блоков в цепочке.
+    const vdcOper = isS3Module ? blockVnom : (blockVnom * blocksPerString);
+    // Ток на шкаф (S³) или цепочку (VRLA): мощность шкафа / Vdc / stringsCat
     const stringCurrentA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / stringsCat : 0;
 
     // Параметры ИБП — read-only, редактируются в основной модалке
@@ -773,24 +790,40 @@ function _renderUpsBatteryBody(n) {
     // оранжевая рамка, компактный блок спецификации шкафа и предупреждение
     // о совместимости, если совместимость ограничена одним производителем.
     if (picked.isSystem) {
-      const mrModulesInCabinet = picked.modulesPerCabinet || '?';
-      const mrModel = picked.moduleModel || '';
-      const cabPowKw = picked.cabinetPowerKw || '?';
-      const cabKwh = picked.cabinetKwh || '?';
-      const maxPar = picked.maxParallelCabinets || 15;
       const compatible = picked.compatibleSupplier || picked.supplier;
-      // Проверяем совместимость с производителем ИБП (если оба заданы).
-      // При несовпадении — красная предупредительная плашка.
       const upsSupplier = _getUpsSupplierGuess(n);
       const compatMismatch = compatible && upsSupplier && compatible.toLowerCase() !== upsSupplier.toLowerCase();
-      h.push(`<div style="font-size:11px;padding:8px 12px;background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;margin-bottom:8px;line-height:1.6">
-        <div style="font-weight:600;color:#e65100;margin-bottom:4px">🏛 Система ${escHtml(picked.supplier || '')} ${escHtml(picked.type)}</div>
-        <div>Шкаф: <b>${cabKwh} кВт·ч / ${cabPowKw} кВт</b> · ${mrModulesInCabinet} модулей ${escHtml(mrModel)}</div>
-        <div>DC выход: <b>${fmt(blockVnom)} В</b> · макс. параллель: <b>${maxPar} шкафов</b></div>
-        ${picked.systemDescription ? `<div class="muted" style="margin-top:4px;font-size:10px">${escHtml(picked.systemDescription)}</div>` : ''}
-        ${picked.compatibleNotes ? `<div class="muted" style="margin-top:3px;font-size:10px">⚠ ${escHtml(picked.compatibleNotes)}</div>` : ''}
-        ${compatMismatch ? `<div style="margin-top:6px;padding:4px 8px;background:#ffebee;border-radius:3px;color:#c62828;font-weight:600">⛔ ИБП производителя «${escHtml(upsSupplier)}» — несовместим с этой системой (требуется «${escHtml(compatible)}»).</div>` : ''}
-      </div>`);
+      // Модуль (pack) — основа расчёта. Показываем связку с шкафом,
+      // в который он монтируется, и лимиты на количество.
+      if (picked.systemSubtype === 'module' && picked.packaging) {
+        const pk = picked.packaging;
+        h.push(`<div style="font-size:11px;padding:8px 12px;background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;margin-bottom:8px;line-height:1.6">
+          <div style="font-weight:600;color:#e65100;margin-bottom:4px">🔋 Модуль ${escHtml(picked.supplier || '')} ${escHtml(picked.type)}</div>
+          <div>Монтируется в шкаф: <b>${escHtml(pk.cabinetModel || '—')}</b> (до <b>${pk.maxPerCabinet}</b> модулей)</div>
+          <div>Полный шкаф: <b>${pk.cabinetKwh} кВт·ч / ${pk.cabinetPowerKw} кВт</b> · макс. параллель: <b>${pk.maxCabinets} шкафов</b></div>
+          <div>DC/DC выход модуля: <b>${escHtml(pk.dcOutputV || (fmt(blockVnom) + ' В'))}</b></div>
+          ${picked.systemDescription ? `<div class="muted" style="margin-top:4px;font-size:10px">${escHtml(picked.systemDescription)}</div>` : ''}
+          ${picked.compatibleNotes ? `<div class="muted" style="margin-top:3px;font-size:10px">⚠ ${escHtml(picked.compatibleNotes)}</div>` : ''}
+          ${compatMismatch ? `<div style="margin-top:6px;padding:4px 8px;background:#ffebee;border-radius:3px;color:#c62828;font-weight:600">⛔ ИБП производителя «${escHtml(upsSupplier)}» — несовместим (требуется «${escHtml(compatible)}»).</div>` : ''}
+          <div style="margin-top:6px;padding:4px 8px;background:#eef9e4;border-radius:3px;font-size:10px;color:#2e7d32">
+            💡 Ниже «<b>Блоков в цепочке</b>» = модулей на шкаф (max ${pk.maxPerCabinet}), «<b>Параллельных цепочек</b>» = шкафов (max ${pk.maxCabinets}).
+          </div>
+        </div>`);
+      } else {
+        // Шкаф или другой тип системы — старая универсальная плашка
+        const mrModulesInCabinet = picked.modulesPerCabinet || '?';
+        const mrModel = picked.moduleModel || '';
+        const cabPowKw = picked.cabinetPowerKw || '?';
+        const cabKwh = picked.cabinetKwh || '?';
+        const maxPar = picked.maxParallelCabinets || 15;
+        h.push(`<div style="font-size:11px;padding:8px 12px;background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;margin-bottom:8px;line-height:1.6">
+          <div style="font-weight:600;color:#e65100;margin-bottom:4px">🏛 Система ${escHtml(picked.supplier || '')} ${escHtml(picked.type)}</div>
+          <div>Шкаф: <b>${cabKwh} кВт·ч / ${cabPowKw} кВт</b> · ${mrModulesInCabinet} модулей ${escHtml(mrModel)}</div>
+          <div>DC выход: <b>${fmt(blockVnom)} В</b> · макс. параллель: <b>${maxPar} шкафов</b></div>
+          ${picked.systemDescription ? `<div class="muted" style="margin-top:4px;font-size:10px">${escHtml(picked.systemDescription)}</div>` : ''}
+          ${compatMismatch ? `<div style="margin-top:6px;padding:4px 8px;background:#ffebee;border-radius:3px;color:#c62828;font-weight:600">⛔ ИБП производителя «${escHtml(upsSupplier)}» — несовместим (требуется «${escHtml(compatible)}»).</div>` : ''}
+        </div>`);
+      }
     } else {
       h.push(`<div class="muted" style="font-size:11px;padding:6px 10px;background:#eef4fb;border-left:3px solid #1976d2;border-radius:4px;margin-bottom:8px">
         ${escHtml(picked.supplier || '')} · ${escHtml(picked.type)} · ${fmt(blockVnom)} В / ${fmt(capAhBlock)} А·ч · ${cellsPerBlock} эл.
@@ -828,10 +861,13 @@ function _renderUpsBatteryBody(n) {
     h.push('</div>');
     h.push('<div style="display:flex;gap:8px">');
     const blocksInputStyle = clampHint ? ' style="border-color:#e65100;background:#fff8e1"' : '';
-    h.push(`<div style="flex:1">${field(`Блоков в цепочке (${nMin}…${nMax})`,
+    const blocksLabel = isS3Module ? `Модулей в шкафу (${nMin}…${nMax})` : `Блоков в цепочке (${nMin}…${nMax})`;
+    h.push(`<div style="flex:1">${field(blocksLabel,
       `<input type="number" id="ups-batt-nblocks" min="${nMin}" max="${nMax}" step="1" value="${blocksPerString}"${blocksInputStyle}>`)}</div>`);
-    h.push(`<div style="flex:1">${field('Параллельных цепочек',
-      `<input type="number" id="ups-batt-str" min="1" max="16" step="1" value="${stringsCat}">`)}</div>`);
+    const stringsMax = isS3Module ? (Number(picked.packaging.maxCabinets) || 15) : 16;
+    const stringsLabel = isS3Module ? `Шкафов в параллель (1…${stringsMax})` : 'Параллельных цепочек';
+    h.push(`<div style="flex:1">${field(stringsLabel,
+      `<input type="number" id="ups-batt-str" min="1" max="${stringsMax}" step="1" value="${stringsCat}">`)}</div>`);
     h.push('</div>');
     if (clampHint) {
       h.push(`<div style="font-size:11px;color:#e65100;background:#fff8e1;border-left:3px solid #e65100;padding:4px 8px;border-radius:3px;margin-top:-4px;margin-bottom:6px">⚠ ${escHtml(clampHint)}</div>`);
@@ -852,13 +888,30 @@ function _renderUpsBatteryBody(n) {
     h.push('</div>');
     h.push(field('Требуемая автономия, мин', `<input type="number" id="ups-batt-target" min="1" max="1440" step="1" value="${targetMin}">`));
 
-    // Результаты расчёта (сразу основные цифры; кривая — async ниже)
+    // Результаты расчёта (сразу основные цифры; кривая — async ниже).
+    // Для S³ модулей дополнительно выводим полезную BOM-информацию:
+    // всего модулей, шкафов, полная мощность шкафа в конфигурации.
     h.push('<h4 style="margin:14px 0 6px">Результаты расчёта</h4>');
+    const totalModules = stringsCat * blocksPerString;
+    const moduleLabel = isS3Module ? 'Мощность/модуль' : 'Мощность/блок';
+    const totalLabel = isS3Module ? 'Всего модулей' : 'Всего блоков';
+    const currentLabel = isS3Module ? 'Ток шкафа' : 'Ток цепочки';
+    let bomBlock = '';
+    if (isS3Module) {
+      const pk = picked.packaging;
+      const cabPower = Math.min(blocksPerString * (picked.moduleRatedKw || 10), pk.cabinetPowerKw || 200);
+      const systemPower = cabPower * stringsCat;
+      bomBlock = `
+        <div>Шкафов:</div><div><b>${stringsCat}</b> × ${escHtml(pk.cabinetModel || '—')}</div>
+        <div>Модулей/шкаф:</div><div><b>${blocksPerString}</b> из ${pk.maxPerCabinet}</div>
+        <div>P системы:</div><div><b>${fmt(systemPower)} кВт</b> (${fmt(cabPower)} кВт × ${stringsCat})</div>`;
+    }
     h.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
       <div>U<sub>DC раб</sub>:</div><div><b>${fmt(vdcOper)} В</b></div>
-      <div>Мощность/блок:</div><div><b id="ups-batt-pperblock">${fmt(powerPerBlockW)} Вт</b></div>
-      <div>Ток цепочки:</div><div><b id="ups-batt-istring">${fmt(stringCurrentA)} А</b></div>
-      <div>Всего блоков:</div><div><b>${stringsCat * blocksPerString}</b></div>
+      <div>${moduleLabel}:</div><div><b id="ups-batt-pperblock">${fmt(powerPerBlockW)} Вт</b></div>
+      <div>${currentLabel}:</div><div><b id="ups-batt-istring">${fmt(stringCurrentA)} А</b></div>
+      <div>${totalLabel}:</div><div><b>${totalModules}</b></div>
+      ${bomBlock}
       <div>Автономия (расч.):</div><div><b id="ups-batt-autonomy2">—</b>
         <span id="ups-batt-autonomy-method2" class="muted" style="font-size:10px;margin-left:4px"></span></div>
     </div>`);
@@ -998,8 +1051,11 @@ function _renderUpsBatteryBody(n) {
   // применяем её характеристики к узлу и пересобираем тело.
   const pickerMount = document.getElementById('ups-batt-picker-mount');
   if (pickerMount) {
+    // Для UPS battery modal скрываем записи-«шкафы» (systemSubtype:'cabinet'):
+    // они только metadata, расчёт всегда ведётся по модулю (или обычной АКБ).
+    const pickerList = catalog.filter(b => !(b.isSystem && b.systemSubtype === 'cabinet'));
     mountBatteryPicker(pickerMount, {
-      list: catalog,
+      list: pickerList,
       selectedId: n.batteryCatalogId || null,
       currentSupplier: n._battSelSupplier || '',
       currentSeries: n._battSelSeries || '',
@@ -1105,7 +1161,9 @@ function _renderUpsBatteryBody(n) {
       const picked = selectedBattery;
       const blockVnom = Number(picked.blockVoltage) || ((Number(picked.cellCount) || 6) * (Number(picked.cellVoltage) || 2));
       const blocksPer = Number(n.batteryBlocksPerString) || 1;
-      const dcVoltage = blockVnom * blocksPer;
+      // S³ модуль: DC/DC выход фиксирован (240 В), независимо от числа модулей.
+      const _isS3ModAsync = picked.isSystem && picked.systemSubtype === 'module' && picked.packaging;
+      const dcVoltage = _isS3ModAsync ? blockVnom : (blockVnom * blocksPer);
       const strings = Math.max(1, Number(n.batteryStringCount) || 1);
       const invEff = Math.max(0.5, Math.min(1, (Number(n.efficiency) || 94) / 100));
       const endV = Number(n.batteryEndVperCell) || 1.75;
