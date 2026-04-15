@@ -944,7 +944,37 @@ function _renderUpsBatteryBody(n) {
       </select>`)}</div>`);
     h.push(`<div style="flex:1">${field('Температура, °C', `<input type="number" id="ups-batt-temp" min="-20" max="60" step="1" value="${tempC}">`)}</div>`);
     h.push('</div>');
-    h.push(field('Требуемая автономия, мин', `<input type="number" id="ups-batt-target" min="1" max="1440" step="1" value="${targetMin}">`));
+
+    // Режим расчёта:
+    //   'forward' — задано кол-во модулей/шкафов, считаем автономию
+    //   'reverse' — задана целевая автономия, подбираем минимум модулей
+    const calcMode = n.batteryCalcMode || 'forward';
+    h.push(field('Режим расчёта', `
+      <select id="ups-batt-mode">
+        <option value="forward"${calcMode === 'forward' ? ' selected' : ''}>Проверить автономию (модули → время)</option>
+        <option value="reverse"${calcMode === 'reverse' ? ' selected' : ''}>Подобрать модули по автономии (время → модули)</option>
+      </select>`));
+    h.push(field(
+      calcMode === 'reverse' ? 'Требуемая автономия, мин' : 'Требуемая автономия, мин (справочно)',
+      `<input type="number" id="ups-batt-target" min="1" max="1440" step="1" value="${targetMin}">`
+    ));
+    if (calcMode === 'reverse') {
+      h.push(`<button type="button" id="ups-batt-suggest" class="btn-sm btn-primary" style="margin-bottom:10px;font-size:12px">🔍 Подобрать минимум модулей / шкафов</button>`);
+      if (n._batterySuggestResult) {
+        const r = n._batterySuggestResult;
+        if (r.ok) {
+          h.push(`<div style="margin-bottom:10px;padding:8px 12px;background:#e8f5e9;border-left:3px solid #2e7d32;border-radius:4px;font-size:12px;line-height:1.6">
+            <div style="font-weight:600;color:#2e7d32">✓ Подобрано: ${r.strings} × ${r.blocksPerString}${isS3Module ? ' модулей' : ' блоков'} (всего ${r.total})</div>
+            <div>Автономия: <b>${fmt(r.autonomyMin)} мин</b> ≥ цель ${r.target} мин${r.limitedByPower ? ' (лимит мощности шкафа учтён)' : ''}</div>
+            <button type="button" id="ups-batt-apply-suggest" class="btn-sm" style="margin-top:6px;font-size:11px">Применить конфигурацию</button>
+          </div>`);
+        } else {
+          h.push(`<div style="margin-bottom:10px;padding:8px 12px;background:#ffebee;border-left:3px solid #c62828;border-radius:4px;font-size:12px;color:#c62828">
+            ⛔ ${escHtml(r.reason || 'Не удалось подобрать конфигурацию в пределах лимитов.')}
+          </div>`);
+        }
+      }
+    }
 
     // Результаты расчёта (сразу основные цифры; кривая — async ниже).
     // Для S³ модулей дополнительно выводим полезную BOM-информацию:
@@ -1216,6 +1246,114 @@ function _renderUpsBatteryBody(n) {
     bindNum('ups-batt-temp', 'batteryTempC', -20);
     bindNum('ups-batt-target', 'batteryTargetMin', 1);
     // Селектор режима подключения DC/DC выходов S³ модулей
+    // Селектор режима расчёта (forward / reverse)
+    const modeEl = document.getElementById('ups-batt-mode');
+    if (modeEl) modeEl.addEventListener('change', () => {
+      n.batteryCalcMode = modeEl.value === 'reverse' ? 'reverse' : 'forward';
+      n._batterySuggestResult = null;
+      _renderUpsBatteryBody(n);
+    });
+    // Кнопка «Подобрать минимум» — запускает обратный расчёт.
+    // Для S³ модулей ищем минимальную пару (modulesPerCabinet, cabinetsCount)
+    // с учётом лимита мощности шкафа и паспортных границ. Для обычных АКБ
+    // используется calcRequiredBlocks из battery-discharge.js.
+    const suggestBtn = document.getElementById('ups-batt-suggest');
+    if (suggestBtn) suggestBtn.addEventListener('click', async () => {
+      const mod = await _loadDischargeModule();
+      if (!mod) { flash('battery-discharge module not available'); return; }
+      const target = Number(n.batteryTargetMin) || targetMin;
+      if (loadKw <= 0) {
+        n._batterySuggestResult = { ok: false, reason: 'Нагрузка ИБП = 0. Задайте мощность ИБП или подключите потребителей.' };
+        _renderUpsBatteryBody(n);
+        return;
+      }
+      const commonInput = {
+        battery: picked,
+        loadKw,
+        endV: endVcell,
+        invEff,
+        chemistry: picked.chemistry,
+      };
+      let best = null;
+      if (isS3Module) {
+        const pk = picked.packaging;
+        const maxPer = Number(pk.maxPerCabinet) || 20;
+        const maxCab = Number(pk.maxCabinets) || 15;
+        const cabLimitKw = Number(pk.cabinetPowerKw) || 200;
+        const moduleRatedKw = Number(picked.moduleRatedKw) || 10;
+        // Перебираем от минимума: сначала наращиваем модули в шкафу
+        // (до maxPer), потом число шкафов. Для каждой пары проверяем
+        // (a) мощностный лимит (min(mods × rated, cabLimit) × cabs ≥ req)
+        // (b) автономию через calcAutonomy по per-module таблице.
+        const reqKw = loadKw / invEff;
+        outer: for (let cabs = 1; cabs <= maxCab; cabs++) {
+          for (let mods = 1; mods <= maxPer; mods++) {
+            const cabPower = Math.min(mods * moduleRatedKw, cabLimitKw);
+            if (cabPower * cabs < reqKw) continue; // power limit не выполнен
+            const dcV = s3Wiring === 'series' ? (blockVnom * 2) : blockVnom;
+            const r = mod.calcAutonomy({
+              ...commonInput,
+              dcVoltage: dcV,
+              strings: cabs,
+              blocksPerString: mods,
+            });
+            if (r.feasible && r.autonomyMin >= target) {
+              best = {
+                ok: true,
+                strings: cabs,
+                blocksPerString: mods,
+                total: cabs * mods,
+                autonomyMin: r.autonomyMin,
+                target,
+                limitedByPower: (mods * moduleRatedKw) >= cabLimitKw,
+              };
+              break outer;
+            }
+          }
+        }
+        if (!best) {
+          best = { ok: false, reason: `Не удалось подобрать: даже ${maxCab} шкафов × ${maxPer} модулей не дают ${target} мин при нагрузке ${fmt(loadKw)} кВт. Попробуйте модули S3M050 или S3M040 (больше мощности на шкаф) либо уменьшите нагрузку.` };
+        }
+      } else {
+        // Обычные АКБ — calcRequiredBlocks
+        const req = mod.calcRequiredBlocks({
+          ...commonInput,
+          dcVoltage: blockVnom * blocksPerString,
+          blocksPerString,
+          targetMin: target,
+        });
+        if (req) {
+          best = {
+            ok: true,
+            strings: req.strings,
+            blocksPerString: req.blocksPerString,
+            total: req.totalBlocks,
+            autonomyMin: req.result.autonomyMin,
+            target,
+          };
+        } else {
+          best = { ok: false, reason: 'Не удалось подобрать в пределах 2000 блоков.' };
+        }
+      }
+      n._batterySuggestResult = best;
+      _renderUpsBatteryBody(n);
+    });
+    // Кнопка «Применить конфигурацию» — записывает подобранные значения
+    // в узел и переключает режим обратно в 'forward'.
+    const applyBtn = document.getElementById('ups-batt-apply-suggest');
+    if (applyBtn) applyBtn.addEventListener('click', () => {
+      const r = n._batterySuggestResult;
+      if (!r || !r.ok) return;
+      snapshot('ups-batt:' + n.id + ':apply-suggest');
+      n.batteryBlocksPerString = r.blocksPerString;
+      n.batteryStringCount = r.strings;
+      n.batteryCalcMode = 'forward';
+      n._batterySuggestResult = null;
+      n._s3StringsAutoInit = true;  // не перезаписывать нашу конфигу auto-init'ом
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+      flash('Конфигурация применена: ' + r.strings + ' × ' + r.blocksPerString, 'success');
+    });
+
     const s3WiringEl = document.getElementById('ups-batt-s3wiring');
     if (s3WiringEl) s3WiringEl.addEventListener('change', () => {
       snapshot('ups-batt:' + n.id + ':s3wiring');
