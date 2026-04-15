@@ -89,6 +89,12 @@ export async function exportDOCX(tpl, filename) {
     children: blocksToDocx(tpl.content || [], tpl, D, {}),
   };
 
+  // Overlay-зоны: DOCX не поддерживает свободное позиционирование
+  // текста прямо в теле секции, поэтому приближаем — верхние overlays
+  // дописываем в header, нижние в footer. Точные координаты не
+  // сохраняются (это задокументированное ограничение DOCX-экспорта).
+  injectOverlays(section, tpl, D, height);
+
   // Если есть логотип — ставим его первым ребёнком соответствующего колонтитула
   if (tpl.logo && tpl.logo.src) {
     injectLogo(section, tpl, D);
@@ -333,6 +339,44 @@ function dataUrlToUint8(dataUrl) {
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return arr;
   } catch (e) { return null; }
+}
+
+function injectOverlays(section, tpl, D, pageHeightMm) {
+  const ovs = Array.isArray(tpl.overlays) ? tpl.overlays : [];
+  if (ovs.length === 0) return;
+  const top = [];    // { ov, scope }
+  const bot = [];
+  for (const ov of ovs) {
+    if (!ov || ov.type !== 'text') continue;
+    const target = (ov.y + ov.height / 2) < pageHeightMm / 2 ? top : bot;
+    target.push(ov);
+  }
+  const mkPara = (ov) => {
+    const s = tpl.styles[ov.content?.styleRef || 'body'] || tpl.styles.body;
+    const align = ov.content?.align === 'center' ? D.AlignmentType.CENTER
+               : ov.content?.align === 'right'  ? D.AlignmentType.RIGHT
+               :                                    D.AlignmentType.LEFT;
+    return new D.Paragraph({
+      alignment: align,
+      children: [ new D.TextRun({
+        text: String(ov.content?.text || ''),
+        bold:   !!s.bold,
+        italics: !!s.italic,
+        size:   Math.round((s.size || 11) * 2),
+        font:   s.font || 'Helvetica',
+        color:  (s.color || '#222222').replace('#',''),
+      })],
+    });
+  };
+  const addTo = (header, items, scope) => {
+    const filtered = items.filter(o => o.scope === scope || o.scope === 'all');
+    if (!filtered.length || !header) return;
+    for (const ov of filtered) header.options.children.push(mkPara(ov));
+  };
+  addTo(section.headers.first,   top, 'first');
+  addTo(section.headers.default, top, 'other');
+  addTo(section.footers.first,   bot, 'first');
+  addTo(section.footers.default, bot, 'other');
 }
 
 function injectLogo(section, tpl, D) {

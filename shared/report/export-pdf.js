@@ -5,7 +5,7 @@
 // подпрограмм не тянут её, если пользователь не нажал «скачать PDF».
 // ======================================================================
 
-import { pageSizeMm, contentBox, substitute } from './template.js';
+import { pageSizeMm, contentBox, substitute, overlaysForPage } from './template.js';
 import { paginate, estimateBlockHeight }       from './preview.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
@@ -51,6 +51,7 @@ export async function exportPDF(tpl, filename) {
     drawHeaderFooter(doc, tpl, isFirst, i + 1, total);
     drawLogo(doc, tpl, isFirst);
     drawBody(doc, tpl, isFirst, pageBlocks, { page: i + 1, pages: total });
+    drawOverlays(doc, tpl, isFirst, i + 1, total);
   });
 
   const name = filename || (tpl.meta && tpl.meta.title) || 'report';
@@ -80,6 +81,32 @@ function drawHeaderFooter(doc, tpl, isFirst, pageNum, total) {
       width: width - m.left - m.right,
       height: ftr.height,
     }, { page: pageNum, pages: total });
+  }
+}
+
+function drawOverlays(doc, tpl, isFirst, pageNum, total) {
+  const ovs = overlaysForPage(tpl, isFirst);
+  const ctx = { page: pageNum, pages: total };
+  for (const ov of ovs) {
+    const s = tpl.styles[ov.content?.styleRef || 'body'] || tpl.styles.body;
+    const font = (s.font || 'Helvetica').toLowerCase();
+    const style = s.bold && s.italic ? 'bolditalic' : s.bold ? 'bold' : s.italic ? 'italic' : 'normal';
+    doc.setFont(font, style);
+    doc.setFontSize(s.size);
+    doc.setTextColor(s.color || '#222');
+    const text = substitute(ov.content?.text || '', tpl, ctx);
+    const lines = doc.splitTextToSize(text, Math.max(1, ov.width));
+    const lineH = s.size * s.lineHeight * 0.3528;
+    const align = ov.content?.align || 'left';
+    let x = ov.x;
+    if (align === 'center') x = ov.x + ov.width / 2;
+    if (align === 'right')  x = ov.x + ov.width;
+    let y = ov.y + lineH * 0.85;
+    for (const line of lines) {
+      if (y - lineH > ov.y + ov.height) break; // не вылезаем за зону
+      doc.text(line, x, y, { align: align === 'left' ? undefined : align });
+      y += lineH;
+    }
   }
 }
 

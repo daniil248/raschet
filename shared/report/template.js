@@ -119,6 +119,27 @@ export function defaultTemplate() {
     // ——— основное содержимое отчёта ———
     // Массив блоков — см. blocks.js для конструкторов.
     content: [],
+
+    // ——— свободно-позиционируемые зоны (overlays) ———
+    // Накладываются поверх страницы в фиксированных координатах —
+    // независимо от потока основного content. Используются
+    // canvas-редактором для зон вроде «инфо о компании», «адресат»,
+    // «произвольный текст», которые не вписываются в обычные
+    // колонтитулы.
+    //
+    // Каждый overlay:
+    //   {
+    //     id:      string,
+    //     type:    'text',                 // пока только текст
+    //     scope:   'first' | 'all' | 'other',  // на каких страницах
+    //     x, y, width, height: number,     // мм, внутри поля печати
+    //     content: {
+    //       text:     string,              // с поддержкой {{...}}
+    //       styleRef: 'body'|'h1'|'h2'|'h3'|'caption',
+    //       align:    'left'|'center'|'right',
+    //     },
+    //   }
+    overlays: [],
   };
 }
 
@@ -154,6 +175,20 @@ export function contentBox(tpl, isFirstPage) {
     width:  width - m.left - m.right,
     height: height - top - bottom,
   };
+}
+
+/** Возвращает overlay-зоны, которые должны отображаться на странице
+ *  с заданным индексом. isFirstPage=true — рендерим overlays со scope
+ *  'first' и 'all'; иначе 'other' и 'all'. */
+export function overlaysForPage(tpl, isFirstPage) {
+  const list = Array.isArray(tpl?.overlays) ? tpl.overlays : [];
+  return list.filter(o => {
+    if (!o || o.type !== 'text') return false;
+    if (o.scope === 'all') return true;
+    if (o.scope === 'first') return isFirstPage;
+    if (o.scope === 'other') return !isFirstPage;
+    return true;
+  });
 }
 
 /** Подстановка плейсхолдеров {{meta.title}}, {{page}}, {{pages}}, {{date}}. */

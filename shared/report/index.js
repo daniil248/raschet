@@ -5,6 +5,9 @@
 // и экспорта в PDF / DOCX из любых подпрограмм (cable/, schematic/,
 // battery/, ups-config/, panel-config/ и т.д.).
 //
+// Подробная инструкция по интеграции — shared/report/README.md
+// Пользовательский UI для подготовки шаблонов — подпрограмма reports/
+//
 // Минимальный пример использования:
 //
 //   import * as Report from '../shared/report/index.js';

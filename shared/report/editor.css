@@ -60,6 +60,16 @@
   position: absolute;
   object-fit: contain;
 }
+.rpt-overlay {
+  position: absolute;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+  padding: 0;
+}
+.rpt-overlay--edit {
+  outline: 1px dotted #c0c6d2;
+  outline-offset: -1px;
+}
 .rpt-table {
   width: 100%;
   border-collapse: collapse;
@@ -229,3 +239,216 @@
   font-size: 13px;
   color: #1f2430;
 }
+
+/* ——— canvas-редактор ——— */
+.rpt-modal--canvas {
+  width: min(1280px, 96vw);
+  height: min(880px, 94vh);
+}
+.rpt-editor__sidebar {
+  flex: none;
+  width: 300px;
+  border-right: 1px solid #e0e3ea;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.rpt-editor__tabs {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid #e0e3ea;
+  background: #fff;
+}
+.rpt-editor__tabs button {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 10px 4px;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.rpt-editor__tabs button:hover { background: #f1f3f7; color: #1f2430; }
+.rpt-editor__tabs button.active {
+  color: #1976d2;
+  font-weight: 600;
+  border-bottom-color: #1976d2;
+  background: #fff;
+}
+.rpt-editor__tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+}
+.rpt-editor__canvas-wrap {
+  flex: 1;
+  min-width: 0;
+  background: #e8eaee;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.rpt-canvas {
+  position: relative;
+}
+
+/* страница и её элементы на холсте */
+.rpt-cv-page {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.rpt-cv-printarea {
+  position: absolute;
+  border: 1px dashed #b0c4de;
+  pointer-events: none;
+}
+.rpt-cv-body-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b0b8c8;
+  font: italic 13px/1.4 -apple-system, "Segoe UI", sans-serif;
+  text-align: center;
+  white-space: pre-line;
+  pointer-events: none;
+}
+.rpt-cv-zone {
+  position: absolute;
+  outline: 1.5px solid rgba(25,118,210,0.55);
+  background: rgba(25,118,210,0.06);
+  cursor: move;
+  user-select: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+.rpt-cv-zone:hover { background: rgba(25,118,210,0.12); }
+.rpt-cv-zone.selected {
+  outline: 2px solid #1976d2;
+  background: rgba(25,118,210,0.18);
+  z-index: 5;
+}
+.rpt-cv-zone--logo {
+  outline-color: rgba(46,125,50,0.55);
+  background: rgba(46,125,50,0.06);
+}
+.rpt-cv-zone--logo:hover { background: rgba(46,125,50,0.12); }
+.rpt-cv-zone--logo.selected {
+  outline-color: #2e7d32;
+  background: rgba(46,125,50,0.18);
+}
+.rpt-cv-zone__text {
+  width: 100%;
+  height: 100%;
+  padding: 1px 3px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+.rpt-cv-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background: #1976d2;
+  cursor: se-resize;
+  border-top-left-radius: 2px;
+}
+.rpt-cv-zone--logo .rpt-cv-resize { background: #2e7d32; }
+
+/* grid кнопок добавления зон */
+.rpt-zone-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.rpt-zone-add-btn {
+  padding: 7px 10px;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid #d0d5de;
+  border-radius: 6px;
+  color: #1f2430;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  margin-bottom: 4px;
+}
+.rpt-zone-add-btn:hover {
+  background: #e3f2fd;
+  border-color: #1976d2;
+  color: #1976d2;
+}
+
+/* список зон */
+.rpt-zone-list {
+  border: 1px solid #e0e3ea;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+.rpt-zone-list__item {
+  padding: 7px 10px;
+  border-bottom: 1px solid #f1f3f7;
+  font-size: 12px;
+  color: #1f2430;
+  cursor: pointer;
+}
+.rpt-zone-list__item:last-child { border-bottom: none; }
+.rpt-zone-list__item:hover { background: #f7f9fc; }
+.rpt-zone-list__item.active {
+  background: #e3f2fd;
+  border-left: 3px solid #1976d2;
+  padding-left: 7px;
+  font-weight: 600;
+}
+.rpt-zone-list__empty {
+  padding: 12px;
+  color: #9aa3b5;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* поля редактора */
+.rpt-hint {
+  font-size: 11px;
+  color: #6b7280;
+  margin: 4px 0 10px;
+  line-height: 1.5;
+}
+.rpt-hint code {
+  background: #f1f3f7;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font: 11px/1 Menlo, Consolas, monospace;
+}
+.rpt-logo-preview {
+  max-width: 100%;
+  max-height: 80px;
+  border: 1px solid #e0e3ea;
+  background: #fafbfc;
+  padding: 4px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  display: block;
+}
+button.danger {
+  background: #fff;
+  border: 1px solid #f3c0c0;
+  color: #c62828;
+  border-radius: 6px;
+  padding: 7px 13px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+button.danger:hover { background: #fdecea; }

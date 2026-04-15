@@ -12,7 +12,7 @@
 // tpl.meta + ctx (дата, номер страницы / общее число страниц).
 // ======================================================================
 
-import { pageSizeMm, contentBox, substitute } from './template.js';
+import { pageSizeMm, contentBox, substitute, overlaysForPage } from './template.js';
 
 /** Рендер всего шаблона в переданный контейнер. */
 export function renderPreview(tpl, container, opts = {}) {
@@ -202,6 +202,29 @@ function buildPageShell(tpl, scale, mode, isFirst, pageNum, totalPages) {
     img.style.height = (tpl.logo.height * scale) + 'px';
     positionLogo(img, tpl, scale);
     page.appendChild(img);
+  }
+
+  // Overlay-зоны (свободно позиционируемые)
+  const ovs = overlaysForPage(tpl, isFirst);
+  for (const ov of ovs) {
+    const el = document.createElement('div');
+    el.className = 'rpt-overlay';
+    el.style.left   = (ov.x * scale) + 'px';
+    el.style.top    = (ov.y * scale) + 'px';
+    el.style.width  = (ov.width  * scale) + 'px';
+    el.style.height = (ov.height * scale) + 'px';
+    if (mode === 'edit') el.classList.add('rpt-overlay--edit');
+    const s = tpl.styles[ov.content?.styleRef || 'body'] || tpl.styles.body;
+    el.style.fontFamily = s.font;
+    el.style.fontSize   = s.size + 'pt';
+    el.style.fontWeight = s.bold ? '700' : '400';
+    el.style.fontStyle  = s.italic ? 'italic' : 'normal';
+    el.style.color      = s.color;
+    el.style.lineHeight = s.lineHeight;
+    el.style.textAlign  = ov.content?.align || 'left';
+    el.style.overflow   = 'hidden';
+    el.textContent = substitute(ov.content?.text || '', tpl, { page: pageNum, pages: totalPages });
+    page.appendChild(el);
   }
 
   // Номер страницы внизу-по-центру в edit-режиме
