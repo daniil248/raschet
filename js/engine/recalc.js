@@ -51,12 +51,15 @@ function simpleDownstream(nodeId) {
 // 4. Прямые потребители (не через UPS): суммарная мощность как есть
 // Это даёт корректный результат без двойного счёта при DAG-топологиях.
 // Макс. нагрузка, которая может прийти к узлу с учётом:
-//  - рекурсивного обхода через реальные conns
-//  - расширения между секциями многосекционного щита через замкнутые И автоматические bus-ties
-//  - уникального счёта каждого потребителя (visitedConsumers)
+//  - реальных conns
+//  - расширения между секциями через bus-ties, с ограничением: в одной секции
+//    одновременно активен НЕ БОЛЕЕ ОДНОГО bus-tie (реальное эксплуатационное правило)
+//  - дедупа потребителей через visited-set
 //  - UPS эффективности и заряда батарей
-// Используется И для source max, И для cable max (куда cable идёт).
-function maxDownstreamLoad(nodeId) {
+// Алгоритм: собираем все доступные (closed | auto) ties, перебираем их подмножества
+// удовлетворяющие ограничению «не более 1 tie на секцию», для каждого варианта
+// запускаем BFS и берём максимум.
+function _bfsDownstreamWithActiveTies(startId, activeTieKeys) {
   const visitedConsumers = new Set();
   const visitedUps = new Set();
   const visited = new Set();
@@ -66,8 +69,8 @@ function maxDownstreamLoad(nodeId) {
   let sumEfficiency = 0;
   let upsCount = 0;
 
-  const queue = [{ id: nodeId, throughUps: false }];
-  visited.add(nodeId);
+  const queue = [{ id: startId, throughUps: false }];
+  visited.add(startId);
 
   while (queue.length) {
     const { id: curId, throughUps } = queue.shift();
@@ -88,7 +91,6 @@ function maxDownstreamLoad(nodeId) {
         sumEfficiency += Math.max(0.01, (Number(cur.efficiency) || 100) / 100);
         upsCount++;
       }
-      // Downstream от ИБП идёт с флагом throughUps=true
       for (const c of state.conns.values()) {
         if (c.from.nodeId !== curId) continue;
         if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
@@ -99,7 +101,6 @@ function maxDownstreamLoad(nodeId) {
       }
       continue;
     }
-    // Обычный узел: проходим по исходящим conns
     for (const c of state.conns.values()) {
       if (c.from.nodeId !== curId) continue;
       if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
@@ -108,17 +109,17 @@ function maxDownstreamLoad(nodeId) {
         queue.push({ id: c.to.nodeId, throughUps });
       }
     }
-    // Расширяемся через bus-tie если узел — секция многосекционного щита
+    // bus-tie — только если ключ этой связки в activeTieKeys
     if (cur.parentSectionedId) {
       const container = state.nodes.get(cur.parentSectionedId);
       const ties = Array.isArray(container?.busTies) ? container.busTies : [];
       if (ties.length) {
-        const tieStates = Array.isArray(container._busTieStates) ? container._busTieStates : ties.map(t => !!t.closed);
         const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
         const myIdx = secIds.indexOf(curId);
         if (myIdx >= 0) {
           for (let ti = 0; ti < ties.length; ti++) {
-            if (!tieStates[ti] && !ties[ti].auto) continue;
+            const key = container.id + ':' + ti;
+            if (!activeTieKeys.has(key)) continue;
             const [a, b] = ties[ti].between;
             const other = a === myIdx ? b : (b === myIdx ? a : -1);
             if (other < 0) continue;
@@ -135,6 +136,79 @@ function maxDownstreamLoad(nodeId) {
 
   const avgEff = upsCount > 0 ? (sumEfficiency / upsCount) : 1;
   return directKw + upsConsumerKw / avgEff + totalChargeKw;
+}
+
+// Кэш maxDownstreamLoad внутри одного прохода recalc.
+// Ключ: nodeId. Сбрасывается в начале recalc.
+let _maxDownstreamCache = null;
+let _maxDownstreamAvailTies = null; // подготовленный список доступных ties
+let _maxDownstreamValidMasks = null; // предвычисленный список валидных битмасок
+function _resetMaxDownstreamCache() {
+  _maxDownstreamCache = new Map();
+  _maxDownstreamAvailTies = null;
+  _maxDownstreamValidMasks = null;
+}
+
+function _prepareMaxDownstreamStructures() {
+  // 1) Собираем все доступные (closed | auto) ties по всему проекту.
+  const avail = [];
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
+    const ties = Array.isArray(n.busTies) ? n.busTies : [];
+    if (!ties.length) continue;
+    const tieStates = Array.isArray(n._busTieStates) ? n._busTieStates : ties.map(t => !!t.closed);
+    const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
+    for (let ti = 0; ti < ties.length; ti++) {
+      const avail_i = tieStates[ti] || !!ties[ti].auto;
+      if (!avail_i) continue;
+      const [a, b] = ties[ti].between;
+      const secA = secIds[a], secB = secIds[b];
+      if (!secA || !secB) continue;
+      avail.push({ key: n.id + ':' + ti, secA, secB });
+    }
+  }
+  _maxDownstreamAvailTies = avail;
+
+  // 2) Предвычисляем валидные битмаски один раз для всего прохода recalc:
+  //    маска валидна если среди активных ties каждая секция встречается не более 1 раза.
+  const N = Math.min(avail.length, 16);
+  const total = 1 << N;
+  const valid = [];
+  for (let mask = 0; mask < total; mask++) {
+    const used = new Map();
+    let ok = true;
+    const keys = new Set();
+    for (let bit = 0; bit < N; bit++) {
+      if (!(mask & (1 << bit))) continue;
+      const t = avail[bit];
+      used.set(t.secA, (used.get(t.secA) || 0) + 1);
+      used.set(t.secB, (used.get(t.secB) || 0) + 1);
+      if (used.get(t.secA) > 1 || used.get(t.secB) > 1) { ok = false; break; }
+      keys.add(t.key);
+    }
+    if (ok) valid.push(keys);
+  }
+  _maxDownstreamValidMasks = valid;
+}
+
+function maxDownstreamLoad(nodeId) {
+  if (!_maxDownstreamCache) _maxDownstreamCache = new Map();
+  if (_maxDownstreamCache.has(nodeId)) return _maxDownstreamCache.get(nodeId);
+  if (!_maxDownstreamAvailTies || !_maxDownstreamValidMasks) {
+    _prepareMaxDownstreamStructures();
+  }
+  if (_maxDownstreamAvailTies.length === 0) {
+    const kw = _bfsDownstreamWithActiveTies(nodeId, new Set());
+    _maxDownstreamCache.set(nodeId, kw);
+    return kw;
+  }
+  let best = 0;
+  for (const activeKeys of _maxDownstreamValidMasks) {
+    const kw = _bfsDownstreamWithActiveTies(nodeId, activeKeys);
+    if (kw > best) best = kw;
+  }
+  _maxDownstreamCache.set(nodeId, best);
+  return best;
 }
 
 // Финальный cos φ щита — взвешенное по активной мощности.
@@ -195,6 +269,10 @@ function panelCosPhi(panelId) {
 
 // ================= Расчёт мощности =================
 function recalc() {
+  // Сброс кэша maxDownstreamLoad на каждый проход — топология ties / tieStates
+  // могла измениться с прошлого recalc.
+  _resetMaxDownstreamCache();
+
   const edgesIn = new Map();
   for (const n of state.nodes.values()) edgesIn.set(n.id, []);
   for (const c of state.conns.values()) {
