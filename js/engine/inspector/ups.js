@@ -506,15 +506,25 @@ export function openUpsBatteryModal(n) {
   modal.classList.remove('hidden');
 }
 
-// Загрузка справочника АКБ из localStorage. Ключ совпадает с тем, что
-// использует подпрограмма «Расчёт АКБ» (battery/battery-catalog.js).
-// Возвращает массив записей или [].
+// Загрузка справочника АКБ из localStorage. Используется per-user ключ
+// 'raschet.batteryCatalog.v1.<uid>' (uid кэшируется main.js в
+// 'raschet.currentUserId' на auth onChange). Fallback — legacy-ключ
+// 'raschet.batteryCatalog.v1' для чтения старых данных.
 function _loadBatteryCatalog() {
   try {
-    const raw = localStorage.getItem('raschet.batteryCatalog.v1');
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    const uid = localStorage.getItem('raschet.currentUserId') || 'anonymous';
+    const raw = localStorage.getItem('raschet.batteryCatalog.v1.' + uid);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr;
+    }
+    // Legacy fallback
+    const legacy = localStorage.getItem('raschet.batteryCatalog.v1');
+    if (legacy) {
+      const arr = JSON.parse(legacy);
+      if (Array.isArray(arr)) return arr;
+    }
+    return [];
   } catch { return []; }
 }
 

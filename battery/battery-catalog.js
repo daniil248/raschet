@@ -28,15 +28,43 @@
 // }
 // ======================================================================
 
-const STORAGE_KEY = 'raschet.batteryCatalog.v1';
+// Ключ общего (legacy) хранилища — используется для чтения старых
+// данных и как fallback если пользователь не авторизован.
+const LEGACY_KEY = 'raschet.batteryCatalog.v1';
+
+// Текущий пользователь берётся из Auth-кэша (localStorage,
+// устанавливается в main.js на auth onChange). Если пользователя
+// нет — 'anonymous'. Per-user ключ: 'raschet.batteryCatalog.v1.<uid>'.
+function currentUserId() {
+  try {
+    return localStorage.getItem('raschet.currentUserId') || 'anonymous';
+  } catch { return 'anonymous'; }
+}
+
+function storageKey() {
+  return LEGACY_KEY + '.' + currentUserId();
+}
 
 function load() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr;
+    // Сначала пробуем per-user ключ
+    const raw = localStorage.getItem(storageKey());
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr;
+    }
+    // Fallback: legacy-ключ (для миграции с старой версии)
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const arr = JSON.parse(legacy);
+      if (Array.isArray(arr)) {
+        // Миграция: копируем legacy в per-user и НЕ удаляем legacy
+        // (другие пользователи увидят тот же начальный набор).
+        try { localStorage.setItem(storageKey(), legacy); } catch {}
+        return arr;
+      }
+    }
+    return [];
   } catch (e) {
     console.warn('[battery-catalog] load failed', e);
     return [];
@@ -45,7 +73,7 @@ function load() {
 
 function save(list) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    localStorage.setItem(storageKey(), JSON.stringify(list));
   } catch (e) {
     console.warn('[battery-catalog] save failed', e);
   }

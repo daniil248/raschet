@@ -1660,6 +1660,13 @@ async function init() {
   window.Auth.onAuthChange(async user => {
     const prevUser = state.currentUser;
     state.currentUser = user;
+    // Кэшируем uid в localStorage для кросс-страничного доступа
+    // (battery/ подпрограмма читает этот ключ для namespace'а
+    // справочника АКБ per-user).
+    try {
+      if (user && user.uid) localStorage.setItem('raschet.currentUserId', user.uid);
+      else localStorage.setItem('raschet.currentUserId', 'anonymous');
+    } catch {}
     renderAuthUI();
 
     // При смене пользователя обновляем проекты
