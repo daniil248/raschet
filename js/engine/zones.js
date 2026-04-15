@@ -244,14 +244,20 @@ export function copyZoneWithMembers(zoneId) {
     // Смещение координат
     if (typeof copy.x === 'number') copy.x += dx;
     if (typeof copy.y === 'number') copy.y += dy;
-    // Переписать кросс-ссылки по idMap
+    // Переписать кросс-ссылки по idMap. Важно: маппим тупо через idMap,
+    // а не фильтруем через state.nodes.has(), т.к. на момент клонирования
+    // корневой зоны её дочерние копии ещё НЕ добавлены в state.nodes
+    // (они создаются позже в этом же цикле). Фильтр state.nodes.has()
+    // вырезал memberIds и дети оказывались отвязанными.
     if (Array.isArray(copy.memberIds)) {
-      copy.memberIds = copy.memberIds.map(id => idMap.get(id) || id).filter(id => idMap.has(id) || state.nodes.has(id));
-      // После фильтра оставляем только те, что действительно в idMap
-      copy.memberIds = copy.memberIds.filter(id => [...idMap.values()].includes(id));
+      copy.memberIds = copy.memberIds
+        .map(id => idMap.get(id))
+        .filter(id => !!id);
     }
     if (Array.isArray(copy.sectionIds)) {
-      copy.sectionIds = copy.sectionIds.map(id => idMap.get(id) || id);
+      copy.sectionIds = copy.sectionIds
+        .map(id => idMap.get(id) || id)
+        .filter(id => !!id);
     }
     if (copy.parentSectionedId) {
       copy.parentSectionedId = idMap.get(copy.parentSectionedId) || copy.parentSectionedId;
