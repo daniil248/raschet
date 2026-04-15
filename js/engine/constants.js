@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.26.0';
+export const APP_VERSION = '0.26.1';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -397,6 +397,12 @@ export const DEFAULTS = {
     staticBypassAuto: true,
     staticBypassOverloadPct: 110,
     staticBypassForced: false,
+    // Подключение байпасного ввода:
+    //   'jumper'    — перемычка от основного ввода (один кабель на ИБП),
+    //   'separate'  — отдельный кабель на байпасный ввод (два кабеля).
+    // В режиме 'separate' ИБП должен иметь второй вход (inputs ≥ 2),
+    // на который подводится независимая линия байпаса.
+    bypassFeedMode: 'jumper',
   }),
   consumer:  () => ({
     name: 'Потребитель', comment: '',
@@ -471,6 +477,23 @@ export const TRANSFORMER_CATALOG = [
   { label: '1600 кВА', snomKva: 1600, ukPct: 6.0, pkW: 16.5, p0W: 2.3,   xsRsRatio: 10 },
   { label: '2000 кВА', snomKva: 2000, ukPct: 6.0, pkW: 19.0, p0W: 2.7,   xsRsRatio: 10 },
   { label: '2500 кВА', snomKva: 2500, ukPct: 6.0, pkW: 23.0, p0W: 3.2,   xsRsRatio: 12 },
+  // Средние силовые (Um ≤ 36 kV), масляные
+  { label: '3150 кВА', snomKva: 3150, ukPct: 7.0, pkW: 28.0, p0W: 3.8,   xsRsRatio: 13 },
+  { label: '4000 кВА', snomKva: 4000, ukPct: 7.5, pkW: 33.5, p0W: 4.4,   xsRsRatio: 14 },
+  { label: '5000 кВА', snomKva: 5000, ukPct: 7.5, pkW: 39.0, p0W: 5.1,   xsRsRatio: 14 },
+  { label: '6300 кВА', snomKva: 6300, ukPct: 7.5, pkW: 46.5, p0W: 6.2,   xsRsRatio: 15 },
+  // Крупные силовые (35 kV класс)
+  { label: '8000 кВА',  snomKva: 8000,  ukPct: 8.0, pkW: 56.0,  p0W: 7.4,  xsRsRatio: 16 },
+  { label: '10 000 кВА',  snomKva: 10000,  ukPct: 8.0, pkW: 65.0,  p0W: 8.7,  xsRsRatio: 18 },
+  { label: '12 500 кВА',  snomKva: 12500,  ukPct: 10.0, pkW: 76.0,  p0W: 10.0, xsRsRatio: 20 },
+  { label: '16 000 кВА',  snomKva: 16000,  ukPct: 10.0, pkW: 85.0,  p0W: 12.0, xsRsRatio: 22 },
+  { label: '20 000 кВА',  snomKva: 20000,  ukPct: 10.5, pkW: 100.0, p0W: 14.0, xsRsRatio: 24 },
+  { label: '25 000 кВА',  snomKva: 25000,  ukPct: 10.5, pkW: 115.0, p0W: 16.0, xsRsRatio: 26 },
+  { label: '32 000 кВА',  snomKva: 32000,  ukPct: 11.0, pkW: 135.0, p0W: 19.0, xsRsRatio: 28 },
+  { label: '40 000 кВА',  snomKva: 40000,  ukPct: 11.0, pkW: 155.0, p0W: 22.0, xsRsRatio: 30 },
+  { label: '63 000 кВА',  snomKva: 63000,  ukPct: 12.0, pkW: 215.0, p0W: 32.0, xsRsRatio: 34 },
+  { label: '80 000 кВА',  snomKva: 80000,  ukPct: 12.0, pkW: 260.0, p0W: 39.0, xsRsRatio: 36 },
+  { label: '100 000 кВА', snomKva: 100000, ukPct: 12.5, pkW: 310.0, p0W: 47.0, xsRsRatio: 38 },
 ];
 
 export const CONSUMER_CATALOG = [

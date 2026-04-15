@@ -156,6 +156,20 @@ export function openUpsParamsModal(n) {
   h.push(field('Заряд батареи, %', `<input type="number" id="up-battPct" min="0" max="100" step="1" value="${n.batteryChargePct ?? 100}">`));
 
   h.push('<h4 style="margin:16px 0 8px">Статический байпас</h4>');
+  // Режим подключения байпасного ввода
+  {
+    const mode = n.bypassFeedMode || 'jumper';
+    h.push(field('Байпасный ввод',
+      `<select id="up-bypassMode">
+        <option value="jumper"${mode === 'jumper' ? ' selected' : ''}>Перемычка от основного ввода</option>
+        <option value="separate"${mode === 'separate' ? ' selected' : ''}>Отдельный кабель</option>
+      </select>`));
+    if (mode === 'separate') {
+      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px;color:#1565c0">В режиме «отдельный кабель» у ИБП должно быть ≥ 2 входов: порт 1 — основной, порт 2 — байпасный. Подведите два независимых фидера.</div>');
+    } else {
+      h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Байпас питается от того же ввода, что и основной тракт (один кабель на ИБП).</div>');
+    }
+  }
   h.push(`<div class="field check"><input type="checkbox" id="up-bypass"${n.staticBypass !== false ? ' checked' : ''}><label>Байпас разрешён</label></div>`);
   h.push(`<div class="field check"><input type="checkbox" id="up-bypassAuto"${n.staticBypassAuto !== false ? ' checked' : ''}><label>Автоматический (по перегрузу)</label></div>`);
   h.push(field('Порог перехода, % от Pном', `<input type="number" id="up-bypassPct" min="80" max="200" step="5" value="${n.staticBypassOverloadPct || 110}">`));
@@ -216,6 +230,11 @@ export function openUpsParamsModal(n) {
     n.staticBypassAuto = document.getElementById('up-bypassAuto')?.checked !== false;
     n.staticBypassOverloadPct = Number(document.getElementById('up-bypassPct')?.value) || 110;
     n.staticBypassForced = !!document.getElementById('up-bypassForced')?.checked;
+    n.bypassFeedMode = document.getElementById('up-bypassMode')?.value === 'separate' ? 'separate' : 'jumper';
+    // В режиме 'separate' ИБП должен иметь как минимум 2 входа
+    if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
+      n.inputs = 2;
+    }
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
       document.getElementById('modal-ups-params').classList.add('hidden');
@@ -351,8 +370,9 @@ function _renderUpsControlBody(n) {
     const blockV = cells * cellV;
     const totalAh = ah * strs;
     const kwh = (blockV * totalAh) / 1000;
-    const pct = Number(n.batteryChargePct ?? 100) || 0;
-    const storedKwh = kwh * pct / 100;
+    const pctRaw = Number(n.batteryChargePct ?? 100) || 0;
+    const pct = Math.round(pctRaw);
+    const storedKwh = kwh * pctRaw / 100;
     // Оценка автономии на текущей нагрузке
     const loadKw = load > 0 ? load : cap;
     const autonomyMin = loadKw > 0 ? (storedKwh / loadKw * 60) : 0;
@@ -460,8 +480,10 @@ function _upsStructSvg(n, flows) {
   const battCol = onBattery ? colBatt : colIdle;
   const parts = [];
   parts.push('<rect x="0" y="0" width="780" height="220" fill="#fafbfc"/>');
+  // Режим подключения байпасного ввода: 'jumper' — перемычка, 'separate' — отдельный кабель
+  const bypassSeparate = n.bypassFeedMode === 'separate';
   parts.push(`<line x1="20" y1="50" x2="80" y2="50" stroke="${mainCol}" stroke-width="3"/>`);
-  parts.push(`<text x="20" y="42" font-size="11" fill="#546e7a">AC вход</text>`);
+  parts.push(`<text x="20" y="42" font-size="11" fill="#546e7a">AC вход${bypassSeparate ? ' 1 (осн.)' : ''}</text>`);
   if (inA > 0) parts.push(`<text x="22" y="66" font-size="10" fill="${mainCol}" font-weight="600">${fmtA(inA)}</text>`);
   const qf1on = n.hasInputBreaker !== false && n.inputBreakerOn !== false;
   parts.push(_svgBreaker(80, 50, 'QF1', qf1on ? mainCol : colIdle, n.hasInputBreaker !== false));
@@ -479,9 +501,20 @@ function _upsStructSvg(n, flows) {
   if (battA > 0) parts.push(`<text x="305" y="105" font-size="10" fill="${battCol}" font-weight="600">${fmtA(battA)}</text>`);
   parts.push(`<line x1="400" y1="50" x2="580" y2="50" stroke="${(onBypass || onBattery) ? (onBypass ? colIdle : battCol) : mainCol}" stroke-width="3"/>`);
   const qf2on = n.hasInputBypassBreaker !== false && n.inputBypassBreakerOn !== false;
-  parts.push(`<line x1="100" y1="50" x2="100" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
-  parts.push(`<line x1="100" y1="110" x2="440" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
-  parts.push(_svgBreaker(150, 110, 'QF2', qf2on ? bypassCol : colIdle, n.hasInputBypassBreaker !== false));
+  if (bypassSeparate) {
+    // Отдельный кабель на байпас — отдельный ввод снизу слева, на отдельной линии
+    parts.push(`<line x1="20" y1="130" x2="150" y2="130" stroke="${bypassCol}" stroke-width="3"/>`);
+    parts.push(`<text x="20" y="122" font-size="11" fill="#546e7a">AC вход 2 (байпас)</text>`);
+    parts.push(_svgBreaker(150, 130, 'QF2', qf2on ? bypassCol : colIdle, n.hasInputBypassBreaker !== false));
+    parts.push(`<line x1="190" y1="130" x2="300" y2="130" stroke="${bypassCol}" stroke-width="3"/>`);
+    parts.push(`<line x1="300" y1="130" x2="300" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
+    parts.push(`<line x1="300" y1="110" x2="440" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
+  } else {
+    // Перемычка от основного ввода — старая схема
+    parts.push(`<line x1="100" y1="50" x2="100" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
+    parts.push(`<line x1="100" y1="110" x2="440" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
+    parts.push(_svgBreaker(150, 110, 'QF2', qf2on ? bypassCol : colIdle, n.hasInputBypassBreaker !== false));
+  }
   parts.push(`<rect x="300" y="95" width="80" height="30" fill="#fff" stroke="${bypassCol}" stroke-width="2" rx="4"/>`);
   parts.push(`<text x="340" y="114" text-anchor="middle" font-size="11" fill="#2b303b">SBS</text>`);
   parts.push(`<line x1="440" y1="110" x2="440" y2="50" stroke="${bypassCol}" stroke-width="3"/>`);
