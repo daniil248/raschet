@@ -273,6 +273,25 @@ function recalc() {
   // могла измениться с прошлого recalc.
   _resetMaxDownstreamCache();
 
+  // Нормализация мощности модульного ИБП: единственный источник истины —
+  // modulesActive + redundancyScheme + moduleKwRated + frameKw.
+  // Пересобираем n.capacityKw отсюда на каждый проход — чтобы отключение
+  // модуля в Control modal немедленно влияло на расчёт нагрузки и номинала.
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'ups' || n.upsType !== 'modular') continue;
+    const modKw = Number(n.moduleKwRated ?? n.moduleKw) || 0;
+    if (modKw <= 0) continue;
+    const installed = Number(n.moduleInstalled ?? n.moduleCount) || 0;
+    if (!Array.isArray(n.modulesActive) || n.modulesActive.length !== installed) {
+      n.modulesActive = Array(installed).fill(true);
+    }
+    const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
+    const activeCount = n.modulesActive.filter(v => v !== false).length;
+    const working = Math.max(0, activeCount - redundN);
+    const frame = Number(n.frameKw) || (installed * modKw);
+    n.capacityKw = Math.min(frame, working * modKw);
+  }
+
   const edgesIn = new Map();
   for (const n of state.nodes.values()) edgesIn.set(n.id, []);
   for (const c of state.conns.values()) {

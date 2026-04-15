@@ -30,18 +30,56 @@ export function openUpsParamsModal(n) {
       <option value="monoblock"${n.upsType !== 'modular' ? ' selected' : ''}>Моноблок</option>
       <option value="modular"${n.upsType === 'modular' ? ' selected' : ''}>Модульный</option>
     </select>`));
-  h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
+  // Для моноблока — прямое поле мощности. Для модульного — вычисляется ниже.
+  if (n.upsType !== 'modular') {
+    h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
+  }
   h.push(field('КПД, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}">`));
   h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="5" step="1" value="${n.inputs}">`));
   h.push(field('Выходов', `<input type="number" id="up-outputs" min="1" max="20" step="1" value="${n.outputs}">`));
 
-  // Параметры модульного ИБП
+  // Параметры модульного ИБП: frame + installed + redundancy N+X
   if (n.upsType === 'modular') {
-    h.push('<h4 style="margin:16px 0 8px">Модули</h4>');
-    h.push(field('Количество модулей', `<input type="number" id="up-moduleCount" min="1" max="32" step="1" value="${n.moduleCount || 4}">`));
-    h.push(field('Мощность одного модуля, kW', `<input type="number" id="up-moduleKw" min="1" step="0.5" value="${n.moduleKw || 25}">`));
-    const cap = (n.moduleCount || 4) * (n.moduleKw || 25);
-    h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Суммарно: <b>${fmt(cap)} кВт</b> (N×P = capacityKw)</div>`);
+    // Миграция старых полей moduleCount/moduleKw в новую модель, если её ещё нет
+    if (n.moduleKwRated == null) n.moduleKwRated = n.moduleKw || 25;
+    if (n.moduleSlots == null) n.moduleSlots = Math.max(1, n.moduleCount || 8);
+    if (n.moduleInstalled == null) n.moduleInstalled = n.moduleCount || 4;
+    if (n.frameKw == null) n.frameKw = n.moduleSlots * n.moduleKwRated;
+    if (!n.redundancyScheme) n.redundancyScheme = 'N';
+
+    h.push('<h4 style="margin:16px 0 8px">Модули и резервирование</h4>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Корпус (frame) задаёт максимум системы. Устанавливаемые модули должны помещаться в слоты. Схема N+X означает: X модулей в резерве, рабочих = Установлено − X.</div>');
+
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('Корпус, kW (frame)', `<input type="number" id="up-frameKw" min="1" step="5" value="${n.frameKw}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('Мощность модуля, kW', `<input type="number" id="up-modKwRated" min="1" step="0.5" value="${n.moduleKwRated}">`)}</div>`);
+    h.push('</div>');
+    h.push('<div style="display:flex;gap:8px">');
+    h.push(`<div style="flex:1">${field('Слотов в корпусе', `<input type="number" id="up-slots" min="1" max="32" step="1" value="${n.moduleSlots}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('Установлено модулей', `<input type="number" id="up-installed" min="0" max="32" step="1" value="${n.moduleInstalled}">`)}</div>`);
+    h.push('</div>');
+    h.push(field('Схема резервирования', `
+      <select id="up-redund">
+        <option value="N"${n.redundancyScheme === 'N' ? ' selected' : ''}>N (без резерва)</option>
+        <option value="N+1"${n.redundancyScheme === 'N+1' ? ' selected' : ''}>N+1</option>
+        <option value="N+2"${n.redundancyScheme === 'N+2' ? ' selected' : ''}>N+2</option>
+      </select>`));
+
+    // Расчёт и предупреждения
+    const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
+    const working = Math.max(0, (n.moduleInstalled || 0) - redundN);
+    const ratedKw = Math.min(n.frameKw || 0, working * (n.moduleKwRated || 0));
+    const installedCapKw = (n.moduleInstalled || 0) * (n.moduleKwRated || 0);
+    const warnings = [];
+    if ((n.moduleInstalled || 0) > (n.moduleSlots || 0)) warnings.push('⚠ Установлено больше, чем слотов');
+    if (installedCapKw > (n.frameKw || 0)) warnings.push('⚠ Суммарная мощность модулей превышает корпус');
+    if ((n.moduleInstalled || 0) < redundN + 1) warnings.push('⚠ Не хватает модулей для выбранного резервирования');
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.7;margin:4px 0 10px;padding:6px 8px;background:#f6f8fa;border-radius:4px">
+      Рабочих модулей: <b>${working}</b> × ${fmt(n.moduleKwRated)} kW = <b>${fmt(working * (n.moduleKwRated||0))} kW</b><br>
+      В резерве: <b>${redundN}</b> × ${fmt(n.moduleKwRated)} kW = ${fmt(redundN * (n.moduleKwRated||0))} kW<br>
+      <b>Номинал ИБП: ${fmt(ratedKw)} kW</b> (min от корпуса ${fmt(n.frameKw)} kW)
+      ${warnings.length ? '<br><span style="color:#c62828">' + warnings.join('<br>') + '</span>' : ''}
+    </div>`);
   }
 
   // Состав защитных аппаратов
@@ -83,11 +121,39 @@ export function openUpsParamsModal(n) {
   h.push(field('Уровень напряжения', `<select id="up-voltage">${vOpts}</select>`));
   h.push(field('cos φ', `<input type="number" id="up-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi || 1.0}">`));
 
-  h.push('<h4 style="margin:16px 0 8px">Батарея</h4>');
-  h.push(field('Ёмкость батареи, kWh', `<input type="number" id="up-battKwh" min="0" step="0.1" value="${n.batteryKwh}">`));
-  h.push(field('Заряд батареи, %', `<input type="number" id="up-battPct" min="0" max="100" step="1" value="${n.batteryChargePct}">`));
-  h.push(field('Ток заряда, А (AC)', `<input type="number" id="up-chargeA" min="0" step="0.1" value="${n.chargeA ?? 2}">`));
-  h.push('<div class="muted" style="font-size:10px;margin-top:-8px">Ток из сети на заряд АКБ.</div>');
+  h.push('<h4 style="margin:16px 0 8px">Батарея (АКБ)</h4>');
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">Тип и состав блока. Ток заряда — в модалке «Управление ИБП».</div>');
+  h.push(field('Тип батарей', `
+    <select id="up-battType">
+      <option value="lead-acid"${(n.batteryType || 'lead-acid') === 'lead-acid' ? ' selected' : ''}>Свинцово-кислотные (VRLA/AGM), 2 В</option>
+      <option value="li-ion"${n.batteryType === 'li-ion' ? ' selected' : ''}>Литий-ионные (LiFePO4), 3.2 В</option>
+    </select>`));
+  h.push('<div style="display:flex;gap:8px">');
+  h.push(`<div style="flex:1">${field('Элементов в блоке', `<input type="number" id="up-battCells" min="1" max="400" step="1" value="${n.batteryCellCount ?? 192}">`)}</div>`);
+  h.push(`<div style="flex:1">${field('Напр. элемента, В', `<input type="number" id="up-battCellV" min="0.5" max="5" step="0.1" value="${n.batteryCellVoltage ?? 2.0}">`)}</div>`);
+  h.push('</div>');
+  h.push('<div style="display:flex;gap:8px">');
+  h.push(`<div style="flex:1">${field('Ёмкость элемента, А·ч', `<input type="number" id="up-battAh" min="1" step="1" value="${n.batteryCapacityAh ?? 100}">`)}</div>`);
+  h.push(`<div style="flex:1">${field('Параллельных цепочек', `<input type="number" id="up-battStr" min="1" max="16" step="1" value="${n.batteryStringCount ?? 1}">`)}</div>`);
+  h.push('</div>');
+  // Расчёт напряжения блока и ёмкости
+  {
+    const cells = Number(n.batteryCellCount ?? 192) || 0;
+    const cellV = Number(n.batteryCellVoltage ?? 2.0) || 0;
+    const ah = Number(n.batteryCapacityAh ?? 100) || 0;
+    const strs = Number(n.batteryStringCount ?? 1) || 1;
+    const blockV = cells * cellV;
+    const totalAh = ah * strs;
+    const kwh = (blockV * totalAh) / 1000;
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.7;margin:4px 0 10px;padding:6px 8px;background:#f6f8fa;border-radius:4px">
+      Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
+      Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> (${strs} × ${fmt(ah)})<br>
+      Запас энергии: <b>${fmt(kwh)} kWh</b>
+    </div>`);
+  }
+  // Старые поля (оставлены для обратной совместимости — скрыты)
+  h.push(`<input type="hidden" id="up-battKwh" value="${n.batteryKwh ?? 0}">`);
+  h.push(field('Заряд батареи, %', `<input type="number" id="up-battPct" min="0" max="100" step="1" value="${n.batteryChargePct ?? 100}">`));
 
   h.push('<h4 style="margin:16px 0 8px">Статический байпас</h4>');
   h.push(`<div class="field check"><input type="checkbox" id="up-bypass"${n.staticBypass !== false ? ' checked' : ''}><label>Байпас разрешён</label></div>`);
@@ -104,9 +170,17 @@ export function openUpsParamsModal(n) {
     if (upName) n.name = upName;
     n.upsType = document.getElementById('up-upsType')?.value || 'monoblock';
     if (n.upsType === 'modular') {
-      n.moduleCount = Math.max(1, Number(document.getElementById('up-moduleCount')?.value) || 4);
-      n.moduleKw = Math.max(1, Number(document.getElementById('up-moduleKw')?.value) || 25);
-      n.capacityKw = n.moduleCount * n.moduleKw;
+      n.frameKw = Math.max(1, Number(document.getElementById('up-frameKw')?.value) || 200);
+      n.moduleKwRated = Math.max(1, Number(document.getElementById('up-modKwRated')?.value) || 25);
+      n.moduleSlots = Math.max(1, Number(document.getElementById('up-slots')?.value) || 8);
+      n.moduleInstalled = Math.max(0, Number(document.getElementById('up-installed')?.value) || 0);
+      n.redundancyScheme = document.getElementById('up-redund')?.value || 'N';
+      const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
+      const working = Math.max(0, n.moduleInstalled - redundN);
+      n.capacityKw = Math.min(n.frameKw, working * n.moduleKwRated);
+      // Синхронизация устаревших полей для обратной совместимости
+      n.moduleCount = n.moduleInstalled;
+      n.moduleKw = n.moduleKwRated;
     } else {
       n.capacityKw = Number(document.getElementById('up-capKw')?.value) || 0;
     }
@@ -126,9 +200,18 @@ export function openUpsParamsModal(n) {
     n.voltageLevelIdx = vIdx;
     if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
     n.cosPhi = Number(document.getElementById('up-cosPhi')?.value) || 1.0;
-    n.batteryKwh = Number(document.getElementById('up-battKwh')?.value) || 0;
+    // Новые поля АКБ
+    n.batteryType = document.getElementById('up-battType')?.value || 'lead-acid';
+    n.batteryCellCount = Math.max(1, Number(document.getElementById('up-battCells')?.value) || 192);
+    n.batteryCellVoltage = Number(document.getElementById('up-battCellV')?.value) || 2.0;
+    n.batteryCapacityAh = Math.max(1, Number(document.getElementById('up-battAh')?.value) || 100);
+    n.batteryStringCount = Math.max(1, Number(document.getElementById('up-battStr')?.value) || 1);
+    // Пересчитать batteryKwh из новых полей
+    const _blockV = n.batteryCellCount * n.batteryCellVoltage;
+    const _totalAh = n.batteryCapacityAh * n.batteryStringCount;
+    n.batteryKwh = (_blockV * _totalAh) / 1000;
     n.batteryChargePct = Number(document.getElementById('up-battPct')?.value) || 0;
-    n.chargeA = Number(document.getElementById('up-chargeA')?.value) || 0;
+    // chargeA остаётся на узле, управляется из «Управление ИБП»
     n.staticBypass = document.getElementById('up-bypass')?.checked !== false;
     n.staticBypassAuto = document.getElementById('up-bypassAuto')?.checked !== false;
     n.staticBypassOverloadPct = Number(document.getElementById('up-bypassPct')?.value) || 110;
@@ -220,7 +303,11 @@ function _renderUpsControlBody(n) {
 
   if (n.upsType === 'modular') {
     h.push('<h4 style="margin:16px 0 6px">Модули</h4>');
-    const total = Number(n.moduleCount) || 4;
+    // Используем новую модель: moduleInstalled/moduleKwRated/redundancyScheme.
+    // Падение на moduleCount/moduleKw — для старых схем.
+    const total = Number(n.moduleInstalled ?? n.moduleCount) || 4;
+    const modKw = Number(n.moduleKwRated ?? n.moduleKw) || 25;
+    const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
     if (!Array.isArray(n.modulesActive) || n.modulesActive.length !== total) {
       n.modulesActive = Array(total).fill(true);
     }
@@ -228,13 +315,69 @@ function _renderUpsControlBody(n) {
     for (let i = 0; i < total; i++) {
       const active = n.modulesActive[i] !== false;
       h.push(`<button class="ups-module ${active ? 'on' : 'off'}" data-ups-module="${i}" title="Модуль ${i + 1}">
-        M${i + 1}<br><span class="muted">${n.moduleKw || 25} kW</span>
+        M${i + 1}<br><span class="muted">${modKw} kW</span>
       </button>`);
     }
     h.push('</div>');
     const activeCount = n.modulesActive.filter(v => v !== false).length;
-    const totalKw = activeCount * (n.moduleKw || 25);
-    h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Активных модулей: <b>${activeCount}/${total}</b> · Суммарная мощность: <b>${totalKw} kW</b></div>`);
+    const workingCount = Math.max(0, activeCount - redundN);
+    const ratedKw = Math.min(Number(n.frameKw) || (total * modKw), workingCount * modKw);
+    h.push(`<div class="muted" style="font-size:11px;margin-top:4px;line-height:1.6">
+      Активных модулей: <b>${activeCount}/${total}</b>
+      ${redundN > 0 ? ` · Резерв (${n.redundancyScheme}): <b>${Math.min(redundN, activeCount)}</b>` : ''}
+      · Рабочих: <b>${workingCount}</b> × ${modKw} kW<br>
+      <b>Текущий номинал: ${fmt(ratedKw)} kW</b> (из фрейма ${fmt(n.frameKw || 0)} kW)
+    </div>`);
+  }
+
+  // Ток заряда АКБ — перенесён из Параметров ИБП
+  h.push('<h4 style="margin:16px 0 6px">Ток заряда АКБ</h4>');
+  h.push(`<div class="ups-ctl-row">
+    <div class="ups-ctl-label">Ток заряда, А (AC со входа)</div>
+    <div class="ups-ctl-current">
+      <input type="number" id="ups-ctl-chargeA" min="0" step="0.1" value="${n.chargeA ?? 2}" style="width:80px;padding:4px 6px;font:inherit;font-size:12px;text-align:right">
+    </div>
+    <div class="muted" style="font-size:11px">kW ≈ ${fmt((n.chargeA ?? 2) * U * k3 / 1000)}</div>
+  </div>`);
+
+  // ========== Управление АКБ ==========
+  h.push('<h4 style="margin:16px 0 6px">Управление АКБ</h4>');
+  {
+    const bt = n.batteryType || 'lead-acid';
+    const cells = Number(n.batteryCellCount ?? 192) || 0;
+    const cellV = Number(n.batteryCellVoltage ?? 2.0) || 0;
+    const ah = Number(n.batteryCapacityAh ?? 100) || 0;
+    const strs = Number(n.batteryStringCount ?? 1) || 1;
+    const blockV = cells * cellV;
+    const totalAh = ah * strs;
+    const kwh = (blockV * totalAh) / 1000;
+    const pct = Number(n.batteryChargePct ?? 100) || 0;
+    const storedKwh = kwh * pct / 100;
+    // Оценка автономии на текущей нагрузке
+    const loadKw = load > 0 ? load : cap;
+    const autonomyMin = loadKw > 0 ? (storedKwh / loadKw * 60) : 0;
+
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.8;padding:8px 10px;background:#f6f8fa;border-radius:6px;margin-bottom:8px">
+      Тип: <b>${bt === 'li-ion' ? 'Li-Ion (LiFePO4)' : 'Свинцово-кислотные (VRLA)'}</b>
+      · Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
+      Состав: <b>${cells}</b> эл. × <b>${fmt(cellV)} В</b> × <b>${strs}</b> цеп. × <b>${fmt(ah)} А·ч</b><br>
+      Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> / <b>${fmt(kwh)} kWh</b><br>
+      Заряд: <b>${pct}%</b> → запас <b>${fmt(storedKwh)} kWh</b><br>
+      Оценка автономии на нагрузке ${fmt(loadKw)} kW: <b>${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
+    </div>`);
+
+    h.push('<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">');
+    h.push(`<label style="font-size:11px;min-width:100px">Уровень заряда, %</label>`);
+    h.push(`<input type="range" id="ups-ctl-battPct" min="0" max="100" step="1" value="${pct}" style="flex:1">`);
+    h.push(`<span id="ups-ctl-battPctLabel" style="font-size:11px;font-weight:600;min-width:36px;text-align:right">${pct}%</span>`);
+    h.push('</div>');
+
+    // Быстрые кнопки
+    h.push('<div style="display:flex;gap:6px">');
+    h.push('<button class="ups-ctl-toggle" data-ups-batt-set="0" style="flex:1">Разряжена</button>');
+    h.push('<button class="ups-ctl-toggle" data-ups-batt-set="50" style="flex:1">50%</button>');
+    h.push('<button class="ups-ctl-toggle on" data-ups-batt-set="100" style="flex:1">Полная</button>');
+    h.push('</div>');
   }
 
   body.innerHTML = h.join('');
@@ -261,6 +404,44 @@ function _renderUpsControlBody(n) {
       snapshot('ups-ctl:' + n.id + ':module:' + idx);
       if (!Array.isArray(n.modulesActive)) n.modulesActive = [];
       n.modulesActive[idx] = !(n.modulesActive[idx] !== false);
+      // Пересчёт текущего номинала модульного ИБП исходя из активных модулей
+      if (n.upsType === 'modular') {
+        const modKw = Number(n.moduleKwRated ?? n.moduleKw) || 25;
+        const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
+        const activeCount = n.modulesActive.filter(v => v !== false).length;
+        const working = Math.max(0, activeCount - redundN);
+        n.capacityKw = Math.min(Number(n.frameKw) || (activeCount * modKw), working * modKw);
+      }
+      render(); notifyChange(); _renderUpsControlBody(n);
+    });
+  });
+  // Ток заряда АКБ
+  const chargeAInput = document.getElementById('ups-ctl-chargeA');
+  if (chargeAInput) {
+    chargeAInput.addEventListener('change', () => {
+      snapshot('ups-ctl:' + n.id + ':chargeA');
+      n.chargeA = Math.max(0, Number(chargeAInput.value) || 0);
+      render(); notifyChange(); _renderUpsControlBody(n);
+    });
+  }
+  // Слайдер уровня заряда АКБ
+  const battPctSlider = document.getElementById('ups-ctl-battPct');
+  const battPctLabel = document.getElementById('ups-ctl-battPctLabel');
+  if (battPctSlider) {
+    battPctSlider.addEventListener('input', () => {
+      if (battPctLabel) battPctLabel.textContent = battPctSlider.value + '%';
+    });
+    battPctSlider.addEventListener('change', () => {
+      snapshot('ups-ctl:' + n.id + ':battPct');
+      n.batteryChargePct = Math.max(0, Math.min(100, Number(battPctSlider.value) || 0));
+      render(); notifyChange(); _renderUpsControlBody(n);
+    });
+  }
+  // Быстрые кнопки АКБ
+  body.querySelectorAll('[data-ups-batt-set]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      snapshot('ups-ctl:' + n.id + ':battPct');
+      n.batteryChargePct = Number(btn.dataset.upsBattSet) || 0;
       render(); notifyChange(); _renderUpsControlBody(n);
     });
   });
