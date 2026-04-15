@@ -12,12 +12,14 @@ function fullTag(n) {
   return effectiveTag(n) || n.tag || '';
 }
 
-// Сортировка по обозначению (tag) в алфавитном порядке
+// Сортировка по обозначению (tag) с естественным порядком:
+//  PNL1, PNL2, PNL10, PNL12 (а не PNL1, PNL10, PNL12, PNL2 как при простом алфавитном).
+// Используется numeric:true в Intl.Collator.
 function sortByTag(arr) {
   return arr.sort((a, b) => {
     const ta = (effectiveTag(a) || a.tag || a.name || '').toLowerCase();
     const tb = (effectiveTag(b) || b.tag || b.name || '').toLowerCase();
-    return ta.localeCompare(tb, 'ru');
+    return ta.localeCompare(tb, 'ru', { numeric: true, sensitivity: 'base' });
   });
 }
 
@@ -217,7 +219,7 @@ export function generateReport() {
     const bTo = effectiveTag(state.nodes.get(b.to.nodeId)) || '';
     const la = (a.lineLabel || `W-${aFrom}-${aTo}`).toLowerCase();
     const lb = (b.lineLabel || `W-${bFrom}-${bTo}`).toLowerCase();
-    return la.localeCompare(lb, 'ru');
+    return la.localeCompare(lb, 'ru', { numeric: true, sensitivity: 'base' });
   });
   if (activeCables.length) {
     lines.push('КАБЕЛЬНЫЕ ЛИНИИ И ШИНОПРОВОДЫ');

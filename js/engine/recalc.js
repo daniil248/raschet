@@ -1230,13 +1230,28 @@ function recalc() {
       } else {
         // Авто-подбор кабеля через общий модуль методики (IEC / ПУЭ)
         const calcMethod = getMethod(GLOBAL.calcMethod);
+        // Режим защиты: 'full' (по умолчанию) — и КЗ, и перегрузка;
+        //              'sc-only' — только КЗ, не координируем In с Iz
+        const protMode = c.protectionMode || 'full';
         let sizingCurrent = maxCurrent;
         if (c.manualBreakerIn) {
           const minIzPerLine = c.manualBreakerIn * 1.45 / 1.45; // In ≤ Iz
           const minTotalCurrent = minIzPerLine * conductorsInParallel;
-          sizingCurrent = Math.max(maxCurrent, minTotalCurrent);
+          if (protMode !== 'sc-only') {
+            sizingCurrent = Math.max(maxCurrent, minTotalCurrent);
+          }
           c._breakerUndersize = (c.manualBreakerIn < (maxCurrent / conductorsInParallel));
         } else {
+          // АВТО-режим: координируем кабель и автомат, чтобы In ≤ Iz.
+          // Шаг 1: подбираем предварительный автомат по расчётному току.
+          // Шаг 2: bump sizingCurrent до этого In, чтобы кабель вместил автомат.
+          // Шаг делается только если режим 'full' (перегрузка учитывается).
+          if (protMode !== 'sc-only' && maxCurrent > 0) {
+            const preBreakerIn = calcMethod.selectBreaker(maxCurrent);
+            if (preBreakerIn > 0) {
+              sizingCurrent = Math.max(maxCurrent, preBreakerIn);
+            }
+          }
           c._breakerUndersize = false;
         }
         const sel = calcMethod.selectCable(sizingCurrent, {
@@ -1320,8 +1335,11 @@ function recalc() {
 
     // Ручной автомат: используем его номинал, иначе — авто
     let InPerLine = c.manualBreakerIn ? Number(c.manualBreakerIn) : _calcMethod.selectBreaker(Iper);
-    // Координация: In ≤ Iz (автомат должен быть ≤ Iz кабеля)
-    c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
+    // Режим защиты: 'full' (по умолчанию) — и КЗ, и перегрузка;
+    //              'sc-only' — только КЗ (не проверяем In ≤ Iz)
+    const _protMode = c.protectionMode || 'full';
+    const _coordOverload = _protMode !== 'sc-only';
+    c._breakerAgainstCable = _coordOverload && !!(Iz > 0 && InPerLine > Iz);
     c._breakerI2fail = false;
 
     const InTotal = _calcMethod.selectBreaker(Itotal);
@@ -1336,8 +1354,8 @@ function recalc() {
       c._breakerIn = InTotal;
       c._breakerPerLine = null;
       c._breakerCount = 1;
-      // Координация: общий автомат vs per-line Iz
-      c._breakerAgainstCable = !!(Iz > 0 && InTotal > Iz * parallel);
+      // Координация: общий автомат vs суммарный Iz (только при full)
+      c._breakerAgainstCable = _coordOverload && !!(Iz > 0 && InTotal > Iz * parallel);
       c._breakerI2fail = false;
     } else {
       c._breakerIn = InPerLine;

@@ -3545,6 +3545,16 @@ export function renderInspectorConn(c) {
     h.push(`<span style="font-size:10px;color:${manualBreaker ? '#e65100' : '#999'}">ручной</span>`);
     h.push('</div>');
 
+    // Режим защиты для ЭТОЙ линии: полная (КЗ + перегрузка) или только КЗ.
+    // В режиме 'sc-only' авто-подбор кабеля не принуждает In ≤ Iz и не выдаёт
+    // warning при превышении — применяется когда перегрузка защищается upstream.
+    const _pm = c.protectionMode || 'full';
+    h.push(field('Режим защиты', `
+      <select data-conn-prop="protectionMode">
+        <option value="full"${_pm === 'full' ? ' selected' : ''}>КЗ и перегрузка</option>
+        <option value="sc-only"${_pm === 'sc-only' ? ' selected' : ''}>Только КЗ</option>
+      </select>`));
+
     if (manualBreaker) {
       let brkOpts = '';
       for (const nom of BREAKER_SERIES) {
