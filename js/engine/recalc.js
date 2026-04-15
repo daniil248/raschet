@@ -370,7 +370,20 @@ function recalc() {
     let res = null;
 
     if (n.type === 'source') {
-      res = effectiveOn(n) ? [] : null;
+      if (!effectiveOn(n)) {
+        res = null;
+      } else if ((Number(n.inputs) || 0) > 0) {
+        // Первичная обмотка трансформатора (или другого источника)
+        // подключена к сети сверху — сам источник без питания сверху
+        // не может выдавать электричество. Требуем живой входящий канал
+        // с любого порта.
+        const ins = edgesIn.get(nid) || [];
+        const live = ins.filter(c => isConnLive(c) && activeInputs(c.from.nodeId) !== null);
+        res = live.length > 0 ? live.map(c => ({ conn: c, share: 1 / live.length })) : null;
+      } else {
+        // Автономный источник / utility — сам является корнем питания.
+        res = [];
+      }
     } else if (n.type === 'generator') {
       if (!effectiveOn(n)) {
         res = null;
@@ -765,6 +778,8 @@ function recalc() {
   // При прохождении границы ИБП поток вверх увеличивается на 1/КПД — это потери
   // на преобразование. Если ИБП работает от батареи (активные входы пусты),
   // visit() завершается — вверх ничего не идёт.
+  // Через source с inputs>0 (трансформатор на кабеле) поток тоже проходит,
+  // увеличиваясь на сумму потерь P0 + Pk·(load/Snom)².
   function walkUp(nid, kw) {
     let depth = 0;
     const visit = (id, flow) => {
@@ -778,7 +793,24 @@ function recalc() {
       const eff = upsActiveLoss
         ? Math.max(0.01, (Number(nn.efficiency) || 100) / 100)
         : 1;
-      const flowUp = flow / eff;
+      let flowUp = flow / eff;
+      // Потери трансформатора: если это source с подключённой первичкой, то
+      // вверх уходит flow + P0 + Pk·(S/Snom)².
+      if (nn.type === 'source' && (Number(nn.inputs) || 0) > 0) {
+        const subtype = nn.sourceSubtype || 'transformer';
+        if (subtype === 'transformer') {
+          const snomKva = Number(nn.snomKva) || 0;
+          const cosPhi = Number(nn.cosPhi) || 0.95;
+          const snomKw = snomKva * cosPhi;
+          const p0 = Number(nn.p0W) || 0; // кВт — в поле называется p0W, но это кВт
+          const pk = Number(nn.pkW) || 0;
+          const loadRatio = snomKw > 0 ? (flow / snomKw) : 0;
+          const copperLoss = pk * loadRatio * loadRatio;
+          flowUp = flow + p0 + copperLoss;
+          nn._trafoP0Kw = p0;
+          nn._trafoPkKw = copperLoss;
+        }
+      }
       for (const { conn, share } of ai) {
         const upKw = flowUp * share;
         conn._active = true;
