@@ -121,39 +121,20 @@ export function openUpsParamsModal(n) {
   h.push(field('Уровень напряжения', `<select id="up-voltage">${vOpts}</select>`));
   h.push(field('cos φ', `<input type="number" id="up-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi || 1.0}">`));
 
-  h.push('<h4 style="margin:16px 0 8px">Батарея (АКБ)</h4>');
-  h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">Тип и состав блока. Ток заряда — в модалке «Управление ИБП».</div>');
-  h.push(field('Тип батарей', `
-    <select id="up-battType">
-      <option value="lead-acid"${(n.batteryType || 'lead-acid') === 'lead-acid' ? ' selected' : ''}>Свинцово-кислотные (VRLA/AGM), 2 В</option>
-      <option value="li-ion"${n.batteryType === 'li-ion' ? ' selected' : ''}>Литий-ионные (LiFePO4), 3.2 В</option>
-    </select>`));
-  h.push('<div style="display:flex;gap:8px">');
-  h.push(`<div style="flex:1">${field('Элементов в блоке', `<input type="number" id="up-battCells" min="1" max="400" step="1" value="${n.batteryCellCount ?? 192}">`)}</div>`);
-  h.push(`<div style="flex:1">${field('Напр. элемента, В', `<input type="number" id="up-battCellV" min="0.5" max="5" step="0.1" value="${n.batteryCellVoltage ?? 2.0}">`)}</div>`);
-  h.push('</div>');
-  h.push('<div style="display:flex;gap:8px">');
-  h.push(`<div style="flex:1">${field('Ёмкость элемента, А·ч', `<input type="number" id="up-battAh" min="1" step="1" value="${n.batteryCapacityAh ?? 100}">`)}</div>`);
-  h.push(`<div style="flex:1">${field('Параллельных цепочек', `<input type="number" id="up-battStr" min="1" max="16" step="1" value="${n.batteryStringCount ?? 1}">`)}</div>`);
-  h.push('</div>');
-  // Расчёт напряжения блока и ёмкости
+  // Блок «Батарея (АКБ)» полностью перенесён в отдельную модалку
+  // «🔋 АКБ» (кнопка в инспекторе ИБП). Здесь — только короткая ссылка.
   {
     const cells = Number(n.batteryCellCount ?? 192) || 0;
     const cellV = Number(n.batteryCellVoltage ?? 2.0) || 0;
-    const ah = Number(n.batteryCapacityAh ?? 100) || 0;
-    const strs = Number(n.batteryStringCount ?? 1) || 1;
     const blockV = cells * cellV;
-    const totalAh = ah * strs;
-    const kwh = (blockV * totalAh) / 1000;
-    h.push(`<div class="muted" style="font-size:11px;line-height:1.7;margin:4px 0 10px;padding:6px 8px;background:#f6f8fa;border-radius:4px">
-      Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
-      Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> (${strs} × ${fmt(ah)})<br>
-      Запас энергии: <b>${fmt(kwh)} kWh</b>
+    const pct = Math.round(Number(n.batteryChargePct ?? 100) || 0);
+    h.push(`<div class="muted" style="font-size:11px;margin:14px 0 4px;padding:8px 10px;background:#f6f8fa;border-radius:6px">
+      🔋 АКБ: ${n.batteryType === 'li-ion' ? 'Li-Ion' : 'VRLA'}
+      · блок DC <b>${fmt(blockV)} В</b> · заряд <b>${pct}%</b><br>
+      Настройки батареи (тип, элементы, напряжение, ёмкость, цепочки,
+      ток заряда) — в отдельной модалке <b>«🔋 АКБ»</b> в инспекторе ИБП.
     </div>`);
   }
-  // Старые поля (оставлены для обратной совместимости — скрыты)
-  h.push(`<input type="hidden" id="up-battKwh" value="${n.batteryKwh ?? 0}">`);
-  h.push(field('Заряд батареи, %', `<input type="number" id="up-battPct" min="0" max="100" step="1" value="${n.batteryChargePct ?? 100}">`));
 
   h.push('<h4 style="margin:16px 0 8px">Статический байпас</h4>');
   // Режим подключения байпасного ввода
@@ -199,13 +180,7 @@ export function openUpsParamsModal(n) {
     grab('up-slots', 'moduleSlots', true);
     grab('up-installed', 'moduleInstalled', true);
     grab('up-redund', 'redundancyScheme');
-    // Батарея
-    grab('up-battType', 'batteryType');
-    grab('up-battCells', 'batteryCellCount', true);
-    grab('up-battCellV', 'batteryCellVoltage', true);
-    grab('up-battAh', 'batteryCapacityAh', true);
-    grab('up-battStr', 'batteryStringCount', true);
-    grab('up-battPct', 'batteryChargePct', true);
+    // (Поля АКБ вынесены в отдельную модалку «АКБ».)
     // Напряжение и cos
     grab('up-cosPhi', 'cosPhi', true);
     // Байпас
@@ -275,18 +250,8 @@ export function openUpsParamsModal(n) {
     n.voltageLevelIdx = vIdx;
     if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
     n.cosPhi = Number(document.getElementById('up-cosPhi')?.value) || 1.0;
-    // Новые поля АКБ
-    n.batteryType = document.getElementById('up-battType')?.value || 'lead-acid';
-    n.batteryCellCount = Math.max(1, Number(document.getElementById('up-battCells')?.value) || 192);
-    n.batteryCellVoltage = Number(document.getElementById('up-battCellV')?.value) || 2.0;
-    n.batteryCapacityAh = Math.max(1, Number(document.getElementById('up-battAh')?.value) || 100);
-    n.batteryStringCount = Math.max(1, Number(document.getElementById('up-battStr')?.value) || 1);
-    // Пересчитать batteryKwh из новых полей
-    const _blockV = n.batteryCellCount * n.batteryCellVoltage;
-    const _totalAh = n.batteryCapacityAh * n.batteryStringCount;
-    n.batteryKwh = (_blockV * _totalAh) / 1000;
-    n.batteryChargePct = Number(document.getElementById('up-battPct')?.value) || 0;
-    // chargeA остаётся на узле, управляется из «Управление ИБП»
+    // Параметры АКБ (batteryType/CellCount/CellVoltage/CapacityAh/
+    // StringCount/ChargePct/chargeA) — целиком в отдельной модалке «АКБ».
     n.staticBypass = document.getElementById('up-bypass')?.checked !== false;
     n.staticBypassAuto = document.getElementById('up-bypassAuto')?.checked !== false;
     n.staticBypassOverloadPct = Number(document.getElementById('up-bypassPct')?.value) || 110;
@@ -371,9 +336,13 @@ function _renderUpsControlBody(n) {
     </div>`);
   }
 
-  h.push(`<div style="background:#fff;border:1px solid #dfe2e8;border-radius:6px;padding:12px;margin-bottom:12px">
-    <svg viewBox="0 0 780 220" style="width:100%;height:220px" xmlns="http://www.w3.org/2000/svg">${_upsStructSvg(n, { outA, inA, inBypassA, battA, onBypass, onBattery })}</svg>
-  </div>`);
+  {
+    const struct = _upsStructSvg(n, { outA, inA, inBypassA, battA, onBypass, onBattery });
+    const displayH = Math.min(struct.height, 520);
+    h.push(`<div style="background:#fff;border:1px solid #dfe2e8;border-radius:6px;padding:12px;margin-bottom:12px;overflow:auto">
+      <svg viewBox="0 0 ${struct.width} ${struct.height}" style="width:100%;max-width:100%;height:auto;max-height:${displayH}px" xmlns="http://www.w3.org/2000/svg">${struct.svg}</svg>
+    </div>`);
+  }
 
   h.push('<h4 style="margin:12px 0 6px">Защитные аппараты</h4>');
   const brkRow = (key, label, onKey, nominalKey, branchA) => {
@@ -521,17 +490,32 @@ function _renderUpsBatteryBody(n) {
   const h = [];
   h.push(`<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name || 'ИБП')} · АКБ</h3>`);
 
+  // Сводка (вычисляется при каждом render, обновляется после change)
   h.push(`<div class="muted" style="font-size:12px;line-height:1.9;padding:10px 12px;background:#f6f8fa;border-radius:6px;margin-bottom:12px">
-    Тип: <b>${bt === 'li-ion' ? 'Li-Ion (LiFePO4)' : 'Свинцово-кислотные (VRLA)'}</b>
-    · Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
-    Состав: <b>${cells}</b> эл. × <b>${fmt(cellV)} В</b> × <b>${strs}</b> цеп. × <b>${fmt(ah)} А·ч</b><br>
+    Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
     Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> / <b>${fmt(kwh)} kWh</b><br>
     Заряд: <b>${pct}%</b> → запас <b>${fmt(storedKwh)} kWh</b><br>
     Оценка автономии на нагрузке ${fmt(loadKw)} kW: <b>${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
   </div>`);
 
+  // Состав блока АКБ (редактируемые поля)
+  h.push('<h4 style="margin:8px 0 6px">Состав блока</h4>');
+  h.push(field('Тип батарей', `
+    <select id="ups-batt-type">
+      <option value="lead-acid"${bt === 'lead-acid' ? ' selected' : ''}>Свинцово-кислотные (VRLA/AGM), 2 В</option>
+      <option value="li-ion"${bt === 'li-ion' ? ' selected' : ''}>Литий-ионные (LiFePO4), 3.2 В</option>
+    </select>`));
+  h.push('<div style="display:flex;gap:8px">');
+  h.push(`<div style="flex:1">${field('Элементов в блоке', `<input type="number" id="ups-batt-cells" min="1" max="400" step="1" value="${cells}">`)}</div>`);
+  h.push(`<div style="flex:1">${field('Напр. элемента, В', `<input type="number" id="ups-batt-cellV" min="0.5" max="5" step="0.1" value="${cellV}">`)}</div>`);
+  h.push('</div>');
+  h.push('<div style="display:flex;gap:8px">');
+  h.push(`<div style="flex:1">${field('Ёмкость элемента, А·ч', `<input type="number" id="ups-batt-ah" min="1" step="1" value="${ah}">`)}</div>`);
+  h.push(`<div style="flex:1">${field('Параллельных цепочек', `<input type="number" id="ups-batt-str" min="1" max="16" step="1" value="${strs}">`)}</div>`);
+  h.push('</div>');
+
   // Ток заряда
-  h.push('<h4 style="margin:12px 0 6px">Ток заряда</h4>');
+  h.push('<h4 style="margin:16px 0 6px">Ток заряда</h4>');
   h.push(`<div class="ups-ctl-row">
     <div class="ups-ctl-label">Ток заряда, А (AC со входа)</div>
     <div class="ups-ctl-current">
@@ -555,7 +539,51 @@ function _renderUpsBatteryBody(n) {
 
   body.innerHTML = h.join('');
 
-  // Обработчики
+  // Хелпер: пересчитать batteryKwh из полей и сделать snapshot/rerender
+  const recalcKwh = () => {
+    const _blockV = (Number(n.batteryCellCount) || 0) * (Number(n.batteryCellVoltage) || 0);
+    const _totalAh = (Number(n.batteryCapacityAh) || 0) * (Number(n.batteryStringCount) || 1);
+    n.batteryKwh = (_blockV * _totalAh) / 1000;
+  };
+
+  // Обработчики полей состава
+  const bindNum = (id, prop, min = 0) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':' + prop);
+      n[prop] = Math.max(min, Number(el.value) || 0);
+      recalcKwh();
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
+  };
+  const typeSel = document.getElementById('ups-batt-type');
+  if (typeSel) {
+    typeSel.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':type');
+      n.batteryType = typeSel.value || 'lead-acid';
+      // Подставим дефолтное напряжение элемента по типу — но только если
+      // пользователь не задавал его вручную (значение соответствует
+      // дефолту другого типа).
+      const cellVEl = document.getElementById('ups-batt-cellV');
+      if (cellVEl) {
+        const curV = Number(cellVEl.value) || 0;
+        if (n.batteryType === 'li-ion' && (curV === 2 || curV === 0)) {
+          n.batteryCellVoltage = 3.2;
+        } else if (n.batteryType === 'lead-acid' && (curV === 3.2 || curV === 0)) {
+          n.batteryCellVoltage = 2.0;
+        }
+      }
+      recalcKwh();
+      render(); notifyChange(); _renderUpsBatteryBody(n);
+    });
+  }
+  bindNum('ups-batt-cells', 'batteryCellCount', 1);
+  bindNum('ups-batt-cellV', 'batteryCellVoltage', 0.1);
+  bindNum('ups-batt-ah', 'batteryCapacityAh', 1);
+  bindNum('ups-batt-str', 'batteryStringCount', 1);
+
+  // Ток заряда
   const chargeAInput = document.getElementById('ups-batt-chargeA');
   if (chargeAInput) {
     chargeAInput.addEventListener('change', () => {
@@ -564,6 +592,7 @@ function _renderUpsBatteryBody(n) {
       render(); notifyChange(); _renderUpsBatteryBody(n);
     });
   }
+  // Слайдер заряда
   const pctSlider = document.getElementById('ups-batt-pct');
   const pctLabel = document.getElementById('ups-batt-pctLabel');
   if (pctSlider) {
@@ -585,7 +614,10 @@ function _renderUpsBatteryBody(n) {
   });
 }
 
-// Структурная схема ИБП (SVG)
+// Структурная схема ИБП (SVG).
+// Возвращает { svg, width, height } — высота зависит от числа модулей.
+// Компоновка: три входа слева (Bypass / Mains / Battery), стек
+// Power Modules в середине, Maintenance bypass сверху, Output справа.
 function _upsStructSvg(n, flows) {
   const { outA, inA, inBypassA, battA, onBypass, onBattery } = flows;
   const colActive = '#2979ff';
@@ -593,64 +625,220 @@ function _upsStructSvg(n, flows) {
   const colBatt = '#43a047';
   const colIdle = '#cfd4e0';
   const fmtA = (a) => a > 0 ? `${fmt(a)} A` : '';
+
   const mainCol = (onBypass || onBattery) ? colIdle : colActive;
-  const bypassCol = onBypass ? colBypass : colIdle;
-  const battCol = onBattery ? colBatt : colIdle;
-  const parts = [];
-  parts.push('<rect x="0" y="0" width="780" height="220" fill="#fafbfc"/>');
-  // Режим подключения байпасного ввода: 'jumper' — перемычка, 'separate' — отдельный кабель
-  const bypassSeparate = n.bypassFeedMode === 'separate';
-  parts.push(`<line x1="20" y1="50" x2="80" y2="50" stroke="${mainCol}" stroke-width="3"/>`);
-  parts.push(`<text x="20" y="42" font-size="11" fill="#546e7a">AC вход${bypassSeparate ? ' 1 (осн.)' : ''}</text>`);
-  if (inA > 0) parts.push(`<text x="22" y="66" font-size="10" fill="${mainCol}" font-weight="600">${fmtA(inA)}</text>`);
+  const bypassLineCol = onBypass ? colBypass : colIdle;
+  const battLineCol = onBattery ? colBatt : colIdle;
+  const outCol = onBattery ? colBatt : onBypass ? colBypass : colActive;
+  // Цвет линии сетевого входа — жив если QF1 замкнут и не на байпасе/батарее
   const qf1on = n.hasInputBreaker !== false && n.inputBreakerOn !== false;
-  parts.push(_svgBreaker(80, 50, 'QF1', qf1on ? mainCol : colIdle, n.hasInputBreaker !== false));
-  parts.push(`<line x1="120" y1="50" x2="180" y2="50" stroke="${mainCol}" stroke-width="3"/>`);
-  parts.push(`<rect x="180" y="30" width="80" height="40" fill="#fff" stroke="${mainCol}" stroke-width="2" rx="4"/>`);
-  parts.push(`<text x="220" y="55" text-anchor="middle" font-size="12" fill="#2b303b">REC =/~</text>`);
-  parts.push(`<line x1="260" y1="50" x2="320" y2="50" stroke="${mainCol}" stroke-width="3"/>`);
-  parts.push(`<rect x="320" y="30" width="80" height="40" fill="#fff" stroke="${onBattery ? battCol : mainCol}" stroke-width="2" rx="4"/>`);
-  parts.push(`<text x="360" y="55" text-anchor="middle" font-size="12" fill="#2b303b">INV ~/=</text>`);
-  const qbon = n.hasBatteryBreaker !== false && n.batteryBreakerOn !== false;
-  parts.push(`<line x1="290" y1="70" x2="290" y2="140" stroke="${battCol}" stroke-width="3"/>`);
-  parts.push(_svgBreaker(290, 140, 'QB', qbon ? battCol : colIdle, n.hasBatteryBreaker !== false, 'down'));
-  parts.push(`<rect x="260" y="170" width="60" height="30" fill="#fff" stroke="${battCol}" stroke-width="2" rx="4"/>`);
-  parts.push(`<text x="290" y="190" text-anchor="middle" font-size="11" fill="#2b303b">BATT</text>`);
-  if (battA > 0) parts.push(`<text x="305" y="105" font-size="10" fill="${battCol}" font-weight="600">${fmtA(battA)}</text>`);
-  parts.push(`<line x1="400" y1="50" x2="580" y2="50" stroke="${(onBypass || onBattery) ? (onBypass ? colIdle : battCol) : mainCol}" stroke-width="3"/>`);
   const qf2on = n.hasInputBypassBreaker !== false && n.inputBypassBreakerOn !== false;
-  if (bypassSeparate) {
-    // Отдельный кабель на байпас — отдельный ввод снизу слева, на отдельной линии
-    parts.push(`<line x1="20" y1="130" x2="150" y2="130" stroke="${bypassCol}" stroke-width="3"/>`);
-    parts.push(`<text x="20" y="122" font-size="11" fill="#546e7a">AC вход 2 (байпас)</text>`);
-    parts.push(_svgBreaker(150, 130, 'QF2', qf2on ? bypassCol : colIdle, n.hasInputBypassBreaker !== false));
-    parts.push(`<line x1="190" y1="130" x2="300" y2="130" stroke="${bypassCol}" stroke-width="3"/>`);
-    parts.push(`<line x1="300" y1="130" x2="300" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
-    parts.push(`<line x1="300" y1="110" x2="440" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
-  } else {
-    // Перемычка от основного ввода — старая схема
-    parts.push(`<line x1="100" y1="50" x2="100" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
-    parts.push(`<line x1="100" y1="110" x2="440" y2="110" stroke="${bypassCol}" stroke-width="3"/>`);
-    parts.push(_svgBreaker(150, 110, 'QF2', qf2on ? bypassCol : colIdle, n.hasInputBypassBreaker !== false));
-  }
-  parts.push(`<rect x="300" y="95" width="80" height="30" fill="#fff" stroke="${bypassCol}" stroke-width="2" rx="4"/>`);
-  parts.push(`<text x="340" y="114" text-anchor="middle" font-size="11" fill="#2b303b">SBS</text>`);
-  parts.push(`<line x1="440" y1="110" x2="440" y2="50" stroke="${bypassCol}" stroke-width="3"/>`);
-  if (inBypassA > 0) parts.push(`<text x="410" y="85" font-size="10" fill="${bypassCol}" font-weight="600">${fmtA(inBypassA)}</text>`);
-  const qf4on = n.hasBypassBreaker !== false && n.bypassBreakerOn !== false;
-  if (n.hasBypassBreaker !== false) {
-    parts.push(`<line x1="100" y1="180" x2="680" y2="180" stroke="${qf4on ? colBypass : colIdle}" stroke-width="3" stroke-dasharray="4 3"/>`);
-    parts.push(`<line x1="100" y1="50" x2="100" y2="180" stroke="${qf4on ? colBypass : colIdle}" stroke-width="3" stroke-dasharray="4 3"/>`);
-    parts.push(`<line x1="680" y1="50" x2="680" y2="180" stroke="${qf4on ? colBypass : colIdle}" stroke-width="3" stroke-dasharray="4 3"/>`);
-    parts.push(_svgBreaker(370, 180, 'QF4', qf4on ? colBypass : colIdle, true));
-  }
   const qf3on = n.hasOutputBreaker !== false && n.outputBreakerOn !== false;
-  const outCol = (onBypass || onBattery) ? (onBypass ? bypassCol : battCol) : mainCol;
-  parts.push(_svgBreaker(580, 50, 'QF3', qf3on ? outCol : colIdle, n.hasOutputBreaker !== false));
-  parts.push(`<line x1="620" y1="50" x2="720" y2="50" stroke="${outCol}" stroke-width="3"/>`);
-  parts.push(`<text x="730" y="54" font-size="11" fill="#546e7a">AC выход</text>`);
-  if (outA > 0) parts.push(`<text x="630" y="66" font-size="10" fill="${outCol}" font-weight="600">${fmtA(outA)}</text>`);
-  return parts.join('');
+  const qf4on = n.hasBypassBreaker !== false && n.bypassBreakerOn !== false;
+  const qbon = n.hasBatteryBreaker !== false && n.batteryBreakerOn !== false;
+  const mainsOn = qf1on && !onBypass && !onBattery;
+  const mainsLineCol = mainsOn ? colActive : colIdle;
+  const bypassOn = qf2on && onBypass;
+  const bypassCableCol = bypassOn ? colBypass : colIdle;
+  const battOn = qbon && onBattery;
+  const battCableCol = battOn ? colBatt : colIdle;
+  // Цвет инвертора: активен в режимах ИНВЕРТОР и БАТАРЕЯ, выключен на байпасе
+  const invActiveCol = onBattery ? colBatt : onBypass ? colIdle : colActive;
+
+  const bypassSeparate = n.bypassFeedMode === 'separate';
+  const isModular = n.upsType === 'modular';
+  const totalModules = isModular
+    ? Math.max(1, Number(n.moduleInstalled ?? n.moduleCount) || 1)
+    : 1;
+  // Для модульного ИБП показываем ТОЛЬКО первый и последний модуль
+  // (с "⋮" между ними, если всего больше двух). Для моноблока — один.
+  const visibleModuleIndices = [];
+  if (!isModular || totalModules === 1) {
+    visibleModuleIndices.push(0);
+  } else if (totalModules === 2) {
+    visibleModuleIndices.push(0, 1);
+  } else {
+    visibleModuleIndices.push(0, totalModules - 1);
+  }
+  const showCount = visibleModuleIndices.length;
+  const drawDots = isModular && totalModules > 2;
+
+  // Координаты
+  const xLeftLabel = 50;
+  const xInputTerm = 50;
+  const xQF1 = 200;
+  const xMainsBus = 280;
+  const xBattBus = 305;
+  const modX = 340;
+  const modW = 420;
+  const xOutBus = 800;
+  const xQF3 = 860;
+  const xOutTerm = 930;
+
+  const yMaint = 40;
+  const yBypass = 110;
+  const yMains = 210;
+  const yBatt = 290;
+  const modStartY = 170;
+  const modH = 115;
+  const modGap = 30;
+
+  const modulePositions = [];
+  let curY = modStartY;
+  for (let i = 0; i < showCount; i++) {
+    modulePositions.push(curY);
+    curY += modH + modGap;
+  }
+  const H = (modulePositions[showCount - 1] || modStartY) + modH + 40;
+  const W = 980;
+
+  const parts = [];
+  parts.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#fafbfc"/>`);
+
+  // === Maintenance bypass (верхняя обходная линия) ===
+  if (n.hasBypassBreaker !== false) {
+    const maintCol = qf4on ? colBypass : colIdle;
+    const xQF4 = (xQF1 + xOutBus) / 2;
+    parts.push(`<text x="${xQF4}" y="${yMaint - 10}" text-anchor="middle" font-size="11" fill="#546e7a">Maintenance bypass</text>`);
+    parts.push(`<line x1="${xQF1 + 22}" y1="${yBypass}" x2="${xQF1 + 22}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
+    parts.push(`<line x1="${xQF1 + 22}" y1="${yMaint}" x2="${xQF4 - 20}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
+    parts.push(_svgBreaker(xQF4, yMaint, 'QF4', maintCol, true));
+    parts.push(`<line x1="${xQF4 + 20}" y1="${yMaint}" x2="${xOutBus}" y2="${yMaint}" stroke="${maintCol}" stroke-width="2" stroke-dasharray="4 3"/>`);
+  }
+
+  // === Bypass input ===
+  parts.push(`<text x="${xLeftLabel + 10}" y="${yBypass - 8}" font-size="11" fill="#546e7a">Bypass input</text>`);
+  parts.push(`<circle cx="${xInputTerm}" cy="${yBypass}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${xInputTerm + 5}" y1="${yBypass}" x2="${xQF1 - 20}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+  parts.push(_svgBreaker(xQF1, yBypass, 'QF2', bypassCableCol, n.hasInputBypassBreaker !== false));
+  parts.push(`<line x1="${xQF1 + 20}" y1="${yBypass}" x2="460" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+  // Bypass module: пунктирная рамка с SCR-тиристором внутри
+  const bmX = 460, bmW = 200, bmY = yBypass - 28, bmH = 56;
+  parts.push(`<rect x="${bmX}" y="${bmY}" width="${bmW}" height="${bmH}" fill="#fff" stroke="#9aa3ad" stroke-width="1" stroke-dasharray="3 3" rx="4"/>`);
+  parts.push(`<text x="${bmX + bmW - 8}" y="${bmY + bmH - 6}" text-anchor="end" font-size="10" fill="#777">Bypass module</text>`);
+  // SCR-тиристор (треугольник + катод + gate)
+  const scrX = bmX + bmW / 2, scrY = yBypass;
+  parts.push(`<polygon points="${scrX - 10},${scrY - 10} ${scrX - 10},${scrY + 10} ${scrX + 6},${scrY}" fill="none" stroke="${bypassCableCol}" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${scrX + 6}" y1="${scrY - 10}" x2="${scrX + 6}" y2="${scrY + 10}" stroke="${bypassCableCol}" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${scrX + 8}" y1="${scrY - 3}" x2="${scrX + 16}" y2="${scrY - 11}" stroke="${bypassCableCol}" stroke-width="1.2"/>`);
+  parts.push(`<line x1="${bmX}" y1="${yBypass}" x2="${scrX - 10}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="2"/>`);
+  parts.push(`<line x1="${scrX + 6}" y1="${yBypass}" x2="${bmX + bmW}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="2"/>`);
+  parts.push(`<line x1="${bmX + bmW}" y1="${yBypass}" x2="${xOutBus}" y2="${yBypass}" stroke="${bypassCableCol}" stroke-width="3"/>`);
+  if (inBypassA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yBypass - 8}" font-size="10" fill="${colBypass}" font-weight="600">${fmtA(inBypassA)}</text>`);
+
+  // === Mains input ===
+  parts.push(`<text x="${xLeftLabel + 10}" y="${yMains - 8}" font-size="11" fill="#546e7a">Mains input${bypassSeparate ? ' (осн.)' : ''}</text>`);
+  parts.push(`<circle cx="${xInputTerm}" cy="${yMains}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${xInputTerm + 5}" y1="${yMains}" x2="${xQF1 - 20}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
+  parts.push(_svgBreaker(xQF1, yMains, 'QF1', mainsLineCol, n.hasInputBreaker !== false));
+  parts.push(`<line x1="${xQF1 + 20}" y1="${yMains}" x2="${xMainsBus}" y2="${yMains}" stroke="${mainsLineCol}" stroke-width="3"/>`);
+  if (inA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yMains - 8}" font-size="10" fill="${colActive}" font-weight="600">${fmtA(inA)}</text>`);
+
+  // === Battery input ===
+  parts.push(`<text x="${xLeftLabel + 10}" y="${yBatt - 8}" font-size="11" fill="#546e7a">Battery input</text>`);
+  parts.push(`<circle cx="${xInputTerm}" cy="${yBatt}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${xInputTerm + 5}" y1="${yBatt}" x2="${xQF1 - 20}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
+  parts.push(_svgBreaker(xQF1, yBatt, 'QB', battCableCol, n.hasBatteryBreaker !== false));
+  parts.push(`<line x1="${xQF1 + 20}" y1="${yBatt}" x2="${xBattBus}" y2="${yBatt}" stroke="${battCableCol}" stroke-width="3"/>`);
+  if (battA > 0) parts.push(`<text x="${xQF1 + 24}" y="${yBatt - 8}" font-size="10" fill="${colBatt}" font-weight="600">${fmtA(battA)}</text>`);
+
+  // Предварительные координаты середины REC/INV/DC-DC у каждого модуля
+  const recRowY = (mY) => mY + 35;
+  const ddRowY  = (mY) => mY + modH - 32;
+
+  // === Вертикальные шины (mains / battery / output) ===
+  const mainsYs = modulePositions.map(recRowY);
+  mainsYs.push(yMains);
+  parts.push(`<line x1="${xMainsBus}" y1="${Math.min(...mainsYs)}" x2="${xMainsBus}" y2="${Math.max(...mainsYs)}" stroke="${mainsLineCol}" stroke-width="3"/>`);
+  parts.push(`<circle cx="${xMainsBus}" cy="${yMains}" r="3" fill="${mainsLineCol}"/>`);
+
+  const battYs = modulePositions.map(ddRowY);
+  battYs.push(yBatt);
+  parts.push(`<line x1="${xBattBus}" y1="${Math.min(...battYs)}" x2="${xBattBus}" y2="${Math.max(...battYs)}" stroke="${battCableCol}" stroke-width="3"/>`);
+  parts.push(`<circle cx="${xBattBus}" cy="${yBatt}" r="3" fill="${battCableCol}"/>`);
+
+  const outYs = modulePositions.map(recRowY);
+  outYs.push(yBypass);
+  if (n.hasBypassBreaker !== false) outYs.push(yMaint);
+  parts.push(`<line x1="${xOutBus}" y1="${Math.min(...outYs)}" x2="${xOutBus}" y2="${Math.max(...outYs)}" stroke="${outCol === colIdle ? colIdle : outCol}" stroke-width="3"/>`);
+
+  // === Power modules ===
+  for (let i = 0; i < showCount; i++) {
+    const mY = modulePositions[i];
+    const realIdx = visibleModuleIndices[i];
+    const modActive = isModular
+      ? (Array.isArray(n.modulesActive) ? n.modulesActive[realIdx] !== false : true)
+      : true;
+    const modMainCol = (modActive && mainsOn) ? colActive : colIdle;
+    const modInvCol = (modActive && !onBypass) ? invActiveCol : colIdle;
+    const modBattCol = (modActive && qbon) ? (onBattery ? colBatt : colIdle) : colIdle;
+
+    // Рамка модуля (пунктирная светло-серая)
+    parts.push(`<rect x="${modX}" y="${mY}" width="${modW}" height="${modH}" fill="#fafafa" stroke="#aaa" stroke-width="1" stroke-dasharray="3 3" rx="5"/>`);
+    const label = totalModules === 1
+      ? 'Power module'
+      : `Power module ${realIdx + 1}${drawDots && i === showCount - 1 ? ' (из ' + totalModules + ')' : ''}`;
+    parts.push(`<text x="${modX + modW - 10}" y="${mY + modH - 8}" text-anchor="end" font-size="10" fill="#777">${label}</text>`);
+    if (isModular && !modActive) {
+      parts.push(`<text x="${modX + 18}" y="${mY + modH - 8}" font-size="10" fill="#c62828" font-weight="600">⊗ ОТКЛ</text>`);
+    }
+
+    // AC/DC rectifier
+    const recX = modX + 40, recY = mY + 20, recW = 64, recH = 40;
+    parts.push(`<rect x="${recX}" y="${recY}" width="${recW}" height="${recH}" fill="#fff" stroke="${modMainCol === colIdle ? '#aaa' : modMainCol}" stroke-width="1.8" rx="3"/>`);
+    parts.push(`<text x="${recX + 16}" y="${recY + 17}" font-size="10" fill="#2b303b" font-weight="700">AC</text>`);
+    parts.push(`<line x1="${recX + 8}" y1="${recY + recH - 8}" x2="${recX + recW - 8}" y2="${recY + 8}" stroke="#777" stroke-width="1"/>`);
+    parts.push(`<text x="${recX + recW - 16}" y="${recY + recH - 5}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
+
+    // DC/AC inverter
+    const invX = modX + modW - 104, invY = mY + 20, invW = 64, invH = 40;
+    parts.push(`<rect x="${invX}" y="${invY}" width="${invW}" height="${invH}" fill="#fff" stroke="${modInvCol === colIdle ? '#aaa' : modInvCol}" stroke-width="1.8" rx="3"/>`);
+    parts.push(`<text x="${invX + 16}" y="${invY + 17}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
+    parts.push(`<line x1="${invX + 8}" y1="${invY + invH - 8}" x2="${invX + invW - 8}" y2="${invY + 8}" stroke="#777" stroke-width="1"/>`);
+    parts.push(`<text x="${invX + invW - 16}" y="${invY + invH - 5}" font-size="10" fill="#2b303b" font-weight="700">AC</text>`);
+
+    // DC/DC charger (центр снизу)
+    const ddX = modX + modW / 2 - 32, ddY = mY + modH - 54, ddW = 64, ddH = 38;
+    parts.push(`<rect x="${ddX}" y="${ddY}" width="${ddW}" height="${ddH}" fill="#fff" stroke="${modBattCol === colIdle ? '#aaa' : modBattCol}" stroke-width="1.8" rx="3"/>`);
+    parts.push(`<text x="${ddX + 16}" y="${ddY + 15}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
+    parts.push(`<line x1="${ddX + 8}" y1="${ddY + ddH - 6}" x2="${ddX + ddW - 8}" y2="${ddY + 6}" stroke="#777" stroke-width="1"/>`);
+    parts.push(`<text x="${ddX + ddW - 16}" y="${ddY + ddH - 5}" font-size="10" fill="#2b303b" font-weight="700">DC</text>`);
+
+    // Внутренняя DC-шина REC ↔ INV
+    const dcBusY = recY + recH / 2;
+    parts.push(`<line x1="${recX + recW}" y1="${dcBusY}" x2="${invX}" y2="${dcBusY}" stroke="${modMainCol}" stroke-width="2"/>`);
+    // DC/DC ↕ внутренняя DC-шина (узел)
+    parts.push(`<line x1="${ddX + ddW / 2}" y1="${ddY}" x2="${ddX + ddW / 2}" y2="${dcBusY}" stroke="${modBattCol}" stroke-width="2"/>`);
+    parts.push(`<circle cx="${ddX + ddW / 2}" cy="${dcBusY}" r="2.8" fill="${modMainCol}"/>`);
+
+    // Внешние подключения к шинам
+    // AC/DC ← mains bus
+    parts.push(`<line x1="${xMainsBus}" y1="${recY + recH / 2}" x2="${recX}" y2="${recY + recH / 2}" stroke="${modMainCol}" stroke-width="2.5"/>`);
+    parts.push(`<circle cx="${xMainsBus}" cy="${recY + recH / 2}" r="2.5" fill="${mainsLineCol}"/>`);
+    // DC/DC ← battery bus
+    parts.push(`<line x1="${xBattBus}" y1="${ddY + ddH / 2}" x2="${ddX}" y2="${ddY + ddH / 2}" stroke="${modBattCol}" stroke-width="2.5"/>`);
+    parts.push(`<circle cx="${xBattBus}" cy="${ddY + ddH / 2}" r="2.5" fill="${battCableCol}"/>`);
+    // DC/AC → output bus
+    parts.push(`<line x1="${invX + invW}" y1="${invY + invH / 2}" x2="${xOutBus}" y2="${invY + invH / 2}" stroke="${modInvCol}" stroke-width="2.5"/>`);
+    parts.push(`<circle cx="${xOutBus}" cy="${invY + invH / 2}" r="2.5" fill="${modInvCol === colIdle ? colIdle : outCol}"/>`);
+
+    // "⋮" между модулем 2 и последним при drawDots
+    if (drawDots && i === 1) {
+      const dotY = mY + modH + modGap / 2 + 4;
+      parts.push(`<text x="${modX + modW / 2}" y="${dotY}" text-anchor="middle" font-size="18" fill="#888">⋮</text>`);
+    }
+  }
+
+  // === Output switch QF3 + клемма ===
+  const qf3Y = modulePositions[0] ? (modulePositions[0] + 40) : 210; // уровень первого инвертора
+  parts.push(`<line x1="${xOutBus}" y1="${qf3Y}" x2="${xQF3 - 20}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
+  parts.push(_svgBreaker(xQF3, qf3Y, 'QF3', qf3on ? outCol : colIdle, n.hasOutputBreaker !== false));
+  parts.push(`<line x1="${xQF3 + 20}" y1="${qf3Y}" x2="${xOutTerm - 5}" y2="${qf3Y}" stroke="${outCol}" stroke-width="3"/>`);
+  parts.push(`<circle cx="${xOutTerm}" cy="${qf3Y}" r="4" fill="none" stroke="#666" stroke-width="1.5"/>`);
+  parts.push(`<text x="${xOutTerm + 8}" y="${qf3Y + 4}" font-size="11" fill="#546e7a">Output</text>`);
+  if (outA > 0) parts.push(`<text x="${xQF3 - 36}" y="${qf3Y - 8}" font-size="10" fill="${outCol}" font-weight="600">${fmtA(outA)}</text>`);
+
+  return { svg: parts.join(''), width: W, height: H };
 }
 
 function _svgBreaker(cx, cy, label, color, present /*, orient = 'right' */) {
