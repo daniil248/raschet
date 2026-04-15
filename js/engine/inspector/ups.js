@@ -518,6 +518,21 @@ function _loadBatteryCatalog() {
   } catch { return []; }
 }
 
+// Асинхронный динамический импорт battery-discharge.js из подпрограммы
+// battery/. Модуль импортируется лениво (только когда реально нужно
+// считать по таблице), чтобы конструктор схем не тащил его при загрузке.
+let _dischargeModule = null;
+async function _loadDischargeModule() {
+  if (_dischargeModule) return _dischargeModule;
+  try {
+    _dischargeModule = await import('../../../battery/battery-discharge.js');
+    return _dischargeModule;
+  } catch (e) {
+    console.warn('[ups] battery-discharge module not available:', e);
+    return null;
+  }
+}
+
 function _renderUpsBatteryBody(n) {
   const body = document.getElementById('ups-battery-body');
   if (!body) return;
@@ -542,7 +557,16 @@ function _renderUpsBatteryBody(n) {
   const pct = Math.round(pctRaw);
   const storedKwh = kwh * pctRaw / 100;
   const loadKw = load > 0 ? load : cap;
+  // Базовая оценка автономии — по ёмкости kWh / нагрузке (без Пойкерта).
   const autonomyMin = loadKw > 0 ? (storedKwh / loadKw * 60) : 0;
+
+  // Если выбрана модель из справочника — асинхронно пересчитаем автономию
+  // через battery-discharge.js (по таблице Constant Power Discharge)
+  // и обновим тело модалки. Здесь считаем простую оценку и рендерим,
+  // а точный расчёт подставим позже.
+  const selectedBattery = n.batteryCatalogId
+    ? catalog.find(b => b.id === n.batteryCatalogId)
+    : null;
 
   const h = [];
   h.push(`<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name || 'ИБП')} · АКБ</h3>`);
@@ -552,7 +576,9 @@ function _renderUpsBatteryBody(n) {
     Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
     Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> / <b>${fmt(kwh)} kWh</b><br>
     Заряд: <b>${pct}%</b> → запас <b>${fmt(storedKwh)} kWh</b><br>
-    Оценка автономии на нагрузке ${fmt(loadKw)} kW: <b>${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
+    Оценка автономии на нагрузке ${fmt(loadKw)} kW:
+    <b id="ups-batt-autonomy">${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
+    <span id="ups-batt-autonomy-method" class="muted" style="font-size:10px;margin-left:4px">(по kWh)</span>
   </div>`);
 
   // Выбор модели из справочника АКБ (если справочник не пуст)
@@ -624,6 +650,48 @@ function _renderUpsBatteryBody(n) {
   h.push('</div>');
 
   body.innerHTML = h.join('');
+
+  // Если выбрана модель из справочника — точный расчёт автономии по
+  // таблице Constant Power Discharge из battery/battery-discharge.js.
+  // Загружаем модуль лениво; после вычисления обновляем DOM spans.
+  if (selectedBattery && loadKw > 0) {
+    _loadDischargeModule().then(mod => {
+      if (!mod || typeof mod.calcAutonomy !== 'function') return;
+      // Определяем блоки на цепочку: dcVoltage / blockVoltage модели
+      const dcVoltage = blockV || 0;
+      const blocksPerString = selectedBattery.blockVoltage > 0
+        ? Math.max(1, Math.round(dcVoltage / selectedBattery.blockVoltage))
+        : 1;
+      const strings = Math.max(1, Number(n.batteryStringCount) || 1);
+      const invEff = Math.max(0.5, Math.min(1, (Number(n.efficiency) || 94) / 100));
+      const r = mod.calcAutonomy({
+        battery: selectedBattery,
+        loadKw,
+        dcVoltage,
+        strings,
+        blocksPerString,
+        endV: 1.75,
+        invEff,
+        chemistry: selectedBattery.chemistry,
+      });
+      const span = document.getElementById('ups-batt-autonomy');
+      const method = document.getElementById('ups-batt-autonomy-method');
+      if (span) {
+        if (!r.feasible) {
+          span.textContent = '—';
+          span.style.color = '#c62828';
+        } else if (!Number.isFinite(r.autonomyMin)) {
+          span.textContent = '∞';
+        } else {
+          span.textContent = fmt(r.autonomyMin) + ' мин';
+        }
+      }
+      if (method) {
+        method.textContent = r.method === 'table' ? '(по таблице разряда)' : '(усреднённая модель)';
+        method.style.color = r.method === 'table' ? '#2e7d32' : '#9aa3b5';
+      }
+    });
+  }
 
   // Хелпер: пересчитать batteryKwh из полей и сделать snapshot/rerender
   const recalcKwh = () => {
