@@ -16,6 +16,7 @@ import {
   bindInspectorUpsDeps,
   openUpsParamsModal,
   openUpsControlModal,
+  openUpsBatteryModal,
   upsStatusBlock,
 } from './inspector/ups.js';
 import {
@@ -451,6 +452,7 @@ export function renderInspectorNode(n) {
     h.push(panelStatusBlock(n));
   } else if (n.type === 'ups') {
     h.push(`<button class="full-btn" id="btn-open-ups-control" style="margin-bottom:4px">🔌 Управление ИБП</button>`);
+    h.push(`<button class="full-btn" id="btn-open-ups-battery" style="margin-bottom:4px">🔋 АКБ</button>`);
     h.push(`<button class="full-btn" id="btn-open-ups-params" style="margin-bottom:8px">⚙ Параметры ИБП</button>`);
     h.push(field('Цвет линии', buildColorPalette(n)));
     // Краткая сводка
@@ -861,6 +863,10 @@ export function wireInspectorInputs(n) {
   if (upsControlBtn && n.type === 'ups') {
     upsControlBtn.addEventListener('click', () => openUpsControlModal(n));
   }
+  const upsBatteryBtn = document.getElementById('btn-open-ups-battery');
+  if (upsBatteryBtn && n.type === 'ups') {
+    upsBatteryBtn.addEventListener('click', () => openUpsBatteryModal(n));
+  }
   const consParamsBtn = document.getElementById('btn-open-consumer-params');
   if (consParamsBtn && n.type === 'consumer') {
     consParamsBtn.addEventListener('click', () => openConsumerParamsModal(n));
@@ -1241,7 +1247,7 @@ export function clientToSvg(clientX, clientY) {
 
 // ===== Re-exports из модульных файлов =====
 // Реэкспорт импортированных символов для backward-compat (index.js, main.js).
-export { openUpsParamsModal, openUpsControlModal, upsStatusBlock };
+export { openUpsParamsModal, openUpsControlModal, openUpsBatteryModal, upsStatusBlock };
 export { openConsumerParamsModal };
 export { openImpedanceModal, openAutomationModal, sourceStatusBlock, voltageLevelOptions };
 export { openPanelParamsModal, openPanelControlModal, panelStatusBlock };

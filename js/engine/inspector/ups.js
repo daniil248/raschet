@@ -349,55 +349,14 @@ function _renderUpsControlBody(n) {
     </div>`);
   }
 
-  // Ток заряда АКБ — перенесён из Параметров ИБП
-  h.push('<h4 style="margin:16px 0 6px">Ток заряда АКБ</h4>');
-  h.push(`<div class="ups-ctl-row">
-    <div class="ups-ctl-label">Ток заряда, А (AC со входа)</div>
-    <div class="ups-ctl-current">
-      <input type="number" id="ups-ctl-chargeA" min="0" step="0.1" value="${n.chargeA ?? 2}" style="width:80px;padding:4px 6px;font:inherit;font-size:12px;text-align:right">
-    </div>
-    <div class="muted" style="font-size:11px">kW ≈ ${fmt((n.chargeA ?? 2) * U * k3 / 1000)}</div>
-  </div>`);
-
-  // ========== Управление АКБ ==========
-  h.push('<h4 style="margin:16px 0 6px">Управление АКБ</h4>');
+  // Управление АКБ вынесено в отдельную модалку «АКБ» (openUpsBatteryModal)
+  // — кнопка в инспекторе между «Управление ИБП» и «Параметры ИБП».
   {
-    const bt = n.batteryType || 'lead-acid';
-    const cells = Number(n.batteryCellCount ?? 192) || 0;
-    const cellV = Number(n.batteryCellVoltage ?? 2.0) || 0;
-    const ah = Number(n.batteryCapacityAh ?? 100) || 0;
-    const strs = Number(n.batteryStringCount ?? 1) || 1;
-    const blockV = cells * cellV;
-    const totalAh = ah * strs;
-    const kwh = (blockV * totalAh) / 1000;
-    const pctRaw = Number(n.batteryChargePct ?? 100) || 0;
-    const pct = Math.round(pctRaw);
-    const storedKwh = kwh * pctRaw / 100;
-    // Оценка автономии на текущей нагрузке
-    const loadKw = load > 0 ? load : cap;
-    const autonomyMin = loadKw > 0 ? (storedKwh / loadKw * 60) : 0;
-
-    h.push(`<div class="muted" style="font-size:11px;line-height:1.8;padding:8px 10px;background:#f6f8fa;border-radius:6px;margin-bottom:8px">
-      Тип: <b>${bt === 'li-ion' ? 'Li-Ion (LiFePO4)' : 'Свинцово-кислотные (VRLA)'}</b>
-      · Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
-      Состав: <b>${cells}</b> эл. × <b>${fmt(cellV)} В</b> × <b>${strs}</b> цеп. × <b>${fmt(ah)} А·ч</b><br>
-      Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> / <b>${fmt(kwh)} kWh</b><br>
-      Заряд: <b>${pct}%</b> → запас <b>${fmt(storedKwh)} kWh</b><br>
-      Оценка автономии на нагрузке ${fmt(loadKw)} kW: <b>${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
+    const pct = Math.round(Number(n.batteryChargePct ?? 100) || 0);
+    h.push(`<div class="muted" style="font-size:11px;margin-top:12px;padding:6px 8px;background:#f6f8fa;border-radius:4px">
+      🔋 АКБ: <b>${pct}%</b> · Ток заряда: <b>${fmt(n.chargeA ?? 0)} А</b>
+      (подробности и управление — в отдельной модалке «АКБ»)
     </div>`);
-
-    h.push('<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">');
-    h.push(`<label style="font-size:11px;min-width:100px">Уровень заряда, %</label>`);
-    h.push(`<input type="range" id="ups-ctl-battPct" min="0" max="100" step="1" value="${pct}" style="flex:1">`);
-    h.push(`<span id="ups-ctl-battPctLabel" style="font-size:11px;font-weight:600;min-width:36px;text-align:right">${pct}%</span>`);
-    h.push('</div>');
-
-    // Быстрые кнопки
-    h.push('<div style="display:flex;gap:6px">');
-    h.push('<button class="ups-ctl-toggle" data-ups-batt-set="0" style="flex:1">Разряжена</button>');
-    h.push('<button class="ups-ctl-toggle" data-ups-batt-set="50" style="flex:1">50%</button>');
-    h.push('<button class="ups-ctl-toggle on" data-ups-batt-set="100" style="flex:1">Полная</button>');
-    h.push('</div>');
   }
 
   body.innerHTML = h.join('');
@@ -435,34 +394,105 @@ function _renderUpsControlBody(n) {
       render(); notifyChange(); _renderUpsControlBody(n);
     });
   });
-  // Ток заряда АКБ
-  const chargeAInput = document.getElementById('ups-ctl-chargeA');
+}
+
+// ================= Модалка «АКБ» =================
+// Отдельная модалка для батарей ИБП — вынесено из Control modal
+// по запросу: кнопка между «Управление ИБП» и «Параметры ИБП».
+export function openUpsBatteryModal(n) {
+  const modal = document.getElementById('modal-ups-battery');
+  const body = document.getElementById('ups-battery-body');
+  if (!modal || !body) return;
+  _renderUpsBatteryBody(n);
+  modal.classList.remove('hidden');
+}
+
+function _renderUpsBatteryBody(n) {
+  const body = document.getElementById('ups-battery-body');
+  if (!body) return;
+
+  const U = nodeVoltage(n);
+  const k3 = isThreePhase(n) ? Math.sqrt(3) : 1;
+  const load = n._loadKw || 0;
+  const cap = Number(n.capacityKw) || 0;
+
+  const bt = n.batteryType || 'lead-acid';
+  const cells = Number(n.batteryCellCount ?? 192) || 0;
+  const cellV = Number(n.batteryCellVoltage ?? 2.0) || 0;
+  const ah = Number(n.batteryCapacityAh ?? 100) || 0;
+  const strs = Number(n.batteryStringCount ?? 1) || 1;
+  const blockV = cells * cellV;
+  const totalAh = ah * strs;
+  const kwh = (blockV * totalAh) / 1000;
+  const pctRaw = Number(n.batteryChargePct ?? 100) || 0;
+  const pct = Math.round(pctRaw);
+  const storedKwh = kwh * pctRaw / 100;
+  const loadKw = load > 0 ? load : cap;
+  const autonomyMin = loadKw > 0 ? (storedKwh / loadKw * 60) : 0;
+
+  const h = [];
+  h.push(`<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name || 'ИБП')} · АКБ</h3>`);
+
+  h.push(`<div class="muted" style="font-size:12px;line-height:1.9;padding:10px 12px;background:#f6f8fa;border-radius:6px;margin-bottom:12px">
+    Тип: <b>${bt === 'li-ion' ? 'Li-Ion (LiFePO4)' : 'Свинцово-кислотные (VRLA)'}</b>
+    · Напряжение блока DC: <b>${fmt(blockV)} В</b><br>
+    Состав: <b>${cells}</b> эл. × <b>${fmt(cellV)} В</b> × <b>${strs}</b> цеп. × <b>${fmt(ah)} А·ч</b><br>
+    Полная ёмкость: <b>${fmt(totalAh)} А·ч</b> / <b>${fmt(kwh)} kWh</b><br>
+    Заряд: <b>${pct}%</b> → запас <b>${fmt(storedKwh)} kWh</b><br>
+    Оценка автономии на нагрузке ${fmt(loadKw)} kW: <b>${autonomyMin > 0 ? fmt(autonomyMin) + ' мин' : '—'}</b>
+  </div>`);
+
+  // Ток заряда
+  h.push('<h4 style="margin:12px 0 6px">Ток заряда</h4>');
+  h.push(`<div class="ups-ctl-row">
+    <div class="ups-ctl-label">Ток заряда, А (AC со входа)</div>
+    <div class="ups-ctl-current">
+      <input type="number" id="ups-batt-chargeA" min="0" step="0.1" value="${n.chargeA ?? 2}" style="width:80px;padding:4px 6px;font:inherit;font-size:12px;text-align:right">
+    </div>
+    <div class="muted" style="font-size:11px">kW ≈ ${fmt((n.chargeA ?? 2) * U * k3 / 1000)}</div>
+  </div>`);
+
+  // Уровень заряда
+  h.push('<h4 style="margin:16px 0 6px">Уровень заряда</h4>');
+  h.push('<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">');
+  h.push(`<label style="font-size:11px;min-width:100px">Заряд, %</label>`);
+  h.push(`<input type="range" id="ups-batt-pct" min="0" max="100" step="1" value="${pct}" style="flex:1">`);
+  h.push(`<span id="ups-batt-pctLabel" style="font-size:12px;font-weight:600;min-width:42px;text-align:right">${pct}%</span>`);
+  h.push('</div>');
+  h.push('<div style="display:flex;gap:6px">');
+  h.push('<button class="ups-ctl-toggle" data-ups-batt-set="0" style="flex:1">Разряжена</button>');
+  h.push('<button class="ups-ctl-toggle" data-ups-batt-set="50" style="flex:1">50%</button>');
+  h.push('<button class="ups-ctl-toggle on" data-ups-batt-set="100" style="flex:1">Полная</button>');
+  h.push('</div>');
+
+  body.innerHTML = h.join('');
+
+  // Обработчики
+  const chargeAInput = document.getElementById('ups-batt-chargeA');
   if (chargeAInput) {
     chargeAInput.addEventListener('change', () => {
-      snapshot('ups-ctl:' + n.id + ':chargeA');
+      snapshot('ups-batt:' + n.id + ':chargeA');
       n.chargeA = Math.max(0, Number(chargeAInput.value) || 0);
-      render(); notifyChange(); _renderUpsControlBody(n);
+      render(); notifyChange(); _renderUpsBatteryBody(n);
     });
   }
-  // Слайдер уровня заряда АКБ
-  const battPctSlider = document.getElementById('ups-ctl-battPct');
-  const battPctLabel = document.getElementById('ups-ctl-battPctLabel');
-  if (battPctSlider) {
-    battPctSlider.addEventListener('input', () => {
-      if (battPctLabel) battPctLabel.textContent = battPctSlider.value + '%';
+  const pctSlider = document.getElementById('ups-batt-pct');
+  const pctLabel = document.getElementById('ups-batt-pctLabel');
+  if (pctSlider) {
+    pctSlider.addEventListener('input', () => {
+      if (pctLabel) pctLabel.textContent = pctSlider.value + '%';
     });
-    battPctSlider.addEventListener('change', () => {
-      snapshot('ups-ctl:' + n.id + ':battPct');
-      n.batteryChargePct = Math.max(0, Math.min(100, Number(battPctSlider.value) || 0));
-      render(); notifyChange(); _renderUpsControlBody(n);
+    pctSlider.addEventListener('change', () => {
+      snapshot('ups-batt:' + n.id + ':pct');
+      n.batteryChargePct = Math.max(0, Math.min(100, Number(pctSlider.value) || 0));
+      render(); notifyChange(); _renderUpsBatteryBody(n);
     });
   }
-  // Быстрые кнопки АКБ
   body.querySelectorAll('[data-ups-batt-set]').forEach(btn => {
     btn.addEventListener('click', () => {
-      snapshot('ups-ctl:' + n.id + ':battPct');
+      snapshot('ups-batt:' + n.id + ':pct');
       n.batteryChargePct = Number(btn.dataset.upsBattSet) || 0;
-      render(); notifyChange(); _renderUpsControlBody(n);
+      render(); notifyChange(); _renderUpsBatteryBody(n);
     });
   });
 }
