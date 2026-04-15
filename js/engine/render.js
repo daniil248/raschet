@@ -484,6 +484,10 @@ export function renderNodes() {
         // IEC 60617: два пересекающихся кольца (обмотки)
         g.appendChild(el('circle', { cx: ix, cy: iy, r: 9, fill: 'none', stroke: '#4caf50', 'stroke-width': 1.5, class: 'node-icon' }));
         g.appendChild(el('circle', { cx: ix + 10, cy: iy, r: 9, fill: 'none', stroke: '#4caf50', 'stroke-width': 1.5, class: 'node-icon' }));
+      } else if (subtype === 'other') {
+        // Внешняя сеть (IEC 60617 арр-стиль: прямоугольник со стрелкой вверх)
+        g.appendChild(el('rect', { x: ix, y: iy - 8, width: 20, height: 16, fill: 'none', stroke: '#1976d2', 'stroke-width': 1.5, rx: 2, class: 'node-icon' }));
+        g.appendChild(el('path', { d: `M${ix+10},${iy+4} L${ix+10},${iy-4} M${ix+6},${iy-0} L${ix+10},${iy-4} L${ix+14},${iy-0}`, fill: 'none', stroke: '#1976d2', 'stroke-width': 1.5, class: 'node-icon' }));
       } else {
         // IEC 60617: кольцо с буквой G
         g.appendChild(el('circle', { cx: ix + 5, cy: iy, r: 11, fill: 'none', stroke: '#ff9800', 'stroke-width': 1.5, class: 'node-icon' }));
@@ -503,8 +507,11 @@ export function renderNodes() {
 
     // Подпись типа
     const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+    const srcSubLabel = subtype === 'other' ? 'Внешняя сеть'
+      : subtype === 'generator' ? ('Генератор' + (n.backupMode ? ' (резерв)' : ''))
+      : 'Трансформатор';
     const subTxt = {
-      source:    subtype === 'generator' ? 'Генератор' + (n.backupMode ? ' (резерв)' : '') : 'Трансформатор',
+      source:    srcSubLabel,
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
       panel:     `In ${fmt(n.capacityA || 0)} A · Макс: ${fmt(n._maxLoadA || 0)} A / ${fmt(n._maxLoadKw || 0)} kW`,
       ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%` +

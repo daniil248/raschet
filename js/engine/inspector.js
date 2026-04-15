@@ -1,5 +1,5 @@
 import { state, svg, inspectorBody, uid } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES } from './constants.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, upsChargeKw, sourceImpedance, nodeWireCount } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
@@ -214,6 +214,7 @@ export function renderInspectorNode(n) {
       `<select data-prop="sourceSubtype">
         <option value="transformer"${subtype === 'transformer' ? ' selected' : ''}>Трансформатор</option>
         <option value="generator"${subtype === 'generator' ? ' selected' : ''}>Генератор (ДГУ / ДЭС)</option>
+        <option value="other"${subtype === 'other' ? ' selected' : ''}>Прочий (гор. сеть, ВРУ)</option>
       </select>`));
     h.push(field('Цвет линии', buildColorPalette(n)));
     // cos φ источника рассчитывается автоматически из downstream нагрузки.
@@ -857,23 +858,38 @@ export function openImpedanceModal(n) {
   const h = [];
   const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
   const isTransformer = subtype === 'transformer';
+  const isOther = subtype === 'other';
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
   h.push(field('Имя', `<input type="text" id="imp-name" value="${escAttr(n.name || '')}">`));
   h.push('<div class="muted" style="font-size:11px;margin-bottom:12px">Номинальные параметры источника и данные для расчёта тока КЗ по IEC 60909.</div>');
 
   // === Номинальные параметры ===
   h.push('<h4 style="margin:16px 0 8px">Номинальные параметры</h4>');
-  h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
+
+  if (isTransformer) {
+    // Трансформатор: выбор из типового ряда
+    let tOpts = '<option value="">— выберите —</option>';
+    for (const t of TRANSFORMER_CATALOG) {
+      const sel = t.snomKva === n.snomKva ? ' selected' : '';
+      tOpts += `<option value="${t.snomKva}"${sel}>${t.label}</option>`;
+    }
+    h.push(field('Типовой номинал (ГОСТ 11677)', `<select id="imp-tCatalog">${tOpts}</select>`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-4px">При выборе заполняются Uk, Pk, P0 по ГОСТ. Поле Snom остаётся ручным для редактирования.</div>`);
+    h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
+  } else {
+    h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
+  }
 
   // Выходное напряжение (вторичная обмотка для трансформатора)
   const outIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
   h.push(field(isTransformer ? 'Выходное напряжение (вторичная обмотка)' : 'Выходное напряжение',
     `<select id="imp-voltage-out">${voltageLevelOptions(outIdx, null)}</select>`));
 
-  // Входное напряжение (первичная обмотка) — только для трансформатора
+  // Входное напряжение (первичная обмотка) — только для трансформатора.
+  // Для "other" (городская сеть / ВРУ) скрыто — внешний источник описывается
+  // только параметрами КЗ на стороне нашего напряжения.
   if (isTransformer) {
     const inIdx = (typeof n.inputVoltageLevelIdx === 'number') ? n.inputVoltageLevelIdx : (() => {
-      // По умолчанию ищем 10kV в справочнике
       const levels = GLOBAL.voltageLevels || [];
       for (let i = 0; i < levels.length; i++) {
         if (levels[i].vLL >= 6000) return i;
@@ -886,13 +902,22 @@ export function openImpedanceModal(n) {
 
   // Параметры КЗ
   h.push('<h4 style="margin:16px 0 8px">Параметры короткого замыкания</h4>');
-  h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 500}">`));
-  if (isTransformer) {
-    h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
+  if (isOther) {
+    // Для "прочего" источника достаточно ввода одного параметра — тока КЗ
+    // на шинах в точке подключения (или Ssc сети). Всё остальное неактуально.
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Для стороннего источника (городская сеть, ВРУ) задайте либо ток трёхфазного КЗ в точке подключения, либо мощность КЗ питающей сети.</div>');
+    h.push(field('Ток трёхфазного КЗ Ik, кА', `<input type="number" id="imp-ikka" min="0" max="200" step="0.1" value="${n.ikKA ?? 10}">`));
+    h.push(field('ИЛИ Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="0" max="10000" step="1" value="${n.sscMva ?? 0}">`));
+    h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
   } else {
-    h.push(field('Xd\'\' (сверхпереходное), о.е.', `<input type="number" id="imp-xdpp" min="0.01" max="1" step="0.01" value="${n.xdpp ?? 0.15}">`));
+    h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 500}">`));
+    if (isTransformer) {
+      h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
+    } else {
+      h.push(field('Xd\'\' (сверхпереходное), о.е.', `<input type="number" id="imp-xdpp" min="0.01" max="1" step="0.01" value="${n.xdpp ?? 0.15}">`));
+    }
+    h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
   }
-  h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
 
   // Потери трансформатора (только для трансформатора)
   if (isTransformer) {
@@ -923,6 +948,23 @@ export function openImpedanceModal(n) {
 
   body.innerHTML = h.join('');
 
+  // Handler для типового каталога трансформаторов — автозаполнение полей
+  const tCatEl = document.getElementById('imp-tCatalog');
+  if (tCatEl) {
+    tCatEl.addEventListener('change', () => {
+      const val = Number(tCatEl.value);
+      if (!val) return;
+      const t = TRANSFORMER_CATALOG.find(x => x.snomKva === val);
+      if (!t) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+      set('imp-snom', t.snomKva);
+      set('imp-uk', t.ukPct);
+      set('imp-pk', t.pkW);
+      set('imp-p0', t.p0W);
+      set('imp-xsrs', t.xsRsRatio);
+    });
+  }
+
   const applyBtn = document.getElementById('impedance-apply');
   if (applyBtn) applyBtn.onclick = () => {
     if (n.id !== '__preset_edit__') snapshot('impedance:' + n.id);
@@ -947,11 +989,22 @@ export function openImpedanceModal(n) {
 
     // capacityKw = Snom × cos φ
     n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
-    n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
-    if (isTransformer) {
-      n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
+    if (isOther) {
+      // Прочий источник: сохраняем Ik и/или Ssc; Uk/Xd'' не используются.
+      n.ikKA = Number(document.getElementById('imp-ikka')?.value) || 0;
+      n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 0;
+      delete n.ukPct;
+      delete n.xdpp;
+      delete n.pkW;
+      delete n.p0W;
+      delete n.inputVoltageLevelIdx;
     } else {
-      n.xdpp = Number(document.getElementById('imp-xdpp')?.value) || 0.15;
+      n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
+      if (isTransformer) {
+        n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
+      } else {
+        n.xdpp = Number(document.getElementById('imp-xdpp')?.value) || 0.15;
+      }
     }
     n.xsRsRatio = Number(document.getElementById('imp-xsrs')?.value) || 10;
     if (isTransformer) {

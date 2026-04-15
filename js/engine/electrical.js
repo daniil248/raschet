@@ -84,11 +84,24 @@ export function upsChargeKw(ups) {
 // Вычисление полного сопротивления источника (Ом) по IEC 60909
 export function sourceImpedance(n) {
   const U = nodeVoltage(n);
+  const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+  // Прочий источник (городская сеть / ВРУ) — импеданс выводится напрямую
+  // из Ik или Ssc, без доп. трансформатора/генератора.
+  if (subtype === 'other') {
+    const ikA = (Number(n.ikKA) || 0) * 1000;
+    if (ikA > 0) {
+      // Z = c·U / (√3 · Ik), c=1.1 (IEC 60909)
+      return (1.1 * U) / (Math.sqrt(3) * ikA);
+    }
+    const Ssc = (Number(n.sscMva) || 0) * 1e6;
+    if (Ssc > 0) return (U * U) / Ssc;
+    return 0.05; // fallback
+  }
   const Ssc = (Number(n.sscMva) || 500) * 1e6; // ВА
   // Zq = U² / Ssc — импеданс питающей сети
   const Zq = (U * U) / Ssc;
   const Snom = (Number(n.snomKva) || 400) * 1000;
-  const isGen = n.type === 'generator' || (n.sourceSubtype === 'generator');
+  const isGen = n.type === 'generator' || (subtype === 'generator');
   if (isGen) {
     // Zg = Xd'' × U² / Snom — сверхпереходный импеданс генератора
     const xdpp = Number(n.xdpp) || 0.15;

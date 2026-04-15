@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.21.0';
+export const APP_VERSION = '0.21.1';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -388,6 +388,25 @@ export const DEFAULTS = {
 };
 
 // Справочник типовых потребителей
+// Каталог типовых силовых трансформаторов. При выборе заполняются номинальные
+// данные: Snom, Uk%, Pk, P0, Xs/Rs (типовое ~10), cos φ (0.92 по умолчанию).
+// Значения по ГОСТ 11677 / IEC 60076 для двухобмоточных 6(10)/0.4 кВ.
+export const TRANSFORMER_CATALOG = [
+  { label: '25 кВА',   snomKva: 25,   ukPct: 4.5, pkW: 0.6,  p0W: 0.105, xsRsRatio: 4 },
+  { label: '40 кВА',   snomKva: 40,   ukPct: 4.5, pkW: 0.88, p0W: 0.15,  xsRsRatio: 4 },
+  { label: '63 кВА',   snomKva: 63,   ukPct: 4.5, pkW: 1.28, p0W: 0.22,  xsRsRatio: 5 },
+  { label: '100 кВА',  snomKva: 100,  ukPct: 4.5, pkW: 1.97, p0W: 0.31,  xsRsRatio: 5 },
+  { label: '160 кВА',  snomKva: 160,  ukPct: 4.5, pkW: 2.6,  p0W: 0.42,  xsRsRatio: 6 },
+  { label: '250 кВА',  snomKva: 250,  ukPct: 4.5, pkW: 3.7,  p0W: 0.57,  xsRsRatio: 7 },
+  { label: '400 кВА',  snomKva: 400,  ukPct: 4.5, pkW: 5.5,  p0W: 0.83,  xsRsRatio: 8 },
+  { label: '630 кВА',  snomKva: 630,  ukPct: 5.5, pkW: 7.6,  p0W: 1.05,  xsRsRatio: 8 },
+  { label: '1000 кВА', snomKva: 1000, ukPct: 5.5, pkW: 10.8, p0W: 1.55,  xsRsRatio: 10 },
+  { label: '1250 кВА', snomKva: 1250, ukPct: 6.0, pkW: 13.5, p0W: 1.9,   xsRsRatio: 10 },
+  { label: '1600 кВА', snomKva: 1600, ukPct: 6.0, pkW: 16.5, p0W: 2.3,   xsRsRatio: 10 },
+  { label: '2000 кВА', snomKva: 2000, ukPct: 6.0, pkW: 19.0, p0W: 2.7,   xsRsRatio: 10 },
+  { label: '2500 кВА', snomKva: 2500, ukPct: 6.0, pkW: 23.0, p0W: 3.2,   xsRsRatio: 12 },
+];
+
 export const CONSUMER_CATALOG = [
   { id: 'custom',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, phase: '3ph' },
   { id: 'lighting',    label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, phase: '1ph' },

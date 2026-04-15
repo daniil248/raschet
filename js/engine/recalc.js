@@ -1556,43 +1556,82 @@ function recalc() {
         }
         n._maxLoadKw = maxScenarioKw;
       } else {
-        n._maxLoadKw = maxDownstreamLoad(n.id);
-      }
-      // Если downstream — секция многосекционного щита с СВ,
-      // макс. нагрузка включает возможную нагрузку через СВ.
-      // Учитываем замкнутые СВ И автоматические (могут замкнуться при аварии).
-      for (const c of state.conns.values()) {
-        if (c.from.nodeId !== n.id) continue;
-        const downN = state.nodes.get(c.to.nodeId);
-        if (!downN || !downN.parentSectionedId) continue;
-        const container = state.nodes.get(downN.parentSectionedId);
-        if (!container || !container.busTies?.length) continue;
-        const ties = Array.isArray(container.busTies) ? container.busTies : [];
-        const tieStates = Array.isArray(container._busTieStates) ? container._busTieStates : ties.map(t => !!t.closed);
-        // Есть ли хотя бы один замкнутый или автоматический СВ
-        const hasActiveOrAutoTie = ties.some((t, i) => tieStates[i] || t.auto);
-        if (!hasActiveOrAutoTie) continue;
-        // Находим макс нагрузку через СВ.
-        // Два СВ к одной секции не могут быть замкнуты одновременно.
-        // Из стартовой секции можем пройти через ОДИН СВ к соседней.
-        // Берём вариант с максимальной суммарной нагрузкой.
-        const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
-        const downSecIdx = secIds.indexOf(downN.id);
-        if (downSecIdx < 0) continue;
-        const ownLoad = maxDownstreamLoad(downN.id);
-        let bestTotalWithTie = ownLoad;
-        // Перебираем каждый доступный СВ от стартовой секции
-        for (let ti = 0; ti < ties.length; ti++) {
-          if (!tieStates[ti] && !ties[ti].auto) continue;
-          const [a, b] = ties[ti].between;
-          const neighbor = a === downSecIdx ? b : (b === downSecIdx ? a : -1);
-          if (neighbor < 0) continue;
-          const neighborSec = state.nodes.get(secIds[neighbor]);
-          if (!neighborSec) continue;
-          const variant = ownLoad + maxDownstreamLoad(neighborSec.id);
-          if (variant > bestTotalWithTie) bestTotalWithTie = variant;
+        // Единый обход вперёд с учётом bus-tie между секциями:
+        // из любой достигнутой секции многосекционного щита расширяемся через
+        // её замкнутые/авто СВ в соседние секции. Все потребители считаются
+        // РОВНО ОДИН РАЗ через общие visited-set, что исключает двойной счёт.
+        const visitedConsumers = new Set();
+        const visitedUps = new Set();
+        const visited = new Set();
+        let directKw = 0, upsConsKw = 0, totalCharge = 0;
+        let sumEff = 0, upsCnt = 0;
+        const queue = [{ id: n.id, throughUps: false }];
+        visited.add(n.id);
+        while (queue.length) {
+          const { id: curId, throughUps } = queue.shift();
+          const cur = state.nodes.get(curId);
+          if (!cur) continue;
+          if (cur.type === 'consumer') {
+            if (!visitedConsumers.has(curId)) {
+              visitedConsumers.add(curId);
+              const kw = (Number(cur.demandKw) || 0) * Math.max(1, Number(cur.count) || 1);
+              if (throughUps) upsConsKw += kw; else directKw += kw;
+            }
+            continue;
+          }
+          if (cur.type === 'ups') {
+            if (!visitedUps.has(curId)) {
+              visitedUps.add(curId);
+              totalCharge += upsChargeKw(cur);
+              sumEff += Math.max(0.01, (Number(cur.efficiency) || 100) / 100);
+              upsCnt++;
+            }
+            // Продолжаем обход за ИБП — все downstream-нагрузки с флагом throughUps
+            for (const c of state.conns.values()) {
+              if (c.from.nodeId !== curId) continue;
+              if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+              if (!visited.has(c.to.nodeId)) {
+                visited.add(c.to.nodeId);
+                queue.push({ id: c.to.nodeId, throughUps: true });
+              }
+            }
+            continue;
+          }
+          // Обычный узел (source/generator/panel/channel/section)
+          for (const c of state.conns.values()) {
+            if (c.from.nodeId !== curId) continue;
+            if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+            if (!visited.has(c.to.nodeId)) {
+              visited.add(c.to.nodeId);
+              queue.push({ id: c.to.nodeId, throughUps });
+            }
+          }
+          // Расширение через bus-ties: если текущий узел — секция многосекционного щита
+          if (cur.parentSectionedId) {
+            const container = state.nodes.get(cur.parentSectionedId);
+            const ties = Array.isArray(container?.busTies) ? container.busTies : [];
+            if (ties.length) {
+              const tieStates = Array.isArray(container._busTieStates) ? container._busTieStates : ties.map(t => !!t.closed);
+              const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
+              const myIdx = secIds.indexOf(curId);
+              if (myIdx >= 0) {
+                for (let ti = 0; ti < ties.length; ti++) {
+                  if (!tieStates[ti] && !ties[ti].auto) continue;
+                  const [a, b] = ties[ti].between;
+                  const other = a === myIdx ? b : (b === myIdx ? a : -1);
+                  if (other < 0) continue;
+                  const otherId = secIds[other];
+                  if (otherId && !visited.has(otherId)) {
+                    visited.add(otherId);
+                    queue.push({ id: otherId, throughUps });
+                  }
+                }
+              }
+            }
+          }
         }
-        if (bestTotalWithTie > n._maxLoadKw) n._maxLoadKw = bestTotalWithTie;
+        const avgEff = upsCnt > 0 ? sumEff / upsCnt : 1;
+        n._maxLoadKw = directKw + upsConsKw / avgEff + totalCharge;
       }
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
