@@ -26,31 +26,36 @@
     <div class="page-intro">
       <h2>Конфигуратор щита</h2>
       <p class="muted">
-        Подбор состава распределительного щита: ввод / АВР, секционирование,
-        номиналы вводных и отходящих автоматов, шинопровод, коммутационный
-        аппарат. Результат применим к любому узлу «Щит» в главной схеме.
+        Справочник типовых распределительных щитов (серии ABB ArTu,
+        Schneider Prisma, KEAZ OptiBox, ИЭК SMART и т.п.). Данные
+        хранятся per-user в localStorage и доступны в инспекторе щита
+        главной схемы через общий <code>shared/panel-picker.js</code>.
       </p>
     </div>
 
-    <section class="stub-card">
-      <h3>⚙ В разработке</h3>
-      <p>Подпрограмма на этапе скелета. Используемая инфраструктура:</p>
-      <ul>
-        <li><code>shared/auth.js</code> — Firebase Auth</li>
-        <li><code>shared/styles/base.css</code> — дизайн-токены</li>
-        <li><code>shared/app-header.css</code> / <code>app-header.js</code></li>
-      </ul>
-      <p>
-        Будущее наполнение: справочник серий щитов (ABB ArTu, Schneider Prisma,
-        KEAZ OptiBox), каскадный пикер производителя/серии/типоразмера,
-        автоматический подбор количества и номинала полей по нагрузке,
-        предпросмотр компоновки.
-      </p>
-      <div style="margin-top:18px">
-        <button id="btn-back" class="btn-sm">← Вернуться в хаб</button>
+    <section class="panel">
+      <div class="panel-head">
+        <h3>Справочник щитов</h3>
+        <div style="display:flex;gap:8px">
+          <button id="btn-add-manual" class="btn-sm">+ Добавить вручную</button>
+          <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить</button>
+        </div>
       </div>
+
+      <div id="panel-cascade-mount" style="margin-bottom:10px"></div>
+
+      <div id="catalog-list"></div>
+    </section>
+
+    <section class="panel" style="margin-top:20px">
+      <div class="panel-head">
+        <h3>Выбранная модель</h3>
+      </div>
+      <div id="selected-panel-details" class="empty">Выберите модель в каскаде выше.</div>
     </section>
   </main>
+
+  <div id="flash" class="flash"></div>
 
   <script type="module" src="panel-config.js"></script>
 </body>
