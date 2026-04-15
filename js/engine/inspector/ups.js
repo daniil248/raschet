@@ -284,7 +284,17 @@ export function openUpsParamsModal(n) {
 export function openUpsControlModal(n) {
   const body = document.getElementById('ups-control-body');
   if (!body) return;
-  _renderUpsControlBody(n);
+  try {
+    _renderUpsControlBody(n);
+  } catch (err) {
+    console.error('[openUpsControlModal] render error:', err);
+    body.innerHTML =
+      `<div style="padding:16px;color:#c62828;background:#ffebee;border:1px solid #c62828;border-radius:6px">` +
+      `<b>Ошибка отображения управления ИБП</b><br><br>` +
+      `<code style="font-size:11px;white-space:pre-wrap">${escHtml(String(err && err.message || err))}</code>` +
+      (err && err.stack ? `<details style="margin-top:8px"><summary style="cursor:pointer">stack</summary><pre style="font-size:10px;white-space:pre-wrap">${escHtml(err.stack)}</pre></details>` : '') +
+      `</div>`;
+  }
   document.getElementById('modal-ups-control').classList.remove('hidden');
 }
 
@@ -356,7 +366,16 @@ function _renderUpsControlBody(n) {
   }
 
   {
-    const struct = _upsStructSvg(n, { outA, inA, inBypassA, battA, onBypass, onBattery });
+    let struct;
+    try {
+      struct = _upsStructSvg(n, { outA, inA, inBypassA, battA, onBypass, onBattery });
+    } catch (err) {
+      console.error('[_upsStructSvg] error:', err);
+      struct = { svg: '', width: 400, height: 100 };
+      h.push(`<div style="padding:10px;background:#ffebee;border:1px solid #c62828;border-radius:6px;color:#c62828;font-size:12px;margin-bottom:12px">
+        Ошибка отрисовки структурной схемы: ${escHtml(String(err && err.message || err))}
+      </div>`);
+    }
     const displayH = Math.min(struct.height, 520);
     h.push(`<div style="background:#fff;border:1px solid #dfe2e8;border-radius:6px;padding:12px;margin-bottom:12px;overflow:auto">
       <svg viewBox="0 0 ${struct.width} ${struct.height}" style="width:100%;max-width:100%;height:auto;max-height:${displayH}px" xmlns="http://www.w3.org/2000/svg">${struct.svg}</svg>
