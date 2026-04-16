@@ -82,26 +82,40 @@ export function openImpedanceModal(n) {
 
   h.push('<h4 style="margin:16px 0 8px">Параметры короткого замыкания</h4>');
   if (isOther || isUtility) {
-    const hint = isUtility
-      ? 'Задайте ток трёхфазного КЗ в точке подключения ЛЭП (или Ssc системы).'
-      : 'Для стороннего источника задайте ток 3ф КЗ в точке подключения или Ssc сети.';
-    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">${hint}</div>`);
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.4">`
+      + (isUtility
+        ? 'Ток трёхфазного КЗ или мощность КЗ сети (Ssc) в точке подключения — из технических условий сетевой организации. '
+          + 'Типичные значения Ik на 10 кВ: сельская сеть 6–9 кА (Ssc 100–150 МВА), '
+          + 'городская 12–20 кА (200–350 МВА), промышленная 29–58 кА (500–1000 МВА). '
+          + 'Если задан Ik — Ssc игнорируется.'
+        : 'Задайте ток 3ф КЗ в точке подключения или мощность КЗ сети.')
+      + `</div>`);
     h.push(field('Ток трёхфазного КЗ Ik, кА', `<input type="number" id="imp-ikka" min="0" max="200" step="0.1" value="${n.ikKA ?? 10}">`));
     h.push(field('ИЛИ Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="0" max="10000" step="1" value="${n.sscMva ?? 0}">`));
     h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
   } else {
-    // Трансформатор с подключённым upstream → Ssc берётся от utility,
-    // показываем только Uk% и Snom. Без upstream → fallback Ssc.
+    // Трансформатор с подключённым upstream → Ssc берётся от utility
     const hasUpstream = isTransformer && [...(state.conns?.values() || [])].some(
       c => c.to?.nodeId === n.id && c._state === 'active'
     );
     if (!hasUpstream) {
+      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.4">`
+        + 'Нет подключённого ввода — задайте мощность КЗ сети вручную (Ssc). '
+        + 'Подключите узел «Городская сеть» ко входу трансформатора, чтобы Ssc определялся автоматически.'
+        + `</div>`);
       h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 250}">`));
     } else {
-      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">Ssc определяется подключённым вводом (utility).</div>`);
+      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.4">`
+        + 'Мощность КЗ сети определяется подключённым вводом (узел «Городская сеть»). '
+        + 'Полный импеданс: Z = Z<sub>сети</sub> × (U<sub>НН</sub>/U<sub>ВН</sub>)² + Z<sub>трансформатора</sub>.'
+        + `</div>`);
     }
     if (isTransformer) {
       h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 4.5}">`));
+      h.push(`<div class="muted" style="font-size:10px;margin-top:-4px;line-height:1.4">`
+        + 'Uk% — из паспорта трансформатора (каталожное). Типичные значения: '
+        + '25–250 кВА → 4.0–4.5%, 400–630 кВА → 4.5–5.5%, 1000–2500 кВА → 5.5–6.0%.'
+        + `</div>`);
     } else {
       h.push(field('Xd\'\' (сверхпереходное), о.е.', `<input type="number" id="imp-xdpp" min="0.01" max="1" step="0.01" value="${n.xdpp ?? 0.15}">`));
     }
@@ -110,9 +124,13 @@ export function openImpedanceModal(n) {
 
   if (isTransformer) {
     h.push('<h4 style="margin:16px 0 8px">Потери трансформатора</h4>');
-    h.push(field('Потери КЗ (Pk), кВт', `<input type="number" id="imp-pk" min="0" max="100" step="0.1" value="${n.pkW ?? 6}">`));
-    h.push(field('Потери ХХ (P0), кВт', `<input type="number" id="imp-p0" min="0" max="50" step="0.1" value="${n.p0W ?? 1.5}">`));
-    h.push('<div class="muted" style="font-size:10px;margin-top:-4px">Pk — потери короткого замыкания (нагрев обмоток при номинальном токе).<br>P0 — потери холостого хода (нагрев магнитопровода).</div>');
+    h.push(field('Потери КЗ (Pk), кВт', `<input type="number" id="imp-pk" min="0" max="100" step="0.1" value="${n.pkW ?? 5.5}">`));
+    h.push(field('Потери ХХ (P0), кВт', `<input type="number" id="imp-p0" min="0" max="50" step="0.1" value="${n.p0W ?? 0.83}">`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-4px;line-height:1.4">`
+      + 'Pk — потери короткого замыкания (нагрев обмоток при номинальном токе). '
+      + 'P0 — потери холостого хода (нагрев магнитопровода). '
+      + 'Значения из паспорта трансформатора или каталога производителя.'
+      + `</div>`);
   }
 
   if (!isTransformer && n.auxInput) {
