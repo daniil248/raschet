@@ -90,9 +90,18 @@ export function openImpedanceModal(n) {
     h.push(field('ИЛИ Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="0" max="10000" step="1" value="${n.sscMva ?? 0}">`));
     h.push(field('Отношение Xs/Rs', `<input type="number" id="imp-xsrs" min="0.1" max="50" step="0.1" value="${n.xsRsRatio ?? 10}">`));
   } else {
-    h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 500}">`));
+    // Трансформатор с подключённым upstream → Ssc берётся от utility,
+    // показываем только Uk% и Snom. Без upstream → fallback Ssc.
+    const hasUpstream = isTransformer && [...(state.conns?.values() || [])].some(
+      c => c.to?.nodeId === n.id && c._state === 'active'
+    );
+    if (!hasUpstream) {
+      h.push(field('Мощность КЗ сети (Ssc), МВА', `<input type="number" id="imp-ssc" min="1" max="10000" step="1" value="${n.sscMva ?? 250}">`));
+    } else {
+      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">Ssc определяется подключённым вводом (utility).</div>`);
+    }
     if (isTransformer) {
-      h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 6}">`));
+      h.push(field('Напряжение КЗ трансформатора (Uk), %', `<input type="number" id="imp-uk" min="0" max="25" step="0.5" value="${n.ukPct ?? 4.5}">`));
     } else {
       h.push(field('Xd\'\' (сверхпереходное), о.е.', `<input type="number" id="imp-xdpp" min="0.01" max="1" step="0.01" value="${n.xdpp ?? 0.15}">`));
     }
