@@ -743,15 +743,17 @@ function renderVoltageLevelsTable() {
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const levels = G.voltageLevels || [];
   let html = '<table style="width:100%;font-size:11px;border-collapse:collapse">';
-  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>Hz</th><th></th></tr>';
+  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>Hz</th><th>DC п.</th><th></th></tr>';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
     const hz = Number(lv.hz) || 0;
+    const isDC = hz === 0;
     html += `<tr style="border-bottom:1px solid #eee">
       <td style="padding:4px;font-family:ui-monospace,Consolas,monospace;color:#1976d2;font-weight:600">${escHtml(formatVoltageLevelLabel(lv))}</td>
       <td><input type="number" data-vl-idx="${i}" data-vl-field="vLL" value="${lv.vLL}" style="width:70px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
       <td><input type="number" data-vl-idx="${i}" data-vl-field="vLN" value="${lv.vLN}" style="width:70px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
       <td><input type="number" data-vl-idx="${i}" data-vl-field="hz" value="${hz}" min="0" step="1" title="0 = DC" style="width:50px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
+      <td>${isDC ? `<input type="number" data-vl-idx="${i}" data-vl-field="dcPoles" value="${lv.dcPoles || 2}" min="2" max="3" step="1" style="width:40px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px">` : '<span style="color:#999">—</span>'}</td>
       <td><button type="button" data-vl-del="${i}" style="background:transparent;border:none;color:#c62828;cursor:pointer;font-size:14px" title="Удалить">×</button></td>
     </tr>`;
   }

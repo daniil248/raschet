@@ -2020,6 +2020,8 @@ function recalc() {
       // Авто-выбор типа: MCB_C до 63A, MCCB свыше (MCB не бывает >63–125A)
       breakerCurve: c.breakerCurve || ((Number(c._breakerIn) || Number(c._breakerPerLine) || 0) > 63 ? 'MCCB' : 'MCB_C'),
       Uph: phases === 3 ? (U / Math.sqrt(3)) : U,
+      rcdEnabled: !!c.rcdEnabled,
+      rcdTripMa: Number(c.rcdTripMa) || 30,
     };
     try {
       c._moduleResults = runCalcModules(modInput, enabledSet);

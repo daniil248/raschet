@@ -72,7 +72,19 @@ export const phaseLoopModule = {
     const mult = MAG_MULT[breakerCurve] || 10;
     const Ia = In * mult;
 
-    const pass = Ik1 >= Ia;
+    const passBreaker = Ik1 >= Ia;
+    // УЗО (RCD) обеспечивает защиту при косвенном прикосновении
+    // независимо от условия Ik1 ≥ Ia. По IEC 60364-4-41 §411.3.3
+    // УЗО с IΔn ≤ 30 мА — дополнительная защита.
+    const rcdEnabled = !!input.rcdEnabled;
+    const rcdTripMa = Number(input.rcdTripMa) || 30;
+    const pass = passBreaker || rcdEnabled;
+    const warnings = [];
+    if (!passBreaker && !rcdEnabled) {
+      warnings.push(`I_k1 = ${Math.round(Ik1)} А < I_a = ${Ia} А (${breakerCurve} ${In}А × ${mult}). Установите УЗО или увеличьте сечение.`);
+    } else if (!passBreaker && rcdEnabled) {
+      warnings.push(`I_k1 = ${Math.round(Ik1)} А < I_a = ${Ia} А — защита обеспечивается УЗО (IΔn = ${rcdTripMa} мА).`);
+    }
     return {
       pass,
       details: {
@@ -87,10 +99,10 @@ export const phaseLoopModule = {
         In,
         breakerCurve,
         multiplier: mult,
+        rcdEnabled,
+        rcdTripMa: rcdEnabled ? rcdTripMa : null,
       },
-      warnings: pass
-        ? []
-        : [`I_k1 = ${Math.round(Ik1)} А < I_a = ${Ia} А (${breakerCurve} ${In}А × ${mult}). Увеличьте сечение или поставьте УЗО.`],
+      warnings,
     };
   },
 };

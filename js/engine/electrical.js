@@ -103,10 +103,10 @@ export function effectiveWireFlags(fromN, toN) {
   return { hasNeutral, hasGround, pen: d.pen && hasNeutral && hasGround };
 }
 
-// Количество жил кабеля из (phases, hasNeutral, hasGround, pen, dc).
-// DC-линия — всегда 2 провода (L+, L−).
-export function countWires({ phases, hasNeutral, hasGround, pen, dc }) {
-  if (dc) return 2;
+// Количество жил кабеля из (phases, hasNeutral, hasGround, pen, dc, dcPoles).
+// DC-линия — по умолчанию 2 провода (L+, L−), или dcPoles (3 = L+/M/L−).
+export function countWires({ phases, hasNeutral, hasGround, pen, dc, dcPoles }) {
+  if (dc) return dcPoles || 2;
   const base = phases === 3 ? 3 : 1;
   // PEN — N и PE на одном проводе
   if (pen && hasNeutral && hasGround) return base + 1;
@@ -132,9 +132,10 @@ export function cableWireCount(fromN, toN, conn) {
   const levels = GLOBAL.voltageLevels || [];
   const lv = toN && typeof toN.voltageLevelIdx === 'number' ? levels[toN.voltageLevelIdx] : null;
   const dc = !!(lv && (lv.dc || (typeof lv.hz === 'number' && lv.hz === 0)));
+  const dcPoles = dc && lv ? (Number(lv.dcPoles) || 2) : undefined;
   const phases = toN && isThreePhase(toN) ? 3 : 1;
   const flags = effectiveWireFlags(fromN, toN);
-  return countWires({ phases, dc, ...flags });
+  return countWires({ phases, dc, dcPoles, ...flags });
 }
 
 // Legacy-совместимость — nodeWireCount теперь просто оценивает по фазам
@@ -183,8 +184,11 @@ export function formatVoltageLevelLabel(lv) {
     ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : v % 100 === 0 ? 1 : 3)
     : String(v);
   const unit = isHV ? 'kV' : 'V';
-  // DC: только напряжение
-  if (isDC) return `${fmtV(vLL)} ${unit} DC`;
+  // DC: напряжение + полюса если >2
+  if (isDC) {
+    const poles = Number(lv.dcPoles) || 2;
+    return poles > 2 ? `±${fmtV(vLL / 2)} ${unit} DC` : `${fmtV(vLL)} ${unit} DC`;
+  }
   // HV AC: без vLN (на среднем/высоком напряжении vLN не используется)
   if (isHV) return `${fmtV(vLL)} ${unit} ${hz} Hz`;
   // LV AC: vLL/vLN

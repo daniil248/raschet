@@ -69,7 +69,10 @@ export function formatVoltageLevelLabel(lv) {
     ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : v % 100 === 0 ? 1 : 3)
     : String(v);
   const unit = isHV ? 'kV' : 'V';
-  if (isDC) return `${fmtV(vLL)} ${unit} DC`;
+  if (isDC) {
+    const poles = Number(lv.dcPoles) || 2;
+    return poles > 2 ? `±${fmtV(vLL / 2)} ${unit} DC` : `${fmtV(vLL)} ${unit} DC`;
+  }
   if (isHV) return `${fmtV(vLL)} ${unit} ${hz} Hz`;
   const voltPart = vLN && vLN !== vLL ? `${fmtV(vLL)}/${fmtV(vLN)}` : `${fmtV(vLL)}`;
   return `${voltPart} ${unit} ${hz} Hz`;
@@ -193,15 +196,17 @@ function _css() {
 function _renderVoltageTable(container) {
   const G = getGlobal();
   const levels = G.voltageLevels || [];
-  let html = '<table><tr><th>Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>Hz</th><th></th></tr>';
+  let html = '<table><tr><th>Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>Hz</th><th>DC полюса</th><th></th></tr>';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
     const hz = Number(lv.hz) || 0;
+    const isDC = hz === 0;
     html += `<tr>
       <td><span class="label-cell">${formatVoltageLevelLabel(lv)}</span></td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLL" value="${lv.vLL}" class="compact"></td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLN" value="${lv.vLN}" class="compact"></td>
       <td><input type="number" data-vl="${i}" data-vl-field="hz" value="${hz}" class="compact" min="0" step="1" title="0 = DC"></td>
+      <td>${isDC ? `<input type="number" data-vl="${i}" data-vl-field="dcPoles" value="${lv.dcPoles || 2}" class="compact" min="2" max="3" step="1">` : '<span class="muted">—</span>'}</td>
       <td style="text-align:right"><button type="button" class="btn danger" data-vl-del="${i}" title="Удалить">×</button></td>
     </tr>`;
   }

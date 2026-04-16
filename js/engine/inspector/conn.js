@@ -126,7 +126,7 @@ export function renderInspectorConn(c) {
       // Координация по полному Iz при параллельных жилах, а не per-line
       const inLeIz = !effectiveBrkIn || !IzTotal || effectiveBrkIn <= IzTotal;
       const protOk = inLeIz;
-      const oversize = IzTotal > 0 && effectiveBrkIn > 0 && IzTotal > effectiveBrkIn * 2;
+      const oversize = IzTotal > 0 && effectiveBrkIn > 0 && IzTotal > effectiveBrkIn * 2 && (c._cableSize || 0) > 1.5;
       const bgColor = !protOk ? '#ffebee' : oversize ? '#fff8e1' : '#f5f5f5';
       const methodLabel = GLOBAL.calcMethod === 'pue' ? 'ПУЭ' : 'IEC 60364';
       h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${bgColor};border-radius:4px">` +
@@ -433,6 +433,31 @@ export function renderInspectorConn(c) {
     h.push('</div>');
   }
 
+  // === УЗО (RCD) ===
+  {
+    const rcdEnabled = !!c.rcdEnabled;
+    const rcdTrip = c.rcdTripMa || 30;
+    const RCD_TYPES = [
+      { ma: 30,  label: '30 мА (защита людей)' },
+      { ma: 100, label: '100 мА (защита от пожара)' },
+      { ma: 300, label: '300 мА (защита от пожара)' },
+    ];
+    h.push('<details class="inspector-section"' + (rcdEnabled ? ' open' : '') + '>');
+    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">УЗО (дифф. защита)</summary>');
+    h.push(`<div class="field" style="margin-top:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-conn-prop="rcdEnabled" ${rcdEnabled ? 'checked' : ''}> Установить УЗО на линию</label></div>`);
+    if (rcdEnabled) {
+      let rcdOpts = RCD_TYPES.map(t =>
+        `<option value="${t.ma}"${t.ma === rcdTrip ? ' selected' : ''}>${t.label}</option>`
+      ).join('');
+      h.push(field('Ток утечки IΔn', `<select data-conn-prop="rcdTripMa">${rcdOpts}</select>`));
+      h.push(`<div style="font-size:11px;color:#555;margin-top:4px;line-height:1.4">
+        УЗО обеспечивает защиту от поражения электрическим током при косвенном прикосновении (IEC 60364-4-41).
+        При IΔn ≤ 30 мА — дополнительная защита при прямом прикосновении.
+      </div>`);
+    }
+    h.push('</details>');
+  }
+
   // === Результаты расчётных модулей ===
   if (Array.isArray(c._moduleResults) && c._moduleResults.length) {
     h.push(renderConnModuleResultsBlock(c._moduleResults));
@@ -591,7 +616,7 @@ function renderConnModuleResultsBlock(modResults) {
     } else if (m.id === 'shortCircuit' && !d.skipped) {
       keyInfo = `Smin=${d.sRequired} мм² при Ik=${Math.round(d.IkA)} А, tk=${d.tkS} с`;
     } else if (m.id === 'phaseLoop' && !d.skipped) {
-      keyInfo = `Zloop=${d.Zloop} Ом · Ik1=${d.Ik1} А · Ia=${d.Ia} А`;
+      keyInfo = `Zloop=${d.Zloop} Ом · Ik1=${d.Ik1} А · Ia=${d.Ia} А` + (d.rcdEnabled ? ` · УЗО ${d.rcdTripMa} мА` : '');
     } else if (d.skipped) {
       keyInfo = `<span class="muted">${d.reason || 'нет данных'}</span>`;
     }
