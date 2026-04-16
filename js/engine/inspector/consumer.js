@@ -67,6 +67,13 @@ export function openConsumerParamsModal(n) {
     vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
   }
   h.push(field('Уровень напряжения', `<select id="cp-voltage">${vOpts}</select>`));
+  const ph = n.phase || '3ph';
+  h.push(field('Фазность', `<select id="cp-phase">
+    <option value="3ph"${ph === '3ph' ? ' selected' : ''}>3-фазный</option>
+    <option value="A"${ph === 'A' ? ' selected' : ''}>1-фазный (фаза A)</option>
+    <option value="B"${ph === 'B' ? ' selected' : ''}>1-фазный (фаза B)</option>
+    <option value="C"${ph === 'C' ? ' selected' : ''}>1-фазный (фаза C)</option>
+  </select>`));
   h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
   h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
   // Per-mode loadFactor: коэффициент нагрузки в ТЕКУЩЕМ режиме.
@@ -256,6 +263,7 @@ export function openConsumerParamsModal(n) {
     const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
     n.voltageLevelIdx = vIdx;
     if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; }
+    n.phase = document.getElementById('cp-phase')?.value || '3ph';
     n.cosPhi = Number(document.getElementById('cp-cosPhi')?.value) || 0.92;
     n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
     // Per-mode loadFactor
