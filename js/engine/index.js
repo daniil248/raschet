@@ -55,6 +55,10 @@ import { generateReport, get3PhaseBalance } from './report.js';
 import { getReportSections } from './report-sections.js';
 import { importLoadsTable } from './import.js';
 
+// === Миграция уровней напряжения (hz вместо phases/dc) ===
+import { migrateVoltageLevels } from './electrical.js';
+migrateVoltageLevels(GLOBAL.voltageLevels);
+
 // === Инициализация DOM ===
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница

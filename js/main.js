@@ -746,7 +746,7 @@ function renderVoltageLevelsTable() {
   html += '<tr style="background:#f4f5f7"><th style="padding:4px">Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>Hz</th><th>DC п.</th><th></th></tr>';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
-    const hz = Number(lv.hz) || 0;
+    const hz = typeof lv.hz === 'number' ? lv.hz : 50;
     const isDC = hz === 0;
     html += `<tr style="border-bottom:1px solid #eee">
       <td style="padding:4px;font-family:ui-monospace,Consolas,monospace;color:#1976d2;font-weight:600">${escHtml(formatVoltageLevelLabel(lv))}</td>

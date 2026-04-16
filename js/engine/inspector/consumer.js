@@ -69,6 +69,8 @@ export function openConsumerParamsModal(n) {
   h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
   h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
   h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
+  h.push(`<div class="field" style="margin-top:6px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="cp-emergencyOnly" ${n.emergencyOnly ? 'checked' : ''}> Только аварийный режим</label></div>`);
+  h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Не участвует в расчёте нагрузки в нормальном режиме (пожарные насосы, аварийное освещение и т.п.).</div>`);
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
   // Наличие нейтрали (N) и защитного проводника (PE) у этого
   // потребителя. Если флаги не заданы (undefined) — берутся дефолты
@@ -248,6 +250,7 @@ export function openConsumerParamsModal(n) {
     n.cosPhi = Number(document.getElementById('cp-cosPhi')?.value) || 0.92;
     n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
+    n.emergencyOnly = !!document.getElementById('cp-emergencyOnly')?.checked;
     n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
     // Флаги hasNeutral / hasGround — tri-state (auto/on/off)
     const hnVal = document.getElementById('cp-hasNeutral')?.value;

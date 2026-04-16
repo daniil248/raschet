@@ -32,6 +32,10 @@ export function setEffectiveOn(n, val) {
 // Множитель нагрузки потребителя в текущем режиме (сценарий).
 // По умолчанию 1 (100%). Режим «ночь» может выставить 0.2 для освещения и т.д.
 export function effectiveLoadFactor(n) {
+  // Аварийный потребитель: в нормальном режиме loadFactor=0 (не участвует
+  // в расчёте нагрузки). В любом аварийном режиме — включается (если нет
+  // per-mode override).
+  if (!state.activeModeId && n.emergencyOnly) return 0;
   if (!state.activeModeId) return 1;
   const m = state.modes.find(x => x.id === state.activeModeId);
   if (m && m.overrides && m.overrides[n.id] && typeof m.overrides[n.id].loadFactor === 'number') {
