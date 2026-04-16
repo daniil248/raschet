@@ -70,9 +70,8 @@ export function openConsumerParamsModal(n) {
   const ph = n.phase || '3ph';
   h.push(field('Фазность', `<select id="cp-phase">
     <option value="3ph"${ph === '3ph' ? ' selected' : ''}>3-фазный</option>
-    <option value="A"${ph === 'A' ? ' selected' : ''}>1-фазный (фаза A)</option>
-    <option value="B"${ph === 'B' ? ' selected' : ''}>1-фазный (фаза B)</option>
-    <option value="C"${ph === 'C' ? ' selected' : ''}>1-фазный (фаза C)</option>
+    <option value="2ph"${ph === '2ph' ? ' selected' : ''}>2-фазный (split-phase)</option>
+    <option value="1ph"${ph === '1ph' || ph === 'A' || ph === 'B' || ph === 'C' ? ' selected' : ''}>1-фазный</option>
   </select>`));
   h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
   h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));

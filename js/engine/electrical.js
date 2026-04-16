@@ -49,14 +49,15 @@ export function nodeVoltageLN(n) {
   return ((n.phase || '3ph') === '3ph') ? GLOBAL.voltage1ph : GLOBAL.voltage1ph;
 }
 
-// Фазность: сначала из n.phase (потребитель может переопределить),
-// затем из voltage level, затем дефолт 3ph.
+// Фазность: из n.phase, затем voltage level, затем дефолт 3ph.
+// 3ph → true, 2ph/1ph/A/B/C → false (для расчёта тока и жил)
 export function isThreePhase(n) {
-  if (n.phase && n.phase !== '3ph') return false; // явно 1ph/A/B/C
+  const ph = n.phase || '3ph';
+  if (ph !== '3ph') return false;
   if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
     return GLOBAL.voltageLevels[n.voltageLevelIdx].phases === 3;
   }
-  return (n.phase || '3ph') === '3ph';
+  return true;
 }
 
 // ==========================================================================
@@ -107,10 +108,10 @@ export function effectiveWireFlags(fromN, toN) {
 }
 
 // Количество жил кабеля из (phases, hasNeutral, hasGround, pen, dc, dcPoles).
-// DC-линия — по умолчанию 2 провода (L+, L−), или dcPoles (3 = L+/M/L−).
+// DC — dcPoles (2 или 3). AC: 3ph→3, 2ph→2, 1ph→1 + N/PE.
 export function countWires({ phases, hasNeutral, hasGround, pen, dc, dcPoles }) {
   if (dc) return dcPoles || 2;
-  const base = phases === 3 ? 3 : 1;
+  const base = Number(phases) || 1;
   // PEN — N и PE на одном проводе
   if (pen && hasNeutral && hasGround) return base + 1;
   return base + (hasNeutral ? 1 : 0) + (hasGround ? 1 : 0);
@@ -136,7 +137,8 @@ export function cableWireCount(fromN, toN, conn) {
   const lv = toN && typeof toN.voltageLevelIdx === 'number' ? levels[toN.voltageLevelIdx] : null;
   const dc = !!(lv && (lv.dc || (typeof lv.hz === 'number' && lv.hz === 0)));
   const dcPoles = dc && lv ? (Number(lv.dcPoles) || 2) : undefined;
-  const phases = toN && isThreePhase(toN) ? 3 : 1;
+  const ph = toN?.phase || '3ph';
+  const phases = ph === '3ph' ? 3 : ph === '2ph' ? 2 : 1;
   const flags = effectiveWireFlags(fromN, toN);
   return countWires({ phases, dc, dcPoles, ...flags });
 }
