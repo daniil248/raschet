@@ -2017,7 +2017,8 @@ function recalc() {
       tkS,
       earthingSystem: (fromN => (fromN?.type === 'panel' && fromN.earthingOut) || GLOBAL.earthingSystem || 'TN-S')(state.nodes.get(c.from.nodeId)),
       breakerIn: Number(c._breakerIn) || Number(c._breakerPerLine) || 0,
-      breakerCurve: c.breakerCurve || 'MCB_C',
+      // Авто-выбор типа: MCB_C до 63A, MCCB свыше (MCB не бывает >63–125A)
+      breakerCurve: c.breakerCurve || ((Number(c._breakerIn) || Number(c._breakerPerLine) || 0) > 63 ? 'MCCB' : 'MCB_C'),
       Uph: phases === 3 ? (U / Math.sqrt(3)) : U,
     };
     try {

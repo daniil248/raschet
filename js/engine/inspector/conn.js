@@ -188,6 +188,9 @@ export function renderInspectorConn(c) {
         <option value="PVC"${insulation === 'PVC' ? ' selected' : ''}>ПВХ</option>
         <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
       </select>`));
+    // Экономическая плотность тока — per-connection toggle
+    const ecoChecked = !!c.economicDensity;
+    h.push(`<div class="field" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-conn-prop="economicDensity" ${ecoChecked ? 'checked' : ''}> Экон. плотность тока</label></div>`);
   }
   // Секция сечения — ВНУТРИ details "Проводник"
   if ((c._cableSize || c._busbarNom || c._maxA > 0) && !isBusbar) {
