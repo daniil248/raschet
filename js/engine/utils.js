@@ -11,6 +11,13 @@ export function fmt(v) {
   return (Math.round(n * 10) / 10).toString();
 }
 
+// Форматирование мощности: <0.5 kW → в Вт, иначе в kW
+export function fmtPower(kw) {
+  const v = Number(kw) || 0;
+  if (Math.abs(v) < 0.5) return Math.round(v * 1000) + ' W';
+  return fmt(v) + ' kW';
+}
+
 export function flash(msg) {
   const d = document.createElement('div');
   d.textContent = msg;

@@ -5,7 +5,7 @@ import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from 
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
 import { recalc } from './recalc.js';
 import { effectiveTag } from './zones.js';
-import { fmt, escHtml, escAttr } from './utils.js';
+import { fmt, fmtPower, escHtml, escAttr } from './utils.js';
 import { snapshot, notifyChange } from './history.js';
 import { computeCurrentA, nodeVoltage, isThreePhase, cableVoltageClass } from './electrical.js';
 
@@ -543,7 +543,7 @@ export function renderNodes() {
       // Если задано распределение по фазам (результат балансировки для
       // параллельной 1ф группы) — дописываем A/B/C-счётчики.
       const totalKw = (n.count || 1) * (n.demandKw || 0);
-      let gLabel = `${n.count} × ${fmt(n.demandKw)} = ${fmt(totalKw)} kW`;
+      let gLabel = `${n.count} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
       if (n.phaseDistribution && !n.serialMode) {
         const pd = n.phaseDistribution;
         gLabel += `  · A${pd.A || 0}/B${pd.B || 0}/C${pd.C || 0}`;
@@ -718,7 +718,7 @@ export function renderNodes() {
         if (n._overload) loadCls += ' overload';
       }
     } else if (n.type === 'consumer') {
-      loadLine = n._powered ? `${fmt(n.demandKw)} kW` : `${fmt(n.demandKw)} kW · нет`;
+      loadLine = n._powered ? fmtPower(n.demandKw) : `${fmtPower(n.demandKw)} · нет`;
       if (!n._powered) loadCls += ' off';
     } else if (n.type === 'channel') {
       loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
