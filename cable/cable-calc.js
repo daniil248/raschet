@@ -35,10 +35,6 @@ const els = {
   length:            $('in-length'),
   maxVdrop:          $('in-max-vdrop'),
   parallelProtection: $('in-parallel-protection'),
-  ecoEnabled:        $('in-eco-enabled'),
-  ecoFields:         $('eco-fields'),
-  ecoMethod:         $('in-eco-method'),
-  ecoParams:         $('eco-params'),
   btnCalc:           $('btn-calc'),
   btnReport:         $('btn-report'),
   resultArea:        $('result-area'),
@@ -66,11 +62,10 @@ function renderModulesList() {
       moduleEnabled.set(mod.id, mod.mandatory || mod.defaultOn);
     }
     const on = moduleEnabled.get(mod.id);
-    const lockIcon = mod.mandatory ? '🔒' : '';
     const disabled = mod.mandatory ? 'disabled' : '';
     return `<label class="mod-item" title="${mod.description.replace(/"/g, '&quot;')}">
       <input type="checkbox" data-mod="${mod.id}" ${on ? 'checked' : ''} ${disabled}>
-      <span class="mod-label">${lockIcon} ${mod.label}</span>
+      <span class="mod-label">${mod.label}</span>
     </label>`;
   }).join('');
   wrap.innerHTML = items;
@@ -108,11 +103,6 @@ function init() {
     els.fieldsCurrent.style.display = mode === 'current' ? '' : 'none';
     els.fieldsPower.style.display   = mode === 'power'   ? '' : 'none';
   });
-  els.ecoEnabled.addEventListener('change', () => {
-    els.ecoFields.style.display = els.ecoEnabled.checked ? '' : 'none';
-    if (els.ecoEnabled.checked) switchEcoMethod(els.ecoMethod.value);
-  });
-  els.ecoMethod.addEventListener('change', () => switchEcoMethod(els.ecoMethod.value));
   els.btnCalc.addEventListener('click', calculate);
   if (els.btnReport) els.btnReport.addEventListener('click', exportReport);
   document.addEventListener('keydown', e => {
@@ -120,7 +110,6 @@ function init() {
   });
 
   switchMethod('iec');
-  switchEcoMethod('pue_eco');
   renderModulesList();
   calculate();
 }
@@ -241,10 +230,9 @@ function calculate() {
     ? (sizes.find(s => s >= sBySc) || null)
     : null;
 
-  // Экономическая плотность тока (не зависит от параллели в PUE-трактовке,
-  // считаем один раз).
+  // Экономическая плотность тока — управляется чекбоксом модуля economic
   let ecoResult = null;
-  if (els.ecoEnabled.checked && currentEcoMethod) {
+  if (moduleEnabled.get('economic') && currentEcoMethod) {
     ecoResult = currentEcoMethod.calcEconomicSize(I, material, true, getEcoParams(), sizes);
   }
 
@@ -416,13 +404,12 @@ function calculate() {
 
 // ============ Render module cards ============
 // Выводит карточку на каждый запущенный модуль — пользователь видит
-// влияние каждого расчёта независимо. Mandatory-модули помечены 🔒.
+// влияние каждого расчёта независимо.
 function renderModuleCards(moduleResults) {
   if (!moduleResults || !moduleResults.length) return '';
   const cards = moduleResults.map(m => {
     const { result } = m;
     const passCls = result.pass ? 'ok' : 'warn';
-    const icon = m.mandatory ? '🔒 ' : '';
     const status = result.details?.skipped
       ? '<span class="tag-muted">пропущен</span>'
       : (result.pass ? '<span class="tag-ok">OK</span>' : '<span class="tag-overflow">проблема</span>');
@@ -464,7 +451,7 @@ function renderModuleCards(moduleResults) {
     return `
       <div class="mod-card ${passCls}">
         <div class="mod-head">
-          <span class="mod-title">${icon}${m.label}</span>
+          <span class="mod-title">${m.label}</span>
           ${status}
         </div>
         <div class="mod-body">${detailsHtml}</div>

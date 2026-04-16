@@ -1987,7 +1987,9 @@ function recalc() {
     const U = c._voltage || 400;
     const phases = c._threePhase ? 3 : 1;
     const isDC = !!c._isDC;
-    // Все расчётные модули запускаются безусловно
+    // Необязательные модули — по флагам пользователя per-conn / GLOBAL
+    const enabledSet = new Set();
+    if (c.economicDensity || GLOBAL.enforceEconomicDensity) enabledSet.add('economic');
     // t_k по умолчанию: характеристика автомата и номинал → время
     // расцепления. Для mag-размыкания MCB ≈ 0.02-0.1 с, для selective ≈ 0.3-1 с.
     const defaultTk = 0.1;
@@ -2019,7 +2021,7 @@ function recalc() {
       Uph: phases === 3 ? (U / Math.sqrt(3)) : U,
     };
     try {
-      c._moduleResults = runCalcModules(modInput);
+      c._moduleResults = runCalcModules(modInput, enabledSet);
     } catch (e) {
       console.warn('[recalc] calc-modules failed', e);
       c._moduleResults = null;

@@ -18,7 +18,7 @@ export const economicModule = {
   description: 'ПУЭ 1.3.25-28 — ограничение j ≤ j_эк для режимов работы > 4000 ч/год.',
   mandatory: false,
   defaultOn: false,
-  order: 30,
+  order: 60,
   calc(input) {
     const eco = getEcoMethod(input.ecoMethod || 'pue_eco');
     if (!eco) {

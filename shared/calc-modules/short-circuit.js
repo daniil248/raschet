@@ -63,7 +63,7 @@ export const shortCircuitModule = {
       pass,
       bump,
       details: {
-        IkA: Ik,
+        IkA: Math.round(Ik),
         tkS: tk,
         k,
         sRequired: Math.round(sRequired * 10) / 10,
@@ -73,7 +73,7 @@ export const shortCircuitModule = {
       },
       warnings: pass
         ? []
-        : [`S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Ik} А, t_k=${tk} с, k=${k}). Текущее ${sCurrent} мм² недостаточно.`],
+        : [`S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Math.round(Ik)} А, t_k=${tk} с, k=${k}). Текущее ${sCurrent} мм² недостаточно.`],
     };
   },
 };

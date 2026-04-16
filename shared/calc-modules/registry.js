@@ -64,13 +64,14 @@ export function getModule(id) {
   return _modules.get(id) || null;
 }
 
-/** Запуск ВСЕХ зарегистрированных модулей. Возвращает массив результатов
- *  в порядке order. Все модули запускаются безусловно — нет понятия
- *  «отключить модуль». enabledIds сохранён для обратной совместимости
- *  API, но не влияет на выполнение. */
+/** Запуск модулей. Обязательные (mandatory) запускаются всегда.
+ *  Необязательные — только если их id есть в enabledIds.
+ *  Если enabledIds не передан — запускаются только mandatory. */
 export function runModules(input, enabledIds) {
+  const enabled = enabledIds instanceof Set ? enabledIds : new Set(enabledIds || []);
   const out = [];
   for (const mod of listModules()) {
+    if (!mod.mandatory && !enabled.has(mod.id)) continue;
     let result;
     try {
       result = mod.calc(input) || { pass: true, details: {}, warnings: [] };
