@@ -297,12 +297,12 @@ export const DEFAULTS = {
       phase: '3ph', voltage: 400, cosPhi: 0.95,
       voltageLevelIdx: 0,     // вторичная обмотка (LV)
       inputVoltageLevelIdx: 3, // первичная (10kV по умолчанию) — используется если inputs>0
-      sscMva: 500,            // мощность КЗ сети, МВА (fallback если utility не подключён)
-      ukPct: 6,
-      xsRsRatio: 10,
+      sscMva: 250,            // мощность КЗ сети, МВА (fallback если utility не подключён)
+      ukPct: 4.5,             // каталожное для 400 кВА (IEC 60076-1)
+      xsRsRatio: 8,
       snomKva: 400,
-      pkW: 6,
-      p0W: 1.5,
+      pkW: 5.5,
+      p0W: 0.83,
     };
   },
   generator: () => ({
