@@ -88,11 +88,6 @@ function init() {
     `<option value="${i}">${v.label}</option>`
   ).join('');
 
-  // Populate economic methods
-  els.ecoMethod.innerHTML = listEcoMethods().map(m =>
-    `<option value="${m.id}">${m.label}</option>`
-  ).join('');
-
   // Events
   els.methodStandard.addEventListener('change', () => switchMethod(els.methodStandard.value));
   els.inputMode.addEventListener('click', e => {
