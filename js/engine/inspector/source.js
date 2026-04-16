@@ -69,6 +69,25 @@ export function openImpedanceModal(n) {
     `<select id="imp-voltage-out">${voltageLevelOptions(outIdx, null)}</select>`));
 
   if (isTransformer) {
+    // Группа соединений обмоток (IEC 60076-1)
+    const vg = n.vectorGroup || 'Dyn11';
+    h.push(field('Группа соединений обмоток',
+      `<select id="imp-vectorGroup">
+        <option value="Dyn11"${vg === 'Dyn11' ? ' selected' : ''}>Dyn11 — Δ/Y-н (треугольник / звезда с нейтралью)</option>
+        <option value="Yyn0"${vg === 'Yyn0' ? ' selected' : ''}>Yyn0 — Y/Y-н (звезда / звезда с нейтралью)</option>
+        <option value="Dyn5"${vg === 'Dyn5' ? ' selected' : ''}>Dyn5 — Δ/Y-н (сдвиг 150°)</option>
+        <option value="Dyn1"${vg === 'Dyn1' ? ' selected' : ''}>Dyn1 — Δ/Y-н (сдвиг 30°)</option>
+        <option value="Dzn0"${vg === 'Dzn0' ? ' selected' : ''}>Dzn0 — Δ/зигзаг-н</option>
+        <option value="YNyn0"${vg === 'YNyn0' ? ' selected' : ''}>YNyn0 — Y-н/Y-н (двойная звезда)</option>
+        <option value="YNd11"${vg === 'YNd11' ? ' selected' : ''}>YNd11 — Y-н/Δ</option>
+        <option value="Dd0"${vg === 'Dd0' ? ' selected' : ''}>Dd0 — Δ/Δ</option>
+      </select>`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-4px;line-height:1.4">`
+      + 'Dyn11 — стандартная для силовых ТП 6–10/0.4 кВ. '
+      + 'Yyn0 — для симметричных нагрузок без 3-й гармоники. '
+      + 'Dzn0 — для несимметричных нагрузок с малым током КЗ.'
+      + `</div>`);
+
     const inIdx = (typeof n.inputVoltageLevelIdx === 'number') ? n.inputVoltageLevelIdx : (() => {
       const levels = GLOBAL.voltageLevels || [];
       for (let i = 0; i < levels.length; i++) {
@@ -187,6 +206,8 @@ export function openImpedanceModal(n) {
     if (isTransformer) {
       const inEl = document.getElementById('imp-voltage-in');
       if (inEl) n.inputVoltageLevelIdx = Number(inEl.value) || 0;
+      const vgEl = document.getElementById('imp-vectorGroup');
+      if (vgEl) n.vectorGroup = vgEl.value || 'Dyn11';
     }
     if (!isUtility) {
       n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
