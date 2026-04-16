@@ -90,6 +90,8 @@ function _migrateVoltageLevels(obj) {
       if (lv.dc && (lv.hz === undefined || lv.hz === null)) lv.hz = 0;
       delete lv.dc;
       if (typeof lv.hz !== 'number') lv.hz = 50;
+      // Fix: hz=0 с vLL≠vLN — это AC, не DC (баг из предыдущих версий)
+      if (lv.hz === 0 && lv.vLL !== lv.vLN) lv.hz = 50;
     }
   }
   return obj;

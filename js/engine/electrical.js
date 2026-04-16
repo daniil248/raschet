@@ -213,6 +213,8 @@ export function migrateVoltageLevels(levels) {
     delete lv.dc;
     // AC без hz → 50 Hz по умолчанию
     if (typeof lv.hz !== 'number') lv.hz = 50;
+    // Fix: hz=0 с vLL≠vLN — это AC, не DC (баг из предыдущих версий)
+    if (lv.hz === 0 && lv.vLL !== lv.vLN) lv.hz = 50;
   }
 }
 
