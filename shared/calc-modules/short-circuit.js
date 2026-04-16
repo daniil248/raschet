@@ -30,6 +30,27 @@ function getK(material, insulation) {
   return m[insulation] || m.PVC;
 }
 
+// Оценка времени отключения автомата по кратности Ik/In и типу кривой.
+// При кратности выше магнитного порога — мгновенное срабатывание (~5-10 мс).
+// Ниже магнитного порога — тепловой расцепитель (до 0.1-1 с).
+// IEC 60898-1: B → 3-5×In, C → 5-10×In, D → 10-20×In
+const MAG_THRESHOLD = {
+  MCB_B: 5, MCB_C: 10, MCB_D: 20,
+  MCCB: 10, ACB: 10, gG: 10,
+};
+function estimateTripTime(Ik, In, curve) {
+  if (Ik <= 0 || In <= 0) return 0.1;
+  const ratio = Ik / In;
+  const magThresh = MAG_THRESHOLD[curve] || 10;
+  if (ratio >= magThresh) {
+    // Мгновенное магнитное срабатывание: 5-10 мс для MCB, 20-50 мс для MCCB
+    return (curve === 'MCCB' || curve === 'ACB') ? 0.03 : 0.01;
+  }
+  // Тепловой расцепитель: приблизительно t ∝ 1/(ratio²)
+  // При ratio=2 → ~30с, ratio=5 → ~5с, ratio=8 → ~1с
+  return Math.min(5, Math.max(0.1, 100 / (ratio * ratio)));
+}
+
 export const shortCircuitModule = {
   id: 'shortCircuit',
   label: 'Термическая стойкость к току КЗ',
@@ -38,14 +59,20 @@ export const shortCircuitModule = {
   order: 40,
   calc(input) {
     const Ik = Number(input.IkA) || 0;
-    const tk = Number(input.tkS) || 0;
-    if (Ik <= 0 || tk <= 0) {
+    if (Ik <= 0) {
       return {
         pass: true,
-        details: { skipped: true, reason: 'I_k или t_k не заданы' },
+        details: { skipped: true, reason: 'I_k не задан' },
         warnings: [],
       };
     }
+    // tk: если задан пользователем — используем, иначе рассчитываем
+    // по кривой автомата и кратности Ik/In (IEC 60898-1)
+    const In = Number(input.breakerIn) || 0;
+    const curve = input.breakerCurve || 'MCB_C';
+    const tkUser = Number(input.tkS) || 0;
+    const tk = tkUser > 0 ? tkUser : estimateTripTime(Ik, In, curve);
+    const tkAuto = tkUser <= 0;
     const k = getK(input.material || 'Cu', input.insulation || 'PVC');
     const sRequired = (Ik * Math.sqrt(tk)) / k;
     const sCurrent = Number(input.currentSize) || 0;
@@ -64,16 +91,19 @@ export const shortCircuitModule = {
       bump,
       details: {
         IkA: Math.round(Ik),
-        tkS: tk,
+        tkS: Math.round(tk * 1000) / 1000,
+        tkAuto,
         k,
         sRequired: Math.round(sRequired * 10) / 10,
         sCurrent,
         material: input.material,
         insulation: input.insulation,
+        breakerIn: In,
+        breakerCurve: curve,
       },
       warnings: pass
         ? []
-        : [`S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Math.round(Ik)} А, t_k=${tk} с, k=${k}). Текущее ${sCurrent} мм² недостаточно.`],
+        : [`S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Math.round(Ik)} А, t_k=${(Math.round(tk * 1000) / 1000)} с${tkAuto ? ' авто' : ''}, k=${k}). Текущее ${sCurrent} мм² недостаточно.`],
     };
   },
 };

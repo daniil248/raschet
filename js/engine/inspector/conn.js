@@ -614,7 +614,7 @@ function renderConnModuleResultsBlock(modResults) {
     } else if (m.id === 'economic' && !d.skipped) {
       keyInfo = `j=${d.jEk} А/мм² · S=${d.sStandard} мм²`;
     } else if (m.id === 'shortCircuit' && !d.skipped) {
-      keyInfo = `Smin=${d.sRequired} мм² при Ik=${Math.round(d.IkA)} А, tk=${d.tkS} с`;
+      keyInfo = `Smin=${d.sRequired} мм² при Ik=${Math.round(d.IkA)} А, tk=${d.tkS} с${d.tkAuto ? ' (авто)' : ''}`;
     } else if (m.id === 'phaseLoop' && !d.skipped) {
       keyInfo = `Zloop=${d.Zloop} Ом · Ik1=${d.Ik1} А · Ia=${d.Ia} А` + (d.rcdEnabled ? ` · УЗО ${d.rcdTripMa} мА` : '');
     } else if (d.skipped) {

@@ -1990,10 +1990,10 @@ function recalc() {
     // Необязательные модули — по флагам пользователя per-conn / GLOBAL
     const enabledSet = new Set();
     if (c.economicDensity || GLOBAL.enforceEconomicDensity) enabledSet.add('economic');
-    // t_k по умолчанию: характеристика автомата и номинал → время
-    // расцепления. Для mag-размыкания MCB ≈ 0.02-0.1 с, для selective ≈ 0.3-1 с.
-    const defaultTk = 0.1;
-    const tkS = Number(c.tkS) || Number(GLOBAL.defaultTkS) || defaultTk;
+    // t_k: если задан пользователем — используем, иначе модуль shortCircuit
+    // рассчитает автоматически по кривой автомата и кратности Ik/In.
+    // Передаём 0 чтобы модуль понял что нужен авто-расчёт.
+    const tkS = Number(c.tkS) || Number(GLOBAL.defaultTkS) || 0;
     const modInput = {
       I: Number(c._maxA) || 0,
       U, phases, dc: isDC,
