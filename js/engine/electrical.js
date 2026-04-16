@@ -49,11 +49,14 @@ export function nodeVoltageLN(n) {
   return ((n.phase || '3ph') === '3ph') ? GLOBAL.voltage1ph : GLOBAL.voltage1ph;
 }
 
-// Фазность определяется узлом (phase='3ph'/'A'/'B'/'C'/'1ph'), не уровнем
-// напряжения. Однофазные — только потребители с явным phase.
+// Фазность: сначала из n.phase (потребитель может переопределить),
+// затем из voltage level, затем дефолт 3ph.
 export function isThreePhase(n) {
-  const ph = n.phase || '3ph';
-  return ph === '3ph';
+  if (n.phase && n.phase !== '3ph') return false; // явно 1ph/A/B/C
+  if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
+    return GLOBAL.voltageLevels[n.voltageLevelIdx].phases === 3;
+  }
+  return (n.phase || '3ph') === '3ph';
 }
 
 // ==========================================================================
@@ -202,19 +205,15 @@ export function migrateVoltageLevels(levels) {
   if (!Array.isArray(levels)) return;
   for (const lv of levels) {
     if (!lv) continue;
-    // Удаляем устаревшее поле label — метка формируется автоматически
     if ('label' in lv) delete lv.label;
-    // Удаляем устаревшее поле phases — фазность от узла
-    if ('phases' in lv) delete lv.phases;
     // dc:true → hz:0
-    if (lv.dc && (lv.hz === undefined || lv.hz === null)) {
-      lv.hz = 0;
-    }
+    if (lv.dc && (lv.hz === undefined || lv.hz === null)) lv.hz = 0;
     delete lv.dc;
-    // AC без hz → 50 Hz по умолчанию
     if (typeof lv.hz !== 'number') lv.hz = 50;
-    // Fix: hz=0 с vLL≠vLN — это AC, не DC (баг из предыдущих версий)
+    // Fix: hz=0 с vLL≠vLN — это AC
     if (lv.hz === 0 && lv.vLL !== lv.vLN) lv.hz = 50;
+    // phases по умолчанию: DC→1, AC→3
+    if (typeof lv.phases !== 'number') lv.phases = (lv.hz === 0) ? 1 : 3;
   }
 }
 

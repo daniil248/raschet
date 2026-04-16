@@ -767,9 +767,7 @@ function renderVoltageLevelsTable() {
       const G2 = window.Raschet.getGlobal();
       if (G2.voltageLevels[idx]) {
         G2.voltageLevels[idx][field] = Number(inp.value);
-        // Чистим устаревшие поля
         delete G2.voltageLevels[idx].label;
-        delete G2.voltageLevels[idx].phases;
         delete G2.voltageLevels[idx].dc;
         window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
         renderVoltageLevelsTable();

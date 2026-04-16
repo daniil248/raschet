@@ -6,6 +6,7 @@ import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveTag } from '../zones.js';
 import { nextFreeTag } from '../graph.js';
 import { snapshot, notifyChange } from '../history.js';
+import { setEffectiveLoadFactor } from '../modes.js';
 import { render } from '../render.js';
 import { formatVoltageLevelLabel } from '../electrical.js';
 
@@ -68,18 +69,17 @@ export function openConsumerParamsModal(n) {
   h.push(field('Уровень напряжения', `<select id="cp-voltage">${vOpts}</select>`));
   h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
   h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
-  h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
-  // Участие в режимах: если ни один не выбран → считается во всех.
-  // Если выбраны конкретные → только в них.
-  const modes = state.modes || [];
-  const activeModes = Array.isArray(n.activeModes) ? n.activeModes : [];
-  const hasFilter = activeModes.length > 0;
-  h.push(`<div style="margin-top:8px;font-size:12px;font-weight:600">Участие в режимах</div>`);
-  h.push(`<div class="muted" style="font-size:10px;margin-bottom:4px">Если ни один не выбран — считается во всех. Выберите конкретные режимы для аварийных потребителей (пожарные насосы, аварийное освещение).</div>`);
-  h.push(`<div class="field" style="margin-top:2px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-active-mode="__normal__" ${activeModes.includes('__normal__') ? 'checked' : ''}> Нормальный режим</label></div>`);
-  for (const m of modes) {
-    h.push(`<div class="field"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-active-mode="${m.id}" ${activeModes.includes(m.id) ? 'checked' : ''}> ${escHtml(m.name)}</label></div>`);
+  // Per-mode loadFactor: коэффициент нагрузки в ТЕКУЩЕМ режиме.
+  // 1 = 100%, 0 = не считается, 0.5 = 50%. Влияет только на выбранный режим.
+  if (state.activeModeId) {
+    const curMode = (state.modes || []).find(m => m.id === state.activeModeId);
+    const lf = (curMode?.overrides?.[n.id]?.loadFactor);
+    const lfVal = typeof lf === 'number' ? lf : 1;
+    h.push(field(`Коэфф. режима «${escHtml(curMode?.name || '')}»`,
+      `<input type="number" id="cp-loadFactor" min="0" max="3" step="0.1" value="${lfVal}">`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">0 = не участвует в расчёте нагрузки в этом режиме. 1 = номинал. Влияет только на текущий режим.</div>`);
   }
+  h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
   // Наличие нейтрали (N) и защитного проводника (PE) у этого
   // потребителя. Если флаги не заданы (undefined) — берутся дефолты
@@ -258,13 +258,12 @@ export function openConsumerParamsModal(n) {
     if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; }
     n.cosPhi = Number(document.getElementById('cp-cosPhi')?.value) || 0.92;
     n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
+    // Per-mode loadFactor
+    const lfEl = document.getElementById('cp-loadFactor');
+    if (lfEl && state.activeModeId) {
+      setEffectiveLoadFactor(n, Number(lfEl.value));
+    }
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
-    // activeModes: собираем из чекбоксов
-    const amChecks = document.querySelectorAll('[data-active-mode]');
-    const am = [];
-    amChecks.forEach(cb => { if (cb.checked) am.push(cb.dataset.activeMode); });
-    n.activeModes = am.length > 0 ? am : undefined;
-    delete n.emergencyOnly; // legacy
     n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
     // Флаги hasNeutral / hasGround — tri-state (auto/on/off)
     const hnVal = document.getElementById('cp-hasNeutral')?.value;

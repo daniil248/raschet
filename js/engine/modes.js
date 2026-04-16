@@ -31,17 +31,12 @@ export function setEffectiveOn(n, val) {
 
 // Множитель нагрузки потребителя в текущем режиме (сценарий).
 // По умолчанию 1 (100%). Режим «ночь» может выставить 0.2 для освещения и т.д.
+// Множитель нагрузки потребителя в текущем режиме.
+// По умолчанию 1. В per-mode override можно задать 0 (не считается),
+// 0.5 (50%), 2 (двойная нагрузка) и т.п.
+// Устанавливается через инспектор в поле «Коэфф. режима» когда
+// выбран конкретный режим работы.
 export function effectiveLoadFactor(n) {
-  // activeModes: массив id режимов, в которых потребитель участвует.
-  // Если задан и не пуст — потребитель считается ТОЛЬКО в этих режимах.
-  // '__normal__' = нормальный режим (без activeModeId).
-  // Если activeModes не задан — потребитель считается во всех режимах (обратная совместимость).
-  if (Array.isArray(n.activeModes) && n.activeModes.length > 0) {
-    const curMode = state.activeModeId || '__normal__';
-    if (!n.activeModes.includes(curMode)) return 0;
-  }
-  // Legacy: emergencyOnly → не считается в нормальном режиме
-  if (!state.activeModeId && n.emergencyOnly) return 0;
   if (!state.activeModeId) return 1;
   const m = state.modes.find(x => x.id === state.activeModeId);
   if (m && m.overrides && m.overrides[n.id] && typeof m.overrides[n.id].loadFactor === 'number') {

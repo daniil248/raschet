@@ -26,13 +26,13 @@ const STORAGE_KEY = 'raschet.global.v1';
 // которые здесь не перечислены.
 export const DEFAULTS = {
   voltageLevels: [
-    { vLL: 400,   vLN: 230,   hz: 50 },
-    { vLL: 690,   vLN: 400,   hz: 50 },
-    { vLL: 10000, vLN: 5774,  hz: 50 },
-    { vLL: 6000,  vLN: 3464,  hz: 50 },
-    { vLL: 35000, vLN: 20207, hz: 50 },
-    { vLL: 110,   vLN: 110,   hz: 50 },
-    { vLL: 48,    vLN: 48,    hz: 0 },
+    { vLL: 400,   vLN: 230,   phases: 3, hz: 50 },
+    { vLL: 690,   vLN: 400,   phases: 3, hz: 50 },
+    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50 },
+    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50 },
+    { vLL: 35000, vLN: 20207, phases: 3, hz: 50 },
+    { vLL: 110,   vLN: 110,   phases: 1, hz: 50 },
+    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2 },
   ],
   defaultCosPhi: 0.92,
   defaultAmbient: 30,
@@ -86,12 +86,11 @@ function _migrateVoltageLevels(obj) {
     for (const lv of obj.voltageLevels) {
       if (!lv) continue;
       if ('label' in lv) delete lv.label;
-      if ('phases' in lv) delete lv.phases;
       if (lv.dc && (lv.hz === undefined || lv.hz === null)) lv.hz = 0;
       delete lv.dc;
       if (typeof lv.hz !== 'number') lv.hz = 50;
-      // Fix: hz=0 с vLL≠vLN — это AC, не DC (баг из предыдущих версий)
       if (lv.hz === 0 && lv.vLL !== lv.vLN) lv.hz = 50;
+      if (typeof lv.phases !== 'number') lv.phases = (lv.hz === 0) ? 1 : 3;
     }
   }
   return obj;
