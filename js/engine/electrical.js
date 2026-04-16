@@ -182,7 +182,7 @@ export function formatVoltageLevelLabel(lv) {
   if (!lv) return '—';
   const vLL = Number(lv.vLL) || 0;
   const vLN = Number(lv.vLN) || 0;
-  const hz = Number(lv.hz) || 0;
+  const hz = typeof lv.hz === 'number' ? lv.hz : 50;
   const isDC = lv.dc === true || hz === 0;
   const isHV = vLL >= 1000;
   const fmtV = (v) => isHV
