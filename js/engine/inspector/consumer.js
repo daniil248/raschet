@@ -75,15 +75,20 @@ export function openConsumerParamsModal(n) {
   </select>`));
   h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
   h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
-  // Per-mode loadFactor: коэффициент нагрузки в ТЕКУЩЕМ режиме.
-  // 1 = 100%, 0 = не считается, 0.5 = 50%. Влияет только на выбранный режим.
+  // Множитель нагрузки в текущем сценарии (нормальный или аварийный режим).
+  // 1 = 100%, 0 = не считается, 0.5 = 50%.
   if (state.activeModeId) {
     const curMode = (state.modes || []).find(m => m.id === state.activeModeId);
     const lf = (curMode?.overrides?.[n.id]?.loadFactor);
     const lfVal = typeof lf === 'number' ? lf : 1;
-    h.push(field(`Коэфф. режима «${escHtml(curMode?.name || '')}»`,
+    h.push(field(`Множитель нагрузки (0–3)`,
       `<input type="number" id="cp-loadFactor" min="0" max="3" step="0.1" value="${lfVal}">`));
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">0 = не участвует в расчёте нагрузки в этом режиме. 1 = номинал. Влияет только на текущий режим.</div>`);
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">В текущем сценарии «${escHtml(curMode?.name || '')}». 0 = выключено. Не влияет на другие режимы.</div>`);
+  } else {
+    const nlf = typeof n.normalLoadFactor === 'number' ? n.normalLoadFactor : 1;
+    h.push(field(`Множитель нагрузки (0–3)`,
+      `<input type="number" id="cp-normalLoadFactor" min="0" max="3" step="0.1" value="${nlf}">`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">1.0 = номинал, 0.5 = 50%, 0 = выключено.</div>`);
   }
   h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
@@ -265,10 +270,14 @@ export function openConsumerParamsModal(n) {
     n.phase = document.getElementById('cp-phase')?.value || '3ph';
     n.cosPhi = Number(document.getElementById('cp-cosPhi')?.value) || 0.92;
     n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
-    // Per-mode loadFactor
+    // Множитель нагрузки
     const lfEl = document.getElementById('cp-loadFactor');
     if (lfEl && state.activeModeId) {
       setEffectiveLoadFactor(n, Number(lfEl.value));
+    }
+    const nlfEl = document.getElementById('cp-normalLoadFactor');
+    if (nlfEl) {
+      n.normalLoadFactor = Number(nlfEl.value);
     }
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
     n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;

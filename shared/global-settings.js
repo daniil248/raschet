@@ -202,6 +202,19 @@ function _css() {
   document.head.appendChild(s);
 }
 
+// Проверяет используется ли уровень напряжения idx хотя бы одним узлом
+function _isVoltageLevelUsed(idx) {
+  try {
+    if (window.Raschet && window.Raschet._state) {
+      for (const n of window.Raschet._state.nodes.values()) {
+        if (n.voltageLevelIdx === idx) return true;
+        if (n.inputVoltageLevelIdx === idx) return true;
+      }
+    }
+  } catch { /* no main app */ }
+  return false;
+}
+
 function _renderVoltageTable(container) {
   const G = getGlobal();
   const levels = G.voltageLevels || [];
@@ -211,13 +224,15 @@ function _renderVoltageTable(container) {
     const hz = typeof lv.hz === 'number' ? lv.hz : 50;
     const isDC = hz === 0;
     const isBuiltin = !!lv.builtin;
+    const isUsed = _isVoltageLevelUsed(i);
+    const canDelete = !isBuiltin && !isUsed;
     html += `<tr>
-      <td><span class="label-cell">${formatVoltageLevelLabel(lv)}</span>${isBuiltin ? '<span style="font-size:9px;color:#999;margin-left:4px">базовый</span>' : ''}</td>
+      <td><span class="label-cell">${formatVoltageLevelLabel(lv)}</span>${isBuiltin ? '<span style="font-size:9px;color:#999;margin-left:4px">базовый</span>' : ''}${!isBuiltin && isUsed ? '<span style="font-size:9px;color:#e65100;margin-left:4px">используется</span>' : ''}</td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLL" value="${lv.vLL}" class="compact"></td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLN" value="${lv.vLN}" class="compact"></td>
       <td><input type="number" data-vl="${i}" data-vl-field="hz" value="${hz}" class="compact" min="0" step="1" title="0 = DC"></td>
       <td>${isDC ? `<input type="number" data-vl="${i}" data-vl-field="dcPoles" value="${lv.dcPoles || 2}" class="compact" min="2" max="3" step="1">` : '<span class="muted">—</span>'}</td>
-      <td style="text-align:right">${isBuiltin ? '' : `<button type="button" class="btn danger" data-vl-del="${i}" title="Удалить">×</button>`}</td>
+      <td style="text-align:right">${canDelete ? `<button type="button" class="btn danger" data-vl-del="${i}" title="Удалить">×</button>` : ''}</td>
     </tr>`;
   }
   html += '</table>';

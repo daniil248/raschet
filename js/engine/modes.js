@@ -37,7 +37,9 @@ export function setEffectiveOn(n, val) {
 // Устанавливается через инспектор в поле «Коэфф. режима» когда
 // выбран конкретный режим работы.
 export function effectiveLoadFactor(n) {
-  if (!state.activeModeId) return 1;
+  if (!state.activeModeId) {
+    return typeof n.normalLoadFactor === 'number' ? n.normalLoadFactor : 1;
+  }
   const m = state.modes.find(x => x.id === state.activeModeId);
   if (m && m.overrides && m.overrides[n.id] && typeof m.overrides[n.id].loadFactor === 'number') {
     return m.overrides[n.id].loadFactor;
