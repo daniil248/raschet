@@ -225,7 +225,7 @@ function _renderVoltageTable(container) {
   container.innerHTML = html;
 
   container.querySelectorAll('[data-vl]').forEach(inp => {
-    inp.addEventListener('input', () => {
+    inp.addEventListener('change', () => {
       const idx = Number(inp.dataset.vl);
       const field = inp.dataset.vlField;
       const G2 = getGlobal();
