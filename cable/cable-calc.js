@@ -1,4 +1,5 @@
 import { GLOBAL } from '../js/engine/constants.js';
+import { formatVoltageLevelLabel } from '../js/engine/electrical.js';
 import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../js/methods/index.js';
 import { runModules, listModules } from '../shared/calc-modules/index.js';
 import * as Report from '../shared/report/index.js';
@@ -85,7 +86,7 @@ function init() {
 
   // Populate voltage levels
   els.voltageLevel.innerHTML = GLOBAL.voltageLevels.map((v, i) =>
-    `<option value="${i}">${v.label}</option>`
+    `<option value="${i}">${formatVoltageLevelLabel(v)}</option>`
   ).join('');
 
   // Events
@@ -147,7 +148,7 @@ function getVoltageInfo() {
   const lv = GLOBAL.voltageLevels[idx] || GLOBAL.voltageLevels[0];
   const isDC = lv.dc || (typeof lv.hz === 'number' && lv.hz === 0);
   // Фазность в cable/ пока всегда 3-фазная (по умолчанию)
-  return { ...lv, dc: isDC, phases: isDC ? 1 : 3 };
+  return { ...lv, dc: isDC, phases: isDC ? 1 : 3, label: formatVoltageLevelLabel(lv) };
 }
 
 function getSizingCurrent() {
