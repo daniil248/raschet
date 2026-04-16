@@ -217,6 +217,9 @@ export function migrateVoltageLevels(levels) {
     // phases по умолчанию: DC→1, AC→3
     if (typeof lv.phases !== 'number') lv.phases = (lv.hz === 0) ? 1 : 3;
   }
+  // Удаляем legacy 230/230 1ph — его напряжение есть в 400/230 как vLN
+  const idx230 = levels.findIndex(lv => lv.vLL === 230 && lv.vLN === 230 && lv.hz !== 0);
+  if (idx230 >= 0) levels.splice(idx230, 1);
 }
 
 // DC-детектор для узла по его voltageLevel (hz === 0 означает DC)

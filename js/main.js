@@ -13,6 +13,7 @@ import { formatVoltageLevelLabel } from './engine/electrical.js';
 import * as Report from '../shared/report/index.js';
 import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } from '../shared/report-catalog.js';
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
+import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
 
 (function () {
 'use strict';
@@ -1636,10 +1637,10 @@ async function init() {
 
   // P3 buttons
   if (els.btnOpenSettings) els.btnOpenSettings.addEventListener('click', openSettingsModal);
-  // Шестерёнка в хедере — те же глобальные настройки, что доступны
-  // из шестерёнки shared/app-header.js на подпрограммах.
+  // Шестерёнка в хедере → Глобальные настройки платформы (shared/global-settings.js)
+  // Кнопка «⚙ Параметры расчёта» в сайдбаре → локальная модалка (openSettingsModal)
   const btnGlobalSettings = document.getElementById('btn-global-settings');
-  if (btnGlobalSettings) btnGlobalSettings.addEventListener('click', openSettingsModal);
+  if (btnGlobalSettings) btnGlobalSettings.addEventListener('click', () => openGlobalSettingsModal());
   const settingsSave = document.getElementById('settings-save');
   if (settingsSave) settingsSave.addEventListener('click', saveSettingsModal);
   const settingsReset = document.getElementById('settings-reset');

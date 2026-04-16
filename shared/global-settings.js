@@ -92,6 +92,9 @@ function _migrateVoltageLevels(obj) {
       if (lv.hz === 0 && lv.vLL !== lv.vLN) lv.hz = 50;
       if (typeof lv.phases !== 'number') lv.phases = (lv.hz === 0) ? 1 : 3;
     }
+    // Удаляем legacy 230/230 1ph
+    const idx230 = obj.voltageLevels.findIndex(lv => lv.vLL === 230 && lv.vLN === 230 && lv.hz !== 0);
+    if (idx230 >= 0) obj.voltageLevels.splice(idx230, 1);
   }
   return obj;
 }
