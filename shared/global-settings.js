@@ -64,14 +64,15 @@ export function formatVoltageLevelLabel(lv) {
   const vLN = Number(lv.vLN) || 0;
   const hz = Number(lv.hz) || 0;
   const isDC = lv.dc === true || hz === 0;
-  const kV = vLL >= 1000;
-  const fmtV = (v) => kV
+  const isHV = vLL >= 1000;
+  const fmtV = (v) => isHV
     ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : v % 100 === 0 ? 1 : 3)
     : String(v);
-  const unit = kV ? 'kV' : 'V';
-  const voltPart = vLN && vLN !== vLL ? `${fmtV(vLL)}/${fmtV(vLN)} ${unit}` : `${fmtV(vLL)} ${unit}`;
-  if (isDC) return voltPart + ' DC';
-  return voltPart + ' ' + hz + ' Hz';
+  const unit = isHV ? 'kV' : 'V';
+  if (isDC) return `${fmtV(vLL)} ${unit} DC`;
+  if (isHV) return `${fmtV(vLL)} ${unit} ${hz} Hz`;
+  const voltPart = vLN && vLN !== vLL ? `${fmtV(vLL)}/${fmtV(vLN)}` : `${fmtV(vLL)}`;
+  return `${voltPart} ${unit} ${hz} Hz`;
 }
 
 /**

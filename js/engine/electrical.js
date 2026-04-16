@@ -168,25 +168,28 @@ export function computeCurrentA(P_kW, voltage, cosPhi, threePhase, dc) {
 // жил (N, PE, +N+PE) отсюда исключено — это вычисляется отдельно через
 // cableWireCount/effectiveWireFlags по системе заземления узла-источника.
 //
-// Формат метки уровня напряжения: "vLL/vLN единица [hz Hz | DC]"
-//   { vLL: 400, vLN: 230, hz: 50 }      → '400/230 V 50 Hz'
-//   { vLL: 10000, vLN: 5774, hz: 50 }    → '10/5.774 kV 50 Hz'
-//   { vLL: 690, vLN: 400, hz: 60 }       → '690/400 V 60 Hz'
-//   { vLL: 48, vLN: 48, hz: 0 }          → '48 V DC'
+// Формат метки уровня напряжения:
+//   LV AC (<1kV):  '400/230 V 50 Hz'   — vLL/vLN + частота
+//   HV AC (≥1kV):  '10 kV 50 Hz'       — только vLL + частота (vLN не показывается)
+//   DC (hz=0):     '48 V DC'            — только напряжение + DC
 export function formatVoltageLevelLabel(lv) {
   if (!lv) return '—';
   const vLL = Number(lv.vLL) || 0;
   const vLN = Number(lv.vLN) || 0;
   const hz = Number(lv.hz) || 0;
   const isDC = lv.dc === true || hz === 0;
-  const kV = vLL >= 1000;
-  const fmtV = (v) => kV
+  const isHV = vLL >= 1000;
+  const fmtV = (v) => isHV
     ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : v % 100 === 0 ? 1 : 3)
     : String(v);
-  const unit = kV ? 'kV' : 'V';
-  const voltPart = vLN && vLN !== vLL ? `${fmtV(vLL)}/${fmtV(vLN)} ${unit}` : `${fmtV(vLL)} ${unit}`;
-  if (isDC) return voltPart + ' DC';
-  return voltPart + ' ' + hz + ' Hz';
+  const unit = isHV ? 'kV' : 'V';
+  // DC: только напряжение
+  if (isDC) return `${fmtV(vLL)} ${unit} DC`;
+  // HV AC: без vLN (на среднем/высоком напряжении vLN не используется)
+  if (isHV) return `${fmtV(vLL)} ${unit} ${hz} Hz`;
+  // LV AC: vLL/vLN
+  const voltPart = vLN && vLN !== vLL ? `${fmtV(vLL)}/${fmtV(vLN)}` : `${fmtV(vLL)}`;
+  return `${voltPart} ${unit} ${hz} Hz`;
 }
 
 // Миграция уровней напряжения: удаляет устаревшие поля (label, phases),
