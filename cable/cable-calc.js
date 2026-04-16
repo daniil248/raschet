@@ -110,6 +110,7 @@ function init() {
   });
 
   switchMethod('iec');
+  switchEcoMethod('pue_eco');
   renderModulesList();
   calculate();
 }
@@ -135,14 +136,6 @@ function switchMethod(id) {
 // ============ Switch economic method ============
 function switchEcoMethod(id) {
   currentEcoMethod = getEcoMethod(id);
-  // Render dynamic params
-  els.ecoParams.innerHTML = (currentEcoMethod.params || []).map(p => {
-    if (p.type === 'select') {
-      const opts = p.options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-      return `<div class="field"><label>${p.label}</label><select id="eco-param-${p.id}">${opts}</select></div>`;
-    }
-    return `<div class="field"><label>${p.label}</label><input type="number" id="eco-param-${p.id}" value="${p.default || 0}"></div>`;
-  }).join('');
 }
 
 function fillSelect(el, map) {
