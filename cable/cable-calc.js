@@ -147,8 +147,9 @@ function getVoltageInfo() {
   const idx = Number(els.voltageLevel.value) || 0;
   const lv = GLOBAL.voltageLevels[idx] || GLOBAL.voltageLevels[0];
   const isDC = lv.dc || (typeof lv.hz === 'number' && lv.hz === 0);
-  // Фазность в cable/ пока всегда 3-фазная (по умолчанию)
-  return { ...lv, dc: isDC, phases: isDC ? 1 : 3, label: formatVoltageLevelLabel(lv) };
+  const ph = document.getElementById('in-phase')?.value || '3ph';
+  const phases = isDC ? 1 : (ph === '3ph' ? 3 : ph === '2ph' ? 2 : 1);
+  return { ...lv, dc: isDC, phases, label: formatVoltageLevelLabel(lv) };
 }
 
 function getSizingCurrent() {
