@@ -572,7 +572,7 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
 
     ${renderModuleCards(moduleResults)}
 
-    <h3 style="margin:20px 0 12px;font-size:14px;font-weight:600;color:#1f2430">Детали расчёта (${currentMethod.label})</h3>
+    <h3 style="margin:20px 0 12px;font-size:14px;font-weight:600;color:#1f2430">Детали расчёта</h3>
     <table class="detail-table">
       <tr><th colspan="2">Параметры</th></tr>
       <tr><td>Расчётный ток (I<sub>расч</sub>)</td><td>${I.toFixed(2)} А</td></tr>

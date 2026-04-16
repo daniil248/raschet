@@ -1446,24 +1446,16 @@ function recalc() {
       } else {
         // Авто-подбор кабеля через общий модуль методики (IEC / ПУЭ)
         const calcMethod = getMethod(GLOBAL.calcMethod);
-        // Режим защиты: 'full' (по умолчанию) — и КЗ, и перегрузка;
-        //              'sc-only' — только КЗ, не координируем In с Iz
-        const protMode = c.protectionMode || 'full';
+        // Всегда полная координация In ≤ Iz (IEC 60364-4-43)
         let sizingCurrent = maxCurrent;
         if (c.manualBreakerIn) {
-          const minIzPerLine = c.manualBreakerIn * 1.45 / 1.45; // In ≤ Iz
+          const minIzPerLine = c.manualBreakerIn; // In ≤ Iz
           const minTotalCurrent = minIzPerLine * conductorsInParallel;
-          if (protMode !== 'sc-only') {
-            sizingCurrent = Math.max(maxCurrent, minTotalCurrent);
-          }
+          sizingCurrent = Math.max(maxCurrent, minTotalCurrent);
           c._breakerUndersize = (c.manualBreakerIn < (maxCurrent / conductorsInParallel));
         } else {
           // АВТО-режим: координируем кабель и автомат, чтобы In ≤ Iz.
-          // Шаг 1: подбираем предварительный автомат по расчётному току
-          //         С учётом минимального запаса breakerMinMarginPct.
-          // Шаг 2: bump sizingCurrent до этого In, чтобы кабель вместил автомат.
-          // Шаг делается только если режим 'full' (перегрузка учитывается).
-          if (protMode !== 'sc-only' && maxCurrent > 0) {
+          if (maxCurrent > 0) {
             const marginK = 1 + (Number(GLOBAL.breakerMinMarginPct) || 0) / 100;
             const preBreakerIn = calcMethod.selectBreaker(maxCurrent * marginK);
             if (preBreakerIn > 0) {
@@ -1478,26 +1470,8 @@ function recalc() {
           parallel: conductorsInParallel,
         });
 
-        // Экономическая плотность тока (per-connection option)
-        let finalSize = sel.s;
         c._ecoSize = null;
-        if (c.economicDensity && sizingCurrent > 0) {
-          try {
-            const ecoMethod = getEcoMethod('pue_eco');
-            const sizes = calcMethod.availableSizes(material, insulation, method)
-              .filter(s => s <= (GLOBAL.maxCableSize || 240));
-            const eco = ecoMethod.calcEconomicSize(
-              sizingCurrent / sel.parallel, material, true,
-              { hours: c.economicHours || 5000 }, sizes
-            );
-            c._ecoSize = eco.sStandard;
-            c._ecoJek = eco.jEk;
-            c._ecoSCalc = eco.sCalc;
-            if (eco.sStandard > finalSize) finalSize = eco.sStandard;
-          } catch (e) { /* eco calc optional */ }
-        }
-
-        c._cableSize = finalSize;
+        c._cableSize = sel.s;
         c._busbarNom = null;
         c._cableIz = sel.iDerated;
         c._cableTotalIz = sel.totalCapacity;
@@ -1635,11 +1609,8 @@ function recalc() {
     let InPerLine = c.manualBreakerIn
       ? Number(c.manualBreakerIn)
       : _calcMethod.selectBreaker(Iper * _marginK);
-    // Режим защиты: 'full' (по умолчанию) — и КЗ, и перегрузка;
-    //              'sc-only' — только КЗ (не проверяем In ≤ Iz)
-    const _protMode = c.protectionMode || 'full';
-    const _coordOverload = _protMode !== 'sc-only';
-    c._breakerAgainstCable = _coordOverload && !!(Iz > 0 && InPerLine > Iz);
+    // Всегда полная координация In ≤ Iz (IEC 60364-4-43)
+    c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
     c._breakerI2fail = false;
 
     const InTotal = _calcMethod.selectBreaker(Itotal * _marginK);
@@ -1668,8 +1639,8 @@ function recalc() {
       c._breakerIn = InTotal;
       c._breakerPerLine = null;
       c._breakerCount = 1;
-      // Координация: общий автомат vs суммарный Iz (только при full)
-      c._breakerAgainstCable = _coordOverload && !!(Iz > 0 && InTotal > Iz * parallel);
+      // Координация: общий автомат vs суммарный Iz
+      c._breakerAgainstCable = !!(Iz > 0 && InTotal > Iz * parallel);
       c._breakerI2fail = false;
     } else {
       c._breakerIn = InPerLine;
@@ -1972,12 +1943,16 @@ function recalc() {
       if (c._state !== 'active') continue;
       const upIk = nodeIk(c.from.nodeId, visited);
       if (!isFinite(upIk) || upIk <= 0) continue;
-      // Добавляем сопротивление линии (фаза + ноль, двойная длина жилы)
+      // Добавляем сопротивление линии. Для термической стойкости нужен
+      // максимальный ток КЗ = 3-фазное замыкание → только фазная жила,
+      // без ×2 (нейтраль в петлю трёхфазного КЗ не входит).
+      // Для 1-фазных линий: петля фаза + ноль → ×2.
       const rho = RHO[c._cableMaterial || 'Cu'] || RHO.Cu;
       const L = Number(c._cableLength || c.lengthM || 1);
       const S = Number(c._cableSize) || 1;
       const par = Math.max(1, c._cableParallel || 1);
-      const rSeg = (rho * L * 2) / S / par; // Ом (простая оценка)
+      const loopFactor = c._threePhase ? 1 : 2;
+      const rSeg = (rho * L * loopFactor) / S / par;
       // Z_up = Uph / upIk; Z_new = Z_up + rSeg; Ik_new = Uph / Z_new
       const fromN = state.nodes.get(c.from.nodeId);
       const Uph = isThreePhase(fromN || n) ? nodeVoltage(fromN || n) / Math.sqrt(3) : nodeVoltage(fromN || n);
@@ -2012,10 +1987,7 @@ function recalc() {
     const U = c._voltage || 400;
     const phases = c._threePhase ? 3 : 1;
     const isDC = !!c._isDC;
-    // Опциональные модули — пока только economic, управляется per-conn
-    // флагом c.economicDensity (или GLOBAL.enforceEconomicDensity)
-    const enabledSet = new Set();
-    if (c.economicDensity || GLOBAL.enforceEconomicDensity) enabledSet.add('economic');
+    // Все расчётные модули запускаются безусловно
     // t_k по умолчанию: характеристика автомата и номинал → время
     // расцепления. Для mag-размыкания MCB ≈ 0.02-0.1 с, для selective ≈ 0.3-1 с.
     const defaultTk = 0.1;
@@ -2047,7 +2019,7 @@ function recalc() {
       Uph: phases === 3 ? (U / Math.sqrt(3)) : U,
     };
     try {
-      c._moduleResults = runCalcModules(modInput, enabledSet);
+      c._moduleResults = runCalcModules(modInput);
     } catch (e) {
       console.warn('[recalc] calc-modules failed', e);
       c._moduleResults = null;

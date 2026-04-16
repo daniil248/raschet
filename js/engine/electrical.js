@@ -252,7 +252,7 @@ export function sourceImpedance(n) {
   // Импеданс на стороне её собственного напряжения (обычно HV). Приоритет Ik.
   if (n.type === 'source' && subtype === 'utility') {
     const ikA = (Number(n.ikKA) || 0) * 1000;
-    if (ikA > 0) return (1.1 * U) / (Math.sqrt(3) * ikA);
+    if (ikA > 0) return U / (Math.sqrt(3) * ikA);
     const Ssc = (Number(n.sscMva) || 0) * 1e6;
     if (Ssc > 0) return (U * U) / Ssc;
     return 1e-6;
@@ -261,7 +261,7 @@ export function sourceImpedance(n) {
   // Прочий источник — как раньше.
   if (subtype === 'other') {
     const ikA = (Number(n.ikKA) || 0) * 1000;
-    if (ikA > 0) return (1.1 * U) / (Math.sqrt(3) * ikA);
+    if (ikA > 0) return U / (Math.sqrt(3) * ikA);
     const Ssc = (Number(n.sscMva) || 0) * 1e6;
     if (Ssc > 0) return (U * U) / Ssc;
     return 0.05;

@@ -463,9 +463,9 @@ export function generateReport() {
   if (linesWithModules.length) {
     lines.push('РАСЧЁТНЫЕ МОДУЛИ ПО ЛИНИЯМ');
     lines.push('-'.repeat(92));
-    lines.push('Обязательные (🔒): подбор по току (IEC 60364-5-52), падение напряжения,');
-    lines.push('термическая стойкость к КЗ (IEC 60364-4-43), петля фаза-ноль (IEC 60364-4-41).');
-    lines.push('Опциональные: экономическая плотность тока (ПУЭ 1.3.25) — по выбору пользователя.');
+    lines.push('Модули: подбор по току (IEC 60364-5-52), падение напряжения,');
+    lines.push('термическая стойкость к КЗ (IEC 60364-4-43), петля фаза-ноль (IEC 60364-4-41),');
+    lines.push('экономическая плотность тока.');
     lines.push('');
     for (const c of linesWithModules) {
       const fromN = state.nodes.get(c.from.nodeId);
@@ -478,7 +478,6 @@ export function generateReport() {
       for (const m of c._moduleResults) {
         const r = m.result || {};
         const d = r.details || {};
-        const iconLock = m.mandatory ? '🔒' : ' ';
         let status;
         if (d.skipped) status = 'пропущен';
         else if (r.pass) status = 'OK';
@@ -498,7 +497,7 @@ export function generateReport() {
         } else if (d.skipped) {
           detail = d.reason || 'нет данных';
         }
-        lines.push(`    ${iconLock} ${m.label.padEnd(36)}${status.padEnd(10)} ${detail}`);
+        lines.push(`    ${m.label.padEnd(36)}${status.padEnd(10)} ${detail}`);
         for (const w of (r.warnings || [])) {
           lines.push(`       ⚠ ${w}`);
         }

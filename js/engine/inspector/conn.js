@@ -124,8 +124,7 @@ export function renderInspectorConn(c) {
       const Iz = c._cableIz || 0;
       const IzTotal = Iz * par;
       // Координация по полному Iz при параллельных жилах, а не per-line
-      const _pm = c.protectionMode || 'full';
-      const inLeIz = (_pm === 'sc-only') || !effectiveBrkIn || !IzTotal || effectiveBrkIn <= IzTotal;
+      const inLeIz = !effectiveBrkIn || !IzTotal || effectiveBrkIn <= IzTotal;
       const protOk = inLeIz;
       const oversize = IzTotal > 0 && effectiveBrkIn > 0 && IzTotal > effectiveBrkIn * 2;
       const bgColor = !protOk ? '#ffebee' : oversize ? '#fff8e1' : '#f5f5f5';
@@ -137,7 +136,6 @@ export function renderInspectorConn(c) {
         (!inLeIz ? '<span style="color:#c62828;font-weight:600">⚠ In > Iz — кабель не защищён автоматом!</span><br>' : '') +
         (oversize ? '<span style="color:#e65100">ℹ Кабель значительно завышен (Iz > 2×In)</span><br>' : '') +
         (c._breakerUndersize ? '<span style="color:#c62828;font-weight:600">⚠ Автомат меньше расчётного тока!</span><br>' : '') +
-        (c._ecoSize ? `<span style="color:#0277bd">Экон. плотность: <b>${c._ecoSize} мм²</b> (j<sub>эк</sub>=${c._ecoJek})</span><br>` : '') +
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
         `<span class="muted">Методика: ${methodLabel}</span>` +
         `</div>`);
@@ -150,22 +148,15 @@ export function renderInspectorConn(c) {
           <b>Как подбирался кабель:</b><br>
           1) Расчётный ток линии Iрасч = <b>${fmt(Iraw)} А</b><br>
           ${par > 1 ? `2) Параллельных жил — <b>${par}</b>, на жилу Iрасч/n = <b>${fmt(IperNeeded)} А</b><br>` : ''}
-          ${_pm !== 'sc-only' && effectiveBrkIn ? `3) Координация с автоматом: Iz·n ≥ In, требуется Iz·n ≥ <b>${effectiveBrkIn} А</b><br>` : ''}
+          ${effectiveBrkIn ? `3) Координация с автоматом: Iz·n ≥ In, требуется Iz·n ≥ <b>${effectiveBrkIn} А</b><br>` : ''}
           4) Коэффициенты условий прокладки: Kt=${(c._cableKt||1).toFixed(2)}, Kg=${(c._cableKg||1).toFixed(2)}, K=${(c._cableKtotal||1).toFixed(3)}<br>
           5) Для ${methodLabel} выбрано ближайшее стандартное сечение <b>${c._cableSize} мм²</b>${par > 1 ? ` × ${par}` : ''}, дающее Iz=<b>${fmt(Iz)} А</b>${par > 1 ? ` (суммарно ${fmt(IzTotal)} А)` : ''}<br>
-          Правило: Iрасч ≤ Iz·n${_pm !== 'sc-only' ? ' и In ≤ Iz·n' : ''}.
+          Правило: Iрасч ≤ Iz·n и In ≤ Iz·n.
         </div>`);
       }
     }
     h.push('</div>');
 
-    // === Результаты расчётных модулей (ampacity / vdrop / shortCircuit / phaseLoop / economic) ===
-    // recalc.js прогоняет каждую активную линию через shared/calc-modules
-    // и сохраняет результат в c._moduleResults. Здесь показываем каждый
-    // модуль отдельной строчкой с иконкой статуса (OK / warn / skip).
-    if (Array.isArray(c._moduleResults) && c._moduleResults.length) {
-      h.push(renderConnModuleResultsBlock(c._moduleResults));
-    }
   }
 
   // === Проводник линии ===
@@ -197,20 +188,6 @@ export function renderInspectorConn(c) {
         <option value="PVC"${insulation === 'PVC' ? ' selected' : ''}>ПВХ</option>
         <option value="XLPE"${insulation === 'XLPE' ? ' selected' : ''}>СПЭ (XLPE)</option>
       </select>`));
-    // Экономическая плотность тока — per-connection
-    const ecoChecked = !!c.economicDensity;
-    h.push(`<div class="field" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-conn-prop="economicDensity" ${ecoChecked ? 'checked' : ''}> Расчёт по экон. плотности тока</label></div>`);
-    if (ecoChecked) {
-      const ecoHours = c.economicHours || 5000;
-      h.push(field('Часы макс. нагрузки/год', `<select data-conn-prop="economicHours">
-        <option value="3000"${ecoHours <= 3000 ? ' selected' : ''}>До 3000 ч</option>
-        <option value="5000"${ecoHours > 3000 && ecoHours <= 5000 ? ' selected' : ''}>3000–5000 ч</option>
-        <option value="8000"${ecoHours > 5000 ? ' selected' : ''}>Более 5000 ч</option>
-      </select>`));
-      if (c._ecoSize) {
-        h.push(`<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">j<sub>эк</sub> = ${c._ecoJek || '?'} А/мм², S<sub>эк</sub> = ${c._ecoSize} мм²</div>`);
-      }
-    }
   }
   // Секция сечения — ВНУТРИ details "Проводник"
   if ((c._cableSize || c._busbarNom || c._maxA > 0) && !isBusbar) {
@@ -363,22 +340,12 @@ export function renderInspectorConn(c) {
     h.push(`<span style="font-size:10px;color:${manualBreaker ? '#e65100' : '#999'}">ручной</span>`);
     h.push('</div>');
 
-    // Режим защиты для ЭТОЙ линии: полная (КЗ + перегрузка) или только КЗ.
-    // В режиме 'sc-only' авто-подбор кабеля не принуждает In ≤ Iz и не выдаёт
-    // warning при превышении — применяется когда перегрузка защищается upstream.
-    const _pm = c.protectionMode || 'full';
-    h.push(field('Режим защиты', `
-      <select data-conn-prop="protectionMode">
-        <option value="full"${_pm === 'full' ? ' selected' : ''}>КЗ и перегрузка</option>
-        <option value="sc-only"${_pm === 'sc-only' ? ' selected' : ''}>Только КЗ</option>
-      </select>`));
 
     // Эффективный Iz для координации (учитываем параллельные жилы)
     const _parBrk = Math.max(1, c._cableParallel || 1);
     const _IzTotal = (c._cableIz || 0) * _parBrk;
     const _Imax = c._maxA || 0;
     const _IperLine = _Imax / _parBrk;
-    const _pmFlag = c.protectionMode || 'full';
     const _showHelp = GLOBAL.showHelp !== false;
     // Минимальный запас автомата (%) из глобальных настроек
     const _minMarginPct = Math.max(0, Number(GLOBAL.breakerMinMarginPct) || 0);
@@ -428,13 +395,12 @@ export function renderInspectorConn(c) {
             Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
             Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
             Правило: Iрасч ≤ In ≤ Iz. Выбран ближайший стандартный номинал из ряда.
-            ${_pmFlag === 'sc-only' ? '<br>Режим: <b>Только КЗ</b> — координация с Iz не требуется.' : ''}
           </div>`);
         }
       }
-      // Warning 1: автомат > Iz (кабель не защищён от перегрузки) — только при full
-      if (_pmFlag !== 'sc-only' && _IzTotal > 0 && effectiveIn > _IzTotal) {
-        h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${effectiveIn} А) > Iz (${fmt(_IzTotal)} А${_parBrk > 1 ? ' суммарно' : ''}) — кабель не защищён от перегрузки! Увеличьте сечение или режим «Только КЗ».</div>`);
+      // Warning 1: автомат > Iz (кабель не защищён от перегрузки)
+      if (_IzTotal > 0 && effectiveIn > _IzTotal) {
+        h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${effectiveIn} А) > Iz (${fmt(_IzTotal)} А${_parBrk > 1 ? ' суммарно' : ''}) — кабель не защищён от перегрузки! Увеличьте сечение.</div>`);
       }
       // Warning 2: автомат < Iрасч (сработает при нормальной нагрузке, нагрузка будет отключена)
       if (_Imax > 0 && effectiveIn > 0 && effectiveIn < _Imax * 0.95) {
@@ -458,11 +424,15 @@ export function renderInspectorConn(c) {
           Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
           Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
           Правило: Iрасч ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный из ряда, удовлетворяющий условию.
-          ${_pmFlag === 'sc-only' ? '<br>Режим: <b>Только КЗ</b> — условие In ≤ Iz не принуждается.' : ''}
         </div>`);
       }
     }
     h.push('</div>');
+  }
+
+  // === Результаты расчётных модулей ===
+  if (Array.isArray(c._moduleResults) && c._moduleResults.length) {
+    h.push(renderConnModuleResultsBlock(c._moduleResults));
   }
 
   h.push('<div class="muted" style="font-size:11px;margin-top:10px">Рукоятки на концах — переключить связь на другой порт. «+» в середине сегмента — добавить точку сплайна. Shift+клик по точке — удалить. Shift+клик по линии — удалить связь.</div>');
@@ -607,7 +577,6 @@ function renderConnModuleResultsBlock(modResults) {
     if (d.skipped)  { icon = '○'; color = '#9e9e9e'; }
     else if (r.pass){ icon = '✓'; color = '#2e7d32'; }
     else            { icon = '⚠'; color = '#c62828'; }
-    const lockIcon = m.mandatory ? '🔒' : '';
     let keyInfo = '';
     if (m.id === 'ampacity' && !d.skipped) {
       keyInfo = `S=${d.s} мм² · Iz=${fmtN(d.iDerated, 1)} А · n=${d.parallel || 1}`;
@@ -627,7 +596,7 @@ function renderConnModuleResultsBlock(modResults) {
       ? `<div style="margin-top:2px;font-size:10px;color:#c62828">⚠ ${r.warnings.map(escHtml).join('<br>⚠ ')}</div>`
       : '';
     return `<div style="padding:4px 6px;border-bottom:1px solid #f0f0f0;font-size:11px;line-height:1.5">
-      <div><span style="color:${color};font-weight:600">${icon}</span> ${lockIcon} <b>${escHtml(m.label)}</b></div>
+      <div><span style="color:${color};font-weight:600">${icon}</span> <b>${escHtml(m.label)}</b></div>
       <div style="padding-left:16px;color:#555">${keyInfo}</div>
       ${warnsHtml}
     </div>`;

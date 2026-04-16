@@ -64,15 +64,13 @@ export function getModule(id) {
   return _modules.get(id) || null;
 }
 
-/** Запуск всех ВКЛЮЧЁННЫХ модулей. Возвращает массив результатов в
- *  порядке order. enabledIds — Set идентификаторов опциональных модулей,
- *  которые пользователь включил. Mandatory-модули запускаются всегда. */
+/** Запуск ВСЕХ зарегистрированных модулей. Возвращает массив результатов
+ *  в порядке order. Все модули запускаются безусловно — нет понятия
+ *  «отключить модуль». enabledIds сохранён для обратной совместимости
+ *  API, но не влияет на выполнение. */
 export function runModules(input, enabledIds) {
-  const enabled = enabledIds instanceof Set ? enabledIds : new Set(enabledIds || []);
   const out = [];
   for (const mod of listModules()) {
-    const shouldRun = mod.mandatory || enabled.has(mod.id);
-    if (!shouldRun) continue;
     let result;
     try {
       result = mod.calc(input) || { pass: true, details: {}, warnings: [] };

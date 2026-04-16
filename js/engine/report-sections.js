@@ -547,7 +547,7 @@ function sectionModules() {
     '='.repeat(78),
     ...metaTextLines(),
     '',
-    'Обязательные (🔒): подбор по току (IEC 60364-5-52), падение напряжения,',
+    'Модули: подбор по току (IEC 60364-5-52), падение напряжения,',
     'термическая стойкость к КЗ (IEC 60364-4-43), петля фаза-ноль (IEC 60364-4-41).',
     'Опциональные: экономическая плотность тока (ПУЭ 1.3.25) — по выбору.',
     '',
@@ -556,10 +556,10 @@ function sectionModules() {
     B.h1('Расчётные модули по линиям'),
     ...metaBlocks(),
     B.paragraph(
-      'Для каждой линии выполнен независимый набор проверок. Обязательные модули (🔒) ' +
-      'контролируют соответствие IEC 60364-5-52 (подбор по току), допустимое падение напряжения, ' +
-      'термическую стойкость к току КЗ (IEC 60364-4-43) и петлю фаза-ноль (IEC 60364-4-41). ' +
-      'Опциональный модуль — экономическая плотность тока по ПУЭ 1.3.25.'
+      'Для каждой линии выполнен независимый набор проверок: ' +
+      'подбор по току (IEC 60364-5-52), допустимое падение напряжения, ' +
+      'термическая стойкость к току КЗ (IEC 60364-4-43), петля фаза-ноль (IEC 60364-4-41), ' +
+      'экономическая плотность тока.'
     ),
   ];
 
@@ -588,7 +588,6 @@ function sectionModules() {
     for (const m of c._moduleResults) {
       const r = m.result || {};
       const d = r.details || {};
-      const lock = m.mandatory ? '🔒 ' : '';
       let status;
       if (d.skipped) status = 'пропущен';
       else if (r.pass) status = 'OK';
@@ -608,8 +607,8 @@ function sectionModules() {
       } else if (d.skipped) {
         detail = d.reason || 'нет данных';
       }
-      mRows.push([ lock + m.label, status, detail ]);
-      text.push(`    ${lock}${m.label.padEnd(32)} ${status.padEnd(10)} ${detail}`);
+      mRows.push([ m.label, status, detail ]);
+      text.push(`    ${m.label.padEnd(36)} ${status.padEnd(10)} ${detail}`);
       for (const w of (r.warnings || [])) text.push(`       ⚠ ${w}`);
     }
     blocks.push(B.table(blockCols(mCols), mRows));
