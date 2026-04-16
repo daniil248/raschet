@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.40.3';
+export const APP_VERSION = '0.40.4';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -59,13 +59,13 @@ export const GLOBAL = {
   //   dcPoles — кол-во полюсов для DC (2 = L+/L−, 3 = L+/M/L−)
   // Метка формируется автоматически: formatVoltageLevelLabel(lv).
   voltageLevels: [
-    { vLL: 400,   vLN: 230,   phases: 3, hz: 50 },
-    { vLL: 690,   vLN: 400,   phases: 3, hz: 50 },
-    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50 },
-    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50 },
-    { vLL: 35000, vLN: 20207, phases: 3, hz: 50 },
-    { vLL: 110,   vLN: 110,   phases: 1, hz: 50 },
-    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2 },
+    { vLL: 400,   vLN: 230,   phases: 3, hz: 50, builtin: true },
+    { vLL: 690,   vLN: 400,   phases: 3, hz: 50, builtin: true },
+    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50, builtin: true },
+    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50, builtin: true },
+    { vLL: 35000, vLN: 20207, phases: 3, hz: 50, builtin: true },
+    { vLL: 110,   vLN: 110,   phases: 1, hz: 50, builtin: true },
+    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2, builtin: true },
   ],
   // Пользовательские типы потребителей (добавляются в проекте, сохраняются с проектом)
   customConsumerCatalog: [],

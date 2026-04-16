@@ -26,13 +26,13 @@ const STORAGE_KEY = 'raschet.global.v1';
 // которые здесь не перечислены.
 export const DEFAULTS = {
   voltageLevels: [
-    { vLL: 400,   vLN: 230,   phases: 3, hz: 50 },
-    { vLL: 690,   vLN: 400,   phases: 3, hz: 50 },
-    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50 },
-    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50 },
-    { vLL: 35000, vLN: 20207, phases: 3, hz: 50 },
-    { vLL: 110,   vLN: 110,   phases: 1, hz: 50 },
-    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2 },
+    { vLL: 400,   vLN: 230,   phases: 3, hz: 50, builtin: true },
+    { vLL: 690,   vLN: 400,   phases: 3, hz: 50, builtin: true },
+    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50, builtin: true },
+    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50, builtin: true },
+    { vLL: 35000, vLN: 20207, phases: 3, hz: 50, builtin: true },
+    { vLL: 110,   vLN: 110,   phases: 1, hz: 50, builtin: true },
+    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2, builtin: true },
   ],
   defaultCosPhi: 0.92,
   defaultAmbient: 30,
@@ -95,6 +95,11 @@ function _migrateVoltageLevels(obj) {
     // Удаляем legacy 230/230 1ph
     const idx230 = obj.voltageLevels.findIndex(lv => lv.vLL === 230 && lv.vLN === 230 && lv.hz !== 0);
     if (idx230 >= 0) obj.voltageLevels.splice(idx230, 1);
+    // Пометить базовые уровни (400, 690, 10k, 6k, 35k, 110, 48DC) как builtin
+    const builtinVLL = new Set([400, 690, 10000, 6000, 35000, 110, 48]);
+    for (const lv of obj.voltageLevels) {
+      if (lv && builtinVLL.has(lv.vLL) && !('builtin' in lv)) lv.builtin = true;
+    }
   }
   return obj;
 }
@@ -205,13 +210,14 @@ function _renderVoltageTable(container) {
     const lv = levels[i];
     const hz = typeof lv.hz === 'number' ? lv.hz : 50;
     const isDC = hz === 0;
+    const isBuiltin = !!lv.builtin;
     html += `<tr>
-      <td><span class="label-cell">${formatVoltageLevelLabel(lv)}</span></td>
+      <td><span class="label-cell">${formatVoltageLevelLabel(lv)}</span>${isBuiltin ? '<span style="font-size:9px;color:#999;margin-left:4px">базовый</span>' : ''}</td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLL" value="${lv.vLL}" class="compact"></td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLN" value="${lv.vLN}" class="compact"></td>
       <td><input type="number" data-vl="${i}" data-vl-field="hz" value="${hz}" class="compact" min="0" step="1" title="0 = DC"></td>
       <td>${isDC ? `<input type="number" data-vl="${i}" data-vl-field="dcPoles" value="${lv.dcPoles || 2}" class="compact" min="2" max="3" step="1">` : '<span class="muted">—</span>'}</td>
-      <td style="text-align:right"><button type="button" class="btn danger" data-vl-del="${i}" title="Удалить">×</button></td>
+      <td style="text-align:right">${isBuiltin ? '' : `<button type="button" class="btn danger" data-vl-del="${i}" title="Удалить">×</button>`}</td>
     </tr>`;
   }
   html += '</table>';
