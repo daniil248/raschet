@@ -14,7 +14,7 @@ import { calcVoltageDrop, findMinSizeForVdrop, getMethod } from '../../js/method
 export const vdropModule = {
   id: 'vdrop',
   label: 'Падение напряжения',
-  description: 'IEC 60364-5-52 Annex G — проверка ΔU ≤ maxVdropPct. Если не укладываемся, предлагается большее сечение.',
+  description: 'Проверка ΔU ≤ допустимого %. Если не укладываемся — предлагается большее сечение. По IEC 60364-5-52 или ПУЭ.',
   mandatory: true,
   order: 20,
   calc(input) {

@@ -15,7 +15,7 @@ import { getMethod } from '../../js/methods/index.js';
 export const economicModule = {
   id: 'economic',
   label: 'Экономическая плотность тока',
-  description: 'ПУЭ 1.3.25-28 — ограничение j ≤ j_эк для режимов работы > 4000 ч/год.',
+  description: 'Экономическая плотность тока: j ≤ jэк. По ПУЭ 1.3.25 или IEC 60287-3-2. Методика зависит от выбора в настройках.',
   mandatory: false,
   defaultOn: false,
   order: 60,

@@ -14,7 +14,7 @@ import { getMethod } from '../../js/methods/index.js';
 export const ampacityModule = {
   id: 'ampacity',
   label: 'Подбор по току нагрузки',
-  description: 'IEC 60364-5-52 / ПУЭ — длительно допустимый ток с учётом температуры, группирования и способа прокладки.',
+  description: 'Длительно допустимый ток с учётом температуры, группирования и способа прокладки. Таблицы по выбранной методике (IEC 60364-5-52 или ПУЭ).',
   mandatory: true,
   order: 10,
   calc(input) {

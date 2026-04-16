@@ -35,7 +35,7 @@ const MAG_MULT = {
 export const phaseLoopModule = {
   id: 'phaseLoop',
   label: 'Петля фаза-ноль',
-  description: 'IEC 60364-4-41 — проверка I_k1 ≥ I_a для срабатывания защиты при КЗ на корпус в TN-системе.',
+  description: 'Проверка петли фаза-ноль: Ik1 ≥ Ia для срабатывания защиты при КЗ на корпус. По IEC 60364-4-41 / ПУЭ 1.7.79. Для TN-систем.',
   mandatory: true,
   order: 50,
   calc(input) {

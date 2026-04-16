@@ -54,7 +54,7 @@ function estimateTripTime(Ik, In, curve) {
 export const shortCircuitModule = {
   id: 'shortCircuit',
   label: 'Термическая стойкость к току КЗ',
-  description: 'IEC 60364-4-43 §434.5 — проверка S ≥ I_k · √t_k / k. k = 115 (Cu/ПВХ), 143 (Cu/XLPE), 76 (Al/ПВХ), 94 (Al/XLPE).',
+  description: 'Термическая стойкость: S ≥ Ik·√tk / k. По IEC 60364-4-43 / ПУЭ 1.4.6. tk рассчитывается по кривой автомата.',
   mandatory: true,
   order: 40,
   calc(input) {
