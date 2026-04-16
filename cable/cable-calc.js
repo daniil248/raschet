@@ -144,7 +144,10 @@ function fillSelect(el, map) {
 // ============ Compute sizing current ============
 function getVoltageInfo() {
   const idx = Number(els.voltageLevel.value) || 0;
-  return GLOBAL.voltageLevels[idx] || GLOBAL.voltageLevels[0];
+  const lv = GLOBAL.voltageLevels[idx] || GLOBAL.voltageLevels[0];
+  const isDC = lv.dc || (typeof lv.hz === 'number' && lv.hz === 0);
+  // Фазность в cable/ пока всегда 3-фазная (по умолчанию)
+  return { ...lv, dc: isDC, phases: isDC ? 1 : 3 };
 }
 
 function getSizingCurrent() {

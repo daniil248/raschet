@@ -208,10 +208,15 @@ export function deserialize(data) {
       if (typeof n.voltageLevelIdx !== 'number') n.voltageLevelIdx = 3;
       if (typeof n.xsRsRatio !== 'number') n.xsRsRatio = 10;
     }
-    // Миграция уровня напряжения — если нет voltageLevelIdx, выводим из phase
+    // Миграция уровня напряжения — если нет voltageLevelIdx, всегда idx=0 (400V)
+    // Фазность определяется n.phase, а не уровнем напряжения.
     if (typeof n.voltageLevelIdx !== 'number' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups' || n.type === 'consumer')) {
-      const ph = n.phase || '3ph';
-      n.voltageLevelIdx = (ph === '3ph') ? 0 : 1; // 0 = 400V 3P, 1 = 230V 1P
+      n.voltageLevelIdx = 0;
+    }
+    // Миграция: старый idx=1 (230V 1ph) → idx=0 (400V) + phase сохраняется
+    if (n.voltageLevelIdx === 1 && !(GLOBAL.voltageLevels || [])[1]) {
+      n.voltageLevelIdx = 0;
+      if (!n.phase || n.phase === '1ph') n.phase = 'A'; // однофазный → фаза A
     }
     if (n.type === 'source') {
       if (typeof n.sscMva !== 'number') n.sscMva = 500;

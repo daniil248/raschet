@@ -25,9 +25,10 @@ export function voltageLevelOptions(selectedIdx, filter) {
   let opts = '';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
-    if (filter === '3ph' && lv.phases !== 3) continue;
-    if (filter === '1ph' && (lv.phases !== 1 || lv.dc)) continue;
-    if (filter === 'dc' && !lv.dc) continue;
+    const isDC = lv.dc || (typeof lv.hz === 'number' && lv.hz === 0);
+    // Фильтр 'dc' — только DC; 'ac' — только AC; без фильтра — все
+    if (filter === 'dc' && !isDC) continue;
+    if (filter === 'ac' && isDC) continue;
     opts += `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(lv))}</option>`;
   }
   return opts;
@@ -154,7 +155,7 @@ export function openImpedanceModal(n) {
     n.voltageLevelIdx = outLevelIdx;
     if (levels[outLevelIdx]) {
       n.voltage = levels[outLevelIdx].vLL;
-      n.phase = levels[outLevelIdx].phases === 3 ? '3ph' : '1ph';
+      n.phase = '3ph'; // источники всегда 3-фазные
     }
     if (isTransformer) {
       const inEl = document.getElementById('imp-voltage-in');

@@ -324,7 +324,7 @@ export function openUpsParamsModal(n) {
     }
     const vIdx = Number(document.getElementById('up-voltage')?.value) || 0;
     n.voltageLevelIdx = vIdx;
-    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
+    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = '3ph'; }
     n.cosPhi = Number(document.getElementById('up-cosPhi')?.value) || 1.0;
     // DC-вход батарейной цепи (V_DC min / max)
     const _vdcMin = Number(document.getElementById('up-vdcMin')?.value);

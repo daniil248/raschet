@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.38.2';
+export const APP_VERSION = '0.39.0';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -52,28 +52,20 @@ export const GLOBAL = {
   // используется для линий, ВЫХОДЯЩИХ из щита.
   earthingSystem: 'TN-S',
   // Справочник уровней напряжения. Каждая запись:
-  //   label  — отображаемое имя ('400V 3P', '10kV 3P')
-  //   vLL    — напряжение линия-линия (межфазное), В
-  //   vLN    — напряжение фаза-ноль, В
-  //   phases — число фаз (3 или 1)
-  //   dc     — true для постоянного тока (меняет формулу Vdrop и расчёт тока)
-  // Количество жил кабеля теперь НЕ хранится в уровне напряжения — оно
-  // считается по фазности + флагам hasNeutral/hasGround узла-цели (см.
-  // cableWireCount в electrical.js).
+  //   vLL  — напряжение линия-линия (межфазное), В
+  //   vLN  — напряжение фаза-ноль, В
+  //   hz   — частота, Гц (50, 60 и т.д.; 0 = DC)
+  // Фазность (1ph/3ph) определяется узлом (потребитель/щит), а не уровнем
+  // напряжения. Количество жил — по фазности узла + системе заземления.
+  // Метка формируется автоматически: formatVoltageLevelLabel(lv).
   voltageLevels: [
-    { label: '400V 3P',      vLL: 400, vLN: 230, phases: 3 },
-    { label: '230V 1P',      vLL: 230, vLN: 230, phases: 1 },
-    { label: '690V 3P',      vLL: 690, vLN: 400, phases: 3 },
-    { label: '10 kV 3P',     vLL: 10000, vLN: 5774, phases: 3 },
-    { label: '6 kV 3P',      vLL: 6000, vLN: 3464, phases: 3 },
-    { label: '35 kV 3P',     vLL: 35000, vLN: 20207, phases: 3 },
-    { label: '512V DC (Li-Ion)', vLL: 512, vLN: 512, phases: 1, dc: true },
-    { label: '384V DC (VRLA)',   vLL: 384, vLN: 384, phases: 1, dc: true },
-    { label: '240V DC',      vLL: 240, vLN: 240, phases: 1, dc: true },
-    { label: '220V DC',      vLL: 220, vLN: 220, phases: 1, dc: true },
-    { label: '110V DC',      vLL: 110, vLN: 110, phases: 1, dc: true },
-    { label: '48V DC',       vLL: 48, vLN: 48, phases: 1, dc: true },
-    { label: '24V DC',       vLL: 24, vLN: 24, phases: 1, dc: true },
+    { vLL: 400,   vLN: 230,   hz: 50 },
+    { vLL: 690,   vLN: 400,   hz: 50 },
+    { vLL: 10000, vLN: 5774,  hz: 50 },
+    { vLL: 6000,  vLN: 3464,  hz: 50 },
+    { vLL: 35000, vLN: 20207, hz: 50 },
+    { vLL: 110,   vLN: 110,   hz: 50 },
+    { vLL: 48,    vLN: 48,    hz: 0 },
   ],
   // Пользовательские типы потребителей (добавляются в проекте, сохраняются с проектом)
   customConsumerCatalog: [],

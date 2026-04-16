@@ -743,37 +743,32 @@ function renderVoltageLevelsTable() {
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const levels = G.voltageLevels || [];
   let html = '<table style="width:100%;font-size:11px;border-collapse:collapse">';
-  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>ph</th><th>DC</th><th></th></tr>';
+  html += '<tr style="background:#f4f5f7"><th style="padding:4px">Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>Hz</th><th></th></tr>';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
+    const hz = Number(lv.hz) || 0;
     html += `<tr style="border-bottom:1px solid #eee">
       <td style="padding:4px;font-family:ui-monospace,Consolas,monospace;color:#1976d2;font-weight:600">${escHtml(formatVoltageLevelLabel(lv))}</td>
       <td><input type="number" data-vl-idx="${i}" data-vl-field="vLL" value="${lv.vLL}" style="width:70px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
       <td><input type="number" data-vl-idx="${i}" data-vl-field="vLN" value="${lv.vLN}" style="width:70px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
-      <td><input type="number" data-vl-idx="${i}" data-vl-field="phases" value="${lv.phases}" style="width:40px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
-      <td style="text-align:center"><input type="checkbox" data-vl-idx="${i}" data-vl-field="dc"${lv.dc ? ' checked' : ''}></td>
+      <td><input type="number" data-vl-idx="${i}" data-vl-field="hz" value="${hz}" min="0" step="1" title="0 = DC" style="width:50px;font-size:11px;padding:3px;border:1px solid #ddd;border-radius:3px"></td>
       <td><button type="button" data-vl-del="${i}" style="background:transparent;border:none;color:#c62828;cursor:pointer;font-size:14px" title="Удалить">×</button></td>
     </tr>`;
   }
   html += '</table>';
   container.innerHTML = html;
 
-  // Обработчики
   container.querySelectorAll('[data-vl-idx]').forEach(inp => {
-    const evt = (inp.type === 'checkbox') ? 'change' : 'input';
-    inp.addEventListener(evt, () => {
+    inp.addEventListener('input', () => {
       const idx = Number(inp.dataset.vlIdx);
       const field = inp.dataset.vlField;
       const G2 = window.Raschet.getGlobal();
       if (G2.voltageLevels[idx]) {
-        let v;
-        if (inp.type === 'checkbox') v = inp.checked;
-        else if (inp.type === 'number') v = Number(inp.value);
-        else v = inp.value;
-        G2.voltageLevels[idx][field] = v;
-        // lv.label больше не хранится — метка вычисляется из полей
-        // через formatVoltageLevelLabel. Удаляем на всякий случай.
-        if ('label' in G2.voltageLevels[idx]) delete G2.voltageLevels[idx].label;
+        G2.voltageLevels[idx][field] = Number(inp.value);
+        // Чистим устаревшие поля
+        delete G2.voltageLevels[idx].label;
+        delete G2.voltageLevels[idx].phases;
+        delete G2.voltageLevels[idx].dc;
         window.Raschet.setGlobal({ voltageLevels: G2.voltageLevels });
         renderVoltageLevelsTable();
       }

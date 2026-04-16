@@ -49,11 +49,11 @@ export function nodeVoltageLN(n) {
   return ((n.phase || '3ph') === '3ph') ? GLOBAL.voltage1ph : GLOBAL.voltage1ph;
 }
 
+// Фазность определяется узлом (phase='3ph'/'A'/'B'/'C'/'1ph'), не уровнем
+// напряжения. Однофазные — только потребители с явным phase.
 export function isThreePhase(n) {
-  if (typeof n.voltageLevelIdx === 'number' && GLOBAL.voltageLevels[n.voltageLevelIdx]) {
-    return GLOBAL.voltageLevels[n.voltageLevelIdx].phases === 3;
-  }
-  return (n.phase || '3ph') === '3ph';
+  const ph = n.phase || '3ph';
+  return ph === '3ph';
 }
 
 // ==========================================================================
@@ -131,7 +131,7 @@ export function cableWireCount(fromN, toN, conn) {
   // Определяем DC из voltageLevel целевого узла
   const levels = GLOBAL.voltageLevels || [];
   const lv = toN && typeof toN.voltageLevelIdx === 'number' ? levels[toN.voltageLevelIdx] : null;
-  const dc = !!(lv && lv.dc);
+  const dc = !!(lv && (lv.dc || (typeof lv.hz === 'number' && lv.hz === 0)));
   const phases = toN && isThreePhase(toN) ? 3 : 1;
   const flags = effectiveWireFlags(fromN, toN);
   return countWires({ phases, dc, ...flags });
@@ -142,7 +142,7 @@ export function cableWireCount(fromN, toN, conn) {
 export function nodeWireCount(n) {
   const levels = GLOBAL.voltageLevels || [];
   const lv = n && typeof n.voltageLevelIdx === 'number' ? levels[n.voltageLevelIdx] : null;
-  if (lv && lv.dc) return 2;
+  if (lv && (lv.dc || (typeof lv.hz === 'number' && lv.hz === 0))) return 2;
   const phases = n && isThreePhase(n) ? 3 : 1;
   const sys = GLOBAL.earthingSystem || 'TN-S';
   const d = earthingDefaults(sys);
@@ -168,47 +168,54 @@ export function computeCurrentA(P_kW, voltage, cosPhi, threePhase, dc) {
 // жил (N, PE, +N+PE) отсюда исключено — это вычисляется отдельно через
 // cableWireCount/effectiveWireFlags по системе заземления узла-источника.
 //
-// SI-единицы (V / kV / ph / DC) — единый формат для всех модулей:
-//   { vLL: 400,   phases: 3 } → '400 V · 3ph'
-//   { vLL: 230,   phases: 1 } → '230 V · 1ph'
-//   { vLL: 10000, phases: 3 } → '10 kV · 3ph'
-//   { vLL: 48,    dc: true  } → '48 V DC'
+// Формат метки уровня напряжения: "vLL/vLN единица [hz Hz | DC]"
+//   { vLL: 400, vLN: 230, hz: 50 }      → '400/230 V 50 Hz'
+//   { vLL: 10000, vLN: 5774, hz: 50 }    → '10/5.774 kV 50 Hz'
+//   { vLL: 690, vLN: 400, hz: 60 }       → '690/400 V 60 Hz'
+//   { vLL: 48, vLN: 48, hz: 0 }          → '48 V DC'
 export function formatVoltageLevelLabel(lv) {
   if (!lv) return '—';
-  const v = Number(lv.vLL) || 0;
-  const vStr = v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 2) + ' kV' : v + ' V';
-  if (lv.dc) return vStr + ' DC';
-  const ph = Number(lv.phases) === 3 ? '3ph' : '1ph';
-  return vStr + ' · ' + ph;
+  const vLL = Number(lv.vLL) || 0;
+  const vLN = Number(lv.vLN) || 0;
+  const hz = Number(lv.hz) || 0;
+  const isDC = lv.dc === true || hz === 0;
+  const kV = vLL >= 1000;
+  const fmtV = (v) => kV
+    ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : v % 100 === 0 ? 1 : 3)
+    : String(v);
+  const unit = kV ? 'kV' : 'V';
+  const voltPart = vLN && vLN !== vLL ? `${fmtV(vLL)}/${fmtV(vLN)} ${unit}` : `${fmtV(vLL)} ${unit}`;
+  if (isDC) return voltPart + ' DC';
+  return voltPart + ' ' + hz + ' Hz';
 }
 
-// Одноразовая миграция пользовательских меток уровней напряжения:
-// вырезает из lv.label устаревшие суффиксы типа " 3P+N+PE", "+N+PE",
-// "+N", "+PE", "3L+N+PE" и т.п. Вызывается при старте приложения,
-// модифицирует массив levels НА МЕСТЕ.
-export function migrateVoltageLevelLabels(levels) {
+// Миграция уровней напряжения: удаляет устаревшие поля (label, phases),
+// конвертирует dc:true → hz:0, добавляет hz:50 по умолчанию для AC.
+export function migrateVoltageLevels(levels) {
   if (!Array.isArray(levels)) return;
-  const strip = /\s*[+\s]?(\d?[LP]\s*)?[+\s]?(N|PE|N\+PE|N\s*\+\s*PE)\b/gi;
   for (const lv of levels) {
-    if (!lv || typeof lv.label !== 'string') continue;
-    let s = lv.label
-      .replace(/\+N\+PE/gi, '')
-      .replace(/\+N\b/gi, '')
-      .replace(/\+PE\b/gi, '')
-      .replace(/3L\+N\+PE/gi, '')
-      .replace(/L\+N\+PE/gi, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    lv.label = s || formatVoltageLevelLabel(lv);
+    if (!lv) continue;
+    // Удаляем устаревшее поле label — метка формируется автоматически
+    if ('label' in lv) delete lv.label;
+    // Удаляем устаревшее поле phases — фазность от узла
+    if ('phases' in lv) delete lv.phases;
+    // dc:true → hz:0
+    if (lv.dc && (lv.hz === undefined || lv.hz === null)) {
+      lv.hz = 0;
+    }
+    delete lv.dc;
+    // AC без hz → 50 Hz по умолчанию
+    if (typeof lv.hz !== 'number') lv.hz = 50;
   }
 }
 
-// DC-детектор для узла по его voltageLevel
+// DC-детектор для узла по его voltageLevel (hz === 0 означает DC)
 export function isNodeDC(n) {
   if (!n) return false;
   const levels = GLOBAL.voltageLevels || [];
   const lv = typeof n.voltageLevelIdx === 'number' ? levels[n.voltageLevelIdx] : null;
-  return !!(lv && lv.dc);
+  if (!lv) return false;
+  return lv.dc === true || (typeof lv.hz === 'number' && lv.hz === 0);
 }
 
 // Номинальный (установочный) ток потребителя или группы

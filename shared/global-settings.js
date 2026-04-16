@@ -26,19 +26,13 @@ const STORAGE_KEY = 'raschet.global.v1';
 // которые здесь не перечислены.
 export const DEFAULTS = {
   voltageLevels: [
-    { vLL: 400,   vLN: 230,  phases: 3 },
-    { vLL: 230,   vLN: 230,  phases: 1 },
-    { vLL: 690,   vLN: 400,  phases: 3 },
-    { vLL: 10000, vLN: 5774, phases: 3 },
-    { vLL: 6000,  vLN: 3464, phases: 3 },
-    { vLL: 35000, vLN: 20207, phases: 3 },
-    { vLL: 512,   vLN: 512,  phases: 1, dc: true },
-    { vLL: 384,   vLN: 384,  phases: 1, dc: true },
-    { vLL: 240,   vLN: 240,  phases: 1, dc: true },
-    { vLL: 220,   vLN: 220,  phases: 1, dc: true },
-    { vLL: 110,   vLN: 110,  phases: 1, dc: true },
-    { vLL: 48,    vLN: 48,   phases: 1, dc: true },
-    { vLL: 24,    vLN: 24,   phases: 1, dc: true },
+    { vLL: 400,   vLN: 230,   hz: 50 },
+    { vLL: 690,   vLN: 400,   hz: 50 },
+    { vLL: 10000, vLN: 5774,  hz: 50 },
+    { vLL: 6000,  vLN: 3464,  hz: 50 },
+    { vLL: 35000, vLN: 20207, hz: 50 },
+    { vLL: 110,   vLN: 110,   hz: 50 },
+    { vLL: 48,    vLN: 48,    hz: 0 },
   ],
   defaultCosPhi: 0.92,
   defaultAmbient: 30,
@@ -66,22 +60,32 @@ let _cache = null;
  */
 export function formatVoltageLevelLabel(lv) {
   if (!lv) return '—';
-  const v = Number(lv.vLL) || 0;
-  const vStr = v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 2) + ' kV' : v + ' V';
-  if (lv.dc) return vStr + ' DC';
-  const ph = Number(lv.phases) === 3 ? '3ph' : '1ph';
-  return vStr + ' · ' + ph;
+  const vLL = Number(lv.vLL) || 0;
+  const vLN = Number(lv.vLN) || 0;
+  const hz = Number(lv.hz) || 0;
+  const isDC = lv.dc === true || hz === 0;
+  const kV = vLL >= 1000;
+  const fmtV = (v) => kV
+    ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : v % 100 === 0 ? 1 : 3)
+    : String(v);
+  const unit = kV ? 'kV' : 'V';
+  const voltPart = vLN && vLN !== vLL ? `${fmtV(vLL)}/${fmtV(vLN)} ${unit}` : `${fmtV(vLL)} ${unit}`;
+  if (isDC) return voltPart + ' DC';
+  return voltPart + ' ' + hz + ' Hz';
 }
 
 /**
- * Чистит устаревшие метки вида «400V 3P+N+PE» из сохранённых данных —
- * пользовательский label больше не хранится, используется
- * auto-format. Выполняется один раз при загрузке.
+ * Миграция уровней напряжения: удаляет label/phases, dc→hz:0, дефолт hz:50.
  */
-function _dropLegacyLabels(obj) {
+function _migrateVoltageLevels(obj) {
   if (obj && Array.isArray(obj.voltageLevels)) {
     for (const lv of obj.voltageLevels) {
-      if (lv && 'label' in lv) delete lv.label;
+      if (!lv) continue;
+      if ('label' in lv) delete lv.label;
+      if ('phases' in lv) delete lv.phases;
+      if (lv.dc && (lv.hz === undefined || lv.hz === null)) lv.hz = 0;
+      delete lv.dc;
+      if (typeof lv.hz !== 'number') lv.hz = 50;
     }
   }
   return obj;
@@ -98,7 +102,7 @@ export function loadGlobal() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) saved = JSON.parse(raw) || {};
   } catch { /* bad json — игнор */ }
-  _dropLegacyLabels(saved);
+  _migrateVoltageLevels(saved);
   _cache = { ...DEFAULTS, ...saved };
   // voltageLevels — массив, глубокий merge: если в saved есть свой
   // массив, используем его целиком (пользователь мог удалить дефолтные)
@@ -188,15 +192,15 @@ function _css() {
 function _renderVoltageTable(container) {
   const G = getGlobal();
   const levels = G.voltageLevels || [];
-  let html = '<table><tr><th>Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>ph</th><th>DC</th><th></th></tr>';
+  let html = '<table><tr><th>Отформатировано</th><th>V<sub>LL</sub> (V)</th><th>V<sub>LN</sub> (V)</th><th>Hz</th><th></th></tr>';
   for (let i = 0; i < levels.length; i++) {
     const lv = levels[i];
+    const hz = Number(lv.hz) || 0;
     html += `<tr>
       <td><span class="label-cell">${formatVoltageLevelLabel(lv)}</span></td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLL" value="${lv.vLL}" class="compact"></td>
       <td><input type="number" data-vl="${i}" data-vl-field="vLN" value="${lv.vLN}" class="compact"></td>
-      <td><input type="number" data-vl="${i}" data-vl-field="phases" value="${lv.phases}" class="compact" min="1" max="3"></td>
-      <td style="text-align:center"><input type="checkbox" data-vl="${i}" data-vl-field="dc"${lv.dc ? ' checked' : ''}></td>
+      <td><input type="number" data-vl="${i}" data-vl-field="hz" value="${hz}" class="compact" min="0" step="1" title="0 = DC"></td>
       <td style="text-align:right"><button type="button" class="btn danger" data-vl-del="${i}" title="Удалить">×</button></td>
     </tr>`;
   }
@@ -205,17 +209,12 @@ function _renderVoltageTable(container) {
   container.innerHTML = html;
 
   container.querySelectorAll('[data-vl]').forEach(inp => {
-    const evt = (inp.type === 'checkbox') ? 'change' : 'input';
-    inp.addEventListener(evt, () => {
+    inp.addEventListener('input', () => {
       const idx = Number(inp.dataset.vl);
       const field = inp.dataset.vlField;
       const G2 = getGlobal();
       if (!G2.voltageLevels[idx]) return;
-      let v;
-      if (inp.type === 'checkbox') v = inp.checked;
-      else if (inp.type === 'number') v = Number(inp.value);
-      else v = inp.value;
-      G2.voltageLevels[idx][field] = v;
+      G2.voltageLevels[idx][field] = Number(inp.value);
       saveGlobal({ voltageLevels: G2.voltageLevels });
       _renderVoltageTable(container);
     });
@@ -232,7 +231,7 @@ function _renderVoltageTable(container) {
   const addBtn = container.querySelector('#rs-gs-add-vl');
   if (addBtn) addBtn.addEventListener('click', () => {
     const G2 = getGlobal();
-    G2.voltageLevels.push({ vLL: 400, vLN: 230, phases: 3 });
+    G2.voltageLevels.push({ vLL: 400, vLN: 230, hz: 50 });
     saveGlobal({ voltageLevels: G2.voltageLevels });
     _renderVoltageTable(container);
   });

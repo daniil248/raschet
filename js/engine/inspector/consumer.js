@@ -244,7 +244,7 @@ export function openConsumerParamsModal(n) {
       : _rawDemand;
     const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
     n.voltageLevelIdx = vIdx;
-    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = levels[vIdx].phases === 3 ? '3ph' : '1ph'; }
+    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; }
     n.cosPhi = Number(document.getElementById('cp-cosPhi')?.value) || 0.92;
     n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
