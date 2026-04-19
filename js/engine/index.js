@@ -508,6 +508,11 @@ window.Raschet = {
     const cb = (typeof getChangeCb === 'function' ? getChangeCb() : null);
     if (typeof cb === 'function') cb();
   },
+  // Phase 1.20.5: возможность вызвать render() извне — нужно когда
+  // правим c.installMethod / c.lengthM / c.cableMark в bulk-режиме
+  // и хотим чтобы recalc пересчитал _cableMethod / _maxA / _cableIz.
+  render: () => render(),
+  rerender: () => { render(); renderInspector(); },
   importLoadsTable,
   get3PhaseBalance,
   // Фаза 1.3 + 1.5.7: BOM (с опциональными ценами)

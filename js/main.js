@@ -1698,10 +1698,10 @@ function renderCableTable() {
   let allMarks = [];
   try { allMarks = _listCableTypes(); } catch (e) { console.warn('[cable-table] listCableTypes', e); }
 
-  const conns = [...S.conns.values()].filter(c => {
-    // Только активные с известным сечением
-    return c._active && (c._cableSize || c._busbarNom);
-  });
+  // Phase 1.20.5: показываем ВСЕ кабели с известным сечением (не только
+  // active-в-текущем-режиме). Иначе bulk-edit не может достать линии,
+  // «спящие» в других режимах работы, но попадающие в BOM отчёта.
+  const conns = [...S.conns.values()].filter(c => (c._cableSize || c._busbarNom));
 
   // Фильтры (поиск + класс + per-column)
   const F = _cableTableFilters;
@@ -2003,12 +2003,20 @@ function renderCableTable() {
   mount.innerHTML = html.join('');
 
   // Обработчики изменений (change, не input — чтобы не терять фокус)
+  // Phase 1.20.5: после изменения свойства conn нужно вызвать render()
+  // чтобы пересчитался _cableMethod / _maxA / _cableIz (recalc triggered
+  // только из render). Иначе bulk-edit способа прокладки / длины не
+  // отражается в таблице до следующего ручного действия.
   const apply = (connId, fn) => {
     if (!window.Raschet?._state?.conns) return;
     const c = window.Raschet._state.conns.get(connId);
     if (!c) return;
     fn(c);
     if (typeof window.Raschet.notifyChange === 'function') window.Raschet.notifyChange();
+  };
+  const applyAndRerender = () => {
+    if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+    renderCableTable();
   };
   mount.querySelectorAll('.ct-mark').forEach(sel => {
     sel.addEventListener('change', () => {
@@ -2023,19 +2031,19 @@ function renderCableTable() {
           }
         }
       });
-      renderCableTable();
+      applyAndRerender();
     });
   });
   mount.querySelectorAll('.ct-length').forEach(inp => {
     inp.addEventListener('change', () => {
       apply(inp.dataset.id, (c) => { c.lengthM = Math.max(0, Number(inp.value) || 0); });
-      renderCableTable();
+      applyAndRerender();
     });
   });
   mount.querySelectorAll('.ct-method').forEach(sel => {
     sel.addEventListener('change', () => {
       apply(sel.dataset.id, (c) => { c.installMethod = sel.value || undefined; });
-      renderCableTable();
+      applyAndRerender();
     });
   });
 
@@ -2101,11 +2109,26 @@ function renderCableTable() {
   });
 
   // Групповое редактирование
+  // Phase 1.20.5: после bulk-изменения обязательно делаем rerender —
+  // recalc пересчитает _cableMethod / _maxA / _cableIz для всех затронутых
+  // линий и таблица покажет актуальные значения.
   const bulkApply = (fn) => {
     const ids = [..._cableTableSelected];
     if (!ids.length) return;
-    for (const id of ids) apply(id, fn);
+    let affectedCount = 0;
+    for (const id of ids) {
+      const cc = window.Raschet?._state?.conns?.get(id);
+      if (!cc) continue;
+      const before = { cableMark: cc.cableMark, lengthM: cc.lengthM, installMethod: cc.installMethod };
+      apply(id, fn);
+      // Считаем сколько реально изменилось (чтобы дать пользователю обратную связь)
+      if (before.cableMark !== cc.cableMark || before.lengthM !== cc.lengthM || before.installMethod !== cc.installMethod) {
+        affectedCount++;
+      }
+    }
+    if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
     renderCableTable();
+    flash(`Изменено: ${affectedCount} из ${ids.length} линий`);
   };
   const markBtn = mount.querySelector('#ct-bulk-mark');
   if (markBtn) markBtn.addEventListener('click', () => _openBulkCableDialog('mark', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
