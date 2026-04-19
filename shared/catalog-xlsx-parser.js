@@ -190,6 +190,8 @@ const PANEL_SCHEMA = {
     height:    ['Height', 'Высота', 'H_mm', 'H'],
     depth:     ['Depth', 'Глубина', 'D_mm', 'D'],
     busbarA:   ['Busbar_A', 'Шинопровод_А', 'Busbar_Nominal'],
+    material:  ['Material', 'Материал', 'Enclosure_Material'],
+    maxHeatDissipationW: ['Max_Heat_W', 'Max_Pdiss_W', 'Тепло_макс_Вт', 'Heat_Dissipation'],
   },
   required: ['supplier', 'variant'],
   toRecord(r, filename) {
@@ -210,6 +212,8 @@ const PANEL_SCHEMA = {
       height:    numVal(r.height)    || 0,
       depth:     numVal(r.depth)     || 0,
       busbarA:   numVal(r.busbarA)   || null,
+      material:  strVal(r.material)  || 'steel',
+      maxHeatDissipationW: numVal(r.maxHeatDissipationW) || 0,
       source: 'импорт XLSX: ' + filename,
       importedAt: Date.now(),
       custom: false,

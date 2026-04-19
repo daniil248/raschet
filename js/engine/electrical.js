@@ -216,6 +216,13 @@ export function migrateVoltageLevels(levels) {
     if (lv.hz === 0 && lv.vLL !== lv.vLN) lv.hz = 50;
     // phases по умолчанию: DC→1, AC→3
     if (typeof lv.phases !== 'number') lv.phases = (lv.hz === 0) ? 1 : 3;
+    // category по умолчанию — автоопределение по vLL/hz
+    if (!lv.category || !['lv','mv','hv','dc'].includes(lv.category)) {
+      if (lv.hz === 0) lv.category = 'dc';
+      else if (lv.vLL > 35000) lv.category = 'hv';
+      else if (lv.vLL >= 1000) lv.category = 'mv';
+      else lv.category = 'lv';
+    }
   }
   // Удаляем legacy 230/230 1ph — его напряжение есть в 400/230 как vLN
   const idx230 = levels.findIndex(lv => lv.vLL === 230 && lv.vLN === 230 && lv.hz !== 0);

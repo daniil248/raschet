@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.40.5';
+export const APP_VERSION = '0.41.0';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -52,24 +52,79 @@ export const GLOBAL = {
   // используется для линий, ВЫХОДЯЩИХ из щита.
   earthingSystem: 'TN-S',
   // Справочник уровней напряжения. Каждая запись:
-  //   vLL     — напряжение линия-линия (межфазное), В
-  //   vLN     — напряжение фаза-ноль, В (для LV AC; для HV/DC = vLL)
-  //   phases  — число фаз (3 или 1)
-  //   hz      — частота, Гц (50, 60; 0 = DC)
-  //   dcPoles — кол-во полюсов для DC (2 = L+/L−, 3 = L+/M/L−)
+  //   vLL      — напряжение линия-линия (межфазное), В
+  //   vLN      — напряжение фаза-ноль, В (для LV AC; для HV/DC = vLL)
+  //   phases   — число фаз (3 или 1)
+  //   hz       — частота, Гц (50, 60; 0 = DC)
+  //   dcPoles  — кол-во полюсов для DC (2 = L+/L−, 3 = L+/M/L−)
+  //   category — 'lv' (≤1 кВ AC), 'mv' (1–35 кВ AC), 'hv' (>35 кВ AC), 'dc'
+  //              Используется для фильтрации в UI и выбора методик расчёта.
+  //              Автопроставляется миграцией migrateVoltageLevels().
   // Метка формируется автоматически: formatVoltageLevelLabel(lv).
   voltageLevels: [
-    { vLL: 400,   vLN: 230,   phases: 3, hz: 50, builtin: true },
-    { vLL: 690,   vLN: 400,   phases: 3, hz: 50, builtin: true },
-    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50, builtin: true },
-    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50, builtin: true },
-    { vLL: 35000, vLN: 20207, phases: 3, hz: 50, builtin: true },
-    { vLL: 110,   vLN: 110,   phases: 1, hz: 50, builtin: true },
-    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2, builtin: true },
+    { vLL: 400,   vLN: 230,   phases: 3, hz: 50, category: 'lv', builtin: true },
+    { vLL: 690,   vLN: 400,   phases: 3, hz: 50, category: 'lv', builtin: true },
+    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50, category: 'mv', builtin: true },
+    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50, category: 'mv', builtin: true },
+    { vLL: 35000, vLN: 20207, phases: 3, hz: 50, category: 'mv', builtin: true },
+    { vLL: 110,   vLN: 110,   phases: 1, hz: 50, category: 'lv', builtin: true },
+    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2, category: 'dc', builtin: true },
   ],
   // Пользовательские типы потребителей (добавляются в проекте, сохраняются с проектом)
   customConsumerCatalog: [],
 };
+
+// Категории уровней напряжения (используются для фильтрации UI и валидации
+// совместимости соединений / подбора методик расчёта).
+export const VOLTAGE_CATEGORIES = {
+  lv: { label: 'Низкое напряжение (≤1 кВ AC)',   vMax: 1000 },
+  mv: { label: 'Среднее напряжение (1–35 кВ)',   vMin: 1000, vMax: 35000 },
+  hv: { label: 'Высокое напряжение (>35 кВ)',    vMin: 35000 },
+  dc: { label: 'Постоянный ток (DC)' },
+};
+
+/** Определяет category уровня напряжения по vLL и hz. */
+export function deriveVoltageCategory(lv) {
+  if (!lv) return 'lv';
+  if (lv.hz === 0 || lv.dc === true) return 'dc';
+  const v = Number(lv.vLL) || 0;
+  if (v > 35000) return 'hv';
+  if (v >= 1000) return 'mv';
+  return 'lv';
+}
+
+// Виды соединений для мульти-пространственных схем.
+// Каждое соединение имеет connectionKind — определяет расчёт, рендер, применимость.
+// electrical — участвует в кабельных расчётах (ampacity, vdrop и т.д.)
+// pipe/duct/data — альтернативные системы (трубопровод/воздуховод/слаботочка)
+//                  пропускаются модулями расчёта кабелей.
+export const CONNECTION_KINDS = {
+  electrical: { label: 'Электрическое',       color: '#e53935', style: 'solid' },
+  pipe:       { label: 'Трубопровод',         color: '#1976d2', style: 'thick' },
+  duct:       { label: 'Воздуховод',          color: '#6b7280', style: 'dashed' },
+  data:       { label: 'Информационное',      color: '#00897b', style: 'thin' },
+};
+
+// Категории соединений (кабельной продукции) для валидации и фильтрации.
+// Силовой кабель нельзя выбрать для слаботочного соединения и наоборот.
+export const CABLE_CATEGORIES = {
+  power:    { label: 'Силовой',             allowedVoltage: ['lv', 'mv'],  icon: '⚡' },
+  hv:       { label: 'Высоковольтный',       allowedVoltage: ['mv', 'hv'], icon: '⚡⚡' },
+  signal:   { label: 'Слаботочный (контрольный)', maxVolt: 400,            icon: '✍' },
+  data:     { label: 'Информационный (UTP/оптика)', maxVolt: 50,           icon: '📡' },
+  fieldbus: { label: 'Полевой (Modbus/CAN/PROFIBUS)', maxVolt: 50,         icon: '🔗' },
+  dc:       { label: 'Постоянный ток',      allowedVoltage: ['dc'],       icon: '⎓' },
+};
+
+/** Возвращает список допустимых категорий кабеля для данной категории напряжения */
+export function allowedCableCategoriesFor(voltageCategory) {
+  const out = [];
+  for (const [id, c] of Object.entries(CABLE_CATEGORIES)) {
+    if (c.allowedVoltage && c.allowedVoltage.includes(voltageCategory)) out.push(id);
+    else if (!c.allowedVoltage && c.maxVolt) out.push(id); // сигнальные доступны всегда
+  }
+  return out;
+}
 
 // Описание типов кабельной конструкции по IEC 60228:
 //   multi  — многожильный гибкий / класс 5 (штатная кабельная продукция, F/B2/E/D)

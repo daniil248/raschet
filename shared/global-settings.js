@@ -26,13 +26,13 @@ const STORAGE_KEY = 'raschet.global.v1';
 // которые здесь не перечислены.
 export const DEFAULTS = {
   voltageLevels: [
-    { vLL: 400,   vLN: 230,   phases: 3, hz: 50, builtin: true },
-    { vLL: 690,   vLN: 400,   phases: 3, hz: 50, builtin: true },
-    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50, builtin: true },
-    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50, builtin: true },
-    { vLL: 35000, vLN: 20207, phases: 3, hz: 50, builtin: true },
-    { vLL: 110,   vLN: 110,   phases: 1, hz: 50, builtin: true },
-    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2, builtin: true },
+    { vLL: 400,   vLN: 230,   phases: 3, hz: 50, category: 'lv', builtin: true },
+    { vLL: 690,   vLN: 400,   phases: 3, hz: 50, category: 'lv', builtin: true },
+    { vLL: 10000, vLN: 5774,  phases: 3, hz: 50, category: 'mv', builtin: true },
+    { vLL: 6000,  vLN: 3464,  phases: 3, hz: 50, category: 'mv', builtin: true },
+    { vLL: 35000, vLN: 20207, phases: 3, hz: 50, category: 'mv', builtin: true },
+    { vLL: 110,   vLN: 110,   phases: 1, hz: 50, category: 'lv', builtin: true },
+    { vLL: 48,    vLN: 48,    phases: 1, hz: 0, dcPoles: 2, category: 'dc', builtin: true },
   ],
   defaultCosPhi: 0.92,
   defaultAmbient: 30,
@@ -91,6 +91,12 @@ function _migrateVoltageLevels(obj) {
       if (typeof lv.hz !== 'number') lv.hz = 50;
       if (lv.hz === 0 && lv.vLL !== lv.vLN) lv.hz = 50;
       if (typeof lv.phases !== 'number') lv.phases = (lv.hz === 0) ? 1 : 3;
+      if (!lv.category || !['lv','mv','hv','dc'].includes(lv.category)) {
+        if (lv.hz === 0) lv.category = 'dc';
+        else if (lv.vLL > 35000) lv.category = 'hv';
+        else if (lv.vLL >= 1000) lv.category = 'mv';
+        else lv.category = 'lv';
+      }
     }
     // Удаляем legacy 230/230 1ph
     const idx230 = obj.voltageLevels.findIndex(lv => lv.vLL === 230 && lv.vLN === 230 && lv.hz !== 0);

@@ -1,27 +1,36 @@
 // ======================================================================
 // shared/panel-catalog.js
-// Справочник типовых щитов (распределительных, главных, АВР). Хранится
-// per-user в localStorage. API симметричен battery/ups каталогам.
+// Справочник щитовых оболочек (корпусов). Хранится per-user в localStorage.
+// API симметричен battery/ups каталогам.
 //
-// Схема записи (PanelRecord):
+// ⚠ АРХИТЕКТУРА: с v0.41 справочник — это только каталог ОБОЛОЧЕК (корпусов).
+// Проектная конфигурация (inputs/outputs/sections) задаётся на УЗЛЕ щита в
+// конкретной схеме, а не хранится в каталоге. Поля inputs/outputs/sections
+// помечены DEPRECATED и будут убраны в Фазе 1 (Element Library).
+//
+// Схема записи (PanelRecord — оболочка):
 //   {
-//     id:         string,          // makePanelId(supplier, series, variant)
-//     supplier:   string,           // ABB, Schneider, KEAZ, ИЭК, …
-//     series:     string,           // ArTu M, Prisma, OptiBox, …
-//     variant:    string,           // типоразмер / артикул
-//     inNominal:  number,           // номинал вводного, А
-//     inputs:     number,           // число вводов (1 — простой, 2 — АВР)
-//     outputs:    number,           // число отходящих полей
-//     sections:   number,           // секций (1 — одно, ≥2 — секционированный)
-//     ipRating:   string,           // 'IP31' | 'IP54' | ...
-//     form:       string,           // внутренняя форма разделения (IEC 61439)
-//     width:      number,           // мм (опционально)
-//     height:     number,           // мм
-//     depth:      number,           // мм
-//     busbarA:    number?,          // если шинопровод — его номинал, А
-//     source:     string,           // 'ручной ввод'
-//     importedAt: number,
-//     custom:     boolean,
+//     id:           string,         // makePanelId(supplier, series, variant)
+//     supplier:     string,         // ABB, Schneider, KEAZ, ИЭК, …
+//     series:       string,         // ArTu M, Prisma, OptiBox, …
+//     variant:      string,         // типоразмер / артикул
+//     inNominal:    number,         // номинал вводного (пропускной), А
+//     ipRating:     string,         // 'IP31' | 'IP54' | ...
+//     form:         string,         // внутренняя форма разделения (IEC 61439)
+//     width:        number,         // мм
+//     height:       number,         // мм
+//     depth:        number,         // мм
+//     busbarA:      number?,        // номинал шин, А (опционально)
+//     material:     string,         // 'steel' | 'polymer' | 'stainless' (новое)
+//     maxHeatDissipationW: number,  // максимально рассеиваемая мощность, Вт (новое)
+//                                   // Для теплового расчёта (Фаза 6, IEC 60890/61439)
+//     source:       string,         // 'ручной ввод' | 'imported'
+//     importedAt:   number,
+//     custom:       boolean,
+//     // DEPRECATED — проектная конфигурация, будет на узле щита:
+//     inputs?:      number,         // DEPRECATED
+//     outputs?:     number,         // DEPRECATED
+//     sections?:    number,         // DEPRECATED
 //   }
 // ======================================================================
 

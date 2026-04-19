@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Манифест модулей платформы Raschet. Используется hub.html для рендера карточек и (в будущем) системой permissions для фильтрации по ролям.",
+  "modules": [
+    {
+      "id": "constructor",
+      "name": "Конструктор схем",
+      "description": "Проектирование принципиальных схем электроснабжения с автоматическим расчётом нагрузок, подбором кабелей и защиты",
+      "path": "index.html",
+      "icon": "blue",
+      "badge": "active",
+      "requires": ["shared/auth", "shared/global-settings", "shared/calc-modules"],
+      "dbCollections": ["projects"],
+      "permissions": ["constructor.use"],
+      "enabled": true
+    },
+    {
+      "id": "cable",
+      "name": "Расчёт кабельной линии",
+      "description": "Подбор сечения кабеля по IEC / ПУЭ с учётом температуры, группирования, способа прокладки, экономической плотности тока и падения напряжения",
+      "path": "cable/",
+      "icon": "orange",
+      "badge": "new",
+      "requires": ["shared/auth", "shared/global-settings", "shared/calc-modules", "shared/report"],
+      "dbCollections": [],
+      "permissions": ["cable.use"],
+      "enabled": true
+    },
+    {
+      "id": "schematic",
+      "name": "Схема принципиальная",
+      "description": "Редактор принципиальных электрических схем и рабочей документации. Библиотека IEC 60617-DB-12M, листы ISO 216 (A4…A0), основная надпись по ISO 7200",
+      "path": "schematic/",
+      "icon": "purple",
+      "badge": "new",
+      "requires": ["shared/auth", "shared/app-header"],
+      "dbCollections": [],
+      "permissions": ["schematic.use"],
+      "enabled": true
+    },
+    {
+      "id": "battery",
+      "name": "Расчёт АКБ",
+      "description": "Подбор ёмкости и конфигурации АКБ для ИБП. Загрузка таблиц разряда производителей (Kehua, Panasonic, SVC, Sonnenschein) в XLSX и точный расчёт по ним",
+      "path": "battery/",
+      "icon": "green",
+      "badge": "new",
+      "requires": ["shared/auth", "shared/battery-picker"],
+      "dbCollections": [],
+      "permissions": ["battery.use"],
+      "enabled": true
+    },
+    {
+      "id": "ups-config",
+      "name": "Конфигуратор ИБП",
+      "description": "Подбор конфигурации ИБП по нагрузке: тип (моноблок / модульный), резервирование N+X, параметры входа и батарейной цепи",
+      "path": "ups-config/",
+      "icon": "purple",
+      "badge": "wip",
+      "requires": ["shared/auth", "shared/ups-catalog", "shared/ups-picker"],
+      "dbCollections": [],
+      "permissions": ["ups-config.use"],
+      "enabled": true
+    },
+    {
+      "id": "panel-config",
+      "name": "Конфигуратор щита",
+      "description": "Подбор состава распределительного щита: ввод / АВР, секционирование, номиналы вводных и отходящих автоматов, шинопровод",
+      "path": "panel-config/",
+      "icon": "orange",
+      "badge": "wip",
+      "requires": ["shared/auth", "shared/panel-catalog"],
+      "dbCollections": [],
+      "permissions": ["panel-config.use"],
+      "enabled": true
+    },
+    {
+      "id": "transformer-config",
+      "name": "Конфигуратор трансформатора",
+      "description": "Подбор силового трансформатора: мощность, первичное / вторичное напряжение, группа соединений, потери ХХ / КЗ, uk, тип охлаждения",
+      "path": "transformer-config/",
+      "icon": "blue",
+      "badge": "wip",
+      "requires": ["shared/auth", "shared/transformer-catalog"],
+      "dbCollections": [],
+      "permissions": ["transformer-config.use"],
+      "enabled": true
+    },
+    {
+      "id": "reports",
+      "name": "Шаблоны отчётов",
+      "description": "Подготовка и хранение шаблонов оформления отчётов: страница, поля, логотип, колонтитулы, стили заголовков. Используются подпрограммами для экспорта в PDF и DOCX",
+      "path": "reports/",
+      "icon": "green",
+      "badge": "new",
+      "requires": ["shared/auth", "shared/report", "shared/report-catalog"],
+      "dbCollections": [],
+      "permissions": ["reports.use"],
+      "enabled": true
+    }
+  ]
+}

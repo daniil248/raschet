@@ -711,32 +711,11 @@ const SETTINGS_DEFAULTS = {
   earthingSystem: 'TN-S',
 };
 
-function loadGlobalSettings() {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return;
-    const saved = JSON.parse(raw);
-    // Миграция устаревших меток voltageLevels: вырезаем из lv.label
-    // суффиксы N+PE/3P+N+PE и т.п. (договорились избавиться от полюсов
-    // и жил N/PE в справочнике напряжений — фазность и DC-флаг достаточно).
-    if (Array.isArray(saved.voltageLevels)) {
-      for (const lv of saved.voltageLevels) {
-        if (lv && typeof lv.label === 'string') {
-          lv.label = lv.label
-            .replace(/\+N\+PE/gi, '')
-            .replace(/3L\+N\+PE/gi, '')
-            .replace(/L\+N\+PE/gi, '')
-            .replace(/\+N\b/gi, '')
-            .replace(/\+PE\b/gi, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-        }
-      }
-    }
-    if (!window.Raschet || typeof window.Raschet.setGlobal !== 'function') return;
-    window.Raschet.setGlobal(saved);
-  } catch (e) { console.warn('[settings] load failed', e); }
-}
+// Legacy no-op: загрузка GLOBAL из localStorage теперь выполняется единожды
+// в engine/index.js через shared/global-settings.js#loadGlobal(). Все дальнейшие
+// изменения идут через window.Raschet.setGlobal() → saveGlobal() → listeners.
+// Функция оставлена для совместимости с местами, где она вызывалась.
+function loadGlobalSettings() { /* no-op */ }
 
 // Таблица уровней напряжения перенесена в «Глобальные настройки платформы»
 // (shared/global-settings.js) — единый источник правды.
@@ -799,8 +778,8 @@ function saveSettingsModal() {
     breakerMinMarginPct: Math.max(0, Number(get('set-breakerMinMarginPct')) || 0),
     showHelp:           !!document.getElementById('set-showHelp')?.checked,
   };
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(patch)); }
-  catch (e) { console.warn('[settings] save failed', e); }
+  // setGlobal синхронизирует engine.GLOBAL + shared/global-settings localStorage
+  // через saveGlobal() — не нужно писать в localStorage напрямую (дубль).
   if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
     window.Raschet.setGlobal(patch);
   }
@@ -844,11 +823,9 @@ function saveProjectInfoModal() {
 function resetSettingsModal() {
   if (!confirm('Сбросить все начальные условия к значениям по умолчанию?')) return;
   try { localStorage.removeItem(SETTINGS_KEY); } catch {}
-  if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
-    window.Raschet.setGlobal(SETTINGS_DEFAULTS);
-  }
-  openSettingsModal();
-  flash('Сброшено');
+  // Перезагружаем страницу чтобы engine заново инициализировал GLOBAL
+  // из DEFAULTS global-settings.js (единый источник правды).
+  location.reload();
 }
 
 // ================= Библиотека пресетов =================

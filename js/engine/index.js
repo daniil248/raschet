@@ -55,9 +55,22 @@ import { generateReport, get3PhaseBalance } from './report.js';
 import { getReportSections } from './report-sections.js';
 import { importLoadsTable } from './import.js';
 
-// === Миграция уровней напряжения (hz вместо phases/dc) ===
+// === Синхронизация GLOBAL с shared/global-settings.js ===
+// Единый источник правды — localStorage['raschet.global.v1'].
+// loadGlobal() делает миграцию (voltage levels, builtin marks).
+// Все модули (cable/, battery/, ups-config/…) читают тот же cache.
+import { loadGlobal, saveGlobal, onGlobalChange } from '../../shared/global-settings.js';
 import { migrateVoltageLevels } from './electrical.js';
+const _loadedGlobal = loadGlobal();
+Object.assign(GLOBAL, _loadedGlobal);
 migrateVoltageLevels(GLOBAL.voltageLevels);
+// Подписка: если global-settings меняется извне (другая вкладка или
+// subprogram) — engine GLOBAL остаётся в синхроне.
+onGlobalChange((next) => {
+  for (const k of Object.keys(next)) {
+    if (k in GLOBAL) GLOBAL[k] = next[k];
+  }
+});
 
 // === Инициализация DOM ===
 initDOM();
@@ -293,6 +306,9 @@ window.Raschet = {
     for (const k of Object.keys(patch)) {
       if (k in GLOBAL) GLOBAL[k] = patch[k];
     }
+    // Синхронизация с shared/global-settings.js — уведомит все
+    // подпрограммы через onGlobalChange + запишет в localStorage.
+    try { saveGlobal(patch); } catch (e) { console.warn('[engine.setGlobal]', e); }
     render();
     renderInspector();
   },
