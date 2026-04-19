@@ -2641,6 +2641,190 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
   });
 }
 
+// ================= Проверки проекта (Phase 1.20.19) =================
+// Сводка всех ошибок/предупреждений в проекте с навигацией по клику.
+function openProjectIssuesModal() {
+  openModal('modal-project-issues');
+  renderProjectIssues();
+}
+
+function renderProjectIssues() {
+  const mount = document.getElementById('project-issues-mount');
+  if (!mount) return;
+  const S = window.Raschet?._state;
+  if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
+
+  // 1. Собираем ошибки/предупреждения по линиям
+  const cableErrors = [];   // {id, label, reason, details}
+  const cableWarns = [];
+  const utilityLines = [];  // информационно
+  for (const c of S.conns.values()) {
+    if (!c._cableSize && !c._busbarNom) continue;
+    const fromN = S.nodes.get(c.from?.nodeId);
+    const toN = S.nodes.get(c.to?.nodeId);
+    const prefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
+    const label = c.lineLabel || `${prefix}-${_ctNodeTag(fromN)}-${_ctNodeTag(toN)}`;
+    const route = `${_ctNodeTag(fromN)} → ${_ctNodeTag(toN)}`;
+    if (c._utilityInfeed) {
+      utilityLines.push({ id: c.id, label, route });
+      continue;
+    }
+    if (c._breakerAgainstCable) {
+      cableErrors.push({
+        id: c.id, label, route,
+        reason: 'In > Iz — кабель не защищён от перегрузки',
+        details: `In = ${Number(c.manualBreakerIn) || Number(c._breakerIn) || 0} А, Iz = ${c._cableIz ? Math.round(c._cableIz) : '?'} А`,
+      });
+    }
+    if (c._breakerUndersize) {
+      cableErrors.push({
+        id: c.id, label, route,
+        reason: 'In < Iрасч — автомат сработает при штатной нагрузке',
+        details: `In = ${Number(c.manualBreakerIn) || Number(c._breakerIn) || 0} А, Iрасч = ${Math.round(c._maxA || 0)} А`,
+      });
+    }
+    if (c._cableOverflow) {
+      cableWarns.push({
+        id: c.id, label, route,
+        reason: 'Сечение превышает максимум ряда',
+        details: `Iрасч = ${Math.round(c._maxA || 0)} А — проверьте распараллеливание`,
+      });
+    }
+  }
+
+  // 2. Нарушения селективности
+  let selPairs = [];
+  try {
+    const sel = window.Raschet?.analyzeSelectivity?.();
+    if (sel && Array.isArray(sel.pairs)) {
+      selPairs = sel.pairs.filter(p => !p.check?.selective);
+    }
+  } catch {}
+
+  // 3. MV-щиты: перегрузка Ik vs It
+  const mvOverloads = [];
+  for (const n of S.nodes.values()) {
+    if (n.isMv && n._mvIkOverload) {
+      mvOverloads.push({
+        id: n.id,
+        name: _effectiveTag(n) || n.tag || n.name || '?',
+        reason: 'I_k3 превышает термическую стойкость шин',
+        details: `I_k3 = ${(n._Ik3_kA || 0).toFixed(2)} кА`,
+      });
+    }
+  }
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+  const totalErrors = cableErrors.length + mvOverloads.length;
+  const totalWarns = cableWarns.length + selPairs.length;
+
+  const html = [];
+  // Summary
+  html.push(`
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="padding:10px 14px;background:${totalErrors ? '#ffebee' : '#e8f5e9'};border:1px solid ${totalErrors ? '#ef9a9a' : '#a5d6a7'};border-radius:6px;flex:1;min-width:180px">
+        <div style="font-size:11px;color:#666">Ошибок</div>
+        <div style="font-size:22px;font-weight:600;color:${totalErrors ? '#c62828' : '#2e7d32'}">${totalErrors}</div>
+      </div>
+      <div style="padding:10px 14px;background:${totalWarns ? '#fff8e1' : '#f5f5f5'};border:1px solid ${totalWarns ? '#ffcc80' : '#ddd'};border-radius:6px;flex:1;min-width:180px">
+        <div style="font-size:11px;color:#666">Предупреждений</div>
+        <div style="font-size:22px;font-weight:600;color:${totalWarns ? '#e65100' : '#777'}">${totalWarns}</div>
+      </div>
+      <div style="padding:10px 14px;background:#eef5ff;border:1px solid #bbdefb;border-radius:6px;flex:1;min-width:180px">
+        <div style="font-size:11px;color:#666">Utility-линий (информ.)</div>
+        <div style="font-size:22px;font-weight:600;color:#1565c0">${utilityLines.length}</div>
+      </div>
+    </div>
+  `);
+
+  const renderLineList = (items, color, borderColor) => {
+    if (!items.length) return '';
+    return items.map(it => `
+      <div class="pi-row" data-kind="conn" data-id="${esc(it.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eaecef;cursor:pointer;background:#fff" title="Клик — перейти к линии">
+        <span style="flex:0 0 220px;font-weight:600;color:${color}">${esc(it.label)}</span>
+        <span style="flex:0 0 260px;font-size:11px;color:#555">${esc(it.route)}</span>
+        <span style="flex:1;font-size:11px;color:${color}">${esc(it.reason)}</span>
+        <span style="flex:0 0 200px;font-size:11px;color:#666;font-family:monospace">${esc(it.details || '')}</span>
+      </div>
+    `).join('');
+  };
+
+  const renderNodeList = (items, color) => {
+    if (!items.length) return '';
+    return items.map(it => `
+      <div class="pi-row" data-kind="node" data-id="${esc(it.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eaecef;cursor:pointer" title="Клик — перейти к узлу">
+        <span style="flex:0 0 220px;font-weight:600;color:${color}">${esc(it.name)}</span>
+        <span style="flex:1;font-size:11px;color:${color}">${esc(it.reason)}</span>
+        <span style="flex:0 0 200px;font-size:11px;color:#666;font-family:monospace">${esc(it.details || '')}</span>
+      </div>
+    `).join('');
+  };
+
+  const section = (title, emoji, count, bodyHtml) => `
+    <h3 style="margin:16px 0 4px;font-size:13px;color:#24292e">${emoji} ${esc(title)} <span class="muted" style="font-weight:400">(${count})</span></h3>
+    <div style="border:1px solid #e1e4e8;border-radius:4px;overflow:hidden">${bodyHtml || '<div class="muted" style="padding:10px 14px;font-size:11px">—</div>'}</div>
+  `;
+
+  html.push(section('Ошибки кабелей (координация защиты)', '✗', cableErrors.length, renderLineList(cableErrors, '#c62828')));
+  if (mvOverloads.length) {
+    html.push(section('Ошибки MV-щитов', '⚡', mvOverloads.length, renderNodeList(mvOverloads, '#c62828')));
+  }
+  html.push(section('Предупреждения кабелей', '⚠', cableWarns.length, renderLineList(cableWarns, '#e65100')));
+
+  // Non-selective pairs
+  if (selPairs.length) {
+    html.push(`<h3 style="margin:16px 0 4px;font-size:13px;color:#24292e">🔶 Нарушения селективности <span class="muted" style="font-weight:400">(${selPairs.length})</span></h3>`);
+    const rows = selPairs.map(p => {
+      const nodeTag = _effectiveTag(p.node) || p.node?.name || '?';
+      const up = `${p.upBreaker?.inNominal || '?'} А ${p.upBreaker?.curve || ''}`;
+      const down = `${p.downBreaker?.inNominal || '?'} А ${p.downBreaker?.curve || ''}`;
+      const nodeId = p.node?.id;
+      return `
+        <div class="pi-row" data-kind="node" data-id="${esc(nodeId || '')}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eaecef;cursor:pointer" title="Клик — перейти к узлу">
+          <span style="flex:0 0 220px;font-weight:600;color:#e65100">${esc(nodeTag)}${p.isMvCellPair ? ' (MV)' : ''}</span>
+          <span style="flex:0 0 180px;font-size:11px">↑ ${esc(up)}</span>
+          <span style="flex:0 0 180px;font-size:11px">↓ ${esc(down)}</span>
+          <span style="flex:1;font-size:11px;color:#666">${esc(p.check?.reason || '')}</span>
+        </div>
+      `;
+    }).join('');
+    html.push(`<div style="border:1px solid #e1e4e8;border-radius:4px;overflow:hidden">${rows}</div>`);
+  }
+
+  if (utilityLines.length) {
+    html.push(`<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;color:#1565c0">🏙 Utility-линии (информационно, ${utilityLines.length}) — не проверяются</summary>`);
+    html.push(`<div style="border:1px solid #e1e4e8;border-radius:4px;overflow:hidden;margin-top:4px">${renderLineList(utilityLines.map(l => ({ ...l, reason: 'Ввод от городской сети — ТУ поставщика', details: '' })), '#1565c0')}</div>`);
+    html.push('</details>');
+  }
+
+  if (!totalErrors && !totalWarns) {
+    html.push('<div style="padding:20px;text-align:center;color:#2e7d32;font-size:14px;background:#e8f5e9;border-radius:6px;margin-top:10px">✓ Проблем не обнаружено. Проект проходит все проверки.</div>');
+  }
+
+  mount.innerHTML = html.join('');
+
+  // Click handlers для навигации
+  mount.querySelectorAll('.pi-row').forEach(row => {
+    row.addEventListener('mouseenter', () => row.style.background = '#eef5ff');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+    row.addEventListener('click', () => {
+      const kind = row.dataset.kind;
+      const id = row.dataset.id;
+      if (!id) return;
+      if (kind === 'conn' && typeof window.Raschet?.selectConnAndFocus === 'function') {
+        window.Raschet.selectConnAndFocus(id);
+      } else if (kind === 'node' && window.Raschet?._state) {
+        window.Raschet._state.selectedKind = 'node';
+        window.Raschet._state.selectedId = id;
+        if (typeof window.Raschet.rerender === 'function') window.Raschet.rerender();
+      }
+      closeModal('modal-project-issues');
+    });
+  });
+}
+
 // ================= Поиск / Ctrl+F (Phase 1.20.16) =================
 // Command-palette для быстрого перехода к узлу или линии.
 // Горячая клавиша: Ctrl+F.
@@ -3447,6 +3631,8 @@ async function init() {
   if (btnConsumersTable) btnConsumersTable.addEventListener('click', openConsumersTableModal);
   const btnSearch = document.getElementById('btn-open-search');
   if (btnSearch) btnSearch.addEventListener('click', openSearchPalette);
+  const btnIssues = document.getElementById('btn-open-project-issues');
+  if (btnIssues) btnIssues.addEventListener('click', openProjectIssuesModal);
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
   if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(els.reportBody.textContent); flash('Скопировано'); }
