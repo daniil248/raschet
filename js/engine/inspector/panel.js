@@ -24,6 +24,11 @@ const _pcZoomState = { zoom: 1, fullscreen: false };
 export function openPanelParamsModal(n) {
   const body = document.getElementById('panel-params-body');
   if (!body) return;
+  // Фаза 1.19.2: динамический заголовок в зависимости от типа щита
+  const titleEl = document.getElementById('panel-params-title');
+  if (titleEl) {
+    titleEl.textContent = n.isMv ? 'Параметры РУ СН (MV)' : 'Параметры НКУ (LV щит)';
+  }
   const h = [];
   // Обозначение (редактируемое) + Имя
   h.push(field('Обозначение', `<input type="text" id="pp-tag" value="${escAttr(n.tag || '')}">`));
@@ -124,37 +129,40 @@ export function openPanelParamsModal(n) {
     }
   }
 
-  // === Модель из справочника щитов (shared/panel-catalog + panel-picker) ===
-  // Тот же каскадный пикер, что и в подпрограмме panel-config/. При
-  // выборе модели её паспортные параметры (inNominal, inputs, outputs,
-  // ipRating, form) применяются к узлу через applyPanelModel().
-  try {
-    const panelCatalog = listPanels();
-    if (panelCatalog.length) {
-      h.push('<h4 style="margin:14px 0 6px">Модель из справочника</h4>');
-      h.push('<div id="pp-cat-picker-mount" style="margin-bottom:4px"></div>');
-      h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 4px">При выборе модели автоматически заполняются I<sub>ном</sub>, число входов / выходов, IP, форма разделения.</div>`);
-    } else {
-      h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
-        Справочник щитов пуст. Добавьте модели в «Конфигураторе щита» (кнопка ниже), чтобы выбирать их здесь одним кликом.
+  // === Модель НКУ из справочника (panel-catalog + panel-picker) ===
+  // Показывается ТОЛЬКО для LV-щитов (не MV). Для MV-щитов (isMv=true)
+  // действует отдельный блок выше с выбором mv-switchgear из
+  // element-library + кнопкой mv-config/. Смешивать нельзя — разные
+  // стандарты IEC 61439 (НКУ LV) и IEC 62271-200 (РУ СН MV).
+  if (!n.isMv) {
+    try {
+      const panelCatalog = listPanels();
+      if (panelCatalog.length) {
+        h.push('<h4 style="margin:14px 0 6px">Модель НКУ из справочника</h4>');
+        h.push('<div id="pp-cat-picker-mount" style="margin-bottom:4px"></div>');
+        h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 4px">При выборе модели автоматически заполняются I<sub>ном</sub>, число входов / выходов, IP, форма разделения.</div>`);
+      } else {
+        h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
+          Справочник НКУ пуст. Добавьте модели в «Конфигураторе НКУ» (кнопка ниже), чтобы выбирать их здесь одним кликом.
+        </div>`);
+      }
+      // Фаза 1.7: кнопка перехода в wizard-конфигуратор для проекта
+      const qp = new URLSearchParams();
+      qp.set('nodeId', n.id);
+      if (n.name) qp.set('name', n.name);
+      if (n.switchMode === 'avr') qp.set('kind', 'avr');
+      else if (n.type === 'panel') qp.set('kind', 'distribution');
+      if (n._loadKw) qp.set('loadKw', String(n._loadKw));
+      if (n.inputs) qp.set('inputs', String(n.inputs));
+      if (n.outputs) qp.set('outputs', String(n.outputs));
+      if (n.ipRating) qp.set('ip', n.ipRating);
+      h.push(`<div style="margin:4px 0 10px">
+        <a href="panel-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
+          ⚙ Сконфигурировать НКУ подробно (новая вкладка)
+        </a>
       </div>`);
-    }
-    // Фаза 1.7: кнопка перехода в wizard-конфигуратор для проекта
-    const qp = new URLSearchParams();
-    qp.set('nodeId', n.id);
-    if (n.name) qp.set('name', n.name);
-    if (n.switchMode === 'avr') qp.set('kind', 'avr');
-    else if (n.type === 'panel') qp.set('kind', 'distribution');
-    if (n._loadKw) qp.set('loadKw', String(n._loadKw));
-    if (n.inputs) qp.set('inputs', String(n.inputs));
-    if (n.outputs) qp.set('outputs', String(n.outputs));
-    if (n.ipRating) qp.set('ip', n.ipRating);
-    h.push(`<div style="margin:4px 0 10px">
-      <a href="panel-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
-        ⚙ Сконфигурировать щит подробно (новая вкладка)
-      </a>
-    </div>`);
-  } catch (e) { /* опционально */ }
+    } catch (e) { /* опционально */ }
+  }
 
   // Тип щита — всегда виден
   const sm = n.switchMode || 'auto';
