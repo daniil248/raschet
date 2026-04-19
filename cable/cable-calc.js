@@ -581,6 +581,148 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
   `;
 
   els.resultArea.innerHTML = html;
+
+  // === TCC-карта защиты линии (Фаза 1.17) ===
+  // Показывается блок «Координация защиты автомата и кабеля» с графиком
+  // время-токовых характеристик: кривая автомата + термостойкость кабеля
+  // + вертикальная линия I_k. Если автомат adjustable — слайдеры
+  // настроек (Ir/Isd/tsd/Ii) меняют кривую в реальном времени.
+  _renderTccCoordination({
+    finalSize, breakerIn: In, params, isDC,
+  });
+}
+
+// Динамический import shared/tcc-chart — грузится только когда нужно
+let _tccChartModule = null;
+async function _loadTccChart() {
+  if (!_tccChartModule) _tccChartModule = await import('../shared/tcc-chart.js');
+  return _tccChartModule;
+}
+
+async function _renderTccCoordination({ finalSize, breakerIn, params, isDC }) {
+  // Находим контейнер или создаём
+  let block = document.getElementById('tcc-coord-block');
+  if (!block) {
+    block = document.createElement('div');
+    block.id = 'tcc-coord-block';
+    block.style.cssText = 'margin-top:24px;padding:14px;background:#fff;border:1px solid #e1e4e8;border-radius:6px';
+    els.resultArea.appendChild(block);
+  }
+  // Читаем текущие параметры защиты из формы
+  const IkA_raw = Number(document.getElementById('in-ik')?.value) || 0;
+  const IkA = IkA_raw * 1000; // кА → А
+  const breakerCurveFull = document.getElementById('in-breakerCurve')?.value || 'MCB_C';
+  // Нормализация: MCB_B → 'B', MCCB → 'MCCB'
+  const curveMap = { MCB_B: 'B', MCB_C: 'C', MCB_D: 'D', MCCB: 'C', ACB: 'C' };
+  const curveShort = curveMap[breakerCurveFull] || 'C';
+  const isMcb = breakerCurveFull.startsWith('MCB_');
+
+  // Коэффициент k для материала/изоляции (IEC 60364-4-43)
+  const k = params.material === 'Al'
+    ? (params.insulation === 'XLPE' ? 94 : 76)
+    : (params.insulation === 'XLPE' ? 143 : 115);
+
+  block.innerHTML = `
+    <h3 style="margin:0 0 4px;font-size:14px;font-weight:600;color:#1f2430">⚡ Координация защиты: автомат ↔ кабель</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">
+      Время-токовая характеристика выбранного автомата и линия термостойкости подобранного кабеля.
+      На графике видно, отключает ли автомат КЗ раньше, чем нагреется проводник.
+      ${isMcb ? 'Для настраиваемых расцепителей (MCCB/ACB с LSI) — слайдеры ниже, изменения отразятся на графике.' : ''}
+    </div>
+    <div id="tcc-coord-chart"></div>
+    <div id="tcc-coord-controls" style="margin-top:10px"></div>
+  `;
+
+  const { mountTccChart } = await _loadTccChart();
+
+  const baseItems = [
+    {
+      id: 'breaker',
+      kind: 'breaker',
+      In: breakerIn,
+      curve: curveShort,
+      label: `${isMcb ? 'MCB' : breakerCurveFull} ${curveShort}${breakerIn} A (защита)`,
+      color: '#1976d2',
+    },
+    {
+      id: 'cable',
+      kind: 'cable',
+      S_mm2: finalSize,
+      k,
+      label: `Проводник ${params.material}/${params.insulation} ${finalSize} мм² (термостойкость, k=${k})`,
+      color: '#d32f2f',
+    },
+  ];
+
+  const chartEl = document.getElementById('tcc-coord-chart');
+  const handle = mountTccChart(chartEl, {
+    items: baseItems,
+    xRange: [Math.max(1, breakerIn * 0.8), Math.max(IkA * 1.5, breakerIn * 200)],
+    yRange: [0.003, 10000],
+    width: Math.min(chartEl.clientWidth || 650, 750),
+    height: 400,
+    ikMax: IkA > 0 ? IkA : null,
+  });
+
+  // Если автомат из нашего типа MCCB (а он здесь не adjustable — у нас MCB
+  // плоско в cable/), adjustable-слайдеры пропускаем. Но если пользователь
+  // явно указал MCCB — добавляем демо-настройки (позже в Фазе 1.10.2 будет
+  // полноценное подключение к element-library по выбранной модели).
+  const controls = document.getElementById('tcc-coord-controls');
+  if (!isMcb) {
+    const Ir_min = Math.round(breakerIn * 0.4);
+    const Ir_max = breakerIn;
+    const Isd_min = breakerIn * 1.5;
+    const Isd_max = breakerIn * 10;
+    controls.innerHTML = `
+      <div style="padding:10px;background:#f6f8fa;border-radius:5px;font-size:12px">
+        <div style="font-weight:600;margin-bottom:6px">Настройки расцепителя (LSI)</div>
+        <div style="display:grid;grid-template-columns:140px 1fr 80px;gap:8px;align-items:center">
+          <label>Ir (долгий), A</label>
+          <input type="range" id="tcc-Ir" min="${Ir_min}" max="${Ir_max}" step="1" value="${Math.round(breakerIn * 0.9)}">
+          <span id="tcc-Ir-val" style="font-family:monospace">${Math.round(breakerIn * 0.9)}</span>
+
+          <label>Isd (короткий), A</label>
+          <input type="range" id="tcc-Isd" min="${Isd_min}" max="${Isd_max}" step="${Math.round(breakerIn * 0.5)}" value="${Math.round(breakerIn * 6)}">
+          <span id="tcc-Isd-val" style="font-family:monospace">${Math.round(breakerIn * 6)}</span>
+
+          <label>tsd (задержка), с</label>
+          <input type="range" id="tcc-tsd" min="0.05" max="0.5" step="0.05" value="0.1">
+          <span id="tcc-tsd-val" style="font-family:monospace">0.10</span>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:6px">
+          Ir — уставка теплового (долгий расцепитель).
+          Isd — магнитный короткий (селективность).
+          tsd — задержка Isd для координации с нижестоящими.
+        </div>
+      </div>
+    `;
+
+    // Live-обновление графика при изменении настроек
+    const applySettings = () => {
+      const Ir = Number(document.getElementById('tcc-Ir').value);
+      const Isd = Number(document.getElementById('tcc-Isd').value);
+      const tsd = Number(document.getElementById('tcc-tsd').value);
+      document.getElementById('tcc-Ir-val').textContent = Ir;
+      document.getElementById('tcc-Isd-val').textContent = Isd;
+      document.getElementById('tcc-tsd-val').textContent = tsd.toFixed(2);
+      // Пересчитываем эффективный In = Ir (уставка теплового сдвигает кривую)
+      // для демонстрации используем упрощённую модель — реальный расчёт с
+      // аналитическим расцепителем требует shared/tcc-curves extension (Фаза 1.10.2)
+      handle.update({
+        items: [
+          { ...baseItems[0], In: Ir, label: `MCCB LSI · Ir=${Ir}A · Isd=${Isd}A · tsd=${tsd.toFixed(2)}с` },
+          baseItems[1],
+        ],
+      });
+    };
+    controls.querySelectorAll('input[type=range]').forEach(r => r.addEventListener('input', applySettings));
+  } else {
+    controls.innerHTML = `<div class="muted" style="font-size:11px;padding:6px 10px;background:#fff4e5;border-radius:4px">
+      У MCB (${breakerCurveFull}) характеристика фиксированная (термомагнитный расцепитель, настройки не регулируются).
+      Для подбора с регулировкой используйте MCCB с электронным расцепителем.
+    </div>`;
+  }
 }
 
 // ============ Экспорт отчёта ============
