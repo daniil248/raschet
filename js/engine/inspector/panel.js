@@ -60,14 +60,17 @@ export function openPanelParamsModal(n) {
           const newId = e.target.value;
           snapshot('mvSwitchgear:' + n.id);
           n.mvSwitchgearId = newId || null;
-          // Применяем параметры выбранной модели
+          // Применяем параметры выбранной модели + помечаем узел как MV
           if (newId) {
+            n.isMv = true;  // RM6/FafeRing/ЩО-70 — это MV → переключаем тип
             const sel = lib.getElement(newId);
             if (sel) {
               const kp = sel.kindProps || {};
               if (kp.In_A) n.capacityA = kp.In_A;
               if (kp.IP) n.ipRating = kp.IP;
               if (Array.isArray(kp.cells)) {
+                // Копируем ячейки в узел (для BOM + UI)
+                n.mvCells = kp.cells.map(c => ({ ...c }));
                 const infeeds = kp.cells.filter(c => c.type === 'infeed' || c.type === 'busCoupler').length;
                 const feeders = kp.cells.filter(c => c.type === 'feeder' || c.type === 'transformer-protect').length;
                 if (infeeds > 0) n.inputs = Math.max(1, infeeds);
@@ -77,8 +80,14 @@ export function openPanelParamsModal(n) {
                 }
               }
             }
+          } else {
+            // Снимаем пометку MV при сбросе выбора
+            n.isMv = false;
+            n.mvCells = null;
           }
           render(); notifyChange(); renderInspector();
+          // Переоткрываем модалку чтобы обновить заголовок и скрыть LV-блок
+          openPanelParamsModal(n);
         });
       } catch (e) { console.warn('[panel-inspector] mv lib', e); }
     })();

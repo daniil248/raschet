@@ -63,7 +63,7 @@ const PRESETS = [
   // -------- Щиты --------
   {
     id: 'pnl-vru-2',
-    category: 'НКУ (щиты LV)',
+    category: 'НКУ',
     title: 'ВРУ с АВР · 2 ввода',
     description: 'Вводно-распределительное устройство с АВР на 2 ввода',
     type: 'panel',
@@ -71,7 +71,7 @@ const PRESETS = [
   },
   {
     id: 'pnl-vru-3',
-    category: 'НКУ (щиты LV)',
+    category: 'НКУ',
     title: 'ВРУ с АВР · 3 ввода (ТП+ТП+ДГУ)',
     description: 'ВРУ на два городских ввода и один резервный от ДГУ',
     type: 'panel',
@@ -79,7 +79,7 @@ const PRESETS = [
   },
   {
     id: 'pnl-ss',
-    category: 'НКУ (щиты LV)',
+    category: 'НКУ',
     title: 'ЩС · силовой',
     description: 'Стандартный силовой щит',
     type: 'panel',
@@ -87,7 +87,7 @@ const PRESETS = [
   },
   {
     id: 'pnl-so',
-    category: 'НКУ (щиты LV)',
+    category: 'НКУ',
     title: 'ЩО · освещения',
     description: 'Щит освещения',
     type: 'panel',
@@ -95,7 +95,7 @@ const PRESETS = [
   },
   {
     id: 'pnl-mcb',
-    category: 'НКУ (щиты LV)',
+    category: 'НКУ',
     title: 'ЩК · квартирный',
     description: 'Квартирный щит на 6 автоматов',
     type: 'panel',

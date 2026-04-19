@@ -277,6 +277,33 @@ const CELL_TYPES = [
 ];
 const BREAKER_TYPES = ['VCB', 'SF6', 'fuse-switch', 'switch', 'isolator', 'earthing-switch', 'none'];
 
+// Функции RM6 (Schneider RM6 / FafeRing и аналоги). По документации RM6:
+//   I  — выключатель нагрузки 630 А
+//   B  — выключатель нагрузки 630 А + заземлитель
+//   D  — выключатель нагрузки 200 А (для защиты ТП)
+//   Q  — выключатель нагрузки + предохранители (защита ТП)
+//   O  — кабельное присоединение (без аппарата)
+//   Ic — секционный выключатель нагрузки
+//   Bc — секционный выключатель 630 А
+//   Mt — измерение (ТН на стороне СН)
+const RM6_FUNCTIONS = [
+  { code: 'I',  cellType: 'infeed',               In_A: 630, breakerType: 'switch',       label: 'I — Ввод с выключателем нагрузки 630 А' },
+  { code: 'B',  cellType: 'infeed',               In_A: 630, breakerType: 'switch',       label: 'B — Ввод + заземлитель (з/р), 630 А' },
+  { code: 'D',  cellType: 'transformer-protect',  In_A: 200, breakerType: 'switch',       label: 'D — Защита ТП: выключатель 200 А' },
+  { code: 'Q',  cellType: 'transformer-protect',  In_A: 200, breakerType: 'fuse-switch',  label: 'Q — Защита ТП: выключатель + предохранители' },
+  { code: 'O',  cellType: 'feeder',               In_A: 630, breakerType: 'none',         label: 'O — Кабельное присоединение (без аппарата)' },
+  { code: 'Ic', cellType: 'busCoupler',           In_A: 630, breakerType: 'switch',       label: 'Ic — Секционный выключатель нагрузки' },
+  { code: 'Bc', cellType: 'busCoupler',           In_A: 630, breakerType: 'switch',       label: 'Bc — Секционный выключатель 630 А' },
+  { code: 'Mt', cellType: 'measurement',          In_A: 100, breakerType: 'none',         label: 'Mt — Измерение (ТН на стороне СН)' },
+];
+
+function _isRm6Family(sel) {
+  if (!sel) return false;
+  const mfg = (sel.el.manufacturer || '').toLowerCase();
+  const mvType = sel.kp.mvType;
+  return mvType === 'ringmain' && (mfg.includes('schneider') || mfg.includes('rm6') || mfg.includes('fafering') || mfg.includes('fafe'));
+}
+
 function _goStep3() {
   // Копируем ячейки выбранной модели (с возможностью редактирования)
   const sel = wizState.selected;
@@ -295,9 +322,39 @@ function _renderCellsEditor() {
     `<option value="${b}"${b === cur ? ' selected' : ''}>${esc(b)}</option>`).join('');
   const inOpts = [100, 200, 400, 630, 800, 1000, 1250, 1600, 2000];
 
-  const html = [`<table class="mv-cells-table">
+  const html = [];
+
+  // RM6-builder — быстрый выбор функций по кодам I/B/D/Q/O/Ic/Bc/Mt
+  // (только для ringmain-моделей семейства RM6 / FafeRing)
+  if (_isRm6Family(wizState.selected)) {
+    const count = wizState.cells.length || 3;
+    html.push(`<div style="background:#fff4e5;padding:10px;border-radius:5px;margin-bottom:10px;font-size:12px">
+      <div style="font-weight:600;margin-bottom:6px;color:#c67300">⚡ RM6-функции: быстрая сборка по кодам</div>
+      <div class="muted" style="font-size:11px;margin-bottom:6px">
+        Выберите функцию для каждой ячейки. Коды по документации Schneider RM6:
+        <b>I</b> — ввод выключатель нагрузки 630 А · <b>B</b> — ввод + заземлитель ·
+        <b>D</b> — защита ТП 200 А · <b>Q</b> — защита ТП с предохранителями ·
+        <b>O</b> — кабельное присоединение · <b>Ic/Bc</b> — секционная · <b>Mt</b> — измерение
+      </div>
+      <label style="display:inline-flex;gap:6px;align-items:center;margin-right:12px">
+        Число ячеек:
+        <select id="rm6-count" style="padding:2px 5px">
+          ${[2, 3, 4, 5].map(n => `<option value="${n}"${n === count ? ' selected' : ''}>${n}</option>`).join('')}
+        </select>
+      </label>
+      <div id="rm6-fn-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+      <div style="margin-top:8px;display:flex;gap:6px">
+        <button type="button" id="rm6-preset-iii" class="btn-sm">Шаблон III (2I+D)</button>
+        <button type="button" id="rm6-preset-iidi" class="btn-sm">IIDI (2I+2D)</button>
+        <button type="button" id="rm6-preset-idi" class="btn-sm">IDI (I+D+I)</button>
+        <button type="button" id="rm6-preset-iiv" class="btn-sm">IIV (2I+VCB)</button>
+      </div>
+    </div>`);
+  }
+
+  html.push(`<table class="mv-cells-table">
     <thead><tr><th>#</th><th>Тип</th><th>In, А</th><th>Аппарат</th><th>Назначение</th><th class="actions"></th></tr></thead>
-    <tbody>`];
+    <tbody>`);
   wizState.cells.forEach((c, i) => {
     const inSelect = inOpts.map(n => `<option value="${n}"${Number(c.In_A || c.In) === n ? ' selected' : ''}>${n}</option>`).join('');
     html.push(`
@@ -329,6 +386,68 @@ function _renderCellsEditor() {
     wizState.cells.push({ type: 'feeder', In_A: 630, breakerType: 'VCB', functionDesc: '' });
     _renderCellsEditor();
   };
+
+  // RM6-builder wiring
+  if (_isRm6Family(wizState.selected)) {
+    _renderRm6FunctionsRow();
+    document.getElementById('rm6-count').onchange = (e) => {
+      const newCount = Number(e.target.value);
+      while (wizState.cells.length < newCount) {
+        wizState.cells.push({ type: 'feeder', In_A: 630, breakerType: 'switch', functionDesc: '' });
+      }
+      if (wizState.cells.length > newCount) wizState.cells.length = newCount;
+      _renderCellsEditor();
+    };
+    const applyPreset = (codes) => {
+      wizState.cells = codes.map(code => {
+        if (code === 'VCB') {
+          return { type: 'feeder', In_A: 630, breakerType: 'VCB', functionDesc: 'Вакуумный выключатель' };
+        }
+        const fn = RM6_FUNCTIONS.find(f => f.code === code);
+        if (!fn) return { type: 'feeder', In_A: 630, breakerType: 'switch', functionDesc: '' };
+        return { type: fn.cellType, In_A: fn.In_A, breakerType: fn.breakerType, functionDesc: fn.label };
+      });
+      _renderCellsEditor();
+    };
+    document.getElementById('rm6-preset-iii').onclick = () => applyPreset(['I', 'I', 'D']);
+    document.getElementById('rm6-preset-iidi').onclick = () => applyPreset(['I', 'I', 'D', 'D']);
+    document.getElementById('rm6-preset-idi').onclick = () => applyPreset(['I', 'D', 'I']);
+    document.getElementById('rm6-preset-iiv').onclick = () => applyPreset(['I', 'I', 'VCB']);
+  }
+}
+
+// Вспомогательная функция: рендерит ряд dropdown'ов функций RM6
+// для каждой ячейки (I/B/D/Q/O/Ic/Bc/Mt).
+function _renderRm6FunctionsRow() {
+  const row = document.getElementById('rm6-fn-row');
+  if (!row) return;
+  const html = [];
+  wizState.cells.forEach((c, i) => {
+    // Определяем текущий код по (type + breakerType)
+    const match = RM6_FUNCTIONS.find(fn =>
+      fn.cellType === c.type && fn.breakerType === c.breakerType && Math.abs((fn.In_A || 0) - (c.In_A || 0)) < 10
+    );
+    const curCode = match?.code || '';
+    const opts = RM6_FUNCTIONS.map(fn =>
+      `<option value="${fn.code}"${fn.code === curCode ? ' selected' : ''}>${fn.code}</option>`).join('');
+    html.push(`
+      <div style="display:flex;flex-direction:column;align-items:center;padding:4px 6px;background:#fff;border:1px solid #f0cea0;border-radius:4px">
+        <span style="font-size:10px;color:#888">Яч.${i + 1}</span>
+        <select class="rm6-fn" data-idx="${i}" style="padding:2px 4px;font-size:12px;font-weight:600">${opts}</select>
+      </div>`);
+  });
+  row.innerHTML = html.join('');
+  row.querySelectorAll('.rm6-fn').forEach(sel => {
+    sel.onchange = (e) => {
+      const i = Number(sel.dataset.idx);
+      const code = sel.value;
+      const fn = RM6_FUNCTIONS.find(f => f.code === code);
+      if (fn) {
+        wizState.cells[i] = { type: fn.cellType, In_A: fn.In_A, breakerType: fn.breakerType, functionDesc: fn.label };
+      }
+      _renderCellsEditor();
+    };
+  });
 }
 
 // Шаг 4: итог
