@@ -1642,7 +1642,16 @@ let _cableTableFilters = {
   breaker: null,
   // Phase 1.20.10: фильтр по типу/кривой (MCB_B/C/D/K/Z/MCCB/ACB/VCB/SF6/gG/aM)
   curve: '',
+  // Phase 1.20.18: фильтр по статусу (ok / warn / error / utility)
+  status: '',
 };
+// Phase 1.20.18: оценка статуса линии по её флагам
+function _ctConnStatus(c) {
+  if (c._utilityInfeed) return 'utility';
+  if (c._breakerAgainstCable || c._breakerUndersize) return 'error';
+  if (c._cableOverflow) return 'warn';
+  return 'ok';
+}
 let _cableTableSelected = new Set(); // ids выделенных строк для bulk-edit
 // Phase 1.20.7: сортировка таблицы. col = поле, dir = 'asc'|'desc'
 let _cableTableSort = { col: 'label', dir: 'asc' };
@@ -1918,6 +1927,7 @@ function renderCableTable() {
       const curveVal = String(c.breakerCurve || c._breakerCurveEff || '').toUpperCase();
       if (curveVal !== F.curve) return false;
     }
+    if (F.status && _ctConnStatus(c) !== F.status) return false;
     const L = Number(c.lengthM) || 0;
     if (F.lengthMin != null && L < F.lengthMin) return false;
     if (F.lengthMax != null && L > F.lengthMax) return false;
@@ -1962,6 +1972,11 @@ function renderCableTable() {
         return String(c.breakerCurve || c._breakerCurveEff || '').toUpperCase();
       case 'class':
         return c._isHV ? 2 : (c._isDC ? 1 : 0);
+      case 'status': {
+        // Сортируем так, чтобы error → warn → utility → ok (ошибки сверху при asc? нет — 0 сверху)
+        const st = _ctConnStatus(c);
+        return st === 'error' ? 0 : st === 'warn' ? 1 : st === 'utility' ? 2 : 3;
+      }
       default:
         return 0;
     }
@@ -2092,6 +2107,7 @@ function renderCableTable() {
           ${_ctSortHdr('curve', 'Тип', 'left', 'min-width:95px', 'Тип автомата / кривая')}
           ${_ctSortHdr('imax', 'Imax / Iдоп', 'right')}
           ${_ctSortHdr('class', 'Класс', 'center')}
+          ${_ctSortHdr('status', 'Статус', 'center', 'min-width:64px', 'OK / предупреждение / ошибка')}
         </tr>
         <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1;font-weight:400">
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
@@ -2142,6 +2158,15 @@ function renderCableTable() {
             <input type="number" class="ct-flt" data-flt="imaxMax" placeholder="до" value="${F.imaxMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
           </th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ct-flt" data-flt="status" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">все</option>
+              <option value="ok" ${F.status === 'ok' ? 'selected' : ''}>✓ OK</option>
+              <option value="warn" ${F.status === 'warn' ? 'selected' : ''}>⚠ Warn</option>
+              <option value="error" ${F.status === 'error' ? 'selected' : ''}>✗ Ошибка</option>
+              <option value="utility" ${F.status === 'utility' ? 'selected' : ''}>🏙 Utility</option>
+            </select>
+          </th>
         </tr>
       </thead>
       <tbody>`];
@@ -2252,10 +2277,24 @@ function renderCableTable() {
           ${_ctFmt(c._maxA || 0)} / ${_ctFmt(c._cableIz || 0)} А
         </td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;color:${clsColor};font-weight:600">${cls}</td>
+        <td style="padding:5px 8px;text-align:center;font-size:11px">
+          ${(() => {
+            const st = _ctConnStatus(c);
+            if (st === 'utility') return '<span title="Ввод от городской сети — ТУ поставщика" style="display:inline-block;padding:1px 6px;background:#eef5ff;color:#1565c0;border:1px solid #bbdefb;border-radius:3px;font-size:10px">🏙 utility</span>';
+            if (st === 'error') {
+              const reasons = [];
+              if (c._breakerAgainstCable) reasons.push('In > Iz');
+              if (c._breakerUndersize) reasons.push('In < Iрасч');
+              return `<span title="${esc(reasons.join(', '))}" style="display:inline-block;padding:1px 6px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:3px;font-size:10px;font-weight:600">✗ ${esc(reasons.join(', '))}</span>`;
+            }
+            if (st === 'warn') return '<span title="Сечение превышено" style="display:inline-block;padding:1px 6px;background:#fff8e1;color:#e65100;border:1px solid #ffcc80;border-radius:3px;font-size:10px">⚠ warn</span>';
+            return '<span title="OK" style="display:inline-block;padding:1px 6px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:3px;font-size:10px">✓ OK</span>';
+          })()}
+        </td>
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="12" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
+    html.push('<tr><td colspan="13" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -2422,7 +2461,7 @@ function renderCableTable() {
       lengthMin: null, lengthMax: null,
       imaxMin: null, imaxMax: null,
       label: '', fromTo: '',
-      category: '', breaker: null, curve: '',
+      category: '', breaker: null, curve: '', status: '',
     };
     const s = document.getElementById('cable-table-search'); if (s) s.value = '';
     const cls = document.getElementById('cable-table-filter-class'); if (cls) cls.value = '';
