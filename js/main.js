@@ -2648,6 +2648,44 @@ function openProjectIssuesModal() {
   renderProjectIssues();
 }
 
+// Phase 1.20.21: счётчик проблем для бейджа на кнопке сайдбара.
+// Возвращает { errors, warns } без деталей — быстрый обход всех conns.
+function _countProjectIssues() {
+  const S = window.Raschet?._state;
+  if (!S) return { errors: 0, warns: 0 };
+  let err = 0, wrn = 0;
+  for (const c of S.conns.values()) {
+    if (!c._cableSize && !c._busbarNom) continue;
+    if (c._utilityInfeed) continue;
+    if (c._breakerAgainstCable) err++;
+    if (c._breakerUndersize) err++;
+    if (c._cableOverflow) wrn++;
+  }
+  for (const n of S.nodes.values()) {
+    if (n.isMv && n._mvIkOverload) err++;
+  }
+  // Селективность
+  try {
+    const sel = window.Raschet?.analyzeSelectivity?.();
+    if (sel && Array.isArray(sel.pairs)) wrn += sel.pairs.filter(p => !p.check?.selective).length;
+  } catch {}
+  return { errors: err, warns: wrn };
+}
+
+function _updateProjectIssuesBadge() {
+  const btn = document.getElementById('btn-open-project-issues');
+  if (!btn) return;
+  const { errors, warns } = _countProjectIssues();
+  // Формат: «⚠ Проверки проекта» [error-badge] [warn-badge]
+  let html = '⚠ Проверки проекта';
+  if (errors) html += ` <span style="background:#c62828;color:#fff;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;margin-left:4px">${errors}</span>`;
+  if (warns) html += ` <span style="background:#f57c00;color:#fff;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;margin-left:2px">${warns}</span>`;
+  btn.innerHTML = html;
+  btn.title = errors || warns
+    ? `Обнаружено: ${errors} ошибок, ${warns} предупреждений`
+    : 'Проверки проекта (проблем не найдено)';
+}
+
 function renderProjectIssues() {
   const mount = document.getElementById('project-issues-mount');
   if (!mount) return;
@@ -2747,6 +2785,9 @@ function renderProjectIssues() {
   const totalErrors = cableErrors.length + mvOverloads.length;
   const totalWarns = cableWarns.length + selPairs.length;
 
+  // Phase 1.20.21: кнопка «Исправить всё» — применяет все автофиксы
+  const fixableCount = cableErrors.filter(e => !!e.fix).length;
+
   const html = [];
   // Summary
   html.push(`
@@ -2763,6 +2804,12 @@ function renderProjectIssues() {
         <div style="font-size:11px;color:#666">Utility-линий (информ.)</div>
         <div style="font-size:22px;font-weight:600;color:#1565c0">${utilityLines.length}</div>
       </div>
+      ${fixableCount > 0 ? `
+      <div style="padding:10px 14px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;display:flex;flex-direction:column;justify-content:center;gap:4px">
+        <div style="font-size:11px;color:#666">Автоисправлений</div>
+        <button type="button" id="pi-fix-all" style="padding:6px 12px;background:#2e7d32;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600" title="Применить все рекомендованные фиксы">✓ Исправить всё (${fixableCount})</button>
+      </div>
+      ` : ''}
     </div>
   `);
 
@@ -2837,6 +2884,27 @@ function renderProjectIssues() {
   }
 
   mount.innerHTML = html.join('');
+
+  // Phase 1.20.21: «Исправить всё» — применяет все автофиксы одним snapshot'ом
+  const fixAllBtn = mount.querySelector('#pi-fix-all');
+  if (fixAllBtn) {
+    fixAllBtn.addEventListener('click', () => {
+      if (!confirm(`Применить ${fixableCount} автофиксов? Действие обратимо через Ctrl+Z.`)) return;
+      if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('issues:fix-all:' + fixableCount);
+      let applied = 0;
+      for (const it of cableErrors) {
+        if (!it.fix) continue;
+        const c = window.Raschet?._state?.conns?.get(it.id);
+        if (!c) continue;
+        if (it.fix.kind === 'setBreakerIn') c.manualBreakerIn = Number(it.fix.value);
+        else if (it.fix.kind === 'clearManualBreaker') delete c.manualBreakerIn;
+        applied++;
+      }
+      if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+      flash(`Применено автофиксов: ${applied}`);
+      renderProjectIssues();
+    });
+  }
 
   // Phase 1.20.20: кнопки «✓ Исправить» применяют рекомендованный фикс
   mount.querySelectorAll('.pi-fix').forEach(btn => {
@@ -3606,7 +3674,11 @@ async function init() {
 
   // Подписка на изменения редактора → автосохранение
   if (window.Raschet && typeof window.Raschet.onChange === 'function') {
-    window.Raschet.onChange(() => markDirty());
+    window.Raschet.onChange(() => {
+      markDirty();
+      // Phase 1.20.21: обновляем бейдж счётчика проблем
+      try { _updateProjectIssuesBadge(); } catch {}
+    });
   }
 
   // Предупреждение при закрытии вкладки с несохранёнными изменениями
@@ -3688,7 +3760,11 @@ async function init() {
   const btnSearch = document.getElementById('btn-open-search');
   if (btnSearch) btnSearch.addEventListener('click', openSearchPalette);
   const btnIssues = document.getElementById('btn-open-project-issues');
-  if (btnIssues) btnIssues.addEventListener('click', openProjectIssuesModal);
+  if (btnIssues) {
+    btnIssues.addEventListener('click', openProjectIssuesModal);
+    // Обновляем бейдж при загрузке (когда проект уже имеет state)
+    setTimeout(() => { try { _updateProjectIssuesBadge(); } catch {} }, 500);
+  }
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
   if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(els.reportBody.textContent); flash('Скопировано'); }
