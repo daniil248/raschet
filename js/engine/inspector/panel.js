@@ -44,12 +44,27 @@ export function openPanelParamsModal(n) {
     if (panelCatalog.length) {
       h.push('<h4 style="margin:14px 0 6px">Модель из справочника</h4>');
       h.push('<div id="pp-cat-picker-mount" style="margin-bottom:4px"></div>');
-      h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">При выборе модели автоматически заполняются I<sub>ном</sub>, число входов / выходов, IP, форма разделения. Справочник пополняется в <a href="panel-config/" target="_blank" style="color:#1976d2">«Конфигураторе щита»</a>.</div>`);
+      h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 4px">При выборе модели автоматически заполняются I<sub>ном</sub>, число входов / выходов, IP, форма разделения.</div>`);
     } else {
       h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
-        Справочник щитов пуст. Добавьте модели в <a href="panel-config/" target="_blank" style="color:#1976d2">«Конфигураторе щита»</a>, чтобы выбирать их здесь одним кликом.
+        Справочник щитов пуст. Добавьте модели в «Конфигураторе щита» (кнопка ниже), чтобы выбирать их здесь одним кликом.
       </div>`);
     }
+    // Фаза 1.7: кнопка перехода в wizard-конфигуратор для проекта
+    const qp = new URLSearchParams();
+    qp.set('nodeId', n.id);
+    if (n.name) qp.set('name', n.name);
+    if (n.switchMode === 'avr') qp.set('kind', 'avr');
+    else if (n.type === 'panel') qp.set('kind', 'distribution');
+    if (n._loadKw) qp.set('loadKw', String(n._loadKw));
+    if (n.inputs) qp.set('inputs', String(n.inputs));
+    if (n.outputs) qp.set('outputs', String(n.outputs));
+    if (n.ipRating) qp.set('ip', n.ipRating);
+    h.push(`<div style="margin:4px 0 10px">
+      <a href="panel-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
+        ⚙ Сконфигурировать щит подробно (новая вкладка)
+      </a>
+    </div>`);
   } catch (e) { /* опционально */ }
 
   // Тип щита — всегда виден

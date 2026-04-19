@@ -182,6 +182,59 @@ window.addEventListener('storage', (ev) => {
 });
 _tryConsumePendingBatterySelection();
 
+// === Phase 1.7: приём конфигурации щита из panel-config/ ===
+const PENDING_PANEL_KEY = 'raschet.pendingPanelSelection.v1';
+function _tryConsumePendingPanelSelection() {
+  let raw;
+  try { raw = localStorage.getItem(PENDING_PANEL_KEY); } catch { return; }
+  if (!raw) return;
+  let payload;
+  try { payload = JSON.parse(raw); } catch { localStorage.removeItem(PENDING_PANEL_KEY); return; }
+  if (!payload || !payload.nodeId) { localStorage.removeItem(PENDING_PANEL_KEY); return; }
+  if (payload.selectedAt && (Date.now() - payload.selectedAt) > 5 * 60 * 1000) {
+    localStorage.removeItem(PENDING_PANEL_KEY);
+    return;
+  }
+  const node = state.nodes.get(payload.nodeId);
+  if (!node || node.type !== 'panel') {
+    localStorage.removeItem(PENDING_PANEL_KEY);
+    return;
+  }
+  try {
+    snapshot('panel-config:apply:' + node.id);
+    const cfg = payload.configuration || {};
+    if (cfg.panelCatalogId) node.panelCatalogId = cfg.panelCatalogId;
+    if (cfg.enclosureId) node.enclosureId = cfg.enclosureId;
+    if (cfg.name) node.name = cfg.name;
+    if (cfg.panelKind) {
+      if (cfg.panelKind === 'avr') node.switchMode = 'avr';
+    }
+    if (cfg.inputs != null) node.inputs = cfg.inputs;
+    if (cfg.outputs != null) node.outputs = cfg.outputs;
+    if (cfg.ipRating) node.ipRating = cfg.ipRating;
+    if (cfg.form) node.form = cfg.form;
+    if (cfg.composition) node.composition = cfg.composition;
+    if (cfg.breakers) node.panelBreakers = cfg.breakers;
+    // Инициализация priorities если нужно
+    if (cfg.inputs != null) {
+      if (!Array.isArray(node.priorities)) node.priorities = [];
+      while (node.priorities.length < cfg.inputs) node.priorities.push(node.priorities.length + 1);
+      node.priorities.length = cfg.inputs;
+    }
+    render(); renderInspector(); notifyChange();
+    console.info('[panel-config] applied', cfg, 'to', node.id);
+  } catch (e) {
+    console.warn('[panel-config] apply failed', e);
+  } finally {
+    localStorage.removeItem(PENDING_PANEL_KEY);
+  }
+}
+window.addEventListener('focus', _tryConsumePendingPanelSelection);
+window.addEventListener('storage', (ev) => {
+  if (ev.key === PENDING_PANEL_KEY && ev.newValue) _tryConsumePendingPanelSelection();
+});
+_tryConsumePendingPanelSelection();
+
 // === Инициализация DOM ===
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница

@@ -18,24 +18,124 @@
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
+    import { mountFooter } from '../shared/app-footer.js';
     mountHeader({ title: 'Конфигуратор щита', home: '../hub.html' });
     if (window.Auth && typeof window.Auth.init === 'function') {
       window.Auth.init().catch(e => console.warn('[panel-config] auth init failed', e));
     }
+    window.addEventListener('DOMContentLoaded', () => mountFooter());
   </script>
 
   <main>
     <div class="page-intro">
       <h2>Конфигуратор щита</h2>
       <p class="muted">
-        Справочник типовых распределительных щитов (серии ABB ArTu,
-        Schneider Prisma, KEAZ OptiBox, ИЭК SMART и т.п.). Данные
-        хранятся per-user в localStorage и доступны в инспекторе щита
-        главной схемы через общий <code>shared/panel-picker.js</code>.
+        Справочник типовых распределительных щитов (оболочки / корпуса) + конфигуратор на проект.
+        Данные хранятся per-user в localStorage и доступны в инспекторе щита главной схемы.
       </p>
     </div>
 
-    <section class="panel">
+    <!-- Wizard конфигуратора (Фаза 1.7): появляется когда ?nodeId= в URL -->
+    <section id="pc-wizard" class="panel" style="display:none;margin-bottom:16px;border:2px solid #1976d2">
+      <div class="panel-head" style="background:#f0f4ff">
+        <h3>🧙 Конфигуратор щита для проекта</h3>
+        <div id="pc-wiz-step-indicator" class="muted" style="font-size:12px"></div>
+      </div>
+
+      <!-- Шаг 1: Требования -->
+      <div id="pc-wiz-step-1" class="wiz-step">
+        <h4>Шаг 1. Требования из проекта</h4>
+        <p class="muted" style="font-size:12px">Параметры переданы из Конструктора схем. Можно подправить.</p>
+        <div class="wiz-grid">
+          <label>Имя щита
+            <input type="text" id="pc-name" value="">
+          </label>
+          <label>Тип щита
+            <select id="pc-kind">
+              <option value="distribution">Распределительный (ЩС/ЩР)</option>
+              <option value="main">Вводной (ВРУ/ГРЩ)</option>
+              <option value="avr">С АВР</option>
+              <option value="group">Групповой (квартирный/этажный)</option>
+              <option value="motor">Двигательный (ЩМ)</option>
+            </select>
+          </label>
+          <label>Расч. нагрузка, kW
+            <input type="number" id="pc-loadKw" min="0" step="0.5" value="20">
+          </label>
+          <label>Напряжение
+            <select id="pc-voltage">
+              <option value="lv-400">400/230 В, 3-фазный</option>
+              <option value="lv-230">230 В, 1-фазный</option>
+              <option value="lv-690">690/400 В, 3-фазный</option>
+            </select>
+          </label>
+          <label>Вводов
+            <input type="number" id="pc-inputs" min="1" max="4" step="1" value="1">
+          </label>
+          <label>Отходящих линий
+            <input type="number" id="pc-outputs" min="1" max="100" step="1" value="6">
+          </label>
+          <label>Степень защиты (IP)
+            <select id="pc-ip">
+              <option value="IP20">IP20 — внутри помещений</option>
+              <option value="IP30">IP30 — сухие помещения</option>
+              <option value="IP31" selected>IP31 — жилые/офис</option>
+              <option value="IP54">IP54 — уличн./цех пыль+влага</option>
+              <option value="IP65">IP65 — наружная установка</option>
+            </select>
+          </label>
+          <label>Форма разделения (IEC 61439)
+            <select id="pc-form">
+              <option value="1">Form 1 — без разделения</option>
+              <option value="2" selected>Form 2 — шины изолированы</option>
+              <option value="3">Form 3 — функц. блоки разделены</option>
+              <option value="4">Form 4 — полное разделение</option>
+            </select>
+          </label>
+          <label>Мин. запас, %
+            <input type="number" id="pc-reserve" min="0" max="100" step="5" value="20">
+          </label>
+        </div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-cancel" class="btn-sm">Отмена</button>
+          <button id="pc-wiz-next-1" class="btn-sm btn-primary">Далее → Подбор оболочки</button>
+        </div>
+      </div>
+
+      <!-- Шаг 2: Оболочка -->
+      <div id="pc-wiz-step-2" class="wiz-step" style="display:none">
+        <h4>Шаг 2. Подбор оболочки (корпуса)</h4>
+        <p class="muted" style="font-size:12px">Оболочки из справочника, подходящие по току, IP и форме.</p>
+        <div id="pc-wiz-enclosure-list"></div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-2" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-next-2" class="btn-sm btn-primary" disabled>Далее → Состав</button>
+        </div>
+      </div>
+
+      <!-- Шаг 3: Состав автоматов -->
+      <div id="pc-wiz-step-3" class="wiz-step" style="display:none">
+        <h4>Шаг 3. Состав автоматов</h4>
+        <p class="muted" style="font-size:12px">Вводной автомат + N автоматов отходящих линий. Детальный подбор (настройки, селективность) — в Фазе 1.10 (справочник автоматов).</p>
+        <div id="pc-wiz-breakers"></div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-3" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-next-3" class="btn-sm btn-primary">Далее → Итог</button>
+        </div>
+      </div>
+
+      <!-- Шаг 4: Итог -->
+      <div id="pc-wiz-step-4" class="wiz-step" style="display:none">
+        <h4>Шаг 4. Итоговая конфигурация</h4>
+        <div id="pc-wiz-summary"></div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-4" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-apply" class="btn-sm btn-primary">✓ Применить к схеме</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="pc-catalog-panel">
       <div class="panel-head">
         <h3>Справочник щитов</h3>
         <div style="display:flex;gap:8px">

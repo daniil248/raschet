@@ -260,4 +260,388 @@ document.addEventListener('DOMContentLoaded', () => {
     flash('Справочник очищен');
   });
   render();
+
+  // Фаза 1.7: wizard конфигуратора при ?nodeId=
+  initPanelWizard();
 });
+
+// ====================== WIZARD (Фаза 1.7) ======================
+const pcWizState = {
+  nodeId: null,
+  step: 1,
+  requirements: {
+    name: 'ЩС',
+    kind: 'distribution',
+    loadKw: 20,
+    voltage: 'lv-400',
+    inputs: 1,
+    outputs: 6,
+    ip: 'IP31',
+    form: '2',
+    reserve: 20,
+  },
+  selectedEnclosure: null,
+  breakers: [], // { name, inA, curve, role }
+};
+
+// Расчёт тока по мощности и напряжению
+function _pcCalcCurrent(kW, voltage) {
+  const U = voltage === 'lv-230' ? 230 : (voltage === 'lv-690' ? 690 : 400);
+  const is1ph = voltage === 'lv-230';
+  const cosPhi = 0.9;
+  if (is1ph) return (kW * 1000) / (U * cosPhi);
+  return (kW * 1000) / (Math.sqrt(3) * U * cosPhi);
+}
+
+// Округлить ток до стандартного номинала автомата
+function _pcStandardBreakerIn(I) {
+  const std = [6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000];
+  for (const s of std) if (s >= I) return s;
+  return std[std.length - 1];
+}
+
+function _pcParseIp(ip) {
+  const m = /IP(\d)(\d)/.exec(String(ip || ''));
+  return m ? { solid: Number(m[1]), liquid: Number(m[2]) } : { solid: 2, liquid: 0 };
+}
+function _pcIpCovers(candidateIp, requiredIp) {
+  const c = _pcParseIp(candidateIp), r = _pcParseIp(requiredIp);
+  return c.solid >= r.solid && c.liquid >= r.liquid;
+}
+
+function initPanelWizard() {
+  const qp = new URLSearchParams(location.search);
+  const ctxNodeId = qp.get('nodeId');
+  if (!ctxNodeId) return;
+
+  pcWizState.nodeId = ctxNodeId;
+  const rq = pcWizState.requirements;
+  if (qp.get('name')) rq.name = qp.get('name');
+  if (qp.get('kind')) rq.kind = qp.get('kind');
+  if (qp.get('loadKw')) rq.loadKw = Number(qp.get('loadKw')) || rq.loadKw;
+  if (qp.get('voltage')) rq.voltage = qp.get('voltage');
+  if (qp.get('inputs')) rq.inputs = Number(qp.get('inputs')) || 1;
+  if (qp.get('outputs')) rq.outputs = Number(qp.get('outputs')) || 6;
+  if (qp.get('ip')) rq.ip = qp.get('ip');
+  if (qp.get('form')) rq.form = qp.get('form');
+
+  const wizard = document.getElementById('pc-wizard');
+  if (!wizard) return;
+  wizard.style.display = '';
+
+  // Скрываем нижний блок «Выбранная модель» (не нужен в wizard)
+  const selectedPanel = document.getElementById('selected-panel-details');
+  if (selectedPanel) selectedPanel.closest('.panel').style.display = 'none';
+  // Справочник сворачиваем в аккордеон (доступ из wizard, но не мешает)
+
+  _pcFillStep1();
+  _pcShowStep(1);
+
+  // Кнопки навигации
+  document.getElementById('pc-wiz-cancel').onclick = () => {
+    if (confirm('Отменить конфигурирование щита?')) { try { window.close(); } catch {} }
+  };
+  document.getElementById('pc-wiz-next-1').onclick = _pcGoStep2;
+  document.getElementById('pc-wiz-back-2').onclick = () => _pcShowStep(1);
+  document.getElementById('pc-wiz-next-2').onclick = _pcGoStep3;
+  document.getElementById('pc-wiz-back-3').onclick = () => _pcShowStep(2);
+  document.getElementById('pc-wiz-next-3').onclick = _pcGoStep4;
+  document.getElementById('pc-wiz-back-4').onclick = () => _pcShowStep(3);
+  document.getElementById('pc-wiz-apply').onclick = _pcApplyConfiguration;
+}
+
+function _pcFillStep1() {
+  const rq = pcWizState.requirements;
+  document.getElementById('pc-name').value = rq.name;
+  document.getElementById('pc-kind').value = rq.kind;
+  document.getElementById('pc-loadKw').value = rq.loadKw;
+  document.getElementById('pc-voltage').value = rq.voltage;
+  document.getElementById('pc-inputs').value = rq.inputs;
+  document.getElementById('pc-outputs').value = rq.outputs;
+  document.getElementById('pc-ip').value = rq.ip;
+  document.getElementById('pc-form').value = rq.form;
+  document.getElementById('pc-reserve').value = rq.reserve;
+}
+
+function _pcReadStep1() {
+  const rq = pcWizState.requirements;
+  rq.name = document.getElementById('pc-name').value || 'ЩС';
+  rq.kind = document.getElementById('pc-kind').value;
+  rq.loadKw = Number(document.getElementById('pc-loadKw').value) || 0;
+  rq.voltage = document.getElementById('pc-voltage').value;
+  rq.inputs = Math.max(1, Number(document.getElementById('pc-inputs').value) || 1);
+  rq.outputs = Math.max(1, Number(document.getElementById('pc-outputs').value) || 1);
+  rq.ip = document.getElementById('pc-ip').value;
+  rq.form = document.getElementById('pc-form').value;
+  rq.reserve = Number(document.getElementById('pc-reserve').value) || 0;
+}
+
+function _pcShowStep(n) {
+  [1, 2, 3, 4].forEach(i => {
+    const el = document.getElementById('pc-wiz-step-' + i);
+    if (el) el.style.display = (i === n) ? '' : 'none';
+  });
+  pcWizState.step = n;
+  const ind = document.getElementById('pc-wiz-step-indicator');
+  if (ind) ind.textContent = 'Шаг ' + n + ' из 4';
+}
+
+// ----- Шаг 2: подбор оболочки -----
+function _pcPickEnclosures() {
+  const rq = pcWizState.requirements;
+  const I_required = _pcCalcCurrent(rq.loadKw, rq.voltage) * (1 + rq.reserve / 100);
+  const inStd = _pcStandardBreakerIn(I_required);
+  const catalog = listPanels();
+  const out = [];
+  for (const p of catalog) {
+    const inNom = Number(p.inNominal) || Number(p.busbarA) || 0;
+    if (inNom < inStd) continue;
+    // IP проверка
+    if (!_pcIpCovers(p.ipRating, rq.ip)) continue;
+    // Форма (если задана у записи)
+    if (p.form && Number(p.form) < Number(rq.form)) continue;
+    // Утилизация
+    const utilization = I_required / inNom;
+    out.push({ panel: p, inNom, utilization, I_required, inStd });
+  }
+  // Сортировка: сначала по утилизации близкой к оптимальной (0.5-0.8), потом по цене
+  out.sort((a, b) => Math.abs(0.65 - b.utilization) - Math.abs(0.65 - a.utilization));
+  // Инвертируем: лучшее первым (меньшее значение — лучше, т.к. ближе к 0)
+  out.sort((a, b) => Math.abs(0.65 - a.utilization) - Math.abs(0.65 - b.utilization));
+  return { items: out, I_required, inStd };
+}
+
+function _pcGoStep2() {
+  _pcReadStep1();
+  const { items, I_required, inStd } = _pcPickEnclosures();
+  const list = document.getElementById('pc-wiz-enclosure-list');
+  if (!items.length) {
+    list.innerHTML = `
+      <div class="empty" style="padding:30px;text-align:center">
+        Подходящих оболочек не найдено (требуется In ≥ ${inStd} А, ${pcWizState.requirements.ip}, Form ${pcWizState.requirements.form}).<br>
+        Добавьте модели в справочник (ниже) или смягчите требования.<br>
+        Если вы хотите использовать «произвольную» оболочку — нажмите «Далее»,
+        щит будет создан с параметрами, введёнными вручную.
+      </div>
+      <div style="text-align:right;margin-top:10px">
+        <button class="btn-sm" id="pc-skip-enclosure">Продолжить без оболочки</button>
+      </div>`;
+    document.getElementById('pc-wiz-next-2').disabled = true;
+    document.getElementById('pc-skip-enclosure')?.addEventListener('click', () => {
+      pcWizState.selectedEnclosure = null;
+      document.getElementById('pc-wiz-next-2').disabled = false;
+      _pcGoStep3();
+    });
+    _pcShowStep(2);
+    return;
+  }
+  const html = [
+    `<p class="muted" style="font-size:12px">Требуемый ток: <b>${I_required.toFixed(0)} А</b>, подходящий номинал шин: <b>${inStd} А</b>. Оптимальная утилизация 50-80%.</p>`,
+    '<div class="enclosure-list">',
+  ];
+  items.forEach((it, idx) => {
+    const p = it.panel;
+    const isRec = idx === 0 ? ' recommended' : '';
+    const utilPct = (it.utilization * 100).toFixed(0);
+    const utilColor = it.utilization > 0.9 ? '#cf222e' : (it.utilization < 0.3 ? '#c67300' : '#2e7d32');
+    html.push(`
+      <div class="enclosure-item${isRec}" data-id="${esc(p.id)}" data-idx="${idx}">
+        <div class="enclosure-main">
+          <div class="enclosure-title">${esc(p.supplier || '')} · ${esc(p.series || '')} · ${esc(p.variant || p.id)}</div>
+          <div class="enclosure-meta">
+            In ${p.inNominal || '?'} А · шины ${p.busbarA || '?'} А · ${esc(p.ipRating || '?')} · Form ${esc(p.form || '?')} ·
+            ${p.width || '?'}×${p.height || '?'}×${p.depth || '?'} мм${p.material ? ' · ' + esc(p.material) : ''}
+          </div>
+        </div>
+        <div class="enclosure-calc" style="color:${utilColor}">Утилизация: ${utilPct}%</div>
+      </div>`);
+  });
+  html.push('</div>');
+  list.innerHTML = html.join('');
+  list.querySelectorAll('.enclosure-item').forEach(el => {
+    el.onclick = () => {
+      list.querySelectorAll('.enclosure-item').forEach(i => i.classList.remove('selected'));
+      el.classList.add('selected');
+      const idx = Number(el.dataset.idx);
+      pcWizState.selectedEnclosure = items[idx];
+      document.getElementById('pc-wiz-next-2').disabled = false;
+    };
+  });
+  // Авто-выбор лучшего
+  list.querySelector('.enclosure-item')?.click();
+  _pcShowStep(2);
+}
+
+// ----- Шаг 3: автоматы -----
+function _pcGenerateBreakers() {
+  const rq = pcWizState.requirements;
+  const I_total = _pcCalcCurrent(rq.loadKw, rq.voltage);
+  const I_in = I_total * (1 + rq.reserve / 100);
+  const inIn = _pcStandardBreakerIn(I_in);
+  // Средняя нагрузка на отходящую линию (с коэф. одновременности 0.7)
+  const I_per_out = (I_total * 0.7) / rq.outputs;
+  const inOut = _pcStandardBreakerIn(Math.max(I_per_out, 10));
+
+  const list = [];
+  // Вводные автоматы (по числу вводов)
+  for (let i = 0; i < rq.inputs; i++) {
+    list.push({
+      role: 'input',
+      name: rq.inputs > 1 ? `Вводной ${i + 1}` : 'Вводной',
+      inA: inIn,
+      curve: 'MCCB',
+      poles: rq.voltage === 'lv-230' ? 2 : 4,
+    });
+  }
+  // Если АВР — добавим переключатель
+  if (rq.kind === 'avr' && rq.inputs >= 2) {
+    list.push({ role: 'switch', name: 'АВР (переключатель)', inA: inIn, curve: '—', poles: 4 });
+  }
+  // Отходящие автоматы
+  for (let i = 0; i < rq.outputs; i++) {
+    list.push({
+      role: 'output',
+      name: `Отходящая линия ${i + 1}`,
+      inA: inOut,
+      curve: 'MCB_C',
+      poles: rq.voltage === 'lv-230' ? 1 : 3,
+    });
+  }
+  return list;
+}
+
+function _pcGoStep3() {
+  pcWizState.breakers = _pcGenerateBreakers();
+  const container = document.getElementById('pc-wiz-breakers');
+  const html = [
+    `<p class="muted" style="font-size:12px">Предварительный состав. Номиналы и типы можно подправить.</p>`,
+    '<table class="pc-breakers-table"><thead><tr><th>Роль</th><th>Назначение</th><th>In, А</th><th>Тип</th><th>Полюса</th></tr></thead><tbody>',
+  ];
+  pcWizState.breakers.forEach((b, idx) => {
+    const inOpts = [6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600]
+      .map(n => `<option value="${n}"${n === b.inA ? ' selected' : ''}>${n}</option>`).join('');
+    const curveOpts = ['MCB_B', 'MCB_C', 'MCB_D', 'MCCB', 'ACB']
+      .map(c => `<option value="${c}"${c === b.curve ? ' selected' : ''}>${c}</option>`).join('<option value="—"' + (b.curve === '—' ? ' selected' : '') + '>—</option>');
+    const polesOpts = [1, 2, 3, 4]
+      .map(n => `<option value="${n}"${n === b.poles ? ' selected' : ''}>${n}P</option>`).join('');
+    html.push(`
+      <tr data-idx="${idx}">
+        <td>${b.role === 'input' ? '🔌 Ввод' : b.role === 'switch' ? '↔ АВР' : '→ Отход.'}</td>
+        <td><input type="text" class="pc-br-name" value="${esc(b.name)}"></td>
+        <td><select class="pc-br-in">${inOpts}</select></td>
+        <td><select class="pc-br-curve">${curveOpts}</select></td>
+        <td><select class="pc-br-poles">${polesOpts}</select></td>
+      </tr>`);
+  });
+  html.push('</tbody></table>');
+  html.push(`<p class="muted" style="font-size:11px;margin-top:8px">⚠ Это упрощённый подбор. Полноценный (с селективностью, TCC, расцепителями) — в Фазе 1.10.</p>`);
+  container.innerHTML = html.join('');
+
+  // Слушатели изменений
+  container.querySelectorAll('tr[data-idx]').forEach(row => {
+    const idx = Number(row.dataset.idx);
+    row.querySelector('.pc-br-name').oninput = e => { pcWizState.breakers[idx].name = e.target.value; };
+    row.querySelector('.pc-br-in').onchange = e => { pcWizState.breakers[idx].inA = Number(e.target.value); };
+    row.querySelector('.pc-br-curve').onchange = e => { pcWizState.breakers[idx].curve = e.target.value; };
+    row.querySelector('.pc-br-poles').onchange = e => { pcWizState.breakers[idx].poles = Number(e.target.value); };
+  });
+  _pcShowStep(3);
+}
+
+// ----- Шаг 4: итог -----
+function _pcGoStep4() {
+  const rq = pcWizState.requirements;
+  const enc = pcWizState.selectedEnclosure;
+  const brs = pcWizState.breakers;
+  const I_total = _pcCalcCurrent(rq.loadKw, rq.voltage);
+
+  const html = [`
+    <div class="wiz-summary-box">
+      <h5>Требования</h5>
+      <table class="wiz-summary-table">
+        <tr><td>Имя щита</td><td>${esc(rq.name)}</td></tr>
+        <tr><td>Тип</td><td>${esc(rq.kind)}</td></tr>
+        <tr><td>Расчётная нагрузка</td><td>${rq.loadKw} kW → ${I_total.toFixed(0)} А</td></tr>
+        <tr><td>Напряжение</td><td>${esc(rq.voltage)}</td></tr>
+        <tr><td>Вводы / выходы</td><td>${rq.inputs} / ${rq.outputs}</td></tr>
+        <tr><td>IP / Form</td><td>${esc(rq.ip)} / Form ${esc(rq.form)}</td></tr>
+      </table>
+    </div>`];
+
+  if (enc) {
+    html.push(`
+      <div class="wiz-summary-box">
+        <h5>Оболочка</h5>
+        <table class="wiz-summary-table">
+          <tr><td>Модель</td><td>${esc(enc.panel.supplier || '')} ${esc(enc.panel.series || '')} ${esc(enc.panel.variant || '')}</td></tr>
+          <tr><td>In</td><td>${enc.panel.inNominal || '?'} А</td></tr>
+          <tr><td>Габариты</td><td>${enc.panel.width || '?'}×${enc.panel.height || '?'}×${enc.panel.depth || '?'} мм</td></tr>
+          <tr><td>Утилизация</td><td>${(enc.utilization * 100).toFixed(0)}%</td></tr>
+        </table>
+      </div>`);
+  } else {
+    html.push(`<div class="wiz-summary-box"><h5>Оболочка</h5><p class="muted" style="font-size:12px">Не выбрана (используются вручную заданные параметры)</p></div>`);
+  }
+
+  // Состав автоматов
+  html.push(`
+    <div class="wiz-summary-box">
+      <h5>Состав автоматов (${brs.length} шт.)</h5>
+      <table class="pc-breakers-table"><thead><tr><th>Роль</th><th>Название</th><th>In</th><th>Тип</th><th>P</th></tr></thead><tbody>`);
+  for (const b of brs) {
+    html.push(`<tr>
+      <td>${b.role === 'input' ? '🔌' : b.role === 'switch' ? '↔' : '→'}</td>
+      <td>${esc(b.name)}</td><td>${b.inA} А</td><td>${esc(b.curve)}</td><td>${b.poles}P</td>
+    </tr>`);
+  }
+  html.push('</tbody></table></div>');
+
+  document.getElementById('pc-wiz-summary').innerHTML = html.join('');
+  _pcShowStep(4);
+}
+
+function _pcApplyConfiguration() {
+  const rq = pcWizState.requirements;
+  const enc = pcWizState.selectedEnclosure;
+  const brs = pcWizState.breakers;
+
+  // Формируем composition для element-library / BOM
+  const composition = [];
+  if (enc) {
+    composition.push({ elementId: enc.panel.id, qty: 1, role: 'enclosure', label: 'Оболочка щита' });
+  }
+  for (const b of brs) {
+    composition.push({
+      elementId: null,  // для конкретных автоматов ещё нет справочника (Фаза 1.10)
+      inline: true,
+      qty: 1,
+      role: b.role === 'input' ? 'breaker-input' : (b.role === 'switch' ? 'switch-ats' : 'breaker-output'),
+      label: `${b.name} (${b.inA}A ${b.curve} ${b.poles}P)`,
+    });
+  }
+
+  const payload = {
+    nodeId: pcWizState.nodeId,
+    configuration: {
+      panelCatalogId: enc ? enc.panel.id : null,
+      enclosureId: enc ? enc.panel.id : null,
+      name: rq.name,
+      panelKind: rq.kind,
+      inputs: rq.inputs,
+      outputs: rq.outputs,
+      ipRating: rq.ip,
+      form: rq.form,
+      reservePct: rq.reserve,
+      breakers: brs,
+      composition,
+    },
+    selectedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem('raschet.pendingPanelSelection.v1', JSON.stringify(payload));
+    flash('Конфигурация передана. Возврат в Конструктор схем…', 'success');
+    setTimeout(() => { try { window.close(); } catch {} }, 1500);
+  } catch (e) {
+    flash('Не удалось передать конфигурацию: ' + (e.message || e), 'error');
+  }
+}
