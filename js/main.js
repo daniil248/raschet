@@ -2592,6 +2592,190 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
   });
 }
 
+// ================= Поиск / Ctrl+F (Phase 1.20.16) =================
+// Command-palette для быстрого перехода к узлу или линии.
+// Горячая клавиша: Ctrl+F.
+let _searchPaletteEl = null;
+
+function openSearchPalette() {
+  if (_searchPaletteEl) {
+    const inp = _searchPaletteEl.querySelector('input');
+    if (inp) { inp.focus(); inp.select(); }
+    return;
+  }
+  const backdrop = document.createElement('div');
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:9996;display:flex;align-items:flex-start;justify-content:center;padding-top:80px';
+  backdrop.innerHTML = `
+    <div style="background:#fff;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.3);width:min(620px,92vw);overflow:hidden;font-family:system-ui,sans-serif">
+      <div style="padding:8px 12px;border-bottom:1px solid #e1e4e8;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">🔍</span>
+        <input type="text" id="sp-input" placeholder="Найти узел или линию (по обозначению, имени, кабельной марке)…" style="flex:1;padding:6px 10px;font-size:13px;border:1px solid #d0d7de;border-radius:4px" autocomplete="off">
+        <span class="muted" style="font-size:10px">Esc — закрыть</span>
+      </div>
+      <div id="sp-results" style="max-height:min(50vh,400px);overflow-y:auto"></div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  _searchPaletteEl = backdrop;
+
+  const input = backdrop.querySelector('#sp-input');
+  const list = backdrop.querySelector('#sp-results');
+  const close = () => { if (_searchPaletteEl) { document.body.removeChild(_searchPaletteEl); _searchPaletteEl = null; } };
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  let selectedIdx = 0;
+  let currentHits = [];
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+  const render = () => {
+    const q = (input.value || '').trim().toLowerCase();
+    if (!q) {
+      list.innerHTML = '<div class="muted" style="padding:16px;text-align:center;font-size:12px">Начните вводить для поиска по обозначению, имени, марке кабеля…</div>';
+      currentHits = [];
+      return;
+    }
+    const S = window.Raschet?._state;
+    if (!S) { list.innerHTML = '<div class="muted" style="padding:16px">Состояние недоступно</div>'; return; }
+    const hits = [];
+
+    // Nodes
+    for (const n of S.nodes.values()) {
+      if (n.type === 'zone' || n.type === 'channel') continue;
+      let effTag = '';
+      try { effTag = _effectiveTag(n) || ''; } catch {}
+      const hay = [effTag, n.tag, n.name, n.type].filter(Boolean).join(' ').toLowerCase();
+      if (hay.includes(q)) {
+        hits.push({
+          kind: 'node',
+          id: n.id,
+          tag: effTag || n.tag || '',
+          name: n.name || '',
+          type: n.type,
+          icon: _spNodeIcon(n),
+        });
+      }
+      if (hits.length > 80) break;
+    }
+    // Connections
+    for (const c of S.conns.values()) {
+      const fromN = S.nodes.get(c.from?.nodeId);
+      const toN = S.nodes.get(c.to?.nodeId);
+      const fromTag = fromN ? (_effectiveTag(fromN) || fromN.tag || fromN.name || '') : '';
+      const toTag = toN ? (_effectiveTag(toN) || toN.tag || toN.name || '') : '';
+      const prefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
+      const label = c.lineLabel || `${prefix}-${fromTag}-${toTag}`;
+      const mark = c.cableMark || '';
+      const hay = [label, fromTag, toTag, mark].filter(Boolean).join(' ').toLowerCase();
+      if (hay.includes(q)) {
+        hits.push({
+          kind: 'conn',
+          id: c.id,
+          tag: label,
+          name: `${fromTag} → ${toTag}`,
+          type: 'line',
+          icon: '🔌',
+        });
+      }
+      if (hits.length > 120) break;
+    }
+    currentHits = hits.slice(0, 60);
+    if (!currentHits.length) {
+      list.innerHTML = '<div class="muted" style="padding:16px;text-align:center;font-size:12px">Ничего не найдено</div>';
+      return;
+    }
+    selectedIdx = Math.min(selectedIdx, currentHits.length - 1);
+    list.innerHTML = currentHits.map((h, i) => `
+      <div class="sp-row" data-idx="${i}" style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;${i === selectedIdx ? 'background:#eef5ff;' : ''}border-bottom:1px solid #f0f3f6">
+        <span style="font-size:16px;width:22px;text-align:center">${esc(h.icon)}</span>
+        <span style="flex:1;font-size:12px">
+          <b>${esc(h.tag)}</b>${h.name ? ` · <span class="muted">${esc(h.name)}</span>` : ''}
+        </span>
+        <span class="muted" style="font-size:10px;color:#888">${esc(h.type)}</span>
+      </div>
+    `).join('');
+    list.querySelectorAll('.sp-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const idx = Number(row.dataset.idx);
+        activate(currentHits[idx]);
+      });
+      row.addEventListener('mousemove', () => {
+        const idx = Number(row.dataset.idx);
+        if (idx !== selectedIdx) {
+          selectedIdx = idx;
+          list.querySelectorAll('.sp-row').forEach(r => r.style.background = '');
+          row.style.background = '#eef5ff';
+        }
+      });
+    });
+  };
+
+  const activate = (h) => {
+    if (!h) return;
+    if (h.kind === 'node') {
+      if (window.Raschet?._state) {
+        window.Raschet._state.selectedKind = 'node';
+        window.Raschet._state.selectedId = h.id;
+        if (typeof window.Raschet.rerender === 'function') window.Raschet.rerender();
+      }
+    } else if (h.kind === 'conn') {
+      if (typeof window.Raschet?.selectConnAndFocus === 'function') {
+        window.Raschet.selectConnAndFocus(h.id);
+      }
+    }
+    close();
+  };
+
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (currentHits[selectedIdx]) activate(currentHits[selectedIdx]);
+      return;
+    }
+    if (e.key === 'ArrowDown' && currentHits.length) {
+      e.preventDefault();
+      selectedIdx = (selectedIdx + 1) % currentHits.length;
+      render();
+      const sel = list.querySelector(`.sp-row[data-idx="${selectedIdx}"]`);
+      if (sel) sel.scrollIntoView({ block: 'nearest' });
+    }
+    if (e.key === 'ArrowUp' && currentHits.length) {
+      e.preventDefault();
+      selectedIdx = (selectedIdx - 1 + currentHits.length) % currentHits.length;
+      render();
+      const sel = list.querySelector(`.sp-row[data-idx="${selectedIdx}"]`);
+      if (sel) sel.scrollIntoView({ block: 'nearest' });
+    }
+  });
+  setTimeout(() => { input.focus(); render(); }, 10);
+}
+
+function _spNodeIcon(n) {
+  if (n.type === 'source') return n.sourceSubtype === 'utility' ? '🏙' : '⚡';
+  if (n.type === 'generator') return '🔋';
+  if (n.type === 'panel') return n.isMv ? '⚡' : '🗄';
+  if (n.type === 'ups') return '🔌';
+  if (n.type === 'consumer') return '💡';
+  if (n.type === 'transformer' || n.sourceSubtype === 'transformer') return '🔄';
+  return '▫';
+}
+
+// Ctrl+F глобальный hotkey
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
+    // Не перехватываем если фокус в input/textarea (нативный поиск по странице и т.п.)
+    const tgt = e.target;
+    if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) {
+      // Разрешаем нативный Ctrl+F в полях ввода
+      if (!_searchPaletteEl) return;
+    }
+    e.preventDefault();
+    openSearchPalette();
+  }
+});
+
 // ================= Таблица потребителей (Phase 1.20.14) =================
 let _consumersTableFilters = { search: '', phase: '', category: '' };
 let _consumersTableSelected = new Set();
@@ -3206,6 +3390,8 @@ async function init() {
   if (btnCableTable) btnCableTable.addEventListener('click', openCableTableModal);
   const btnConsumersTable = document.getElementById('btn-open-consumers-table');
   if (btnConsumersTable) btnConsumersTable.addEventListener('click', openConsumersTableModal);
+  const btnSearch = document.getElementById('btn-open-search');
+  if (btnSearch) btnSearch.addEventListener('click', openSearchPalette);
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
   if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(els.reportBody.textContent); flash('Скопировано'); }

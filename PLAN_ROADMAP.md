@@ -560,6 +560,12 @@
   Вспомогательный `_ctNodeTag(n)` теперь вызывает `effectiveTag` из
   engine/zones.js и применяется в labels, filter-search, sort, CSV и
   fromLabel/toLabel строки.
+- **1.20.16 (v0.56.18)** — Command-palette поиска по проекту (Ctrl+F или
+  кнопка «🔍 Найти» в сайдбаре). Находит узлы (по effectiveTag / tag /
+  name / type) и линии (по lineLabel / from-to / cableMark), показывает
+  с иконкой типа. ↑/↓ для навигации, Enter/клик для перехода (через
+  selectConnAndFocus — с учётом autoCenterOnSelect). Esc / клик вне
+  закрывают.
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 
