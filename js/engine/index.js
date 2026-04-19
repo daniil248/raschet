@@ -78,6 +78,10 @@ onGlobalChange((next) => {
 import { initCatalogBridge } from '../../shared/catalog-bridge.js';
 initCatalogBridge();
 
+// === Phase 1.3: BOM-генератор ===
+// Собирает спецификацию проекта из state + element-library (composition).
+import { collectBomFromProject, bomToMarkdown } from '../../shared/bom.js';
+
 // === Инициализация DOM ===
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница
@@ -303,6 +307,9 @@ window.Raschet = {
   },
   importLoadsTable,
   get3PhaseBalance,
+  // Фаза 1.3: BOM
+  getBom() { return collectBomFromProject(state); },
+  getBomMarkdown() { return bomToMarkdown(collectBomFromProject(state).aggregated); },
   getGlobal() { return { ...GLOBAL }; },
   getConsumerCatalog() {
     return [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];

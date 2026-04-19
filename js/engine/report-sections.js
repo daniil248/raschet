@@ -20,6 +20,7 @@ import { cableVoltageClass, nodeVoltage } from './electrical.js';
 import { fmt } from './utils.js';
 import { get3PhaseBalance, generateReport } from './report.js';
 import * as B from '../../shared/report/blocks.js';
+import { collectBomFromProject, groupBomByKind } from '../../shared/bom.js';
 
 // ——— общие хелперы ———
 function fullTag(n) { if (!n) return ''; return effectiveTag(n) || n.tag || ''; }
@@ -805,6 +806,66 @@ function sectionChecks() {
   return { text: text.join('\n'), blocks };
 }
 
+// 9b. СПЕЦИФИКАЦИЯ (BOM) — Фаза 1.3
+// Собирает состав оборудования через element-library composition.
+// Для узлов с node.elementId — разворачивает composition рекурсивно
+// (phantom-элементы тоже попадают). Узлы без elementId — одной строкой
+// по типу (ИБП, щит, трансформатор...).
+function sectionBom() {
+  const { aggregated } = collectBomFromProject(state);
+  const groups = groupBomByKind(aggregated);
+  const KIND_LABELS = {
+    panel: 'Распределительные щиты',
+    ups: 'ИБП',
+    battery: 'Аккумуляторные батареи',
+    transformer: 'Трансформаторы',
+    breaker: 'Автоматические выключатели',
+    enclosure: 'Корпуса щитов',
+    climate: 'Климатическое оборудование',
+    'consumer-type': 'Потребители',
+    'cable-type': 'Типы кабелей',
+    channel: 'Кабельные трассы',
+    custom: 'Прочее',
+    other: 'Прочее',
+    source: 'Источники питания',
+    generator: 'Генераторы',
+    consumer: 'Потребители',
+  };
+  const text = [
+    'СПЕЦИФИКАЦИЯ ОБОРУДОВАНИЯ (BOM)',
+    '='.repeat(78),
+    ...metaTextLines(),
+    '',
+  ];
+  const blocks = [
+    B.h1('Спецификация оборудования'),
+    ...metaBlocks(),
+  ];
+  if (!aggregated.length) {
+    text.push('Спецификация пуста (нет оборудования в проекте).');
+    blocks.push(B.paragraph('Спецификация пуста — в проекте нет оборудования.'));
+    return { text: text.join('\n'), blocks };
+  }
+  // Сводная таблица: kind, label, qty
+  const rows = [['Группа', 'Наименование', 'Кол-во']];
+  for (const [kind, items] of Object.entries(groups)) {
+    rows.push([KIND_LABELS[kind] || kind, '', '']);
+    for (const it of items) {
+      const label = (it.phantom ? '* ' : '') + (it.label || it.elementId || '—') + (it.role ? ` (${it.role})` : '');
+      rows.push(['  ', label, String(it.qty)]);
+    }
+  }
+  // Текстовое представление
+  for (const r of rows) text.push(r.map(c => String(c).padEnd(30)).join(' '));
+  text.push('');
+  text.push('* — phantom-элемент (скрыт в UI, учтён в BOM)');
+  // PDF/DOCX блоки
+  blocks.push(B.h2('Сводная ведомость'));
+  blocks.push(B.table(rows[0], rows.slice(1)));
+  blocks.push(B.paragraph('* — phantom-элемент (скрыт в UI-схеме, учтён в спецификации как компонент составного оборудования).'));
+  return { text: text.join('\n'), blocks };
+}
+
 // 10. ПОЛНЫЙ ОТЧЁТ
 function sectionFull() {
   // Полный отчёт: объединяет все предыдущие секции. Текст собираем через
@@ -930,6 +991,14 @@ export function getReportSections() {
       defaultTemplateId: 'builtin-bom-landscape',
       tags: ['ведомость', 'таблица', 'кабель'],
       ...sectionChannels(),
+    },
+    {
+      id: 'bom',
+      title: 'Спецификация оборудования (BOM)',
+      description: 'Состав оборудования проекта с агрегацией по типам. Разворачивается через element-library composition (включая phantom-элементы модульных конфигураций).',
+      defaultTemplateId: 'builtin-bom-landscape',
+      tags: ['ведомость', 'таблица', 'спецификация', 'bom'],
+      ...sectionBom(),
     },
     {
       id: 'checks',

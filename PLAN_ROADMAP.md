@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** Фаза 0 завершена (v0.41.0). Фаза 1.1 + 1.2.0-1.2.1 — v0.42.2. UX-правки (категории потребителей, убран connectionKind select с электр. схемы) — v0.42.3. В работе: Фаза 1.3 (Phantom + BOM).
+> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1.1 + 1.2.0-1.2.1 ✅ (v0.42.2). UX ✅ (v0.42.3). Фаза 1.3 (Phantom + BOM) ✅ (v0.43.0). В работе: Фаза 1.4 (ups-config integration через listElements).
 > **Цель:** превратить набор специализированных калькуляторов в единую платформу проектирования электрических (и позже — механических) схем с общей библиотекой элементов, мульти-пространственными видами, 3D, правами пользователей и расширяемыми БД-адаптерами.
 
 ---
@@ -134,17 +134,26 @@
   - Единый `parseXlsx(buffer, {kind})` → возвращает массив `Element[]`
   - Унифицированные schemas для 5+ kind'ов
 
-#### Подфаза 1.3 — Phantom элементы и BOM (1 неделя)
+#### Подфаза 1.3 — Phantom элементы и BOM (1 неделя) ✅
 
-- [ ] **1.3.1** `element.composition: [{elementId, qty, phantom: bool}]`:
-  - При добавлении фрейма ИБП — автоматически прописываются phantom модули в BOM
-  - Рекурсивное разворачивание через `expandComposition(element)`
+- [x] **1.3.1** `element.composition: [{elementId, qty, phantom, role}]`:
+  - Заложено в `shared/element-library.js` (Element.composition)
+  - `expandComposition(element, multiplier, depth, seen, path)` в `shared/bom.js` — рекурсивно, с защитой от циклов (per-branch seen Set)
+  - Phantom-признак переносится с ref'а в развёрнутый item (composition-ref может помечать phantom независимо от самого элемента)
 
-- [ ] **1.3.2** BOM-генератор `shared/bom.js`:
-  - Сбор всех элементов проекта + их composition → дерево
-  - Агрегация по SKU для спецификации
+- [x] **1.3.2** BOM-генератор `shared/bom.js`:
+  - `bomForNode(node)`: 3 стратегии — (1) node.elementId → library, (2) node.composition inline, (3) placeholder по node.type
+  - `collectBomFromProject(state)`: обход `state.nodes`, агрегация
+  - `aggregateBom(items)`: группировка по `(elementId, role)` или `(label, kind)` для без-id, суммирование qty
+  - `groupBomByKind(agg)`: под-группировка для отчёта
+  - `bomToMarkdown(agg)`: markdown-таблица (используется в будущем для быстрого превью)
+  - Экспорт в `window.Raschet.getBom()` + `getBomMarkdown()` для консоли/внешних консьюмеров
 
-- [ ] **1.3.3** Интеграция с отчётами (`shared/report/` → новый блок `bom-table`)
+- [x] **1.3.3** Интеграция с отчётами:
+  - `js/engine/report-sections.js`: новая секция `sectionBom()`, зарегистрирована как `id: 'bom'` в `getReportSections()`
+  - Группировка по kind с человекочитаемыми подписями (ИБП, Щиты, АКБ, Трансформаторы...)
+  - Phantom-элементы помечены звёздочкой
+  - defaultTemplateId: `builtin-bom-landscape` (альбомная)
 
 #### Подфаза 1.4 — Конфигуратор ИБП из Конструктора схем (1 неделя)
 
@@ -316,6 +325,32 @@
 ---
 
 ## История изменений
+
+### v0.43.0 (2026-04-19, Фаза 1.3 — Phantom + BOM)
+- **shared/bom.js** (новый, ~180 строк):
+  - `expandComposition(el, mult, depth, seen, path)` — рекурсивное разворачивание `composition: [{elementId, qty, phantom, role}]` с защитой от циклов (per-branch seen), phantom-признак переносится с ref'а
+  - `bomForNode(node)` — 3 стратегии: (1) node.elementId → library lookup + expand, (2) inline node.composition, (3) placeholder по node.type
+  - `collectBomFromProject(state)` — обход state.nodes (зоны пропускаются), возвращает { flat, aggregated }
+  - `aggregateBom(items)` — группировка по (elementId, role) или (label, kind), суммирование qty
+  - `groupBomByKind(agg)` — под-группировка для отчёта
+  - `bomToMarkdown(agg)` — markdown-таблица
+- **js/engine/report-sections.js** — новая секция `sectionBom()`:
+  - Зарегистрирована в `getReportSections()` как `id: 'bom'`, defaultTemplateId = builtin-bom-landscape
+  - Таблица Группа / Наименование / Кол-во с под-заголовками по kind
+  - Phantom-элементы помечены `*`
+  - Человекочитаемые kind-labels (ИБП, Щиты, АКБ, Трансформаторы, Потребители, Кабельные трассы...)
+- **js/engine/index.js** — экспонирование в window.Raschet:
+  - `getBom()` → `{ flat, aggregated }`
+  - `getBomMarkdown()` → markdown-таблица
+- **Ценность для пользователя:**
+  - Секция «Спецификация оборудования (BOM)» доступна в списке отчётов сразу
+  - Даже без element-library интеграции (Фазы 1.4+) даёт плоский перечень узлов проекта по типам
+  - Когда у ИБП появится composition (Фаза 1.4) — phantom-модули автоматически попадут в BOM
+- **Файлы:**
+  - `shared/bom.js` (новый, 180 строк)
+  - `js/engine/report-sections.js` (+56 строк sectionBom, +8 строк регистрации)
+  - `js/engine/index.js` (+2 метода API, +1 импорт)
+  - `js/engine/constants.js` APP_VERSION = '0.43.0'
 
 ### v0.42.3 (2026-04-19, UX: категории потребителей + очистка conn-инспектора)
 - **Категории потребителей:** `CONSUMER_CATEGORIES` (8 типов: lighting, socket, power, hvac, it, lowvoltage, process, other) в `js/engine/constants.js`
