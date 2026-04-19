@@ -2641,6 +2641,186 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
   });
 }
 
+// ================= Сводка проекта / Dashboard (Phase 1.20.26) =================
+function openDashboardModal() {
+  openModal('modal-dashboard');
+  renderDashboard();
+}
+
+function renderDashboard() {
+  const mount = document.getElementById('dashboard-mount');
+  if (!mount) return;
+  const S = window.Raschet?._state;
+  if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
+  const proj = S.project || {};
+
+  // Счётчики узлов
+  const counts = { source: 0, generator: 0, 'panel-lv': 0, 'panel-mv': 0, ups: 0, consumer: 0 };
+  let totalLoad = 0, totalCap = 0;
+  for (const n of S.nodes.values()) {
+    const k = _equipKindOf(n);
+    if (k) counts[k] = (counts[k] || 0) + 1;
+    if (n.type === 'consumer') counts.consumer++;
+    if (n.type === 'source' || n.type === 'generator') {
+      totalCap += Number(n.capacityKw) || 0;
+      totalLoad += Number(n._loadKw) || 0;
+    }
+  }
+
+  // Кабельная продукция — суммы по классам / материалам
+  const cableStats = { LV: { count: 0, m: 0 }, HV: { count: 0, m: 0 }, DC: { count: 0, m: 0 } };
+  const byMaterial = new Map();
+  for (const c of S.conns.values()) {
+    if (!c._cableSize && !c._busbarNom) continue;
+    if (c._utilityInfeed) continue;
+    const cls = c._isHV ? 'HV' : (c._isDC ? 'DC' : 'LV');
+    cableStats[cls].count++;
+    const parallel = Math.max(1, c._cableParallel || 1);
+    const groupCount = Array.isArray(c._groupCables) && c._groupCables.length > 1 ? c._groupCables.length : 1;
+    const len = (Number(c.lengthM) || 0) * parallel * groupCount;
+    cableStats[cls].m += len;
+    const matKey = `${c.material || 'Cu'}/${c.insulation || 'PVC'}`;
+    byMaterial.set(matKey, (byMaterial.get(matKey) || 0) + len);
+  }
+
+  // Проблемы
+  const { errors, warns } = _countProjectIssues();
+
+  // BOM цена (если есть)
+  let priceSummary = null;
+  try {
+    const bom = window.Raschet?.getBom?.({ priceStrategy: 'latest', activeOnly: true });
+    if (bom?.totals?.totals) {
+      const entries = [...bom.totals.totals.entries()];
+      if (entries.length) {
+        priceSummary = {
+          byCurrency: entries,
+          missingCount: bom.totals.missingCount,
+          totalRows: bom.totals.totalRows,
+        };
+      }
+    }
+  } catch {}
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+  const card = (title, value, sub, bg, color) => `
+    <div style="padding:14px 16px;background:${bg || '#fafbfc'};border:1px solid #e1e4e8;border-radius:6px;min-width:170px;flex:1">
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.3px">${esc(title)}</div>
+      <div style="font-size:22px;font-weight:600;color:${color || '#24292e'};margin-top:4px">${value}</div>
+      ${sub ? `<div style="font-size:10px;color:#888;margin-top:2px">${sub}</div>` : ''}
+    </div>
+  `;
+
+  const fmtN = (v, d = 1) => {
+    const n = Number(v) || 0;
+    return n.toLocaleString('ru-RU', { maximumFractionDigits: d });
+  };
+
+  const loadPct = totalCap > 0 ? (totalLoad / totalCap * 100) : 0;
+
+  const html = [];
+
+  // Метаданные проекта
+  html.push(`
+    <div style="padding:14px 18px;background:linear-gradient(to right, #1976d2, #1565c0);color:#fff;border-radius:8px;margin-bottom:16px">
+      <h2 style="margin:0 0 4px;font-size:18px">${esc(proj.name || proj.designation || 'Без названия')}</h2>
+      <div style="font-size:11px;opacity:0.9">
+        ${proj.designation ? esc(proj.designation) : ''}
+        ${proj.customer ? ' · ' + esc(proj.customer) : ''}
+        ${proj.object ? ' · ' + esc(proj.object) : ''}
+        ${proj.stage ? ' · ' + esc(proj.stage) : ''}
+      </div>
+      ${proj.author ? `<div style="font-size:11px;opacity:0.85;margin-top:4px">ГИП: ${esc(proj.author)}</div>` : ''}
+    </div>
+  `);
+
+  // Ряд карточек: общий статус
+  html.push(`
+    <h3 style="margin:14px 0 8px;font-size:13px">Общий статус</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${card('Проблем', (errors + warns) ? `${errors} / ${warns}` : '0',
+        'ошибок / предупреждений',
+        (errors + warns) ? (errors ? '#ffebee' : '#fff8e1') : '#e8f5e9',
+        errors ? '#c62828' : (warns ? '#e65100' : '#2e7d32'))}
+      ${card('Общая нагрузка', fmtN(totalLoad) + ' кВт',
+        totalCap > 0 ? `из ${fmtN(totalCap)} кВт (${loadPct.toFixed(0)}% загрузки)` : '—',
+        loadPct > 100 ? '#ffebee' : loadPct > 90 ? '#fff8e1' : '#e8f5e9',
+        loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : '#2e7d32')}
+      ${priceSummary && priceSummary.byCurrency.length
+        ? card('Стоимость BOM',
+          priceSummary.byCurrency.map(([cur, sum]) => `${fmtN(sum, 0)} ${cur}`).join(' · '),
+          priceSummary.missingCount
+            ? `⚠ без цены: ${priceSummary.missingCount} из ${priceSummary.totalRows}`
+            : `по ${priceSummary.totalRows} позициям`,
+          '#eef5ff', '#1565c0')
+        : card('Стоимость BOM', '—', 'прайс не подключён', '#f5f5f5', '#888')}
+    </div>
+  `);
+
+  // Оборудование
+  html.push(`
+    <h3 style="margin:18px 0 8px;font-size:13px">Оборудование</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${card('⚡ Источники', counts.source || 0)}
+      ${card('🔋 Генераторы', counts.generator || 0)}
+      ${card('🗄 НКУ (LV)', counts['panel-lv'] || 0)}
+      ${card('⚡ РУ СН', counts['panel-mv'] || 0)}
+      ${card('🔌 ИБП', counts.ups || 0)}
+      ${card('💡 Потребители', counts.consumer || 0)}
+    </div>
+  `);
+
+  // Кабели
+  const totalMeters = cableStats.LV.m + cableStats.HV.m + cableStats.DC.m;
+  const totalConns = cableStats.LV.count + cableStats.HV.count + cableStats.DC.count;
+  html.push(`
+    <h3 style="margin:18px 0 8px;font-size:13px">Кабельная продукция</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${card('Всего линий', totalConns, `${fmtN(totalMeters)} м суммарно`)}
+      ${card('LV', cableStats.LV.count, `${fmtN(cableStats.LV.m)} м`, '#eef5ff', '#1565c0')}
+      ${card('MV/HV', cableStats.HV.count, `${fmtN(cableStats.HV.m)} м`, '#fff4e5', '#c67300')}
+      ${cableStats.DC.count ? card('DC', cableStats.DC.count, `${fmtN(cableStats.DC.m)} м`, '#f3e5f5', '#7b1fa2') : ''}
+    </div>
+    ${byMaterial.size ? `
+      <div style="margin-top:8px;padding:10px 14px;background:#f6f8fa;border-radius:6px;font-size:11px;color:#555">
+        По материалу / изоляции:
+        ${[...byMaterial.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `<b>${esc(k)}</b> — ${fmtN(v)} м`).join(' · ')}
+      </div>
+    ` : ''}
+  `);
+
+  // Быстрые действия
+  html.push(`
+    <h3 style="margin:18px 0 8px;font-size:13px">Быстрые действия</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="dash-action" data-action="issues" style="padding:8px 14px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:4px;cursor:pointer;font-size:12px">⚠ Проверки проекта</button>
+      <button type="button" class="dash-action" data-action="cables" style="padding:8px 14px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:4px;cursor:pointer;font-size:12px">🔌 Таблица кабелей</button>
+      <button type="button" class="dash-action" data-action="consumers" style="padding:8px 14px;border:1px solid #7b1fa2;background:#fff;color:#7b1fa2;border-radius:4px;cursor:pointer;font-size:12px">💡 Таблица потребителей</button>
+      <button type="button" class="dash-action" data-action="equipment" style="padding:8px 14px;border:1px solid #5d4037;background:#fff;color:#5d4037;border-radius:4px;cursor:pointer;font-size:12px">🗄 Таблица оборудования</button>
+      <button type="button" class="dash-action" data-action="search" style="padding:8px 14px;border:1px solid #2e7d32;background:#fff;color:#2e7d32;border-radius:4px;cursor:pointer;font-size:12px">🔍 Найти (Ctrl+F)</button>
+    </div>
+  `);
+
+  mount.innerHTML = html.join('');
+
+  // Wire actions
+  mount.querySelectorAll('.dash-action').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const a = btn.dataset.action;
+      closeModal('modal-dashboard');
+      setTimeout(() => {
+        if (a === 'issues') openProjectIssuesModal();
+        else if (a === 'cables') openCableTableModal();
+        else if (a === 'consumers') openConsumersTableModal();
+        else if (a === 'equipment') openEquipmentTableModal();
+        else if (a === 'search') openSearchPalette();
+      }, 100);
+    });
+  });
+}
+
 // ================= Проверки проекта (Phase 1.20.19) =================
 // Сводка всех ошибок/предупреждений в проекте с навигацией по клику.
 function openProjectIssuesModal() {
@@ -4235,6 +4415,8 @@ async function init() {
   if (btnConsumersTable) btnConsumersTable.addEventListener('click', openConsumersTableModal);
   const btnEquipmentTable = document.getElementById('btn-open-equipment-table');
   if (btnEquipmentTable) btnEquipmentTable.addEventListener('click', openEquipmentTableModal);
+  const btnDashboard = document.getElementById('btn-open-dashboard');
+  if (btnDashboard) btnDashboard.addEventListener('click', openDashboardModal);
   const btnSearch = document.getElementById('btn-open-search');
   if (btnSearch) btnSearch.addEventListener('click', openSearchPalette);
   const btnIssues = document.getElementById('btn-open-project-issues');
