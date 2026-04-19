@@ -102,9 +102,37 @@ function _bfsDownstreamWithActiveTies(startId, activeTieKeys) {
       }
       continue;
     }
+    // ФИКС: если текущий узел — ГЕНЕРАТОР, на который пришли через
+    // auxInput (порт 0) с ЩСН — НЕ спускаемся через его выходы.
+    // Этот обход запускает maxDownstreamLoad от ЩСН: ЩСН питает только
+    // собственные нужды ДГУ (auxDemandKw), а не выходную нагрузку ДГУ —
+    // её ДГУ сам генерирует из топлива.
+    //
+    // Учитываем auxDemandKw как consumer от этого ДГУ.
+    if (cur.type === 'generator' && cur.auxInput) {
+      if (!visitedConsumers.has(curId)) {
+        visitedConsumers.add(curId);
+        const auxKw = Number(cur.auxDemandKw) || 0;
+        if (auxKw > 0) {
+          if (throughUps) upsConsumerKw += auxKw;
+          else directKw += auxKw;
+        }
+      }
+      continue; // не обходим downstream ДГУ — он питается сам
+    }
     for (const c of state.conns.values()) {
       if (c.from.nodeId !== curId) continue;
       if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+      // ФИКС: не идём по связи, ведущей в auxInput генератора вниз.
+      // Когда BFS дошёл до ЩСН и видит исходящую связь в auxInput ДГУ,
+      // ДГУ добавляется в очередь, а в обработке ДГУ (case выше) мы
+      // берём только auxDemandKw. Этот else защищает от неверного
+      // продолжения если обработчик ДГУ не сработает (port !== 0).
+      const toN = state.nodes.get(c.to.nodeId);
+      if (toN && toN.type === 'generator' && toN.auxInput && c.to.port === 0) {
+        // Корректно: добавляем ДГУ в очередь, там он обработается как
+        // «потребитель с auxDemandKw» (case выше)
+      }
       if (!visited.has(c.to.nodeId)) {
         visited.add(c.to.nodeId);
         queue.push({ id: c.to.nodeId, throughUps });
