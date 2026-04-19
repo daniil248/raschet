@@ -185,8 +185,12 @@ function render(container, state) {
   }
 
   // ——— Сборка SVG ———
+  // Фаза 1.19.11: crosshair-слой для hover-readout (I, t). Прозрачный
+  // overlay поверх plot-area ловит mousemove и рисует пунктирные
+  // направляющие + tooltip с расшифровкой координат.
   const svg = `
-    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;font-family:system-ui,sans-serif">
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+         style="max-width:100%;font-family:system-ui,sans-serif" class="tcc-svg">
       <rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="#fafbfc" stroke="#d0d7de"/>
       ${gridX.join('')}
       ${gridY.join('')}
@@ -194,6 +198,14 @@ function render(container, state) {
       <text x="14" y="${padT + plotH / 2}" font-size="11" fill="#555" text-anchor="middle" transform="rotate(-90 14 ${padT + plotH / 2})">Время отключения, с</text>
       ${vLines.join('')}
       ${paths.join('')}
+      <g class="tcc-crosshair" pointer-events="none" style="display:none">
+        <line class="tcc-cross-v" y1="${padT}" y2="${padT + plotH}" stroke="#1976d2" stroke-width="1" stroke-dasharray="3,3"/>
+        <line class="tcc-cross-h" x1="${padL}" x2="${padL + plotW}" stroke="#1976d2" stroke-width="1" stroke-dasharray="3,3"/>
+        <rect class="tcc-cross-bg" fill="#1976d2" rx="3"/>
+        <text class="tcc-cross-lbl" font-size="11" font-family="monospace" fill="#fff" text-anchor="start"></text>
+      </g>
+      <rect class="tcc-hover-target" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}"
+            fill="transparent" style="cursor:crosshair"/>
     </svg>
   `;
 
@@ -221,6 +233,57 @@ function render(container, state) {
       if (it) { it.visible = cb.checked; render(container, state); }
     });
   });
+
+  // Hover-crosshair: при движении мыши над plot-area показываем
+  // вертикаль/горизонталь и значение (I, t) с учётом log-log.
+  const svgEl = container.querySelector('svg.tcc-svg');
+  const hoverTgt = svgEl?.querySelector('.tcc-hover-target');
+  const cross = svgEl?.querySelector('.tcc-crosshair');
+  if (hoverTgt && cross) {
+    const vLine = cross.querySelector('.tcc-cross-v');
+    const hLine = cross.querySelector('.tcc-cross-h');
+    const bg    = cross.querySelector('.tcc-cross-bg');
+    const lbl   = cross.querySelector('.tcc-cross-lbl');
+    hoverTgt.addEventListener('mousemove', (ev) => {
+      const r = svgEl.getBoundingClientRect();
+      const sx = W / r.width, sy = H / r.height;
+      const x = (ev.clientX - r.left) * sx;
+      const y = (ev.clientY - r.top) * sy;
+      if (x < padL || x > padL + plotW || y < padT || y > padT + plotH) {
+        cross.style.display = 'none'; return;
+      }
+      const lgI = lxMin + ((x - padL) / plotW) * (lxMax - lxMin);
+      const lgT = lyMin + ((padT + plotH - y) / plotH) * (lyMax - lyMin);
+      const I = Math.pow(10, lgI);
+      const t = Math.pow(10, lgT);
+      vLine.setAttribute('x1', x.toFixed(1));
+      vLine.setAttribute('x2', x.toFixed(1));
+      hLine.setAttribute('y1', y.toFixed(1));
+      hLine.setAttribute('y2', y.toFixed(1));
+      const text = `I = ${_fmtA(I)}  ·  t = ${_fmtT(t)}`;
+      lbl.textContent = text;
+      // Позиция tooltip — у правого-верхнего угла курсора, но не вне plot-area
+      const tx = Math.min(x + 8, padL + plotW - 6 - text.length * 7);
+      const ty = Math.max(y - 8, padT + 14);
+      lbl.setAttribute('x', tx);
+      lbl.setAttribute('y', ty);
+      const pad = 4;
+      bg.setAttribute('x', (tx - pad).toFixed(1));
+      bg.setAttribute('y', (ty - 11).toFixed(1));
+      bg.setAttribute('width', (text.length * 7 + pad * 2).toFixed(1));
+      bg.setAttribute('height', '16');
+      cross.style.display = '';
+    });
+    hoverTgt.addEventListener('mouseleave', () => { cross.style.display = 'none'; });
+  }
+}
+
+function _fmtT(t) {
+  if (t >= 3600) return (t / 3600).toFixed(1) + ' ч';
+  if (t >= 60) return (t / 60).toFixed(1) + ' мин';
+  if (t >= 1) return t.toFixed(2) + ' с';
+  if (t >= 0.001) return (t * 1000).toFixed(0) + ' мс';
+  return t.toExponential(1) + ' с';
 }
 
 // Точки кривой в координатах SVG
