@@ -122,7 +122,10 @@ export const shortCircuitModule = {
     // Выделяем краткое имя curve (MCB_B → B) для letThroughI2t
     const curveShort = /^MCB_([BCDKZ])$/.exec(curve)?.[1];
     if (curveShort && ratio >= magThreshForCheck) {
-      const I2t = letThroughI2t(In, curveShort, Ik);
+      // Класс токоограничения MCB (1/2/3) — из input.breakerLimitClass или по
+      // умолчанию 3 (современные). Устаревшие MCB без токоограничения → 1.
+      const limitClass = Number(input.breakerLimitClass) || 3;
+      const I2t = letThroughI2t(In, curveShort, Ik, limitClass);
       if (I2t != null && I2t > 0) {
         letThroughValue = I2t;
         sRequired = Math.sqrt(I2t) / k;

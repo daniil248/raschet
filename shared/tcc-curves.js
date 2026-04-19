@@ -42,22 +42,25 @@ const MAGNETIC_BOUNDS = {
 };
 
 /**
- * Let-through energy I²t для MCB класса 3 по IEC 60898-1 (токоограничение).
- * При КЗ в мгновенной зоне автомат обрывает ток за 3-5 мс с ограничением
- * пикового значения. Фактическая тепловая энергия, пропускаемая через
- * кабель, значительно меньше чем расчётная I_k² × t_mcb_time.
+ * Let-through energy I²t для MCB по IEC 60898-1.
  *
- * Источник: типовые паспорта ABB S200 / Schneider iC60 / Legrand DX3 при
- * Icu = 6 кА. Значения — верхняя граница (с запасом). Реальные I²t часто
- * меньше.
+ * MCB делятся на 3 класса по токоограничению:
+ *   class 1 — не токоограничивающие (устаревшие, LSF1)
+ *   class 2 — среднее токоограничение
+ *   class 3 — высокое токоограничение (современные, ABB S200, Schneider iC60)
  *
- * Возвращает I²t в A²·s при I_k ≥ I_cu (насыщение токоограничения).
- * При меньших токах — пропорционально снижаются (см. letThroughI2t ниже).
+ * При КЗ в мгновенной зоне автомат обрывает ток за 3-5 мс (class 3)
+ * или за 10-20 мс (class 1). Фактическая тепловая энергия, пропускаемая
+ * через кабель, меньше расчётной I_k² × t_mcb_time — это позволяет
+ * применять меньшие сечения.
+ *
+ * Данные — верхняя граница (с запасом) из паспортов производителей.
+ *
+ * Для class 3 значения — типовые из ABB S200 / Schneider iC60 / Legrand DX3.
+ * Для class 2 — примерно в 2× выше.
+ * Для class 1 — примерно в 4× выше (кабель нужен больше).
  */
-const MCB_LETTHROUGH_I2T = {
-  // Ряд из паспортов производителей (приблизительные значения для 6 кА):
-  //  6A: 3000,  10A: 5000,  16A: 8000,  20A: 10000,  25A: 13000,
-  // 32A: 18000, 40A: 25000, 50A: 35000, 63A: 50000
+const MCB_LETTHROUGH_I2T_CLASS3 = {
   6:   3000,
   10:  5000,
   16:  8000,
@@ -68,30 +71,40 @@ const MCB_LETTHROUGH_I2T = {
   50: 35000,
   63: 50000,
 };
+// Коэффициенты масштабирования относительно class 3
+const MCB_CLASS_FACTORS = {
+  1: 4.0,  // не ограничивает — let-through ≈ I_k² × t_reaction
+  2: 2.0,  // среднее ограничение
+  3: 1.0,  // современное высокое (по умолчанию)
+};
+// Legacy — для обратной совместимости с кодом, ожидающим исходный экспорт
+const MCB_LETTHROUGH_I2T = MCB_LETTHROUGH_I2T_CLASS3;
 
 /**
- * Вернуть let-through I²t для MCB с учётом номинала и фактического I_k.
+ * Вернуть let-through I²t для MCB с учётом номинала, класса и фактического I_k.
  * Если автомат не MCB (curve не B/C/D/K/Z) — возвращает null (нет данных,
  * использовать стандартную формулу I² × t).
  *
  * @param {number} In  — номинал автомата, A
  * @param {string} curve — 'B' | 'C' | 'D' | 'K' | 'Z' | 'MCCB' | 'ACB' | 'gG'
- * @param {number} Ik  — ток КЗ, A (используется для пропорционального снижения
- *                       при I_k < Icu_typical = 6 кА)
+ * @param {number} Ik  — ток КЗ, A
+ * @param {number} [limitClass=3] — класс токоограничения MCB (1/2/3).
+ *                      По умолчанию 3 (современные токоограничивающие).
+ *                      Для устаревших MCB без токоограничения — 1.
  * @returns {number|null} I²t в A²·s, либо null если данные недоступны
  */
-export function letThroughI2t(In, curve, Ik) {
+export function letThroughI2t(In, curve, Ik, limitClass = 3) {
   if (!curve || !['B', 'C', 'D', 'K', 'Z'].includes(curve)) return null;
-  // Ищем ближайший стандартный номинал
-  const keys = Object.keys(MCB_LETTHROUGH_I2T).map(Number).sort((a, b) => a - b);
+  const factor = MCB_CLASS_FACTORS[limitClass] || 1.0;
+  const keys = Object.keys(MCB_LETTHROUGH_I2T_CLASS3).map(Number).sort((a, b) => a - b);
   let chosen = keys[keys.length - 1];
   for (const k of keys) if (k >= In) { chosen = k; break; }
-  const base = MCB_LETTHROUGH_I2T[chosen];
+  const base = MCB_LETTHROUGH_I2T_CLASS3[chosen] * factor;
   // Пропорциональное снижение при I_k << I_cu (типичный I_cu = 6 кА)
   const Icu_typical = 6000;
   if (Ik && Ik < Icu_typical) {
-    const factor = Math.max(0.1, (Ik / Icu_typical));
-    return base * factor * factor; // I²t ∝ I²
+    const k = Math.max(0.1, Ik / Icu_typical);
+    return base * k * k;
   }
   return base;
 }

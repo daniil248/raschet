@@ -1819,6 +1819,37 @@ function recalc() {
         n._marginPct = null;
         n._marginWarn = null;
       }
+
+      // Фаза 1.19.3: Ik3 на MV-шинах (IEC 60909).
+      // Для щитов помеченных isMv=true — берём upstream-source и пересчитываем
+      // через его sourceImpedance. Ударный ток i_p = κ × √2 × I_k3 (κ=1.8 для MV).
+      if (n.isMv) {
+        try {
+          const ai = activeInputs(n.id);
+          if (ai && ai.length) {
+            let upstreamIk = 0;
+            for (const { conn } of ai) {
+              const up = state.nodes.get(conn.from.nodeId);
+              if (up && up._ikA) {
+                upstreamIk = Math.max(upstreamIk, up._ikA);
+              }
+            }
+            if (upstreamIk > 0) {
+              n._Ik3_kA = upstreamIk / 1000;
+              n._ip_kA = 1.8 * Math.sqrt(2) * n._Ik3_kA;
+              // Проверка стойкости шин: It_kA записан в mv-switchgear kindProps
+              // Сравним если есть ссылка на element-library запись
+              if (n._Ik3_kA > 0 && typeof globalThis.__raschetElementLibrary?.getElement === 'function' && n.mvSwitchgearId) {
+                const rec = globalThis.__raschetElementLibrary.getElement(n.mvSwitchgearId);
+                const It = rec?.kindProps?.It_kA;
+                if (It && n._Ik3_kA > It) {
+                  n._mvIkOverload = true; // ток КЗ превышает термическую стойкость шин
+                }
+              }
+            }
+          }
+        } catch (e) { /* silent */ }
+      }
     } else if (n.type === 'ups') {
       // Максимальная нагрузка на ИБП с учётом:
       //  1) share между параллельными ИБП на одном downstream-щите (если

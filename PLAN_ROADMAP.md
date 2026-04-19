@@ -516,6 +516,31 @@
   - 1.19.2: интеграция в инспектор трансформатора на схеме («Сконфигурировать РУ СН»)
   - 1.19.3: MV-автоматы (VCB, SF6) в breaker-seed с TCC-кривыми
 
+### v0.54.5 (2026-04-19, Фаза 1.19.3 IEC 60909 интегр. + Let-through по классам MCB)
+- **IEC 60909 в recalc.js (MV-узлы):**
+  - После расчёта `_maxLoadKw/A` для MV-panel (isMv=true) идёт upstream поиск:
+    - `activeInputs(n.id)` → входящие конн → upstream узлы
+    - Берём максимальное `upstream._ikA` (рассчитано уже для source/generator через `sourceImpedance`)
+    - `n._Ik3_kA = upstreamIk / 1000` (в кА)
+    - `n._ip_kA = 1.8 × √2 × I_k3` (ударный ток, κ=1.8 для MV)
+  - Проверка стойкости шин: если `n._Ik3_kA > mvSwitchgear.kindProps.It_kA` → `n._mvIkOverload = true`
+- **UI в инспекторе MV-щита:**
+  - Новая плашка «Ток КЗ (IEC 60909)» с I_k3 и i_p
+  - Зелёная при OK (`_Ik3_kA ≤ It_kA`)
+  - Красная при overload с подсказкой «Превышена термическая стойкость шин — выберите модель с бо́льшим It»
+- **Let-through I²t по классам MCB (IEC 60898-1):**
+  - `MCB_LETTHROUGH_I2T_CLASS3` — основная таблица (как было)
+  - `MCB_CLASS_FACTORS = { 1: 4.0, 2: 2.0, 3: 1.0 }` — масштабы для разных классов
+  - `letThroughI2t(In, curve, Ik, limitClass=3)` — новый параметр
+  - `short-circuit.js` принимает `input.breakerLimitClass` — по умолчанию 3
+  - Для устаревших MCB без токоограничения → `limitClass=1` → больше сечение кабеля требуется
+- **APP_VERSION = '0.54.5'** (пропустили 0.54.4 — объединено с 0.54.5)
+- **Файлы:**
+  - `js/engine/recalc.js` (+30 строк расчёт Ik3 для MV-узлов)
+  - `js/engine/inspector/panel.js` (+10 строк плашка Ik3)
+  - `shared/tcc-curves.js` (+15 строк classFactors + limitClass parameter)
+  - `shared/calc-modules/short-circuit.js` (+2 строки передача limitClass)
+
 ### v0.54.3 (2026-04-19, ФИКС: для MV-щита показывался LV-блок + IEC 60909 модуль)
 - **Замечание пользователя:** «Не понял где ты разделил, и зачем в РУСН выбирать оболочку НКУ» + скриншот инспектора MV-щита с двумя конфликтующими блоками (MV + LV).
 - **Причина:** в `inspector/panel.js` LV-блок («Модель из справочника» + кнопка `panel-config`) рендерился для **любого** щита, включая MV. Мой v0.54.2 фикс разделил labels/stenders, но не изолировал UI в инспекторе.

@@ -105,6 +105,17 @@ export function openPanelParamsModal(n) {
         </a>
       </div>`);
     }
+    // Ik3 на MV-шинах (Фаза 1.19.3, IEC 60909)
+    if (n._Ik3_kA) {
+      const overload = n._mvIkOverload;
+      const bgColor = overload ? '#ffebee' : '#e8f5e9';
+      const txtColor = overload ? '#c62828' : '#2e7d32';
+      h.push(`<div style="margin:6px 0 10px;padding:8px 10px;background:${bgColor};border-radius:4px;font-size:12px;color:${txtColor}">
+        <b>Ток КЗ (IEC 60909)</b><br>
+        I<sub>k3</sub> = <b>${n._Ik3_kA.toFixed(2)} кА</b> · i<sub>p</sub> (ударный) = <b>${n._ip_kA ? n._ip_kA.toFixed(2) : '?'} кА</b>
+        ${overload ? '<br><b>⚠ Превышена термическая стойкость шин</b> — выберите модель с бо́льшим It' : ''}
+      </div>`);
+    }
     if (n.mvSwitchgearId) {
       // Покажем информацию о выбранной модели
       h.push(`<div id="pp-mv-info" class="muted" style="font-size:11px;padding:6px 10px;background:#fff4e5;border-radius:4px;margin-bottom:8px">
