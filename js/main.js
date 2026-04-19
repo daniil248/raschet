@@ -2195,6 +2195,7 @@ function renderCableTable() {
             ${esc(lineLabel)}
             <span style="font-size:10px;opacity:0.7">↗</span>
           </a>
+          <button type="button" class="ct-tcc" data-id="${esc(c.id)}" title="Показать карту защиты (TCC) для этой линии" style="margin-left:6px;padding:1px 6px;border:1px solid #bbdefb;background:#f0f4ff;color:#1565c0;border-radius:3px;cursor:pointer;font-size:10px">TCC</button>
         </td>
         <td style="padding:5px 8px;font-size:11px">${esc(fromLabel)} → ${esc(toLabel)}</td>
         <td style="padding:5px 8px">
@@ -2317,6 +2318,20 @@ function renderCableTable() {
         window.Raschet.selectConnAndFocus(id);
       }
       closeModal('modal-cable-table');
+    });
+  });
+
+  // Phase 1.20.12: TCC-кнопка в строке — открывает модалку с картой защиты
+  // (band-кривые автомата + термостойкость кабеля + upstream + Ik) для
+  // этой конкретной линии, без открытия инспектора.
+  mount.querySelectorAll('.ct-tcc').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (typeof window.Raschet?.openConnTcc === 'function') {
+        window.Raschet.openConnTcc(id);
+      }
     });
   });
 

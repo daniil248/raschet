@@ -903,19 +903,10 @@ function _collectUpstreamBreakers(conn) {
 /**
  * Монтирует TCC-карту защиты в #tcc-conn-chart-<id>.
  */
-async function _mountConnTccChart(conn, fromN, toN) {
-  if (!_tccChartMod) {
-    try {
-      _tccChartMod = await import('../../../shared/tcc-chart.js');
-    } catch (e) {
-      console.warn('[conn-tcc] tcc-chart load failed', e);
-      return;
-    }
-  }
-  const container = document.getElementById('tcc-conn-chart-' + conn.id);
-  if (!container) return;
-  container.innerHTML = '';
-
+// Phase 1.20.12: вынесена в отдельную функцию сборка items для TCC
+// графика из conn (breaker + cable + upstream), чтобы вызывать модалку
+// и из cable-table (openConnTccDirect).
+function _buildConnTccPayload(conn, fromN, toN) {
   const items = [];
   // Phase 1.19.15: если линия выходит из MV-ячейки с уставками реле —
   // используем их (Ir/Isd/tsd/Ii) вместо фиксированной In+curve.
@@ -982,9 +973,27 @@ async function _mountConnTccChart(conn, fromN, toN) {
   const maxIn = allIn.length ? Math.max(...allIn) : 100;
   const xMax = Math.max(ikMax || 0, maxIn * 200, 10000);
 
+  return { items, xMin: Math.max(1, minIn * 0.5), xMax, ikMin, ikMax };
+}
+
+async function _mountConnTccChart(conn, fromN, toN) {
+  if (!_tccChartMod) {
+    try {
+      _tccChartMod = await import('../../../shared/tcc-chart.js');
+    } catch (e) {
+      console.warn('[conn-tcc] tcc-chart load failed', e);
+      return;
+    }
+  }
+  const container = document.getElementById('tcc-conn-chart-' + conn.id);
+  if (!container) return;
+  container.innerHTML = '';
+
+  const { items, xMin, xMax, ikMin, ikMax } = _buildConnTccPayload(conn, fromN, toN);
+
   _tccChartMod.mountTccChart(container, {
     items,
-    xRange: [Math.max(1, minIn * 0.5), xMax],
+    xRange: [xMin, xMax],
     yRange: [0.003, 10000],
     width: Math.min(container.clientWidth || 420, 560),
     height: 320,
@@ -1024,4 +1033,35 @@ async function _mountConnTccChart(conn, fromN, toN) {
 function _fmtA(I) {
   if (!I) return '—';
   return I >= 1000 ? (I / 1000).toFixed(I >= 10000 ? 0 : 1) + ' кА' : Math.round(I) + ' А';
+}
+
+/**
+ * Phase 1.20.12: открыть TCC-модалку для указанной линии напрямую
+ * (из cable-table row, без открытия инспектора). Асинхронная —
+ * выполняет lazy-import tcc-chart при первом вызове.
+ */
+export async function openConnTccDirect(connId) {
+  const conn = state.conns.get(connId);
+  if (!conn) return false;
+  const fromN = state.nodes.get(conn.from?.nodeId);
+  const toN = state.nodes.get(conn.to?.nodeId);
+  if (!_tccChartMod) {
+    try {
+      _tccChartMod = await import('../../../shared/tcc-chart.js');
+    } catch (e) {
+      console.warn('[conn-tcc] tcc-chart load failed', e);
+      return false;
+    }
+  }
+  const { items, ikMin, ikMax } = _buildConnTccPayload(conn, fromN, toN);
+  if (!items.length) {
+    try { window.Raschet?.flash?.('У линии нет защитного аппарата и/или кабеля для построения графика', 'warn'); } catch {}
+    return false;
+  }
+  _tccChartMod.openTccModal({
+    items,
+    ikMax, ikMin,
+    title: `Карта защиты линии: ${fromN?.name || fromN?.tag || '?'} → ${toN?.name || toN?.tag || '?'}`,
+  });
+  return true;
 }

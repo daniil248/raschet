@@ -48,6 +48,7 @@ import {
   consumerCurrentsBlock, prioritySection, statusBlock, upsStatusBlock,
   saveNodeAsPreset, bindInspectorDeps,
 } from './inspector.js';
+import { openConnTccDirect } from './inspector/conn.js';
 import { initInteraction, bindInteractionDeps } from './interaction.js';
 import { initToolbar, autoLayout, exportSVG, exportPNG, fitAll } from './export.js';
 import { simTick, startSimLoop, stopSimLoop } from './simulation.js';
@@ -523,6 +524,8 @@ window.Raschet = {
     render();
     return true;
   },
+  // Phase 1.20.12: открыть TCC-модалку для указанного conn id
+  openConnTcc: (id) => openConnTccDirect(id),
   importLoadsTable,
   get3PhaseBalance,
   // Фаза 1.3 + 1.5.7: BOM (с опциональными ценами)
