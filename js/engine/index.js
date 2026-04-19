@@ -236,6 +236,55 @@ window.addEventListener('storage', (ev) => {
 });
 _tryConsumePendingPanelSelection();
 
+// === Phase 1.19.1: приём конфигурации MV-switchgear ===
+const PENDING_MV_KEY = 'raschet.pendingMvSelection.v1';
+function _tryConsumePendingMvSelection() {
+  let raw;
+  try { raw = localStorage.getItem(PENDING_MV_KEY); } catch { return; }
+  if (!raw) return;
+  let payload;
+  try { payload = JSON.parse(raw); } catch { localStorage.removeItem(PENDING_MV_KEY); return; }
+  if (!payload || !payload.nodeId) { localStorage.removeItem(PENDING_MV_KEY); return; }
+  if (payload.selectedAt && (Date.now() - payload.selectedAt) > 5 * 60 * 1000) {
+    localStorage.removeItem(PENDING_MV_KEY);
+    return;
+  }
+  const node = state.nodes.get(payload.nodeId);
+  if (!node || node.type !== 'panel') {
+    localStorage.removeItem(PENDING_MV_KEY);
+    return;
+  }
+  try {
+    snapshot('mv-config:apply:' + node.id);
+    const cfg = payload.configuration || {};
+    if (cfg.name) node.name = cfg.name;
+    if (cfg.mvSwitchgearId) node.mvSwitchgearId = cfg.mvSwitchgearId;
+    if (cfg.isMv) node.isMv = true;
+    if (cfg.capacityA) node.capacityA = cfg.capacityA;
+    if (cfg.ipRating) node.ipRating = cfg.ipRating;
+    if (cfg.inputs != null) node.inputs = cfg.inputs;
+    if (cfg.outputs != null) node.outputs = cfg.outputs;
+    if (cfg.cells) node.mvCells = cfg.cells;
+    if (cfg.composition) node.composition = cfg.composition;
+    if (cfg.inputs != null) {
+      if (!Array.isArray(node.priorities)) node.priorities = [];
+      while (node.priorities.length < cfg.inputs) node.priorities.push(node.priorities.length + 1);
+      node.priorities.length = cfg.inputs;
+    }
+    render(); renderInspector(); notifyChange();
+    console.info('[mv-config] applied', cfg, 'to', node.id);
+  } catch (e) {
+    console.warn('[mv-config] apply failed', e);
+  } finally {
+    localStorage.removeItem(PENDING_MV_KEY);
+  }
+}
+window.addEventListener('focus', _tryConsumePendingMvSelection);
+window.addEventListener('storage', (ev) => {
+  if (ev.key === PENDING_MV_KEY && ev.newValue) _tryConsumePendingMvSelection();
+});
+_tryConsumePendingMvSelection();
+
 // === Инициализация DOM ===
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница

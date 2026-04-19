@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор РУ СН</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="../panel-config/panel-config.css">
+  <link rel="stylesheet" href="mv-config.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountFooter } from '../shared/app-footer.js';
+    mountHeader({ title: 'Конфигуратор РУ СН', home: '../hub.html' });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[mv-config] auth init failed', e));
+    }
+    window.addEventListener('DOMContentLoaded', () => mountFooter());
+  </script>
+
+  <main>
+    <div class="page-intro">
+      <h2>Конфигуратор РУ среднего напряжения</h2>
+      <p class="muted">
+        Справочник и подбор РУ 6-35 кВ: моноблоки SF6 (RM6, FafeRing) и сборные (ЩО-70).
+        Wizard-режим доступен при открытии из инспектора трансформатора/щита Конструктора схем
+        (?nodeId=&lt;id&gt;).
+      </p>
+    </div>
+
+    <!-- Wizard (Фаза 1.19.1) -->
+    <section id="mv-wizard" class="panel" style="display:none;margin-bottom:16px;border:2px solid #f57c00">
+      <div class="panel-head" style="background:#fff4e5">
+        <h3>🧙 Конфигуратор РУ СН для проекта</h3>
+        <div id="mv-wiz-step-indicator" class="muted" style="font-size:12px"></div>
+      </div>
+
+      <div id="mv-wiz-step-1" class="wiz-step">
+        <h4>Шаг 1. Требования</h4>
+        <p class="muted" style="font-size:12px">Параметры из Конструктора схем. Можно подправить.</p>
+        <div class="wiz-grid">
+          <label>Имя<input type="text" id="mv-name"></label>
+          <label>Напряжение, кВ
+            <select id="mv-Un">
+              <option value="6">6 кВ</option>
+              <option value="10" selected>10 кВ</option>
+              <option value="20">20 кВ</option>
+              <option value="24">24 кВ</option>
+              <option value="35">35 кВ</option>
+            </select>
+          </label>
+          <label>Расчётный ток, A<input type="number" id="mv-loadA" min="0" step="10"></label>
+          <label>Ток шин (In), A
+            <select id="mv-In">
+              <option value="400">400</option>
+              <option value="630" selected>630</option>
+              <option value="800">800</option>
+              <option value="1000">1000</option>
+              <option value="1250">1250</option>
+              <option value="1600">1600</option>
+              <option value="2000">2000</option>
+            </select>
+          </label>
+          <label>Ток КЗ (Icu), кА
+            <select id="mv-Icu">
+              <option value="16">16</option>
+              <option value="20" selected>20</option>
+              <option value="25">25</option>
+              <option value="31.5">31.5</option>
+              <option value="40">40</option>
+            </select>
+          </label>
+          <label>Тип РУ
+            <select id="mv-type">
+              <option value="">Любой</option>
+              <option value="ringmain" selected>Моноблок SF6 (RM6, FafeRing)</option>
+              <option value="panelboard">Сборные панели (ЩО-70)</option>
+              <option value="gis">GIS элегазовое</option>
+              <option value="air">AIS воздушное</option>
+            </select>
+          </label>
+          <label>Число ячеек<input type="number" id="mv-cellsCount" min="2" max="20" value="3"></label>
+          <label>IP
+            <select id="mv-IP">
+              <option value="IP31">IP31</option>
+              <option value="IP4X" selected>IP4X</option>
+              <option value="IP54">IP54</option>
+              <option value="IP67">IP67 (только SF6)</option>
+            </select>
+          </label>
+          <label style="grid-column:span 2">
+            <input type="checkbox" id="mv-arcProof"> Дугостойкое (IAC AFLR, обязательно для современных ЦОД/больниц)
+          </label>
+        </div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-cancel" class="btn-sm">Отмена</button>
+          <button id="mv-wiz-next-1" class="btn-sm btn-primary">Далее → Подбор РУ</button>
+        </div>
+      </div>
+
+      <div id="mv-wiz-step-2" class="wiz-step" style="display:none">
+        <h4>Шаг 2. Подбор РУ из справочника</h4>
+        <p class="muted" style="font-size:12px">Подходящие модели из element-library (kind=mv-switchgear).</p>
+        <div id="mv-wiz-list"></div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-back-2" class="btn-sm">← Назад</button>
+          <button id="mv-wiz-next-2" class="btn-sm btn-primary" disabled>Далее → Состав</button>
+        </div>
+      </div>
+
+      <div id="mv-wiz-step-3" class="wiz-step" style="display:none">
+        <h4>Шаг 3. Состав ячеек</h4>
+        <p class="muted" style="font-size:12px">Типовая конфигурация ячеек подобранной модели. Можно добавить/удалить/изменить.</p>
+        <div id="mv-wiz-cells"></div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-back-3" class="btn-sm">← Назад</button>
+          <button id="mv-wiz-next-3" class="btn-sm btn-primary">Далее → Итог</button>
+        </div>
+      </div>
+
+      <div id="mv-wiz-step-4" class="wiz-step" style="display:none">
+        <h4>Шаг 4. Итоговая конфигурация</h4>
+        <div id="mv-wiz-summary"></div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-back-4" class="btn-sm">← Назад</button>
+          <button id="mv-wiz-apply" class="btn-sm btn-primary">✓ Применить к схеме</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Справочник MV (когда открыто без nodeId) -->
+    <section id="mv-catalog-panel" class="panel">
+      <div class="panel-head">
+        <h3>Справочник РУ СН</h3>
+        <div class="muted" style="font-size:11px">Управление справочником — в модуле <a href="../catalog/" target="_blank" style="color:#1976d2">«Каталог и библиотека»</a> (фильтр kind = «Распределительное устройство СН»).</div>
+      </div>
+      <div id="mv-catalog-list"></div>
+    </section>
+  </main>
+
+  <div id="flash" class="flash"></div>
+
+  <script type="module" src="mv-config.js"></script>
+</body>
+</html>

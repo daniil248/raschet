@@ -80,6 +80,26 @@ export function openPanelParamsModal(n) {
     h.push(`<div id="pp-mv-select-mount" style="margin-bottom:6px">Загрузка справочника…</div>`);
     h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">РУ среднего напряжения (6-35 кВ): моноблоки SF6 (RM6/FafeRing) или сборные (ЩО-70). Конфигуратор с wizard — в <a href="mv-config/" target="_blank" style="color:#1976d2">«Конфигураторе MV»</a> (в разработке, Фаза 1.19.1).</div>`);
 
+    // Кнопка MV-конфигуратора
+    {
+      const qp = new URLSearchParams();
+      qp.set('nodeId', n.id);
+      if (n.name) qp.set('name', n.name);
+      // Класс напряжения из voltageLevel
+      const levels = GLOBAL.voltageLevels || [];
+      const lv = (typeof n.voltageLevelIdx === 'number') ? levels[n.voltageLevelIdx] : null;
+      const UnKv = lv ? (Number(lv.vLL) || 10000) / 1000 : 10;
+      qp.set('Un_kV', String(UnKv));
+      if (n.capacityA) qp.set('In_A', String(n.capacityA));
+      if (n._maxLoadA) qp.set('loadA', String(Math.round(n._maxLoadA)));
+      if (n.inputs || n.outputs) qp.set('cellsCount', String((n.inputs || 1) + (n.outputs || 1)));
+      if (n.ipRating) qp.set('IP', n.ipRating);
+      h.push(`<div style="margin:4px 0 10px">
+        <a href="mv-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#fff4e5;color:#c67300;text-decoration:none;border:1px solid #f0cea0;border-radius:4px;font-size:12px">
+          ⚙ Сконфигурировать РУ СН подробно (новая вкладка)
+        </a>
+      </div>`);
+    }
     if (n.mvSwitchgearId) {
       // Покажем информацию о выбранной модели
       h.push(`<div id="pp-mv-info" class="muted" style="font-size:11px;padding:6px 10px;background:#fff4e5;border-radius:4px;margin-bottom:8px">

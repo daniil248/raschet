@@ -516,6 +516,38 @@
   - 1.19.2: интеграция в инспектор трансформатора на схеме («Сконфигурировать РУ СН»)
   - 1.19.3: MV-автоматы (VCB, SF6) в breaker-seed с TCC-кривыми
 
+### v0.54.0 (2026-04-19, Фаза 1.19.1 — MV-конфигуратор wizard)
+- **mv-config/ (новый модуль):**
+  - `index.html` — справочник mv-switchgear из element-library + wizard (4 шага) при `?nodeId=`
+  - `mv-config.css` — стили wizard/ячеек (.mv-item, .mv-cell-chip с цветом по cellType)
+  - `mv-config.js`:
+    - **Справочник:** список всех mv-switchgear с параметрами + ячейки-chips + цена (если есть в catalog)
+    - **Wizard 4 шага:**
+      1. Требования (Un кВ, loadA, In_A шин, Icu, тип РУ, число ячеек, IP, arc-proof)
+      2. Подбор РУ из element-library с фильтрами (Un ≥ req, In ≥ req, IP покрывает) + сортировка по близости числа ячеек
+      3. Редактор состава ячеек: таблица (тип/In/аппарат/назначение), add/delete/edit
+      4. Итог с сводкой + применение
+    - `_cellLabel()`: визуализация типа ячейки (⬅ Ввод, ➡ Отх., 🔧 Защита ТП и т.д.)
+    - `_applyConfiguration`: writes to `localStorage['raschet.pendingMvSelection.v1']` + closes tab
+- **js/engine/inspector/panel.js:**
+  - Для isMv-щитов — кнопка **«⚙ Сконфигурировать РУ СН подробно»** (оранжевая, открывает mv-config?nodeId=)
+  - Передача контекста: name, Un_kV (из voltageLevelIdx), In_A, loadA, cellsCount, IP
+- **js/engine/index.js:**
+  - `_tryConsumePendingMvSelection` — symmetric receiver как для ups/panel
+  - Применяет: name, mvSwitchgearId, isMv, capacityA, ipRating, inputs/outputs, mvCells, composition, priorities
+  - TTL 5 минут, триггеры focus + storage event
+- **modules.json + hub.html:** новый модуль `mv-config` с оранжевой иконкой (3 вертикальные ячейки + шины)
+- **APP_VERSION = '0.54.0'**
+- **Файлы:**
+  - `mv-config/index.html` (новый, ~130 строк)
+  - `mv-config/mv-config.css` (новый, ~80 строк)
+  - `mv-config/mv-config.js` (новый, ~380 строк)
+  - `js/engine/inspector/panel.js` (+22 строки кнопка)
+  - `js/engine/index.js` (+50 строк receiver)
+  - `modules.json` (+12 строк)
+  - `hub.html` (+18 строк карточка)
+  - `js/engine/constants.js` APP_VERSION
+
 ### v0.53.2 (2026-04-19, ФИКС: таблица кабелей была пустой)
 - **Замечание пользователя:** «Таблица, это значит таблица, а не поиск одной позиции» + скриншот где модалка показывала счётчик «160 из 162», но tbody был пустой.
 - **2 причины бага в `renderCableTable`:**

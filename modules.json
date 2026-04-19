@@ -76,6 +76,18 @@
       "enabled": true
     },
     {
+      "id": "mv-config",
+      "name": "Конфигуратор РУ СН",
+      "description": "Распределительные устройства среднего напряжения 6-35 кВ: моноблоки SF6 (RM6, FafeRing) и сборные (ЩО-70). Справочник + wizard-подбор с конфигурированием ячеек",
+      "path": "mv-config/",
+      "icon": "orange",
+      "badge": "new",
+      "requires": ["shared/element-library", "shared/catalog-bridge"],
+      "dbCollections": [],
+      "permissions": ["mv-config.use"],
+      "enabled": true
+    },
+    {
       "id": "transformer-config",
       "name": "Конфигуратор трансформатора",
       "description": "Подбор силового трансформатора: мощность, первичное / вторичное напряжение, группа соединений, потери ХХ / КЗ, uk, тип охлаждения",
