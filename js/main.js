@@ -2646,6 +2646,93 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
 function openProjectIssuesModal() {
   openModal('modal-project-issues');
   renderProjectIssues();
+  const csvBtn = document.getElementById('project-issues-export-csv');
+  if (csvBtn) csvBtn.onclick = exportProjectIssuesCsv;
+}
+
+// Phase 1.20.23: экспорт всех проблем в CSV для аудита / приёмки проекта
+function exportProjectIssuesCsv() {
+  const S = window.Raschet?._state;
+  if (!S) return;
+  const rows = [['Уровень', 'Тип', 'Объект', 'Маршрут / Расположение', 'Причина', 'Детали']];
+
+  // Cable errors / warns
+  for (const c of S.conns.values()) {
+    if (!c._cableSize && !c._busbarNom) continue;
+    if (c._utilityInfeed) continue;
+    const fromN = S.nodes.get(c.from?.nodeId);
+    const toN = S.nodes.get(c.to?.nodeId);
+    const prefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
+    const label = c.lineLabel || `${prefix}-${_ctNodeTag(fromN)}-${_ctNodeTag(toN)}`;
+    const route = `${_ctNodeTag(fromN)} → ${_ctNodeTag(toN)}`;
+    const In = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
+    const Iz = Math.round(c._cableIz || 0) || 0;
+    const Imax = Math.round(c._maxA || 0) || 0;
+    if (c._breakerAgainstCable) {
+      rows.push(['Ошибка', 'Кабель: In > Iz', label, route, 'Кабель не защищён от перегрузки', `In=${In}A · Iz=${Iz}A · Iрасч=${Imax}A`]);
+    }
+    if (c._breakerUndersize) {
+      rows.push(['Ошибка', 'Кабель: In < Iрасч', label, route, 'Автомат сработает при штатной нагрузке', `In=${In}A · Iрасч=${Imax}A · Iz=${Iz}A`]);
+    }
+    if (c._cableOverflow) {
+      rows.push(['Предупр.', 'Кабель: overflow', label, route, 'Сечение превышает максимум ряда', `Iрасч=${Imax}A`]);
+    }
+  }
+
+  // MV overloads + source overloads + duplicates + orphans
+  const tagMap = new Map();
+  for (const n of S.nodes.values()) {
+    if (n.type === 'zone' || n.type === 'channel') continue;
+    const eff = _effectiveTag(n) || n.tag || '';
+    if (n.isMv && n._mvIkOverload) {
+      rows.push(['Ошибка', 'MV: Ik > It', eff, '—', 'I_k3 превышает термическую стойкость шин', `I_k3=${(n._Ik3_kA || 0).toFixed(2)}кА`]);
+    }
+    if (n.type === 'source' || n.type === 'generator') {
+      const cap = Number(n.capacityKw) || 0;
+      const load = Number(n._loadKw) || 0;
+      if (cap > 0 && load > cap * 1.05) {
+        rows.push(['Ошибка', 'Источник: overload', eff, '—', 'Нагрузка превышает номинал источника', `load=${load.toFixed(1)}кВт · cap=${cap.toFixed(1)}кВт (${((load / cap - 1) * 100).toFixed(1)}%)`]);
+      }
+    }
+    if ((n.type === 'consumer' || (n.type === 'panel' && !n.parentSectionedId && !n.isSection))) {
+      let hasInput = false;
+      for (const c of S.conns.values()) if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      if (!hasInput) {
+        rows.push(['Предупр.', 'Orphan', eff, '—', n.type === 'consumer' ? 'Потребитель не подключён к источнику' : 'Щит без входящей линии', n.type]);
+      }
+    }
+    if (eff) {
+      if (tagMap.has(eff)) {
+        rows.push(['Ошибка', 'Дубликат', eff, '—', 'Два и более узлов с одинаковым обозначением', '']);
+      } else tagMap.set(eff, n.id);
+    }
+  }
+
+  // Non-selective pairs
+  try {
+    const sel = window.Raschet?.analyzeSelectivity?.();
+    if (sel && Array.isArray(sel.pairs)) {
+      for (const p of sel.pairs.filter(p => !p.check?.selective)) {
+        const nodeTag = _effectiveTag(p.node) || p.node?.name || '?';
+        const up = `${p.upBreaker?.inNominal || '?'}A ${p.upBreaker?.curve || ''}`;
+        const down = `${p.downBreaker?.inNominal || '?'}A ${p.downBreaker?.curve || ''}`;
+        rows.push(['Предупр.', 'Селективность' + (p.isMvCellPair ? ' (MV)' : ''), nodeTag, `↑${up} / ↓${down}`, p.check?.reason || '', '']);
+      }
+    }
+  } catch {}
+
+  const csv = rows.map(row => row.map(cell => {
+    const s = String(cell ?? '');
+    return /[,"\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'project-issues-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  flash('Экспортировано ' + (rows.length - 1) + ' строк в CSV', 'success');
 }
 
 // Phase 1.20.21: счётчик проблем для бейджа на кнопке сайдбара.

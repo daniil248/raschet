@@ -694,10 +694,13 @@
         <button class="modal-close" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body" style="max-height:75vh;overflow:auto">
-        <p class="muted" style="margin:0 0 8px">
-          Сводка всех обнаруженных проблем координации защиты, сечений кабелей и
-          селективности. Клик по строке — переход к объекту на схеме.
-        </p>
+        <div style="display:flex;align-items:center;gap:10px;margin:0 0 8px">
+          <p class="muted" style="margin:0;flex:1">
+            Сводка всех обнаруженных проблем координации защиты, сечений кабелей и
+            селективности. Клик по строке — переход к объекту на схеме.
+          </p>
+          <button id="project-issues-export-csv" title="Экспорт списка проблем в CSV">📥 CSV</button>
+        </div>
         <div id="project-issues-mount"></div>
       </div>
       <div class="modal-foot">
