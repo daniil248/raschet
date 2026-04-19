@@ -1215,7 +1215,9 @@ export function renderConns() {
       const mid = pathMidpoint(a, waypoints, b);
       const isActive = c._state === 'active' && c._loadKw > 0;
       const parallel = Math.max(1, c._cableParallel || 1);
-      const cores = c._wireCount || (c._threePhase ? 5 : 3);
+      // HV-линии — 3 жилы (3 фазы, без N/PE). Броня не считается проводником.
+      // LV 3ф: 5 жил (L1+L2+L3+N+PE), LV 1ф: 3 (L+N+PE).
+      const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
       const maxPerBranch = (c._maxA || 0) / parallel;
 
       let labelText;

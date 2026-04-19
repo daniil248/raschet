@@ -269,6 +269,15 @@ export function renderInspectorConn(c) {
     // Экономическая плотность тока — per-connection toggle
     const ecoChecked = !!c.economicDensity;
     h.push(`<div class="field" style="margin-top:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-conn-prop="economicDensity" ${ecoChecked ? 'checked' : ''}> Экон. плотность тока</label></div>`);
+
+    // Для ВН-кабелей — опция «с бронёй». Броня не считается проводником
+    // (она заземляется отдельно), но важна для BOM и выбора марки
+    // (например ПвПу vs ПвПуг — с/без бронирования).
+    if (c._isHV) {
+      const hasArmour = !!c.hasArmour;
+      h.push(`<div class="field" style="margin-top:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-conn-prop="hasArmour" ${hasArmour ? 'checked' : ''}> Кабель с бронёй (заземлённой)</label></div>`);
+      h.push(`<div class="muted" style="font-size:11px;margin-top:-2px;margin-bottom:8px">На ВН: 3 жилы (3 фазы). Броня (если есть) — экран, заземлённый на обоих концах. В числе жил не учитывается.</div>`);
+    }
   }
   // Секция сечения — ВНУТРИ details "Проводник"
   if ((c._cableSize || c._busbarNom || c._maxA > 0) && !isBusbar) {

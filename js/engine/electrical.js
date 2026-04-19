@@ -121,7 +121,9 @@ export function countWires({ phases, hasNeutral, hasGround, pen, dc, dcPoles }) 
 // Приоритеты:
 //   1. Ручное переопределение на связи (conn._wireCountManual)
 //   2. Ручное переопределение на цели (toN.wireCount)
-//   3. HV-кабели (U > 1000 В): 3 жилы (линейная часть без N/PE)
+//   3. HV-кабели (conn._isHV или U > 1000 В на любом конце):
+//      3 жилы (3 фазы без N/PE — стандарт MV/HV в сетях 6/10/35 кВ).
+//      Броня заземляется отдельно и не учитывается в числе жил.
 //   4. Авто: фазы из toN + hasNeutral/hasGround/pen (effectiveWireFlags)
 export function cableWireCount(fromN, toN, conn) {
   if (conn && Number.isFinite(Number(conn._wireCountManual)) && Number(conn._wireCountManual) > 0) {
@@ -130,8 +132,15 @@ export function cableWireCount(fromN, toN, conn) {
   if (toN && Number.isFinite(Number(toN.wireCount)) && Number(toN.wireCount) > 0) {
     return Number(toN.wireCount);
   }
-  const U = toN ? nodeVoltage(toN) : 0;
-  if (U >= 1000) return 3;
+  // HV-признак: если conn уже рассчитан (_isHV в recalc), используем его —
+  // он учитывает utility↔transformer направления. Иначе смотрим на оба
+  // конца: если U > 1000 В хоть где-то (первичка или вторичка utility) — HV.
+  const isHvByConn = conn && conn._isHV === true;
+  const U_to = toN ? nodeVoltage(toN) : 0;
+  const U_from = fromN ? nodeVoltage(fromN) : 0;
+  if (isHvByConn || U_to >= 1000 || U_from >= 1000) {
+    return 3;
+  }
   // Определяем DC из voltageLevel целевого узла
   const levels = GLOBAL.voltageLevels || [];
   const lv = toN && typeof toN.voltageLevelIdx === 'number' ? levels[toN.voltageLevelIdx] : null;
