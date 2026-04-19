@@ -14,6 +14,7 @@ import * as Report from '../shared/report/index.js';
 import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } from '../shared/report-catalog.js';
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
 import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
+import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
 
 (function () {
 'use strict';
@@ -1648,18 +1649,24 @@ function exportCableTableCsv() {
   flash('Экспортировано ' + (rows.length - 1) + ' линий в CSV', 'success');
 }
 
-async function renderCableTable() {
+function _ctFmt(n, d = 1) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '—';
+  if (Math.abs(v) >= 1000) return v.toFixed(0);
+  if (Math.abs(v) >= 100) return v.toFixed(0);
+  if (Math.abs(v) >= 10) return v.toFixed(1);
+  return v.toFixed(d);
+}
+
+function renderCableTable() {
   const mount = document.getElementById('cable-table-mount');
   if (!mount) return;
   const S = window.Raschet?._state;
   if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
 
-  // Подгружаем marks из cable-types-catalog (для select)
+  // Справочник марок (синхронный импорт)
   let allMarks = [];
-  try {
-    const cm = await import('../shared/cable-types-catalog.js');
-    allMarks = cm.listCableTypes ? cm.listCableTypes() : [];
-  } catch {}
+  try { allMarks = _listCableTypes(); } catch (e) { console.warn('[cable-table] listCableTypes', e); }
 
   const conns = [...S.conns.values()].filter(c => {
     // Только активные с известным сечением
@@ -1667,7 +1674,7 @@ async function renderCableTable() {
   });
 
   // Фильтры
-  const q = _cableTableFilters.search.toLowerCase();
+  const q = (_cableTableFilters.search || '').toLowerCase();
   const cls = _cableTableFilters.class;
   const filtered = conns.filter(c => {
     if (cls === 'HV' && !c._isHV) return false;
@@ -1702,15 +1709,15 @@ async function renderCableTable() {
     fieldbus: 'Полевой', dc: 'DC',
   };
 
-  // Методы прокладки из текущей методики расчёта (IEC / ПУЭ)
+  // Методы прокладки из текущей методики (синхронно)
   let methodsList = [];
   try {
-    const mm = await import('./methods/index.js');
-    const meth = mm.getMethod(S.currentMethodId || 'iec60364');
+    const G = window.Raschet?.getGlobal?.() || {};
+    const meth = getMethod(G.calcMethod || 'iec');
     if (meth?.installMethods) {
       methodsList = Object.entries(meth.installMethods).map(([k, v]) => ({ id: k, label: v }));
     }
-  } catch {}
+  } catch (e) { console.warn('[cable-table] getMethod', e); }
   if (!methodsList.length) {
     methodsList = [
       { id: 'A1', label: 'A1' }, { id: 'A2', label: 'A2' },
@@ -1799,7 +1806,7 @@ async function renderCableTable() {
           <select class="ct-method" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${methodOpts}</select>
         </td>
         <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:#555">
-          ${fmt(c._maxA || 0)} / ${fmt(c._cableIz || 0)} А
+          ${_ctFmt(c._maxA || 0)} / ${_ctFmt(c._cableIz || 0)} А
         </td>
         <td style="padding:5px 8px;text-align:center;font-size:11px;color:${clsColor};font-weight:600">${cls}</td>
       </tr>`);
