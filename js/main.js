@@ -2661,8 +2661,28 @@ function _countProjectIssues() {
     if (c._breakerUndersize) err++;
     if (c._cableOverflow) wrn++;
   }
+  const tagSet = new Set();
   for (const n of S.nodes.values()) {
+    if (n.type === 'zone' || n.type === 'channel') continue;
     if (n.isMv && n._mvIkOverload) err++;
+    // Source overload
+    if (n.type === 'source' || n.type === 'generator') {
+      const cap = Number(n.capacityKw) || 0;
+      const load = Number(n._loadKw) || 0;
+      if (cap > 0 && load > cap * 1.05) err++;
+    }
+    // Orphan
+    if ((n.type === 'consumer' || (n.type === 'panel' && !n.parentSectionedId && !n.isSection))) {
+      let hasInput = false;
+      for (const c of S.conns.values()) if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      if (!hasInput) wrn++;
+    }
+    // Duplicate tag
+    const eff = _effectiveTag(n) || n.tag || '';
+    if (eff) {
+      if (tagSet.has(eff)) err++;
+      else tagSet.add(eff);
+    }
   }
   // Селективность
   try {
@@ -2779,11 +2799,53 @@ function renderProjectIssues() {
     }
   }
 
+  // 4. Phase 1.20.22: orphan-узлы и перегрузка источников
+  const orphans = [];
+  const sourceOverloads = [];
+  const tagMap = new Map(); // для поиска дубликатов
+  const duplicateTags = [];
+  for (const n of S.nodes.values()) {
+    if (n.type === 'zone' || n.type === 'channel') continue;
+    const eff = _effectiveTag(n) || n.tag || '';
+    if (eff) {
+      if (tagMap.has(eff)) duplicateTags.push({ id: n.id, tag: eff, otherId: tagMap.get(eff) });
+      else tagMap.set(eff, n.id);
+    }
+    // Orphan check: consumer/panel без входящих connections
+    if (n.type === 'consumer' || (n.type === 'panel' && !n.parentSectionedId)) {
+      let hasInput = false;
+      for (const c of S.conns.values()) {
+        if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      }
+      if (!hasInput && !n.isSection) {
+        orphans.push({
+          id: n.id,
+          name: eff || n.name || '?',
+          reason: n.type === 'consumer' ? 'Потребитель не подключён к источнику' : 'Щит без входящей линии',
+          details: n.type + (n.demandKw ? ` · ${n.demandKw} кВт` : ''),
+        });
+      }
+    }
+    // Source overload check
+    if (n.type === 'source' || n.type === 'generator') {
+      const cap = Number(n.capacityKw) || 0;
+      const load = Number(n._loadKw) || 0;
+      if (cap > 0 && load > cap * 1.05) {
+        sourceOverloads.push({
+          id: n.id,
+          name: eff || n.name || '?',
+          reason: 'Нагрузка превышает номинал источника',
+          details: `Нагрузка = ${load.toFixed(1)} кВт · Номинал = ${cap.toFixed(1)} кВт (${((load / cap - 1) * 100).toFixed(1)}% перегруз)`,
+        });
+      }
+    }
+  }
+
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
-  const totalErrors = cableErrors.length + mvOverloads.length;
-  const totalWarns = cableWarns.length + selPairs.length;
+  const totalErrors = cableErrors.length + mvOverloads.length + sourceOverloads.length + duplicateTags.length;
+  const totalWarns = cableWarns.length + selPairs.length + orphans.length;
 
   // Phase 1.20.21: кнопка «Исправить всё» — применяет все автофиксы
   const fixableCount = cableErrors.filter(e => !!e.fix).length;
@@ -2851,7 +2913,21 @@ function renderProjectIssues() {
   if (mvOverloads.length) {
     html.push(section('Ошибки MV-щитов', '⚡', mvOverloads.length, renderNodeList(mvOverloads, '#c62828')));
   }
+  if (sourceOverloads.length) {
+    html.push(section('Перегрузка источников питания', '⚡', sourceOverloads.length, renderNodeList(sourceOverloads, '#c62828')));
+  }
+  if (duplicateTags.length) {
+    const dupHtml = duplicateTags.map(d => `
+      <div class="pi-row" data-kind="node" data-id="${esc(d.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eaecef;cursor:pointer" title="Клик — перейти к узлу">
+        <span style="flex:0 0 220px;font-weight:600;color:#c62828">${esc(d.tag)}</span>
+        <span style="flex:1;font-size:11px;color:#c62828">Дубликат обозначения — одно и то же имя у двух и более узлов</span>
+      </div>`).join('');
+    html.push(section('Дубликаты обозначений', '🔁', duplicateTags.length, dupHtml));
+  }
   html.push(section('Предупреждения кабелей', '⚠', cableWarns.length, renderLineList(cableWarns, '#e65100')));
+  if (orphans.length) {
+    html.push(section('Несвязанные узлы (нет входящего питания)', '🔌', orphans.length, renderNodeList(orphans, '#e65100')));
+  }
 
   // Non-selective pairs
   if (selPairs.length) {
