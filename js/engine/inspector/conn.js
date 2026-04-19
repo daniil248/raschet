@@ -1,6 +1,7 @@
 // Инспектор связи (линии) и общие хелперы условий прокладки.
 // Выделено из inspector.js.
-import { GLOBAL, BREAKER_SERIES } from '../constants.js';
+import { GLOBAL, BREAKER_SERIES, CABLE_CATEGORIES } from '../constants.js';
+import { listCableTypes, getCableType } from '../../../shared/cable-types-catalog.js';
 import { state, inspectorBody } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveTag } from '../zones.js';
@@ -177,6 +178,42 @@ export function renderInspectorConn(c) {
       <option value="solid"${ct === 'solid' ? ' selected' : ''}>Цельная жила (класс 1–2, до 10 мм²)</option>
       <option value="busbar"${ct === 'busbar' ? ' selected' : ''}>Шинопровод</option>
     </select>`));
+
+  // Марка кабеля из справочника (shared/cable-types-catalog.js, Фаза 0.3 + 1.11)
+  // Информационный выбор — при выборе авто-заполняются material/insulation.
+  // 16 базовых типов + пользовательские. Группировка по категории (силовой/слаботочка/данные/DC/ВН).
+  try {
+    const cableTypes = listCableTypes();
+    const curMark = c.cableMark || '';
+    const byCat = {};
+    for (const ct2 of cableTypes) {
+      const cat = ct2.category || 'power';
+      (byCat[cat] = byCat[cat] || []).push(ct2);
+    }
+    let markOpts = '<option value="">— не выбрано (указать вручную) —</option>';
+    for (const [cat, items] of Object.entries(byCat)) {
+      const catDef = CABLE_CATEGORIES?.[cat];
+      const catLabel = catDef?.label || cat;
+      markOpts += `<optgroup label="${escHtml(catLabel)}">`;
+      for (const m of items) {
+        markOpts += `<option value="${escAttr(m.id)}"${m.id === curMark ? ' selected' : ''}>${escHtml(m.brand || m.id)}</option>`;
+      }
+      markOpts += '</optgroup>';
+    }
+    h.push(field('Марка кабеля (из справочника)', `<select data-conn-prop="cableMark">${markOpts}</select>`));
+    if (curMark) {
+      const sel = getCableType(curMark);
+      if (sel) {
+        h.push(`<div class="muted" style="font-size:11px;margin-top:-4px;margin-bottom:6px">
+          <b>${escHtml(sel.brand || '')}</b> · ${escHtml(sel.fullName || '')}<br>
+          <span style="color:#1976d2">${escHtml(sel.standard || '')}</span> · материал ${escHtml(sel.material || '?')} · изоляция ${escHtml(sel.insulation || '?')}
+          ${sel.fireResistant ? ' · <span style="color:#c67300">огнестойкий</span>' : ''}
+          ${sel.lowSmokeZH ? ' · <span style="color:#2e7d32">LSZH</span>' : ''}
+        </div>`);
+      }
+    }
+  } catch (e) { /* каталог опционален */ }
+
   h.push(field('Длина, м', `<input type="number" min="0" max="10000" step="0.5" data-conn-prop="lengthM" value="${c.lengthM ?? 1}">`));
 
   if (!isBusbar) {
@@ -496,6 +533,19 @@ export function renderInspectorConn(c) {
         v = Number(v) || 0;
       }
       c[prop] = v;
+      // Фаза 1.11: при выборе марки кабеля из справочника — автозаполняем
+      // материал / изоляцию из записи (если есть информация).
+      if (prop === 'cableMark' && v) {
+        try {
+          const ctRec = getCableType(v);
+          if (ctRec) {
+            if (ctRec.material === 'Cu' || ctRec.material === 'Al') c.material = ctRec.material;
+            if (ctRec.insulation === 'PVC' || ctRec.insulation === 'XLPE' || ctRec.insulation === 'PE') {
+              c.insulation = ctRec.insulation === 'PE' ? 'PVC' : ctRec.insulation; // PE→PVC fallback
+            }
+          }
+        } catch {}
+      }
       render();
       notifyChange();
       // renderInspector ТОЛЬКО для select/checkbox — они могут показать/скрыть
