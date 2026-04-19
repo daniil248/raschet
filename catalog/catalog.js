@@ -76,8 +76,17 @@ function openModal(title, formHtml, onSave) {
   document.getElementById('modal-form').innerHTML = formHtml;
   const modal = document.getElementById('modal');
   modal.classList.add('show');
-  document.getElementById('modal-cancel').onclick = () => modal.classList.remove('show');
-  document.getElementById('modal-save').onclick = () => {
+  // Сбрасываем состояние кнопок (могли быть модифицированы в view-модалке)
+  const saveBtn = document.getElementById('modal-save');
+  const cancelBtn = document.getElementById('modal-cancel');
+  if (saveBtn) saveBtn.style.display = '';
+  if (cancelBtn) cancelBtn.textContent = 'Отмена';
+  // Удаляем временные кнопки от view-модалки
+  const footer = cancelBtn?.parentElement;
+  if (footer) footer.querySelectorAll('.view-clone-btn').forEach(b => b.remove());
+
+  cancelBtn.onclick = () => modal.classList.remove('show');
+  saveBtn.onclick = () => {
     try {
       const ok = onSave();
       if (ok !== false) modal.classList.remove('show');
@@ -154,12 +163,12 @@ function renderElementsTab() {
         <td class="num">${lastPrice}</td>
         <td class="num">${priceInfo.count || '—'}</td>
         <td class="actions">
+          <button data-act="view" title="Просмотр свойств элемента${el.kind === 'breaker' ? ' + TCC-график' : ''}">👁 Просмотр</button>
           ${isPricableKind(el.kind)
             ? '<button data-act="add-price">+ Цена</button>'
             : (el.kind === 'cable-type'
                 ? '<button data-act="add-sku" title="Создать типоразмер (SKU) для этой линейки кабеля">+ SKU</button>'
                 : '<button disabled title="' + (ELEMENT_KINDS[el.kind]?.note || 'Цена не применима к этому типу') + '">нет цены</button>')}
-          ${el.kind === 'breaker' ? '<button data-act="breaker-details" title="Параметры автомата + TCC">⚙ Параметры</button>' : ''}
           <button data-act="view-prices">Цены</button>
           ${!el.builtin ? '<button data-act="edit">✎</button>' : ''}
           <button data-act="clone">Клон</button>
@@ -186,7 +195,8 @@ function renderElementsTab() {
     row.querySelectorAll('button').forEach(btn => {
       btn.onclick = () => {
         const act = btn.dataset.act;
-        if (act === 'add-price') openPriceModal({ elementId: id });
+        if (act === 'view') openViewElementModal(id);
+        else if (act === 'add-price') openPriceModal({ elementId: id });
         else if (act === 'add-sku') openCableSkuModal(id);
         else if (act === 'breaker-details') openBreakerDetailsModal(id);
         else if (act === 'view-prices') { elFilters.search = ''; switchTab('prices'); priceFilters.elementId = id; renderPricesTab(); }
@@ -233,6 +243,136 @@ function openAddElementModal(editId) {
     });
     flash('Сохранено', 'success');
   });
+}
+
+// ====================== Просмотр свойств элемента ======================
+// Универсальная read-only модалка для любого kind'а. Для breaker
+// перенаправляет на openBreakerDetailsModal (с TCC-графиком).
+
+function openViewElementModal(id) {
+  const el = getElement(id);
+  if (!el) return flash('Элемент не найден', 'error');
+  // Для breaker — специализированный вьюер с TCC
+  if (el.kind === 'breaker') return openBreakerDetailsModal(id);
+
+  const kindDef = ELEMENT_KINDS[el.kind] || { label: el.kind };
+  const srcBadge = el.builtin
+    ? '<span class="badge builtin">builtin (только чтение)</span>'
+    : el.source === 'imported'
+      ? '<span class="badge imported">imported</span>'
+      : '<span class="badge user">user</span>';
+
+  const field = (label, value) => !value ? '' : `
+    <tr><td style="color:#555;width:45%">${esc(label)}</td><td style="font-weight:600">${esc(value)}</td></tr>`;
+
+  // Сбор ключевых полей в таблицу
+  const basics = [
+    field('ID', el.id),
+    field('Тип (kind)', kindDef.label),
+    field('Категория', el.category),
+    field('Название', el.label),
+    field('Производитель', el.manufacturer),
+    field('Серия', el.series),
+    field('Вариант', el.variant),
+    field('Источник', el.source),
+    el.tags?.length ? field('Теги', el.tags.join(', ')) : '',
+    field('Описание', el.description),
+  ].filter(Boolean).join('');
+
+  const el2row = (obj, prefix) => {
+    if (!obj || typeof obj !== 'object') return '';
+    return Object.entries(obj)
+      .filter(([k, v]) => v != null && v !== '' && typeof v !== 'object')
+      .map(([k, v]) => field(prefix + k, String(v)))
+      .join('');
+  };
+
+  const electricalRows = el2row(el.electrical, '');
+  const geometryRows = el2row(el.geometry, '');
+  const kindPropsRows = el2row(el.kindProps, '');
+
+  // Для элементов с composition — таблица состава
+  let compositionHtml = '';
+  if (Array.isArray(el.composition) && el.composition.length) {
+    compositionHtml = `
+      <h4 style="margin:14px 0 6px;font-size:13px">Состав (composition)</h4>
+      <table class="data-table" style="font-size:12px">
+        <thead><tr><th>Роль</th><th>Элемент</th><th class="num">Кол-во</th><th>Phantom</th></tr></thead>
+        <tbody>
+          ${el.composition.map(c => `
+            <tr>
+              <td>${esc(c.role || '—')}</td>
+              <td>${esc(c.label || c.elementId || '—')}</td>
+              <td class="num">${c.qty || 1}</td>
+              <td>${c.phantom ? '✓' : '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  const html = `
+    <div style="background:#f0f4ff;padding:10px;border-radius:4px;margin-bottom:12px;font-size:13px">
+      <b>${esc(el.label || el.id)}</b> ${srcBadge}<br>
+      <span class="muted" style="font-size:11px;font-family:monospace">${esc(el.id)}</span>
+    </div>
+
+    <h4 style="margin:0 0 6px;font-size:13px">Общие параметры</h4>
+    <table class="wiz-summary-table" style="width:100%;font-size:12px">${basics}</table>
+
+    ${electricalRows ? `
+      <h4 style="margin:14px 0 6px;font-size:13px">Электрические параметры</h4>
+      <table class="wiz-summary-table" style="width:100%;font-size:12px">${electricalRows}</table>
+    ` : ''}
+
+    ${geometryRows ? `
+      <h4 style="margin:14px 0 6px;font-size:13px">Геометрия / габариты</h4>
+      <table class="wiz-summary-table" style="width:100%;font-size:12px">${geometryRows}</table>
+    ` : ''}
+
+    ${kindPropsRows ? `
+      <h4 style="margin:14px 0 6px;font-size:13px">Специфичные параметры (${esc(kindDef.label)})</h4>
+      <table class="wiz-summary-table" style="width:100%;font-size:12px">${kindPropsRows}</table>
+    ` : ''}
+
+    ${compositionHtml}
+
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;font-size:12px;color:#666">Полный JSON (для экспорта)</summary>
+      <pre style="background:#f6f8fa;padding:10px;border-radius:4px;font-size:11px;max-height:300px;overflow:auto;margin-top:6px">${esc(JSON.stringify(el, null, 2))}</pre>
+    </details>
+
+    ${el.builtin ? '<div class="muted" style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-radius:3px">⚠ Встроенный элемент — только просмотр. Для редактирования нажмите «Клон» — создастся пользовательская копия с возможностью правки.</div>' : ''}
+  `;
+
+  openModal('Свойства: ' + (el.label || el.id), html, () => true);
+  // Скрываем кнопку «Сохранить» — режим просмотра
+  const saveBtn = document.getElementById('modal-save');
+  if (saveBtn) saveBtn.style.display = 'none';
+  // Переименовываем «Отмена» в «Закрыть»
+  const cancelBtn = document.getElementById('modal-cancel');
+  if (cancelBtn) cancelBtn.textContent = 'Закрыть';
+  // Дополнительная кнопка «Клонировать»
+  const footer = cancelBtn?.parentElement;
+  if (footer && !footer.querySelector('.view-clone-btn')) {
+    const cloneBtn = document.createElement('button');
+    cloneBtn.textContent = 'Клонировать для редактирования';
+    cloneBtn.className = 'view-clone-btn';
+    cloneBtn.style.marginRight = 'auto';
+    cloneBtn.onclick = () => {
+      const name = prompt('Имя клона:', (el.label || id) + ' (копия)');
+      if (!name) return;
+      try {
+        const c = cloneElement(id, name);
+        flash('Клон создан: ' + c.label, 'success');
+        document.getElementById('modal').classList.remove('show');
+        // Автоматически открываем редактирование клона
+        setTimeout(() => openAddElementModal(c.id), 100);
+      } catch (e) { flash('Ошибка: ' + e.message, 'error'); }
+    };
+    footer.insertBefore(cloneBtn, cancelBtn);
+  }
+  // Восстановление кнопок при следующем вызове openModal —
+  // логика теперь в самом openModal() (сбрасывает кнопки в начале).
 }
 
 // ====================== Параметры автомата (Фаза 1.10) ======================
