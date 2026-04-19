@@ -17,6 +17,7 @@ import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templa
 import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
 import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES } from './engine/constants.js';
+import { effectiveTag as _effectiveTag } from './engine/zones.js';
 
 (function () {
 'use strict';
@@ -1616,6 +1617,16 @@ async function exportReportSection(sec, kind) {
 // ================= Таблица кабелей (Фаза 1.20) =================
 // Быстрое редактирование всех кабельных линий: марка, длина, способ прокладки.
 // Изменения применяются сразу в state и триггерят recalc+render.
+// Phase 1.20.15: обозначение линии использует полный effectiveTag
+// (включая parent chain: «MVS1.PDC3.ACU1»), а не только локальный tag.
+function _ctNodeTag(n) {
+  if (!n) return '?';
+  try {
+    const eff = _effectiveTag(n);
+    if (eff) return eff;
+  } catch {}
+  return n.tag || n.name || '?';
+}
 // Фаза 1.20.1: per-column фильтры (марка, длина min/max, способ, обозначение,
 // from/to) + групповое редактирование выделенных строк.
 let _cableTableFilters = {
@@ -1677,13 +1688,13 @@ function exportCableTableCsv() {
     const fromN = S.nodes.get(c.from?.nodeId);
     const toN = S.nodes.get(c.to?.nodeId);
     if (q) {
-      const hay = [c.lineLabel, fromN?.tag, fromN?.name, toN?.tag, toN?.name, c.cableMark]
+      const hay = [c.lineLabel, _ctNodeTag(fromN), _ctNodeTag(toN), fromN?.name, toN?.name, c.cableMark]
         .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (fLabel && !String(c.lineLabel || '').toLowerCase().includes(fLabel)) return false;
     if (fFromTo) {
-      const ft = `${fromN?.tag || fromN?.name || ''} ${toN?.tag || toN?.name || ''}`.toLowerCase();
+      const ft = `${_ctNodeTag(fromN)} ${_ctNodeTag(toN)}`.toLowerCase();
       if (!ft.includes(fFromTo)) return false;
     }
     if (fMark) {
@@ -1725,8 +1736,8 @@ function exportCableTableCsv() {
     const fromN = S.nodes.get(c.from?.nodeId);
     const toN = S.nodes.get(c.to?.nodeId);
     switch (sortCol) {
-      case 'label': return (c.lineLabel || `${fromN?.tag || fromN?.name || ''}-${toN?.tag || toN?.name || ''}`).toLowerCase();
-      case 'fromTo': return `${fromN?.tag || fromN?.name || ''} → ${toN?.tag || toN?.name || ''}`.toLowerCase();
+      case 'label': return (c.lineLabel || `${_ctNodeTag(fromN)}-${_ctNodeTag(toN)}`).toLowerCase();
+      case 'fromTo': return `${_ctNodeTag(fromN)} → ${_ctNodeTag(toN)}`.toLowerCase();
       case 'mark': {
         const rec = c.cableMark ? allMarksLocal.find(m => m.id === c.cableMark) : null;
         return (rec?.brand || c.cableMark || '').toLowerCase();
@@ -1752,7 +1763,7 @@ function exportCableTableCsv() {
     const fromN = S.nodes.get(c.from.nodeId);
     const toN = S.nodes.get(c.to.nodeId);
     const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
-    const lineLabel = c.lineLabel || `${linePrefix}-${fromN?.tag || fromN?.name || '?'}-${toN?.tag || toN?.name || '?'}`;
+    const lineLabel = c.lineLabel || `${linePrefix}-${_ctNodeTag(fromN)}-${_ctNodeTag(toN)}`;
     const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
     const cls2 = c._isHV ? 'MV/HV' : (c._isDC ? 'DC' : 'LV');
     const rec = c.cableMark ? allMarksLocal.find(m => m.id === c.cableMark) : null;
@@ -1765,8 +1776,8 @@ function exportCableTableCsv() {
     const curveVal = String(c.breakerCurve || c._breakerCurveEff || '').toUpperCase();
     rows.push([
       lineLabel,
-      fromN?.tag || fromN?.name || '',
-      toN?.tag || toN?.name || '',
+      _ctNodeTag(fromN),
+      _ctNodeTag(toN),
       rec?.brand || c.cableMark || '',
       catLabel,
       c.material || '',
@@ -1861,16 +1872,16 @@ function renderCableTable() {
     const fromN = S.nodes.get(c.from.nodeId);
     const toN = S.nodes.get(c.to.nodeId);
     if (q) {
-      const hay = [c.lineLabel, fromN?.tag, fromN?.name, toN?.tag, toN?.name, c.cableMark]
+      const hay = [c.lineLabel, _ctNodeTag(fromN), _ctNodeTag(toN), fromN?.name, toN?.name, c.cableMark]
         .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (fLabel && !String(c.lineLabel || '').toLowerCase().includes(fLabel)
-        && !`${fromN?.tag || fromN?.name || ''}-${toN?.tag || toN?.name || ''}`.toLowerCase().includes(fLabel)) {
+        && !`${_ctNodeTag(fromN)}-${_ctNodeTag(toN)}`.toLowerCase().includes(fLabel)) {
       return false;
     }
     if (fFromTo) {
-      const ft = `${fromN?.tag || fromN?.name || ''} ${toN?.tag || toN?.name || ''}`.toLowerCase();
+      const ft = `${_ctNodeTag(fromN)} ${_ctNodeTag(toN)}`.toLowerCase();
       if (!ft.includes(fFromTo)) return false;
     }
     // Phase 1.20.2: марка / проводник / способ — equality с distinct
@@ -1928,9 +1939,9 @@ function renderCableTable() {
     const toN = S.nodes.get(c.to?.nodeId);
     switch (sortCol) {
       case 'label':
-        return (c.lineLabel || `${fromN?.tag || fromN?.name || ''}-${toN?.tag || toN?.name || ''}`).toLowerCase();
+        return (c.lineLabel || `${_ctNodeTag(fromN)}-${_ctNodeTag(toN)}`).toLowerCase();
       case 'fromTo':
-        return `${fromN?.tag || fromN?.name || ''} → ${toN?.tag || toN?.name || ''}`.toLowerCase();
+        return `${_ctNodeTag(fromN)} → ${_ctNodeTag(toN)}`.toLowerCase();
       case 'mark': {
         const rec = c.cableMark ? allMarks.find(m => m.id === c.cableMark) : null;
         return (rec?.brand || c.cableMark || '').toLowerCase();
@@ -2137,8 +2148,9 @@ function renderCableTable() {
   for (const c of filtered) {
     const fromN = S.nodes.get(c.from.nodeId);
     const toN = S.nodes.get(c.to.nodeId);
-    const fromLabel = (fromN?.tag || fromN?.name || '?');
-    const toLabel = (toN?.tag || toN?.name || '?');
+    // Phase 1.20.15: полное обозначение (с parent chain) вместо локального tag
+    const fromLabel = _ctNodeTag(fromN);
+    const toLabel = _ctNodeTag(toN);
     const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
     const lineLabel = c.lineLabel || `${linePrefix}-${fromLabel}-${toLabel}`;
 
@@ -2580,6 +2592,363 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
   });
 }
 
+// ================= Таблица потребителей (Phase 1.20.14) =================
+let _consumersTableFilters = { search: '', phase: '', category: '' };
+let _consumersTableSelected = new Set();
+let _consumersTableSort = { col: 'tag', dir: 'asc' };
+
+function openConsumersTableModal() {
+  openModal('modal-consumers-table');
+  renderConsumersTable();
+  const srchEl = document.getElementById('consumers-table-search');
+  if (srchEl) {
+    srchEl.value = _consumersTableFilters.search;
+    srchEl.oninput = (e) => { _consumersTableFilters.search = e.target.value; renderConsumersTable(); };
+  }
+  const phEl = document.getElementById('consumers-table-filter-phase');
+  if (phEl) {
+    phEl.value = _consumersTableFilters.phase;
+    phEl.onchange = (e) => { _consumersTableFilters.phase = e.target.value; renderConsumersTable(); };
+  }
+  const csvBtn = document.getElementById('consumers-table-export-csv');
+  if (csvBtn) csvBtn.onclick = exportConsumersTableCsv;
+}
+
+function renderConsumersTable() {
+  const mount = document.getElementById('consumers-table-mount');
+  if (!mount) return;
+  const S = window.Raschet?._state;
+  if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
+
+  const consumers = [...S.nodes.values()].filter(n => n.type === 'consumer');
+
+  let catalog = [];
+  try { catalog = window.Raschet?.getConsumerCatalog?.() || []; } catch {}
+  const catalogById = new Map(catalog.map(c => [c.id, c]));
+
+  const distinctCats = new Set();
+  for (const n of consumers) {
+    const cat = catalogById.get(n.consumerCatalogId)?.category || 'other';
+    distinctCats.add(cat);
+  }
+  const CAT_LABELS = {
+    lighting: 'Освещение', socket: 'Розеточные', power: 'Силовая',
+    hvac: 'Климат/HVAC', it: 'IT/Серверы', lowvoltage: 'Слаботочные',
+    process: 'Технологическая', other: 'Прочее',
+  };
+
+  const F = _consumersTableFilters;
+  const q = (F.search || '').toLowerCase();
+  const filtered = consumers.filter(n => {
+    if (F.phase && (n.phase || '3ph') !== F.phase) return false;
+    if (F.category) {
+      const cat = catalogById.get(n.consumerCatalogId)?.category || 'other';
+      if (cat !== F.category) return false;
+    }
+    if (q) {
+      const catLabel = catalogById.get(n.consumerCatalogId)?.label || '';
+      const hay = [n.tag, n.name, catLabel, n.phase].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  for (const id of [..._consumersTableSelected]) {
+    if (!filtered.find(n => n.id === id)) _consumersTableSelected.delete(id);
+  }
+
+  const sortDir = _consumersTableSort.dir === 'desc' ? -1 : 1;
+  const sortKey = (n) => {
+    switch (_consumersTableSort.col) {
+      case 'tag': return (n.tag || n.name || '').toLowerCase();
+      case 'name': return (n.name || '').toLowerCase();
+      case 'category': return (catalogById.get(n.consumerCatalogId)?.label || '').toLowerCase();
+      case 'demand': return Number(n.demandKw) || 0;
+      case 'count': return Number(n.count) || 1;
+      case 'cosPhi': return Number(n.cosPhi) || 0;
+      case 'kUse': return Number(n.kUse) || 0;
+      case 'phase': return n.phase || '';
+      default: return '';
+    }
+  };
+  filtered.sort((a, b) => {
+    const ka = sortKey(a), kb = sortKey(b);
+    if (ka < kb) return -1 * sortDir;
+    if (ka > kb) return 1 * sortDir;
+    return 0;
+  });
+
+  const countEl = document.getElementById('consumers-table-count');
+  if (countEl) countEl.textContent = `${filtered.length} из ${consumers.length}`;
+
+  const selCount = _consumersTableSelected.size;
+  const bulkDisabled = selCount === 0;
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+  const sortHdr = (col, label, align) => {
+    const active = _consumersTableSort.col === col;
+    const arrow = active ? (_consumersTableSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+    const color = active ? 'color:#1976d2;' : '';
+    return `<th class="ctc-sort" data-sort-col="${col}" style="padding:6px 8px;text-align:${align};border-bottom:2px solid #d0d7de;cursor:pointer;user-select:none;${color}">${label}${arrow}</th>`;
+  };
+
+  const html = [`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;margin-bottom:8px;font-size:12px;flex-wrap:wrap">
+      <b>Выделено: ${selCount}</b>
+      <button type="button" id="ctc-bulk-demand" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">P (кВт)</button>
+      <button type="button" id="ctc-bulk-cosPhi" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">cos φ</button>
+      <button type="button" id="ctc-bulk-kUse" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">K<sub>и</sub></button>
+      <button type="button" id="ctc-bulk-phase" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Фаза</button>
+      <span style="flex:1"></span>
+      <button type="button" id="ctc-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
+      <button type="button" id="ctc-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#f6f8fa;position:sticky;top:0;z-index:2">
+          <th style="padding:6px 4px;border-bottom:2px solid #d0d7de;width:28px;text-align:center">
+            <input type="checkbox" id="ctc-select-all" ${filtered.length && filtered.every(n => _consumersTableSelected.has(n.id)) ? 'checked' : ''} title="Выделить все">
+          </th>
+          ${sortHdr('tag', 'Обозн.', 'left')}
+          ${sortHdr('name', 'Имя', 'left')}
+          ${sortHdr('category', 'Категория', 'left')}
+          ${sortHdr('demand', 'P, кВт', 'right')}
+          ${sortHdr('count', 'Шт.', 'right')}
+          ${sortHdr('cosPhi', 'cos φ', 'right')}
+          ${sortHdr('kUse', 'Kи', 'right')}
+          ${sortHdr('phase', 'Фаза', 'center')}
+        </tr>
+        <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1">
+          <th></th>
+          <th colspan="2" style="padding:3px 6px;border-bottom:1px solid #d0d7de"><span class="muted" style="font-size:10px">Поиск — в поле сверху</span></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ctc-flt" data-flt="category" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">— все —</option>
+              ${[...distinctCats].sort().map(v => `<option value="${esc(v)}" ${F.category === v ? 'selected' : ''}>${esc(CAT_LABELS[v] || v)}</option>`).join('')}
+            </select>
+          </th>
+          <th colspan="5"></th>
+        </tr>
+      </thead>
+      <tbody>`];
+
+  for (const n of filtered) {
+    const cat = catalogById.get(n.consumerCatalogId);
+    const catLabel = cat?.label || '—';
+    const catCat = cat?.category || 'other';
+    const checked = _consumersTableSelected.has(n.id);
+    const rowBg = checked ? 'background:#eef5ff;' : '';
+    const phase = n.phase || '3ph';
+    html.push(`
+      <tr data-id="${esc(n.id)}" style="border-bottom:1px solid #eaecef;${rowBg}">
+        <td style="padding:5px 4px;text-align:center">
+          <input type="checkbox" class="ctc-row-sel" data-id="${esc(n.id)}" ${checked ? 'checked' : ''}>
+        </td>
+        <td style="padding:5px 8px;font-weight:600">
+          <a href="#" class="ctc-jump" data-id="${esc(n.id)}" title="Перейти к потребителю на схеме" style="color:#1976d2;text-decoration:none">
+            ${esc(n.tag || '?')} <span style="font-size:10px;opacity:0.7">↗</span>
+          </a>
+        </td>
+        <td style="padding:5px 8px"><input class="ctc-name" data-id="${esc(n.id)}" type="text" value="${esc(n.name || '')}" style="width:140px;padding:3px 6px;font-size:11px"></td>
+        <td style="padding:5px 8px;font-size:11px">
+          <div>${esc(catLabel)}</div>
+          <div class="muted" style="font-size:10px">${esc(CAT_LABELS[catCat] || catCat)}</div>
+        </td>
+        <td style="padding:5px 8px;text-align:right">
+          <input class="ctc-demand" data-id="${esc(n.id)}" type="number" min="0" step="0.1" value="${Number(n.demandKw) || 0}" style="width:72px;padding:3px 6px;text-align:right">
+        </td>
+        <td style="padding:5px 8px;text-align:right">
+          <input class="ctc-count" data-id="${esc(n.id)}" type="number" min="1" step="1" value="${Number(n.count) || 1}" style="width:52px;padding:3px 6px;text-align:right">
+        </td>
+        <td style="padding:5px 8px;text-align:right">
+          <input class="ctc-cosPhi" data-id="${esc(n.id)}" type="number" min="0.1" max="1" step="0.01" value="${Number(n.cosPhi) || 0.92}" style="width:56px;padding:3px 6px;text-align:right">
+        </td>
+        <td style="padding:5px 8px;text-align:right">
+          <input class="ctc-kUse" data-id="${esc(n.id)}" type="number" min="0" max="1.5" step="0.05" value="${Number(n.kUse) || 1}" style="width:56px;padding:3px 6px;text-align:right">
+        </td>
+        <td style="padding:5px 8px;text-align:center;font-size:11px">
+          <select class="ctc-phase" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px">
+            <option value="1ph"${phase === '1ph' ? ' selected' : ''}>1ф</option>
+            <option value="3ph"${phase === '3ph' ? ' selected' : ''}>3ф</option>
+            <option value="dc"${phase === 'dc' ? ' selected' : ''}>DC</option>
+          </select>
+        </td>
+      </tr>`);
+  }
+  if (!filtered.length) {
+    html.push('<tr><td colspan="9" style="padding:20px;text-align:center;color:#999">Нет потребителей по текущим фильтрам</td></tr>');
+  }
+  html.push('</tbody></table>');
+  mount.innerHTML = html.join('');
+
+  const apply = (id, fn) => {
+    if (!window.Raschet?._state?.nodes) return;
+    const node = window.Raschet._state.nodes.get(id);
+    if (!node) return;
+    fn(node);
+    if (typeof window.Raschet.notifyChange === 'function') window.Raschet.notifyChange();
+  };
+  const applyAndRerender = () => {
+    if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+    renderConsumersTable();
+  };
+  const bindNum = (cls, prop) => {
+    mount.querySelectorAll('.' + cls).forEach(inp => {
+      inp.addEventListener('change', () => {
+        apply(inp.dataset.id, (n) => { n[prop] = Math.max(0, Number(inp.value) || 0); });
+        applyAndRerender();
+      });
+    });
+  };
+  bindNum('ctc-demand', 'demandKw');
+  bindNum('ctc-count', 'count');
+  bindNum('ctc-cosPhi', 'cosPhi');
+  bindNum('ctc-kUse', 'kUse');
+  mount.querySelectorAll('.ctc-name').forEach(inp => {
+    inp.addEventListener('change', () => {
+      apply(inp.dataset.id, (n) => { n.name = inp.value || ''; });
+      applyAndRerender();
+    });
+  });
+  mount.querySelectorAll('.ctc-phase').forEach(sel => {
+    sel.addEventListener('change', () => {
+      apply(sel.dataset.id, (n) => { n.phase = sel.value; });
+      applyAndRerender();
+    });
+  });
+  mount.querySelectorAll('.ctc-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortCol;
+      if (_consumersTableSort.col === col) {
+        _consumersTableSort.dir = _consumersTableSort.dir === 'asc' ? 'desc' : 'asc';
+      } else { _consumersTableSort.col = col; _consumersTableSort.dir = 'asc'; }
+      renderConsumersTable();
+    });
+  });
+  mount.querySelectorAll('.ctc-flt').forEach(inp => {
+    inp.addEventListener('change', () => {
+      _consumersTableFilters[inp.dataset.flt] = inp.value;
+      renderConsumersTable();
+    });
+  });
+  mount.querySelectorAll('.ctc-row-sel').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) _consumersTableSelected.add(cb.dataset.id);
+      else _consumersTableSelected.delete(cb.dataset.id);
+      renderConsumersTable();
+    });
+  });
+  const selAll = mount.querySelector('#ctc-select-all');
+  if (selAll) selAll.addEventListener('change', () => {
+    if (selAll.checked) for (const n of filtered) _consumersTableSelected.add(n.id);
+    else for (const n of filtered) _consumersTableSelected.delete(n.id);
+    renderConsumersTable();
+  });
+  mount.querySelectorAll('.ctc-jump').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.dataset.id;
+      if (window.Raschet?._state) {
+        window.Raschet._state.selectedKind = 'node';
+        window.Raschet._state.selectedId = id;
+        if (typeof window.Raschet.rerender === 'function') window.Raschet.rerender();
+      }
+      closeModal('modal-consumers-table');
+    });
+  });
+  const clearBtn = mount.querySelector('#ctc-clear-filters');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    _consumersTableFilters = { search: '', phase: '', category: '' };
+    const s = document.getElementById('consumers-table-search'); if (s) s.value = '';
+    const p = document.getElementById('consumers-table-filter-phase'); if (p) p.value = '';
+    renderConsumersTable();
+  });
+  const clearSelBtn = mount.querySelector('#ctc-clear-sel');
+  if (clearSelBtn) clearSelBtn.addEventListener('click', () => {
+    _consumersTableSelected.clear();
+    renderConsumersTable();
+  });
+
+  const bulkApply = (fn) => {
+    const ids = [..._consumersTableSelected];
+    if (!ids.length) return;
+    let affected = 0;
+    for (const id of ids) {
+      const node = window.Raschet?._state?.nodes?.get(id);
+      if (!node) continue;
+      fn(node);
+      affected++;
+    }
+    if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+    renderConsumersTable();
+    flash(`Изменено: ${affected} из ${ids.length} потребителей`);
+  };
+  const askNum = (title, def, min, max) => {
+    const v = prompt(title, String(def));
+    if (v == null) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    if (min != null && n < min) return null;
+    if (max != null && n > max) return null;
+    return n;
+  };
+  const demBtn = mount.querySelector('#ctc-bulk-demand');
+  if (demBtn) demBtn.addEventListener('click', () => {
+    const v = askNum('Установить P (кВт) для выделенных:', 5, 0, 100000);
+    if (v != null) bulkApply((n) => { n.demandKw = v; });
+  });
+  const cosBtn = mount.querySelector('#ctc-bulk-cosPhi');
+  if (cosBtn) cosBtn.addEventListener('click', () => {
+    const v = askNum('Установить cos φ (0.1..1) для выделенных:', 0.92, 0.1, 1);
+    if (v != null) bulkApply((n) => { n.cosPhi = v; });
+  });
+  const kuBtn = mount.querySelector('#ctc-bulk-kUse');
+  if (kuBtn) kuBtn.addEventListener('click', () => {
+    const v = askNum('Установить Kи (0..1.5) для выделенных:', 1, 0, 1.5);
+    if (v != null) bulkApply((n) => { n.kUse = v; });
+  });
+  const phBtn = mount.querySelector('#ctc-bulk-phase');
+  if (phBtn) phBtn.addEventListener('click', () => {
+    const v = prompt('Установить фазу (1ph / 3ph / dc):', '3ph');
+    if (!v) return;
+    if (!['1ph', '3ph', 'dc'].includes(v)) { flash('Неверное значение', 'error'); return; }
+    bulkApply((n) => { n.phase = v; });
+  });
+}
+
+function exportConsumersTableCsv() {
+  const S = window.Raschet?._state;
+  if (!S) return;
+  let catalog = [];
+  try { catalog = window.Raschet?.getConsumerCatalog?.() || []; } catch {}
+  const catalogById = new Map(catalog.map(c => [c.id, c]));
+  const consumers = [...S.nodes.values()].filter(n => n.type === 'consumer');
+  const rows = [['Обозначение', 'Имя', 'Категория (тип)', 'Категория (функц.)', 'P, кВт', 'Кол-во', 'cos φ', 'Kи', 'Фаза', 'Iрасч, А']];
+  for (const n of consumers) {
+    const cat = catalogById.get(n.consumerCatalogId);
+    rows.push([
+      n.tag || '', n.name || '',
+      cat?.label || '', cat?.category || '',
+      n.demandKw || 0, n.count || 1,
+      n.cosPhi || '', n.kUse || '',
+      n.phase || '',
+      n._loadA ? n._loadA.toFixed(1) : '',
+    ]);
+  }
+  const csv = rows.map(row => row.map(cell => {
+    const s = String(cell ?? '');
+    return /[,"\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'consumers-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  flash('Экспортировано ' + (rows.length - 1) + ' потребителей в CSV', 'success');
+}
+
 // ================= Импорт таблицы нагрузок =================
 function openLoadsImportModal() {
   if (state.currentProject && state.currentProject._role === 'viewer') {
@@ -2835,6 +3204,8 @@ async function init() {
   // Фаза 1.20: таблица кабелей
   const btnCableTable = document.getElementById('btn-open-cable-table');
   if (btnCableTable) btnCableTable.addEventListener('click', openCableTableModal);
+  const btnConsumersTable = document.getElementById('btn-open-consumers-table');
+  if (btnConsumersTable) btnConsumersTable.addEventListener('click', openConsumersTableModal);
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
   if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(els.reportBody.textContent); flash('Скопировано'); }
