@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Рабочее место логиста</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="../catalog/catalog.css">
+  <link rel="stylesheet" href="logistics.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountFooter } from '../shared/app-footer.js';
+    mountHeader({ title: 'Логистика', home: '../hub.html' });
+    window.addEventListener('DOMContentLoaded', () => mountFooter());
+  </script>
+
+  <div class="page-wrap">
+    <h1 class="page-title">🚚 Рабочее место логиста</h1>
+    <div class="page-desc">
+      Учёт отправлений оборудования, склады, тарифы перевозчиков, расчёт стоимости доставки.
+      Интеграция с BOM проекта: «Импорт из Конструктора схем» автоматически подтягивает оборудование текущего проекта с ценами.
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="shipments">🚚 Отправления</button>
+      <button class="tab" data-tab="warehouses">🏢 Склады</button>
+      <button class="tab" data-tab="rates">💹 Тарифы</button>
+      <button class="tab" data-tab="calculator">🧮 Калькулятор</button>
+    </div>
+
+    <div class="tab-content" id="tab-shipments"></div>
+    <div class="tab-content" id="tab-warehouses" hidden></div>
+    <div class="tab-content" id="tab-rates" hidden></div>
+    <div class="tab-content" id="tab-calculator" hidden></div>
+  </div>
+
+  <div id="modal" class="modal">
+    <div class="modal-body">
+      <h3 id="modal-title"></h3>
+      <div id="modal-form"></div>
+      <div class="modal-footer">
+        <button id="modal-cancel">Отмена</button>
+        <button id="modal-save" class="primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="flash" class="flash"></div>
+
+  <script type="module" src="logistics.js"></script>
+</body>
+</html>

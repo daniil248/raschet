@@ -114,11 +114,11 @@
     {
       "id": "logistics",
       "name": "Рабочее место логиста",
-      "description": "Расчёт доставки, маршруты, склады, тарифы перевозчиков. Интеграция с BOM проекта: оборудование + логистика = полная смета",
+      "description": "Отправления, склады, тарифы перевозчиков, калькулятор доставки. Интеграция с контрагентами и BOM проекта",
       "path": "logistics/",
       "icon": "green",
-      "badge": "wip",
-      "requires": ["shared/element-library", "shared/price-records", "shared/counterparty-catalog"],
+      "badge": "new",
+      "requires": ["shared/logistics-schemas", "shared/counterparty-catalog"],
       "dbCollections": ["shipments", "warehouses", "carrier-rates"],
       "permissions": ["logistics.use"],
       "enabled": true
