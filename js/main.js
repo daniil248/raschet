@@ -1609,7 +1609,16 @@ async function exportReportSection(sec, kind) {
 // ================= Таблица кабелей (Фаза 1.20) =================
 // Быстрое редактирование всех кабельных линий: марка, длина, способ прокладки.
 // Изменения применяются сразу в state и триггерят recalc+render.
-let _cableTableFilters = { search: '', class: '' };
+// Фаза 1.20.1: per-column фильтры (марка, длина min/max, способ, обозначение,
+// from/to) + групповое редактирование выделенных строк.
+let _cableTableFilters = {
+  search: '', class: '',
+  mark: '', method: '', conductor: '',
+  lengthMin: null, lengthMax: null,
+  imaxMin: null, imaxMax: null,
+  label: '', fromTo: '',
+};
+let _cableTableSelected = new Set(); // ids выделенных строк для bulk-edit
 
 function openCableTableModal() {
   openModal('modal-cable-table');
@@ -1690,26 +1699,53 @@ function renderCableTable() {
     return c._active && (c._cableSize || c._busbarNom);
   });
 
-  // Фильтры
-  const q = (_cableTableFilters.search || '').toLowerCase();
-  const cls = _cableTableFilters.class;
+  // Фильтры (поиск + класс + per-column)
+  const F = _cableTableFilters;
+  const q = (F.search || '').toLowerCase();
+  const cls = F.class;
+  const fMark = (F.mark || '').toLowerCase();
+  const fMethod = (F.method || '').toLowerCase();
+  const fCond = (F.conductor || '').toLowerCase();
+  const fLabel = (F.label || '').toLowerCase();
+  const fFromTo = (F.fromTo || '').toLowerCase();
   const filtered = conns.filter(c => {
     if (cls === 'HV' && !c._isHV) return false;
     if (cls === 'DC' && !c._isDC) return false;
     if (cls === 'LV' && (c._isHV || c._isDC)) return false;
+    const fromN = S.nodes.get(c.from.nodeId);
+    const toN = S.nodes.get(c.to.nodeId);
     if (q) {
-      const fromN = S.nodes.get(c.from.nodeId);
-      const toN = S.nodes.get(c.to.nodeId);
-      const hay = [
-        c.lineLabel,
-        fromN?.tag, fromN?.name,
-        toN?.tag, toN?.name,
-        c.cableMark,
-      ].filter(Boolean).join(' ').toLowerCase();
+      const hay = [c.lineLabel, fromN?.tag, fromN?.name, toN?.tag, toN?.name, c.cableMark]
+        .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
+    if (fLabel && !String(c.lineLabel || '').toLowerCase().includes(fLabel)
+        && !`${fromN?.tag || fromN?.name || ''}-${toN?.tag || toN?.name || ''}`.toLowerCase().includes(fLabel)) {
+      return false;
+    }
+    if (fFromTo) {
+      const ft = `${fromN?.tag || fromN?.name || ''} ${toN?.tag || toN?.name || ''}`.toLowerCase();
+      if (!ft.includes(fFromTo)) return false;
+    }
+    if (fMark && !String(c.cableMark || '').toLowerCase().includes(fMark)) return false;
+    if (fMethod && !String(c._cableMethod || c.installMethod || '').toLowerCase().includes(fMethod)) return false;
+    if (fCond) {
+      const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
+      const spec = c._busbarNom ? `шинопровод ${c._busbarNom}` : `${cores}×${c._cableSize || '?'}`;
+      if (!spec.toLowerCase().includes(fCond)) return false;
+    }
+    const L = Number(c.lengthM) || 0;
+    if (F.lengthMin != null && L < F.lengthMin) return false;
+    if (F.lengthMax != null && L > F.lengthMax) return false;
+    const Imax = Number(c._maxA) || 0;
+    if (F.imaxMin != null && Imax < F.imaxMin) return false;
+    if (F.imaxMax != null && Imax > F.imaxMax) return false;
     return true;
   });
+  // Чистим selected от id'шников которые ушли из выборки
+  for (const id of [..._cableTableSelected]) {
+    if (!filtered.find(c => c.id === id)) _cableTableSelected.delete(id);
+  }
 
   const countEl = document.getElementById('cable-table-count');
   if (countEl) countEl.textContent = `${filtered.length} из ${conns.length}`;
@@ -1747,10 +1783,25 @@ function renderCableTable() {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
+  const selCount = _cableTableSelected.size;
+  const bulkDisabled = selCount === 0;
   const html = [`
+    <div class="ct-bulk-bar" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;margin-bottom:8px;font-size:12px;flex-wrap:wrap">
+      <b>Выделено: ${selCount}</b>
+      <button type="button" id="ct-bulk-mark" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Марка</button>
+      <button type="button" id="ct-bulk-length" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Длина</button>
+      <button type="button" id="ct-bulk-method" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Способ</button>
+      <button type="button" id="ct-bulk-scale" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Умножить длины на коэффициент">× Длина</button>
+      <span style="flex:1"></span>
+      <button type="button" id="ct-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
+      <button type="button" id="ct-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
+    </div>
     <table class="cable-table" style="width:100%;border-collapse:collapse;font-size:12px">
       <thead>
-        <tr style="background:#f6f8fa;position:sticky;top:0;z-index:1">
+        <tr style="background:#f6f8fa;position:sticky;top:0;z-index:2">
+          <th style="padding:6px 4px;border-bottom:2px solid #d0d7de;width:28px;text-align:center">
+            <input type="checkbox" id="ct-select-all" ${filtered.length && filtered.every(c => _cableTableSelected.has(c.id)) ? 'checked' : ''} title="Выделить все">
+          </th>
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Обозначение</th>
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Откуда → Куда</th>
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:200px">Марка кабеля</th>
@@ -1759,6 +1810,23 @@ function renderCableTable() {
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:150px">Способ прокладки</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de">Imax / Iдоп</th>
           <th style="padding:6px 8px;text-align:center;border-bottom:2px solid #d0d7de">Класс</th>
+        </tr>
+        <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1;font-weight:400">
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="label" placeholder="фильтр…" value="${esc(F.label)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="fromTo" placeholder="от/куда…" value="${esc(F.fromTo)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="mark" placeholder="марка…" value="${esc(F.mark)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="conductor" placeholder="напр. 5×95" value="${esc(F.conductor)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
+            <input type="number" class="ct-flt" data-flt="lengthMin" placeholder="от" value="${F.lengthMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+            <input type="number" class="ct-flt" data-flt="lengthMax" placeholder="до" value="${F.lengthMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+          </th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="method" placeholder="метод…" value="${esc(F.method)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
+            <input type="number" class="ct-flt" data-flt="imaxMin" placeholder="от" value="${F.imaxMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+            <input type="number" class="ct-flt" data-flt="imaxMax" placeholder="до" value="${F.imaxMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+          </th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
         </tr>
       </thead>
       <tbody>`];
@@ -1808,8 +1876,13 @@ function renderCableTable() {
     const cls = c._isHV ? 'MV/HV' : (c._isDC ? 'DC' : 'LV');
     const clsColor = c._isHV ? '#f57c00' : (c._isDC ? '#7b1fa2' : '#1976d2');
 
+    const checked = _cableTableSelected.has(c.id);
+    const rowBg = checked ? 'background:#eef5ff;' : '';
     html.push(`
-      <tr data-id="${esc(c.id)}" style="border-bottom:1px solid #eaecef">
+      <tr data-id="${esc(c.id)}" style="border-bottom:1px solid #eaecef;${rowBg}">
+        <td style="padding:5px 4px;text-align:center">
+          <input type="checkbox" class="ct-row-sel" data-id="${esc(c.id)}" ${checked ? 'checked' : ''}>
+        </td>
         <td style="padding:5px 8px;font-weight:600">${esc(lineLabel)}</td>
         <td style="padding:5px 8px;font-size:11px">${esc(fromLabel)} → ${esc(toLabel)}</td>
         <td style="padding:5px 8px">
@@ -1829,7 +1902,7 @@ function renderCableTable() {
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="8" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
+    html.push('<tr><td colspan="9" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -1869,6 +1942,166 @@ function renderCableTable() {
       apply(sel.dataset.id, (c) => { c.installMethod = sel.value || undefined; });
       renderCableTable();
     });
+  });
+
+  // Per-column фильтры
+  mount.querySelectorAll('.ct-flt').forEach(inp => {
+    const handler = () => {
+      const k = inp.dataset.flt;
+      const v = inp.type === 'number'
+        ? (inp.value === '' ? null : Number(inp.value))
+        : inp.value;
+      _cableTableFilters[k] = v;
+      renderCableTable();
+      // Возвращаем фокус + курсор в конец для текстовых фильтров
+      if (inp.type !== 'number') {
+        const same = mount.querySelector(`.ct-flt[data-flt="${k}"]`);
+        if (same) { same.focus(); same.setSelectionRange(same.value.length, same.value.length); }
+      }
+    };
+    // text — input (инкрементально), number — change
+    inp.addEventListener(inp.type === 'number' ? 'change' : 'input', handler);
+  });
+
+  // Row checkboxes + select-all
+  mount.querySelectorAll('.ct-row-sel').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) _cableTableSelected.add(cb.dataset.id);
+      else _cableTableSelected.delete(cb.dataset.id);
+      renderCableTable();
+    });
+  });
+  const selAll = mount.querySelector('#ct-select-all');
+  if (selAll) selAll.addEventListener('change', () => {
+    if (selAll.checked) {
+      for (const c of filtered) _cableTableSelected.add(c.id);
+    } else {
+      for (const c of filtered) _cableTableSelected.delete(c.id);
+    }
+    renderCableTable();
+  });
+
+  // Сбросить фильтры
+  const clearBtn = mount.querySelector('#ct-clear-filters');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    _cableTableFilters = {
+      search: '', class: '',
+      mark: '', method: '', conductor: '',
+      lengthMin: null, lengthMax: null,
+      imaxMin: null, imaxMax: null,
+      label: '', fromTo: '',
+    };
+    const s = document.getElementById('cable-table-search'); if (s) s.value = '';
+    const cls = document.getElementById('cable-table-filter-class'); if (cls) cls.value = '';
+    renderCableTable();
+  });
+  const clearSelBtn = mount.querySelector('#ct-clear-sel');
+  if (clearSelBtn) clearSelBtn.addEventListener('click', () => {
+    _cableTableSelected.clear();
+    renderCableTable();
+  });
+
+  // Групповое редактирование
+  const bulkApply = (fn) => {
+    const ids = [..._cableTableSelected];
+    if (!ids.length) return;
+    for (const id of ids) apply(id, fn);
+    renderCableTable();
+  };
+  const markBtn = mount.querySelector('#ct-bulk-mark');
+  if (markBtn) markBtn.addEventListener('click', () => _openBulkCableDialog('mark', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
+  const lenBtn = mount.querySelector('#ct-bulk-length');
+  if (lenBtn) lenBtn.addEventListener('click', () => _openBulkCableDialog('length', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
+  const methBtn = mount.querySelector('#ct-bulk-method');
+  if (methBtn) methBtn.addEventListener('click', () => _openBulkCableDialog('method', filtered, allMarks, byCat, CAT_LABEL, bulkApply, methodsList));
+  const scaleBtn = mount.querySelector('#ct-bulk-scale');
+  if (scaleBtn) scaleBtn.addEventListener('click', () => _openBulkCableDialog('scale', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
+}
+
+// Модалка группового изменения (mark/length/method/scale)
+function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkApply, methodsList) {
+  const count = _cableTableSelected.size;
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  let bodyHtml = '';
+  let applyFn = null;
+  if (kind === 'mark') {
+    let opts = '<option value="">— не выбрано —</option>';
+    for (const cat of Object.keys(byCat)) {
+      opts += `<optgroup label="${esc(CAT_LABEL[cat] || cat)}">`;
+      for (const m of byCat[cat]) opts += `<option value="${esc(m.id)}">${esc(m.brand || m.id)}</option>`;
+      opts += '</optgroup>';
+    }
+    bodyHtml = `
+      <p class="muted" style="font-size:11px;margin:0 0 8px">Марка будет применена ко всем ${count} выделенным линиям с соблюдением класса линии (HV/DC/LV). Неподходящие по классу пропустятся.</p>
+      <label>Марка кабеля<br><select id="bulk-mark" style="width:100%;padding:5px 8px;margin-top:4px">${opts}</select></label>
+    `;
+    applyFn = () => {
+      const id = document.getElementById('bulk-mark').value;
+      if (!id) return;
+      const rec = allMarks.find(m => m.id === id);
+      const cat = rec?.category || 'power';
+      bulkApply((c) => {
+        // Пропускаем несовместимые по классу
+        if (cat === 'hv' && !c._isHV) return;
+        if (cat !== 'hv' && c._isHV) return;
+        c.cableMark = id;
+        if (rec?.material === 'Cu' || rec?.material === 'Al') c.material = rec.material;
+        if (rec?.insulation === 'PVC' || rec?.insulation === 'XLPE') c.insulation = rec.insulation;
+      });
+    };
+  } else if (kind === 'length') {
+    bodyHtml = `
+      <p class="muted" style="font-size:11px;margin:0 0 8px">Установить длину для всех ${count} выделенных линий.</p>
+      <label>Длина, м<br><input type="number" id="bulk-length" min="0" step="0.5" value="10" style="width:100%;padding:5px 8px;margin-top:4px"></label>
+    `;
+    applyFn = () => {
+      const L = Math.max(0, Number(document.getElementById('bulk-length').value) || 0);
+      bulkApply((c) => { c.lengthM = L; });
+    };
+  } else if (kind === 'method') {
+    let opts = '<option value="">—</option>';
+    for (const m of (methodsList || [])) opts += `<option value="${esc(m.id)}">${esc(m.label)}</option>`;
+    bodyHtml = `
+      <p class="muted" style="font-size:11px;margin:0 0 8px">Способ прокладки для всех ${count} выделенных линий.</p>
+      <label>Способ прокладки<br><select id="bulk-method" style="width:100%;padding:5px 8px;margin-top:4px">${opts}</select></label>
+    `;
+    applyFn = () => {
+      const m = document.getElementById('bulk-method').value;
+      bulkApply((c) => { c.installMethod = m || undefined; });
+    };
+  } else if (kind === 'scale') {
+    bodyHtml = `
+      <p class="muted" style="font-size:11px;margin:0 0 8px">Умножить текущую длину всех ${count} выделенных линий на коэффициент (например, 1.1 — добавить 10% запаса).</p>
+      <label>Коэффициент<br><input type="number" id="bulk-scale" min="0.1" max="10" step="0.05" value="1.1" style="width:100%;padding:5px 8px;margin-top:4px"></label>
+    `;
+    applyFn = () => {
+      const k = Number(document.getElementById('bulk-scale').value) || 1;
+      bulkApply((c) => { c.lengthM = Math.round((Number(c.lengthM) || 0) * k * 10) / 10; });
+    };
+  }
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10000;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.3);width:min(440px,92vw);overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid #e1e4e8;background:#f6f8fa;display:flex;align-items:center;gap:10px">
+        <h3 style="margin:0;font-size:14px;flex:1">Групповое изменение — ${count} линий</h3>
+        <button type="button" data-close style="background:none;border:none;font-size:18px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:14px 16px;font-size:12px">${bodyHtml}</div>
+      <div style="padding:10px 16px;border-top:1px solid #e1e4e8;display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" data-close style="padding:6px 14px;border:1px solid #ccc;background:#fff;border-radius:4px;cursor:pointer">Отмена</button>
+        <button type="button" data-apply style="padding:6px 14px;border:none;background:#1976d2;color:#fff;border-radius:4px;cursor:pointer">Применить</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const close = () => document.body.removeChild(modal);
+  modal.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('[data-apply]').addEventListener('click', () => {
+    if (applyFn) applyFn();
+    close();
   });
 }
 
