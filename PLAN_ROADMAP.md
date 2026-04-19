@@ -494,6 +494,26 @@
 
 ## История изменений
 
+### v0.51.0 (2026-04-19, Фаза 1.9.2 — TCC-карта цепочки защиты в инспекторе линии)
+- **js/engine/inspector/conn.js:**
+  - Новая collapsible-секция **«⚡ Карта защиты (TCC)»** в инспекторе соединения
+  - Появляется когда `c._breakerIn || c._cableSize` (есть автомат или кабель)
+  - Lazy-import `shared/tcc-chart.js` (tcc-chart грузится только при открытии инспектора линии)
+- **`_mountConnTccChart(conn)`:**
+  - Кривая **этой линии** (синяя, `_breakerIn` + `breakerCurve`)
+  - Линия **термостойкости кабеля** (красный пунктир, `_cableSize` + k по material/insulation)
+  - **Upstream** автоматы (до 2 уровней вверх, оранжевый/фиолетовый) — через `_collectUpstreamBreakers` с защитой от циклов
+  - Вертикальные `I_k max` (из GLOBAL.Ik_kA) и `I_k min` (из модуля phase-loop)
+  - Подсказка: как читать график, координация upstream-downstream
+- **`_collectUpstreamBreakers(conn)`:** идёт вверх через `conn.from.nodeId`, находит входные connections panel/ups с автоматами, собирает до 5 уровней (защита от зацикливания через `seen` Set)
+- **`_normalizeCurveShort`:** MCB_B → B для tcc-curves API
+- **`_cableK`:** таблица k (Cu/PVC=115, Cu/XLPE=143, Al/PVC=76, Al/XLPE=94)
+- **Ленивый import `tcc-chart.js`** — не грузится пока пользователь не откроет инспектор линии с автоматом
+- **APP_VERSION = '0.51.0'** (минор — полноценная TCC в production-режиме инспектора)
+- **Файлы:**
+  - `js/engine/inspector/conn.js` (+145 строк: _mountConnTccChart + _collectUpstreamBreakers + helpers + UI-блок)
+  - `js/engine/constants.js` APP_VERSION
+
 ### v0.50.5 (2026-04-19, Фикс: «Страница не отвечает» — защита от параллельных sync в catalog-bridge)
 - **Замечание пользователя:** «Проверь» + скриншот «Страница не отвечает» на главной странице Raschet.
 - **Диагностика:** в preview console 16+ повторных `[catalog-bridge] synced` после первого запуска. Это не бесконечный цикл, но перегружает main thread при старте и спамит console.

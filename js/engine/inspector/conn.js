@@ -2,6 +2,9 @@
 // Выделено из inspector.js.
 import { GLOBAL, BREAKER_SERIES, CABLE_CATEGORIES } from '../constants.js';
 import { listCableTypes, getCableType } from '../../../shared/cable-types-catalog.js';
+// TCC-chart грузится лениво в _mountConnTccChart (только когда пользователь
+// открывает инспектор линии с автоматом/кабелем)
+let _tccChartMod = null;
 import { state, inspectorBody } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveTag } from '../zones.js';
@@ -550,6 +553,19 @@ export function renderInspectorConn(c) {
     h.push(renderConnModuleResultsBlock(c._moduleResults));
   }
 
+  // === TCC-карта защиты линии (Фаза 1.9.2) ===
+  // Отображается только если на линии есть автомат или подобран кабель.
+  // Содержит кривую автомата + термостойкость кабеля + upstream-автоматы
+  // (до 2 уровней вверх) + I_k_max / I_k_min (из модулей).
+  if (c._breakerIn || c._cableSize) {
+    h.push(`<details class="inspector-section">
+      <summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">⚡ Карта защиты (TCC)</summary>
+      <div id="tcc-conn-chart-${escAttr(c.id)}" style="margin-top:6px;background:#fafbfc;border:1px solid #e1e4e8;border-radius:4px;padding:8px;font-size:11px;color:#666">
+        Загрузка графика…
+      </div>
+    </details>`);
+  }
+
   h.push('<div class="muted" style="font-size:11px;margin-top:10px">Рукоятки на концах — переключить связь на другой порт. «+» в середине сегмента — добавить точку сплайна. Shift+клик по точке — удалить. Shift+клик по линии — удалить связь.</div>');
   // Кнопка сброса точек сплайна — только если точки есть
   if (Array.isArray(c.waypoints) && c.waypoints.length) {
@@ -557,6 +573,11 @@ export function renderInspectorConn(c) {
   }
   h.push('<button class="btn-delete" id="btn-del-conn">Удалить связь</button>');
   inspectorBody.innerHTML = h.join('');
+
+  // Отложенно монтируем TCC-график (async import tcc-chart)
+  if (c._breakerIn || c._cableSize) {
+    _mountConnTccChart(c, fromN, toN);
+  }
 
   // Подписка на поля связи.
   // Баг-фикс (фокус): для text/number используем событие 'input' + вызываем
@@ -802,4 +823,162 @@ export function bundlingIconSVG(bundling, size) {
     svg = `<circle cx="16" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="16" cy="16" r="2" fill="#555"/><circle cx="32" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="32" cy="16" r="2" fill="#555"/>`;
   }
   return `<svg width="${s}" height="${s * 32 / 48}" viewBox="0 0 48 32">${svg}</svg>`;
+}
+
+// ======================================================================
+// TCC-карта защиты цепочки линии (Фаза 1.9.2)
+// ======================================================================
+
+/**
+ * Нормализация curve из нашего формата ('MCB_B', 'MCCB') в формат tcc-curves
+ * ('B', 'C', 'D', 'MCCB', 'ACB').
+ */
+function _normalizeCurveShort(curve) {
+  if (!curve) return 'C';
+  const m = /^MCB_([BCDKZ])$/i.exec(String(curve));
+  if (m) return m[1].toUpperCase();
+  return String(curve);
+}
+
+/**
+ * Коэффициент k для термостойкости кабеля (IEC 60364-4-43).
+ */
+function _cableK(material, insulation) {
+  const m = material === 'Al' ? 'Al' : 'Cu';
+  const i = insulation === 'XLPE' ? 'XLPE' : 'PVC';
+  const T = { Cu: { PVC: 115, XLPE: 143 }, Al: { PVC: 76, XLPE: 94 } };
+  return T[m][i];
+}
+
+/**
+ * Собрать upstream-цепочку автоматов от текущей линии к источнику.
+ * Идём через c.from.nodeId вверх: для каждой промежуточной panel
+ * находим входную connection и берём её автомат.
+ *
+ * Защита от циклов — max 5 уровней (обычно 2-3 достаточно).
+ *
+ * @returns Array<{ c, In, curveShort, label }>
+ */
+function _collectUpstreamBreakers(conn) {
+  const chain = [];
+  const seen = new Set([conn.id]);
+  let currentNode = conn.from?.nodeId ? state.nodes.get(conn.from.nodeId) : null;
+  let level = 0;
+  while (currentNode && level < 5) {
+    // Если дошли до источника — стоп
+    if (currentNode.type === 'source' || currentNode.type === 'generator') break;
+    // Для panel/ups ищем входную connection с автоматом
+    let upConn = null;
+    for (const cc of state.conns.values()) {
+      if (cc.to?.nodeId === currentNode.id && !seen.has(cc.id) && cc._breakerIn) {
+        upConn = cc;
+        break;
+      }
+    }
+    if (!upConn) break;
+    seen.add(upConn.id);
+    chain.push({
+      c: upConn,
+      In: Number(upConn._breakerIn) || 0,
+      curveShort: _normalizeCurveShort(upConn.breakerCurve || upConn._breakerCurveEff),
+      label: `Upstream L${level + 1}: ${upConn.breakerCurve || 'MCCB'} ${upConn._breakerIn}A`,
+    });
+    currentNode = upConn.from?.nodeId ? state.nodes.get(upConn.from.nodeId) : null;
+    level++;
+  }
+  return chain;
+}
+
+/**
+ * Монтирует TCC-карту защиты в #tcc-conn-chart-<id>.
+ */
+async function _mountConnTccChart(conn, fromN, toN) {
+  if (!_tccChartMod) {
+    try {
+      _tccChartMod = await import('../../../shared/tcc-chart.js');
+    } catch (e) {
+      console.warn('[conn-tcc] tcc-chart load failed', e);
+      return;
+    }
+  }
+  const container = document.getElementById('tcc-conn-chart-' + conn.id);
+  if (!container) return;
+  container.innerHTML = '';
+
+  const items = [];
+  // Текущий автомат (защита данной линии)
+  if (conn._breakerIn) {
+    items.push({
+      id: 'this-breaker',
+      kind: 'breaker',
+      In: Number(conn._breakerIn),
+      curve: _normalizeCurveShort(conn.breakerCurve || conn._breakerCurveEff),
+      label: `ЭТА линия: ${conn.breakerCurve || 'MCCB'} ${conn._breakerIn}A`,
+      color: '#1976d2',
+    });
+  }
+  // Кабель (термостойкость)
+  if (conn._cableSize) {
+    const k = _cableK(conn.material || GLOBAL.defaultMaterial, conn.insulation || GLOBAL.defaultInsulation);
+    items.push({
+      id: 'this-cable',
+      kind: 'cable',
+      S_mm2: Number(conn._cableSize),
+      k,
+      label: `Кабель ${conn.material || 'Cu'}/${conn.insulation || 'PVC'} ${conn._cableSize} мм² (k=${k})`,
+      color: '#d32f2f',
+    });
+  }
+  // Upstream автоматы (до 2 уровней достаточно для обзора)
+  const upstream = _collectUpstreamBreakers(conn);
+  for (let i = 0; i < Math.min(upstream.length, 2); i++) {
+    const u = upstream[i];
+    items.push({
+      id: 'up' + i,
+      kind: 'breaker',
+      In: u.In,
+      curve: u.curveShort,
+      label: u.label,
+      color: i === 0 ? '#f57c00' : '#7b1fa2',
+    });
+  }
+
+  // I_k: максимум из модулей phase-loop
+  const mod = conn._moduleResults?.find(m => m.id === 'phaseLoop');
+  const ikMin = mod?.result?.details?.Ik1 ? Number(mod.result.details.Ik1) : null;
+  const ikMax = Number(GLOBAL.Ik_kA || 0) * 1000 || null;
+
+  // Диапазон оси X: от 0.5 × min(In) до max(Ik, In × 200)
+  const allIn = items.filter(it => it.kind === 'breaker').map(it => it.In);
+  const minIn = allIn.length ? Math.min(...allIn) : 16;
+  const maxIn = allIn.length ? Math.max(...allIn) : 100;
+  const xMax = Math.max(ikMax || 0, maxIn * 200, 10000);
+
+  _tccChartMod.mountTccChart(container, {
+    items,
+    xRange: [Math.max(1, minIn * 0.5), xMax],
+    yRange: [0.003, 10000],
+    width: Math.min(container.clientWidth || 420, 560),
+    height: 320,
+    ikMax, ikMin,
+  });
+
+  // Подсказка под графиком
+  const hint = document.createElement('div');
+  hint.className = 'muted';
+  hint.style.cssText = 'font-size:10px;margin-top:6px;line-height:1.5';
+  hint.innerHTML = `
+    <b>Чтение графика:</b><br>
+    🔵 Эта линия — автомат защиты.
+    🔴 Пунктир — термостойкость подобранного кабеля.
+    🟠🟣 Upstream — вышестоящие автоматы (селективность ОК когда их кривые выше и правее).
+    ${ikMax ? `<br>I<sub>k</sub> max = ${_fmtA(ikMax)}, ` : ''}
+    ${ikMin ? `I<sub>k</sub> min = ${_fmtA(ikMin)}` : ''}
+  `;
+  container.appendChild(hint);
+}
+
+function _fmtA(I) {
+  if (!I) return '—';
+  return I >= 1000 ? (I / 1000).toFixed(I >= 10000 ? 0 : 1) + ' кА' : Math.round(I) + ' А';
 }
