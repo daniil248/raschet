@@ -283,6 +283,17 @@ function _read() {
 function _write(list) {
   try { localStorage.setItem(storageKey(), JSON.stringify(list || [])); }
   catch (e) { console.error('[cable-types-catalog] write failed', e); }
+  _notify();
+}
+
+// Listeners для same-tab sync (catalog-bridge подписывается).
+const _listeners = new Set();
+export function onCableTypesChange(cb) {
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
+}
+function _notify() {
+  for (const cb of _listeners) { try { cb(); } catch (e) { console.error('[cable-types-catalog] listener', e); } }
 }
 
 /** Все типы кабелей: builtin (всегда) + user-added из localStorage. */

@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** Фаза 0 завершена (v0.41.0). Фаза 1.1 + 1.2 (bridge) — v0.42.1. В работе: Фаза 1.2.n (мягкая миграция каталогов на Element-API).
+> **Статус:** Фаза 0 завершена (v0.41.0). Фаза 1.1 + 1.2.0-1.2.1 (bridge + listeners same-tab) — v0.42.2. В работе: Фаза 1.2.2 (миграция внутренней реализации каталогов на Element-API).
 > **Цель:** превратить набор специализированных калькуляторов в единую платформу проектирования электрических (и позже — механических) схем с общей библиотекой элементов, мульти-пространственными видами, 3D, правами пользователей и расширяемыми БД-адаптерами.
 
 ---
@@ -109,13 +109,26 @@
   - Read-only: редактирование продолжает идти через legacy API (`addPanel`, `addUps`…)
   - **Результат:** новые подпрограммы (elements editor, BOM) могут работать через `listElements({kind:'X'})` и видят все данные из legacy-каталогов
 
-- [ ] **1.2.1** `shared/panel-catalog.js` — переключить на Element-API:
-  - Внутри: листать `element-library` с `kind='panel'`
-  - API остаётся (backward compat: `listPanels()`, `getPanel(id)`, `addPanel(rec)`)
-  - `addPanel` → `saveElement(fromPanelRecord(rec))`
-  - Старые данные миграция при загрузке
+- [x] **1.2.1** Same-tab sync listeners (v0.42.2):
+  - Добавлены в каждый legacy-каталог: `onPanelsChange/onUpsesChange/onBatteriesChange/onTransformersChange/onCableTypesChange`
+  - `_notify()` вызывается после каждого `_write()` в каталоге
+  - `catalog-bridge` подписывается через dynamic import + `_subscribeSameTab()`
+  - Debounced re-sync (50ms) во избежание повторных обходов при bulk-импорте (XLSX)
+  - **Эффект:** `addPanel()` в том же tab — и `listElements({kind:'panel'})` сразу видит новую запись без перезагрузки
 
-- [ ] **1.2.2** То же для `ups-catalog.js`, `battery-catalog.js`, `transformer-catalog.js`, `cable-types-catalog.js`
+- [ ] **1.2.2** Переключение внутренней реализации каталогов на Element-API — **отложено до 1.3+**:
+  - `shared/panel-catalog.js`: `listPanels()` → `listElements({kind:'panel'}).map(toPanelRecord)`
+  - `addPanel(rec)` → `saveElement(fromPanelRecord(rec))`
+  - API остаётся (backward compat)
+  - Миграция старых localStorage при первой загрузке (копирование → element-library)
+  - Аналогично `ups/battery/transformer/cable-types-catalog`
+
+  **Обоснование отложения (оценка 2026-04-19):**
+  - Legacy-каталоги содержат специфичные поля (dischargeTable, vectorGroup, ukPct, moduleKwRated, cable.category/material/fireResistant), которые legacy-код (catalog-manager, pickers, инспекторы) читает напрямую (`record.capacityKw`, не `record.kindProps.capacityKw`). Замена storage backend требует либо (а) двойных конвертеров на каждом чтении, либо (б) рефакторинга всего UI — оба варианта = высокий риск регрессий без тестов.
+  - Bridge уже обеспечивает единый read через `listElements()` — новые фичи (BOM, elements editor, поиск) работают без объединения.
+  - Strangler fig: сначала freeze legacy, потом flip. Freeze достигается когда весь новый код работает через `listElements()` — это произойдёт в 1.3 (BOM) и 1.4 (ups-config).
+  - Риск-бенефит: объединение сейчас = 5 каталогов × миграция + regressions vs. 1 новая фича (BOM) за то же время.
+  - **План:** сделать 1.2.2 в Фазе 1.5 (или как микро-подфаза после 1.4), когда весь новый код уже не зависит от нативных схем.
 
 - [ ] **1.2.3** `catalog-xlsx-parser.js`:
   - Единый `parseXlsx(buffer, {kind})` → возвращает массив `Element[]`
@@ -303,6 +316,28 @@
 ---
 
 ## История изменений
+
+### v0.42.2 (2026-04-19, Фаза 1.2.1 — same-tab sync listeners)
+- **1.2.1** Same-tab реактивность каталогов:
+  - `shared/panel-catalog.js`: `onPanelsChange(cb)` + `_notify()` после `_write`
+  - `shared/ups-catalog.js`: `onUpsesChange(cb)` + `_notify()`
+  - `battery/battery-catalog.js`: `onBatteriesChange(cb)` + `_notify()` в `save()`
+  - `shared/transformer-catalog.js`: `onTransformersChange(cb)` + `_notify()`
+  - `shared/cable-types-catalog.js`: `onCableTypesChange(cb)` + `_notify()`
+- **shared/catalog-bridge.js** — подписка на все listener'ы:
+  - `_subscribeSameTab()` async: пытается импортировать каждый каталог (6 paths с fallback для battery), подключает `onXChange(_scheduleSync)`, игнорирует модули которых нет
+  - Debounce 50ms в `_scheduleSync()`: при import XLSX 100 записей — 1 re-sync вместо 100
+- **Эффект:**
+  - `addPanel({...})` в UI catalog-manager → `listElements({kind:'panel'})` сразу содержит новую запись
+  - Работает для всех 5 типов без перезагрузки страницы
+- **Файлы:**
+  - `shared/panel-catalog.js` (+12 строк listener API)
+  - `shared/ups-catalog.js` (+11 строк)
+  - `battery/battery-catalog.js` (+11 строк)
+  - `shared/transformer-catalog.js` (+11 строк)
+  - `shared/cable-types-catalog.js` (+11 строк)
+  - `shared/catalog-bridge.js` (+35 строк: _scheduleSync + _subscribeSameTab)
+  - `js/engine/constants.js:9` APP_VERSION = '0.42.2'
 
 ### v0.42.1 (2026-04-19, Фаза 1.2.0 — catalog-bridge)
 - **1.2.0** `shared/catalog-bridge.js` — мост legacy → element-library:

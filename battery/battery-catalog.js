@@ -77,6 +77,17 @@ function save(list) {
   } catch (e) {
     console.warn('[battery-catalog] save failed', e);
   }
+  _notify();
+}
+
+// Listeners для same-tab sync (catalog-bridge подписывается).
+const _listeners = new Set();
+export function onBatteriesChange(cb) {
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
+}
+function _notify() {
+  for (const cb of _listeners) { try { cb(); } catch (e) { console.error('[battery-catalog] listener', e); } }
 }
 
 export function listBatteries() {

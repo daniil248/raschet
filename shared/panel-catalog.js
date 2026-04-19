@@ -63,6 +63,18 @@ function _read() {
 function _write(list) {
   try { localStorage.setItem(storageKey(), JSON.stringify(list || [])); }
   catch (e) { console.error('[panel-catalog] write failed', e); }
+  _notify();
+}
+
+// Listeners для same-tab sync (catalog-bridge подписывается, чтобы
+// element-library видела изменения сразу, без перезагрузки).
+const _listeners = new Set();
+export function onPanelsChange(cb) {
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
+}
+function _notify() {
+  for (const cb of _listeners) { try { cb(); } catch (e) { console.error('[panel-catalog] listener', e); } }
 }
 
 export function listPanels() { return _read(); }

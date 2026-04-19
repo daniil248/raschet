@@ -102,9 +102,46 @@ export async function syncLegacyToLibrary() {
 }
 
 /**
+ * Дебаунс-обёртка над syncLegacyToLibrary: если несколько каталогов
+ * меняются подряд (например импорт XLSX), делаем один sync по таймауту.
+ */
+let _syncTimer = null;
+function _scheduleSync() {
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => {
+    _syncTimer = null;
+    syncLegacyToLibrary().catch(e => console.warn('[catalog-bridge] resync', e));
+  }, 50);
+}
+
+/**
+ * Подписка на same-tab изменения legacy-каталогов (onPanelsChange,
+ * onUpsesChange и т.п.). Каждый каталог экспортирует свой listener —
+ * если экспорт отсутствует (модуль не загружался), подписка молча
+ * пропускается.
+ */
+async function _subscribeSameTab() {
+  const sources = [
+    { path: './panel-catalog.js',         hook: 'onPanelsChange' },
+    { path: './ups-catalog.js',           hook: 'onUpsesChange' },
+    { path: './battery-catalog.js',       hook: 'onBatteriesChange' },
+    { path: '../battery/battery-catalog.js', hook: 'onBatteriesChange' },
+    { path: './transformer-catalog.js',   hook: 'onTransformersChange' },
+    { path: './cable-types-catalog.js',   hook: 'onCableTypesChange' },
+  ];
+  for (const { path, hook } of sources) {
+    try {
+      const m = await import(/* @vite-ignore */ path);
+      if (typeof m[hook] === 'function') m[hook](_scheduleSync);
+    } catch { /* модуль не грузится — игнорируем */ }
+  }
+}
+
+/**
  * Инициализация bridge — вызывается один раз на страницу.
- * Подписывается на изменения в localStorage (cross-tab sync) и
- * пере-синхронизирует библиотеку при изменениях.
+ * - Первая синхронизация legacy → element-library
+ * - Подписка на same-tab изменения (через onXChange каждого каталога)
+ * - Подписка на cross-tab изменения (через storage event)
  */
 let _initialized = false;
 export function initCatalogBridge() {
@@ -118,6 +155,9 @@ export function initCatalogBridge() {
     console.warn('[catalog-bridge] init failed', e);
   });
 
+  // Same-tab sync: подписываемся на listener каждого каталога
+  _subscribeSameTab();
+
   // Cross-tab sync: следим за изменениями в localStorage других вкладок
   try {
     window.addEventListener('storage', (ev) => {
@@ -127,7 +167,7 @@ export function initCatalogBridge() {
           ev.key.startsWith('raschet.batteryCatalog') ||
           ev.key.startsWith('raschet.transformerCatalog') ||
           ev.key.startsWith('raschet.cableTypesCatalog')) {
-        syncLegacyToLibrary();
+        _scheduleSync();
       }
     });
   } catch { /* no window */ }

@@ -77,6 +77,17 @@ function _write(list) {
   } catch (e) {
     console.error('[ups-catalog] write failed', e);
   }
+  _notify();
+}
+
+// Listeners для same-tab sync (catalog-bridge подписывается).
+const _listeners = new Set();
+export function onUpsesChange(cb) {
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
+}
+function _notify() {
+  for (const cb of _listeners) { try { cb(); } catch (e) { console.error('[ups-catalog] listener', e); } }
 }
 
 export function listUpses() {

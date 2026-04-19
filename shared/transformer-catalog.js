@@ -55,6 +55,17 @@ function _read() {
 function _write(list) {
   try { localStorage.setItem(storageKey(), JSON.stringify(list || [])); }
   catch (e) { console.error('[transformer-catalog] write failed', e); }
+  _notify();
+}
+
+// Listeners для same-tab sync (catalog-bridge подписывается).
+const _listeners = new Set();
+export function onTransformersChange(cb) {
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
+}
+function _notify() {
+  for (const cb of _listeners) { try { cb(); } catch (e) { console.error('[transformer-catalog] listener', e); } }
 }
 
 export function listTransformers() { return _read(); }
