@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1.1-1.2.1 ✅ (v0.42.2). UX ✅ (v0.42.3). Фаза 1.3 ✅ (v0.43.0). Фаза 1.4 ПОЛНОСТЬЮ ✅ (v0.43.3). В работе: выбор следующего направления (1.1.3 elements editor, 1.2.2 каталоги на Element-API, или Фаза 2 мульти-пространственные).
+> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1 почти полностью завершена (v0.44.0 — 1.1.3 elements editor + bridge). Осталось 1.2.2 (отложено до freeze legacy). Далее: Фаза 2 мульти-пространственные схемы.
 > **Цель:** превратить набор специализированных калькуляторов в единую платформу проектирования электрических (и позже — механических) схем с общей библиотекой элементов, мульти-пространственными видами, 3D, правами пользователей и расширяемыми БД-адаптерами.
 
 ---
@@ -93,11 +93,18 @@
   - Универсальный `createElement(kind, patch)` с дефолтами
   - Конвертеры legacy ↔ Element: `fromPanelRecord/toPanelRecord`, `fromUpsRecord/toUpsRecord`, `fromBatteryRecord/toBatteryRecord`, `fromTransformerRecord/toTransformerRecord`, `fromCableTypeRecord/toCableTypeRecord`
 
-- [ ] **1.1.3** Новый редактор `elements/index.html` — **отложено, приоритет 1.3**:
-  - Режим подготовки: CRUD элементов библиотеки
-  - Загрузка SVG для views (schematic symbol, layout front/top)
-  - Настройка портов (координаты, kind: electrical/pipe/data)
-  - Составные элементы (composition: frame + modules)
+- [x] **1.1.3** MVP редактор `elements/` (v0.44.0):
+  - `elements/index.html` + `elements.css` + `elements-editor.js`
+  - Список элементов с группировкой по kind, статистикой и бэйджами (builtin/user/imported)
+  - Фильтры: kind, source, свободный поиск (по label/manufacturer/series/variant/id)
+  - Actions: view (read-only JSON), edit (user only), clone (builtin+user), delete (user only)
+  - Форма редактирования: простые поля (id/kind/label/manufacturer/series/variant/description/tags) + JSON textarea для electrical/geometry/kindProps/composition
+  - Create: через prompt ID + пустая форма
+  - Import/Export JSON (merge/replace modes)
+  - Reactive UI через `onLibraryChange`
+  - initCatalogBridge() вызывается — страница видит все legacy-каталоги как builtin
+  - Зарегистрирован в `modules.json` + карточка в `hub.html`
+  - **НЕ включено в MVP:** загрузка SVG для views, визуальный редактор портов, drag-n-drop composition — откладывается до Фазы 2
 
 #### Подфаза 1.2 — Bridge и миграция существующих каталогов (1 неделя) 🚧
 
@@ -346,6 +353,39 @@
 ---
 
 ## История изменений
+
+### v0.44.0 (2026-04-19, Фаза 1.1.3 — MVP редактор библиотеки элементов)
+- **elements/** (новый модуль, 3 файла ~400 строк):
+  - `index.html` — разметка: toolbar (фильтры + кнопки) + stats + список + модалка
+  - `elements.css` — стили: карточки, бэйджи (builtin/user/imported), модалка
+  - `elements-editor.js` — логика:
+    - `render()`: группировка по kind, бэйджи источника, row actions
+    - Фильтры: kind, source, свободный поиск (label/manufacturer/series/variant/id)
+    - View: read-only JSON для inspection
+    - Edit: простые поля + JSON textarea для электрики/геометрии/kindProps/composition
+    - Create: prompt ID + пустая форма
+    - Clone: работает для builtin тоже — создаёт user-копию
+    - Delete: только user
+    - Import/Export JSON (режимы merge/replace)
+    - `initCatalogBridge()` вызывается — видны все legacy-каталоги как builtin
+    - Reactive через `onLibraryChange`
+- **modules.json** — добавлена запись для «elements» с requires: element-library + element-schemas + catalog-bridge
+- **hub.html** — новая карточка в сетке (между reports и transformer-config), 4-клеточная icon
+- **НЕ включено (отложено до Фазы 2):**
+  - Загрузка SVG для views (schematic/layout/3d)
+  - Визуальный редактор портов (координаты, kind)
+  - Drag-n-drop composition builder
+- **Ценность:**
+  - Пользователь видит всё оборудование платформы в одном месте
+  - Можно клонировать builtin (например, ИБП из Kehua данных) и подредактировать
+  - Экспорт/импорт для backup или передачи между пользователями
+- **Файлы:**
+  - `elements/index.html` (новый, 65 строк)
+  - `elements/elements.css` (новый, 165 строк)
+  - `elements/elements-editor.js` (новый, 280 строк)
+  - `modules.json` (+13 строк)
+  - `hub.html` (+14 строк карточка)
+  - `js/engine/constants.js` APP_VERSION = '0.44.0'
 
 ### v0.43.3 (2026-04-19, Фаза 1.4.4 — связь с Конфигуратором АКБ)
 - **inspector/ups.js** — новая кнопка в модалке батарей ИБП:

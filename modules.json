@@ -98,6 +98,18 @@
       "dbCollections": [],
       "permissions": ["reports.use"],
       "enabled": true
+    },
+    {
+      "id": "elements",
+      "name": "Библиотека элементов",
+      "description": "Единый справочник оборудования (ИБП, щиты, АКБ, трансформаторы, автоматы, корпуса, климат, кабели). Встроенные элементы из legacy-каталогов + пользовательские. Import/export JSON, phantom-компоненты для BOM",
+      "path": "elements/",
+      "icon": "blue",
+      "badge": "new",
+      "requires": ["shared/element-library", "shared/element-schemas", "shared/catalog-bridge"],
+      "dbCollections": [],
+      "permissions": ["elements.use"],
+      "enabled": true
     }
   ]
 }
