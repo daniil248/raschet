@@ -1621,8 +1621,12 @@ let _cableTableFilters = {
   lengthMin: null, lengthMax: null,
   imaxMin: null, imaxMax: null,
   label: '', fromTo: '',
+  // Phase 1.20.7: фильтр по категории (силовой/слаботочный/и т.д.)
+  category: '',
 };
 let _cableTableSelected = new Set(); // ids выделенных строк для bulk-edit
+// Phase 1.20.7: сортировка таблицы. col = поле, dir = 'asc'|'desc'
+let _cableTableSort = { col: 'label', dir: 'asc' };
 
 function openCableTableModal() {
   openModal('modal-cable-table');
@@ -1631,6 +1635,11 @@ function openCableTableModal() {
   if (srchEl) srchEl.oninput = (e) => { _cableTableFilters.search = e.target.value; renderCableTable(); };
   const clsEl = document.getElementById('cable-table-filter-class');
   if (clsEl) clsEl.onchange = (e) => { _cableTableFilters.class = e.target.value; renderCableTable(); };
+  const catEl = document.getElementById('cable-table-filter-category');
+  if (catEl) {
+    catEl.value = _cableTableFilters.category || '';
+    catEl.onchange = (e) => { _cableTableFilters.category = e.target.value; renderCableTable(); };
+  }
   const csvBtn = document.getElementById('cable-table-export-csv');
   if (csvBtn) csvBtn.onclick = exportCableTableCsv;
 }
@@ -1688,6 +1697,18 @@ function _ctFmt(n, d = 1) {
   return v.toFixed(d);
 }
 
+// Phase 1.20.7: <th> с sort-индикатором и click-переключением направления.
+function _ctSortHdr(col, label, align, extraStyle, titleAttr) {
+  const active = _cableTableSort.col === col;
+  const arrow = active ? (_cableTableSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+  const colorCss = active ? 'color:#1976d2;' : '';
+  const esc2 = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const titAttr = titleAttr ? ` title="${esc2(titleAttr)}"` : '';
+  const styleStr = `padding:6px 8px;text-align:${align};border-bottom:2px solid #d0d7de;cursor:pointer;user-select:none;${colorCss}${extraStyle ? extraStyle + ';' : ''}`;
+  return `<th class="ct-sort" data-sort-col="${esc2(col)}" style="${styleStr}"${titAttr}>${esc2(label)}${arrow}</th>`;
+}
+
 function renderCableTable() {
   const mount = document.getElementById('cable-table-mount');
   if (!mount) return;
@@ -1712,10 +1733,17 @@ function renderCableTable() {
   const fCond = (F.conductor || '').toLowerCase();
   const fLabel = (F.label || '').toLowerCase();
   const fFromTo = (F.fromTo || '').toLowerCase();
+  const fCategory = F.category || '';
   const filtered = conns.filter(c => {
     if (cls === 'HV' && !c._isHV) return false;
     if (cls === 'DC' && !c._isDC) return false;
     if (cls === 'LV' && (c._isHV || c._isDC)) return false;
+    // Phase 1.20.7: фильтр по категории кабеля (силовой/слаботочный/…)
+    if (fCategory) {
+      const rec = c.cableMark ? allMarks.find(m => m.id === c.cableMark) : null;
+      const catVal = rec?.category || (c._isHV ? 'hv' : (c._isDC ? 'dc' : 'power'));
+      if (catVal !== fCategory) return false;
+    }
     const fromN = S.nodes.get(c.from.nodeId);
     const toN = S.nodes.get(c.to.nodeId);
     if (q) {
@@ -1769,6 +1797,44 @@ function renderCableTable() {
   for (const id of [..._cableTableSelected]) {
     if (!filtered.find(c => c.id === id)) _cableTableSelected.delete(id);
   }
+
+  // Phase 1.20.7: сортировка по выбранному столбцу
+  const sortCol = _cableTableSort.col;
+  const sortDir = _cableTableSort.dir === 'desc' ? -1 : 1;
+  const sortKey = (c) => {
+    const fromN = S.nodes.get(c.from?.nodeId);
+    const toN = S.nodes.get(c.to?.nodeId);
+    switch (sortCol) {
+      case 'label':
+        return (c.lineLabel || `${fromN?.tag || fromN?.name || ''}-${toN?.tag || toN?.name || ''}`).toLowerCase();
+      case 'fromTo':
+        return `${fromN?.tag || fromN?.name || ''} → ${toN?.tag || toN?.name || ''}`.toLowerCase();
+      case 'mark': {
+        const rec = c.cableMark ? allMarks.find(m => m.id === c.cableMark) : null;
+        return (rec?.brand || c.cableMark || '').toLowerCase();
+      }
+      case 'conductor':
+        return Number(c._cableSize) || 0;
+      case 'parallel':
+        return Math.max(1, Number(c._cableParallel) || 1);
+      case 'length':
+        return Number(c.lengthM) || 0;
+      case 'method':
+        return String(c._cableMethod || c.installMethod || '').toLowerCase();
+      case 'imax':
+        return Number(c._maxA) || 0;
+      case 'class':
+        return c._isHV ? 2 : (c._isDC ? 1 : 0);
+      default:
+        return 0;
+    }
+  };
+  filtered.sort((a, b) => {
+    const ka = sortKey(a), kb = sortKey(b);
+    if (ka < kb) return -1 * sortDir;
+    if (ka > kb) return 1 * sortDir;
+    return 0;
+  });
 
   // Distinct-значения для dropdown-фильтров (строим по всему conns, не
   // по filtered — чтобы выбор в dropdown'е не «пропадал» после других
@@ -1868,15 +1934,15 @@ function renderCableTable() {
           <th style="padding:6px 4px;border-bottom:2px solid #d0d7de;width:28px;text-align:center">
             <input type="checkbox" id="ct-select-all" ${filtered.length && filtered.every(c => _cableTableSelected.has(c.id)) ? 'checked' : ''} title="Выделить все">
           </th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Обозначение</th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Откуда → Куда</th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:200px">Марка кабеля</th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Проводник</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de" title="Параллельные проводники (линий)">Линий</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de">Длина, м</th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:150px">Способ прокладки</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de">Imax / Iдоп</th>
-          <th style="padding:6px 8px;text-align:center;border-bottom:2px solid #d0d7de">Класс</th>
+          ${_ctSortHdr('label', 'Обозначение', 'left')}
+          ${_ctSortHdr('fromTo', 'Откуда → Куда', 'left')}
+          ${_ctSortHdr('mark', 'Марка кабеля', 'left', 'min-width:200px')}
+          ${_ctSortHdr('conductor', 'Проводник', 'left')}
+          ${_ctSortHdr('parallel', 'Линий', 'right', '', 'Параллельные проводники (линий)')}
+          ${_ctSortHdr('length', 'Длина, м', 'right')}
+          ${_ctSortHdr('method', 'Способ прокладки', 'left', 'min-width:150px')}
+          ${_ctSortHdr('imax', 'Imax / Iдоп', 'right')}
+          ${_ctSortHdr('class', 'Класс', 'center')}
         </tr>
         <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1;font-weight:400">
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
@@ -2047,6 +2113,21 @@ function renderCableTable() {
     });
   });
 
+  // Phase 1.20.7: сортировка по клику на шапку
+  mount.querySelectorAll('.ct-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortCol;
+      if (!col) return;
+      if (_cableTableSort.col === col) {
+        _cableTableSort.dir = _cableTableSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        _cableTableSort.col = col;
+        _cableTableSort.dir = 'asc';
+      }
+      renderCableTable();
+    });
+  });
+
   // Per-column фильтры
   mount.querySelectorAll('.ct-flt').forEach(inp => {
     const isSelect = inp.tagName === 'SELECT';
@@ -2097,9 +2178,11 @@ function renderCableTable() {
       lengthMin: null, lengthMax: null,
       imaxMin: null, imaxMax: null,
       label: '', fromTo: '',
+      category: '',
     };
     const s = document.getElementById('cable-table-search'); if (s) s.value = '';
     const cls = document.getElementById('cable-table-filter-class'); if (cls) cls.value = '';
+    const cat = document.getElementById('cable-table-filter-category'); if (cat) cat.value = '';
     renderCableTable();
   });
   const clearSelBtn = mount.querySelector('#ct-clear-sel');

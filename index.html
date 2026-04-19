@@ -651,11 +651,20 @@
         </p>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
           <input type="search" id="cable-table-search" placeholder="Поиск по обозначению / откуда / куда…" style="flex:1;padding:5px 8px">
-          <select id="cable-table-filter-class" style="padding:5px 8px">
+          <select id="cable-table-filter-class" style="padding:5px 8px" title="Класс напряжения линии">
             <option value="">Все классы</option>
             <option value="LV">LV (≤1 кВ)</option>
             <option value="HV">MV/HV (>1 кВ)</option>
             <option value="DC">DC</option>
+          </select>
+          <select id="cable-table-filter-category" style="padding:5px 8px" title="Категория кабеля из справочника (силовой / слаботочный / …)">
+            <option value="">Все категории</option>
+            <option value="power">Силовые</option>
+            <option value="hv">Высоковольтные</option>
+            <option value="signal">Слаботочные</option>
+            <option value="data">Информационные</option>
+            <option value="fieldbus">Полевые</option>
+            <option value="dc">DC</option>
           </select>
           <span id="cable-table-count" class="muted" style="font-size:12px"></span>
           <button id="cable-table-export-csv" title="Экспорт таблицы в CSV">📥 CSV</button>
