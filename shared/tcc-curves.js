@@ -42,6 +42,61 @@ const MAGNETIC_BOUNDS = {
 };
 
 /**
+ * Let-through energy I²t для MCB класса 3 по IEC 60898-1 (токоограничение).
+ * При КЗ в мгновенной зоне автомат обрывает ток за 3-5 мс с ограничением
+ * пикового значения. Фактическая тепловая энергия, пропускаемая через
+ * кабель, значительно меньше чем расчётная I_k² × t_mcb_time.
+ *
+ * Источник: типовые паспорта ABB S200 / Schneider iC60 / Legrand DX3 при
+ * Icu = 6 кА. Значения — верхняя граница (с запасом). Реальные I²t часто
+ * меньше.
+ *
+ * Возвращает I²t в A²·s при I_k ≥ I_cu (насыщение токоограничения).
+ * При меньших токах — пропорционально снижаются (см. letThroughI2t ниже).
+ */
+const MCB_LETTHROUGH_I2T = {
+  // Ряд из паспортов производителей (приблизительные значения для 6 кА):
+  //  6A: 3000,  10A: 5000,  16A: 8000,  20A: 10000,  25A: 13000,
+  // 32A: 18000, 40A: 25000, 50A: 35000, 63A: 50000
+  6:   3000,
+  10:  5000,
+  16:  8000,
+  20: 10000,
+  25: 13000,
+  32: 18000,
+  40: 25000,
+  50: 35000,
+  63: 50000,
+};
+
+/**
+ * Вернуть let-through I²t для MCB с учётом номинала и фактического I_k.
+ * Если автомат не MCB (curve не B/C/D/K/Z) — возвращает null (нет данных,
+ * использовать стандартную формулу I² × t).
+ *
+ * @param {number} In  — номинал автомата, A
+ * @param {string} curve — 'B' | 'C' | 'D' | 'K' | 'Z' | 'MCCB' | 'ACB' | 'gG'
+ * @param {number} Ik  — ток КЗ, A (используется для пропорционального снижения
+ *                       при I_k < Icu_typical = 6 кА)
+ * @returns {number|null} I²t в A²·s, либо null если данные недоступны
+ */
+export function letThroughI2t(In, curve, Ik) {
+  if (!curve || !['B', 'C', 'D', 'K', 'Z'].includes(curve)) return null;
+  // Ищем ближайший стандартный номинал
+  const keys = Object.keys(MCB_LETTHROUGH_I2T).map(Number).sort((a, b) => a - b);
+  let chosen = keys[keys.length - 1];
+  for (const k of keys) if (k >= In) { chosen = k; break; }
+  const base = MCB_LETTHROUGH_I2T[chosen];
+  // Пропорциональное снижение при I_k << I_cu (типичный I_cu = 6 кА)
+  const Icu_typical = 6000;
+  if (Ik && Ik < Icu_typical) {
+    const factor = Math.max(0.1, (Ik / Icu_typical));
+    return base * factor * factor; // I²t ∝ I²
+  }
+  return base;
+}
+
+/**
  * Время срабатывания автомата при токе I = k × In.
  * Возвращает { t_sec, branch } где branch: 'thermal' | 'magnetic' | 'instant' | 'safe'.
  *

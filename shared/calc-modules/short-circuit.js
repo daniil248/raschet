@@ -25,6 +25,9 @@ const K_TABLE = {
   Al: { PVC:  76, XLPE:  94 },
 };
 
+// Импорт let-through данных MCB (Фаза 1.18)
+import { letThroughI2t } from '../tcc-curves.js';
+
 function getK(material, insulation) {
   const m = K_TABLE[material] || K_TABLE.Cu;
   return m[insulation] || m.PVC;
@@ -101,7 +104,35 @@ export const shortCircuitModule = {
       tk = tkAuto; tkSource = 'auto';
     }
     const k = getK(input.material || 'Cu', input.insulation || 'PVC');
-    const sRequired = (Ik * Math.sqrt(tk)) / k;
+
+    // Фаза 1.18: для MCB в глубокой мгн. зоне используем let-through I²t
+    // автомата (паспорт производителя класс 3 по IEC 60898-1) вместо
+    // упрощённой формулы I_k² × t. Это физически корректнее — реальный
+    // ток, проходящий через кабель, ограничен токоограничивающим
+    // действием автомата.
+    //   S_min = √(I²t_let_through) / k
+    //
+    // Условие применения: curve ∈ B/C/D/K/Z И ratio ≥ magThresh (мгн. зона).
+    // Для MCCB/ACB данные паспорта индивидуальны — пока стандартная формула.
+    let sRequired;
+    let letThroughUsed = false;
+    let letThroughValue = null;
+    const ratio = In > 0 ? Ik / In : 0;
+    const magThreshForCheck = MAG_THRESHOLD[curve] || 10;
+    // Выделяем краткое имя curve (MCB_B → B) для letThroughI2t
+    const curveShort = /^MCB_([BCDKZ])$/.exec(curve)?.[1];
+    if (curveShort && ratio >= magThreshForCheck) {
+      const I2t = letThroughI2t(In, curveShort, Ik);
+      if (I2t != null && I2t > 0) {
+        letThroughValue = I2t;
+        sRequired = Math.sqrt(I2t) / k;
+        letThroughUsed = true;
+      }
+    }
+    if (!letThroughUsed) {
+      sRequired = (Ik * Math.sqrt(tk)) / k;
+    }
+
     const sCurrent = Number(input.currentSize) || 0;
     const pass = sCurrent > 0 && sCurrent >= sRequired;
     // Ищем ближайший стандартный размер сверху (простая логика —
@@ -129,10 +160,17 @@ export const shortCircuitModule = {
         insulation: input.insulation,
         breakerIn: In,
         breakerCurve: curve,
+        // Фаза 1.18: let-through информация
+        letThroughUsed,
+        letThroughI2t: letThroughValue ? Math.round(letThroughValue) : null,
+        calcMode: letThroughUsed ? 'let-through (IEC 60898-1 class 3)' : 'I_k² × t_k',
       },
       warnings: pass
         ? []
-        : [`S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Math.round(Ik)} А, t_k=${(Math.round(tk * 1000) / 1000)} с${tkSource === 'auto' ? ' авто' : (tkSource === 'auto-clamped' ? ' ограничено по кривой автомата' : '')}, k=${k}). Текущее ${sCurrent} мм² недостаточно.`],
+        : [letThroughUsed
+            ? `S_min по КЗ = ${sRequired.toFixed(1)} мм² (let-through I²t=${Math.round(letThroughValue)} А²·с для ${curve} ${In}А, k=${k}). Текущее ${sCurrent} мм² недостаточно.`
+            : `S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Math.round(Ik)} А, t_k=${(Math.round(tk * 1000) / 1000)} с${tkSource === 'auto' ? ' авто' : (tkSource === 'auto-clamped' ? ' ограничено по кривой автомата' : '')}, k=${k}). Текущее ${sCurrent} мм² недостаточно.`
+          ],
     };
   },
 };
