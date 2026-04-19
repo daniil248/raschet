@@ -48,6 +48,7 @@ export const DEFAULTS = {
   earthingSystem: 'TN-S',
   breakerMinMarginPct: 0,
   showHelp: true,
+  allowReducedNeutral: false,
 };
 
 const listeners = new Set();

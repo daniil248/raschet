@@ -1574,6 +1574,28 @@ function recalc() {
       c._cableKg = null;
       c._cableKtotal = null;
     }
+    // Phase 1.20.4: автоматическое уменьшенное сечение N по IEC 60364-5-52
+    // §524.2 / ГОСТ Р 50571.5.52 п.524.2. Разрешено для сбалансированной
+    // 3-фазной нагрузки при phase > 16 мм² (Cu) / > 25 мм² (Al):
+    //   N_min = phase / 2, но не менее 16 мм² (Cu) / 25 мм² (Al).
+    // Опцией GLOBAL.allowReducedNeutral = true / false проект включает/
+    // отключает этот механизм (default off — консервативно).
+    c._neutralSizeMm2 = 0;
+    if (GLOBAL.allowReducedNeutral && c._cableSize && !c._busbarNom && !c._isHV && !c._isDC) {
+      const phaseS = Number(c._cableSize);
+      const isCu = (c.material || GLOBAL.defaultMaterial || 'Cu') === 'Cu';
+      const minN = isCu ? 16 : 25;
+      const thresh = isCu ? 16 : 25;
+      // Подходит только симметричная 3-фазная система с нейтралью
+      const cores = c._wireCount || (c._threePhase ? 5 : 3);
+      if (phaseS > thresh && cores >= 4) {
+        const candidate = Math.max(minN, phaseS / 2);
+        // Приводим к стандартному сечению (ближайшее большее из ряда)
+        const SERIES = [16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300, 400, 500, 630];
+        let nSel = SERIES.find(s => s >= candidate) || SERIES[SERIES.length - 1];
+        if (nSel < phaseS) c._neutralSizeMm2 = nSel;
+      }
+    }
   }
 
   // === Подбор защитных автоматов на выходах ===

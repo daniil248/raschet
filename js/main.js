@@ -747,6 +747,8 @@ function openSettingsModal() {
   set('set-breakerMinMarginPct', G.breakerMinMarginPct ?? 0);
   const showHelpEl = document.getElementById('set-showHelp');
   if (showHelpEl) showHelpEl.checked = G.showHelp !== false;
+  const redNEl = document.getElementById('set-allowReducedNeutral');
+  if (redNEl) redNEl.checked = !!G.allowReducedNeutral;
   openModal('modal-settings');
 }
 
@@ -763,6 +765,7 @@ function saveSettingsModal() {
     parallelProtection:   get('set-parallelProtection') || 'individual',
     breakerMinMarginPct:  Math.max(0, Number(get('set-breakerMinMarginPct')) || 0),
     showHelp:             !!document.getElementById('set-showHelp')?.checked,
+    allowReducedNeutral:  !!document.getElementById('set-allowReducedNeutral')?.checked,
   };
   if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
     window.Raschet.setGlobal(patch);
