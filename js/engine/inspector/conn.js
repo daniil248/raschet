@@ -81,16 +81,10 @@ export function renderInspectorConn(c) {
       <option value="disabled"${lm === 'disabled' ? ' selected' : ''}>Отключена</option>
     </select>`));
 
-  // Вид соединения: электрическое / трубопровод / воздуховод / слаботочное.
-  // Только electrical участвует в электротехнических расчётах.
-  const ck = c.connectionKind || 'electrical';
-  h.push(field('Вид соединения',
-    `<select data-conn-prop="connectionKind">
-      <option value="electrical"${ck === 'electrical' ? ' selected' : ''}>⚡ Электрическое</option>
-      <option value="data"${ck === 'data' ? ' selected' : ''}>📡 Информационное (слаботочное)</option>
-      <option value="pipe"${ck === 'pipe' ? ' selected' : ''}>🔵 Трубопровод</option>
-      <option value="duct"${ck === 'duct' ? ' selected' : ''}>⬜ Воздуховод</option>
-    </select>`));
+  // connectionKind хранится в данных (по умолчанию 'electrical') — select
+  // появится только на non-electrical страницах в Фазе 2 (layout, mechanical
+  // page.kind). На электрической принципиальной схеме выбор не нужен —
+  // все соединения электрические.
 
   // Режим разрыва (link mode) — линия скрывается, показываются ссылки на концах
   h.push(`<div class="field check"><input type="checkbox" id="cp-linkMode"${c.linkMode ? ' checked' : ''}><label>Скрыть линию (показать ссылками)</label></div>`);

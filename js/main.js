@@ -1344,21 +1344,41 @@ function renderConsumerCatalogModal() {
   const G = window.Raschet.getGlobal();
   const CATALOG = window.Raschet.getConsumerCatalog();
   const customs = G.customConsumerCatalog || [];
+  // Определения категорий (с fallback на случай если модуль не экспортирован)
+  const CAT_DEFS = {
+    lighting:   { label: 'Освещение', icon: '💡' },
+    socket:     { label: 'Розеточные группы', icon: '🔌' },
+    power:      { label: 'Силовая нагрузка', icon: '⚙' },
+    hvac:       { label: 'Климат / вентиляция', icon: '❄' },
+    it:         { label: 'IT / серверы', icon: '🖥' },
+    lowvoltage: { label: 'Слаботочные системы', icon: '📡' },
+    process:    { label: 'Технологическая', icon: '🏭' },
+    other:      { label: 'Прочее', icon: '—' },
+  };
   const h = [];
-  // Базовые (нередактируемые)
-  h.push('<h4 style="margin:0 0 8px;font-size:12px;color:#666">Базовые типы</h4>');
+  // Группируем типы по категориям
+  const byCat = {};
   for (const cat of CATALOG) {
-    if (cat.id.startsWith('user_')) continue;
-    h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">`);
-    h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
-    h.push('</div>');
+    const cId = cat.category || 'other';
+    if (!byCat[cId]) byCat[cId] = { builtin: [], custom: [] };
+    if (cat.id.startsWith('user_')) {
+      const ci = customs.findIndex(c => c.id === cat.id);
+      byCat[cId].custom.push({ cat, ci });
+    } else {
+      byCat[cId].builtin.push(cat);
+    }
   }
-  // Пользовательские (редактируемые/удаляемые)
-  if (customs.length) {
-    h.push('<h4 style="margin:16px 0 8px;font-size:12px;color:#666">Пользовательские типы</h4>');
-    for (let ci = 0; ci < customs.length; ci++) {
-      const cat = customs[ci];
-      h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">`);
+  for (const [catId, catDef] of Object.entries(CAT_DEFS)) {
+    const grp = byCat[catId];
+    if (!grp || (grp.builtin.length === 0 && grp.custom.length === 0)) continue;
+    h.push(`<h4 style="margin:12px 0 6px;font-size:12px;color:#444">${catDef.icon} ${escHtml(catDef.label)}</h4>`);
+    for (const cat of grp.builtin) {
+      h.push(`<div style="display:flex;align-items:center;gap:8px;padding:4px 0 4px 16px;border-bottom:1px solid #f0f0f0">`);
+      h.push(`<span style="flex:1;font-size:13px">${escHtml(cat.label)} <span style="color:#999;font-size:11px">cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
+      h.push('</div>');
+    }
+    for (const { cat, ci } of grp.custom) {
+      h.push(`<div style="display:flex;align-items:center;gap:8px;padding:4px 0 4px 16px;border-bottom:1px solid #f0f0f0">`);
       h.push(`<span style="flex:1;font-size:13px"><b>${escHtml(cat.label)}</b> <span style="color:#999;font-size:11px">cos φ ${cat.cosPhi}, Ки ${cat.kUse}</span></span>`);
       h.push(`<button class="cc-edit" data-cc-idx="${ci}" style="background:none;border:none;cursor:pointer;font-size:14px;color:#666" title="Редактировать">✎</button>`);
       h.push(`<button class="cc-del" data-cc-idx="${ci}" style="background:none;border:none;cursor:pointer;font-size:14px;color:#ccc" title="Удалить">✕</button>`);
@@ -1375,6 +1395,8 @@ function renderConsumerCatalogModal() {
       const label = prompt('Название:', cat.label);
       if (label === null) return;
       cat.label = label;
+      const catPrompt = prompt('Категория (lighting / socket / power / hvac / it / lowvoltage / process / other):', cat.category || 'other');
+      if (catPrompt !== null && CAT_DEFS[catPrompt]) cat.category = catPrompt;
       const cos = prompt('cos φ:', cat.cosPhi);
       if (cos !== null) cat.cosPhi = Number(cos) || cat.cosPhi;
       const ku = prompt('Ки:', cat.kUse);
@@ -1653,7 +1675,7 @@ async function init() {
     if (!label) return;
     const G = window.Raschet.getGlobal();
     if (!Array.isArray(G.customConsumerCatalog)) G.customConsumerCatalog = [];
-    G.customConsumerCatalog.push({ id: 'user_' + Date.now(), label, cosPhi: 0.92, kUse: 1 });
+    G.customConsumerCatalog.push({ id: 'user_' + Date.now(), label, category: 'other', cosPhi: 0.92, kUse: 1 });
     window.Raschet.setGlobal({ customConsumerCatalog: G.customConsumerCatalog });
     if (typeof window.__raschetPersistUserCatalog === 'function') window.__raschetPersistUserCatalog();
     renderConsumerCatalogModal();

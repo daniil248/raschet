@@ -1,6 +1,6 @@
 // Инспектор: модалка «Параметры потребителя».
 // Выделено из inspector.js. Использует прямые импорты зависимостей.
-import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, NODE_H } from '../constants.js';
+import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, CONSUMER_CATEGORIES, NODE_H } from '../constants.js';
 import { state, uid } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveTag } from '../zones.js';
@@ -23,14 +23,28 @@ export function openConsumerParamsModal(n) {
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
   h.push(field('Имя', `<input type="text" id="cp-name" value="${escAttr(n.name || '')}">`));
 
-  const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];
+  // Миграция: старые user-записи без category получают 'other'
+  const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])]
+    .map(c => ({ ...c, category: c.category || 'other' }));
   if (!isOutdoor) {
     const curSub = n.consumerSubtype || 'custom';
-    let catOpts = '';
-    for (const cat of fullCatalog) {
-      catOpts += `<option value="${cat.id}"${cat.id === curSub ? ' selected' : ''}>${escHtml(cat.label)}</option>`;
+    const curEntry = fullCatalog.find(c => c.id === curSub);
+    const curCat = curEntry ? curEntry.category : 'other';
+    // Select категории (функциональное назначение)
+    let categoryOpts = '';
+    for (const [catId, catDef] of Object.entries(CONSUMER_CATEGORIES)) {
+      const count = fullCatalog.filter(c => c.category === catId).length;
+      if (count === 0 && catId !== curCat) continue; // скрываем пустые категории
+      categoryOpts += `<option value="${catId}"${catId === curCat ? ' selected' : ''}>${catDef.icon} ${escHtml(catDef.label)}${count ? ` (${count})` : ''}</option>`;
     }
-    h.push(field('Тип потребителя', `<select id="cp-catalog">${catOpts}</select>`));
+    h.push(field('Категория', `<select id="cp-category">${categoryOpts}</select>`));
+    // Select типа (фильтруется по выбранной категории)
+    let typeOpts = '';
+    for (const cat of fullCatalog) {
+      if (cat.category !== curCat) continue;
+      typeOpts += `<option value="${cat.id}"${cat.id === curSub ? ' selected' : ''}>${escHtml(cat.label)}</option>`;
+    }
+    h.push(field('Тип потребителя', `<select id="cp-catalog">${typeOpts}</select>`));
   } else {
     h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">Наружный блок кондиционера</div>`);
   }
@@ -160,8 +174,10 @@ export function openConsumerParamsModal(n) {
       const label = prompt('Название типа потребителя:');
       if (!label) return;
       const id = 'user_' + Date.now();
+      const currentCategory = document.getElementById('cp-category')?.value || 'other';
       const entry = {
         id, label,
+        category: currentCategory,
         demandKw: Number(document.getElementById('cp-demandKw')?.value) || 10,
         cosPhi: Number(document.getElementById('cp-cosPhi')?.value) || 0.92,
         kUse: Number(document.getElementById('cp-kUse')?.value) ?? 1,
@@ -176,6 +192,25 @@ export function openConsumerParamsModal(n) {
       notifyChange();
       openConsumerParamsModal(n);
       flash('Тип сохранён в мою библиотеку');
+    });
+  }
+
+  // Смена категории → перезаполнить список типов и выбрать первый
+  const categorySelect = document.getElementById('cp-category');
+  if (categorySelect) {
+    categorySelect.addEventListener('change', () => {
+      const newCat = categorySelect.value;
+      const typesInCat = fullCatalog.filter(c => c.category === newCat);
+      const typeSel = document.getElementById('cp-catalog');
+      if (!typeSel) return;
+      typeSel.innerHTML = typesInCat.map(c =>
+        `<option value="${c.id}">${escHtml(c.label)}</option>`
+      ).join('');
+      // Применим первый тип новой категории
+      if (typesInCat[0]) {
+        typeSel.value = typesInCat[0].id;
+        typeSel.dispatchEvent(new Event('change'));
+      }
     });
   }
 

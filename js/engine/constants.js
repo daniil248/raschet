@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.42.2';
+export const APP_VERSION = '0.42.3';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -584,18 +584,41 @@ export const TRANSFORMER_CATALOG = [
   { label: '100 000 кВА', snomKva: 100000, ukPct: 12.5, pkW: 310.0, p0W: 47.0, xsRsRatio: 38 },
 ];
 
+// ================= Категории потребителей =================
+// Функциональная классификация — ортогональна фазности, надёжности,
+// voltageCategory. Используется для:
+//  - двухуровневого select «Категория → Тип» в инспекторе
+//  - авто-фильтра совместимых cable-category (lowvoltage→signal/data)
+//  - группировки в отчётах (спецификация по типу нагрузки)
+//  - Фаза 6: hvac — единственная категория без внутреннего heat dissipation
+export const CONSUMER_CATEGORIES = {
+  lighting:   { label: 'Освещение',            icon: '💡', cableCategories: ['power'] },
+  socket:     { label: 'Розеточные группы',    icon: '🔌', cableCategories: ['power'] },
+  power:      { label: 'Силовая нагрузка',     icon: '⚙', cableCategories: ['power'] },
+  hvac:       { label: 'Климат / вентиляция',  icon: '❄', cableCategories: ['power'] },
+  it:         { label: 'IT / серверы',         icon: '🖥', cableCategories: ['power', 'data'] },
+  lowvoltage: { label: 'Слаботочные системы',  icon: '📡', cableCategories: ['signal', 'data', 'fieldbus'] },
+  process:    { label: 'Технологическая',      icon: '🏭', cableCategories: ['power'] },
+  other:      { label: 'Прочее',               icon: '—',  cableCategories: ['power'] },
+};
+
 export const CONSUMER_CATALOG = [
-  { id: 'custom',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, phase: '3ph' },
-  { id: 'lighting',    label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, phase: '1ph' },
-  { id: 'socket',      label: 'Розеточная группа',   demandKw: 3.5,  cosPhi: 0.95, kUse: 0.3,  inrushFactor: 1, phase: '1ph' },
-  { id: 'motor',       label: 'Электродвигатель',    demandKw: 15,   cosPhi: 0.85, kUse: 0.7,  inrushFactor: 7, phase: '3ph' },
-  { id: 'heater',      label: 'Электрообогрев',      demandKw: 5,    cosPhi: 1,    kUse: 0.8,  inrushFactor: 1, phase: '1ph' },
-  { id: 'pump',        label: 'Насос',               demandKw: 7.5,  cosPhi: 0.85, kUse: 0.7,  inrushFactor: 6, phase: '3ph' },
-  { id: 'fan',         label: 'Вентилятор',          demandKw: 5,    cosPhi: 0.8,  kUse: 0.65, inrushFactor: 5, phase: '3ph' },
-  { id: 'server',      label: 'Серверная стойка',    demandKw: 10,   cosPhi: 0.98, kUse: 0.8,  inrushFactor: 1, phase: '3ph' },
-  { id: 'elevator',    label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, phase: '3ph' },
-  { id: 'conditioner', label: 'Кондиционер',         demandKw: 5,    cosPhi: 0.85, kUse: 0.7,  inrushFactor: 3, phase: '1ph',
+  { id: 'custom',      category: 'other',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, phase: '3ph' },
+  { id: 'lighting',    category: 'lighting',   label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, phase: '1ph' },
+  { id: 'socket',      category: 'socket',     label: 'Розеточная группа',   demandKw: 3.5,  cosPhi: 0.95, kUse: 0.3,  inrushFactor: 1, phase: '1ph' },
+  { id: 'motor',       category: 'power',      label: 'Электродвигатель',    demandKw: 15,   cosPhi: 0.85, kUse: 0.7,  inrushFactor: 7, phase: '3ph' },
+  { id: 'heater',      category: 'power',      label: 'Электрообогрев',      demandKw: 5,    cosPhi: 1,    kUse: 0.8,  inrushFactor: 1, phase: '1ph' },
+  { id: 'pump',        category: 'power',      label: 'Насос',               demandKw: 7.5,  cosPhi: 0.85, kUse: 0.7,  inrushFactor: 6, phase: '3ph' },
+  { id: 'fan',         category: 'hvac',       label: 'Вентилятор',          demandKw: 5,    cosPhi: 0.8,  kUse: 0.65, inrushFactor: 5, phase: '3ph' },
+  { id: 'server',      category: 'it',         label: 'Серверная стойка',    demandKw: 10,   cosPhi: 0.98, kUse: 0.8,  inrushFactor: 1, phase: '3ph' },
+  { id: 'elevator',    category: 'power',      label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, phase: '3ph' },
+  { id: 'conditioner', category: 'hvac',       label: 'Кондиционер',         demandKw: 5,    cosPhi: 0.85, kUse: 0.7,  inrushFactor: 3, phase: '1ph',
     isConditioner: true, outdoorKw: 0.3, outdoorCosPhi: 0.85 },
+  // Слаботочные системы (lowvoltage) — используют cable-category signal/data/fieldbus
+  { id: 'fire-alarm',  category: 'lowvoltage', label: 'Пожарная сигнализация', demandKw: 0.3, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, phase: '1ph' },
+  { id: 'sks',         category: 'lowvoltage', label: 'СКС (структурированная кабельная сеть)', demandKw: 0.1, cosPhi: 0.9, kUse: 0.5, inrushFactor: 1, phase: '1ph' },
+  { id: 'cctv',        category: 'lowvoltage', label: 'Видеонаблюдение',      demandKw: 0.5, cosPhi: 0.9, kUse: 0.9,  inrushFactor: 1, phase: '1ph' },
+  { id: 'access',      category: 'lowvoltage', label: 'СКУД',                 demandKw: 0.2, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, phase: '1ph' },
 ];
 
 // Префиксы обозначений (tag) по типу узла (IEC 81346-2 где возможно)
