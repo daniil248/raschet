@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1.1 + 1.2.0-1.2.1 ✅ (v0.42.2). UX ✅ (v0.42.3). Фаза 1.3 (Phantom + BOM) ✅ (v0.43.0). В работе: Фаза 1.4 (ups-config integration через listElements).
+> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1.1 + 1.2.0-1.2.1 ✅ (v0.42.2). UX ✅ (v0.42.3). Фаза 1.3 ✅ (v0.43.0). Фаза 1.4.1 (BOM резолвит legacy catalogId + АКБ ИБП) ✅ (v0.43.1). В работе: Фаза 1.4.2-1.4.4 (inspector-integration).
 > **Цель:** превратить набор специализированных калькуляторов в единую платформу проектирования электрических (и позже — механических) схем с общей библиотекой элементов, мульти-пространственными видами, 3D, правами пользователей и расширяемыми БД-адаптерами.
 
 ---
@@ -157,9 +157,13 @@
 
 #### Подфаза 1.4 — Конфигуратор ИБП из Конструктора схем (1 неделя)
 
-- [ ] **1.4.1** В инспекторе узла «ИБП» — кнопка «Сконфигурировать подробно»
-- [ ] **1.4.2** Открывает `ups-config/` в iframe/модалке с переданными параметрами
-- [ ] **1.4.3** Результат (выбранный фрейм + модули + батарея) сохраняется в `node.elementId` и разворачивается в composition при генерации BOM
+- [x] **1.4.1** BOM резолвит legacy-поля узла как `elementId` (v0.43.1):
+  - `_resolveLegacyElementId(node)` в `shared/bom.js`: проверяет `node.elementId` → `upsCatalogId` → `panelCatalogId` → `enclosureId` → `transformerCatalogId`
+  - `_syntheticUpsComposition(node)`: для ИБП с `batteryCatalogId` + `batteryStringCount` × `batteryBlocksPerString` — генерирует синтетическую ссылку на АКБ
+  - В `bomForNode`: label корня заменяется на `"<node.name> (<element.label>)"` — BOM показывает и пользовательское имя узла, и модель
+  - Результат: выбор модели ИБП в инспекторе (сохраняется в `n.upsCatalogId` через `applyUpsModel`) автоматически попадает в BOM без изменений в инспекторе
+- [ ] **1.4.2** Кнопка в инспекторе ИБП «Сконфигурировать подробно» — открывает `ups-config/` в новой вкладке
+- [ ] **1.4.3** postMessage/storage-event возврат из `ups-config/` с выбранным фреймом + модулями → `node.elementId` + `node.composition`
 - [ ] **1.4.4** Связь с Конфигуратором АКБ: при выборе батареи — автообновление параметров автономии
 
 **Критичные файлы для Фазы 1:**
@@ -325,6 +329,19 @@
 ---
 
 ## История изменений
+
+### v0.43.1 (2026-04-19, Фаза 1.4.1 — BOM резолвит legacy catalogId + АКБ ИБП)
+- **shared/bom.js** расширено:
+  - `_resolveLegacyElementId(node)` — порядок приоритета: elementId → upsCatalogId → panelCatalogId → enclosureId → transformerCatalogId. Backward-compat: узлы из старых проектов, выбравшие модель через `applyUpsModel`, теперь попадают в BOM через library
+  - `_syntheticUpsComposition(node)` — если у ИБП заданы batteryCatalogId + batteryStringCount × batteryBlocksPerString → ссылка на АКБ как компонент. Количество = strings × blocks × count
+  - `bomForNode(node)` усложнён: после развёртки основного элемента добавляется АКБ (с `role='battery'`, depth=1), если есть упоминание батареи в каталоге. Корень получает label `"<node.name> (<element.label>)"`
+- **Эффект:**
+  - Пользователь выбирает ИБП через существующий пикер в инспекторе → BOM автоматически содержит: ИБП + АКБ × N (с ролью «battery»)
+  - Аналогично для panel (panelCatalogId → Element из element-library через bridge)
+  - Для проектов без каталожных ссылок — прежнее поведение (placeholder по типу узла)
+- **Файлы:**
+  - `shared/bom.js` (+50 строк legacy resolver и UPS-battery synthesis)
+  - `js/engine/constants.js` APP_VERSION = '0.43.1'
 
 ### v0.43.0 (2026-04-19, Фаза 1.3 — Phantom + BOM)
 - **shared/bom.js** (новый, ~180 строк):

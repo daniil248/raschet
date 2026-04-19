@@ -80,6 +80,41 @@ export function expandComposition(element, multiplier = 1, depth = 0, seen = new
 }
 
 /**
+ * Резолвит legacy-поля узла (upsCatalogId / panelCatalogId / transformerId
+ * / batteryCatalogId) как ссылку на Element в library. Возвращает id или null.
+ * Используется backward-compat: узлы старых проектов не имеют node.elementId,
+ * но имеют специфические *.catalogId.
+ */
+function _resolveLegacyElementId(node) {
+  if (!node) return null;
+  if (node.elementId) return node.elementId;
+  if (node.upsCatalogId) return node.upsCatalogId;
+  if (node.panelCatalogId) return node.panelCatalogId;
+  if (node.enclosureId) return node.enclosureId;
+  if (node.transformerCatalogId) return node.transformerCatalogId;
+  return null;
+}
+
+/**
+ * Для ИБП с выбранной АКБ из каталога — строим синтетическую композицию
+ * { ибп + (строк × блоков) батарей }. Phantom-режим: батареи помечаются
+ * role='battery' и видны в BOM как отдельная строка.
+ */
+function _syntheticUpsComposition(node) {
+  if (!node || node.type !== 'ups') return null;
+  if (!node.batteryCatalogId) return null;
+  const strings = Math.max(1, Number(node.batteryStringCount) || 1);
+  const blocks = Math.max(1, Number(node.batteryBlocksPerString) || 0);
+  if (!blocks) return null;
+  return {
+    elementId: node.batteryCatalogId,
+    qty: strings * blocks,
+    role: 'battery',
+    phantom: false,
+  };
+}
+
+/**
  * Строка BOM для одного узла проекта.
  * Если node.elementId задан — разворачиваем через library.
  * Иначе генерим placeholder-строку по типу узла (backward-compat).
@@ -87,35 +122,77 @@ export function expandComposition(element, multiplier = 1, depth = 0, seen = new
 export function bomForNode(node) {
   if (!node) return [];
   const count = Math.max(1, Number(node.count) || 1);
-  // 1) node.elementId → library
-  if (node.elementId) {
-    const el = getElement(node.elementId);
+  const elementId = _resolveLegacyElementId(node);
+  const items = [];
+
+  // 1) node.elementId / legacy catalogId → library
+  if (elementId) {
+    const el = getElement(elementId);
     if (el) {
-      return expandComposition(el, count, 0, new Set(), ['node:' + node.id]);
+      items.push(...expandComposition(el, count, 0, new Set(), ['node:' + node.id]));
+      // Label корня заменим на имя узла (ИБП "Сервера" вместо "APC Smart-UPS 3000")
+      if (items[0] && node.name) {
+        items[0].label = node.name + ' (' + (items[0].label || el.id) + ')';
+        items[0].nodeId = node.id;
+      }
     }
   }
+
   // 2) Узел с inline-composition (не из library)
-  if (Array.isArray(node.composition) && node.composition.length) {
+  if (!items.length && Array.isArray(node.composition) && node.composition.length) {
     const synthetic = {
       id: 'node:' + node.id,
       label: (node.name || node.tag || node.type),
       kind: node.type,
       composition: node.composition,
     };
-    return expandComposition(synthetic, count, 0, new Set(), []);
+    items.push(...expandComposition(synthetic, count, 0, new Set(), []));
   }
-  // 3) Placeholder — просто один line-item по типу узла
-  return [{
-    elementId: null,
-    label: node.name || node.tag || node.type || 'node',
-    kind: node.type,
-    qty: count,
-    role: null,
-    phantom: false,
-    depth: 0,
-    path: ['node:' + node.id],
-    nodeId: node.id,
-  }];
+
+  // 3) Fallback: Placeholder по типу узла
+  if (!items.length) {
+    items.push({
+      elementId: null,
+      label: node.name || node.tag || node.type || 'node',
+      kind: node.type,
+      qty: count,
+      role: null,
+      phantom: false,
+      depth: 0,
+      path: ['node:' + node.id],
+      nodeId: node.id,
+    });
+  }
+
+  // Дополнение: для ИБП с батареей из каталога — добавляем АКБ как
+  // компонент (синтетическая composition-ссылка). Phantom=false потому
+  // что АКБ — физический компонент, просто привязан к ИБП.
+  const upsBatteryRef = _syntheticUpsComposition(node);
+  if (upsBatteryRef) {
+    const battery = getElement(upsBatteryRef.elementId);
+    if (battery) {
+      const sub = expandComposition(battery, upsBatteryRef.qty * count, 1, new Set(), ['node:' + node.id, 'battery']);
+      if (sub[0]) {
+        sub[0].role = 'battery';
+        sub[0].phantom = false;
+      }
+      items.push(...sub);
+    } else {
+      items.push({
+        elementId: upsBatteryRef.elementId,
+        label: 'АКБ ' + upsBatteryRef.elementId,
+        kind: 'battery',
+        qty: upsBatteryRef.qty * count,
+        role: 'battery',
+        phantom: false,
+        missing: true,
+        depth: 1,
+        path: ['node:' + node.id, 'battery'],
+      });
+    }
+  }
+
+  return items;
 }
 
 /**
