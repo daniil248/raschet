@@ -1647,30 +1647,130 @@ function openCableTableModal() {
 function exportCableTableCsv() {
   const S = window.Raschet?._state;
   if (!S) return;
-  const rows = [['Обозначение', 'Откуда', 'Куда', 'Марка', 'Материал', 'Изоляция', 'Конструкция', 'Сечение, мм²', 'Число жил', 'Длина, м', 'Способ прокладки', 'Imax, А', 'Iдоп, А', 'Класс']];
-  for (const c of S.conns.values()) {
-    if (!c._active || (!c._cableSize && !c._busbarNom)) continue;
+  // Phase 1.20.8: CSV теперь учитывает текущие фильтры и сортировку
+  // (согласуется с тем, что пользователь видит в таблице). Экспортируются
+  // все кабели проекта (активные + inactive), кроме утилит-инфид.
+  const F = _cableTableFilters || {};
+  const q = (F.search || '').toLowerCase();
+  const cls = F.class;
+  const fMark = (F.mark || '').toLowerCase();
+  const fMethod = (F.method || '').toLowerCase();
+  const fCond = (F.conductor || '').toLowerCase();
+  const fLabel = (F.label || '').toLowerCase();
+  const fFromTo = (F.fromTo || '').toLowerCase();
+  const fCategory = F.category || '';
+  let allMarksLocal = [];
+  try { allMarksLocal = _listCableTypes(); } catch {}
+  const conns = [...S.conns.values()].filter(c => {
+    if (!c._cableSize && !c._busbarNom) return false;
+    if (cls === 'HV' && !c._isHV) return false;
+    if (cls === 'DC' && !c._isDC) return false;
+    if (cls === 'LV' && (c._isHV || c._isDC)) return false;
+    const fromN = S.nodes.get(c.from?.nodeId);
+    const toN = S.nodes.get(c.to?.nodeId);
+    if (q) {
+      const hay = [c.lineLabel, fromN?.tag, fromN?.name, toN?.tag, toN?.name, c.cableMark]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (fLabel && !String(c.lineLabel || '').toLowerCase().includes(fLabel)) return false;
+    if (fFromTo) {
+      const ft = `${fromN?.tag || fromN?.name || ''} ${toN?.tag || toN?.name || ''}`.toLowerCase();
+      if (!ft.includes(fFromTo)) return false;
+    }
+    if (fMark) {
+      const rec = allMarksLocal.find(m => m.id === c.cableMark);
+      const brand = (rec?.brand || c.cableMark || '(без марки)').toLowerCase();
+      if (brand !== fMark && (c.cableMark || '').toLowerCase() !== fMark) return false;
+    }
+    if (fMethod && String(c._cableMethod || c.installMethod || '').toLowerCase() !== fMethod) return false;
+    if (fCond) {
+      const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
+      const size = c._cableSize || '?';
+      const n = Number(c._neutralSizeMm2) || 0;
+      const spec = (c._busbarNom
+        ? `шинопровод ${c._busbarNom} А`
+        : (n > 0 && n < Number(size))
+          ? `${cores - 1}×${size} + 1×${n} мм²`
+          : `${cores}×${size} мм²`).toLowerCase();
+      if (spec !== fCond) return false;
+    }
+    if (F.parallel != null && Math.max(1, Number(c._cableParallel) || 1) !== F.parallel) return false;
+    const L = Number(c.lengthM) || 0;
+    if (F.lengthMin != null && L < F.lengthMin) return false;
+    if (F.lengthMax != null && L > F.lengthMax) return false;
+    const Imax = Number(c._maxA) || 0;
+    if (F.imaxMin != null && Imax < F.imaxMin) return false;
+    if (F.imaxMax != null && Imax > F.imaxMax) return false;
+    if (fCategory) {
+      const rec = c.cableMark ? allMarksLocal.find(m => m.id === c.cableMark) : null;
+      const catVal = rec?.category || (c._isHV ? 'hv' : (c._isDC ? 'dc' : 'power'));
+      if (catVal !== fCategory) return false;
+    }
+    return true;
+  });
+
+  // Применяем текущую сортировку (та же логика что в таблице)
+  const sortCol = _cableTableSort.col;
+  const sortDir = _cableTableSort.dir === 'desc' ? -1 : 1;
+  const sortKey = (c) => {
+    const fromN = S.nodes.get(c.from?.nodeId);
+    const toN = S.nodes.get(c.to?.nodeId);
+    switch (sortCol) {
+      case 'label': return (c.lineLabel || `${fromN?.tag || fromN?.name || ''}-${toN?.tag || toN?.name || ''}`).toLowerCase();
+      case 'fromTo': return `${fromN?.tag || fromN?.name || ''} → ${toN?.tag || toN?.name || ''}`.toLowerCase();
+      case 'mark': {
+        const rec = c.cableMark ? allMarksLocal.find(m => m.id === c.cableMark) : null;
+        return (rec?.brand || c.cableMark || '').toLowerCase();
+      }
+      case 'conductor': return Number(c._cableSize) || 0;
+      case 'parallel': return Math.max(1, Number(c._cableParallel) || 1);
+      case 'length': return Number(c.lengthM) || 0;
+      case 'method': return String(c._cableMethod || c.installMethod || '').toLowerCase();
+      case 'imax': return Number(c._maxA) || 0;
+      case 'class': return c._isHV ? 2 : (c._isDC ? 1 : 0);
+      default: return 0;
+    }
+  };
+  conns.sort((a, b) => {
+    const ka = sortKey(a), kb = sortKey(b);
+    if (ka < kb) return -1 * sortDir;
+    if (ka > kb) return 1 * sortDir;
+    return 0;
+  });
+
+  const rows = [['Обозначение', 'Откуда', 'Куда', 'Марка', 'Категория', 'Материал', 'Изоляция', 'Конструкция', 'Сечение, мм²', 'N-сечение, мм²', 'Число жил', 'Линий (параллель)', 'Длина, м', 'Способ прокладки', 'Imax, А', 'Iдоп, А', 'Класс', 'Состояние']];
+  for (const c of conns) {
     const fromN = S.nodes.get(c.from.nodeId);
     const toN = S.nodes.get(c.to.nodeId);
     const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
     const lineLabel = c.lineLabel || `${linePrefix}-${fromN?.tag || fromN?.name || '?'}-${toN?.tag || toN?.name || '?'}`;
     const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-    const cls = c._isHV ? 'MV/HV' : (c._isDC ? 'DC' : 'LV');
+    const cls2 = c._isHV ? 'MV/HV' : (c._isDC ? 'DC' : 'LV');
+    const rec = c.cableMark ? allMarksLocal.find(m => m.id === c.cableMark) : null;
+    const catLabel = rec?.category || (c._isHV ? 'hv' : (c._isDC ? 'dc' : 'power'));
+    const lineState = c.lineMode === 'damaged' ? 'Повреждена'
+                    : c.lineMode === 'disabled' ? 'Отключена'
+                    : (c._active ? 'Активна' : 'Неактивна');
     rows.push([
       lineLabel,
       fromN?.tag || fromN?.name || '',
       toN?.tag || toN?.name || '',
-      c.cableMark || '',
+      rec?.brand || c.cableMark || '',
+      catLabel,
       c.material || '',
       c.insulation || '',
       c.cableType || '',
       c._cableSize || '',
+      c._neutralSizeMm2 || '',
       cores,
+      Math.max(1, Number(c._cableParallel) || 1),
       c.lengthM || 0,
       c._cableMethod || '',
       c._maxA ? c._maxA.toFixed(1) : '',
       c._cableIz ? c._cableIz.toFixed(1) : '',
-      cls,
+      cls2,
+      lineState,
     ]);
   }
   const csv = rows.map(row => row.map(cell => {
