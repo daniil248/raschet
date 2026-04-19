@@ -2265,6 +2265,8 @@ function renderCableTable() {
   // чтобы пересчитался _cableMethod / _maxA / _cableIz (recalc triggered
   // только из render). Иначе bulk-edit способа прокладки / длины не
   // отражается в таблице до следующего ручного действия.
+  // Phase 1.20.17: snapshot перед изменениями — чтобы bulk-edit и inline-
+  // правки попадали в undo-стек (Ctrl+Z откатывает последнее изменение).
   const apply = (connId, fn) => {
     if (!window.Raschet?._state?.conns) return;
     const c = window.Raschet._state.conns.get(connId);
@@ -2276,11 +2278,12 @@ function renderCableTable() {
     if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
     renderCableTable();
   };
+  const snap = (tag) => { if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot(tag); };
   mount.querySelectorAll('.ct-mark').forEach(sel => {
     sel.addEventListener('change', () => {
+      snap('cable-table:mark:' + sel.dataset.id);
       apply(sel.dataset.id, (c) => {
         c.cableMark = sel.value || null;
-        // Автоприменение material/insulation из записи
         if (sel.value) {
           const rec = allMarks.find(m => m.id === sel.value);
           if (rec) {
@@ -2294,18 +2297,21 @@ function renderCableTable() {
   });
   mount.querySelectorAll('.ct-length').forEach(inp => {
     inp.addEventListener('change', () => {
+      snap('cable-table:length:' + inp.dataset.id);
       apply(inp.dataset.id, (c) => { c.lengthM = Math.max(0, Number(inp.value) || 0); });
       applyAndRerender();
     });
   });
   mount.querySelectorAll('.ct-method').forEach(sel => {
     sel.addEventListener('change', () => {
+      snap('cable-table:method:' + sel.dataset.id);
       apply(sel.dataset.id, (c) => { c.installMethod = sel.value || undefined; });
       applyAndRerender();
     });
   });
   mount.querySelectorAll('.ct-breaker').forEach(sel => {
     sel.addEventListener('change', () => {
+      snap('cable-table:breaker:' + sel.dataset.id);
       apply(sel.dataset.id, (c) => {
         if (sel.value === '') delete c.manualBreakerIn;
         else c.manualBreakerIn = Number(sel.value);
@@ -2315,6 +2321,7 @@ function renderCableTable() {
   });
   mount.querySelectorAll('.ct-curve').forEach(sel => {
     sel.addEventListener('change', () => {
+      snap('cable-table:curve:' + sel.dataset.id);
       apply(sel.dataset.id, (c) => {
         if (sel.value === '') delete c.breakerCurve;
         else c.breakerCurve = sel.value;
@@ -2432,17 +2439,20 @@ function renderCableTable() {
   // Phase 1.20.5: после bulk-изменения обязательно делаем rerender —
   // recalc пересчитает _cableMethod / _maxA / _cableIz для всех затронутых
   // линий и таблица покажет актуальные значения.
+  // Phase 1.20.17: один snapshot на всю bulk-операцию — чтобы Ctrl+Z
+  // откатывал её целиком за один шаг.
   const bulkApply = (fn) => {
     const ids = [..._cableTableSelected];
     if (!ids.length) return;
+    snap('cable-table:bulk:' + ids.length);
     let affectedCount = 0;
     for (const id of ids) {
       const cc = window.Raschet?._state?.conns?.get(id);
       if (!cc) continue;
-      const before = { cableMark: cc.cableMark, lengthM: cc.lengthM, installMethod: cc.installMethod };
+      const before = { cableMark: cc.cableMark, lengthM: cc.lengthM, installMethod: cc.installMethod, manualBreakerIn: cc.manualBreakerIn, breakerCurve: cc.breakerCurve };
       apply(id, fn);
-      // Считаем сколько реально изменилось (чтобы дать пользователю обратную связь)
-      if (before.cableMark !== cc.cableMark || before.lengthM !== cc.lengthM || before.installMethod !== cc.installMethod) {
+      if (before.cableMark !== cc.cableMark || before.lengthM !== cc.lengthM || before.installMethod !== cc.installMethod
+          || before.manualBreakerIn !== cc.manualBreakerIn || before.breakerCurve !== cc.breakerCurve) {
         affectedCount++;
       }
     }
@@ -2976,9 +2986,11 @@ function renderConsumersTable() {
     if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
     renderConsumersTable();
   };
+  const snap = (tag) => { if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot(tag); };
   const bindNum = (cls, prop) => {
     mount.querySelectorAll('.' + cls).forEach(inp => {
       inp.addEventListener('change', () => {
+        snap('consumers-table:' + prop + ':' + inp.dataset.id);
         apply(inp.dataset.id, (n) => { n[prop] = Math.max(0, Number(inp.value) || 0); });
         applyAndRerender();
       });
@@ -2990,12 +3002,14 @@ function renderConsumersTable() {
   bindNum('ctc-kUse', 'kUse');
   mount.querySelectorAll('.ctc-name').forEach(inp => {
     inp.addEventListener('change', () => {
+      snap('consumers-table:name:' + inp.dataset.id);
       apply(inp.dataset.id, (n) => { n.name = inp.value || ''; });
       applyAndRerender();
     });
   });
   mount.querySelectorAll('.ctc-phase').forEach(sel => {
     sel.addEventListener('change', () => {
+      snap('consumers-table:phase:' + sel.dataset.id);
       apply(sel.dataset.id, (n) => { n.phase = sel.value; });
       applyAndRerender();
     });
@@ -3053,9 +3067,11 @@ function renderConsumersTable() {
     renderConsumersTable();
   });
 
+  // Phase 1.20.17: snapshot один раз на всю bulk-операцию для Ctrl+Z
   const bulkApply = (fn) => {
     const ids = [..._consumersTableSelected];
     if (!ids.length) return;
+    snap('consumers-table:bulk:' + ids.length);
     let affected = 0;
     for (const id of ids) {
       const node = window.Raschet?._state?.nodes?.get(id);

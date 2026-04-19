@@ -566,6 +566,13 @@
   с иконкой типа. ↑/↓ для навигации, Enter/клик для перехода (через
   selectConnAndFocus — с учётом autoCenterOnSelect). Esc / клик вне
   закрывают.
+- **1.20.17 (v0.56.19)** — undo/redo для таблиц cable/consumers:
+  * `Raschet.snapshot(tag)` API экспонирует history.snapshot
+  * Каждое inline-изменение (mark/length/method/breaker/curve/demand/
+    cosPhi/phase) создаёт snapshot перед применением
+  * Bulk-операция — один snapshot на всю партию (Ctrl+Z откатит
+    всё изменение целиком одним шагом)
+  Раньше изменения через таблицу в undo-стек не попадали.
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 

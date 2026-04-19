@@ -529,6 +529,8 @@ window.Raschet = {
   },
   // Phase 1.20.12: открыть TCC-модалку для указанного conn id
   openConnTcc: (id) => openConnTccDirect(id),
+  // Phase 1.20.17: snapshot для undo/redo извне (bulk-edit в таблицах)
+  snapshot: (tag) => snapshot(tag),
   importLoadsTable,
   get3PhaseBalance,
   // Фаза 1.3 + 1.5.7: BOM (с опциональными ценами)
