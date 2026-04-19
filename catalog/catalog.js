@@ -17,6 +17,7 @@ import {
 } from '../shared/element-library.js';
 import { createCableSkuElement } from '../shared/element-schemas.js';
 import { tccBreakerTime, tccSamplePoints } from '../shared/tcc-curves.js';
+import { mountTccChart } from '../shared/tcc-chart.js';
 import {
   listPrices, getPrice, savePrice, removePrice, pricesForElement,
   bulkAddPrices, exportPricesJSON, importPricesJSON, onPricesChange,
@@ -912,6 +913,13 @@ function renderAnalyticsTab() {
       </table>
     ` : '<div class="empty">Нет данных</div>'}
 
+    <h3 style="margin:24px 0 8px">🔌 Сравнение TCC-кривых автоматов (Фаза 1.9)</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">
+      Наложение кривых нескольких автоматов на один график. Чекбоксы скрывают/показывают кривую.
+      Для цепочки защит (от источника к потребителю) используйте инспектор линии на схеме — там выводится полная карта.
+    </div>
+    <div id="tcc-demo-chart" style="background:#fff;border:1px solid #e1e4e8;border-radius:4px;padding:12px"></div>
+
     <h3 style="margin:24px 0 8px">Элементы без цен</h3>
     ${elementsWithoutPrice > 0 ? `
       <div class="muted" style="font-size:12px;margin-bottom:8px">${elementsWithoutPrice} из ${elements.length} элементов не имеют ни одной записи цены.</div>
@@ -929,6 +937,27 @@ function renderAnalyticsTab() {
     ` : '<div class="empty">Все элементы с ценами 🎉</div>'}
   `;
   window._openPriceModal = (id) => openPriceModal({ elementId: id });
+
+  // Инициализация TCC-демо-графика (Фаза 1.9)
+  const demoEl = document.getElementById('tcc-demo-chart');
+  if (demoEl) {
+    const items = [
+      { id: 'mcb-b-16',  kind: 'breaker', In: 16,  curve: 'B', label: 'MCB B 16A (освещение, розетки)' },
+      { id: 'mcb-c-25',  kind: 'breaker', In: 25,  curve: 'C', label: 'MCB C 25A (смешанная группа)' },
+      { id: 'mcb-d-40',  kind: 'breaker', In: 40,  curve: 'D', label: 'MCB D 40A (двигатели)' },
+      { id: 'mccb-100',  kind: 'breaker', In: 100, curve: 'C', label: 'MCCB 100A (ввод)' },
+      { id: 'cable-2.5', kind: 'cable',   S_mm2: 2.5, k: 115,   label: 'Проводник Cu/PVC 2.5 мм² (термостойкость)' },
+      { id: 'cable-10',  kind: 'cable',   S_mm2: 10,  k: 115,   label: 'Проводник Cu/PVC 10 мм² (термостойкость)' },
+    ];
+    mountTccChart(demoEl, {
+      items,
+      xRange: [5, 50000],
+      yRange: [0.003, 10000],
+      width: 700,
+      height: 450,
+      ikMax: 6000,
+    });
+  }
 }
 
 // ====================== Helpers ======================
