@@ -309,11 +309,23 @@ export function createBreakerElement(patch = {}) {
     composition: [],
     kindProps: {
       type: p.type || 'MCB',                 // MCB | MCCB | ACB | RCD | RCBO
-      curve: p.curve || 'C',                 // B | C | D (для MCB)
-      breakingCapacityKa: Number(p.breakingCapacityKa || 6),
-      tripUnit: p.tripUnit || null,          // thermal | magnetic | electronic
+      curve: p.curve || 'C',                 // B | C | D | K | Z (для MCB) / «LI»/«LSI»/«LSIG» (для MCCB/ACB)
+      inNominal: Number(p.inNominal || 16),  // I_n, A
+      poles: Number(p.poles || 3),
+      breakingCapacityKa: Number(p.breakingCapacityKa || 6), // I_cu
+      tripUnit: p.tripUnit || 'thermomagnetic', // thermomagnetic | electronic
       rcdTripMa: p.rcdTripMa != null ? Number(p.rcdTripMa) : null,
       modules: Number(p.modules || 1),       // число модулей в щите
+      // Фаза 1.10: настройки электронного расцепителя (только для MCCB/ACB
+      // с adjustable=true). Для MCB с фиксированной характеристикой эти
+      // поля остаются null.
+      adjustable: !!p.adjustable,
+      settings: p.settings || null,          // { Ir:{min,max,step,value}, Isd:{...}, tsd:{...}, Ii:{...} }
+      // TCC (time-current characteristic): формула или точки.
+      // Если задана tccCurveFormula — используется аналитическая формула
+      // из shared/tcc-curves.js; иначе — интерполяция по tccCurvePoints.
+      tccCurveFormula: p.tccCurveFormula || null,  // 'iec-60947-2-B' | 'iec-60947-2-C' | ...
+      tccCurvePoints: p.tccCurvePoints || null,    // [{ i_per_In, t_sec }]
     },
     source: p.source || 'user',
     builtin: !!p.builtin,

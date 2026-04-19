@@ -42,8 +42,15 @@ function estimateTripTime(Ik, In, curve) {
   if (Ik <= 0 || In <= 0) return 0.1;
   const ratio = Ik / In;
   const magThresh = MAG_THRESHOLD[curve] || 10;
+  // Глубокая мгновенная зона (ratio > 2 × magThresh) — токоограничивающее
+  // действие MCB, полупериод 50Гц = 10 мс, но с let-through эффективное
+  // время по энергии I²t ещё меньше (0.005 с — типичное значение для
+  // MCB класса 3 по IEC 60898-1 при I_k ≥ Icu).
+  if (ratio >= magThresh * 2) {
+    return (curve === 'MCCB' || curve === 'ACB') ? 0.02 : 0.005;
+  }
   if (ratio >= magThresh) {
-    // Мгновенное магнитное срабатывание: 5-10 мс для MCB, 20-50 мс для MCCB
+    // Обычная мгновенная зона: 5-10 мс для MCB, 20-50 мс для MCCB
     return (curve === 'MCCB' || curve === 'ACB') ? 0.03 : 0.01;
   }
   // Тепловой расцепитель: приблизительно t ∝ 1/(ratio²)
@@ -66,13 +73,33 @@ export const shortCircuitModule = {
         warnings: [],
       };
     }
-    // tk: если задан пользователем — используем, иначе рассчитываем
-    // по кривой автомата и кратности Ik/In (IEC 60898-1)
+    // tk: берём МИНИМУМ из заданного пользователем и рассчитанного по
+    // кривой автомата. Физически кабель не может греться дольше, чем
+    // работает защитный автомат. Если пользователь задал большее tk
+    // (для селективности upstream) — оно игнорируется здесь: кабель
+    // защищён данным автоматом, и кривая этого автомата — верхняя
+    // граница времени нагрева.
+    //
+    // Раньше был баг: использовали tkUser без проверки, что приводило
+    // к завышению сечения для быстрых MCB (B/C/D в глубокой мгновенной
+    // зоне, где автомат отключает за 5-10 мс, но пользователь задал
+    // 0.05-0.15 с «с запасом»).
     const In = Number(input.breakerIn) || 0;
     const curve = input.breakerCurve || 'MCB_C';
     const tkUser = Number(input.tkS) || 0;
-    const tk = tkUser > 0 ? tkUser : estimateTripTime(Ik, In, curve);
-    const tkAuto = tkUser <= 0;
+    const tkAuto = estimateTripTime(Ik, In, curve);
+    let tk, tkSource;
+    if (tkUser > 0) {
+      if (tkUser < tkAuto) {
+        // Пользователь задал меньше — верим ему (например upstream быстрее)
+        tk = tkUser; tkSource = 'user';
+      } else {
+        // Пользователь задал больше — используем реальное по кривой
+        tk = tkAuto; tkSource = 'auto-clamped';
+      }
+    } else {
+      tk = tkAuto; tkSource = 'auto';
+    }
     const k = getK(input.material || 'Cu', input.insulation || 'PVC');
     const sRequired = (Ik * Math.sqrt(tk)) / k;
     const sCurrent = Number(input.currentSize) || 0;
@@ -92,7 +119,9 @@ export const shortCircuitModule = {
       details: {
         IkA: Math.round(Ik),
         tkS: Math.round(tk * 1000) / 1000,
-        tkAuto,
+        tkSource,          // 'user' | 'auto' | 'auto-clamped'
+        tkUser: tkUser > 0 ? tkUser : null,
+        tkAuto: Math.round(tkAuto * 1000) / 1000,
         k,
         sRequired: Math.round(sRequired * 10) / 10,
         sCurrent,
@@ -103,7 +132,7 @@ export const shortCircuitModule = {
       },
       warnings: pass
         ? []
-        : [`S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Math.round(Ik)} А, t_k=${(Math.round(tk * 1000) / 1000)} с${tkAuto ? ' авто' : ''}, k=${k}). Текущее ${sCurrent} мм² недостаточно.`],
+        : [`S_min по КЗ = ${sRequired.toFixed(1)} мм² (I_k=${Math.round(Ik)} А, t_k=${(Math.round(tk * 1000) / 1000)} с${tkSource === 'auto' ? ' авто' : (tkSource === 'auto-clamped' ? ' ограничено по кривой автомата' : '')}, k=${k}). Текущее ${sCurrent} мм² недостаточно.`],
     };
   },
 };
