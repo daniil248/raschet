@@ -223,6 +223,28 @@ export function bomForNode(node) {
     });
   }
 
+  // Дополнение: для MV-щита (isMv + mvCells) — ячейки как отдельные
+  // позиции BOM. Каждая ячейка = позиция (нагрузка/стоимость считается
+  // в ячейке, не в оболочке). Phase 1.19.2.
+  if (node.isMv && Array.isArray(node.mvCells) && node.mvCells.length) {
+    for (const cell of node.mvCells) {
+      const cellType = cell.type || 'feeder';
+      const breakerType = cell.breakerType || '—';
+      const In = cell.In_A || cell.In || '?';
+      items.push({
+        elementId: null,
+        inline: true,
+        qty: count,
+        role: 'mv-cell-' + cellType,
+        label: `Ячейка СН: ${cellType} (${In}А ${breakerType})${cell.functionDesc ? ' — ' + cell.functionDesc : ''}`,
+        kind: 'mv-cell',
+        phantom: false,
+        depth: 1,
+        path: ['node:' + node.id, 'cell:' + cellType],
+      });
+    }
+  }
+
   // Дополнение: для ИБП с батареей из каталога — добавляем АКБ как
   // компонент (синтетическая composition-ссылка). Phantom=false потому
   // что АКБ — физический компонент, просто привязан к ИБП.

@@ -93,13 +93,14 @@ function storageKey() { return LEGACY_KEY + '.' + currentUserId(); }
 // Конкретный ценник — это `cable-sku`: `{ cableTypeId, cores, sizeMm2 }`
 // (например «ВВГнг-LS 3×2.5 мм² — 95 ₽/м»). Цены ТОЛЬКО на SKU.
 export const ELEMENT_KINDS = {
-  panel:         { category: 'equipment', label: 'Распределительный щит', pricable: true },
+  panel:         { category: 'equipment', label: 'НКУ (LV щит, IEC 61439)', pricable: true,
+                   note: 'Низковольтное комплектное устройство до 1000 В (ВРУ, ЩС, ЩО, ЩК). Стандарт IEC 61439, формы разделения 1-4.' },
   ups:           { category: 'equipment', label: 'Источник бесперебойного питания', pricable: true },
   battery:       { category: 'equipment', label: 'Аккумуляторная батарея', pricable: true },
   transformer:   { category: 'equipment', label: 'Трансформатор', pricable: true },
   breaker:       { category: 'equipment', label: 'Автоматический выключатель', pricable: true },
-  'mv-switchgear': { category: 'equipment', label: 'Распределительное устройство СН (RM6/FafeRing/ЩО-70)', pricable: true,
-                     note: 'Устройства среднего напряжения 6-35 кВ: моноблоки RM6/FafeRing и сборные ЩО-70. Конфигурация через MV-конфигуратор.' },
+  'mv-switchgear': { category: 'equipment', label: 'РУ СН (MV, IEC 62271-200)', pricable: true,
+                     note: 'Распределительное устройство среднего напряжения 6-35 кВ (RM6, FafeRing, ЩО-70). Стандарт IEC 62271-200, категории LSC1/LSC2.' },
   'mv-cell':     { category: 'equipment', label: 'Ячейка СН (ввод/отход/ТН/секционная)', pricable: true,
                    note: 'Типы ячеек: infeed, feeder, transformer-protection, measurement, busCoupler, earthing' },
   enclosure:     { category: 'equipment', label: 'Корпус (оболочка) щита', pricable: true },

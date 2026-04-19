@@ -516,6 +516,31 @@
   - 1.19.2: интеграция в инспектор трансформатора на схеме («Сконфигурировать РУ СН»)
   - 1.19.3: MV-автоматы (VCB, SF6) в breaker-seed с TCC-кривыми
 
+### v0.54.2 (2026-04-19, Разделение НКУ/МВ в UI + ФИКС: MV-щит не открывался в инспекторе)
+- **Баг:** модалка «Параметры щита» не открывалась для MV-щитов (isMv=true). Причина: в `inspector/panel.js` использовался `GLOBAL`, но он **не был импортирован** → ReferenceError → модалка не рендерилась. Фикс: `import { GLOBAL } from '../constants.js'`.
+- **Разделение НКУ/МВ в UI (запрос пользователя «не стоит объединять в один kind … разделить»):**
+  - **ELEMENT_KINDS labels уточнены:**
+    - `panel` → «НКУ (LV щит, IEC 61439)» с note про TTA/PTTA и формы разделения
+    - `mv-switchgear` → «РУ СН (MV, IEC 62271-200)» с note про LSC1/LSC2
+  - **panel-config/index.html:** заголовок «Конфигуратор НКУ (LV, до 1 кВ)» + ссылка на MV-конфигуратор
+  - **hub.html:** карточка переименована «Конфигуратор НКУ (LV щит)» с упоминанием IEC 61439
+  - **modules.json:** panel-config badge `wip`→`new`, description уточнён IEC 61439
+  - **presets.js palette:** категория «Щиты» → «НКУ (щиты LV)» (MV пресеты уже в отдельной «Среднее напряжение»)
+- **Интеграция mvCells в BOM:**
+  - В `shared/bom.js:bomForNode` — если `node.isMv && node.mvCells[]` → каждая ячейка как отдельная BOM-позиция (role='mv-cell-<type>', kind='mv-cell', label с типом/током/breakerType/функциональным назначением)
+  - Отчёт «Спецификация оборудования» → новая группа «Ячейки СН»
+  - `KIND_LABELS` в `report-sections.js` дополнен: `panel` → «НКУ (LV щиты)», `mv-switchgear` → «РУ СН (MV)», `mv-cell` → «Ячейки СН»
+- **APP_VERSION = '0.54.2'**
+- **Файлы:**
+  - `js/engine/inspector/panel.js` (import GLOBAL)
+  - `shared/element-library.js` (labels для panel/mv-switchgear)
+  - `panel-config/index.html` (заголовок + ссылка)
+  - `hub.html` (карточка НКУ)
+  - `modules.json` (panel-config обновлён)
+  - `js/presets.js` (категория)
+  - `shared/bom.js` (+18 строк mvCells в items)
+  - `js/engine/report-sections.js` (+2 строки KIND_LABELS)
+
 ### v0.54.1 (2026-04-19, Фаза 1.19.2 — MV-автоматы в breaker-seed + автоподстановка проектной марки)
 - **shared/breaker-seed.js — добавлено ~30 MV-автоматов:**
   - `seedMvVcbBreakers`: вакуумные VCB 10 кВ и 24 кВ, ряд In: 630/1250/2000/2500/3150/4000 А, Icu 25-50 кА, с электронным реле (ANSI 50/51) — настраиваемые Ir/Isd/tsd/Ii

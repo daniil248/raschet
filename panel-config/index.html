@@ -19,7 +19,7 @@
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     import { mountFooter } from '../shared/app-footer.js';
-    mountHeader({ title: 'Конфигуратор щита', home: '../hub.html' });
+    mountHeader({ title: 'Конфигуратор НКУ (LV)', home: '../hub.html' });
     if (window.Auth && typeof window.Auth.init === 'function') {
       window.Auth.init().catch(e => console.warn('[panel-config] auth init failed', e));
     }
@@ -28,10 +28,11 @@
 
   <main>
     <div class="page-intro">
-      <h2>Конфигуратор щита</h2>
+      <h2>Конфигуратор НКУ (LV, до 1 кВ)</h2>
       <p class="muted">
-        Справочник типовых распределительных щитов (оболочки / корпуса) + конфигуратор на проект.
-        Данные хранятся per-user в localStorage и доступны в инспекторе щита главной схемы.
+        Низковольтные комплектные устройства по <b>IEC 61439</b> (TTA / PTTA):
+        ВРУ, ВРУ с АВР, ЩС, ЩО, ЩК. Для РУ среднего напряжения (6-35 кВ) —
+        отдельный <a href="../mv-config/" style="color:#1976d2">Конфигуратор РУ СН</a>.
       </p>
     </div>
 

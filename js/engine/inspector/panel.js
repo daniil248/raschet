@@ -1,6 +1,6 @@
 // Инспектор: модалки щитов (секционные/обычные), управление щитом,
 // вспомогательные функции отрисовки. Выделено из inspector.js.
-import { DEFAULTS, BREAKER_SERIES } from '../constants.js';
+import { DEFAULTS, BREAKER_SERIES, GLOBAL } from '../constants.js';
 import { state, uid } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveTag } from '../zones.js';

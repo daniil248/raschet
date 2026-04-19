@@ -986,11 +986,13 @@ function sectionBom() {
   const { aggregated, totals } = collectBomFromProject(state, priceOpts);
   const groups = groupBomByKind(aggregated);
   const KIND_LABELS = {
-    panel: 'Распределительные щиты',
+    panel: 'НКУ (LV щиты)',
     ups: 'ИБП',
     battery: 'Аккумуляторные батареи',
     transformer: 'Трансформаторы',
     breaker: 'Автоматические выключатели',
+    'mv-switchgear': 'РУ СН (MV)',
+    'mv-cell': 'Ячейки СН',
     enclosure: 'Корпуса щитов',
     climate: 'Климатическое оборудование',
     'consumer-type': 'Потребители',
