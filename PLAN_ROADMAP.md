@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** Фаза 0 завершена (v0.41.0). В работе: Фаза 1.
+> **Статус:** Фаза 0 завершена (v0.41.0). Фаза 1.1 + 1.2 (bridge) — v0.42.1. В работе: Фаза 1.2.n (мягкая миграция каталогов на Element-API).
 > **Цель:** превратить набор специализированных калькуляторов в единую платформу проектирования электрических (и позже — механических) схем с общей библиотекой элементов, мульти-пространственными видами, 3D, правами пользователей и расширяемыми БД-адаптерами.
 
 ---
@@ -78,29 +78,41 @@
 
 **Цель:** один единый справочник элементов вместо 4 раздельных (panel, ups, battery, transformer) + кабели + пользовательские типы потребителей. Элемент хранит: электрика, геометрия, порты, представления для разных типов схем, состав (для модульных).
 
-#### Подфаза 1.1 — Element schema и ElementLibrary API (1 неделя)
+#### Подфаза 1.1 — Element schema и ElementLibrary API (1 неделя) ✅
 
-- [ ] **1.1.1** Создать `shared/element-library.js`:
-  - Схема `Element { id, kind, category, label, electrical, geometry, views, composition, source, tags, createdAt, updatedAt }`
-  - API: `listElements({kind, category})`, `getElement(id)`, `saveElement(el)`, `removeElement(id)`, `cloneElement(id, newName)`
+- [x] **1.1.1** Создан `shared/element-library.js`:
+  - Схема `Element { id, kind, category, label, electrical, geometry, views, composition, kindProps, source, tags, createdAt, updatedAt }`
+  - API: `listElements({kind, category, tag, manufacturer})`, `getElement(id)`, `saveElement(el)`, `removeElement(id)`, `cloneElement(id, newName)`, `exportLibraryJSON()`, `importLibraryJSON(json, mode)`, `clearUserElements()`, `onLibraryChange(cb)`
   - Per-user localStorage: `raschet.elementLibrary.v1.<uid>`
-  - Builtin vs user (как panel-catalog)
+  - 11 kind'ов в `ELEMENT_KINDS`: panel/ups/battery/transformer/breaker/enclosure/climate/consumer-type/cable-type/channel/custom
+  - Builtin vs user через `_builtins` Map + `registerBuiltin`/`registerBuiltins`/`clearBuiltins`
+  - User не может перезаписать builtin (бросает ошибку)
 
-- [ ] **1.1.2** Добавить схема-хелперы:
-  - `shared/element-schemas.js` — validator'ы для каждого kind (panel/ups/battery/transformer/cable/consumer/channel)
-  - `createElement(kind, patch)` — factory с дефолтами
+- [x] **1.1.2** Создан `shared/element-schemas.js`:
+  - Factory-функции `createPanelElement/createUpsElement/createBatteryElement/createTransformerElement/createCableTypeElement/createBreakerElement/createConsumerTypeElement/createEnclosureElement/createClimateElement`
+  - Универсальный `createElement(kind, patch)` с дефолтами
+  - Конвертеры legacy ↔ Element: `fromPanelRecord/toPanelRecord`, `fromUpsRecord/toUpsRecord`, `fromBatteryRecord/toBatteryRecord`, `fromTransformerRecord/toTransformerRecord`, `fromCableTypeRecord/toCableTypeRecord`
 
-- [ ] **1.1.3** Новый редактор `elements/index.html`:
+- [ ] **1.1.3** Новый редактор `elements/index.html` — **отложено, приоритет 1.3**:
   - Режим подготовки: CRUD элементов библиотеки
   - Загрузка SVG для views (schematic symbol, layout front/top)
   - Настройка портов (координаты, kind: electrical/pipe/data)
   - Составные элементы (composition: frame + modules)
 
-#### Подфаза 1.2 — Миграция существующих каталогов (1 неделя)
+#### Подфаза 1.2 — Bridge и миграция существующих каталогов (1 неделя) 🚧
 
-- [ ] **1.2.1** `shared/panel-catalog.js`:
+- [x] **1.2.0** Создан `shared/catalog-bridge.js` (v0.42.1):
+  - `syncLegacyToLibrary()` — Promise.all чтение 5 legacy каталогов (panel/ups/battery/transformer/cable-types), конвертация через `from*Record`, регистрация как `builtin` через `registerBuiltins()`
+  - Lazy dynamic imports (battery-catalog: пробует `./battery-catalog.js` и `../battery/battery-catalog.js`)
+  - `initCatalogBridge()` — idempotent, первый sync + `storage`-event listener для cross-tab pre-синхронизации
+  - Интегрирован в `js/engine/index.js` сразу после `onGlobalChange()` подписки
+  - Read-only: редактирование продолжает идти через legacy API (`addPanel`, `addUps`…)
+  - **Результат:** новые подпрограммы (elements editor, BOM) могут работать через `listElements({kind:'X'})` и видят все данные из legacy-каталогов
+
+- [ ] **1.2.1** `shared/panel-catalog.js` — переключить на Element-API:
   - Внутри: листать `element-library` с `kind='panel'`
   - API остаётся (backward compat: `listPanels()`, `getPanel(id)`, `addPanel(rec)`)
+  - `addPanel` → `saveElement(fromPanelRecord(rec))`
   - Старые данные миграция при загрузке
 
 - [ ] **1.2.2** То же для `ups-catalog.js`, `battery-catalog.js`, `transformer-catalog.js`, `cable-types-catalog.js`
@@ -291,6 +303,25 @@
 ---
 
 ## История изменений
+
+### v0.42.1 (2026-04-19, Фаза 1.2.0 — catalog-bridge)
+- **1.2.0** `shared/catalog-bridge.js` — мост legacy → element-library:
+  - `syncLegacyToLibrary()`: Promise.all чтения 5 каталогов через dynamic import, конвертация через `from*Record`, регистрация как builtin
+  - `initCatalogBridge()`: idempotent, первый sync + listener на `storage` event (cross-tab)
+  - Lazy loading: `battery-catalog` пробует `./battery-catalog.js` и `../battery/battery-catalog.js`
+  - Read-only: editing продолжается через legacy API (`addPanel`, `addUps`...) до 1.2.1-1.2.2
+- **engine/index.js** — импорт и вызов `initCatalogBridge()` сразу после `onGlobalChange()` подписки
+- **Эффект:** `listElements({kind:'panel'})` возвращает все panels из legacy; аналогично для ups/battery/transformer/cable-type
+- **Файлы:**
+  - `shared/catalog-bridge.js` (новый, 135 строк)
+  - `js/engine/index.js:76-80` (импорт + вызов)
+  - `js/engine/constants.js:9` (APP_VERSION = '0.42.1')
+
+### v0.42.0 (2026-04-19, Фаза 1.1 — Element Library foundation)
+- **1.1.1** `shared/element-library.js` (~290 строк): Element schema, 11 kinds, builtin/user двухуровневое хранилище, CRUD + export/import + listeners
+- **1.1.2** `shared/element-schemas.js` (~400 строк): factory-функции для 9 kinds + legacy converters (from/to Record) для 5 типов
+- **PLAN_ROADMAP.md**: создан для сохранения плана между сессиями
+- **modules.json**: манифест 8 модулей
 
 ### v0.41.0 (2026-04-19, фаза 0 завершена)
 Коммит: `cb202c8`

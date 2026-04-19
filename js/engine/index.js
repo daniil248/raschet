@@ -72,6 +72,12 @@ onGlobalChange((next) => {
   }
 });
 
+// === Phase 1.2: инициализация catalog-bridge ===
+// Регистрирует legacy-каталоги (panel, ups, battery, transformer, cable-types)
+// как builtin-элементы в element-library. Подписывается на cross-tab sync.
+import { initCatalogBridge } from '../../shared/catalog-bridge.js';
+initCatalogBridge();
+
 // === Инициализация DOM ===
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница
