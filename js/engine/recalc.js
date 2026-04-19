@@ -1820,30 +1820,66 @@ function recalc() {
         n._marginWarn = null;
       }
 
-      // Фаза 1.19.3: Ik3 на MV-шинах (IEC 60909).
-      // Для щитов помеченных isMv=true — берём upstream-source и пересчитываем
-      // через его sourceImpedance. Ударный ток i_p = κ × √2 × I_k3 (κ=1.8 для MV).
+      // Фаза 1.19.3: Ik3 на MV-шинах (IEC 60909) с учётом MV-кабелей.
+      // Алгоритм:
+      //  1. Для каждого активного входа MV-щита находим upstream-source
+      //  2. Берём его импеданс (Zs) в Омах на стороне щита
+      //  3. Прибавляем импеданс кабеля между source и этим MV-щитом
+      //     (R = rho×L/S, X типовое 0.10-0.12 Ом/км для MV-кабелей)
+      //  4. I_k3 = c × U_n / (√3 × Z_total), c=1.1
+      //  5. i_p = κ × √2 × I_k3 где κ зависит от X/R
+      //
+      // Ударный коэффициент κ = 1.02 + 0.98 × e^(−3/(X/R))
       if (n.isMv) {
         try {
           const ai = activeInputs(n.id);
           if (ai && ai.length) {
-            let upstreamIk = 0;
+            let minZ_ohm = Infinity, minR = 0, minX = 0;
+            const Un_V = nodeVoltage(n);  // линейное напряжение на шинах щита
             for (const { conn } of ai) {
               const up = state.nodes.get(conn.from.nodeId);
-              if (up && up._ikA) {
-                upstreamIk = Math.max(upstreamIk, up._ikA);
+              if (!up || !up._ikA) continue;
+              // Импеданс источника: Zs = c × U / (√3 × Ik)
+              const Zs = (1.1 * Un_V) / (Math.sqrt(3) * up._ikA);
+              // Типовое X/R для MV-source: ~10
+              const xr_src = 10;
+              const Zs_R = Zs / Math.sqrt(1 + xr_src * xr_src);
+              const Zs_X = Zs_R * xr_src;
+              // Импеданс MV-кабеля (если есть)
+              let Zc_R = 0, Zc_X = 0;
+              const S = Number(conn._cableSize) || 0;
+              const L = Number(conn.lengthM) || 0;
+              if (S > 0 && L > 0) {
+                const rho = (conn.material === 'Al') ? 0.0287 : 0.0175;
+                const parallel = Math.max(1, conn._cableParallel || 1);
+                Zc_R = (rho * L / S) / parallel;
+                const X0 = S <= 50 ? 0.12 : (S <= 150 ? 0.11 : 0.10); // Ом/км
+                Zc_X = (X0 * L / 1000) / parallel;
+              }
+              const R_sum = Zs_R + Zc_R;
+              const X_sum = Zs_X + Zc_X;
+              const Z_sum = Math.sqrt(R_sum * R_sum + X_sum * X_sum);
+              if (Z_sum > 0 && Z_sum < minZ_ohm) {
+                minZ_ohm = Z_sum;
+                minR = R_sum;
+                minX = X_sum;
               }
             }
-            if (upstreamIk > 0) {
-              n._Ik3_kA = upstreamIk / 1000;
-              n._ip_kA = 1.8 * Math.sqrt(2) * n._Ik3_kA;
-              // Проверка стойкости шин: It_kA записан в mv-switchgear kindProps
-              // Сравним если есть ссылка на element-library запись
-              if (n._Ik3_kA > 0 && typeof globalThis.__raschetElementLibrary?.getElement === 'function' && n.mvSwitchgearId) {
+            if (minZ_ohm < Infinity && minZ_ohm > 0) {
+              const Ik3_A = (1.1 * Un_V) / (Math.sqrt(3) * minZ_ohm);
+              n._Ik3_kA = Ik3_A / 1000;
+              n._Ik3_Z_ohm = minZ_ohm;
+              // Ударный коэффициент κ по IEC 60909
+              const xr = minR > 0 ? minX / minR : 10;
+              const kappa = 1.02 + 0.98 * Math.exp(-3 / Math.max(0.1, xr));
+              n._ip_kA = kappa * Math.sqrt(2) * n._Ik3_kA;
+              n._Ik3_kappa = kappa;
+              // Проверка стойкости шин (Icu из mv-switchgear)
+              if (typeof globalThis.__raschetElementLibrary?.getElement === 'function' && n.mvSwitchgearId) {
                 const rec = globalThis.__raschetElementLibrary.getElement(n.mvSwitchgearId);
                 const It = rec?.kindProps?.It_kA;
                 if (It && n._Ik3_kA > It) {
-                  n._mvIkOverload = true; // ток КЗ превышает термическую стойкость шин
+                  n._mvIkOverload = true;
                 }
               }
             }
