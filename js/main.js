@@ -3729,6 +3729,249 @@ function exportConsumersTableCsv() {
   flash('Экспортировано ' + (rows.length - 1) + ' потребителей в CSV', 'success');
 }
 
+// ================= Таблица оборудования (Phase 1.20.25) =================
+let _equipTableFilters = { search: '', type: '' };
+let _equipTableSort = { col: 'tag', dir: 'asc' };
+
+function openEquipmentTableModal() {
+  openModal('modal-equipment-table');
+  renderEquipmentTable();
+  const srchEl = document.getElementById('equipment-table-search');
+  if (srchEl) {
+    srchEl.value = _equipTableFilters.search;
+    srchEl.oninput = (e) => { _equipTableFilters.search = e.target.value; renderEquipmentTable(); };
+  }
+  const typeEl = document.getElementById('equipment-table-filter-type');
+  if (typeEl) {
+    typeEl.value = _equipTableFilters.type;
+    typeEl.onchange = (e) => { _equipTableFilters.type = e.target.value; renderEquipmentTable(); };
+  }
+  const csvBtn = document.getElementById('equipment-table-export-csv');
+  if (csvBtn) csvBtn.onclick = exportEquipmentTableCsv;
+}
+
+function _equipKindOf(n) {
+  if (n.type === 'source') return 'source';
+  if (n.type === 'generator') return 'generator';
+  if (n.type === 'panel' && n.isMv) return 'panel-mv';
+  if (n.type === 'panel') return 'panel-lv';
+  if (n.type === 'ups') return 'ups';
+  return null;
+}
+
+function _equipKindLabel(kind) {
+  return {
+    source: 'Источник',
+    generator: 'Генератор',
+    'panel-lv': 'НКУ',
+    'panel-mv': 'РУ СН',
+    ups: 'ИБП',
+  }[kind] || kind;
+}
+
+function renderEquipmentTable() {
+  const mount = document.getElementById('equipment-table-mount');
+  if (!mount) return;
+  const S = window.Raschet?._state;
+  if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
+
+  const equip = [...S.nodes.values()]
+    .map(n => ({ n, kind: _equipKindOf(n) }))
+    .filter(e => e.kind);
+
+  const F = _equipTableFilters;
+  const q = (F.search || '').toLowerCase();
+  const filtered = equip.filter(e => {
+    if (F.type && e.kind !== F.type) return false;
+    if (q) {
+      const eff = _effectiveTag(e.n) || '';
+      const hay = [eff, e.n.tag, e.n.name, e.n.panelCatalogId, e.n.mvSwitchgearId, e.n.upsModel]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  const sortDir = _equipTableSort.dir === 'desc' ? -1 : 1;
+  const sortKey = (e) => {
+    const n = e.n;
+    switch (_equipTableSort.col) {
+      case 'tag': return (_effectiveTag(n) || n.tag || n.name || '').toLowerCase();
+      case 'kind': return e.kind;
+      case 'name': return (n.name || '').toLowerCase();
+      case 'inputs': return Number(n.inputs) || 0;
+      case 'outputs': return Number(n.outputs) || 0;
+      case 'capacity': return Number(n.capacityKw) || 0;
+      case 'load': return Number(n._loadKw) || 0;
+      case 'loadPct': {
+        const cap = Number(n.capacityKw) || 0;
+        const load = Number(n._loadKw) || 0;
+        return cap > 0 ? load / cap : 0;
+      }
+      case 'ip': return n.ipRating || '';
+      case 'voltage': {
+        const lv = (GLOBAL_voltageLevels())[n.voltageLevelIdx];
+        return lv ? Number(lv.vLL) || 0 : 0;
+      }
+      default: return 0;
+    }
+  };
+  filtered.sort((a, b) => {
+    const ka = sortKey(a), kb = sortKey(b);
+    if (ka < kb) return -1 * sortDir;
+    if (ka > kb) return 1 * sortDir;
+    return 0;
+  });
+
+  const countEl = document.getElementById('equipment-table-count');
+  if (countEl) countEl.textContent = `${filtered.length} из ${equip.length}`;
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+  const sortHdr = (col, label, align, extra) => {
+    const active = _equipTableSort.col === col;
+    const arrow = active ? (_equipTableSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+    const color = active ? 'color:#1976d2;' : '';
+    return `<th class="et-sort" data-sort-col="${col}" style="padding:6px 8px;text-align:${align};border-bottom:2px solid #d0d7de;cursor:pointer;user-select:none;${color}${extra ? extra + ';' : ''}">${label}${arrow}</th>`;
+  };
+
+  const html = [`
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#f6f8fa;position:sticky;top:0;z-index:2">
+          ${sortHdr('tag', 'Обозначение', 'left', 'min-width:130px')}
+          ${sortHdr('kind', 'Тип', 'left')}
+          ${sortHdr('name', 'Имя / Модель', 'left')}
+          ${sortHdr('voltage', 'U, В', 'right')}
+          ${sortHdr('inputs', 'Вх.', 'right')}
+          ${sortHdr('outputs', 'Вых.', 'right')}
+          ${sortHdr('capacity', 'P ном, кВт', 'right')}
+          ${sortHdr('load', 'P расч, кВт', 'right')}
+          ${sortHdr('loadPct', 'Загрузка', 'right', 'min-width:80px')}
+          ${sortHdr('ip', 'IP', 'center')}
+        </tr>
+      </thead>
+      <tbody>`];
+
+  const KIND_ICON = { source: '⚡', generator: '🔋', 'panel-lv': '🗄', 'panel-mv': '⚡', ups: '🔌' };
+  const KIND_COLOR = { source: '#1976d2', generator: '#2e7d32', 'panel-lv': '#5d4037', 'panel-mv': '#c67300', ups: '#7b1fa2' };
+
+  for (const e of filtered) {
+    const n = e.n;
+    const tag = _effectiveTag(n) || n.tag || '?';
+    const cap = Number(n.capacityKw) || 0;
+    const load = Number(n._loadKw) || 0;
+    const loadPct = cap > 0 ? (load / cap * 100) : 0;
+    const loadColor = loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : loadPct > 50 ? '#2e7d32' : '#888';
+    const lv = (GLOBAL_voltageLevels())[n.voltageLevelIdx];
+    const voltage = lv ? Math.round(Number(lv.vLL) || 0) : '—';
+    const model = n.panelCatalogId || n.mvSwitchgearId || n.upsModel || '';
+
+    html.push(`
+      <tr data-id="${esc(n.id)}" style="border-bottom:1px solid #eaecef">
+        <td style="padding:5px 8px;font-weight:600">
+          <a href="#" class="et-jump" data-id="${esc(n.id)}" style="color:${KIND_COLOR[e.kind] || '#1976d2'};text-decoration:none">
+            ${esc(tag)} <span style="font-size:10px;opacity:0.7">↗</span>
+          </a>
+        </td>
+        <td style="padding:5px 8px;font-size:11px">
+          <span style="font-size:14px;margin-right:4px">${KIND_ICON[e.kind] || '▫'}</span>
+          ${esc(_equipKindLabel(e.kind))}
+        </td>
+        <td style="padding:5px 8px;font-size:11px">
+          <div>${esc(n.name || '—')}</div>
+          ${model ? `<div class="muted" style="font-size:10px">${esc(model)}</div>` : ''}
+        </td>
+        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${voltage}</td>
+        <td style="padding:5px 8px;text-align:right;font-size:11px">${n.inputs || '—'}</td>
+        <td style="padding:5px 8px;text-align:right;font-size:11px">${n.outputs || '—'}</td>
+        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${cap ? cap.toFixed(1) : '—'}</td>
+        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${load ? load.toFixed(1) : '—'}</td>
+        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:${loadColor};font-weight:${loadPct > 90 ? 600 : 400}">
+          ${cap > 0 ? loadPct.toFixed(0) + '%' : '—'}
+          ${loadPct > 0 ? `<div style="background:#e1e4e8;height:3px;border-radius:2px;margin-top:2px;overflow:hidden"><div style="width:${Math.min(100, loadPct)}%;height:100%;background:${loadColor}"></div></div>` : ''}
+        </td>
+        <td style="padding:5px 8px;text-align:center;font-size:11px">${n.ipRating || '—'}</td>
+      </tr>`);
+  }
+  if (!filtered.length) {
+    html.push('<tr><td colspan="10" style="padding:20px;text-align:center;color:#999">Нет оборудования по текущим фильтрам</td></tr>');
+  }
+  html.push('</tbody></table>');
+  mount.innerHTML = html.join('');
+
+  // Sort handlers
+  mount.querySelectorAll('.et-sort').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortCol;
+      if (_equipTableSort.col === col) {
+        _equipTableSort.dir = _equipTableSort.dir === 'asc' ? 'desc' : 'asc';
+      } else { _equipTableSort.col = col; _equipTableSort.dir = 'asc'; }
+      renderEquipmentTable();
+    });
+  });
+  mount.querySelectorAll('.et-jump').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.dataset.id;
+      if (window.Raschet?._state) {
+        window.Raschet._state.selectedKind = 'node';
+        window.Raschet._state.selectedId = id;
+        if (typeof window.Raschet.rerender === 'function') window.Raschet.rerender();
+      }
+      closeModal('modal-equipment-table');
+    });
+  });
+}
+
+function GLOBAL_voltageLevels() {
+  try { return window.Raschet?.getGlobal?.()?.voltageLevels || []; } catch {}
+  return [];
+}
+
+function exportEquipmentTableCsv() {
+  const S = window.Raschet?._state;
+  if (!S) return;
+  const rows = [['Обозначение', 'Тип', 'Имя', 'Модель', 'U, В', 'Входов', 'Выходов', 'Pном, кВт', 'Pрасч, кВт', 'Загрузка, %', 'IP']];
+  for (const n of S.nodes.values()) {
+    const kind = _equipKindOf(n);
+    if (!kind) continue;
+    const cap = Number(n.capacityKw) || 0;
+    const load = Number(n._loadKw) || 0;
+    const loadPct = cap > 0 ? (load / cap * 100) : 0;
+    const lv = (GLOBAL_voltageLevels())[n.voltageLevelIdx];
+    const voltage = lv ? Math.round(Number(lv.vLL) || 0) : '';
+    const model = n.panelCatalogId || n.mvSwitchgearId || n.upsModel || '';
+    rows.push([
+      _effectiveTag(n) || n.tag || '',
+      _equipKindLabel(kind),
+      n.name || '',
+      model,
+      voltage,
+      n.inputs || '',
+      n.outputs || '',
+      cap ? cap.toFixed(1) : '',
+      load ? load.toFixed(1) : '',
+      cap > 0 ? loadPct.toFixed(1) : '',
+      n.ipRating || '',
+    ]);
+  }
+  const csv = rows.map(row => row.map(cell => {
+    const s = String(cell ?? '');
+    return /[,"\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'equipment-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  flash('Экспортировано ' + (rows.length - 1) + ' единиц оборудования в CSV', 'success');
+}
+
 // ================= Импорт таблицы нагрузок =================
 function openLoadsImportModal() {
   if (state.currentProject && state.currentProject._role === 'viewer') {
@@ -3990,6 +4233,8 @@ async function init() {
   if (btnCableTable) btnCableTable.addEventListener('click', openCableTableModal);
   const btnConsumersTable = document.getElementById('btn-open-consumers-table');
   if (btnConsumersTable) btnConsumersTable.addEventListener('click', openConsumersTableModal);
+  const btnEquipmentTable = document.getElementById('btn-open-equipment-table');
+  if (btnEquipmentTable) btnEquipmentTable.addEventListener('click', openEquipmentTableModal);
   const btnSearch = document.getElementById('btn-open-search');
   if (btnSearch) btnSearch.addEventListener('click', openSearchPalette);
   const btnIssues = document.getElementById('btn-open-project-issues');
