@@ -19,6 +19,65 @@
 // ======================================================================
 
 import { getElement } from './element-library.js';
+import { pricesForElement } from './price-records.js';
+
+/**
+ * Стратегии выбора цены из нескольких предложений на элемент.
+ * Передаются в collectBomFromProject(state, { priceStrategy, priceCurrency, priceCounterpartyId }).
+ */
+export const PRICE_STRATEGIES = {
+  latest:  { label: 'Последняя' },
+  min:     { label: 'Минимальная' },
+  max:     { label: 'Максимальная' },
+  avg:     { label: 'Средняя' },
+  counterparty: { label: 'От выбранного контрагента' },
+};
+
+/**
+ * Получить цену элемента по заданной стратегии. Возвращает
+ * { unitPrice, currency, source, priceRecord } или null.
+ *
+ * opts:
+ *  - strategy: 'latest' | 'min' | 'max' | 'avg' | 'counterparty'
+ *  - currency: фильтровать только указанную валюту (опционально)
+ *  - counterpartyId: для strategy='counterparty'
+ *  - activeOnly: игнорировать истёкшие цены (default true)
+ */
+export function resolveUnitPrice(elementId, opts = {}) {
+  if (!elementId) return null;
+  const strategy = opts.strategy || 'latest';
+  const filter = { activeOnly: opts.activeOnly !== false };
+  if (opts.currency) filter.currency = opts.currency;
+  if (strategy === 'counterparty' && opts.counterpartyId) filter.counterpartyId = opts.counterpartyId;
+
+  const info = pricesForElement(elementId, filter);
+  if (!info.count) return null;
+
+  let record = null;
+  if (strategy === 'latest' || strategy === 'counterparty') {
+    record = info.latest;
+  } else if (strategy === 'min' && info.min != null) {
+    record = info.prices.find(p => Number(p.price) === info.min) || info.latest;
+  } else if (strategy === 'max' && info.max != null) {
+    record = info.prices.find(p => Number(p.price) === info.max) || info.latest;
+  } else if (strategy === 'avg' && info.avg != null) {
+    // Синтетическая запись для avg
+    return {
+      unitPrice: info.avg,
+      currency: info.currency,
+      source: 'avg of ' + info.count,
+      priceRecord: null,
+    };
+  }
+
+  if (!record) return null;
+  return {
+    unitPrice: Number(record.price) || 0,
+    currency: record.currency,
+    source: record.source,
+    priceRecord: record,
+  };
+}
 
 /**
  * Рекурсивное разворачивание composition в плоский массив line-items.
@@ -199,13 +258,18 @@ export function bomForNode(node) {
  * Собрать BOM всего проекта.
  * state — объект с .nodes Map (такой же как в js/engine/state.js).
  *
- * Возвращает { flat, aggregated }:
+ * opts (опционально) — опции резолвинга цен:
+ *   { priceStrategy, priceCurrency, priceCounterpartyId, activeOnly }
+ *
+ * Возвращает { flat, aggregated, totals }:
  *   flat — все line-items в порядке обхода (иерархия через depth)
- *   aggregated — агрегированные по elementId + role ({ elementId, label,
- *     kind, qty, role, phantom }), qty просуммированы
+ *   aggregated — агрегированные по elementId + role. Если opts заданы —
+ *     с полями unitPrice / currency / totalPrice / priceSource.
+ *   totals — только если opts заданы: { totals (Map<currency, sum>),
+ *     missingCount, pricedCount, totalRows }
  */
-export function collectBomFromProject(state) {
-  if (!state || !state.nodes) return { flat: [], aggregated: [] };
+export function collectBomFromProject(state, opts = null) {
+  if (!state || !state.nodes) return { flat: [], aggregated: [], totals: null };
   const flat = [];
   const nodes = (state.nodes instanceof Map) ? [...state.nodes.values()] : Object.values(state.nodes);
   for (const node of nodes) {
@@ -214,15 +278,22 @@ export function collectBomFromProject(state) {
     const items = bomForNode(node);
     flat.push(...items);
   }
-  return { flat, aggregated: aggregateBom(flat) };
+  const aggregated = aggregateBom(flat, opts);
+  const totals = opts ? bomTotals(aggregated) : null;
+  return { flat, aggregated, totals };
 }
 
 /**
  * Группировка по (elementId, role). Строки без elementId группируются
  * по (label, kind). phantom не суммируется отдельно — phantom-признак
  * имеет строка если все её источники phantom, иначе false.
+ *
+ * opts (опционально) — параметры резолвинга цен:
+ *   { priceStrategy, priceCurrency, priceCounterpartyId, activeOnly }
+ * Если opts заданы — каждая строка получает поля unitPrice / currency /
+ * totalPrice / priceSource. Строки без price — unitPrice=null.
  */
-export function aggregateBom(items) {
+export function aggregateBom(items, opts = null) {
   const map = new Map();
   for (const it of items) {
     const key = it.elementId
@@ -244,9 +315,59 @@ export function aggregateBom(items) {
       });
     }
   }
-  return [...map.values()].sort((a, b) =>
+  const aggregated = [...map.values()].sort((a, b) =>
     (a.kind || '').localeCompare(b.kind || '') || (a.label || '').localeCompare(b.label || '')
   );
+
+  // Цены (Фаза 1.5.7): если заданы opts — резолвим для каждой строки
+  if (opts) {
+    for (const row of aggregated) {
+      if (!row.elementId) {
+        row.unitPrice = null;
+        row.currency = null;
+        row.totalPrice = null;
+        row.priceSource = null;
+        continue;
+      }
+      const price = resolveUnitPrice(row.elementId, {
+        strategy: opts.priceStrategy || 'latest',
+        currency: opts.priceCurrency,
+        counterpartyId: opts.priceCounterpartyId,
+        activeOnly: opts.activeOnly,
+      });
+      if (price) {
+        row.unitPrice = price.unitPrice;
+        row.currency = price.currency;
+        row.totalPrice = price.unitPrice * row.qty;
+        row.priceSource = price.source;
+      } else {
+        row.unitPrice = null;
+        row.currency = null;
+        row.totalPrice = null;
+        row.priceSource = null;
+      }
+    }
+  }
+  return aggregated;
+}
+
+/**
+ * Итоговая сумма BOM по валютам. Возвращает Map<currency, totalSum>.
+ * Строки без цены пропускаются; missing-pricing count возвращается отдельно.
+ */
+export function bomTotals(aggregated) {
+  const totals = new Map();
+  let missingCount = 0;
+  let pricedCount = 0;
+  for (const row of aggregated) {
+    if (row.totalPrice == null || !row.currency) {
+      missingCount++;
+      continue;
+    }
+    totals.set(row.currency, (totals.get(row.currency) || 0) + row.totalPrice);
+    pricedCount++;
+  }
+  return { totals, missingCount, pricedCount, totalRows: aggregated.length };
 }
 
 /**

@@ -806,13 +806,17 @@ function sectionChecks() {
   return { text: text.join('\n'), blocks };
 }
 
-// 9b. СПЕЦИФИКАЦИЯ (BOM) — Фаза 1.3
-// Собирает состав оборудования через element-library composition.
+// 9b. СПЕЦИФИКАЦИЯ (BOM) — Фаза 1.3 + 1.5.7 (цены)
+// Собирает состав оборудования через element-library composition + резолвит
+// цены из price-records (стратегия 'latest' по умолчанию).
 // Для узлов с node.elementId — разворачивает composition рекурсивно
 // (phantom-элементы тоже попадают). Узлы без elementId — одной строкой
 // по типу (ИБП, щит, трансформатор...).
 function sectionBom() {
-  const { aggregated } = collectBomFromProject(state);
+  // Опции резолвинга цен — по умолчанию «последняя актуальная цена».
+  // В будущем передадим через UI опций отчёта (Фаза 1.5.7+).
+  const priceOpts = { priceStrategy: 'latest', activeOnly: true };
+  const { aggregated, totals } = collectBomFromProject(state, priceOpts);
   const groups = groupBomByKind(aggregated);
   const KIND_LABELS = {
     panel: 'Распределительные щиты',
@@ -846,23 +850,65 @@ function sectionBom() {
     blocks.push(B.paragraph('Спецификация пуста — в проекте нет оборудования.'));
     return { text: text.join('\n'), blocks };
   }
-  // Сводная таблица: kind, label, qty
-  const rows = [['Группа', 'Наименование', 'Кол-во']];
+  // Проверка: есть ли цены у каких-либо строк
+  const withPrice = aggregated.filter(r => r.unitPrice != null).length;
+  const showPriceCols = withPrice > 0;
+
+  // Формат цены
+  const fmtPrice = (p, cur) => (p == null) ? '—'
+    : Number(p).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + (cur ? ' ' + cur : '');
+
+  // Сводная таблица: kind, label, qty [+ цена/итого если есть]
+  const header = showPriceCols
+    ? ['Группа', 'Наименование', 'Кол-во', 'Цена за ед.', 'Итого']
+    : ['Группа', 'Наименование', 'Кол-во'];
+  const rows = [];
   for (const [kind, items] of Object.entries(groups)) {
-    rows.push([KIND_LABELS[kind] || kind, '', '']);
+    // Заголовок группы
+    if (showPriceCols) rows.push([KIND_LABELS[kind] || kind, '', '', '', '']);
+    else rows.push([KIND_LABELS[kind] || kind, '', '']);
     for (const it of items) {
       const label = (it.phantom ? '* ' : '') + (it.label || it.elementId || '—') + (it.role ? ` (${it.role})` : '');
-      rows.push(['  ', label, String(it.qty)]);
+      if (showPriceCols) {
+        rows.push([
+          '  ', label, String(it.qty),
+          fmtPrice(it.unitPrice, it.currency),
+          fmtPrice(it.totalPrice, it.currency),
+        ]);
+      } else {
+        rows.push(['  ', label, String(it.qty)]);
+      }
+    }
+  }
+  // Итоги по валютам
+  if (showPriceCols && totals && totals.totals.size) {
+    for (const [cur, sum] of totals.totals) {
+      rows.push(['', 'ИТОГО ' + cur, '', '', fmtPrice(sum, cur)]);
     }
   }
   // Текстовое представление
-  for (const r of rows) text.push(r.map(c => String(c).padEnd(30)).join(' '));
+  text.push(header.map(c => String(c).padEnd(24)).join(' '));
+  for (const r of rows) text.push(r.map(c => String(c).padEnd(24)).join(' '));
   text.push('');
   text.push('* — phantom-элемент (скрыт в UI, учтён в BOM)');
+  if (showPriceCols && totals && totals.missingCount > 0) {
+    text.push(`⚠ Без цены: ${totals.missingCount} из ${totals.totalRows} позиций. Добавьте цены в разделе «Каталог и цены».`);
+  }
   // PDF/DOCX блоки
   blocks.push(B.h2('Сводная ведомость'));
-  blocks.push(B.table(rows[0], rows.slice(1)));
+  blocks.push(B.table(header, rows));
   blocks.push(B.paragraph('* — phantom-элемент (скрыт в UI-схеме, учтён в спецификации как компонент составного оборудования).'));
+  if (showPriceCols && totals) {
+    if (totals.missingCount > 0) {
+      blocks.push(B.paragraph(`Внимание: у ${totals.missingCount} из ${totals.totalRows} позиций нет цены в справочнике. Итог рассчитан только по позициям с ценой. Добавьте недостающие цены в модуле «Каталог и цены».`));
+    }
+    if (totals.totals.size) {
+      const totalLines = [...totals.totals].map(([cur, sum]) => `${fmtPrice(sum, cur)}`);
+      blocks.push(B.paragraph('Итого: ' + totalLines.join(' + ')));
+    }
+  } else {
+    blocks.push(B.paragraph('Цены не добавлены. Для расчёта стоимости заполните прайс-лист в модуле «Каталог и цены».'));
+  }
   return { text: text.join('\n'), blocks };
 }
 

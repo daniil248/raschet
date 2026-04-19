@@ -80,7 +80,7 @@ initCatalogBridge();
 
 // === Phase 1.3: BOM-генератор ===
 // Собирает спецификацию проекта из state + element-library (composition).
-import { collectBomFromProject, bomToMarkdown } from '../../shared/bom.js';
+import { collectBomFromProject, bomToMarkdown, PRICE_STRATEGIES } from '../../shared/bom.js';
 
 // === Phase 1.4.3: приём выбора из ups-config/ ===
 // Когда пользователь в вкладке ups-config нажимает «Применить к схеме»,
@@ -389,9 +389,12 @@ window.Raschet = {
   },
   importLoadsTable,
   get3PhaseBalance,
-  // Фаза 1.3: BOM
-  getBom() { return collectBomFromProject(state); },
-  getBomMarkdown() { return bomToMarkdown(collectBomFromProject(state).aggregated); },
+  // Фаза 1.3 + 1.5.7: BOM (с опциональными ценами)
+  // opts: { priceStrategy: 'latest'|'min'|'max'|'avg'|'counterparty',
+  //         priceCurrency, priceCounterpartyId, activeOnly }
+  getBom(opts) { return collectBomFromProject(state, opts || null); },
+  getBomMarkdown(opts) { return bomToMarkdown(collectBomFromProject(state, opts || null).aggregated); },
+  getPriceStrategies() { return { ...PRICE_STRATEGIES }; },
   getGlobal() { return { ...GLOBAL }; },
   getConsumerCatalog() {
     return [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];

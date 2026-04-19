@@ -153,10 +153,19 @@
   - Сводка: самые дорогие / дешёвые элементы / контрагенты
   - Алерты: цены старше N дней → warning
 
-- [ ] **1.5.7** Интеграция с BOM:
-  - В `shared/bom.js`: `aggregateBom` возвращает `unitPrice` + `totalPrice` если есть `PriceRecord`
-  - Выбор «Какие цены использовать»: последняя / минимальная / от выбранного контрагента
-  - Секция `sectionBom` показывает колонку Стоимость + Итого
+- [x] **1.5.7** Интеграция с BOM (v0.45.1):
+  - `shared/bom.js`:
+    - `resolveUnitPrice(elementId, { strategy, currency, counterpartyId, activeOnly })` — 5 стратегий (latest/min/max/avg/counterparty)
+    - `PRICE_STRATEGIES` экспорт для UI
+    - `aggregateBom(items, opts)`: если `opts` заданы — каждая строка получает unitPrice / currency / totalPrice / priceSource
+    - `bomTotals(aggregated)`: сумма по валютам + missingCount / pricedCount
+    - `collectBomFromProject(state, opts)` принимает opts, возвращает `{ flat, aggregated, totals }`
+  - `js/engine/report-sections.js` → `sectionBom`:
+    - Вызов с `{ priceStrategy: 'latest', activeOnly: true }` по умолчанию
+    - Колонки «Цена за ед.» + «Итого» появляются если есть хоть одна цена
+    - Строки ИТОГО по валюте
+    - Предупреждение о позициях без цены со ссылкой на модуль catalog
+  - `window.Raschet.getBom(opts) / getBomMarkdown(opts) / getPriceStrategies()`
 
 **Критичные файлы 1.5:**
 - `shared/price-records.js` (новый)
@@ -484,6 +493,31 @@
 ---
 
 ## История изменений
+
+### v0.45.1 (2026-04-19, Фаза 1.5.7 — интеграция цен в BOM)
+- **shared/bom.js** расширено:
+  - `PRICE_STRATEGIES`: latest/min/max/avg/counterparty
+  - `resolveUnitPrice(elementId, { strategy, currency, counterpartyId, activeOnly })` → `{ unitPrice, currency, source, priceRecord }`
+  - `aggregateBom(items, opts)` — если `opts` заданы, каждая строка получает unitPrice/currency/totalPrice/priceSource
+  - `bomTotals(aggregated)` → `{ totals (Map<currency, sum>), missingCount, pricedCount, totalRows }`
+  - `collectBomFromProject(state, opts)` возвращает `{ flat, aggregated, totals }`
+- **js/engine/report-sections.js** `sectionBom` обновлён:
+  - Вызывается с `{ priceStrategy: 'latest', activeOnly: true }`
+  - Колонки «Цена за ед.» + «Итого» появляются когда хоть одна позиция имеет цену
+  - Строки ИТОГО по каждой валюте в конце таблицы
+  - Предупреждение о позициях без цены со ссылкой на модуль catalog
+- **window.Raschet:**
+  - `getBom(opts)`, `getBomMarkdown(opts)` принимают опции
+  - `getPriceStrategies()` для UI
+- **Эффект:**
+  - Отчёт «Спецификация оборудования» теперь включает стоимость
+  - При отсутствии цен — graceful fallback (колонки не показываются, текст-подсказка)
+  - Фундамент для Фазы 1.4.5 (конфигуратор ИБП с итоговой ценой) и 1.6 (логистика + полная смета)
+- **Файлы:**
+  - `shared/bom.js` (+90 строк)
+  - `js/engine/report-sections.js` (~40 строк изменено в sectionBom)
+  - `js/engine/index.js` (+3 строки API)
+  - `js/engine/constants.js` APP_VERSION = '0.45.1'
 
 ### v0.45.0 (2026-04-19, Фаза 1.5 — модуль catalog/ полноценный)
 - **shared/counterparty-catalog.js** (новый ~130 строк):
