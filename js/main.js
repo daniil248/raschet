@@ -1652,6 +1652,32 @@ function _ctConnStatus(c) {
   if (c._cableOverflow) return 'warn';
   return 'ok';
 }
+
+// Phase 1.20.27: auto-fix suggestion (та же логика что в Issues modal)
+function _ctSuggestFix(c) {
+  const In = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
+  const Iz = Math.round(c._cableIz || 0) || 0;
+  const Imax = Number(c._maxA) || 0;
+  const series = _BREAKER_SERIES;
+  if (c._breakerAgainstCable) {
+    let suggested = 0;
+    for (let i = series.length - 1; i >= 0; i--) {
+      if (series[i] <= Iz && series[i] >= Imax) { suggested = series[i]; break; }
+    }
+    if (suggested) return { kind: 'setBreakerIn', value: suggested, label: `In = ${suggested} А` };
+    if (c.manualBreakerIn) return { kind: 'clearManualBreaker', label: 'снять ручной' };
+    return null;
+  }
+  if (c._breakerUndersize) {
+    let suggested = 0;
+    for (const n of series) {
+      if (n >= Imax && (!Iz || n <= Iz)) { suggested = n; break; }
+    }
+    if (suggested) return { kind: 'setBreakerIn', value: suggested, label: `In = ${suggested} А` };
+    if (c.manualBreakerIn) return { kind: 'clearManualBreaker', label: 'снять ручной' };
+  }
+  return null;
+}
 let _cableTableSelected = new Set(); // ids выделенных строк для bulk-edit
 // Phase 1.20.7: сортировка таблицы. col = поле, dir = 'asc'|'desc'
 let _cableTableSort = { col: 'label', dir: 'asc' };
@@ -2285,7 +2311,10 @@ function renderCableTable() {
               const reasons = [];
               if (c._breakerAgainstCable) reasons.push('In > Iz');
               if (c._breakerUndersize) reasons.push('In < Iрасч');
-              return `<span title="${esc(reasons.join(', '))}" style="display:inline-block;padding:1px 6px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:3px;font-size:10px;font-weight:600">✗ ${esc(reasons.join(', '))}</span>`;
+              // Phase 1.20.27: клик по ✗ badge пытается применить автофикс
+              const fix = _ctSuggestFix(c);
+              const clickable = !!fix;
+              return `<span class="${clickable ? 'ct-fix-badge' : ''}" data-id="${esc(c.id)}" title="${esc(reasons.join(', '))}${clickable ? ' · клик — применить фикс (' + esc(fix.label) + ')' : ''}" style="display:inline-block;padding:1px 6px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:3px;font-size:10px;font-weight:600;${clickable ? 'cursor:pointer' : ''}">✗ ${esc(reasons.join(', '))}${clickable ? ' 🔧' : ''}</span>`;
             }
             if (st === 'warn') return '<span title="Сечение превышено" style="display:inline-block;padding:1px 6px;background:#fff8e1;color:#e65100;border:1px solid #ffcc80;border-radius:3px;font-size:10px">⚠ warn</span>';
             return '<span title="OK" style="display:inline-block;padding:1px 6px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:3px;font-size:10px">✓ OK</span>';
@@ -2379,6 +2408,23 @@ function renderCableTable() {
         window.Raschet.selectConnAndFocus(id);
       }
       closeModal('modal-cable-table');
+    });
+  });
+
+  // Phase 1.20.27: клик по ✗ badge в колонке «Статус» применяет автофикс
+  mount.querySelectorAll('.ct-fix-badge').forEach(badge => {
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = badge.dataset.id;
+      const c = window.Raschet?._state?.conns?.get(id);
+      if (!c) return;
+      const fix = _ctSuggestFix(c);
+      if (!fix) return;
+      snap('cable-table:status-fix:' + id);
+      if (fix.kind === 'setBreakerIn') c.manualBreakerIn = Number(fix.value);
+      else if (fix.kind === 'clearManualBreaker') delete c.manualBreakerIn;
+      applyAndRerender();
+      flash(`Применён фикс: ${fix.label}`);
     });
   });
 

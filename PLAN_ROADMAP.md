@@ -640,6 +640,12 @@
   по классам LV/MV/DC + разбивка по material/insulation); кнопки
   быстрых действий открывают все модалки (issues/cables/consumers/
   equipment/search).
+- **1.20.27 (v0.57.2)** — кликабельный ✗ badge в cable-table «Статус».
+  Для строк с error (In>Iz или In<Iрасч) badge становится cursor:pointer
+  с иконкой 🔧 и tooltip «клик — применить фикс (In = 100 А)». Клик
+  применяет такой же автофикс как в Issues modal — snapshot + set/delete
+  manualBreakerIn + rerender + flash. Ошибки можно фиксить не покидая
+  cable table.
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 
