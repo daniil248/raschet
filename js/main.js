@@ -2670,17 +2670,44 @@ function renderProjectIssues() {
       continue;
     }
     if (c._breakerAgainstCable) {
+      // Phase 1.20.20: предложение авто-фикса: снизить In до ближайшего
+      // меньшего номинала, который ≤ Iz (но ≥ Iрасч), ИЛИ снять manual-
+      // override и довериться автоподбору.
+      const In = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
+      const Iz = Math.round(c._cableIz || 0) || 0;
+      const Imax = Number(c._maxA) || 0;
+      const series = _BREAKER_SERIES;
+      let suggested = 0;
+      for (let i = series.length - 1; i >= 0; i--) {
+        if (series[i] <= Iz && series[i] >= Imax) { suggested = series[i]; break; }
+      }
+      const fix = suggested
+        ? { kind: 'setBreakerIn', value: suggested, label: `Установить In = ${suggested} А` }
+        : (c.manualBreakerIn ? { kind: 'clearManualBreaker', label: 'Снять ручной номинал (автоподбор)' } : null);
       cableErrors.push({
         id: c.id, label, route,
         reason: 'In > Iz — кабель не защищён от перегрузки',
-        details: `In = ${Number(c.manualBreakerIn) || Number(c._breakerIn) || 0} А, Iz = ${c._cableIz ? Math.round(c._cableIz) : '?'} А`,
+        details: `In = ${In} А, Iz = ${Iz} А, Iрасч = ${Math.round(Imax)} А`,
+        fix,
       });
     }
     if (c._breakerUndersize) {
+      const In = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
+      const Imax = Number(c._maxA) || 0;
+      const Iz = Math.round(c._cableIz || 0) || 0;
+      const series = _BREAKER_SERIES;
+      let suggested = 0;
+      for (const n of series) {
+        if (n >= Imax && (!Iz || n <= Iz)) { suggested = n; break; }
+      }
+      const fix = suggested
+        ? { kind: 'setBreakerIn', value: suggested, label: `Установить In = ${suggested} А` }
+        : (c.manualBreakerIn ? { kind: 'clearManualBreaker', label: 'Снять ручной номинал (автоподбор)' } : null);
       cableErrors.push({
         id: c.id, label, route,
         reason: 'In < Iрасч — автомат сработает при штатной нагрузке',
-        details: `In = ${Number(c.manualBreakerIn) || Number(c._breakerIn) || 0} А, Iрасч = ${Math.round(c._maxA || 0)} А`,
+        details: `In = ${In} А, Iрасч = ${Math.round(Imax)} А, Iz = ${Iz} А`,
+        fix,
       });
     }
     if (c._cableOverflow) {
@@ -2741,14 +2768,20 @@ function renderProjectIssues() {
 
   const renderLineList = (items, color, borderColor) => {
     if (!items.length) return '';
-    return items.map(it => `
+    return items.map(it => {
+      const fixBtn = it.fix
+        ? `<button type="button" class="pi-fix" data-conn-id="${esc(it.id)}" data-fix-kind="${esc(it.fix.kind)}" data-fix-value="${esc(it.fix.value ?? '')}" title="${esc(it.fix.label)}" style="flex:0 0 auto;padding:3px 10px;border:1px solid #4caf50;background:#fff;color:#2e7d32;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">✓ Исправить</button>`
+        : '';
+      return `
       <div class="pi-row" data-kind="conn" data-id="${esc(it.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eaecef;cursor:pointer;background:#fff" title="Клик — перейти к линии">
-        <span style="flex:0 0 220px;font-weight:600;color:${color}">${esc(it.label)}</span>
-        <span style="flex:0 0 260px;font-size:11px;color:#555">${esc(it.route)}</span>
+        <span style="flex:0 0 200px;font-weight:600;color:${color}">${esc(it.label)}</span>
+        <span style="flex:0 0 220px;font-size:11px;color:#555">${esc(it.route)}</span>
         <span style="flex:1;font-size:11px;color:${color}">${esc(it.reason)}</span>
         <span style="flex:0 0 200px;font-size:11px;color:#666;font-family:monospace">${esc(it.details || '')}</span>
+        ${fixBtn}
       </div>
-    `).join('');
+    `;
+    }).join('');
   };
 
   const renderNodeList = (items, color) => {
@@ -2805,11 +2838,34 @@ function renderProjectIssues() {
 
   mount.innerHTML = html.join('');
 
+  // Phase 1.20.20: кнопки «✓ Исправить» применяют рекомендованный фикс
+  mount.querySelectorAll('.pi-fix').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const connId = btn.dataset.connId;
+      const kind = btn.dataset.fixKind;
+      const value = btn.dataset.fixValue;
+      const c = window.Raschet?._state?.conns?.get(connId);
+      if (!c) return;
+      if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('issues:fix:' + kind);
+      if (kind === 'setBreakerIn') {
+        c.manualBreakerIn = Number(value);
+      } else if (kind === 'clearManualBreaker') {
+        delete c.manualBreakerIn;
+      }
+      if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+      flash('Исправлено — проверки перерасчитаны');
+      renderProjectIssues();
+    });
+  });
+
   // Click handlers для навигации
   mount.querySelectorAll('.pi-row').forEach(row => {
     row.addEventListener('mouseenter', () => row.style.background = '#eef5ff');
     row.addEventListener('mouseleave', () => row.style.background = '');
-    row.addEventListener('click', () => {
+    row.addEventListener('click', (e) => {
+      // Клик по кнопке-фиксу не должен триггерить jump
+      if (e.target.closest('.pi-fix')) return;
       const kind = row.dataset.kind;
       const id = row.dataset.id;
       if (!id) return;
