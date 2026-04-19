@@ -179,19 +179,43 @@ export function renderInspectorConn(c) {
       <option value="busbar"${ct === 'busbar' ? ' selected' : ''}>Шинопровод</option>
     </select>`));
 
-  // Марка кабеля из справочника (shared/cable-types-catalog.js, Фаза 0.3 + 1.11)
+  // Марка кабеля из справочника (shared/cable-types-catalog.js, Фаза 0.3 + 1.11 + 1.15)
   // Информационный выбор — при выборе авто-заполняются material/insulation.
-  // 16 базовых типов + пользовательские. Группировка по категории (силовой/слаботочка/данные/DC/ВН).
+  //
+  // Фаза 1.15: фильтрация по классу напряжения линии.
+  // Электрическая принципиальная схема содержит только силовые линии —
+  // слаботочка/данные/полевые категории не предлагаются (они живут на
+  // low-voltage / data page.kind, Фаза 2).
+  //   c._isHV = true (U > 1000 В, не DC) → только 'hv' (АПвПуг, ПвПу)
+  //   DC-линия (детектируется по уровню напряжения с hz=0) → 'dc' + 'power'
+  //   LV (по умолчанию) → только 'power' (ВВГ, АВВГ, АВБбШв …)
   try {
+    // Определяем допустимые категории по классу напряжения соединения.
+    // _isHV проставляется recalc'ом. Если recalc не был вызван — берём
+    // консервативно LV (только power).
+    let allowedCats = ['power'];
+    let classLabel = 'LV (низкое напряжение)';
+    if (c._isHV) {
+      allowedCats = ['hv'];
+      classLabel = 'MV/HV (среднее/высокое напряжение)';
+    } else if (c._isDC) {
+      allowedCats = ['dc', 'power'];
+      classLabel = 'DC (постоянный ток)';
+    }
+
     const cableTypes = listCableTypes();
     const curMark = c.cableMark || '';
     const byCat = {};
     for (const ct2 of cableTypes) {
       const cat = ct2.category || 'power';
+      if (!allowedCats.includes(cat)) continue; // фильтр по классу линии
       (byCat[cat] = byCat[cat] || []).push(ct2);
     }
     let markOpts = '<option value="">— не выбрано (указать вручную) —</option>';
-    for (const [cat, items] of Object.entries(byCat)) {
+    // Сохраняем порядок allowedCats (силовой сначала)
+    for (const cat of allowedCats) {
+      const items = byCat[cat] || [];
+      if (!items.length) continue;
       const catDef = CABLE_CATEGORIES?.[cat];
       const catLabel = catDef?.label || cat;
       markOpts += `<optgroup label="${escHtml(catLabel)}">`;
@@ -200,15 +224,27 @@ export function renderInspectorConn(c) {
       }
       markOpts += '</optgroup>';
     }
+    // Если выбранный curMark относится к запрещённой сейчас категории — показать в conflicting группе с пометкой
+    if (curMark) {
+      const sel = getCableType(curMark);
+      if (sel && !allowedCats.includes(sel.category || 'power')) {
+        markOpts += `<optgroup label="⚠ Несоответствие классу линии">`;
+        markOpts += `<option value="${escAttr(sel.id)}" selected>${escHtml(sel.brand || sel.id)} (${escHtml(sel.category)})</option>`;
+        markOpts += '</optgroup>';
+      }
+    }
     h.push(field('Марка кабеля (из справочника)', `<select data-conn-prop="cableMark">${markOpts}</select>`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-4px;margin-bottom:4px">Класс линии: <b>${classLabel}</b>. На электрической принципиальной схеме показаны только совместимые категории (силовые/высоковольтные/DC). Слаботочные и информационные — на соответствующих страницах (Фаза 2).</div>`);
     if (curMark) {
       const sel = getCableType(curMark);
       if (sel) {
-        h.push(`<div class="muted" style="font-size:11px;margin-top:-4px;margin-bottom:6px">
+        const mismatch = !allowedCats.includes(sel.category || 'power');
+        h.push(`<div class="muted" style="font-size:11px;margin-top:0;margin-bottom:6px">
           <b>${escHtml(sel.brand || '')}</b> · ${escHtml(sel.fullName || '')}<br>
           <span style="color:#1976d2">${escHtml(sel.standard || '')}</span> · материал ${escHtml(sel.material || '?')} · изоляция ${escHtml(sel.insulation || '?')}
           ${sel.fireResistant ? ' · <span style="color:#c67300">огнестойкий</span>' : ''}
           ${sel.lowSmokeZH ? ' · <span style="color:#2e7d32">LSZH</span>' : ''}
+          ${mismatch ? '<br><span style="color:#cf222e;font-weight:600">⚠ Выбранная марка относится к категории «' + escHtml(sel.category) + '» — не подходит для линии ' + escHtml(classLabel) + '. Выберите другой тип.</span>' : ''}
         </div>`);
       }
     }
