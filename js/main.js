@@ -1727,12 +1727,26 @@ function renderCableTable() {
       const ft = `${fromN?.tag || fromN?.name || ''} ${toN?.tag || toN?.name || ''}`.toLowerCase();
       if (!ft.includes(fFromTo)) return false;
     }
-    if (fMark && !String(c.cableMark || '').toLowerCase().includes(fMark)) return false;
-    if (fMethod && !String(c._cableMethod || c.installMethod || '').toLowerCase().includes(fMethod)) return false;
+    // Phase 1.20.2: марка / проводник / способ — equality с distinct
+    // значениями из dropdown (значение filter — либо brand из справочника,
+    // либо id марки; поддерживаем оба).
+    if (fMark) {
+      const rec = allMarks.find(m => m.id === c.cableMark);
+      const brand = (rec?.brand || c.cableMark || '(без марки)').toLowerCase();
+      if (brand !== fMark && (c.cableMark || '').toLowerCase() !== fMark) return false;
+    }
+    if (fMethod) {
+      const method = String(c._cableMethod || c.installMethod || '').toLowerCase();
+      if (method !== fMethod) return false;
+    }
     if (fCond) {
+      const parallel = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      const spec = c._busbarNom ? `шинопровод ${c._busbarNom}` : `${cores}×${c._cableSize || '?'}`;
-      if (!spec.toLowerCase().includes(fCond)) return false;
+      const parStr = parallel > 1 ? `${parallel}×` : '';
+      const spec = (c._busbarNom
+        ? `шинопровод ${c._busbarNom} А`
+        : `${parStr}${cores}×${c._cableSize || '?'} мм²`).toLowerCase();
+      if (spec !== fCond) return false;
     }
     const L = Number(c.lengthM) || 0;
     if (F.lengthMin != null && L < F.lengthMin) return false;
@@ -1746,6 +1760,42 @@ function renderCableTable() {
   for (const id of [..._cableTableSelected]) {
     if (!filtered.find(c => c.id === id)) _cableTableSelected.delete(id);
   }
+
+  // Distinct-значения для dropdown-фильтров (строим по всему conns, не
+  // по filtered — чтобы выбор в dropdown'е не «пропадал» после других
+  // фильтров и можно было расширить выборку обратно).
+  const distinctMarks = new Set();
+  const distinctConductors = new Set();
+  const distinctMethods = new Set();
+  for (const c of conns) {
+    if (c.cableMark) {
+      const rec = allMarks.find(m => m.id === c.cableMark);
+      distinctMarks.add(rec?.brand || c.cableMark);
+    } else {
+      distinctMarks.add('(без марки)');
+    }
+    if (c._busbarNom) {
+      distinctConductors.add(`шинопровод ${c._busbarNom} А`);
+    } else {
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
+      const parStr = parallel > 1 ? `${parallel}×` : '';
+      distinctConductors.add(`${parStr}${cores}×${c._cableSize || '?'} мм²`);
+    }
+    const m = c._cableMethod || c.installMethod;
+    if (m) distinctMethods.add(m);
+  }
+  const sortedMarks = [...distinctMarks].sort((a, b) => a.localeCompare(b, 'ru'));
+  const sortedConductors = [...distinctConductors].sort((a, b) => {
+    // Сортируем по числовому сечению: "3×1.5 мм²" < "5×10 мм²" < …
+    const parse = (s) => {
+      const m = /(\d+)×(?:(\d+)×)?([\d.]+)/.exec(s);
+      return m ? [Number(m[1]), Number(m[2] || 0), Number(m[3])] : [0, 0, 0];
+    };
+    const [a1, a2, a3] = parse(a), [b1, b2, b3] = parse(b);
+    return a3 - b3 || a1 - b1 || a2 - b2;
+  });
+  const sortedMethods = [...distinctMethods].sort();
 
   const countEl = document.getElementById('cable-table-count');
   if (countEl) countEl.textContent = `${filtered.length} из ${conns.length}`;
@@ -1815,13 +1865,28 @@ function renderCableTable() {
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="label" placeholder="фильтр…" value="${esc(F.label)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="fromTo" placeholder="от/куда…" value="${esc(F.fromTo)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="mark" placeholder="марка…" value="${esc(F.mark)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="conductor" placeholder="напр. 5×95" value="${esc(F.conductor)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ct-flt" data-flt="mark" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">— все марки —</option>
+              ${sortedMarks.map(v => `<option value="${esc(v)}" ${F.mark === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+            </select>
+          </th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ct-flt" data-flt="conductor" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">— все проводники —</option>
+              ${sortedConductors.map(v => `<option value="${esc(v)}" ${F.conductor === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+            </select>
+          </th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
             <input type="number" class="ct-flt" data-flt="lengthMin" placeholder="от" value="${F.lengthMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
             <input type="number" class="ct-flt" data-flt="lengthMax" placeholder="до" value="${F.lengthMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
           </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="method" placeholder="метод…" value="${esc(F.method)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ct-flt" data-flt="method" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">— все способы —</option>
+              ${sortedMethods.map(v => `<option value="${esc(v)}" ${F.method === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+            </select>
+          </th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
             <input type="number" class="ct-flt" data-flt="imaxMin" placeholder="от" value="${F.imaxMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
             <input type="number" class="ct-flt" data-flt="imaxMax" placeholder="до" value="${F.imaxMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
@@ -1946,21 +2011,23 @@ function renderCableTable() {
 
   // Per-column фильтры
   mount.querySelectorAll('.ct-flt').forEach(inp => {
+    const isSelect = inp.tagName === 'SELECT';
+    const isNumber = inp.type === 'number';
+    const isText = !isSelect && !isNumber;
     const handler = () => {
       const k = inp.dataset.flt;
-      const v = inp.type === 'number'
-        ? (inp.value === '' ? null : Number(inp.value))
-        : inp.value;
+      let v = inp.value;
+      if (isNumber) v = (v === '' ? null : Number(v));
+      else v = v.toLowerCase();
       _cableTableFilters[k] = v;
       renderCableTable();
       // Возвращаем фокус + курсор в конец для текстовых фильтров
-      if (inp.type !== 'number') {
+      if (isText) {
         const same = mount.querySelector(`.ct-flt[data-flt="${k}"]`);
-        if (same) { same.focus(); same.setSelectionRange(same.value.length, same.value.length); }
+        if (same) { same.focus(); if (same.setSelectionRange) same.setSelectionRange(same.value.length, same.value.length); }
       }
     };
-    // text — input (инкрементально), number — change
-    inp.addEventListener(inp.type === 'number' ? 'change' : 'input', handler);
+    inp.addEventListener(isText ? 'input' : 'change', handler);
   });
 
   // Row checkboxes + select-all
