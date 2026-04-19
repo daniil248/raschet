@@ -540,12 +540,12 @@ function sectionCables() {
   const text = [
     'КАБЕЛЬНЫЕ ЛИНИИ И ШИНОПРОВОДЫ',
     '='.repeat(78),
-    ...metaTextLines(),
+    ...metaTextLines({ hideMode: true }),
     '',
   ];
   const blocks = [
     B.h1('Кабельные линии и шинопроводы'),
-    ...metaBlocks(),
+    ...metaBlocks({ hideMode: true }),
   ];
   if (rows.length) {
     text.push(...textTable(cols, rows));

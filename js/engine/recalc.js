@@ -1606,6 +1606,19 @@ function recalc() {
     const toN = state.nodes.get(c.to.nodeId);
     if (!toN) { c._breakerIn = null; c._breakerPerLine = null; c._breakerCount = 0; continue; }
 
+    // Фаза 1.19.9: ввод от городской сети — абстрактный участок по ТУ
+    // поставщика. Аппарат защиты подбирается электроснабжающей организацией,
+    // мы этот участок не проверяем и не помечаем как «автомат против кабеля».
+    if (fromN.type === 'source' && (fromN.sourceSubtype === 'utility' || fromN.sourceSubtype === 'grid')) {
+      c._breakerIn = null;
+      c._breakerPerLine = null;
+      c._breakerCount = 0;
+      c._breakerAgainstCable = false;
+      c._breakerUndersize = false;
+      c._utilityInfeed = true;
+      continue;
+    }
+
     // Для HV (> 1 кВ) — VCB/SF6 высоковольтные аппараты (IEC 62271-100).
     // Ряд номиналов 200..4000 А. Подбор — ближайший больший к расчётному току.
     // По умолчанию для HV берётся VCB (_breakerType='VCB'), если не задан иной.
