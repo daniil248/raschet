@@ -679,22 +679,20 @@ function sectionCableBom() {
     ];
   });
 
-  const grandTotal = pricedRows.reduce((s, r) => s + r.totalM, 0);
-  // Итоги по валютам (если есть цены)
+  // Фаза 1.19.10: строка «ИТОГО метров» в сводной ведомости SKU не имеет
+  // физического смысла — нельзя суммировать метры разных сечений/марок
+  // (0.5 м кабеля 240 мм² + 10 м 1.5 мм² — сумма абстрактна). Убираем.
+  // Итоги в деньгах по валютам остаются — сумма цен имеет смысл.
   const totalsByCurrency = new Map();
   let missingPriceCount = 0;
   for (const r of pricedRows) {
     if (r.totalPrice == null || !r.currency) { missingPriceCount++; continue; }
     totalsByCurrency.set(r.currency, (totalsByCurrency.get(r.currency) || 0) + r.totalPrice);
   }
-
   if (hasPrices) {
-    tableRows.push(['', 'ИТОГО', '', String(pricedRows.length), fmt(grandTotal), fmt(grandTotal * 1.1), '', '']);
     for (const [cur, sum] of totalsByCurrency) {
       tableRows.push(['', '', '', '', '', '', `ИТОГО ${cur}:`, fmtMoney(sum, cur)]);
     }
-  } else {
-    tableRows.push(['', 'ИТОГО', '', String(pricedRows.length), fmt(grandTotal), fmt(grandTotal * 1.1)]);
   }
 
   // Заголовок колонок + разделитель
@@ -714,7 +712,7 @@ function sectionCableBom() {
     blocks.push(B.paragraph('Цены не привязаны. Создайте cable-sku записи для марок кабеля и добавьте цены в модуле «Каталог и библиотека» (вкладка Элементы → строка cable-type → «+ SKU»).'));
   }
   blocks.push(B.paragraph('Запас 10% рекомендуется заложить на обрезки, концевые заделки, соединения в муфтах и укладку с провисом. Для MV-кабелей (ВН) и кабелей в лотке/трубе рекомендуется увеличенный запас 15-20%.'));
-  blocks.push(B.paragraph(`Всего в проекте: ${pricedRows.length} SKU, суммарная длина: ${fmt(grandTotal)} м (с запасом: ${fmt(grandTotal * 1.1)} м).`));
+  blocks.push(B.paragraph(`Всего в проекте: ${pricedRows.length} SKU.`));
   return { text: text.join('\n'), blocks };
 }
 

@@ -7,8 +7,10 @@ import { effectiveTag } from '../zones.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { isTagUnique } from '../graph.js';
-import { listPanels } from '../../../shared/panel-catalog.js';
-import { mountPanelPicker, applyPanelModel } from '../../../shared/panel-picker.js';
+// Фаза 1.19.7: panel-catalog / panel-picker больше не используются в
+// инлайн-модалке параметров щита. Подбор оболочки НКУ перенесён в
+// wizard-конфигуратор (panel-config/), избавляемся от неиспользуемых
+// импортов.
 
 let _renderInspector = null;
 export function bindInspectorPanelDeps({ renderInspector }) {
