@@ -16,6 +16,7 @@ import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } 
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
 import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
+import { BREAKER_SERIES as _BREAKER_SERIES } from './engine/constants.js';
 
 (function () {
 'use strict';
@@ -1623,6 +1624,8 @@ let _cableTableFilters = {
   label: '', fromTo: '',
   // Phase 1.20.7: фильтр по категории (силовой/слаботочный/и т.д.)
   category: '',
+  // Phase 1.20.9: фильтр по номиналу автомата (А, 0 = без автомата)
+  breaker: null,
 };
 let _cableTableSelected = new Set(); // ids выделенных строк для bulk-edit
 // Phase 1.20.7: сортировка таблицы. col = поле, dir = 'asc'|'desc'
@@ -1739,7 +1742,7 @@ function exportCableTableCsv() {
     return 0;
   });
 
-  const rows = [['Обозначение', 'Откуда', 'Куда', 'Марка', 'Категория', 'Материал', 'Изоляция', 'Конструкция', 'Сечение, мм²', 'N-сечение, мм²', 'Число жил', 'Линий (параллель)', 'Длина, м', 'Способ прокладки', 'Imax, А', 'Iдоп, А', 'Класс', 'Состояние']];
+  const rows = [['Обозначение', 'Откуда', 'Куда', 'Марка', 'Категория', 'Материал', 'Изоляция', 'Конструкция', 'Сечение, мм²', 'N-сечение, мм²', 'Число жил', 'Линий (параллель)', 'Длина, м', 'Способ прокладки', 'Автомат In, А', 'Автомат режим', 'Imax, А', 'Iдоп, А', 'Класс', 'Состояние']];
   for (const c of conns) {
     const fromN = S.nodes.get(c.from.nodeId);
     const toN = S.nodes.get(c.to.nodeId);
@@ -1752,6 +1755,8 @@ function exportCableTableCsv() {
     const lineState = c.lineMode === 'damaged' ? 'Повреждена'
                     : c.lineMode === 'disabled' ? 'Отключена'
                     : (c._active ? 'Активна' : 'Неактивна');
+    const brkIn = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
+    const brkMode = c.manualBreakerIn ? 'ручной' : 'авто';
     rows.push([
       lineLabel,
       fromN?.tag || fromN?.name || '',
@@ -1767,6 +1772,8 @@ function exportCableTableCsv() {
       Math.max(1, Number(c._cableParallel) || 1),
       c.lengthM || 0,
       c._cableMethod || '',
+      brkIn || '',
+      brkIn ? brkMode : '',
       c._maxA ? c._maxA.toFixed(1) : '',
       c._cableIz ? c._cableIz.toFixed(1) : '',
       cls2,
@@ -1885,6 +1892,10 @@ function renderCableTable() {
     if (F.parallel != null) {
       if (Math.max(1, Number(c._cableParallel) || 1) !== F.parallel) return false;
     }
+    if (F.breaker != null) {
+      const inNom = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
+      if (inNom !== F.breaker) return false;
+    }
     const L = Number(c.lengthM) || 0;
     if (F.lengthMin != null && L < F.lengthMin) return false;
     if (F.lengthMax != null && L > F.lengthMax) return false;
@@ -1923,6 +1934,8 @@ function renderCableTable() {
         return String(c._cableMethod || c.installMethod || '').toLowerCase();
       case 'imax':
         return Number(c._maxA) || 0;
+      case 'breaker':
+        return Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
       case 'class':
         return c._isHV ? 2 : (c._isDC ? 1 : 0);
       default:
@@ -1943,6 +1956,7 @@ function renderCableTable() {
   const distinctConductors = new Set();   // только {cores × size}, без parallel
   const distinctParallels = new Set();    // количество проводников/линий
   const distinctMethods = new Set();
+  const distinctBreakers = new Set();     // номиналы In, А
   for (const c of conns) {
     if (c.cableMark) {
       const rec = allMarks.find(m => m.id === c.cableMark);
@@ -1965,6 +1979,8 @@ function renderCableTable() {
     distinctParallels.add(Math.max(1, Number(c._cableParallel) || 1));
     const m = c._cableMethod || c.installMethod;
     if (m) distinctMethods.add(m);
+    const inNom = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
+    distinctBreakers.add(inNom);
   }
   const sortedMarks = [...distinctMarks].sort((a, b) => a.localeCompare(b, 'ru'));
   const sortedConductors = [...distinctConductors].sort((a, b) => {
@@ -1978,6 +1994,7 @@ function renderCableTable() {
   });
   const sortedParallels = [...distinctParallels].sort((a, b) => a - b);
   const sortedMethods = [...distinctMethods].sort();
+  const sortedBreakers = [...distinctBreakers].sort((a, b) => a - b);
 
   const countEl = document.getElementById('cable-table-count');
   if (countEl) countEl.textContent = `${filtered.length} из ${conns.length}`;
@@ -2024,6 +2041,7 @@ function renderCableTable() {
       <button type="button" id="ct-bulk-length" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Длина</button>
       <button type="button" id="ct-bulk-method" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Способ</button>
       <button type="button" id="ct-bulk-scale" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Умножить длины на коэффициент">× Длина</button>
+      <button type="button" id="ct-bulk-breaker" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Назначить / снять ручной номинал автомата">Автомат</button>
       <span style="flex:1"></span>
       <button type="button" id="ct-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
       <button type="button" id="ct-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
@@ -2041,6 +2059,7 @@ function renderCableTable() {
           ${_ctSortHdr('parallel', 'Линий', 'right', '', 'Параллельные проводники (линий)')}
           ${_ctSortHdr('length', 'Длина, м', 'right')}
           ${_ctSortHdr('method', 'Способ прокладки', 'left', 'min-width:150px')}
+          ${_ctSortHdr('breaker', 'Автомат', 'right', 'min-width:110px')}
           ${_ctSortHdr('imax', 'Imax / Iдоп', 'right')}
           ${_ctSortHdr('class', 'Класс', 'center')}
         </tr>
@@ -2074,6 +2093,12 @@ function renderCableTable() {
             <select class="ct-flt" data-flt="method" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
               <option value="">— все способы —</option>
               ${sortedMethods.map(v => `<option value="${esc(v)}" ${F.method === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+            </select>
+          </th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ct-flt" data-flt="breaker" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">все</option>
+              ${sortedBreakers.map(v => `<option value="${v}" ${F.breaker === v ? 'selected' : ''}>${v ? v + ' А' : '—'}</option>`).join('')}
             </select>
           </th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
@@ -2156,6 +2181,19 @@ function renderCableTable() {
         <td style="padding:5px 8px">
           <select class="ct-method" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${methodOpts}</select>
         </td>
+        <td style="padding:5px 8px;text-align:right;font-size:11px">
+          ${(() => {
+            const auto = Number(c._breakerIn) || 0;
+            const manual = !!c.manualBreakerIn;
+            const cur = manual ? Number(c.manualBreakerIn) : auto;
+            let opts = `<option value="">авто${auto ? ' (' + auto + ' А)' : ''}</option>`;
+            for (const n of _BREAKER_SERIES) {
+              opts += `<option value="${n}"${(manual && n === cur) ? ' selected' : ''}>${n} А</option>`;
+            }
+            const badge = !manual ? '<span class="muted" style="font-size:10px;color:#4caf50;margin-left:4px" title="авто">✓</span>' : '<span class="muted" style="font-size:10px;color:#e65100;margin-left:4px" title="ручной">✎</span>';
+            return `<select class="ct-breaker" data-id="${esc(c.id)}" style="width:80px;padding:3px 6px;font-size:11px">${opts}</select>${badge}`;
+          })()}
+        </td>
         <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:#555">
           ${_ctFmt(c._maxA || 0)} / ${_ctFmt(c._cableIz || 0)} А
         </td>
@@ -2163,7 +2201,7 @@ function renderCableTable() {
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="10" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
+    html.push('<tr><td colspan="11" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -2212,6 +2250,15 @@ function renderCableTable() {
       applyAndRerender();
     });
   });
+  mount.querySelectorAll('.ct-breaker').forEach(sel => {
+    sel.addEventListener('change', () => {
+      apply(sel.dataset.id, (c) => {
+        if (sel.value === '') delete c.manualBreakerIn;
+        else c.manualBreakerIn = Number(sel.value);
+      });
+      applyAndRerender();
+    });
+  });
 
   // Phase 1.20.7: сортировка по клику на шапку
   mount.querySelectorAll('.ct-sort').forEach(th => {
@@ -2237,7 +2284,7 @@ function renderCableTable() {
       const k = inp.dataset.flt;
       let v = inp.value;
       if (isNumber) v = (v === '' ? null : Number(v));
-      else if (k === 'parallel') v = (v === '' ? null : Number(v));
+      else if (k === 'parallel' || k === 'breaker') v = (v === '' ? null : Number(v));
       else v = v.toLowerCase();
       _cableTableFilters[k] = v;
       renderCableTable();
@@ -2278,7 +2325,7 @@ function renderCableTable() {
       lengthMin: null, lengthMax: null,
       imaxMin: null, imaxMax: null,
       label: '', fromTo: '',
-      category: '',
+      category: '', breaker: null,
     };
     const s = document.getElementById('cable-table-search'); if (s) s.value = '';
     const cls = document.getElementById('cable-table-filter-class'); if (cls) cls.value = '';
@@ -2321,6 +2368,8 @@ function renderCableTable() {
   if (methBtn) methBtn.addEventListener('click', () => _openBulkCableDialog('method', filtered, allMarks, byCat, CAT_LABEL, bulkApply, methodsList));
   const scaleBtn = mount.querySelector('#ct-bulk-scale');
   if (scaleBtn) scaleBtn.addEventListener('click', () => _openBulkCableDialog('scale', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
+  const brkBtn = mount.querySelector('#ct-bulk-breaker');
+  if (brkBtn) brkBtn.addEventListener('click', () => _openBulkCableDialog('breaker', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
 }
 
 // Модалка группового изменения (mark/length/method/scale)
@@ -2383,6 +2432,24 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
     applyFn = () => {
       const k = Number(document.getElementById('bulk-scale').value) || 1;
       bulkApply((c) => { c.lengthM = Math.round((Number(c.lengthM) || 0) * k * 10) / 10; });
+    };
+  } else if (kind === 'breaker') {
+    let opts = '<option value="auto">🔄 Вернуть к авто-подбору</option>';
+    for (const n of _BREAKER_SERIES) opts += `<option value="${n}">${n} А</option>`;
+    bodyHtml = `
+      <p class="muted" style="font-size:11px;margin:0 0 8px">Назначить номинал автомата для всех ${count} выделенных линий. «Вернуть к авто» снимает ручную установку и автомат будет подобран по Iрасч и Iz.</p>
+      <label>Номинал автомата, А<br><select id="bulk-breaker" style="width:100%;padding:5px 8px;margin-top:4px">${opts}</select></label>
+      <div class="warn" style="background:#fff8e1;border-left:3px solid #f57c00;padding:8px 12px;margin-top:10px;border-radius:0 4px 4px 0;font-size:11px;color:#e65100">⚠ Убедитесь что выбранный номинал совместим с I<sub>расч</sub> и I<sub>z</sub> каждой линии: I<sub>расч</sub> ≤ I<sub>n</sub> ≤ I<sub>z</sub>.</div>
+    `;
+    applyFn = () => {
+      const v = document.getElementById('bulk-breaker').value;
+      if (v === 'auto') {
+        bulkApply((c) => { delete c.manualBreakerIn; });
+      } else {
+        const n = Number(v);
+        if (!n) return;
+        bulkApply((c) => { c.manualBreakerIn = n; });
+      }
     };
   }
 
