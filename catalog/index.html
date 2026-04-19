@@ -8,14 +8,21 @@
   <link rel="stylesheet" href="catalog.css">
 </head>
 <body>
-  <div id="app-header-mount"></div>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountFooter } from '../shared/app-footer.js';
+    mountHeader({ title: 'Каталог и библиотека', home: '../hub.html' });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[catalog] auth init failed', e));
+    }
+    window.addEventListener('DOMContentLoaded', () => mountFooter());
+  </script>
 
   <div class="page-wrap">
-    <h1 class="page-title">Каталог и цены</h1>
+    <h1 class="page-title">Каталог и библиотека элементов</h1>
     <div class="page-desc">
-      Полноценное управление библиотекой оборудования: элементы, цены по датам и контрагентам,
-      импорт прайс-листов. Простой редактор библиотеки доступен в модуле
-      <a href="../elements/" style="color:#1976d2">«Библиотека элементов»</a>.
+      Единое управление библиотекой оборудования и каталогом цен. Элементы (ИБП, щиты, АКБ, трансформаторы, кабели, автоматы) + цены по датам и контрагентам + импорт прайс-листов. Данные хранятся в одном источнике — <code>shared/element-library.js</code> (без дублирования с <code>elements/</code>, который является упрощённой страницей того же источника).
     </div>
 
     <div class="tabs">

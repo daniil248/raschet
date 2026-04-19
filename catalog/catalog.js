@@ -13,8 +13,9 @@
 import {
   listElements, getElement, saveElement, removeElement, cloneElement,
   exportLibraryJSON, importLibraryJSON, onLibraryChange,
-  ELEMENT_KINDS,
+  ELEMENT_KINDS, isPricableKind,
 } from '../shared/element-library.js';
+import { createCableSkuElement } from '../shared/element-schemas.js';
 import {
   listPrices, getPrice, savePrice, removePrice, pricesForElement,
   bulkAddPrices, exportPricesJSON, importPricesJSON, onPricesChange,
@@ -151,7 +152,11 @@ function renderElementsTab() {
         <td class="num">${lastPrice}</td>
         <td class="num">${priceInfo.count || '—'}</td>
         <td class="actions">
-          <button data-act="add-price">+ Цена</button>
+          ${isPricableKind(el.kind)
+            ? '<button data-act="add-price">+ Цена</button>'
+            : (el.kind === 'cable-type'
+                ? '<button data-act="add-sku" title="Создать типоразмер (SKU) для этой линейки кабеля">+ SKU</button>'
+                : '<button disabled title="' + (ELEMENT_KINDS[el.kind]?.note || 'Цена не применима к этому типу') + '">нет цены</button>')}
           <button data-act="view-prices">Цены</button>
           ${!el.builtin ? '<button data-act="edit">✎</button>' : ''}
           <button data-act="clone">Клон</button>
@@ -179,6 +184,7 @@ function renderElementsTab() {
       btn.onclick = () => {
         const act = btn.dataset.act;
         if (act === 'add-price') openPriceModal({ elementId: id });
+        else if (act === 'add-sku') openCableSkuModal(id);
         else if (act === 'view-prices') { elFilters.search = ''; switchTab('prices'); priceFilters.elementId = id; renderPricesTab(); }
         else if (act === 'edit') openAddElementModal(id);
         else if (act === 'clone') {
@@ -222,6 +228,86 @@ function openAddElementModal(editId) {
       description: document.getElementById('f-description').value || undefined,
     });
     flash('Сохранено', 'success');
+  });
+}
+
+// ====================== Создание cable-sku ======================
+// Цена кабеля не может быть привязана к линейке (cable-type = ВВГнг-LS),
+// нужен конкретный SKU — ВВГнг-LS 3×2.5 мм². Эта модалка создаёт SKU
+// для выбранной линейки, затем сразу открывает окно назначения цены.
+// Стандартные ряды жил и сечений по ГОСТ 22483 / IEC 60228.
+const STD_CABLE_CORES = [1, 2, 3, 4, 5, 7, 12, 19, 24, 37];
+const STD_CABLE_SIZES = [
+  0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300, 400, 500, 630, 800
+];
+
+function openCableSkuModal(cableTypeId) {
+  const type = getElement(cableTypeId);
+  if (!type) return flash('Линейка не найдена', 'error');
+  if (type.kind !== 'cable-type') return flash('Только для cable-type', 'warn');
+
+  const brand = type.kindProps?.brand || type.label || type.id;
+  const coresOpts = STD_CABLE_CORES.map(c => `<option value="${c}">${c}</option>`).join('');
+  const sizeOpts = STD_CABLE_SIZES.map(s => `<option value="${s}">${s} мм²</option>`).join('');
+
+  const html = `
+    <div style="padding:8px;background:#f0f4ff;border:1px solid #d0d7e8;border-radius:4px;margin-bottom:12px;font-size:12px">
+      <b>Линейка:</b> ${esc(brand)} <span class="muted">(${esc(type.id)})</span><br>
+      <span class="muted" style="font-size:11px">Создаётся конкретный типоразмер (SKU). К нему можно будет привязывать цены.</span>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Число жил *</label>
+        <select id="f-cores">${coresOpts}</select>
+      </div>
+      <div class="field">
+        <label>Сечение, мм² *</label>
+        <select id="f-sizeMm2">${sizeOpts}</select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label><input type="checkbox" id="f-hasN"> N-жила</label></div>
+      <div class="field"><label><input type="checkbox" id="f-hasPE"> PE-жила</label></div>
+    </div>
+    <div class="field"><label>Производитель (опц.)</label><input id="f-manufacturer" value="${esc(type.manufacturer || '')}"></div>
+    <div class="field"><label>Артикул производителя (опц.)</label><input id="f-vendorSku" placeholder="например, 112233"></div>
+    <div class="field-row">
+      <div class="field"><label>Диаметр внешн., мм (опц.)</label><input type="number" id="f-diam" step="0.1" min="0"></div>
+      <div class="field"><label>Масса, кг/км (опц.)</label><input type="number" id="f-mass" step="0.1" min="0"></div>
+    </div>
+    <div class="field"><label>Длина бухты, м (опц.)</label><input type="number" id="f-pkg" min="0" placeholder="100 / 200 / 500 / 1000"></div>
+  `;
+  openModal('SKU для «' + esc(brand) + '»', html, () => {
+    const cores = Number(document.getElementById('f-cores').value) || 3;
+    const sizeMm2 = Number(document.getElementById('f-sizeMm2').value) || 1.5;
+    const sku = createCableSkuElement({
+      cableTypeId: cableTypeId,
+      cores,
+      sizeMm2,
+      brand,
+      hasN: document.getElementById('f-hasN').checked,
+      hasPE: document.getElementById('f-hasPE').checked,
+      manufacturer: document.getElementById('f-manufacturer').value || type.manufacturer || '',
+      vendorSku: document.getElementById('f-vendorSku').value || null,
+      overallDiameterMm: Number(document.getElementById('f-diam').value) || null,
+      weightKgPerKm: Number(document.getElementById('f-mass').value) || null,
+      lengthPackage: Number(document.getElementById('f-pkg').value) || null,
+      // Наследуем атрибуты линейки
+      voltageCategory: type.electrical?.voltageCategory,
+    });
+    try {
+      if (getElement(sku.id)) {
+        flash('SKU уже существует: ' + sku.id, 'warn');
+        return false;
+      }
+      saveElement(sku);
+      flash('Создан SKU: ' + sku.label, 'success');
+      // После создания — сразу открываем модалку назначения цены
+      setTimeout(() => openPriceModal({ elementId: sku.id }), 100);
+    } catch (e) {
+      flash('Ошибка: ' + e.message, 'error');
+      return false;
+    }
   });
 }
 
@@ -310,11 +396,13 @@ function renderPricesTab() {
 function openPriceModal(presets = {}, editId = null) {
   const existing = editId ? getPrice(editId) : null;
   const rec = existing || { priceType: 'purchase', currency: 'RUB', vatIncluded: true, vat: 20, ...presets };
-  const elements = listElements();
+  // Показываем только элементы, к которым можно привязать цену (pricable: true).
+  // cable-type исключён — для него цена создаётся через cable-sku.
+  const elements = listElements().filter(el => isPricableKind(el.kind));
   const counterparties = listCounterparties();
 
   const elOpts = elements.map(el =>
-    `<option value="${el.id}"${el.id === rec.elementId ? ' selected' : ''}>${esc(el.label || el.id)}</option>`).join('');
+    `<option value="${el.id}"${el.id === rec.elementId ? ' selected' : ''}>${esc(el.label || el.id)} <span>[${el.kind}]</span></option>`).join('');
   const cpOpts = counterparties.map(c =>
     `<option value="${c.id}"${c.id === rec.counterpartyId ? ' selected' : ''}>${esc(c.shortName || c.name)}</option>`).join('');
   const ptOpts = Object.entries(PRICE_TYPES).map(([k, d]) =>

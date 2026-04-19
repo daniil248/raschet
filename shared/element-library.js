@@ -88,19 +88,39 @@ function currentUserId() {
 function storageKey() { return LEGACY_KEY + '.' + currentUserId(); }
 
 // ——— Валидные значения kind ———
+// ВАЖНО про кабели: `cable-type` — это ЛИНЕЙКА (ВВГнг-LS, АВБбШв, UTP…),
+// к нему НЕЛЬЗЯ привязывать цену (нельзя сказать «ВВГ стоит 5 рублей»).
+// Конкретный ценник — это `cable-sku`: `{ cableTypeId, cores, sizeMm2 }`
+// (например «ВВГнг-LS 3×2.5 мм² — 95 ₽/м»). Цены ТОЛЬКО на SKU.
 export const ELEMENT_KINDS = {
-  panel:         { category: 'equipment', label: 'Распределительный щит' },
-  ups:           { category: 'equipment', label: 'Источник бесперебойного питания' },
-  battery:       { category: 'equipment', label: 'Аккумуляторная батарея' },
-  transformer:   { category: 'equipment', label: 'Трансформатор' },
-  breaker:       { category: 'equipment', label: 'Автоматический выключатель' },
-  enclosure:     { category: 'equipment', label: 'Корпус (оболочка) щита' },
-  climate:       { category: 'equipment', label: 'Климатическое оборудование' },
-  'consumer-type': { category: 'reference', label: 'Тип потребителя' },
-  'cable-type':  { category: 'reference', label: 'Тип кабеля' },
-  channel:       { category: 'channel', label: 'Кабельный канал / трасса' },
-  custom:        { category: 'equipment', label: 'Произвольный элемент' },
+  panel:         { category: 'equipment', label: 'Распределительный щит', pricable: true },
+  ups:           { category: 'equipment', label: 'Источник бесперебойного питания', pricable: true },
+  battery:       { category: 'equipment', label: 'Аккумуляторная батарея', pricable: true },
+  transformer:   { category: 'equipment', label: 'Трансформатор', pricable: true },
+  breaker:       { category: 'equipment', label: 'Автоматический выключатель', pricable: true },
+  enclosure:     { category: 'equipment', label: 'Корпус (оболочка) щита', pricable: true },
+  climate:       { category: 'equipment', label: 'Климатическое оборудование', pricable: true },
+  'consumer-type': { category: 'reference', label: 'Тип потребителя', pricable: false },
+  'cable-type':  { category: 'reference', label: 'Тип кабеля (линейка)', pricable: false,
+                   note: 'Цены привязываются к cable-sku (конкретный размер и число жил)' },
+  'cable-sku':   { category: 'equipment', label: 'Кабель: SKU (типоразмер)', pricable: true,
+                   note: 'Конкретный типоразмер: ВВГнг-LS 3×2.5 мм², UTP Cat.5e 4×2×0.5 и т.д.' },
+  channel:       { category: 'channel', label: 'Кабельный канал / трасса', pricable: true },
+  custom:        { category: 'equipment', label: 'Произвольный элемент', pricable: true },
 };
+
+/** Возвращает true если к элементу данного kind можно привязать цену. */
+export function isPricableKind(kind) {
+  return !!(ELEMENT_KINDS[kind]?.pricable);
+}
+
+// Публикуем в globalThis для lazy-lookup из price-records (без цикл. import)
+if (typeof globalThis !== 'undefined') {
+  globalThis.__raschetElementLibrary = {
+    get getElement() { return getElement; },
+    get isPricableKind() { return isPricableKind; },
+  };
+}
 
 // ——— Базовое чтение/запись ———
 

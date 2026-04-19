@@ -2,71 +2,36 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Raschet — Библиотека элементов</title>
+  <title>Raschet — Библиотека элементов (переезд)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="elements.css">
+  <meta http-equiv="refresh" content="2; url=../catalog/">
 </head>
 <body>
-  <div id="app-header-mount"></div>
+  <div id="rs-header-mount"></div>
 
-  <div class="page-wrap">
-    <h1 style="margin:16px 0 8px;font-size:20px">Библиотека элементов</h1>
-    <div class="muted" style="font-size:13px;margin-bottom:16px">
-      Единый справочник оборудования (ИБП, щиты, АКБ, трансформаторы, кабели, автоматы…).
-      Встроенные элементы (<code>builtin</code>) поступают из legacy-каталогов через
-      <a href="../shared/catalog-bridge.js" target="_blank" style="color:#1976d2">catalog-bridge</a>
-      — их нельзя удалить, но можно склонировать. Пользовательские элементы редактируются/удаляются.
-    </div>
-
-    <div class="toolbar">
-      <div class="filters">
-        <label>
-          Kind:
-          <select id="filter-kind">
-            <option value="">Все типы</option>
-          </select>
-        </label>
-        <label>
-          Источник:
-          <select id="filter-source">
-            <option value="">Все источники</option>
-            <option value="builtin">Встроенные</option>
-            <option value="user">Пользовательские</option>
-            <option value="imported">Импортированные</option>
-          </select>
-        </label>
-        <input type="search" id="filter-search" placeholder="Поиск по названию, производителю, серии…" style="flex:1;min-width:200px">
-      </div>
-      <div class="actions">
-        <button id="btn-add" class="primary">+ Добавить элемент</button>
-        <button id="btn-export">Экспорт JSON</button>
-        <button id="btn-import">Импорт JSON</button>
-        <input type="file" id="import-file" accept=".json" style="display:none">
-        <button id="btn-refresh">Обновить</button>
-      </div>
-    </div>
-
-    <div class="stats" id="stats"></div>
-
-    <div id="element-list"></div>
+  <div class="page-wrap" style="text-align:center;padding-top:60px">
+    <h1 style="color:#1976d2">🗂 Модуль объединён с «Каталог и цены»</h1>
+    <p style="font-size:15px;color:#444;max-width:600px;margin:20px auto;line-height:1.6">
+      Чтобы не дублировать данные и UI, простая страница «Библиотека элементов»
+      объединена с полноценным модулем <a href="../catalog/" style="color:#1976d2;font-weight:600">«Каталог и библиотека»</a>.
+      Там доступны все функции редактора + управление ценами, контрагентами и импорт
+      прайс-листов.
+    </p>
+    <p class="muted" style="font-size:12px;color:#999">
+      Автоматический переход через 2 секунды…
+    </p>
+    <a href="../catalog/" class="primary-btn" style="display:inline-block;margin-top:20px;padding:10px 24px;background:#1976d2;color:#fff;text-decoration:none;border-radius:4px;font-weight:600">
+      Перейти в «Каталог и библиотека» →
+    </a>
   </div>
 
-  <!-- Модалка редактирования -->
-  <div id="edit-modal" class="modal">
-    <div class="modal-body">
-      <h3 id="edit-title">Новый элемент</h3>
-      <div id="edit-form"></div>
-      <div class="modal-footer">
-        <button id="edit-cancel">Отмена</button>
-        <button id="edit-save" class="primary">Сохранить</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="flash" class="flash"></div>
-
-  <script type="module" src="elements-editor.js"></script>
-  <script type="module" src="../shared/app-header.js"></script>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountFooter } from '../shared/app-footer.js';
+    mountHeader({ title: 'Библиотека → переезд', home: '../hub.html' });
+    window.addEventListener('DOMContentLoaded', () => mountFooter());
+  </script>
 </body>
 </html>

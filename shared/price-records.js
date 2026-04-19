@@ -146,6 +146,28 @@ export function savePrice(rec) {
   if (rec.price == null || !Number.isFinite(Number(rec.price))) {
     throw new Error('[price] valid price required');
   }
+  // Валидация: цену нельзя привязать к non-pricable kind
+  // (cable-type — линейка, cable-sku — SKU; цена только на SKU).
+  // Импортируем element-library лениво чтобы избежать циклического импорта.
+  try {
+    // eslint-disable-next-line no-undef
+    const lib = globalThis.__raschetElementLibrary;
+    if (lib && typeof lib.getElement === 'function' && typeof lib.isPricableKind === 'function') {
+      const el = lib.getElement(rec.elementId);
+      if (el && !lib.isPricableKind(el.kind)) {
+        throw new Error(
+          `[price] kind='${el.kind}' не поддерживает прямое назначение цены. ` +
+          (el.kind === 'cable-type'
+            ? 'Цена кабеля привязывается к конкретному SKU (ВВГнг-LS 3×2.5 мм²), а не к линейке. Создайте cable-sku.'
+            : 'Выберите другой элемент.')
+        );
+      }
+    }
+  } catch (e) {
+    // Если это наша ошибка валидации — пробрасываем. Если что-то другое —
+    // тихо пропускаем (обратная совместимость).
+    if (e.message && e.message.startsWith('[price]')) throw e;
+  }
   const list = _read();
   const now = Date.now();
   if (!rec.id) rec.id = _uid();

@@ -227,6 +227,60 @@ export function createCableTypeElement(patch = {}) {
   };
 }
 
+/**
+ * cable-sku — конкретный типоразмер кабеля (ВВГнг-LS 3×2.5 мм²).
+ *
+ * В отличие от cable-type (линейка), SKU — это конкретный артикул с
+ * фиксированным числом жил и сечением. К нему привязываются ЦЕНЫ
+ * (нельзя «ВВГ = 5₽», только «ВВГ 3×2.5 = 95₽/м»).
+ *
+ * patch: { id?, cableTypeId, cores, sizeMm2, hasN?, hasPE?, vendorSku?,
+ *          overallDiameterMm?, weightKgPerKm?, manufacturer?, … }
+ */
+export function createCableSkuElement(patch = {}) {
+  const p = patch || {};
+  const cores = Number(p.cores) || 3;
+  const sizeMm2 = Number(p.sizeMm2) || 1.5;
+  const cableTypeId = p.cableTypeId || '';
+  // id вида "vvgng-ls-3x2.5" если есть cableTypeId
+  const autoId = cableTypeId
+    ? `${cableTypeId}-${cores}x${sizeMm2}`.toLowerCase().replace(/[^a-z0-9.x-]+/g, '-')
+    : makeElementId('cable-sku', [p.manufacturer, String(cores) + 'x' + String(sizeMm2)]);
+  const sizeLabel = `${cores}×${sizeMm2} мм²`;
+  return {
+    id: p.id || autoId,
+    kind: 'cable-sku',
+    category: 'equipment',
+    label: p.label || ((p.brand || cableTypeId) + ' ' + sizeLabel),
+    description: p.description || '',
+    manufacturer: p.manufacturer || '',
+    series: p.brand || cableTypeId || '',
+    variant: sizeLabel,
+    electrical: {
+      voltageCategory: p.voltageCategory || 'lv',
+    },
+    geometry: {
+      overallDiameterMm: Number(p.overallDiameterMm) || null,
+      weightKgPerKm: Number(p.weightKgPerKm) || null,
+    },
+    views: {},
+    composition: [],
+    kindProps: {
+      cableTypeId,                 // ссылка на cable-type
+      cores,                       // 1/2/3/4/5/… жил
+      sizeMm2,                     // сечение основной жилы, мм²
+      hasN: p.hasN == null ? (cores >= 3) : !!p.hasN,
+      hasPE: !!p.hasPE,
+      insulationColor: p.insulationColor || null,
+      vendorSku: p.vendorSku || null,
+      lengthPackage: p.lengthPackage || null, // м в бухте (обычно 100/200/500/1000)
+    },
+    source: p.source || 'user',
+    builtin: !!p.builtin,
+    tags: p.tags || [],
+  };
+}
+
 /** breaker (автоматический выключатель / УЗО / дифавтомат) */
 export function createBreakerElement(patch = {}) {
   const p = patch || {};
@@ -357,6 +411,7 @@ const FACTORIES = {
   battery: createBatteryElement,
   transformer: createTransformerElement,
   'cable-type': createCableTypeElement,
+  'cable-sku': createCableSkuElement,
   breaker: createBreakerElement,
   'consumer-type': createConsumerTypeElement,
   enclosure: createEnclosureElement,

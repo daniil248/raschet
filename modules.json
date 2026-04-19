@@ -100,25 +100,13 @@
       "enabled": true
     },
     {
-      "id": "elements",
-      "name": "Библиотека элементов",
-      "description": "Единый справочник оборудования (ИБП, щиты, АКБ, трансформаторы, автоматы, корпуса, климат, кабели). Встроенные элементы из legacy-каталогов + пользовательские. Import/export JSON, phantom-компоненты для BOM",
-      "path": "elements/",
+      "id": "catalog",
+      "name": "Каталог и библиотека элементов",
+      "description": "Единый источник оборудования платформы: элементы (ИБП, щиты, АКБ, трансформаторы, автоматы, корпуса, климат, кабели), цены по датам и контрагентам, импорт прайс-листов XLSX, аналитика. Страница elements/ объединена с catalog/ во избежание дублирования UI",
+      "path": "catalog/",
       "icon": "blue",
       "badge": "new",
-      "requires": ["shared/element-library", "shared/element-schemas", "shared/catalog-bridge"],
-      "dbCollections": [],
-      "permissions": ["elements.use"],
-      "enabled": true
-    },
-    {
-      "id": "catalog",
-      "name": "Каталог и цены",
-      "description": "Полноценное управление каталогом платформы: элементы, цены (по датам, контрагентам, типам), импорт прайс-листов XLSX, аналитика, статистика",
-      "path": "catalog/",
-      "icon": "orange",
-      "badge": "new",
-      "requires": ["shared/element-library", "shared/price-records", "shared/counterparty-catalog", "shared/catalog-bridge"],
+      "requires": ["shared/element-library", "shared/element-schemas", "shared/catalog-bridge", "shared/price-records", "shared/counterparty-catalog"],
       "dbCollections": ["prices", "counterparties"],
       "permissions": ["catalog.use", "catalog.manage-prices"],
       "enabled": true

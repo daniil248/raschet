@@ -494,6 +494,49 @@
 
 ## История изменений
 
+### v0.47.0 (2026-04-19, Фаза 1.12 + 1.13 — общий header/footer, объединение elements→catalog, cable-sku)
+- **Фаза 1.12 — единый header/footer/version для всех модулей:**
+  - Создан `shared/app-footer.js` с `mountFooter()`: версия (v0.47.0), ссылки (hub / каталог / GitHub), copyright, инжект CSS
+  - `catalog/index.html` переделан: правильный mount ID `rs-header-mount`, вызов `mountHeader()` + `mountFooter()`
+  - `elements/` → redirect (meta refresh + кнопка перехода) на `catalog/` во избежание дублирования UI
+  - `hub.html` — удалена карточка «Библиотека элементов», остался один вход «Каталог и библиотека элементов»
+  - `modules.json` — объединены записи `elements` и `catalog` в один модуль
+  - Данные НЕ дублируются: `shared/element-library.js` остаётся единственным источником
+- **Фаза 1.13 — cable-sku kind и валидация цен (критичное исправление):**
+  - Проблема пользователя: «нельзя сказать что ВВГ стоит 5₽, только ВВГ 4×10 стоит 5₽»
+  - `shared/element-library.js`:
+    - `ELEMENT_KINDS` получил флаг `pricable` у каждого kind
+    - Новый kind `'cable-sku'` — конкретный типоразмер (ВВГнг-LS 3×2.5 мм²)
+    - `'cable-type'` помечен `pricable: false` — цены напрямую нельзя
+    - `isPricableKind(kind)` экспорт для UI-валидации
+    - `globalThis.__raschetElementLibrary` для lazy-lookup без циклического импорта
+  - `shared/element-schemas.js`:
+    - `createCableSkuElement(patch)` — factory с kindProps `{ cableTypeId, cores, sizeMm2, hasN, hasPE, vendorSku, lengthPackage, … }`
+    - Авто-id вида `vvgng-ls-3x2.5`
+    - Зарегистрирован в FACTORIES
+  - `shared/price-records.js`:
+    - `savePrice()` валидирует `kind` через globalThis bridge — блокирует привязку цены к cable-type (и другим non-pricable), показывает подсказку создать SKU
+  - `catalog/catalog.js`:
+    - Import `isPricableKind` + `createCableSkuElement`
+    - Actions колонка в табе Элементы: для cable-type кнопка «+ Цена» заменена на «+ SKU», для non-pricable — disabled кнопка с tooltip
+    - Новая модалка `openCableSkuModal(cableTypeId)`:
+      - Селекты стандартных жил (1/2/3/4/5/7/12/19/24/37) и сечений (0.5…800 мм² по ГОСТ 22483/IEC 60228)
+      - Чекбоксы N-жила, PE-жила
+      - Опц.: производитель, vendorSku, диаметр, масса кг/км, длина бухты
+      - После создания — автоматически открывается окно «+ Цена»
+    - `openPriceModal` — элементы фильтруются по `isPricableKind` (cable-type исключены)
+- **APP_VERSION = '0.47.0'**
+- **Файлы:**
+  - `shared/app-footer.js` (новый, 115 строк)
+  - `shared/element-library.js` (+15 строк ELEMENT_KINDS.pricable + isPricableKind + globalThis bridge)
+  - `shared/element-schemas.js` (+54 строки createCableSkuElement + регистрация)
+  - `shared/price-records.js` (+20 строк валидация через globalThis)
+  - `catalog/catalog.js` (+90 строк SKU modal + actions; -8 строк старой логики)
+  - `catalog/index.html` (header/footer mount fix)
+  - `elements/index.html` (redirect)
+  - `hub.html` (-27 строк дублирующей карточки)
+  - `modules.json` (-13 строк объединение)
+
 ### v0.46.1 (2026-04-19, Фаза 1.11 — типы кабеля в UI инспектора)
 - **Баг (пользователь «куда ты добавил типы кабеля?»):** в v0.41.0 создан `shared/cable-types-catalog.js` с 16 базовыми типами, но UI для выбора конкретной марки (ВВГнг-LS / АВБбШв / UTP / …) в инспекторе отсутствовал. Пользователь видел только «конструкцию» проводника (multi/single/solid/busbar).
 - **inspector/conn.js** — новый select «Марка кабеля (из справочника)»:
