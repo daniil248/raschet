@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1.1-1.2.1 ✅ (v0.42.2). UX ✅ (v0.42.3). Фаза 1.3 ✅ (v0.43.0). Фаза 1.4.1-1.4.3 ✅ (v0.43.2: кнопка + storage-канал возврата). В работе: Фаза 1.4.4 (связь с АКБ-конфигуратором).
+> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1.1-1.2.1 ✅ (v0.42.2). UX ✅ (v0.42.3). Фаза 1.3 ✅ (v0.43.0). Фаза 1.4 ПОЛНОСТЬЮ ✅ (v0.43.3). В работе: выбор следующего направления (1.1.3 elements editor, 1.2.2 каталоги на Element-API, или Фаза 2 мульти-пространственные).
 > **Цель:** превратить набор специализированных калькуляторов в единую платформу проектирования электрических (и позже — механических) схем с общей библиотекой элементов, мульти-пространственными видами, 3D, правами пользователей и расширяемыми БД-адаптерами.
 
 ---
@@ -172,7 +172,16 @@
   - `js/engine/index.js` слушает `focus` + `storage` event, при наличии payload: `applyUpsModel(node, payload.ups)` + снимок истории + re-render
   - TTL 5 минут: устаревшие payload игнорируются и удаляются
   - Через applyUpsModel узел получает `upsCatalogId` → BOM автоматически включает ИБП
-- [ ] **1.4.4** Связь с Конфигуратором АКБ: при выборе батареи — автообновление параметров автономии
+- [x] **1.4.4** Связь с Конфигуратором АКБ (v0.43.3):
+  - В модалке «Параметры батарей» ИБП — кнопка «🔋 Подобрать АКБ в калькуляторе»
+  - `battery/?nodeId=X&loadKw=...&vdcMin=...&vdcMax=...&autonomyMin=...&selected=...`
+  - `battery/battery-calc.js:initSchemaContext()`: при наличии `?nodeId=`:
+    - Переключение на вкладку «Расчёт разряда»
+    - Предзаполнение: `calc-load` ← loadKw, `calc-target` ← autonomyMin, `calc-dcv` ← (vdcMin+vdcMax)/2, `calc-battery` ← selected, `calc-mode` = 'required'
+    - Sticky-баннер с кнопкой «Применить к схеме»
+    - При клике: забирает `lastBatteryCalc`, извлекает `batteryCatalogId` / `strings` / `blocksPerString` / `autonomyMin` / `totalKwh` (с поддержкой двух режимов: 'autonomy' и 'required'), пишет в `localStorage['raschet.pendingBatterySelection.v1']`
+  - `engine/index.js:_tryConsumePendingBatterySelection()`: аналогично ИБП-ресиверу, обновляет `node.batteryCatalogId / batteryStringCount / batteryBlocksPerString / batteryAutonomyMin / batteryKwh`, делает snapshot + render + notifyChange
+  - TTL 5 минут
 
 **Критичные файлы для Фазы 1:**
 - `shared/element-library.js` (новый)
@@ -337,6 +346,32 @@
 ---
 
 ## История изменений
+
+### v0.43.3 (2026-04-19, Фаза 1.4.4 — связь с Конфигуратором АКБ)
+- **inspector/ups.js** — новая кнопка в модалке батарей ИБП:
+  - `<a href="battery/?nodeId=X&loadKw=...&vdcMin=...&vdcMax=...&autonomyMin=...&selected=...">🔋 Подобрать АКБ в калькуляторе</a>`
+  - Передаёт полный контекст узла (нагрузка, диапазон Vdc, целевая автономия, пред-выбор модели)
+- **battery/battery-calc.js** — `initSchemaContext()`:
+  - Переключает вкладку на «Расчёт разряда»
+  - Предзаполнение полей: `calc-load`, `calc-target`, `calc-dcv` = (vdcMin+vdcMax)/2, `calc-battery`, `calc-mode` = 'required' (если задана autonomy)
+  - Sticky-баннер с «Применить к схеме»
+  - Извлекает `lastBatteryCalc.calcResult` с поддержкой двух режимов:
+    - `kind='autonomy'`: strings из params, autonomyMin из r
+    - `kind='required'`: strings/blocksPerString/autonomyMin из found
+  - Вычисляет `totalKwh = strings × blocksPerString × capacityAh × blockVoltage / 1000`
+  - Пишет payload в `localStorage['raschet.pendingBatterySelection.v1']`
+- **js/engine/index.js** — `_tryConsumePendingBatterySelection()`:
+  - Симметрично UPS-ресиверу: валидация TTL 5 мин, `node.type === 'ups'`
+  - Обновляет `batteryCatalogId / batteryStringCount / batteryBlocksPerString / batteryAutonomyMin / batteryKwh`
+  - snapshot + render + renderInspector + notifyChange
+- **Эффект:**
+  - Полный цикл: ИБП в схеме → кликнул «Подобрать АКБ» → калькулятор с пред-заполненным расчётом → выбрал модель + автономию → клик «Применить» → ИБП обновлён в схеме (с АКБ + автономией)
+  - BOM автоматически включает АКБ через `_syntheticUpsComposition` из Фазы 1.4.1
+- **Файлы:**
+  - `js/engine/inspector/ups.js` (+14 строк кнопка с query params)
+  - `battery/battery-calc.js` (+85 строк initSchemaContext + apply-handler)
+  - `js/engine/index.js` (+42 строки ресивер)
+  - `js/engine/constants.js` APP_VERSION = '0.43.3'
 
 ### v0.43.2 (2026-04-19, Фаза 1.4.2-1.4.3 — кнопка «Сконфигурировать подробно» + storage-канал)
 - **inspector/ups.js** — новая ссылка-кнопка в верхней части модалки ИБП:

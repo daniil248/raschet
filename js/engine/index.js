@@ -125,6 +125,45 @@ window.addEventListener('storage', (ev) => {
 // Сразу проверяем на старте — если пользователь обновил страницу после применения
 _tryConsumePendingUpsSelection();
 
+// === Phase 1.4.4: приём выбора АКБ из battery/ ===
+const PENDING_BATTERY_KEY = 'raschet.pendingBatterySelection.v1';
+function _tryConsumePendingBatterySelection() {
+  let raw;
+  try { raw = localStorage.getItem(PENDING_BATTERY_KEY); } catch { return; }
+  if (!raw) return;
+  let payload;
+  try { payload = JSON.parse(raw); } catch { localStorage.removeItem(PENDING_BATTERY_KEY); return; }
+  if (!payload || !payload.nodeId) { localStorage.removeItem(PENDING_BATTERY_KEY); return; }
+  if (payload.selectedAt && (Date.now() - payload.selectedAt) > 5 * 60 * 1000) {
+    localStorage.removeItem(PENDING_BATTERY_KEY);
+    return;
+  }
+  const node = state.nodes.get(payload.nodeId);
+  if (!node || node.type !== 'ups') {
+    localStorage.removeItem(PENDING_BATTERY_KEY);
+    return;
+  }
+  try {
+    snapshot('battery-calc:apply:' + node.id);
+    if (payload.batteryCatalogId) node.batteryCatalogId = payload.batteryCatalogId;
+    if (payload.batteryStringCount) node.batteryStringCount = payload.batteryStringCount;
+    if (payload.batteryBlocksPerString) node.batteryBlocksPerString = payload.batteryBlocksPerString;
+    if (payload.batteryAutonomyMin) node.batteryAutonomyMin = payload.batteryAutonomyMin;
+    if (payload.batteryKwh) node.batteryKwh = payload.batteryKwh;
+    render(); renderInspector(); notifyChange();
+    console.info('[battery-calc] applied to', node.id, payload);
+  } catch (e) {
+    console.warn('[battery-calc] apply failed', e);
+  } finally {
+    localStorage.removeItem(PENDING_BATTERY_KEY);
+  }
+}
+window.addEventListener('focus', _tryConsumePendingBatterySelection);
+window.addEventListener('storage', (ev) => {
+  if (ev.key === PENDING_BATTERY_KEY && ev.newValue) _tryConsumePendingBatterySelection();
+});
+_tryConsumePendingBatterySelection();
+
 // === Инициализация DOM ===
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница

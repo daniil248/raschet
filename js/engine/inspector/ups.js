@@ -707,11 +707,26 @@ function _renderUpsBatteryBody(n) {
   if (catalog.length) {
     h.push('<h4 style="margin:8px 0 6px">Модель из справочника</h4>');
     h.push('<div id="ups-batt-picker-mount" style="margin-bottom:6px"></div>');
-    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">При выборе модели автоматически заполняются тип / напряжение / количество элементов / ёмкость. Каталог пополняется в подпрограмме <a href="battery/" target="_blank" style="color:#1976d2">«Расчёт АКБ»</a>.</div>`);
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:4px">При выборе модели автоматически заполняются тип / напряжение / количество элементов / ёмкость.</div>`);
   } else {
     h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
-      Справочник АКБ пуст. Загрузите XLSX-данные производителя в подпрограмме
-      <a href="battery/" target="_blank" style="color:#1976d2">«Расчёт АКБ»</a>, чтобы выбирать модели из каталога и считать разряд по реальным таблицам.
+      Справочник АКБ пуст. Загрузите XLSX-данные производителя в подпрограмме «Расчёт АКБ» (кнопка ниже).
+    </div>`);
+  }
+  // Кнопка перехода в полноформатный калькулятор АКБ (Фаза 1.4.4).
+  // Передаём nodeId + параметры ИБП для предзаполнения расчёта.
+  {
+    const qp2 = new URLSearchParams();
+    qp2.set('nodeId', n.id);
+    if (n.capacityKw) qp2.set('loadKw', String(n.capacityKw));
+    if (n.batteryVdcMin) qp2.set('vdcMin', String(n.batteryVdcMin));
+    if (n.batteryVdcMax) qp2.set('vdcMax', String(n.batteryVdcMax));
+    if (n.batteryCatalogId) qp2.set('selected', n.batteryCatalogId);
+    if (n.batteryAutonomyMin) qp2.set('autonomyMin', String(n.batteryAutonomyMin));
+    h.push(`<div style="margin:4px 0 10px">
+      <a href="battery/?${qp2.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
+        🔋 Подобрать АКБ в калькуляторе (новая вкладка)
+      </a>
     </div>`);
   }
 

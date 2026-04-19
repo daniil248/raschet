@@ -1210,4 +1210,99 @@ window.addEventListener('DOMContentLoaded', () => {
   renderCatalog();
   renderBatterySelector();
   renderRackBatterySelector();
+  // Фаза 1.4.4: интеграция с Конструктором схем
+  initSchemaContext();
 });
+
+// ================= Интеграция с Конструктором схем (Фаза 1.4.4) =================
+// Аналогично ups-config: если URL содержит ?nodeId=<id>, показываем баннер
+// с кнопкой «Применить к схеме», которая передаёт выбранную АКБ + число
+// цепочек + число блоков обратно в узел ИБП.
+function initSchemaContext() {
+  const qp = new URLSearchParams(location.search);
+  const ctxNodeId = qp.get('nodeId');
+  if (!ctxNodeId) return;
+
+  // Предзаполнение формы расчёта из контекста ИБП
+  const loadKw = qp.get('loadKw');
+  const vdcMin = qp.get('vdcMin');
+  const vdcMax = qp.get('vdcMax');
+  const autonomyMin = qp.get('autonomyMin');
+  const selected = qp.get('selected');
+
+  // Переключаемся на вкладку «Расчёт разряда»
+  const calcTab = document.querySelector('[data-tab="calc"]');
+  if (calcTab) calcTab.click();
+
+  // Отложенно заполним поля (после рендера формы).
+  // ID полей: calc-battery, calc-load, calc-target, calc-dcv (среднее от vdcMin/max)
+  setTimeout(() => {
+    const loadEl = document.getElementById('calc-load');
+    if (loadEl && loadKw) loadEl.value = loadKw;
+    const autEl = document.getElementById('calc-target');
+    if (autEl && autonomyMin) autEl.value = autonomyMin;
+    const dcvEl = document.getElementById('calc-dcv');
+    if (dcvEl && (vdcMin || vdcMax)) {
+      const mid = (Number(vdcMin || vdcMax) + Number(vdcMax || vdcMin)) / 2;
+      if (Number.isFinite(mid)) dcvEl.value = mid;
+    }
+    const batEl = document.getElementById('calc-battery');
+    if (batEl && selected) batEl.value = selected;
+    // Режим «найти минимум блоков для автономии ≥ target»
+    const modeEl = document.getElementById('calc-mode');
+    if (modeEl && autonomyMin) modeEl.value = 'required';
+  }, 150);
+
+  // Баннер сверху
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:sticky;top:0;z-index:100;padding:10px 16px;background:#1976d2;color:#fff;display:flex;align-items:center;gap:12px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.15)';
+  banner.innerHTML = `
+    <span style="flex:1">🔋 Открыто из Конструктора схем (узел <code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px">${escHtml(ctxNodeId)}</code>). Подберите АКБ и нажмите «Применить».</span>
+    <button type="button" id="ctx-apply-battery" style="background:#fff;color:#1976d2;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Применить к схеме</button>
+    <button type="button" id="ctx-cancel-battery" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:4px;cursor:pointer">Отмена</button>
+  `;
+  document.body.insertBefore(banner, document.body.firstChild);
+
+  document.getElementById('ctx-apply-battery')?.addEventListener('click', () => {
+    // Забираем результат последнего расчёта
+    if (!lastBatteryCalc || !lastBatteryCalc.calcResult) {
+      flash('Сначала выполните расчёт — выберите АКБ и нажмите «Рассчитать»', 'warn');
+      return;
+    }
+    const { params, calcResult } = lastBatteryCalc;
+    // Извлекаем strings / blocksPerString / autonomyMin из двух возможных структур
+    let strings = 1, blocksPerString = calcResult.blocksPerString || 1, autonomyMin = null;
+    if (calcResult.kind === 'autonomy') {
+      strings = params.strings || 1;
+      autonomyMin = calcResult.r?.autonomyMin || null;
+    } else if (calcResult.kind === 'required' && calcResult.found) {
+      strings = calcResult.found.strings || 1;
+      blocksPerString = calcResult.found.blocksPerString || blocksPerString;
+      autonomyMin = calcResult.found.result?.autonomyMin || null;
+    }
+    // Total kWh = strings × blocksPerString × capacityAh × blockVoltage / 1000
+    const battery = params.battery;
+    const totalKwh = battery
+      ? strings * blocksPerString * (battery.capacityAh || 0) * (battery.blockVoltage || 0) / 1000
+      : null;
+    const payload = {
+      nodeId: ctxNodeId,
+      batteryCatalogId: battery?.id || null,
+      batteryStringCount: strings,
+      batteryBlocksPerString: blocksPerString,
+      batteryAutonomyMin: autonomyMin,
+      batteryKwh: totalKwh,
+      selectedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem('raschet.pendingBatterySelection.v1', JSON.stringify(payload));
+      flash('Готово. Вернитесь на вкладку Конструктора схем', 'success');
+      setTimeout(() => { try { window.close(); } catch {} }, 2000);
+    } catch (e) {
+      flash('Не удалось передать результат: ' + (e.message || e), 'error');
+    }
+  });
+  document.getElementById('ctx-cancel-battery')?.addEventListener('click', () => {
+    try { window.close(); } catch {}
+  });
+}
