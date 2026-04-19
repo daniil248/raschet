@@ -142,7 +142,11 @@
       <div class="muted" style="font-size:11px;margin-bottom:6px">Обязательные модули всегда включены. Необязательные — по выбору.</div>
       <div id="modules-list"></div>
 
-      <div class="section-title">Параметры КЗ и защиты</div>
+      <div class="section-title" style="display:flex;align-items:center;gap:8px">
+        <span>Параметры КЗ и защиты</span>
+        <button type="button" id="btn-protection-wizard" style="margin-left:auto;font-size:11px;padding:3px 8px;border:1px solid #1976d2;background:#f0f4ff;color:#1976d2;border-radius:3px;cursor:pointer" title="Помощник заполнения через типовые вопросы">🧙 Помощник</button>
+      </div>
+      <div class="muted" style="font-size:11px;margin-bottom:6px">Не знаете точные значения? Нажмите «Помощник» — ответьте на 4 простых вопроса, параметры заполнятся автоматически.</div>
       <div class="field-row">
         <div class="field">
           <label>I<sub>k</sub>, кА</label>
@@ -189,6 +193,26 @@
     </div>
   </main>
 
+  <!-- Модалка «Помощник параметров защиты» (Фаза 1.14) -->
+  <div id="protection-wizard-modal" class="pw-modal" style="display:none">
+    <div class="pw-body">
+      <div class="pw-header">
+        <h3 style="margin:0">🧙 Помощник параметров КЗ и защиты</h3>
+        <button id="pw-close" type="button" style="background:none;border:none;font-size:20px;cursor:pointer">×</button>
+      </div>
+      <div class="pw-progress">
+        <div class="pw-progress-bar" id="pw-progress-bar" style="width:25%"></div>
+      </div>
+      <div id="pw-content"></div>
+      <div class="pw-footer">
+        <button id="pw-back" type="button" class="pw-btn" disabled>← Назад</button>
+        <span id="pw-step-label" style="color:#666;font-size:12px">Шаг 1 из 4</span>
+        <button id="pw-next" type="button" class="pw-btn pw-btn-primary">Далее →</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="cable-calc.js"></script>
+  <script type="module" src="protection-wizard.js"></script>
 </body>
 </html>
