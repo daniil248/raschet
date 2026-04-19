@@ -115,14 +115,37 @@ export async function syncLegacyToLibrary() {
 /**
  * Дебаунс-обёртка над syncLegacyToLibrary: если несколько каталогов
  * меняются подряд (например импорт XLSX), делаем один sync по таймауту.
+ *
+ * Дополнительная защита: если sync уже идёт (_syncInFlight), не запускаем
+ * второй параллельно — дожидаемся завершения и ставим pending флаг для
+ * повторного запуска.
  */
 let _syncTimer = null;
+let _syncInFlight = false;
+let _syncPending = false;
 function _scheduleSync() {
+  if (_syncInFlight) { _syncPending = true; return; }
   if (_syncTimer) clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(() => {
+  _syncTimer = setTimeout(async () => {
     _syncTimer = null;
-    syncLegacyToLibrary().catch(e => console.warn('[catalog-bridge] resync', e));
-  }, 50);
+    _syncInFlight = true;
+    try {
+      const stats = await syncLegacyToLibrary();
+      // Лог только когда total реально изменился — не захламляем console
+      if (stats.total !== _lastSyncTotal) {
+        console.info('[catalog-bridge] resync', stats);
+        _lastSyncTotal = stats.total;
+      }
+    } catch (e) {
+      console.warn('[catalog-bridge] resync', e);
+    } finally {
+      _syncInFlight = false;
+      if (_syncPending) {
+        _syncPending = false;
+        _scheduleSync(); // запускаем если что-то пришло во время выполнения
+      }
+    }
+  }, 150); // увеличено с 50 до 150 мс — батчит storage events от разных вкладок
 }
 
 /**
@@ -155,13 +178,15 @@ async function _subscribeSameTab() {
  * - Подписка на cross-tab изменения (через storage event)
  */
 let _initialized = false;
+let _lastSyncTotal = -1;
 export function initCatalogBridge() {
   if (_initialized) return;
   _initialized = true;
 
-  // Первая синхронизация
+  // Первая синхронизация — лог только первый раз
   syncLegacyToLibrary().then(stats => {
-    console.info('[catalog-bridge] synced', stats);
+    _lastSyncTotal = stats.total;
+    console.info('[catalog-bridge] init sync', stats);
   }).catch(e => {
     console.warn('[catalog-bridge] init failed', e);
   });
