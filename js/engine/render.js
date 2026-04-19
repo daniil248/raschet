@@ -1041,10 +1041,15 @@ export function renderConns() {
     else effLinkMode = !!c.linkMode;
     const linkPreview = !!c._linkPreview; // временное отображение скрытой линии пунктиром
 
-    // Невидимая «толстая» дорожка — упрощает попадание кликом
-    const hit = el('path', { class: 'conn-hit', d });
-    hit.dataset.connId = c.id;
-    layerConns.appendChild(hit);
+    // Невидимая «толстая» дорожка — упрощает попадание кликом.
+    // Phase 1.20.6: для линий в link-mode (скрытые с референсными подписями)
+    // отключаем hit-путь чтобы курсор не ловил невидимую трассу. Исключение
+    // — временный _linkPreview (пользователь явно попросил подсветить путь).
+    if (!(effLinkMode && !linkPreview)) {
+      const hit = el('path', { class: 'conn-hit', d });
+      hit.dataset.connId = c.id;
+      layerConns.appendChild(hit);
+    }
 
     // Видимая линия — повреждённые и отключённые перекрывают электрическое состояние
     let stateClass;
