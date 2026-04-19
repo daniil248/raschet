@@ -82,6 +82,49 @@ initCatalogBridge();
 // Собирает спецификацию проекта из state + element-library (composition).
 import { collectBomFromProject, bomToMarkdown } from '../../shared/bom.js';
 
+// === Phase 1.4.3: приём выбора из ups-config/ ===
+// Когда пользователь в вкладке ups-config нажимает «Применить к схеме»,
+// в localStorage пишется объект { nodeId, ups, selectedAt }. Мы слушаем
+// 'storage' event (кросс-tab) и проверяем при focus (когда пользователь
+// возвращается на эту вкладку). При совпадении nodeId с узлом в state —
+// применяем через applyUpsModel и сохраняем upsCatalogId.
+import { applyUpsModel } from '../../shared/ups-picker.js';
+const PENDING_UPS_KEY = 'raschet.pendingUpsSelection.v1';
+function _tryConsumePendingUpsSelection() {
+  let raw;
+  try { raw = localStorage.getItem(PENDING_UPS_KEY); } catch { return; }
+  if (!raw) return;
+  let payload;
+  try { payload = JSON.parse(raw); } catch { localStorage.removeItem(PENDING_UPS_KEY); return; }
+  if (!payload || !payload.nodeId || !payload.ups) { localStorage.removeItem(PENDING_UPS_KEY); return; }
+  // Устарел если старше 5 минут — игнорируем
+  if (payload.selectedAt && (Date.now() - payload.selectedAt) > 5 * 60 * 1000) {
+    localStorage.removeItem(PENDING_UPS_KEY);
+    return;
+  }
+  const node = state.nodes.get(payload.nodeId);
+  if (!node || node.type !== 'ups') {
+    localStorage.removeItem(PENDING_UPS_KEY);
+    return;
+  }
+  try {
+    snapshot('ups-config:apply:' + node.id);
+    applyUpsModel(node, payload.ups);
+    render(); renderInspector(); notifyChange();
+    console.info('[ups-config] applied', payload.ups.id, 'to', node.id);
+  } catch (e) {
+    console.warn('[ups-config] apply failed', e);
+  } finally {
+    localStorage.removeItem(PENDING_UPS_KEY);
+  }
+}
+window.addEventListener('focus', _tryConsumePendingUpsSelection);
+window.addEventListener('storage', (ev) => {
+  if (ev.key === PENDING_UPS_KEY && ev.newValue) _tryConsumePendingUpsSelection();
+});
+// Сразу проверяем на старте — если пользователь обновил страницу после применения
+_tryConsumePendingUpsSelection();
+
 // === Инициализация DOM ===
 initDOM();
 // Гарантируем что всегда есть хотя бы одна страница

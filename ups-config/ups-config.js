@@ -461,4 +461,55 @@ document.addEventListener('DOMContentLoaded', () => {
     flash('Справочник очищен');
   });
   render();
+
+  // ====================== Интеграция с Конструктором схем (Фаза 1.4.2-1.4.3) ======================
+  // Если страница открыта по ссылке «Сконфигурировать подробно» из инспектора
+  // ИБП, URL содержит ?nodeId=<id>[&selected=<modelId>][&capacityKw=<kW>][&upsType=<monoblock|modular>].
+  // Показываем баннер с кнопкой «Применить к схеме» — при клике записываем
+  // выбранную модель в localStorage под ключом 'raschet.pendingUpsSelection.v1',
+  // который главная страница читает при фокусе/возврате и применяет к узлу.
+  const qp = new URLSearchParams(location.search);
+  const ctxNodeId = qp.get('nodeId');
+  if (ctxNodeId) {
+    const preselect = qp.get('selected');
+    if (preselect) cascadeState.modelId = preselect;
+    // Вставляем баннер в начало body
+    const banner = document.createElement('div');
+    banner.id = 'schema-context-banner';
+    banner.style.cssText = 'position:sticky;top:0;z-index:100;padding:10px 16px;background:#1976d2;color:#fff;display:flex;align-items:center;gap:12px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.15)';
+    banner.innerHTML = `
+      <span style="flex:1">🔗 Открыто из Конструктора схем (узел <code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px">${esc(ctxNodeId)}</code>). Выберите модель и нажмите «Применить».</span>
+      <button type="button" id="ctx-apply" class="apply-btn" style="background:#fff;color:#1976d2;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Применить к схеме</button>
+      <button type="button" id="ctx-cancel" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:4px;cursor:pointer">Отмена</button>
+    `;
+    document.body.insertBefore(banner, document.body.firstChild);
+    document.getElementById('ctx-apply')?.addEventListener('click', () => {
+      if (!cascadeState.modelId) {
+        flash('Сначала выберите модель ИБП в справочнике', 'warn');
+        return;
+      }
+      const selected = listUpses().find(u => u.id === cascadeState.modelId);
+      if (!selected) {
+        flash('Модель не найдена в справочнике', 'error');
+        return;
+      }
+      const payload = {
+        nodeId: ctxNodeId,
+        ups: selected,
+        selectedAt: Date.now(),
+      };
+      try {
+        localStorage.setItem('raschet.pendingUpsSelection.v1', JSON.stringify(payload));
+        flash('Готово. Вернитесь на вкладку Конструктора схем — модель применится автоматически', 'success');
+        // Закрываем вкладку через 2 сек (если браузер позволит)
+        setTimeout(() => { try { window.close(); } catch {} }, 2000);
+      } catch (e) {
+        flash('Не удалось передать выбор: ' + (e.message || e), 'error');
+      }
+    });
+    document.getElementById('ctx-cancel')?.addEventListener('click', () => {
+      try { window.close(); } catch {}
+    });
+    render();
+  }
 });

@@ -35,13 +35,25 @@ export function openUpsParamsModal(n) {
     if (upsCatalog.length) {
       h.push('<h4 style="margin:14px 0 6px">Модель из справочника</h4>');
       h.push('<div id="up-cat-picker-mount" style="margin-bottom:4px"></div>');
-      h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">При выборе модели автоматически заполняются тип / номинал / КПД / cos φ / V<sub>DC</sub>. Справочник пополняется в подпрограмме <a href="ups-config/" target="_blank" style="color:#1976d2">«Конфигуратор ИБП»</a>.</div>`);
+      h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">При выборе модели автоматически заполняются тип / номинал / КПД / cos φ / V<sub>DC</sub>.</div>`);
     } else {
       h.push(`<div class="muted" style="font-size:11px;margin:10px 0 6px;padding:8px 10px;background:#f6f8fa;border-radius:4px">
-        Справочник ИБП пуст. Добавьте модели в подпрограмме
-        <a href="ups-config/" target="_blank" style="color:#1976d2">«Конфигуратор ИБП»</a>, чтобы выбирать их здесь одним кликом.
+        Справочник ИБП пуст. Добавьте модели в подпрограмме «Конфигуратор ИБП» (кнопка ниже), чтобы выбирать их здесь одним кликом.
       </div>`);
     }
+    // Кнопка перехода в полноформатный конфигуратор (Фаза 1.4.2).
+    // Передаём nodeId + capacityKw через query — чтобы конфигуратор мог
+    // (в будущем) пред-отфильтровать справочник или открыть текущую модель.
+    const qp = new URLSearchParams();
+    qp.set('nodeId', n.id);
+    if (n.upsCatalogId) qp.set('selected', n.upsCatalogId);
+    if (n.capacityKw) qp.set('capacityKw', String(n.capacityKw));
+    if (n.upsType) qp.set('upsType', n.upsType);
+    h.push(`<div style="margin:4px 0 10px">
+      <a href="ups-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
+        ⚙ Сконфигурировать подробно (новая вкладка)
+      </a>
+    </div>`);
   } catch (e) { /* модуль опционален */ }
 
   h.push('<h4 style="margin:8px 0">Основные параметры</h4>');
