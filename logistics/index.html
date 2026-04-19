@@ -14,7 +14,76 @@
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     import { mountFooter } from '../shared/app-footer.js';
+    import { mountHelp } from '../shared/help-panel.js';
     mountHeader({ title: 'Логистика', home: '../hub.html' });
+    mountHelp({
+      module: 'logistics',
+      title: 'Рабочее место логиста',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Учёт закупок и отправлений оборудования, склады, тарифы перевозчиков, расчёт стоимости доставки. Спецификация закупок формируется из BOM текущего проекта.</p>
+        <div class="warn">⚠ Модуль в разработке (WIP). Интеграция с внешними ТК и отчётность по приёмке реализованы частично.</div>
+        <h4>Четыре вкладки</h4>
+        <h5>1. Отправления</h5>
+        <ul>
+          <li>Список PurchaseOrder / Shipment. Фильтр по статусу и контрагенту.</li>
+          <li>Создание: <b>Импорт из Конструктора схем</b> подтягивает BOM проекта с ценами по выбранной стратегии.</li>
+          <li>Группировка по поставщику — для каждого формируется свой заказ.</li>
+          <li>Статусы: <code>draft</code> → <code>issued</code> → <code>received</code>.</li>
+          <li>Приёмка: сверка фактического количества, фиксация расхождений.</li>
+        </ul>
+        <h5>2. Склады</h5>
+        <ul>
+          <li>Справочник складов (адрес, контакт, тип: транзитный / постоянный).</li>
+          <li>Остатки по позициям, резервы под отгрузку.</li>
+        </ul>
+        <h5>3. Тарифы</h5>
+        <ul>
+          <li>Тарифы перевозчиков: за км, за кг, минимальная стоимость, надбавки за габариты.</li>
+          <li>Зональное ценообразование (пояса доставки).</li>
+        </ul>
+        <h5>4. Калькулятор</h5>
+        <ul>
+          <li>Быстрый расчёт доставки: откуда / куда / вес / объём → цена по всем доступным перевозчикам.</li>
+          <li>Сравнительная таблица для выбора оптимального варианта.</li>
+        </ul>
+        <div class="note">«Импорт из Конструктора схем» автоматически обновляет ставки: при смене цены в каталоге — нажмите «Пересчитать» в заказе.</div>
+      `,
+      calcs: `
+        <h4>Модель данных</h4>
+        <h5>PurchaseOrder</h5>
+        <p><code>{ id, counterpartyId, items: [...], status: 'draft' | 'issued' | 'received', totalByCurrency, createdAt, issuedAt, receivedAt }</code></p>
+        <ul>
+          <li><code>items</code> — массив <code>{ elementId, qty, unitPrice, currency, lineTotal }</code>.</li>
+          <li><code>totalByCurrency</code> — итоги в разрезе валют (RUB / USD / EUR), суммы не конвертируются.</li>
+        </ul>
+        <h5>Shipment</h5>
+        <p><code>{ id, orderId, carrierId, fromWarehouseId, toAddress, weightKg, volumeM3, costRub, trackNumber, status }</code></p>
+        <h5>Warehouse / Carrier</h5>
+        <p>Склады и перевозчики — плоские справочники с id и атрибутами.</p>
+        <h4>Источник спецификации</h4>
+        <ul>
+          <li>Функция <code>collectBomFromProject(state)</code> собирает BOM из текущего проекта.</li>
+          <li>Параметр <code>opts.priceCounterpartyId</code> — привязка к цене конкретного поставщика (стратегия <code>counterparty</code>).</li>
+          <li>Если цена не найдена — позиция попадает в BOM с флагом <code>priceMissing: true</code>.</li>
+        </ul>
+        <h4>Расчёт стоимости</h4>
+        <ul>
+          <li><code>lineTotal = unitPrice × qty</code></li>
+          <li><code>orderTotal = Σ lineTotal</code> (с группировкой по валютам).</li>
+          <li><code>shipmentCost</code> — через тариф перевозчика: max(minCost, kmRate × km + kgRate × kg + volumeSurcharge).</li>
+        </ul>
+        <h4>Группировка по контрагентам</h4>
+        <p>После <code>collectBomFromProject</code> позиции группируются по <code>counterpartyId</code> из PriceRecord: один заказ = один поставщик. Позиции без привязки к поставщику попадают в «Не назначено» для ручного распределения.</p>
+        <table>
+          <tr><th>Статус</th><th>Что можно</th></tr>
+          <tr><td><code>draft</code></td><td>Редактировать, удалять, менять поставщика</td></tr>
+          <tr><td><code>issued</code></td><td>Только просмотр + приёмка</td></tr>
+          <tr><td><code>received</code></td><td>Зафиксирован, блокирован от изменений</td></tr>
+        </table>
+        <div class="warn">Отмена <code>issued</code> → <code>draft</code> возможна только через явное действие «Отозвать заказ» с записью в журнал.</div>
+      `,
+    });
     window.addEventListener('DOMContentLoaded', () => mountFooter());
   </script>
 

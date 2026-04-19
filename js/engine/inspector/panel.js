@@ -44,7 +44,7 @@ export function openPanelParamsModal(n) {
 
   // === MV-switchgear (Фаза 1.19): если щит помечен isMv — специальный блок ===
   if (n.isMv || n.mvSwitchgearId) {
-    h.push('<h4 style="margin:14px 0 6px;color:#c67300">⚡ Устройство СН (RM6 / FafeRing / ЩО-70)</h4>');
+    h.push('<h4 style="margin:14px 0 6px;color:#c67300">⚡ Устройство СН (RM6 / SafeRing / ЩО-70)</h4>');
     // Выбор модели из element-library kind='mv-switchgear'
     (async () => {
       try {
@@ -64,7 +64,7 @@ export function openPanelParamsModal(n) {
           n.mvSwitchgearId = newId || null;
           // Применяем параметры выбранной модели + помечаем узел как MV
           if (newId) {
-            n.isMv = true;  // RM6/FafeRing/ЩО-70 — это MV → переключаем тип
+            n.isMv = true;  // RM6/SafeRing/ЩО-70 — это MV → переключаем тип
             const sel = lib.getElement(newId);
             if (sel) {
               const kp = sel.kindProps || {};
@@ -94,7 +94,7 @@ export function openPanelParamsModal(n) {
       } catch (e) { console.warn('[panel-inspector] mv lib', e); }
     })();
     h.push(`<div id="pp-mv-select-mount" style="margin-bottom:6px">Загрузка справочника…</div>`);
-    h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">РУ среднего напряжения (6-35 кВ): моноблоки SF6 (RM6/FafeRing) или сборные (ЩО-70). Конфигуратор с wizard — в <a href="mv-config/" target="_blank" style="color:#1976d2">«Конфигураторе MV»</a> (в разработке, Фаза 1.19.1).</div>`);
+    h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">РУ среднего напряжения (6-35 кВ): моноблоки SF6 (RM6/SafeRing) или сборные (ЩО-70). Конфигуратор с wizard — в <a href="mv-config/" target="_blank" style="color:#1976d2">«Конфигураторе MV»</a> (в разработке, Фаза 1.19.1).</div>`);
 
     // Кнопка MV-конфигуратора
     {
@@ -110,6 +110,11 @@ export function openPanelParamsModal(n) {
       if (n._maxLoadA) qp.set('loadA', String(Math.round(n._maxLoadA)));
       if (n.inputs || n.outputs) qp.set('cellsCount', String((n.inputs || 1) + (n.outputs || 1)));
       if (n.ipRating) qp.set('IP', n.ipRating);
+      // Фаза 1.19.13: если пользователь уже выбрал конкретное РУ СН в инспекторе
+      // (RM6 III и т.п.), конфигуратор должен показывать только совместимые
+      // варианты (того же mvType и производителя/серии). Без lockedId
+      // при выборе RM6 в списке появлялись ABB SafeRing и ЩО-70 — неверно.
+      if (n.mvSwitchgearId) qp.set('lockedId', n.mvSwitchgearId);
       h.push(`<div style="margin:4px 0 10px">
         <a href="mv-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#fff4e5;color:#c67300;text-decoration:none;border:1px solid #f0cea0;border-radius:4px;font-size:12px">
           ⚙ Сконфигурировать РУ СН подробно (новая вкладка)

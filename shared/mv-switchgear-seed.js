@@ -2,7 +2,7 @@
 // shared/mv-switchgear-seed.js
 // Базовый набор распределительных устройств среднего напряжения:
 //   - Schneider RM6 (ringmain SF6)
-//   - FafeRing (китайский аналог RM6, DEKRAJ и др.)
+//   - SafeRing (китайский аналог RM6, DEKRAJ и др.)
 //   - ЩО-70 (советские сборные ячейки с выключателями нагрузки)
 //   - Дополнительно: типовые ячейки ЦОИ-10, КСО-272
 //
@@ -116,11 +116,12 @@ function seedRM6() {
   return out;
 }
 
-// ==================== FafeRing (Китай) ====================
-// Аналог RM6, производится разными заводами (Fafe, CHINT, TGOOD, Zhengtai).
-// Номенклатура похожа — типовые конфигурации CCF, CVF, VVV и т.д.
+// ==================== ABB SafeRing (ringmain SF6, 12/24 кВ) ====================
+// Компактное кольцевое РУ SF6 производства ABB — европейский аналог
+// Schneider RM6. Типовая номенклатура: CC, CCF, CCCF, CVF, CVV, VVV
+// (C = switch-infeed, V = VCB, F = fuse-switch trafo-protect).
 
-const FAFERING_VARIANTS = [
+const SAFERING_VARIANTS = [
   { variant: 'CC',   cells: ['switch-in', 'switch-in'],                      width: 700 },
   { variant: 'CCF',  cells: ['switch-in', 'switch-in', 'trafo-protect'],     width: 1050 },
   { variant: 'CCCF', cells: ['switch-in', 'switch-in', 'switch-in', 'trafo-protect'], width: 1400 },
@@ -129,16 +130,16 @@ const FAFERING_VARIANTS = [
   { variant: 'VVV',  cells: ['vcb', 'vcb', 'vcb'],                           width: 1050 },
 ];
 
-function seedFafeRing() {
+function seedSafeRing() {
   const out = [];
-  for (const v of FAFERING_VARIANTS) {
+  for (const v of SAFERING_VARIANTS) {
     const cells = _rm6ToCellRecords(v.cells);
     out.push(createMvSwitchgearElement({
-      id: 'fafering-' + v.variant.toLowerCase(),
-      manufacturer: 'FafeRing',
-      series: 'SFR',
+      id: 'safering-' + v.variant.toLowerCase(),
+      manufacturer: 'ABB',
+      series: 'SafeRing',
       variant: v.variant,
-      label: `FafeRing ${v.variant}`,
+      label: `SafeRing ${v.variant}`,
       description: `Компактное РУ в SF6, 12 кВ, конфигурация ${v.variant} (${cells.length} ячеек)`,
       mvType: 'ringmain',
       Un_kV: 12,
@@ -261,7 +262,7 @@ function seedSho70() {
 export function listBuiltinMvSwitchgear() {
   return [
     ...seedRM6(),
-    ...seedFafeRing(),
+    ...seedSafeRing(),
     ...seedSho70(),
   ];
 }

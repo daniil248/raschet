@@ -3,7 +3,7 @@
 //
 // 2 режима:
 //   1) Справочник: перечень всех mv-switchgear из element-library
-//      (builtin: RM6, FafeRing, ЩО-70 + user-добавленные)
+//      (builtin: RM6, SafeRing, ЩО-70 + user-добавленные)
 //   2) Wizard (когда открыта с ?nodeId=<id>): пошаговый подбор РУ
 //      для конкретного узла схемы, возврат через
 //      localStorage['raschet.pendingMvSelection.v1']
@@ -112,6 +112,18 @@ function initWizard() {
   if (qp.get('In_A')) rq.In_A = Number(qp.get('In_A')) || 630;
   if (qp.get('mvType')) rq.mvType = qp.get('mvType');
   if (qp.get('cellsCount')) rq.cellsCount = Number(qp.get('cellsCount')) || 3;
+  // Phase 1.19.13: если в проекте уже выбрана модель (lockedId), фиксируем
+  // mvType / manufacturer / series, чтобы Шаг 2 предлагал только совместимые
+  // варианты (в рамках того же семейства).
+  if (qp.get('lockedId')) {
+    const locked = listElements({ kind: 'mv-switchgear' }).find(e => e.id === qp.get('lockedId'));
+    if (locked) {
+      wizState.lockedId = locked.id;
+      wizState.lockedManufacturer = locked.manufacturer || '';
+      wizState.lockedSeries = locked.series || '';
+      rq.mvType = locked.kindProps?.mvType || rq.mvType;
+    }
+  }
 
   const wizard = document.getElementById('mv-wizard');
   if (!wizard) return;
@@ -144,6 +156,20 @@ function _fillStep1() {
   document.getElementById('mv-cellsCount').value = rq.cellsCount;
   document.getElementById('mv-IP').value = rq.IP;
   document.getElementById('mv-arcProof').checked = rq.arcProof;
+  // Phase 1.19.13: если lockedId — блокируем выбор типа РУ и показываем
+  // плашку «Зафиксировано производителем/серией из проекта».
+  if (wizState.lockedManufacturer || wizState.lockedSeries) {
+    const sel = document.getElementById('mv-type');
+    if (sel) sel.disabled = true;
+    const parent = sel?.parentElement;
+    if (parent && !parent.querySelector('.mv-locked-hint')) {
+      const hint = document.createElement('div');
+      hint.className = 'mv-locked-hint muted';
+      hint.style.cssText = 'font-size:11px;color:#c67300;margin-top:4px';
+      hint.textContent = `🔒 Зафиксировано из проекта: ${wizState.lockedManufacturer || '—'}${wizState.lockedSeries ? ' / ' + wizState.lockedSeries : ''}. Альтернативные РУ не предлагаются.`;
+      parent.appendChild(hint);
+    }
+  }
 }
 
 function _readStep1() {
@@ -178,6 +204,15 @@ function _pickMv() {
     const kp = el.kindProps || {};
     // Фильтр по типу (если указан)
     if (rq.mvType && kp.mvType !== rq.mvType) continue;
+    // Phase 1.19.13: если проект заблокировал на конкретного производителя/
+    // серию (lockedManufacturer/lockedSeries), показываем только варианты
+    // того же семейства — иначе при выборе RM6 вылезали SafeRing и ЩО-70.
+    if (wizState.lockedManufacturer) {
+      if ((el.manufacturer || '') !== wizState.lockedManufacturer) continue;
+    }
+    if (wizState.lockedSeries) {
+      if ((el.series || '') !== wizState.lockedSeries) continue;
+    }
     // Фильтр по напряжению: Un_kV должно быть ≥ требуемого
     if ((Number(kp.Un_kV) || 0) < rq.Un_kV - 0.1) continue;
     // Фильтр по току шин
@@ -277,7 +312,7 @@ const CELL_TYPES = [
 ];
 const BREAKER_TYPES = ['VCB', 'SF6', 'fuse-switch', 'switch', 'isolator', 'earthing-switch', 'none'];
 
-// Функции RM6 (Schneider RM6 / FafeRing и аналоги). По документации RM6:
+// Функции RM6 (Schneider RM6 / SafeRing и аналоги). По документации RM6:
 //   I  — выключатель нагрузки 630 А
 //   B  — выключатель нагрузки 630 А + заземлитель
 //   D  — выключатель нагрузки 200 А (для защиты ТП)
@@ -300,8 +335,13 @@ const RM6_FUNCTIONS = [
 function _isRm6Family(sel) {
   if (!sel) return false;
   const mfg = (sel.el.manufacturer || '').toLowerCase();
+  const series = (sel.el.series || '').toLowerCase();
   const mvType = sel.kp.mvType;
-  return mvType === 'ringmain' && (mfg.includes('schneider') || mfg.includes('rm6') || mfg.includes('fafering') || mfg.includes('fafe'));
+  // Ringmain SF6 семейство: Schneider RM6 / ABB SafeRing / аналоги
+  return mvType === 'ringmain' && (
+    mfg.includes('schneider') || mfg.includes('rm6')
+    || mfg.includes('abb') || series.includes('safering') || series.includes('rm')
+  );
 }
 
 function _goStep3() {
@@ -325,7 +365,7 @@ function _renderCellsEditor() {
   const html = [];
 
   // RM6-builder — быстрый выбор функций по кодам I/B/D/Q/O/Ic/Bc/Mt
-  // (только для ringmain-моделей семейства RM6 / FafeRing)
+  // (только для ringmain-моделей семейства RM6 / SafeRing)
   if (_isRm6Family(wizState.selected)) {
     const count = wizState.cells.length || 3;
     html.push(`<div style="background:#fff4e5;padding:10px;border-radius:5px;margin-bottom:10px;font-size:12px">

@@ -42,7 +42,7 @@ async function _loadBreakers() {
   } catch (e) { console.warn('[catalog-bridge] breakers', e.message); return []; }
 }
 
-// MV-switchgear-seed (Фаза 1.19): RM6, FafeRing, ЩО-70.
+// MV-switchgear-seed (Фаза 1.19): RM6, SafeRing, ЩО-70.
 async function _loadMvSwitchgear() {
   try {
     const m = await import('./mv-switchgear-seed.js');

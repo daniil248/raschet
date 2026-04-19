@@ -12,7 +12,79 @@
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     import { mountFooter } from '../shared/app-footer.js';
+    import { mountHelp } from '../shared/help-panel.js';
     mountHeader({ title: 'Каталог и библиотека', home: '../hub.html' });
+    mountHelp({
+      module: 'catalog',
+      title: 'Каталог и библиотека элементов',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Единая база оборудования и цен для всех расчётных модулей Raschet. Источник — <code>shared/element-library.js</code>. Данные здесь используются hub-ом, BOM-ом проекта, отчётами и логистикой.</p>
+        <h4>Пять вкладок</h4>
+        <h5>1. Элементы</h5>
+        <ul>
+          <li>Библиотека всех kinds: <code>panel</code>, <code>ups</code>, <code>battery</code>, <code>transformer</code>, <code>breaker</code>, <code>mv-switchgear</code>, <code>mv-cell</code>, <code>cable-type</code>, <code>cable-sku</code>, <code>consumer-type</code>, <code>enclosure</code>, <code>busbar</code>, <code>climate</code>, <code>custom</code>.</li>
+          <li>Фильтрация по kind, поиск по <code>label</code> / <code>manufacturer</code> / <code>model</code>.</li>
+          <li>Кнопка <b>Просмотр</b> (значок глаза) открывает модалку со всеми свойствами + JSON-дамп. Для breaker дополнительно рисуется TCC-график (кривая защиты).</li>
+          <li>Для <code>cable-type</code> есть кнопка <b>+ SKU</b> — создаёт конкретный артикул (cable-sku) привязанный к типу.</li>
+          <li>Клонирование элемента — быстрая копия с новым id.</li>
+        </ul>
+        <h5>2. Цены</h5>
+        <ul>
+          <li>Таблица PriceRecord по элементам. Фильтр: контрагент, период, активные/архивные.</li>
+          <li>Добавление записи: <code>elementId</code> + <code>counterpartyId</code> + сумма + валюта + дата.</li>
+          <li>Стратегии подбора цены: <b>latest</b> (последняя активная), <b>average</b> (среднее за окно), <b>counterparty</b> (для конкретного поставщика).</li>
+        </ul>
+        <h5>3. Контрагенты</h5>
+        <ul>
+          <li>Справочник поставщиков (<code>type='supplier'</code>) и заказчиков (<code>type='customer'</code>).</li>
+          <li>Поля: ИНН, адрес, контакты, тарифы по категориям элементов.</li>
+        </ul>
+        <h5>4. Импорт</h5>
+        <ul>
+          <li>XLSX-парсер прайс-листов. Поддержаны схемы: <code>BREAKER_SCHEMA</code>, <code>PANEL_SCHEMA</code>, <code>CABLE_SCHEMA</code>.</li>
+          <li>Маппинг колонок → kindProps, превью, валидация перед записью.</li>
+        </ul>
+        <h5>5. Аналитика</h5>
+        <ul>
+          <li>Сводная статистика: количество элементов по kind, покрытие ценами, свежесть данных, топ-поставщиков.</li>
+        </ul>
+        <div class="note">Модуль <code>elements/</code> — это тонкая обёртка над тем же источником. Сейчас перенаправляет сюда.</div>
+      `,
+      calcs: `
+        <h4>Модель данных</h4>
+        <h5>Element</h5>
+        <p><code>{ id, kind, label, kindProps, composition, manufacturer, model, pricable }</code></p>
+        <ul>
+          <li><code>kind</code> — строковый тип (panel, breaker, cable-type и т. д.).</li>
+          <li><code>kindProps</code> — структурированные свойства, схема зависит от kind (см. <code>shared/element-schemas.js</code>).</li>
+          <li><code>composition</code> — BOM-разбивка составных элементов (щит = корпус + аппараты + шины).</li>
+          <li><code>pricable</code> — флаг «на это можно повесить цену». <code>cable-type</code> (ВВГ) = false, <code>cable-sku</code> (ВВГ 3×2.5) = true: нельзя цену без сечения.</li>
+        </ul>
+        <h5>PriceRecord</h5>
+        <p><code>{ elementId, counterpartyId, price, currency, date, active }</code></p>
+        <ul>
+          <li>История цен с датировкой и валютой.</li>
+          <li>Архивные записи (<code>active=false</code>) сохраняются для истории, но не участвуют в расчётах.</li>
+        </ul>
+        <h5>Counterparty</h5>
+        <p><code>{ id, type: 'supplier' | 'customer', name, inn, tariffs }</code></p>
+        <h4>Стратегии подбора цены</h4>
+        <table>
+          <tr><th>Стратегия</th><th>Описание</th><th>Когда применять</th></tr>
+          <tr><td><code>latest</code></td><td>Последняя активная запись по элементу</td><td>По умолчанию</td></tr>
+          <tr><td><code>average</code></td><td>Среднее по активным записям в окне</td><td>Сглаживание скачков</td></tr>
+          <tr><td><code>counterparty</code></td><td>Только у указанного поставщика</td><td>Работа с конкретным контрагентом</td></tr>
+        </table>
+        <h4>Импорт XLSX: формат</h4>
+        <ul>
+          <li>Первая строка = заголовки, остальные строки = данные.</li>
+          <li>Схемы определяют соответствие «колонка Excel → поле <code>kindProps</code>».</li>
+          <li>Валидация: обязательные поля, типы, допустимые значения.</li>
+        </ul>
+        <div class="warn">При импорте дубликаты по <code>manufacturer+model</code> обновляются (merge), а не дублируются.</div>
+      `,
+    });
     if (window.Auth && typeof window.Auth.init === 'function') {
       window.Auth.init().catch(e => console.warn('[catalog] auth init failed', e));
     }

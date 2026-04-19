@@ -283,10 +283,10 @@ export function createCableSkuElement(patch = {}) {
 
 /**
  * mv-switchgear — распределительное устройство среднего напряжения
- * (RM-6, FafeRing, ЩО-70 и аналоги). 6-35 кВ.
+ * (RM-6, SafeRing, ЩО-70 и аналоги). 6-35 кВ.
  *
  * Типы (kindProps.mvType):
- *   'ringmain'   — компактные моноблоки в SF6 (RM6, FafeRing, XIRIA)
+ *   'ringmain'   — компактные моноблоки в SF6 (RM6, SafeRing, XIRIA)
  *                  фиксированный набор ячеек, неразборные
  *   'panelboard' — сборные ЩО-70 (советский стандарт), ЦОИ-10 и аналоги
  *                  наборные из отдельных ячеек, можно любой состав

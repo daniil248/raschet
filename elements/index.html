@@ -30,7 +30,55 @@
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     import { mountFooter } from '../shared/app-footer.js';
+    import { mountHelp } from '../shared/help-panel.js';
     mountHeader({ title: 'Библиотека → переезд', home: '../hub.html' });
+    mountHelp({
+      module: 'elements',
+      title: 'Библиотека элементов (переезд)',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Упрощённый редактор библиотеки элементов (MVP). В текущей версии объединён с модулем <a href="../catalog/">«Каталог и библиотека»</a> — эта страница автоматически перенаправляет туда через 2 секунды.</p>
+        <h4>Что умел</h4>
+        <ul>
+          <li>Создание / редактирование / удаление элементов любого kind.</li>
+          <li>Клонирование элемента (быстрая копия с новым id).</li>
+          <li>Версионирование через поля <code>createdAt</code> / <code>updatedAt</code>.</li>
+          <li>Редактор <code>kindProps</code> по схеме из <code>shared/element-schemas.js</code>.</li>
+          <li>Работа с тем же источником данных <code>shared/element-library.js</code>.</li>
+        </ul>
+        <h4>Почему переехало</h4>
+        <p>Этот модуль дублировал функциональность <code>catalog/</code>, но без поддержки цен, контрагентов и импорта прайс-листов. Чтобы не поддерживать два UI над одним хранилищем, функции перенесены в каталог, где к редактору элементов добавлены вкладки Цены / Контрагенты / Импорт / Аналитика.</p>
+        <div class="note">Для работы с элементами используйте модуль <code>catalog/</code> — там доступно всё, что было здесь, плюс управление ценами.</div>
+      `,
+      calcs: `
+        <h4>Схема-ориентированное редактирование</h4>
+        <p>Создание элементов выполняется через фабрики из <code>shared/element-schemas.js</code>:</p>
+        <ul>
+          <li><code>createBreakerElement(props)</code> — автомат с паспортными токами, кривой, Icu.</li>
+          <li><code>createPanelElement(props)</code> — распределительный щит (корпус + аппараты).</li>
+          <li><code>createMvSwitchgearElement(props)</code> — КРУ 6/10/20/35 кВ.</li>
+          <li><code>createTransformerElement(props)</code> — силовой трансформатор.</li>
+          <li><code>createBatteryElement(props)</code> — АКБ-блок (ёмкость, напряжение, химия).</li>
+          <li><code>createUpsElement(props)</code> — ИБП (номинал, КПД, топология).</li>
+          <li><code>createCableTypeElement(props)</code> / <code>createCableSkuElement(props)</code> — тип кабеля и артикул.</li>
+        </ul>
+        <h4>Роль схем</h4>
+        <ul>
+          <li>Каждая схема определяет допустимый набор полей <code>kindProps</code> для своего kind.</li>
+          <li>Проверка типов (число / строка / enum) и обязательности.</li>
+          <li>UI-форма редактирования строится автоматически по схеме.</li>
+        </ul>
+        <h4>Пример: breaker</h4>
+        <table>
+          <tr><th>Поле</th><th>Тип</th><th>Описание</th></tr>
+          <tr><td><code>inRated</code></td><td>number</td><td>Номинальный ток In, A</td></tr>
+          <tr><td><code>curve</code></td><td>enum</td><td>B / C / D / K / Z</td></tr>
+          <tr><td><code>icu</code></td><td>number</td><td>Icu, кА</td></tr>
+          <tr><td><code>poles</code></td><td>enum</td><td>1P / 2P / 3P / 4P</td></tr>
+        </table>
+        <div class="warn">Редактор здесь заморожен. Все правки делайте через <code>catalog/</code> — данные общие.</div>
+      `,
+    });
     window.addEventListener('DOMContentLoaded', () => mountFooter());
   </script>
 </body>

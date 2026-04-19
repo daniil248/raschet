@@ -18,7 +18,69 @@
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
+    import { mountHelp } from '../shared/help-panel.js';
     mountHeader({ title: 'Шаблоны отчётов', home: '../hub.html' });
+    mountHelp({
+      module: 'reports',
+      title: 'Шаблоны отчётов (PDF / DOCX / HTML)',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Конструктор шаблонов выходных документов: технические задания, паспорта оборудования, расчётные записки, спецификации. Один шаблон → три формата вывода (PDF, DOCX, HTML).</p>
+        <h4>Порядок работы</h4>
+        <ol>
+          <li><b>Новый шаблон</b> — кнопка «+ Новый» слева. Укажите имя и базовые параметры.</li>
+          <li><b>Редактировать оформление</b> — открывает редактор блоков.</li>
+          <li><b>Сборка блоков</b> — последовательно добавляйте заголовки, таблицы, параграфы, списки.</li>
+          <li><b>Предпросмотр</b> — правая панель показывает результат с live-данными текущего проекта.</li>
+          <li><b>Экспорт</b> — кнопки PDF / DOCX; JSON-экспорт для переноса шаблона между проектами.</li>
+          <li><b>Клонирование</b> — быстрая копия существующего шаблона для модификации.</li>
+        </ol>
+        <h4>Доступные блоки</h4>
+        <ul>
+          <li><code>B.h1</code>, <code>B.h2</code>, <code>B.h3</code> — заголовки уровней.</li>
+          <li><code>B.paragraph</code> — обычный абзац с подстановками переменных.</li>
+          <li><code>B.list</code> — маркированный / нумерованный список.</li>
+          <li><code>B.table</code> — таблица с колонками и строками (из данных проекта).</li>
+          <li><code>B.image</code> — изображение (логотип, диаграмма).</li>
+          <li><code>B.spacer</code> / <code>B.pageBreak</code> — вертикальный отступ / разрыв страницы.</li>
+        </ul>
+        <h4>Поиск и управление</h4>
+        <ul>
+          <li>Поиск по имени / описанию / тегу в верхней части списка.</li>
+          <li>Импорт / экспорт JSON — для обмена шаблонами между пользователями.</li>
+          <li>Удаление (danger-кнопка) — с подтверждением.</li>
+        </ul>
+        <div class="note">Шаблоны привязаны к пользователю через Firebase Auth (если настроен), иначе хранятся в localStorage.</div>
+      `,
+      calcs: `
+        <h4>Block API</h4>
+        <p>Определён в <code>shared/report/blocks.js</code>. Каждый блок — объект с типом, опциями и содержимым:</p>
+        <ul>
+          <li><code>{ type: 'h1', text: 'Расчётная записка' }</code></li>
+          <li><code>{ type: 'paragraph', text: 'Настоящий документ...', style: 'justify' }</code></li>
+          <li><code>{ type: 'table', columns: [...], rows: [...], widths: [...] }</code></li>
+          <li><code>{ type: 'list', ordered: true, items: [...] }</code></li>
+        </ul>
+        <h4>Meta-блоки</h4>
+        <ul>
+          <li><code>projectMeta</code> — автоподстановка названия проекта, заказчика, объекта.</li>
+          <li><code>projectStage</code> — стадия проектирования (П / РД / Р).</li>
+          <li><code>header</code> / <code>footer</code> — колонтитулы с пагинацией «стр. N из M».</li>
+        </ul>
+        <h4>Рендереры</h4>
+        <table>
+          <tr><th>Формат</th><th>Библиотека</th><th>Особенности</th></tr>
+          <tr><td>PDF</td><td><code>pdfmake</code></td><td>Векторный, поддержка TTF-шрифтов, хедер/футер</td></tr>
+          <tr><td>DOCX</td><td><code>docx-js</code></td><td>Открывается в Word / LibreOffice, редактируется</td></tr>
+          <tr><td>HTML</td><td>собственный</td><td>Предпросмотр + печать браузером</td></tr>
+        </table>
+        <h4>Подстановка переменных</h4>
+        <p>В текстах блоков поддерживаются плейсхолдеры вида <code>{{project.name}}</code>, <code>{{customer.inn}}</code>, <code>{{calc.cable.section}}</code>. При рендере подставляются из контекста текущего проекта.</p>
+        <h4>JSON-схема шаблона</h4>
+        <p><code>{ id, name, description, tags, blocks: [...], meta: { author, createdAt, updatedAt } }</code></p>
+        <div class="warn">При миграции старых шаблонов новые типы блоков могут быть неизвестны — они помечаются как <code>unknown</code> и пропускаются при рендере.</div>
+      `,
+    });
     if (window.Auth && typeof window.Auth.init === 'function') {
       window.Auth.init().catch(e => console.warn('[reports] auth init failed', e));
     }

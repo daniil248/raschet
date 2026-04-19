@@ -136,16 +136,16 @@ const PRESETS = [
     },
   },
   {
-    id: 'mv-fafering-ccf',
+    id: 'mv-safering-ccf',
     category: 'Среднее напряжение',
-    title: 'FafeRing CCF · ввод+ввод+защита',
-    description: 'Компактное РУ 12 кВ, аналог RM6 (Китай)',
+    title: 'ABB SafeRing CCF · ввод+ввод+защита',
+    description: 'Компактное РУ SF6 12 кВ (ABB), ringmain-конфигурация',
     type: 'panel',
     params: {
-      name: 'FafeRing', inputs: 2, outputs: 1,
+      name: 'SafeRing', inputs: 2, outputs: 1,
       priorities: [1, 2], switchMode: 'auto',
       voltageLevelIdx: 3, capacityA: 630, ipRating: 'IP67',
-      mvSwitchgearId: 'fafering-ccf', isMv: true,
+      mvSwitchgearId: 'safering-ccf', isMv: true,
     },
   },
   {

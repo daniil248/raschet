@@ -100,7 +100,7 @@ export const ELEMENT_KINDS = {
   transformer:   { category: 'equipment', label: 'Трансформатор', pricable: true },
   breaker:       { category: 'equipment', label: 'Автоматический выключатель', pricable: true },
   'mv-switchgear': { category: 'equipment', label: 'РУ СН (MV, IEC 62271-200)', pricable: true,
-                     note: 'Распределительное устройство среднего напряжения 6-35 кВ (RM6, FafeRing, ЩО-70). Стандарт IEC 62271-200, категории LSC1/LSC2.' },
+                     note: 'Распределительное устройство среднего напряжения 6-35 кВ (RM6, SafeRing, ЩО-70). Стандарт IEC 62271-200, категории LSC1/LSC2.' },
   'mv-cell':     { category: 'equipment', label: 'Ячейка СН (ввод/отход/ТН/секционная)', pricable: true,
                    note: 'Типы ячеек: infeed, feeder, transformer-protection, measurement, busCoupler, earthing' },
   enclosure:     { category: 'equipment', label: 'Корпус (оболочка) щита', pricable: true },

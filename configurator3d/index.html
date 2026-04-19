@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Конфигуратор модульного ЦОД — 2D → 3D</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a22; --line:#2a2f3a; --text:#e6e8ee;
+    --muted:#8a93a6; --accent:#6aa8ff; --accent2:#7bd88f; --danger:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Arial}
+  #app{display:grid;grid-template-columns:320px 1fr 1fr;grid-template-rows:1fr;height:100vh}
+  .panel{background:var(--panel);border-right:1px solid var(--line);overflow:auto}
+  .panel h2{margin:0;padding:12px 14px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+  .section{padding:10px 14px;border-bottom:1px solid var(--line)}
+  .palette{display:grid;grid-template-columns:1fr;gap:6px}
+  .chip{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:grab;background:#1b2030}
+  .chip:hover{border-color:var(--accent)}
+  .swatch{width:14px;height:14px;border-radius:3px;border:1px solid rgba(255,255,255,.15)}
+  .chip small{color:var(--muted);margin-left:auto}
+  .row{display:flex;gap:8px;align-items:center;margin:6px 0}
+  .row label{color:var(--muted);min-width:96px}
+  input[type=number],select{background:#0e121b;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px;width:100%}
+  button{background:#1f2740;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 10px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:#234a8a;border-color:#3463b8}
+  button.danger{background:#4a2323;border-color:#8a3434}
+  .view{position:relative;min-width:0;min-height:0}
+  .view canvas{display:block;width:100%;height:100%}
+  .viewLabel{position:absolute;top:8px;left:10px;font-size:12px;color:var(--muted);pointer-events:none;background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px}
+  #view2d{border-right:1px solid var(--line)}
+  .toolbar{position:absolute;right:8px;top:8px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:60%}
+  .hint{color:var(--muted);font-size:12px;line-height:1.5}
+  .kbd{font-family:ui-monospace,Consolas,monospace;background:#0e121b;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11px}
+  .list{display:flex;flex-direction:column;gap:4px;max-height:200px;overflow:auto}
+  .item{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#141927;cursor:pointer}
+  .item.sel{border-color:var(--accent);background:#1a2540}
+  .item .sw{width:10px;height:10px;border-radius:2px}
+  .item small{color:var(--muted);margin-left:auto}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside class="panel">
+    <h2>Палитра модулей</h2>
+    <div class="section">
+      <div class="palette" id="palette"></div>
+      <p class="hint" style="margin-top:10px">Перетащи модуль на 2D-план или кликни по нему и затем по плану. Шаг сетки — 1 м.</p>
+    </div>
+
+    <h2>Размещённые модули</h2>
+    <div class="section">
+      <div class="list" id="list"></div>
+    </div>
+
+    <h2>Свойства выделенного</h2>
+    <div class="section" id="props">
+      <p class="hint">Ничего не выделено. Клик по модулю в 2D.</p>
+    </div>
+
+    <h2>Сцена</h2>
+    <div class="section">
+      <div class="row"><label>Толщина стен</label><input id="wallT" type="number" value="0.2" step="0.05" min="0.05"></div>
+      <div class="row"><label>Высота модуля</label><input id="modH" type="number" value="3" step="0.1" min="1"></div>
+      <div class="row"><label>Крыша</label><select id="roof"><option value="flat">Плоская</option><option value="none">Без крыши</option></select></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button id="btnPreset">Загрузить пресет (скрин 1)</button>
+        <button id="btnClear" class="danger">Очистить</button>
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button id="btnExport">Экспорт JSON</button>
+        <button id="btnImport">Импорт JSON</button>
+      </div>
+      <p class="hint" style="margin-top:10px">
+        Горячие клавиши: <span class="kbd">R</span> поворот 90°, <span class="kbd">Del</span> удалить,
+        <span class="kbd">Ctrl</span>+колесо — зум 2D, ПКМ+drag — пан 2D.
+      </p>
+    </div>
+  </aside>
+
+  <section class="view" id="view2d">
+    <div class="viewLabel">2D-план (вид сверху)</div>
+    <canvas id="c2d"></canvas>
+  </section>
+
+  <section class="view" id="view3d">
+    <div class="viewLabel">3D-визуализация</div>
+    <div class="toolbar">
+      <button id="btnTop">Сверху</button>
+      <button id="btnIso">Изо</button>
+      <button id="btnFront">Спереди</button>
+      <button id="btnFit">По кадру</button>
+    </div>
+    <canvas id="c3d"></canvas>
+  </section>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- Типы модулей (из инфографики «Особенности») ----------
+// Ширина × Длина в метрах (ориентация по умолчанию: длинная сторона — по X)
+const MODULE_TYPES = {
+  server:  { name:'Серверный',  w:3.0, l:12, h:3.0, color:'#3b82f6', roof:'#1e40af', tag:'Тип 1' },
+  power:   { name:'Силовой',    w:3.0, l:12, h:3.0, color:'#22c55e', roof:'#15803d', tag:'Тип 2' },
+  living3: { name:'Бытовой 3.15', w:3.15, l:12, h:3.0, color:'#f59e0b', roof:'#b45309', tag:'Тип 3' },
+  living9: { name:'Бытовой 2.5',  w:2.5,  l:12, h:3.0, color:'#eab308', roof:'#854d0e', tag:'Тип 9' },
+  end:     { name:'Торцевой',    w:0.4, l:12, h:3.0, color:'#94a3b8', roof:'#475569', tag:'Тип 0' },
+  cond:    { name:'Конденсатор', w:1.2, l:2.0, h:1.8, color:'#64748b', roof:'#334155', tag:'КДБ' },
+};
+
+// ---------- Состояние ----------
+const state = {
+  modules: [],          // {id,type,x,y,rot,label}
+  nextId: 1,
+  selectedId: null,
+  scale: 18,            // px на метр в 2D
+  offset: {x:0, y:0},   // пан 2D (в пикселях)
+  drag: null,
+  panning: false,
+  placingType: null,
+};
+
+function addModule(type, x=0, y=0, rot=0, label=''){
+  const t = MODULE_TYPES[type];
+  if(!t) return null;
+  const m = { id: state.nextId++, type, x, y, rot, label: label || t.name };
+  state.modules.push(m);
+  return m;
+}
+
+// ---------- 2D ----------
+const c2d = document.getElementById('c2d');
+const ctx = c2d.getContext('2d');
+
+function resize2d(){
+  const r = c2d.parentElement.getBoundingClientRect();
+  c2d.width = Math.floor(r.width * devicePixelRatio);
+  c2d.height = Math.floor(r.height * devicePixelRatio);
+  c2d.style.width = r.width+'px';
+  c2d.style.height = r.height+'px';
+  draw2d();
+}
+
+function world2screen(x,y){
+  const cx = c2d.width/2 + state.offset.x*devicePixelRatio;
+  const cy = c2d.height/2 + state.offset.y*devicePixelRatio;
+  return [cx + x*state.scale*devicePixelRatio, cy + y*state.scale*devicePixelRatio];
+}
+function screen2world(px,py){
+  const cx = c2d.width/2 + state.offset.x*devicePixelRatio;
+  const cy = c2d.height/2 + state.offset.y*devicePixelRatio;
+  return [(px*devicePixelRatio - cx)/(state.scale*devicePixelRatio),
+          (py*devicePixelRatio - cy)/(state.scale*devicePixelRatio)];
+}
+
+function draw2d(){
+  const W = c2d.width, H = c2d.height;
+  ctx.fillStyle = '#0b0e14';
+  ctx.fillRect(0,0,W,H);
+
+  // сетка 1 м
+  const step = state.scale*devicePixelRatio;
+  const [ox,oy] = world2screen(0,0);
+  ctx.strokeStyle = '#1a1f2c'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  const startX = ox - Math.ceil(ox/step)*step;
+  for(let x=startX; x<W; x+=step){ ctx.moveTo(x,0); ctx.lineTo(x,H); }
+  const startY = oy - Math.ceil(oy/step)*step;
+  for(let y=startY; y<H; y+=step){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+  ctx.stroke();
+
+  // оси
+  ctx.strokeStyle = '#2a3346'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0,oy); ctx.lineTo(W,oy); ctx.moveTo(ox,0); ctx.lineTo(ox,H); ctx.stroke();
+
+  // модули
+  for(const m of state.modules) drawModule2d(m);
+
+  // превью размещения у курсора
+  if(state.placingType && state.hover){
+    const t = MODULE_TYPES[state.placingType];
+    drawModule2d({id:-1,type:state.placingType,x:state.hover.x,y:state.hover.y,rot:0,label:t.name}, true);
+  }
+}
+
+function drawModule2d(m, ghost=false){
+  const t = MODULE_TYPES[m.type];
+  const [sx,sy] = world2screen(m.x, m.y);
+  const w = t.l*state.scale*devicePixelRatio;  // длина по X
+  const h = t.w*state.scale*devicePixelRatio;  // ширина по Y
+  ctx.save();
+  ctx.translate(sx,sy);
+  ctx.rotate(m.rot*Math.PI/180);
+  ctx.globalAlpha = ghost?0.5:1;
+  ctx.fillStyle = t.color;
+  ctx.strokeStyle = state.selectedId===m.id ? '#ffffff' : '#0b0e14';
+  ctx.lineWidth = state.selectedId===m.id ? 3 : 2;
+  roundRect(ctx,-w/2,-h/2,w,h, 4*devicePixelRatio);
+  ctx.fill(); ctx.stroke();
+  // этикетка
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  const lbl = m.label;
+  ctx.font = `${12*devicePixelRatio}px system-ui`;
+  const tw = ctx.measureText(lbl).width + 10*devicePixelRatio;
+  ctx.fillRect(-tw/2,-8*devicePixelRatio,tw,16*devicePixelRatio);
+  ctx.fillStyle = '#fff';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(lbl,0,1);
+  ctx.restore();
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function pickModule(wx,wy){
+  // от последнего к первому, чтобы верхний слой ловился первым
+  for(let i=state.modules.length-1;i>=0;i--){
+    const m = state.modules[i];
+    const t = MODULE_TYPES[m.type];
+    // в локальных координатах модуля
+    const c = Math.cos(-m.rot*Math.PI/180), s = Math.sin(-m.rot*Math.PI/180);
+    const dx = wx-m.x, dy = wy-m.y;
+    const lx = dx*c - dy*s, ly = dx*s + dy*c;
+    if(Math.abs(lx)<=t.l/2 && Math.abs(ly)<=t.w/2) return m;
+  }
+  return null;
+}
+
+// ---------- 2D события ----------
+c2d.addEventListener('mousemove', e=>{
+  const r = c2d.getBoundingClientRect();
+  const [wx,wy] = screen2world(e.clientX-r.left, e.clientY-r.top);
+  state.hover = {x:Math.round(wx*2)/2, y:Math.round(wy*2)/2};
+  if(state.panning){
+    state.offset.x += e.movementX;
+    state.offset.y += e.movementY;
+  }
+  if(state.drag){
+    const m = state.modules.find(m=>m.id===state.drag.id);
+    if(m){ m.x = Math.round((wx-state.drag.dx)*2)/2; m.y = Math.round((wy-state.drag.dy)*2)/2; rebuild3d(); refreshProps(); refreshList(); }
+  }
+  draw2d();
+});
+c2d.addEventListener('mousedown', e=>{
+  const r = c2d.getBoundingClientRect();
+  const [wx,wy] = screen2world(e.clientX-r.left, e.clientY-r.top);
+  if(e.button===2){ state.panning = true; return; }
+  if(state.placingType){
+    const m = addModule(state.placingType, Math.round(wx*2)/2, Math.round(wy*2)/2);
+    state.selectedId = m.id;
+    if(!e.shiftKey) state.placingType = null;
+    refreshList(); refreshProps(); rebuild3d(); draw2d();
+    return;
+  }
+  const hit = pickModule(wx,wy);
+  if(hit){
+    state.selectedId = hit.id;
+    state.drag = {id:hit.id, dx: wx-hit.x, dy: wy-hit.y};
+  } else {
+    state.selectedId = null;
+  }
+  refreshList(); refreshProps(); draw2d();
+});
+window.addEventListener('mouseup', ()=>{ state.drag=null; state.panning=false; });
+c2d.addEventListener('contextmenu', e=>e.preventDefault());
+c2d.addEventListener('wheel', e=>{
+  if(e.ctrlKey){
+    e.preventDefault();
+    const k = e.deltaY<0 ? 1.1 : 0.9;
+    state.scale = Math.max(4, Math.min(80, state.scale*k));
+    draw2d();
+  }
+},{passive:false});
+window.addEventListener('keydown', e=>{
+  if(!state.selectedId) return;
+  const m = state.modules.find(mm=>mm.id===state.selectedId);
+  if(!m) return;
+  if(e.key==='r'||e.key==='R'){ m.rot=(m.rot+90)%360; rebuild3d(); refreshProps(); draw2d(); }
+  if(e.key==='Delete'||e.key==='Backspace'){
+    state.modules = state.modules.filter(mm=>mm.id!==m.id);
+    state.selectedId=null; refreshList(); refreshProps(); rebuild3d(); draw2d();
+  }
+});
+
+// ---------- Палитра / список / свойства ----------
+const paletteEl = document.getElementById('palette');
+for(const [key,t] of Object.entries(MODULE_TYPES)){
+  const el = document.createElement('div');
+  el.className='chip';
+  el.innerHTML = `<span class="swatch" style="background:${t.color}"></span>
+    <span>${t.name}</span><small>${t.l}×${t.w} м</small>`;
+  el.onclick = ()=>{ state.placingType = key; };
+  paletteEl.appendChild(el);
+}
+
+const listEl = document.getElementById('list');
+function refreshList(){
+  listEl.innerHTML='';
+  for(const m of state.modules){
+    const t = MODULE_TYPES[m.type];
+    const el = document.createElement('div');
+    el.className='item'+(state.selectedId===m.id?' sel':'');
+    el.innerHTML = `<span class="sw" style="background:${t.color}"></span>
+      <span>${m.label}</span><small>${m.x.toFixed(1)};${m.y.toFixed(1)}</small>`;
+    el.onclick = ()=>{ state.selectedId=m.id; refreshList(); refreshProps(); draw2d(); };
+    listEl.appendChild(el);
+  }
+}
+
+const propsEl = document.getElementById('props');
+function refreshProps(){
+  const m = state.modules.find(mm=>mm.id===state.selectedId);
+  if(!m){ propsEl.innerHTML='<p class="hint">Ничего не выделено. Клик по модулю в 2D.</p>'; return; }
+  const t = MODULE_TYPES[m.type];
+  propsEl.innerHTML = `
+    <div class="row"><label>Тип</label><div>${t.name} <small style="color:var(--muted)">(${t.tag})</small></div></div>
+    <div class="row"><label>Подпись</label><input id="pLabel" value="${m.label.replace(/"/g,'&quot;')}"></div>
+    <div class="row"><label>X, м</label><input id="pX" type="number" step="0.5" value="${m.x}"></div>
+    <div class="row"><label>Y, м</label><input id="pY" type="number" step="0.5" value="${m.y}"></div>
+    <div class="row"><label>Поворот, °</label><input id="pR" type="number" step="90" value="${m.rot}"></div>
+    <div class="row"><button id="pDel" class="danger">Удалить</button></div>`;
+  const bind = (id,prop,num=true)=>{
+    const el = document.getElementById(id);
+    el.addEventListener('input',()=>{ m[prop]=num?parseFloat(el.value)||0:el.value; rebuild3d(); refreshList(); draw2d(); });
+  };
+  bind('pX','x'); bind('pY','y'); bind('pR','rot');
+  document.getElementById('pLabel').addEventListener('input',e=>{ m.label=e.target.value; refreshList(); draw2d(); });
+  document.getElementById('pDel').onclick=()=>{
+    state.modules = state.modules.filter(mm=>mm.id!==m.id);
+    state.selectedId=null; refreshList(); refreshProps(); rebuild3d(); draw2d();
+  };
+}
+
+// ---------- 3D ----------
+const c3d = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({canvas:c3d, antialias:true});
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0b0e14');
+scene.fog = new THREE.Fog('#0b0e14', 80, 260);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
+camera.position.set(40,35,40);
+
+const controls = new OrbitControls(camera, c3d);
+controls.enableDamping = true;
+
+// Свет
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+sun.position.set(30,50,20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-60; sun.shadow.camera.right=60;
+sun.shadow.camera.top=60; sun.shadow.camera.bottom=-60;
+sun.shadow.camera.near=1; sun.shadow.camera.far=200;
+scene.add(sun);
+
+// Пол
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(300,300),
+  new THREE.MeshStandardMaterial({color:0x1a1f2c, roughness:0.95})
+);
+ground.rotation.x=-Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(300, 300, 0x2a3346, 0x1a1f2c);
+grid.position.y = 0.001;
+scene.add(grid);
+
+// Контейнер для модулей
+const modulesGroup = new THREE.Group();
+scene.add(modulesGroup);
+
+function rebuild3d(){
+  while(modulesGroup.children.length) modulesGroup.remove(modulesGroup.children[0]);
+  const wallT = parseFloat(document.getElementById('wallT').value)||0.2;
+  const modH  = parseFloat(document.getElementById('modH').value)||3;
+  const roofMode = document.getElementById('roof').value;
+
+  for(const m of state.modules){
+    const t = MODULE_TYPES[m.type];
+    const g = new THREE.Group();
+    const L = t.l, W = t.w, H = m.type==='cond'?t.h:modH;
+
+    // корпус (массив — более тёмный интерьер, внешние стены в цвет типа)
+    const bodyMat = new THREE.MeshStandardMaterial({color:t.color, roughness:0.6, metalness:0.1});
+    const roofMat = new THREE.MeshStandardMaterial({color:t.roof, roughness:0.8});
+
+    // пол модуля
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(L,0.12,W), new THREE.MeshStandardMaterial({color:0x334155, roughness:0.9}));
+    floor.position.y = 0.06; floor.receiveShadow=true; floor.castShadow=true; g.add(floor);
+
+    // стены как 4 коробки (образуют замкнутый периметр)
+    const wallH = H-0.12;
+    const wx = new THREE.BoxGeometry(L, wallH, wallT);
+    const wz = new THREE.BoxGeometry(wallT, wallH, W-wallT*2);
+    const w1 = new THREE.Mesh(wx, bodyMat); w1.position.set(0, 0.12+wallH/2, -W/2+wallT/2);
+    const w2 = new THREE.Mesh(wx, bodyMat); w2.position.set(0, 0.12+wallH/2,  W/2-wallT/2);
+    const w3 = new THREE.Mesh(wz, bodyMat); w3.position.set(-L/2+wallT/2, 0.12+wallH/2, 0);
+    const w4 = new THREE.Mesh(wz, bodyMat); w4.position.set( L/2-wallT/2, 0.12+wallH/2, 0);
+    for(const w of [w1,w2,w3,w4]){ w.castShadow=true; w.receiveShadow=true; g.add(w); }
+
+    // крыша
+    if(roofMode==='flat'){
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(L+0.1,0.1,W+0.1), roofMat);
+      roof.position.y = H+0.05; roof.castShadow=true; roof.receiveShadow=true; g.add(roof);
+    }
+
+    // простенькие "стойки" внутри серверных модулей
+    if(m.type==='server'){
+      const rackMat = new THREE.MeshStandardMaterial({color:0x0f172a, roughness:0.5});
+      const rackGeo = new THREE.BoxGeometry(0.6, 2.0, 1.0);
+      const rows = [ -W/2+0.7, W/2-0.7 ];
+      const count = Math.floor((L-1.0)/0.8);
+      for(const zr of rows){
+        for(let i=0;i<count;i++){
+          const rx = -L/2+0.6 + i*0.8;
+          const r = new THREE.Mesh(rackGeo, rackMat);
+          r.position.set(rx, 0.12+1.0, zr);
+          r.castShadow=true; g.add(r);
+        }
+      }
+    }
+    // конденсатор: обод + вентиляторы
+    if(m.type==='cond'){
+      const casingMat = new THREE.MeshStandardMaterial({color:0x475569, roughness:0.6});
+      const casing = new THREE.Mesh(new THREE.BoxGeometry(L-0.05,H-0.1,W-0.05), casingMat);
+      casing.position.y = H/2; casing.castShadow=true; g.add(casing);
+      for(let i=0;i<2;i++){
+        const fan = new THREE.Mesh(new THREE.CircleGeometry(0.35,20), new THREE.MeshStandardMaterial({color:0x0f172a}));
+        fan.rotation.x=-Math.PI/2; fan.position.set(-0.4+i*0.8, H, 0);
+        g.add(fan);
+      }
+    }
+
+    g.position.set(m.x, 0, m.y);
+    g.rotation.y = -m.rot*Math.PI/180;
+    modulesGroup.add(g);
+  }
+}
+
+function resize3d(){
+  const r = c3d.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width/Math.max(1,r.height);
+  camera.updateProjectionMatrix();
+}
+
+function tick(){
+  controls.update();
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+// ---------- Viewpoint buttons ----------
+function fitCamera(){
+  if(!state.modules.length){ controls.target.set(0,0,0); camera.position.set(40,35,40); return; }
+  let minX=1e9,maxX=-1e9,minZ=1e9,maxZ=-1e9;
+  for(const m of state.modules){
+    const t = MODULE_TYPES[m.type];
+    const hx = t.l/2, hz = t.w/2;
+    // грубая оценка: bbox без учёта поворота
+    minX=Math.min(minX,m.x-hx); maxX=Math.max(maxX,m.x+hx);
+    minZ=Math.min(minZ,m.y-hz); maxZ=Math.max(maxZ,m.y+hz);
+  }
+  const cx=(minX+maxX)/2, cz=(minZ+maxZ)/2;
+  const dx = Math.max(20, maxX-minX), dz = Math.max(20, maxZ-minZ);
+  const dist = Math.max(dx,dz)*1.4;
+  controls.target.set(cx,2,cz);
+  camera.position.set(cx+dist*0.7, dist*0.8, cz+dist*0.7);
+}
+document.getElementById('btnTop').onclick  = ()=>{ const t=controls.target; camera.position.set(t.x,80,t.z+0.001); };
+document.getElementById('btnIso').onclick  = ()=>{ fitCamera(); };
+document.getElementById('btnFront').onclick= ()=>{ const t=controls.target; camera.position.set(t.x, 10, t.z+50); };
+document.getElementById('btnFit').onclick  = fitCamera;
+
+// ---------- Пресет со скрина 1 ----------
+// Два корпуса «Массив» + два корпуса «Энерго» с небольшим коридором,
+// конденсаторы вдоль длинных стен серверных модулей.
+function loadPreset(){
+  state.modules = []; state.nextId = 1; state.selectedId=null;
+  // верхний корпус (Массив 2 + Энерго модуль 2)
+  addModule('server', -11, -10, 0, 'Массив 2 / 450 кВт');
+  addModule('power',    6, -10, 0, 'Энерго модуль 2');
+  // нижний корпус (Массив 1 + Энерго модуль 1)
+  addModule('server', -11,  6, 0, 'Массив 1 / 450 кВт');
+  addModule('power',    6,  6, 0, 'Энерго модуль 1');
+  // конденсаторы (ряд сверху)
+  for(let i=0;i<8;i++) addModule('cond', -16+i*4, -15, 0, '');
+  for(let i=0;i<8;i++) addModule('cond', -16+i*4,  11, 0, '');
+  refreshList(); refreshProps(); rebuild3d(); draw2d(); fitCamera();
+}
+document.getElementById('btnPreset').onclick = loadPreset;
+document.getElementById('btnClear').onclick  = ()=>{
+  state.modules=[]; state.selectedId=null;
+  refreshList(); refreshProps(); rebuild3d(); draw2d();
+};
+
+// ---------- Экспорт / импорт ----------
+document.getElementById('btnExport').onclick = ()=>{
+  const data = { v:1, modules: state.modules };
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'layout.json'; a.click();
+};
+document.getElementById('btnImport').onclick = ()=>{
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='application/json';
+  inp.onchange = ()=>{
+    const f = inp.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = ()=>{
+      try{
+        const d = JSON.parse(r.result);
+        state.modules = d.modules||[];
+        state.nextId = (state.modules.reduce((a,m)=>Math.max(a,m.id),0)||0)+1;
+        refreshList(); refreshProps(); rebuild3d(); draw2d(); fitCamera();
+      }catch(e){ alert('Ошибка импорта: '+e.message); }
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+};
+
+// пересборка 3D при изменении параметров сцены
+for(const id of ['wallT','modH','roof']) document.getElementById(id).addEventListener('input', rebuild3d);
+
+// ---------- Инициализация ----------
+function resizeAll(){ resize2d(); resize3d(); }
+window.addEventListener('resize', resizeAll);
+resizeAll();
+loadPreset();
+</script>
+</body>
+</html>
