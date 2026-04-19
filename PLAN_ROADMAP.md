@@ -544,6 +544,11 @@
   автоматы + вертикали Ik) для этой линии без открытия инспектора.
   Выделены `_buildConnTccPayload(conn, fromN, toN)` в conn.js и
   экспорт `openConnTccDirect(connId)`; Raschet.openConnTcc(id) API.
+- **1.20.13 (v0.56.16)** — опция «Панорамировать и масштабировать схему
+  при переходе к линии» в Параметрах расчёта (GLOBAL.autoCenterOnSelect).
+  Новая функция `centerOnConn(conn)` в export.js — вычисляет bbox
+  from/to узлов с padding=100 и подбирает zoom в диапазоне 0.4..1.5.
+  Включается явно (по умолчанию OFF — не менять зум/пан без запроса).
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 

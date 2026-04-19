@@ -750,6 +750,8 @@ function openSettingsModal() {
   if (showHelpEl) showHelpEl.checked = G.showHelp !== false;
   const redNEl = document.getElementById('set-allowReducedNeutral');
   if (redNEl) redNEl.checked = !!G.allowReducedNeutral;
+  const centerEl = document.getElementById('set-autoCenterOnSelect');
+  if (centerEl) centerEl.checked = !!G.autoCenterOnSelect;
   openModal('modal-settings');
 }
 
@@ -767,6 +769,7 @@ function saveSettingsModal() {
     breakerMinMarginPct:  Math.max(0, Number(get('set-breakerMinMarginPct')) || 0),
     showHelp:             !!document.getElementById('set-showHelp')?.checked,
     allowReducedNeutral:  !!document.getElementById('set-allowReducedNeutral')?.checked,
+    autoCenterOnSelect:   !!document.getElementById('set-autoCenterOnSelect')?.checked,
   };
   if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
     window.Raschet.setGlobal(patch);

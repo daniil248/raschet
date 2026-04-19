@@ -770,6 +770,42 @@ export function exportPNG() {
   img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(xml)));
 }
 
+/**
+ * Phase 1.20.13: центрировать вид на заданной connection (или на
+ * объединённом bbox from- и to-узлов). Зум подбирается так чтобы оба
+ * узла поместились с небольшим padding'ом, но не ниже 0.4 и не выше 1.5
+ * (чтобы не терять ориентацию пользователя сильным скачком). Если узлы
+ * уже видны — zoom оставляем, только сдвигаем центр.
+ */
+export function centerOnConn(conn) {
+  if (!conn) return;
+  const fromN = state.nodes.get(conn.from?.nodeId);
+  const toN = state.nodes.get(conn.to?.nodeId);
+  if (!fromN || !toN) return;
+  const bbox = (n) => {
+    const w = nodeWidth(n);
+    const h = (typeof n.height === 'number') ? n.height : NODE_H;
+    return { x1: n.x, y1: n.y, x2: n.x + w, y2: n.y + h };
+  };
+  const a = bbox(fromN), b = bbox(toN);
+  const minX = Math.min(a.x1, b.x1), minY = Math.min(a.y1, b.y1);
+  const maxX = Math.max(a.x2, b.x2), maxY = Math.max(a.y2, b.y2);
+  const pad = 100;
+  const bboxW = (maxX - minX) + pad * 2;
+  const bboxH = (maxY - minY) + pad * 2;
+  const W = svg.clientWidth || 800;
+  const H = svg.clientHeight || 600;
+  let zoom = Math.min(W / bboxW, H / bboxH, 1.5);
+  if (!Number.isFinite(zoom) || zoom <= 0) zoom = 1;
+  if (zoom < 0.4) zoom = 0.4;
+  state.view.zoom = zoom;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  state.view.x = cx - (W / 2) / zoom;
+  state.view.y = cy - (H / 2) / zoom;
+  updateViewBox();
+}
+
 export function fitAll() {
   if (!state.nodes.size) return;
   // Учитываем только узлы ТЕКУЩЕЙ страницы (legacy без pageIds — считаем что

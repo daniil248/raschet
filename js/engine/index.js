@@ -50,7 +50,7 @@ import {
 } from './inspector.js';
 import { openConnTccDirect } from './inspector/conn.js';
 import { initInteraction, bindInteractionDeps } from './interaction.js';
-import { initToolbar, autoLayout, exportSVG, exportPNG, fitAll } from './export.js';
+import { initToolbar, autoLayout, exportSVG, exportPNG, fitAll, centerOnConn } from './export.js';
 import { simTick, startSimLoop, stopSimLoop } from './simulation.js';
 import { generateReport, get3PhaseBalance } from './report.js';
 import { getReportSections } from './report-sections.js';
@@ -515,12 +515,15 @@ window.Raschet = {
   render: () => render(),
   rerender: () => { render(); renderInspector(); },
   // Phase 1.20.11: «Перейти к линии» из cable-table — выделяет conn
-  // и показывает его параметры в инспекторе. Фокус (зум/пан) не трогаем,
-  // пользователь сам скроллит; на схеме линия будет подсвечена классом .selected.
+  // и показывает его параметры в инспекторе. Если GLOBAL.autoCenterOnSelect
+  // включён (Phase 1.20.13) — дополнительно центрирует холст на линии.
   selectConnAndFocus: (id) => {
     const c = state.conns.get(id);
     if (!c) return false;
     selectConn(id);
+    if (GLOBAL.autoCenterOnSelect) {
+      try { centerOnConn(c); } catch (e) { console.warn('[centerOnConn]', e); }
+    }
     render();
     return true;
   },

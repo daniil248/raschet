@@ -49,6 +49,7 @@ export const DEFAULTS = {
   breakerMinMarginPct: 0,
   showHelp: true,
   allowReducedNeutral: false,
+  autoCenterOnSelect: false,
 };
 
 const listeners = new Set();
