@@ -522,7 +522,12 @@ function sectionCables() {
       const groupCount = isGroup ? c._groupCables.length : 1;
       qty = parallel * groupCount;
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      conductorSpec = `${cores}×${c._cableSize} мм²`;
+      const size = c._cableSize;
+      // Phase 1.20.3: reduced-N нотация «3×95 + 1×50 мм²»
+      const nSize = Number(c._neutralSizeMm2) || 0;
+      conductorSpec = (nSize > 0 && nSize < Number(size))
+        ? `${cores - 1}×${size} + 1×${nSize} мм²`
+        : `${cores}×${size} мм²`;
       if (c._isHV) conductorSpec = cableVoltageClass(c._voltage || 0) + ' · ' + conductorSpec;
       if (c._isDC) conductorSpec = `= ${Math.round(Number(c._voltage) || 0)} В · ` + conductorSpec;
       methodStr = c._cableMethod || '—';
@@ -593,9 +598,18 @@ function sectionCableBom() {
       const ins = c.insulation === 'XLPE' ? 'XLPE' : 'PVC';
       markLabel = markLabel === '—' ? `${mat}/${ins} (без марки)` : markLabel;
     }
-    const key = `${markLabel} ${cores}×${size} мм²`;
+    // Phase 1.20.3: reduced-N кабели — отдельная группа в ведомости SKU
+    const nSize = Number(c._neutralSizeMm2) || 0;
+    const nCores = (nSize > 0 && nSize < size) ? 1 : 0;
+    const specLabel = nCores
+      ? `${cores - nCores}×${size} + ${nCores}×${nSize} мм²`
+      : `${cores}×${size} мм²`;
+    const key = `${markLabel} ${specLabel}`;
     const prev = groups.get(key) || {
-      mark: markLabel, cores, size, totalM: 0, lines: 0,
+      mark: markLabel, cores, size, specLabel,
+      neutralSize: nCores ? nSize : null,
+      neutralCores: nCores,
+      totalM: 0, lines: 0,
       material: c.material || 'Cu',
       insulation: c.insulation || 'PVC',
     };
@@ -603,11 +617,12 @@ function sectionCableBom() {
     prev.lines += 1;
     groups.set(key, prev);
   }
-  // Сортируем: по марке, затем по сечению возрастанию
+  // Сортируем: по марке, затем по сечению возрастанию, затем по reduced-N
   const rows = [...groups.values()].sort((a, b) => {
     if (a.mark !== b.mark) return a.mark.localeCompare(b.mark);
     if (a.cores !== b.cores) return a.cores - b.cores;
-    return a.size - b.size;
+    if (a.size !== b.size) return a.size - b.size;
+    return (a.neutralSize || 0) - (b.neutralSize || 0);
   });
 
   // Резолв цен: для каждой группы ищем cable-sku с подходящим cableTypeId + cores + sizeMm2
@@ -626,7 +641,15 @@ function sectionCableBom() {
     const typeId = allMarksDict[r.mark] || r.mark;  // преобразуем brand → typeId если можем
     const skuMatch = allSku.find(s => {
       const kp = s.kindProps || {};
-      return String(kp.cableTypeId) === String(typeId) && Number(kp.cores) === r.cores && Number(kp.sizeMm2) === r.size;
+      if (String(kp.cableTypeId) !== String(typeId)) return false;
+      if (Number(kp.cores) !== r.cores) return false;
+      if (Number(kp.sizeMm2) !== r.size) return false;
+      // Phase 1.20.3: match reduced-N если задан
+      const skuN = Number(kp.neutralSizeMm2) || 0;
+      const reqN = r.neutralSize || 0;
+      if (reqN > 0 && skuN !== reqN) return false;
+      if (reqN === 0 && skuN > 0 && skuN < Number(kp.sizeMm2)) return false;
+      return true;
     });
     let unitPrice = null, currency = null, totalPrice = null, skuId = null;
     if (skuMatch) {
@@ -665,16 +688,17 @@ function sectionCableBom() {
     : ['Марка кабеля', 'Число жил × сечение', 'Материал / изоляция', 'Линий', 'Общая длина, м', 'С запасом 10%, м'];
   const fmtMoney = (v, cur) => v == null ? '—' : Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + (cur ? ' ' + cur : '');
   const tableRows = pricedRows.map(r => {
+    const sizeCell = r.specLabel || `${r.cores}×${r.size} мм²`;
     if (hasPrices) {
       return [
-        r.mark, `${r.cores}×${r.size} мм²`, `${r.material}/${r.insulation}`,
+        r.mark, sizeCell, `${r.material}/${r.insulation}`,
         String(r.lines), fmt(r.totalM), fmt(r.totalM * 1.1),
         fmtMoney(r.unitPrice, r.currency),
         fmtMoney(r.totalPrice, r.currency),
       ];
     }
     return [
-      r.mark, `${r.cores}×${r.size} мм²`, `${r.material}/${r.insulation}`,
+      r.mark, sizeCell, `${r.material}/${r.insulation}`,
       String(r.lines), fmt(r.totalM), fmt(r.totalM * 1.1),
     ];
   });

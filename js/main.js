@@ -1614,6 +1614,7 @@ async function exportReportSection(sec, kind) {
 let _cableTableFilters = {
   search: '', class: '',
   mark: '', method: '', conductor: '',
+  parallel: null,            // Phase 1.20.3: отдельный фильтр по числу параллельных линий
   lengthMin: null, lengthMax: null,
   imaxMin: null, imaxMax: null,
   label: '', fromTo: '',
@@ -1740,13 +1741,18 @@ function renderCableTable() {
       if (method !== fMethod) return false;
     }
     if (fCond) {
-      const parallel = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      const parStr = parallel > 1 ? `${parallel}×` : '';
+      const size = c._cableSize || '?';
+      const n = Number(c._neutralSizeMm2) || 0;
       const spec = (c._busbarNom
         ? `шинопровод ${c._busbarNom} А`
-        : `${parStr}${cores}×${c._cableSize || '?'} мм²`).toLowerCase();
+        : (n > 0 && n < Number(size))
+          ? `${cores - 1}×${size} + 1×${n} мм²`
+          : `${cores}×${size} мм²`).toLowerCase();
       if (spec !== fCond) return false;
+    }
+    if (F.parallel != null) {
+      if (Math.max(1, Number(c._cableParallel) || 1) !== F.parallel) return false;
     }
     const L = Number(c.lengthM) || 0;
     if (F.lengthMin != null && L < F.lengthMin) return false;
@@ -1765,7 +1771,8 @@ function renderCableTable() {
   // по filtered — чтобы выбор в dropdown'е не «пропадал» после других
   // фильтров и можно было расширить выборку обратно).
   const distinctMarks = new Set();
-  const distinctConductors = new Set();
+  const distinctConductors = new Set();   // только {cores × size}, без parallel
+  const distinctParallels = new Set();    // количество проводников/линий
   const distinctMethods = new Set();
   for (const c of conns) {
     if (c.cableMark) {
@@ -1777,11 +1784,16 @@ function renderCableTable() {
     if (c._busbarNom) {
       distinctConductors.add(`шинопровод ${c._busbarNom} А`);
     } else {
-      const parallel = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      const parStr = parallel > 1 ? `${parallel}×` : '';
-      distinctConductors.add(`${parStr}${cores}×${c._cableSize || '?'} мм²`);
+      const size = c._cableSize || '?';
+      // Phase 1.20.3: reduced-neutral нотация «3×95 + 1×50» когда N меньше L
+      const n = Number(c._neutralSizeMm2) || 0;
+      const spec = (n > 0 && n < Number(size))
+        ? `${cores - 1}×${size} + 1×${n} мм²`
+        : `${cores}×${size} мм²`;
+      distinctConductors.add(spec);
     }
+    distinctParallels.add(Math.max(1, Number(c._cableParallel) || 1));
     const m = c._cableMethod || c.installMethod;
     if (m) distinctMethods.add(m);
   }
@@ -1795,6 +1807,7 @@ function renderCableTable() {
     const [a1, a2, a3] = parse(a), [b1, b2, b3] = parse(b);
     return a3 - b3 || a1 - b1 || a2 - b2;
   });
+  const sortedParallels = [...distinctParallels].sort((a, b) => a - b);
   const sortedMethods = [...distinctMethods].sort();
 
   const countEl = document.getElementById('cable-table-count');
@@ -1856,6 +1869,7 @@ function renderCableTable() {
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Откуда → Куда</th>
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:200px">Марка кабеля</th>
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Проводник</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de" title="Параллельные проводники (линий)">Линий</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de">Длина, м</th>
           <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:150px">Способ прокладки</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de">Imax / Iдоп</th>
@@ -1875,6 +1889,12 @@ function renderCableTable() {
             <select class="ct-flt" data-flt="conductor" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
               <option value="">— все проводники —</option>
               ${sortedConductors.map(v => `<option value="${esc(v)}" ${F.conductor === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+            </select>
+          </th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ct-flt" data-flt="parallel" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">все</option>
+              ${sortedParallels.map(v => `<option value="${v}" ${F.parallel === v ? 'selected' : ''}>${v}</option>`).join('')}
             </select>
           </th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
@@ -1927,14 +1947,20 @@ function renderCableTable() {
       methodOpts += `<option value="${esc(m.id)}"${sel}>${esc(m.label)}</option>`;
     }
 
+    // Phase 1.20.3: «Проводник» = только сечение жил, количество параллельных
+    // проводников вынесено в отдельный столбец «Линий». Поддержка reduced-N
+    // сечения («3×95 + 1×50 мм²») через conn._neutralSizeMm2.
+    const parallelN = Math.max(1, Number(c._cableParallel) || 1);
     let conductorSpec;
     if (c._busbarNom) {
       conductorSpec = `шинопр. ${c._busbarNom} А`;
     } else {
-      const parallel = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      const parStr = parallel > 1 ? `${parallel}×` : '';
-      conductorSpec = `${parStr}${cores}×${c._cableSize} мм²`;
+      const size = c._cableSize || '?';
+      const nSize = Number(c._neutralSizeMm2) || 0;
+      conductorSpec = (nSize > 0 && nSize < Number(size))
+        ? `${cores - 1}×${size} + 1×${nSize} мм²`
+        : `${cores}×${size} мм²`;
     }
 
     const lengthVal = c.lengthM != null ? c.lengthM : '';
@@ -1954,6 +1980,7 @@ function renderCableTable() {
           <select class="ct-mark" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${markOpts}</select>
         </td>
         <td style="padding:5px 8px;font-size:11px">${esc(conductorSpec)}</td>
+        <td style="padding:5px 8px;text-align:right;font-size:11px;${parallelN > 1 ? 'color:#1976d2;font-weight:600' : 'color:#999'}">${parallelN}</td>
         <td style="padding:5px 8px;text-align:right">
           <input class="ct-length" data-id="${esc(c.id)}" type="number" min="0" step="0.5" value="${lengthVal}" style="width:70px;padding:3px 6px;text-align:right">
         </td>
@@ -1967,7 +1994,7 @@ function renderCableTable() {
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="9" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
+    html.push('<tr><td colspan="10" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -2018,6 +2045,7 @@ function renderCableTable() {
       const k = inp.dataset.flt;
       let v = inp.value;
       if (isNumber) v = (v === '' ? null : Number(v));
+      else if (k === 'parallel') v = (v === '' ? null : Number(v));
       else v = v.toLowerCase();
       _cableTableFilters[k] = v;
       renderCableTable();
@@ -2054,6 +2082,7 @@ function renderCableTable() {
     _cableTableFilters = {
       search: '', class: '',
       mark: '', method: '', conductor: '',
+      parallel: null,
       lengthMin: null, lengthMax: null,
       imaxMin: null, imaxMax: null,
       label: '', fromTo: '',

@@ -241,12 +241,20 @@ export function createCableSkuElement(patch = {}) {
   const p = patch || {};
   const cores = Number(p.cores) || 3;
   const sizeMm2 = Number(p.sizeMm2) || 1.5;
+  const nSize = Number(p.neutralSizeMm2) || 0;
+  const nCores = Number(p.neutralCores) || (nSize > 0 ? 1 : 0);
   const cableTypeId = p.cableTypeId || '';
-  // id вида "vvgng-ls-3x2.5" если есть cableTypeId
+  // Phase 1.20.3: id и label с учётом reduced-N «4×95 + 1×50»
+  const reducedN = nSize > 0 && nSize < sizeMm2 && nCores > 0;
+  const sizeLabel = reducedN
+    ? `${cores - nCores}×${sizeMm2} + ${nCores}×${nSize} мм²`
+    : `${cores}×${sizeMm2} мм²`;
+  const idSize = reducedN
+    ? `${cores - nCores}x${sizeMm2}+${nCores}x${nSize}`
+    : `${cores}x${sizeMm2}`;
   const autoId = cableTypeId
-    ? `${cableTypeId}-${cores}x${sizeMm2}`.toLowerCase().replace(/[^a-z0-9.x-]+/g, '-')
-    : makeElementId('cable-sku', [p.manufacturer, String(cores) + 'x' + String(sizeMm2)]);
-  const sizeLabel = `${cores}×${sizeMm2} мм²`;
+    ? `${cableTypeId}-${idSize}`.toLowerCase().replace(/[^a-z0-9.x+-]+/g, '-')
+    : makeElementId('cable-sku', [p.manufacturer, idSize]);
   return {
     id: p.id || autoId,
     kind: 'cable-sku',
@@ -267,8 +275,15 @@ export function createCableSkuElement(patch = {}) {
     composition: [],
     kindProps: {
       cableTypeId,                 // ссылка на cable-type
-      cores,                       // 1/2/3/4/5/… жил
-      sizeMm2,                     // сечение основной жилы, мм²
+      cores,                       // общее число жил 1/2/3/4/5/…
+      sizeMm2,                     // сечение основных (фазных) жил, мм²
+      // Phase 1.20.3: reduced-neutral кабели (ГОСТ / IEC 60502): сечение
+      // нулевой / PE-жилы может быть меньше фазной. Примеры нотации:
+      //   «4×95 + 1×50» → cores=5, sizeMm2=95, neutralSizeMm2=50, neutralCores=1
+      //   «3×185 + 1×95» → cores=4, sizeMm2=185, neutralSizeMm2=95, neutralCores=1
+      // Если neutralSizeMm2 == null или >= sizeMm2, кабель симметричный.
+      neutralSizeMm2: Number(p.neutralSizeMm2) || null,
+      neutralCores: Number(p.neutralCores) || (p.neutralSizeMm2 ? 1 : 0),
       hasN: p.hasN == null ? (cores >= 3) : !!p.hasN,
       hasPE: !!p.hasPE,
       insulationColor: p.insulationColor || null,
