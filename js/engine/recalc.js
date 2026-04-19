@@ -33,6 +33,9 @@ function simpleDownstream(nodeId) {
         const capKw = Number(to.capacityKw) || 0;
         const down = walk(to.id);
         total += Math.min(capKw, down);
+      } else if (to.type === 'generator' && to.auxInput && c.to.port === 0) {
+        // auxInput ДГУ — только собственные нужды
+        total += Number(to.auxDemandKw) || 0;
       } else if (to.type === 'panel' || to.type === 'channel') {
         // БЕЗ share — считаем полную нагрузку
         total += walk(to.id);
@@ -270,6 +273,16 @@ function downstreamPQ(nodeId) {
         Q += p * tan;
       } else if (to.type === 'panel' || to.type === 'channel') {
         stack.push(to.id);
+      } else if (to.type === 'generator' && to.auxInput && c.to.port === 0) {
+        // auxInput ДГУ — учитываем только собственные нужды как consumer
+        const auxKw = Number(to.auxDemandKw) || 0;
+        if (auxKw > 0) {
+          const cos = Math.max(0.1, Math.min(1, Number(to.auxCosPhi) || 0.85));
+          const tan = Math.sqrt(1 - cos * cos) / cos;
+          P += auxKw;
+          Q += auxKw * tan;
+        }
+        // НЕ добавляем ДГУ в stack — его downstream питается сам
       } else if (to.type === 'ups') {
         // ИБП: считаем его downstream отдельно и смотрим, в каком он режиме.
         // При работе через инвертор (не на байпасе) cos φ = 1 → Q сбрасывается.
@@ -1748,6 +1761,16 @@ function recalc() {
                 sEff += Math.max(0.01, (Number(to.efficiency)||100)/100);
                 chKw += upsChargeKw(to); uCnt++;
                 scWalk(to.id, new Set(path), true);
+              } else if (to.type === 'generator' && to.auxInput && c.to.port === 0) {
+                // ФИКС: auxInput ДГУ — питает только его собственные нужды
+                // (auxDemandKw). Не обходим downstream генератора (он сам
+                // генерирует свою выходную мощность из топлива).
+                if (visitedC.has(to.id)) continue; visitedC.add(to.id);
+                const auxKw = Number(to.auxDemandKw) || 0;
+                if (auxKw > 0) {
+                  if (thruUps) uKw += auxKw; else dKw += auxKw;
+                }
+                // НЕ вызываем scWalk — обход останавливается
               } else { scWalk(to.id, new Set(path), thruUps); }
             }
           }

@@ -35,6 +35,75 @@ export function openPanelParamsModal(n) {
   }
   h.push(field('Имя', `<input type="text" id="pp-name" value="${escAttr(n.name || '')}">`));
 
+  // === MV-switchgear (Фаза 1.19): если щит помечен isMv — специальный блок ===
+  if (n.isMv || n.mvSwitchgearId) {
+    h.push('<h4 style="margin:14px 0 6px;color:#c67300">⚡ Устройство СН (RM6 / FafeRing / ЩО-70)</h4>');
+    // Выбор модели из element-library kind='mv-switchgear'
+    (async () => {
+      try {
+        const lib = await import('../../../shared/element-library.js');
+        const mvList = lib.listElements({ kind: 'mv-switchgear' });
+        const mount = document.getElementById('pp-mv-select-mount');
+        if (!mount || !mvList.length) return;
+        const opts = ['<option value="">— не выбрано —</option>'];
+        for (const el of mvList) {
+          const sel = el.id === n.mvSwitchgearId ? ' selected' : '';
+          opts.push(`<option value="${el.id}"${sel}>${escHtml(el.label || el.id)}</option>`);
+        }
+        mount.innerHTML = `<select id="pp-mv-select" style="width:100%;padding:5px 8px">${opts.join('')}</select>`;
+        document.getElementById('pp-mv-select').addEventListener('change', (e) => {
+          const newId = e.target.value;
+          snapshot('mvSwitchgear:' + n.id);
+          n.mvSwitchgearId = newId || null;
+          // Применяем параметры выбранной модели
+          if (newId) {
+            const sel = lib.getElement(newId);
+            if (sel) {
+              const kp = sel.kindProps || {};
+              if (kp.In_A) n.capacityA = kp.In_A;
+              if (kp.IP) n.ipRating = kp.IP;
+              if (Array.isArray(kp.cells)) {
+                const infeeds = kp.cells.filter(c => c.type === 'infeed' || c.type === 'busCoupler').length;
+                const feeders = kp.cells.filter(c => c.type === 'feeder' || c.type === 'transformer-protect').length;
+                if (infeeds > 0) n.inputs = Math.max(1, infeeds);
+                if (feeders > 0) n.outputs = Math.max(1, feeders);
+                if (!Array.isArray(n.priorities) || n.priorities.length !== n.inputs) {
+                  n.priorities = Array.from({ length: n.inputs }, (_, i) => i + 1);
+                }
+              }
+            }
+          }
+          render(); notifyChange(); renderInspector();
+        });
+      } catch (e) { console.warn('[panel-inspector] mv lib', e); }
+    })();
+    h.push(`<div id="pp-mv-select-mount" style="margin-bottom:6px">Загрузка справочника…</div>`);
+    h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">РУ среднего напряжения (6-35 кВ): моноблоки SF6 (RM6/FafeRing) или сборные (ЩО-70). Конфигуратор с wizard — в <a href="mv-config/" target="_blank" style="color:#1976d2">«Конфигураторе MV»</a> (в разработке, Фаза 1.19.1).</div>`);
+
+    if (n.mvSwitchgearId) {
+      // Покажем информацию о выбранной модели
+      h.push(`<div id="pp-mv-info" class="muted" style="font-size:11px;padding:6px 10px;background:#fff4e5;border-radius:4px;margin-bottom:8px">
+        Загрузка параметров модели…
+      </div>`);
+      (async () => {
+        try {
+          const lib = await import('../../../shared/element-library.js');
+          const el = lib.getElement(n.mvSwitchgearId);
+          const info = document.getElementById('pp-mv-info');
+          if (!el || !info) return;
+          const kp = el.kindProps || {};
+          const cellsHtml = Array.isArray(kp.cells) && kp.cells.length
+            ? '<br>Ячейки: ' + kp.cells.map(c => `<b>${c.type}</b>${c.breakerType ? ` (${c.breakerType})` : ''}`).join(', ')
+            : '';
+          info.innerHTML = `
+            <b>${escHtml(el.label)}</b><br>
+            ${kp.mvType || '—'} · ${kp.Un_kV || '?'} кВ · ${kp.In_A || '?'} А · Icu ${kp.It_kA || '?'} кА · ${kp.insulation || '?'}${kp.arcProof ? ' · arc-proof' : ''}${cellsHtml}
+          `;
+        } catch (e) { /* silent */ }
+      })();
+    }
+  }
+
   // === Модель из справочника щитов (shared/panel-catalog + panel-picker) ===
   // Тот же каскадный пикер, что и в подпрограмме panel-config/. При
   // выборе модели её паспортные параметры (inNominal, inputs, outputs,

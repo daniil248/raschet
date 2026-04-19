@@ -102,6 +102,79 @@ const PRESETS = [
     params: { name: 'ЩК', inputs: 1, outputs: 6, priorities: [1], switchMode: 'auto' },
   },
 
+  // -------- Среднее напряжение (6-35 кВ) — Фаза 1.19 --------
+  // Используется тот же тип 'panel', но с флагом mvSwitchgearId (ссылка на
+  // builtin-элемент из element-library) и voltageLevelIdx=3 (10 кВ) — чтобы
+  // conn._isHV проставлялся recalc'ом и подхватывался фильтр ВН-кабелей.
+  {
+    id: 'mv-rm6-iii',
+    category: 'Среднее напряжение',
+    title: 'RM6 III · ввод+ввод+защита ТП',
+    description: 'Schneider RM6 (24 кВ SF6), 2 ввода + защита трансформатора, 630 А',
+    type: 'panel',
+    params: {
+      name: 'RM6', inputs: 2, outputs: 1,
+      priorities: [1, 2], switchMode: 'auto',
+      voltageLevelIdx: 3, // 10 kV по умолчанию (HV)
+      capacityA: 630,
+      ipRating: 'IP67',
+      mvSwitchgearId: 'schneider-rm6-iii',
+      isMv: true,
+    },
+  },
+  {
+    id: 'mv-rm6-iidi',
+    category: 'Среднее напряжение',
+    title: 'RM6 IIDI · 2 ввода + 2 защиты',
+    description: 'Schneider RM6 для ТП с двумя трансформаторами',
+    type: 'panel',
+    params: {
+      name: 'RM6', inputs: 2, outputs: 2,
+      priorities: [1, 2], switchMode: 'auto',
+      voltageLevelIdx: 3, capacityA: 630, ipRating: 'IP67',
+      mvSwitchgearId: 'schneider-rm6-iidi', isMv: true,
+    },
+  },
+  {
+    id: 'mv-fafering-ccf',
+    category: 'Среднее напряжение',
+    title: 'FafeRing CCF · ввод+ввод+защита',
+    description: 'Компактное РУ 12 кВ, аналог RM6 (Китай)',
+    type: 'panel',
+    params: {
+      name: 'FafeRing', inputs: 2, outputs: 1,
+      priorities: [1, 2], switchMode: 'auto',
+      voltageLevelIdx: 3, capacityA: 630, ipRating: 'IP67',
+      mvSwitchgearId: 'fafering-ccf', isMv: true,
+    },
+  },
+  {
+    id: 'mv-sho70-typical',
+    category: 'Среднее напряжение',
+    title: 'ЩО-70 · типовая 6 ячеек (ТП 2×1000)',
+    description: 'Сборное РУ 10 кВ: 2 ввода + ССВ + 2 отх + ТН',
+    type: 'panel',
+    params: {
+      name: 'ЩО-70', inputs: 2, outputs: 2,
+      priorities: [1, 2], switchMode: 'auto',
+      voltageLevelIdx: 3, capacityA: 630, ipRating: 'IP31',
+      mvSwitchgearId: 'sho70-typical-6cells', isMv: true,
+    },
+  },
+  {
+    id: 'mv-empty',
+    category: 'Среднее напряжение',
+    title: 'Произвольное РУ СН',
+    description: 'Пустое РУ СН — выбор модели в инспекторе или конфигурирование через wizard (планируется Фаза 1.19.1)',
+    type: 'panel',
+    params: {
+      name: 'РУ СН', inputs: 1, outputs: 2,
+      priorities: [1], switchMode: 'auto',
+      voltageLevelIdx: 3, capacityA: 630,
+      isMv: true,
+    },
+  },
+
   // -------- ИБП --------
   {
     id: 'ups-3k',
