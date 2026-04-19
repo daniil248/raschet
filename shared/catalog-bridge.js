@@ -33,6 +33,15 @@ async function _loadPanels() {
   } catch (e) { console.warn('[catalog-bridge] panels', e.message); return []; }
 }
 
+// Breaker-seed (Фаза 1.10): базовые MCB + MCCB, зарегистрированы как builtin.
+// Без legacy-каталога — сразу из breaker-seed.js.
+async function _loadBreakers() {
+  try {
+    const m = await import('./breaker-seed.js');
+    return m.listBuiltinBreakers ? m.listBuiltinBreakers() : [];
+  } catch (e) { console.warn('[catalog-bridge] breakers', e.message); return []; }
+}
+
 async function _loadUpses() {
   try {
     const m = await import('./ups-catalog.js');
@@ -77,18 +86,19 @@ async function _loadCableTypes() {
  * Возвращает Promise<{ panels, ups, batteries, transformers, cableTypes, total }>
  */
 export async function syncLegacyToLibrary() {
-  const [panels, upses, batteries, transformers, cableTypes] = await Promise.all([
+  const [panels, upses, batteries, transformers, cableTypes, breakers] = await Promise.all([
     _loadPanels(),
     _loadUpses(),
     _loadBatteries(),
     _loadTransformers(),
     _loadCableTypes(),
+    _loadBreakers(),
   ]);
 
   // Очистим предыдущие builtin (перерегистрируем актуальные)
   clearBuiltins();
 
-  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes];
+  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers];
   registerBuiltins(all);
 
   return {
@@ -97,6 +107,7 @@ export async function syncLegacyToLibrary() {
     batteries: batteries.length,
     transformers: transformers.length,
     cableTypes: cableTypes.length,
+    breakers: breakers.length,
     total: all.length,
   };
 }

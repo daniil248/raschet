@@ -16,6 +16,7 @@ import {
   ELEMENT_KINDS, isPricableKind,
 } from '../shared/element-library.js';
 import { createCableSkuElement } from '../shared/element-schemas.js';
+import { tccBreakerTime, tccSamplePoints } from '../shared/tcc-curves.js';
 import {
   listPrices, getPrice, savePrice, removePrice, pricesForElement,
   bulkAddPrices, exportPricesJSON, importPricesJSON, onPricesChange,
@@ -157,6 +158,7 @@ function renderElementsTab() {
             : (el.kind === 'cable-type'
                 ? '<button data-act="add-sku" title="Создать типоразмер (SKU) для этой линейки кабеля">+ SKU</button>'
                 : '<button disabled title="' + (ELEMENT_KINDS[el.kind]?.note || 'Цена не применима к этому типу') + '">нет цены</button>')}
+          ${el.kind === 'breaker' ? '<button data-act="breaker-details" title="Параметры автомата + TCC">⚙ Параметры</button>' : ''}
           <button data-act="view-prices">Цены</button>
           ${!el.builtin ? '<button data-act="edit">✎</button>' : ''}
           <button data-act="clone">Клон</button>
@@ -185,6 +187,7 @@ function renderElementsTab() {
         const act = btn.dataset.act;
         if (act === 'add-price') openPriceModal({ elementId: id });
         else if (act === 'add-sku') openCableSkuModal(id);
+        else if (act === 'breaker-details') openBreakerDetailsModal(id);
         else if (act === 'view-prices') { elFilters.search = ''; switchTab('prices'); priceFilters.elementId = id; renderPricesTab(); }
         else if (act === 'edit') openAddElementModal(id);
         else if (act === 'clone') {
@@ -229,6 +232,146 @@ function openAddElementModal(editId) {
     });
     flash('Сохранено', 'success');
   });
+}
+
+// ====================== Параметры автомата (Фаза 1.10) ======================
+// Модалка детального просмотра и редактирования BreakerElement:
+// - паспорт (In, Icu, поляса, curve, type)
+// - settings для электронных расцепителей (Ir/Isd/tsd/Ii)
+// - мини-график TCC в SVG
+
+function openBreakerDetailsModal(id) {
+  const el = getElement(id);
+  if (!el || el.kind !== 'breaker') return flash('Автомат не найден', 'error');
+  const kp = el.kindProps || {};
+  const builtin = !!el.builtin;
+  const svg = _renderTccMiniSvg(kp);
+
+  // Базовая карточка — только чтение для builtin, иначе редактируемые поля
+  const readonlyAttr = builtin ? ' readonly disabled' : '';
+  const ro = builtin; // короче
+
+  const settingsBlock = (kp.adjustable && kp.settings)
+    ? `<h4 style="margin:12px 0 6px;font-size:13px">Настройки электронного расцепителя (LSI)</h4>
+       <div style="background:#f6f8fa;padding:10px;border-radius:4px;font-size:12px">
+         ${_breakerSettingRow('Ir (долгая уставка)',    kp.settings.Ir,  ro, id)}
+         ${_breakerSettingRow('Isd (короткая уставка)', kp.settings.Isd, ro, id)}
+         ${_breakerSettingRow('tsd (задержка Isd)',     kp.settings.tsd, ro, id)}
+         ${_breakerSettingRow('Ii (мгновенная уставка)',kp.settings.Ii,  ro, id)}
+         <div class="muted" style="font-size:11px;margin-top:8px">
+           Ir × I<sub>n</sub> — тепловой расцепитель (длительная защита)<br>
+           Isd — короткая (селективность), tsd — её задержка<br>
+           Ii — мгновенный (мгн. отключение при КЗ)
+         </div>
+       </div>`
+    : '';
+
+  const html = `
+    <div style="background:#f0f4ff;padding:10px;border-radius:4px;margin-bottom:12px;font-size:13px">
+      <b>${esc(el.label)}</b>${builtin ? ' <span class="badge builtin">builtin</span>' : ''}<br>
+      <span class="muted" style="font-size:11px">${esc(el.id)}</span>
+    </div>
+    <h4 style="margin:0 0 6px;font-size:13px">Паспортные параметры</h4>
+    <div class="field-row">
+      <div class="field"><label>Тип</label><input value="${esc(kp.type || 'MCB')}"${readonlyAttr}></div>
+      <div class="field"><label>Характеристика</label><input value="${esc(kp.curve || 'C')}"${readonlyAttr}></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>I<sub>n</sub>, А</label><input value="${kp.inNominal || ''}"${readonlyAttr}></div>
+      <div class="field"><label>Полюса</label><input value="${kp.poles || ''}"${readonlyAttr}></div>
+      <div class="field"><label>I<sub>cu</sub>, кА</label><input value="${kp.breakingCapacityKa || ''}"${readonlyAttr}></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Расцепитель</label><input value="${esc(kp.tripUnit || '')}"${readonlyAttr}></div>
+      <div class="field"><label>Модулей</label><input value="${kp.modules || ''}"${readonlyAttr}></div>
+    </div>
+
+    <h4 style="margin:14px 0 6px;font-size:13px">Время-токовая характеристика (TCC)</h4>
+    <div style="background:#fff;border:1px solid #e1e4e8;border-radius:4px;padding:10px;text-align:center">
+      ${svg}
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:4px">
+      Логарифмические оси: X = I/I<sub>n</sub>, Y = время, с. Диапазон 1…100×I<sub>n</sub>, 0.01…1000 с.
+      ${kp.tccCurveFormula ? 'Формула: <code>' + esc(kp.tccCurveFormula) + '</code>' : ''}
+    </div>
+
+    ${settingsBlock}
+
+    ${builtin ? '<div class="muted" style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-radius:3px">⚠ Встроенный автомат — параметры только для просмотра. Для редактирования создайте клон через кнопку «Клон».</div>' : ''}
+  `;
+
+  openModal('Параметры автомата', html, () => {
+    if (ro) return true; // builtin — просто закрыть
+    // Сохраняем изменённые settings (для user-breakers с adjustable)
+    // (пока минимально — значения settings редактируются в отдельных inputs не реализовано)
+    return true;
+  });
+}
+
+function _breakerSettingRow(label, setting, readonly, breakerId) {
+  if (!setting) return '';
+  const roAttr = readonly ? ' disabled' : '';
+  return `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+      <span style="flex:0 0 180px;color:#555">${esc(label)}</span>
+      <span style="font-family:monospace;font-size:11px;color:#999">${setting.min}…${setting.max}</span>
+      <input type="number" class="br-setting" data-br-id="${esc(breakerId)}" data-br-key="${esc(label)}"
+        value="${setting.value}" min="${setting.min}" max="${setting.max}" step="${setting.step || 1}"
+        style="flex:1;padding:3px 6px;border:1px solid #d0d7de;border-radius:3px"${roAttr}>
+    </div>`;
+}
+
+// SVG-график TCC: лог-лог оси, кривая автомата
+function _renderTccMiniSvg(kp) {
+  const W = 360, H = 240, padL = 35, padR = 10, padT = 10, padB = 28;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  // Оси: X 1…100 (log), Y 0.01…1000 (log)
+  const xMin = 1, xMax = 100;
+  const yMin = 0.01, yMax = 1000;
+  const lxMin = Math.log10(xMin), lxMax = Math.log10(xMax);
+  const lyMin = Math.log10(yMin), lyMax = Math.log10(yMax);
+  const toX = v => padL + ((Math.log10(v) - lxMin) / (lxMax - lxMin)) * plotW;
+  const toY = v => padT + plotH - ((Math.log10(v) - lyMin) / (lyMax - lyMin)) * plotH;
+
+  const curve = kp.curve || 'C';
+  // Точки кривой
+  const pts = [];
+  const xs = [];
+  for (let lx = lxMin; lx <= lxMax; lx += 0.02) xs.push(Math.pow(10, lx));
+  for (const x of xs) {
+    const { t_sec } = tccBreakerTime(x, curve);
+    if (Number.isFinite(t_sec) && t_sec >= yMin && t_sec <= yMax) {
+      pts.push([toX(x), toY(t_sec)]);
+    }
+  }
+  const pathD = pts.length ? 'M ' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L ') : '';
+
+  // Сетка
+  const gridX = [];
+  for (let lx = 0; lx <= 2; lx++) {
+    const x = Math.pow(10, lx);
+    gridX.push(`<line x1="${toX(x)}" y1="${padT}" x2="${toX(x)}" y2="${padT + plotH}" stroke="#e1e4e8" stroke-width="0.5"/>`);
+    gridX.push(`<text x="${toX(x)}" y="${H - 10}" font-size="9" fill="#888" text-anchor="middle">${x}</text>`);
+  }
+  const gridY = [];
+  for (let ly = lyMin; ly <= lyMax; ly++) {
+    const y = Math.pow(10, ly);
+    gridY.push(`<line x1="${padL}" y1="${toY(y)}" x2="${padL + plotW}" y2="${toY(y)}" stroke="#e1e4e8" stroke-width="0.5"/>`);
+    const lbl = y >= 1 ? String(y) : (y === 0.01 ? '0.01' : (y === 0.1 ? '0.1' : y.toString()));
+    gridY.push(`<text x="${padL - 4}" y="${toY(y) + 3}" font-size="9" fill="#888" text-anchor="end">${lbl}</text>`);
+  }
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="max-width:100%">
+    <rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="#fafbfc" stroke="#d0d7de"/>
+    ${gridX.join('')}
+    ${gridY.join('')}
+    <text x="${padL + plotW / 2}" y="${H - 1}" font-size="9" fill="#555" text-anchor="middle">I / I_n</text>
+    <text x="8" y="${padT + plotH / 2}" font-size="9" fill="#555" text-anchor="middle" transform="rotate(-90 8 ${padT + plotH / 2})">t, с</text>
+    <path d="${pathD}" fill="none" stroke="#1976d2" stroke-width="2"/>
+    <text x="${padL + plotW - 50}" y="${padT + 15}" font-size="11" fill="#1976d2" font-weight="bold">MCB ${esc(curve)}</text>
+  </svg>`;
 }
 
 // ====================== Создание cable-sku ======================

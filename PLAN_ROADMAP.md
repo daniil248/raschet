@@ -494,6 +494,29 @@
 
 ## История изменений
 
+### v0.49.0 (2026-04-19, Фаза 1.10 — справочник автоматов в catalog/ + мини-TCC)
+- **shared/catalog-bridge.js:** `_loadBreakers()` + регистрация builtin breakers из `breaker-seed.js`. После init `listElements({kind:'breaker'})` возвращает ~82 автомата: MCB B/C/D (1-63A, 1P/3P) + MCCB TM/ELEC (100-1600A)
+- **catalog/catalog.js:**
+  - Import `tccBreakerTime`, `tccSamplePoints` из `shared/tcc-curves.js`
+  - На строке `kind='breaker'` кнопка «⚙ Параметры»
+  - Новая модалка `openBreakerDetailsModal(id)`:
+    - Паспорт: тип, характеристика, In, полюса, Icu, расцепитель, модулей
+    - **SVG-график TCC** (log-log оси X=I/In 1-100, Y=t 0.01-1000 с) с кривой автомата
+    - Settings-блок для электронных MCCB с Ir/Isd/tsd/Ii (read-only для builtin, редактируется у клонов)
+    - Info: builtin нельзя редактировать → кнопка «Клон» делает user-копию с возможностью правки
+  - `_renderTccMiniSvg()` — 360×240 SVG с сеткой, осями, кривой по tccBreakerTime
+- **js/engine/report-sections.js:** добавлена метка для `cable-sku` в KIND_LABELS отчёта BOM
+- **Эффект для пользователя:**
+  - В каталоге (вкладка Элементы + filter kind=breaker) — 82 готовых автомата с TCC
+  - Клик «⚙ Параметры» — визуальная кривая отключения для понимания работы защиты
+  - Подготовка к Фазам 1.8/1.9 (селективность, цепочка TCC)
+- **APP_VERSION = '0.49.0'**
+- **Файлы:**
+  - `shared/catalog-bridge.js` (+10 строк _loadBreakers + в syncLegacyToLibrary)
+  - `catalog/catalog.js` (+120 строк openBreakerDetailsModal + _renderTccMiniSvg)
+  - `js/engine/report-sections.js` (+1 строка KIND_LABELS)
+  - `js/engine/constants.js` APP_VERSION = '0.49.0'
+
 ### v0.48.1 (2026-04-19, ФИКС: завышенное сечение по термической стойкости)
 - **Баг пользователя:** «Для нагрузки 2.72 А освещения MCB B 6A выдаётся 16 мм² — никто не ставит лампочки на 16 мм²»
 - **Причина в `shared/calc-modules/short-circuit.js`:**

@@ -828,6 +828,7 @@ function sectionBom() {
     climate: 'Климатическое оборудование',
     'consumer-type': 'Потребители',
     'cable-type': 'Типы кабелей',
+    'cable-sku': 'Кабели (типоразмеры)',
     channel: 'Кабельные трассы',
     custom: 'Прочее',
     other: 'Прочее',
