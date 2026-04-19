@@ -131,7 +131,7 @@ export function openPanelParamsModal(n) {
       </div>`);
     }
     if (n.mvSwitchgearId) {
-      // Покажем информацию о выбранной модели
+      // Параметры модели
       h.push(`<div id="pp-mv-info" class="muted" style="font-size:11px;padding:6px 10px;background:#fff4e5;border-radius:4px;margin-bottom:8px">
         Загрузка параметров модели…
       </div>`);
@@ -142,15 +142,51 @@ export function openPanelParamsModal(n) {
           const info = document.getElementById('pp-mv-info');
           if (!el || !info) return;
           const kp = el.kindProps || {};
-          const cellsHtml = Array.isArray(kp.cells) && kp.cells.length
-            ? '<br>Ячейки: ' + kp.cells.map(c => `<b>${c.type}</b>${c.breakerType ? ` (${c.breakerType})` : ''}`).join(', ')
-            : '';
           info.innerHTML = `
             <b>${escHtml(el.label)}</b><br>
-            ${kp.mvType || '—'} · ${kp.Un_kV || '?'} кВ · ${kp.In_A || '?'} А · Icu ${kp.It_kA || '?'} кА · ${kp.insulation || '?'}${kp.arcProof ? ' · arc-proof' : ''}${cellsHtml}
+            ${kp.mvType || '—'} · ${kp.Un_kV || '?'} кВ · ${kp.In_A || '?'} А · Icu ${kp.It_kA || '?'} кА · ${kp.insulation || '?'}${kp.arcProof ? ' · arc-proof' : ''}
           `;
         } catch (e) { /* silent */ }
       })();
+
+      // Проектный состав ячеек (n.mvCells). После конфигуратора может
+      // отличаться от шаблона в element-library.
+      if (Array.isArray(n.mvCells) && n.mvCells.length) {
+        h.push('<h4 style="margin:10px 0 6px;font-size:12px;color:#c67300">Ячейки щита (проект)</h4>');
+        h.push('<div class="mv-cells-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">');
+        const CELL_ICONS = {
+          'infeed': '⬇',
+          'feeder': '⬆',
+          'transformer-protect': '⚙',
+          'busCoupler': '⇄',
+          'measurement': '📊',
+          'earthing': '⏚',
+          'metering': '📟',
+        };
+        const CELL_LABELS = {
+          'infeed': 'Ввод',
+          'feeder': 'Отходящая',
+          'transformer-protect': 'Защита ТР',
+          'busCoupler': 'Секционная',
+          'measurement': 'Измерение',
+          'earthing': 'Заземление',
+          'metering': 'Учёт',
+        };
+        n.mvCells.forEach((cell, i) => {
+          const icon = CELL_ICONS[cell.type] || '▪';
+          const label = CELL_LABELS[cell.type] || cell.type || '?';
+          const In = cell.In_A || cell.In || 0;
+          const brk = cell.breakerType || '—';
+          const func = cell.functionCode ? `<b style="color:#c67300">${escHtml(cell.functionCode)}</b> ` : '';
+          const desc = cell.functionDesc ? `<span class="muted" style="font-size:10px">${escHtml(cell.functionDesc)}</span>` : '';
+          h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fffbf5;border:1px solid #f0cea0;border-radius:4px;font-size:12px">
+            <span style="font-size:16px">${icon}</span>
+            <span style="flex:1">${func}<b>${escHtml(label)}</b> · ${In} А · ${escHtml(brk)}${desc ? '<br>' + desc : ''}</span>
+            <span class="muted" style="font-size:10px">#${i + 1}</span>
+          </div>`);
+        });
+        h.push('</div>');
+      }
     }
   }
 
