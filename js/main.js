@@ -3297,7 +3297,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ================= Таблица потребителей (Phase 1.20.14) =================
-let _consumersTableFilters = { search: '', phase: '', category: '' };
+let _consumersTableFilters = { search: '', phase: '', category: '', parent: '' };
 let _consumersTableSelected = new Set();
 let _consumersTableSort = { col: 'tag', dir: 'asc' };
 
@@ -3341,6 +3341,21 @@ function renderConsumersTable() {
     process: 'Технологическая', other: 'Прочее',
   };
 
+  // Phase 1.20.24: parent-panel map + distinct-значения для фильтра
+  const parentPanelById0 = new Map();
+  const distinctParents = new Set();
+  for (const n of consumers) {
+    let parent = null;
+    for (const c of S.conns.values()) {
+      if (c.to?.nodeId === n.id) {
+        const from = S.nodes.get(c.from?.nodeId);
+        if (from && (from.type === 'panel' || from.type === 'ups')) { parent = from; break; }
+      }
+    }
+    parentPanelById0.set(n.id, parent);
+    if (parent) distinctParents.add(_effectiveTag(parent) || parent.tag || parent.name || '?');
+  }
+
   const F = _consumersTableFilters;
   const q = (F.search || '').toLowerCase();
   const filtered = consumers.filter(n => {
@@ -3349,9 +3364,17 @@ function renderConsumersTable() {
       const cat = catalogById.get(n.consumerCatalogId)?.category || 'other';
       if (cat !== F.category) return false;
     }
+    if (F.parent) {
+      const p = parentPanelById0.get(n.id);
+      const pTag = p ? (_effectiveTag(p) || p.tag || p.name || '') : '';
+      if (pTag !== F.parent) return false;
+    }
     if (q) {
       const catLabel = catalogById.get(n.consumerCatalogId)?.label || '';
-      const hay = [n.tag, n.name, catLabel, n.phase].filter(Boolean).join(' ').toLowerCase();
+      const pTag = parentPanelById0.get(n.id)
+        ? (_effectiveTag(parentPanelById0.get(n.id)) || '')
+        : '';
+      const hay = [n.tag, n.name, catLabel, n.phase, pTag].filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -3360,12 +3383,17 @@ function renderConsumersTable() {
     if (!filtered.find(n => n.id === id)) _consumersTableSelected.delete(id);
   }
 
+  const parentPanelById = parentPanelById0; // alias для нижних обращений
   const sortDir = _consumersTableSort.dir === 'desc' ? -1 : 1;
   const sortKey = (n) => {
     switch (_consumersTableSort.col) {
       case 'tag': return (n.tag || n.name || '').toLowerCase();
       case 'name': return (n.name || '').toLowerCase();
       case 'category': return (catalogById.get(n.consumerCatalogId)?.label || '').toLowerCase();
+      case 'parent': {
+        const p = parentPanelById.get(n.id);
+        return p ? (_effectiveTag(p) || p.tag || p.name || '').toLowerCase() : '~';
+      }
       case 'demand': return Number(n.demandKw) || 0;
       case 'count': return Number(n.count) || 1;
       case 'cosPhi': return Number(n.cosPhi) || 0;
@@ -3415,6 +3443,7 @@ function renderConsumersTable() {
           </th>
           ${sortHdr('tag', 'Обозн.', 'left')}
           ${sortHdr('name', 'Имя', 'left')}
+          ${sortHdr('parent', 'Питающий щит', 'left')}
           ${sortHdr('category', 'Категория', 'left')}
           ${sortHdr('demand', 'P, кВт', 'right')}
           ${sortHdr('count', 'Шт.', 'right')}
@@ -3425,6 +3454,12 @@ function renderConsumersTable() {
         <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1">
           <th></th>
           <th colspan="2" style="padding:3px 6px;border-bottom:1px solid #d0d7de"><span class="muted" style="font-size:10px">Поиск — в поле сверху</span></th>
+          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
+            <select class="ctc-flt" data-flt="parent" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
+              <option value="">— все щиты —</option>
+              ${[...distinctParents].sort().map(v => `<option value="${esc(v)}" ${F.parent === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+            </select>
+          </th>
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
             <select class="ctc-flt" data-flt="category" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
               <option value="">— все —</option>
@@ -3455,6 +3490,15 @@ function renderConsumersTable() {
         </td>
         <td style="padding:5px 8px"><input class="ctc-name" data-id="${esc(n.id)}" type="text" value="${esc(n.name || '')}" style="width:140px;padding:3px 6px;font-size:11px"></td>
         <td style="padding:5px 8px;font-size:11px">
+          ${(() => {
+            const p = parentPanelById.get(n.id);
+            if (!p) return '<span class="muted" style="color:#c62828;font-size:10px" title="Нет входящего питания">— orphan —</span>';
+            const pt = _effectiveTag(p) || p.tag || p.name || '?';
+            const pid = p.id;
+            return `<a href="#" class="ctc-parent-jump" data-parent-id="${esc(pid)}" style="color:#1976d2;text-decoration:none">${esc(pt)}</a>`;
+          })()}
+        </td>
+        <td style="padding:5px 8px;font-size:11px">
           <div>${esc(catLabel)}</div>
           <div class="muted" style="font-size:10px">${esc(CAT_LABELS[catCat] || catCat)}</div>
         </td>
@@ -3480,7 +3524,7 @@ function renderConsumersTable() {
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="9" style="padding:20px;text-align:center;color:#999">Нет потребителей по текущим фильтрам</td></tr>');
+    html.push('<tr><td colspan="10" style="padding:20px;text-align:center;color:#999">Нет потребителей по текущим фильтрам</td></tr>');
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -3564,9 +3608,23 @@ function renderConsumersTable() {
       closeModal('modal-consumers-table');
     });
   });
+  // Phase 1.20.24: клик по родительскому щиту тоже переходит к нему
+  mount.querySelectorAll('.ctc-parent-jump').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = a.dataset.parentId;
+      if (window.Raschet?._state) {
+        window.Raschet._state.selectedKind = 'node';
+        window.Raschet._state.selectedId = id;
+        if (typeof window.Raschet.rerender === 'function') window.Raschet.rerender();
+      }
+      closeModal('modal-consumers-table');
+    });
+  });
   const clearBtn = mount.querySelector('#ctc-clear-filters');
   if (clearBtn) clearBtn.addEventListener('click', () => {
-    _consumersTableFilters = { search: '', phase: '', category: '' };
+    _consumersTableFilters = { search: '', phase: '', category: '', parent: '' };
     const s = document.getElementById('consumers-table-search'); if (s) s.value = '';
     const p = document.getElementById('consumers-table-filter-phase'); if (p) p.value = '';
     renderConsumersTable();
@@ -3633,11 +3691,23 @@ function exportConsumersTableCsv() {
   try { catalog = window.Raschet?.getConsumerCatalog?.() || []; } catch {}
   const catalogById = new Map(catalog.map(c => [c.id, c]));
   const consumers = [...S.nodes.values()].filter(n => n.type === 'consumer');
-  const rows = [['Обозначение', 'Имя', 'Категория (тип)', 'Категория (функц.)', 'P, кВт', 'Кол-во', 'cos φ', 'Kи', 'Фаза', 'Iрасч, А']];
+  // Phase 1.20.24: включаем «Питающий щит» в экспорт
+  const rows = [['Обозначение', 'Имя', 'Питающий щит', 'Категория (тип)', 'Категория (функц.)', 'P, кВт', 'Кол-во', 'cos φ', 'Kи', 'Фаза', 'Iрасч, А']];
   for (const n of consumers) {
     const cat = catalogById.get(n.consumerCatalogId);
+    let parentTag = '';
+    for (const c of S.conns.values()) {
+      if (c.to?.nodeId === n.id) {
+        const from = S.nodes.get(c.from?.nodeId);
+        if (from && (from.type === 'panel' || from.type === 'ups')) {
+          parentTag = _effectiveTag(from) || from.tag || from.name || '';
+          break;
+        }
+      }
+    }
     rows.push([
       n.tag || '', n.name || '',
+      parentTag,
       cat?.label || '', cat?.category || '',
       n.demandKw || 0, n.count || 1,
       n.cosPhi || '', n.kUse || '',

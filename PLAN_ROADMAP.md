@@ -618,6 +618,12 @@
   Включает cable errors/warns, MV-overloads, source-overloads,
   duplicates, orphans, non-selective pairs. Для аудита и приёмки
   проекта.
+- **1.20.24 (v0.56.26)** — колонка «Питающий щит» в таблице потребителей.
+  Для каждого consumer находится первая upstream panel/ups через входящую
+  connection и показывается как ссылка (клик → переход к щиту на схеме).
+  Фильтр-select в filter-row с distinct значениями; сортировка по
+  effectiveTag щита; orphan-потребители помечаются красным «— orphan —».
+  CSV-экспорт дополнен колонкой «Питающий щит».
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 
