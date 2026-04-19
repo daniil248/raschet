@@ -3245,17 +3245,34 @@ function renderProjectIssues() {
   // Non-selective pairs
   if (selPairs.length) {
     html.push(`<h3 style="margin:16px 0 4px;font-size:13px;color:#24292e">🔶 Нарушения селективности <span class="muted" style="font-weight:400">(${selPairs.length})</span></h3>`);
-    const rows = selPairs.map(p => {
+    const rows = selPairs.map((p, idx) => {
       const nodeTag = _effectiveTag(p.node) || p.node?.name || '?';
       const up = `${p.upBreaker?.inNominal || '?'} А ${p.upBreaker?.curve || ''}`;
       const down = `${p.downBreaker?.inNominal || '?'} А ${p.downBreaker?.curve || ''}`;
       const nodeId = p.node?.id;
+      // Phase 1.20.28: автофикс амплитудной селективности — поднять In_up.
+      // Применимо только для LV-пар с заданным upstream conn.
+      let fixBtn = '';
+      if (!p.isMvCellPair && p.upstream?.id && !p.check?.selective) {
+        const upIn = Number(p.upBreaker?.inNominal) || 0;
+        const downIn = Number(p.downBreaker?.inNominal) || 0;
+        const curve = p.downBreaker?.curve;
+        const k = curve === 'B' ? 2.0 : (curve === 'C' ? 1.6 : 1.4);
+        const target = downIn * k;
+        const series = _BREAKER_SERIES;
+        let suggested = 0;
+        for (const n of series) { if (n >= target && n > upIn) { suggested = n; break; } }
+        if (suggested) {
+          fixBtn = `<button type="button" class="pi-sel-fix" data-conn-id="${esc(p.upstream.id)}" data-value="${suggested}" title="Поднять номинал upstream до ${suggested} А" style="flex:0 0 auto;padding:3px 10px;border:1px solid #4caf50;background:#fff;color:#2e7d32;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">✓ In_up = ${suggested} А</button>`;
+        }
+      }
       return `
         <div class="pi-row" data-kind="node" data-id="${esc(nodeId || '')}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eaecef;cursor:pointer" title="Клик — перейти к узлу">
           <span style="flex:0 0 220px;font-weight:600;color:#e65100">${esc(nodeTag)}${p.isMvCellPair ? ' (MV)' : ''}</span>
-          <span style="flex:0 0 180px;font-size:11px">↑ ${esc(up)}</span>
-          <span style="flex:0 0 180px;font-size:11px">↓ ${esc(down)}</span>
+          <span style="flex:0 0 160px;font-size:11px">↑ ${esc(up)}</span>
+          <span style="flex:0 0 160px;font-size:11px">↓ ${esc(down)}</span>
           <span style="flex:1;font-size:11px;color:#666">${esc(p.check?.reason || '')}</span>
+          ${fixBtn}
         </div>
       `;
     }).join('');
@@ -3294,6 +3311,23 @@ function renderProjectIssues() {
       renderProjectIssues();
     });
   }
+
+  // Phase 1.20.28: «✓ In_up = N А» — поднять номинал upstream для
+  // нарушенной амплитудной селективности
+  mount.querySelectorAll('.pi-sel-fix').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const connId = btn.dataset.connId;
+      const value = Number(btn.dataset.value);
+      const c = window.Raschet?._state?.conns?.get(connId);
+      if (!c || !value) return;
+      if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('issues:sel-fix:' + connId);
+      c.manualBreakerIn = value;
+      if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+      flash(`Поднят upstream до ${value} А`);
+      renderProjectIssues();
+    });
+  });
 
   // Phase 1.20.20: кнопки «✓ Исправить» применяют рекомендованный фикс
   mount.querySelectorAll('.pi-fix').forEach(btn => {

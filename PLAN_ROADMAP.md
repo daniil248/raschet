@@ -646,6 +646,12 @@
   применяет такой же автофикс как в Issues modal — snapshot + set/delete
   manualBreakerIn + rerender + flash. Ошибки можно фиксить не покидая
   cable table.
+- **1.20.28 (v0.57.3)** — автофикс амплитудной селективности в Issues
+  modal. Для LV-пар с нарушением в BREAKER_SERIES ищется номинал upstream
+  ≥ k×In_down (k=2.0 для B / 1.6 для C / 1.4 для D) и больше текущего.
+  Кнопка «✓ In_up = 100 А» справа от пары применяет фикс:
+  manualBreakerIn на upstream conn + snapshot + rerender + перерисовка.
+  MV-пары пропускаются (другая модель уставок).
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 
