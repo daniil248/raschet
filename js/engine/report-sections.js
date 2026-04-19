@@ -23,6 +23,8 @@ import * as B from '../../shared/report/blocks.js';
 import { collectBomFromProject, groupBomByKind } from '../../shared/bom.js';
 import { analyzeSelectivity } from './selectivity-check.js';
 import { getCableType } from '../../shared/cable-types-catalog.js';
+import { pricesForElement } from '../../shared/price-records.js';
+import { listElements } from '../../shared/element-library.js';
 
 // ——— общие хелперы ———
 function fullTag(n) { if (!n) return ''; return effectiveTag(n) || n.tag || ''; }
@@ -599,6 +601,40 @@ function sectionCableBom() {
     if (a.cores !== b.cores) return a.cores - b.cores;
     return a.size - b.size;
   });
+
+  // Резолв цен: для каждой группы ищем cable-sku с подходящим cableTypeId + cores + sizeMm2
+  // Сначала собираем все cable-sku из element-library (включая builtin через bridge)
+  let allSku = [];
+  try { allSku = listElements({ kind: 'cable-sku' }); } catch {}
+  let allMarksDict = {};
+  try {
+    for (const c of items) if (c.cableMark) {
+      const rec = getCableType(c.cableMark);
+      if (rec) allMarksDict[rec.brand || c.cableMark] = c.cableMark;
+    }
+  } catch {}
+  // Ключ SKU: cableTypeId+cores+size; ищем для каждой группы цену
+  const pricedRows = rows.map(r => {
+    const typeId = allMarksDict[r.mark] || r.mark;  // преобразуем brand → typeId если можем
+    const skuMatch = allSku.find(s => {
+      const kp = s.kindProps || {};
+      return String(kp.cableTypeId) === String(typeId) && Number(kp.cores) === r.cores && Number(kp.sizeMm2) === r.size;
+    });
+    let unitPrice = null, currency = null, totalPrice = null, skuId = null;
+    if (skuMatch) {
+      skuId = skuMatch.id;
+      try {
+        const info = pricesForElement(skuMatch.id, { activeOnly: true });
+        if (info.latest) {
+          unitPrice = Number(info.latest.price) || null;
+          currency = info.latest.currency;
+          if (unitPrice != null) totalPrice = unitPrice * r.totalM * 1.1;  // с запасом 10%
+        }
+      } catch {}
+    }
+    return { ...r, unitPrice, currency, totalPrice, skuId };
+  });
+
   const text = [
     'СВОДНАЯ ВЕДОМОСТЬ КАБЕЛЬНОЙ ПРОДУКЦИИ (по SKU)',
     '='.repeat(78),
@@ -609,32 +645,65 @@ function sectionCableBom() {
     B.h1('Сводная ведомость кабеля по маркам и сечениям'),
     ...metaBlocks(),
   ];
-  if (!rows.length) {
+  if (!pricedRows.length) {
     text.push('Нет активных кабельных линий.');
     blocks.push(B.paragraph('В проекте нет активных кабельных линий с длиной > 0.'));
     return { text: text.join('\n'), blocks };
   }
-  const header = ['Марка кабеля', 'Число жил × сечение', 'Материал / изоляция', 'Линий', 'Общая длина, м', 'С запасом 10%, м'];
-  const tableRows = rows.map(r => [
-    r.mark,
-    `${r.cores}×${r.size} мм²`,
-    `${r.material}/${r.insulation}`,
-    String(r.lines),
-    fmt(r.totalM),
-    fmt(r.totalM * 1.1),
-  ]);
-  // Итог по всем SKU
-  const grandTotal = rows.reduce((s, r) => s + r.totalM, 0);
-  tableRows.push(['', 'ИТОГО', '', String(rows.length), fmt(grandTotal), fmt(grandTotal * 1.1)]);
 
-  for (const r of tableRows) text.push(r.map(c => String(c).padEnd(22)).join(' '));
+  const hasPrices = pricedRows.some(r => r.unitPrice != null);
+  const header = hasPrices
+    ? ['Марка', 'Жилы×сечение', 'Cu/Al · PVC/XLPE', 'Линий', 'Длина, м', 'С запасом, м', 'Цена за м', 'Итого']
+    : ['Марка кабеля', 'Число жил × сечение', 'Материал / изоляция', 'Линий', 'Общая длина, м', 'С запасом 10%, м'];
+  const fmtMoney = (v, cur) => v == null ? '—' : Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + (cur ? ' ' + cur : '');
+  const tableRows = pricedRows.map(r => {
+    if (hasPrices) {
+      return [
+        r.mark, `${r.cores}×${r.size} мм²`, `${r.material}/${r.insulation}`,
+        String(r.lines), fmt(r.totalM), fmt(r.totalM * 1.1),
+        fmtMoney(r.unitPrice, r.currency),
+        fmtMoney(r.totalPrice, r.currency),
+      ];
+    }
+    return [
+      r.mark, `${r.cores}×${r.size} мм²`, `${r.material}/${r.insulation}`,
+      String(r.lines), fmt(r.totalM), fmt(r.totalM * 1.1),
+    ];
+  });
+
+  const grandTotal = pricedRows.reduce((s, r) => s + r.totalM, 0);
+  // Итоги по валютам (если есть цены)
+  const totalsByCurrency = new Map();
+  let missingPriceCount = 0;
+  for (const r of pricedRows) {
+    if (r.totalPrice == null || !r.currency) { missingPriceCount++; continue; }
+    totalsByCurrency.set(r.currency, (totalsByCurrency.get(r.currency) || 0) + r.totalPrice);
+  }
+
+  if (hasPrices) {
+    tableRows.push(['', 'ИТОГО', '', String(pricedRows.length), fmt(grandTotal), fmt(grandTotal * 1.1), '', '']);
+    for (const [cur, sum] of totalsByCurrency) {
+      tableRows.push(['', '', '', '', '', '', `ИТОГО ${cur}:`, fmtMoney(sum, cur)]);
+    }
+  } else {
+    tableRows.push(['', 'ИТОГО', '', String(pricedRows.length), fmt(grandTotal), fmt(grandTotal * 1.1)]);
+  }
+
+  for (const r of tableRows) text.push(r.map(c => String(c).padEnd(18)).join(' '));
   text.push('');
-  text.push(`Запас 10% рекомендуется заложить на обрезки, соединения в муфтах, укладку с провисом.`);
+  if (hasPrices && missingPriceCount > 0) {
+    text.push(`⚠ Без цены: ${missingPriceCount} из ${pricedRows.length} SKU. Привяжите цены в модуле «Каталог и цены».`);
+  }
 
   blocks.push(B.h2('Сводка к закупке'));
   blocks.push(B.table(header, tableRows));
+  if (hasPrices && missingPriceCount > 0) {
+    blocks.push(B.paragraph(`Внимание: у ${missingPriceCount} из ${pricedRows.length} позиций нет цены в справочнике cable-sku. Итог рассчитан только по позициям с ценой. Добавьте недостающие цены в модуле «Каталог и библиотека».`));
+  } else if (!hasPrices) {
+    blocks.push(B.paragraph('Цены не привязаны. Создайте cable-sku записи для марок кабеля и добавьте цены в модуле «Каталог и библиотека» (вкладка Элементы → строка cable-type → «+ SKU»).'));
+  }
   blocks.push(B.paragraph('Запас 10% рекомендуется заложить на обрезки, концевые заделки, соединения в муфтах и укладку с провисом. Для MV-кабелей (ВН) и кабелей в лотке/трубе рекомендуется увеличенный запас 15-20%.'));
-  blocks.push(B.paragraph(`Всего в проекте: ${rows.length} SKU, суммарная длина: ${fmt(grandTotal)} м.`));
+  blocks.push(B.paragraph(`Всего в проекте: ${pricedRows.length} SKU, суммарная длина: ${fmt(grandTotal)} м (с запасом: ${fmt(grandTotal * 1.1)} м).`));
   return { text: text.join('\n'), blocks };
 }
 

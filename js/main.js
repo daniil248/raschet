@@ -1600,6 +1600,52 @@ function openCableTableModal() {
   if (srchEl) srchEl.oninput = (e) => { _cableTableFilters.search = e.target.value; renderCableTable(); };
   const clsEl = document.getElementById('cable-table-filter-class');
   if (clsEl) clsEl.onchange = (e) => { _cableTableFilters.class = e.target.value; renderCableTable(); };
+  const csvBtn = document.getElementById('cable-table-export-csv');
+  if (csvBtn) csvBtn.onclick = exportCableTableCsv;
+}
+
+function exportCableTableCsv() {
+  const S = window.Raschet?._state;
+  if (!S) return;
+  const rows = [['Обозначение', 'Откуда', 'Куда', 'Марка', 'Материал', 'Изоляция', 'Конструкция', 'Сечение, мм²', 'Число жил', 'Длина, м', 'Способ прокладки', 'Imax, А', 'Iдоп, А', 'Класс']];
+  for (const c of S.conns.values()) {
+    if (!c._active || (!c._cableSize && !c._busbarNom)) continue;
+    const fromN = S.nodes.get(c.from.nodeId);
+    const toN = S.nodes.get(c.to.nodeId);
+    const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
+    const lineLabel = c.lineLabel || `${linePrefix}-${fromN?.tag || fromN?.name || '?'}-${toN?.tag || toN?.name || '?'}`;
+    const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
+    const cls = c._isHV ? 'MV/HV' : (c._isDC ? 'DC' : 'LV');
+    rows.push([
+      lineLabel,
+      fromN?.tag || fromN?.name || '',
+      toN?.tag || toN?.name || '',
+      c.cableMark || '',
+      c.material || '',
+      c.insulation || '',
+      c.cableType || '',
+      c._cableSize || '',
+      cores,
+      c.lengthM || 0,
+      c._cableMethod || '',
+      c._maxA ? c._maxA.toFixed(1) : '',
+      c._cableIz ? c._cableIz.toFixed(1) : '',
+      cls,
+    ]);
+  }
+  const csv = rows.map(row => row.map(cell => {
+    const s = String(cell ?? '');
+    return /[,"\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(';')).join('\n');
+  // BOM для Excel
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'cables-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  flash('Экспортировано ' + (rows.length - 1) + ' линий в CSV', 'success');
 }
 
 async function renderCableTable() {
