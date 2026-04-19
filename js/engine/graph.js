@@ -194,6 +194,24 @@ export function tryConnect(from, to) {
   // Проверка цикличности отключена — схемы с АВР и встречными линиями допустимы
   _snapshot();
   const id = uid('c');
+  // Фаза 1.16+: авто-подстановка основной марки кабеля из «Параметры проекта».
+  // Определяем класс напряжения по узлам (простая эвристика для tryConnect —
+  // recalc позже уточнит _isHV и может обновить cableMark если нужно).
+  let defaultMark = null;
+  try {
+    const fromN = state.nodes.get(from.nodeId);
+    const toN = state.nodes.get(to.nodeId);
+    const levels = GLOBAL.voltageLevels || [];
+    const getVll = (n) => {
+      if (!n) return 0;
+      const lv = (typeof n.voltageLevelIdx === 'number') ? levels[n.voltageLevelIdx] : null;
+      return lv ? (Number(lv.vLL) || 0) : 0;
+    };
+    const isHv = Math.max(getVll(fromN), getVll(toN)) > 1000;
+    defaultMark = isHv
+      ? (GLOBAL.projectMainCableHv || null)
+      : (GLOBAL.projectMainCableLv || null);
+  } catch {}
   const conn = {
     id, from, to,
     // Дефолты по умолчанию для вывода ~1 м до щита/потребителя в норм. условиях
@@ -204,6 +222,7 @@ export function tryConnect(from, to) {
     grouping: GLOBAL.defaultGrouping,
     bundling: 'touching',
     lengthM: 1,
+    cableMark: defaultMark,   // null если в Параметрах проекта не задано
   };
   state.conns.set(id, conn);
   _notifyChange();

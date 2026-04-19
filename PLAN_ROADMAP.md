@@ -516,6 +516,25 @@
   - 1.19.2: интеграция в инспектор трансформатора на схеме («Сконфигурировать РУ СН»)
   - 1.19.3: MV-автоматы (VCB, SF6) в breaker-seed с TCC-кривыми
 
+### v0.54.1 (2026-04-19, Фаза 1.19.2 — MV-автоматы в breaker-seed + автоподстановка проектной марки)
+- **shared/breaker-seed.js — добавлено ~30 MV-автоматов:**
+  - `seedMvVcbBreakers`: вакуумные VCB 10 кВ и 24 кВ, ряд In: 630/1250/2000/2500/3150/4000 А, Icu 25-50 кА, с электронным реле (ANSI 50/51) — настраиваемые Ir/Isd/tsd/Ii
+  - `seedMvSf6Breakers`: элегазовые SF6 10/24 кВ, In: 630/1250 А (базовые размеры)
+  - `seedMvFuses`: плавкие предохранители HV (IEC 60282-1) для transformer-protect ячеек — 11 типов, подобранные под ТП 160-1600 кВА (10 кВ) и 250-1000 кВА (24 кВ)
+  - Все `voltageCategory: 'mv'`, `type: 'MV-VCB' / 'MV-SF6' / 'MV-fuse'`
+  - Итого в element-library: ~110 builtin breaker (было 82) — теперь LV + MV покрыты
+- **js/engine/graph.js — автоподстановка `cableMark` на новые линии (Фаза 1.16+):**
+  - При `tryConnect` определяется класс напряжения по `voltageLevelIdx` узлов `from`/`to`
+  - Если `vLL > 1000 В` → `cableMark = GLOBAL.projectMainCableHv`
+  - Иначе → `cableMark = GLOBAL.projectMainCableLv`
+  - Эти поля задаются в «Параметры проекта» (Фаза 1.16)
+  - Пользователь один раз выбирает основную марку для проекта, дальше все новые линии получают её автоматически. Можно переопределить в инспекторе / таблице кабелей.
+- **APP_VERSION = '0.54.1'**
+- **Файлы:**
+  - `shared/breaker-seed.js` (+140 строк: seedMvVcbBreakers + seedMvSf6Breakers + seedMvFuses)
+  - `js/engine/graph.js` (+20 строк автоподстановка cableMark в tryConnect)
+  - `js/engine/constants.js` APP_VERSION
+
 ### v0.54.0 (2026-04-19, Фаза 1.19.1 — MV-конфигуратор wizard)
 - **mv-config/ (новый модуль):**
   - `index.html` — справочник mv-switchgear из element-library + wizard (4 шага) при `?nodeId=`
