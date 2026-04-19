@@ -110,6 +110,30 @@
       "dbCollections": [],
       "permissions": ["elements.use"],
       "enabled": true
+    },
+    {
+      "id": "catalog",
+      "name": "Каталог и цены",
+      "description": "Полноценное управление каталогом платформы: элементы, цены (по датам, контрагентам, типам), импорт прайс-листов XLSX, аналитика, статистика",
+      "path": "catalog/",
+      "icon": "orange",
+      "badge": "new",
+      "requires": ["shared/element-library", "shared/price-records", "shared/counterparty-catalog", "shared/catalog-bridge"],
+      "dbCollections": ["prices", "counterparties"],
+      "permissions": ["catalog.use", "catalog.manage-prices"],
+      "enabled": true
+    },
+    {
+      "id": "logistics",
+      "name": "Рабочее место логиста",
+      "description": "Расчёт доставки, маршруты, склады, тарифы перевозчиков. Интеграция с BOM проекта: оборудование + логистика = полная смета",
+      "path": "logistics/",
+      "icon": "green",
+      "badge": "wip",
+      "requires": ["shared/element-library", "shared/price-records", "shared/counterparty-catalog"],
+      "dbCollections": ["shipments", "warehouses", "carrier-rates"],
+      "permissions": ["logistics.use"],
+      "enabled": true
     }
   ]
 }

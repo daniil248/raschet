@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1 почти полностью завершена (v0.44.0 — 1.1.3 elements editor + bridge). Осталось 1.2.2 (отложено до freeze legacy). Далее: Фаза 2 мульти-пространственные схемы.
+> **Статус:** Фаза 0 ✅ (v0.41.0). Фаза 1.1-1.4 ✅ (v0.44.0). Добавлены Фаза 1.5 (полноценный модуль catalog/ с ценами + контрагентами) и Фаза 1.6 (рабочее место логиста). В работе: 1.5.1 схемы price-records и counterparty.
 > **Цель:** превратить набор специализированных калькуляторов в единую платформу проектирования электрических (и позже — механических) схем с общей библиотекой элементов, мульти-пространственными видами, 3D, правами пользователей и расширяемыми БД-адаптерами.
 
 ---
@@ -106,6 +106,109 @@
   - Зарегистрирован в `modules.json` + карточка в `hub.html`
   - **НЕ включено в MVP:** загрузка SVG для views, визуальный редактор портов, drag-n-drop composition — откладывается до Фазы 2
 
+#### Подфаза 1.5 — Полноценный модуль catalog/ (1.5-2 недели) 🆕
+
+**Задача пользователя:** `elements/` должен стать отдельным полноценным модулем управления библиотекой/каталогами — с импортом, ценами, контрагентами.
+
+- [ ] **1.5.1** Схемы данных:
+  - `shared/price-records.js` — `PriceRecord { id, elementId, price, currency, recordedAt, source, counterpartyId, priceType, validUntil, conditions, notes }`
+    - `priceType`: `'purchase' | 'retail' | 'wholesale' | 'list' | 'special' | 'project'`
+    - `source`: произвольная строка (URL прайса / имя XLSX / 'ручной ввод' / email)
+    - Множественные цены на один элемент (разные контрагенты + даты + типы)
+  - `shared/counterparty-catalog.js` — `CounterpartyRecord { id, name, inn, kpp, address, contacts[], type, tags, createdAt, updatedAt }`
+    - `type`: `'supplier' | 'manufacturer' | 'dealer' | 'logistics' | 'other'`
+  - Per-user localStorage: `raschet.priceRecords.v1.<uid>`, `raschet.counterparties.v1.<uid>`
+  - Listener API (как у panel-catalog): `onPricesChange`, `onCounterpartiesChange`
+
+- [ ] **1.5.2** Новый модуль `catalog/` (promo elements/):
+  - `catalog/index.html` с табами:
+    - **Элементы** — расширенный список (то что elements/ + колонки с последней ценой / числом предложений)
+    - **Цены** — все прайс-записи с фильтрами (по элементу / контрагенту / типу цены / периоду)
+    - **Контрагенты** — CRUD поставщиков / производителей / дилеров
+    - **Импорт** — XLSX прайс-листов с маппингом полей
+  - `elements/` остаётся — quick-access minimal editor
+
+- [ ] **1.5.3** CRUD цен:
+  - Форма добавления: Элемент (picker) + Цена + Валюта + Дата + Контрагент (picker) + Тип цены + Источник + Примечания
+  - Массовый ввод (таблица с paste from clipboard)
+  - Редактирование (кроме даты — историческая)
+  - Удаление
+
+- [ ] **1.5.4** Управление контрагентами:
+  - CRUD: создать/редактировать/удалить
+  - Поиск по ИНН/КПП/имени
+  - Быстрое добавление при вводе цены (+new inline)
+
+- [ ] **1.5.5** Импорт XLSX прайс-листов:
+  - Drag-drop файлов (несколько одновременно)
+  - UI маппинга колонок: какая колонка = элемент / цена / валюта / срок действия
+  - Авто-распознавание по заголовкам (Price, Цена, Стоимость, Supplier, Поставщик)
+  - Привязка к контрагенту (один на файл, с возможностью переопределить per-row)
+  - Dry-run preview перед применением
+  - История импортов с возможностью отката
+
+- [ ] **1.5.6** Статистика и аналитика:
+  - В таблице элементов: последняя цена + min/max по активным контрагентам
+  - График динамики цены (sparkline) на элемент
+  - Сводка: самые дорогие / дешёвые элементы / контрагенты
+  - Алерты: цены старше N дней → warning
+
+- [ ] **1.5.7** Интеграция с BOM:
+  - В `shared/bom.js`: `aggregateBom` возвращает `unitPrice` + `totalPrice` если есть `PriceRecord`
+  - Выбор «Какие цены использовать»: последняя / минимальная / от выбранного контрагента
+  - Секция `sectionBom` показывает колонку Стоимость + Итого
+
+**Критичные файлы 1.5:**
+- `shared/price-records.js` (новый)
+- `shared/counterparty-catalog.js` (новый)
+- `catalog/index.html`, `catalog/catalog.css`, `catalog/catalog.js` (новые)
+- `catalog/tab-elements.js`, `catalog/tab-prices.js`, `catalog/tab-counterparties.js`, `catalog/tab-import.js`
+- `shared/catalog-xlsx-parser.js` — расширение на прайс-листы
+- `shared/bom.js` — интеграция цен
+
+---
+
+#### Подфаза 1.6 — Рабочее место логиста (2 недели) 🆕
+
+**Задача пользователя:** модуль расчёта логистики. Проект → расчёт доставки, складирования, итоговой стоимости с логистикой.
+
+- [ ] **1.6.1** Схемы данных:
+  - `shared/warehouses.js` — `WarehouseRecord { id, name, counterpartyId, address, type, capacity, cost, leadDays }`
+  - `shared/shipments.js` — `ShipmentRecord { id, projectId, items[], origin, destination, carrierId, mode, cost, currency, plannedAt, deliveredAt, status }`
+    - `items`: `[{ elementId, qty, unitWeightKg, unitVolumeM3, unitPrice }]`
+    - `mode`: `'road' | 'rail' | 'air' | 'sea' | 'express' | 'pickup'`
+  - `shared/logistics-rates.js` — тарифы перевозчиков (кг/м³/км)
+  - Per-user localStorage
+
+- [ ] **1.6.2** `logistics/` module UI:
+  - Tabs:
+    - **Отправления** — список shipments, создание/редактирование
+    - **Склады** — управление warehouses
+    - **Тарифы** — управление carrier rates
+    - **Расчёт** — калькулятор: введи вес/объём/расстояние → смета
+  - Drag-drop из BOM проекта: «Импорт из Конструктора схем (текущий проект)»
+  - Печать ТТН / проформы (через shared/report/)
+
+- [ ] **1.6.3** Интеграция с BOM + ценами:
+  - В Конструкторе схем: кнопка «Рассчитать логистику» на узле проекта
+  - Открывает `logistics/?projectId=X` с предзаполненным BOM
+  - Результат: итоговая стоимость (оборудование + логистика) → в отчёт
+  - Раздел в BOM-отчёте: «Логистика и доставка»
+
+- [ ] **1.6.4** Маршрутизация (опционально, Фаза 1.6.4+):
+  - Несколько точек доставки (мультистоп)
+  - Учёт складов-хабов (Москва → региональный склад → стройплощадка)
+  - Оптимизация по стоимости / времени
+
+**Критичные файлы 1.6:**
+- `shared/warehouses.js`, `shared/shipments.js`, `shared/logistics-rates.js` (новые)
+- `logistics/index.html`, `logistics/logistics.css`, `logistics/logistics.js` (новые)
+- `logistics/tab-*.js` — по таб для каждой секции
+- Интеграция в `shared/report/` — блок «Логистика»
+- Интеграция в `js/engine/inspector/` — кнопка «Рассчитать логистику»
+
+---
+
 #### Подфаза 1.2 — Bridge и миграция существующих каталогов (1 неделя) 🚧
 
 - [x] **1.2.0** Создан `shared/catalog-bridge.js` (v0.42.1):
@@ -179,6 +282,34 @@
   - `js/engine/index.js` слушает `focus` + `storage` event, при наличии payload: `applyUpsModel(node, payload.ups)` + снимок истории + re-render
   - TTL 5 минут: устаревшие payload игнорируются и удаляются
   - Через applyUpsModel узел получает `upsCatalogId` → BOM автоматически включает ИБП
+- [ ] **1.4.5** ⚠ НАСТОЯЩИЙ конфигуратор ИБП (bug: v0.43.2 сделано не то что нужно):
+  - **Проблема (со слов пользователя):** При клике «Сконфигурировать подробно» открывается просто справочник выбора модели. Нет:
+    1. Передачи исходных данных из Конструктора (нагрузка, автономия, резервирование, условия эксплуатации)
+    2. Подбора фрейма по нагрузке
+    3. Расчёта количества модулей (N+X резервирование)
+    4. Подбора АКБ под конфигурацию
+    5. Возврата КОНФИГУРАЦИИ (frame + modules + batteries + accessories), а не просто ID модели
+  - **Что нужно:**
+    - Переделать `ups-config/` в полноценный конфигуратор:
+      - **Шаг 1 «Исходные данные»**: автозаполнение из Constructor (nodeId) — capacityKw нагрузки, targetAutonomyMin, N+X резервирование, cosPhi, phases, условия (temp/altitude)
+      - **Шаг 2 «Подбор фрейма»**: показать фреймы из ups-catalog, где frameKw ≥ требуемой с учётом N+X; фильтр по производителю/серии; рекомендация
+      - **Шаг 3 «Модули»**: выбранный фрейм → доступные слоты, расчёт рабочих модулей (`ceil(loadKw/moduleKw) + X`); проверка ≤ moduleSlots
+      - **Шаг 4 «АКБ»**: интеграция со Step 4 battery-calc; автоподбор strings × blocks по vdcMin/max + capacityKw + autonomyMin
+      - **Шаг 5 «Состав и цена»**: итоговая composition `{ frame: 1, modules: N, batteries: S×B }` + суммарная цена через price-records
+      - **Кнопка «Применить конфигурацию»**: формирует `Element` (kind='ups') с composition + kindProps, сохраняет в element-library, пишет в pendingUpsSelection → Constructor узел получает `node.elementId` + `node.composition` + все параметры
+    - **Интеграция с Constructor:**
+      - Кнопка передаёт в query: `nodeId, capacityKw, targetAutonomyMin, redundancy, vdcMin, vdcMax, cosPhi, phases`
+      - Возврат: `{ nodeId, elementId, composition, capacityKw, moduleInstalled, frameKw, batteryCatalogId, batteryStringCount, batteryBlocksPerString, totalPrice }`
+      - BOM автоматически развёртывает composition через `expandComposition`
+    - **Priority:** HIGH — текущий поток вводит в заблуждение (кнопка "Сконфигурировать" а показывает просто выбор модели)
+  - **Файлы (предстоит изменить):**
+    - `ups-config/index.html` — переделать UI в пошаговый wizard
+    - `ups-config/ups-config.js` — wizard logic, подбор, composition builder
+    - `js/engine/inspector/ups.js` — передавать больше query params
+    - `js/engine/index.js` — ресивер должен применять composition + elementId
+    - `shared/ups-picker.js` — `applyUpsConfiguration(node, config)` новая функция
+    - `shared/element-schemas.js` — `createUpsElementFromConfig(frame, modules, batteries)`
+
 - [x] **1.4.4** Связь с Конфигуратором АКБ (v0.43.3):
   - В модалке «Параметры батарей» ИБП — кнопка «🔋 Подобрать АКБ в калькуляторе»
   - `battery/?nodeId=X&loadKw=...&vdcMin=...&vdcMax=...&autonomyMin=...&selected=...`
@@ -353,6 +484,43 @@
 ---
 
 ## История изменений
+
+### v0.45.0 (2026-04-19, Фаза 1.5 — модуль catalog/ полноценный)
+- **shared/counterparty-catalog.js** (новый ~130 строк):
+  - `CounterpartyRecord` schema: name/shortName/inn/kpp/type/address/contacts/paymentTerms/currency/discount/tags/notes
+  - 7 типов: supplier/manufacturer/dealer/logistics/warehouse/customer/other
+  - API: list/get/save/remove/clear + `onCounterpartiesChange` + `validateInn`
+- **shared/price-records.js** (новый ~230 строк):
+  - `PriceRecord` schema: elementId/price/currency/priceType/counterpartyId/recordedAt/validFrom/validUntil/quantity/vat/vatIncluded/source/conditions/notes
+  - 6 типов цен: purchase/retail/wholesale/list/special/project
+  - 6 валют: RUB/USD/EUR/CNY/KZT/BYN
+  - API: listPrices (с фильтрами), getPrice, savePrice, removePrice, `pricesForElement` (агрегаты min/max/avg/latest), `bulkAddPrices` для импорта, export/import JSON
+  - Множественные цены на элемент (история + разные контрагенты)
+- **catalog/** (новый модуль, 3 файла ~900 строк):
+  - `index.html` — tabs Элементы / Цены / Контрагенты / Импорт / Аналитика
+  - `catalog.css` — стили: tabs, toolbars, badges, modals, dropzone, stat-cards
+  - `catalog.js`:
+    - Tab **Элементы**: таблица с последней ценой, кол-вом предложений; фильтры (kind/source/search); actions (add price / view prices / edit / clone / delete); cross-navigation к табу Цены с фильтром
+    - Tab **Цены**: таблица с датой/элементом/типом/ценой/контрагентом/источником/активностью; фильтры (priceType/counterparty/currency/element); полная модалка редактирования (поля: элемент, цена, валюта, тип, контрагент, даты, количество, НДС, источник, условия, примечания)
+    - Tab **Контрагенты**: таблица с типом/названием/ИНН-КПП/контактом/тегами; модалка CRUD с валидацией ИНН
+    - Tab **Импорт**: drag-drop XLSX/CSV с авто-маппингом колонок (Price/Цена/SKU/Артикул), preview первых 5 строк, выбор контрагента и типа цены на весь файл, применение; + импорт/экспорт JSON
+    - Tab **Аналитика**: stat-cards (всего элементов/контрагентов/цен/с-без цен/устаревшие >90д); топ-5 контрагентов по числу цен; список элементов без цен с inline-кнопкой «+ Цена»
+  - Реактивность: onLibraryChange/onPricesChange/onCounterpartiesChange
+- **modules.json** — зарегистрированы catalog (badge: new) и logistics (badge: wip)
+- **hub.html** — 2 новые карточки (catalog с оранжевой иконкой, logistics с зелёной грузовичком-иконкой)
+- **Ценность:**
+  - Полноценное управление ценами с историей, множественными контрагентами, импорт из Excel
+  - Аналитика помогает найти дыры (элементы без цен, устаревшие прайсы)
+  - Подготовка под Фазу 1.6 (логистика) и 1.5.7 (цены в BOM)
+- **Файлы:**
+  - `shared/counterparty-catalog.js` (новый)
+  - `shared/price-records.js` (новый)
+  - `catalog/index.html` (новый)
+  - `catalog/catalog.css` (новый)
+  - `catalog/catalog.js` (новый)
+  - `modules.json` (+26 строк)
+  - `hub.html` (+28 строк)
+  - `js/engine/constants.js` APP_VERSION = '0.45.0'
 
 ### v0.44.0 (2026-04-19, Фаза 1.1.3 — MVP редактор библиотеки элементов)
 - **elements/** (новый модуль, 3 файла ~400 строк):

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Raschet — Каталог и цены</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="catalog.css">
+</head>
+<body>
+  <div id="app-header-mount"></div>
+
+  <div class="page-wrap">
+    <h1 class="page-title">Каталог и цены</h1>
+    <div class="page-desc">
+      Полноценное управление библиотекой оборудования: элементы, цены по датам и контрагентам,
+      импорт прайс-листов. Простой редактор библиотеки доступен в модуле
+      <a href="../elements/" style="color:#1976d2">«Библиотека элементов»</a>.
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="elements">📦 Элементы</button>
+      <button class="tab" data-tab="prices">💰 Цены</button>
+      <button class="tab" data-tab="counterparties">🏢 Контрагенты</button>
+      <button class="tab" data-tab="import">📥 Импорт</button>
+      <button class="tab" data-tab="analytics">📊 Аналитика</button>
+    </div>
+
+    <div class="tab-content" id="tab-elements"></div>
+    <div class="tab-content" id="tab-prices" hidden></div>
+    <div class="tab-content" id="tab-counterparties" hidden></div>
+    <div class="tab-content" id="tab-import" hidden></div>
+    <div class="tab-content" id="tab-analytics" hidden></div>
+  </div>
+
+  <!-- Общие модалки -->
+  <div id="modal" class="modal">
+    <div class="modal-body">
+      <h3 id="modal-title"></h3>
+      <div id="modal-form"></div>
+      <div class="modal-footer">
+        <button id="modal-cancel">Отмена</button>
+        <button id="modal-save" class="primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="flash" class="flash"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script type="module" src="catalog.js"></script>
+  <script type="module" src="../shared/app-header.js"></script>
+</body>
+</html>
