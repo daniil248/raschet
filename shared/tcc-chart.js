@@ -20,7 +20,13 @@
 // Оси: X — ток (А) log-log, Y — время (с) log-log.
 // ======================================================================
 
-import { tccBreakerTime, tccFuseTime, tccCableThermalLimit } from './tcc-curves.js';
+import {
+  tccBreakerTime,
+  tccFuseTime,
+  tccCableThermalLimit,
+  tccBreakerBandPoints,
+  tccFuseBandPoints,
+} from './tcc-curves.js';
 
 const DEFAULT_COLORS = [
   '#1976d2', '#d32f2f', '#388e3c', '#f57c00', '#7b1fa2',
@@ -128,16 +134,34 @@ function render(container, state) {
   }
 
   // ——— Кривые ———
+  // Для автоматов и предохранителей рендерим полосу (верхняя/нижняя граница
+  // по IEC 60898 / IEC 60269) + центральную линию. Для кабеля — пунктир.
   const paths = [];
   const legendItems = [];
   for (const it of items) {
     if (!it.visible) continue;
-    const points = curvePoints(it, xRange, yRange, toX, toY);
-    if (!points.length) continue;
-    const d = 'M ' + points.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L ');
-    const stroke = it.color;
-    const dash = it.kind === 'cable' ? ' stroke-dasharray="5,3"' : '';
-    paths.push(`<path d="${d}" fill="none" stroke="${stroke}" stroke-width="2"${dash} data-id="${esc(it.id)}"/>`);
+    const band = bandPoints(it);
+    if (band && band.length >= 2) {
+      // Верхняя граница (t_hi) — движемся вправо, нижняя (t_lo) — влево.
+      const up = band
+        .filter(p => p.I >= xRange[0] && p.I <= xRange[1] && p.t_hi >= yRange[0] && p.t_hi <= yRange[1])
+        .map(p => `${toX(p.I).toFixed(1)},${toY(p.t_hi).toFixed(1)}`);
+      const lo = band
+        .filter(p => p.I >= xRange[0] && p.I <= xRange[1] && p.t_lo >= yRange[0] && p.t_lo <= yRange[1])
+        .slice().reverse()
+        .map(p => `${toX(p.I).toFixed(1)},${toY(p.t_lo).toFixed(1)}`);
+      if (up.length >= 2 && lo.length >= 2) {
+        const fill = _hexAlpha(it.color, 0.22);
+        paths.push(`<polygon points="${up.concat(lo).join(' ')}" fill="${fill}" stroke="${it.color}" stroke-width="1.2" data-id="${esc(it.id)}"/>`);
+      }
+    } else {
+      // Fallback — старая однолинейная кривая (кабель, I_k-линии).
+      const points = curvePoints(it, xRange, yRange, toX, toY);
+      if (!points.length) continue;
+      const d = 'M ' + points.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L ');
+      const dash = it.kind === 'cable' ? ' stroke-dasharray="5,3"' : '';
+      paths.push(`<path d="${d}" fill="none" stroke="${it.color}" stroke-width="2"${dash} data-id="${esc(it.id)}"/>`);
+    }
   }
   for (const it of items) {
     legendItems.push({
@@ -251,4 +275,142 @@ function logRange(a, b, n) {
 function _fmtA(I) {
   if (I >= 1000) return (I / 1000).toFixed(I >= 10000 ? 0 : 1) + ' кА';
   return I.toFixed(0) + ' А';
+}
+
+/**
+ * Возвращает массив {I, t_lo, t_hi} для item.
+ * Для breaker / fuse — используем band-функции из tcc-curves.js.
+ * Для cable / line — возвращаем null (рисуем однолинейно).
+ */
+function bandPoints(item) {
+  if (item.kind === 'breaker') {
+    const In = Number(item.In) || 16;
+    const curve = item.curve || 'C';
+    return tccBreakerBandPoints(In, curve, 80);
+  }
+  if (item.kind === 'fuse') {
+    const In = Number(item.In) || 16;
+    return tccFuseBandPoints(In, item.fuseType || 'gG', 80);
+  }
+  return null;
+}
+
+/** Перевод #rrggbb → rgba с заданной альфой. */
+function _hexAlpha(hex, a) {
+  if (!hex || hex[0] !== '#' || hex.length < 7) return `rgba(120,120,120,${a})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/**
+ * Открывает TCC-график в отдельном модальном окне с увеличенным размером,
+ * карточками автоматов (Ir/Isd ползунки) и легендой. Возвращает handle
+ * со стандартными методами { update, toggle, getItems, close }.
+ *
+ * Использование:
+ *   openTccModal({ items, ikMax, ikMin, title })
+ */
+export function openTccModal(opts = {}) {
+  const backdrop = document.createElement('div');
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const modal = document.createElement('div');
+  modal.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.25);width:min(1400px,95vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden';
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #e1e4e8;flex-shrink:0';
+  header.innerHTML = `
+    <h3 style="margin:0;font-size:14px;font-weight:600;flex:1">${esc(opts.title || 'Карта защиты линии — TCC')}</h3>
+    <button type="button" data-tcc-modal-close style="border:1px solid #ccc;background:#f6f8fa;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:13px">Закрыть ✕</button>
+  `;
+  const body = document.createElement('div');
+  body.style.cssText = 'flex:1;overflow:auto;padding:12px;display:grid;grid-template-columns:minmax(240px,280px) 1fr;gap:12px';
+  const cardsCol = document.createElement('div');
+  cardsCol.style.cssText = 'display:flex;flex-direction:column;gap:8px;overflow:auto';
+  const chartCol = document.createElement('div');
+  chartCol.style.cssText = 'display:flex;flex-direction:column;min-width:0';
+  body.appendChild(cardsCol);
+  body.appendChild(chartCol);
+  modal.appendChild(header);
+  modal.appendChild(body);
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  const handle = mountTccChart(chartCol, {
+    items: opts.items || [],
+    ikMax: opts.ikMax,
+    ikMin: opts.ikMin,
+    width: 900,
+    height: 640,
+    showControls: true,
+  });
+
+  // Карточки автоматов с ползунками Ir/Isd (для adjustable). Если у item нет
+  // settings — показываем только название/номинал.
+  const renderCards = () => {
+    const items = handle.getItems();
+    cardsCol.innerHTML = items.map((it, idx) => {
+      const col = it.color;
+      const In = Number(it.In) || 0;
+      const curve = it.curve || it.fuseType || '';
+      const Ir = Number(it.Ir) || In;
+      const Isd = Number(it.Isd) || (In * (curve === 'D' ? 15 : (curve === 'B' ? 4 : 7.5)));
+      const adjustable = it.kind === 'breaker' || it.kind === 'fuse';
+      return `
+        <div data-tcc-card="${esc(it.id)}" style="border:1px solid #d0d7de;border-radius:6px;overflow:hidden;background:#fff">
+          <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:${col};color:#fff;font-size:12px;font-weight:600">
+            <input type="checkbox" data-tcc-toggle="${esc(it.id)}"${it.visible ? ' checked' : ''} style="margin:0">
+            <span style="flex:1">${esc(it.label)}</span>
+            <span style="font-size:11px;opacity:0.9">${In ? In + ' A' : ''} ${curve ? curve : ''}</span>
+          </div>
+          ${adjustable ? `
+          <div style="padding:8px 10px;font-size:11px;display:flex;flex-direction:column;gap:6px">
+            <label style="display:flex;align-items:center;gap:6px">
+              <span style="width:36px;color:#555">Ir (A)</span>
+              <input type="range" min="${In * 0.4}" max="${In}" step="1" value="${Ir}" data-tcc-param="Ir" data-tcc-target="${esc(it.id)}" style="flex:1">
+              <input type="number" value="${Ir}" data-tcc-param-num="Ir" data-tcc-target="${esc(it.id)}" style="width:56px;font-size:11px;padding:2px">
+            </label>
+            <label style="display:flex;align-items:center;gap:6px">
+              <span style="width:36px;color:#555">Isd (A)</span>
+              <input type="range" min="${In * 2}" max="${In * 20}" step="1" value="${Isd}" data-tcc-param="Isd" data-tcc-target="${esc(it.id)}" style="flex:1">
+              <input type="number" value="${Isd}" data-tcc-param-num="Isd" data-tcc-target="${esc(it.id)}" style="width:56px;font-size:11px;padding:2px">
+            </label>
+          </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    cardsCol.querySelectorAll('[data-tcc-toggle]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        handle.toggle(cb.dataset.tccToggle, cb.checked);
+      });
+    });
+    cardsCol.querySelectorAll('[data-tcc-param],[data-tcc-param-num]').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const id = inp.dataset.tccTarget;
+        const p = inp.dataset.tccParam || inp.dataset.tccParamNum;
+        const items = handle.getItems();
+        const it = items.find(x => x.id === id);
+        if (!it) return;
+        it[p] = Number(inp.value);
+        // При изменении Ir — корректируем In у отображаемой кривой.
+        if (p === 'Ir') it.In = Number(inp.value);
+        handle.update({ items });
+        // Синхронизация зеркальных input'ов
+        cardsCol.querySelectorAll(`[data-tcc-target="${id}"][data-tcc-param="${p}"],[data-tcc-target="${id}"][data-tcc-param-num="${p}"]`)
+          .forEach(o => { if (o !== inp) o.value = inp.value; });
+      });
+    });
+  };
+  renderCards();
+
+  const close = () => {
+    try { handle.destroy(); } catch {}
+    document.body.removeChild(backdrop);
+  };
+  header.querySelector('[data-tcc-modal-close]').addEventListener('click', close);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+
+  return { ...handle, close, refreshCards: renderCards };
 }

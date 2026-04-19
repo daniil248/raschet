@@ -974,15 +974,30 @@ async function _mountConnTccChart(conn, fromN, toN) {
     ikMax, ikMin,
   });
 
+  // Кнопка «Открыть в модальном окне» — увеличенный график с карточками Ir/Isd
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'full-btn';
+  btn.style.cssText = 'margin-top:6px;font-size:11px;padding:5px 10px;background:#f0f4ff;border:1px solid #d0d7e8;color:#1976d2;border-radius:4px;cursor:pointer';
+  btn.textContent = '⤢ Открыть в большом окне (с ползунками Ir/Isd)';
+  btn.addEventListener('click', () => {
+    _tccChartMod.openTccModal({
+      items,
+      ikMax, ikMin,
+      title: `Карта защиты линии: ${fromN?.name || fromN?.tag || '?'} → ${toN?.name || toN?.tag || '?'}`,
+    });
+  });
+  container.appendChild(btn);
+
   // Подсказка под графиком
   const hint = document.createElement('div');
   hint.className = 'muted';
   hint.style.cssText = 'font-size:10px;margin-top:6px;line-height:1.5';
   hint.innerHTML = `
     <b>Чтение графика:</b><br>
-    🔵 Эта линия — автомат защиты.
+    🔵 Эта линия — автомат защиты (залитая полоса — диапазон срабатывания по IEC 60898).
     🔴 Пунктир — термостойкость подобранного кабеля.
-    🟠🟣 Upstream — вышестоящие автоматы (селективность ОК когда их кривые выше и правее).
+    🟠🟣 Upstream — вышестоящие автоматы (селективность ОК когда их полосы выше и правее).
     ${ikMax ? `<br>I<sub>k</sub> max = ${_fmtA(ikMax)}, ` : ''}
     ${ikMin ? `I<sub>k</sub> min = ${_fmtA(ikMin)}` : ''}
   `;

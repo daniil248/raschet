@@ -217,6 +217,78 @@ export function tccSamplePoints(kind, opts = {}) {
   return points;
 }
 
+/**
+ * Диапазон времени срабатывания (верхняя и нижняя границы) MCB по IEC 60898-1
+ * при токе I/In. Используется для визуализации TCC-характеристики в виде
+ * залитой полосы (как в Ecodial / Curve Direct / MyProject).
+ *
+ * Физические границы:
+ *  - Тепловая зона (1.13…1.45×In): IEC допускает t_min=1 ч при 1.13× и
+ *    t_max<1 ч при 1.45×. Обобщённо band = ±30% вокруг номинальной кривой.
+ *  - Участок теплового инверсного (до magMin): band ±30%.
+ *  - Магнитная полоса (magMin…magMax): по току — это и есть полоса; по
+ *    времени — 10–100 мс (IEC).
+ *  - Мгновенная зона (> magMax): 3–15 мс.
+ *
+ * Возвращает { t_min, t_max } в секундах.
+ */
+export function tccBreakerTimeBand(I_per_In, curve = 'C') {
+  const k = Number(I_per_In);
+  if (!Number.isFinite(k) || k <= 0) return { t_min: Infinity, t_max: Infinity };
+  if (k < 1.13) return { t_min: Infinity, t_max: Infinity };
+
+  const mag = MAGNETIC_BOUNDS[curve] || MAGNETIC_BOUNDS.C;
+
+  if (k < 1.45) {
+    // Тепловая неопределённость 1.13…1.45×In.
+    const r = (k - 1.13) / (1.45 - 1.13);
+    const t_max = 3600 * Math.exp(-r * Math.log(3600 / 60));   // верхняя ~3600→60 с
+    const t_min = Math.max(60, t_max * 0.3);                    // нижняя не менее 60 с
+    return { t_min, t_max };
+  }
+  if (k < mag.min) {
+    const tNom = 66 / (k * k - 1);
+    return { t_min: Math.max(0.5, tNom * 0.7), t_max: Math.max(0.5, tNom * 1.3) };
+  }
+  if (k < mag.max) {
+    // Магнитная полоса — по IEC 60898: 0.01…0.1 с
+    return { t_min: 0.01, t_max: 0.1 };
+  }
+  // Мгновенное срабатывание
+  return { t_min: 0.003, t_max: 0.015 };
+}
+
+/**
+ * Полоса срабатывания в координатах (I, t). Возвращает массив
+ * [{ I, t_lo, t_hi }] для построения filled region. Диапазон I
+ * по умолчанию — от 1.05×In до 100×In (лог. ряд n точек).
+ */
+export function tccBreakerBandPoints(In, curve = 'C', n = 80) {
+  const pts = [];
+  const ratios = _logRange(1.05, 100, n);
+  for (const r of ratios) {
+    const I = r * In;
+    const { t_min, t_max } = tccBreakerTimeBand(r, curve);
+    if (Number.isFinite(t_max)) pts.push({ I, t_lo: t_min, t_hi: t_max });
+  }
+  return pts;
+}
+
+/**
+ * Полоса для плавкого предохранителя. Для gG — полоса ±25% вокруг номинальной
+ * по IEC 60269. Для aM, gM — по соответствующим стандартам (упрощённо).
+ */
+export function tccFuseBandPoints(In, fuseType = 'gG', n = 80) {
+  const pts = [];
+  const ratios = _logRange(1.3, 50, n);
+  for (const r of ratios) {
+    const tNom = tccFuseTime(r, fuseType);
+    if (!Number.isFinite(tNom)) continue;
+    pts.push({ I: r * In, t_lo: tNom * 0.7, t_hi: tNom * 1.3 });
+  }
+  return pts;
+}
+
 /** Логарифмический ряд от a до b, n точек. */
 function _logRange(a, b, n) {
   const la = Math.log(a), lb = Math.log(b);

@@ -171,9 +171,19 @@ export function analyzeSelectivity() {
  * Человекочитаемая строка для одной пары (для отчёта / UI).
  */
 export function formatPair(pair) {
-  const upTag = effectiveTag(pair.upstream.from?.nodeId ? state.nodes.get(pair.upstream.from.nodeId) : null) || '?';
-  const downTag = effectiveTag(pair.downstream.to?.nodeId ? state.nodes.get(pair.downstream.to.nodeId) : null) || '?';
   const nodeTag = effectiveTag(pair.node) || pair.node.name || '?';
+  // Фаза 1.19.6: MV-пары — без upstream/downstream conn-объектов
+  // (ячейки живут в самом щите). Форматируем компактно.
+  if (pair.isMvCellPair) {
+    const upLabel = pair.mvUpCell?.functionCode || pair.mvUpCell?.type || 'infeed';
+    const downLabel = pair.mvDownCell?.functionCode || pair.mvDownCell?.type || 'feeder';
+    return `${nodeTag}: ${upLabel} → ${downLabel}  |  ` +
+      `Up: ${pair.upBreaker.inNominal}A ${pair.upBreaker.curve}  vs  ` +
+      `Down: ${pair.downBreaker.inNominal}A ${pair.downBreaker.curve}` +
+      (pair.Ik ? `  @ I_k=${pair.Ik.toFixed(0)}А` : '');
+  }
+  const upTag = effectiveTag(pair.upstream?.from?.nodeId ? state.nodes.get(pair.upstream.from.nodeId) : null) || '?';
+  const downTag = effectiveTag(pair.downstream?.to?.nodeId ? state.nodes.get(pair.downstream.to.nodeId) : null) || '?';
   return `${upTag} → ${nodeTag} → ${downTag}  |  ` +
     `Up: ${pair.upBreaker.inNominal}A ${pair.upBreaker.curve}  vs  ` +
     `Down: ${pair.downBreaker.inNominal}A ${pair.downBreaker.curve}` +

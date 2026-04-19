@@ -1118,30 +1118,35 @@ function sectionSelectivity() {
   text.push(`Проверено пар: ${summary.total}`);
   text.push(`Селективных: ${summary.selective}`);
   text.push(`Нарушений: ${summary.nonSelective}`);
+  if (summary.mvPairs) text.push(`В т.ч. СН-пар (infeed × feeder): ${summary.mvPairs}`);
   text.push('');
   blocks.push(B.h2('Сводка'));
-  blocks.push(B.table(['Показатель', 'Значение'], [
+  const sumRows = [
     ['Всего пар', String(summary.total)],
     ['Селективных', String(summary.selective)],
     ['Нарушений', String(summary.nonSelective)],
-  ]));
+  ];
+  if (summary.mvPairs) sumRows.push(['СН-пары (РУ СН)', String(summary.mvPairs)]);
+  blocks.push(B.table(['Показатель', 'Значение'], sumRows));
 
   // Таблица всех пар
   const rows = pairs.map(p => {
     const nodeTag = effectiveTag(p.node) || p.node.name || '?';
+    const kind = p.isMvCellPair ? 'СН' : 'НН';
     const upTxt = `${p.upBreaker.inNominal}А ${p.upBreaker.curve}`;
     const downTxt = `${p.downBreaker.inNominal}А ${p.downBreaker.curve}`;
     const ik = p.Ik ? p.Ik.toFixed(0) + 'А' : '—';
     const verdict = p.check.selective ? '✓' : '✗';
     const reason = p.check.selective ? 'OK' : p.check.reason;
-    return [nodeTag, upTxt, downTxt, ik, verdict, reason];
+    return [nodeTag, kind, upTxt, downTxt, ik, verdict, reason];
   });
-  text.push('Узел | Upstream | Downstream | I_k | Статус | Комментарий');
-  text.push('-'.repeat(80));
-  for (const r of rows) text.push(r.join(' | '));
+  const selHeader = ['Узел', 'Класс', 'Upstream', 'Downstream', 'I_k', 'Статус', 'Комментарий'];
+  text.push(selHeader.map(c => String(c).padEnd(14)).join(' '));
+  text.push('─'.repeat(selHeader.length * 15));
+  for (const r of rows) text.push(r.map(c => String(c).padEnd(14)).join(' '));
 
   blocks.push(B.h2('Детализация по парам'));
-  blocks.push(B.table(['Узел', 'Upstream', 'Downstream', 'I_k', 'Статус', 'Комментарий'], rows));
+  blocks.push(B.table(selHeader, rows));
 
   // Если есть нарушения — предупреждение
   if (summary.nonSelective > 0) {
