@@ -81,6 +81,7 @@ initCatalogBridge();
 // === Phase 1.3: BOM-генератор ===
 // Собирает спецификацию проекта из state + element-library (composition).
 import { collectBomFromProject, bomToMarkdown, PRICE_STRATEGIES } from '../../shared/bom.js';
+import { analyzeSelectivity as _analyzeSelectivity } from './selectivity-check.js';
 
 // === Phase 1.4.3: приём выбора из ups-config/ ===
 // Когда пользователь в вкладке ups-config нажимает «Применить к схеме»,
@@ -466,6 +467,8 @@ window.Raschet = {
   getBom(opts) { return collectBomFromProject(state, opts || null); },
   getBomMarkdown(opts) { return bomToMarkdown(collectBomFromProject(state, opts || null).aggregated); },
   getPriceStrategies() { return { ...PRICE_STRATEGIES }; },
+  // Фаза 1.8: анализ селективности
+  analyzeSelectivity() { return _analyzeSelectivity(); },
   getGlobal() { return { ...GLOBAL }; },
   getConsumerCatalog() {
     return [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])];

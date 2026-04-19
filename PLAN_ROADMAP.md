@@ -494,6 +494,31 @@
 
 ## История изменений
 
+### v0.49.2 (2026-04-19, Фаза 1.8 — анализ селективности защиты)
+- **js/engine/selectivity-check.js (новый):**
+  - `analyzeSelectivity()` обходит все panel/ups-узлы, находит пары inputs×outputs
+  - Для каждой пары вызывает `checkSelectivity(up, down, I_k)` из tcc-curves
+  - Преобразование форматов: `MCB_B` → `B` для tcc-curves (`_normalizeCurve`)
+  - I_k берётся из модуля phase-loop (`c._modules.phaseLoop.details.Ik1A`) если посчитан
+  - Возвращает `{ pairs: [...], summary: { total, selective, nonSelective } }`
+- **js/engine/report-sections.js:**
+  - Новая секция `sectionSelectivity()` зарегистрирована как `id: 'selectivity'`
+  - Сводная таблица + детализация по парам (узел/up/down/I_k/статус/комментарий)
+  - При обнаружении нарушений — блок с рекомендациями (увеличить номинал up, использовать задержку tsd, проверить таблицы производителя)
+  - Graceful fallback если в проекте нет панелей с breakers
+- **js/engine/index.js:**
+  - Экспонирование `window.Raschet.analyzeSelectivity()`
+- **Ценность:**
+  - Инженер запускает отчёт «Селективность защиты» → получает список пар с вердиктом ✓/✗
+  - Обнаруживаются проблемы раньше сдачи проекта
+  - Интеграция с уже имеющимися данными проекта (c._breakerIn, c.breakerCurve)
+- **APP_VERSION = '0.49.2'**
+- **Файлы:**
+  - `js/engine/selectivity-check.js` (новый, ~95 строк)
+  - `js/engine/report-sections.js` (+70 строк sectionSelectivity)
+  - `js/engine/index.js` (+2 строки)
+  - `js/engine/constants.js` APP_VERSION = '0.49.2'
+
 ### v0.49.1 (2026-04-19, Фаза 1.9 — TCC-график с toggle (MVP))
 - **shared/tcc-chart.js** (новый ~215 строк):
   - `mountTccChart(container, opts)` — монтирует SVG-график в любой контейнер

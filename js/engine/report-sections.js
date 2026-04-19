@@ -21,6 +21,7 @@ import { fmt } from './utils.js';
 import { get3PhaseBalance, generateReport } from './report.js';
 import * as B from '../../shared/report/blocks.js';
 import { collectBomFromProject, groupBomByKind } from '../../shared/bom.js';
+import { analyzeSelectivity } from './selectivity-check.js';
 
 // ——— общие хелперы ———
 function fullTag(n) { if (!n) return ''; return effectiveTag(n) || n.tag || ''; }
@@ -913,6 +914,68 @@ function sectionBom() {
   return { text: text.join('\n'), blocks };
 }
 
+// 9c. СЕЛЕКТИВНОСТЬ ЗАЩИТЫ (Фаза 1.8)
+// Обход пар upstream-downstream по каждой панели, проверка правил
+// селективности (амплитудная + временная при заданном I_k).
+function sectionSelectivity() {
+  const { pairs, summary } = analyzeSelectivity();
+  const text = [
+    'СЕЛЕКТИВНОСТЬ ЗАЩИТЫ',
+    '='.repeat(78),
+    ...metaTextLines(),
+    '',
+  ];
+  const blocks = [
+    B.h1('Селективность защитных аппаратов'),
+    ...metaBlocks(),
+  ];
+  if (!pairs.length) {
+    text.push('Анализ не выполнен: не найдены пары upstream-downstream автоматов (нужны панели со входами и выходами + настроенные breakerIn/curve).');
+    blocks.push(B.paragraph('Анализ не выполнен: в проекте не обнаружены пары upstream-downstream автоматов. Для анализа необходимо: (1) наличие панелей со входными и выходными линиями, (2) настроенные номиналы и характеристики автоматов защиты.'));
+    return { text: text.join('\n'), blocks };
+  }
+  // Сводка
+  text.push(`Проверено пар: ${summary.total}`);
+  text.push(`Селективных: ${summary.selective}`);
+  text.push(`Нарушений: ${summary.nonSelective}`);
+  text.push('');
+  blocks.push(B.h2('Сводка'));
+  blocks.push(B.table(['Показатель', 'Значение'], [
+    ['Всего пар', String(summary.total)],
+    ['Селективных', String(summary.selective)],
+    ['Нарушений', String(summary.nonSelective)],
+  ]));
+
+  // Таблица всех пар
+  const rows = pairs.map(p => {
+    const nodeTag = effectiveTag(p.node) || p.node.name || '?';
+    const upTxt = `${p.upBreaker.inNominal}А ${p.upBreaker.curve}`;
+    const downTxt = `${p.downBreaker.inNominal}А ${p.downBreaker.curve}`;
+    const ik = p.Ik ? p.Ik.toFixed(0) + 'А' : '—';
+    const verdict = p.check.selective ? '✓' : '✗';
+    const reason = p.check.selective ? 'OK' : p.check.reason;
+    return [nodeTag, upTxt, downTxt, ik, verdict, reason];
+  });
+  text.push('Узел | Upstream | Downstream | I_k | Статус | Комментарий');
+  text.push('-'.repeat(80));
+  for (const r of rows) text.push(r.join(' | '));
+
+  blocks.push(B.h2('Детализация по парам'));
+  blocks.push(B.table(['Узел', 'Upstream', 'Downstream', 'I_k', 'Статус', 'Комментарий'], rows));
+
+  // Если есть нарушения — предупреждение
+  if (summary.nonSelective > 0) {
+    const warns = pairs.filter(p => !p.check.selective);
+    blocks.push(B.h2('Обнаруженные нарушения'));
+    blocks.push(B.list(warns.map(p =>
+      `${effectiveTag(p.node) || p.node.name}: ${p.upBreaker.inNominal}А ${p.upBreaker.curve} vs ${p.downBreaker.inNominal}А ${p.downBreaker.curve} — ${p.check.reason}`
+    )));
+    blocks.push(B.paragraph('Рекомендации: (1) увеличить номинал вышестоящего автомата; (2) использовать MCCB/ACB с регулируемой задержкой расцепителя (tsd); (3) проверить по таблицам селективности производителя для конкретных моделей.'));
+  }
+
+  return { text: text.join('\n'), blocks };
+}
+
 // 10. ПОЛНЫЙ ОТЧЁТ
 function sectionFull() {
   // Полный отчёт: объединяет все предыдущие секции. Текст собираем через
@@ -1046,6 +1109,14 @@ export function getReportSections() {
       defaultTemplateId: 'builtin-bom-landscape',
       tags: ['ведомость', 'таблица', 'спецификация', 'bom'],
       ...sectionBom(),
+    },
+    {
+      id: 'selectivity',
+      title: 'Селективность защиты',
+      description: 'Анализ селективности пар upstream-downstream автоматов (амплитудная и временная проверка по IEC 60364-5-53). Матрица нарушений с рекомендациями.',
+      defaultTemplateId: 'builtin-engineering-a4',
+      tags: ['инженерный', 'защита', 'селективность'],
+      ...sectionSelectivity(),
     },
     {
       id: 'checks',
