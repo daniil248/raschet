@@ -160,22 +160,13 @@ export function openPanelParamsModal(n) {
         h.push('<h4 style="margin:10px 0 6px;font-size:12px;color:#c67300">Ячейки щита (проект)</h4>');
         h.push('<div class="mv-cells-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">');
         const CELL_ICONS = {
-          'infeed': '⬇',
-          'feeder': '⬆',
-          'transformer-protect': '⚙',
-          'busCoupler': '⇄',
-          'measurement': '📊',
-          'earthing': '⏚',
-          'metering': '📟',
+          'infeed': '⬇', 'feeder': '⬆', 'transformer-protect': '⚙',
+          'busCoupler': '⇄', 'measurement': '📊', 'earthing': '⏚', 'metering': '📟',
         };
         const CELL_LABELS = {
-          'infeed': 'Ввод',
-          'feeder': 'Отходящая',
-          'transformer-protect': 'Защита ТР',
-          'busCoupler': 'Секционная',
-          'measurement': 'Измерение',
-          'earthing': 'Заземление',
-          'metering': 'Учёт',
+          'infeed': 'Ввод', 'feeder': 'Отходящая', 'transformer-protect': 'Защита ТР',
+          'busCoupler': 'Секционная', 'measurement': 'Измерение',
+          'earthing': 'Заземление', 'metering': 'Учёт',
         };
         n.mvCells.forEach((cell, i) => {
           const icon = CELL_ICONS[cell.type] || '▪';
@@ -184,13 +175,26 @@ export function openPanelParamsModal(n) {
           const brk = cell.breakerType || '—';
           const func = cell.functionCode ? `<b style="color:#c67300">${escHtml(cell.functionCode)}</b> ` : '';
           const desc = cell.functionDesc ? `<span class="muted" style="font-size:10px">${escHtml(cell.functionDesc)}</span>` : '';
-          h.push(`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fffbf5;border:1px solid #f0cea0;border-radius:4px;font-size:12px">
+          // Phase 1.19.14: настройки реле защиты ячейки (Ir/Isd/tsd/Ii)
+          const s = cell.settings || {};
+          const hasSettings = (brk === 'VCB' || brk === 'SF6' || brk === 'vcb');
+          const settingsBadge = hasSettings && (s.Ir || s.Isd) ? `<span style="font-size:10px;color:#2e7d32;margin-left:4px">Ir ${s.Ir || In}А · Isd ${s.Isd || '—'}А · tsd ${s.tsd || 0.1}с</span>` : '';
+          h.push(`<div data-mv-cell-idx="${i}" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fffbf5;border:1px solid #f0cea0;border-radius:4px;font-size:12px;cursor:${hasSettings ? 'pointer' : 'default'}" ${hasSettings ? 'title="Клик — настройки реле"' : ''}>
             <span style="font-size:16px">${icon}</span>
-            <span style="flex:1">${func}<b>${escHtml(label)}</b> · ${In} А · ${escHtml(brk)}${desc ? '<br>' + desc : ''}</span>
-            <span class="muted" style="font-size:10px">#${i + 1}</span>
+            <span style="flex:1">${func}<b>${escHtml(label)}</b> · ${In} А · ${escHtml(brk)}${desc ? '<br>' + desc : ''}${settingsBadge}</span>
+            <span class="muted" style="font-size:10px">#${i + 1}${hasSettings ? ' ⚙' : ''}</span>
           </div>`);
         });
         h.push('</div>');
+        // Wire клик по ячейке с VCB/SF6 — открывает модалку настроек реле
+        setTimeout(() => {
+          document.querySelectorAll('[data-mv-cell-idx]').forEach(row => {
+            const idx = Number(row.dataset.mvCellIdx);
+            const cell = n.mvCells[idx];
+            if (!cell || !['VCB', 'SF6', 'vcb'].includes(cell.breakerType)) return;
+            row.addEventListener('click', () => openMvCellSettingsModal(n, idx));
+          });
+        }, 0);
       }
     }
   }
@@ -1178,6 +1182,83 @@ function _renderSectionedPanelControl(n, body) {
   document.getElementById('modal-panel-control').classList.remove('hidden');
 }
 
+
+/**
+ * Phase 1.19.14: модалка настроек реле защиты MV-ячейки (VCB/SF6).
+ * Позволяет задать Ir (тепловая уставка), Isd (уставка SCPD), tsd
+ * (задержка), Ii (мгновенная), по IEC 60255 / IEC 61850.
+ */
+function openMvCellSettingsModal(node, cellIdx) {
+  const cell = node.mvCells?.[cellIdx];
+  if (!cell) return;
+  const In = Number(cell.In_A || cell.In || 0);
+  const s = cell.settings = cell.settings || {};
+  // Default settings per IEC 60255 (definite-time overcurrent)
+  if (s.Ir == null) s.Ir = In;
+  if (s.Isd == null) s.Isd = In * 8;
+  if (s.tsd == null) s.tsd = 0.1;
+  if (s.Ii == null) s.Ii = In * 20;
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9995;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,0.3);width:min(520px,92vw);overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid #e1e4e8;background:linear-gradient(to right,#c67300,#a65a00);color:#fff;display:flex;align-items:center;gap:10px">
+        <h3 style="margin:0;font-size:14px;flex:1">⚙ Настройки реле защиты — ячейка #${cellIdx + 1}</h3>
+        <button type="button" data-mv-close style="background:rgba(255,255,255,0.2);border:none;color:#fff;width:28px;height:28px;border-radius:4px;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:16px;font-size:12px;line-height:1.6">
+        <div class="muted" style="margin-bottom:10px;padding:8px;background:#fff4e5;border-radius:4px;font-size:11px">
+          <b>${escHtml(cell.type || '?')}</b> · ${In} А · ${escHtml(cell.breakerType || '—')}
+          ${cell.functionDesc ? '<br>' + escHtml(cell.functionDesc) : ''}
+          <br>Definite-time overcurrent protection (IEC 60255 / IEC 61850).
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="width:90px;color:#555">I<sub>r</sub>, А</span>
+          <input type="number" id="mv-set-Ir" min="${In * 0.4}" max="${In * 1.2}" step="1" value="${s.Ir}" style="flex:1;padding:4px 8px">
+          <span class="muted" style="font-size:10px">тепловая</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="width:90px;color:#555">I<sub>sd</sub>, А</span>
+          <input type="number" id="mv-set-Isd" min="${In * 2}" max="${In * 20}" step="10" value="${s.Isd}" style="flex:1;padding:4px 8px">
+          <span class="muted" style="font-size:10px">селект. КЗ</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="width:90px;color:#555">t<sub>sd</sub>, с</span>
+          <input type="number" id="mv-set-tsd" min="0.05" max="1.0" step="0.05" value="${s.tsd}" style="flex:1;padding:4px 8px">
+          <span class="muted" style="font-size:10px">задержка</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="width:90px;color:#555">I<sub>i</sub>, А</span>
+          <input type="number" id="mv-set-Ii" min="${In * 5}" max="${In * 50}" step="10" value="${s.Ii}" style="flex:1;padding:4px 8px">
+          <span class="muted" style="font-size:10px">мгновенная</span>
+        </label>
+        <div class="muted" style="font-size:10px;padding:8px;background:#eef5ff;border-radius:4px;color:#1565c0">
+          Типовые значения: I<sub>r</sub> = I<sub>n</sub>, I<sub>sd</sub> = 6…10 × I<sub>n</sub>,
+          t<sub>sd</sub> = 0.05…0.3 с, I<sub>i</sub> = 15…25 × I<sub>n</sub>.
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+          <button type="button" data-mv-close style="padding:6px 14px;border:1px solid #ccc;background:#f6f8fa;border-radius:4px;cursor:pointer">Отмена</button>
+          <button type="button" data-mv-save style="padding:6px 14px;border:none;background:#1976d2;color:#fff;border-radius:4px;cursor:pointer;font-weight:500">Применить</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  const close = () => document.body.removeChild(modal);
+  modal.querySelectorAll('[data-mv-close]').forEach(b => b.addEventListener('click', close));
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('[data-mv-save]').addEventListener('click', () => {
+    snapshot('mv-cell-settings:' + node.id + ':' + cellIdx);
+    s.Ir = Number(document.getElementById('mv-set-Ir').value) || In;
+    s.Isd = Number(document.getElementById('mv-set-Isd').value) || In * 8;
+    s.tsd = Number(document.getElementById('mv-set-tsd').value) || 0.1;
+    s.Ii = Number(document.getElementById('mv-set-Ii').value) || In * 20;
+    close();
+    render(); notifyChange();
+    openPanelParamsModal(node);
+  });
+}
 
 export function openPanelControlModal(n) {
   const body = document.getElementById('panel-control-body');

@@ -8,6 +8,7 @@
    ========================================================================= */
 // Ensure engine modules are loaded and window.Raschet is available
 import './engine/index.js';
+import { mountHelp } from '../shared/help-panel.js';
 import { getMethod, listMethods } from './methods/index.js';
 import { formatVoltageLevelLabel } from './engine/electrical.js';
 import * as Report from '../shared/report/index.js';
@@ -1911,6 +1912,115 @@ function escAttr(s) { return escHtml(s); }
 // ================= Инициализация =================
 async function init() {
   showScreen('loading');
+
+  // Справка по главному модулю — floating-«?» в правом-нижнем углу
+  mountHelp({
+    module: 'engine',
+    title: 'Конструктор схем Raschet',
+    usage: `
+      <h4>Назначение модуля</h4>
+      <p>Главный инструмент — drag-and-drop конструктор принципиальных схем электроснабжения. Собирает граф «источник → щит → потребитель» с автоматическим расчётом токов, подбором кабеля, автоматов и проверкой координации защит.</p>
+      <h4>Рабочий процесс</h4>
+      <ol>
+        <li><b>Левая панель (палитра)</b> — перетащите элементы на холст: Источники (утил/ДГУ/солнце), <b>НКУ</b> (LV-щиты), <b>РУ СН</b> (SafeRing/RM6/ЩО-70), ИБП, Потребители, Кабельные каналы.</li>
+        <li><b>Соединение</b> — тяните от выходного порта одного узла ко входному другого. Цвет линии = класс напряжения.</li>
+        <li><b>Правая панель (инспектор)</b> — параметры выбранного узла / линии: нагрузка, cos φ, Ксим, приоритеты АВР, условия прокладки, ручной/авто подбор кабеля и автомата.</li>
+        <li><b>Расчёт</b> — идёт автоматически при каждом изменении (recalc.js). Показываются Imax, Iz, Ik, ΔU, Smin.</li>
+        <li><b>Режимы работы</b> — переключатель сверху: «Нормальный» / кастомные (потеря одного ввода и т.п.). Для каждой линии задаётся состояние «Нормальная / Повреждена / Отключена».</li>
+        <li><b>Отчёты</b> — кнопка «Отчёт» сверху. Выбор из шаблонов + текстовый/PDF/DOCX экспорт.</li>
+      </ol>
+      <h4>Подпрограммы (кнопки на верхней панели и отдельные вкладки)</h4>
+      <ul>
+        <li>⚙ Конфигуратор <b>НКУ</b> (panel-config/) — wizard подбора оболочки + автоматов по IEC 61439</li>
+        <li>⚡ Конфигуратор <b>РУ СН</b> (mv-config/) — wizard выбора RM6/SafeRing/ЩО-70 и функций ячеек</li>
+        <li>🔋 Конфигуратор <b>ИБП</b> (ups-config/) — wizard 3 шага, IEC 62040-3</li>
+        <li>🔌 Расчёт <b>кабеля</b> (cable/) — standalone по IEC 60364/ПУЭ</li>
+        <li>🔋 Расчёт <b>АКБ</b> (battery/) — IEEE 485 / IEC 60896</li>
+        <li>📦 <b>Каталог</b> (catalog/) — библиотека элементов + цены + контрагенты</li>
+        <li>📄 <b>Отчёты</b> (reports/) — редактор шаблонов PDF/DOCX</li>
+      </ul>
+      <div class="note">У каждой подпрограммы есть свой <b>?</b>-виджет в правом-нижнем углу с детальной справкой по формулам и стандартам.</div>
+    `,
+    calcs: `
+      <h4>Текущие расчёты в конструкторе</h4>
+      <h5>1. Баланс нагрузок (recalc.js)</h5>
+      <ul>
+        <li>BFS вверх по графу от потребителей к источникам</li>
+        <li>Суммирование P<sub>расч</sub> с учётом K<sub>сим</sub> (коэффициент одновременности) на каждом щите</li>
+        <li>cos φ — по категории потребителя (lighting/power/hvac/it…)</li>
+        <li>S = P / cos φ; I = S / (√3 · U) для 3-фазной линии, I = S / U для 1-фазной</li>
+      </ul>
+      <h5>2. Подбор кабеля (IEC 60364-5-52 или ПУЭ)</h5>
+      <ul>
+        <li>I<sub>z</sub> ≥ I<sub>расч</sub> / (K<sub>t</sub> · K<sub>g</sub> · K<sub>b</sub>)</li>
+        <li>Координация с автоматом: I<sub>расч</sub> ≤ I<sub>n</sub> ≤ I<sub>z</sub> (IEC 60364-4-43)</li>
+        <li>Минимальное сечение при КЗ: S<sub>min</sub> = I<sub>k</sub> · √t / k (k=115 Cu/PVC, 143 Cu/XLPE)</li>
+        <li>Let-through I²t для MCB class 3 (IEC 60898-1) — учёт токоограничения современных автоматов</li>
+      </ul>
+      <h5>3. Ток КЗ (shortCircuit module)</h5>
+      <ul>
+        <li>Zs<sub>utility</sub> = c · U / (√3 · I<sub>k</sub>) — импеданс источника</li>
+        <li>Z<sub>cable</sub> = √(R² + X²), R = ρ·L/S, X = X₀·L</li>
+        <li>I<sub>k3</sub> = c · U / (√3 · Z<sub>сумм</sub>) по IEC 60909</li>
+        <li>i<sub>p</sub> = κ · √2 · I<sub>k3</sub>, κ = 1.02 + 0.98·exp(-3/(X/R))</li>
+      </ul>
+      <h5>4. Петля «фаза-ноль» (phaseLoop module)</h5>
+      <ul>
+        <li>I<sub>k1</sub> = c · U / (√3 · Z<sub>loop</sub>), Z<sub>loop</sub> = 2·(R+X) по всей цепочке от источника</li>
+        <li>Проверка: I<sub>a</sub> (ток автомата, магнитная зона) ≤ I<sub>k1</sub></li>
+        <li>Система заземления TN-S/TN-C/TN-C-S/TT/IT по IEC 60364-4-41</li>
+      </ul>
+      <h5>5. Потеря напряжения (voltageDrop module)</h5>
+      <ul>
+        <li>ΔU = √3 · I · L · (R·cos φ + X·sin φ) / U · 100%</li>
+        <li>Норма: ≤ 3% освещение, ≤ 5% силовые (IEC 60364-5-52 G.52.1)</li>
+      </ul>
+      <h5>6. Селективность (selectivity-check.js)</h5>
+      <ul>
+        <li>Амплитудная: I<sub>n_up</sub> ≥ k · I<sub>n_down</sub> (k=1.6 для C, 1.4 для D, 2.0 для B по IEC 60364-5-53)</li>
+        <li>Временная: t<sub>up</sub>(I<sub>k</sub>) &gt; t<sub>down</sub>(I<sub>k</sub>) · 1.3</li>
+        <li>Для MV-ячеек — отдельный анализ пар infeed × feeder (fuse-switch как downstream от VCB)</li>
+      </ul>
+      <h5>7. IEC 60909 для РУ СН</h5>
+      <ul>
+        <li>Учёт импеданса MV-кабеля между источником и шинами</li>
+        <li>Проверка стойкости шин: I<sub>k3</sub> ≤ I<sub>t</sub> (kindProps.It_kA)</li>
+      </ul>
+      <h5>8. Тепловой баланс ИБП + АКБ</h5>
+      <ul>
+        <li>S<sub>UPS</sub> ≥ Σ P<sub>крит</sub> / cos φ<sub>IT</sub> (обычно 0.9-1.0)</li>
+        <li>Ёмкость АКБ — через storage-channel в battery/ (runtime в минутах, EoD-напряжение)</li>
+      </ul>
+      <div class="note">Детали каждого расчёта — в ?-виджетах соответствующих подпрограмм (cable, ups-config, mv-config и др.).</div>
+    `,
+    shortcuts: `
+      <h4>Основные</h4>
+      <table>
+        <tr><th>Действие</th><th>Сочетание</th></tr>
+        <tr><td>Отмена</td><td><code>Ctrl+Z</code></td></tr>
+        <tr><td>Повтор</td><td><code>Ctrl+Shift+Z</code> или <code>Ctrl+Y</code></td></tr>
+        <tr><td>Удалить выделенное</td><td><code>Delete</code> или <code>Backspace</code></td></tr>
+        <tr><td>Скопировать узел</td><td><code>Ctrl+C</code></td></tr>
+        <tr><td>Вставить</td><td><code>Ctrl+V</code></td></tr>
+        <tr><td>Выделить всё</td><td><code>Ctrl+A</code></td></tr>
+      </table>
+      <h4>Навигация по холсту</h4>
+      <table>
+        <tr><th>Действие</th><th>Сочетание</th></tr>
+        <tr><td>Пан холста</td><td>Средняя кнопка мыши + drag</td></tr>
+        <tr><td>Зум</td><td><code>Ctrl + колесо</code></td></tr>
+        <tr><td>Центрировать на выделении</td><td><code>Space</code></td></tr>
+        <tr><td>Переключить палитру</td><td><code>Esc</code> (закрытие дропдаунов)</td></tr>
+      </table>
+      <h4>Работа со связью</h4>
+      <ul>
+        <li><b>Shift + клик</b> по точке сплайна — удалить точку</li>
+        <li><b>Shift + клик</b> по линии — удалить связь</li>
+        <li><b>+ в середине сегмента</b> — добавить точку сплайна</li>
+        <li>Рукоятки на концах — переключить связь на другой порт</li>
+      </ul>
+    `,
+  });
 
   // Мобильные toggles
   els.btnTogglePalette.addEventListener('click', () => {
