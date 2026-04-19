@@ -917,14 +917,31 @@ async function _mountConnTccChart(conn, fromN, toN) {
   container.innerHTML = '';
 
   const items = [];
+  // Phase 1.19.15: если линия выходит из MV-ячейки с уставками реле —
+  // используем их (Ir/Isd/tsd/Ii) вместо фиксированной In+curve.
+  // Находим соответствующую ячейку в fromN.mvCells по индексу порта вывода.
+  let mvCellSettings = null;
+  if (fromN?.isMv && Array.isArray(fromN.mvCells)) {
+    const feeders = fromN.mvCells.filter(cc => cc.type === 'feeder' || cc.type === 'transformer-protect');
+    // conn.from.port указывает на выход — сопоставим с порядком feeder-ячеек
+    const port = Number(conn.from?.port) || 0;
+    const cell = feeders[port] || feeders[0];
+    if (cell && cell.settings && Number(cell.settings.Ir) > 0) {
+      mvCellSettings = cell.settings;
+    }
+  }
   // Текущий автомат (защита данной линии)
-  if (conn._breakerIn) {
+  if (conn._breakerIn || mvCellSettings) {
+    const In = Number(conn._breakerIn) || Number(mvCellSettings?.Ir) || 630;
     items.push({
       id: 'this-breaker',
       kind: 'breaker',
-      In: Number(conn._breakerIn),
+      In,
       curve: _normalizeCurveShort(conn.breakerCurve || conn._breakerCurveEff),
-      label: `ЭТА линия: ${conn.breakerCurve || 'MCCB'} ${conn._breakerIn}A`,
+      settings: mvCellSettings || undefined,
+      label: mvCellSettings
+        ? `ЭТА линия: VCB-реле Ir ${mvCellSettings.Ir}А · Isd ${mvCellSettings.Isd}А · tsd ${mvCellSettings.tsd}с`
+        : `ЭТА линия: ${conn.breakerCurve || 'MCCB'} ${conn._breakerIn}A`,
       color: '#1976d2',
     });
   }

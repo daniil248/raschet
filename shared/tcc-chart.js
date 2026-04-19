@@ -26,6 +26,7 @@ import {
   tccCableThermalLimit,
   tccBreakerBandPoints,
   tccFuseBandPoints,
+  tccRelayBandPoints,
 } from './tcc-curves.js';
 
 const DEFAULT_COLORS = [
@@ -346,6 +347,12 @@ function _fmtA(I) {
  * Для cable / line — возвращаем null (рисуем однолинейно).
  */
 function bandPoints(item) {
+  // Phase 1.19.15: если у item есть relay-settings (Ir/Isd/tsd/Ii) —
+  // рисуем по реальным уставкам (definite-time overcurrent по IEC 60255).
+  // Это используется для MV-ячеек с VCB/SF6 и для промышленных MCCB/ACB.
+  if (item.settings && Number(item.settings.Ir) > 0) {
+    return tccRelayBandPoints(item.settings, 80);
+  }
   if (item.kind === 'breaker') {
     const In = Number(item.In) || 16;
     const curve = item.curve || 'C';

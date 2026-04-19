@@ -286,6 +286,70 @@ export function tccBreakerBandPoints(In, curve = 'C', n = 80) {
 }
 
 /**
+ * Полоса срабатывания реле защиты с настройками по IEC 60255 / IEC 61850.
+ * Используется для VCB/SF6/MCCB/ACB с регулируемыми уставками:
+ *   Ir  — long-time pickup (thermal) — ниже не срабатывает
+ *   Isd — short-time pickup — чёткая зона КЗ
+ *   tsd — short-time delay — задержка в зоне Isd…Ii
+ *   Ii  — instantaneous — мгновенная зона (обычно ≥Isd и 0.01…0.03 с)
+ * tr  — опционально, задержка long-time (если не задано, считается как
+ *       IEC thermal overload t = A/(k²-1))
+ *
+ * Алгоритм:
+ *   I < Ir                 → t_min = t_max = Infinity (safe)
+ *   Ir ≤ I < Isd           → thermal inverse: t = A / (k² - 1), k = I/Ir
+ *                             с band ±20% (погрешность ТТ + реле)
+ *   Isd ≤ I < Ii           → t_min = tsd × 0.9, t_max = tsd × 1.1 (definite-time)
+ *   I ≥ Ii                 → t_min = 0.01, t_max = 0.03 с (мгновенное)
+ *
+ * Возвращает { t_min, t_max } в секундах.
+ */
+export function tccRelayTimeBand(I_A, settings) {
+  const Ir  = Number(settings?.Ir)  || 0;
+  const Isd = Number(settings?.Isd) || (Ir * 8);
+  const tsd = Number(settings?.tsd) || 0.1;
+  const Ii  = Number(settings?.Ii)  || (Ir * 20);
+  const I = Number(I_A);
+  if (!Number.isFinite(I) || I <= 0 || !Ir) return { t_min: Infinity, t_max: Infinity };
+
+  if (I < Ir * 1.02) return { t_min: Infinity, t_max: Infinity };
+  if (I < Isd) {
+    // Long-time thermal overload (IEC 60255-151 definite overcurrent)
+    const k = I / Ir;
+    // Классическая IEC 60255 normal-inverse: t = 0.14·tms / (k^0.02 − 1)
+    // Упрощённо: t = 80 / (k² - 1), tms = 1.0
+    const tNom = 80 / Math.max(0.01, k * k - 1);
+    return {
+      t_min: Math.max(tsd, tNom * 0.8),
+      t_max: Math.max(tsd, tNom * 1.2),
+    };
+  }
+  if (I < Ii) {
+    // Короткая задержка (short-time delay)
+    return { t_min: tsd * 0.9, t_max: tsd * 1.1 };
+  }
+  // Мгновенная зона
+  return { t_min: 0.01, t_max: 0.03 };
+}
+
+/**
+ * Полоса срабатывания реле в координатах (I, t).
+ */
+export function tccRelayBandPoints(settings, n = 80) {
+  const Ir = Number(settings?.Ir) || 0;
+  const Ii = Number(settings?.Ii) || (Ir * 20);
+  if (!Ir) return [];
+  const pts = [];
+  const ratios = _logRange(1.02, Math.max(30, (Ii / Ir) * 2), n);
+  for (const r of ratios) {
+    const I = r * Ir;
+    const { t_min, t_max } = tccRelayTimeBand(I, settings);
+    if (Number.isFinite(t_max)) pts.push({ I, t_lo: t_min, t_hi: t_max });
+  }
+  return pts;
+}
+
+/**
  * Полоса для плавкого предохранителя. Для gG — полоса ±25% вокруг номинальной
  * по IEC 60269. Для aM, gM — по соответствующим стандартам (упрощённо).
  */

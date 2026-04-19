@@ -58,13 +58,17 @@ function _mvCellSelectivity(upCell, downCell) {
   const inUp = Number(upCell.In_A || upCell.In || 0);
   const inDown = Number(downCell.In_A || downCell.In || 0);
   const checks = [];
-  // Амплитудная
+  // Амплитудная — предпочитаем уставки реле, если заданы
+  const upPickup = Number(upCell.settings?.Isd) || inUp;
+  const downPickup = Number(downCell.settings?.Isd) || inDown;
   const coef = downCell.breakerType === 'fuse-switch' ? 1.6 : 1.3;
-  const amplitudeOk = inUp >= coef * inDown;
+  const amplitudeOk = upPickup >= coef * downPickup;
   checks.push({
     type: 'amplitude',
     ok: amplitudeOk,
-    info: `In_up=${inUp} vs ${coef}×In_down=${(coef * inDown).toFixed(1)} А`,
+    info: upCell.settings?.Isd
+      ? `Isd_up=${upPickup} vs ${coef}×Isd_down=${(coef * downPickup).toFixed(1)} А`
+      : `In_up=${inUp} vs ${coef}×In_down=${(coef * inDown).toFixed(1)} А`,
   });
   // По типам аппаратов
   const upType = upCell.breakerType || '—';
@@ -76,11 +80,25 @@ function _mvCellSelectivity(upCell, downCell) {
   }
   checks.push({ type: 'device-type', ok: typeOk, info: typeInfo });
 
+  // Phase 1.19.15: временная проверка — если у обеих ячеек VCB с relay settings
+  const upTsd = Number(upCell.settings?.tsd);
+  const downTsd = Number(downCell.settings?.tsd);
+  if (upTsd > 0 && downTsd > 0) {
+    // Ступень селективности Δt = tsd_up - tsd_down ≥ 0.1…0.2 с
+    const dt = upTsd - downTsd;
+    const timeOk = dt >= 0.1;
+    checks.push({
+      type: 'time-step',
+      ok: timeOk,
+      info: `Δt = ${dt.toFixed(2)} с (требуется ≥ 0.1 с)`,
+    });
+  }
+
   const selective = checks.every(c => c.ok);
   return {
     selective,
     reason: selective
-      ? 'Селективность обеспечена (амплитудная + типовая)'
+      ? 'Селективность обеспечена (амплитуда + тип' + (upTsd > 0 && downTsd > 0 ? ' + временная ступень' : '') + ')'
       : 'Нарушение: ' + checks.filter(c => !c.ok).map(c => c.type + ': ' + c.info).join('; '),
     checks,
   };
