@@ -2190,7 +2190,12 @@ function renderCableTable() {
         <td style="padding:5px 4px;text-align:center">
           <input type="checkbox" class="ct-row-sel" data-id="${esc(c.id)}" ${checked ? 'checked' : ''}>
         </td>
-        <td style="padding:5px 8px;font-weight:600">${esc(lineLabel)}</td>
+        <td style="padding:5px 8px;font-weight:600">
+          <a href="#" class="ct-jump" data-id="${esc(c.id)}" title="Перейти к линии на схеме" style="color:#1976d2;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
+            ${esc(lineLabel)}
+            <span style="font-size:10px;opacity:0.7">↗</span>
+          </a>
+        </td>
         <td style="padding:5px 8px;font-size:11px">${esc(fromLabel)} → ${esc(toLabel)}</td>
         <td style="padding:5px 8px">
           <select class="ct-mark" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${markOpts}</select>
@@ -2299,6 +2304,19 @@ function renderCableTable() {
         else c.breakerCurve = sel.value;
       });
       applyAndRerender();
+    });
+  });
+
+  // Phase 1.20.11: клик по обозначению линии — выделяет её на схеме и
+  // закрывает модалку (пользователь сразу видит её параметры в инспекторе).
+  mount.querySelectorAll('.ct-jump').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.dataset.id;
+      if (typeof window.Raschet?.selectConnAndFocus === 'function') {
+        window.Raschet.selectConnAndFocus(id);
+      }
+      closeModal('modal-cable-table');
     });
   });
 

@@ -513,6 +513,16 @@ window.Raschet = {
   // и хотим чтобы recalc пересчитал _cableMethod / _maxA / _cableIz.
   render: () => render(),
   rerender: () => { render(); renderInspector(); },
+  // Phase 1.20.11: «Перейти к линии» из cable-table — выделяет conn
+  // и показывает его параметры в инспекторе. Фокус (зум/пан) не трогаем,
+  // пользователь сам скроллит; на схеме линия будет подсвечена классом .selected.
+  selectConnAndFocus: (id) => {
+    const c = state.conns.get(id);
+    if (!c) return false;
+    selectConn(id);
+    render();
+    return true;
+  },
   importLoadsTable,
   get3PhaseBalance,
   // Фаза 1.3 + 1.5.7: BOM (с опциональными ценами)
