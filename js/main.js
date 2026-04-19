@@ -1588,6 +1588,220 @@ async function exportReportSection(sec, kind) {
   }
 }
 
+// ================= Таблица кабелей (Фаза 1.20) =================
+// Быстрое редактирование всех кабельных линий: марка, длина, способ прокладки.
+// Изменения применяются сразу в state и триггерят recalc+render.
+let _cableTableFilters = { search: '', class: '' };
+
+function openCableTableModal() {
+  openModal('modal-cable-table');
+  renderCableTable();
+  const srchEl = document.getElementById('cable-table-search');
+  if (srchEl) srchEl.oninput = (e) => { _cableTableFilters.search = e.target.value; renderCableTable(); };
+  const clsEl = document.getElementById('cable-table-filter-class');
+  if (clsEl) clsEl.onchange = (e) => { _cableTableFilters.class = e.target.value; renderCableTable(); };
+}
+
+async function renderCableTable() {
+  const mount = document.getElementById('cable-table-mount');
+  if (!mount) return;
+  const S = window.Raschet?._state;
+  if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
+
+  // Подгружаем marks из cable-types-catalog (для select)
+  let allMarks = [];
+  try {
+    const cm = await import('../shared/cable-types-catalog.js');
+    allMarks = cm.listCableTypes ? cm.listCableTypes() : [];
+  } catch {}
+
+  const conns = [...S.conns.values()].filter(c => {
+    // Только активные с известным сечением
+    return c._active && (c._cableSize || c._busbarNom);
+  });
+
+  // Фильтры
+  const q = _cableTableFilters.search.toLowerCase();
+  const cls = _cableTableFilters.class;
+  const filtered = conns.filter(c => {
+    if (cls === 'HV' && !c._isHV) return false;
+    if (cls === 'DC' && !c._isDC) return false;
+    if (cls === 'LV' && (c._isHV || c._isDC)) return false;
+    if (q) {
+      const fromN = S.nodes.get(c.from.nodeId);
+      const toN = S.nodes.get(c.to.nodeId);
+      const hay = [
+        c.lineLabel,
+        fromN?.tag, fromN?.name,
+        toN?.tag, toN?.name,
+        c.cableMark,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const countEl = document.getElementById('cable-table-count');
+  if (countEl) countEl.textContent = `${filtered.length} из ${conns.length}`;
+
+  // Группируем марки по категории для optgroup
+  const byCat = {};
+  for (const m of allMarks) {
+    const cat = m.category || 'power';
+    (byCat[cat] = byCat[cat] || []).push(m);
+  }
+  const CAT_LABEL = {
+    power: 'Силовой', hv: 'Высоковольтный',
+    signal: 'Слаботочный', data: 'Информационный',
+    fieldbus: 'Полевой', dc: 'DC',
+  };
+
+  // Методы прокладки из текущей методики расчёта (IEC / ПУЭ)
+  let methodsList = [];
+  try {
+    const mm = await import('./methods/index.js');
+    const meth = mm.getMethod(S.currentMethodId || 'iec60364');
+    if (meth?.installMethods) {
+      methodsList = Object.entries(meth.installMethods).map(([k, v]) => ({ id: k, label: v }));
+    }
+  } catch {}
+  if (!methodsList.length) {
+    methodsList = [
+      { id: 'A1', label: 'A1' }, { id: 'A2', label: 'A2' },
+      { id: 'B1', label: 'B1' }, { id: 'B2', label: 'B2' },
+      { id: 'C', label: 'C' }, { id: 'D', label: 'D' },
+      { id: 'E', label: 'E' }, { id: 'F', label: 'F' }, { id: 'G', label: 'G' },
+    ];
+  }
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+  const html = [`
+    <table class="cable-table" style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:#f6f8fa;position:sticky;top:0;z-index:1">
+          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Обозначение</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Откуда → Куда</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:200px">Марка кабеля</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de">Проводник</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de">Длина, м</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:2px solid #d0d7de;min-width:150px">Способ прокладки</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:2px solid #d0d7de">Imax / Iдоп</th>
+          <th style="padding:6px 8px;text-align:center;border-bottom:2px solid #d0d7de">Класс</th>
+        </tr>
+      </thead>
+      <tbody>`];
+  for (const c of filtered) {
+    const fromN = S.nodes.get(c.from.nodeId);
+    const toN = S.nodes.get(c.to.nodeId);
+    const fromLabel = (fromN?.tag || fromN?.name || '?');
+    const toLabel = (toN?.tag || toN?.name || '?');
+    const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
+    const lineLabel = c.lineLabel || `${linePrefix}-${fromLabel}-${toLabel}`;
+
+    // Фильтр допустимых марок по классу линии
+    const allowedCats = c._isHV ? ['hv'] : (c._isDC ? ['dc', 'power'] : ['power']);
+    let markOpts = '<option value="">— не выбрано —</option>';
+    for (const cat of allowedCats) {
+      const items = byCat[cat] || [];
+      if (!items.length) continue;
+      markOpts += `<optgroup label="${esc(CAT_LABEL[cat] || cat)}">`;
+      for (const m of items) {
+        const sel = m.id === c.cableMark ? ' selected' : '';
+        markOpts += `<option value="${esc(m.id)}"${sel}>${esc(m.brand || m.id)}</option>`;
+      }
+      markOpts += '</optgroup>';
+    }
+    if (c.cableMark && !allMarks.find(m => m.id === c.cableMark && allowedCats.includes(m.category || 'power'))) {
+      const cur = allMarks.find(m => m.id === c.cableMark);
+      if (cur) markOpts += `<optgroup label="⚠ Не по классу"><option value="${esc(cur.id)}" selected>${esc(cur.brand || cur.id)}</option></optgroup>`;
+    }
+
+    let methodOpts = '<option value="">—</option>';
+    for (const m of methodsList) {
+      const sel = m.id === c._cableMethod ? ' selected' : '';
+      methodOpts += `<option value="${esc(m.id)}"${sel}>${esc(m.label)}</option>`;
+    }
+
+    let conductorSpec;
+    if (c._busbarNom) {
+      conductorSpec = `шинопр. ${c._busbarNom} А`;
+    } else {
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
+      const parStr = parallel > 1 ? `${parallel}×` : '';
+      conductorSpec = `${parStr}${cores}×${c._cableSize} мм²`;
+    }
+
+    const lengthVal = c.lengthM != null ? c.lengthM : '';
+    const cls = c._isHV ? 'MV/HV' : (c._isDC ? 'DC' : 'LV');
+    const clsColor = c._isHV ? '#f57c00' : (c._isDC ? '#7b1fa2' : '#1976d2');
+
+    html.push(`
+      <tr data-id="${esc(c.id)}" style="border-bottom:1px solid #eaecef">
+        <td style="padding:5px 8px;font-weight:600">${esc(lineLabel)}</td>
+        <td style="padding:5px 8px;font-size:11px">${esc(fromLabel)} → ${esc(toLabel)}</td>
+        <td style="padding:5px 8px">
+          <select class="ct-mark" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${markOpts}</select>
+        </td>
+        <td style="padding:5px 8px;font-size:11px">${esc(conductorSpec)}</td>
+        <td style="padding:5px 8px;text-align:right">
+          <input class="ct-length" data-id="${esc(c.id)}" type="number" min="0" step="0.5" value="${lengthVal}" style="width:70px;padding:3px 6px;text-align:right">
+        </td>
+        <td style="padding:5px 8px">
+          <select class="ct-method" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${methodOpts}</select>
+        </td>
+        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:#555">
+          ${fmt(c._maxA || 0)} / ${fmt(c._cableIz || 0)} А
+        </td>
+        <td style="padding:5px 8px;text-align:center;font-size:11px;color:${clsColor};font-weight:600">${cls}</td>
+      </tr>`);
+  }
+  if (!filtered.length) {
+    html.push('<tr><td colspan="8" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
+  }
+  html.push('</tbody></table>');
+  mount.innerHTML = html.join('');
+
+  // Обработчики изменений (change, не input — чтобы не терять фокус)
+  const apply = (connId, fn) => {
+    if (!window.Raschet?._state?.conns) return;
+    const c = window.Raschet._state.conns.get(connId);
+    if (!c) return;
+    fn(c);
+    if (typeof window.Raschet.notifyChange === 'function') window.Raschet.notifyChange();
+  };
+  mount.querySelectorAll('.ct-mark').forEach(sel => {
+    sel.addEventListener('change', () => {
+      apply(sel.dataset.id, (c) => {
+        c.cableMark = sel.value || null;
+        // Автоприменение material/insulation из записи
+        if (sel.value) {
+          const rec = allMarks.find(m => m.id === sel.value);
+          if (rec) {
+            if (rec.material === 'Cu' || rec.material === 'Al') c.material = rec.material;
+            if (rec.insulation === 'PVC' || rec.insulation === 'XLPE') c.insulation = rec.insulation;
+          }
+        }
+      });
+      renderCableTable();
+    });
+  });
+  mount.querySelectorAll('.ct-length').forEach(inp => {
+    inp.addEventListener('change', () => {
+      apply(inp.dataset.id, (c) => { c.lengthM = Math.max(0, Number(inp.value) || 0); });
+      renderCableTable();
+    });
+  });
+  mount.querySelectorAll('.ct-method').forEach(sel => {
+    sel.addEventListener('change', () => {
+      apply(sel.dataset.id, (c) => { c.installMethod = sel.value || undefined; });
+      renderCableTable();
+    });
+  });
+}
+
 // ================= Импорт таблицы нагрузок =================
 function openLoadsImportModal() {
   if (state.currentProject && state.currentProject._role === 'viewer') {
@@ -1731,6 +1945,9 @@ async function init() {
   });
   if (els.btnOpenReports) els.btnOpenReports.addEventListener('click', openReportsModal);
   if (els.btnOpenLoadsImport) els.btnOpenLoadsImport.addEventListener('click', openLoadsImportModal);
+  // Фаза 1.20: таблица кабелей
+  const btnCableTable = document.getElementById('btn-open-cable-table');
+  if (btnCableTable) btnCableTable.addEventListener('click', openCableTableModal);
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
   if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(els.reportBody.textContent); flash('Скопировано'); }

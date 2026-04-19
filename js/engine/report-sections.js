@@ -22,6 +22,7 @@ import { get3PhaseBalance, generateReport } from './report.js';
 import * as B from '../../shared/report/blocks.js';
 import { collectBomFromProject, groupBomByKind } from '../../shared/bom.js';
 import { analyzeSelectivity } from './selectivity-check.js';
+import { getCableType } from '../../shared/cable-types-catalog.js';
 
 // ——— общие хелперы ———
 function fullTag(n) { if (!n) return ''; return effectiveTag(n) || n.tag || ''; }
@@ -472,14 +473,15 @@ function sectionConsumers() {
 function sectionCables() {
   const items = collectCables();
   const cols = [
-    { label: 'Обозначение', width: 45 },
-    { label: 'Проводник',   width: 40 },
-    { label: 'Кол.',        align: 'right', width: 12 },
-    { label: 'L, м',        align: 'right', width: 14 },
-    { label: 'Итого, м',    align: 'right', width: 16 },
-    { label: 'Imax, А',     align: 'right', width: 14 },
-    { label: 'Iдоп, А',     align: 'right', width: 14 },
-    { label: 'Метод',       align: 'center', width: 14 },
+    { label: 'Обозначение', width: 40 },
+    { label: 'Марка',       width: 28 },
+    { label: 'Проводник',   width: 36 },
+    { label: 'Кол.',        align: 'right', width: 10 },
+    { label: 'L, м',        align: 'right', width: 12 },
+    { label: 'Итого, м',    align: 'right', width: 14 },
+    { label: 'Imax, А',     align: 'right', width: 12 },
+    { label: 'Iдоп, А',     align: 'right', width: 12 },
+    { label: 'Метод',       align: 'center', width: 12 },
   ];
   let bomTotalLength = 0;
   const rows = items.map(c => {
@@ -490,17 +492,26 @@ function sectionCables() {
     const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
     const lineLabel = c.lineLabel || `${linePrefix}-${fromTag}-${toTag}`;
     const length = c._cableLength != null ? c._cableLength : (c.lengthM || 0);
+    // Марка кабеля (из cable-types-catalog, если выбрана)
+    let markStr = '—';
+    if (c.cableMark) {
+      try {
+        const rec = getCableType(c.cableMark);
+        markStr = rec?.brand || c.cableMark;
+      } catch { markStr = c.cableMark; }
+    }
     let qty, conductorSpec, methodStr;
     if (c._busbarNom) {
       qty = 1;
       conductorSpec = `шинопр. ${c._busbarNom} А`;
       methodStr = '—';
+      markStr = '—';
     } else {
       const parallel = Math.max(1, c._cableParallel || 1);
       const isGroup = Array.isArray(c._groupCables) && c._groupCables.length > 1;
       const groupCount = isGroup ? c._groupCables.length : 1;
       qty = parallel * groupCount;
-      const cores = c._wireCount || (c._threePhase ? 5 : 3);
+      const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
       conductorSpec = `${cores}×${c._cableSize} мм²`;
       if (c._isHV) conductorSpec = cableVoltageClass(c._voltage || 0) + ' · ' + conductorSpec;
       if (c._isDC) conductorSpec = `= ${Math.round(Number(c._voltage) || 0)} В · ` + conductorSpec;
@@ -509,7 +520,7 @@ function sectionCables() {
     const totalM = Number(length) * qty;
     bomTotalLength += totalM;
     return [
-      lineLabel, conductorSpec, String(qty),
+      lineLabel, markStr, conductorSpec, String(qty),
       fmt(length), fmt(totalM),
       fmt(c._maxA || 0), fmt(c._cableIz || 0),
       methodStr + (c._cableOverflow ? ' ⚠' : ''),
@@ -538,6 +549,92 @@ function sectionCables() {
     text.push('В схеме нет активных кабельных линий.');
     blocks.push(B.paragraph('В схеме нет активных кабельных линий.'));
   }
+  return { text: text.join('\n'), blocks };
+}
+
+// 5b. СВОДНАЯ ВЕДОМОСТЬ КАБЕЛЯ ПО МАРКЕ И СЕЧЕНИЮ (SKU)
+// Агрегация всех кабельных линий проекта по ключу «марка + число жил + сечение».
+// Даёт снабженческую сводку: сколько метров какого именно SKU нужно закупить.
+function sectionCableBom() {
+  const items = collectCables().filter(c => !c._busbarNom);  // шинопроводы отдельно
+  // Группа: brand + cores × sizeMm2 + material + insulation
+  const groups = new Map();
+  for (const c of items) {
+    const length = Number(c._cableLength != null ? c._cableLength : (c.lengthM || 0));
+    if (length <= 0) continue;
+    const parallel = Math.max(1, c._cableParallel || 1);
+    const isGroup = Array.isArray(c._groupCables) && c._groupCables.length > 1;
+    const groupCount = isGroup ? c._groupCables.length : 1;
+    const qty = parallel * groupCount;
+    const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
+    const size = c._cableSize || 0;
+    if (!size) continue;
+    // Марка: cable-type brand, иначе «типовой кабель» (материал/изоляция)
+    let markLabel = '—';
+    if (c.cableMark) {
+      try {
+        const rec = getCableType(c.cableMark);
+        markLabel = rec?.brand || c.cableMark;
+      } catch {}
+    }
+    if (markLabel === '—' || markLabel === c.cableMark) {
+      // Fallback-марка по material/insulation
+      const mat = c.material === 'Al' ? 'Al' : 'Cu';
+      const ins = c.insulation === 'XLPE' ? 'XLPE' : 'PVC';
+      markLabel = markLabel === '—' ? `${mat}/${ins} (без марки)` : markLabel;
+    }
+    const key = `${markLabel} ${cores}×${size} мм²`;
+    const prev = groups.get(key) || {
+      mark: markLabel, cores, size, totalM: 0, lines: 0,
+      material: c.material || 'Cu',
+      insulation: c.insulation || 'PVC',
+    };
+    prev.totalM += length * qty;
+    prev.lines += 1;
+    groups.set(key, prev);
+  }
+  // Сортируем: по марке, затем по сечению возрастанию
+  const rows = [...groups.values()].sort((a, b) => {
+    if (a.mark !== b.mark) return a.mark.localeCompare(b.mark);
+    if (a.cores !== b.cores) return a.cores - b.cores;
+    return a.size - b.size;
+  });
+  const text = [
+    'СВОДНАЯ ВЕДОМОСТЬ КАБЕЛЬНОЙ ПРОДУКЦИИ (по SKU)',
+    '='.repeat(78),
+    ...metaTextLines(),
+    '',
+  ];
+  const blocks = [
+    B.h1('Сводная ведомость кабеля по маркам и сечениям'),
+    ...metaBlocks(),
+  ];
+  if (!rows.length) {
+    text.push('Нет активных кабельных линий.');
+    blocks.push(B.paragraph('В проекте нет активных кабельных линий с длиной > 0.'));
+    return { text: text.join('\n'), blocks };
+  }
+  const header = ['Марка кабеля', 'Число жил × сечение', 'Материал / изоляция', 'Линий', 'Общая длина, м', 'С запасом 10%, м'];
+  const tableRows = rows.map(r => [
+    r.mark,
+    `${r.cores}×${r.size} мм²`,
+    `${r.material}/${r.insulation}`,
+    String(r.lines),
+    fmt(r.totalM),
+    fmt(r.totalM * 1.1),
+  ]);
+  // Итог по всем SKU
+  const grandTotal = rows.reduce((s, r) => s + r.totalM, 0);
+  tableRows.push(['', 'ИТОГО', '', String(rows.length), fmt(grandTotal), fmt(grandTotal * 1.1)]);
+
+  for (const r of tableRows) text.push(r.map(c => String(c).padEnd(22)).join(' '));
+  text.push('');
+  text.push(`Запас 10% рекомендуется заложить на обрезки, соединения в муфтах, укладку с провисом.`);
+
+  blocks.push(B.h2('Сводка к закупке'));
+  blocks.push(B.table(header, tableRows));
+  blocks.push(B.paragraph('Запас 10% рекомендуется заложить на обрезки, концевые заделки, соединения в муфтах и укладку с провисом. Для MV-кабелей (ВН) и кабелей в лотке/трубе рекомендуется увеличенный запас 15-20%.'));
+  blocks.push(B.paragraph(`Всего в проекте: ${rows.length} SKU, суммарная длина: ${fmt(grandTotal)} м.`));
   return { text: text.join('\n'), blocks };
 }
 
@@ -1073,10 +1170,18 @@ export function getReportSections() {
     {
       id: 'cables',
       title: 'Ведомость кабельной продукции',
-      description: 'Кабельный журнал: обозначение линии, тип проводника, количество, длина, максимальный и допустимый ток, способ прокладки.',
+      description: 'Кабельный журнал: обозначение линии, марка кабеля, тип проводника, количество, длина, максимальный и допустимый ток, способ прокладки.',
       defaultTemplateId: 'builtin-bom-landscape',
       tags: ['ведомость', 'таблица', 'спецификация', 'кабель'],
       ...sectionCables(),
+    },
+    {
+      id: 'cable-bom',
+      title: 'Сводная ведомость кабеля по SKU',
+      description: 'Агрегация по маркам и сечениям: сколько метров каждого SKU (марка + число жил × сечение) нужно закупить. С запасом 10%.',
+      defaultTemplateId: 'builtin-bom-landscape',
+      tags: ['ведомость', 'таблица', 'спецификация', 'кабель', 'закупка', 'sku'],
+      ...sectionCableBom(),
     },
     {
       id: 'modules',
