@@ -73,7 +73,7 @@ function projectMeta() {
   return { proj, stamp, modeName, curPage };
 }
 
-function metaTextLines() {
+function metaTextLines(opts = {}) {
   const { proj, stamp, modeName, curPage } = projectMeta();
   const lines = [];
   if (proj.designation) lines.push('Обозначение:    ' + proj.designation);
@@ -82,13 +82,15 @@ function metaTextLines() {
   if (proj.object)      lines.push('Объект:         ' + proj.object);
   if (proj.stage)       lines.push('Стадия:         ' + proj.stage);
   if (proj.author)      lines.push('ГИП / Исполн.:  ' + proj.author);
-  lines.push('Режим работы:   ' + modeName);
+  // Фаза 1.19.9: ведомости оборудования и материалов не зависят от
+  // режима работы — режим в их meta не печатается.
+  if (!opts.hideMode) lines.push('Режим работы:   ' + modeName);
   lines.push('Дата:           ' + stamp);
   if (curPage) lines.push('Страница:       ' + (curPage.name || curPage.id));
   return lines;
 }
 
-function metaBlocks() {
+function metaBlocks(opts = {}) {
   const { proj, stamp, modeName, curPage } = projectMeta();
   const rows = [];
   if (proj.designation) rows.push(['Обозначение',     String(proj.designation)]);
@@ -97,7 +99,7 @@ function metaBlocks() {
   if (proj.object)      rows.push(['Объект',          String(proj.object)]);
   if (proj.stage)       rows.push(['Стадия',          String(proj.stage)]);
   if (proj.author)      rows.push(['ГИП / Исполнитель', String(proj.author)]);
-  rows.push(['Режим работы',      modeName]);
+  if (!opts.hideMode) rows.push(['Режим работы',      modeName]);
   rows.push(['Дата формирования', stamp]);
   if (curPage) rows.push(['Страница', String(curPage.name || curPage.id)]);
   if (!rows.length) return [];
@@ -174,7 +176,13 @@ function collectChannels() {
 
 function collectCables() {
   const { connInSpace } = pageFilters();
-  const list = [...state.conns.values()].filter(c => (c._cableSize || c._busbarNom) && connInSpace(c));
+  // Фаза 1.19.9: ввод от городской сети — зона ответственности
+  // энергоснабжающей организации, в спецификацию материалов не включается.
+  const isUtilityInfeed = (c) => {
+    const from = state.nodes.get(c.from?.nodeId);
+    return from && from.type === 'source' && (from.sourceSubtype === 'utility' || from.sourceSubtype === 'grid');
+  };
+  const list = [...state.conns.values()].filter(c => (c._cableSize || c._busbarNom) && connInSpace(c) && !isUtilityInfeed(c));
   list.sort((a, b) => {
     const aFrom = effectiveTag(state.nodes.get(a.from.nodeId)) || '';
     const aTo   = effectiveTag(state.nodes.get(a.to.nodeId))   || '';
@@ -638,12 +646,12 @@ function sectionCableBom() {
   const text = [
     'СВОДНАЯ ВЕДОМОСТЬ КАБЕЛЬНОЙ ПРОДУКЦИИ (по SKU)',
     '='.repeat(78),
-    ...metaTextLines(),
+    ...metaTextLines({ hideMode: true }),
     '',
   ];
   const blocks = [
     B.h1('Сводная ведомость кабеля по маркам и сечениям'),
-    ...metaBlocks(),
+    ...metaBlocks({ hideMode: true }),
   ];
   if (!pricedRows.length) {
     text.push('Нет активных кабельных линий.');
@@ -689,6 +697,9 @@ function sectionCableBom() {
     tableRows.push(['', 'ИТОГО', '', String(pricedRows.length), fmt(grandTotal), fmt(grandTotal * 1.1)]);
   }
 
+  // Заголовок колонок + разделитель
+  text.push(header.map(c => String(c).padEnd(18)).join(' '));
+  text.push('─'.repeat(header.length * 19));
   for (const r of tableRows) text.push(r.map(c => String(c).padEnd(18)).join(' '));
   text.push('');
   if (hasPrices && missingPriceCount > 0) {
@@ -1008,12 +1019,12 @@ function sectionBom() {
   const text = [
     'СПЕЦИФИКАЦИЯ ОБОРУДОВАНИЯ (BOM)',
     '='.repeat(78),
-    ...metaTextLines(),
+    ...metaTextLines({ hideMode: true }),
     '',
   ];
   const blocks = [
     B.h1('Спецификация оборудования'),
-    ...metaBlocks(),
+    ...metaBlocks({ hideMode: true }),
   ];
   if (!aggregated.length) {
     text.push('Спецификация пуста (нет оборудования в проекте).');
@@ -1056,8 +1067,9 @@ function sectionBom() {
       rows.push(['', 'ИТОГО ' + cur, '', '', fmtPrice(sum, cur)]);
     }
   }
-  // Текстовое представление
+  // Текстовое представление с заголовком и разделителем
   text.push(header.map(c => String(c).padEnd(24)).join(' '));
+  text.push('─'.repeat(header.length * 25));
   for (const r of rows) text.push(r.map(c => String(c).padEnd(24)).join(' '));
   text.push('');
   text.push('* — phantom-элемент (скрыт в UI, учтён в BOM)');

@@ -157,19 +157,12 @@ export function openPanelParamsModal(n) {
   // действует отдельный блок выше с выбором mv-switchgear из
   // element-library + кнопкой mv-config/. Смешивать нельзя — разные
   // стандарты IEC 61439 (НКУ LV) и IEC 62271-200 (РУ СН MV).
+  // Фаза 1.19.7: оболочка и состав НКУ (шины, автоматы разных номиналов)
+  // выбираются ТОЛЬКО в wizard-конфигураторе и попадают в BOM. В инлайн-модалке
+  // (этой) показываем лишь кнопку перехода в конфигуратор — без inline-picker'а
+  // модели из справочника (он дублировал логику и путал пользователя).
   if (!n.isMv) {
     try {
-      const panelCatalog = listPanels();
-      if (panelCatalog.length) {
-        h.push('<h4 style="margin:14px 0 6px">Модель НКУ из справочника</h4>');
-        h.push('<div id="pp-cat-picker-mount" style="margin-bottom:4px"></div>');
-        h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 4px">При выборе модели автоматически заполняются I<sub>ном</sub>, число входов / выходов, IP, форма разделения.</div>`);
-      } else {
-        h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
-          Справочник НКУ пуст. Добавьте модели в «Конфигураторе НКУ» (кнопка ниже), чтобы выбирать их здесь одним кликом.
-        </div>`);
-      }
-      // Фаза 1.7: кнопка перехода в wizard-конфигуратор для проекта
       const qp = new URLSearchParams();
       qp.set('nodeId', n.id);
       if (n.name) qp.set('name', n.name);
@@ -179,17 +172,20 @@ export function openPanelParamsModal(n) {
       if (n.inputs) qp.set('inputs', String(n.inputs));
       if (n.outputs) qp.set('outputs', String(n.outputs));
       if (n.ipRating) qp.set('ip', n.ipRating);
-      h.push(`<div style="margin:4px 0 10px">
+      h.push(`<div style="margin:10px 0">
         <a href="panel-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
           ⚙ Сконфигурировать НКУ подробно (новая вкладка)
         </a>
+        <div class="muted" style="font-size:10px;margin-top:4px">Оболочка, шины и автоматы разных номиналов подбираются в конфигураторе и попадают в BOM.</div>
       </div>`);
     } catch (e) { /* опционально */ }
   }
 
-  // Тип щита — всегда виден
+  // Тип щита / входы / выходы / ёмкость — ТОЛЬКО для LV-щитов (НКУ).
+  // Для MV-щитов всё это задаётся через mv-switchgear элемент библиотеки
+  // и состав ячеек — см. блок выше.
   const sm = n.switchMode || 'auto';
-  {
+  if (!n.isMv) {
     const isSubSection = !!n.parentSectionedId;
     let smOpts = `<option value="parallel"${sm === 'parallel' ? ' selected' : ''}>Щит</option>`;
     smOpts += `<option value="auto"${sm === 'auto' ? ' selected' : ''}>Щит с АВР</option>`;
@@ -204,8 +200,8 @@ export function openPanelParamsModal(n) {
 
   const isSectioned = sm === 'sectioned';
 
-  // Базовые настройки — только для несекционных щитов
-  if (!isSectioned) {
+  // Базовые настройки — только для несекционных LV-щитов
+  if (!isSectioned && !n.isMv) {
     h.push('<div style="display:flex;gap:12px">');
     h.push('<div style="flex:1">' + field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`) + '</div>');
     h.push('<div style="flex:1">' + field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`) + '</div>');
@@ -251,8 +247,8 @@ export function openPanelParamsModal(n) {
     }
   }
 
-  // Режимы переключения для несекционных щитов
-  {
+  // Режимы переключения для несекционных LV-щитов
+  if (!n.isMv) {
     const multiInput = (n.inputs || 0) > 1;
 
     if (multiInput && !isSectioned) {
@@ -354,36 +350,8 @@ export function openPanelParamsModal(n) {
   }
 
   body.innerHTML = h.join('');
-
-  // Монтируем каскадный пикер щитов (если справочник не пуст)
-  try {
-    const panelCatalog = listPanels();
-    const pickerMount = document.getElementById('pp-cat-picker-mount');
-    if (panelCatalog.length && pickerMount) {
-      mountPanelPicker(pickerMount, {
-        list: panelCatalog,
-        selectedId: n.panelCatalogId || null,
-        currentSupplier: n._panelSelSupplier || '',
-        currentSeries: n._panelSelSeries || '',
-        placeholders: { supplier: '— не выбрано —', series: '— не выбрано —', model: '— свой состав —' },
-        labels: { supplier: 'Производитель', series: 'Серия', model: 'Типоразмер' },
-        idPrefix: 'pp-cat',
-        onChange: (st) => {
-          n._panelSelSupplier = st.supplier || null;
-          n._panelSelSeries = st.series || null;
-          if (st.modelId && st.panel && st.modelId !== n.panelCatalogId) {
-            snapshot('panel-params:' + n.id + ':catalog');
-            applyPanelModel(n, st.panel);
-            render(); notifyChange();
-            openPanelParamsModal(n);
-          } else if (!st.modelId && n.panelCatalogId) {
-            n.panelCatalogId = null;
-            openPanelParamsModal(n);
-          }
-        },
-      });
-    }
-  } catch (e) { /* опционально */ }
+  // Фаза 1.19.7: инлайн-пикер модели НКУ удалён. Подбор оболочки/шин/автоматов
+  // делается только в wizard-конфигураторе (кнопка выше).
 
   // Live: переключение типа АВР сразу применяется
   const smSel = document.getElementById('pp-switchMode');

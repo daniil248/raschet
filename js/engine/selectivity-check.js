@@ -48,12 +48,81 @@ function _getIkAt(conn) {
  *   pairs = [{ upstream, downstream, node, check, Ik }]
  *   summary = { total, selective, nonSelective, undefined }
  */
+/**
+ * Селективность MV-ячейки ввода против отходящей. Упрощённая проверка:
+ *   1. Амплитудная: In_up ≥ 1.3 × In_down (для VCB-VCB), ≥ 1.6 для fuse-fuse
+ *   2. По типам: infeed с VCB + feeder с fuse → OK (fuse срабатывает раньше)
+ *                  infeed с fuse + feeder с VCB → НЕ OK (fuse upstream слишком медленный)
+ */
+function _mvCellSelectivity(upCell, downCell) {
+  const inUp = Number(upCell.In_A || upCell.In || 0);
+  const inDown = Number(downCell.In_A || downCell.In || 0);
+  const checks = [];
+  // Амплитудная
+  const coef = downCell.breakerType === 'fuse-switch' ? 1.6 : 1.3;
+  const amplitudeOk = inUp >= coef * inDown;
+  checks.push({
+    type: 'amplitude',
+    ok: amplitudeOk,
+    info: `In_up=${inUp} vs ${coef}×In_down=${(coef * inDown).toFixed(1)} А`,
+  });
+  // По типам аппаратов
+  const upType = upCell.breakerType || '—';
+  const downType = downCell.breakerType || '—';
+  let typeOk = true, typeInfo = `${upType} → ${downType}`;
+  if (upType === 'fuse-switch' && downType === 'VCB') {
+    typeOk = false;
+    typeInfo += ' (⚠ fuse наверху медленнее VCB внизу — нарушение селективности)';
+  }
+  checks.push({ type: 'device-type', ok: typeOk, info: typeInfo });
+
+  const selective = checks.every(c => c.ok);
+  return {
+    selective,
+    reason: selective
+      ? 'Селективность обеспечена (амплитудная + типовая)'
+      : 'Нарушение: ' + checks.filter(c => !c.ok).map(c => c.type + ': ' + c.info).join('; '),
+    checks,
+  };
+}
+
 export function analyzeSelectivity() {
   const pairs = [];
   // Для каждой панели находим входные и выходные соединения
   const conns = [...state.conns.values()];
   for (const node of state.nodes.values()) {
     if (node.type !== 'panel' && node.type !== 'ups') continue;
+
+    // Фаза 1.19.6: MV-щиты — анализ селективности ячеек из n.mvCells
+    // (без учёта conn-уровня, т.к. MV-ячейки живут в самом щите)
+    if (node.isMv && Array.isArray(node.mvCells) && node.mvCells.length) {
+      const infeeds = node.mvCells.filter(c => c.type === 'infeed' || c.type === 'busCoupler');
+      const feeders = node.mvCells.filter(c => c.type === 'feeder' || c.type === 'transformer-protect');
+      for (const upCell of infeeds) {
+        for (const downCell of feeders) {
+          const check = _mvCellSelectivity(upCell, downCell);
+          pairs.push({
+            node,
+            mvUpCell: upCell,
+            mvDownCell: downCell,
+            upBreaker: {
+              inNominal: Number(upCell.In_A || upCell.In || 0),
+              curve: upCell.breakerType || '—',
+              type: 'MV',
+            },
+            downBreaker: {
+              inNominal: Number(downCell.In_A || downCell.In || 0),
+              curve: downCell.breakerType || '—',
+              type: 'MV',
+            },
+            Ik: node._Ik3_kA ? node._Ik3_kA * 1000 : null,
+            check,
+            isMvCellPair: true,
+          });
+        }
+      }
+      continue; // для MV-узлов не делаем conn-уровневый анализ (у них ячейки внутри)
+    }
 
     const inputs = conns.filter(c => c.to.nodeId === node.id);
     const outputs = conns.filter(c => c.from.nodeId === node.id);
@@ -93,6 +162,7 @@ export function analyzeSelectivity() {
     total: pairs.length,
     selective: pairs.filter(p => p.check.selective).length,
     nonSelective: pairs.filter(p => !p.check.selective).length,
+    mvPairs: pairs.filter(p => p.isMvCellPair).length,
   };
   return { pairs, summary };
 }

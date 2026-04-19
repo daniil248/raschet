@@ -297,6 +297,9 @@ export function collectBomFromProject(state, opts = null) {
   for (const node of nodes) {
     // Узлы не-оборудование — пропускаем (зоны, каналы — это не BOM)
     if (node.type === 'zone') continue;
+    // Фаза 1.19.9: городская сеть — абстрактный ввод от поставщика
+    // энергии, в спецификацию оборудования не попадает.
+    if (node.type === 'source' && (node.sourceSubtype === 'utility' || node.sourceSubtype === 'grid')) continue;
     const items = bomForNode(node);
     flat.push(...items);
   }

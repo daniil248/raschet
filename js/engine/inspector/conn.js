@@ -67,6 +67,13 @@ export function renderInspectorConn(c) {
   const h = [];
   const fromTag = effectiveTag(fromN) || fromN?.name || '?';
   const toTag = effectiveTag(toN) || toN?.name || '?';
+  // Фаза 1.19.8: ввод от городской сети — абстрактный ввод, ТУ даёт
+  // поставщик энергии. Не подбираем и не проверяем защиту / сечение
+  // этой линии: за участок «город → граница балансовой принадлежности»
+  // отвечает электроснабжающая организация. Для ДГУ/солнечных/своих
+  // источников (type='generator', 'ups' и т.д.) подбор защиты остаётся.
+  const isUtilityInfeed = fromN && fromN.type === 'source'
+    && (fromN.sourceSubtype === 'utility' || fromN.sourceSubtype === 'grid');
   // Префикс по IEC 81346-2: «W» для обычных силовых линий, «WH» для
   // высоковольтных (U > 1000 В). Флаг _isHV проставляется recalc.js.
   const linePrefix = c._isHV ? 'WH' : 'W';
@@ -113,13 +120,16 @@ export function renderInspectorConn(c) {
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div>`);
     // Блок ПРОВОДНИК — справочная информация
-    {
+    if (isUtilityInfeed) {
+      h.push(`<div class="muted" style="font-size:11px;margin:8px 0;padding:6px 8px;background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;color:#1565c0">ℹ Ввод от городской сети — абстрактный участок по ТУ поставщика. Защита и сечение линии здесь не проверяются (ответственность электроснабжающей организации).</div>`);
+    }
+    if (!isUtilityInfeed) {
       const hvBadge = c._isHV
         ? ` <span style="font-size:10px;background:#ef6c00;color:#fff;padding:1px 6px;border-radius:3px">ВН · ${escHtml(cableVoltageClass(c._voltage || 0))}</span>`
         : '';
       h.push(`<h4 style="margin:12px 0 6px;font-size:12px">Проводник${hvBadge}</h4>`);
     }
-    if (c._cableSize || c._busbarNom || c._cableIz) {
+    if (!isUtilityInfeed && (c._cableSize || c._busbarNom || c._cableIz)) {
       const par = Math.max(1, c._cableParallel || 1);
       const cores = c._wireCount || (c._threePhase ? 5 : 3);
       let cableSpec = '';
@@ -414,8 +424,9 @@ export function renderInspectorConn(c) {
     h.push('</details>');
   }
 
-  // Автомат защиты — для всех линий (не только активных)
-  {
+  // Автомат защиты — для всех линий (не только активных).
+  // Фаза 1.19.8: для ввода от городской сети блок скрыт.
+  if (!isUtilityInfeed) {
     // Используем единый справочник из constants.js
     const autoIn = c._breakerIn || c._breakerPerLine || 0;
     const manualBreaker = !!c.manualBreakerIn;
