@@ -10,6 +10,7 @@ import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from '../shared
 import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/kehua-mr33-data.js';
+import { pricesForElement } from '../shared/price-records.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -462,54 +463,373 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   render();
 
-  // ====================== Интеграция с Конструктором схем (Фаза 1.4.2-1.4.3) ======================
-  // Если страница открыта по ссылке «Сконфигурировать подробно» из инспектора
-  // ИБП, URL содержит ?nodeId=<id>[&selected=<modelId>][&capacityKw=<kW>][&upsType=<monoblock|modular>].
-  // Показываем баннер с кнопкой «Применить к схеме» — при клике записываем
-  // выбранную модель в localStorage под ключом 'raschet.pendingUpsSelection.v1',
-  // который главная страница читает при фокусе/возврате и применяет к узлу.
+  // ====================== Интеграция с Конструктором схем (Фаза 1.4.5) ======================
+  // Если страница открыта из инспектора ИБП (?nodeId=), запускаем
+  // WIZARD конфигуратора вместо показа одного справочника.
+  initWizard();
+});
+
+// ====================== WIZARD конфигуратора ======================
+const wizState = {
+  nodeId: null,
+  requirements: {
+    loadKw: 10,
+    autonomyMin: 15,
+    redundancy: 'N',
+    upsType: '',
+    vdcMin: 340,
+    vdcMax: 480,
+    cosPhi: 0.9,
+    phases: 3,
+  },
+  selected: null, // выбранный фрейм/модель из справочника
+  composition: null, // рассчитанная конфигурация
+};
+
+function initWizard() {
   const qp = new URLSearchParams(location.search);
   const ctxNodeId = qp.get('nodeId');
-  if (ctxNodeId) {
-    const preselect = qp.get('selected');
-    if (preselect) cascadeState.modelId = preselect;
-    // Вставляем баннер в начало body
-    const banner = document.createElement('div');
-    banner.id = 'schema-context-banner';
-    banner.style.cssText = 'position:sticky;top:0;z-index:100;padding:10px 16px;background:#1976d2;color:#fff;display:flex;align-items:center;gap:12px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.15)';
-    banner.innerHTML = `
-      <span style="flex:1">🔗 Открыто из Конструктора схем (узел <code style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px">${esc(ctxNodeId)}</code>). Выберите модель и нажмите «Применить».</span>
-      <button type="button" id="ctx-apply" class="apply-btn" style="background:#fff;color:#1976d2;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Применить к схеме</button>
-      <button type="button" id="ctx-cancel" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:4px;cursor:pointer">Отмена</button>
-    `;
-    document.body.insertBefore(banner, document.body.firstChild);
-    document.getElementById('ctx-apply')?.addEventListener('click', () => {
-      if (!cascadeState.modelId) {
-        flash('Сначала выберите модель ИБП в справочнике', 'warn');
-        return;
+  if (!ctxNodeId) return; // обычный режим справочника
+
+  wizState.nodeId = ctxNodeId;
+  // Предзаполнение из query
+  const rq = wizState.requirements;
+  if (qp.get('capacityKw')) rq.loadKw = Number(qp.get('capacityKw')) || rq.loadKw;
+  if (qp.get('targetAutonomyMin')) rq.autonomyMin = Number(qp.get('targetAutonomyMin')) || rq.autonomyMin;
+  if (qp.get('redundancy')) rq.redundancy = qp.get('redundancy');
+  if (qp.get('upsType')) rq.upsType = qp.get('upsType');
+  if (qp.get('vdcMin')) rq.vdcMin = Number(qp.get('vdcMin')) || rq.vdcMin;
+  if (qp.get('vdcMax')) rq.vdcMax = Number(qp.get('vdcMax')) || rq.vdcMax;
+  if (qp.get('cosPhi')) rq.cosPhi = Number(qp.get('cosPhi')) || rq.cosPhi;
+  if (qp.get('phases')) rq.phases = Number(qp.get('phases')) || rq.phases;
+
+  // Показываем wizard, заполняем поля
+  const wizard = document.getElementById('configurator-wizard');
+  if (!wizard) return;
+  wizard.style.display = '';
+  _fillWizStep1Fields();
+
+  // Скрываем «Выбранная модель» (она дублирует шаг 2)
+  const selectedPanel = document.getElementById('selected-ups-details');
+  if (selectedPanel) selectedPanel.closest('.panel').style.display = 'none';
+
+  // Кнопки wizard'а
+  document.getElementById('wiz-btn-cancel').onclick = () => {
+    if (confirm('Отменить конфигурирование?')) { try { window.close(); } catch {} }
+  };
+  document.getElementById('wiz-btn-next-1').onclick = _goStep2;
+  document.getElementById('wiz-btn-back-2').onclick = () => _showStep(1);
+  document.getElementById('wiz-btn-next-2').onclick = _goStep3;
+  document.getElementById('wiz-btn-back-3').onclick = () => _showStep(2);
+  document.getElementById('wiz-btn-apply').onclick = _applyConfiguration;
+  _showStep(1);
+}
+
+function _fillWizStep1Fields() {
+  const rq = wizState.requirements;
+  document.getElementById('wiz-loadKw').value = rq.loadKw;
+  document.getElementById('wiz-autonomy').value = rq.autonomyMin;
+  document.getElementById('wiz-redundancy').value = rq.redundancy;
+  document.getElementById('wiz-upsType').value = rq.upsType || '';
+  document.getElementById('wiz-vdcMin').value = rq.vdcMin;
+  document.getElementById('wiz-vdcMax').value = rq.vdcMax;
+  document.getElementById('wiz-cosPhi').value = rq.cosPhi;
+  document.getElementById('wiz-phases').value = rq.phases;
+}
+
+function _showStep(n) {
+  [1, 2, 3].forEach(i => {
+    const s = document.getElementById('wiz-step-' + i);
+    if (s) s.style.display = (i === n) ? '' : 'none';
+  });
+  const ind = document.getElementById('wiz-step-indicator');
+  if (ind) ind.textContent = 'Шаг ' + n + ' из 3';
+}
+
+function _readStep1() {
+  const rq = wizState.requirements;
+  rq.loadKw = Number(document.getElementById('wiz-loadKw').value) || rq.loadKw;
+  rq.autonomyMin = Number(document.getElementById('wiz-autonomy').value) || 0;
+  rq.redundancy = document.getElementById('wiz-redundancy').value;
+  rq.upsType = document.getElementById('wiz-upsType').value;
+  rq.vdcMin = Number(document.getElementById('wiz-vdcMin').value) || rq.vdcMin;
+  rq.vdcMax = Number(document.getElementById('wiz-vdcMax').value) || rq.vdcMax;
+  rq.cosPhi = Number(document.getElementById('wiz-cosPhi').value) || rq.cosPhi;
+  rq.phases = Number(document.getElementById('wiz-phases').value) || 3;
+}
+
+// ====================== Шаг 2: Подбор ======================
+// Парсит схему резервирования N/N+1/N+2/2N → { mode, x }
+function _parseRedundancy(scheme) {
+  if (scheme === '2N') return { mode: '2N', x: 0 };
+  const m = /^N(?:\+(\d+))?$/.exec(scheme || 'N');
+  return { mode: 'N+X', x: m ? Number(m[1] || 0) : 0 };
+}
+
+// Вычисляет число рабочих модулей + резерв для модульного ИБП
+function _calcModules(loadKw, moduleKw, moduleSlots, redundancy) {
+  const r = _parseRedundancy(redundancy);
+  const working = Math.ceil(loadKw / moduleKw);
+  let installed;
+  if (r.mode === '2N') installed = working * 2;
+  else installed = working + r.x;
+  const fits = installed <= moduleSlots;
+  return { working, redundant: r.x, installed, fits, redundancyLabel: redundancy };
+}
+
+function _pickSuitable() {
+  const rq = wizState.requirements;
+  const catalog = listUpses();
+  const out = [];
+  const r = _parseRedundancy(rq.redundancy);
+  for (const u of catalog) {
+    // Фильтр по типу (если указан)
+    if (rq.upsType && u.upsType !== rq.upsType) continue;
+    // Фильтр по Vdc (диапазон ИБП должен пересекаться с требуемым)
+    if (u.vdcMax && u.vdcMin) {
+      if (u.vdcMax < rq.vdcMin || u.vdcMin > rq.vdcMax) continue;
+    }
+    let fits = false;
+    let fitInfo = null;
+    if (u.upsType === 'modular') {
+      if (!u.moduleKwRated || !u.moduleSlots) continue;
+      const mc = _calcModules(rq.loadKw, u.moduleKwRated, u.moduleSlots, rq.redundancy);
+      if (!mc.fits) continue;
+      fits = true;
+      const realCapacity = mc.working * u.moduleKwRated;
+      fitInfo = { ...mc, realCapacity, usable: mc.working * u.moduleKwRated };
+    } else {
+      // Моноблок: capacity * N ≥ loadKw с учётом резерва
+      const cap = Number(u.capacityKw) || 0;
+      if (cap <= 0) continue;
+      let requiredQty = 1;
+      if (r.mode === '2N') requiredQty = 2;
+      else requiredQty = Math.ceil(rq.loadKw / cap) + r.x;
+      if (cap * (requiredQty - r.x) >= rq.loadKw) {
+        fits = true;
+        fitInfo = { working: requiredQty - r.x, redundant: r.x, installed: requiredQty, realCapacity: cap, usable: cap * (requiredQty - r.x) };
       }
-      const selected = listUpses().find(u => u.id === cascadeState.modelId);
-      if (!selected) {
-        flash('Модель не найдена в справочнике', 'error');
-        return;
-      }
-      const payload = {
-        nodeId: ctxNodeId,
-        ups: selected,
-        selectedAt: Date.now(),
-      };
-      try {
-        localStorage.setItem('raschet.pendingUpsSelection.v1', JSON.stringify(payload));
-        flash('Готово. Вернитесь на вкладку Конструктора схем — модель применится автоматически', 'success');
-        // Закрываем вкладку через 2 сек (если браузер позволит)
-        setTimeout(() => { try { window.close(); } catch {} }, 2000);
-      } catch (e) {
-        flash('Не удалось передать выбор: ' + (e.message || e), 'error');
-      }
-    });
-    document.getElementById('ctx-cancel')?.addEventListener('click', () => {
-      try { window.close(); } catch {}
-    });
-    render();
+    }
+    if (fits) out.push({ ups: u, fitInfo });
   }
-});
+  // Сортировка: сначала модульные, потом по утилизации
+  out.sort((a, b) => {
+    const aUtil = a.fitInfo.usable / (a.ups.frameKw || a.fitInfo.usable);
+    const bUtil = b.fitInfo.usable / (b.ups.frameKw || b.fitInfo.usable);
+    return bUtil - aUtil;
+  });
+  return out;
+}
+
+function _goStep2() {
+  _readStep1();
+  const rq = wizState.requirements;
+  if (rq.loadKw <= 0) { flash('Укажите нагрузку > 0', 'warn'); return; }
+  const suitable = _pickSuitable();
+  const list = document.getElementById('wiz-suitable-list');
+  if (!suitable.length) {
+    list.innerHTML = `
+      <div class="suitable-list">
+        <div class="empty" style="padding:30px;text-align:center">
+          Подходящих моделей не найдено.<br>
+          Добавьте модели в справочник (кнопка «Kehua UPS» или импорт XLSX),
+          либо смягчите требования (уменьшите нагрузку / уберите фильтр по типу).
+        </div>
+      </div>`;
+    document.getElementById('wiz-btn-next-2').disabled = true;
+    _showStep(2);
+    return;
+  }
+  const html = ['<div class="suitable-list">'];
+  suitable.forEach(({ ups, fitInfo }, idx) => {
+    const priceInfo = pricesForElement(ups.id);
+    const priceStr = priceInfo.latest
+      ? Number(priceInfo.latest.price).toLocaleString('ru-RU') + ' ' + priceInfo.latest.currency
+      : '—';
+    const isRec = idx === 0 ? ' recommended' : '';
+    const typeLabel = ups.upsType === 'modular' ? 'Модульный' : 'Моноблок';
+    const calcText = ups.upsType === 'modular'
+      ? `${fitInfo.working}×${ups.moduleKwRated}kW (работа) + ${fitInfo.redundant}×${ups.moduleKwRated}kW (резерв) = ${fitInfo.installed}/${ups.moduleSlots} слотов`
+      : `${fitInfo.installed} × ${fitInfo.realCapacity}kW (${fitInfo.working} работа + ${fitInfo.redundant} резерв)`;
+    html.push(`
+      <div class="suitable-item${isRec}" data-id="${esc(ups.id)}" data-idx="${idx}">
+        <div class="suitable-main">
+          <div class="suitable-title">${esc(ups.supplier || '')} ${esc(ups.model || ups.id)} <span class="muted" style="font-size:11px">· ${typeLabel}</span></div>
+          <div class="suitable-meta">
+            ${ups.upsType === 'modular'
+              ? `Frame ${ups.frameKw}kW · модуль ${ups.moduleKwRated}kW × ${ups.moduleSlots} слотов`
+              : `${ups.capacityKw}kW, КПД ${ups.efficiency}%`}
+            · V<sub>DC</sub> ${ups.vdcMin}–${ups.vdcMax}V · Цена ${priceStr}
+          </div>
+        </div>
+        <div class="suitable-calc">${calcText}</div>
+      </div>`);
+  });
+  html.push('</div>');
+  list.innerHTML = html.join('');
+  list.querySelectorAll('.suitable-item').forEach(item => {
+    item.onclick = () => {
+      list.querySelectorAll('.suitable-item').forEach(i => i.classList.remove('selected'));
+      item.classList.add('selected');
+      const idx = Number(item.dataset.idx);
+      wizState.selected = suitable[idx];
+      document.getElementById('wiz-btn-next-2').disabled = false;
+    };
+  });
+  // Авто-выбор первого (рекомендованного)
+  if (suitable[0]) {
+    list.querySelector('.suitable-item')?.click();
+  }
+  _showStep(2);
+}
+
+// ====================== Шаг 3: Итог ======================
+function _buildComposition() {
+  const sel = wizState.selected;
+  const rq = wizState.requirements;
+  if (!sel) return null;
+  const { ups, fitInfo } = sel;
+  const composition = [];
+  // Корень — сам ИБП (фрейм)
+  if (ups.upsType === 'modular') {
+    // Фрейм + модули. Фрейм — сам ups. Модули — phantom-child.
+    // В текущей архитектуре модули хранятся как число (moduleInstalled) —
+    // формальной отдельной записи модуля в каталоге пока нет. В будущем
+    // модули станут отдельными Element'ами (1.5.8+).
+    composition.push({
+      elementId: ups.id,
+      qty: 1,
+      role: 'frame',
+      label: ups.supplier + ' ' + ups.model + ' (фрейм)',
+    });
+    // Информационно:
+    composition.push({
+      elementId: null,
+      inline: true,
+      qty: fitInfo.installed,
+      role: 'module',
+      label: `Силовой модуль ${ups.moduleKwRated}kW (${fitInfo.working} раб + ${fitInfo.redundant} резерв)`,
+    });
+  } else {
+    composition.push({
+      elementId: ups.id,
+      qty: fitInfo.installed,
+      role: fitInfo.redundant ? 'active+standby' : 'active',
+      label: ups.supplier + ' ' + ups.model,
+    });
+  }
+  // Цена
+  const priceInfo = pricesForElement(ups.id);
+  const unitPrice = priceInfo.latest ? Number(priceInfo.latest.price) : null;
+  const currency = priceInfo.latest ? priceInfo.latest.currency : null;
+  const totalPrice = unitPrice != null ? unitPrice * fitInfo.installed : null;
+
+  return {
+    frameId: ups.id,
+    ups, fitInfo,
+    composition,
+    unitPrice, currency, totalPrice,
+    requirements: { ...rq },
+  };
+}
+
+function _goStep3() {
+  const comp = _buildComposition();
+  if (!comp) { flash('Не выбрана модель', 'warn'); return; }
+  wizState.composition = comp;
+  const rq = wizState.requirements;
+  const u = comp.ups;
+  const fi = comp.fitInfo;
+  const priceStr = comp.totalPrice != null
+    ? Number(comp.totalPrice).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ' + comp.currency
+    : 'не указана';
+  const summary = document.getElementById('wiz-summary');
+  summary.innerHTML = `
+    <div class="wiz-summary-box">
+      <h5>Исходные требования</h5>
+      <table class="wiz-summary-table">
+        <tr><td>Нагрузка</td><td>${rq.loadKw} kW</td></tr>
+        <tr><td>Автономия</td><td>${rq.autonomyMin} мин</td></tr>
+        <tr><td>Резервирование</td><td>${rq.redundancy}</td></tr>
+        <tr><td>Тип</td><td>${rq.upsType || 'любой'}</td></tr>
+        <tr><td>V<sub>DC</sub></td><td>${rq.vdcMin}–${rq.vdcMax} В</td></tr>
+        <tr><td>cos φ / фазы</td><td>${rq.cosPhi} / ${rq.phases}ph</td></tr>
+      </table>
+    </div>
+    <div class="wiz-summary-box">
+      <h5>Подобранная конфигурация</h5>
+      <table class="wiz-summary-table">
+        <tr><td>Модель</td><td>${esc(u.supplier || '')} ${esc(u.model || u.id)}</td></tr>
+        <tr><td>Тип</td><td>${u.upsType === 'modular' ? 'Модульный' : 'Моноблок'}</td></tr>
+        ${u.upsType === 'modular' ? `
+          <tr><td>Корпус (frame)</td><td>${u.frameKw} kW</td></tr>
+          <tr><td>Модуль</td><td>${u.moduleKwRated} kW</td></tr>
+          <tr><td>Установлено модулей</td><td>${fi.installed} из ${u.moduleSlots}</td></tr>
+          <tr><td>Рабочих модулей</td><td>${fi.working}</td></tr>
+          <tr><td>Резерв</td><td>${fi.redundant}</td></tr>
+          <tr><td>Реальная мощность</td><td>${fi.realCapacity} kW</td></tr>
+        ` : `
+          <tr><td>Мощность ед.</td><td>${u.capacityKw} kW</td></tr>
+          <tr><td>Количество ИБП</td><td>${fi.installed}</td></tr>
+          <tr><td>Итоговая мощность</td><td>${fi.usable} kW</td></tr>
+        `}
+        <tr><td>КПД</td><td>${u.efficiency}%</td></tr>
+        <tr><td>V<sub>DC</sub></td><td>${u.vdcMin}–${u.vdcMax} В</td></tr>
+      </table>
+    </div>
+    <div class="wiz-summary-box">
+      <h5>Стоимость (оборудование ИБП)</h5>
+      <table class="wiz-summary-table">
+        <tr><td>Цена за ед.</td><td>${comp.unitPrice != null ? Number(comp.unitPrice).toLocaleString('ru-RU') + ' ' + comp.currency : 'нет в каталоге'}</td></tr>
+        <tr><td>Количество</td><td>${fi.installed}</td></tr>
+        <tr><td><b>Итого ИБП</b></td><td><b>${priceStr}</b></td></tr>
+      </table>
+      <p class="muted" style="font-size:11px;margin:8px 0 0">
+        АКБ подбирается отдельно в «Калькуляторе АКБ» (кнопка в инспекторе батарей).
+        Цены добавляются в модуле <a href="../catalog/" target="_blank">«Каталог и цены»</a>.
+      </p>
+    </div>
+  `;
+  _showStep(3);
+}
+
+function _applyConfiguration() {
+  const comp = wizState.composition;
+  if (!comp) return flash('Нет конфигурации для применения', 'error');
+  const u = comp.ups;
+  const fi = comp.fitInfo;
+  const rq = wizState.requirements;
+
+  // Формируем payload для Constructor. Расширяем старый формат
+  // raschet.pendingUpsSelection.v1 новыми полями composition + config.
+  const payload = {
+    nodeId: wizState.nodeId,
+    ups: u, // для backward-compat с applyUpsModel
+    configuration: {
+      frameId: u.id,
+      upsType: u.upsType,
+      capacityKw: fi.realCapacity || fi.usable,
+      moduleInstalled: fi.installed,
+      moduleWorking: fi.working,
+      moduleRedundant: fi.redundant,
+      frameKw: u.frameKw,
+      moduleKwRated: u.moduleKwRated,
+      moduleSlots: u.moduleSlots,
+      redundancyScheme: rq.redundancy,
+      batteryVdcMin: rq.vdcMin,
+      batteryVdcMax: rq.vdcMax,
+      batteryAutonomyMin: rq.autonomyMin,
+      composition: comp.composition,
+      totalPrice: comp.totalPrice,
+      currency: comp.currency,
+    },
+    selectedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem('raschet.pendingUpsSelection.v1', JSON.stringify(payload));
+    flash('Конфигурация передана. Возврат в Конструктор схем…', 'success');
+    setTimeout(() => { try { window.close(); } catch {} }, 1500);
+  } catch (e) {
+    flash('Не удалось передать конфигурацию: ' + (e.message || e), 'error');
+  }
+}

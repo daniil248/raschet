@@ -34,6 +34,83 @@
       </p>
     </div>
 
+    <!-- Wizard конфигуратора (Фаза 1.4.5): появляется когда ?nodeId= в URL -->
+    <section id="configurator-wizard" class="panel" style="display:none;margin-bottom:16px;border:2px solid #1976d2">
+      <div class="panel-head" style="background:#f0f4ff">
+        <h3>🧙 Конфигуратор ИБП для проекта</h3>
+        <div id="wiz-step-indicator" class="muted" style="font-size:12px"></div>
+      </div>
+
+      <!-- Шаг 1: Требования -->
+      <div id="wiz-step-1" class="wiz-step">
+        <h4>Шаг 1. Требования из проекта</h4>
+        <p class="muted" style="font-size:12px">Параметры переданы из Конструктора схем. Можно подправить.</p>
+        <div class="wiz-grid">
+          <label>Нагрузка, kW
+            <input type="number" id="wiz-loadKw" min="0" step="0.5">
+          </label>
+          <label>Автономия, мин
+            <input type="number" id="wiz-autonomy" min="0" step="1">
+          </label>
+          <label>Схема резервирования
+            <select id="wiz-redundancy">
+              <option value="N">N (без резерва)</option>
+              <option value="N+1">N+1</option>
+              <option value="N+2">N+2</option>
+              <option value="2N">2N</option>
+            </select>
+          </label>
+          <label>Тип
+            <select id="wiz-upsType">
+              <option value="">Любой</option>
+              <option value="modular">Модульный (рекомендовано)</option>
+              <option value="monoblock">Моноблок</option>
+            </select>
+          </label>
+          <label>V<sub>DC</sub> min, В
+            <input type="number" id="wiz-vdcMin" min="24" max="1200">
+          </label>
+          <label>V<sub>DC</sub> max, В
+            <input type="number" id="wiz-vdcMax" min="24" max="1200">
+          </label>
+          <label>cos φ
+            <input type="number" id="wiz-cosPhi" min="0.5" max="1" step="0.01" value="0.9">
+          </label>
+          <label>Число фаз
+            <select id="wiz-phases">
+              <option value="3">3-фазный</option>
+              <option value="1">1-фазный</option>
+            </select>
+          </label>
+        </div>
+        <div class="wiz-actions">
+          <button id="wiz-btn-cancel" class="btn-sm">Отмена</button>
+          <button id="wiz-btn-next-1" class="btn-sm btn-primary">Далее → Подбор фрейма</button>
+        </div>
+      </div>
+
+      <!-- Шаг 2: Подбор -->
+      <div id="wiz-step-2" class="wiz-step" style="display:none">
+        <h4>Шаг 2. Подбор фрейма / модели</h4>
+        <p class="muted" style="font-size:12px">Подходящие модели из справочника. Для модульных — учтено резервирование.</p>
+        <div id="wiz-suitable-list"></div>
+        <div class="wiz-actions">
+          <button id="wiz-btn-back-2" class="btn-sm">← Назад</button>
+          <button id="wiz-btn-next-2" class="btn-sm btn-primary" disabled>Далее → Итог</button>
+        </div>
+      </div>
+
+      <!-- Шаг 3: Итог -->
+      <div id="wiz-step-3" class="wiz-step" style="display:none">
+        <h4>Шаг 3. Итоговая конфигурация</h4>
+        <div id="wiz-summary"></div>
+        <div class="wiz-actions">
+          <button id="wiz-btn-back-3" class="btn-sm">← Назад</button>
+          <button id="wiz-btn-apply" class="btn-sm btn-primary">✓ Применить к схеме</button>
+        </div>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="panel-head">
         <h3>Справочник моделей ИБП</h3>

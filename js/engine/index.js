@@ -109,7 +109,25 @@ function _tryConsumePendingUpsSelection() {
   }
   try {
     snapshot('ups-config:apply:' + node.id);
+    // Применяем базовую модель (backward-compat)
     applyUpsModel(node, payload.ups);
+    // Фаза 1.4.5: если есть configuration от wizard'а — применяем её
+    if (payload.configuration) {
+      const cfg = payload.configuration;
+      node.elementId = cfg.frameId;
+      if (cfg.upsType) node.upsType = cfg.upsType;
+      if (cfg.capacityKw) node.capacityKw = cfg.capacityKw;
+      if (cfg.moduleInstalled != null) node.moduleInstalled = cfg.moduleInstalled;
+      if (cfg.frameKw != null) node.frameKw = cfg.frameKw;
+      if (cfg.moduleKwRated != null) node.moduleKwRated = cfg.moduleKwRated;
+      if (cfg.moduleSlots != null) node.moduleSlots = cfg.moduleSlots;
+      if (cfg.redundancyScheme) node.redundancyScheme = cfg.redundancyScheme;
+      if (cfg.batteryVdcMin) node.batteryVdcMin = cfg.batteryVdcMin;
+      if (cfg.batteryVdcMax) node.batteryVdcMax = cfg.batteryVdcMax;
+      if (cfg.batteryAutonomyMin) node.batteryAutonomyMin = cfg.batteryAutonomyMin;
+      if (cfg.composition) node.composition = cfg.composition;
+      console.info('[ups-config] applied configuration', cfg);
+    }
     render(); renderInspector(); notifyChange();
     console.info('[ups-config] applied', payload.ups.id, 'to', node.id);
   } catch (e) {
