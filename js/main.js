@@ -733,28 +733,18 @@ function updateInstallMethodOptions(methodId) {
 }
 
 function openSettingsModal() {
+  // Параметры расчёта (методология) — только расчётные поля
   const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-  set('set-cosPhi',        G.defaultCosPhi ?? 0.92);
-  set('set-earthingSystem', G.earthingSystem ?? 'TN-S');
-  set('set-material',      G.defaultMaterial ?? 'Cu');
-  set('set-insulation',    G.defaultInsulation ?? 'PVC');
-  set('set-cableType',     G.defaultCableType ?? 'multi');
-  set('set-maxCableSize',  G.maxCableSize ?? 240);
-  set('set-maxParallelAuto', G.maxParallelAuto ?? 10);
-  set('set-maxVdropPct', G.maxVdropPct ?? 5);
-  set('set-calcMethod',    G.calcMethod ?? 'iec');
-  updateInstallMethodOptions(G.calcMethod ?? 'iec');
-  set('set-installMethod', G.defaultInstallMethod ?? 'B1');
-  set('set-ambient',       G.defaultAmbient ?? 30);
-  set('set-parallelProtection', G.parallelProtection ?? 'individual');
+  set('set-cosPhi',              G.defaultCosPhi ?? 0.92);
+  set('set-earthingSystem',      G.earthingSystem ?? 'TN-S');
+  set('set-maxParallelAuto',     G.maxParallelAuto ?? 10);
+  set('set-maxVdropPct',         G.maxVdropPct ?? 5);
+  set('set-calcMethod',          G.calcMethod ?? 'iec');
+  set('set-parallelProtection',  G.parallelProtection ?? 'individual');
   set('set-breakerMinMarginPct', G.breakerMinMarginPct ?? 0);
-  // Чекбокс: показывать справочную информацию
   const showHelpEl = document.getElementById('set-showHelp');
   if (showHelpEl) showHelpEl.checked = G.showHelp !== false;
-  // При смене методики — обновить список способов прокладки
-  const calcMethodEl = document.getElementById('set-calcMethod');
-  if (calcMethodEl) calcMethodEl.onchange = () => updateInstallMethodOptions(calcMethodEl.value);
   openModal('modal-settings');
 }
 
@@ -762,30 +752,84 @@ function saveSettingsModal() {
   const get = (id) => document.getElementById(id)?.value;
   const G = window.Raschet.getGlobal();
   const patch = {
-    voltageLevels:      G.voltageLevels, // уже обновлены через inline-редактирование
-    defaultCosPhi:      Number(get('set-cosPhi')) || 0.92,
-    earthingSystem:     get('set-earthingSystem') || 'TN-S',
-    defaultMaterial:    get('set-material') || 'Cu',
-    defaultInsulation:  get('set-insulation') || 'PVC',
-    defaultCableType:   get('set-cableType') || 'multi',
-    maxCableSize:       Number(get('set-maxCableSize')) || 240,
-    maxParallelAuto:    Number(get('set-maxParallelAuto')) || 10,
-    maxVdropPct:        Number(get('set-maxVdropPct')) || 5,
-    defaultInstallMethod: get('set-installMethod') || 'B1',
-    defaultAmbient:     Number(get('set-ambient')) || 30,
-    calcMethod:         get('set-calcMethod') || 'iec',
-    parallelProtection: get('set-parallelProtection') || 'individual',
-    breakerMinMarginPct: Math.max(0, Number(get('set-breakerMinMarginPct')) || 0),
-    showHelp:           !!document.getElementById('set-showHelp')?.checked,
+    voltageLevels:        G.voltageLevels,
+    defaultCosPhi:        Number(get('set-cosPhi')) || 0.92,
+    earthingSystem:       get('set-earthingSystem') || 'TN-S',
+    maxParallelAuto:      Number(get('set-maxParallelAuto')) || 10,
+    maxVdropPct:          Number(get('set-maxVdropPct')) || 5,
+    calcMethod:           get('set-calcMethod') || 'iec',
+    parallelProtection:   get('set-parallelProtection') || 'individual',
+    breakerMinMarginPct:  Math.max(0, Number(get('set-breakerMinMarginPct')) || 0),
+    showHelp:             !!document.getElementById('set-showHelp')?.checked,
   };
-  // setGlobal синхронизирует engine.GLOBAL + shared/global-settings localStorage
-  // через saveGlobal() — не нужно писать в localStorage напрямую (дубль).
   if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
     window.Raschet.setGlobal(patch);
   }
   closeModal('modal-settings');
-  flash('Настройки применены');
+  flash('Параметры расчёта применены');
 }
+
+// ================= Параметры проекта (кабельные умолчания) =================
+// Выделены из «Параметров расчёта» в отдельную модалку в Фазе 1.16.
+function openProjectParamsModal() {
+  const G = (window.Raschet && window.Raschet.getGlobal) ? window.Raschet.getGlobal() : SETTINGS_DEFAULTS;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('pp-material',       G.defaultMaterial ?? 'Cu');
+  set('pp-insulation',     G.defaultInsulation ?? 'PVC');
+  set('pp-cableType',      G.defaultCableType ?? 'multi');
+  set('pp-maxCableSize',   G.maxCableSize ?? 240);
+  set('pp-ambient',        G.defaultAmbient ?? 30);
+  // Способ прокладки — список зависит от методики
+  const m = getMethod(G.calcMethod || 'iec');
+  const sel = document.getElementById('pp-installMethod');
+  if (sel) {
+    sel.innerHTML = Object.entries(m.installMethods).map(([k, v]) =>
+      `<option value="${k}">${v}</option>`).join('');
+    sel.value = G.defaultInstallMethod ?? (m.defaultMethod || 'B1');
+  }
+  // Основная марка кабеля по проекту — из справочника cable-types
+  (async () => {
+    try {
+      const mod = await import('../shared/cable-types-catalog.js');
+      const list = mod.listCableTypes ? mod.listCableTypes() : [];
+      const lvList = list.filter(ct => (ct.category || 'power') === 'power');
+      const hvList = list.filter(ct => (ct.category || 'power') === 'hv');
+      const lvSel = document.getElementById('pp-mainCableLv');
+      const hvSel = document.getElementById('pp-mainCableHv');
+      if (lvSel) {
+        lvSel.innerHTML = '<option value="">— не задано —</option>' +
+          lvList.map(ct => `<option value="${ct.id}">${ct.brand || ct.id}</option>`).join('');
+        lvSel.value = G.projectMainCableLv || '';
+      }
+      if (hvSel) {
+        hvSel.innerHTML = '<option value="">— не задано —</option>' +
+          hvList.map(ct => `<option value="${ct.id}">${ct.brand || ct.id}</option>`).join('');
+        hvSel.value = G.projectMainCableHv || '';
+      }
+    } catch (e) { console.warn('[project-params] cable-types', e); }
+  })();
+  openModal('modal-project-params');
+}
+
+function saveProjectParamsModal() {
+  const get = (id) => document.getElementById(id)?.value;
+  const patch = {
+    defaultMaterial:      get('pp-material') || 'Cu',
+    defaultInsulation:    get('pp-insulation') || 'PVC',
+    defaultCableType:     get('pp-cableType') || 'multi',
+    maxCableSize:         Number(get('pp-maxCableSize')) || 240,
+    defaultInstallMethod: get('pp-installMethod') || 'B1',
+    defaultAmbient:       Number(get('pp-ambient')) || 30,
+    projectMainCableLv:   get('pp-mainCableLv') || null,
+    projectMainCableHv:   get('pp-mainCableHv') || null,
+  };
+  if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
+    window.Raschet.setGlobal(patch);
+  }
+  closeModal('modal-project-params');
+  flash('Параметры проекта применены');
+}
+window.__raschetOpenProjectParams = function() { openProjectParamsModal(); };
 
 window.__raschetOpenProjectInfo = function() { openProjectInfoModal(); };
 
@@ -815,7 +859,7 @@ function saveProjectInfoModal() {
     description: get('pi-description').trim(),
   };
   closeModal('modal-project-info');
-  flash('Параметры проекта сохранены');
+  flash('Свойства проекта сохранены');
   // Нотификация о смене для сохранения в БД / localStorage
   if (typeof window.Raschet.notifyChange === 'function') window.Raschet.notifyChange();
 }
@@ -1649,6 +1693,11 @@ async function init() {
   if (btnProjectInfo) btnProjectInfo.addEventListener('click', openProjectInfoModal);
   const projectInfoSave = document.getElementById('project-info-save');
   if (projectInfoSave) projectInfoSave.addEventListener('click', saveProjectInfoModal);
+  // Параметры проекта (кабельные умолчания) — Фаза 1.16
+  const btnProjectParams = document.getElementById('btn-open-project-params');
+  if (btnProjectParams) btnProjectParams.addEventListener('click', openProjectParamsModal);
+  const projectParamsSave = document.getElementById('project-params-save');
+  if (projectParamsSave) projectParamsSave.addEventListener('click', saveProjectParamsModal);
   // Сброс базовых пресетов
   const btnPresetsReset = document.getElementById('btn-presets-reset-builtins');
   if (btnPresetsReset) btnPresetsReset.addEventListener('click', () => {

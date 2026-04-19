@@ -162,8 +162,9 @@
         </div>
 
         <h3>Быстрые действия</h3>
-        <button id="btn-open-project-info" class="full-btn">📋 Параметры проекта</button>
-        <button id="btn-open-settings" class="full-btn">⚙ Параметры расчёта</button>
+        <button id="btn-open-project-info" class="full-btn" title="Реквизиты проекта: обозначение, название, заказчик, объект, стадия">📋 Свойства проекта</button>
+        <button id="btn-open-project-params" class="full-btn" title="Проектные умолчания: марка кабеля, материал жил, изоляция, способ прокладки">🔧 Параметры проекта</button>
+        <button id="btn-open-settings" class="full-btn" title="Методика расчёта, защитные параметры, система заземления">⚙ Параметры расчёта</button>
         <button id="btn-open-presets" class="full-btn">📚 Библиотека типовых элементов</button>
         <button id="btn-open-consumer-catalog" class="full-btn">📋 Справочник типов потребителей</button>
         <button id="btn-open-reports" class="full-btn">📄 Отчёты</button>
@@ -411,14 +412,16 @@
     </div>
   </div>
 
+  <!-- Свойства проекта — метаданные (шифр / название / заказчик / объект) -->
   <div id="modal-project-info" class="modal hidden">
     <div class="modal-box modal-wide">
       <div class="modal-head">
-        <h2>Параметры проекта</h2>
+        <h2>Свойства проекта</h2>
         <button class="modal-close" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body">
-        <p class="muted" style="margin-top:0">Реквизиты проекта — выводятся в шапку отчёта и сохраняются вместе со схемой.</p>
+        <p class="muted" style="margin-top:0">Реквизиты проекта — выводятся в шапку отчёта и сохраняются вместе со схемой.
+          Проектные умолчания кабелей и прокладки — в «Параметры проекта».</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="field"><label>Обозначение (шифр)</label>
             <input type="text" id="pi-designation" placeholder="25006-GEP-GEN-ELC-901"></div>
@@ -443,6 +446,54 @@
     </div>
   </div>
 
+  <!-- Параметры проекта — проектные умолчания кабелей/прокладки/марок (Фаза 1.16) -->
+  <div id="modal-project-params" class="modal hidden">
+    <div class="modal-box modal-wide">
+      <div class="modal-head">
+        <h2>Параметры проекта</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin-top:0">Проектные умолчания для кабельных линий. Применяются к новым линиям.
+          Методику расчёта (IEC/ПУЭ) и защитные параметры см. «Параметры расчёта».</p>
+
+        <h3>Основная марка кабеля по проекту</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Силовой кабель (LV)</label>
+            <select id="pp-mainCableLv"></select></div>
+          <div class="field"><label>Высоковольтный (MV/HV)</label>
+            <select id="pp-mainCableHv"></select></div>
+        </div>
+        <p class="muted" style="font-size:11px;margin-top:-2px">Выбранные марки становятся предвыбранными в инспекторе линий. Справочник кабелей — в <a href="catalog/" target="_blank">Каталог и библиотека</a>.</p>
+
+        <h3>Умолчания проводника</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Материал жил</label>
+            <select id="pp-material"><option value="Cu">Медь</option><option value="Al">Алюминий</option></select></div>
+          <div class="field"><label>Изоляция</label>
+            <select id="pp-insulation"><option value="PVC">ПВХ</option><option value="XLPE">СПЭ (XLPE)</option></select></div>
+          <div class="field"><label>Тип конструкции</label>
+            <select id="pp-cableType"><option value="multi">Многожильный</option><option value="single">Одножильный</option><option value="solid">Цельная жила</option><option value="busbar">Шинопровод</option></select></div>
+          <div class="field"><label>Макс. сечение, мм²</label>
+            <select id="pp-maxCableSize"><option value="10">10</option><option value="16">16</option><option value="25">25</option><option value="35">35</option><option value="50">50</option><option value="70">70</option><option value="95">95</option><option value="120">120</option><option value="150">150</option><option value="185">185</option><option value="240" selected>240</option><option value="300">300</option><option value="400">400</option><option value="500">500</option></select></div>
+        </div>
+
+        <h3>Прокладка по умолчанию</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Способ прокладки</label>
+            <select id="pp-installMethod"></select></div>
+          <div class="field"><label>Температура среды, °C</label>
+            <input type="number" id="pp-ambient" min="10" max="70" step="5" value="30"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="modal-close">Отмена</button>
+        <button id="project-params-save" class="primary">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Параметры расчёта — методология (Фаза 1.16 пересмотрено) -->
   <div id="modal-settings" class="modal hidden">
     <div class="modal-box modal-wide">
       <div class="modal-head">
@@ -450,10 +501,9 @@
         <button class="modal-close" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body">
-        <p class="muted" style="margin-top:0">Значения применяются ко всем новым линиям. Сохраняются в браузере.</p>
-
-        <h3>Справочник уровней напряжения</h3>
-        <p class="muted" style="font-size:11px">Уровни напряжения настраиваются в <b>Глобальных настройках платформы</b> (шестерёнка ⚙ в хедере). Единый источник для всех модулей.</p>
+        <p class="muted" style="margin-top:0">Методика расчёта и защитные параметры. Применяются ко всем линиям проекта.
+          Кабельные умолчания (материал/изоляция/марка) — в «Параметры проекта».
+          Уровни напряжения — в глобальных настройках платформы (⚙ в хедере).</p>
 
         <h3>Методика и защита</h3>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -463,25 +513,17 @@
             <select id="set-parallelProtection"><option value="individual">Индивидуальная</option><option value="common">Общая</option></select></div>
           <div class="field"><label>Мин. запас по In автомата, %</label>
             <input type="number" id="set-breakerMinMarginPct" min="0" max="100" step="1" value="0"></div>
-        </div>
-
-        <h3>Кабели</h3>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="field"><label>Материал жил</label>
-            <select id="set-material"><option value="Cu">Медь</option><option value="Al">Алюминий</option></select></div>
-          <div class="field"><label>Изоляция</label>
-            <select id="set-insulation"><option value="PVC">ПВХ</option><option value="XLPE">СПЭ (XLPE)</option></select></div>
-          <div class="field"><label>Тип конструкции</label>
-            <select id="set-cableType"><option value="multi">Многожильный</option><option value="single">Одножильный</option><option value="solid">Цельная жила</option><option value="busbar">Шинопровод</option></select></div>
-          <div class="field"><label>Макс. сечение, мм²</label>
-            <select id="set-maxCableSize"><option value="10">10</option><option value="16">16</option><option value="25">25</option><option value="35">35</option><option value="50">50</option><option value="70">70</option><option value="95">95</option><option value="120">120</option><option value="150">150</option><option value="185">185</option><option value="240" selected>240</option><option value="300">300</option></select></div>
           <div class="field"><label>Макс. параллельных линий</label>
             <input type="number" id="set-maxParallelAuto" min="1" max="10" step="1" value="4"></div>
-          <div class="field"><label>Макс. падение напр., %</label>
+        </div>
+
+        <h3>Электрические параметры проекта</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>Макс. падение напряжения, %</label>
             <input type="number" id="set-maxVdropPct" min="0.5" max="15" step="0.5" value="5"></div>
           <div class="field"><label>cos φ по умолчанию</label>
             <input type="number" id="set-cosPhi" min="0.1" max="1" step="0.01" value="0.92"></div>
-          <div class="field"><label>Система заземления (IEC 60364-4-41)</label>
+          <div class="field" style="grid-column:span 2"><label>Система заземления (IEC 60364-4-41)</label>
             <select id="set-earthingSystem">
               <option value="TN-S">TN-S (3L+N+PE, 5 жил)</option>
               <option value="TN-C">TN-C (3L+PEN, 4 жилы)</option>
@@ -491,14 +533,6 @@
               <option value="IT">IT без нейтрали (3L+PE, 4 жилы)</option>
             </select>
           </div>
-        </div>
-
-        <h3>Прокладка по умолчанию</h3>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="field"><label>Способ прокладки</label>
-            <select id="set-installMethod"></select></div>
-          <div class="field"><label>Температура среды, °C</label>
-            <input type="number" id="set-ambient" min="10" max="70" step="5" value="30"></div>
         </div>
 
         <h3>Интерфейс</h3>
