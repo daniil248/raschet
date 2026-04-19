@@ -281,6 +281,129 @@ export function createCableSkuElement(patch = {}) {
   };
 }
 
+/**
+ * mv-switchgear — распределительное устройство среднего напряжения
+ * (RM-6, FafeRing, ЩО-70 и аналоги). 6-35 кВ.
+ *
+ * Типы (kindProps.mvType):
+ *   'ringmain'   — компактные моноблоки в SF6 (RM6, FafeRing, XIRIA)
+ *                  фиксированный набор ячеек, неразборные
+ *   'panelboard' — сборные ЩО-70 (советский стандарт), ЦОИ-10 и аналоги
+ *                  наборные из отдельных ячеек, можно любой состав
+ *   'gis'        — элегазовые GIS (ABB UniGear ZS1, Schneider PIX)
+ *                  набор ячеек + изоляция SF6
+ *   'air'        — воздушные AIS (ЦОИ-10, КСО-272, КРУН)
+ *                  открытые шины в воздухе
+ *
+ * kindProps:
+ *   mvType, Un_kV, Uw_kV, In_A (шины), Ip_kA, It_kA,
+ *   cells: [{ position, type, In, breakerType, fuseRating? }],
+ *   insulation: 'sf6'|'air'|'solid'|'oil',
+ *   arcProof: boolean, IP, form, dimensions (WxHxD)
+ */
+export function createMvSwitchgearElement(patch = {}) {
+  const p = patch || {};
+  return {
+    id: p.id || makeElementId('mv-switchgear', [p.manufacturer, p.series, p.variant]),
+    kind: 'mv-switchgear',
+    category: 'equipment',
+    label: p.label || [p.manufacturer, p.series, p.variant].filter(Boolean).join(' ') || 'РУ СН',
+    description: p.description || '',
+    manufacturer: p.manufacturer || '',
+    series: p.series || '',
+    variant: p.variant || '',
+    electrical: {
+      voltageCategory: 'mv',
+      capacityA: Number(p.In_A || 630),
+      phases: 3,
+    },
+    geometry: {
+      widthMm: Number(p.widthMm || 0),
+      heightMm: Number(p.heightMm || 1800),
+      depthMm: Number(p.depthMm || 800),
+      weightKg: Number(p.weightKg || 0),
+    },
+    views: {},
+    composition: [],
+    kindProps: {
+      mvType: p.mvType || 'ringmain',           // ringmain / panelboard / gis / air
+      Un_kV: Number(p.Un_kV || 10),              // номинальное напряжение
+      Uw_kV: Number(p.Uw_kV || 12),              // макс. рабочее (12/17.5/24/36)
+      In_A: Number(p.In_A || 630),               // номинальный ток шин
+      Ip_kA: Number(p.Ip_kA || 50),              // ток электродинамической стойкости, пик
+      It_kA: Number(p.It_kA || 20),              // ток термической стойкости 1с
+      cells: Array.isArray(p.cells) ? p.cells : [],  // список ячеек
+      insulation: p.insulation || 'sf6',         // sf6 / air / solid / oil
+      arcProof: !!p.arcProof,                     // дугостойкость IAC AFLR
+      IP: p.IP || 'IP4X',
+      form: p.form || 'LSC2B-PM',                 // форма разделения по IEC 62271-200
+      expandable: p.expandable == null ? (p.mvType === 'panelboard' || p.mvType === 'air') : !!p.expandable,
+    },
+    source: p.source || 'user',
+    builtin: !!p.builtin,
+    tags: p.tags || [],
+  };
+}
+
+/**
+ * mv-cell — ячейка среднего напряжения (внутри mv-switchgear).
+ * Независимый элемент, может использоваться в composition.
+ *
+ * kindProps.cellType:
+ *   'infeed'              — ввод (кабельный / воздушный / шинный мост)
+ *   'feeder'              — отходящая линия (с автоматом)
+ *   'transformer-protect' — защита трансформатора (VCB/fuse+switch)
+ *   'measurement'         — измерительная (ТН+ОПН)
+ *   'busCoupler'          — секционная
+ *   'earthing'            — заземляющая
+ *   'metering'            — коммерческого учёта
+ */
+export function createMvCellElement(patch = {}) {
+  const p = patch || {};
+  return {
+    id: p.id || makeElementId('mv-cell', [p.manufacturer, p.series, p.variant]),
+    kind: 'mv-cell',
+    category: 'equipment',
+    label: p.label || [p.manufacturer, 'ячейка', p.variant].filter(Boolean).join(' ') || 'Ячейка СН',
+    description: p.description || '',
+    manufacturer: p.manufacturer || '',
+    series: p.series || '',
+    variant: p.variant || '',
+    electrical: {
+      voltageCategory: 'mv',
+      capacityA: Number(p.In_A || 630),
+      phases: 3,
+    },
+    geometry: {
+      widthMm: Number(p.widthMm || 375),
+      heightMm: Number(p.heightMm || 1800),
+      depthMm: Number(p.depthMm || 800),
+      weightKg: Number(p.weightKg || 200),
+    },
+    views: {},
+    composition: [],
+    kindProps: {
+      cellType: p.cellType || 'feeder',
+      Un_kV: Number(p.Un_kV || 10),
+      In_A: Number(p.In_A || 630),
+      breakerType: p.breakerType || 'VCB',       // VCB / SF6 / switch / fuse-switch / isolator
+      Icu_kA: Number(p.Icu_kA || 20),
+      // Для ячеек защиты трансформатора:
+      fuseRating_A: p.fuseRating_A ? Number(p.fuseRating_A) : null,
+      // Реле защиты
+      protectionRelay: p.protectionRelay || null, // 'SEPAM 20' | 'SPAM 150C' | 'MICOM P12x' | 'SPAC-805'
+      // Измерительные трансформаторы
+      ctRatio: p.ctRatio || null,                 // '300/5' и т.п.
+      vtRatio: p.vtRatio || null,                 // '10000/100'
+      // Стандартное обозначение по IEC 61850 (инструмент для однолинейки)
+      functionDesc: p.functionDesc || null,
+    },
+    source: p.source || 'user',
+    builtin: !!p.builtin,
+    tags: p.tags || [],
+  };
+}
+
 /** breaker (автоматический выключатель / УЗО / дифавтомат) */
 export function createBreakerElement(patch = {}) {
   const p = patch || {};
@@ -428,6 +551,8 @@ const FACTORIES = {
   'consumer-type': createConsumerTypeElement,
   enclosure: createEnclosureElement,
   climate: createClimateElement,
+  'mv-switchgear': createMvSwitchgearElement,
+  'mv-cell': createMvCellElement,
 };
 
 /**

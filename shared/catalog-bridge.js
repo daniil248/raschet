@@ -42,6 +42,14 @@ async function _loadBreakers() {
   } catch (e) { console.warn('[catalog-bridge] breakers', e.message); return []; }
 }
 
+// MV-switchgear-seed (Фаза 1.19): RM6, FafeRing, ЩО-70.
+async function _loadMvSwitchgear() {
+  try {
+    const m = await import('./mv-switchgear-seed.js');
+    return m.listBuiltinMvSwitchgear ? m.listBuiltinMvSwitchgear() : [];
+  } catch (e) { console.warn('[catalog-bridge] mv-switchgear', e.message); return []; }
+}
+
 async function _loadUpses() {
   try {
     const m = await import('./ups-catalog.js');
@@ -86,19 +94,20 @@ async function _loadCableTypes() {
  * Возвращает Promise<{ panels, ups, batteries, transformers, cableTypes, total }>
  */
 export async function syncLegacyToLibrary() {
-  const [panels, upses, batteries, transformers, cableTypes, breakers] = await Promise.all([
+  const [panels, upses, batteries, transformers, cableTypes, breakers, mvSw] = await Promise.all([
     _loadPanels(),
     _loadUpses(),
     _loadBatteries(),
     _loadTransformers(),
     _loadCableTypes(),
     _loadBreakers(),
+    _loadMvSwitchgear(),
   ]);
 
   // Очистим предыдущие builtin (перерегистрируем актуальные)
   clearBuiltins();
 
-  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers];
+  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers, ...mvSw];
   registerBuiltins(all);
 
   return {
@@ -108,6 +117,7 @@ export async function syncLegacyToLibrary() {
     transformers: transformers.length,
     cableTypes: cableTypes.length,
     breakers: breakers.length,
+    mvSwitchgear: mvSw.length,
     total: all.length,
   };
 }

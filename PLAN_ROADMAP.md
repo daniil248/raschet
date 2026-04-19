@@ -494,6 +494,35 @@
 
 ## История изменений
 
+### v0.52.0 (2026-04-19, Фаза 1.19 — MV-оборудование (RM6, FafeRing, ЩО-70))
+- **Задача пользователя:** «Добавим устройства среднего напряжения типа RM-6 или FafeRing и ЩО70, принцип такой же как и с щитами, настройки, автоматы, конфигурирование».
+- **Новые kinds в `element-library.js`:**
+  - `mv-switchgear` — распределительное устройство СН (compact ringmain / сборные панели)
+  - `mv-cell` — ячейка СН (ввод / отходящая / защита трансформатора / измерения / секционная / заземляющая)
+- **`shared/element-schemas.js` — 2 новые factory:**
+  - `createMvSwitchgearElement(patch)`: поля `mvType` (ringmain/panelboard/gis/air), Un_kV, Uw_kV, In_A (шины), Ip_kA/It_kA (стойкость), insulation (sf6/air/solid/oil), arcProof, IP, form, expandable, cells[]
+  - `createMvCellElement(patch)`: cellType (infeed/feeder/transformer-protect/measurement/busCoupler/earthing/metering), Un_kV, In_A, breakerType (VCB/SF6/fuse-switch/switch/isolator/earthing-switch), Icu_kA, fuseRating_A, protectionRelay, ctRatio/vtRatio
+- **`shared/mv-switchgear-seed.js` (новый, ~220 строк):**
+  - **Schneider RM6** — 7 конфигураций (II, III, IIDI, DI, IDI, IIV, IV) с 2-4 ячейками, 24 кВ SF6, Ip=52.5 кА, Icu=21 кА
+  - **FafeRing** (китайский аналог) — 6 конфигураций (CC, CCF, CCCF, CVF, CVV, VVV), 12 кВ SF6
+  - **ЩО-70** — 6 отдельных ячеек (ВЛВ-630, ВЛВО-630, ТТ, ССВ-630, ТСН, Р-Н) + 1 типовая сборка «6 ячеек» для ТП 2×1000 кВА (2 ввода + ССВ + 2 отх + ТН)
+  - `listBuiltinMvSwitchgear()` для bridge
+- **`shared/catalog-bridge.js`:**
+  - `_loadMvSwitchgear()` dynamic import
+  - В `syncLegacyToLibrary` добавлен 7-й источник
+  - После sync `listElements({kind:'mv-switchgear'})` вернёт ~14 builtin моделей, `{kind:'mv-cell'}` — 6 ячеек ЩО-70
+- **Последующие фазы (TODO):**
+  - 1.19.1: конфигуратор `mv-config/` wizard (по образцу 1.7 panel-config, но со спецификой ячеек)
+  - 1.19.2: интеграция в инспектор трансформатора на схеме («Сконфигурировать РУ СН»)
+  - 1.19.3: MV-автоматы (VCB, SF6) в breaker-seed с TCC-кривыми
+
+### ⚠ Известный баг (в TODO, требует воспроизведения)
+- **v0.52.0 TODO:** ДГУ — «ввод собственных нужд (auxInput) собирает нагрузку ДГУ на себя»
+  - Пользовательский репорт: на связи ввода СН отображается вся нагрузка генератора
+  - Поиск в `recalc.js` (блок 871 + walkUp + activeInputs для generator) не показал явной причины — `activeInputs(generator)` возвращает `[]` для работающего ДГУ, `walkUp` останавливается на генераторе и не идёт через auxInput вверх
+  - Возможно render-баг (label связи берёт `_loadKw` не той связи) или сценарий со специфичной конфигурацией triggers/backupMode
+  - **Требуется:** минимальная схема воспроизведения или скриншот с параметрами узла для точной диагностики
+
 ### v0.51.0 (2026-04-19, Фаза 1.9.2 — TCC-карта цепочки защиты в инспекторе линии)
 - **js/engine/inspector/conn.js:**
   - Новая collapsible-секция **«⚡ Карта защиты (TCC)»** в инспекторе соединения
