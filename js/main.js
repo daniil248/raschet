@@ -2113,6 +2113,12 @@ function renderCableTable() {
       <button type="button" id="ct-bulk-breaker" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Назначить / снять ручной номинал автомата">Автомат</button>
       <button type="button" id="ct-bulk-curve" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Назначить тип автомата (кривую)">Тип</button>
       <span style="flex:1"></span>
+      ${(() => {
+        // Phase 1.20.29: автофикс всех error-линий в текущей выборке
+        const fixableInView = filtered.filter(c => _ctSuggestFix(c));
+        if (!fixableInView.length) return '';
+        return `<button type="button" id="ct-bulk-autofix" title="Применить автофиксы ко всем ошибкам в выборке" style="padding:4px 10px;border:1px solid #2e7d32;background:#e8f5e9;color:#2e7d32;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600">🔧 Исправить всё (${fixableInView.length})</button>`;
+      })()}
       <button type="button" id="ct-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
       <button type="button" id="ct-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
     </div>
@@ -2557,6 +2563,25 @@ function renderCableTable() {
   if (brkBtn) brkBtn.addEventListener('click', () => _openBulkCableDialog('breaker', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
   const curveBtn = mount.querySelector('#ct-bulk-curve');
   if (curveBtn) curveBtn.addEventListener('click', () => _openBulkCableDialog('curve', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
+  // Phase 1.20.29: автофикс всех error-линий в текущей выборке одной кнопкой
+  const autofixBtn = mount.querySelector('#ct-bulk-autofix');
+  if (autofixBtn) autofixBtn.addEventListener('click', () => {
+    const fixable = filtered.filter(c => _ctSuggestFix(c));
+    if (!fixable.length) return;
+    if (!confirm(`Применить ${fixable.length} автофиксов к ошибочным линиям в текущей выборке? Действие обратимо через Ctrl+Z.`)) return;
+    snap('cable-table:autofix-all:' + fixable.length);
+    let applied = 0;
+    for (const c of fixable) {
+      const fix = _ctSuggestFix(c);
+      if (!fix) continue;
+      if (fix.kind === 'setBreakerIn') c.manualBreakerIn = Number(fix.value);
+      else if (fix.kind === 'clearManualBreaker') delete c.manualBreakerIn;
+      applied++;
+    }
+    if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+    renderCableTable();
+    flash(`Применено автофиксов: ${applied}`);
+  });
 }
 
 // Модалка группового изменения (mark/length/method/scale)
