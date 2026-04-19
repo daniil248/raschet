@@ -241,6 +241,9 @@ export function initInteraction() {
         if (item.dataset.subtype) {
           e.dataTransfer.setData('text/raschet-subtype', item.dataset.subtype);
         }
+        if (item.dataset.isMv) {
+          e.dataTransfer.setData('text/raschet-ismv', '1');
+        }
       }
       e.dataTransfer.effectAllowed = 'copy';
     });
@@ -266,9 +269,19 @@ export function initInteraction() {
     }
     const type = e.dataTransfer.getData('text/raschet-type');
     const subtype = e.dataTransfer.getData('text/raschet-subtype');
+    const isMv = e.dataTransfer.getData('text/raschet-ismv') === '1';
     if (!type || !DEFAULTS[type]) return;
     const p = clientToSvg(e.clientX, e.clientY);
-    createNode(type, p.x, p.y, subtype ? { subtype } : undefined);
+    const newId = createNode(type, p.x, p.y, subtype ? { subtype } : undefined);
+    // Фаза 1.19.12: «РУ СН (базовое)» из палитры — автоматически помечаем
+    // как MV. Инспектор покажет блок «Устройство СН» вместо LV-полей.
+    if (isMv && newId) {
+      const node = state.nodes.get(newId);
+      if (node) {
+        node.isMv = true;
+        node.name = node.name || 'РУ СН';
+      }
+    }
   });
 
   // ---- Мышь: mousedown ----

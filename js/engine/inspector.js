@@ -744,10 +744,10 @@ export function saveNodeAsPreset(n) {
   // Убираем привязки к конкретным элементам схемы
   delete params.linkedOutdoorId; delete params.linkedIndoorId;
   const list = loadUserPresets();
-  const TYPE_CATEGORY = { source: 'Источники', generator: 'Генераторы', panel: 'Щиты', ups: 'ИБП', consumer: 'Потребители', channel: 'Каналы' };
+  const TYPE_CATEGORY = { source: 'Источники', generator: 'Генераторы', panel: 'НКУ', ups: 'ИБП', consumer: 'Потребители', channel: 'Каналы' };
   list.push({
     id: 'user-' + Date.now().toString(36),
-    category: TYPE_CATEGORY[n.type] || 'Прочее',
+    category: n.type === 'panel' && n.isMv ? 'Среднее напряжение' : (TYPE_CATEGORY[n.type] || 'Прочее'),
     title: name,
     description: '',
     type: n.type,

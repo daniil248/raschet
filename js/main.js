@@ -932,9 +932,21 @@ function renderPalettePresets() {
     byType.get(p.type).push(p);
   }
   // Рендер в каждый контейнер .pal-presets[data-pal-presets-type]
+  // Фаза 1.19.12: для type='panel' дополнительно фильтруем по
+  // data-pal-voltage (lv/mv) — НКУ и РУ СН должны быть в разных секциях.
   document.querySelectorAll('.pal-presets').forEach(container => {
     const type = container.dataset.palPresetsType;
-    const list = byType.get(type) || [];
+    const voltage = container.dataset.palVoltage; // 'lv' | 'mv' | undefined
+    let list = byType.get(type) || [];
+    if (type === 'panel' && voltage) {
+      const MV_CATEGORIES = new Set(['Среднее напряжение', 'РУ СН', 'MV']);
+      list = list.filter(p => {
+        const isMvCat = MV_CATEGORIES.has(p.category);
+        const isMvParam = !!(p.params && (p.params.isMv || p.params.mvSwitchgearId));
+        const isMv = isMvCat || isMvParam;
+        return voltage === 'mv' ? isMv : !isMv;
+      });
+    }
     container.innerHTML = '';
     for (const p of list) {
       const isBuiltin = typeof window.Presets.isBuiltin === 'function' && window.Presets.isBuiltin(p.id);
@@ -1164,7 +1176,11 @@ function renderPresets(query) {
       ? list.filter(p => (p.title + ' ' + p.description + ' ' + cat).toLowerCase().includes(q))
       : list;
     if (!filtered.length) continue;
-    const CAT_TYPE = { 'Источники': 'source', 'Генераторы': 'generator', 'Щиты': 'panel', 'ИБП': 'ups', 'Потребители': 'consumer', 'Каналы': 'channel' };
+    const CAT_TYPE = {
+      'Источники': 'source', 'Генераторы': 'generator',
+      'Щиты': 'panel', 'НКУ': 'panel', 'Среднее напряжение': 'panel', 'РУ СН': 'panel',
+      'ИБП': 'ups', 'Потребители': 'consumer', 'Каналы': 'channel',
+    };
     const catType = CAT_TYPE[cat] || 'consumer';
     parts.push(`<div class="preset-group" style="display:flex;align-items:center;justify-content:space-between"><h4 style="margin:0">${escHtml(cat)}</h4><button class="pc-btn pc-cat-add" data-cat-type="${catType}" data-cat-name="${escAttr(cat)}" title="Добавить новый элемент в ${escAttr(cat)}" style="font-size:16px">+</button></div>`);
     for (const p of filtered) {

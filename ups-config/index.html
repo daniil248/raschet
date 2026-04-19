@@ -18,7 +18,59 @@
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
+    import { mountHelp } from '../shared/help-panel.js';
     mountHeader({ title: 'Конфигуратор ИБП', home: '../hub.html' });
+    mountHelp({
+      module: 'ups-config',
+      title: 'Конфигуратор ИБП',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Справочник моделей источников бесперебойного питания (ИБП) и мастер подбора под проект. Справочник хранится per-user и доступен в инспекторе ИБП Конструктора схем через общий <code>shared/ups-picker.js</code>. Wizard-режим открывается автоматически при переходе из инспектора (<code>?nodeId=…</code> в URL).</p>
+        <h4>Работа со справочником</h4>
+        <ol>
+          <li><b>Добавить вручную</b> — создать запись модели ИБП: поставщик, серия, мощность (кВА / кВт), cos φ, топология, V<sub>DC</sub>, тип (моноблок / модульный).</li>
+          <li><b>Импорт XLSX</b> — загрузить плоскую таблицу с колонками (Supplier, Model, Capacity_kW, Topology, V_DC_min/max, Phases и т.д.).</li>
+          <li><b>Шаблон</b> — скачать XLSX-заготовку с заголовками и примерами.</li>
+          <li><b>Kehua UPS</b> — предзагрузка линейки Kehua (KR-RM, Myria 60-200, MR33, FR-UK33 и т.д.) с совместимостью с Li-ion шкафами S³.</li>
+        </ol>
+        <h4>Wizard подбора (3 шага)</h4>
+        <ol>
+          <li><b>Шаг 1. Требования</b> — S<sub>крит</sub> (кВт), автономия (мин), схема резервирования (N / N+1 / N+2 / 2N), тип (модульный / моноблок), V<sub>DC</sub> min/max (коррекция под батарейную цепочку), cos φ, число фаз.</li>
+          <li><b>Шаг 2. Подбор</b> — модуль показывает подходящие модели с учётом резервирования: для модульной схемы нужно N+1 силовых модулей, емкостью ≥ S<sub>крит</sub>.</li>
+          <li><b>Шаг 3. Итог</b> — итоговая конфигурация (фрейм + силовые модули + батарейный шкаф), применяется к узлу Конструктора схем.</li>
+        </ol>
+        <div class="note">Топологии по IEC 62040-3: <b>VFI-SS-111</b> (on-line double-conversion, высший класс, выход на 99% времени от инвертора) · <b>VI</b> (line-interactive, стабилизация AVR) · <b>VFD</b> (off-line / standby, только при отказе сети).</div>
+        <div class="warn">Для ЦОД Tier III/IV, медицинских систем жизнеобеспечения, промышленной АСУ ТП — требуется <b>VFI (on-line double-conversion)</b>. VFD / VI для критичных систем не применяются.</div>
+      `,
+      calcs: `
+        <h4>Формулы и стандарты</h4>
+        <h5>1. Выбор номинальной мощности ИБП</h5>
+        <p><code>S<sub>УПС</sub> ≥ S<sub>крит</sub> · k<sub>запас</sub></code>, где k<sub>запас</sub> = 1.1…1.25 (резерв под развитие и начальный пик).</p>
+        <p>Активная мощность ИБП паспортно для cos φ<sub>нагр</sub> = 0.9…1.0 (зависит от модели). При cos φ = 0.8 — derating -15%.</p>
+        <h5>2. Резервирование N+1 / 2N</h5>
+        <p>Модульный ИБП: <code>n<sub>mod</sub> = ⌈S<sub>крит</sub> / S<sub>mod</sub>⌉ + 1</code> (N+1). При N+2 — +2 модуля. 2N — полное дублирование двумя независимыми ИБП.</p>
+        <h5>3. Классификация по IEC 62040-3</h5>
+        <ul>
+          <li><b>VFI</b> — Voltage-Frequency Independent (on-line double-conversion, выход не зависит от сети). Обозначение: VFI-SS-111 (S=синус, 1=в пределах класса).</li>
+          <li><b>VI</b> — Voltage Independent (line-interactive: AVR + трансформер).</li>
+          <li><b>VFD</b> — Voltage-Frequency Dependent (off-line / standby).</li>
+        </ul>
+        <h5>4. Подбор батарейной цепочки</h5>
+        <p>DC-мощность: <code>P<sub>DC</sub> = S<sub>УПС</sub> · cos φ<sub>нагр</sub> / η<sub>inv</sub></code>, η<sub>inv</sub> ≈ 0.93…0.96.</p>
+        <p>Число элементов в цепочке: <code>N<sub>cell</sub> = U<sub>DC,nom</sub> / U<sub>cell,nom</sub></code> с проверкой: при EoD напряжение <code>U<sub>bus,min</sub> = N<sub>cell</sub> · U<sub>end,cell</sub> ≥ V<sub>DC,min</sub></code> (паспорт ИБП).</p>
+        <h5>5. Вход по переменному току (сайзинг AC)</h5>
+        <p><code>I<sub>AC,in</sub> = (P<sub>крит</sub> / η<sub>inv</sub> + P<sub>charge</sub>) / (√3 · U · cos φ<sub>in</sub>)</code>.</p>
+        <p>P<sub>charge</sub> (ток заряда АКБ) ≈ 10-20% от P<sub>УПС</sub> — важно для автомата на входе!</p>
+        <h5>6. THDi на входе</h5>
+        <p>on-line ИБП с пассивным выпрямителем: THDi 25-30%. С 12-пульсной схемой: ≤ 8%. С IGBT-PFC: ≤ 3% (подходит для чувствительных сетей, генераторов).</p>
+        <h5>7. Коэффициент kS для генератора</h5>
+        <p>При питании от ДГУ требуется: <code>S<sub>ДГУ</sub> = k<sub>S</sub> · S<sub>УПС</sub></code>, где k<sub>S</sub> = 2.0-2.5 (старый 6-пульсный выпрямитель), 1.5 (12-пульс), 1.1-1.2 (IGBT-PFC).</p>
+        <h5>8. Ток утечки (leakage)</h5>
+        <p>Фильтры ЭМС ИБП дают до 30-100 мА на фазу. Проверка совместимости с УЗО: для систем с ИБП — УЗО тип B (на входе) и / или AGFI.</p>
+        <div class="note">Стандарты: IEC 62040-1 (безопасность), IEC 62040-2 (ЭМС), IEC 62040-3 (производительность), IEC 62040-4 (экология / окончание жизни).</div>
+        <div class="warn">При модульном резервировании N+1: нагрузка на один модуль = S<sub>крит</sub> / N (не N+1). Проверьте не перегрузится ли один модуль при отказе соседа.</div>
+      `,
+    });
     if (window.Auth && typeof window.Auth.init === 'function') {
       window.Auth.init().catch(e => console.warn('[ups-config] auth init failed', e));
     }
