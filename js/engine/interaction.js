@@ -2,7 +2,7 @@
 
 import { state, svg, layerOver, uid, getCurrentPage, getPageKind } from './state.js';
 import { NODE_H, SVG_NS, DEFAULTS, GLOBAL } from './constants.js';
-import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
+import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos, getNodeGeometryMm } from './geometry.js';
 import { snapshot, notifyChange } from './history.js';
 import { selectNode, selectConn, renderInspector, clientToSvg } from './inspector.js';
 import { render, updateViewBox, el, bezier } from './render.js';
@@ -37,6 +37,50 @@ function _effectiveSnapStep(e) {
     }
   } catch {}
   return GLOBAL.gridStep || 40;
+}
+
+// Collision helpers for layout pages (v0.58.12).
+// На layout-странице объекты на одной высоте (n.floor) не могут пересекаться,
+// ЗА ИСКЛЮЧЕНИЕМ случая, когда один полностью содержит другой (nesting:
+// PDU в серверном шкафу, батарея в батарейном шкафу).
+function _layoutFootprint(n, x, y) {
+  const g = getNodeGeometryMm(n);
+  const w = g?.widthMm || 400;
+  const h = (g?.depthMm && g.depthMm > 0) ? g.depthMm : (g?.heightMm || 300);
+  return { x, y, w, h };
+}
+function _rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function _rectContains(outer, inner) {
+  const EPS = 0.5;
+  return inner.x + EPS >= outer.x
+      && inner.y + EPS >= outer.y
+      && inner.x + inner.w <= outer.x + outer.w + EPS
+      && inner.y + inner.h <= outer.y + outer.h + EPS;
+}
+function _layoutCollides(n, nx, ny) {
+  const pageId = state.currentPageId;
+  if (!pageId) return false;
+  const myFloor = Number(n.floor) || 0;
+  const myFoot = _layoutFootprint(n, nx, ny);
+  for (const other of state.nodes.values()) {
+    if (!other || other.id === n.id) continue;
+    if (other.type === 'zone' || other.type === 'channel') continue;
+    const pids = Array.isArray(other.pageIds) ? other.pageIds : [];
+    if (!pids.includes(pageId)) continue;
+    const otherFloor = Number(other.floor) || 0;
+    if (otherFloor !== myFloor) continue;
+    const posOverride = other.positionsByPage && other.positionsByPage[pageId];
+    const ox = posOverride ? posOverride.x : other.x;
+    const oy = posOverride ? posOverride.y : other.y;
+    const oFoot = _layoutFootprint(other, ox, oy);
+    if (!_rectsOverlap(myFoot, oFoot)) continue;
+    // nesting exception: один полностью внутри другого
+    if (_rectContains(oFoot, myFoot) || _rectContains(myFoot, oFoot)) continue;
+    return true;
+  }
+  return false;
 }
 
 // Remove channelIds that no longer have a waypoint snapped to their center
@@ -951,6 +995,16 @@ export function initInteraction() {
               }
             }
           }
+        }
+      }
+      // Layout-collision: запрещаем overlap на одной высоте, кроме nested.
+      // Пробуем полный шаг, затем только по X, затем только по Y — чтобы
+      // скольжение вдоль края соседа работало.
+      if (getPageKind(getCurrentPage()) === 'layout' && n.type !== 'channel' && n.type !== 'zone') {
+        if (_layoutCollides(n, nx, ny)) {
+          if (!_layoutCollides(n, nx, n.y))      { ny = n.y; }
+          else if (!_layoutCollides(n, n.x, ny)) { nx = n.x; }
+          else                                   { nx = n.x; ny = n.y; }
         }
       }
       n.x = nx;
