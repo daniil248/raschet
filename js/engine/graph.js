@@ -99,7 +99,26 @@ export function createNode(type, x, y, opts) {
   _notifyChange();
   return id;
 }
-export function deleteNode(id) {
+// v0.58.9: подтверждение удаления — элемент удаляется со ВСЕХ страниц
+// проекта (карточки общие). Без confirm — слишком легко потерять.
+// Можно отключить подтверждение через GLOBAL.confirmDeleteNode = false
+// или передать opts.silent=true (используется для программных удалений
+// из каскада — secondStage, linkedOutdoorId и т.п.).
+export function deleteNode(id, opts = {}) {
+  if (!opts.silent) {
+    const n0 = state.nodes.get(id);
+    const pids = Array.isArray(n0?.pageIds) ? n0.pageIds.length : (state.pages || []).length;
+    const GLOBAL = (typeof window !== 'undefined' && window.GLOBAL) || {};
+    const ask = GLOBAL.confirmDeleteNode !== false;
+    if (ask) {
+      const label = (n0 && (n0.name || n0.tag || n0.id)) || id;
+      const msg = `Удалить «${label}»?\n\n`
+        + `Карточка элемента общая для всех страниц проекта — она исчезнет со всех ${pids} стр.\n`
+        + `Связанные кабельные линии тоже будут удалены.\n\n`
+        + `Это действие можно отменить через Ctrl+Z.`;
+      if (!confirm(msg)) return;
+    }
+  }
   _snapshot();
   const n = state.nodes.get(id);
   // Каскадное удаление

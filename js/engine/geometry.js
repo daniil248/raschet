@@ -1,4 +1,4 @@
-import { NODE_H, NODE_MIN_W, PORT_GAP_MIN, GLOBAL } from './constants.js';
+import { NODE_H, NODE_MIN_W, PORT_GAP_MIN, GLOBAL, CONSUMER_CATALOG } from './constants.js';
 import { getElement } from '../../shared/element-library.js';
 
 // ============== Phase 2.3: реальные габариты узла в мм ==============
@@ -41,6 +41,19 @@ export function getNodeGeometryMm(n) {
         };
       }
     } catch {}
+  }
+  // v0.58.9: consumer → CONSUMER_CATALOG по consumerType
+  if (n.type === 'consumer' && n.consumerType) {
+    const cat = CONSUMER_CATALOG.find(c => c.id === n.consumerType);
+    if (cat && Number(cat.widthMm) > 0 && Number(cat.heightMm) > 0) {
+      return {
+        widthMm:  Number(cat.widthMm),
+        heightMm: Number(cat.heightMm),
+        depthMm:  Number(cat.depthMm) || 0,
+        weightKg: Number(cat.weightKg) || 0,
+        source: 'consumer-catalog',
+      };
+    }
   }
   // Zones: их width/height уже в условных единицах — на layout трактуем как мм
   if (n.type === 'zone' && Number(n.width) > 0 && Number(n.height) > 0) {

@@ -350,6 +350,9 @@ export function renderLayoutRuler() {
 
   const mmToX = (mm) => (mm - vx) * zoom;
   const mmToY = (mm) => (mm - vy) * zoom;
+  // v0.58.10: масштаб страницы (метаданные чертежа). На экране объекты
+  // рисуются в реальных мм, масштаб отображается как метка в углу.
+  const scaleStr = (page && page.scale) || '1:1';
   const fmtMm = (mm) => {
     if (Math.abs(mm) >= 1000) return (Math.round(mm / 100) / 10) + ' м';
     return Math.round(mm) + '';
@@ -384,8 +387,9 @@ export function renderLayoutRuler() {
     });
     if (major) mk('text', { x: 2, y: y + 10, 'font-size': 10, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(mm));
   }
-  // В угловом квадрате — текущий шаг
-  mk('text', { x: 3, y: 14, 'font-size': 9, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(step));
+  // В угловом квадрате — текущий шаг и масштаб страницы
+  mk('text', { x: 3, y: 10, 'font-size': 8, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(step));
+  mk('text', { x: 3, y: 20, 'font-size': 8, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, scaleStr);
 }
 
 // Phase 2.3: на layout-страницах рисуем реальный габарит узла (widthMm × heightMm)
@@ -393,11 +397,121 @@ export function renderLayoutRuler() {
 // getNodeGeometryMm (library.geometry / ручной override / zone). Если
 // габарит не задан — узел не выделяется (плейсхолдер в будущем). Слой
 // интерактивно не ловит — чисто визуальная подсказка.
+// v0.58.9: упрощённый layout-рендер. Каждый узел = прямоугольник
+// widthMm × heightMm (если габариты известны). Потребитель с count>1
+// показывается как count отдельных карточек в ряд. Нет портов, нет
+// заголовка-тега-снизу — только имя/тип.
+function _renderNodesLayout() {
+  for (const n of state.nodes.values()) {
+    if (!Number.isFinite(n.x)) n.x = 0;
+    if (!Number.isFinite(n.y)) n.y = 0;
+  }
+  // Зоны — как раньше (layerZones)
+  const zoneParent = layerZones || layerNodes;
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'zone') continue;
+    if (!isOnCurrentPage(n)) continue;
+    const w = nodeWidth(n), h = nodeHeight(n);
+    const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    const g = el('g', {
+      class: 'node zone' + (selected ? ' selected' : ''),
+      transform: `translate(${n.x},${n.y})`,
+    });
+    g.dataset.nodeId = n.id;
+    g.appendChild(el('rect', {
+      class: 'zone-body',
+      x: 0, y: 0, width: w, height: h,
+      fill: n.color || '#e3f2fd', 'fill-opacity': 0.25,
+      stroke: n.color || '#1976d2', 'stroke-width': 1.5, rx: 4,
+    }));
+    zoneParent.appendChild(g);
+  }
+  // Остальные узлы — упрощённая карточка в натуральных габаритах
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone') continue;
+    if (!isOnCurrentPage(n)) continue;
+    const geom = getNodeGeometryMm(n);
+    // v0.58.10: layout = вид сверху. Размер карточки = ширина × глубина
+    // (если глубина задана), иначе fallback к ширина × высота. Высота
+    // (вертикальная) в plan-view не имеет смысла.
+    const W = geom?.widthMm || 400;
+    const H = (geom?.depthMm && geom.depthMm > 0) ? geom.depthMm : (geom?.heightMm || 300);
+    const hasGeom = !!geom;
+    const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    // Количество физических экземпляров: для consumer с count>1 — n.count
+    const count = (n.type === 'consumer' && Number(n.count) > 1) ? Number(n.count) : 1;
+    const gap = 40; // мм между соседними экземплярами
+    for (let i = 0; i < count; i++) {
+      const x = n.x + i * (W + gap);
+      const y = n.y;
+      const g = el('g', {
+        class: 'node layout-card' + (selected ? ' selected' : ''),
+        transform: `translate(${x},${y})`,
+      });
+      g.dataset.nodeId = n.id;
+      if (i > 0) g.dataset.instanceIdx = String(i); // дополнительные экземпляры группы
+      // Фон карточки
+      const color = _typeColor(n.type);
+      g.appendChild(el('rect', {
+        x: 0, y: 0, width: W, height: H, rx: 2,
+        fill: color.fill,
+        stroke: color.stroke,
+        'stroke-width': selected ? 3 : 1.5,
+        'stroke-dasharray': hasGeom ? '' : '6 4',
+      }));
+      // Подпись: тег + имя + размеры
+      const tag = (typeof n.tag === 'string' && n.tag) ? n.tag : '';
+      const name = n.name || n.type;
+      const fontSize = Math.max(10, Math.min(18, Math.round(Math.min(W, H) / 14)));
+      const lbl = el('text', {
+        x: W / 2, y: Math.max(fontSize + 4, H / 2 - 4),
+        'text-anchor': 'middle', 'font-size': fontSize,
+        fill: '#222', style: 'font-family: system-ui, sans-serif; font-weight:600; pointer-events:none',
+      });
+      lbl.textContent = tag ? `${tag} ${name}` : name;
+      g.appendChild(lbl);
+      const dim = el('text', {
+        x: W / 2, y: Math.max(fontSize + 4, H / 2 - 4) + fontSize + 2,
+        'text-anchor': 'middle', 'font-size': Math.max(9, fontSize - 3),
+        fill: '#666', style: 'font-family: system-ui, sans-serif; pointer-events:none',
+      });
+      dim.textContent = `${Math.round(W)}×${Math.round(H)} мм (Ш×Г)`;
+      g.appendChild(dim);
+      // Индекс экземпляра (1/N) для групповых потребителей
+      if (count > 1) {
+        const idx = el('text', {
+          x: 4, y: 14, 'font-size': 11, fill: '#555',
+          style: 'font-family: system-ui, sans-serif; pointer-events:none',
+        });
+        idx.textContent = `${i + 1}/${count}`;
+        g.appendChild(idx);
+      }
+      layerNodes.appendChild(g);
+    }
+  }
+}
+function _typeColor(t) {
+  switch (t) {
+    case 'source':    return { fill: '#fff3e0', stroke: '#e65100' };
+    case 'generator': return { fill: '#fff8e1', stroke: '#f57f17' };
+    case 'ups':       return { fill: '#f3e5f5', stroke: '#6a1b9a' };
+    case 'panel':     return { fill: '#e3f2fd', stroke: '#1565c0' };
+    case 'consumer':  return { fill: '#e8f5e9', stroke: '#2e7d32' };
+    case 'channel':   return { fill: '#eceff1', stroke: '#455a64' };
+    default:          return { fill: '#fafafa', stroke: '#555'    };
+  }
+}
+
 export function renderLayoutFootprints() {
   const existing = document.getElementById('layer-footprints');
   if (existing) existing.remove();
   const page = getCurrentPage();
   if (getPageKind(page) !== 'layout') return;
+  // v0.58.9: на layout-странице сами узлы уже отрисованы в натуральных
+  // габаритах (_renderNodesLayout), отдельная «тень»-footprint больше
+  // не нужна.
+  return;
+  // eslint-disable-next-line no-unreachable
   if (!layerNodes) return;
   const g = el('g', { id: 'layer-footprints', 'pointer-events': 'none' });
   let count = 0;
@@ -591,6 +705,13 @@ export function decorateRemoteLocks() {
 export function renderNodes() {
   while (layerNodes.firstChild) layerNodes.removeChild(layerNodes.firstChild);
   if (layerZones) while (layerZones.firstChild) layerZones.removeChild(layerZones.firstChild);
+
+  // v0.58.9: на layout-странице переключаемся на упрощённый рендер
+  // (карточки в натуральных габаритах мм, без портов и доп. виджетов).
+  if (getPageKind(getCurrentPage()) === 'layout') {
+    _renderNodesLayout();
+    return;
+  }
 
   // Санитация x/y всех узлов — если данные повреждены, заменяем на 0.
   // Предотвращает translate(NaN/Infinity/null) которые ломают SVG.

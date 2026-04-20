@@ -3,7 +3,7 @@ import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONS
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, getNodeGeometryMm } from './geometry.js';
-import { getCurrentPage, getPageKind } from './state.js';
+import { getCurrentPage, getPageKind, PAGE_KINDS, PAGE_KINDS_META } from './state.js';
 import { effectiveOn, setEffectiveOn, effectiveLoadFactor, setEffectiveLoadFactor } from './modes.js';
 import { snapshot, notifyChange } from './history.js';
 import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
@@ -166,6 +166,21 @@ function renderInspectorPage() {
   h.push(field('Наименование чертежа', `<input type="text" id="pg-title" value="${escAttr(page.title || '')}" placeholder="Принципиальная схема">`));
   h.push(field('Ревизия', `<input type="text" id="pg-rev" value="${escAttr(page.revision || '')}" placeholder="0">`));
   h.push(field('Описание страницы', `<textarea id="pg-desc" rows="3" style="width:100%;font:inherit;font-size:12px;resize:vertical" placeholder="Описание этого листа">${escHtml(page.description || '')}</textarea>`));
+  // v0.58.10: вид страницы + масштаб (для layout / mechanical)
+  {
+    const kind = getPageKind(page);
+    let kindOpts = '';
+    for (const k of PAGE_KINDS) {
+      const m = PAGE_KINDS_META[k];
+      if (!m) continue;
+      kindOpts += `<option value="${k}"${kind === k ? ' selected' : ''}>${escHtml(m.icon)} ${escHtml(m.label)}</option>`;
+    }
+    h.push(field('Вид страницы', `<select id="pg-kind">${kindOpts}</select>`));
+    const scales = ['1:1', '1:2', '1:5', '1:10', '1:20', '1:25', '1:50', '1:100', '1:200', '1:500', '1:1000'];
+    const curScale = page.scale || '1:1';
+    const scaleOpts = scales.map(s => `<option value="${s}"${s === curScale ? ' selected' : ''}>${s}</option>`).join('');
+    h.push(field('Масштаб', `<select id="pg-scale">${scaleOpts}</select>`));
+  }
 
   // Тип страницы + parent для ссылочной
   const independents = (state.pages || []).filter(p => p.type !== 'linked' && p.id !== page.id);
@@ -223,6 +238,29 @@ function renderInspectorPage() {
   bindInput('pg-title', v => { page.title = String(v).trim(); });
   bindInput('pg-rev',   v => { page.revision = String(v).trim(); });
   bindInput('pg-desc',  v => { page.description = String(v); });
+  // v0.58.10: вид и масштаб страницы
+  const pgKind = document.getElementById('pg-kind');
+  if (pgKind) {
+    pgKind.addEventListener('change', () => {
+      snapshot('page-kind:' + page.id);
+      const v = pgKind.value;
+      if (PAGE_KINDS.includes(v)) page.kind = v;
+      notifyChange();
+      if (typeof window !== 'undefined' && typeof window.__raschetRenderPageTabs === 'function') {
+        try { window.__raschetRenderPageTabs(); } catch {}
+      }
+      _render();
+    });
+  }
+  const pgScale = document.getElementById('pg-scale');
+  if (pgScale) {
+    pgScale.addEventListener('change', () => {
+      snapshot('page-scale:' + page.id);
+      page.scale = pgScale.value;
+      notifyChange();
+      _render();
+    });
+  }
 
   const typeSel = document.getElementById('pg-type');
   if (typeSel) {
