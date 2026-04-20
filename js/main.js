@@ -3244,7 +3244,7 @@ function renderDashboard() {
   const proj = S.project || {};
 
   // Счётчики узлов
-  const counts = { source: 0, generator: 0, 'panel-lv': 0, 'panel-mv': 0, ups: 0, consumer: 0 };
+  const counts = { source: 0, utility: 0, transformer: 0, generator: 0, 'panel-lv': 0, 'panel-mv': 0, ups: 0, consumer: 0 };
   // Phase 1.20.45: используем общий _computeSourceCapacity для
   // учёта redundancyGroup / isBackup / isStandby.
   const cap = _computeSourceCapacity(S);
@@ -3401,7 +3401,9 @@ function renderDashboard() {
   html.push(`
     <h3 style="margin:18px 0 8px;font-size:13px">Оборудование</h3>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      ${card('⚡ Источники', counts.source || 0, null, null, null, counts.source ? 'equipment-sources' : null)}
+      ${card('🏙 Городская сеть', counts.utility || 0, null, null, null, counts.utility ? 'equipment-utility' : null)}
+      ${card('🔄 Трансформаторы', counts.transformer || 0, null, null, null, counts.transformer ? 'equipment-transformers' : null)}
+      ${card('⚡ Источники (прочие)', counts.source || 0, null, null, null, counts.source ? 'equipment-sources' : null)}
       ${card('🔋 Генераторы', counts.generator || 0, null, null, null, counts.generator ? 'equipment-generators' : null)}
       ${card('🗄 НКУ (LV)', counts['panel-lv'] || 0, null, null, null, counts['panel-lv'] ? 'equipment-panels-lv' : null)}
       ${card('⚡ РУ СН', counts['panel-mv'] || 0, null, null, null, counts['panel-mv'] ? 'equipment-panels-mv' : null)}
@@ -3455,6 +3457,8 @@ function renderDashboard() {
       else if (a === 'consumers') openConsumersTableModal();
       else if (a === 'equipment') openEquipmentTableModal();
       else if (a === 'equipment-sources') openEquipmentTableModal({ prefilterKind: 'source' });
+      else if (a === 'equipment-utility') openEquipmentTableModal({ prefilterKind: 'utility' });
+      else if (a === 'equipment-transformers') openEquipmentTableModal({ prefilterKind: 'transformer' });
       else if (a === 'equipment-generators') openEquipmentTableModal({ prefilterKind: 'generator' });
       else if (a === 'equipment-panels-lv') openEquipmentTableModal({ prefilterKind: 'panel-lv' });
       else if (a === 'equipment-panels-mv') openEquipmentTableModal({ prefilterKind: 'panel-mv' });
@@ -5028,7 +5032,24 @@ function openEquipmentTableModal(opts) {
 }
 
 function _equipKindOf(n) {
-  if (n.type === 'source') return 'source';
+  if (n.type === 'source') {
+    // v0.57.66: различаем городскую сеть, трансформатор и прочий источник.
+    // Трансформатор — это source с:
+    //   · sourceSubtype === 'transformer', ИЛИ
+    //   · привязкой к transformerCatalogId, ИЛИ
+    //   · входящей линией (питается от вышестоящего источника — напр. UT→TR)
+    if (n.sourceSubtype === 'utility') return 'utility';
+    if (n.sourceSubtype === 'transformer' || n.transformerCatalogId) return 'transformer';
+    try {
+      const S = window.Raschet?._state;
+      if (S) {
+        for (const c of S.conns.values()) {
+          if (c?.to?.nodeId === n.id) return 'transformer';
+        }
+      }
+    } catch {}
+    return 'source';
+  }
   if (n.type === 'generator') return 'generator';
   if (n.type === 'panel' && n.isMv) return 'panel-mv';
   if (n.type === 'panel') return 'panel-lv';
@@ -5039,6 +5060,8 @@ function _equipKindOf(n) {
 function _equipKindLabel(kind) {
   return {
     source: 'Источник',
+    utility: 'Городская сеть',
+    transformer: 'Трансформатор',
     generator: 'Генератор',
     'panel-lv': 'НКУ',
     'panel-mv': 'РУ СН',
@@ -5139,8 +5162,8 @@ function renderEquipmentTable() {
       </thead>
       <tbody>`];
 
-  const KIND_ICON = { source: '⚡', generator: '🔋', 'panel-lv': '🗄', 'panel-mv': '⚡', ups: '🔌' };
-  const KIND_COLOR = { source: '#1976d2', generator: '#2e7d32', 'panel-lv': '#5d4037', 'panel-mv': '#c67300', ups: '#7b1fa2' };
+  const KIND_ICON = { source: '⚡', utility: '🏙', transformer: '🔄', generator: '🔋', 'panel-lv': '🗄', 'panel-mv': '⚡', ups: '🔌' };
+  const KIND_COLOR = { source: '#1976d2', utility: '#1565c0', transformer: '#6a1b9a', generator: '#2e7d32', 'panel-lv': '#5d4037', 'panel-mv': '#c67300', ups: '#7b1fa2' };
 
   for (const e of filtered) {
     const n = e.n;
