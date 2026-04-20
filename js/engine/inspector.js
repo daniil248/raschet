@@ -2,7 +2,8 @@ import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
 import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
-import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
+import { nodeInputCount, nodeOutputCount, nodeWidth, getNodeGeometryMm } from './geometry.js';
+import { getCurrentPage, getPageKind } from './state.js';
 import { effectiveOn, setEffectiveOn, effectiveLoadFactor, setEffectiveLoadFactor } from './modes.js';
 import { snapshot, notifyChange } from './history.js';
 import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
@@ -703,6 +704,11 @@ export function renderInspectorNode(n) {
     }
   }
 
+  // Phase 2.3: секция «Габариты (мм)» на layout-странице
+  if (getPageKind(getCurrentPage()) === 'layout' && n.type !== 'zone') {
+    h.push(renderGeometryMmBlock(n));
+  }
+
   // Полный дамп параметров узла
   h.push(renderFullPropsBlock(n));
 
@@ -767,9 +773,70 @@ export function renderInspectorNode(n) {
   });
 
   wireInspectorInputs(n);
+  // Phase 2.3: wire для полей override габаритов (если секция отрисована)
+  if (document.querySelector('[data-geom-prop]')) wireGeometryMmBlock(n);
 
   const saveBtn = document.getElementById('btn-save-preset');
   if (saveBtn) saveBtn.addEventListener('click', () => saveNodeAsPreset(n));
+}
+
+// Phase 2.3: блок ручного override габаритов (мм) для layout-страницы.
+// Показывает текущий резолв (из библиотеки / override / нет) + поля ввода.
+// Если пусто — берётся library.geometry. Удобно когда элемент
+// добавлен без ссылки на каталог.
+export function renderGeometryMmBlock(n) {
+  const geom = getNodeGeometryMm(n);
+  const ov = n.geometryMm || {};
+  const hint = geom
+    ? `источник: ${geom.source === 'override' ? 'override (этот узел)' : geom.source === 'library' ? 'каталог' : geom.source}`
+    : 'не задано — узел не рисуется как футпринт';
+  const val = (k) => {
+    const v = Number(ov[k]) > 0 ? ov[k] : (geom && geom.source === 'library' ? geom[k] : '');
+    return v || '';
+  };
+  const badge = geom
+    ? `<span class="muted" style="font-size:11px">${Math.round(geom.widthMm)}×${Math.round(geom.heightMm)}${geom.depthMm ? '×' + Math.round(geom.depthMm) : ''} мм${geom.weightKg ? `, ${geom.weightKg} кг` : ''}</span>`
+    : '';
+  return `<div class="inspector-section">
+    <h4>Габариты (мм) <span class="muted" style="font-weight:400;font-size:11px">— ${hint}</span></h4>
+    <div style="font-size:11px;margin-bottom:6px">${badge}</div>
+    <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <label style="font-size:11px">Ширина<input type="number" min="0" step="10" data-geom-prop="widthMm" value="${escAttr(val('widthMm'))}" placeholder="${geom?.widthMm ? Math.round(geom.widthMm) : ''}"></label>
+      <label style="font-size:11px">Высота<input type="number" min="0" step="10" data-geom-prop="heightMm" value="${escAttr(val('heightMm'))}" placeholder="${geom?.heightMm ? Math.round(geom.heightMm) : ''}"></label>
+      <label style="font-size:11px">Глубина<input type="number" min="0" step="10" data-geom-prop="depthMm" value="${escAttr(val('depthMm'))}" placeholder="${geom?.depthMm ? Math.round(geom.depthMm) : ''}"></label>
+      <label style="font-size:11px">Вес, кг<input type="number" min="0" step="0.1" data-geom-prop="weightKg" value="${escAttr(val('weightKg'))}" placeholder="${geom?.weightKg || ''}"></label>
+    </div>
+    <button type="button" class="full-btn" id="btn-clear-geom-override" style="margin-top:6px;font-size:11px">Очистить override (брать из каталога)</button>
+  </div>`;
+}
+
+function wireGeometryMmBlock(n) {
+  inspectorBody.querySelectorAll('[data-geom-prop]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const prop = inp.dataset.geomProp;
+      const raw = inp.value.trim();
+      const v = raw === '' ? 0 : Number(raw);
+      snapshot('geometryMm:' + n.id);
+      n.geometryMm = { ...(n.geometryMm || {}), [prop]: v };
+      // Если все 4 поля = 0 — удаляем override
+      const all = n.geometryMm;
+      if (!Number(all.widthMm) && !Number(all.heightMm) && !Number(all.depthMm) && !Number(all.weightKg)) {
+        delete n.geometryMm;
+      }
+      notifyChange();
+      _render();
+      renderInspector();
+    });
+  });
+  const clr = document.getElementById('btn-clear-geom-override');
+  if (clr) clr.addEventListener('click', () => {
+    if (!n.geometryMm) return;
+    snapshot('geometryMm-clear:' + n.id);
+    delete n.geometryMm;
+    notifyChange();
+    _render();
+    renderInspector();
+  });
 }
 
 // Полный блок «Все данные объекта» внизу инспектора
