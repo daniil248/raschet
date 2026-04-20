@@ -651,17 +651,30 @@ function _renderNodesLayout() {
       // Подпись: тег + имя + размеры
       const tag = (typeof n.tag === 'string' && n.tag) ? n.tag : '';
       const name = n.name || n.type;
-      const fontSize = Math.max(10, Math.min(18, Math.round(Math.min(W, H) / 14)));
+      // v0.58.34: надписи не масштабируются со state.view.zoom. Базовая
+      // высота 2.5 мм, максимум 5 мм (физические мм на экране, 1 mm ≈ 3.78 CSS px).
+      // В SVG-мире чертежа единицы = мм, на экран приходит fontSize*zoom пикселей,
+      // значит чтобы пиксели были постоянны — fontSize_svg = targetPx / zoom.
+      const _zLay = (state?.view?.zoom > 0 ? state.view.zoom : 1);
+      const PX_PER_MM = 3.7795;
+      const BASE_FONT_PX = 2.5 * PX_PER_MM;       // ~9.45 px (стандарт 2.5 мм)
+      const MAX_FONT_PX  = 5.0 * PX_PER_MM;       // ~18.9 px (максимум 5 мм)
+      // Размер подписи в экранных пикселях: чуть больше для крупных карточек,
+      // но строго в пределах [BASE, MAX]. Переводим в SVG-единицы делением на zoom.
+      const lblPx = Math.max(BASE_FONT_PX, Math.min(MAX_FONT_PX, Math.min(W, H) * _zLay / 14));
+      const secPx = Math.min(MAX_FONT_PX, BASE_FONT_PX);
+      const fontSize = lblPx / _zLay;
+      const secFontSize = secPx / _zLay;
       const lbl = el('text', {
-        x: W / 2, y: Math.max(fontSize + 4, H / 2 - 4),
+        x: W / 2, y: Math.max(fontSize + 4 / _zLay, H / 2 - 4 / _zLay),
         'text-anchor': 'middle', 'font-size': fontSize,
         fill: '#222', style: 'font-family: system-ui, sans-serif; font-weight:600; pointer-events:none',
       });
       lbl.textContent = tag ? `${tag} ${name}` : name;
       g.appendChild(lbl);
       const dim = el('text', {
-        x: W / 2, y: Math.max(fontSize + 4, H / 2 - 4) + fontSize + 2,
-        'text-anchor': 'middle', 'font-size': Math.max(9, fontSize - 3),
+        x: W / 2, y: Math.max(fontSize + 4 / _zLay, H / 2 - 4 / _zLay) + fontSize + 2 / _zLay,
+        'text-anchor': 'middle', 'font-size': secFontSize,
         fill: '#666', style: 'font-family: system-ui, sans-serif; pointer-events:none',
       });
       dim.textContent = `${Math.round(W)}×${Math.round(H)} мм (Ш×Г)`;
@@ -686,8 +699,8 @@ function _renderNodesLayout() {
         }
         if (parts.length) {
           const badge = el('text', {
-            x: W / 2, y: H - 8,
-            'text-anchor': 'middle', 'font-size': Math.max(9, fontSize - 3),
+            x: W / 2, y: H - 8 / _zLay,
+            'text-anchor': 'middle', 'font-size': secFontSize,
             fill: '#334155',
             style: 'font-family: system-ui, sans-serif; pointer-events:none',
           });
@@ -698,7 +711,7 @@ function _renderNodesLayout() {
       // Индекс экземпляра (1/N) для групповых потребителей
       if (count > 1) {
         const idx = el('text', {
-          x: 4, y: 14, 'font-size': 11, fill: '#555',
+          x: 4 / _zLay, y: 14 / _zLay, 'font-size': secFontSize, fill: '#555',
           style: 'font-family: system-ui, sans-serif; pointer-events:none',
         });
         idx.textContent = `${i + 1}/${count}`;
@@ -711,10 +724,13 @@ function _renderNodesLayout() {
         const nm = names[String(floorVal)];
         const sig = floorVal > 0 ? `+${floorVal}` : `${floorVal}`;
         const txt = nm ? `${sig} ${nm}` : sig;
-        const bw = Math.max(28, Math.min(120, txt.length * 6 + 8));
-        const fb = el('g', { transform: `translate(${W - bw - 4}, 4)`, style: 'pointer-events:none' });
-        fb.appendChild(el('rect', { x: 0, y: 0, width: bw, height: 16, rx: 3, fill: '#1e40af', 'fill-opacity': 0.9 }));
-        const ft = el('text', { x: bw / 2, y: 12, 'text-anchor': 'middle', 'font-size': 10, fill: '#fff', style: 'font-family:system-ui;font-weight:600' });
+        // v0.58.34: бейдж тоже не масштабируется (все размеры / zoom)
+        const inv = 1 / _zLay;
+        const bw = Math.max(28, Math.min(120, txt.length * 6 + 8)) * inv;
+        const bh = 16 * inv;
+        const fb = el('g', { transform: `translate(${W - bw - 4 * inv}, ${4 * inv})`, style: 'pointer-events:none' });
+        fb.appendChild(el('rect', { x: 0, y: 0, width: bw, height: bh, rx: 3 * inv, fill: '#1e40af', 'fill-opacity': 0.9 }));
+        const ft = el('text', { x: bw / 2, y: 12 * inv, 'text-anchor': 'middle', 'font-size': secFontSize, fill: '#fff', style: 'font-family:system-ui;font-weight:600' });
         ft.textContent = txt;
         fb.appendChild(ft);
         g.appendChild(fb);

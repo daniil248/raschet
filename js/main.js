@@ -985,6 +985,14 @@ async function saveCurrent(isAuto) {
   updateSaveButton();
   try {
     const scheme = window.Raschet.getScheme();
+    // v0.58.34: предупреждение, если приближаемся к лимиту Firestore (1 MiB / doc).
+    try {
+      const approxBytes = new Blob([JSON.stringify(scheme)]).size;
+      if (approxBytes > 900_000) {
+        console.warn('[saveCurrent] scheme size', approxBytes, 'bytes — близко к лимиту Firestore 1 MiB');
+        flash('Внимание: размер проекта ' + Math.round(approxBytes / 1024) + ' КБ — близко к лимиту Firestore (1024 КБ).', 'error');
+      }
+    } catch {}
     state.lastLocalWriteAtMs = Date.now();  // маркер — snapshot в ближ. 3 сек это мы
     const saved = await window.Storage.saveProject(p.id, { scheme });
     // Обновляем lastKnownUpdatedAtMs, чтобы snapshot от нашего же write не поднял тост
@@ -1006,7 +1014,23 @@ async function saveCurrent(isAuto) {
     els.btnSave.classList.remove('dirty', 'saving', 'saved');
     els.btnSave.classList.add('save-error');
     els.btnSave.textContent = 'Ошибка';
-    flash(e.message || 'Ошибка сохранения', 'error');
+    // v0.58.34: расшифровываем типичные причины, чтобы пользователь мог
+    // понять, связано ли это с совместной работой, правами или размером.
+    const code = (e && (e.code || e.name)) || '';
+    const raw = (e && (e.message || String(e))) || 'Ошибка сохранения';
+    let hint = '';
+    if (/permission-denied/i.test(code) || /permission-denied/i.test(raw)) {
+      hint = ' — нет прав на запись (возможно, роль «просмотр», или владелец отозвал доступ).';
+    } else if (/not-found/i.test(code) || /No document to update/i.test(raw)) {
+      hint = ' — проект не найден на сервере (возможно, удалён).';
+    } else if (/INVALID_ARGUMENT|maximum.*size|exceeds.*maximum|1048487|1 MiB/i.test(raw)) {
+      hint = ' — превышен лимит Firestore на документ (1 MiB). Разбейте проект или удалите лишнее.';
+    } else if (/unavailable|deadline|network|offline/i.test(code + ' ' + raw)) {
+      hint = ' — нет связи с сервером. Попробуйте ещё раз через минуту.';
+    } else if (/aborted|failed-precondition/i.test(code)) {
+      hint = ' — конфликт параллельной записи (другой пользователь сохранил раньше). Обновите страницу — ваши локальные изменения сохранятся в следующем автосейве.';
+    }
+    flash(raw + hint + (code ? ` [${code}]` : ''), 'error');
     // Через 3 сек вернёмся к «● Сохранить», если ещё dirty
     setTimeout(() => {
       if (!state.saving) updateSaveButton();
