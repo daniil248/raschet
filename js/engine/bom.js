@@ -270,12 +270,81 @@ export function buildBOM() {
     }
   }
 
+  // === Проход по связям (кабелям) — защитные аппараты LV ===
+  // v0.57.60: автоматы и предохранители LV попадают в BOM отдельными
+  // позициями. Ключ агрегации:
+  //   автомат  — "QF " + кривая/тип + " " + In_A
+  //   предохр. — "FU " + fuseType + " " + In_A
+  // Для параллельных линий количество умножается на число линий.
+  // Для кабелей в режиме individual (когда выбран _breakerIn на общий
+  // ввод и _breakerPerLine на каждую линию) получаем две позиции.
+  const nodeLabel = (id) => {
+    const nn = state.nodes.get(id);
+    return nn ? (nn.name || nn.tag || ('#' + String(id).slice(0, 4))) : '?';
+  };
+  for (const c of state.conns.values()) {
+    if (!c) continue;
+    // MV-линии уже учтены в ячейках РУ СН
+    if (c._isMv || c.isMv) continue;
+    // Защиту внутри ИБП (QF1/QF2/QF3) каталогизируем через фрейм — пропускаем
+    if (c._breakerInternal) continue;
+    const fromLbl = c.from ? nodeLabel(c.from.nodeId) : '';
+    const toLbl   = c.to   ? nodeLabel(c.to.nodeId)   : '';
+    const note = fromLbl + ' → ' + toLbl;
+    const parallel = Math.max(1, Number(c._breakerCount) || 1);
+    const kind  = c._protectionKind === 'fuse' ? 'fuse' : 'breaker';
+    const curve = c._breakerCurveEff || c.breakerCurve || '';
+    const fuseType = c._fuseType || 'gG';
+
+    // Режимы:
+    //   а) один общий автомат:  _breakerIn задан,   _breakerPerLine == null
+    //   б) индивидуально:       _breakerIn задан,   _breakerPerLine задан (кол-во = parallel)
+    //   в) per-line без общего: _breakerIn == null, _breakerPerLine задан (кол-во = parallel)
+    const Itot = Number(c._breakerIn) || 0;
+    const Iper = Number(c._breakerPerLine) || 0;
+
+    if (kind === 'fuse') {
+      // Предохранители — по 3 шт. на 3-фазную линию, по 1 шт. на 1-фазную
+      const polePerSet = (c.phases === 1) ? 1 : 3;
+      if (Itot > 0 && Iper > 0) {
+        // Индивидуально: общий + на каждую линию
+        const recTot = { id: `lvfuse:${Itot}:${fuseType}:common`, supplier: '', model: `FU ${Itot}А ${fuseType} (общий ввод, IEC 60269-1)` };
+        pushAgg('Предохранители LV', recTot, polePerSet, note);
+        const recPer = { id: `lvfuse:${Iper}:${fuseType}:perline`, supplier: '', model: `FU ${Iper}А ${fuseType} (на линию, IEC 60269-1)` };
+        pushAgg('Предохранители LV', recPer, polePerSet * parallel, note + ` × ${parallel} лин.`);
+      } else if (Itot > 0) {
+        const rec = { id: `lvfuse:${Itot}:${fuseType}`, supplier: '', model: `FU ${Itot}А ${fuseType} (IEC 60269-1)` };
+        pushAgg('Предохранители LV', rec, polePerSet, note);
+      } else if (Iper > 0) {
+        const rec = { id: `lvfuse:${Iper}:${fuseType}:perline`, supplier: '', model: `FU ${Iper}А ${fuseType} (IEC 60269-1)` };
+        pushAgg('Предохранители LV', rec, polePerSet * parallel, note + (parallel > 1 ? ` × ${parallel} лин.` : ''));
+      }
+    } else {
+      // Автоматы
+      const curveTag = curve || 'MCCB';
+      if (Itot > 0 && Iper > 0) {
+        const recTot = { id: `lvqf:${Itot}:${curveTag}:common`, supplier: '', model: `QF ${Itot}А ${curveTag} (общий ввод, IEC 60898/60947-2)` };
+        pushAgg('Автоматы LV', recTot, 1, note);
+        const recPer = { id: `lvqf:${Iper}:${curveTag}:perline`, supplier: '', model: `QF ${Iper}А ${curveTag} (на линию, IEC 60898/60947-2)` };
+        pushAgg('Автоматы LV', recPer, parallel, note + ` × ${parallel} лин.`);
+      } else if (Itot > 0) {
+        const rec = { id: `lvqf:${Itot}:${curveTag}`, supplier: '', model: `QF ${Itot}А ${curveTag} (IEC 60898/60947-2)` };
+        pushAgg('Автоматы LV', rec, 1, note);
+      } else if (Iper > 0) {
+        const rec = { id: `lvqf:${Iper}:${curveTag}:perline`, supplier: '', model: `QF ${Iper}А ${curveTag} (IEC 60898/60947-2)` };
+        pushAgg('Автоматы LV', rec, parallel, note + (parallel > 1 ? ` × ${parallel} лин.` : ''));
+      }
+    }
+  }
+
   // === Преобразуем агрегат в плоские строки в порядке разделов ===
   const sectionOrder = [
     'Трансформаторы',
     'Щиты',
     'Ячейки РУ СН',
     'Аппараты РУ СН',
+    'Автоматы LV',
+    'Предохранители LV',
     'ИБП',
     'Фреймы ИБП',
     'Силовые модули ИБП',
