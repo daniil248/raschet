@@ -25,6 +25,7 @@ import { analyzeSelectivity } from './selectivity-check.js';
 import { getCableType } from '../../shared/cable-types-catalog.js';
 import { pricesForElement } from '../../shared/price-records.js';
 import { listElements } from '../../shared/element-library.js';
+import { listShipments, getWarehouse, SHIPMENT_MODES, SHIPMENT_STATUSES } from '../../shared/logistics-schemas.js';
 
 // ——— общие хелперы ———
 function fullTag(n) { if (!n) return ''; return effectiveTag(n) || n.tag || ''; }
@@ -1116,6 +1117,77 @@ function sectionBom() {
   return { text: text.join('\n'), blocks };
 }
 
+// 9b. ЛОГИСТИКА И ДОСТАВКА (Phase 1.6.3)
+// Сводка по отправлениям из модуля «Логистика». Все активные shipment'ы
+// пользователя, агрегация стоимости товаров и перевозки.
+function sectionLogistics() {
+  const ships = (() => { try { return listShipments(); } catch { return []; } })();
+  const MODE_LBL = k => (SHIPMENT_MODES[k] || { label: k }).label;
+  const ST_LBL = k => (SHIPMENT_STATUSES[k] || { label: k }).label;
+  const text = [
+    'ЛОГИСТИКА И ДОСТАВКА',
+    '='.repeat(78),
+    ...metaTextLines({ hideMode: true }),
+    '',
+  ];
+  const blocks = [
+    B.h1('Логистика и доставка'),
+    ...metaBlocks({ hideMode: true }),
+  ];
+  if (!ships.length) {
+    text.push('Отправлений не зарегистрировано. Передайте BOM в модуль «Логистика» через кнопку в боковой панели Конструктора.');
+    blocks.push(B.paragraph('Отправлений не зарегистрировано. Для формирования ведомости передайте BOM в модуль «Логистика» (кнопка «🚚 Передать в логистику» в боковой панели) и создайте отправление.'));
+    return { text: text.join('\n'), blocks };
+  }
+  let totalGoods = 0, totalShip = 0, totalKg = 0, totalM3 = 0;
+  const header = ['Статус', 'Название', 'Режим', 'Откуда → Куда', 'Поз.', 'Масса, кг', 'Объём, м³', 'Товары, ₽', 'Перевозка, ₽'];
+  const rows = [];
+  for (const sh of ships) {
+    const items = sh.items || [];
+    let kg = 0, m3 = 0, goods = 0;
+    for (const it of items) {
+      const q = Number(it.qty) || 0;
+      kg += (Number(it.unitKg) || 0) * q;
+      m3 += (Number(it.unitM3) || 0) * q;
+      goods += (Number(it.unitPriceRUB) || 0) * q;
+    }
+    const shipCost = Number(sh.cost) || 0;
+    totalGoods += goods; totalShip += shipCost; totalKg += kg; totalM3 += m3;
+    const origin = sh.originId ? getWarehouse(sh.originId) : null;
+    const dest = sh.destinationId ? getWarehouse(sh.destinationId) : null;
+    const route = `${origin ? origin.name : '—'} → ${dest ? dest.name : '—'}`;
+    rows.push([
+      ST_LBL(sh.status),
+      sh.label || sh.id,
+      MODE_LBL(sh.mode),
+      route,
+      String(items.length),
+      kg ? kg.toFixed(1) : '—',
+      m3 ? m3.toFixed(2) : '—',
+      goods ? goods.toLocaleString('ru-RU') : '—',
+      shipCost ? shipCost.toLocaleString('ru-RU') : '—',
+    ]);
+  }
+  rows.push(['', 'ИТОГО', '', '', '', totalKg ? totalKg.toFixed(1) : '—', totalM3 ? totalM3.toFixed(2) : '—',
+    totalGoods ? totalGoods.toLocaleString('ru-RU') : '—',
+    totalShip ? totalShip.toLocaleString('ru-RU') : '—']);
+  const grand = totalGoods + totalShip;
+
+  // Текстовое представление
+  text.push(header.map(c => String(c).padEnd(16)).join(' '));
+  text.push('─'.repeat(header.length * 17));
+  for (const r of rows) text.push(r.map(c => String(c).padEnd(16)).join(' '));
+  text.push('');
+  text.push(`Всего (товары + перевозка): ${grand ? grand.toLocaleString('ru-RU') + ' ₽' : '—'}`);
+
+  // PDF/DOCX
+  blocks.push(B.h2('Ведомость отправлений'));
+  blocks.push(B.table(header, rows));
+  blocks.push(B.paragraph(`Всего (товары + перевозка): ${grand ? grand.toLocaleString('ru-RU') + ' ₽' : '—'}`));
+  blocks.push(B.paragraph('Источник данных: модуль «Логистика» (per-user localStorage). Раздел отображает все активные отправления пользователя. Для формирования отправления из текущего проекта — кнопка «🚚 Передать в логистику» в боковой панели Конструктора.'));
+  return { text: text.join('\n'), blocks };
+}
+
 // 9c. СЕЛЕКТИВНОСТЬ ЗАЩИТЫ (Фаза 1.8)
 // Обход пар upstream-downstream по каждой панели, проверка правил
 // селективности (амплитудная + временная при заданном I_k).
@@ -1324,6 +1396,14 @@ export function getReportSections() {
       defaultTemplateId: 'builtin-bom-landscape',
       tags: ['ведомость', 'таблица', 'спецификация', 'bom'],
       ...sectionBom(),
+    },
+    {
+      id: 'logistics',
+      title: 'Логистика и доставка',
+      description: 'Сводка по отправлениям модуля «Логистика»: откуда→куда, масса, объём, стоимость товаров и перевозки, итоговая смета с логистикой.',
+      defaultTemplateId: 'builtin-bom-landscape',
+      tags: ['ведомость', 'таблица', 'логистика', 'доставка'],
+      ...sectionLogistics(),
     },
     {
       id: 'selectivity',
