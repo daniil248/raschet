@@ -231,17 +231,74 @@ export function bomForNode(node) {
       const cellType = cell.type || 'feeder';
       const breakerType = cell.breakerType || '—';
       const In = cell.In_A || cell.In || '?';
+      const cellPath = ['node:' + node.id, 'cell:' + cellType + ':' + (cell.position || cell.id || '?')];
+      // Корпус ячейки (каркас + сборные шины + разъединители)
       items.push({
         elementId: null,
         inline: true,
         qty: count,
         role: 'mv-cell-' + cellType,
-        label: `Ячейка СН: ${cellType} (${In}А ${breakerType})${cell.functionDesc ? ' — ' + cell.functionDesc : ''}`,
+        label: `Ячейка СН: ${cellType} (${In}А)${cell.functionDesc ? ' — ' + cell.functionDesc : ''}`,
         kind: 'mv-cell',
         phantom: false,
         depth: 1,
-        path: ['node:' + node.id, 'cell:' + cellType],
+        path: cellPath,
       });
+      // Основной аппарат внутри ячейки: VCB / выключатель-нагрузки с
+      // предохранителями / трансформаторный плавкий. Phase 1.20.64.
+      if (breakerType === 'VCB') {
+        items.push({
+          elementId: null,
+          inline: true,
+          qty: count,
+          role: 'mv-vcb',
+          label: `  └ Вакуумный выключатель ${In} А, ${cell.Un_kV || node.Un_kV || 10} кВ` +
+            (cell.Icu_kA ? `, Icu=${cell.Icu_kA} кА` : ''),
+          kind: 'mv-device',
+          phantom: false,
+          depth: 2,
+          path: [...cellPath, 'vcb'],
+        });
+      } else if (breakerType === 'fuse-switch') {
+        items.push({
+          elementId: null,
+          inline: true,
+          qty: count,
+          role: 'mv-switch',
+          label: `  └ Выключатель нагрузки ${In} А, ${cell.Un_kV || node.Un_kV || 10} кВ`,
+          kind: 'mv-device',
+          phantom: false,
+          depth: 2,
+          path: [...cellPath, 'switch'],
+        });
+        if (cell.fuseRating_A) {
+          items.push({
+            elementId: null,
+            inline: true,
+            qty: count * 3, // три полюса
+            role: 'mv-fuse',
+            label: `  └ Предохранитель СН ${cell.fuseRating_A} А (3 шт.)`,
+            kind: 'mv-fuse',
+            phantom: false,
+            depth: 2,
+            path: [...cellPath, 'fuse'],
+          });
+        }
+      }
+      // Реле защиты (если указано). Для VCB обычно комплектуется.
+      if (cell.protectionRelay) {
+        items.push({
+          elementId: null,
+          inline: true,
+          qty: count,
+          role: 'mv-relay',
+          label: `  └ Реле защиты ${cell.protectionRelay}`,
+          kind: 'mv-relay',
+          phantom: false,
+          depth: 2,
+          path: [...cellPath, 'relay'],
+        });
+      }
     }
   }
 
