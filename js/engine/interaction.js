@@ -376,6 +376,21 @@ export function initInteraction() {
   // v0.58.13: реестр элементов — клик/+/×/создать-без-размещения.
   const regList = document.getElementById('pal-registry-list');
   if (regList) {
+    // v0.58.19: drag из реестра — тот же transfer-тип, что и в unplaced
+    regList.addEventListener('dragstart', e => {
+      const item = e.target.closest('.pal-reg-item');
+      if (!item || state.readOnly) return;
+      // Кнопки +/× не должны инициировать drag
+      if (e.target.closest('.pal-reg-place, .pal-reg-del')) { e.preventDefault(); return; }
+      const id = item.dataset.regId;
+      if (!id) return;
+      _palDragActive = true;
+      e.dataTransfer.setData('text/raschet-unplaced-id', id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    regList.addEventListener('dragend', () => {
+      setTimeout(() => { _palDragActive = false; }, 150);
+    });
     regList.addEventListener('click', e => {
       if (state.readOnly) return;
       const placeBtn = e.target.closest('.pal-reg-place');

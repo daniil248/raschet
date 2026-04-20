@@ -420,7 +420,7 @@ export function renderProjectRegistry() {
         ? ''
         : `<button type="button" class="pal-reg-place" data-place-id="${esc(n.id)}" title="Добавить на текущую страницу">＋</button>`;
       const delBtn = `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта">×</button>`;
-      return `<div class="pal-reg-item" data-reg-id="${esc(n.id)}" title="Клик — открыть свойства">
+      return `<div class="pal-reg-item" draggable="true" data-reg-id="${esc(n.id)}" title="Клик — открыть свойства, drag — разместить на текущей странице">
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>
         <span class="pal-unplaced-name">${esc(name)}</span>
@@ -1677,12 +1677,26 @@ export function renderConns() {
     return result;
   }
 
+  // v0.58.19: системы страницы — сюда попадают только те связи, чьи ОБА
+  // конца имеют хотя бы одну систему из списка pageKinds. На странице
+  // «Данные» не видим электрические кабели, и наоборот.
+  const _curPageKind = getPageKind(getCurrentPage());
+  const _pageSystems = (_curPageKind && _curPageKind !== 'layout') ? systemsForPageKind(_curPageKind) : null;
+  function _connSystemCompatible(fromN, toN) {
+    if (!_pageSystems) return true; // layout / 3d / mechanical без ограничений
+    const fs = getNodeSystems(fromN);
+    const ts = getNodeSystems(toN);
+    // общая система, совместимая со страницей
+    for (const s of fs) if (ts.includes(s) && _pageSystems.includes(s)) return true;
+    return false;
+  }
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     const toN   = state.nodes.get(c.to.nodeId);
     if (!fromN || !toN) continue;
     // Связь видна только если оба её конца видны на текущей странице
     if (!isOnCurrentPage(fromN) || !isOnCurrentPage(toN)) continue;
+    if (!_connSystemCompatible(fromN, toN)) continue;
     const a = portPos(fromN, 'out', c.from.port);
     const b = portPos(toN,   'in',  c.to.port);
     const rawWaypoints = Array.isArray(c.waypoints) ? c.waypoints : [];
