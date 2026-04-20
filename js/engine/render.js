@@ -630,12 +630,15 @@ function _renderNodesLayout() {
       });
       g.dataset.nodeId = n.id;
       if (i > 0) g.dataset.instanceIdx = String(i); // дополнительные экземпляры группы
-      // Фон карточки
-      const color = _typeColor(n.type);
+      // Фон карточки: n.layoutColor {fill,stroke} переопределяет дефолт по подтипу
+      const base = _typeColor(n.type);
+      const lc = (n.layoutColor && typeof n.layoutColor === 'object') ? n.layoutColor : {};
+      const fillC = lc.fill || base.fill;
+      const strokeC = lc.stroke || base.stroke;
       g.appendChild(el('rect', {
         x: 0, y: 0, width: W, height: H, rx: 2,
-        fill: color.fill,
-        stroke: color.stroke,
+        fill: fillC,
+        stroke: strokeC,
         'stroke-width': selected ? 3 : 1.5,
         'stroke-dasharray': hasGeom ? '' : '6 4',
       }));

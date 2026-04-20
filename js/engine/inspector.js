@@ -175,7 +175,11 @@ function renderInspectorPage() {
       if (!m) continue;
       kindOpts += `<option value="${k}"${kind === k ? ' selected' : ''}>${escHtml(m.icon)} ${escHtml(m.label)}</option>`;
     }
-    h.push(field('Вид страницы', `<select id="pg-kind">${kindOpts}</select>`));
+    // v0.58.21: вид страницы зафиксирован после создания — иначе можно
+    // сломать схему (порты/связи привязаны к виду). Для смены — создайте
+    // новую страницу нужного вида.
+    h.push(field('Вид страницы', `<select id="pg-kind" disabled title="Вид страницы нельзя изменить после создания — создайте новую страницу нужного вида">${kindOpts}</select>`
+      + `<div class="muted" style="font-size:10px;margin-top:2px">Фиксируется при создании страницы</div>`));
     const scales = ['1:1', '1:2', '1:5', '1:10', '1:20', '1:25', '1:50', '1:100', '1:200', '1:500', '1:1000'];
     const curScale = page.scale || '1:1';
     const scaleOpts = scales.map(s => `<option value="${s}"${s === curScale ? ' selected' : ''}>${s}</option>`).join('');
@@ -857,6 +861,7 @@ export function renderInspectorNode(n) {
   wireInspectorInputs(n);
   // Phase 2.3: wire для полей override габаритов (если секция отрисована)
   if (document.querySelector('[data-geom-prop]')) wireGeometryMmBlock(n);
+  if (document.querySelector('[data-lc-prop]')) wireLayoutColorBlock(n);
 
   const saveBtn = document.getElementById('btn-save-preset');
   if (saveBtn) saveBtn.addEventListener('click', () => saveNodeAsPreset(n));
@@ -867,20 +872,47 @@ export function renderInspectorNode(n) {
 // рассчитывается в render.getNodeSystems (обычно ['electrical']).
 export function renderSystemsBlock(n) {
   const cur = Array.isArray(n.systems) && n.systems.length ? n.systems : ['electrical'];
+  const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : {};
+  const renderParamInput = (sysId, p, val) => {
+    const v = (val === 0 || val) ? val : '';
+    const name = `data-sys-param="${escAttr(sysId)}" data-sys-key="${escAttr(p.key)}"`;
+    if (p.type === 'select') {
+      const opts = (p.options || []).map(o => `<option value="${escAttr(o)}"${String(v) === String(o) ? ' selected' : ''}>${escHtml(o || '—')}</option>`).join('');
+      return `<select ${name} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">${opts}</select>`;
+    }
+    if (p.type === 'number') {
+      return `<input type="number" ${name} value="${escAttr(v)}"${Number.isFinite(p.min) ? ` min="${p.min}"` : ''}${p.step ? ` step="${p.step}"` : ''} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
+    }
+    return `<input type="text" ${name} value="${escAttr(v)}" style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
+  };
   const items = SYSTEMS_CATALOG.map(s => {
     const on = cur.includes(s.id);
-    return `<label class="sys-chip" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid ${on ? s.color : '#e0e3ea'};border-radius:4px;margin-bottom:4px;cursor:pointer;background:${on ? s.color + '15' : '#fff'}">
+    const vals = (sp[s.id] && typeof sp[s.id] === 'object') ? sp[s.id] : {};
+    const header = `<label class="sys-chip" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid ${on ? s.color : '#e0e3ea'};border-radius:4px;cursor:pointer;background:${on ? s.color + '15' : '#fff'}">
       <input type="checkbox" data-sys="${escAttr(s.id)}"${on ? ' checked' : ''} style="margin:0">
       <span style="font-size:14px">${s.icon}</span>
       <span style="font-weight:600;color:${s.color}">${escHtml(s.label)}</span>
     </label>`;
+    let paramsBlock = '';
+    if (on && Array.isArray(s.params) && s.params.length) {
+      const rows = s.params.map(p => {
+        const unit = p.unit ? `<span class="muted" style="font-size:10px;margin-left:4px">${escHtml(p.unit)}</span>` : '';
+        return `<label style="display:block;font-size:11px;margin-top:4px">
+          <span style="color:#555">${escHtml(p.label)}${unit}</span>
+          ${renderParamInput(s.id, p, vals[p.key])}
+        </label>`;
+      }).join('');
+      paramsBlock = `<div style="margin:4px 0 10px 12px;padding:6px 8px;border-left:2px solid ${s.color};background:${s.color}0A;border-radius:0 4px 4px 0">${rows}</div>`;
+    } else {
+      paramsBlock = `<div style="margin-bottom:4px"></div>`;
+    }
+    return header + paramsBlock;
   }).join('');
   return `<div class="inspector-section">
     <h4>Системы элемента</h4>
     <div class="muted" style="font-size:11px;margin-bottom:8px">
       Элемент виден и фильтруется на странице нужного вида (data / слаботочка / механика),
-      только если его система включена здесь. На главной электрической схеме должна быть
-      включена хотя бы «Электрика».
+      только если его система включена здесь. Параметры каждой включённой системы — ниже.
     </div>
     ${items}
   </div>`;
@@ -907,6 +939,35 @@ export function wireSystemsBlock(n, root) {
       // Перерисовываем инспектор для обновления визуальных рамок системы
       if (_render) _render();
       renderInspector();
+    });
+  });
+  // v0.58.21: параметры систем
+  const params = host.querySelectorAll('[data-sys-param]');
+  params.forEach(inp => {
+    inp.addEventListener('change', () => {
+      const sysId = inp.getAttribute('data-sys-param');
+      const key = inp.getAttribute('data-sys-key');
+      if (!sysId || !key) return;
+      snapshot('sys-param:' + n.id + ':' + sysId + ':' + key);
+      if (!n.systemParams || typeof n.systemParams !== 'object') n.systemParams = {};
+      if (!n.systemParams[sysId] || typeof n.systemParams[sysId] !== 'object') n.systemParams[sysId] = {};
+      let v = inp.value;
+      if (inp.type === 'number') {
+        v = v === '' ? '' : Number(v);
+        if (v === '' || !Number.isFinite(v)) {
+          delete n.systemParams[sysId][key];
+        } else {
+          n.systemParams[sysId][key] = v;
+        }
+      } else {
+        const sv = String(v).trim();
+        if (!sv) delete n.systemParams[sysId][key];
+        else n.systemParams[sysId][key] = sv;
+      }
+      // cleanup пустых объектов
+      if (!Object.keys(n.systemParams[sysId]).length) delete n.systemParams[sysId];
+      if (!Object.keys(n.systemParams).length) delete n.systemParams;
+      notifyChange();
     });
   });
 }
@@ -938,7 +999,63 @@ export function renderGeometryMmBlock(n) {
       <label style="font-size:11px">Вес, кг<input type="number" min="0" step="0.1" data-geom-prop="weightKg" value="${escAttr(val('weightKg'))}" placeholder="${geom?.weightKg || ''}"></label>
     </div>
     <button type="button" class="full-btn" id="btn-clear-geom-override" style="margin-top:6px;font-size:11px">Очистить override (брать из каталога)</button>
+    ${renderLayoutColorBlock(n)}
   </div>`;
+}
+
+// v0.58.21: персональный цвет карточки на layout-странице.
+// Разные подтипы элементов (разные потребители / разные щиты) могут
+// отличаться по цвету — это задаётся узлу индивидуально.
+export function renderLayoutColorBlock(n) {
+  const lc = (n.layoutColor && typeof n.layoutColor === 'object') ? n.layoutColor : {};
+  const fill = lc.fill || '';
+  const stroke = lc.stroke || '';
+  return `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e0e3ea">
+    <h4 style="font-size:12px;margin-bottom:6px">Цвет на расположении</h4>
+    <div class="muted" style="font-size:10px;margin-bottom:6px">
+      Индивидуальный цвет карточки на layout-странице. Если пусто — берётся цвет по типу элемента.
+    </div>
+    <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:end">
+      <label style="font-size:11px">Заливка
+        <input type="color" data-lc-prop="fill" value="${escAttr(fill || '#ffffff')}" style="width:100%;height:28px;padding:0;border:1px solid #cbd5e1;border-radius:4px">
+      </label>
+      <label style="font-size:11px">Обводка
+        <input type="color" data-lc-prop="stroke" value="${escAttr(stroke || '#333333')}" style="width:100%;height:28px;padding:0;border:1px solid #cbd5e1;border-radius:4px">
+      </label>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button type="button" class="full-btn" id="btn-lc-apply-fill"  style="flex:1;font-size:11px">Применить заливку</button>
+      <button type="button" class="full-btn" id="btn-lc-apply-stroke" style="flex:1;font-size:11px">Применить обводку</button>
+    </div>
+    <button type="button" class="full-btn" id="btn-lc-clear" style="margin-top:6px;font-size:11px">Сбросить цвет (брать по типу)</button>
+  </div>`;
+}
+
+export function wireLayoutColorBlock(n, root) {
+  const r = root || inspectorBody;
+  const fillInput   = r.querySelector('[data-lc-prop="fill"]');
+  const strokeInput = r.querySelector('[data-lc-prop="stroke"]');
+  const applyFill   = r.querySelector('#btn-lc-apply-fill');
+  const applyStroke = r.querySelector('#btn-lc-apply-stroke');
+  const clr         = r.querySelector('#btn-lc-clear');
+  function setProp(prop, v) {
+    snapshot('layoutColor:' + n.id);
+    if (!n.layoutColor || typeof n.layoutColor !== 'object') n.layoutColor = {};
+    if (v) n.layoutColor[prop] = v; else delete n.layoutColor[prop];
+    if (!n.layoutColor.fill && !n.layoutColor.stroke) delete n.layoutColor;
+    notifyChange();
+    if (_render) _render();
+  }
+  if (applyFill && fillInput) applyFill.addEventListener('click', () => setProp('fill', fillInput.value));
+  if (applyStroke && strokeInput) applyStroke.addEventListener('click', () => setProp('stroke', strokeInput.value));
+  if (clr) clr.addEventListener('click', () => {
+    if (!n.layoutColor) return;
+    snapshot('layoutColor-clear:' + n.id);
+    delete n.layoutColor;
+    notifyChange();
+    if (_render) _render();
+    renderInspector();
+  });
 }
 
 export function wireGeometryMmBlock(n, root) {
@@ -1003,6 +1120,7 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
     });
   });
   wireGeometryMmBlock(n, bodyEl);
+  wireLayoutColorBlock(n, bodyEl);
   wireSystemsBlock(n, bodyEl);
 }
 

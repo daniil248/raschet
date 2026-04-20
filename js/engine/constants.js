@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.58.19';
+export const APP_VERSION = '0.58.21';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -20,16 +20,50 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 // ['electrical']. На странице данного вида (page.kind) видны и фильтруются
 // только элементы с соответствующими системами; на этих страницах у элемента
 // показываются порты соответствующей системы.
+// params — схема параметров системы, используется для ввода в инспекторе
+// при включённой системе. Значения хранятся в n.systemParams[sysId][key].
+// type: number | text | select; unit — подсказка; options — для select.
 export const SYSTEMS_CATALOG = [
-  { id: 'electrical',  label: 'Электрика',   icon: '⚡', color: '#d32f2f', pageKinds: ['schematic'] },
-  { id: 'low-voltage', label: 'Слаботочка',  icon: '📶', color: '#1e88e5', pageKinds: ['low-voltage'] },
-  { id: 'data',        label: 'Данные',      icon: '🖧',  color: '#059669', pageKinds: ['data','low-voltage'] },
-  { id: 'pipes',       label: 'Трубы',       icon: '🚰', color: '#0ea5e9', pageKinds: ['mechanical'] },
-  { id: 'hvac',        label: 'Воздуховоды', icon: '🌬️', color: '#64748b', pageKinds: ['mechanical'] },
-  { id: 'gas',         label: 'Газ',         icon: '🔥', color: '#f59e0b', pageKinds: ['mechanical'] },
-  { id: 'fire',        label: 'Пожарная',    icon: '🚨', color: '#dc2626', pageKinds: ['low-voltage'] },
-  { id: 'security',    label: 'Охрана/СКУД', icon: '🛡️', color: '#7c3aed', pageKinds: ['low-voltage'] },
-  { id: 'video',       label: 'Видеонаблюдение', icon: '📹', color: '#0284c7', pageKinds: ['low-voltage'] },
+  { id: 'electrical',  label: 'Электрика',   icon: '⚡', color: '#d32f2f', pageKinds: ['schematic'], params: [] },
+  { id: 'low-voltage', label: 'Слаботочка',  icon: '📶', color: '#1e88e5', pageKinds: ['low-voltage'], params: [
+    { key: 'ports', label: 'Портов', type: 'number', unit: 'шт', min: 0, step: 1 },
+    { key: 'note',  label: 'Комментарий', type: 'text' },
+  ] },
+  { id: 'data',        label: 'Данные',      icon: '🖧',  color: '#059669', pageKinds: ['data','low-voltage'], params: [
+    { key: 'rj45',  label: 'RJ45',  type: 'number', unit: 'шт', min: 0, step: 1 },
+    { key: 'fiber', label: 'Оптика (SFP)', type: 'number', unit: 'шт', min: 0, step: 1 },
+    { key: 'speed', label: 'Скорость', type: 'select', options: ['', '100M', '1G', '2.5G', '10G', '25G', '40G', '100G'] },
+    { key: 'poe',   label: 'PoE', type: 'select', options: ['', 'нет', 'PoE', 'PoE+', 'PoE++'] },
+  ] },
+  { id: 'pipes',       label: 'Трубы',       icon: '🚰', color: '#0ea5e9', pageKinds: ['mechanical'], params: [
+    { key: 'dn',       label: 'Условный диаметр DN', type: 'number', unit: 'мм', min: 0, step: 1 },
+    { key: 'medium',   label: 'Среда', type: 'select', options: ['', 'ХВС', 'ГВС', 'ЦО', 'канализация', 'конденсат', 'пожарный'] },
+    { key: 'pressure', label: 'Давление', type: 'number', unit: 'бар', min: 0, step: 0.1 },
+    { key: 'material', label: 'Материал', type: 'select', options: ['', 'сталь', 'медь', 'PP-R', 'PEX', 'ПВХ'] },
+  ] },
+  { id: 'hvac',        label: 'Воздуховоды', icon: '🌬️', color: '#64748b', pageKinds: ['mechanical'], params: [
+    { key: 'size',    label: 'Сечение', type: 'text', unit: 'мм (WxH или ⌀)' },
+    { key: 'airflow', label: 'Расход воздуха', type: 'number', unit: 'м³/ч', min: 0, step: 10 },
+    { key: 'type',    label: 'Назначение', type: 'select', options: ['', 'приток', 'вытяжка', 'рециркуляция', 'дымоудаление'] },
+  ] },
+  { id: 'gas',         label: 'Газ',         icon: '🔥', color: '#f59e0b', pageKinds: ['mechanical'], params: [
+    { key: 'medium',   label: 'Среда', type: 'select', options: ['', 'природный', 'СУГ', 'биогаз'] },
+    { key: 'pressure', label: 'Давление', type: 'number', unit: 'кПа', min: 0, step: 1 },
+    { key: 'dn',       label: 'DN', type: 'number', unit: 'мм', min: 0, step: 1 },
+  ] },
+  { id: 'fire',        label: 'Пожарная',    icon: '🚨', color: '#dc2626', pageKinds: ['low-voltage'], params: [
+    { key: 'zone',   label: 'Зона/шлейф', type: 'text' },
+    { key: 'device', label: 'Тип устройства', type: 'select', options: ['', 'дымовой', 'тепловой', 'ручной', 'оповещатель', 'прибор'] },
+  ] },
+  { id: 'security',    label: 'Охрана/СКУД', icon: '🛡️', color: '#7c3aed', pageKinds: ['low-voltage'], params: [
+    { key: 'device', label: 'Тип', type: 'select', options: ['', 'считыватель', 'замок', 'контроллер', 'датчик движения', 'магнитоконтакт'] },
+    { key: 'zone',   label: 'Зона', type: 'text' },
+  ] },
+  { id: 'video',       label: 'Видеонаблюдение', icon: '📹', color: '#0284c7', pageKinds: ['low-voltage'], params: [
+    { key: 'cameras',    label: 'Камер', type: 'number', unit: 'шт', min: 0, step: 1 },
+    { key: 'resolution', label: 'Разрешение', type: 'select', options: ['', '2 MP', '4 MP', '5 MP', '8 MP (4K)'] },
+    { key: 'storageDays',label: 'Архив', type: 'number', unit: 'сут', min: 0, step: 1 },
+  ] },
 ];
 export function getSystemMeta(id) {
   return SYSTEMS_CATALOG.find(s => s.id === id) || null;

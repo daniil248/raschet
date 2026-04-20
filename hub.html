@@ -32,11 +32,71 @@
     }
     .hub-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 380px));
+      grid-template-columns: repeat(2, minmax(300px, 380px));
       gap: 32px;
-      max-width: 840px;
       width: 100%;
+      justify-content: center;
     }
+    .hub-grid[data-cols="1"] { grid-template-columns: minmax(300px, 420px); }
+    .hub-grid[data-cols="2"] { grid-template-columns: repeat(2, minmax(280px, 380px)); max-width: 840px; margin: 0 auto; }
+    .hub-grid[data-cols="3"] { grid-template-columns: repeat(3, minmax(260px, 340px)); max-width: 1120px; margin: 0 auto; }
+    .hub-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(240px, 300px)); max-width: 1360px; margin: 0 auto; }
+    .hub-grid[data-cols="5"] { grid-template-columns: repeat(5, minmax(220px, 280px)); max-width: 1580px; margin: 0 auto; }
+    .hub-grid[data-cols="auto"] { grid-template-columns: repeat(auto-fit, minmax(260px, 340px)); max-width: 1400px; margin: 0 auto; }
+    main { padding: 24px 24px 40px; align-items: flex-start; }
+    .hub-toolbar {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      max-width: 1400px; margin: 0 auto 20px; width: 100%;
+      padding: 8px 12px; background: #fff; border: 1px solid #e0e3ea;
+      border-radius: 10px;
+    }
+    .hub-toolbar label { font-size: 12px; color: #555; display: flex; align-items: center; gap: 6px; }
+    .hub-toolbar select, .hub-toolbar button {
+      font: inherit; font-size: 12px; padding: 4px 10px;
+      border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; cursor: pointer;
+    }
+    .hub-toolbar button:hover { background: #f8fafc; }
+    .hub-toolbar .sep { flex: 1; }
+    .hub-toolbar .pill {
+      padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600;
+      background: #eef2ff; color: #3730a3; text-transform: uppercase; letter-spacing: .5px;
+    }
+    /* Edit mode */
+    .hub-grid.edit .hub-card {
+      cursor: grab; position: relative;
+      border-style: dashed; border-color: #cbd5e1;
+    }
+    .hub-grid.edit .hub-card.dragging { opacity: 0.4; }
+    .hub-grid.edit .hub-card.drop-target { border-color: #1e40af; background: #eef2ff; }
+    .hub-card-actions {
+      position: absolute; top: 8px; right: 8px;
+      display: none; gap: 4px;
+    }
+    .hub-grid.edit .hub-card-actions { display: flex; }
+    .hub-card-actions button {
+      width: 28px; height: 28px; border-radius: 6px; border: 1px solid #cbd5e1;
+      background: #fff; cursor: pointer; font-size: 14px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+    }
+    .hub-card-actions button:hover { background: #f1f5f9; }
+    .hub-card.hidden-card {
+      opacity: 0.35; filter: grayscale(0.6);
+    }
+    .hub-card.hidden-card .badge { background: #fee2e2; color: #b91c1c; }
+    .hub-hidden-picker {
+      display: none; background: #fff; border: 1px solid #e0e3ea;
+      border-radius: 10px; padding: 10px 12px; max-width: 1400px;
+      margin: 0 auto 16px; width: 100%;
+    }
+    .hub-hidden-picker.show { display: block; }
+    .hub-hidden-picker h3 { font-size: 13px; margin-bottom: 8px; color: #555; font-weight: 600; }
+    .hub-hidden-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .hub-hidden-list .chip {
+      padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 14px;
+      font-size: 12px; background: #f8fafc; cursor: pointer; user-select: none;
+    }
+    .hub-hidden-list .chip:hover { background: #dbeafe; border-color: #1e40af; }
     .hub-card {
       background: #fff;
       border: 1px solid #e0e3ea;
@@ -96,7 +156,7 @@
     .badge.active { background: #e8f5e9; color: #2e7d32; }
     .badge.new { background: #fff3e0; color: #e65100; }
     @media (max-width: 700px) {
-      .hub-grid { grid-template-columns: 1fr; gap: 20px; }
+      .hub-grid, .hub-grid[data-cols] { grid-template-columns: 1fr; gap: 20px; }
       .hub-card { padding: 28px 20px; }
     }
   </style>
@@ -112,7 +172,27 @@
   </script>
 
   <main>
-    <div class="hub-grid">
+    <div class="hub-toolbar">
+      <label>Колонок:
+        <select id="hub-cols">
+          <option value="auto">авто</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </label>
+      <button type="button" id="hub-edit">✎ Настроить</button>
+      <button type="button" id="hub-reset" title="Вернуть все модули и порядок по умолчанию">⟲ Сброс</button>
+      <span class="sep"></span>
+      <span class="pill" id="hub-edit-hint" style="display:none">режим настройки — перетаскивайте карточки, ✕ скрывает, глаз показывает</span>
+    </div>
+    <div class="hub-hidden-picker" id="hub-hidden-picker">
+      <h3>Скрытые модули (клик — вернуть):</h3>
+      <div class="hub-hidden-list" id="hub-hidden-list"></div>
+    </div>
+    <div class="hub-grid" id="hub-grid">
       <a class="hub-card" href="index.html">
         <div class="hub-card-icon blue">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -298,5 +378,178 @@
       </a>
     </div>
   </main>
+
+  <script>
+  (function () {
+    var STORAGE_KEY = 'raschet.hub.prefs.v1';
+    var grid = document.getElementById('hub-grid');
+    var colsSel = document.getElementById('hub-cols');
+    var editBtn = document.getElementById('hub-edit');
+    var resetBtn = document.getElementById('hub-reset');
+    var hint = document.getElementById('hub-edit-hint');
+    var picker = document.getElementById('hub-hidden-picker');
+    var hiddenList = document.getElementById('hub-hidden-list');
+
+    var allCards = Array.prototype.slice.call(grid.querySelectorAll('.hub-card'));
+    // ключ карточки = её href
+    allCards.forEach(function (c) { c.dataset.hubKey = c.getAttribute('href') || c.querySelector('h2')?.textContent || ''; });
+    var defaultOrder = allCards.map(function (c) { return c.dataset.hubKey; });
+
+    function loadPrefs() {
+      try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { cols: 'auto', hidden: [], order: [] };
+        var p = JSON.parse(raw);
+        return {
+          cols: p.cols || 'auto',
+          hidden: Array.isArray(p.hidden) ? p.hidden : [],
+          order: Array.isArray(p.order) ? p.order : [],
+        };
+      } catch (e) { return { cols: 'auto', hidden: [], order: [] }; }
+    }
+    function savePrefs(p) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch (e) {}
+    }
+
+    var prefs = loadPrefs();
+    colsSel.value = prefs.cols;
+
+    function applyLayout() {
+      grid.setAttribute('data-cols', prefs.cols);
+      // порядок
+      var order = prefs.order.length ? prefs.order.slice() : defaultOrder.slice();
+      // добавить все новые карточки, которых нет в сохранённом порядке
+      defaultOrder.forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
+      // отсеять ключи, которых больше нет
+      order = order.filter(function (k) { return defaultOrder.indexOf(k) >= 0; });
+      order.forEach(function (k) {
+        var el = grid.querySelector('.hub-card[data-hub-key="' + CSS.escape(k) + '"]');
+        if (el) grid.appendChild(el);
+      });
+      // скрытые
+      allCards.forEach(function (c) {
+        var hidden = prefs.hidden.indexOf(c.dataset.hubKey) >= 0;
+        c.classList.toggle('hidden-card', hidden);
+        if (!grid.classList.contains('edit')) {
+          c.style.display = hidden ? 'none' : '';
+        } else {
+          c.style.display = '';
+        }
+      });
+      renderHiddenPicker();
+    }
+
+    function renderHiddenPicker() {
+      hiddenList.innerHTML = '';
+      var show = grid.classList.contains('edit') && prefs.hidden.length > 0;
+      picker.classList.toggle('show', show);
+      if (!show) return;
+      prefs.hidden.forEach(function (key) {
+        var src = grid.querySelector('.hub-card[data-hub-key="' + CSS.escape(key) + '"]');
+        var title = src ? (src.querySelector('h2')?.textContent || key) : key;
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = '+ ' + title;
+        chip.addEventListener('click', function () {
+          prefs.hidden = prefs.hidden.filter(function (k) { return k !== key; });
+          savePrefs(prefs); applyLayout();
+        });
+        hiddenList.appendChild(chip);
+      });
+    }
+
+    // Вставляем кнопки действий в каждую карточку (скрыть / вверх / вниз)
+    allCards.forEach(function (card) {
+      var wrap = document.createElement('div');
+      wrap.className = 'hub-card-actions';
+      wrap.innerHTML =
+        '<button type="button" data-act="up"   title="Влево/вверх">◀</button>' +
+        '<button type="button" data-act="down" title="Вправо/вниз">▶</button>' +
+        '<button type="button" data-act="hide" title="Скрыть">✕</button>';
+      card.appendChild(wrap);
+      wrap.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        e.preventDefault(); e.stopPropagation();
+        var act = b.dataset.act;
+        var key = card.dataset.hubKey;
+        var order = prefs.order.length ? prefs.order.slice() : defaultOrder.slice();
+        defaultOrder.forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
+        var idx = order.indexOf(key);
+        if (act === 'hide') {
+          if (prefs.hidden.indexOf(key) < 0) prefs.hidden.push(key);
+        } else if (act === 'up' && idx > 0) {
+          order.splice(idx, 1); order.splice(idx - 1, 0, key); prefs.order = order;
+        } else if (act === 'down' && idx < order.length - 1) {
+          order.splice(idx, 1); order.splice(idx + 1, 0, key); prefs.order = order;
+        }
+        savePrefs(prefs); applyLayout();
+      });
+    });
+
+    // Drag-n-drop переупорядочивание в edit-режиме
+    var dragKey = null;
+    allCards.forEach(function (card) {
+      card.setAttribute('draggable', 'false');
+      card.addEventListener('dragstart', function (e) {
+        if (!grid.classList.contains('edit')) { e.preventDefault(); return; }
+        dragKey = card.dataset.hubKey;
+        card.classList.add('dragging');
+        try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragKey); } catch (err) {}
+      });
+      card.addEventListener('dragend', function () {
+        card.classList.remove('dragging');
+        grid.querySelectorAll('.hub-card.drop-target').forEach(function (x) { x.classList.remove('drop-target'); });
+        dragKey = null;
+      });
+      card.addEventListener('dragover', function (e) {
+        if (!grid.classList.contains('edit') || !dragKey || dragKey === card.dataset.hubKey) return;
+        e.preventDefault();
+        card.classList.add('drop-target');
+      });
+      card.addEventListener('dragleave', function () { card.classList.remove('drop-target'); });
+      card.addEventListener('drop', function (e) {
+        if (!grid.classList.contains('edit') || !dragKey) return;
+        e.preventDefault();
+        card.classList.remove('drop-target');
+        var order = prefs.order.length ? prefs.order.slice() : defaultOrder.slice();
+        defaultOrder.forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
+        var from = order.indexOf(dragKey);
+        var to = order.indexOf(card.dataset.hubKey);
+        if (from < 0 || to < 0) return;
+        order.splice(from, 1);
+        order.splice(to, 0, dragKey);
+        prefs.order = order;
+        savePrefs(prefs); applyLayout();
+      });
+      // клик в edit-режиме — не уходим на модуль
+      card.addEventListener('click', function (e) {
+        if (grid.classList.contains('edit')) { e.preventDefault(); }
+      });
+    });
+
+    function setEdit(on) {
+      grid.classList.toggle('edit', !!on);
+      hint.style.display = on ? '' : 'none';
+      editBtn.textContent = on ? '✓ Готово' : '✎ Настроить';
+      allCards.forEach(function (c) { c.setAttribute('draggable', on ? 'true' : 'false'); });
+      applyLayout();
+    }
+
+    editBtn.addEventListener('click', function () { setEdit(!grid.classList.contains('edit')); });
+    resetBtn.addEventListener('click', function () {
+      if (!confirm('Сбросить настройку главного окна (видимость и порядок модулей)?')) return;
+      prefs = { cols: 'auto', hidden: [], order: [] };
+      savePrefs(prefs);
+      colsSel.value = 'auto';
+      applyLayout();
+    });
+    colsSel.addEventListener('change', function () {
+      prefs.cols = colsSel.value;
+      savePrefs(prefs); applyLayout();
+    });
+
+    applyLayout();
+  })();
+  </script>
 </body>
 </html>

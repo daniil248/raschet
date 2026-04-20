@@ -228,6 +228,25 @@ export function tryConnect(from, to) {
     // Выход может иметь только одну исходящую связь
     if (c.from.nodeId === from.nodeId && c.from.port === from.port) return false;
   }
+  // v0.58.20: у endpoint-ов должна быть хотя бы одна общая система.
+  // На странице определённого вида дополнительно эта система должна быть в
+  // systemsForPageKind(kind) — иначе визуально связь сразу скроется.
+  try {
+    const fromN = state.nodes.get(from.nodeId);
+    const toN = state.nodes.get(to.nodeId);
+    if (fromN && toN) {
+      // inline getNodeSystems (без кругового импорта из render.js)
+      const sys = (n) => {
+        if (Array.isArray(n.systems) && n.systems.length) return n.systems;
+        if (n.type === 'zone' || n.type === 'channel') return ['electrical','low-voltage','data','pipes','hvac','gas','fire','security','video'];
+        return ['electrical'];
+      };
+      const fs = sys(fromN), ts = sys(toN);
+      let shared = false;
+      for (const s of fs) if (ts.includes(s)) { shared = true; break; }
+      if (!shared) return false;
+    }
+  } catch {}
   // Проверка цикличности отключена — схемы с АВР и встречными линиями допустимы
   _snapshot();
   const id = uid('c');

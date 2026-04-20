@@ -221,7 +221,20 @@ function finishPendingAtPort(portEl) {
   clearPending();
   svg.classList.remove('connecting');
   if (cid) { selectConn(cid); render(); }
-  else flash('Не удалось создать связь', 'error');
+  else {
+    // v0.58.20: диагностика — проверяем систему endpoints
+    const fromN = state.nodes.get(outEnd.nodeId);
+    const toN = state.nodes.get(inEnd.nodeId);
+    const sys = (n) => (Array.isArray(n?.systems) && n.systems.length) ? n.systems
+      : (n?.type === 'zone' || n?.type === 'channel') ? ['electrical','low-voltage','data','pipes','hvac','gas','fire','security','video']
+      : ['electrical'];
+    const shared = fromN && toN && sys(fromN).some(s => sys(toN).includes(s));
+    if (fromN && toN && !shared) {
+      flash('Нет общей системы: выберите пересекающиеся системы во вкладке «🧩 Системы»', 'error');
+    } else {
+      flash('Не удалось создать связь', 'error');
+    }
+  }
 }
 
 function drawPending() {
