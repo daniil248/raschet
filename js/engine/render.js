@@ -2229,6 +2229,28 @@ export function renderConns() {
       }
     }
   }
+  // v0.58.36: на layout-странице все текстовые подписи связей (conn-label,
+  // conn-label-sub, breaker-label, control-label, ref-labels link-mode и т.д.)
+  // должны иметь фиксированный экранный размер — не масштабироваться со zoom.
+  // CSS даёт текстам 10–11 px, SVG рендерит их как fontCss*zoom. Чтобы
+  // вернуть «на экран» исходные пиксели, пересчитываем font-size/stroke
+  // поправленно на 1/zoom только когда kind=layout.
+  if (_curPageKind === 'layout') {
+    const zz = (state?.view?.zoom > 0 ? state.view.zoom : 1);
+    if (zz !== 1) {
+      const PX_PER_MM = 3.7795;
+      const MAX_PX = 5.0 * PX_PER_MM; // 5 мм cap
+      const texts = layerConns.querySelectorAll('text');
+      for (const t of texts) {
+        // Исходим из CSS-дефолта 11 px для conn-label, 10 px для остальных,
+        // но capим на 5 мм (~18.9 px) в экранных пикселях.
+        const cls = t.getAttribute('class') || '';
+        const basePx = cls.includes('conn-label') && !cls.includes('conn-label-sub') ? 11 : 10;
+        const cappedPx = Math.min(basePx, MAX_PX);
+        t.setAttribute('font-size', (cappedPx / zz).toFixed(3));
+      }
+    }
+  }
 }
 
 export function renderStats() {
