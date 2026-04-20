@@ -10,7 +10,7 @@
 import './engine/index.js';
 import { mountHelp } from '../shared/help-panel.js';
 import { getMethod, listMethods } from './methods/index.js';
-import { formatVoltageLevelLabel } from './engine/electrical.js';
+import { formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './engine/electrical.js';
 import * as Report from '../shared/report/index.js';
 import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } from '../shared/report-catalog.js';
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
@@ -4037,9 +4037,9 @@ function _computeSourceCapacity(S) {
   const standbys = [];
   for (const n of S.nodes.values()) {
     if (n.type === 'consumer') {
-      const per = Number(n.demandKw) || 0;
-      const cnt = Math.max(1, Number(n.count) || 1);
-      totalLoad += per * cnt;
+      // v0.57.84: единый helper — корректно для uniform (count×demandKw)
+      // и individual (Σ items[].demandKw) режимов групп.
+      totalLoad += consumerTotalDemandKw(n);
     } else if (n.type === 'source' || n.type === 'generator') {
       const cap = Number(n.capacityKw) || 0;
       totalCap += cap;
@@ -4179,10 +4179,15 @@ function _updateProjectStatusBar() {
   if (!bar) return;
   const S = window.Raschet?._state;
   if (!S) { bar.innerHTML = ''; return; }
-  let consumers = 0, panels = 0, mvPanels = 0, sources = 0;
+  let consumers = 0, consumerNodes = 0, panels = 0, mvPanels = 0, sources = 0;
   // Phase 1.20.45: переход на _computeSourceCapacity (tiered redundancy).
+  // v0.57.84: раскрываем группы — счётчик 💡 показывает суммарное число
+  // единиц (с учётом n.count / items.length), а не число узлов.
   for (const n of S.nodes.values()) {
-    if (n.type === 'consumer') consumers++;
+    if (n.type === 'consumer') {
+      consumerNodes++;
+      consumers += consumerCountEffective(n);
+    }
     else if (n.type === 'panel') { if (n.isMv) mvPanels++; else panels++; }
     else if (n.type === 'source' || n.type === 'generator') sources++;
   }
@@ -4240,8 +4245,11 @@ function _updateProjectStatusBar() {
     if (mvPanels) parts.push(`⚡ ${mvPanels}`);
     if (cables) parts.push(`🔌 ${cables}`);
     if (consumers) parts.push(`💡 ${consumers}`);
+    const consumersTitle = consumerNodes === consumers
+      ? `${consumers} потребителей`
+      : `${consumers} потребителей в ${consumerNodes} группах`;
     html.push(chip('#1565c0', 'rgba(255,255,255,0.95)', parts.join(' · '),
-      `${panels} НКУ, ${mvPanels} РУ СН, ${cables} кабелей, ${consumers} потребителей (Ctrl+Shift+D)`, 'dashboard'));
+      `${panels} НКУ, ${mvPanels} РУ СН, ${cables} кабельных линий (каждая связь = 1 физический кабель, групп. потребители питаются одной магистралью), ${consumersTitle} (Ctrl+Shift+D)`, 'dashboard'));
   }
   bar.innerHTML = html.join('');
   bar.querySelectorAll('[data-status-action]').forEach(el => {

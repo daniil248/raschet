@@ -1545,9 +1545,9 @@ export function renderStats() {
   const singletons = [];
   for (const n of state.nodes.values()) {
     if (n.type === 'consumer') {
-      const per = Number(n.demandKw) || 0;
-      const cnt = Math.max(1, Number(n.count) || 1);
-      totalDemand += per * cnt;
+      // v0.57.84: единый helper — корректно для групп в режиме individual
+      // (items[]) и uniform (count×demandKw).
+      totalDemand += consumerTotalDemandKw(n);
       if (!n._powered) unpoweredCount++;
     }
     if (n.type === 'source' || n.type === 'generator') {
