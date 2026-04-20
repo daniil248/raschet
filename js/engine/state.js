@@ -57,6 +57,7 @@ export const state = {
   readOnly: false,   // read-only view
   selection: new Set(), // multi-selection: Set<nodeId>
   rubberBand: null,    // { sx, sy, ex, ey }
+  floorFilter: null,   // v0.58.29: null = все этажи, число = только этот этаж (на layout)
 };
 
 // Валидация view — гарантирует конечные числа и минимальный zoom.

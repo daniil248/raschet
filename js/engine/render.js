@@ -577,6 +577,9 @@ function _renderNodesLayout() {
     if (!Number.isFinite(n.x)) n.x = 0;
     if (!Number.isFinite(n.y)) n.y = 0;
   }
+  // v0.58.29: обновить панель фильтра этажей
+  _updateFloorFilterUI();
+  const floorFilter = (state.floorFilter == null) ? null : Number(state.floorFilter);
   // Зоны — как раньше (layerZones)
   const zoneParent = layerZones || layerNodes;
   for (const n of state.nodes.values()) {
@@ -601,6 +604,7 @@ function _renderNodesLayout() {
   for (const n of state.nodes.values()) {
     if (n.type === 'zone') continue;
     if (!isOnCurrentPage(n)) continue;
+    if (floorFilter !== null && (Number(n.floor) || 0) !== floorFilter) continue;
     const geom = getNodeGeometryMm(n);
     // v0.58.10: layout = вид сверху. Размер карточки = ширина × глубина
     // (если глубина задана), иначе fallback к ширина × высота. Высота
@@ -714,6 +718,50 @@ function _renderNodesLayout() {
     }
   }
 }
+// v0.58.29: показать/скрыть dropdown «Этаж» и обновить его опции.
+function _updateFloorFilterUI() {
+  const el = document.getElementById('floor-filter');
+  const sel = document.getElementById('floor-filter-sel');
+  if (!el || !sel) return;
+  const kind = getPageKind(getCurrentPage());
+  if (kind !== 'layout') {
+    el.style.display = 'none';
+    if (state.floorFilter != null) state.floorFilter = null;
+    return;
+  }
+  // Собираем уникальные этажи среди узлов текущей страницы
+  const floors = new Set();
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone' || n.type === 'channel') continue;
+    if (!isOnCurrentPage(n)) continue;
+    floors.add(Number(n.floor) || 0);
+  }
+  if (floors.size <= 1) {
+    // Только один этаж (обычно 0) — фильтр не нужен
+    el.style.display = 'none';
+    if (state.floorFilter != null) state.floorFilter = null;
+    return;
+  }
+  el.style.display = 'inline-flex';
+  const arr = [...floors].sort((a, b) => b - a);
+  const cur = state.floorFilter;
+  let html = '<option value="">все</option>';
+  for (const f of arr) {
+    const label = f > 0 ? `+${f}` : (f === 0 ? '0' : `${f}`);
+    html += `<option value="${f}"${String(cur) === String(f) ? ' selected' : ''}>${label}</option>`;
+  }
+  if (sel.innerHTML !== html) sel.innerHTML = html;
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => {
+      const v = sel.value;
+      state.floorFilter = v === '' ? null : Number(v);
+      // Через публичный API Raschet (без циклов импортов)
+      try { window.Raschet?.rerender?.(); } catch {}
+    });
+  }
+}
+
 function _typeColor(t) {
   switch (t) {
     case 'source':    return { fill: '#fff3e0', stroke: '#e65100' };

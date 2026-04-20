@@ -305,6 +305,11 @@
         </svg>
         <!-- Статус-бар проекта (Phase 1.20.34) — всегда виден на холсте -->
         <div id="project-statusbar" style="position:absolute;top:8px;right:8px;display:flex;gap:6px;z-index:50;pointer-events:none;font-family:system-ui,sans-serif"></div>
+        <!-- v0.58.29: фильтр по этажу на layout-страницах -->
+        <div id="floor-filter" style="position:absolute;top:8px;left:8px;display:none;align-items:center;gap:6px;z-index:50;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px;font:12px system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+          <span style="color:#64748b">Этаж:</span>
+          <select id="floor-filter-sel" style="font:inherit;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px"></select>
+        </div>
         <!-- Нижняя панель вкладок страниц (как в drawio) -->
         <div id="page-tabs" class="page-tabs">
           <div id="page-tabs-list" class="page-tabs-list"></div>
