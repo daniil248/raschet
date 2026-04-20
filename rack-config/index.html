@@ -6,15 +6,7 @@
   <title>Raschet · Конфигуратор стойки</title>
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
-  <style>
-    .wrap { max-width: 880px; margin: 0 auto; padding: 24px; }
-    h1 { margin: 0 0 8px; }
-    .tag { display:inline-block; padding:3px 10px; border-radius:12px; background:#fef3c7; color:#92400e; font-size:12px; font-weight:600; margin-left:8px; }
-    .section { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:16px 20px; margin:14px 0; }
-    .section h2 { margin:0 0 8px; font-size:16px; }
-    ul { line-height: 1.7; }
-    code { background:#f1f5f9; padding:1px 5px; border-radius:3px; font-size:12px; }
-  </style>
+  <link rel="stylesheet" href="rack-config.css">
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -22,35 +14,211 @@
     import { mountHeader } from '../shared/app-header.js';
     mountHeader({ title: 'Конфигуратор стойки', home: '../hub.html' });
   </script>
-  <div class="wrap">
-    <h1>Конфигуратор серверной / телеком стойки <span class="tag">в разработке</span></h1>
-    <p class="muted">Модуль формирует BOM на заказ стойки: корпус, двери, боковые стенки, пол, кабельные вводы, заглушки на пустые юниты, PDU с привязкой по мощности и количеству розеток нужного стандарта.</p>
 
-    <div class="section">
-      <h2>Что будет в модуле</h2>
-      <ul>
-        <li><b>Корпус:</b> форм-фактор (42U/47U/…), ширина (600/800), глубина (600/800/1000/1200), производитель/серия.</li>
-        <li><b>Двери:</b> передняя и задняя — стекло / сетка / металл / без двери; замок.</li>
-        <li><b>Аксессуары:</b> боковые стенки, крыша/верхняя панель, основание/пол, цоколь.</li>
-        <li><b>Кабельные вводы:</b> кол-во, диаметр, тип (щётка / заглушка / PG).</li>
-        <li><b>Заглушки:</b> автоматически на все свободные U; тип (1U глухая / 1U перф / 2U).</li>
-        <li><b>PDU:</b> кол-во × номинал (16/32 А), 1ф/3ф, 0U/1U/2U, набор розеток (C13/C19/Schuko) + кол-во. Проверка соответствия заявленной мощности шкафа.</li>
-        <li><b>Сохранение шаблонов:</b> одна конфигурация применяется к нескольким идентичным стойкам проекта.</li>
-      </ul>
-    </div>
+  <div class="rc-wrap">
+    <div class="rc-grid">
+      <!-- ========== Форма конфигурации ========== -->
+      <div class="rc-form">
+        <div class="rc-toolbar">
+          <label class="rc-field">
+            <span>Шаблон</span>
+            <select id="rc-template"></select>
+          </label>
+          <button type="button" id="rc-new" class="rc-btn">+ новый</button>
+          <button type="button" id="rc-dup" class="rc-btn">⎘ дубль</button>
+          <button type="button" id="rc-del" class="rc-btn rc-btn-danger">✕ удалить</button>
+        </div>
 
-    <div class="section">
-      <h2>Связанные модули</h2>
-      <ul>
-        <li><a href="../scs-config/">Конфигуратор СКС / телеком</a> — описание содержимого стойки (коммутаторы, патч-панели, серверы) с привязкой к розеткам PDU.</li>
-        <li>Roadmap: см. подфазу <b>1.23</b> в <a href="../ROADMAP.md">ROADMAP.md</a>.</li>
-      </ul>
-    </div>
+        <section class="rc-section">
+          <h2>Идентификация</h2>
+          <div class="rc-row">
+            <label class="rc-field"><span>Название шаблона</span>
+              <input type="text" id="rc-name" placeholder="Стойка серверная #1">
+            </label>
+            <label class="rc-field"><span>Производитель / серия</span>
+              <input type="text" id="rc-manufacturer" placeholder="APC NetShelter SX, ЦМО, Rittal TS IT, …">
+            </label>
+          </div>
+        </section>
 
-    <div class="section">
-      <h2>Статус</h2>
-      <p>Модуль создан как stub. Реализация разделена на 10 задач (1.23.1–1.23.10), см. roadmap. Приоритет открывается после закрытия текущих подфаз 1.22 (вкладка «Общее») и Phase 2 (мульти-пространственные схемы).</p>
+        <section class="rc-section">
+          <h2>Корпус</h2>
+          <div class="rc-row">
+            <label class="rc-field"><span>Форм-фактор (U)</span>
+              <select id="rc-u">
+                <option value="6">6U</option>
+                <option value="9">9U</option>
+                <option value="12">12U</option>
+                <option value="15">15U</option>
+                <option value="18">18U</option>
+                <option value="22">22U</option>
+                <option value="24">24U</option>
+                <option value="32">32U</option>
+                <option value="42" selected>42U</option>
+                <option value="45">45U</option>
+                <option value="47">47U</option>
+                <option value="48">48U</option>
+              </select>
+            </label>
+            <label class="rc-field"><span>Ширина, мм</span>
+              <select id="rc-width">
+                <option value="600" selected>600</option>
+                <option value="800">800</option>
+              </select>
+            </label>
+            <label class="rc-field"><span>Глубина, мм</span>
+              <select id="rc-depth">
+                <option value="600">600</option>
+                <option value="800">800</option>
+                <option value="1000" selected>1000</option>
+                <option value="1200">1200</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="rc-section">
+          <h2>Двери</h2>
+          <div class="rc-row">
+            <label class="rc-field"><span>Передняя</span>
+              <select id="rc-door-front">
+                <option value="glass">стекло (закалённое)</option>
+                <option value="mesh" selected>перфорация/сетка</option>
+                <option value="metal">металл глухая</option>
+                <option value="none">без двери</option>
+              </select>
+            </label>
+            <label class="rc-field"><span>Задняя</span>
+              <select id="rc-door-rear">
+                <option value="glass">стекло</option>
+                <option value="mesh" selected>перфорация/сетка</option>
+                <option value="metal">металл глухая</option>
+                <option value="none">без двери</option>
+                <option value="double">двустворчатая перф.</option>
+              </select>
+            </label>
+            <label class="rc-field"><span>Замок</span>
+              <select id="rc-lock">
+                <option value="key" selected>ключ</option>
+                <option value="code">кодовый</option>
+                <option value="electro">электрозамок</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="rc-section">
+          <h2>Аксессуары</h2>
+          <div class="rc-row">
+            <label class="rc-field rc-check">
+              <input type="checkbox" id="rc-side-l" checked>
+              <span>Боковая стенка (левая)</span>
+            </label>
+            <label class="rc-field rc-check">
+              <input type="checkbox" id="rc-side-r" checked>
+              <span>Боковая стенка (правая)</span>
+            </label>
+            <label class="rc-field"><span>Крыша / верх</span>
+              <select id="rc-top">
+                <option value="solid">глухая</option>
+                <option value="vent" selected>вентилируемая</option>
+                <option value="fan">с вент. модулями</option>
+              </select>
+            </label>
+            <label class="rc-field"><span>Основание</span>
+              <select id="rc-base">
+                <option value="feet" selected>регулируемые ножки</option>
+                <option value="casters">ролики</option>
+                <option value="plinth">цоколь</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="rc-section">
+          <h2>Кабельные вводы</h2>
+          <div class="rc-row">
+            <label class="rc-field"><span>Сверху</span>
+              <input type="number" id="rc-entry-top" min="0" step="1" value="2">
+            </label>
+            <label class="rc-field"><span>Снизу</span>
+              <input type="number" id="rc-entry-bot" min="0" step="1" value="2">
+            </label>
+            <label class="rc-field"><span>Тип</span>
+              <select id="rc-entry-type">
+                <option value="brush" selected>щётка</option>
+                <option value="plug">заглушка</option>
+                <option value="pg">PG-сальник</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="rc-section">
+          <h2>Заглушки пустых U</h2>
+          <div class="rc-row">
+            <label class="rc-field"><span>Занято оборудованием, U</span>
+              <input type="number" id="rc-occupied" min="0" step="1" value="0">
+            </label>
+            <label class="rc-field"><span>Тип заглушки</span>
+              <select id="rc-blank-type">
+                <option value="1U-solid" selected>1U глухая</option>
+                <option value="1U-vent">1U перфорир.</option>
+                <option value="2U-solid">2U глухая</option>
+              </select>
+            </label>
+            <label class="rc-field"><span class="muted">Свободно U</span>
+              <output id="rc-free">42</output>
+            </label>
+          </div>
+        </section>
+
+        <section class="rc-section">
+          <h2>PDU</h2>
+          <p class="muted rc-hint">Блоки распределения питания с проверкой по заявленной мощности (demandKw). Один PDU = номинал × фаз × высота + набор розеток.</p>
+          <div class="rc-row">
+            <label class="rc-field"><span>Заявленная мощность, кВт</span>
+              <input type="number" id="rc-demand-kw" min="0" step="0.1" value="5">
+            </label>
+            <label class="rc-field"><span>cos φ</span>
+              <input type="number" id="rc-cosphi" min="0.5" max="1" step="0.01" value="0.9">
+            </label>
+          </div>
+          <div id="rc-pdu-list"></div>
+          <button type="button" id="rc-pdu-add" class="rc-btn">+ добавить PDU</button>
+        </section>
+
+        <section class="rc-section">
+          <h2>Комментарий</h2>
+          <textarea id="rc-comment" rows="3" placeholder="Заметки по стойке"></textarea>
+        </section>
+      </div>
+
+      <!-- ========== Превью / BOM ========== -->
+      <aside class="rc-preview">
+        <section class="rc-section">
+          <h2>Проверки</h2>
+          <div id="rc-warn"></div>
+        </section>
+
+        <section class="rc-section">
+          <h2>BOM на заказ</h2>
+          <table class="rc-bom" id="rc-bom"></table>
+          <div class="rc-bom-tools">
+            <button type="button" id="rc-bom-csv" class="rc-btn">CSV</button>
+            <button type="button" id="rc-bom-print" class="rc-btn">Печать</button>
+          </div>
+        </section>
+
+        <section class="rc-section">
+          <h2>Сохранение</h2>
+          <p class="muted rc-hint">Шаблоны хранятся в localStorage браузера (для черновиков). Для применения к узлу <b>consumer/rack</b> в основном проекте — см. следующую итерацию (roadmap 1.23.10).</p>
+          <button type="button" id="rc-save" class="rc-btn rc-btn-primary">💾 Сохранить шаблон</button>
+        </section>
+      </aside>
     </div>
   </div>
+
+  <script type="module" src="rack-config.js"></script>
 </body>
 </html>

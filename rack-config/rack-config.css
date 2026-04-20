@@ -1,0 +1,245 @@
+/* =========================================================================
+   rack-config/rack-config.css
+   Конфигуратор серверной / телеком стойки (19"). Форма слева, превью/BOM справа.
+   ========================================================================= */
+
+.rc-wrap {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 20px 60px;
+}
+
+.rc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .rc-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== Форма ===== */
+.rc-form,
+.rc-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rc-section {
+  background: var(--rs-bg-card);
+  border: 1px solid var(--rs-border-soft);
+  border-radius: var(--rs-radius-lg);
+  box-shadow: var(--rs-shadow-card);
+  padding: 14px 16px;
+}
+.rc-section h2 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rs-fg);
+  letter-spacing: 0.2px;
+}
+.rc-section .rc-hint {
+  margin: -4px 0 10px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.muted { color: var(--rs-fg-muted); }
+
+/* ===== Тулбар шаблонов ===== */
+.rc-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--rs-bg-card);
+  border: 1px solid var(--rs-border-soft);
+  border-radius: var(--rs-radius-lg);
+  box-shadow: var(--rs-shadow-card);
+  margin-bottom: 4px;
+}
+.rc-toolbar .rc-field { flex: 1 1 220px; min-width: 180px; }
+
+/* ===== Поле ===== */
+.rc-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 12px;
+}
+.rc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.rc-field > span {
+  color: var(--rs-fg-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.rc-field input[type="text"],
+.rc-field input[type="number"],
+.rc-field select,
+.rc-form textarea {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-card);
+  color: var(--rs-fg);
+  width: 100%;
+}
+.rc-form textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: var(--rs-font);
+}
+.rc-field input:focus,
+.rc-field select:focus,
+.rc-form textarea:focus {
+  outline: none;
+  border-color: var(--rs-accent);
+  box-shadow: 0 0 0 2px var(--rs-accent-bg);
+}
+
+/* Чекбоксы */
+.rc-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding-top: 14px;
+}
+.rc-check input { width: auto; margin: 0; }
+.rc-check > span {
+  color: var(--rs-fg);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ===== Кнопки ===== */
+.rc-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-card);
+  color: var(--rs-fg);
+  cursor: pointer;
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+.rc-btn:hover { background: var(--rs-bg-hover); }
+.rc-btn-primary {
+  background: var(--rs-accent);
+  border-color: var(--rs-accent);
+  color: #fff;
+}
+.rc-btn-primary:hover { background: var(--rs-accent-hover); border-color: var(--rs-accent-hover); }
+.rc-btn-danger {
+  color: var(--rs-danger);
+  border-color: var(--rs-danger);
+}
+.rc-btn-danger:hover {
+  background: var(--rs-danger);
+  color: #fff;
+}
+
+/* ===== PDU список ===== */
+#rc-pdu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+.rc-pdu-item {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) auto;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rs-border-soft);
+  border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-soft);
+  align-items: end;
+}
+.rc-pdu-item .rc-btn-danger {
+  align-self: end;
+  padding: 4px 10px;
+}
+
+/* ===== BOM ===== */
+.rc-bom {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.rc-bom th,
+.rc-bom td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--rs-border-hair);
+  text-align: left;
+  vertical-align: top;
+}
+.rc-bom th {
+  background: var(--rs-bg-soft);
+  font-weight: 600;
+  color: var(--rs-fg-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+.rc-bom td.rc-qty { text-align: right; font-variant-numeric: tabular-nums; }
+.rc-bom tr.rc-total td {
+  border-top: 2px solid var(--rs-border);
+  font-weight: 600;
+  background: var(--rs-bg-soft);
+}
+.rc-bom-tools {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ===== Предупреждения ===== */
+#rc-warn:empty::before {
+  content: "Ошибок нет.";
+  color: var(--rs-success);
+  font-size: 12px;
+}
+.rc-warn-item {
+  padding: 6px 10px;
+  border-radius: var(--rs-radius-sm);
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.rc-warn-item.err {
+  background: var(--rs-danger-bg);
+  color: var(--rs-danger);
+  border-left: 3px solid var(--rs-danger);
+}
+.rc-warn-item.warn {
+  background: var(--rs-warn-bg);
+  color: var(--rs-warn);
+  border-left: 3px solid var(--rs-warn);
+}
+.rc-warn-item.ok {
+  background: var(--rs-success-bg);
+  color: var(--rs-success);
+  border-left: 3px solid var(--rs-success);
+}
+
+/* ===== Печать ===== */
+@media print {
+  .rc-form, .rc-toolbar, .rc-bom-tools, #rs-header-mount,
+  #rc-save, button { display: none !important; }
+  .rc-grid { grid-template-columns: 1fr; }
+  .rc-section { border: none; box-shadow: none; padding: 6px 0; break-inside: avoid; }
+  .rc-wrap { max-width: none; padding: 0; }
+}
