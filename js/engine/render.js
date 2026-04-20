@@ -355,14 +355,26 @@ export function renderUnplacedPalette() {
     const typeLabel = _unplacedTypeIcon(n);
     const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
     const badge = pids.length === 0 ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён нигде">∅</span>' : '';
+    const sysDots = _systemDotsHtml(n);
     return `<div class="pal-unplaced-item" draggable="true" data-unplaced-id="${esc(n.id)}" title="Перетащить на холст или клик — поставить по центру">
       <span class="pal-unplaced-icon">${typeLabel}</span>
       <span class="pal-unplaced-tag">${esc(tag)}</span>
       <span class="pal-unplaced-name">${esc(name)}</span>
-      ${badge}
+      ${sysDots}${badge}
     </div>`;
   }).join('');
   list.innerHTML = rows;
+}
+
+// v0.58.18: цветные точки-системы для элемента в палитре/реестре.
+function _systemDotsHtml(n) {
+  const sys = getNodeSystems(n);
+  if (!sys || !sys.length) return '';
+  return '<span class="pal-sys-dots">' + sys.map(sid => {
+    const m = getSystemMeta(sid);
+    if (!m) return '';
+    return `<span class="pal-sys-dot" title="${m.label}" style="background:${m.color}"></span>`;
+  }).join('') + '</span>';
 }
 
 // v0.58.13: «Реестр» — ВСЕ элементы проекта, сгруппированные по типу.
@@ -412,7 +424,7 @@ export function renderProjectRegistry() {
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>
         <span class="pal-unplaced-name">${esc(name)}</span>
-        ${placement}${placeBtn}${delBtn}
+        ${_systemDotsHtml(n)}${placement}${placeBtn}${delBtn}
       </div>`;
     }).join('');
     chunks.push(`<div class="pal-reg-group"><h4 class="pal-reg-group-head">${esc(label)} <span class="muted">(${arr.length})</span></h4>${items}</div>`);

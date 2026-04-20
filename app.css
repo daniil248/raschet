@@ -1285,6 +1285,17 @@ svg.layout-mode #layer-conns { display: none; }
   text-transform: uppercase; letter-spacing: 0.6px;
   margin: 8px 0 4px; padding: 0 2px;
 }
+/* v0.58.18: цветные точки-системы в палитре/реестре */
+.pal-sys-dots {
+  display: inline-flex; gap: 2px; align-items: center; flex: 0 0 auto;
+}
+.pal-sys-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.15);
+  display: inline-block;
+}
+.sys-chip:hover { background: #f4f6fa; }
+
 
 #inspector h3 {
   font-size: 11px; font-weight: 600; color: #6b7385; text-transform: uppercase;
