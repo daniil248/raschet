@@ -984,7 +984,23 @@ export function renderSystemParamsPanel(n, sysId) {
   if (!meta) return '';
   const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : {};
   const vals = (sp[sysId] && typeof sp[sysId] === 'object') ? sp[sysId] : {};
-  const params = Array.isArray(meta.params) ? meta.params : [];
+  // v0.58.52 (1.22.4): если узел привязан к продукту из каталога, его
+  // systemRanges переопределяют min/max/default параметра для этого sysId.
+  let product = null;
+  if (n.productId) {
+    const catalog = Array.isArray(state.project?.productCatalog) ? state.project.productCatalog : [];
+    product = catalog.find(p => p.id === n.productId) || null;
+  }
+  const ranges = (product && product.systemRanges && product.systemRanges[sysId]) || null;
+  const params = (Array.isArray(meta.params) ? meta.params : []).map(p => {
+    if (!ranges) return p;
+    const r = ranges[p.key];
+    if (!r) return p;
+    const merged = { ...p };
+    if (Number.isFinite(r.min)) merged.min = r.min;
+    if (Number.isFinite(r.max)) merged.max = r.max;
+    return merged;
+  });
   const renderParamInput = (p, val) => {
     const v = (val === 0 || val) ? val : '';
     const name = `data-sys-param="${escAttr(sysId)}" data-sys-key="${escAttr(p.key)}"`;
@@ -1008,9 +1024,13 @@ export function renderSystemParamsPanel(n, sysId) {
          <button type="button" class="sys-manage" data-sys-manage-del="${escAttr(sysId)}" style="font-size:11px;padding:4px 8px;border:1px solid #dc2626;background:#fff;border-radius:3px;cursor:pointer;color:#dc2626">✕ удалить систему</button>
        </div>`
     : '';
+  const productHint = (product && ranges)
+    ? `<div class="muted" style="font-size:11px;margin-bottom:6px">Диапазоны из изделия <b>${escHtml(product.name || product.modelRef || product.id)}</b>${product.manufacturer ? ' (' + escHtml(product.manufacturer) + ')' : ''} — каталог проекта.</div>`
+    : '';
   if (!params.length) {
     return `<div class="inspector-section">
       <h4 style="color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</h4>
+      ${productHint}
       <div class="muted" style="font-size:11px">У этой системы ещё нет параметров.${isCustom ? ' Добавьте первый — ниже.' : ''}</div>
       ${manage}
     </div>`;
@@ -1035,6 +1055,7 @@ export function renderSystemParamsPanel(n, sysId) {
   // а не на внутреннем div — единый стиль с другими вкладками.
   return `<div class="inspector-section">
     <h4 style="color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</h4>
+    ${productHint}
     <div style="padding:4px 0">${rows}</div>
     ${manage}
   </div>`;
@@ -1126,13 +1147,38 @@ export function renderGeneralPanel(n) {
   const modelRef = n.modelRef || '';
   h.push(`<div class="inspector-section">`);
   h.push(`<h4>Модель изделия</h4>`);
+
+  // v0.58.52 (1.22.4): подборка подходящих изделий из каталога проекта.
+  // Продукт хранит диапазоны параметров систем; узел ссылается на продукт
+  // через n.productId — renderSystemParamsPanel читает ранжи отсюда.
+  const catalog = Array.isArray(state.project?.productCatalog) ? state.project.productCatalog : [];
+  const matches = catalog.filter(p => {
+    if (p.type && p.type !== n.type) return false;
+    if (p.subtype && n.subtype && p.subtype !== n.subtype) return false;
+    return true;
+  });
+  if (matches.length) {
+    const cur = n.productId || '';
+    const opts = ['<option value="">— не выбрано —</option>']
+      .concat(matches.map(p => `<option value="${escAttr(p.id)}"${cur === p.id ? ' selected' : ''}>${escHtml(p.name || p.modelRef || p.id)}${p.manufacturer ? ' · ' + escHtml(p.manufacturer) : ''}</option>`))
+      .join('');
+    h.push(field('Изделие из каталога', `<select data-prop="productId">${opts}</select>`));
+  }
+
   h.push(field('Производитель', `<input type="text" data-prop="manufacturer" value="${escAttr(n.manufacturer || '')}" placeholder="ABB, Schneider, Legrand, ...">`));
   h.push(field('Выбранное изделие',
     `<input type="text" data-prop="modelRef" value="${escAttr(modelRef)}" placeholder="Не выбрано">`));
+
+  // v0.58.52: сохранить текущие параметры как изделие в каталог
+  if (modelRef || n.manufacturer) {
+    h.push(`<button type="button" data-action="save-product" style="display:block;margin-top:8px;width:100%;padding:6px;font-size:12px;border:1px solid #0ea5e9;background:#f0f9ff;color:#075985;border-radius:3px;cursor:pointer">💾 Сохранить как изделие в каталог проекта…</button>`);
+    h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Создаст запись в каталоге изделий со всеми текущими параметрами систем в роли min/max/default. Другие узлы того же типа смогут выбрать это изделие и получить эти диапазоны.</div>`);
+  }
+
   if (cfg) {
     h.push(`<a class="full-btn" href="${escAttr(cfg.href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);
     h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.</div>`);
-  } else {
+  } else if (!matches.length) {
     h.push(`<div class="muted" style="font-size:11px">Для этого типа элемента модуль-конфигуратор пока не подключён. Параметры задаются вручную на остальных вкладках.</div>`);
   }
   h.push(`</div>`);
@@ -1532,6 +1578,8 @@ export function wireGeneralPanelInputs(n, root) {
         n.tag = t;
       } else if (prop === 'on' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         setEffectiveOn(n, v);
+      } else if (prop === 'productId') {
+        _applyProductBinding(n, v);
       } else {
         n[prop] = v;
       }
@@ -1541,6 +1589,85 @@ export function wireGeneralPanelInputs(n, root) {
     };
     inp.addEventListener('change', apply);
   });
+  // v0.58.52: кнопка «Сохранить как изделие» — работает и в sidebar, и в модалке
+  root.querySelectorAll('[data-action="save-product"]').forEach(btn => {
+    btn.addEventListener('click', () => _saveNodeAsProduct(n));
+  });
+}
+
+// v0.58.52 (1.22.4): применение продукта из каталога к узлу. Копирует
+// manufacturer/modelRef и заполняет пустые параметры систем дефолтами.
+// min/max для отображения берётся «на лету» в renderSystemParamsPanel.
+function _applyProductBinding(n, productId) {
+  if (!productId) {
+    delete n.productId;
+    return;
+  }
+  const catalog = Array.isArray(state.project?.productCatalog) ? state.project.productCatalog : [];
+  const prod = catalog.find(p => p.id === productId);
+  if (!prod) { delete n.productId; return; }
+  n.productId = productId;
+  if (prod.manufacturer) n.manufacturer = prod.manufacturer;
+  if (prod.modelRef) n.modelRef = prod.modelRef;
+  // Заполняем пустые параметры систем дефолтами продукта
+  if (prod.systemRanges && typeof prod.systemRanges === 'object') {
+    if (!n.systemParams || typeof n.systemParams !== 'object') n.systemParams = {};
+    for (const sysId of Object.keys(prod.systemRanges)) {
+      const sysRanges = prod.systemRanges[sysId] || {};
+      if (!n.systemParams[sysId] || typeof n.systemParams[sysId] !== 'object') n.systemParams[sysId] = {};
+      for (const key of Object.keys(sysRanges)) {
+        const r = sysRanges[key];
+        const cur = n.systemParams[sysId][key];
+        if ((cur === undefined || cur === '' || cur === null) && r && r.default !== undefined) {
+          n.systemParams[sysId][key] = r.default;
+        }
+      }
+    }
+  }
+}
+
+// v0.58.52 (1.22.4): «Сохранить как изделие» — создаёт запись в
+// state.project.productCatalog из текущих n.systemParams (min=max=default=val).
+function _saveNodeAsProduct(n) {
+  const defaultName = n.modelRef || n.name || n.tag || n.type;
+  const name = prompt('Название изделия в каталоге:', defaultName);
+  if (!name) return;
+  const ranges = {};
+  const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : {};
+  for (const sysId of Object.keys(sp)) {
+    const sv = sp[sysId] || {};
+    const keys = Object.keys(sv);
+    if (!keys.length) continue;
+    ranges[sysId] = {};
+    for (const k of keys) {
+      const v = sv[k];
+      if (v === undefined || v === null || v === '') continue;
+      const nv = Number(v);
+      if (Number.isFinite(nv)) {
+        ranges[sysId][k] = { min: nv, max: nv, default: nv };
+      } else {
+        // text/select — только default
+        ranges[sysId][k] = { default: v };
+      }
+    }
+  }
+  const id = 'prod-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+  const prod = {
+    id,
+    name: String(name).trim(),
+    type: n.type || '',
+    subtype: n.subtype || '',
+    manufacturer: n.manufacturer || '',
+    modelRef: n.modelRef || '',
+    systemRanges: ranges,
+  };
+  if (!Array.isArray(state.project.productCatalog)) state.project.productCatalog = [];
+  state.project.productCatalog.push(prod);
+  n.productId = id;
+  snapshot('save-product:' + id);
+  notifyChange();
+  renderInspector();
+  flash(`Изделие «${prod.name}» добавлено в каталог проекта`);
 }
 
 // Полный блок «Все данные объекта» внизу инспектора
@@ -1613,6 +1740,10 @@ export function saveNodeAsPreset(n) {
 export function wireInspectorInputs(n, root) {
   // v0.58.50: root опционален — можно провязать Общее-вкладку в модалке
   const host = root || inspectorBody;
+  // v0.58.52: кнопка «Сохранить как изделие» в sidebar-инспекторе
+  host.querySelectorAll('[data-action="save-product"]').forEach(btn => {
+    btn.addEventListener('click', () => _saveNodeAsProduct(n));
+  });
   host.querySelectorAll('[data-prop]').forEach(inp => {
     const prop = inp.dataset.prop;
     const apply = () => {
@@ -1666,6 +1797,10 @@ export function wireInspectorInputs(n, root) {
           return;
         }
         n[prop] = newN;
+      } else if (prop === 'productId') {
+        _applyProductBinding(n, v);
+        _render(); renderInspector(); notifyChange();
+        return;
       } else if (prop === 'sourceSubtype') {
         n.sourceSubtype = v;
         // Конвертируем внутренний type для совместимости расчётной логики

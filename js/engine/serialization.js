@@ -132,9 +132,19 @@ export function deserialize(data) {
       })).filter(s => s.id) : [],
       // v0.58.31: названия этажей {"0":"1 этаж",…}
       floorNames: (data.project.floorNames && typeof data.project.floorNames === 'object') ? { ...data.project.floorNames } : {},
+      // v0.58.52 (1.22.4): каталог изделий проекта. См. state.js.
+      productCatalog: Array.isArray(data.project.productCatalog) ? data.project.productCatalog.map(p => ({
+        id: String(p.id || ''),
+        name: String(p.name || ''),
+        type: String(p.type || ''),
+        subtype: p.subtype ? String(p.subtype) : '',
+        manufacturer: String(p.manufacturer || ''),
+        modelRef: String(p.modelRef || ''),
+        systemRanges: (p.systemRanges && typeof p.systemRanges === 'object') ? JSON.parse(JSON.stringify(p.systemRanges)) : {},
+      })).filter(p => p.id) : [],
     };
   } else {
-    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '', customSystems: [], floorNames: {} };
+    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '', customSystems: [], floorNames: {}, productCatalog: [] };
   }
   // v0.58.27: синхронизация hook для getSystemMeta/getAllSystems сразу после загрузки
   try { globalThis.__raschetCustomSystems = state.project.customSystems.slice(); } catch {}

@@ -45,6 +45,12 @@ export const state = {
     description: '',      // общее описание
     customSystems: [],    // v0.58.24: пользовательские системы {id,label,icon,color,pageKinds[],params[]}
     floorNames: {},       // v0.58.31: "этаж"→"название", например {"0":"1 этаж","-1":"Подвал","1":"2 этаж"}
+    // v0.58.52 (roadmap 1.22.4): per-project каталог изделий. Каждый элемент:
+    // {id, name, type, subtype, manufacturer, modelRef,
+    //  systemRanges: {sysId: {paramKey: {min, max, default}}}}.
+    // Узел ссылается на продукт через n.productId — ранжи применяются к
+    // параметрам систем (renderSystemParamsPanel читает min/max отсюда).
+    productCatalog: [],
   },
   modes: [],
   activeModeId: null,
