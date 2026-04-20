@@ -4648,6 +4648,21 @@ document.addEventListener('keydown', (e) => {
     if (key === 'u') { e.preventDefault(); openConsumersTableModal(); return; }
     if (key === 'e') { e.preventDefault(); openEquipmentTableModal(); return; }
   }
+  // v0.57.75: Escape — закрывает верхнюю открытую модалку (самую последнюю
+  // в DOM, т.е. у которой наибольший z-index/порядок). Многие модалки уже
+  // имеют свой Esc-handler в input-полях, но глобальный — fallback.
+  if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    // Не мешаем собственным обработчикам полей поиска / input
+    if (inField) return;
+    const openModals = Array.from(document.querySelectorAll('.modal'))
+      .filter(m => !m.classList.contains('hidden'));
+    if (openModals.length) {
+      const top = openModals[openModals.length - 1];
+      top.classList.add('hidden');
+      e.preventDefault();
+      return;
+    }
+  }
   // v0.57.74: одноклавишные hotkeys — вне полей ввода и без модификаторов.
   //   Space — «вместить всё» (btn-fit)
   //   G     — переключить сетку (btn-toggle-grid)
@@ -5663,6 +5678,7 @@ async function init() {
         <tr><td>🗄 Перечень оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
         <tr><td>📐 Вместить всё (fit-to-view)</td><td><code>Пробел</code></td></tr>
         <tr><td>📏 Показать/скрыть сетку</td><td><code>G</code></td></tr>
+        <tr><td>✕ Закрыть верхнюю модалку</td><td><code>Escape</code></td></tr>
       </table>
       <div class="note">В полях ввода (input/textarea) Ctrl+Shift-хоткеи не перехватываются. Нативный Ctrl+F тоже работает в полях; модалка поиска открывается только над холстом.</div>
     `,
