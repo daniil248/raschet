@@ -7,7 +7,7 @@ import { serialize, deserialize } from './serialization.js';
 import { renderInspector } from './inspector.js';
 import { createMode } from './modes.js';
 import { flash } from './utils.js';
-import { exportBomXlsx, exportBomCsv } from './bom.js';
+import { exportBomXlsx, exportBomCsv, buildBOM } from './bom.js';
 
 export function initToolbar() {
   // Zoom
@@ -84,6 +84,43 @@ export function initToolbar() {
   };
   bind('btn-export-bom-side', exportBomFn);
   bind('btn-export-bom', exportBomFn);
+
+  // === Phase 1.6.3: Передать BOM в модуль «Логистика» ===
+  // Сохраняем handoff в localStorage и открываем logistics/?import=1.
+  // Там модуль прочитает handoff и откроет модалку отправления с
+  // предзаполненными позициями.
+  const bomToLogisticsFn = () => {
+    try {
+      const projName = document.getElementById('project-name')?.textContent || 'Raschet';
+      const bom = buildBOM();
+      if (!bom.length) { flash('BOM пуст — нечего передавать', 'warn'); return; }
+      const items = bom.map(r => ({
+        label: [r.supplier, r.model].filter(Boolean).join(' '),
+        qty: Number(r.qty) || 1,
+        unitKg: 0, unitM3: 0, unitPriceRUB: 0,
+        // Служебные поля: раздел/артикул/примечания
+        section: r.section || '',
+        article: r.article || '',
+        notes: r.notes || '',
+      }));
+      const handoff = {
+        source: 'raschet-constructor',
+        projectName: projName,
+        createdAt: Date.now(),
+        items,
+      };
+      localStorage.setItem('raschet.logistics.handoff', JSON.stringify(handoff));
+      flash(`BOM (${items.length} поз.) передан в «Логистика»`, 'success');
+      // Открываем модуль в новой вкладке
+      const url = new URL('logistics/', window.location.href);
+      url.searchParams.set('import', '1');
+      window.open(url.href, '_blank');
+    } catch (e) {
+      console.error('[bom→logistics] failed', e);
+      flash('Ошибка передачи: ' + (e.message || e), 'error');
+    }
+  };
+  bind('btn-bom-to-logistics', bomToLogisticsFn);
 
   // «Сохранить как…» — копия проекта с новым именем
   bind('btn-save-as', async () => {

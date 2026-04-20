@@ -446,4 +446,36 @@ document.addEventListener('DOMContentLoaded', () => {
   onWarehousesChange(() => { if (['warehouses', 'shipments', 'calculator'].includes(currentTab)) switchTab(currentTab); });
   onCarrierRatesChange(() => { if (['rates', 'calculator'].includes(currentTab)) switchTab(currentTab); });
   onShipmentsChange(() => { if (currentTab === 'shipments') renderShipmentsTab(); });
+
+  // Phase 1.6.3: handoff из Конструктора схем. Если ?import=1 и в
+  // localStorage есть raschet.logistics.handoff — открываем модалку
+  // нового отправления с предзаполненными позициями.
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    if (qs.get('import') === '1') {
+      const raw = localStorage.getItem('raschet.logistics.handoff');
+      if (raw) {
+        const hdf = JSON.parse(raw);
+        if (hdf && Array.isArray(hdf.items) && hdf.items.length) {
+          // Создаём черновик shipment-а из handoff
+          const draft = saveShipment({
+            label: `Импорт из «${hdf.projectName || 'проекта'}» (${new Date(hdf.createdAt || Date.now()).toLocaleDateString('ru-RU')})`,
+            status: 'draft', mode: 'road',
+            items: hdf.items,
+            notes: `Импортировано из Конструктора схем ${new Date(hdf.createdAt || Date.now()).toLocaleString('ru-RU')}`,
+          });
+          const draftId = draft?.id;
+          localStorage.removeItem('raschet.logistics.handoff');
+          // Чистим URL, чтобы F5 не пересоздавал
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete('import');
+          window.history.replaceState({}, '', cleanUrl.href);
+          flash(`Импортировано ${hdf.items.length} позиций`, 'success');
+          renderShipmentsTab();
+          // Сразу открываем модалку для редактирования
+          setTimeout(() => { if (draftId) openShipmentModal(draftId); }, 200);
+        }
+      }
+    }
+  } catch (e) { console.warn('[logistics] handoff import failed', e); }
 });

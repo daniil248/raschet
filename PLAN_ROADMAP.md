@@ -692,6 +692,19 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.6.3 (v0.57.25)** — Bridge Конструктор → Логистика. Из очереди
+  плана (Phase 1.6.3): кнопка «🚚 Передать в логистику» в боковой
+  панели главного модуля. Собирает текущий BOM (buildBOM), упаковывает
+  в handoff-JSON (projectName, items[]), кладёт в localStorage ключ
+  `raschet.logistics.handoff` и открывает `logistics/?import=1` в
+  новой вкладке. Логистика при старте читает handoff, создаёт
+  черновик shipment-а со всеми позициями (qty из BOM, вес/объём/цена
+  = 0 — заполнить руками или из каталога), чистит handoff+URL и
+  сразу открывает модалку редактирования. Статус «draft», mode
+  «road» по умолчанию.
+  Файлы: index.html (кнопка btn-bom-to-logistics), js/engine/export.js
+  (импорт buildBOM, bomToLogisticsFn), logistics/logistics.js
+  (DOMContentLoaded handoff-branch).
 - **1.20.49 (v0.57.24)** — filter-поиск в модалке «Проверки проекта».
   В больших проектах (40+ нарушений) найти конкретный tag/номинал
   тяжело. Добавлено поле 🔍 «Фильтр» под счётчиками — live-поиск по
