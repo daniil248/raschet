@@ -740,10 +740,17 @@ export function renderInspectorConn(c) {
         .filter(ck => !ck.ok)
         .map(ck => `${ck.type}: ${ck.info}`)
         .join('; ');
+      // Автоподстройка доступна только для регулируемых upstream-автоматов
+      // (MCCB/ACB/VCB) и только если нарушение — по амплитуде Isd или по Δt.
+      const _upAdjustable = (_upImm.c._breakerSettings && _upImm.c._breakerSettings.Ir > 0);
+      const _canAutoTune = !_selOk && _upAdjustable && _selCheck.checks.some(
+        ck => !ck.ok && (ck.type === 'amplitude' || ck.type === 'time-step')
+      );
       h.push(`<div style="background:${_selBg};border:1px solid ${_selBr};border-radius:4px;padding:6px 8px;font-size:11px;color:${_selColor};margin-top:6px;line-height:1.4">
         <b>${_selIcon} Селективность с ${escHtml(_upImm.label)}:</b> ${_selOk ? 'обеспечена' : 'нарушена'}
         ${_failDetails ? `<div class="muted" style="font-size:10px;margin-top:2px;color:#555">${escHtml(_failDetails)}</div>` : ''}
-        ${!_selOk ? '<div style="font-size:10px;margin-top:2px;color:#555">Откройте TCC-карту ниже или раздел «Уставки защиты» — повысьте Isd_up или tsd_up.</div>' : ''}
+        ${_canAutoTune ? `<button type="button" data-sel-autotune="${escAttr(_upImm.c.id)}" style="margin-top:4px;font-size:11px;padding:3px 8px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:3px;cursor:pointer">↯ Автоподстройка upstream</button>` : ''}
+        ${!_selOk && !_canAutoTune ? '<div style="font-size:10px;margin-top:2px;color:#555">Повысьте In/Isd upstream-автомата или перейдите на регулируемый (MCCB/ACB).</div>' : ''}
       </div>`);
     }
   }
@@ -931,6 +938,32 @@ export function renderInspectorConn(c) {
       if (!Object.keys(c.breakerSettings).length) delete c.breakerSettings;
       snapshot('brk-setting-reset:' + c.id + ':' + key);
       render(); renderInspector(); notifyChange();
+    });
+  });
+
+  // v0.57.54: ↯ Автоподстройка селективности с вышестоящим автоматом.
+  // Правим уставки upstream'а: Isd_up = max(current, 1.3 × Isd_down),
+  // tsd_up = max(current, tsd_down + 0.15). Отмотка — Ctrl+Z.
+  inspectorBody.querySelectorAll('[data-sel-autotune]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const upId = btn.getAttribute('data-sel-autotune');
+      const upConn = state.conns.get(upId);
+      if (!upConn) return;
+      const downIsd = Number(c._breakerSettings?.Isd) || Number(c._breakerIn || c._breakerPerLine) || 0;
+      const downTsd = Number(c._breakerSettings?.tsd) || 0;
+      const upAuto = upConn._breakerSettings || {};
+      const curIsd = Number(upConn.breakerSettings?.Isd) || Number(upAuto.Isd) || 0;
+      const curTsd = Number(upConn.breakerSettings?.tsd) || Number(upAuto.tsd) || 0.2;
+      const targetIsd = Math.max(curIsd, Math.ceil(1.3 * downIsd));
+      const targetTsd = Math.round(Math.max(curTsd, downTsd + 0.15) * 100) / 100;
+      upConn.breakerSettings = {
+        ...(upConn.breakerSettings || {}),
+        Isd: targetIsd,
+        tsd: targetTsd,
+      };
+      snapshot('sel-autotune:' + upId);
+      render(); renderInspector(); notifyChange();
+      flash(`Upstream: Isd=${targetIsd} А, tsd=${targetTsd} с`);
     });
   });
 
