@@ -1,7 +1,7 @@
 // Инспектор и модалки для ИБП: параметры, управление, статус-блок.
 // Выделено из inspector.js для поддержки. Использует прямые импорты
 // зависимостей (render/history/utils) — инъекция не нужна.
-import { GLOBAL } from '../constants.js';
+import { GLOBAL, autoUpsBreakerNominals } from '../constants.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveOn } from '../modes.js';
 import { effectiveTag } from '../zones.js';
@@ -143,16 +143,19 @@ export function openUpsParamsModal(n) {
   }
   // Опциональные номиналы
   h.push('<details><summary style="cursor:pointer;font-size:11px;color:#666;margin-top:6px">Номиналы автоматов (опционально)</summary>');
+  h.push('<div class="muted" style="font-size:10.5px;margin-bottom:4px;line-height:1.4">Пусто = использовать расчётный по мощности ИБП. Значение применяется и к линиям (QF3 — линии от ИБП, QF1/QF2 — линии к ИБП). Эти автоматы входят в состав ИБП и не попадают в спецификацию.</div>');
+  const _auto = autoUpsBreakerNominals(n);
   const noms = [
-    ['inputBreakerIn',       'In QF1 (вводной), A'],
-    ['inputBypassBreakerIn', 'In QF2 (вх. байпаса), A'],
-    ['outputBreakerIn',      'In QF3 (выходной), A'],
-    ['bypassBreakerIn',      'In QF4 (байпас), A'],
-    ['batteryBreakerIn',     'In QB (батарея), A'],
+    ['inputBreakerIn',       'In QF1 (вводной), A',        _auto.input],
+    ['inputBypassBreakerIn', 'In QF2 (вх. байпаса), A',    _auto.inputBypass],
+    ['outputBreakerIn',      'In QF3 (выходной), A',       _auto.output],
+    ['bypassBreakerIn',      'In QF4 (байпас), A',         _auto.bypass],
+    ['batteryBreakerIn',     'In QB (батарея), A',         _auto.battery],
   ];
-  for (const [key, label] of noms) {
+  for (const [key, label, auto] of noms) {
     const v = n[key] ?? '';
-    h.push(field(label, `<input type="number" id="up-${key}" min="0" step="1" value="${v}">`));
+    const ph = auto ? `авто ≈ ${auto}` : 'авто';
+    h.push(field(label, `<input type="number" id="up-${key}" min="0" step="1" value="${v}" placeholder="${ph}">`));
   }
   h.push('</details>');
 
