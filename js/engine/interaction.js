@@ -1420,6 +1420,31 @@ export function initInteraction() {
       return;
     }
     if (e.key === 'Escape' && state.pending) cancelPending();
+    // v0.58.32: навигация по этажам на layout-странице
+    if (getPageKind(getCurrentPage()) === 'layout' && (e.key === 'PageUp' || e.key === 'PageDown' || e.key === 'Home')) {
+      // собираем уникальные этажи на текущей странице
+      const floors = new Set();
+      for (const n of state.nodes.values()) {
+        if (n.type === 'zone' || n.type === 'channel') continue;
+        const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+        if (!pids.includes(state.currentPageId)) continue;
+        floors.add(Number(n.floor) || 0);
+      }
+      if (floors.size <= 1) return;
+      const arr = [...floors].sort((a, b) => a - b);
+      if (e.key === 'Home') {
+        state.floorFilter = null;
+      } else {
+        const cur = state.floorFilter;
+        let idx = (cur == null) ? -1 : arr.indexOf(cur);
+        if (e.key === 'PageUp') idx = (idx < 0) ? arr.length - 1 : Math.min(arr.length - 1, idx + 1);
+        else idx = (idx < 0) ? 0 : Math.max(0, idx - 1);
+        state.floorFilter = arr[idx];
+      }
+      e.preventDefault();
+      render();
+      return;
+    }
     if (state.readOnly) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
       // v0.58.14: удаление с холста — «мягкое», элемент только снимается с

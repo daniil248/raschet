@@ -173,6 +173,7 @@
 
   <main>
     <div class="hub-toolbar">
+      <input type="search" id="hub-search" placeholder="Поиск модуля…" style="font:inherit;font-size:12px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:6px;min-width:220px">
       <label>Колонок:
         <select id="hub-cols">
           <option value="auto">авто</option>
@@ -547,6 +548,22 @@
       prefs.cols = colsSel.value;
       savePrefs(prefs); applyLayout();
     });
+    // v0.58.32: поиск модулей по заголовку/описанию
+    var searchInp = document.getElementById('hub-search');
+    if (searchInp) {
+      searchInp.addEventListener('input', function () {
+        var q = searchInp.value.trim().toLowerCase();
+        allCards.forEach(function (c) {
+          if (c.classList.contains('hidden-card') && !grid.classList.contains('edit')) {
+            c.style.display = 'none';
+            return;
+          }
+          if (!q) { c.style.display = ''; return; }
+          var txt = (c.querySelector('h2')?.textContent || '') + ' ' + (c.querySelector('p')?.textContent || '');
+          c.style.display = txt.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+        });
+      });
+    }
 
     applyLayout();
   })();
