@@ -2164,7 +2164,7 @@ function exportCableTableCsv() {
     return 0;
   });
 
-  const rows = [['Обозначение', 'Откуда', 'Куда', 'Марка', 'Категория', 'Материал', 'Изоляция', 'Конструкция', 'Сечение, мм²', 'N-сечение, мм²', 'Число жил', 'Линий (параллель)', 'Длина, м', 'Способ прокладки', 'Автомат In, А', 'Автомат режим', 'Тип автомата', 'Imax, А', 'Iдоп, А', 'Класс', 'Состояние']];
+  const rows = [['Обозначение', 'Откуда', 'Куда', 'Марка', 'Категория', 'Материал', 'Изоляция', 'Конструкция', 'Сечение, мм²', 'N-сечение, мм²', 'Число жил', 'Линий (параллель)', 'Длина, м', 'Способ прокладки', 'Тип защиты', 'Защита In, А', 'Характеристика', 'Режим', 'Imax, А', 'Iдоп, А', 'Класс', 'Состояние']];
   for (const c of conns) {
     const fromN = S.nodes.get(c.from.nodeId);
     const toN = S.nodes.get(c.to.nodeId);
@@ -2177,9 +2177,15 @@ function exportCableTableCsv() {
     const lineState = c.lineMode === 'damaged' ? 'Повреждена'
                     : c.lineMode === 'disabled' ? 'Отключена'
                     : (c._active ? 'Активна' : 'Неактивна');
-    const brkIn = Number(c.manualBreakerIn) || Number(c._breakerIn) || 0;
-    const brkMode = c.manualBreakerIn ? 'ручной' : 'авто';
-    const curveVal = String(c.breakerCurve || c._breakerCurveEff || '').toUpperCase();
+    // v0.57.65: различаем QF/FU и источник номинала (manualBreakerIn / manualFuseIn / авто)
+    const isFu = c._protectionKind === 'fuse';
+    const protKind = isFu ? 'FU' : 'QF';
+    const manualVal = isFu ? Number(c.manualFuseIn) : Number(c.manualBreakerIn);
+    const brkIn = manualVal || Number(c._breakerIn) || Number(c._breakerPerLine) || 0;
+    const brkMode = manualVal ? 'ручной' : 'авто';
+    const curveVal = isFu
+      ? (c._fuseType || c.fuseType || 'gG')
+      : String(c.breakerCurve || c._breakerCurveEff || '').toUpperCase();
     rows.push([
       lineLabel,
       _ctNodeTag(fromN),
@@ -2195,9 +2201,10 @@ function exportCableTableCsv() {
       Math.max(1, Number(c._cableParallel) || 1),
       c.lengthM || 0,
       c._cableMethod || '',
+      brkIn ? protKind : '',
       brkIn || '',
-      brkIn ? brkMode : '',
       curveVal,
+      brkIn ? brkMode : '',
       c._maxA ? c._maxA.toFixed(1) : '',
       c._cableIz ? c._cableIz.toFixed(1) : '',
       cls2,
