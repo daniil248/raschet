@@ -4648,6 +4648,26 @@ document.addEventListener('keydown', (e) => {
     if (key === 'u') { e.preventDefault(); openConsumersTableModal(); return; }
     if (key === 'e') { e.preventDefault(); openEquipmentTableModal(); return; }
   }
+  // v0.57.74: одноклавишные hotkeys — вне полей ввода и без модификаторов.
+  //   Space — «вместить всё» (btn-fit)
+  //   G     — переключить сетку (btn-toggle-grid)
+  if (!inField && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    if (e.code === 'Space' || e.key === ' ') {
+      // Проверим, нет ли открытой модалки — если да, не мешаем пробелу
+      const anyModalOpen = !!document.querySelector('.modal.shown, .modal:not(.hidden)');
+      if (!anyModalOpen) {
+        const b = document.getElementById('btn-fit');
+        if (b) { e.preventDefault(); b.click(); return; }
+      }
+    }
+    if (e.key === 'g' || e.key === 'G') {
+      const anyModalOpen = !!document.querySelector('.modal.shown, .modal:not(.hidden)');
+      if (!anyModalOpen) {
+        const b = document.getElementById('btn-toggle-grid');
+        if (b) { e.preventDefault(); b.click(); return; }
+      }
+    }
+  }
 });
 
 // ================= Перечень потребителей (Phase 1.20.14) =================
@@ -5641,6 +5661,8 @@ async function init() {
         <tr><td>🔌 Перечень кабелей (Lines)</td><td><code>Ctrl+Shift+L</code></td></tr>
         <tr><td>💡 Перечень потребителей (Users)</td><td><code>Ctrl+Shift+U</code></td></tr>
         <tr><td>🗄 Перечень оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
+        <tr><td>📐 Вместить всё (fit-to-view)</td><td><code>Пробел</code></td></tr>
+        <tr><td>📏 Показать/скрыть сетку</td><td><code>G</code></td></tr>
       </table>
       <div class="note">В полях ввода (input/textarea) Ctrl+Shift-хоткеи не перехватываются. Нативный Ctrl+F тоже работает в полях; модалка поиска открывается только над холстом.</div>
     `,
