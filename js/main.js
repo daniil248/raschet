@@ -3892,15 +3892,30 @@ function renderProjectIssues() {
   }
 
   // Non-selective pairs
+  // Phase 1.20.48: bulk-autofix — считаем и собираем список fixable
+  // пар ДО рендера, чтобы показать кнопку «Исправить все (N)».
+  const selFixable = [];
+  for (const p of selPairs) {
+    if (p.isMvCellPair || !p.upstream?.id || p.check?.selective) continue;
+    const upIn = Number(p.upBreaker?.inNominal) || 0;
+    const downIn = Number(p.downBreaker?.inNominal) || 0;
+    const curve = p.downBreaker?.curve;
+    const k = curve === 'B' ? 2.0 : (curve === 'C' ? 1.6 : 1.4);
+    const target = downIn * k;
+    let suggested = 0;
+    for (const nV of _BREAKER_SERIES) { if (nV >= target && nV > upIn) { suggested = nV; break; } }
+    if (suggested) selFixable.push({ connId: p.upstream.id, value: suggested });
+  }
   if (selPairs.length) {
-    html.push(`<h3 style="margin:16px 0 4px;font-size:13px;color:#24292e">🔶 Нарушения селективности <span class="muted" style="font-weight:400">(${selPairs.length})</span></h3>`);
+    const bulkBtn = selFixable.length > 1
+      ? `<button type="button" id="pi-sel-fix-all" style="margin-left:10px;padding:3px 10px;border:1px solid #4caf50;background:#e8f5e9;color:#2e7d32;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600">⚡ Исправить все (${selFixable.length})</button>`
+      : '';
+    html.push(`<h3 style="margin:16px 0 4px;font-size:13px;color:#24292e">🔶 Нарушения селективности <span class="muted" style="font-weight:400">(${selPairs.length})</span>${bulkBtn}</h3>`);
     const rows = selPairs.map((p, idx) => {
       const nodeTag = _effectiveTag(p.node) || p.node?.name || '?';
       const up = `${p.upBreaker?.inNominal || '?'} А ${p.upBreaker?.curve || ''}`;
       const down = `${p.downBreaker?.inNominal || '?'} А ${p.downBreaker?.curve || ''}`;
       const nodeId = p.node?.id;
-      // Phase 1.20.28: автофикс амплитудной селективности — поднять In_up.
-      // Применимо только для LV-пар с заданным upstream conn.
       let fixBtn = '';
       if (!p.isMvCellPair && p.upstream?.id && !p.check?.selective) {
         const upIn = Number(p.upBreaker?.inNominal) || 0;
@@ -3957,6 +3972,31 @@ function renderProjectIssues() {
       }
       if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
       flash(`Применено автофиксов: ${applied}`);
+      renderProjectIssues();
+    });
+  }
+
+  // Phase 1.20.48: bulk-autofix всех амплитудных нарушений
+  const selFixAllBtn = mount.querySelector('#pi-sel-fix-all');
+  if (selFixAllBtn && selFixable.length) {
+    selFixAllBtn.addEventListener('click', () => {
+      if (!confirm(`Поднять upstream-номиналы для ${selFixable.length} пар? Ctrl+Z отменяет.`)) return;
+      if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('issues:sel-fix-all:' + selFixable.length);
+      let applied = 0;
+      // Группируем по connId: несколько пар могут делить upstream — берём max.
+      const byConn = new Map();
+      for (const f of selFixable) {
+        const cur = byConn.get(f.connId) || 0;
+        if (f.value > cur) byConn.set(f.connId, f.value);
+      }
+      for (const [connId, value] of byConn) {
+        const c = window.Raschet?._state?.conns?.get(connId);
+        if (!c) continue;
+        c.manualBreakerIn = value;
+        applied++;
+      }
+      if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+      flash(`Поднято номиналов upstream: ${applied}`);
       renderProjectIssues();
     });
   }
