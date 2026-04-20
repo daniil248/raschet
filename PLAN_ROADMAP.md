@@ -692,6 +692,22 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.35 (v0.57.10)** — карточки Dashboard стали интерактивными.
+  Расширен helper `card(title, value, sub, bg, color, action)` — при
+  указании action карточка получает class="dash-card", cursor:pointer,
+  hover-приподнимание (translateY -1px + box-shadow) и подсказку
+  «▸ нажмите». Навигация:
+  * «Проблем» → Issues modal
+  * «Общая нагрузка», «⚡ Источники» → Equipment (filter=source)
+  * «🔋 Генераторы» → Equipment (filter=generator)
+  * «🗄 НКУ (LV)» / «⚡ РУ СН» → Equipment (filter=panel-lv/mv)
+  * «🔌 ИБП» → Equipment (filter=ups)
+  * «💡 Потребители» → Consumers table
+  * «Всего линий», «LV», «MV/HV», «DC» → Cable table (prefilter class)
+  * «Стоимость BOM» → btn-bom
+  `openCableTableModal(opts)` и `openEquipmentTableModal(opts)` теперь
+  принимают `{prefilterClass}` / `{prefilterKind}` — проставляют фильтр
+  до первого render и синхронизируют `<select>` в header.
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 

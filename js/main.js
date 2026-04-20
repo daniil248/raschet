@@ -1811,13 +1811,19 @@ let _cableTableSelected = new Set(); // ids выделенных строк дл
 // Phase 1.20.7: сортировка таблицы. col = поле, dir = 'asc'|'desc'
 let _cableTableSort = { col: 'label', dir: 'asc' };
 
-function openCableTableModal() {
+function openCableTableModal(opts) {
   openModal('modal-cable-table');
+  if (opts && opts.prefilterClass) {
+    _cableTableFilters.class = opts.prefilterClass;
+  }
   renderCableTable();
   const srchEl = document.getElementById('cable-table-search');
   if (srchEl) srchEl.oninput = (e) => { _cableTableFilters.search = e.target.value; renderCableTable(); };
   const clsEl = document.getElementById('cable-table-filter-class');
-  if (clsEl) clsEl.onchange = (e) => { _cableTableFilters.class = e.target.value; renderCableTable(); };
+  if (clsEl) {
+    if (opts && opts.prefilterClass) clsEl.value = opts.prefilterClass;
+    clsEl.onchange = (e) => { _cableTableFilters.class = e.target.value; renderCableTable(); };
+  }
   const catEl = document.getElementById('cable-table-filter-category');
   if (catEl) {
     catEl.value = _cableTableFilters.category || '';
@@ -2856,13 +2862,19 @@ function renderDashboard() {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
-  const card = (title, value, sub, bg, color) => `
-    <div style="padding:14px 16px;background:${bg || '#fafbfc'};border:1px solid #e1e4e8;border-radius:6px;min-width:170px;flex:1">
+  const card = (title, value, sub, bg, color, action) => {
+    const cursor = action ? 'cursor:pointer' : '';
+    const attrs = action ? ` class="dash-card" data-action="${esc(action)}" title="Нажмите, чтобы открыть"` : '';
+    const hoverHint = action ? `<div style="font-size:9px;color:#999;margin-top:4px">▸ нажмите</div>` : '';
+    return `
+    <div${attrs} style="padding:14px 16px;background:${bg || '#fafbfc'};border:1px solid #e1e4e8;border-radius:6px;min-width:170px;flex:1;${cursor};transition:transform .08s ease, box-shadow .08s ease">
       <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.3px">${esc(title)}</div>
       <div style="font-size:22px;font-weight:600;color:${color || '#24292e'};margin-top:4px">${value}</div>
       ${sub ? `<div style="font-size:10px;color:#888;margin-top:2px">${sub}</div>` : ''}
+      ${hoverHint}
     </div>
   `;
+  };
 
   const fmtN = (v, d = 1) => {
     const n = Number(v) || 0;
@@ -2894,18 +2906,20 @@ function renderDashboard() {
       ${card('Проблем', (errors + warns) ? `${errors} / ${warns}` : '0',
         'ошибок / предупреждений',
         (errors + warns) ? (errors ? '#ffebee' : '#fff8e1') : '#e8f5e9',
-        errors ? '#c62828' : (warns ? '#e65100' : '#2e7d32'))}
+        errors ? '#c62828' : (warns ? '#e65100' : '#2e7d32'),
+        (errors + warns) ? 'issues' : null)}
       ${card('Общая нагрузка', fmtN(totalLoad) + ' кВт',
         totalCap > 0 ? `из ${fmtN(totalCap)} кВт (${loadPct.toFixed(0)}% загрузки)` : '—',
         loadPct > 100 ? '#ffebee' : loadPct > 90 ? '#fff8e1' : '#e8f5e9',
-        loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : '#2e7d32')}
+        loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : '#2e7d32',
+        'equipment-sources')}
       ${priceSummary && priceSummary.byCurrency.length
         ? card('Стоимость BOM',
           priceSummary.byCurrency.map(([cur, sum]) => `${fmtN(sum, 0)} ${cur}`).join(' · '),
           priceSummary.missingCount
             ? `⚠ без цены: ${priceSummary.missingCount} из ${priceSummary.totalRows}`
             : `по ${priceSummary.totalRows} позициям`,
-          '#eef5ff', '#1565c0')
+          '#eef5ff', '#1565c0', 'bom')
         : card('Стоимость BOM', '—', 'прайс не подключён', '#f5f5f5', '#888')}
     </div>
   `);
@@ -2914,12 +2928,12 @@ function renderDashboard() {
   html.push(`
     <h3 style="margin:18px 0 8px;font-size:13px">Оборудование</h3>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      ${card('⚡ Источники', counts.source || 0)}
-      ${card('🔋 Генераторы', counts.generator || 0)}
-      ${card('🗄 НКУ (LV)', counts['panel-lv'] || 0)}
-      ${card('⚡ РУ СН', counts['panel-mv'] || 0)}
-      ${card('🔌 ИБП', counts.ups || 0)}
-      ${card('💡 Потребители', counts.consumer || 0)}
+      ${card('⚡ Источники', counts.source || 0, null, null, null, counts.source ? 'equipment-sources' : null)}
+      ${card('🔋 Генераторы', counts.generator || 0, null, null, null, counts.generator ? 'equipment-generators' : null)}
+      ${card('🗄 НКУ (LV)', counts['panel-lv'] || 0, null, null, null, counts['panel-lv'] ? 'equipment-panels-lv' : null)}
+      ${card('⚡ РУ СН', counts['panel-mv'] || 0, null, null, null, counts['panel-mv'] ? 'equipment-panels-mv' : null)}
+      ${card('🔌 ИБП', counts.ups || 0, null, null, null, counts.ups ? 'equipment-ups' : null)}
+      ${card('💡 Потребители', counts.consumer || 0, null, null, null, counts.consumer ? 'consumers' : null)}
     </div>
   `);
 
@@ -2929,10 +2943,10 @@ function renderDashboard() {
   html.push(`
     <h3 style="margin:18px 0 8px;font-size:13px">Кабельная продукция</h3>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      ${card('Всего линий', totalConns, `${fmtN(totalMeters)} м суммарно`)}
-      ${card('LV', cableStats.LV.count, `${fmtN(cableStats.LV.m)} м`, '#eef5ff', '#1565c0')}
-      ${card('MV/HV', cableStats.HV.count, `${fmtN(cableStats.HV.m)} м`, '#fff4e5', '#c67300')}
-      ${cableStats.DC.count ? card('DC', cableStats.DC.count, `${fmtN(cableStats.DC.m)} м`, '#f3e5f5', '#7b1fa2') : ''}
+      ${card('Всего линий', totalConns, `${fmtN(totalMeters)} м суммарно`, null, null, totalConns ? 'cables' : null)}
+      ${card('LV', cableStats.LV.count, `${fmtN(cableStats.LV.m)} м`, '#eef5ff', '#1565c0', cableStats.LV.count ? 'cables-lv' : null)}
+      ${card('MV/HV', cableStats.HV.count, `${fmtN(cableStats.HV.m)} м`, '#fff4e5', '#c67300', cableStats.HV.count ? 'cables-hv' : null)}
+      ${cableStats.DC.count ? card('DC', cableStats.DC.count, `${fmtN(cableStats.DC.m)} м`, '#f3e5f5', '#7b1fa2', 'cables-dc') : ''}
     </div>
     ${byMaterial.size ? `
       <div style="margin-top:8px;padding:10px 14px;background:#f6f8fa;border-radius:6px;font-size:11px;color:#555">
@@ -2957,17 +2971,37 @@ function renderDashboard() {
   mount.innerHTML = html.join('');
 
   // Wire actions
+  const runAction = (a) => {
+    closeModal('modal-dashboard');
+    setTimeout(() => {
+      if (a === 'issues') openProjectIssuesModal();
+      else if (a === 'cables') openCableTableModal();
+      else if (a === 'cables-lv') openCableTableModal({ prefilterClass: 'LV' });
+      else if (a === 'cables-hv') openCableTableModal({ prefilterClass: 'HV' });
+      else if (a === 'cables-dc') openCableTableModal({ prefilterClass: 'DC' });
+      else if (a === 'consumers') openConsumersTableModal();
+      else if (a === 'equipment') openEquipmentTableModal();
+      else if (a === 'equipment-sources') openEquipmentTableModal({ prefilterKind: 'source' });
+      else if (a === 'equipment-generators') openEquipmentTableModal({ prefilterKind: 'generator' });
+      else if (a === 'equipment-panels-lv') openEquipmentTableModal({ prefilterKind: 'panel-lv' });
+      else if (a === 'equipment-panels-mv') openEquipmentTableModal({ prefilterKind: 'panel-mv' });
+      else if (a === 'equipment-ups') openEquipmentTableModal({ prefilterKind: 'ups' });
+      else if (a === 'bom') { const b = document.getElementById('btn-bom'); if (b) b.click(); }
+      else if (a === 'search') openSearchPalette();
+    }, 100);
+  };
   mount.querySelectorAll('.dash-action').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const a = btn.dataset.action;
-      closeModal('modal-dashboard');
-      setTimeout(() => {
-        if (a === 'issues') openProjectIssuesModal();
-        else if (a === 'cables') openCableTableModal();
-        else if (a === 'consumers') openConsumersTableModal();
-        else if (a === 'equipment') openEquipmentTableModal();
-        else if (a === 'search') openSearchPalette();
-      }, 100);
+    btn.addEventListener('click', () => runAction(btn.dataset.action));
+  });
+  mount.querySelectorAll('.dash-card').forEach(c => {
+    c.addEventListener('click', () => runAction(c.dataset.action));
+    c.addEventListener('mouseenter', () => {
+      c.style.transform = 'translateY(-1px)';
+      c.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
+    });
+    c.addEventListener('mouseleave', () => {
+      c.style.transform = '';
+      c.style.boxShadow = '';
     });
   });
 }
@@ -4178,8 +4212,11 @@ function exportConsumersTableCsv() {
 let _equipTableFilters = { search: '', type: '' };
 let _equipTableSort = { col: 'tag', dir: 'asc' };
 
-function openEquipmentTableModal() {
+function openEquipmentTableModal(opts) {
   openModal('modal-equipment-table');
+  if (opts && opts.prefilterKind) {
+    _equipTableFilters.type = opts.prefilterKind;
+  }
   renderEquipmentTable();
   const srchEl = document.getElementById('equipment-table-search');
   if (srchEl) {
