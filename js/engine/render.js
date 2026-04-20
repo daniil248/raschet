@@ -1307,6 +1307,18 @@ export function renderConns() {
           labelText = `${fmt(maxPerBranch)} A / ${cableSpec}`;
         }
         if (groupCount > 1) labelText += ` (${groupCount} шт.)`;
+        // v0.57.63: номинал защитного аппарата (QF/FU) в подпись линии.
+        // Для внутренних автоматов ИБП (QF1/QF2/QF3) — пропускаем.
+        if (!c._breakerInternal) {
+          const brkIn = Number(c._breakerIn) || Number(c._breakerPerLine) || 0;
+          if (brkIn > 0) {
+            const isFu = c._protectionKind === 'fuse';
+            const tag = isFu
+              ? `FU ${fmt(brkIn)}А ${c._fuseType || 'gG'}`
+              : `QF ${fmt(brkIn)}А ${c._breakerCurveEff || c.breakerCurve || ''}`.trim();
+            labelText = tag + ' · ' + labelText;
+          }
+        }
         // Обозначение класса напряжения по IEC 60502-2 для HV-линий:
         // U₀/U (Um) кВ — ставим перед током и сечением.
         if (c._isHV) {
