@@ -521,11 +521,43 @@ export function renderInspectorNode(n) {
     //     в нормальной availCap, участвует только в N-1-анализе.
     //   • isStandby — холодный подмен (подменный ДГУ внутри тира):
     //     не считается нигде, кроме как «резерв max(standbyCaps)» в N-1.
+    // Сводка по текущей группе резерва (если задана): сколько участников,
+    // максимальная единичная мощность, N-1 статус.
+    let groupSummaryHtml = '';
+    if (n.redundancyGroup && String(n.redundancyGroup).trim() && !n.isBackup && !n.isStandby) {
+      const gKey = String(n.redundancyGroup).trim();
+      const peers = [];
+      for (const m of state.nodes.values()) {
+        if ((m.type === 'source' || m.type === 'generator') &&
+            !m.isBackup && !m.isStandby &&
+            String(m.redundancyGroup || '').trim() === gKey) {
+          peers.push(m);
+        }
+      }
+      if (peers.length >= 2) {
+        const caps = peers.map(p => Number(p.capacityKw) || 0);
+        const sum = caps.reduce((a, b) => a + b, 0);
+        const maxC = Math.max(...caps);
+        const remaining = sum - maxC;
+        groupSummaryHtml = `<div style="font-size:11px;margin-top:4px;padding:4px 6px;background:#e8f5e9;border-left:3px solid #4caf50;border-radius:3px;line-height:1.5">
+          🔗 В группе «${gKey}»: <b>${peers.length}×</b> параллельно, взаимный резерв N-1.<br>
+          Остаток при отказе одного: <b>${remaining.toFixed(0)} кВт</b> (из ${sum.toFixed(0)}).
+        </div>`;
+      } else {
+        groupSummaryHtml = `<div style="font-size:11px;margin-top:4px;color:#888">
+          В группе «${gKey}» пока только этот источник. Задайте ту же группу другому источнику — они будут работать параллельно и резервировать друг друга.
+        </div>`;
+      }
+    }
     h.push(`<div class="inspector-section" style="padding:6px 0">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
         <span style="font-size:12px;color:#666">Группа резерва:</span>
-        <input type="text" id="src-redundancy-group" value="${n.redundancyGroup ? String(n.redundancyGroup).replace(/"/g, '&quot;') : ''}" placeholder="напр. T, DGU" style="flex:1;padding:2px 6px;font-size:12px;border:1px solid #ccc;border-radius:3px" title="Участники одной группы взаимно резервируют друг друга (N-1)">
+        <input type="text" id="src-redundancy-group" value="${n.redundancyGroup ? String(n.redundancyGroup).replace(/"/g, '&quot;') : ''}" placeholder="напр. T, DGU" style="flex:1;padding:2px 6px;font-size:12px;border:1px solid #ccc;border-radius:3px" title="Участники одной группы работают параллельно и взаимно резервируют друг друга (N-1)">
       </div>
+      <div class="muted" style="font-size:10px;margin-top:2px;line-height:1.4">
+        Два и более источников с одинаковой группой → параллельная работа + взаимный резерв. Каждый должен в одиночку выдерживать пиковую нагрузку.
+      </div>
+      ${groupSummaryHtml}
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-top:6px">
         <input type="checkbox" id="src-is-backup"${n.isBackup ? ' checked' : ''} style="margin:0">
         <span>Резервный тир (backup)</span>

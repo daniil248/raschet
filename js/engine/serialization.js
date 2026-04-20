@@ -12,11 +12,17 @@ export function bindSerializationDeps({ clearUndoStack, render, renderInspector,
 // ================= Сохранение =================
 export function serialize() {
   // Сохраняем пользовательские настройки расчёта вместе с проектом,
-  // кроме пользовательских библиотек (они хранятся в localStorage).
+  // кроме пользовательских библиотек (они хранятся в localStorage) и
+  // per-user UI preferences (не должны перезаписываться чужими при
+  // совместной работе или при переоткрытии).
   const globalSettings = {};
   const skipKeys = [
     'voltageLevels',          // сохраняется отдельно (ниже)
     'customConsumerCatalog',  // user-scoped, в localStorage
+    // Per-user UI preferences — не влияют на расчёт, каждый пользователь
+    // управляет своими:
+    'showHelp',
+    'autoCenterOnSelect',
   ];
   for (const k of Object.keys(GLOBAL)) {
     if (skipKeys.includes(k)) continue;
