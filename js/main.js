@@ -3113,15 +3113,29 @@ function _countProjectIssues() {
 function _updateProjectIssuesBadge() {
   const btn = document.getElementById('btn-open-project-issues');
   if (!btn) return;
+  // Phase 1.20.33: inject pulse-animation CSS один раз (keyframes для
+  // анимации бейджа когда есть ошибки)
+  if (!document.getElementById('rs-issue-pulse-style')) {
+    const st = document.createElement('style');
+    st.id = 'rs-issue-pulse-style';
+    st.textContent = `
+      @keyframes rs-issue-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.5); }
+        50% { box-shadow: 0 0 0 4px rgba(198, 40, 40, 0.0); }
+      }
+      .rs-issue-err-badge { animation: rs-issue-pulse 1.6s ease-in-out infinite; }
+    `;
+    document.head.appendChild(st);
+  }
   const { errors, warns } = _countProjectIssues();
   // Формат: «⚠ Проверки проекта» [error-badge] [warn-badge]
   let html = '⚠ Проверки проекта';
-  if (errors) html += ` <span style="background:#c62828;color:#fff;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;margin-left:4px">${errors}</span>`;
+  if (errors) html += ` <span class="rs-issue-err-badge" style="background:#c62828;color:#fff;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;margin-left:4px;display:inline-block">${errors}</span>`;
   if (warns) html += ` <span style="background:#f57c00;color:#fff;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:700;margin-left:2px">${warns}</span>`;
   btn.innerHTML = html;
   btn.title = errors || warns
-    ? `Обнаружено: ${errors} ошибок, ${warns} предупреждений`
-    : 'Проверки проекта (проблем не найдено)';
+    ? `Обнаружено: ${errors} ошибок, ${warns} предупреждений (Ctrl+Shift+I)`
+    : 'Проверки проекта (проблем не найдено) (Ctrl+Shift+I)';
 }
 
 function renderProjectIssues() {
