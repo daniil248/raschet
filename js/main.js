@@ -4136,6 +4136,7 @@ function renderEquipmentTable() {
           ${sortHdr('load', 'P расч, кВт', 'right')}
           ${sortHdr('loadPct', 'Загрузка', 'right', 'min-width:80px')}
           ${sortHdr('ip', 'IP', 'center')}
+          <th style="padding:6px 8px;border-bottom:2px solid #d0d7de;min-width:150px" title="Переход к связанным объектам">Связано</th>
         </tr>
       </thead>
       <tbody>`];
@@ -4179,10 +4180,39 @@ function renderEquipmentTable() {
           ${loadPct > 0 ? `<div style="background:#e1e4e8;height:3px;border-radius:2px;margin-top:2px;overflow:hidden"><div style="width:${Math.min(100, loadPct)}%;height:100%;background:${loadColor}"></div></div>` : ''}
         </td>
         <td style="padding:5px 8px;text-align:center;font-size:11px">${n.ipRating || '—'}</td>
+        <td style="padding:5px 8px;font-size:10px">
+          ${(() => {
+            // Phase 1.20.30: подсчёт связанных линий и потребителей-потомков
+            let cableCount = 0, consumerCount = 0;
+            for (const c of S.conns.values()) {
+              if (c.from?.nodeId === n.id || c.to?.nodeId === n.id) cableCount++;
+            }
+            // BFS вниз для подсчёта потребителей
+            const visited = new Set([n.id]);
+            const queue = [n.id];
+            while (queue.length) {
+              const cur = queue.shift();
+              for (const c of S.conns.values()) {
+                if (c.from?.nodeId !== cur) continue;
+                const to = c.to?.nodeId;
+                if (!to || visited.has(to)) continue;
+                visited.add(to);
+                const toNode = S.nodes.get(to);
+                if (!toNode) continue;
+                if (toNode.type === 'consumer') consumerCount++;
+                else queue.push(to);
+              }
+            }
+            const buttons = [];
+            if (cableCount) buttons.push(`<button type="button" class="et-xnav" data-xnav="cables" data-id="${esc(n.id)}" title="Открыть кабели щита" style="padding:2px 6px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:10px">🔌 ${cableCount}</button>`);
+            if (consumerCount) buttons.push(`<button type="button" class="et-xnav" data-xnav="consumers" data-id="${esc(n.id)}" title="Открыть потребителей щита" style="padding:2px 6px;border:1px solid #7b1fa2;background:#fff;color:#7b1fa2;border-radius:3px;cursor:pointer;font-size:10px">💡 ${consumerCount}</button>`);
+            return buttons.length ? `<div style="display:flex;gap:4px">${buttons.join('')}</div>` : '—';
+          })()}
+        </td>
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="10" style="padding:20px;text-align:center;color:#999">Нет оборудования по текущим фильтрам</td></tr>');
+    html.push('<tr><td colspan="11" style="padding:20px;text-align:center;color:#999">Нет оборудования по текущим фильтрам</td></tr>');
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -4207,6 +4237,36 @@ function renderEquipmentTable() {
         if (typeof window.Raschet.rerender === 'function') window.Raschet.rerender();
       }
       closeModal('modal-equipment-table');
+    });
+  });
+  // Phase 1.20.30: cross-navigation в таблицы кабелей и потребителей
+  mount.querySelectorAll('.et-xnav').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const target = btn.dataset.xnav;
+      const node = S.nodes.get(id);
+      if (!node) return;
+      const tag = _effectiveTag(node) || node.tag || node.name || '';
+      closeModal('modal-equipment-table');
+      setTimeout(() => {
+        if (target === 'cables') {
+          // Открываем cable-table и фильтруем по from или to = tag
+          _cableTableFilters = {
+            search: '', class: '',
+            mark: '', method: '', conductor: '',
+            parallel: null,
+            lengthMin: null, lengthMax: null,
+            imaxMin: null, imaxMax: null,
+            label: '', fromTo: tag.toLowerCase(),
+            category: '', breaker: null, curve: '', status: '',
+          };
+          openCableTableModal();
+        } else if (target === 'consumers') {
+          _consumersTableFilters = { search: '', phase: '', category: '', parent: tag };
+          openConsumersTableModal();
+        }
+      }, 100);
     });
   });
 }
