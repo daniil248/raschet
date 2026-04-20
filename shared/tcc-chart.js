@@ -415,17 +415,26 @@ export function openTccModal(opts = {}) {
     showControls: true,
   });
 
-  // Карточки автоматов с ползунками Ir/Isd (для adjustable). Если у item нет
-  // settings — показываем только название/номинал.
+  // Карточки автоматов с ползунками Ir/Isd/tsd (для регулируемых MCCB/ACB/VCB).
+  // Для регулируемых автоматов (item.settings с Ir>0) — редактируем
+  // item.settings.{Ir,Isd,tsd,Ii}, потому что bandPoints() читает эти поля.
+  // Для фиксированных MCB B/C/D — Isd фиксирован стандартом (IEC 60898), ползунки
+  // не показываем.
   const renderCards = () => {
     const items = handle.getItems();
     cardsCol.innerHTML = items.map((it, idx) => {
       const col = it.color;
       const In = Number(it.In) || 0;
       const curve = it.curve || it.fuseType || '';
-      const Ir = Number(it.Ir) || In;
-      const Isd = Number(it.Isd) || (In * (curve === 'D' ? 15 : (curve === 'B' ? 4 : 7.5)));
-      const adjustable = it.kind === 'breaker' || it.kind === 'fuse';
+      const hasRelaySettings = !!(it.settings && Number(it.settings.Ir) > 0);
+      const Ir  = hasRelaySettings ? Number(it.settings.Ir)  : (Number(it.Ir)  || In);
+      const Isd = hasRelaySettings
+        ? Number(it.settings.Isd)
+        : (Number(it.Isd) || (In * (curve === 'D' ? 15 : (curve === 'B' ? 4 : 7.5))));
+      const tsd = hasRelaySettings ? Number(it.settings.tsd) || 0.2 : 0;
+      const Ii  = hasRelaySettings ? Number(it.settings.Ii)  || (Ir * 20) : 0;
+      // Ползунки доступны только для регулируемых автоматов (relay settings).
+      const adjustable = hasRelaySettings;
       return `
         <div data-tcc-card="${esc(it.id)}" style="border:1px solid #d0d7de;border-radius:6px;overflow:hidden;background:#fff">
           <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:${col};color:#fff;font-size:12px;font-weight:600">
@@ -436,17 +445,27 @@ export function openTccModal(opts = {}) {
           ${adjustable ? `
           <div style="padding:8px 10px;font-size:11px;display:flex;flex-direction:column;gap:6px">
             <label style="display:flex;align-items:center;gap:6px">
-              <span style="width:36px;color:#555">Ir (A)</span>
-              <input type="range" min="${In * 0.4}" max="${In}" step="1" value="${Ir}" data-tcc-param="Ir" data-tcc-target="${esc(it.id)}" style="flex:1">
-              <input type="number" value="${Ir}" data-tcc-param-num="Ir" data-tcc-target="${esc(it.id)}" style="width:56px;font-size:11px;padding:2px">
+              <span style="width:44px;color:#555">Ir, A</span>
+              <input type="range" min="${Math.max(1, In * 0.4)}" max="${In}" step="1" value="${Ir}" data-tcc-param="Ir" data-tcc-target="${esc(it.id)}" style="flex:1">
+              <input type="number" value="${Ir}" data-tcc-param-num="Ir" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
             </label>
             <label style="display:flex;align-items:center;gap:6px">
-              <span style="width:36px;color:#555">Isd (A)</span>
-              <input type="range" min="${In * 2}" max="${In * 20}" step="1" value="${Isd}" data-tcc-param="Isd" data-tcc-target="${esc(it.id)}" style="flex:1">
-              <input type="number" value="${Isd}" data-tcc-param-num="Isd" data-tcc-target="${esc(it.id)}" style="width:56px;font-size:11px;padding:2px">
+              <span style="width:44px;color:#555">Isd, A</span>
+              <input type="range" min="${Ir * 1.5}" max="${Ir * 20}" step="1" value="${Isd}" data-tcc-param="Isd" data-tcc-target="${esc(it.id)}" style="flex:1">
+              <input type="number" value="${Isd}" data-tcc-param-num="Isd" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
+            </label>
+            <label style="display:flex;align-items:center;gap:6px">
+              <span style="width:44px;color:#555">tsd, с</span>
+              <input type="range" min="0" max="1" step="0.01" value="${tsd}" data-tcc-param="tsd" data-tcc-target="${esc(it.id)}" style="flex:1">
+              <input type="number" value="${tsd}" step="0.01" min="0" max="1" data-tcc-param-num="tsd" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
+            </label>
+            <label style="display:flex;align-items:center;gap:6px">
+              <span style="width:44px;color:#555">Ii, A</span>
+              <input type="range" min="${Ir * 2}" max="${Ir * 40}" step="10" value="${Ii}" data-tcc-param="Ii" data-tcc-target="${esc(it.id)}" style="flex:1">
+              <input type="number" value="${Ii}" data-tcc-param-num="Ii" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
             </label>
           </div>
-          ` : ''}
+          ` : (it.kind === 'breaker' ? `<div style="padding:6px 10px;font-size:10.5px;color:#888">Кривая ${esc(curve || 'C')} (IEC 60898) — Isd и задержка фиксированы стандартом.</div>` : '')}
         </div>
       `;
     }).join('');
@@ -463,9 +482,17 @@ export function openTccModal(opts = {}) {
         const items = handle.getItems();
         const it = items.find(x => x.id === id);
         if (!it) return;
-        it[p] = Number(inp.value);
-        // При изменении Ir — корректируем In у отображаемой кривой.
-        if (p === 'Ir') it.In = Number(inp.value);
+        const v = Number(inp.value);
+        // Для регулируемых автоматов пишем в settings — bandPoints() читает
+        // оттуда, иначе изменения не влияют на кривую.
+        if (it.settings && Number(it.settings.Ir) > 0) {
+          it.settings = { ...it.settings, [p]: v };
+          // При изменении Ir — масштабируем Ii и отображаемый In
+          if (p === 'Ir') it.In = v;
+        } else {
+          it[p] = v;
+          if (p === 'Ir') it.In = v;
+        }
         handle.update({ items });
         // Синхронизация зеркальных input'ов
         cardsCol.querySelectorAll(`[data-tcc-target="${id}"][data-tcc-param="${p}"],[data-tcc-target="${id}"][data-tcc-param-num="${p}"]`)
