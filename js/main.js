@@ -267,6 +267,109 @@ function _preserveLocalDisplay(remoteScheme) {
   return remoteScheme;
 }
 
+// v0.57.77: diff-модалка для конфликтов живого редактирования.
+// Собирает разницу между локальной и удалённой схемами по id узлов/связей,
+// показывает счётчики и предлагает три варианта: принять удалённую,
+// оставить локальную, либо закрыть без решения (разрешится при следующем save).
+function _computeSchemeDiff(localScheme, remoteScheme) {
+  const result = {
+    nodesAdded: [], nodesRemoved: [], nodesChanged: [],
+    connsAdded: [], connsRemoved: [], connsChanged: [],
+  };
+  try {
+    const localNodes = new Map((localScheme?.nodes || []).map(n => [n.id, n]));
+    const remoteNodes = new Map((remoteScheme?.nodes || []).map(n => [n.id, n]));
+    const localConns = new Map((localScheme?.conns || []).map(c => [c.id, c]));
+    const remoteConns = new Map((remoteScheme?.conns || []).map(c => [c.id, c]));
+    for (const [id, rn] of remoteNodes) {
+      if (!localNodes.has(id)) result.nodesAdded.push(rn);
+      else {
+        try {
+          if (JSON.stringify(rn) !== JSON.stringify(localNodes.get(id))) {
+            result.nodesChanged.push(rn);
+          }
+        } catch {}
+      }
+    }
+    for (const [id, ln] of localNodes) {
+      if (!remoteNodes.has(id)) result.nodesRemoved.push(ln);
+    }
+    for (const [id, rc] of remoteConns) {
+      if (!localConns.has(id)) result.connsAdded.push(rc);
+      else {
+        try {
+          if (JSON.stringify(rc) !== JSON.stringify(localConns.get(id))) {
+            result.connsChanged.push(rc);
+          }
+        } catch {}
+      }
+    }
+    for (const [id, lc] of localConns) {
+      if (!remoteConns.has(id)) result.connsRemoved.push(lc);
+    }
+  } catch (e) { console.warn('[diff] compute failed', e); }
+  return result;
+}
+
+function _showRemoteConflictModal(doc, diff) {
+  // Динамически создаём модалку, чтобы не трогать index.html.
+  let modal = document.getElementById('modal-remote-conflict');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-remote-conflict';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-box modal-wide" style="max-width:560px">
+        <div class="modal-head">
+          <h2>🔄 Удалённые изменения проекта</h2>
+        </div>
+        <div class="modal-body" id="mrc-body"></div>
+        <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+          <button id="mrc-keep-local" type="button">Оставить локальные</button>
+          <button id="mrc-dismiss" type="button">Решить позже</button>
+          <button id="mrc-apply-remote" type="button" class="primary">Принять удалённые</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  const body = modal.querySelector('#mrc-body');
+  const authorName = doc._lastWriterName || doc._lastWriterEmail || 'другой участник';
+  const total =
+    diff.nodesAdded.length + diff.nodesRemoved.length + diff.nodesChanged.length +
+    diff.connsAdded.length + diff.connsRemoved.length + diff.connsChanged.length;
+  body.innerHTML = `
+    <p style="font-size:13px;margin-bottom:10px">
+      Другой участник сохранил изменения. У вас есть <b>несохранённые</b> локальные правки.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-bottom:12px">
+      <div style="padding:8px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px">
+        <div style="font-weight:600;margin-bottom:4px">🟢 Узлы</div>
+        <div>Добавлено: <b>${diff.nodesAdded.length}</b></div>
+        <div>Удалено: <b>${diff.nodesRemoved.length}</b></div>
+        <div>Изменено: <b>${diff.nodesChanged.length}</b></div>
+      </div>
+      <div style="padding:8px;background:#e3f2fd;border:1px solid #90caf9;border-radius:4px">
+        <div style="font-weight:600;margin-bottom:4px">🔗 Связи</div>
+        <div>Добавлено: <b>${diff.connsAdded.length}</b></div>
+        <div>Удалено: <b>${diff.connsRemoved.length}</b></div>
+        <div>Изменено: <b>${diff.connsChanged.length}</b></div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#666;line-height:1.55">
+      Всего различий: <b>${total}</b>. Автор последнего сохранения: ${authorName}.<br>
+      <b>Принять удалённые</b> — потеряете свои несохранённые правки.<br>
+      <b>Оставить локальные</b> — при следующем сохранении ваша версия перезапишет удалённую.<br>
+      <b>Решить позже</b> — модалка скроется, можно будет вернуться к решению.
+    </div>`;
+  modal.classList.remove('hidden');
+  return new Promise(resolve => {
+    const close = (decision) => { modal.classList.add('hidden'); resolve(decision); };
+    modal.querySelector('#mrc-apply-remote').onclick = () => close('remote');
+    modal.querySelector('#mrc-keep-local').onclick = () => close('local');
+    modal.querySelector('#mrc-dismiss').onclick = () => close('dismiss');
+  });
+}
+
 async function _onRemoteProjectChange(doc) {
   // Если нет локальных несохранённых изменений — автоматически применяем
   if (!state.dirty && !state.saving) {
@@ -277,24 +380,26 @@ async function _onRemoteProjectChange(doc) {
     } catch (e) { console.warn('[live-sync] apply failed', e); }
     return;
   }
-  // Есть несохранённые — спрашиваем пользователя (но только один раз)
+  // Есть несохранённые — показываем diff-модалку (но только один раз).
   if (state.remoteChangeToastShown) return;
   state.remoteChangeToastShown = true;
-  const bar = document.getElementById('flash');
-  const choice = confirm(
-    'Другой участник сохранил изменения в проекте.\n\n' +
-    'У вас есть несохранённые локальные изменения.\n\n' +
-    'OK — применить удалённую версию (ваши изменения будут потеряны)\n' +
-    'Cancel — оставить локальные изменения (будут перезаписаны при следующем сохранении)'
-  );
-  if (choice) {
-    try {
+  try {
+    const localScheme = window.Raschet?.serialize?.() || null;
+    const diff = _computeSchemeDiff(localScheme, doc.scheme);
+    const decision = await _showRemoteConflictModal(doc, diff);
+    if (decision === 'remote') {
       if (doc.scheme) window.Raschet.loadScheme(_preserveLocalDisplay(doc.scheme));
       state.currentProject = { ...state.currentProject, ...doc };
       state.dirty = false;
       updateSaveButton();
       flash('Применены удалённые изменения');
-    } catch (e) { console.warn('[live-sync] apply failed', e); }
+    } else if (decision === 'local') {
+      flash('Локальные изменения сохранены (перезапишут удалённые при save)', 'info');
+    }
+    // dismiss — ничего не делаем, state.remoteChangeToastShown сбросится ниже
+    // и при следующем snapshot-е модалка снова появится.
+  } catch (e) {
+    console.warn('[live-sync] conflict modal failed', e);
   }
   state.remoteChangeToastShown = false;
 }

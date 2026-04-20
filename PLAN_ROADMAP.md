@@ -403,7 +403,7 @@
 - [x] **C.4** Визуализация чужих локов: оранжевая пунктирная рамка на узлах + толстая линия на связях, бейдж с именем (`render.js:decorateRemoteLocks`).
 - [x] **C.5** Preserve-local-display: view/zoom/activeModeId/currentPageId не пропагируются между сессиями (`_preserveLocalDisplay`).
 - [ ] **C.6** Cursor awareness: живые позиции курсоров других пользователей (стрим через RTDB/throttled Firestore).
-- [ ] **C.7** Conflict-aware merge: вместо confirm-dialog — diff-модалка с показом изменённых узлов/связей.
+- [x] **C.7** Conflict-aware merge: `_computeSchemeDiff` + `_showRemoteConflictModal` (v0.57.77) — вместо браузерного confirm показывается модалка со счётчиками `nodesAdded/Removed/Changed` и `connsAdded/Removed/Changed`, кнопки «Принять удалённые / Оставить локальные / Решить позже». Автор последнего сохранения виден в заголовке.
 - [ ] **C.8** История версий: subcollection `projects/{id}/revisions/{revId}` с откатом и сравнением.
 - [ ] **C.9** Email-нотификации запросов доступа через Cloud Functions.
 
