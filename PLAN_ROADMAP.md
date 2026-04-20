@@ -692,6 +692,23 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.52 (v0.57.28)** — FIX(2): иконка и подпись на карточке канала
+  НА CANVAS не соответствовали выбору в инспекторе. v0.57.26 починил
+  только SVG в инспекторе (conn.js), но render.js читал устаревшее
+  поле `n.channelType` вместо IEC `n.installMethod` и имел только 9
+  case-веток из 10. Добавлены импорт `INSTALL_METHODS`, хелперы
+  `resolveChannelKey(n)`/`resolveChannelLabel(n)` (предпочитают
+  installMethod), и 3 новые иконки в drawChannelIcon: insulated_conduit
+  (A1 — труба в теплоизол. стене), insulated_cable (A2), air_spaced
+  (G — одножильные с интервалами). Файлы: js/engine/render.js
+  (lines 3, 660, 726, 1505+), js/engine/constants.js (APP_VERSION).
+  
+  Остались на очередь:
+  - Параметры теряются при обновлении программы — требует аудита
+    GLOBAL / project-schema миграции.
+  - Object-level locking для collab: Firestore subcollection
+    projects/{id}/locks/{nodeId} с acquire-on-select и визуальной
+    маркировкой заблокированных узлов.
 - **1.20.51 (v0.57.27)** — Presence + live-sync для совместной работы.
   Две проблемы по фидбэку: (1) не видно, кто сейчас в проекте; (2)
   чужие изменения подхватывались только после F5.

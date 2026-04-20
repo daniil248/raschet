@@ -1,6 +1,28 @@
 import { state } from './state.js';
 import { svg, layerZones, layerConns, layerNodes, statsEl, modesListEl, isOnCurrentPage, sanitizeView } from './state.js';
-import { NODE_H, SVG_NS, CHANNEL_TYPES, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
+import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
+
+// IEC installation method → legacy CHANNEL_TYPES key (для иконок/лейблов)
+const INSTALL_TO_CHANNEL_KEY = {
+  A1: 'insulated_conduit', A2: 'insulated_cable',
+  B1: 'conduit',           B2: 'tray_solid',
+  C:  'wall',
+  E:  'tray_perf',         F:  'tray_ladder',
+  G:  'air_spaced',
+  D1: 'ground',            D2: 'ground_direct',
+};
+function resolveChannelKey(n) {
+  if (n && n.installMethod && INSTALL_TO_CHANNEL_KEY[n.installMethod]) {
+    return INSTALL_TO_CHANNEL_KEY[n.installMethod];
+  }
+  return (n && n.channelType) || 'conduit';
+}
+function resolveChannelLabel(n) {
+  if (n && n.installMethod && INSTALL_METHODS[n.installMethod]) {
+    return INSTALL_METHODS[n.installMethod].label;
+  }
+  return (CHANNEL_TYPES[n && n.channelType] || CHANNEL_TYPES.conduit).label;
+}
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
 import { recalc } from './recalc.js';
@@ -657,7 +679,7 @@ export function renderNodes() {
       consumer:  ((n.consumerSubtype === 'outdoor_unit' ? 'Наруж. блок'
                     : (CONSUMER_CATALOG.find(c => c.id === n.consumerSubtype) || {}).label || 'Потребитель'))
                   + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
-      channel:   (CHANNEL_TYPES[n.channelType] || CHANNEL_TYPES.conduit).label,
+      channel:   resolveChannelLabel(n),
     }[n.type];
     g.appendChild(text(12, 49, subTxt, 'node-sub'));
 
@@ -723,7 +745,7 @@ export function renderNodes() {
     } else if (n.type === 'channel') {
       loadLine = `${n.ambientC || 30}°C · ${n.lengthM || 0} м`;
       // IEC 60364-5-52: иконка способа прокладки (справа) + расположения кабелей (левее)
-      drawChannelIcon(g, w, n.channelType || 'conduit');
+      drawChannelIcon(g, w, resolveChannelKey(n));
       drawBundlingIcon(g, w - 82, n.bundling || 'touching');
     }
     g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
@@ -1502,7 +1524,21 @@ export function drawChannelIcon(g, nodeW, channelType) {
     ig.appendChild(el('circle', { cx, cy, r, fill: 'none', stroke: '#888', 'stroke-width': 1.2 }));
   }
 
+  // Мини-иконка теплоизоляции (штриховка волнами)
+  function insulation(x, y, w, h) {
+    ig.appendChild(el('rect', { x, y, width: w, height: h, fill: '#fff3e0', stroke: '#d99', 'stroke-width': 0.8, 'stroke-dasharray': '2 2' }));
+  }
+
   switch (channelType) {
+    case 'insulated_conduit': // A1 — труба в теплоизол. стене
+      insulation(0, 0, 36, 28);
+      tube(18, 14, 9);
+      cable(18, 14, 5);
+      break;
+    case 'insulated_cable': // A2 — кабель в теплоизол. стене (без трубы)
+      insulation(0, 0, 36, 28);
+      cable(18, 14, 6);
+      break;
     case 'conduit': // B1 — кабель в трубе на стене
       wall(0, 0, 36, 8);
       tube(18, 18, 9);
@@ -1547,6 +1583,14 @@ export function drawChannelIcon(g, nodeW, channelType) {
       // Стрелки воздушного потока
       ig.appendChild(el('path', { d: 'M6,24 L10,20 L14,24', fill: 'none', stroke: '#aaa', 'stroke-width': 0.8 }));
       ig.appendChild(el('path', { d: 'M22,24 L26,20 L30,24', fill: 'none', stroke: '#aaa', 'stroke-width': 0.8 }));
+      break;
+    case 'air_spaced': // G — одножильные с интервалами
+      cable(8, 14, 4.5);
+      cable(18, 14, 4.5);
+      cable(28, 14, 4.5);
+      // Маркер зазора
+      ig.appendChild(el('line', { x1: 13, y1: 22, x2: 15, y2: 22, stroke: '#aaa', 'stroke-width': 0.6 }));
+      ig.appendChild(el('line', { x1: 23, y1: 22, x2: 25, y2: 22, stroke: '#aaa', 'stroke-width': 0.6 }));
       break;
     case 'ground': // D1 — в трубе в земле
       wall(0, 0, 36, 28);
