@@ -5,6 +5,7 @@ import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/inde
 import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
+         consumerTotalDemandKw, consumerCountEffective,
          upsChargeKw, sourceImpedance, isNodeDC } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
@@ -83,7 +84,7 @@ function _bfsDownstreamWithActiveTies(startId, activeTieKeys) {
     if (cur.type === 'consumer') {
       if (!visitedConsumers.has(curId)) {
         visitedConsumers.add(curId);
-        const kw = (Number(cur.demandKw) || 0) * Math.max(1, Number(cur.count) || 1);
+        const kw = consumerTotalDemandKw(cur);
         if (throughUps) upsConsumerKw += kw; else directKw += kw;
       }
       continue;
@@ -982,11 +983,9 @@ function recalc() {
     // Раньше здесь НЕ учитывался Ки — из-за этого сумма по источникам
     // расходилась с полем Pрасч в отчёте и с _powerP на самом потребителе.
     // Теперь всё считается по одной формуле.
-    const per = Number(n.demandKw) || 0;
-    const count = Math.max(1, Number(n.count) || 1);
     const kUse = Number(n.kUse) || 1;
     const factor = effectiveLoadFactor(n);
-    const total = per * count * kUse * factor;
+    const total = consumerTotalDemandKw(n) * kUse * factor;
     n._loadKw = total;
     walkUp(n.id, total);
   }
@@ -1365,9 +1364,7 @@ function recalc() {
     // Кабель должен выдержать максимально возможную нагрузку через ДАННУЮ связь.
     let maxKwDownstream;
     if (toN.type === 'consumer') {
-      const per = Number(toN.demandKw) || 0;
-      const cnt = Math.max(1, Number(toN.count) || 1);
-      maxKwDownstream = per * cnt;
+      maxKwDownstream = consumerTotalDemandKw(toN);
     } else if (toN.type === 'ups') {
       // Для линии К ИБП: макс. нагрузка = min(номинал, share_downstream) / КПД + charge
       const capKw = Number(toN.capacityKw) || 0;
@@ -2129,7 +2126,7 @@ function recalc() {
               if (!to) continue;
               if (to.type === 'consumer') {
                 if (visitedC.has(to.id)) continue; visitedC.add(to.id);
-                const kw = (Number(to.demandKw)||0) * Math.max(1, Number(to.count)||1);
+                const kw = consumerTotalDemandKw(to);
                 if (thruUps) uKw += kw; else dKw += kw;
               } else if (to.type === 'ups') {
                 if (visitedU.has(to.id)) continue; visitedU.add(to.id);
@@ -2340,7 +2337,7 @@ function recalc() {
               if (to.type === 'consumer') {
                 if (visitedC.has(to.id)) continue;
                 visitedC.add(to.id);
-                const kw = (Number(to.demandKw) || 0) * Math.max(1, Number(to.count) || 1);
+                const kw = consumerTotalDemandKw(to);
                 if (throughUps) upsConsKw += kw; else directKw += kw;
               } else if (to.type === 'ups') {
                 if (visitedU.has(to.id)) continue;
@@ -2397,10 +2394,8 @@ function recalc() {
       n._ratedA = consumerRatedCurrent(n);
       n._inrushA = consumerInrushCurrent(n);
       // Мгновенные P / Q потребителя
-      const per = Number(n.demandKw) || 0;
-      const cnt = Math.max(1, Number(n.count) || 1);
       const k = (Number(n.kUse) || 1) * effectiveLoadFactor(n);
-      const p = per * cnt * k;
+      const p = consumerTotalDemandKw(n) * k;
       const cos = Math.max(0.1, Math.min(1, n._cosPhi));
       const tan = Math.sqrt(1 - cos * cos) / cos;
       n._powerP = p;

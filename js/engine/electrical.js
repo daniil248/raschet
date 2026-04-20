@@ -247,20 +247,39 @@ export function isNodeDC(n) {
   return lv.dc === true || (typeof lv.hz === 'number' && lv.hz === 0);
 }
 
+// v0.57.81: суммарная установленная мощность группы/одиночного
+// потребителя. Учитывает новый режим groupMode='individual' — когда
+// у группы неоднородные приборы, мощности задаются поштучно в
+// n.items = [{name, demandKw}, …]. Для uniform (по умолчанию) —
+// старая формула demandKw × count.
+export function consumerTotalDemandKw(n) {
+  if (n && n.groupMode === 'individual' && Array.isArray(n.items)) {
+    let sum = 0;
+    for (const it of n.items) sum += Number(it?.demandKw) || 0;
+    return sum;
+  }
+  const per = Number(n?.demandKw) || 0;
+  const cnt = Math.max(1, Number(n?.count) || 1);
+  return per * cnt;
+}
+
+// Количество приборов в группе — для individual берётся длина items.
+export function consumerCountEffective(n) {
+  if (n && n.groupMode === 'individual' && Array.isArray(n.items)) {
+    return Math.max(1, n.items.length);
+  }
+  return Math.max(1, Number(n?.count) || 1);
+}
+
 // Номинальный (установочный) ток потребителя или группы
 export function consumerNominalCurrent(n) {
-  const per = Number(n.demandKw) || 0;
-  const cnt = Math.max(1, Number(n.count) || 1);
-  const P = per * cnt;
+  const P = consumerTotalDemandKw(n);
   return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n), isNodeDC(n));
 }
 
 // Расчётный ток (с учётом Ки и loadFactor сценария)
 export function consumerRatedCurrent(n) {
-  const per = Number(n.demandKw) || 0;
-  const cnt = Math.max(1, Number(n.count) || 1);
-  const k = (Number(n.kUse) || 1) * effectiveLoadFactor(n);
-  const P = per * cnt * k;
+  const P = consumerTotalDemandKw(n) * (Number(n.kUse) || 1) * effectiveLoadFactor(n);
   return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n), isNodeDC(n));
 }
 

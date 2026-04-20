@@ -29,7 +29,7 @@ import { recalc } from './recalc.js';
 import { effectiveTag } from './zones.js';
 import { fmt, fmtPower, escHtml, escAttr } from './utils.js';
 import { snapshot, notifyChange } from './history.js';
-import { computeCurrentA, nodeVoltage, isThreePhase, cableVoltageClass } from './electrical.js';
+import { computeCurrentA, nodeVoltage, isThreePhase, cableVoltageClass, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
 
 let _renderInspector;
 export function bindRenderDeps({ renderInspector }) { _renderInspector = renderInspector; }
@@ -688,8 +688,13 @@ export function renderNodes() {
       // Текст группы на выступающей части — выровнен по правому краю.
       // Если задано распределение по фазам (результат балансировки для
       // параллельной 1ф группы) — дописываем A/B/C-счётчики.
-      const totalKw = (n.count || 1) * (n.demandKw || 0);
-      let gLabel = `${n.count} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
+      const totalKw = consumerTotalDemandKw(n);
+      const cntEff = consumerCountEffective(n);
+      // v0.57.81: для «индивидуальной» группы подпись Σ (N kW, M шт)
+      // потому что мощности разные. Для uniform — старый формат N × P = T.
+      let gLabel = (n.groupMode === 'individual' && Array.isArray(n.items))
+        ? `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`
+        : `${n.count || 1} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
       if (n.phaseDistribution && !n.serialMode) {
         const pd = n.phaseDistribution;
         gLabel += `  · A${pd.A || 0}/B${pd.B || 0}/C${pd.C || 0}`;

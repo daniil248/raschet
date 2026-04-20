@@ -53,9 +53,20 @@ export function openConsumerParamsModal(n) {
   const _cpCount = Math.max(1, Number(n.count) || 1);
   const _serial = _cpCount > 1 && !!n.serialMode;
   const _loadSpec = (n.loadSpec === 'total') ? 'total' : 'per-unit';
+  // v0.57.81: режим группы. 'uniform' — один demandKw на все приборы
+  // (count × demandKw). 'individual' — массив items [{name, demandKw}]
+  // с разными мощностями. Показывается только когда count > 1.
+  const _groupMode = n.groupMode === 'individual' ? 'individual' : 'uniform';
   if (_cpCount > 1) {
-    h.push(`<div class="field check"><input type="checkbox" id="cp-serialMode"${n.serialMode ? ' checked' : ''}><label>Последовательное соединение (цепочка)</label></div>`);
-    h.push(`<div id="cp-loadSpec-wrap" class="field" style="${_serial ? '' : 'display:none'}">
+    h.push(`<div class="field">
+      <label>Тип группы</label>
+      <select id="cp-groupMode">
+        <option value="uniform"${_groupMode === 'uniform' ? ' selected' : ''}>Единообразная (все приборы одинаковые)</option>
+        <option value="individual"${_groupMode === 'individual' ? ' selected' : ''}>Индивидуальная (мощности разные)</option>
+      </select>
+    </div>`);
+    h.push(`<div class="field check" id="cp-serialMode-wrap" style="${_groupMode === 'individual' ? 'display:none' : ''}"><input type="checkbox" id="cp-serialMode"${n.serialMode ? ' checked' : ''}><label>Последовательное соединение (цепочка)</label></div>`);
+    h.push(`<div id="cp-loadSpec-wrap" class="field" style="${_serial && _groupMode !== 'individual' ? '' : 'display:none'}">
       <label>Указание нагрузки</label>
       <select id="cp-loadSpec">
         <option value="per-unit"${_loadSpec === 'per-unit' ? ' selected' : ''}>На каждый элемент</option>
@@ -69,9 +80,28 @@ export function openConsumerParamsModal(n) {
   const _demandLabel = (_cpCount > 1)
     ? ((_serial && _loadSpec === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
     : 'Установленная мощность, kW';
-  h.push(`<div id="cp-demandKw-wrap" class="field">
+  h.push(`<div id="cp-demandKw-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? 'display:none' : ''}">
     <label id="cp-demandKw-label">${_demandLabel}</label>
     <input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}">
+  </div>`);
+  // v0.57.81: таблица индивидуальной группы
+  const _items = Array.isArray(n.items) ? n.items : [];
+  const _itemsRows = _items.map((it, idx) => `
+    <tr data-idx="${idx}">
+      <td style="padding:2px"><input type="text" class="cp-it-name" value="${escAttr(it.name || '')}" placeholder="Прибор ${idx + 1}" style="width:100%;font-size:11px;padding:3px"></td>
+      <td style="padding:2px;width:90px"><input type="number" class="cp-it-kw" min="0" step="0.1" value="${Number(it.demandKw) || 0}" style="width:100%;font-size:11px;padding:3px"></td>
+      <td style="padding:2px;width:28px"><button type="button" class="cp-it-del" title="Удалить" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px">✕</button></td>
+    </tr>`).join('');
+  h.push(`<div id="cp-items-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? '' : 'display:none'}">
+    <label>Приборы в группе</label>
+    <table id="cp-items-tbl" style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px">
+      <thead><tr style="background:#f5f6f8"><th style="padding:3px;text-align:left">Имя</th><th style="padding:3px;text-align:right">kW</th><th></th></tr></thead>
+      <tbody id="cp-items-body">${_itemsRows}</tbody>
+    </table>
+    <div style="display:flex;gap:6px;align-items:center;font-size:11px">
+      <button type="button" id="cp-it-add" style="padding:3px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer">➕ Добавить</button>
+      <span id="cp-items-sum" class="muted"></span>
+    </div>
   </div>`);
 
   const levels = GLOBAL.voltageLevels || [];
@@ -262,6 +292,61 @@ export function openConsumerParamsModal(n) {
     });
   }
 
+  // v0.57.81: Live-управление режимом группы (uniform ↔ individual)
+  const groupModeSel = document.getElementById('cp-groupMode');
+  const itemsWrap = document.getElementById('cp-items-wrap');
+  const itemsBody = document.getElementById('cp-items-body');
+  const itemsSum = document.getElementById('cp-items-sum');
+  const demandWrap = document.getElementById('cp-demandKw-wrap');
+  const serialWrap = document.getElementById('cp-serialMode-wrap');
+  const itAddBtn = document.getElementById('cp-it-add');
+  const refreshItemsSum = () => {
+    if (!itemsBody || !itemsSum) return;
+    let s = 0, cnt = 0;
+    itemsBody.querySelectorAll('tr').forEach(tr => {
+      const kw = Number(tr.querySelector('.cp-it-kw')?.value) || 0;
+      s += kw; cnt++;
+    });
+    itemsSum.textContent = cnt ? `Σ ${s.toFixed(2).replace(/\.00$/, '')} kW · ${cnt} шт.` : '—';
+  };
+  const addItemRow = (name = '', kw = 0) => {
+    if (!itemsBody) return;
+    const idx = itemsBody.children.length;
+    const tr = document.createElement('tr');
+    tr.dataset.idx = String(idx);
+    tr.innerHTML = `
+      <td style="padding:2px"><input type="text" class="cp-it-name" value="${escAttr(name)}" placeholder="Прибор ${idx + 1}" style="width:100%;font-size:11px;padding:3px"></td>
+      <td style="padding:2px;width:90px"><input type="number" class="cp-it-kw" min="0" step="0.1" value="${Number(kw) || 0}" style="width:100%;font-size:11px;padding:3px"></td>
+      <td style="padding:2px;width:28px"><button type="button" class="cp-it-del" title="Удалить" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px">✕</button></td>`;
+    itemsBody.appendChild(tr);
+    tr.querySelector('.cp-it-kw').addEventListener('input', refreshItemsSum);
+    tr.querySelector('.cp-it-del').addEventListener('click', () => { tr.remove(); refreshItemsSum(); });
+  };
+  // Навесить обработчики на уже отрисованные строки
+  if (itemsBody) {
+    itemsBody.querySelectorAll('tr').forEach(tr => {
+      tr.querySelector('.cp-it-kw')?.addEventListener('input', refreshItemsSum);
+      tr.querySelector('.cp-it-del')?.addEventListener('click', () => { tr.remove(); refreshItemsSum(); });
+    });
+    refreshItemsSum();
+  }
+  if (itAddBtn) itAddBtn.addEventListener('click', () => addItemRow('', 0));
+  if (groupModeSel) {
+    groupModeSel.addEventListener('change', () => {
+      const mode = groupModeSel.value;
+      const cnt = Math.max(1, Number(document.getElementById('cp-count')?.value) || 1);
+      const indiv = mode === 'individual' && cnt > 1;
+      if (demandWrap) demandWrap.style.display = indiv ? 'none' : '';
+      if (itemsWrap) itemsWrap.style.display = indiv ? '' : 'none';
+      if (serialWrap) serialWrap.style.display = indiv ? 'none' : '';
+      if (indiv && itemsBody && itemsBody.children.length === 0) {
+        // Миграция: первый переход → заполняем items из count × demandKw
+        const per = Number(document.getElementById('cp-demandKw')?.value) || 0;
+        for (let i = 0; i < cnt; i++) addItemRow('', per);
+      }
+    });
+  }
+
   // Live-обновление полей serial/loadSpec
   const serialCb = document.getElementById('cp-serialMode');
   const loadSpecSel = document.getElementById('cp-loadSpec');
@@ -327,12 +412,41 @@ export function openConsumerParamsModal(n) {
     n.count = readNum('cp-count', n.count ?? 1);
     n.serialMode = !!document.getElementById('cp-serialMode')?.checked;
     n.loadSpec = (document.getElementById('cp-loadSpec')?.value === 'total') ? 'total' : 'per-unit';
-    const demandEl = document.getElementById('cp-demandKw');
-    if (demandEl && String(demandEl.value ?? '').trim() !== '') {
-      const _rawDemand = Number(demandEl.value) || 0;
-      n.demandKw = (n.serialMode && n.loadSpec === 'total' && n.count > 1)
-        ? (_rawDemand / n.count)
-        : _rawDemand;
+    // v0.57.81: режим группы и items для индивидуальной
+    const _gmEl = document.getElementById('cp-groupMode');
+    const _groupModeSel = _gmEl ? _gmEl.value : (n.groupMode || 'uniform');
+    const _individual = (_groupModeSel === 'individual' && n.count > 1);
+    if (_individual) {
+      const rows = document.querySelectorAll('#cp-items-body tr');
+      const items = [];
+      rows.forEach(tr => {
+        const nm = String(tr.querySelector('.cp-it-name')?.value || '').trim();
+        const kw = Number(tr.querySelector('.cp-it-kw')?.value) || 0;
+        items.push({ name: nm, demandKw: kw });
+      });
+      // Если пусто — откатываемся в uniform
+      if (items.length === 0) {
+        n.groupMode = 'uniform';
+        delete n.items;
+      } else {
+        n.groupMode = 'individual';
+        n.items = items;
+        n.count = items.length;
+        // Для совместимости: в demandKw пишем среднее, чтобы старые
+        // сериализованные ссылки (экспорт/CSV) оставались валидными.
+        const _sum = items.reduce((a, it) => a + (Number(it.demandKw) || 0), 0);
+        n.demandKw = _sum / items.length;
+      }
+    } else {
+      n.groupMode = 'uniform';
+      if (Array.isArray(n.items)) delete n.items;
+      const demandEl = document.getElementById('cp-demandKw');
+      if (demandEl && String(demandEl.value ?? '').trim() !== '') {
+        const _rawDemand = Number(demandEl.value) || 0;
+        n.demandKw = (n.serialMode && n.loadSpec === 'total' && n.count > 1)
+          ? (_rawDemand / n.count)
+          : _rawDemand;
+      }
     }
     const vEl = document.getElementById('cp-voltage');
     if (vEl && String(vEl.value ?? '').trim() !== '') {

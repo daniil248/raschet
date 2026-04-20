@@ -1,7 +1,7 @@
 import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
 import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
-import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel } from './electrical.js';
+import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth } from './geometry.js';
 import { effectiveOn, setEffectiveOn, effectiveLoadFactor, setEffectiveLoadFactor } from './modes.js';
 import { snapshot, notifyChange } from './history.js';
@@ -1133,7 +1133,7 @@ export function wireInspectorInputs(n) {
         if (c.from.nodeId !== n.id) continue;
         const to = state.nodes.get(c.to.nodeId);
         if (!to || to.type !== 'consumer' || (to.phase || '3ph') !== '3ph') continue;
-        const kw = (Number(to.demandKw) || 0) * Math.max(1, Number(to.count) || 1);
+        const kw = consumerTotalDemandKw(to);
         load.A += kw/3; load.B += kw/3; load.C += kw/3;
       }
       // Разворачиваем однофазных в поэлементный список (1 атом = 1 физический прибор)
@@ -1252,7 +1252,7 @@ export function wireInspectorInputs(n) {
           if (c.to.nodeId === other.id && c.from.nodeId === panelId) { samePanel = true; break; }
         }
         if (!samePanel) continue;
-        const kw = (Number(other.demandKw) || 0) * Math.max(1, Number(other.count) || 1);
+        const kw = consumerTotalDemandKw(other);
         const ph = other.phase || '3ph';
         if (ph === '3ph') { load.A += kw/3; load.B += kw/3; load.C += kw/3; }
         else if (ph === 'A') load.A += kw;
