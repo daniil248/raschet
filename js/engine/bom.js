@@ -232,11 +232,14 @@ export function buildBOM() {
           pushAgg('Аппараты РУ СН', brkFake, 1, cellNote);
           // 3. Для fuse-switch — ПК-предохранители (3 шт. на 3ф)
           if (brk === 'fuse-switch') {
-            const fuseIn = cell.fuseInA || cell.settings?.fuseIn || Math.ceil(In / 10) * 10;
+            // Стандартный ряд HV fuses (DIN 43625 / IEC 60282-1)
+            const HV_FUSE = [2, 4, 6, 10, 16, 20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200];
+            const rawFuse = Number(cell.fuseInA) || Number(cell.settings?.fuseIn) || In;
+            const fuseIn = HV_FUSE.find(v => v >= rawFuse) || 200;
             const fuseFake = {
               id: `mvfuse:${fuseIn}`,
               supplier: '',
-              model: `Предохранитель ПК (HV fuse) ${fuseIn}А, ${n.mvVoltageKV || '—'} кВ`,
+              model: `Предохранитель ПК (HV fuse) ${fuseIn}А, ${n.mvVoltageKV || '—'} кВ (IEC 60282-1)`,
             };
             pushAgg('Аппараты РУ СН', fuseFake, 3, cellNote);
           }
@@ -251,11 +254,15 @@ export function buildBOM() {
           }
         }
         // 5. Для transformer-protect — трансформатор тока (3 шт. на 3ф)
+        // Первичный ток округляется вверх до стандартного ряда IEC 60044-1.
         if (cell.type === 'transformer-protect' || cell.type === 'measurement') {
+          const CT_PRIMARY = [5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200,
+            300, 400, 500, 600, 800, 1000, 1200, 1500, 2000, 2500, 3000, 4000];
+          const ctPrim = CT_PRIMARY.find(v => v >= In) || Math.ceil(In / 500) * 500;
           const ctFake = {
-            id: `mvct:${In}`,
+            id: `mvct:${ctPrim}`,
             supplier: '',
-            model: `Трансформатор тока ${In}/5А, ${n.mvVoltageKV || '—'} кВ`,
+            model: `Трансформатор тока ${ctPrim}/5А, ${n.mvVoltageKV || '—'} кВ (IEC 60044-1)`,
           };
           pushAgg('Аппараты РУ СН', ctFake, 3, cellNote);
         }
