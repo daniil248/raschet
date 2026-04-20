@@ -77,15 +77,6 @@
         <div class="brand">Raschet</div>
         <div class="subtitle">Конструктор схем</div>
 
-        <!-- v0.58.11: палитра элементов проекта, не размещённых на
-             текущей странице. Клик = поместить в центр холста,
-             drag = поместить в точку броска. -->
-        <div id="pal-unplaced-wrap" class="pal-unplaced" hidden>
-          <h3>🔄 Неразмещённые <span class="muted pal-unplaced-count" id="pal-unplaced-count">(0)</span></h3>
-          <div class="muted" style="font-size:11px;padding:0 4px 6px">Элементы, которых нет на этой странице. Перетащите на холст.</div>
-          <div id="pal-unplaced-list"></div>
-        </div>
-
         <h3>Элементы</h3>
         <div class="pal-search-wrap">
           <input type="search" id="palette-search" placeholder="Поиск в библиотеке…" autocomplete="off">
@@ -322,9 +313,56 @@
       </main>
 
       <aside id="inspector">
-        <h3>Свойства</h3>
-        <div id="inspector-body">
-          <div class="muted">Выберите элемент или связь, либо перетащите новый элемент из палитры.</div>
+        <!-- v0.58.13: вкладки — Свойства / Неразмещённые / Реестр -->
+        <div class="insp-tabs" role="tablist">
+          <button class="insp-tab active" data-insp-tab="props" role="tab" aria-selected="true">Свойства</button>
+          <button class="insp-tab" data-insp-tab="unplaced" role="tab" aria-selected="false">
+            Неразмещённые <span class="insp-tab-count" id="pal-unplaced-count">0</span>
+          </button>
+          <button class="insp-tab" data-insp-tab="registry" role="tab" aria-selected="false">
+            Реестр <span class="insp-tab-count" id="pal-registry-count">0</span>
+          </button>
+        </div>
+        <div class="insp-panel" data-insp-panel="props">
+          <div id="inspector-body">
+            <div class="muted">Выберите элемент или связь, либо перетащите новый элемент из палитры.</div>
+          </div>
+        </div>
+        <div class="insp-panel" data-insp-panel="unplaced" hidden>
+          <div id="pal-unplaced-wrap" class="pal-unplaced">
+            <div class="muted" style="font-size:11px;padding:4px 4px 6px">
+              Элементы проекта, которых нет на текущей странице
+              (фильтруются по системе страницы). Клик — разместить в центре, drag — в точку броска.
+            </div>
+            <div id="pal-unplaced-list"></div>
+            <div class="muted" id="pal-unplaced-empty" style="font-size:11px;padding:6px;text-align:center" hidden>
+              Нет неразмещённых элементов, совместимых с этой страницей.
+            </div>
+          </div>
+        </div>
+        <div class="insp-panel" data-insp-panel="registry" hidden>
+          <div id="pal-registry-wrap" class="pal-registry">
+            <div class="muted" style="font-size:11px;padding:4px 4px 6px">
+              Все элементы проекта, сгруппированные по типу. Можно создавать элементы
+              без размещения на страницах и добавлять на схему позже.
+            </div>
+            <div class="pal-registry-actions" style="padding:4px 4px 8px;display:flex;flex-wrap:wrap;gap:4px">
+              <select id="pal-registry-new-type" style="flex:1;min-width:120px">
+                <option value="source">Источник</option>
+                <option value="generator">Генератор</option>
+                <option value="panel">НКУ (LV)</option>
+                <option value="panel-mv">РУ СН (MV)</option>
+                <option value="ups">ИБП</option>
+                <option value="consumer">Потребитель</option>
+                <option value="channel">Канал</option>
+              </select>
+              <button id="pal-registry-add" type="button" title="Создать элемент без размещения">+ Создать</button>
+            </div>
+            <div id="pal-registry-list"></div>
+            <div class="muted" id="pal-registry-empty" style="font-size:11px;padding:6px;text-align:center" hidden>
+              В проекте нет элементов.
+            </div>
+          </div>
         </div>
       </aside>
     </div>

@@ -355,6 +355,94 @@ export function initInteraction() {
       render();
     });
   }
+  // v0.58.13: вкладки инспектора (Свойства / Неразмещённые / Реестр)
+  const inspTabs = document.querySelectorAll('.insp-tab');
+  if (inspTabs && inspTabs.length) {
+    inspTabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.inspTab;
+        document.querySelectorAll('.insp-tab').forEach(b => {
+          const on = b.dataset.inspTab === key;
+          b.classList.toggle('active', on);
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        document.querySelectorAll('.insp-panel').forEach(p => {
+          p.hidden = p.dataset.inspPanel !== key;
+        });
+      });
+    });
+  }
+
+  // v0.58.13: реестр элементов — клик/+/×/создать-без-размещения.
+  const regList = document.getElementById('pal-registry-list');
+  if (regList) {
+    regList.addEventListener('click', e => {
+      if (state.readOnly) return;
+      const placeBtn = e.target.closest('.pal-reg-place');
+      if (placeBtn) {
+        e.stopPropagation();
+        const id = placeBtn.dataset.placeId;
+        const n = state.nodes.get(id);
+        if (!n) return;
+        snapshot('registry-place:' + id);
+        const svgEl = document.getElementById('canvas') || svg;
+        const W = svgEl.clientWidth, H = svgEl.clientHeight;
+        const zoom = state.view.zoom || 1;
+        const cx = (state.view.x || 0) + (W / zoom) / 2;
+        const cy = (state.view.y || 0) + (H / zoom) / 2;
+        if (!Array.isArray(n.pageIds)) n.pageIds = [];
+        if (!n.pageIds.includes(state.currentPageId)) n.pageIds.push(state.currentPageId);
+        n.x = Math.round(cx - 100); n.y = Math.round(cy - 50);
+        if (!n.positionsByPage) n.positionsByPage = {};
+        n.positionsByPage[state.currentPageId] = { x: n.x, y: n.y };
+        notifyChange(); render();
+        flash('Добавлено на страницу');
+        return;
+      }
+      const delBtn = e.target.closest('.pal-reg-del');
+      if (delBtn) {
+        e.stopPropagation();
+        const id = delBtn.dataset.delId;
+        deleteNode(id);
+        notifyChange(); render();
+        return;
+      }
+      const item = e.target.closest('.pal-reg-item');
+      if (item) {
+        const id = item.dataset.regId;
+        const n = state.nodes.get(id);
+        if (n) {
+          // Переключаемся на вкладку Свойства и открываем инспектор
+          const propsTab = document.querySelector('.insp-tab[data-insp-tab="props"]');
+          if (propsTab) propsTab.click();
+          selectNode(id);
+        }
+      }
+    });
+  }
+  const regAddBtn = document.getElementById('pal-registry-add');
+  if (regAddBtn) {
+    regAddBtn.addEventListener('click', () => {
+      if (state.readOnly) return;
+      const sel = document.getElementById('pal-registry-new-type');
+      let type = sel ? sel.value : 'consumer';
+      let isMv = false;
+      if (type === 'panel-mv') { type = 'panel'; isMv = true; }
+      if (!DEFAULTS[type]) { flash('Неизвестный тип', 'error'); return; }
+      snapshot('registry-new:' + type);
+      // Создаём «виртуально» — далеко от canvas, pageIds=[] (без размещения)
+      const newId = createNode(type, 0, 0);
+      if (!newId) return;
+      const node = state.nodes.get(newId);
+      if (node) {
+        node.pageIds = []; // без размещения
+        if (isMv) node.isMv = true;
+      }
+      notifyChange(); render();
+      flash('Элемент создан в реестре');
+    });
+  }
+
   svg.addEventListener('dragover', e => { if (state.readOnly) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
   svg.addEventListener('drop', e => {
     if (state.readOnly) return;

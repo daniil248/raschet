@@ -306,36 +306,120 @@ export function render() {
 // на текущей странице. Показываются в aside #pal-unplaced-wrap.
 // Drag/drop слушает на холсте (interaction.js) — по сбросу добавляет
 // pageId текущей страницы в n.pageIds и ставит n.x/y в точку сброса.
+// Системы, к которым относится нода. Если n.systems не задано — 'electrical'
+// по умолчанию для большинства типов. Zone и channel считаются универсальными.
+export function getNodeSystems(n) {
+  if (!n) return [];
+  if (Array.isArray(n.systems) && n.systems.length) return n.systems;
+  if (n.type === 'zone' || n.type === 'channel') return ['electrical', 'low-voltage', 'data'];
+  return ['electrical'];
+}
+// Системы, требуемые страницей данного вида. null = не фильтруем.
+export function pageKindRequiredSystem(kind) {
+  if (kind === 'schematic')    return 'electrical';
+  if (kind === 'low-voltage')  return 'low-voltage';
+  if (kind === 'data')         return 'data';
+  return null; // layout / mechanical / 3d — показывать всё
+}
+function _nodeCompatibleWithPageKind(n, kind) {
+  const req = pageKindRequiredSystem(kind);
+  if (!req) return true;
+  return getNodeSystems(n).includes(req);
+}
+
 export function renderUnplacedPalette() {
   const wrap = document.getElementById('pal-unplaced-wrap');
   const list = document.getElementById('pal-unplaced-list');
   const countEl = document.getElementById('pal-unplaced-count');
-  if (!wrap || !list) return;
+  const emptyEl = document.getElementById('pal-unplaced-empty');
+  renderProjectRegistry();
+  if (!list) return;
   const pageId = state.currentPageId;
-  if (!pageId) { wrap.hidden = true; return; }
+  const kind = getPageKind(getCurrentPage());
   const unplaced = [];
-  for (const n of state.nodes.values()) {
-    if (n.type === 'zone') continue; // зоны не участвуют в палитре
-    const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
-    if (pids.length === 0) continue; // legacy-безадресный — пропускаем
-    if (!pids.includes(pageId)) unplaced.push(n);
+  if (pageId) {
+    for (const n of state.nodes.values()) {
+      if (n.type === 'zone') continue; // зоны не участвуют
+      const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+      if (pids.includes(pageId)) continue; // уже на этой странице
+      if (!_nodeCompatibleWithPageKind(n, kind)) continue; // нет подходящего порта/системы
+      unplaced.push(n);
+    }
   }
-  if (!unplaced.length) { wrap.hidden = true; list.innerHTML = ''; return; }
-  wrap.hidden = false;
-  if (countEl) countEl.textContent = `(${unplaced.length})`;
+  if (countEl) countEl.textContent = String(unplaced.length);
+  if (emptyEl) emptyEl.hidden = unplaced.length > 0;
+  if (!unplaced.length) { list.innerHTML = ''; return; }
   unplaced.sort((a, b) => String(a.tag || a.name || '').localeCompare(String(b.tag || b.name || '')));
   const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
   const rows = unplaced.map(n => {
     const tag = effectiveTag(n) || n.tag || '';
     const name = n.name || n.type || '';
     const typeLabel = _unplacedTypeIcon(n);
+    const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+    const badge = pids.length === 0 ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён нигде">∅</span>' : '';
     return `<div class="pal-unplaced-item" draggable="true" data-unplaced-id="${esc(n.id)}" title="Перетащить на холст или клик — поставить по центру">
       <span class="pal-unplaced-icon">${typeLabel}</span>
       <span class="pal-unplaced-tag">${esc(tag)}</span>
       <span class="pal-unplaced-name">${esc(name)}</span>
+      ${badge}
     </div>`;
   }).join('');
   list.innerHTML = rows;
+}
+
+// v0.58.13: «Реестр» — ВСЕ элементы проекта, сгруппированные по типу.
+// Показывает где элемент размещён (кол-во страниц) или «нигде».
+const REG_TYPE_ORDER = ['source','generator','panel','ups','consumer','channel','zone'];
+const REG_TYPE_LABEL = {
+  source: 'Источники', generator: 'Генераторы', panel: 'НКУ / РУ',
+  ups: 'ИБП', consumer: 'Потребители', channel: 'Кабельные каналы', zone: 'Зоны'
+};
+export function renderProjectRegistry() {
+  const list = document.getElementById('pal-registry-list');
+  const countEl = document.getElementById('pal-registry-count');
+  const emptyEl = document.getElementById('pal-registry-empty');
+  if (!list) return;
+  const all = Array.from(state.nodes.values());
+  if (countEl) countEl.textContent = String(all.length);
+  if (emptyEl) emptyEl.hidden = all.length > 0;
+  if (!all.length) { list.innerHTML = ''; return; }
+  const byType = new Map();
+  for (const n of all) {
+    const t = n.type || 'other';
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t).push(n);
+  }
+  const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
+  const chunks = [];
+  const types = REG_TYPE_ORDER.filter(t => byType.has(t)).concat(
+    [...byType.keys()].filter(t => !REG_TYPE_ORDER.includes(t))
+  );
+  for (const t of types) {
+    const arr = byType.get(t) || [];
+    arr.sort((a, b) => String(a.tag || a.name || '').localeCompare(String(b.tag || b.name || '')));
+    const label = REG_TYPE_LABEL[t] || t;
+    const items = arr.map(n => {
+      const tag = effectiveTag(n) || n.tag || '';
+      const name = n.name || n.type || '';
+      const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+      const onPage = state.currentPageId && pids.includes(state.currentPageId);
+      const placement = pids.length === 0
+        ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён ни на одной странице">нигде</span>'
+        : `<span class="pal-reg-badge pal-reg-badge-pages" title="Размещён на ${pids.length} стр.">${pids.length}</span>`;
+      const placeBtn = onPage
+        ? ''
+        : `<button type="button" class="pal-reg-place" data-place-id="${esc(n.id)}" title="Добавить на текущую страницу">＋</button>`;
+      const delBtn = `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта">×</button>`;
+      return `<div class="pal-reg-item" data-reg-id="${esc(n.id)}" title="Клик — открыть свойства">
+        <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
+        <span class="pal-unplaced-tag">${esc(tag)}</span>
+        <span class="pal-unplaced-name">${esc(name)}</span>
+        ${placement}${placeBtn}${delBtn}
+      </div>`;
+    }).join('');
+    chunks.push(`<div class="pal-reg-group"><h4 class="pal-reg-group-head">${esc(label)} <span class="muted">(${arr.length})</span></h4>${items}</div>`);
+  }
+  list.innerHTML = chunks.join('');
 }
 function _unplacedTypeIcon(n) {
   switch (n.type) {
