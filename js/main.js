@@ -4162,6 +4162,84 @@ function _computeSourceCapacity(S) {
   };
 }
 
+// Phase 2.?: топологически-корректный availCap.
+// Для каждого consumer находим МНОЖЕСТВО источников, которые его физически
+// питают (обход conns вверх). Для каждого считаем N-1 локально: если у
+// consumer ≥2 reachable primary — применяем sum − max; иначе — sum.
+// Добавляем backup как компенсацию (если отказ одиночного primary).
+// availCap = Σ min(demand_c, afterN1_c). Эта метрика честно отражает
+// топологию «каждая ДГУ питает только свою нагрузку» — в таких случаях
+// флаг availCap резко падает по сравнению с плоской суммой.
+//
+// Возвращает { avail, perConsumer: [{id, demand, reachPrimary, reachBackup,
+// afterN1}], unreachableConsumers }.
+function _computeTopologyAvailCap(S) {
+  if (!S) return { avail: 0, perConsumer: [], unreachableConsumers: 0 };
+  // Индекс conns по to.nodeId для быстрого обхода вверх
+  const inByNode = new Map();
+  for (const c of S.conns.values()) {
+    const to = c.to?.nodeId;
+    if (!to) continue;
+    if (!inByNode.has(to)) inByNode.set(to, []);
+    inByNode.get(to).push(c);
+  }
+  const perConsumer = [];
+  let avail = 0, unreachable = 0;
+  for (const n of S.nodes.values()) {
+    if (n.type !== 'consumer') continue;
+    const demand = consumerTotalDemandKw(n) || 0;
+    if (demand <= 0) continue;
+    // BFS вверх
+    const seen = new Set([n.id]);
+    const stack = [n.id];
+    const primaries = []; // { id, cap }
+    const backups = [];
+    const standbys = [];
+    while (stack.length) {
+      const id = stack.pop();
+      const node = S.nodes.get(id);
+      if (!node) continue;
+      if (id !== n.id && (node.type === 'source' || node.type === 'generator')) {
+        const cap = Number(node.capacityKw) || 0;
+        if (node.isStandby) standbys.push({ id, cap });
+        else if (node.isBackup) backups.push({ id, cap });
+        else primaries.push({ id, cap });
+        // дальше не идём — источник обычно корень
+        continue;
+      }
+      const incoming = inByNode.get(id) || [];
+      for (const c of incoming) {
+        const from = c.from?.nodeId;
+        if (!from || seen.has(from)) continue;
+        seen.add(from);
+        stack.push(from);
+      }
+    }
+    const pCaps = primaries.map(p => p.cap).sort((a, b) => b - a);
+    const sumP = pCaps.reduce((a, b) => a + b, 0);
+    const maxP = pCaps[0] || 0;
+    const bestBackup = backups.length ? Math.max(...backups.map(b => b.cap)) : 0;
+    const bestStandby = standbys.length ? Math.max(...standbys.map(s => s.cap)) : 0;
+    // N-1 для этого потребителя:
+    //  ≥2 primary → sum − max (одного теряем);
+    //  1 primary → теряем его, компенсируем лучшим backup/standby;
+    //  0 primary — работаем от backup/standby (если есть).
+    let afterN1;
+    if (pCaps.length >= 2) afterN1 = sumP - maxP;
+    else if (pCaps.length === 1) afterN1 = Math.max(bestBackup, bestStandby);
+    else afterN1 = Math.max(bestBackup, bestStandby);
+    if (primaries.length + backups.length + standbys.length === 0) unreachable++;
+    const served = Math.min(demand, afterN1);
+    avail += served;
+    perConsumer.push({
+      id: n.id, tag: n.tag || '', name: n.name || '',
+      demand, reachPrimary: sumP, reachBackup: bestBackup + bestStandby,
+      afterN1, served,
+    });
+  }
+  return { avail, perConsumer, unreachableConsumers: unreachable };
+}
+
 // Backward-compat wrapper для старого API _computeN1.
 function _computeN1(S) {
   const r = _computeSourceCapacity(S);
@@ -4242,14 +4320,29 @@ function _updateProjectStatusBar() {
     const extras = [];
     if (backupCount > 0) extras.push(`backup ${backupCount}`);
     if (standbyCount > 0) extras.push(`резерв ${standbyCount}`);
+    // Phase 2: топологически-корректный availCap (обход по conn'ам, per-consumer N-1).
+    // Если расходится с «плоским» availCap > чем на 5% — показываем обе
+    // цифры в tooltip: плоская модель часто переоценивает мощность в
+    // схемах где ДГУ питает только «своего» потребителя (а не всех).
+    const topo = _computeTopologyAvailCap(S);
+    const topoAvail = topo.avail;
+    const topoDiverges = Math.abs(topoAvail - availCap) > Math.max(availCap * 0.05, 1);
     const capLabel = tiered
       ? `${availCap.toFixed(0)} кВт${extras.length ? ' (' + extras.join(', ') + ')' : ''}`
       : `${totalCap.toFixed(0)} кВт`;
+    const baseTitle = tiered
+      ? 'Нагрузка / доступная мощность (N-1 по группам, без резерв./подмен.) · Ctrl+Shift+D'
+      : 'Общая нагрузка / номинал источников · Ctrl+Shift+D';
+    const titleExtra = topoDiverges
+      ? `\n\n⚠ По топологии (per-consumer N-1): ${topoAvail.toFixed(0)} кВт. Плоская модель считает все источники общими — в вашей схеме часть источников физически недоступна всем потребителям (напр. ДГУ на «своё» плечо). Задайте redundancyGroup у параллельных трансформаторов и перепроверьте.`
+      : '';
+    // Добавляем метку «топо» прямо в бейдже если расходятся.
+    const extraTopo = topoDiverges
+      ? ` <span style="color:#e65100;font-weight:600" title="По топологии: ${topoAvail.toFixed(0)} кВт">topo ${topoAvail.toFixed(0)}</span>`
+      : '';
     html.push(chip(loadColor, 'rgba(255,255,255,0.95)',
-      `⚡ ${totalLoad.toFixed(1)} / ${capLabel} <span style="color:${loadColor};font-weight:600">${loadPct.toFixed(0)}%</span>`,
-      tiered
-        ? 'Нагрузка / доступная мощность (N-1 по группам, без резерв./подмен.) · Ctrl+Shift+D'
-        : 'Общая нагрузка / номинал источников · Ctrl+Shift+D', 'dashboard'));
+      `⚡ ${totalLoad.toFixed(1)} / ${capLabel} <span style="color:${loadColor};font-weight:600">${loadPct.toFixed(0)}%</span>${extraTopo}`,
+      baseTitle + titleExtra, 'dashboard'));
   }
   if (cables || panels || mvPanels || consumers) {
     const parts = [];
