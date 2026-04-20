@@ -1911,7 +1911,7 @@ function _openColumnMenu(anchorBtn, table, allCols, visibility, onToggle) {
   });
 }
 
-// ================= Таблица кабелей (Фаза 1.20) =================
+// ================= Перечень кабелей (Фаза 1.20) =================
 // Быстрое редактирование всех кабельных линий: марка, длина, способ прокладки.
 // Изменения применяются сразу в state и триггерят recalc+render.
 // Phase 1.20.15: обозначение линии использует полный effectiveTag
@@ -3436,9 +3436,9 @@ function renderDashboard() {
     <h3 style="margin:18px 0 8px;font-size:13px">Быстрые действия</h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button type="button" class="dash-action" data-action="issues" style="padding:8px 14px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:4px;cursor:pointer;font-size:12px">⚠ Проверки проекта</button>
-      <button type="button" class="dash-action" data-action="cables" style="padding:8px 14px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:4px;cursor:pointer;font-size:12px">🔌 Таблица кабелей</button>
-      <button type="button" class="dash-action" data-action="consumers" style="padding:8px 14px;border:1px solid #7b1fa2;background:#fff;color:#7b1fa2;border-radius:4px;cursor:pointer;font-size:12px">💡 Таблица потребителей</button>
-      <button type="button" class="dash-action" data-action="equipment" style="padding:8px 14px;border:1px solid #5d4037;background:#fff;color:#5d4037;border-radius:4px;cursor:pointer;font-size:12px">🗄 Таблица оборудования</button>
+      <button type="button" class="dash-action" data-action="cables" style="padding:8px 14px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:4px;cursor:pointer;font-size:12px">🔌 Перечень кабелей</button>
+      <button type="button" class="dash-action" data-action="consumers" style="padding:8px 14px;border:1px solid #7b1fa2;background:#fff;color:#7b1fa2;border-radius:4px;cursor:pointer;font-size:12px">💡 Перечень потребителей</button>
+      <button type="button" class="dash-action" data-action="equipment" style="padding:8px 14px;border:1px solid #5d4037;background:#fff;color:#5d4037;border-radius:4px;cursor:pointer;font-size:12px">🗄 Перечень оборудования</button>
       <button type="button" class="dash-action" data-action="search" style="padding:8px 14px;border:1px solid #2e7d32;background:#fff;color:#2e7d32;border-radius:4px;cursor:pointer;font-size:12px">🔍 Найти (Ctrl+F)</button>
     </div>
   `);
@@ -4546,9 +4546,9 @@ function _spNodeIcon(n) {
 // Ctrl+F — поиск (палетка)
 // Ctrl+Shift+D — 📊 Сводка проекта / Dashboard
 // Ctrl+Shift+I — ⚠ Проверки проекта / Issues
-// Ctrl+Shift+L — 🔌 Таблица кабелей (Lines)
-// Ctrl+Shift+U — 💡 Таблица потребителей (Users/Consumers)
-// Ctrl+Shift+E — 🗄 Таблица оборудования (Equipment)
+// Ctrl+Shift+L — 🔌 Перечень кабелей (Lines)
+// Ctrl+Shift+U — 💡 Перечень потребителей (Users/Consumers)
+// Ctrl+Shift+E — 🗄 Перечень оборудования (Equipment)
 document.addEventListener('keydown', (e) => {
   const tgt = e.target;
   const inField = tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable);
@@ -4571,8 +4571,12 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ================= Таблица потребителей (Phase 1.20.14) =================
-let _consumersTableFilters = { search: '', phase: '', category: '', parent: '' };
+// ================= Перечень потребителей (Phase 1.20.14) =================
+// v0.57.67: ancestorIds — Set<string> ID щита-предка (BFS-down из него).
+// Используется при переходе «💡 N» из Перечня оборудования, чтобы
+// показать не только напрямую подключённых потребителей, но и всех
+// транзитивных (через секции / вложенные ЩР).
+let _consumersTableFilters = { search: '', phase: '', category: '', parent: '', ancestorIds: null, ancestorLabel: '' };
 let _consumersTableSelected = new Set();
 let _consumersTableSort = { col: 'tag', dir: 'asc' };
 
@@ -4594,7 +4598,7 @@ function openConsumersTableModal() {
   // Phase 1.20.36
   const resetBtn = document.getElementById('consumers-table-reset-filters');
   if (resetBtn) resetBtn.onclick = () => {
-    _consumersTableFilters = { search: '', phase: '', category: '', parent: '' };
+    _consumersTableFilters = { search: '', phase: '', category: '', parent: '', ancestorIds: null, ancestorLabel: '' };
     _consumersTableSort = { col: 'tag', dir: 'asc' };
     const s = document.getElementById('consumers-table-search'); if (s) s.value = '';
     const ph = document.getElementById('consumers-table-filter-phase'); if (ph) ph.value = '';
@@ -4607,6 +4611,22 @@ function renderConsumersTable() {
   if (!mount) return;
   const S = window.Raschet?._state;
   if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
+
+  // v0.57.67: бейдж активного ancestor-фильтра (клик «💡 N» по щиту)
+  const ancBadgeMount = document.getElementById('consumers-table-ancestor-badge');
+  if (ancBadgeMount) {
+    if (_consumersTableFilters.ancestorIds && _consumersTableFilters.ancestorLabel) {
+      ancBadgeMount.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;background:#f3e5f5;color:#6a1b9a;border:1px solid #ce93d8;border-radius:12px;font-size:11px">📦 Поддерево щита: <b>${String(_consumersTableFilters.ancestorLabel).replace(/[<>&]/g, '')}</b> <button type="button" id="consumers-anc-clear" style="background:none;border:none;cursor:pointer;color:#6a1b9a;font-size:13px;line-height:1;padding:0 2px" title="Снять фильтр по поддереву">✕</button></span>`;
+      const clr = document.getElementById('consumers-anc-clear');
+      if (clr) clr.onclick = () => {
+        _consumersTableFilters.ancestorIds = null;
+        _consumersTableFilters.ancestorLabel = '';
+        renderConsumersTable();
+      };
+    } else {
+      ancBadgeMount.innerHTML = '';
+    }
+  }
 
   const consumers = [...S.nodes.values()].filter(n => n.type === 'consumer');
 
@@ -4653,6 +4673,8 @@ function renderConsumersTable() {
       const pTag = p ? (_effectiveTag(p) || p.tag || p.name || '') : '';
       if (pTag !== F.parent) return false;
     }
+    // v0.57.67: транзитивный фильтр — принадлежность к дереву щита-предка
+    if (F.ancestorIds && !F.ancestorIds.has(n.id)) return false;
     if (q) {
       const catLabel = catalogById.get(n.consumerCatalogId)?.label || '';
       const pTag = parentPanelById0.get(n.id)
@@ -4893,7 +4915,7 @@ function renderConsumersTable() {
   });
   const clearBtn = mount.querySelector('#ctc-clear-filters');
   if (clearBtn) clearBtn.addEventListener('click', () => {
-    _consumersTableFilters = { search: '', phase: '', category: '', parent: '' };
+    _consumersTableFilters = { search: '', phase: '', category: '', parent: '', ancestorIds: null, ancestorLabel: '' };
     const s = document.getElementById('consumers-table-search'); if (s) s.value = '';
     const p = document.getElementById('consumers-table-filter-phase'); if (p) p.value = '';
     renderConsumersTable();
@@ -4998,7 +5020,7 @@ function exportConsumersTableCsv() {
   flash('Экспортировано ' + (rows.length - 1) + ' потребителей в CSV', 'success');
 }
 
-// ================= Таблица оборудования (Phase 1.20.25) =================
+// ================= Перечень оборудования (Phase 1.20.25) =================
 let _equipTableFilters = { search: '', type: '' };
 let _equipTableSort = { col: 'tag', dir: 'asc' };
 
@@ -5303,7 +5325,28 @@ function renderEquipmentTable() {
           };
           openCableTableModal();
         } else if (target === 'consumers') {
-          _consumersTableFilters = { search: '', phase: '', category: '', parent: tag };
+          // v0.57.67: BFS вниз от щита-предка — все транзитивные потребители
+          const consumerIds = new Set();
+          const visited = new Set([node.id]);
+          const queue = [node.id];
+          while (queue.length) {
+            const cur = queue.shift();
+            for (const c of S.conns.values()) {
+              if (c.from?.nodeId !== cur) continue;
+              const toId = c.to?.nodeId;
+              if (!toId || visited.has(toId)) continue;
+              visited.add(toId);
+              const toNode = S.nodes.get(toId);
+              if (!toNode) continue;
+              if (toNode.type === 'consumer') consumerIds.add(toId);
+              else queue.push(toId);
+            }
+          }
+          _consumersTableFilters = {
+            search: '', phase: '', category: '', parent: '',
+            ancestorIds: consumerIds,
+            ancestorLabel: tag,
+          };
           openConsumersTableModal();
         }
       }, 100);
@@ -5511,9 +5554,9 @@ async function init() {
         <tr><td>🔍 Найти (поиск по проекту)</td><td><code>Ctrl+F</code></td></tr>
         <tr><td>📊 Сводка проекта / Dashboard</td><td><code>Ctrl+Shift+D</code></td></tr>
         <tr><td>⚠ Проверки проекта / Issues</td><td><code>Ctrl+Shift+I</code></td></tr>
-        <tr><td>🔌 Таблица кабелей (Lines)</td><td><code>Ctrl+Shift+L</code></td></tr>
-        <tr><td>💡 Таблица потребителей (Users)</td><td><code>Ctrl+Shift+U</code></td></tr>
-        <tr><td>🗄 Таблица оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
+        <tr><td>🔌 Перечень кабелей (Lines)</td><td><code>Ctrl+Shift+L</code></td></tr>
+        <tr><td>💡 Перечень потребителей (Users)</td><td><code>Ctrl+Shift+U</code></td></tr>
+        <tr><td>🗄 Перечень оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
       </table>
       <div class="note">В полях ввода (input/textarea) Ctrl+Shift-хоткеи не перехватываются. Нативный Ctrl+F тоже работает в полях; модалка поиска открывается только над холстом.</div>
     `,

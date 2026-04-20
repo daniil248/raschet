@@ -182,9 +182,9 @@
         <button id="btn-open-search" class="full-btn" title="Поиск по узлам и линиям (Ctrl+F)">🔍 Найти (Ctrl+F)</button>
         <button id="btn-open-project-issues" class="full-btn" title="Сводка всех предупреждений и ошибок проекта (Ctrl+Shift+I)">⚠ Проверки проекта</button>
         <button id="btn-open-dashboard" class="full-btn" title="Статистика и ключевые показатели проекта (Ctrl+Shift+D)">📊 Сводка проекта</button>
-        <button id="btn-open-cable-table" class="full-btn" title="Быстрое редактирование всех кабельных линий (Ctrl+Shift+L)">🔌 Таблица кабелей</button>
-        <button id="btn-open-consumers-table" class="full-btn" title="Быстрое редактирование всех потребителей (Ctrl+Shift+U)">💡 Таблица потребителей</button>
-        <button id="btn-open-equipment-table" class="full-btn" title="Обзор всего оборудования проекта: источники, щиты, ИБП, РУ СН (Ctrl+Shift+E)">🗄 Таблица оборудования</button>
+        <button id="btn-open-cable-table" class="full-btn" title="Быстрое редактирование всех кабельных линий (Ctrl+Shift+L)">🔌 Перечень кабелей</button>
+        <button id="btn-open-consumers-table" class="full-btn" title="Быстрое редактирование всех потребителей (Ctrl+Shift+U)">💡 Перечень потребителей</button>
+        <button id="btn-open-equipment-table" class="full-btn" title="Обзор всего оборудования проекта: источники, щиты, ИБП, РУ СН (Ctrl+Shift+E)">🗄 Перечень оборудования</button>
         <button id="btn-open-loads-import" class="full-btn">📥 Импорт таблицы нагрузок</button>
 
         <h3>Файл</h3>
@@ -734,11 +734,11 @@
     </div>
   </div>
 
-  <!-- Таблица оборудования (Phase 1.20.25) -->
+  <!-- Перечень оборудования (Phase 1.20.25) -->
   <div id="modal-equipment-table" class="modal hidden">
     <div class="modal-box modal-wide" style="max-width:1400px">
       <div class="modal-head">
-        <h2>🗄 Таблица оборудования</h2>
+        <h2>🗄 Перечень оборудования</h2>
         <button class="modal-close" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body" style="max-height:75vh;overflow:auto">
@@ -775,7 +775,7 @@
   <div id="modal-consumers-table" class="modal hidden">
     <div class="modal-box modal-wide" style="max-width:1400px">
       <div class="modal-head">
-        <h2>💡 Таблица потребителей</h2>
+        <h2>💡 Перечень потребителей</h2>
         <button class="modal-close" aria-label="Закрыть">×</button>
       </div>
       <div class="modal-body" style="max-height:75vh;overflow:auto">
@@ -795,6 +795,7 @@
           <button id="consumers-table-reset-filters" title="Сбросить все фильтры и сортировку">✕ Сброс</button>
           <button id="consumers-table-export-csv" title="Экспорт таблицы в CSV">📥 CSV</button>
         </div>
+        <div id="consumers-table-ancestor-badge" style="margin-bottom:6px"></div>
         <div id="consumers-table-mount"></div>
       </div>
       <div class="modal-foot">
