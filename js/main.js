@@ -3550,6 +3550,26 @@ function exportProjectIssuesCsv() {
         rows.push(['Предупр.', 'Orphan', eff, '—', n.type === 'consumer' ? 'Потребитель не подключён к источнику' : 'Щит без входящей линии', n.type]);
       }
     }
+    // v0.57.73: ИБП без батареи
+    if (n.type === 'ups') {
+      const kwh = Number(n.batteryKwh) || 0;
+      const chargePct = (typeof n.batteryChargePct === 'number') ? n.batteryChargePct : 100;
+      if (kwh * chargePct <= 0) {
+        rows.push(['Предупр.', 'ИБП без батареи', eff, '—', 'Переход на резерв невозможен', `kWh=${kwh} · charge=${chargePct}%`]);
+      }
+    }
+    // v0.57.73: щит/ИБП без исходящих линий
+    if ((n.type === 'panel' || n.type === 'ups') && !n.isSection) {
+      let hasIn = false, hasOut = false;
+      for (const c of S.conns.values()) {
+        if (c.from?.nodeId === n.id) hasOut = true;
+        if (c.to?.nodeId === n.id) hasIn = true;
+        if (hasIn && hasOut) break;
+      }
+      if (hasIn && !hasOut) {
+        rows.push(['Предупр.', 'Dead-end', eff, '—', n.type === 'ups' ? 'ИБП без потребителей' : 'Щит без исходящих линий', n.type]);
+      }
+    }
     if (eff) {
       if (tagMap.has(eff)) {
         rows.push(['Ошибка', 'Дубликат', eff, '—', 'Два и более узлов с одинаковым обозначением', '']);
@@ -3621,6 +3641,22 @@ function _countProjectIssues() {
       let hasInput = false;
       for (const c of S.conns.values()) if (c.to?.nodeId === n.id) { hasInput = true; break; }
       if (!hasInput) wrn++;
+    }
+    // v0.57.73: ИБП без батареи
+    if (n.type === 'ups') {
+      const kwh = Number(n.batteryKwh) || 0;
+      const chargePct = (typeof n.batteryChargePct === 'number') ? n.batteryChargePct : 100;
+      if (kwh * chargePct <= 0) wrn++;
+    }
+    // v0.57.73: тупик — щит/ИБП с входом, но без выхода
+    if ((n.type === 'panel' || n.type === 'ups') && !n.isSection) {
+      let hasIn = false, hasOut = false;
+      for (const c of S.conns.values()) {
+        if (c.from?.nodeId === n.id) hasOut = true;
+        if (c.to?.nodeId === n.id) hasIn = true;
+        if (hasIn && hasOut) break;
+      }
+      if (hasIn && !hasOut) wrn++;
     }
     // Duplicate tag
     const eff = _effectiveTag(n) || n.tag || '';
@@ -4011,6 +4047,10 @@ function renderProjectIssues() {
   const sourceOverloads = [];
   const tagMap = new Map(); // для поиска дубликатов
   const duplicateTags = [];
+  // v0.57.73: дополнительные проверки
+  const upsNoBattery = [];    // ИБП с нулевой ёмкостью/зарядом
+  const deadEndPanels = [];   // щиты/ИБП без исходящих линий
+
   for (const n of S.nodes.values()) {
     if (n.type === 'zone' || n.type === 'channel') continue;
     const eff = _effectiveTag(n) || n.tag || '';
@@ -4057,6 +4097,37 @@ function renderProjectIssues() {
         });
       }
     }
+    // v0.57.73: ИБП без батареи — автономия = 0.
+    // Признак: batteryKwh × batteryChargePct ≤ 0 (или оба не заданы).
+    if (n.type === 'ups') {
+      const kwh = Number(n.batteryKwh) || 0;
+      const chargePct = (typeof n.batteryChargePct === 'number') ? n.batteryChargePct : 100;
+      if (kwh * chargePct <= 0) {
+        upsNoBattery.push({
+          id: n.id,
+          name: eff || n.name || '?',
+          reason: 'ИБП без батареи — переход на резерв невозможен',
+          details: `ёмкость = ${kwh} kWh · заряд = ${chargePct}%`,
+        });
+      }
+    }
+    // v0.57.73: щит/ИБП/источник с входом, но без исходящих линий — «тупик».
+    if ((n.type === 'panel' || n.type === 'ups') && !n.isSection) {
+      let hasInput = false, hasOutput = false;
+      for (const c of S.conns.values()) {
+        if (c.from?.nodeId === n.id) { hasOutput = true; }
+        if (c.to?.nodeId === n.id) { hasInput = true; }
+        if (hasInput && hasOutput) break;
+      }
+      if (hasInput && !hasOutput) {
+        deadEndPanels.push({
+          id: n.id,
+          name: eff || n.name || '?',
+          reason: n.type === 'ups' ? 'ИБП без потребителей (нет исходящих линий)' : 'Щит без исходящих линий — потребители не питаются',
+          details: n.type,
+        });
+      }
+    }
   }
 
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
@@ -4068,7 +4139,8 @@ function renderProjectIssues() {
   const n1Warn = (n1 && n1.applicable && !n1.ok) ? n1 : null;
 
   const totalErrors = cableErrors.length + mvOverloads.length + sourceOverloads.length + duplicateTags.length;
-  const totalWarns = cableWarns.length + selPairs.length + orphans.length + (n1Warn ? 1 : 0);
+  const totalWarns = cableWarns.length + selPairs.length + orphans.length + (n1Warn ? 1 : 0)
+    + upsNoBattery.length + deadEndPanels.length;
 
   // Phase 1.20.21: кнопка «Исправить всё» — применяет все автофиксы
   const fixableCount = cableErrors.filter(e => !!e.fix).length;
@@ -4167,6 +4239,13 @@ function renderProjectIssues() {
   html.push(section('Предупреждения кабелей', '⚠', cableWarns.length, renderLineList(cableWarns, '#e65100')));
   if (orphans.length) {
     html.push(section('Несвязанные узлы (нет входящего питания)', '🔌', orphans.length, renderNodeList(orphans, '#e65100')));
+  }
+  // v0.57.73
+  if (deadEndPanels.length) {
+    html.push(section('Щиты/ИБП без исходящих линий', '🚫', deadEndPanels.length, renderNodeList(deadEndPanels, '#e65100')));
+  }
+  if (upsNoBattery.length) {
+    html.push(section('ИБП с нулевой батареей', '🔋', upsNoBattery.length, renderNodeList(upsNoBattery, '#e65100')));
   }
 
   // Non-selective pairs
