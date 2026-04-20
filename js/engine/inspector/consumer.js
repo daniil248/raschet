@@ -105,6 +105,24 @@ export function openConsumerParamsModal(n) {
     h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">1.0 = номинал, 0.5 = 50%, 0 = выключено.</div>`);
   }
   h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
+
+  // Запас по автомату — override категории/авто. Пустое поле = авто по inrush.
+  {
+    const mv = (typeof n.breakerMarginPct === 'number') ? String(n.breakerMarginPct) : '';
+    h.push(field('Запас по автомату, %', `<input type="number" id="cp-brkMargin" min="0" max="100" step="5" value="${mv}" placeholder="авто">`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Пусто = авто по inrush (лёгкий 20%, средний 35%, тяжёлый 50%). Используется для подбора номинала автомата защиты линии.</div>`);
+  }
+  // Кривая/тип автомата — подсказка для авто-подбора
+  {
+    const cv = n.curveHint || '';
+    h.push(field('Кривая автомата (подсказка)', `<select id="cp-curveHint">
+      <option value=""${cv===''?' selected':''}>авто (по inrush и In)</option>
+      <option value="MCB_B"${cv==='MCB_B'?' selected':''}>MCB кр. B — резистивная, освещение</option>
+      <option value="MCB_C"${cv==='MCB_C'?' selected':''}>MCB кр. C — общее назначение</option>
+      <option value="MCB_D"${cv==='MCB_D'?' selected':''}>MCB кр. D — двигатели, трансформаторы</option>
+    </select>`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Актуально для In ≤ 125 А. Выше — автоматически MCCB/ACB.</div>`);
+  }
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
   // Наличие нейтрали (N) и защитного проводника (PE) у этого
   // потребителя. Если флаги не заданы (undefined) — берутся дефолты
@@ -227,6 +245,10 @@ export function openConsumerParamsModal(n) {
       if (cosEl) cosEl.value = cat.cosPhi;
       if (kUseEl) kUseEl.value = cat.kUse;
       if (inrEl) inrEl.value = cat.inrushFactor;
+      const bmEl = document.getElementById('cp-brkMargin');
+      if (bmEl) bmEl.value = (typeof cat.breakerMarginPct === 'number') ? String(cat.breakerMarginPct) : '';
+      const chEl = document.getElementById('cp-curveHint');
+      if (chEl) chEl.value = cat.curveHint || '';
       const wasCond = n.consumerSubtype === 'conditioner';
       const isCond = cat.id === 'conditioner';
       if (wasCond !== isCond) {
@@ -315,6 +337,13 @@ export function openConsumerParamsModal(n) {
       n.normalLoadFactor = Number(nlfEl.value);
     }
     n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
+    // Запас по автомату: пусто = auto (удаляем поле, используется авто)
+    const brkMarginRaw = document.getElementById('cp-brkMargin')?.value;
+    if (brkMarginRaw === '' || brkMarginRaw == null) delete n.breakerMarginPct;
+    else n.breakerMarginPct = Number(brkMarginRaw);
+    const curveHintRaw = document.getElementById('cp-curveHint')?.value;
+    if (!curveHintRaw) delete n.curveHint;
+    else n.curveHint = curveHintRaw;
     n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
     // Флаги hasNeutral / hasGround — tri-state (auto/on/off)
     const hnVal = document.getElementById('cp-hasNeutral')?.value;

@@ -692,6 +692,29 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.61 (v0.57.37)** — Авто-запас, авто-тип автомата и уставки
+  регулируемых MCCB/ACB (с ручной корректировкой).
+  - constants.js: каждая запись CONSUMER_CATALOG получила
+    `breakerMarginPct` и `curveHint` (по роду нагрузки/inrush).
+    Функции `autoBreakerMargin(inrush)` и `autoBreakerCurve(inrush, In)`
+    для старых узлов и override-цепочки.
+  - recalc.js: перед подбором автомата вычисляется эффективный запас
+    `_breakerMarginPctEff` по приоритету: c.breakerMarginPct (линия) →
+    toN.breakerMarginPct (категория) → auto(inrushFactor), ≥ GLOBAL.min.
+    Тип кривой `_breakerCurveEff`: c.breakerCurve (ручной) → toN.curveHint
+    → auto по (inrush, In). Для MCCB/ACB/VCB формируются уставки
+    `_breakerSettings = { Ir, Isd, tsd, Ii }` — Ir ≈ Iрасч, Isd по
+    inrushFactor в пределах magMin..magMax кривой.
+  - inspector/consumer.js: поля «Запас по автомату, %» и «Кривая (подсказка)»
+    с опцией «авто», подставляются из каталога при смене типа.
+  - inspector/conn.js: секция «Тип автомата и настройки» — toggle авто/
+    ручной для кривой и для уставок Ir/Isd/tsd/Ii (для регулируемых).
+    Настройки отражаются на TCC-графике через `items[].settings` —
+    вместо фиксированной In+curve линия рисуется с учётом уставок.
+  - inspector/conn.js: запас по автомату/кабелю для групповой нагрузки
+    считается per-line (fixed v0.57.36, но был потерян эффективный процент).
+  Файлы: js/engine/{constants, recalc}.js,
+  js/engine/inspector/{consumer, conn}.js.
 - **1.20.60 (v0.57.36)** — FIX: запас по автомату/кабелю для групповой
   нагрузки считается per-line. Было: «Запас по автомату: −63.4%» при
   нагрузке 22.8 А и автомате 25 А — margin сравнивал суммарный ток

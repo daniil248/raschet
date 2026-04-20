@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, BREAKER_TYPES } from './constants.js';
+import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, BREAKER_TYPES, autoBreakerMargin, autoBreakerCurve } from './constants.js';
 import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
@@ -1778,8 +1778,30 @@ function recalc() {
       continue;
     }
 
-    // Ручной автомат: используем его номинал, иначе — авто с учётом минимального запаса.
-    const _marginK = 1 + (Number(GLOBAL.breakerMinMarginPct) || 0) / 100;
+    // Запас по автомату: приоритет — ручной override на линии (c.breakerMarginPct),
+    // далее — свойство потребителя (toN.breakerMarginPct), далее — по категории
+    // (каталог), иначе — авто по inrushFactor. GLOBAL.breakerMinMarginPct —
+    // нижний порог (минимум), не подменяющий категорию.
+    const _inrushK = (toN && toN.type === 'consumer')
+      ? (Number(toN.inrushFactor) || 1)
+      : 1;
+    const _catalogMargin = (toN && toN.type === 'consumer' && typeof toN.breakerMarginPct === 'number')
+      ? toN.breakerMarginPct
+      : null;
+    const _lineMargin = (typeof c.breakerMarginPct === 'number') ? c.breakerMarginPct : null;
+    const _autoMargin = autoBreakerMargin(_inrushK);
+    const _minMargin = Number(GLOBAL.breakerMinMarginPct) || 0;
+    const _effMarginPct = Math.max(
+      _minMargin,
+      (_lineMargin != null) ? _lineMargin
+        : (_catalogMargin != null) ? _catalogMargin
+        : _autoMargin
+    );
+    c._breakerMarginPctEff = _effMarginPct;
+    c._breakerMarginSource = (_lineMargin != null) ? 'line'
+      : (_catalogMargin != null) ? 'consumer'
+      : 'auto';
+    const _marginK = 1 + _effMarginPct / 100;
     let InPerLine = c.manualBreakerIn
       ? Number(c.manualBreakerIn)
       : _calcMethod.selectBreaker(Iper * _marginK);
@@ -1820,6 +1842,58 @@ function recalc() {
       c._breakerIn = InPerLine;
       c._breakerPerLine = null;
       c._breakerCount = 1;
+    }
+
+    // Тип/кривая автомата: ручной (c.breakerCurve) → подсказка потребителя
+    // (toN.curveHint) → авто по inrush + In. Для MCCB/ACB — всегда по In.
+    const _refIn = c._breakerIn || c._breakerPerLine || 0;
+    const _consumerHint = (toN && toN.type === 'consumer' && toN.curveHint) ? toN.curveHint : null;
+    let _curveEff;
+    if (c.breakerCurve) {
+      _curveEff = c.breakerCurve;
+    } else if (_refIn > 125) {
+      // Для In > 125 А MCB недоступен — тип определяется по номиналу
+      _curveEff = autoBreakerCurve(_inrushK, _refIn);
+    } else if (_consumerHint) {
+      _curveEff = _consumerHint;
+    } else {
+      _curveEff = autoBreakerCurve(_inrushK, _refIn);
+    }
+    c._breakerCurveEff = _curveEff;
+
+    // Для регулируемых автоматов (MCCB/ACB) — авто-настройка Ir/Isd/tsd/Ii
+    // из параметров защиты потребителя, если не задано вручную в c.breakerSettings.
+    // Эти значения подхватываются TCC-графиком и селективностью.
+    const _isAdjustable = (_curveEff === 'MCCB' || _curveEff === 'ACB' || _curveEff === 'VCB' || _curveEff === 'SF6');
+    if (_isAdjustable && _refIn > 0) {
+      const brkType = BREAKER_TYPES[_curveEff] || BREAKER_TYPES.MCCB;
+      const Ib = (c._breakerIn ? Itotal : Iper);
+      // Ir (long-time): подстраиваем к Iрасч с шагом 0.05·In (типовой MCCB),
+      // не ниже Iрасч, не выше номинала.
+      const irTarget = Math.min(_refIn, Math.max(Ib, Ib * 1.0));
+      const irStep = _refIn * 0.05;
+      let Ir = Math.ceil(irTarget / irStep) * irStep;
+      if (Ir > _refIn) Ir = _refIn;
+      if (Ir < Ib) Ir = Math.min(_refIn, Math.ceil(Ib / irStep) * irStep);
+      // Isd (short-time pickup) — по inrushFactor потребителя, в пределах
+      // диапазона кривой (magMin..magMax).
+      const inrushX = Math.max(1.5, _inrushK * 1.2); // +20% от пуска
+      const isdX = Math.min(brkType.magMax || 10, Math.max(brkType.magMin || 5, inrushX));
+      const Isd = Math.round(isdX * Ir);
+      // tsd (short-time delay) — 0.2 с по умолчанию (селективность нижний уровень).
+      const tsd = 0.2;
+      // Ii (instantaneous) — ограничивает пиковый ток КЗ.
+      const Ii = Math.round((brkType.magMax || 10) * Ir);
+      const manual = c.breakerSettings || {};
+      c._breakerSettings = {
+        Ir: (manual.Ir != null ? Number(manual.Ir) : Math.round(Ir)),
+        Isd: (manual.Isd != null ? Number(manual.Isd) : Isd),
+        tsd: (manual.tsd != null ? Number(manual.tsd) : tsd),
+        Ii: (manual.Ii != null ? Number(manual.Ii) : Ii),
+        source: Object.keys(manual).length ? 'manual' : 'auto',
+      };
+    } else {
+      c._breakerSettings = null;
     }
     // DC-линии требуют DC-rated автомата (иначе дуга не гасится).
     // Стандартный MCCB рассчитан на AC; для DC нужен MCCB с маркировкой

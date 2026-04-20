@@ -552,6 +552,61 @@ export function renderInspectorConn(c) {
         }
       }
     }
+
+    // Тип автомата + настройки (кривая / Ir-Isd-tsd-Ii для MCCB/ACB)
+    {
+      const curveEff = c._breakerCurveEff || c.breakerCurve || 'MCB_C';
+      const curveManual = !!c.breakerCurve;
+      const CURVES = [
+        ['MCB_B', 'MCB кр. B'],
+        ['MCB_C', 'MCB кр. C'],
+        ['MCB_D', 'MCB кр. D'],
+        ['MCCB', 'MCCB (литой корпус)'],
+        ['ACB', 'ACB (воздушный)'],
+      ];
+      h.push('<details class="inspector-section" style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Тип автомата и настройки</summary>');
+      h.push('<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">');
+      h.push(`<label style="font-size:11px;color:${curveManual?'#999':'#4caf50'}">авто</label>`);
+      h.push(`<div data-brk-curve-toggle style="position:relative;width:32px;height:16px;border-radius:8px;background:${curveManual?'#ff9800':'#4caf50'};cursor:pointer">`);
+      h.push(`<div style="position:absolute;top:2px;${curveManual?'right:2px':'left:2px'};width:12px;height:12px;border-radius:6px;background:#fff"></div>`);
+      h.push('</div>');
+      h.push(`<label style="font-size:11px;color:${curveManual?'#e65100':'#999'}">ручной</label>`);
+      h.push(`<span style="margin-left:auto;font-size:11px;color:#666">Сейчас: <b>${curveEff}</b></span>`);
+      h.push('</div>');
+      if (curveManual) {
+        const opts = CURVES.map(([v, lbl]) => `<option value="${v}"${v===curveEff?' selected':''}>${lbl}</option>`).join('');
+        h.push(field('Тип / кривая', `<select data-conn-prop="breakerCurve">${opts}</select>`));
+      } else {
+        h.push(`<div class="muted" style="font-size:10px;margin-bottom:4px">Определяется по типу нагрузки (inrush потребителя) и номиналу In.</div>`);
+      }
+
+      // Настройки регулируемого автомата — MCCB/ACB/VCB
+      if (c._breakerSettings) {
+        const s = c._breakerSettings;
+        const settingsManual = (c.breakerSettings && Object.keys(c.breakerSettings).length > 0);
+        h.push('<div style="display:flex;gap:8px;align-items:center;margin:8px 0 4px">');
+        h.push(`<b style="font-size:11px">Уставки защиты</b>`);
+        h.push(`<label style="font-size:11px;color:${settingsManual?'#999':'#4caf50'}">авто</label>`);
+        h.push(`<div data-brk-settings-toggle style="position:relative;width:32px;height:16px;border-radius:8px;background:${settingsManual?'#ff9800':'#4caf50'};cursor:pointer">`);
+        h.push(`<div style="position:absolute;top:2px;${settingsManual?'right:2px':'left:2px'};width:12px;height:12px;border-radius:6px;background:#fff"></div>`);
+        h.push('</div>');
+        h.push(`<label style="font-size:11px;color:${settingsManual?'#e65100':'#999'}">ручной</label>`);
+        h.push('</div>');
+        const row = (lbl, key, val, min, max, step, unit) =>
+          `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+            <label style="width:110px;font-size:11px">${lbl}</label>
+            <input type="number" data-brk-setting="${key}" value="${val}" min="${min}" max="${max}" step="${step}" ${settingsManual ? '' : 'disabled'} style="flex:1;font-size:11px;padding:3px 6px;border:1px solid ${settingsManual?'#ccc':'#eee'};border-radius:3px;background:${settingsManual?'#fff':'#fafafa'};color:${settingsManual?'#000':'#888'}">
+            <span style="font-size:10px;color:#666;width:20px">${unit}</span>
+          </div>`;
+        h.push(row('Ir (long-time)',    'Ir',  s.Ir,  1,    6300, 1,   'А'));
+        h.push(row('Isd (short-time)',  'Isd', s.Isd, 1,    40000, 10, 'А'));
+        h.push(row('tsd (short delay)', 'tsd', s.tsd, 0,    1,    0.05, 'с'));
+        h.push(row('Ii (instant)',      'Ii',  s.Ii,  1,    40000, 10, 'А'));
+        h.push(`<div class="muted" style="font-size:10px;margin-top:2px">Ir — уставка длительной перегрузки; Isd·tsd — короткая селективная; Ii — мгновенное отключение. Уставки автоматически отражаются на TCC-графике и в проверке селективности.</div>`);
+      }
+      h.push('</details>');
+    }
+
     h.push('</div>');
   }
 
@@ -718,6 +773,46 @@ export function renderInspectorConn(c) {
       render(); renderInspector(); notifyChange();
     });
   }
+
+  // Toggle авто/ручной для кривой автомата
+  const brkCurveToggle = inspectorBody.querySelector('[data-brk-curve-toggle]');
+  if (brkCurveToggle) {
+    brkCurveToggle.addEventListener('click', () => {
+      snapshot('brk-curve-mode:' + c.id);
+      if (c.breakerCurve) delete c.breakerCurve;
+      else c.breakerCurve = c._breakerCurveEff || 'MCB_C';
+      render(); renderInspector(); notifyChange();
+    });
+  }
+
+  // Toggle авто/ручной для уставок регулируемого автомата
+  const brkSettingsToggle = inspectorBody.querySelector('[data-brk-settings-toggle]');
+  if (brkSettingsToggle) {
+    brkSettingsToggle.addEventListener('click', () => {
+      snapshot('brk-settings-mode:' + c.id);
+      if (c.breakerSettings && Object.keys(c.breakerSettings).length > 0) {
+        delete c.breakerSettings;
+      } else if (c._breakerSettings) {
+        c.breakerSettings = {
+          Ir: c._breakerSettings.Ir, Isd: c._breakerSettings.Isd,
+          tsd: c._breakerSettings.tsd, Ii: c._breakerSettings.Ii,
+        };
+      }
+      render(); renderInspector(); notifyChange();
+    });
+  }
+
+  // Редактирование уставок вручную
+  inspectorBody.querySelectorAll('[data-brk-setting]').forEach(el => {
+    el.addEventListener('change', () => {
+      const key = el.getAttribute('data-brk-setting');
+      const v = Number(el.value);
+      if (!c.breakerSettings) c.breakerSettings = {};
+      c.breakerSettings[key] = v;
+      snapshot('brk-setting:' + c.id + ':' + key);
+      render(); renderInspector(); notifyChange();
+    });
+  });
 
   document.getElementById('btn-del-conn').onclick = () => deleteConn(c.id);
   const resetBtn = document.getElementById('btn-reset-waypoints');
@@ -975,9 +1070,18 @@ function _buildConnTccPayload(conn, fromN, toN) {
   if (breakerInEff || mvCellSettings) {
     const In = breakerInEff || Number(mvCellSettings?.Ir) || 630;
     const curveStr = conn.breakerCurve || conn._breakerCurveEff || 'MCCB';
+    // Настройки регулируемого автомата (MCCB/ACB/VCB): приоритет mvCellSettings
+    // (реле ячейки СН), затем _breakerSettings (авто/ручная настройка LV MCCB/ACB).
+    const adjSettings = mvCellSettings
+      || (conn._breakerSettings && Object.keys(conn._breakerSettings).length
+          ? { Ir: conn._breakerSettings.Ir, Isd: conn._breakerSettings.Isd,
+              tsd: conn._breakerSettings.tsd, Ii: conn._breakerSettings.Ii }
+          : null);
     let label;
     if (mvCellSettings) {
       label = `ЭТА линия: VCB-реле Ir ${mvCellSettings.Ir}А · Isd ${mvCellSettings.Isd}А · tsd ${mvCellSettings.tsd}с`;
+    } else if (adjSettings) {
+      label = `ЭТА линия: ${curveStr} Ir ${adjSettings.Ir}А · Isd ${adjSettings.Isd}А · tsd ${adjSettings.tsd}с`;
     } else if (!conn._breakerIn && conn._breakerPerLine && breakerCount > 1) {
       // групповая: «3 × 6A»
       label = `ЭТА линия: ${curveStr} ${breakerCount} × ${In}A (групповая)`;
@@ -989,7 +1093,7 @@ function _buildConnTccPayload(conn, fromN, toN) {
       kind: 'breaker',
       In,
       curve: _normalizeCurveShort(conn.breakerCurve || conn._breakerCurveEff),
-      settings: mvCellSettings || undefined,
+      settings: adjSettings || undefined,
       label,
       color: '#1976d2',
     });

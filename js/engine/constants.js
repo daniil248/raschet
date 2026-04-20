@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.57.36';
+export const APP_VERSION = '0.57.37';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -612,24 +612,48 @@ export const CONSUMER_CATEGORIES = {
   other:      { label: 'Прочее',               icon: '—',  cableCategories: ['power'] },
 };
 
+// breakerMarginPct — рекомендованный запас автомата (% сверх Iрасч) для
+//   исключения ложных срабатываний. Выбор по inrushFactor и роду нагрузки.
+// curveHint — рекомендованный тип/кривая автомата для MCB (inrush-дружественная).
 export const CONSUMER_CATALOG = [
-  { id: 'custom',      category: 'other',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, phase: '3ph' },
-  { id: 'lighting',    category: 'lighting',   label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, phase: '1ph' },
-  { id: 'socket',      category: 'socket',     label: 'Розеточная группа',   demandKw: 3.5,  cosPhi: 0.95, kUse: 0.3,  inrushFactor: 1, phase: '1ph' },
-  { id: 'motor',       category: 'power',      label: 'Электродвигатель',    demandKw: 15,   cosPhi: 0.85, kUse: 0.7,  inrushFactor: 7, phase: '3ph' },
-  { id: 'heater',      category: 'power',      label: 'Электрообогрев',      demandKw: 5,    cosPhi: 1,    kUse: 0.8,  inrushFactor: 1, phase: '1ph' },
-  { id: 'pump',        category: 'power',      label: 'Насос',               demandKw: 7.5,  cosPhi: 0.85, kUse: 0.7,  inrushFactor: 6, phase: '3ph' },
-  { id: 'fan',         category: 'hvac',       label: 'Вентилятор',          demandKw: 5,    cosPhi: 0.8,  kUse: 0.65, inrushFactor: 5, phase: '3ph' },
-  { id: 'server',      category: 'it',         label: 'Серверная стойка',    demandKw: 10,   cosPhi: 0.98, kUse: 0.8,  inrushFactor: 1, phase: '3ph' },
-  { id: 'elevator',    category: 'power',      label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, phase: '3ph' },
-  { id: 'conditioner', category: 'hvac',       label: 'Кондиционер',         demandKw: 5,    cosPhi: 0.85, kUse: 0.7,  inrushFactor: 3, phase: '1ph',
+  { id: 'custom',      category: 'other',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, breakerMarginPct: 25, curveHint: 'MCB_C', phase: '3ph' },
+  { id: 'lighting',    category: 'lighting',   label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph' },
+  { id: 'socket',      category: 'socket',     label: 'Розеточная группа',   demandKw: 3.5,  cosPhi: 0.95, kUse: 0.3,  inrushFactor: 1, breakerMarginPct: 20, curveHint: 'MCB_C', phase: '1ph' },
+  { id: 'motor',       category: 'power',      label: 'Электродвигатель',    demandKw: 15,   cosPhi: 0.85, kUse: 0.7,  inrushFactor: 7, breakerMarginPct: 50, curveHint: 'MCB_D', phase: '3ph' },
+  { id: 'heater',      category: 'power',      label: 'Электрообогрев',      demandKw: 5,    cosPhi: 1,    kUse: 0.8,  inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph' },
+  { id: 'pump',        category: 'power',      label: 'Насос',               demandKw: 7.5,  cosPhi: 0.85, kUse: 0.7,  inrushFactor: 6, breakerMarginPct: 45, curveHint: 'MCB_D', phase: '3ph' },
+  { id: 'fan',         category: 'hvac',       label: 'Вентилятор',          demandKw: 5,    cosPhi: 0.8,  kUse: 0.65, inrushFactor: 5, breakerMarginPct: 40, curveHint: 'MCB_D', phase: '3ph' },
+  { id: 'server',      category: 'it',         label: 'Серверная стойка',    demandKw: 10,   cosPhi: 0.98, kUse: 0.8,  inrushFactor: 1, breakerMarginPct: 25, curveHint: 'MCB_C', phase: '3ph' },
+  { id: 'elevator',    category: 'power',      label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, breakerMarginPct: 40, curveHint: 'MCB_D', phase: '3ph' },
+  { id: 'conditioner', category: 'hvac',       label: 'Кондиционер',         demandKw: 5,    cosPhi: 0.85, kUse: 0.7,  inrushFactor: 3, breakerMarginPct: 35, curveHint: 'MCB_D', phase: '1ph',
     isConditioner: true, outdoorKw: 0.3, outdoorCosPhi: 0.85 },
   // Слаботочные системы (lowvoltage) — используют cable-category signal/data/fieldbus
-  { id: 'fire-alarm',  category: 'lowvoltage', label: 'Пожарная сигнализация', demandKw: 0.3, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, phase: '1ph' },
-  { id: 'sks',         category: 'lowvoltage', label: 'СКС (структурированная кабельная сеть)', demandKw: 0.1, cosPhi: 0.9, kUse: 0.5, inrushFactor: 1, phase: '1ph' },
-  { id: 'cctv',        category: 'lowvoltage', label: 'Видеонаблюдение',      demandKw: 0.5, cosPhi: 0.9, kUse: 0.9,  inrushFactor: 1, phase: '1ph' },
-  { id: 'access',      category: 'lowvoltage', label: 'СКУД',                 demandKw: 0.2, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, phase: '1ph' },
+  { id: 'fire-alarm',  category: 'lowvoltage', label: 'Пожарная сигнализация', demandKw: 0.3, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph' },
+  { id: 'sks',         category: 'lowvoltage', label: 'СКС (структурированная кабельная сеть)', demandKw: 0.1, cosPhi: 0.9, kUse: 0.5, inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph' },
+  { id: 'cctv',        category: 'lowvoltage', label: 'Видеонаблюдение',      demandKw: 0.5, cosPhi: 0.9, kUse: 0.9,  inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph' },
+  { id: 'access',      category: 'lowvoltage', label: 'СКУД',                 demandKw: 0.2, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph' },
 ];
+
+// Авто-запас по автомату и авто-кривая/тип — если у потребителя не задан
+// явный breakerMarginPct или curveHint, вычисляем по inrushFactor.
+// Применяется также к «старым» узлам, созданным до добавления этих полей.
+export function autoBreakerMargin(inrushFactor) {
+  const k = Number(inrushFactor) || 1;
+  if (k >= 6) return 50;   // тяжёлый пуск (двигатели, насосы)
+  if (k >= 4) return 40;   // лифты, вентиляторы, большие моторы
+  if (k >= 2.5) return 35; // кондиционеры, мелкие компрессоры
+  if (k >= 1.5) return 25; // лёгкий inrush (LED, серверы)
+  return 20;               // резистивная / смешанная
+}
+export function autoBreakerCurve(inrushFactor, In) {
+  const inA = Number(In) || 0;
+  if (inA > 1600) return 'ACB';
+  if (inA > 125) return 'MCCB';
+  const k = Number(inrushFactor) || 1;
+  if (k >= 4) return 'MCB_D';
+  if (k >= 2) return 'MCB_C';
+  return 'MCB_B';
+}
 
 // Префиксы обозначений (tag) по типу узла (IEC 81346-2 где возможно)
 //   T   — transformer (IEC letter class «T»)
