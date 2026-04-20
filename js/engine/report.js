@@ -3,7 +3,7 @@ import { CHANNEL_TYPES, GLOBAL } from './constants.js';
 import { recalc } from './recalc.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { effectiveTag } from './zones.js';
-import { cableVoltageClass, nodeVoltage } from './electrical.js';
+import { cableVoltageClass, nodeVoltage, consumerCountEffective } from './electrical.js';
 import { fmt } from './utils.js';
 
 // Полное обозначение узла — всегда с префиксом зоны (например «P1.MPB1»),
@@ -412,7 +412,9 @@ export function generateReport() {
         const parallel = Math.max(1, c._cableParallel || 1);
         const isGroup = Array.isArray(c._groupCables) && c._groupCables.length > 1;
         const groupCount = isGroup ? c._groupCables.length : 1;
-        qty = parallel * groupCount;
+        // v0.57.85: групповой потребитель → ×N
+        const consumerMul = (toN && toN.type === 'consumer') ? consumerCountEffective(toN) : 1;
+        qty = parallel * groupCount * consumerMul;
         const cores = c._wireCount || (c._threePhase ? 5 : 3);
         conductorSpec = `${cores}×${c._cableSize} мм²`;
         // IEC 60502-2 класс напряжения для HV-кабелей

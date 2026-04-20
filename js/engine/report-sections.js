@@ -16,7 +16,7 @@ import { CHANNEL_TYPES, GLOBAL } from './constants.js';
 import { recalc } from './recalc.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { effectiveTag } from './zones.js';
-import { cableVoltageClass, nodeVoltage } from './electrical.js';
+import { cableVoltageClass, nodeVoltage, consumerCountEffective } from './electrical.js';
 import { fmt } from './utils.js';
 import { get3PhaseBalance, generateReport } from './report.js';
 import * as B from '../../shared/report/blocks.js';
@@ -521,7 +521,10 @@ function sectionCables() {
       const parallel = Math.max(1, c._cableParallel || 1);
       const isGroup = Array.isArray(c._groupCables) && c._groupCables.length > 1;
       const groupCount = isGroup ? c._groupCables.length : 1;
-      qty = parallel * groupCount;
+      // v0.57.85: групповой потребитель на конце линии — кабель считается
+      // по числу единиц группы (10 АС блоков → 10 кабелей × parallel).
+      const consumerMul = (toN && toN.type === 'consumer') ? consumerCountEffective(toN) : 1;
+      qty = parallel * groupCount * consumerMul;
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
       const size = c._cableSize;
       // Phase 1.20.3: reduced-N нотация «3×95 + 1×50 мм²»
@@ -581,7 +584,10 @@ function sectionCableBom() {
     const parallel = Math.max(1, c._cableParallel || 1);
     const isGroup = Array.isArray(c._groupCables) && c._groupCables.length > 1;
     const groupCount = isGroup ? c._groupCables.length : 1;
-    const qty = parallel * groupCount;
+    // v0.57.85: групповой потребитель → ×N
+    const toN2 = state.nodes.get(c.to.nodeId);
+    const consumerMul = (toN2 && toN2.type === 'consumer') ? consumerCountEffective(toN2) : 1;
+    const qty = parallel * groupCount * consumerMul;
     const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
     const size = c._cableSize || 0;
     if (!size) continue;

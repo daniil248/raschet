@@ -3607,7 +3607,10 @@ function renderDashboard() {
     cableStats[cls].count++;
     const parallel = Math.max(1, c._cableParallel || 1);
     const groupCount = Array.isArray(c._groupCables) && c._groupCables.length > 1 ? c._groupCables.length : 1;
-    const len = (Number(c.lengthM) || 0) * parallel * groupCount;
+    // v0.57.85: групповой потребитель → кабель ×N единиц группы
+    const toN = S.nodes.get(c.to?.nodeId);
+    const consumerMul = (toN && toN.type === 'consumer') ? consumerCountEffective(toN) : 1;
+    const len = (Number(c.lengthM) || 0) * parallel * groupCount * consumerMul;
     cableStats[cls].m += len;
     const matKey = `${c.material || 'Cu'}/${c.insulation || 'PVC'}`;
     byMaterial.set(matKey, (byMaterial.get(matKey) || 0) + len);
@@ -4197,9 +4200,18 @@ function _updateProjectStatusBar() {
   const availCap = capInfo.availCap;
   const standbyCount = capInfo.standbyCount;
   const backupCount = capInfo.backupCount;
-  let cables = 0;
+  let cables = 0, cableLines = 0;
   for (const c of S.conns.values()) {
-    if ((c._cableSize || c._busbarNom) && !c._utilityInfeed) cables++;
+    if ((c._cableSize || c._busbarNom) && !c._utilityInfeed) {
+      cableLines++;
+      // v0.57.85: множитель = parallel × group-bundle × consumer-group.
+      // Физических отрезков кабеля в BOM.
+      const parallel = Math.max(1, c._cableParallel || 1);
+      const groupCount = Array.isArray(c._groupCables) && c._groupCables.length > 1 ? c._groupCables.length : 1;
+      const toN = S.nodes.get(c.to?.nodeId);
+      const consumerMul = (toN && toN.type === 'consumer') ? consumerCountEffective(toN) : 1;
+      cables += parallel * groupCount * consumerMul;
+    }
   }
   const { errors, warns } = _countProjectIssues();
   // Phase 1.20.39: % загрузки считаем от availCap (без резервных),
@@ -4248,8 +4260,11 @@ function _updateProjectStatusBar() {
     const consumersTitle = consumerNodes === consumers
       ? `${consumers} потребителей`
       : `${consumers} потребителей в ${consumerNodes} группах`;
+    const cablesTitle = cableLines === cables
+      ? `${cables} кабелей`
+      : `${cables} кабелей по ${cableLines} связям (раскрыты parallel × bundle × группы потребителей)`;
     html.push(chip('#1565c0', 'rgba(255,255,255,0.95)', parts.join(' · '),
-      `${panels} НКУ, ${mvPanels} РУ СН, ${cables} кабельных линий (каждая связь = 1 физический кабель, групп. потребители питаются одной магистралью), ${consumersTitle} (Ctrl+Shift+D)`, 'dashboard'));
+      `${panels} НКУ, ${mvPanels} РУ СН, ${cablesTitle}, ${consumersTitle} (Ctrl+Shift+D)`, 'dashboard'));
   }
   bar.innerHTML = html.join('');
   bar.querySelectorAll('[data-status-action]').forEach(el => {
