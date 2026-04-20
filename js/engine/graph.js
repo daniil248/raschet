@@ -84,16 +84,14 @@ export function createNode(type, x, y, opts) {
   base.tag = tagPrefix ? nextFreeTagWithPrefix(tagPrefix) : nextFreeTag(type);
   base.x = x - nodeWidth(base) / 2;
   base.y = y - NODE_H / 2;
-  // Новый узел привязывается к home-странице (independent).
-  // Если текущая страница — linked, то home = её sourcePageId, и узел
-  // получит pageIds=[home, currentLinked] чтобы сразу быть виден на ней.
+  // v0.58.5: новый узел виден на ВСЕХ страницах проекта.
+  // В проекте всегда присутствует набор видов (schematic/layout/
+  // mechanical/…), и карточка элемента — общая для всех. Разное
+  // расположение per-page хранится в n.positionsByPage.
+  // (Ограничить набор страниц можно вручную через чекбоксы в инспекторе.)
   if (state.currentPageId) {
-    const cur = (state.pages || []).find(p => p.id === state.currentPageId);
-    if (cur && cur.type === 'linked' && cur.sourcePageId) {
-      base.pageIds = [cur.sourcePageId, cur.id];
-    } else {
-      base.pageIds = [state.currentPageId];
-    }
+    const all = (state.pages || []).map(p => p.id);
+    base.pageIds = all.length ? all.slice() : [state.currentPageId];
   }
   state.nodes.set(id, base);
   _selectNode(id);

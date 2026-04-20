@@ -360,7 +360,20 @@ export function initToolbar() {
       description: '',
     };
     if (type === 'linked') newPage.sourcePageId = sourcePageId;
+    // v0.58.5: перед добавлением новой страницы сохраняем позиции узлов
+    // на текущей странице, чтобы не «утащить» их на новую.
+    if (state.currentPageId) saveCurrentPagePositions(state.currentPageId);
     state.pages.push(newPage);
+    // v0.58.5: все существующие узлы автоматически появляются на новой
+    // странице (проект = набор видов одной и той же схемы).
+    for (const n of state.nodes.values()) {
+      if (!Array.isArray(n.pageIds)) n.pageIds = [];
+      if (!n.pageIds.includes(newId)) n.pageIds.push(newId);
+    }
+    for (const c of state.conns.values()) {
+      if (!Array.isArray(c.pageIds)) c.pageIds = [];
+      if (!c.pageIds.includes(newId)) c.pageIds.push(newId);
+    }
     state.currentPageId = newId;
     state.view = { x: 0, y: 0, zoom: 1 };
     state.selectedKind = null; state.selectedId = null;
@@ -521,26 +534,15 @@ export function initToolbar() {
       if (tabEl) startInlineRename(tabEl, pageId);
     }, { shortcut: 'F2' });
     item('Дублировать', () => duplicatePage(pageId));
-    sep();
-    group('Тип страницы');
-    item('Независимая', () => setPageType(pageId, 'independent'), { checked: p.type !== 'linked' });
     // Phase 2.1: выбор вида страницы (schematic / layout / mechanical / ...)
+    // v0.58.5: убраны «Независимая/Ссылочная» — в проекте всегда набор
+    // видов одной схемы, все элементы видны на всех страницах.
     sep();
     group('Вид страницы');
     const curKind = getPageKind(p);
     for (const k of PAGE_KINDS) {
       const m = PAGE_KINDS_META[k];
       item(`${m.icon}  ${m.label}`, () => setPageKind(pageId, k), { checked: curKind === k });
-    }
-    sep();
-    group('Связь');
-    // Ссылочная → вложенный выбор parent (только независимые, кроме самой себя)
-    const parentCandidates = (state.pages || []).filter(pp => pp.type !== 'linked' && pp.id !== pageId);
-    for (const parent of parentCandidates) {
-      const isCurrentSource = p.type === 'linked' && p.sourcePageId === parent.id;
-      item(`Ссылочная → ${parent.name || parent.id}`,
-        () => setPageType(pageId, 'linked', parent.id),
-        { checked: isCurrentSource });
     }
     sep();
     group('Порядок');

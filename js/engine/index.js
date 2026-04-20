@@ -350,15 +350,12 @@ const vEl = document.getElementById('app-version');
 if (vEl) vEl.textContent = 'v' + APP_VERSION;
 
 // === Библиотека пресетов ===
-// Привязывает узел к текущей странице (home + linked если current — ссылочная)
+// v0.58.5: новый узел виден на всех страницах проекта (набор видов
+// проекта — schematic/layout/… — всегда присутствует совместно).
 function _assignCurrentPageIds(base) {
   if (!state.currentPageId) return;
-  const cur = (state.pages || []).find(p => p.id === state.currentPageId);
-  if (cur && cur.type === 'linked' && cur.sourcePageId) {
-    base.pageIds = [cur.sourcePageId, cur.id];
-  } else {
-    base.pageIds = [state.currentPageId];
-  }
+  const all = (state.pages || []).map(p => p.id);
+  base.pageIds = all.length ? all.slice() : [state.currentPageId];
 }
 
 function applyPreset(preset) {
