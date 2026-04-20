@@ -523,6 +523,11 @@
         </div>
         <div class="field"><label>Общее описание</label>
           <textarea id="pi-description" rows="4" style="width:100%;font:inherit;font-size:12px;resize:vertical" placeholder="Краткое описание проекта"></textarea></div>
+
+        <!-- v0.58.53: управление каталогом изделий проекта (1.22.4) -->
+        <h3 style="margin-top:18px">Каталог изделий проекта</h3>
+        <p class="muted" style="margin-top:0;font-size:12px">Изделия с диапазонами параметров систем (min…max). Узел схемы, привязанный к изделию, получает эти диапазоны в своих system-вкладках; проектные значения вводятся пользователем в рамках допустимого.</p>
+        <div id="pi-products-list" style="max-height:320px;overflow:auto;border:1px solid #e0e4ea;border-radius:4px"></div>
       </div>
       <div class="modal-foot">
         <button class="modal-close">Отмена</button>

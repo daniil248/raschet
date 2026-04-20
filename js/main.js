@@ -1426,13 +1426,133 @@ function openProjectInfoModal() {
   set('pi-stage',       pi.stage);
   set('pi-author',      pi.author);
   set('pi-description', pi.description);
+  // v0.58.53 (1.22.4): рендер каталога изделий проекта
+  renderProductCatalogList();
   openModal('modal-project-info');
+}
+
+// v0.58.53: UI управления каталогом изделий (list + edit ranges + delete).
+function renderProductCatalogList() {
+  const host = document.getElementById('pi-products-list');
+  if (!host) return;
+  const proj = (window.Raschet?._state?.project) || {};
+  const list = Array.isArray(proj.productCatalog) ? proj.productCatalog : [];
+  if (!list.length) {
+    host.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">Каталог пуст. Добавьте изделие через инспектор — вкладка «Общее» узла → «💾 Сохранить как изделие…».</div>';
+    return;
+  }
+  const rows = list.map(p => {
+    const sysRows = [];
+    const ranges = (p.systemRanges && typeof p.systemRanges === 'object') ? p.systemRanges : {};
+    for (const sysId of Object.keys(ranges)) {
+      const sysVals = ranges[sysId] || {};
+      const keys = Object.keys(sysVals);
+      if (!keys.length) continue;
+      const paramRows = keys.map(k => {
+        const r = sysVals[k] || {};
+        const minA = `data-prodkey="${p.id}" data-sys="${sysId}" data-param="${k}" data-bound="min"`;
+        const maxA = `data-prodkey="${p.id}" data-sys="${sysId}" data-param="${k}" data-bound="max"`;
+        const defA = `data-prodkey="${p.id}" data-sys="${sysId}" data-param="${k}" data-bound="default"`;
+        const isNum = Number.isFinite(r.min) || Number.isFinite(r.max);
+        if (isNum) {
+          return `<tr>
+            <td style="padding:2px 6px;font-size:11px;color:#555">${k}</td>
+            <td><input type="number" ${minA} value="${Number.isFinite(r.min) ? r.min : ''}" style="width:70px;font-size:11px;padding:2px 3px" placeholder="min"></td>
+            <td><input type="number" ${maxA} value="${Number.isFinite(r.max) ? r.max : ''}" style="width:70px;font-size:11px;padding:2px 3px" placeholder="max"></td>
+            <td><input type="number" ${defA} value="${Number.isFinite(r.default) ? r.default : ''}" style="width:70px;font-size:11px;padding:2px 3px" placeholder="default"></td>
+          </tr>`;
+        } else {
+          return `<tr>
+            <td style="padding:2px 6px;font-size:11px;color:#555">${k}</td>
+            <td colspan="3"><input type="text" ${defA} value="${r.default != null ? String(r.default) : ''}" style="width:100%;font-size:11px;padding:2px 3px" placeholder="значение (text/select)"></td>
+          </tr>`;
+        }
+      }).join('');
+      sysRows.push(`<div style="margin-top:6px;font-size:11px;color:#6b7385">${sysId}</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10px;color:#9aa0ae"><th style="text-align:left;padding:0 6px">ключ</th><th>min</th><th>max</th><th>default</th></tr></thead><tbody>${paramRows}</tbody></table>`);
+    }
+    return `<details style="border-bottom:1px solid #eef0f4;padding:8px 10px">
+      <summary style="cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span><b>${escapeHtml(p.name || p.id)}</b> <span class="muted" style="font-size:11px">· ${escapeHtml(p.type || '')}${p.subtype ? '/' + escapeHtml(p.subtype) : ''}${p.manufacturer ? ' · ' + escapeHtml(p.manufacturer) : ''}</span></span>
+        <button type="button" data-prod-del="${p.id}" style="font-size:11px;padding:2px 8px;border:1px solid #dc2626;background:#fff;color:#dc2626;border-radius:3px;cursor:pointer">✕ удалить</button>
+      </summary>
+      <div style="margin-top:6px">
+        <div class="field" style="margin-bottom:4px"><label style="font-size:11px">Название</label>
+          <input type="text" data-prodkey="${p.id}" data-bound="name" value="${escapeAttr(p.name || '')}" style="width:100%;font-size:12px;padding:3px 6px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div class="field" style="margin-bottom:4px"><label style="font-size:11px">Производитель</label>
+            <input type="text" data-prodkey="${p.id}" data-bound="manufacturer" value="${escapeAttr(p.manufacturer || '')}" style="width:100%;font-size:12px;padding:3px 6px"></div>
+          <div class="field" style="margin-bottom:4px"><label style="font-size:11px">Артикул / modelRef</label>
+            <input type="text" data-prodkey="${p.id}" data-bound="modelRef" value="${escapeAttr(p.modelRef || '')}" style="width:100%;font-size:12px;padding:3px 6px"></div>
+        </div>
+        ${sysRows.join('') || '<div class="muted" style="font-size:11px;padding:4px 0">Нет сохранённых параметров систем.</div>'}
+      </div>
+    </details>`;
+  }).join('');
+  host.innerHTML = rows;
+
+  // wire delete
+  host.querySelectorAll('[data-prod-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const id = btn.getAttribute('data-prod-del');
+      const prod = list.find(p => p.id === id);
+      if (!prod) return;
+      if (!confirm(`Удалить изделие «${prod.name || id}» из каталога?\nУзлы, ссылающиеся на него, сохранят значения параметров, но потеряют диапазоны.`)) return;
+      proj.productCatalog = list.filter(p => p.id !== id);
+      // очистить productId у всех узлов, ссылавшихся на него
+      try {
+        const nodes = window.Raschet?._state?.nodes;
+        if (nodes) for (const n of nodes.values()) if (n.productId === id) delete n.productId;
+      } catch {}
+      renderProductCatalogList();
+      if (typeof window.Raschet?.notifyChange === 'function') window.Raschet.notifyChange();
+    });
+  });
+
+  // wire edits (name / manufacturer / modelRef / ranges)
+  host.querySelectorAll('[data-prodkey]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const pid = inp.getAttribute('data-prodkey');
+      const prod = list.find(p => p.id === pid);
+      if (!prod) return;
+      const bound = inp.getAttribute('data-bound');
+      const sys = inp.getAttribute('data-sys');
+      const param = inp.getAttribute('data-param');
+      if (sys && param) {
+        if (!prod.systemRanges[sys]) prod.systemRanges[sys] = {};
+        if (!prod.systemRanges[sys][param]) prod.systemRanges[sys][param] = {};
+        const r = prod.systemRanges[sys][param];
+        if (inp.type === 'number') {
+          const v = inp.value === '' ? undefined : Number(inp.value);
+          if (v === undefined) delete r[bound];
+          else r[bound] = v;
+        } else {
+          r[bound] = inp.value;
+        }
+      } else {
+        prod[bound] = inp.value;
+      }
+      if (typeof window.Raschet?.notifyChange === 'function') window.Raschet.notifyChange();
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+function escapeAttr(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 function saveProjectInfoModal() {
   const get = (id) => document.getElementById(id)?.value || '';
   if (!window.Raschet?._state) return;
+  // v0.58.53: bug-fix — сохраняем поверх существующего объекта, иначе
+  // пропадают customSystems, floorNames, productCatalog и прочие поля.
+  const prev = window.Raschet._state.project || {};
   window.Raschet._state.project = {
+    ...prev,
     designation: get('pi-designation').trim(),
     name:        get('pi-name').trim(),
     customer:    get('pi-customer').trim(),
