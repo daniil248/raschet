@@ -201,6 +201,19 @@ const Fs = {
         .collection('presence').doc(uid).delete();
     } catch {}
   },
+  // v0.57.78 (Collaboration C.6): курсоры участников. Пишем { x, y, pageId }
+  // прямо в presence-doc (merge), чтобы не плодить ещё одну subcollection.
+  // Дросселирование — на клиенте (200 мс). Передача cursor=null снимает курсор.
+  async presenceCursor(projectId, uid, cursor) {
+    if (!projectId || !uid) return;
+    try {
+      await fsDb().collection('projects').doc(projectId)
+        .collection('presence').doc(uid).set({
+          cursor: cursor || null,
+          lastSeen: Date.now(),
+        }, { merge: true });
+    } catch { /* permission-denied или offline — молча */ }
+  },
   subscribePresence(projectId, callback) {
     if (!projectId) return () => {};
     try {
@@ -423,6 +436,10 @@ window.Storage = {
   presenceLeave(id, uid) {
     const s = getStorage();
     return s.presenceLeave ? s.presenceLeave(id, uid) : Promise.resolve();
+  },
+  presenceCursor(id, uid, cursor) {
+    const s = getStorage();
+    return s.presenceCursor ? s.presenceCursor(id, uid, cursor) : Promise.resolve();
   },
   subscribePresence(id, cb) {
     const s = getStorage();

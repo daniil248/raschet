@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { svg, layerZones, layerConns, layerNodes, statsEl, modesListEl, isOnCurrentPage, sanitizeView } from './state.js';
+import { svg, layerZones, layerConns, layerNodes, layerOver, statsEl, modesListEl, isOnCurrentPage, sanitizeView } from './state.js';
 import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
 
 // IEC installation method → legacy CHANNEL_TYPES key (для иконок/лейблов)
@@ -255,6 +255,55 @@ export function render() {
   renderStats();
   renderModes();
   decorateRemoteLocks();
+  renderRemoteCursors();
+}
+
+// v0.57.78 (Collaboration C.6): курсоры других участников сессии.
+// Данные берутся из window.__remoteCursors = { uid: {x, y, pageId, name, photo, color} }.
+// Рисует стрелку-треугольник + короткую подпись с именем рядом. Чужой
+// курсор показывается только если он на текущей странице. Размер
+// компенсируется zoom'ом, чтобы не раздувать при приближении.
+// Отдельная функция экспортируется — main.js дёргает её при смене
+// presence-снапшота без полного render()+recalc().
+export function renderRemoteCursors() {
+  if (!layerOver) return;
+  let g = document.getElementById('layer-remote-cursors');
+  if (g) g.parentNode?.removeChild(g);
+  const cursors = (typeof window !== 'undefined' && window.__remoteCursors) || {};
+  const uids = Object.keys(cursors);
+  if (!uids.length) return;
+  g = el('g', { id: 'layer-remote-cursors', 'pointer-events': 'none' });
+  const zoom = (state?.view?.zoom > 0 ? state.view.zoom : 1);
+  const inv = 1 / zoom;  // размер иконки не должен зависеть от zoom
+  for (const uid of uids) {
+    const c = cursors[uid];
+    if (!c || !Number.isFinite(c.x) || !Number.isFinite(c.y)) continue;
+    if (c.pageId && state?.currentPageId && c.pageId !== state.currentPageId) continue;
+    const name = (c.name || c.email || '?').trim();
+    const short = name.length > 14 ? name.slice(0, 14) + '…' : name;
+    const hue = Math.abs([...(uid || name)].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % 360;
+    const color = c.color || `hsl(${hue},65%,50%)`;
+    const cg = el('g', { transform: `translate(${c.x},${c.y}) scale(${inv})` });
+    // Стрелка-курсор (треугольник как системный pointer)
+    cg.appendChild(el('path', {
+      d: 'M0,0 L0,16 L4.5,12 L7,18 L10,16.5 L7.5,10.5 L13,10 Z',
+      fill: color,
+      stroke: '#fff', 'stroke-width': 1.2, 'stroke-linejoin': 'round',
+    }));
+    // Подпись с именем
+    const labelW = Math.max(32, short.length * 6 + 10);
+    const lg = el('g', { transform: 'translate(14, 14)' });
+    lg.appendChild(el('rect', {
+      x: 0, y: 0, width: labelW, height: 14, rx: 3,
+      fill: color, stroke: '#fff', 'stroke-width': 0.8, opacity: 0.92,
+    }));
+    const t = el('text', { x: 5, y: 10, fill: '#fff', 'font-size': 9, 'font-weight': 600 });
+    t.textContent = short;
+    lg.appendChild(t);
+    cg.appendChild(lg);
+    g.appendChild(cg);
+  }
+  layerOver.appendChild(g);
 }
 
 // Оверлей для объектов, редактируемых другими участниками collab-сессии.

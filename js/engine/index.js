@@ -36,7 +36,7 @@ import { recalc, maxDownstreamLoad, downstreamPQ, panelCosPhi } from './recalc.j
 import {
   updateViewBox, el, text, bezier, splinePath, pathMidpoint,
   render, renderNodes, renderConns, renderStats, renderModes,
-  drawChannelIcon, drawBundlingIcon, bindRenderDeps,
+  drawChannelIcon, drawBundlingIcon, bindRenderDeps, renderRemoteCursors,
 } from './render.js';
 import {
   selectNode, selectConn, renderInspector, renderInspectorNode,
@@ -573,5 +573,17 @@ window.Raschet = {
   openImpedanceModal,
   getDefaults(type) { return DEFAULTS[type] ? DEFAULTS[type]() : {}; },
   setSelectionHook,  // main.js использует для object-locking в collab-режиме
+  renderRemoteCursors,  // v0.57.78 Collaboration C.6 — отрисовка чужих курсоров
+  // Конвертация screen → scheme coords (main.js использует для presenceCursor).
+  screenToScheme(clientX, clientY) {
+    if (!svg) return null;
+    const r = svg.getBoundingClientRect();
+    const z = state.view.zoom > 0 ? state.view.zoom : 1;
+    return {
+      x: state.view.x + (clientX - r.left) / z,
+      y: state.view.y + (clientY - r.top)  / z,
+    };
+  },
+  getCurrentPageId() { return state.currentPageId || null; },
   _presetEditCallback: null,
 };

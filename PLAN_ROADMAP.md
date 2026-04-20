@@ -402,7 +402,7 @@
 - [x] **C.3** Object-level locking: subcollection `projects/{id}/locks/{key}`. Key = nodeId или `conn:${connId}` (v0.57.76). Лок удерживается пока пользователь выделил узел/связь.
 - [x] **C.4** Визуализация чужих локов: оранжевая пунктирная рамка на узлах + толстая линия на связях, бейдж с именем (`render.js:decorateRemoteLocks`).
 - [x] **C.5** Preserve-local-display: view/zoom/activeModeId/currentPageId не пропагируются между сессиями (`_preserveLocalDisplay`).
-- [ ] **C.6** Cursor awareness: живые позиции курсоров других пользователей (стрим через RTDB/throttled Firestore).
+- [x] **C.6** Cursor awareness (v0.57.78): mousemove дросселируется до 200 мс, координаты конвертируются в схемные (`Raschet.screenToScheme`), пишутся в `presence/{uid}.cursor = {x, y, pageId}` через `presenceCursor`. `subscribePresence` собирает чужие курсоры в `window.__remoteCursors`; `render.js:renderRemoteCursors` рисует треугольник-стрелку + бейдж с именем в `layer-overlay`, фильтрует по `currentPageId`, компенсирует zoom (scale(1/zoom)).
 - [x] **C.7** Conflict-aware merge: `_computeSchemeDiff` + `_showRemoteConflictModal` (v0.57.77) — вместо браузерного confirm показывается модалка со счётчиками `nodesAdded/Removed/Changed` и `connsAdded/Removed/Changed`, кнопки «Принять удалённые / Оставить локальные / Решить позже». Автор последнего сохранения виден в заголовке.
 - [ ] **C.8** История версий: subcollection `projects/{id}/revisions/{revId}` с откатом и сравнением.
 - [ ] **C.9** Email-нотификации запросов доступа через Cloud Functions.

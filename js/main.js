@@ -131,6 +131,19 @@ function _stopCollab() {
   }
   state.remoteLocks = {};
   window.__remoteLocks = {};
+  // v0.57.78 Collaboration C.6: снимаем курсор, отписываемся от mousemove
+  window.__remoteCursors = {};
+  try { window.Raschet?.renderRemoteCursors?.(); } catch {}
+  if (state._cursorMoveHandler) {
+    try { document.removeEventListener('mousemove', state._cursorMoveHandler, true); } catch {}
+    try { document.removeEventListener('mouseleave', state._cursorLeaveHandler, true); } catch {}
+    state._cursorMoveHandler = null;
+    state._cursorLeaveHandler = null;
+  }
+  if (state._cursorThrottleTimer) { clearTimeout(state._cursorThrottleTimer); state._cursorThrottleTimer = null; }
+  if (state.currentProject && state.currentUser && window.Storage?.isCloud) {
+    try { window.Storage.presenceCursor(state.currentProject.id, state.currentUser.uid, null); } catch {}
+  }
   const bar = document.getElementById('presence-bar');
   if (bar) { bar.innerHTML = ''; bar.classList.add('hidden'); }
   state.remoteChangeToastShown = false;
@@ -193,10 +206,71 @@ function _startCollab(project, initialUpdatedAtMs) {
     }
   }, 20_000);
 
-  // Подписка на presence — рисуем аватары
+  // Подписка на presence — рисуем аватары + обновляем карту курсоров (C.6)
   state.unsubPresence = window.Storage.subscribePresence(project.id, (list) => {
-    _renderPresenceBar(list.filter(u => u.uid !== uid));
+    const others = list.filter(u => u.uid !== uid);
+    _renderPresenceBar(others);
+    // v0.57.78 Collaboration C.6: собираем курсоры, передаём в рендер-оверлей
+    const cursors = {};
+    for (const u of others) {
+      if (!u.cursor || typeof u.cursor !== 'object') continue;
+      if (!Number.isFinite(u.cursor.x) || !Number.isFinite(u.cursor.y)) continue;
+      cursors[u.uid] = {
+        x: u.cursor.x,
+        y: u.cursor.y,
+        pageId: u.cursor.pageId || null,
+        name: u.name || u.email || 'user',
+        email: u.email || '',
+      };
+    }
+    window.__remoteCursors = cursors;
+    try { window.Raschet?.renderRemoteCursors?.(); } catch {}
   });
+
+  // v0.57.78 Collaboration C.6: свой курсор отправляем в presence-doc
+  // дросселированно, 200 мс между сетевыми записями. Координаты — в
+  // схемной системе (инвариантны к zoom/pan другого участника). pageId
+  // нужен, чтобы не показывать чужой курсор, когда мы на другой странице.
+  let _lastSend = 0;
+  let _pending = null;
+  const CURSOR_THROTTLE_MS = 200;
+  const sendCursor = (cur) => {
+    try { window.Storage.presenceCursor(project.id, uid, cur); } catch {}
+  };
+  const flushCursor = () => {
+    state._cursorThrottleTimer = null;
+    if (_pending !== null) {
+      _lastSend = Date.now();
+      const p = _pending; _pending = null;
+      sendCursor(p);
+    }
+  };
+  const queueCursor = (cur) => {
+    _pending = cur;
+    const since = Date.now() - _lastSend;
+    if (since >= CURSOR_THROTTLE_MS) {
+      flushCursor();
+    } else if (!state._cursorThrottleTimer) {
+      state._cursorThrottleTimer = setTimeout(flushCursor, CURSOR_THROTTLE_MS - since);
+    }
+  };
+  state._cursorMoveHandler = (e) => {
+    const svgEl = document.getElementById('canvas');
+    if (!svgEl) return;
+    const r = svgEl.getBoundingClientRect();
+    // Только если мышь реально над канвасом
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+    const pt = window.Raschet?.screenToScheme?.(e.clientX, e.clientY);
+    if (!pt) return;
+    queueCursor({
+      x: Math.round(pt.x * 10) / 10,
+      y: Math.round(pt.y * 10) / 10,
+      pageId: window.Raschet?.getCurrentPageId?.() || null,
+    });
+  };
+  state._cursorLeaveHandler = () => { queueCursor(null); };
+  document.addEventListener('mousemove', state._cursorMoveHandler, true);
+  document.addEventListener('mouseleave', state._cursorLeaveHandler, true);
 
   // Подписка на locks — ловим чужие блокировки узлов
   state.remoteLocks = {};
