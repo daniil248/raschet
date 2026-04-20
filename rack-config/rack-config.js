@@ -30,7 +30,19 @@ import {
   PDU_CATEGORY, PDU_CATALOG,
   pduBySku, accBySku, kitById,
   accessoryMatchesRackMfg, accessoryMfgList,
+  getLiveKitCatalog, getLivePduCatalog, getLiveAccessoryCatalog,
 } from '../shared/rack-catalog-data.js';
+import { initCatalogBridge } from '../shared/catalog-bridge.js';
+import { onLibraryChange } from '../shared/element-library.js';
+initCatalogBridge();
+
+// Re-render при правках каталога (админ изменил встроенный rack/pdu/accessory).
+try {
+  onLibraryChange(() => {
+    try { if (typeof renderForm === 'function') renderForm(); } catch {}
+    try { if (typeof renderKitBtn === 'function') renderKitBtn(); } catch {}
+  });
+} catch {}
 
 const LS_KEY  = 'rack-config.templates.v1';
 const BRIDGE_KEY_PREFIX = 'raschet.rack.bridge.';
@@ -124,9 +136,10 @@ function renderKitBtn() {
 // Фильтры: производитель, формат по U, по ширине/глубине, текст-поиск.
 function openKitCatalogModal() {
   const t = current();
+  const KITS = getLiveKitCatalog();
   const mfgs = Array.from(new Set(
-    KIT_CATALOG.filter(k => k.id).map(k => (k.preset && k.preset.manufacturer) || '—'))).sort();
-  const us   = Array.from(new Set(KIT_CATALOG.filter(k => k.id).map(k => k.preset.u))).sort((a,b) => a-b);
+    KITS.filter(k => k.id).map(k => (k.preset && k.preset.manufacturer) || '—'))).sort();
+  const us   = Array.from(new Set(KITS.filter(k => k.id).map(k => k.preset.u))).sort((a,b) => a-b);
   const state = { search: '', mfg: '__all__', u: '__all__' };
 
   const back = document.createElement('div');
@@ -143,7 +156,7 @@ function openKitCatalogModal() {
   }
   function render() {
     const q = state.search.trim().toLowerCase();
-    const rows = KIT_CATALOG.filter(k => {
+    const rows = KITS.filter(k => {
       if (!k.id) return false; // «Произвольная» — отдельная кнопка внизу
       const mfg = (k.preset && k.preset.manufacturer) || '';
       if (state.mfg !== '__all__' && mfg !== state.mfg) return false;
@@ -224,7 +237,8 @@ function openKitCatalogModal() {
 // Модал выбора PDU из каталога. Колонки: SKU | производитель | категория |
 // фазы | номинал | высота | розетки. Фильтры: mfg, category, phases, rating.
 function openPduCatalogModal(pdu) {
-  const mfgs = Array.from(new Set(PDU_CATALOG.map(p => p.mfg))).sort();
+  const PDUS = getLivePduCatalog();
+  const mfgs = Array.from(new Set(PDUS.map(p => p.mfg))).sort();
   const st = { search: '', mfg: '__all__', cat: '__all__', phases: '__all__' };
 
   const back = document.createElement('div');
@@ -236,7 +250,7 @@ function openPduCatalogModal(pdu) {
 
   function render() {
     const q = st.search.trim().toLowerCase();
-    const rows = PDU_CATALOG.filter(p => {
+    const rows = PDUS.filter(p => {
       if (st.mfg !== '__all__' && p.mfg !== st.mfg) return false;
       if (st.cat !== '__all__' && p.category !== st.cat) return false;
       if (st.phases !== '__all__' && String(p.phases) !== st.phases) return false;
@@ -454,8 +468,9 @@ function readForm() {
 function openAccessoryModal() {
   const t = current();
   const rackMfg = t.manufacturer || '';
+  const ACCS = getLiveAccessoryCatalog();
   // какие аксессуары соответствуют бренду шкафа
-  const matching = ACCESSORY_CATALOG.filter(a => accessoryMatchesRackMfg(a, rackMfg));
+  const matching = ACCS.filter(a => accessoryMatchesRackMfg(a, rackMfg));
   const restrictByMfg = matching.length > 0; // если ни одного совпадения — показываем все
 
   const state = {
@@ -477,7 +492,7 @@ function openAccessoryModal() {
 
   function render() {
     const q = state.search.trim().toLowerCase();
-    const rows = ACCESSORY_CATALOG.filter(a => {
+    const rows = ACCS.filter(a => {
       if (state.mfg === '__match__' && !accessoryMatchesRackMfg(a, rackMfg)) return false;
       if (state.mfg !== '__all__' && state.mfg !== '__match__' && a.mfg !== state.mfg) return false;
       if (state.cat !== '__all__' && a.category !== state.cat) return false;

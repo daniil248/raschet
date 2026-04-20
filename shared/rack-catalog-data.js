@@ -291,9 +291,111 @@ export const PDU_CATALOG = [
     phases: 3, rating: 32, height: 0,
     outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
 ];
-export function pduBySku(sku) { return PDU_CATALOG.find(p => p.sku === sku) || null; }
-export function accBySku(sku) { return ACCESSORY_CATALOG.find(a => a.sku === sku) || null; }
-export function kitById(id)   { return KIT_CATALOG.find(k => k.id === id) || KIT_CATALOG[0]; }
+export function pduBySku(sku) { return getLivePduCatalog().find(p => p.sku === sku) || null; }
+export function accBySku(sku) { return getLiveAccessoryCatalog().find(a => a.sku === sku) || null; }
+export function kitById(id)   {
+  const live = getLiveKitCatalog();
+  return live.find(k => k.id === id) || live[0] || KIT_CATALOG[0];
+}
+
+/* ---------- Live-геттеры (v0.58.74) ----------
+   Читают элементы из element-library через listElements() — это
+   включает override-правки, внесённые в Каталоге. Если library ещё
+   не инициализирована (listElements вернул 0 для нашего kind) —
+   возвращаем статический массив как fallback.
+   Формат выдачи совпадает с исходными KIT_CATALOG / PDU_CATALOG /
+   ACCESSORY_CATALOG — поэтому rack-config работает без изменений
+   контракта данных. */
+
+let __listElements = null;
+async function _ensureLib() {
+  if (__listElements) return __listElements;
+  try {
+    const m = await import('./element-library.js');
+    __listElements = m.listElements;
+  } catch { __listElements = () => []; }
+  return __listElements;
+}
+// Синхронная версия: используем уже-загруженный listElements (kэш).
+// Первый вызов до init вернёт статику — это ок, rack-config делает
+// re-render при изменениях library (подпишемся отдельно).
+function _syncList(kind) {
+  try {
+    if (!__listElements && globalThis.__raschetElementLibrary?.listElements) {
+      __listElements = globalThis.__raschetElementLibrary.listElements;
+    }
+    if (__listElements) return __listElements({ kind });
+  } catch {}
+  return [];
+}
+
+/** Всегда-актуальный KIT_CATALOG с учётом override-правок. */
+export function getLiveKitCatalog() {
+  const live = _syncList('rack');
+  if (!live.length) return KIT_CATALOG;
+  const out = [{ id: '', sku: '', name: 'Произвольная конфигурация', includes: [], preset: {} }];
+  for (const el of live) {
+    const kp = el.kindProps || {};
+    out.push({
+      id:   kp.kitId || el.id.replace(/^rack\./, ''),
+      sku:  kp.sku || el.variant || '',
+      name: el.label || '',
+      includes: Array.isArray(kp.includes) ? kp.includes : [],
+      preset: {
+        manufacturer: el.manufacturer || '',
+        u: kp.u, width: kp.width, depth: kp.depth,
+        doorFront: kp.doorFront, doorRear: kp.doorRear,
+        doorWithLock: kp.doorWithLock,
+        sides: kp.sides, top: kp.top, base: kp.base,
+        comboTopBase: kp.comboTopBase,
+      },
+    });
+  }
+  return out;
+}
+
+/** Всегда-актуальный PDU_CATALOG с учётом override-правок. */
+export function getLivePduCatalog() {
+  const live = _syncList('pdu');
+  if (!live.length) return PDU_CATALOG;
+  return live.map(el => {
+    const kp = el.kindProps || {};
+    const outlets = Array.isArray(kp.outlets) ? kp.outlets.map(o => ({
+      type: o.type,
+      count: Number(o.count ?? o.qty ?? 0),
+    })) : [];
+    return {
+      sku:    kp.sku || el.variant || el.id,
+      mfg:    el.manufacturer || '',
+      category: kp.category || 'basic',
+      name:   el.label || '',
+      phases: Number(kp.phases || el.electrical?.phases || 1),
+      rating: Number(kp.rating || el.electrical?.capacityA || 16),
+      height: Number(kp.height || 0),
+      outlets,
+    };
+  });
+}
+
+/** Всегда-актуальный ACCESSORY_CATALOG с учётом override-правок. */
+export function getLiveAccessoryCatalog() {
+  const live = _syncList('rack-accessory');
+  if (!live.length) return ACCESSORY_CATALOG;
+  return live.map(el => {
+    const kp = el.kindProps || {};
+    return {
+      sku:      kp.sku || el.variant || el.id,
+      mfg:      el.manufacturer || '',
+      category: kp.accCategory || 'other',
+      name:     el.label || '',
+      note:     kp.note || el.description || '',
+    };
+  });
+}
+
+// Первая инициализация (асинхронная) — чтобы __listElements кэш был готов
+// к моменту первого re-render'а rack-config.
+_ensureLib();
 
 /* ---------- Маппинг в Element-формат для element-library ----------
    Регистрируется через catalog-bridge как builtin. Элементы появляются

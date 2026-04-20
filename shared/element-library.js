@@ -200,6 +200,8 @@ if (typeof globalThis !== 'undefined') {
   globalThis.__raschetElementLibrary = {
     get getElement() { return getElement; },
     get isPricableKind() { return isPricableKind; },
+    get listElements() { return listElements; },
+    get onLibraryChange() { return onLibraryChange; },
   };
 }
 

@@ -199,7 +199,7 @@ function renderElementsTab() {
       <div class="spacer"></div>
       <button id="el-add" class="primary">+ Добавить элемент</button>
       <button id="el-export">Экспорт JSON</button>
-      <button id="el-role-toggle" style="${roleIsAdmin ? 'background:#b54708;color:#fff;border-color:#b54708' : ''}" title="Переключить роль catalog-admin (индикатор до Phase 5 auth; правка builtin сейчас доступна всем)">${roleIsAdmin ? '🔓 Выйти из admin' : '🔒 Режим админа'}</button>
+      <button id="el-role-toggle" style="${roleIsAdmin ? 'background:#b54708;color:#fff;border-color:#b54708' : ''}" title="Переключить режим админа (индикатор роли; правка встроенных сейчас доступна всем)">${roleIsAdmin ? '🔓 Выйти из админа' : '🔒 Режим админа'}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">
       Всего: <b>${all.length}</b>, отфильтровано: <b>${filtered.length}</b>
@@ -261,11 +261,11 @@ function renderElementsTab() {
           <button data-act="view-prices">Цены</button>
           ${!el.builtin
             ? '<button data-act="edit">✎</button>'
-            : `<button data-act="edit" title="Править встроенный (сохранится в override-слой)">✎</button>${overrides[el.id] ? '<button data-act="reset" title="Откатить override к исходному seed">↺</button>' : ''}`}
+            : `<button data-act="edit" title="Править встроенный элемент">✎</button>${overrides[el.id] ? '<button data-act="reset" title="Откатить к исходным данным">↺</button>' : ''}`}
           <button data-act="clone">Клон</button>
           ${!el.builtin
             ? '<button data-act="del" class="danger">×</button>'
-            : '<button data-act="tombstone" class="danger" title="Скрыть builtin из выдачи (tombstone); откат через ↺">×</button>'}
+            : '<button data-act="tombstone" class="danger" title="Скрыть встроенный элемент (откат через ↺)">×</button>'}
         </td>
       </tr>`);
   }
@@ -302,12 +302,12 @@ function renderElementsTab() {
     const ov = listBuiltinOverrides();
     const rows = Object.entries(ov).map(([id, patch]) => {
       const el = getElement(id);
-      const label = el ? el.label : '(скрыт tombstone)';
-      const kind = patch.tombstone ? '<span style="color:#b42318">tombstone</span>'
+      const label = el ? el.label : '(скрыт)';
+      const kind = patch.tombstone ? '<span style="color:#b42318">скрыт</span>'
                                    : Object.keys(patch).filter(k => k !== 'updatedAt').join(', ');
       return `<tr><td><code>${esc(id)}</code></td><td>${esc(label)}</td><td>${kind}</td><td>${fmtDate(patch.updatedAt)}</td><td><button data-reset="${esc(id)}">↺ Откатить</button></td></tr>`;
     }).join('');
-    openModal('Правки builtin-элементов (override-слой)',
+    openModal('Правки встроенных элементов',
       `<table class="data-table"><thead><tr><th>ID</th><th>Название</th><th>Изменения</th><th>Обновлено</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">Нет правок</td></tr>'}</tbody></table>`,
       null);
     setTimeout(() => {
@@ -315,7 +315,7 @@ function renderElementsTab() {
         b.onclick = () => {
           try {
             resetBuiltinOverride(b.dataset.reset);
-            flash('Откачено к исходному seed', 'success');
+            flash('Откачено к исходным данным', 'success');
             document.getElementById('modal').classList.remove('show');
             renderElementsTab();
           } catch (err) { flash(err.message, 'error'); }
@@ -344,14 +344,14 @@ function renderElementsTab() {
           if (confirm('Удалить?')) { removeElement(id); flash('Удалено', 'success'); }
         }
         else if (act === 'reset') {
-          if (confirm('Откатить override к исходному seed builtin?')) {
+          if (confirm('Откатить правки к исходным данным?')) {
             try { resetBuiltinOverride(id); flash('Откачено', 'success'); }
             catch (err) { flash(err.message, 'error'); }
           }
         }
         else if (act === 'tombstone') {
-          if (confirm('Скрыть этот встроенный элемент из выдачи (tombstone)?\n\nСбросить можно через «↺» в списке правок builtin.')) {
-            try { removeElement(id); flash('Скрыто (tombstone)', 'success'); }
+          if (confirm('Скрыть этот встроенный элемент?\n\nВосстановить можно через «↺» в списке правок встроенных.')) {
+            try { removeElement(id); flash('Скрыто', 'success'); }
             catch (err) { flash(err.message, 'error'); }
           }
         }
@@ -542,7 +542,7 @@ function openAddElementModal(editId) {
   else if (el.kind === 'pdu') kindSpecific = renderPduFields(el);
 
   const html = `
-    ${isBuiltinEdit ? '<div style="background:#fff4e5;border-left:3px solid #b54708;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#7a3a00">Редактирование <b>встроенного</b> элемента. Правки сохранятся в override-слой (<code>raschet.elementLibrary.overrides.v1</code>) поверх исходного seed. ID и kind менять нельзя — откат через «↺».</div>' : ''}
+    ${isBuiltinEdit ? '<div style="background:#fff4e5;border-left:3px solid #b54708;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#7a3a00">Редактирование <b>встроенного</b> элемента. ID и kind менять нельзя; «↺» — откат к исходным данным.</div>' : ''}
     <div class="field"><label>ID</label><input id="f-id" value="${esc(el.id || '')}"${editId ? ' readonly' : ''}></div>
     <div class="field"><label>Kind</label><select id="f-kind"${isBuiltinEdit ? ' disabled' : ''}>${kindOpts}</select></div>
     <div class="field"><label>Название</label><input id="f-label" value="${esc(el.label || '')}"></div>
@@ -689,7 +689,7 @@ function openViewElementModal(id) {
       <pre style="background:#f6f8fa;padding:10px;border-radius:4px;font-size:11px;max-height:300px;overflow:auto;margin-top:6px">${esc(JSON.stringify(el, null, 2))}</pre>
     </details>
 
-    ${el.builtin ? '<div style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-left:3px solid #b54708;border-radius:3px;color:#7a3a00">ℹ Встроенный элемент. Правка — через кнопку «✎» в строке списка: изменения пишутся в override-слой (<code>raschet.elementLibrary.overrides.v1</code>) поверх seed. «↺» — откат к исходнику.</div>' : ''}
+    ${el.builtin ? '<div style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-left:3px solid #b54708;border-radius:3px;color:#7a3a00">ℹ Встроенный элемент. Правка — через кнопку «✎» в строке списка; «↺» — откат к исходным данным.</div>' : ''}
   `;
 
   openModal('Свойства: ' + (el.label || el.id), html, () => true);
