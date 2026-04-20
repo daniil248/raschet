@@ -435,6 +435,17 @@ export function renderProjectRegistry() {
 // Система, совпадающая с видом текущей страницы, толще (4px) и выделена
 // тёмной окантовкой; остальные — 2px. Если у ноды только [electrical] и
 // страница schematic — полоска не рисуется (не захламляем схему).
+// v0.58.37: парсит строку масштаба страницы «1:N» → число N (множитель мира
+// для бумажных единиц). Если не layout или формат битый — 1.
+function _parseScaleFactor(page) {
+  if (!page) return 1;
+  const s = String(page.scale || '1:1').trim();
+  const m = /^1:(\d+(?:\.\d+)?)$/.exec(s);
+  if (!m) return 1;
+  const n = parseFloat(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
 function _drawSystemStrip(g, n, w) {
   const sys = getNodeSystems(n);
   if (!sys.length) return;
@@ -500,6 +511,16 @@ export function renderLayoutRuler() {
   const zoom = state.view.zoom || 1;
   const vx = state.view.x || 0, vy = state.view.y || 0;
   const vw = W / zoom, vh = H / zoom;
+  // v0.58.37: сдвиги линеек (drag). Кламп по размерам экрана.
+  if (!state.rulerOffset) state.rulerOffset = { topPx: 0, leftPx: 0 };
+  const topPx = Math.max(0, Math.min(H - RULER_W, Number(state.rulerOffset.topPx) || 0));
+  const leftPx = Math.max(0, Math.min(W - RULER_W, Number(state.rulerOffset.leftPx) || 0));
+  state.rulerOffset.topPx = topPx;
+  state.rulerOffset.leftPx = leftPx;
+  // v0.58.37: нулевая точка страницы — page.originMm {x,y} в мировых мм.
+  // Подписи линеек отсчитываются относительно этой точки.
+  const ox = (page && page.originMm && Number.isFinite(page.originMm.x)) ? page.originMm.x : 0;
+  const oy = (page && page.originMm && Number.isFinite(page.originMm.y)) ? page.originMm.y : 0;
   // Выбор шага major-риски
   const candidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
   let step = 100;
@@ -512,55 +533,131 @@ export function renderLayoutRuler() {
     ruler.appendChild(e);
     return e;
   };
-  // Фон полос
-  mk('rect', { x: 0, y: 0, width: W, height: RULER_W, fill: '#fff8e1' });
-  mk('rect', { x: 0, y: 0, width: RULER_W, height: H, fill: '#fff8e1' });
-  mk('rect', { x: 0, y: 0, width: RULER_W, height: RULER_W, fill: '#ffecb3' });
-  mk('line', { x1: 0, y1: RULER_W - 0.5, x2: W, y2: RULER_W - 0.5, stroke: '#d9c19a', 'stroke-width': 1 });
-  mk('line', { x1: RULER_W - 0.5, y1: 0, x2: RULER_W - 0.5, y2: H, stroke: '#d9c19a', 'stroke-width': 1 });
+  // Фон полос (с учётом сдвигов)
+  // Горизонтальная полоса — на уровне topPx
+  mk('rect', { x: 0, y: topPx, width: W, height: RULER_W, fill: '#fff8e1', 'data-ruler': 'top', style: 'cursor:ns-resize' });
+  // Вертикальная полоса — на столбце leftPx
+  mk('rect', { x: leftPx, y: 0, width: RULER_W, height: H, fill: '#fff8e1', 'data-ruler': 'left', style: 'cursor:ew-resize' });
+  // Угол (пересечение)
+  mk('rect', { x: leftPx, y: topPx, width: RULER_W, height: RULER_W, fill: state.rulerSetOriginMode ? '#ffca28' : '#ffecb3', 'data-ruler': 'corner', style: 'cursor:crosshair' });
+  mk('line', { x1: 0, y1: topPx + RULER_W - 0.5, x2: W, y2: topPx + RULER_W - 0.5, stroke: '#d9c19a', 'stroke-width': 1 });
+  mk('line', { x1: leftPx + RULER_W - 0.5, y1: 0, x2: leftPx + RULER_W - 0.5, y2: H, stroke: '#d9c19a', 'stroke-width': 1 });
 
   const mmToX = (mm) => (mm - vx) * zoom;
   const mmToY = (mm) => (mm - vy) * zoom;
-  // v0.58.10: масштаб страницы (метаданные чертежа). На экране объекты
-  // рисуются в реальных мм, масштаб отображается как метка в углу.
   const scaleStr = (page && page.scale) || '1:1';
   const fmtMm = (mm) => {
     if (Math.abs(mm) >= 1000) return (Math.round(mm / 100) / 10) + ' м';
     return Math.round(mm) + '';
   };
-  // Верхняя линейка
+  // Верхняя линейка (подписи — относительно origin.x)
   const sx = Math.floor(vx / minorStep) * minorStep;
   const ex = vx + vw;
   for (let mm = sx; mm <= ex; mm += minorStep) {
     const x = mmToX(mm);
-    if (x < RULER_W || x > W) continue;
+    if (x < leftPx + RULER_W || x > W) continue;
     const major = Math.abs(mm % step) < 1e-6;
     mk('line', {
-      x1: x, y1: major ? RULER_W - 10 : RULER_W - 4,
-      x2: x, y2: RULER_W,
+      x1: x, y1: topPx + (major ? RULER_W - 10 : RULER_W - 4),
+      x2: x, y2: topPx + RULER_W,
       stroke: major ? '#8a7246' : '#c2a56a',
       'stroke-width': major ? 1 : 0.5,
     });
-    if (major) mk('text', { x: x + 2, y: 11, 'font-size': 10, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(mm));
+    if (major) mk('text', { x: x + 2, y: topPx + 11, 'font-size': 10, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(mm - ox));
   }
-  // Левая линейка
+  // Левая линейка (подписи — относительно origin.y)
   const sy = Math.floor(vy / minorStep) * minorStep;
   const ey = vy + vh;
   for (let mm = sy; mm <= ey; mm += minorStep) {
     const y = mmToY(mm);
-    if (y < RULER_W || y > H) continue;
+    if (y < topPx + RULER_W || y > H) continue;
     const major = Math.abs(mm % step) < 1e-6;
     mk('line', {
-      x1: major ? RULER_W - 10 : RULER_W - 4, y1: y,
-      x2: RULER_W, y2: y,
+      x1: leftPx + (major ? RULER_W - 10 : RULER_W - 4), y1: y,
+      x2: leftPx + RULER_W, y2: y,
       stroke: major ? '#8a7246' : '#c2a56a',
       'stroke-width': major ? 1 : 0.5,
     });
-    if (major) mk('text', { x: 2, y: y + 10, 'font-size': 10, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(mm));
+    if (major) mk('text', { x: leftPx + 2, y: y + 10, 'font-size': 10, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(mm - oy));
   }
-  // В угловом квадрате — текущий шаг и масштаб страницы
-  mk('text', { x: 3, y: 10, 'font-size': 8, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(step));
-  mk('text', { x: 3, y: 20, 'font-size': 8, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, scaleStr);
+  // v0.58.37: подсветка нулевой точки — короткий красный крестик если origin в viewport
+  if (ox !== 0 || oy !== 0) {
+    const oxPx = mmToX(ox), oyPx = mmToY(oy);
+    if (oxPx >= leftPx + RULER_W && oxPx <= W) {
+      mk('line', { x1: oxPx, y1: topPx, x2: oxPx, y2: topPx + RULER_W, stroke: '#d32f2f', 'stroke-width': 1.5 });
+    }
+    if (oyPx >= topPx + RULER_W && oyPx <= H) {
+      mk('line', { x1: leftPx, y1: oyPx, x2: leftPx + RULER_W, y2: oyPx, stroke: '#d32f2f', 'stroke-width': 1.5 });
+    }
+  }
+  // Угловой квадрат — шаг + масштаб + подсказка «0»
+  mk('text', { x: leftPx + 3, y: topPx + 9, 'font-size': 8, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(step));
+  mk('text', { x: leftPx + 3, y: topPx + 18, 'font-size': 8, fill: state.rulerSetOriginMode ? '#d32f2f' : '#8a7246', 'font-family': 'system-ui, sans-serif', 'font-weight': state.rulerSetOriginMode ? 700 : 400 }, state.rulerSetOriginMode ? '0…' : scaleStr);
+  // Tooltip через <title>
+  const corner = ruler.querySelector('[data-ruler="corner"]');
+  if (corner) {
+    const tt = document.createElementNS(SVG_NS, 'title');
+    tt.textContent = state.rulerSetOriginMode
+      ? 'Кликните на канвас, чтобы установить нулевую точку (Esc — отмена)'
+      : 'Клик: установить нулевую точку / Shift+клик: сбросить в (0,0)';
+    corner.appendChild(tt);
+  }
+  // Handlers (привязываются один раз)
+  if (!ruler.dataset.bound) {
+    ruler.dataset.bound = '1';
+    _bindRulerHandlers(ruler);
+  }
+}
+
+// v0.58.37: drag горизонтальной/вертикальной линейки + «установить ноль»
+function _bindRulerHandlers(ruler) {
+  let drag = null; // { kind:'top'|'left', startY/X, startOffset }
+  ruler.addEventListener('mousedown', (e) => {
+    const t = e.target;
+    const kind = t && t.getAttribute && t.getAttribute('data-ruler');
+    if (!kind) return;
+    if (kind === 'corner') {
+      e.preventDefault();
+      const page = getCurrentPage();
+      if (!page) return;
+      if (e.shiftKey) {
+        // Shift+клик — сброс origin
+        page.originMm = { x: 0, y: 0 };
+        state.rulerSetOriginMode = false;
+        try { snapshot('page-origin-reset'); notifyChange(); } catch {}
+        renderLayoutRuler();
+        return;
+      }
+      // Переключаем режим установки нулевой точки
+      state.rulerSetOriginMode = !state.rulerSetOriginMode;
+      renderLayoutRuler();
+      return;
+    }
+    // Drag
+    e.preventDefault();
+    if (kind === 'top') {
+      drag = { kind, startY: e.clientY, startOffset: state.rulerOffset?.topPx || 0 };
+    } else if (kind === 'left') {
+      drag = { kind, startX: e.clientX, startOffset: state.rulerOffset?.leftPx || 0 };
+    }
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!drag) return;
+    if (drag.kind === 'top') {
+      state.rulerOffset.topPx = drag.startOffset + (e.clientY - drag.startY);
+    } else if (drag.kind === 'left') {
+      state.rulerOffset.leftPx = drag.startOffset + (e.clientX - drag.startX);
+    }
+    renderLayoutRuler();
+  });
+  window.addEventListener('mouseup', () => { drag = null; });
+  // Esc — выход из режима origin
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.rulerSetOriginMode) {
+      state.rulerSetOriginMode = false;
+      renderLayoutRuler();
+    }
+  });
 }
 
 // Phase 2.3: на layout-страницах рисуем реальный габарит узла (widthMm × heightMm)
@@ -649,33 +746,29 @@ function _renderNodesLayout() {
       // v0.58.24: полоска систем вверху карточки также и на layout-странице
       _drawSystemStrip(g, n, W);
       // Подпись: полное обозначение (с префиксом зоны / секции) + имя + размеры.
-      // v0.58.35: используем effectiveTag, чтобы на layout-карточке было видно
-      // «S1.L7», а не локальное «L7».
+      // v0.58.35: effectiveTag — «S1.L7» вместо «L7».
       const tag = effectiveTag(n) || (typeof n.tag === 'string' ? n.tag : '') || '';
       const name = n.name || n.type;
-      // v0.58.34: надписи не масштабируются со state.view.zoom. Базовая
-      // высота 2.5 мм, максимум 5 мм (физические мм на экране, 1 mm ≈ 3.78 CSS px).
-      // В SVG-мире чертежа единицы = мм, на экран приходит fontSize*zoom пикселей,
-      // значит чтобы пиксели были постоянны — fontSize_svg = targetPx / zoom.
-      const _zLay = (state?.view?.zoom > 0 ? state.view.zoom : 1);
-      const PX_PER_MM = 3.7795;
-      const BASE_FONT_PX = 2.5 * PX_PER_MM;       // ~9.45 px (стандарт 2.5 мм)
-      const MAX_FONT_PX  = 5.0 * PX_PER_MM;       // ~18.9 px (максимум 5 мм)
-      // Размер подписи в экранных пикселях: чуть больше для крупных карточек,
-      // но строго в пределах [BASE, MAX]. Переводим в SVG-единицы делением на zoom.
-      const lblPx = Math.max(BASE_FONT_PX, Math.min(MAX_FONT_PX, Math.min(W, H) * _zLay / 14));
-      const secPx = Math.min(MAX_FONT_PX, BASE_FONT_PX);
-      const fontSize = lblPx / _zLay;
-      const secFontSize = secPx / _zLay;
+      // v0.58.37: размер шрифта привязан к МАСШТАБУ СТРАНИЦЫ (1:1 / 1:100 / …),
+      // а не к state.view.zoom. Базовый «бумажный» размер 2.5 мм, максимум 5 мм.
+      // На чертеже в масштабе 1:N бумажные 2.5 мм = 2.5*N мм в мире. Текст
+      // масштабируется вместе со всем чертежом при zoom — ровно как на бумаге.
+      const scaleFactor = _parseScaleFactor(getCurrentPage());
+      const BASE_FONT_MM = 2.5;       // стандарт «на бумаге»
+      const MAX_FONT_MM  = 5.0;       // максимум «на бумаге»
+      const lblMm = Math.max(BASE_FONT_MM, Math.min(MAX_FONT_MM, Math.min(W, H) / (14 * scaleFactor)));
+      const secMm = BASE_FONT_MM;
+      const fontSize = lblMm * scaleFactor;
+      const secFontSize = secMm * scaleFactor;
       const lbl = el('text', {
-        x: W / 2, y: Math.max(fontSize + 4 / _zLay, H / 2 - 4 / _zLay),
+        x: W / 2, y: Math.max(fontSize + 4 * scaleFactor, H / 2 - 4 * scaleFactor),
         'text-anchor': 'middle', 'font-size': fontSize,
         fill: '#222', style: 'font-family: system-ui, sans-serif; font-weight:600; pointer-events:none',
       });
       lbl.textContent = tag ? `${tag} ${name}` : name;
       g.appendChild(lbl);
       const dim = el('text', {
-        x: W / 2, y: Math.max(fontSize + 4 / _zLay, H / 2 - 4 / _zLay) + fontSize + 2 / _zLay,
+        x: W / 2, y: Math.max(fontSize + 4 * scaleFactor, H / 2 - 4 * scaleFactor) + fontSize + 2 * scaleFactor,
         'text-anchor': 'middle', 'font-size': secFontSize,
         fill: '#666', style: 'font-family: system-ui, sans-serif; pointer-events:none',
       });
@@ -701,7 +794,7 @@ function _renderNodesLayout() {
         }
         if (parts.length) {
           const badge = el('text', {
-            x: W / 2, y: H - 8 / _zLay,
+            x: W / 2, y: H - 8 * scaleFactor,
             'text-anchor': 'middle', 'font-size': secFontSize,
             fill: '#334155',
             style: 'font-family: system-ui, sans-serif; pointer-events:none',
@@ -713,7 +806,7 @@ function _renderNodesLayout() {
       // Индекс экземпляра (1/N) для групповых потребителей
       if (count > 1) {
         const idx = el('text', {
-          x: 4 / _zLay, y: 14 / _zLay, 'font-size': secFontSize, fill: '#555',
+          x: 4 * scaleFactor, y: 14 * scaleFactor, 'font-size': secFontSize, fill: '#555',
           style: 'font-family: system-ui, sans-serif; pointer-events:none',
         });
         idx.textContent = `${i + 1}/${count}`;
@@ -726,13 +819,12 @@ function _renderNodesLayout() {
         const nm = names[String(floorVal)];
         const sig = floorVal > 0 ? `+${floorVal}` : `${floorVal}`;
         const txt = nm ? `${sig} ${nm}` : sig;
-        // v0.58.34: бейдж тоже не масштабируется (все размеры / zoom)
-        const inv = 1 / _zLay;
-        const bw = Math.max(28, Math.min(120, txt.length * 6 + 8)) * inv;
-        const bh = 16 * inv;
-        const fb = el('g', { transform: `translate(${W - bw - 4 * inv}, ${4 * inv})`, style: 'pointer-events:none' });
-        fb.appendChild(el('rect', { x: 0, y: 0, width: bw, height: bh, rx: 3 * inv, fill: '#1e40af', 'fill-opacity': 0.9 }));
-        const ft = el('text', { x: bw / 2, y: 12 * inv, 'text-anchor': 'middle', 'font-size': secFontSize, fill: '#fff', style: 'font-family:system-ui;font-weight:600' });
+        // v0.58.37: бейдж тоже в «бумажных» единицах (× scaleFactor)
+        const bw = Math.max(28, Math.min(120, txt.length * 6 + 8)) * scaleFactor;
+        const bh = 16 * scaleFactor;
+        const fb = el('g', { transform: `translate(${W - bw - 4 * scaleFactor}, ${4 * scaleFactor})`, style: 'pointer-events:none' });
+        fb.appendChild(el('rect', { x: 0, y: 0, width: bw, height: bh, rx: 3 * scaleFactor, fill: '#1e40af', 'fill-opacity': 0.9 }));
+        const ft = el('text', { x: bw / 2, y: 12 * scaleFactor, 'text-anchor': 'middle', 'font-size': secFontSize, fill: '#fff', style: 'font-family:system-ui;font-weight:600' });
         ft.textContent = txt;
         fb.appendChild(ft);
         g.appendChild(fb);
@@ -2229,26 +2321,18 @@ export function renderConns() {
       }
     }
   }
-  // v0.58.36: на layout-странице все текстовые подписи связей (conn-label,
-  // conn-label-sub, breaker-label, control-label, ref-labels link-mode и т.д.)
-  // должны иметь фиксированный экранный размер — не масштабироваться со zoom.
-  // CSS даёт текстам 10–11 px, SVG рендерит их как fontCss*zoom. Чтобы
-  // вернуть «на экран» исходные пиксели, пересчитываем font-size/stroke
-  // поправленно на 1/zoom только когда kind=layout.
+  // v0.58.37: на layout-странице подписи связей привязываются к МАСШТАБУ
+  // СТРАНИЦЫ (1:N), а не к zoom. На бумаге подписи 2.5 мм (conn-label чуть
+  // больше — 2.8 мм), в мире они становятся paperMm * scaleFactor.
   if (_curPageKind === 'layout') {
-    const zz = (state?.view?.zoom > 0 ? state.view.zoom : 1);
-    if (zz !== 1) {
-      const PX_PER_MM = 3.7795;
-      const MAX_PX = 5.0 * PX_PER_MM; // 5 мм cap
-      const texts = layerConns.querySelectorAll('text');
-      for (const t of texts) {
-        // Исходим из CSS-дефолта 11 px для conn-label, 10 px для остальных,
-        // но capим на 5 мм (~18.9 px) в экранных пикселях.
-        const cls = t.getAttribute('class') || '';
-        const basePx = cls.includes('conn-label') && !cls.includes('conn-label-sub') ? 11 : 10;
-        const cappedPx = Math.min(basePx, MAX_PX);
-        t.setAttribute('font-size', (cappedPx / zz).toFixed(3));
-      }
+    const scaleF = _parseScaleFactor(getCurrentPage());
+    const PAPER_MAIN_MM = 2.8;  // conn-label (ток/кабель)
+    const PAPER_SUB_MM  = 2.5;  // прочие
+    const texts = layerConns.querySelectorAll('text');
+    for (const t of texts) {
+      const cls = t.getAttribute('class') || '';
+      const paperMm = cls.includes('conn-label') && !cls.includes('conn-label-sub') ? PAPER_MAIN_MM : PAPER_SUB_MM;
+      t.setAttribute('font-size', (paperMm * scaleF).toFixed(3));
     }
   }
 }

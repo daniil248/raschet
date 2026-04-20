@@ -528,6 +528,22 @@ export function initInteraction() {
       svg.classList.add('panning');
       return;
     }
+    // v0.58.37: режим установки нулевой точки (layout) — следующий клик
+    // по канвасу устанавливает page.originMm в мировых координатах точки клика.
+    if (state.rulerSetOriginMode && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      const page = state.pages && state.pages.find(p => p.id === state.currentPageId);
+      if (page) {
+        const p = clientToSvg(e.clientX, e.clientY);
+        snapshot('page-origin');
+        page.originMm = { x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 };
+        state.rulerSetOriginMode = false;
+        try { notifyChange(); } catch {}
+        render();
+      }
+      return;
+    }
 
     // В режиме разрыва элементы с data-link-jump — это стабы/подписи ссылок.
     // Клик по ним = прыжок к противоположному концу БЕЗ изменения zoom.

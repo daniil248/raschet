@@ -59,6 +59,13 @@ export const state = {
   selection: new Set(), // multi-selection: Set<nodeId>
   rubberBand: null,    // { sx, sy, ex, ey }
   floorFilter: null,   // v0.58.29: null = все этажи, число = только этот этаж (на layout)
+  // v0.58.37: линейки layout-страницы.
+  // rulerOffset: сдвиг линеек относительно стандартного положения (top-left).
+  //   topPx — смещение горизонтальной линейки вниз (px, 0..H-RULER_W)
+  //   leftPx — смещение вертикальной линейки вправо (px, 0..W-RULER_W)
+  // Не сериализуется (runtime), живёт в пределах сессии.
+  rulerOffset: { topPx: 0, leftPx: 0 },
+  rulerSetOriginMode: false, // когда true — клик по канвасу устанавливает origin текущей страницы
 };
 
 // Валидация view — гарантирует конечные числа и минимальный zoom.

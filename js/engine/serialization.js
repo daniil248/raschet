@@ -60,6 +60,10 @@ export function serialize() {
       title: p.title || '',
       revision: p.revision || '',
       description: p.description || '',
+      // v0.58.37: нулевая точка для layout-страниц (мировые мм)
+      originMm: (p.originMm && Number.isFinite(p.originMm.x) && Number.isFinite(p.originMm.y))
+        ? { x: p.originMm.x, y: p.originMm.y } : undefined,
+      scale: p.scale || undefined,
     })),
     currentPageId: state.currentPageId,
     project: { ...(state.project || {}) },
@@ -141,6 +145,10 @@ export function deserialize(data) {
       title: p.title || '',
       revision: p.revision || '',
       description: p.description || '',
+      // v0.58.37: нулевая точка + масштаб
+      originMm: (p.originMm && Number.isFinite(p.originMm.x) && Number.isFinite(p.originMm.y))
+        ? { x: p.originMm.x, y: p.originMm.y } : { x: 0, y: 0 },
+      scale: p.scale || '1:1',
     }));
     state.currentPageId = data.currentPageId && state.pages.find(p => p.id === data.currentPageId)
       ? data.currentPageId : state.pages[0].id;
