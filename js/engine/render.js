@@ -262,14 +262,52 @@ export function render() {
 // window.__remoteLocks (устанавливается main.js из subscribeLocks).
 export function decorateRemoteLocks() {
   const locks = (typeof window !== 'undefined' && window.__remoteLocks) || {};
-  const ids = Object.keys(locks);
-  if (!ids.length) return;
-  for (const id of ids) {
-    const n = state.nodes.get(id);
+  const keys = Object.keys(locks);
+  if (!keys.length) return;
+  for (const key of keys) {
+    const lock = locks[key];
+    const owner = (lock.name || lock.email || '?').trim();
+    const ownerShort = '🔒 ' + (owner.length > 12 ? owner.slice(0, 12) + '…' : owner);
+    // v0.57.76: conn locks имеют ключ вида "conn:xxx"
+    if (key.startsWith('conn:')) {
+      const connId = key.slice(5);
+      const c = state.conns.get(connId);
+      if (!c) continue;
+      const fromN = state.nodes.get(c.from?.nodeId);
+      const toN = state.nodes.get(c.to?.nodeId);
+      if (!fromN || !toN) continue;
+      if (!isOnCurrentPage(fromN) && !isOnCurrentPage(toN)) continue;
+      // Линия выделения связи — просто толстая пунктирная оверлей по центрам двух узлов.
+      // Берём центры, чтобы не полагаться на роутинг (который может быть сложным).
+      const fw = nodeWidth(fromN), fh = nodeHeight(fromN);
+      const tw = nodeWidth(toN), th = nodeHeight(toN);
+      const x1 = fromN.x + fw / 2, y1 = fromN.y + fh / 2;
+      const x2 = toN.x + tw / 2, y2 = toN.y + th / 2;
+      const overlay = el('g', {
+        class: 'remote-lock-overlay remote-lock-conn',
+        'pointer-events': 'none',
+      });
+      overlay.appendChild(el('line', {
+        x1, y1, x2, y2,
+        stroke: '#ff9800', 'stroke-width': 4, opacity: 0.35,
+        'stroke-dasharray': '7 4',
+      }));
+      // Бейдж по середине
+      const mx = (x1 + x2) / 2 - 48, my = (y1 + y2) / 2 - 7;
+      const badge = el('g', { transform: `translate(${mx}, ${my})` });
+      badge.appendChild(el('rect', { x: 0, y: 0, width: 96, height: 14, rx: 7,
+        fill: '#ff9800', stroke: '#e65100', 'stroke-width': 0.5 }));
+      const t = el('text', { x: 7, y: 10, fill: '#fff', 'font-size': 9, 'font-weight': 600 });
+      t.textContent = ownerShort;
+      badge.appendChild(t);
+      overlay.appendChild(badge);
+      layerNodes.appendChild(overlay);
+      continue;
+    }
+    // Node-лок
+    const n = state.nodes.get(key);
     if (!n || !isOnCurrentPage(n)) continue;
     const w = nodeWidth(n), h = nodeHeight(n);
-    const lock = locks[id];
-    const owner = (lock.name || lock.email || '?').trim();
     const overlay = el('g', {
       class: 'remote-lock-overlay',
       transform: `translate(${n.x},${n.y})`,
@@ -286,7 +324,7 @@ export function decorateRemoteLocks() {
       fill: '#ff9800', stroke: '#e65100', 'stroke-width': 0.5,
     }));
     const t = el('text', { x: 7, y: 10, fill: '#fff', 'font-size': 9, 'font-weight': 600 });
-    t.textContent = '🔒 ' + (owner.length > 12 ? owner.slice(0, 12) + '…' : owner);
+    t.textContent = ownerShort;
     badge.appendChild(t);
     overlay.appendChild(badge);
     layerNodes.appendChild(overlay);

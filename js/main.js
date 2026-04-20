@@ -151,32 +151,37 @@ function _startCollab(project, initialUpdatedAtMs) {
   beat();
   state.presenceTimer = setInterval(beat, PRESENCE_HEARTBEAT_MS);
 
-  // Hook выделения — захват/освобождение лока на узле
-  state.myLockNodeId = null;
+  // Hook выделения — захват/освобождение лока на узле или связи.
+  // v0.57.76: lock расширен с node-only до (node | conn). Ключ документа
+  // в Firestore для связей — `conn:${id}`, чтобы не конфликтовать с
+  // node IDs. remoteLocks map содержит оба пространства ключей.
+  state.myLockNodeId = null;  // устаревшее имя, теперь держит ЛЮБОЙ ключ лока (node id или 'conn:xxx')
+  const _lockKey = (kind, id) => (kind === 'conn' ? `conn:${id}` : String(id));
   if (window.Raschet?.setSelectionHook) {
     window.Raschet.setSelectionHook(async (kind, id, prevKind, prevId) => {
-      // Отпускаем предыдущий лок, если был на узле
-      if (state.myLockNodeId && state.myLockNodeId !== (kind === 'node' ? id : null)) {
-        const releaseId = state.myLockNodeId;
+      const newKey = (kind === 'node' || kind === 'conn') && id != null ? _lockKey(kind, id) : null;
+      // Отпускаем предыдущий лок, если был и отличается от нового
+      if (state.myLockNodeId && state.myLockNodeId !== newKey) {
+        const releaseKey = state.myLockNodeId;
         state.myLockNodeId = null;
-        try { await window.Storage.releaseLock(project.id, releaseId, uid); } catch {}
+        try { await window.Storage.releaseLock(project.id, releaseKey, uid); } catch {}
       }
-      // Берём новый лок только на узле (не на conn)
-      if (kind === 'node' && id != null) {
+      // Берём новый лок для node или conn
+      if (newKey) {
         // Проверка: не заблокирован ли кем-то другим
-        const remote = state.remoteLocks?.[String(id)];
+        const remote = state.remoteLocks?.[newKey];
         if (remote && remote.uid !== uid) {
           const owner = remote.name || remote.email || 'другой участник';
           flash(`🔒 Объект редактирует ${owner}`, 'info');
           return false; // отменить выделение
         }
-        const r = await window.Storage.acquireLock(project.id, id, uid, info, state.sessionId);
+        const r = await window.Storage.acquireLock(project.id, newKey, uid, info, state.sessionId);
         if (r && r.ok === false && r.owner) {
           const owner = r.owner.name || r.owner.email || 'другой участник';
           flash(`🔒 Объект редактирует ${owner}`, 'info');
           return false;
         }
-        state.myLockNodeId = id;
+        state.myLockNodeId = newKey;
       }
       return true;
     });

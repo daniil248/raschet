@@ -395,6 +395,18 @@
 - [ ] **5.4** Super-admin UI: `admin/` — таблица users, управление ролями
 - [ ] **5.5** Tariff configurator: `Tariff { id, name, modules, priceMonth, priceYear }`
 
+### 🚧 Совместное редактирование (Collaboration) — частично сделано
+
+- [x] **C.1** Presence: subcollection `projects/{id}/presence/{uid}` + heartbeat 25 с (stale = 90 с); аватары в шапке.
+- [x] **C.2** Live-sync: `subscribeProjectDoc` слушает изменения, применяет `loadScheme` если локально нет dirty; для dirty — confirm().
+- [x] **C.3** Object-level locking: subcollection `projects/{id}/locks/{key}`. Key = nodeId или `conn:${connId}` (v0.57.76). Лок удерживается пока пользователь выделил узел/связь.
+- [x] **C.4** Визуализация чужих локов: оранжевая пунктирная рамка на узлах + толстая линия на связях, бейдж с именем (`render.js:decorateRemoteLocks`).
+- [x] **C.5** Preserve-local-display: view/zoom/activeModeId/currentPageId не пропагируются между сессиями (`_preserveLocalDisplay`).
+- [ ] **C.6** Cursor awareness: живые позиции курсоров других пользователей (стрим через RTDB/throttled Firestore).
+- [ ] **C.7** Conflict-aware merge: вместо confirm-dialog — diff-модалка с показом изменённых узлов/связей.
+- [ ] **C.8** История версий: subcollection `projects/{id}/revisions/{revId}` с откатом и сравнением.
+- [ ] **C.9** Email-нотификации запросов доступа через Cloud Functions.
+
 ---
 
 ### ⏳ Фаза 6 — Конфигуратор щита + тепловой расчёт (после Фазы 1, 3 недели)
