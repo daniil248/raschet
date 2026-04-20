@@ -21,6 +21,7 @@ import { tccBreakerTime, tccSamplePoints } from '../shared/tcc-curves.js';
 import {
   listPrices, getPrice, savePrice, removePrice, pricesForElement,
   bulkAddPrices, exportPricesJSON, importPricesJSON, onPricesChange,
+  listImportBatches, rollbackImportBatch,
   PRICE_TYPES, CURRENCIES,
 } from '../shared/price-records.js';
 import {
@@ -942,8 +943,76 @@ function renderImportTab() {
       <button id="import-library-json">Импорт библиотеки из JSON</button>
       <input type="file" id="import-json-file" accept=".json" style="display:none">
     </div>
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e1e4e8">
+      <h3 style="margin:0 0 8px">История импортов <span class="muted" style="font-size:11px;font-weight:normal">(v0.57.92)</span></h3>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">
+        Группировка цен по source-метке + минутному окну импорта.
+        «Откатить» удаляет все записи из этой партии (необратимо).
+      </div>
+      <div id="import-history"></div>
+    </div>
   `;
   wireImportTab();
+  renderImportHistory();
+}
+
+function renderImportHistory() {
+  const wrap = document.getElementById('import-history');
+  if (!wrap) return;
+  const batches = listImportBatches();
+  if (!batches.length) {
+    wrap.innerHTML = '<div class="empty" style="padding:12px">История пуста — ещё не было импортов.</div>';
+    return;
+  }
+  const fmtDT = ts => {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }); }
+    catch { return '—'; }
+  };
+  const html = [`
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Источник</th>
+          <th>Дата / время</th>
+          <th class="num">Записей</th>
+          <th class="num">Элементов</th>
+          <th>Валюты</th>
+          <th>Контрагенты</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>`];
+  for (const b of batches) {
+    const cpNames = b.counterpartyIds.length
+      ? b.counterpartyIds.map(id => {
+          const c = getCounterparty(id);
+          return c ? esc(c.shortName || c.name) : esc(id);
+        }).join(', ')
+      : '<span class="muted">—</span>';
+    html.push(`
+      <tr>
+        <td><span style="font-family:monospace;font-size:11px">${esc(b.source)}</span></td>
+        <td style="font-size:12px">${fmtDT(b.importedAt)}</td>
+        <td class="num">${b.count}</td>
+        <td class="num">${b.uniqueElements}</td>
+        <td style="font-size:11px">${b.currencies.map(esc).join(', ') || '—'}</td>
+        <td style="font-size:11px">${cpNames}</td>
+        <td class="actions"><button data-act="rollback" data-src="${esc(b.source)}" data-bucket="${b.importedAt}" class="danger" title="Удалить все записи из этой партии">↩ Откатить</button></td>
+      </tr>`);
+  }
+  html.push('</tbody></table>');
+  wrap.innerHTML = html.join('');
+  wrap.querySelectorAll('[data-act="rollback"]').forEach(btn => {
+    btn.onclick = () => {
+      const src = btn.dataset.src;
+      const bucket = Number(btn.dataset.bucket) || 0;
+      if (!confirm(`Удалить все цены из партии «${src}» (${new Date(bucket).toLocaleString('ru-RU')})?\nЭто действие необратимо.`)) return;
+      const removed = rollbackImportBatch(src, bucket);
+      flash(`Удалено записей: ${removed}`, removed > 0 ? 'success' : 'warn');
+      renderImportHistory();
+    };
+  });
 }
 
 function wireImportTab() {
@@ -1004,6 +1073,8 @@ function renderImportPreview(fileName, rows) {
     if (/artikul|article|sku|код|артикул|id/.test(low) && !mapping.elementId) mapping.elementId = h;
     if (/price|цена|стоимость|cost/.test(low) && !mapping.price) mapping.price = h;
     if (/curr|валют/.test(low) && !mapping.currency) mapping.currency = h;
+    // v0.57.92 (Phase 1.5.5): auto-match колонки контрагента (per-row override)
+    if (/counter|contractor|vendor|supplier|contragent|контрагент|поставщик|продавец/.test(low) && !mapping.counterpartyId) mapping.counterpartyId = h;
   }
   const counterparties = listCounterparties();
   const cpOpts = counterparties.map(c => `<option value="${c.id}">${esc(c.shortName || c.name)}</option>`).join('');
@@ -1025,10 +1096,15 @@ function renderImportPreview(fileName, rows) {
         ${mapRow('elementId', 'Элемент (ID или артикул)')}
         ${mapRow('price', 'Цена')}
         ${mapRow('currency', 'Валюта')}
+        ${mapRow('counterpartyId', 'Контрагент (per-row, опц.)')}
       </tbody>
     </table>
+    <div class="muted" style="font-size:11px;margin:4px 0 0">
+      Если колонка «Контрагент» сопоставлена — значение в строке файла переопределяет глобальный выбор ниже.
+      Ожидаются ID контрагента (${counterparties.length ? counterparties.slice(0, 3).map(c => esc(c.id)).join(' / ') + (counterparties.length > 3 ? ' / …' : '') : 'нет контрагентов'}) или их короткое имя.
+    </div>
     <div class="field-row" style="margin-top:12px">
-      <div class="field"><label>Контрагент (ко всем строкам)</label>
+      <div class="field"><label>Контрагент по умолчанию (fallback)</label>
         <select id="imp-cp"><option value="">—</option>${cpOpts}</select>
       </div>
       <div class="field"><label>Тип цены</label>
@@ -1053,18 +1129,49 @@ function renderImportPreview(fileName, rows) {
     const cpId = document.getElementById('imp-cp').value || null;
     const pt = document.getElementById('imp-pt').value;
     const src = document.getElementById('imp-src').value;
-    const recs = rows.map(r => ({
-      elementId: String(r[mapping.elementId] || '').trim(),
-      price: Number(r[mapping.price]) || 0,
-      currency: (r[mapping.currency] || 'RUB').toString().trim() || 'RUB',
-      priceType: pt,
-      counterpartyId: cpId,
-      source: src,
-      recordedAt: Date.now(),
-    })).filter(r => r.elementId && r.price > 0);
+    // v0.57.92 (Phase 1.5.5): per-row counterparty override.
+    // Если колонка сопоставлена — значение из файла приоритетнее
+    // глобального selector. Разрешаем указывать либо ID контрагента,
+    // либо его shortName/name (резолвим через counterparties).
+    const cpById = new Map(counterparties.map(c => [String(c.id).toLowerCase(), c]));
+    const cpByName = new Map();
+    for (const c of counterparties) {
+      if (c.shortName) cpByName.set(String(c.shortName).toLowerCase(), c);
+      if (c.name) cpByName.set(String(c.name).toLowerCase(), c);
+    }
+    const resolveCp = raw => {
+      const s = String(raw || '').trim().toLowerCase();
+      if (!s) return null;
+      return (cpById.get(s) || cpByName.get(s) || null);
+    };
+    let perRowMatched = 0, perRowUnresolved = 0;
+    const recs = rows.map(r => {
+      let rowCpId = cpId;
+      if (mapping.counterpartyId) {
+        const raw = r[mapping.counterpartyId];
+        if (raw != null && String(raw).trim()) {
+          const resolved = resolveCp(raw);
+          if (resolved) { rowCpId = resolved.id; perRowMatched++; }
+          else perRowUnresolved++;
+        }
+      }
+      return {
+        elementId: String(r[mapping.elementId] || '').trim(),
+        price: Number(r[mapping.price]) || 0,
+        currency: (r[mapping.currency] || 'RUB').toString().trim() || 'RUB',
+        priceType: pt,
+        counterpartyId: rowCpId,
+        source: src,
+        recordedAt: Date.now(),
+      };
+    }).filter(r => r.elementId && r.price > 0);
     const result = bulkAddPrices(recs);
-    flash(`Импортировано ${result.added}, пропущено ${result.skipped}`, result.errors.length ? 'warn' : 'success');
+    const cpMsg = mapping.counterpartyId
+      ? ` (per-row контрагент: ${perRowMatched} match${perRowUnresolved ? `, ${perRowUnresolved} не распознан` : ''})`
+      : '';
+    flash(`Импортировано ${result.added}, пропущено ${result.skipped}${cpMsg}`, result.errors.length || perRowUnresolved ? 'warn' : 'success');
     preview.innerHTML = '';
+    renderImportHistory();
   };
 }
 

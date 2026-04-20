@@ -233,6 +233,72 @@ export function bulkAddPrices(records) {
   return { added, skipped, errors };
 }
 
+// v0.57.92 (Phase 1.5.5): история импортов + откат.
+// Каждая запись цены хранит source-метку (например 'XLSX:file.xlsx' или
+// 'manual' / 'JSON-import'). listImportBatches() группирует цены по
+// source + дате импорта (createdAt с округлением до минуты, чтобы
+// сгруппировать записи одной сессии импорта) и возвращает агрегаты
+// для UI «история импортов».
+export function listImportBatches() {
+  const prices = _read();
+  const groups = new Map();
+  for (const p of prices) {
+    const src = p.source || 'manual';
+    // Группируем по source + дате в минутах (разные импорты одного файла
+    // в разные дни — разные batch'и).
+    const minuteBucket = p.createdAt ? Math.floor(p.createdAt / 60000) * 60000 : 0;
+    const key = src + '|' + minuteBucket;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        source: src,
+        importedAt: minuteBucket,
+        count: 0,
+        currencies: new Set(),
+        counterpartyIds: new Set(),
+        elementIds: new Set(),
+      });
+    }
+    const g = groups.get(key);
+    g.count++;
+    if (p.currency) g.currencies.add(p.currency);
+    if (p.counterpartyId) g.counterpartyIds.add(p.counterpartyId);
+    if (p.elementId) g.elementIds.add(p.elementId);
+  }
+  // Возвращаем отсортированными по дате desc
+  return [...groups.values()]
+    .map(g => ({
+      ...g,
+      currencies: [...g.currencies],
+      counterpartyIds: [...g.counterpartyIds],
+      uniqueElements: g.elementIds.size,
+      elementIds: undefined, // не отдаём полный Set наружу
+    }))
+    .sort((a, b) => (b.importedAt || 0) - (a.importedAt || 0));
+}
+
+/**
+ * Откат импорта: удаляет все записи с указанным source, импортированные
+ * в минутном окне [bucket, bucket+60000). Если minuteBucket не задан —
+ * удаляет ВСЕ записи с данным source. Возвращает число удалённых.
+ */
+export function rollbackImportBatch(source, minuteBucket) {
+  if (!source) return 0;
+  const list = _read();
+  const before = list.length;
+  const kept = list.filter(p => {
+    if (p.source !== source) return true;
+    if (minuteBucket != null) {
+      const b = p.createdAt ? Math.floor(p.createdAt / 60000) * 60000 : 0;
+      if (b !== minuteBucket) return true;
+    }
+    return false; // source совпадает (и bucket если задан) — удаляем
+  });
+  const removed = before - kept.length;
+  if (removed > 0) _write(kept);
+  return removed;
+}
+
 /**
  * Экспорт всех цен в JSON (для backup).
  */
