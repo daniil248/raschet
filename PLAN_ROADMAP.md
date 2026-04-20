@@ -692,6 +692,20 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.40 (v0.57.15)** — HOTFIX: зависание кнопки «Применить» в
+  модалке «Параметры расчёта». В `shared/global-settings.js:saveGlobal`
+  был латентный бесконечный цикл:
+  `engine.setGlobal(patch)` → `saveGlobal(patch)` →
+  `window.Raschet.setGlobal(next)` (= engine.setGlobal) → `saveGlobal(next)`
+  → … — цикл без базового случая. Проявилось на «Применить», где
+  сохранение шло через главное приложение. Исправлено: reentry-guard
+  `_inSaveGlobal`, синхронизация с main-app вызывается только если
+  мы не уже в вложенном saveGlobal.
+  Также перенесены Roadmap/Changelog из модалок в отдельные
+  standalone-страницы (см. v0.57.15 coммит ниже): `roadmap.html`,
+  `changelog.html`, shared `shared/md-render.js`. В hub.html добавлены
+  две карточки. Sidebar кнопки и модалки из index.html удалены.
+
 - **1.20.39 (v0.57.14)** — концепция резерва + fix расчёта нагрузки +
   модули Roadmap/Changelog на главной:
 

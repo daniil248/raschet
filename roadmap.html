@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet — Roadmap</title>
+  <link rel="stylesheet" href="shared/app-header.css">
+  <script src="firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="shared/auth.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #222; background: #f4f5f7;
+      -webkit-font-smoothing: antialiased;
+    }
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+    main { flex: 1; padding: 24px 24px 80px; }
+    .container { max-width: 1100px; margin: 0 auto; background: #fff; border: 1px solid #e0e3ea; border-radius: 16px; padding: 32px 40px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); }
+    h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+    h1 { font-size: 24px; color: #1976d2; margin: 4px 0 16px; }
+    h2 { font-size: 19px; color: #1565c0; margin: 22px 0 8px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+    h3 { font-size: 16px; margin: 18px 0 6px; }
+    h4 { font-size: 14px; margin: 12px 0 4px; color: #444; }
+    p { margin: 6px 0; line-height: 1.55; font-size: 13.5px; }
+    ul, ol { margin: 6px 0 6px 22px; font-size: 13.5px; line-height: 1.55; }
+    li { margin: 2px 0; }
+    code { background: #f6f8fa; padding: 1px 5px; border-radius: 3px; font-size: 90%; font-family: ui-monospace, Consolas, monospace; }
+    pre { background: #f6f8fa; padding: 10px 14px; border-radius: 6px; overflow: auto; font-size: 12px; margin: 6px 0; }
+    pre code { background: none; padding: 0; }
+    blockquote { margin: 6px 0; padding: 6px 14px; border-left: 3px solid #1976d2; background: #f6f8fa; color: #555; }
+    table { border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+    th, td { border: 1px solid #ddd; padding: 4px 10px; text-align: left; }
+    th { background: #fafbfc; font-weight: 600; }
+    a { color: #1976d2; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    hr { border: none; border-top: 1px solid #e1e4e8; margin: 14px 0; }
+    .ver-badge { display: inline-block; padding: 1px 6px; background: #e3f2fd; color: #1565c0; border-radius: 3px; font-family: ui-monospace, Consolas, monospace; font-size: 90%; font-weight: 600; }
+    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+    .toolbar input[type=search] { flex: 1; min-width: 240px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+    .toolbar a { font-size: 12px; padding: 5px 12px; border: 1px solid #1976d2; border-radius: 6px; color: #1976d2; }
+    .toolbar a:hover { background: #e3f2fd; text-decoration: none; }
+    .loading { color: #888; padding: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from './shared/app-header.js';
+    mountHeader({ title: 'Roadmap', showHome: true, home: 'hub.html' });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[roadmap] auth init failed', e));
+    }
+  </script>
+  <main>
+    <div class="container">
+      <h1>🗺 Roadmap платформы Raschet</h1>
+      <div class="toolbar">
+        <input type="search" id="rm-search" placeholder="Поиск по заголовкам, фазам, версиям…">
+        <a href="https://github.com/daniil248/raschet/blob/main/PLAN_ROADMAP.md" target="_blank" rel="noopener">GitHub ↗</a>
+        <a href="changelog.html">История изменений →</a>
+      </div>
+      <div id="mount" class="loading">Загрузка PLAN_ROADMAP.md…</div>
+    </div>
+  </main>
+  <script type="module" src="shared/md-render.js"></script>
+  <script type="module">
+    import { mdToHtml } from './shared/md-render.js';
+    async function load() {
+      const mount = document.getElementById('mount');
+      try {
+        const resp = await fetch('./PLAN_ROADMAP.md', { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const md = await resp.text();
+        const html = mdToHtml(md);
+        mount.classList.remove('loading');
+        mount.innerHTML = html;
+        const srch = document.getElementById('rm-search');
+        srch.addEventListener('input', () => applyFilter(md, srch.value.toLowerCase()));
+      } catch (e) {
+        mount.innerHTML = '<div style="color:#c62828">Не удалось загрузить: ' + e.message + '</div>';
+      }
+    }
+    function applyFilter(md, q) {
+      const mount = document.getElementById('mount');
+      if (!q) { mount.innerHTML = mdToHtml(md); return; }
+      // Простой фильтр: оставляем только строки, содержащие q, + ближайшие заголовки
+      const lines = md.split('\n');
+      const keep = new Set();
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase().includes(q)) {
+          keep.add(i);
+          // Найти ближайший заголовок выше
+          for (let j = i; j >= 0; j--) {
+            if (/^#{1,6}\s/.test(lines[j])) { keep.add(j); break; }
+          }
+        }
+      }
+      const filtered = [...keep].sort((a, b) => a - b).map(i => lines[i]).join('\n');
+      mount.innerHTML = filtered ? mdToHtml(filtered) : '<div style="color:#888">Ничего не найдено</div>';
+    }
+    load();
+  </script>
+</body>
+</html>

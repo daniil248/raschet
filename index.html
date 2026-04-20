@@ -185,8 +185,6 @@
         <button id="btn-open-consumers-table" class="full-btn" title="Быстрое редактирование всех потребителей (Ctrl+Shift+U)">💡 Таблица потребителей</button>
         <button id="btn-open-equipment-table" class="full-btn" title="Обзор всего оборудования проекта: источники, щиты, ИБП, РУ СН (Ctrl+Shift+E)">🗄 Таблица оборудования</button>
         <button id="btn-open-loads-import" class="full-btn">📥 Импорт таблицы нагрузок</button>
-        <button id="btn-open-roadmap" class="full-btn" title="План разработки платформы (PLAN_ROADMAP.md)">🗺 Roadmap</button>
-        <button id="btn-open-changelog" class="full-btn" title="История версий и изменений">📜 Изменения</button>
 
         <h3>Файл</h3>
         <button id="btn-save-local-side" class="full-btn">💾 Сохр. локально</button>
@@ -693,48 +691,7 @@
     </div>
   </div>
 
-  <!-- Roadmap (Phase 1.20.39) -->
-  <div id="modal-roadmap" class="modal hidden">
-    <div class="modal-box modal-wide" style="max-width:1000px">
-      <div class="modal-head">
-        <h2>🗺 Roadmap</h2>
-        <button class="modal-close" aria-label="Закрыть">×</button>
-      </div>
-      <div class="modal-body" style="max-height:78vh;overflow:auto">
-        <div class="muted" style="font-size:11px;margin-bottom:10px">
-          План архитектурного развития платформы. Источник: <code>PLAN_ROADMAP.md</code> в репозитории.
-        </div>
-        <div id="roadmap-mount" style="font-size:13px;line-height:1.55"></div>
-      </div>
-      <div class="modal-foot">
-        <a href="https://github.com/daniil248/raschet/blob/main/PLAN_ROADMAP.md" target="_blank" rel="noopener" style="margin-right:auto;font-size:12px">Открыть на GitHub →</a>
-        <button class="modal-close">Закрыть</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Changelog (Phase 1.20.39) -->
-  <div id="modal-changelog" class="modal hidden">
-    <div class="modal-box modal-wide" style="max-width:1000px">
-      <div class="modal-head">
-        <h2>📜 История изменений</h2>
-        <button class="modal-close" aria-label="Закрыть">×</button>
-      </div>
-      <div class="modal-body" style="max-height:78vh;overflow:auto">
-        <div class="muted" style="font-size:11px;margin-bottom:10px">
-          Список версий с описанием изменений. Сортировка от новой к старой.
-        </div>
-        <div style="margin-bottom:8px">
-          <input type="search" id="changelog-search" placeholder="Фильтр по версии/тексту…" style="width:100%;padding:5px 8px">
-        </div>
-        <div id="changelog-mount" style="font-size:13px;line-height:1.55"></div>
-      </div>
-      <div class="modal-foot">
-        <a href="https://github.com/daniil248/raschet/commits/main" target="_blank" rel="noopener" style="margin-right:auto;font-size:12px">Все коммиты на GitHub →</a>
-        <button class="modal-close">Закрыть</button>
-      </div>
-    </div>
-  </div>
+  <!-- Roadmap / Changelog — вынесены в отдельные страницы roadmap.html / changelog.html (v0.57.15) -->
 
   <!-- Сводка проекта / Dashboard (Phase 1.20.26) -->
   <div id="modal-dashboard" class="modal hidden">

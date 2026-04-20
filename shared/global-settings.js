@@ -146,18 +146,25 @@ export function getGlobal() {
  * уведомляет слушателей. Если в главном приложении подключён
  * window.Raschet.setGlobal — тоже его дёрнем для консистентности.
  */
+let _inSaveGlobal = false;
 export function saveGlobal(partial) {
   const next = { ...(getGlobal()), ...partial };
   _cache = next;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch (e) { console.warn('[global-settings] save failed', e); }
-  // Синхронизация с main-app (если запущено оно)
-  try {
-    if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
-      window.Raschet.setGlobal(next);
-    }
-  } catch { /* ignore */ }
+  // Синхронизация с main-app (если запущено оно). Защита от
+  // бесконечной рекурсии: engine.setGlobal → saveGlobal → engine.setGlobal.
+  // Guard _inSaveGlobal выставляется на время вызова и сбрасывается в finally.
+  if (!_inSaveGlobal) {
+    _inSaveGlobal = true;
+    try {
+      if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
+        window.Raschet.setGlobal(next);
+      }
+    } catch { /* ignore */ }
+    finally { _inSaveGlobal = false; }
+  }
   for (const cb of listeners) { try { cb(next); } catch (e) { console.error(e); } }
   return next;
 }

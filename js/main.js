@@ -2816,9 +2816,10 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
   });
 }
 
-// ================= Roadmap + Changelog (Phase 1.20.39) =================
-// Модуль читает PLAN_ROADMAP.md из репозитория через fetch, парсит в HTML
-// с подсветкой заголовков, версий и списков. Одна загрузка за сессию.
+// ================= Roadmap + Changelog =================
+// В v0.57.15 вынесены в отдельные страницы roadmap.html / changelog.html
+// и карточки на hub.html. Старый код ниже не подключён (кнопок нет).
+// Оставлен как mёртвый код — уберём при следующей чистке.
 let _roadmapCache = null;
 
 async function _loadRoadmapText() {
@@ -5047,10 +5048,7 @@ async function init() {
   if (btnEquipmentTable) btnEquipmentTable.addEventListener('click', openEquipmentTableModal);
   const btnDashboard = document.getElementById('btn-open-dashboard');
   if (btnDashboard) btnDashboard.addEventListener('click', openDashboardModal);
-  const btnRoadmap = document.getElementById('btn-open-roadmap');
-  if (btnRoadmap) btnRoadmap.addEventListener('click', openRoadmapModal);
-  const btnChangelog = document.getElementById('btn-open-changelog');
-  if (btnChangelog) btnChangelog.addEventListener('click', openChangelogModal);
+  // Roadmap/Changelog перенесены в roadmap.html и changelog.html (v0.57.15)
   const btnSearch = document.getElementById('btn-open-search');
   if (btnSearch) btnSearch.addEventListener('click', openSearchPalette);
   const btnIssues = document.getElementById('btn-open-project-issues');
