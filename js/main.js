@@ -2608,12 +2608,17 @@ function renderCableTable() {
         ${ifShow('method', `<td style="padding:5px 8px"><select class="ct-method" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${methodOpts}</select></td>`)}
         ${ifShow('breaker', `<td style="padding:5px 8px;text-align:right;font-size:11px">${(() => {
           const auto = Number(c._breakerIn) || 0;
-          const manual = !!c.manualBreakerIn;
-          const cur = manual ? Number(c.manualBreakerIn) : auto;
+          const manual = !!(c.manualBreakerIn || c.manualFuseIn);
+          const isFu = c._protectionKind === 'fuse';
+          const cur = manual ? Number(isFu ? c.manualFuseIn : c.manualBreakerIn) : auto;
           let opts = `<option value="">авто${auto ? ' (' + auto + ' А)' : ''}</option>`;
           for (const nn of _BREAKER_SERIES) opts += `<option value="${nn}"${(manual && nn === cur) ? ' selected' : ''}>${nn} А</option>`;
           const badge = !manual ? '<span class="muted" style="font-size:10px;color:#4caf50;margin-left:4px" title="авто">✓</span>' : '<span class="muted" style="font-size:10px;color:#e65100;margin-left:4px" title="ручной">✎</span>';
-          return `<select class="ct-breaker" data-id="${esc(c.id)}" style="width:80px;padding:3px 6px;font-size:11px">${opts}</select>${badge}`;
+          // v0.57.64: бейдж QF/FU перед селектом — сразу видно тип защиты
+          const kindBadge = isFu
+            ? `<span style="display:inline-block;padding:1px 5px;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:3px;font-size:10px;font-weight:600;margin-right:4px" title="Предохранитель (${c._fuseType || 'gG'})">FU</span>`
+            : `<span style="display:inline-block;padding:1px 5px;background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;border-radius:3px;font-size:10px;font-weight:600;margin-right:4px" title="Автомат">QF</span>`;
+          return `${kindBadge}<select class="ct-breaker" data-id="${esc(c.id)}" style="width:80px;padding:3px 6px;font-size:11px">${opts}</select>${badge}`;
         })()}</td>`)}
         ${ifShow('curve', `<td style="padding:5px 8px;font-size:11px">${(() => {
           const curCv = String(c.breakerCurve || '').toUpperCase();
@@ -2701,8 +2706,13 @@ function renderCableTable() {
     sel.addEventListener('change', () => {
       snap('cable-table:breaker:' + sel.dataset.id);
       apply(sel.dataset.id, (c) => {
-        if (sel.value === '') delete c.manualBreakerIn;
-        else c.manualBreakerIn = Number(sel.value);
+        // v0.57.64: для fuse-защиты пишем в manualFuseIn, иначе в manualBreakerIn
+        const isFu = c.protectionKind === 'fuse' || c._protectionKind === 'fuse';
+        const prop = isFu ? 'manualFuseIn' : 'manualBreakerIn';
+        const other = isFu ? 'manualBreakerIn' : 'manualFuseIn';
+        if (sel.value === '') delete c[prop];
+        else c[prop] = Number(sel.value);
+        delete c[other];
       });
       applyAndRerender();
     });
