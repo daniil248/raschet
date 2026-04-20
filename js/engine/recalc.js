@@ -1737,19 +1737,56 @@ function recalc() {
 
   for (const n of state.nodes.values()) {
     if (n.type === 'panel' && n.switchMode === 'sectioned') {
-      // Многосекционный контейнер — суммируем нагрузку секций
+      // Многосекционный контейнер — агрегируем параметры секций БЕЗ
+      // дублирования (секции питают disjoint поддеревья потребителей).
+      // Суммируем P/Q; cosφ получаем из суммарного PQ; токи —
+      // через стандартную формулу при напряжении контейнера.
       const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
-      let totalLoad = 0, totalMax = 0;
+      let totalLoad = 0, totalMax = 0, sumP = 0, sumQ = 0, sumMaxA = 0;
       for (const sid of secIds) {
         const s = state.nodes.get(sid);
-        if (s) {
-          totalLoad += s._loadKw || 0;
-          totalMax += s._maxLoadKw || 0;
-        }
+        if (!s) continue;
+        totalLoad += s._loadKw || 0;
+        totalMax += s._maxLoadKw || 0;
+        sumP += s._powerP || 0;
+        sumQ += s._powerQ || 0;
+        sumMaxA += s._maxLoadA || 0;  // секции на общей шине — токи складываются
       }
       n._loadKw = totalLoad;
       n._maxLoadKw = totalMax;
       n._powered = secIds.some(sid => state.nodes.get(sid)?._powered);
+      // P/Q/S и агрегированный cosφ
+      n._powerP = sumP;
+      n._powerQ = sumQ;
+      n._powerS = Math.sqrt(sumP * sumP + sumQ * sumQ);
+      n._cosPhi = (sumP > 0) ? (sumP / n._powerS) : null;
+      n._calcKw = totalLoad;
+      // Ток рассчитываем по напряжению контейнера и агрегированному cosφ
+      const cosAgg = n._cosPhi || GLOBAL.defaultCosPhi;
+      n._loadA = totalLoad > 0
+        ? computeCurrentA(totalLoad, nodeVoltage(n), cosAgg, isThreePhase(n))
+        : 0;
+      n._maxLoadA = sumMaxA > 0
+        ? sumMaxA
+        : (totalMax > 0 ? computeCurrentA(totalMax, nodeVoltage(n), cosAgg, isThreePhase(n)) : 0);
+      // Проверка номинала контейнера (если задан): маржа против max-тока
+      const capA = Number(n.capacityA) || 0;
+      if (capA > 0) {
+        n._capacityKwFromA = capA * nodeVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cosAgg / 1000;
+        const maxA = n._maxLoadA || 0;
+        if (maxA > 0) {
+          const margin = ((capA - maxA) / maxA) * 100;
+          n._marginPct = margin;
+          const hi = Number(n.marginMaxPct);
+          const maxP = isFinite(hi) ? hi : 30;
+          if (margin < 0) n._marginWarn = 'undersize';
+          else if (margin > maxP) n._marginWarn = 'oversize';
+          else n._marginWarn = null;
+        } else { n._marginPct = null; n._marginWarn = null; }
+      } else {
+        n._capacityKwFromA = 0;
+        n._marginPct = null; n._marginWarn = null;
+      }
     } else if (n.type === 'panel') {
       // cos φ из downstream PQ (для взвешенного среднего),
       // но P/Q/S привязаны к фактической _loadKw (walkUp уже учёл share)
@@ -2065,6 +2102,55 @@ function recalc() {
       n._powerP = p;
       n._powerQ = p * tan;
       n._powerS = Math.sqrt(p * p + (p * tan) * (p * tan));
+    }
+  }
+
+  // Второй проход: многосекционные контейнеры агрегируют параметры
+  // уже посчитанных секций (на первом проходе порядок Map мог быть таким,
+  // что контейнер обрабатывался раньше своих секций).
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
+    const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
+    let totalLoad = 0, totalMax = 0, sumP = 0, sumQ = 0, sumMaxA = 0, sumLoadA = 0;
+    for (const sid of secIds) {
+      const s = state.nodes.get(sid);
+      if (!s) continue;
+      totalLoad += s._loadKw || 0;
+      totalMax += s._maxLoadKw || 0;
+      sumP += s._powerP || 0;
+      sumQ += s._powerQ || 0;
+      sumMaxA += s._maxLoadA || 0;
+      sumLoadA += s._loadA || 0;
+    }
+    n._loadKw = totalLoad;
+    n._maxLoadKw = totalMax;
+    n._powered = secIds.some(sid => state.nodes.get(sid)?._powered);
+    n._powerP = sumP;
+    n._powerQ = sumQ;
+    n._powerS = Math.sqrt(sumP * sumP + sumQ * sumQ);
+    n._cosPhi = (sumP > 0) ? (sumP / n._powerS) : null;
+    n._calcKw = totalLoad;
+    n._loadA = sumLoadA > 0 ? sumLoadA : (totalLoad > 0
+      ? computeCurrentA(totalLoad, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n))
+      : 0);
+    n._maxLoadA = sumMaxA;
+    const capA = Number(n.capacityA) || 0;
+    const cosAgg = n._cosPhi || GLOBAL.defaultCosPhi;
+    if (capA > 0) {
+      n._capacityKwFromA = capA * nodeVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cosAgg / 1000;
+      const maxA = n._maxLoadA || 0;
+      if (maxA > 0) {
+        const margin = ((capA - maxA) / maxA) * 100;
+        n._marginPct = margin;
+        const hi = Number(n.marginMaxPct);
+        const maxP = isFinite(hi) ? hi : 30;
+        if (margin < 0) n._marginWarn = 'undersize';
+        else if (margin > maxP) n._marginWarn = 'oversize';
+        else n._marginWarn = null;
+      } else { n._marginPct = null; n._marginWarn = null; }
+    } else {
+      n._capacityKwFromA = 0;
+      n._marginPct = null; n._marginWarn = null;
     }
   }
 
