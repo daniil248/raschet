@@ -68,7 +68,7 @@ const KIT_CATALOG = [
   { id: 'apc-ar3100',
     sku: 'AR3100',
     name: 'APC NetShelter SX 42U 600×1070',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','comboTopBase'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','comboTopBase','cableEntryTop'],
     preset: {
       manufacturer: 'APC NetShelter SX',
       u: 42, width: 600, depth: 1070,
@@ -80,7 +80,7 @@ const KIT_CATALOG = [
   { id: 'apc-ar3150',
     sku: 'AR3150',
     name: 'APC NetShelter SX 42U 750×1070',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','comboTopBase'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','comboTopBase','cableEntryTop'],
     preset: {
       manufacturer: 'APC NetShelter SX',
       u: 42, width: 800, depth: 1070,
@@ -104,7 +104,7 @@ const KIT_CATALOG = [
   { id: 'rittal-ts-it-42',
     sku: 'TS IT 5528.110',
     name: 'Rittal TS IT 42U 600×1000',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','top','base','comboTopBase'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','top','base','comboTopBase','cableEntryTop'],
     preset: {
       manufacturer: 'Rittal TS IT',
       u: 42, width: 600, depth: 1000,
@@ -140,7 +140,7 @@ const KIT_CATALOG = [
   { id: 'kehua-hser-61042-mf',
     sku: 'HSER-61042BK-MF',
     name: 'Kehua H-series 42U 600×1000 (mesh/mesh)',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
     preset: {
       manufacturer: 'Kehua Data H-series',
       u: 42, width: 600, depth: 1000,
@@ -152,7 +152,7 @@ const KIT_CATALOG = [
   { id: 'kehua-hser-61242-mf',
     sku: 'HSER-61242BK-MF',
     name: 'Kehua H-series 42U 600×1200 (mesh/mesh)',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
     preset: {
       manufacturer: 'Kehua Data H-series',
       u: 42, width: 600, depth: 1200,
@@ -164,7 +164,7 @@ const KIT_CATALOG = [
   { id: 'kehua-hser-81042-mf',
     sku: 'HSER-81042BK-MF',
     name: 'Kehua H-series 42U 800×1000 (mesh/mesh)',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
     preset: {
       manufacturer: 'Kehua Data H-series',
       u: 42, width: 800, depth: 1000,
@@ -176,7 +176,7 @@ const KIT_CATALOG = [
   { id: 'kehua-hser-81242-mf',
     sku: 'HSER-81242BK-MF',
     name: 'Kehua H-series 42U 800×1200 (mesh/mesh)',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
     preset: {
       manufacturer: 'Kehua Data H-series',
       u: 42, width: 800, depth: 1200,
@@ -189,7 +189,7 @@ const KIT_CATALOG = [
   { id: 'kehua-hser-61242-gf',
     sku: 'HSER-61242BK-GF',
     name: 'Kehua H-series 42U 600×1200 (glass/mesh) — холодный коридор',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
     preset: {
       manufacturer: 'Kehua Data H-series',
       u: 42, width: 600, depth: 1200,
@@ -201,7 +201,7 @@ const KIT_CATALOG = [
   { id: 'kehua-hser-61442-gm',
     sku: 'HSER-61442BK-GM',
     name: 'Kehua H-series 42U 600×1400 (glass/metal-double) — hot+cold aisle',
-    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
     preset: {
       manufacturer: 'Kehua Data H-series',
       u: 42, width: 600, depth: 1400,
@@ -529,6 +529,7 @@ function applyKitLocks() {
     if (kit.includes.includes('top'))   items.push('крыша');
     if (kit.includes.includes('base'))  items.push('пол/основание');
     if (kit.includes.includes('comboTopBase')) items.push('крыша+пол одной позицией');
+    if (kit.includes.includes('cableEntryTop')) items.push('вводы в крышу с щётками');
     host.innerHTML = '<b>Входит в комплект:</b> ' + escape(items.join(', ')) + '.';
   }
 }
@@ -1008,11 +1009,24 @@ function computeBom() {
     if (!baseIncl && BASE_LABEL[t.base]) add(BASE_LABEL[t.base], 1);
   }
 
-  // Кабельные вводы
+  // Кабельные вводы. У Kehua/APC/Rittal вводы в крышу с щётками обычно
+  // входят в состав шкафа — в BOM отдельной строкой учитываем только
+  // «лишние» и/или нижние. Если 'cableEntryTop' в комплекте — верхние
+  // не считаем (только нижние и только если тип ≠ brush или
+  // явно требуется другой тип).
   if (ENTRY_LABEL[t.entryType]) {
-    const n = (t.entryTop||0) + (t.entryBot||0);
+    const topIncluded = kit.includes.includes('cableEntryTop');
+    const topQty = topIncluded ? 0 : (t.entryTop || 0);
+    const botQty = t.entryBot || 0;
+    const n = topQty + botQty;
     if (n > 0) add(ENTRY_LABEL[t.entryType], n, 'шт',
-      `сверху ${t.entryTop}, снизу ${t.entryBot}`);
+      topIncluded
+        ? `снизу ${botQty} (сверху ${t.entryTop||0} в комплекте шкафа)`
+        : `сверху ${t.entryTop||0}, снизу ${botQty}`);
+    else if (topIncluded && (t.entryTop||0) > 0) {
+      // все вводы — в комплекте, дополнительных не нужно; в BOM
+      // информационной строкой не добавляем.
+    }
   }
 
   // Заглушки
