@@ -148,17 +148,32 @@ const elFilters = { kind: '', source: '', search: '' };
 function renderElementsTab() {
   const container = document.getElementById('tab-elements');
   const all = listElements();
+  // v0.58.71: защитный фильтр — не исключаем элементы из-за мусорных
+  // значений в el (null элементов, отсутствующих полей). Каждый
+  // предикат проверяет, что фильтр задан И значение поля «плохое».
   const filtered = all.filter(el => {
+    if (!el || typeof el !== 'object') return false;
     if (elFilters.kind && el.kind !== elFilters.kind) return false;
-    if (elFilters.source === 'builtin' && !el.builtin) return false;
-    if (elFilters.source === 'user' && el.source !== 'user') return false;
+    // Источник: 'builtin' | 'user' | 'imported' | ''(все)
+    if (elFilters.source === 'builtin') {
+      if (!el.builtin) return false;
+    } else if (elFilters.source === 'user') {
+      // Пользовательские = всё что не builtin (включая imported-клоны)
+      if (el.builtin) return false;
+    }
+    // '' (Все источники) — не фильтруем по источнику вообще
     if (elFilters.search) {
-      const q = elFilters.search.toLowerCase();
-      const hay = [el.label, el.manufacturer, el.series, el.variant, el.id].filter(Boolean).join(' ').toLowerCase();
+      const q = String(elFilters.search).toLowerCase();
+      const hay = [el.label, el.manufacturer, el.series, el.variant, el.id]
+        .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
+  try {
+    console.debug('[catalog] render: total=%d, filtered=%d, filters=%o',
+      all.length, filtered.length, { ...elFilters });
+  } catch {}
 
   const kindOpts = Object.entries(ELEMENT_KINDS).map(([k, d]) =>
     `<option value="${k}"${elFilters.kind === k ? ' selected' : ''}>${esc(d.label)}</option>`).join('');
