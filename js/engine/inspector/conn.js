@@ -796,24 +796,47 @@ export function channelIconSVG(channelType, size) {
     return r;
   }
 
-  // Поддержка и channelType (legacy), и IEC метода
+  // Поддержка и channelType (legacy), и IEC метода.
+  // Phase 1.20.50: мэппинг приведён в соответствие с IEC 60364-5-52:
+  //   A1/A2 — в теплоизол. стене (в трубе / кабель)
+  //   B1 — в трубе на стене, B2 — в коробе / сплошном лотке
+  //   C — открыто на стене (clipped), E — перфор. лоток, F — лестн. лоток,
+  //   G — одножильные с интервалом в воздухе (без лотка),
+  //   D1 — в трубе в земле, D2 — напрямую в земле.
   const ct = ({
-    A1: 'conduit', A2: 'conduit', B1: 'conduit', B2: 'tray_solid',
-    C: 'wall', E: 'tray_perf', F: 'tray_ladder', G: 'wall',
+    A1: 'insulated_conduit', A2: 'insulated_cable',
+    B1: 'conduit', B2: 'tray_solid',
+    C: 'wall', E: 'tray_perf', F: 'tray_ladder', G: 'air_spaced',
     D1: 'ground', D2: 'ground_direct',
   })[channelType] || channelType || 'conduit';
 
   switch (ct) {
-    case 'conduit': case 'insulated_conduit': case 'insulated_cable':
+    case 'conduit':
+      // Труба на стене (B1): штрихованная стена сверху + труба с жилами
       paths = hatch(0, 0, 36, 8) + circSvg(18, 18, 9, 'none', '#888') + dotsSvg(18, 18, 5); break;
+    case 'insulated_conduit':
+      // Труба в теплоизол. стене (A1): штриховка выше и ниже трубы
+      paths = hatch(0, 0, 36, 7) + hatch(0, 27, 36, 7) + circSvg(18, 17, 8, 'none', '#888') + dotsSvg(18, 17, 4.5); break;
+    case 'insulated_cable':
+      // Кабель в теплоизол. стене (A2): штриховка сверху/снизу + жилы без трубы
+      paths = hatch(0, 0, 36, 7) + hatch(0, 27, 36, 7) + dotsSvg(18, 17, 5.5); break;
     case 'tray_solid':
+      // Сплошной короб/лоток (B2): замкнутый прямоугольник с жилами
       paths = `<rect x="${2 * scale}" y="${10 * scale}" width="${32 * scale}" height="${14 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 17, 5); break;
     case 'wall':
-      paths = hatch(0, 0, 36, 8) + dotsSvg(18, 18, 6); break;
+      // Открыто на стене (C): штриховка стены + жилы прижатые к стене
+      paths = hatch(0, 0, 36, 8) + dotsSvg(18, 14, 6); break;
     case 'tray_perf': case 'tray_wire':
+      // Перфорированный лоток (E): П-образное дно + жилы над
       paths = `<path d="M${2 * scale},${20 * scale} L${2 * scale},${26 * scale} L${34 * scale},${26 * scale} L${34 * scale},${20 * scale}" fill="none" stroke="#666" stroke-width="${1.2 * scale}"/>` + dotsSvg(18, 14, 5); break;
-    case 'tray_ladder': case 'air':
+    case 'tray_ladder':
+      // Лестничный лоток (F): вертикальные боковины + перекладина
       paths = `<line x1="${4 * scale}" y1="${16 * scale}" x2="${4 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${32 * scale}" y1="${16 * scale}" x2="${32 * scale}" y2="${26 * scale}" stroke="#666" stroke-width="${1.5 * scale}"/><line x1="${4 * scale}" y1="${21 * scale}" x2="${32 * scale}" y2="${21 * scale}" stroke="#888" stroke-width="${0.8 * scale}"/>` + dotsSvg(18, 12, 5); break;
+    case 'air_spaced': case 'air':
+      // Одножильные с интервалами в воздухе (G): 3 жилы поодаль, без лотка
+      paths = circSvg(8, 16, 4, 'none', '#555') + circSvg(18, 16, 4, 'none', '#555') + circSvg(28, 16, 4, 'none', '#555') +
+              `<line x1="${11 * scale}" y1="${24 * scale}" x2="${15 * scale}" y2="${24 * scale}" stroke="#1976d2" stroke-width="${0.8 * scale}"/>` +
+              `<text x="${13 * scale}" y="${23 * scale}" text-anchor="middle" fill="#1976d2" font-size="${6 * scale}">≥Ø</text>`; break;
     case 'ground':
       paths = hatch(0, 0, 36, 28) + circSvg(18, 14, 8, 'none', '#888') + dotsSvg(18, 14, 4.5); break;
     case 'ground_direct':
@@ -831,7 +854,8 @@ export function bundlingIconSVG(bundling, size) {
   } else if (bundling === 'bundled') {
     svg = `<ellipse cx="24" cy="16" rx="18" ry="12" fill="none" stroke="#888" stroke-width="0.8" stroke-dasharray="3 2"/><circle cx="16" cy="12" r="5" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="16" cy="12" r="2" fill="#555"/><circle cx="30" cy="12" r="5" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="30" cy="12" r="2" fill="#555"/><circle cx="23" cy="22" r="5" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="23" cy="22" r="2" fill="#555"/>`;
   } else {
-    svg = `<circle cx="16" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="16" cy="16" r="2" fill="#555"/><circle cx="32" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="32" cy="16" r="2" fill="#555"/>`;
+    // touching — окружности касаются (расстояние между центрами = 2r = 12)
+    svg = `<circle cx="18" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="18" cy="16" r="2" fill="#555"/><circle cx="30" cy="16" r="6" fill="none" stroke="#555" stroke-width="1.2"/><circle cx="30" cy="16" r="2" fill="#555"/>`;
   }
   return `<svg width="${s}" height="${s * 32 / 48}" viewBox="0 0 48 32">${svg}</svg>`;
 }
