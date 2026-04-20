@@ -59,10 +59,10 @@
       <h1>🗺 Roadmap платформы Raschet</h1>
       <div class="toolbar">
         <input type="search" id="rm-search" placeholder="Поиск по заголовкам, фазам, версиям…">
-        <a href="https://github.com/daniil248/raschet/blob/main/PLAN_ROADMAP.md" target="_blank" rel="noopener">GitHub ↗</a>
+        <a href="https://github.com/daniil248/raschet/blob/main/ROADMAP.md" target="_blank" rel="noopener">GitHub ↗</a>
         <a href="changelog.html">История изменений →</a>
       </div>
-      <div id="mount" class="loading">Загрузка PLAN_ROADMAP.md…</div>
+      <div id="mount" class="loading">Загрузка ROADMAP.md…</div>
     </div>
   </main>
   <script type="module" src="shared/md-render.js"></script>
@@ -71,7 +71,7 @@
     async function load() {
       const mount = document.getElementById('mount');
       try {
-        const resp = await fetch('./PLAN_ROADMAP.md', { cache: 'no-store' });
+        const resp = await fetch('./ROADMAP.md', { cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const md = await resp.text();
         const html = mdToHtml(md);

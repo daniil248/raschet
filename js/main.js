@@ -3391,7 +3391,7 @@ let _roadmapCache = null;
 
 async function _loadRoadmapText() {
   if (_roadmapCache) return _roadmapCache;
-  const urls = ['./PLAN_ROADMAP.md', './plan_roadmap.md'];
+  const urls = ['./ROADMAP.md', './roadmap.md', './PLAN_ROADMAP.md'];
   for (const url of urls) {
     try {
       const resp = await fetch(url, { cache: 'no-store' });
@@ -3500,7 +3500,7 @@ async function openRoadmapModal() {
   if (!mount) return;
   mount.innerHTML = '<div class="muted">Загрузка…</div>';
   const txt = await _loadRoadmapText();
-  if (!txt) { mount.innerHTML = '<div class="muted">Не удалось загрузить PLAN_ROADMAP.md</div>'; return; }
+  if (!txt) { mount.innerHTML = '<div class="muted">Не удалось загрузить ROADMAP.md</div>'; return; }
   mount.innerHTML = _mdToHtml(txt);
 }
 
