@@ -530,6 +530,116 @@ function readPduFields() {
   };
 }
 
+// v0.58.75: универсальная секция — габариты / электрика / kindProps raw.
+// Доступна для ВСЕХ типов элементов, помимо kind-специфичных секций rack/pdu.
+function renderGenericFields(el) {
+  const g = el.geometry || {};
+  const e = el.electrical || {};
+  const kp = el.kindProps || {};
+  // Для rack/pdu kindProps уже редактируются в спец-секции — не даём raw-редактор,
+  // чтобы не было дубля. Для всех остальных — даём текстарею с JSON.
+  const showRawKp = !(el.kind === 'rack' || el.kind === 'pdu');
+  let kpJson = '';
+  if (showRawKp) {
+    try { kpJson = Object.keys(kp).length ? JSON.stringify(kp, null, 2) : ''; } catch { kpJson = ''; }
+  }
+  const elJson = (() => {
+    try { return JSON.stringify(e, null, 2); } catch { return ''; }
+  })();
+  return `
+    <fieldset style="border:1px solid #ddd;padding:10px;margin-top:12px;border-radius:4px">
+      <legend style="font-size:12px;font-weight:600;padding:0 6px">Габариты и масса</legend>
+      <div class="field-row">
+        <div class="field"><label>Ширина, мм</label><input id="f-g-w" type="number" min="0" step="1" value="${g.widthMm != null ? Number(g.widthMm) : ''}"></div>
+        <div class="field"><label>Высота, мм</label><input id="f-g-h" type="number" min="0" step="1" value="${g.heightMm != null ? Number(g.heightMm) : ''}"></div>
+        <div class="field"><label>Глубина, мм</label><input id="f-g-d" type="number" min="0" step="1" value="${g.depthMm != null ? Number(g.depthMm) : ''}"></div>
+        <div class="field"><label>Масса, кг</label><input id="f-g-m" type="number" min="0" step="0.1" value="${g.massKg != null ? Number(g.massKg) : ''}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Высота, U (для 19″)</label><input id="f-g-u" type="number" min="0" step="1" value="${g.heightU != null ? Number(g.heightU) : ''}"></div>
+        <div class="field"><label>IP-класс</label><input id="f-g-ip" value="${esc(g.ipRating || '')}" placeholder="IP20 / IP54"></div>
+      </div>
+    </fieldset>
+    <fieldset style="border:1px solid #ddd;padding:10px;margin-top:10px;border-radius:4px">
+      <legend style="font-size:12px;font-weight:600;padding:0 6px">Электрические параметры</legend>
+      <div class="field-row">
+        <div class="field"><label>Напряжение, В</label><input id="f-e-v" type="number" min="0" step="1" value="${e.voltageV != null ? Number(e.voltageV) : ''}"></div>
+        <div class="field"><label>Класс напряжения</label>
+          <select id="f-e-vc">
+            <option value=""${!e.voltageCategory ? ' selected' : ''}>—</option>
+            <option value="lv"${e.voltageCategory === 'lv' ? ' selected' : ''}>lv (НН)</option>
+            <option value="mv"${e.voltageCategory === 'mv' ? ' selected' : ''}>mv (СН)</option>
+            <option value="elv"${e.voltageCategory === 'elv' ? ' selected' : ''}>elv (СНН)</option>
+          </select>
+        </div>
+        <div class="field"><label>Фаз</label>
+          <select id="f-e-ph">
+            <option value=""${e.phases == null ? ' selected' : ''}>—</option>
+            <option value="1"${e.phases === 1 ? ' selected' : ''}>1</option>
+            <option value="3"${e.phases === 3 ? ' selected' : ''}>3</option>
+          </select>
+        </div>
+        <div class="field"><label>Номинал, A</label><input id="f-e-ia" type="number" min="0" step="1" value="${e.capacityA != null ? Number(e.capacityA) : ''}"></div>
+        <div class="field"><label>Мощность, кВт</label><input id="f-e-pkw" type="number" min="0" step="0.1" value="${e.powerKw != null ? Number(e.powerKw) : ''}"></div>
+      </div>
+    </fieldset>
+    ${showRawKp ? `
+    <fieldset style="border:1px solid #ddd;padding:10px;margin-top:10px;border-radius:4px">
+      <legend style="font-size:12px;font-weight:600;padding:0 6px">kindProps (JSON, для свойств, специфичных для типа)</legend>
+      <textarea id="f-kp-raw" style="width:100%;min-height:120px;font-family:monospace;font-size:12px" placeholder='{\n  "poles": 3\n}'>${esc(kpJson)}</textarea>
+      <div class="muted" style="font-size:11px;margin-top:4px">Оставьте пустым, чтобы не менять. Невалидный JSON будет проигнорирован с ошибкой.</div>
+    </fieldset>` : ''}
+  `;
+}
+function readGenericFields(el) {
+  const $ = id => document.getElementById(id);
+  const numOrUndef = v => {
+    if (v == null || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const geometry = {
+    ...(el.geometry || {}),
+  };
+  const gw = numOrUndef($('f-g-w')?.value);
+  const gh = numOrUndef($('f-g-h')?.value);
+  const gd = numOrUndef($('f-g-d')?.value);
+  const gm = numOrUndef($('f-g-m')?.value);
+  const gu = numOrUndef($('f-g-u')?.value);
+  const gip = ($('f-g-ip')?.value || '').trim();
+  if (gw !== undefined) geometry.widthMm = gw; else delete geometry.widthMm;
+  if (gh !== undefined) geometry.heightMm = gh; else delete geometry.heightMm;
+  if (gd !== undefined) geometry.depthMm = gd; else delete geometry.depthMm;
+  if (gm !== undefined) geometry.massKg = gm; else delete geometry.massKg;
+  if (gu !== undefined) geometry.heightU = gu; else delete geometry.heightU;
+  if (gip) geometry.ipRating = gip; else delete geometry.ipRating;
+
+  const electrical = { ...(el.electrical || {}) };
+  const ev = numOrUndef($('f-e-v')?.value);
+  const evc = ($('f-e-vc')?.value || '').trim();
+  const eph = numOrUndef($('f-e-ph')?.value);
+  const eia = numOrUndef($('f-e-ia')?.value);
+  const epk = numOrUndef($('f-e-pkw')?.value);
+  if (ev !== undefined) electrical.voltageV = ev; else delete electrical.voltageV;
+  if (evc) electrical.voltageCategory = evc; else delete electrical.voltageCategory;
+  if (eph !== undefined) electrical.phases = eph; else delete electrical.phases;
+  if (eia !== undefined) electrical.capacityA = eia; else delete electrical.capacityA;
+  if (epk !== undefined) electrical.powerKw = epk; else delete electrical.powerKw;
+
+  let kindPropsPatch;
+  const kpRaw = $('f-kp-raw');
+  if (kpRaw) {
+    const txt = kpRaw.value.trim();
+    if (txt) {
+      try { kindPropsPatch = JSON.parse(txt); }
+      catch (err) { throw new Error('kindProps JSON: ' + err.message); }
+    } else {
+      kindPropsPatch = {}; // пусто = не менять
+    }
+  }
+  return { geometry, electrical, kindPropsPatch };
+}
+
 function openAddElementModal(editId) {
   const el = editId ? getElement(editId) : { kind: 'custom', label: '' };
   if (!el) return flash('Не найдено', 'error');
@@ -540,6 +650,7 @@ function openAddElementModal(editId) {
   let kindSpecific = '';
   if (el.kind === 'rack') kindSpecific = renderRackFields(el);
   else if (el.kind === 'pdu') kindSpecific = renderPduFields(el);
+  const genericFields = renderGenericFields(el);
 
   const html = `
     ${isBuiltinEdit ? '<div style="background:#fff4e5;border-left:3px solid #b54708;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#7a3a00">Редактирование <b>встроенного</b> элемента. ID и kind менять нельзя; «↺» — откат к исходным данным.</div>' : ''}
@@ -552,7 +663,8 @@ function openAddElementModal(editId) {
     </div>
     <div class="field"><label>Вариант / артикул</label><input id="f-variant" value="${esc(el.variant || '')}"></div>
     <div class="field"><label>Описание</label><textarea id="f-description">${esc(el.description || '')}</textarea></div>
-    ${kindSpecific}`;
+    ${kindSpecific}
+    ${genericFields}`;
 
   openModal(editId ? 'Редактирование элемента' : 'Новый элемент', html, () => {
     const id = document.getElementById('f-id').value.trim();
@@ -585,6 +697,20 @@ function openAddElementModal(editId) {
         })[pdu.category] || pdu.category,
       };
       base.electrical = { ...(el.electrical || {}), phases: pdu.phases, capacityA: pdu.rating };
+    }
+    // Универсальная секция (габариты/электрика/kindProps raw) —
+    // применяется поверх kind-специфичных значений, чтобы пользователь
+    // мог уточнить любые поля для любого типа элемента.
+    try {
+      const gen = readGenericFields(el);
+      base.geometry = { ...(base.geometry || {}), ...gen.geometry };
+      base.electrical = { ...(base.electrical || {}), ...gen.electrical };
+      if (gen.kindPropsPatch && Object.keys(gen.kindPropsPatch).length) {
+        base.kindProps = { ...(base.kindProps || {}), ...gen.kindPropsPatch };
+      }
+    } catch (err) {
+      flash(err.message, 'error');
+      return false;
     }
     saveElement(base);
     flash('Сохранено', 'success');
