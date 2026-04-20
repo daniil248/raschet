@@ -206,10 +206,12 @@ export function deserialize(data) {
       if (typeof n.inputs !== 'number') n.inputs = 0;
       if (typeof n.inputVoltageLevelIdx !== 'number') n.inputVoltageLevelIdx = 3;
     }
-    // Utility (как subtype): базовые поля
+    // Utility (как subtype): базовые поля.
+    // v0.57.70: все поля ставим только при отсутствии — миграция НЕ должна
+    // затирать значения, установленные пользователем (см. feedback_user_params.md).
     if (n.type === 'source' && n.sourceSubtype === 'utility') {
-      n.inputs = 0;
-      n.outputs = 1;
+      if (typeof n.inputs !== 'number') n.inputs = 0;
+      if (typeof n.outputs !== 'number') n.outputs = 1;
       if (!n.phase) n.phase = '3ph';
       if (typeof n.voltageLevelIdx !== 'number') n.voltageLevelIdx = 3;
       if (typeof n.xsRsRatio !== 'number') n.xsRsRatio = 10;
