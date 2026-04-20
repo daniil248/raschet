@@ -477,10 +477,14 @@ export function renderInspectorNode(n) {
 
   // Phase 2.3 (v0.58.4): вкладки по системам (электрика / габариты)
   // для всех типов кроме zone/channel/conn.
+  // v0.58.38: tabs Электрика/Габариты/Системы + по одной вкладке для
+  // каждой включённой (не-electrical) системы с параметрами.
+  const _extraTabs = renderExtraSystemTabs(n);
   h.push(`<div class="tp-tabs" role="tablist" style="margin-bottom:8px">
     <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
     <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы</button>
+    ${_extraTabs.tabsHtml}
   </div>`);
   h.push(`<div class="tp-panel" data-panel="electrical">`);
   h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
@@ -789,6 +793,8 @@ export function renderInspectorNode(n) {
   h.push(`<div class="tp-panel" data-panel="systems" hidden>`);
   h.push(renderSystemsBlock(n));
   h.push(`</div>`);
+  // v0.58.38: панели систем (каждая — отдельная вкладка)
+  h.push(_extraTabs.panelsHtml);
 
   inspectorBody.innerHTML = h.join('');
   wireSystemsBlock(n, inspectorBody);
@@ -901,40 +907,32 @@ export function renderSystemsBlock(n) {
         state.project.customSystems.some(s => s.id === sysId);
     } catch { return false; }
   };
+  // v0.58.38: только on/off чипы; параметры включённых систем показываются
+  // отдельными вкладками (renderExtraSystemTabs).
   const items = allSystems.map(s => {
     const on = cur.includes(s.id);
-    const vals = (sp[s.id] && typeof sp[s.id] === 'object') ? sp[s.id] : {};
     const custom = isCustom(s.id);
+    const hasParams = Array.isArray(s.params) && s.params.length;
+    const paramsHint = on && hasParams
+      ? `<span class="muted" style="font-size:10px;margin-left:4px">→ вкладка «${escHtml(s.label)}»</span>`
+      : '';
     const manageBtns = custom ? `
       <button type="button" class="sys-manage" data-sys-manage-add="${escAttr(s.id)}" title="Добавить параметр" style="margin-left:auto;font-size:10px;padding:2px 6px;border:1px solid ${s.color};background:#fff;border-radius:3px;cursor:pointer;color:${s.color}">+ параметр</button>
       <button type="button" class="sys-manage" data-sys-manage-del="${escAttr(s.id)}" title="Удалить систему проекта" style="font-size:10px;padding:2px 6px;border:1px solid #dc2626;background:#fff;border-radius:3px;cursor:pointer;color:#dc2626;margin-left:4px">✕</button>` : '';
-    const header = `<label class="sys-chip" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid ${on ? s.color : '#e0e3ea'};border-radius:4px;cursor:pointer;background:${on ? s.color + '15' : '#fff'}">
+    return `<label class="sys-chip" style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border:1px solid ${on ? s.color : '#e0e3ea'};border-radius:4px;cursor:pointer;background:${on ? s.color + '15' : '#fff'}">
       <input type="checkbox" data-sys="${escAttr(s.id)}"${on ? ' checked' : ''} style="margin:0">
       <span style="font-size:14px">${s.icon}</span>
       <span style="font-weight:600;color:${s.color}">${escHtml(s.label)}</span>
       ${custom ? '<span class="muted" style="font-size:10px;margin-left:4px">custom</span>' : ''}
+      ${paramsHint}
       ${manageBtns}
     </label>`;
-    let paramsBlock = '';
-    if (on && Array.isArray(s.params) && s.params.length) {
-      const rows = s.params.map(p => {
-        const unit = p.unit ? `<span class="muted" style="font-size:10px;margin-left:4px">${escHtml(p.unit)}</span>` : '';
-        return `<label style="display:block;font-size:11px;margin-top:4px">
-          <span style="color:#555">${escHtml(p.label)}${unit}</span>
-          ${renderParamInput(s.id, p, vals[p.key])}
-        </label>`;
-      }).join('');
-      paramsBlock = `<div style="margin:4px 0 10px 12px;padding:6px 8px;border-left:2px solid ${s.color};background:${s.color}0A;border-radius:0 4px 4px 0">${rows}</div>`;
-    } else {
-      paramsBlock = `<div style="margin-bottom:4px"></div>`;
-    }
-    return header + paramsBlock;
   }).join('');
   return `<div class="inspector-section">
     <h4>Системы элемента</h4>
     <div class="muted" style="font-size:11px;margin-bottom:8px">
-      Элемент виден и фильтруется на странице нужного вида (data / слаботочка / механика),
-      только если его система включена здесь. Параметры каждой включённой системы — ниже.
+      Включите системы, к которым относится элемент. Параметры каждой включённой
+      системы редактируются на отдельной вкладке (появляется автоматически).
     </div>
     ${items}
     <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e0e3ea">
@@ -942,6 +940,79 @@ export function renderSystemsBlock(n) {
       <div class="muted" style="font-size:10px;margin-top:4px">Пользовательская система сохраняется в проекте (state.project.customSystems).</div>
     </div>
   </div>`;
+}
+
+// v0.58.38: параметры одной системы — для вкладки «<Система>».
+export function renderSystemParamsPanel(n, sysId) {
+  try {
+    const proj = state.project || {};
+    globalThis.__raschetCustomSystems = Array.isArray(proj.customSystems) ? proj.customSystems.slice() : [];
+  } catch {}
+  const meta = getSystemMeta(sysId);
+  if (!meta) return '';
+  const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : {};
+  const vals = (sp[sysId] && typeof sp[sysId] === 'object') ? sp[sysId] : {};
+  const params = Array.isArray(meta.params) ? meta.params : [];
+  const renderParamInput = (p, val) => {
+    const v = (val === 0 || val) ? val : '';
+    const name = `data-sys-param="${escAttr(sysId)}" data-sys-key="${escAttr(p.key)}"`;
+    if (p.type === 'select') {
+      const opts = (p.options || []).map(o => `<option value="${escAttr(o)}"${String(v) === String(o) ? ' selected' : ''}>${escHtml(o || '—')}</option>`).join('');
+      return `<select ${name} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">${opts}</select>`;
+    }
+    if (p.type === 'number') {
+      return `<input type="number" ${name} value="${escAttr(v)}"${Number.isFinite(p.min) ? ` min="${p.min}"` : ''}${p.step ? ` step="${p.step}"` : ''} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
+    }
+    return `<input type="text" ${name} value="${escAttr(v)}" style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
+  };
+  const isCustom = Array.isArray(state.project?.customSystems) &&
+    state.project.customSystems.some(s => s.id === sysId);
+  const manage = isCustom
+    ? `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e0e3ea;display:flex;gap:6px;flex-wrap:wrap">
+         <button type="button" class="sys-manage" data-sys-manage-add="${escAttr(sysId)}" style="font-size:11px;padding:4px 8px;border:1px solid ${meta.color};background:#fff;border-radius:3px;cursor:pointer;color:${meta.color}">+ параметр</button>
+         <button type="button" class="sys-manage" data-sys-manage-del="${escAttr(sysId)}" style="font-size:11px;padding:4px 8px;border:1px solid #dc2626;background:#fff;border-radius:3px;cursor:pointer;color:#dc2626">✕ удалить систему</button>
+       </div>`
+    : '';
+  if (!params.length) {
+    return `<div class="inspector-section">
+      <h4 style="color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</h4>
+      <div class="muted" style="font-size:11px">У этой системы ещё нет параметров.${isCustom ? ' Добавьте первый — ниже.' : ''}</div>
+      ${manage}
+    </div>`;
+  }
+  const rows = params.map(p => {
+    const unit = p.unit ? `<span class="muted" style="font-size:10px;margin-left:4px">${escHtml(p.unit)}</span>` : '';
+    return `<label style="display:block;font-size:11px;margin-top:6px">
+      <span style="color:#555">${escHtml(p.label)}${unit}</span>
+      ${renderParamInput(p, vals[p.key])}
+    </label>`;
+  }).join('');
+  return `<div class="inspector-section">
+    <h4 style="color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</h4>
+    <div style="padding:8px 10px;border-left:3px solid ${meta.color};background:${meta.color}0A;border-radius:0 4px 4px 0">${rows}</div>
+    ${manage}
+  </div>`;
+}
+
+// v0.58.38: tab-buttons + panels для включённых систем (кроме electrical).
+// Electrical встроена во вкладку «Электрика». Возвращает строки HTML.
+export function renderExtraSystemTabs(n) {
+  try {
+    const proj = state.project || {};
+    globalThis.__raschetCustomSystems = Array.isArray(proj.customSystems) ? proj.customSystems.slice() : [];
+  } catch {}
+  const cur = Array.isArray(n.systems) && n.systems.length ? n.systems : ['electrical'];
+  const tabs = [];
+  const panels = [];
+  for (const sysId of cur) {
+    if (sysId === 'electrical') continue;
+    const meta = getSystemMeta(sysId);
+    if (!meta) continue;
+    const tabId = 'sys:' + sysId;
+    tabs.push(`<button type="button" class="tp-tab" data-tab="${escAttr(tabId)}" role="tab" title="${escAttr(meta.label)}" style="border-color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</button>`);
+    panels.push(`<div class="tp-panel" data-panel="${escAttr(tabId)}" hidden>${renderSystemParamsPanel(n, sysId)}</div>`);
+  }
+  return { tabsHtml: tabs.join(''), panelsHtml: panels.join('') };
 }
 export function wireSystemsBlock(n, root) {
   const host = (root || inspectorBody);
@@ -1241,15 +1312,19 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
   // обёрнутом контейнере).
   if (bodyEl.querySelector(':scope > .tp-tabs')) return;
   const originalHtml = bodyEl.innerHTML;
+  // v0.58.38: каждая включённая (не-electrical) система — отдельная вкладка
+  const extra = renderExtraSystemTabs(n);
   const tabsHtml = `<div class="tp-tabs" role="tablist" style="margin-bottom:12px">
     <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
     <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы</button>
+    ${extra.tabsHtml}
   </div>`;
   bodyEl.innerHTML = tabsHtml
     + `<div class="tp-panel" data-panel="electrical">${originalHtml}</div>`
     + `<div class="tp-panel" data-panel="geometry" hidden>${renderGeometryMmBlock(n)}</div>`
-    + `<div class="tp-panel" data-panel="systems" hidden>${renderSystemsBlock(n)}</div>`;
+    + `<div class="tp-panel" data-panel="systems" hidden>${renderSystemsBlock(n)}</div>`
+    + extra.panelsHtml;
   bodyEl.querySelectorAll(':scope > .tp-tabs .tp-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
