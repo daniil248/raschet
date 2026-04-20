@@ -648,8 +648,10 @@ function _renderNodesLayout() {
       }));
       // v0.58.24: полоска систем вверху карточки также и на layout-странице
       _drawSystemStrip(g, n, W);
-      // Подпись: тег + имя + размеры
-      const tag = (typeof n.tag === 'string' && n.tag) ? n.tag : '';
+      // Подпись: полное обозначение (с префиксом зоны / секции) + имя + размеры.
+      // v0.58.35: используем effectiveTag, чтобы на layout-карточке было видно
+      // «S1.L7», а не локальное «L7».
+      const tag = effectiveTag(n) || (typeof n.tag === 'string' ? n.tag : '') || '';
       const name = n.name || n.type;
       // v0.58.34: надписи не масштабируются со state.view.zoom. Базовая
       // высота 2.5 мм, максимум 5 мм (физические мм на экране, 1 mm ≈ 3.78 CSS px).

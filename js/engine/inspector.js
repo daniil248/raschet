@@ -180,10 +180,14 @@ function renderInspectorPage() {
     // новую страницу нужного вида.
     h.push(field('Вид страницы', `<select id="pg-kind" disabled title="Вид страницы нельзя изменить после создания — создайте новую страницу нужного вида">${kindOpts}</select>`
       + `<div class="muted" style="font-size:10px;margin-top:2px">Фиксируется при создании страницы</div>`));
-    const scales = ['1:1', '1:2', '1:5', '1:10', '1:20', '1:25', '1:50', '1:100', '1:200', '1:500', '1:1000'];
-    const curScale = page.scale || '1:1';
-    const scaleOpts = scales.map(s => `<option value="${s}"${s === curScale ? ' selected' : ''}>${s}</option>`).join('');
-    h.push(field('Масштаб', `<select id="pg-scale">${scaleOpts}</select>`));
+    // v0.58.35: масштаб — только для страниц расположения (для schematic/TCC
+    // и прочих абстрактных видов понятие масштаба не имеет смысла).
+    if (kind === 'layout') {
+      const scales = ['1:1', '1:2', '1:5', '1:10', '1:20', '1:25', '1:50', '1:100', '1:200', '1:500', '1:1000'];
+      const curScale = page.scale || '1:1';
+      const scaleOpts = scales.map(s => `<option value="${s}"${s === curScale ? ' selected' : ''}>${s}</option>`).join('');
+      h.push(field('Масштаб', `<select id="pg-scale">${scaleOpts}</select>`));
+    }
   }
 
   // Тип страницы + parent для ссылочной
