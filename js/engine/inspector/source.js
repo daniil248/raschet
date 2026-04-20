@@ -201,56 +201,85 @@ export function openImpedanceModal(n) {
   const applyBtn = document.getElementById('impedance-apply');
   if (applyBtn) applyBtn.onclick = () => {
     if (n.id !== '__preset_edit__') snapshot('impedance:' + n.id);
+    // v0.57.68: preserve-on-miss. Установленные пользователем параметры
+    // НЕЛЬЗЯ затирать дефолтами, если в DOM нет элемента или значение
+    // пустое. Читаем только когда есть живое число — иначе оставляем n.*
+    // как было. См. feedback_user_params.md.
+    const readNum = (id, curr) => {
+      const el = document.getElementById(id);
+      if (!el) return curr;
+      const raw = String(el.value ?? '').trim();
+      if (raw === '') return curr;
+      const v = Number(raw);
+      return Number.isFinite(v) ? v : curr;
+    };
+    const readStr = (id, curr) => {
+      const el = document.getElementById(id);
+      if (!el) return curr;
+      const raw = String(el.value ?? '').trim();
+      return raw === '' ? curr : raw;
+    };
     const impName = document.getElementById('imp-name')?.value?.trim();
     if (impName) n.name = impName;
     if (!isUtility) {
-      n.snomKva = Number(document.getElementById('imp-snom')?.value) || 400;
+      n.snomKva = readNum('imp-snom', n.snomKva ?? 400);
     }
-    const outLevelIdx = Number(document.getElementById('imp-voltage-out')?.value) || 0;
     const levels = GLOBAL.voltageLevels || [];
-    n.voltageLevelIdx = outLevelIdx;
-    if (levels[outLevelIdx]) {
-      n.voltage = levels[outLevelIdx].vLL;
-      n.phase = '3ph'; // источники всегда 3-фазные
+    const outEl = document.getElementById('imp-voltage-out');
+    if (outEl && String(outEl.value ?? '').trim() !== '') {
+      const outLevelIdx = Number(outEl.value);
+      if (Number.isFinite(outLevelIdx)) {
+        n.voltageLevelIdx = outLevelIdx;
+        if (levels[outLevelIdx]) {
+          n.voltage = levels[outLevelIdx].vLL;
+          n.phase = '3ph'; // источники всегда 3-фазные
+        }
+      }
     }
     if (isTransformer) {
       const inEl = document.getElementById('imp-voltage-in');
-      if (inEl) n.inputVoltageLevelIdx = Number(inEl.value) || 0;
-      const vgEl = document.getElementById('imp-vectorGroup');
-      if (vgEl) n.vectorGroup = vgEl.value || 'Dyn11';
+      if (inEl && String(inEl.value ?? '').trim() !== '') {
+        const v = Number(inEl.value);
+        if (Number.isFinite(v)) n.inputVoltageLevelIdx = v;
+      }
+      n.vectorGroup = readStr('imp-vectorGroup', n.vectorGroup || 'Dyn11');
     }
     if (!isUtility) {
-      n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
+      n.capacityKw = (n.snomKva || 0) * (Number(n.cosPhi) || 0.92);
     } else {
       // Phase 1.20.39: utility — capacityKw из ТУ (ввод вручную)
       const pmaxEl = document.getElementById('imp-utility-pmax');
-      if (pmaxEl) n.capacityKw = Math.max(0, Number(pmaxEl.value) || 0);
+      if (pmaxEl && String(pmaxEl.value ?? '').trim() !== '') {
+        const v = Number(pmaxEl.value);
+        if (Number.isFinite(v)) n.capacityKw = Math.max(0, v);
+      }
     }
     if (isOther || isUtility) {
-      n.ikKA = Number(document.getElementById('imp-ikka')?.value) || 0;
-      n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 0;
+      n.ikKA = readNum('imp-ikka', n.ikKA ?? 0);
+      n.sscMva = readNum('imp-ssc', n.sscMva ?? 0);
       delete n.ukPct;
       delete n.xdpp;
       delete n.pkW;
       delete n.p0W;
       if (isUtility) delete n.inputVoltageLevelIdx;
     } else {
-      n.sscMva = Number(document.getElementById('imp-ssc')?.value) || 500;
+      n.sscMva = readNum('imp-ssc', n.sscMva ?? 500);
       if (isTransformer) {
-        n.ukPct = Number(document.getElementById('imp-uk')?.value) || 0;
+        n.ukPct = readNum('imp-uk', n.ukPct ?? 4.5);
       } else {
-        n.xdpp = Number(document.getElementById('imp-xdpp')?.value) || 0.15;
+        n.xdpp = readNum('imp-xdpp', n.xdpp ?? 0.15);
       }
     }
-    n.xsRsRatio = Number(document.getElementById('imp-xsrs')?.value) || 10;
+    n.xsRsRatio = readNum('imp-xsrs', n.xsRsRatio ?? 10);
     if (isTransformer) {
-      n.pkW = Number(document.getElementById('imp-pk')?.value) || 0;
-      n.p0W = Number(document.getElementById('imp-p0')?.value) || 0;
+      n.pkW = readNum('imp-pk', n.pkW ?? 5.5);
+      n.p0W = readNum('imp-p0', n.p0W ?? 0.83);
     }
     if (!isTransformer && n.auxInput) {
-      n.auxDemandKw = Number(document.getElementById('imp-auxKw')?.value) || 0;
-      n.auxCosPhi = Number(document.getElementById('imp-auxCos')?.value) || 0.85;
-      n.auxBreakerOn = document.getElementById('imp-auxBrk')?.checked !== false;
+      n.auxDemandKw = readNum('imp-auxKw', n.auxDemandKw ?? 0);
+      n.auxCosPhi = readNum('imp-auxCos', n.auxCosPhi ?? 0.85);
+      const brkEl = document.getElementById('imp-auxBrk');
+      if (brkEl) n.auxBreakerOn = brkEl.checked !== false;
     }
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
