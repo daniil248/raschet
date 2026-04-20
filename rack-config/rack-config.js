@@ -494,12 +494,232 @@ function escape(s) {
 }
 
 /* ---------- kit catalog ---------- */
-function renderKitSelect() {
-  const sel = el('rc-kit');
-  sel.innerHTML = KIT_CATALOG.map(k =>
-    `<option value="${k.id}">${escape(k.name)}${k.sku ? ' — ' + escape(k.sku) : ''}</option>`).join('');
+function renderKitBtn() {
+  const btn = el('rc-kit-btn');
+  if (!btn) return;
+  const t = current();
+  const kit = kitById(t && t.kitId || '');
+  btn.textContent = kit.id
+    ? `${kit.name}${kit.sku ? ' — ' + kit.sku : ''}`
+    : '— Произвольная конфигурация (выбрать из каталога…) —';
 }
 function kitById(id) { return KIT_CATALOG.find(k => k.id === id) || KIT_CATALOG[0]; }
+
+// Модал выбора базового комплекта из каталога.
+// Колонки: SKU | наименование | формат (UxWxD) | двери | производитель.
+// Фильтры: производитель, формат по U, по ширине/глубине, текст-поиск.
+function openKitCatalogModal() {
+  const t = current();
+  const mfgs = Array.from(new Set(
+    KIT_CATALOG.filter(k => k.id).map(k => (k.preset && k.preset.manufacturer) || '—'))).sort();
+  const us   = Array.from(new Set(KIT_CATALOG.filter(k => k.id).map(k => k.preset.u))).sort((a,b) => a-b);
+  const state = { search: '', mfg: '__all__', u: '__all__' };
+
+  const back = document.createElement('div');
+  back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--rs-bg-card);color:var(--rs-fg);border-radius:10px;max-width:1040px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)';
+  back.appendChild(box);
+  document.body.appendChild(back);
+
+  function doorLbl(k) {
+    const f = DOOR_LABEL[k.preset.doorFront] || '—';
+    const r = DOOR_LABEL[k.preset.doorRear]  || '—';
+    return `<span class="muted" style="font-size:11px">перед: ${escape(f)}<br>зад: ${escape(r)}</span>`;
+  }
+  function render() {
+    const q = state.search.trim().toLowerCase();
+    const rows = KIT_CATALOG.filter(k => {
+      if (!k.id) return false; // «Произвольная» — отдельная кнопка внизу
+      const mfg = (k.preset && k.preset.manufacturer) || '';
+      if (state.mfg !== '__all__' && mfg !== state.mfg) return false;
+      if (state.u !== '__all__' && k.preset.u !== +state.u) return false;
+      if (q && !(k.sku.toLowerCase().includes(q)
+               || k.name.toLowerCase().includes(q)
+               || mfg.toLowerCase().includes(q))) return false;
+      return true;
+    });
+    box.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Каталог базовых комплектов стоек</h3>
+        <button type="button" class="rc-btn" id="rc-km-close-x">✕</button>
+      </div>
+      <div style="padding:12px 20px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
+        <label class="rc-field"><span>Поиск</span>
+          <input type="text" id="rc-km-search" value="${escape(state.search)}" placeholder="SKU, наименование, производитель…">
+        </label>
+        <label class="rc-field"><span>Производитель</span>
+          <select id="rc-km-mfg">
+            <option value="__all__" ${state.mfg==='__all__'?'selected':''}>Все</option>
+            ${mfgs.map(m => `<option value="${escape(m)}" ${state.mfg===m?'selected':''}>${escape(m)}</option>`).join('')}
+          </select>
+        </label>
+        <label class="rc-field"><span>Формат, U</span>
+          <select id="rc-km-u">
+            <option value="__all__" ${state.u==='__all__'?'selected':''}>Все</option>
+            ${us.map(u => `<option value="${u}" ${String(state.u)===String(u)?'selected':''}>${u}U</option>`).join('')}
+          </select>
+        </label>
+        <div class="muted" style="font-size:11px;padding-bottom:6px">Найдено: <b>${rows.length}</b></div>
+      </div>
+      <div style="overflow:auto;flex:1 1 auto;padding:4px 20px 12px 20px">
+        <table class="rc-acc-table" style="margin-top:0">
+          <thead><tr>
+            <th>SKU</th><th>Наименование</th><th>Формат</th><th>Двери</th><th>Производитель</th><th style="width:90px"></th>
+          </tr></thead>
+          <tbody>
+            ${rows.length === 0 ? `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Ничего не найдено.</td></tr>` :
+              rows.map(k => {
+                const sel = t.kitId === k.id;
+                return `<tr${sel?' style="background:var(--rs-accent-bg)"':''}>
+                  <td><code>${escape(k.sku)}</code></td>
+                  <td>${escape(k.name)}</td>
+                  <td>${k.preset.u}U ${k.preset.width}×${k.preset.depth}</td>
+                  <td>${doorLbl(k)}</td>
+                  <td>${escape((k.preset && k.preset.manufacturer) || '')}</td>
+                  <td><button type="button" class="rc-btn ${sel?'rc-btn-primary':''}" data-km-pick="${escape(k.id)}">${sel?'✓ выбран':'Выбрать'}</button></td>
+                </tr>`;
+              }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;gap:8px">
+        <button type="button" class="rc-btn" id="rc-km-clear">— Произвольная (без каталога) —</button>
+        <button type="button" class="rc-btn" id="rc-km-cancel">Закрыть</button>
+      </div>
+    `;
+    const close = () => back.remove();
+    const pick = id => { current().kitId = id; applyKitPreset(); renderForm(); close(); };
+    box.querySelector('#rc-km-close-x').addEventListener('click', close);
+    box.querySelector('#rc-km-cancel').addEventListener('click', close);
+    box.querySelector('#rc-km-clear').addEventListener('click', () => pick(''));
+    box.querySelector('#rc-km-search').addEventListener('input', e => {
+      state.search = e.target.value; render();
+      const inp = box.querySelector('#rc-km-search');
+      if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    });
+    box.querySelector('#rc-km-mfg').addEventListener('change', e => { state.mfg = e.target.value; render(); });
+    box.querySelector('#rc-km-u').addEventListener('change',   e => { state.u   = e.target.value; render(); });
+    box.querySelectorAll('[data-km-pick]').forEach(btn =>
+      btn.addEventListener('click', () => pick(btn.dataset.kmPick)));
+  }
+  render();
+  back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+}
+
+// Модал выбора PDU из каталога. Колонки: SKU | производитель | категория |
+// фазы | номинал | высота | розетки. Фильтры: mfg, category, phases, rating.
+function openPduCatalogModal(pdu) {
+  const mfgs = Array.from(new Set(PDU_CATALOG.map(p => p.mfg))).sort();
+  const st = { search: '', mfg: '__all__', cat: '__all__', phases: '__all__' };
+
+  const back = document.createElement('div');
+  back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--rs-bg-card);color:var(--rs-fg);border-radius:10px;max-width:1040px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)';
+  back.appendChild(box);
+  document.body.appendChild(back);
+
+  function render() {
+    const q = st.search.trim().toLowerCase();
+    const rows = PDU_CATALOG.filter(p => {
+      if (st.mfg !== '__all__' && p.mfg !== st.mfg) return false;
+      if (st.cat !== '__all__' && p.category !== st.cat) return false;
+      if (st.phases !== '__all__' && String(p.phases) !== st.phases) return false;
+      if (q && !(p.sku.toLowerCase().includes(q)
+               || p.name.toLowerCase().includes(q)
+               || (PDU_CATEGORY[p.category]||'').toLowerCase().includes(q))) return false;
+      return true;
+    });
+    box.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Каталог PDU</h3>
+        <button type="button" class="rc-btn" id="rc-pm-close-x">✕</button>
+      </div>
+      <div style="padding:12px 20px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
+        <label class="rc-field"><span>Поиск</span>
+          <input type="text" id="rc-pm-search" value="${escape(st.search)}" placeholder="SKU, название, категория…">
+        </label>
+        <label class="rc-field"><span>Производитель</span>
+          <select id="rc-pm-mfg">
+            <option value="__all__" ${st.mfg==='__all__'?'selected':''}>Все</option>
+            ${mfgs.map(m => `<option value="${escape(m)}" ${st.mfg===m?'selected':''}>${escape(m)}</option>`).join('')}
+          </select>
+        </label>
+        <label class="rc-field"><span>Категория</span>
+          <select id="rc-pm-cat">
+            <option value="__all__" ${st.cat==='__all__'?'selected':''}>Все</option>
+            ${Object.keys(PDU_CATEGORY).map(c => `<option value="${c}" ${st.cat===c?'selected':''}>${escape(PDU_CATEGORY[c])}</option>`).join('')}
+          </select>
+        </label>
+        <label class="rc-field"><span>Фазы</span>
+          <select id="rc-pm-ph">
+            <option value="__all__" ${st.phases==='__all__'?'selected':''}>Все</option>
+            <option value="1" ${st.phases==='1'?'selected':''}>1ф</option>
+            <option value="3" ${st.phases==='3'?'selected':''}>3ф</option>
+          </select>
+        </label>
+        <div class="muted" style="font-size:11px;padding-bottom:6px">Найдено: <b>${rows.length}</b></div>
+      </div>
+      <div style="overflow:auto;flex:1 1 auto;padding:4px 20px 12px 20px">
+        <table class="rc-acc-table" style="margin-top:0">
+          <thead><tr>
+            <th>SKU</th><th>Наименование</th><th>Производитель</th><th>Категория</th><th>Фазы / A</th><th>Высота</th><th>Розетки</th><th style="width:90px"></th>
+          </tr></thead>
+          <tbody>
+            ${rows.length === 0 ? `<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Ничего не найдено.</td></tr>` :
+              rows.map(p => {
+                const sel = pdu.sku === p.sku;
+                const outs = p.outlets.map(o => `${o.count}×${o.type}`).join(' + ');
+                return `<tr${sel?' style="background:var(--rs-accent-bg)"':''}>
+                  <td><code>${escape(p.sku)}</code></td>
+                  <td>${escape(p.name)}</td>
+                  <td>${escape(p.mfg)}</td>
+                  <td>${escape(PDU_CATEGORY[p.category] || p.category)}</td>
+                  <td>${p.phases}ф / ${p.rating} A</td>
+                  <td>${p.height===0?'0U верт.':p.height+'U'}</td>
+                  <td style="font-size:11px">${escape(outs)}</td>
+                  <td><button type="button" class="rc-btn ${sel?'rc-btn-primary':''}" data-pm-pick="${escape(p.sku)}">${sel?'✓ выбран':'Выбрать'}</button></td>
+                </tr>`;
+              }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;gap:8px">
+        <button type="button" class="rc-btn" id="rc-pm-clear">— Произвольная (лист требований) —</button>
+        <button type="button" class="rc-btn" id="rc-pm-cancel">Закрыть</button>
+      </div>
+    `;
+    const close = () => back.remove();
+    const pick = sku => {
+      pdu.sku = sku || '';
+      const cat2 = sku ? pduBySku(sku) : null;
+      if (cat2) {
+        pdu.rating = cat2.rating;
+        pdu.phases = cat2.phases;
+        pdu.height = cat2.height;
+        pdu.outlets = JSON.parse(JSON.stringify(cat2.outlets));
+      }
+      close();
+      renderPduList(); recalc();
+    };
+    box.querySelector('#rc-pm-close-x').addEventListener('click', close);
+    box.querySelector('#rc-pm-cancel').addEventListener('click', close);
+    box.querySelector('#rc-pm-clear').addEventListener('click', () => pick(''));
+    box.querySelector('#rc-pm-search').addEventListener('input', e => {
+      st.search = e.target.value; render();
+      const inp = box.querySelector('#rc-pm-search');
+      if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    });
+    box.querySelector('#rc-pm-mfg').addEventListener('change', e => { st.mfg = e.target.value; render(); });
+    box.querySelector('#rc-pm-cat').addEventListener('change', e => { st.cat = e.target.value; render(); });
+    box.querySelector('#rc-pm-ph').addEventListener('change',  e => { st.phases = e.target.value; render(); });
+    box.querySelectorAll('[data-pm-pick]').forEach(btn =>
+      btn.addEventListener('click', () => pick(btn.dataset.pmPick)));
+  }
+  render();
+  back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+}
 function applyKitLocks() {
   const t = current();
   const kit = kitById(t.kitId || '');
@@ -553,7 +773,7 @@ function renderForm() {
   if (!t) return;
   el('rc-name').value         = t.name || '';
   el('rc-manufacturer').value = t.manufacturer || '';
-  el('rc-kit').value          = t.kitId || '';
+  renderKitBtn();
   el('rc-u').value            = String(t.u);
   el('rc-width').value        = String(t.width);
   el('rc-depth').value        = String(t.depth);
@@ -812,19 +1032,14 @@ function renderPduList() {
     const locked = !!cat;
     const row = document.createElement('div');
     row.className = 'rc-pdu-item';
-    // группируем каталог по производителю
-    const byMfg = {};
-    PDU_CATALOG.forEach(c => { (byMfg[c.mfg] = byMfg[c.mfg] || []).push(c); });
-    const catOptions = '<option value="">— произвольная (лист требований) —</option>' +
-      Object.keys(byMfg).map(mfg => `
-        <optgroup label="${escape(mfg)}">
-          ${byMfg[mfg].map(c => `<option value="${escape(c.sku)}" ${c.sku===p.sku?'selected':''}>${escape(c.sku)} — ${escape(PDU_CATEGORY[c.category] || c.category)}</option>`).join('')}
-        </optgroup>`).join('');
+    const catLabel = cat
+      ? `${cat.mfg} ${cat.sku} — ${PDU_CATEGORY[cat.category] || cat.category}`
+      : '— Произвольная (лист требований) — открыть каталог…';
     row.innerHTML = `
       <div class="rc-pdu-catalog">
-        <label class="rc-field" style="flex:1 1 100%" title="Выбор готовой модели PDU из каталога. При выборе поля номинала/фаз/высоты/розеток подставляются и блокируются.">
+        <label class="rc-field" style="flex:1 1 100%" title="Открыть каталог PDU. При выборе поля номинала/фаз/высоты/розеток подставляются и блокируются.">
           <span>Каталог PDU</span>
-          <select data-k="sku">${catOptions}</select>
+          <button type="button" class="rc-catalog-btn" data-pdu-cat="${idx}">${escape(catLabel)}</button>
         </label>
         ${locked ? `<div class="rc-kit-includes"><b>${escape(cat.mfg)} ${escape(cat.sku)}:</b> ${escape(cat.name)} — <i>${escape(PDU_CATEGORY[cat.category] || cat.category)}</i></div>` : `<div class="muted" style="font-size:11px;margin-top:2px">Произвольная конфигурация — будет сгенерирован <b>лист требований</b> (спецификация) для закупки по ТЗ.</div>`}
       </div>
@@ -887,21 +1102,12 @@ function renderPduList() {
         else if (k === 'phases' || k === 'height') p[k] = parseInt(v,10)||0;
         else if (k === 'rating') p.rating = parseInt(v,10);
         else if (k === 'feed') p.feed = v;
-        else if (k === 'sku') {
-          p.sku = v;
-          const cat2 = v ? pduBySku(v) : null;
-          if (cat2) {
-            p.rating = cat2.rating;
-            p.phases = cat2.phases;
-            p.height = cat2.height;
-            p.outlets = JSON.parse(JSON.stringify(cat2.outlets));
-          }
-          renderPduList();
-        }
         else p[k] = v;
         recalc();
       });
     });
+    const catBtn = row.querySelector('[data-pdu-cat]');
+    if (catBtn) catBtn.addEventListener('click', () => openPduCatalogModal(p));
     // розетки
     row.querySelectorAll('[data-ok]').forEach(inp => {
       inp.addEventListener('change', () => {
@@ -1500,12 +1706,8 @@ function bind() {
     node.addEventListener('change', () => { readForm(); renderTemplateList(); recalc(); });
   });
 
-  el('rc-kit').addEventListener('change', () => {
-    const t = current();
-    t.kitId = el('rc-kit').value;
-    applyKitPreset();
-    renderForm();
-  });
+  const kitBtn = el('rc-kit-btn');
+  if (kitBtn) kitBtn.addEventListener('click', () => { readForm(); openKitCatalogModal(); });
 
   el('rc-template').addEventListener('change', () => {
     state.currentId = el('rc-template').value;
@@ -1548,7 +1750,7 @@ function bind() {
 
 /* ---------- init ---------- */
 function init() {
-  renderKitSelect();
+  renderKitBtn();
   state.templates = loadTemplates();
   if (!state.templates.length) state.templates.push(makeBlankTemplate('Стойка серверная 42U'));
 

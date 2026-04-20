@@ -123,6 +123,44 @@
   letter-spacing: 0;
 }
 
+/* ===== Кнопка-каталог (выглядит как select, открывает модал) ===== */
+.rc-catalog-btn {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 26px 6px 8px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-card);
+  color: var(--rs-fg);
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rc-catalog-btn::after {
+  content: "▾";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.rc-catalog-btn:hover {
+  background: var(--rs-bg-hover);
+  border-color: var(--rs-accent);
+}
+.rc-catalog-btn:focus {
+  outline: none;
+  border-color: var(--rs-accent);
+  box-shadow: 0 0 0 2px var(--rs-accent-bg);
+}
+.rc-catalog-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+
 /* ===== Кнопки ===== */
 .rc-btn {
   font: inherit;
