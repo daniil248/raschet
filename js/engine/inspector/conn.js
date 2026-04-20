@@ -922,17 +922,30 @@ function _buildConnTccPayload(conn, fromN, toN) {
     }
   }
   // Текущий автомат (защита данной линии)
-  if (conn._breakerIn || mvCellSettings) {
-    const In = Number(conn._breakerIn) || Number(mvCellSettings?.Ir) || 630;
+  // Phase 1.20.38: для групповых потребителей _breakerIn=null, но
+  // _breakerPerLine содержит реальный номинал (по одному автомату на
+  // параллельную линию). Раньше this-breaker кривая не рисовалась.
+  const breakerInEff = Number(conn._breakerIn) || Number(conn._breakerPerLine) || 0;
+  const breakerCount = Number(conn._breakerCount) || 1;
+  if (breakerInEff || mvCellSettings) {
+    const In = breakerInEff || Number(mvCellSettings?.Ir) || 630;
+    const curveStr = conn.breakerCurve || conn._breakerCurveEff || 'MCCB';
+    let label;
+    if (mvCellSettings) {
+      label = `ЭТА линия: VCB-реле Ir ${mvCellSettings.Ir}А · Isd ${mvCellSettings.Isd}А · tsd ${mvCellSettings.tsd}с`;
+    } else if (!conn._breakerIn && conn._breakerPerLine && breakerCount > 1) {
+      // групповая: «3 × 6A»
+      label = `ЭТА линия: ${curveStr} ${breakerCount} × ${In}A (групповая)`;
+    } else {
+      label = `ЭТА линия: ${curveStr} ${In}A`;
+    }
     items.push({
       id: 'this-breaker',
       kind: 'breaker',
       In,
       curve: _normalizeCurveShort(conn.breakerCurve || conn._breakerCurveEff),
       settings: mvCellSettings || undefined,
-      label: mvCellSettings
-        ? `ЭТА линия: VCB-реле Ir ${mvCellSettings.Ir}А · Isd ${mvCellSettings.Isd}А · tsd ${mvCellSettings.tsd}с`
-        : `ЭТА линия: ${conn.breakerCurve || 'MCCB'} ${conn._breakerIn}A`,
+      label,
       color: '#1976d2',
     });
   }
