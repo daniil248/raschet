@@ -692,6 +692,38 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.51 (v0.57.27)** — Presence + live-sync для совместной работы.
+  Две проблемы по фидбэку: (1) не видно, кто сейчас в проекте; (2)
+  чужие изменения подхватывались только после F5.
+  
+  Presence:
+  - js/projects.js: subcollection `projects/{id}/presence/{uid}` с
+    полями { name, email, photo, sessionId, lastSeen }. API:
+    presenceHeartbeat, presenceLeave, subscribePresence.
+  - js/main.js: heartbeat каждые 25 сек (stale-порог 90 сек).
+    В header появился #presence-bar с аватарами других участников
+    (фото или инициалы с цветом по hash(uid), зелёная рамка).
+    Tooltip = name + email. Показываются 6, остальные «+N».
+  - beforeunload best-effort delete presence.
+  
+  Live-sync:
+  - js/projects.js: subscribeProjectDoc — onSnapshot на doc проекта.
+  - js/main.js: подписка стартует в openProject и останавливается в
+    backToProjects. Чужое сохранение детектируется по росту updatedAt;
+    собственные saveProject игнорируются по окну 3 сек + обновлению
+    lastKnownUpdatedAtMs.
+  - Если локальных несохранённых нет — scheme применяется автоматически
+    с toast «🔄 Проект обновлён другим участником».
+  - Если есть несохранённые — confirm-диалог (применить удалённое /
+    оставить локальные).
+  
+  Для localStorage-режима (без Firebase) — все presence/sync функции
+  no-op.
+  
+  Файлы: index.html (div#presence-bar), js/projects.js (+4 метода),
+  js/main.js (+_startCollab/_stopCollab/_renderPresenceBar/
+  _onRemoteProjectChange + lifecycle-вызовы в openProject,
+  backToProjects, saveCurrent, beforeunload).
 - **1.20.50 (v0.57.26)** — FIX: иконки на карточке канала не соответствуют
   IEC-методу прокладки. Проблема: channelIconSVG имел неверный
   маппинг — A1/A2 оба → 'conduit' (без различия теплоизол. стены),

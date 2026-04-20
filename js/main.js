@@ -100,9 +100,118 @@ const state = {
   dirty: false,      // есть несохранённые изменения
   saving: false,     // идёт сохранение
   autoSaveTimer: null,
+  // Phase 1.20.51: presence + live sync
+  sessionId: 'sess-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36),
+  presenceTimer: null,
+  unsubPresence: null,
+  unsubProjectDoc: null,
+  lastKnownUpdatedAtMs: 0,   // updatedAt нашего последнего известного состояния
+  lastLocalWriteAtMs: 0,     // время последнего НАШЕГО saveProject — игнор snapshot-ов в окне 3 сек
+  remoteChangeToastShown: false,
 };
 
+const PRESENCE_HEARTBEAT_MS = 25_000;  // обновляем lastSeen каждые 25 сек (stale = 90с)
+
 const AUTO_SAVE_DELAY = 1500; // мс после последнего изменения
+
+// =============== Phase 1.20.51: Presence + Live Sync helpers ===============
+function _stopCollab() {
+  if (state.presenceTimer) { clearInterval(state.presenceTimer); state.presenceTimer = null; }
+  if (typeof state.unsubPresence === 'function') { try { state.unsubPresence(); } catch {} state.unsubPresence = null; }
+  if (typeof state.unsubProjectDoc === 'function') { try { state.unsubProjectDoc(); } catch {} state.unsubProjectDoc = null; }
+  if (state.currentProject && state.currentUser && window.Storage?.isCloud) {
+    try { window.Storage.presenceLeave(state.currentProject.id, state.currentUser.uid); } catch {}
+  }
+  const bar = document.getElementById('presence-bar');
+  if (bar) { bar.innerHTML = ''; bar.classList.add('hidden'); }
+  state.remoteChangeToastShown = false;
+}
+
+function _startCollab(project, initialUpdatedAtMs) {
+  if (!window.Storage?.isCloud) return;  // Presence/sync только в облаке
+  if (!state.currentUser || !project?.id) return;
+  state.lastKnownUpdatedAtMs = initialUpdatedAtMs || 0;
+  const uid = state.currentUser.uid;
+  const info = {
+    name: state.currentUser.name || state.currentUser.email || 'user',
+    email: state.currentUser.email || '',
+    photo: state.currentUser.photo || null,
+  };
+  // Немедленный heartbeat + периодический
+  const beat = () => window.Storage.presenceHeartbeat(project.id, uid, info, state.sessionId);
+  beat();
+  state.presenceTimer = setInterval(beat, PRESENCE_HEARTBEAT_MS);
+
+  // Подписка на presence — рисуем аватары
+  state.unsubPresence = window.Storage.subscribePresence(project.id, (list) => {
+    _renderPresenceBar(list.filter(u => u.uid !== uid));
+  });
+
+  // Подписка на doc — ловим чужие сохранения
+  state.unsubProjectDoc = window.Storage.subscribeProjectDoc(project.id, (doc) => {
+    const u = doc.updatedAt?.toMillis ? doc.updatedAt.toMillis() : (doc.updatedAt || 0);
+    if (!u || u <= state.lastKnownUpdatedAtMs) return;
+    // Это мы сами только что писали — игнор в окне 3 сек
+    if (Date.now() - state.lastLocalWriteAtMs < 3000) {
+      state.lastKnownUpdatedAtMs = u;
+      return;
+    }
+    state.lastKnownUpdatedAtMs = u;
+    _onRemoteProjectChange(doc);
+  });
+}
+
+function _renderPresenceBar(users) {
+  const bar = document.getElementById('presence-bar');
+  if (!bar) return;
+  if (!users.length) { bar.innerHTML = ''; bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  const html = users.slice(0, 6).map(u => {
+    const initials = (u.name || u.email || '?').trim().charAt(0).toUpperCase();
+    const title = `${u.name || u.email}${u.email && u.name ? ' (' + u.email + ')' : ''}`;
+    if (u.photo) {
+      return `<img src="${u.photo}" alt="${initials}" title="${title}" style="width:24px;height:24px;border-radius:50%;border:2px solid #4caf50;object-fit:cover" referrerpolicy="no-referrer">`;
+    }
+    const hue = Math.abs([...(u.uid || u.email || '?')].reduce((a, c) => a + c.charCodeAt(0), 0)) % 360;
+    return `<span title="${title}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:hsl(${hue},60%,55%);color:#fff;font-size:11px;font-weight:600;border:2px solid #4caf50">${initials}</span>`;
+  }).join('');
+  const more = users.length > 6 ? `<span class="muted" style="font-size:11px">+${users.length - 6}</span>` : '';
+  bar.innerHTML = html + more;
+}
+
+async function _onRemoteProjectChange(doc) {
+  // Если нет локальных несохранённых изменений — автоматически применяем
+  if (!state.dirty && !state.saving) {
+    try {
+      if (doc.scheme) window.Raschet.loadScheme(doc.scheme);
+      state.currentProject = { ...state.currentProject, ...doc };
+      flash('🔄 Проект обновлён другим участником', 'info');
+    } catch (e) { console.warn('[live-sync] apply failed', e); }
+    return;
+  }
+  // Есть несохранённые — спрашиваем пользователя (но только один раз)
+  if (state.remoteChangeToastShown) return;
+  state.remoteChangeToastShown = true;
+  const bar = document.getElementById('flash');
+  const choice = confirm(
+    'Другой участник сохранил изменения в проекте.\n\n' +
+    'У вас есть несохранённые локальные изменения.\n\n' +
+    'OK — применить удалённую версию (ваши изменения будут потеряны)\n' +
+    'Cancel — оставить локальные изменения (будут перезаписаны при следующем сохранении)'
+  );
+  if (choice) {
+    try {
+      if (doc.scheme) window.Raschet.loadScheme(doc.scheme);
+      state.currentProject = { ...state.currentProject, ...doc };
+      state.dirty = false;
+      updateSaveButton();
+      flash('Применены удалённые изменения');
+    } catch (e) { console.warn('[live-sync] apply failed', e); }
+  }
+  state.remoteChangeToastShown = false;
+}
+// ============================================================================
+
 
 // ================= Экраны =================
 function showScreen(name) {
@@ -351,6 +460,11 @@ async function openProject(id) {
 
     showScreen('editor');
 
+    // Phase 1.20.51: старт presence + live-sync (только для Firestore)
+    _stopCollab();
+    const initUpdatedAtMs = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : (data.updatedAt || Date.now());
+    _startCollab(data, initUpdatedAtMs);
+
     // После отрисовки — fitAll (canvas теперь имеет размеры)
     requestAnimationFrame(() => window.Raschet.fit());
 
@@ -378,6 +492,9 @@ function backToProjects() {
   if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
   state.dirty = false;
   state.saving = false;
+
+  // Phase 1.20.51: остановка presence + live-sync
+  _stopCollab();
 
   // Если находимся в редакторе проекта — возвращаемся к списку проектов
   // Если на экране проектов — переходим на главную (hub)
@@ -446,7 +563,14 @@ async function saveCurrent(isAuto) {
   updateSaveButton();
   try {
     const scheme = window.Raschet.getScheme();
-    await window.Storage.saveProject(p.id, { scheme });
+    state.lastLocalWriteAtMs = Date.now();  // маркер — snapshot в ближ. 3 сек это мы
+    const saved = await window.Storage.saveProject(p.id, { scheme });
+    // Обновляем lastKnownUpdatedAtMs, чтобы snapshot от нашего же write не поднял тост
+    if (saved?.updatedAt) {
+      state.lastKnownUpdatedAtMs = saved.updatedAt?.toMillis ? saved.updatedAt.toMillis() : (saved.updatedAt || Date.now());
+    } else {
+      state.lastKnownUpdatedAtMs = Date.now();
+    }
     state.dirty = false;
     state.saving = false;
     updateSaveButton();
@@ -5266,6 +5390,10 @@ async function init() {
 
   // Предупреждение при закрытии вкладки с несохранёнными изменениями
   window.addEventListener('beforeunload', e => {
+    // Phase 1.20.51: убираем себя из presence (best-effort)
+    if (state.currentProject && state.currentUser && window.Storage?.isCloud) {
+      try { window.Storage.presenceLeave(state.currentProject.id, state.currentUser.uid); } catch {}
+    }
     if (state.dirty && state.currentProject && state.currentProject._role !== 'viewer') {
       e.preventDefault();
       e.returnValue = '';

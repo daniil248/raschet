@@ -177,6 +177,54 @@ const Fs = {
     return this.getProject(id);
   },
 
+  // =================== Phase 1.20.51: Presence + Live Sync ===================
+  // Presence: хранится в subcollection `projects/{id}/presence/{uid}`.
+  // Heartbeat обновляет lastSeen; "stale" > 90 сек считается offline.
+  async presenceHeartbeat(projectId, uid, userInfo, sessionId) {
+    if (!projectId || !uid) return;
+    try {
+      await fsDb().collection('projects').doc(projectId)
+        .collection('presence').doc(uid).set({
+          uid,
+          name: userInfo?.name || '',
+          email: userInfo?.email || '',
+          photo: userInfo?.photo || null,
+          sessionId,
+          lastSeen: Date.now(),
+        }, { merge: true });
+    } catch (e) { /* молча — permission-denied или offline */ }
+  },
+  async presenceLeave(projectId, uid) {
+    if (!projectId || !uid) return;
+    try {
+      await fsDb().collection('projects').doc(projectId)
+        .collection('presence').doc(uid).delete();
+    } catch {}
+  },
+  subscribePresence(projectId, callback) {
+    if (!projectId) return () => {};
+    try {
+      return fsDb().collection('projects').doc(projectId)
+        .collection('presence').onSnapshot(snap => {
+          const list = snap.docs.map(d => d.data()).filter(u => {
+            const age = Date.now() - (u.lastSeen || 0);
+            return age < 90_000;
+          });
+          callback(list);
+        }, err => { console.warn('[presence] snapshot error', err); });
+    } catch (e) { return () => {}; }
+  },
+  subscribeProjectDoc(projectId, callback) {
+    if (!projectId) return () => {};
+    try {
+      return fsDb().collection('projects').doc(projectId)
+        .onSnapshot(doc => {
+          if (!doc.exists) return;
+          callback({ id: doc.id, ...doc.data() });
+        }, err => { console.warn('[project-sync] snapshot error', err); });
+    } catch (e) { return () => {}; }
+  },
+
   async renameProject(id, name) { return this.saveProject(id, { name }); },
 
   async deleteProject(id) {
@@ -297,6 +345,23 @@ window.Storage = {
   requestAccess(id, r)  { return getStorage().requestAccess(id, r); },
   approveRequest(id, r) { return getStorage().approveRequest(id, r); },
   denyRequest(id)       { return getStorage().denyRequest(id); },
+  // Presence + live sync (только для Firestore; для Local — no-op)
+  presenceHeartbeat(id, uid, info, sid) {
+    const s = getStorage();
+    return s.presenceHeartbeat ? s.presenceHeartbeat(id, uid, info, sid) : Promise.resolve();
+  },
+  presenceLeave(id, uid) {
+    const s = getStorage();
+    return s.presenceLeave ? s.presenceLeave(id, uid) : Promise.resolve();
+  },
+  subscribePresence(id, cb) {
+    const s = getStorage();
+    return s.subscribePresence ? s.subscribePresence(id, cb) : (() => {});
+  },
+  subscribeProjectDoc(id, cb) {
+    const s = getStorage();
+    return s.subscribeProjectDoc ? s.subscribeProjectDoc(id, cb) : (() => {});
+  },
   computeRole,
 };
 
