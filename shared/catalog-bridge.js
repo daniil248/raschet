@@ -80,6 +80,19 @@ async function _loadTransformers() {
   } catch (e) { console.warn('[catalog-bridge] transformers', e.message); return []; }
 }
 
+// Rack / PDU / rack-accessory seeds (shared/rack-catalog-data.js).
+// Данные — централизованные; рендер в rack-config и будущий pdu-config
+// читают их через listElements({kind:'rack'|'pdu'|'rack-accessory'}).
+async function _loadRackCatalogData() {
+  try {
+    const m = await import('./rack-catalog-data.js');
+    const racks = m.listBuiltinRacks ? m.listBuiltinRacks() : [];
+    const pdus  = m.listBuiltinPdus ? m.listBuiltinPdus() : [];
+    const accs  = m.listBuiltinRackAccessories ? m.listBuiltinRackAccessories() : [];
+    return [...racks, ...pdus, ...accs];
+  } catch (e) { console.warn('[catalog-bridge] rack-catalog-data', e.message); return []; }
+}
+
 async function _loadCableTypes() {
   try {
     const m = await import('./cable-types-catalog.js');
@@ -94,7 +107,7 @@ async function _loadCableTypes() {
  * Возвращает Promise<{ panels, ups, batteries, transformers, cableTypes, total }>
  */
 export async function syncLegacyToLibrary() {
-  const [panels, upses, batteries, transformers, cableTypes, breakers, mvSw] = await Promise.all([
+  const [panels, upses, batteries, transformers, cableTypes, breakers, mvSw, rackData] = await Promise.all([
     _loadPanels(),
     _loadUpses(),
     _loadBatteries(),
@@ -102,13 +115,18 @@ export async function syncLegacyToLibrary() {
     _loadCableTypes(),
     _loadBreakers(),
     _loadMvSwitchgear(),
+    _loadRackCatalogData(),
   ]);
 
   // Очистим предыдущие builtin (перерегистрируем актуальные)
   clearBuiltins();
 
-  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers, ...mvSw];
+  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers, ...mvSw, ...rackData];
   registerBuiltins(all);
+
+  const racks = rackData.filter(e => e.kind === 'rack').length;
+  const pdus  = rackData.filter(e => e.kind === 'pdu').length;
+  const rackAcc = rackData.filter(e => e.kind === 'rack-accessory').length;
 
   return {
     panels: panels.length,
@@ -118,6 +136,7 @@ export async function syncLegacyToLibrary() {
     cableTypes: cableTypes.length,
     breakers: breakers.length,
     mvSwitchgear: mvSw.length,
+    racks, pdus, rackAccessories: rackAcc,
     total: all.length,
   };
 }
