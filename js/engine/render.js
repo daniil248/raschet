@@ -1850,21 +1850,37 @@ export function renderNodes() {
         const sp = sysParams[sysId] || {};
         for (const d of defs) {
           const n_ = Number(sp[d.key]);
-          if (Number.isFinite(n_) && n_ > 0) badges.push({ ...d, count: n_ });
+          if (Number.isFinite(n_) && n_ > 0) badges.push({ ...d, sysId, count: n_ });
         }
       }
       // Рисуем бейджи в виде капсул по верхнему краю (аналог входных портов),
       // максимум 4 — дальше просто «+N».
+      // v0.58.86: под каждой капсулой-бейджем добавляются реальные кружки-
+      // коннекторы (по одному на каждую единицу счётчика), визуально
+      // одинаковые с электрическими (r=PORT_R). Они не кликабельны для
+      // pending-link (отдельная цепочка «патчкорд» 1:1 будет в следующей
+      // итерации), но уже показывают физические разъёмы один-к-одному.
       if (badges.length) {
         const bgS = 40; // шаг
         const bgH = 18;
         const bgY = -bgH / 2; // центрируются по верхнему краю
-        const totalW = badges.length * bgS + (badges.length - 1) * 8;
+        // Сначала посчитаем ширины всех бейджей
+        const labels = badges.map(b => `${b.label}:${b.count}`);
+        const caps = labels.map(lb => Math.max(bgS, lb.length * 6.5 + 10));
+        // Если под коннекторы нужно больше ширины (count * step), расширяем капсулу
+        const CONN_STEP = 14; // шаг между кружками
+        const CONN_PAD  = 6;  // отступ от краёв капсулы
+        for (let i = 0; i < badges.length; i++) {
+          const need = badges[i].count * CONN_STEP + CONN_PAD * 2;
+          if (need > caps[i]) caps[i] = need;
+        }
+        const totalW = caps.reduce((a, b) => a + b, 0) + (badges.length - 1) * 8;
         let bx = (w - totalW) / 2;
-        for (const b of badges) {
-          const label = `${b.label}:${b.count}`;
-          const capW = Math.max(bgS, label.length * 6.5 + 10);
-          // фон
+        for (let bi = 0; bi < badges.length; bi++) {
+          const b = badges[bi];
+          const label = labels[bi];
+          const capW  = caps[bi];
+          // фон капсулы
           g.appendChild(el('rect', {
             class: 'sys-port-badge',
             x: bx, y: bgY, width: capW, height: bgH,
@@ -1873,11 +1889,34 @@ export function renderNodes() {
             stroke: b.color,
             'stroke-width': 1.5,
           }));
-          const t = text(bx + capW / 2, bgY + bgH / 2 + 4, label, 'sys-port-label');
+          // Подпись «RJ45:3» — сдвигаем чуть выше, над капсулой,
+          // освобождая центр под ряд кружков-коннекторов.
+          const t = text(bx + capW / 2, bgY - 4, label, 'sys-port-label');
           t.setAttribute('text-anchor', 'middle');
           t.setAttribute('fill', b.color);
-          t.setAttribute('style', 'font-size:11px;font-weight:600;');
+          t.setAttribute('style', 'font-size:10px;font-weight:600;');
           g.appendChild(t);
+          // Ряд коннекторов (count кружков)
+          const totalConnW = (b.count - 1) * CONN_STEP;
+          const cx0 = bx + capW / 2 - totalConnW / 2;
+          const cy  = bgY + bgH / 2;
+          for (let i = 0; i < b.count; i++) {
+            const cx = cx0 + i * CONN_STEP;
+            const circ = el('circle', {
+              class: 'sys-port-connector',
+              cx, cy, r: 3.5,
+              fill: b.color,
+              stroke: '#fff',
+              'stroke-width': 1,
+            });
+            // Метаданные для будущей поддержки patch-link (1:1)
+            circ.dataset.portKind = 'sys';
+            circ.dataset.sysId    = b.sysId || '';
+            circ.dataset.portKey  = b.key;
+            circ.dataset.portIdx  = String(i);
+            circ.dataset.nodeId   = n.id;
+            g.appendChild(circ);
+          }
           bx += capW + 8;
         }
       }
