@@ -1220,7 +1220,7 @@ export function wireInspectorInputs(n) {
   });
 
   const del = document.getElementById('btn-del-node');
-  if (del) del.addEventListener('click', () => _deleteNode(n.id));
+  if (del) del.addEventListener('click', () => _deleteNode(n.id, { fromPage: state.currentPageId || null }));
   const autoBtn = document.getElementById('btn-open-automation');
   if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
   const impBtn = document.getElementById('btn-open-impedance');

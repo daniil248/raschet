@@ -103,15 +103,37 @@ export function createNode(type, x, y, opts) {
 // или передать opts.silent=true (используется для программных удалений
 // из каскада — secondStage, linkedOutdoorId и т.п.).
 export function deleteNode(id, opts = {}) {
+  const n0 = state.nodes.get(id);
+  if (!n0) return;
+  // v0.58.14: «soft delete» с холста — если указан opts.fromPage, удаляем
+  // ноду только с этой страницы (pageIds.filter). Если страниц ещё нет —
+  // элемент переходит в реестр (pageIds=[]), не уничтожается. Хард-удаление
+  // только через × в палитре-реестре (opts.hard=true) или при явном opts.silent.
+  const fromPage = opts.fromPage || null;
+  if (fromPage && !opts.hard && !opts.silent) {
+    const pids = Array.isArray(n0.pageIds) ? n0.pageIds : [];
+    if (pids.includes(fromPage)) {
+      _snapshot();
+      n0.pageIds = pids.filter(p => p !== fromPage);
+      if (n0.positionsByPage) delete n0.positionsByPage[fromPage];
+      if (state.selectedKind === 'node' && state.selectedId === id) {
+        state.selectedKind = null; state.selectedId = null;
+      }
+      return;
+    }
+    // Если страницы нет в списке — ничего не делаем (уже не на этой странице)
+    return;
+  }
   if (!opts.silent) {
-    const n0 = state.nodes.get(id);
-    const pids = Array.isArray(n0?.pageIds) ? n0.pageIds.length : (state.pages || []).length;
+    const pids = Array.isArray(n0.pageIds) ? n0.pageIds.length : (state.pages || []).length;
     const GLOBAL = (typeof window !== 'undefined' && window.GLOBAL) || {};
     const ask = GLOBAL.confirmDeleteNode !== false;
     if (ask) {
-      const label = (n0 && (n0.name || n0.tag || n0.id)) || id;
-      const msg = `Удалить «${label}»?\n\n`
-        + `Карточка элемента общая для всех страниц проекта — она исчезнет со всех ${pids} стр.\n`
+      const label = (n0.name || n0.tag || n0.id) || id;
+      const msg = `Удалить «${label}» из проекта?\n\n`
+        + (pids > 0
+          ? `Элемент размещён на ${pids} стр. — исчезнет отовсюду.\n`
+          : `Элемент хранится в реестре без размещения.\n`)
         + `Связанные кабельные линии тоже будут удалены.\n\n`
         + `Это действие можно отменить через Ctrl+Z.`;
       if (!confirm(msg)) return;

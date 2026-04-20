@@ -403,7 +403,7 @@ export function initInteraction() {
       if (delBtn) {
         e.stopPropagation();
         const id = delBtn.dataset.delId;
-        deleteNode(id);
+        deleteNode(id, { hard: true });
         notifyChange(); render();
         return;
       }
@@ -1354,13 +1354,17 @@ export function initInteraction() {
     if (e.key === 'Escape' && state.pending) cancelPending();
     if (state.readOnly) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
+      // v0.58.14: удаление с холста — «мягкое», элемент только снимается с
+      // текущей страницы и уходит в реестр (unplaced). Хард-удаление —
+      // через × в палитре «Реестр».
+      const fromPage = state.currentPageId || null;
       if (state.selection.size) {
         snapshot();
-        for (const id of [...state.selection]) deleteNode(id);
+        for (const id of [...state.selection]) deleteNode(id, { fromPage });
         state.selection.clear();
         e.preventDefault();
       } else if (state.selectedKind === 'node' && state.selectedId) {
-        deleteNode(state.selectedId); e.preventDefault();
+        deleteNode(state.selectedId, { fromPage }); e.preventDefault();
       } else if (state.selectedKind === 'conn' && state.selectedId) {
         deleteConn(state.selectedId); e.preventDefault();
       }

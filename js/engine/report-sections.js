@@ -30,6 +30,27 @@ import { listShipments, getWarehouse, SHIPMENT_MODES, SHIPMENT_STATUSES } from '
 // ——— общие хелперы ———
 function fullTag(n) { if (!n) return ''; return effectiveTag(n) || n.tag || ''; }
 
+// v0.58.14: маркер размещения для перечней/спецификаций.
+// Возвращает ' (не размещён)' | ' (не подключён)' | ' (не разм./не подкл.)' | ''
+export function placementMarker(n) {
+  if (!n) return '';
+  const placed = Array.isArray(n.pageIds) && n.pageIds.length > 0;
+  let hasConn = false;
+  for (const c of state.conns.values()) {
+    if (c.from?.nodeId === n.id || c.to?.nodeId === n.id) { hasConn = true; break; }
+  }
+  // zone и channel не проверяем на подключение (они не имеют портов)
+  const skipConnCheck = (n.type === 'zone' || n.type === 'channel');
+  const unconn = !skipConnCheck && !hasConn;
+  if (!placed && unconn) return ' (не разм./не подкл.)';
+  if (!placed) return ' (не размещён)';
+  if (unconn) return ' (не подключён)';
+  return '';
+}
+function decorateName(n) {
+  return String(n && n.name || '') + placementMarker(n);
+}
+
 function sortByTag(arr) {
   return arr.sort((a, b) => {
     const ta = (effectiveTag(a) || a.tag || a.name || '').toLowerCase();
@@ -235,7 +256,7 @@ function sectionSources() {
       vStr = lvl ? `${lvl.vLL}/${nodeVoltage(s)} В` : `${nodeVoltage(s)} В`;
     } else vStr = `${nodeVoltage(s)} В`;
     return [
-      fullTag(s), s.name || '', type, vStr,
+      fullTag(s), decorateName(s), type, vStr,
       fmt(cap), fmt(load), fmt(s._loadA || 0),
       (s._cosPhi || 0).toFixed(2), status,
     ];
@@ -296,7 +317,7 @@ function sectionUps() {
                : u._powered ? 'норма'
                : 'без питания';
     rows.push([
-      fullTag(u), u.name || '',
+      fullTag(u), decorateName(u),
       fmt(cap), fmt(load), fmt(maxLoad),
       fmt(batt), autStr, status,
     ]);
@@ -385,7 +406,7 @@ function sectionPanels() {
                : (p.inputs || 1) <= 1 ? 'ЩИТ'
                : 'АВР';
     return [
-      fullTag(p), p.name || '',
+      fullTag(p), decorateName(p),
       String(p.capacityA || 0),
       `${p.inputs}/${p.outputs}`,
       fmt(p._calcKw || p._loadKw || 0),
@@ -447,7 +468,7 @@ function sectionConsumers() {
     const sum = per * cnt * k;
     if (c._powered) total += sum;
     return [
-      fullTag(c), c.name || '', c.phase || '3ph',
+      fullTag(c), decorateName(c), c.phase || '3ph',
       fmt(per), String(cnt), fmt(sum),
       (Number(c.cosPhi) || 0.92).toFixed(2),
       fmt(c._nominalA || 0), fmt(c._ratedA || 0), fmt(c._inrushA || 0),
