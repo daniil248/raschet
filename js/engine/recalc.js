@@ -1734,6 +1734,81 @@ function recalc() {
       continue;
     }
 
+    // Линия ОТ ИБП: защита — встроенный выходной автомат ИБП (QF3).
+    // Если в параметрах ИБП задан outputBreakerIn — используем это
+    // значение как номинал защиты линии. Если hasOutputBreaker=false —
+    // внешнего автомата нет, ИБП защищает нагрузку внутренними уставками
+    // инвертора. В обоих случаях автомат НЕ учитывается в BOM (он часть
+    // ИБП, а не отдельная поставляемая позиция). Phase 1.20.65.
+    if (fromN.type === 'ups') {
+      const hasQF3 = fromN.hasOutputBreaker !== false;
+      const IupsOut = Number(fromN.outputBreakerIn) || null;
+      c._breakerInternal = true;
+      c._breakerInternalSource = 'ups-output-QF3';
+      c._breakerExcludeFromBom = true;
+      if (c.manualBreakerIn) {
+        // Ручной override на линии всё-таки допускаем (экзотика: внешний
+        // автомат после ИБП в щите потребителя — тогда он уже НЕ internal).
+        c._breakerIn = Number(c.manualBreakerIn);
+        c._breakerInternal = false;
+        c._breakerExcludeFromBom = false;
+      } else if (!hasQF3) {
+        // ИБП без QF3 — защиты нет, отключение только по уставкам инвертора
+        c._breakerIn = null;
+      } else if (IupsOut) {
+        c._breakerIn = IupsOut;
+      } else {
+        // QF3 есть, но номинал не задан — оставим без значения (UI покажет
+        // предупреждение «уточните номинал QF3 в параметрах ИБП»)
+        c._breakerIn = null;
+      }
+      c._breakerPerLine = null;
+      c._breakerCount = c._breakerIn ? 1 : 0;
+      const IzUpsOut = c._cableIz || 0;
+      const parUps = Math.max(1, c._cableParallel || 1);
+      c._breakerAgainstCable = !!(IzUpsOut > 0 && c._breakerIn && c._breakerIn > IzUpsOut * parUps);
+      c._breakerUndersize = !!(c._breakerIn && c._maxA && c._breakerIn < c._maxA);
+      c._breakerCurveEff = c.breakerCurve || 'MCCB';
+      continue;
+    }
+
+    // Линия К ИБП (вход сети или вход байпаса): защита — встроенный
+    // вводной автомат ИБП (QF1 / QF2). Аналогично — не учитывается в BOM.
+    if (toN.type === 'ups') {
+      // Определяем направление: основной вход (QF1) или вход байпаса (QF2).
+      // В простом случае (bypassMode='jumper') — только один вход QF1.
+      // В separate-режиме и для второго входа — QF2 (байпасный).
+      const isBypassIn = (c.to.port === 'bypass' || c.upsInputKind === 'bypass');
+      const hasQF = isBypassIn
+        ? (toN.hasInputBypassBreaker !== false)
+        : (toN.hasInputBreaker !== false);
+      const IupsIn = isBypassIn
+        ? (Number(toN.inputBypassBreakerIn) || null)
+        : (Number(toN.inputBreakerIn) || null);
+      c._breakerInternal = true;
+      c._breakerInternalSource = isBypassIn ? 'ups-input-QF2' : 'ups-input-QF1';
+      c._breakerExcludeFromBom = true;
+      if (c.manualBreakerIn) {
+        c._breakerIn = Number(c.manualBreakerIn);
+        c._breakerInternal = false;
+        c._breakerExcludeFromBom = false;
+      } else if (!hasQF) {
+        c._breakerIn = null;
+      } else if (IupsIn) {
+        c._breakerIn = IupsIn;
+      } else {
+        c._breakerIn = null;
+      }
+      c._breakerPerLine = null;
+      c._breakerCount = c._breakerIn ? 1 : 0;
+      const IzUpsIn = c._cableIz || 0;
+      const parUpsIn = Math.max(1, c._cableParallel || 1);
+      c._breakerAgainstCable = !!(IzUpsIn > 0 && c._breakerIn && c._breakerIn > IzUpsIn * parUpsIn);
+      c._breakerUndersize = !!(c._breakerIn && c._maxA && c._breakerIn < c._maxA);
+      c._breakerCurveEff = c.breakerCurve || 'MCCB';
+      continue;
+    }
+
     // Для HV (> 1 кВ) — VCB/SF6 высоковольтные аппараты (IEC 62271-100).
     // Ряд номиналов 200..4000 А. Подбор — ближайший больший к расчётному току.
     // По умолчанию для HV берётся VCB (_breakerType='VCB'), если не задан иной.

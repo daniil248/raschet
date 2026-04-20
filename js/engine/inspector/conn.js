@@ -544,11 +544,18 @@ export function renderInspectorConn(c) {
       const badge = c._breakerAgainstCable
         ? '<span class="badge off">нарушена</span>'
         : (effectiveIn ? '<span class="badge on">ок</span>' : '');
+      // Pointer to UPS internal breaker origin (Phase 1.20.65)
+      const _upsSrcLabel = { 'ups-output-QF3': 'QF3 (выход ИБП)',
+        'ups-input-QF1': 'QF1 (вход сети ИБП)',
+        'ups-input-QF2': 'QF2 (вход байпаса ИБП)' }[c._breakerInternalSource] || null;
+      const _upsInternalNote = c._breakerInternal && _upsSrcLabel
+        ? `<div class="muted" style="font-size:10.5px;line-height:1.4;margin-top:2px">Встроенный автомат ИБП: ${_upsSrcLabel}. В спецификацию не попадает (поставляется в составе ИБП). Номинал — из параметров ИБП${effectiveIn ? '' : ' (не задан — уточните в свойствах ИБП)'}.</div>`
+        : '';
       h.push(`<div style="font-size:12px;line-height:1.8">` +
-        (effectiveIn ? `Номинал: <b>${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
+        (effectiveIn ? `Номинал: <b>${effectiveIn} А</b> ${badge}<br>` : (c._breakerInternal ? `<span class="muted">Внешнего автомата нет — защита по уставкам инвертора ИБП</span><br>` : 'Не определён<br>')) +
         (cnt > 1 ? `В шкафу: <b>${cnt} × ${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
         (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${_isGroupBrk ? fmt(c._cableIz || 0) + ' А на жилу' : fmt(_IzTotal) + ' А' + (_parBrk > 1 ? ' суммарно' : '')}) — увеличьте сечение</span>` : '') +
-        `</div>`);
+        `</div>` + _upsInternalNote);
       // Запасы по автомату и кабелю
       if (effectiveIn) h.push(marginBlock());
       if (_showHelp && effectiveIn) {
