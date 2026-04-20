@@ -584,29 +584,23 @@ export function initToolbar() {
     menu.className = 'page-tab-menu';
     const g = document.createElement('div');
     g.className = 'pm-group-label';
-    g.textContent = 'Новая страница';
+    g.textContent = 'Новая страница — вид';
     menu.appendChild(g);
     const mkItem = (label, handler) => {
       const it = document.createElement('div');
       it.className = 'pm-item';
-      it.textContent = label;
+      it.innerHTML = label;
       it.onclick = (ev) => { ev.stopPropagation(); closePageMenu(); handler(); };
       menu.appendChild(it);
     };
-    mkItem('Независимая', () => addPage('independent'));
-    // Для ссылочной — сперва выбор родительской independent страницы
-    const independents = (state.pages || []).filter(p => p.type !== 'linked');
-    if (independents.length) {
-      const sep = document.createElement('div');
-      sep.className = 'pm-sep';
-      menu.appendChild(sep);
-      const g2 = document.createElement('div');
-      g2.className = 'pm-group-label';
-      g2.textContent = 'Ссылочная на';
-      menu.appendChild(g2);
-      for (const parent of independents) {
-        mkItem(parent.name || parent.id, () => addPage('linked', parent.id));
-      }
+    // v0.58.7: прямо из меню «+» сразу выбирается ВИД страницы
+    // (schematic / layout / mechanical / ...). Все страницы —
+    // independent (разделение на independent/linked убрано из UX).
+    for (const k of PAGE_KINDS) {
+      const m = PAGE_KINDS_META[k];
+      if (!m) continue;
+      mkItem(`<span style="margin-right:6px">${m.icon}</span>${escapePage(m.label)}`,
+        () => addPage('independent', null, k));
     }
     document.body.appendChild(menu);
     const mw = menu.offsetWidth, mh = menu.offsetHeight;
