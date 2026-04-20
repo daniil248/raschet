@@ -1,0 +1,142 @@
+/* =========================================================================
+   pdu-config/pdu-config.css
+   Standalone-модуль подбора PDU из единой библиотеки элементов.
+   Визуально выровнен с rack-config.
+   ========================================================================= */
+
+.pc-wrap {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 20px 60px;
+}
+
+.pc-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .pc-grid { grid-template-columns: 1fr; }
+}
+
+.pc-section {
+  background: var(--rs-bg-card);
+  border: 1px solid var(--rs-border-soft);
+  border-radius: var(--rs-radius-lg);
+  box-shadow: var(--rs-shadow-card);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.pc-section h2 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rs-fg);
+}
+
+.pc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.pc-field > span {
+  color: var(--rs-fg-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.pc-field input,
+.pc-field select {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-card);
+  color: var(--rs-fg);
+}
+
+.pc-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.pc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.pc-chip {
+  font-size: 11px;
+  padding: 3px 9px;
+  border: 1px solid var(--rs-border);
+  border-radius: 14px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--rs-bg-card);
+}
+.pc-chip.on {
+  background: var(--rs-accent);
+  color: #fff;
+  border-color: var(--rs-accent);
+}
+
+.pc-btn {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-card);
+  color: var(--rs-fg);
+  cursor: pointer;
+}
+.pc-btn-primary {
+  background: var(--rs-accent);
+  border-color: var(--rs-accent);
+  color: #fff;
+}
+.pc-btn:hover { background: var(--rs-bg-hover); }
+
+.pc-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pc-results-table th,
+.pc-results-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--rs-border-hair);
+  text-align: left;
+  vertical-align: top;
+}
+.pc-results-table th {
+  background: var(--rs-bg-soft);
+  font-weight: 600;
+  color: var(--rs-fg-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.pc-row-score { font-weight: 600; font-variant-numeric: tabular-nums; }
+.pc-score-bar {
+  display: inline-block;
+  width: 60px;
+  height: 6px;
+  background: var(--rs-bg-soft);
+  border-radius: 3px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.pc-score-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--rs-success);
+}
+.pc-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--rs-fg-muted);
+  font-size: 13px;
+}

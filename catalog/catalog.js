@@ -182,7 +182,7 @@ function renderElementsTab() {
       <div class="spacer"></div>
       <button id="el-add" class="primary">+ Добавить элемент</button>
       <button id="el-export">Экспорт JSON</button>
-      <button id="el-role-toggle" title="Переключить режим редактирования встроенных элементов (до Фазы 5 auth — заглушка через localStorage)">${isAdmin ? '🔓 Выйти из admin' : '🔒 Режим админа каталога'}</button>
+      <button id="el-role-toggle" class="${isAdmin ? '' : 'primary'}" style="${isAdmin ? 'background:#b54708;color:#fff;border-color:#b54708' : ''}" title="Переключить режим редактирования встроенных элементов (до Фазы 5 auth — заглушка через localStorage.raschet.currentRole)">${isAdmin ? '🔓 Выйти из режима admin' : '🔒 Режим админа каталога'}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">
       Всего: <b>${all.length}</b>, отфильтровано: <b>${filtered.length}</b>
@@ -476,7 +476,10 @@ function openViewElementModal(id) {
       <pre style="background:#f6f8fa;padding:10px;border-radius:4px;font-size:11px;max-height:300px;overflow:auto;margin-top:6px">${esc(JSON.stringify(el, null, 2))}</pre>
     </details>
 
-    ${el.builtin ? '<div class="muted" style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-radius:3px">⚠ Встроенный элемент — только просмотр. Для редактирования нажмите «Клон» — создастся пользовательская копия с возможностью правки.</div>' : ''}
+    ${el.builtin ? (canEditBuiltin()
+      ? '<div style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-left:3px solid #b54708;border-radius:3px;color:#7a3a00">🔓 <b>Режим catalog-admin.</b> Правка builtin возможна через кнопку «✎» в строке (сохраняется в override-слой, исходный seed не меняется).</div>'
+      : '<div class="muted" style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-radius:3px">⚠ Встроенный элемент — только просмотр. Для правки: либо «Клон» (создаст пользовательскую копию), либо включите <b>«🔒 Режим админа каталога»</b> в тулбаре — тогда появится кнопка <b>✎</b> для правки builtin поверх seed.</div>'
+    ) : ''}
   `;
 
   openModal('Свойства: ' + (el.label || el.id), html, () => true);

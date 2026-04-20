@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор PDU</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="../rack-config/rack-config.css">
+  <link rel="stylesheet" href="pdu-config.css">
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountHelp } from '../shared/help-panel.js';
+    mountHeader({ title: 'Конфигуратор PDU', home: '../hub.html' });
+    mountHelp({
+      module: 'pdu-config',
+      title: 'Конфигуратор PDU',
+      usage: `
+        <h4>Назначение</h4>
+        <p>Подбор блока распределения питания (Power Distribution Unit) из единой библиотеки элементов (<code>shared/element-library.js</code>, kind = <code>pdu</code>). Ввод — требования проекта; результат — ранжированный список подходящих артикулов APC / Rittal / Raritan / Kehua с быстрой экспорт-спецификацией.</p>
+        <h4>Категории PDU</h4>
+        <ul>
+          <li><b>basic</b> — только розетки, без измерений и управления. Дёшево, надёжно.</li>
+          <li><b>metered</b> — общий счётчик тока / мощности на вводе. Для аудита нагрузки на фидер.</li>
+          <li><b>monitored (outlet-metered)</b> — измерение тока на каждой розетке (per-outlet). Для детального учёта и аномалий.</li>
+          <li><b>switched</b> — удалённое вкл/выкл каждой розетки (reboot сервера без физ.доступа).</li>
+          <li><b>hybrid</b> — switched + monitored в одном устройстве.</li>
+        </ul>
+        <h4>Как подбирать</h4>
+        <ol>
+          <li>Задать <b>число фаз</b> (1 или 3) и <b>номинал по вводу</b> (А) — должен быть ≥ расчётного тока нагрузки с учётом запаса 1.25×.</li>
+          <li>Выбрать <b>категорию</b> под задачу (ЦОД Tier III/IV — не ниже monitored; обычная серверная — basic / metered).</li>
+          <li>Указать <b>состав розеток</b> (C13 / C19 / Schuko). 1U-сервера — C13; blade/GPU — C19 (16А); офисная техника — Schuko.</li>
+          <li>Фильтр по <b>производителю</b> и <b>высоте</b> (0U / 1U / 2U) — опционально.</li>
+        </ol>
+        <h4>Ранжирование</h4>
+        <p>Каждая модель получает score (0–100) по соответствию требованиям: покрытие розеток (главное, 50%), номинал ≥ запрошенного (20%), точное попадание по фазам/категории/высоте (30%). Приоритет отдаётся модели с минимальным «перерасходом» розеток.</p>
+      `,
+      calcs: `
+        <h4>Формулы</h4>
+        <h5>Нагрузка на PDU</h5>
+        <p><code>I<sub>PDU</sub> = Σ P<sub>серверов</sub> / (U<sub>L</sub> · √3 · cos φ)</code> — для 3-фазной;</p>
+        <p><code>I<sub>PDU</sub> = P / (U<sub>L</sub> · cos φ)</code> — для 1-фазной.</p>
+        <p>Номинал PDU должен быть <code>≥ 1.25 · I<sub>PDU</sub></code> (запас на пуск + защита).</p>
+        <h5>Резервирование (2N)</h5>
+        <p>Два независимых PDU от разных фидеров A/B. Сервера с двумя БП подключены к обоим. Для 2N на 4 ввода шкафа при 2 внешних линиях — T-сплиттеры IEC 60309 (см. Конфигуратор стойки).</p>
+        <h5>Стандарты</h5>
+        <ul>
+          <li>IEC 60320 — разъёмы C13/C14/C19/C20 (некоммутируемые приборные)</li>
+          <li>IEC 60309 — промышленные разъёмы (16/32A, 1ф/3ф, IP44/IP67)</li>
+          <li>UL 60950-1 / IEC 62368-1 — безопасность ИТ-оборудования</li>
+        </ul>
+      `,
+      shortcuts: `
+        <p><kbd>Ctrl</kbd>+<kbd>Enter</kbd> — применить требования / пересчитать подбор</p>
+        <p>Клик по строке результата — детали модели</p>
+      `,
+    });
+  </script>
+
+  <main class="pc-wrap">
+    <div class="pc-grid">
+      <!-- ==================== FORM ==================== -->
+      <aside>
+        <section class="pc-section">
+          <h2>Требования</h2>
+          <div class="pc-row">
+            <label class="pc-field">
+              <span>Фаз</span>
+              <select id="pc-phases">
+                <option value="any">Любое</option>
+                <option value="1">1-фазный</option>
+                <option value="3" selected>3-фазный</option>
+              </select>
+            </label>
+            <label class="pc-field">
+              <span>Номинал, A (≥)</span>
+              <input id="pc-rating" type="number" min="6" max="125" step="1" value="32">
+            </label>
+            <label class="pc-field">
+              <span>Высота</span>
+              <select id="pc-height">
+                <option value="any" selected>Любая</option>
+                <option value="0U">0U (вертикальный)</option>
+                <option value="1U">1U</option>
+                <option value="2U">2U</option>
+              </select>
+            </label>
+          </div>
+          <label class="pc-field">
+            <span>Категория</span>
+            <select id="pc-category">
+              <option value="any">Любая</option>
+              <option value="basic">Basic (без измерений)</option>
+              <option value="metered">Metered (ввод)</option>
+              <option value="monitored">Monitored (per-outlet)</option>
+              <option value="switched">Switched (удалённое упр.)</option>
+              <option value="hybrid">Hybrid (switched + monitored)</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="pc-section">
+          <h2>Розетки</h2>
+          <div class="pc-row">
+            <label class="pc-field">
+              <span>C13 (≥)</span>
+              <input id="pc-outlets-c13" type="number" min="0" max="48" value="16">
+            </label>
+            <label class="pc-field">
+              <span>C19 (≥)</span>
+              <input id="pc-outlets-c19" type="number" min="0" max="24" value="4">
+            </label>
+            <label class="pc-field">
+              <span>Schuko (≥)</span>
+              <input id="pc-outlets-schuko" type="number" min="0" max="24" value="0">
+            </label>
+          </div>
+        </section>
+
+        <section class="pc-section">
+          <h2>Производитель</h2>
+          <div id="pc-mfg-chips" class="pc-chips"></div>
+        </section>
+
+        <div style="display:flex;gap:8px">
+          <button id="pc-apply" class="pc-btn pc-btn-primary">Подобрать</button>
+          <button id="pc-reset" class="pc-btn">Сбросить</button>
+        </div>
+      </aside>
+
+      <!-- ==================== RESULTS ==================== -->
+      <section>
+        <div class="pc-section">
+          <h2>Подходящие артикулы <span id="pc-count" class="muted" style="font-size:12px;font-weight:400"></span></h2>
+          <div id="pc-results"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Modal for detail/export -->
+  <div id="pc-modal" class="rc-modal" hidden>
+    <div class="rc-modal-backdrop"></div>
+    <div class="rc-modal-panel">
+      <div class="rc-modal-head">
+        <h3 id="pc-modal-title">Деталь</h3>
+        <button class="rc-modal-close" type="button">×</button>
+      </div>
+      <div id="pc-modal-body" class="rc-modal-body"></div>
+    </div>
+  </div>
+
+  <script type="module" src="pdu-config.js"></script>
+</body>
+</html>
