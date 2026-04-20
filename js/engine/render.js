@@ -600,9 +600,18 @@ function _renderNodesLayout() {
     // Количество физических экземпляров: для consumer с count>1 — n.count
     const count = (n.type === 'consumer' && Number(n.count) > 1) ? Number(n.count) : 1;
     const gap = 40; // мм между соседними экземплярами
+    const pageId = state.currentPageId;
+    const instPos = (n.instancePositions && pageId && n.instancePositions[pageId]) || [];
     for (let i = 0; i < count; i++) {
-      const x = n.x + i * (W + gap);
-      const y = n.y;
+      // v0.58.17: независимое положение экземпляров группы на layout-странице.
+      // instancePositions[pageId][i] = {x,y} переопределяет базовую позицию.
+      let x, y;
+      if (instPos[i] && Number.isFinite(instPos[i].x) && Number.isFinite(instPos[i].y)) {
+        x = instPos[i].x; y = instPos[i].y;
+      } else {
+        x = n.x + i * (W + gap);
+        y = n.y;
+      }
       const g = el('g', {
         class: 'node layout-card' + (selected ? ' selected' : ''),
         transform: `translate(${x},${y})`,

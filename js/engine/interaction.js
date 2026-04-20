@@ -865,6 +865,24 @@ export function initInteraction() {
         snapshot();
         const n = state.nodes.get(id);
         const p = clientToSvg(e.clientX, e.clientY);
+        // v0.58.17: клик по неглавному экземпляру группы на layout — drag только этого экземпляра.
+        const iIdxRaw = nodeEl.dataset.instanceIdx;
+        const iIdx = iIdxRaw ? Number(iIdxRaw) : 0;
+        if (iIdx > 0 && getPageKind(getCurrentPage()) === 'layout') {
+          const pageId = state.currentPageId;
+          if (!n.instancePositions) n.instancePositions = {};
+          if (!n.instancePositions[pageId]) n.instancePositions[pageId] = [];
+          const arr = n.instancePositions[pageId];
+          // Текущая позиция: если переопределена — берём её, иначе базовая формула
+          const geom = getNodeGeometryMm(n);
+          const W = geom?.widthMm || 400;
+          const gap = 40;
+          const cur = (arr[iIdx] && Number.isFinite(arr[iIdx].x)) ? arr[iIdx] : { x: n.x + iIdx * (W + gap), y: n.y };
+          arr[iIdx] = { x: cur.x, y: cur.y };
+          state.drag = { nodeId: id, instanceIdx: iIdx, dx: p.x - cur.x, dy: p.y - cur.y };
+          render();
+          return;
+        }
         if (n.type === 'zone') {
           const children = nodesInZone(n).map(ch => ({
             id: ch.id, dx: ch.x - n.x, dy: ch.y - n.y,
@@ -1051,6 +1069,28 @@ export function initInteraction() {
         const gs = _effectiveSnapStep(e);
         nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / gs) * gs : nx);
         ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / gs) * gs : ny);
+      }
+      // v0.58.17: независимый drag экземпляра группы на layout.
+      if (state.drag.instanceIdx && state.drag.instanceIdx > 0) {
+        const iIdx = state.drag.instanceIdx;
+        const pageId = state.currentPageId;
+        // Collision-check против соседей использует _layoutFootprint с (nx,ny)
+        if (getPageKind(getCurrentPage()) === 'layout') {
+          if (_layoutCollides(n, nx, ny)) {
+            // откатываемся на сохранённое положение экземпляра
+            const cur = n.instancePositions?.[pageId]?.[iIdx];
+            if (cur) {
+              if (!_layoutCollides(n, nx, cur.y))      { ny = cur.y; }
+              else if (!_layoutCollides(n, cur.x, ny)) { nx = cur.x; }
+              else { nx = cur.x; ny = cur.y; }
+            }
+          }
+        }
+        if (!n.instancePositions) n.instancePositions = {};
+        if (!n.instancePositions[pageId]) n.instancePositions[pageId] = [];
+        n.instancePositions[pageId][iIdx] = { x: nx, y: ny };
+        render();
+        return;
       }
       // Секция многосекционного щита — свободное перемещение
       // Для каналов в режиме трассы — привязка ЦЕНТРА к сетке
