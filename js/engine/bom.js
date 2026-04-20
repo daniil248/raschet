@@ -94,9 +94,11 @@ export function buildBOM() {
         if (ups.upsType === 'modular' && ups.moduleKwRated > 0) {
           // Модульный: фрейм + N модулей
           // Пытаемся найти соответствующий frame-артикул (Kehua: frameKw)
+          // v0.58.80: в seed фреймов capacityKw=0, frameKw несёт мощность.
+          // Ищем по frameKw (или fallback на capacityKw).
           const frameRec = frames.find(f =>
             f.supplier === ups.supplier &&
-            Math.abs((f.capacityKw || 0) - (ups.frameKw || ups.capacityKw)) < 1
+            Math.abs((f.frameKw || f.capacityKw || 0) - (ups.frameKw || ups.capacityKw)) < 1
           ) || null;
           if (frameRec) {
             pushAgg('Фреймы ИБП', frameRec, 1, nodeLabel);
@@ -113,19 +115,23 @@ export function buildBOM() {
           if (n.moduleCount) nMods = Math.max(nMods, Number(n.moduleCount));
           if (ups.moduleSlots) nMods = Math.min(nMods, ups.moduleSlots);
           nMods = Math.max(1, nMods);
-          // Пытаемся найти артикул силового модуля
+          // v0.58.80: силовые модули 30/50/100 кВт у Kehua — общие артикулы
+          // (MR33 PM 30K / 50K / 100K), не зависят от модели ИБП. Поэтому
+          // ищем по moduleKwRated (а не по capacityKw, который у модулей 0).
           const pmRec = powerMods.find(p =>
             p.supplier === ups.supplier &&
-            Math.abs((p.capacityKw || 0) - moduleKw) < 0.1
+            Math.abs((p.moduleKwRated || p.capacityKw || 0) - moduleKw) < 0.1
           );
           if (pmRec) {
             pushAgg('Силовые модули ИБП', pmRec, nMods, `${nodeLabel}: ${loadKw.toFixed(0)} кВт / ${moduleKw} кВт`);
           } else {
-            // Синтетическая строка, если в каталоге нет отдельной записи
+            // Синтетическая строка, если в каталоге нет отдельной записи —
+            // ключ НЕ зависит от id ИБП, чтобы одинаковые модули от разных
+            // моделей ИБП агрегировались в одну строку.
             pushAgg('Силовые модули ИБП', {
-              id: ups.id + '-pm',
+              id: `pm-${(ups.supplier || '').toLowerCase()}-${moduleKw}k`,
               supplier: ups.supplier,
-              model: `${ups.model} PM ${moduleKw}K`,
+              model: `Силовой модуль ${moduleKw} кВт`,
             }, nMods, nodeLabel);
           }
         } else {
