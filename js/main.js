@@ -1436,9 +1436,16 @@ function renderProductCatalogList() {
   const host = document.getElementById('pi-products-list');
   if (!host) return;
   const proj = (window.Raschet?._state?.project) || {};
-  const list = Array.isArray(proj.productCatalog) ? proj.productCatalog : [];
+  if (!Array.isArray(proj.productCatalog)) proj.productCatalog = [];
+  const list = proj.productCatalog;
+  // v0.58.54: toolbar над списком — добавить/дубль пустого изделия
+  const toolbar = `<div style="display:flex;gap:6px;padding:8px;border-bottom:1px solid #e0e4ea;background:#fafbfc">
+    <button type="button" id="pi-prod-add" style="font-size:11px;padding:4px 10px;border:1px solid #0ea5e9;background:#fff;color:#075985;border-radius:3px;cursor:pointer">+ новое изделие</button>
+    <span class="muted" style="font-size:11px;align-self:center">${list.length} шт. в каталоге</span>
+  </div>`;
   if (!list.length) {
-    host.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">Каталог пуст. Добавьте изделие через инспектор — вкладка «Общее» узла → «💾 Сохранить как изделие…».</div>';
+    host.innerHTML = toolbar + '<div class="muted" style="padding:14px;text-align:center;font-size:12px">Каталог пуст. Добавьте изделие кнопкой выше или через инспектор — вкладка «Общее» узла → «💾 Сохранить как изделие…».</div>';
+    document.getElementById('pi-prod-add')?.addEventListener('click', _piAddBlankProduct);
     return;
   }
   const rows = list.map(p => {
@@ -1474,7 +1481,10 @@ function renderProductCatalogList() {
     return `<details style="border-bottom:1px solid #eef0f4;padding:8px 10px">
       <summary style="cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
         <span><b>${escapeHtml(p.name || p.id)}</b> <span class="muted" style="font-size:11px">· ${escapeHtml(p.type || '')}${p.subtype ? '/' + escapeHtml(p.subtype) : ''}${p.manufacturer ? ' · ' + escapeHtml(p.manufacturer) : ''}</span></span>
-        <button type="button" data-prod-del="${p.id}" style="font-size:11px;padding:2px 8px;border:1px solid #dc2626;background:#fff;color:#dc2626;border-radius:3px;cursor:pointer">✕ удалить</button>
+        <span style="display:flex;gap:4px">
+          <button type="button" data-prod-dup="${p.id}" style="font-size:11px;padding:2px 8px;border:1px solid #0ea5e9;background:#fff;color:#075985;border-radius:3px;cursor:pointer">⎘ дубль</button>
+          <button type="button" data-prod-del="${p.id}" style="font-size:11px;padding:2px 8px;border:1px solid #dc2626;background:#fff;color:#dc2626;border-radius:3px;cursor:pointer">✕ удалить</button>
+        </span>
       </summary>
       <div style="margin-top:6px">
         <div class="field" style="margin-bottom:4px"><label style="font-size:11px">Название</label>
@@ -1489,7 +1499,26 @@ function renderProductCatalogList() {
       </div>
     </details>`;
   }).join('');
-  host.innerHTML = rows;
+  host.innerHTML = toolbar + rows;
+
+  // toolbar: + новое изделие
+  document.getElementById('pi-prod-add')?.addEventListener('click', _piAddBlankProduct);
+
+  // wire duplicate
+  host.querySelectorAll('[data-prod-dup]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const id = btn.getAttribute('data-prod-dup');
+      const src = list.find(p => p.id === id);
+      if (!src) return;
+      const copy = JSON.parse(JSON.stringify(src));
+      copy.id = 'prod-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+      copy.name = (src.name || '') + ' (копия)';
+      list.push(copy);
+      renderProductCatalogList();
+      if (typeof window.Raschet?.notifyChange === 'function') window.Raschet.notifyChange();
+    });
+  });
 
   // wire delete
   host.querySelectorAll('[data-prod-del]').forEach(btn => {
@@ -1536,6 +1565,30 @@ function renderProductCatalogList() {
       if (typeof window.Raschet?.notifyChange === 'function') window.Raschet.notifyChange();
     });
   });
+}
+
+// v0.58.54: «+ новое изделие» — создаёт пустую запись в каталоге с
+// выбором типа узла (source/panel/ups/consumer/channel/transformer).
+function _piAddBlankProduct() {
+  const name = prompt('Название нового изделия:', 'Новое изделие');
+  if (!name) return;
+  const typeOpts = ['source', 'generator', 'panel', 'ups', 'consumer', 'channel'];
+  const type = prompt('Тип узла (source / generator / panel / ups / consumer / channel):', 'consumer');
+  if (!type || !typeOpts.includes(type)) { flash('Некорректный тип'); return; }
+  const proj = window.Raschet?._state?.project;
+  if (!proj) return;
+  if (!Array.isArray(proj.productCatalog)) proj.productCatalog = [];
+  proj.productCatalog.push({
+    id: 'prod-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+    name: String(name).trim(),
+    type,
+    subtype: '',
+    manufacturer: '',
+    modelRef: '',
+    systemRanges: {},
+  });
+  renderProductCatalogList();
+  if (typeof window.Raschet?.notifyChange === 'function') window.Raschet.notifyChange();
 }
 
 function escapeHtml(s) {
