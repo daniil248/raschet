@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор стойки</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <style>
+    .wrap { max-width: 880px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; }
+    .tag { display:inline-block; padding:3px 10px; border-radius:12px; background:#fef3c7; color:#92400e; font-size:12px; font-weight:600; margin-left:8px; }
+    .section { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:16px 20px; margin:14px 0; }
+    .section h2 { margin:0 0 8px; font-size:16px; }
+    ul { line-height: 1.7; }
+    code { background:#f1f5f9; padding:1px 5px; border-radius:3px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Конфигуратор стойки', home: '../hub.html' });
+  </script>
+  <div class="wrap">
+    <h1>Конфигуратор серверной / телеком стойки <span class="tag">в разработке</span></h1>
+    <p class="muted">Модуль формирует BOM на заказ стойки: корпус, двери, боковые стенки, пол, кабельные вводы, заглушки на пустые юниты, PDU с привязкой по мощности и количеству розеток нужного стандарта.</p>
+
+    <div class="section">
+      <h2>Что будет в модуле</h2>
+      <ul>
+        <li><b>Корпус:</b> форм-фактор (42U/47U/…), ширина (600/800), глубина (600/800/1000/1200), производитель/серия.</li>
+        <li><b>Двери:</b> передняя и задняя — стекло / сетка / металл / без двери; замок.</li>
+        <li><b>Аксессуары:</b> боковые стенки, крыша/верхняя панель, основание/пол, цоколь.</li>
+        <li><b>Кабельные вводы:</b> кол-во, диаметр, тип (щётка / заглушка / PG).</li>
+        <li><b>Заглушки:</b> автоматически на все свободные U; тип (1U глухая / 1U перф / 2U).</li>
+        <li><b>PDU:</b> кол-во × номинал (16/32 А), 1ф/3ф, 0U/1U/2U, набор розеток (C13/C19/Schuko) + кол-во. Проверка соответствия заявленной мощности шкафа.</li>
+        <li><b>Сохранение шаблонов:</b> одна конфигурация применяется к нескольким идентичным стойкам проекта.</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Связанные модули</h2>
+      <ul>
+        <li><a href="../sks-config/">Конфигуратор СКС / телеком</a> — описание содержимого стойки (коммутаторы, патч-панели, серверы) с привязкой к розеткам PDU.</li>
+        <li>Roadmap: см. подфазу <b>1.23</b> в <a href="../ROADMAP.md">ROADMAP.md</a>.</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Статус</h2>
+      <p>Модуль создан как stub. Реализация разделена на 10 задач (1.23.1–1.23.10), см. roadmap. Приоритет открывается после закрытия текущих подфаз 1.22 (вкладка «Общее») и Phase 2 (мульти-пространственные схемы).</p>
+    </div>
+  </div>
+</body>
+</html>

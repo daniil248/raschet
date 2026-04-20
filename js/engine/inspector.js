@@ -512,21 +512,21 @@ export function renderInspectorNode(n) {
   // для всех типов кроме zone/channel/conn.
   // v0.58.38: tabs Электрика/Габариты/Системы + по одной вкладке для
   // каждой включённой (не-electrical) системы с параметрами.
+  // v0.58.47: новая вкладка «📋 Общее» — tag/name/id + product/configure.
   const _extraTabs = renderExtraSystemTabs(n);
   h.push(`<div class="tp-tabs" role="tablist" style="margin-bottom:8px">
-    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab active" data-tab="general" role="tab">📋 Общее</button>
+    <button type="button" class="tp-tab" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
     <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы${(function(){const c=(Array.isArray(n.systems)?n.systems.length:1);return c>1?` <span class="muted" style="font-size:10px">(${c})</span>`:'';})()}</button>
     ${_extraTabs.tabsHtml}
   </div>`);
-  h.push(`<div class="tp-panel" data-panel="electrical">`);
-  h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
-  // Показать эффективное обозначение если отличается
-  const eff = effectiveTag(n);
-  if (eff && eff !== n.tag) {
-    h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Полное обозначение: <b>${escHtml(eff)}</b></div>`);
-  }
-  h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name)}">`));
+  // Вкладка «Общее»
+  h.push(`<div class="tp-panel" data-panel="general">`);
+  h.push(renderGeneralPanel(n));
+  h.push(`</div>`);
+  // Вкладка «Электрика» — только электрика (tag/name вынесены в Общее)
+  h.push(`<div class="tp-panel" data-panel="electrical" hidden>`);
 
   if (n.type === 'source' || n.type === 'generator') {
     const subtype = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
@@ -776,8 +776,7 @@ export function renderInspectorNode(n) {
     h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px">Изменения параметра «В работе» сохраняются в режиме <b>${escAttr(m?.name || '')}</b></div></div>`);
   }
 
-  // Комментарии — для всех типов элементов
-  h.push(field('Комментарии', `<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical">${escHtml(n.comment || '')}</textarea>`));
+  // v0.58.47: комментарии перенесены на вкладку «Общее».
 
   // Кнопка сохранения элемента в пользовательскую библиотеку
   if (n.type !== 'zone') {
@@ -1025,6 +1024,73 @@ export function renderSystemParamsPanel(n, sysId) {
     <div style="padding:8px 10px;border-left:3px solid ${meta.color};background:${meta.color}0A;border-radius:0 4px 4px 0">${rows}</div>
     ${manage}
   </div>`;
+}
+
+// v0.58.47: карта «тип → конфигуратор». Кнопка «Конфигурировать…» на
+// вкладке Общее открывает соответствующий модуль в новой вкладке.
+const _CONFIGURATORS = {
+  // {href, label} — какой модуль открывать для данного n
+  transformer: { href: 'transformer-config/', label: 'Конфигуратор трансформатора' },
+  panel:       { href: 'panel-config/',       label: 'Конфигуратор НКУ' },
+  panelMv:     { href: 'mv-config/',          label: 'Конфигуратор РУ СН' },
+  ups:         { href: 'ups-config/',         label: 'Конфигуратор ИБП' },
+  rack:        { href: 'rack-config/',        label: 'Конфигуратор стойки (в разработке)' },
+  sks:         { href: 'sks-config/',         label: 'Конфигуратор СКС/телеком (в разработке)' },
+};
+function _configuratorForNode(n) {
+  if (!n) return null;
+  if (n.type === 'source' || n.type === 'generator') {
+    const sub = n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer');
+    if (sub === 'transformer') return _CONFIGURATORS.transformer;
+    return null;
+  }
+  if (n.type === 'panel') return n.isMv ? _CONFIGURATORS.panelMv : _CONFIGURATORS.panel;
+  if (n.type === 'ups') return _CONFIGURATORS.ups;
+  // v0.58.47: consumer-стойка (серверная/телеком) → конфигуратор стойки
+  if (n.type === 'consumer' && (n.subtype === 'rack' || n.consumerKind === 'rack')) {
+    return _CONFIGURATORS.rack;
+  }
+  return null;
+}
+
+// v0.58.47: панель «Общее» — основные идентификаторы и быстрый доступ к
+// модулю-конфигуратору. Вкладки Электрика/Габариты/Системы содержат
+// только свои тематические поля; Общее собирает общий фундамент.
+export function renderGeneralPanel(n) {
+  const h = [];
+  h.push(`<div class="inspector-section">`);
+  h.push(`<h4>Идентификация</h4>`);
+  h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}" placeholder="T1, ЩС-1, K12, ...">`));
+  const eff = effectiveTag(n);
+  if (eff && eff !== n.tag) {
+    h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Полное обозначение: <b>${escHtml(eff)}</b></div>`);
+  }
+  h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name || '')}">`));
+  h.push(field('Инв. №&nbsp;/&nbsp;паспорт', `<input type="text" data-prop="assetId" value="${escAttr(n.assetId || '')}" placeholder="например, INV-0042">`));
+  h.push(`<div class="muted" style="font-size:11px;margin-top:4px">UUID: <code style="font-size:11px">${escHtml(n.id)}</code></div>`);
+  h.push(`</div>`);
+
+  // Блок «Модель/изделие»
+  const cfg = _configuratorForNode(n);
+  const modelRef = n.modelRef || '';
+  h.push(`<div class="inspector-section">`);
+  h.push(`<h4>Модель изделия</h4>`);
+  h.push(field('Выбранное изделие',
+    `<input type="text" data-prop="modelRef" value="${escAttr(modelRef)}" placeholder="Не выбрано">`));
+  if (cfg) {
+    h.push(`<a class="full-btn" href="${escAttr(cfg.href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);
+    h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.</div>`);
+  } else {
+    h.push(`<div class="muted" style="font-size:11px">Для этого типа элемента модуль-конфигуратор пока не подключён. Параметры задаются вручную на остальных вкладках.</div>`);
+  }
+  h.push(`</div>`);
+
+  // Блок «Комментарий» — общего назначения
+  h.push(`<div class="inspector-section">`);
+  h.push(`<h4>Комментарий</h4>`);
+  h.push(`<textarea data-prop="comment" rows="3" style="width:100%;font-size:12px;resize:vertical" placeholder="Заметки по объекту (не влияют на расчёт)">${escHtml(n.comment || '')}</textarea>`);
+  h.push(`</div>`);
+  return h.join('');
 }
 
 // v0.58.38: tab-buttons + panels для включённых систем (кроме electrical).
