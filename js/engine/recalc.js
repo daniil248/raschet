@@ -1596,12 +1596,33 @@ function recalc() {
         } else {
           c._breakerUndersize = false;
         }
+        // Режим защиты параллельных жил:
+        //   групповая нагрузка (count>1 !serial)  → 'per-line' (N отдельных
+        //     автоматов, каждый защищает свой кабель)
+        //   одиночная парцелльная в individual    → 'individual' (per-line +
+        //     общий автомат на суммарный ток → обе проверки)
+        //   одиночная парцелльная в common        → 'common' (один общий
+        //     автомат на суммарный ток)
+        //   непараллельная (par=1)                → 'individual' (эквивалентно)
+        const _isGroupLoadSize = (toN.type === 'consumer'
+          && (Number(toN.count) || 1) > 1
+          && !toN.serialMode);
+        // Приоритет режима защиты: line-override → GLOBAL → 'individual'
+        const _protGlobal = GLOBAL.parallelProtection === 'common' ? 'common' : 'individual';
+        const _protLine = (c.parallelProtection === 'common' || c.parallelProtection === 'individual')
+          ? c.parallelProtection : null;
+        const _protMode = _isGroupLoadSize
+          ? 'per-line'
+          : (conductorsInParallel > 1
+              ? (_protLine || _protGlobal)
+              : 'individual');
         const sel = calcMethod.selectCable(sizingCurrent, {
           material, insulation, method, ambient, grouping, bundling,
           cableType, maxSize: GLOBAL.maxCableSize,
           parallel: conductorsInParallel,
           breakerMarginPct: _sizingMarginForCall,
           breakerCurve: _curveForSizing,
+          protectionMode: _protMode,
         });
 
         c._ecoSize = null;
@@ -1879,40 +1900,73 @@ function recalc() {
       : (_catalogMargin != null) ? 'consumer'
       : 'auto';
     const _marginK = 1 + _effMarginPct / 100;
-    let InPerLine = c.manualBreakerIn
-      ? Number(c.manualBreakerIn)
-      : _calcMethod.selectBreaker(Iper * _marginK);
+    const _manualIn = c.manualBreakerIn ? Number(c.manualBreakerIn) : 0;
+    let InPerLine = _calcMethod.selectBreaker(Iper * _marginK);
+    let InTotal = _calcMethod.selectBreaker(Itotal * _marginK);
+    // Ручной номинал применяем к «главному» автомату, который и отображается
+    // на схеме (и в инспекторе). Для single/common — это InTotal/общий; для
+    // group-load — InPerLine (у каждой линии свой). Для parallel+individual —
+    // InTotal (общий), а InPerLine пересчитываем как manualIn/parallel (окр. вверх
+    // по стандартному ряду), чтобы оба значения были согласованы.
+    if (_manualIn > 0) {
+      const _isGroupLoadManual = (toN.type === 'consumer'
+        && (Number(toN.count) || 1) > 1
+        && !toN.serialMode);
+      const _protLineEffM = (c.parallelProtection === 'common' || c.parallelProtection === 'individual')
+        ? c.parallelProtection : null;
+      const _effProtIndivM = _protLineEffM ? (_protLineEffM === 'individual') : _protIndivGlobal;
+      if (parallel > 1 && _isGroupLoadManual) {
+        InPerLine = _manualIn;
+      } else if (parallel > 1 && _effProtIndivM) {
+        InTotal = _manualIn;
+        InPerLine = _calcMethod.selectBreaker(_manualIn / parallel);
+      } else if (parallel > 1) {
+        InTotal = _manualIn;
+      } else {
+        InPerLine = _manualIn;
+        InTotal = _manualIn;
+      }
+    }
     // Всегда полная координация In ≤ Iz (IEC 60364-4-43)
     c._breakerAgainstCable = !!(Iz > 0 && InPerLine > Iz);
     c._breakerI2fail = false;
-
-    const InTotal = _calcMethod.selectBreaker(Itotal * _marginK);
 
     // Определяем тип параллельности: групповая нагрузка или парцелльная линия
     const isGroupLoad = (toN.type === 'consumer'
       && (Number(toN.count) || 1) > 1
       && !toN.serialMode);
 
+    // Line-level override режима защиты (c.parallelProtection) имеет
+    // приоритет над GLOBAL. Групповые нагрузки всегда per-line.
+    const _protLineEff = (c.parallelProtection === 'common' || c.parallelProtection === 'individual')
+      ? c.parallelProtection : null;
+    const _effProtIndiv = _protLineEff
+      ? (_protLineEff === 'individual')
+      : _protIndivGlobal;
+    c._parallelProtectionEff = isGroupLoad
+      ? 'per-line'
+      : (parallel > 1 ? (_effProtIndiv ? 'individual' : 'common') : 'single');
+
     if (parallel > 1 && isGroupLoad) {
       // ГРУППОВАЯ нагрузка (N отдельных приборов, каждый на своём кабеле):
       // В щите стоит по автомату на КАЖДУЮ линию (parallel штук по InPerLine).
-      // Общего вышестоящего автомата на объединении линий нет.
-      // _breakerIn=null, _breakerPerLine=InPerLine, _breakerCount=parallel
-      // → рендер покажет «N × InA» как и просил пользователь.
       c._breakerIn = null;
       c._breakerPerLine = InPerLine;
       c._breakerCount = parallel;
-    } else if (parallel > 1 && _protIndivGlobal) {
-      // ПАРЦЕЛЛЬНАЯ линия, режим individual: каждая жила своим автоматом + общий
+    } else if (parallel > 1 && _effProtIndiv) {
+      // ПАРЦЕЛЛЬНАЯ линия, режим individual: каждая жила своим автоматом + общий.
+      // Координация двойная: InPerLine ≤ Iz per-line и InTotal ≤ Iz·n.
       c._breakerIn = InTotal;
       c._breakerPerLine = InPerLine;
       c._breakerCount = parallel;
+      const failPer = (Iz > 0 && InPerLine > Iz);
+      const failTotal = (Iz > 0 && InTotal > Iz * parallel);
+      c._breakerAgainstCable = !!(failPer || failTotal);
     } else if (parallel > 1) {
-      // Общая защита (парцелльная линия с common-режимом): один автомат на полный ток
+      // Общая защита (common): один автомат на полный ток
       c._breakerIn = InTotal;
       c._breakerPerLine = null;
       c._breakerCount = 1;
-      // Координация: общий автомат vs суммарный Iz
       c._breakerAgainstCable = !!(Iz > 0 && InTotal > Iz * parallel);
       c._breakerI2fail = false;
     } else {
@@ -2487,6 +2541,24 @@ function recalc() {
     };
     try {
       c._moduleResults = runCalcModules(modInput, enabledSet);
+      // Авто-установка УЗО при недостаточной петле фаза-ноль.
+      // Если TN-система, phaseLoop провалил проверку Ik1 ≥ Ia, а УЗО не
+      // включено пользователем — автоматически включаем УЗО (IΔn=30 мА)
+      // и пересчитываем модуль phaseLoop. IEC 60364-4-41 §411.3.3:
+      // УЗО обеспечивает защиту при косвенном прикосновении независимо
+      // от тока КЗ. Флаг c._rcdAutoInstalled=true — для UI и BOM.
+      // Phase 1.20.68.
+      c._rcdAutoInstalled = false;
+      if (!c.rcdEnabled && Array.isArray(c._moduleResults)) {
+        const pl = c._moduleResults.find(m => m.id === 'phaseLoop');
+        if (pl && pl.result && !pl.result.pass && !pl.result.details?.skipped) {
+          // Только если pass'нуло бы с УЗО
+          c._rcdAutoInstalled = true;
+          modInput.rcdEnabled = true;
+          modInput.rcdTripMa = 30;
+          c._moduleResults = runCalcModules(modInput, enabledSet);
+        }
+      }
     } catch (e) {
       console.warn('[recalc] calc-modules failed', e);
       c._moduleResults = null;

@@ -65,6 +65,7 @@ export default {
       conductorsInParallel:  o.parallel,
       breakerCurve:          o.breakerCurve || 'MCB_C',
       breakerMarginPct:      o.breakerMarginPct || 0,
+      protectionMode:        o.protectionMode || 'individual',
       allowAutoParallel:     true,
     });
     return result;

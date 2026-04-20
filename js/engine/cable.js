@@ -108,17 +108,33 @@ export function selectCableSize(I, opts) {
   // — это гарантирует In ≤ Iz даже если вызывающий код не раздул sizingCurrent.
   const breakerMarginPct = Math.max(0, Number(o.breakerMarginPct) || 0);
   const marginK = 1 + breakerMarginPct / 100;
+  // Режим защиты параллельных линий:
+  //   'individual' — по per-line автомату + ОБЩИЙ автомат на суммарный ток
+  //                  (кабель должен выдержать и то, и другое)
+  //   'common'     — один общий автомат на суммарный ток
+  //   'per-line'   — только per-line (например, групповая нагрузка count>1)
+  // Default 'individual' — самая строгая координация (две проверки).
+  const protectionMode = o.protectionMode || 'individual';
 
   function tryWithParallel(parallel) {
     const Iper = I / parallel;
-    const InNeeded = selectBreaker(Iper * marginK);
+    const InNeededPer = selectBreaker(Iper * marginK);
+    const InNeededTotal = selectBreaker(I * marginK);
     for (const [s, iRef] of effTable) {
       const iDerated = iRef * k;
-      // IEC 60364-4-43: In ≤ Iz AND I2 ≤ 1.45 × Iz
-      // Для MCB: In ≤ Iz (т.к. I2 = 1.45*In, условие 2 автоматически)
-      // Проверяем оба условия явно:
-      if (iDerated >= InNeeded && I2ratio * InNeeded <= 1.45 * iDerated) {
-        return { s, iAllowed: iRef, iDerated, parallel, InNeeded };
+      // IEC 60364-4-43: In ≤ Iz AND I2 ≤ 1.45 × Iz — проверяем для каждого
+      // автомата, который защищает эту жилу:
+      //   per-line автомат (250А) vs Iz одной жилы (265А)
+      //   общий автомат (630А)   vs Iz·n суммарно (530А)
+      // Кабель должен пройти обе проверки (для 'individual'/'common').
+      const okPer = (iDerated >= InNeededPer) && (I2ratio * InNeededPer <= 1.45 * iDerated);
+      const okTotal = (iDerated * parallel >= InNeededTotal) && (I2ratio * InNeededTotal <= 1.45 * iDerated * parallel);
+      let ok;
+      if (protectionMode === 'per-line') ok = okPer;
+      else if (protectionMode === 'common') ok = okTotal;
+      else ok = okPer && okTotal; // individual — обе проверки
+      if (ok) {
+        return { s, iAllowed: iRef, iDerated, parallel, InNeeded: Math.max(InNeededPer, Math.ceil(InNeededTotal / parallel)) };
       }
     }
     return null;
@@ -134,20 +150,8 @@ export function selectCableSize(I, opts) {
   if (!res && allowAutoParallel) {
     const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 10);
     for (let par = basePar + 1; par <= maxPar; par++) {
-      const Iper = I / par;
-      const InNeeded = selectBreaker(Iper * marginK);
-      for (const [s, iRef] of effTable) {
-        const iDerated = iRef * k;
-        // IEC 60364-4-43: In ≤ Iz AND I2 ≤ 1.45 × Iz — проверка та же,
-        // что и в tryWithParallel. Учитываем тот же breakerMarginPct,
-        // чтобы автоподбор параллели не давал Iz < In.
-        if (iDerated >= InNeeded && I2ratio * InNeeded <= 1.45 * iDerated) {
-          res = { s, iAllowed: iRef, iDerated, parallel: par, InNeeded };
-          autoParallel = true;
-          break;
-        }
-      }
-      if (res) break;
+      const r = tryWithParallel(par);
+      if (r) { res = r; autoParallel = true; break; }
     }
   }
 

@@ -157,7 +157,9 @@ export function renderInspectorConn(c) {
         (cableSpec ? cableSpec + '<br>' : '') +
         (effectiveBrkIn ? `Автомат: <b>${effectiveBrkIn} A</b><br>` : '') +
         (Iz ? `Iдоп на жилу (Iz): <b>${fmt(Iz)} A</b>${par > 1 ? ` · суммарно <b>${fmt(IzTotal)} А</b>` : ''}<br>` : '') +
-        (!inLeIz ? '<span style="color:#c62828;font-weight:600">⚠ In > Iz — кабель не защищён автоматом!</span><br>' : '') +
+        (!inLeIz ? (c._parallelProtectionEff === 'common'
+          ? '<span style="color:#e65100;font-size:11px">⚠ In > Iz·n при общей защите параллельных линий — рекомендуется увеличить сечение или перейти в режим «индивидуальная защита».</span><br>'
+          : '<span style="color:#c62828;font-weight:600">⚠ In > Iz — кабель не защищён автоматом!</span><br>') : '') +
         (oversize ? '<span style="color:#e65100">ℹ Кабель значительно завышен (Iz > 2×In)</span><br>' : '') +
         (c._breakerUndersize ? '<span style="color:#c62828;font-weight:600">⚠ Автомат меньше расчётного тока!</span><br>' : '') +
         (c._cableKtotal ? `<span class="muted">K = ${c._cableKtotal.toFixed(3)} (Kt=${(c._cableKt||1).toFixed(2)} × Kg=${(c._cableKg||1).toFixed(2)})</span><br>` : '') +
@@ -534,15 +536,26 @@ export function renderInspectorConn(c) {
       const _w1RhsIz = _isGroupBrk ? (c._cableIz || 0) : _IzTotal;
       const _w1IzLabel = _isGroupBrk ? 'на жилу' : (_parBrk > 1 ? 'суммарно' : '');
       if (_w1RhsIz > 0 && _w1LhsIn > _w1RhsIz) {
-        h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${_w1LhsIn} А) > Iz (${fmt(_w1RhsIz)} А${_w1IzLabel ? ' ' + _w1IzLabel : ''}) — кабель не защищён от перегрузки! Увеличьте сечение.</div>`);
+        const _commonW1 = c._parallelProtectionEff === 'common';
+        if (_commonW1) {
+          h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;color:#e65100;margin-top:4px">ℹ In (${_w1LhsIn} А) > Iz (${fmt(_w1RhsIz)} А${_w1IzLabel ? ' ' + _w1IzLabel : ''}) — общая защита параллельных линий не даёт 100 % координации. Это допустимо если линии идентичны и нагрузка симметрична; иначе — увеличьте сечение либо переключитесь на «индивидуальную» защиту.</div>`);
+        } else {
+          h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${_w1LhsIn} А) > Iz (${fmt(_w1RhsIz)} А${_w1IzLabel ? ' ' + _w1IzLabel : ''}) — кабель не защищён от перегрузки! Увеличьте сечение.</div>`);
+        }
       }
       // Warning 2: автомат < Iрасч (сработает при нормальной нагрузке, нагрузка будет отключена)
       if (_Imax > 0 && effectiveIn > 0 && effectiveIn < _Imax * 0.95) {
         h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${effectiveIn} А) &lt; Iрасч (${fmt(_Imax)} А) — автомат будет срабатывать при штатной нагрузке! Нагрузка будет отключена.</div>`);
       }
     } else {
+      // Для общего автомата на параллельные линии предупреждение
+      // мягче (info вместо error): «общий автомат не полностью покрывает
+      // сумму Iz» — типовой trade-off выбора режима защиты.
+      const _commonMode = c._parallelProtectionEff === 'common';
       const badge = c._breakerAgainstCable
-        ? '<span class="badge off">нарушена</span>'
+        ? (_commonMode
+            ? '<span class="badge" style="background:#fff3e0;color:#e65100;border:1px solid #ffcc80">общая защита</span>'
+            : '<span class="badge off">нарушена</span>')
         : (effectiveIn ? '<span class="badge on">ок</span>' : '');
       // Pointer to UPS internal breaker origin (Phase 1.20.65)
       const _upsSrcLabel = { 'ups-output-QF3': 'QF3 (выход ИБП)',
@@ -554,7 +567,9 @@ export function renderInspectorConn(c) {
       h.push(`<div style="font-size:12px;line-height:1.8">` +
         (effectiveIn ? `Номинал: <b>${effectiveIn} А</b> ${badge}<br>` : (c._breakerInternal ? `<span class="muted">Внешнего автомата нет — защита по уставкам инвертора ИБП</span><br>` : 'Не определён<br>')) +
         (cnt > 1 ? `В шкафу: <b>${cnt} × ${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
-        (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${_isGroupBrk ? fmt(c._cableIz || 0) + ' А на жилу' : fmt(_IzTotal) + ' А' + (_parBrk > 1 ? ' суммарно' : '')}) — увеличьте сечение</span>` : '') +
+        (c._breakerAgainstCable ? (_commonMode
+          ? `<span style="color:#e65100;font-size:11px">ℹ In (${effectiveIn} А) &gt; суммарного Iz (${fmt(_IzTotal)} А) — при общей защите параллельных линий это приемлемый компромисс; для полной координации перейдите в режим «индивидуальная защита».</span>`
+          : `<span style="color:#c62828;font-size:11px">In > Iz (${_isGroupBrk ? fmt(c._cableIz || 0) + ' А на жилу' : fmt(_IzTotal) + ' А' + (_parBrk > 1 ? ' суммарно' : '')}) — увеличьте сечение</span>`) : '') +
         `</div>` + _upsInternalNote);
       // Запасы по автомату и кабелю
       if (effectiveIn) h.push(marginBlock());
@@ -632,6 +647,24 @@ export function renderInspectorConn(c) {
       h.push('</details>');
     }
 
+    // === Режим защиты параллельных линий (для par > 1) ===
+    if ((c._cableParallel || 1) > 1) {
+      const _curMode = c.parallelProtection || ''; // '' = inherit GLOBAL
+      const _globalMode = GLOBAL.parallelProtection || 'individual';
+      const _effLabel = (c._parallelProtectionEff === 'individual')
+        ? 'индивидуальная (на каждую жилу + общий)'
+        : (c._parallelProtectionEff === 'common' ? 'общая (один автомат на все жилы)' : 'по умолчанию');
+      h.push(`<details class="inspector-section" style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Защита параллельных линий</summary>`);
+      h.push(`<div class="muted" style="font-size:10.5px;margin-bottom:4px;line-height:1.4">Текущий режим: <b>${_effLabel}</b>. Для «общей» защиты координация In ≤ Iz·n — условная (общий автомат не гарантирует отключение отдельной жилы при её повреждении).</div>`);
+      const selOpts = [
+        ['',           `— по настройкам проекта (сейчас: ${_globalMode === 'individual' ? 'индивидуальная' : 'общая'})`],
+        ['individual', 'Индивидуальная защита (per-line + общий)'],
+        ['common',     'Общая защита (один автомат на все жилы)'],
+      ].map(([v, l]) => `<option value="${v}"${v === _curMode ? ' selected' : ''}>${l}</option>`).join('');
+      h.push(field('Режим', `<select data-conn-prop="parallelProtection">${selOpts}</select>`));
+      h.push('</details>');
+    }
+
     h.push('</div>');
   }
 
@@ -639,13 +672,17 @@ export function renderInspectorConn(c) {
   {
     const rcdEnabled = !!c.rcdEnabled;
     const rcdTrip = c.rcdTripMa || 30;
+    const rcdAuto = !!c._rcdAutoInstalled;
     const RCD_TYPES = [
       { ma: 30,  label: '30 мА (защита людей)' },
       { ma: 100, label: '100 мА (защита от пожара)' },
       { ma: 300, label: '300 мА (защита от пожара)' },
     ];
-    h.push('<details class="inspector-section"' + (rcdEnabled ? ' open' : '') + '>');
-    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">УЗО (дифф. защита)</summary>');
+    h.push('<details class="inspector-section"' + ((rcdEnabled || rcdAuto) ? ' open' : '') + '>');
+    h.push(`<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">УЗО (дифф. защита)${rcdAuto ? ' <span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 6px;border-radius:3px;margin-left:4px">авто</span>' : ''}</summary>`);
+    if (rcdAuto) {
+      h.push(`<div style="background:#e8f5e9;border:1px solid #81c784;border-radius:4px;padding:6px;font-size:11px;color:#2e7d32;margin-bottom:6px;line-height:1.4"><b>УЗО установлено автоматически.</b> Проверка петли фаза-ноль (Ik1 ≥ Ia) не прошла — защита обеспечивается УЗО (IΔn=30 мА) по IEC 60364-4-41 §411.3.3. Поставьте галочку «Установить УЗО» для фиксации в BOM и уставок.</div>`);
+    }
     h.push(`<div class="field" style="margin-top:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" data-conn-prop="rcdEnabled" ${rcdEnabled ? 'checked' : ''}> Установить УЗО на линию</label></div>`);
     if (rcdEnabled) {
       let rcdOpts = RCD_TYPES.map(t =>
