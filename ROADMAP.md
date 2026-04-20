@@ -424,11 +424,13 @@
 
 - [x] **2.1** `page.kind` расширить: `'schematic' | 'layout' | 'mechanical' | 'low-voltage' | 'data' | '3d'` (v0.57.93: `PAGE_KINDS_META` + `getPageKind()` в `state.js`, значок вида в табе, «Вид страницы» в контекстном меню, `addPage/duplicatePage` копируют kind)
 - [ ] **2.2** `element.views[page.kind]` — разные представления (SVG) для разных типов страниц
-- [ ] **2.3** Layout-page (схема расположения):
-  - Холст в миллиметрах
-  - Drag-элементов с реальными габаритами (`element.geometry.width/height`)
-  - Автоматическая расстановка новых слева
-  - Зоны обслуживания (hatched area)
+- [~] **2.3** Layout-page (схема расположения):
+  - [x] v0.57.95: миллиметровка (grid-mm 10/100 мм) включается автоматически для `kind='layout'`
+  - [x] v0.57.94: persist `kind` в JSON + «бета-вид» баннер
+  - [ ] Drag-элементов с реальными габаритами (`element.geometry.width/height`)
+  - [ ] Автоматическая расстановка новых слева
+  - [ ] Зоны обслуживания (hatched area)
+  - [ ] Линейка (ruler) по краям холста
 - [ ] **2.4** IEC 81346 обозначения:
   - `fullTag()` → `=Z1+AC1` (assignment + location structure)
   - Настройка на проекте: `projectTagSystem: 'simple' | 'iec81346' | 'ansi'`

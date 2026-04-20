@@ -182,9 +182,9 @@ export function initToolbar() {
     updateGridBtn();
     gridBtn.onclick = () => {
       GLOBAL.showGrid = !(GLOBAL.showGrid !== false);
-      const bg = document.getElementById('bg');
-      if (bg) bg.setAttribute('fill', GLOBAL.showGrid ? 'url(#grid)' : '#fff');
       updateGridBtn();
+      // Phase 2.3: фон зависит от kind страницы, поэтому делегируем render.
+      render();
     };
   }
   const snapBtn = document.getElementById('btn-toggle-snap');

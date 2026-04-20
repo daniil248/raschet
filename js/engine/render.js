@@ -298,13 +298,28 @@ export function render() {
 }
 
 // Phase 2.1: баннер «бета-вид» над холстом для не-schematic страниц.
-// Для schematic (базовый вид — полный функционал редактора) — скрыт.
+// Phase 2.3: на layout-страницах подменяем фон сеткой в мм (grid-mm).
+// Для schematic (базовый вид — полный функционал редактора) — баннер скрыт.
 export function renderPageKindBanner() {
   const el = document.getElementById('page-kind-banner');
-  if (!el) return;
+  const bg = document.getElementById('bg');
   const page = getCurrentPage();
   const kind = getPageKind(page);
   const meta = PAGE_KINDS_META[kind];
+
+  // Фон холста: миллиметровка для layout, обычная сетка для остальных.
+  if (bg) {
+    const showGrid = (typeof GLOBAL !== 'undefined') ? (GLOBAL.showGrid !== false) : true;
+    if (!showGrid) {
+      bg.setAttribute('fill', '#fff');
+    } else if (kind === 'layout') {
+      bg.setAttribute('fill', 'url(#grid-mm)');
+    } else {
+      bg.setAttribute('fill', 'url(#grid)');
+    }
+  }
+
+  if (!el) return;
   if (!page || kind === 'schematic' || !meta) {
     el.hidden = true;
     el.innerHTML = '';

@@ -273,6 +273,15 @@
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e6e8ec" stroke-width="1"/>
             </pattern>
+            <!-- Phase 2.3: миллиметровка для layout-страниц. 1 px = 1 мм.
+                 Мелкая сетка — 10 мм, крупная — 100 мм. -->
+            <pattern id="grid-mm-fine" width="10" height="10" patternUnits="userSpaceOnUse">
+              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#f0e5d5" stroke-width="0.5"/>
+            </pattern>
+            <pattern id="grid-mm" width="100" height="100" patternUnits="userSpaceOnUse">
+              <rect width="100" height="100" fill="url(#grid-mm-fine)"/>
+              <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#d9c19a" stroke-width="1"/>
+            </pattern>
             <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
               <path d="M0,0 L10,5 L0,10 Z" fill="#8a94a6"/>
             </marker>
