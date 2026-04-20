@@ -254,6 +254,43 @@ export function render() {
   renderNodes();
   renderStats();
   renderModes();
+  decorateRemoteLocks();
+}
+
+// Оверлей для объектов, редактируемых другими участниками collab-сессии.
+// Рисует пунктирную оранжевую рамку + бейдж с именем. Данные берутся из
+// window.__remoteLocks (устанавливается main.js из subscribeLocks).
+export function decorateRemoteLocks() {
+  const locks = (typeof window !== 'undefined' && window.__remoteLocks) || {};
+  const ids = Object.keys(locks);
+  if (!ids.length) return;
+  for (const id of ids) {
+    const n = state.nodes.get(id);
+    if (!n || !isOnCurrentPage(n)) continue;
+    const w = nodeWidth(n), h = nodeHeight(n);
+    const lock = locks[id];
+    const owner = (lock.name || lock.email || '?').trim();
+    const overlay = el('g', {
+      class: 'remote-lock-overlay',
+      transform: `translate(${n.x},${n.y})`,
+      'pointer-events': 'none',
+    });
+    overlay.appendChild(el('rect', {
+      x: -3, y: -3, width: w + 6, height: h + 6, rx: 6,
+      fill: 'none', stroke: '#ff9800', 'stroke-width': 2,
+      'stroke-dasharray': '5 3',
+    }));
+    const badge = el('g', { transform: `translate(${Math.max(0, w - 96)}, ${-14})` });
+    badge.appendChild(el('rect', {
+      x: 0, y: 0, width: 96, height: 14, rx: 7,
+      fill: '#ff9800', stroke: '#e65100', 'stroke-width': 0.5,
+    }));
+    const t = el('text', { x: 7, y: 10, fill: '#fff', 'font-size': 9, 'font-weight': 600 });
+    t.textContent = '🔒 ' + (owner.length > 12 ? owner.slice(0, 12) + '…' : owner);
+    badge.appendChild(t);
+    overlay.appendChild(badge);
+    layerNodes.appendChild(overlay);
+  }
 }
 
 export function renderNodes() {

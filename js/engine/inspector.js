@@ -61,11 +61,28 @@ export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique 
 }
 
 // ================= Инспектор =================
+// Хук для collab-блокировок: main.js устанавливает коллбэк, который
+// вызывается при любом изменении выделения (с возможностью cancel).
+let _selectionHook = null;
+export function setSelectionHook(cb) { _selectionHook = cb; }
+
+function _runSelectionHook(kind, id, prevKind, prevId) {
+  if (typeof _selectionHook !== 'function') return true;
+  try {
+    const res = _selectionHook(kind, id, prevKind, prevId);
+    return res !== false;
+  } catch (e) { console.warn('[selectionHook]', e); return true; }
+}
+
 export function selectNode(id) {
+  const prevK = state.selectedKind, prevI = state.selectedId;
+  if (!_runSelectionHook('node', id, prevK, prevI)) return;
   state.selectedKind = 'node'; state.selectedId = id;
   renderInspector();
 }
 export function selectConn(id) {
+  const prevK = state.selectedKind, prevI = state.selectedId;
+  if (!_runSelectionHook('conn', id, prevK, prevI)) return;
   state.selectedKind = 'conn'; state.selectedId = id;
   renderInspector();
 }

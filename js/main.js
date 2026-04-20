@@ -117,11 +117,20 @@ const AUTO_SAVE_DELAY = 1500; // мс после последнего измен
 // =============== Phase 1.20.51: Presence + Live Sync helpers ===============
 function _stopCollab() {
   if (state.presenceTimer) { clearInterval(state.presenceTimer); state.presenceTimer = null; }
+  if (state.lockHeartbeatTimer) { clearInterval(state.lockHeartbeatTimer); state.lockHeartbeatTimer = null; }
   if (typeof state.unsubPresence === 'function') { try { state.unsubPresence(); } catch {} state.unsubPresence = null; }
   if (typeof state.unsubProjectDoc === 'function') { try { state.unsubProjectDoc(); } catch {} state.unsubProjectDoc = null; }
+  if (typeof state.unsubLocks === 'function') { try { state.unsubLocks(); } catch {} state.unsubLocks = null; }
   if (state.currentProject && state.currentUser && window.Storage?.isCloud) {
     try { window.Storage.presenceLeave(state.currentProject.id, state.currentUser.uid); } catch {}
+    // Освобождаем свой активный лок, если был
+    if (state.myLockNodeId) {
+      try { window.Storage.releaseLock(state.currentProject.id, state.myLockNodeId, state.currentUser.uid); } catch {}
+      state.myLockNodeId = null;
+    }
   }
+  state.remoteLocks = {};
+  window.__remoteLocks = {};
   const bar = document.getElementById('presence-bar');
   if (bar) { bar.innerHTML = ''; bar.classList.add('hidden'); }
   state.remoteChangeToastShown = false;
@@ -142,9 +151,60 @@ function _startCollab(project, initialUpdatedAtMs) {
   beat();
   state.presenceTimer = setInterval(beat, PRESENCE_HEARTBEAT_MS);
 
+  // Hook выделения — захват/освобождение лока на узле
+  state.myLockNodeId = null;
+  if (window.Raschet?.setSelectionHook) {
+    window.Raschet.setSelectionHook(async (kind, id, prevKind, prevId) => {
+      // Отпускаем предыдущий лок, если был на узле
+      if (state.myLockNodeId && state.myLockNodeId !== (kind === 'node' ? id : null)) {
+        const releaseId = state.myLockNodeId;
+        state.myLockNodeId = null;
+        try { await window.Storage.releaseLock(project.id, releaseId, uid); } catch {}
+      }
+      // Берём новый лок только на узле (не на conn)
+      if (kind === 'node' && id != null) {
+        // Проверка: не заблокирован ли кем-то другим
+        const remote = state.remoteLocks?.[String(id)];
+        if (remote && remote.uid !== uid) {
+          const owner = remote.name || remote.email || 'другой участник';
+          flash(`🔒 Объект редактирует ${owner}`, 'info');
+          return false; // отменить выделение
+        }
+        const r = await window.Storage.acquireLock(project.id, id, uid, info, state.sessionId);
+        if (r && r.ok === false && r.owner) {
+          const owner = r.owner.name || r.owner.email || 'другой участник';
+          flash(`🔒 Объект редактирует ${owner}`, 'info');
+          return false;
+        }
+        state.myLockNodeId = id;
+      }
+      return true;
+    });
+  }
+  // Периодический heartbeat лока
+  state.lockHeartbeatTimer = setInterval(() => {
+    if (state.myLockNodeId) {
+      window.Storage.heartbeatLock(project.id, state.myLockNodeId, uid);
+    }
+  }, 20_000);
+
   // Подписка на presence — рисуем аватары
   state.unsubPresence = window.Storage.subscribePresence(project.id, (list) => {
     _renderPresenceBar(list.filter(u => u.uid !== uid));
+  });
+
+  // Подписка на locks — ловим чужие блокировки узлов
+  state.remoteLocks = {};
+  state.unsubLocks = window.Storage.subscribeLocks(project.id, (map) => {
+    // Исключаем свои локи — их мы и так знаем
+    const others = {};
+    for (const [nodeId, lock] of Object.entries(map || {})) {
+      if (lock.uid !== uid) others[nodeId] = lock;
+    }
+    state.remoteLocks = others;
+    window.__remoteLocks = others;
+    // Перерисовать canvas для обновления подсветки
+    try { window.Raschet?.rerender?.(); } catch {}
   });
 
   // Подписка на doc — ловим чужие сохранения
@@ -179,11 +239,34 @@ function _renderPresenceBar(users) {
   bar.innerHTML = html + more;
 }
 
+// Поля отображения, которые НЕ должны пропагироваться между участниками
+// (каждый пользователь управляет своим отображением через toolbox).
+// При получении remote-scheme — сохраняем локальные значения поверх.
+const DISPLAY_ONLY_FIELDS = ['view', 'activeModeId', 'currentPageId'];
+function _preserveLocalDisplay(remoteScheme) {
+  if (!remoteScheme || typeof remoteScheme !== 'object') return remoteScheme;
+  try {
+    const st = window.Raschet?._state;
+    if (!st) return remoteScheme;
+    for (const f of DISPLAY_ONLY_FIELDS) {
+      if (st[f] !== undefined) remoteScheme[f] = st[f];
+    }
+    // Также сохраняем per-page view
+    if (Array.isArray(remoteScheme.pages) && Array.isArray(st.pages)) {
+      const localViews = new Map(st.pages.map(p => [p.id, p.view]));
+      for (const p of remoteScheme.pages) {
+        if (localViews.has(p.id)) p.view = localViews.get(p.id);
+      }
+    }
+  } catch (e) { console.warn('[preserveLocalDisplay]', e); }
+  return remoteScheme;
+}
+
 async function _onRemoteProjectChange(doc) {
   // Если нет локальных несохранённых изменений — автоматически применяем
   if (!state.dirty && !state.saving) {
     try {
-      if (doc.scheme) window.Raschet.loadScheme(doc.scheme);
+      if (doc.scheme) window.Raschet.loadScheme(_preserveLocalDisplay(doc.scheme));
       state.currentProject = { ...state.currentProject, ...doc };
       flash('🔄 Проект обновлён другим участником', 'info');
     } catch (e) { console.warn('[live-sync] apply failed', e); }
@@ -201,7 +284,7 @@ async function _onRemoteProjectChange(doc) {
   );
   if (choice) {
     try {
-      if (doc.scheme) window.Raschet.loadScheme(doc.scheme);
+      if (doc.scheme) window.Raschet.loadScheme(_preserveLocalDisplay(doc.scheme));
       state.currentProject = { ...state.currentProject, ...doc };
       state.dirty = false;
       updateSaveButton();

@@ -46,7 +46,7 @@ import {
   channelIconSVG, bundlingIconSVG, voltageField, phaseField,
   phaseFieldConsumer, sourceStatusBlock, panelStatusBlock,
   consumerCurrentsBlock, prioritySection, statusBlock, upsStatusBlock,
-  saveNodeAsPreset, bindInspectorDeps,
+  saveNodeAsPreset, bindInspectorDeps, setSelectionHook,
 } from './inspector.js';
 import { openConnTccDirect } from './inspector/conn.js';
 import { initInteraction, bindInteractionDeps } from './interaction.js';
@@ -562,5 +562,6 @@ window.Raschet = {
   openPanelParamsModal,
   openImpedanceModal,
   getDefaults(type) { return DEFAULTS[type] ? DEFAULTS[type]() : {}; },
+  setSelectionHook,  // main.js использует для object-locking в collab-режиме
   _presetEditCallback: null,
 };

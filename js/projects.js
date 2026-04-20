@@ -225,6 +225,76 @@ const Fs = {
     } catch (e) { return () => {}; }
   },
 
+  // =================== Phase 1.20.53: Object-level locking ===================
+  // Subcollection `projects/{id}/locks/{nodeId}` — пока пользователь
+  // выделил узел, лок удерживается heartbeat'ом. Другие пользователи
+  // видят лок через subscribeLocks и получают предупреждение.
+  async acquireLock(projectId, nodeId, uid, userInfo, sessionId) {
+    if (!projectId || !nodeId || !uid) return { ok: true };
+    try {
+      const ref = fsDb().collection('projects').doc(projectId)
+        .collection('locks').doc(String(nodeId));
+      const snap = await ref.get();
+      const now = Date.now();
+      if (snap.exists) {
+        const d = snap.data();
+        const age = now - (d.lastSeen || 0);
+        // свой лок (по uid) или устаревший — перезахват
+        if (d.uid !== uid && age < 60_000) {
+          return { ok: false, owner: { uid: d.uid, name: d.name || '', email: d.email || '' } };
+        }
+      }
+      await ref.set({
+        uid, nodeId: String(nodeId),
+        name: userInfo?.name || '',
+        email: userInfo?.email || '',
+        sessionId,
+        acquiredAt: snap.exists && snap.data().uid === uid ? (snap.data().acquiredAt || now) : now,
+        lastSeen: now,
+      });
+      return { ok: true };
+    } catch (e) {
+      console.warn('[lock] acquire failed', e);
+      return { ok: true }; // fail-open: лучше пустить чем блокировать
+    }
+  },
+  async releaseLock(projectId, nodeId, uid) {
+    if (!projectId || !nodeId || !uid) return;
+    try {
+      const ref = fsDb().collection('projects').doc(projectId)
+        .collection('locks').doc(String(nodeId));
+      const snap = await ref.get();
+      if (snap.exists && snap.data().uid === uid) {
+        await ref.delete();
+      }
+    } catch {}
+  },
+  async heartbeatLock(projectId, nodeId, uid) {
+    if (!projectId || !nodeId || !uid) return;
+    try {
+      await fsDb().collection('projects').doc(projectId)
+        .collection('locks').doc(String(nodeId))
+        .update({ lastSeen: Date.now() });
+    } catch {}
+  },
+  subscribeLocks(projectId, callback) {
+    if (!projectId) return () => {};
+    try {
+      return fsDb().collection('projects').doc(projectId)
+        .collection('locks').onSnapshot(snap => {
+          const now = Date.now();
+          const map = {};
+          snap.docs.forEach(d => {
+            const v = d.data();
+            if (now - (v.lastSeen || 0) < 60_000) {
+              map[d.id] = v;
+            }
+          });
+          callback(map);
+        }, err => { console.warn('[locks] snapshot error', err); });
+    } catch { return () => {}; }
+  },
+
   async renameProject(id, name) { return this.saveProject(id, { name }); },
 
   async deleteProject(id) {
@@ -361,6 +431,23 @@ window.Storage = {
   subscribeProjectDoc(id, cb) {
     const s = getStorage();
     return s.subscribeProjectDoc ? s.subscribeProjectDoc(id, cb) : (() => {});
+  },
+  // Object-level locks (Firestore only; Local → no-op fail-open)
+  acquireLock(id, nodeId, uid, info, sid) {
+    const s = getStorage();
+    return s.acquireLock ? s.acquireLock(id, nodeId, uid, info, sid) : Promise.resolve({ ok: true });
+  },
+  releaseLock(id, nodeId, uid) {
+    const s = getStorage();
+    return s.releaseLock ? s.releaseLock(id, nodeId, uid) : Promise.resolve();
+  },
+  heartbeatLock(id, nodeId, uid) {
+    const s = getStorage();
+    return s.heartbeatLock ? s.heartbeatLock(id, nodeId, uid) : Promise.resolve();
+  },
+  subscribeLocks(id, cb) {
+    const s = getStorage();
+    return s.subscribeLocks ? s.subscribeLocks(id, cb) : (() => {});
   },
   computeRole,
 };

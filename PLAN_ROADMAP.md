@@ -692,6 +692,33 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.53 (v0.57.29)** — Object-level locking + per-user display.
+  Проблема: live-sync не предотвращает одновременное редактирование
+  одного объекта двумя участниками. Также toolbox-изменения (режим
+  работы, pan/zoom, currentPageId) применялись на всех клиентах.
+  
+  Object-level locking:
+  - js/projects.js: subcollection `projects/{id}/locks/{nodeId}` с
+    acquireLock/releaseLock/heartbeatLock/subscribeLocks (stale 60с).
+  - js/engine/inspector.js: setSelectionHook(cb) — перехватчик в
+    selectNode/selectConn, может отменить выделение (return false).
+  - js/main.js: в _startCollab регистрируется hook — захват лока на
+    select, освобождение на deselect/switch, heartbeat 20с. Если
+    узел уже залочен другим — flash «🔒 Объект редактирует {name}»
+    и выделение отменяется. На beforeunload/backToProjects — release.
+  - js/engine/render.js: decorateRemoteLocks() рисует пунктирную
+    оранжевую рамку + бейдж «🔒 {name}» поверх залоченных узлов.
+    Данные берутся из window.__remoteLocks.
+  
+  Per-user display:
+  - js/main.js: _preserveLocalDisplay(remoteScheme) — при применении
+    удалённой схемы сохраняем локальные view, activeModeId,
+    currentPageId и per-page view. Это значит: когда коллега
+    переключил режим отображения или сдвинул viewport — у других
+    участников ничего не меняется.
+  
+  Файлы: js/engine/constants.js, js/engine/inspector.js,
+  js/engine/index.js, js/engine/render.js, js/projects.js, js/main.js.
 - **1.20.52 (v0.57.28)** — FIX(2): иконка и подпись на карточке канала
   НА CANVAS не соответствовали выбору в инспекторе. v0.57.26 починил
   только SVG в инспекторе (conn.js), но render.js читал устаревшее
