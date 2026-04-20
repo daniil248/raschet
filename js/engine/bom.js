@@ -304,6 +304,26 @@ export function buildBOM() {
     // Phase 1.20.47: каждая ячейка из n.mvCells получает отдельную
     // строку BOM. Ключ агрегации: breakerType + In_A + functionCode
     // (одинаковые ячейки в разных щитах суммируются по qty).
+    // v0.58.84: если у панели есть mvSwitchgearId (ссылка на запись
+     // element-library типа mv-switchgear) — добавляем отдельной строкой
+     // сборку целиком. Это даёт возможность вести цену на сборку в catalog,
+     // параллельно с детализацией по ячейкам.
+    if (kind === 'panel' && n.isMv && n.mvSwitchgearId) {
+      try {
+        const lib = globalThis.__raschetElementLibrary;
+        const el = lib && typeof lib.getElement === 'function'
+          ? lib.getElement(n.mvSwitchgearId) : null;
+        if (el) {
+          const fake = {
+            id: el.id,
+            supplier: el.manufacturer || n.mvManufacturer || '',
+            model: [el.series, el.variant || el.label].filter(Boolean).join(' ') || el.label || el.id,
+          };
+          pushAgg('РУ СН (сборки)', fake, 1, n.name || n.tag || '');
+        }
+      } catch {}
+    }
+
     if (kind === 'panel' && n.isMv && Array.isArray(n.mvCells) && n.mvCells.length) {
       const CELL_LABELS = {
         'infeed': 'Ввод', 'feeder': 'Отходящая',
