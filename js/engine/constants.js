@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.58.14';
+export const APP_VERSION = '0.58.15';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -14,6 +14,33 @@ export const NODE_MIN_W = 200;  // 5 × 40px grid
 export const PORT_GAP_MIN = 40; // = grid step
 export const PORT_R = 6;
 export const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// v0.58.15: Каталог систем. Любой элемент может входить в одну или
+// несколько систем (n.systems = ['electrical','data',...]). По умолчанию
+// ['electrical']. На странице данного вида (page.kind) видны и фильтруются
+// только элементы с соответствующими системами; на этих страницах у элемента
+// показываются порты соответствующей системы.
+export const SYSTEMS_CATALOG = [
+  { id: 'electrical',  label: 'Электрика',   icon: '⚡', color: '#d32f2f', pageKinds: ['schematic'] },
+  { id: 'low-voltage', label: 'Слаботочка',  icon: '📶', color: '#1e88e5', pageKinds: ['low-voltage'] },
+  { id: 'data',        label: 'Данные',      icon: '🖧',  color: '#059669', pageKinds: ['data','low-voltage'] },
+  { id: 'pipes',       label: 'Трубы',       icon: '🚰', color: '#0ea5e9', pageKinds: ['mechanical'] },
+  { id: 'hvac',        label: 'Воздуховоды', icon: '🌬️', color: '#64748b', pageKinds: ['mechanical'] },
+  { id: 'gas',         label: 'Газ',         icon: '🔥', color: '#f59e0b', pageKinds: ['mechanical'] },
+  { id: 'fire',        label: 'Пожарная',    icon: '🚨', color: '#dc2626', pageKinds: ['low-voltage'] },
+  { id: 'security',    label: 'Охрана/СКУД', icon: '🛡️', color: '#7c3aed', pageKinds: ['low-voltage'] },
+  { id: 'video',       label: 'Видеонаблюдение', icon: '📹', color: '#0284c7', pageKinds: ['low-voltage'] },
+];
+export function getSystemMeta(id) {
+  return SYSTEMS_CATALOG.find(s => s.id === id) || null;
+}
+// Компатибельные системы для страницы данного вида (какие системы
+// «имеют смысл» на данном kind). Если null — без ограничений.
+export function systemsForPageKind(kind) {
+  if (kind === 'layout' || kind === 'mechanical-layout' || kind === '3d') return null;
+  const out = SYSTEMS_CATALOG.filter(s => Array.isArray(s.pageKinds) && s.pageKinds.includes(kind)).map(s => s.id);
+  return out.length ? out : null;
+}
 
 // Глобальные настройки расчёта. При старте подгружаются из localStorage
 // и применяются ко всей схеме; можно менять через шестерёнку в палитре.

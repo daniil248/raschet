@@ -1,5 +1,5 @@
 import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE } from './constants.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE, SYSTEMS_CATALOG, getSystemMeta } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, getNodeGeometryMm } from './geometry.js';
@@ -472,6 +472,7 @@ export function renderInspectorNode(n) {
   h.push(`<div class="tp-tabs" role="tablist" style="margin-bottom:8px">
     <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
+    <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы</button>
   </div>`);
   h.push(`<div class="tp-panel" data-panel="electrical">`);
   h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
@@ -773,7 +774,16 @@ export function renderInspectorNode(n) {
   }
   h.push(`</div>`); // /panel geometry
 
+  // v0.58.15: вкладка «Системы» — какие инженерные системы поддерживает
+  // элемент (electrical / data / pipes / hvac ...). На странице нужного вида
+  // элемент видим и фильтруется только если его системы пересекаются с
+  // системами этой страницы.
+  h.push(`<div class="tp-panel" data-panel="systems" hidden>`);
+  h.push(renderSystemsBlock(n));
+  h.push(`</div>`);
+
   inspectorBody.innerHTML = h.join('');
+  wireSystemsBlock(n, inspectorBody);
 
   // Tab switching
   inspectorBody.querySelectorAll('.tp-tab').forEach(btn => {
@@ -852,6 +862,55 @@ export function renderInspectorNode(n) {
   if (saveBtn) saveBtn.addEventListener('click', () => saveNodeAsPreset(n));
 }
 
+// v0.58.15: блок «Системы» — чекбоксы для всех систем каталога.
+// Сохраняет n.systems = ['electrical','data',...]. Если пусто — дефолт
+// рассчитывается в render.getNodeSystems (обычно ['electrical']).
+export function renderSystemsBlock(n) {
+  const cur = Array.isArray(n.systems) && n.systems.length ? n.systems : ['electrical'];
+  const items = SYSTEMS_CATALOG.map(s => {
+    const on = cur.includes(s.id);
+    return `<label class="sys-chip" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid ${on ? s.color : '#e0e3ea'};border-radius:4px;margin-bottom:4px;cursor:pointer;background:${on ? s.color + '15' : '#fff'}">
+      <input type="checkbox" data-sys="${escAttr(s.id)}"${on ? ' checked' : ''} style="margin:0">
+      <span style="font-size:14px">${s.icon}</span>
+      <span style="font-weight:600;color:${s.color}">${escHtml(s.label)}</span>
+    </label>`;
+  }).join('');
+  return `<div class="inspector-section">
+    <h4>Системы элемента</h4>
+    <div class="muted" style="font-size:11px;margin-bottom:8px">
+      Элемент виден и фильтруется на странице нужного вида (data / слаботочка / механика),
+      только если его система включена здесь. На главной электрической схеме должна быть
+      включена хотя бы «Электрика».
+    </div>
+    ${items}
+  </div>`;
+}
+export function wireSystemsBlock(n, root) {
+  const host = (root || inspectorBody);
+  if (!host) return;
+  const checks = host.querySelectorAll('[data-sys]');
+  checks.forEach(ch => {
+    ch.addEventListener('change', () => {
+      const id = ch.dataset.sys;
+      if (!id) return;
+      snapshot('sys:' + n.id + ':' + id);
+      if (!Array.isArray(n.systems)) n.systems = ['electrical'];
+      if (ch.checked) {
+        if (!n.systems.includes(id)) n.systems.push(id);
+      } else {
+        n.systems = n.systems.filter(s => s !== id);
+      }
+      // Если пусто — всё равно оставляем electrical по умолчанию, чтобы
+      // элемент не «пропал» со схемы неожиданно.
+      if (!n.systems.length) n.systems = ['electrical'];
+      notifyChange();
+      // Перерисовываем инспектор для обновления визуальных рамок системы
+      if (_render) _render();
+      renderInspector();
+    });
+  });
+}
+
 // Phase 2.3: блок ручного override габаритов (мм) для layout-страницы.
 // Показывает текущий резолв (из библиотеки / override / нет) + поля ввода.
 // Если пусто — берётся library.geometry. Удобно когда элемент
@@ -928,10 +987,12 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
   const tabsHtml = `<div class="tp-tabs" role="tablist" style="margin-bottom:12px">
     <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
+    <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы</button>
   </div>`;
   bodyEl.innerHTML = tabsHtml
     + `<div class="tp-panel" data-panel="electrical">${originalHtml}</div>`
-    + `<div class="tp-panel" data-panel="geometry" hidden>${renderGeometryMmBlock(n)}</div>`;
+    + `<div class="tp-panel" data-panel="geometry" hidden>${renderGeometryMmBlock(n)}</div>`
+    + `<div class="tp-panel" data-panel="systems" hidden>${renderSystemsBlock(n)}</div>`;
   bodyEl.querySelectorAll(':scope > .tp-tabs .tp-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
@@ -942,6 +1003,7 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
     });
   });
   wireGeometryMmBlock(n, bodyEl);
+  wireSystemsBlock(n, bodyEl);
 }
 
 // Полный блок «Все данные объекта» внизу инспектора

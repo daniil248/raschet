@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { svg, layerZones, layerConns, layerNodes, layerOver, statsEl, modesListEl, isOnCurrentPage, sanitizeView, getCurrentPage, getPageKind, PAGE_KINDS_META } from './state.js';
-import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
+import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES, SYSTEMS_CATALOG, systemsForPageKind, getSystemMeta } from './constants.js';
 
 // IEC installation method → legacy CHANNEL_TYPES key (для иконок/лейблов)
 const INSTALL_TO_CHANNEL_KEY = {
@@ -306,25 +306,23 @@ export function render() {
 // на текущей странице. Показываются в aside #pal-unplaced-wrap.
 // Drag/drop слушает на холсте (interaction.js) — по сбросу добавляет
 // pageId текущей страницы в n.pageIds и ставит n.x/y в точку сброса.
-// Системы, к которым относится нода. Если n.systems не задано — 'electrical'
-// по умолчанию для большинства типов. Zone и channel считаются универсальными.
+// Системы, к которым относится нода. n.systems = ['electrical','data',...].
+// По умолчанию — ['electrical']. Zone и channel универсальны (все системы).
 export function getNodeSystems(n) {
   if (!n) return [];
-  if (Array.isArray(n.systems) && n.systems.length) return n.systems;
-  if (n.type === 'zone' || n.type === 'channel') return ['electrical', 'low-voltage', 'data'];
+  if (Array.isArray(n.systems) && n.systems.length) return n.systems.slice();
+  if (n.type === 'zone' || n.type === 'channel') return SYSTEMS_CATALOG.map(s => s.id);
   return ['electrical'];
 }
-// Системы, требуемые страницей данного вида. null = не фильтруем.
-export function pageKindRequiredSystem(kind) {
-  if (kind === 'schematic')    return 'electrical';
-  if (kind === 'low-voltage')  return 'low-voltage';
-  if (kind === 'data')         return 'data';
-  return null; // layout / mechanical / 3d — показывать всё
-}
+// Нода совместима со страницей, если есть пересечение её систем с системами,
+// «имеющими смысл» на данном page.kind. Если у kind нет ограничений
+// (layout/mechanical/3d) — совместимы все.
 function _nodeCompatibleWithPageKind(n, kind) {
-  const req = pageKindRequiredSystem(kind);
+  const req = systemsForPageKind(kind);
   if (!req) return true;
-  return getNodeSystems(n).includes(req);
+  const sys = getNodeSystems(n);
+  for (const s of sys) if (req.includes(s)) return true;
+  return false;
 }
 
 export function renderUnplacedPalette() {
