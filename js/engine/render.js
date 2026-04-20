@@ -1782,6 +1782,9 @@ export function renderConns() {
     for (const s of fs) if (ts.includes(s) && _pageSystems.includes(s)) return true;
     return false;
   }
+  // v0.58.30: фильтр по этажу — если активен, скрываем связи, у которых
+  // хотя бы один конец на другом этаже.
+  const _floorFilter = (state.floorFilter == null) ? null : Number(state.floorFilter);
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     const toN   = state.nodes.get(c.to.nodeId);
@@ -1789,6 +1792,11 @@ export function renderConns() {
     // Связь видна только если оба её конца видны на текущей странице
     if (!isOnCurrentPage(fromN) || !isOnCurrentPage(toN)) continue;
     if (!_connSystemCompatible(fromN, toN)) continue;
+    if (_floorFilter !== null && _curPageKind === 'layout') {
+      const ff = Number(fromN.floor) || 0;
+      const tf = Number(toN.floor) || 0;
+      if (ff !== _floorFilter || tf !== _floorFilter) continue;
+    }
     const a = portPos(fromN, 'out', c.from.port);
     const b = portPos(toN,   'in',  c.to.port);
     const rawWaypoints = Array.isArray(c.waypoints) ? c.waypoints : [];

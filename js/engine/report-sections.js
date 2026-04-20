@@ -1125,6 +1125,62 @@ function sectionSystems() {
   return { text: text.join('\n'), blocks };
 }
 
+// v0.58.30: отчёт «По этажам» — группировка узлов проекта по n.floor.
+function sectionFloors() {
+  const byFloor = new Map();
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone' || n.type === 'channel') continue;
+    const f = Number(n.floor) || 0;
+    if (!byFloor.has(f)) byFloor.set(f, []);
+    byFloor.get(f).push(n);
+  }
+  const text = [
+    'ОБОРУДОВАНИЕ ПО ЭТАЖАМ / УРОВНЯМ',
+    '='.repeat(78),
+    ...metaTextLines(),
+    '',
+  ];
+  const blocks = [
+    B.h1('Оборудование по этажам / уровням'),
+    ...metaBlocks(),
+  ];
+  if (!byFloor.size) {
+    text.push('Нет узлов проекта.');
+    blocks.push(B.paragraph('Нет узлов проекта.'));
+    return { text: text.join('\n'), blocks };
+  }
+  const floors = [...byFloor.keys()].sort((a, b) => b - a);
+  for (const f of floors) {
+    const label = f > 0 ? `+${f}` : (f === 0 ? '0 (базовый)' : `${f}`);
+    const items = byFloor.get(f);
+    const title = `Этаж ${label} — ${items.length} эл.`;
+    blocks.push(B.h2(title));
+    text.push(title);
+    text.push('-'.repeat(78));
+    const cols = [
+      { label: 'Обозн.',      width: 20 },
+      { label: 'Тип',          width: 14 },
+      { label: 'Наименование', width: 50 },
+      { label: 'Ш×Г, мм',      width: 18, align: 'right' },
+    ];
+    const rows = items.map(n => {
+      const g = n.geometryMm || {};
+      const w = Number(g.widthMm) || '';
+      const d = Number(g.depthMm) || Number(g.heightMm) || '';
+      return [
+        effectiveTag(n) || n.tag || '',
+        n.type || '',
+        (n.name || n.type) + placementMarker(n),
+        (w && d) ? `${Math.round(w)}×${Math.round(d)}` : '—',
+      ];
+    });
+    text.push(...textTable(cols, rows));
+    text.push('');
+    blocks.push(B.table(blockCols(cols), rows));
+  }
+  return { text: text.join('\n'), blocks };
+}
+
 function sectionBom() {
   // Опции резолвинга цен — по умолчанию «последняя актуальная цена».
   // В будущем передадим через UI опций отчёта (Фаза 1.5.7+).
@@ -1511,6 +1567,14 @@ export function getReportSections() {
       defaultTemplateId: 'builtin-bom-landscape',
       tags: ['ведомость', 'таблица', 'кабель'],
       ...sectionChannels(),
+    },
+    {
+      id: 'floors',
+      title: 'Оборудование по этажам / уровням',
+      description: 'Группировка всех узлов проекта по n.floor (этаж / уровень): от верхних к нижним. Обозначение, тип, наименование, габариты в плане.',
+      defaultTemplateId: 'builtin-bom-landscape',
+      tags: ['ведомость', 'этаж', 'уровень'],
+      ...sectionFloors(),
     },
     {
       id: 'systems',
