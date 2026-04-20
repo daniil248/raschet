@@ -302,6 +302,88 @@ function downstreamPQ(nodeId) {
   return { P, Q };
 }
 
+// Агрегация downstream для многосекционного контейнера без дублирования.
+// Обходит все секции с ЕДИНЫМ visited-set. Потребитель, попавший под
+// несколько секций (общая шина через bus-tie → одна и та же ветка), учётом
+// идёт один раз. Возвращает:
+//   P, Q     — мгновенные (с kUse и effectiveLoadFactor режима)
+//   maxKw    — максимальная одновременная (без kUse/режима, всё на 100%)
+//   maxLoadA — ток при maxKw на номинальном напряжении контейнера
+function _sectionedContainerAgg(container) {
+  const secIds = Array.isArray(container.sectionIds) ? container.sectionIds : [];
+  const seenNodes = new Set();
+  const seenConsumers = new Set();
+  const seenUps = new Set();
+  let P = 0, Q = 0, maxKw = 0;
+  let upsEffSum = 0, upsChargeSum = 0, upsCount = 0;
+  let upsMaxKw = 0;
+  const queue = [];
+  for (const sid of secIds) { if (!seenNodes.has(sid)) { seenNodes.add(sid); queue.push({ id: sid, thruUps: false }); } }
+  while (queue.length) {
+    const { id: curId, thruUps } = queue.shift();
+    const cur = state.nodes.get(curId);
+    if (!cur) continue;
+    if (cur.type === 'consumer') {
+      if (seenConsumers.has(curId)) continue;
+      seenConsumers.add(curId);
+      const per = Number(cur.demandKw) || 0;
+      const cnt = Math.max(1, Number(cur.count) || 1);
+      const k = (Number(cur.kUse) || 1) * effectiveLoadFactor(cur);
+      const p = per * cnt * k;
+      const cos = Math.max(0.1, Math.min(1, Number(cur.cosPhi) || 0.92));
+      const tan = Math.sqrt(1 - cos * cos) / cos;
+      if (thruUps) { upsMaxKw += per * cnt; /* P/Q учтены на УПС-уровне */ }
+      else { P += p; Q += p * tan; maxKw += per * cnt; }
+      continue;
+    }
+    if (cur.type === 'ups') {
+      if (!seenUps.has(curId)) {
+        seenUps.add(curId);
+        upsEffSum += Math.max(0.01, (Number(cur.efficiency) || 100) / 100);
+        upsChargeSum += upsChargeKw(cur);
+        upsCount++;
+      }
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== curId) continue;
+        if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+        if (!seenNodes.has(c.to.nodeId)) {
+          seenNodes.add(c.to.nodeId);
+          queue.push({ id: c.to.nodeId, thruUps: true });
+        }
+      }
+      // P для ИБП: добавляем мгновенную P downstream (cosφ=1 нормально)
+      const sub = downstreamPQ(curId);
+      if (cur._onStaticBypass) { P += sub.P; Q += sub.Q; }
+      else { P += sub.P; /* Q=0 через инвертор */ }
+      continue;
+    }
+    if (cur.type === 'generator' && cur.auxInput) {
+      if (!seenConsumers.has(curId)) {
+        seenConsumers.add(curId);
+        const auxKw = Number(cur.auxDemandKw) || 0;
+        if (auxKw > 0) {
+          const cos = Math.max(0.1, Math.min(1, Number(cur.auxCosPhi) || 0.85));
+          const tan = Math.sqrt(1 - cos * cos) / cos;
+          P += auxKw; Q += auxKw * tan; maxKw += auxKw;
+        }
+      }
+      continue;
+    }
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId !== curId) continue;
+      if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+      if (!seenNodes.has(c.to.nodeId)) {
+        seenNodes.add(c.to.nodeId);
+        queue.push({ id: c.to.nodeId, thruUps });
+      }
+    }
+  }
+  // ИБП: добавляем собственные нужды (charge) к общей нагрузке
+  const avgEff = upsCount > 0 ? (upsEffSum / upsCount) : 1;
+  maxKw += upsMaxKw / avgEff + upsChargeSum;
+  return { P, Q, maxKw };
+}
+
 // Финальный cos φ в произвольной точке схемы (обёртка над downstreamPQ)
 function panelCosPhi(panelId) {
   const { P, Q } = downstreamPQ(panelId);
@@ -1737,56 +1819,11 @@ function recalc() {
 
   for (const n of state.nodes.values()) {
     if (n.type === 'panel' && n.switchMode === 'sectioned') {
-      // Многосекционный контейнер — агрегируем параметры секций БЕЗ
-      // дублирования (секции питают disjoint поддеревья потребителей).
-      // Суммируем P/Q; cosφ получаем из суммарного PQ; токи —
-      // через стандартную формулу при напряжении контейнера.
+      // Многосекционный контейнер — будет обсчитан во втором проходе
+      // через _sectionedContainerAgg (дедуп по всему downstream-дереву,
+      // учёт одновременной max-нагрузки, а не суммы выходов секций).
       const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
-      let totalLoad = 0, totalMax = 0, sumP = 0, sumQ = 0, sumMaxA = 0;
-      for (const sid of secIds) {
-        const s = state.nodes.get(sid);
-        if (!s) continue;
-        totalLoad += s._loadKw || 0;
-        totalMax += s._maxLoadKw || 0;
-        sumP += s._powerP || 0;
-        sumQ += s._powerQ || 0;
-        sumMaxA += s._maxLoadA || 0;  // секции на общей шине — токи складываются
-      }
-      n._loadKw = totalLoad;
-      n._maxLoadKw = totalMax;
       n._powered = secIds.some(sid => state.nodes.get(sid)?._powered);
-      // P/Q/S и агрегированный cosφ
-      n._powerP = sumP;
-      n._powerQ = sumQ;
-      n._powerS = Math.sqrt(sumP * sumP + sumQ * sumQ);
-      n._cosPhi = (sumP > 0) ? (sumP / n._powerS) : null;
-      n._calcKw = totalLoad;
-      // Ток рассчитываем по напряжению контейнера и агрегированному cosφ
-      const cosAgg = n._cosPhi || GLOBAL.defaultCosPhi;
-      n._loadA = totalLoad > 0
-        ? computeCurrentA(totalLoad, nodeVoltage(n), cosAgg, isThreePhase(n))
-        : 0;
-      n._maxLoadA = sumMaxA > 0
-        ? sumMaxA
-        : (totalMax > 0 ? computeCurrentA(totalMax, nodeVoltage(n), cosAgg, isThreePhase(n)) : 0);
-      // Проверка номинала контейнера (если задан): маржа против max-тока
-      const capA = Number(n.capacityA) || 0;
-      if (capA > 0) {
-        n._capacityKwFromA = capA * nodeVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cosAgg / 1000;
-        const maxA = n._maxLoadA || 0;
-        if (maxA > 0) {
-          const margin = ((capA - maxA) / maxA) * 100;
-          n._marginPct = margin;
-          const hi = Number(n.marginMaxPct);
-          const maxP = isFinite(hi) ? hi : 30;
-          if (margin < 0) n._marginWarn = 'undersize';
-          else if (margin > maxP) n._marginWarn = 'oversize';
-          else n._marginWarn = null;
-        } else { n._marginPct = null; n._marginWarn = null; }
-      } else {
-        n._capacityKwFromA = 0;
-        n._marginPct = null; n._marginWarn = null;
-      }
     } else if (n.type === 'panel') {
       // cos φ из downstream PQ (для взвешенного среднего),
       // но P/Q/S привязаны к фактической _loadKw (walkUp уже учёл share)
@@ -2111,29 +2148,26 @@ function recalc() {
   for (const n of state.nodes.values()) {
     if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;
     const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
-    let totalLoad = 0, totalMax = 0, sumP = 0, sumQ = 0, sumMaxA = 0, sumLoadA = 0;
-    for (const sid of secIds) {
-      const s = state.nodes.get(sid);
-      if (!s) continue;
-      totalLoad += s._loadKw || 0;
-      totalMax += s._maxLoadKw || 0;
-      sumP += s._powerP || 0;
-      sumQ += s._powerQ || 0;
-      sumMaxA += s._maxLoadA || 0;
-      sumLoadA += s._loadA || 0;
-    }
-    n._loadKw = totalLoad;
-    n._maxLoadKw = totalMax;
+    // Агрегация с дедупликацией: обходим весь downstream-дерево всех секций
+    // с общим visited-set, чтобы один потребитель, достижимый через bus-tie
+    // или несколько путей, считался один раз. Максимальная нагрузка — по
+    // фактическому одновременному потреблению, а не сумма выходов секций.
+    const agg = _sectionedContainerAgg(n);
+    n._loadKw = agg.P;
+    n._maxLoadKw = agg.maxKw;
     n._powered = secIds.some(sid => state.nodes.get(sid)?._powered);
-    n._powerP = sumP;
-    n._powerQ = sumQ;
-    n._powerS = Math.sqrt(sumP * sumP + sumQ * sumQ);
-    n._cosPhi = (sumP > 0) ? (sumP / n._powerS) : null;
-    n._calcKw = totalLoad;
-    n._loadA = sumLoadA > 0 ? sumLoadA : (totalLoad > 0
-      ? computeCurrentA(totalLoad, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n))
-      : 0);
-    n._maxLoadA = sumMaxA;
+    n._powerP = agg.P;
+    n._powerQ = agg.Q;
+    n._powerS = Math.sqrt(agg.P * agg.P + agg.Q * agg.Q);
+    n._cosPhi = (agg.P > 0) ? (agg.P / n._powerS) : null;
+    n._calcKw = agg.P;
+    const cosAggPre = n._cosPhi || GLOBAL.defaultCosPhi;
+    n._loadA = agg.P > 0
+      ? computeCurrentA(agg.P, nodeVoltage(n), cosAggPre, isThreePhase(n))
+      : 0;
+    n._maxLoadA = agg.maxKw > 0
+      ? computeCurrentA(agg.maxKw, nodeVoltage(n), cosAggPre, isThreePhase(n))
+      : 0;
     const capA = Number(n.capacityA) || 0;
     const cosAgg = n._cosPhi || GLOBAL.defaultCosPhi;
     if (capA > 0) {
