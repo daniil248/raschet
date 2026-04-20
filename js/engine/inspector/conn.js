@@ -468,6 +468,8 @@ export function renderInspectorConn(c) {
         <option value="gM"${_fuseType === 'gM' ? ' selected' : ''}>gM (комбинированная)</option>
       </select>`);
     }
+    // v0.57.59: кнопка мастера подбора защиты
+    h.push(`<button type="button" data-pw-open style="font-size:11px;padding:3px 8px;border:1px solid #1976d2;background:#f0f4ff;color:#1976d2;border-radius:3px;cursor:pointer" title="Мастер подбора типа защиты">🧙 Мастер подбора</button>`);
     h.push('</div>');
     // Toggle авто/ручной
     h.push('<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">');
@@ -904,6 +906,41 @@ export function renderInspectorConn(c) {
         c.manualCableParallel = c._cableParallel || 1;
       }
       render(); renderInspector(); notifyChange();
+    });
+  }
+
+  // v0.57.59: кнопка «🧙 Мастер подбора защиты»
+  const pwBtn = inspectorBody.querySelector('[data-pw-open]');
+  if (pwBtn) {
+    pwBtn.addEventListener('click', async () => {
+      try {
+        const mod = await import('../../../shared/protection-wizard.js');
+        mod.openProtectionWizard(
+          {
+            Ib: Number(c._maxA) || 0,
+            Iz: Number(c._cableIz) || 0,
+            currentKind: c.protectionKind || 'breaker',
+            currentCurve: c.breakerCurve || c._breakerCurveEff || 'MCB_C',
+            currentFuseType: c.fuseType || 'gG',
+            loadHint: toN?.type || null,
+          },
+          (result) => {
+            snapshot('pw-apply:' + c.id);
+            c.protectionKind = result.protectionKind;
+            if (result.protectionKind === 'fuse') {
+              c.fuseType = result.fuseType || 'gG';
+              delete c.breakerCurve;
+              delete c.manualBreakerIn;
+            } else {
+              c.breakerCurve = result.breakerCurve || 'MCB_C';
+              delete c.fuseType;
+              delete c.manualFuseIn;
+            }
+            render(); renderInspector(); notifyChange();
+            flash('Защита подобрана мастером');
+          },
+        );
+      } catch (e) { console.warn('[protection-wizard] load failed', e); }
     });
   }
 
