@@ -63,28 +63,73 @@
     import { inlineMd } from './shared/md-render.js';
     let ALL = [];
 
-    function parseEntries(md) {
-      const entries = [];
-      // записи вида: - **<заголовок с v0.57.14>** — тело…
-      // до следующей "- **" или заголовка "##" / конца
-      const re = /^-\s+\*\*([^*]+)\*\*\s*—\s*([\s\S]+?)(?=^-\s+\*\*|^##|\Z)/gm;
-      let m;
-      while ((m = re.exec(md))) {
-        const header = m[1].trim();
-        const body = m[2].trim();
-        const verMatch = header.match(/v(\d+\.\d+\.\d+)/);
-        if (!verMatch) continue;
-        entries.push({ version: verMatch[1], header, body });
+    // v0.57.62: источник истории — git-коммиты через GitHub API. Раньше
+    // парсили PLAN_ROADMAP.md, но оттуда changelog был убран по запросу
+    // пользователя, и страница стала пустой. Теперь читаем напрямую
+    // коммиты формата "vX.Y.Z — <title>\n\n<body>" из репо daniil248/raschet.
+    const REPO = 'daniil248/raschet';
+
+    function parseCommit(commit) {
+      const msg = commit.commit?.message || '';
+      const firstLine = msg.split('\n', 1)[0];
+      // Ищем в первой строке "vX.Y.Z"
+      const m = firstLine.match(/v(\d+\.\d+\.\d+)\s*[—\-:]?\s*(.*)$/);
+      if (!m) return null;
+      const version = m[1];
+      const titleTail = (m[2] || '').trim();
+      // Тело коммита: всё после первой пустой строки
+      const nl = msg.indexOf('\n\n');
+      let body = nl > 0 ? msg.slice(nl + 2).trim() : '';
+      // Обрезаем Co-Authored-By / служебные строки
+      body = body
+        .split('\n')
+        .filter(l => !/^Co-Authored-By:/i.test(l) && !/^Signed-off-by:/i.test(l))
+        .join('\n')
+        .trim();
+      return {
+        version,
+        header: `v${version} — ${titleTail}`,
+        body,
+        sha: commit.sha,
+        url: commit.html_url,
+        author: commit.commit?.author?.name || '',
+        date: commit.commit?.author?.date || '',
+      };
+    }
+
+    async function fetchCommits() {
+      // До 300 последних коммитов (3 страницы × 100).
+      const all = [];
+      for (let p = 1; p <= 3; p++) {
+        const r = await fetch(`https://api.github.com/repos/${REPO}/commits?per_page=100&page=${p}`, {
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+        if (!r.ok) break;
+        const batch = await r.json();
+        if (!Array.isArray(batch) || !batch.length) break;
+        all.push(...batch);
+        if (batch.length < 100) break;
       }
-      entries.sort((a, b) => {
+      return all;
+    }
+
+    function buildEntries(commits) {
+      const out = [];
+      const seen = new Set();
+      for (const c of commits) {
+        const e = parseCommit(c);
+        if (!e) continue;
+        if (seen.has(e.version)) continue;
+        seen.add(e.version);
+        out.push(e);
+      }
+      out.sort((a, b) => {
         const pa = a.version.split('.').map(Number);
         const pb = b.version.split('.').map(Number);
         for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pb[i] - pa[i];
         return 0;
       });
-      // дедуп
-      const seen = new Set();
-      return entries.filter(e => { if (seen.has(e.version)) return false; seen.add(e.version); return true; });
+      return out;
     }
 
     function render(list) {
@@ -93,13 +138,17 @@
       if (!list.length) { mount.innerHTML = '<div style="color:#888;padding:20px;text-align:center">Ничего не найдено</div>'; return; }
       const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
       const html = list.map(e => {
-        const title = e.header.replace(/v\d+\.\d+\.\d+/, '').replace(/[()]/g, '').trim();
+        const title = e.header.replace(/v\d+\.\d+\.\d+/, '').replace(/[—\-:]\s*/, '').replace(/[()]/g, '').trim();
         // тело — поддерживаем простые списки
         const body = renderBody(e.body);
+        const date = e.date ? new Date(e.date).toLocaleDateString('ru-RU') : '';
+        const shaLink = e.sha ? `<a href="${esc(e.url)}" target="_blank" rel="noopener" style="font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#888">${esc(e.sha.slice(0,7))}</a>` : '';
         return `<div class="entry">
           <div class="entry-head">
             <span class="ver-chip">v${esc(e.version)}</span>
             <span class="entry-title">${esc(title)}</span>
+            ${date ? `<span class="count">${esc(date)}</span>` : ''}
+            ${shaLink}
           </div>
           <div class="entry-body">${body}</div>
         </div>`;
@@ -132,10 +181,8 @@
 
     async function load() {
       try {
-        const resp = await fetch('./PLAN_ROADMAP.md', { cache: 'no-store' });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const md = await resp.text();
-        ALL = parseEntries(md);
+        const commits = await fetchCommits();
+        ALL = buildEntries(commits);
         render(ALL);
         const srch = document.getElementById('cl-search');
         srch.addEventListener('input', () => {
@@ -148,7 +195,7 @@
           ));
         });
       } catch (e) {
-        document.getElementById('mount').innerHTML = '<div style="color:#c62828">Ошибка загрузки: ' + e.message + '</div>';
+        document.getElementById('mount').innerHTML = '<div style="color:#c62828">Ошибка загрузки: ' + e.message + '. Проверьте соединение с GitHub API.</div>';
       }
     }
     load();
