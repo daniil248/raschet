@@ -483,7 +483,7 @@ export function renderInspectorNode(n) {
   h.push(`<div class="tp-tabs" role="tablist" style="margin-bottom:8px">
     <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
-    <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы</button>
+    <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы${(function(){const c=(Array.isArray(n.systems)?n.systems.length:1);return c>1?` <span class="muted" style="font-size:10px">(${c})</span>`:'';})()}</button>
     ${_extraTabs.tabsHtml}
   </div>`);
   h.push(`<div class="tp-panel" data-panel="electrical">`);
@@ -1033,9 +1033,21 @@ export function wireSystemsBlock(n, root) {
       // элемент не «пропал» со схемы неожиданно.
       if (!n.systems.length) n.systems = ['electrical'];
       notifyChange();
-      // Перерисовываем инспектор для обновления визуальных рамок системы
+      // v0.58.39: после перерисовки — переключаемся на вкладку этой системы,
+      // чтобы пользователь сразу увидел где заполнять параметры.
+      const targetTab = (ch.checked && id !== 'electrical') ? 'sys:' + id : null;
       if (_render) _render();
       renderInspector();
+      if (targetTab) {
+        try {
+          // Ищем и в sidebar-инспекторе, и в модалке (последняя активная)
+          const roots = [document.getElementById('inspector-body'), document.querySelector('.modal.active .modal-body')].filter(Boolean);
+          for (const r of roots) {
+            const btn = r.querySelector(`.tp-tab[data-tab="${targetTab}"]`);
+            if (btn) { btn.click(); break; }
+          }
+        } catch {}
+      }
     });
   });
   // v0.58.25: управление параметрами пользовательской системы — +/удалить
@@ -1317,7 +1329,7 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
   const tabsHtml = `<div class="tp-tabs" role="tablist" style="margin-bottom:12px">
     <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
-    <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы</button>
+    <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы${(function(){const c=(Array.isArray(n.systems)?n.systems.length:1);return c>1?` <span class="muted" style="font-size:10px">(${c})</span>`:'';})()}</button>
     ${extra.tabsHtml}
   </div>`;
   bodyEl.innerHTML = tabsHtml
