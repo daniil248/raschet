@@ -106,10 +106,14 @@ export function getCurrentRole() {
   try { return localStorage.getItem(ROLE_KEY) || 'user'; }
   catch { return 'user'; }
 }
-/** true если текущая роль имеет право редактировать builtin-элементы. */
+/**
+ * true если текущая роль имеет право редактировать builtin-элементы.
+ * v0.58.73: role-gate временно снят — любая роль может править builtin
+ * через override-слой. Реальная проверка вернётся в Фазу 5 (auth).
+ * Storage и API остаются готовыми (override-слой, getCurrentRole).
+ */
 export function canEditBuiltin() {
-  const r = getCurrentRole();
-  return r === 'catalog-admin' || r === 'admin';
+  return true;
 }
 
 // ——— Overrides (правки builtin) ———
@@ -145,7 +149,7 @@ export function listBuiltinOverrides() { return _readOverrides(); }
  * Только для admin-роли. Возвращает true если что-то было удалено.
  */
 export function resetBuiltinOverride(id) {
-  if (!canEditBuiltin()) throw new Error('[element-library] forbidden: requires catalog-admin role');
+  // role-gate снят до Фазы 5, см. canEditBuiltin()
   const map = _readOverrides();
   if (!(id in map)) return false;
   delete map[id];

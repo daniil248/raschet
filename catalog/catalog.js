@@ -178,10 +178,12 @@ function renderElementsTab() {
   const kindOpts = Object.entries(ELEMENT_KINDS).map(([k, d]) =>
     `<option value="${k}"${elFilters.kind === k ? ' selected' : ''}>${esc(d.label)}</option>`).join('');
 
-  const isAdmin = canEditBuiltin();
+  // v0.58.73: role-gate снят — правка builtin доступна всем через override
+  // (ограничение вернётся в Фазе 5 auth вместе с ролью catalog-admin).
   const overrides = listBuiltinOverrides();
   const overrideCount = Object.keys(overrides).length;
-  const roleLabel = isAdmin
+  const roleIsAdmin = (getCurrentRole() === 'catalog-admin' || getCurrentRole() === 'admin');
+  const roleBadge = roleIsAdmin
     ? `<span class="badge" style="background:#b54708;color:#fff">admin: ${esc(getCurrentRole())}</span>`
     : `<span class="badge">роль: ${esc(getCurrentRole())}</span>`;
 
@@ -197,13 +199,12 @@ function renderElementsTab() {
       <div class="spacer"></div>
       <button id="el-add" class="primary">+ Добавить элемент</button>
       <button id="el-export">Экспорт JSON</button>
-      <button id="el-role-toggle" class="${isAdmin ? '' : 'primary'}" style="${isAdmin ? 'background:#b54708;color:#fff;border-color:#b54708' : ''}" title="Переключить режим редактирования встроенных элементов (до Фазы 5 auth — заглушка через localStorage.raschet.currentRole)">${isAdmin ? '🔓 Выйти из режима admin' : '🔒 Режим админа каталога'}</button>
+      <button id="el-role-toggle" style="${roleIsAdmin ? 'background:#b54708;color:#fff;border-color:#b54708' : ''}" title="Переключить роль catalog-admin (индикатор до Phase 5 auth; правка builtin сейчас доступна всем)">${roleIsAdmin ? '🔓 Выйти из admin' : '🔒 Режим админа'}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">
       Всего: <b>${all.length}</b>, отфильтровано: <b>${filtered.length}</b>
-      · ${roleLabel}
-      ${overrideCount ? `· <b>${overrideCount}</b> builtin-правок <a href="#" id="el-show-overrides" style="color:#b54708">(показать)</a>` : ''}
-      ${isAdmin ? '<br><span style="color:#b54708">⚠ Режим catalog-admin: кнопка ✎ у builtin-элементов сохраняет правки в override-слой (raschet.elementLibrary.overrides.v1), не меняя исходный seed. Кнопка ↺ откатывает override.</span>' : ''}
+      · ${roleBadge}
+      ${overrideCount ? `· <b>${overrideCount}</b> правок встроенных <a href="#" id="el-show-overrides" style="color:#b54708">(показать)</a>` : ''}
     </div>
     <div style="max-height:60vh;overflow:auto">
       <table class="data-table">
@@ -260,11 +261,11 @@ function renderElementsTab() {
           <button data-act="view-prices">Цены</button>
           ${!el.builtin
             ? '<button data-act="edit">✎</button>'
-            : (isAdmin ? `<button data-act="edit" title="Править встроенный (сохранится в override-слой)">✎</button>${overrides[el.id] ? '<button data-act="reset" title="Откатить override к исходному seed">↺</button>' : ''}` : '')}
+            : `<button data-act="edit" title="Править встроенный (сохранится в override-слой)">✎</button>${overrides[el.id] ? '<button data-act="reset" title="Откатить override к исходному seed">↺</button>' : ''}`}
           <button data-act="clone">Клон</button>
           ${!el.builtin
             ? '<button data-act="del" class="danger">×</button>'
-            : (isAdmin ? '<button data-act="tombstone" class="danger" title="Скрыть builtin из выдачи (tombstone); откат через ↺">×</button>' : '')}
+            : '<button data-act="tombstone" class="danger" title="Скрыть builtin из выдачи (tombstone); откат через ↺">×</button>'}
         </td>
       </tr>`);
   }
@@ -281,8 +282,7 @@ function renderElementsTab() {
   document.getElementById('el-add').onclick = () => openAddElementModal();
   document.getElementById('el-export').onclick = () => downloadJSON(exportLibraryJSON(), 'element-library.json');
 
-  // Admin-role toggle (заглушка до Фазы 5 auth).
-  // Хранится в localStorage['raschet.currentRole']: 'user' | 'catalog-admin'.
+  // Role toggle (индикатор для Phase 5; не гейтит правку — role-gate снят в v0.58.73)
   const roleBtn = document.getElementById('el-role-toggle');
   if (roleBtn) roleBtn.onclick = () => {
     const cur = getCurrentRole();
@@ -290,9 +290,8 @@ function renderElementsTab() {
       try { localStorage.setItem('raschet.currentRole', 'user'); } catch {}
       flash('Режим admin выключен', 'success');
     } else {
-      if (!confirm('Включить режим catalog-admin?\n\nВ этом режиме правка встроенных элементов сохраняется в override-слой localStorage и НЕ меняет исходные seed-данные. До Фазы 5 auth это ручная заглушка.')) return;
       try { localStorage.setItem('raschet.currentRole', 'catalog-admin'); } catch {}
-      flash('Режим catalog-admin включён', 'success');
+      flash('Режим admin включён', 'success');
     }
     renderElementsTab();
   };
@@ -361,12 +360,187 @@ function renderElementsTab() {
   });
 }
 
+// ——— Kind-specific form sections ———
+// v0.58.73: редактирование структурных параметров rack/pdu прямо в каталоге.
+// Для rack — комплектация (U/W/D, двери, стенки, крыша, пол, includes).
+// Для pdu — фазы, номинал, высота, категория, список розеток.
+
+const DOOR_OPTS = [
+  ['none', 'без двери'],
+  ['glass', 'стекло одностворчатая'],
+  ['mesh', 'перфорированная одностворчатая'],
+  ['metal', 'металл глухая одностворчатая'],
+  ['double-glass', 'двустворчатая стеклянная'],
+  ['double-mesh', 'двустворчатая перфорированная'],
+  ['double-metal', 'двустворчатая металл'],
+];
+const SIDES_OPTS = [
+  ['pair-sku', 'пара, один SKU'],
+  ['pair-split', 'пара, раздельно'],
+  ['single', 'одна'],
+  ['none', 'без стенок'],
+];
+const TOP_OPTS    = [['solid','глухая'],['vent','вентилируемая'],['fan','с вентиляторами']];
+const BASE_OPTS   = [['feet','ножки'],['casters','ролики'],['plinth','цоколь']];
+const KIT_INCLUDE_KEYS = [
+  ['doorFront',      'Дверь передняя'],
+  ['doorRear',       'Дверь задняя'],
+  ['sides',          'Боковые стенки'],
+  ['top',            'Крыша'],
+  ['base',           'Пол / основание'],
+  ['doorWithLock',   'Замок в дверь (встроен)'],
+  ['comboTopBase',   'Крыша+пол одной позицией'],
+  ['cableEntryTop',  'Вводы в крышу со щётками'],
+  ['frame',          'Рама'],
+];
+const PDU_CAT_OPTS = [
+  ['basic','basic (без измерений)'],
+  ['metered','metered (ввод)'],
+  ['monitored','monitored (per-outlet)'],
+  ['switched','switched (удал. упр.)'],
+  ['hybrid','hybrid (monitored+switched)'],
+];
+
+function _selOpts(opts, cur) {
+  return opts.map(([v,l]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('');
+}
+
+function renderRackFields(el) {
+  const kp = el.kindProps || {};
+  const g  = el.geometry || {};
+  const includes = Array.isArray(kp.includes) ? kp.includes : [];
+  const incHtml = KIT_INCLUDE_KEYS.map(([key, label]) =>
+    `<label style="display:inline-block;margin:2px 10px 2px 0;font-size:12px">
+      <input type="checkbox" data-inc="${esc(key)}"${includes.includes(key) ? ' checked' : ''}> ${esc(label)}
+    </label>`).join('');
+  return `
+    <fieldset style="border:1px solid #ddd;padding:10px;margin-top:12px;border-radius:4px">
+      <legend style="font-size:12px;font-weight:600;padding:0 6px">Комплектация стойки</legend>
+      <div class="field-row">
+        <div class="field"><label>U</label><input id="f-rack-u" type="number" min="1" max="52" value="${Number(kp.u || 42)}"></div>
+        <div class="field"><label>Ширина, мм</label><input id="f-rack-w" type="number" min="400" max="1200" step="50" value="${Number(kp.width || g.widthMm || 600)}"></div>
+        <div class="field"><label>Глубина, мм</label><input id="f-rack-d" type="number" min="400" max="1400" step="50" value="${Number(kp.depth || g.depthMm || 1000)}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Дверь передняя</label><select id="f-rack-doorFront">${_selOpts(DOOR_OPTS, kp.doorFront || 'mesh')}</select></div>
+        <div class="field"><label>Дверь задняя</label><select id="f-rack-doorRear">${_selOpts(DOOR_OPTS, kp.doorRear || 'double-mesh')}</select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Боковые стенки</label><select id="f-rack-sides">${_selOpts(SIDES_OPTS, kp.sides || 'pair-sku')}</select></div>
+        <div class="field"><label>Крыша</label><select id="f-rack-top">${_selOpts(TOP_OPTS, kp.top || 'solid')}</select></div>
+        <div class="field"><label>Пол</label><select id="f-rack-base">${_selOpts(BASE_OPTS, kp.base || 'feet')}</select></div>
+      </div>
+      <div class="field"><label style="display:block;font-size:11px;color:#555;margin-bottom:4px">Замок в дверь встроен</label>
+        <label style="font-size:12px"><input type="checkbox" id="f-rack-doorWithLock"${kp.doorWithLock ? ' checked' : ''}> да</label>
+        <label style="font-size:12px;margin-left:12px"><input type="checkbox" id="f-rack-comboTopBase"${kp.comboTopBase ? ' checked' : ''}> Крыша+пол одной позицией</label>
+      </div>
+      <div class="field">
+        <label style="font-size:11px;color:#555">Входит в комплект (locked-поля: при выборе этого артикула в rack-config они блокируются)</label>
+        <div id="f-rack-includes">${incHtml}</div>
+      </div>
+    </fieldset>`;
+}
+
+function readRackFields() {
+  const $ = id => document.getElementById(id);
+  const includes = Array.from(document.querySelectorAll('#f-rack-includes input[data-inc]'))
+    .filter(i => i.checked).map(i => i.dataset.inc);
+  return {
+    u:              Number($('f-rack-u').value) || undefined,
+    width:          Number($('f-rack-w').value) || undefined,
+    depth:          Number($('f-rack-d').value) || undefined,
+    doorFront:      $('f-rack-doorFront').value,
+    doorRear:       $('f-rack-doorRear').value,
+    sides:          $('f-rack-sides').value,
+    top:            $('f-rack-top').value,
+    base:           $('f-rack-base').value,
+    doorWithLock:   $('f-rack-doorWithLock').checked,
+    comboTopBase:   $('f-rack-comboTopBase').checked,
+    includes,
+  };
+}
+
+function renderPduFields(el) {
+  const kp = el.kindProps || {};
+  const outlets = Array.isArray(kp.outlets) ? kp.outlets : [];
+  const rows = outlets.map((o, i) => `
+    <div class="field-row" data-outlet-idx="${i}">
+      <div class="field"><label>Тип</label><input class="f-pdu-otype" value="${esc(o.type || '')}" placeholder="C13 / C19 / Schuko"></div>
+      <div class="field"><label>Кол-во</label><input class="f-pdu-oqty" type="number" min="0" value="${Number(o.count ?? o.qty ?? 0)}"></div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="danger" data-outlet-del="${i}">×</button></div>
+    </div>`).join('');
+  return `
+    <fieldset style="border:1px solid #ddd;padding:10px;margin-top:12px;border-radius:4px">
+      <legend style="font-size:12px;font-weight:600;padding:0 6px">Параметры PDU</legend>
+      <div class="field-row">
+        <div class="field"><label>Категория</label><select id="f-pdu-cat">${_selOpts(PDU_CAT_OPTS, kp.category || 'basic')}</select></div>
+        <div class="field"><label>Фаз</label>
+          <select id="f-pdu-phases">
+            <option value="1"${kp.phases === 1 ? ' selected' : ''}>1</option>
+            <option value="3"${kp.phases === 3 ? ' selected' : ''}>3</option>
+          </select>
+        </div>
+        <div class="field"><label>Номинал, A</label><input id="f-pdu-rating" type="number" min="6" max="125" value="${Number(kp.rating || 16)}"></div>
+        <div class="field"><label>Высота, U</label>
+          <select id="f-pdu-height">
+            <option value="0"${kp.height === 0 ? ' selected' : ''}>0U (verticle)</option>
+            <option value="1"${kp.height === 1 ? ' selected' : ''}>1U</option>
+            <option value="2"${kp.height === 2 ? ' selected' : ''}>2U</option>
+          </select>
+        </div>
+      </div>
+      <label style="font-size:11px;color:#555">Розетки</label>
+      <div id="f-pdu-outlets">${rows}</div>
+      <button type="button" id="f-pdu-addoutlet" style="margin-top:6px">+ Добавить группу розеток</button>
+    </fieldset>`;
+}
+function wirePduFields() {
+  const host = document.getElementById('f-pdu-outlets');
+  const addBtn = document.getElementById('f-pdu-addoutlet');
+  if (!host || !addBtn) return;
+  const addRow = (type = '', qty = 0) => {
+    const i = host.children.length;
+    const div = document.createElement('div');
+    div.className = 'field-row';
+    div.dataset.outletIdx = i;
+    div.innerHTML = `
+      <div class="field"><label>Тип</label><input class="f-pdu-otype" value="${esc(type)}" placeholder="C13 / C19 / Schuko"></div>
+      <div class="field"><label>Кол-во</label><input class="f-pdu-oqty" type="number" min="0" value="${qty}"></div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="danger" data-outlet-del="${i}">×</button></div>`;
+    host.appendChild(div);
+    div.querySelector('[data-outlet-del]').onclick = () => div.remove();
+  };
+  addBtn.onclick = () => addRow();
+  host.querySelectorAll('[data-outlet-del]').forEach(b => {
+    b.onclick = () => b.closest('.field-row').remove();
+  });
+}
+function readPduFields() {
+  const $ = id => document.getElementById(id);
+  const outlets = Array.from(document.querySelectorAll('#f-pdu-outlets .field-row')).map(row => ({
+    type: row.querySelector('.f-pdu-otype').value.trim(),
+    count: Number(row.querySelector('.f-pdu-oqty').value) || 0,
+  })).filter(o => o.type);
+  return {
+    category: $('f-pdu-cat').value,
+    phases:   Number($('f-pdu-phases').value) || 1,
+    rating:   Number($('f-pdu-rating').value) || 16,
+    height:   Number($('f-pdu-height').value) || 0,
+    outlets,
+  };
+}
+
 function openAddElementModal(editId) {
   const el = editId ? getElement(editId) : { kind: 'custom', label: '' };
   if (!el) return flash('Не найдено', 'error');
   const isBuiltinEdit = !!(editId && el.builtin);
   const kindOpts = Object.entries(ELEMENT_KINDS).map(([k, d]) =>
     `<option value="${k}"${k === el.kind ? ' selected' : ''}>${esc(d.label)}</option>`).join('');
+
+  let kindSpecific = '';
+  if (el.kind === 'rack') kindSpecific = renderRackFields(el);
+  else if (el.kind === 'pdu') kindSpecific = renderPduFields(el);
+
   const html = `
     ${isBuiltinEdit ? '<div style="background:#fff4e5;border-left:3px solid #b54708;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#7a3a00">Редактирование <b>встроенного</b> элемента. Правки сохранятся в override-слой (<code>raschet.elementLibrary.overrides.v1</code>) поверх исходного seed. ID и kind менять нельзя — откат через «↺».</div>' : ''}
     <div class="field"><label>ID</label><input id="f-id" value="${esc(el.id || '')}"${editId ? ' readonly' : ''}></div>
@@ -377,22 +551,46 @@ function openAddElementModal(editId) {
       <div class="field"><label>Серия</label><input id="f-series" value="${esc(el.series || '')}"></div>
     </div>
     <div class="field"><label>Вариант / артикул</label><input id="f-variant" value="${esc(el.variant || '')}"></div>
-    <div class="field"><label>Описание</label><textarea id="f-description">${esc(el.description || '')}</textarea></div>`;
+    <div class="field"><label>Описание</label><textarea id="f-description">${esc(el.description || '')}</textarea></div>
+    ${kindSpecific}`;
+
   openModal(editId ? 'Редактирование элемента' : 'Новый элемент', html, () => {
     const id = document.getElementById('f-id').value.trim();
     if (!id) { flash('ID обязателен', 'error'); return false; }
     if (!editId && getElement(id)) { flash('ID уже существует', 'error'); return false; }
-    saveElement({
+    const kind = document.getElementById('f-kind').value;
+    const base = {
       ...el,
-      id, kind: document.getElementById('f-kind').value,
+      id, kind,
       label: document.getElementById('f-label').value,
       manufacturer: document.getElementById('f-manufacturer').value || undefined,
       series: document.getElementById('f-series').value || undefined,
       variant: document.getElementById('f-variant').value || undefined,
       description: document.getElementById('f-description').value || undefined,
-    });
+    };
+    if (kind === 'rack') {
+      const rack = readRackFields();
+      base.kindProps = { ...(el.kindProps || {}), ...rack };
+      base.geometry = { ...(el.geometry || {}), widthMm: rack.width, depthMm: rack.depth,
+        heightMm: (rack.u || 0) * 44.45 + 150 };
+    } else if (kind === 'pdu') {
+      const pdu = readPduFields();
+      base.kindProps = { ...(el.kindProps || {}), ...pdu,
+        categoryLabel: ({
+          basic: 'Базовый (без измерений)',
+          metered: 'Metered (ввод)',
+          monitored: 'Monitored (per-outlet)',
+          switched: 'Switched (упр. коммутацией)',
+          hybrid: 'Hybrid (monitored+switched)',
+        })[pdu.category] || pdu.category,
+      };
+      base.electrical = { ...(el.electrical || {}), phases: pdu.phases, capacityA: pdu.rating };
+    }
+    saveElement(base);
     flash('Сохранено', 'success');
   });
+  // PDU — wire dynamic outlet rows after modal is in DOM
+  if (el.kind === 'pdu') setTimeout(wirePduFields, 0);
 }
 
 // ====================== Просмотр свойств элемента ======================
@@ -491,10 +689,7 @@ function openViewElementModal(id) {
       <pre style="background:#f6f8fa;padding:10px;border-radius:4px;font-size:11px;max-height:300px;overflow:auto;margin-top:6px">${esc(JSON.stringify(el, null, 2))}</pre>
     </details>
 
-    ${el.builtin ? (canEditBuiltin()
-      ? '<div style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-left:3px solid #b54708;border-radius:3px;color:#7a3a00">🔓 <b>Режим catalog-admin.</b> Правка builtin возможна через кнопку «✎» в строке (сохраняется в override-слой, исходный seed не меняется).</div>'
-      : '<div class="muted" style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-radius:3px">⚠ Встроенный элемент — только просмотр. Для правки: либо «Клон» (создаст пользовательскую копию), либо включите <b>«🔒 Режим админа каталога»</b> в тулбаре — тогда появится кнопка <b>✎</b> для правки builtin поверх seed.</div>'
-    ) : ''}
+    ${el.builtin ? '<div style="font-size:11px;margin-top:10px;padding:8px;background:#fff4e5;border-left:3px solid #b54708;border-radius:3px;color:#7a3a00">ℹ Встроенный элемент. Правка — через кнопку «✎» в строке списка: изменения пишутся в override-слой (<code>raschet.elementLibrary.overrides.v1</code>) поверх seed. «↺» — откат к исходнику.</div>' : ''}
   `;
 
   openModal('Свойства: ' + (el.label || el.id), html, () => true);
