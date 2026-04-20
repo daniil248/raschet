@@ -1067,14 +1067,38 @@ export function renderGeneralPanel(n) {
   }
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name || '')}">`));
   h.push(field('Инв. №&nbsp;/&nbsp;паспорт', `<input type="text" data-prop="assetId" value="${escAttr(n.assetId || '')}" placeholder="например, INV-0042">`));
+  h.push(field('Серийный №', `<input type="text" data-prop="serialNo" value="${escAttr(n.serialNo || '')}" placeholder="необязательно">`));
   h.push(`<div class="muted" style="font-size:11px;margin-top:4px">UUID: <code style="font-size:11px">${escHtml(n.id)}</code></div>`);
   h.push(`</div>`);
+
+  // v0.58.48: блок «Тип / подвид» — только для consumer; определяет, какой
+  // конфигуратор вызывается кнопкой ниже (rack → rack-config/, …).
+  if (n.type === 'consumer') {
+    const st = n.subtype || 'generic';
+    h.push(`<div class="inspector-section">`);
+    h.push(`<h4>Назначение</h4>`);
+    h.push(field('Подтип',
+      `<select data-prop="subtype">
+        <option value="generic"${st === 'generic' ? ' selected' : ''}>Обычный потребитель</option>
+        <option value="rack"${st === 'rack' ? ' selected' : ''}>🗄 Серверная/телеком стойка</option>
+        <option value="hvac"${st === 'hvac' ? ' selected' : ''}>❄️ HVAC / климат</option>
+        <option value="lighting"${st === 'lighting' ? ' selected' : ''}>💡 Освещение</option>
+        <option value="motor"${st === 'motor' ? ' selected' : ''}>⚙️ Двигатель / привод</option>
+        <option value="heater"${st === 'heater' ? ' selected' : ''}>🔥 Нагреватель</option>
+        <option value="other"${st === 'other' ? ' selected' : ''}>Другое</option>
+      </select>`));
+    if (st === 'rack') {
+      h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Раскладка юнитов, PDU, двери и BOM — в «Конфигураторе стойки» ниже.</div>`);
+    }
+    h.push(`</div>`);
+  }
 
   // Блок «Модель/изделие»
   const cfg = _configuratorForNode(n);
   const modelRef = n.modelRef || '';
   h.push(`<div class="inspector-section">`);
   h.push(`<h4>Модель изделия</h4>`);
+  h.push(field('Производитель', `<input type="text" data-prop="manufacturer" value="${escAttr(n.manufacturer || '')}" placeholder="ABB, Schneider, Legrand, ...">`));
   h.push(field('Выбранное изделие',
     `<input type="text" data-prop="modelRef" value="${escAttr(modelRef)}" placeholder="Не выбрано">`));
   if (cfg) {
@@ -1657,7 +1681,7 @@ export function wireInspectorInputs(n) {
       _render();
       notifyChange();
       // Перерисовать инспектор при изменениях, от которых зависят другие поля
-      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType' || prop === 'bundling' || prop === 'installMethod' || prop === 'trayMode' || prop === 'auxInput') {
+      if (prop === 'inputs' || prop === 'outputs' || prop === 'switchMode' || prop === 'count' || prop === 'phase' || prop === 'inrushFactor' || prop === 'triggerNodeId' || prop === 'sourceSubtype' || prop === 'channelType' || prop === 'bundling' || prop === 'installMethod' || prop === 'trayMode' || prop === 'auxInput' || prop === 'subtype') {
         renderInspector();
       }
     };
