@@ -346,9 +346,114 @@ function update() {
   renderPlan(r);
 }
 
-/* ================== ЭКСПОРТ (stub) ================== */
+/* ================== ЭКСПОРТ BOM (XLSX) ==================
+   «Объём поставки» в стиле 26003-…-SCO-001: разделы (IT-залы / энергоблоки
+   / внешние блоки / слаботочка), колонки № / Обозначение / Наименование /
+   Габарит / Кол-во / Ед.изм. / Примечание.
+   ======================================================= */
 function exportBom() {
-  alert('BOM-экспорт XLSX будет подключён в подфазе 10.4.');
+  if (typeof window === 'undefined' || !window.XLSX) {
+    alert('SheetJS не загружен. Проверьте интернет-подключение (CDN).');
+    return;
+  }
+  const r = compute();
+  const t = r.totals;
+  const it = CATALOG['IT-HALL-300'];
+  const pw = CATALOG['POWER-1600'];
+
+  const rows = [];
+  rows.push(['Объём поставки — модульный ЦОД GDM-600']);
+  rows.push([`IT-нагрузка: ${t.itKw} кВт · стоек ${t.racks} · ${S.rackKw} кВт/стойку · резерв ${S.redundancy}`]);
+  rows.push([`Машзалов: ${t.itHalls} · Энергоблоков: ${t.powerBlocks} · Автономия: ${S.autonomyMin} мин · ASHRAE ${S.ashrae}`]);
+  rows.push([]);
+  rows.push(['№', 'Обозначение', 'Наименование', 'Габарит, мм', 'Кол-во', 'Ед.', 'Примечание']);
+
+  let n = 0;
+  const add = (code, name, size, qty, unit, note) => {
+    rows.push([++n, code, name, size || '', qty, unit || 'шт.', note || '']);
+  };
+  const sec = (title) => rows.push(['', `— ${title} —`]);
+
+  // === 1. IT-залы ===
+  sec(`Машзалы IT-HALL-300 (${t.itHalls} шт.)`);
+  add('IT-HALL-300', 'Модуль машзала 300 кВт (компоновка)',
+      `${it.widthMm}×${it.lengthMm}×2700`, t.itHalls, 'компл.',
+      '22 стойки + 10 ACU + 4 PDC + Monitoring');
+  add('SR.42U', 'Серверная стойка 42U',
+      '600×1200×2000', t.racks, 'шт.',
+      `${S.rackKw} кВт/стойку`);
+  add('ACU.inRow.65', 'Кондиционер inRow DX 65 кВт',
+      '600×1200×2000', t.itHalls * it.acu, 'шт.',
+      `${it.acu} на машзал (N+1)`);
+  add('PDC', 'Распределительный шкаф PDC',
+      '600×1200×2000', t.pdc, 'шт.', `4 на машзал`);
+  add('MON.IT', 'Шкаф мониторинга машзала',
+      '600×1200×2000', t.itHalls * it.monitoring, 'шт.', '');
+  add('DOOR.AISLE', 'Торцевая дверь холодного коридора',
+      '', t.itHalls * it.aisleDoors, 'шт.', '2 на машзал');
+
+  // === 2. Энергоблоки ===
+  sec(`Энергоблоки POWER-1600 (${t.powerBlocks} шт.)`);
+  add('POWER-1600', 'Модуль энергоблока 1600 кВт (компоновка)',
+      `${pw.widthMm}×${pw.lengthMm}×2700`, t.powerBlocks, 'компл.',
+      'UPS + АКБ + ACU + щиты + ODU-полка');
+  add('UPS.MR33-300', 'ИБП Kehua MR33-300 (300 кВА)',
+      '600×1200×2000', t.upsMr33_300, 'шт.', '');
+  add('UPS.MR33-200', 'ИБП Kehua MR33-200 (200 кВА)',
+      '600×1200×2000', t.upsMr33_200, 'шт.', '');
+  add('BAT.S3', 'Шкаф АКБ Kehua S3 (58 кВт·ч)',
+      '600×1200×2000', t.batteries, 'шт.',
+      `${S.autonomyMin} мин автономии` + (r.extraBatt ? ` (+${r.extraBatt} доп.)` : ''));
+  add('ACU.inRow.65.PW', 'Кондиционер inRow DX 65 кВт (для UPS/АКБ)',
+      '600×1200×2000', t.powerBlocks * pw.acu, 'шт.',
+      `${pw.acu} на энергоблок`);
+  add('MDB', 'Главный распределительный щит MDB',
+      '600×1200×2000', t.mdb, 'шт.', '2 на энергоблок');
+  add('UDB.IT', 'Щит UDB-IT (распределение на IT)',
+      '600×1200×2000', t.udbIt, 'шт.', '');
+  add('UDB.M-IT', 'Щит UDB-M-IT (механика IT)',
+      '600×1200×2000', t.udbMit, 'шт.', '');
+  add('UDB.AI', 'Щит UDB-AI (общепроходные потребители)',
+      '600×1200×2000', t.udbAi, 'шт.', '');
+  add('PDB.M-AI', 'Щит PDB-M-AI',
+      '600×1200×2000', t.pdbMai, 'шт.', '');
+  add('MON.PW', 'Шкаф мониторинга энергоблока',
+      '600×1200×2000', t.powerBlocks * pw.monitoring, 'шт.', '');
+  add('JB', 'Соединительная коробка (Junction Box)',
+      '', t.jb, 'шт.', '10 на энергоблок');
+  add('ODU.BAY', 'ODU-полка (наружные блоки DX)',
+      `${pw.oduBay.widthMm}×${pw.oduBay.lengthMm}`, t.powerBlocks, 'компл.',
+      'наружный монтаж');
+
+  // === 3. Внешние блоки ===
+  if (t.tp || t.dgu) {
+    sec('Внешние блоки');
+    if (t.tp)  add('TP.10/0.4', 'Трансформаторная подстанция 10/0.4 кВ', '', t.tp, 'компл.', '');
+    if (t.dgu) add('DGU', 'Дизель-генераторная установка', '', t.dgu, 'шт.', `резерв ${S.redundancy}`);
+  }
+
+  // === 4. Слаботочные системы ===
+  const low = [];
+  if (S.scs)   low.push(['SCS',   'СКС: патч-панели + коммутация',         t.racks,    'комплект на стойку']);
+  if (S.skud)  low.push(['SKUD',  'СКУД (вход + модули)',                   t.itHalls + t.powerBlocks, 'на модуль']);
+  if (S.video) low.push(['CCTV',  'Видеонаблюдение (2 камеры на модуль)',   2 * (t.itHalls + t.powerBlocks), '']);
+  if (S.fire)  low.push(['FIRE',  'Газовое пожаротушение',                  t.itHalls + t.powerBlocks, 'на модуль']);
+  if (S.leak)  low.push(['LEAK',  'Контроль протечек',                      t.itHalls + t.powerBlocks, 'на модуль']);
+  if (low.length) {
+    sec('Слаботочные системы');
+    for (const [c, nm, q, note] of low) add(c, nm, '', q, 'компл.', note);
+  }
+
+  // === Лист ===
+  const ws = window.XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 4 }, { wch: 16 }, { wch: 44 }, { wch: 18 },
+    { wch: 8 }, { wch: 8 }, { wch: 28 },
+  ];
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, 'Объём поставки');
+  const fname = `MDC_GDM600_${t.itKw}kW_${t.racks}racks_${new Date().toISOString().slice(0,10)}.xlsx`;
+  window.XLSX.writeFile(wb, fname);
 }
 
 /* ================== INIT ================== */
