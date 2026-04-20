@@ -37,11 +37,13 @@
               <option value="15000">15000</option>
             </select>
           </label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-auto-count" checked> Подбирать количество модулей автоматически</label>
           <label class="mdc-field">
-            <span>Количество модулей в сборке</span>
-            <input type="number" id="mdc-count" value="1" min="1" max="8">
+            <span>Количество модулей (ручн.)</span>
+            <input type="number" id="mdc-count" value="2" min="1" max="20">
           </label>
-          <div class="mdc-hint">Высота внутри от фальшпола: <b>2700 мм</b> (фикс.)</div>
+          <div class="mdc-hint">Модули стыкуются длинными сторонами, образуя общую ширину здания.
+            Высота внутри от фальшпола: <b>2700 мм</b> (фикс.). Все шкафы 600×1200×42U.</div>
         </section>
 
         <section class="mdc-section">
@@ -69,11 +71,11 @@
           <label class="mdc-field">
             <span>Серия ИБП</span>
             <select id="mdc-ups-series">
-              <option value="gdm600k" selected>GDM-600K (модульный)</option>
-              <option value="kehua-mr33">Kehua MR33</option>
-              <option value="generic">Произвольная</option>
+              <option value="kehua-mr33-300" selected>Kehua MR33-300 (300 kVA)</option>
+              <option value="kehua-mr33-200">Kehua MR33-200 (200 kVA)</option>
             </select>
           </label>
+          <div class="mdc-hint">Батарея: Kehua S3 (600×1200×2000, 200 kVA на 15 мин)</div>
           <label class="mdc-field">
             <span>Время автономии, мин</span>
             <select id="mdc-autonomy">

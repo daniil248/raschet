@@ -1,26 +1,50 @@
 /* =========================================================================
-   mdc-config.js — Конфигуратор модульного ЦОД (GDM-600)
+   mdc-config.js — Конфигуратор модульного ЦОД (GDM-600-series)
+   v0.58.89 — унификация шкафов под 600×1200×42U
 
-   MVP v0.58.87 (Фаза 1.21.1):
-   - Wizard: ширина 2400/3000 мм, длина 6058/9000/12192/15000 мм,
-     IT-нагрузка, резервирование, ИБП, CRAC, слаботочка.
-   - Расчёт числа стоек, ИБП-шкафов, АКБ-шкафов, CRAC-модулей.
-   - Top-view SVG планировка с 4 зонами:
-     [CRAC | серверная | сервисный коридор | ИБП+АКБ]
-   - Пока без BOM-экспорта (заглушка), без каталога GDM600K из PDF.
-     Каталог будет импортирован на следующей итерации из drawio-файлов.
+   Модель (на основании drawio 26003/25006):
+   - Модули стыкуются длинными сторонами (side-by-side), образуют общую
+     ширину здания. Длина = длина одного модуля, ширина здания = Σ ширин.
+   - Внутри модуля (ширина 2400 или 3000 мм, внутренняя, без стенок):
+     два ряда шкафов 600×1200×42U (для 3000 мм) или один ряд (для 2400 мм),
+     между рядами/у стены — аисль.
+   - Все шкафы одинакового габарита 600×1200 (стойки, inRow-кондиционеры,
+     ИБП, АКБ). Различие только по роли и цвету.
+   - ИБП — Kehua MR33 200/300 kVA с батареями S3.
+
+   Источники:
+   - 26003 (Технопарк Алатау): 2 модуля 3100×7300, 2 ряда шкафов внутри.
+   - 25006 (TBC Ташкент): до 15 модулей 3100×7300 в несколько рядов.
    ========================================================================= */
 
 const $ = (id) => document.getElementById(id);
 
+// ================== КОНСТАНТЫ ==================
+const CAB_W = 600;    // мм, ширина шкафа (= шаг вдоль длины модуля)
+const CAB_D = 1200;   // мм, глубина шкафа (= размер по ширине модуля)
+const AISLE_MIN = 600;  // мин. ширина горячего прохода между рядами
+
+// Kehua MR33 + S3 — spec из открытых данных (уточнить в след. итерации):
+// - MR33-200: номинал 200 kVA, 600×1100×2000 мм (считаем 600×1200 в плане)
+// - MR33-300: номинал 300 kVA, 600×1100×2000 мм
+// - S3 battery cabinet: 600×1200×2000, вмещает 40 VRLA блоков 12V/100Ah
+//   даёт ≈ 40 × 12V × 100Ah = 48 кВт·ч ≈ 200 kVA на 15 мин при DOD 0.7
+const UPS_CATALOG = {
+  'kehua-mr33-200': { kva: 200, label: 'Kehua MR33-200', footprint: [CAB_W, CAB_D] },
+  'kehua-mr33-300': { kva: 300, label: 'Kehua MR33-300', footprint: [CAB_W, CAB_D] },
+};
+// Батарейный шкаф S3: на 15 мин при 200 kVA — 1 шкаф, на 300 kVA — 2 шкафа.
+const BATT_KVA_PER_CAB_15MIN = 200;  // kVA на шкаф S3 при 15 мин
+
 const S = {
   width: 3000,
   length: 12192,
-  count: 1,
+  count: 2,                // авто-пересчитывается, если autoCount=true
+  autoCount: true,
   itKw: 600,
   rackKw: 30,
   redundancy: 'N+1',
-  upsSeries: 'gdm600k',
+  upsSeries: 'kehua-mr33-300',
   autonomyMin: 15,
   cracType: 'inrow-dx',
   ashrae: 'A2',
@@ -30,7 +54,8 @@ const S = {
 function read() {
   S.width        = Number($('mdc-width').value) || 3000;
   S.length       = Number($('mdc-length').value) || 12192;
-  S.count        = Number($('mdc-count').value) || 1;
+  S.autoCount    = $('mdc-auto-count').checked;
+  S.count        = S.autoCount ? S.count : (Number($('mdc-count').value) || 1);
   S.itKw         = Number($('mdc-it-kw').value) || 600;
   S.rackKw       = Number($('mdc-rack-kw').value) || 30;
   S.redundancy   = $('mdc-redundancy').value;
@@ -45,47 +70,68 @@ function read() {
   S.leak  = $('mdc-leak').checked;
 }
 
+/* ================== ГЕОМЕТРИЯ МОДУЛЯ ================== */
+// Сколько рядов шкафов помещается по ширине модуля.
+// 3000 мм: 1200 (ряд A) + 600 (аисль) + 1200 (ряд B) = 3000 → 2 ряда
+// 2400 мм: 1200 (ряд) + 1200 (аисль) = 2400 → 1 ряд
+function rowsPerModule(width) {
+  return width >= (2 * CAB_D + AISLE_MIN) ? 2 : 1;
+}
+// Слотов шкафа по длине модуля = floor(length / 600)
+function slotsPerRow(length) {
+  return Math.floor(length / CAB_W);
+}
+
 /* ================== РАСЧЁТ ================== */
 function compute() {
-  // Стойки
+  // --- Стойки ---
   const racksNeeded = Math.ceil(S.itKw / Math.max(1, S.rackKw));
-  // Резервирование стоек не требуется, но охлаждение — требуется
-  // ИБП-мощность с учётом cos phi и резервирования:
+
+  // --- ИБП-мощность ---
   const cosPhi = 0.9;
   const redundFactor = S.redundancy === '2N' ? 2 : (S.redundancy === 'N+1' ? 1.2 : 1.0);
-  const upsKva = Math.ceil((S.itKw / cosPhi) * redundFactor / 50) * 50;
-  // Типовой модуль GDM-600K — до 600 кВт/шкаф, MR33 — до 1200.
-  const upsShelfKw = (S.upsSeries === 'gdm600k') ? 600 :
-                     (S.upsSeries === 'kehua-mr33') ? 1200 : 600;
-  const upsShelves = Math.ceil((upsKva * cosPhi) / upsShelfKw);
-  // АКБ: упрощённо 3.5 кВт на батарейный шкаф на 15 мин / 75 VRLA блоков
-  const battPerShelfKw15 = 3.5;
-  const battShelves = Math.ceil((upsKva * cosPhi) * (S.autonomyMin / 15) / battPerShelfKw15);
-  // CRAC: inRow 40 кВт / модуль; perimeter ~ 100 кВт/модуль
-  const cracKwPerUnit = (S.cracType === 'perimeter-dx') ? 100 :
-                        (S.cracType === 'freecooling')  ? 80  : 40;
-  const cracN = Math.ceil(S.itKw / cracKwPerUnit);
-  const cracRedund = S.redundancy === '2N' ? cracN : Math.max(cracN + 1, Math.ceil(cracN * 1.2));
+  const upsKvaNeeded = Math.ceil((S.itKw / cosPhi) * redundFactor / 50) * 50;
 
-  // Проверка: поместятся ли все стойки? Модули стыкуются по ширине,
-  // в каждом модуле 2 ряда стоек (back-to-back) длиной (S.length − CRAC − UPS).
-  const ZONE_CRAC_LEN = 1500;  // мм, зона CRAC у торца
-  const ZONE_UPS_LEN  = 2400;  // зона ИБП+АКБ у другого торца
-  const serverLenPerMod = Math.max(0, S.length - ZONE_CRAC_LEN - ZONE_UPS_LEN);
-  const racksPerRow     = Math.floor(serverLenPerMod / 600);
-  const racksFit        = racksPerRow * 2 * S.count;
-  const racksOk         = racksFit >= racksNeeded;
-  // Вместимость inRow-ACU: по 1 ACU на 1200 мм в среднем ряду, по рядам на модуль
-  const acuPerMod       = Math.floor(serverLenPerMod / 1200);
-  const acuCap          = acuPerMod * S.count;
-  const acuOk           = (S.cracType === 'inrow-dx' || S.cracType === 'inrow-cw')
-                        ? (acuCap >= cracRedund) : true;
+  // --- ИБП-шкафы (Kehua MR33) ---
+  const ups = UPS_CATALOG[S.upsSeries] || UPS_CATALOG['kehua-mr33-300'];
+  const upsShelves = Math.ceil(upsKvaNeeded / ups.kva);
+
+  // --- АКБ S3 ---
+  // Один S3 покрывает BATT_KVA_PER_CAB_15MIN × (15/autonomyMin)
+  const battShelves = Math.ceil(
+    upsKvaNeeded * (S.autonomyMin / 15) / BATT_KVA_PER_CAB_15MIN
+  );
+
+  // --- CRAC (inRow в шкафу 600×1200) ---
+  // Типовая inRow-холодопроизводительность: 40 кВт/шкаф DX, 60 — CW, 80 — freecooling.
+  const cracKwPerUnit = (S.cracType === 'inrow-cw') ? 60 :
+                        (S.cracType === 'freecooling') ? 80 :
+                        (S.cracType === 'perimeter-dx') ? 100 : 40;
+  const cracN = Math.ceil(S.itKw / cracKwPerUnit);
+  const cracRedund = S.redundancy === '2N' ? cracN * 2 : (cracN + 1);
+
+  // --- Всего шкафов в плане ---
+  const totalCabs = racksNeeded + upsShelves + battShelves +
+                    ((S.cracType === 'perimeter-dx') ? 0 : cracRedund);
+
+  // --- Автоподбор количества модулей ---
+  const rows = rowsPerModule(S.width);
+  const slotsL = slotsPerRow(S.length);
+  const slotsPerMod = rows * slotsL;
+  // Зарезервируем торцы модуля (2 слота = 1200 мм) под дверь/щиты
+  const usableSlotsPerMod = Math.max(0, slotsPerMod - 2);
+  let countNeeded = Math.max(1, Math.ceil(totalCabs / Math.max(1, usableSlotsPerMod)));
+  if (S.autoCount) S.count = countNeeded;
+
+  const totalSlots = usableSlotsPerMod * S.count;
+  const fitOk = totalSlots >= totalCabs;
 
   return {
-    racksNeeded, racksFit, racksOk,
-    upsKva, upsShelves, battShelves,
-    cracN, cracRedund, acuCap, acuOk,
-    serverLenPerMod, racksPerRow,
+    racksNeeded, upsKvaNeeded, upsShelves, battShelves,
+    cracN, cracRedund, cracKwPerUnit,
+    totalCabs, totalSlots, fitOk, countNeeded,
+    rows, slotsL, slotsPerMod, usableSlotsPerMod,
+    upsModel: ups.label, upsKvaEach: ups.kva,
   };
 }
 
@@ -94,177 +140,142 @@ function renderSummary(r) {
   const el = $('mdc-summary');
   el.innerHTML = `
     <div class="card"><span class="label">IT-нагрузка</span><span class="value">${S.itKw} кВт</span></div>
-    <div class="card"><span class="label">Стоек нужно</span><span class="value">${r.racksNeeded}</span></div>
-    <div class="card ${r.racksOk ? 'ok' : 'warn'}">
-      <span class="label">Мест для стоек</span>
-      <span class="value">${r.racksFit} ${r.racksOk ? '✓' : '✗ мало'}</span>
-    </div>
-    <div class="card"><span class="label">ИБП-мощность</span><span class="value">${r.upsKva} кВА</span></div>
-    <div class="card"><span class="label">Шкафов ИБП</span><span class="value">${r.upsShelves}</span></div>
-    <div class="card"><span class="label">АКБ-шкафов</span><span class="value">${r.battShelves}</span></div>
-    <div class="card ${r.acuOk ? 'ok' : 'warn'}">
-      <span class="label">CRAC (с резервом)</span>
-      <span class="value">${r.cracRedund}${r.acuOk ? '' : ' ✗'}</span>
+    <div class="card"><span class="label">Стоек</span><span class="value">${r.racksNeeded}</span></div>
+    <div class="card"><span class="label">ИБП</span><span class="value">${r.upsShelves}× ${r.upsModel}</span></div>
+    <div class="card"><span class="label">АКБ S3</span><span class="value">${r.battShelves} шкафа</span></div>
+    <div class="card"><span class="label">CRAC (${r.cracKwPerUnit} кВт/шк.)</span><span class="value">${r.cracRedund}</span></div>
+    <div class="card"><span class="label">Шкафов всего</span><span class="value">${r.totalCabs}</span></div>
+    <div class="card ${r.fitOk ? 'ok' : 'warn'}">
+      <span class="label">Модулей нужно</span>
+      <span class="value">${S.count} ${r.fitOk ? '✓' : '✗'}</span>
     </div>
     <div class="card"><span class="label">Здание</span><span class="value">${S.length} × ${S.width * S.count} мм</span></div>
   `;
 }
 
 /* ================== ПЛАНИРОВКА (SVG top-view) ================== */
-// Модель:
-// - Модули стыкуются по ШИРОКОЙ стороне (борт-в-борт): общая ширина
-//   здания = S.width × S.count, длина общая = S.length.
-// - Ширина 2400/3000 мм указана ВНУТРИ, без стенок (рисуем чистый интерьер).
-// - Внутри каждого модуля по длине зоны: [CRAC | серверная | ИБП+АКБ].
-// - В серверной — два ряда стоек (back-to-back) + средний ряд inRow-ACU,
-//   как в референсах 26003 и 25006 (Top row 6×SR, Mid 4×ACU, Bot 6×SR).
-// - Количество стоек и CRAC определяется РАСЧЁТОМ из IT-мощности и
-//   kW/стойку — заполнение идёт слева направо через все модули.
+// Сетка шкафов: по длине slotsL позиций × rows рядов × count модулей.
+// Заполнение порядком: [UPS (от правого торца) | BATT | CRAC inRow | RACKS] —
+// ИБП и АКБ группируются у одного торца (справа), стойки и inRow-CRAC
+// чередуются в остальной части. Т.к. все шкафы 600×1200 — планировка
+// получается компактной и наглядной.
 function renderPlan(r) {
   const host = $('mdc-plan');
   const scale = 0.055;
 
-  const L = S.length;                  // длина сборки (общая для всех модулей)
-  const W = S.width * S.count;         // суммарная ширина (стыковка боками)
-  const ox = 40, oy = 40;
+  const L = S.length;
+  const W = S.width * S.count;   // суммарная ширина здания
+  const ox = 40, oy = 36;
   const vw = Math.max(700, L * scale + 2 * ox);
   const vh = Math.max(260, W * scale + 2 * oy + 30);
 
-  // Зоны по длине
-  const ZX_CRAC = 1500;
-  const ZX_UPS  = 2400;
-  const serverLen = Math.max(3000, L - ZX_CRAC - ZX_UPS);
-
-  // Геометрия внутри модуля по ширине (transverse):
-  // [ряд стоек A 1200 | ACU 300 | ряд стоек B 1200]. Остальное — служебные
-  // проходы (снаружи и между рядами). Для 2400 мм ACU ужимается до 200 мм,
-  // проходы — до 100 мм.
-  const RACK_DEPTH = 1200;
-  const ACU_DEPTH  = S.width >= 3000 ? 300 : 200;
-  const sidePad = Math.max(50, (S.width - RACK_DEPTH*2 - ACU_DEPTH) / 2);
-
   let svg = `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg">`;
 
-  // === Общие плановые зоны (раскрашиваем по всей ширине сборки) ===
-  // CRAC end
-  svg += `<rect class="zone-crac" x="${ox}" y="${oy}" width="${ZX_CRAC*scale}" height="${W*scale}"/>`;
-  // Серверная
-  const srvX = ox + ZX_CRAC*scale;
-  const srvW = serverLen * scale;
-  svg += `<rect class="zone-srv"  x="${srvX}" y="${oy}" width="${srvW}" height="${W*scale}"/>`;
-  // ИБП+АКБ
-  const upsX = srvX + srvW;
-  svg += `<rect class="zone-ups"  x="${upsX}" y="${oy}" width="${ZX_UPS*scale}" height="${W*scale}"/>`;
+  // Внешний контур
+  svg += `<rect class="wall" x="${ox}" y="${oy}" width="${L*scale}" height="${W*scale}"/>`;
 
-  // Подписи зон (сверху)
-  svg += `<text class="zone-label" x="${ox + ZX_CRAC*scale/2}" y="${oy - 10}" text-anchor="middle">CRAC</text>`;
-  svg += `<text class="zone-label" x="${srvX + srvW/2}"        y="${oy - 10}" text-anchor="middle">Серверная</text>`;
-  svg += `<text class="zone-label" x="${upsX + ZX_UPS*scale/2}" y="${oy - 10}" text-anchor="middle">ИБП + АКБ</text>`;
-
-  // === Расставляем стойки и inRow-ACU ===
-  // Шаг стойки по длине — 600 мм (плюс маленький зазор).
-  const RACK_STEP = 600;
-  const racksPerRow = Math.floor(serverLen / RACK_STEP);   // максимум в одном ряду
-  // 2 ряда × количество модулей — всего мест для стоек.
-  const rowsCount = 2 * S.count;
-  const racksTotalCap = racksPerRow * rowsCount;
-  const racksToPlace  = Math.min(r.racksNeeded, racksTotalCap);
-
-  // inRow-ACU шаг — 1200 мм (1 ACU ≈ 4 стойкам). Авто-количество из расчёта.
-  const acuPerRow      = Math.floor(serverLen / 1200);
-  const acuRowsCount   = rowsCount / 2;                      // один ACU-ряд на стык двух рядов стоек
-  const acuTotalCap    = acuPerRow * acuRowsCount;
-  const acuNeeded      = Math.min(r.cracRedund, acuTotalCap);
-
-  // Позиции рядов (y в мм от верха сборки):
-  // Модуль m: центр ACU в y = m*S.width + S.width/2
-  //           ряд A стоек: y = m*S.width + sidePad
-  //           ряд B стоек: y = m*S.width + S.width - sidePad - RACK_DEPTH
-  // Ряды стоек раскладываем ПО-ОЧЕРЕДИ через все модули (заполнение сверху вниз).
-  const rackSlots = []; // { xMm, yMm }
-  const acuSlots  = [];
+  // Фоновая заливка модулей (слегка)
   for (let m = 0; m < S.count; m++) {
-    const yTop = m * S.width;
-    const yRowA  = yTop + sidePad;
-    const yRowB  = yTop + S.width - sidePad - RACK_DEPTH;
-    const yAcu   = yTop + sidePad + RACK_DEPTH;     // между рядами A и B
-    for (let i = 0; i < racksPerRow; i++) {
-      rackSlots.push({ xMm: ZX_CRAC + i*RACK_STEP, yMm: yRowA, row: 'A', mod: m });
-    }
-    for (let i = 0; i < racksPerRow; i++) {
-      rackSlots.push({ xMm: ZX_CRAC + i*RACK_STEP, yMm: yRowB, row: 'B', mod: m });
-    }
-    for (let i = 0; i < acuPerRow; i++) {
-      acuSlots.push({ xMm: ZX_CRAC + i*1200 + 150, yMm: yAcu, mod: m });
-    }
+    svg += `<rect x="${ox}" y="${oy + m*S.width*scale}"
+                   width="${L*scale}" height="${S.width*scale}"
+                   fill="${m%2 ? '#fafafa' : '#f5f5f5'}" stroke="none"/>`;
   }
 
-  // Рисуем стойки
-  for (let i = 0; i < racksToPlace; i++) {
-    const sl = rackSlots[i];
-    svg += `<rect class="rack" x="${ox + sl.xMm*scale}" y="${oy + sl.yMm*scale}"
-                   width="${600*scale - 1}" height="${RACK_DEPTH*scale - 2}"/>`;
-  }
+  // Генерация списка объектов в порядке: racks, cracs, ups, batts
+  // Индекс слота: 0..(rows×slotsL×count−1).
+  // Сначала UPS+BATT занимают правый торец (последние слоты), потом CRAC
+  // распределяется равномерно в оставшихся, потом racks заполняют остальное.
+  const rows = r.rows;
+  const slotsL = r.slotsL;
+  const slotsPerMod = rows * slotsL;
 
-  // Рисуем ACU — equally spread между 0 и acuTotalCap
-  if (acuNeeded > 0 && acuTotalCap > 0) {
-    const step = acuTotalCap / acuNeeded;
-    for (let i = 0; i < acuNeeded; i++) {
-      const idx = Math.min(acuTotalCap - 1, Math.round(i * step));
-      const sl = acuSlots[idx];
-      svg += `<rect class="crac" x="${ox + sl.xMm*scale}" y="${oy + sl.yMm*scale}"
-                     width="${900*scale}" height="${ACU_DEPTH*scale - 1}"/>`;
+  // Зарезервируем по 1 слоту на торец модуля (дверь/щит) — не размещаем.
+  // Пока без щитов — показываем пустые торцевые слоты полосой.
+  const items = [];  // { cls, label }
+
+  // Ставим UPS + BATT слитно справа
+  const upsBlock = [];
+  for (let i = 0; i < r.upsShelves; i++) upsBlock.push({ cls: 'ups', label: 'ИБП' });
+  for (let i = 0; i < r.battShelves; i++) upsBlock.push({ cls: 'battery', label: 'АКБ' });
+
+  // Ставим CRAC
+  const cracBlock = [];
+  const cracCount = (S.cracType === 'perimeter-dx') ? 0 : r.cracRedund;
+  for (let i = 0; i < cracCount; i++) cracBlock.push({ cls: 'crac', label: 'CRAC' });
+
+  // Стойки
+  const rackBlock = [];
+  for (let i = 0; i < r.racksNeeded; i++) rackBlock.push({ cls: 'rack', label: 'RACK' });
+
+  // Сборка: racks + crac (интерлив), потом UPS справа
+  const middle = [];
+  if (cracBlock.length && rackBlock.length) {
+    // Равномерно вставляем CRAC между стойками: 1 CRAC на N стоек.
+    const ratio = rackBlock.length / cracBlock.length;
+    let ri = 0, ci = 0;
+    while (ri < rackBlock.length || ci < cracBlock.length) {
+      // сколько стоек до следующего CRAC
+      const nextCracAt = Math.round((ci + 0.5) * ratio);
+      while (ri < rackBlock.length && ri < nextCracAt) middle.push(rackBlock[ri++]);
+      if (ci < cracBlock.length) middle.push(cracBlock[ci++]);
     }
+  } else {
+    middle.push(...rackBlock, ...cracBlock);
   }
+  const allItems = [...middle, ...upsBlock];
 
-  // === CRAC end (периметральные или приточка) — пара шкафов у торцевой стены ===
-  // Если тип perimeter/freecooling — ставим их в CRAC-зоне.
-  if (S.cracType === 'perimeter-dx' || S.cracType === 'freecooling') {
-    const nBigCrac = Math.max(1, Math.ceil(r.cracRedund / 4));
-    const stepY = W / nBigCrac;
-    for (let i = 0; i < nBigCrac; i++) {
-      svg += `<rect class="crac" x="${ox + 150*scale}" y="${oy + (i*stepY + 200)*scale}"
-                     width="${900*scale}" height="${Math.min(2500, stepY-400)*scale}"/>`;
-    }
-  }
+  // Раскладка по сетке: для каждого модуля — снизу ряд B, сверху ряд A.
+  // Слот i: row = i % rows; col = Math.floor(i / rows) (в пределах модуля)
+  const cabW = CAB_W * scale;
+  const cabH = CAB_D * scale;
+  // Y-позиция ряда r (0 = ряд A вверху, 1 = ряд B внизу) в рамках модуля
+  const rowY = (mod, rowIdx) => {
+    const yTop = mod * S.width;
+    if (rows === 1) return yTop + 0;                       // ряд у верхней стены
+    return (rowIdx === 0) ? yTop : yTop + S.width - CAB_D; // A вверху, B внизу
+  };
 
-  // === ИБП-шкафы и АКБ-шкафы — в правой зоне, ряд по длине ===
-  // Шаг по длине 600 мм; два ряда по ширине (если S.width ≥ 2400).
-  const upsStep = 600;
-  const upsPerRowPerMod = Math.floor(ZX_UPS / upsStep);    // = 4
-  const upsRowCnt = 2 * S.count;
-  const upsCap = upsPerRowPerMod * upsRowCnt;
-  const upsToPlace  = Math.min(r.upsShelves, upsCap);
-  const battToPlace = Math.min(r.battShelves, upsCap - upsToPlace);
-  // Индексы: сначала UPS, затем battery
   let placed = 0;
-  for (let m = 0; m < S.count; m++) {
-    for (let row = 0; row < 2; row++) {
-      const yRow = (row === 0) ? m*S.width + sidePad : m*S.width + S.width - sidePad - RACK_DEPTH;
-      for (let i = 0; i < upsPerRowPerMod; i++) {
-        if (placed >= upsToPlace + battToPlace) break;
-        const cls = (placed < upsToPlace) ? 'ups' : 'battery';
-        const xMm = L - ZX_UPS + i*upsStep + 100;
-        svg += `<rect class="${cls}" x="${ox + xMm*scale}" y="${oy + yRow*scale}"
-                       width="${upsStep*scale - 3}" height="${RACK_DEPTH*scale - 2}"/>`;
-        placed++;
+  for (let m = 0; m < S.count && placed < allItems.length; m++) {
+    for (let col = 0; col < slotsL && placed < allItems.length; col++) {
+      // пропустим первый и последний слот модуля (резерв под торец-щит)
+      if (col === 0 || col === slotsL - 1) continue;
+      for (let rr = 0; rr < rows && placed < allItems.length; rr++) {
+        const it = allItems[placed++];
+        const x = ox + (col * CAB_W) * scale;
+        const y = oy + rowY(m, rr) * scale;
+        svg += `<rect class="${it.cls}" x="${x}" y="${y}" width="${cabW - 1}" height="${cabH - 1}"/>`;
       }
     }
   }
 
-  // === Разделители между модулями (пунктир) + подпись № модуля ===
+  // Перимeтральные CRAC (если выбран тип perimeter-dx) — большие шкафы у торца
+  if (S.cracType === 'perimeter-dx') {
+    const nBig = Math.max(1, Math.ceil(r.cracRedund / 4));
+    const gapY = W / nBig;
+    for (let i = 0; i < nBig; i++) {
+      svg += `<rect class="crac" x="${ox + 100*scale}" y="${oy + (i*gapY + 150)*scale}"
+                     width="${900*scale}" height="${Math.min(2400, gapY-300)*scale}"/>`;
+    }
+  }
+
+  // Разделители между модулями (пунктир)
   for (let m = 1; m < S.count; m++) {
     const y = oy + m*S.width*scale;
     svg += `<line x1="${ox}" y1="${y}" x2="${ox + L*scale}" y2="${y}"
                   stroke="#888" stroke-width="1" stroke-dasharray="4,4"/>`;
   }
+
+  // Подписи модулей (слева)
   for (let m = 0; m < S.count; m++) {
-    svg += `<text class="dim" x="${ox + 6}" y="${oy + (m*S.width + 14)*scale}">М${m+1}  (${S.width}×${L} мм)</text>`;
+    svg += `<text class="dim" x="${ox + 6}" y="${oy + (m*S.width + 14)*scale}">
+              М${m+1}  (${S.width}×${L} мм)
+            </text>`;
   }
 
-  // === Габаритные линии снаружи ===
+  // Легенда габаритов
   svg += `<text class="dim" x="${ox}" y="${oy + W*scale + 22}">
-            Здание: ${L} × ${W} мм  ·  H внутри 2700 мм  ·  модулей: ${S.count}
+            Здание: ${L} × ${W} мм  ·  H внутри 2700 мм  ·  модулей: ${S.count}  ·  шкафов 600×1200×42U: ${r.totalCabs}
           </text>`;
 
   svg += `</svg>`;
@@ -275,17 +286,24 @@ function renderPlan(r) {
 function update() {
   read();
   const r = compute();
+  // синхронизируем input count, если авто
+  if (S.autoCount && $('mdc-count').value !== String(S.count)) {
+    $('mdc-count').value = S.count;
+  }
+  $('mdc-count').disabled = S.autoCount;
   renderSummary(r);
   renderPlan(r);
 }
 
 /* ================== ЭКСПОРТ (stub) ================== */
 function exportBom() {
-  alert('BOM-экспорт будет подключён после импорта каталога GDM-600K (drawio → JSON).');
+  alert('BOM-экспорт будет подключён в следующей подфазе 10.3.');
 }
+
 /* ================== INIT ================== */
 function init() {
-  const ids = ['mdc-width','mdc-length','mdc-count','mdc-it-kw','mdc-rack-kw',
+  const ids = ['mdc-width','mdc-length','mdc-count','mdc-auto-count',
+               'mdc-it-kw','mdc-rack-kw',
                'mdc-redundancy','mdc-ups-series','mdc-autonomy',
                'mdc-crac-type','mdc-ashrae',
                'mdc-scs','mdc-skud','mdc-video','mdc-fire','mdc-leak'];
