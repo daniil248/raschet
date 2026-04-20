@@ -111,10 +111,21 @@ export function deserialize(data) {
       stage: data.project.stage || '',
       author: data.project.author || '',
       description: data.project.description || '',
+      // v0.58.27: пользовательские системы проекта — сохраняются в файле схемы
+      customSystems: Array.isArray(data.project.customSystems) ? data.project.customSystems.map(s => ({
+        id: String(s.id || ''),
+        label: String(s.label || s.id || ''),
+        icon: String(s.icon || '🔧'),
+        color: String(s.color || '#6366f1'),
+        pageKinds: Array.isArray(s.pageKinds) ? s.pageKinds.slice() : [],
+        params: Array.isArray(s.params) ? s.params.map(p => ({ ...p })) : [],
+      })).filter(s => s.id) : [],
     };
   } else {
-    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '' };
+    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '', customSystems: [] };
   }
+  // v0.58.27: синхронизация hook для getSystemMeta/getAllSystems сразу после загрузки
+  try { globalThis.__raschetCustomSystems = state.project.customSystems.slice(); } catch {}
 
   // Загрузка страниц (v4+). Если их нет — создаём одну и приписываем все узлы к ней.
   if (Array.isArray(data.pages) && data.pages.length) {
