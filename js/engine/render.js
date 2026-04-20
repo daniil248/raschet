@@ -823,6 +823,49 @@ function _renderNodesLayout() {
         idx.textContent = `${i + 1}/${count}`;
         g.appendChild(idx);
       }
+      // v0.58.46: бейдж питания — если на этой странице (layout/mechanical)
+      // узел получает электричество из источника, которого нет на странице,
+      // покажем маленький «⚡ <тэг>» в левом верхнем углу. Пользователь
+      // видит, откуда запитан элемент, даже если сама линия скрыта.
+      {
+        const curPid = state.currentPageId;
+        const feedTags = [];
+        for (const c of state.conns.values()) {
+          if (c.to.nodeId !== n.id) continue;
+          const fromN = state.nodes.get(c.from.nodeId);
+          if (!fromN) continue;
+          // Показываем бейдж только если связь скрыта на этой странице —
+          // т.е. источник НЕ размещён здесь явно.
+          const fromPids = Array.isArray(fromN.pageIds) ? fromN.pageIds : [];
+          const fromPos = fromN.positionsByPage && fromN.positionsByPage[curPid];
+          const fromPlaced = fromPids.includes(curPid) || (fromPos && Number.isFinite(fromPos.x));
+          if (fromPlaced) continue;
+          const fs = getNodeSystems(fromN);
+          if (!fs.includes('electrical')) continue;
+          const tg = effectiveTag(fromN) || fromN.name || '';
+          if (tg && !feedTags.includes(tg)) feedTags.push(tg);
+        }
+        if (feedTags.length) {
+          const fbText = '⚡ ' + feedTags.slice(0, 2).join(', ') + (feedTags.length > 2 ? ' +' + (feedTags.length - 2) : '');
+          const pad = 3 * scaleFactor;
+          const fsz = secFontSize;
+          const fw = (fbText.length * 6 + 8) * scaleFactor;
+          const fh = 14 * scaleFactor;
+          const fg = el('g', { transform: `translate(${pad}, ${pad})`, style: 'pointer-events:none' });
+          fg.appendChild(el('rect', { x: 0, y: 0, width: fw, height: fh, rx: 2 * scaleFactor, fill: '#fef3c7', stroke: '#d97706', 'stroke-width': 0.5 * scaleFactor }));
+          const ft = el('text', {
+            x: fw / 2, y: fh - 3 * scaleFactor,
+            'text-anchor': 'middle', 'font-size': fsz, fill: '#92400e',
+            style: 'font-family: system-ui, sans-serif; font-weight:600',
+          });
+          ft.textContent = fbText;
+          fg.appendChild(ft);
+          const ttl = el('title');
+          ttl.textContent = 'Питание от: ' + feedTags.join(', ');
+          fg.appendChild(ttl);
+          g.appendChild(fg);
+        }
+      }
       // v0.58.28: бейдж этажа/уровня (+ имя из project.floorNames, v0.58.31)
       const floorVal = Number(n.floor) || 0;
       if (floorVal !== 0) {
