@@ -560,7 +560,7 @@ export function renderInspectorNode(n) {
     if (n._cosPhi) {
       h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">cos φ (расчётный): <b>${n._cosPhi.toFixed(3)}</b></div>`);
     }
-    h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
+    // v0.58.49: «В работе» перенесён на вкладку «Общее» (влияет на все системы).
 
     // Поля только для генератора
     if (subtype === 'generator') {
@@ -714,7 +714,7 @@ export function renderInspectorNode(n) {
     h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
       `Pном: <b>${fmt(n.capacityKw)} kW</b> · КПД: <b>${n.efficiency || 100}%</b> · АКБ: <b>${fmt(n.batteryKwh || 0)} kWh (${battPct}%)</b>` +
       `</div>`);
-    h.push(checkFieldEff('В работе', n, 'on', effectiveOn(n)));
+    // v0.58.49: «В работе» перенесён на вкладку «Общее».
     h.push(upsStatusBlock(n));
   } else if (n.type === 'consumer') {
     h.push(`<button class="full-btn" id="btn-open-consumer-params" style="margin-bottom:8px">⚙ Параметры потребителя</button>`);
@@ -771,10 +771,7 @@ export function renderInspectorNode(n) {
     h.push(statusBlock(n));
   }
 
-  if (state.activeModeId) {
-    const m = state.modes.find(x => x.id === state.activeModeId);
-    h.push(`<div class="inspector-section"><div class="muted" style="font-size:11px">Изменения параметра «В работе» сохраняются в режиме <b>${escAttr(m?.name || '')}</b></div></div>`);
-  }
+  // v0.58.49: подсказка про режим «В работе» перенесена на вкладку «Общее».
 
   // v0.58.47: комментарии перенесены на вкладку «Общее».
 
@@ -929,7 +926,10 @@ export function renderSystemsBlock(n) {
       return `<select ${name} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">${opts}</select>`;
     }
     if (p.type === 'number') {
-      return `<input type="number" ${name} value="${escAttr(v)}"${Number.isFinite(p.min) ? ` min="${p.min}"` : ''}${p.step ? ` step="${p.step}"` : ''} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
+      const hasMax = Number.isFinite(p.max);
+      const hasMin = Number.isFinite(p.min);
+      const outOfRange = (v !== '' && ((hasMin && Number(v) < p.min) || (hasMax && Number(v) > p.max)));
+      return `<input type="number" ${name} value="${escAttr(v)}"${hasMin ? ` min="${p.min}"` : ''}${hasMax ? ` max="${p.max}"` : ''}${p.step ? ` step="${p.step}"` : ''} style="width:100%;font:inherit;font-size:12px;padding:3px 4px${outOfRange ? ';border-color:#dc2626;background:#fef2f2' : ''}">`;
     }
     return `<input type="text" ${name} value="${escAttr(v)}" style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
   };
@@ -993,7 +993,10 @@ export function renderSystemParamsPanel(n, sysId) {
       return `<select ${name} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">${opts}</select>`;
     }
     if (p.type === 'number') {
-      return `<input type="number" ${name} value="${escAttr(v)}"${Number.isFinite(p.min) ? ` min="${p.min}"` : ''}${p.step ? ` step="${p.step}"` : ''} style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
+      const hasMax = Number.isFinite(p.max);
+      const hasMin = Number.isFinite(p.min);
+      const outOfRange = (v !== '' && ((hasMin && Number(v) < p.min) || (hasMax && Number(v) > p.max)));
+      return `<input type="number" ${name} value="${escAttr(v)}"${hasMin ? ` min="${p.min}"` : ''}${hasMax ? ` max="${p.max}"` : ''}${p.step ? ` step="${p.step}"` : ''} style="width:100%;font:inherit;font-size:12px;padding:3px 4px${outOfRange ? ';border-color:#dc2626;background:#fef2f2' : ''}">`;
     }
     return `<input type="text" ${name} value="${escAttr(v)}" style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
   };
@@ -1014,8 +1017,17 @@ export function renderSystemParamsPanel(n, sysId) {
   }
   const rows = params.map(p => {
     const unit = p.unit ? `<span class="muted" style="font-size:10px;margin-left:4px">${escHtml(p.unit)}</span>` : '';
+    // v0.58.49: диапазон по каталогу (min..max) — подсказка для per-instance
+    // ввода проектных данных. Пользователь видит «окно допустимых значений».
+    let rangeHint = '';
+    if (p.type === 'number' && (Number.isFinite(p.min) || Number.isFinite(p.max))) {
+      const lo = Number.isFinite(p.min) ? p.min : '…';
+      const hi = Number.isFinite(p.max) ? p.max : '…';
+      const u = p.unit ? ' ' + p.unit : '';
+      rangeHint = `<span class="muted" style="font-size:10px;margin-left:8px">диапазон: ${lo}…${hi}${u}</span>`;
+    }
     return `<label style="display:block;font-size:11px;margin-top:6px">
-      <span style="color:#555">${escHtml(p.label)}${unit}</span>
+      <span style="color:#555">${escHtml(p.label)}${unit}${rangeHint}</span>
       ${renderParamInput(p, vals[p.key])}
     </label>`;
   }).join('');
@@ -1035,7 +1047,7 @@ const _CONFIGURATORS = {
   panelMv:     { href: 'mv-config/',          label: 'Конфигуратор РУ СН' },
   ups:         { href: 'ups-config/',         label: 'Конфигуратор ИБП' },
   rack:        { href: 'rack-config/',        label: 'Конфигуратор стойки (в разработке)' },
-  sks:         { href: 'sks-config/',         label: 'Конфигуратор СКС/телеком (в разработке)' },
+  scs:         { href: 'scs-config/',         label: 'Конфигуратор СКС/телеком (в разработке)' },
 };
 function _configuratorForNode(n) {
   if (!n) return null;
@@ -1058,6 +1070,20 @@ function _configuratorForNode(n) {
 // только свои тематические поля; Общее собирает общий фундамент.
 export function renderGeneralPanel(n) {
   const h = [];
+  // v0.58.49: «В работе» — общий переключатель эксплуатационного состояния.
+  // Применим к source/generator/ups (остальные не имеют бинарного on/off).
+  // Выключенный узел пропадает из расчёта всех систем, а не только электрики.
+  if (n.type === 'source' || n.type === 'generator' || n.type === 'ups') {
+    const on = effectiveOn(n);
+    h.push(`<div class="inspector-section" style="margin-top:0;padding-top:0;border-top:0">`);
+    h.push(`<div class="field check" style="margin-bottom:4px"><input type="checkbox" data-prop="on"${on ? ' checked' : ''}><label style="font-weight:600">В работе</label></div>`);
+    // Подсказка: изменения «В работе» сохраняются в активном режиме
+    if (state.activeModeId) {
+      const m = state.modes.find(x => x.id === state.activeModeId);
+      if (m) h.push(`<div class="muted" style="font-size:11px">Сохраняется в режиме <b>${escHtml(m.name || '')}</b>. Влияет на все системы.</div>`);
+    }
+    h.push(`</div>`);
+  }
   h.push(`<div class="inspector-section">`);
   h.push(`<h4>Идентификация</h4>`);
   h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}" placeholder="T1, ЩС-1, K12, ...">`));

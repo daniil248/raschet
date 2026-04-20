@@ -432,7 +432,7 @@
   - блок «Модель изделия»: производитель (`n.manufacturer`),
     поле `n.modelRef` + кнопка «🔧 Конфигурировать…» с переходом
     в соответствующий модуль (transformer-config / panel-config /
-    mv-config / ups-config / rack-config / sks-config),
+    mv-config / ups-config / rack-config / scs-config),
   - комментарий.
 - [x] Электрика-вкладка очищена: tag/name/комментарии перенесены
   в «Общее» (дублирования нет).
@@ -496,8 +496,8 @@
 **Цель:** описать содержимое стойки — коммутаторы, патч-панели, серверы.
 Каждая единица привязывается к PDU-розетке из 1.23.7.
 
-- [ ] **1.24.1** Модуль `sks-config/` (index.html + sks-config.js +
-  sks-config.css). Открывается из «Общее» для `subtype='rack'`
+- [ ] **1.24.1** Модуль `scs-config/` (index.html + scs-config.js +
+  scs-config.css). Открывается из «Общее» для `subtype='rack'`
   (вкладка «Содержимое») либо из hub.
 - [ ] **1.24.2** Каталог типов оборудования (per-user):
   - **коммутатор**: порты (8/16/24/48), Base-T / SFP / SFP+,
