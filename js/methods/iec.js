@@ -63,7 +63,8 @@ export default {
       cableType:             o.cableType,
       maxSize:               o.maxSize,
       conductorsInParallel:  o.parallel,
-      breakerCurve:          'MCB_C',
+      breakerCurve:          o.breakerCurve || 'MCB_C',
+      breakerMarginPct:      o.breakerMarginPct || 0,
       allowAutoParallel:     true,
     });
     return result;

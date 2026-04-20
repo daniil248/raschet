@@ -692,6 +692,26 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.63 (v0.57.39)** — Координация In ≤ Iz перенесена внутрь
+  selectCableSize: теперь подбор кабеля сам применяет breakerMarginPct
+  при расчёте InNeeded (и в autoParallel-ветке), а не полагается на
+  заранее раздутый sizingCurrent. Исправляет случаи, когда выбирался
+  4мм² с Iz=30.8А для 32А автомата per-line (Iz < In).
+  - cable.js/selectCableSize: новые опции breakerMarginPct, breakerCurve
+    применяются в обеих ветках (tryWithParallel и autoParallel-loop);
+    возвращает InNeeded в результате.
+  - methods/iec.js: проброс breakerMarginPct и breakerCurve из recalc
+    в selectCableSize.
+  - methods/pue.js: та же координация (Iдоп ≥ max(Iрасч, InNeeded))
+    с общей цепочкой margin.
+  - recalc.js: упрощена pre-inflation — единственный источник истины
+    теперь внутри selectCableSize; передаём margin и curve прямо в вызов.
+  - inspector/conn.js: рекомендация-preview для ручного кабеля тоже
+    получает margin+curve из c._breakerMarginPctEff / _breakerCurveEff,
+    чтобы «что подобрал бы авто» совпадало с auto-режимом.
+  - inspector/conn.js: warning «In > Iz» для групповых нагрузок теперь
+    сравнивает per-line In vs per-line Iz (а не per-line In vs суммарный
+    Iz), что ранее давало противоречивое «In=32 > Iz=92.5 суммарно».
 - **1.20.62 (v0.57.38)** — Единая цепочка margin для cable-sizing и
   breaker-sizing; selectivity-check учитывает _breakerSettings; в
   инспекторе показан целевой запас и его источник.

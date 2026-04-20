@@ -1566,57 +1566,42 @@ function recalc() {
         c._cableKg = kG;
         c._cableKtotal = kT * kG;
       } else {
-        // Авто-подбор кабеля через общий модуль методики (IEC / ПУЭ)
+        // Авто-подбор кабеля через общий модуль методики (IEC / ПУЭ).
+        // Единая цепочка запаса по автомату (та же, что в breaker-блоке ниже):
+        //   line-override → consumer-override → auto(inrush) → GLOBAL.min
+        // Передаём margin и breakerCurve прямо в selectCable — координация
+        // In ≤ Iz и I2 ≤ 1.45·Iz выполняется внутри (IEC 60364-4-43).
         const calcMethod = getMethod(GLOBAL.calcMethod);
-        // Всегда полная координация In ≤ Iz (IEC 60364-4-43)
+        const _consInrush = (toN && toN.type === 'consumer') ? (Number(toN.inrushFactor) || 1) : 1;
+        const _consMP = (toN && toN.type === 'consumer' && typeof toN.breakerMarginPct === 'number') ? toN.breakerMarginPct : null;
+        const _lineMP = (typeof c.breakerMarginPct === 'number') ? c.breakerMarginPct : null;
+        const _sizingMarginPct = Math.max(
+          Number(GLOBAL.breakerMinMarginPct) || 0,
+          _lineMP != null ? _lineMP : (_consMP != null ? _consMP : autoBreakerMargin(_consInrush))
+        );
+        // Подсказка по кривой — влияет на I2ratio в coordination check
+        const _consCurveHint = (toN && toN.type === 'consumer' && toN.curveHint) ? toN.curveHint : null;
+        const _curveForSizing = c.breakerCurve || _consCurveHint || autoBreakerCurve(_consInrush, 0);
+
         let sizingCurrent = maxCurrent;
+        let _sizingMarginForCall = _sizingMarginPct;
         if (c.manualBreakerIn) {
-          const minIzPerLine = c.manualBreakerIn; // In ≤ Iz
+          // Ручной автомат: координируем кабель под заданный In (per-line).
+          // Margin уже «зашит» в ручной номинал, не добавляем повторно.
+          const minIzPerLine = c.manualBreakerIn;
           const minTotalCurrent = minIzPerLine * conductorsInParallel;
           sizingCurrent = Math.max(maxCurrent, minTotalCurrent);
+          _sizingMarginForCall = 0;
           c._breakerUndersize = (c.manualBreakerIn < (maxCurrent / conductorsInParallel));
         } else {
-          // АВТО-режим: координируем кабель и автомат, чтобы In ≤ Iz.
-          if (maxCurrent > 0) {
-            // Эффективный запас по автомату: line-override → consumer-override
-            // → auto(inrush) → GLOBAL.min. Тот же, что применится при финальном
-            // подборе автомата ниже (единая цепочка правил).
-            const _consInrush = (toN && toN.type === 'consumer') ? (Number(toN.inrushFactor) || 1) : 1;
-            const _consMP = (toN && toN.type === 'consumer' && typeof toN.breakerMarginPct === 'number') ? toN.breakerMarginPct : null;
-            const _lineMP = (typeof c.breakerMarginPct === 'number') ? c.breakerMarginPct : null;
-            const _effMP = Math.max(
-              Number(GLOBAL.breakerMinMarginPct) || 0,
-              _lineMP != null ? _lineMP : (_consMP != null ? _consMP : autoBreakerMargin(_consInrush))
-            );
-            const marginK = 1 + _effMP / 100;
-            // Для групповой нагрузки (count>1, !serialMode) защита стоит
-            // НА КАЖДОЙ линии отдельно (N параллельных автоматов по InPerLine).
-            // Координация должна вестись по per-line току, иначе selectBreaker
-            // подбирает общий автомат на суммарный ток — и кабель завышается.
-            // Для одиночной/последовательной линии — по суммарному току.
-            const isGroupLoadSize = (toN.type === 'consumer'
-              && (Number(toN.count) || 1) > 1
-              && !toN.serialMode);
-            if (isGroupLoadSize && conductorsInParallel > 1) {
-              const Iper = maxCurrent / conductorsInParallel;
-              const preBreakerInPer = calcMethod.selectBreaker(Iper * marginK);
-              if (preBreakerInPer > 0) {
-                // Целевой суммарный ток под подбор: N × InPerLine
-                sizingCurrent = Math.max(maxCurrent, preBreakerInPer * conductorsInParallel);
-              }
-            } else {
-              const preBreakerIn = calcMethod.selectBreaker(maxCurrent * marginK);
-              if (preBreakerIn > 0) {
-                sizingCurrent = Math.max(maxCurrent, preBreakerIn);
-              }
-            }
-          }
           c._breakerUndersize = false;
         }
         const sel = calcMethod.selectCable(sizingCurrent, {
           material, insulation, method, ambient, grouping, bundling,
           cableType, maxSize: GLOBAL.maxCableSize,
           parallel: conductorsInParallel,
+          breakerMarginPct: _sizingMarginForCall,
+          breakerCurve: _curveForSizing,
         });
 
         c._ecoSize = null;

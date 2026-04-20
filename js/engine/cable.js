@@ -103,17 +103,22 @@ export function selectCableSize(I, opts) {
   const breakerCurve = o.breakerCurve || 'MCB_C';
   const brkType = BREAKER_TYPES[breakerCurve] || BREAKER_TYPES.MCB_C;
   const I2ratio = brkType.I2ratio;
+  // Единый запас по автомату (та же цепочка, что в recalc.js): применяется
+  // внутри подбора кабеля, чтобы InNeeded = selectBreaker(Iper × (1+margin/100))
+  // — это гарантирует In ≤ Iz даже если вызывающий код не раздул sizingCurrent.
+  const breakerMarginPct = Math.max(0, Number(o.breakerMarginPct) || 0);
+  const marginK = 1 + breakerMarginPct / 100;
 
   function tryWithParallel(parallel) {
     const Iper = I / parallel;
-    const InNeeded = selectBreaker(Iper);
+    const InNeeded = selectBreaker(Iper * marginK);
     for (const [s, iRef] of effTable) {
       const iDerated = iRef * k;
       // IEC 60364-4-43: In ≤ Iz AND I2 ≤ 1.45 × Iz
       // Для MCB: In ≤ Iz (т.к. I2 = 1.45*In, условие 2 автоматически)
       // Проверяем оба условия явно:
       if (iDerated >= InNeeded && I2ratio * InNeeded <= 1.45 * iDerated) {
-        return { s, iAllowed: iRef, iDerated, parallel };
+        return { s, iAllowed: iRef, iDerated, parallel, InNeeded };
       }
     }
     return null;
@@ -130,15 +135,14 @@ export function selectCableSize(I, opts) {
     const maxPar = Math.max(basePar, Number(GLOBAL.maxParallelAuto) || 10);
     for (let par = basePar + 1; par <= maxPar; par++) {
       const Iper = I / par;
-      const InNeeded = selectBreaker(Iper);
+      const InNeeded = selectBreaker(Iper * marginK);
       for (const [s, iRef] of effTable) {
         const iDerated = iRef * k;
         // IEC 60364-4-43: In ≤ Iz AND I2 ≤ 1.45 × Iz — проверка та же,
-        // что и в tryWithParallel (было расхождение: auto-ветвь не
-        // проверяла I2, из-за чего подбор мог дать несогласованный
-        // с автоматом кабель).
+        // что и в tryWithParallel. Учитываем тот же breakerMarginPct,
+        // чтобы автоподбор параллели не давал Iz < In.
         if (iDerated >= InNeeded && I2ratio * InNeeded <= 1.45 * iDerated) {
-          res = { s, iAllowed: iRef, iDerated, parallel: par };
+          res = { s, iAllowed: iRef, iDerated, parallel: par, InNeeded };
           autoParallel = true;
           break;
         }
@@ -157,6 +161,8 @@ export function selectCableSize(I, opts) {
       parallel: res.parallel,
       autoParallel,
       totalCapacity: res.iDerated * res.parallel,
+      InNeeded: res.InNeeded,
+      breakerMarginPct,
     };
   }
 

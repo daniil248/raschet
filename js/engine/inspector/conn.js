@@ -304,6 +304,12 @@ export function renderInspectorConn(c) {
     let autoSize, autoPar, autoIz;
     if (manualCable && c._maxA > 0) {
       const _m = getMethod(GLOBAL.calcMethod);
+      // Предпросмотр «что подобрал бы авто» — применяем ту же цепочку запаса,
+      // что и основной recalc, чтобы рекомендация совпадала с авто-режимом.
+      const _recSizingMargin = (typeof c._breakerMarginPctEff === 'number')
+        ? c._breakerMarginPctEff
+        : 0;
+      const _recCurve = c.breakerCurve || c._breakerCurveEff || 'MCB_C';
       const recSel = _m.selectCable(c._maxA || 0, {
         material: c.material || GLOBAL.defaultMaterial,
         insulation: c.insulation || GLOBAL.defaultInsulation,
@@ -314,6 +320,8 @@ export function renderInspectorConn(c) {
         cableType: c.cableType || GLOBAL.defaultCableType,
         maxSize: GLOBAL.maxCableSize,
         parallel: c._cableParallel || 1,
+        breakerMarginPct: _recSizingMargin,
+        breakerCurve: _recCurve,
       });
       autoSize = recSel.s;
       autoPar = recSel.parallel;
@@ -519,9 +527,14 @@ export function renderInspectorConn(c) {
           </div>`);
         }
       }
-      // Warning 1: автомат > Iz (кабель не защищён от перегрузки)
-      if (_IzTotal > 0 && effectiveIn > _IzTotal) {
-        h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${effectiveIn} А) > Iz (${fmt(_IzTotal)} А${_parBrk > 1 ? ' суммарно' : ''}) — кабель не защищён от перегрузки! Увеличьте сечение.</div>`);
+      // Warning 1: автомат > Iz (кабель не защищён от перегрузки).
+      // Для групповой нагрузки сравниваем In per-line vs Iz per-line
+      // (каждый кабель защищается своим автоматом отдельно).
+      const _w1LhsIn = _isGroupBrk ? (c._breakerPerLine || effectiveIn) : effectiveIn;
+      const _w1RhsIz = _isGroupBrk ? (c._cableIz || 0) : _IzTotal;
+      const _w1IzLabel = _isGroupBrk ? 'на жилу' : (_parBrk > 1 ? 'суммарно' : '');
+      if (_w1RhsIz > 0 && _w1LhsIn > _w1RhsIz) {
+        h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">⚠ In (${_w1LhsIn} А) > Iz (${fmt(_w1RhsIz)} А${_w1IzLabel ? ' ' + _w1IzLabel : ''}) — кабель не защищён от перегрузки! Увеличьте сечение.</div>`);
       }
       // Warning 2: автомат < Iрасч (сработает при нормальной нагрузке, нагрузка будет отключена)
       if (_Imax > 0 && effectiveIn > 0 && effectiveIn < _Imax * 0.95) {
@@ -534,7 +547,7 @@ export function renderInspectorConn(c) {
       h.push(`<div style="font-size:12px;line-height:1.8">` +
         (effectiveIn ? `Номинал: <b>${effectiveIn} А</b> ${badge}<br>` : 'Не определён<br>') +
         (cnt > 1 ? `В шкафу: <b>${cnt} × ${effectiveIn} А</b> <span class="muted">(по одному на параллельную линию)</span><br>` : '') +
-        (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${fmt(_IzTotal)} А${_parBrk > 1 ? ' суммарно' : ''}) — увеличьте сечение</span>` : '') +
+        (c._breakerAgainstCable ? `<span style="color:#c62828;font-size:11px">In > Iz (${_isGroupBrk ? fmt(c._cableIz || 0) + ' А на жилу' : fmt(_IzTotal) + ' А' + (_parBrk > 1 ? ' суммарно' : '')}) — увеличьте сечение</span>` : '') +
         `</div>`);
       // Запасы по автомату и кабелю
       if (effectiveIn) h.push(marginBlock());

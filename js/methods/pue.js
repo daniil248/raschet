@@ -6,6 +6,15 @@
 
 import { BREAKER_SERIES, GLOBAL } from '../engine/constants.js';
 
+// Локальный selectBreaker — ближайший больший номинал из ряда.
+// Дублирует cable.js/selectBreaker, чтобы не тянуть импорт.
+function _selectBreakerLocal(Iload) {
+  for (const In of BREAKER_SERIES) {
+    if (In >= Iload) return In;
+  }
+  return BREAKER_SERIES[BREAKER_SERIES.length - 1];
+}
+
 // ================= Таблицы допустимых токов =================
 
 // Таблица 1.3.4 — Медные проводники с ПВХ/резиновой изоляцией
@@ -257,11 +266,19 @@ export default {
 
     const effTable = table.filter(([s]) => s <= maxSize);
 
+    // ПУЭ: Iдоп ≥ Iрасч. Плюс единая координация с автоматом — Iдоп ≥ In,
+    // где In подбирается с учётом breakerMarginPct (та же цепочка, что в
+    // IEC-методике и в recalc.js). Это исключает случай Iz < In.
+    const _marginK = 1 + Math.max(0, Number(o.breakerMarginPct) || 0) / 100;
     function tryWithParallel(parallel) {
       const Iper = I / parallel;
+      // Минимальный стандартный автомат на per-line ток с учётом запаса.
+      // selectBreaker импортирован локально ниже? — используем ряд BREAKER_SERIES.
+      const InNeeded = _selectBreakerLocal(Iper * _marginK);
+      const need = Math.max(Iper, InNeeded);
       for (const [s, iRef] of effTable) {
         const iDerated = iRef * k;
-        if (iDerated >= Iper) {
+        if (iDerated >= need) {
           return { s, iAllowed: iRef, iDerated, parallel };
         }
       }
