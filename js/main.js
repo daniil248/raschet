@@ -1744,6 +1744,7 @@ const _EQUIPMENT_TABLE_COLUMNS = [
   { id: 'load', label: 'P расч, кВт', default: true },
   { id: 'loadPct', label: 'Загрузка', default: true },
   { id: 'ip', label: 'IP', default: true },
+  { id: 'standby', label: 'Резерв', default: true },
   { id: 'xnav', label: 'Связано', default: true },
 ];
 let _equipTableVisibility = _loadColumnVisibility('equipment', _EQUIPMENT_TABLE_COLUMNS);
@@ -4621,6 +4622,7 @@ function renderEquipmentTable() {
         return cap > 0 ? load / cap : 0;
       }
       case 'ip': return n.ipRating || '';
+      case 'standby': return n.isStandby ? 1 : 0;
       case 'voltage': {
         const lv = (GLOBAL_voltageLevels())[n.voltageLevelIdx];
         return lv ? Number(lv.vLL) || 0 : 0;
@@ -4666,6 +4668,7 @@ function renderEquipmentTable() {
           ${ifShow('load', sortHdr('load', 'P расч, кВт', 'right'))}
           ${ifShow('loadPct', sortHdr('loadPct', 'Загрузка', 'right', 'min-width:80px'))}
           ${ifShow('ip', sortHdr('ip', 'IP', 'center'))}
+          ${ifShow('standby', sortHdr('standby', 'Резерв', 'center', 'min-width:70px'))}
           ${ifShow('xnav', '<th style="padding:6px 8px;border-bottom:2px solid #d0d7de;min-width:150px" title="Переход к связанным объектам">Связано</th>')}
         </tr>
       </thead>
@@ -4697,6 +4700,9 @@ function renderEquipmentTable() {
         ${ifShow('load', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${load ? load.toFixed(1) : '—'}</td>`)}
         ${ifShow('loadPct', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:${loadColor};font-weight:${loadPct > 90 ? 600 : 400}">${cap > 0 ? loadPct.toFixed(0) + '%' : '—'}${loadPct > 0 ? `<div style="background:#e1e4e8;height:3px;border-radius:2px;margin-top:2px;overflow:hidden"><div style="width:${Math.min(100, loadPct)}%;height:100%;background:${loadColor}"></div></div>` : ''}</td>`)}
         ${ifShow('ip', `<td style="padding:5px 8px;text-align:center;font-size:11px">${n.ipRating || '—'}</td>`)}
+        ${ifShow('standby', (e.kind === 'source' || e.kind === 'generator')
+          ? `<td style="padding:5px 8px;text-align:center" title="Подменный источник — не учитывается в «доступной мощности»"><input type="checkbox" class="et-standby" data-id="${esc(n.id)}"${n.isStandby ? ' checked' : ''} style="margin:0;cursor:pointer"></td>`
+          : `<td style="padding:5px 8px;text-align:center;color:#ccc">—</td>`)}
         ${ifShow('xnav', `<td style="padding:5px 8px;font-size:10px">${(() => {
           let cableCount = 0, consumerCount = 0;
           for (const c of S.conns.values()) {
@@ -4764,6 +4770,22 @@ function renderEquipmentTable() {
       closeModal('modal-equipment-table');
     });
   });
+  // Phase 1.20.43: toggle isStandby inline в equipment table
+  mount.querySelectorAll('.et-standby').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const id = cb.dataset.id;
+      const node = S.nodes.get(id);
+      if (!node) return;
+      if (typeof window.Raschet?.snapshot === 'function') {
+        window.Raschet.snapshot('equip-table:standby:' + id);
+      }
+      node.isStandby = !!cb.checked;
+      if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+      renderEquipmentTable();
+    });
+  });
+
   // Phase 1.20.30: cross-navigation в таблицы кабелей и потребителей
   mount.querySelectorAll('.et-xnav').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -4804,7 +4826,7 @@ function GLOBAL_voltageLevels() {
 function exportEquipmentTableCsv() {
   const S = window.Raschet?._state;
   if (!S) return;
-  const rows = [['Обозначение', 'Тип', 'Имя', 'Модель', 'U, В', 'Входов', 'Выходов', 'Pном, кВт', 'Pрасч, кВт', 'Загрузка, %', 'IP']];
+  const rows = [['Обозначение', 'Тип', 'Имя', 'Модель', 'U, В', 'Входов', 'Выходов', 'Pном, кВт', 'Pрасч, кВт', 'Загрузка, %', 'IP', 'Резерв']];
   for (const n of S.nodes.values()) {
     const kind = _equipKindOf(n);
     if (!kind) continue;
@@ -4826,6 +4848,7 @@ function exportEquipmentTableCsv() {
       load ? load.toFixed(1) : '',
       cap > 0 ? loadPct.toFixed(1) : '',
       n.ipRating || '',
+      (kind === 'source' || kind === 'generator') ? (n.isStandby ? 'Да' : 'Нет') : '',
     ]);
   }
   const csv = rows.map(row => row.map(cell => {
