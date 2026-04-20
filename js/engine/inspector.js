@@ -1027,6 +1027,7 @@ export function renderLayoutColorBlock(n) {
       <button type="button" class="full-btn" id="btn-lc-apply-fill"  style="flex:1;font-size:11px">Применить заливку</button>
       <button type="button" class="full-btn" id="btn-lc-apply-stroke" style="flex:1;font-size:11px">Применить обводку</button>
     </div>
+    <button type="button" class="full-btn" id="btn-lc-apply-kin" style="margin-top:6px;font-size:11px">Применить всем узлам с тем же подтипом</button>
     <button type="button" class="full-btn" id="btn-lc-clear" style="margin-top:6px;font-size:11px">Сбросить цвет (брать по типу)</button>
   </div>`;
 }
@@ -1048,6 +1049,34 @@ export function wireLayoutColorBlock(n, root) {
   }
   if (applyFill && fillInput) applyFill.addEventListener('click', () => setProp('fill', fillInput.value));
   if (applyStroke && strokeInput) applyStroke.addEventListener('click', () => setProp('stroke', strokeInput.value));
+  const applyKin = r.querySelector('#btn-lc-apply-kin');
+  if (applyKin) applyKin.addEventListener('click', () => {
+    // «Подтип» = type + (consumerKind / panelKind / sourceKind / libraryRef) для различения подтипов в пределах типа.
+    const subKeyOf = (m) => {
+      if (!m) return '';
+      return [m.type, m.consumerKind, m.panelKind, m.sourceKind, m.upsKind, m.libraryRef]
+        .filter(v => v != null && v !== '').join('|');
+    };
+    const myKey = subKeyOf(n);
+    const f = fillInput ? fillInput.value : '';
+    const s = strokeInput ? strokeInput.value : '';
+    let count = 0;
+    snapshot('layoutColor-kin:' + n.id);
+    for (const other of state.nodes.values()) {
+      if (other.id === n.id) continue;
+      if (subKeyOf(other) !== myKey) continue;
+      if (!other.layoutColor || typeof other.layoutColor !== 'object') other.layoutColor = {};
+      if (f) other.layoutColor.fill = f;
+      if (s) other.layoutColor.stroke = s;
+      count++;
+    }
+    if (!n.layoutColor || typeof n.layoutColor !== 'object') n.layoutColor = {};
+    if (f) n.layoutColor.fill = f;
+    if (s) n.layoutColor.stroke = s;
+    notifyChange();
+    if (_render) _render();
+    flash(`Цвет применён к ${count + 1} узлам подтипа`, 'ok');
+  });
   if (clr) clr.addEventListener('click', () => {
     if (!n.layoutColor) return;
     snapshot('layoutColor-clear:' + n.id);

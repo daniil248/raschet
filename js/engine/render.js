@@ -660,6 +660,35 @@ function _renderNodesLayout() {
       });
       dim.textContent = `${Math.round(W)}×${Math.round(H)} мм (Ш×Г)`;
       g.appendChild(dim);
+      // v0.58.22: бейдж параметров системы текущей страницы (если есть)
+      const pageKindNow = getPageKind(getCurrentPage());
+      const pageSystems = systemsForPageKind(pageKindNow);
+      const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : null;
+      if (pageSystems && sp) {
+        const parts = [];
+        for (const sysId of getNodeSystems(n)) {
+          if (!pageSystems.includes(sysId)) continue;
+          const meta = getSystemMeta(sysId);
+          const pv = sp[sysId];
+          if (!meta || !pv) continue;
+          const paramList = (meta.params || []).map(p => {
+            const v = pv[p.key];
+            if (v === '' || v == null) return null;
+            return `${p.label}: ${v}${p.unit ? ' ' + p.unit : ''}`;
+          }).filter(Boolean);
+          if (paramList.length) parts.push(`${meta.icon} ${paramList.join(', ')}`);
+        }
+        if (parts.length) {
+          const badge = el('text', {
+            x: W / 2, y: H - 8,
+            'text-anchor': 'middle', 'font-size': Math.max(9, fontSize - 3),
+            fill: '#334155',
+            style: 'font-family: system-ui, sans-serif; pointer-events:none',
+          });
+          badge.textContent = parts.join('  ·  ');
+          g.appendChild(badge);
+        }
+      }
       // Индекс экземпляра (1/N) для групповых потребителей
       if (count > 1) {
         const idx = el('text', {
