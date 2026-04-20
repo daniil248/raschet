@@ -1,0 +1,174 @@
+/* =========================================================================
+   mdc-config.css — Конфигуратор модульного ЦОД (GDM-600)
+   ========================================================================= */
+
+.mdc-wrap {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.mdc-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .mdc-grid { grid-template-columns: 1fr; }
+}
+
+.mdc-form {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.mdc-section {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #eee;
+}
+.mdc-section:last-of-type { border-bottom: 0; }
+.mdc-section h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1976d2;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.mdc-field {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.mdc-field > span {
+  font-size: 11px;
+  color: #555;
+}
+.mdc-field input, .mdc-field select {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.mdc-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+.mdc-hint {
+  font-size: 11px;
+  color: #777;
+  margin-top: 4px;
+}
+
+.mdc-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.mdc-btn {
+  padding: 8px 12px;
+  border: 1px solid #bbb;
+  background: #fafafa;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.mdc-btn:hover { background: #f0f0f0; }
+.mdc-btn-primary {
+  background: #1976d2;
+  color: #fff;
+  border-color: #1976d2;
+}
+.mdc-btn-primary:hover { background: #1565c0; }
+
+.mdc-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mdc-summary {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.mdc-summary .card {
+  border-left: 3px solid #1976d2;
+  padding-left: 8px;
+}
+.mdc-summary .card .label {
+  font-size: 11px;
+  color: #666;
+  display: block;
+}
+.mdc-summary .card .value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #222;
+}
+.mdc-summary .warn { border-left-color: #e65100; }
+.mdc-summary .ok   { border-left-color: #2e7d32; }
+
+.mdc-plan-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+}
+.mdc-plan-head h3 { margin: 0; font-size: 14px; }
+.mdc-plan-legend {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: #555;
+}
+.mdc-plan-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.mdc-plan-legend i {
+  display: inline-block;
+  width: 14px; height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(0,0,0,.2);
+}
+.mdc-plan-legend .lg-srv  { background: #bbdefb; }
+.mdc-plan-legend .lg-ups  { background: #ffe082; }
+.mdc-plan-legend .lg-crac { background: #b2dfdb; }
+.mdc-plan-legend .lg-svc  { background: #f5f5f5; }
+
+.mdc-plan {
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+}
+.mdc-plan svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.mdc-plan .zone-srv  { fill: #bbdefb; }
+.mdc-plan .zone-ups  { fill: #ffe082; }
+.mdc-plan .zone-crac { fill: #b2dfdb; }
+.mdc-plan .zone-svc  { fill: #f5f5f5; }
+.mdc-plan .rack      { fill: #1976d2; stroke: #0d47a1; stroke-width: 1; }
+.mdc-plan .ups       { fill: #f57c00; stroke: #e65100; stroke-width: 1; }
+.mdc-plan .battery   { fill: #fb8c00; stroke: #e65100; stroke-width: 1; stroke-dasharray: 2,2; }
+.mdc-plan .crac      { fill: #00796b; stroke: #004d40; stroke-width: 1; }
+.mdc-plan .wall      { fill: none; stroke: #333; stroke-width: 2; }
+.mdc-plan .dim       { fill: #555; font-size: 11px; }
+.mdc-plan .zone-label{ fill: #333; font-size: 12px; font-weight: 600; }

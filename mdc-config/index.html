@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор модульного ЦОД</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="mdc-config.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Конфигуратор модульного ЦОД (GDM-600)', home: '../hub.html' });
+  </script>
+
+  <div class="mdc-wrap">
+    <div class="mdc-grid">
+      <!-- =========== Форма (опросник) =========== -->
+      <aside class="mdc-form">
+        <section class="mdc-section">
+          <h2>1. Геометрия модуля</h2>
+          <label class="mdc-field">
+            <span>Ширина модуля</span>
+            <select id="mdc-width">
+              <option value="2400">2400 мм (узкий)</option>
+              <option value="3000" selected>3000 мм (широкий)</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Длина модуля, мм</span>
+            <select id="mdc-length">
+              <option value="6058">6058 (20ft ISO)</option>
+              <option value="9000">9000</option>
+              <option value="12192" selected>12192 (40ft ISO)</option>
+              <option value="15000">15000</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Количество модулей в сборке</span>
+            <input type="number" id="mdc-count" value="1" min="1" max="8">
+          </label>
+          <div class="mdc-hint">Высота внутри от фальшпола: <b>2700 мм</b> (фикс.)</div>
+        </section>
+
+        <section class="mdc-section">
+          <h2>2. IT-нагрузка</h2>
+          <label class="mdc-field">
+            <span>Целевая IT-мощность, кВт</span>
+            <input type="number" id="mdc-it-kw" value="600" min="50" max="2000" step="50">
+          </label>
+          <label class="mdc-field">
+            <span>Мощность на стойку, кВт</span>
+            <input type="number" id="mdc-rack-kw" value="30" min="3" max="60" step="1">
+          </label>
+          <label class="mdc-field">
+            <span>Резервирование</span>
+            <select id="mdc-redundancy">
+              <option value="N">N (базовое)</option>
+              <option value="N+1" selected>N+1</option>
+              <option value="2N">2N (Tier III+)</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="mdc-section">
+          <h2>3. ИБП и АКБ</h2>
+          <label class="mdc-field">
+            <span>Серия ИБП</span>
+            <select id="mdc-ups-series">
+              <option value="gdm600k" selected>GDM-600K (модульный)</option>
+              <option value="kehua-mr33">Kehua MR33</option>
+              <option value="generic">Произвольная</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Время автономии, мин</span>
+            <select id="mdc-autonomy">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="15" selected>15</option>
+              <option value="30">30</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="mdc-section">
+          <h2>4. Охлаждение</h2>
+          <label class="mdc-field">
+            <span>Тип CRAC</span>
+            <select id="mdc-crac-type">
+              <option value="inrow-dx" selected>inRow DX (фреон)</option>
+              <option value="inrow-cw">inRow chilled water</option>
+              <option value="perimeter-dx">Периметральный DX</option>
+              <option value="freecooling">Freecooling (дуальный)</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Температурный класс (ASHRAE)</span>
+            <select id="mdc-ashrae">
+              <option value="A1">A1 (18–27 °C)</option>
+              <option value="A2" selected>A2 (10–35 °C)</option>
+              <option value="A3">A3 (5–40 °C)</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="mdc-section">
+          <h2>5. Слаботочные системы</h2>
+          <label class="mdc-check"><input type="checkbox" id="mdc-scs" checked> СКС (патч-панели + коммутация)</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-skud" checked> СКУД на вход</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-video" checked> Видеонаблюдение (2 камеры/модуль)</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-fire" checked> Пожарка (газовое пожаротушение)</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-leak"> Контроль протечек</label>
+        </section>
+
+        <div class="mdc-actions">
+          <button type="button" id="mdc-export-bom" class="mdc-btn mdc-btn-primary">📋 BOM (XLSX)</button>
+          <button type="button" id="mdc-send-main" class="mdc-btn">→ в главную схему</button>
+        </div>
+      </aside>
+
+      <!-- =========== Визуализация + сводка =========== -->
+      <main class="mdc-view">
+        <div class="mdc-summary" id="mdc-summary"></div>
+        <div class="mdc-plan-head">
+          <h3>План модуля (top-view)</h3>
+          <div class="mdc-plan-legend">
+            <span><i class="lg-srv"></i>Серверные стойки</span>
+            <span><i class="lg-ups"></i>ИБП + АКБ</span>
+            <span><i class="lg-crac"></i>Кондиционеры</span>
+            <span><i class="lg-svc"></i>Сервисный коридор</span>
+          </div>
+        </div>
+        <div id="mdc-plan" class="mdc-plan"></div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="mdc-config.js"></script>
+</body>
+</html>
