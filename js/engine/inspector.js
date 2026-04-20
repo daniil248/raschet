@@ -17,6 +17,7 @@ import { mountTransformerPicker, applyTransformerModel } from '../../shared/tran
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
 import {
   bindInspectorUpsDeps,
+  bindWrapModalTabs as bindWrapModalTabsUps,
   openUpsParamsModal,
   openUpsControlModal,
   openUpsBatteryModal,
@@ -28,6 +29,7 @@ import {
 } from './inspector/consumer.js';
 import {
   bindInspectorSourceDeps,
+  bindWrapModalTabs as bindWrapModalTabsSource,
   openImpedanceModal,
   openAutomationModal,
   sourceStatusBlock,
@@ -35,6 +37,7 @@ import {
 } from './inspector/source.js';
 import {
   bindInspectorPanelDeps,
+  bindWrapModalTabs as bindWrapModalTabsPanel,
   openPanelParamsModal,
   openPanelControlModal,
   panelStatusBlock,
@@ -59,6 +62,12 @@ export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique 
   bindInspectorSourceDeps({ renderInspector });
   bindInspectorPanelDeps({ renderInspector });
   bindInspectorConnDeps({ renderInspector });
+  // v0.58.6: прокидываем обёртку модалок во вкладки систем
+  try {
+    bindWrapModalTabsUps(wrapModalWithSystemTabs);
+    bindWrapModalTabsSource(wrapModalWithSystemTabs);
+    bindWrapModalTabsPanel(wrapModalWithSystemTabs);
+  } catch {}
 }
 
 // ================= Инспектор =================
@@ -835,15 +844,15 @@ export function renderGeometryMmBlock(n) {
   </div>`;
 }
 
-function wireGeometryMmBlock(n) {
-  inspectorBody.querySelectorAll('[data-geom-prop]').forEach(inp => {
+export function wireGeometryMmBlock(n, root) {
+  const r = root || inspectorBody;
+  r.querySelectorAll('[data-geom-prop]').forEach(inp => {
     inp.addEventListener('change', () => {
       const prop = inp.dataset.geomProp;
       const raw = inp.value.trim();
       const v = raw === '' ? 0 : Number(raw);
       snapshot('geometryMm:' + n.id);
       n.geometryMm = { ...(n.geometryMm || {}), [prop]: v };
-      // Если все 4 поля = 0 — удаляем override
       const all = n.geometryMm;
       if (!Number(all.widthMm) && !Number(all.heightMm) && !Number(all.depthMm) && !Number(all.weightKg)) {
         delete n.geometryMm;
@@ -853,7 +862,7 @@ function wireGeometryMmBlock(n) {
       renderInspector();
     });
   });
-  const clr = document.getElementById('btn-clear-geom-override');
+  const clr = r.querySelector('#btn-clear-geom-override');
   if (clr) clr.addEventListener('click', () => {
     if (!n.geometryMm) return;
     snapshot('geometryMm-clear:' + n.id);
@@ -862,6 +871,39 @@ function wireGeometryMmBlock(n) {
     _render();
     renderInspector();
   });
+}
+
+// v0.58.6: обёртка для модалок «Параметры X» — превращает сплошной
+// body в табы «⚡ Электрика / 📐 Габариты». Вызывается в конце каждого
+// open*Params после того как body.innerHTML уже сформирован.
+//   bodyEl — DOM контейнер модалки
+//   n — узел, для которого открыта модалка
+// Содержимое bodyEl целиком уходит во вкладку «Электрика»; во вкладку
+// «Габариты» добавляется renderGeometryMmBlock(n) с уже готовой
+// провязкой wireGeometryMmBlock(n, root).
+export function wrapModalWithSystemTabs(bodyEl, n) {
+  if (!bodyEl || !n || n.type === 'zone') return;
+  // Избегаем двойного оборачивания (если модалка переоткрывается в уже
+  // обёрнутом контейнере).
+  if (bodyEl.querySelector(':scope > .tp-tabs')) return;
+  const originalHtml = bodyEl.innerHTML;
+  const tabsHtml = `<div class="tp-tabs" role="tablist" style="margin-bottom:12px">
+    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
+  </div>`;
+  bodyEl.innerHTML = tabsHtml
+    + `<div class="tp-panel" data-panel="electrical">${originalHtml}</div>`
+    + `<div class="tp-panel" data-panel="geometry" hidden>${renderGeometryMmBlock(n)}</div>`;
+  bodyEl.querySelectorAll(':scope > .tp-tabs .tp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      bodyEl.querySelectorAll(':scope > .tp-tabs .tp-tab').forEach(t => t.classList.toggle('active', t === btn));
+      bodyEl.querySelectorAll(':scope > .tp-panel').forEach(p => {
+        p.hidden = p.dataset.panel !== tab;
+      });
+    });
+  });
+  wireGeometryMmBlock(n, bodyEl);
 }
 
 // Полный блок «Все данные объекта» внизу инспектора

@@ -12,12 +12,20 @@ import { effectiveOn } from '../modes.js';
 import { nodeVoltage, sourceImpedance, formatVoltageLevelLabel } from '../electrical.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
+// Ленивая привязка чтобы избежать цикла на этапе загрузки. Связывается
+// из inspector.js через bindInspectorSourceDeps.
+let _wrapTabs = null;
+export function bindWrapModalTabs(fn) { _wrapTabs = fn; }
 
 let _renderInspector = null;
 export function bindInspectorSourceDeps({ renderInspector }) {
   _renderInspector = renderInspector;
 }
 function _invokeRenderInspector() { if (_renderInspector) _renderInspector(); }
+
+function _wrapModalWithSystemTabs(bodyEl, n) {
+  if (_wrapTabs) try { _wrapTabs(bodyEl, n); } catch {}
+}
 
 // ================= voltageLevelOptions =================
 export function voltageLevelOptions(selectedIdx, filter) {
@@ -181,6 +189,7 @@ export function openImpedanceModal(n) {
     `</div></div>`);
 
   body.innerHTML = h.join('');
+  try { _wrapModalWithSystemTabs(body, n); } catch {}
 
   const tCatEl = document.getElementById('imp-tCatalog');
   if (tCatEl) {

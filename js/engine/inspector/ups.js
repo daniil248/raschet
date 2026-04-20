@@ -17,6 +17,12 @@ let _renderInspector = null;
 export function bindInspectorUpsDeps({ renderInspector }) {
   _renderInspector = renderInspector;
 }
+// v0.58.6: обёртка модалок во вкладки систем
+let _wrapTabs = null;
+export function bindWrapModalTabs(fn) { _wrapTabs = fn; }
+function _wrapModalWithSystemTabs(bodyEl, n) {
+  if (_wrapTabs) try { _wrapTabs(bodyEl, n); } catch {}
+}
 
 // ================= Модалка «Параметры ИБП» =================
 export function openUpsParamsModal(n) {
@@ -220,6 +226,7 @@ export function openUpsParamsModal(n) {
   h.push('<div class="muted" style="font-size:11px;margin-top:-6px">Принудительная активация SBS, разрешение авто-перехода и порог перегруза — в модалке <b>«🔌 Управление ИБП»</b>.</div>');
 
   body.innerHTML = h.join('');
+  _wrapModalWithSystemTabs(body, n);
 
   // Монтируем каскадный пикер ИБП (если справочник не пуст).
   try {

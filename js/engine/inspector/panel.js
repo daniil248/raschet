@@ -16,6 +16,12 @@ let _renderInspector = null;
 export function bindInspectorPanelDeps({ renderInspector }) {
   _renderInspector = renderInspector;
 }
+// v0.58.6: обёртка модалок во вкладки систем
+let _wrapTabs = null;
+export function bindWrapModalTabs(fn) { _wrapTabs = fn; }
+function _wrapModalWithSystemTabs(bodyEl, n) {
+  if (_wrapTabs) try { _wrapTabs(bodyEl, n); } catch {}
+}
 // forward-reference для renderInspector() вызовов внутри перенесённого кода
 function renderInspector() { if (_renderInspector) _renderInspector(); }
 
@@ -414,6 +420,7 @@ export function openPanelParamsModal(n) {
   }
 
   body.innerHTML = h.join('');
+  _wrapModalWithSystemTabs(body, n);
   // Фаза 1.19.7: инлайн-пикер модели НКУ удалён. Подбор оболочки/шин/автоматов
   // делается только в wizard-конфигураторе (кнопка выше).
 
