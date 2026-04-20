@@ -12,7 +12,7 @@
 // ======================================================================
 
 import { state } from './state.js';
-import { CHANNEL_TYPES, GLOBAL, SYSTEMS_CATALOG, getSystemMeta } from './constants.js';
+import { CHANNEL_TYPES, GLOBAL, SYSTEMS_CATALOG, getSystemMeta, getAllSystems } from './constants.js';
 import { recalc } from './recalc.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { effectiveTag } from './zones.js';
@@ -1074,8 +1074,9 @@ function sectionSystems() {
     blocks.push(B.paragraph('В проекте нет элементов с назначенными дополнительными системами (кроме электрической). Назначьте системы во вкладке «🧩 Системы» в инспекторе элемента.'));
     return { text: text.join('\n'), blocks };
   }
-  // Порядок — по каталогу
-  for (const meta of SYSTEMS_CATALOG) {
+  // Порядок — по полному каталогу (built-in + custom проекта)
+  try { globalThis.__raschetCustomSystems = Array.isArray(state.project?.customSystems) ? state.project.customSystems.slice() : []; } catch {}
+  for (const meta of getAllSystems()) {
     if (meta.id === 'electrical') continue;
     const items = buckets.get(meta.id);
     if (!items || !items.length) continue;

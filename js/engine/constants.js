@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.58.23';
+export const APP_VERSION = '0.58.24';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -66,7 +66,30 @@ export const SYSTEMS_CATALOG = [
   ] },
 ];
 export function getSystemMeta(id) {
-  return SYSTEMS_CATALOG.find(s => s.id === id) || null;
+  const built = SYSTEMS_CATALOG.find(s => s.id === id);
+  if (built) return built;
+  // v0.58.24: пользовательские системы проекта. Хранятся в
+  // state.project.customSystems[]. Ленивый lookup через глобальный хук,
+  // который выставляет main.js (чтобы не тащить state.js в constants).
+  try {
+    if (typeof globalThis !== 'undefined' && Array.isArray(globalThis.__raschetCustomSystems)) {
+      return globalThis.__raschetCustomSystems.find(s => s.id === id) || null;
+    }
+  } catch {}
+  return null;
+}
+// Полный перечень систем (built-in + пользовательские) — используется
+// в инспекторе и отчётах.
+export function getAllSystems() {
+  const out = SYSTEMS_CATALOG.slice();
+  try {
+    if (typeof globalThis !== 'undefined' && Array.isArray(globalThis.__raschetCustomSystems)) {
+      for (const s of globalThis.__raschetCustomSystems) {
+        if (!out.find(x => x.id === s.id)) out.push(s);
+      }
+    }
+  } catch {}
+  return out;
 }
 // Компатибельные системы для страницы данного вида (какие системы
 // «имеют смысл» на данном kind). Если null — без ограничений.

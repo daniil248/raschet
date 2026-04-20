@@ -642,6 +642,8 @@ function _renderNodesLayout() {
         'stroke-width': selected ? 3 : 1.5,
         'stroke-dasharray': hasGeom ? '' : '6 4',
       }));
+      // v0.58.24: полоска систем вверху карточки также и на layout-странице
+      _drawSystemStrip(g, n, W);
       // Подпись: тег + имя + размеры
       const tag = (typeof n.tag === 'string' && n.tag) ? n.tag : '';
       const name = n.name || n.type;

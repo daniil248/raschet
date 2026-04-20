@@ -1,5 +1,5 @@
 import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
-import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE, SYSTEMS_CATALOG, getSystemMeta } from './constants.js';
+import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE, SYSTEMS_CATALOG, getSystemMeta, getAllSystems } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash } from './utils.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, getNodeGeometryMm } from './geometry.js';
@@ -871,8 +871,14 @@ export function renderInspectorNode(n) {
 // Сохраняет n.systems = ['electrical','data',...]. Если пусто — дефолт
 // рассчитывается в render.getNodeSystems (обычно ['electrical']).
 export function renderSystemsBlock(n) {
+  // v0.58.24: синхронизируем пользовательские системы проекта в global hook
+  try {
+    const proj = state.project || {};
+    globalThis.__raschetCustomSystems = Array.isArray(proj.customSystems) ? proj.customSystems.slice() : [];
+  } catch {}
   const cur = Array.isArray(n.systems) && n.systems.length ? n.systems : ['electrical'];
   const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : {};
+  const allSystems = getAllSystems();
   const renderParamInput = (sysId, p, val) => {
     const v = (val === 0 || val) ? val : '';
     const name = `data-sys-param="${escAttr(sysId)}" data-sys-key="${escAttr(p.key)}"`;
@@ -885,7 +891,7 @@ export function renderSystemsBlock(n) {
     }
     return `<input type="text" ${name} value="${escAttr(v)}" style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
   };
-  const items = SYSTEMS_CATALOG.map(s => {
+  const items = allSystems.map(s => {
     const on = cur.includes(s.id);
     const vals = (sp[s.id] && typeof sp[s.id] === 'object') ? sp[s.id] : {};
     const header = `<label class="sys-chip" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid ${on ? s.color : '#e0e3ea'};border-radius:4px;cursor:pointer;background:${on ? s.color + '15' : '#fff'}">
@@ -915,6 +921,10 @@ export function renderSystemsBlock(n) {
       только если его система включена здесь. Параметры каждой включённой системы — ниже.
     </div>
     ${items}
+    <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e0e3ea">
+      <button type="button" class="full-btn" id="btn-add-custom-system" style="font-size:11px">➕ Добавить свою систему…</button>
+      <div class="muted" style="font-size:10px;margin-top:4px">Пользовательская система сохраняется в проекте (state.project.customSystems).</div>
+    </div>
   </div>`;
 }
 export function wireSystemsBlock(n, root) {
@@ -940,6 +950,28 @@ export function wireSystemsBlock(n, root) {
       if (_render) _render();
       renderInspector();
     });
+  });
+  // v0.58.24: добавление пользовательской системы
+  const addBtn = host.querySelector('#btn-add-custom-system');
+  if (addBtn) addBtn.addEventListener('click', () => {
+    const label = prompt('Название системы (отображается в UI и отчётах):', '');
+    if (!label) return;
+    const idRaw = prompt('ID (латиница, цифры, дефис):', label.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, ''));
+    const id = String(idRaw || '').trim();
+    if (!id || !/^[a-z0-9\-]+$/i.test(id)) { flash('ID должен содержать только a-z, 0-9 и дефис', 'error'); return; }
+    const all = getAllSystems();
+    if (all.find(s => s.id === id)) { flash('Система с таким ID уже существует', 'error'); return; }
+    const icon = (prompt('Иконка (emoji, 1 символ):', '🔧') || '🔧').slice(0, 2);
+    const color = (prompt('Цвет (#RRGGBB):', '#6366f1') || '#6366f1').trim();
+    const kindsRaw = prompt('Виды страниц через запятую (schematic, low-voltage, data, mechanical). Пусто = везде:', 'low-voltage');
+    const pageKinds = String(kindsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+    snapshot('custom-system-add:' + id);
+    if (!Array.isArray(state.project.customSystems)) state.project.customSystems = [];
+    state.project.customSystems.push({ id, label, icon, color, pageKinds, params: [] });
+    globalThis.__raschetCustomSystems = state.project.customSystems.slice();
+    notifyChange();
+    if (_render) _render();
+    renderInspector();
   });
   // v0.58.21: параметры систем
   const params = host.querySelectorAll('[data-sys-param]');

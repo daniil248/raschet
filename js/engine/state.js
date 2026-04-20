@@ -43,6 +43,7 @@ export const state = {
     stage: '',            // стадия (П / РД / ...)
     author: '',           // ГИП / исполнитель
     description: '',      // общее описание
+    customSystems: [],    // v0.58.24: пользовательские системы {id,label,icon,color,pageKinds[],params[]}
   },
   modes: [],
   activeModeId: null,
