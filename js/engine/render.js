@@ -1825,6 +1825,64 @@ export function renderNodes() {
     }
     } // v0.58.56: конец блока электрических портов (if !_hideElectricalPorts)
 
+    // v0.58.58: Порты не-электрических систем на соответствующих страницах.
+    // Для каждой системы страницы, поддерживаемой этим узлом, рисуем
+    // «портовые бейджи» по ключам-счётчикам из SYSTEMS_CATALOG.params.
+    // Это делает видимыми порты RJ45 / SFP (system=data), порты слаботочки,
+    // камеры (video) и т.п., аналогично тому как на электрической странице
+    // видны электрические входы/выходы.
+    if (_hideElectricalPorts && Array.isArray(_pageSysList)) {
+      const nodeSys = getNodeSystems(n);
+      // Карта: какие ключи systemParams считать «портовыми» для каждой системы
+      // и метку для подписи. Если счётчик = 0/пусто — бейдж не рисуется.
+      const PORT_KEYS = {
+        'data':        [ { key: 'rj45',    label: 'RJ45', color: '#059669' },
+                         { key: 'fiber',   label: 'SFP',  color: '#0ea5e9' } ],
+        'low-voltage': [ { key: 'ports',   label: 'порт', color: '#1e88e5' } ],
+        'video':       [ { key: 'cameras', label: 'кам.', color: '#0284c7' } ],
+      };
+      const sysParams = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : {};
+      const badges = []; // { label, count, color }
+      for (const sysId of _pageSysList) {
+        if (!nodeSys.includes(sysId)) continue;
+        const defs = PORT_KEYS[sysId];
+        if (!defs) continue;
+        const sp = sysParams[sysId] || {};
+        for (const d of defs) {
+          const n_ = Number(sp[d.key]);
+          if (Number.isFinite(n_) && n_ > 0) badges.push({ ...d, count: n_ });
+        }
+      }
+      // Рисуем бейджи в виде капсул по верхнему краю (аналог входных портов),
+      // максимум 4 — дальше просто «+N».
+      if (badges.length) {
+        const bgS = 40; // шаг
+        const bgH = 18;
+        const bgY = -bgH / 2; // центрируются по верхнему краю
+        const totalW = badges.length * bgS + (badges.length - 1) * 8;
+        let bx = (w - totalW) / 2;
+        for (const b of badges) {
+          const label = `${b.label}:${b.count}`;
+          const capW = Math.max(bgS, label.length * 6.5 + 10);
+          // фон
+          g.appendChild(el('rect', {
+            class: 'sys-port-badge',
+            x: bx, y: bgY, width: capW, height: bgH,
+            rx: bgH / 2, ry: bgH / 2,
+            fill: '#fff',
+            stroke: b.color,
+            'stroke-width': 1.5,
+          }));
+          const t = text(bx + capW / 2, bgY + bgH / 2 + 4, label, 'sys-port-label');
+          t.setAttribute('text-anchor', 'middle');
+          t.setAttribute('fill', b.color);
+          t.setAttribute('style', 'font-size:11px;font-weight:600;');
+          g.appendChild(t);
+          bx += capW + 8;
+        }
+      }
+    }
+
     // Кнопки +/- для добавления/удаления выходных портов щита.
     // Рисуются снизу справа, под правым краем карточки. Только для
     // обычных (несекционных) панелей.
