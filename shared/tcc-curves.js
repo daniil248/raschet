@@ -390,9 +390,16 @@ export function checkSelectivity(up, down, I_k = null) {
   const upIsd = Number(up.settings?.Isd);
   const downIsd = Number(down.settings?.Isd);
   const useRelayAmpl = upIsd > 0 && downIsd > 0;
+  // v0.57.61: распознавание предохранителей (curve = 'gG'|'aM'|'gM').
+  // Для fuse-vs-fuse стандартное правило IEC 60269: In_up ≥ 1.6 × In_down.
+  // Для breaker-up vs fuse-down коэффициент выше (1.6), для fuse-up vs
+  // breaker-down — проблема (fuse медленный при малом ×In), считаем 2.0.
+  const FUSE = new Set(['gG', 'aM', 'gM']);
+  const upIsFuse = FUSE.has(up.curve);
+  const downIsFuse = FUSE.has(down.curve);
 
   // 1. Амплитудная
-  if (useRelayAmpl) {
+  if (useRelayAmpl && !upIsFuse && !downIsFuse) {
     // Для регулируемых (MCCB/ACB): Isd_up ≥ 1.3 × Isd_down
     const amplitudeOk = upIsd >= 1.3 * downIsd;
     checks.push({
@@ -401,13 +408,17 @@ export function checkSelectivity(up, down, I_k = null) {
       info: `Isd_up=${upIsd} vs 1.3×Isd_down=${(1.3 * downIsd).toFixed(1)} А`,
     });
   } else {
-    // Fixed (MCB): In_up ≥ k × In_down (k зависит от кривой downstream)
-    const coef = down.curve === 'B' ? 2.0 : (down.curve === 'C' ? 1.6 : 1.4);
+    // Fixed/fuse: In_up ≥ k × In_down (k зависит от типа пары)
+    let coef;
+    if (upIsFuse && downIsFuse) coef = 1.6;            // fuse → fuse (IEC 60269)
+    else if (downIsFuse && !upIsFuse) coef = 1.6;      // breaker → fuse
+    else if (upIsFuse && !downIsFuse) coef = 2.0;      // fuse → breaker (медленный верх)
+    else coef = down.curve === 'B' ? 2.0 : (down.curve === 'C' ? 1.6 : 1.4);
     const amplitudeOk = Number(up.inNominal) >= coef * Number(down.inNominal);
     checks.push({
       type: 'amplitude',
       ok: amplitudeOk,
-      info: `In_up=${up.inNominal} vs ${coef}×In_down=${(coef * down.inNominal).toFixed(1)} А`,
+      info: `In_up=${up.inNominal} vs ${coef}×In_down=${(coef * down.inNominal).toFixed(1)} А${upIsFuse || downIsFuse ? ' [fuse]' : ''}`,
     });
   }
 
@@ -426,8 +437,13 @@ export function checkSelectivity(up, down, I_k = null) {
 
   // 2. При заданном I_k — сравнение времён по полной кривой
   if (I_k != null && Number.isFinite(I_k)) {
-    const tUp = tccBreakerTime(I_k / up.inNominal, up.curve).t_sec;
-    const tDown = tccBreakerTime(I_k / down.inNominal, down.curve).t_sec;
+    // v0.57.61: для fuse используем tccFuseTime, для breaker — tccBreakerTime
+    const tUp = upIsFuse
+      ? tccFuseTime(I_k / up.inNominal, up.curve)
+      : tccBreakerTime(I_k / up.inNominal, up.curve).t_sec;
+    const tDown = downIsFuse
+      ? tccFuseTime(I_k / down.inNominal, down.curve)
+      : tccBreakerTime(I_k / down.inNominal, down.curve).t_sec;
     const timeOk = tUp > tDown * 1.3; // upstream должен быть значительно медленнее
     checks.push({
       type: 'time-at-Ik',

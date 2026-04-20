@@ -147,24 +147,28 @@ export function analyzeSelectivity() {
     if (!inputs.length || !outputs.length) continue;
 
     // Для каждого входа (активного) создаём пары с каждым выходом
+    // v0.57.61: для fuse-линий используем curve из c._fuseType
+    const _makeBreakerDto = (cn) => {
+      const isFuse = cn._protectionKind === 'fuse';
+      const curve = isFuse
+        ? (cn._fuseType || cn.fuseType || 'gG')
+        : _normalizeCurve(cn.breakerCurve || cn._breakerCurveEff);
+      const rawCurve = cn.breakerCurve || cn._breakerCurveEff;
+      const type = isFuse ? 'fuse'
+        : (rawCurve === 'MCCB' || rawCurve === 'ACB') ? 'MCCB' : 'MCB';
+      return {
+        inNominal: Number(cn._breakerIn),
+        curve,
+        type,
+        settings: cn._breakerSettings || undefined,
+      };
+    };
     for (const up of inputs) {
       if (!up._breakerIn) continue;
-      const upCurve = up.breakerCurve || up._breakerCurveEff;
-      const upBreaker = {
-        inNominal: Number(up._breakerIn),
-        curve: _normalizeCurve(upCurve),
-        type: (upCurve === 'MCCB' || upCurve === 'ACB') ? 'MCCB' : 'MCB',
-        settings: up._breakerSettings || undefined,
-      };
+      const upBreaker = _makeBreakerDto(up);
       for (const down of outputs) {
         if (!down._breakerIn) continue;
-        const downCurve = down.breakerCurve || down._breakerCurveEff;
-        const downBreaker = {
-          inNominal: Number(down._breakerIn),
-          curve: _normalizeCurve(downCurve),
-          type: (downCurve === 'MCCB' || downCurve === 'ACB') ? 'MCCB' : 'MCB',
-          settings: down._breakerSettings || undefined,
-        };
+        const downBreaker = _makeBreakerDto(down);
         const Ik = _getIkAt(down);
         const check = checkSelectivity(upBreaker, downBreaker, Ik);
         pairs.push({
