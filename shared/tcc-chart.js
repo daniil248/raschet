@@ -435,6 +435,20 @@ export function openTccModal(opts = {}) {
       const Ii  = hasRelaySettings ? Number(it.settings.Ii)  || (Ir * 20) : 0;
       // Ползунки доступны только для регулируемых автоматов (relay settings).
       const adjustable = hasRelaySettings;
+      // Какие уставки в ручном режиме (manualSet: Set<'Ir'|'Isd'|'tsd'|'Ii'>)
+      // передаётся в item.manualKeys от вызывающего кода (inspector). Если не
+      // передан — fallback: считаем, что source==='manual' означает все ручные.
+      const manualKeys = (it.settings && Array.isArray(it.settings._manualKeys))
+        ? new Set(it.settings._manualKeys)
+        : (it.settings && it.settings.source === 'manual'
+            ? new Set(['Ir','Isd','tsd','Ii']) : new Set());
+      const resetBtn = (key) => manualKeys.has(key)
+        ? `<button type="button" title="Сбросить ${key} на авто" data-tcc-reset="${key}" data-tcc-target="${esc(it.id)}" style="width:20px;height:20px;padding:0;border:1px solid #d0d7de;background:#fff3e0;color:#e65100;border-radius:3px;cursor:pointer;font-size:11px;line-height:1">↺</button>`
+        : `<span style="width:20px;height:20px;display:inline-block" title="авто"></span>`;
+      const anyManual = manualKeys.size > 0;
+      const autoAllBtn = adjustable ? `
+        <button type="button" data-tcc-reset-all data-tcc-target="${esc(it.id)}" ${anyManual ? '' : 'disabled'} style="margin-top:4px;font-size:10.5px;padding:3px 8px;border:1px solid ${anyManual ? '#e65100' : '#ddd'};background:${anyManual ? '#fff3e0' : '#f5f5f5'};color:${anyManual ? '#e65100' : '#999'};border-radius:3px;cursor:${anyManual ? 'pointer' : 'not-allowed'}">↺ Авто для всех уставок</button>
+      ` : '';
       return `
         <div data-tcc-card="${esc(it.id)}" style="border:1px solid #d0d7de;border-radius:6px;overflow:hidden;background:#fff">
           <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:${col};color:#fff;font-size:12px;font-weight:600">
@@ -448,27 +462,70 @@ export function openTccModal(opts = {}) {
               <span style="width:44px;color:#555">Ir, A</span>
               <input type="range" min="${Math.max(1, In * 0.4)}" max="${In}" step="1" value="${Ir}" data-tcc-param="Ir" data-tcc-target="${esc(it.id)}" style="flex:1">
               <input type="number" value="${Ir}" data-tcc-param-num="Ir" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
+              ${resetBtn('Ir')}
             </label>
             <label style="display:flex;align-items:center;gap:6px">
               <span style="width:44px;color:#555">Isd, A</span>
               <input type="range" min="${Ir * 1.5}" max="${Ir * 20}" step="1" value="${Isd}" data-tcc-param="Isd" data-tcc-target="${esc(it.id)}" style="flex:1">
               <input type="number" value="${Isd}" data-tcc-param-num="Isd" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
+              ${resetBtn('Isd')}
             </label>
             <label style="display:flex;align-items:center;gap:6px">
               <span style="width:44px;color:#555">tsd, с</span>
               <input type="range" min="0" max="1" step="0.01" value="${tsd}" data-tcc-param="tsd" data-tcc-target="${esc(it.id)}" style="flex:1">
               <input type="number" value="${tsd}" step="0.01" min="0" max="1" data-tcc-param-num="tsd" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
+              ${resetBtn('tsd')}
             </label>
             <label style="display:flex;align-items:center;gap:6px">
               <span style="width:44px;color:#555">Ii, A</span>
               <input type="range" min="${Ir * 2}" max="${Ir * 40}" step="10" value="${Ii}" data-tcc-param="Ii" data-tcc-target="${esc(it.id)}" style="flex:1">
               <input type="number" value="${Ii}" data-tcc-param-num="Ii" data-tcc-target="${esc(it.id)}" style="width:60px;font-size:11px;padding:2px">
+              ${resetBtn('Ii')}
             </label>
+            ${autoAllBtn}
           </div>
           ` : (it.kind === 'breaker' ? `<div style="padding:6px 10px;font-size:10.5px;color:#888">Кривая ${esc(curve || 'C')} (IEC 60898) — Isd и задержка фиксированы стандартом.</div>` : '')}
         </div>
       `;
     }).join('');
+
+    // Обработка reset per-param / reset-all
+    cardsCol.querySelectorAll('[data-tcc-reset]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const id = btn.dataset.tccTarget;
+        const p = btn.dataset.tccReset;
+        if (typeof opts.onSettingsChange === 'function') {
+          const autoVal = opts.onSettingsChange({
+            itemId: id, param: p, value: null, reset: true,
+          });
+          // Callback может вернуть авто-значение — применим к UI/chart
+          if (autoVal && typeof autoVal === 'object') _applyAutoValues(id, autoVal);
+        }
+      });
+    });
+    cardsCol.querySelectorAll('[data-tcc-reset-all]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const id = btn.dataset.tccTarget;
+        if (typeof opts.onSettingsChange === 'function') {
+          const autoVal = opts.onSettingsChange({
+            itemId: id, param: 'all', value: null, reset: true, resetAll: true,
+          });
+          if (autoVal && typeof autoVal === 'object') _applyAutoValues(id, autoVal);
+        }
+      });
+    });
+
+    function _applyAutoValues(id, autoSettings) {
+      const items2 = handle.getItems();
+      const it2 = items2.find(x => x.id === id);
+      if (!it2) return;
+      it2.settings = { ...autoSettings };
+      if (autoSettings.Ir) it2.In = Number(autoSettings.Ir);
+      handle.update({ items: items2 });
+      renderCards(); // перерисуем карточку (обновим видимость ↺ и значения)
+    }
 
     cardsCol.querySelectorAll('[data-tcc-toggle]').forEach(cb => {
       cb.addEventListener('change', () => {
@@ -486,7 +543,10 @@ export function openTccModal(opts = {}) {
         // Для регулируемых автоматов пишем в settings — bandPoints() читает
         // оттуда, иначе изменения не влияют на кривую.
         if (it.settings && Number(it.settings.Ir) > 0) {
-          it.settings = { ...it.settings, [p]: v };
+          // Помечаем параметр как ручной (для появления кнопки ↺)
+          const mk = new Set(Array.isArray(it.settings._manualKeys) ? it.settings._manualKeys : []);
+          mk.add(p);
+          it.settings = { ...it.settings, [p]: v, _manualKeys: [...mk] };
           // При изменении Ir — масштабируем Ii и отображаемый In
           if (p === 'Ir') it.In = v;
         } else {
@@ -494,6 +554,40 @@ export function openTccModal(opts = {}) {
           if (p === 'Ir') it.In = v;
         }
         handle.update({ items });
+        // Если параметр только что стал «ручным» — дорисуем ↺ и активируем «Авто для всех»
+        if (it.settings && Array.isArray(it.settings._manualKeys)) {
+          const labelEl = inp.closest('label');
+          if (labelEl) {
+            const last = labelEl.lastElementChild;
+            const isPlaceholder = last && last.tagName === 'SPAN' && !last.hasAttribute('data-tcc-reset');
+            const isBtn = last && last.tagName === 'BUTTON' && last.hasAttribute('data-tcc-reset');
+            if (isPlaceholder && !isBtn) {
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.title = `Сбросить ${p} на авто`;
+              btn.setAttribute('data-tcc-reset', p);
+              btn.setAttribute('data-tcc-target', id);
+              btn.style.cssText = 'width:20px;height:20px;padding:0;border:1px solid #d0d7de;background:#fff3e0;color:#e65100;border-radius:3px;cursor:pointer;font-size:11px;line-height:1';
+              btn.textContent = '↺';
+              btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (typeof opts.onSettingsChange === 'function') {
+                  const autoVal = opts.onSettingsChange({ itemId: id, param: p, value: null, reset: true });
+                  if (autoVal && typeof autoVal === 'object') _applyAutoValues(id, autoVal);
+                }
+              });
+              last.replaceWith(btn);
+            }
+          }
+          const autoAll = cardsCol.querySelector(`[data-tcc-reset-all][data-tcc-target="${id}"]`);
+          if (autoAll && autoAll.disabled) {
+            autoAll.disabled = false;
+            autoAll.style.border = '1px solid #e65100';
+            autoAll.style.background = '#fff3e0';
+            autoAll.style.color = '#e65100';
+            autoAll.style.cursor = 'pointer';
+          }
+        }
         // Синхронизация зеркальных input'ов
         cardsCol.querySelectorAll(`[data-tcc-target="${id}"][data-tcc-param="${p}"],[data-tcc-target="${id}"][data-tcc-param-num="${p}"]`)
           .forEach(o => { if (o !== inp) o.value = inp.value; });

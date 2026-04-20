@@ -1134,10 +1134,16 @@ function _buildConnTccPayload(conn, fromN, toN) {
     const curveStr = conn.breakerCurve || conn._breakerCurveEff || 'MCCB';
     // Настройки регулируемого автомата (MCCB/ACB/VCB): приоритет mvCellSettings
     // (реле ячейки СН), затем _breakerSettings (авто/ручная настройка LV MCCB/ACB).
+    // v0.57.50: _manualKeys — список уставок, заданных пользователем вручную
+    // (берём из conn.breakerSettings). Показывается в модалке как ↺ кнопки.
+    const manualKeys = conn.breakerSettings && typeof conn.breakerSettings === 'object'
+      ? Object.keys(conn.breakerSettings).filter(k => Number(conn.breakerSettings[k]) > 0)
+      : [];
     const adjSettings = mvCellSettings
       || (conn._breakerSettings && Object.keys(conn._breakerSettings).length
           ? { Ir: conn._breakerSettings.Ir, Isd: conn._breakerSettings.Isd,
-              tsd: conn._breakerSettings.tsd, Ii: conn._breakerSettings.Ii }
+              tsd: conn._breakerSettings.tsd, Ii: conn._breakerSettings.Ii,
+              _manualKeys: manualKeys }
           : null);
     let label;
     if (mvCellSettings) {
@@ -1238,18 +1244,7 @@ async function _mountConnTccChart(conn, fromN, toN) {
       // v0.57.49: сохраняем изменения уставок из модалки обратно в
       // conn.breakerSettings, чтобы они влияли на селективность и
       // пересчёт. Применяется только к 'this-breaker' (текущая линия).
-      onSettingsChange: ({ itemId, param, settings }) => {
-        if (itemId !== 'this-breaker' || !settings) return;
-        conn.breakerSettings = {
-          Ir: Number(settings.Ir) || undefined,
-          Isd: Number(settings.Isd) || undefined,
-          tsd: Number(settings.tsd) || undefined,
-          Ii: Number(settings.Ii) || undefined,
-        };
-        snapshot('tcc-modal-settings:' + conn.id + ':' + param);
-        // Перерисовываем схему и инспектор, не закрывая модалку
-        try { render(); notifyChange(); } catch (e) { console.warn('[tcc-modal] render failed', e); }
-      },
+      onSettingsChange: _makeConnTccSettingsHandler(conn),
     });
   });
   container.appendChild(btn);
@@ -1301,6 +1296,54 @@ export async function openConnTccDirect(connId) {
     items,
     ikMax, ikMin,
     title: `Карта защиты линии: ${fromN?.name || fromN?.tag || '?'} → ${toN?.name || toN?.tag || '?'}`,
+    onSettingsChange: _makeConnTccSettingsHandler(conn),
   });
   return true;
+}
+
+/**
+ * v0.57.50: единый обработчик изменений уставок в TCC-модалке.
+ * Поддерживает:
+ *  - обычный slide: пишет в conn.breakerSettings[param] = value.
+ *  - reset param: удаляет param из conn.breakerSettings, triggers recalc,
+ *    возвращает авто-настройки { Ir, Isd, tsd, Ii, _manualKeys }.
+ *  - resetAll: очищает conn.breakerSettings целиком.
+ */
+function _makeConnTccSettingsHandler(conn) {
+  return (payload) => {
+    const { itemId, param, settings, reset, resetAll } = payload || {};
+    if (itemId !== 'this-breaker') return null;
+    if (reset || resetAll) {
+      if (resetAll || param === 'all') {
+        conn.breakerSettings = undefined;
+      } else if (param && conn.breakerSettings) {
+        delete conn.breakerSettings[param];
+        if (!Object.keys(conn.breakerSettings).length) conn.breakerSettings = undefined;
+      }
+      snapshot('tcc-modal-reset:' + conn.id + ':' + (param || 'all'));
+      try { render(); notifyChange(); } catch (e) { console.warn('[tcc-modal] render failed', e); }
+      // После render() recalc пересчитал conn._breakerSettings — вернём как авто
+      const bs = conn._breakerSettings || {};
+      const manualKeys = conn.breakerSettings && typeof conn.breakerSettings === 'object'
+        ? Object.keys(conn.breakerSettings).filter(k => Number(conn.breakerSettings[k]) > 0)
+        : [];
+      return {
+        Ir: Number(bs.Ir) || 0,
+        Isd: Number(bs.Isd) || 0,
+        tsd: Number(bs.tsd) || 0,
+        Ii: Number(bs.Ii) || 0,
+        _manualKeys: manualKeys,
+        source: 'auto',
+      };
+    }
+    if (!settings || !param || param === 'all') return null;
+    // Пишем только тот параметр, который реально двигал пользователь —
+    // остальные остаются авто (bandPoints возьмёт их из _breakerSettings).
+    const v = Number(settings[param]);
+    if (!(v >= 0)) return null;
+    conn.breakerSettings = { ...(conn.breakerSettings || {}), [param]: v };
+    snapshot('tcc-modal-settings:' + conn.id + ':' + param);
+    try { render(); notifyChange(); } catch (e) { console.warn('[tcc-modal] render failed', e); }
+    return null;
+  };
 }
