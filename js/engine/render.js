@@ -23,7 +23,7 @@ function resolveChannelLabel(n) {
   }
   return (CHANNEL_TYPES[n && n.channelType] || CHANNEL_TYPES.conduit).label;
 }
-import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
+import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos, getNodeGeometryMm } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
 import { recalc } from './recalc.js';
 import { effectiveTag } from './zones.js';
@@ -290,11 +290,50 @@ export function render() {
   recalc();
   renderConns();
   renderNodes();
+  renderLayoutFootprints();
   renderStats();
   renderModes();
   decorateRemoteLocks();
   renderRemoteCursors();
   renderPageKindBanner();
+}
+
+// Phase 2.3: на layout-страницах рисуем реальный габарит узла (widthMm × heightMm)
+// как пунктирный прямоугольник поверх схематичной карточки. Источник —
+// getNodeGeometryMm (library.geometry / ручной override / zone). Если
+// габарит не задан — узел не выделяется (плейсхолдер в будущем). Слой
+// интерактивно не ловит — чисто визуальная подсказка.
+export function renderLayoutFootprints() {
+  const existing = document.getElementById('layer-footprints');
+  if (existing) existing.remove();
+  const page = getCurrentPage();
+  if (getPageKind(page) !== 'layout') return;
+  if (!layerNodes) return;
+  const g = el('g', { id: 'layer-footprints', 'pointer-events': 'none' });
+  let count = 0;
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone') continue; // зоны и так имеют реальный размер
+    if (!isOnCurrentPage(n)) continue;
+    const geom = getNodeGeometryMm(n);
+    if (!geom || !geom.widthMm || !geom.heightMm) continue;
+    count++;
+    const color = geom.source === 'override' ? '#ff6f00' : '#1565c0';
+    const fill  = geom.source === 'override' ? 'rgba(255, 111, 0, 0.10)' : 'rgba(21, 101, 192, 0.10)';
+    g.appendChild(el('rect', {
+      x: n.x, y: n.y,
+      width: geom.widthMm, height: geom.heightMm,
+      fill, stroke: color, 'stroke-width': 2, 'stroke-dasharray': '8 4',
+      rx: 2,
+    }));
+    const label = el('text', {
+      x: n.x + 4, y: n.y + geom.heightMm + 16,
+      fill: color, 'font-size': 12, 'font-weight': 600,
+      style: 'font-family: system-ui, sans-serif',
+    });
+    label.textContent = `${Math.round(geom.widthMm)}×${Math.round(geom.heightMm)} мм`;
+    g.appendChild(label);
+  }
+  if (count > 0) layerNodes.parentNode.insertBefore(g, layerNodes.nextSibling);
 }
 
 // Phase 2.1: баннер «бета-вид» над холстом для не-schematic страниц.

@@ -1,4 +1,59 @@
 import { NODE_H, NODE_MIN_W, PORT_GAP_MIN, GLOBAL } from './constants.js';
+import { getElement } from '../../shared/element-library.js';
+
+// ============== Phase 2.3: реальные габариты узла в мм ==============
+// Возвращает { widthMm, heightMm, depthMm, weightKg, source } или null.
+// Источники (в порядке приоритета):
+//   1) node.geometryMm — ручной override (inspector-редактор, будет добавлен позднее)
+//   2) getElement(resolvedId).geometry — запись в library
+//   3) для zone — n.width/n.height (они уже в px, но на layout = мм)
+// `source` — строка для отладки/UI ('override' | 'library' | 'zone' | null).
+export function getNodeGeometryMm(n) {
+  if (!n) return null;
+  if (n.geometryMm && Number(n.geometryMm.widthMm) > 0 && Number(n.geometryMm.heightMm) > 0) {
+    return {
+      widthMm:  Number(n.geometryMm.widthMm),
+      heightMm: Number(n.geometryMm.heightMm),
+      depthMm:  Number(n.geometryMm.depthMm) || 0,
+      weightKg: Number(n.geometryMm.weightKg) || 0,
+      source: 'override',
+    };
+  }
+  // Резолв legacy elementId
+  const id = n.elementId
+    || n.upsCatalogId
+    || n.panelCatalogId
+    || n.enclosureId
+    || n.transformerCatalogId
+    || n.batteryCatalogId
+    || null;
+  if (id) {
+    try {
+      const el = getElement(id);
+      const g = el && el.geometry;
+      if (g && Number(g.widthMm) > 0 && Number(g.heightMm) > 0) {
+        return {
+          widthMm:  Number(g.widthMm),
+          heightMm: Number(g.heightMm),
+          depthMm:  Number(g.depthMm) || 0,
+          weightKg: Number(g.weightKg) || 0,
+          source: 'library',
+        };
+      }
+    } catch {}
+  }
+  // Zones: их width/height уже в условных единицах — на layout трактуем как мм
+  if (n.type === 'zone' && Number(n.width) > 0 && Number(n.height) > 0) {
+    return {
+      widthMm:  Number(n.width),
+      heightMm: Number(n.height),
+      depthMm:  0,
+      weightKg: 0,
+      source: 'zone',
+    };
+  }
+  return null;
+}
 
 // ================= Геометрия узла =================
 export function nodeInputCount(n) {

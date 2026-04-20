@@ -427,7 +427,7 @@
 - [~] **2.3** Layout-page (схема расположения):
   - [x] v0.57.95: миллиметровка (grid-mm 10/100 мм) включается автоматически для `kind='layout'`
   - [x] v0.57.94: persist `kind` в JSON + «бета-вид» баннер
-  - [ ] Drag-элементов с реальными габаритами (`element.geometry.width/height`)
+  - [~] Drag-элементов с реальными габаритами (`element.geometry.width/height`): v0.57.96 — `getNodeGeometryMm(n)` читает `element.geometry.widthMm/heightMm` через library (и legacy id — upsCatalogId/panelCatalogId/…); на layout-странице рисуется пунктирный прямоугольник реального размера + подпись «W×H мм». Override через `n.geometryMm` зарезервирован.
   - [ ] Автоматическая расстановка новых слева
   - [ ] Зоны обслуживания (hatched area)
   - [ ] Линейка (ruler) по краям холста
