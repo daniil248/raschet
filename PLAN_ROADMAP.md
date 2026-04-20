@@ -395,7 +395,7 @@
 - [ ] **5.4** Super-admin UI: `admin/` — таблица users, управление ролями
 - [ ] **5.5** Tariff configurator: `Tariff { id, name, modules, priceMonth, priceYear }`
 
-### 🚧 Совместное редактирование (Collaboration) — частично сделано
+### ✅ Совместное редактирование (Collaboration) — все пункты закрыты
 
 - [x] **C.1** Presence: subcollection `projects/{id}/presence/{uid}` + heartbeat 25 с (stale = 90 с); аватары в шапке.
 - [x] **C.2** Live-sync: `subscribeProjectDoc` слушает изменения, применяет `loadScheme` если локально нет dirty; для dirty — confirm().
@@ -405,7 +405,7 @@
 - [x] **C.6** Cursor awareness (v0.57.78): mousemove дросселируется до 200 мс, координаты конвертируются в схемные (`Raschet.screenToScheme`), пишутся в `presence/{uid}.cursor = {x, y, pageId}` через `presenceCursor`. `subscribePresence` собирает чужие курсоры в `window.__remoteCursors`; `render.js:renderRemoteCursors` рисует треугольник-стрелку + бейдж с именем в `layer-overlay`, фильтрует по `currentPageId`, компенсирует zoom (scale(1/zoom)).
 - [x] **C.7** Conflict-aware merge: `_computeSchemeDiff` + `_showRemoteConflictModal` (v0.57.77) — вместо браузерного confirm показывается модалка со счётчиками `nodesAdded/Removed/Changed` и `connsAdded/Removed/Changed`, кнопки «Принять удалённые / Оставить локальные / Решить позже». Автор последнего сохранения виден в заголовке.
 - [x] **C.8** История версий (v0.57.79): subcollection `projects/{id}/revisions/{auto}` хранит полный snapshot схемы + метаданные (createdAt, authorUid/Name/Email, note, nodeCount, connCount). Авто-снапшот в `saveCurrent` с троттлингом 5 мин, retention 50 записей (ленивая очистка каждые 5 авто-версий). Модалка «🕓 История версий»: список с автором и размером, кнопки «Восстановить» (с backup-версией «перед восстановлением») и «Удалить». API: `Storage.saveRevision / listRevisions / getRevision / deleteRevision`.
-- [ ] **C.9** Email-нотификации запросов доступа через Cloud Functions.
+- [x] **C.9** Email-нотификации (v0.57.80): `functions/` Cloud Functions Gen 2 — `onAccessRequestCreated` (письмо владельцу о новом запросе доступа) и `onProjectMemberAdded` (письмо приглашённому о выданных правах). Доставку делает расширение Firebase **Trigger Email** через коллекцию `mail/` — функции не хранят SMTP-секреты. Setup в `FUNCTIONS_SETUP.md`. `firebase.json` и scaffold готовы к `firebase deploy --only functions`.
 
 ---
 

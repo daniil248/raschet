@@ -1,0 +1,14 @@
+{
+  "name": "raschet-functions",
+  "description": "Cloud Functions for Raschet — email notifications for access requests (Collaboration C.9)",
+  "version": "1.0.0",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^5.0.0"
+  },
+  "private": true
+}
