@@ -1579,9 +1579,26 @@ function recalc() {
           // АВТО-режим: координируем кабель и автомат, чтобы In ≤ Iz.
           if (maxCurrent > 0) {
             const marginK = 1 + (Number(GLOBAL.breakerMinMarginPct) || 0) / 100;
-            const preBreakerIn = calcMethod.selectBreaker(maxCurrent * marginK);
-            if (preBreakerIn > 0) {
-              sizingCurrent = Math.max(maxCurrent, preBreakerIn);
+            // Для групповой нагрузки (count>1, !serialMode) защита стоит
+            // НА КАЖДОЙ линии отдельно (N параллельных автоматов по InPerLine).
+            // Координация должна вестись по per-line току, иначе selectBreaker
+            // подбирает общий автомат на суммарный ток — и кабель завышается.
+            // Для одиночной/последовательной линии — по суммарному току.
+            const isGroupLoadSize = (toN.type === 'consumer'
+              && (Number(toN.count) || 1) > 1
+              && !toN.serialMode);
+            if (isGroupLoadSize && conductorsInParallel > 1) {
+              const Iper = maxCurrent / conductorsInParallel;
+              const preBreakerInPer = calcMethod.selectBreaker(Iper * marginK);
+              if (preBreakerInPer > 0) {
+                // Целевой суммарный ток под подбор: N × InPerLine
+                sizingCurrent = Math.max(maxCurrent, preBreakerInPer * conductorsInParallel);
+              }
+            } else {
+              const preBreakerIn = calcMethod.selectBreaker(maxCurrent * marginK);
+              if (preBreakerIn > 0) {
+                sizingCurrent = Math.max(maxCurrent, preBreakerIn);
+              }
             }
           }
           c._breakerUndersize = false;

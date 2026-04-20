@@ -692,6 +692,23 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.58 (v0.57.34)** — FIX: завышение кабеля для групповой нагрузки.
+  Проблема: для потребителя с count>1 (N приборов на N параллельных
+  кабелях, каждый со своим автоматом InPerLine) авто-подбор кабеля
+  считал preBreaker по суммарному току maxCurrent, из-за чего Iper =
+  preBreaker/N был завышен. В итоге 3×65 кВт кондиционер получал
+  3×6 мм² вместо 3×4 мм², хотя фактический автомат per-line = 25 А
+  и 4 мм² даёт Iz=30.8 А > 25 А.
+  - recalc.js: для isGroupLoad (consumer.count>1 && !serialMode)
+    preBreaker считается по per-line току (Iper = maxCurrent/n), затем
+    sizingCurrent = preBreakerInPer × n.
+  - inspector/conn.js: проверка oversize и In ≤ Iz для isGroupBreakers
+    (когда _breakerIn отсутствует, а _breakerPerLine × _breakerCount > 1)
+    сравнивает per-line Iz с per-line автоматом, а не суммарный Iz с
+    per-line автоматом (из-за этого warning «Iz > 2×In» ложно срабатывал
+    на корректно подобранном кабеле).
+  Файлы: js/engine/recalc.js (строки ~1578-1605), js/engine/inspector/conn.js
+  (строки ~142-153).
 - **1.20.57 (v0.57.33)** — Многосекционный щит: одновременная нагрузка
   вместо суммы выходов секций. Предыдущая агрегация (1.20.55) суммировала
   `_loadKw/_maxLoadKw/_powerP/_powerQ/_loadA/_maxLoadA` секций. Это

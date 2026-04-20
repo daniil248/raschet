@@ -142,10 +142,15 @@ export function renderInspectorConn(c) {
       const effectiveBrkIn = c.manualBreakerIn || c._breakerIn || c._breakerPerLine || 0;
       const Iz = c._cableIz || 0;
       const IzTotal = Iz * par;
-      // Координация по полному Iz при параллельных жилах, а не per-line
-      const inLeIz = !effectiveBrkIn || !IzTotal || effectiveBrkIn <= IzTotal;
+      // Для групповой нагрузки (N приборов, N×автомат per-line) координация
+      // и oversize-проверка идут per-line: каждая линия защищена своим
+      // автоматом InPerLine, Iz линии сравнивается с ним, а не с суммарным.
+      const isGroupBreakers = !c._breakerIn && c._breakerPerLine && (c._breakerCount || 1) > 1;
+      const brkRef = isGroupBreakers ? c._breakerPerLine : effectiveBrkIn;
+      const izRef = isGroupBreakers ? Iz : IzTotal;
+      const inLeIz = !brkRef || !izRef || brkRef <= izRef;
       const protOk = inLeIz;
-      const oversize = IzTotal > 0 && effectiveBrkIn > 0 && IzTotal > effectiveBrkIn * 2 && (c._cableSize || 0) > 1.5;
+      const oversize = izRef > 0 && brkRef > 0 && izRef > brkRef * 2 && (c._cableSize || 0) > 1.5;
       const bgColor = !protOk ? '#ffebee' : oversize ? '#fff8e1' : '#f5f5f5';
       const methodLabel = GLOBAL.calcMethod === 'pue' ? 'ПУЭ' : 'IEC 60364';
       h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${bgColor};border-radius:4px">` +
