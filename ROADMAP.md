@@ -110,48 +110,68 @@
 
 **Задача пользователя:** `elements/` должен стать отдельным полноценным модулем управления библиотекой/каталогами — с импортом, ценами, контрагентами.
 
-- [ ] **1.5.1** Схемы данных:
-  - `shared/price-records.js` — `PriceRecord { id, elementId, price, currency, recordedAt, source, counterpartyId, priceType, validUntil, conditions, notes }`
-    - `priceType`: `'purchase' | 'retail' | 'wholesale' | 'list' | 'special' | 'project'`
-    - `source`: произвольная строка (URL прайса / имя XLSX / 'ручной ввод' / email)
-    - Множественные цены на один элемент (разные контрагенты + даты + типы)
-  - `shared/counterparty-catalog.js` — `CounterpartyRecord { id, name, inn, kpp, address, contacts[], type, tags, createdAt, updatedAt }`
-    - `type`: `'supplier' | 'manufacturer' | 'dealer' | 'logistics' | 'other'`
-  - Per-user localStorage: `raschet.priceRecords.v1.<uid>`, `raschet.counterparties.v1.<uid>`
-  - Listener API (как у panel-catalog): `onPricesChange`, `onCounterpartiesChange`
+- [x] **1.5.1** Схемы данных (закрыто 2026-04-20):
+  - `shared/price-records.js` — `PriceRecord` со всеми полями + расширенные:
+    `validFrom/validUntil`, `quantity/MOQ`, `unitOfMeasure`, `discount`,
+    `vat`, `vatIncluded`, `conditions`. 6 типов цен (`PRICE_TYPES`) и 6
+    валют (`CURRENCIES`). API: `listPrices/getPrice/savePrice/
+    removePrice/bulkAddPrices/pricesForElement`, `exportPricesJSON/
+    importPricesJSON`, `onPricesChange`.
+  - `shared/counterparty-catalog.js` — `CounterpartyRecord` +
+    `COUNTERPARTY_TYPES` (7 типов включая warehouse/customer).
+    API: `listCounterparties/getCounterparty/saveCounterparty/
+    removeCounterparty/makeCounterpartyId/validateInn/onCounterpartiesChange`.
+  - Per-user localStorage через `currentUserId()` префикс.
+  - Валидация: `savePrice` не позволяет привязать цену к non-pricable
+    kind (cable-type линейка — только cable-sku).
 
-- [ ] **1.5.2** Новый модуль `catalog/` (promo elements/):
-  - `catalog/index.html` с табами:
-    - **Элементы** — расширенный список (то что elements/ + колонки с последней ценой / числом предложений)
-    - **Цены** — все прайс-записи с фильтрами (по элементу / контрагенту / типу цены / периоду)
-    - **Контрагенты** — CRUD поставщиков / производителей / дилеров
-    - **Импорт** — XLSX прайс-листов с маппингом полей
-  - `elements/` остаётся — quick-access minimal editor
+- [x] **1.5.2** Новый модуль `catalog/` (закрыто 2026-04-20):
+  - `catalog/index.html` + `catalog.js` + `catalog.css`: 5 табов
+    (Элементы / Цены / Контрагенты / Импорт / **Аналитика** — бонус).
+  - Tab «Элементы»: список с колонкой последней цены, badges
+    builtin/user/imported, filters (kind/source/search), действия
+    view/edit/clone/delete, «+ Цена» inline, переход «view-prices».
+  - Tab «Цены»: `listPrices` с 4 фильтрами (по элементу/контрагенту/
+    priceType/currency), сортировка по recordedAt desc.
+  - Tab «Контрагенты»: CRUD + фильтр по типу + поиск.
+  - `elements/` остаётся как quick-access editor.
 
-- [ ] **1.5.3** CRUD цен:
-  - Форма добавления: Элемент (picker) + Цена + Валюта + Дата + Контрагент (picker) + Тип цены + Источник + Примечания
-  - Массовый ввод (таблица с paste from clipboard)
-  - Редактирование (кроме даты — историческая)
-  - Удаление
+- [x] **1.5.3** CRUD цен (закрыто 2026-04-20):
+  - `openPriceModal` в catalog.js: Элемент picker + Цена + Валюта +
+    Контрагент + Тип цены + Источник + Примечания.
+  - `bulkAddPrices` для массовой вставки (используется в импорте XLSX).
+  - Редактирование/удаление в таблице цен.
+  - _Не реализовано:_ paste-from-clipboard в массовом вводе (есть XLSX
+    импорт, этого достаточно).
 
-- [ ] **1.5.4** Управление контрагентами:
-  - CRUD: создать/редактировать/удалить
-  - Поиск по ИНН/КПП/имени
-  - Быстрое добавление при вводе цены (+new inline)
+- [x] **1.5.4** Управление контрагентами (закрыто 2026-04-20):
+  - renderCounterpartiesTab + openCounterpartyModal в catalog.js.
+  - Поиск по имени/ИНН/КПП/адресу/телефону/email (`listCounterparties`
+    filter.search объединяет все поля).
+  - `validateInn` (10/12 цифр) в счем. Быстрое добавление inline
+    в форме цены через dropdown.
 
-- [ ] **1.5.5** Импорт XLSX прайс-листов:
-  - Drag-drop файлов (несколько одновременно)
-  - UI маппинга колонок: какая колонка = элемент / цена / валюта / срок действия
-  - Авто-распознавание по заголовкам (Price, Цена, Стоимость, Supplier, Поставщик)
-  - Привязка к контрагенту (один на файл, с возможностью переопределить per-row)
-  - Dry-run preview перед применением
-  - История импортов с возможностью отката
+- [~] **1.5.5** Импорт XLSX прайс-листов (частично, 2026-04-20):
+  - ✅ Drag-drop нескольких файлов, парсинг XLSX через SheetJS.
+  - ✅ Авто-маппинг колонок по regex на заголовки (`sku|артикул|id`,
+    `price|цена|стоимость|cost`, `curr|валют`).
+  - ✅ UI маппинга с dropdown «Колонка файла → Поле прайса».
+  - ✅ Привязка к контрагенту на файл + тип цены + источник.
+  - ✅ Dry-run preview (первые 5 строк) перед применением.
+  - ✅ Импорт JSON (backup) для prices и library.
+  - ⏳ _Не реализовано:_ per-row override контрагента, история импортов
+    с возможностью отката (сейчас каждая запись имеет `source`-метку
+    `XLSX:<filename>` — по ней можно отфильтровать и удалить вручную).
 
-- [ ] **1.5.6** Статистика и аналитика:
-  - В таблице элементов: последняя цена + min/max по активным контрагентам
-  - График динамики цены (sparkline) на элемент
-  - Сводка: самые дорогие / дешёвые элементы / контрагенты
-  - Алерты: цены старше N дней → warning
+- [~] **1.5.6** Статистика и аналитика (частично, 2026-04-20):
+  - ✅ Tab «Аналитика» в catalog/: stat cards (элементов / контрагентов /
+    цен / с ценами / без цен / устаревшие >90д).
+  - ✅ Топ-5 контрагентов по числу цен.
+  - ✅ Список элементов без цен с inline «+ Цена».
+  - ✅ В табе «Элементы» — колонка с последней ценой на элемент.
+  - ⏳ _Не реализовано:_ sparkline динамики цены на элемент, колонки
+    min/max в таблице элементов, отдельная панель алертов устаревших
+    цен (сейчас только счётчик в summary).
 
 - [x] **1.5.7** Интеграция с BOM (v0.45.1):
   - `shared/bom.js`:
@@ -181,28 +201,35 @@
 
 **Задача пользователя:** модуль расчёта логистики. Проект → расчёт доставки, складирования, итоговой стоимости с логистикой.
 
-- [ ] **1.6.1** Схемы данных:
-  - `shared/warehouses.js` — `WarehouseRecord { id, name, counterpartyId, address, type, capacity, cost, leadDays }`
-  - `shared/shipments.js` — `ShipmentRecord { id, projectId, items[], origin, destination, carrierId, mode, cost, currency, plannedAt, deliveredAt, status }`
-    - `items`: `[{ elementId, qty, unitWeightKg, unitVolumeM3, unitPrice }]`
-    - `mode`: `'road' | 'rail' | 'air' | 'sea' | 'express' | 'pickup'`
-  - `shared/logistics-rates.js` — тарифы перевозчиков (кг/м³/км)
-  - Per-user localStorage
+- [x] **1.6.1** Схемы данных (закрыто 2026-04-20):
+  - `shared/logistics-schemas.js` объединяет всё: Warehouse, CarrierRate,
+    Shipment в одном модуле.
+  - `WarehouseRecord`: id/name/counterpartyId/type/address/capacityM3/
+    costPerM3Day/leadDays. 5 типов (`WAREHOUSE_TYPES`: own/rented/
+    supplier/customer/transit).
+  - `CarrierRate`: id/carrierId/mode/unitRUB/perKg/perKm/perM3/minOrder/
+    note. 6 режимов (`SHIPMENT_MODES`).
+  - `ShipmentRecord`: id/projectId/label/status/mode/carrierId/originId/
+    destinationId/items[]/cost/currency/plannedAt/deliveredAt/notes.
+    5 статусов (`SHIPMENT_STATUSES`).
+  - `calcShipmentCost(items, rate, opts)` — калькулятор с breakdown по
+    fixed/perKg/perKm/perM3 + minOrder clamp.
+  - Per-user localStorage, listener API для всех трёх.
 
-- [ ] **1.6.2** `logistics/` module UI:
-  - Tabs:
-    - **Отправления** — список shipments, создание/редактирование
-    - **Склады** — управление warehouses
-    - **Тарифы** — управление carrier rates
-    - **Расчёт** — калькулятор: введи вес/объём/расстояние → смета
-  - Drag-drop из BOM проекта: «Импорт из Конструктора схем (текущий проект)»
-  - Печать ТТН / проформы (через shared/report/)
+- [x] **1.6.2** `logistics/` module UI (закрыто 2026-04-20):
+  - `logistics/index.html` + `logistics.js` + `logistics.css`, 4 таба:
+    Отправления / Склады / Тарифы / Расчёт.
+  - Печать ТТН / проформы через встроенный HTML-шаблон
+    (`table.items` со стандартными полями).
 
-- [ ] **1.6.3** Интеграция с BOM + ценами:
-  - В Конструкторе схем: кнопка «Рассчитать логистику» на узле проекта
-  - Открывает `logistics/?projectId=X` с предзаполненным BOM
-  - Результат: итоговая стоимость (оборудование + логистика) → в отчёт
-  - Раздел в BOM-отчёте: «Логистика и доставка»
+- [x] **1.6.3** Интеграция с BOM + ценами (закрыто 2026-04-20):
+  - `js/engine/export.js`: кнопка «🚚 Передать в логистику» в боковой
+    панели Конструктора. Сохраняет handoff в localStorage и открывает
+    `logistics/?import=1` с projectId.
+  - `js/engine/report-sections.js:sectionLogistics` — раздел «Логистика
+    и доставка» в BOM-отчёте: фильтрует shipments по текущему projectId,
+    выводит таблицу с маршрутом, массой, объёмом, стоимостью товаров и
+    перевозки, итоговой сметой.
 
 - [ ] **1.6.4** Маршрутизация (опционально, Фаза 1.6.4+):
   - Несколько точек доставки (мультистоп)
