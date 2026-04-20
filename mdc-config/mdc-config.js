@@ -67,19 +67,25 @@ function compute() {
   const cracN = Math.ceil(S.itKw / cracKwPerUnit);
   const cracRedund = S.redundancy === '2N' ? cracN : Math.max(cracN + 1, Math.ceil(cracN * 1.2));
 
-  // Проверка: поместятся ли все стойки в заданные модули?
-  // Серверный ряд: стойка 600 мм × (count модулей × (длина - 2 × 600 кондёры))
-  const ZONE_CRAC_LEN = 1200;  // мм, зона с торца (CRAC)
-  const ZONE_UPS_LEN  = 2400;  // зона ИБП+АКБ
-  const serverZoneLen = (S.length - ZONE_CRAC_LEN - ZONE_UPS_LEN) * S.count;
-  const racksFit = Math.floor(serverZoneLen / 600) * 2; // два ряда (холодный коридор)
-  const racksOk = racksFit >= racksNeeded;
+  // Проверка: поместятся ли все стойки? Модули стыкуются по ширине,
+  // в каждом модуле 2 ряда стоек (back-to-back) длиной (S.length − CRAC − UPS).
+  const ZONE_CRAC_LEN = 1500;  // мм, зона CRAC у торца
+  const ZONE_UPS_LEN  = 2400;  // зона ИБП+АКБ у другого торца
+  const serverLenPerMod = Math.max(0, S.length - ZONE_CRAC_LEN - ZONE_UPS_LEN);
+  const racksPerRow     = Math.floor(serverLenPerMod / 600);
+  const racksFit        = racksPerRow * 2 * S.count;
+  const racksOk         = racksFit >= racksNeeded;
+  // Вместимость inRow-ACU: по 1 ACU на 1200 мм в среднем ряду, по рядам на модуль
+  const acuPerMod       = Math.floor(serverLenPerMod / 1200);
+  const acuCap          = acuPerMod * S.count;
+  const acuOk           = (S.cracType === 'inrow-dx' || S.cracType === 'inrow-cw')
+                        ? (acuCap >= cracRedund) : true;
 
   return {
     racksNeeded, racksFit, racksOk,
     upsKva, upsShelves, battShelves,
-    cracN, cracRedund,
-    serverZoneLen,
+    cracN, cracRedund, acuCap, acuOk,
+    serverLenPerMod, racksPerRow,
   };
 }
 
@@ -90,98 +96,175 @@ function renderSummary(r) {
     <div class="card"><span class="label">IT-нагрузка</span><span class="value">${S.itKw} кВт</span></div>
     <div class="card"><span class="label">Стоек нужно</span><span class="value">${r.racksNeeded}</span></div>
     <div class="card ${r.racksOk ? 'ok' : 'warn'}">
-      <span class="label">Стоек помещается</span>
+      <span class="label">Мест для стоек</span>
       <span class="value">${r.racksFit} ${r.racksOk ? '✓' : '✗ мало'}</span>
     </div>
     <div class="card"><span class="label">ИБП-мощность</span><span class="value">${r.upsKva} кВА</span></div>
     <div class="card"><span class="label">Шкафов ИБП</span><span class="value">${r.upsShelves}</span></div>
     <div class="card"><span class="label">АКБ-шкафов</span><span class="value">${r.battShelves}</span></div>
-    <div class="card"><span class="label">CRAC (с резервом)</span><span class="value">${r.cracRedund}</span></div>
-    <div class="card"><span class="label">Модулей ЦОД</span><span class="value">${S.count} × ${S.length} мм</span></div>
+    <div class="card ${r.acuOk ? 'ok' : 'warn'}">
+      <span class="label">CRAC (с резервом)</span>
+      <span class="value">${r.cracRedund}${r.acuOk ? '' : ' ✗'}</span>
+    </div>
+    <div class="card"><span class="label">Здание</span><span class="value">${S.length} × ${S.width * S.count} мм</span></div>
   `;
 }
 
 /* ================== ПЛАНИРОВКА (SVG top-view) ================== */
+// Модель:
+// - Модули стыкуются по ШИРОКОЙ стороне (борт-в-борт): общая ширина
+//   здания = S.width × S.count, длина общая = S.length.
+// - Ширина 2400/3000 мм указана ВНУТРИ, без стенок (рисуем чистый интерьер).
+// - Внутри каждого модуля по длине зоны: [CRAC | серверная | ИБП+АКБ].
+// - В серверной — два ряда стоек (back-to-back) + средний ряд inRow-ACU,
+//   как в референсах 26003 и 25006 (Top row 6×SR, Mid 4×ACU, Bot 6×SR).
+// - Количество стоек и CRAC определяется РАСЧЁТОМ из IT-мощности и
+//   kW/стойку — заполнение идёт слева направо через все модули.
 function renderPlan(r) {
   const host = $('mdc-plan');
-  const scale = 0.07; // 1мм → 0.07px  (12000мм ≈ 840px)
-  const W_total = S.length * S.count;
-  const H_total = S.width;
-  const vw = Math.max(600, W_total * scale + 80);
-  const vh = Math.max(200, H_total * scale + 80);
+  const scale = 0.055;
+
+  const L = S.length;                  // длина сборки (общая для всех модулей)
+  const W = S.width * S.count;         // суммарная ширина (стыковка боками)
+  const ox = 40, oy = 40;
+  const vw = Math.max(700, L * scale + 2 * ox);
+  const vh = Math.max(260, W * scale + 2 * oy + 30);
+
+  // Зоны по длине
+  const ZX_CRAC = 1500;
+  const ZX_UPS  = 2400;
+  const serverLen = Math.max(3000, L - ZX_CRAC - ZX_UPS);
+
+  // Геометрия внутри модуля по ширине (transverse):
+  // [ряд стоек A 1200 | ACU 300 | ряд стоек B 1200]. Остальное — служебные
+  // проходы (снаружи и между рядами). Для 2400 мм ACU ужимается до 200 мм,
+  // проходы — до 100 мм.
+  const RACK_DEPTH = 1200;
+  const ACU_DEPTH  = S.width >= 3000 ? 300 : 200;
+  const sidePad = Math.max(50, (S.width - RACK_DEPTH*2 - ACU_DEPTH) / 2);
 
   let svg = `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg">`;
 
-  // Внешний контур всех модулей
-  const ox = 40, oy = 30;
+  // === Общие плановые зоны (раскрашиваем по всей ширине сборки) ===
+  // CRAC end
+  svg += `<rect class="zone-crac" x="${ox}" y="${oy}" width="${ZX_CRAC*scale}" height="${W*scale}"/>`;
+  // Серверная
+  const srvX = ox + ZX_CRAC*scale;
+  const srvW = serverLen * scale;
+  svg += `<rect class="zone-srv"  x="${srvX}" y="${oy}" width="${srvW}" height="${W*scale}"/>`;
+  // ИБП+АКБ
+  const upsX = srvX + srvW;
+  svg += `<rect class="zone-ups"  x="${upsX}" y="${oy}" width="${ZX_UPS*scale}" height="${W*scale}"/>`;
+
+  // Подписи зон (сверху)
+  svg += `<text class="zone-label" x="${ox + ZX_CRAC*scale/2}" y="${oy - 10}" text-anchor="middle">CRAC</text>`;
+  svg += `<text class="zone-label" x="${srvX + srvW/2}"        y="${oy - 10}" text-anchor="middle">Серверная</text>`;
+  svg += `<text class="zone-label" x="${upsX + ZX_UPS*scale/2}" y="${oy - 10}" text-anchor="middle">ИБП + АКБ</text>`;
+
+  // === Расставляем стойки и inRow-ACU ===
+  // Шаг стойки по длине — 600 мм (плюс маленький зазор).
+  const RACK_STEP = 600;
+  const racksPerRow = Math.floor(serverLen / RACK_STEP);   // максимум в одном ряду
+  // 2 ряда × количество модулей — всего мест для стоек.
+  const rowsCount = 2 * S.count;
+  const racksTotalCap = racksPerRow * rowsCount;
+  const racksToPlace  = Math.min(r.racksNeeded, racksTotalCap);
+
+  // inRow-ACU шаг — 1200 мм (1 ACU ≈ 4 стойкам). Авто-количество из расчёта.
+  const acuPerRow      = Math.floor(serverLen / 1200);
+  const acuRowsCount   = rowsCount / 2;                      // один ACU-ряд на стык двух рядов стоек
+  const acuTotalCap    = acuPerRow * acuRowsCount;
+  const acuNeeded      = Math.min(r.cracRedund, acuTotalCap);
+
+  // Позиции рядов (y в мм от верха сборки):
+  // Модуль m: центр ACU в y = m*S.width + S.width/2
+  //           ряд A стоек: y = m*S.width + sidePad
+  //           ряд B стоек: y = m*S.width + S.width - sidePad - RACK_DEPTH
+  // Ряды стоек раскладываем ПО-ОЧЕРЕДИ через все модули (заполнение сверху вниз).
+  const rackSlots = []; // { xMm, yMm }
+  const acuSlots  = [];
   for (let m = 0; m < S.count; m++) {
-    const x = ox + m * S.length * scale;
-    svg += `<rect class="wall" x="${x}" y="${oy}" width="${S.length * scale}" height="${H_total * scale}"/>`;
-
-    // Зоны (внутри одного модуля): CRAC | серверы | сервис | ИБП+АКБ
-    const ZX_CRAC = 1200;   // мм
-    const ZX_UPS  = 2400;   // мм
-    const serverLen = S.length - ZX_CRAC - ZX_UPS;
-    const svc_mm    = Math.max(800, S.width >= 3000 ? 1200 : 900); // коридор по ширине
-
-    // CRAC зона (слева по длине)
-    svg += `<rect class="zone-crac" x="${x}" y="${oy}" width="${ZX_CRAC * scale}" height="${H_total * scale}"/>`;
-    // Серверная зона (центр)
-    const srvX = x + ZX_CRAC * scale;
-    const srvW = serverLen * scale;
-    svg += `<rect class="zone-srv" x="${srvX}" y="${oy}" width="${srvW}" height="${H_total * scale}"/>`;
-    // Сервисный коридор (полоса в середине серверной зоны по ширине)
-    const svcY = oy + (H_total - svc_mm) / 2 * scale;
-    svg += `<rect class="zone-svc" x="${srvX}" y="${svcY}" width="${srvW}" height="${svc_mm * scale}"/>`;
-    // ИБП+АКБ (справа по длине)
-    const upsX = srvX + srvW;
-    svg += `<rect class="zone-ups" x="${upsX}" y="${oy}" width="${ZX_UPS * scale}" height="${H_total * scale}"/>`;
-
-    // Подписи зон
-    svg += `<text class="zone-label" x="${x + ZX_CRAC*scale/2}" y="${oy - 8}" text-anchor="middle">CRAC</text>`;
-    svg += `<text class="zone-label" x="${srvX + srvW/2}" y="${oy - 8}" text-anchor="middle">Серверная</text>`;
-    svg += `<text class="zone-label" x="${upsX + ZX_UPS*scale/2}" y="${oy - 8}" text-anchor="middle">ИБП+АКБ</text>`;
-
-    // CRAC-модули (колонка в зоне слева)
-    const cracPerMod = Math.ceil(r.cracRedund / S.count);
-    const cracW = 900 * scale;  // ширина одного кондёра
-    const cracH = (H_total / cracPerMod) * scale - 6;
-    for (let i = 0; i < cracPerMod; i++) {
-      svg += `<rect class="crac" x="${x + 100*scale}" y="${oy + (i+0.1)*H_total/cracPerMod*scale}"
-                     width="${cracW}" height="${cracH}"/>`;
+    const yTop = m * S.width;
+    const yRowA  = yTop + sidePad;
+    const yRowB  = yTop + S.width - sidePad - RACK_DEPTH;
+    const yAcu   = yTop + sidePad + RACK_DEPTH;     // между рядами A и B
+    for (let i = 0; i < racksPerRow; i++) {
+      rackSlots.push({ xMm: ZX_CRAC + i*RACK_STEP, yMm: yRowA, row: 'A', mod: m });
     }
-
-    // Серверные стойки — два ряда по 600мм
-    const rowTopY  = oy + 100 * scale;
-    const rowBotY  = oy + (H_total - 600 - 100) * scale;
-    const racksInRow = Math.floor(serverLen / 600);
-    const racksInThisMod = Math.min(racksInRow * 2, r.racksNeeded - m * racksInRow * 2);
-    for (let i = 0; i < racksInRow && i * 2 < racksInThisMod; i++) {
-      svg += `<rect class="rack" x="${srvX + i*600*scale + 2}" y="${rowTopY}"
-                    width="${600*scale - 3}" height="${600*scale - 3}"/>`;
-      if (i * 2 + 1 < racksInThisMod) {
-        svg += `<rect class="rack" x="${srvX + i*600*scale + 2}" y="${rowBotY}"
-                      width="${600*scale - 3}" height="${600*scale - 3}"/>`;
-      }
+    for (let i = 0; i < racksPerRow; i++) {
+      rackSlots.push({ xMm: ZX_CRAC + i*RACK_STEP, yMm: yRowB, row: 'B', mod: m });
     }
-
-    // ИБП + АКБ шкафы (800мм глубиной, ширина 600мм)
-    const upsPerMod = Math.ceil(r.upsShelves / S.count);
-    const battPerMod = Math.ceil(r.battShelves / S.count);
-    let uy = oy + 100 * scale;
-    for (let i = 0; i < upsPerMod; i++) {
-      svg += `<rect class="ups" x="${upsX + 200*scale}" y="${uy}" width="${800*scale}" height="${600*scale - 4}"/>`;
-      uy += 600 * scale + 2;
-    }
-    for (let i = 0; i < battPerMod && uy + 600*scale < oy + H_total*scale; i++) {
-      svg += `<rect class="battery" x="${upsX + 200*scale}" y="${uy}" width="${800*scale}" height="${600*scale - 4}"/>`;
-      uy += 600 * scale + 2;
+    for (let i = 0; i < acuPerRow; i++) {
+      acuSlots.push({ xMm: ZX_CRAC + i*1200 + 150, yMm: yAcu, mod: m });
     }
   }
 
-  // Габаритные размеры
-  svg += `<text class="dim" x="${ox}" y="${oy + H_total*scale + 20}">
-            Длина: ${W_total} мм  ·  Ширина: ${S.width} мм  ·  H внутри 2700 мм
+  // Рисуем стойки
+  for (let i = 0; i < racksToPlace; i++) {
+    const sl = rackSlots[i];
+    svg += `<rect class="rack" x="${ox + sl.xMm*scale}" y="${oy + sl.yMm*scale}"
+                   width="${600*scale - 1}" height="${RACK_DEPTH*scale - 2}"/>`;
+  }
+
+  // Рисуем ACU — equally spread между 0 и acuTotalCap
+  if (acuNeeded > 0 && acuTotalCap > 0) {
+    const step = acuTotalCap / acuNeeded;
+    for (let i = 0; i < acuNeeded; i++) {
+      const idx = Math.min(acuTotalCap - 1, Math.round(i * step));
+      const sl = acuSlots[idx];
+      svg += `<rect class="crac" x="${ox + sl.xMm*scale}" y="${oy + sl.yMm*scale}"
+                     width="${900*scale}" height="${ACU_DEPTH*scale - 1}"/>`;
+    }
+  }
+
+  // === CRAC end (периметральные или приточка) — пара шкафов у торцевой стены ===
+  // Если тип perimeter/freecooling — ставим их в CRAC-зоне.
+  if (S.cracType === 'perimeter-dx' || S.cracType === 'freecooling') {
+    const nBigCrac = Math.max(1, Math.ceil(r.cracRedund / 4));
+    const stepY = W / nBigCrac;
+    for (let i = 0; i < nBigCrac; i++) {
+      svg += `<rect class="crac" x="${ox + 150*scale}" y="${oy + (i*stepY + 200)*scale}"
+                     width="${900*scale}" height="${Math.min(2500, stepY-400)*scale}"/>`;
+    }
+  }
+
+  // === ИБП-шкафы и АКБ-шкафы — в правой зоне, ряд по длине ===
+  // Шаг по длине 600 мм; два ряда по ширине (если S.width ≥ 2400).
+  const upsStep = 600;
+  const upsPerRowPerMod = Math.floor(ZX_UPS / upsStep);    // = 4
+  const upsRowCnt = 2 * S.count;
+  const upsCap = upsPerRowPerMod * upsRowCnt;
+  const upsToPlace  = Math.min(r.upsShelves, upsCap);
+  const battToPlace = Math.min(r.battShelves, upsCap - upsToPlace);
+  // Индексы: сначала UPS, затем battery
+  let placed = 0;
+  for (let m = 0; m < S.count; m++) {
+    for (let row = 0; row < 2; row++) {
+      const yRow = (row === 0) ? m*S.width + sidePad : m*S.width + S.width - sidePad - RACK_DEPTH;
+      for (let i = 0; i < upsPerRowPerMod; i++) {
+        if (placed >= upsToPlace + battToPlace) break;
+        const cls = (placed < upsToPlace) ? 'ups' : 'battery';
+        const xMm = L - ZX_UPS + i*upsStep + 100;
+        svg += `<rect class="${cls}" x="${ox + xMm*scale}" y="${oy + yRow*scale}"
+                       width="${upsStep*scale - 3}" height="${RACK_DEPTH*scale - 2}"/>`;
+        placed++;
+      }
+    }
+  }
+
+  // === Разделители между модулями (пунктир) + подпись № модуля ===
+  for (let m = 1; m < S.count; m++) {
+    const y = oy + m*S.width*scale;
+    svg += `<line x1="${ox}" y1="${y}" x2="${ox + L*scale}" y2="${y}"
+                  stroke="#888" stroke-width="1" stroke-dasharray="4,4"/>`;
+  }
+  for (let m = 0; m < S.count; m++) {
+    svg += `<text class="dim" x="${ox + 6}" y="${oy + (m*S.width + 14)*scale}">М${m+1}  (${S.width}×${L} мм)</text>`;
+  }
+
+  // === Габаритные линии снаружи ===
+  svg += `<text class="dim" x="${ox}" y="${oy + W*scale + 22}">
+            Здание: ${L} × ${W} мм  ·  H внутри 2700 мм  ·  модулей: ${S.count}
           </text>`;
 
   svg += `</svg>`;
@@ -200,10 +283,6 @@ function update() {
 function exportBom() {
   alert('BOM-экспорт будет подключён после импорта каталога GDM-600K (drawio → JSON).');
 }
-function sendToMain() {
-  alert('Передача в главную схему будет подключена после стабилизации каталога модулей.');
-}
-
 /* ================== INIT ================== */
 function init() {
   const ids = ['mdc-width','mdc-length','mdc-count','mdc-it-kw','mdc-rack-kw',
@@ -216,7 +295,6 @@ function init() {
     if (el && (el.type === 'number' || el.type === 'text')) el.addEventListener('input', update);
   }
   $('mdc-export-bom').addEventListener('click', exportBom);
-  $('mdc-send-main').addEventListener('click', sendToMain);
   update();
 }
 
