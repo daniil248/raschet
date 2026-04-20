@@ -80,12 +80,79 @@
 // ======================================================================
 
 const LEGACY_KEY = 'raschet.elementLibrary.v1';
+// ——— Override-слой для редактирования builtin (см. комментарий ниже) ———
+// Правка элементов, помеченных `builtin: true`, хранится отдельным
+// срезом в localStorage — не трогая исходные seed'ы и не смешиваясь
+// с user-created элементами. Ключ ГЛОБАЛЬНЫЙ (не per-user), т.к.
+// редактирование builtin — прерогатива роли «catalog-admin» (см.
+// Фазу 5 roadmap), и правки должны быть видны всем пользователям
+// установки. Значения: Map<id, Partial<Element>> — либо частичный
+// override (patch), либо полная запись с флагом `tombstone: true`
+// (временное «удаление» builtin из выдачи).
+const OVERRIDES_KEY = 'raschet.elementLibrary.overrides.v1';
+// Роль пользователя. До внедрения полноценного auth (Фаза 5) читается
+// из localStorage['raschet.currentRole']: 'user' (default) | 'catalog-admin' | 'admin'.
+// Только admin-роли могут редактировать builtin (canEditBuiltin()).
+const ROLE_KEY = 'raschet.currentRole';
 
 function currentUserId() {
   try { return localStorage.getItem('raschet.currentUserId') || 'anonymous'; }
   catch { return 'anonymous'; }
 }
 function storageKey() { return LEGACY_KEY + '.' + currentUserId(); }
+
+/** Текущая роль (заглушка до Фазы 5 auth). */
+export function getCurrentRole() {
+  try { return localStorage.getItem(ROLE_KEY) || 'user'; }
+  catch { return 'user'; }
+}
+/** true если текущая роль имеет право редактировать builtin-элементы. */
+export function canEditBuiltin() {
+  const r = getCurrentRole();
+  return r === 'catalog-admin' || r === 'admin';
+}
+
+// ——— Overrides (правки builtin) ———
+function _readOverrides() {
+  try {
+    const raw = localStorage.getItem(OVERRIDES_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return (obj && typeof obj === 'object') ? obj : {};
+  } catch { return {}; }
+}
+function _writeOverrides(map) {
+  try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(map || {})); }
+  catch (e) { console.error('[element-library] write overrides failed', e); }
+}
+/** Применить override (если есть) к builtin-элементу. Возвращает merged-копию. */
+function _applyOverride(el, overrides) {
+  if (!el || !el.builtin) return el;
+  const ov = overrides[el.id];
+  if (!ov) return el;
+  if (ov.tombstone) return null; // builtin «скрыт» админом
+  return { ...el, ...ov, id: el.id, kind: el.kind, builtin: true, source: 'builtin', overridden: true, updatedAt: ov.updatedAt || el.updatedAt };
+}
+
+/**
+ * Список всех overrides builtin-элементов (для UI каталога-админа).
+ * Возвращает { [id]: patch }.
+ */
+export function listBuiltinOverrides() { return _readOverrides(); }
+
+/**
+ * Сбросить override для builtin-элемента (вернуть к исходному seed).
+ * Только для admin-роли. Возвращает true если что-то было удалено.
+ */
+export function resetBuiltinOverride(id) {
+  if (!canEditBuiltin()) throw new Error('[element-library] forbidden: requires catalog-admin role');
+  const map = _readOverrides();
+  if (!(id in map)) return false;
+  delete map[id];
+  _writeOverrides(map);
+  _notify();
+  return true;
+}
 
 // ——— Валидные значения kind ———
 // ВАЖНО про кабели: `cable-type` — это ЛИНЕЙКА (ВВГнг-LS, АВБбШв, UTP…),
@@ -172,9 +239,15 @@ export function clearBuiltins() { _builtins.clear(); }
  */
 export function listElements(filter = {}) {
   const userList = _read();
+  const overrides = _readOverrides();
   // Builtin элементы не пересекаются с user по id (user id не должен совпадать с builtin)
   const userFiltered = userList.filter(u => !_builtins.has(u.id));
-  let all = [..._builtins.values(), ...userFiltered];
+  const builtinsMerged = [];
+  for (const el of _builtins.values()) {
+    const merged = _applyOverride(el, overrides);
+    if (merged) builtinsMerged.push(merged);
+  }
+  let all = [...builtinsMerged, ...userFiltered];
 
   if (filter.kind) all = all.filter(e => e.kind === filter.kind);
   if (filter.category) all = all.filter(e => e.category === filter.category);
@@ -184,9 +257,12 @@ export function listElements(filter = {}) {
   return all;
 }
 
-/** Найти элемент по id. */
+/** Найти элемент по id (с учётом override для builtin). */
 export function getElement(id) {
-  if (_builtins.has(id)) return _builtins.get(id);
+  if (_builtins.has(id)) {
+    const overrides = _readOverrides();
+    return _applyOverride(_builtins.get(id), overrides);
+  }
   return _read().find(e => e.id === id) || null;
 }
 
@@ -200,8 +276,21 @@ export function saveElement(element) {
   if (!element.kind || !ELEMENT_KINDS[element.kind]) {
     throw new Error('[element-library] invalid kind: ' + element.kind);
   }
+  // Правка builtin: пишем в override-слой (только для catalog-admin),
+  // не трогая исходный seed. Обычные пользователи получают ошибку —
+  // клонирование должно идти через cloneElement().
   if (_builtins.has(element.id)) {
-    throw new Error('[element-library] cannot override builtin: ' + element.id);
+    if (!canEditBuiltin()) {
+      throw new Error('[element-library] cannot override builtin: ' + element.id + ' (requires catalog-admin role)');
+    }
+    const map = _readOverrides();
+    // Сохраняем полный снимок как patch поверх builtin — простая модель,
+    // позволяет редактору править любые поля без diff-логики.
+    const { id, kind, builtin, source, overridden, ...patch } = element;
+    map[element.id] = { ...patch, updatedAt: Date.now() };
+    _writeOverrides(map);
+    _notify();
+    return _applyOverride(_builtins.get(element.id), map);
   }
   const list = _read();
   const now = Date.now();
@@ -221,9 +310,19 @@ export function saveElement(element) {
   return saved;
 }
 
-/** Удалить пользовательский элемент (builtin не удаляются). */
+/**
+ * Удалить элемент. Для builtin: admin-роль может пометить tombstone
+ * (скрыть из выдачи); сброс к исходному seed — через resetBuiltinOverride().
+ */
 export function removeElement(id) {
-  if (_builtins.has(id)) return false;
+  if (_builtins.has(id)) {
+    if (!canEditBuiltin()) return false;
+    const map = _readOverrides();
+    map[id] = { tombstone: true, updatedAt: Date.now() };
+    _writeOverrides(map);
+    _notify();
+    return true;
+  }
   const list = _read();
   const idx = list.findIndex(e => e.id === id);
   if (idx < 0) return false;
