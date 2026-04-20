@@ -430,7 +430,7 @@
   - [~] Drag-элементов с реальными габаритами (`element.geometry.width/height`): v0.57.96 — `getNodeGeometryMm(n)` читает `element.geometry.widthMm/heightMm` через library (и legacy id — upsCatalogId/panelCatalogId/…); на layout-странице рисуется пунктирный прямоугольник реального размера + подпись «W×H мм». Override через `n.geometryMm` зарезервирован.
   - [ ] Автоматическая расстановка новых слева
   - [ ] Зоны обслуживания (hatched area)
-  - [ ] Линейка (ruler) по краям холста
+  - [x] Линейка (ruler) по краям холста (v0.57.99): SVG-overlay с major/minor рисками, автоподбор шага под zoom, подписи в мм/м.
 - [ ] **2.4** IEC 81346 обозначения:
   - `fullTag()` → `=Z1+AC1` (assignment + location structure)
   - Настройка на проекте: `projectTagSystem: 'simple' | 'iec81346' | 'ansi'`

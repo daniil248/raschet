@@ -53,6 +53,8 @@ export function updateViewBox() {
     bg.setAttribute('width', vw);
     bg.setAttribute('height', vh);
   }
+  // Phase 2.3: перерисовать линейку при pan/zoom на layout-странице
+  try { renderLayoutRuler(); } catch {}
 }
 
 export function el(tag, attrs = {}, children = []) {
@@ -296,6 +298,94 @@ export function render() {
   decorateRemoteLocks();
   renderRemoteCursors();
   renderPageKindBanner();
+  renderLayoutRuler();
+}
+
+// Phase 2.3: линейка с мм-делениями на layout-странице. Рисуется в
+// отдельном SVG поверх canvas (экранные координаты), реагирует на
+// pan/zoom через updateViewBox(). Шаг рисок подбирается под zoom —
+// так чтобы между major-рисками было ~60-150 px.
+const RULER_W = 22;
+export function renderLayoutRuler() {
+  if (!svg) return;
+  let ruler = document.getElementById('layout-ruler');
+  const page = getCurrentPage();
+  const isLayout = getPageKind(page) === 'layout';
+  if (!isLayout) {
+    if (ruler) ruler.remove();
+    return;
+  }
+  if (!ruler) {
+    ruler = document.createElementNS(SVG_NS, 'svg');
+    ruler.id = 'layout-ruler';
+    ruler.classList.add('layout-ruler');
+    svg.parentNode.appendChild(ruler);
+  }
+  const W = svg.clientWidth, H = svg.clientHeight;
+  ruler.setAttribute('width', W);
+  ruler.setAttribute('height', H);
+  ruler.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  while (ruler.firstChild) ruler.removeChild(ruler.firstChild);
+  const zoom = state.view.zoom || 1;
+  const vx = state.view.x || 0, vy = state.view.y || 0;
+  const vw = W / zoom, vh = H / zoom;
+  // Выбор шага major-риски
+  const candidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+  let step = 100;
+  for (const s of candidates) { if (s * zoom >= 60) { step = s; break; } }
+  const minorStep = step / 5;
+  const mk = (tag, attrs, text) => {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    ruler.appendChild(e);
+    return e;
+  };
+  // Фон полос
+  mk('rect', { x: 0, y: 0, width: W, height: RULER_W, fill: '#fff8e1' });
+  mk('rect', { x: 0, y: 0, width: RULER_W, height: H, fill: '#fff8e1' });
+  mk('rect', { x: 0, y: 0, width: RULER_W, height: RULER_W, fill: '#ffecb3' });
+  mk('line', { x1: 0, y1: RULER_W - 0.5, x2: W, y2: RULER_W - 0.5, stroke: '#d9c19a', 'stroke-width': 1 });
+  mk('line', { x1: RULER_W - 0.5, y1: 0, x2: RULER_W - 0.5, y2: H, stroke: '#d9c19a', 'stroke-width': 1 });
+
+  const mmToX = (mm) => (mm - vx) * zoom;
+  const mmToY = (mm) => (mm - vy) * zoom;
+  const fmtMm = (mm) => {
+    if (Math.abs(mm) >= 1000) return (Math.round(mm / 100) / 10) + ' м';
+    return Math.round(mm) + '';
+  };
+  // Верхняя линейка
+  const sx = Math.floor(vx / minorStep) * minorStep;
+  const ex = vx + vw;
+  for (let mm = sx; mm <= ex; mm += minorStep) {
+    const x = mmToX(mm);
+    if (x < RULER_W || x > W) continue;
+    const major = Math.abs(mm % step) < 1e-6;
+    mk('line', {
+      x1: x, y1: major ? RULER_W - 10 : RULER_W - 4,
+      x2: x, y2: RULER_W,
+      stroke: major ? '#8a7246' : '#c2a56a',
+      'stroke-width': major ? 1 : 0.5,
+    });
+    if (major) mk('text', { x: x + 2, y: 11, 'font-size': 10, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(mm));
+  }
+  // Левая линейка
+  const sy = Math.floor(vy / minorStep) * minorStep;
+  const ey = vy + vh;
+  for (let mm = sy; mm <= ey; mm += minorStep) {
+    const y = mmToY(mm);
+    if (y < RULER_W || y > H) continue;
+    const major = Math.abs(mm % step) < 1e-6;
+    mk('line', {
+      x1: major ? RULER_W - 10 : RULER_W - 4, y1: y,
+      x2: RULER_W, y2: y,
+      stroke: major ? '#8a7246' : '#c2a56a',
+      'stroke-width': major ? 1 : 0.5,
+    });
+    if (major) mk('text', { x: 2, y: y + 10, 'font-size': 10, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(mm));
+  }
+  // В угловом квадрате — текущий шаг
+  mk('text', { x: 3, y: 14, 'font-size': 9, fill: '#8a7246', 'font-family': 'system-ui, sans-serif' }, fmtMm(step));
 }
 
 // Phase 2.3: на layout-страницах рисуем реальный габарит узла (widthMm × heightMm)
