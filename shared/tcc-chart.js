@@ -497,9 +497,27 @@ export function openTccModal(opts = {}) {
         // Синхронизация зеркальных input'ов
         cardsCol.querySelectorAll(`[data-tcc-target="${id}"][data-tcc-param="${p}"],[data-tcc-target="${id}"][data-tcc-param-num="${p}"]`)
           .forEach(o => { if (o !== inp) o.value = inp.value; });
+        // Callback в вызывающий код для сохранения изменений в модель
+        // (например, в conn.breakerSettings). Debounced через rAF, чтобы
+        // не триггерить recalc+render на каждом движении ползунка.
+        if (typeof opts.onSettingsChange === 'function') {
+          if (_settingsCbFrame) cancelAnimationFrame(_settingsCbFrame);
+          _settingsCbFrame = requestAnimationFrame(() => {
+            try {
+              opts.onSettingsChange({
+                itemId: id,
+                param: p,
+                value: v,
+                settings: it.settings ? { ...it.settings } : null,
+                In: it.In,
+              });
+            } catch (e) { console.warn('[tcc-modal] onSettingsChange failed', e); }
+          });
+        }
       });
     });
   };
+  let _settingsCbFrame = null;
   renderCards();
 
   const close = () => {

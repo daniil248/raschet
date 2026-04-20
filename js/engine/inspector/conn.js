@@ -1235,6 +1235,21 @@ async function _mountConnTccChart(conn, fromN, toN) {
       items,
       ikMax, ikMin,
       title: `Карта защиты линии: ${fromN?.name || fromN?.tag || '?'} → ${toN?.name || toN?.tag || '?'}`,
+      // v0.57.49: сохраняем изменения уставок из модалки обратно в
+      // conn.breakerSettings, чтобы они влияли на селективность и
+      // пересчёт. Применяется только к 'this-breaker' (текущая линия).
+      onSettingsChange: ({ itemId, param, settings }) => {
+        if (itemId !== 'this-breaker' || !settings) return;
+        conn.breakerSettings = {
+          Ir: Number(settings.Ir) || undefined,
+          Isd: Number(settings.Isd) || undefined,
+          tsd: Number(settings.tsd) || undefined,
+          Ii: Number(settings.Ii) || undefined,
+        };
+        snapshot('tcc-modal-settings:' + conn.id + ':' + param);
+        // Перерисовываем схему и инспектор, не закрывая модалку
+        try { render(); notifyChange(); } catch (e) { console.warn('[tcc-modal] render failed', e); }
+      },
     });
   });
   container.appendChild(btn);
