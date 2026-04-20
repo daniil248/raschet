@@ -21,6 +21,15 @@ export function openConsumerParamsModal(n) {
   const isOutdoor = n.consumerSubtype === 'outdoor_unit';
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
+  // Phase 2.?: вкладки по типам параметров. «Электрика» — рабочие
+  // характеристики (мощность, напряжение, cosφ, пуск, приоритеты).
+  // «Габариты» — физические размеры для layout-страницы (мм).
+  // В будущем добавим «Подключение» (per page.kind) и «Механика».
+  h.push(`<div class="tp-tabs" role="tablist">
+    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
+  </div>`);
+  h.push(`<div class="tp-panel" data-panel="electrical">`);
   h.push(field('Имя', `<input type="text" id="cp-name" value="${escAttr(n.name || '')}">`));
 
   // Миграция: старые user-записи без category получают 'other'
@@ -213,8 +222,53 @@ export function openConsumerParamsModal(n) {
     h.push('<button type="button" id="cp-save-catalog" style="font-size:11px;padding:4px 8px;border:1px dashed #999;background:#f9f9f9;border-radius:4px;cursor:pointer">+ Сохранить как тип в мою библиотеку</button>');
     h.push('</div>');
   }
+  h.push('</div>'); // /panel electrical
+
+  // Панель «Габариты (мм)» — Phase 2.3. Читается getNodeGeometryMm в рендере.
+  // Пустые поля = брать из библиотеки / из каталога. Здесь только override.
+  const gm = n.geometryMm || {};
+  const plc = (k) => {
+    // Плейсхолдер — чтобы показать что вставится если оставить пусто.
+    const cat = (fullCatalog.find(c => c.id === (n.consumerSubtype || ''))) || null;
+    if (cat && cat[k] != null && cat[k] > 0) return String(Math.round(cat[k]));
+    return '';
+  };
+  h.push(`<div class="tp-panel" data-panel="geometry" hidden>
+    <div class="muted" style="font-size:11px;margin-bottom:8px">
+      Физические габариты элемента (в миллиметрах). Используются на странице «Схема расположения» (layout) — узел рисуется пунктиром реального размера. Пустые поля = брать значение из каталога.
+    </div>
+    <div class="field"><label>Ширина, мм</label>
+      <input type="number" id="cp-widthMm" min="0" step="10" value="${escAttr(gm.widthMm || '')}" placeholder="${plc('widthMm')}">
+    </div>
+    <div class="field"><label>Высота, мм</label>
+      <input type="number" id="cp-heightMm" min="0" step="10" value="${escAttr(gm.heightMm || '')}" placeholder="${plc('heightMm')}">
+    </div>
+    <div class="field"><label>Глубина, мм</label>
+      <input type="number" id="cp-depthMm" min="0" step="10" value="${escAttr(gm.depthMm || '')}" placeholder="${plc('depthMm')}">
+    </div>
+    <div class="field"><label>Вес, кг</label>
+      <input type="number" id="cp-weightKg" min="0" step="0.1" value="${escAttr(gm.weightKg || '')}" placeholder="${plc('weightKg')}">
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:8px">
+      Источник по умолчанию: каталог элемента (если есть запись). Переопределение здесь перекрывает каталог только для этого узла.
+    </div>
+  </div>`);
 
   body.innerHTML = h.join('');
+
+  // Переключение вкладок
+  const tabsEl = body.querySelector('.tp-tabs');
+  if (tabsEl) {
+    tabsEl.querySelectorAll('.tp-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab;
+        tabsEl.querySelectorAll('.tp-tab').forEach(b => b.classList.toggle('active', b === btn));
+        body.querySelectorAll('.tp-panel').forEach(p => {
+          p.hidden = p.dataset.panel !== target;
+        });
+      });
+    });
+  }
 
   const saveBtn = document.getElementById('cp-save-catalog');
   if (saveBtn) {
@@ -550,6 +604,31 @@ export function openConsumerParamsModal(n) {
         n.linkedOutdoorId = null;
       }
       n.outputs = 0;
+    }
+
+    // Phase 2.3: вкладка «Габариты» — пишем n.geometryMm.
+    // Пустые поля = не override (удаляем). Все 4 пустых = удаляем объект.
+    const _gv = (id) => {
+      const raw = document.getElementById(id)?.value;
+      if (raw == null) return null;
+      const s = String(raw).trim();
+      if (s === '') return 0;
+      const v = Number(s);
+      return Number.isFinite(v) ? v : 0;
+    };
+    const gW = _gv('cp-widthMm');
+    const gH = _gv('cp-heightMm');
+    const gD = _gv('cp-depthMm');
+    const gKg = _gv('cp-weightKg');
+    if (gW || gH || gD || gKg) {
+      n.geometryMm = {};
+      if (gW) n.geometryMm.widthMm = gW;
+      if (gH) n.geometryMm.heightMm = gH;
+      if (gD) n.geometryMm.depthMm = gD;
+      if (gKg) n.geometryMm.weightKg = gKg;
+    } else if (gW === 0 && gH === 0 && gD === 0 && gKg === 0) {
+      // Все 4 явно очищены — снимаем override
+      delete n.geometryMm;
     }
 
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {

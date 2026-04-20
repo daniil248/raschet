@@ -984,6 +984,27 @@ input, select { font: inherit; }
   white-space: nowrap;
 }
 .page-kind-banner .pkb-icon { margin-right: 6px; font-size: 14px; }
+/* Phase 2.?: tabs-bar в модалках параметров (consumer / source / panel / ...) */
+.tp-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 10px 0 14px;
+  border-bottom: 1px solid #e0e4ea;
+}
+.tp-tab {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.tp-tab:hover { color: #2979ff; }
+.tp-tab.active { color: #2979ff; border-bottom-color: #2979ff; }
+
 /* Phase 2.3: линейка с мм-делениями поверх холста */
 .layout-ruler {
   position: absolute;
