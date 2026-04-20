@@ -218,17 +218,9 @@ const KIT_CATALOG = [
    Пользователь добавляет нужные аксессуары из этого каталога строками
    (в разделе «Дополнительные аксессуары»). Каждая строка попадает в BOM. */
 const ACCESSORY_CATALOG = [
-  // Air duct / заглушки пустых U
-  { sku: 'KBPB-1U-BK',      name: 'Заглушка 1U (sealing plate)',
-    mfg: 'Kehua', category: 'air-duct',
-    note: 'Изоляция холодного/горячего коридора, tool-free quick release' },
-  { sku: 'KBPB-2U-BK',      name: 'Заглушка 2U (sealing plate)',
-    mfg: 'Kehua', category: 'air-duct',
-    note: 'Изоляция холодного/горячего коридора, tool-free quick release' },
-  { sku: 'KBPB-6U-BK',      name: 'Заглушка 6U (sealing plate)',
-    mfg: 'Kehua', category: 'air-duct',
-    note: 'Изоляция холодного/горячего коридора, tool-free' },
-  // Mounting / полки и направляющие
+  // ── Kehua Wise (H-series) ────────────────────────────────────────────────
+  // Заглушки пустых U вынесены в отдельную графу «Заглушки пустых U»
+  // (поле occupied + blankType) — в аксессуарах дублировать не нужно.
   { sku: 'KSSH-710-BK',     name: 'Полка лёгкая 100 кг (light load laminate)',
     mfg: 'Kehua', category: 'mounting',
     note: 'Для стоек 1100/1200 мм, 100 кг' },
@@ -238,7 +230,6 @@ const ACCESSORY_CATALOG = [
   { sku: 'KCHR-705-BK',     name: 'L-образные направляющие (L-tray)',
     mfg: 'Kehua', category: 'mounting',
     note: 'Под оборудование без рельс, 50 кг' },
-  // Cable management
   { sku: 'KCLD-F1U-BK',     name: 'Горизонтальный кабельный орг. 1U',
     mfg: 'Kehua', category: 'cable',
     note: 'Фронтальный кабель-менеджмент, U-posts' },
@@ -254,19 +245,78 @@ const ACCESSORY_CATALOG = [
   { sku: 'KCLD-42U100D-BK', name: 'Вертикальный кабель-канал 42U (100×108 мм)',
     mfg: 'Kehua', category: 'cable',
     note: 'Пластик, вертикальный монтаж, для патч-кордов' },
-  // Cold aisle accessories (брошюра — на весь коридор, но считаем per-rack)
   { sku: 'KHL-BASE-BK',     name: 'Анкерный постамент (anchor frame)',
     mfg: 'Kehua', category: 'mounting',
     note: 'Для антисейсмического крепления к полу' },
   { sku: 'KHL-BOTTOM-CAB',  name: 'Вводный короб снизу (bottom cable entry)',
     mfg: 'Kehua', category: 'cable',
     note: 'Нижний ввод кабеля, регулируемый' },
+
+  // ── APC (Schneider Electric) NetShelter ──────────────────────────────────
+  { sku: 'AR8136BLK',  name: 'Горизонтальный кабельный орг. 1U с кольцами',
+    mfg: 'APC', category: 'cable',
+    note: 'NetShelter, 5 D-колец, металл' },
+  { sku: 'AR8426A',    name: 'Кабельная направляющая 0U (пара)',
+    mfg: 'APC', category: 'cable',
+    note: 'Вертикальная, для 42U стоек' },
+  { sku: 'AR8165A',    name: 'Вертикальный кабель-менеджмент 42U',
+    mfg: 'APC', category: 'cable',
+    note: 'С крышкой, ширина 150 мм' },
+  { sku: 'AR8168BLK',  name: 'Полка 4-точечная, 114 кг',
+    mfg: 'APC', category: 'mounting',
+    note: 'NetShelter SX / AR, 19"' },
+  { sku: 'AR7540',     name: 'Воздухораспределитель фронт-тыл 1U',
+    mfg: 'APC', category: 'cooling',
+    note: 'Пассивный, изоляция горячего коридора' },
+  { sku: 'AR7710',     name: 'Blanking panel kit (аэроблок, не U-заглушка)',
+    mfg: 'APC', category: 'cooling',
+    note: 'Боковые щётки для изоляции, не 1U-заглушка' },
+
+  // ── Rittal TS IT / VX25 ──────────────────────────────────────────────────
+  { sku: 'DK 7063.120', name: 'Полка 19" 482.6 мм, нагрузка 50 кг',
+    mfg: 'Rittal', category: 'mounting', note: 'TS IT' },
+  { sku: 'DK 7063.130', name: 'Полка усиленная, 100 кг',
+    mfg: 'Rittal', category: 'mounting', note: 'TS IT, телескопическая' },
+  { sku: 'DK 7111.235', name: 'Кабельная направляющая 19", 1U',
+    mfg: 'Rittal', category: 'cable', note: 'Гребёнка' },
+  { sku: 'DK 5502.135', name: 'Лесенка кабельная вертикальная',
+    mfg: 'Rittal', category: 'cable', note: '42U, с монтажными уголками' },
+  { sku: 'DK 7828.103', name: 'Кабельный лоток 600 мм',
+    mfg: 'Rittal', category: 'cable', note: 'На крышу шкафа' },
+  { sku: 'DK 3301.390', name: 'Фан-бокс 4×вентилятора на крыше',
+    mfg: 'Rittal', category: 'cooling', note: '230 V, 950 м³/ч' },
+
+  // ── Raritan / Minkels (Legrand) ──────────────────────────────────────────
+  { sku: 'CMVS1U-01',   name: 'Горизонтальный кабель-менеджмент 1U',
+    mfg: 'Raritan/Minkels', category: 'cable', note: 'С крышкой' },
+  { sku: 'CMVV42U-02',  name: 'Вертикальный кабель-канал 42U',
+    mfg: 'Raritan/Minkels', category: 'cable', note: 'Minkels NextGen, двухсторонний' },
+  { sku: 'MNKSH-100',   name: 'Полка стационарная 100 кг',
+    mfg: 'Raritan/Minkels', category: 'mounting', note: 'Minkels, регулируемая глубина' },
+  { sku: 'MNKAD-19',    name: 'Адаптер 19" для 21" шкафа Minkels',
+    mfg: 'Raritan/Minkels', category: 'mounting', note: 'Пара, L+R' },
 ];
 const ACC_CATEGORIES = {
-  'air-duct': 'Заглушки / разделение потоков',
   'mounting': 'Монтаж / полки / постаменты',
   'cable':    'Кабель-менеджмент',
+  'cooling':  'Охлаждение / воздушные потоки',
 };
+// Определяет, «подходит» ли аксессуар этому шкафу — по совпадению бренда
+// (case-insensitive substring match). Используется для фильтра «только
+// аксессуары для этого производителя» по умолчанию.
+function accessoryMatchesRackMfg(acc, rackMfg) {
+  if (!rackMfg) return false;
+  const r = String(rackMfg).toLowerCase();
+  const a = String(acc.mfg || '').toLowerCase();
+  if (!a) return false;
+  // Разделяем Raritan/Minkels на два токена
+  return a.split(/[\/\s]+/).some(tok => tok && r.includes(tok));
+}
+function accessoryMfgList() {
+  const set = new Set();
+  ACCESSORY_CATALOG.forEach(a => set.add(a.mfg));
+  return Array.from(set).sort();
+}
 
 /* ---------- каталог PDU ----------
    Готовые модели PDU от APC (Schneider), Rittal, Raritan/Minkels (Legrand),
@@ -559,18 +609,152 @@ function readForm() {
 
 /* ---------- аксессуары ---------- */
 function accBySku(sku) { return ACCESSORY_CATALOG.find(a => a.sku === sku) || null; }
-function renderAccPicker() {
-  const sel = el('rc-acc-pick');
-  // группируем по категории
-  const groups = {};
-  ACCESSORY_CATALOG.forEach(a => {
-    const cat = ACC_CATEGORIES[a.category] || a.category;
-    (groups[cat] = groups[cat] || []).push(a);
-  });
-  sel.innerHTML = Object.keys(groups).map(cat => `
-    <optgroup label="${escape(cat)}">
-      ${groups[cat].map(a => `<option value="${escape(a.sku)}">${escape(a.sku)} — ${escape(a.name)}</option>`).join('')}
-    </optgroup>`).join('');
+
+// Модальное окно выбора аксессуаров из каталога:
+//   • текстовый поиск по SKU/названию/примечанию
+//   • фильтр по производителю (по умолчанию — производитель текущего шкафа,
+//     если распознан; чекбокс «показать все» снимает ограничение)
+//   • фильтр по категории
+//   • чекбоксы + поле количества для каждой позиции
+//   • кнопка «Добавить выбранные» — переносит в t.accessories
+function openAccessoryModal() {
+  const t = current();
+  const rackMfg = t.manufacturer || '';
+  // какие аксессуары соответствуют бренду шкафа
+  const matching = ACCESSORY_CATALOG.filter(a => accessoryMatchesRackMfg(a, rackMfg));
+  const restrictByMfg = matching.length > 0; // если ни одного совпадения — показываем все
+
+  const state = {
+    search: '',
+    mfg:    restrictByMfg ? '__match__' : '__all__', // __match__ = только подходящие
+    cat:    '__all__',
+    picks:  {},  // sku → qty
+  };
+
+  const back = document.createElement('div');
+  back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--rs-bg-card);color:var(--rs-fg);border-radius:10px;max-width:920px;width:92%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)';
+  back.appendChild(box);
+  document.body.appendChild(back);
+
+  const mfgs = accessoryMfgList();
+  const cats = Object.keys(ACC_CATEGORIES);
+
+  function render() {
+    const q = state.search.trim().toLowerCase();
+    const rows = ACCESSORY_CATALOG.filter(a => {
+      if (state.mfg === '__match__' && !accessoryMatchesRackMfg(a, rackMfg)) return false;
+      if (state.mfg !== '__all__' && state.mfg !== '__match__' && a.mfg !== state.mfg) return false;
+      if (state.cat !== '__all__' && a.category !== state.cat) return false;
+      if (q && !(a.sku.toLowerCase().includes(q)
+               || a.name.toLowerCase().includes(q)
+               || (a.note||'').toLowerCase().includes(q))) return false;
+      return true;
+    });
+    const pickedCount = Object.values(state.picks).filter(n => n > 0).length;
+    box.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Каталог аксессуаров — выбор</h3>
+        <button type="button" class="rc-btn" id="rc-am-close-x" title="Закрыть">✕</button>
+      </div>
+      <div style="padding:12px 20px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
+        <label class="rc-field"><span>Поиск</span>
+          <input type="text" id="rc-am-search" value="${escape(state.search)}" placeholder="SKU, название, примечание…">
+        </label>
+        <label class="rc-field"><span>Производитель</span>
+          <select id="rc-am-mfg">
+            ${restrictByMfg ? `<option value="__match__" ${state.mfg==='__match__'?'selected':''}>Только для «${escape(rackMfg)}»</option>` : ''}
+            <option value="__all__" ${state.mfg==='__all__'?'selected':''}>Все производители</option>
+            ${mfgs.map(m => `<option value="${escape(m)}" ${state.mfg===m?'selected':''}>${escape(m)}</option>`).join('')}
+          </select>
+        </label>
+        <label class="rc-field"><span>Категория</span>
+          <select id="rc-am-cat">
+            <option value="__all__" ${state.cat==='__all__'?'selected':''}>Все</option>
+            ${cats.map(c => `<option value="${escape(c)}" ${state.cat===c?'selected':''}>${escape(ACC_CATEGORIES[c])}</option>`).join('')}
+          </select>
+        </label>
+        <div class="muted" style="font-size:11px;padding-bottom:6px">Найдено: <b>${rows.length}</b></div>
+      </div>
+      <div style="overflow:auto;flex:1 1 auto;padding:4px 20px 12px 20px">
+        <table class="rc-acc-table" style="margin-top:0">
+          <thead><tr>
+            <th style="width:28px"></th>
+            <th>Артикул</th>
+            <th>Наименование</th>
+            <th>Производитель</th>
+            <th>Категория</th>
+            <th style="width:80px">Кол-во</th>
+          </tr></thead>
+          <tbody>
+            ${rows.length === 0 ? `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Ничего не найдено по фильтрам.</td></tr>` :
+              rows.map(a => {
+                const picked = state.picks[a.sku] || 0;
+                return `<tr${picked>0?' style="background:var(--rs-accent-bg)"':''}>
+                  <td><input type="checkbox" data-am-chk="${escape(a.sku)}" ${picked>0?'checked':''}></td>
+                  <td><code>${escape(a.sku)}</code></td>
+                  <td>${escape(a.name)}<br><span class="muted" style="font-size:11px">${escape(a.note || '')}</span></td>
+                  <td>${escape(a.mfg)}</td>
+                  <td>${escape(ACC_CATEGORIES[a.category] || a.category)}</td>
+                  <td><input type="number" min="1" step="1" value="${picked>0?picked:1}" data-am-qty="${escape(a.sku)}" ${picked>0?'':'disabled'} style="width:70px"></td>
+                </tr>`;
+              }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div class="muted" style="font-size:12px">Выбрано позиций: <b>${pickedCount}</b></div>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="rc-btn" id="rc-am-cancel">Отмена</button>
+          <button type="button" class="rc-btn rc-btn-primary" id="rc-am-apply">Добавить выбранные</button>
+        </div>
+      </div>
+    `;
+    // bind
+    const close = () => back.remove();
+    box.querySelector('#rc-am-close-x').addEventListener('click', close);
+    box.querySelector('#rc-am-cancel').addEventListener('click', close);
+    box.querySelector('#rc-am-search').addEventListener('input', e => {
+      state.search = e.target.value;
+      render();
+      // фокус обратно в поле поиска
+      const inp = box.querySelector('#rc-am-search');
+      if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    });
+    box.querySelector('#rc-am-mfg').addEventListener('change', e => { state.mfg = e.target.value; render(); });
+    box.querySelector('#rc-am-cat').addEventListener('change', e => { state.cat = e.target.value; render(); });
+    box.querySelectorAll('[data-am-chk]').forEach(chk => {
+      chk.addEventListener('change', e => {
+        const sku = chk.dataset.amChk;
+        if (e.target.checked) state.picks[sku] = state.picks[sku] || 1;
+        else delete state.picks[sku];
+        render();
+      });
+    });
+    box.querySelectorAll('[data-am-qty]').forEach(inp => {
+      inp.addEventListener('change', e => {
+        const sku = inp.dataset.amQty;
+        const v = Math.max(1, parseInt(inp.value, 10) || 1);
+        if (state.picks[sku]) state.picks[sku] = v;
+      });
+    });
+    box.querySelector('#rc-am-apply').addEventListener('click', () => {
+      const t = current();
+      if (!Array.isArray(t.accessories)) t.accessories = [];
+      Object.keys(state.picks).forEach(sku => {
+        const qty = state.picks[sku];
+        if (!qty) return;
+        const existing = t.accessories.find(a => a.sku === sku);
+        if (existing) existing.qty = (existing.qty || 0) + qty;
+        else t.accessories.push({ sku, qty });
+      });
+      close();
+      renderAccList(); recalc();
+    });
+  }
+  render();
+  back.addEventListener('click', e => { if (e.target === back) back.remove(); });
 }
 function renderAccList() {
   const t = current();
@@ -1331,18 +1515,8 @@ function bind() {
     renderPduList(); recalc();
   });
 
-  el('rc-acc-add').addEventListener('click', () => {
-    const t = current();
-    if (!Array.isArray(t.accessories)) t.accessories = [];
-    const sku = el('rc-acc-pick').value;
-    const qty = Math.max(1, parseInt(el('rc-acc-qty').value, 10) || 1);
-    if (!sku) return;
-    // если такой же SKU уже есть — просто увеличиваем кол-во
-    const existing = t.accessories.find(a => a.sku === sku);
-    if (existing) existing.qty = (existing.qty || 0) + qty;
-    else t.accessories.push({ sku, qty });
-    renderAccList(); recalc();
-  });
+  const accOpen = el('rc-acc-open');
+  if (accOpen) accOpen.addEventListener('click', () => { readForm(); openAccessoryModal(); });
 
   el('rc-save').addEventListener('click', () => {
     readForm();
@@ -1361,7 +1535,6 @@ function bind() {
 /* ---------- init ---------- */
 function init() {
   renderKitSelect();
-  renderAccPicker();
   state.templates = loadTemplates();
   if (!state.templates.length) state.templates.push(makeBlankTemplate('Стойка серверная 42U'));
 
