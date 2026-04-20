@@ -482,14 +482,19 @@ export function renderInspectorConn(c) {
       return '#2e7d32';
     };
 
-    // Блок запасов (и для auto, и для manual)
+    // Блок запасов (и для auto, и для manual). Показываем также целевой
+    // запас и его источник (линия / потребитель / auto).
+    const _targetMarginPct = (typeof c._breakerMarginPctEff === 'number') ? c._breakerMarginPctEff : null;
+    const _marginSrc = c._breakerMarginSource || 'auto';
+    const _srcLabel = _marginSrc === 'line' ? 'линия' : (_marginSrc === 'consumer' ? 'потребитель' : 'авто по inrush');
     const marginBlock = () => `
       <div style="display:flex;gap:12px;font-size:11px;margin-top:4px;padding:4px 0;border-top:1px dashed #e0e3ea">
         <div>Запас по автомату:
           <b style="color:${_marginColor(_brkMarginPct)}">${_fmtPct(_brkMarginPct)}</b></div>
         <div>Запас по кабелю:
           <b style="color:${_marginColor(_cableMarginPct)}">${_fmtPct(_cableMarginPct)}</b></div>
-      </div>`;
+      </div>
+      ${_targetMarginPct != null ? `<div class="muted" style="font-size:10px;margin-top:-2px">Целевой запас: <b>${_targetMarginPct.toFixed(0)}%</b> (${_srcLabel})</div>` : ''}`;
 
     if (manualBreaker) {
       let brkOpts = '';

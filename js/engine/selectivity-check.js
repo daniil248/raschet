@@ -149,17 +149,21 @@ export function analyzeSelectivity() {
     // Для каждого входа (активного) создаём пары с каждым выходом
     for (const up of inputs) {
       if (!up._breakerIn) continue;
+      const upCurve = up.breakerCurve || up._breakerCurveEff;
       const upBreaker = {
         inNominal: Number(up._breakerIn),
-        curve: _normalizeCurve(up.breakerCurve || up._breakerCurveEff),
-        type: 'MCB',
+        curve: _normalizeCurve(upCurve),
+        type: (upCurve === 'MCCB' || upCurve === 'ACB') ? 'MCCB' : 'MCB',
+        settings: up._breakerSettings || undefined,
       };
       for (const down of outputs) {
         if (!down._breakerIn) continue;
+        const downCurve = down.breakerCurve || down._breakerCurveEff;
         const downBreaker = {
           inNominal: Number(down._breakerIn),
-          curve: _normalizeCurve(down.breakerCurve || down._breakerCurveEff),
-          type: 'MCB',
+          curve: _normalizeCurve(downCurve),
+          type: (downCurve === 'MCCB' || downCurve === 'ACB') ? 'MCCB' : 'MCB',
+          settings: down._breakerSettings || undefined,
         };
         const Ik = _getIkAt(down);
         const check = checkSelectivity(upBreaker, downBreaker, Ik);

@@ -1578,7 +1578,17 @@ function recalc() {
         } else {
           // АВТО-режим: координируем кабель и автомат, чтобы In ≤ Iz.
           if (maxCurrent > 0) {
-            const marginK = 1 + (Number(GLOBAL.breakerMinMarginPct) || 0) / 100;
+            // Эффективный запас по автомату: line-override → consumer-override
+            // → auto(inrush) → GLOBAL.min. Тот же, что применится при финальном
+            // подборе автомата ниже (единая цепочка правил).
+            const _consInrush = (toN && toN.type === 'consumer') ? (Number(toN.inrushFactor) || 1) : 1;
+            const _consMP = (toN && toN.type === 'consumer' && typeof toN.breakerMarginPct === 'number') ? toN.breakerMarginPct : null;
+            const _lineMP = (typeof c.breakerMarginPct === 'number') ? c.breakerMarginPct : null;
+            const _effMP = Math.max(
+              Number(GLOBAL.breakerMinMarginPct) || 0,
+              _lineMP != null ? _lineMP : (_consMP != null ? _consMP : autoBreakerMargin(_consInrush))
+            );
+            const marginK = 1 + _effMP / 100;
             // Для групповой нагрузки (count>1, !serialMode) защита стоит
             // НА КАЖДОЙ линии отдельно (N параллельных автоматов по InPerLine).
             // Координация должна вестись по per-line току, иначе selectBreaker

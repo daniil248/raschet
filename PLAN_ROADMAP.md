@@ -692,6 +692,16 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.62 (v0.57.38)** — Единая цепочка margin для cable-sizing и
+  breaker-sizing; selectivity-check учитывает _breakerSettings; в
+  инспекторе показан целевой запас и его источник.
+  - recalc.js: preBreaker в selectCableSize считается с тем же
+    эффективным margin (line→consumer→auto), а не фиксированным GLOBAL.
+  - selectivity-check.js: upBreaker/downBreaker теперь несут settings
+    (Ir/Isd/tsd/Ii) — селективность проверяется по уставкам, а не
+    только по кривой и номиналу. Type корректно MCCB vs MCB.
+  - inspector/conn.js: под запасами показан целевой процент и источник
+    (линия / потребитель / авто).
 - **1.20.61 (v0.57.37)** — Авто-запас, авто-тип автомата и уставки
   регулируемых MCCB/ACB (с ручной корректировкой).
   - constants.js: каждая запись CONSUMER_CATALOG получила
