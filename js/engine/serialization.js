@@ -68,7 +68,6 @@ export function serialize() {
       if (p.originMm && Number.isFinite(p.originMm.x) && Number.isFinite(p.originMm.y)) {
         out.originMm = { x: p.originMm.x, y: p.originMm.y };
       }
-      if (p.showGrid === false) out.showGrid = false;
       if (p.showRulers === false) out.showRulers = false;
       return out;
     }),
@@ -156,8 +155,7 @@ export function deserialize(data) {
       originMm: (p.originMm && Number.isFinite(p.originMm.x) && Number.isFinite(p.originMm.y))
         ? { x: p.originMm.x, y: p.originMm.y } : { x: 0, y: 0 },
       scale: p.scale || '1:1',
-      // v0.58.42: тумблеры сетки/линеек (только layout)
-      showGrid: p.showGrid !== false,
+      // v0.58.42: тумблер линеек (только layout; сетка — глобально GLOBAL.showGrid)
       showRulers: p.showRulers !== false,
     }));
     state.currentPageId = data.currentPageId && state.pages.find(p => p.id === data.currentPageId)

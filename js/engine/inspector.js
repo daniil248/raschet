@@ -188,7 +188,9 @@ function renderInspectorPage() {
       const scaleOpts = scales.map(s => `<option value="${s}"${s === curScale ? ' selected' : ''}>${s}</option>`).join('');
       h.push(field('Масштаб', `<select id="pg-scale">${scaleOpts}</select>`));
       // v0.58.42: тумблеры сетки/линеек
-      const sg = page.showGrid !== false;
+      // v0.58.44: «Сетка» — дубль глобального toolbar-тумблера (GLOBAL.showGrid).
+      // Линейки — per-page (глобального нет).
+      const sg = GLOBAL.showGrid !== false;
       const sr = page.showRulers !== false;
       h.push(field('Отображение', `
         <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;cursor:pointer">
@@ -283,9 +285,11 @@ function renderInspectorPage() {
   const pgShowGrid = document.getElementById('pg-show-grid');
   if (pgShowGrid) {
     pgShowGrid.addEventListener('change', () => {
-      snapshot('page-showgrid:' + page.id);
-      page.showGrid = pgShowGrid.checked;
-      notifyChange();
+      // v0.58.44: синхронизируем с глобальным toolbar-тумблером
+      GLOBAL.showGrid = pgShowGrid.checked;
+      // Обновить opacity кнопки в toolbar
+      const gridBtn = document.getElementById('btn-toggle-grid');
+      if (gridBtn) gridBtn.style.opacity = GLOBAL.showGrid !== false ? '1' : '0.4';
       _render();
     });
   }

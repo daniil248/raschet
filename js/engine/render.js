@@ -983,10 +983,8 @@ export function renderPageKindBanner() {
 
   // Фон холста: миллиметровка для layout, обычная сетка для остальных.
   if (bg) {
-    const globalShowGrid = (typeof GLOBAL !== 'undefined') ? (GLOBAL.showGrid !== false) : true;
-    // v0.58.42: per-page showGrid (только layout хранит настройку)
-    const pageShowGrid = (page && page.showGrid === false) ? false : true;
-    const showGrid = globalShowGrid && pageShowGrid;
+    // v0.58.44: сетка — единый флаг GLOBAL.showGrid (toolbar = свойства страницы)
+    const showGrid = (typeof GLOBAL !== 'undefined') ? (GLOBAL.showGrid !== false) : true;
     if (!showGrid) {
       bg.setAttribute('fill', '#fff');
     } else if (kind === 'layout') {

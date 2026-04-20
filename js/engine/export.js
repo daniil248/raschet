@@ -183,6 +183,9 @@ export function initToolbar() {
     gridBtn.onclick = () => {
       GLOBAL.showGrid = !(GLOBAL.showGrid !== false);
       updateGridBtn();
+      // v0.58.44: синхронизируем чекбокс в свойствах страницы (если открыт)
+      const pgCb = document.getElementById('pg-show-grid');
+      if (pgCb) pgCb.checked = GLOBAL.showGrid !== false;
       // Phase 2.3: фон зависит от kind страницы, поэтому делегируем render.
       render();
     };
