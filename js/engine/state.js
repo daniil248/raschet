@@ -44,6 +44,7 @@ export const state = {
     author: '',           // ГИП / исполнитель
     description: '',      // общее описание
     customSystems: [],    // v0.58.24: пользовательские системы {id,label,icon,color,pageKinds[],params[]}
+    floorNames: {},       // v0.58.31: "этаж"→"название", например {"0":"1 этаж","-1":"Подвал","1":"2 этаж"}
   },
   modes: [],
   activeModeId: null,

@@ -120,9 +120,11 @@ export function deserialize(data) {
         pageKinds: Array.isArray(s.pageKinds) ? s.pageKinds.slice() : [],
         params: Array.isArray(s.params) ? s.params.map(p => ({ ...p })) : [],
       })).filter(s => s.id) : [],
+      // v0.58.31: названия этажей {"0":"1 этаж",…}
+      floorNames: (data.project.floorNames && typeof data.project.floorNames === 'object') ? { ...data.project.floorNames } : {},
     };
   } else {
-    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '', customSystems: [] };
+    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '', customSystems: [], floorNames: {} };
   }
   // v0.58.27: синхронизация hook для getSystemMeta/getAllSystems сразу после загрузки
   try { globalThis.__raschetCustomSystems = state.project.customSystems.slice(); } catch {}

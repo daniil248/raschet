@@ -704,13 +704,18 @@ function _renderNodesLayout() {
         idx.textContent = `${i + 1}/${count}`;
         g.appendChild(idx);
       }
-      // v0.58.28: бейдж этажа/уровня
+      // v0.58.28: бейдж этажа/уровня (+ имя из project.floorNames, v0.58.31)
       const floorVal = Number(n.floor) || 0;
       if (floorVal !== 0) {
-        const fb = el('g', { transform: `translate(${W - 32}, 4)`, style: 'pointer-events:none' });
-        fb.appendChild(el('rect', { x: 0, y: 0, width: 28, height: 16, rx: 3, fill: '#1e40af', 'fill-opacity': 0.9 }));
-        const ft = el('text', { x: 14, y: 12, 'text-anchor': 'middle', 'font-size': 10, fill: '#fff', style: 'font-family:system-ui;font-weight:600' });
-        ft.textContent = floorVal > 0 ? `+${floorVal}` : `${floorVal}`;
+        const names = (state.project && state.project.floorNames) || {};
+        const nm = names[String(floorVal)];
+        const sig = floorVal > 0 ? `+${floorVal}` : `${floorVal}`;
+        const txt = nm ? `${sig} ${nm}` : sig;
+        const bw = Math.max(28, Math.min(120, txt.length * 6 + 8));
+        const fb = el('g', { transform: `translate(${W - bw - 4}, 4)`, style: 'pointer-events:none' });
+        fb.appendChild(el('rect', { x: 0, y: 0, width: bw, height: 16, rx: 3, fill: '#1e40af', 'fill-opacity': 0.9 }));
+        const ft = el('text', { x: bw / 2, y: 12, 'text-anchor': 'middle', 'font-size': 10, fill: '#fff', style: 'font-family:system-ui;font-weight:600' });
+        ft.textContent = txt;
         fb.appendChild(ft);
         g.appendChild(fb);
       }
@@ -745,18 +750,44 @@ function _updateFloorFilterUI() {
   el.style.display = 'inline-flex';
   const arr = [...floors].sort((a, b) => b - a);
   const cur = state.floorFilter;
-  let html = '<option value="">все</option>';
+  const names = (state.project && state.project.floorNames) || {};
+  const labelOf = (f) => {
+    const sig = f > 0 ? `+${f}` : (f === 0 ? '0' : `${f}`);
+    const nm = names[String(f)];
+    return nm ? `${sig} · ${nm}` : sig;
+  };
+  let html = '<option value="">все этажи</option>';
   for (const f of arr) {
-    const label = f > 0 ? `+${f}` : (f === 0 ? '0' : `${f}`);
-    html += `<option value="${f}"${String(cur) === String(f) ? ' selected' : ''}>${label}</option>`;
+    html += `<option value="${f}"${String(cur) === String(f) ? ' selected' : ''}>${labelOf(f)}</option>`;
   }
   if (sel.innerHTML !== html) sel.innerHTML = html;
+  // Обновляем title/tooltip чтобы подсказать про rename
+  el.title = 'Двойной клик на подпись «Этаж» — переименовать текущий этаж';
   if (!sel.dataset.bound) {
     sel.dataset.bound = '1';
     sel.addEventListener('change', () => {
       const v = sel.value;
       state.floorFilter = v === '' ? null : Number(v);
       // Через публичный API Raschet (без циклов импортов)
+      try { window.Raschet?.rerender?.(); } catch {}
+    });
+  }
+  // v0.58.31: dblclick на подпись «Этаж» — переименовать текущий выбранный этаж
+  const lbl = el.querySelector('span');
+  if (lbl && !lbl.dataset.bound) {
+    lbl.dataset.bound = '1';
+    lbl.style.cursor = 'pointer';
+    lbl.addEventListener('dblclick', () => {
+      const cur = state.floorFilter;
+      if (cur == null) { alert('Выберите конкретный этаж в списке, чтобы его переименовать.'); return; }
+      const names = (state.project.floorNames || {});
+      const old = names[String(cur)] || '';
+      const nm = prompt(`Название этажа ${cur > 0 ? '+' + cur : cur}:`, old);
+      if (nm === null) return;
+      if (!state.project.floorNames) state.project.floorNames = {};
+      const trimmed = String(nm).trim();
+      if (trimmed) state.project.floorNames[String(cur)] = trimmed;
+      else delete state.project.floorNames[String(cur)];
       try { window.Raschet?.rerender?.(); } catch {}
     });
   }

@@ -1150,8 +1150,11 @@ function sectionFloors() {
     return { text: text.join('\n'), blocks };
   }
   const floors = [...byFloor.keys()].sort((a, b) => b - a);
+  const names = (state.project && state.project.floorNames) || {};
   for (const f of floors) {
-    const label = f > 0 ? `+${f}` : (f === 0 ? '0 (базовый)' : `${f}`);
+    const sig = f > 0 ? `+${f}` : (f === 0 ? '0 (базовый)' : `${f}`);
+    const nm = names[String(f)];
+    const label = nm ? `${sig} — ${nm}` : sig;
     const items = byFloor.get(f);
     const title = `Этаж ${label} — ${items.length} эл.`;
     blocks.push(B.h2(title));
