@@ -1200,12 +1200,29 @@ export function renderGeneralPanel(n) {
       const bridgeKey = 'raschet.rack.bridge.' + n.id;
       try {
         const existing = n.rackTemplate || null;
-        if (existing) {
-          localStorage.setItem(bridgeKey, JSON.stringify({ applied: false, ts: Date.now(), template: existing }));
-        } else {
-          // если раньше ничего не было — положим пустую обёртку, модуль создаст свой шаблон
-          localStorage.setItem(bridgeKey, JSON.stringify({ applied: false, ts: Date.now(), template: null }));
+        // v0.58.62 (1.23.10+): собираем вводы узла для валидации PDU по
+        // доступной мощности и режиму резервирования (2N при двух вводах
+        // с приоритетом 1 — как у обычного потребителя).
+        const feeds = [];
+        const inCount = typeof n._inCount === 'number' ? n._inCount
+                        : (Array.isArray(n.priorities) ? n.priorities.length : 1);
+        for (let i = 0; i < inCount; i++) {
+          // метка ввода — по индексу: 0→A, 1→B, …
+          const label = String.fromCharCode(65 + i);
+          const priority = (n.priorities && n.priorities[i]) ?? (i + 1);
+          // availableKw — оцениваем как demandKw узла (предположение: каждый
+          // ввод рассчитан на полную нагрузку). Если расчётный _maxFeedKw
+          // доступен — используем его; иначе deman­dKw самого узла.
+          const availKw = (Array.isArray(n._feedAvailableKw) && n._feedAvailableKw[i] != null)
+            ? Number(n._feedAvailableKw[i])
+            : (Number(n.demandKw) || 0);
+          feeds.push({ portIdx: i, label, priority, availableKw: availKw });
         }
+        localStorage.setItem(bridgeKey, JSON.stringify({
+          applied: false, ts: Date.now(),
+          template: existing || null,
+          feeds,
+        }));
       } catch {}
       href = cfg.href + (cfg.href.includes('?') ? '&' : '?') + 'nodeId=' + encodeURIComponent(n.id);
     }

@@ -287,10 +287,23 @@ function makeBlankTemplate(name = 'Новый шаблон') {
     entryTop: 2, entryBot: 2, entryType: 'brush',
     occupied: 0, blankType: '1U-solid',
     demandKw: 5, cosphi: 0.9,
+    // Режим резервирования PDU:
+    //   'none' — все PDU суммируются (одиночное питание)
+    //   '2N'   — PDU сгруппированы по вводам A/B/C/…; каждый ввод должен
+    //            в одиночку покрывать demandKw (горячий резерв)
+    //   'n+1'  — сумма - 1 «худший» ввод ≥ demandKw (N+1 избыточность)
+    pduRedundancy: '2N',
     pdus: [
-      { id: 'pdu1', qty: 1, rating: 16, phases: 1, height: 0,
-        outlets: [ { type: 'C13', count: 8 } ] }
+      { id: 'pdu1', qty: 1, rating: 16, phases: 1, height: 0, feed: 'A',
+        outlets: [ { type: 'C13', count: 8 } ] },
+      { id: 'pdu2', qty: 1, rating: 16, phases: 1, height: 0, feed: 'B',
+        outlets: [ { type: 'C13', count: 8 } ] },
     ],
+    // feeds — мета с основной схемы: какие вводы есть у узла consumer/rack
+    // и их доступная мощность. Если есть — используется для жёсткой
+    // проверки «нагрузка ≤ доступной по этому вводу». Заполняется при
+    // открытии конфигуратора с ?nodeId=… через bridge-ключ.
+    feeds: [],
     accessories: [], // [{ sku, qty }] — дополнительные аксессуары из ACCESSORY_CATALOG
     comment: '',
   };
@@ -406,6 +419,7 @@ function renderForm() {
   el('rc-blank-type').value   = t.blankType;
   el('rc-demand-kw').value    = t.demandKw;
   el('rc-cosphi').value       = t.cosphi;
+  el('rc-pdu-redundancy').value = t.pduRedundancy || '2N';
   el('rc-comment').value      = t.comment || '';
   if (!Array.isArray(t.accessories)) t.accessories = [];
   renderPduList();
@@ -437,6 +451,7 @@ function readForm() {
   t.blankType    = el('rc-blank-type').value;
   t.demandKw     = Math.max(0, parseFloat(el('rc-demand-kw').value) || 0);
   t.cosphi       = Math.min(1, Math.max(0.5, parseFloat(el('rc-cosphi').value) || 0.9));
+  t.pduRedundancy = el('rc-pdu-redundancy').value || '2N';
   t.comment      = el('rc-comment').value;
 }
 
@@ -504,10 +519,17 @@ function renderPduList() {
       p.outlets = [ { type: p.outletType || 'C13', count: Number(p.outlets) || 8 } ];
       delete p.outletType;
     }
+    if (!p.feed) p.feed = 'A';
     const row = document.createElement('div');
     row.className = 'rc-pdu-item';
     row.innerHTML = `
       <div class="rc-pdu-head">
+        <label class="rc-field" title="К какому вводу электрической схемы подключён этот PDU. PDU на одном вводе суммируются, на разных — резервируют друг друга.">
+          <span>Ввод</span>
+          <select data-k="feed">
+            ${['A','B','C','D'].map(f => `<option value="${f}" ${p.feed===f?'selected':''}>Ввод ${f}</option>`).join('')}
+          </select>
+        </label>
         <label class="rc-field"><span>Кол-во</span>
           <input type="number" min="1" step="1" data-k="qty" value="${p.qty}">
         </label>
@@ -559,6 +581,7 @@ function renderPduList() {
         if (k === 'qty') p.qty = Math.max(1, parseInt(v,10)||1);
         else if (k === 'phases' || k === 'height') p[k] = parseInt(v,10)||0;
         else if (k === 'rating') p.rating = parseInt(v,10);
+        else if (k === 'feed') p.feed = v;
         else p[k] = v;
         recalc();
       });
@@ -600,6 +623,16 @@ function pduCapacityKw(p) {
   const I = p.rating;
   if (p.phases === 3) return (Math.sqrt(3) * 400 * I * cos) / 1000;
   return (230 * I * cos) / 1000;
+}
+
+// Возвращает {A: kW, B: kW, ...} — ёмкость PDU, сгруппированная по вводам.
+function computePduCapacityByFeed(t) {
+  const out = {};
+  t.pdus.forEach(p => {
+    const f = p.feed || 'A';
+    out[f] = (out[f] || 0) + (p.qty || 1) * pduCapacityKw(p);
+  });
+  return out;
 }
 
 function computeBom() {
@@ -717,17 +750,83 @@ function computeWarnings() {
       msg: `Оборудование (${occ}U) + горизонтальные PDU (${pduU}U) = ${occ+pduU}U, доступно ${t.u}U.` });
   }
 
-  // PDU capacity vs demand — строгое сравнение (запас не требуется)
-  const capKw = t.pdus.reduce((s, p) => s + p.qty * pduCapacityKw(p), 0);
+  // PDU capacity vs demand — с учётом режима резервирования и вводов
+  const byFeed = computePduCapacityByFeed(t);
+  const sumCap = Object.values(byFeed).reduce((s, v) => s + v, 0);
+  const feeds = Object.keys(byFeed).sort();
+  const mode = t.pduRedundancy || '2N';
   if (t.demandKw > 0) {
-    if (capKw < t.demandKw - 1e-6) {
-      out.push({ lvl: 'err',
-        msg: `Ёмкость PDU ${capKw.toFixed(2)} кВт < заявленная ${t.demandKw} кВт. Добавьте PDU или поднимите номинал.` });
+    if (mode === '2N') {
+      // каждый ввод должен в одиночку покрывать demandKw
+      const weakFeeds = feeds.filter(f => byFeed[f] + 1e-6 < t.demandKw);
+      if (feeds.length < 2) {
+        out.push({ lvl: 'warn',
+          msg: `Режим 2N подразумевает минимум два ввода (A+B). Сейчас PDU распределены только по вводам: ${feeds.join(', ') || '—'}.` });
+      }
+      if (weakFeeds.length) {
+        out.push({ lvl: 'err',
+          msg: `Режим 2N: ввод${weakFeeds.length>1?'ы':''} ${weakFeeds.join(', ')} не покрывает ${t.demandKw} кВт в одиночку ` +
+               `(${weakFeeds.map(f => `${f}: ${byFeed[f].toFixed(2)} кВт`).join('; ')}). При отказе второго ввода стойка обесточится.` });
+      } else if (feeds.length >= 2) {
+        const minCap = Math.min(...feeds.map(f => byFeed[f]));
+        out.push({ lvl: 'ok',
+          msg: `2N: каждый ввод в одиночку обеспечивает ≥${t.demandKw} кВт (минимум ${minCap.toFixed(2)} кВт). Суммарная ёмкость ${sumCap.toFixed(2)} кВт в мощность не засчитывается дважды.` });
+      }
+    } else if (mode === 'n+1') {
+      // после выпадения самого «жирного» ввода оставшиеся должны покрыть demandKw
+      if (feeds.length < 2) {
+        out.push({ lvl: 'err',
+          msg: `Режим N+1 требует минимум двух вводов. Сейчас один.` });
+      } else {
+        const maxFeed = Math.max(...feeds.map(f => byFeed[f]));
+        const remaining = sumCap - maxFeed;
+        if (remaining + 1e-6 < t.demandKw) {
+          out.push({ lvl: 'err',
+            msg: `N+1: после отказа «жирного» ввода остаётся ${remaining.toFixed(2)} кВт < ${t.demandKw} кВт.` });
+        } else {
+          out.push({ lvl: 'ok',
+            msg: `N+1: после отказа «жирного» ввода остаётся ${remaining.toFixed(2)} кВт ≥ ${t.demandKw} кВт.` });
+        }
+      }
     } else {
-      const margin = ((capKw / t.demandKw - 1) * 100);
-      out.push({ lvl: 'ok',
-        msg: `PDU: ${capKw.toFixed(2)} кВт ёмкость при заявленных ${t.demandKw} кВт (запас ${margin.toFixed(0)}%).` });
+      // none — суммируем
+      if (sumCap + 1e-6 < t.demandKw) {
+        out.push({ lvl: 'err',
+          msg: `Суммарная ёмкость PDU ${sumCap.toFixed(2)} кВт < заявленная ${t.demandKw} кВт.` });
+      } else {
+        out.push({ lvl: 'ok',
+          msg: `Одиночное питание: сумма PDU ${sumCap.toFixed(2)} кВт ≥ ${t.demandKw} кВт.` });
+      }
     }
+  }
+
+  // Сверка с реальными вводами из электрической схемы (если есть)
+  if (Array.isArray(t.feeds) && t.feeds.length) {
+    const schemaFeeds = {}; // feedLabel → availableKw
+    t.feeds.forEach((f, i) => {
+      const label = f.label || String.fromCharCode(65 + i); // A, B, …
+      schemaFeeds[label] = Number(f.availableKw) || 0;
+    });
+    // для каждого ввода проверяем: сумма PDU.capacity ≤ availableKw схемы
+    Object.keys(byFeed).forEach(f => {
+      const avail = schemaFeeds[f];
+      if (avail == null) {
+        out.push({ lvl: 'warn',
+          msg: `Ввод ${f}: PDU настроены, но в электрической схеме такого ввода у узла нет. Проверьте приоритеты входных портов.` });
+        return;
+      }
+      if (byFeed[f] > avail + 1e-6) {
+        out.push({ lvl: 'err',
+          msg: `Ввод ${f}: мощность PDU ${byFeed[f].toFixed(2)} кВт превышает доступную на вводе ${avail.toFixed(2)} кВт.` });
+      }
+    });
+    // PDU не привязан к существующему вводу
+    Object.keys(schemaFeeds).forEach(f => {
+      if (byFeed[f] == null) {
+        out.push({ lvl: 'warn',
+          msg: `Ввод ${f}: в электрической схеме доступно ${schemaFeeds[f].toFixed(2)} кВт, но PDU на этот ввод не назначены.` });
+      }
+    });
   }
 
   // Охлаждение — уже для стойки в целом, с обычным запасом
@@ -788,11 +887,55 @@ function renderBom() {
       </tr>
     </tbody>`;
 }
+function renderFeedInfo() {
+  const t = current();
+  const host = el('rc-feed-info');
+  if (!host) return;
+  const byFeed = computePduCapacityByFeed(t);
+  const schemaFeeds = Array.isArray(t.feeds) ? t.feeds : [];
+  if (!schemaFeeds.length && !Object.keys(byFeed).length) {
+    host.innerHTML = '';
+    return;
+  }
+  const rows = [];
+  const feedLabels = new Set([
+    ...Object.keys(byFeed),
+    ...schemaFeeds.map((f, i) => f.label || String.fromCharCode(65 + i)),
+  ]);
+  Array.from(feedLabels).sort().forEach(lbl => {
+    const pduKw = byFeed[lbl] || 0;
+    const schemaF = schemaFeeds.find((f, i) => (f.label || String.fromCharCode(65 + i)) === lbl);
+    const availKw = schemaF ? Number(schemaF.availableKw) || 0 : null;
+    const prio = schemaF ? schemaF.priority : null;
+    let badge;
+    if (availKw == null) badge = `<span class="rc-feed-pill warn">только PDU</span>`;
+    else if (pduKw > availKw + 1e-6) badge = `<span class="rc-feed-pill err">превышение</span>`;
+    else badge = `<span class="rc-feed-pill ok">OK</span>`;
+    rows.push(`
+      <tr>
+        <td><b>Ввод ${lbl}</b>${prio != null ? ` <span class="muted">(P${prio})</span>` : ''}</td>
+        <td>PDU: ${pduKw.toFixed(2)} кВт</td>
+        <td>${availKw != null ? 'Доступно: ' + availKw.toFixed(2) + ' кВт' : '<span class="muted">не привязан к схеме</span>'}</td>
+        <td>${badge}</td>
+      </tr>`);
+  });
+  host.innerHTML = `
+    <table class="rc-feed-table">
+      <thead><tr><th>Ввод</th><th>PDU</th><th>Схема</th><th></th></tr></thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+    ${schemaFeeds.length
+      ? `<div class="muted" style="font-size:11px;margin-top:4px">Доступная мощность взята из основной схемы (узел ${escape(state.nodeId || '')}).</div>`
+      : `<div class="muted" style="font-size:11px;margin-top:4px">Конфигуратор открыт без связи с узлом схемы — проверка по реальным вводам не выполняется.</div>`}
+  `;
+}
+
 function recalc() {
   const t = current();
   if (!t) return;
   el('rc-free').value = Math.max(0, t.u - t.occupied);
   applyKitLocks();
+  renderFeedInfo();
   renderWarnings();
   renderBom();
 }
@@ -880,7 +1023,8 @@ function bind() {
     'rc-door-front','rc-door-rear','rc-door-with-lock','rc-lock',
     'rc-sides','rc-top','rc-base','rc-combo-top-base',
     'rc-entry-top','rc-entry-bot','rc-entry-type',
-    'rc-occupied','rc-blank-type','rc-demand-kw','rc-cosphi','rc-comment'];
+    'rc-occupied','rc-blank-type','rc-demand-kw','rc-cosphi',
+    'rc-pdu-redundancy','rc-comment'];
   ids.forEach(id => {
     const node = el(id);
     if (!node) return;
@@ -903,8 +1047,12 @@ function bind() {
   el('rc-del').addEventListener('click', deleteTemplate);
   el('rc-pdu-add').addEventListener('click', () => {
     const t = current();
+    // чередуем feed A/B/C/… чтобы новый PDU попадал на следующий ввод
+    const used = t.pdus.map(p => p.feed || 'A');
+    const order = ['A','B','C','D'];
+    const nextFeed = order.find(f => !used.includes(f)) || order[used.length % 4];
     t.pdus.push({ id: 'pdu'+Date.now(), qty:1, rating:16, phases:1, height:0,
-      outlets: [ { type: 'C13', count: 8 } ] });
+      feed: nextFeed, outlets: [ { type: 'C13', count: 8 } ] });
     renderPduList(); recalc();
   });
 
@@ -950,11 +1098,20 @@ function init() {
       // подгружаем шаблон как текущий (не в общий localStorage)
       const t = JSON.parse(JSON.stringify(bridge.template));
       t.id = 'tpl-node-' + state.nodeId;
+      // feeds — список вводов из электрической схемы, мост передаёт
+      // отдельно в bridge.feeds (актуальная информация, которая могла
+      // измениться после того как шаблон был сохранён)
+      if (Array.isArray(bridge.feeds)) t.feeds = bridge.feeds;
       // убеждаемся, что шаблон есть в списке или подменяем первый
       const ix = state.templates.findIndex(x => x.id === t.id);
       if (ix >= 0) state.templates[ix] = t;
       else state.templates.unshift(t);
       state.currentId = t.id;
+    } else if (bridge && Array.isArray(bridge.feeds)) {
+      // шаблона ещё нет, но вводы схемы есть — подставляем в первый шаблон
+      state.currentId = state.templates[0].id;
+      const t0 = current();
+      if (t0) t0.feeds = bridge.feeds;
     } else {
       state.currentId = state.templates[0].id;
     }

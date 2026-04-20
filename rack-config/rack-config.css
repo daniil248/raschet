@@ -256,6 +256,40 @@
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
+/* ===== Таблица вводов (feeds) ===== */
+.rc-feed-info { margin: 10px 0 4px 0; }
+.rc-feed-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.rc-feed-table th,
+.rc-feed-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--rs-border-hair);
+  text-align: left;
+}
+.rc-feed-table th {
+  background: var(--rs-bg-soft);
+  font-weight: 600;
+  color: var(--rs-fg-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.rc-feed-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.rc-feed-pill.ok   { background: var(--rs-success-bg); color: var(--rs-success); }
+.rc-feed-pill.warn { background: var(--rs-warn-bg);    color: var(--rs-warn);    }
+.rc-feed-pill.err  { background: var(--rs-danger-bg);  color: var(--rs-danger);  }
+
 .rc-acc-table code {
   font-family: var(--rs-font-mono);
   font-size: 11px;
