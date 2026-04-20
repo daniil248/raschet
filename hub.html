@@ -43,7 +43,19 @@
     .hub-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(240px, 300px)); max-width: 1360px; margin: 0 auto; }
     .hub-grid[data-cols="5"] { grid-template-columns: repeat(5, minmax(220px, 280px)); max-width: 1580px; margin: 0 auto; }
     .hub-grid[data-cols="auto"] { grid-template-columns: repeat(auto-fit, minmax(260px, 340px)); max-width: 1400px; margin: 0 auto; }
-    main { padding: 24px 24px 40px; align-items: flex-start; }
+    /* v0.58.33: режим «Строки» — одна колонка, карточка = иконка слева + заголовок+описание справа */
+    .hub-grid[data-view="rows"] { grid-template-columns: 1fr; gap: 12px; max-width: 1100px; margin: 0 auto; }
+    .hub-grid[data-view="rows"] .hub-card {
+      flex-direction: row; align-items: center; text-align: left;
+      padding: 16px 20px; gap: 20px;
+    }
+    .hub-grid[data-view="rows"] .hub-card-icon { margin-bottom: 0; flex-shrink: 0; width: 56px; height: 56px; border-radius: 12px; }
+    .hub-grid[data-view="rows"] .hub-card-icon svg { width: 28px; height: 28px; }
+    .hub-grid[data-view="rows"] .hub-card .hub-card-body { display: block; flex: 1; min-width: 0; }
+    .hub-grid[data-view="rows"] .hub-card h2 { margin-bottom: 4px; font-size: 16px; }
+    .hub-grid[data-view="rows"] .hub-card p { font-size: 13px; }
+    .hub-grid[data-view="rows"] .hub-card .badge { margin-top: 0; margin-left: auto; flex-shrink: 0; align-self: center; }
+    main { padding: 24px 24px 40px; flex-direction: column; align-items: stretch; justify-content: flex-start; }
     .hub-toolbar {
       display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
       max-width: 1400px; margin: 0 auto 20px; width: 100%;
@@ -115,6 +127,7 @@
       box-shadow: 0 8px 32px rgba(0,0,0,0.10);
       transform: translateY(-2px);
     }
+    .hub-card-body { display: contents; }
     .hub-card-icon {
       width: 72px;
       height: 72px;
@@ -174,6 +187,12 @@
   <main>
     <div class="hub-toolbar">
       <input type="search" id="hub-search" placeholder="Поиск модуля…" style="font:inherit;font-size:12px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:6px;min-width:220px">
+      <label>Вид:
+        <select id="hub-view">
+          <option value="tiles">Плитки</option>
+          <option value="rows">Строки</option>
+        </select>
+      </label>
       <label>Колонок:
         <select id="hub-cols">
           <option value="auto">авто</option>
@@ -399,14 +418,15 @@
     function loadPrefs() {
       try {
         var raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return { cols: 'auto', hidden: [], order: [] };
+        if (!raw) return { cols: 'auto', hidden: [], order: [], view: 'tiles' };
         var p = JSON.parse(raw);
         return {
           cols: p.cols || 'auto',
           hidden: Array.isArray(p.hidden) ? p.hidden : [],
           order: Array.isArray(p.order) ? p.order : [],
+          view: p.view === 'rows' ? 'rows' : 'tiles',
         };
-      } catch (e) { return { cols: 'auto', hidden: [], order: [] }; }
+      } catch (e) { return { cols: 'auto', hidden: [], order: [], view: 'tiles' }; }
     }
     function savePrefs(p) {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch (e) {}
@@ -414,9 +434,26 @@
 
     var prefs = loadPrefs();
     colsSel.value = prefs.cols;
+    var viewSel = document.getElementById('hub-view');
+    if (viewSel) viewSel.value = prefs.view || 'tiles';
+    // Оборачиваем h2+p+badge в .hub-card-body, чтобы в режиме «Строки»
+    // они стали одним блоком справа от иконки. В режиме «Плитки» CSS
+    // оставляет их друг под другом — вид не меняется.
+    allCards.forEach(function (card) {
+      if (card.querySelector('.hub-card-body')) return;
+      var h2 = card.querySelector('h2');
+      var p  = card.querySelector('p');
+      if (!h2 || !p) return;
+      var body = document.createElement('div');
+      body.className = 'hub-card-body';
+      card.insertBefore(body, h2);
+      body.appendChild(h2);
+      body.appendChild(p);
+    });
 
     function applyLayout() {
       grid.setAttribute('data-cols', prefs.cols);
+      grid.setAttribute('data-view', prefs.view || 'tiles');
       // порядок
       var order = prefs.order.length ? prefs.order.slice() : defaultOrder.slice();
       // добавить все новые карточки, которых нет в сохранённом порядке
@@ -546,6 +583,10 @@
     });
     colsSel.addEventListener('change', function () {
       prefs.cols = colsSel.value;
+      savePrefs(prefs); applyLayout();
+    });
+    if (viewSel) viewSel.addEventListener('change', function () {
+      prefs.view = viewSel.value === 'rows' ? 'rows' : 'tiles';
       savePrefs(prefs); applyLayout();
     });
     // v0.58.32: поиск модулей по заголовку/описанию
