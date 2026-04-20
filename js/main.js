@@ -39,6 +39,7 @@ const els = {
   projectName: $('project-name'),
   btnShare: $('btn-share'),
   btnSave: $('btn-save'),
+  btnHistory: $('btn-history'),
   btnRequestAccess: $('btn-request-access'),
   btnNotifications: $('btn-notifications'),
   notifBadge: $('notif-badge'),
@@ -477,6 +478,145 @@ async function _onRemoteProjectChange(doc) {
   }
   state.remoteChangeToastShown = false;
 }
+
+// =============== v0.57.79 (Collaboration C.8): revisions =================
+const REVISION_AUTO_MIN_INTERVAL_MS = 5 * 60_000;  // не чаще 1 авто-версии в 5 минут
+const REVISION_KEEP_LIMIT = 50;  // чистим хвост после этого количества
+
+async function _maybeAutoSnapshotRevision(project, scheme) {
+  if (!window.Storage?.isCloud) return;
+  if (!project?.id || String(project.id).startsWith('_demo_')) return;
+  if (!state.currentUser) return;
+  const now = Date.now();
+  const last = state._lastRevisionAtMs || 0;
+  if (now - last < REVISION_AUTO_MIN_INTERVAL_MS) return;
+  state._lastRevisionAtMs = now;
+  try {
+    const author = {
+      uid: state.currentUser.uid,
+      name: state.currentUser.name || state.currentUser.email || '',
+      email: state.currentUser.email || '',
+    };
+    await window.Storage.saveRevision(project.id, scheme, author, '');
+    // Ленивая очистка хвоста: если слишком много — удалим лишние.
+    // Делаем раз в 5 авто-снапшотов, чтобы не нагружать каждый save.
+    state._revisionSavesSinceCleanup = (state._revisionSavesSinceCleanup || 0) + 1;
+    if (state._revisionSavesSinceCleanup >= 5) {
+      state._revisionSavesSinceCleanup = 0;
+      _cleanupOldRevisions(project.id).catch(() => {});
+    }
+  } catch (e) { console.warn('[revisions] auto-snapshot', e); }
+}
+
+async function _cleanupOldRevisions(projectId) {
+  try {
+    const list = await window.Storage.listRevisions(projectId, REVISION_KEEP_LIMIT * 2);
+    if (list.length <= REVISION_KEEP_LIMIT) return;
+    const toDelete = list.slice(REVISION_KEEP_LIMIT);
+    await Promise.all(toDelete.map(r => window.Storage.deleteRevision(projectId, r.id)));
+  } catch {}
+}
+
+function _formatRevisionTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function openRevisionsModal() {
+  const p = state.currentProject;
+  if (!p?.id) { flash('Откройте проект', 'error'); return; }
+  if (!window.Storage?.isCloud) { flash('История версий доступна только для облачных проектов', 'error'); return; }
+
+  let modal = document.getElementById('modal-revisions');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-revisions';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-box modal-wide" style="max-width:620px">
+        <div class="modal-head">
+          <h2>🕓 История версий проекта</h2>
+          <button type="button" data-close style="background:none;border:none;font-size:18px;cursor:pointer">✕</button>
+        </div>
+        <div class="modal-body" id="mrv-body" style="max-height:60vh;overflow:auto"></div>
+        <div class="modal-foot" style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
+          <button id="mrv-snapshot" type="button">💾 Сохранить версию сейчас</button>
+          <button type="button" data-close>Закрыть</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.classList.add('hidden')));
+  }
+  const body = modal.querySelector('#mrv-body');
+  body.innerHTML = '<div style="padding:24px;text-align:center;color:#999">Загрузка…</div>';
+  modal.classList.remove('hidden');
+
+  const refresh = async () => {
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:#999">Загрузка…</div>';
+    const list = await window.Storage.listRevisions(p.id, REVISION_KEEP_LIMIT);
+    if (!list.length) {
+      body.innerHTML = '<div style="padding:24px;text-align:center;color:#999">Версий пока нет. Нажмите «Сохранить версию сейчас» или подождите автосохранения после очередного save.</div>';
+      return;
+    }
+    const rows = list.map(r => {
+      const author = r.authorName || r.authorEmail || 'аноним';
+      return `
+        <div class="mrv-row" data-rev="${r.id}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eaecef">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600">${_formatRevisionTime(r.createdAt)}</div>
+            <div style="font-size:11px;color:#666">${author} · узлов: ${r.nodeCount}, связей: ${r.connCount}${r.note ? ' · ' + r.note : ''}</div>
+          </div>
+          <button type="button" class="mrv-restore" data-rev="${r.id}" style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px">Восстановить</button>
+          <button type="button" class="mrv-delete" data-rev="${r.id}" title="Удалить версию" style="padding:4px 8px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:3px;cursor:pointer;font-size:11px">🗑</button>
+        </div>`;
+    }).join('');
+    body.innerHTML = rows;
+    body.querySelectorAll('.mrv-restore').forEach(btn => btn.addEventListener('click', async () => {
+      const revId = btn.dataset.rev;
+      if (!confirm('Восстановить эту версию? Текущая схема будет заменена. Перед восстановлением автоматически сохранится текущая версия.')) return;
+      try {
+        // Сохраняем текущую как «backup перед восстановлением»
+        const cur = window.Raschet.getScheme();
+        const author = {
+          uid: state.currentUser?.uid || '',
+          name: state.currentUser?.name || state.currentUser?.email || '',
+          email: state.currentUser?.email || '',
+        };
+        await window.Storage.saveRevision(p.id, cur, author, 'перед восстановлением');
+        const rev = await window.Storage.getRevision(p.id, revId);
+        if (!rev || !rev.scheme) { flash('Не удалось загрузить версию', 'error'); return; }
+        window.Raschet.loadScheme(rev.scheme);
+        state.dirty = true;
+        updateSaveButton();
+        flash('Версия восстановлена — не забудьте сохранить');
+        modal.classList.add('hidden');
+      } catch (e) { console.warn('[revisions] restore', e); flash('Ошибка восстановления', 'error'); }
+    }));
+    body.querySelectorAll('.mrv-delete').forEach(btn => btn.addEventListener('click', async () => {
+      const revId = btn.dataset.rev;
+      if (!confirm('Удалить эту версию безвозвратно?')) return;
+      await window.Storage.deleteRevision(p.id, revId);
+      refresh();
+    }));
+  };
+  modal.querySelector('#mrv-snapshot').onclick = async () => {
+    const note = prompt('Короткое описание (необязательно):', '');
+    if (note === null) return;
+    const scheme = window.Raschet.getScheme();
+    const author = {
+      uid: state.currentUser?.uid || '',
+      name: state.currentUser?.name || state.currentUser?.email || '',
+      email: state.currentUser?.email || '',
+    };
+    const r = await window.Storage.saveRevision(p.id, scheme, author, note || '');
+    if (r) { state._lastRevisionAtMs = Date.now(); flash('Версия сохранена'); refresh(); }
+    else flash('Не удалось сохранить версию', 'error');
+  };
+  refresh();
+}
+window._openRevisionsModal = openRevisionsModal;
 // ============================================================================
 
 
@@ -723,6 +863,10 @@ async function openProject(id) {
     els.projectName.classList.remove('hidden');
     els.btnSave.classList.toggle('hidden', readOnly);
     els.btnShare.classList.toggle('hidden', role !== 'owner');
+    // v0.57.79 C.8: кнопка истории версий — только для облачных проектов
+    if (els.btnHistory) {
+      els.btnHistory.classList.toggle('hidden', !window.Storage?.isCloud || !data.id || String(data.id).startsWith('_demo_'));
+    }
     // Сбрасываем состояние автосохранения для свежезагруженного проекта
     state.dirty = false;
     state.saving = false;
@@ -781,6 +925,7 @@ function backToProjects() {
     els.projectName.classList.add('hidden');
     els.btnSave.classList.add('hidden');
     els.btnShare.classList.add('hidden');
+    if (els.btnHistory) els.btnHistory.classList.add('hidden');
     els.btnRequestAccess.classList.add('hidden');
     const url = new URL(location.href);
     url.searchParams.delete('project');
@@ -852,6 +997,9 @@ async function saveCurrent(isAuto) {
     state.saving = false;
     updateSaveButton();
     if (!isAuto) flash('Сохранено');
+    // v0.57.79 (Collaboration C.8): авто-снапшот версии, не чаще 1 раз в 5 мин.
+    // Только для облачных проектов и авторизованного пользователя.
+    _maybeAutoSnapshotRevision(p, scheme).catch(() => {});
   } catch (e) {
     console.error('[saveCurrent]', e);
     state.saving = false;
@@ -5893,6 +6041,7 @@ async function init() {
   els.btnHome.addEventListener('click', backToProjects);
   els.btnSave.addEventListener('click', () => saveCurrent(false));
   els.btnShare.addEventListener('click', openShareModal);
+  if (els.btnHistory) els.btnHistory.addEventListener('click', openRevisionsModal);
 
   // Подписка на изменения редактора → автосохранение
   if (window.Raschet && typeof window.Raschet.onChange === 'function') {

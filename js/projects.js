@@ -308,6 +308,81 @@ const Fs = {
     } catch { return () => {}; }
   },
 
+  // =================== v0.57.79 (Collaboration C.8): revisions ===================
+  // Subcollection `projects/{id}/revisions/{auto-id}`: полный snapshot схемы
+  // + метаданные (createdAt, author{Uid,Name,Email}, note, nodeCount, connCount).
+  // Auto-snapshot вызывается из main.js после saveProject не чаще, чем раз
+  // в 5 минут. Manual — через openRevisionsModal → «Сохранить версию сейчас».
+  async saveRevision(projectId, scheme, authorInfo, note) {
+    if (!projectId || !scheme) return null;
+    const nodeCount = Array.isArray(scheme.nodes) ? scheme.nodes.length : 0;
+    const connCount = Array.isArray(scheme.conns) ? scheme.conns.length : 0;
+    const doc = {
+      createdAt: ts(),
+      authorUid: authorInfo?.uid || '',
+      authorName: authorInfo?.name || '',
+      authorEmail: authorInfo?.email || '',
+      note: note || '',
+      nodeCount, connCount,
+      scheme,
+    };
+    try {
+      const ref = await fsDb().collection('projects').doc(projectId)
+        .collection('revisions').add(doc);
+      return { id: ref.id, ...doc };
+    } catch (e) {
+      console.warn('[revisions] save failed', e);
+      return null;
+    }
+  },
+  async listRevisions(projectId, limit = 50) {
+    if (!projectId) return [];
+    try {
+      const snap = await fsDb().collection('projects').doc(projectId)
+        .collection('revisions').orderBy('createdAt', 'desc').limit(limit).get();
+      return snap.docs.map(d => {
+        const v = d.data();
+        return {
+          id: d.id,
+          createdAt: v.createdAt?.toMillis ? v.createdAt.toMillis() : (v.createdAt || 0),
+          authorUid: v.authorUid || '',
+          authorName: v.authorName || '',
+          authorEmail: v.authorEmail || '',
+          note: v.note || '',
+          nodeCount: v.nodeCount || 0,
+          connCount: v.connCount || 0,
+        };
+      });
+    } catch (e) { console.warn('[revisions] list failed', e); return []; }
+  },
+  async getRevision(projectId, revId) {
+    if (!projectId || !revId) return null;
+    try {
+      const snap = await fsDb().collection('projects').doc(projectId)
+        .collection('revisions').doc(revId).get();
+      if (!snap.exists) return null;
+      const v = snap.data();
+      return {
+        id: snap.id,
+        createdAt: v.createdAt?.toMillis ? v.createdAt.toMillis() : (v.createdAt || 0),
+        authorUid: v.authorUid || '',
+        authorName: v.authorName || '',
+        authorEmail: v.authorEmail || '',
+        note: v.note || '',
+        nodeCount: v.nodeCount || 0,
+        connCount: v.connCount || 0,
+        scheme: v.scheme || null,
+      };
+    } catch (e) { console.warn('[revisions] get failed', e); return null; }
+  },
+  async deleteRevision(projectId, revId) {
+    if (!projectId || !revId) return;
+    try {
+      await fsDb().collection('projects').doc(projectId)
+        .collection('revisions').doc(revId).delete();
+    } catch {}
+  },
+
   async renameProject(id, name) { return this.saveProject(id, { name }); },
 
   async deleteProject(id) {
@@ -465,6 +540,23 @@ window.Storage = {
   subscribeLocks(id, cb) {
     const s = getStorage();
     return s.subscribeLocks ? s.subscribeLocks(id, cb) : (() => {});
+  },
+  // v0.57.79 Collaboration C.8 — история версий (Firestore only; Local → no-op)
+  saveRevision(id, scheme, author, note) {
+    const s = getStorage();
+    return s.saveRevision ? s.saveRevision(id, scheme, author, note) : Promise.resolve(null);
+  },
+  listRevisions(id, limit) {
+    const s = getStorage();
+    return s.listRevisions ? s.listRevisions(id, limit) : Promise.resolve([]);
+  },
+  getRevision(id, revId) {
+    const s = getStorage();
+    return s.getRevision ? s.getRevision(id, revId) : Promise.resolve(null);
+  },
+  deleteRevision(id, revId) {
+    const s = getStorage();
+    return s.deleteRevision ? s.deleteRevision(id, revId) : Promise.resolve();
   },
   computeRole,
 };

@@ -404,7 +404,7 @@
 - [x] **C.5** Preserve-local-display: view/zoom/activeModeId/currentPageId не пропагируются между сессиями (`_preserveLocalDisplay`).
 - [x] **C.6** Cursor awareness (v0.57.78): mousemove дросселируется до 200 мс, координаты конвертируются в схемные (`Raschet.screenToScheme`), пишутся в `presence/{uid}.cursor = {x, y, pageId}` через `presenceCursor`. `subscribePresence` собирает чужие курсоры в `window.__remoteCursors`; `render.js:renderRemoteCursors` рисует треугольник-стрелку + бейдж с именем в `layer-overlay`, фильтрует по `currentPageId`, компенсирует zoom (scale(1/zoom)).
 - [x] **C.7** Conflict-aware merge: `_computeSchemeDiff` + `_showRemoteConflictModal` (v0.57.77) — вместо браузерного confirm показывается модалка со счётчиками `nodesAdded/Removed/Changed` и `connsAdded/Removed/Changed`, кнопки «Принять удалённые / Оставить локальные / Решить позже». Автор последнего сохранения виден в заголовке.
-- [ ] **C.8** История версий: subcollection `projects/{id}/revisions/{revId}` с откатом и сравнением.
+- [x] **C.8** История версий (v0.57.79): subcollection `projects/{id}/revisions/{auto}` хранит полный snapshot схемы + метаданные (createdAt, authorUid/Name/Email, note, nodeCount, connCount). Авто-снапшот в `saveCurrent` с троттлингом 5 мин, retention 50 записей (ленивая очистка каждые 5 авто-версий). Модалка «🕓 История версий»: список с автором и размером, кнопки «Восстановить» (с backup-версией «перед восстановлением») и «Удалить». API: `Storage.saveRevision / listRevisions / getRevision / deleteRevision`.
 - [ ] **C.9** Email-нотификации запросов доступа через Cloud Functions.
 
 ---
