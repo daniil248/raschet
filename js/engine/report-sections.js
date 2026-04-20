@@ -12,7 +12,7 @@
 // ======================================================================
 
 import { state } from './state.js';
-import { CHANNEL_TYPES, GLOBAL } from './constants.js';
+import { CHANNEL_TYPES, GLOBAL, SYSTEMS_CATALOG, getSystemMeta } from './constants.js';
 import { recalc } from './recalc.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { effectiveTag } from './zones.js';
@@ -1040,6 +1040,90 @@ function sectionChecks() {
 // Для узлов с node.elementId — разворачивает composition рекурсивно
 // (phantom-элементы тоже попадают). Узлы без elementId — одной строкой
 // по типу (ИБП, щит, трансформатор...).
+// v0.58.23: отчёт «Системы и параметры» — элементы, сгруппированные по
+// системам (data / pipes / hvac / …) с их параметрами systemParams[sys].
+function sectionSystems() {
+  const getSys = (n) => {
+    if (Array.isArray(n.systems) && n.systems.length) return n.systems;
+    if (n.type === 'zone' || n.type === 'channel') return [];
+    return ['electrical'];
+  };
+  // Группируем: { sysId: [{node, params}] }
+  const buckets = new Map();
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone' || n.type === 'channel') continue;
+    const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : null;
+    for (const sysId of getSys(n)) {
+      if (sysId === 'electrical') continue; // электрика — общие разделы
+      if (!buckets.has(sysId)) buckets.set(sysId, []);
+      buckets.get(sysId).push({ n, params: (sp && sp[sysId]) || null });
+    }
+  }
+  const text = [
+    'СИСТЕМЫ И ПАРАМЕТРЫ',
+    '='.repeat(78),
+    ...metaTextLines(),
+    '',
+  ];
+  const blocks = [
+    B.h1('Системы и параметры'),
+    ...metaBlocks(),
+  ];
+  if (!buckets.size) {
+    text.push('В проекте нет элементов с назначенными дополнительными системами.');
+    blocks.push(B.paragraph('В проекте нет элементов с назначенными дополнительными системами (кроме электрической). Назначьте системы во вкладке «🧩 Системы» в инспекторе элемента.'));
+    return { text: text.join('\n'), blocks };
+  }
+  // Порядок — по каталогу
+  for (const meta of SYSTEMS_CATALOG) {
+    if (meta.id === 'electrical') continue;
+    const items = buckets.get(meta.id);
+    if (!items || !items.length) continue;
+    const title = `${meta.icon} ${meta.label} — ${items.length} эл.`;
+    blocks.push(B.h2(title));
+    text.push(title);
+    text.push('-'.repeat(78));
+    // Колонки: Обозначение, Наименование, <ключи параметров данной системы>
+    const paramDefs = Array.isArray(meta.params) ? meta.params : [];
+    const cols = [
+      { label: 'Обозн.',      width: 20 },
+      { label: 'Наименование', width: 40 },
+      ...paramDefs.map(p => ({ label: p.label + (p.unit ? `, ${p.unit}` : ''), width: 16 })),
+    ];
+    const rows = items.map(({ n, params }) => {
+      const row = [
+        effectiveTag(n) || n.tag || '',
+        (n.name || n.type) + placementMarker(n),
+      ];
+      for (const p of paramDefs) {
+        const v = params ? params[p.key] : '';
+        row.push(v === '' || v == null ? '—' : String(v));
+      }
+      return row;
+    });
+    text.push(...textTable(cols, rows));
+    text.push('');
+    blocks.push(B.table(blockCols(cols), rows));
+    // Агрегаты для числовых параметров
+    const agg = [];
+    for (const p of paramDefs) {
+      if (p.type !== 'number') continue;
+      let sum = 0, cnt = 0;
+      for (const { params } of items) {
+        const v = params ? Number(params[p.key]) : NaN;
+        if (Number.isFinite(v)) { sum += v; cnt++; }
+      }
+      if (cnt) agg.push(`${p.label}: Σ=${sum}${p.unit ? ' ' + p.unit : ''} (по ${cnt} эл.)`);
+    }
+    if (agg.length) {
+      blocks.push(B.paragraph('Σ по числовым: ' + agg.join('; ')));
+      text.push('  Σ по числовым: ' + agg.join('; '));
+      text.push('');
+    }
+  }
+  return { text: text.join('\n'), blocks };
+}
+
 function sectionBom() {
   // Опции резолвинга цен — по умолчанию «последняя актуальная цена».
   // В будущем передадим через UI опций отчёта (Фаза 1.5.7+).
@@ -1426,6 +1510,14 @@ export function getReportSections() {
       defaultTemplateId: 'builtin-bom-landscape',
       tags: ['ведомость', 'таблица', 'кабель'],
       ...sectionChannels(),
+    },
+    {
+      id: 'systems',
+      title: 'Системы и параметры (data / трубы / воздуховоды / …)',
+      description: 'Элементы, входящие в дополнительные системы (слаботочка, данные, трубы, воздуховоды, газ, пожарная, охрана, видео), с параметрами этих систем. Суммы числовых параметров.',
+      defaultTemplateId: 'builtin-bom-landscape',
+      tags: ['системы', 'data', 'hvac', 'трубы', 'слаботочка'],
+      ...sectionSystems(),
     },
     {
       id: 'bom',
