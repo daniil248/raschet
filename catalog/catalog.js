@@ -14,6 +14,7 @@ import {
   listElements, getElement, saveElement, removeElement, cloneElement,
   exportLibraryJSON, importLibraryJSON, onLibraryChange,
   ELEMENT_KINDS, isPricableKind,
+  getCurrentRole, canEditBuiltin, listBuiltinOverrides, resetBuiltinOverride,
 } from '../shared/element-library.js';
 import { createCableSkuElement } from '../shared/element-schemas.js';
 import { tccBreakerTime, tccSamplePoints } from '../shared/tcc-curves.js';
@@ -162,6 +163,13 @@ function renderElementsTab() {
   const kindOpts = Object.entries(ELEMENT_KINDS).map(([k, d]) =>
     `<option value="${k}"${elFilters.kind === k ? ' selected' : ''}>${esc(d.label)}</option>`).join('');
 
+  const isAdmin = canEditBuiltin();
+  const overrides = listBuiltinOverrides();
+  const overrideCount = Object.keys(overrides).length;
+  const roleLabel = isAdmin
+    ? `<span class="badge" style="background:#b54708;color:#fff">admin: ${esc(getCurrentRole())}</span>`
+    : `<span class="badge">роль: ${esc(getCurrentRole())}</span>`;
+
   const html = [`
     <div class="toolbar">
       <select id="el-filter-kind"><option value="">Все типы</option>${kindOpts}</select>
@@ -174,9 +182,13 @@ function renderElementsTab() {
       <div class="spacer"></div>
       <button id="el-add" class="primary">+ Добавить элемент</button>
       <button id="el-export">Экспорт JSON</button>
+      <button id="el-role-toggle" title="Переключить режим редактирования встроенных элементов (до Фазы 5 auth — заглушка через localStorage)">${isAdmin ? '🔓 Выйти из admin' : '🔒 Режим админа каталога'}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">
       Всего: <b>${all.length}</b>, отфильтровано: <b>${filtered.length}</b>
+      · ${roleLabel}
+      ${overrideCount ? `· <b>${overrideCount}</b> builtin-правок <a href="#" id="el-show-overrides" style="color:#b54708">(показать)</a>` : ''}
+      ${isAdmin ? '<br><span style="color:#b54708">⚠ Режим catalog-admin: кнопка ✎ у builtin-элементов сохраняет правки в override-слой (raschet.elementLibrary.overrides.v1), не меняя исходный seed. Кнопка ↺ откатывает override.</span>' : ''}
     </div>
     <div style="max-height:60vh;overflow:auto">
       <table class="data-table">
@@ -231,9 +243,13 @@ function renderElementsTab() {
                 ? '<button data-act="add-sku" title="Создать типоразмер (SKU) для этой линейки кабеля">+ SKU</button>'
                 : '<button disabled title="' + (ELEMENT_KINDS[el.kind]?.note || 'Цена не применима к этому типу') + '">нет цены</button>')}
           <button data-act="view-prices">Цены</button>
-          ${!el.builtin ? '<button data-act="edit">✎</button>' : ''}
+          ${!el.builtin
+            ? '<button data-act="edit">✎</button>'
+            : (isAdmin ? `<button data-act="edit" title="Править встроенный (сохранится в override-слой)">✎</button>${overrides[el.id] ? '<button data-act="reset" title="Откатить override к исходному seed">↺</button>' : ''}` : '')}
           <button data-act="clone">Клон</button>
-          ${!el.builtin ? '<button data-act="del" class="danger">×</button>' : ''}
+          ${!el.builtin
+            ? '<button data-act="del" class="danger">×</button>'
+            : (isAdmin ? '<button data-act="tombstone" class="danger" title="Скрыть builtin из выдачи (tombstone); откат через ↺">×</button>' : '')}
         </td>
       </tr>`);
   }
@@ -249,6 +265,50 @@ function renderElementsTab() {
   document.getElementById('el-filter-search').oninput = e => { elFilters.search = e.target.value; renderElementsTab(); };
   document.getElementById('el-add').onclick = () => openAddElementModal();
   document.getElementById('el-export').onclick = () => downloadJSON(exportLibraryJSON(), 'element-library.json');
+
+  // Admin-role toggle (заглушка до Фазы 5 auth).
+  // Хранится в localStorage['raschet.currentRole']: 'user' | 'catalog-admin'.
+  const roleBtn = document.getElementById('el-role-toggle');
+  if (roleBtn) roleBtn.onclick = () => {
+    const cur = getCurrentRole();
+    if (cur === 'catalog-admin' || cur === 'admin') {
+      try { localStorage.setItem('raschet.currentRole', 'user'); } catch {}
+      flash('Режим admin выключен', 'success');
+    } else {
+      if (!confirm('Включить режим catalog-admin?\n\nВ этом режиме правка встроенных элементов сохраняется в override-слой localStorage и НЕ меняет исходные seed-данные. До Фазы 5 auth это ручная заглушка.')) return;
+      try { localStorage.setItem('raschet.currentRole', 'catalog-admin'); } catch {}
+      flash('Режим catalog-admin включён', 'success');
+    }
+    renderElementsTab();
+  };
+
+  const showOvBtn = document.getElementById('el-show-overrides');
+  if (showOvBtn) showOvBtn.onclick = (e) => {
+    e.preventDefault();
+    const ov = listBuiltinOverrides();
+    const rows = Object.entries(ov).map(([id, patch]) => {
+      const el = getElement(id);
+      const label = el ? el.label : '(скрыт tombstone)';
+      const kind = patch.tombstone ? '<span style="color:#b42318">tombstone</span>'
+                                   : Object.keys(patch).filter(k => k !== 'updatedAt').join(', ');
+      return `<tr><td><code>${esc(id)}</code></td><td>${esc(label)}</td><td>${kind}</td><td>${fmtDate(patch.updatedAt)}</td><td><button data-reset="${esc(id)}">↺ Откатить</button></td></tr>`;
+    }).join('');
+    openModal('Правки builtin-элементов (override-слой)',
+      `<table class="data-table"><thead><tr><th>ID</th><th>Название</th><th>Изменения</th><th>Обновлено</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">Нет правок</td></tr>'}</tbody></table>`,
+      null);
+    setTimeout(() => {
+      document.querySelectorAll('button[data-reset]').forEach(b => {
+        b.onclick = () => {
+          try {
+            resetBuiltinOverride(b.dataset.reset);
+            flash('Откачено к исходному seed', 'success');
+            document.getElementById('modal').classList.remove('show');
+            renderElementsTab();
+          } catch (err) { flash(err.message, 'error'); }
+        };
+      });
+    }, 50);
+  };
 
   // Wire row actions
   container.querySelectorAll('tr[data-id]').forEach(row => {
@@ -269,6 +329,18 @@ function renderElementsTab() {
         else if (act === 'del') {
           if (confirm('Удалить?')) { removeElement(id); flash('Удалено', 'success'); }
         }
+        else if (act === 'reset') {
+          if (confirm('Откатить override к исходному seed builtin?')) {
+            try { resetBuiltinOverride(id); flash('Откачено', 'success'); }
+            catch (err) { flash(err.message, 'error'); }
+          }
+        }
+        else if (act === 'tombstone') {
+          if (confirm('Скрыть этот встроенный элемент из выдачи (tombstone)?\n\nСбросить можно через «↺» в списке правок builtin.')) {
+            try { removeElement(id); flash('Скрыто (tombstone)', 'success'); }
+            catch (err) { flash(err.message, 'error'); }
+          }
+        }
       };
     });
   });
@@ -277,11 +349,13 @@ function renderElementsTab() {
 function openAddElementModal(editId) {
   const el = editId ? getElement(editId) : { kind: 'custom', label: '' };
   if (!el) return flash('Не найдено', 'error');
+  const isBuiltinEdit = !!(editId && el.builtin);
   const kindOpts = Object.entries(ELEMENT_KINDS).map(([k, d]) =>
     `<option value="${k}"${k === el.kind ? ' selected' : ''}>${esc(d.label)}</option>`).join('');
   const html = `
+    ${isBuiltinEdit ? '<div style="background:#fff4e5;border-left:3px solid #b54708;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#7a3a00">Редактирование <b>встроенного</b> элемента. Правки сохранятся в override-слой (<code>raschet.elementLibrary.overrides.v1</code>) поверх исходного seed. ID и kind менять нельзя — откат через «↺».</div>' : ''}
     <div class="field"><label>ID</label><input id="f-id" value="${esc(el.id || '')}"${editId ? ' readonly' : ''}></div>
-    <div class="field"><label>Kind</label><select id="f-kind">${kindOpts}</select></div>
+    <div class="field"><label>Kind</label><select id="f-kind"${isBuiltinEdit ? ' disabled' : ''}>${kindOpts}</select></div>
     <div class="field"><label>Название</label><input id="f-label" value="${esc(el.label || '')}"></div>
     <div class="field-row">
       <div class="field"><label>Производитель</label><input id="f-manufacturer" value="${esc(el.manufacturer || '')}"></div>
