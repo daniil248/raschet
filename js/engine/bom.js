@@ -29,6 +29,7 @@ import {
   kitById, pduBySku, accBySku,
 } from '../../shared/rack-catalog-data.js';
 import { pricesForElement } from '../../shared/price-records.js';
+import { getCounterparty } from '../../shared/counterparty-catalog.js';
 
 // Внутренний slug — тот же алгоритм, что в shared/rack-catalog-data.js._slug.
 // Нужен, чтобы id в BOM совпадал с id в element-library ('pdu.'+slug и т.п.)
@@ -517,42 +518,76 @@ export function exportBomXlsx(projectName) {
   if (!bom.length) {
     throw new Error('Спецификация пуста: проверьте, что узлы привязаны к каталожным записям.');
   }
-  // v0.58.82: добавлены колонки «Цена, ед.», «Валюта», «Сумма» —
-  // подтягиваем последнюю активную цену через pricesForElement(row.id).
+  // v0.58.82: цены в экспорте. v0.58.83: колонка «Контрагент» + итоги по валютам
+  // + счётчик позиций без цены.
   const header = ['№', 'Раздел', 'Поз.', 'Производитель', 'Модель / артикул', 'Код',
-                  'Кол-во', 'Ед.', 'Цена, ед.', 'Валюта', 'Сумма', 'Примечание'];
+                  'Кол-во', 'Ед.', 'Цена, ед.', 'Валюта', 'Сумма',
+                  'Контрагент', 'Примечание'];
   const aoa = [header];
   let globalN = 0;
   let prevSection = null;
+  const totalsByCurrency = Object.create(null); // { RUB: 123, USD: 45 }
+  let rowsWithoutPrice = 0;
+  let rowsWithPrice = 0;
   for (const row of bom) {
     if (row.section !== prevSection) {
       aoa.push([row.section]);
       prevSection = row.section;
     }
     globalN++;
-    let unitPrice = null, currency = '', total = null;
+    let unitPrice = null, currency = '', total = null, counterparty = '';
     try {
       const info = pricesForElement(row.id, { activeOnly: true });
       if (info && info.latest) {
         unitPrice = Number(info.latest.price) || null;
         currency  = info.latest.currency || '';
         if (unitPrice != null) total = unitPrice * (Number(row.qty) || 0);
+        if (info.latest.counterpartyId) {
+          try {
+            const cp = getCounterparty(info.latest.counterpartyId);
+            if (cp) counterparty = cp.shortName || cp.name || cp.id;
+          } catch {}
+        }
       }
     } catch {}
+    if (unitPrice != null && currency) {
+      totalsByCurrency[currency] = (totalsByCurrency[currency] || 0) + (total || 0);
+      rowsWithPrice++;
+    } else {
+      rowsWithoutPrice++;
+    }
     aoa.push([
       globalN, row.section, row.position,
       row.supplier, row.model, row.article,
       row.qty, row.unit,
       unitPrice, currency, total,
-      row.notes,
+      counterparty, row.notes,
     ]);
+  }
+  // Итоги по валютам — одной или несколькими строками
+  const currencies = Object.keys(totalsByCurrency);
+  if (currencies.length) {
+    aoa.push([]);
+    aoa.push(['', 'ИТОГО по проекту', '', '', '', '', '', '', '', '', '', '', '']);
+    for (const cur of currencies) {
+      aoa.push(['', 'Сумма ' + cur, '', '', '', '', '', '', '', cur,
+                totalsByCurrency[cur], '', '']);
+    }
+    if (rowsWithoutPrice) {
+      aoa.push(['', `Позиций без цены: ${rowsWithoutPrice} из ${rowsWithPrice + rowsWithoutPrice}`,
+                '', '', '', '', '', '', '', '', '', '', '']);
+    }
+  } else if (rowsWithoutPrice) {
+    aoa.push([]);
+    aoa.push(['', `Цены не заведены ни для одной позиции (всего ${rowsWithoutPrice})`,
+              '', '', '', '', '', '', '', '', '', '', '']);
   }
   const ws = window.XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [
     { wch: 4 }, { wch: 22 }, { wch: 5 }, { wch: 16 }, { wch: 36 },
     { wch: 22 }, { wch: 8 }, { wch: 6 },
     { wch: 12 }, { wch: 6 }, { wch: 14 },
-    { wch: 40 },
+    { wch: 18 }, { wch: 40 },
   ];
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, ws, 'BOM');
@@ -568,26 +603,54 @@ export function exportBomCsv(projectName) {
   const bom = buildBOM();
   if (!bom.length) throw new Error('Спецификация пуста.');
   const head = ['№','Раздел','Поз','Производитель','Модель','Код','Кол-во','Ед',
-                'Цена, ед.','Валюта','Сумма','Примечание'];
+                'Цена, ед.','Валюта','Сумма','Контрагент','Примечание'];
   const esc = v => {
     const s = String(v == null ? '' : v);
     return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   const lines = [head.join(';')];
   let n = 0;
+  const totalsByCurrency = Object.create(null);
+  let rowsWithoutPrice = 0, rowsWithPrice = 0;
   for (const r of bom) {
     n++;
-    let unitPrice = '', currency = '', total = '';
+    let unitPrice = '', currency = '', total = '', counterparty = '';
     try {
       const info = pricesForElement(r.id, { activeOnly: true });
       if (info && info.latest) {
         unitPrice = Number(info.latest.price) || '';
         currency  = info.latest.currency || '';
         if (unitPrice !== '') total = unitPrice * (Number(r.qty) || 0);
+        if (info.latest.counterpartyId) {
+          try {
+            const cp = getCounterparty(info.latest.counterpartyId);
+            if (cp) counterparty = cp.shortName || cp.name || cp.id;
+          } catch {}
+        }
       }
     } catch {}
+    if (unitPrice !== '' && currency) {
+      totalsByCurrency[currency] = (totalsByCurrency[currency] || 0) + (total || 0);
+      rowsWithPrice++;
+    } else {
+      rowsWithoutPrice++;
+    }
     lines.push([n, r.section, r.position, r.supplier, r.model, r.article,
-                r.qty, r.unit, unitPrice, currency, total, r.notes].map(esc).join(';'));
+                r.qty, r.unit, unitPrice, currency, total,
+                counterparty, r.notes].map(esc).join(';'));
+  }
+  const currencies = Object.keys(totalsByCurrency);
+  if (currencies.length) {
+    lines.push('');
+    lines.push(['', 'ИТОГО по проекту', '', '', '', '', '', '', '', '', '', '', ''].map(esc).join(';'));
+    for (const cur of currencies) {
+      lines.push(['', 'Сумма ' + cur, '', '', '', '', '', '', '', cur,
+                  totalsByCurrency[cur], '', ''].map(esc).join(';'));
+    }
+    if (rowsWithoutPrice) {
+      lines.push(['', `Позиций без цены: ${rowsWithoutPrice} из ${rowsWithPrice + rowsWithoutPrice}`,
+                  '', '', '', '', '', '', '', '', '', '', ''].map(esc).join(';'));
+    }
   }
   const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
