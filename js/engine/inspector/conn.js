@@ -14,6 +14,7 @@ import { render } from '../render.js';
 import { deleteConn } from '../graph.js';
 import { kTempLookup, kGroupLookup, kBundlingFactor } from '../cable.js';
 import { getMethod } from '../../methods/index.js';
+import { checkSelectivity } from '../../../shared/tcc-curves.js';
 
 let _renderInspector = null;
 export function bindInspectorConnDeps({ renderInspector }) {
@@ -707,6 +708,44 @@ export function renderInspectorConn(c) {
   // === Результаты расчётных модулей ===
   if (Array.isArray(c._moduleResults) && c._moduleResults.length) {
     h.push(renderConnModuleResultsBlock(c._moduleResults));
+  }
+
+  // === Селективность с вышестоящим автоматом (v0.57.53) ===
+  // Компактный блок над TCC-картой: ✓/✗ + краткая причина. Подробности —
+  // в «Анализ селективности» отчёта.
+  if (c._breakerIn || c._breakerPerLine) {
+    const _upChain = _collectUpstreamBreakers(c);
+    const _upImm = _upChain[0];
+    if (_upImm && _upImm.In) {
+      const _downIn = Number(c._breakerIn) || Number(c._breakerPerLine) || 0;
+      const _selCheck = checkSelectivity(
+        {
+          inNominal: _upImm.In,
+          curve: _upImm.curveShort,
+          settings: _upImm.c._breakerSettings || undefined,
+        },
+        {
+          inNominal: _downIn,
+          curve: _normalizeCurveShort(c.breakerCurve || c._breakerCurveEff),
+          settings: c._breakerSettings || undefined,
+        },
+        c._modules?.phaseLoop?.details?.Ik1A || null,
+      );
+      const _selOk = _selCheck.selective;
+      const _selColor = _selOk ? '#2e7d32' : '#c62828';
+      const _selBg = _selOk ? '#e8f5e9' : '#ffebee';
+      const _selBr = _selOk ? '#81c784' : '#ef9a9a';
+      const _selIcon = _selOk ? '✓' : '⚠';
+      const _failDetails = _selCheck.checks
+        .filter(ck => !ck.ok)
+        .map(ck => `${ck.type}: ${ck.info}`)
+        .join('; ');
+      h.push(`<div style="background:${_selBg};border:1px solid ${_selBr};border-radius:4px;padding:6px 8px;font-size:11px;color:${_selColor};margin-top:6px;line-height:1.4">
+        <b>${_selIcon} Селективность с ${escHtml(_upImm.label)}:</b> ${_selOk ? 'обеспечена' : 'нарушена'}
+        ${_failDetails ? `<div class="muted" style="font-size:10px;margin-top:2px;color:#555">${escHtml(_failDetails)}</div>` : ''}
+        ${!_selOk ? '<div style="font-size:10px;margin-top:2px;color:#555">Откройте TCC-карту ниже или раздел «Уставки защиты» — повысьте Isd_up или tsd_up.</div>' : ''}
+      </div>`);
+    }
   }
 
   // === TCC-карта защиты линии (Фаза 1.9.2) ===
