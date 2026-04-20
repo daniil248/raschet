@@ -3313,6 +3313,15 @@ function exportProjectIssuesCsv() {
     }
   }
 
+  // Phase 1.20.42: N-1 проверка в CSV
+  const _n1csv = _computeN1(S);
+  if (_n1csv && _n1csv.applicable && !_n1csv.ok) {
+    const gap = (_n1csv.totalLoad - _n1csv.capAfterFail).toFixed(1);
+    rows.push(['Предупр.', 'N-1 резерв', '—', '—',
+      'Отказ самого мощного рабочего источника → недостаток мощности',
+      `max fail = ${_n1csv.maxNonStandby.toFixed(1)} кВт · резерв = ${_n1csv.maxStandby.toFixed(1)} кВт · доступно = ${_n1csv.capAfterFail.toFixed(1)} кВт · load = ${_n1csv.totalLoad.toFixed(1)} кВт · дефицит = ${gap} кВт`]);
+  }
+
   // Non-selective pairs
   try {
     const sel = window.Raschet?.analyzeSelectivity?.();
@@ -3381,7 +3390,36 @@ function _countProjectIssues() {
     const sel = window.Raschet?.analyzeSelectivity?.();
     if (sel && Array.isArray(sel.pairs)) wrn += sel.pairs.filter(p => !p.check?.selective).length;
   } catch {}
+  // Phase 1.20.42: N-1 проверка — отказ самого мощного рабочего источника.
+  // Warning, если capAfterFail < totalLoad и источников хотя бы 2.
+  const _n1 = _computeN1(S);
+  if (_n1 && _n1.applicable && !_n1.ok) wrn++;
   return { errors: err, warns: wrn };
+}
+
+// Phase 1.20.42: общий расчёт N-1 резерва. Возвращает { applicable, ok,
+// totalLoad, capAfterFail, maxNonStandby, maxStandby } или null.
+function _computeN1(S) {
+  if (!S) return null;
+  let totalLoad = 0, availCap = 0;
+  const nonStandbyCaps = [];
+  const standbyCaps = [];
+  for (const n of S.nodes.values()) {
+    if (n.type === 'consumer') {
+      const per = Number(n.demandKw) || 0;
+      const cnt = Math.max(1, Number(n.count) || 1);
+      totalLoad += per * cnt;
+    } else if (n.type === 'source' || n.type === 'generator') {
+      const cap = Number(n.capacityKw) || 0;
+      if (n.isStandby) standbyCaps.push(cap);
+      else { availCap += cap; nonStandbyCaps.push(cap); }
+    }
+  }
+  const applicable = nonStandbyCaps.length >= 2 || standbyCaps.length > 0;
+  const maxNonStandby = nonStandbyCaps.length ? Math.max(...nonStandbyCaps) : 0;
+  const maxStandby = standbyCaps.length ? Math.max(...standbyCaps) : 0;
+  const capAfterFail = availCap - maxNonStandby + maxStandby;
+  return { applicable, ok: capAfterFail >= totalLoad, totalLoad, capAfterFail, maxNonStandby, maxStandby };
 }
 
 // Phase 1.20.34: компактный статус-бар над холстом (всегда виден)
@@ -3632,8 +3670,13 @@ function renderProjectIssues() {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
+  // Phase 1.20.42: N-1 проверка — предупреждение, если отказ самого
+  // мощного рабочего источника приведёт к недостатку мощности.
+  const n1 = _computeN1(S);
+  const n1Warn = (n1 && n1.applicable && !n1.ok) ? n1 : null;
+
   const totalErrors = cableErrors.length + mvOverloads.length + sourceOverloads.length + duplicateTags.length;
-  const totalWarns = cableWarns.length + selPairs.length + orphans.length;
+  const totalWarns = cableWarns.length + selPairs.length + orphans.length + (n1Warn ? 1 : 0);
 
   // Phase 1.20.21: кнопка «Исправить всё» — применяет все автофиксы
   const fixableCount = cableErrors.filter(e => !!e.fix).length;
@@ -3711,6 +3754,18 @@ function renderProjectIssues() {
         <span style="flex:1;font-size:11px;color:#c62828">Дубликат обозначения — одно и то же имя у двух и более узлов</span>
       </div>`).join('');
     html.push(section('Дубликаты обозначений', '🔁', duplicateTags.length, dupHtml));
+  }
+  if (n1Warn) {
+    const gap = (n1Warn.totalLoad - n1Warn.capAfterFail).toFixed(1);
+    const n1Html = `
+      <div style="padding:8px 12px;border-bottom:1px solid #eaecef">
+        <span style="font-weight:600;color:#e65100">N-1 резерв недостаточен</span>
+        <span style="font-size:11px;color:#666;margin-left:10px">
+          Отказ самого мощного рабочего источника (${n1Warn.maxNonStandby.toFixed(1)} кВт) → доступно ${n1Warn.capAfterFail.toFixed(1)} кВт,
+          нагрузка ${n1Warn.totalLoad.toFixed(1)} кВт, дефицит <b>${gap} кВт</b>${n1Warn.maxStandby > 0 ? ` (учтён резерв ${n1Warn.maxStandby.toFixed(1)} кВт)` : ' (резерва нет)'}
+        </span>
+      </div>`;
+    html.push(section('N-1 резервирование', '⚠', 1, n1Html));
   }
   html.push(section('Предупреждения кабелей', '⚠', cableWarns.length, renderLineList(cableWarns, '#e65100')));
   if (orphans.length) {
