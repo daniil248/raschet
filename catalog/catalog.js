@@ -530,6 +530,52 @@ function readPduFields() {
   };
 }
 
+// v0.58.76: форма для rack-accessory — категория, совместимость, примечание.
+const ACC_CAT_OPTS = [
+  ['mounting', 'Монтаж / полки / постаменты'],
+  ['cable',    'Кабель-менеджмент'],
+  ['cooling',  'Охлаждение / воздушные потоки'],
+  ['power',    'Питание (разветвители и т.п.)'],
+  ['other',    'Прочее'],
+];
+function renderRackAccessoryFields(el) {
+  const kp = el.kindProps || {};
+  const note = kp.note || el.description || '';
+  const compat = Array.isArray(kp.mfgCompat) ? kp.mfgCompat.join(', ')
+                 : (kp.mfgCompat || '');
+  const u = kp.uSize != null ? kp.uSize : '';
+  return `
+    <fieldset style="border:1px solid #ddd;padding:10px;margin-top:12px;border-radius:4px">
+      <legend style="font-size:12px;font-weight:600;padding:0 6px">Параметры аксессуара</legend>
+      <div class="field-row">
+        <div class="field"><label>Категория</label><select id="f-acc-cat">${_selOpts(ACC_CAT_OPTS, kp.category || 'mounting')}</select></div>
+        <div class="field"><label>Размер, U (если применимо)</label><input id="f-acc-u" type="number" min="0" max="52" value="${u}"></div>
+      </div>
+      <div class="field">
+        <label>Совместимость с производителями стоек</label>
+        <input id="f-acc-compat" value="${esc(compat)}" placeholder="APC, Rittal, Kehua — через запятую; пусто = только свой">
+      </div>
+      <div class="field">
+        <label>Примечание</label>
+        <textarea id="f-acc-note" rows="2">${esc(note)}</textarea>
+      </div>
+    </fieldset>`;
+}
+function readRackAccessoryFields() {
+  const $ = id => document.getElementById(id);
+  const compatRaw = ($('f-acc-compat')?.value || '').trim();
+  const mfgCompat = compatRaw
+    ? compatRaw.split(',').map(s => s.trim()).filter(Boolean)
+    : undefined;
+  const uSize = $('f-acc-u')?.value;
+  return {
+    category: $('f-acc-cat')?.value || undefined,
+    uSize: uSize === '' ? undefined : Number(uSize) || 0,
+    mfgCompat,
+    note: ($('f-acc-note')?.value || '').trim() || undefined,
+  };
+}
+
 // v0.58.75: универсальная секция — габариты / электрика / kindProps raw.
 // Доступна для ВСЕХ типов элементов, помимо kind-специфичных секций rack/pdu.
 function renderGenericFields(el) {
@@ -650,6 +696,7 @@ function openAddElementModal(editId) {
   let kindSpecific = '';
   if (el.kind === 'rack') kindSpecific = renderRackFields(el);
   else if (el.kind === 'pdu') kindSpecific = renderPduFields(el);
+  else if (el.kind === 'rack-accessory') kindSpecific = renderRackAccessoryFields(el);
   const genericFields = renderGenericFields(el);
 
   const html = `
@@ -697,6 +744,11 @@ function openAddElementModal(editId) {
         })[pdu.category] || pdu.category,
       };
       base.electrical = { ...(el.electrical || {}), phases: pdu.phases, capacityA: pdu.rating };
+    } else if (kind === 'rack-accessory') {
+      const acc = readRackAccessoryFields();
+      base.kindProps = { ...(el.kindProps || {}), ...acc };
+      // note дублируем в description для обратной совместимости
+      if (acc.note && !base.description) base.description = acc.note;
     }
     // Универсальная секция (габариты/электрика/kindProps raw) —
     // применяется поверх kind-специфичных значений, чтобы пользователь
