@@ -276,9 +276,11 @@
   - Риск-бенефит: объединение сейчас = 5 каталогов × миграция + regressions vs. 1 новая фича (BOM) за то же время.
   - **План:** сделать 1.2.2 в Фазе 1.5 (или как микро-подфаза после 1.4), когда весь новый код уже не зависит от нативных схем.
 
-- [ ] **1.2.3** `catalog-xlsx-parser.js`:
-  - Единый `parseXlsx(buffer, {kind})` → возвращает массив `Element[]`
-  - Унифицированные schemas для 5+ kind'ов
+- [x] **1.2.3** `catalog-xlsx-parser.js` — v0.57.85:
+  - `parseXlsx(buffer, {kind})` реализован через dispatch к существующим per-kind парсерам (parseUpsXlsx/parsePanelXlsx/parseTransformerXlsx) + ленивый импорт `element-schemas.js` для конвертации legacy → Element
+  - Возвращает `{kind, filename, elements, legacy, errors}` — `legacy` сохранён для обратной совместимости с существующими addUps/addPanel/addTransformer
+  - `supportedParseXlsxKinds()` — список поддерживаемых kind'ов
+  - Поддерживаются: `ups`, `panel`, `transformer`. Battery и cable-type SKU остаются через отдельные пайплайны (battery-data-parser, catalog/tab-import)
 
 #### Подфаза 1.3 — Phantom элементы и BOM (1 неделя) ✅
 
