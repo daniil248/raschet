@@ -95,6 +95,41 @@ export function isOnCurrentPage(obj) {
   if (!Array.isArray(pids) || pids.length === 0) return true;
   return pids.includes(state.currentPageId);
 }
+// Phase 2.3 (v0.58.3): per-page positions.
+// Каждая карточка может иметь разное расположение на разных страницах
+// (например, schematic vs layout vs mechanical). Общие данные (имя,
+// параметры, связи) остаются в одном месте — меняется только x/y.
+//
+// Механизм: при переключении страниц
+//   - текущие n.x/n.y сохраняются в n.positionsByPage[oldPageId]
+//   - из n.positionsByPage[newPageId] загружается позиция для новой
+//     страницы; если записи нет — n.x/n.y остаются как были (каждая
+//     новая страница "наследует" дефолтную позицию при первом визите).
+//
+// Во время drag никакого кода менять не нужно — он пишет в n.x/n.y
+// как раньше. Сохранение в positionsByPage происходит только в момент
+// смены страницы (и при serialize).
+export function saveCurrentPagePositions(pageId) {
+  if (!pageId) return;
+  for (const n of state.nodes.values()) {
+    if (typeof n.x !== 'number' || typeof n.y !== 'number') continue;
+    if (!n.positionsByPage) n.positionsByPage = {};
+    n.positionsByPage[pageId] = { x: n.x, y: n.y };
+  }
+}
+export function loadPagePositions(pageId) {
+  if (!pageId) return;
+  for (const n of state.nodes.values()) {
+    const pos = n.positionsByPage && n.positionsByPage[pageId];
+    if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+      n.x = pos.x;
+      n.y = pos.y;
+    }
+    // если записи нет — n.x/n.y не трогаем (остаются от предыдущей
+    // страницы как дефолт для первого визита этой страницы).
+  }
+}
+
 // Следующий свободный id страницы
 export function nextPageId() {
   let k = 1;

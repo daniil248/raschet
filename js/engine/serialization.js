@@ -34,6 +34,16 @@ export function serialize() {
   // Перед сериализацией — сохранить текущий view в текущую страницу
   const cur = state.pages.find(p => p.id === state.currentPageId);
   if (cur) cur.view = { ...state.view };
+  // Phase 2.3 (v0.58.3): сохранить актуальные позиции узлов в
+  // n.positionsByPage[currentPageId] чтобы per-page расположение
+  // корректно сохранилось в проект.
+  try {
+    for (const n of state.nodes.values()) {
+      if (typeof n.x !== 'number' || typeof n.y !== 'number') continue;
+      if (!n.positionsByPage) n.positionsByPage = {};
+      n.positionsByPage[state.currentPageId] = { x: n.x, y: n.y };
+    }
+  } catch {}
 
   return {
     version: 4,

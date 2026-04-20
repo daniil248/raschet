@@ -436,6 +436,13 @@ export function renderPageKindBanner() {
   const kind = getPageKind(page);
   const meta = PAGE_KINDS_META[kind];
 
+  // Phase 2.3 (v0.58.3): на layout-страницах скрываем порты и линии
+  // соединений — это план расстановки, а не принципиалка. CSS-класс
+  // .layout-mode на SVG управляет видимостью (данные не меняются).
+  if (svg) {
+    svg.classList.toggle('layout-mode', kind === 'layout');
+  }
+
   // Фон холста: миллиметровка для layout, обычная сетка для остальных.
   if (bg) {
     const showGrid = (typeof GLOBAL !== 'undefined') ? (GLOBAL.showGrid !== false) : true;

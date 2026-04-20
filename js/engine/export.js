@@ -1,4 +1,4 @@
-import { state, svg, ensureDefaultPage, getCurrentPage, nextPageId, PAGE_KINDS_META, PAGE_KINDS, getPageKind } from './state.js';
+import { state, svg, ensureDefaultPage, getCurrentPage, nextPageId, PAGE_KINDS_META, PAGE_KINDS, getPageKind, saveCurrentPagePositions, loadPagePositions } from './state.js';
 import { NODE_H, SVG_NS, GLOBAL } from './constants.js';
 import { nodeWidth, nodeHeight } from './geometry.js';
 import { updateViewBox, render } from './render.js';
@@ -306,7 +306,11 @@ export function initToolbar() {
     if (pageId === state.currentPageId) return;
     const cur = getCurrentPage();
     if (cur) cur.view = { ...state.view };
+    // Phase 2.3 (v0.58.3): сохраняем позиции узлов для старой страницы
+    // и загружаем позиции новой (per-page расположение).
+    saveCurrentPagePositions(state.currentPageId);
     state.currentPageId = pageId;
+    loadPagePositions(pageId);
     const next = getCurrentPage();
     if (next && next.view) state.view = { ...next.view };
     state.selectedKind = null; state.selectedId = null;
