@@ -199,16 +199,66 @@ export function buildBOM() {
         'measurement': 'Измерение', 'earthing': 'Заземление',
         'metering': 'Учёт',
       };
+      // v0.57.55: детализация аппаратов ячейки — VCB/switch/fuse/реле
+      // попадают как отдельные позиции в «Аппараты РУ СН». Ячейка как
+      // мех. изделие остаётся в «Ячейки РУ СН».
+      const BRK_LABELS = {
+        'VCB': 'Вакуумный выключатель',
+        'SF6': 'Элегазовый выключатель',
+        'fuse-switch': 'Выключатель-разъединитель с предохранителями',
+        'load-break-switch': 'Выключатель нагрузки',
+        'disconnector': 'Разъединитель',
+      };
       for (const cell of n.mvCells) {
         const brk = cell.breakerType || '—';
         const In = cell.In_A || cell.In || 0;
         const typeLabel = CELL_LABELS[cell.type] || cell.type || '?';
-        const fake = {
+        const cellNote = (n.name || n.tag || '') + (cell.functionCode ? ' / ' + cell.functionCode : '');
+        // 1. Ячейка как мех. единица (шкаф + шины)
+        const cellFake = {
           id: `mvcell:${cell.type}:${brk}:${In}`,
           supplier: n.mvManufacturer || '',
           model: `${typeLabel} · ${brk} · ${In}А`,
         };
-        pushAgg('Ячейки РУ СН', fake, 1, (n.name || n.tag || '') + (cell.functionCode ? ' / ' + cell.functionCode : ''));
+        pushAgg('Ячейки РУ СН', cellFake, 1, cellNote);
+        // 2. Защитный аппарат — отдельной строкой
+        const brkLabel = BRK_LABELS[brk];
+        if (brkLabel) {
+          const brkFake = {
+            id: `mvbrk:${brk}:${In}`,
+            supplier: n.mvManufacturer || '',
+            model: `${brkLabel} ${In}А, ${n.mvVoltageKV || '—'} кВ`,
+          };
+          pushAgg('Аппараты РУ СН', brkFake, 1, cellNote);
+          // 3. Для fuse-switch — ПК-предохранители (3 шт. на 3ф)
+          if (brk === 'fuse-switch') {
+            const fuseIn = cell.fuseInA || cell.settings?.fuseIn || Math.ceil(In / 10) * 10;
+            const fuseFake = {
+              id: `mvfuse:${fuseIn}`,
+              supplier: '',
+              model: `Предохранитель ПК (HV fuse) ${fuseIn}А, ${n.mvVoltageKV || '—'} кВ`,
+            };
+            pushAgg('Аппараты РУ СН', fuseFake, 3, cellNote);
+          }
+          // 4. Для VCB/SF6 с релейными уставками — реле защиты
+          if ((brk === 'VCB' || brk === 'SF6') && cell.settings && Number(cell.settings.Ir) > 0) {
+            const relayFake = {
+              id: `mvrelay:generic`,
+              supplier: '',
+              model: `Реле защиты МВ (Ir/Isd/tsd/Ii, IEC 60255)`,
+            };
+            pushAgg('Аппараты РУ СН', relayFake, 1, cellNote);
+          }
+        }
+        // 5. Для transformer-protect — трансформатор тока (3 шт. на 3ф)
+        if (cell.type === 'transformer-protect' || cell.type === 'measurement') {
+          const ctFake = {
+            id: `mvct:${In}`,
+            supplier: '',
+            model: `Трансформатор тока ${In}/5А, ${n.mvVoltageKV || '—'} кВ`,
+          };
+          pushAgg('Аппараты РУ СН', ctFake, 3, cellNote);
+        }
       }
     }
   }
@@ -218,6 +268,7 @@ export function buildBOM() {
     'Трансформаторы',
     'Щиты',
     'Ячейки РУ СН',
+    'Аппараты РУ СН',
     'ИБП',
     'Фреймы ИБП',
     'Силовые модули ИБП',
