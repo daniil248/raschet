@@ -2832,13 +2832,30 @@ function renderDashboard() {
   // Счётчики узлов
   const counts = { source: 0, generator: 0, 'panel-lv': 0, 'panel-mv': 0, ups: 0, consumer: 0 };
   let totalLoad = 0, totalCap = 0;
+  // Phase 1.20.37: общая нагрузка = сумма _powerP активных потребителей
+  // (не сумма _loadKw по источникам/генераторам — там резерв N+1 или
+  // параллельная работа могут давать двойной учёт одних и тех же потребителей).
+  // Активным считаем потребителя, у которого есть хотя бы один живой фидер
+  // (c._active). Это исключает отключённые ветки и backup-пути.
+  const consumerActive = new Set();
+  for (const c of S.conns.values()) {
+    if (!c._active) continue;
+    const toN = S.nodes.get(c.to?.nodeId);
+    if (toN && toN.type === 'consumer') consumerActive.add(toN.id);
+  }
   for (const n of S.nodes.values()) {
     const k = _equipKindOf(n);
     if (k) counts[k] = (counts[k] || 0) + 1;
-    if (n.type === 'consumer') counts.consumer++;
+    if (n.type === 'consumer') {
+      counts.consumer++;
+      // если у потребителя не осталось активных фидеров — он обесточен и
+      // реальной нагрузки не создаёт
+      if (consumerActive.has(n.id) || consumerActive.size === 0) {
+        totalLoad += Number(n._powerP) || 0;
+      }
+    }
     if (n.type === 'source' || n.type === 'generator') {
       totalCap += Number(n.capacityKw) || 0;
-      totalLoad += Number(n._loadKw) || 0;
     }
   }
 
@@ -3170,13 +3187,24 @@ function _updateProjectStatusBar() {
   if (!S) { bar.innerHTML = ''; return; }
   let consumers = 0, panels = 0, mvPanels = 0, sources = 0;
   let totalLoad = 0, totalCap = 0;
+  // Phase 1.20.37: totalLoad — сумма P активных потребителей (без двойного учёта)
+  const consumerActive = new Set();
+  for (const c of S.conns.values()) {
+    if (!c._active) continue;
+    const toN = S.nodes.get(c.to?.nodeId);
+    if (toN && toN.type === 'consumer') consumerActive.add(toN.id);
+  }
   for (const n of S.nodes.values()) {
-    if (n.type === 'consumer') consumers++;
+    if (n.type === 'consumer') {
+      consumers++;
+      if (consumerActive.has(n.id) || consumerActive.size === 0) {
+        totalLoad += Number(n._powerP) || 0;
+      }
+    }
     else if (n.type === 'panel') { if (n.isMv) mvPanels++; else panels++; }
     else if (n.type === 'source' || n.type === 'generator') {
       sources++;
       totalCap += Number(n.capacityKw) || 0;
-      totalLoad += Number(n._loadKw) || 0;
     }
   }
   let cables = 0;
