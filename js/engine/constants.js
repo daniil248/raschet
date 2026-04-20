@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.58.40';
+export const APP_VERSION = '0.58.41';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -42,9 +42,16 @@ export const SYSTEMS_CATALOG = [
     { key: 'material', label: 'Материал', type: 'select', options: ['', 'сталь', 'медь', 'PP-R', 'PEX', 'ПВХ'] },
   ] },
   { id: 'hvac',        label: 'Воздуховоды', icon: '🌬️', color: '#64748b', pageKinds: ['mechanical'], params: [
-    { key: 'size',    label: 'Сечение', type: 'text', unit: 'мм (WxH или ⌀)' },
-    { key: 'airflow', label: 'Расход воздуха', type: 'number', unit: 'м³/ч', min: 0, step: 10 },
-    { key: 'type',    label: 'Назначение', type: 'select', options: ['', 'приток', 'вытяжка', 'рециркуляция', 'дымоудаление'] },
+    { key: 'size',        label: 'Сечение', type: 'text', unit: 'мм (WxH или ⌀)' },
+    { key: 'airflow',     label: 'Расход воздуха', type: 'number', unit: 'м³/ч', min: 0, step: 10 },
+    { key: 'pressure',    label: 'Напор (статическое давление)', type: 'number', unit: 'Па', min: 0, step: 10 },
+    { key: 'coolingKw',   label: 'Холодопроизводительность', type: 'number', unit: 'кВт', min: 0, step: 0.1 },
+    { key: 'heatingKw',   label: 'Теплопроизводительность', type: 'number', unit: 'кВт', min: 0, step: 0.1 },
+    { key: 'eer',         label: 'EER (холод)', type: 'number', unit: 'Вт/Вт', min: 0, step: 0.1 },
+    { key: 'cop',         label: 'COP (тепло)', type: 'number', unit: 'Вт/Вт', min: 0, step: 0.1 },
+    { key: 'refrigerant', label: 'Хладагент', type: 'select', options: ['', 'R32', 'R410A', 'R454B', 'R290', 'R744 (CO₂)', 'R134a'] },
+    { key: 'acType',      label: 'Тип кондиционера', type: 'select', options: ['', 'сплит', 'мульти-сплит', 'VRF/VRV', 'канальный', 'кассетный', 'прецизионный', 'чиллер', 'фанкойл'] },
+    { key: 'type',        label: 'Назначение воздуховода', type: 'select', options: ['', 'приток', 'вытяжка', 'рециркуляция', 'дымоудаление'] },
   ] },
   { id: 'gas',         label: 'Газ',         icon: '🔥', color: '#f59e0b', pageKinds: ['mechanical'], params: [
     { key: 'medium',   label: 'Среда', type: 'select', options: ['', 'природный', 'СУГ', 'биогаз'] },
