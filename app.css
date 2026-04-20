@@ -987,7 +987,9 @@ input, select { font: inherit; }
 /* Phase 2.?: tabs-bar в модалках параметров (consumer / source / panel / ...) */
 .tp-tabs {
   display: flex;
+  flex-wrap: wrap;           /* v0.58.40: при переполнении — на новую строку */
   gap: 2px;
+  row-gap: 0;
   margin: 10px 0 14px;
   border-bottom: 1px solid #e0e4ea;
 }
@@ -1012,6 +1014,10 @@ input, select { font: inherit; }
   pointer-events: none;
   z-index: 5;
   user-select: none;
+}
+/* v0.58.40: сами полосы линеек и угол принимают клики (drag + установка 0). */
+.layout-ruler [data-ruler] {
+  pointer-events: auto;
 }
 /* Phase 2.3 (v0.58.3): на layout-странице (расстановка) нет коннекторов —
    скрываем порты и линии связи, остаются только корпуса карточек. */

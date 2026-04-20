@@ -80,7 +80,18 @@ const Local = {
 };
 
 // --------------------------- Firestore adapter ---------------------------
-function fsDb() { return firebase.firestore(); }
+// v0.58.40: Firestore не принимает undefined в payload'ах. Конфигурируем
+// клиент один раз через settings({ignoreUndefinedProperties:true}),
+// чтобы случайное `undefined` в scheme не валило сохранение.
+let _fsConfigured = false;
+function fsDb() {
+  const db = firebase.firestore();
+  if (!_fsConfigured) {
+    try { db.settings({ ignoreUndefinedProperties: true, merge: true }); } catch {}
+    _fsConfigured = true;
+  }
+  return db;
+}
 function ts() { return firebase.firestore.FieldValue.serverTimestamp(); }
 function arrayUnion(v) { return firebase.firestore.FieldValue.arrayUnion(v); }
 function arrayRemove(v) { return firebase.firestore.FieldValue.arrayRemove(v); }

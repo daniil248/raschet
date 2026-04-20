@@ -50,21 +50,26 @@ export function serialize() {
     nextId: getIdSeq(),
     nodes: Array.from(state.nodes.values()).map(stripRuntime),
     conns: Array.from(state.conns.values()).map(stripRuntime),
-    pages: (state.pages || []).map(p => ({
-      id: p.id, name: p.name, type: p.type || 'independent',
-      kind: p.kind || 'schematic',
-      sourcePageId: p.sourcePageId || null,
-      view: p.view || { x: 0, y: 0, zoom: 1 },
-      designation: p.designation || '',
-      sheetNo: p.sheetNo || '',
-      title: p.title || '',
-      revision: p.revision || '',
-      description: p.description || '',
-      // v0.58.37: нулевая точка для layout-страниц (мировые мм)
-      originMm: (p.originMm && Number.isFinite(p.originMm.x) && Number.isFinite(p.originMm.y))
-        ? { x: p.originMm.x, y: p.originMm.y } : undefined,
-      scale: p.scale || undefined,
-    })),
+    pages: (state.pages || []).map(p => {
+      // v0.58.40: Firestore не принимает undefined — поэтому собираем объект
+      // условно, без лишних ключей.
+      const out = {
+        id: p.id, name: p.name, type: p.type || 'independent',
+        kind: p.kind || 'schematic',
+        sourcePageId: p.sourcePageId || null,
+        view: p.view || { x: 0, y: 0, zoom: 1 },
+        designation: p.designation || '',
+        sheetNo: p.sheetNo || '',
+        title: p.title || '',
+        revision: p.revision || '',
+        description: p.description || '',
+      };
+      if (p.scale) out.scale = String(p.scale);
+      if (p.originMm && Number.isFinite(p.originMm.x) && Number.isFinite(p.originMm.y)) {
+        out.originMm = { x: p.originMm.x, y: p.originMm.y };
+      }
+      return out;
+    }),
     currentPageId: state.currentPageId,
     project: { ...(state.project || {}) },
     modes: state.modes,
