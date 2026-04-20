@@ -131,6 +131,16 @@ function _tryConsumePendingUpsSelection() {
       console.info('[ups-config] applied configuration', cfg);
     }
     render(); renderInspector(); notifyChange();
+    // v0.57.58: если в момент возврата из ups-config открыта модалка
+    // «Параметры ИБП» для этого же узла — переоткрываем её, чтобы поля
+    // и каталожный пикер отразили новую модель и компоненты. Без этого
+    // модалка показывает старые данные (её тело заполняется один раз
+    // при открытии).
+    try {
+      const upsModal = document.getElementById('modal-ups-params');
+      const isOpen = upsModal && !upsModal.classList.contains('hidden');
+      if (isOpen) openUpsParamsModal(node);
+    } catch (e) { console.warn('[ups-config] modal refresh failed', e); }
     console.info('[ups-config] applied', payload.ups.id, 'to', node.id);
   } catch (e) {
     console.warn('[ups-config] apply failed', e);
