@@ -966,6 +966,32 @@ input, select { font: inherit; }
 .page-tab .page-tab-type { font-size: 9px; color: #999; text-transform: uppercase; }
 .page-tab.linked .page-tab-type { color: #9c27b0; }
 .page-tab .page-tab-kind { font-size: 13px; margin-right: 2px; opacity: 0.85; }
+/* Phase 2.1: баннер вида страницы поверх холста (для layout/mechanical/…) */
+.page-kind-banner {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: rgba(255, 193, 7, 0.92);
+  color: #333;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.page-kind-banner .pkb-icon { margin-right: 6px; font-size: 14px; }
+.page-kind-banner .pkb-beta {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 10px;
+  text-transform: uppercase;
+  opacity: 0.75;
+  letter-spacing: 0.5px;
+}
 .page-tab-add {
   background: #f0f2f6;
   border: 1px solid #dfe2e8;

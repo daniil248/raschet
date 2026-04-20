@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { svg, layerZones, layerConns, layerNodes, layerOver, statsEl, modesListEl, isOnCurrentPage, sanitizeView } from './state.js';
+import { svg, layerZones, layerConns, layerNodes, layerOver, statsEl, modesListEl, isOnCurrentPage, sanitizeView, getCurrentPage, getPageKind, PAGE_KINDS_META } from './state.js';
 import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES } from './constants.js';
 
 // IEC installation method → legacy CHANNEL_TYPES key (для иконок/лейблов)
@@ -294,6 +294,25 @@ export function render() {
   renderModes();
   decorateRemoteLocks();
   renderRemoteCursors();
+  renderPageKindBanner();
+}
+
+// Phase 2.1: баннер «бета-вид» над холстом для не-schematic страниц.
+// Для schematic (базовый вид — полный функционал редактора) — скрыт.
+export function renderPageKindBanner() {
+  const el = document.getElementById('page-kind-banner');
+  if (!el) return;
+  const page = getCurrentPage();
+  const kind = getPageKind(page);
+  const meta = PAGE_KINDS_META[kind];
+  if (!page || kind === 'schematic' || !meta) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = `<span class="pkb-icon">${meta.icon}</span>${meta.label}<span class="pkb-beta">бета-вид</span>`;
+  el.title = meta.desc;
 }
 
 // v0.57.78 (Collaboration C.6): курсоры других участников сессии.

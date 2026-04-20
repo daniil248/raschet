@@ -42,6 +42,7 @@ export function serialize() {
     conns: Array.from(state.conns.values()).map(stripRuntime),
     pages: (state.pages || []).map(p => ({
       id: p.id, name: p.name, type: p.type || 'independent',
+      kind: p.kind || 'schematic',
       sourcePageId: p.sourcePageId || null,
       view: p.view || { x: 0, y: 0, zoom: 1 },
       designation: p.designation || '',
@@ -109,6 +110,7 @@ export function deserialize(data) {
   if (Array.isArray(data.pages) && data.pages.length) {
     state.pages = data.pages.map(p => ({
       id: p.id, name: p.name || p.id, type: p.type || 'independent',
+      kind: p.kind || 'schematic',
       sourcePageId: p.sourcePageId || null,
       view: sanitizeView(p.view),
       designation: p.designation || '',
