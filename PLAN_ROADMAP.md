@@ -692,6 +692,11 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.36 (v0.57.11)** — кнопка «✕ Сброс» в header всех трёх таблиц
+  (cable / consumers / equipment). Обнуляет все per-column фильтры,
+  global search, class/category/type dropdown и сортировку — одним
+  кликом, без захода в тулбар таблицы. Использует те же reset-блоки,
+  что и существующая кнопка `#ct-clear-filters` в cable-table.
 - **1.20.35 (v0.57.10)** — карточки Dashboard стали интерактивными.
   Расширен helper `card(title, value, sub, bg, color, action)` — при
   указании action карточка получает class="dash-card", cursor:pointer,

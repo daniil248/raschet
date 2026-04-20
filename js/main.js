@@ -1831,6 +1831,24 @@ function openCableTableModal(opts) {
   }
   const csvBtn = document.getElementById('cable-table-export-csv');
   if (csvBtn) csvBtn.onclick = exportCableTableCsv;
+  // Phase 1.20.36: кнопка «✕ Сброс» в header — сброс всех фильтров и сортировки
+  const resetBtn = document.getElementById('cable-table-reset-filters');
+  if (resetBtn) resetBtn.onclick = () => {
+    _cableTableFilters = {
+      search: '', class: '',
+      mark: '', method: '', conductor: '',
+      parallel: null,
+      lengthMin: null, lengthMax: null,
+      imaxMin: null, imaxMax: null,
+      label: '', fromTo: '',
+      category: '', breaker: null, curve: '', status: '',
+    };
+    _cableTableSort = { col: 'label', dir: 'asc' };
+    const s = document.getElementById('cable-table-search'); if (s) s.value = '';
+    const cls = document.getElementById('cable-table-filter-class'); if (cls) cls.value = '';
+    const cat = document.getElementById('cable-table-filter-category'); if (cat) cat.value = '';
+    renderCableTable();
+  };
 }
 
 function exportCableTableCsv() {
@@ -3810,6 +3828,15 @@ function openConsumersTableModal() {
   }
   const csvBtn = document.getElementById('consumers-table-export-csv');
   if (csvBtn) csvBtn.onclick = exportConsumersTableCsv;
+  // Phase 1.20.36
+  const resetBtn = document.getElementById('consumers-table-reset-filters');
+  if (resetBtn) resetBtn.onclick = () => {
+    _consumersTableFilters = { search: '', phase: '', category: '', parent: '' };
+    _consumersTableSort = { col: 'tag', dir: 'asc' };
+    const s = document.getElementById('consumers-table-search'); if (s) s.value = '';
+    const ph = document.getElementById('consumers-table-filter-phase'); if (ph) ph.value = '';
+    renderConsumersTable();
+  };
 }
 
 function renderConsumersTable() {
@@ -4230,6 +4257,15 @@ function openEquipmentTableModal(opts) {
   }
   const csvBtn = document.getElementById('equipment-table-export-csv');
   if (csvBtn) csvBtn.onclick = exportEquipmentTableCsv;
+  // Phase 1.20.36
+  const resetBtn = document.getElementById('equipment-table-reset-filters');
+  if (resetBtn) resetBtn.onclick = () => {
+    _equipTableFilters = { search: '', type: '' };
+    _equipTableSort = { col: 'tag', dir: 'asc' };
+    const s = document.getElementById('equipment-table-search'); if (s) s.value = '';
+    const t = document.getElementById('equipment-table-filter-type'); if (t) t.value = '';
+    renderEquipmentTable();
+  };
 }
 
 function _equipKindOf(n) {
