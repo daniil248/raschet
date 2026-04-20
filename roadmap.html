@@ -102,6 +102,34 @@
       mount.innerHTML = filtered ? mdToHtml(filtered) : '<div style="color:#888">Ничего не найдено</div>';
     }
     load();
+
+    // v0.58.8: кнопка «наверх» в правом нижнем углу при скролле
+    (function() {
+      const btn = document.createElement('button');
+      btn.id = 'scroll-top-btn';
+      btn.type = 'button';
+      btn.title = 'Наверх';
+      btn.textContent = '↑';
+      Object.assign(btn.style, {
+        position: 'fixed', right: '24px', bottom: '24px',
+        width: '44px', height: '44px', borderRadius: '50%',
+        border: 'none', background: '#2c3e50', color: '#fff',
+        fontSize: '20px', fontWeight: '700', cursor: 'pointer',
+        boxShadow: '0 4px 12px rgba(0,0,0,.2)',
+        opacity: '0', pointerEvents: 'none',
+        transition: 'opacity .2s ease',
+        zIndex: '9999',
+      });
+      document.body.appendChild(btn);
+      const toggle = () => {
+        const show = (window.scrollY || document.documentElement.scrollTop) > 300;
+        btn.style.opacity = show ? '0.9' : '0';
+        btn.style.pointerEvents = show ? 'auto' : 'none';
+      };
+      window.addEventListener('scroll', toggle, { passive: true });
+      btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+      toggle();
+    })();
   </script>
 </body>
 </html>
