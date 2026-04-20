@@ -51,6 +51,9 @@ import {
   bundlingIconSVG,
 } from './inspector/conn.js';
 let _render, _deleteNode, _deleteConn, _isTagUnique;
+// v0.58.55: запоминаем активную вкладку инспектора по id узла, чтобы
+// при re-render (change → renderInspector()) не сбрасывать её на «Общее».
+const _activeTabByNode = new Map();
 export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique }) {
   _render = render;
   _deleteNode = deleteNode;
@@ -832,12 +835,25 @@ export function renderInspectorNode(n) {
   inspectorBody.querySelectorAll('.tp-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
+      _activeTabByNode.set(n.id, tab);  // v0.58.55: запомнить вкладку
       inspectorBody.querySelectorAll('.tp-tab').forEach(t => t.classList.toggle('active', t === btn));
       inspectorBody.querySelectorAll('.tp-panel').forEach(p => {
         p.hidden = p.dataset.panel !== tab;
       });
     });
   });
+  // v0.58.55: после re-render (например, из-за change в инпуте) — восстановить
+  // ранее активную вкладку, чтобы пользователь не «выпадал» в Общее.
+  const savedTab = _activeTabByNode.get(n.id);
+  if (savedTab && savedTab !== 'general') {
+    const btn = inspectorBody.querySelector(`.tp-tab[data-tab="${savedTab}"]`);
+    if (btn) {
+      inspectorBody.querySelectorAll('.tp-tab').forEach(t => t.classList.toggle('active', t === btn));
+      inspectorBody.querySelectorAll('.tp-panel').forEach(p => {
+        p.hidden = p.dataset.panel !== savedTab;
+      });
+    }
+  }
 
   // Монтируем каскадный пикер трансформаторов (если узел — источник-
   // трансформатор и справочник не пуст).
@@ -1540,12 +1556,24 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
   bodyEl.querySelectorAll(':scope > .tp-tabs .tp-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
+      _activeTabByNode.set(n.id + ':modal', tab);  // v0.58.55
       bodyEl.querySelectorAll(':scope > .tp-tabs .tp-tab').forEach(t => t.classList.toggle('active', t === btn));
       bodyEl.querySelectorAll(':scope > .tp-panel').forEach(p => {
         p.hidden = p.dataset.panel !== tab;
       });
     });
   });
+  // v0.58.55: восстановить активную вкладку модалки
+  const savedModalTab = _activeTabByNode.get(n.id + ':modal');
+  if (savedModalTab && savedModalTab !== 'general') {
+    const btn = bodyEl.querySelector(`:scope > .tp-tabs .tp-tab[data-tab="${savedModalTab}"]`);
+    if (btn) {
+      bodyEl.querySelectorAll(':scope > .tp-tabs .tp-tab').forEach(t => t.classList.toggle('active', t === btn));
+      bodyEl.querySelectorAll(':scope > .tp-panel').forEach(p => {
+        p.hidden = p.dataset.panel !== savedModalTab;
+      });
+    }
+  }
   wireGeometryMmBlock(n, bodyEl);
   wireLayoutColorBlock(n, bodyEl);
   wireSystemsBlock(n, bodyEl);
