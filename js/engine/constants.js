@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.57.89';
+export const APP_VERSION = '0.57.90';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -150,7 +150,9 @@ export const CABLE_TYPES = {
 // Ряд номиналов шинопроводов, А (IEC 61439 / типовой)
 export const BUSBAR_SERIES = [250, 400, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300];
 
-// Ряд номиналов автоматов защиты (MCB до 63А, MCCB до 1600А, ACB до 6300А)
+// Ряд номиналов автоматов защиты (MCB до 125А IEC 60898, MCCB до 3200А
+// по IEC 60947-2 — Schneider ComPacT NS/NSX, ABB Tmax XT/T, Siemens 3VA,
+// ACB от 800 А до 6300 А — MasterPacT MTZ, Emax 2).
 export const BREAKER_SERIES = [6, 10, 13, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 400, 630, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000, 5000, 6300];
 
 // v0.57.57: ряд номиналов LV-предохранителей (IEC 60269-1, NH/D0 serial).
@@ -169,8 +171,8 @@ export const BREAKER_TYPES = {
   MCB_B:  { label: 'MCB кр. B',  prefix: 'B',  I2ratio: 1.45, magMin: 3,  magMax: 5,   desc: 'Освещение, розетки, длинные линии', maxIn: 63 },
   MCB_C:  { label: 'MCB кр. C',  prefix: 'C',  I2ratio: 1.45, magMin: 5,  magMax: 10,  desc: 'Общее назначение', maxIn: 63 },
   MCB_D:  { label: 'MCB кр. D',  prefix: 'D',  I2ratio: 1.45, magMin: 10, magMax: 20,  desc: 'Тяжёлый пуск, трансформаторы', maxIn: 63 },
-  MCCB:   { label: 'MCCB',       prefix: '',    I2ratio: 1.3,  magMin: 5,  magMax: 10,  desc: 'Автомат в литом корпусе (100-1600 А)', maxIn: 1600 },
-  ACB:    { label: 'ACB',        prefix: '',    I2ratio: 1.3,  magMin: 2,  magMax: 10,  desc: 'Воздушный автомат (630-6300 А)', maxIn: 6300 },
+  MCCB:   { label: 'MCCB',       prefix: '',    I2ratio: 1.3,  magMin: 5,  magMax: 10,  desc: 'Автомат в литом корпусе (100-3200 А, IEC 60947-2: Schneider ComPacT NS/NSX, ABB Tmax, Siemens 3VA)', maxIn: 3200 },
+  ACB:    { label: 'ACB',        prefix: '',    I2ratio: 1.3,  magMin: 2,  magMax: 10,  desc: 'Воздушный автомат (800-6300 А, IEC 60947-2: Schneider MasterPacT MTZ, ABB Emax 2)', maxIn: 6300 },
   gG:     { label: 'Пр-ль gG',   prefix: '',    I2ratio: 1.6,  magMin: 0,  magMax: 0,   desc: 'Предохранитель общего назначения', maxIn: 1600 },
   aM:     { label: 'Пр-ль aM',   prefix: '',    I2ratio: 1.6,  magMin: 0,  magMax: 0,   desc: 'Предохранитель для двигателей', maxIn: 1600 },
   VCB:    { label: 'VCB',        prefix: '',    I2ratio: 1.2,  magMin: 5,  magMax: 15,  desc: 'Вакуумный выключатель 6/10/35 кВ (IEC 62271-100)', maxIn: 4000, hv: true },
@@ -653,7 +655,12 @@ export function autoBreakerMargin(inrushFactor) {
 }
 export function autoBreakerCurve(inrushFactor, In) {
   const inA = Number(In) || 0;
-  if (inA > 1600) return 'ACB';
+  // v0.57.90: MCCB в литом корпусе покрывает до 3200 А (Schneider
+  // ComPacT NS/NSX, ABB Tmax, Siemens 3VA). ACB (air circuit breaker)
+  // начинается с ~3200 А (MasterPacT MTZ, Emax 2). Раньше порог был
+  // 1600 А — оставлял пространство 1600–3200 А в «ACB», хотя это
+  // классический MCCB-диапазон.
+  if (inA > 3200) return 'ACB';
   if (inA > 125) return 'MCCB';
   const k = Number(inrushFactor) || 1;
   if (k >= 4) return 'MCB_D';

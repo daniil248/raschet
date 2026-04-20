@@ -67,7 +67,9 @@ export function seedMcbBreakers() {
 /**
  * MCCB (промышленные) — один типовой ряд с электронным расцепителем.
  */
-const MCCB_IN_SERIES = [100, 160, 250, 400, 630, 800, 1000, 1250, 1600];
+// v0.57.90: ряд MCCB расширен до 3200 А (Schneider ComPacT NS1600…NS3200,
+// ABB Tmax XT7/T7 1000-1600, Siemens 3VA 1600-2500, Hyundai HGM-3200).
+const MCCB_IN_SERIES = [100, 160, 250, 400, 630, 800, 1000, 1250, 1600, 2000, 2500, 3200];
 
 export function seedMccbBreakers() {
   const out = [];

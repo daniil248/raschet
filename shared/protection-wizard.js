@@ -165,7 +165,9 @@ export function computeRecommendation({ Ib, Iz, load, reqs, cost }) {
 
 function _pickBreaker({ In, load, needAdjust, needHighIcu, reasoning }) {
   let curve;
-  if (In > 1600 || needHighIcu) { curve = 'ACB'; reasoning.push('I<sub>расч</sub> &gt; 1600 А или требуется высокий I<sub>cu</sub> → ACB.'); }
+  // v0.57.90: порог MCCB → ACB поднят с 1600 до 3200 А (Schneider ComPacT NS
+  // до 3200 А, ABB Tmax до 2500 А — классический MCCB-диапазон по IEC 60947-2).
+  if (In > 3200 || needHighIcu) { curve = 'ACB'; reasoning.push('I<sub>расч</sub> &gt; 3200 А или требуется высокий I<sub>cu</sub> → ACB.'); }
   else if (In > 125 || needAdjust) {
     curve = 'MCCB';
     reasoning.push(In > 125
