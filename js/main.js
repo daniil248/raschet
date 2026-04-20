@@ -3110,6 +3110,72 @@ function _countProjectIssues() {
   return { errors: err, warns: wrn };
 }
 
+// Phase 1.20.34: компактный статус-бар над холстом (всегда виден)
+function _updateProjectStatusBar() {
+  const bar = document.getElementById('project-statusbar');
+  if (!bar) return;
+  const S = window.Raschet?._state;
+  if (!S) { bar.innerHTML = ''; return; }
+  let consumers = 0, panels = 0, mvPanels = 0, sources = 0;
+  let totalLoad = 0, totalCap = 0;
+  for (const n of S.nodes.values()) {
+    if (n.type === 'consumer') consumers++;
+    else if (n.type === 'panel') { if (n.isMv) mvPanels++; else panels++; }
+    else if (n.type === 'source' || n.type === 'generator') {
+      sources++;
+      totalCap += Number(n.capacityKw) || 0;
+      totalLoad += Number(n._loadKw) || 0;
+    }
+  }
+  let cables = 0;
+  for (const c of S.conns.values()) {
+    if ((c._cableSize || c._busbarNom) && !c._utilityInfeed) cables++;
+  }
+  const { errors, warns } = _countProjectIssues();
+  const loadPct = totalCap > 0 ? (totalLoad / totalCap * 100) : 0;
+  const loadColor = loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : loadPct > 0 ? '#2e7d32' : '#999';
+
+  const chip = (color, bg, content, title, onClick) => {
+    const clickAttr = onClick ? ` style="pointer-events:auto;cursor:pointer" data-status-action="${onClick}"` : ' style="pointer-events:auto"';
+    return `<div class="rs-status-chip"${clickAttr} title="${title}">
+      <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:${bg};color:${color};border:1px solid ${color}33;border-radius:16px;font-size:11px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,0.08);backdrop-filter:blur(4px)">
+        ${content}
+      </span>
+    </div>`;
+  };
+  const html = [];
+  if (errors || warns) {
+    const parts = [];
+    if (errors) parts.push(`<span style="color:#c62828;font-weight:700">${errors}</span> ошибок`);
+    if (warns) parts.push(`<span style="color:#e65100;font-weight:700">${warns}</span> предупр.`);
+    html.push(chip(errors ? '#c62828' : '#e65100', 'rgba(255,255,255,0.95)', '⚠ ' + parts.join(' · '), 'Открыть «Проверки проекта» (Ctrl+Shift+I)', 'issues'));
+  } else if (S.nodes.size > 0) {
+    html.push(chip('#2e7d32', 'rgba(232,245,233,0.95)', '✓ OK', 'Проверки пройдены', 'issues'));
+  }
+  if (totalCap > 0) {
+    html.push(chip(loadColor, 'rgba(255,255,255,0.95)',
+      `⚡ ${totalLoad.toFixed(1)} / ${totalCap.toFixed(0)} кВт <span style="color:${loadColor};font-weight:600">${loadPct.toFixed(0)}%</span>`,
+      'Общая нагрузка / номинал источников · открыть Dashboard (Ctrl+Shift+D)', 'dashboard'));
+  }
+  if (cables || panels || mvPanels || consumers) {
+    const parts = [];
+    if (panels) parts.push(`🗄 ${panels}`);
+    if (mvPanels) parts.push(`⚡ ${mvPanels}`);
+    if (cables) parts.push(`🔌 ${cables}`);
+    if (consumers) parts.push(`💡 ${consumers}`);
+    html.push(chip('#1565c0', 'rgba(255,255,255,0.95)', parts.join(' · '),
+      `${panels} НКУ, ${mvPanels} РУ СН, ${cables} кабелей, ${consumers} потребителей (Ctrl+Shift+D)`, 'dashboard'));
+  }
+  bar.innerHTML = html.join('');
+  bar.querySelectorAll('[data-status-action]').forEach(el => {
+    el.addEventListener('click', () => {
+      const a = el.dataset.statusAction;
+      if (a === 'issues') openProjectIssuesModal();
+      else if (a === 'dashboard') openDashboardModal();
+    });
+  });
+}
+
 function _updateProjectIssuesBadge() {
   const btn = document.getElementById('btn-open-project-issues');
   if (!btn) return;
@@ -4603,6 +4669,8 @@ async function init() {
       markDirty();
       // Phase 1.20.21: обновляем бейдж счётчика проблем
       try { _updateProjectIssuesBadge(); } catch {}
+      // Phase 1.20.34: обновляем статус-бар над холстом
+      try { _updateProjectStatusBar(); } catch {}
     });
   }
 
@@ -4692,7 +4760,10 @@ async function init() {
   if (btnIssues) {
     btnIssues.addEventListener('click', openProjectIssuesModal);
     // Обновляем бейдж при загрузке (когда проект уже имеет state)
-    setTimeout(() => { try { _updateProjectIssuesBadge(); } catch {} }, 500);
+    setTimeout(() => {
+      try { _updateProjectIssuesBadge(); } catch {}
+      try { _updateProjectStatusBar(); } catch {}
+    }, 500);
   }
   if (els.presetsSearch) els.presetsSearch.addEventListener('input', () => renderPresets(els.presetsSearch.value));
   if (els.reportCopy) els.reportCopy.addEventListener('click', async () => {
