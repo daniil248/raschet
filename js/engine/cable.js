@@ -191,6 +191,18 @@ export function selectBreaker(Iload) {
   return BREAKER_SERIES[BREAKER_SERIES.length - 1];
 }
 
+// v0.57.57: LV-предохранитель (IEC 60269-1), gG/gM/aM. Ряд
+// номиналов 2…1250 А. Для координации с кабелем (I2 ≤ 1.45·Iz, I2=1.6·In)
+// вызывающий код может дополнительно проверить In ≤ 0.9·Iz.
+export function selectFuse(Iload) {
+  const SERIES = [2, 4, 6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160,
+    200, 250, 315, 400, 500, 630, 800, 1000, 1250];
+  for (const In of SERIES) {
+    if (In >= Iload) return In;
+  }
+  return SERIES[SERIES.length - 1];
+}
+
 // HV-выключатель (VCB / SF6, IEC 62271-100) — ряд номиналов 200..4000 А.
 // Выбирается ближайший больший номинал к расчётному току Iрасч.
 export function selectHvBreaker(Iload) {

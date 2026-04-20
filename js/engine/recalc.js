@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, BREAKER_TYPES, autoBreakerMargin, autoBreakerCurve, autoUpsBreakerNominals } from './constants.js';
-import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
+import { selectCableSize, selectBreaker, selectFuse, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
@@ -1973,6 +1973,51 @@ function recalc() {
       c._breakerIn = InPerLine;
       c._breakerPerLine = null;
       c._breakerCount = 1;
+    }
+
+    // v0.57.57: защита предохранителем — post-process. Конвертируем
+    // рассчитанные номиналы (автомат) в ближайший больший предохранитель
+    // из ряда IEC 60269-1 и помечаем флагами _protectionKind/_fuseType.
+    // Ручной номинал c.manualFuseIn имеет приоритет.
+    if (c.protectionKind === 'fuse') {
+      const fuseType = c.fuseType || 'gG';
+      const manualFuse = Number(c.manualFuseIn) || 0;
+      if (manualFuse > 0) {
+        // Тот же manual-распределения что и для автомата
+        if (parallel > 1 && isGroupLoad) {
+          c._breakerPerLine = manualFuse;
+        } else if (parallel > 1 && _effProtIndiv) {
+          c._breakerIn = manualFuse;
+          c._breakerPerLine = selectFuse(manualFuse / parallel);
+        } else {
+          c._breakerIn = manualFuse;
+          if (c._breakerPerLine) c._breakerPerLine = manualFuse;
+        }
+      } else {
+        if (c._breakerIn) c._breakerIn = selectFuse(c._breakerIn);
+        if (c._breakerPerLine) c._breakerPerLine = selectFuse(c._breakerPerLine);
+      }
+      c._protectionKind = 'fuse';
+      c._fuseType = fuseType;
+      // Координация fuse/кабель: I2 = 1.6·In (gG/gM/aM), должно быть
+      // ≤ 1.45·Iz → In ≤ 0.906·Iz. Делаем строгую проверку отдельно.
+      const checkFuse = (In, IzEff) => Iz > 0 && In > IzEff * 0.906;
+      const izEff = Iz;
+      const izTotalEff = Iz * (parallel || 1);
+      if (parallel > 1 && isGroupLoad) {
+        c._breakerAgainstCable = !!(c._breakerPerLine && checkFuse(c._breakerPerLine, izEff));
+      } else if (parallel > 1 && _effProtIndiv) {
+        const failPer = !!(c._breakerPerLine && checkFuse(c._breakerPerLine, izEff));
+        const failTot = !!(c._breakerIn && Iz > 0 && c._breakerIn > izTotalEff * 0.906);
+        c._breakerAgainstCable = failPer || failTot;
+      } else if (parallel > 1) {
+        c._breakerAgainstCable = !!(c._breakerIn && Iz > 0 && c._breakerIn > izTotalEff * 0.906);
+      } else {
+        c._breakerAgainstCable = !!(c._breakerIn && checkFuse(c._breakerIn, izEff));
+      }
+    } else {
+      c._protectionKind = 'breaker';
+      c._fuseType = null;
     }
 
     // Тип/кривая автомата: ручной (c.breakerCurve) → подсказка потребителя

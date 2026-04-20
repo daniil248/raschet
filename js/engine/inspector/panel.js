@@ -837,6 +837,11 @@ function _renderSectionedPanelControl(n, body) {
             const cnt = cc._breakerCount || 1;
             brkLabel = cnt > 1 ? `${cnt}×${cc._breakerPerLine}А` : `${cc._breakerPerLine}А`;
           }
+          // v0.57.57: префикс FU для предохранителя, QF для автомата
+          if (brkLabel) {
+            const prefix = cc._protectionKind === 'fuse' ? 'FU' : '';
+            if (prefix) brkLabel = prefix + ' ' + brkLabel;
+          }
           break;
         }
       }
@@ -1440,6 +1445,11 @@ export function openPanelControlModal(n) {
           } else if (cc._breakerPerLine) {
             const cnt = cc._breakerCount || 1;
             brkLabel = cnt > 1 ? `${cnt}×${cc._breakerPerLine}А` : `${cc._breakerPerLine}А`;
+          }
+          // v0.57.57: префикс FU для предохранителя, QF для автомата
+          if (brkLabel) {
+            const prefix = cc._protectionKind === 'fuse' ? 'FU' : '';
+            if (prefix) brkLabel = prefix + ' ' + brkLabel;
           }
           break;
         }

@@ -445,14 +445,32 @@ export function renderInspectorConn(c) {
   if (!isUtilityInfeed) {
     // Используем единый справочник из constants.js
     const autoIn = c._breakerIn || c._breakerPerLine || 0;
-    const manualBreaker = !!c.manualBreakerIn;
-    const effectiveIn = manualBreaker ? (c.manualBreakerIn || autoIn) : autoIn;
+    const manualBreaker = !!(c.manualBreakerIn || c.manualFuseIn);
+    const effectiveIn = manualBreaker
+      ? ((c.protectionKind === 'fuse' ? c.manualFuseIn : c.manualBreakerIn) || autoIn)
+      : autoIn;
     const cnt = c._breakerCount || 1;
 
     h.push('<div class="inspector-section">');
+    // v0.57.57: выбор типа защиты — автомат или плавкий предохранитель
+    const _isFuse = c.protectionKind === 'fuse';
+    const _fuseType = c.fuseType || 'gG';
+    h.push('<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">');
+    h.push('<h4 style="margin:0;font-size:12px">Защитный аппарат</h4>');
+    h.push(`<select data-conn-prop="protectionKind" style="font-size:11px;padding:2px 4px">
+      <option value="breaker"${!_isFuse ? ' selected' : ''}>Автомат (QF)</option>
+      <option value="fuse"${_isFuse ? ' selected' : ''}>Предохранитель (FU)</option>
+    </select>`);
+    if (_isFuse) {
+      h.push(`<select data-conn-prop="fuseType" style="font-size:11px;padding:2px 4px">
+        <option value="gG"${_fuseType === 'gG' ? ' selected' : ''}>gG (общего назначения)</option>
+        <option value="aM"${_fuseType === 'aM' ? ' selected' : ''}>aM (защита двигателей)</option>
+        <option value="gM"${_fuseType === 'gM' ? ' selected' : ''}>gM (комбинированная)</option>
+      </select>`);
+    }
+    h.push('</div>');
     // Toggle авто/ручной
     h.push('<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">');
-    h.push('<h4 style="margin:0;font-size:12px">Защитный аппарат</h4>');
     h.push(`<span style="font-size:10px;color:${!manualBreaker ? '#4caf50' : '#999'}">авто</span>`);
     h.push(`<div data-breaker-mode-toggle style="position:relative;width:36px;height:18px;border-radius:9px;background:${manualBreaker ? '#ff9800' : '#4caf50'};cursor:pointer;flex-shrink:0">`);
     h.push(`<div style="position:absolute;top:2px;${manualBreaker ? 'right:2px' : 'left:2px'};width:14px;height:14px;border-radius:7px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.3)"></div>`);
@@ -508,11 +526,18 @@ export function renderInspectorConn(c) {
       ${_targetMarginPct != null ? `<div class="muted" style="font-size:10px;margin-top:-2px">Целевой запас: <b>${_targetMarginPct.toFixed(0)}%</b> (${_srcLabel})</div>` : ''}`;
 
     if (manualBreaker) {
+      // v0.57.57: ряд номиналов зависит от типа защиты (автомат vs предохр.)
+      const SERIES = _isFuse
+        ? [2, 4, 6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250]
+        : BREAKER_SERIES;
+      const manualProp = _isFuse ? 'manualFuseIn' : 'manualBreakerIn';
+      const currentVal = _isFuse ? (c.manualFuseIn || autoIn) : (c.manualBreakerIn || autoIn);
       let brkOpts = '';
-      for (const nom of BREAKER_SERIES) {
-        brkOpts += `<option value="${nom}"${nom === (c.manualBreakerIn || autoIn) ? ' selected' : ''}>${nom} А</option>`;
+      for (const nom of SERIES) {
+        brkOpts += `<option value="${nom}"${nom === currentVal ? ' selected' : ''}>${nom} А</option>`;
       }
-      h.push(field('Номинал автомата', `<select data-conn-prop="manualBreakerIn">${brkOpts}</select>`));
+      h.push(field(_isFuse ? 'Номинал предохранителя' : 'Номинал автомата',
+        `<select data-conn-prop="${manualProp}">${brkOpts}</select>`));
       h.push(marginBlock());
       // Warning если запас по автомату меньше заданного минимума
       if (_brkMarginPct != null && _brkMarginPct >= 0 && _brkMarginPct < _minMarginPct) {
@@ -726,7 +751,9 @@ export function renderInspectorConn(c) {
         },
         {
           inNominal: _downIn,
-          curve: _normalizeCurveShort(c.breakerCurve || c._breakerCurveEff),
+          curve: c._protectionKind === 'fuse'
+            ? (c._fuseType || 'gG')
+            : _normalizeCurveShort(c.breakerCurve || c._breakerCurveEff),
           settings: c._breakerSettings || undefined,
         },
         c._modules?.phaseLoop?.details?.Ik1A || null,
@@ -797,8 +824,13 @@ export function renderInspectorConn(c) {
       const prop = inp.dataset.connProp;
       let v = isCheckbox ? inp.checked : (inp.type === 'number' ? Number(inp.value) : inp.value);
       // Числовые свойства из select: manualBreakerIn, manualCableSize, manualCableParallel, grouping
-      if (['manualBreakerIn', 'manualCableSize', 'manualCableParallel', 'grouping', 'ambientC', 'lengthM', 'economicHours'].includes(prop)) {
+      if (['manualBreakerIn', 'manualFuseIn', 'manualCableSize', 'manualCableParallel', 'grouping', 'ambientC', 'lengthM', 'economicHours'].includes(prop)) {
         v = Number(v) || 0;
+      }
+      // v0.57.57: смена типа защиты очищает ручной номинал «другого» типа
+      if (prop === 'protectionKind') {
+        if (v === 'fuse') delete c.manualBreakerIn;
+        else delete c.manualFuseIn;
       }
       c[prop] = v;
       // Фаза 1.11: при выборе марки кабеля из справочника — автозаполняем
@@ -875,12 +907,16 @@ export function renderInspectorConn(c) {
     });
   }
 
-  // Toggle авто/ручной автомат
+  // Toggle авто/ручной автомат (v0.57.57: учитывает protectionKind)
   const breakerModeToggle = inspectorBody.querySelector('[data-breaker-mode-toggle]');
   if (breakerModeToggle) {
     breakerModeToggle.addEventListener('click', () => {
       snapshot('breaker-mode:' + c.id);
-      if (c.manualBreakerIn) {
+      const isFuse = c.protectionKind === 'fuse';
+      if (isFuse) {
+        if (c.manualFuseIn) delete c.manualFuseIn;
+        else c.manualFuseIn = c._breakerIn || 63;
+      } else if (c.manualBreakerIn) {
         delete c.manualBreakerIn;
       } else {
         c.manualBreakerIn = c._breakerIn || 100;
@@ -1181,11 +1217,16 @@ function _collectUpstreamBreakers(conn) {
     }
     if (!upConn) break;
     seen.add(upConn.id);
+    const _isFu = upConn._protectionKind === 'fuse';
     chain.push({
       c: upConn,
       In: Number(upConn._breakerIn) || 0,
-      curveShort: _normalizeCurveShort(upConn.breakerCurve || upConn._breakerCurveEff),
-      label: `Upstream L${level + 1}: ${upConn.breakerCurve || 'MCCB'} ${upConn._breakerIn}A`,
+      curveShort: _isFu
+        ? (upConn._fuseType || 'gG')
+        : _normalizeCurveShort(upConn.breakerCurve || upConn._breakerCurveEff),
+      label: _isFu
+        ? `Upstream L${level + 1}: FU ${upConn._breakerIn}A ${upConn._fuseType || 'gG'}`
+        : `Upstream L${level + 1}: ${upConn.breakerCurve || 'MCCB'} ${upConn._breakerIn}A`,
     });
     currentNode = upConn.from?.nodeId ? state.nodes.get(upConn.from.nodeId) : null;
     level++;
@@ -1247,15 +1288,28 @@ function _buildConnTccPayload(conn, fromN, toN) {
     } else {
       label = `ЭТА линия: ${curveStr} ${In}A`;
     }
-    items.push({
-      id: 'this-breaker',
-      kind: 'breaker',
-      In,
-      curve: _normalizeCurveShort(conn.breakerCurve || conn._breakerCurveEff),
-      settings: adjSettings || undefined,
-      label,
-      color: '#1976d2',
-    });
+    // v0.57.57: предохранитель — kind='fuse' с fuseType=gG/aM/gM
+    if (conn._protectionKind === 'fuse') {
+      const ftype = conn._fuseType || 'gG';
+      items.push({
+        id: 'this-breaker',
+        kind: 'fuse',
+        In,
+        fuseType: ftype,
+        label: `ЭТА линия: FU ${In}A ${ftype}${breakerCount > 1 ? ` × ${breakerCount}` : ''}`,
+        color: '#1976d2',
+      });
+    } else {
+      items.push({
+        id: 'this-breaker',
+        kind: 'breaker',
+        In,
+        curve: _normalizeCurveShort(conn.breakerCurve || conn._breakerCurveEff),
+        settings: adjSettings || undefined,
+        label,
+        color: '#1976d2',
+      });
+    }
   }
   // Кабель (термостойкость)
   if (conn._cableSize) {
@@ -1273,11 +1327,13 @@ function _buildConnTccPayload(conn, fromN, toN) {
   const upstream = _collectUpstreamBreakers(conn);
   for (let i = 0; i < Math.min(upstream.length, 2); i++) {
     const u = upstream[i];
+    const _upIsFu = u.c?._protectionKind === 'fuse';
     items.push({
       id: 'up' + i,
-      kind: 'breaker',
+      kind: _upIsFu ? 'fuse' : 'breaker',
       In: u.In,
-      curve: u.curveShort,
+      curve: _upIsFu ? undefined : u.curveShort,
+      fuseType: _upIsFu ? (u.c._fuseType || 'gG') : undefined,
       label: u.label,
       color: i === 0 ? '#f57c00' : '#7b1fa2',
     });
