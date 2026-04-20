@@ -356,7 +356,7 @@ export function renderUnplacedPalette() {
     const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
     const badge = pids.length === 0 ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён нигде">∅</span>' : '';
     const sysDots = _systemDotsHtml(n);
-    return `<div class="pal-unplaced-item" draggable="true" data-unplaced-id="${esc(n.id)}" title="Перетащить на холст или клик — поставить по центру">
+    return `<div class="pal-unplaced-item" draggable="true" data-unplaced-id="${esc(n.id)}" title="Перетащите на холст">
       <span class="pal-unplaced-icon">${typeLabel}</span>
       <span class="pal-unplaced-tag">${esc(tag)}</span>
       <span class="pal-unplaced-name">${esc(name)}</span>
@@ -698,9 +698,20 @@ function _renderNodesLayout() {
     zoneParent.appendChild(g);
   }
   // Остальные узлы — упрощённая карточка в натуральных габаритах
+  // v0.58.43: на layout требуем явного размещения (pageIds включает
+  // currentPageId либо positionsByPage содержит запись). Иначе legacy-
+  // узлы с пустым pageIds появлялись «фантомом» по координатам со схемы.
+  const _pid = state.currentPageId;
+  const _placedExplicit = (n) => {
+    const pids = n.pageIds;
+    if (Array.isArray(pids) && pids.includes(_pid)) return true;
+    const pos = n.positionsByPage && n.positionsByPage[_pid];
+    return !!(pos && Number.isFinite(pos.x) && Number.isFinite(pos.y));
+  };
   for (const n of state.nodes.values()) {
     if (n.type === 'zone') continue;
     if (!isOnCurrentPage(n)) continue;
+    if (!_placedExplicit(n)) continue;
     if (floorFilter !== null && (Number(n.floor) || 0) !== floorFilter) continue;
     const geom = getNodeGeometryMm(n);
     // v0.58.10: layout = вид сверху. Размер карточки = ширина × глубина
@@ -1929,12 +1940,27 @@ export function renderConns() {
   // v0.58.30: фильтр по этажу — если активен, скрываем связи, у которых
   // хотя бы один конец на другом этаже.
   const _floorFilter = (state.floorFilter == null) ? null : Number(state.floorFilter);
+  // v0.58.43: на физических видах (layout/mechanical) связь видна только
+  // если ОБА конца явно размещены на этой странице (pageIds содержит её
+  // либо есть запись в positionsByPage). Иначе legacy-узлы с пустым
+  // pageIds (считаются «на всех страницах») давали фантомные линии,
+  // уходящие в координаты со схемы электрической.
+  const _requireExplicitPlacement = (_curPageKind === 'layout' || _curPageKind === 'mechanical');
+  const _isExplicitlyPlaced = (n) => {
+    if (!n) return false;
+    const pids = n.pageIds;
+    if (Array.isArray(pids) && pids.includes(state.currentPageId)) return true;
+    const pos = n.positionsByPage && n.positionsByPage[state.currentPageId];
+    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) return true;
+    return false;
+  };
   for (const c of state.conns.values()) {
     const fromN = state.nodes.get(c.from.nodeId);
     const toN   = state.nodes.get(c.to.nodeId);
     if (!fromN || !toN) continue;
     // Связь видна только если оба её конца видны на текущей странице
     if (!isOnCurrentPage(fromN) || !isOnCurrentPage(toN)) continue;
+    if (_requireExplicitPlacement && (!_isExplicitlyPlaced(fromN) || !_isExplicitlyPlaced(toN))) continue;
     if (!_connSystemCompatible(fromN, toN)) continue;
     if (_floorFilter !== null && _curPageKind === 'layout') {
       const ff = Number(fromN.floor) || 0;

@@ -334,39 +334,19 @@ export function initInteraction() {
   if (unplacedList) {
     unplacedList.addEventListener('dragstart', e => {
       const item = e.target.closest('.pal-unplaced-item');
-      if (!item || state.readOnly) return;
+      if (!item || state.readOnly) { e.preventDefault(); return; }
       const id = item.dataset.unplacedId;
-      if (!id) return;
+      if (!id) { e.preventDefault(); return; }
       _palDragActive = true;
       e.dataTransfer.setData('text/raschet-unplaced-id', id);
-      e.dataTransfer.effectAllowed = 'move';
+      // v0.58.43: 'copyMove' совместимо с dropEffect='copy' на canvas — иначе
+      // браузер отклоняет drop и пользователь видит только курсор-запрет.
+      e.dataTransfer.effectAllowed = 'copyMove';
     });
     unplacedList.addEventListener('dragend', () => {
       setTimeout(() => { _palDragActive = false; }, 150);
     });
-    unplacedList.addEventListener('click', e => {
-      const item = e.target.closest('.pal-unplaced-item');
-      if (!item || state.readOnly) return;
-      const id = item.dataset.unplacedId;
-      if (!id) return;
-      const n = state.nodes.get(id);
-      if (!n) return;
-      snapshot('place-unplaced:' + id);
-      // Поставить в центр текущего viewBox
-      const svgEl = document.getElementById('canvas') || svg;
-      const W = svgEl.clientWidth, H = svgEl.clientHeight;
-      const zoom = state.view.zoom || 1;
-      const cx = (state.view.x || 0) + (W / zoom) / 2;
-      const cy = (state.view.y || 0) + (H / zoom) / 2;
-      if (!Array.isArray(n.pageIds)) n.pageIds = [];
-      if (!n.pageIds.includes(state.currentPageId)) n.pageIds.push(state.currentPageId);
-      n.x = Math.round(cx - 100);
-      n.y = Math.round(cy - 50);
-      if (!n.positionsByPage) n.positionsByPage = {};
-      n.positionsByPage[state.currentPageId] = { x: n.x, y: n.y };
-      notifyChange();
-      render();
-    });
+    // v0.58.43: click-to-place убран — пользователю нужно только перетаскивание.
   }
   // v0.58.13: вкладки инспектора (Свойства / Неразмещённые / Реестр)
   const inspTabs = document.querySelectorAll('.insp-tab');
@@ -399,7 +379,7 @@ export function initInteraction() {
       if (!id) return;
       _palDragActive = true;
       e.dataTransfer.setData('text/raschet-unplaced-id', id);
-      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.effectAllowed = 'copyMove';
     });
     regList.addEventListener('dragend', () => {
       setTimeout(() => { _palDragActive = false; }, 150);
