@@ -53,6 +53,50 @@ function flash(msg, kind = 'info') {
   flash._t = setTimeout(() => { el.style.opacity = '0'; }, 2800);
 }
 
+// v0.57.89 (Phase 1.5.6): sparkline динамики цены.
+// Рисует мини-SVG по prices (отсортированным по recordedAt asc).
+// Возвращает HTML-строку либо «—» если данных недостаточно.
+function renderPriceSparkline(priceInfo) {
+  if (!priceInfo || !priceInfo.prices || priceInfo.prices.length < 2 || !priceInfo.currency) {
+    return '<span class="muted" style="font-size:10px">—</span>';
+  }
+  const pts = priceInfo.prices
+    .slice()
+    .filter(p => p.currency === priceInfo.currency && Number(p.recordedAt) > 0 && Number.isFinite(Number(p.price)))
+    .sort((a, b) => Number(a.recordedAt) - Number(b.recordedAt));
+  if (pts.length < 2) return '<span class="muted" style="font-size:10px">—</span>';
+  const W = 90, H = 24, PAD = 2;
+  const values = pts.map(p => Number(p.price));
+  const vMin = Math.min(...values);
+  const vMax = Math.max(...values);
+  const vRange = vMax - vMin || 1;
+  const tMin = Number(pts[0].recordedAt);
+  const tMax = Number(pts[pts.length - 1].recordedAt);
+  const tRange = tMax - tMin || 1;
+  const xy = pts.map(p => {
+    const x = PAD + (W - 2 * PAD) * (Number(p.recordedAt) - tMin) / tRange;
+    const y = H - PAD - (H - 2 * PAD) * (Number(p.price) - vMin) / vRange;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const first = values[0];
+  const last = values[values.length - 1];
+  const trendColor = last > first * 1.02 ? '#d32f2f' : last < first * 0.98 ? '#388e3c' : '#757575';
+  const trendSign = last > first ? '↗' : last < first ? '↘' : '→';
+  const pctChange = first > 0 ? ((last - first) / first * 100) : 0;
+  const title = `${pts.length} записей: ${fmtPrice(first, priceInfo.currency)} → ${fmtPrice(last, priceInfo.currency)} (${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(1)}%)`;
+  return `<span title="${esc(title)}" style="display:inline-flex;align-items:center;gap:4px">
+    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">
+      <polyline points="${xy}" fill="none" stroke="${trendColor}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${pts.map(p => {
+        const x = PAD + (W - 2 * PAD) * (Number(p.recordedAt) - tMin) / tRange;
+        const y = H - PAD - (H - 2 * PAD) * (Number(p.price) - vMin) / vRange;
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.5" fill="${trendColor}"/>`;
+      }).join('')}
+    </svg>
+    <span style="color:${trendColor};font-size:11px;font-weight:600">${trendSign}${Math.abs(pctChange).toFixed(0)}%</span>
+  </span>`;
+}
+
 // ====================== Tabs ======================
 let currentTab = 'elements';
 
@@ -141,6 +185,8 @@ function renderElementsTab() {
             <th>Название</th>
             <th>Производитель / Серия</th>
             <th>Последняя цена</th>
+            <th title="Минимум / максимум среди цен в одной валюте">Мин / Макс</th>
+            <th title="Динамика цены во времени (последние предложения, слева старое → справа новое)">Динамика</th>
             <th>Предложений</th>
             <th></th>
           </tr>
@@ -152,6 +198,18 @@ function renderElementsTab() {
     const lastPrice = priceInfo.latest
       ? fmtPrice(priceInfo.latest.price, priceInfo.latest.currency) + ' <span class="muted" style="font-size:10px">· ' + fmtDate(priceInfo.latest.recordedAt) + '</span>'
       : '<span class="muted">—</span>';
+    // v0.57.89 (Phase 1.5.6): колонки min/max + sparkline динамики цены.
+    // Отображаются только если все цены элемента в одной валюте.
+    let minMaxCell = '<span class="muted">—</span>';
+    if (priceInfo.min != null && priceInfo.max != null && priceInfo.currency) {
+      if (priceInfo.min === priceInfo.max) {
+        minMaxCell = `<span class="muted">=${fmtPrice(priceInfo.min, priceInfo.currency)}</span>`;
+      } else {
+        const deltaPct = priceInfo.min > 0 ? ((priceInfo.max - priceInfo.min) / priceInfo.min * 100) : 0;
+        minMaxCell = `<span style="font-size:11px">${fmtPrice(priceInfo.min, priceInfo.currency)}<br>${fmtPrice(priceInfo.max, priceInfo.currency)}</span><br><span class="muted" style="font-size:10px">Δ ${deltaPct.toFixed(0)}%</span>`;
+      }
+    }
+    const sparkCell = renderPriceSparkline(priceInfo);
     const srcBadge = el.builtin ? '<span class="badge builtin">builtin</span>'
       : el.source === 'imported' ? '<span class="badge imported">import</span>'
       : '<span class="badge user">user</span>';
@@ -161,6 +219,8 @@ function renderElementsTab() {
         <td><b>${esc(el.label || el.id)}</b><br><span class="muted" style="font-size:10px;font-family:monospace">${esc(el.id)}</span></td>
         <td>${esc([el.manufacturer, el.series, el.variant].filter(Boolean).join(' · ') || '—')}</td>
         <td class="num">${lastPrice}</td>
+        <td class="num">${minMaxCell}</td>
+        <td>${sparkCell}</td>
         <td class="num">${priceInfo.count || '—'}</td>
         <td class="actions">
           <button data-act="view" title="Просмотр свойств элемента${el.kind === 'breaker' ? ' + TCC-график' : ''}">👁 Просмотр</button>
@@ -177,7 +237,7 @@ function renderElementsTab() {
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="6" class="empty">Ничего не найдено</td></tr>');
+    html.push('<tr><td colspan="8" class="empty">Ничего не найдено</td></tr>');
   }
   html.push('</tbody></table></div>');
   container.innerHTML = html.join('');
