@@ -496,6 +496,18 @@ export function renderInspectorNode(n) {
       voltInfo +
       iecBlock +
       `</div>`);
+    // Phase 1.20.39: флаг «Резервный» — источник/генератор не учитывается
+    // в «доступной мощности» (availCap). Используется для подменных ДГУ,
+    // второго ввода, трансформаторов в холодном резерве и т.п.
+    h.push(`<div class="inspector-section" style="padding:6px 0">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="src-is-standby"${n.isStandby ? ' checked' : ''} style="margin:0">
+        <span>Резервный (подменный)</span>
+      </label>
+      <div class="muted" style="font-size:10px;margin-top:2px;line-height:1.4">
+        Не учитывается в «доступной мощности». Для подменного ДГУ, холодного резерва, второго ввода.
+      </div>
+    </div>`);
     h.push(sourceStatusBlock(n));
   } else if (n.type === 'panel') {
     const isSection = !!n.parentSectionedId;
@@ -976,6 +988,15 @@ export function wireInspectorInputs(n) {
   if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
   const impBtn = document.getElementById('btn-open-impedance');
   if (impBtn) impBtn.addEventListener('click', () => openImpedanceModal(n));
+  // Phase 1.20.39: чекбокс «Резервный» для source/generator
+  const standbyCb = document.getElementById('src-is-standby');
+  if (standbyCb) {
+    standbyCb.addEventListener('change', () => {
+      n.isStandby = !!standbyCb.checked;
+      snapshot();
+      notifyChange();
+    });
+  }
 
   // Управление щитом
   const panelCtrlBtn = document.getElementById('btn-open-panel-control');

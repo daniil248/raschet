@@ -51,6 +51,16 @@ export function openImpedanceModal(n) {
 
   if (isUtility) {
     h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Городская сеть / ЛЭП. Параметры КЗ задаются напрямую.</div>');
+    // Phase 1.20.39: поле «Разрешённая мощность» из ТУ сетевой организации.
+    // Раньше для utility capacityKw нигде не задавалась → источник
+    // городской сети не учитывался в «общей доступной мощности».
+    h.push(field('Разрешённая мощность по ТУ, кВт',
+      `<input type="number" id="imp-utility-pmax" min="0" max="1000000" step="1" value="${n.capacityKw ?? 0}">`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-4px;line-height:1.4">`
+      + 'Выделенная мощность из технических условий сетевой организации (кВт). '
+      + 'Используется в Dashboard и sidebar для «общей / доступной мощности». '
+      + 'Для городской сети номинальная Snom не имеет смысла — только разрешённый лимит.'
+      + `</div>`);
   } else if (isTransformer) {
     let tOpts = '<option value="">— выберите —</option>';
     for (const t of TRANSFORMER_CATALOG) {
@@ -211,6 +221,10 @@ export function openImpedanceModal(n) {
     }
     if (!isUtility) {
       n.capacityKw = n.snomKva * (Number(n.cosPhi) || 0.92);
+    } else {
+      // Phase 1.20.39: utility — capacityKw из ТУ (ввод вручную)
+      const pmaxEl = document.getElementById('imp-utility-pmax');
+      if (pmaxEl) n.capacityKw = Math.max(0, Number(pmaxEl.value) || 0);
     }
     if (isOther || isUtility) {
       n.ikKA = Number(document.getElementById('imp-ikka')?.value) || 0;

@@ -1366,28 +1366,43 @@ export function renderConns() {
 }
 
 export function renderStats() {
-  let totalDemand = 0, totalCap = 0, totalDraw = 0;
+  // Phase 1.20.39: переработка сводной статистики в sidebar.
+  // * «Запрос» — установленная мощность всех потребителей (Σ demand×count).
+  //   Это верхняя оценка: все потребители включены одновременно.
+  // * «Общая мощность ист. питания» (ex «Источников») — Σ capacity включённых
+  //   источников/генераторов. Это общая (номинальная) установленная мощность.
+  // * «Доступно (с резервом)» — Σ capacity только НЕ-резервных источников.
+  //   Резервные (n.isStandby) исключаются из суммы. Это реальная мощность
+  //   в нормальном режиме, без учёта подменного генератора / второго вводa.
+  // * «Потребляется» убрано как некорректное (sum(_loadKw) по источникам
+  //   даёт двойной учёт потребителей при N+1 резерве).
+  let totalDemand = 0, totalCap = 0, availCap = 0;
+  let standbyCount = 0;
   let unpoweredCount = 0, overloadCount = 0;
   for (const n of state.nodes.values()) {
     if (n.type === 'consumer') {
-      // «Запрос» — установленная (паспортная) мощность всех потребителей:
-      //   demandKw × count  без учёта Ки и loadFactor.
-      // Отличается от «Потребляется» (_loadKw), где уже применён Ки × Кс.
       const per = Number(n.demandKw) || 0;
       const cnt = Math.max(1, Number(n.count) || 1);
       totalDemand += per * cnt;
       if (!n._powered) unpoweredCount++;
     }
     if (n.type === 'source' || n.type === 'generator') {
-      if (effectiveOn(n)) totalCap += Number(n.capacityKw) || 0;
-      totalDraw += n._loadKw || 0;
+      if (effectiveOn(n)) {
+        const cap = Number(n.capacityKw) || 0;
+        totalCap += cap;
+        if (n.isStandby) standbyCount++;
+        else availCap += cap;
+      }
       if (n._overload) overloadCount++;
     }
   }
   const rows = [];
   rows.push(`<div class="row"><span>Запрос</span><span>${fmt(totalDemand)} kW</span></div>`);
-  rows.push(`<div class="row"><span>Источников</span><span>${fmt(totalCap)} kW</span></div>`);
-  rows.push(`<div class="row"><span>Потребляется</span><span>${fmt(totalDraw)} kW</span></div>`);
+  rows.push(`<div class="row" title="Сумма ёмкости всех источников и генераторов"><span>Общая мощность ист. питания</span><span>${fmt(totalCap)} kW</span></div>`);
+  if (standbyCount > 0) {
+    const availOk = availCap >= totalDemand;
+    rows.push(`<div class="row ${availOk ? 'ok' : 'warn'}" title="Без ${standbyCount} резервн. источн."><span>Доступно (с резервом)</span><span>${fmt(availCap)} kW</span></div>`);
+  }
   if (unpoweredCount) rows.push(`<div class="row warn"><span>Без питания</span><span>${unpoweredCount}</span></div>`);
   if (overloadCount)  rows.push(`<div class="row warn"><span>Перегруз</span><span>${overloadCount}</span></div>`);
   if (!unpoweredCount && !overloadCount && state.nodes.size) {

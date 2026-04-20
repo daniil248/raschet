@@ -2816,6 +2816,184 @@ function _openBulkCableDialog(kind, filtered, allMarks, byCat, CAT_LABEL, bulkAp
   });
 }
 
+// ================= Roadmap + Changelog (Phase 1.20.39) =================
+// Модуль читает PLAN_ROADMAP.md из репозитория через fetch, парсит в HTML
+// с подсветкой заголовков, версий и списков. Одна загрузка за сессию.
+let _roadmapCache = null;
+
+async function _loadRoadmapText() {
+  if (_roadmapCache) return _roadmapCache;
+  const urls = ['./PLAN_ROADMAP.md', './plan_roadmap.md'];
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url, { cache: 'no-store' });
+      if (resp.ok) {
+        const txt = await resp.text();
+        _roadmapCache = txt;
+        return txt;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// Мини markdown-парсер: заголовки, код, списки, bold, ссылки, таблицы.
+function _mdToHtml(md) {
+  const esc = (s) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const lines = md.split('\n');
+  const out = [];
+  let inList = false, inTable = false, inCodeBlock = false;
+  const flushList = () => { if (inList) { out.push('</ul>'); inList = false; } };
+  const flushTable = () => { if (inTable) { out.push('</tbody></table>'); inTable = false; } };
+  for (let i = 0; i < lines.length; i++) {
+    let ln = lines[i];
+    if (ln.startsWith('```')) {
+      flushList(); flushTable();
+      if (inCodeBlock) { out.push('</code></pre>'); inCodeBlock = false; }
+      else { out.push('<pre style="background:#f6f8fa;padding:8px;border-radius:4px;overflow:auto;font-size:11px"><code>'); inCodeBlock = true; }
+      continue;
+    }
+    if (inCodeBlock) { out.push(esc(ln)); continue; }
+    // заголовки
+    const h = ln.match(/^(#{1,6})\s+(.+)$/);
+    if (h) {
+      flushList(); flushTable();
+      const lvl = h[1].length;
+      const size = { 1: 22, 2: 18, 3: 16, 4: 14, 5: 13, 6: 12 }[lvl];
+      const color = lvl === 1 ? '#1976d2' : lvl === 2 ? '#1565c0' : '#333';
+      out.push(`<h${lvl} style="font-size:${size}px;color:${color};margin:${lvl <= 2 ? 18 : 12}px 0 6px;border-bottom:${lvl <= 2 ? '1px solid #eee' : 'none'};padding-bottom:${lvl <= 2 ? 4 : 0}px">${esc(h[2])}</h${lvl}>`);
+      continue;
+    }
+    // таблицы
+    if (ln.startsWith('|') && ln.endsWith('|')) {
+      const cells = ln.slice(1, -1).split('|').map(c => c.trim());
+      if (!inTable) {
+        flushList();
+        out.push('<table style="border-collapse:collapse;font-size:11px;margin:6px 0"><thead><tr>');
+        for (const c of cells) out.push(`<th style="border:1px solid #ddd;padding:3px 8px;background:#fafbfc">${esc(c)}</th>`);
+        out.push('</tr></thead><tbody>');
+        inTable = true;
+        // skip separator row
+        if (lines[i + 1] && /^\|[-:\s|]+\|$/.test(lines[i + 1])) i++;
+      } else {
+        out.push('<tr>');
+        for (const c of cells) out.push(`<td style="border:1px solid #ddd;padding:3px 8px">${_inlineMd(c)}</td>`);
+        out.push('</tr>');
+      }
+      continue;
+    } else if (inTable) {
+      flushTable();
+    }
+    // списки
+    const li = ln.match(/^(\s*)[-*]\s+(.+)$/);
+    if (li) {
+      if (!inList) { out.push('<ul style="margin:4px 0 6px 18px;padding:0">'); inList = true; }
+      out.push(`<li style="margin:2px 0">${_inlineMd(li[2])}</li>`);
+      continue;
+    }
+    flushList();
+    // разделитель
+    if (/^[-=]{3,}$/.test(ln.trim())) { out.push('<hr style="border:none;border-top:1px solid #e1e4e8;margin:10px 0">'); continue; }
+    // параграф
+    if (ln.trim() === '') { out.push('<div style="height:6px"></div>'); continue; }
+    if (ln.startsWith('> ')) {
+      out.push(`<blockquote style="margin:4px 0;padding:4px 10px;border-left:3px solid #1976d2;background:#f6f8fa;color:#555">${_inlineMd(ln.slice(2))}</blockquote>`);
+      continue;
+    }
+    out.push(`<p style="margin:4px 0">${_inlineMd(ln)}</p>`);
+  }
+  flushList(); flushTable();
+  return out.join('\n');
+}
+
+function _inlineMd(s) {
+  const esc = (x) => x.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  let r = esc(s);
+  // inline code
+  r = r.replace(/`([^`]+)`/g, '<code style="background:#f6f8fa;padding:1px 4px;border-radius:3px;font-size:90%">$1</code>');
+  // bold
+  r = r.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  r = r.replace(/__([^_]+)__/g, '<b>$1</b>');
+  // italic
+  r = r.replace(/\*([^*]+)\*/g, '<i>$1</i>');
+  // версии вида v0.57.13 — подсветка
+  r = r.replace(/\b(v\d+\.\d+\.\d+)\b/g, '<span style="display:inline-block;padding:0 6px;background:#e3f2fd;color:#1565c0;border-radius:3px;font-family:monospace;font-size:90%;font-weight:600">$1</span>');
+  // ссылки [text](url)
+  r = r.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:#1976d2">$1</a>');
+  // галочки
+  r = r.replace(/✅/g, '<span style="color:#2e7d32">✅</span>');
+  r = r.replace(/⏸/g, '<span style="color:#e65100">⏸</span>');
+  return r;
+}
+
+async function openRoadmapModal() {
+  openModal('modal-roadmap');
+  const mount = document.getElementById('roadmap-mount');
+  if (!mount) return;
+  mount.innerHTML = '<div class="muted">Загрузка…</div>';
+  const txt = await _loadRoadmapText();
+  if (!txt) { mount.innerHTML = '<div class="muted">Не удалось загрузить PLAN_ROADMAP.md</div>'; return; }
+  mount.innerHTML = _mdToHtml(txt);
+}
+
+async function openChangelogModal() {
+  openModal('modal-changelog');
+  const mount = document.getElementById('changelog-mount');
+  if (!mount) return;
+  mount.innerHTML = '<div class="muted">Загрузка…</div>';
+  const txt = await _loadRoadmapText();
+  if (!txt) { mount.innerHTML = '<div class="muted">Не удалось загрузить история</div>'; return; }
+  // Извлекаем записи вида "- **1.20.39 (v0.57.14)** — описание…"
+  // или "- **v0.57.13** — описание" и список "История коммитов".
+  const entries = [];
+  const re = /^-\s+\*\*([^*]+)\*\*\s*—\s*(.+?)(?=^-\s+\*\*|^##|\Z)/gms;
+  let m;
+  while ((m = re.exec(txt))) {
+    const header = m[1].trim();
+    const body = m[2].trim();
+    // приоритет — есть ли версия в заголовке
+    const verMatch = header.match(/v(\d+\.\d+\.\d+)/);
+    if (!verMatch) continue;
+    entries.push({ version: verMatch[1], header, body });
+  }
+  // Сортировка: новые версии вверху. Простая semver-сортировка.
+  entries.sort((a, b) => {
+    const pa = a.version.split('.').map(Number);
+    const pb = b.version.split('.').map(Number);
+    for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pb[i] - pa[i];
+    return 0;
+  });
+  // Дедупликация по версии (оставляем самое полное — обычно первое найденное)
+  const seen = new Set();
+  const dedup = entries.filter(e => {
+    if (seen.has(e.version)) return false;
+    seen.add(e.version); return true;
+  });
+  _renderChangelog(dedup, '');
+  const srch = document.getElementById('changelog-search');
+  if (srch) srch.oninput = () => _renderChangelog(dedup, srch.value.toLowerCase());
+}
+
+function _renderChangelog(entries, q) {
+  const mount = document.getElementById('changelog-mount');
+  if (!mount) return;
+  const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const filtered = q
+    ? entries.filter(e => e.version.includes(q) || e.header.toLowerCase().includes(q) || e.body.toLowerCase().includes(q))
+    : entries;
+  if (!filtered.length) { mount.innerHTML = '<div class="muted">Ничего не найдено</div>'; return; }
+  const html = filtered.map(e => `
+    <div style="margin-bottom:12px;padding:10px 14px;background:#fafbfc;border:1px solid #e1e4e8;border-radius:6px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="display:inline-block;padding:2px 8px;background:#1976d2;color:#fff;border-radius:3px;font-family:monospace;font-size:11px;font-weight:600">v${esc(e.version)}</span>
+        <span style="font-size:12px;color:#555">${esc(e.header).replace(/v\d+\.\d+\.\d+/, '').replace(/[()]/g, '').trim()}</span>
+      </div>
+      <div style="font-size:12px;color:#333;line-height:1.5">${_inlineMd(e.body.slice(0, 600))}${e.body.length > 600 ? '…' : ''}</div>
+    </div>
+  `).join('');
+  mount.innerHTML = html;
+}
+
 // ================= Сводка проекта / Dashboard (Phase 1.20.26) =================
 function openDashboardModal() {
   openModal('modal-dashboard');
@@ -2831,31 +3009,26 @@ function renderDashboard() {
 
   // Счётчики узлов
   const counts = { source: 0, generator: 0, 'panel-lv': 0, 'panel-mv': 0, ups: 0, consumer: 0 };
-  let totalLoad = 0, totalCap = 0;
-  // Phase 1.20.37: общая нагрузка = сумма _powerP активных потребителей
-  // (не сумма _loadKw по источникам/генераторам — там резерв N+1 или
-  // параллельная работа могут давать двойной учёт одних и тех же потребителей).
-  // Активным считаем потребителя, у которого есть хотя бы один живой фидер
-  // (c._active). Это исключает отключённые ветки и backup-пути.
-  const consumerActive = new Set();
-  for (const c of S.conns.values()) {
-    if (!c._active) continue;
-    const toN = S.nodes.get(c.to?.nodeId);
-    if (toN && toN.type === 'consumer') consumerActive.add(toN.id);
-  }
+  let totalLoad = 0, totalCap = 0, availCap = 0;
+  let standbyCount = 0;
+  // Phase 1.20.39: общая нагрузка = Σ demand × count по всем потребителям
+  // (все включены одновременно — верхняя оценка). availCap — ёмкость БЕЗ
+  // резервных (n.isStandby) источников: «реальная доступная мощность»
+  // в нормальном режиме без подменного ДГУ / второго ввода.
   for (const n of S.nodes.values()) {
     const k = _equipKindOf(n);
     if (k) counts[k] = (counts[k] || 0) + 1;
     if (n.type === 'consumer') {
       counts.consumer++;
-      // если у потребителя не осталось активных фидеров — он обесточен и
-      // реальной нагрузки не создаёт
-      if (consumerActive.has(n.id) || consumerActive.size === 0) {
-        totalLoad += Number(n._powerP) || 0;
-      }
+      const per = Number(n.demandKw) || 0;
+      const cnt = Math.max(1, Number(n.count) || 1);
+      totalLoad += per * cnt;
     }
     if (n.type === 'source' || n.type === 'generator') {
-      totalCap += Number(n.capacityKw) || 0;
+      const cap = Number(n.capacityKw) || 0;
+      totalCap += cap;
+      if (n.isStandby) standbyCount++;
+      else availCap += cap;
     }
   }
 
@@ -2944,10 +3117,24 @@ function renderDashboard() {
         errors ? '#c62828' : (warns ? '#e65100' : '#2e7d32'),
         (errors + warns) ? 'issues' : null)}
       ${card('Общая нагрузка', fmtN(totalLoad) + ' кВт',
-        totalCap > 0 ? `из ${fmtN(totalCap)} кВт (${loadPct.toFixed(0)}% загрузки)` : '—',
-        loadPct > 100 ? '#ffebee' : loadPct > 90 ? '#fff8e1' : '#e8f5e9',
-        loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : '#2e7d32',
-        'equipment-sources')}
+        'все потребители включены (Σ demand × count)',
+        '#eef5ff',
+        '#1565c0',
+        'consumers')}
+      ${(() => {
+        // Phase 1.20.39: показываем общую мощность и доступную (с резервом).
+        const availPct = availCap > 0 ? (totalLoad / availCap * 100) : 0;
+        const availColor = availPct > 100 ? '#c62828' : availPct > 90 ? '#e65100' : '#2e7d32';
+        const availBg = availPct > 100 ? '#ffebee' : availPct > 90 ? '#fff8e1' : '#e8f5e9';
+        if (standbyCount > 0) {
+          return card('Доступно с резервом', fmtN(availCap) + ' кВт',
+            totalLoad > 0 ? `нагрузка ${availPct.toFixed(0)}% от доступной (без ${standbyCount} резерв.)` : `без ${standbyCount} резервн.`,
+            availBg, availColor, 'equipment-sources');
+        }
+        return card('Мощность источников', fmtN(totalCap) + ' кВт',
+          totalLoad > 0 ? `нагрузка ${(totalLoad / totalCap * 100).toFixed(0)}% от номинала` : 'номинальная сумма',
+          availBg, availColor, 'equipment-sources');
+      })()}
       ${priceSummary && priceSummary.byCurrency.length
         ? card('Стоимость BOM',
           priceSummary.byCurrency.map(([cur, sum]) => `${fmtN(sum, 0)} ${cur}`).join(' · '),
@@ -3186,25 +3373,24 @@ function _updateProjectStatusBar() {
   const S = window.Raschet?._state;
   if (!S) { bar.innerHTML = ''; return; }
   let consumers = 0, panels = 0, mvPanels = 0, sources = 0;
-  let totalLoad = 0, totalCap = 0;
-  // Phase 1.20.37: totalLoad — сумма P активных потребителей (без двойного учёта)
-  const consumerActive = new Set();
-  for (const c of S.conns.values()) {
-    if (!c._active) continue;
-    const toN = S.nodes.get(c.to?.nodeId);
-    if (toN && toN.type === 'consumer') consumerActive.add(toN.id);
-  }
+  let totalLoad = 0, totalCap = 0, availCap = 0;
+  let standbyCount = 0;
+  // Phase 1.20.39: totalLoad = Σ demand × count (все потребители одновременно);
+  // availCap = capacity без резервных источников.
   for (const n of S.nodes.values()) {
     if (n.type === 'consumer') {
       consumers++;
-      if (consumerActive.has(n.id) || consumerActive.size === 0) {
-        totalLoad += Number(n._powerP) || 0;
-      }
+      const per = Number(n.demandKw) || 0;
+      const cnt = Math.max(1, Number(n.count) || 1);
+      totalLoad += per * cnt;
     }
     else if (n.type === 'panel') { if (n.isMv) mvPanels++; else panels++; }
     else if (n.type === 'source' || n.type === 'generator') {
       sources++;
-      totalCap += Number(n.capacityKw) || 0;
+      const cap = Number(n.capacityKw) || 0;
+      totalCap += cap;
+      if (n.isStandby) standbyCount++;
+      else availCap += cap;
     }
   }
   let cables = 0;
@@ -3212,7 +3398,10 @@ function _updateProjectStatusBar() {
     if ((c._cableSize || c._busbarNom) && !c._utilityInfeed) cables++;
   }
   const { errors, warns } = _countProjectIssues();
-  const loadPct = totalCap > 0 ? (totalLoad / totalCap * 100) : 0;
+  // Phase 1.20.39: % загрузки считаем от availCap (без резервных),
+  // чтобы резерв не размывал реальную картину.
+  const capForPct = standbyCount > 0 ? availCap : totalCap;
+  const loadPct = capForPct > 0 ? (totalLoad / capForPct * 100) : 0;
   const loadColor = loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : loadPct > 0 ? '#2e7d32' : '#999';
 
   const chip = (color, bg, content, title, onClick) => {
@@ -3233,9 +3422,12 @@ function _updateProjectStatusBar() {
     html.push(chip('#2e7d32', 'rgba(232,245,233,0.95)', '✓ OK', 'Проверки пройдены', 'issues'));
   }
   if (totalCap > 0) {
+    const capLabel = standbyCount > 0 ? `${availCap.toFixed(0)} кВт (резерв ${standbyCount})` : `${totalCap.toFixed(0)} кВт`;
     html.push(chip(loadColor, 'rgba(255,255,255,0.95)',
-      `⚡ ${totalLoad.toFixed(1)} / ${totalCap.toFixed(0)} кВт <span style="color:${loadColor};font-weight:600">${loadPct.toFixed(0)}%</span>`,
-      'Общая нагрузка / номинал источников · открыть Dashboard (Ctrl+Shift+D)', 'dashboard'));
+      `⚡ ${totalLoad.toFixed(1)} / ${capLabel} <span style="color:${loadColor};font-weight:600">${loadPct.toFixed(0)}%</span>`,
+      standbyCount > 0
+        ? 'Общая нагрузка / доступная мощность (без резервных) · Ctrl+Shift+D'
+        : 'Общая нагрузка / номинал источников · Ctrl+Shift+D', 'dashboard'));
   }
   if (cables || panels || mvPanels || consumers) {
     const parts = [];
@@ -4855,6 +5047,10 @@ async function init() {
   if (btnEquipmentTable) btnEquipmentTable.addEventListener('click', openEquipmentTableModal);
   const btnDashboard = document.getElementById('btn-open-dashboard');
   if (btnDashboard) btnDashboard.addEventListener('click', openDashboardModal);
+  const btnRoadmap = document.getElementById('btn-open-roadmap');
+  if (btnRoadmap) btnRoadmap.addEventListener('click', openRoadmapModal);
+  const btnChangelog = document.getElementById('btn-open-changelog');
+  if (btnChangelog) btnChangelog.addEventListener('click', openChangelogModal);
   const btnSearch = document.getElementById('btn-open-search');
   if (btnSearch) btnSearch.addEventListener('click', openSearchPalette);
   const btnIssues = document.getElementById('btn-open-project-issues');
