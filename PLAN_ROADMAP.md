@@ -673,6 +673,12 @@
   column-definitions (`_CABLE_TABLE_COLUMNS` и т.д.). Header / filter-row
   / body / colspan всех таблиц обёрнуты в `ifShow(col, html)` —
   скрытые столбцы полностью исключаются из DOM.
+- **1.20.32 (v0.57.7)** — глобальные keyboard shortcuts для 5 основных
+  модалок: Ctrl+Shift+D (Dashboard), Ctrl+Shift+I (Issues), Ctrl+Shift+L
+  (Lines/Cable table), Ctrl+Shift+U (Users/Consumers table), Ctrl+Shift+E
+  (Equipment table) + Ctrl+F (Search). Не перехватываются в полях ввода.
+  Tooltips на кнопках сайдбара и секция «Открытие основных модалок» в
+  Help-panel обновлены со списком шорткатов.
 
 **Phase 1.19.7…1.19.15 — доводка MV-потока и TCC**
 

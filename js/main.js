@@ -3647,17 +3647,32 @@ function _spNodeIcon(n) {
   return '▫';
 }
 
-// Ctrl+F глобальный hotkey
+// Phase 1.20.16 + 1.20.32: глобальные hotkeys для быстрого доступа к модалкам.
+// Ctrl+F — поиск (палетка)
+// Ctrl+Shift+D — 📊 Сводка проекта / Dashboard
+// Ctrl+Shift+I — ⚠ Проверки проекта / Issues
+// Ctrl+Shift+L — 🔌 Таблица кабелей (Lines)
+// Ctrl+Shift+U — 💡 Таблица потребителей (Users/Consumers)
+// Ctrl+Shift+E — 🗄 Таблица оборудования (Equipment)
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
-    // Не перехватываем если фокус в input/textarea (нативный поиск по странице и т.п.)
-    const tgt = e.target;
-    if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) {
-      // Разрешаем нативный Ctrl+F в полях ввода
-      if (!_searchPaletteEl) return;
-    }
+  const tgt = e.target;
+  const inField = tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable);
+  // Ctrl+F — поиск; в полях разрешаем нативный браузерный поиск
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
+    if (inField && !_searchPaletteEl) return;
     e.preventDefault();
     openSearchPalette();
+    return;
+  }
+  // Ctrl+Shift+<key> — модалки. Внутри полей ввода не перехватываем.
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+    if (inField) return;
+    const key = e.key.toLowerCase();
+    if (key === 'd') { e.preventDefault(); openDashboardModal(); return; }
+    if (key === 'i') { e.preventDefault(); openProjectIssuesModal(); return; }
+    if (key === 'l') { e.preventDefault(); openCableTableModal(); return; }
+    if (key === 'u') { e.preventDefault(); openConsumersTableModal(); return; }
+    if (key === 'e') { e.preventDefault(); openEquipmentTableModal(); return; }
   }
 });
 
@@ -4528,6 +4543,17 @@ async function init() {
         <li><b>+ в середине сегмента</b> — добавить точку сплайна</li>
         <li>Рукоятки на концах — переключить связь на другой порт</li>
       </ul>
+      <h4>Открытие основных модалок</h4>
+      <table>
+        <tr><th>Модалка</th><th>Сочетание</th></tr>
+        <tr><td>🔍 Найти (поиск по проекту)</td><td><code>Ctrl+F</code></td></tr>
+        <tr><td>📊 Сводка проекта / Dashboard</td><td><code>Ctrl+Shift+D</code></td></tr>
+        <tr><td>⚠ Проверки проекта / Issues</td><td><code>Ctrl+Shift+I</code></td></tr>
+        <tr><td>🔌 Таблица кабелей (Lines)</td><td><code>Ctrl+Shift+L</code></td></tr>
+        <tr><td>💡 Таблица потребителей (Users)</td><td><code>Ctrl+Shift+U</code></td></tr>
+        <tr><td>🗄 Таблица оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
+      </table>
+      <div class="note">В полях ввода (input/textarea) Ctrl+Shift-хоткеи не перехватываются. Нативный Ctrl+F тоже работает в полях; модалка поиска открывается только над холстом.</div>
     `,
   });
 
