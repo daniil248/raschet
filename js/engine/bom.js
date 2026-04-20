@@ -28,6 +28,7 @@ import { state } from './state.js';
 import {
   kitById, pduBySku, accBySku,
 } from '../../shared/rack-catalog-data.js';
+import { pricesForElement } from '../../shared/price-records.js';
 
 // Внутренний slug — тот же алгоритм, что в shared/rack-catalog-data.js._slug.
 // Нужен, чтобы id в BOM совпадал с id в element-library ('pdu.'+slug и т.п.)
@@ -516,28 +517,42 @@ export function exportBomXlsx(projectName) {
   if (!bom.length) {
     throw new Error('Спецификация пуста: проверьте, что узлы привязаны к каталожным записям.');
   }
-  const header = ['№', 'Раздел', 'Поз.', 'Производитель', 'Модель / артикул', 'Код', 'Кол-во', 'Ед.', 'Примечание'];
+  // v0.58.82: добавлены колонки «Цена, ед.», «Валюта», «Сумма» —
+  // подтягиваем последнюю активную цену через pricesForElement(row.id).
+  const header = ['№', 'Раздел', 'Поз.', 'Производитель', 'Модель / артикул', 'Код',
+                  'Кол-во', 'Ед.', 'Цена, ед.', 'Валюта', 'Сумма', 'Примечание'];
   const aoa = [header];
-  // Вставляем строки секционно с разделителями
   let globalN = 0;
   let prevSection = null;
   for (const row of bom) {
     if (row.section !== prevSection) {
-      aoa.push([row.section]); // строка-заголовок раздела (мёрж при необходимости)
+      aoa.push([row.section]);
       prevSection = row.section;
     }
     globalN++;
+    let unitPrice = null, currency = '', total = null;
+    try {
+      const info = pricesForElement(row.id, { activeOnly: true });
+      if (info && info.latest) {
+        unitPrice = Number(info.latest.price) || null;
+        currency  = info.latest.currency || '';
+        if (unitPrice != null) total = unitPrice * (Number(row.qty) || 0);
+      }
+    } catch {}
     aoa.push([
       globalN, row.section, row.position,
       row.supplier, row.model, row.article,
-      row.qty, row.unit, row.notes,
+      row.qty, row.unit,
+      unitPrice, currency, total,
+      row.notes,
     ]);
   }
   const ws = window.XLSX.utils.aoa_to_sheet(aoa);
-  // Ширина колонок
   ws['!cols'] = [
     { wch: 4 }, { wch: 22 }, { wch: 5 }, { wch: 16 }, { wch: 36 },
-    { wch: 22 }, { wch: 8 }, { wch: 6 }, { wch: 40 },
+    { wch: 22 }, { wch: 8 }, { wch: 6 },
+    { wch: 12 }, { wch: 6 }, { wch: 14 },
+    { wch: 40 },
   ];
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, ws, 'BOM');
@@ -552,7 +567,8 @@ export function exportBomXlsx(projectName) {
 export function exportBomCsv(projectName) {
   const bom = buildBOM();
   if (!bom.length) throw new Error('Спецификация пуста.');
-  const head = ['№','Раздел','Поз','Производитель','Модель','Код','Кол-во','Ед','Примечание'];
+  const head = ['№','Раздел','Поз','Производитель','Модель','Код','Кол-во','Ед',
+                'Цена, ед.','Валюта','Сумма','Примечание'];
   const esc = v => {
     const s = String(v == null ? '' : v);
     return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -561,7 +577,17 @@ export function exportBomCsv(projectName) {
   let n = 0;
   for (const r of bom) {
     n++;
-    lines.push([n, r.section, r.position, r.supplier, r.model, r.article, r.qty, r.unit, r.notes].map(esc).join(';'));
+    let unitPrice = '', currency = '', total = '';
+    try {
+      const info = pricesForElement(r.id, { activeOnly: true });
+      if (info && info.latest) {
+        unitPrice = Number(info.latest.price) || '';
+        currency  = info.latest.currency || '';
+        if (unitPrice !== '') total = unitPrice * (Number(r.qty) || 0);
+      }
+    } catch {}
+    lines.push([n, r.section, r.position, r.supplier, r.model, r.article,
+                r.qty, r.unit, unitPrice, currency, total, r.notes].map(esc).join(';'));
   }
   const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
