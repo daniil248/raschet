@@ -891,13 +891,25 @@ export function renderSystemsBlock(n) {
     }
     return `<input type="text" ${name} value="${escAttr(v)}" style="width:100%;font:inherit;font-size:12px;padding:3px 4px">`;
   };
+  const isCustom = (sysId) => {
+    try {
+      return Array.isArray(state.project?.customSystems) &&
+        state.project.customSystems.some(s => s.id === sysId);
+    } catch { return false; }
+  };
   const items = allSystems.map(s => {
     const on = cur.includes(s.id);
     const vals = (sp[s.id] && typeof sp[s.id] === 'object') ? sp[s.id] : {};
+    const custom = isCustom(s.id);
+    const manageBtns = custom ? `
+      <button type="button" class="sys-manage" data-sys-manage-add="${escAttr(s.id)}" title="Добавить параметр" style="margin-left:auto;font-size:10px;padding:2px 6px;border:1px solid ${s.color};background:#fff;border-radius:3px;cursor:pointer;color:${s.color}">+ параметр</button>
+      <button type="button" class="sys-manage" data-sys-manage-del="${escAttr(s.id)}" title="Удалить систему проекта" style="font-size:10px;padding:2px 6px;border:1px solid #dc2626;background:#fff;border-radius:3px;cursor:pointer;color:#dc2626;margin-left:4px">✕</button>` : '';
     const header = `<label class="sys-chip" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid ${on ? s.color : '#e0e3ea'};border-radius:4px;cursor:pointer;background:${on ? s.color + '15' : '#fff'}">
       <input type="checkbox" data-sys="${escAttr(s.id)}"${on ? ' checked' : ''} style="margin:0">
       <span style="font-size:14px">${s.icon}</span>
       <span style="font-weight:600;color:${s.color}">${escHtml(s.label)}</span>
+      ${custom ? '<span class="muted" style="font-size:10px;margin-left:4px">custom</span>' : ''}
+      ${manageBtns}
     </label>`;
     let paramsBlock = '';
     if (on && Array.isArray(s.params) && s.params.length) {
@@ -947,6 +959,55 @@ export function wireSystemsBlock(n, root) {
       if (!n.systems.length) n.systems = ['electrical'];
       notifyChange();
       // Перерисовываем инспектор для обновления визуальных рамок системы
+      if (_render) _render();
+      renderInspector();
+    });
+  });
+  // v0.58.25: управление параметрами пользовательской системы — +/удалить
+  host.querySelectorAll('[data-sys-manage-add]').forEach(b => {
+    // клик по кнопке не должен переключать чекбокс родительского label
+    b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    b.addEventListener('click', (e) => {
+      const sysId = b.getAttribute('data-sys-manage-add');
+      const sys = (state.project.customSystems || []).find(s => s.id === sysId);
+      if (!sys) return;
+      const label = prompt('Название параметра (отображается в UI):', '');
+      if (!label) return;
+      const keyRaw = prompt('Ключ (латиница/цифры):', label.toLowerCase().replace(/[^a-z0-9]+/g, ''));
+      const key = String(keyRaw || '').trim();
+      if (!key || !/^[a-z0-9_]+$/i.test(key)) { flash('Ключ должен быть a-z0-9_', 'error'); return; }
+      if (!Array.isArray(sys.params)) sys.params = [];
+      if (sys.params.find(p => p.key === key)) { flash('Параметр с таким ключом уже существует', 'error'); return; }
+      const type = (prompt('Тип параметра: number / text / select', 'text') || 'text').trim();
+      const unit = prompt('Единицы измерения (можно пусто):', '') || '';
+      const p = { key, label, type: ['number','text','select'].includes(type) ? type : 'text' };
+      if (unit) p.unit = unit;
+      if (p.type === 'select') {
+        const opts = prompt('Варианты через запятую:', '') || '';
+        p.options = [''].concat(opts.split(',').map(o => o.trim()).filter(Boolean));
+      }
+      if (p.type === 'number') { p.min = 0; p.step = 1; }
+      snapshot('custom-system-param-add:' + sysId + ':' + key);
+      sys.params.push(p);
+      globalThis.__raschetCustomSystems = state.project.customSystems.slice();
+      notifyChange();
+      renderInspector();
+    });
+  });
+  host.querySelectorAll('[data-sys-manage-del]').forEach(b => {
+    b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    b.addEventListener('click', () => {
+      const sysId = b.getAttribute('data-sys-manage-del');
+      if (!confirm('Удалить систему «' + sysId + '» из проекта? Она исчезнет у всех элементов.')) return;
+      snapshot('custom-system-del:' + sysId);
+      state.project.customSystems = (state.project.customSystems || []).filter(s => s.id !== sysId);
+      // убрать упоминания систем и параметров из всех узлов
+      for (const node of state.nodes.values()) {
+        if (Array.isArray(node.systems)) node.systems = node.systems.filter(x => x !== sysId);
+        if (node.systemParams && node.systemParams[sysId]) delete node.systemParams[sysId];
+      }
+      globalThis.__raschetCustomSystems = state.project.customSystems.slice();
+      notifyChange();
       if (_render) _render();
       renderInspector();
     });
