@@ -2032,6 +2032,14 @@ function recalc() {
     } else {
       _curveEff = autoBreakerCurve(_inrushK, _refIn);
     }
+    // v0.57.88: sanity-check. IEC 60898 ограничивает MCB до 125 А.
+    // Если пользователь (или старые данные) сохранили MCB_B/C/D/K/Z,
+    // а номинал вырос выше предела — переключаем на соответствующий
+    // MCCB/ACB по autoBreakerCurve, иначе TCC-кривая и селективность
+    // будут считаться по неправильной характеристике.
+    if (_refIn > 125 && /^MCB_/.test(String(_curveEff))) {
+      _curveEff = autoBreakerCurve(_inrushK, _refIn);
+    }
     c._breakerCurveEff = _curveEff;
 
     // Для регулируемых автоматов (MCCB/ACB) — авто-настройка Ir/Isd/tsd/Ii
@@ -2573,8 +2581,16 @@ function recalc() {
       tkS,
       earthingSystem: (fromN => (fromN?.type === 'panel' && fromN.earthingOut) || GLOBAL.earthingSystem || 'TN-S')(state.nodes.get(c.from.nodeId)),
       breakerIn: Number(c._breakerIn) || Number(c._breakerPerLine) || 0,
-      // Авто-выбор типа: MCB_C до 63A, MCCB свыше (MCB не бывает >63–125A)
-      breakerCurve: c.breakerCurve || ((Number(c._breakerIn) || Number(c._breakerPerLine) || 0) > 63 ? 'MCCB' : 'MCB_C'),
+      // Авто-выбор типа: MCB_C до 125A (IEC 60898), MCCB свыше.
+      // v0.57.88: порог был 63A — поднят до 125A согласно IEC 60898.
+      // Также если задан c.breakerCurve='MCB_*' но номинал > 125A — MCCB.
+      breakerCurve: (() => {
+        const _inRef = Number(c._breakerIn) || Number(c._breakerPerLine) || 0;
+        if (c.breakerCurve && !(_inRef > 125 && /^MCB_/.test(String(c.breakerCurve)))) {
+          return c.breakerCurve;
+        }
+        return _inRef > 125 ? 'MCCB' : 'MCB_C';
+      })(),
       Uph: phases === 3 ? (U / Math.sqrt(3)) : U,
       rcdEnabled: !!c.rcdEnabled,
       rcdTripMa: Number(c.rcdTripMa) || 30,

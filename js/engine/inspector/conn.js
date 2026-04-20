@@ -1300,7 +1300,10 @@ function _buildConnTccPayload(conn, fromN, toN) {
   const breakerCount = Number(conn._breakerCount) || 1;
   if (breakerInEff || mvCellSettings) {
     const In = breakerInEff || Number(mvCellSettings?.Ir) || 630;
-    const curveStr = conn.breakerCurve || conn._breakerCurveEff || 'MCCB';
+    // v0.57.88: приоритет — _breakerCurveEff (прошёл sanity-check
+    // «MCB только до 125 A» в recalc.js), затем пользовательская кривая.
+    // Иначе метка показывала бы «MCB_C 630A», что нарушает IEC 60898.
+    const curveStr = conn._breakerCurveEff || conn.breakerCurve || 'MCCB';
     // Настройки регулируемого автомата (MCCB/ACB/VCB): приоритет mvCellSettings
     // (реле ячейки СН), затем _breakerSettings (авто/ручная настройка LV MCCB/ACB).
     // v0.57.50: _manualKeys — список уставок, заданных пользователем вручную
