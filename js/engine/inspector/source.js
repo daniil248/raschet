@@ -485,8 +485,17 @@ export function openAutomationModal(n) {
       n.triggerNodeIds = [];
       n.triggerNodeId = null;
 
-      n.startDelaySec = Number(document.getElementById('auto-startDelay')?.value) || 0;
-      n.stopDelaySec = Number(document.getElementById('auto-stopDelay')?.value) ?? 2;
+      // v0.57.71: preserve-on-miss
+      const _rd = (id, curr) => {
+        const el = document.getElementById(id);
+        if (!el) return curr;
+        const raw = String(el.value ?? '').trim();
+        if (raw === '') return curr;
+        const v = Number(raw);
+        return Number.isFinite(v) ? v : curr;
+      };
+      n.startDelaySec = _rd('auto-startDelay', n.startDelaySec ?? 0);
+      n.stopDelaySec = _rd('auto-stopDelay', n.stopDelaySec ?? 2);
 
       document.getElementById('modal-automation').classList.add('hidden');
       render();

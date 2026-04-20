@@ -26,6 +26,26 @@ export function flash(msg) {
   setTimeout(() => d.remove(), 1500);
 }
 
+// v0.57.71: preserve-on-miss helpers для apply-хендлеров параметров.
+// Правило: установленные пользователем параметры НЕЛЬЗЯ затирать
+// дефолтами, если элемента нет в DOM или поле пустое. См.
+// feedback_user_params.md. Используется в inspector/{source,consumer,panel,ups}.js.
+export function readDomNum(id, curr) {
+  const el = document.getElementById(id);
+  if (!el) return curr;
+  const raw = String(el.value ?? '').trim();
+  if (raw === '') return curr;
+  const v = Number(raw);
+  return Number.isFinite(v) ? v : curr;
+}
+
+export function readDomStr(id, curr) {
+  const el = document.getElementById(id);
+  if (!el) return curr;
+  const raw = String(el.value ?? '').trim();
+  return raw === '' ? curr : raw;
+}
+
 export function field(label, html) {
   return `<div class="field"><label>${label}</label>${html}</div>`;
 }
