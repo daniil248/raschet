@@ -384,16 +384,47 @@ function _logRange(a, b, n) {
  */
 export function checkSelectivity(up, down, I_k = null) {
   const checks = [];
-  // 1. Амплитудная: In_up ≥ k × In_down (коэффициент зависит от типа)
-  const coef = down.curve === 'B' ? 2.0 : (down.curve === 'C' ? 1.6 : 1.4);
-  const amplitudeOk = Number(up.inNominal) >= coef * Number(down.inNominal);
-  checks.push({
-    type: 'amplitude',
-    ok: amplitudeOk,
-    info: `In_up=${up.inNominal} vs ${coef}×In_down=${(coef * down.inNominal).toFixed(1)} А`,
-  });
+  // v0.57.52: для регулируемых автоматов (MCCB/ACB с заданными settings)
+  // используем Isd как порог срабатывания короткой защиты — это более
+  // точно, чем inNominal. Fall back на inNominal если settings нет.
+  const upIsd = Number(up.settings?.Isd);
+  const downIsd = Number(down.settings?.Isd);
+  const useRelayAmpl = upIsd > 0 && downIsd > 0;
 
-  // 2. При заданном I_k — сравнение времён
+  // 1. Амплитудная
+  if (useRelayAmpl) {
+    // Для регулируемых (MCCB/ACB): Isd_up ≥ 1.3 × Isd_down
+    const amplitudeOk = upIsd >= 1.3 * downIsd;
+    checks.push({
+      type: 'amplitude',
+      ok: amplitudeOk,
+      info: `Isd_up=${upIsd} vs 1.3×Isd_down=${(1.3 * downIsd).toFixed(1)} А`,
+    });
+  } else {
+    // Fixed (MCB): In_up ≥ k × In_down (k зависит от кривой downstream)
+    const coef = down.curve === 'B' ? 2.0 : (down.curve === 'C' ? 1.6 : 1.4);
+    const amplitudeOk = Number(up.inNominal) >= coef * Number(down.inNominal);
+    checks.push({
+      type: 'amplitude',
+      ok: amplitudeOk,
+      info: `In_up=${up.inNominal} vs ${coef}×In_down=${(coef * down.inNominal).toFixed(1)} А`,
+    });
+  }
+
+  // 1b. Временная ступень Δt (если у обоих заданы tsd)
+  const upTsd = Number(up.settings?.tsd);
+  const downTsd = Number(down.settings?.tsd);
+  if (upTsd > 0 && downTsd >= 0) {
+    const dt = upTsd - downTsd;
+    const timeStepOk = dt >= 0.1;
+    checks.push({
+      type: 'time-step',
+      ok: timeStepOk,
+      info: `Δt = tsd_up(${upTsd}) − tsd_down(${downTsd}) = ${dt.toFixed(2)} с (требуется ≥ 0.1 с)`,
+    });
+  }
+
+  // 2. При заданном I_k — сравнение времён по полной кривой
   if (I_k != null && Number.isFinite(I_k)) {
     const tUp = tccBreakerTime(I_k / up.inNominal, up.curve).t_sec;
     const tDown = tccBreakerTime(I_k / down.inNominal, down.curve).t_sec;
@@ -410,7 +441,7 @@ export function checkSelectivity(up, down, I_k = null) {
   return {
     selective,
     reason: selective
-      ? 'Селективность обеспечена'
+      ? 'Селективность обеспечена' + (useRelayAmpl ? ' (по Isd' + (upTsd > 0 ? '+Δt' : '') + ')' : '')
       : 'Нарушение: ' + checks.filter(c => !c.ok).map(c => c.type + ' (' + c.info + ')').join(', '),
     checks,
   };
