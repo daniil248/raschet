@@ -1121,7 +1121,14 @@ function sectionBom() {
 // Сводка по отправлениям из модуля «Логистика». Все активные shipment'ы
 // пользователя, агрегация стоимости товаров и перевозки.
 function sectionLogistics() {
-  const ships = (() => { try { return listShipments(); } catch { return []; } })();
+  // Phase 1.6.3: фильтрация отправлений по текущему проекту (если
+  // window.Raschet.currentProjectId задан). Fallback — все отправления.
+  const currentPid = (typeof window !== 'undefined' && window.Raschet && window.Raschet.currentProjectId) || null;
+  const allShips = (() => { try { return listShipments(); } catch { return []; } })();
+  const ships = currentPid
+    ? allShips.filter(s => s.projectId === currentPid)
+    : allShips;
+  const filteredByProject = currentPid && allShips.length > ships.length;
   const MODE_LBL = k => (SHIPMENT_MODES[k] || { label: k }).label;
   const ST_LBL = k => (SHIPMENT_STATUSES[k] || { label: k }).label;
   const text = [
@@ -1184,7 +1191,11 @@ function sectionLogistics() {
   blocks.push(B.h2('Ведомость отправлений'));
   blocks.push(B.table(header, rows));
   blocks.push(B.paragraph(`Всего (товары + перевозка): ${grand ? grand.toLocaleString('ru-RU') + ' ₽' : '—'}`));
-  blocks.push(B.paragraph('Источник данных: модуль «Логистика» (per-user localStorage). Раздел отображает все активные отправления пользователя. Для формирования отправления из текущего проекта — кнопка «🚚 Передать в логистику» в боковой панели Конструктора.'));
+  if (currentPid) {
+    blocks.push(B.paragraph(`Источник данных: модуль «Логистика». Отправления отфильтрованы по текущему проекту (projectId = ${currentPid}). Всего в логистике: ${allShips.length}, по проекту: ${ships.length}.`));
+  } else {
+    blocks.push(B.paragraph('Источник данных: модуль «Логистика» (per-user localStorage). Раздел отображает все отправления пользователя, так как текущий проект не идентифицирован. Для привязки — сохраните проект (облако) и передайте BOM в логистику повторно.'));
+  }
   return { text: text.join('\n'), blocks };
 }
 

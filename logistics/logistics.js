@@ -574,6 +574,8 @@ document.addEventListener('DOMContentLoaded', () => {
             label: `Импорт из «${hdf.projectName || 'проекта'}» (${new Date(hdf.createdAt || Date.now()).toLocaleDateString('ru-RU')})`,
             status: 'draft', mode: 'road',
             items: hdf.items,
+            projectId: hdf.projectId || null,
+            projectName: hdf.projectName || null,
             notes: `Импортировано из Конструктора схем ${new Date(hdf.createdAt || Date.now()).toLocaleString('ru-RU')}`,
           });
           const draftId = draft?.id;

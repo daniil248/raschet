@@ -105,6 +105,7 @@ export function initToolbar() {
       }));
       const handoff = {
         source: 'raschet-constructor',
+        projectId: (window.Raschet && window.Raschet.currentProjectId) || null,
         projectName: projName,
         createdAt: Date.now(),
         items,

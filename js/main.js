@@ -509,6 +509,15 @@ async function openProject(id) {
       return;
     }
     state.currentProject = data;
+    // Phase 1.6.3: прокидываем project-id/name в window.Raschet, чтобы
+    // export.js (handoff → логистика) и report-sections.js (фильтр
+    // отправлений по проекту) могли к ним обратиться.
+    try {
+      if (window.Raschet) {
+        window.Raschet.currentProjectId = data.id || null;
+        window.Raschet.currentProjectName = data.name || null;
+      }
+    } catch {}
 
     // Схему даём редактору
     if (data.scheme) {
@@ -583,6 +592,7 @@ function backToProjects() {
   // Если на экране проектов — переходим на главную (hub)
   if (state.currentProject) {
     state.currentProject = null;
+    try { if (window.Raschet) { window.Raschet.currentProjectId = null; window.Raschet.currentProjectName = null; } } catch {}
     els.projectName.textContent = '';
     els.projectName.classList.add('hidden');
     els.btnSave.classList.add('hidden');
