@@ -3683,7 +3683,21 @@ function _computeSourceCapacity(S) {
     explain.push(`backup-тир (${backups.length}×, не в норме): ${backups.reduce((s, x) => s + x.cap, 0).toFixed(1)} кВт`);
   }
   if (standbys.length) {
-    explain.push(`standby (${standbys.length}×, не в норме): ${standbys.reduce((s, x) => s + x.cap, 0).toFixed(1)} кВт`);
+    // Разбиваем standby по группам для точного описания
+    const sbByGrp = new Map();
+    const sbNoGrp = [];
+    for (const sb of standbys) {
+      if (sb.group) {
+        if (!sbByGrp.has(sb.group)) sbByGrp.set(sb.group, []);
+        sbByGrp.get(sb.group).push(sb);
+      } else sbNoGrp.push(sb);
+    }
+    for (const [g, list] of sbByGrp) {
+      explain.push(`standby гр. «${g}» (${list.length}×): ${list.reduce((s, x) => s + x.cap, 0).toFixed(1)} кВт — компенсирует отказ только в этой группе`);
+    }
+    if (sbNoGrp.length) {
+      explain.push(`standby без группы (${sbNoGrp.length}×): ${sbNoGrp.reduce((s, x) => s + x.cap, 0).toFixed(1)} кВт — глобальный резерв`);
+    }
   }
 
   // N-1 сценарий: отказывает самый мощный primary, компенсируется
@@ -3697,18 +3711,39 @@ function _computeSourceCapacity(S) {
   const standbyCaps = standbys.map(s => s.cap);
   const maxStandby = standbyCaps.length ? Math.max(...standbyCaps) : 0;
 
+  // Phase 1.20.56: standby group-scoped. Если у standby задана «группа
+  // резерва», он компенсирует отказ ТОЛЬКО в этой группе, а не любой.
+  // maxStandbyForGroup(g) → максимальный standby, чья группа = g.
+  const standbyByGroup = new Map();   // group → maxCap
+  const standbyGlobal = [];           // без группы — резерв любого тира
+  for (const sb of standbys) {
+    if (sb.group) {
+      standbyByGroup.set(sb.group, Math.max(standbyByGroup.get(sb.group) || 0, sb.cap));
+    } else {
+      standbyGlobal.push(sb.cap);
+    }
+  }
+  const maxStandbyGlobal = standbyGlobal.length ? Math.max(...standbyGlobal) : 0;
+
   // Extended N-1: отказ самого мощного primary из группы NOT covered
   // правилом N-1 (одиночный primary). Для одиночных — компенсация
-  // возможна только активацией backup/standby.
+  // возможна только активацией backup/standby. Standby выбирается
+  // с учётом группы (group-scoped), затем — глобальный без группы.
   let capAfterFail = availCap;
   let n1Applicable = false;
   // ищем одиночные primary, для которых N-1 не работает внутри группы
-  const loneUncovered = loose.concat(
+  const loneUncoveredList = loose.concat(
     [...groups.values()].filter(l => l.length === 1).flat()
   );
-  if (loneUncovered.length) {
-    const maxLone = Math.max(...loneUncovered.map(x => x.cap));
-    capAfterFail = availCap - maxLone + Math.max(maxBackup, maxStandby);
+  if (loneUncoveredList.length) {
+    // Для каждого одиночного primary ищем самый мощный — он «отказывает»
+    loneUncoveredList.sort((a, b) => b.cap - a.cap);
+    const failed = loneUncoveredList[0];
+    // Компенсация: standby той же группы ИЛИ глобальный без группы
+    // ИЛИ backup (резервный тир) — берём лучший
+    const sbSame = failed.group ? (standbyByGroup.get(failed.group) || 0) : 0;
+    const compensation = Math.max(sbSame, maxStandbyGlobal, maxBackup);
+    capAfterFail = availCap - failed.cap + compensation;
     n1Applicable = true;
   } else if (groups.size || primaries.length >= 2) {
     // все primaries в группах с ≥2 → N-1 уже в availCap
