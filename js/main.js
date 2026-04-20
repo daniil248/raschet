@@ -5062,11 +5062,16 @@ function _equipKindOf(n) {
     //   · входящей линией (питается от вышестоящего источника — напр. UT→TR)
     if (n.sourceSubtype === 'utility') return 'utility';
     if (n.sourceSubtype === 'transformer' || n.transformerCatalogId) return 'transformer';
+    // v0.57.72: считаем трансформатором только если upstream-узел — utility/source/generator.
+    // Иначе (например, перемычка source→source без смысла) остаётся 'source'.
     try {
       const S = window.Raschet?._state;
       if (S) {
         for (const c of S.conns.values()) {
-          if (c?.to?.nodeId === n.id) return 'transformer';
+          if (c?.to?.nodeId !== n.id) continue;
+          const fromN = S.nodes?.get?.(c.from?.nodeId);
+          if (!fromN) continue;
+          if (fromN.type === 'source' || fromN.type === 'generator') return 'transformer';
         }
       }
     } catch {}
