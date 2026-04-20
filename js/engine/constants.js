@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.58.41';
+export const APP_VERSION = '0.58.42';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -26,8 +26,11 @@ export const SVG_NS = 'http://www.w3.org/2000/svg';
 export const SYSTEMS_CATALOG = [
   { id: 'electrical',  label: 'Электрика',   icon: '⚡', color: '#d32f2f', pageKinds: ['schematic'], params: [] },
   { id: 'low-voltage', label: 'Слаботочка',  icon: '📶', color: '#1e88e5', pageKinds: ['low-voltage'], params: [
-    { key: 'ports', label: 'Портов', type: 'number', unit: 'шт', min: 0, step: 1 },
-    { key: 'note',  label: 'Комментарий', type: 'text' },
+    { key: 'ports',     label: 'Портов', type: 'number', unit: 'шт', min: 0, step: 1 },
+    { key: 'cableType', label: 'Тип кабеля', type: 'select', options: ['', 'UTP cat5e', 'UTP cat6', 'UTP cat6A', 'FTP cat6', 'STP cat7', 'оптика OM3', 'оптика OM4', 'оптика OS2', 'RG-6', 'КСПВ', 'КСПВГ', 'FRLS'] },
+    { key: 'powerW',    label: 'Потребление', type: 'number', unit: 'Вт', min: 0, step: 0.5 },
+    { key: 'voltage',   label: 'Напряжение питания', type: 'select', options: ['', '5 В DC', '12 В DC', '24 В DC', '48 В DC', '230 В AC', 'PoE'] },
+    { key: 'note',      label: 'Комментарий', type: 'text' },
   ] },
   { id: 'data',        label: 'Данные',      icon: '🖧',  color: '#059669', pageKinds: ['data','low-voltage'], params: [
     { key: 'rj45',  label: 'RJ45',  type: 'number', unit: 'шт', min: 0, step: 1 },
@@ -59,17 +62,26 @@ export const SYSTEMS_CATALOG = [
     { key: 'dn',       label: 'DN', type: 'number', unit: 'мм', min: 0, step: 1 },
   ] },
   { id: 'fire',        label: 'Пожарная',    icon: '🚨', color: '#dc2626', pageKinds: ['low-voltage'], params: [
-    { key: 'zone',   label: 'Зона/шлейф', type: 'text' },
-    { key: 'device', label: 'Тип устройства', type: 'select', options: ['', 'дымовой', 'тепловой', 'ручной', 'оповещатель', 'прибор'] },
+    { key: 'zone',       label: 'Зона/шлейф', type: 'text' },
+    { key: 'device',     label: 'Тип устройства', type: 'select', options: ['', 'дымовой', 'тепловой', 'пламени', 'газа', 'ручной (ИПР)', 'оповещатель свет.', 'оповещатель звук.', 'оповещатель свето-зв.', 'модуль пожаротуш.', 'задвижка/клапан', 'прибор ППКП'] },
+    { key: 'currentMa',  label: 'Ток потребления', type: 'number', unit: 'мА', min: 0, step: 0.5 },
+    { key: 'splDb',      label: 'Уровень звука (для оповещателя)', type: 'number', unit: 'дБ', min: 0, step: 1 },
+    { key: 'protocol',   label: 'Протокол', type: 'select', options: ['', 'пороговый', 'адресный', 'адресно-аналоговый', 'Rubezh', 'С2000', 'Болид', 'ESSER', 'Bosch'] },
   ] },
   { id: 'security',    label: 'Охрана/СКУД', icon: '🛡️', color: '#7c3aed', pageKinds: ['low-voltage'], params: [
-    { key: 'device', label: 'Тип', type: 'select', options: ['', 'считыватель', 'замок', 'контроллер', 'датчик движения', 'магнитоконтакт'] },
-    { key: 'zone',   label: 'Зона', type: 'text' },
+    { key: 'device',    label: 'Тип', type: 'select', options: ['', 'считыватель', 'контроллер СКУД', 'замок электр.', 'замок магнитн.', 'кнопка выхода', 'датчик движения', 'магнитоконтакт', 'вибро-датчик', 'сирена охр.', 'клавиатура', 'ПЦН'] },
+    { key: 'zone',      label: 'Зона', type: 'text' },
+    { key: 'interface', label: 'Интерфейс', type: 'select', options: ['', 'Wiegand 26', 'Wiegand 34', 'RS-485', 'OSDP', 'TCP/IP', 'Ethernet PoE', 'Mifare', 'EM-Marine', 'Bluetooth'] },
+    { key: 'currentMa', label: 'Ток потребления', type: 'number', unit: 'мА', min: 0, step: 1 },
   ] },
   { id: 'video',       label: 'Видеонаблюдение', icon: '📹', color: '#0284c7', pageKinds: ['low-voltage'], params: [
-    { key: 'cameras',    label: 'Камер', type: 'number', unit: 'шт', min: 0, step: 1 },
-    { key: 'resolution', label: 'Разрешение', type: 'select', options: ['', '2 MP', '4 MP', '5 MP', '8 MP (4K)'] },
-    { key: 'storageDays',label: 'Архив', type: 'number', unit: 'сут', min: 0, step: 1 },
+    { key: 'cameras',     label: 'Камер', type: 'number', unit: 'шт', min: 0, step: 1 },
+    { key: 'resolution',  label: 'Разрешение', type: 'select', options: ['', '2 MP', '4 MP', '5 MP', '8 MP (4K)', '12 MP'] },
+    { key: 'lensType',    label: 'Объектив', type: 'select', options: ['', 'фикс. 2.8 мм', 'фикс. 3.6 мм', 'фикс. 4 мм', 'варио 2.8-12 мм', 'PTZ', 'fisheye', 'моторизир.'] },
+    { key: 'irRangeM',    label: 'ИК-подсветка', type: 'number', unit: 'м', min: 0, step: 1 },
+    { key: 'bitrateMbps', label: 'Битрейт потока', type: 'number', unit: 'Мбит/с', min: 0, step: 0.5 },
+    { key: 'storageDays', label: 'Архив', type: 'number', unit: 'сут', min: 0, step: 1 },
+    { key: 'poeW',        label: 'PoE мощность', type: 'number', unit: 'Вт', min: 0, step: 0.5 },
   ] },
 ];
 export function getSystemMeta(id) {

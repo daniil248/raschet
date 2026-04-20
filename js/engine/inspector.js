@@ -187,6 +187,16 @@ function renderInspectorPage() {
       const curScale = page.scale || '1:1';
       const scaleOpts = scales.map(s => `<option value="${s}"${s === curScale ? ' selected' : ''}>${s}</option>`).join('');
       h.push(field('Масштаб', `<select id="pg-scale">${scaleOpts}</select>`));
+      // v0.58.42: тумблеры сетки/линеек
+      const sg = page.showGrid !== false;
+      const sr = page.showRulers !== false;
+      h.push(field('Отображение', `
+        <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;cursor:pointer">
+          <input type="checkbox" id="pg-show-grid"${sg ? ' checked' : ''}> Сетка
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" id="pg-show-rulers"${sr ? ' checked' : ''}> Линейки
+        </label>`));
     }
   }
 
@@ -265,6 +275,25 @@ function renderInspectorPage() {
     pgScale.addEventListener('change', () => {
       snapshot('page-scale:' + page.id);
       page.scale = pgScale.value;
+      notifyChange();
+      _render();
+    });
+  }
+  // v0.58.42: сетка/линейки на layout-странице
+  const pgShowGrid = document.getElementById('pg-show-grid');
+  if (pgShowGrid) {
+    pgShowGrid.addEventListener('change', () => {
+      snapshot('page-showgrid:' + page.id);
+      page.showGrid = pgShowGrid.checked;
+      notifyChange();
+      _render();
+    });
+  }
+  const pgShowRulers = document.getElementById('pg-show-rulers');
+  if (pgShowRulers) {
+    pgShowRulers.addEventListener('change', () => {
+      snapshot('page-showrulers:' + page.id);
+      page.showRulers = pgShowRulers.checked;
       notifyChange();
       _render();
     });

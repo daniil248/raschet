@@ -493,7 +493,7 @@ export function renderLayoutRuler() {
   let ruler = document.getElementById('layout-ruler');
   const page = getCurrentPage();
   const isLayout = getPageKind(page) === 'layout';
-  if (!isLayout) {
+  if (!isLayout || (page && page.showRulers === false)) {
     if (ruler) ruler.remove();
     return;
   }
@@ -972,7 +972,10 @@ export function renderPageKindBanner() {
 
   // Фон холста: миллиметровка для layout, обычная сетка для остальных.
   if (bg) {
-    const showGrid = (typeof GLOBAL !== 'undefined') ? (GLOBAL.showGrid !== false) : true;
+    const globalShowGrid = (typeof GLOBAL !== 'undefined') ? (GLOBAL.showGrid !== false) : true;
+    // v0.58.42: per-page showGrid (только layout хранит настройку)
+    const pageShowGrid = (page && page.showGrid === false) ? false : true;
+    const showGrid = globalShowGrid && pageShowGrid;
     if (!showGrid) {
       bg.setAttribute('fill', '#fff');
     } else if (kind === 'layout') {
