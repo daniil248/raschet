@@ -1228,6 +1228,23 @@ export function renderGeneralPanel(n) {
     }
     h.push(`<a class="full-btn" href="${escAttr(href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);
     h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.${cfg === _CONFIGURATORS.rack ? ' После настройки нажмите в модуле «↩ Применить к узлу схемы».' : ''}</div>`);
+
+    // v0.58.81: если к узлу уже применён rack-шаблон — показываем сводку,
+    // чтобы было видно без повторного открытия конфигуратора.
+    if (cfg === _CONFIGURATORS.rack && n.rackTemplate && typeof n.rackTemplate === 'object') {
+      const t = n.rackTemplate;
+      const pduCount = Array.isArray(t.pdus) ? t.pdus.reduce((s, p) => s + (Number(p.qty) || 1), 0) : 0;
+      const accCount = Array.isArray(t.accessories) ? t.accessories.reduce((s, a) => s + (Number(a.qty) || 1), 0) : 0;
+      const dim = [t.u ? t.u + 'U' : '', t.width ? t.width + 'мм' : '',
+                   t.depth ? 'гл.' + t.depth + 'мм' : ''].filter(Boolean).join(' × ');
+      h.push(`<div style="margin-top:8px;padding:8px 10px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:3px;font-size:11px;color:#14532d">
+        <b>✓ Стойка сконфигурирована</b><br>
+        ${t.manufacturer ? escHtml(t.manufacturer) + (dim ? ' · ' : '') : ''}${dim ? escHtml(dim) : ''}
+        ${pduCount ? '<br>PDU: ' + pduCount + ' шт' : ''}
+        ${accCount ? '<br>Аксессуары: ' + accCount + ' шт' : ''}
+        <br><span class="muted">Войдёт в BOM проекта автоматически.</span>
+      </div>`);
+    }
   } else if (!matches.length) {
     h.push(`<div class="muted" style="font-size:11px">Для этого типа элемента модуль-конфигуратор пока не подключён. Параметры задаются вручную на остальных вкладках.</div>`);
   }

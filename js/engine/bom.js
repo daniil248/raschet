@@ -29,6 +29,15 @@ import {
   kitById, pduBySku, accBySku,
 } from '../../shared/rack-catalog-data.js';
 
+// Внутренний slug — тот же алгоритм, что в shared/rack-catalog-data.js._slug.
+// Нужен, чтобы id в BOM совпадал с id в element-library ('pdu.'+slug и т.п.)
+// и работал price-lookup.
+function _bomSlug(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[^a-z0-9а-яё._-]+/gi, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 /**
  * Сквозной хелпер: читает каталог из localStorage (per-user + legacy
  * fallback) и возвращает массив записей или пустой массив.
@@ -210,8 +219,10 @@ export function buildBOM() {
       const kit = t.kitId ? kitById(t.kitId) : null;
       if (kit && kit.id) {
         const kitFake = {
-          id: 'rack:' + kit.id,
-          supplier: kit.mfg || t.manufacturer || '',
+          // v0.58.81: id совпадает с element-library ('rack.'+kitId),
+          // чтобы работал price-lookup из shared/price-records.
+          id: 'rack.' + kit.id,
+          supplier: kit.mfg || (kit.preset && kit.preset.manufacturer) || t.manufacturer || '',
           model: kit.name || kit.id,
           article: kit.sku || '',
         };
@@ -237,7 +248,8 @@ export function buildBOM() {
           const cat = pduBySku(p.sku);
           if (cat) {
             const pduFake = {
-              id: 'pdu:' + cat.sku,
+              // v0.58.81: id = element-library id ('pdu.'+slug(sku)).
+              id: 'pdu.' + _bomSlug(cat.sku),
               supplier: cat.mfg || '',
               model: cat.name || cat.sku,
               article: cat.sku,
@@ -246,7 +258,7 @@ export function buildBOM() {
           } else {
             // SKU есть, но в каталоге не найден — выводим по голому SKU
             const pduFake = {
-              id: 'pdu:unknown:' + p.sku,
+              id: 'pdu.' + _bomSlug(p.sku),
               supplier: '',
               model: p.sku,
               article: p.sku,
@@ -265,7 +277,8 @@ export function buildBOM() {
           const cat = accBySku(a.sku);
           if (cat) {
             const accFake = {
-              id: 'acc:' + cat.sku,
+              // v0.58.81: id = element-library id ('rack-acc.'+slug(sku)).
+              id: 'rack-acc.' + _bomSlug(cat.sku),
               supplier: cat.mfg || '',
               model: cat.name || cat.sku,
               article: cat.sku,
@@ -273,7 +286,7 @@ export function buildBOM() {
             pushAgg('Аксессуары стоек', accFake, qty, nodeLabel);
           } else {
             const accFake = {
-              id: 'acc:unknown:' + a.sku,
+              id: 'rack-acc.' + _bomSlug(a.sku),
               supplier: '',
               model: a.sku,
               article: a.sku,
