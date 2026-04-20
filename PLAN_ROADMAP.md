@@ -692,6 +692,13 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.66 (v0.57.42)** — Авто-номиналы встроенных автоматов ИБП.
+  - `autoUpsBreakerNominals(n)` в constants.js — по capacityKw/U/phases/
+    efficiency вычисляет рекомендуемые In для QF1/QF2/QF3/QB.
+  - Fallback в recalc.js: если hasXxxBreaker=true, но nominal не задан —
+    берём расчётный из autoUpsBreakerNominals; ставим флаг `_breakerInAuto`.
+  - Inspector: пояснение в ячейке автомата — «расчётный по мощности ИБП
+    (уточните в параметрах ИБП при необходимости)».
 - **1.20.65 (v0.57.41)** — Автоматы ИБП как встроенные в ИБП.
   - Линия ОТ ИБП: номинал берётся из `n.outputBreakerIn` (QF3); если
     `hasOutputBreaker=false` — внешнего автомата нет, защита по уставкам

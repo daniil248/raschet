@@ -6,7 +6,7 @@
    ========================================================================= */
 
 // ================= Версия =================
-export const APP_VERSION = '0.57.41';
+export const APP_VERSION = '0.57.42';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -653,6 +653,46 @@ export function autoBreakerCurve(inrushFactor, In) {
   if (k >= 4) return 'MCB_D';
   if (k >= 2) return 'MCB_C';
   return 'MCB_B';
+}
+
+// Рекомендуемые номиналы встроенных автоматов ИБП по его мощности.
+// Используется как fallback в recalc, когда hasXxxBreaker=true, но
+// конкретный номинал в параметрах ИБП не задан. Phase 1.20.66.
+//   Iout = capacityKw × 1000 / (U × √3 × cosφ_out)  (3ф) или /(U×cosφ) (1ф)
+//   QF3 (выход)      = selectBreaker(Iout × 1.25)          — запас 25%
+//   QF1 (вход сети)  = selectBreaker(Iout × 1.25 / eff + заряд) ≈ QF3 × 1.25
+//   QF2 (байпас)     = QF3 (байпас рассчитан на ту же нагрузку)
+//   QB  (батарея)    = Iout × 1.15 (с учётом низкого U_batt → больший ток)
+// Возвращает { input, inputBypass, output, bypass, battery } — номиналы, А.
+export function autoUpsBreakerNominals(n) {
+  const capKw = Number(n && n.capacityKw) || 0;
+  const effPct = Number(n && n.efficiency) || 94;
+  const eff = effPct / 100;
+  const threePh = (n && n.phases) ? Number(n.phases) === 3 : true;
+  const U = Number(n && n.voltageV) || (threePh ? 400 : 230);
+  const cosOut = 1.0; // инвертор даёт чистую активную на выходе
+  const cosIn = Number(n && n.inputCosPhi) || 0.95;
+  if (capKw <= 0 || U <= 0) return { input: null, inputBypass: null, output: null, bypass: null, battery: null };
+  const Iout = threePh
+    ? (capKw * 1000) / (U * Math.sqrt(3) * cosOut)
+    : (capKw * 1000) / (U * cosOut);
+  const Iin  = threePh
+    ? (capKw * 1000) / (U * Math.sqrt(3) * cosIn * eff)
+    : (capKw * 1000) / (U * cosIn * eff);
+  const output      = _selectFromSeries(Iout * 1.25);
+  const input       = _selectFromSeries(Iin * 1.25);
+  const inputBypass = output;
+  const bypass      = output;
+  const Ubat = Number(n && n.batteryVoltage) || 240;
+  const Ibat = (capKw * 1000) / (Ubat * eff);
+  const battery = _selectFromSeries(Ibat * 1.15);
+  return { input, inputBypass, output, bypass, battery };
+}
+
+function _selectFromSeries(I) {
+  const series = [6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000];
+  for (const In of series) if (In >= I) return In;
+  return series[series.length - 1];
 }
 
 // Префиксы обозначений (tag) по типу узла (IEC 81346-2 где возможно)

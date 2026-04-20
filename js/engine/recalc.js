@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, BREAKER_TYPES, autoBreakerMargin, autoBreakerCurve } from './constants.js';
+import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, BREAKER_TYPES, autoBreakerMargin, autoBreakerCurve, autoUpsBreakerNominals } from './constants.js';
 import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
@@ -1743,6 +1743,7 @@ function recalc() {
     if (fromN.type === 'ups') {
       const hasQF3 = fromN.hasOutputBreaker !== false;
       const IupsOut = Number(fromN.outputBreakerIn) || null;
+      const _upsAuto = autoUpsBreakerNominals(fromN);
       c._breakerInternal = true;
       c._breakerInternalSource = 'ups-output-QF3';
       c._breakerExcludeFromBom = true;
@@ -1753,13 +1754,14 @@ function recalc() {
         c._breakerInternal = false;
         c._breakerExcludeFromBom = false;
       } else if (!hasQF3) {
-        // ИБП без QF3 — защиты нет, отключение только по уставкам инвертора
         c._breakerIn = null;
       } else if (IupsOut) {
         c._breakerIn = IupsOut;
+      } else if (_upsAuto.output) {
+        // Fallback: расчётный номинал из capacityKw ИБП
+        c._breakerIn = _upsAuto.output;
+        c._breakerInAuto = true;
       } else {
-        // QF3 есть, но номинал не задан — оставим без значения (UI покажет
-        // предупреждение «уточните номинал QF3 в параметрах ИБП»)
         c._breakerIn = null;
       }
       c._breakerPerLine = null;
@@ -1785,6 +1787,8 @@ function recalc() {
       const IupsIn = isBypassIn
         ? (Number(toN.inputBypassBreakerIn) || null)
         : (Number(toN.inputBreakerIn) || null);
+      const _upsAutoIn = autoUpsBreakerNominals(toN);
+      const _upsAutoVal = isBypassIn ? _upsAutoIn.inputBypass : _upsAutoIn.input;
       c._breakerInternal = true;
       c._breakerInternalSource = isBypassIn ? 'ups-input-QF2' : 'ups-input-QF1';
       c._breakerExcludeFromBom = true;
@@ -1796,6 +1800,9 @@ function recalc() {
         c._breakerIn = null;
       } else if (IupsIn) {
         c._breakerIn = IupsIn;
+      } else if (_upsAutoVal) {
+        c._breakerIn = _upsAutoVal;
+        c._breakerInAuto = true;
       } else {
         c._breakerIn = null;
       }
