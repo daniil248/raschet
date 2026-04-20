@@ -192,7 +192,14 @@ const Fs = {
           sessionId,
           lastSeen: Date.now(),
         }, { merge: true });
-    } catch (e) { /* молча — permission-denied или offline */ }
+    } catch (e) {
+      // Однократно логируем причину (обычно permission-denied — нет rules
+      // на subcollection projects/{id}/presence/{uid}).
+      if (!window.__presenceWarned) {
+        window.__presenceWarned = true;
+        console.warn('[presence] heartbeat failed — проверьте Firestore rules для projects/{id}/presence/{uid}:', e?.message || e);
+      }
+    }
   },
   async presenceLeave(projectId, uid) {
     if (!projectId || !uid) return;

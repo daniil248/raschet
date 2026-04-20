@@ -356,3 +356,67 @@ export function downloadCatalogTemplate(kind) {
   }[kind] || 'catalog-template.xlsx';
   window.XLSX.writeFile(wb, fname);
 }
+
+// ====================================================================
+// Phase 1.2.3: Унифицированный API parseXlsx(buffer, {kind}) → Element[]
+// ====================================================================
+// Ранее каждая подпрограмма знала свой per-kind парсер и конвертер.
+// Теперь все они доступны через один вход: результат сразу в формате
+// Element из element-library (через from*Record-конвертеры).
+//
+// Поддерживаемые kind'ы:
+//   - 'ups'         → parseUpsXlsx + fromUpsRecord
+//   - 'panel'       → parsePanelXlsx + fromPanelRecord
+//   - 'transformer' → parseTransformerXlsx + fromTransformerRecord
+//
+// Для kind'ов battery / cable-type / cable-sku per-kind парсеры пока
+// отсутствуют (в коде они обслуживаются отдельными модулями:
+// battery-data-parser, catalog/tab-import для SKU с ценами). Добавить
+// в эту же схему можно по мере необходимости.
+//
+// Возвращает { elements, legacy, errors } где legacy — исходные записи
+// (для обратной совместимости с существующими импортёрами через
+// addUps/addPanel/addTransformer), а elements — уже сконвертированные
+// в формат Element library.
+// ====================================================================
+const _KIND_TO_PARSER = {
+  ups:         parseUpsXlsx,
+  panel:       parsePanelXlsx,
+  transformer: parseTransformerXlsx,
+};
+
+export async function parseXlsx(arrayBuffer, opts = {}) {
+  const kind = opts.kind;
+  const filename = opts.filename || (kind ? `${kind}.xlsx` : 'catalog.xlsx');
+  if (!kind) throw new Error('parseXlsx: требуется opts.kind');
+  const parser = _KIND_TO_PARSER[kind];
+  if (!parser) {
+    throw new Error(`parseXlsx: kind='${kind}' не поддерживается. Доступно: ${Object.keys(_KIND_TO_PARSER).join(', ')}`);
+  }
+  const legacy = parser(arrayBuffer, filename);
+  // Ленивый импорт element-schemas чтобы не тянуть его в загрузки
+  // подпрограмм, которые используют только legacy-путь.
+  let elements = [];
+  const errors = [];
+  try {
+    const schemas = await import('./element-schemas.js');
+    const conv = {
+      ups:         schemas.fromUpsRecord,
+      panel:       schemas.fromPanelRecord,
+      transformer: schemas.fromTransformerRecord,
+    }[kind];
+    if (typeof conv === 'function') {
+      for (const rec of legacy) {
+        try { elements.push(conv(rec)); }
+        catch (e) { errors.push({ rec, error: e.message }); }
+      }
+    }
+  } catch (e) {
+    errors.push({ rec: null, error: 'element-schemas import failed: ' + e.message });
+  }
+  return { kind, filename, elements, legacy, errors };
+}
+
+export function supportedParseXlsxKinds() {
+  return Object.keys(_KIND_TO_PARSER);
+}

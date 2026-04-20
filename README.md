@@ -117,6 +117,31 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
     }
 
+    // Presence (аватары участников в реальном времени) — subcollection
+    // projects/{id}/presence/{uid}. Читать может любой участник проекта,
+    // писать — только сам пользователь в свою запись.
+    match /projects/{projectId}/presence/{uid} {
+      allow read: if request.auth != null && (
+        get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+        || request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.memberUids
+        || get(/databases/$(database)/documents/projects/$(projectId)).data.visibility == 'link'
+      );
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Locks (живые блокировки узлов/связей при редактировании) — subcollection
+    // projects/{id}/locks/{nodeId}. Читать/писать — владелец или editor.
+    match /projects/{projectId}/locks/{lockId} {
+      allow read: if request.auth != null && (
+        get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+        || request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.memberUids
+      );
+      allow write: if request.auth != null && (
+        get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid
+        || request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.memberUids
+      );
+    }
+
     // Запросы доступа
     match /accessRequests/{reqId} {
       allow read: if request.auth != null && (
