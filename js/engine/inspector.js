@@ -1192,8 +1192,25 @@ export function renderGeneralPanel(n) {
   }
 
   if (cfg) {
-    h.push(`<a class="full-btn" href="${escAttr(cfg.href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);
-    h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.</div>`);
+    // v0.58.60 (1.23.10): для rack-конфигуратора передаём nodeId и
+    // экспортируем текущую конфигурацию стойки в bridge-ключ localStorage,
+    // чтобы модуль мог её подхватить, показать и вернуть обратно.
+    let href = cfg.href;
+    if (cfg === _CONFIGURATORS.rack) {
+      const bridgeKey = 'raschet.rack.bridge.' + n.id;
+      try {
+        const existing = n.rackTemplate || null;
+        if (existing) {
+          localStorage.setItem(bridgeKey, JSON.stringify({ applied: false, ts: Date.now(), template: existing }));
+        } else {
+          // если раньше ничего не было — положим пустую обёртку, модуль создаст свой шаблон
+          localStorage.setItem(bridgeKey, JSON.stringify({ applied: false, ts: Date.now(), template: null }));
+        }
+      } catch {}
+      href = cfg.href + (cfg.href.includes('?') ? '&' : '?') + 'nodeId=' + encodeURIComponent(n.id);
+    }
+    h.push(`<a class="full-btn" href="${escAttr(href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);
+    h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.${cfg === _CONFIGURATORS.rack ? ' После настройки нажмите в модуле «↩ Применить к узлу схемы».' : ''}</div>`);
   } else if (!matches.length) {
     h.push(`<div class="muted" style="font-size:11px">Для этого типа элемента модуль-конфигуратор пока не подключён. Параметры задаются вручную на остальных вкладках.</div>`);
   }

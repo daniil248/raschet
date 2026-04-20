@@ -42,10 +42,24 @@
         </section>
 
         <section class="rc-section">
+          <h2>Базовый комплект</h2>
+          <p class="muted rc-hint">Выберите готовый артикул поставщика — поля, входящие в комплект, блокируются и автоматически попадают в BOM одной позицией. Если нужна произвольная сборка — оставьте «Произвольная конфигурация».</p>
+          <div class="rc-row">
+            <label class="rc-field"><span>Артикул / комплект</span>
+              <select id="rc-kit"></select>
+            </label>
+            <label class="rc-field"><span>Артикул (SKU)</span>
+              <input type="text" id="rc-kit-sku" placeholder="заполняется из каталога" readonly>
+            </label>
+          </div>
+          <div id="rc-kit-includes" class="rc-kit-includes muted"></div>
+        </section>
+
+        <section class="rc-section" data-sec="corpus">
           <h2>Корпус</h2>
           <div class="rc-row">
             <label class="rc-field"><span>Форм-фактор (U)</span>
-              <select id="rc-u">
+              <select id="rc-u" data-lock="u">
                 <option value="6">6U</option>
                 <option value="9">9U</option>
                 <option value="12">12U</option>
@@ -61,44 +75,52 @@
               </select>
             </label>
             <label class="rc-field"><span>Ширина, мм</span>
-              <select id="rc-width">
+              <select id="rc-width" data-lock="width">
                 <option value="600" selected>600</option>
                 <option value="800">800</option>
               </select>
             </label>
             <label class="rc-field"><span>Глубина, мм</span>
-              <select id="rc-depth">
+              <select id="rc-depth" data-lock="depth">
                 <option value="600">600</option>
                 <option value="800">800</option>
                 <option value="1000" selected>1000</option>
+                <option value="1070">1070</option>
                 <option value="1200">1200</option>
               </select>
             </label>
           </div>
         </section>
 
-        <section class="rc-section">
+        <section class="rc-section" data-sec="doors">
           <h2>Двери</h2>
           <div class="rc-row">
             <label class="rc-field"><span>Передняя</span>
-              <select id="rc-door-front">
-                <option value="glass">стекло (закалённое)</option>
-                <option value="mesh" selected>перфорация/сетка</option>
-                <option value="metal">металл глухая</option>
+              <select id="rc-door-front" data-lock="doorFront">
+                <option value="glass">стекло (закалённое) одностворчатая</option>
+                <option value="mesh" selected>перфорация/сетка одностворчатая</option>
+                <option value="metal">металл глухая одностворчатая</option>
+                <option value="double-mesh">двустворчатая перфорированная</option>
+                <option value="double-glass">двустворчатая стеклянная</option>
                 <option value="none">без двери</option>
               </select>
             </label>
             <label class="rc-field"><span>Задняя</span>
-              <select id="rc-door-rear">
-                <option value="glass">стекло</option>
-                <option value="mesh" selected>перфорация/сетка</option>
-                <option value="metal">металл глухая</option>
+              <select id="rc-door-rear" data-lock="doorRear">
+                <option value="double-mesh" selected>двустворчатая перфорированная</option>
+                <option value="double-metal">двустворчатая металл</option>
+                <option value="mesh">одностворчатая перфорированная</option>
+                <option value="metal">одностворчатая металл глухая</option>
+                <option value="glass">одностворчатая стекло</option>
                 <option value="none">без двери</option>
-                <option value="double">двустворчатая перф.</option>
               </select>
             </label>
-            <label class="rc-field"><span>Замок</span>
-              <select id="rc-lock">
+            <label class="rc-field rc-check">
+              <input type="checkbox" id="rc-door-with-lock" checked data-lock="doorWithLock">
+              <span>Замок входит в дверь</span>
+            </label>
+            <label class="rc-field" id="rc-lock-field"><span>Тип замка (отд. позиция)</span>
+              <select id="rc-lock" data-lock="lock">
                 <option value="key" selected>ключ</option>
                 <option value="code">кодовый</option>
                 <option value="electro">электрозамок</option>
@@ -107,45 +129,50 @@
           </div>
         </section>
 
-        <section class="rc-section">
-          <h2>Аксессуары</h2>
+        <section class="rc-section" data-sec="walls">
+          <h2>Боковые стенки, крыша, пол</h2>
           <div class="rc-row">
-            <label class="rc-field rc-check">
-              <input type="checkbox" id="rc-side-l" checked>
-              <span>Боковая стенка (левая)</span>
-            </label>
-            <label class="rc-field rc-check">
-              <input type="checkbox" id="rc-side-r" checked>
-              <span>Боковая стенка (правая)</span>
+            <label class="rc-field"><span>Боковые стенки</span>
+              <select id="rc-sides" data-lock="sides">
+                <option value="pair-sku" selected>пара (один артикул на L+R)</option>
+                <option value="pair-split">пара (L и R отдельными позициями)</option>
+                <option value="left">только левая</option>
+                <option value="right">только правая</option>
+                <option value="none">без стенок (линейка)</option>
+              </select>
             </label>
             <label class="rc-field"><span>Крыша / верх</span>
-              <select id="rc-top">
+              <select id="rc-top" data-lock="top">
                 <option value="solid">глухая</option>
                 <option value="vent" selected>вентилируемая</option>
                 <option value="fan">с вент. модулями</option>
               </select>
             </label>
-            <label class="rc-field"><span>Основание</span>
-              <select id="rc-base">
+            <label class="rc-field"><span>Основание / пол</span>
+              <select id="rc-base" data-lock="base">
                 <option value="feet" selected>регулируемые ножки</option>
                 <option value="casters">ролики</option>
                 <option value="plinth">цоколь</option>
               </select>
             </label>
+            <label class="rc-field rc-check">
+              <input type="checkbox" id="rc-combo-top-base" data-lock="comboTopBase">
+              <span>Крыша + пол одной позицией</span>
+            </label>
           </div>
         </section>
 
-        <section class="rc-section">
+        <section class="rc-section" data-sec="entries">
           <h2>Кабельные вводы</h2>
           <div class="rc-row">
             <label class="rc-field"><span>Сверху</span>
-              <input type="number" id="rc-entry-top" min="0" step="1" value="2">
+              <input type="number" id="rc-entry-top" min="0" step="1" value="2" data-lock="entryTop">
             </label>
             <label class="rc-field"><span>Снизу</span>
-              <input type="number" id="rc-entry-bot" min="0" step="1" value="2">
+              <input type="number" id="rc-entry-bot" min="0" step="1" value="2" data-lock="entryBot">
             </label>
             <label class="rc-field"><span>Тип</span>
-              <select id="rc-entry-type">
+              <select id="rc-entry-type" data-lock="entryType">
                 <option value="brush" selected>щётка</option>
                 <option value="plug">заглушка</option>
                 <option value="pg">PG-сальник</option>
@@ -175,7 +202,7 @@
 
         <section class="rc-section">
           <h2>PDU</h2>
-          <p class="muted rc-hint">Блоки распределения питания с проверкой по заявленной мощности (demandKw). Один PDU = номинал × фаз × высота + набор розеток.</p>
+          <p class="muted rc-hint">Блоки распределения питания. Суммарная ёмкость всех PDU должна быть ≥ заявленной мощности (demandKw). Запас для PDU может быть меньше, чем для стойки в целом. У PDU может быть несколько типов розеток — добавьте строки ниже.</p>
           <div class="rc-row">
             <label class="rc-field"><span>Заявленная мощность, кВт</span>
               <input type="number" id="rc-demand-kw" min="0" step="0.1" value="5">
@@ -212,7 +239,7 @@
 
         <section class="rc-section">
           <h2>Сохранение</h2>
-          <p class="muted rc-hint">Шаблоны хранятся в localStorage браузера (для черновиков). Для применения к узлу <b>consumer/rack</b> в основном проекте — см. следующую итерацию (roadmap 1.23.10).</p>
+          <p class="muted rc-hint">Шаблоны хранятся в localStorage браузера. Применение к узлу <b>consumer/rack</b> основного проекта — roadmap 1.23.10.</p>
           <button type="button" id="rc-save" class="rc-btn rc-btn-primary">💾 Сохранить шаблон</button>
         </section>
       </aside>
@@ -220,5 +247,73 @@
   </div>
 
   <script type="module" src="rack-config.js"></script>
+  <script type="module">
+    import { mountHelp } from '../shared/help-panel.js';
+    mountHelp({
+      module: 'rack-config',
+      title: 'Конфигуратор стойки — справка',
+      usage: `
+        <h4>Порядок работы</h4>
+        <ol>
+          <li><b>Базовый комплект</b> — выберите готовый артикул поставщика
+            (APC AR3100, ЦМО ШТК-М, Rittal TS IT, Hyperline TWB…). Поля,
+            входящие в комплект, автоматически блокируются. Оставьте
+            «Произвольная конфигурация», если собираете стойку из отдельных
+            позиций.</li>
+          <li><b>Корпус</b> — формат (U), ширина и глубина. Если комплект
+            задаёт эти значения — поля неактивны.</li>
+          <li><b>Двери</b> — передняя и задняя независимо. Задние двери
+            обычно двустворчатые перфорированные (проще заводить кабели и
+            лучше для охлаждения). Если дверь поставляется сразу с замком,
+            включите «Замок входит в дверь» — отдельной позицией замок не
+            появится.</li>
+          <li><b>Боковые стенки</b> — часто продаются парой под одним
+            артикулом (L+R). Если снимаете стенку в линейке стоек, выбирайте
+            «только левая» / «только правая» / «без стенок».</li>
+          <li><b>Крыша и пол</b> — могут поставляться одной позицией. В этом
+            случае включите «Крыша + пол одной позицией».</li>
+          <li><b>Кабельные вводы</b> — сверху и снизу, щётка / заглушка /
+            PG-сальник.</li>
+          <li><b>Заглушки пустых U</b> — укажите занятые U, система
+            посчитает нужное количество.</li>
+          <li><b>PDU</b> — заявленная мощность, cos φ. Добавляйте блоки с
+            нужным номиналом / фазностью / высотой. <b>У одной PDU может
+            быть несколько типов розеток</b> (например 16×C13 + 8×C19) —
+            добавляйте строки кнопкой «+ тип».</li>
+          <li><b>Шаблоны</b> — сохраняются в localStorage браузера. Можно
+            создавать / дублировать / удалять.</li>
+        </ol>
+        <h4>Возврат в основной проект</h4>
+        <p>Если конфигуратор открыт из инспектора узла <i>consumer/rack</i>
+          (в URL появляется <code>?nodeId=…</code>), под блоком «Сохранение»
+          будет кнопка <b>↩ Применить к узлу схемы</b> — она передаёт
+          текущий шаблон обратно в основной проект (через localStorage и
+          postMessage). Основное приложение подхватывает конфигурацию и
+          запоминает её на узле.</p>
+      `,
+      calcs: `
+        <h4>Проверки и формулы</h4>
+        <ul>
+          <li><b>Ёмкость PDU</b>: P = 230·I·cos φ (1ф) или √3·400·I·cos φ (3ф).
+            Суммируется по всем PDU с учётом «кол-во».</li>
+          <li><b>Критерий PDU</b>: суммарная ёмкость ≥ заявленной мощности
+            (<code>demandKw</code>). Запас для PDU может быть меньше, чем
+            для стойки в целом — отдельного порога «≥20%» нет, лишь
+            информационное значение.</li>
+          <li><b>Критерий U</b>: занятое оборудованием + высота
+            горизонтальных PDU ≤ формат стойки.</li>
+          <li><b>Охлаждение</b> (рекомендации): при ≥3 кВт желательны
+            перфорированные двери спереди и сзади; при ≥5 кВт — крыша с
+            вентиляторными модулями.</li>
+          <li><b>Заглушки</b>: <code>floor((U − occupied) / U_заглушки)</code></li>
+          <li><b>Крепёж M6</b>: <code>max(20, занятые_U · 4 + 20)</code></li>
+        </ul>
+        <h4>BOM</h4>
+        <p>Если выбран базовый комплект — он отображается одной позицией,
+          остальные входящие в него элементы в BOM не дублируются. При
+          произвольной конфигурации каждая часть — отдельной строкой.</p>
+      `,
+    });
+  </script>
 </body>
 </html>

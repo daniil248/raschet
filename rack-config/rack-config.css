@@ -151,27 +151,88 @@
   color: #fff;
 }
 
+/* ===== Заблокированные поля (в составе комплекта) ===== */
+.rc-field.rc-locked > span::after {
+  content: ' 🔒';
+  font-size: 10px;
+  opacity: 0.7;
+}
+.rc-field.rc-locked input[disabled],
+.rc-field.rc-locked select[disabled] {
+  background: var(--rs-bg-soft);
+  color: var(--rs-fg-muted);
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+/* ===== Блок "Входит в комплект" ===== */
+.rc-kit-includes {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--rs-bg-soft);
+  border-left: 3px solid var(--rs-accent);
+  border-radius: var(--rs-radius-sm);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* ===== PDU список ===== */
 #rc-pdu-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   margin: 10px 0;
 }
 .rc-pdu-item {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) auto;
-  gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--rs-border-soft);
   border-radius: var(--rs-radius-sm);
   background: var(--rs-bg-soft);
+}
+.rc-pdu-head {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) auto;
+  gap: 8px;
   align-items: end;
 }
-.rc-pdu-item .rc-btn-danger {
+.rc-pdu-head .rc-btn-danger {
   align-self: end;
   padding: 4px 10px;
 }
+.rc-pdu-outlets {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--rs-border);
+}
+.rc-pdu-outlets-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.rc-pdu-outlet-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.rc-pdu-outlet {
+  display: grid;
+  grid-template-columns: 1fr 90px auto;
+  gap: 6px;
+  align-items: center;
+}
+.rc-pdu-outlet select,
+.rc-pdu-outlet input {
+  font-size: 13px;
+  padding: 5px 7px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-card);
+}
+.rc-btn-mini { padding: 3px 8px; font-size: 11px; }
 
 /* ===== BOM ===== */
 .rc-bom {

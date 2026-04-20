@@ -6206,6 +6206,48 @@ function escAttr(s) { return escHtml(s); }
 async function init() {
   showScreen('loading');
 
+  // v0.58.60 (1.23.10): слушаем сообщения от подпрограмм-конфигураторов,
+  // которые возвращают готовую конфигурацию в основной проект. Сейчас
+  // обрабатывается только 'raschet.rack.apply' от rack-config/ — применяет
+  // rackTemplate к узлу consumer/rack.
+  window.addEventListener('message', (ev) => {
+    const msg = ev && ev.data;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type === 'raschet.rack.apply' && msg.nodeId && msg.template) {
+      try {
+        const st = window.Raschet && window.Raschet._state;
+        if (!st) return;
+        const n = st.nodes.get(msg.nodeId);
+        if (!n) return;
+        n.rackTemplate = JSON.parse(JSON.stringify(msg.template));
+        // Переносим базовые поля, чтобы они были видны в инспекторе
+        if (msg.template.manufacturer) n.manufacturer = msg.template.manufacturer;
+        if (msg.template.demandKw != null) n.demandKw = Number(msg.template.demandKw) || 0;
+        if (window.Raschet.rerender) window.Raschet.rerender();
+        alert('Конфигурация стойки применена к узлу «' + (n.tag || n.name || n.id) + '».');
+      } catch (e) { console.warn('rack.apply error', e); }
+    }
+  });
+  // Также — резервный путь через localStorage storage-event, если вкладка
+  // rack-config открыта в другом окне без window.opener (например, через
+  // ярлык). При каждой записи в bridge-ключ проверяем флаг applied.
+  window.addEventListener('storage', (ev) => {
+    if (!ev.key || !ev.key.startsWith('raschet.rack.bridge.')) return;
+    try {
+      const obj = JSON.parse(ev.newValue || '{}');
+      if (!obj || !obj.applied || !obj.template) return;
+      const nodeId = ev.key.slice('raschet.rack.bridge.'.length);
+      const st = window.Raschet && window.Raschet._state;
+      if (!st) return;
+      const n = st.nodes.get(nodeId);
+      if (!n) return;
+      n.rackTemplate = JSON.parse(JSON.stringify(obj.template));
+      if (obj.template.manufacturer) n.manufacturer = obj.template.manufacturer;
+      if (obj.template.demandKw != null) n.demandKw = Number(obj.template.demandKw) || 0;
+      if (window.Raschet.rerender) window.Raschet.rerender();
+    } catch {}
+  });
+
   // Справка по главному модулю — floating-«?» в правом-нижнем углу
   mountHelp({
     module: 'engine',
