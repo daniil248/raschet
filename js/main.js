@@ -1614,11 +1614,140 @@ async function exportReportSection(sec, kind) {
   }
 }
 
+// ================= Настройка видимости столбцов (Phase 1.20.31) =================
+// Пользователь выбирает, какие колонки отображать в таблицах. Настройки
+// сохраняются в localStorage и не сбрасываются до явного изменения.
+const _TABLE_COLUMN_KEY = (table) => 'raschet.tableColumns.' + table + '.v1';
+
+function _loadColumnVisibility(table, allCols) {
+  try {
+    const raw = localStorage.getItem(_TABLE_COLUMN_KEY(table));
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved && typeof saved === 'object') {
+        const result = {};
+        for (const col of allCols) result[col.id] = col.id in saved ? !!saved[col.id] : (col.default !== false);
+        return result;
+      }
+    }
+  } catch {}
+  const result = {};
+  for (const col of allCols) result[col.id] = col.default !== false;
+  return result;
+}
+function _saveColumnVisibility(table, visibility) {
+  try { localStorage.setItem(_TABLE_COLUMN_KEY(table), JSON.stringify(visibility)); } catch {}
+}
+
+// Открывает popover с чекбоксами столбцов. onToggle вызывается при
+// изменении состояния с новой visibility-картой.
+function _openColumnMenu(anchorBtn, table, allCols, visibility, onToggle) {
+  // Закрываем предыдущее меню если есть
+  document.querySelectorAll('.rs-col-menu').forEach(m => m.remove());
+  const r = anchorBtn.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.className = 'rs-col-menu';
+  menu.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${r.left}px;background:#fff;border:1px solid #d0d7de;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.15);padding:8px;z-index:10000;min-width:200px;max-height:60vh;overflow:auto;font-family:system-ui,sans-serif`;
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const items = allCols.filter(c => !c.required).map(c => `
+    <label style="display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px" onmouseover="this.style.background='#f0f3f6'" onmouseout="this.style.background=''">
+      <input type="checkbox" data-col-id="${esc(c.id)}" ${visibility[c.id] ? 'checked' : ''}>
+      <span>${esc(c.label)}</span>
+    </label>
+  `).join('');
+  menu.innerHTML = `
+    <div style="font-size:11px;color:#666;padding:2px 8px 6px;border-bottom:1px solid #eaecef;margin-bottom:4px;font-weight:600">Столбцы таблицы</div>
+    ${items}
+    <div style="display:flex;gap:6px;padding:6px 4px 2px;border-top:1px solid #eaecef;margin-top:4px">
+      <button type="button" data-col-action="all" style="flex:1;padding:3px 6px;font-size:10px;border:1px solid #d0d7de;background:#fff;border-radius:3px;cursor:pointer">Все</button>
+      <button type="button" data-col-action="none" style="flex:1;padding:3px 6px;font-size:10px;border:1px solid #d0d7de;background:#fff;border-radius:3px;cursor:pointer">Ничего</button>
+      <button type="button" data-col-action="defaults" style="flex:1;padding:3px 6px;font-size:10px;border:1px solid #d0d7de;background:#fff;border-radius:3px;cursor:pointer">По умолч.</button>
+    </div>
+  `;
+  document.body.appendChild(menu);
+  const closeMenu = () => { menu.remove(); document.removeEventListener('click', outsideClick, true); };
+  const outsideClick = (ev) => {
+    if (!menu.contains(ev.target) && ev.target !== anchorBtn) closeMenu();
+  };
+  setTimeout(() => document.addEventListener('click', outsideClick, true), 0);
+  menu.querySelectorAll('input[data-col-id]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      visibility[cb.dataset.colId] = cb.checked;
+      _saveColumnVisibility(table, visibility);
+      onToggle(visibility);
+    });
+  });
+  menu.querySelectorAll('button[data-col-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const a = btn.dataset.colAction;
+      for (const c of allCols) {
+        if (c.required) continue;
+        if (a === 'all') visibility[c.id] = true;
+        else if (a === 'none') visibility[c.id] = false;
+        else if (a === 'defaults') visibility[c.id] = c.default !== false;
+      }
+      _saveColumnVisibility(table, visibility);
+      onToggle(visibility);
+      closeMenu();
+    });
+  });
+}
+
 // ================= Таблица кабелей (Фаза 1.20) =================
 // Быстрое редактирование всех кабельных линий: марка, длина, способ прокладки.
 // Изменения применяются сразу в state и триггерят recalc+render.
 // Phase 1.20.15: обозначение линии использует полный effectiveTag
 // (включая parent chain: «MVS1.PDC3.ACU1»), а не только локальный tag.
+
+// Column definitions для каждой таблицы (id используется в visibility-мапе
+// и в рендере для if(vis.col) skip).
+const _CABLE_TABLE_COLUMNS = [
+  { id: 'checkbox', label: '(чекбокс)', required: true, default: true },
+  { id: 'label', label: 'Обозначение', default: true },
+  { id: 'fromTo', label: 'Откуда → Куда', default: true },
+  { id: 'mark', label: 'Марка кабеля', default: true },
+  { id: 'conductor', label: 'Проводник', default: true },
+  { id: 'parallel', label: 'Линий', default: true },
+  { id: 'length', label: 'Длина, м', default: true },
+  { id: 'method', label: 'Способ прокладки', default: true },
+  { id: 'breaker', label: 'Автомат', default: true },
+  { id: 'curve', label: 'Тип автомата', default: false },
+  { id: 'imax', label: 'Imax / Iдоп', default: true },
+  { id: 'class', label: 'Класс', default: true },
+  { id: 'status', label: 'Статус', default: true },
+];
+let _cableTableVisibility = _loadColumnVisibility('cable', _CABLE_TABLE_COLUMNS);
+
+const _CONSUMERS_TABLE_COLUMNS = [
+  { id: 'checkbox', label: '(чекбокс)', required: true, default: true },
+  { id: 'tag', label: 'Обозначение', default: true },
+  { id: 'name', label: 'Имя', default: true },
+  { id: 'parent', label: 'Питающий щит', default: true },
+  { id: 'category', label: 'Категория', default: true },
+  { id: 'demand', label: 'P, кВт', default: true },
+  { id: 'count', label: 'Кол-во (шт.)', default: true },
+  { id: 'cosPhi', label: 'cos φ', default: true },
+  { id: 'kUse', label: 'Kи', default: true },
+  { id: 'phase', label: 'Фаза', default: true },
+];
+let _consumersTableVisibility = _loadColumnVisibility('consumers', _CONSUMERS_TABLE_COLUMNS);
+
+const _EQUIPMENT_TABLE_COLUMNS = [
+  { id: 'tag', label: 'Обозначение', default: true },
+  { id: 'kind', label: 'Тип', default: true },
+  { id: 'name', label: 'Имя / Модель', default: true },
+  { id: 'voltage', label: 'U, В', default: true },
+  { id: 'inputs', label: 'Входов', default: true },
+  { id: 'outputs', label: 'Выходов', default: true },
+  { id: 'capacity', label: 'P ном, кВт', default: true },
+  { id: 'load', label: 'P расч, кВт', default: true },
+  { id: 'loadPct', label: 'Загрузка', default: true },
+  { id: 'ip', label: 'IP', default: true },
+  { id: 'xnav', label: 'Связано', default: true },
+];
+let _equipTableVisibility = _loadColumnVisibility('equipment', _EQUIPMENT_TABLE_COLUMNS);
+
 function _ctNodeTag(n) {
   if (!n) return '?';
   try {
@@ -2103,6 +2232,12 @@ function renderCableTable() {
 
   const selCount = _cableTableSelected.size;
   const bulkDisabled = selCount === 0;
+  // Phase 1.20.31: видимость столбцов
+  const vis = _cableTableVisibility;
+  const show = (col) => vis[col] !== false;
+  // Пропускаем column-rendering через show(): хелпер возвращает строку для
+  // header/filter/body или пустую если колонка скрыта.
+  const ifShow = (col, html) => show(col) ? html : '';
   const html = [`
     <div class="ct-bulk-bar" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;margin-bottom:8px;font-size:12px;flex-wrap:wrap">
       <b>Выделено: ${selCount}</b>
@@ -2119,6 +2254,7 @@ function renderCableTable() {
         if (!fixableInView.length) return '';
         return `<button type="button" id="ct-bulk-autofix" title="Применить автофиксы ко всем ошибкам в выборке" style="padding:4px 10px;border:1px solid #2e7d32;background:#e8f5e9;color:#2e7d32;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600">🔧 Исправить всё (${fixableInView.length})</button>`;
       })()}
+      <button type="button" id="ct-col-menu" title="Настроить видимость столбцов" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">⚙ Столбцы</button>
       <button type="button" id="ct-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
       <button type="button" id="ct-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
     </div>
@@ -2128,77 +2264,33 @@ function renderCableTable() {
           <th style="padding:6px 4px;border-bottom:2px solid #d0d7de;width:28px;text-align:center">
             <input type="checkbox" id="ct-select-all" ${filtered.length && filtered.every(c => _cableTableSelected.has(c.id)) ? 'checked' : ''} title="Выделить все">
           </th>
-          ${_ctSortHdr('label', 'Обозначение', 'left')}
-          ${_ctSortHdr('fromTo', 'Откуда → Куда', 'left')}
-          ${_ctSortHdr('mark', 'Марка кабеля', 'left', 'min-width:200px')}
-          ${_ctSortHdr('conductor', 'Проводник', 'left')}
-          ${_ctSortHdr('parallel', 'Линий', 'right', '', 'Параллельные проводники (линий)')}
-          ${_ctSortHdr('length', 'Длина, м', 'right')}
-          ${_ctSortHdr('method', 'Способ прокладки', 'left', 'min-width:150px')}
-          ${_ctSortHdr('breaker', 'Автомат', 'right', 'min-width:110px')}
-          ${_ctSortHdr('curve', 'Тип', 'left', 'min-width:95px', 'Тип автомата / кривая')}
-          ${_ctSortHdr('imax', 'Imax / Iдоп', 'right')}
-          ${_ctSortHdr('class', 'Класс', 'center')}
-          ${_ctSortHdr('status', 'Статус', 'center', 'min-width:64px', 'OK / предупреждение / ошибка')}
+          ${ifShow('label', _ctSortHdr('label', 'Обозначение', 'left'))}
+          ${ifShow('fromTo', _ctSortHdr('fromTo', 'Откуда → Куда', 'left'))}
+          ${ifShow('mark', _ctSortHdr('mark', 'Марка кабеля', 'left', 'min-width:200px'))}
+          ${ifShow('conductor', _ctSortHdr('conductor', 'Проводник', 'left'))}
+          ${ifShow('parallel', _ctSortHdr('parallel', 'Линий', 'right', '', 'Параллельные проводники (линий)'))}
+          ${ifShow('length', _ctSortHdr('length', 'Длина, м', 'right'))}
+          ${ifShow('method', _ctSortHdr('method', 'Способ прокладки', 'left', 'min-width:150px'))}
+          ${ifShow('breaker', _ctSortHdr('breaker', 'Автомат', 'right', 'min-width:110px'))}
+          ${ifShow('curve', _ctSortHdr('curve', 'Тип', 'left', 'min-width:95px', 'Тип автомата / кривая'))}
+          ${ifShow('imax', _ctSortHdr('imax', 'Imax / Iдоп', 'right'))}
+          ${ifShow('class', _ctSortHdr('class', 'Класс', 'center'))}
+          ${ifShow('status', _ctSortHdr('status', 'Статус', 'center', 'min-width:64px', 'OK / предупреждение / ошибка'))}
         </tr>
         <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1;font-weight:400">
           <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="label" placeholder="фильтр…" value="${esc(F.label)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="fromTo" placeholder="от/куда…" value="${esc(F.fromTo)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ct-flt" data-flt="mark" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">— все марки —</option>
-              ${sortedMarks.map(v => `<option value="${esc(v)}" ${F.mark === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
-            </select>
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ct-flt" data-flt="conductor" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">— все проводники —</option>
-              ${sortedConductors.map(v => `<option value="${esc(v)}" ${F.conductor === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
-            </select>
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ct-flt" data-flt="parallel" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">все</option>
-              ${sortedParallels.map(v => `<option value="${v}" ${F.parallel === v ? 'selected' : ''}>${v}</option>`).join('')}
-            </select>
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
-            <input type="number" class="ct-flt" data-flt="lengthMin" placeholder="от" value="${F.lengthMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-            <input type="number" class="ct-flt" data-flt="lengthMax" placeholder="до" value="${F.lengthMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ct-flt" data-flt="method" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">— все способы —</option>
-              ${sortedMethods.map(v => `<option value="${esc(v)}" ${F.method === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
-            </select>
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ct-flt" data-flt="breaker" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">все</option>
-              ${sortedBreakers.map(v => `<option value="${v}" ${F.breaker === v ? 'selected' : ''}>${v ? v + ' А' : '—'}</option>`).join('')}
-            </select>
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ct-flt" data-flt="curve" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">— все —</option>
-              ${sortedCurves.map(v => `<option value="${esc(v)}" ${F.curve === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
-            </select>
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap">
-            <input type="number" class="ct-flt" data-flt="imaxMin" placeholder="от" value="${F.imaxMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-            <input type="number" class="ct-flt" data-flt="imaxMax" placeholder="до" value="${F.imaxMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ct-flt" data-flt="status" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">все</option>
-              <option value="ok" ${F.status === 'ok' ? 'selected' : ''}>✓ OK</option>
-              <option value="warn" ${F.status === 'warn' ? 'selected' : ''}>⚠ Warn</option>
-              <option value="error" ${F.status === 'error' ? 'selected' : ''}>✗ Ошибка</option>
-              <option value="utility" ${F.status === 'utility' ? 'selected' : ''}>🏙 Utility</option>
-            </select>
-          </th>
+          ${ifShow('label', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="label" placeholder="фильтр…" value="${esc(F.label)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>`)}
+          ${ifShow('fromTo', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><input type="text" class="ct-flt" data-flt="fromTo" placeholder="от/куда…" value="${esc(F.fromTo)}" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>`)}
+          ${ifShow('mark', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="mark" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все марки —</option>${sortedMarks.map(v => `<option value="${esc(v)}" ${F.mark === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('conductor', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="conductor" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все проводники —</option>${sortedConductors.map(v => `<option value="${esc(v)}" ${F.conductor === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('parallel', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="parallel" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option>${sortedParallels.map(v => `<option value="${v}" ${F.parallel === v ? 'selected' : ''}>${v}</option>`).join('')}</select></th>`)}
+          ${ifShow('length', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap"><input type="number" class="ct-flt" data-flt="lengthMin" placeholder="от" value="${F.lengthMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><input type="number" class="ct-flt" data-flt="lengthMax" placeholder="до" value="${F.lengthMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>`)}
+          ${ifShow('method', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="method" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все способы —</option>${sortedMethods.map(v => `<option value="${esc(v)}" ${F.method === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('breaker', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="breaker" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option>${sortedBreakers.map(v => `<option value="${v}" ${F.breaker === v ? 'selected' : ''}>${v ? v + ' А' : '—'}</option>`).join('')}</select></th>`)}
+          ${ifShow('curve', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="curve" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${sortedCurves.map(v => `<option value="${esc(v)}" ${F.curve === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('imax', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap"><input type="number" class="ct-flt" data-flt="imaxMin" placeholder="от" value="${F.imaxMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><input type="number" class="ct-flt" data-flt="imaxMax" placeholder="до" value="${F.imaxMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>`)}
+          ${ifShow('class', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>`)}
+          ${ifShow('status', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="status" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option><option value="ok" ${F.status === 'ok' ? 'selected' : ''}>✓ OK</option><option value="warn" ${F.status === 'warn' ? 'selected' : ''}>⚠ Warn</option><option value="error" ${F.status === 'error' ? 'selected' : ''}>✗ Ошибка</option><option value="utility" ${F.status === 'utility' ? 'selected' : ''}>🏙 Utility</option></select></th>`)}
         </tr>
       </thead>
       <tbody>`];
@@ -2262,74 +2354,54 @@ function renderCableTable() {
         <td style="padding:5px 4px;text-align:center">
           <input type="checkbox" class="ct-row-sel" data-id="${esc(c.id)}" ${checked ? 'checked' : ''}>
         </td>
-        <td style="padding:5px 8px;font-weight:600">
-          <a href="#" class="ct-jump" data-id="${esc(c.id)}" title="Перейти к линии на схеме" style="color:#1976d2;text-decoration:none;display:inline-flex;align-items:center;gap:4px">
-            ${esc(lineLabel)}
-            <span style="font-size:10px;opacity:0.7">↗</span>
-          </a>
-          <button type="button" class="ct-tcc" data-id="${esc(c.id)}" title="Показать карту защиты (TCC) для этой линии" style="margin-left:6px;padding:1px 6px;border:1px solid #bbdefb;background:#f0f4ff;color:#1565c0;border-radius:3px;cursor:pointer;font-size:10px">TCC</button>
-        </td>
-        <td style="padding:5px 8px;font-size:11px">${esc(fromLabel)} → ${esc(toLabel)}</td>
-        <td style="padding:5px 8px">
-          <select class="ct-mark" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${markOpts}</select>
-        </td>
-        <td style="padding:5px 8px;font-size:11px">${esc(conductorSpec)}</td>
-        <td style="padding:5px 8px;text-align:right;font-size:11px;${parallelN > 1 ? 'color:#1976d2;font-weight:600' : 'color:#999'}">${parallelN}</td>
-        <td style="padding:5px 8px;text-align:right">
-          <input class="ct-length" data-id="${esc(c.id)}" type="number" min="0" step="0.5" value="${lengthVal}" style="width:70px;padding:3px 6px;text-align:right">
-        </td>
-        <td style="padding:5px 8px">
-          <select class="ct-method" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${methodOpts}</select>
-        </td>
-        <td style="padding:5px 8px;text-align:right;font-size:11px">
-          ${(() => {
-            const auto = Number(c._breakerIn) || 0;
-            const manual = !!c.manualBreakerIn;
-            const cur = manual ? Number(c.manualBreakerIn) : auto;
-            let opts = `<option value="">авто${auto ? ' (' + auto + ' А)' : ''}</option>`;
-            for (const n of _BREAKER_SERIES) {
-              opts += `<option value="${n}"${(manual && n === cur) ? ' selected' : ''}>${n} А</option>`;
-            }
-            const badge = !manual ? '<span class="muted" style="font-size:10px;color:#4caf50;margin-left:4px" title="авто">✓</span>' : '<span class="muted" style="font-size:10px;color:#e65100;margin-left:4px" title="ручной">✎</span>';
-            return `<select class="ct-breaker" data-id="${esc(c.id)}" style="width:80px;padding:3px 6px;font-size:11px">${opts}</select>${badge}`;
-          })()}
-        </td>
-        <td style="padding:5px 8px;font-size:11px">
-          ${(() => {
-            const curCv = String(c.breakerCurve || '').toUpperCase();
-            const effCv = String(c._breakerCurveEff || '').toUpperCase();
-            let opts = `<option value="">авто${effCv ? ' (' + esc(effCv) + ')' : ''}</option>`;
-            for (const [id, def] of Object.entries(_BREAKER_TYPES)) {
-              opts += `<option value="${esc(id)}"${curCv === id.toUpperCase() ? ' selected' : ''}>${esc(def.label)}</option>`;
-            }
-            return `<select class="ct-curve" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${opts}</select>`;
-          })()}
-        </td>
-        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:#555">
-          ${_ctFmt(c._maxA || 0)} / ${_ctFmt(c._cableIz || 0)} А
-        </td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px;color:${clsColor};font-weight:600">${cls}</td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px">
-          ${(() => {
-            const st = _ctConnStatus(c);
-            if (st === 'utility') return '<span title="Ввод от городской сети — ТУ поставщика" style="display:inline-block;padding:1px 6px;background:#eef5ff;color:#1565c0;border:1px solid #bbdefb;border-radius:3px;font-size:10px">🏙 utility</span>';
-            if (st === 'error') {
-              const reasons = [];
-              if (c._breakerAgainstCable) reasons.push('In > Iz');
-              if (c._breakerUndersize) reasons.push('In < Iрасч');
-              // Phase 1.20.27: клик по ✗ badge пытается применить автофикс
-              const fix = _ctSuggestFix(c);
-              const clickable = !!fix;
-              return `<span class="${clickable ? 'ct-fix-badge' : ''}" data-id="${esc(c.id)}" title="${esc(reasons.join(', '))}${clickable ? ' · клик — применить фикс (' + esc(fix.label) + ')' : ''}" style="display:inline-block;padding:1px 6px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:3px;font-size:10px;font-weight:600;${clickable ? 'cursor:pointer' : ''}">✗ ${esc(reasons.join(', '))}${clickable ? ' 🔧' : ''}</span>`;
-            }
-            if (st === 'warn') return '<span title="Сечение превышено" style="display:inline-block;padding:1px 6px;background:#fff8e1;color:#e65100;border:1px solid #ffcc80;border-radius:3px;font-size:10px">⚠ warn</span>';
-            return '<span title="OK" style="display:inline-block;padding:1px 6px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:3px;font-size:10px">✓ OK</span>';
-          })()}
-        </td>
+        ${ifShow('label', `<td style="padding:5px 8px;font-weight:600">
+          <a href="#" class="ct-jump" data-id="${esc(c.id)}" title="Перейти к линии на схеме" style="color:#1976d2;text-decoration:none;display:inline-flex;align-items:center;gap:4px">${esc(lineLabel)}<span style="font-size:10px;opacity:0.7">↗</span></a>
+          <button type="button" class="ct-tcc" data-id="${esc(c.id)}" title="Показать карту защиты (TCC)" style="margin-left:6px;padding:1px 6px;border:1px solid #bbdefb;background:#f0f4ff;color:#1565c0;border-radius:3px;cursor:pointer;font-size:10px">TCC</button>
+        </td>`)}
+        ${ifShow('fromTo', `<td style="padding:5px 8px;font-size:11px">${esc(fromLabel)} → ${esc(toLabel)}</td>`)}
+        ${ifShow('mark', `<td style="padding:5px 8px"><select class="ct-mark" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${markOpts}</select></td>`)}
+        ${ifShow('conductor', `<td style="padding:5px 8px;font-size:11px">${esc(conductorSpec)}</td>`)}
+        ${ifShow('parallel', `<td style="padding:5px 8px;text-align:right;font-size:11px;${parallelN > 1 ? 'color:#1976d2;font-weight:600' : 'color:#999'}">${parallelN}</td>`)}
+        ${ifShow('length', `<td style="padding:5px 8px;text-align:right"><input class="ct-length" data-id="${esc(c.id)}" type="number" min="0" step="0.5" value="${lengthVal}" style="width:70px;padding:3px 6px;text-align:right"></td>`)}
+        ${ifShow('method', `<td style="padding:5px 8px"><select class="ct-method" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${methodOpts}</select></td>`)}
+        ${ifShow('breaker', `<td style="padding:5px 8px;text-align:right;font-size:11px">${(() => {
+          const auto = Number(c._breakerIn) || 0;
+          const manual = !!c.manualBreakerIn;
+          const cur = manual ? Number(c.manualBreakerIn) : auto;
+          let opts = `<option value="">авто${auto ? ' (' + auto + ' А)' : ''}</option>`;
+          for (const nn of _BREAKER_SERIES) opts += `<option value="${nn}"${(manual && nn === cur) ? ' selected' : ''}>${nn} А</option>`;
+          const badge = !manual ? '<span class="muted" style="font-size:10px;color:#4caf50;margin-left:4px" title="авто">✓</span>' : '<span class="muted" style="font-size:10px;color:#e65100;margin-left:4px" title="ручной">✎</span>';
+          return `<select class="ct-breaker" data-id="${esc(c.id)}" style="width:80px;padding:3px 6px;font-size:11px">${opts}</select>${badge}`;
+        })()}</td>`)}
+        ${ifShow('curve', `<td style="padding:5px 8px;font-size:11px">${(() => {
+          const curCv = String(c.breakerCurve || '').toUpperCase();
+          const effCv = String(c._breakerCurveEff || '').toUpperCase();
+          let opts = `<option value="">авто${effCv ? ' (' + esc(effCv) + ')' : ''}</option>`;
+          for (const [id, def] of Object.entries(_BREAKER_TYPES)) opts += `<option value="${esc(id)}"${curCv === id.toUpperCase() ? ' selected' : ''}>${esc(def.label)}</option>`;
+          return `<select class="ct-curve" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${opts}</select>`;
+        })()}</td>`)}
+        ${ifShow('imax', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:#555">${_ctFmt(c._maxA || 0)} / ${_ctFmt(c._cableIz || 0)} А</td>`)}
+        ${ifShow('class', `<td style="padding:5px 8px;text-align:center;font-size:11px;color:${clsColor};font-weight:600">${cls}</td>`)}
+        ${ifShow('status', `<td style="padding:5px 8px;text-align:center;font-size:11px">${(() => {
+          const st = _ctConnStatus(c);
+          if (st === 'utility') return '<span title="Ввод от городской сети — ТУ поставщика" style="display:inline-block;padding:1px 6px;background:#eef5ff;color:#1565c0;border:1px solid #bbdefb;border-radius:3px;font-size:10px">🏙 utility</span>';
+          if (st === 'error') {
+            const reasons = [];
+            if (c._breakerAgainstCable) reasons.push('In > Iz');
+            if (c._breakerUndersize) reasons.push('In < Iрасч');
+            const fix = _ctSuggestFix(c);
+            const clickable = !!fix;
+            return `<span class="${clickable ? 'ct-fix-badge' : ''}" data-id="${esc(c.id)}" title="${esc(reasons.join(', '))}${clickable ? ' · клик — применить фикс (' + esc(fix.label) + ')' : ''}" style="display:inline-block;padding:1px 6px;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;border-radius:3px;font-size:10px;font-weight:600;${clickable ? 'cursor:pointer' : ''}">✗ ${esc(reasons.join(', '))}${clickable ? ' 🔧' : ''}</span>`;
+          }
+          if (st === 'warn') return '<span title="Сечение превышено" style="display:inline-block;padding:1px 6px;background:#fff8e1;color:#e65100;border:1px solid #ffcc80;border-radius:3px;font-size:10px">⚠ warn</span>';
+          return '<span title="OK" style="display:inline-block;padding:1px 6px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:3px;font-size:10px">✓ OK</span>';
+        })()}</td>`)}
       </tr>`);
   }
+  // Динамический colspan для «no-rows» строки
+  const visibleCount = 1 /* checkbox */ + _CABLE_TABLE_COLUMNS.filter(c => c.id !== 'checkbox' && show(c.id)).length;
   if (!filtered.length) {
-    html.push('<tr><td colspan="13" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>');
+    html.push(`<tr><td colspan="${visibleCount}" style="padding:20px;text-align:center;color:#999">Нет кабельных линий по текущим фильтрам</td></tr>`);
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -2563,6 +2635,14 @@ function renderCableTable() {
   if (brkBtn) brkBtn.addEventListener('click', () => _openBulkCableDialog('breaker', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
   const curveBtn = mount.querySelector('#ct-bulk-curve');
   if (curveBtn) curveBtn.addEventListener('click', () => _openBulkCableDialog('curve', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
+  // Phase 1.20.31: меню настройки столбцов
+  const colBtn = mount.querySelector('#ct-col-menu');
+  if (colBtn) colBtn.addEventListener('click', () => {
+    _openColumnMenu(colBtn, 'cable', _CABLE_TABLE_COLUMNS, _cableTableVisibility, (v) => {
+      _cableTableVisibility = v;
+      renderCableTable();
+    });
+  });
   // Phase 1.20.29: автофикс всех error-линий в текущей выборке одной кнопкой
   const autofixBtn = mount.querySelector('#ct-bulk-autofix');
   if (autofixBtn) autofixBtn.addEventListener('click', () => {
@@ -3701,6 +3781,10 @@ function renderConsumersTable() {
   const bulkDisabled = selCount === 0;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  // Phase 1.20.31: видимость столбцов consumer table
+  const vis = _consumersTableVisibility;
+  const show = (col) => vis[col] !== false;
+  const ifShow = (col, html) => show(col) ? html : '';
 
   const sortHdr = (col, label, align) => {
     const active = _consumersTableSort.col === col;
@@ -3717,6 +3801,7 @@ function renderConsumersTable() {
       <button type="button" id="ctc-bulk-kUse" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">K<sub>и</sub></button>
       <button type="button" id="ctc-bulk-phase" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Фаза</button>
       <span style="flex:1"></span>
+      <button type="button" id="ctc-col-menu" title="Настроить видимость столбцов" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">⚙ Столбцы</button>
       <button type="button" id="ctc-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
       <button type="button" id="ctc-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
     </div>
@@ -3726,32 +3811,27 @@ function renderConsumersTable() {
           <th style="padding:6px 4px;border-bottom:2px solid #d0d7de;width:28px;text-align:center">
             <input type="checkbox" id="ctc-select-all" ${filtered.length && filtered.every(n => _consumersTableSelected.has(n.id)) ? 'checked' : ''} title="Выделить все">
           </th>
-          ${sortHdr('tag', 'Обозн.', 'left')}
-          ${sortHdr('name', 'Имя', 'left')}
-          ${sortHdr('parent', 'Питающий щит', 'left')}
-          ${sortHdr('category', 'Категория', 'left')}
-          ${sortHdr('demand', 'P, кВт', 'right')}
-          ${sortHdr('count', 'Шт.', 'right')}
-          ${sortHdr('cosPhi', 'cos φ', 'right')}
-          ${sortHdr('kUse', 'Kи', 'right')}
-          ${sortHdr('phase', 'Фаза', 'center')}
+          ${ifShow('tag', sortHdr('tag', 'Обозн.', 'left'))}
+          ${ifShow('name', sortHdr('name', 'Имя', 'left'))}
+          ${ifShow('parent', sortHdr('parent', 'Питающий щит', 'left'))}
+          ${ifShow('category', sortHdr('category', 'Категория', 'left'))}
+          ${ifShow('demand', sortHdr('demand', 'P, кВт', 'right'))}
+          ${ifShow('count', sortHdr('count', 'Шт.', 'right'))}
+          ${ifShow('cosPhi', sortHdr('cosPhi', 'cos φ', 'right'))}
+          ${ifShow('kUse', sortHdr('kUse', 'Kи', 'right'))}
+          ${ifShow('phase', sortHdr('phase', 'Фаза', 'center'))}
         </tr>
         <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1">
           <th></th>
-          <th colspan="2" style="padding:3px 6px;border-bottom:1px solid #d0d7de"><span class="muted" style="font-size:10px">Поиск — в поле сверху</span></th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ctc-flt" data-flt="parent" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">— все щиты —</option>
-              ${[...distinctParents].sort().map(v => `<option value="${esc(v)}" ${F.parent === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
-            </select>
-          </th>
-          <th style="padding:3px 4px;border-bottom:1px solid #d0d7de">
-            <select class="ctc-flt" data-flt="category" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px">
-              <option value="">— все —</option>
-              ${[...distinctCats].sort().map(v => `<option value="${esc(v)}" ${F.category === v ? 'selected' : ''}>${esc(CAT_LABELS[v] || v)}</option>`).join('')}
-            </select>
-          </th>
-          <th colspan="5"></th>
+          ${ifShow('tag', '<th style="padding:3px 6px;border-bottom:1px solid #d0d7de"></th>')}
+          ${ifShow('name', '<th style="padding:3px 6px;border-bottom:1px solid #d0d7de"><span class="muted" style="font-size:10px">Поиск — в поле сверху</span></th>')}
+          ${ifShow('parent', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="parent" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все щиты —</option>${[...distinctParents].sort().map(v => `<option value="${esc(v)}" ${F.parent === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('category', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="category" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${[...distinctCats].sort().map(v => `<option value="${esc(v)}" ${F.category === v ? 'selected' : ''}>${esc(CAT_LABELS[v] || v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('demand', '<th></th>')}
+          ${ifShow('count', '<th></th>')}
+          ${ifShow('cosPhi', '<th></th>')}
+          ${ifShow('kUse', '<th></th>')}
+          ${ifShow('phase', '<th></th>')}
         </tr>
       </thead>
       <tbody>`];
@@ -3768,48 +3848,25 @@ function renderConsumersTable() {
         <td style="padding:5px 4px;text-align:center">
           <input type="checkbox" class="ctc-row-sel" data-id="${esc(n.id)}" ${checked ? 'checked' : ''}>
         </td>
-        <td style="padding:5px 8px;font-weight:600">
-          <a href="#" class="ctc-jump" data-id="${esc(n.id)}" title="Перейти к потребителю на схеме" style="color:#1976d2;text-decoration:none">
-            ${esc(n.tag || '?')} <span style="font-size:10px;opacity:0.7">↗</span>
-          </a>
-        </td>
-        <td style="padding:5px 8px"><input class="ctc-name" data-id="${esc(n.id)}" type="text" value="${esc(n.name || '')}" style="width:140px;padding:3px 6px;font-size:11px"></td>
-        <td style="padding:5px 8px;font-size:11px">
-          ${(() => {
-            const p = parentPanelById.get(n.id);
-            if (!p) return '<span class="muted" style="color:#c62828;font-size:10px" title="Нет входящего питания">— orphan —</span>';
-            const pt = _effectiveTag(p) || p.tag || p.name || '?';
-            const pid = p.id;
-            return `<a href="#" class="ctc-parent-jump" data-parent-id="${esc(pid)}" style="color:#1976d2;text-decoration:none">${esc(pt)}</a>`;
-          })()}
-        </td>
-        <td style="padding:5px 8px;font-size:11px">
-          <div>${esc(catLabel)}</div>
-          <div class="muted" style="font-size:10px">${esc(CAT_LABELS[catCat] || catCat)}</div>
-        </td>
-        <td style="padding:5px 8px;text-align:right">
-          <input class="ctc-demand" data-id="${esc(n.id)}" type="number" min="0" step="0.1" value="${Number(n.demandKw) || 0}" style="width:72px;padding:3px 6px;text-align:right">
-        </td>
-        <td style="padding:5px 8px;text-align:right">
-          <input class="ctc-count" data-id="${esc(n.id)}" type="number" min="1" step="1" value="${Number(n.count) || 1}" style="width:52px;padding:3px 6px;text-align:right">
-        </td>
-        <td style="padding:5px 8px;text-align:right">
-          <input class="ctc-cosPhi" data-id="${esc(n.id)}" type="number" min="0.1" max="1" step="0.01" value="${Number(n.cosPhi) || 0.92}" style="width:56px;padding:3px 6px;text-align:right">
-        </td>
-        <td style="padding:5px 8px;text-align:right">
-          <input class="ctc-kUse" data-id="${esc(n.id)}" type="number" min="0" max="1.5" step="0.05" value="${Number(n.kUse) || 1}" style="width:56px;padding:3px 6px;text-align:right">
-        </td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px">
-          <select class="ctc-phase" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px">
-            <option value="1ph"${phase === '1ph' ? ' selected' : ''}>1ф</option>
-            <option value="3ph"${phase === '3ph' ? ' selected' : ''}>3ф</option>
-            <option value="dc"${phase === 'dc' ? ' selected' : ''}>DC</option>
-          </select>
-        </td>
+        ${ifShow('tag', `<td style="padding:5px 8px;font-weight:600"><a href="#" class="ctc-jump" data-id="${esc(n.id)}" title="Перейти к потребителю на схеме" style="color:#1976d2;text-decoration:none">${esc(n.tag || '?')} <span style="font-size:10px;opacity:0.7">↗</span></a></td>`)}
+        ${ifShow('name', `<td style="padding:5px 8px"><input class="ctc-name" data-id="${esc(n.id)}" type="text" value="${esc(n.name || '')}" style="width:140px;padding:3px 6px;font-size:11px"></td>`)}
+        ${ifShow('parent', `<td style="padding:5px 8px;font-size:11px">${(() => {
+          const p = parentPanelById.get(n.id);
+          if (!p) return '<span class="muted" style="color:#c62828;font-size:10px" title="Нет входящего питания">— orphan —</span>';
+          const pt = _effectiveTag(p) || p.tag || p.name || '?';
+          return `<a href="#" class="ctc-parent-jump" data-parent-id="${esc(p.id)}" style="color:#1976d2;text-decoration:none">${esc(pt)}</a>`;
+        })()}</td>`)}
+        ${ifShow('category', `<td style="padding:5px 8px;font-size:11px"><div>${esc(catLabel)}</div><div class="muted" style="font-size:10px">${esc(CAT_LABELS[catCat] || catCat)}</div></td>`)}
+        ${ifShow('demand', `<td style="padding:5px 8px;text-align:right"><input class="ctc-demand" data-id="${esc(n.id)}" type="number" min="0" step="0.1" value="${Number(n.demandKw) || 0}" style="width:72px;padding:3px 6px;text-align:right"></td>`)}
+        ${ifShow('count', `<td style="padding:5px 8px;text-align:right"><input class="ctc-count" data-id="${esc(n.id)}" type="number" min="1" step="1" value="${Number(n.count) || 1}" style="width:52px;padding:3px 6px;text-align:right"></td>`)}
+        ${ifShow('cosPhi', `<td style="padding:5px 8px;text-align:right"><input class="ctc-cosPhi" data-id="${esc(n.id)}" type="number" min="0.1" max="1" step="0.01" value="${Number(n.cosPhi) || 0.92}" style="width:56px;padding:3px 6px;text-align:right"></td>`)}
+        ${ifShow('kUse', `<td style="padding:5px 8px;text-align:right"><input class="ctc-kUse" data-id="${esc(n.id)}" type="number" min="0" max="1.5" step="0.05" value="${Number(n.kUse) || 1}" style="width:56px;padding:3px 6px;text-align:right"></td>`)}
+        ${ifShow('phase', `<td style="padding:5px 8px;text-align:center;font-size:11px"><select class="ctc-phase" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px"><option value="1ph"${phase === '1ph' ? ' selected' : ''}>1ф</option><option value="3ph"${phase === '3ph' ? ' selected' : ''}>3ф</option><option value="dc"${phase === 'dc' ? ' selected' : ''}>DC</option></select></td>`)}
       </tr>`);
   }
+  const visibleCount = 1 + _CONSUMERS_TABLE_COLUMNS.filter(c => c.id !== 'checkbox' && show(c.id)).length;
   if (!filtered.length) {
-    html.push('<tr><td colspan="10" style="padding:20px;text-align:center;color:#999">Нет потребителей по текущим фильтрам</td></tr>');
+    html.push(`<tr><td colspan="${visibleCount}" style="padding:20px;text-align:center;color:#999">Нет потребителей по текущим фильтрам</td></tr>`);
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -3905,6 +3962,14 @@ function renderConsumersTable() {
         if (typeof window.Raschet.rerender === 'function') window.Raschet.rerender();
       }
       closeModal('modal-consumers-table');
+    });
+  });
+  // Phase 1.20.31: меню столбцов для таблицы потребителей
+  const colBtn = mount.querySelector('#ctc-col-menu');
+  if (colBtn) colBtn.addEventListener('click', () => {
+    _openColumnMenu(colBtn, 'consumers', _CONSUMERS_TABLE_COLUMNS, _consumersTableVisibility, (v) => {
+      _consumersTableVisibility = v;
+      renderConsumersTable();
     });
   });
   const clearBtn = mount.querySelector('#ctc-clear-filters');
@@ -4114,6 +4179,10 @@ function renderEquipmentTable() {
 
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, ch =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  // Phase 1.20.31: видимость столбцов equipment table
+  const vis = _equipTableVisibility;
+  const show = (col) => vis[col] !== false;
+  const ifShow = (col, html) => show(col) ? html : '';
 
   const sortHdr = (col, label, align, extra) => {
     const active = _equipTableSort.col === col;
@@ -4126,17 +4195,17 @@ function renderEquipmentTable() {
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead>
         <tr style="background:#f6f8fa;position:sticky;top:0;z-index:2">
-          ${sortHdr('tag', 'Обозначение', 'left', 'min-width:130px')}
-          ${sortHdr('kind', 'Тип', 'left')}
-          ${sortHdr('name', 'Имя / Модель', 'left')}
-          ${sortHdr('voltage', 'U, В', 'right')}
-          ${sortHdr('inputs', 'Вх.', 'right')}
-          ${sortHdr('outputs', 'Вых.', 'right')}
-          ${sortHdr('capacity', 'P ном, кВт', 'right')}
-          ${sortHdr('load', 'P расч, кВт', 'right')}
-          ${sortHdr('loadPct', 'Загрузка', 'right', 'min-width:80px')}
-          ${sortHdr('ip', 'IP', 'center')}
-          <th style="padding:6px 8px;border-bottom:2px solid #d0d7de;min-width:150px" title="Переход к связанным объектам">Связано</th>
+          ${ifShow('tag', sortHdr('tag', 'Обозначение', 'left', 'min-width:130px'))}
+          ${ifShow('kind', sortHdr('kind', 'Тип', 'left'))}
+          ${ifShow('name', sortHdr('name', 'Имя / Модель', 'left'))}
+          ${ifShow('voltage', sortHdr('voltage', 'U, В', 'right'))}
+          ${ifShow('inputs', sortHdr('inputs', 'Вх.', 'right'))}
+          ${ifShow('outputs', sortHdr('outputs', 'Вых.', 'right'))}
+          ${ifShow('capacity', sortHdr('capacity', 'P ном, кВт', 'right'))}
+          ${ifShow('load', sortHdr('load', 'P расч, кВт', 'right'))}
+          ${ifShow('loadPct', sortHdr('loadPct', 'Загрузка', 'right', 'min-width:80px'))}
+          ${ifShow('ip', sortHdr('ip', 'IP', 'center'))}
+          ${ifShow('xnav', '<th style="padding:6px 8px;border-bottom:2px solid #d0d7de;min-width:150px" title="Переход к связанным объектам">Связано</th>')}
         </tr>
       </thead>
       <tbody>`];
@@ -4157,62 +4226,46 @@ function renderEquipmentTable() {
 
     html.push(`
       <tr data-id="${esc(n.id)}" style="border-bottom:1px solid #eaecef">
-        <td style="padding:5px 8px;font-weight:600">
-          <a href="#" class="et-jump" data-id="${esc(n.id)}" style="color:${KIND_COLOR[e.kind] || '#1976d2'};text-decoration:none">
-            ${esc(tag)} <span style="font-size:10px;opacity:0.7">↗</span>
-          </a>
-        </td>
-        <td style="padding:5px 8px;font-size:11px">
-          <span style="font-size:14px;margin-right:4px">${KIND_ICON[e.kind] || '▫'}</span>
-          ${esc(_equipKindLabel(e.kind))}
-        </td>
-        <td style="padding:5px 8px;font-size:11px">
-          <div>${esc(n.name || '—')}</div>
-          ${model ? `<div class="muted" style="font-size:10px">${esc(model)}</div>` : ''}
-        </td>
-        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${voltage}</td>
-        <td style="padding:5px 8px;text-align:right;font-size:11px">${n.inputs || '—'}</td>
-        <td style="padding:5px 8px;text-align:right;font-size:11px">${n.outputs || '—'}</td>
-        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${cap ? cap.toFixed(1) : '—'}</td>
-        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${load ? load.toFixed(1) : '—'}</td>
-        <td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:${loadColor};font-weight:${loadPct > 90 ? 600 : 400}">
-          ${cap > 0 ? loadPct.toFixed(0) + '%' : '—'}
-          ${loadPct > 0 ? `<div style="background:#e1e4e8;height:3px;border-radius:2px;margin-top:2px;overflow:hidden"><div style="width:${Math.min(100, loadPct)}%;height:100%;background:${loadColor}"></div></div>` : ''}
-        </td>
-        <td style="padding:5px 8px;text-align:center;font-size:11px">${n.ipRating || '—'}</td>
-        <td style="padding:5px 8px;font-size:10px">
-          ${(() => {
-            // Phase 1.20.30: подсчёт связанных линий и потребителей-потомков
-            let cableCount = 0, consumerCount = 0;
+        ${ifShow('tag', `<td style="padding:5px 8px;font-weight:600"><a href="#" class="et-jump" data-id="${esc(n.id)}" style="color:${KIND_COLOR[e.kind] || '#1976d2'};text-decoration:none">${esc(tag)} <span style="font-size:10px;opacity:0.7">↗</span></a></td>`)}
+        ${ifShow('kind', `<td style="padding:5px 8px;font-size:11px"><span style="font-size:14px;margin-right:4px">${KIND_ICON[e.kind] || '▫'}</span>${esc(_equipKindLabel(e.kind))}</td>`)}
+        ${ifShow('name', `<td style="padding:5px 8px;font-size:11px"><div>${esc(n.name || '—')}</div>${model ? `<div class="muted" style="font-size:10px">${esc(model)}</div>` : ''}</td>`)}
+        ${ifShow('voltage', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${voltage}</td>`)}
+        ${ifShow('inputs', `<td style="padding:5px 8px;text-align:right;font-size:11px">${n.inputs || '—'}</td>`)}
+        ${ifShow('outputs', `<td style="padding:5px 8px;text-align:right;font-size:11px">${n.outputs || '—'}</td>`)}
+        ${ifShow('capacity', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${cap ? cap.toFixed(1) : '—'}</td>`)}
+        ${ifShow('load', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px">${load ? load.toFixed(1) : '—'}</td>`)}
+        ${ifShow('loadPct', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:${loadColor};font-weight:${loadPct > 90 ? 600 : 400}">${cap > 0 ? loadPct.toFixed(0) + '%' : '—'}${loadPct > 0 ? `<div style="background:#e1e4e8;height:3px;border-radius:2px;margin-top:2px;overflow:hidden"><div style="width:${Math.min(100, loadPct)}%;height:100%;background:${loadColor}"></div></div>` : ''}</td>`)}
+        ${ifShow('ip', `<td style="padding:5px 8px;text-align:center;font-size:11px">${n.ipRating || '—'}</td>`)}
+        ${ifShow('xnav', `<td style="padding:5px 8px;font-size:10px">${(() => {
+          let cableCount = 0, consumerCount = 0;
+          for (const c of S.conns.values()) {
+            if (c.from?.nodeId === n.id || c.to?.nodeId === n.id) cableCount++;
+          }
+          const visited = new Set([n.id]);
+          const queue = [n.id];
+          while (queue.length) {
+            const cur = queue.shift();
             for (const c of S.conns.values()) {
-              if (c.from?.nodeId === n.id || c.to?.nodeId === n.id) cableCount++;
+              if (c.from?.nodeId !== cur) continue;
+              const to = c.to?.nodeId;
+              if (!to || visited.has(to)) continue;
+              visited.add(to);
+              const toNode = S.nodes.get(to);
+              if (!toNode) continue;
+              if (toNode.type === 'consumer') consumerCount++;
+              else queue.push(to);
             }
-            // BFS вниз для подсчёта потребителей
-            const visited = new Set([n.id]);
-            const queue = [n.id];
-            while (queue.length) {
-              const cur = queue.shift();
-              for (const c of S.conns.values()) {
-                if (c.from?.nodeId !== cur) continue;
-                const to = c.to?.nodeId;
-                if (!to || visited.has(to)) continue;
-                visited.add(to);
-                const toNode = S.nodes.get(to);
-                if (!toNode) continue;
-                if (toNode.type === 'consumer') consumerCount++;
-                else queue.push(to);
-              }
-            }
-            const buttons = [];
-            if (cableCount) buttons.push(`<button type="button" class="et-xnav" data-xnav="cables" data-id="${esc(n.id)}" title="Открыть кабели щита" style="padding:2px 6px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:10px">🔌 ${cableCount}</button>`);
-            if (consumerCount) buttons.push(`<button type="button" class="et-xnav" data-xnav="consumers" data-id="${esc(n.id)}" title="Открыть потребителей щита" style="padding:2px 6px;border:1px solid #7b1fa2;background:#fff;color:#7b1fa2;border-radius:3px;cursor:pointer;font-size:10px">💡 ${consumerCount}</button>`);
-            return buttons.length ? `<div style="display:flex;gap:4px">${buttons.join('')}</div>` : '—';
-          })()}
-        </td>
+          }
+          const buttons = [];
+          if (cableCount) buttons.push(`<button type="button" class="et-xnav" data-xnav="cables" data-id="${esc(n.id)}" title="Открыть кабели щита" style="padding:2px 6px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:10px">🔌 ${cableCount}</button>`);
+          if (consumerCount) buttons.push(`<button type="button" class="et-xnav" data-xnav="consumers" data-id="${esc(n.id)}" title="Открыть потребителей щита" style="padding:2px 6px;border:1px solid #7b1fa2;background:#fff;color:#7b1fa2;border-radius:3px;cursor:pointer;font-size:10px">💡 ${consumerCount}</button>`);
+          return buttons.length ? `<div style="display:flex;gap:4px">${buttons.join('')}</div>` : '—';
+        })()}</td>`)}
       </tr>`);
   }
+  const visCount = _EQUIPMENT_TABLE_COLUMNS.filter(c => show(c.id)).length;
   if (!filtered.length) {
-    html.push('<tr><td colspan="11" style="padding:20px;text-align:center;color:#999">Нет оборудования по текущим фильтрам</td></tr>');
+    html.push(`<tr><td colspan="${visCount}" style="padding:20px;text-align:center;color:#999">Нет оборудования по текущим фильтрам</td></tr>`);
   }
   html.push('</tbody></table>');
   mount.innerHTML = html.join('');
@@ -4227,6 +4280,17 @@ function renderEquipmentTable() {
       renderEquipmentTable();
     });
   });
+  // Phase 1.20.31: меню столбцов для equipment table
+  const colBtn = document.getElementById('equipment-table-col-menu');
+  if (colBtn && !colBtn._wired) {
+    colBtn._wired = true;
+    colBtn.addEventListener('click', () => {
+      _openColumnMenu(colBtn, 'equipment', _EQUIPMENT_TABLE_COLUMNS, _equipTableVisibility, (v) => {
+        _equipTableVisibility = v;
+        renderEquipmentTable();
+      });
+    });
+  }
   mount.querySelectorAll('.et-jump').forEach(a => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
