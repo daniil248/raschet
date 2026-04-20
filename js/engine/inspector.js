@@ -420,6 +420,13 @@ export function renderInspectorNode(n) {
     return;
   }
 
+  // Phase 2.3 (v0.58.4): вкладки по системам (электрика / габариты)
+  // для всех типов кроме zone/channel/conn.
+  h.push(`<div class="tp-tabs" role="tablist" style="margin-bottom:8px">
+    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
+  </div>`);
+  h.push(`<div class="tp-panel" data-panel="electrical">`);
   h.push(field('Обозначение', `<input type="text" data-prop="tag" value="${escAttr(n.tag || '')}">`));
   // Показать эффективное обозначение если отличается
   const eff = effectiveTag(n);
@@ -704,15 +711,33 @@ export function renderInspectorNode(n) {
     }
   }
 
-  // Phase 2.3: секция «Габариты (мм)» на layout-странице
-  if (getPageKind(getCurrentPage()) === 'layout' && n.type !== 'zone') {
+  // Полный дамп параметров узла — в электрической вкладке
+  h.push(renderFullPropsBlock(n));
+  h.push(`</div>`); // /panel electrical
+
+  // Phase 2.3 (v0.58.4): вкладка «Габариты» — доступна для любых типов,
+  // не только на layout-странице. Если в каталоге нет размеров — показываем
+  // пустые поля для ручного override (n.geometryMm).
+  h.push(`<div class="tp-panel" data-panel="geometry" hidden>`);
+  if (n.type === 'zone') {
+    h.push('<div class="muted" style="font-size:11px">Габариты зоны задаются шириной/высотой в px на вкладке «Электрика».</div>');
+  } else {
     h.push(renderGeometryMmBlock(n));
   }
-
-  // Полный дамп параметров узла
-  h.push(renderFullPropsBlock(n));
+  h.push(`</div>`); // /panel geometry
 
   inspectorBody.innerHTML = h.join('');
+
+  // Tab switching
+  inspectorBody.querySelectorAll('.tp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      inspectorBody.querySelectorAll('.tp-tab').forEach(t => t.classList.toggle('active', t === btn));
+      inspectorBody.querySelectorAll('.tp-panel').forEach(p => {
+        p.hidden = p.dataset.panel !== tab;
+      });
+    });
+  });
 
   // Монтируем каскадный пикер трансформаторов (если узел — источник-
   // трансформатор и справочник не пуст).
