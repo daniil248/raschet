@@ -3823,6 +3823,11 @@ function renderProjectIssues() {
       </div>
       ` : ''}
     </div>
+    <div style="margin:10px 0 4px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;color:#666">🔍 Фильтр:</span>
+      <input type="text" id="pi-filter" placeholder="tag, причина, номинал..." style="flex:1;padding:4px 8px;border:1px solid #ddd;border-radius:3px;font-size:12px">
+      <span id="pi-filter-count" class="muted" style="font-size:11px;min-width:90px;text-align:right"></span>
+    </div>
   `);
 
   const renderLineList = (items, color, borderColor) => {
@@ -3954,6 +3959,39 @@ function renderProjectIssues() {
   }
 
   mount.innerHTML = html.join('');
+
+  // Phase 1.20.49: filter-by-text для всех .pi-row строк (заголовки H3
+  // скрываются если в них нет видимых строк).
+  const piFilter = mount.querySelector('#pi-filter');
+  const piFilterCount = mount.querySelector('#pi-filter-count');
+  if (piFilter) {
+    const allRows = Array.from(mount.querySelectorAll('.pi-row'));
+    const totalRows = allRows.length;
+    const sections = Array.from(mount.querySelectorAll('h3'));
+    const applyFilter = () => {
+      const q = piFilter.value.trim().toLowerCase();
+      let visible = 0;
+      for (const row of allRows) {
+        const match = !q || row.textContent.toLowerCase().includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+      }
+      // Скрываем h3 + следующий контейнер, если в нём нет видимых строк
+      for (const h of sections) {
+        const next = h.nextElementSibling;
+        if (!next) continue;
+        const anyVisible = Array.from(next.querySelectorAll('.pi-row')).some(r => r.style.display !== 'none');
+        const hasRows = next.querySelector('.pi-row');
+        if (hasRows && !anyVisible && q) {
+          h.style.display = 'none'; next.style.display = 'none';
+        } else {
+          h.style.display = ''; next.style.display = '';
+        }
+      }
+      if (piFilterCount) piFilterCount.textContent = q ? `${visible} из ${totalRows}` : '';
+    };
+    piFilter.addEventListener('input', applyFilter);
+  }
 
   // Phase 1.20.21: «Исправить всё» — применяет все автофиксы одним snapshot'ом
   const fixAllBtn = mount.querySelector('#pi-fix-all');
