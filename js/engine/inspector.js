@@ -1085,7 +1085,7 @@ const _CONFIGURATORS = {
   panel:       { href: 'panel-config/',       label: 'Конфигуратор НКУ' },
   panelMv:     { href: 'mv-config/',          label: 'Конфигуратор РУ СН' },
   ups:         { href: 'ups-config/',         label: 'Конфигуратор ИБП' },
-  rack:        { href: 'rack-config/',        label: 'Конфигуратор стойки (в разработке)' },
+  rack:        { href: 'rack-config/',        label: 'Конфигуратор стойки' },
   scs:         { href: 'scs-config/',         label: 'Конфигуратор СКС/телеком (в разработке)' },
 };
 function _configuratorForNode(n) {
