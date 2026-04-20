@@ -1217,21 +1217,20 @@ function recalc() {
   // подобранных по току ОДНОЙ единицы группы.
   // === Расчёт токов, сечений кабелей и подбор автоматов ===
   // Подсчёт цепей в канале: для каждой линии добавляем столько цепей, сколько
-  // у неё параллельных жил (для групповых потребителей это count, для
-  // обычных — 1). Если через один канал проходят линия с 3 жилами и линия
-  // с 4 жилами, в канале лежит 7 цепей, и каждая жила должна использовать
-  // K_group для 7.
+  // Phase 1.20.44 (v0.57.19) — FIX по IEC 60364-5-52 §523.5 / Annex E:
+  // параллельные проводники ОДНОЙ цепи считаются как ОДНА цепь для
+  // K_group. Раньше было `circuits = count` — групповой потребитель
+  // с count=4 добавлял 4 цепи в канал, что завышало K_group и приводило
+  // к разным сечениям у симметричных линий с одинаковым per-line током.
+  // Если через канал идут два групповых потребителя (4 жилы + 3 жилы) —
+  // это 2 цепи в канале (не 7), как и требует стандарт.
   const channelCircuits = new Map(); // channelId → total circuits
   for (const c of state.conns.values()) {
     const ids = Array.isArray(c.channelIds) ? c.channelIds : [];
     if (!ids.length) continue;
-    const toN = state.nodes.get(c.to.nodeId);
-    let circuits = 1;
-    if (toN && toN.type === 'consumer' && (Number(toN.count) || 1) > 1) {
-      circuits = Number(toN.count) || 1;
-    }
+    // Одна линия = одна цепь, независимо от count / parallel.
     for (const chId of ids) {
-      channelCircuits.set(chId, (channelCircuits.get(chId) || 0) + circuits);
+      channelCircuits.set(chId, (channelCircuits.get(chId) || 0) + 1);
     }
   }
 
