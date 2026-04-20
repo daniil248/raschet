@@ -632,12 +632,19 @@ export function renderInspectorConn(c) {
         h.push('</div>');
         h.push(`<label style="font-size:11px;color:${settingsManual?'#e65100':'#999'}">ручной</label>`);
         h.push('</div>');
-        const row = (lbl, key, val, min, max, step, unit) =>
-          `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+        const _manualSet = new Set(c.breakerSettings ? Object.keys(c.breakerSettings) : []);
+        const row = (lbl, key, val, min, max, step, unit) => {
+          const isKeyManual = _manualSet.has(key);
+          const badge = isKeyManual
+            ? `<button type="button" title="Сбросить ${key} на авто" data-brk-reset="${key}" style="width:22px;height:22px;padding:0;border:1px solid #e65100;background:#fff3e0;color:#e65100;border-radius:3px;cursor:pointer;font-size:11px;line-height:1">↺</button>`
+            : `<span style="width:22px;height:22px;display:inline-block;text-align:center;font-size:9px;color:#4caf50;line-height:22px" title="авто">авто</span>`;
+          return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
             <label style="width:110px;font-size:11px">${lbl}</label>
-            <input type="number" data-brk-setting="${key}" value="${val}" min="${min}" max="${max}" step="${step}" ${settingsManual ? '' : 'disabled'} style="flex:1;font-size:11px;padding:3px 6px;border:1px solid ${settingsManual?'#ccc':'#eee'};border-radius:3px;background:${settingsManual?'#fff':'#fafafa'};color:${settingsManual?'#000':'#888'}">
+            <input type="number" data-brk-setting="${key}" value="${val}" min="${min}" max="${max}" step="${step}" style="flex:1;font-size:11px;padding:3px 6px;border:1px solid ${isKeyManual?'#ffb74d':'#ccc'};border-radius:3px;background:${isKeyManual?'#fff8e1':'#fff'};color:#000">
             <span style="font-size:10px;color:#666;width:20px">${unit}</span>
+            ${badge}
           </div>`;
+        };
         h.push(row('Ir (long-time)',    'Ir',  s.Ir,  1,    6300, 1,   'А'));
         h.push(row('Isd (short-time)',  'Isd', s.Isd, 1,    40000, 10, 'А'));
         h.push(row('tsd (short delay)', 'tsd', s.tsd, 0,    1,    0.05, 'с'));
@@ -872,6 +879,18 @@ export function renderInspectorConn(c) {
       if (!c.breakerSettings) c.breakerSettings = {};
       c.breakerSettings[key] = v;
       snapshot('brk-setting:' + c.id + ':' + key);
+      render(); renderInspector(); notifyChange();
+    });
+  });
+
+  // v0.57.51: ↺ сброс отдельной уставки на авто (в инспекторе)
+  inspectorBody.querySelectorAll('[data-brk-reset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-brk-reset');
+      if (!c.breakerSettings) return;
+      delete c.breakerSettings[key];
+      if (!Object.keys(c.breakerSettings).length) delete c.breakerSettings;
+      snapshot('brk-setting-reset:' + c.id + ':' + key);
       render(); renderInspector(); notifyChange();
     });
   });
