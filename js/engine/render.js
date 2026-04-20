@@ -1918,8 +1918,25 @@ export function renderConns() {
         class: 'conn' + stateClass + (selected ? ' selected' : '') + (forcedVisible ? ' link-hidden' : ''),
         d,
       });
-      // Цвет по источнику
-      if (GLOBAL.showSourceColors && c._sourceColor && (c._state === 'active' || c._state === 'powered')) {
+      // v0.58.26: на не-электрической странице окрашиваем линию в цвет общей
+      // системы (data / trub / hvac / …). На главной электрической — как раньше.
+      let sysStrokeColor = null;
+      if (_pageSystems && _pageSystems.length) {
+        const fs = getNodeSystems(fromN);
+        const ts = getNodeSystems(toN);
+        for (const s of fs) {
+          if (ts.includes(s) && _pageSystems.includes(s) && s !== 'electrical') {
+            const meta = getSystemMeta(s);
+            if (meta && meta.color) { sysStrokeColor = meta.color; break; }
+          }
+        }
+      }
+      // Цвет по источнику (электрический режим) ИЛИ по системе на не-электрических страницах
+      if (sysStrokeColor) {
+        let style = `stroke: ${sysStrokeColor}`;
+        if (linkPreview) style += '; stroke-dasharray: 6 4; opacity: 0.6';
+        path.setAttribute('style', style);
+      } else if (GLOBAL.showSourceColors && c._sourceColor && (c._state === 'active' || c._state === 'powered')) {
         let style = `stroke: ${c._sourceColor}`;
         if (c._mixedSources) style += '; stroke-dasharray: 8 4';
         else if (linkPreview) style += '; stroke-dasharray: 6 4; opacity: 0.6';
