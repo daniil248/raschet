@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, INSTALL_METHODS, BREAKER_TYPES } from './constants.js';
+import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, BREAKER_TYPES } from './constants.js';
 import { selectCableSize, selectBreaker, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
@@ -2185,6 +2185,28 @@ function recalc() {
     n._maxLoadA = agg.maxKw > 0
       ? computeCurrentA(agg.maxKw, nodeVoltage(n), cosAggPre, isThreePhase(n))
       : 0;
+    // Номинал многосекционного щита определяется автоматически:
+    //  - не меньше максимального номинала среди секций (сборка через СВ
+    //    ограничена самой слабой секцией/секционным выключателем),
+    //  - не меньше фактического максимального протекающего тока _maxLoadA,
+    //    округлённого вверх до стандартного номинала серии BREAKER_SERIES.
+    // Ручной ввод capacityA для sectioned-контейнера не используется.
+    let secMaxCap = 0;
+    for (const sid of secIds) {
+      const s = state.nodes.get(sid);
+      if (s && Number(s.capacityA) > secMaxCap) secMaxCap = Number(s.capacityA);
+    }
+    const loadMaxA = n._maxLoadA || 0;
+    const rawReq = Math.max(secMaxCap, loadMaxA);
+    let autoCapA = secMaxCap;
+    if (loadMaxA > secMaxCap && rawReq > 0) {
+      // Подбираем ближайший стандартный номинал, ≥ loadMaxA
+      for (const In of BREAKER_SERIES) {
+        if (In >= rawReq) { autoCapA = In; break; }
+      }
+      if (autoCapA < rawReq) autoCapA = BREAKER_SERIES[BREAKER_SERIES.length - 1] || rawReq;
+    }
+    n.capacityA = autoCapA;
     const capA = Number(n.capacityA) || 0;
     const cosAgg = n._cosPhi || GLOBAL.defaultCosPhi;
     if (capA > 0) {

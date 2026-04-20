@@ -340,6 +340,23 @@ export function openPanelParamsModal(n) {
     const secIds = Array.isArray(n.sectionIds) ? n.sectionIds : [];
     const ties = Array.isArray(n.busTies) ? n.busTies : [];
 
+    // Автоматический номинал сборки — max(секций) с учётом макс. тока.
+    // Пользователь не вводит In вручную для sectioned-контейнера.
+    {
+      const autoIn = Number(n.capacityA) || 0;
+      let secMaxCap = 0;
+      for (const sid of secIds) {
+        const s = state.nodes.get(sid);
+        if (s && Number(s.capacityA) > secMaxCap) secMaxCap = Number(s.capacityA);
+      }
+      const maxA = Number(n._maxLoadA) || 0;
+      h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:8px;font-size:11px;margin-bottom:10px;color:#1565c0;line-height:1.5">`);
+      h.push(`<b>Номинал сборки: ${autoIn} А</b> (определяется автоматически)<br>`);
+      h.push(`<span class="muted">= max(секций) ${secMaxCap} А${maxA > secMaxCap ? `, повышен до ближайшего стандартного ≥ Imax=${fmt(maxA)} А` : ''}. Макс. протекающий ток: <b>${fmt(maxA)} А</b>.</span>`);
+      if (n._capacityKwFromA) h.push(`<br><span class="muted">Эквивалент: <b>${fmt(n._capacityKwFromA)} kW</b></span>`);
+      h.push(`</div>`);
+    }
+
     h.push('<h4 style="margin:12px 0 8px">Секции</h4>');
     h.push(`<div class="muted" style="font-size:10px;margin-bottom:8px">Каждая секция — отдельный щит. Клик по секции открывает параметры.</div>`);
 
