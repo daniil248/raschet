@@ -3012,10 +3012,10 @@ function renderDashboard() {
   const counts = { source: 0, generator: 0, 'panel-lv': 0, 'panel-mv': 0, ups: 0, consumer: 0 };
   let totalLoad = 0, totalCap = 0, availCap = 0;
   let standbyCount = 0;
-  // Phase 1.20.39: общая нагрузка = Σ demand × count по всем потребителям
-  // (все включены одновременно — верхняя оценка). availCap — ёмкость БЕЗ
-  // резервных (n.isStandby) источников: «реальная доступная мощность»
-  // в нормальном режиме без подменного ДГУ / второго ввода.
+  // Phase 1.20.41: дополнительно собираем списки capacity отдельно для
+  // non-standby и standby — для N-1 анализа отказоустойчивости.
+  const nonStandbyCaps = [];
+  const standbyCaps = [];
   for (const n of S.nodes.values()) {
     const k = _equipKindOf(n);
     if (k) counts[k] = (counts[k] || 0) + 1;
@@ -3028,10 +3028,16 @@ function renderDashboard() {
     if (n.type === 'source' || n.type === 'generator') {
       const cap = Number(n.capacityKw) || 0;
       totalCap += cap;
-      if (n.isStandby) standbyCount++;
-      else availCap += cap;
+      if (n.isStandby) { standbyCount++; standbyCaps.push(cap); }
+      else { availCap += cap; nonStandbyCaps.push(cap); }
     }
   }
+  // N-1 анализ: если выходит из строя самый мощный рабочий источник,
+  // хватит ли оставшейся мощности + одного подменного (самого мощного
+  // standby) для покрытия totalLoad?
+  const maxNonStandby = nonStandbyCaps.length ? Math.max(...nonStandbyCaps) : 0;
+  const maxStandby = standbyCaps.length ? Math.max(...standbyCaps) : 0;
+  const capAfterFail = availCap - maxNonStandby + maxStandby;
 
   // Кабельная продукция — суммы по классам / материалам
   const cableStats = { LV: { count: 0, m: 0 }, HV: { count: 0, m: 0 }, DC: { count: 0, m: 0 } };
@@ -3135,6 +3141,17 @@ function renderDashboard() {
         return card('Мощность источников', fmtN(totalCap) + ' кВт',
           totalLoad > 0 ? `нагрузка ${(totalLoad / totalCap * 100).toFixed(0)}% от номинала` : 'номинальная сумма',
           availBg, availColor, 'equipment-sources');
+      })()}
+      ${(() => {
+        // Phase 1.20.41: N-1 анализ — что если откажет самый мощный рабочий источник?
+        if (nonStandbyCaps.length < 2 && standbyCount === 0) return '';
+        const ok = capAfterFail >= totalLoad;
+        const bg = ok ? '#e8f5e9' : '#ffebee';
+        const col = ok ? '#2e7d32' : '#c62828';
+        const sub = standbyCount > 0
+          ? `осталось без ${fmtN(maxNonStandby)} кВт + резерв ${fmtN(maxStandby)} кВт`
+          : `осталось без ${fmtN(maxNonStandby)} кВт (самый мощный)`;
+        return card('N-1 резерв', (ok ? '✓ ' : '✗ ') + fmtN(capAfterFail) + ' кВт', sub, bg, col, 'equipment-sources');
       })()}
       ${priceSummary && priceSummary.byCurrency.length
         ? card('Стоимость BOM',
