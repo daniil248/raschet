@@ -461,11 +461,18 @@ export function renderInspectorConn(c) {
     // Запасы:
     //  - по автомату: (In - Iрасч) / Iрасч · 100
     //  - по кабелю:   (Iz_total - Iрасч) / Iрасч · 100
-    const _brkMarginPct = (_Imax > 0 && effectiveIn > 0)
-      ? ((effectiveIn - _Imax) / _Imax) * 100
+    // Для групповой нагрузки (N приборов × N per-line автоматов) сравниваем
+    // per-line ток с per-line автоматом и per-line Iz — иначе запас ложно
+    // отрицательный (считался бы суммарный ток против одного автомата).
+    const _isGroupBrk = !c._breakerIn && c._breakerPerLine && (c._breakerCount || 1) > 1;
+    const _ImaxRef = _isGroupBrk ? _IperLine : _Imax;
+    const _brkRef = _isGroupBrk ? (c._breakerPerLine || 0) : effectiveIn;
+    const _izRef = _isGroupBrk ? (c._cableIz || 0) : _IzTotal;
+    const _brkMarginPct = (_ImaxRef > 0 && _brkRef > 0)
+      ? ((_brkRef - _ImaxRef) / _ImaxRef) * 100
       : null;
-    const _cableMarginPct = (_Imax > 0 && _IzTotal > 0)
-      ? ((_IzTotal - _Imax) / _Imax) * 100
+    const _cableMarginPct = (_ImaxRef > 0 && _izRef > 0)
+      ? ((_izRef - _ImaxRef) / _ImaxRef) * 100
       : null;
     const _fmtPct = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1) + '%');
     const _marginColor = (v) => {
@@ -528,12 +535,21 @@ export function renderInspectorConn(c) {
       if (effectiveIn) h.push(marginBlock());
       if (_showHelp && effectiveIn) {
         const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
-        h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
-          <b>Как получено:</b><br>
-          Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
-          Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
-          Правило: Iрасч ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный из ряда, удовлетворяющий условию.
-        </div>`);
+        if (_isGroupBrk) {
+          h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
+            <b>Как получено (групповая нагрузка):</b><br>
+            ${_parBrk} приборов × собственный кабель + собственный автомат.<br>
+            На жилу Iрасч/n = <b>${fmt(_IperLine)} А</b>, Iz жилы = <b>${fmt(c._cableIz || 0)} А</b>.<br>
+            Правило per-line: Iрасч/n ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный ≥ ${fmt(_IperLine)} А.
+          </div>`);
+        } else {
+          h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
+            <b>Как получено:</b><br>
+            Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
+            Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
+            Правило: Iрасч ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный из ряда, удовлетворяющий условию.
+          </div>`);
+        }
       }
     }
     h.push('</div>');
