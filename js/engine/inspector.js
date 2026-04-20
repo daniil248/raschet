@@ -1031,9 +1031,11 @@ export function renderSystemParamsPanel(n, sysId) {
       ${renderParamInput(p, vals[p.key])}
     </label>`;
   }).join('');
+  // v0.58.51 (1.22.3): акцент-цвет на уровне панели (data-sys-accent),
+  // а не на внутреннем div — единый стиль с другими вкладками.
   return `<div class="inspector-section">
     <h4 style="color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</h4>
-    <div style="padding:8px 10px;border-left:3px solid ${meta.color};background:${meta.color}0A;border-radius:0 4px 4px 0">${rows}</div>
+    <div style="padding:4px 0">${rows}</div>
     ${manage}
   </div>`;
 }
@@ -1159,7 +1161,7 @@ export function renderExtraSystemTabs(n) {
     if (!meta) continue;
     const tabId = 'sys:' + sysId;
     tabs.push(`<button type="button" class="tp-tab" data-tab="${escAttr(tabId)}" role="tab" title="${escAttr(meta.label)}" style="border-color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</button>`);
-    panels.push(`<div class="tp-panel" data-panel="${escAttr(tabId)}" hidden>${renderSystemParamsPanel(n, sysId)}</div>`);
+    panels.push(`<div class="tp-panel" data-panel="${escAttr(tabId)}" data-sys-accent="${escAttr(sysId)}" style="--sys-accent:${meta.color}" hidden>${renderSystemParamsPanel(n, sysId)}</div>`);
   }
   return { tabsHtml: tabs.join(''), panelsHtml: panels.join('') };
 }
