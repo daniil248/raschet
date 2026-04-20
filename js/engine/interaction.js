@@ -1,6 +1,6 @@
 /* interaction.js -- all canvas/palette event handling (ES module) */
 
-import { state, svg, layerOver, uid } from './state.js';
+import { state, svg, layerOver, uid, getCurrentPage, getPageKind } from './state.js';
 import { NODE_H, SVG_NS, DEFAULTS, GLOBAL } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos } from './geometry.js';
 import { snapshot, notifyChange } from './history.js';
@@ -24,6 +24,21 @@ export function bindInteractionDeps({ undo, redo, fitAll, serialize }) {
 }
 
 /* ---- helpers ---- */
+// Effective grid step for snap: schematic pages = GLOBAL.gridStep (40),
+// layout pages = 10 mm (1 SVG unit = 1 mm), shift/ctrl = 1 mm fine snap.
+// Phase 2.3 (v0.58.2): layout-aware drag snap.
+function _effectiveSnapStep(e) {
+  try {
+    const kind = getPageKind(getCurrentPage());
+    if (kind === 'layout') {
+      // 1 mm при Shift для точного позиционирования, иначе 10 мм
+      if (e && e.shiftKey) return 1;
+      return 10;
+    }
+  } catch {}
+  return GLOBAL.gridStep || 40;
+}
+
 // Remove channelIds that no longer have a waypoint snapped to their center
 function _removeWaypointChannelSnap(c) {
   if (!Array.isArray(c.channelIds) || !c.channelIds.length) return;
@@ -838,10 +853,12 @@ export function initInteraction() {
       const n = state.nodes.get(state.drag.nodeId);
       let nx = p.x - state.drag.dx;
       let ny = p.y - state.drag.dy;
-      // Snap to grid 40 -- держим Alt чтобы отключить привязку
+      // Snap to grid — держим Alt чтобы отключить привязку.
+      // На layout-странице шаг = 10 мм (Shift = 1 мм).
       if (!e.altKey) {
-        nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : nx);
-        ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / (GLOBAL.gridStep || 40)) * (GLOBAL.gridStep || 40) : ny);
+        const gs = _effectiveSnapStep(e);
+        nx = (GLOBAL.snapToGrid !== false ? Math.round(nx / gs) * gs : nx);
+        ny = (GLOBAL.snapToGrid !== false ? Math.round(ny / gs) * gs : ny);
       }
       // Секция многосекционного щита — свободное перемещение
       // Для каналов в режиме трассы — привязка ЦЕНТРА к сетке
