@@ -320,7 +320,18 @@
   - `js/engine/index.js` слушает `focus` + `storage` event, при наличии payload: `applyUpsModel(node, payload.ups)` + снимок истории + re-render
   - TTL 5 минут: устаревшие payload игнорируются и удаляются
   - Через applyUpsModel узел получает `upsCatalogId` → BOM автоматически включает ИБП
-- [ ] **1.4.5** ⚠ НАСТОЯЩИЙ конфигуратор ИБП (bug: v0.43.2 сделано не то что нужно):
+- [x] **1.4.5** Конфигуратор ИБП — wizard (закрыто v0.57.87):
+  - `ups-config/ups-config.js` — трёхшаговый wizard (исходные данные → подбор → итог/применение), активируется при `?nodeId=...`
+  - Шаг 1 «Исходные данные»: поля `loadKw / autonomyMin / redundancy (N|N+1|N+2|2N) / upsType / vdcMin/Max / cosPhi / phases`, предзаполнение из query-параметров инспектора
+  - Шаг 2 «Подбор»: фильтрация каталога по `upsType` и пересечению Vdc-диапазона, `_calcModules()` для модульных (working + redundant ≤ slots), `_pickSuitable()` с авто-выбором первого по утилизации + цена из price-records
+  - Шаг 3 «Итог»: сводная таблица, `_buildComposition()` формирует `composition: [{elementId, qty, role}]`, кнопка «Применить» → `raschet.pendingUpsSelection.v1`
+  - `js/engine/index.js:_tryConsumePendingUpsSelection()` — применяет `configuration.*` полностью (capacityKw / moduleInstalled / frameKw / moduleKwRated / moduleSlots / redundancyScheme / batteryVdcMin/Max / batteryAutonomyMin / composition)
+  - **v0.57.87 дополнение:** inspector/ups.js расширил набор query-параметров (targetAutonomyMin, redundancy, vdcMin/Max, cosPhi, phases) — wizard теперь предзаполняется из узла, а не из статических дефолтов
+  - АКБ подбирается отдельно через 1.4.4 (battery picker + battery-calc)
+
+~~Старый план на 5 шагов (frame / modules / batteries / accessories) не реализован как отдельные шаги — слит в 3, поскольку для современных модульных ИБП шаги «frame+modules» неотделимы (фрейм определяет moduleSlots и moduleKwRated). При необходимости разнесения — см. TODO 1.4.6.~~
+
+- [ ] **1.4.5-legacy** (архив) Полный 5-шаговый wizard (frame / modules / batteries / accessories / price) — отложено:
   - **Проблема (со слов пользователя):** При клике «Сконфигурировать подробно» открывается просто справочник выбора модели. Нет:
     1. Передачи исходных данных из Конструктора (нагрузка, автономия, резервирование, условия эксплуатации)
     2. Подбора фрейма по нагрузке

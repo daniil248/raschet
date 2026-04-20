@@ -44,11 +44,20 @@ export function openUpsParamsModal(n) {
     // Кнопка перехода в полноформатный конфигуратор (Фаза 1.4.2).
     // Передаём nodeId + capacityKw через query — чтобы конфигуратор мог
     // (в будущем) пред-отфильтровать справочник или открыть текущую модель.
+    // v0.57.87 (Phase 1.4.5): передаём в wizard все доступные параметры
+    // узла, чтобы шаг «Исходные данные» предзаполнился из схемы, а не из
+    // дефолтов. Пустые поля опускаем — wizard подставит свои fallback.
     const qp = new URLSearchParams();
     qp.set('nodeId', n.id);
     if (n.upsCatalogId) qp.set('selected', n.upsCatalogId);
     if (n.capacityKw) qp.set('capacityKw', String(n.capacityKw));
     if (n.upsType) qp.set('upsType', n.upsType);
+    if (n.batteryAutonomyMin) qp.set('targetAutonomyMin', String(n.batteryAutonomyMin));
+    if (n.redundancyScheme) qp.set('redundancy', n.redundancyScheme);
+    if (n.batteryVdcMin) qp.set('vdcMin', String(n.batteryVdcMin));
+    if (n.batteryVdcMax) qp.set('vdcMax', String(n.batteryVdcMax));
+    if (n.cosPhi) qp.set('cosPhi', String(n.cosPhi));
+    qp.set('phases', isThreePhase(n) ? '3' : '1');
     h.push(`<div style="margin:4px 0 10px">
       <a href="ups-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
         ⚙ Сконфигурировать подробно (новая вкладка)
