@@ -1475,14 +1475,17 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
   const originalHtml = bodyEl.innerHTML;
   // v0.58.38: каждая включённая (не-electrical) система — отдельная вкладка
   const extra = renderExtraSystemTabs(n);
+  // v0.58.50: добавлен таб «Общее» (roadmap 1.22.2), активный по умолчанию
   const tabsHtml = `<div class="tp-tabs" role="tablist" style="margin-bottom:12px">
-    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab active" data-tab="general" role="tab">📋 Общее</button>
+    <button type="button" class="tp-tab" data-tab="electrical" role="tab">⚡ Электрика</button>
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
     <button type="button" class="tp-tab" data-tab="systems" role="tab">🧩 Системы${(function(){const c=(Array.isArray(n.systems)?n.systems.length:1);return c>1?` <span class="muted" style="font-size:10px">(${c})</span>`:'';})()}</button>
     ${extra.tabsHtml}
   </div>`;
   bodyEl.innerHTML = tabsHtml
-    + `<div class="tp-panel" data-panel="electrical">${originalHtml}</div>`
+    + `<div class="tp-panel" data-panel="general">${renderGeneralPanel(n)}</div>`
+    + `<div class="tp-panel" data-panel="electrical" hidden>${originalHtml}</div>`
     + `<div class="tp-panel" data-panel="geometry" hidden>${renderGeometryMmBlock(n)}</div>`
     + `<div class="tp-panel" data-panel="systems" hidden>${renderSystemsBlock(n)}</div>`
     + extra.panelsHtml;
@@ -1498,6 +1501,44 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
   wireGeometryMmBlock(n, bodyEl);
   wireLayoutColorBlock(n, bodyEl);
   wireSystemsBlock(n, bodyEl);
+  // v0.58.50: провязка «Общее» в модалке — только data-prop инпуты внутри
+  // панели, без document.getElementById-кнопок (те уже подвязаны в sidebar).
+  try { wireGeneralPanelInputs(n, bodyEl); } catch {}
+}
+
+// v0.58.50: минимальная провязка инпутов вкладки «Общее» на заданном root.
+// Используется в модалках (openPanelParamsModal/openUpsParamsModal/…),
+// чтобы не дублировать глобальные обработчики кнопок из wireInspectorInputs.
+export function wireGeneralPanelInputs(n, root) {
+  if (!root || !n) return;
+  root.querySelectorAll('[data-panel="general"] [data-prop]').forEach(inp => {
+    const prop = inp.dataset.prop;
+    const apply = () => {
+      snapshot('prop:' + n.id + ':' + prop);
+      let v;
+      if (inp.type === 'checkbox') v = inp.checked;
+      else if (inp.type === 'number') v = Number(inp.value);
+      else v = inp.value;
+      if (prop === 'tag') {
+        const t = String(v || '').trim();
+        if (!t) return;
+        if (!_isTagUnique(t, n.id)) {
+          flash(`Обозначение «${t}» уже занято`);
+          inp.value = n.tag || '';
+          return;
+        }
+        n.tag = t;
+      } else if (prop === 'on' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
+        setEffectiveOn(n, v);
+      } else {
+        n[prop] = v;
+      }
+      _render();
+      renderInspector();
+      notifyChange();
+    };
+    inp.addEventListener('change', apply);
+  });
 }
 
 // Полный блок «Все данные объекта» внизу инспектора
@@ -1567,8 +1608,10 @@ export function saveNodeAsPreset(n) {
   flash('Сохранено в библиотеку: ' + title);
 }
 
-export function wireInspectorInputs(n) {
-  inspectorBody.querySelectorAll('[data-prop]').forEach(inp => {
+export function wireInspectorInputs(n, root) {
+  // v0.58.50: root опционален — можно провязать Общее-вкладку в модалке
+  const host = root || inspectorBody;
+  host.querySelectorAll('[data-prop]').forEach(inp => {
     const prop = inp.dataset.prop;
     const apply = () => {
       snapshot('prop:' + n.id + ':' + prop);
@@ -1717,7 +1760,7 @@ export function wireInspectorInputs(n) {
     inp.addEventListener('change', apply);
   });
   // Чекбоксы привязки выходов к входам (avr_paired)
-  inspectorBody.querySelectorAll('[data-oim-out]').forEach(inp => {
+  host.querySelectorAll('[data-oim-out]').forEach(inp => {
     inp.addEventListener('change', () => {
       snapshot('oim:' + n.id);
       const oi = Number(inp.dataset.oimOut);
@@ -1734,7 +1777,7 @@ export function wireInspectorInputs(n) {
     });
   });
   // Селекты switchover per-output
-  inspectorBody.querySelectorAll('[data-switchover-out]').forEach(sel => {
+  host.querySelectorAll('[data-switchover-out]').forEach(sel => {
     sel.addEventListener('change', () => {
       snapshot('switchover:' + n.id);
       const oi = Number(sel.dataset.switchoverOut);
@@ -1745,7 +1788,7 @@ export function wireInspectorInputs(n) {
     });
   });
   // Чекбоксы параллельного режима щита
-  inspectorBody.querySelectorAll('[data-parallel]').forEach(inp => {
+  host.querySelectorAll('[data-parallel]').forEach(inp => {
     inp.addEventListener('change', () => {
       snapshot('parallel:' + n.id);
       const idx = Number(inp.dataset.parallel);
@@ -1756,7 +1799,7 @@ export function wireInspectorInputs(n) {
       notifyChange();
     });
   });
-  inspectorBody.querySelectorAll('[data-prio]').forEach(inp => {
+  host.querySelectorAll('[data-prio]').forEach(inp => {
     inp.addEventListener('input', () => {
       const idx = Number(inp.dataset.prio);
       snapshot('prio:' + n.id + ':' + idx);
@@ -1766,7 +1809,7 @@ export function wireInspectorInputs(n) {
       notifyChange();
     });
   });
-  inspectorBody.querySelectorAll('[data-loadfactor]').forEach(inp => {
+  host.querySelectorAll('[data-loadfactor]').forEach(inp => {
     inp.addEventListener('input', () => {
       snapshot('lf:' + n.id);
       setEffectiveLoadFactor(n, inp.value);
@@ -1909,7 +1952,7 @@ export function wireInspectorInputs(n) {
   }
 
   // Палитра цветов — клик по квадратику
-  inspectorBody.querySelectorAll('[data-color-pick]').forEach(swatch => {
+  host.querySelectorAll('[data-color-pick]').forEach(swatch => {
     swatch.addEventListener('click', () => {
       snapshot('color:' + n.id);
       const newColor = swatch.dataset.colorPick;
@@ -1921,7 +1964,7 @@ export function wireInspectorInputs(n) {
   });
 
   // Генератор: сторона порта СН
-  inspectorBody.querySelectorAll('[data-aux-side]').forEach(btn => {
+  host.querySelectorAll('[data-aux-side]').forEach(btn => {
     btn.addEventListener('click', () => {
       snapshot('auxSide:' + n.id);
       n.auxInputSide = btn.dataset.auxSide;
@@ -1930,7 +1973,7 @@ export function wireInspectorInputs(n) {
   });
 
   // Фазные кнопки для потребителя
-  inspectorBody.querySelectorAll('[data-phase-btn]').forEach(btn => {
+  host.querySelectorAll('[data-phase-btn]').forEach(btn => {
     btn.addEventListener('click', () => {
       snapshot('phase:' + n.id);
       n.phase = btn.dataset.phaseBtn;
@@ -1939,7 +1982,7 @@ export function wireInspectorInputs(n) {
   });
 
   // Расположение входов потребителя
-  inspectorBody.querySelectorAll('[data-input-side]').forEach(btn => {
+  host.querySelectorAll('[data-input-side]').forEach(btn => {
     btn.addEventListener('click', () => {
       snapshot('inputSide:' + n.id);
       n.inputSide = btn.dataset.inputSide;
