@@ -422,7 +422,7 @@
 
 **Цель:** один объект — несколько представлений на разных страницах (electrical, layout, mechanical, low-voltage, data).
 
-- [ ] **2.1** `page.kind` расширить: `'schematic' | 'layout' | 'mechanical' | 'low-voltage' | 'data' | '3d'`
+- [x] **2.1** `page.kind` расширить: `'schematic' | 'layout' | 'mechanical' | 'low-voltage' | 'data' | '3d'` (v0.57.93: `PAGE_KINDS_META` + `getPageKind()` в `state.js`, значок вида в табе, «Вид страницы» в контекстном меню, `addPage/duplicatePage` копируют kind)
 - [ ] **2.2** `element.views[page.kind]` — разные представления (SVG) для разных типов страниц
 - [ ] **2.3** Layout-page (схема расположения):
   - Холст в миллиметрах

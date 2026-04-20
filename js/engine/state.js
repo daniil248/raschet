@@ -1,11 +1,34 @@
 // ================= State =================
 // Модель страниц:
-//  state.pages = [{ id, name, type: 'independent'|'linked', view: {x,y,zoom} }]
+//  state.pages = [{ id, name, type: 'independent'|'linked',
+//                   kind: 'schematic'|'layout'|'mechanical'|'low-voltage'|'data'|'3d',
+//                   view: {x,y,zoom} }]
 //  state.currentPageId — активная страница
 //  У каждого node и conn есть поле pageIds: string[] — на каких страницах он виден.
 //    'independent' страница: новые узлы получают [pageId] — видны только здесь.
 //    'linked' страница: узлы могут быть из других страниц (добавляются в pageIds существующих узлов).
 //  Рендер фильтрует узлы/связи по currentPageId.
+//
+// v0.57.93 (Phase 2.1): page.kind — представление страницы. 'schematic'
+// (принципиалка, по умолчанию) — полный функционал текущего редактора;
+// layout/mechanical/... вводятся постепенно в Фазах 2.2-2.5 и пока
+// рендерятся как schematic с бейджем «бета-вид».
+
+// Виды страниц (Phase 2.1). PAGE_KINDS_META — иконка + label + описание
+// для UI. Порядок задаёт порядок в меню выбора типа.
+export const PAGE_KINDS_META = {
+  'schematic':   { label: 'Принципиальная',    icon: '⚡', desc: 'Электрическая схема (текущий редактор)' },
+  'layout':      { label: 'Схема расположения', icon: '📐', desc: 'Физическая расстановка оборудования (мм) — Фаза 2.3' },
+  'mechanical':  { label: 'Механика',          icon: '⚙',  desc: 'Трубопроводы, вентиляция, каркасы — Фаза 2.5' },
+  'low-voltage': { label: 'Слаботочка',        icon: '📡', desc: 'Связь, СКС, пожарная сигнализация' },
+  'data':        { label: 'Данные',            icon: '🗂', desc: 'Информационные соединения (logical только)' },
+  '3d':          { label: '3D',                icon: '🧊', desc: 'Трёхмерное представление — Фаза 4' },
+};
+export const PAGE_KINDS = Object.keys(PAGE_KINDS_META);
+export function getPageKind(p) {
+  if (!p) return 'schematic';
+  return PAGE_KINDS.includes(p.kind) ? p.kind : 'schematic';
+}
 export const state = {
   nodes: new Map(),
   conns: new Map(),
@@ -53,7 +76,7 @@ export function sanitizeView(v) {
 // ===== Helpers для работы со страницами =====
 export function ensureDefaultPage() {
   if (!state.pages || !state.pages.length) {
-    const p = { id: 'p1', name: 'Страница 1', type: 'independent', view: { x: 0, y: 0, zoom: 1 } };
+    const p = { id: 'p1', name: 'Страница 1', type: 'independent', kind: 'schematic', view: { x: 0, y: 0, zoom: 1 } };
     state.pages = [p];
     state.currentPageId = p.id;
   }

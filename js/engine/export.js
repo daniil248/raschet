@@ -1,4 +1,4 @@
-import { state, svg, ensureDefaultPage, getCurrentPage, nextPageId } from './state.js';
+import { state, svg, ensureDefaultPage, getCurrentPage, nextPageId, PAGE_KINDS_META, PAGE_KINDS, getPageKind } from './state.js';
 import { NODE_H, SVG_NS, GLOBAL } from './constants.js';
 import { nodeWidth, nodeHeight } from './geometry.js';
 import { updateViewBox, render } from './render.js';
@@ -262,6 +262,12 @@ export function initToolbar() {
       tab.dataset.pageId = p.id;
       // Префикс номера листа, если задан
       const sheetPrefix = p.sheetNo ? `${escapePage(p.sheetNo)}. ` : '';
+      // Phase 2.1: значок вида страницы (schematic — без значка, как базовый)
+      const kind = getPageKind(p);
+      const kindMeta = PAGE_KINDS_META[kind];
+      const kindBadge = (kind !== 'schematic' && kindMeta)
+        ? `<span class="page-tab-kind" title="${escapePage(kindMeta.label)} — ${escapePage(kindMeta.desc)}">${kindMeta.icon}</span> `
+        : '';
       // Для независимых страниц — без метки типа, только № + имя.
       // Для ссылочных — показываем «→ имя родителя».
       let typeHtml = '';
@@ -270,7 +276,7 @@ export function initToolbar() {
         const parentName = src ? (src.name || src.id) : '?';
         typeHtml = ` <span class="page-tab-type">→ ${escapePage(parentName)}</span>`;
       }
-      tab.innerHTML = `<span class="page-tab-name">${sheetPrefix}${escapePage(p.name || p.id)}</span>${typeHtml}`;
+      tab.innerHTML = `${kindBadge}<span class="page-tab-name">${sheetPrefix}${escapePage(p.name || p.id)}</span>${typeHtml}`;
       // Tooltip с полной инфой листа
       const tipParts = [];
       if (p.title) tipParts.push(p.title);
@@ -325,7 +331,7 @@ export function initToolbar() {
     return String(mx + 1);
   };
 
-  const addPage = (type = 'independent', sourcePageId = null) => {
+  const addPage = (type = 'independent', sourcePageId = null, kind = 'schematic') => {
     // Ссылочная страница ОБЯЗАНА быть привязана к существующей independent странице.
     if (type === 'linked') {
       const src = (state.pages || []).find(p => p.id === sourcePageId && p.type !== 'linked');
@@ -342,6 +348,7 @@ export function initToolbar() {
       id: newId,
       name: `Страница ${nextNum}`,
       type,
+      kind: PAGE_KINDS.includes(kind) ? kind : 'schematic',
       view: { x: 0, y: 0, zoom: 1 },
       sheetNo: _nextSheetNo(),
       title: '',
@@ -366,6 +373,7 @@ export function initToolbar() {
       id: newId,
       name: (p.name || 'Страница') + ' (копия)',
       type: p.type || 'independent',
+      kind: getPageKind(p),
       sourcePageId: p.sourcePageId || null,
       view: { ...(p.view || state.view) },
       sheetNo: _nextSheetNo(),
@@ -380,6 +388,15 @@ export function initToolbar() {
       }
     }
     renderPageTabs();
+  };
+
+  const setPageKind = (pageId, kind) => {
+    const p = state.pages.find(p => p.id === pageId);
+    if (!p) return;
+    if (!PAGE_KINDS.includes(kind)) return;
+    p.kind = kind;
+    renderPageTabs();
+    render();
   };
 
   const setPageType = (pageId, type, sourcePageId = null) => {
@@ -503,6 +520,16 @@ export function initToolbar() {
     sep();
     group('Тип страницы');
     item('Независимая', () => setPageType(pageId, 'independent'), { checked: p.type !== 'linked' });
+    // Phase 2.1: выбор вида страницы (schematic / layout / mechanical / ...)
+    sep();
+    group('Вид страницы');
+    const curKind = getPageKind(p);
+    for (const k of PAGE_KINDS) {
+      const m = PAGE_KINDS_META[k];
+      item(`${m.icon}  ${m.label}`, () => setPageKind(pageId, k), { checked: curKind === k });
+    }
+    sep();
+    group('Связь');
     // Ссылочная → вложенный выбор parent (только независимые, кроме самой себя)
     const parentCandidates = (state.pages || []).filter(pp => pp.type !== 'linked' && pp.id !== pageId);
     for (const parent of parentCandidates) {
