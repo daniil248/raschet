@@ -559,14 +559,23 @@ export function openPanelParamsModal(n) {
     }
     const ppName = document.getElementById('pp-name')?.value?.trim();
     if (ppName) n.name = ppName;
+    // v0.57.68: preserve-on-miss — не затираем параметры пользователя.
+    const readNum = (id, curr) => {
+      const el = document.getElementById(id);
+      if (!el) return curr;
+      const raw = String(el.value ?? '').trim();
+      if (raw === '') return curr;
+      const v = Number(raw);
+      return Number.isFinite(v) ? v : curr;
+    };
     const curSm = document.getElementById('pp-switchMode')?.value || n.switchMode;
-    if (curSm !== 'sectioned') n.inputs = Number(document.getElementById('pp-inputs')?.value) || 1;
+    if (curSm !== 'sectioned') n.inputs = readNum('pp-inputs', n.inputs ?? 1);
     else { n.inputs = 0; n.outputs = 0; }
-    n.outputs = Number(document.getElementById('pp-outputs')?.value) || 1;
-    n.kSim = Number(document.getElementById('pp-kSim')?.value) ?? 1;
-    n.capacityA = Number(document.getElementById('pp-capacityA')?.value) || 160;
-    n.marginMinPct = Number(document.getElementById('pp-marginMin')?.value) || 2;
-    n.marginMaxPct = Number(document.getElementById('pp-marginMax')?.value) || 30;
+    n.outputs = readNum('pp-outputs', n.outputs ?? 1);
+    n.kSim = readNum('pp-kSim', n.kSim ?? 1);
+    n.capacityA = readNum('pp-capacityA', n.capacityA ?? 160);
+    n.marginMinPct = readNum('pp-marginMin', n.marginMinPct ?? 2);
+    n.marginMaxPct = readNum('pp-marginMax', n.marginMaxPct ?? 30);
     // Система заземления на выходе щита (пусто = наследовать глобальную)
     const eoVal = document.getElementById('pp-earthingOut')?.value;
     if (eoVal === '' || eoVal == null) delete n.earthingOut;

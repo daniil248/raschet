@@ -309,13 +309,22 @@ export function openUpsParamsModal(n) {
     if (n.id !== '__preset_edit__') snapshot('ups-params:' + n.id);
     const upName = document.getElementById('up-name')?.value?.trim();
     if (upName) n.name = upName;
-    n.upsType = document.getElementById('up-upsType')?.value || 'monoblock';
+    // v0.57.68: preserve-on-miss — пользовательские параметры нельзя затирать.
+    const readNum = (id, curr) => {
+      const el = document.getElementById(id);
+      if (!el) return curr;
+      const raw = String(el.value ?? '').trim();
+      if (raw === '') return curr;
+      const v = Number(raw);
+      return Number.isFinite(v) ? v : curr;
+    };
+    n.upsType = document.getElementById('up-upsType')?.value || n.upsType || 'monoblock';
     if (n.upsType === 'modular') {
-      n.frameKw = Math.max(1, Number(document.getElementById('up-frameKw')?.value) || 200);
-      n.moduleKwRated = Math.max(1, Number(document.getElementById('up-modKwRated')?.value) || 25);
-      n.moduleSlots = Math.max(1, Number(document.getElementById('up-slots')?.value) || 8);
-      n.moduleInstalled = Math.max(0, Number(document.getElementById('up-installed')?.value) || 0);
-      n.redundancyScheme = document.getElementById('up-redund')?.value || 'N';
+      n.frameKw = Math.max(1, readNum('up-frameKw', n.frameKw ?? 200));
+      n.moduleKwRated = Math.max(1, readNum('up-modKwRated', n.moduleKwRated ?? 25));
+      n.moduleSlots = Math.max(1, readNum('up-slots', n.moduleSlots ?? 8));
+      n.moduleInstalled = Math.max(0, readNum('up-installed', n.moduleInstalled ?? 0));
+      n.redundancyScheme = document.getElementById('up-redund')?.value || n.redundancyScheme || 'N';
       const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
       const working = Math.max(0, n.moduleInstalled - redundN);
       n.capacityKw = Math.min(n.frameKw, working * n.moduleKwRated);
@@ -323,11 +332,11 @@ export function openUpsParamsModal(n) {
       n.moduleCount = n.moduleInstalled;
       n.moduleKw = n.moduleKwRated;
     } else {
-      n.capacityKw = Number(document.getElementById('up-capKw')?.value) || 0;
+      n.capacityKw = readNum('up-capKw', n.capacityKw ?? 0);
     }
-    n.efficiency = Number(document.getElementById('up-eff')?.value) || 95;
-    n.inputs = Math.min(2, Math.max(1, Number(document.getElementById('up-inputs')?.value) || 1));
-    n.outputs = Number(document.getElementById('up-outputs')?.value) || 1;
+    n.efficiency = readNum('up-eff', n.efficiency ?? 95);
+    n.inputs = Math.min(2, Math.max(1, readNum('up-inputs', n.inputs ?? 1)));
+    n.outputs = readNum('up-outputs', n.outputs ?? 1);
     // Флаги состава автоматов
     for (const flag of ['hasInputBreaker','hasInputBypassBreaker','hasOutputBreaker','hasBypassBreaker','hasBatteryBreaker']) {
       n[flag] = document.getElementById('up-' + flag)?.checked !== false;
@@ -337,10 +346,15 @@ export function openUpsParamsModal(n) {
       const v = document.getElementById('up-' + key)?.value;
       n[key] = (v === '' || v == null) ? null : (Number(v) || null);
     }
-    const vIdx = Number(document.getElementById('up-voltage')?.value) || 0;
-    n.voltageLevelIdx = vIdx;
-    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = '3ph'; }
-    n.cosPhi = Number(document.getElementById('up-cosPhi')?.value) || 1.0;
+    const vEl = document.getElementById('up-voltage');
+    if (vEl && String(vEl.value ?? '').trim() !== '') {
+      const vIdx = Number(vEl.value);
+      if (Number.isFinite(vIdx)) {
+        n.voltageLevelIdx = vIdx;
+        if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; n.phase = '3ph'; }
+      }
+    }
+    n.cosPhi = readNum('up-cosPhi', n.cosPhi ?? 1.0);
     // DC-вход батарейной цепи (V_DC min / max)
     const _vdcMin = Number(document.getElementById('up-vdcMin')?.value);
     const _vdcMax = Number(document.getElementById('up-vdcMax')?.value);

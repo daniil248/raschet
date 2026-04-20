@@ -309,24 +309,43 @@ export function openConsumerParamsModal(n) {
   const applyBtn = document.getElementById('consumer-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
     if (n.id !== '__preset_edit__') snapshot('consumer-params:' + n.id);
+    // v0.57.68: preserve-on-miss. Если элемента в DOM нет или поле пустое —
+    // сохраняем текущее n.*, а не затираем дефолтом.
+    const readNum = (id, curr) => {
+      const el = document.getElementById(id);
+      if (!el) return curr;
+      const raw = String(el.value ?? '').trim();
+      if (raw === '') return curr;
+      const v = Number(raw);
+      return Number.isFinite(v) ? v : curr;
+    };
     const catId = document.getElementById('cp-catalog')?.value || n.consumerSubtype || 'custom';
     const cat = fullCatalog.find(c => c.id === catId);
     n.consumerSubtype = catId;
     const nameInput = document.getElementById('cp-name')?.value?.trim();
     n.name = nameInput || (cat ? cat.label : n.name || 'Потребитель');
-    n.count = Number(document.getElementById('cp-count')?.value) || 1;
+    n.count = readNum('cp-count', n.count ?? 1);
     n.serialMode = !!document.getElementById('cp-serialMode')?.checked;
     n.loadSpec = (document.getElementById('cp-loadSpec')?.value === 'total') ? 'total' : 'per-unit';
-    const _rawDemand = Number(document.getElementById('cp-demandKw')?.value) || 0;
-    n.demandKw = (n.serialMode && n.loadSpec === 'total' && n.count > 1)
-      ? (_rawDemand / n.count)
-      : _rawDemand;
-    const vIdx = Number(document.getElementById('cp-voltage')?.value) || 0;
-    n.voltageLevelIdx = vIdx;
-    if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; }
-    n.phase = document.getElementById('cp-phase')?.value || '3ph';
-    n.cosPhi = Number(document.getElementById('cp-cosPhi')?.value) || 0.92;
-    n.kUse = Number(document.getElementById('cp-kUse')?.value) ?? 1;
+    const demandEl = document.getElementById('cp-demandKw');
+    if (demandEl && String(demandEl.value ?? '').trim() !== '') {
+      const _rawDemand = Number(demandEl.value) || 0;
+      n.demandKw = (n.serialMode && n.loadSpec === 'total' && n.count > 1)
+        ? (_rawDemand / n.count)
+        : _rawDemand;
+    }
+    const vEl = document.getElementById('cp-voltage');
+    if (vEl && String(vEl.value ?? '').trim() !== '') {
+      const vIdx = Number(vEl.value);
+      if (Number.isFinite(vIdx)) {
+        n.voltageLevelIdx = vIdx;
+        if (levels[vIdx]) { n.voltage = levels[vIdx].vLL; }
+      }
+    }
+    const phEl = document.getElementById('cp-phase');
+    if (phEl && phEl.value) n.phase = phEl.value;
+    n.cosPhi = readNum('cp-cosPhi', n.cosPhi ?? 0.92);
+    n.kUse = readNum('cp-kUse', n.kUse ?? 1);
     // Множитель нагрузки
     const lfEl = document.getElementById('cp-loadFactor');
     if (lfEl && state.activeModeId) {
@@ -336,7 +355,7 @@ export function openConsumerParamsModal(n) {
     if (nlfEl) {
       n.normalLoadFactor = Number(nlfEl.value);
     }
-    n.inrushFactor = Number(document.getElementById('cp-inrush')?.value) || 1;
+    n.inrushFactor = readNum('cp-inrush', n.inrushFactor ?? 1);
     // Запас по автомату: пусто = auto (удаляем поле, используется авто)
     const brkMarginRaw = document.getElementById('cp-brkMargin')?.value;
     if (brkMarginRaw === '' || brkMarginRaw == null) delete n.breakerMarginPct;
@@ -344,7 +363,7 @@ export function openConsumerParamsModal(n) {
     const curveHintRaw = document.getElementById('cp-curveHint')?.value;
     if (!curveHintRaw) delete n.curveHint;
     else n.curveHint = curveHintRaw;
-    n.inputs = Number(document.getElementById('cp-inputs')?.value) || 1;
+    n.inputs = readNum('cp-inputs', n.inputs ?? 1);
     // Флаги hasNeutral / hasGround — tri-state (auto/on/off)
     const hnVal = document.getElementById('cp-hasNeutral')?.value;
     if (hnVal === 'on') n.hasNeutral = true;
@@ -366,8 +385,8 @@ export function openConsumerParamsModal(n) {
     n.priorities.length = n.inputs;
 
     if (catId === 'conditioner') {
-      n.outdoorKw = Number(document.getElementById('cp-outdoorKw')?.value) || 0.3;
-      n.outdoorCosPhi = Number(document.getElementById('cp-outdoorCosPhi')?.value) || 0.85;
+      n.outdoorKw = readNum('cp-outdoorKw', n.outdoorKw ?? 0.3);
+      n.outdoorCosPhi = readNum('cp-outdoorCosPhi', n.outdoorCosPhi ?? 0.85);
       n.outputs = 1;
       if (n.id !== '__preset_edit__' && (!n.linkedOutdoorId || !state.nodes.get(n.linkedOutdoorId))) {
         const outId = uid();
