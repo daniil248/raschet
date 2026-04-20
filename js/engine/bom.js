@@ -25,6 +25,9 @@
 // ======================================================================
 
 import { state } from './state.js';
+import {
+  kitById, pduBySku, accBySku,
+} from '../../shared/rack-catalog-data.js';
 
 /**
  * Сквозной хелпер: читает каталог из localStorage (per-user + legacy
@@ -185,6 +188,94 @@ export function buildBOM() {
       const pn = byId(panelCat, n.panelCatalogId);
       if (pn) {
         pushAgg('Щиты', pn, 1, n.name || n.tag || '');
+      }
+    }
+
+    // --- Шкафы 19" / rack-config ---
+    // v0.58.78: если узел (обычно type='consumer') получил rackTemplate из
+    // rack-config, разворачиваем его состав в BOM: сам комплект стойки,
+    // установленные PDU и аксессуары. Без этого обработчика выбранная в
+    // rack-config стойка не попадала в спецификацию проекта.
+    if (n.rackTemplate && typeof n.rackTemplate === 'object') {
+      const t = n.rackTemplate;
+      const nodeLabel = n.name || n.tag || 'Стойка';
+
+      // 1. Комплект стойки (kit) — один артикул
+      const kit = t.kitId ? kitById(t.kitId) : null;
+      if (kit && kit.id) {
+        const kitFake = {
+          id: 'rack:' + kit.id,
+          supplier: kit.mfg || t.manufacturer || '',
+          model: kit.name || kit.id,
+          article: kit.sku || '',
+        };
+        // Формируем короткую сводку по габаритам
+        const dim = [t.u ? t.u + 'U' : '', t.width ? t.width + 'мм' : '',
+                     t.depth ? 'гл.' + t.depth + 'мм' : ''].filter(Boolean).join('×');
+        pushAgg('Шкафы 19"', kitFake, 1, nodeLabel + (dim ? ' · ' + dim : ''));
+      } else if (t.manufacturer || t.u) {
+        // Нет готового kit — добавляем синтетическую позицию "лист требований"
+        const fakeKit = {
+          id: 'rack:custom:' + (n.id || Math.random().toString(36).slice(2, 6)),
+          supplier: t.manufacturer || '',
+          model: `Шкаф 19" ${t.u || '?'}U · ${t.width || '?'}×${t.depth || '?'}мм (требование)`,
+        };
+        pushAgg('Шкафы 19"', fakeKit, 1, nodeLabel + ' (произвольная конфигурация)');
+      }
+
+      // 2. PDU — по списку t.pdus = [{ sku, qty }, ...]
+      if (Array.isArray(t.pdus)) {
+        for (const p of t.pdus) {
+          if (!p || !p.sku) continue;
+          const qty = Math.max(1, Number(p.qty) || 1);
+          const cat = pduBySku(p.sku);
+          if (cat) {
+            const pduFake = {
+              id: 'pdu:' + cat.sku,
+              supplier: cat.mfg || '',
+              model: cat.name || cat.sku,
+              article: cat.sku,
+            };
+            pushAgg('PDU (блоки распределения питания)', pduFake, qty, nodeLabel);
+          } else {
+            // SKU есть, но в каталоге не найден — выводим по голому SKU
+            const pduFake = {
+              id: 'pdu:unknown:' + p.sku,
+              supplier: '',
+              model: p.sku,
+              article: p.sku,
+            };
+            pushAgg('PDU (блоки распределения питания)', pduFake, qty,
+              nodeLabel + ' (SKU не найден в каталоге)');
+          }
+        }
+      }
+
+      // 3. Аксессуары стойки — t.accessories = [{ sku, qty }, ...]
+      if (Array.isArray(t.accessories)) {
+        for (const a of t.accessories) {
+          if (!a || !a.sku) continue;
+          const qty = Math.max(1, Number(a.qty) || 1);
+          const cat = accBySku(a.sku);
+          if (cat) {
+            const accFake = {
+              id: 'acc:' + cat.sku,
+              supplier: cat.mfg || '',
+              model: cat.name || cat.sku,
+              article: cat.sku,
+            };
+            pushAgg('Аксессуары стоек', accFake, qty, nodeLabel);
+          } else {
+            const accFake = {
+              id: 'acc:unknown:' + a.sku,
+              supplier: '',
+              model: a.sku,
+              article: a.sku,
+            };
+            pushAgg('Аксессуары стоек', accFake, qty,
+              nodeLabel + ' (SKU не найден в каталоге)');
+          }
+        }
       }
     }
 

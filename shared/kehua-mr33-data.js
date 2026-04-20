@@ -88,7 +88,9 @@ export const KEHUA_MR33_UPSES = [
     supplier: 'Kehua',
     model: 'MR33 400 (50K module)',
     upsType: 'modular',
-    capacityKw: 400, frameKw: 1000, moduleKwRated: 50, moduleSlots: 20,
+    // v0.58.78 fix: frame 600K (12 слотов × 50 кВт = 600 кВт max) —
+    // раньше стояло frameKw:1000 / moduleSlots:20, но такого фрейма в линейке нет.
+    capacityKw: 400, frameKw: 600, moduleKwRated: 50, moduleSlots: 12,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 360, vdcMax: 552,
     inputs: 2, outputs: 1,
@@ -102,7 +104,8 @@ export const KEHUA_MR33_UPSES = [
     supplier: 'Kehua',
     model: 'MR33 500 (50K module)',
     upsType: 'modular',
-    capacityKw: 500, frameKw: 1000, moduleKwRated: 50, moduleSlots: 20,
+    // v0.58.78 fix: frame 600K (12 × 50 = 600 кВт max).
+    capacityKw: 500, frameKw: 600, moduleKwRated: 50, moduleSlots: 12,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 360, vdcMax: 552,
     inputs: 2, outputs: 1,
@@ -116,7 +119,8 @@ export const KEHUA_MR33_UPSES = [
     supplier: 'Kehua',
     model: 'MR33 600 (50K module)',
     upsType: 'modular',
-    capacityKw: 600, frameKw: 1000, moduleKwRated: 50, moduleSlots: 20,
+    // v0.58.78 fix: frame 600K полностью укомплектован (12 × 50 = 600 кВт).
+    capacityKw: 600, frameKw: 600, moduleKwRated: 50, moduleSlots: 12,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 360, vdcMax: 552,
     inputs: 2, outputs: 1,
@@ -500,6 +504,19 @@ export const KEHUA_MR33_UPSES = [
     source: 'Kehua UPS Catalog 2024-10-22, p.19', importedAt: 0, custom: false,
     batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
     notes: 'ПУСТОЙ корпус MR33 на 500 кВт (10 слотов × 50 кВт или 10 × 30 кВт). Габариты 600×860×2000 мм, масса 224 кг. Требует отдельно силовые модули (MR33 PM 50K / 30K).',
+  },
+  {
+    // v0.58.78: добавлен отсутствовавший фрейм MR33 600K — для серии
+    // MR33 400/500/600 с модулями 50 кВт (12 слотов × 50 = 600 кВт max).
+    id: 'kehua-mr33-frame-600k',
+    kind: 'frame',
+    supplier: 'Kehua', model: 'MR33 Frame 600K',
+    upsType: 'modular',
+    capacityKw: 0, frameKw: 600, moduleSlots: 12,
+    efficiency: 0, cosPhi: 0, vdcMin: 360, vdcMax: 552, inputs: 2, outputs: 1,
+    source: 'Kehua UPS Catalog 2024-10-22, p.19', importedAt: 0, custom: false,
+    batteryTypes: ['vrla', 'li-ion-s3'], compatibleS3: true,
+    notes: 'ПУСТОЙ корпус MR33 на 600 кВт (12 слотов × 50 кВт). Для моделей MR33 400/500/600. Требует силовые модули MR33 PM 50K.',
   },
   {
     id: 'kehua-mr33-frame-1000k',
