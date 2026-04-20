@@ -1181,6 +1181,13 @@ export function renderNodes() {
     return;
   }
 
+  // v0.58.56: на страницах, не включающих систему 'electrical' (Данные,
+  // Слаботочка и т.п.), не рисуем электрические порты/лампочки/«Резерв» —
+  // это порты электрической системы, они на «чужой» странице не нужны.
+  const _curKind = getPageKind(getCurrentPage());
+  const _pageSysList = _curKind ? systemsForPageKind(_curKind) : null;
+  const _hideElectricalPorts = Array.isArray(_pageSysList) && !_pageSysList.includes('electrical');
+
   // Санитация x/y всех узлов — если данные повреждены, заменяем на 0.
   // Предотвращает translate(NaN/Infinity/null) которые ломают SVG.
   for (const n of state.nodes.values()) {
@@ -1441,11 +1448,14 @@ export function renderNodes() {
       g.appendChild(t);
     }
     // Выходной порт — внизу на оси башни (ровно по центру w)
-    const outCirc = el('circle', { class: 'port out', cx: portX, cy: h, r: PORT_R });
-    outCirc.dataset.portKind = 'out';
-    outCirc.dataset.portIdx = 0;
-    outCirc.dataset.nodeId = n.id;
-    g.appendChild(outCirc);
+    // v0.58.56: скрыть на нелектрических страницах.
+    if (!_hideElectricalPorts) {
+      const outCirc = el('circle', { class: 'port out', cx: portX, cy: h, r: PORT_R });
+      outCirc.dataset.portKind = 'out';
+      outCirc.dataset.portIdx = 0;
+      outCirc.dataset.nodeId = n.id;
+      g.appendChild(outCirc);
+    }
     layerNodes.appendChild(g);
   }
 
@@ -1691,6 +1701,10 @@ export function renderNodes() {
     g.appendChild(text(12, NODE_H - 12, loadLine, loadCls));
 
     // Порты — входы
+    // v0.58.56: на страницах без 'electrical' системы — пропускаем все
+    // электрические порты/лампочки/«Резерв». Кнопки +/− ниже тоже
+    // скрываются — см. флаг _hideElectricalPorts.
+    if (!_hideElectricalPorts) {
     const inCount = nodeInputCount(n);
     // Определяем состояние автомата и наличие подключения для каждого порта
     const portConns = new Map(); // port → conn
@@ -1809,11 +1823,13 @@ export function renderNodes() {
         }
       }
     }
+    } // v0.58.56: конец блока электрических портов (if !_hideElectricalPorts)
 
     // Кнопки +/- для добавления/удаления выходных портов щита.
     // Рисуются снизу справа, под правым краем карточки. Только для
     // обычных (несекционных) панелей.
-    if (n.type === 'panel' && n.switchMode !== 'sectioned' && !state.readOnly) {
+    // v0.58.56: на нелектрической странице эти кнопки тоже скрываем.
+    if (!_hideElectricalPorts && n.type === 'panel' && n.switchMode !== 'sectioned' && !state.readOnly) {
       const btnY = NODE_H - 14;
       const btnRx = w - 32;
       const btnRp = w - 14;
