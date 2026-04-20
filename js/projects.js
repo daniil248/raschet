@@ -92,6 +92,28 @@ function fsDb() {
   }
   return db;
 }
+// v0.58.45: settings({ignoreUndefinedProperties}) не срабатывает, если
+// firebase.firestore() уже был вызван раньше (auth.js делает это при
+// логине). Поэтому дополнительно чистим undefined вручную перед записью.
+// Рекурсивно: в объектах — удаляем ключи, в массивах — заменяем на null.
+function _stripUndefined(v) {
+  if (v === undefined) return null;
+  if (v === null) return null;
+  if (Array.isArray(v)) return v.map(_stripUndefined);
+  if (typeof v === 'object') {
+    // не трогаем FieldValue/Timestamp/sentinel из Firestore SDK
+    if (v && typeof v.toDate === 'function') return v;
+    if (v && v._methodName) return v; // FieldValue sentinel
+    const out = {};
+    for (const k of Object.keys(v)) {
+      const val = v[k];
+      if (val === undefined) continue;
+      out[k] = _stripUndefined(val);
+    }
+    return out;
+  }
+  return v;
+}
 function ts() { return firebase.firestore.FieldValue.serverTimestamp(); }
 function arrayUnion(v) { return firebase.firestore.FieldValue.arrayUnion(v); }
 function arrayRemove(v) { return firebase.firestore.FieldValue.arrayRemove(v); }
@@ -178,12 +200,12 @@ const Fs = {
       createdAt: ts(),
       updatedAt: ts(),
     };
-    const ref = await fsDb().collection('projects').add(data);
+    const ref = await fsDb().collection('projects').add(_stripUndefined(data));
     return { id: ref.id, ...data, _role: 'owner' };
   },
 
   async saveProject(id, patch) {
-    const p = { ...patch, updatedAt: ts() };
+    const p = _stripUndefined({ ...patch, updatedAt: ts() });
     await fsDb().collection('projects').doc(id).update(p);
     return this.getProject(id);
   },
