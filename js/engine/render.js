@@ -68,6 +68,44 @@ export function text(x, y, str, cls) {
   t.textContent = str;
   return t;
 }
+// v0.57.91: текст с переносом по словам. Возвращает <text> с <tspan>-ами
+// (каждая строка = один <tspan>). maxChars — лимит по количеству символов
+// для одной строки (грубая оценка ширины в моноширинном эквиваленте:
+// maxChars ≈ floor((containerWidth - pad) / avgCharPx)).
+export function textWrapped(x, y, str, cls, maxChars = 32, lineHeight = 13) {
+  const t = el('text', { x, y, class: cls });
+  const lines = _wrapByWords(String(str || ''), maxChars);
+  lines.forEach((line, i) => {
+    const attrs = i === 0 ? { x } : { x, dy: lineHeight };
+    const ts = el('tspan', attrs);
+    ts.textContent = line;
+    t.appendChild(ts);
+  });
+  return t;
+}
+function _wrapByWords(str, maxLen) {
+  // Режем по пробелам, но сохраняем разделители « / », « — » как точки разрыва.
+  const tokens = str.split(/(\s+)/);
+  const out = [];
+  let cur = '';
+  for (const tk of tokens) {
+    if (!tk) continue;
+    if ((cur + tk).length > maxLen && cur.trim()) {
+      out.push(cur.trim());
+      cur = tk.trimStart();
+    } else {
+      cur += tk;
+    }
+  }
+  if (cur.trim()) out.push(cur.trim());
+  // Последний fallback — жёсткий split по символам если слово само длиннее maxLen
+  const hard = [];
+  for (const ln of out) {
+    if (ln.length <= maxLen) { hard.push(ln); continue; }
+    for (let i = 0; i < ln.length; i += maxLen) hard.push(ln.slice(i, i + maxLen));
+  }
+  return hard.length ? hard : [''];
+}
 export function bezier(a, b, opts) {
   const aDir = opts?.aDir || { x: 0, y: 1 };
   const bDir = opts?.bDir || { x: 0, y: -1 };
@@ -810,7 +848,16 @@ export function renderNodes() {
                   + (n.inputs > 1 ? ` · вх ${n.inputs}` : ''),
       channel:   resolveChannelLabel(n),
     }[n.type];
-    g.appendChild(text(12, 49, subTxt, 'node-sub'));
+    // v0.57.91: для канала label способа прокладки может быть длинным
+    // («F — Лестничный лоток / одножильные касающиеся») и вылезать за
+    // правую границу карточки. Переносим по словам через textWrapped.
+    if (n.type === 'channel') {
+      // Грубая оценка: ~6.5 px на символ у 12 px шрифта, pad по 12 слева+справа.
+      const maxChars = Math.max(16, Math.floor((w - 24) / 6.5));
+      g.appendChild(textWrapped(12, 49, subTxt, 'node-sub', maxChars));
+    } else {
+      g.appendChild(text(12, 49, subTxt, 'node-sub'));
+    }
 
     // Нагрузка
     let loadLine = '', loadCls = 'node-load';
