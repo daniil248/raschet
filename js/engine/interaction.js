@@ -269,10 +269,70 @@ export function initInteraction() {
   document.querySelectorAll('.pal-item').forEach(bindPalItem);
   // Эскпонируем для повторного применения после render пресетов
   if (typeof window !== 'undefined') window.__raschetBindPalItem = bindPalItem;
+
+  // v0.58.11: dragstart и click для «Неразмещённых» элементов.
+  // Делегируем события на контейнер — он перерисовывается при каждом
+  // render(), поэтому слушатели на конкретных детях теряются.
+  const unplacedList = document.getElementById('pal-unplaced-list');
+  if (unplacedList) {
+    unplacedList.addEventListener('dragstart', e => {
+      const item = e.target.closest('.pal-unplaced-item');
+      if (!item || state.readOnly) return;
+      const id = item.dataset.unplacedId;
+      if (!id) return;
+      _palDragActive = true;
+      e.dataTransfer.setData('text/raschet-unplaced-id', id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    unplacedList.addEventListener('dragend', () => {
+      setTimeout(() => { _palDragActive = false; }, 150);
+    });
+    unplacedList.addEventListener('click', e => {
+      const item = e.target.closest('.pal-unplaced-item');
+      if (!item || state.readOnly) return;
+      const id = item.dataset.unplacedId;
+      if (!id) return;
+      const n = state.nodes.get(id);
+      if (!n) return;
+      snapshot('place-unplaced:' + id);
+      // Поставить в центр текущего viewBox
+      const svgEl = document.getElementById('canvas') || svg;
+      const W = svgEl.clientWidth, H = svgEl.clientHeight;
+      const zoom = state.view.zoom || 1;
+      const cx = (state.view.x || 0) + (W / zoom) / 2;
+      const cy = (state.view.y || 0) + (H / zoom) / 2;
+      if (!Array.isArray(n.pageIds)) n.pageIds = [];
+      if (!n.pageIds.includes(state.currentPageId)) n.pageIds.push(state.currentPageId);
+      n.x = Math.round(cx - 100);
+      n.y = Math.round(cy - 50);
+      if (!n.positionsByPage) n.positionsByPage = {};
+      n.positionsByPage[state.currentPageId] = { x: n.x, y: n.y };
+      notifyChange();
+      render();
+    });
+  }
   svg.addEventListener('dragover', e => { if (state.readOnly) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
   svg.addEventListener('drop', e => {
     if (state.readOnly) return;
     e.preventDefault();
+    // v0.58.11: drop «Неразмещённого» — добавить n.pageIds текущей страницы
+    const unplacedId = e.dataTransfer.getData('text/raschet-unplaced-id');
+    if (unplacedId) {
+      const n = state.nodes.get(unplacedId);
+      if (n) {
+        snapshot('place-unplaced-drop:' + unplacedId);
+        const p = clientToSvg(e.clientX, e.clientY);
+        if (!Array.isArray(n.pageIds)) n.pageIds = [];
+        if (!n.pageIds.includes(state.currentPageId)) n.pageIds.push(state.currentPageId);
+        n.x = Math.round(p.x - 100);
+        n.y = Math.round(p.y - 50);
+        if (!n.positionsByPage) n.positionsByPage = {};
+        n.positionsByPage[state.currentPageId] = { x: n.x, y: n.y };
+        notifyChange();
+        render();
+      }
+      return;
+    }
     const presetId = e.dataTransfer.getData('text/raschet-preset');
     if (presetId && window.Presets) {
       const preset = window.Presets.get(presetId);
@@ -963,7 +1023,11 @@ export function initInteraction() {
       // обычного drag'а узла (не самой зоны и не группового drag-all).
       if (wasNodeDrag && draggedNodeId) {
         const dragged = state.nodes.get(draggedNodeId);
-        if (dragged) {
+        // На странице-расстановке (layout) НЕ пересчитываем членство в зоне:
+        // «полное обозначение» всегда соответствует главной схеме, даже если
+        // объект физически вынесен за пределы зоны на плане.
+        const _onLayoutPage = getPageKind(getCurrentPage()) === 'layout';
+        if (dragged && !_onLayoutPage) {
           if (dragged.type === 'zone') {
             // Зона: проверяем вложенность в родительскую зону
             const parentZone = findParentZone(dragged);

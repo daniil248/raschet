@@ -293,12 +293,60 @@ export function render() {
   renderConns();
   renderNodes();
   renderLayoutFootprints();
+  renderUnplacedPalette();
   renderStats();
   renderModes();
   decorateRemoteLocks();
   renderRemoteCursors();
   renderPageKindBanner();
   renderLayoutRuler();
+}
+
+// v0.58.11: палитра «Неразмещённые» — элементы проекта, которых нет
+// на текущей странице. Показываются в aside #pal-unplaced-wrap.
+// Drag/drop слушает на холсте (interaction.js) — по сбросу добавляет
+// pageId текущей страницы в n.pageIds и ставит n.x/y в точку сброса.
+export function renderUnplacedPalette() {
+  const wrap = document.getElementById('pal-unplaced-wrap');
+  const list = document.getElementById('pal-unplaced-list');
+  const countEl = document.getElementById('pal-unplaced-count');
+  if (!wrap || !list) return;
+  const pageId = state.currentPageId;
+  if (!pageId) { wrap.hidden = true; return; }
+  const unplaced = [];
+  for (const n of state.nodes.values()) {
+    if (n.type === 'zone') continue; // зоны не участвуют в палитре
+    const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+    if (pids.length === 0) continue; // legacy-безадресный — пропускаем
+    if (!pids.includes(pageId)) unplaced.push(n);
+  }
+  if (!unplaced.length) { wrap.hidden = true; list.innerHTML = ''; return; }
+  wrap.hidden = false;
+  if (countEl) countEl.textContent = `(${unplaced.length})`;
+  unplaced.sort((a, b) => String(a.tag || a.name || '').localeCompare(String(b.tag || b.name || '')));
+  const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
+  const rows = unplaced.map(n => {
+    const tag = effectiveTag(n) || n.tag || '';
+    const name = n.name || n.type || '';
+    const typeLabel = _unplacedTypeIcon(n);
+    return `<div class="pal-unplaced-item" draggable="true" data-unplaced-id="${esc(n.id)}" title="Перетащить на холст или клик — поставить по центру">
+      <span class="pal-unplaced-icon">${typeLabel}</span>
+      <span class="pal-unplaced-tag">${esc(tag)}</span>
+      <span class="pal-unplaced-name">${esc(name)}</span>
+    </div>`;
+  }).join('');
+  list.innerHTML = rows;
+}
+function _unplacedTypeIcon(n) {
+  switch (n.type) {
+    case 'source':    return n.sourceSubtype === 'utility' ? '🏙️' : n.sourceSubtype === 'other' ? '⚡' : '🔌';
+    case 'generator': return '🔋';
+    case 'ups':       return '🔋';
+    case 'panel':     return '⬛';
+    case 'consumer':  return '💡';
+    case 'channel':   return '🔗';
+    default:          return '▪';
+  }
 }
 
 // Phase 2.3: линейка с мм-делениями на layout-странице. Рисуется в

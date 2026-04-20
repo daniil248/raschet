@@ -77,6 +77,15 @@
         <div class="brand">Raschet</div>
         <div class="subtitle">Конструктор схем</div>
 
+        <!-- v0.58.11: палитра элементов проекта, не размещённых на
+             текущей странице. Клик = поместить в центр холста,
+             drag = поместить в точку броска. -->
+        <div id="pal-unplaced-wrap" class="pal-unplaced" hidden>
+          <h3>🔄 Неразмещённые <span class="muted pal-unplaced-count" id="pal-unplaced-count">(0)</span></h3>
+          <div class="muted" style="font-size:11px;padding:0 4px 6px">Элементы, которых нет на этой странице. Перетащите на холст.</div>
+          <div id="pal-unplaced-list"></div>
+        </div>
+
         <h3>Элементы</h3>
         <div class="pal-search-wrap">
           <input type="search" id="palette-search" placeholder="Поиск в библиотеке…" autocomplete="off">

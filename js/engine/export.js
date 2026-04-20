@@ -360,20 +360,12 @@ export function initToolbar() {
       description: '',
     };
     if (type === 'linked') newPage.sourcePageId = sourcePageId;
-    // v0.58.5: перед добавлением новой страницы сохраняем позиции узлов
-    // на текущей странице, чтобы не «утащить» их на новую.
+    // v0.58.11: сохраняем позиции текущей страницы, добавляем новую
+    // страницу ПУСТОЙ. Существующие элементы попадают на неё только
+    // по явному действию пользователя (drag из палитры
+    // «Неразмещённые»).
     if (state.currentPageId) saveCurrentPagePositions(state.currentPageId);
     state.pages.push(newPage);
-    // v0.58.5: все существующие узлы автоматически появляются на новой
-    // странице (проект = набор видов одной и той же схемы).
-    for (const n of state.nodes.values()) {
-      if (!Array.isArray(n.pageIds)) n.pageIds = [];
-      if (!n.pageIds.includes(newId)) n.pageIds.push(newId);
-    }
-    for (const c of state.conns.values()) {
-      if (!Array.isArray(c.pageIds)) c.pageIds = [];
-      if (!c.pageIds.includes(newId)) c.pageIds.push(newId);
-    }
     state.currentPageId = newId;
     state.view = { x: 0, y: 0, zoom: 1 };
     state.selectedKind = null; state.selectedId = null;

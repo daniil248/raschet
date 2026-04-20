@@ -350,12 +350,12 @@ const vEl = document.getElementById('app-version');
 if (vEl) vEl.textContent = 'v' + APP_VERSION;
 
 // === Библиотека пресетов ===
-// v0.58.5: новый узел виден на всех страницах проекта (набор видов
-// проекта — schematic/layout/… — всегда присутствует совместно).
+// v0.58.11: узел привязан только к текущей странице. На другие
+// страницы карточку пользователь добавляет вручную из палитры
+// «Неразмещённые».
 function _assignCurrentPageIds(base) {
   if (!state.currentPageId) return;
-  const all = (state.pages || []).map(p => p.id);
-  base.pageIds = all.length ? all.slice() : [state.currentPageId];
+  base.pageIds = [state.currentPageId];
 }
 
 function applyPreset(preset) {

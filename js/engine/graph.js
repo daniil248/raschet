@@ -84,14 +84,12 @@ export function createNode(type, x, y, opts) {
   base.tag = tagPrefix ? nextFreeTagWithPrefix(tagPrefix) : nextFreeTag(type);
   base.x = x - nodeWidth(base) / 2;
   base.y = y - NODE_H / 2;
-  // v0.58.5: новый узел виден на ВСЕХ страницах проекта.
-  // В проекте всегда присутствует набор видов (schematic/layout/
-  // mechanical/…), и карточка элемента — общая для всех. Разное
-  // расположение per-page хранится в n.positionsByPage.
-  // (Ограничить набор страниц можно вручную через чекбоксы в инспекторе.)
+  // v0.58.11: новый узел добавляется ТОЛЬКО на текущую страницу.
+  // На других страницах он попадает в палитру «Неразмещённые» —
+  // пользователь сам решает, где карточку разместить. Данные карточки
+  // (параметры, имя, связи) общие.
   if (state.currentPageId) {
-    const all = (state.pages || []).map(p => p.id);
-    base.pageIds = all.length ? all.slice() : [state.currentPageId];
+    base.pageIds = [state.currentPageId];
   }
   state.nodes.set(id, base);
   _selectNode(id);
