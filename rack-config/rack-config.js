@@ -125,7 +125,148 @@ const KIT_CATALOG = [
       sides: 'pair-sku',
       top: 'vent', base: 'feet',
     } },
+
+  // === Kehua Data IT Cabinet — H series (welded, high-end) ===
+  // Источники: Kehua_IT rack_Product Manual_2026_EN.pdf (стр. 7),
+  //            Kehua_IT rack_Product Manual_EN.pdf,
+  //            Kehua_IT Cabinet and accessories_Broshute_2022-03-24.
+  // Формат модели: HSER-{W}{D}{U}{Color}-{Door}
+  //   H=high-end series, SER=server; MF=mesh door flush; GF=glass door flush
+  //   Цвет BK=black fine sand RAL9005 (стандарт)
+  // Нагрузка (сварная рама): rated 1600 кг, max 2000 кг.
+  // Передняя дверь — одностворчатая сетка (>80% перфорация),
+  // задняя — двустворчатая сетка (>80% перфорация), открывание >120°,
+  // MS861-2 замок с верхним/нижним штоком.
+  { id: 'kehua-hser-61042-mf',
+    sku: 'HSER-61042BK-MF',
+    name: 'Kehua H-series 42U 600×1000 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    preset: {
+      manufacturer: 'Kehua Data H-series',
+      u: 42, width: 600, depth: 1000,
+      doorFront: 'mesh', doorRear: 'double-mesh',
+      doorWithLock: true,
+      sides: 'pair-sku',
+      top: 'vent', base: 'feet',
+    } },
+  { id: 'kehua-hser-61242-mf',
+    sku: 'HSER-61242BK-MF',
+    name: 'Kehua H-series 42U 600×1200 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    preset: {
+      manufacturer: 'Kehua Data H-series',
+      u: 42, width: 600, depth: 1200,
+      doorFront: 'mesh', doorRear: 'double-mesh',
+      doorWithLock: true,
+      sides: 'pair-sku',
+      top: 'vent', base: 'feet',
+    } },
+  { id: 'kehua-hser-81042-mf',
+    sku: 'HSER-81042BK-MF',
+    name: 'Kehua H-series 42U 800×1000 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    preset: {
+      manufacturer: 'Kehua Data H-series',
+      u: 42, width: 800, depth: 1000,
+      doorFront: 'mesh', doorRear: 'double-mesh',
+      doorWithLock: true,
+      sides: 'pair-sku',
+      top: 'vent', base: 'feet',
+    } },
+  { id: 'kehua-hser-81242-mf',
+    sku: 'HSER-81242BK-MF',
+    name: 'Kehua H-series 42U 800×1200 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    preset: {
+      manufacturer: 'Kehua Data H-series',
+      u: 42, width: 800, depth: 1200,
+      doorFront: 'mesh', doorRear: 'double-mesh',
+      doorWithLock: true,
+      sides: 'pair-sku',
+      top: 'vent', base: 'feet',
+    } },
+  // Варианты с передней стеклянной дверью (брошюра: glass door cabinet)
+  { id: 'kehua-hser-61242-gf',
+    sku: 'HSER-61242BK-GF',
+    name: 'Kehua H-series 42U 600×1200 (glass/mesh) — холодный коридор',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    preset: {
+      manufacturer: 'Kehua Data H-series',
+      u: 42, width: 600, depth: 1200,
+      doorFront: 'glass', doorRear: 'double-mesh',
+      doorWithLock: true,
+      sides: 'pair-sku',
+      top: 'vent', base: 'feet',
+    } },
+  { id: 'kehua-hser-61442-gm',
+    sku: 'HSER-61442BK-GM',
+    name: 'Kehua H-series 42U 600×1400 (glass/metal-double) — hot+cold aisle',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base'],
+    preset: {
+      manufacturer: 'Kehua Data H-series',
+      u: 42, width: 600, depth: 1400,
+      doorFront: 'glass', doorRear: 'double-metal',
+      doorWithLock: true,
+      sides: 'pair-sku',
+      top: 'solid', base: 'feet',
+    } },
 ];
+
+/* ---------- каталог аксессуаров для стойки ----------
+   Источник: Kehua Wise product line — Rack product accessories description,
+             Kehua IT Cabinet brochure (2022-03-24).
+   Пользователь добавляет нужные аксессуары из этого каталога строками
+   (в разделе «Дополнительные аксессуары»). Каждая строка попадает в BOM. */
+const ACCESSORY_CATALOG = [
+  // Air duct / заглушки пустых U
+  { sku: 'KBPB-1U-BK',      name: 'Заглушка 1U (sealing plate)',
+    mfg: 'Kehua', category: 'air-duct',
+    note: 'Изоляция холодного/горячего коридора, tool-free quick release' },
+  { sku: 'KBPB-2U-BK',      name: 'Заглушка 2U (sealing plate)',
+    mfg: 'Kehua', category: 'air-duct',
+    note: 'Изоляция холодного/горячего коридора, tool-free quick release' },
+  { sku: 'KBPB-6U-BK',      name: 'Заглушка 6U (sealing plate)',
+    mfg: 'Kehua', category: 'air-duct',
+    note: 'Изоляция холодного/горячего коридора, tool-free' },
+  // Mounting / полки и направляющие
+  { sku: 'KSSH-710-BK',     name: 'Полка лёгкая 100 кг (light load laminate)',
+    mfg: 'Kehua', category: 'mounting',
+    note: 'Для стоек 1100/1200 мм, 100 кг' },
+  { sku: 'KZZH-710-BK',     name: 'Полка тяжёлая 200 кг (heavy load laminate)',
+    mfg: 'Kehua', category: 'mounting',
+    note: 'Для стоек 1100/1200 мм, 200 кг' },
+  { sku: 'KCHR-705-BK',     name: 'L-образные направляющие (L-tray)',
+    mfg: 'Kehua', category: 'mounting',
+    note: 'Под оборудование без рельс, 50 кг' },
+  // Cable management
+  { sku: 'KCLD-F1U-BK',     name: 'Горизонтальный кабельный орг. 1U',
+    mfg: 'Kehua', category: 'cable',
+    note: 'Фронтальный кабель-менеджмент, U-posts' },
+  { sku: 'KCMR-700-BK',     name: 'Внутренний кабельный менеджмент',
+    mfg: 'Kehua', category: 'cable',
+    note: 'Прокладка кабеля спереди назад внутри стойки' },
+  { sku: 'KLXH-BK',         name: 'Кольцо-держатель кабеля (metal ring)',
+    mfg: 'Kehua', category: 'cable',
+    note: 'Металлич. кольцо, до 6 шт. на стойку (рекомендация)' },
+  { sku: 'KCLB-42U100D-BK', name: 'Вертикальная кабель-гребёнка 42U',
+    mfg: 'Kehua', category: 'cable',
+    note: 'Для задней вертикальной прокладки, + 2 стяжки в комплекте' },
+  { sku: 'KCLD-42U100D-BK', name: 'Вертикальный кабель-канал 42U (100×108 мм)',
+    mfg: 'Kehua', category: 'cable',
+    note: 'Пластик, вертикальный монтаж, для патч-кордов' },
+  // Cold aisle accessories (брошюра — на весь коридор, но считаем per-rack)
+  { sku: 'KHL-BASE-BK',     name: 'Анкерный постамент (anchor frame)',
+    mfg: 'Kehua', category: 'mounting',
+    note: 'Для антисейсмического крепления к полу' },
+  { sku: 'KHL-BOTTOM-CAB',  name: 'Вводный короб снизу (bottom cable entry)',
+    mfg: 'Kehua', category: 'cable',
+    note: 'Нижний ввод кабеля, регулируемый' },
+];
+const ACC_CATEGORIES = {
+  'air-duct': 'Заглушки / разделение потоков',
+  'mounting': 'Монтаж / полки / постаменты',
+  'cable':    'Кабель-менеджмент',
+};
 
 /* ---------- state ---------- */
 function makeBlankTemplate(name = 'Новый шаблон') {
@@ -150,6 +291,7 @@ function makeBlankTemplate(name = 'Новый шаблон') {
       { id: 'pdu1', qty: 1, rating: 16, phases: 1, height: 0,
         outlets: [ { type: 'C13', count: 8 } ] }
     ],
+    accessories: [], // [{ sku, qty }] — дополнительные аксессуары из ACCESSORY_CATALOG
     comment: '',
   };
 }
@@ -265,7 +407,9 @@ function renderForm() {
   el('rc-demand-kw').value    = t.demandKw;
   el('rc-cosphi').value       = t.cosphi;
   el('rc-comment').value      = t.comment || '';
+  if (!Array.isArray(t.accessories)) t.accessories = [];
   renderPduList();
+  renderAccList();
   applyKitLocks();
   recalc();
 }
@@ -294,6 +438,59 @@ function readForm() {
   t.demandKw     = Math.max(0, parseFloat(el('rc-demand-kw').value) || 0);
   t.cosphi       = Math.min(1, Math.max(0.5, parseFloat(el('rc-cosphi').value) || 0.9));
   t.comment      = el('rc-comment').value;
+}
+
+/* ---------- аксессуары ---------- */
+function accBySku(sku) { return ACCESSORY_CATALOG.find(a => a.sku === sku) || null; }
+function renderAccPicker() {
+  const sel = el('rc-acc-pick');
+  // группируем по категории
+  const groups = {};
+  ACCESSORY_CATALOG.forEach(a => {
+    const cat = ACC_CATEGORIES[a.category] || a.category;
+    (groups[cat] = groups[cat] || []).push(a);
+  });
+  sel.innerHTML = Object.keys(groups).map(cat => `
+    <optgroup label="${escape(cat)}">
+      ${groups[cat].map(a => `<option value="${escape(a.sku)}">${escape(a.sku)} — ${escape(a.name)}</option>`).join('')}
+    </optgroup>`).join('');
+}
+function renderAccList() {
+  const t = current();
+  const host = el('rc-acc-list');
+  if (!t.accessories || !t.accessories.length) {
+    host.innerHTML = '<div class="muted" style="font-size:12px;margin-top:8px">Аксессуары не добавлены.</div>';
+    return;
+  }
+  host.innerHTML = `
+    <table class="rc-acc-table">
+      <thead><tr><th>Артикул</th><th>Наименование</th><th>Кол-во</th><th></th></tr></thead>
+      <tbody>
+        ${t.accessories.map((a, i) => {
+          const meta = accBySku(a.sku);
+          return `<tr>
+            <td><code>${escape(a.sku)}</code></td>
+            <td>${meta ? escape(meta.name) : '<i>(нет в каталоге)</i>'}<br><span class="muted" style="font-size:11px">${meta ? escape(meta.note || '') : ''}</span></td>
+            <td><input type="number" min="1" step="1" value="${a.qty}" data-acc-qty="${i}" style="width:60px"></td>
+            <td><button type="button" class="rc-btn rc-btn-danger rc-btn-mini" data-acc-del="${i}">✕</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  host.querySelectorAll('[data-acc-qty]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const i = +inp.dataset.accQty;
+      t.accessories[i].qty = Math.max(1, parseInt(inp.value, 10) || 1);
+      recalc();
+    });
+  });
+  host.querySelectorAll('[data-acc-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.accDel;
+      t.accessories.splice(i, 1);
+      renderAccList(); recalc();
+    });
+  });
 }
 
 /* ---------- PDU список ---------- */
@@ -491,6 +688,16 @@ function computeBom() {
   // Монтажный крепёж
   const screws = Math.max(20, (t.u - free) * 4 + 20);
   add('Комплект крепежа M6 (болт+гайка+шайба)', screws, 'шт', 'монтажный');
+
+  // Дополнительные аксессуары (Kehua Wise и т.п.)
+  if (Array.isArray(t.accessories)) {
+    t.accessories.forEach(a => {
+      const meta = accBySku(a.sku);
+      const name = meta ? `${meta.name} (${a.sku})` : a.sku;
+      const note = meta ? [meta.mfg, meta.note].filter(Boolean).join(' · ') : '';
+      add(name, a.qty || 1, 'шт', note);
+    });
+  }
 
   return rows;
 }
@@ -701,6 +908,19 @@ function bind() {
     renderPduList(); recalc();
   });
 
+  el('rc-acc-add').addEventListener('click', () => {
+    const t = current();
+    if (!Array.isArray(t.accessories)) t.accessories = [];
+    const sku = el('rc-acc-pick').value;
+    const qty = Math.max(1, parseInt(el('rc-acc-qty').value, 10) || 1);
+    if (!sku) return;
+    // если такой же SKU уже есть — просто увеличиваем кол-во
+    const existing = t.accessories.find(a => a.sku === sku);
+    if (existing) existing.qty = (existing.qty || 0) + qty;
+    else t.accessories.push({ sku, qty });
+    renderAccList(); recalc();
+  });
+
   el('rc-save').addEventListener('click', () => {
     readForm();
     saveTemplates();
@@ -718,6 +938,7 @@ function bind() {
 /* ---------- init ---------- */
 function init() {
   renderKitSelect();
+  renderAccPicker();
   state.templates = loadTemplates();
   if (!state.templates.length) state.templates.push(makeBlankTemplate('Стойка серверная 42U'));
 

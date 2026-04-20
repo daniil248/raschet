@@ -216,6 +216,21 @@
         </section>
 
         <section class="rc-section">
+          <h2>Дополнительные аксессуары</h2>
+          <p class="muted rc-hint">Каталог аксессуаров Kehua Wise: заглушки юнитов, полки (лёгкие/тяжёлые), L-направляющие, горизонтальные и вертикальные кабельные органайзеры, анкерные постаменты. Добавляются сверх базовой конфигурации и попадают в BOM отдельными строками.</p>
+          <div class="rc-row" style="grid-template-columns:1fr 100px auto">
+            <label class="rc-field"><span>Выбрать из каталога</span>
+              <select id="rc-acc-pick"></select>
+            </label>
+            <label class="rc-field"><span>Кол-во</span>
+              <input type="number" id="rc-acc-qty" min="1" step="1" value="1">
+            </label>
+            <button type="button" id="rc-acc-add" class="rc-btn" style="align-self:end">+ добавить</button>
+          </div>
+          <div id="rc-acc-list"></div>
+        </section>
+
+        <section class="rc-section">
           <h2>Комментарий</h2>
           <textarea id="rc-comment" rows="3" placeholder="Заметки по стойке"></textarea>
         </section>
@@ -256,7 +271,9 @@
         <h4>Порядок работы</h4>
         <ol>
           <li><b>Базовый комплект</b> — выберите готовый артикул поставщика
-            (APC AR3100, ЦМО ШТК-М, Rittal TS IT, Hyperline TWB…). Поля,
+            (APC AR3100, ЦМО ШТК-М, Rittal TS IT, Hyperline TWB,
+            <b>Kehua H-series</b> HSER-61042/61242/81042/81242 в mesh/mesh
+            или glass/mesh исполнении). Поля,
             входящие в комплект, автоматически блокируются. Оставьте
             «Произвольная конфигурация», если собираете стойку из отдельных
             позиций.</li>
@@ -280,6 +297,13 @@
             нужным номиналом / фазностью / высотой. <b>У одной PDU может
             быть несколько типов розеток</b> (например 16×C13 + 8×C19) —
             добавляйте строки кнопкой «+ тип».</li>
+          <li><b>Дополнительные аксессуары</b> — каталог Kehua Wise:
+            заглушки 1U/2U/6U (KBPB-*), полки лёгкие 100 кг / тяжёлые
+            200 кг (KSSH / KZZH), L-направляющие (KCHR), горизонтальные
+            1U (KCLD-F1U) и внутренние (KCMR) кабельные органайзеры,
+            вертикальные гребёнки (KCLB-42U) и кабель-каналы
+            (KCLD-42U), анкерные постаменты. Каждая позиция — отдельная
+            строка BOM.</li>
           <li><b>Шаблоны</b> — сохраняются в localStorage браузера. Можно
             создавать / дублировать / удалять.</li>
         </ol>

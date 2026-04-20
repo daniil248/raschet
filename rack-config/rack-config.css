@@ -234,6 +234,36 @@
 }
 .rc-btn-mini { padding: 3px 8px; font-size: 11px; }
 
+/* ===== Таблица аксессуаров ===== */
+.rc-acc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.rc-acc-table th,
+.rc-acc-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rs-border-hair);
+  text-align: left;
+  vertical-align: top;
+}
+.rc-acc-table th {
+  background: var(--rs-bg-soft);
+  font-weight: 600;
+  color: var(--rs-fg-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.rc-acc-table code {
+  font-family: var(--rs-font-mono);
+  font-size: 11px;
+  background: var(--rs-bg-soft);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
 /* ===== BOM ===== */
 .rc-bom {
   width: 100%;
