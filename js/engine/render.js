@@ -419,6 +419,35 @@ export function renderProjectRegistry() {
   }
   list.innerHTML = chunks.join('');
 }
+// v0.58.16: полоска систем над карточкой — сегменты цветов по n.systems.
+// Система, совпадающая с видом текущей страницы, толще (4px) и выделена
+// тёмной окантовкой; остальные — 2px. Если у ноды только [electrical] и
+// страница schematic — полоска не рисуется (не захламляем схему).
+function _drawSystemStrip(g, n, w) {
+  const sys = getNodeSystems(n);
+  if (!sys.length) return;
+  const pageKind = getPageKind(getCurrentPage());
+  // Не показываем для дефолтной ситуации (только electrical на schematic)
+  if (pageKind === 'schematic' && sys.length === 1 && sys[0] === 'electrical') return;
+  const segW = Math.max(8, Math.floor(w / sys.length));
+  const startX = 0;
+  for (let i = 0; i < sys.length; i++) {
+    const meta = getSystemMeta(sys[i]);
+    if (!meta) continue;
+    const isActive = Array.isArray(meta.pageKinds) && meta.pageKinds.includes(pageKind);
+    const h = isActive ? 4 : 2;
+    const x = startX + i * segW;
+    const rect = el('rect', {
+      x, y: 0, width: segW - 1, height: h,
+      fill: meta.color,
+      'fill-opacity': isActive ? 1 : 0.55,
+      'pointer-events': 'none',
+    });
+    rect.setAttribute('data-system', meta.id);
+    g.appendChild(rect);
+  }
+}
+
 function _unplacedTypeIcon(n) {
   switch (n.type) {
     case 'source':    return n.sourceSubtype === 'utility' ? '🏙️' : n.sourceSubtype === 'other' ? '⚡' : '🔌';
@@ -1164,6 +1193,11 @@ export function renderNodes() {
     }
     // Верхняя карточка (основная, полностью непрозрачная)
     g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
+
+    // v0.58.16: полоска «Системы» вдоль верхнего края карточки — сегменты
+    // цветов по системам, в которые входит элемент. Система, совпадающая с
+    // видом текущей страницы, выделяется выше (4 px), прочие — 2 px.
+    _drawSystemStrip(g, n, w);
 
     // Обозначение — с учётом префикса зоны («P1.MPB1»)
     const displayTag = effectiveTag(n);
