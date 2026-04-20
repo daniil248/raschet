@@ -341,6 +341,10 @@ export function buildBOM() {
         'load-break-switch': 'Выключатель нагрузки',
         'disconnector': 'Разъединитель',
       };
+      // v0.58.85: ряды стандартов из element-library для мэппинга id
+      const MV_VCB_IN_LIB = [630, 1250, 2000, 2500, 3150, 4000];
+      const _mvUn = Number(n.mvVoltageKV) || 10;  // 10 или 24
+      const _mvUnLib = _mvUn >= 20 ? 24 : 10;     // ближайший к library-seed
       for (const cell of n.mvCells) {
         const brk = cell.breakerType || '—';
         const In = cell.In_A || cell.In || 0;
@@ -356,8 +360,15 @@ export function buildBOM() {
         // 2. Защитный аппарат — отдельной строкой
         const brkLabel = BRK_LABELS[brk];
         if (brkLabel) {
+          // v0.58.85: для VCB id совпадает с breaker-seed → priceable через catalog.
+          // Округляем In вверх к стандартному ряду MV_VCB_IN.
+          let brkId = `mvbrk:${brk}:${In}`;
+          if (brk === 'VCB') {
+            const InLib = MV_VCB_IN_LIB.find(v => v >= In) || MV_VCB_IN_LIB[MV_VCB_IN_LIB.length - 1];
+            brkId = `mv-vcb-${_mvUnLib}kv-${InLib}`;
+          }
           const brkFake = {
-            id: `mvbrk:${brk}:${In}`,
+            id: brkId,
             supplier: n.mvManufacturer || '',
             model: `${brkLabel} ${In}А, ${n.mvVoltageKV || '—'} кВ`,
           };
@@ -366,10 +377,18 @@ export function buildBOM() {
           if (brk === 'fuse-switch') {
             // Стандартный ряд HV fuses (DIN 43625 / IEC 60282-1)
             const HV_FUSE = [2, 4, 6, 10, 16, 20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200];
+            // v0.58.85: ряд HV fuses, представленный в breaker-seed.js
+            const HV_FUSE_LIB_10 = [20, 31.5, 40, 50, 63, 80, 100];
+            const HV_FUSE_LIB_24 = [16, 25, 40, 50];
             const rawFuse = Number(cell.fuseInA) || Number(cell.settings?.fuseIn) || In;
             const fuseIn = HV_FUSE.find(v => v >= rawFuse) || 200;
+            const libSet = _mvUnLib === 24 ? HV_FUSE_LIB_24 : HV_FUSE_LIB_10;
+            const fuseInLib = libSet.find(v => v >= rawFuse);
+            const fuseId = fuseInLib
+              ? `mv-fuse-${_mvUnLib}kv-${fuseInLib}`
+              : `mvfuse:${fuseIn}`;
             const fuseFake = {
-              id: `mvfuse:${fuseIn}`,
+              id: fuseId,
               supplier: '',
               model: `Предохранитель ПК (HV fuse) ${fuseIn}А, ${n.mvVoltageKV || '—'} кВ (IEC 60282-1)`,
             };
