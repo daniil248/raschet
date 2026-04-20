@@ -189,6 +189,11 @@
   border-radius: var(--rs-radius-sm);
   background: var(--rs-bg-soft);
 }
+.rc-pdu-catalog {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--rs-border);
+}
 .rc-pdu-head {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) auto;

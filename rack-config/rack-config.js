@@ -268,6 +268,108 @@ const ACC_CATEGORIES = {
   'cable':    'Кабель-менеджмент',
 };
 
+/* ---------- каталог PDU ----------
+   Готовые модели PDU от APC (Schneider), Rittal, Raritan/Minkels (Legrand),
+   Kehua. Категории:
+     - basic      — без измерений, простая распредколодка
+     - metered    — общий метеринг на вводе (ток/напр./мощность)
+     - monitored  — метеринг по каждой розетке
+     - switched   — дистанционное управление коммутацией розеток
+     - hybrid     — метеринг по розеткам + коммутация
+   При выборе из каталога поля rating / phases / height / outlets
+   подставляются из записи и блокируются (как и kit-каталог для стойки).
+   Для «произвольной» конфигурации оставляем пустой sku — тогда
+   генерируется «Лист требований» (технич. спецификация).               */
+const PDU_CATEGORY = {
+  basic:     'Базовый (без измерений)',
+  metered:   'Metered (метеринг на вводе)',
+  monitored: 'Metered-by-outlet (метеринг по розеткам)',
+  switched:  'Switched (управление коммутацией)',
+  hybrid:    'Monitored+Switched (метеринг+управление)',
+};
+const PDU_CATALOG = [
+  // ── APC (Schneider Electric) NetShelter Rack PDU 2G ──
+  { sku: 'AP7820B',  mfg: 'APC',    category: 'basic',
+    name: 'APC Basic Rack PDU, 1U, 1ф 16A, 8×C13',
+    phases: 1, rating: 16, height: 1,
+    outlets: [{ type:'C13', count:8 }] },
+  { sku: 'AP7921B',  mfg: 'APC',    category: 'switched',
+    name: 'APC Rack PDU 2G Switched, ZeroU, 1ф 16A, 8×C13 + 8×C19',
+    phases: 1, rating: 16, height: 0,
+    outlets: [{ type:'C13', count:8 }, { type:'C19', count:8 }] },
+  { sku: 'AP8959',   mfg: 'APC',    category: 'metered',
+    name: 'APC Rack PDU 2G Metered, ZeroU, 3ф 32A, 21×C13 + 3×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:21 }, { type:'C19', count:3 }] },
+  { sku: 'AP7952',   mfg: 'APC',    category: 'switched',
+    name: 'APC Rack PDU 2G Switched, ZeroU, 3ф 16A, 21×C13 + 3×C19',
+    phases: 3, rating: 16, height: 0,
+    outlets: [{ type:'C13', count:21 }, { type:'C19', count:3 }] },
+  { sku: 'AP7998B',  mfg: 'APC',    category: 'monitored',
+    name: 'APC Rack PDU 2G Metered-by-outlet, ZeroU, 3ф 32A, 36×C13 + 6×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+  { sku: 'APDU9959', mfg: 'APC',    category: 'hybrid',
+    name: 'APC 9000-series Monitored+Switched, ZeroU, 3ф 32A, 36×C13 + 6×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+
+  // ── Rittal PSM / DK PDU ──
+  { sku: 'DK 7856.200', mfg: 'Rittal', category: 'basic',
+    name: 'Rittal PSM Basic, 1U, 1ф 16A, 8×Schuko',
+    phases: 1, rating: 16, height: 1,
+    outlets: [{ type:'Schuko', count:8 }] },
+  { sku: 'DK 7955.310', mfg: 'Rittal', category: 'metered',
+    name: 'Rittal PDU metered, ZeroU, 3ф 16A, 24×C13 + 6×C19',
+    phases: 3, rating: 16, height: 0,
+    outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+  { sku: 'DK 7955.410', mfg: 'Rittal', category: 'switched',
+    name: 'Rittal PDU switched, ZeroU, 3ф 32A, 24×C13 + 6×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+  { sku: 'DK 7955.510', mfg: 'Rittal', category: 'hybrid',
+    name: 'Rittal PDU metered+switched by outlet, ZeroU, 3ф 32A, 24×C13 + 6×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+
+  // ── Raritan / Minkels (Legrand) PX2 / PX3 ──
+  { sku: 'PX2-1464',     mfg: 'Raritan/Minkels', category: 'basic',
+    name: 'Raritan PX2 basic, 1U, 1ф 16A, 8×C13 + 4×Schuko',
+    phases: 1, rating: 16, height: 1,
+    outlets: [{ type:'C13', count:8 }, { type:'Schuko', count:4 }] },
+  { sku: 'PX3-5190',     mfg: 'Raritan/Minkels', category: 'metered',
+    name: 'Raritan PX3 iPDU metered, ZeroU, 3ф 16A, 30×C13',
+    phases: 3, rating: 16, height: 0,
+    outlets: [{ type:'C13', count:30 }] },
+  { sku: 'PX3-1491R',    mfg: 'Raritan/Minkels', category: 'monitored',
+    name: 'Raritan PX3 iPDU metered-by-outlet, ZeroU, 1ф 32A, 20×C13 + 4×C19',
+    phases: 1, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:20 }, { type:'C19', count:4 }] },
+  { sku: 'PX3-5493V',    mfg: 'Raritan/Minkels', category: 'hybrid',
+    name: 'Raritan PX3 iPDU metered+switched, ZeroU, 3ф 32A, 36×C13 + 6×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+
+  // ── Kehua ──
+  { sku: 'KPDU-B1F16-08C13',         mfg: 'Kehua', category: 'basic',
+    name: 'Kehua PDU basic, 1U, 1ф 16A, 8×C13',
+    phases: 1, rating: 16, height: 1,
+    outlets: [{ type:'C13', count:8 }] },
+  { sku: 'KPDU-M3F32-24C13-06C19',   mfg: 'Kehua', category: 'metered',
+    name: 'Kehua PDU metered, ZeroU, 3ф 32A, 24×C13 + 6×C19, LED-дисплей',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+  { sku: 'KPDU-S3F32-24C13-06C19',   mfg: 'Kehua', category: 'switched',
+    name: 'Kehua PDU switched, ZeroU, 3ф 32A, 24×C13 + 6×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+  { sku: 'KPDU-H3F32-36C13-06C19',   mfg: 'Kehua', category: 'hybrid',
+    name: 'Kehua PDU hybrid (метеринг+упр.), ZeroU, 3ф 32A, 36×C13 + 6×C19',
+    phases: 3, rating: 32, height: 0,
+    outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+];
+function pduBySku(sku) { return PDU_CATALOG.find(p => p.sku === sku) || null; }
+
 /* ---------- state ---------- */
 function makeBlankTemplate(name = 'Новый шаблон') {
   return {
@@ -520,9 +622,27 @@ function renderPduList() {
       delete p.outletType;
     }
     if (!p.feed) p.feed = 'A';
+    if (typeof p.sku !== 'string') p.sku = '';
+    const cat = p.sku ? pduBySku(p.sku) : null;
+    const locked = !!cat;
     const row = document.createElement('div');
     row.className = 'rc-pdu-item';
+    // группируем каталог по производителю
+    const byMfg = {};
+    PDU_CATALOG.forEach(c => { (byMfg[c.mfg] = byMfg[c.mfg] || []).push(c); });
+    const catOptions = '<option value="">— произвольная (лист требований) —</option>' +
+      Object.keys(byMfg).map(mfg => `
+        <optgroup label="${escape(mfg)}">
+          ${byMfg[mfg].map(c => `<option value="${escape(c.sku)}" ${c.sku===p.sku?'selected':''}>${escape(c.sku)} — ${escape(PDU_CATEGORY[c.category] || c.category)}</option>`).join('')}
+        </optgroup>`).join('');
     row.innerHTML = `
+      <div class="rc-pdu-catalog">
+        <label class="rc-field" style="flex:1 1 100%" title="Выбор готовой модели PDU из каталога. При выборе поля номинала/фаз/высоты/розеток подставляются и блокируются.">
+          <span>Каталог PDU</span>
+          <select data-k="sku">${catOptions}</select>
+        </label>
+        ${locked ? `<div class="rc-kit-includes"><b>${escape(cat.mfg)} ${escape(cat.sku)}:</b> ${escape(cat.name)} — <i>${escape(PDU_CATEGORY[cat.category] || cat.category)}</i></div>` : `<div class="muted" style="font-size:11px;margin-top:2px">Произвольная конфигурация — будет сгенерирован <b>лист требований</b> (спецификация) для закупки по ТЗ.</div>`}
+      </div>
       <div class="rc-pdu-head">
         <label class="rc-field" title="К какому вводу электрической схемы подключён этот PDU. PDU на одном вводе суммируются, на разных — резервируют друг друга.">
           <span>Ввод</span>
@@ -533,19 +653,19 @@ function renderPduList() {
         <label class="rc-field"><span>Кол-во</span>
           <input type="number" min="1" step="1" data-k="qty" value="${p.qty}">
         </label>
-        <label class="rc-field"><span>Номинал, А</span>
-          <select data-k="rating">
+        <label class="rc-field ${locked?'rc-locked':''}"><span>Номинал, А</span>
+          <select data-k="rating" ${locked?'disabled':''}>
             ${[10,16,20,25,32,40,63].map(a => `<option value="${a}" ${p.rating===a?'selected':''}>${a} A</option>`).join('')}
           </select>
         </label>
-        <label class="rc-field"><span>Фазы</span>
-          <select data-k="phases">
+        <label class="rc-field ${locked?'rc-locked':''}"><span>Фазы</span>
+          <select data-k="phases" ${locked?'disabled':''}>
             <option value="1" ${p.phases===1?'selected':''}>1ф</option>
             <option value="3" ${p.phases===3?'selected':''}>3ф</option>
           </select>
         </label>
-        <label class="rc-field"><span>Высота, U</span>
-          <select data-k="height">
+        <label class="rc-field ${locked?'rc-locked':''}"><span>Высота, U</span>
+          <select data-k="height" ${locked?'disabled':''}>
             <option value="0" ${p.height===0?'selected':''}>0U (верт.)</option>
             <option value="1" ${p.height===1?'selected':''}>1U</option>
             <option value="2" ${p.height===2?'selected':''}>2U</option>
@@ -555,18 +675,18 @@ function renderPduList() {
       </div>
       <div class="rc-pdu-outlets">
         <div class="rc-pdu-outlets-head">
-          <b>Розетки</b>
-          <button type="button" class="rc-btn" data-add-outlet>+ тип</button>
+          <b>Розетки${locked?' <span class="muted" style="font-weight:normal;font-size:11px">(из каталога)</span>':''}</b>
+          <button type="button" class="rc-btn" data-add-outlet ${locked?'disabled':''}>+ тип</button>
         </div>
         <div class="rc-pdu-outlet-rows">
           ${p.outlets.map((o, oi) => `
             <div class="rc-pdu-outlet">
-              <select data-ok="type" data-oi="${oi}">
+              <select data-ok="type" data-oi="${oi}" ${locked?'disabled':''}>
                 ${['C13','C19','C13+C19','Schuko','NEMA 5-15','IEC 60309 16A','IEC 60309 32A','UK BS1363','разъём T-slot','смешанный'].map(x =>
                   `<option value="${x}" ${o.type===x?'selected':''}>${x}</option>`).join('')}
               </select>
-              <input type="number" min="1" step="1" data-ok="count" data-oi="${oi}" value="${o.count}" title="Количество розеток этого типа">
-              <button type="button" class="rc-btn rc-btn-danger rc-btn-mini" data-del-outlet="${oi}" title="Удалить строку">✕</button>
+              <input type="number" min="1" step="1" data-ok="count" data-oi="${oi}" value="${o.count}" title="Количество розеток этого типа" ${locked?'disabled':''}>
+              <button type="button" class="rc-btn rc-btn-danger rc-btn-mini" data-del-outlet="${oi}" title="Удалить строку" ${locked?'disabled':''}>✕</button>
             </div>
           `).join('')}
         </div>
@@ -582,6 +702,17 @@ function renderPduList() {
         else if (k === 'phases' || k === 'height') p[k] = parseInt(v,10)||0;
         else if (k === 'rating') p.rating = parseInt(v,10);
         else if (k === 'feed') p.feed = v;
+        else if (k === 'sku') {
+          p.sku = v;
+          const cat2 = v ? pduBySku(v) : null;
+          if (cat2) {
+            p.rating = cat2.rating;
+            p.phases = cat2.phases;
+            p.height = cat2.height;
+            p.outlets = JSON.parse(JSON.stringify(cat2.outlets));
+          }
+          renderPduList();
+        }
         else p[k] = v;
         recalc();
       });
@@ -714,8 +845,32 @@ function computeBom() {
     const hStr = p.height === 0 ? '0U верт.' : `${p.height}U`;
     const outletsDesc = p.outlets.map(o => `${o.count}×${o.type}`).join(' + ');
     const totalOutlets = p.outlets.reduce((s,o)=>s+(+o.count||0),0);
-    const name = `PDU ${p.phases}ф ${p.rating}A, ${totalOutlets} розеток (${outletsDesc}), ${hStr}`;
-    add(name, p.qty);
+    const cat = p.sku ? pduBySku(p.sku) : null;
+    if (cat) {
+      add(`${cat.name} (${cat.sku})`, p.qty, 'шт',
+          `${cat.mfg} · ${PDU_CATEGORY[cat.category] || cat.category} · ввод ${p.feed}`);
+    } else {
+      const name = `PDU ${p.phases}ф ${p.rating}A, ${totalOutlets} розеток (${outletsDesc}), ${hStr}`;
+      add(name, p.qty, 'шт',
+          `ввод ${p.feed} · произвольная спецификация (см. «Лист требований»)`);
+    }
+  });
+
+  // T-сплиттер / распределитель когда на один ввод приходится 2+ PDU:
+  // в шкаф с 2 вводами ставят 4 PDU (по 2 на ввод), физически один кабель
+  // с ввода расщепляется T-коннектором или клипс-боксом.
+  const byFeedCount = {};
+  t.pdus.forEach(p => {
+    const total = p.qty || 1;
+    byFeedCount[p.feed] = (byFeedCount[p.feed] || 0) + total;
+  });
+  Object.keys(byFeedCount).forEach(f => {
+    if (byFeedCount[f] >= 2) {
+      const maxA = Math.max(...t.pdus.filter(x => x.feed === f).map(x => x.rating || 16));
+      const is3ph = t.pdus.some(x => x.feed === f && x.phases === 3);
+      add(`Распределитель питания (T-сплиттер / клипс-бокс) IEC 60309 ${is3ph?'3ф':'1ф'} ${maxA}A`,
+          1, 'шт', `ввод ${f}: ${byFeedCount[f]} PDU на одном кабеле от основной схемы`);
+    }
   });
 
   // Монтажный крепёж
@@ -940,6 +1095,122 @@ function recalc() {
   renderBom();
 }
 
+/* ---------- лист требований на PDU (technical spec sheet) ----------
+   Для каждого PDU (в первую очередь — произвольной конфигурации без sku)
+   выводим текстовое ТЗ: номинал, фазы, кол-во и типы розеток, требуемый
+   функционал (basic/metered/…), ввод схемы, мин. мощность. Такой лист
+   отправляется поставщику для подбора эквивалента.                    */
+function buildPduRequirements() {
+  const t = current();
+  const lines = [];
+  lines.push(`ЛИСТ ТРЕБОВАНИЙ НА PDU — шкаф «${t.name || '—'}»`);
+  lines.push(`Заявленная мощность стойки: ${t.demandKw} кВт, cos φ ${t.cosphi}`);
+  lines.push(`Режим резервирования: ${
+    t.pduRedundancy === '2N' ? '2N (каждый ввод 100 %)' :
+    t.pduRedundancy === 'n+1' ? 'N+1 (допустим отказ одного ввода)' :
+    'без резервирования'}`);
+  lines.push('');
+  t.pdus.forEach((p, i) => {
+    const cat = p.sku ? pduBySku(p.sku) : null;
+    const kw  = (p.qty || 1) * pduCapacityKw(p);
+    const outletsDesc = p.outlets.map(o => `${o.count}×${o.type}`).join(' + ');
+    const totalOutlets = p.outlets.reduce((s,o)=>s+(+o.count||0),0);
+    lines.push(`── PDU #${i+1} (ввод ${p.feed}, ${p.qty} шт) ──`);
+    if (cat) {
+      lines.push(`  Каталожная позиция: ${cat.mfg} ${cat.sku}`);
+      lines.push(`  Наименование:       ${cat.name}`);
+      lines.push(`  Функционал:         ${PDU_CATEGORY[cat.category] || cat.category}`);
+    } else {
+      lines.push(`  Подбор эквивалента по ТЗ. Аналоги: APC AP79xx/AP89xx,`);
+      lines.push(`  Rittal DK 7955.xxx, Raritan PX3, Kehua KPDU-*.`);
+    }
+    lines.push(`  Номинал:            ${p.rating} A, ${p.phases}-фазный, 230/400 В`);
+    lines.push(`  Высота:             ${p.height === 0 ? '0U (вертикальный, на боковине)' : p.height + 'U (горизонтальный)'}`);
+    lines.push(`  Розетки:            ${totalOutlets} шт. (${outletsDesc})`);
+    lines.push(`  Расчётная ёмкость:  ${kw.toFixed(2)} кВт (при cos φ ${t.cosphi})`);
+    lines.push(`  Входной разъём:     IEC 60309 ${p.phases===3?'3P+N+PE 32A':'P+N+PE 16A'} (уточнить по длине кабеля)`);
+    lines.push(`  Требования к шнуру: 3 м, cord-retention, сертификат по ГОСТ IEC 60884-1`);
+    if (!cat) {
+      lines.push(`  Доп. требования:    укажите желаемый функционал —`);
+      lines.push(`                      basic / metered / monitored / switched / hybrid`);
+    }
+    lines.push('');
+  });
+  // распределители
+  const byFeedCount = {};
+  t.pdus.forEach(p => { byFeedCount[p.feed] = (byFeedCount[p.feed] || 0) + (p.qty || 1); });
+  Object.keys(byFeedCount).forEach(f => {
+    if (byFeedCount[f] >= 2) {
+      lines.push(`⚠ Ввод ${f}: ${byFeedCount[f]} PDU на одном вводе — требуется T-сплиттер`);
+      lines.push(`   или клипс-бокс IEC 60309 на входе в шкаф (один кабель от схемы).`);
+      lines.push('');
+    }
+  });
+  lines.push(`Сгенерировано автоматически rack-config v${typeof APP_VERSION !== 'undefined' ? APP_VERSION : ''}.`);
+  return lines.join('\n');
+}
+function exportPduSpec() {
+  const txt = buildPduRequirements();
+  const t = current();
+  const blob = new Blob(['\uFEFF' + txt], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `pdu-spec-${(t.name||'tpl').replace(/[^\wа-яА-Я\-]/g,'_')}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function showPduSpec() {
+  const txt = buildPduRequirements();
+  // простой модал
+  const back = document.createElement('div');
+  back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--rs-bg-card);color:var(--rs-fg);border-radius:10px;max-width:720px;width:90%;max-height:80vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)';
+  box.innerHTML = `
+    <h3 style="margin:0 0 10px 0">Лист требований на PDU</h3>
+    <pre style="font:12px/1.45 var(--rs-font-mono, monospace);white-space:pre-wrap;background:var(--rs-bg-soft);padding:12px;border-radius:6px;border:1px solid var(--rs-border-soft)">${escape(txt)}</pre>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button type="button" class="rc-btn" id="rc-pdu-spec-copy">📋 Скопировать</button>
+      <button type="button" class="rc-btn" id="rc-pdu-spec-dl">⬇ Скачать .txt</button>
+      <button type="button" class="rc-btn rc-btn-primary" id="rc-pdu-spec-close">Закрыть</button>
+    </div>`;
+  back.appendChild(box);
+  document.body.appendChild(back);
+  box.querySelector('#rc-pdu-spec-close').addEventListener('click', () => back.remove());
+  back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+  box.querySelector('#rc-pdu-spec-dl').addEventListener('click', exportPduSpec);
+  box.querySelector('#rc-pdu-spec-copy').addEventListener('click', () => {
+    navigator.clipboard.writeText(txt).then(() => {
+      const b = box.querySelector('#rc-pdu-spec-copy');
+      b.textContent = '✓ Скопировано';
+      setTimeout(() => { b.textContent = '📋 Скопировать'; }, 1500);
+    });
+  });
+}
+
+/* ---------- сдвоить PDU на каждом вводе ---------- */
+function duplicatePdusPerFeed() {
+  const t = current();
+  // группируем существующие PDU по вводам
+  const byFeed = {};
+  t.pdus.forEach(p => { (byFeed[p.feed] = byFeed[p.feed] || []).push(p); });
+  const feeds = Object.keys(byFeed);
+  if (!feeds.length) { alert('Нет PDU для дублирования.'); return; }
+  if (!confirm(
+    `На каждом из ${feeds.length} вводов (${feeds.join(', ')}) будет добавлена по одной копии PDU — всего +${feeds.length} шт.\n\n` +
+    `Это типовая схема «2 PDU на ввод»: один кабель от основной схемы расщепляется в шкафу через T-сплиттер / клипс-бокс IEC 60309. ` +
+    `В BOM автоматически добавится распределитель на каждый ввод.\n\nПродолжить?`)) return;
+  feeds.forEach(f => {
+    const src = byFeed[f][0];
+    t.pdus.push(JSON.parse(JSON.stringify({
+      ...src,
+      id: 'pdu' + Date.now() + '-' + f,
+      qty: 1,
+    })));
+  });
+  renderPduList(); recalc();
+}
+
 /* ---------- CSV ---------- */
 function exportCsv() {
   const t = current();
@@ -1045,6 +1316,10 @@ function bind() {
   el('rc-new').addEventListener('click', () => addTemplate(null));
   el('rc-dup').addEventListener('click', () => { readForm(); addTemplate(current()); });
   el('rc-del').addEventListener('click', deleteTemplate);
+  const specBtn = el('rc-pdu-spec');
+  if (specBtn) specBtn.addEventListener('click', () => { readForm(); showPduSpec(); });
+  const dupBtn = el('rc-pdu-duplicate');
+  if (dupBtn) dupBtn.addEventListener('click', duplicatePdusPerFeed);
   el('rc-pdu-add').addEventListener('click', () => {
     const t = current();
     // чередуем feed A/B/C/… чтобы новый PDU попадал на следующий ввод
