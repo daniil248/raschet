@@ -700,6 +700,16 @@ function _renderNodesLayout() {
         idx.textContent = `${i + 1}/${count}`;
         g.appendChild(idx);
       }
+      // v0.58.28: бейдж этажа/уровня
+      const floorVal = Number(n.floor) || 0;
+      if (floorVal !== 0) {
+        const fb = el('g', { transform: `translate(${W - 32}, 4)`, style: 'pointer-events:none' });
+        fb.appendChild(el('rect', { x: 0, y: 0, width: 28, height: 16, rx: 3, fill: '#1e40af', 'fill-opacity': 0.9 }));
+        const ft = el('text', { x: 14, y: 12, 'text-anchor': 'middle', 'font-size': 10, fill: '#fff', style: 'font-family:system-ui;font-weight:600' });
+        ft.textContent = floorVal > 0 ? `+${floorVal}` : `${floorVal}`;
+        fb.appendChild(ft);
+        g.appendChild(fb);
+      }
       layerNodes.appendChild(g);
     }
   }

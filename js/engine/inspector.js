@@ -1092,6 +1092,10 @@ export function renderGeometryMmBlock(n) {
       <label style="font-size:11px">Вес, кг<input type="number" min="0" step="0.1" data-geom-prop="weightKg" value="${escAttr(val('weightKg'))}" placeholder="${geom?.weightKg || ''}"></label>
     </div>
     <button type="button" class="full-btn" id="btn-clear-geom-override" style="margin-top:6px;font-size:11px">Очистить override (брать из каталога)</button>
+    <label style="display:block;font-size:11px;margin-top:8px">Этаж / уровень (целое число, 0 по умолчанию)
+      <input type="number" step="1" data-node-floor value="${escAttr(Number.isFinite(Number(n.floor)) ? Number(n.floor) : 0)}" style="width:100%;font:inherit;font-size:12px;padding:3px 4px">
+    </label>
+    <div class="muted" style="font-size:10px;margin-top:2px">На одном этаже объекты не могут пересекаться, если один не содержит другой полностью.</div>
     ${renderLayoutColorBlock(n)}
   </div>`;
 }
@@ -1206,6 +1210,16 @@ export function wireGeometryMmBlock(n, root) {
     notifyChange();
     _render();
     renderInspector();
+  });
+  // v0.58.28: этаж/уровень
+  const floorInp = r.querySelector('[data-node-floor]');
+  if (floorInp) floorInp.addEventListener('change', () => {
+    const v = Math.round(Number(floorInp.value) || 0);
+    snapshot('floor:' + n.id);
+    if (v === 0) delete n.floor;
+    else n.floor = v;
+    notifyChange();
+    _render();
   });
 }
 
