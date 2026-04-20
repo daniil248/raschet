@@ -20,41 +20,14 @@
       <!-- =========== Форма (опросник) =========== -->
       <aside class="mdc-form">
         <section class="mdc-section">
-          <h2>1. Геометрия модуля</h2>
+          <h2>1. IT-нагрузка (исходные данные)</h2>
           <label class="mdc-field">
-            <span>Ширина модуля</span>
-            <select id="mdc-width">
-              <option value="2400">2400 мм (узкий)</option>
-              <option value="3000" selected>3000 мм (широкий)</option>
-            </select>
-          </label>
-          <label class="mdc-field">
-            <span>Длина модуля, мм</span>
-            <select id="mdc-length">
-              <option value="6058">6058 (20ft ISO)</option>
-              <option value="9000">9000</option>
-              <option value="12192" selected>12192 (40ft ISO)</option>
-              <option value="15000">15000</option>
-            </select>
-          </label>
-          <label class="mdc-check"><input type="checkbox" id="mdc-auto-count" checked> Подбирать количество модулей автоматически</label>
-          <label class="mdc-field">
-            <span>Количество модулей (ручн.)</span>
-            <input type="number" id="mdc-count" value="2" min="1" max="20">
-          </label>
-          <div class="mdc-hint">Модули стыкуются длинными сторонами, образуя общую ширину здания.
-            Высота внутри от фальшпола: <b>2700 мм</b> (фикс.). Все шкафы 600×1200×42U.</div>
-        </section>
-
-        <section class="mdc-section">
-          <h2>2. IT-нагрузка</h2>
-          <label class="mdc-field">
-            <span>Целевая IT-мощность, кВт</span>
-            <input type="number" id="mdc-it-kw" value="600" min="50" max="2000" step="50">
+            <span>Количество стоек, всего</span>
+            <input type="number" id="mdc-total-racks" value="88" min="1" max="500" step="1">
           </label>
           <label class="mdc-field">
             <span>Мощность на стойку, кВт</span>
-            <input type="number" id="mdc-rack-kw" value="30" min="3" max="60" step="1">
+            <input type="number" id="mdc-rack-kw" value="15" min="3" max="60" step="1">
           </label>
           <label class="mdc-field">
             <span>Резервирование</span>
@@ -64,18 +37,15 @@
               <option value="2N">2N (Tier III+)</option>
             </select>
           </label>
+          <div class="mdc-hint">Состав модулей (машзалы 300 кВт / энергоблоки 1600 кВт),
+            количество ИБП Kehua MR33, АКБ S3 и кондиционеров определяется
+            автоматически по IT-нагрузке и резервированию.</div>
         </section>
 
         <section class="mdc-section">
-          <h2>3. ИБП и АКБ</h2>
-          <label class="mdc-field">
-            <span>Серия ИБП</span>
-            <select id="mdc-ups-series">
-              <option value="kehua-mr33-300" selected>Kehua MR33-300 (300 kVA)</option>
-              <option value="kehua-mr33-200">Kehua MR33-200 (200 kVA)</option>
-            </select>
-          </label>
-          <div class="mdc-hint">Батарея: Kehua S3 (600×1200×2000, 200 kVA на 15 мин)</div>
+          <h2>2. ИБП / АКБ</h2>
+          <div class="mdc-hint">ИБП: Kehua MR33-200 / MR33-300 (всегда).<br>
+            АКБ: Kehua S3, 58 кВт·ч на шкаф, 10 шкафов на энергоблок (15 мин).</div>
           <label class="mdc-field">
             <span>Время автономии, мин</span>
             <select id="mdc-autonomy">
@@ -88,16 +58,7 @@
         </section>
 
         <section class="mdc-section">
-          <h2>4. Охлаждение</h2>
-          <label class="mdc-field">
-            <span>Тип CRAC</span>
-            <select id="mdc-crac-type">
-              <option value="inrow-dx" selected>inRow DX (фреон)</option>
-              <option value="inrow-cw">inRow chilled water</option>
-              <option value="perimeter-dx">Периметральный DX</option>
-              <option value="freecooling">Freecooling (дуальный)</option>
-            </select>
-          </label>
+          <h2>3. Охлаждение</h2>
           <label class="mdc-field">
             <span>Температурный класс (ASHRAE)</span>
             <select id="mdc-ashrae">
@@ -106,13 +67,21 @@
               <option value="A3">A3 (5–40 °C)</option>
             </select>
           </label>
+          <div class="mdc-hint">inRow-ACU 65 кВт, 10 шт на машзал 300 кВт (N+1).
+            Габарит 600×1200×42U как у стоек.</div>
+        </section>
+
+        <section class="mdc-section">
+          <h2>4. Внешние блоки</h2>
+          <label class="mdc-check"><input type="checkbox" id="mdc-with-tp" checked> Трансформаторная подстанция 10/0.4</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-with-dgu" checked> Дизель-генераторные установки (ДГУ)</label>
         </section>
 
         <section class="mdc-section">
           <h2>5. Слаботочные системы</h2>
           <label class="mdc-check"><input type="checkbox" id="mdc-scs" checked> СКС (патч-панели + коммутация)</label>
           <label class="mdc-check"><input type="checkbox" id="mdc-skud" checked> СКУД на вход</label>
-          <label class="mdc-check"><input type="checkbox" id="mdc-video" checked> Видеонаблюдение (2 камеры/модуль)</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-video" checked> Видеонаблюдение</label>
           <label class="mdc-check"><input type="checkbox" id="mdc-fire" checked> Пожарка (газовое пожаротушение)</label>
           <label class="mdc-check"><input type="checkbox" id="mdc-leak"> Контроль протечек</label>
         </section>
@@ -126,7 +95,7 @@
       <main class="mdc-view">
         <div class="mdc-summary" id="mdc-summary"></div>
         <div class="mdc-plan-head">
-          <h3>План модуля (top-view)</h3>
+          <h3>План площадки (top-view)</h3>
           <div class="mdc-plan-legend">
             <span><i class="lg-srv"></i>Серверные стойки</span>
             <span><i class="lg-ups"></i>ИБП + АКБ</span>
