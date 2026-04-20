@@ -1371,14 +1371,15 @@ export function renderStats() {
   //   Это верхняя оценка: все потребители включены одновременно.
   // * «Общая мощность ист. питания» (ex «Источников») — Σ capacity включённых
   //   источников/генераторов. Это общая (номинальная) установленная мощность.
-  // * «Доступно (с резервом)» — Σ capacity только НЕ-резервных источников.
-  //   Резервные (n.isStandby) исключаются из суммы. Это реальная мощность
-  //   в нормальном режиме, без учёта подменного генератора / второго вводa.
-  // * «Потребляется» убрано как некорректное (sum(_loadKw) по источникам
-  //   даёт двойной учёт потребителей при N+1 резерве).
-  let totalDemand = 0, totalCap = 0, availCap = 0;
-  let standbyCount = 0;
+  // * «Доступно (N-1)» — (Phase 1.20.45) tiered-redundancy модель:
+  //   в каждой группе redundancyGroup из основных (не backup/standby)
+  //   источников вычитается макс. ёмкость (N-1), backup и standby
+  //   не суммируются. Это реальная доступная мощность в нормальном режиме.
+  let totalDemand = 0, totalCap = 0;
+  let standbyCount = 0, backupCount = 0;
   let unpoweredCount = 0, overloadCount = 0;
+  const groups = new Map(); // groupKey → [cap]
+  const singletons = [];
   for (const n of state.nodes.values()) {
     if (n.type === 'consumer') {
       const per = Number(n.demandKw) || 0;
@@ -1391,17 +1392,39 @@ export function renderStats() {
         const cap = Number(n.capacityKw) || 0;
         totalCap += cap;
         if (n.isStandby) standbyCount++;
-        else availCap += cap;
+        else if (n.isBackup) backupCount++;
+        else {
+          const grp = (typeof n.redundancyGroup === 'string' && n.redundancyGroup.trim()) ? n.redundancyGroup.trim() : null;
+          if (grp) {
+            if (!groups.has(grp)) groups.set(grp, []);
+            groups.get(grp).push(cap);
+          } else singletons.push(cap);
+        }
       }
       if (n._overload) overloadCount++;
     }
   }
+  let availCap = 0;
+  for (const arr of groups.values()) {
+    if (arr.length >= 2) {
+      const s = arr.reduce((a, b) => a + b, 0);
+      const mx = Math.max(...arr);
+      availCap += (s - mx);
+    } else {
+      availCap += arr.reduce((a, b) => a + b, 0);
+    }
+  }
+  availCap += singletons.reduce((a, b) => a + b, 0);
   const rows = [];
   rows.push(`<div class="row"><span>Запрос</span><span>${fmt(totalDemand)} kW</span></div>`);
   rows.push(`<div class="row" title="Сумма ёмкости всех источников и генераторов"><span>Общая мощность ист. питания</span><span>${fmt(totalCap)} kW</span></div>`);
-  if (standbyCount > 0) {
+  if (standbyCount > 0 || backupCount > 0 || availCap !== totalCap) {
     const availOk = availCap >= totalDemand;
-    rows.push(`<div class="row ${availOk ? 'ok' : 'warn'}" title="Без ${standbyCount} резервн. источн."><span>Доступно (с резервом)</span><span>${fmt(availCap)} kW</span></div>`);
+    const extras = [];
+    if (backupCount > 0) extras.push(`backup ${backupCount}`);
+    if (standbyCount > 0) extras.push(`резерв ${standbyCount}`);
+    const title = 'N-1 в группах' + (extras.length ? ' · ' + extras.join(', ') : '');
+    rows.push(`<div class="row ${availOk ? 'ok' : 'warn'}" title="${title}"><span>Доступно (N-1)</span><span>${fmt(availCap)} kW</span></div>`);
   }
   if (unpoweredCount) rows.push(`<div class="row warn"><span>Без питания</span><span>${unpoweredCount}</span></div>`);
   if (overloadCount)  rows.push(`<div class="row warn"><span>Перегруз</span><span>${overloadCount}</span></div>`);

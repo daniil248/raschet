@@ -692,6 +692,42 @@
   * 🗄 N · ⚡ M · 🔌 K · 💡 L — счётчики (НКУ / РУ СН / кабели / потребители)
   Обновляется в onChange subscription + при загрузке. Backdrop-blur
   для читаемости поверх canvas.
+- **1.20.46 (v0.57.21)** — FIX: многосекционный щит-оболочка ошибочно
+  помечался «Щит без входящей линии». Причина: orphan-check искал
+  входящие connections только на самом контейнере, но в
+  `switchMode='sectioned'` питание подаётся на дочерние секции
+  (n.sectionIds). Исправлено в обоих местах (project-issues modal и
+  CSV-export проверок): если у контейнера нет прямого входа, но
+  хотя бы одна секция имеет входящую линию — считаем щит запитанным.
+  Файл: js/main.js (orphan-check в renderProjectIssuesModal и
+  exportProjectIssuesCsv).
+- **1.20.45 (v0.57.20)** — трёхуровневая модель резервирования источников
+  (tiered redundancy). Причина: реальная архитектура энергоснабжения
+  имеет несколько тиров — напр. 2 трансформатора взаимно резервируют
+  друг друга (N-1), 2 ДГУ резервируют трансформаторы, 1 подменный ДГУ
+  резервирует ДГУ; реальная доступная мощность ≈ 1 трансформатор, а
+  не сумма всех источников.
+  Добавлены свойства узла source/generator:
+  - `redundancyGroup` (string) — группа взаимного резерва (напр. «T»,
+    «DGU»). Внутри группы из ≥2 источников применяется правило N-1
+    (сумма − max).
+  - `isBackup` (bool) — резервный тир (backup). Не участвует в
+    доступной мощности (другой физический тир, не штатный режим).
+  - `isStandby` (bool) — холодный подмен (standby). Уже был, смысл
+    сохранён.
+  Инспектор источника: 3 контрола вместо одного чекбокса (текстовое
+  поле «Группа резерва» + 2 чекбокса «Резервный тир» / «Подменный»).
+  Equipment Table: колонка «Тир» с select primary/backup/standby
+  вместо чекбокса. CSV экспорт — «основной» / «backup» / «standby».
+  Главный helper: `_computeSourceCapacity(S)` в js/main.js — группирует
+  primaries по redundancyGroup, применяет N-1, затем добавляет
+  singletons; backup+standby в availCap не входят. Использован в
+  Dashboard, status-bar, project-issues modal. Для engine/render.js
+  renderStats — аналогичная логика встроена локально.
+  Файлы: js/engine/inspector.js (3 контрола + handlers), js/main.js
+  (_computeSourceCapacity, _updateProjectStatusBar, renderEquipmentTable
+  ,CSV), js/engine/render.js (renderStats), js/engine/constants.js
+  (APP_VERSION).
 - **1.20.44 (v0.57.19)** — FIX: разные сечения у симметричных линий
   с одинаковым per-line током. Баг в js/engine/recalc.js:1224 —
   подсчёт цепей в канале для K_group считал каждую параллельную

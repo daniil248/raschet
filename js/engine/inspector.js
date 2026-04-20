@@ -496,16 +496,32 @@ export function renderInspectorNode(n) {
       voltInfo +
       iecBlock +
       `</div>`);
-    // Phase 1.20.39: флаг «Резервный» — источник/генератор не учитывается
-    // в «доступной мощности» (availCap). Используется для подменных ДГУ,
-    // второго ввода, трансформаторов в холодном резерве и т.п.
+    // Phase 1.20.39 / 1.20.45: модель резервирования.
+    //   • redundancyGroup (строка) — взаимный резерв внутри группы:
+    //     «каждый может покрыть нагрузку» → availCap_группы = sum − max.
+    //     Пример: 2 трансформатора в группе «T» → avail = мощность одного.
+    //   • isBackup — резервный тир (ДГУ при отказе сети): не считается
+    //     в нормальной availCap, участвует только в N-1-анализе.
+    //   • isStandby — холодный подмен (подменный ДГУ внутри тира):
+    //     не считается нигде, кроме как «резерв max(standbyCaps)» в N-1.
     h.push(`<div class="inspector-section" style="padding:6px 0">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-        <input type="checkbox" id="src-is-standby"${n.isStandby ? ' checked' : ''} style="margin:0">
-        <span>Резервный (подменный)</span>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-size:12px;color:#666">Группа резерва:</span>
+        <input type="text" id="src-redundancy-group" value="${n.redundancyGroup ? String(n.redundancyGroup).replace(/"/g, '&quot;') : ''}" placeholder="напр. T, DGU" style="flex:1;padding:2px 6px;font-size:12px;border:1px solid #ccc;border-radius:3px" title="Участники одной группы взаимно резервируют друг друга (N-1)">
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-top:6px">
+        <input type="checkbox" id="src-is-backup"${n.isBackup ? ' checked' : ''} style="margin:0">
+        <span>Резервный тир (backup)</span>
       </label>
       <div class="muted" style="font-size:10px;margin-top:2px;line-height:1.4">
-        Не учитывается в «доступной мощности». Для подменного ДГУ, холодного резерва, второго ввода.
+        Не участвует в нормальной работе. Например, ДГУ при отказе городской сети.
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-top:6px">
+        <input type="checkbox" id="src-is-standby"${n.isStandby ? ' checked' : ''} style="margin:0">
+        <span>Подменный (cold standby)</span>
+      </label>
+      <div class="muted" style="font-size:10px;margin-top:2px;line-height:1.4">
+        Подменяет любой отказавший источник своего тира. Пример: +1 ДГУ к двум рабочим.
       </div>
     </div>`);
     h.push(sourceStatusBlock(n));
@@ -988,11 +1004,29 @@ export function wireInspectorInputs(n) {
   if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
   const impBtn = document.getElementById('btn-open-impedance');
   if (impBtn) impBtn.addEventListener('click', () => openImpedanceModal(n));
-  // Phase 1.20.39: чекбокс «Резервный» для source/generator
+  // Phase 1.20.39 / 1.20.45: модель резервирования источников
   const standbyCb = document.getElementById('src-is-standby');
   if (standbyCb) {
     standbyCb.addEventListener('change', () => {
       n.isStandby = !!standbyCb.checked;
+      snapshot();
+      notifyChange();
+    });
+  }
+  const backupCb = document.getElementById('src-is-backup');
+  if (backupCb) {
+    backupCb.addEventListener('change', () => {
+      n.isBackup = !!backupCb.checked;
+      snapshot();
+      notifyChange();
+    });
+  }
+  const redGrp = document.getElementById('src-redundancy-group');
+  if (redGrp) {
+    redGrp.addEventListener('change', () => {
+      const v = String(redGrp.value || '').trim();
+      if (v) n.redundancyGroup = v;
+      else delete n.redundancyGroup;
       snapshot();
       notifyChange();
     });

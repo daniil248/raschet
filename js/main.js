@@ -1744,7 +1744,7 @@ const _EQUIPMENT_TABLE_COLUMNS = [
   { id: 'load', label: 'P расч, кВт', default: true },
   { id: 'loadPct', label: 'Загрузка', default: true },
   { id: 'ip', label: 'IP', default: true },
-  { id: 'standby', label: 'Резерв', default: true },
+  { id: 'standby', label: 'Тир', default: true },
   { id: 'xnav', label: 'Связано', default: true },
 ];
 let _equipTableVisibility = _loadColumnVisibility('equipment', _EQUIPMENT_TABLE_COLUMNS);
@@ -3011,34 +3011,25 @@ function renderDashboard() {
 
   // Счётчики узлов
   const counts = { source: 0, generator: 0, 'panel-lv': 0, 'panel-mv': 0, ups: 0, consumer: 0 };
-  let totalLoad = 0, totalCap = 0, availCap = 0;
-  let standbyCount = 0;
-  // Phase 1.20.41: дополнительно собираем списки capacity отдельно для
-  // non-standby и standby — для N-1 анализа отказоустойчивости.
-  const nonStandbyCaps = [];
-  const standbyCaps = [];
+  // Phase 1.20.45: используем общий _computeSourceCapacity для
+  // учёта redundancyGroup / isBackup / isStandby.
+  const cap = _computeSourceCapacity(S);
+  const totalLoad = cap.totalLoad;
+  const totalCap = cap.totalCap;
+  const availCap = cap.availCap;
+  const standbyCount = cap.standbyCount;
+  const backupCount = cap.backupCount;
+  const capAfterFail = cap.capAfterFail;
+  const maxNonStandby = cap.maxPrimary;
+  const maxStandby = Math.max(cap.maxBackup, cap.maxStandby);
+  // dummy для обратной совместимости остального кода renderDashboard
+  const nonStandbyCaps = new Array(cap.primaryCount).fill(0);
+  const standbyCaps = new Array(cap.standbyCount).fill(0);
   for (const n of S.nodes.values()) {
     const k = _equipKindOf(n);
     if (k) counts[k] = (counts[k] || 0) + 1;
-    if (n.type === 'consumer') {
-      counts.consumer++;
-      const per = Number(n.demandKw) || 0;
-      const cnt = Math.max(1, Number(n.count) || 1);
-      totalLoad += per * cnt;
-    }
-    if (n.type === 'source' || n.type === 'generator') {
-      const cap = Number(n.capacityKw) || 0;
-      totalCap += cap;
-      if (n.isStandby) { standbyCount++; standbyCaps.push(cap); }
-      else { availCap += cap; nonStandbyCaps.push(cap); }
-    }
+    if (n.type === 'consumer') counts.consumer++;
   }
-  // N-1 анализ: если выходит из строя самый мощный рабочий источник,
-  // хватит ли оставшейся мощности + одного подменного (самого мощного
-  // standby) для покрытия totalLoad?
-  const maxNonStandby = nonStandbyCaps.length ? Math.max(...nonStandbyCaps) : 0;
-  const maxStandby = standbyCaps.length ? Math.max(...standbyCaps) : 0;
-  const capAfterFail = availCap - maxNonStandby + maxStandby;
 
   // Кабельная продукция — суммы по классам / материалам
   const cableStats = { LV: { count: 0, m: 0 }, HV: { count: 0, m: 0 }, DC: { count: 0, m: 0 } };
@@ -3130,14 +3121,21 @@ function renderDashboard() {
         '#1565c0',
         'consumers')}
       ${(() => {
-        // Phase 1.20.39: показываем общую мощность и доступную (с резервом).
+        // Phase 1.20.45: показываем availCap с учётом redundancyGroup /
+        // isBackup / isStandby. Sub-строка описывает модель.
         const availPct = availCap > 0 ? (totalLoad / availCap * 100) : 0;
         const availColor = availPct > 100 ? '#c62828' : availPct > 90 ? '#e65100' : '#2e7d32';
         const availBg = availPct > 100 ? '#ffebee' : availPct > 90 ? '#fff8e1' : '#e8f5e9';
-        if (standbyCount > 0) {
-          return card('Доступно с резервом', fmtN(availCap) + ' кВт',
-            totalLoad > 0 ? `нагрузка ${availPct.toFixed(0)}% от доступной (без ${standbyCount} резерв.)` : `без ${standbyCount} резервн.`,
-            availBg, availColor, 'equipment-sources');
+        if (standbyCount > 0 || backupCount > 0 || availCap !== totalCap) {
+          const parts = [];
+          if (availCap !== totalCap) parts.push(`N-1 в группах = ${fmtN(availCap)} кВт`);
+          if (backupCount > 0) parts.push(`backup ${backupCount}×`);
+          if (standbyCount > 0) parts.push(`standby ${standbyCount}×`);
+          const sub = totalLoad > 0
+            ? `нагрузка ${availPct.toFixed(0)}% · ${parts.join(' · ')}`
+            : parts.join(' · ');
+          return card('Доступно (N-1)', fmtN(availCap) + ' кВт',
+            sub, availBg, availColor, 'equipment-sources');
         }
         return card('Мощность источников', fmtN(totalCap) + ' кВт',
           totalLoad > 0 ? `нагрузка ${(totalLoad / totalCap * 100).toFixed(0)}% от номинала` : 'номинальная сумма',
@@ -3303,6 +3301,13 @@ function exportProjectIssuesCsv() {
     if ((n.type === 'consumer' || (n.type === 'panel' && !n.parentSectionedId && !n.isSection))) {
       let hasInput = false;
       for (const c of S.conns.values()) if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      // Phase 1.20.46: для многосекционного щита достаточно питания ≥1 секции
+      if (!hasInput && n.type === 'panel' && n.switchMode === 'sectioned' && Array.isArray(n.sectionIds) && n.sectionIds.length) {
+        for (const sid of n.sectionIds) {
+          for (const c of S.conns.values()) if (c.to?.nodeId === sid) { hasInput = true; break; }
+          if (hasInput) break;
+        }
+      }
       if (!hasInput) {
         rows.push(['Предупр.', 'Orphan', eff, '—', n.type === 'consumer' ? 'Потребитель не подключён к источнику' : 'Щит без входящей линии', n.type]);
       }
@@ -3398,13 +3403,32 @@ function _countProjectIssues() {
   return { errors: err, warns: wrn };
 }
 
-// Phase 1.20.42: общий расчёт N-1 резерва. Возвращает { applicable, ok,
-// totalLoad, capAfterFail, maxNonStandby, maxStandby } или null.
-function _computeN1(S) {
+// Phase 1.20.45: расширенная модель резервирования.
+//   Каждый source/generator имеет три свойства:
+//     • redundancyGroup (строка) — взаимный резерв в группе (N-1):
+//         availCap_группы = Σ − max(member_cap). 2×2300 → avail=2300.
+//     • isBackup — резервный тир (ДГУ при отказе сети): НЕ считается
+//         в нормальной availCap, но участвует в extended-N1 (может
+//         подменить primary при отказе).
+//     • isStandby — холодный подмен (подменный ДГУ): НЕ считается
+//         нигде, кроме как «резерв» для подмены одного отказавшего
+//         источника своего тира.
+//
+// Возвращает {
+//   totalLoad, totalCap,
+//   availCap,           — нормальная доступная мощность (primary, N-1)
+//   availExplain,       — человекочитаемый разбор
+//   capAfterFail,       — N-1: отказ самого мощного primary
+//   n1Ok, n1Applicable, — флаги для карточки
+//   maxPrimary, maxBackup, maxStandby,
+//   primaryCount, backupCount, standbyCount,
+// }
+function _computeSourceCapacity(S) {
   if (!S) return null;
-  let totalLoad = 0, availCap = 0;
-  const nonStandbyCaps = [];
-  const standbyCaps = [];
+  let totalLoad = 0, totalCap = 0;
+  const primaries = []; // { cap, group, id }
+  const backups = [];
+  const standbys = [];
   for (const n of S.nodes.values()) {
     if (n.type === 'consumer') {
       const per = Number(n.demandKw) || 0;
@@ -3412,15 +3436,100 @@ function _computeN1(S) {
       totalLoad += per * cnt;
     } else if (n.type === 'source' || n.type === 'generator') {
       const cap = Number(n.capacityKw) || 0;
-      if (n.isStandby) standbyCaps.push(cap);
-      else { availCap += cap; nonStandbyCaps.push(cap); }
+      totalCap += cap;
+      const row = { cap, group: (n.redundancyGroup || '').trim(), id: n.id };
+      if (n.isStandby) standbys.push(row);
+      else if (n.isBackup) backups.push(row);
+      else primaries.push(row);
     }
   }
-  const applicable = nonStandbyCaps.length >= 2 || standbyCaps.length > 0;
-  const maxNonStandby = nonStandbyCaps.length ? Math.max(...nonStandbyCaps) : 0;
+
+  // availCap: группируем primaries по redundancyGroup. Для каждой группы
+  // с ≥2 членами применяем правило N-1 (sum − max). Одиночные источники
+  // (или без группы) считаются полностью.
+  const groups = new Map(); // group → list
+  const loose = [];
+  for (const p of primaries) {
+    if (p.group) {
+      if (!groups.has(p.group)) groups.set(p.group, []);
+      groups.get(p.group).push(p);
+    } else loose.push(p);
+  }
+  const explain = [];
+  let availCap = 0;
+  for (const [g, list] of groups) {
+    if (list.length >= 2) {
+      const sum = list.reduce((s, x) => s + x.cap, 0);
+      const maxC = Math.max(...list.map(x => x.cap));
+      availCap += sum - maxC;
+      explain.push(`«${g}» (${list.length}×, N-1): ${(sum - maxC).toFixed(1)} кВт из ${sum.toFixed(1)}`);
+    } else {
+      availCap += list[0].cap;
+      explain.push(`«${g}» (1×): ${list[0].cap.toFixed(1)} кВт`);
+    }
+  }
+  for (const p of loose) {
+    availCap += p.cap;
+    if (primaries.length > 0) explain.push(`(без группы): ${p.cap.toFixed(1)} кВт`);
+  }
+  if (backups.length) {
+    explain.push(`backup-тир (${backups.length}×, не в норме): ${backups.reduce((s, x) => s + x.cap, 0).toFixed(1)} кВт`);
+  }
+  if (standbys.length) {
+    explain.push(`standby (${standbys.length}×, не в норме): ${standbys.reduce((s, x) => s + x.cap, 0).toFixed(1)} кВт`);
+  }
+
+  // N-1 сценарий: отказывает самый мощный primary, компенсируется
+  // сильнейшим standby (если есть, того же тира). availCap уже
+  // учитывает N-1 внутри групп, поэтому базовый N-1 = availCap.
+  // Дополнительно: если primary без группы отказывает — возьмём standby.
+  const primaryCaps = primaries.map(p => p.cap);
+  const maxPrimary = primaryCaps.length ? Math.max(...primaryCaps) : 0;
+  const backupCaps = backups.map(b => b.cap);
+  const maxBackup = backupCaps.length ? Math.max(...backupCaps) : 0;
+  const standbyCaps = standbys.map(s => s.cap);
   const maxStandby = standbyCaps.length ? Math.max(...standbyCaps) : 0;
-  const capAfterFail = availCap - maxNonStandby + maxStandby;
-  return { applicable, ok: capAfterFail >= totalLoad, totalLoad, capAfterFail, maxNonStandby, maxStandby };
+
+  // Extended N-1: отказ самого мощного primary из группы NOT covered
+  // правилом N-1 (одиночный primary). Для одиночных — компенсация
+  // возможна только активацией backup/standby.
+  let capAfterFail = availCap;
+  let n1Applicable = false;
+  // ищем одиночные primary, для которых N-1 не работает внутри группы
+  const loneUncovered = loose.concat(
+    [...groups.values()].filter(l => l.length === 1).flat()
+  );
+  if (loneUncovered.length) {
+    const maxLone = Math.max(...loneUncovered.map(x => x.cap));
+    capAfterFail = availCap - maxLone + Math.max(maxBackup, maxStandby);
+    n1Applicable = true;
+  } else if (groups.size || primaries.length >= 2) {
+    // все primaries в группах с ≥2 → N-1 уже в availCap
+    n1Applicable = true;
+  }
+
+  return {
+    totalLoad, totalCap, availCap, availExplain: explain,
+    capAfterFail, n1Ok: capAfterFail >= totalLoad, n1Applicable,
+    maxPrimary, maxBackup, maxStandby,
+    primaryCount: primaries.length,
+    backupCount: backups.length,
+    standbyCount: standbys.length,
+  };
+}
+
+// Backward-compat wrapper для старого API _computeN1.
+function _computeN1(S) {
+  const r = _computeSourceCapacity(S);
+  if (!r) return null;
+  return {
+    applicable: r.n1Applicable,
+    ok: r.n1Ok,
+    totalLoad: r.totalLoad,
+    capAfterFail: r.capAfterFail,
+    maxNonStandby: r.maxPrimary,
+    maxStandby: Math.max(r.maxBackup, r.maxStandby),
+  };
 }
 
 // Phase 1.20.34: компактный статус-бар над холстом (всегда виден)
@@ -3430,26 +3539,18 @@ function _updateProjectStatusBar() {
   const S = window.Raschet?._state;
   if (!S) { bar.innerHTML = ''; return; }
   let consumers = 0, panels = 0, mvPanels = 0, sources = 0;
-  let totalLoad = 0, totalCap = 0, availCap = 0;
-  let standbyCount = 0;
-  // Phase 1.20.39: totalLoad = Σ demand × count (все потребители одновременно);
-  // availCap = capacity без резервных источников.
+  // Phase 1.20.45: переход на _computeSourceCapacity (tiered redundancy).
   for (const n of S.nodes.values()) {
-    if (n.type === 'consumer') {
-      consumers++;
-      const per = Number(n.demandKw) || 0;
-      const cnt = Math.max(1, Number(n.count) || 1);
-      totalLoad += per * cnt;
-    }
+    if (n.type === 'consumer') consumers++;
     else if (n.type === 'panel') { if (n.isMv) mvPanels++; else panels++; }
-    else if (n.type === 'source' || n.type === 'generator') {
-      sources++;
-      const cap = Number(n.capacityKw) || 0;
-      totalCap += cap;
-      if (n.isStandby) standbyCount++;
-      else availCap += cap;
-    }
+    else if (n.type === 'source' || n.type === 'generator') sources++;
   }
+  const capInfo = _computeSourceCapacity(S);
+  const totalLoad = capInfo.totalLoad;
+  const totalCap = capInfo.totalCap;
+  const availCap = capInfo.availCap;
+  const standbyCount = capInfo.standbyCount;
+  const backupCount = capInfo.backupCount;
   let cables = 0;
   for (const c of S.conns.values()) {
     if ((c._cableSize || c._busbarNom) && !c._utilityInfeed) cables++;
@@ -3457,7 +3558,7 @@ function _updateProjectStatusBar() {
   const { errors, warns } = _countProjectIssues();
   // Phase 1.20.39: % загрузки считаем от availCap (без резервных),
   // чтобы резерв не размывал реальную картину.
-  const capForPct = standbyCount > 0 ? availCap : totalCap;
+  const capForPct = (standbyCount > 0 || backupCount > 0 || availCap !== totalCap) ? availCap : totalCap;
   const loadPct = capForPct > 0 ? (totalLoad / capForPct * 100) : 0;
   const loadColor = loadPct > 100 ? '#c62828' : loadPct > 90 ? '#e65100' : loadPct > 0 ? '#2e7d32' : '#999';
 
@@ -3479,11 +3580,17 @@ function _updateProjectStatusBar() {
     html.push(chip('#2e7d32', 'rgba(232,245,233,0.95)', '✓ OK', 'Проверки пройдены', 'issues'));
   }
   if (totalCap > 0) {
-    const capLabel = standbyCount > 0 ? `${availCap.toFixed(0)} кВт (резерв ${standbyCount})` : `${totalCap.toFixed(0)} кВт`;
+    const tiered = (standbyCount > 0 || backupCount > 0 || availCap !== totalCap);
+    const extras = [];
+    if (backupCount > 0) extras.push(`backup ${backupCount}`);
+    if (standbyCount > 0) extras.push(`резерв ${standbyCount}`);
+    const capLabel = tiered
+      ? `${availCap.toFixed(0)} кВт${extras.length ? ' (' + extras.join(', ') + ')' : ''}`
+      : `${totalCap.toFixed(0)} кВт`;
     html.push(chip(loadColor, 'rgba(255,255,255,0.95)',
       `⚡ ${totalLoad.toFixed(1)} / ${capLabel} <span style="color:${loadColor};font-weight:600">${loadPct.toFixed(0)}%</span>`,
-      standbyCount > 0
-        ? 'Общая нагрузка / доступная мощность (без резервных) · Ctrl+Shift+D'
+      tiered
+        ? 'Нагрузка / доступная мощность (N-1 по группам, без резерв./подмен.) · Ctrl+Shift+D'
         : 'Общая нагрузка / номинал источников · Ctrl+Shift+D', 'dashboard'));
   }
   if (cables || panels || mvPanels || consumers) {
@@ -3638,11 +3745,22 @@ function renderProjectIssues() {
       if (tagMap.has(eff)) duplicateTags.push({ id: n.id, tag: eff, otherId: tagMap.get(eff) });
       else tagMap.set(eff, n.id);
     }
-    // Orphan check: consumer/panel без входящих connections
+    // Orphan check: consumer/panel без входящих connections.
+    // Phase 1.20.46 FIX: для многосекционного щита-оболочки (switchMode=
+    // 'sectioned' + sectionIds) питание подаётся на секции, а не на
+    // контейнер. Достаточно хотя бы одной запитанной секции.
     if (n.type === 'consumer' || (n.type === 'panel' && !n.parentSectionedId)) {
       let hasInput = false;
       for (const c of S.conns.values()) {
         if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      }
+      if (!hasInput && n.type === 'panel' && n.switchMode === 'sectioned' && Array.isArray(n.sectionIds) && n.sectionIds.length) {
+        for (const sid of n.sectionIds) {
+          for (const c of S.conns.values()) {
+            if (c.to?.nodeId === sid) { hasInput = true; break; }
+          }
+          if (hasInput) break;
+        }
       }
       if (!hasInput && !n.isSection) {
         orphans.push({
@@ -4622,7 +4740,7 @@ function renderEquipmentTable() {
         return cap > 0 ? load / cap : 0;
       }
       case 'ip': return n.ipRating || '';
-      case 'standby': return n.isStandby ? 1 : 0;
+      case 'standby': return n.isStandby ? 2 : (n.isBackup ? 1 : 0);
       case 'voltage': {
         const lv = (GLOBAL_voltageLevels())[n.voltageLevelIdx];
         return lv ? Number(lv.vLL) || 0 : 0;
@@ -4668,7 +4786,7 @@ function renderEquipmentTable() {
           ${ifShow('load', sortHdr('load', 'P расч, кВт', 'right'))}
           ${ifShow('loadPct', sortHdr('loadPct', 'Загрузка', 'right', 'min-width:80px'))}
           ${ifShow('ip', sortHdr('ip', 'IP', 'center'))}
-          ${ifShow('standby', sortHdr('standby', 'Резерв', 'center', 'min-width:70px'))}
+          ${ifShow('standby', sortHdr('standby', 'Тир', 'center', 'min-width:90px'))}
           ${ifShow('xnav', '<th style="padding:6px 8px;border-bottom:2px solid #d0d7de;min-width:150px" title="Переход к связанным объектам">Связано</th>')}
         </tr>
       </thead>
@@ -4701,7 +4819,10 @@ function renderEquipmentTable() {
         ${ifShow('loadPct', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:${loadColor};font-weight:${loadPct > 90 ? 600 : 400}">${cap > 0 ? loadPct.toFixed(0) + '%' : '—'}${loadPct > 0 ? `<div style="background:#e1e4e8;height:3px;border-radius:2px;margin-top:2px;overflow:hidden"><div style="width:${Math.min(100, loadPct)}%;height:100%;background:${loadColor}"></div></div>` : ''}</td>`)}
         ${ifShow('ip', `<td style="padding:5px 8px;text-align:center;font-size:11px">${n.ipRating || '—'}</td>`)}
         ${ifShow('standby', (e.kind === 'source' || e.kind === 'generator')
-          ? `<td style="padding:5px 8px;text-align:center" title="Подменный источник — не учитывается в «доступной мощности»"><input type="checkbox" class="et-standby" data-id="${esc(n.id)}"${n.isStandby ? ' checked' : ''} style="margin:0;cursor:pointer"></td>`
+          ? (() => {
+              const tier = n.isStandby ? 'standby' : (n.isBackup ? 'backup' : 'primary');
+              return `<td style="padding:5px 8px;text-align:center" title="Тир: основной (учитывается в N-1), резервный (backup — включается при отказе основных), подменный (standby — холодный резерв)"><select class="et-tier" data-id="${esc(n.id)}" style="font-size:10px;padding:1px 2px;cursor:pointer"><option value="primary"${tier==='primary'?' selected':''}>основн.</option><option value="backup"${tier==='backup'?' selected':''}>backup</option><option value="standby"${tier==='standby'?' selected':''}>standby</option></select></td>`;
+            })()
           : `<td style="padding:5px 8px;text-align:center;color:#ccc">—</td>`)}
         ${ifShow('xnav', `<td style="padding:5px 8px;font-size:10px">${(() => {
           let cableCount = 0, consumerCount = 0;
@@ -4770,17 +4891,19 @@ function renderEquipmentTable() {
       closeModal('modal-equipment-table');
     });
   });
-  // Phase 1.20.43: toggle isStandby inline в equipment table
-  mount.querySelectorAll('.et-standby').forEach(cb => {
-    cb.addEventListener('change', (e) => {
+  // Phase 1.20.45: tier selector inline (primary / backup / standby)
+  mount.querySelectorAll('.et-tier').forEach(sel => {
+    sel.addEventListener('change', (e) => {
       e.stopPropagation();
-      const id = cb.dataset.id;
+      const id = sel.dataset.id;
       const node = S.nodes.get(id);
       if (!node) return;
       if (typeof window.Raschet?.snapshot === 'function') {
-        window.Raschet.snapshot('equip-table:standby:' + id);
+        window.Raschet.snapshot('equip-table:tier:' + id);
       }
-      node.isStandby = !!cb.checked;
+      const v = sel.value;
+      node.isStandby = (v === 'standby');
+      node.isBackup = (v === 'backup');
       if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
       renderEquipmentTable();
     });
@@ -4826,7 +4949,7 @@ function GLOBAL_voltageLevels() {
 function exportEquipmentTableCsv() {
   const S = window.Raschet?._state;
   if (!S) return;
-  const rows = [['Обозначение', 'Тип', 'Имя', 'Модель', 'U, В', 'Входов', 'Выходов', 'Pном, кВт', 'Pрасч, кВт', 'Загрузка, %', 'IP', 'Резерв']];
+  const rows = [['Обозначение', 'Тип', 'Имя', 'Модель', 'U, В', 'Входов', 'Выходов', 'Pном, кВт', 'Pрасч, кВт', 'Загрузка, %', 'IP', 'Тир']];
   for (const n of S.nodes.values()) {
     const kind = _equipKindOf(n);
     if (!kind) continue;
@@ -4848,7 +4971,7 @@ function exportEquipmentTableCsv() {
       load ? load.toFixed(1) : '',
       cap > 0 ? loadPct.toFixed(1) : '',
       n.ipRating || '',
-      (kind === 'source' || kind === 'generator') ? (n.isStandby ? 'Да' : 'Нет') : '',
+      (kind === 'source' || kind === 'generator') ? (n.isStandby ? 'standby' : (n.isBackup ? 'backup' : 'основной')) : '',
     ]);
   }
   const csv = rows.map(row => row.map(cell => {
