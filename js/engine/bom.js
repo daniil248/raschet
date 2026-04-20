@@ -187,12 +187,37 @@ export function buildBOM() {
         pushAgg('Щиты', pn, 1, n.name || n.tag || '');
       }
     }
+
+    // --- Ячейки РУ СН (MV) — детализация VCB/fuse/busCoupler/etc ---
+    // Phase 1.20.47: каждая ячейка из n.mvCells получает отдельную
+    // строку BOM. Ключ агрегации: breakerType + In_A + functionCode
+    // (одинаковые ячейки в разных щитах суммируются по qty).
+    if (kind === 'panel' && n.isMv && Array.isArray(n.mvCells) && n.mvCells.length) {
+      const CELL_LABELS = {
+        'infeed': 'Ввод', 'feeder': 'Отходящая',
+        'transformer-protect': 'Защита ТР', 'busCoupler': 'Секционная',
+        'measurement': 'Измерение', 'earthing': 'Заземление',
+        'metering': 'Учёт',
+      };
+      for (const cell of n.mvCells) {
+        const brk = cell.breakerType || '—';
+        const In = cell.In_A || cell.In || 0;
+        const typeLabel = CELL_LABELS[cell.type] || cell.type || '?';
+        const fake = {
+          id: `mvcell:${cell.type}:${brk}:${In}`,
+          supplier: n.mvManufacturer || '',
+          model: `${typeLabel} · ${brk} · ${In}А`,
+        };
+        pushAgg('Ячейки РУ СН', fake, 1, (n.name || n.tag || '') + (cell.functionCode ? ' / ' + cell.functionCode : ''));
+      }
+    }
   }
 
   // === Преобразуем агрегат в плоские строки в порядке разделов ===
   const sectionOrder = [
     'Трансформаторы',
     'Щиты',
+    'Ячейки РУ СН',
     'ИБП',
     'Фреймы ИБП',
     'Силовые модули ИБП',
