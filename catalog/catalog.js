@@ -15,6 +15,7 @@ import {
   exportLibraryJSON, importLibraryJSON, onLibraryChange,
   ELEMENT_KINDS, isPricableKind,
   getCurrentRole, canEditBuiltin, listBuiltinOverrides, resetBuiltinOverride,
+  exportLocalEdits,
 } from '../shared/element-library.js';
 import { createCableSkuElement } from '../shared/element-schemas.js';
 import { tccBreakerTime, tccSamplePoints } from '../shared/tcc-curves.js';
@@ -199,6 +200,7 @@ function renderElementsTab() {
       <div class="spacer"></div>
       <button id="el-add" class="primary">+ Добавить элемент</button>
       <button id="el-export">Экспорт JSON</button>
+      <button id="el-export-edits" title="Выгрузить локальные правки (overrides + user) для передачи в исходники проекта">📤 Экспорт правок</button>
       <button id="el-role-toggle" style="${roleIsAdmin ? 'background:#b54708;color:#fff;border-color:#b54708' : ''}" title="Переключить режим админа (индикатор роли; правка встроенных сейчас доступна всем)">${roleIsAdmin ? '🔓 Выйти из админа' : '🔒 Режим админа'}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:8px">
@@ -281,6 +283,20 @@ function renderElementsTab() {
   document.getElementById('el-filter-search').oninput = e => { elFilters.search = e.target.value; renderElementsTab(); };
   document.getElementById('el-add').onclick = () => openAddElementModal();
   document.getElementById('el-export').onclick = () => downloadJSON(exportLibraryJSON(), 'element-library.json');
+  const exEditsBtn = document.getElementById('el-export-edits');
+  if (exEditsBtn) exEditsBtn.onclick = () => {
+    const json = exportLocalEdits();
+    const parsed = JSON.parse(json);
+    const ovN = Object.keys(parsed.overrides || {}).length;
+    const usN = (parsed.userElements || []).length;
+    if (!ovN && !usN) {
+      flash('Нет локальных правок для экспорта', 'info');
+      return;
+    }
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    downloadJSON(json, `raschet-library-edits-${ts}.json`);
+    flash(`Экспортировано: ${ovN} правок встроенных + ${usN} пользовательских`, 'success');
+  };
 
   // Role toggle (индикатор для Phase 5; не гейтит правку — role-gate снят в v0.58.73)
   const roleBtn = document.getElementById('el-role-toggle');

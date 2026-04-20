@@ -145,6 +145,22 @@ function _applyOverride(el, overrides) {
 export function listBuiltinOverrides() { return _readOverrides(); }
 
 /**
+ * Экспорт всех локальных правок (builtin-overrides + user-elements) в компактный
+ * JSON, пригодный для передачи разработчику и последующего мержа в seed-файлы.
+ * Формат:
+ *   { version, exportedAt, overrides: {...}, userElements: [...] }
+ */
+export function exportLocalEdits() {
+  return JSON.stringify({
+    version: 1,
+    kind: 'raschet-library-edits',
+    exportedAt: Date.now(),
+    overrides: _readOverrides(),
+    userElements: _read(),
+  }, null, 2);
+}
+
+/**
  * Сбросить override для builtin-элемента (вернуть к исходному seed).
  * Только для admin-роли. Возвращает true если что-то было удалено.
  */
