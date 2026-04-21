@@ -175,10 +175,125 @@ function renderCycle() {
   renderNodes();
   renderEdges();
 }
+/* Автоматическая раскладка: узлам без cx/cy проставляем координаты сеткой.
+   Шаг 220×260 — с запасом под высоту карточки (~200-220px при фиксированной
+   ширине 200px и переносе подписей). */
+const NODE_W = 200, NODE_H = 220, GRID_X = 220, GRID_Y = 260;
+function ensurePointLayout() {
+  S.points.forEach((p, i) => {
+    if (!Number.isFinite(+p.cx)) p.cx = 20 + (i % 6) * GRID_X;
+    if (!Number.isFinite(+p.cy)) p.cy = 20 + Math.floor(i / 6) * GRID_Y;
+  });
+}
 function renderNodes() {
   const host = $('psy-cycle');
+  if (!host) return;
   host.innerHTML = '';
-  S.points.forEach((p, i) => host.appendChild(pointCard(p, i)));
+  ensurePointLayout();
+  S.points.forEach((p, i) => {
+    const card = pointCard(p, i);
+    card.style.left = (p.cx | 0) + 'px';
+    card.style.top  = (p.cy | 0) + 'px';
+    host.appendChild(card);
+    attachPointDrag(card, p);
+  });
+  renderCanvasLinks();
+}
+
+/* Перетаскивание узла за заголовок. Во время drag обновляем p.cx/cy,
+   двигаем карточку и перерисовываем SVG-связи. В конце — сохраняем цикл. */
+function attachPointDrag(card, p) {
+  const hdr = card.querySelector('.psy-point-header');
+  if (!hdr) return;
+  let moving = false, sx=0, sy=0, ox=0, oy=0;
+  hdr.addEventListener('mousedown', (e) => {
+    // Не мешаем клику по крестику удаления и по самому input
+    if (e.target.closest('button')) return;
+    if (e.target.tagName === 'INPUT') return;
+    moving = true;
+    sx = e.clientX; sy = e.clientY;
+    ox = +p.cx || 0; oy = +p.cy || 0;
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  const onMove = (e) => {
+    if (!moving) return;
+    p.cx = Math.max(0, ox + (e.clientX - sx));
+    p.cy = Math.max(0, oy + (e.clientY - sy));
+    card.style.left = (p.cx|0) + 'px';
+    card.style.top  = (p.cy|0) + 'px';
+    renderCanvasLinks();
+  };
+  const onUp = () => {
+    if (!moving) return;
+    moving = false;
+    document.body.style.userSelect = '';
+    saveCycle();
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+/* SVG-рендер связей между узлами по S.procs (fromIdx → toIdx).
+   Линия от центра нижней стороны источника к центру верхней стороны
+   цели с цветом процесса. Для M/R — дополнительная пунктирная линия
+   к ref-узлу. */
+function renderCanvasLinks() {
+  const svg = $('psy-canvas-links');
+  if (!svg) return;
+  let w = 0, h = 0;
+  S.points.forEach(p => {
+    w = Math.max(w, (+p.cx || 0) + NODE_W + 40);
+    h = Math.max(h, (+p.cy || 0) + NODE_H + 40);
+  });
+  w = Math.max(w, 2400); h = Math.max(h, 1200);
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  const parent = svg.parentElement;
+  if (parent) {
+    parent.style.width  = w + 'px';
+    parent.style.height = h + 'px';
+  }
+  const centerBottom = (p) => ({ x: (+p.cx||0) + NODE_W/2, y: (+p.cy||0) + NODE_H });
+  const centerTop    = (p) => ({ x: (+p.cx||0) + NODE_W/2, y: (+p.cy||0) });
+  const centerMid    = (p) => ({ x: (+p.cx||0) + NODE_W/2, y: (+p.cy||0) + NODE_H/2 });
+  // Defs: маркеры-стрелки по типам
+  const arrDefs = Object.entries(PROC_COLOR).map(([k, col]) => `
+    <marker id="cv-${k}" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="${col}"/>
+    </marker>`).join('');
+  let out = `<defs>${arrDefs}</defs>`;
+  S.procs.forEach((pr, i) => {
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
+    const a = S.points[fromI], b = S.points[toI];
+    if (!a || !b || fromI === toI) return;
+    const color = PROC_COLOR[pr.type] || '#607080';
+    const p1 = centerBottom(a), p2 = centerTop(b);
+    // Кривая Безье — плавная линия
+    const midY = (p1.y + p2.y) / 2;
+    const d = `M ${p1.x} ${p1.y} C ${p1.x} ${midY}, ${p2.x} ${midY}, ${p2.x} ${p2.y}`;
+    out += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2"
+             marker-end="url(#cv-${pr.type||'X'})"/>`;
+    // Бейдж типа процесса на середине кривой
+    const bx = (p1.x + p2.x) / 2, by = midY;
+    out += `<g transform="translate(${bx},${by})">
+      <circle r="10" fill="#fff" stroke="${color}" stroke-width="1.5"/>
+      <text y="3.5" text-anchor="middle" font-size="11" font-weight="700" fill="${color}">${pr.type||'X'}</text>
+    </g>`;
+    // Пунктир к ref-узлу для M/R (граф-граница, не основной поток)
+    const refKey = pr.type === 'M' ? pr.mixWith : (pr.type === 'R' ? pr.recupWith : null);
+    if (refKey != null) {
+      const r = S.points[parseInt(refKey, 10)];
+      if (r) {
+        const rc = centerMid(r), bc = centerMid(b);
+        out += `<line x1="${rc.x}" y1="${rc.y}" x2="${bc.x}" y2="${bc.y}"
+                stroke="${color}" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.55"/>`;
+      }
+    }
+  });
+  svg.innerHTML = out;
 }
 function renderEdges() {
   const host = $('psy-edges');
@@ -1307,35 +1422,17 @@ const DEMOS = {
       const now = performance.now();
       S.vBase = 50000;
       S.points = [
-        // 1. Улица (-35 °C): фиксированный анкер. V=300 м³/ч — свежий воздух
-        //    по норме (СП 60 / ASHRAE 62.1 ≈ 30 м³/ч на человека ×
-        //    10 человек обслуживающего персонала + небольшой поддув).
-        { name:'Улица (зима -35 °C)',   nameUser:true, t:-35, tUser:true, tTs:now,   rh:80, rhUser:true, rhTs:now,   x:'', h:'', V:300 },
-        // 2. После рекуператора (приточная сторона): подогрев от вытяжки,
-        //    d=const. Температура вычисляется автоматически из R-ребра.
-        { name:'После рекуп. (приток)', nameUser:true, t:'', rh:'', x:'', h:'', V:'' },
-        // 3. После догревного калорифера: анкер +18 °C (чтобы не подавать
-        //    холод в смешение). d наследуется от (2), φ снизится.
-        { name:'После догрева (+18 °C)', nameUser:true, t:18, tUser:true, tTs:now+2, rh:'', x:'', h:'', V:'' },
-        // 4. Приток в зал: смесь свежего (300 м³/ч) и рециркуляции (≈49700
-        //    м³/ч из холодного коридора). α=0.006 — доля свежего по массе.
-        //    V=50000 — суммарный расход через CRAC.
-        { name:'Приток в зал (смесь)',   nameUser:true, t:'', rh:'', x:'', h:'', V:50000 },
-        // 5. Горячий коридор (выход из стоек): 200 кВт IT + ~1 кВт/чел ×
-        //    ~10 человек ≈ 210 кВт суммарно. Явная/латентная доля ~95/5%
-        //    (люди потеют, но IT полностью сенсибельно). ΔT ≈ 12 °C.
-        //    Анкер: +35 °C, φ ≈ 25% (слегка подсох т.к. приток был сухим).
-        { name:'Горячий коридор (+35 °C)', nameUser:true, t:35, tUser:true, tTs:now+4, rh:25, rhUser:true, rhTs:now+4, x:'', h:'', V:'' },
-        // 6. Холодный коридор / после CRAC: анкер +22 °C, 50% φ (ASHRAE
-        //    рекомендованное окно A1: 18–27 °C, 20–80% RH; нормальная точка).
-        //    CRAC: охлаждение с осушением до уставки.
-        { name:'После CRAC (+22 °C, 50%)', nameUser:true, t:22, tUser:true, tTs:now+5, rh:50, rhUser:true, rhTs:now+5, x:'', h:'', V:'' },
-        // 7. Вытяжка: 300 м³/ч самотёком (по перепаду давления) — ровно
-        //    столько же уходит, сколько свежего поступило. Забираем из хол.
-        //    коридора (наиболее «чистый» воздух).
-        { name:'Вытяжка (300 м³/ч)',     nameUser:true, t:'', rh:'', x:'', h:'', V:300 },
-        // 8. Наружу после рекуператора: отдали тепло приточке, t падает.
-        { name:'Наружу после рекуп.',     nameUser:true, t:'', rh:'', x:'', h:'', V:'' },
+        // Раскладка: приточный тракт в верхнем ряду, вытяжной — в нижнем,
+        // машзал — правый край. Получается П-образная схема движения воздуха.
+        // cx/cy в px на полотне psy-canvas.
+        { name:'Улица (зима -35 °C)',   nameUser:true, t:-35, tUser:true, tTs:now,   rh:80, rhUser:true, rhTs:now,   x:'', h:'', V:300, cx:20,   cy:20  },
+        { name:'После рекуп. (приток)', nameUser:true, t:'', rh:'', x:'', h:'', V:'',                                                                       cx:260,  cy:20  },
+        { name:'После догрева (+18 °C)', nameUser:true, t:18, tUser:true, tTs:now+2, rh:'', x:'', h:'', V:'',                                              cx:500,  cy:20  },
+        { name:'Приток в зал (смесь)',   nameUser:true, t:'', rh:'', x:'', h:'', V:50000,                                                                   cx:740,  cy:20  },
+        { name:'Горячий коридор (+35)',  nameUser:true, t:35, tUser:true, tTs:now+4, rh:25, rhUser:true, rhTs:now+4, x:'', h:'', V:'',                      cx:980,  cy:150 },
+        { name:'После CRAC (+22, 50%)',  nameUser:true, t:22, tUser:true, tTs:now+5, rh:50, rhUser:true, rhTs:now+5, x:'', h:'', V:'',                      cx:740,  cy:300 },
+        { name:'Вытяжка (300 м³/ч)',     nameUser:true, t:'', rh:'', x:'', h:'', V:300,                                                                     cx:500,  cy:300 },
+        { name:'Наружу после рекуп.',     nameUser:true, t:'', rh:'', x:'', h:'', V:'',                                                                      cx:20,   cy:300 },
       ];
       S.procs = [
         // 0→1 R: рекуператор, приточная сторона греется от вытяжной (ref=6).

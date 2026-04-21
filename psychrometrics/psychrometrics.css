@@ -21,9 +21,62 @@
 .psy-inline { max-width: 160px; }
 
 /* Карточки цикла */
-.psy-cycle {
-  display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+/* ПОЛОТНО с узлами (граф-canvas в стиле конструктора схем).
+   Узлы позиционируются absolute по p.cx/p.cy; связи — SVG-слой позади. */
+.psy-canvas {
+  position: relative;
+  width: 100%;
+  height: 640px;
+  background: #fafbfc;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  overflow: auto;
 }
+.psy-canvas-inner {
+  position: relative;
+  width: 2400px;
+  height: 1200px;
+  background-image:
+    linear-gradient(to right,  #e3e8ee 1px, transparent 1px),
+    linear-gradient(to bottom, #e3e8ee 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.psy-canvas-links {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+.psy-cycle {
+  position: relative;
+  width: 100%; height: 100%;
+}
+.psy-cycle .psy-point {
+  position: absolute;
+  width: 200px;                /* ФИКСИРОВАННАЯ ШИРИНА */
+  box-sizing: border-box;
+  z-index: 2;
+}
+.psy-cycle .psy-point label,
+.psy-cycle .psy-point .pt-hint,
+.psy-cycle .psy-point .pt-computed {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  min-width: 0;
+}
+.psy-cycle .psy-point input[type="text"],
+.psy-cycle .psy-point input[type="number"] {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.psy-cycle .psy-point .psy-point-header {
+  cursor: grab;
+  user-select: none;
+}
+.psy-cycle .psy-point .psy-point-header:active { cursor: grabbing; }
+
 .psy-edges {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
 }
