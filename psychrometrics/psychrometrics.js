@@ -23,6 +23,9 @@ const S = {
   rhMax: 100,         // %
   tEvap: 15,          // °C
   vBase: 10000,       // м³/ч
+  tMinChart: -15,     // °C — нижняя граница оси t на диаграмме
+  tMaxChart: 50,      // °C — верхняя граница оси t
+  dMaxChart: 30,      // г/кг — правая граница оси d
   showRuNames: (() => { try { return localStorage.getItem('psy.showRuNames') === '1'; } catch { return false; } })(),
   points: [
     { name: 'Наружный (зима)', nameUser: true, t: -20, tUser: true, tTs: 1, rh: 85, rhUser: true, rhTs: 1, x: '', h: '', V: '' },
@@ -162,7 +165,7 @@ function pointCard(p, i) {
   };
   const hint = i === 0
     ? `<span class="pt-hint">Начало цикла: задайте любые 2 из {t, φ, d, h}.</span>`
-    : `<span class="pt-hint">Задайте любую из {t, φ, d, h} — остальное посчитается от процесса ${i}→${i+1}.</span>`;
+    : `<span class="pt-hint">Задайте любую из {t, φ, d, h} — остальное посчитается от процесса ${i}→${i+1}. Либо задайте Q или q<sub>w</sub> на стрелке выше.</span>`;
   el.innerHTML = `
     <div class="psy-point-header">
       <span>Точка ${i+1}</span>
@@ -261,7 +264,9 @@ function refreshComputedInCards() {
     card.classList.toggle('invalid', !!(st && st.RH > S.rhMax + 0.1));
     if (!computed) return;
     if (!st) {
-      computed.innerHTML = `<span style="color:#c62828">Нет данных: укажите t и φ (или d).</span>`;
+      computed.innerHTML = i === 0
+        ? `<span style="color:#c62828">Начало цикла: задайте любые 2 из (t, φ, d, h).</span>`
+        : `<span style="color:#c62828">Задайте любую из (t, φ, d, h) — остальное посчитается от процесса ${i}→${i+1}. Либо задайте Q или q<sub>w</sub> на стрелке процесса выше.</span>`;
     } else {
       computed.innerHTML =
         `<b>d</b>=${(st.W*1000).toFixed(2)} г/кг · <b>h</b>=${st.h.toFixed(2)} кДж/кг<br>` +
@@ -327,6 +332,11 @@ function readInputs() {
   S.rhMax  = nNum($('psy-rhmax').value, 100);
   S.tEvap  = nNum($('psy-tevap').value, 15);
   S.vBase  = nNum($('psy-vbase').value, 10000);
+  const tmin = nNum($('psy-tmin-chart')?.value, -15);
+  const tmax = nNum($('psy-tmax-chart')?.value, 50);
+  const dmax = nNum($('psy-dmax-chart')?.value, 30);
+  if (tmin < tmax - 5) { S.tMinChart = tmin; S.tMaxChart = tmax; }
+  if (dmax >= 5)       { S.dMaxChart = dmax; }
 
   $$('#psy-cycle [data-col]').forEach(el => {
     const col = el.dataset.col;
@@ -804,7 +814,11 @@ function escHtml(s) {
 let _chartCtx = null;  // {X, Y, opts} последнего рендера — для crosshair
 function renderChart(sts) {
   const host = $('psy-chart');
-  const { svg, X, Y, opts } = render(null, { P: S.P });
+  const { svg, X, Y, opts } = render(null, {
+    P: S.P,
+    T_min: S.tMinChart, T_max: S.tMaxChart,
+    W_max: S.dMaxChart / 1000,
+  });
   const ctx = { X, Y };
   _chartCtx = { X, Y, opts };
   let overlay = arrowDefs();
@@ -1065,6 +1079,9 @@ function syncTopInputs() {
   $('psy-rhmax').value  = S.rhMax;
   $('psy-tevap').value  = S.tEvap;
   $('psy-vbase').value  = S.vBase;
+  if ($('psy-tmin-chart')) $('psy-tmin-chart').value = S.tMinChart;
+  if ($('psy-tmax-chart')) $('psy-tmax-chart').value = S.tMaxChart;
+  if ($('psy-dmax-chart')) $('psy-dmax-chart').value = S.dMaxChart;
 }
 
 /* ========================================================================
@@ -1097,6 +1114,7 @@ function saveCycle() {
       const payload = {
         v: 1,
         alt: S.alt, P: S.P, rhMax: S.rhMax, tEvap: S.tEvap, vBase: S.vBase,
+        tMinChart: S.tMinChart, tMaxChart: S.tMaxChart, dMaxChart: S.dMaxChart,
         points: S.points, procs: S.procs,
       };
       localStorage.setItem(LS_KEY, JSON.stringify(payload));
@@ -1114,6 +1132,9 @@ function loadCycle() {
     if (Number.isFinite(o.rhMax)) S.rhMax = o.rhMax;
     if (Number.isFinite(o.tEvap)) S.tEvap = o.tEvap;
     if (Number.isFinite(o.vBase)) S.vBase = o.vBase;
+    if (Number.isFinite(o.tMinChart)) S.tMinChart = o.tMinChart;
+    if (Number.isFinite(o.tMaxChart)) S.tMaxChart = o.tMaxChart;
+    if (Number.isFinite(o.dMaxChart)) S.dMaxChart = o.dMaxChart;
     S.points = o.points;
     S.procs  = o.procs;
     return true;
@@ -1133,7 +1154,7 @@ function wire() {
   update();
 
   // Верхние поля
-  ['psy-alt','psy-P-kpa','psy-rhmax','psy-tevap','psy-vbase'].forEach(id => {
+  ['psy-alt','psy-P-kpa','psy-rhmax','psy-tevap','psy-vbase','psy-tmin-chart','psy-tmax-chart','psy-dmax-chart'].forEach(id => {
     $(id).addEventListener('input', update);
     $(id).addEventListener('change', update);
   });
