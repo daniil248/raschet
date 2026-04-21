@@ -628,18 +628,57 @@ function exportBom() {
   const r = compute();
   const t = r.totals;
 
+  // Метаданные активного проекта (если открыт через главный Конструктор)
+  let proj = null;
+  try { proj = JSON.parse(localStorage.getItem('raschet.activeProject.v1') || 'null'); } catch {}
+
   const rows = [];
-  rows.push(['Объём поставки — модульный ЦОД GDM-600']);
-  rows.push([`IT-нагрузка: ${t.itKw} кВт · стоек ${t.racks}${t.racksWide ? '+' + t.racksWide + 'w' : ''} · ${S.rackKw} кВт/стойку · резерв ${S.redundancy}`]);
-  rows.push([`IT-модулей: ${t.itModules} (${t.itTplId}) · Силовых модулей: ${t.powerModules} · Автономия: ${S.autonomyMin} мин · ASHRAE ${S.ashrae}`]);
+  const merges = [];
+  const pushTitle = (text) => {
+    const rowIdx = rows.length;
+    rows.push([text, '', '', '', '', '', '']);
+    merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 6 } });
+  };
+  pushTitle('ОБЪЁМ ПОСТАВКИ — МОДУЛЬНЫЙ ЦОД GDM-600');
+
+  // Блок метаданных (шаблон 26003-SCO): Объект / Заказчик / Договор / Дата / Ревизия
+  const metaRow = (label, value) => rows.push([label, value || '—', '', '', '', '', '']);
+  metaRow('Объект',   proj?.site?.name || proj?.site || '');
+  metaRow('Заказчик', proj?.customer || proj?.client || '');
+  metaRow('Договор',  proj?.contract || '');
+  metaRow('Ревизия',  proj?.revision || 'A');
+  metaRow('Дата',     new Date().toLocaleDateString('ru-RU'));
+  rows.push([]);
+
+  pushTitle(`IT-нагрузка: ${t.itKw} кВт · стоек ${t.racks}${t.racksWide ? '+' + t.racksWide + 'w' : ''} · ${S.rackKw} кВт/стойку · резерв ${S.redundancy}`);
+  pushTitle(`IT-модулей: ${t.itModules} (${t.itTplId}) · Силовых модулей: ${t.powerModules} · Автономия: ${S.autonomyMin} мин · ASHRAE ${S.ashrae}`);
   rows.push([]);
   rows.push(['№', 'Обозначение', 'Наименование', 'Габарит, мм', 'Кол-во', 'Ед.', 'Примечание']);
 
   let n = 0;
+  let secStartIdx = -1;
+  let secQtyCount = 0;
+  let secItemCount = 0;
+  const closeSection = () => {
+    if (secStartIdx < 0) return;
+    rows.push(['', '', `Итого по разделу (позиций):`, '', secItemCount, 'поз.', `Σ кол-во: ${secQtyCount}`]);
+    rows.push([]);
+    secStartIdx = -1;
+    secQtyCount = 0;
+    secItemCount = 0;
+  };
   const add = (code, name, size, qty, unit, note) => {
     rows.push([++n, code, name, size || '', qty, unit || 'шт.', note || '']);
+    secQtyCount += Number(qty) || 0;
+    secItemCount++;
   };
-  const sec = (title) => rows.push(['', `— ${title} —`]);
+  const sec = (title) => {
+    closeSection();
+    const rowIdx = rows.length;
+    rows.push([`— ${title} —`, '', '', '', '', '', '']);
+    merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 6 } });
+    secStartIdx = rows.length;
+  };
 
   // === Модули (как компл.) ===
   sec(`Модули`);
@@ -703,8 +742,16 @@ function exportBom() {
     for (const [c, nm, q, note] of low) add(c, nm, '', q, 'компл.', note);
   }
 
+  // Закрываем последнюю секцию и добавляем общий итог
+  closeSection();
+  rows.push([]);
+  const totalRowIdx = rows.length;
+  rows.push(['ВСЕГО ПОЗИЦИЙ:', n, '', '', '', '', '']);
+  merges.push({ s: { r: totalRowIdx, c: 1 }, e: { r: totalRowIdx, c: 6 } });
+
   const ws = window.XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [ { wch: 4 }, { wch: 22 }, { wch: 46 }, { wch: 18 }, { wch: 8 }, { wch: 8 }, { wch: 28 } ];
+  ws['!merges'] = merges;
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, ws, 'Объём поставки');
   const fname = `MDC_GDM600_${t.itKw}kW_${t.racks}racks_${new Date().toISOString().slice(0,10)}.xlsx`;

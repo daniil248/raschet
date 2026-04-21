@@ -351,6 +351,7 @@ export const CHANGELOGS = {
   ],
 
   'mdc-config': [
+    { version: '0.59.148', date: '2026-04-21', items: ['XLSX «Объём поставки» приближён к шаблону 26003-SCO-001: блок метаданных проекта (Объект / Заказчик / Договор / Ревизия / Дата) из localStorage[\'raschet.activeProject.v1\'], section-title через merged cells, итоги по каждому разделу (позиций + Σ кол-во) и общий total в конце. Без логотипов/подписей — для полного оформления нужен xlsx-js-style. Файл: mdc-config/mdc-config.js::exportBom.'] },
     { version: '0.59.146', date: '2026-04-21', items: ['Добавлена кнопка «🔥 → АГПТ» (Phase 11.8): собирает геометрию всех IT- и силовых модулей ЦОД (кроме коридора) и передаёт в suppression-config через localStorage-мост `raschet.mdcToSuppression.v1`. Зона = модуль GDM-600 (S=widthMm·lengthMm, H=2.7 м фикс), направления — «IT-модули» / «Силовые модули». Переход в модуль АГПТ по кнопке с query ?from=mdc. Файлы: index.html (+#mdc-send-suppression), mdc-config.js (+sendToSuppression + обработчик).'] },
     { version: '0.58.87', date: '2026-04-19', items: ['MVP: wizard + зоны + planview (серверная / ИБП+АКБ / CRAC).'] },
     { version: '0.58.80', date: '2026-04-15', items: ['Типоразмеры контейнера (2400/3000 × 6058/9000/12192/15000 мм).'] },
