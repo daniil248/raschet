@@ -1186,6 +1186,104 @@ function computeWarnings() {
       msg: `Стенки не заказаны — допустимо только в линейке стоек.` });
   }
 
+  // ===================================================================
+  // v0.59.113: совместимость выбранных деталей / аксессуаров
+  // ===================================================================
+
+  // 1. Двустворчатые двери на узкой стойке. У большинства производителей
+  // двустворчатые (double-*) двери идут только на стойки ≥800 мм (две
+  // створки по ~400 мм; в 600 мм стойке каждая створка ≤300 мм и мешает
+  // 19" оборудованию при открывании).
+  if (t.width && t.width < 800 && t.width !== 'any') {
+    if (String(t.doorFront).startsWith('double-')) {
+      out.push({ lvl: 'warn',
+        msg: `Двустворчатая передняя дверь на стойке ${t.width} мм — нетипично, обычно предлагается от 800 мм. Проверьте каталог выбранного производителя.` });
+    }
+    if (String(t.doorRear).startsWith('double-')) {
+      out.push({ lvl: 'warn',
+        msg: `Двустворчатая задняя дверь на стойке ${t.width} мм — нетипично, обычно предлагается от 800 мм.` });
+    }
+  }
+
+  // 2. Физическая вместимость по U: занятое оборудование + горизонтальные
+  // PDU (height>0, qty шт на стойку ÷ max по вводам) должны уместиться в U
+  // стойки. 0U PDU занимают только боковую шину и в подсчёт не идут.
+  const occupied = Math.max(0, +t.occupiedU || 0);
+  let pduHoriz = 0;
+  (t.pdus || []).forEach(p => {
+    const h = +p.height || 0;
+    if (h <= 0) return;
+    const perFeed = Math.max(1, +p.qty || 1);
+    pduHoriz = Math.max(pduHoriz, h * perFeed);
+  });
+  const totalU = occupied + pduHoriz;
+  if (t.u && totalU > t.u) {
+    out.push({ lvl: 'err',
+      msg: `Вместимость стойки ${t.u}U превышена: занято оборудованием ${occupied}U + горизонтальные PDU ${pduHoriz}U = ${totalU}U. Уменьшите загрузку, выберите 0U PDU или более высокий корпус.` });
+  } else if (t.u && totalU > t.u - 2 && totalU > 0) {
+    out.push({ lvl: 'warn',
+      msg: `Стойка ${t.u}U заполнена почти полностью (${totalU}U из ${t.u}U, запас <2U на кабель-органайзеры и рост).` });
+  }
+
+  // 3. Электрозамок требует отдельной цепи питания 12/24В от СКУД — это
+  // часто забывают в ТЗ, поэтому выдаём info при любом doorWithLock.
+  if (t.lock === 'electro') {
+    out.push({ lvl: 'warn',
+      msg: `Электрозамок: заложите отдельный слаботочный кабель питания 12/24В от контроллера СКУД и согласуйте протокол (Wiegand / OSDP).` });
+  }
+
+  // 4. Kit-конфликт: kit.includes содержит параметр, но пользователь
+  // выбрал значение, отличное от kit.preset. В BOM эта позиция пропускается
+  // (считается включённой в кит), но фактически в стойке будет preset-
+  // значение, а не выбранное — предупреждаем.
+  const kitW = kitById(t.kitId || '');
+  if (kitW && Array.isArray(kitW.includes) && kitW.preset) {
+    const CHECK_KEYS = ['doorFront', 'doorRear', 'sides', 'top', 'base', 'u', 'width', 'depth'];
+    CHECK_KEYS.forEach(k => {
+      if (!kitW.includes.includes(k)) return;
+      const kitVal = kitW.preset[k];
+      const userVal = t[k];
+      if (kitVal == null || userVal == null || userVal === 'any') return;
+      if (String(kitVal) !== String(userVal)) {
+        out.push({ lvl: 'warn',
+          msg: `Комплект «${kitW.sku}» включает «${k}» = ${kitVal}, но у Вас указано ${userVal}. Фактически в стойке будет «${kitVal}» (из кита); выбранное значение игнорируется в BOM. Либо выберите «Произвольный» кит, либо приведите параметры к preset.` });
+      }
+    });
+  }
+
+  // 5. Тяжёлая нагрузка + ролики. >10 кВт IT-оборудования обычно означает
+  // вес стойки 600–800 кг — ролики рассчитаны на перевозку пустой/лёгкой
+  // стойки при монтаже, эксплуатировать на них нельзя.
+  if (t.base === 'casters' && (+t.demandKw || 0) >= 10) {
+    out.push({ lvl: 'warn',
+      msg: `Ролики + ${(+t.demandKw).toFixed(0)} кВт IT-нагрузки: стойка этого класса обычно 600+ кг, ролики — только для перемещения при монтаже. Для стационарной установки закажите регулируемые ножки или цоколь.` });
+  }
+
+  // 6. Кабельные вводы снизу + цоколь без вырезов. Если указан plinth и
+  // entryBot>0, нужен цоколь с вырезами — часто это отдельный SKU.
+  if (t.base === 'plinth' && (+t.entryBot || 0) > 0) {
+    out.push({ lvl: 'warn',
+      msg: `Цоколь + ${+t.entryBot} кабельных вводов снизу: убедитесь, что выбран цоколь с вырезами под кабель (обычно отдельный артикул, напр. Rittal 8601.035 / APC AR7570).` });
+  }
+
+  // 7. Аксессуары от чужого производителя. Предупреждаем, только если
+  // производитель шкафа известен и аксессуар явно «не родной».
+  const rackMfgCur = (t.manufacturer || '').trim();
+  if (rackMfgCur && Array.isArray(t.accessories)) {
+    const foreign = [];
+    t.accessories.forEach(a => {
+      const cat = accBySku(a.sku);
+      if (!cat) return;
+      if (!accessoryMatchesRackMfg(cat, rackMfgCur)) {
+        foreign.push(cat.sku + ' (' + (cat.mfg || '—') + ')');
+      }
+    });
+    if (foreign.length) {
+      out.push({ lvl: 'warn',
+        msg: `Аксессуары от других производителей (${foreign.length}): ${foreign.slice(0,3).join(', ')}${foreign.length>3?` и ещё ${foreign.length-3}`:''}. Убедитесь, что крепёж совместим с каркасом ${rackMfgCur} (посадочные места/шаг квадратных отверстий).` });
+    }
+  }
+
   return out;
 }
 
