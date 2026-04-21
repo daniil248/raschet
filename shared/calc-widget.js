@@ -197,15 +197,21 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
       if (meta[key].locked) { lockedKnown[key] = num; lockedSet.add(key); return; }
       if (meta[key].user)   { rawUser[key] = { num, ts: meta[key].ts }; }
     });
-    // per-group truncation (кроме locked)
+    // per-group truncation.
+    // Физика: суммарное число known'ов в группе (locked + user) ≤ coreSize.
+    // Locked — «зафиксированные» известные, занимают слоты в бюджете группы.
+    // Пользователь может ввести максимум (coreSize − locked_count) свежих
+    // значений; более старые ввод'ы понижаются до auto.
     const knowns = { ...lockedKnown };
     groups.forEach(g => {
       if (!g.coreSize || g.coreSize <= 0) return;
+      const lockedInGroup = g.keys.filter(k => lockedSet.has(k)).length;
+      const userBudget = Math.max(0, g.coreSize - lockedInGroup);
       const userInGroup = g.keys
         .filter(k => rawUser[k] !== undefined && !lockedSet.has(k))
         .sort((a, b) => rawUser[b].ts - rawUser[a].ts);
-      const kept = userInGroup.slice(0, g.coreSize);
-      const dropped = userInGroup.slice(g.coreSize);
+      const kept = userInGroup.slice(0, userBudget);
+      const dropped = userInGroup.slice(userBudget);
       kept.forEach(k => { knowns[k] = rawUser[k].num; });
       dropped.forEach(k => { meta[k].user = false; meta[k].ts = 0; });
     });
@@ -279,11 +285,28 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
         return;
       }
       meta[key].locked = true;
-      meta[key].user = false;  // locked не дублирует user
+      meta[key].user = false;
       meta[key].ts = performance.now();
+      // Защита от over-lock: в группе суммарно (locked) ≤ coreSize.
+      // Если превысили — освобождаем самый старый locked-слот.
+      const g = groups.find(gg => gg.id === meta[key].group);
+      if (g && g.coreSize && g.coreSize > 0) {
+        let locked = g.keys.filter(k => meta[k].locked);
+        while (locked.length > g.coreSize) {
+          const oldest = locked.sort((a, b) => meta[a].ts - meta[b].ts)[0];
+          meta[oldest].locked = false;
+          // Освобождённое поле снова помечаем как user-значение (не теряем число)
+          const oldWrap = body.querySelector(`[data-key="${oldest}"]`);
+          const oldInp  = oldWrap.querySelector('input[inputmode="decimal"]');
+          if (oldInp.value.trim() !== '') {
+            meta[oldest].user = true;
+            meta[oldest].ts = performance.now() - 1;  // старее только что созданного lock
+          }
+          locked = g.keys.filter(k => meta[k].locked);
+        }
+      }
     } else {
       meta[key].locked = false;
-      // Оставляем значение как «ввод» (чтобы не пропало)
       if (inp.value.trim() !== '') {
         meta[key].user = true;
         meta[key].ts = performance.now();
