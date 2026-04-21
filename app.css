@@ -16,6 +16,10 @@ body {
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
+  /* Освобождаем 32 px снизу под фиксированный module-footer (.rs-mfoot),
+     чтобы вкладки страниц (.page-tabs, bottom:0 в #canvas-wrap) и нижний
+     край инспектора не перекрывались строкой версии/changelog. */
+  padding-bottom: 32px;
 }
 button { font: inherit; cursor: pointer; }
 input, select { font: inherit; }
