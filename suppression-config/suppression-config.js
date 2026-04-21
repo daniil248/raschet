@@ -39,6 +39,42 @@ function newId(p = '') { return p + Date.now().toString(36) + Math.random().toSt
 function currentInst() { return S.installations[S.currentId]; }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 
+/** Чтение метаданных активного проекта из кросс-модульного зеркала.
+ *  Главный Конструктор и прочие модули пишут сюда при открытии проекта. */
+/** Автоматический подбор типоразмера баллона (moduleCode) в текущей серии.
+ *  Для каждого варианта прогоняем computeDir по всем направлениям с этим
+ *  moduleCode и считаем max(n) по направлениям. Выбираем наименьший ob,
+ *  у которого max(n) ≤ 4 (разумное число баллонов на батарею); если такого
+ *  нет — берём самый большой вариант серии. */
+function pickBestModuleCode(inst) {
+  if (!inst?.series) return inst?.moduleCode;
+  const vars = listVariants(inst.series);
+  if (!vars.length) return inst?.moduleCode;
+  let best = null;
+  for (const v of vars) {
+    const saved = inst.moduleCode;
+    inst.moduleCode = v.code;
+    let maxN = 0, totalMass = 0;
+    (inst.directions || []).forEach(d => {
+      const r = computeDir(d);
+      if (r) { maxN = Math.max(maxN, r.n || 0); totalMass += r.mg || 0; }
+    });
+    inst.moduleCode = saved;
+    if (maxN === 0) { best = v; break; }     // нет зон — первый вариант
+    if (maxN <= 4) { best = v; break; }      // комфортное число баллонов
+  }
+  return (best || vars[vars.length - 1]).code;
+}
+
+function readActiveProject() {
+  try {
+    const raw = localStorage.getItem('raschet.activeProject.v1');
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && typeof p === 'object' ? p : null;
+  } catch { return null; }
+}
+
 /* ------------------- Defaults ------------------- */
 function defaultInstallation() {
   const agent = 'HFC-227ea';
@@ -65,6 +101,48 @@ function defaultZone(n = 1) {
   return { id: newId('z-'), name: `зона ${n}`, S:15, H:3, Cn:7.2, fs:0, P:0.4, Ppr:0.003 };
 }
 
+/** Глубокая копия с обновлением id у всех сущностей и сохранением parent-связей
+ *  в pipeline (старый id → новый id). */
+function cloneDirection(src, nameSuffix = ' (копия)') {
+  const idMap = new Map([['root', 'root']]);
+  const pipeline = (src.pipeline || []).map(s => {
+    const nid = newId('s-'); idMap.set(s.id, nid);
+    return { ...s, id: nid };
+  }).map(s => ({ ...s, parent: idMap.get(s.parent) || 'root' }));
+  const zones = (src.zones || []).map(z => ({ ...z, id: newId('z-') }));
+  return {
+    ...src,
+    id: newId('dir-'),
+    name: (src.name || 'Направление') + nameSuffix,
+    zones, pipeline,
+  };
+}
+
+/** Копия направления со всеми зонами и схемой трубопровода. */
+function duplicateDirection(dirId) {
+  const inst = currentInst(); if (!inst) return;
+  const src = inst.directions.find(d => d.id === dirId); if (!src) return;
+  const copy = cloneDirection(src);
+  inst.directions.push(copy);
+  inst.assemblies = [];                         // пересоберётся из direction'ов
+  S.selected = { kind: 'dir', dirId: copy.id };
+  saveAll(); renderAll();
+}
+
+/** Копия одной зоны в новое направление со схемой родительского направления. */
+function duplicateZoneWithScheme(srcDir, zoneId) {
+  const inst = currentInst(); if (!inst) return;
+  const z = (srcDir.zones || []).find(x => x.id === zoneId); if (!z) return;
+  const copy = cloneDirection(srcDir, '');
+  copy.name = `${srcDir.name} · ${z.name} (копия)`;
+  // В скопированном направлении оставляем только выбранную зону
+  copy.zones = [{ ...z, id: newId('z-') }];
+  inst.directions.push(copy);
+  inst.assemblies = [];
+  S.selected = { kind: 'dir', dirId: copy.id };
+  saveAll(); renderAll();
+}
+
 /* ------------------- Inst dialog helpers ------------------- */
 function fillSelect(sel, items, current) {
   sel.innerHTML = items.map(i =>
@@ -75,10 +153,15 @@ function setupInstFormSelects(v = {}) {
     Object.entries(AGENTS).map(([k,x]) => ({ value:k, label:x.label })), v.agent);
   fillSelect($('f-series'),
     SERIES_LIST.map(s => ({ value:s.id, label:s.label })), v.series);
+  // moduleCode больше не выбирается пользователем: типоразмер подбирается
+  //  расчётом (см. pickBestModuleCode). Селектор делаем disabled и просто
+  //  показываем в нём автоматически подобранный вариант для текущей серии.
   const vars = listVariants($('f-series').value);
   fillSelect($('f-module'),
     vars.map(x => ({ value:x.code, label:`${x.ob} л · DN${x.DN} · ${x.pressure_bar} бар` })),
     v.moduleCode);
+  $('f-module').disabled = true;
+  $('f-module').title = 'Типоразмер баллона подбирается автоматически по массе ГОТВ и количеству модулей.';
 }
 
 /* ------------------- Installation dialog ------------------- */
@@ -92,16 +175,19 @@ function openInstDialog(existingId) {
     fillSelect($('f-module'),
       vars.map(x => ({ value:x.code, label:`${x.ob} л · DN${x.DN} · ${x.pressure_bar} бар` })), null);
   };
-  $('f-name').value = existing?.name ?? '';
+  // Подстановка из активного проекта Raschet (если модуль открыт после
+  // загрузки проекта в главном Конструкторе или любом другом модуле).
+  const proj = readActiveProject();
+  $('f-name').value = existing?.name ?? proj?.name ?? '';
   $('f-elev').value = existing?.elevation ?? 0;
   $('f-norm').value = existing?.norm ?? 'sp-485-annex-d';
   document.querySelectorAll('input[name="f-inst"]').forEach(r =>
     r.checked = (r.value === (existing?.installType || 'modular')));
-  $('f-site-name').value = existing?.site?.name ?? '';
-  $('f-site-addr').value = existing?.site?.address ?? '';
-  $('f-site-contract').value = existing?.site?.contract ?? '';
-  $('f-site-customer').value = existing?.site?.customer ?? '';
-  $('f-site-info').value = existing?.site?.info ?? '';
+  $('f-site-name').value    = existing?.site?.name     ?? proj?.name     ?? '';
+  $('f-site-addr').value    = existing?.site?.address  ?? proj?.address  ?? '';
+  $('f-site-contract').value = existing?.site?.contract ?? proj?.contract ?? proj?.number ?? '';
+  $('f-site-customer').value = existing?.site?.customer ?? proj?.customer ?? '';
+  $('f-site-info').value    = existing?.site?.info     ?? proj?.info     ?? '';
 
   dlg.returnValue = '';
   dlg.showModal();
@@ -189,9 +275,16 @@ function renderNav() {
   dirs.innerHTML = inst.directions.map(d => `
     <li class="${actD(d.id)}" data-id="${d.id}">
       ${esc(d.name)}
+      <button class="sup-ibtn" data-dup="${d.id}" title="Копировать направление вместе с зонами и схемой">⧉</button>
       <button class="sup-ibtn sup-danger" data-del="${d.id}" title="Удалить">✕</button>
     </li>`).join('') + `<li class="sup-add" data-add="1">+ Добавить направление</li>`;
   dirs.onclick = (e) => {
+    const dup = e.target.closest('[data-dup]');
+    if (dup) {
+      e.stopPropagation();
+      duplicateDirection(dup.dataset.dup);
+      return;
+    }
     const del = e.target.closest('[data-del]');
     if (del) {
       e.stopPropagation();
@@ -216,9 +309,16 @@ function renderNav() {
       ul.innerHTML = dir.zones.map(z => `
         <li data-id="${z.id}">
           ${esc(z.name)} <span style="color:#888;font-size:11px;">(${z.S}×${z.H})</span>
+          <button class="sup-ibtn" data-dup-z="${z.id}" title="Копировать зону в новое направление вместе со схемой трубопровода">⧉</button>
           <button class="sup-ibtn sup-danger" data-del="${z.id}" title="Удалить">✕</button>
         </li>`).join('') + `<li class="sup-add" data-add="1">+ Добавить зону</li>`;
       ul.onclick = (e) => {
+        const dupZ = e.target.closest('[data-dup-z]');
+        if (dupZ) {
+          e.stopPropagation();
+          duplicateZoneWithScheme(dir, dupZ.dataset.dupZ);
+          return;
+        }
         const del = e.target.closest('[data-del]');
         if (del) {
           e.stopPropagation();
@@ -246,6 +346,8 @@ function renderAll() {
   $('sup-inst-name').textContent = inst.name;
   $('sup-inst-meta').textContent = `${inst.agent} · ${inst.moduleCode || '—'} · расчёт ${inst.calcNo}`;
 
+  // Авто-подбор типоразмера баллона по текущим mg/n
+  inst.moduleCode = pickBestModuleCode(inst);
   // Авто-пересчёт DN по всем направлениям (при любой перерисовке — изменения
   // зон / агента / модуля автоматически меняют расход и диаметры).
   (inst.directions || []).forEach(d => autoDnForDirection(d));
@@ -309,22 +411,36 @@ function renderAsmView() {
       return {
         id: newId('asm-'), idx: i+1,
         main: r?.n || 1, reserve: 0, twoRow: false,
-        collectorL: 0, collectorDN: 40, backupNo: '',
+        collectorL: 0, collectorDN: 0, backupNo: '',           // DN подбирается авто
         dirId: d.id,
       };
     });
   }
+  // Авто-подбор коллектора по каждой сборке
+  inst.assemblies.forEach(a => {
+    const dir = inst.directions.find(d => d.id === a.dirId);
+    autoCollectorForAssembly(inst, a, dir);
+  });
   const tb = document.querySelector('#asm-tbl tbody');
   tb.innerHTML = inst.assemblies.map((a, i) => {
-    const dirName = inst.directions.find(d => d.id === a.dirId)?.name || '—';
+    const dir = inst.directions.find(d => d.id === a.dirId);
+    const dirName = dir?.name || '—';
+    const nCyl = (+a.main || 0) + (+a.reserve || 0);
+    const hasColl = nCyl > 1;                       // коллектор нужен при N>1
+    const collDNCell = hasColl
+      ? `<span class="seg-dn" title="Диаметр коллектора подобран автоматически по суммарному расходу">DN${a.collectorDN}</span>`
+      : `<span style="color:#888;" title="Коллектор не требуется — один баллон">—</span>`;
+    const collLCell = hasColl
+      ? `<input type="number" data-f="collectorL" value="${a.collectorL}" step="0.05" min="0" style="width:70px;">`
+      : `<span style="color:#888;">—</span>`;
     return `<tr data-id="${a.id}">
       <td>${i+1}</td>
       <td>${esc(dirName)}</td>
       <td class="num"><input type="number" data-f="main" value="${a.main}" min="0" style="width:60px;"></td>
       <td class="num"><input type="number" data-f="reserve" value="${a.reserve}" min="0" style="width:60px;"></td>
       <td><input type="checkbox" data-f="twoRow" ${a.twoRow?'checked':''}></td>
-      <td class="num"><input type="number" data-f="collectorL" value="${a.collectorL}" step="0.1" style="width:70px;"></td>
-      <td class="num"><input type="number" data-f="collectorDN" value="${a.collectorDN}" min="15" style="width:60px;"></td>
+      <td class="num">${collLCell}</td>
+      <td class="num">${collDNCell}</td>
       <td><input type="text" data-f="backupNo" value="${a.backupNo||''}" style="width:40px;"></td>
       <td><button class="sup-ibtn sup-danger" data-del="${a.id}">✕</button></td>
     </tr>`;
@@ -953,6 +1069,27 @@ function openIso(dirId) {
   renderIso(dirId);
 }
 
+/** «Общая аксонометрия»: если централизованная система или фактически одна
+ *  сборка/направление — объединённый просмотр; иначе — выбор направления. */
+function openIsoAll() {
+  const inst = currentInst(); if (!inst) return;
+  const central = inst.installType === 'centralized';
+  const dirs = inst.directions || [];
+  const asm = inst.assemblies || [];
+  if (central || dirs.length <= 1 || asm.length <= 1) {
+    openIso(null); return;
+  }
+  // Несколько направлений с раздельными сборками — дать выбор
+  const labels = dirs.map((d, i) => `${i + 1}) ${d.name}`).join('\n');
+  const ans = prompt(
+    `Система модульная: в ней ${dirs.length} направлений с отдельными сборками.\n` +
+    `Выберите номер направления для просмотра (0 — все вместе):\n\n${labels}`, '1');
+  if (ans === null) return;
+  const idx = parseInt(ans, 10);
+  if (idx === 0) openIso(null);
+  else if (Number.isFinite(idx) && idx >= 1 && idx <= dirs.length) openIso(dirs[idx - 1].id);
+}
+
 /* Setup of dialog-wide event handlers (once at init). */
 function setupIsoHandlers() {
   const canvas = $('iso-canvas');
@@ -1572,6 +1709,25 @@ function autoDnForDirection(dir) {
   }
 }
 
+/** Автоматический подбор DN коллектора сборки модулей.
+ *   Суммарный расход ṁ = mg/tp (для направления), делится между N_main
+ *   одновременно открывающимися баллонами. Коллектор несёт полный ṁ,
+ *   DN подбирается по той же целевой скорости, что и магистраль.
+ *   Если баллонов ≤ 1 — коллектор не нужен. */
+function autoCollectorForAssembly(inst, asm, dir) {
+  if (!asm) return;
+  const nCyl = (+asm.main || 0) + (+asm.reserve || 0);
+  if (nCyl <= 1) { asm.collectorDN = 0; asm.collectorL = 0; return; }
+  if (!dir) { asm.collectorDN = asm.collectorDN || 40; return; }
+  const r = computeDir(dir); if (!r) { asm.collectorDN = asm.collectorDN || 40; return; }
+  const a = AGENTS[inst.agent];
+  const vTarget = (a?.type === 'inert') ? 70 : (a?.type === 'co2') ? 35 : 50;
+  const rho = r.r2 || 7;
+  const totalMdot = r.mg / (r.tpd || 10);
+  asm.collectorDN = recommendDN(totalMdot, rho, vTarget);
+  if (!+asm.collectorL) asm.collectorL = Math.max(0.5, nCyl * 0.3); // ~0.3 м на баллон
+}
+
 /** Вызывается после ЛЮБОГО изменения трубопровода направления:
  *   пересчитывает DN всех участков и сохраняет. */
 function onPipelineChange(dir) {
@@ -1688,7 +1844,7 @@ function init() {
 
   // Inst view actions
   $('sup-add-dir').addEventListener('click', () => openDirDialog(null));
-  $('sup-iso-all').addEventListener('click', () => openIso(null));
+  $('sup-iso-all').addEventListener('click', () => openIsoAll());
   $('sup-auto-dn').addEventListener('click', () => {
     const inst = currentInst();
     inst.directions.forEach(d => autoDnForDirection(d));
@@ -1708,7 +1864,7 @@ function init() {
     });
     saveAll(); renderAsmView();
   });
-  $('asm-iso').addEventListener('click', () => openIso(null));
+  $('asm-iso').addEventListener('click', () => openIsoAll());
 
   // Dir actions
   $('dir-edit').addEventListener('click', () => openDirDialog(S.selected.dirId));

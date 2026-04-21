@@ -843,6 +843,22 @@ async function openProject(id) {
       }
     } catch {}
 
+    // Кросс-модульное зеркало активного проекта — чтобы суб-модули
+    // (suppression-config, mv-config и др.) могли автоматически заполнять
+    // поля проекта/объекта без повторного ввода пользователем.
+    try {
+      localStorage.setItem('raschet.activeProject.v1', JSON.stringify({
+        id: data.id || null,
+        name: data.name || '',
+        number: data.number || data.code || '',
+        customer: data.customer || '',
+        address: data.address || '',
+        contract: data.contract || '',
+        info: data.info || data.notes || '',
+        updatedAt: Date.now(),
+      }));
+    } catch {}
+
     // Схему даём редактору
     if (data.scheme) {
       window.Raschet.loadScheme(data.scheme);
@@ -920,6 +936,7 @@ function backToProjects() {
   // Если на экране проектов — переходим на главную (hub)
   if (state.currentProject) {
     state.currentProject = null;
+    try { localStorage.removeItem('raschet.activeProject.v1'); } catch {}
     try { if (window.Raschet) { window.Raschet.currentProjectId = null; window.Raschet.currentProjectName = null; } } catch {}
     els.projectName.textContent = '';
     els.projectName.classList.add('hidden');
