@@ -169,10 +169,21 @@ export function initToolbar() {
     if (!f) return;
     const r = new FileReader();
     r.onload = () => {
-      try { deserialize(JSON.parse(r.result)); render(); renderInspector(); }
-      catch (err) { alert('Ошибка: ' + err.message); }
+      try {
+        const raw = JSON.parse(r.result);
+        // v0.59.83: tolerate both raw scheme and {name, scheme} wrapper (Save As fallback / __local-backup__ files).
+        const scheme = (raw && raw.scheme && typeof raw.scheme === 'object' && (raw.scheme.nodes || raw.scheme.conns))
+          ? raw.scheme
+          : raw;
+        deserialize(scheme);
+        render();
+        renderInspector();
+        flash('Импортировано из файла');
+      } catch (err) { alert('Ошибка импорта: ' + err.message); }
     };
     r.readAsText(f);
+    // Сбросим value, чтобы повторный выбор того же файла работал.
+    e.target.value = '';
   });
 
   // Toolbar: кнопки сетка / привязка
