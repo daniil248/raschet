@@ -52,3 +52,36 @@
 .calc-card-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: middle; border:1px solid #aaa; }
 .calc-card-legend .sw.in  { background: #fffde7; border-color: #ffd54f; }
 .calc-card-legend .sw.out { background: #e8f5e9; border-color: #a5d6a7; }
+.calc-card-legend .sw.locked { background: #fce4ec; border-color: #f8bbd0; }
+
+/* === multi-calc (единый калькулятор с группами) === */
+.calc-card.calc-multi { grid-column: 1 / -1; }
+.calc-multi-body { display: flex; flex-direction: column; gap: 8px; }
+.calc-group-block {
+  border: 1px solid #dbe3ee; border-radius: 4px; padding: 6px 10px 8px;
+  background: #fafcff;
+}
+.calc-group-title {
+  font-size: 11px; font-weight: 700; color: #0d47a1;
+  text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px;
+}
+.calc-multi .calc-fields {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 4px 10px;
+}
+.calc-multi .calc-field { gap: 2px; }
+.calc-field-row { display: flex; gap: 4px; align-items: stretch; }
+.calc-field-row input[inputmode="decimal"] { flex: 1; min-width: 0; }
+.calc-lock-wrap {
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; font-size: 11px; cursor: pointer; user-select: none;
+  border: 1px solid #cfd8dc; border-radius: 3px; background:#fff;
+  opacity: 0.45;
+}
+.calc-lock-wrap input { display: none; }
+.calc-lock-wrap:hover { opacity: 0.85; background:#eceff1; }
+.calc-field[data-mode="locked"] .calc-lock-wrap { opacity: 1; background:#fce4ec; border-color:#f8bbd0; }
+.calc-field[data-mode="locked"] input[inputmode="decimal"] {
+  background: #fce4ec; border-color: #f8bbd0; color: #880e4f; font-weight: 700;
+}
+

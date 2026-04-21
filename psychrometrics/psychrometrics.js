@@ -104,6 +104,8 @@ function procArrow(pr, i) {
   const el = document.createElement('div');
   el.className = 'psy-proc-arrow';
   el.dataset.procIdx = String(i);
+  const userV = S.points[i].V;
+  const hasUserV = userV != null && userV !== '';
   el.innerHTML = `
     <div class="arr-label">${i+1} → ${i+2}</div>
     <select data-col="proc-type" data-i="${i}">
@@ -111,7 +113,7 @@ function procArrow(pr, i) {
     </select>
     <div class="arr" data-role="arr" style="color:${PROC_COLOR[pr.type]||'#607080'}">↓</div>
     <label style="font-size:10px;color:#666">V процесса, м³/ч
-      <input type="number" data-col="V" data-i="${i}" value="${S.points[i].V ?? ''}" step="100" placeholder="${S.vBase}">
+      <input type="number" data-col="V" data-i="${i}" data-user="${hasUserV?'1':''}" value="${hasUserV?userV:''}" step="100">
       <span class="v-auto" data-role="v-auto" style="font-size:10px;color:#2e7d32;display:block;margin-top:2px;"></span>
     </label>
   `;
@@ -144,26 +146,25 @@ function refreshComputedInCards() {
   });
 }
 
-/* Обновить подписи «автоматический V» под полями V, когда сегмент ведомый. */
+/* Обновить подписи «автоматический V» под полями V, когда сегмент ведомый.
+   Также кладём вычисленное V прямо в input.value (НЕ помечая как user),
+   чтобы пользователь мог редактировать с текущего числа (стрелки/ввод). */
 function refreshAutoV(segs, primaryIdx) {
   if (!segs) return;
   segs.forEach((s, i) => {
     const wrap = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] [data-role="v-auto"]`);
-    if (!wrap) return;
-    if (!s) { wrap.textContent = ''; return; }
+    const inp  = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] input[data-col="V"]`);
+    if (!s) { if (wrap) wrap.textContent = ''; return; }
     if (s.derived) {
-      wrap.textContent = `авто: ${s.V.toFixed(0)} м³/ч (по массе)`;
-      wrap.style.color = '#2e7d32';
+      if (wrap) { wrap.textContent = `авто: ${s.V.toFixed(0)} м³/ч (по массе)`; wrap.style.color = '#2e7d32'; }
+      if (inp && inp.dataset.user !== '1') {
+        // подставляем вычисленное значение, не дёргая каретку у фокуса
+        if (document.activeElement !== inp) inp.value = s.V.toFixed(0);
+        else if (inp.value.trim() === '') inp.value = s.V.toFixed(0);
+      }
     } else {
-      wrap.textContent = `ведущий · Gда=${s.G.toFixed(0)} кг/ч`;
-      wrap.style.color = '#1565c0';
+      if (wrap) { wrap.textContent = `ведущий · Gда=${s.G.toFixed(0)} кг/ч`; wrap.style.color = '#1565c0'; }
     }
-  });
-  // Обновить placeholder у пустых V — показать вычисленное авто-значение
-  segs.forEach((s, i) => {
-    const inp = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] input[data-col="V"]`);
-    if (!inp || !s) return;
-    if (s.derived) inp.placeholder = s.V.toFixed(0);
   });
 }
 
@@ -192,7 +193,13 @@ function readInputs() {
     const i   = +el.dataset.i;
     const v   = el.value;
     if (col === 'proc-type') { S.procs[i] = S.procs[i] || {}; S.procs[i].type = v; }
-    else if (col === 'V')    { S.points[i] = S.points[i] || {}; S.points[i].V = v; }
+    else if (col === 'V')    {
+      S.points[i] = S.points[i] || {};
+      // Только если пользователь реально ввёл значение (data-user="1") —
+      // считаем его ведущим. Иначе — это просто отображение автосчитанного V.
+      if (el.dataset.user === '1' && v !== '') S.points[i].V = v;
+      else S.points[i].V = '';
+    }
     else if (col === 'name') { S.points[i] = S.points[i] || {}; S.points[i].name = v; }
     else                     { S.points[i] = S.points[i] || {}; S.points[i][col] = v; }
   });
@@ -487,8 +494,19 @@ function wire() {
   });
 
   // Делегирование событий в зоне цикла
-  $('psy-cycle').addEventListener('input', update);
+  $('psy-cycle').addEventListener('input', (e) => {
+    // Помечаем V-поле как user-ввод только при реальном вводе
+    if (e.target?.dataset?.col === 'V') e.target.dataset.user = '1';
+    update();
+  });
   $('psy-cycle').addEventListener('change', update);
+  // Blur на V с пустым значением → снимаем user-флаг (поле снова auto)
+  $('psy-cycle').addEventListener('blur', (e) => {
+    if (e.target?.dataset?.col === 'V' && e.target.value.trim() === '') {
+      e.target.dataset.user = '';
+      update();
+    }
+  }, true);
   $('psy-cycle').addEventListener('click', (e) => {
     const b = e.target.closest('[data-act="del"]');
     if (!b) return;
