@@ -264,6 +264,16 @@ function openKitCatalogModal() {
 // Модал выбора PDU из каталога. Колонки: SKU | производитель | категория |
 // фазы | номинал | высота | розетки. Фильтры: mfg, category, phases, rating.
 function openPduCatalogModal(pdu) {
+  // v0.59.111: PDU обычно закупают парой (одинаковая модель на вводы A и B)
+  // для 2N/N+1-резервирования. По умолчанию включаем «подобрать парой»
+  // если режим резервирования 2N/N+1 и на противоположном вводе ещё нет PDU.
+  const tpl = current();
+  const mode = tpl.pduRedundancy || '2N';
+  const thisFeed = (pdu && pdu.feed) || 'A';
+  const pairFeed = thisFeed === 'A' ? 'B' : 'A';
+  const redMode = (mode === '2N' || mode === 'n+1');
+  const pairAlreadyExists = tpl.pdus.some(p => p !== pdu && p.feed === pairFeed);
+  const pairDefault = redMode && !pairAlreadyExists;
   const PDUS = getLivePduCatalog();
   const mfgs = Array.from(new Set(PDUS.map(p => p.mfg))).sort();
   // v0.59.110: предустановка фильтров из уже заданных параметров PDU.
@@ -279,6 +289,9 @@ function openPduCatalogModal(pdu) {
     phases: (pdu && (pdu.phases === 1 || pdu.phases === 3)) ? String(pdu.phases) : '__all__',
     rating: (pdu && ratings.includes(+pdu.rating)) ? String(pdu.rating) : '__all__',
     height: (pdu && heights.includes(+pdu.height)) ? String(pdu.height) : '__all__',
+    pair: pairDefault,
+    colorA: (pdu && pdu.color) || '',
+    colorB: '',
   };
 
   const back = document.createElement('div');
@@ -367,8 +380,20 @@ function openPduCatalogModal(pdu) {
           </tbody>
         </table>
       </div>
-      <div style="padding:12px 20px;border-top:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;gap:8px">
+      <div style="padding:12px 20px;border-top:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
         <button type="button" class="rc-btn" id="rc-pm-clear">— Произвольная (лист требований) —</button>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;gap:6px;align-items:center;font-size:12px${pairAlreadyExists?';opacity:0.5':''}" ${pairAlreadyExists?'title="На вводе '+pairFeed+' уже есть PDU — пара не добавится автоматически"':''}>
+            <input type="checkbox" id="rc-pm-pair" ${st.pair?'checked':''} ${pairAlreadyExists?'disabled':''}>
+            Парой на ${thisFeed}+${pairFeed} ${redMode?'<span style="color:#1565c0;font-size:11px">(реком. для '+mode+')</span>':''}
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;font-size:12px" title="Цвет корпуса PDU для ввода ${thisFeed} (напр. «серый», «чёрный»). Попадает в BOM и лист требований. Оставьте пустым, если цвет не важен.">
+            Цвет ${thisFeed}: <input type="text" id="rc-pm-ca" value="${escape(st.colorA)}" style="width:80px;font-size:12px" placeholder="—">
+          </label>
+          <label style="display:flex;gap:4px;align-items:center;font-size:12px${st.pair?'':';opacity:0.5'}" title="Цвет корпуса PDU для ввода ${pairFeed}. Обычно отличается от ${thisFeed}, чтобы визуально различать вводы в стойке.">
+            Цвет ${pairFeed}: <input type="text" id="rc-pm-cb" value="${escape(st.colorB)}" style="width:80px;font-size:12px" placeholder="—" ${st.pair?'':'disabled'}>
+          </label>
+        </div>
         <button type="button" class="rc-btn" id="rc-pm-cancel">Закрыть</button>
       </div>
     `;
@@ -381,6 +406,16 @@ function openPduCatalogModal(pdu) {
         pdu.phases = cat2.phases;
         pdu.height = cat2.height;
         pdu.outlets = JSON.parse(JSON.stringify(cat2.outlets));
+      }
+      // v0.59.111: записываем цвет и (если включено) добавляем парный PDU
+      if (st.colorA) pdu.color = st.colorA;
+      else if (pdu.color) delete pdu.color;
+      if (sku && st.pair && !pairAlreadyExists) {
+        const twin = JSON.parse(JSON.stringify(pdu));
+        twin.id = 'pdu' + Date.now() + '-' + pairFeed;
+        twin.feed = pairFeed;
+        if (st.colorB) twin.color = st.colorB; else delete twin.color;
+        tpl.pdus.push(twin);
       }
       close();
       renderPduList(); recalc();
@@ -398,6 +433,12 @@ function openPduCatalogModal(pdu) {
     box.querySelector('#rc-pm-ph').addEventListener('change',  e => { st.phases = e.target.value; render(); });
     box.querySelector('#rc-pm-rat').addEventListener('change', e => { st.rating = e.target.value; render(); });
     box.querySelector('#rc-pm-h').addEventListener('change',   e => { st.height = e.target.value; render(); });
+    const pairEl = box.querySelector('#rc-pm-pair');
+    if (pairEl) pairEl.addEventListener('change', e => { st.pair = e.target.checked; render(); });
+    const caEl = box.querySelector('#rc-pm-ca');
+    if (caEl) caEl.addEventListener('input', e => { st.colorA = e.target.value; });
+    const cbEl = box.querySelector('#rc-pm-cb');
+    if (cbEl) cbEl.addEventListener('input', e => { st.colorB = e.target.value; });
     box.querySelectorAll('[data-pm-pick]').forEach(btn =>
       btn.addEventListener('click', () => pick(btn.dataset.pmPick)));
   }
@@ -934,13 +975,15 @@ function computeBom() {
     const outletsDesc = p.outlets.map(o => `${o.count}×${o.type}`).join(' + ');
     const totalOutlets = p.outlets.reduce((s,o)=>s+(+o.count||0),0);
     const cat = p.sku ? pduBySku(p.sku) : null;
+    // v0.59.111: если указан цвет корпуса — добавляем в примечание
+    const colorNote = p.color ? ` · цвет: ${p.color}` : '';
     if (cat) {
       add(`${cat.name} (${cat.sku})`, p.qty, 'шт',
-          `${cat.mfg} · ${PDU_CATEGORY[cat.category] || cat.category} · ввод ${p.feed}`);
+          `${cat.mfg} · ${PDU_CATEGORY[cat.category] || cat.category} · ввод ${p.feed}${colorNote}`);
     } else {
       const name = `PDU ${p.phases}ф ${p.rating}A, ${totalOutlets} розеток (${outletsDesc}), ${hStr}`;
       add(name, p.qty, 'шт',
-          `ввод ${p.feed} · произвольная спецификация (см. «Лист требований»)`);
+          `ввод ${p.feed}${colorNote} · произвольная спецификация (см. «Лист требований»)`);
     }
   });
 
@@ -1121,13 +1164,14 @@ function computeWarnings() {
   }
 
   // Охлаждение — уже для стойки в целом, с обычным запасом
-  const perfFront = /mesh/.test(t.doorFront) || t.doorFront === 'none';
-  const perfRear  = /mesh/.test(t.doorRear)  || t.doorRear === 'none';
+  // v0.59.112: 'any' («не важно») считается неопределённым и не вызывает warn.
+  const perfFront = /mesh/.test(t.doorFront) || t.doorFront === 'none' || t.doorFront === 'any';
+  const perfRear  = /mesh/.test(t.doorRear)  || t.doorRear === 'none'  || t.doorRear === 'any';
   if (t.demandKw >= 3 && (!perfFront || !perfRear)) {
     out.push({ lvl: 'warn',
       msg: `При тепловыделении ≥3 кВт рекомендуются перфорированные двери спереди и сзади.` });
   }
-  if (t.demandKw >= 5 && t.top !== 'fan') {
+  if (t.demandKw >= 5 && t.top !== 'fan' && t.top !== 'any') {
     out.push({ lvl: 'warn',
       msg: `При ≥5 кВт рекомендуется крыша с вентиляторными модулями.` });
   }
@@ -1285,6 +1329,7 @@ function buildPduRequirements() {
       lines.push(`  Подбор эквивалента по ТЗ. Аналоги: APC AP79xx/AP89xx,`);
       lines.push(`  Rittal DK 7955.xxx, Raritan PX3, Kehua KPDU-*.`);
     }
+    if (p.color) lines.push(`  Цвет корпуса:       ${p.color}`);
     lines.push(`  Номинал:            ${p.rating} A, ${p.phases}-фазный, 230/400 В`);
     lines.push(`  Высота:             ${p.height === 0 ? '0U (вертикальный, на боковине)' : p.height + 'U (горизонтальный)'}`);
     lines.push(`  Розетки:            ${totalOutlets} шт. (${outletsDesc})`);
