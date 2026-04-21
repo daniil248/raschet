@@ -46,7 +46,7 @@ function countOutlets(pdu) {
   let c13 = 0, c19 = 0, schuko = 0, other = 0;
   for (const o of outlets) {
     const type = String(o.type || '').toLowerCase();
-    const qty = Number(o.qty) || 0;
+    const qty = Number(o.qty ?? o.count) || 0;
     if (type === 'c13') c13 += qty;
     else if (type === 'c19') c19 += qty;
     else if (type === 'schuko' || type === 'cee7/4' || type === 'cee7') schuko += qty;
@@ -196,7 +196,7 @@ function openDetail(id) {
   if (!p) return;
   const kp = p.kindProps || {};
   const outlets = kp.outlets || [];
-  const rows = outlets.map(o => `<tr><td>${esc(o.type)}</td><td>${o.qty}</td></tr>`).join('');
+  const rows = outlets.map(o => `<tr><td>${esc(o.type)}</td><td>${Number(o.qty ?? o.count) || 0}</td></tr>`).join('');
   const sku = kp.sku || p.variant || p.id;
   const body = `
     <div>

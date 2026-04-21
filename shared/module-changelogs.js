@@ -50,6 +50,14 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.120', date: '2026-04-21', items: [
+      '<b>Разделение seed-каталогов по типам.</b> Монолит shared/rack-catalog-data.js (493 строки, kit+pdu+acc вперемешку) разнесён на три файла — по одному на kind, плюс внутренние хелперы:',
+      '— <code>shared/racks-catalog-data.js</code> — базовые комплекты стоек (KIT_CATALOG, DOOR/TOP/BASE/ENTRY/LOCK/BLANK label-таблицы, listBuiltinRacks, getLiveKitCatalog, kitById)',
+      '— <code>shared/pdus-catalog-data.js</code> — PDU (PDU_CATEGORY, PDU_CATALOG, listBuiltinPdus, getLivePduCatalog, pduBySku)',
+      '— <code>shared/rack-accessories-catalog-data.js</code> — аксессуары (ACC_CATEGORIES, ACCESSORY_CATALOG, listBuiltinRackAccessories, getLiveAccessoryCatalog, accBySku, accessoryMatchesRackMfg, accessoryMfgList)',
+      '— <code>shared/_catalog-helpers.js</code> — общие _syncList / _slug / _ensureLib (чтобы override-слой element-library работал одинаково во всех трёх)',
+      'Старый shared/rack-catalog-data.js превращён в barrel (re-export) — все существующие импорты (rack-config, pdu-config, catalog-bridge, bom.js) продолжают работать без правок. Добавлять новые модели можно теперь в профильный файл, не задевая соседей.'
+    ] },
     { version: '0.59.119', date: '2026-04-21', items: [
       'Интеграция со standalone /pdu-config/: если в Конфигураторе PDU нажата кнопка «⬆ Выбрать эту модель» (в детальной карточке), сохраняется <code>raschet.lastPduConfig.v1</code>. В модалке «Каталог PDU» появляется синяя кнопка «⬇ Из Конфигуратора PDU: &lt;производитель&gt; &lt;модель&gt;» — один клик подставляет PDU в текущий ввод (со всеми параметрами: sku, rating, phases, height, outlets), учитывает галочку «Парой на A+B» и цвета корпусов A/B. Кнопка видна только если запись свежая (< 24 ч).',
       'Файл: rack-config/rack-config.js (openPduCatalogModal: чтение lastPduConfig.v1, lastPduBtn в extraFooter, apply-last handler в onExtraMount).'
@@ -156,6 +164,10 @@ export const CHANGELOGS = {
   ],
 
   'pdu-config': [
+    { version: '0.59.120', date: '2026-04-21', items: [
+      '<b>Фикс фильтра: «0 из 18» → корректный подбор.</b> Стандартные PDU-сиды в shared/pdus-catalog-data.js хранят кол-во розеток в поле <code>count</code>, а standalone /pdu-config/ читал поле <code>qty</code> — из-за этого <code>countOutlets()</code> всегда возвращал нули и ни одна модель не проходила минимум по розеткам. В модалке подбора PDU Конфигуратора стойки (shared/pdu-picker-modal.js) это было исправлено раньше через <code>o.qty ?? o.count</code>; теперь та же нормализация в pdu-config.js — и detail-модал показывает правильное количество.',
+      'Файл: pdu-config/pdu-config.js (countOutlets + openDetail rows).'
+    ] },
     { version: '0.59.119', date: '2026-04-21', items: [
       'Standalone-пик переводит PDU в главный Конфигуратор стойки. В детальной карточке (клик на строку результата) добавлены:',
       '— <b>⬆ Выбрать эту модель</b>: сохраняет <code>raschet.lastPduConfig.v1</code> (sku, производитель, категория, фазы, номинал, высота, розетки, timestamp). В Конфигураторе стойки в модалке «Каталог PDU» появится синяя кнопка «⬇ Из Конфигуратора PDU: …» — один клик подставит модель в текущий ввод.',
