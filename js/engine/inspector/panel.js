@@ -7,6 +7,7 @@ import { effectiveTag } from '../zones.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { isTagUnique } from '../graph.js';
+import { consumerGroupItems } from '../electrical.js';
 // Фаза 1.19.7: panel-catalog / panel-picker больше не используются в
 // инлайн-модалке параметров щита. Подбор оболочки НКУ перенесён в
 // wizard-конфигуратор (panel-config/), избавляемся от неиспользуемых
@@ -251,17 +252,49 @@ export function openPanelParamsModal(n) {
             } else if (c.from.nodeId === n.id) {
               const dst = state.nodes.get(c.to.nodeId);
               if (!dst) continue;
-              outgoingLines.push({
-                port: c.from.port || 0,
-                targetName: dst.name || effectiveTag(dst) || dst.id,
-                targetType: dst.type,
-                breakerInA: Number(c._breakerIn) || null,
-                breakerPerLine: Number(c._breakerPerLine) || null,
-                loadKw: Number(dst._loadKw) || null,
-                maxA: Number(c._maxA) || null,
-                threePhase: c._threePhase !== false,
-                cableLabel: c.cableTypeId || c.cable || null,
-              });
+              // v0.59.92: групповой потребитель (individual) — оболочка над
+              // N приборами. Каждый прибор → отдельная отходящая линия щита
+              // со своим автоматом и своими параметрами (см. carddeck в
+              // openConsumerParamsModal, data: consumerGroupItems).
+              const isGroupIndividual = dst.type === 'consumer'
+                && dst.groupMode === 'individual'
+                && Array.isArray(dst.items) && dst.items.length > 0;
+              if (isGroupIndividual) {
+                const members = consumerGroupItems(dst);
+                const baseTag = dst.name || effectiveTag(dst) || dst.id;
+                members.forEach((m, i) => {
+                  outgoingLines.push({
+                    port: c.from.port || 0,          // все на одном порту щита
+                    groupId: dst.id,                  // пометка: группа-оболочка
+                    memberIdx: i,
+                    targetName: `${baseTag} — ${m.name}`,
+                    targetType: 'consumer',
+                    breakerInA: null,                 // wizard посчитает от loadKw
+                    breakerPerLine: null,
+                    loadKw: m.demandKw,
+                    maxA: null,
+                    threePhase: (m.phase === '3ph'),
+                    cableLabel: c.cableTypeId || c.cable || null,
+                    curveHint: m.curveHint || null,
+                    breakerMarginPct: (typeof m.breakerMarginPct === 'number') ? m.breakerMarginPct : null,
+                    cosPhi: m.cosPhi,
+                    kUse: m.kUse,
+                    inrushFactor: m.inrushFactor,
+                  });
+                });
+              } else {
+                outgoingLines.push({
+                  port: c.from.port || 0,
+                  targetName: dst.name || effectiveTag(dst) || dst.id,
+                  targetType: dst.type,
+                  breakerInA: Number(c._breakerIn) || null,
+                  breakerPerLine: Number(c._breakerPerLine) || null,
+                  loadKw: Number(dst._loadKw) || null,
+                  maxA: Number(c._maxA) || null,
+                  threePhase: c._threePhase !== false,
+                  cableLabel: c.cableTypeId || c.cable || null,
+                });
+              }
             }
           }
           incomingLines.sort((a, b) => a.port - b.port);

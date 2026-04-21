@@ -321,10 +321,10 @@ function _pcPickCtPrimary(breakerInA) {
 }
 
 // Расчёт тока по мощности и напряжению
-function _pcCalcCurrent(kW, voltage) {
+function _pcCalcCurrent(kW, voltage, cosPhiOverride) {
   const U = voltage === 'lv-230' ? 230 : (voltage === 'lv-690' ? 690 : 400);
   const is1ph = voltage === 'lv-230';
-  const cosPhi = 0.9;
+  const cosPhi = (typeof cosPhiOverride === 'number' && cosPhiOverride > 0) ? cosPhiOverride : 0.9;
   if (is1ph) return (kW * 1000) / (U * cosPhi);
   return (kW * 1000) / (Math.sqrt(3) * U * cosPhi);
 }
@@ -578,15 +578,22 @@ function _pcGenerateBreakers() {
     // Отходящие — из outgoing
     if (outgoing.length) {
       for (const line of outgoing) {
+        // v0.59.92: если линия пришла от члена group'а, учитываем его
+        // cosPhi / breakerMarginPct / curveHint при подборе автомата.
+        const cos = (typeof line.cosPhi === 'number' && line.cosPhi > 0) ? line.cosPhi : 0.92;
+        const marginPct = (typeof line.breakerMarginPct === 'number') ? line.breakerMarginPct : 10;
         const inA = line.breakerInA || _pcStandardBreakerIn(
-          line.loadKw ? _pcCalcCurrent(line.loadKw, rq.voltage) * 1.1 : inOutDefault
+          line.loadKw ? _pcCalcCurrent(line.loadKw, rq.voltage, cos) * (1 + marginPct / 100) : inOutDefault
         );
         const poles = (line.threePhase === false) ? 1 : (rq.voltage === 'lv-230' ? 1 : 3);
+        // Кривая: если член группы подсказал MCB_B/C/D — используем, иначе
+        // стандартная логика (MCCB при In≥125A, MCB_C остальное).
+        const curve = line.curveHint || (inA >= 125 ? 'MCCB' : 'MCB_C');
         list.push({
           role: 'output',
           name: `→ «${line.targetName}»${line.loadKw ? ` · ${line.loadKw.toFixed(1)} kW` : ''}`,
           inA,
-          curve: inA >= 125 ? 'MCCB' : 'MCB_C',
+          curve,
           poles,
         });
       }
