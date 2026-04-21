@@ -1,395 +1,738 @@
 /* =========================================================================
-   suppression-config.js — gas fire suppression calculator (АГПТ).
-   Wires UI to pluggable methodologies in ../suppression-methods/.
+   suppression-config.js — АГПТ: иерархическая модель
+   Установка → (Сборка модулей | Направления → Зоны) + Аксонометрия + Отчёт.
+
+   Персистентность: localStorage 'raschet.sup.installations.v1'
    ========================================================================= */
 
-import { AGENTS, CYLINDERS, METHODS, METHOD_LIST, run, pipingSpec, cylinderPick }
-  from '../suppression-methods/index.js';
+import { AGENTS } from '../suppression-methods/agents.js';
+import { MODULE_SERIES, SERIES_LIST, listVariants, findVariant }
+  from '../suppression-methods/modules-catalog.js';
+import * as Annex from '../suppression-methods/sp-485-annex-d.js';
+import { buildReport } from '../suppression-methods/report-text.js';
 
-const $ = (id) => document.getElementById(id);
+const $ = id => document.getElementById(id);
+const LS_KEY = 'raschet.sup.installations.v1';
 
+/* ------------------- State ------------------- */
 const S = {
-  method: 'sp-rk-2022',
-  agent: 'FK-5-1-12',
-  V: 120, H: 3, fireClass: 'A', leakage: 'II',
-  tempC: 20, altM: 200,
-  cylinderV: 0,
-  pipeMat: 'stainless', pipeLenOverride: 0,
+  installations: {},   // id → installation
+  currentId: null,
+  selected: { kind: 'inst', dirId: null }, // kind: 'inst' | 'asm' | 'dir'
+  isoDirId: null,
+  isoSelSeg: null,
+  isoShowNums: true,
+  isoShowNozz: true,
 };
 
-function read() {
-  const num = (id, d) => { const v = Number($(id)?.value); return Number.isFinite(v) ? v : d; };
-  const str = (id, d) => $(id)?.value ?? d;
-  S.method      = str('sup-method', S.method);
-  S.agent       = str('sup-agent', S.agent);
-  S.V           = num('sup-V', 120);
-  S.H           = num('sup-H', 3);
-  S.fireClass   = str('sup-class', 'A');
-  S.leakage     = str('sup-leak', 'II');
-  S.tempC       = num('sup-temp', 20);
-  S.altM        = num('sup-alt', 200);
-  S.cylinderV   = num('sup-cylinder', 0);
-  S.pipeMat     = str('sup-pipe-mat', 'stainless');
-  S.pipeLenOverride = num('sup-pipe-len', 0);
+function loadAll() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { return {}; }
+}
+function saveAll() { localStorage.setItem(LS_KEY, JSON.stringify(S.installations)); }
+
+function newId(prefix = '') { return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+function currentInst() { return S.installations[S.currentId]; }
+
+/* ------------------- Defaults ------------------- */
+function defaultInstallation() {
+  const agent = 'HFC-227ea';
+  const series = 'МГП-Консул';
+  const variants = listVariants(series);
+  const moduleCode = variants[0]?.code || '';
+  return {
+    id: newId('inst-'),
+    name: 'Установка 1',
+    elevation: 0,
+    norm: 'sp-485-annex-d',
+    agent,
+    series,
+    moduleCode,
+    installType: 'modular',
+    site: { name: '', address: '', contract: '', customer: '', info: '' },
+    author: '',
+    directions: [],
+    assemblies: [],
+    pu: [],
+    createdAt: Date.now(),
+    calcNo: '0001-G',
+  };
 }
 
-function fillSelect(id, items, current, fmt) {
-  const sel = $(id);
-  sel.innerHTML = items.map(i => {
-    const val = fmt.value(i), lbl = fmt.label(i);
-    return `<option value="${val}" ${val === current ? 'selected' : ''}>${lbl}</option>`;
+function defaultDirection(n = 1) {
+  return {
+    id: newId('dir-'), name: `Направление ${n}`,
+    type: 'volume',
+    tmin: 20, feedTime: 10, smoke: true,
+    fire: 'EI30', mount: 'wall',
+    exhaust: 'outside', exhaustDist: 10,
+    prelief: true, exec: 'standard',
+    fireClass: 'A2', leakage: 'II',
+    zones: [],
+    pipeline: [],
+  };
+}
+
+function defaultZone(n = 1) {
+  return {
+    id: newId('z-'), name: `зона ${n}`,
+    S: 15, H: 3, Cn: 7.2, fs: 0, P: 0.4, Ppr: 0.003,
+  };
+}
+
+/* ------------------- Welcome + open ------------------- */
+function showWelcome() { $('sup-welcome').hidden = false; $('sup-ws').hidden = true; }
+function showWorkspace() { $('sup-welcome').hidden = true; $('sup-ws').hidden = false; renderAll(); }
+
+function initWelcome() {
+  $('sup-w-create').addEventListener('click', () => openInstDialog(null));
+  $('sup-w-open').addEventListener('click', () => {
+    const list = $('open-list');
+    const items = Object.values(S.installations).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    if (!items.length) { list.innerHTML = '<li style="color:#888;">Нет сохранённых установок</li>'; }
+    else {
+      list.innerHTML = items.map(i => `
+        <li data-id="${i.id}">
+          <span class="name">${i.name}</span>
+          <span class="date">${new Date(i.createdAt).toLocaleDateString('ru-RU')}</span>
+          <span class="del" data-del="${i.id}" title="Удалить">✕</span>
+        </li>`).join('');
+      list.onclick = (e) => {
+        const del = e.target.closest('[data-del]');
+        if (del) {
+          e.stopPropagation();
+          if (confirm('Удалить установку?')) {
+            delete S.installations[del.dataset.del];
+            saveAll();
+            $('sup-w-open').click();
+          }
+          return;
+        }
+        const li = e.target.closest('li[data-id]');
+        if (li) { S.currentId = li.dataset.id; $('dlg-open').close(); showWorkspace(); }
+      };
+    }
+    $('dlg-open').showModal();
+  });
+}
+
+/* ------------------- Installation dialog ------------------- */
+function fillSelect(sel, items, current) {
+  sel.innerHTML = items.map(i =>
+    `<option value="${i.value}"${i.value === current ? ' selected' : ''}>${i.label}</option>`
+  ).join('');
+}
+
+function setupInstFormSelects(currentValues = {}) {
+  fillSelect($('f-agent'),
+    Object.entries(AGENTS).map(([k,v]) => ({ value:k, label:v.label })),
+    currentValues.agent);
+  fillSelect($('f-series'),
+    SERIES_LIST.map(s => ({ value:s.id, label:`${s.id} — ${s.manufacturer}` })),
+    currentValues.series);
+  const vars = listVariants($('f-series').value);
+  fillSelect($('f-module'),
+    vars.map(v => ({ value:v.code, label:`${v.code} (${v.ob} л)` })),
+    currentValues.moduleCode);
+}
+
+function openInstDialog(existingId) {
+  const dlg = $('dlg-inst');
+  const existing = existingId ? S.installations[existingId] : null;
+  $('dlg-inst-h').textContent = existing ? 'Установка: редактирование' : 'Установка: создание';
+  setupInstFormSelects(existing || {});
+  $('f-series').onchange = () => {
+    const vars = listVariants($('f-series').value);
+    fillSelect($('f-module'), vars.map(v => ({ value:v.code, label:`${v.code} (${v.ob} л)` })), null);
+  };
+  $('f-name').value = existing?.name ?? '';
+  $('f-elev').value = existing?.elevation ?? 0;
+  $('f-norm').value = existing?.norm ?? 'sp-485-annex-d';
+  document.querySelectorAll('input[name="f-inst"]').forEach(r => r.checked = (r.value === (existing?.installType || 'modular')));
+  $('f-site-name').value = existing?.site?.name ?? '';
+  $('f-site-addr').value = existing?.site?.address ?? '';
+  $('f-site-contract').value = existing?.site?.contract ?? '';
+  $('f-site-customer').value = existing?.site?.customer ?? '';
+  $('f-site-info').value = existing?.site?.info ?? '';
+
+  dlg.returnValue = '';
+  dlg.showModal();
+  dlg.addEventListener('close', function onClose() {
+    dlg.removeEventListener('close', onClose);
+    if (dlg.returnValue !== 'ok') return;
+    const base = existing || defaultInstallation();
+    Object.assign(base, {
+      name: $('f-name').value.trim() || 'Установка',
+      elevation: +$('f-elev').value || 0,
+      norm: $('f-norm').value,
+      agent: $('f-agent').value,
+      series: $('f-series').value,
+      moduleCode: $('f-module').value,
+      installType: document.querySelector('input[name="f-inst"]:checked').value,
+      site: {
+        name: $('f-site-name').value,
+        address: $('f-site-addr').value,
+        contract: $('f-site-contract').value,
+        customer: $('f-site-customer').value,
+        info: $('f-site-info').value,
+      },
+    });
+    if (!existing) {
+      base.calcNo = `${String(Object.keys(S.installations).length+1).padStart(4,'0')}-G`;
+      S.installations[base.id] = base;
+      S.currentId = base.id;
+    }
+    saveAll();
+    showWorkspace();
+  });
+}
+
+/* ------------------- Tree ------------------- */
+function renderTree() {
+  const inst = currentInst();
+  if (!inst) return;
+  const tree = $('sup-tree');
+  const active = (k, d) => (S.selected.kind === k && S.selected.dirId === d) ? 'active' : '';
+  const items = [];
+  items.push(`<li class="branch ${active('inst', null)}" data-kind="inst">▾ ${esc(inst.name)}</li>`);
+  items.push(`<li class="${active('asm', null)}" data-kind="asm">Сборка модулей</li>`);
+  items.push(`<li class="branch">▾ Направления</li>`);
+  inst.directions.forEach(d => {
+    items.push(`<li class="${active('dir', d.id)}" data-kind="dir" data-id="${d.id}">${esc(d.name)}</li>`);
+  });
+  items.push(`<li class="leaf-add" data-kind="add-dir">+ Добавить</li>`);
+  tree.innerHTML = items.join('');
+  tree.onclick = (e) => {
+    const li = e.target.closest('li[data-kind]');
+    if (!li) return;
+    if (li.dataset.kind === 'add-dir') { openDirDialog(null); return; }
+    S.selected = { kind: li.dataset.kind, dirId: li.dataset.id || null };
+    renderAll();
+  };
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+/* ------------------- Views ------------------- */
+function renderAll() {
+  renderTree();
+  renderRight();
+  const { kind } = S.selected;
+  show('sup-view-inst', kind === 'inst');
+  show('sup-view-asm',  kind === 'asm');
+  show('sup-view-dir',  kind === 'dir');
+  if (kind === 'inst') renderInstView();
+  if (kind === 'asm')  renderAsmView();
+  if (kind === 'dir')  renderDirView();
+  renderWarnings();
+}
+
+function show(id, on) { $(id).hidden = !on; }
+
+function renderInstView() {
+  const inst = currentInst();
+  $('sup-inst-title').textContent = inst.name;
+  const tb = document.querySelector('#sup-dir-tbl tbody');
+  tb.innerHTML = inst.directions.map(d => {
+    const r = computeDir(d) || {};
+    const nozz = (d.pipeline || []).filter(p => p.nozzle && p.nozzle !== 'none').length;
+    return `<tr data-id="${d.id}">
+      <td><a href="#" class="dir-lnk" data-id="${d.id}">${esc(d.name)}</a></td>
+      <td class="num">${r.mg ?? '—'}</td>
+      <td class="num">${r.n ?? '—'}</td>
+      <td class="num">${r.tpd ?? '—'}</td>
+      <td class="num">${nozz}</td>
+      <td class="num">${r.Fc ?? '—'}</td>
+    </tr>`;
+  }).join('');
+  tb.onclick = (e) => {
+    const a = e.target.closest('.dir-lnk');
+    if (a) { e.preventDefault(); S.selected = { kind:'dir', dirId: a.dataset.id }; renderAll(); }
+  };
+}
+
+function renderAsmView() {
+  const inst = currentInst();
+  // Авто-сборка: по одной батарее на направление, кол-во основных = n_calc
+  if (!inst.assemblies.length) {
+    inst.assemblies = inst.directions.map((d, i) => {
+      const r = computeDir(d);
+      return {
+        id: newId('asm-'), idx: i+1,
+        main: r?.n || 1, reserve: 0, twoRow: false,
+        collectorL: 0, collectorDN: 40, backupNo: '',
+        dirId: d.id,
+      };
+    });
+  }
+  const tb = document.querySelector('#sup-asm-tbl tbody');
+  tb.innerHTML = inst.assemblies.map((a, i) => `
+    <tr data-id="${a.id}">
+      <td>${i+1}</td>
+      <td><input type="number" data-f="main" value="${a.main}" min="0" style="width:60px;"></td>
+      <td><input type="number" data-f="reserve" value="${a.reserve}" min="0" style="width:60px;"></td>
+      <td><input type="checkbox" data-f="twoRow" ${a.twoRow?'checked':''}></td>
+      <td><input type="number" data-f="collectorL" value="${a.collectorL}" step="0.1" style="width:70px;"></td>
+      <td><input type="number" data-f="collectorDN" value="${a.collectorDN}" min="15" style="width:60px;"></td>
+      <td><input type="text" data-f="backupNo" value="${a.backupNo||''}" style="width:40px;"></td>
+      <td><button class="sup-ibtn sup-danger" data-del="${a.id}">✕</button></td>
+    </tr>`).join('');
+  tb.oninput = (e) => {
+    const tr = e.target.closest('tr'); if (!tr) return;
+    const a = inst.assemblies.find(x => x.id === tr.dataset.id); if (!a) return;
+    const f = e.target.dataset.f;
+    a[f] = e.target.type === 'checkbox' ? e.target.checked
+         : e.target.type === 'number' ? +e.target.value : e.target.value;
+    saveAll();
+  };
+  tb.onclick = (e) => {
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      inst.assemblies = inst.assemblies.filter(a => a.id !== del.dataset.del);
+      saveAll(); renderAsmView();
+    }
+  };
+  // ПУ
+  const pu = document.querySelector('#sup-pu-tbl tbody');
+  pu.innerHTML = inst.directions.map(d => {
+    const r = computeDir(d);
+    return `<tr><td>${esc(d.name)}</td><td class="num">${r?.n||0}</td><td class="num">${r?.n||0}</td></tr>`;
   }).join('');
 }
 
-function initSelects() {
-  fillSelect('sup-method', METHOD_LIST, S.method, {
-    value: m => m.id, label: m => m.label,
-  });
-  fillSelect('sup-agent', Object.entries(AGENTS), S.agent, {
-    value: ([k]) => k, label: ([k,a]) => `${k} — ${a.label}`,
-  });
-  syncCylinders();
-  syncAgentInfo();
-  syncMethodRefs();
-}
-
-function syncCylinders() {
-  const a = AGENTS[$('sup-agent').value];
-  const pool = CYLINDERS[a.type];
-  fillSelect('sup-cylinder', [{ V: 0, label: 'авто (минимум баллонов)' }, ...pool], S.cylinderV, {
-    value: c => c.V, label: c => c.label,
-  });
-}
-
-function syncAgentInfo() {
-  const key = $('sup-agent').value;
-  const a = AGENTS[key];
-  $('sup-agent-info').innerHTML = `
-    ${a.type === 'halocarbon' ? 'хим. фторуглерод' : 'инертный газ'},
-    ρ₂₀ = ${a.rho20} кг/м³, s₂₀ = ${a.s20} м³/кг,
-    Cmin A/B = ${a.Cmin_A}/${a.Cmin_B}%, NOAEL ${a.Cmax}%.
-    ${a.notes}
-  `;
-}
-
-function syncMethodRefs() {
-  const meta = METHODS[$('sup-method').value].META;
-  $('sup-method-refs').innerHTML = `<b>Источники:</b> ${meta.refs.join('; ')}`;
-}
-
-/* ============ Рендер результата ============ */
-function renderCalc(result, piping, cyl) {
-  const el = $('sup-summary');
-  el.innerHTML = `
-    <div class="card big"><span class="label">Масса ГОТВ</span><span class="value">${result.M} кг</span></div>
-    <div class="card"><span class="label">Расч. концентрация</span><span class="value">${result.C}%</span></div>
-    <div class="card"><span class="label">Cmin (${result.fireClass})</span><span class="value">${result.Cmin}%</span></div>
-    <div class="card"><span class="label">Объём</span><span class="value">${result.V} м³</span></div>
-    <div class="card"><span class="label">Время выпуска</span><span class="value">≤ ${result.dischargeS} с</span></div>
-    <div class="card"><span class="label">Массовый расход</span><span class="value">${piping.mdot} кг/с</span></div>
-    <div class="card"><span class="label">Диаметр магистрали</span><span class="value">DN ${piping.DN}</span></div>
-    <div class="card"><span class="label">Форсунки</span><span class="value">${piping.nozzles} шт</span></div>
-    <div class="card"><span class="label">Баллонов</span><span class="value">${cyl.n} × ${cyl.label}</span></div>
-    <div class="card"><span class="label">Масса на баллон</span><span class="value">${cyl.Mcyl} кг</span></div>
-  `;
-  const steps = [
-    `<b>Методика:</b> ${METHODS[result.method].META.label}`,
-    ...result.steps,
-    '',
-    '<b>Трубопровод:</b>',
-    ...piping.notes,
-    '',
-    `<b>Баллоны:</b> выбрано ${cyl.label} — ${cyl.n} шт, вместимость ${cyl.Mcyl} кг/шт, суммарная масса ${(cyl.Mcyl*cyl.n).toFixed(1)} кг (треб. ${result.M} кг).`,
-  ];
-  $('sup-steps').innerHTML = steps.join('\n');
-}
-
-/* ============ Трубопровод (изометрия) ============ */
-function renderPipe(result, piping) {
-  const host = $('sup-pipe-view');
-  const W = 900, H = 420;
-  const ox = 60, oy = 300;  // origin
-  // isometric helper
-  const iso = (x, y, z) => {
-    const ix = ox + (x - y) * Math.cos(Math.PI/6);
-    const iy = oy + (x + y) * Math.sin(Math.PI/6) - z;
-    return [ix, iy];
-  };
-  const room = { L: 12, W: 6, H: 3 };   // room size (units ≈ 0.5m for drawing)
-  const sx = 18, sz = 40;
-  const unitLen = 18;
-
-  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
-  // Room floor
-  const p1 = iso(0, 0, 0), p2 = iso(room.L * unitLen/sx, 0, 0),
-        p3 = iso(room.L * unitLen/sx, room.W * unitLen/sx, 0),
-        p4 = iso(0, room.W * unitLen/sx, 0);
-  svg += `<polygon points="${p1.join(',')} ${p2.join(',')} ${p3.join(',')} ${p4.join(',')}"
-           fill="#f3f5f7" stroke="#90a4ae" stroke-width="0.8"/>`;
-  // Walls
-  const w1 = iso(0,0, room.H*sz), w2 = iso(room.L*unitLen/sx,0, room.H*sz),
-        w3 = iso(0, room.W*unitLen/sx, room.H*sz);
-  svg += `<polygon points="${p1.join(',')} ${p2.join(',')} ${w2.join(',')} ${w1.join(',')}"
-           fill="#eceff1" stroke="#90a4ae" stroke-width="0.6" opacity="0.5"/>`;
-  svg += `<polygon points="${p1.join(',')} ${p4.join(',')} ${w3.join(',')} ${w1.join(',')}"
-           fill="#e0e6eb" stroke="#90a4ae" stroke-width="0.6" opacity="0.5"/>`;
-
-  // Cylinders (corner)
-  const cx0 = iso(0.5, 0.5, 0);
-  const cyl = cylinderPick(result, S.cylinderV || undefined);
-  for (let i = 0; i < Math.min(cyl.n, 8); i++) {
-    const [x, y] = iso(0.5 + i*0.6, 0.5, 0);
-    const [x2, y2] = iso(0.5 + i*0.6, 0.5, 60);
-    svg += `<rect x="${x-7}" y="${y2}" width="14" height="${y-y2}"
-             fill="#ffe0b2" stroke="#D79B00" stroke-width="0.8"/>`;
-    svg += `<ellipse cx="${x}" cy="${y2}" rx="7" ry="2.5" fill="#ffd180" stroke="#D79B00" stroke-width="0.6"/>`;
-  }
-  svg += `<text x="${cx0[0]}" y="${cx0[1]+18}" style="font-size:10px;fill:#6b4e00;font-weight:600;">${cyl.n}×${cyl.label}</text>`;
-
-  // Riser from cylinder to ceiling
-  const [rx, ry] = iso(1.5, 0.5, 60);
-  const [rx2, ry2] = iso(1.5, 0.5, room.H*sz);
-  svg += `<line x1="${rx}" y1="${ry}" x2="${rx2}" y2="${ry2}" stroke="#B85450" stroke-width="2.5"/>`;
-
-  // Ceiling main pipe
-  const [mx1, my1] = iso(1.5, 0.5, room.H*sz);
-  const [mx2, my2] = iso(1.5, room.W*unitLen/sx - 0.5, room.H*sz);
-  svg += `<line x1="${mx1}" y1="${my1}" x2="${mx2}" y2="${my2}" stroke="#B85450" stroke-width="2.5"/>`;
-  const [mx3, my3] = iso(room.L*unitLen/sx - 1, room.W*unitLen/sx/2, room.H*sz);
-  svg += `<line x1="${mx1}" y1="${my1}" x2="${mx3}" y2="${my3}" stroke="#B85450" stroke-width="2.5"/>`;
-
-  // Distribution branches to nozzles
-  const nCount = piping.nozzles;
-  const cols = Math.max(2, Math.ceil(Math.sqrt(nCount * room.L / room.W)));
-  const rows = Math.ceil(nCount / cols);
-  let placed = 0;
-  for (let r = 0; r < rows && placed < nCount; r++) {
-    for (let c = 0; c < cols && placed < nCount; c++) {
-      const xr = 1 + (c + 0.5) * ((room.L*unitLen/sx - 2) / cols);
-      const yr = 0.5 + (r + 0.5) * ((room.W*unitLen/sx - 1) / rows);
-      // tap-off from main (at x=1.5 or x=room.L/2)
-      const [tapX, tapY] = iso(xr, 0.5, room.H*sz);
-      const [endX, endY] = iso(xr, yr, room.H*sz);
-      svg += `<line x1="${tapX}" y1="${tapY}" x2="${endX}" y2="${endY}"
-               stroke="#6C8EBF" stroke-width="1.6"/>`;
-      // nozzle (down-arrow triangle)
-      const [nx, ny] = iso(xr, yr, room.H*sz - 3);
-      svg += `<circle cx="${endX}" cy="${endY}" r="3" fill="#82B366" stroke="#1e7a1e" stroke-width="0.6"/>`;
-      svg += `<path d="M ${endX-2} ${endY+1} L ${endX+2} ${endY+1} L ${endX} ${endY+5} Z"
-               fill="#82B366" stroke="#1e7a1e" stroke-width="0.4"/>`;
-      placed++;
+function renderDirView() {
+  const inst = currentInst();
+  const dir = inst.directions.find(d => d.id === S.selected.dirId);
+  if (!dir) { S.selected = { kind:'inst', dirId:null }; return renderAll(); }
+  $('sup-dir-title').textContent = dir.name;
+  // zones
+  const grid = $('sup-zones-grid');
+  grid.innerHTML = dir.zones.map(z => `
+    <div class="sup-zone-card" data-id="${z.id}">
+      <span class="zone-del" data-del="${z.id}" style="float:right;color:#c62828;cursor:pointer;">✕</span>
+      <span class="zt">${esc(z.name)}</span>
+      <span class="zx">S = ${z.S} м² × H = ${z.H} м (V = ${(z.S*z.H).toFixed(1)} м³)</span>
+      <span class="zx">Cн = ${z.Cn}%, fs = ${z.fs} м², П = ${z.P}</span>
+    </div>`).join('');
+  grid.onclick = (e) => {
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      dir.zones = dir.zones.filter(z => z.id !== del.dataset.del);
+      saveAll(); renderAll(); return;
     }
-  }
-
-  // Legend/text
-  svg += `<text x="10" y="20" style="font-size:12px;font-weight:700;fill:#263238;">
-          ${METHODS[S.method].META.label} · ${result.agentLabel}</text>`;
-  svg += `<text x="10" y="38" style="font-size:11px;fill:#546e7a;">
-          V=${result.V}м³, M=${result.M}кг, DN${piping.DN}, ${piping.nozzles} форсунок</text>`;
-  svg += `<text x="10" y="${H-8}" style="font-size:10px;fill:#78909c;">
-          Изометрия (MVP). Реальная трассировка — по плану помещения.</text>`;
-
-  svg += `</svg>`;
-  host.innerHTML = svg;
-}
-
-/* ============ Спецификация ============ */
-function renderSpec(result, piping, cyl) {
-  const host = $('sup-spec');
-  const a = AGENTS[result.agent];
-  const mat = $('sup-pipe-mat').selectedOptions[0]?.textContent || '';
-  const rows = [
-    { code: `AGENT.${result.agent}`, name: `ГОТВ ${a.label}`, qty: cyl.Mcyl * cyl.n, unit: 'кг', note: `для ${cyl.n}×${cyl.label}` },
-    { code: `CYL.${cyl.V}L`, name: `Баллон ${cyl.label}` + (a.type === 'inert' ? ` @${cyl.P}бар` : ''), qty: cyl.n, unit: 'шт', note: '' },
-    { code: 'HDR', name: 'Коллектор распределительный', qty: 1, unit: 'шт', note: '' },
-    { code: 'PIPE', name: `Трубопровод ${mat.split('(')[0]}, DN${piping.DN}`, qty: piping.pipeLen, unit: 'м', note: '' },
-    { code: 'NZL', name: 'Форсунка-распылитель', qty: piping.nozzles, unit: 'шт', note: '' },
-    { code: 'PSC', name: 'Датчик давления (пост. контроль)', qty: cyl.n, unit: 'шт', note: 'по одному на баллон' },
-    { code: 'WGH', name: 'Весы контроля массы (для хим. агента)', qty: a.type === 'halocarbon' ? cyl.n : 0, unit: 'шт', note: '' },
-    { code: 'ALM', name: 'Сирена-оповещатель', qty: 2, unit: 'шт', note: 'у входа и внутри' },
-    { code: 'STP', name: 'Табло «ГАЗ НЕ ВХОДИ!»', qty: 1, unit: 'шт', note: 'у входа снаружи' },
-    { code: 'DPR', name: 'Автоматические воздушные клапаны (зашибка)', qty: 1, unit: 'компл.', note: '' },
-    { code: 'PPU', name: 'ППУ (прибор пуска газовый)', qty: 1, unit: 'шт', note: '' },
-  ].filter(r => r.qty > 0);
-
-  let html = '<h3>Спецификация комплектующих</h3>';
-  html += `<p style="font-size:12px;color:#555;">Методика: <b>${METHODS[result.method].META.label}</b>.
-           Помещение V=${result.V} м³, H=${S.H} м, класс пожара ${result.fireClass},
-           герметичность ${result.leakage}, T=${result.tempC}°C, h=${result.altM} м.</p>`;
-  html += '<table class="sup-table"><thead><tr>';
-  html += '<th>№</th><th>Код</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th>Примечание</th>';
-  html += '</tr></thead><tbody>';
-  rows.forEach((r, i) => {
-    html += `<tr><td>${i+1}</td><td>${r.code}</td><td>${r.name}</td>
-             <td class="num">${r.qty}</td><td>${r.unit}</td><td>${r.note}</td></tr>`;
-  });
-  html += '</tbody></table>';
-  host.innerHTML = html;
-}
-
-/* ============ Update ============ */
-let last = null;
-function update() {
-  read();
-  syncMethodRefs();
-  syncAgentInfo();
-  syncCylinders();
-
-  const input = {
-    agent: S.agent, V: S.V, fireClass: S.fireClass, leakage: S.leakage,
-    tempC: S.tempC, altM: S.altM, heightM: S.H,
+    const c = e.target.closest('.sup-zone-card');
+    if (c) openZoneDialog(dir, c.dataset.id);
   };
-  const result = run(S.method, input);
-  const piping = pipingSpec(result, { V: S.V, heightM: S.H });
-  if (S.pipeLenOverride > 0) piping.pipeLen = S.pipeLenOverride;
-  const cyl = cylinderPick(result, S.cylinderV || undefined);
-  last = { result, piping, cyl };
+  // summary
+  const r = computeDir(dir);
+  setVal('sup-s-Mcalc', r?.mp ?? '—');
+  setVal('sup-s-Mfact', r?.mg ?? '—');
+  setVal('sup-s-Ncalc', r?.n ?? '—');
+  setVal('sup-s-Nfact', r?.n ?? '—');
+  setVal('sup-s-Mmin',  r?.Mmin ?? '—');
+  setVal('sup-s-KZ',    r ? (r.mg / (r.n * r.ob)).toFixed(3) : '—');
+  setVal('sup-s-Mpipe', r?.mtr ?? '—');
+  setVal('sup-s-Mres',  r ? (r.n * r.m1).toFixed(2) : '—');
+  setVal('sup-s-tpd',   r?.tpd ?? '—');
+  setVal('sup-s-Fc',    r?.Fc ?? '—');
+}
+function setVal(id, v) { $(id).value = v; }
 
-  renderCalc(result, piping, cyl);
-  renderPipe(result, piping);
-  renderSpec(result, piping, cyl);
+function renderRight() {
+  const inst = currentInst();
+  if (!inst) return;
+  const a = AGENTS[inst.agent];
+  const normLabel = {
+    'sp-485-annex-d':'СП 485 Прил. Д',
+    'sp-rk-2022':'СП РК 2.02-102-2022',
+    'nfpa-2001':'NFPA 2001',
+    'iso-14520':'ISO 14520',
+  }[inst.norm] || inst.norm;
+  $('i-norm').textContent = normLabel;
+  $('i-agent').textContent = a?.label || '—';
+  $('i-mod').textContent = inst.moduleCode || '—';
+  $('i-elev').textContent = inst.elevation;
+  $('i-ndir').textContent = inst.directions.length;
+  let ntotal = 0, mtotal = 0;
+  inst.directions.forEach(d => { const r = computeDir(d); if (r) { ntotal += r.n; mtotal += r.mg; } });
+  $('i-ntotal').textContent = ntotal;
+  $('i-mtotal').textContent = mtotal.toFixed(1);
 }
 
-/* ============ Экспорт XLSX ============ */
-function exportXlsx() {
-  if (!last) return;
-  if (!window.XLSX) { alert('SheetJS не загружен'); return; }
-  const { result, piping, cyl } = last;
-  const a = AGENTS[result.agent];
-  const meta = METHODS[result.method].META;
-
-  const rows = [];
-  rows.push(['Расчёт установки газового пожаротушения']);
-  rows.push([`Методика: ${meta.label}`]);
-  rows.push([`Источники: ${meta.refs.join('; ')}`]);
-  rows.push([]);
-  rows.push(['Исходные данные']);
-  rows.push(['Защищаемый объём V, м³', result.V]);
-  rows.push(['Высота H, м', S.H]);
-  rows.push(['Класс пожара', result.fireClass]);
-  rows.push(['Класс герметичности', result.leakage]);
-  rows.push(['Температура, °C', result.tempC]);
-  rows.push(['Высота над у. м., м', result.altM]);
-  rows.push(['ГОТВ', a.label]);
-  rows.push([]);
-  rows.push(['Результаты расчёта']);
-  rows.push(['Cmin, %', result.Cmin]);
-  rows.push(['C расчётная, %', result.C]);
-  if (result.K1 != null) rows.push(['K1 (утечки)', result.K1]);
-  if (result.Ks != null) rows.push(['Ks (безопасности)', result.Ks]);
-  if (result.Kt != null) rows.push(['Kt (температура)', result.Kt]);
-  if (result.Kalt != null) rows.push(['Kalt (высота)', result.Kalt]);
-  rows.push(['Масса ГОТВ M, кг', result.M]);
-  rows.push(['Время выпуска, с', result.dischargeS]);
-  rows.push([]);
-  rows.push(['Ход расчёта:']);
-  result.steps.forEach(s => rows.push([s]));
-  rows.push([]);
-  rows.push(['Трубопровод']);
-  piping.notes.forEach(s => rows.push([s]));
-  rows.push([]);
-  rows.push(['Спецификация']);
-  rows.push(['№','Код','Наименование','Кол-во','Ед.','Примечание']);
-  const specRows = [
-    [`AGENT.${result.agent}`, `ГОТВ ${a.label}`, cyl.Mcyl * cyl.n, 'кг', `для ${cyl.n}×${cyl.label}`],
-    [`CYL.${cyl.V}L`, `Баллон ${cyl.label}`, cyl.n, 'шт', ''],
-    ['HDR', 'Коллектор распределительный', 1, 'шт', ''],
-    ['PIPE', `Трубопровод DN${piping.DN}`, piping.pipeLen, 'м', ''],
-    ['NZL', 'Форсунка-распылитель', piping.nozzles, 'шт', ''],
-    ['PSC', 'Датчик давления', cyl.n, 'шт', ''],
-    ['ALM', 'Сирена-оповещатель', 2, 'шт', ''],
-    ['STP', 'Табло «ГАЗ НЕ ВХОДИ»', 1, 'шт', ''],
-    ['PPU', 'ППУ', 1, 'шт', ''],
-  ];
-  specRows.forEach((r,i) => rows.push([i+1, ...r]));
-
-  const ws = window.XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:4},{wch:22},{wch:46},{wch:10},{wch:8},{wch:30}];
-  const wb = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(wb, ws, 'АГПТ');
-  const fn = `AGPT_${result.method}_${result.agent}_V${result.V}_${new Date().toISOString().slice(0,10)}.xlsx`;
-  window.XLSX.writeFile(wb, fn);
+/* ------------------- Warnings ------------------- */
+function renderWarnings() {
+  const inst = currentInst();
+  const ul = $('sup-warn'); const items = [];
+  if (!inst.directions.length) items.push('Нет направлений. Добавьте хотя бы одно.');
+  inst.directions.forEach(d => {
+    if (!d.zones.length) items.push(`«${d.name}»: нет зон.`);
+    d.zones.forEach(z => {
+      const paramMax = 0.022;
+      const param = z.fs > 0 ? (z.fs / (z.S * z.H)) : 0;
+      if (param > paramMax)
+        items.push(`«${d.name}» / «${z.name}»: параметр негерметичности (${param.toFixed(4)} м⁻¹) превышает допустимый (${paramMax}).`);
+    });
+    if (!d.pipeline.length) items.push(`«${d.name}»: присутствует незакрытый трубопровод.`);
+  });
+  ul.innerHTML = items.map(x => `<li>${esc(x)}</li>`).join('') || `<li style="color:#2e7d32;list-style:none;">Без замечаний ✓</li>`;
 }
 
-/* ============ HTML-отчёт ============ */
-function exportHtml() {
-  if (!last) return;
-  const { result, piping, cyl } = last;
-  const a = AGENTS[result.agent];
-  const meta = METHODS[result.method].META;
-  const html = `<!doctype html><html><head><meta charset="utf-8">
-    <title>АГПТ — отчёт</title>
-    <style>
-      body{font-family:Arial,sans-serif;padding:30px;max-width:900px;margin:0 auto;color:#222;}
-      h1{color:#0d47a1;} h2{color:#1565c0;border-bottom:1px solid #bbdefb;padding-bottom:4px;}
-      table{border-collapse:collapse;width:100%;margin:8px 0;font-size:12px;}
-      th,td{border:1px solid #bbb;padding:5px 8px;text-align:left;}
-      th{background:#eceff1;}
-      pre{background:#f5f5f5;padding:10px;border-radius:4px;white-space:pre-wrap;font-size:12px;}
-    </style></head><body>
-    <h1>Расчёт АГПТ</h1>
-    <p><b>Методика:</b> ${meta.label}<br>
-       <b>Источники:</b> ${meta.refs.join('; ')}<br>
-       <b>Дата:</b> ${new Date().toLocaleDateString('ru-RU')}</p>
-    <h2>Исходные данные</h2>
-    <table>
-      <tr><td>Объём V</td><td>${result.V} м³</td></tr>
-      <tr><td>Высота H</td><td>${S.H} м</td></tr>
-      <tr><td>Класс пожара</td><td>${result.fireClass}</td></tr>
-      <tr><td>Класс герметичности</td><td>${result.leakage}</td></tr>
-      <tr><td>Температура</td><td>${result.tempC}°C</td></tr>
-      <tr><td>Высота над у. м.</td><td>${result.altM} м</td></tr>
-      <tr><td>ГОТВ</td><td>${a.label} (${a.type === 'halocarbon' ? 'хим.' : 'инерт.'})</td></tr>
-    </table>
-    <h2>Результаты</h2>
-    <table>
-      <tr><td>Cmin</td><td>${result.Cmin}%</td></tr>
-      <tr><td>C расчётная</td><td>${result.C}%</td></tr>
-      <tr><td><b>Масса ГОТВ</b></td><td><b>${result.M} кг</b></td></tr>
-      <tr><td>Время выпуска</td><td>≤ ${result.dischargeS} с</td></tr>
-      <tr><td>DN магистрали</td><td>${piping.DN}</td></tr>
-      <tr><td>Форсунок</td><td>${piping.nozzles}</td></tr>
-      <tr><td>Баллоны</td><td>${cyl.n} × ${cyl.label}</td></tr>
-    </table>
-    <h2>Ход расчёта</h2>
-    <pre>${result.steps.join('\n')}\n\n${piping.notes.join('\n')}</pre>
-    </body></html>`;
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a_el = document.createElement('a');
-  a_el.href = url; a_el.download = `AGPT_${result.method}_${result.agent}_V${result.V}.html`;
-  a_el.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+/* ------------------- Computation ------------------- */
+function computeDir(dir) {
+  const inst = currentInst();
+  if (!inst || !dir.zones.length) return null;
+  // Суммарный объём по всем зонам, берём параметры 1-й зоны как репрезентативные
+  const z = dir.zones[0];
+  const totalS = dir.zones.reduce((a,b) => a + (b.S||0), 0);
+  const avgH = dir.zones.reduce((a,b) => a + (b.H||0)*((b.S||0)), 0) / Math.max(1, totalS);
+  try {
+    const obtr = (dir.pipeline || []).reduce((acc, p) => {
+      const dn = +p.DN || 0; const L = +p.L || 0;
+      // Литры: A (м²) · L (м) · 1000
+      return acc + Math.PI * Math.pow(dn/2000, 2) * L * 1000;
+    }, 0);
+    const r = Annex.compute({
+      agent: inst.agent,
+      sp: totalS, h: avgH || z.H,
+      tm: dir.tmin, hm: inst.elevation || 0,
+      fs: z.fs, paramp: +z.P,
+      cn: z.Cn,
+      tp: dir.feedTime,
+      fireClass: dir.fireClass,
+      moduleCode: inst.moduleCode,
+      obtr: +obtr.toFixed(2),
+    });
+    const relief = Annex.reliefArea({
+      mp: r.mp, r1: r.r1, tpd: r.tpd,
+      tm: r.inputs.tm, hm: r.inputs.hm, piz: z.Ppr, fs: r.inputs.fs,
+    });
+    return { ...r, Fc: relief.Fc };
+  } catch (e) {
+    console.warn('computeDir error:', e);
+    return null;
+  }
 }
 
-/* ============ Tabs ============ */
-function initTabs() {
-  document.querySelectorAll('.sup-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.sup-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const name = tab.dataset.tab;
-      $('sup-panel-calc').style.display = name === 'calc' ? '' : 'none';
-      $('sup-panel-pipe').style.display = name === 'pipe' ? '' : 'none';
-      $('sup-panel-spec').style.display = name === 'spec' ? '' : 'none';
+/* ------------------- Direction dialog ------------------- */
+function openDirDialog(existingId) {
+  const inst = currentInst();
+  const dlg = $('dlg-dir');
+  const existing = existingId ? inst.directions.find(d => d.id === existingId) : null;
+  $('dlg-dir-h').textContent = existing ? 'Направление: редактирование' : 'Направление: создание';
+  const d = existing || defaultDirection(inst.directions.length + 1);
+  $('d-name').value = d.name;
+  document.querySelectorAll('input[name="d-type"]').forEach(r => r.checked = (r.value === d.type));
+  $('d-tmin').value = d.tmin;
+  $('d-feed').value = d.feedTime;
+  $('d-smoke').checked = d.smoke;
+  $('d-fire').value = d.fire;
+  $('d-mount').value = d.mount;
+  $('d-exh').value = d.exhaust;
+  $('d-exh-d').value = d.exhaustDist;
+  $('d-prelief').checked = d.prelief;
+  $('d-exec').value = d.exec;
+  $('d-class').value = d.fireClass;
+  $('d-leak').value = d.leakage;
+  dlg.returnValue = ''; dlg.showModal();
+  dlg.addEventListener('close', function onC() {
+    dlg.removeEventListener('close', onC);
+    if (dlg.returnValue !== 'ok') return;
+    Object.assign(d, {
+      name: $('d-name').value.trim() || d.name,
+      type: document.querySelector('input[name="d-type"]:checked').value,
+      tmin: +$('d-tmin').value, feedTime: +$('d-feed').value,
+      smoke: $('d-smoke').checked, fire: $('d-fire').value,
+      mount: $('d-mount').value, exhaust: $('d-exh').value,
+      exhaustDist: +$('d-exh-d').value, prelief: $('d-prelief').checked,
+      exec: $('d-exec').value, fireClass: $('d-class').value, leakage: $('d-leak').value,
+    });
+    if (!existing) { inst.directions.push(d); S.selected = { kind:'dir', dirId: d.id }; }
+    inst.assemblies = []; // пересобрать автоматически
+    saveAll(); renderAll();
+  });
+}
+
+/* ------------------- Zone dialog ------------------- */
+function openZoneDialog(dir, existingId) {
+  const dlg = $('dlg-zone');
+  const existing = existingId ? dir.zones.find(z => z.id === existingId) : null;
+  $('dlg-zone-h').textContent = existing ? 'Зона: редактирование' : 'Зона: создание';
+  const z = existing || defaultZone(dir.zones.length + 1);
+  $('z-name').value = z.name; $('z-S').value = z.S; $('z-H').value = z.H;
+  $('z-Cn').value = z.Cn; $('z-fs').value = z.fs; $('z-P').value = z.P; $('z-Ppr').value = z.Ppr;
+  dlg.returnValue = ''; dlg.showModal();
+  dlg.addEventListener('close', function onC() {
+    dlg.removeEventListener('close', onC);
+    if (dlg.returnValue !== 'ok') return;
+    Object.assign(z, {
+      name: $('z-name').value.trim() || z.name,
+      S: +$('z-S').value, H: +$('z-H').value,
+      Cn: +$('z-Cn').value, fs: +$('z-fs').value,
+      P: +$('z-P').value, Ppr: +$('z-Ppr').value,
+    });
+    if (!existing) dir.zones.push(z);
+    saveAll(); renderAll();
+  });
+}
+
+/* ------------------- Axonometric ------------------- */
+const ISO = { ox: 120, oy: 420, sx: Math.cos(Math.PI/6), sy: Math.sin(Math.PI/6), scale: 30 };
+
+function iso3(p) {
+  // p: {x,y,z} in "grid units" → SVG (px)
+  const x = ISO.ox + (p.x - p.z) * ISO.sx * ISO.scale;
+  const y = ISO.oy + (p.x + p.z) * ISO.sy * ISO.scale - p.y * ISO.scale;
+  return { x, y };
+}
+
+function buildPipeCoords(pipeline) {
+  // Segments have axis (x/y/z + direction) and L (length, m)
+  // Build cumulative path from origin (0,0,0)
+  let cur = { x: 0, y: 0, z: 0 };
+  return pipeline.map(p => {
+    const axis = (p.axis || 'x');
+    const dir = axis.startsWith('-') ? -1 : 1;
+    const axn = axis.replace('-','');
+    const d = dir * (+p.L || 0);
+    const start = { ...cur };
+    cur = { ...cur, [axn]: cur[axn] + d };
+    const end = { ...cur };
+    return { seg: p, start, end };
+  });
+}
+
+function renderIso(dirId) {
+  const inst = currentInst();
+  const pipe = dirId
+    ? (inst.directions.find(d => d.id === dirId)?.pipeline || [])
+    : inst.directions.flatMap(d => d.pipeline || []);
+  const coords = buildPipeCoords(pipe);
+  const W = 900, H = 580;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="background:#fff;">`;
+  // axes
+  const O = iso3({x:0,y:0,z:0});
+  svg += `<g stroke-width="1">
+    <line x1="${O.x}" y1="${O.y}" x2="${iso3({x:1.5,y:0,z:0}).x}" y2="${iso3({x:1.5,y:0,z:0}).y}" stroke="#2e7d32"/>
+    <line x1="${O.x}" y1="${O.y}" x2="${iso3({x:0,y:0,z:1.5}).x}" y2="${iso3({x:0,y:0,z:1.5}).y}" stroke="#2e7d32"/>
+    <line x1="${O.x}" y1="${O.y}" x2="${iso3({x:0,y:1.5,z:0}).x}" y2="${iso3({x:0,y:1.5,z:0}).y}" stroke="#c62828"/>
+  </g>`;
+  // cylinders at origin
+  const Cb = iso3({x:0, y:0, z:0});
+  svg += `<g fill="#e57373" stroke="#b71c1c" stroke-width="1.5">
+    <rect x="${Cb.x-20}" y="${Cb.y-4}" width="14" height="40" rx="4"/>
+    <rect x="${Cb.x-2}"  y="${Cb.y-4}" width="14" height="40" rx="4"/>
+  </g>`;
+  // segments
+  let totalVol = 0;
+  coords.forEach(({ seg, start, end }, idx) => {
+    const A = iso3(start), B = iso3(end);
+    const hasNoz = seg.nozzle && seg.nozzle !== 'none';
+    const stroke = hasNoz ? '#c62828' : '#d32f2f';
+    svg += `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="${stroke}" stroke-width="1.4"/>`;
+    if (S.isoShowNums) {
+      const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2 - 6;
+      svg += `<text x="${mx}" y="${my}" text-anchor="middle" style="font-size:10px;fill:#333;">${idx+1}</text>`;
+    }
+    if (hasNoz && S.isoShowNozz) {
+      svg += `<circle cx="${B.x}" cy="${B.y}" r="5" fill="none" stroke="#1565c0" stroke-width="1.4"/>
+              <circle cx="${B.x}" cy="${B.y}" r="2" fill="#1565c0"/>`;
+    }
+    // volume: cylinder V = π·(DN/2000)²·L·1000 [L]
+    const dn = +seg.DN || 22;
+    totalVol += Math.PI * Math.pow(dn/2000, 2) * (+seg.L || 0) * 1000;
+  });
+  svg += `</svg>`;
+  $('iso-canvas').innerHTML = svg;
+  $('iso-vtr').innerHTML = `V<sub>тр</sub> = ${(totalVol/1000).toFixed(3)} м³`;
+
+  // seg list
+  const list = $('seg-list');
+  list.innerHTML = pipe.map((p, i) => `
+    <div class="seg-item ${p.id === S.isoSelSeg ? 'sel' : ''}" data-id="${p.id}">
+      <span class="seg-no">${i+1}</span>
+      <span>${p.axis} · ${p.L} м · DN${p.DN} · ${p.nozzle || '—'}</span>
+    </div>`).join('');
+  list.onclick = (e) => {
+    const it = e.target.closest('.seg-item');
+    if (it) { S.isoSelSeg = it.dataset.id; fillSegForm(); renderIso(S.isoDirId); }
+  };
+}
+
+function fillSegForm() {
+  const inst = currentInst();
+  const pipe = S.isoDirId
+    ? (inst.directions.find(d => d.id === S.isoDirId)?.pipeline || [])
+    : inst.directions.flatMap(d => d.pipeline || []);
+  const p = pipe.find(x => x.id === S.isoSelSeg);
+  if (!p) return;
+  $('seg-L').value = p.L; $('seg-DN').value = p.DN;
+  $('seg-noz').value = p.nozzle || 'none'; $('seg-ax').value = p.axis || 'x';
+}
+
+function openIso(dirId) {
+  S.isoDirId = dirId;
+  S.isoSelSeg = null;
+  renderIso(dirId);
+  $('dlg-iso').showModal();
+}
+
+/* ------------------- Report ------------------- */
+function openReport() {
+  const inst = currentInst();
+  if (!inst.directions.length) { alert('Нет направлений для расчёта.'); return; }
+  const reports = inst.directions.map((d, i) => {
+    const r = computeDirForReport(d);
+    if (!r) return `Направление "${d.name}": недостаточно данных для расчёта.\n`;
+    const piping = buildPipingSummary(d);
+    return buildReport({
+      installation: inst, direction: d, zone: d.zones[0],
+      result: r, piping, calcNo: `${inst.calcNo}·${i+1}`,
     });
   });
+  $('rep-body').textContent = reports.join('\n\n' + '═'.repeat(72) + '\n\n');
+  $('dlg-report').showModal();
 }
 
-/* ============ Init ============ */
-function init() {
-  initSelects();
-  initTabs();
-  const ids = ['sup-method','sup-agent','sup-V','sup-H','sup-class','sup-leak',
-               'sup-temp','sup-alt','sup-cylinder','sup-pipe-mat','sup-pipe-len'];
-  ids.forEach(id => {
-    const el = $(id); if (!el) return;
-    el.addEventListener('change', update);
-    if (el.type === 'number') el.addEventListener('input', update);
+function computeDirForReport(dir) {
+  const r = computeDir(dir);
+  return r;
+}
+
+function buildPipingSummary(dir) {
+  const pipe = dir.pipeline || [];
+  const segments = pipe.map((p, i) => ({
+    id: i+1, OD: dnToOD(+p.DN).OD, wall: dnToOD(+p.DN).w,
+    DN: p.DN, L: p.L, dH: 0, area: p.nozzle && p.nozzle !== 'none' ? 24 : '',
+    P: '', G: '',
+  }));
+  const totalByDN = {};
+  let volL = 0;
+  pipe.forEach(p => {
+    const OD = dnToOD(+p.DN); const key = `${OD.OD}×${OD.w}`;
+    totalByDN[key] = +((totalByDN[key] || 0) + (+p.L||0)).toFixed(1);
+    volL += Math.PI * Math.pow((+p.DN)/2000, 2) * (+p.L||0) * 1000;
   });
-  $('sup-export-xlsx').addEventListener('click', exportXlsx);
-  $('sup-export-html').addEventListener('click', exportHtml);
-  update();
+  const nozzles = {};
+  pipe.filter(p => p.nozzle && p.nozzle !== 'none').forEach(p => {
+    const k = `Насадок-${p.nozzle}`;
+    nozzles[k] = (nozzles[k] || 0) + 1;
+  });
+  return {
+    segments, totalByDN,
+    totalVolumeL: +volL.toFixed(2),
+    nozzles: Object.entries(nozzles).map(([code, count]) => ({ code, count })),
+  };
+}
+
+function dnToOD(dn) {
+  const map = {
+    15: { OD: 22, w: 2.5 }, 20: { OD: 28, w: 3 }, 22: { OD: 22, w: 3.5 },
+    25: { OD: 34, w: 3.5 }, 28: { OD: 28, w: 4 }, 32: { OD: 42, w: 3.5 },
+    34: { OD: 34, w: 3.5 }, 40: { OD: 48, w: 4 }, 50: { OD: 57, w: 4 },
+    65: { OD: 76, w: 5 }, 80: { OD: 89, w: 5 }, 100: { OD: 108, w: 5 },
+  };
+  return map[dn] || { OD: dn, w: 3 };
+}
+
+/* ------------------- Init ------------------- */
+function init() {
+  S.installations = loadAll();
+  initWelcome();
+
+  $('sup-inst-edit').addEventListener('click', () => openInstDialog(S.currentId));
+  $('sup-add-dir').addEventListener('click', () => openDirDialog(null));
+  $('sup-add-zone').addEventListener('click', () => {
+    const dir = currentInst().directions.find(d => d.id === S.selected.dirId);
+    if (dir) openZoneDialog(dir);
+  });
+  $('sup-dir-edit').addEventListener('click', () => openDirDialog(S.selected.dirId));
+  $('sup-dir-del').addEventListener('click', () => {
+    const inst = currentInst();
+    if (!confirm('Удалить направление?')) return;
+    inst.directions = inst.directions.filter(d => d.id !== S.selected.dirId);
+    inst.assemblies = [];
+    S.selected = { kind:'inst', dirId:null };
+    saveAll(); renderAll();
+  });
+  $('sup-iso-all').addEventListener('click', () => openIso(null));
+  $('sup-dir-iso').addEventListener('click', () => openIso(S.selected.dirId));
+  $('sup-asm-iso').addEventListener('click', () => openIso(null));
+  $('sup-asm-auto').addEventListener('click', () => { currentInst().assemblies = []; saveAll(); renderAll(); });
+  $('sup-asm-add').addEventListener('click', () => {
+    const inst = currentInst();
+    inst.assemblies.push({ id: newId('asm-'), main: 1, reserve: 0, twoRow:false, collectorL:0, collectorDN:40, backupNo:'' });
+    saveAll(); renderAsmView();
+  });
+  $('sup-auto-dn').addEventListener('click', () => {
+    const inst = currentInst();
+    inst.directions.forEach(d => {
+      const r = computeDir(d); if (!r) return;
+      // Simple rule: main DN from mass flow m˙ = mg/tpd, velocity 35 m/s
+      const mdot = r.mg / (r.tpd || 10);
+      const rho = 7; const vel = 35;
+      const IDmm = Math.sqrt(4 * (mdot / (rho * vel)) / Math.PI) * 1000;
+      const DN = [15,20,22,25,28,32,34,40,50,65,80,100].find(x => x >= IDmm) || 100;
+      (d.pipeline || []).forEach(p => p.DN = p.DN || DN);
+    });
+    saveAll(); renderAll();
+  });
+  $('sup-spec').addEventListener('click', () => {
+    // reuse report — на вкладке отображает спецификации
+    openReport();
+  });
+  $('sup-report').addEventListener('click', openReport);
+  $('rep-copy').addEventListener('click', () => navigator.clipboard.writeText($('rep-body').textContent));
+  $('rep-save').addEventListener('click', () => {
+    const blob = new Blob([$('rep-body').textContent], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `АГПТ_${currentInst().calcNo}.txt`;
+    a.click();
+  });
+  $('rep-print').addEventListener('click', () => window.print());
+
+  // Axonometric
+  $('seg-add').addEventListener('click', () => {
+    const inst = currentInst();
+    const target = S.isoDirId
+      ? inst.directions.find(d => d.id === S.isoDirId)
+      : inst.directions[0];
+    if (!target) { alert('Добавьте направление.'); return; }
+    const seg = {
+      id: newId('s-'), axis: $('seg-ax').value, L: +$('seg-L').value || 1,
+      DN: +$('seg-DN').value, nozzle: $('seg-noz').value,
+    };
+    target.pipeline.push(seg); S.isoSelSeg = seg.id;
+    saveAll(); renderIso(S.isoDirId); fillSegForm();
+  });
+  $('seg-del').addEventListener('click', () => {
+    const inst = currentInst();
+    const target = S.isoDirId
+      ? inst.directions.find(d => d.id === S.isoDirId)
+      : null;
+    if (!target || !S.isoSelSeg) return;
+    target.pipeline = target.pipeline.filter(p => p.id !== S.isoSelSeg);
+    S.isoSelSeg = null;
+    saveAll(); renderIso(S.isoDirId);
+  });
+  ['seg-L','seg-DN','seg-noz','seg-ax'].forEach(id => {
+    $(id).addEventListener('change', () => {
+      const inst = currentInst();
+      const target = S.isoDirId
+        ? inst.directions.find(d => d.id === S.isoDirId)
+        : inst.directions[0];
+      const p = target?.pipeline.find(x => x.id === S.isoSelSeg);
+      if (!p) return;
+      p.L = +$('seg-L').value; p.DN = +$('seg-DN').value;
+      p.nozzle = $('seg-noz').value; p.axis = $('seg-ax').value;
+      saveAll(); renderIso(S.isoDirId);
+    });
+  });
+  $('iso-toggle-nums').addEventListener('click', () => { S.isoShowNums = !S.isoShowNums; renderIso(S.isoDirId); });
+  $('iso-toggle-nozz').addEventListener('click', () => { S.isoShowNozz = !S.isoShowNozz; renderIso(S.isoDirId); });
+
+  // Start: if no current installation, welcome
+  if (!S.currentId || !S.installations[S.currentId]) showWelcome();
+  else showWorkspace();
 }
 
 document.addEventListener('DOMContentLoaded', init);

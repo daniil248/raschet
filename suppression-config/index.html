@@ -3,11 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Raschet · Расчёт газового пожаротушения (АГПТ)</title>
+  <title>Raschet · АГПТ (газовое пожаротушение)</title>
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="suppression-config.css">
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -16,122 +15,338 @@
     mountHeader({ title: 'Расчёт газового пожаротушения (АГПТ)', home: '../hub.html' });
   </script>
 
-  <div class="sup-wrap">
-    <div class="sup-grid">
-      <!-- ============ Форма ============ -->
-      <aside class="sup-form">
-        <section class="sup-section">
-          <h2>1. Методика расчёта</h2>
-          <label class="sup-field">
-            <span>Нормативный документ</span>
-            <select id="sup-method"></select>
-          </label>
-          <div class="sup-hint" id="sup-method-refs"></div>
-        </section>
+  <!-- Welcome -->
+  <section id="sup-welcome" class="sup-welcome">
+    <div class="sup-welcome-row">
+      <button id="sup-w-create" class="sup-tile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="13" x2="12" y2="18"/>
+          <line x1="9" y1="15.5" x2="15" y2="15.5"/>
+        </svg>
+        <span>Создать установку</span>
+      </button>
+      <button id="sup-w-open" class="sup-tile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>Открыть установку</span>
+      </button>
+    </div>
+  </section>
 
-        <section class="sup-section">
-          <h2>2. Параметры защищаемого объёма</h2>
-          <label class="sup-field">
-            <span>Объём V, м³</span>
-            <input type="number" id="sup-V" value="120" min="1" step="1">
-          </label>
-          <label class="sup-field">
-            <span>Высота H, м</span>
-            <input type="number" id="sup-H" value="3" min="2" max="20" step="0.1">
-          </label>
-          <label class="sup-field">
-            <span>Класс пожара</span>
-            <select id="sup-class">
-              <option value="A" selected>A (твёрдые материалы, электроника)</option>
-              <option value="B">B (горючие жидкости)</option>
-              <option value="C">C (газы)</option>
-            </select>
-          </label>
-          <label class="sup-field">
-            <span>Класс герметичности</span>
-            <select id="sup-leak">
-              <option value="I">I (герметичное)</option>
-              <option value="II" selected>II (нормальное)</option>
-              <option value="III">III (с проёмами)</option>
-            </select>
-          </label>
-          <label class="sup-field">
-            <span>Температура в помещении, °C</span>
-            <input type="number" id="sup-temp" value="20" min="-30" max="60" step="1">
-          </label>
-          <label class="sup-field">
-            <span>Высота над уровнем моря, м</span>
-            <input type="number" id="sup-alt" value="200" min="0" max="3000" step="50">
-          </label>
-        </section>
+  <!-- Workspace -->
+  <section id="sup-ws" class="sup-ws" hidden>
+    <aside class="sup-nav">
+      <div class="sup-nav-title">Навигатор</div>
+      <ul id="sup-tree" class="sup-tree"></ul>
+    </aside>
 
-        <section class="sup-section">
-          <h2>3. ГОТВ</h2>
-          <label class="sup-field">
-            <span>Вид ГОТВ</span>
-            <select id="sup-agent"></select>
-          </label>
-          <div class="sup-hint" id="sup-agent-info"></div>
-          <label class="sup-field">
-            <span>Типоразмер баллона</span>
-            <select id="sup-cylinder"></select>
-          </label>
-        </section>
-
-        <section class="sup-section">
-          <h2>4. Трубопровод</h2>
-          <label class="sup-field">
-            <span>Материал трубы</span>
-            <select id="sup-pipe-mat">
-              <option value="steel">Сталь Ст.20 (бесшовная)</option>
-              <option value="stainless" selected>Нерж. сталь AISI 304/316</option>
-              <option value="copper">Медь</option>
-            </select>
-          </label>
-          <label class="sup-field">
-            <span>Эквивалентная длина, м (запас)</span>
-            <input type="number" id="sup-pipe-len" value="0" min="0" step="1">
-          </label>
-          <div class="sup-hint">Длина определяется автоматически по объёму.
-            При 0 — автоматический расчёт. Можно указать вручную.</div>
-        </section>
-
-        <div class="sup-actions">
-          <button type="button" class="sup-btn sup-btn-primary" id="sup-export-xlsx">📋 Отчёт (XLSX)</button>
-          <button type="button" class="sup-btn" id="sup-export-html">📄 HTML-отчёт</button>
-        </div>
-      </aside>
-
-      <!-- ============ Результат ============ -->
-      <main class="sup-view">
-        <div class="sup-tabs">
-          <div class="sup-tab active" data-tab="calc">Расчёт</div>
-          <div class="sup-tab" data-tab="pipe">Трубопровод (3D)</div>
-          <div class="sup-tab" data-tab="spec">Спецификация</div>
-        </div>
-
-        <div id="sup-panel-calc">
-          <div class="sup-summary" id="sup-summary"></div>
-          <h3 style="font-size:13px;color:#1565c0;margin:10px 0 6px;">Ход расчёта</h3>
-          <div class="sup-steps" id="sup-steps"></div>
-        </div>
-
-        <div id="sup-panel-pipe" style="display:none;">
-          <div class="sup-pipe" id="sup-pipe-view"></div>
-          <div class="sup-legend">
-            <span><i style="background:#B85450"></i>магистраль</span>
-            <span><i style="background:#6C8EBF"></i>распределительная сеть</span>
-            <span><i style="background:#82B366;border-radius:50%;"></i>форсунка</span>
-            <span><i style="background:#D79B00"></i>баллон ГОТВ</span>
+    <main class="sup-main">
+      <!-- Installation / directions table -->
+      <div id="sup-view-inst" class="sup-view">
+        <div class="sup-toolbar">
+          <h2 id="sup-inst-title">—</h2>
+          <button class="sup-ibtn" id="sup-inst-edit" title="Редактировать">✎</button>
+          <div class="sup-tb-actions">
+            <button class="sup-btn sup-btn-primary" id="sup-add-dir">+ Добавить направление</button>
+            <button class="sup-btn" id="sup-iso-all">Аксонометрическая схема</button>
+            <button class="sup-btn" id="sup-auto-dn">Диаметры автоматически</button>
+            <button class="sup-btn" id="sup-spec">Спецификация</button>
+            <button class="sup-btn" id="sup-report">Отчёт</button>
           </div>
         </div>
+        <table class="sup-tbl" id="sup-dir-tbl">
+          <thead><tr>
+            <th>Наименование</th>
+            <th>Масса ГОТВ, кг</th>
+            <th>Количество модулей</th>
+            <th>Время подачи t, с</th>
+            <th>Насадки</th>
+            <th>Площадь сбросного проёма, м²</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
-        <div id="sup-panel-spec" style="display:none;">
-          <div id="sup-spec"></div>
+      <!-- Module assembly -->
+      <div id="sup-view-asm" class="sup-view" hidden>
+        <div class="sup-toolbar">
+          <h2>Сборка модулей</h2>
+          <div class="sup-tb-actions">
+            <button class="sup-btn" id="sup-asm-auto">Автоматически</button>
+            <button class="sup-btn sup-btn-primary" id="sup-asm-add">+ Добавить батарею</button>
+            <button class="sup-btn" id="sup-asm-iso">Аксонометрическая схема</button>
+          </div>
         </div>
-      </main>
-    </div>
-  </div>
+        <table class="sup-tbl" id="sup-asm-tbl">
+          <thead><tr>
+            <th>№</th>
+            <th>Кол-во основных модулей</th>
+            <th>Кол-во резервных</th>
+            <th>Двухрядная</th>
+            <th>Длина коллектора, м</th>
+            <th>Диаметр коллектора, мм</th>
+            <th>Номер резервной батареи</th>
+            <th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <h3 class="sup-h3">Пусковые устройства</h3>
+        <table class="sup-tbl" id="sup-pu-tbl">
+          <thead><tr>
+            <th>Наименование</th>
+            <th>Целевое кол-во модулей</th>
+            <th>Фактическое кол-во модулей</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Direction -->
+      <div id="sup-view-dir" class="sup-view" hidden>
+        <div class="sup-toolbar">
+          <h2 id="sup-dir-title">—</h2>
+          <button class="sup-ibtn" id="sup-dir-edit" title="Редактировать">✎</button>
+          <button class="sup-ibtn sup-danger" id="sup-dir-del" title="Удалить">✕</button>
+          <div class="sup-tb-actions">
+            <button class="sup-btn" id="sup-dir-iso">Аксонометрическая схема</button>
+          </div>
+        </div>
+        <div class="sup-zones">
+          <div class="sup-zones-grid" id="sup-zones-grid"></div>
+          <button class="sup-btn sup-btn-ghost" id="sup-add-zone">+ Добавить зону</button>
+        </div>
+        <div class="sup-sum">
+          <div class="sup-sum-row">
+            <label>Расчётная масса ГОТВ, кг</label><input readonly id="sup-s-Mcalc">
+            <label>Фактическая масса ГОТВ, кг</label><input readonly id="sup-s-Mfact">
+          </div>
+          <div class="sup-sum-row">
+            <label>Расчётное кол-во модулей</label><input readonly id="sup-s-Ncalc">
+            <label>Фактическое кол-во модулей</label><input readonly id="sup-s-Nfact">
+          </div>
+          <div class="sup-sum-row">
+            <label>Минимальная масса ГОТВ, кг</label><input readonly id="sup-s-Mmin">
+            <label>Фактический коэф. заполнения, кг/л</label><input readonly id="sup-s-KZ">
+          </div>
+          <div class="sup-sum-row">
+            <label>Остаток ГОТВ в трубопроводе, кг</label><input readonly id="sup-s-Mpipe">
+            <label>Остаток ГОТВ в модулях, кг</label><input readonly id="sup-s-Mres">
+          </div>
+          <div class="sup-sum-row">
+            <label>Время подачи tpd, с</label><input readonly id="sup-s-tpd">
+            <label>Площадь сбросного проёма Fc, м²</label><input readonly id="sup-s-Fc">
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="sup-right">
+      <div class="sup-panel">
+        <div class="sup-panel-h">Установка</div>
+        <div class="sup-kv"><label>Норматив</label><span id="i-norm">—</span></div>
+        <div class="sup-kv"><label>ГОТВ</label><span id="i-agent">—</span></div>
+        <div class="sup-kv"><label>Тип модуля</label><span id="i-mod">—</span></div>
+        <div class="sup-kv"><label>Высота над у.м., м</label><span id="i-elev">—</span></div>
+        <div class="sup-kv"><label>Направлений</label><span id="i-ndir">—</span></div>
+        <div class="sup-kv"><label>Модулей всего</label><span id="i-ntotal">—</span></div>
+        <div class="sup-kv"><label>Масса ГОТВ всего, кг</label><span id="i-mtotal">—</span></div>
+      </div>
+      <div class="sup-panel">
+        <div class="sup-panel-h">Предупреждения</div>
+        <ul id="sup-warn" class="sup-warn"></ul>
+      </div>
+    </aside>
+  </section>
+
+  <!-- Dialog: Installation -->
+  <dialog id="dlg-inst" class="sup-dlg">
+    <form method="dialog">
+      <header><span id="dlg-inst-h">Установка: создание</span><button value="cancel" class="sup-dlg-x">✕</button></header>
+      <div class="sup-form">
+        <label><span>Наименование установки</span><input type="text" id="f-name"></label>
+        <label><span>Высота над уровнем моря, м</span><input type="number" id="f-elev" value="0" step="10"></label>
+        <label><span>Нормативный документ</span>
+          <select id="f-norm">
+            <option value="sp-485-annex-d" selected>СП 485.1311500.2020, Прил. Д (Россия)</option>
+            <option value="sp-rk-2022">СП РК 2.02-102-2022 (Казахстан)</option>
+            <option value="nfpa-2001">NFPA 2001 (США)</option>
+            <option value="iso-14520">ISO 14520 (International)</option>
+          </select>
+        </label>
+        <label><span>ГОТВ</span><select id="f-agent"></select></label>
+        <label><span>Линейка модулей</span><select id="f-series"></select></label>
+        <label><span>Тип модуля</span><select id="f-module"></select></label>
+        <div class="sup-radio-row">
+          <label><input type="radio" name="f-inst" value="modular" checked> Модульная установка</label>
+          <label><input type="radio" name="f-inst" value="central"> Централизованная</label>
+        </div>
+        <div class="sup-form-sub">Параметры объекта</div>
+        <label><span>Наименование</span><input type="text" id="f-site-name"></label>
+        <label><span>Адрес</span><input type="text" id="f-site-addr"></label>
+        <label><span>Договор №</span><input type="text" id="f-site-contract"></label>
+        <label><span>Заказчик</span><input type="text" id="f-site-customer"></label>
+        <label><span>Дополнительно</span><textarea id="f-site-info" rows="2"></textarea></label>
+      </div>
+      <footer>
+        <button value="ok" class="sup-btn sup-btn-primary">OK</button>
+        <button value="cancel" class="sup-btn">Отмена</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Direction -->
+  <dialog id="dlg-dir" class="sup-dlg">
+    <form method="dialog">
+      <header><span id="dlg-dir-h">Направление: создание</span><button value="cancel" class="sup-dlg-x">✕</button></header>
+      <div class="sup-form">
+        <label><span>Наименование</span><input type="text" id="d-name" value="Направление 1"></label>
+        <div class="sup-radio-row">
+          <label><input type="radio" name="d-type" value="volume" checked> Объёмное тушение</label>
+          <label><input type="radio" name="d-type" value="local"> Локальное</label>
+        </div>
+        <label><span>Температура минимальная Tмин, °C</span><input type="number" id="d-tmin" value="20" step="1"></label>
+        <label><span>Требуемое время подачи ГОТВ t, с</span><input type="number" id="d-feed" value="10" step="1"></label>
+        <label class="sup-check"><input type="checkbox" id="d-smoke" checked> Газодымоудаление</label>
+        <label><span>Огнестойкость стыковочных узлов</span>
+          <select id="d-fire"><option>EI30</option><option>EI45</option><option>EI60</option><option>EI90</option><option>EI120</option></select>
+        </label>
+        <label><span>Тип монтажа</span>
+          <select id="d-mount"><option value="wall">В стену</option><option value="ceiling">В потолок</option><option value="floor">В пол</option></select>
+        </label>
+        <label><span>Место выброса</span>
+          <select id="d-exh"><option value="outside">Улица</option><option value="corridor">Коридор</option><option value="shaft">Шахта</option></select>
+        </label>
+        <label><span>Расстояние до выброса, м</span><input type="number" id="d-exh-d" value="10" step="1"></label>
+        <label class="sup-check"><input type="checkbox" id="d-prelief" checked> Сброс избыточного давления</label>
+        <label><span>Исполнение</span>
+          <select id="d-exec"><option value="standard">Стандартное</option><option value="explosive">Взрывозащищённое</option><option value="marine">Морское</option></select>
+        </label>
+        <label><span>Класс пожара</span>
+          <select id="d-class"><option>A</option><option>A2</option><option>B</option></select>
+        </label>
+        <label><span>Класс герметичности</span>
+          <select id="d-leak"><option value="I">I</option><option value="II" selected>II</option><option value="III">III</option></select>
+        </label>
+      </div>
+      <footer>
+        <button value="ok" class="sup-btn sup-btn-primary">OK</button>
+        <button value="cancel" class="sup-btn">Отмена</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Zone -->
+  <dialog id="dlg-zone" class="sup-dlg">
+    <form method="dialog">
+      <header><span id="dlg-zone-h">Зона: создание</span><button value="cancel" class="sup-dlg-x">✕</button></header>
+      <div class="sup-form">
+        <label><span>Наименование</span><input type="text" id="z-name" value="зона 1"></label>
+        <label><span>S, м²</span><input type="number" id="z-S" value="15" step="0.1" min="0"></label>
+        <label><span>H, м</span><input type="number" id="z-H" value="3" step="0.1" min="0"></label>
+        <label><span>Cн, % (об)</span><input type="number" id="z-Cn" value="7.2" step="0.1"></label>
+        <label><span>fs — открытые проёмы, м²</span><input type="number" id="z-fs" value="0" step="0.1" min="0"></label>
+        <label><span>П (параметр)</span>
+          <select id="z-P">
+            <option value="0.4" selected>во всех остальных случаях (0.4)</option>
+            <option value="0.1">в полу (0.1)</option>
+            <option value="0.2">в стенах в нижней зоне (0.2)</option>
+            <option value="0.65">в потолке (0.65)</option>
+          </select>
+        </label>
+        <label><span>Pпр, МПа</span><input type="number" id="z-Ppr" value="0.003" step="0.0001"></label>
+      </div>
+      <footer>
+        <button value="ok" class="sup-btn sup-btn-primary">OK</button>
+        <button value="cancel" class="sup-btn">Отмена</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Open -->
+  <dialog id="dlg-open" class="sup-dlg">
+    <form method="dialog">
+      <header><span>Открыть установку</span><button value="cancel" class="sup-dlg-x">✕</button></header>
+      <div class="sup-form"><ul id="open-list" class="sup-open-list"></ul></div>
+      <footer><button value="cancel" class="sup-btn">Закрыть</button></footer>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Report -->
+  <dialog id="dlg-report" class="sup-dlg sup-dlg-wide">
+    <form method="dialog">
+      <header>
+        <span>Отчёт (Такт-Газ-Плюс стиль)</span>
+        <div class="sup-dlg-toolbar">
+          <button type="button" class="sup-btn" id="rep-copy">Копировать</button>
+          <button type="button" class="sup-btn" id="rep-save">Сохранить .txt</button>
+          <button type="button" class="sup-btn" id="rep-print">Печать</button>
+        </div>
+        <button value="cancel" class="sup-dlg-x">✕</button>
+      </header>
+      <pre id="rep-body" class="sup-rep"></pre>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Axonometric / Расчётная схема -->
+  <dialog id="dlg-iso" class="sup-dlg sup-dlg-wide">
+    <form method="dialog">
+      <header><span>Аксонометрическая схема / расчётная схема</span><button value="cancel" class="sup-dlg-x">✕</button></header>
+      <div class="sup-iso-body">
+        <div class="sup-iso-view">
+          <div class="sup-iso-tb">
+            <button type="button" class="sup-btn" id="iso-view-side">Сбоку</button>
+            <button type="button" class="sup-btn" id="iso-view-top">Сверху</button>
+            <span class="sep"></span>
+            <button type="button" class="sup-btn" id="iso-toggle-nums">№ участков</button>
+            <button type="button" class="sup-btn" id="iso-toggle-nozz">Насадки</button>
+            <span class="sup-iso-stat" id="iso-vtr">V<sub>тр</sub> = 0.000 м³</span>
+          </div>
+          <div class="sup-iso-canvas" id="iso-canvas"></div>
+        </div>
+        <div class="sup-iso-side">
+          <div class="sup-panel-h">Участок</div>
+          <div class="sup-form-compact">
+            <label><span>Длина, м</span><input type="number" id="seg-L" step="0.1" value="1"></label>
+            <label><span>Диаметр DN, мм</span>
+              <select id="seg-DN">
+                <option>15</option><option>20</option><option>22</option><option>25</option><option>28</option>
+                <option>32</option><option>34</option><option>40</option><option>50</option><option>65</option>
+                <option>80</option><option>100</option>
+              </select>
+            </label>
+            <label><span>Насадок</span>
+              <select id="seg-noz">
+                <option value="none">Отсутствует</option>
+                <option value="R-360">Насадок-R-360</option>
+                <option value="R-180">Насадок-R-180</option>
+                <option value="radial">Радиальный</option>
+              </select>
+            </label>
+            <label><span>Ось</span>
+              <select id="seg-ax">
+                <option value="x">X (→)</option>
+                <option value="y">Y (↑)</option>
+                <option value="z">Z (в глубину)</option>
+                <option value="-x">X (←)</option>
+                <option value="-y">Y (↓)</option>
+                <option value="-z">Z (из глубины)</option>
+              </select>
+            </label>
+            <div class="sup-seg-btns">
+              <button type="button" class="sup-btn" id="seg-add">+ Участок</button>
+              <button type="button" class="sup-btn sup-danger" id="seg-del">Удалить</button>
+            </div>
+          </div>
+          <div class="sup-panel-h" style="margin-top:10px;">Список участков</div>
+          <div class="sup-seg-list" id="seg-list"></div>
+        </div>
+      </div>
+      <footer><button value="cancel" class="sup-btn">Закрыть</button></footer>
+    </form>
+  </dialog>
 
   <script type="module" src="suppression-config.js"></script>
 </body>
