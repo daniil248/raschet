@@ -115,6 +115,9 @@ export const CHANGELOGS = {
   ],
 
   'psychrometrics': [
+    { version: '0.59.45', date: '2026-04-21', items: [
+      'Калькулятор: визуальный индикатор занятости слотов в заголовке каждой группы («2/2», «1/2», …). Зелёный бейдж = заполнено полностью, серый = есть свободные слоты, красный = превышение (shared/calc-widget.js + calc-widget.css: .calc-group-slots).'
+    ] },
     { version: '0.59.44', date: '2026-04-21', items: [
       'Калькулятор: фикс логики блокировки 🔒. Locked поля теперь ПРАВИЛЬНО занимают слоты в бюджете группы — суммарно (locked + user) ≤ coreSize. Если coreSize=2 и одно поле залочено, пользователь может ввести максимум ОДНО свежее значение; более старые вводы автоматически понижаются до auto (shared/calc-widget.js: readKnowns, userBudget = coreSize − lockedInGroup).',
       'Защита от over-lock: если пользователь пытается залочить больше полей чем coreSize группы допускает, самый старый locked-слот освобождается и становится user (shared/calc-widget.js: change-handler чекбокса 🔒).'

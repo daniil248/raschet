@@ -145,8 +145,12 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
   groups.forEach(g => {
     const block = document.createElement('div');
     block.className = 'calc-group-block';
+    block.dataset.groupId = g.id;
+    const slotBadge = g.coreSize
+      ? `<span class="calc-group-slots" data-role="slots" title="Заполнено слотов (locked + user) из coreSize">0/${g.coreSize}</span>`
+      : '';
     block.innerHTML = `
-      <div class="calc-group-title">${g.title}</div>
+      <div class="calc-group-title">${g.title}${slotBadge}</div>
       <div class="calc-fields"></div>
     `;
     const fw = block.querySelector('.calc-fields');
@@ -260,6 +264,17 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
         if (!focused && !meta[key].user) inp.value = '';
       }
       if (lockCb) lockCb.checked = meta[key].locked;
+    });
+    // Обновляем бейджы слотов по группам
+    groups.forEach(g => {
+      if (!g.coreSize) return;
+      const block = body.querySelector(`[data-group-id="${g.id}"]`);
+      const badge = block && block.querySelector('[data-role="slots"]');
+      if (!badge) return;
+      const used = g.keys.reduce((n, k) => n + (meta[k].locked ? 1 : (meta[k].user ? 1 : 0)), 0);
+      badge.textContent = `${used}/${g.coreSize}`;
+      badge.dataset.full = used >= g.coreSize ? '1' : '';
+      badge.dataset.over = used > g.coreSize ? '1' : '';
     });
   }
 
