@@ -297,23 +297,23 @@ function renderPlan(r) {
     const innerY0 = padTop + END_WALL_MM * scale;
     const Wi = tpl.widthMm * scale;
     const Di = tpl.lengthMm * scale;
-    // баллон (для IT — нарисован в углу, y=100мм, x = правый край)
+    // баллон в нижнем правом углу (центр), стояк идёт вверх к потолочной
+    // магистрали, далее к форсунке у верхнего торца
     const cylX = innerX0 + Wi - 400*scale/2 - CABINET_GAP_MM*scale;
-    const cylY = innerY0 + 300 * scale;
-    // стояк — ближе к противоположной стенке, по длинной оси
+    const cylY = innerY0 + Di - 400*scale/2 - 100*scale;
     const riserX = innerX0 + Wi * 0.35;
-    const topY   = innerY0 + 600 * scale;   // потолочная магистраль на 600мм
-    const botY   = innerY0 + Di - 600 * scale;
+    const topY   = innerY0 + 600 * scale;
+    const nozzleY = innerY0 + 300 * scale;
     const poly = [
       `${cylX},${cylY}`,
       `${cylX},${topY}`,
       `${riserX},${topY}`,
-      `${riserX},${botY}`,
+      `${riserX},${nozzleY}`,
     ].join(' ');
     svg += `<polyline points="${poly}" fill="none" stroke="#B85450"
              stroke-width="1.6" stroke-linejoin="round"/>`;
     svg += `<circle cx="${cylX}" cy="${cylY}" r="1.4" fill="#B85450"/>`;
-    svg += `<circle cx="${riserX}" cy="${botY}" r="1.4" fill="#B85450"/>`;
+    svg += `<circle cx="${riserX}" cy="${nozzleY}" r="1.4" fill="#B85450"/>`;
   }
 
   // AHU — снаружи сверху над зданием
@@ -429,10 +429,12 @@ function moduleSvg(m, pad, scale, padTop) {
   s += `<rect x="${outerX0 + frm + Wi}" y="${innerY0}" width="${frm}" height="${Di}"
          fill="#eceff1" stroke="#90a4ae" stroke-width="0.4"/>`;
   // Стойки рамы — с шагом 600 мм вдоль длины, позиционированы относительно
-  // фальшпола (первая стойка по центру первой плитки).
+  // фальшпола. Первая стойка — на границе полуплитки (300 мм от верха),
+  // далее каждые 600 мм (= на границах целых плиток).
   const postStep = POST_STEP_MM * scale;
+  const halfTile0 = (FLOOR_TILE_MM / 2) * scale;
   const postW = 8 * scale;      // 8 мм стойка
-  for (let py = floorPerim + postStep/2; py < Di; py += postStep) {
+  for (let py = floorPerim + halfTile0; py < Di; py += postStep) {
     s += `<rect x="${outerX0}" y="${innerY0 + py - postW/2}"
            width="${frm}" height="${postW}" fill="#455a64"/>`;
     s += `<rect x="${outerX0 + frm + Wi}" y="${innerY0 + py - postW/2}"
@@ -460,16 +462,16 @@ function moduleSvg(m, pad, scale, padTop) {
            stroke="#cdd4da" stroke-width="0.3"/>`;
     gx += tile;
   }
-  // Горизонтальные — одна целая, далее с половинкой в конце (ближе к нижнему торцу)
-  let gy = tile;
-  while (gy < floorD - halfTile - 0.5) {
+  // Горизонтальные линии: полуплитка 300 мм у ВЕРХНЕГО края, далее целые
+  // плитки 600 мм до нижнего края (где стоит баллон АГПТ).
+  s += `<line x1="${floorX}" y1="${floorY + halfTile}" x2="${floorX + floorW}" y2="${floorY + halfTile}"
+         stroke="#90a4ae" stroke-width="0.4"/>`;
+  let gy = halfTile + tile;
+  while (gy < floorD - 0.5) {
     s += `<line x1="${floorX}" y1="${floorY + gy}" x2="${floorX + floorW}" y2="${floorY + gy}"
            stroke="#cdd4da" stroke-width="0.3"/>`;
     gy += tile;
   }
-  // Половинчатая плитка 300 мм у нижнего края
-  s += `<line x1="${floorX}" y1="${floorY + floorD - halfTile}" x2="${floorX + floorW}" y2="${floorY + floorD - halfTile}"
-         stroke="#90a4ae" stroke-width="0.4"/>`;
 
   // === Корпусные детали ===
   if (tpl.kind === 'IT') {
@@ -549,11 +551,11 @@ function moduleSvg(m, pad, scale, padTop) {
     }
   }
 
-  // АГПТ-баллон — 1 шт в IT-модулях, в углу (внутри)
+  // АГПТ-баллон — 1 шт в IT-модулях, в нижнем углу (на целой плитке)
   if (tpl.kind === 'IT') {
     const cylW = 400 * scale, cylD = 400 * scale;
     const cx = innerX0 + Wi - cylW - gap;
-    const cy = innerY0 + 100 * scale;
+    const cy = innerY0 + Di - cylD - 100 * scale;
     s += COMPONENT_SVG['AGPT-cyl'](cx, cy, cylW, cylD);
   }
 
