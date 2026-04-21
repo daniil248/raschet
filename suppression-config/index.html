@@ -241,17 +241,28 @@
         <label class="sup-field"><span>Наименование</span><input type="text" id="z-name" value="зона 1" title="Имя зоны, напр. «серверный зал», «АКБ»."></label>
         <label class="sup-field"><span>S, м² <sup title="Площадь защищаемой зоны по полу (без учёта фальшпола и подвесного потолка, если они не тушатся).">ⓘ</sup></span><input type="number" id="z-S" value="15" step="0.1" min="0"></label>
         <label class="sup-field"><span>H, м <sup title="Высота от пола до перекрытия или подвесного потолка (по границе тушения).">ⓘ</sup></span><input type="number" id="z-H" value="3" step="0.1" min="0"></label>
-        <label class="sup-field"><span>Cн, % (об.) <sup title="Нормативная огнетушащая концентрация × коэфф. безопасности. HFC-227ea: 7.2% (кл. A), Novec 1230: 5.9%, IG-541: 39.9%.">ⓘ</sup></span><input type="number" id="z-Cn" value="7.2" step="0.1"></label>
+        <label class="sup-field"><span>Cн, % (об.) <sup title="Нормативная огнетушащая концентрация × коэфф. безопасности. Подбирается автоматически по выбранному ГОТВ и классу пожара направления.">ⓘ</sup></span>
+          <input type="number" id="z-Cn" step="0.1" readonly style="background:#eceff1;color:#263238;font-weight:600;" title="Нормируется выбранным ГОТВ — править вручную нельзя.">
+        </label>
         <label class="sup-field"><span>fs — открытые проёмы, м² <sup title="Суммарная площадь постоянно открытых проёмов (нельзя закрыть при пуске). Обычно 0 для герметичных помещений.">ⓘ</sup></span><input type="number" id="z-fs" value="0" step="0.1" min="0"></label>
-        <label class="sup-field"><span>П (параметр негерметичности) <sup title="Зависит от расположения проёмов по высоте. 0.4 — стандарт; 0.65 — преимущественно в потолке; 0.1 — в полу.">ⓘ</sup></span>
+        <label class="sup-field"><span>Расположение проёмов (параметр П) <sup title="СП 485 Прил. Д: П зависит от того, где расположены постоянные проёмы в помещении.">ⓘ</sup></span>
           <select id="z-P">
-            <option value="0.4" selected>во всех остальных случаях (0.4)</option>
-            <option value="0.1">в полу (0.1)</option>
-            <option value="0.2">в стенах в нижней зоне (0.2)</option>
-            <option value="0.65">в потолке (0.65)</option>
+            <option value="0.1">Проёмы только в полу / фальшполе — П = 0.1 (газ утекает вниз, халонам лучше)</option>
+            <option value="0.2">Проёмы в стенах, в нижней трети помещения — П = 0.2</option>
+            <option value="0.4" selected>Смешанное / равномерное расположение по высоте — П = 0.4 (типовой случай)</option>
+            <option value="0.65">Проёмы преимущественно в потолке / верхней трети — П = 0.65 (худший сценарий для тяжёлых газов)</option>
           </select>
         </label>
-        <label class="sup-field"><span>Pпр, МПа (предельное избыт. давление) <sup title="Допустимое избыточное давление на ограждающие конструкции в момент выпуска ГОТВ. 0.003 МПа = 3 кПа (типовое для гипсовых/ГКЛ стен).">ⓘ</sup></span><input type="number" id="z-Ppr" value="0.003" step="0.0001"></label>
+        <label class="sup-field"><span>Ограждающие конструкции (Pпр) <sup title="Pпр — допустимое избыточное давление на ограждения при выпуске ГОТВ. СП 485 Прил. Ж / NFPA 2001.">ⓘ</sup></span>
+          <select id="z-Ppr">
+            <option value="0.001">Лёгкие ограждения / витражи / стекло — Pпр = 0.001 МПа (1 кПа)</option>
+            <option value="0.002">ГКЛ на каркасе, одинарный лист — Pпр = 0.002 МПа (2 кПа)</option>
+            <option value="0.003" selected>ГКЛ двойной / типовая офисная перегородка — Pпр = 0.003 МПа (3 кПа)</option>
+            <option value="0.005">Кирпич 120 мм / газобетон — Pпр = 0.005 МПа (5 кПа)</option>
+            <option value="0.010">Кирпич ≥ 250 мм / ж/б стены — Pпр = 0.010 МПа (10 кПа)</option>
+            <option value="0.020">Монолитные ж/б наружные стены — Pпр = 0.020 МПа (20 кПа)</option>
+          </select>
+        </label>
       </div>
       <footer>
         <button value="ok" class="sup-btn sup-btn-primary">OK</button>

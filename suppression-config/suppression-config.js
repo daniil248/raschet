@@ -680,8 +680,23 @@ function openZoneDialog(dir, existingId) {
   const existing = existingId ? dir.zones.find(z => z.id === existingId) : null;
   $('dlg-zone-h').textContent = existing ? 'Зона: редактирование' : 'Зона: создание';
   const z = existing || defaultZone(dir.zones.length + 1);
+  // Cн — автоматически по выбранному агенту + классу пожара (СП 485 Прил. Д)
+  const inst = currentInst();
+  const agentObj = AGENTS[inst?.agent];
+  const fc = String(dir.fireClass || 'A').toUpperCase();
+  const isB = fc.startsWith('B');
+  const kSafety = isB ? 1.3 : 1.2; // коэффициент безопасности (Сн = k · Сmin)
+  const cmin = agentObj ? (isB ? agentObj.Cmin_B : agentObj.Cmin_A) : 0;
+  const autoCn = cmin ? +(cmin * kSafety).toFixed(1) : z.Cn;
+  z.Cn = autoCn;
   $('z-name').value = z.name; $('z-S').value = z.S; $('z-H').value = z.H;
-  $('z-Cn').value = z.Cn; $('z-fs').value = z.fs; $('z-P').value = z.P; $('z-Ppr').value = z.Ppr;
+  $('z-Cn').value = autoCn;
+  $('z-Cn').title = agentObj
+    ? `Сн = k · Сmin = ${kSafety} · ${cmin}% = ${autoCn}%\nАгент: ${inst.agent}, класс пожара: ${fc}`
+    : 'Сн нормируется выбранным ГОТВ';
+  $('z-fs').value = z.fs;
+  $('z-P').value = String(z.P);
+  $('z-Ppr').value = String(z.Ppr);
   dlg.returnValue = ''; dlg.showModal();
   dlg.addEventListener('close', function onC() {
     dlg.removeEventListener('close', onC);
@@ -689,7 +704,7 @@ function openZoneDialog(dir, existingId) {
     Object.assign(z, {
       name: $('z-name').value.trim() || z.name,
       S: +$('z-S').value, H: +$('z-H').value,
-      Cn: +$('z-Cn').value, fs: +$('z-fs').value,
+      Cn: autoCn, fs: +$('z-fs').value,
       P: +$('z-P').value, Ppr: +$('z-Ppr').value,
     });
     if (!existing) dir.zones.push(z);
