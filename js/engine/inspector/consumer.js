@@ -33,6 +33,55 @@ export function openConsumerParamsModal(n) {
   h.push(`<div class="tp-panel" data-panel="general" hidden>`);
   h.push(field('Имя', `<input type="text" id="cp-name" value="${escAttr(n.name || '')}">`));
 
+  // v0.59.99: «Конфигурировать» и «Выбрать из каталога» — два быстрых
+  // действия на вкладке «Общее». Конфигуратор выбирается по типу
+  // (consumerSubtype / subtype); если нет специализированного — кнопка
+  // открывает каталог в режиме «задать требования и подобрать изделие».
+  // Каталог — всегда доступен; параметры n.consumerSubtype/subtype уходят
+  // в query-string как подсказка для фильтра (catalog может их применить).
+  {
+    const _cSub = n.consumerSubtype || '';
+    const _sub = n.subtype || '';
+    const _cfg = (() => {
+      if (_sub === 'rack' || _cSub === 'rack') return { href: 'rack-config/', label: '🗄 Конфигуратор стойки' };
+      if (_cSub === 'conditioner' || _sub === 'hvac') return { href: 'psychrometrics/', label: '❄ Расчёт параметров HVAC' };
+      // Универсальный fallback — «каталог в режиме требований»
+      return { href: null, label: '⚙ Конфигуратор (задать требования)' };
+    })();
+    const _catalogHref = (() => {
+      const qp = new URLSearchParams();
+      qp.set('filterKind', 'consumer');
+      if (_cSub) qp.set('filterSubtype', _cSub);
+      if (_sub && _sub !== 'generic') qp.set('filterRole', _sub);
+      qp.set('nodeId', n.id);
+      return 'catalog/?' + qp.toString();
+    })();
+    h.push(`<div class="field" style="margin-top:8px"><label>Подбор изделия</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${_cfg.href
+          ? `<a href="${escAttr(_cfg.href)}" target="_blank" class="full-btn" style="flex:1;text-align:center;padding:6px 10px;background:#e3f2fd;color:#1565c0;text-decoration:none;border:1px solid #90caf9;border-radius:4px;font-size:12px;font-weight:500">${_cfg.label}</a>`
+          : `<button type="button" id="cp-cfg-stub" class="full-btn" style="flex:1;padding:6px 10px;background:#fafbfc;color:#455a64;border:1px dashed #b0bec5;border-radius:4px;font-size:12px;cursor:pointer">${_cfg.label}</button>`
+        }
+        <a href="${escAttr(_catalogHref)}" target="_blank" class="full-btn" style="flex:1;text-align:center;padding:6px 10px;background:#fff;color:#1565c0;text-decoration:none;border:1px solid #90caf9;border-radius:4px;font-size:12px;font-weight:500">📋 Выбрать из каталога</a>
+      </div>
+      <div class="muted" style="font-size:10px;margin-top:4px">Конфигуратор — указать требования (мощность, cooling, redundancy) и получить рекомендацию. Каталог — выбрать конкретное изделие.</div>
+    </div>`);
+
+    // v0.59.99.2: индикатор привязки к каталогу. Если узел привязан
+    // (n.catalogLocked=true), параметры, взятые из каталожной записи
+    // (demandKw, cosPhi, kUse, inrushFactor, curveHint, breakerMarginPct),
+    // становятся read-only и помечаются замком. Отвязать — кнопкой ниже.
+    if (n.catalogLocked) {
+      const _lockEntry = fullCatalog.find(c => c.id === n.consumerSubtype);
+      const _lockLabel = _lockEntry ? _lockEntry.label : (n.consumerSubtype || '?');
+      h.push(`<div style="margin-top:6px;padding:8px 10px;background:#fff3e0;border:1px solid #ffb74d;border-radius:4px;font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>🔒 Привязано к каталогу: <b>${escHtml(_lockLabel)}</b></span>
+        <button type="button" id="cp-catalog-unlock" style="margin-left:auto;padding:3px 10px;background:#fff;color:#ef6c00;border:1px solid #ffb74d;border-radius:3px;cursor:pointer;font-size:11px">✎ Отвязать и редактировать</button>
+      </div>
+      <div class="muted" style="font-size:10px;margin-top:4px">Электрические параметры, зависящие от изделия (мощность, cos φ, Ки, пусковой, кривая, запас), защищены от случайного изменения. Отвяжите, чтобы редактировать вручную.</div>`);
+    }
+  }
+
   // Миграция: старые user-записи без category получают 'other'
   const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])]
     .map(c => ({ ...c, category: c.category || 'other' }));
@@ -92,9 +141,14 @@ export function openConsumerParamsModal(n) {
   const _demandLabel = (_cpCount > 1)
     ? ((_serial && _loadSpec === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
     : 'Установленная мощность, kW';
+  // v0.59.99.2: флаг блокировки полей, зависящих от каталожного изделия.
+  // Используется `disabled + title` на input, а для select — `disabled`
+  // (readonly на select не работает). Отвязка — кнопкой на «Общее».
+  const _lk = n.catalogLocked ? ' disabled title="Привязано к каталогу — отвяжите на вкладке Общее"' : '';
+  const _lkIcon = n.catalogLocked ? ' 🔒' : '';
   h.push(`<div id="cp-demandKw-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? 'display:none' : ''}">
-    <label id="cp-demandKw-label">${_demandLabel}</label>
-    <input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}">
+    <label id="cp-demandKw-label">${_demandLabel}${_lkIcon}</label>
+    <input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}"${_lk}>
   </div>`);
   // v0.59.91: общие параметры нужны раньше (в карточках членов group'а для
   // «унаследовать от родителя» и в основных селектах ниже).
@@ -176,8 +230,8 @@ export function openConsumerParamsModal(n) {
     <option value="2ph"${ph === '2ph' ? ' selected' : ''}>2-фазный (split-phase)</option>
     <option value="1ph"${ph === '1ph' || ph === 'A' || ph === 'B' || ph === 'C' ? ' selected' : ''}>1-фазный</option>
   </select>`));
-  h.push(field('cos φ', `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}">`));
-  h.push(field('Ки — коэффициент использования', `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}">`));
+  h.push(field('cos φ' + _lkIcon, `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}"${_lk}>`));
+  h.push(field('Ки — коэффициент использования' + _lkIcon, `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}"${_lk}>`));
   // Множитель нагрузки в текущем сценарии (нормальный или аварийный режим).
   // 1 = 100%, 0 = не считается, 0.5 = 50%.
   if (state.activeModeId) {
@@ -193,18 +247,18 @@ export function openConsumerParamsModal(n) {
       `<input type="number" id="cp-normalLoadFactor" min="0" max="3" step="0.1" value="${nlf}">`));
     h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">1.0 = номинал, 0.5 = 50%, 0 = выключено.</div>`);
   }
-  h.push(field('Кратность пускового тока', `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}">`));
+  h.push(field('Кратность пускового тока' + _lkIcon, `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}"${_lk}>`));
 
   // Запас по автомату — override категории/авто. Пустое поле = авто по inrush.
   {
     const mv = (typeof n.breakerMarginPct === 'number') ? String(n.breakerMarginPct) : '';
-    h.push(field('Запас по автомату, %', `<input type="number" id="cp-brkMargin" min="0" max="100" step="5" value="${mv}" placeholder="авто">`));
+    h.push(field('Запас по автомату, %' + _lkIcon, `<input type="number" id="cp-brkMargin" min="0" max="100" step="5" value="${mv}" placeholder="авто"${_lk}>`));
     h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Пусто = авто по inrush (лёгкий 20%, средний 35%, тяжёлый 50%). Используется для подбора номинала автомата защиты линии.</div>`);
   }
   // Кривая/тип автомата — подсказка для авто-подбора
   {
     const cv = n.curveHint || '';
-    h.push(field('Кривая автомата (подсказка)', `<select id="cp-curveHint">
+    h.push(field('Кривая автомата (подсказка)' + _lkIcon, `<select id="cp-curveHint"${_lk}>
       <option value=""${cv===''?' selected':''}>авто (по inrush и In)</option>
       <option value="MCB_B"${cv==='MCB_B'?' selected':''}>MCB кр. B — резистивная, освещение</option>
       <option value="MCB_C"${cv==='MCB_C'?' selected':''}>MCB кр. C — общее назначение</option>
@@ -320,6 +374,28 @@ export function openConsumerParamsModal(n) {
     });
   }
 
+  // v0.59.99: stub-кнопка «задать требования» — простой prompt с подсказкой
+  // и редирект в каталог с предзаполненными параметрами. Полноценный
+  // wizard-конфигуратор для consumer будет в следующей итерации.
+  const cfgStub = document.getElementById('cp-cfg-stub');
+  if (cfgStub) {
+    cfgStub.addEventListener('click', () => {
+      const kw = prompt('Требуемая мощность, кВт (и при желании — доп. требование, напр. "60, net sensible 45"):',
+        String(Number(n.demandKw) || ''));
+      if (!kw) return;
+      const parts = kw.split(',').map(s => s.trim()).filter(Boolean);
+      const qp = new URLSearchParams();
+      qp.set('filterKind', 'consumer');
+      if (n.consumerSubtype) qp.set('filterSubtype', n.consumerSubtype);
+      if (parts[0]) qp.set('reqKw', parts[0]);
+      if (parts[1]) qp.set('reqNote', parts[1]);
+      qp.set('nodeId', n.id);
+      qp.set('mode', 'configure');
+      window.open('catalog/?' + qp.toString(), '_blank');
+      flash('Каталог открыт в новой вкладке — отфильтруйте и выберите изделие.');
+    });
+  }
+
   const saveBtn = document.getElementById('cp-save-catalog');
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
@@ -371,28 +447,37 @@ export function openConsumerParamsModal(n) {
     catSelect.addEventListener('change', () => {
       const cat = fullCatalog.find(c => c.id === catSelect.value);
       if (!cat) return;
-      const demEl = document.getElementById('cp-demandKw');
-      const cosEl = document.getElementById('cp-cosPhi');
-      const kUseEl = document.getElementById('cp-kUse');
-      const inrEl = document.getElementById('cp-inrush');
-      if (demEl) demEl.value = cat.demandKw;
-      if (cosEl) cosEl.value = cat.cosPhi;
-      if (kUseEl) kUseEl.value = cat.kUse;
-      if (inrEl) inrEl.value = cat.inrushFactor;
-      const bmEl = document.getElementById('cp-brkMargin');
-      if (bmEl) bmEl.value = (typeof cat.breakerMarginPct === 'number') ? String(cat.breakerMarginPct) : '';
-      const chEl = document.getElementById('cp-curveHint');
-      if (chEl) chEl.value = cat.curveHint || '';
-      const wasCond = n.consumerSubtype === 'conditioner';
-      const isCond = cat.id === 'conditioner';
-      if (wasCond !== isCond) {
-        n.consumerSubtype = cat.id;
-        if (isCond) {
-          n.outdoorKw = cat.outdoorKw || 0.3;
-          n.outdoorCosPhi = cat.outdoorCosPhi || 0.85;
-        }
-        openConsumerParamsModal(n);
+      // v0.59.99.2: выбор из каталога → привязка. Параметры из записи
+      // применяются к узлу, поля в инспекторе блокируются. Снять — кнопкой
+      // «Отвязать» на «Общее».
+      snapshot('catalog-bind:' + n.id);
+      n.demandKw = Number(cat.demandKw) || 0;
+      n.cosPhi = Number(cat.cosPhi) || 0.92;
+      n.kUse = Number(cat.kUse) ?? 1;
+      n.inrushFactor = Number(cat.inrushFactor) || 1;
+      if (typeof cat.breakerMarginPct === 'number') n.breakerMarginPct = cat.breakerMarginPct;
+      else delete n.breakerMarginPct;
+      n.curveHint = cat.curveHint || '';
+      n.consumerSubtype = cat.id;
+      if (cat.id === 'conditioner') {
+        n.outdoorKw = cat.outdoorKw || 0.3;
+        n.outdoorCosPhi = cat.outdoorCosPhi || 0.85;
       }
+      n.catalogLocked = true;
+      notifyChange();
+      openConsumerParamsModal(n);
+    });
+  }
+
+  // v0.59.99.2: кнопка «Отвязать» — снять catalogLocked, разрешить правки
+  const unlockBtn = document.getElementById('cp-catalog-unlock');
+  if (unlockBtn) {
+    unlockBtn.addEventListener('click', () => {
+      snapshot('catalog-unlock:' + n.id);
+      n.catalogLocked = false;
+      notifyChange();
+      openConsumerParamsModal(n);
+      flash('Привязка к каталогу снята — поля открыты для редактирования.');
     });
   }
 
