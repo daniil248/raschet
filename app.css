@@ -991,14 +991,6 @@ input, select { font: inherit; }
   white-space: nowrap;
 }
 .page-kind-banner .pkb-icon { margin-right: 6px; font-size: 14px; }
-/* v0.59.96: общий «шапочный» блок над tp-tabs — идентификационные и
-   топологические поля (имя, тип, категория, количество), которые не
-   относятся к конкретной вкладке. Отбивается от вкладок тонкой линией
-   снизу (её рисуют сами .tp-tabs). */
-.tp-common {
-  padding-bottom: 6px;
-  margin-bottom: 2px;
-}
 /* Phase 2.?: tabs-bar в модалках параметров (consumer / source / panel / ...) */
 .tp-tabs {
   display: flex;

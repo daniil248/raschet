@@ -5,7 +5,7 @@ import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/inde
 import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
-         consumerTotalDemandKw, consumerCountEffective,
+         consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
          upsChargeKw, sourceImpedance, isNodeDC } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
@@ -1582,6 +1582,32 @@ function recalc() {
         const _curveForSizing = c.breakerCurve || _consCurveHint || autoBreakerCurve(_consInrush, 0);
 
         let sizingCurrent = maxCurrent;
+        // v0.59.97: для individual-группы каждый кабель из N параллельных несёт
+        // ток СВОЕГО прибора (а не среднее Itotal/N). Узкое место — максимальный
+        // из членов; единое сечение кабеля должно покрывать его. Раньше Iper
+        // брался как Itotal/N → при 15/1/3 кВт получалось ~5.7 кВт на жилу
+        // (средние) → 1.5мм², а реально 15 кВт требует 4-6 мм².
+        // Нормируем sizingCurrent так, чтобы внутри selectCable:
+        //   Iper = sizingCurrent / parallel = maxMemberI → корректный подбор.
+        if (conductorsInParallel > 1 && toN.type === 'consumer'
+            && toN.groupMode === 'individual'
+            && Array.isArray(toN.items) && toN.items.length > 0) {
+          try {
+            const _lf = effectiveLoadFactor(toN);
+            let _maxIm = 0;
+            for (const m of consumerGroupItems(toN)) {
+              const _Im = computeCurrentA(
+                m.demandKw * (Number(m.kUse) || 1) * _lf,
+                U, m.cosPhi, threePhase, _isDC
+              );
+              if (_Im > _maxIm) _maxIm = _Im;
+            }
+            if (_maxIm > 0) {
+              c._groupMaxMemberA = _maxIm;
+              sizingCurrent = Math.max(maxCurrent, _maxIm * conductorsInParallel);
+            }
+          } catch {}
+        }
         let _sizingMarginForCall = _sizingMarginPct;
         if (c.manualBreakerIn) {
           // Ручной автомат: координируем кабель под заданный In (per-line).
@@ -1864,7 +1890,12 @@ function recalc() {
 
     const parallel = Math.max(1, c._cableParallel || 1);
     const Itotal = c._maxA || 0;
-    const Iper = Itotal / parallel;
+    // v0.59.97: для individual-группы Iper — ток самого нагруженного прибора,
+    // а не среднее Itotal/parallel. Значение вычислено и сохранено в фазе
+    // подбора кабеля как c._groupMaxMemberA.
+    const Iper = (c._groupMaxMemberA > 0)
+      ? c._groupMaxMemberA
+      : (Itotal / parallel);
     const Iz = c._cableIz || 0;
 
     if (Iper <= 0) {

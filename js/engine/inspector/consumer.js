@@ -20,12 +20,17 @@ export function openConsumerParamsModal(n) {
   if (!body) return;
   const isOutdoor = n.consumerSubtype === 'outdoor_unit';
   const h = [];
-  h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
-  // v0.59.96: общий «шапочный» блок над вкладками — идентификация и топология
-  // (имя, категория, тип, количество, тип группы, входы). Электрика/Габариты
-  // остаются вкладками. Раньше эти поля жили внутри «Электрика», что
-  // визуально путало («имя» и «категория» — не электрические).
-  h.push(`<div class="tp-common">`);
+  // v0.59.98: только обозначение + название (read-only) над вкладками —
+  // пользователь просит редактируемые поля убрать в свою вкладку. Для
+  // редактирования имени открывается вкладка «Общее».
+  h.push(`<h3 style="margin-bottom:4px">${escHtml(effectiveTag(n))} <span style="font-weight:500">${escHtml(n.name)}</span></h3>`);
+  h.push(`<div class="tp-tabs" role="tablist">
+    <button type="button" class="tp-tab" data-tab="general" role="tab">📋 Общее</button>
+    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
+  </div>`);
+  // === Вкладка «Общее» (идентификация + топология) ===
+  h.push(`<div class="tp-panel" data-panel="general" hidden>`);
   h.push(field('Имя', `<input type="text" id="cp-name" value="${escAttr(n.name || '')}">`));
 
   // Миграция: старые user-записи без category получают 'other'
@@ -79,13 +84,7 @@ export function openConsumerParamsModal(n) {
       </select>
     </div>`);
   }
-  // Конец общего блока (идентификация + топология + save-as-catalog
-  // перенесётся ниже). Открываем вкладки и электрическую панель.
-  h.push(`</div>`); // /tp-common
-  h.push(`<div class="tp-tabs" role="tablist">
-    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
-    <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
-  </div>`);
+  h.push(`</div>`); // /tp-panel general
   h.push(`<div class="tp-panel" data-panel="electrical">`);
   const _displayDemand = (_serial && _loadSpec === 'total')
     ? (Number(n.demandKw || 0) * _cpCount)
