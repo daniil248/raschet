@@ -1685,7 +1685,8 @@ export function renderNodes() {
           suffix = ` · БАТ ${mm}:${String(ss).padStart(2, '0')}`;
         }
         // Показываем ток / макс.ток и мощность
-        const capA = computeCurrentA(n.capacityKw, nodeVoltage(n), 1.0, isThreePhase(n));
+        const cosForCap = n._cosPhi || Number(n.cosPhi) || GLOBAL.defaultCosPhi || 1.0;
+        const capA = computeCurrentA(n.capacityKw, nodeVoltage(n), cosForCap, isThreePhase(n));
         loadLine = `${fmt(n._loadA || 0)} / ${fmt(capA)} A · ${fmt(n._loadKw)} / ${fmt(n.capacityKw)} kW${suffix}`;
         if (n._overload) loadCls += ' overload';
       }

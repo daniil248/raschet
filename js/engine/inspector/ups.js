@@ -71,7 +71,8 @@ export function openUpsParamsModal(n) {
     </div>`);
   } catch (e) { /* модуль опционален */ }
 
-  h.push('<h4 style="margin:8px 0">Основные параметры</h4>');
+  h.push('<h4 style="margin:14px 0 6px">Ручной ввод параметров</h4>');
+  h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">Если модель не из справочника и конфигуратор не нужен — заполняйте поля ниже вручную. Для моноблока доступно поле «Выходная мощность», для модульного — frame/модули/резерв.</div>`);
   // Тип ИБП
   h.push(field('Тип ИБП', `
     <select id="up-upsType">
@@ -81,6 +82,10 @@ export function openUpsParamsModal(n) {
   // Для моноблока — прямое поле мощности. Для модульного — вычисляется ниже.
   if (n.upsType !== 'modular') {
     h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
+  } else {
+    h.push(`<div class="muted" style="font-size:11px;margin:-4px 0 8px;padding:6px 8px;background:#fff8e1;border-radius:4px;border:1px solid #ffe0a0">
+      Для модульного ИБП мощность считается автоматически из frame/модулей/резерва (см. блок «Модули и резервирование» ниже). Чтобы ввести мощность вручную — переключите тип на «Моноблок».
+    </div>`);
   }
   h.push(field('КПД DC–AC, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}">`));
   h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="2" step="1" value="${Math.min(2, Math.max(1, Number(n.inputs) || 1))}">`));

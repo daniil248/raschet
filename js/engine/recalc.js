@@ -883,6 +883,7 @@ function recalc() {
   // Сброс расчётных полей
   for (const n of state.nodes.values()) {
     n._loadKw = 0; n._powered = false; n._overload = false;
+    n._loadA = 0; n._maxLoadA = 0; n._maxLoadKw = 0;
     n._watchdogActivePorts = null;
     n._ownInputPowered = false; n._ownInputAvailable = false;
     // Сброс _avrBreakerOverride для ВСЕХ кроме панелей в активной фазе переключения.
@@ -2297,6 +2298,20 @@ function recalc() {
       n._maxOverload = cap > 0 && sharedMax > cap;
       n._maxLoadKw = cap > 0 ? Math.min(sharedMax, cap) : sharedMax;
       if (n._maxOverload) n._overload = true;
+      // P/Q/cosPhi/_loadA для ИБП: P из _loadKw (walkUp), Q по режиму
+      // (байпас → пропорциональная доля downstream Q; инвертор → Q=0).
+      n._powerP = n._loadKw || 0;
+      if (n._onStaticBypass) {
+        const sub = downstreamPQ(n.id);
+        const ratio = (sub.P > 0 && n._loadKw > 0) ? (n._loadKw / sub.P) : 1;
+        n._powerQ = sub.Q * ratio;
+      } else {
+        n._powerQ = 0;
+      }
+      n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
+      n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : (Number(n.cosPhi) || GLOBAL.defaultCosPhi);
+      n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
     } else if (n.type === 'source' || n.type === 'generator') {
       // cos φ из downstream PQ, но P/S привязаны к _loadKw (walkUp result)
       const pq = downstreamPQ(n.id);
@@ -2378,24 +2393,6 @@ function recalc() {
       const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
       const Zs = sourceImpedance(n);
       n._ikA = Zs > 0 ? (1.1 * Uph / Zs) : Infinity;
-    } else if (n.type === 'ups') {
-      // P/Q для ИБП берём из фактической нагрузки (_loadKw), а не из
-      // downstreamPQ — потому что downstream может быть общим с
-      // параллельным ИБП (два ИБП на один щит), и downstreamPQ
-      // посчитает полную нагрузку обоих, а не долю этого ИБП.
-      n._powerP = n._loadKw || 0;
-      if (n._onStaticBypass) {
-        // При байпасе cos φ = от потребителей → вычисляем Q из downstream
-        const sub = downstreamPQ(n.id);
-        const ratio = (sub.P > 0 && n._loadKw > 0) ? (n._loadKw / sub.P) : 1;
-        n._powerQ = sub.Q * ratio; // пропорционально доле этого ИБП
-      } else {
-        // Инвертор — чисто активная мощность, Q = 0
-        n._powerQ = 0;
-      }
-      n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
-      n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : 1.0;
-      n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
     } else if (n.type === 'consumer') {
       n._cosPhi = Number(n.cosPhi) || GLOBAL.defaultCosPhi;
       n._nominalA = consumerNominalCurrent(n);
