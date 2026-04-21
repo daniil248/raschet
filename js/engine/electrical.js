@@ -305,8 +305,28 @@ export function consumerRatedCurrent(n) {
   return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n), isNodeDC(n));
 }
 
-// Пусковой ток
+// Пусковой ток.
+// v0.59.94: для group individual считаем по сценарию «ступенчатый пуск»:
+// все прочие приборы работают в номинале, один (самый тяжёлый) стартует
+// со своим inrushFactor. Пик тока = Σ I_nom_i + (inrush_max - 1) × I_nom_max.
+// Это даёт более реалистичную оценку, чем flat n.inrushFactor на всю группу
+// (который нередко завышал пиковый ток, если у членов разные кратности пуска).
 export function consumerInrushCurrent(n) {
+  if (n && n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 0) {
+    const members = consumerGroupItems(n);
+    const U = nodeVoltage(n);
+    const ph3 = isThreePhase(n);
+    const dc = isNodeDC(n);
+    let sumInom = 0;
+    let maxDelta = 0;
+    for (const m of members) {
+      const Inom = computeCurrentA(m.demandKw, U, m.cosPhi, ph3, dc);
+      sumInom += Inom;
+      const delta = Inom * (Math.max(1, Number(m.inrushFactor) || 1) - 1);
+      if (delta > maxDelta) maxDelta = delta;
+    }
+    return sumInom + maxDelta;
+  }
   return consumerNominalCurrent(n) * (Number(n.inrushFactor) || 1);
 }
 
