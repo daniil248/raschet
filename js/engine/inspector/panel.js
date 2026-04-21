@@ -38,15 +38,13 @@ export function openPanelParamsModal(n) {
     titleEl.textContent = n.isMv ? 'Параметры РУ СН (MV)' : 'Параметры НКУ (LV щит)';
   }
   const h = [];
-  // Обозначение (редактируемое) + Имя
-  h.push(field('Обозначение', `<input type="text" id="pp-tag" value="${escAttr(n.tag || '')}">`));
-  {
-    const eff = effectiveTag(n);
-    if (eff && eff !== n.tag) {
-      h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Полное: <b>${escHtml(eff)}</b></div>`);
-    }
-  }
-  h.push(field('Имя', `<input type="text" id="pp-name" value="${escAttr(n.name || '')}">`));
+  // v0.59.87: Обозначение/Имя вынесены ТОЛЬКО в вкладку «Общее» (см.
+  // renderGeneralPanel). Здесь (в «Электрика») их больше не дублируем.
+  // Скрытые инпуты нужны, чтобы старые обработчики apply (pp-tag/pp-name)
+  // не упали по document.getElementById; источник правды — data-prop в
+  // Общем, эти инпуты просто отражают текущее значение (read-only).
+  h.push(`<input type="hidden" id="pp-tag" value="${escAttr(n.tag || '')}">`);
+  h.push(`<input type="hidden" id="pp-name" value="${escAttr(n.name || '')}">`);
 
   // === MV-switchgear (Фаза 1.19): если щит помечен isMv — специальный блок ===
   if (n.isMv || n.mvSwitchgearId) {
@@ -348,6 +346,54 @@ export function openPanelParamsModal(n) {
           ${lines.map(x => `<div>${x.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</div>`).join('')}
           <div class="muted" style="font-size:10px;margin-top:4px">Для правки — открыть «⚙ Сконфигурировать НКУ подробно» выше.</div>
         </div>`);
+      }
+    } catch (e) { /* опционально */ }
+
+    // v0.59.87: предупреждение о рассинхронизации конфигурации с реальной
+    // схемой. Проверяем три вещи:
+    //  (1) количество входов узла (n.inputs) vs количество входных
+    //      автоматов в конфигурации (panelBreakers[role='input']);
+    //  (2) то же для выходов;
+    //  (3) номинал настроенного автомата vs breakerInA посчитанный
+    //      recalc'ом для подключённой линии (по тому же порту).
+    try {
+      const brs = Array.isArray(n.panelBreakers) ? n.panelBreakers : [];
+      if (brs.length) {
+        const cfgIn  = brs.filter(b => b.role === 'input').length;
+        const cfgOut = brs.filter(b => b.role === 'output').length;
+        const nIn  = Number(n.inputs)  || 0;
+        const nOut = Number(n.outputs) || 0;
+        const warns = [];
+        if (cfgIn !== nIn) {
+          warns.push(`Входов на узле: <b>${nIn}</b>, автоматов «ввод» в конфигурации: <b>${cfgIn}</b>.`);
+        }
+        if (cfgOut !== nOut) {
+          warns.push(`Выходов на узле: <b>${nOut}</b>, автоматов «отход.» в конфигурации: <b>${cfgOut}</b>.`);
+        }
+        // Под-номинал: по каждой подключённой отходящей линии сравниваем
+        // breakerInA (рассчитанный по нагрузке+кабелю) с inA автомата,
+        // стоящего в этом порту (outputs — в порядке портов).
+        const outputBreakers = brs.filter(b => b.role === 'output');
+        for (const c of state.conns.values()) {
+          if (!c || !c.from || c.from.nodeId !== n.id) continue;
+          const needA = Number(c._breakerIn) || 0;
+          if (!needA) continue;
+          const br = outputBreakers[c.from.port || 0];
+          if (!br) continue;
+          const haveA = Number(br.inA) || 0;
+          if (haveA && haveA < needA) {
+            const dst = state.nodes.get(c.to.nodeId);
+            const who = dst ? (dst.name || effectiveTag(dst) || dst.id) : `порт ${c.from.port}`;
+            warns.push(`Порт ${c.from.port + 1} → «${escHtml(who)}»: линии нужен автомат <b>${needA} А</b>, в конфигурации стоит <b>${haveA} А</b>.`);
+          }
+        }
+        if (warns.length) {
+          h.push(`<div style="margin:8px 0;padding:8px 10px;border:1px solid #f0b200;border-left:3px solid #f0a000;border-radius:4px;background:#fff8e1;font-size:11px;line-height:1.55;color:#5a3d00">
+            <div style="font-weight:600;margin-bottom:3px">⚠ Конфигурация расходится со схемой</div>
+            ${warns.map(w => `<div>• ${w}</div>`).join('')}
+            <div class="muted" style="font-size:10px;margin-top:4px">Откройте «⚙ Изменить конфигурацию НКУ» — wizard подхватит актуальные номиналы из схемы.</div>
+          </div>`);
+        }
       }
     } catch (e) { /* опционально */ }
   }

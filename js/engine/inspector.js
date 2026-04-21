@@ -1161,8 +1161,13 @@ export function renderGeneralPanel(n) {
   // Блок «Модель/изделие»
   const cfg = _configuratorForNode(n);
   const modelRef = n.modelRef || '';
+  // v0.59.87: для щитов (panel) состав = конфигуратор, а не отдельное
+  // каталожное изделие. «Производитель / Выбранное изделие» для панели
+  // вводили в заблуждение — их скрываем. Для всех остальных узлов
+  // поведение прежнее.
+  const isPanelNode = n.type === 'panel';
   h.push(`<div class="inspector-section">`);
-  h.push(`<h4>Модель изделия</h4>`);
+  h.push(`<h4>${isPanelNode ? 'Конфигурация щита' : 'Модель изделия'}</h4>`);
 
   // v0.58.52 (1.22.4): подборка подходящих изделий из каталога проекта.
   // Продукт хранит диапазоны параметров систем; узел ссылается на продукт
@@ -1173,7 +1178,7 @@ export function renderGeneralPanel(n) {
     if (p.subtype && n.subtype && p.subtype !== n.subtype) return false;
     return true;
   });
-  if (matches.length) {
+  if (matches.length && !isPanelNode) {
     const cur = n.productId || '';
     const opts = ['<option value="">— не выбрано —</option>']
       .concat(matches.map(p => `<option value="${escAttr(p.id)}"${cur === p.id ? ' selected' : ''}>${escHtml(p.name || p.modelRef || p.id)}${p.manufacturer ? ' · ' + escHtml(p.manufacturer) : ''}</option>`))
@@ -1181,9 +1186,11 @@ export function renderGeneralPanel(n) {
     h.push(field('Изделие из каталога', `<select data-prop="productId">${opts}</select>`));
   }
 
-  h.push(field('Производитель', `<input type="text" data-prop="manufacturer" value="${escAttr(n.manufacturer || '')}" placeholder="ABB, Schneider, Legrand, ...">`));
-  h.push(field('Выбранное изделие',
-    `<input type="text" data-prop="modelRef" value="${escAttr(modelRef)}" placeholder="Не выбрано">`));
+  if (!isPanelNode) {
+    h.push(field('Производитель', `<input type="text" data-prop="manufacturer" value="${escAttr(n.manufacturer || '')}" placeholder="ABB, Schneider, Legrand, ...">`));
+    h.push(field('Выбранное изделие',
+      `<input type="text" data-prop="modelRef" value="${escAttr(modelRef)}" placeholder="Не выбрано">`));
+  }
 
   // v0.58.52: сохранить текущие параметры как изделие в каталог
   if (modelRef || n.manufacturer) {
@@ -1226,8 +1233,34 @@ export function renderGeneralPanel(n) {
       } catch {}
       href = cfg.href + (cfg.href.includes('?') ? '&' : '?') + 'nodeId=' + encodeURIComponent(n.id);
     }
+    // v0.59.87: для панельных конфигураторов (LV/MV) — передаём полный
+    // контекст (как в вкладке «Электрика»), чтобы wizard не стартовал
+    // с нуля, а увидел узел, имя, inputs/outputs, нагрузку, IP.
+    if (cfg === _CONFIGURATORS.panel) {
+      const qp = new URLSearchParams();
+      qp.set('nodeId', n.id);
+      if (n.name) qp.set('name', n.name);
+      if (n.switchMode === 'avr') qp.set('kind', 'avr'); else qp.set('kind', 'distribution');
+      if (n._loadKw) qp.set('loadKw', String(n._loadKw));
+      if (n.inputs) qp.set('inputs', String(n.inputs));
+      if (n.outputs) qp.set('outputs', String(n.outputs));
+      if (n.ipRating) qp.set('ip', n.ipRating);
+      href = cfg.href + '?' + qp.toString();
+    } else if (cfg === _CONFIGURATORS.panelMv) {
+      const qp = new URLSearchParams();
+      qp.set('nodeId', n.id);
+      if (n.name) qp.set('name', n.name);
+      if (n.capacityA) qp.set('In_A', String(n.capacityA));
+      if (n.mvSwitchgearId) qp.set('lockedId', n.mvSwitchgearId);
+      href = cfg.href + '?' + qp.toString();
+    }
+    const isPanel = (cfg === _CONFIGURATORS.panel || cfg === _CONFIGURATORS.panelMv);
     h.push(`<a class="full-btn" href="${escAttr(href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);
-    h.push(`<div class="muted" style="font-size:11px;margin-top:4px">Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.${cfg === _CONFIGURATORS.rack ? ' После настройки нажмите в модуле «↩ Применить к узлу схемы».' : ''}</div>`);
+    h.push(`<div class="muted" style="font-size:11px;margin-top:4px">${
+      isPanel
+        ? 'Оболочка, шины, автоматы, учёт, ТТ, мониторинг и аксессуары — всё в wizard конфигуратора. Wizard видит реальные связи узла (ток/тип линии).'
+        : 'Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.'
+    }${cfg === _CONFIGURATORS.rack ? ' После настройки нажмите в модуле «↩ Применить к узлу схемы».' : ''}</div>`);
 
     // v0.58.81: если к узлу уже применён rack-шаблон — показываем сводку,
     // чтобы было видно без повторного открытия конфигуратора.
