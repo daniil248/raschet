@@ -496,11 +496,11 @@ export function initInteraction() {
       render();
       return;
     }
-    // Первый клик — запоминаем.
+    // Первый клик — запоминаем. Подсветка (оранжевое кольцо) вычисляется
+    // в render() из state.sysPending, поэтому переживает любые rerender'ы.
     if (!state.sysPending) {
       state.sysPending = { fromNodeId: nodeId, fromPortKey: portKey, fromPortIdx: portIdx, sysId };
-      circ.setAttribute('stroke', '#f59e0b');
-      circ.setAttribute('stroke-width', '2');
+      render();
       return;
     }
     // Второй клик — проверяем и создаём.

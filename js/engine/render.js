@@ -1963,12 +1963,20 @@ export function renderNodes() {
           const cy  = bgY + bgH / 2;
           for (let i = 0; i < b.count; i++) {
             const cx = cx0 + i * CONN_STEP;
+            // Подсветка pending (первый клик patch-link'а сохраняется в
+            // state.sysPending). Раньше подсветка навешивалась на DOM напрямую
+            // и терялась при ближайшем render() — теперь вычисляется здесь и
+            // переживает все rerender'ы.
+            const isPending = state.sysPending
+              && state.sysPending.fromNodeId === n.id
+              && state.sysPending.fromPortKey === b.key
+              && state.sysPending.fromPortIdx === i;
             const circ = el('circle', {
-              class: 'sys-port-connector',
+              class: 'sys-port-connector' + (isPending ? ' sys-port-connector--pending' : ''),
               cx, cy, r: 3.5,
               fill: b.color,
-              stroke: '#fff',
-              'stroke-width': 1,
+              stroke: isPending ? '#f59e0b' : '#fff',
+              'stroke-width': isPending ? 2 : 1,
             });
             // Метаданные для будущей поддержки patch-link (1:1)
             circ.dataset.portKind = 'sys';
