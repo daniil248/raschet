@@ -987,6 +987,35 @@ function computeWarnings() {
     }
   }
 
+  // v0.59.101: требуемая мощность на один ввод зависит от режима резервирования.
+  // Для 2N каждый ввод должен нести полную нагрузку. Для N+1 — тоже полную
+  // (в пиковом сценарии один ввод выпал). Для none — пропорционально ёмкости.
+  const neededPerFeed = {};
+  feeds.forEach(f => {
+    if (mode === '2N' || mode === '2n' || mode === 'n+1') {
+      neededPerFeed[f] = t.demandKw;
+    } else {
+      neededPerFeed[f] = sumCap > 0
+        ? t.demandKw * (byFeed[f] / sumCap)
+        : (feeds.length ? t.demandKw / feeds.length : 0);
+    }
+  });
+
+  // v0.59.101: проверка запаса PDU относительно требуемой мощности.
+  // PDU должен быть ≥ нагрузки (занижение = err); если > 80% запаса (PDU > 1.8×needed)
+  // — предупреждение о сильно завышенном типоразмере PDU.
+  feeds.forEach(f => {
+    const need = neededPerFeed[f] || 0;
+    if (need <= 0) return;
+    if (byFeed[f] + 1e-6 < need) {
+      out.push({ lvl: 'err',
+        msg: `Ввод ${f}: номинал PDU ${byFeed[f].toFixed(2)} кВт меньше требуемой нагрузки ${need.toFixed(2)} кВт — не хватит запитать оборудование.` });
+    } else if (byFeed[f] > need * 1.8 + 1e-6) {
+      out.push({ lvl: 'warn',
+        msg: `Ввод ${f}: номинал PDU ${byFeed[f].toFixed(2)} кВт сильно завышен относительно нагрузки ${need.toFixed(2)} кВт (>80% запаса) — можно подобрать меньший типоразмер.` });
+    }
+  });
+
   // Сверка с реальными вводами из электрической схемы (если есть)
   if (Array.isArray(t.feeds) && t.feeds.length) {
     const schemaFeeds = {}; // feedLabel → availableKw
@@ -994,7 +1023,9 @@ function computeWarnings() {
       const label = f.label || String.fromCharCode(65 + i); // A, B, …
       schemaFeeds[label] = Number(f.availableKw) || 0;
     });
-    // для каждого ввода проверяем: сумма PDU.capacity ≤ availableKw схемы
+    // v0.59.101: сверяем доступную мощность ввода из схемы с ТРЕБУЕМОЙ нагрузкой
+    // (не с номиналом PDU). PDU обычно имеет запас над нагрузкой, что нормально.
+    // Критично — если сам ввод не тянет нагрузку.
     Object.keys(byFeed).forEach(f => {
       const avail = schemaFeeds[f];
       if (avail == null) {
@@ -1002,9 +1033,10 @@ function computeWarnings() {
           msg: `Ввод ${f}: PDU настроены, но в электрической схеме такого ввода у узла нет. Проверьте приоритеты входных портов.` });
         return;
       }
-      if (byFeed[f] > avail + 1e-6) {
+      const need = neededPerFeed[f] || 0;
+      if (need > avail + 1e-6) {
         out.push({ lvl: 'err',
-          msg: `Ввод ${f}: мощность PDU ${byFeed[f].toFixed(2)} кВт превышает доступную на вводе ${avail.toFixed(2)} кВт.` });
+          msg: `Ввод ${f}: в схеме доступно ${avail.toFixed(2)} кВт, а требуемая нагрузка на ввод — ${need.toFixed(2)} кВт. Ввод не потянет нагрузку стойки.` });
       }
     });
     // PDU не привязан к существующему вводу
