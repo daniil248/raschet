@@ -321,12 +321,12 @@
             <h2>Новый участок от узла</h2>
             <div class="sup-hint">Выберите направление:</div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:4px 0;">
-              <button type="button" class="sup-btn" data-axis="x" title="Добавить участок в положительном направлении оси X (вправо).">X+ →</button>
-              <button type="button" class="sup-btn" data-axis="y" title="Добавить участок в положительном направлении оси Y (вверх).">Y+ ↑</button>
-              <button type="button" class="sup-btn" data-axis="z" title="Добавить участок в положительном направлении оси Z (от наблюдателя).">Z+ ⊗</button>
-              <button type="button" class="sup-btn" data-axis="-x" title="Добавить участок в отрицательном направлении X (влево).">X− ←</button>
-              <button type="button" class="sup-btn" data-axis="-y" title="Добавить участок в отрицательном направлении Y (вниз).">Y− ↓</button>
-              <button type="button" class="sup-btn" data-axis="-z" title="Добавить участок в отрицательном направлении Z (к наблюдателю).">Z− ⊙</button>
+              <button type="button" class="sup-btn sup-ax sup-ax-x" data-axis="x" title="Добавить участок в положительном направлении оси X (вправо).">X+ →</button>
+              <button type="button" class="sup-btn sup-ax sup-ax-y" data-axis="y" title="Добавить участок в положительном направлении оси Y (вверх).">Y+ ↑</button>
+              <button type="button" class="sup-btn sup-ax sup-ax-z" data-axis="z" title="Добавить участок в положительном направлении оси Z (от наблюдателя).">Z+ ⊗</button>
+              <button type="button" class="sup-btn sup-ax sup-ax-x" data-axis="-x" title="Добавить участок в отрицательном направлении X (влево).">X− ←</button>
+              <button type="button" class="sup-btn sup-ax sup-ax-y" data-axis="-y" title="Добавить участок в отрицательном направлении Y (вниз).">Y− ↓</button>
+              <button type="button" class="sup-btn sup-ax sup-ax-z" data-axis="-z" title="Добавить участок в отрицательном направлении Z (к наблюдателю).">Z− ⊙</button>
             </div>
             <label class="sup-field"><span>Длина, м <sup title="Длина участка вдоль выбранного направления. Можно изменить позже в списке «Участки».">ⓘ</sup></span><input type="number" id="seg-L" step="0.1" value="1" title="Длина нового участка, м."></label>
             <label class="sup-field"><span>DN, мм <sup title="Условный диаметр трубы. Для магистрали DN40+; для отводов на одну насадку — DN15–20. Кнопкой «Диаметры авто» можно пересчитать автоматически.">ⓘ</sup></span>
