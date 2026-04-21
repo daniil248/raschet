@@ -158,6 +158,12 @@ export const CHANGELOGS = {
   ],
 
   'psychrometrics': [
+    { version: '0.59.90', date: '2026-04-21', items: [
+      'Вместо CSS-разворота всего SVG (v0.59.69, transform:rotate(-90deg)) — нормальный выбор формата и ориентации. В заголовке панели «Диаграмма Молье-Рамзина» теперь два селекта: Формат (A4/A3) и Ориентация (Альбомная/Книжная). Габариты SVG вычисляются по реальным мм×PPM (3 px/мм): A4 альбом 891×630, A4 книжн. 630×891, A3 альбом 1260×891, A3 книжн. 891×1260.',
+      'Удалена CSS-правилка .psy-chart.rotated с transform:rotate и плашка-notice «hover отключён»: теперь hover/click-mapping и «взять параметры с графика» работают при любой ориентации, т.к. SVG не крутится через CSS.',
+      'Состояние сохраняется в localStorage: psy.chartFormat, psy.chartOrient. Старый ключ psy.chartRotate игнорируется.',
+      'Файлы: psychrometrics/psychrometrics.js (S.chartFormat/chartOrient, chartPageDims, renderChart читает dims, handler двух селектов), psychrometrics/index.html (два select вместо checkbox, убрана оранжевая плашка-notice), psychrometrics/psychrometrics.css (удалены .rotated/.psy-chart-rotated-note правила).'
+    ] },
     { version: '0.59.70', date: '2026-04-21', items: [
       'Главный модуль: нет эффекта на psychrometrics (версия синхронизирована). См. changelog Raschet.'
     ] },

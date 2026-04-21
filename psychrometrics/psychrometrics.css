@@ -207,31 +207,11 @@
 /* Диаграмма */
 .psy-chart { overflow: auto; border: 1px solid #e0e0e0; border-radius: 4px; background:#fff; position: relative; }
 .psy-chart svg { display: block; width: 100%; height: auto; }
-/* Режим «развернуть»: SVG повёрнут на -90° через CSS. Интерактив
-   (crosshair/click) в этом режиме отключается — SVG getBoundingClientRect
-   даёт повёрнутый bbox, обратный маппинг посчитать нельзя без переделки.
-   Поэтому в rotated-режиме читаем параметры по значениям в легенде, а
-   перед «клик → точка» отключаем rotate. */
-.psy-chart.rotated { padding: 16px 0; }
-.psy-chart.rotated svg {
-  transform: rotate(-90deg);
-  transform-origin: center center;
-  /* Меняем пропорции: повернутый SVG должен умещаться в контейнере.
-     Используем aspect hack: задаём max-height и margin. */
-  max-width: 75vh;
-  margin: 0 auto;
-}
-.psy-chart.rotated .psy-xh-readout { display: none !important; }
-.psy-chart-rotated-note {
-  display: none;
-  padding: 4px 10px;
-  background: #fff3e0;
-  border-bottom: 1px solid #ffcc80;
-  font-size: 11px;
-  color: #bf360c;
-}
-.psy-chart.rotated + .psy-chart-rotated-note,
-.psy-chart-rotated-note.on { display: block; }
+/* v0.59.90: CSS-rotate хак удалён. Раньше «развернуть» крутил SVG через
+   transform: rotate(-90deg), что ломало hover/click-маппинг и давало
+   визуально-повёрнутый лист вместо нормального A4/A3. Теперь ориентация
+   (Книжная/Альбомная) меняет реальные габариты SVG в viewBox, а формат —
+   A4 vs A3 в мм. См. chartPageDims() в psychrometrics.js. */
 
 /* ========= Процессы: таблица-список (альтернатива карточкам) ========= */
 .psy-view-btn {

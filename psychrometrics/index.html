@@ -168,17 +168,24 @@
     <div class="psy-panel">
       <div class="psy-panel-title">
         Диаграмма Молье-Рамзина
-        <span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center;">
-          <label class="psy-field psy-inline" style="flex-direction:row;gap:4px;align-items:center;font-weight:400;text-transform:none;letter-spacing:0;color:#455a64;" title="Поменять оси местами: t по горизонтали, d по вертикали (ASHRAE-стиль) ↔ d по горизонтали, t по вертикали (Рамзин-стиль).">
-            <input type="checkbox" id="psy-chart-rotate" style="margin:0;">
-            <span style="font-size:11px">↻ развернуть диаграмму (t↔d)</span>
+        <span style="margin-left:auto;display:inline-flex;gap:10px;align-items:center;font-weight:400;text-transform:none;letter-spacing:0;color:#455a64;">
+          <label style="display:inline-flex;gap:4px;align-items:center;font-size:11px">
+            Формат
+            <select id="psy-chart-format" style="font-size:11px;padding:2px 4px">
+              <option value="A4">A4</option>
+              <option value="A3">A3</option>
+            </select>
+          </label>
+          <label style="display:inline-flex;gap:4px;align-items:center;font-size:11px">
+            Ориентация
+            <select id="psy-chart-orient" style="font-size:11px;padding:2px 4px">
+              <option value="landscape">Альбомная</option>
+              <option value="portrait">Книжная</option>
+            </select>
           </label>
         </span>
       </div>
       <div class="psy-chart" id="psy-chart"></div>
-      <div class="psy-chart-rotated-note" id="psy-chart-rotated-note">
-        В повёрнутом виде hover-крестик и клик «взять с графика» отключены — снимите галочку, чтобы вернуться к интерактиву.
-      </div>
     </div>
 
     <!-- Результаты по точкам -->
