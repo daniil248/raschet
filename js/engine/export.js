@@ -445,6 +445,12 @@ export function initToolbar() {
     const p = state.pages.find(p => p.id === pageId);
     if (!p) return;
     if (!confirm(`Удалить страницу "${p.name || p.id}"?\n\nУзлы, принадлежавшие ТОЛЬКО этой странице, будут удалены. Узлы, которые есть и на других страницах, останутся.`)) return;
+    // v0.59.77: сохраняем позиции ТЕКУЩЕЙ страницы (если она не удаляемая)
+    // ДО каких-либо мутаций, чтобы n.x/n.y других страниц не потерялись.
+    const deletedIsCurrent = (state.currentPageId === pageId);
+    if (!deletedIsCurrent && state.currentPageId) {
+      saveCurrentPagePositions(state.currentPageId);
+    }
     const toDelete = [];
     for (const n of state.nodes.values()) {
       if (Array.isArray(n.pageIds)) {
@@ -456,9 +462,23 @@ export function initToolbar() {
     for (const [cid, c] of Array.from(state.conns.entries())) {
       if (!state.nodes.has(c.from.nodeId) || !state.nodes.has(c.to.nodeId)) state.conns.delete(cid);
     }
+    // v0.59.77: подчищаем устаревшие записи positionsByPage[deletedPageId]
+    // у выживших узлов — иначе при повторном создании страницы с тем же
+    // id они внезапно «вспомнят» старое расположение.
+    for (const n of state.nodes.values()) {
+      if (n.positionsByPage && Object.prototype.hasOwnProperty.call(n.positionsByPage, pageId)) {
+        delete n.positionsByPage[pageId];
+      }
+    }
     state.pages = state.pages.filter(x => x.id !== pageId);
-    if (state.currentPageId === pageId) {
+    if (deletedIsCurrent) {
       state.currentPageId = state.pages[0].id;
+      // v0.59.77: ВАЖНО — при удалении активной страницы текущие n.x/n.y
+      // принадлежат удалённой странице. Надо загрузить позиции новой
+      // текущей страницы, иначе мусорные координаты попадут на схему
+      // электрики (и будут записаны в её positionsByPage при следующем
+      // switchPage — перманентная порча расположения).
+      loadPagePositions(state.currentPageId);
       const next = getCurrentPage();
       if (next && next.view) state.view = { ...next.view };
     }

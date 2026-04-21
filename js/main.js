@@ -1055,7 +1055,13 @@ async function saveCurrent(isAuto) {
       }
     } catch {}
     state.lastLocalWriteAtMs = Date.now();  // маркер — snapshot в ближ. 3 сек это мы
-    const saved = await window.Storage.saveProject(p.id, { scheme });
+    // v0.59.77: watchdog — если saveProject зависает (нет сети, проблемы
+    // Firestore и т.п.), через 30 сек принудительно бросаем ошибку, чтобы
+    // кнопка «Сохранение…» не висела вечно.
+    const _timeoutP = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout: сохранение заняло больше 30 с')), 30000);
+    });
+    const saved = await Promise.race([window.Storage.saveProject(p.id, { scheme }), _timeoutP]);
     // Обновляем lastKnownUpdatedAtMs, чтобы snapshot от нашего же write не поднял тост
     if (saved?.updatedAt) {
       state.lastKnownUpdatedAtMs = saved.updatedAt?.toMillis ? saved.updatedAt.toMillis() : (saved.updatedAt || Date.now());
