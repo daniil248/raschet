@@ -155,15 +155,30 @@
       <div class="psy-panel-title">
         Связи (процессы, рёбра графа)
         <button type="button" id="psy-add-edge" class="psy-btn psy-btn-primary">+ связь</button>
-        <span style="font-size:11px;color:#607080;font-weight:400;margin-left:8px">Любой узел → любой узел. Целевые параметры (t, φ, d, h) считаются от исходного узла по типу процесса.</span>
+        <span class="psy-view-toggle" role="tablist" aria-label="Вид процессов" style="margin-left:auto;display:inline-flex;gap:2px;background:#eef2f7;border:1px solid #d4d9e0;border-radius:4px;padding:2px;">
+          <button type="button" class="psy-btn psy-view-btn active" data-view="cards" title="Карточки на полотне" aria-pressed="true" style="border:0;background:#fff;">▦ карточки</button>
+          <button type="button" class="psy-btn psy-view-btn" data-view="list" title="Таблица-список" aria-pressed="false" style="border:0;background:transparent;">☰ список</button>
+        </span>
       </div>
       <div class="psy-edges" id="psy-edges"></div>
+      <div class="psy-edges-list" id="psy-edges-list" style="display:none;"></div>
     </div>
 
     <!-- Диаграмма -->
     <div class="psy-panel">
-      <div class="psy-panel-title">Диаграмма Молье-Рамзина</div>
+      <div class="psy-panel-title">
+        Диаграмма Молье-Рамзина
+        <span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center;">
+          <label class="psy-field psy-inline" style="flex-direction:row;gap:4px;align-items:center;font-weight:400;text-transform:none;letter-spacing:0;color:#455a64;" title="Поменять оси местами: t по горизонтали, d по вертикали (ASHRAE-стиль) ↔ d по горизонтали, t по вертикали (Рамзин-стиль).">
+            <input type="checkbox" id="psy-chart-rotate" style="margin:0;">
+            <span style="font-size:11px">↻ развернуть диаграмму (t↔d)</span>
+          </label>
+        </span>
+      </div>
       <div class="psy-chart" id="psy-chart"></div>
+      <div class="psy-chart-rotated-note" id="psy-chart-rotated-note">
+        В повёрнутом виде hover-крестик и клик «взять с графика» отключены — снимите галочку, чтобы вернуться к интерактиву.
+      </div>
     </div>
 
     <!-- Результаты по точкам -->

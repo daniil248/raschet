@@ -27,6 +27,8 @@ const S = {
   tMaxChart: 50,      // °C — верхняя граница оси t
   dMaxChart: 30,      // г/кг — правая граница оси d
   showRuNames: (() => { try { return localStorage.getItem('psy.showRuNames') === '1'; } catch { return false; } })(),
+  chartRotate: (() => { try { return localStorage.getItem('psy.chartRotate') === '1'; } catch { return false; } })(),
+  edgeView: (() => { try { return localStorage.getItem('psy.edgeView') || 'cards'; } catch { return 'cards'; } })(),
   points: [
     { name: 'Наружный (зима)', nameUser: true, t: -20, tUser: true, tTs: 1, rh: 85, rhUser: true, rhTs: 1, x: '', h: '', V: '' },
     { name: 'После калорифера', t: '', rh: '', x: '', h: '', V: '' },
@@ -443,9 +445,109 @@ function renderEdges() {
     host.innerHTML = `<div style="padding:12px;color:#607080;font-size:12px">
       Нет связей. Нажмите «+ связь», чтобы задать процесс между любыми двумя узлами (графовая модель: узел → узел).
     </div>`;
+  } else {
+    S.procs.forEach((pr, i) => host.appendChild(procArrow(pr, i)));
+  }
+  renderEdgesList();
+  applyEdgeViewMode();
+}
+
+/* Таблица-список процессов. Альтернатива карточкам: компактный свод
+   всех рёбер графа в виде строк. Inline-редактирование типа, от-узла,
+   к-узла. Остальные параметры отображаются read-only и редактируются
+   в карточной панели. Стиль близок к референсу пользователя. */
+function renderEdgesList() {
+  const host = $('psy-edges-list');
+  if (!host) return;
+  if (!S.procs.length) {
+    host.innerHTML = `<div class="psy-el-empty">Нет связей. Добавьте «+ связь» — появится строка в таблице.</div>`;
     return;
   }
-  S.procs.forEach((pr, i) => host.appendChild(procArrow(pr, i)));
+  // Вычисляем параметры точек один раз, чтобы показать t/φ/L в строках.
+  const { sts, segs } = computeCycle();
+  const nodeLabel = (i) => {
+    const n = S.points[i]; if (!n) return '—';
+    return `${i+1}. ${escAttr((n.name||'').slice(0,18))}`;
+  };
+  const trs = S.procs.map((pr, i) => {
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
+    const a = sts[fromI], b = sts[toI];
+    const s = segs[i] || null;
+    const typeLabel = PROC_TYPES.find(p => p.v === pr.type)?.t?.split('·')[0]?.trim() || pr.type;
+    const col = PROC_COLOR[pr.type] || '#607080';
+    const typeBadge = `<span class="psy-el-type" style="background:${col}">${pr.type || 'X'}</span>`;
+    const fmt = (v, d=1) => Number.isFinite(v) ? v.toFixed(d) : '—';
+    const nodeOpts = (sel) => S.points.map((p, pi) =>
+      `<option value="${pi}" ${pi===sel?'selected':''}>${pi+1}. ${escAttr((p.name||'').slice(0,16))}</option>`).join('');
+    return `
+      <tr data-el-idx="${i}">
+        <td class="psy-el-name">${typeBadge} <b>${escAttr(typeLabel)}</b></td>
+        <td>
+          <select data-el-col="type" data-i="${i}" title="Тип процесса">
+            ${PROC_TYPES.map(pt => `<option value="${pt.v}" ${pr.type===pt.v?'selected':''}>${pt.v} · ${pt.t.split('·').slice(1).join('·').trim()||pt.t}</option>`).join('')}
+          </select>
+        </td>
+        <td>
+          <select data-el-col="fromIdx" data-i="${i}">${nodeOpts(fromI)}</select>
+        </td>
+        <td>${a ? fmt(a.T, 1) : '—'}</td>
+        <td>${a ? fmt(a.RH, 0) : '—'}</td>
+        <td>${s ? fmt(s.V, 0) : '—'}</td>
+        <td>
+          <select data-el-col="toIdx" data-i="${i}">${nodeOpts(toI)}</select>
+        </td>
+        <td>${b ? fmt(b.T, 1) : '—'}</td>
+        <td>${b ? fmt(b.RH, 0) : '—'}</td>
+        <td>${s ? fmt(s.V, 0) : '—'}</td>
+        <td style="color:${s && s.Q>0?'#c62828':'#0277bd'};font-weight:600">${s ? fmt(s.Q, 2) : '—'}</td>
+        <td style="color:${s && s.qw>0?'#2e7d32':'#6a1b9a'}">${s ? fmt(s.qw, 3) : '—'}</td>
+        <td><button type="button" class="psy-el-del" data-act="del-edge" data-i="${i}" title="Удалить связь">✕</button></td>
+      </tr>`;
+  }).join('');
+  host.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2" style="width:160px">Наименование</th>
+          <th rowspan="2" style="width:180px">Тип процесса</th>
+          <th colspan="4" class="psy-el-group">Начальная точка</th>
+          <th colspan="4" class="psy-el-group">Конечная точка</th>
+          <th rowspan="2">Q, кВт</th>
+          <th rowspan="2">q<sub>w</sub>, кг/ч</th>
+          <th rowspan="2"></th>
+        </tr>
+        <tr>
+          <th>№</th><th>t, °C</th><th>φ, %</th><th>L, м³/ч</th>
+          <th>№</th><th>t, °C</th><th>φ, %</th><th>L, м³/ч</th>
+        </tr>
+      </thead>
+      <tbody>${trs}</tbody>
+    </table>
+  `;
+}
+
+/* Переключение между «карточки» и «список» — меняет видимость контейнеров
+   без повторного рендера содержимого (обе панели уже отрисованы). */
+function applyChartRotate() {
+  const chart = $('psy-chart');
+  const note  = $('psy-chart-rotated-note');
+  if (!chart) return;
+  chart.classList.toggle('rotated', !!S.chartRotate);
+  if (note) note.classList.toggle('on', !!S.chartRotate);
+}
+
+function applyEdgeViewMode() {
+  const cards = $('psy-edges');
+  const list  = $('psy-edges-list');
+  if (!cards || !list) return;
+  const mode = S.edgeView === 'list' ? 'list' : 'cards';
+  cards.style.display = mode === 'cards' ? '' : 'none';
+  list.style.display  = mode === 'list'  ? '' : 'none';
+  document.querySelectorAll('.psy-view-btn').forEach(b => {
+    const on = b.dataset.view === mode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 
 function pointCard(p, i) {
@@ -1945,6 +2047,52 @@ function wire() {
   };
   wireGraphHost('psy-cycle');
   wireGraphHost('psy-edges');
+
+  /* Таблица-список процессов: свои обработчики для inline select'ов
+     (type/fromIdx/toIdx) и кнопки удаления. Поля value read-only. */
+  const listHost = $('psy-edges-list');
+  if (listHost) {
+    listHost.addEventListener('change', (e) => {
+      const sel = e.target.closest('select[data-el-col]');
+      if (!sel) return;
+      const i = +sel.dataset.i;
+      const col = sel.dataset.elCol;
+      S.procs[i] = S.procs[i] || {};
+      if (col === 'type') S.procs[i].type = sel.value;
+      else S.procs[i][col] = parseInt(sel.value, 10);
+      rerenderCycle();
+    });
+    listHost.addEventListener('click', (e) => {
+      const del = e.target.closest('[data-act="del-edge"]');
+      if (!del) return;
+      const i = +del.dataset.i;
+      S.procs.splice(i, 1);
+      rerenderCycle();
+    });
+  }
+
+  /* Кнопки-таб «карточки / список». Переключают S.edgeView и видимость
+     контейнеров, сохраняют выбор в localStorage. */
+  document.querySelectorAll('.psy-view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      S.edgeView = btn.dataset.view === 'list' ? 'list' : 'cards';
+      try { localStorage.setItem('psy.edgeView', S.edgeView); } catch {}
+      applyEdgeViewMode();
+    });
+  });
+
+  /* Чекбокс «развернуть диаграмму». Переключает класс .rotated
+     на #psy-chart (CSS делает SVG rotate -90°) и показывает notice. */
+  const rotCb = $('psy-chart-rotate');
+  if (rotCb) {
+    rotCb.checked = !!S.chartRotate;
+    applyChartRotate();
+    rotCb.addEventListener('change', () => {
+      S.chartRotate = rotCb.checked;
+      try { localStorage.setItem('psy.chartRotate', S.chartRotate ? '1' : '0'); } catch {}
+      applyChartRotate();
+    });
+  }
 
   $('psy-add').addEventListener('click', () => {
     S.points.push({ name:'', t:'', rh:'', x:'', h:'', V:'' });
