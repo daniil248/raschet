@@ -737,6 +737,16 @@ function renderIso(dirId) {
       <br>X = ${np.x.toFixed(2)} м · Y = ${np.y.toFixed(2)} м · Z = ${np.z.toFixed(2)} м`;
   } else $('iso-node-info').textContent = '— не выбран —';
 
+  // Disable axis buttons for directions that are already occupied
+  // (either same-axis child or reverse of incoming parent).
+  ['x','-x','y','-y','z','-z'].forEach(ax => {
+    const btn = document.querySelector(`[data-axis="${ax}"]`);
+    if (!btn) return;
+    const reason = findAxisConflict(pipe, V3.selectedNode, ax);
+    btn.disabled = !!reason;
+    btn.title = reason || `Добавить участок в направлении ${ax}.`;
+  });
+
   // Segment list — inline edit + delete per row
   const list = $('seg-list');
   const DN_OPTS = [15,20,22,25,28,32,34,40,50,65,80,100];
@@ -1164,7 +1174,8 @@ function nodesWithFitting(pipeline) {
 }
 
 /** Возвращает массив сообщений-предупреждений про слишком короткие прямые
- *  участки между фитингами (СП 485 — L ≥ 10·DN). */
+ *  участки между фитингами (СП 485 — L ≥ 10·DN) и про T-отводы вниз
+ *  для агентов с жидкой фазой (halocarbon, CO₂). */
 function collectFittingWarnings(dir) {
   const pipe = dir.pipeline || [];
   const fitting = nodesWithFitting(pipe);
@@ -1177,6 +1188,22 @@ function collectFittingWarnings(dir) {
       out.push(`участок #${i+1} (DN${s.DN}) длиной ${(+s.L||0).toFixed(2)} м — < 10·DN = ${Lmin.toFixed(2)} м между фитингами.`);
     }
   });
+  // T-отвод вниз для жидкой фазы.
+  const inst = currentInst();
+  const a = inst && AGENTS[inst.agent];
+  if (a && a.type === 'halocarbon') {
+    pipe.forEach((s, i) => {
+      if (s.axis !== '-y') return;
+      const parentId = s.parent || 'root';
+      const siblings = pipe.filter(x => (x.parent || 'root') === parentId && x.id !== s.id);
+      const parentSeg = parentId === 'root' ? null : pipe.find(x => x.id === parentId);
+      const parentHorizontal = !parentSeg || !['y','-y'].includes(parentSeg.axis);
+      const hasHorizSibling = siblings.some(x => !['y','-y'].includes(x.axis));
+      if (parentHorizontal && (hasHorizSibling || siblings.length)) {
+        out.push(`участок #${i+1}: T-отвод вниз (-Y) от горизонтали для ${a.label} (жидкая фаза) не рекомендуется — отвод должен быть сверху магистрали.`);
+      }
+    });
+  }
   return out;
 }
 

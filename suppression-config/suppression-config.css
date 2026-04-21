@@ -225,6 +225,12 @@
 .sup-btn.sup-ax-y:hover { background: #c62828; color: #fff; }
 .sup-btn.sup-ax-z { color: #1565c0; border-color: #1565c0; }
 .sup-btn.sup-ax-z:hover { background: #1565c0; color: #fff; }
+.sup-btn.sup-ax:disabled {
+  color: #bdbdbd !important; border-color: #e0e0e0 !important;
+  background: #fafafa !important; cursor: not-allowed;
+  text-decoration: line-through;
+}
+.sup-btn.sup-ax:disabled:hover { background: #fafafa !important; color: #bdbdbd !important; }
 
 .sup-spec-tbl { table-layout: fixed; width: 100%; }
 .sup-spec-tbl td, .sup-spec-tbl th {
