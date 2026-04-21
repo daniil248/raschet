@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.106', date: '2026-04-21', items: [
+      'Формула «needed per feed» для режима N+1 уточнена: неявно подразумевалось, что каждый ввод должен держать полную demandKw (как в 2N), но это слишком строго. После выпадения одного ввода остальные (N−1) делят нагрузку поровну: <code>needed = demandKw / (N−1)</code>. Раньше при N+1 с 3 вводами по 20 кВт модуль мог ругаться на «PDU завышен», хотя PDU были правильно подобраны под пиковый сценарий.',
+      'Файлы: rack-config/rack-config.js (computeWarnings + renderFeedInfo needOf), rack-config/index.html (справка).'
+    ] },
     { version: '0.59.105', date: '2026-04-21', items: [
       'Практический floor для предупреждения «PDU завышен»: срабатывает только если нагрузка ≥ 3 кВт и номинал PDU > 4 кВт (~16 A 1ф). При малой нагрузке выбор PDU ограничен каталожной сеткой (минимум 16–32 A), и warn о «перезапасе» был бы шумом.',
       'Файлы: rack-config/rack-config.js (computeWarnings + renderFeedInfo badge).'

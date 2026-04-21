@@ -987,13 +987,18 @@ function computeWarnings() {
     }
   }
 
-  // v0.59.101: требуемая мощность на один ввод зависит от режима резервирования.
-  // Для 2N каждый ввод должен нести полную нагрузку. Для N+1 — тоже полную
-  // (в пиковом сценарии один ввод выпал). Для none — пропорционально ёмкости.
+  // v0.59.106: требуемая мощность на один ввод зависит от режима резервирования.
+  //   2N  → каждый ввод несёт полную demandKw (второй в горячем резерве).
+  //   N+1 → после выпадения одного ввода оставшиеся (N−1) должны покрыть demandKw,
+  //         значит при равных вводах нужно demandKw / (N−1) на каждом.
+  //   none → пропорционально ёмкости PDU (или demandKw / N при отсутствии данных).
   const neededPerFeed = {};
   feeds.forEach(f => {
-    if (mode === '2N' || mode === '2n' || mode === 'n+1') {
+    if (mode === '2N' || mode === '2n') {
       neededPerFeed[f] = t.demandKw;
+    } else if (mode === 'n+1') {
+      const nMinus1 = Math.max(1, feeds.length - 1);
+      neededPerFeed[f] = t.demandKw / nMinus1;
     } else {
       neededPerFeed[f] = sumCap > 0
         ? t.demandKw * (byFeed[f] / sumCap)
@@ -1137,7 +1142,11 @@ function renderFeedInfo() {
   const mode = t.pduRedundancy || '2N';
   const needOf = (lbl) => {
     if (!(lbl in byFeed) || !t.demandKw) return 0;
-    if (mode === '2N' || mode === '2n' || mode === 'n+1') return t.demandKw;
+    if (mode === '2N' || mode === '2n') return t.demandKw;
+    if (mode === 'n+1') {
+      const nMinus1 = Math.max(1, feedsInByFeed.length - 1);
+      return t.demandKw / nMinus1;
+    }
     return sumCap > 0 ? t.demandKw * (byFeed[lbl] / sumCap)
                       : (feedsInByFeed.length ? t.demandKw / feedsInByFeed.length : 0);
   };
