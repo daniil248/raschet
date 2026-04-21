@@ -220,23 +220,28 @@ export function buildBOM() {
         if (!c || c.elementId) continue; // elementId-позиции — это enclosure, он уже учтён
         const label = c.label || c.role || 'позиция';
         const role = c.role || '';
+        const spec = c.spec || '';
         const qty = Math.max(1, Number(c.qty) || 1);
         // Классифицируем по role
         let section = 'Начинка щита';
-        if (/^breaker/i.test(role) || /breaker-input|breaker-output/i.test(role)) section = 'Автоматы';
+        if (/^breaker/i.test(role)) section = 'Автоматы';
         else if (/^switch/i.test(role) || /ats|avr/i.test(role)) section = 'АВР / рубильники';
-        else if (/meter|учёт/i.test(role)) section = 'Счётчики';
+        else if (/meter/i.test(role)) section = 'Счётчики';
         else if (/^ct\b/i.test(role) || /transformer-ct/i.test(role)) section = 'Трансформаторы тока';
-        else if (/monitor|мониторинг/i.test(role)) section = 'Мониторинг';
-        else if (/accessor|аксессуар/i.test(role)) section = 'Аксессуары щита';
-        // Синтетическая запись для агрегации: id по label+role
+        else if (/monitor/i.test(role)) section = 'Мониторинг';
+        else if (/accessor/i.test(role)) section = 'Аксессуары щита';
+        // v0.59.86: ключ агрегации = role + spec (если задан) + label.
+        // Одинаковые автоматы из разных щитов сливаются в одну строку;
+        // purpose (назначение линии) добавляется в notes для трассировки.
+        const aggKey = role + '|' + (spec || label);
         const fake = {
-          id: 'panel-inline:' + section + ':' + label,
+          id: 'panel-inline:' + section + ':' + aggKey,
           supplier: '',
           model: label,
-          article: '',
+          article: spec || '',
         };
-        pushAgg(section, fake, qty, panelLabel);
+        const note = c.purpose ? `${panelLabel}: ${c.purpose}` : panelLabel;
+        pushAgg(section, fake, qty, note);
       }
     }
 

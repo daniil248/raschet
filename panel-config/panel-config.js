@@ -1053,12 +1053,19 @@ function _pcApplyConfiguration() {
     composition.push({ elementId: enc.panel.id, qty: 1, role: 'enclosure', label: 'Оболочка щита' });
   }
   for (const b of brs) {
+    // v0.59.86: label — спецификация без per-line имени (чтобы
+    // одинаковые автоматы из разных щитов агрегировались в одну
+    // строку BOM). Имя линии уходит в note/purpose.
+    const role = b.role === 'input' ? 'breaker-input' : (b.role === 'switch' ? 'switch-ats' : 'breaker-output');
+    const roleRu = b.role === 'input' ? 'Автомат ввода' : (b.role === 'switch' ? 'АВР-переключатель' : 'Автомат отходящ.');
     composition.push({
-      elementId: null,  // для конкретных автоматов ещё нет справочника (Фаза 1.10)
+      elementId: null,
       inline: true,
       qty: 1,
-      role: b.role === 'input' ? 'breaker-input' : (b.role === 'switch' ? 'switch-ats' : 'breaker-output'),
-      label: `${b.name} (${b.inA}A ${b.curve} ${b.poles}P)`,
+      role,
+      spec: `${b.inA}A ${b.curve} ${b.poles}P`,
+      label: `${roleRu} ${b.inA}A ${b.curve} ${b.poles}P`,
+      purpose: b.name, // «Ввод от ...» или «→ "Потребитель"»
     });
   }
   // v0.59.78: учёт / ТТ / мониторинг / аксессуары

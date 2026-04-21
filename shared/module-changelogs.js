@@ -325,6 +325,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.86', date: '2026-04-21', items: [
+      'BOM для начинки щитов: одинаковые автоматы из разных щитов (или нескольких отходящих линий одного щита) теперь агрегируются в одну строку спецификации. Ключ = role+spec («breaker-output|63A MCB_C 4P»), а назначения каждой линии («Ввод от ВРУ», «→ «Сервера»») копятся в столбец «Примечание». Раньше каждая линия давала отдельную BOM-строку, потому что в label уходило per-line имя.',
+      'Поле composition теперь содержит три поля: `label` (спец без имени линии, для отображения), `spec` (ключ агрегации, напр. «63A MCB_C 4P»), `purpose` (назначение линии). В spec хранится только техническая подпись — удобно для будущего привязывания к catalog/breaker-seed.',
+      'Файлы: panel-config/panel-config.js (composition для breakers), js/engine/bom.js (aggKey = role+spec, note = panel:purpose).'
+    ] },
     { version: '0.59.85', date: '2026-04-21', items: [
       'Общий футер (Raschet vX.Y.Z + Журнал изменений) теперь есть на хабе (hub.html) и в 3D-конфигураторе (configurator3d/). Раньше эти две страницы были без футера вообще — пользователь не видел ни версии, ни ссылки на changelog.',
       'Файлы: hub.html, configurator3d/index.html (вставлен `<script type="module">` с mountFooter).'
