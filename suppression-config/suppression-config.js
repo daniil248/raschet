@@ -683,15 +683,19 @@ function renderIso(dirId) {
 
   segsRender.forEach(({ seg, A, B }, idx) => {
     const hasNoz = seg.nozzle && seg.nozzle !== 'none';
-    const stroke = hasNoz ? '#c62828' : '#d32f2f';
-    svg += `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="${stroke}" stroke-width="2"/>`;
+    const sel = seg.id === V3.selectedNode;
+    const stroke = sel ? '#1565c0' : (hasNoz ? '#c62828' : '#d32f2f');
+    const sw = sel ? 3 : 2;
+    // Широкий прозрачный хит-слой + видимая линия
+    svg += `<line class="iso-seg-hit" data-seg="${seg.id}" x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="transparent" stroke-width="12" style="cursor:pointer;"/>`;
+    svg += `<line class="iso-seg" data-seg="${seg.id}" x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="${stroke}" stroke-width="${sw}" pointer-events="none"/>`;
     if (V3.showNums) {
       const mx = (A.x+B.x)/2, my = (A.y+B.y)/2 - 6;
-      svg += `<text x="${mx}" y="${my}" text-anchor="middle" font-size="10" fill="#333">${idx+1}</text>`;
+      svg += `<text x="${mx}" y="${my}" text-anchor="middle" font-size="10" fill="#333" pointer-events="none">${idx+1}</text>`;
     }
     if (hasNoz && V3.showNozz) {
-      svg += `<circle cx="${B.x}" cy="${B.y}" r="6" fill="none" stroke="#1565c0" stroke-width="1.6"/>
-              <circle cx="${B.x}" cy="${B.y}" r="2.4" fill="#1565c0"/>`;
+      svg += `<circle cx="${B.x}" cy="${B.y}" r="6" fill="none" stroke="#1565c0" stroke-width="1.6" pointer-events="none"/>
+              <circle cx="${B.x}" cy="${B.y}" r="2.4" fill="#1565c0" pointer-events="none"/>`;
     }
   });
 
@@ -790,12 +794,6 @@ function renderIso(dirId) {
     });
   });
 
-  // Canvas handlers
-  const canvas = $('iso-canvas');
-  canvas.onclick = (e) => {
-    const c = e.target.closest('.iso-node');
-    if (c) { V3.selectedNode = c.dataset.node; renderIso(S.isoDirId); }
-  };
 }
 
 function fitView(dirId) {
@@ -831,30 +829,130 @@ function openIso(dirId) {
 
 /* Setup of dialog-wide event handlers (once at init). */
 function setupIsoHandlers() {
-  // Drag to rotate / pan
   const canvas = $('iso-canvas');
-  let dragging = false, lastX = 0, lastY = 0, panning = false;
+  const W = 900, H = 580;
+
+  // Экранная позиция точки p при заданных yaw/pitch и pan (для orbit).
+  function screenOf(p, yaw, pitch, panX, panY) {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const x1 =  p.x*cy + p.z*sy;
+    const z1 = -p.x*sy + p.z*cy;
+    const y1 =  p.y;
+    const y2 =  y1*cp - z1*sp;
+    const s = V3.scale * V3.zoom;
+    return { x: W/2 + x1*s + panX, y: H/2 - y2*s + panY };
+  }
+
+  // Текущая мировая точка выбранного узла (для orbit-rotate).
+  function selectedNodePos() {
+    const inst = currentInst();
+    const pipe = S.isoDirId
+      ? (inst.directions.find(d => d.id === S.isoDirId)?.pipeline || [])
+      : inst.directions.flatMap(d => d.pipeline || []);
+    const nodes = buildNodes(pipe);
+    return nodes.get(V3.selectedNode) || { x:0, y:0, z:0 };
+  }
+
+  let mode = null; // 'rotate' | 'pan' | 'resize'
+  let lastX = 0, lastY = 0;
+  let resizeSegId = null;
+
   canvas.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.iso-node')) return; // click, not drag
-    dragging = true; panning = e.shiftKey;
+    // Перетаскивание узла = изменение длины родительского участка.
+    const nodeEl = e.target.closest('.iso-node');
+    if (nodeEl && nodeEl.dataset.node !== 'root') {
+      const nodeId = nodeEl.dataset.node;
+      V3.selectedNode = nodeId;
+      // Находим входящий участок (его длину и будем менять).
+      const inst = currentInst();
+      const target = S.isoDirId ? inst.directions.find(d => d.id === S.isoDirId) : null;
+      const seg = target?.pipeline.find(s => s.id === nodeId);
+      if (seg) {
+        mode = 'resize'; resizeSegId = seg.id;
+        lastX = e.clientX; lastY = e.clientY;
+        canvas.style.cursor = 'ew-resize';
+        canvas.setPointerCapture(e.pointerId);
+        renderIso(S.isoDirId);
+        e.stopPropagation();
+        return;
+      }
+    }
+    if (nodeEl) {
+      // Клик по root — просто выбрать.
+      V3.selectedNode = nodeEl.dataset.node;
+      renderIso(S.isoDirId);
+      return;
+    }
+    // Клик по участку — выделить его (endpoint становится selectedNode).
+    const segEl = e.target.closest('.iso-seg-hit');
+    if (segEl) {
+      V3.selectedNode = segEl.dataset.seg;
+      renderIso(S.isoDirId);
+      return;
+    }
+    // Иначе вращение / панорамирование фона.
+    mode = e.shiftKey ? 'pan' : 'rotate';
     lastX = e.clientX; lastY = e.clientY;
-    canvas.style.cursor = panning ? 'move' : 'grabbing';
+    canvas.style.cursor = mode === 'pan' ? 'move' : 'grabbing';
     canvas.setPointerCapture(e.pointerId);
   });
+
   canvas.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
+    if (!mode) return;
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
-    if (panning) { V3.panX += dx; V3.panY += dy; }
-    else {
-      V3.yaw   += dx * 0.01;
-      V3.pitch += dy * 0.01;
-      V3.pitch = Math.max(-Math.PI/2+0.02, Math.min(Math.PI/2-0.02, V3.pitch));
+
+    if (mode === 'pan') {
+      V3.panX += dx; V3.panY += dy;
+      renderIso(S.isoDirId);
+      return;
     }
-    renderIso(S.isoDirId);
+
+    if (mode === 'rotate') {
+      // Orbit вокруг выбранного узла: пересчитываем pan так, чтобы
+      // экранная позиция узла не изменилась после поворота.
+      const anchor = selectedNodePos();
+      const before = screenOf(anchor, V3.yaw, V3.pitch, V3.panX, V3.panY);
+      const newYaw   = V3.yaw + dx * 0.01;
+      let newPitch = V3.pitch + dy * 0.01;
+      newPitch = Math.max(-Math.PI/2 + 0.02, Math.min(Math.PI/2 - 0.02, newPitch));
+      const after = screenOf(anchor, newYaw, newPitch, V3.panX, V3.panY);
+      V3.yaw = newYaw; V3.pitch = newPitch;
+      V3.panX += before.x - after.x;
+      V3.panY += before.y - after.y;
+      renderIso(S.isoDirId);
+      return;
+    }
+
+    if (mode === 'resize' && resizeSegId) {
+      const inst = currentInst();
+      const target = S.isoDirId ? inst.directions.find(d => d.id === S.isoDirId) : null;
+      const seg = target?.pipeline.find(s => s.id === resizeSegId);
+      if (!seg) return;
+      // Скринная проекция оси участка.
+      const v = axisVec(seg.axis);
+      const r = rot3(v);
+      const s = V3.scale * V3.zoom;
+      const ux = r.x * s, uy = -r.y * s;     // инверсия Y на экране
+      const len2 = ux*ux + uy*uy;
+      if (len2 < 1) return;
+      const dL = (dx * ux + dy * uy) / len2;
+      seg.L = Math.max(0.05, +(seg.L + dL).toFixed(2));
+      saveAll();
+      renderIso(S.isoDirId);
+      return;
+    }
   });
-  canvas.addEventListener('pointerup', () => { dragging = false; canvas.style.cursor = 'grab'; });
-  canvas.addEventListener('pointerleave', () => { dragging = false; });
+
+  const endDrag = () => {
+    mode = null; resizeSegId = null;
+    canvas.style.cursor = 'grab';
+  };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointerleave', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const k = e.deltaY < 0 ? 1.15 : 1/1.15;
