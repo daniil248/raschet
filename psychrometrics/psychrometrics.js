@@ -1096,9 +1096,29 @@ function update() {
   refreshComputedInCards();
   const { sts, segs, primaryIdx } = computeCycle();
   refreshAutoV(segs, primaryIdx);
+  fillComputedQW(segs);       // для каждой стрелки: Q и qw — вычислены, если не user
   renderResults(sts, segs);
   renderChart(sts);
   saveCycle();
+}
+
+/* Авто-заполнение Q и q_w в DOM стрелок процесса. Для не-user полей
+   подставляем вычисленные значения из segs — чтобы сразу было видно
+   мощность/влагоприток, не переключаясь на таблицу процессов. */
+function fillComputedQW(segs) {
+  segs.forEach((s, i) => {
+    if (!s) return;
+    const arr = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"]`);
+    if (!arr) return;
+    ['Q','qw'].forEach(col => {
+      const inp = arr.querySelector(`input[data-col="${col}"]`);
+      if (!inp) return;
+      if (inp.dataset.user === '1') return;     // не трогаем user-ввод
+      if (document.activeElement === inp) return;
+      const val = col === 'Q' ? s.Q.toFixed(2) : s.qw.toFixed(3);
+      inp.value = val;
+    });
+  });
 }
 
 /* ========================================================================

@@ -69,6 +69,10 @@
 .psy-proc-arrow input[data-user="1"][data-col="qw"] {
   background: #fffde7; border-color: #ffd54f; color: #5d4037; font-weight: 600;
 }
+.psy-proc-arrow input[data-user=""][data-col="Q"]:not(:placeholder-shown),
+.psy-proc-arrow input[data-user=""][data-col="qw"]:not(:placeholder-shown) {
+  background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20;
+}
 
 /* Стрелка процесса между точками */
 .psy-proc-arrow {
