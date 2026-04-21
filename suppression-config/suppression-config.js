@@ -246,6 +246,10 @@ function renderAll() {
   $('sup-inst-name').textContent = inst.name;
   $('sup-inst-meta').textContent = `${inst.agent} · ${inst.moduleCode || '—'} · расчёт ${inst.calcNo}`;
 
+  // Авто-пересчёт DN по всем направлениям (при любой перерисовке — изменения
+  // зон / агента / модуля автоматически меняют расход и диаметры).
+  (inst.directions || []).forEach(d => autoDnForDirection(d));
+
   renderNav();
   renderRight();
   const k = S.selected.kind;
@@ -696,6 +700,9 @@ function renderIso(dirId) {
     }
   }
 
+  // Опоры трубопровода (жёсткие/скользящие) — автоматический расчёт.
+  const supports = computeSupports(pipe, nodes);
+
   // Segments
   let totalVol = 0;
   const segsRender = pipe.map(seg => {
@@ -719,6 +726,8 @@ function renderIso(dirId) {
       svg += `<text x="${mx}" y="${my}" text-anchor="middle" font-size="10" fill="#333" pointer-events="none">${idx+1}</text>`;
     }
     if (hasNoz && V3.showNozz) {
+      // Размер насадка: подпись рядом с символом
+      const nozDN = nozzleSize(+seg.DN, seg.nozzle);
       // Типовое обозначение насадка по СП 485 / NFPA 2001:
       //  R-360 — окружность + 8 радиальных лучей (распыл во все стороны);
       //  R-180 — полуокружность + 4 луча (односторонний распыл, направление = ось участка);
@@ -762,6 +771,8 @@ function renderIso(dirId) {
         });
         svg += `<circle cx="${C.x}" cy="${C.y}" r="1.8" fill="${color}" pointer-events="none"/>`;
       }
+      // Подпись размера + тип
+      svg += `<text x="${C.x + R + 8}" y="${C.y + 12}" font-size="10" font-weight="600" fill="#0d47a1" paint-order="stroke" stroke="#fff" stroke-width="3" pointer-events="none">${nozDN} ${esc(seg.nozzle)}</text>`;
     }
   });
 
@@ -781,6 +792,22 @@ function renderIso(dirId) {
         svg += `<text x="${P2.x + (sel?10:7)}" y="${P2.y - (sel?9:6)}" font-size="11" font-weight="600" fill="#0d47a1" paint-order="stroke" stroke="#fff" stroke-width="3" pointer-events="none">N${n}</text>`;
       }
     }
+  }
+
+  // Опоры (рисуем поверх труб, но под узлами)
+  if (V3.showSupports !== false) {
+    supports.forEach(sup => {
+      const seg = pipe.find(s => s.id === sup.segId); if (!seg) return;
+      const a = nodes.get(seg.parent || 'root'), b = nodes.get(seg.id);
+      if (!a || !b) return;
+      const p3 = { x: a.x + (b.x - a.x) * sup.t, y: a.y + (b.y - a.y) * sup.t, z: a.z + (b.z - a.z) * sup.t };
+      const pp = P(p3);
+      if (sup.type === 'rigid') {
+        svg += `<rect x="${pp.x-4}" y="${pp.y-4}" width="8" height="8" fill="#f9a825" stroke="#6d4c00" stroke-width="1.2" pointer-events="none"><title>Жёсткая (неподвижная) опора</title></rect>`;
+      } else {
+        svg += `<circle cx="${pp.x}" cy="${pp.y}" r="4.5" fill="#fff" stroke="#6d4c00" stroke-width="1.2" pointer-events="none"><title>Скользящая (подвижная) опора</title></circle>`;
+      }
+    });
   }
 
   // For selected node — draw axis arrows to preview direction
@@ -831,7 +858,7 @@ function renderIso(dirId) {
       <span class="seg-no" title="Кликните, чтобы выбрать узел в конце этого участка">${i+1}</span>
       <span class="seg-axis" title="Направление участка">${p.axis}</span>
       <input type="number" class="seg-edit" data-f="L" value="${p.L}" step="0.1" min="0" title="Длина участка, м" style="width:56px;">
-      <select class="seg-edit" data-f="DN" title="Условный диаметр, мм">${dnSel}</select>
+      <span class="seg-dn" title="Диаметр подбирается автоматически по расходу, фазе агента и давлению перед насадками">DN${p.DN}</span>
       <select class="seg-edit" data-f="nozzle" title="Насадок на конце">${nozSel}</select>
       <button type="button" class="sup-ibtn sup-danger seg-del-one" data-id="${p.id}" title="Удалить этот участок и все его ответвления">✕</button>
     </div>`;
@@ -851,9 +878,12 @@ function renderIso(dirId) {
     const seg = pipe.find(p => p.id === it.dataset.id); if (!seg) return;
     const f = inp.dataset.f;
     if (f === 'L') seg.L = Math.max(0.01, +inp.value || 0.1);
-    else if (f === 'DN') seg.DN = +inp.value;
     else if (f === 'nozzle') seg.nozzle = inp.value;
-    saveAll(); renderIso(S.isoDirId);
+    // DN вручную не редактируется — авто-пересчёт
+    const inst = currentInst();
+    const target = S.isoDirId ? inst.directions.find(d => d.id === S.isoDirId) : null;
+    if (target) onPipelineChange(target); else saveAll();
+    renderIso(S.isoDirId);
   };
   // Delete any segment + its subtree
   list.querySelectorAll('.seg-del-one').forEach(btn => {
@@ -872,7 +902,7 @@ function renderIso(dirId) {
       if (!confirm(msg)) return;
       removeSegAndDescendants(target, id);
       if (V3.selectedNode === id) V3.selectedNode = 'root';
-      saveAll(); renderIso(S.isoDirId);
+      onPipelineChange(target); renderIso(S.isoDirId);
     });
   });
 
@@ -1070,9 +1100,10 @@ function setupIsoHandlers() {
       };
       target.pipeline.push(seg);
       V3.selectedNode = seg.id;
+      onPipelineChange(target);                     // авто-DN
       // Мягкое предупреждение о слишком короткой прямой между фитингами.
       const warns = collectFittingWarnings(target);
-      saveAll(); renderIso(S.isoDirId);
+      renderIso(S.isoDirId);
       if (warns.length) console.warn('[АГПТ] fitting-distance:', warns);
     });
   });
@@ -1223,6 +1254,62 @@ function minStraightRun(dn) {
   return Math.max(0.05, 10 * (+dn || 0) / 1000);
 }
 
+/** Максимальный шаг между креплениями стальной трубы, м
+ *  (общестроительные нормы + СП 485: не более из строительных и технических). */
+function supportStep(dn) {
+  const t = { 15:2.0, 20:2.5, 25:2.5, 32:3.0, 40:3.5, 50:4.0, 65:4.5, 80:5.0, 100:6.0 };
+  return t[+dn] || 3.0;
+}
+
+/** Диаметр отверстия/присоединения насадка по диаметру трубы и типу:
+ *   R-360 (потолочный, 360°): DN = DN трубы (равное проходное сечение);
+ *   R-180 (боковой): на 1 шаг меньше DN трубы (ограниченный угол);
+ *   radial: равен DN трубы.
+ *  Возвращает строку "DN15" и т.п. */
+function nozzleSize(pipeDn, type) {
+  const list = DN_LIST.slice(); // [15,20,25,32,40,50,65,80,100]
+  const i = Math.max(0, list.indexOf(+pipeDn));
+  if (type === 'R-180') return 'DN' + (list[Math.max(0, i - 1)] || pipeDn);
+  return 'DN' + pipeDn;
+}
+
+/** Автоматическая расстановка опор трубопровода.
+ *   Правила:
+ *    — на каждом фитинг-узле (поворот, тройник, конец-насадок) — жёсткая опора
+ *      со стороны каждого подходящего сегмента, на 0.3 м от фитинга
+ *      (не ближе 10% длины и не дальше середины);
+ *    — вдоль прямых участков — скользящие опоры с шагом supportStep(DN);
+ *    — первый и последний «скользящие» точки не ближе 0.3 м к концам.
+ *   Возвращает массив { segId, t ∈ (0..1), type: 'rigid'|'slide' }. */
+function computeSupports(pipeline, nodes) {
+  const result = [];
+  const fitting = nodesWithFitting(pipeline);
+  const endsAtNozzle = new Set(pipeline.filter(s => s.nozzle && s.nozzle !== 'none').map(s => s.id));
+  pipeline.forEach(s => {
+    const L = +s.L || 0; if (L <= 0.01) return;
+    const step = supportStep(+s.DN || 25);
+    const pad = Math.min(0.3, L * 0.1);
+    // Жёсткая опора возле фитинга со стороны старта (parent)
+    const startFit = fitting.has(s.parent || 'root') || (s.parent || 'root') === 'root';
+    if (startFit && L > pad * 2) result.push({ segId: s.id, t: pad / L, type: 'rigid' });
+    // Жёсткая опора возле фитинга/насадка со стороны конца (seg.id)
+    const endFit = fitting.has(s.id) || endsAtNozzle.has(s.id);
+    if (endFit && L > pad * 2) result.push({ segId: s.id, t: (L - pad) / L, type: 'rigid' });
+    // Скользящие опоры по шагу вдоль участка (между жёсткими)
+    const startT = startFit ? pad / L : 0;
+    const endT   = endFit   ? (L - pad) / L : 1;
+    const innerL = L * (endT - startT);
+    if (innerL > step) {
+      const n = Math.floor(innerL / step);
+      const gap = innerL / (n + 1);
+      for (let k = 1; k <= n; k++) {
+        result.push({ segId: s.id, t: startT + (k * gap) / L, type: 'slide' });
+      }
+    }
+  });
+  return result;
+}
+
 /** Узлы, где установлен фитинг (поворот или тройник):
  *   — любой узел, являющийся parent'ом для ≥1 сегмента, И при этом сам
  *     является концом другого сегмента ИЛИ имеет ≥2 детей ИЛИ смена оси.
@@ -1354,19 +1441,91 @@ function countDescendants(pipeline, segId) {
   return toRemove.size - 1;
 }
 
+/** Подбор DN для всех участков направления с учётом:
+ *   — топологии (магистраль несёт поток всех своих насадков, отвод — своих);
+ *   — типа агента (жидкая/газовая фаза) через целевую скорость;
+ *   — фактической гидравлики (итерация по computeHydraulic):
+ *       если v > v_max или P_вых < P_min — увеличиваем DN у самого «узкого»
+ *       участка на шаг ряда и пересчитываем.
+ *   — правила «DN не растёт вниз по течению» (отвод ≤ магистраль).
+ *   Пользователю диаметры НЕ вводятся вручную — вызывается на каждое
+ *   изменение трубопровода. */
+const DN_LIST = [15, 20, 25, 32, 40, 50, 65, 80, 100];
+
 function autoDnForDirection(dir) {
   const pipe = dir.pipeline || [];
   if (!pipe.length) return;
   const r = computeDir(dir); if (!r) return;
+  const inst = currentInst();
+  const a = inst && AGENTS[inst.agent];
+
+  // Целевая скорость по фазе агента (рекомендации FSSA/ISO 14520/СП 485):
+  //   halocarbon (жидкая фаза в магистрали) — v ≤ ~20 м/с до насадка;
+  //   inert / CO₂ (газовая фаза)            — v ≤ ~40 м/с.
+  const vTarget = (a?.type === 'inert') ? 40 : (a?.type === 'co2') ? 25 : 20;
   const totalMdot = r.mg / (r.tpd || 10);
   const totalNozz = pipe.filter(p => p.nozzle && p.nozzle !== 'none').length || 1;
   const rho = r.r2 || 7;
   const counts = countNozzlesDownstream(pipe);
+
+  // 1) Первичный подбор по массовому расходу ветви.
   pipe.forEach(s => {
     const nz = counts.get(s.id) || 1;
     const mdot = totalMdot * (nz / totalNozz);
-    s.DN = recommendDN(mdot, rho, 35);
+    s.DN = recommendDN(mdot, rho, vTarget);
   });
+
+  // 2) Соблюдение монотонности: DN ребёнка ≤ DN родителя (магистраль всегда
+  //    не меньше любого своего отвода).
+  const byId = new Map(pipe.map(s => [s.id, s]));
+  // топологический порядок от корня
+  const ordered = [];
+  const visited = new Set();
+  function visit(id) {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const p = byId.get(id); if (!p) return;
+    visit(p.parent || 'root-noop'); ordered.push(p);
+  }
+  pipe.forEach(s => visit(s.id));
+  // сначала проход от листьев к корню: поднять DN родителя до макс. DN детей
+  [...ordered].reverse().forEach(s => {
+    const parent = byId.get(s.parent);
+    if (parent && +parent.DN < +s.DN) parent.DN = s.DN;
+  });
+
+  // 3) Итеративная проверка по computeHydraulic: пока не ОК — увеличиваем
+  //    DN участка с максимальной скоростью (но не выше 100).
+  const mod = findVariant(r.moduleCode);
+  for (let iter = 0; iter < 10; iter++) {
+    const h = computeHydraulic({
+      pipeline: pipe, agent: inst.agent, moduleCode: r.moduleCode,
+      mg: r.mg, tp: r.tpd || a?.dischargeS || 10, r2: rho,
+    });
+    const tooFast = h.segments.filter(x => x.v > vTarget);
+    const pressureLow = mod ? (h.P_out_bar < (mod.pmin_atm || 6) * 1.013) : false;
+    if (!tooFast.length && !pressureLow) break;
+    // выбираем участок-кандидат (самая большая v · L — где больше всего потерь)
+    const worst = h.segments.slice().sort((a, b) => (b.v * b.L) - (a.v * a.L))[0];
+    if (!worst) break;
+    const seg = byId.get(worst.id); if (!seg) break;
+    const idx = DN_LIST.indexOf(+seg.DN);
+    if (idx < 0 || idx >= DN_LIST.length - 1) break;    // нельзя больше
+    seg.DN = DN_LIST[idx + 1];
+    // снова подтягиваем родителей
+    [...ordered].reverse().forEach(s => {
+      const parent = byId.get(s.parent);
+      if (parent && +parent.DN < +s.DN) parent.DN = s.DN;
+    });
+  }
+}
+
+/** Вызывается после ЛЮБОГО изменения трубопровода направления:
+ *   пересчитывает DN всех участков и сохраняет. */
+function onPipelineChange(dir) {
+  if (!dir) return;
+  autoDnForDirection(dir);
+  saveAll();
 }
 
 /* ------------------- Specification ------------------- */
@@ -1374,8 +1533,9 @@ function buildSpecRows() {
   const inst = currentInst();
   const rows = {
     modules: {},        // code → {qty, ob, p}
-    nozzles: {},        // type → qty
+    nozzles: {},        // "type DN15" → qty
     pipes: {},          // "OD×wall" → meters
+    supports: {},       // "type DN25" → qty
   };
   inst.directions.forEach(d => {
     const r = computeDir(d);
@@ -1385,13 +1545,23 @@ function buildSpecRows() {
       rows.modules[key] = rows.modules[key] || { qty: 0, ob: mod?.ob, p: mod?.pressure_bar };
       rows.modules[key].qty += r.n;
     }
-    (d.pipeline || []).forEach(p => {
+    const pipe = d.pipeline || [];
+    pipe.forEach(p => {
       if (p.nozzle && p.nozzle !== 'none') {
-        rows.nozzles[p.nozzle] = (rows.nozzles[p.nozzle] || 0) + 1;
+        const nk = `${p.nozzle} ${nozzleSize(+p.DN, p.nozzle)}`;
+        rows.nozzles[nk] = (rows.nozzles[nk] || 0) + 1;
       }
       const od = dnToOD(+p.DN);
       const key = `${od.OD}×${od.w} (DN${p.DN})`;
       rows.pipes[key] = +((rows.pipes[key] || 0) + (+p.L || 0)).toFixed(2);
+    });
+    // Опоры — по одной записи на каждый маркер (группируем по типу+DN).
+    const nodes = buildNodes(pipe);
+    computeSupports(pipe, nodes).forEach(sup => {
+      const seg = pipe.find(s => s.id === sup.segId); if (!seg) return;
+      const kind = sup.type === 'rigid' ? 'Жёсткая' : 'Скользящая';
+      const key = `${kind} опора DN${seg.DN}`;
+      rows.supports[key] = (rows.supports[key] || 0) + 1;
     });
   });
   // Add assemblies info (коллекторы)
@@ -1433,6 +1603,10 @@ function openSpec() {
   const pipeItems = Object.entries(r.pipes).sort().map(([key, m]) => ({
     name: `Труба стальная ${key}`, qty: m, unit: 'м', note: '',
   }));
+  const supItems = Object.entries(r.supports).sort().map(([key, q]) => ({
+    name: key, qty: q, unit: 'шт.',
+    note: key.startsWith('Жёсткая') ? 'неподвижная (у фитингов/насадков)' : 'подвижная (вдоль прямых)',
+  }));
 
   const html = `
     <div style="font-size:13px;color:#333;margin-bottom:10px;">
@@ -1442,6 +1616,7 @@ function openSpec() {
     ${section('Оборудование', modItems)}
     ${section('Насадки', nozItems)}
     ${section('Трубы', pipeItems)}
+    ${section('Опоры трубопровода', supItems)}
   `;
   $('spec-body').innerHTML = html;
   $('dlg-spec').showModal();
