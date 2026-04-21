@@ -8,6 +8,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.59.35',
+    date: '2026-04-21',
+    items: [
+      'Печать спецификации: раньше при клике «Печать» в диалоге #dlg-spec срабатывало правило @media print, написанное только под отчёт (body > *:not(#dlg-report) { display:none }), и страница печати оказывалась пустой. Теперь скрывается всё, кроме любого открытого dialog[open] — печатается тот диалог, что сейчас на экране (отчёт или спецификация). Плюс разрешён естественный перенос длинных таблиц (page-break-inside: auto у .sup-spec-tbl, avoid у tr), и сброшен max-height диалога. Файл suppression-config/suppression-config.css::@media print.',
+      'CSV-экспорт спецификации: в CSV теперь сохраняются заголовки разделов (Оборудование / Насадки / Трубы / Опоры) между блоками строк — иначе при плоском списке терялась привязка позиций к группе. Файл suppression-config/suppression-config.js::spec-csv handler — вместо querySelectorAll(\'table tr\') обход children по порядку: H3 → TABLE → H3 → TABLE.',
+    ],
+  },
+  {
     version: '0.59.34',
     date: '2026-04-21',
     items: [

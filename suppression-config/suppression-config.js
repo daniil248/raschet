@@ -2257,10 +2257,22 @@ function init() {
   $('sup-spec').addEventListener('click', openSpec);
   $('spec-copy').addEventListener('click', () => navigator.clipboard.writeText($('spec-body').innerText));
   $('spec-csv').addEventListener('click', () => {
-    const rows = [...$('spec-body').querySelectorAll('table tr')].map(tr =>
-      [...tr.children].map(td => `"${td.textContent.replace(/"/g,'""').trim()}"`).join(';')
-    ).join('\r\n');
-    const blob = new Blob(['\ufeff' + rows], { type: 'text/csv;charset=utf-8' });
+    // Обходим DOM в порядке следования: h3 → table → h3 → table, чтобы в CSV
+    // между разделами остались строки-заголовки (иначе теряется привязка
+    // позиций к группе: Оборудование / Насадки / Трубы / Опоры).
+    const lines = [];
+    const esc = s => `"${String(s).replace(/"/g,'""').trim()}"`;
+    for (const el of $('spec-body').children) {
+      if (el.tagName === 'H3') {
+        lines.push(esc(el.textContent));
+      } else if (el.tagName === 'TABLE') {
+        for (const tr of el.querySelectorAll('tr')) {
+          lines.push([...tr.children].map(td => esc(td.textContent)).join(';'));
+        }
+        lines.push('');
+      }
+    }
+    const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `АГПТ_спец_${currentInst().calcNo}.csv`; a.click();

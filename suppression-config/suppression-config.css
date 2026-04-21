@@ -257,7 +257,11 @@
 }
 
 @media print {
-  body > *:not(#dlg-report) { display: none !important; }
+  /* Печатаем только тот диалог, что сейчас открыт (report или spec), скрываем всё остальное. */
+  body > *:not(dialog[open]) { display: none !important; }
+  dialog:not([open]) { display: none !important; }
   .sup-dlg header, .sup-dlg footer { display: none !important; }
-  .sup-dlg, .sup-dlg form { box-shadow: none; border: none; }
+  .sup-dlg, .sup-dlg form { box-shadow: none; border: none; max-height: none !important; height: auto !important; }
+  .sup-spec-tbl { page-break-inside: auto; }
+  .sup-spec-tbl tr { page-break-inside: avoid; }
 }
