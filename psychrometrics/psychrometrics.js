@@ -210,6 +210,7 @@ function procArrow(pr, i) {
     </label>
     ${pr.type === 'M' ? mixControls(pr, i) : ''}
     ${pr.type === 'R' ? recupControls(pr, i) : ''}
+    <div data-role="proc-warn" style="display:none;margin-top:6px;padding:4px 6px;background:#fff3e0;border:1px solid #ffb74d;border-radius:3px;font-size:10px;line-height:1.3;color:#bf360c;"></div>
   `;
   return el;
 }
@@ -1218,9 +1219,89 @@ function update() {
   const { sts, segs, primaryIdx } = computeCycle();
   refreshAutoV(segs, primaryIdx);
   fillComputedQW(segs);       // для каждой стрелки: Q и qw — вычислены, если не user
+  fillProcWarnings(sts);      // предупреждения о несовместимости типа процесса и целевой точки
   renderResults(sts, segs);
   renderChart(sts);
   saveCycle();
+}
+
+/* Валидация «заявленный тип процесса vs фактический переход между точками».
+   Пользователь может задать P (d=const), но навязать целевой точке другой d —
+   тогда график/расчёт формально сработает, но термодинамически это будет уже
+   не изобарный нагрев, а что-то другое. Предупреждаем без блокировки. */
+function fillProcWarnings(sts) {
+  for (let i = 0; i < S.procs.length; i++) {
+    const box = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] [data-role="proc-warn"]`);
+    if (!box) continue;
+    const pr = S.procs[i];
+    const a = sts[i], b = sts[i+1];
+    const msgs = [];
+    if (pr && a && b && pr.type !== 'none' && pr.type !== 'X') {
+      const dA = a.W * 1000, dB = b.W * 1000;          // г/кг
+      const tolD = 0.05;                                // г/кг
+      const tolT = 0.2;                                 // °C
+      const tolH = 0.3;                                 // кДж/кг
+      if (pr.type === 'P' && Math.abs(dB - dA) > tolD) {
+        msgs.push(`P (d=const): d₁=${dA.toFixed(2)} → d₂=${dB.toFixed(2)} г/кг — расхождение ${Math.abs(dB-dA).toFixed(2)} г/кг. Проверьте целевую точку.`);
+      }
+      if (pr.type === 'P' && b.T < a.T - tolT) {
+        msgs.push(`P (нагрев), но t₂ < t₁ (${b.T.toFixed(1)} < ${a.T.toFixed(1)}). Для охлаждения выберите C.`);
+      }
+      if (pr.type === 'C' && b.T > a.T + tolT) {
+        msgs.push(`C (охлаждение), но t₂ > t₁ (${b.T.toFixed(1)} > ${a.T.toFixed(1)}). Для нагрева выберите P.`);
+      }
+      if (pr.type === 'A' && Math.abs(b.h - a.h) > tolH) {
+        msgs.push(`A (h=const): h₁=${a.h.toFixed(2)} → h₂=${b.h.toFixed(2)} кДж/кг — расхождение ${Math.abs(b.h-a.h).toFixed(2)}.`);
+      }
+      if (pr.type === 'A' && dB < dA - tolD) {
+        msgs.push(`A (адиабат. увл.) подразумевает d₂ ≥ d₁, но d₂=${dB.toFixed(2)} < d₁=${dA.toFixed(2)} г/кг.`);
+      }
+      if (pr.type === 'S' && Math.abs(b.T - a.T) > tolT) {
+        msgs.push(`S (t=const): t₁=${a.T.toFixed(1)} → t₂=${b.T.toFixed(1)} — расхождение ${Math.abs(b.T-a.T).toFixed(1)} °C.`);
+      }
+      if (pr.type === 'S' && dB < dA - tolD) {
+        msgs.push(`S (паровое увл.) подразумевает d₂ ≥ d₁, но d₂=${dB.toFixed(2)} < d₁=${dA.toFixed(2)} г/кг.`);
+      }
+      if (pr.type === 'R') {
+        if (Math.abs(dB - dA) > tolD) {
+          msgs.push(`R (рекуператор, сенсиб.): d₁=${dA.toFixed(2)} → d₂=${dB.toFixed(2)} — модель подразумевает d=const.`);
+        }
+        const refIdx = parseInt(pr.recupWith, 10);
+        if (!Number.isFinite(refIdx) || !sts[refIdx]) {
+          msgs.push('R: не выбрана опорная точка (обменивать с точкой).');
+        } else {
+          const r = sts[refIdx];
+          // Нагрев идёт к t_ref, поэтому t₁<t_ref для нагрева, t₁>t_ref для охлаждения.
+          // Проверим согласованность знака Δt с ожидаемым.
+          const expectSign = Math.sign(r.T - a.T);
+          const gotSign = Math.sign(b.T - a.T);
+          if (expectSign !== 0 && gotSign !== 0 && expectSign !== gotSign) {
+            msgs.push(`R: направление теплообмена не согласовано с опорной точкой ${refIdx+1}.`);
+          }
+        }
+      }
+      if (pr.type === 'M') {
+        const refIdx = parseInt(pr.mixWith, 10);
+        if (!Number.isFinite(refIdx) || !sts[refIdx]) {
+          msgs.push('M: не выбрана опорная точка (смешать с точкой).');
+        }
+        const α = Number(pr.mixRatio);
+        if (!Number.isFinite(α) || α < 0 || α > 1) {
+          msgs.push('M: доля α должна быть в диапазоне 0…1.');
+        }
+      }
+      if (a.RH > S.rhMax + 0.1 || b.RH > S.rhMax + 0.1) {
+        msgs.push(`Пересечение линии насыщения: φ > φ_max (${S.rhMax}%). Физически невозможно без конденсации.`);
+      }
+    }
+    if (msgs.length === 0) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+    } else {
+      box.style.display = '';
+      box.innerHTML = '⚠ ' + msgs.join('<br>⚠ ');
+    }
+  }
 }
 
 /* Авто-заполнение Q и q_w в DOM стрелок процесса. Для не-user полей
