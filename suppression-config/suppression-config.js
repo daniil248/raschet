@@ -133,13 +133,11 @@ function duplicateDirection(dirId) {
 function duplicateZoneWithScheme(srcDir, zoneId) {
   const inst = currentInst(); if (!inst) return;
   const z = (srcDir.zones || []).find(x => x.id === zoneId); if (!z) return;
-  const copy = cloneDirection(srcDir, '');
-  copy.name = `${srcDir.name} · ${z.name} (копия)`;
-  // В скопированном направлении оставляем только выбранную зону
-  copy.zones = [{ ...z, id: newId('z-') }];
-  inst.directions.push(copy);
-  inst.assemblies = [];
-  S.selected = { kind: 'dir', dirId: copy.id };
+  // Зона копируется ВНУТРИ того же направления (не создаём новое направление
+  // и не дублируем трубопровод — он общий для зон направления).
+  const copy = { ...z, id: newId('z-'), name: `${z.name} (копия)` };
+  srcDir.zones.push(copy);
+  S.selected = { kind: 'dir', dirId: srcDir.id };
   saveAll(); renderAll();
 }
 
@@ -1622,6 +1620,31 @@ function collectFittingWarnings(dir) {
       }
     });
   }
+
+  // Асимметричное разделение в тройнике: в T-фитинге «на проток» боковой
+  // отвод должен нести меньшую долю потока (NFPA 2001 / FSSA: 5–50% в
+  // боковой, 50–95% в проход). Если боковой отвод забирает > 50% — предупр.
+  const counts = countNozzlesDownstream(pipe);
+  const totalNozz = pipe.filter(p => p.nozzle && p.nozzle !== 'none').length || 1;
+  const parentOf = new Map(pipe.map(s => [s.id, s.parent || 'root']));
+  pipe.forEach((sParent, idxP) => {
+    const kidsOfNode = pipe.filter(x => (x.parent || 'root') === sParent.id);
+    if (kidsOfNode.length < 2) return;            // не тройник
+    // Разделяем детей на «проход» (ось коллинеарна входящей) и «боковые»
+    const axisBase = (sParent.axis || '').replace('-', '');
+    const straight = kidsOfNode.filter(k => k.axis.replace('-', '') === axisBase);
+    const side     = kidsOfNode.filter(k => k.axis.replace('-', '') !== axisBase);
+    if (!side.length) return;                      // симметричный T в одной оси
+    const incomingNozz = counts.get(sParent.id) || totalNozz;
+    side.forEach(k => {
+      const sideNozz = counts.get(k.id) || 0;
+      const frac = sideNozz / Math.max(1, incomingNozz);
+      if (frac > 0.5) {
+        const ki = pipe.indexOf(k) + 1;
+        out.push(`участок #${ki}: боковой отвод от участка #${idxP+1} забирает ${(frac*100).toFixed(0)}% потока (${sideNozz} из ${incomingNozz} насадков). Рекомендация NFPA 2001 / FSSA: в «проточном» T боковой отвод должен нести ≤ 50% — перераспределите насадки или смените проход/отвод местами.`);
+      }
+    });
+  });
   return out;
 }
 
@@ -1678,7 +1701,26 @@ function findAxisConflict(pipeline, nodeId, axis) {
     if (!isVert(incoming.axis) && isVert(axis)) {
       return `Входящий участок горизонтальный (${incoming.axis}) — вертикальный отвод от этого узла расслаивает двухфазный поток halocarbon (см. СП 485 / NFPA 2001: T-фитинги одной плоскости с магистралью). Используйте вертикальный стояк до этого узла, а отводы вниз/вверх — от следующего.`;
     }
-    // Вход вертикальный → любые направления допустимы (при прочих проверках).
+    // Вход вертикальный (стояк) — T-фитинг должен быть строго типовым:
+    //   • либо прямое продолжение стояка (±Y) без боковых отводов,
+    //   • либо симметричный горизонтальный T в ОДНОЙ оси (например +X и -X),
+    //     без сочетания «стояк+бок» и без «угла» (X и Z одновременно).
+    if (isVert(incoming.axis) && children.length) {
+      const existing = children[0];
+      const existingIsVert = isVert(existing.axis);
+      if (existingIsVert) {
+        return `От узла уже идёт прямое продолжение стояка (${existing.axis}). Типовой тройник с вертикальным входом не совмещает «стояк + боковой отвод» — выберите узел выше/ниже для бокового ответвления.`;
+      }
+      // существующий отвод горизонтальный
+      if (isVert(axis)) {
+        return `От стояка уже сделан горизонтальный отвод (${existing.axis}). Комбинация «вверх/вниз + боковой» запрещена (см. типовые тройники — только прямой стояк ИЛИ горизонтальный T в одной оси).`;
+      }
+      const existingAxisBase = existing.axis.replace('-', '');
+      const newAxisBase = axis.replace('-', '');
+      if (existingAxisBase !== newAxisBase) {
+        return `Горизонтальный T от стояка должен быть в одной оси (ось ${existingAxisBase}): допустим только противоположный отвод (например +${existingAxisBase} и -${existingAxisBase}). Сочетание ${existing.axis} + ${axis} даёт «угол» — нетиповая конфигурация.`;
+      }
+    }
   } else if (children.length) {
     // Узел = коллектор (root): держим одну плоскость среди детей.
     const anyHoriz = children.some(s => !isVert(s.axis));
