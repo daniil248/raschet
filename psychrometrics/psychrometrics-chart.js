@@ -146,6 +146,7 @@ export function arrowDefs() {
     'arrow-C':   '#0277bd',
     'arrow-A':   '#2e7d32',
     'arrow-S':   '#6a1b9a',
+    'arrow-M':   '#00838f',
     'arrow-X':   '#424242',
   };
   const markers = Object.entries(colors).map(([id, col]) => `

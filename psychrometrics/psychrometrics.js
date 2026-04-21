@@ -41,11 +41,12 @@ const PROC_TYPES = [
   { v: 'C',    t: 'C · охлаждение / осушение'             },
   { v: 'A',    t: 'A · адиабат. увл. (h=const)'           },
   { v: 'S',    t: 'S · паровое увл. (t=const)'            },
+  { v: 'M',    t: 'M · смешение с точкой'                 },
   { v: 'X',    t: 'X · произвольный'                      },
 ];
 
 const PROC_COLOR = {
-  none: '#b0bec5', P: '#e65100', C: '#0277bd', A: '#2e7d32', S: '#6a1b9a', X: '#424242',
+  none: '#b0bec5', P: '#e65100', C: '#0277bd', A: '#2e7d32', S: '#6a1b9a', M: '#00838f', X: '#424242',
 };
 
 /* Авто-имя исходящей точки из типа предыдущего процесса */
@@ -54,6 +55,7 @@ const PROC_NAME_OUT = {
   C: 'После охл./осуш.',
   A: 'После адиабат. увл.',
   S: 'После пар. увл.',
+  M: 'После смешения',
   X: 'Смешение/переход',
   none: '',
 };
@@ -192,8 +194,28 @@ function procArrow(pr, i) {
       <input type="number" data-col="V" data-i="${i}" data-user="${hasUserV?'1':''}" value="${hasUserV?userV:''}" step="100" placeholder="авто (масса)">
       <span class="v-auto" data-role="v-auto" style="font-size:10px;color:#2e7d32;display:block;margin-top:2px;"></span>
     </label>
+    ${pr.type === 'M' ? mixControls(pr, i) : ''}
   `;
   return el;
+}
+
+/* Поля для процесса «M» (смешение): опорная точка + доля α */
+function mixControls(pr, i) {
+  const mw = (pr.mixWith ?? '').toString();
+  const mr = (pr.mixRatio ?? '0.5').toString();
+  const opts = S.points.map((pp, pi) =>
+    `<option value="${pi}" ${String(pi)===mw?'selected':''}>${pi+1}. ${escAttr((pp.name||'').slice(0,16))}</option>`
+  ).join('');
+  return `
+    <label style="font-size:10px;color:#00838f;margin-top:4px;border-top:1px dashed #b0bec5;padding-top:4px">смешать с точкой
+      <select data-col="mixWith" data-i="${i}">
+        <option value="">— выбрать —</option>${opts}
+      </select>
+    </label>
+    <label style="font-size:10px;color:#00838f;margin-top:2px" title="Доля (по массе) входящего потока от точки ${i+1} в смеси. Остальное — от опорной точки.">α (доля ${i+1})
+      <input type="number" data-col="mixRatio" data-i="${i}" value="${mr}" step="0.05" min="0" max="1">
+    </label>
+  `;
 }
 
 /* --- Обновляет только computed-блоки карточек БЕЗ пересоздания input'ов.
@@ -281,6 +303,8 @@ function readInputs() {
     const isUser = el.dataset.user === '1';
     const ts = Number(el.dataset.ts) || 0;
     if (col === 'proc-type') { S.procs[i] = S.procs[i] || {}; S.procs[i].type = v; }
+    else if (col === 'mixWith')  { S.procs[i] = S.procs[i] || {}; S.procs[i].mixWith  = v; }
+    else if (col === 'mixRatio') { S.procs[i] = S.procs[i] || {}; S.procs[i].mixRatio = v; }
     else if (col === 'Q' || col === 'qw') {
       S.procs[i] = S.procs[i] || {};
       if (isUser && v !== '') {
@@ -427,6 +451,32 @@ function cascade() {
     const aState = pointState(S.points[i-1], S.P);
     if (!aState) continue;
 
+    // Процесс «смешение»: точка i = α·(точка i-1) + (1-α)·(точка mixWith),
+    // mass-weighted по сухому воздуху (W и h как удельные — смешиваются по Gда).
+    if (proc.type === 'M') {
+      const srcIdx = parseInt(proc.mixWith, 10);
+      const alpha  = Math.max(0, Math.min(1, parseFloat(proc.mixRatio)));
+      if (Number.isFinite(srcIdx) && srcIdx >= 0 && srcIdx < S.points.length && srcIdx !== i) {
+        const bSrc = pointState(S.points[srcIdx], S.P);
+        if (bSrc && Number.isFinite(alpha)) {
+          const W_mix = alpha * aState.W + (1 - alpha) * bSrc.W;
+          const h_mix = alpha * aState.h + (1 - alpha) * bSrc.h;
+          // Из h и W находим t: t = (h - 2501·W)/(1.006 + 1.86·W)
+          const t_mix = (h_mix - 2501 * W_mix) / (1.006 + 1.86 * W_mix);
+          const rh_mix = Math.max(0, Math.min(100, RHfromW(t_mix, W_mix, S.P) * 100));
+          // Для смешения все поля точки i — «авто», user-input перекрывает
+          const anyUser = p.tUser || p.rhUser || p.xUser || p.hUser;
+          if (!anyUser) {
+            p.t = Number(t_mix.toFixed(2));
+            p.rh = Number(rh_mix.toFixed(2));
+            p.x = Number((W_mix * 1000).toFixed(3));
+            p.h = Number(h_mix.toFixed(3));
+          }
+          continue;
+        }
+      }
+    }
+
     // Собираем кандидаты на «цель» — всё, что пользователь задал вручную.
     // Побеждает самый свежий по timestamp.
     const cands = [];
@@ -438,10 +488,8 @@ function cascade() {
     if (proc.qws && proc.qw !== '' && proc.qw != null) cands.push({ tgt: 'qw', val: nNum(proc.qw), ts: +proc.qwts || 0 });
 
     if (!cands.length) {
-      // Ничего не задано — применим инвариант процесса от aState
-      // P: d=const; A: h=const; S: t=const; C/X: нет смысла без цели.
-      const bState = forwardInvariantOnly(aState, proc.type, S.P);
-      if (bState) writeComputed(p, bState);
+      // Нет ни одного пользовательского входа ни на точке, ни на процессе.
+      // Оставляем точку как есть — ничего не «подсасываем» от предыдущей.
       continue;
     }
 
@@ -481,13 +529,6 @@ function writeComputed(p, st) {
   p.h  = Number(st.h.toFixed(3));
 }
 
-/* Инвариант процесса без цели: применить к aState и вернуть bState.
-   Если инварианта нет (C/X) — вернуть aState (копия), чтобы точки просто
-   совпали и пользователь увидел: «точка 2 = точка 1 пока ничего не задано». */
-function forwardInvariantOnly(a, type, P) {
-  // По умолчанию копируем точку 1.
-  return state(a.T, a.RH / 100, P);
-}
 
 /* Записывает S.points значения в DOM input'ы (только auto-поля). */
 function writeCardsFromState() {
@@ -774,6 +815,9 @@ function drawProcessPath(ctx, a, b, type, color) {
   } else if (type === 'S') {
     // t ≈ const
     pts.push([X(b.W), Y(a.T)]);
+  } else if (type === 'M') {
+    // Смешение: прямая от a к b (линия смеси — отрезок на плоскости)
+    pts.push([X(b.W), Y(b.T)]);
   } else if (type === 'C') {
     // охлаждение с осушением: если dW < 0 — сначала по W=const до tр, затем по φ=100%
     if (b.W < a.W - 1e-6) {
@@ -938,7 +982,15 @@ function wire() {
     update();
   });
   $('psy-cycle').addEventListener('change', (e) => {
-    // select (proc-type, tgt) не помечаем user — это мета
+    const col = e.target?.dataset?.col;
+    // Смена типа процесса → перерисовка (поля смешения появляются/уходят)
+    if (col === 'proc-type') {
+      const i = +e.target.dataset.i;
+      S.procs[i] = S.procs[i] || {};
+      S.procs[i].type = e.target.value;
+      rerenderCycle();
+      return;
+    }
     update();
   });
   // Blur с пустым значением → снимаем user-флаг (поле снова auto)
