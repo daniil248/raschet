@@ -296,6 +296,13 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.76', date: '2026-04-21', items: [
+      'Синхронизация при совместной работе (шаринг проекта): три фикса в subscribeProjectDoc-подписке и _onRemoteProjectChange.',
+      '(1) Раньше «окно защиты от собственного echo» было 3 секунды от момента ПЕРЕД началом save-а (`state.lastLocalWriteAtMs`). Если save затягивался (> 3 s из-за медленной сети / большого scheme / Firestore-задержки), наш же snapshot возвращался уже за пределами окна — и ложно триггерил conflict-модалку. Теперь окно расширено до 10 секунд И дополнительно учитывается `state.saving === true` — пока наш save не завершился, любой snapshot считается echo. После save `lastLocalWriteAtMs` обновляется ещё раз — пост-save echo теперь тоже покрывается окном.',
+      '(2) Авто-применение remote-схемы (`_onRemoteProjectChange`, ветка «нет локальных правок») могло прибивать состояние пользователя в середине действия: drag узла, растягивание рамки выделения, тянуть новую связь от порта, открытая модалка редактирования. Добавлена проверка `_isUserBusy()` (смотрит `state.pending` / `state.drag` / `state.marquee` + .modal без .hidden). Если busy — remote-snapshot откладывается до момента idle через таймер 3 s (+ подхватится следующим snapshot-ом).',
+      '(3) Если в busy-окне прилетает несколько снапшотов подряд — храним только самый свежий (`state._pendingRemoteDoc` перезаписывается) — применится один раз, самая новая версия.',
+      'Файл: js/main.js (subscribeProjectDoc callback строки ~291; _onRemoteProjectChange строки ~448; saveCurrent строка ~1022 +обновление lastLocalWriteAtMs после save).'
+    ] },
     { version: '0.59.75', date: '2026-04-21', items: [
       'Мастер подбора ИБП теперь работает без предварительного перехода из инспектора узла: кнопка «🧙 Мастер подбора» в toolbar ups-config запускает 3-шаговый wizard в standalone-режиме. Результат (полный `configuration`: capacityKw, moduleInstalled, redundancyScheme, VDC, автономия, composition) сохраняется в raschet.lastUpsConfig.v1.',
       'Инспектор ИБП главной схемы: кнопка «⬇ Применить из Конфигуратора» теперь применяет весь configuration (а не только базовые поля ups-модели). applyUpsModel выставляет type/capacity/eff/cosPhi/VDC, затем сверху накладываются: capacityKw (реальный расчётный из fitInfo), moduleInstalled/Working/Redundant, frameKw, moduleKwRated, moduleSlots, redundancyScheme, batteryVdcMin/Max, batteryAutonomyMin, composition.',

@@ -287,12 +287,19 @@ function _startCollab(project, initialUpdatedAtMs) {
     try { window.Raschet?.rerender?.(); } catch {}
   });
 
-  // Подписка на doc — ловим чужие сохранения
+  // Подписка на doc — ловим чужие сохранения.
+  // v0.59.76: расширены защиты от ложных «чужих» снапшотов:
+  //   1) state.saving === true — наш save ещё не завершён, любой snapshot в
+  //      это окно гарантированно наш echo. Раньше этой проверки не было,
+  //      и медленный save (>3 s) мог триггерить ложный conflict-модал.
+  //   2) Временно́е окно расширено 3 s → 10 s (медленные сети).
+  //   3) lastLocalWriteAtMs обновляется и В МОМЕНТ завершения save, чтобы
+  //      пост-save echo тоже попадал в окно.
   state.unsubProjectDoc = window.Storage.subscribeProjectDoc(project.id, (doc) => {
     const u = doc.updatedAt?.toMillis ? doc.updatedAt.toMillis() : (doc.updatedAt || 0);
     if (!u || u <= state.lastKnownUpdatedAtMs) return;
-    // Это мы сами только что писали — игнор в окне 3 сек
-    if (Date.now() - state.lastLocalWriteAtMs < 3000) {
+    const isOwnEcho = state.saving || (Date.now() - state.lastLocalWriteAtMs < 10000);
+    if (isOwnEcho) {
       state.lastKnownUpdatedAtMs = u;
       return;
     }
@@ -445,9 +452,46 @@ function _showRemoteConflictModal(doc, diff) {
   });
 }
 
+// v0.59.76: авто-применение remote-схемы может прибить состояние
+// пользователя если он прямо сейчас перетаскивает узел, тянет связь
+// или редактирует что-то в модалке. Проверяем «занят ли пользователь»
+// — если да, откладываем авто-apply до момента idle (пробуем повторно
+// по next snapshot, а также через 3 s таймер на случай если snapshot-ов
+// пока не будет).
+function _isUserBusy() {
+  try {
+    const st = window.Raschet?._state;
+    if (st?.pending) return true;                 // тянет связь от порта
+    if (st?.drag) return true;                    // drag узла
+    if (st?.marquee || st?.marqueeBox) return true; // рамочное выделение
+    const anyModalOpen = !!document.querySelector('.modal:not(.hidden), .modal.show, .rs-mlog-backdrop');
+    if (anyModalOpen) return true;
+  } catch {}
+  return false;
+}
+
 async function _onRemoteProjectChange(doc) {
   // Если нет локальных несохранённых изменений — автоматически применяем
   if (!state.dirty && !state.saving) {
+    if (_isUserBusy()) {
+      // Откладываем: не прерываем активное действие пользователя.
+      // Следующий snapshot перезапустит эту функцию. Плюс страховка
+      // таймером — попробуем через 3 s, вдруг чужой не будет слать
+      // новые снапшоты, а user уже отпустит drag / закроет модалку.
+      if (!state._pendingRemoteDoc) {
+        state._pendingRemoteDoc = doc;
+        setTimeout(() => {
+          const pending = state._pendingRemoteDoc;
+          state._pendingRemoteDoc = null;
+          if (pending && !state.dirty && !state.saving && !_isUserBusy()) {
+            _onRemoteProjectChange(pending);
+          }
+        }, 3000);
+      } else {
+        state._pendingRemoteDoc = doc; // держим самый свежий
+      }
+      return;
+    }
     try {
       if (doc.scheme) window.Raschet.loadScheme(_preserveLocalDisplay(doc.scheme));
       state.currentProject = { ...state.currentProject, ...doc };
@@ -1020,6 +1064,7 @@ async function saveCurrent(isAuto) {
     }
     state.dirty = false;
     state.saving = false;
+    state.lastLocalWriteAtMs = Date.now();  // v0.59.76: окно защиты от echo считается ПОСЛЕ save-а
     updateSaveButton();
     if (!isAuto) flash('Сохранено');
     // v0.57.79 (Collaboration C.8): авто-снапшот версии, не чаще 1 раз в 5 мин.
