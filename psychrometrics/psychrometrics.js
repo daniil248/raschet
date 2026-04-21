@@ -1081,6 +1081,43 @@ function update() {
   refreshAutoV(segs, primaryIdx);
   renderResults(sts, segs);
   renderChart(sts);
+  saveCycle();
+}
+
+/* ========================================================================
+   Persistence — весь цикл в localStorage (psy.cycle.v1)
+   ======================================================================== */
+const LS_KEY = 'psy.cycle.v1';
+let _saveTimer = null;
+function saveCycle() {
+  if (_saveTimer) return;             // debounce 300ms
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    try {
+      const payload = {
+        v: 1,
+        alt: S.alt, P: S.P, rhMax: S.rhMax, tEvap: S.tEvap, vBase: S.vBase,
+        points: S.points, procs: S.procs,
+      };
+      localStorage.setItem(LS_KEY, JSON.stringify(payload));
+    } catch {}
+  }, 300);
+}
+function loadCycle() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const o = JSON.parse(raw);
+    if (!o || o.v !== 1 || !Array.isArray(o.points) || !Array.isArray(o.procs)) return false;
+    if (Number.isFinite(o.alt))   S.alt   = o.alt;
+    if (Number.isFinite(o.P))     S.P     = o.P;
+    if (Number.isFinite(o.rhMax)) S.rhMax = o.rhMax;
+    if (Number.isFinite(o.tEvap)) S.tEvap = o.tEvap;
+    if (Number.isFinite(o.vBase)) S.vBase = o.vBase;
+    S.points = o.points;
+    S.procs  = o.procs;
+    return true;
+  } catch { return false; }
 }
 /* Пересоздание цикла (добавить/удалить точку / загрузка демо). */
 function rerenderCycle() {
@@ -1089,6 +1126,7 @@ function rerenderCycle() {
 }
 
 function wire() {
+  loadCycle();                // восстановить цикл из localStorage до синка UI
   syncTopInputs();
   renderFormulas();
   renderCycle();
