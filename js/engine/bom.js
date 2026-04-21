@@ -208,6 +208,38 @@ export function buildBOM() {
       }
     }
 
+    // v0.59.84: начинка щита из panel-config wizard (автоматы, учёт,
+    // ТТ, мониторинг, аксессуары). Хранится как inline-позиции в
+    // node.composition (elementId=null). Старый engine-BOM их раньше
+    // игнорировал — только shared/bom.js видел. Теперь они попадают
+    // и в XLSX/CSV экспорт.
+    if ((kind === 'panel' || kind === 'busbar' || kind === 'distribution')
+        && Array.isArray(n.composition) && n.composition.length) {
+      const panelLabel = n.name || n.tag || 'Щит';
+      for (const c of n.composition) {
+        if (!c || c.elementId) continue; // elementId-позиции — это enclosure, он уже учтён
+        const label = c.label || c.role || 'позиция';
+        const role = c.role || '';
+        const qty = Math.max(1, Number(c.qty) || 1);
+        // Классифицируем по role
+        let section = 'Начинка щита';
+        if (/^breaker/i.test(role) || /breaker-input|breaker-output/i.test(role)) section = 'Автоматы';
+        else if (/^switch/i.test(role) || /ats|avr/i.test(role)) section = 'АВР / рубильники';
+        else if (/meter|учёт/i.test(role)) section = 'Счётчики';
+        else if (/^ct\b/i.test(role) || /transformer-ct/i.test(role)) section = 'Трансформаторы тока';
+        else if (/monitor|мониторинг/i.test(role)) section = 'Мониторинг';
+        else if (/accessor|аксессуар/i.test(role)) section = 'Аксессуары щита';
+        // Синтетическая запись для агрегации: id по label+role
+        const fake = {
+          id: 'panel-inline:' + section + ':' + label,
+          supplier: '',
+          model: label,
+          article: '',
+        };
+        pushAgg(section, fake, qty, panelLabel);
+      }
+    }
+
     // --- Шкафы 19" / rack-config ---
     // v0.58.78: если узел (обычно type='consumer') получил rackTemplate из
     // rack-config, разворачиваем его состав в BOM: сам комплект стойки,
