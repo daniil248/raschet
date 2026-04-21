@@ -8,6 +8,13 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.59.39',
+    date: '2026-04-21',
+    items: [
+      'Регрессионные тесты (v0.59.38): после фикса реестра тесты всё равно падали с «Unknown method: sp-485-annex-d» из-за HTTP-кеша GitHub Pages (Cache-Control: max-age=600): новый validation-tests.js грузился, а статически импортируемый им suppression-methods/index.js оставался в кеше браузера по старой версии. Теперь validation-tests.js импортирует index.js динамически с cache-bust (`./index.js?v=<Date.now()>`), METHODS кэшируется только внутри модуля. runAll() стала async, openSelfTest дожидает её через await. Файлы: suppression-methods/validation-tests.js, suppression-config/suppression-config.js.',
+    ],
+  },
+  {
     version: '0.59.38',
     date: '2026-04-21',
     items: [

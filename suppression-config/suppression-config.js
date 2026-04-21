@@ -2188,8 +2188,11 @@ function openSpec() {
    не полноценная верификация методик. Допуск ±5–10 % — ловит только
    грубые регрессии. */
 async function openSelfTest() {
-  const { runAll } = await import('../suppression-methods/validation-tests.js');
-  const results = runAll();
+  // cache-bust: ES module graph кэшируется агрессивно (max-age=600 на GH Pages),
+  // после фиксов в suppression-methods/index.js важно гарантированно получить свежий модуль.
+  const cb = '?v=' + Date.now();
+  const { runAll } = await import('../suppression-methods/validation-tests.js' + cb);
+  const results = await runAll();
   const passCount = results.filter(r => r.ok).length;
   const total = results.length;
   const summaryClass = passCount === total ? 'pass' : 'fail';

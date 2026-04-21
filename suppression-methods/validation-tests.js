@@ -14,7 +14,15 @@
    не мелкие уточнения коэффициентов/округлений между релизами.
    ========================================================================= */
 
-import { METHODS } from './index.js';
+// Динамический импорт с cache-bust — GitHub Pages отдаёт max-age=600, и после
+// фикса реестра (добавление sp-485-annex-d) браузер мог держать старый index.js.
+let METHODS = null;
+async function loadMethods() {
+  if (METHODS) return METHODS;
+  const mod = await import('./index.js?v=' + Date.now());
+  METHODS = mod.METHODS;
+  return METHODS;
+}
 
 export const TEST_CASES = [
   {
@@ -112,8 +120,9 @@ function checkField(actual, expected, tolerancePct) {
 }
 
 /** Прогон одного кейса. */
-export function runCase(tc) {
-  const method = METHODS[tc.methodId];
+export function runCase(tc, methodsMap) {
+  const map = methodsMap || METHODS || {};
+  const method = map[tc.methodId];
   if (!method) {
     return { id: tc.id, label: tc.label, ok: false, error: 'Unknown method: ' + tc.methodId };
   }
@@ -134,6 +143,7 @@ export function runCase(tc) {
 }
 
 /** Прогон всех кейсов. */
-export function runAll() {
-  return TEST_CASES.map(runCase);
+export async function runAll() {
+  const map = await loadMethods();
+  return TEST_CASES.map(tc => runCase(tc, map));
 }
