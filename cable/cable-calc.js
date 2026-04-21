@@ -350,6 +350,12 @@ function calculate() {
     ? (In < (I / parallel))
     : (In < I);
 
+  // Синхронизация выпадающего списка «Характеристика автомата» с номиналом:
+  // MCB (IEC 60898-1) физически ограничен 125 А, MCCB (IEC 60947-2) — до ~1600 А,
+  // всё выше — ACB. Отключаем недоступные варианты и, если текущий выбор вышел
+  // за границы, мягко переключаем пользователя на корректный класс.
+  syncBreakerCurveOptions(In);
+
   // === Запуск расчётных модулей из shared/calc-modules/ ===
   // Обязательные (ampacity, vdrop, shortCircuit, phaseLoop) запускаются
   // всегда; опциональные (economic) — только если пользователь включил
@@ -590,6 +596,31 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
   _renderTccCoordination({
     finalSize, breakerIn: In, params, isDC,
   });
+}
+
+// Синхронизация выпадающего «Характеристика автомата» с подобранным номиналом In.
+// Границы: MCB ≤ 125 А (IEC 60898-1), MCCB ≤ 1600 А (IEC 60947-2), выше — ACB.
+function syncBreakerCurveOptions(In) {
+  const sel = document.getElementById('in-breakerCurve');
+  if (!sel) return;
+  const allowMcb  = In <= 125;
+  const allowMccb = In <= 1600;
+  const allowAcb  = true;
+  const rules = { MCB_B: allowMcb, MCB_C: allowMcb, MCB_D: allowMcb, MCCB: allowMccb, ACB: allowAcb };
+  for (const opt of sel.options) {
+    const ok = rules[opt.value] !== false;
+    opt.disabled = !ok;
+    // Подсказка в тексте опции (не меняем value)
+    const base = opt.dataset.baseLabel || opt.textContent;
+    if (!opt.dataset.baseLabel) opt.dataset.baseLabel = base;
+    opt.textContent = ok ? base : `${base} — недоступно для ${In} А`;
+  }
+  // Если текущий выбор запрещён — переключаем на ближайший разрешённый класс.
+  if (rules[sel.value] === false) {
+    sel.value = allowMccb ? 'MCCB' : 'ACB';
+    // Пересчитать, чтобы модули увидели корректный класс (но без рекурсии — только если значение реально сменилось).
+    try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch {}
+  }
 }
 
 // Динамический import shared/tcc-chart — грузится только когда нужно
