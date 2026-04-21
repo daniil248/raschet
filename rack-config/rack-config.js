@@ -166,6 +166,42 @@ function openKitCatalogModal() {
     const r = DOOR_LABEL[k.preset.doorRear]  || '—';
     return `<span class="muted" style="font-size:11px">перед: ${escape(f)}<br>зад: ${escape(r)}</span>`;
   }
+  // v0.59.118: score 0–100 — насколько kit совпадает с параметрами шаблона.
+  // U(25) + width(20) + depth(15) + doorF/R(10+10) + sides(5) + top(5) +
+  // base(5) + manufacturer match(5). 'any' у пользователя = полный балл.
+  function scoreKit(k) {
+    const p = k.preset || {};
+    let s = 0;
+    // U — точно = 25, в ±3U = 15, иначе 0
+    if (t.u && p.u != null) {
+      if (+p.u === +t.u) s += 25;
+      else if (Math.abs(+p.u - +t.u) <= 3) s += 15;
+    } else s += 12;
+    // width — точно = 20; 'any' у пользователя = 20
+    if (t.width === 'any' || !t.width) s += 20;
+    else if (+p.width === +t.width) s += 20;
+    // depth — точно = 15, в ±200 = 8; 'any' = 15
+    if (t.depth === 'any' || !t.depth) s += 15;
+    else if (+p.depth === +t.depth) s += 15;
+    else if (Math.abs(+p.depth - +t.depth) <= 200) s += 8;
+    // doors, walls, top, base — exact match или 'any' у юзера
+    const tol = (user, preset, pts) => {
+      if (!user || user === 'any') return pts;
+      if (preset == null) return pts * 0.5;
+      return user === preset ? pts : 0;
+    };
+    s += tol(t.doorFront, p.doorFront, 10);
+    s += tol(t.doorRear,  p.doorRear,  10);
+    s += tol(t.sides,     p.sides,     5);
+    s += tol(t.top,       p.top,       5);
+    s += tol(t.base,      p.base,      5);
+    // manufacturer — partial match (включение подстроки в обе стороны)
+    const userMfg = (t.manufacturer || '').trim().toLowerCase();
+    const kitMfg  = ((p && p.manufacturer) || '').trim().toLowerCase();
+    if (!userMfg) s += 5;
+    else if (kitMfg.includes(userMfg) || userMfg.includes(kitMfg)) s += 5;
+    return Math.min(100, Math.round(s));
+  }
   function render() {
     const q = state.search.trim().toLowerCase();
     const rows = KITS.filter(k => {
@@ -179,7 +215,8 @@ function openKitCatalogModal() {
                || k.name.toLowerCase().includes(q)
                || mfg.toLowerCase().includes(q))) return false;
       return true;
-    });
+    }).map(k => ({ k, score: scoreKit(k) }))
+      .sort((a, b) => b.score - a.score);
     box.innerHTML = `
       <div style="padding:16px 20px;border-bottom:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;align-items:center">
         <h3 style="margin:0">Каталог базовых комплектов стоек</h3>
@@ -216,13 +253,17 @@ function openKitCatalogModal() {
         <div class="muted" style="font-size:11px;padding-bottom:6px">Найдено: <b>${rows.length}</b></div>
       </div>
       <div style="overflow:auto;flex:1 1 auto;padding:4px 20px 12px 20px">
+        <style>
+          .rc-km-bar { display:inline-block;width:50px;height:5px;background:#eee;border-radius:3px;overflow:hidden;margin-left:6px;vertical-align:middle }
+          .rc-km-bar > i { display:block;height:100%;background:#4caf50 }
+        </style>
         <table class="rc-acc-table" style="margin-top:0">
           <thead><tr>
-            <th>SKU</th><th>Наименование</th><th>Формат</th><th>Двери</th><th>Производитель</th><th style="width:90px"></th>
+            <th>SKU</th><th>Наименование</th><th>Формат</th><th>Двери</th><th>Производитель</th><th>Score</th><th style="width:90px"></th>
           </tr></thead>
           <tbody>
-            ${rows.length === 0 ? `<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Ничего не найдено.</td></tr>` :
-              rows.map(k => {
+            ${rows.length === 0 ? `<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">Ничего не найдено.</td></tr>` :
+              rows.map(({ k, score }) => {
                 const sel = t.kitId === k.id;
                 return `<tr${sel?' style="background:var(--rs-accent-bg)"':''}>
                   <td><code>${escape(k.sku)}</code></td>
@@ -230,6 +271,7 @@ function openKitCatalogModal() {
                   <td>${k.preset.u}U ${k.preset.width}×${k.preset.depth}</td>
                   <td>${doorLbl(k)}</td>
                   <td>${escape((k.preset && k.preset.manufacturer) || '')}</td>
+                  <td style="white-space:nowrap"><b>${score}</b><span class="rc-km-bar"><i style="width:${score}%"></i></span></td>
                   <td><button type="button" class="rc-btn ${sel?'rc-btn-primary':''}" data-km-pick="${escape(k.id)}">${sel?'✓ выбран':'Выбрать'}</button></td>
                 </tr>`;
               }).join('')}
