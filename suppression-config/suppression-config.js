@@ -38,7 +38,7 @@ function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;',
 /* ------------------- Defaults ------------------- */
 function defaultInstallation() {
   const agent = 'HFC-227ea';
-  const series = 'МГП-Консул';
+  const series = 'halocarbon-42bar';
   const variants = listVariants(series);
   return {
     id: newId('inst-'), name: 'Установка 1', elevation: 0,
@@ -70,10 +70,11 @@ function setupInstFormSelects(v = {}) {
   fillSelect($('f-agent'),
     Object.entries(AGENTS).map(([k,x]) => ({ value:k, label:x.label })), v.agent);
   fillSelect($('f-series'),
-    SERIES_LIST.map(s => ({ value:s.id, label:`${s.id} — ${s.manufacturer}` })), v.series);
+    SERIES_LIST.map(s => ({ value:s.id, label:s.label })), v.series);
   const vars = listVariants($('f-series').value);
   fillSelect($('f-module'),
-    vars.map(x => ({ value:x.code, label:`${x.code} (${x.ob} л)` })), v.moduleCode);
+    vars.map(x => ({ value:x.code, label:`${x.ob} л · DN${x.DN} · ${x.pressure_bar} бар` })),
+    v.moduleCode);
 }
 
 /* ------------------- Installation dialog ------------------- */
@@ -84,7 +85,8 @@ function openInstDialog(existingId) {
   setupInstFormSelects(existing || {});
   $('f-series').onchange = () => {
     const vars = listVariants($('f-series').value);
-    fillSelect($('f-module'), vars.map(x => ({ value:x.code, label:`${x.code} (${x.ob} л)` })), null);
+    fillSelect($('f-module'),
+      vars.map(x => ({ value:x.code, label:`${x.ob} л · DN${x.DN} · ${x.pressure_bar} бар` })), null);
   };
   $('f-name').value = existing?.name ?? '';
   $('f-elev').value = existing?.elevation ?? 0;
