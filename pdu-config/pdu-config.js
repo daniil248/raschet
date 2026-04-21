@@ -529,11 +529,13 @@ function renderPendingBanner() {
   const label = last.requirementsOnly
     ? `${last.rating} A · ${last.phases || '?'}ф · розетки: ${(last.outlets||[]).map(o => o.type+'×'+o.count).join(', ')}`
     : `${esc(last.manufacturer)} · ${esc(last.label)}`;
+  // В embed-режиме (iframe внутри rack-config) баннер не нужен: приведёт к вложенной модалке. Результат и так вернётся через postMessage.
+  if (IS_EMBED) { slot.innerHTML = ''; return; }
   slot.innerHTML = `
     <div class="pc-banner">
       <span><b>${kind}</b> · ${label} <span class="muted" style="font-size:11px">(${ageStr})</span></span>
       <span class="muted" style="font-size:11px;flex:1;min-width:180px">В Конфигураторе стойки → PDU → «Каталог» → «⬇ Из Конфигуратора PDU».</span>
-      <a href="../rack-config/" class="pc-btn pc-btn-primary">Открыть стойку →</a>
+      <a href="../rack-config/" class="pc-btn pc-btn-primary" target="_top">Открыть стойку →</a>
       <button class="pc-btn" id="pc-banner-clear">✕</button>
     </div>
   `;
