@@ -419,17 +419,43 @@ function forwardPoint(a, proc, V, P) {
   if (t2 == null && W2 != null && h2 != null) t2 = (h2 - 2501 * W2) / (1.006 + 1.86 * W2);
   if (W2 == null && t2 != null && h2 != null) W2 = (h2 - 1.006 * t2) / (2501 + 1.86 * t2);
 
+  /* 3.5. Для C: если после применения цели остались h2 + ни t2 ни W2
+     (например tgt=Q или tgt=h2) — предполагаем d=const (сенсибельное охл.).
+     Если при этом t2 < Td → переключаемся на линию насыщения и ищем t,
+     при котором h(t, Ws(t)) = h2 (охлаждение с осушением).
+     Аналогично для P при неполном состоянии: считаем d=const. */
+  if ((proc.type === 'C' || proc.type === 'P') && t2 == null && W2 == null && h2 != null) {
+    W2 = a.W;
+    t2 = (h2 - 2501 * W2) / (1.006 + 1.86 * W2);
+    if (proc.type === 'C' && t2 < a.Td - 0.05) {
+      // Newton по t на линии насыщения: h_sat(t) = 1.006·t + Ws(t)·(2501+1.86·t)
+      let tt = a.Td - 1;
+      for (let it = 0; it < 60; it++) {
+        const Ws  = humidityRatio(tt, 1.0, P);
+        const hh  = 1.006 * tt + Ws * (2501 + 1.86 * tt);
+        const tt2 = tt + 0.05;
+        const Ws2 = humidityRatio(tt2, 1.0, P);
+        const hh2 = 1.006 * tt2 + Ws2 * (2501 + 1.86 * tt2);
+        const f = hh - h2;
+        const df = (hh2 - hh) / 0.05;
+        if (Math.abs(df) < 1e-8) break;
+        const s = f / df; tt -= s;
+        if (Math.abs(s) < 1e-3) break;
+      }
+      t2 = tt;
+      W2 = humidityRatio(t2, 1.0, P);
+    }
+  }
+
   /* 4. Специальная логика C (охлаждение с осушением) */
   if (proc.type === 'C') {
     if (W2 == null && t2 != null) {
-      // если t2 ниже точки росы a — идём по φ=100% (с осушением)
       if (t2 < a.Td - 0.05) W2 = humidityRatio(t2, 1.0, P);
-      else W2 = a.W;   // сухое охлаждение
+      else W2 = a.W;
     }
     if (t2 == null && W2 != null) {
-      // если W2 < a.W — это осушение; t2 = температура насыщения при этом W
       if (W2 < a.W - 1e-6) t2 = dewPointFromW(W2, P);
-      else t2 = a.T; // нечего делать
+      else t2 = a.T;
     }
   }
 
