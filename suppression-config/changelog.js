@@ -3,6 +3,11 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.59.11',
+    date: '2026-04-21',
+    items: ['Буквы осей X/Y/Z в 3D-схеме увеличены (20px, bold, белая обводка).'],
+  },
+  {
     version: '0.59.10',
     date: '2026-04-21',
     items: [

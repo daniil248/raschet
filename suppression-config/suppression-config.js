@@ -660,9 +660,9 @@ function renderIso(dirId) {
     <line x1="${O.x}" y1="${O.y}" x2="${ax.x}" y2="${ax.y}" stroke="#2e7d32"/>
     <line x1="${O.x}" y1="${O.y}" x2="${ay.x}" y2="${ay.y}" stroke="#c62828"/>
     <line x1="${O.x}" y1="${O.y}" x2="${az.x}" y2="${az.y}" stroke="#1565c0"/>
-    <text x="${ax.x+4}" y="${ax.y+4}" font-size="11" fill="#2e7d32">X</text>
-    <text x="${ay.x+4}" y="${ay.y-2}" font-size="11" fill="#c62828">Y</text>
-    <text x="${az.x+4}" y="${az.y+4}" font-size="11" fill="#1565c0">Z</text>
+    <text x="${ax.x+6}" y="${ax.y+6}" font-size="20" font-weight="700" fill="#2e7d32" paint-order="stroke" stroke="#fff" stroke-width="3">X</text>
+    <text x="${ay.x+6}" y="${ay.y-4}" font-size="20" font-weight="700" fill="#c62828" paint-order="stroke" stroke="#fff" stroke-width="3">Y</text>
+    <text x="${az.x+6}" y="${az.y+6}" font-size="20" font-weight="700" fill="#1565c0" paint-order="stroke" stroke="#fff" stroke-width="3">Z</text>
   </g>`;
 
   // Cylinders at root (twin rectangles)
