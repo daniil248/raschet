@@ -35,7 +35,7 @@ function _injectStyles() {
   globalThis[STYLES_INJECTED] = true;
   const css = `
     .rs-help-fab {
-      position: fixed; right: 16px; bottom: 16px; z-index: 9990;
+      position: fixed; right: 16px; bottom: 44px; z-index: 9990;
       width: 44px; height: 44px; border-radius: 50%;
       background: #1976d2; color: #fff; border: none; cursor: pointer;
       font-size: 22px; font-weight: 700; line-height: 44px; text-align: center;
