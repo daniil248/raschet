@@ -61,6 +61,7 @@
               <button class="sup-btn" id="sup-iso-all">Аксонометрия</button>
               <button class="sup-btn" id="sup-auto-dn">Диаметры авто</button>
               <button class="sup-btn" id="sup-hydraulic">Гидравлика</button>
+              <button class="sup-btn" id="sup-spec">Спецификация</button>
               <button class="sup-btn" id="sup-report">Отчёт</button>
             </div>
           </div>
@@ -160,9 +161,9 @@
     <form method="dialog">
       <header><span id="dlg-inst-h">Установка: создание</span><button value="cancel" class="sup-dlg-x">✕</button></header>
       <div class="sup-form-body">
-        <label class="sup-field"><span>Наименование установки</span><input type="text" id="f-name"></label>
-        <label class="sup-field"><span>Высота над уровнем моря, м</span><input type="number" id="f-elev" value="0" step="10"></label>
-        <label class="sup-field"><span>Нормативный документ</span>
+        <label class="sup-field"><span>Наименование установки</span><input type="text" id="f-name" title="Свободное имя, напр. «АГПТ серверной №1». Используется в отчёте и спецификации."></label>
+        <label class="sup-field"><span>Высота над уровнем моря, м <sup title="Влияет на коэффициент k3 (≈0.96 при 500 м, ≈0.85 при 2000 м). Для Алматы ≈ 820 м.">ⓘ</sup></span><input type="number" id="f-elev" value="0" step="10" title="Высота площадки над уровнем моря. Корректирует плотность паров ГОТВ через коэффициент k3."></label>
+        <label class="sup-field"><span>Нормативный документ <sup title="Определяет заголовки отчёта и ссылки на разделы. Формулы во всех методиках однотипны (mp через Cн и k2).">ⓘ</sup></span>
           <select id="f-norm">
             <option value="sp-485-annex-d" selected>СП 485.1311500.2020, Прил. Д (Россия)</option>
             <option value="sp-rk-2022">СП РК 2.02-102-2022 (Казахстан)</option>
@@ -170,9 +171,9 @@
             <option value="iso-14520">ISO 14520 (International)</option>
           </select>
         </label>
-        <label class="sup-field"><span>ГОТВ</span><select id="f-agent"></select></label>
-        <label class="sup-field"><span>Линейка модулей</span><select id="f-series"></select></label>
-        <label class="sup-field"><span>Тип модуля</span><select id="f-module"></select></label>
+        <label class="sup-field"><span>ГОТВ <sup title="Газовое огнетушащее вещество. HFC-227ea (FM-200) — самый распространённый хладон; Novec 1230 — экологичная альтернатива; CO₂ — для необитаемых помещений; инертные (IG-541 и т.п.) — для серверных с людьми.">ⓘ</sup></span><select id="f-agent" title="Выберите огнетушащее вещество. Определяет нормативную концентрацию Cн и плотность r0."></select></label>
+        <label class="sup-field"><span>Линейка модулей <sup title="halocarbon — для хладонов и Novec, inert — для аргона/азота, CO₂-HP/LP — для углекислоты.">ⓘ</sup></span><select id="f-series" title="Семейство модулей по рабочему давлению."></select></label>
+        <label class="sup-field"><span>Типоразмер (объём баллона) <sup title="Подбирайте так, чтобы суммарная ёмкость покрывала mg с запасом. Крупные объёмы — меньше баллонов, но крупнее батарея.">ⓘ</sup></span><select id="f-module"></select></label>
         <div class="sup-radio-row">
           <label><input type="radio" name="f-inst" value="modular" checked> Модульная установка</label>
           <label><input type="radio" name="f-inst" value="central"> Централизованная</label>
@@ -201,8 +202,8 @@
           <label><input type="radio" name="d-type" value="volume" checked> Объёмное тушение</label>
           <label><input type="radio" name="d-type" value="local"> Локальное</label>
         </div>
-        <label class="sup-field"><span>Температура минимальная Tмин, °C</span><input type="number" id="d-tmin" value="20" step="1"></label>
-        <label class="sup-field"><span>Требуемое время подачи ГОТВ t, с</span><input type="number" id="d-feed" value="10" step="1"></label>
+        <label class="sup-field"><span>Температура минимальная Tмин, °C <sup title="Используется в формуле r1 = r0·k3·293/(273+tm). Чем ниже — тем выше требуемая масса ГОТВ.">ⓘ</sup></span><input type="number" id="d-tmin" value="20" step="1" title="Минимальная температура в защищаемом помещении в холодный период."></label>
+        <label class="sup-field"><span>Требуемое время подачи ГОТВ t, с <sup title="По СП 485 / NFPA 2001 для хладонов — 10 с (95% массы), для инертных газов — 60 с, для CO₂ — 60 с.">ⓘ</sup></span><input type="number" id="d-feed" value="10" step="1" title="Нормативное время полного выпуска ГОТВ."></label>
         <label class="sup-field sup-check"><input type="checkbox" id="d-smoke" checked><span>Газодымоудаление</span></label>
         <label class="sup-field"><span>Огнестойкость стыковочных узлов</span>
           <select id="d-fire"><option>EI30</option><option>EI45</option><option>EI60</option><option>EI90</option><option>EI120</option></select>
@@ -237,12 +238,12 @@
     <form method="dialog">
       <header><span id="dlg-zone-h">Зона: создание</span><button value="cancel" class="sup-dlg-x">✕</button></header>
       <div class="sup-form-body">
-        <label class="sup-field"><span>Наименование</span><input type="text" id="z-name" value="зона 1"></label>
-        <label class="sup-field"><span>S, м²</span><input type="number" id="z-S" value="15" step="0.1" min="0"></label>
-        <label class="sup-field"><span>H, м</span><input type="number" id="z-H" value="3" step="0.1" min="0"></label>
-        <label class="sup-field"><span>Cн, % (об.)</span><input type="number" id="z-Cn" value="7.2" step="0.1"></label>
-        <label class="sup-field"><span>fs — открытые проёмы, м²</span><input type="number" id="z-fs" value="0" step="0.1" min="0"></label>
-        <label class="sup-field"><span>П (параметр негерметичности)</span>
+        <label class="sup-field"><span>Наименование</span><input type="text" id="z-name" value="зона 1" title="Имя зоны, напр. «серверный зал», «АКБ»."></label>
+        <label class="sup-field"><span>S, м² <sup title="Площадь защищаемой зоны по полу (без учёта фальшпола и подвесного потолка, если они не тушатся).">ⓘ</sup></span><input type="number" id="z-S" value="15" step="0.1" min="0"></label>
+        <label class="sup-field"><span>H, м <sup title="Высота от пола до перекрытия или подвесного потолка (по границе тушения).">ⓘ</sup></span><input type="number" id="z-H" value="3" step="0.1" min="0"></label>
+        <label class="sup-field"><span>Cн, % (об.) <sup title="Нормативная огнетушащая концентрация × коэфф. безопасности. HFC-227ea: 7.2% (кл. A), Novec 1230: 5.9%, IG-541: 39.9%.">ⓘ</sup></span><input type="number" id="z-Cn" value="7.2" step="0.1"></label>
+        <label class="sup-field"><span>fs — открытые проёмы, м² <sup title="Суммарная площадь постоянно открытых проёмов (нельзя закрыть при пуске). Обычно 0 для герметичных помещений.">ⓘ</sup></span><input type="number" id="z-fs" value="0" step="0.1" min="0"></label>
+        <label class="sup-field"><span>П (параметр негерметичности) <sup title="Зависит от расположения проёмов по высоте. 0.4 — стандарт; 0.65 — преимущественно в потолке; 0.1 — в полу.">ⓘ</sup></span>
           <select id="z-P">
             <option value="0.4" selected>во всех остальных случаях (0.4)</option>
             <option value="0.1">в полу (0.1)</option>
@@ -250,7 +251,7 @@
             <option value="0.65">в потолке (0.65)</option>
           </select>
         </label>
-        <label class="sup-field"><span>Pпр, МПа (предельное избыт. давление)</span><input type="number" id="z-Ppr" value="0.003" step="0.0001"></label>
+        <label class="sup-field"><span>Pпр, МПа (предельное избыт. давление) <sup title="Допустимое избыточное давление на ограждающие конструкции в момент выпуска ГОТВ. 0.003 МПа = 3 кПа (типовое для гипсовых/ГКЛ стен).">ⓘ</sup></span><input type="number" id="z-Ppr" value="0.003" step="0.0001"></label>
       </div>
       <footer>
         <button value="ok" class="sup-btn sup-btn-primary">OK</button>
@@ -287,23 +288,46 @@
     </form>
   </dialog>
 
-  <!-- Axonometric -->
+  <!-- 3D scheme -->
   <dialog id="dlg-iso" class="sup-dlg sup-dlg-wide">
     <form method="dialog">
-      <header><span>Аксонометрическая / расчётная схема</span><button value="cancel" class="sup-dlg-x">✕</button></header>
+      <header><span>3D расчётная схема</span><button value="cancel" class="sup-dlg-x">✕</button></header>
       <div class="sup-iso-body">
         <div class="sup-iso-view">
           <div class="sup-iso-tb">
-            <button type="button" class="sup-btn" id="iso-toggle-nums">№ участков</button>
+            <button type="button" class="sup-btn" data-view="iso">Изометрия</button>
+            <button type="button" class="sup-btn" data-view="top">Сверху</button>
+            <button type="button" class="sup-btn" data-view="front">Спереди</button>
+            <button type="button" class="sup-btn" data-view="side">Сбоку</button>
+            <span class="sep"></span>
+            <button type="button" class="sup-btn" id="iso-toggle-nums">№</button>
             <button type="button" class="sup-btn" id="iso-toggle-nozz">Насадки</button>
+            <button type="button" class="sup-btn" id="iso-toggle-nodes">Узлы</button>
+            <button type="button" class="sup-btn" id="iso-zoom-fit">⌂</button>
             <span class="sep"></span>
             <span class="sup-iso-stat" id="iso-vtr">V<sub>тр</sub> = 0.000 м³</span>
           </div>
           <div class="sup-iso-canvas" id="iso-canvas"></div>
+          <div class="sup-hint" style="padding:4px 8px;border-top:1px solid #eee;">
+            ЛКМ по узлу — выбрать; тянуть по полю — вращать; колесо — зум; Shift+тянуть — панорамирование.
+          </div>
         </div>
         <aside class="sup-iso-side">
           <div class="sup-section">
-            <h2>Участок</h2>
+            <h2>Выбранный узел</h2>
+            <div class="sup-hint" id="iso-node-info">— не выбран —</div>
+          </div>
+          <div class="sup-section">
+            <h2>Новый участок от узла</h2>
+            <div class="sup-hint">Выберите направление:</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:4px 0;">
+              <button type="button" class="sup-btn" data-axis="x">X+ →</button>
+              <button type="button" class="sup-btn" data-axis="y">Y+ ↑</button>
+              <button type="button" class="sup-btn" data-axis="z">Z+ ⊗</button>
+              <button type="button" class="sup-btn" data-axis="-x">X− ←</button>
+              <button type="button" class="sup-btn" data-axis="-y">Y− ↓</button>
+              <button type="button" class="sup-btn" data-axis="-z">Z− ⊙</button>
+            </div>
             <label class="sup-field"><span>Длина, м</span><input type="number" id="seg-L" step="0.1" value="1"></label>
             <label class="sup-field"><span>DN, мм</span>
               <select id="seg-DN">
@@ -312,35 +336,41 @@
                 <option>80</option><option>100</option>
               </select>
             </label>
-            <label class="sup-field"><span>Насадок</span>
+            <label class="sup-field"><span>Насадок на конце</span>
               <select id="seg-noz">
                 <option value="none">Отсутствует</option>
-                <option value="R-360">Насадок-R-360</option>
-                <option value="R-180">Насадок-R-180</option>
+                <option value="R-360">Насадок R-360</option>
+                <option value="R-180">Насадок R-180</option>
                 <option value="radial">Радиальный</option>
               </select>
             </label>
-            <label class="sup-field"><span>Ось</span>
-              <select id="seg-ax">
-                <option value="x">X (→)</option>
-                <option value="y">Y (↑)</option>
-                <option value="z">Z (в глубину)</option>
-                <option value="-x">X (←)</option>
-                <option value="-y">Y (↓)</option>
-                <option value="-z">Z (из глубины)</option>
-              </select>
-            </label>
             <div style="display:flex;gap:6px;margin-top:4px;">
-              <button type="button" class="sup-btn" id="seg-add">+ Участок</button>
-              <button type="button" class="sup-btn sup-danger" id="seg-del">Удалить</button>
+              <button type="button" class="sup-btn sup-danger" id="seg-del">Удалить последний</button>
             </div>
           </div>
           <div class="sup-section">
-            <h2>Список участков</h2>
+            <h2>Участки</h2>
             <div class="sup-seg-list" id="seg-list"></div>
           </div>
         </aside>
       </div>
+      <footer><button value="cancel" class="sup-btn">Закрыть</button></footer>
+    </form>
+  </dialog>
+
+  <!-- Specification -->
+  <dialog id="dlg-spec" class="sup-dlg sup-dlg-wide">
+    <form method="dialog">
+      <header>
+        <span>Спецификация оборудования и материалов</span>
+        <div class="sup-dlg-toolbar">
+          <button type="button" class="sup-btn" id="spec-copy">Копировать</button>
+          <button type="button" class="sup-btn" id="spec-csv">CSV</button>
+          <button type="button" class="sup-btn" id="spec-print">Печать</button>
+        </div>
+        <button value="cancel" class="sup-dlg-x">✕</button>
+      </header>
+      <div id="spec-body" style="padding:14px 16px;max-height:72vh;overflow:auto;"></div>
       <footer><button value="cancel" class="sup-btn">Закрыть</button></footer>
     </form>
   </dialog>

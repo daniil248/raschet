@@ -11,7 +11,11 @@ import { MODULE_SERIES, SERIES_LIST, listVariants, findVariant }
   from '../suppression-methods/modules-catalog.js';
 import * as Annex from '../suppression-methods/sp-485-annex-d.js';
 import { buildReport } from '../suppression-methods/report-text.js';
-import { computeHydraulic } from '../suppression-methods/hydraulics.js';
+import { computeHydraulic, recommendDN } from '../suppression-methods/hydraulics.js';
+import { mountHelp } from '../shared/help-panel.js';
+import { mountFooter } from '../shared/module-footer.js';
+import { APP_VERSION } from '../js/engine/constants.js';
+import { MODULE_CHANGELOG } from './changelog.js';
 
 const $ = id => document.getElementById(id);
 const LS_KEY = 'raschet.sup.installations.v1';
@@ -571,89 +575,296 @@ function openZoneDialog(dir, existingId) {
   }, { once: true });
 }
 
-/* ------------------- Axonometric ------------------- */
-const ISO = { ox: 120, oy: 420, sx: Math.cos(Math.PI/6), sy: Math.sin(Math.PI/6), scale: 30 };
-function iso3(p) {
-  const x = ISO.ox + (p.x - p.z) * ISO.sx * ISO.scale;
-  const y = ISO.oy + (p.x + p.z) * ISO.sy * ISO.scale - p.y * ISO.scale;
-  return { x, y };
+/* ------------------- 3D scheme ------------------- */
+// Rotation state
+const V3 = {
+  yaw: Math.PI/6, pitch: Math.PI/7, zoom: 1, panX: 0, panY: 0,
+  showNums: true, showNozz: true, showNodes: true,
+  selectedNode: 'root',  // 'root' or segment.id (endpoint of that segment)
+  scale: 60,             // px per metre at zoom=1
+};
+const VIEW_PRESETS = {
+  iso:   { yaw:  Math.PI/6, pitch: Math.PI/7 },
+  top:   { yaw:  0,         pitch: Math.PI/2 - 0.001 },
+  front: { yaw:  0,         pitch: 0 },
+  side:  { yaw:  Math.PI/2, pitch: 0 },
+};
+
+/** Компоненты оси из строки 'x'|'-x'|'y'... */
+function axisVec(a) {
+  const sgn = a.startsWith('-') ? -1 : 1;
+  const n = a.replace('-','');
+  return { x: n==='x'?sgn:0, y: n==='y'?sgn:0, z: n==='z'?sgn:0 };
 }
-function buildPipeCoords(pipeline) {
-  let cur = { x:0, y:0, z:0 };
-  return pipeline.map(p => {
-    const axis = (p.axis || 'x');
-    const dir = axis.startsWith('-') ? -1 : 1;
-    const axn = axis.replace('-','');
-    const d = dir * (+p.L || 0);
-    const start = { ...cur };
-    cur = { ...cur, [axn]: cur[axn] + d };
-    return { seg: p, start, end: { ...cur } };
+
+/** Поворот точки (x,y,z): сначала yaw вокруг Y, потом pitch вокруг X. */
+function rot3(p) {
+  const cy = Math.cos(V3.yaw), sy = Math.sin(V3.yaw);
+  const cp = Math.cos(V3.pitch), sp = Math.sin(V3.pitch);
+  // yaw around Y
+  const x1 =  p.x * cy + p.z * sy;
+  const z1 = -p.x * sy + p.z * cy;
+  const y1 =  p.y;
+  // pitch around X
+  const y2 =  y1 * cp - z1 * sp;
+  const z2 =  y1 * sp + z1 * cp;
+  return { x: x1, y: y2, z: z2 };
+}
+
+/** 3D точка (в метрах) → SVG пиксели. */
+function proj(p, W, H) {
+  const r = rot3(p);
+  const s = V3.scale * V3.zoom;
+  return {
+    x: W/2 + r.x * s + V3.panX,
+    y: H/2 - r.y * s + V3.panY,
+    depth: r.z,
+  };
+}
+
+/** Построить карту узлов (nodeId → {x,y,z}) из pipeline. */
+function buildNodes(pipeline) {
+  const nodes = new Map();
+  nodes.set('root', { x:0, y:0, z:0 });
+  pipeline.forEach(seg => {
+    const start = nodes.get(seg.parent || 'root') || { x:0, y:0, z:0 };
+    const v = axisVec(seg.axis || 'x');
+    const L = +seg.L || 0;
+    nodes.set(seg.id, { x: start.x + v.x*L, y: start.y + v.y*L, z: start.z + v.z*L });
   });
+  return nodes;
 }
+
 function renderIso(dirId) {
   const inst = currentInst();
   const pipe = dirId
     ? (inst.directions.find(d => d.id === dirId)?.pipeline || [])
     : inst.directions.flatMap(d => d.pipeline || []);
-  const coords = buildPipeCoords(pipe);
+  // Ensure `parent` exists (back-compat: linear chain)
+  for (let i = 0; i < pipe.length; i++) {
+    if (pipe[i].parent === undefined) pipe[i].parent = i === 0 ? 'root' : pipe[i-1].id;
+  }
+  const nodes = buildNodes(pipe);
   const W = 900, H = 580;
-  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="background:#fff;">`;
-  const O = iso3({x:0,y:0,z:0});
-  svg += `<g stroke-width="1">
-    <line x1="${O.x}" y1="${O.y}" x2="${iso3({x:1.5,y:0,z:0}).x}" y2="${iso3({x:1.5,y:0,z:0}).y}" stroke="#2e7d32"/>
-    <line x1="${O.x}" y1="${O.y}" x2="${iso3({x:0,y:0,z:1.5}).x}" y2="${iso3({x:0,y:0,z:1.5}).y}" stroke="#2e7d32"/>
-    <line x1="${O.x}" y1="${O.y}" x2="${iso3({x:0,y:1.5,z:0}).x}" y2="${iso3({x:0,y:1.5,z:0}).y}" stroke="#c62828"/>
+  const P = p => proj(p, W, H);
+
+  // Auto-fit on first render when zoom is default
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="background:#fff;cursor:grab;">`;
+
+  // Axes from origin (length 1 m each)
+  const O = P({x:0,y:0,z:0});
+  const ax = P({x:1,y:0,z:0}), ay = P({x:0,y:1,z:0}), az = P({x:0,y:0,z:1});
+  svg += `<g stroke-width="1.5">
+    <line x1="${O.x}" y1="${O.y}" x2="${ax.x}" y2="${ax.y}" stroke="#2e7d32"/>
+    <line x1="${O.x}" y1="${O.y}" x2="${ay.x}" y2="${ay.y}" stroke="#c62828"/>
+    <line x1="${O.x}" y1="${O.y}" x2="${az.x}" y2="${az.y}" stroke="#1565c0"/>
+    <text x="${ax.x+4}" y="${ax.y+4}" font-size="11" fill="#2e7d32">X</text>
+    <text x="${ay.x+4}" y="${ay.y-2}" font-size="11" fill="#c62828">Y</text>
+    <text x="${az.x+4}" y="${az.y+4}" font-size="11" fill="#1565c0">Z</text>
   </g>`;
-  const Cb = iso3({x:0,y:0,z:0});
+
+  // Cylinders at root (twin rectangles)
   svg += `<g fill="#e57373" stroke="#b71c1c" stroke-width="1.5">
-    <rect x="${Cb.x-20}" y="${Cb.y-4}" width="14" height="40" rx="4"/>
-    <rect x="${Cb.x-2}"  y="${Cb.y-4}" width="14" height="40" rx="4"/>
+    <rect x="${O.x-22}" y="${O.y-4}" width="14" height="40" rx="4"/>
+    <rect x="${O.x-4}"  y="${O.y-4}" width="14" height="40" rx="4"/>
   </g>`;
+
+  // Segments
   let totalVol = 0;
-  coords.forEach(({ seg, start, end }, idx) => {
-    const A = iso3(start), B = iso3(end);
-    const hasNoz = seg.nozzle && seg.nozzle !== 'none';
-    const stroke = hasNoz ? '#c62828' : '#d32f2f';
-    svg += `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="${stroke}" stroke-width="1.4"/>`;
-    if (S.isoShowNums) {
-      const mx = (A.x+B.x)/2, my = (A.y+B.y)/2 - 6;
-      svg += `<text x="${mx}" y="${my}" text-anchor="middle" style="font-size:10px;fill:#333;">${idx+1}</text>`;
-    }
-    if (hasNoz && S.isoShowNozz) {
-      svg += `<circle cx="${B.x}" cy="${B.y}" r="5" fill="none" stroke="#1565c0" stroke-width="1.4"/>
-              <circle cx="${B.x}" cy="${B.y}" r="2" fill="#1565c0"/>`;
-    }
+  const segsRender = pipe.map(seg => {
+    const a = nodes.get(seg.parent || 'root'), b = nodes.get(seg.id);
+    const A = P(a), B = P(b);
     const dn = +seg.DN || 22;
     totalVol += Math.PI * Math.pow(dn/2000, 2) * (+seg.L || 0) * 1000;
+    return { seg, a, b, A, B, depth: (A.depth+B.depth)/2 };
+  }).sort((a,b) => a.depth - b.depth);  // painter's algorithm
+
+  segsRender.forEach(({ seg, A, B }, idx) => {
+    const hasNoz = seg.nozzle && seg.nozzle !== 'none';
+    const stroke = hasNoz ? '#c62828' : '#d32f2f';
+    svg += `<line x1="${A.x}" y1="${A.y}" x2="${B.x}" y2="${B.y}" stroke="${stroke}" stroke-width="2"/>`;
+    if (V3.showNums) {
+      const mx = (A.x+B.x)/2, my = (A.y+B.y)/2 - 6;
+      svg += `<text x="${mx}" y="${my}" text-anchor="middle" font-size="10" fill="#333">${idx+1}</text>`;
+    }
+    if (hasNoz && V3.showNozz) {
+      svg += `<circle cx="${B.x}" cy="${B.y}" r="6" fill="none" stroke="#1565c0" stroke-width="1.6"/>
+              <circle cx="${B.x}" cy="${B.y}" r="2.4" fill="#1565c0"/>`;
+    }
   });
+
+  // Nodes (after segments)
+  if (V3.showNodes) {
+    for (const [id, p] of nodes) {
+      const P2 = P(p);
+      const sel = id === V3.selectedNode;
+      const r = sel ? 7 : 4;
+      const fill = id === 'root' ? '#1565c0' : (sel ? '#1565c0' : '#fff');
+      svg += `<circle class="iso-node" data-node="${id}" cx="${P2.x}" cy="${P2.y}" r="${r}"
+               fill="${fill}" stroke="#0d47a1" stroke-width="${sel?2:1.2}" style="cursor:pointer;"/>`;
+    }
+  }
+
+  // For selected node — draw axis arrows to preview direction
+  if (V3.selectedNode && nodes.has(V3.selectedNode)) {
+    const np = nodes.get(V3.selectedNode);
+    const LN = 0.6;  // arrow length, metres
+    [['x',  '#2e7d32'], ['-x', '#2e7d32'],
+     ['y',  '#c62828'], ['-y', '#c62828'],
+     ['z',  '#1565c0'], ['-z', '#1565c0']].forEach(([ax, col]) => {
+      const v = axisVec(ax);
+      const endP = P({ x: np.x + v.x*LN, y: np.y + v.y*LN, z: np.z + v.z*LN });
+      const startP = P(np);
+      svg += `<line x1="${startP.x}" y1="${startP.y}" x2="${endP.x}" y2="${endP.y}"
+                stroke="${col}" stroke-width="1" stroke-dasharray="3,3" opacity="0.5"/>`;
+    });
+  }
+
   svg += `</svg>`;
   $('iso-canvas').innerHTML = svg;
   $('iso-vtr').innerHTML = `V<sub>тр</sub> = ${(totalVol/1000).toFixed(3)} м³`;
 
+  // Node info
+  const np = nodes.get(V3.selectedNode);
+  if (np) {
+    $('iso-node-info').innerHTML = `<b>${V3.selectedNode === 'root' ? 'Коллектор (0, 0, 0)' : 'Узел ' + V3.selectedNode.slice(-5)}</b>
+      <br>X = ${np.x.toFixed(2)} м · Y = ${np.y.toFixed(2)} м · Z = ${np.z.toFixed(2)} м`;
+  } else $('iso-node-info').textContent = '— не выбран —';
+
+  // Segment list
   const list = $('seg-list');
-  list.innerHTML = pipe.map((p, i) => `
-    <div class="seg-item ${p.id === S.isoSelSeg ? 'sel' : ''}" data-id="${p.id}">
+  list.innerHTML = pipe.map((p, i) => {
+    const isSel = p.id === V3.selectedNode;
+    return `<div class="seg-item ${isSel?'sel':''}" data-id="${p.id}">
       <span class="seg-no">${i+1}</span>
       <span>${p.axis} · ${p.L} м · DN${p.DN} · ${p.nozzle || '—'}</span>
-    </div>`).join('') || `<div style="color:#888;padding:8px;">Нет участков. Добавьте.</div>`;
+    </div>`;
+  }).join('') || `<div style="color:#888;padding:8px;">Нет участков. Выберите узел и направление.</div>`;
   list.onclick = (e) => {
     const it = e.target.closest('.seg-item');
-    if (it) { S.isoSelSeg = it.dataset.id; fillSegForm(); renderIso(S.isoDirId); }
+    if (it) { V3.selectedNode = it.dataset.id; renderIso(S.isoDirId); }
+  };
+
+  // Canvas handlers
+  const canvas = $('iso-canvas');
+  canvas.onclick = (e) => {
+    const c = e.target.closest('.iso-node');
+    if (c) { V3.selectedNode = c.dataset.node; renderIso(S.isoDirId); }
   };
 }
-function fillSegForm() {
+
+function fitView(dirId) {
   const inst = currentInst();
-  const pipe = S.isoDirId
-    ? (inst.directions.find(d => d.id === S.isoDirId)?.pipeline || [])
+  const pipe = dirId
+    ? (inst.directions.find(d => d.id === dirId)?.pipeline || [])
     : inst.directions.flatMap(d => d.pipeline || []);
-  const p = pipe.find(x => x.id === S.isoSelSeg);
-  if (!p) return;
-  $('seg-L').value = p.L; $('seg-DN').value = p.DN;
-  $('seg-noz').value = p.nozzle || 'none'; $('seg-ax').value = p.axis || 'x';
+  const nodes = buildNodes(pipe);
+  const pts = [...nodes.values()];
+  if (!pts.length) { V3.zoom = 1; V3.panX = 0; V3.panY = 0; return; }
+  const rpts = pts.map(p => rot3(p));
+  const minX = Math.min(...rpts.map(p => p.x), 0);
+  const maxX = Math.max(...rpts.map(p => p.x), 0);
+  const minY = Math.min(...rpts.map(p => p.y), 0);
+  const maxY = Math.max(...rpts.map(p => p.y), 0);
+  const W = 900, H = 580, pad = 60;
+  const spanX = Math.max(0.5, maxX - minX);
+  const spanY = Math.max(0.5, maxY - minY);
+  const scaleX = (W - 2*pad) / spanX / V3.scale;
+  const scaleY = (H - 2*pad) / spanY / V3.scale;
+  V3.zoom = Math.max(0.2, Math.min(4, Math.min(scaleX, scaleY)));
+  V3.panX = -(minX + maxX) / 2 * V3.scale * V3.zoom;
+  V3.panY =  (minY + maxY) / 2 * V3.scale * V3.zoom;
 }
+
 function openIso(dirId) {
-  S.isoDirId = dirId; S.isoSelSeg = null;
-  renderIso(dirId); $('dlg-iso').showModal();
+  S.isoDirId = dirId;
+  V3.selectedNode = 'root';
+  fitView(dirId);
+  $('dlg-iso').showModal();
+  renderIso(dirId);
+}
+
+/* Setup of dialog-wide event handlers (once at init). */
+function setupIsoHandlers() {
+  // Drag to rotate / pan
+  const canvas = $('iso-canvas');
+  let dragging = false, lastX = 0, lastY = 0, panning = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.iso-node')) return; // click, not drag
+    dragging = true; panning = e.shiftKey;
+    lastX = e.clientX; lastY = e.clientY;
+    canvas.style.cursor = panning ? 'move' : 'grabbing';
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    if (panning) { V3.panX += dx; V3.panY += dy; }
+    else {
+      V3.yaw   += dx * 0.01;
+      V3.pitch += dy * 0.01;
+      V3.pitch = Math.max(-Math.PI/2+0.02, Math.min(Math.PI/2-0.02, V3.pitch));
+    }
+    renderIso(S.isoDirId);
+  });
+  canvas.addEventListener('pointerup', () => { dragging = false; canvas.style.cursor = 'grab'; });
+  canvas.addEventListener('pointerleave', () => { dragging = false; });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const k = e.deltaY < 0 ? 1.15 : 1/1.15;
+    V3.zoom = Math.max(0.1, Math.min(10, V3.zoom * k));
+    renderIso(S.isoDirId);
+  }, { passive: false });
+
+  // View presets
+  document.querySelectorAll('[data-view]').forEach(b => {
+    b.addEventListener('click', () => {
+      const p = VIEW_PRESETS[b.dataset.view]; if (!p) return;
+      V3.yaw = p.yaw; V3.pitch = p.pitch;
+      renderIso(S.isoDirId);
+    });
+  });
+
+  // Axis direction buttons — add new segment from selected node
+  document.querySelectorAll('[data-axis]').forEach(b => {
+    b.addEventListener('click', () => {
+      const inst = currentInst();
+      const target = S.isoDirId
+        ? inst.directions.find(d => d.id === S.isoDirId)
+        : inst.directions[0];
+      if (!target) { alert('Нет направления.'); return; }
+      const axis = b.dataset.axis;
+      const seg = {
+        id: newId('s-'), parent: V3.selectedNode,
+        axis, L: +$('seg-L').value || 1,
+        DN: +$('seg-DN').value, nozzle: $('seg-noz').value,
+      };
+      target.pipeline.push(seg);
+      V3.selectedNode = seg.id;
+      saveAll(); renderIso(S.isoDirId);
+    });
+  });
+
+  $('seg-del').addEventListener('click', () => {
+    const inst = currentInst();
+    const target = S.isoDirId
+      ? inst.directions.find(d => d.id === S.isoDirId)
+      : null;
+    if (!target || !target.pipeline.length) return;
+    if (!confirm('Удалить последний добавленный участок?')) return;
+    // Find last segment; if it is currently selected endpoint, clear selection
+    const last = target.pipeline.pop();
+    if (V3.selectedNode === last.id) V3.selectedNode = last.parent || 'root';
+    // Remove any segments that referenced it as parent (branches)
+    target.pipeline = target.pipeline.filter(p => p.parent !== last.id);
+    saveAll(); renderIso(S.isoDirId);
+  });
+
+  $('iso-toggle-nums').addEventListener('click',  () => { V3.showNums  = !V3.showNums;  renderIso(S.isoDirId); });
+  $('iso-toggle-nozz').addEventListener('click',  () => { V3.showNozz  = !V3.showNozz;  renderIso(S.isoDirId); });
+  $('iso-toggle-nodes').addEventListener('click', () => { V3.showNodes = !V3.showNodes; renderIso(S.isoDirId); });
+  $('iso-zoom-fit').addEventListener('click', () => { fitView(S.isoDirId); renderIso(S.isoDirId); });
 }
 
 /* ------------------- Hydraulics ------------------- */
@@ -752,6 +963,118 @@ function dnToOD(dn) {
   return map[dn] || { OD: dn, w: 3 };
 }
 
+/* ------------------- Auto-DN per segment ------------------- */
+/** Считает, сколько насадков-потомков у каждого узла.
+ *  Сегмент переносит поток = (число насадков-потомков) / (всего насадков) * m_dot_total. */
+function countNozzlesDownstream(pipeline) {
+  const childrenByParent = new Map();
+  pipeline.forEach(s => {
+    const k = s.parent || 'root';
+    if (!childrenByParent.has(k)) childrenByParent.set(k, []);
+    childrenByParent.get(k).push(s);
+  });
+  const memo = new Map();
+  function count(segId) {
+    if (memo.has(segId)) return memo.get(segId);
+    const kids = childrenByParent.get(segId) || [];
+    const seg = pipeline.find(x => x.id === segId);
+    const self = (seg?.nozzle && seg.nozzle !== 'none') ? 1 : 0;
+    const sum = self + kids.reduce((a, k) => a + count(k.id), 0);
+    memo.set(segId, sum); return sum;
+  }
+  pipeline.forEach(s => count(s.id));
+  return memo;
+}
+
+function autoDnForDirection(dir) {
+  const pipe = dir.pipeline || [];
+  if (!pipe.length) return;
+  const r = computeDir(dir); if (!r) return;
+  const totalMdot = r.mg / (r.tpd || 10);
+  const totalNozz = pipe.filter(p => p.nozzle && p.nozzle !== 'none').length || 1;
+  const rho = r.r2 || 7;
+  const counts = countNozzlesDownstream(pipe);
+  pipe.forEach(s => {
+    const nz = counts.get(s.id) || 1;
+    const mdot = totalMdot * (nz / totalNozz);
+    s.DN = recommendDN(mdot, rho, 35);
+  });
+}
+
+/* ------------------- Specification ------------------- */
+function buildSpecRows() {
+  const inst = currentInst();
+  const rows = {
+    modules: {},        // code → {qty, ob, p}
+    nozzles: {},        // type → qty
+    pipes: {},          // "OD×wall" → meters
+  };
+  inst.directions.forEach(d => {
+    const r = computeDir(d);
+    if (r) {
+      const mod = findVariant(r.moduleCode);
+      const key = r.moduleCode;
+      rows.modules[key] = rows.modules[key] || { qty: 0, ob: mod?.ob, p: mod?.pressure_bar };
+      rows.modules[key].qty += r.n;
+    }
+    (d.pipeline || []).forEach(p => {
+      if (p.nozzle && p.nozzle !== 'none') {
+        rows.nozzles[p.nozzle] = (rows.nozzles[p.nozzle] || 0) + 1;
+      }
+      const od = dnToOD(+p.DN);
+      const key = `${od.OD}×${od.wall} (DN${p.DN})`;
+      rows.pipes[key] = +((rows.pipes[key] || 0) + (+p.L || 0)).toFixed(2);
+    });
+  });
+  // Add assemblies info (коллекторы)
+  inst.assemblies.forEach(a => {
+    if (a.collectorL > 0) {
+      const od = dnToOD(+a.collectorDN);
+      const key = `${od.OD}×${od.wall} (DN${a.collectorDN}) коллектор`;
+      rows.pipes[key] = +((rows.pipes[key] || 0) + a.collectorL).toFixed(2);
+    }
+  });
+  return rows;
+}
+
+function openSpec() {
+  const inst = currentInst();
+  if (!inst.directions.length) { alert('Нет направлений.'); return; }
+  const r = buildSpecRows();
+  let no = 1;
+  const section = (title, items) => items.length ? `
+    <h3 style="color:#0d47a1;margin:12px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">${title}</h3>
+    <table class="sup-tbl">
+      <thead><tr><th>№</th><th>Наименование</th><th class="num">Кол-во</th><th>Ед.</th><th>Примечание</th></tr></thead>
+      <tbody>${items.map(r => `<tr>
+        <td>${no++}</td><td>${esc(r.name)}</td><td class="num">${r.qty}</td><td>${r.unit}</td><td>${esc(r.note||'')}</td></tr>`).join('')}</tbody>
+    </table>` : '';
+
+  const modItems = Object.entries(r.modules).map(([code, v]) => ({
+    name: `Модуль газового пожаротушения ${code}`,
+    qty: v.qty, unit: 'шт.',
+    note: `${v.ob||'—'} л · ${v.p||'—'} бар`,
+  }));
+  const nozItems = Object.entries(r.nozzles).map(([code, q]) => ({
+    name: `Насадок ${code}`, qty: q, unit: 'шт.', note: '',
+  }));
+  const pipeItems = Object.entries(r.pipes).sort().map(([key, m]) => ({
+    name: `Труба стальная ${key}`, qty: m, unit: 'м', note: '',
+  }));
+
+  const html = `
+    <div style="font-size:13px;color:#333;margin-bottom:10px;">
+      <b>${esc(inst.name)}</b> · Расчёт № ${esc(inst.calcNo)}<br>
+      Объект: ${esc(inst.site?.name || inst.site?.address || '—')}
+    </div>
+    ${section('Оборудование', modItems)}
+    ${section('Насадки', nozItems)}
+    ${section('Трубы', pipeItems)}
+  `;
+  $('spec-body').innerHTML = html;
+  $('dlg-spec').showModal();
+}
+
 /* ------------------- Init ------------------- */
 function init() {
   S.installations = loadAll();
@@ -769,14 +1092,7 @@ function init() {
   $('sup-iso-all').addEventListener('click', () => openIso(null));
   $('sup-auto-dn').addEventListener('click', () => {
     const inst = currentInst();
-    inst.directions.forEach(d => {
-      const r = computeDir(d); if (!r) return;
-      const mdot = r.mg / (r.tpd || 10);
-      const rho = 7, vel = 35;
-      const IDmm = Math.sqrt(4 * (mdot / (rho * vel)) / Math.PI) * 1000;
-      const DN = [15,20,22,25,28,32,34,40,50,65,80,100].find(x => x >= IDmm) || 100;
-      (d.pipeline || []).forEach(p => p.DN = p.DN || DN);
-    });
+    inst.directions.forEach(d => autoDnForDirection(d));
     saveAll(); renderAll();
   });
   $('sup-hydraulic').addEventListener('click', openHydraulic);
@@ -828,45 +1144,79 @@ function init() {
   });
   $('rep-print').addEventListener('click', () => window.print());
 
-  // Axonometric
-  $('seg-add').addEventListener('click', () => {
-    const inst = currentInst();
-    const target = S.isoDirId
-      ? inst.directions.find(d => d.id === S.isoDirId)
-      : inst.directions[0];
-    if (!target) { alert('Добавьте направление.'); return; }
-    const seg = {
-      id: newId('s-'), axis: $('seg-ax').value, L: +$('seg-L').value || 1,
-      DN: +$('seg-DN').value, nozzle: $('seg-noz').value,
-    };
-    target.pipeline.push(seg); S.isoSelSeg = seg.id;
-    saveAll(); renderIso(S.isoDirId); fillSegForm();
+  // 3D scheme handlers
+  setupIsoHandlers();
+
+  // Specification
+  $('sup-spec').addEventListener('click', openSpec);
+  $('spec-copy').addEventListener('click', () => navigator.clipboard.writeText($('spec-body').innerText));
+  $('spec-csv').addEventListener('click', () => {
+    const rows = [...$('spec-body').querySelectorAll('table tr')].map(tr =>
+      [...tr.children].map(td => `"${td.textContent.replace(/"/g,'""').trim()}"`).join(';')
+    ).join('\r\n');
+    const blob = new Blob(['\ufeff' + rows], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `АГПТ_спец_${currentInst().calcNo}.csv`; a.click();
   });
-  $('seg-del').addEventListener('click', () => {
-    const inst = currentInst();
-    const target = S.isoDirId
-      ? inst.directions.find(d => d.id === S.isoDirId)
-      : null;
-    if (!target || !S.isoSelSeg) return;
-    target.pipeline = target.pipeline.filter(p => p.id !== S.isoSelSeg);
-    S.isoSelSeg = null;
-    saveAll(); renderIso(S.isoDirId);
+  $('spec-print').addEventListener('click', () => window.print());
+
+  // Help + footer
+  mountHelp({
+    module: 'suppression',
+    title: 'АГПТ — расчёт газового пожаротушения',
+    usage: `
+      <h4>Как пользоваться</h4>
+      <ol>
+        <li><b>Установка</b> — корневая сущность. Задайте норматив (СП 485 / СП РК / NFPA / ISO), ГОТВ и серию модулей.</li>
+        <li><b>Направление</b> — область тушения с общими модулями. Добавляется через «+ Направление». Создаётся со скелетом трубопровода по умолчанию.</li>
+        <li><b>Зона</b> — геометрия помещения: S, H, концентрация Cн, проёмы fs, параметр П. Направление может содержать несколько зон (расчёт суммируется).</li>
+        <li><b>Расчёт</b> — карточки в центре показывают mp/mg/n/Fc автоматически после ввода зон.</li>
+        <li><b>3D-схема</b> (кнопка «Аксонометрия») — интерактивная. Кликом выбирается узел, кнопкой направления + длиной добавляется участок. Тянуть — вращать, Shift+тянуть — панорамировать.</li>
+        <li><b>«Диаметры авто»</b> — подбор DN по расходу через каждый участок.</li>
+        <li><b>«Гидравлика»</b> — Darcy-Weisbach с проверкой P_вых ≥ P_min.</li>
+        <li><b>«Спецификация»</b> — сводный BOM (модули, насадки, трубы) с экспортом CSV.</li>
+      </ol>
+      <h4>Подсказки</h4>
+      <ul>
+        <li>Наведите курсор на <b>ⓘ</b> у поля — там пояснения и типовые значения.</li>
+        <li>Параметр П: 0.4 — стандарт; 0.65 — проёмы в потолке; 0.1 — в полу.</li>
+        <li>Для Cн используйте Cmin · 1.2 (СП 485 п. 9.1.1).</li>
+      </ul>
+    `,
+    calcs: `
+      <h4>Формулы</h4>
+      <p><b>Нормативная масса (СП 485 Прил. Д):</b></p>
+      <ul>
+        <li>r1 = r0 · k3 · 293 / (273 + tm) — плотность паров при tm и hm</li>
+        <li>k2 = П · fs/(S·h) · tp · √h — потери через проёмы</li>
+        <li>mp = S · h · r1 · (1 + k2) · Cн / (100 − Cн)</li>
+      </ul>
+      <p><b>Количество модулей и расчётная масса:</b></p>
+      <ul>
+        <li>m1 = mb + ob · r2 / 1000, r2 = r1 · pmin / 2</li>
+        <li>mtr = obtr · r2 / 1000</li>
+        <li>n = ⌈(mp + mtr) / (kz · ob / k1 − m1)⌉</li>
+        <li>mg = k1 · (mp + mtr + n · m1)</li>
+      </ul>
+      <p><b>Площадь сброса Fc (СП 485 Прил. Ж):</b></p>
+      <ul>
+        <li>pa = 0.1·k2alt МПа, ρв = 1.2·k2alt·293/(273+tm)</li>
+        <li>Fc ≥ [1.2·k3·mp / (0.7·1.05·tpd·r1)] · √[ρв / (7·10⁶·pa·((piz+pa)/pa)^(2/7) − 1)] − fs</li>
+      </ul>
+      <p><b>Гидравлика (Darcy-Weisbach + Альтшуль):</b></p>
+      <ul>
+        <li>λ = 0.11 · (Δ/D + 68/Re)^0.25</li>
+        <li>ΔP = λ · (L/D) · ρ·v²/2 + ζ · ρ·v²/2</li>
+      </ul>
+    `,
   });
-  ['seg-L','seg-DN','seg-noz','seg-ax'].forEach(id => {
-    $(id).addEventListener('change', () => {
-      const inst = currentInst();
-      const target = S.isoDirId
-        ? inst.directions.find(d => d.id === S.isoDirId)
-        : inst.directions[0];
-      const p = target?.pipeline.find(x => x.id === S.isoSelSeg);
-      if (!p) return;
-      p.L = +$('seg-L').value; p.DN = +$('seg-DN').value;
-      p.nozzle = $('seg-noz').value; p.axis = $('seg-ax').value;
-      saveAll(); renderIso(S.isoDirId);
-    });
+  mountFooter({
+    appVersion: APP_VERSION,
+    moduleId: 'suppression',
+    moduleTitle: 'АГПТ',
+    entries: MODULE_CHANGELOG,
   });
-  $('iso-toggle-nums').addEventListener('click', () => { S.isoShowNums = !S.isoShowNums; renderIso(S.isoDirId); });
-  $('iso-toggle-nozz').addEventListener('click', () => { S.isoShowNozz = !S.isoShowNozz; renderIso(S.isoDirId); });
 
   // Choose current installation or prompt create
   const ids = Object.keys(S.installations);
