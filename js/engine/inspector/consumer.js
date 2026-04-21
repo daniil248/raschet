@@ -21,15 +21,11 @@ export function openConsumerParamsModal(n) {
   const isOutdoor = n.consumerSubtype === 'outdoor_unit';
   const h = [];
   h.push(`<h3>${escHtml(effectiveTag(n))} ${escHtml(n.name)}</h3>`);
-  // Phase 2.?: вкладки по типам параметров. «Электрика» — рабочие
-  // характеристики (мощность, напряжение, cosφ, пуск, приоритеты).
-  // «Габариты» — физические размеры для layout-страницы (мм).
-  // В будущем добавим «Подключение» (per page.kind) и «Механика».
-  h.push(`<div class="tp-tabs" role="tablist">
-    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
-    <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
-  </div>`);
-  h.push(`<div class="tp-panel" data-panel="electrical">`);
+  // v0.59.96: общий «шапочный» блок над вкладками — идентификация и топология
+  // (имя, категория, тип, количество, тип группы, входы). Электрика/Габариты
+  // остаются вкладками. Раньше эти поля жили внутри «Электрика», что
+  // визуально путало («имя» и «категория» — не электрические).
+  h.push(`<div class="tp-common">`);
   h.push(field('Имя', `<input type="text" id="cp-name" value="${escAttr(n.name || '')}">`));
 
   // Миграция: старые user-записи без category получают 'other'
@@ -83,6 +79,14 @@ export function openConsumerParamsModal(n) {
       </select>
     </div>`);
   }
+  // Конец общего блока (идентификация + топология + save-as-catalog
+  // перенесётся ниже). Открываем вкладки и электрическую панель.
+  h.push(`</div>`); // /tp-common
+  h.push(`<div class="tp-tabs" role="tablist">
+    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
+  </div>`);
+  h.push(`<div class="tp-panel" data-panel="electrical">`);
   const _displayDemand = (_serial && _loadSpec === 'total')
     ? (Number(n.demandKw || 0) * _cpCount)
     : Number(n.demandKw || 0);
