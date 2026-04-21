@@ -1121,19 +1121,40 @@ function renderFeedInfo() {
     ...Object.keys(byFeed),
     ...schemaFeeds.map((f, i) => f.label || String.fromCharCode(65 + i)),
   ]);
+  // v0.59.101: та же логика что в computeWarnings — PDU должен быть ≥ нагрузки,
+  // а ввод схемы должен давать ≥ нагрузки. Сравнение PDU vs avail не имеет смысла:
+  // PDU с запасом над нагрузкой — нормальная практика.
+  const feedsInByFeed = Object.keys(byFeed);
+  const sumCap = Object.values(byFeed).reduce((s, v) => s + v, 0);
+  const mode = t.pduRedundancy || '2N';
+  const needOf = (lbl) => {
+    if (!(lbl in byFeed) || !t.demandKw) return 0;
+    if (mode === '2N' || mode === '2n' || mode === 'n+1') return t.demandKw;
+    return sumCap > 0 ? t.demandKw * (byFeed[lbl] / sumCap)
+                      : (feedsInByFeed.length ? t.demandKw / feedsInByFeed.length : 0);
+  };
   Array.from(feedLabels).sort().forEach(lbl => {
     const pduKw = byFeed[lbl] || 0;
     const schemaF = schemaFeeds.find((f, i) => (f.label || String.fromCharCode(65 + i)) === lbl);
     const availKw = schemaF ? Number(schemaF.availableKw) || 0 : null;
     const prio = schemaF ? schemaF.priority : null;
+    const need = needOf(lbl);
     let badge;
-    if (availKw == null) badge = `<span class="rc-feed-pill warn">только PDU</span>`;
-    else if (pduKw > availKw + 1e-6) badge = `<span class="rc-feed-pill err">превышение</span>`;
-    else badge = `<span class="rc-feed-pill ok">OK</span>`;
+    if (availKw == null) {
+      badge = `<span class="rc-feed-pill warn">только PDU</span>`;
+    } else if (need > 0 && pduKw + 1e-6 < need) {
+      badge = `<span class="rc-feed-pill err">PDU &lt; нагрузки</span>`;
+    } else if (need > 0 && need > availKw + 1e-6) {
+      badge = `<span class="rc-feed-pill err">ввод &lt; нагрузки</span>`;
+    } else if (need > 0 && pduKw > need * 1.8 + 1e-6) {
+      badge = `<span class="rc-feed-pill warn">PDU завышен</span>`;
+    } else {
+      badge = `<span class="rc-feed-pill ok">OK</span>`;
+    }
     rows.push(`
       <tr>
         <td><b>Ввод ${lbl}</b>${prio != null ? ` <span class="muted">(P${prio})</span>` : ''}</td>
-        <td>PDU: ${pduKw.toFixed(2)} кВт</td>
+        <td>PDU: ${pduKw.toFixed(2)} кВт${need > 0 ? ` <span class="muted">(нужно ${need.toFixed(2)})</span>` : ''}</td>
         <td>${availKw != null ? 'Доступно: ' + availKw.toFixed(2) + ' кВт' : '<span class="muted">не привязан к схеме</span>'}</td>
         <td>${badge}</td>
       </tr>`);
