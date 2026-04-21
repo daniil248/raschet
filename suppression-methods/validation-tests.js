@@ -27,7 +27,7 @@ export const TEST_CASES = [
       paramp: 0.4, cn: 7.2, tp: 10, fireClass: 'A',
       moduleCode: 'HAL-42-40', obtr: 0, k1: 1.05,
     },
-    expected: { mp: 50.1, n: 2, Cn: 7.2 },
+    expected: { mp: 50.1, n: 2, C: 7.2 },
     tolerancePct: 5,
   },
   {
@@ -40,7 +40,7 @@ export const TEST_CASES = [
       paramp: 0.4, cn: 7.2, tp: 10, fireClass: 'A',
       moduleCode: 'HAL-42-100', obtr: 0, k1: 1.05,
     },
-    expected: { mp: 167.1, Cn: 7.2 }, // 50.1 × (100/30) ≈ 167
+    expected: { mp: 167.1, C: 7.2 }, // 50.1 × (100/30) ≈ 167
     tolerancePct: 5,
   },
   {
@@ -54,7 +54,7 @@ export const TEST_CASES = [
       moduleCode: 'HAL-42-40', obtr: 0, k1: 1.05,
     },
     // Cn = Cmin_A · 1.0 = 4.2; mp = 90·13.60·4.2/95.8 ≈ 53.6
-    expected: { mp: 53.6, Cn: 4.2 },
+    expected: { mp: 53.6, C: 4.2 },
     tolerancePct: 5,
   },
   {

@@ -8,6 +8,13 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.59.38',
+    date: '2026-04-21',
+    items: [
+      'Fix регрессионных тестов (v0.59.37): три кейса СП 485 Прил.Д падали с «Unknown method: sp-485-annex-d». Причина — suppression-methods/index.js импортировал SP485 только из sp-485-2020.js, а sp-485-annex-d.js в реестре METHODS не было. Теперь импортируется и регистрируется как отдельная методика с META.id = \'sp-485-annex-d\'. Также поле ожидаемого значения концентрации переименовано Cn → C (в результате compute оно называется C: Cn, поэтому тесты на поле `Cn` всегда не находили его). Файлы: suppression-methods/index.js (+SP485AD), suppression-methods/validation-tests.js (Cn → C).',
+    ],
+  },
+  {
     version: '0.59.37',
     date: '2026-04-21',
     items: [

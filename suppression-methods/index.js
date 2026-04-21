@@ -5,21 +5,23 @@
    and returns { M, C, steps[], ... } to be rendered by the UI.
    ========================================================================= */
 
-import * as SPRK  from './sp-rk-2022.js';
-import * as SP485 from './sp-485-2020.js';
-import * as NFPA  from './nfpa-2001.js';
-import * as ISO   from './iso-14520.js';
+import * as SPRK     from './sp-rk-2022.js';
+import * as SP485    from './sp-485-2020.js';
+import * as SP485AD  from './sp-485-annex-d.js';
+import * as NFPA     from './nfpa-2001.js';
+import * as ISO      from './iso-14520.js';
 
 export { AGENTS, CYLINDERS, Cnorm } from './agents.js';
 
 export const METHODS = {
-  [SPRK.META.id]:  SPRK,
-  [SP485.META.id]: SP485,
-  [NFPA.META.id]:  NFPA,
-  [ISO.META.id]:   ISO,
+  [SPRK.META.id]:     SPRK,
+  [SP485.META.id]:    SP485,
+  [SP485AD.META.id]:  SP485AD,
+  [NFPA.META.id]:     NFPA,
+  [ISO.META.id]:      ISO,
 };
 
-export const METHOD_LIST = [SPRK.META, SP485.META, NFPA.META, ISO.META];
+export const METHOD_LIST = [SPRK.META, SP485.META, SP485AD.META, NFPA.META, ISO.META];
 
 export function run(methodId, input) {
   const m = METHODS[methodId];
