@@ -23,6 +23,7 @@ const S = {
   rhMax: 100,         // %
   tEvap: 15,          // °C
   vBase: 10000,       // м³/ч
+  showRuNames: (() => { try { return localStorage.getItem('psy.showRuNames') === '1'; } catch { return false; } })(),
   points: [
     { name: 'Наружный (зима)', nameUser: true, t: -20, tUser: true, rh: 85, rhUser: true, x: '', V: '' },
     { name: 'После калорифера', t: 22, tUser: true, rh: 18, rhUser: true, x: '', V: '' },
@@ -123,15 +124,21 @@ function pointCard(p, i) {
   el.className = 'psy-point';
   el.dataset.pointIdx = String(i);
   const du = (f) => p[f+'User'] ? '1' : '';
+  const ru = S.showRuNames;
+  const L = {
+    t:   `t, °C${ru?' <em style="color:#90a4ae;font-style:normal">(температура)</em>':''}`,
+    rh:  `φ, %${ru?' <em style="color:#90a4ae;font-style:normal">(отн. влажн.)</em>':''}`,
+    d:   `d (override), г/кг${ru?' <em style="color:#90a4ae;font-style:normal">(влагосодерж.)</em>':''}`,
+  };
   el.innerHTML = `
     <div class="psy-point-header">
       <span>Точка ${i+1}</span>
       <button type="button" class="pt-del" title="Удалить точку" data-act="del" data-i="${i}">✕</button>
     </div>
     <label>Имя<input type="text" data-col="name" data-i="${i}" data-user="${du('name')}" value="${escAttr(p.name || '')}"></label>
-    <label>t, °C<input type="number" data-col="t" data-i="${i}" data-user="${du('t')}" value="${p.t ?? ''}" step="0.1"></label>
-    <label>φ, %<input type="number" data-col="rh" data-i="${i}" data-user="${du('rh')}" value="${p.rh ?? ''}" step="1" min="0" max="100"></label>
-    <label>d (override), г/кг<input type="number" data-col="x" data-i="${i}" data-user="${du('x')}" value="${p.x ?? ''}" step="0.1" placeholder="авто из φ"></label>
+    <label>${L.t}<input type="number" data-col="t" data-i="${i}" data-user="${du('t')}" value="${p.t ?? ''}" step="0.1"></label>
+    <label>${L.rh}<input type="number" data-col="rh" data-i="${i}" data-user="${du('rh')}" value="${p.rh ?? ''}" step="1" min="0" max="100"></label>
+    <label>${L.d}<input type="number" data-col="x" data-i="${i}" data-user="${du('x')}" value="${p.x ?? ''}" step="0.1" placeholder="авто из φ"></label>
     <div class="pt-computed" data-role="pt-computed"></div>
   `;
   return el;
@@ -537,11 +544,19 @@ function escHtml(s) {
 /* ========================================================================
    Диаграмма
    ======================================================================== */
+let _chartCtx = null;  // {X, Y, opts} последнего рендера — для crosshair
 function renderChart(sts) {
   const host = $('psy-chart');
-  const { svg, X, Y } = render(null, { P: S.P });
+  const { svg, X, Y, opts } = render(null, { P: S.P });
   const ctx = { X, Y };
+  _chartCtx = { X, Y, opts };
   let overlay = arrowDefs();
+  // crosshair layer (обновляется в mousemove)
+  overlay += `<g id="psy-xhair" style="display:none;pointer-events:none;">
+    <line class="psy-xh-v" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3,2"/>
+    <line class="psy-xh-h" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3,2"/>
+    <circle class="psy-xh-dot" r="3" fill="#c62828" stroke="#fff" stroke-width="1"/>
+  </g>`;
   // сегменты
   for (let i = 0; i < sts.length - 1; i++) {
     const a = sts[i], b = sts[i+1];
@@ -555,6 +570,94 @@ function renderChart(sts) {
     overlay += plotPoint(ctx, st, String(i+1), '#0d47a1');
   });
   host.innerHTML = svg.replace('</svg>', overlay + '</svg>');
+  // Readout overlay (div над svg)
+  let readout = host.querySelector('.psy-xh-readout');
+  if (!readout) {
+    readout = document.createElement('div');
+    readout.className = 'psy-xh-readout';
+    readout.style.cssText = 'position:absolute;pointer-events:none;background:rgba(255,255,255,0.95);border:1px solid #c62828;border-radius:3px;padding:3px 6px;font:11px/1.4 Consolas,monospace;color:#263238;display:none;box-shadow:0 1px 3px rgba(0,0,0,0.15);white-space:nowrap;z-index:5;';
+    host.style.position = 'relative';
+    host.appendChild(readout);
+  }
+  attachCrosshair(host);
+}
+
+function attachCrosshair(host) {
+  if (host._xhWired) return;
+  host._xhWired = true;
+  const onMove = (e) => {
+    if (!_chartCtx) return;
+    const svg = host.querySelector('svg');
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const sx = vb.width / rect.width, sy = vb.height / rect.height;
+    const px = (e.clientX - rect.left) * sx;
+    const py = (e.clientY - rect.top)  * sy;
+    const { opts } = _chartCtx;
+    const plotW = opts.width - opts.marginL - opts.marginR;
+    const plotH = opts.height - opts.marginT - opts.marginB;
+    // Инвертируем X и Y
+    const W = opts.W_min + (px - opts.marginL) / plotW * (opts.W_max - opts.W_min);
+    const T = opts.T_max - (py - opts.marginT) / plotH * (opts.T_max - opts.T_min);
+    const g = svg.querySelector('#psy-xhair');
+    const readout = host.querySelector('.psy-xh-readout');
+    // Вне поля графика — скрыть
+    if (W < opts.W_min || W > opts.W_max || T < opts.T_min || T > opts.T_max) {
+      if (g) g.style.display = 'none';
+      if (readout) readout.style.display = 'none';
+      return;
+    }
+    // Обновляем крестик
+    if (g) {
+      g.style.display = '';
+      const v = g.querySelector('.psy-xh-v');
+      const h = g.querySelector('.psy-xh-h');
+      const d = g.querySelector('.psy-xh-dot');
+      v.setAttribute('x1', px); v.setAttribute('x2', px);
+      v.setAttribute('y1', opts.marginT); v.setAttribute('y2', opts.marginT + plotH);
+      h.setAttribute('y1', py); h.setAttribute('y2', py);
+      h.setAttribute('x1', opts.marginL); h.setAttribute('x2', opts.marginL + plotW);
+      d.setAttribute('cx', px); d.setAttribute('cy', py);
+    }
+    // Значения: W -> pv -> phi; h; rho
+    const pv = W * S.P / (0.621945 + W);
+    const phi = Math.max(0, Math.min(200, 100 * pv / Pws(T)));
+    const h_v = 1.006 * T + W * (2501 + 1.86 * T);
+    const v_sp = 287.055 * (T + 273.15) * (1 + 1.6078 * W) / S.P;
+    const rho = (1 + W) / v_sp;
+    const Td = (phi > 0.01) ? dewPointFromW(W, S.P) : -999;
+    if (readout) {
+      const ru = S.showRuNames;
+      readout.innerHTML =
+        `<b>t</b>${ru?' (темп.)':''} = ${T.toFixed(1)} °C<br>` +
+        `<b>d</b>${ru?' (влагосодерж.)':''} = ${(W*1000).toFixed(2)} г/кг<br>` +
+        `<b>φ</b>${ru?' (отн. влажн.)':''} = ${phi.toFixed(1)} %<br>` +
+        `<b>h</b>${ru?' (энтальпия)':''} = ${h_v.toFixed(2)} кДж/кг<br>` +
+        `<b>ρ</b>${ru?' (плотность)':''} = ${rho.toFixed(3)} кг/м³` +
+        (Td > -900 ? `<br><b>t<sub>р</sub></b>${ru?' (точка росы)':''} = ${Td.toFixed(1)} °C` : '');
+      // позиция: смещаем от курсора, учитываем границы
+      const hostRect = host.getBoundingClientRect();
+      let lx = e.clientX - hostRect.left + 12;
+      let ly = e.clientY - hostRect.top + 12;
+      readout.style.display = 'block';
+      // после display считаем размер
+      const rw = readout.offsetWidth, rh = readout.offsetHeight;
+      if (lx + rw > hostRect.width - 4)  lx = e.clientX - hostRect.left - rw - 12;
+      if (ly + rh > hostRect.height - 4) ly = e.clientY - hostRect.top - rh - 12;
+      readout.style.left = lx + 'px';
+      readout.style.top  = ly + 'px';
+    }
+  };
+  const onLeave = () => {
+    const svg = host.querySelector('svg');
+    const g = svg && svg.querySelector('#psy-xhair');
+    if (g) g.style.display = 'none';
+    const readout = host.querySelector('.psy-xh-readout');
+    if (readout) readout.style.display = 'none';
+  };
+  host.addEventListener('mousemove', onMove);
+  host.addEventListener('mouseleave', onLeave);
 }
 
 /* Промежуточные точки, чтобы линия процесса шла по реалистичной траектории */
@@ -715,6 +818,17 @@ function wire() {
     $(id).addEventListener('input', update);
     $(id).addEventListener('change', update);
   });
+
+  // Переключатель русских названий
+  const ruCb = $('psy-ru-names');
+  if (ruCb) {
+    ruCb.checked = !!S.showRuNames;
+    ruCb.addEventListener('change', () => {
+      S.showRuNames = ruCb.checked;
+      try { localStorage.setItem('psy.showRuNames', S.showRuNames ? '1' : '0'); } catch {}
+      rerenderCycle();
+    });
+  }
 
   // Делегирование событий в зоне цикла.
   // Любой РЕАЛЬНЫЙ ввод в текстовые/числовые поля помечает поле как
