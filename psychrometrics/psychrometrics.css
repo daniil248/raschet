@@ -24,6 +24,12 @@
 .psy-cycle {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
 }
+.psy-edges {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+}
+.psy-edges .psy-proc-arrow {
+  min-width: 200px;
+}
 .psy-point {
   background: #f5f9ff; border: 1px solid #c5d9ef; border-radius: 6px;
   padding: 8px 10px; min-width: 180px; display: flex; flex-direction: column; gap: 4px;

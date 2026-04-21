@@ -114,11 +114,11 @@
       </div>
     </div>
 
-    <!-- Цикл: карточки точек -->
+    <!-- Узлы (точки) -->
     <div class="psy-panel">
       <div class="psy-panel-title">
-        Цикл (точки и процессы)
-        <button type="button" id="psy-add" class="psy-btn psy-btn-primary">+ точка</button>
+        Узлы (точки состояния)
+        <button type="button" id="psy-add" class="psy-btn psy-btn-primary">+ узел</button>
         <select id="psy-demo" class="psy-btn" title="Загрузить демо-цикл">
           <option value="">Демо-цикл…</option>
           <option value="summer">Лето: охл./осуш. → доводчик</option>
@@ -130,6 +130,16 @@
         <button type="button" id="psy-csv" class="psy-btn" title="Экспорт таблиц «Точки» и «Процессы» в CSV (UTF-8 BOM, разделитель ;)">CSV</button>
       </div>
       <div class="psy-cycle" id="psy-cycle"></div>
+    </div>
+
+    <!-- Связи (процессы) -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">
+        Связи (процессы, рёбра графа)
+        <button type="button" id="psy-add-edge" class="psy-btn psy-btn-primary">+ связь</button>
+        <span style="font-size:11px;color:#607080;font-weight:400;margin-left:8px">Любой узел → любой узел. Целевые параметры (t, φ, d, h) считаются от исходного узла по типу процесса.</span>
+      </div>
+      <div class="psy-edges" id="psy-edges"></div>
     </div>
 
     <!-- Диаграмма -->

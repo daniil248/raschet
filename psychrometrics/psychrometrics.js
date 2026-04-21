@@ -33,8 +33,8 @@ const S = {
     { name: 'После увлажн.',    t: '', rh: '', x: '', h: '', V: '' },
   ],
   procs: [
-    { type: 'P', Q: '', qw: '' },          // 1→2 нагрев
-    { type: 'A', Q: '', qw: '' },          // 2→3 адиабат. увл.
+    { type: 'P', Q: '', qw: '', fromIdx: 0, toIdx: 1 },  // 1→2 нагрев
+    { type: 'A', Q: '', qw: '', fromIdx: 1, toIdx: 2 },  // 2→3 адиабат. увл.
   ],
 };
 
@@ -137,17 +137,60 @@ function pointState(p, P) {
 }
 
 /* ========================================================================
-   Рендер редактора цикла
+   Граф: узлы (S.points) + рёбра (S.procs с fromIdx/toIdx).
+   Обратная совместимость: если у ребра нет fromIdx/toIdx — считаем (i, i+1).
+   ======================================================================== */
+function edgeFrom(pr, i) { return Number.isFinite(+pr?.fromIdx) ? +pr.fromIdx : i; }
+function edgeTo(pr, i)   { return Number.isFinite(+pr?.toIdx)   ? +pr.toIdx   : i+1; }
+/* Порядок применения рёбер: топологический по fromIdx, потом по toIdx. */
+function edgeOrder() {
+  return [...S.procs.keys()].sort((a, b) => {
+    const fa = edgeFrom(S.procs[a], a), fb = edgeFrom(S.procs[b], b);
+    if (fa !== fb) return fa - fb;
+    return edgeTo(S.procs[a], a) - edgeTo(S.procs[b], b);
+  });
+}
+/* При удалении узла idx — сдвигаем индексы рёбер, помечаем «битые» рёбра. */
+function reindexAfterPointDelete(delIdx) {
+  S.procs.forEach(pr => {
+    const f = edgeFrom(pr, -1), t = edgeTo(pr, -1);
+    if (f === delIdx || t === delIdx) { pr._broken = true; return; }
+    pr.fromIdx = f > delIdx ? f - 1 : f;
+    pr.toIdx   = t > delIdx ? t - 1 : t;
+    ['mixWith','recupWith'].forEach(k => {
+      const v = parseInt(pr[k], 10);
+      if (Number.isFinite(v)) {
+        if (v === delIdx) pr[k] = '';
+        else if (v > delIdx) pr[k] = String(v - 1);
+      }
+    });
+  });
+  S.procs = S.procs.filter(pr => !pr._broken);
+}
+
+/* ========================================================================
+   Рендер редактора цикла — узлы и рёбра в РАЗНЫХ контейнерах.
    ======================================================================== */
 function renderCycle() {
+  renderNodes();
+  renderEdges();
+}
+function renderNodes() {
   const host = $('psy-cycle');
   host.innerHTML = '';
-  S.points.forEach((p, i) => {
-    host.appendChild(pointCard(p, i));
-    if (i < S.points.length - 1) {
-      host.appendChild(procArrow(S.procs[i] || (S.procs[i]={type:'P'}), i));
-    }
-  });
+  S.points.forEach((p, i) => host.appendChild(pointCard(p, i)));
+}
+function renderEdges() {
+  const host = $('psy-edges');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!S.procs.length) {
+    host.innerHTML = `<div style="padding:12px;color:#607080;font-size:12px">
+      Нет связей. Нажмите «+ связь», чтобы задать процесс между любыми двумя узлами (графовая модель: узел → узел).
+    </div>`;
+    return;
+  }
+  S.procs.forEach((pr, i) => host.appendChild(procArrow(pr, i)));
 }
 
 function pointCard(p, i) {
@@ -186,15 +229,30 @@ function procArrow(pr, i) {
   const el = document.createElement('div');
   el.className = 'psy-proc-arrow';
   el.dataset.procIdx = String(i);
-  const userV = S.points[i].V;
+  const fromI = edgeFrom(pr, i);
+  const toI   = edgeTo(pr, i);
+  const srcNode = S.points[fromI];
+  const userV = srcNode?.V;
   const hasUserV = userV != null && userV !== '';
   const duQ  = pr.Qs  ? '1' : '';
   const duQw = pr.qws ? '1' : '';
   const tsQ  = Number.isFinite(+pr.Qts)  ? String(pr.Qts)  : '0';
   const tsQw = Number.isFinite(+pr.qwts) ? String(pr.qwts) : '0';
+  const nodeOpts = (sel) => S.points.map((p, pi) =>
+    `<option value="${pi}" ${pi===sel?'selected':''}>${pi+1}. ${escAttr((p.name||'').slice(0,22))}</option>`).join('');
   el.innerHTML = `
-    <div class="arr-label">${i+1} → ${i+2}</div>
-    <select data-col="proc-type" data-i="${i}">
+    <div class="arr-label" style="display:flex;justify-content:space-between;align-items:center;gap:4px">
+      <span>${fromI+1} → ${toI+1}</span>
+      <button type="button" title="Удалить связь" data-act="del-edge" data-i="${i}"
+              style="background:transparent;border:0;color:#c62828;cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
+    </div>
+    <label style="font-size:10px;color:#455a64">от узла
+      <select data-col="fromIdx" data-i="${i}">${nodeOpts(fromI)}</select>
+    </label>
+    <label style="font-size:10px;color:#455a64;margin-top:2px">к узлу
+      <select data-col="toIdx" data-i="${i}">${nodeOpts(toI)}</select>
+    </label>
+    <select data-col="proc-type" data-i="${i}" style="margin-top:4px">
       ${PROC_TYPES.map(pt => `<option value="${pt.v}" ${pr.type===pt.v?'selected':''}>${pt.t}</option>`).join('')}
     </select>
     <div class="arr" data-role="arr" style="color:${PROC_COLOR[pr.type]||'#607080'}">↓</div>
@@ -340,13 +398,15 @@ function readInputs() {
   if (tmin < tmax - 5) { S.tMinChart = tmin; S.tMaxChart = tmax; }
   if (dmax >= 5)       { S.dMaxChart = dmax; }
 
-  $$('#psy-cycle [data-col]').forEach(el => {
+  $$('#psy-cycle [data-col], #psy-edges [data-col]').forEach(el => {
     const col = el.dataset.col;
     const i   = +el.dataset.i;
     const v   = el.value;
     const isUser = el.dataset.user === '1';
     const ts = Number(el.dataset.ts) || 0;
     if (col === 'proc-type') { S.procs[i] = S.procs[i] || {}; S.procs[i].type = v; }
+    else if (col === 'fromIdx') { S.procs[i] = S.procs[i] || {}; S.procs[i].fromIdx = parseInt(v, 10); }
+    else if (col === 'toIdx')   { S.procs[i] = S.procs[i] || {}; S.procs[i].toIdx   = parseInt(v, 10); }
     else if (col === 'mixWith')   { S.procs[i] = S.procs[i] || {}; S.procs[i].mixWith   = v; }
     else if (col === 'mixRatio')  { S.procs[i] = S.procs[i] || {}; S.procs[i].mixRatio  = v; }
     else if (col === 'recupWith') { S.procs[i] = S.procs[i] || {}; S.procs[i].recupWith = v; }
@@ -364,9 +424,13 @@ function readInputs() {
       }
     }
     else if (col === 'V') {
-      S.points[i] = S.points[i] || {};
-      if (isUser && v !== '') S.points[i].V = v;
-      else S.points[i].V = '';
+      // V принадлежит узлу-источнику ребра (fromIdx), а не номеру ребра.
+      // Элемент управления стоит на карточке ребра, но данные пишем в узел.
+      const pr = S.procs[i];
+      const srcIdx = edgeFrom(pr, i);
+      S.points[srcIdx] = S.points[srcIdx] || {};
+      if (isUser && v !== '') S.points[srcIdx].V = v;
+      else S.points[srcIdx].V = '';
     }
     else if (col === 'name' || col === 't' || col === 'rh' || col === 'x' || col === 'h') {
       S.points[i] = S.points[i] || {};
@@ -513,23 +577,37 @@ function forwardPoint(a, proc, V, P) {
    Cascade: авто-имена + forward-compute точки 2+ если задана цель процесса
    ======================================================================== */
 function cascade() {
-  for (let i = 1; i < S.points.length; i++) {
-    const proc = S.procs[i-1] || { type: 'P' };
-    const p = S.points[i];
+  // Графовый обход: рёбра применяем в топологическом порядке по fromIdx.
+  // Для каждого ребра forwardIdx → toIdx вычисляем целевой узел от источника.
+  // Узлы, до которых не ведёт ни одно ребро — остаются «якорными» (что задал
+  // пользователь, то и держим).
+  const order = edgeOrder();
+  for (const ei of order) {
+    const proc = S.procs[ei] || { type: 'P' };
+    const srcIdx = edgeFrom(proc, ei);
+    const dstIdx = edgeTo(proc, ei);
+    if (srcIdx === dstIdx) continue;
+    const p = S.points[dstIdx];
+    const src = S.points[srcIdx];
+    if (!p || !src) continue;
     // Авто-имя
     if (!p.nameUser) {
       p.name = PROC_NAME_OUT[proc.type] || '';
     }
-    const aState = pointState(S.points[i-1], S.P);
+    const aState = pointState(src, S.P);
     if (!aState) continue;
 
-    // Процесс «смешение»: точка i = α·(точка i-1) + (1-α)·(точка mixWith),
-    // mass-weighted по сухому воздуху (W и h как удельные — смешиваются по Gда).
+    // «Индекс целевой точки» в формулах ниже — это dstIdx.
+    // (переменная i ранее в этой функции — заменена на dstIdx).
+    const i = dstIdx;
+
+    // Процесс «смешение»: точка i = α·(точка srcIdx) + (1-α)·(точка mixWith),
+    // mass-weighted по сухому воздуху.
     if (proc.type === 'M') {
-      const srcIdx = parseInt(proc.mixWith, 10);
+      const refIdx = parseInt(proc.mixWith, 10);
       const alpha  = Math.max(0, Math.min(1, parseFloat(proc.mixRatio)));
-      if (Number.isFinite(srcIdx) && srcIdx >= 0 && srcIdx < S.points.length && srcIdx !== i) {
-        const bSrc = pointState(S.points[srcIdx], S.P);
+      if (Number.isFinite(refIdx) && refIdx >= 0 && refIdx < S.points.length && refIdx !== i) {
+        const bSrc = pointState(S.points[refIdx], S.P);
         if (bSrc && Number.isFinite(alpha)) {
           const W_mix = alpha * aState.W + (1 - alpha) * bSrc.W;
           const h_mix = alpha * aState.h + (1 - alpha) * bSrc.h;
@@ -554,10 +632,10 @@ function cascade() {
     // росы входа — clamp по насыщению при d=const (конденсация на пластинах
     // в данной MVP-модели игнорируется — это отдельная задача).
     if (proc.type === 'R') {
-      const srcIdx = parseInt(proc.recupWith, 10);
+      const refIdx = parseInt(proc.recupWith, 10);
       const eta    = Math.max(0, Math.min(1, parseFloat(proc.recupEff)));
-      if (Number.isFinite(srcIdx) && srcIdx >= 0 && srcIdx < S.points.length && srcIdx !== i) {
-        const bSrc = pointState(S.points[srcIdx], S.P);
+      if (Number.isFinite(refIdx) && refIdx >= 0 && refIdx < S.points.length && refIdx !== i) {
+        const bSrc = pointState(S.points[refIdx], S.P);
         if (bSrc && Number.isFinite(eta)) {
           const t2 = aState.T + eta * (bSrc.T - aState.T);
           const W2 = aState.W;
@@ -594,8 +672,8 @@ function cascade() {
     cands.sort((a, b) => b.ts - a.ts);
     const winner = cands[0];
 
-    // V сегмента
-    let V_seg = nNum(S.points[i-1].V);
+    // V сегмента — берём с узла-источника ребра
+    let V_seg = nNum(src.V);
     if (!(V_seg > 0)) V_seg = S.vBase;
 
     const bState = forwardPoint(aState, { type: proc.type, tgt: winner.tgt, tgtVal: winner.val }, V_seg, S.P);
@@ -683,52 +761,57 @@ function writeCardsFromState() {
    ======================================================================== */
 function computeCycle() {
   const sts = S.points.map(p => pointState(p, S.P));
-  const segs = [];
+  const segs = new Array(S.procs.length).fill(null);
 
-  /* Сохранение массы: через весь цикл течёт одна и та же масса сух. воздуха
-     G_da [кг/ч] = V·ρ/(1+W). Если у какого-то сегмента V задан — он «ведущий»,
-     остальные сегменты пересчитывают V = G_da·(1+W)/ρ от СВОЕГО входного
-     состояния (т.к. при нагреве ρ падает → V растёт).  Если V не задан
-     нигде — ведущим считаем базовый расход S.vBase, приложенный к точке 0. */
-  let primaryIdx = -1;
-  for (let i = 0; i < S.points.length - 1; i++) {
-    if (nNum(S.points[i].V) > 0) { primaryIdx = i; break; }
+  /* Графовая модель: «ведущим» считаем первый в edgeOrder() сегмент, у
+     источника которого задан V. Если нигде не задан — G_ref от S.vBase
+     на самом раннем валидном источнике. */
+  const order = edgeOrder();
+  let primaryEdgeIdx = -1;   // индекс S.procs, не ei
+  for (const ei of order) {
+    const pr = S.procs[ei];
+    const srcIdx = edgeFrom(pr, ei);
+    if (nNum(S.points[srcIdx]?.V) > 0 && sts[srcIdx]) { primaryEdgeIdx = ei; break; }
   }
-  let G_ref = 0;  // кг_да/ч — опорный массовый расход
-  if (primaryIdx >= 0 && sts[primaryIdx]) {
-    const a = sts[primaryIdx];
-    const V = nNum(S.points[primaryIdx].V);
+  let G_ref = 0;
+  if (primaryEdgeIdx >= 0) {
+    const pr = S.procs[primaryEdgeIdx];
+    const srcIdx = edgeFrom(pr, primaryEdgeIdx);
+    const a = sts[srcIdx];
+    const V = nNum(S.points[srcIdx].V);
     G_ref = V * a.rho / (1 + a.W);
-  } else if (sts[0]) {
-    G_ref = S.vBase * sts[0].rho / (1 + sts[0].W);
+  } else {
+    // fallback: на первом узле первого ребра в edgeOrder
+    for (const ei of order) {
+      const srcIdx = edgeFrom(S.procs[ei], ei);
+      if (sts[srcIdx]) { G_ref = S.vBase * sts[srcIdx].rho / (1 + sts[srcIdx].W); break; }
+    }
   }
 
-  for (let i = 0; i < S.points.length - 1; i++) {
-    const a = sts[i], b = sts[i+1];
-    if (!a || !b) { segs.push(null); continue; }
-    const pr = S.procs[i] || { type: 'P' };
-    const userV = nNum(S.points[i].V);
-    const hasOwnV = i === primaryIdx && Number.isFinite(userV) && userV > 0;
+  S.procs.forEach((pr, ei) => {
+    const srcIdx = edgeFrom(pr, ei);
+    const dstIdx = edgeTo(pr, ei);
+    const a = sts[srcIdx], b = sts[dstIdx];
+    if (!a || !b || srcIdx === dstIdx) { segs[ei] = null; return; }
+    const userV = nNum(S.points[srcIdx]?.V);
+    const hasOwnV = ei === primaryEdgeIdx && Number.isFinite(userV) && userV > 0;
     let V;
-    if (hasOwnV) {
-      V = userV;
-    } else if (G_ref > 0) {
-      V = G_ref * (1 + a.W) / a.rho;   // derived от массы
-    } else {
-      V = S.vBase;
-    }
+    if (hasOwnV) V = userV;
+    else if (G_ref > 0) V = G_ref * (1 + a.W) / a.rho;
+    else V = S.vBase;
     const G  = V * a.rho / (1 + a.W);
     const Q  = processPowerKW(a, b, V);
     const qw = processMoistureKgH(a, b, V);
-    segs.push({
+    segs[ei] = {
       type: pr.type, V, Q, qw, G,
       derived: !hasOwnV,
+      fromIdx: srcIdx, toIdx: dstIdx,
       dT: +(b.T - a.T).toFixed(2),
       dW: +((b.W - a.W)*1000).toFixed(3),
       dh: +(b.h - a.h).toFixed(2),
-    });
-  }
-  return { sts, segs, primaryIdx };
+    };
+  });
+  return { sts, segs, primaryIdx: primaryEdgeIdx };
 }
 
 /* ========================================================================
@@ -767,16 +850,18 @@ function renderResults(sts, segs) {
     if (s.qw < 0) sumQwDeh += -s.qw;
   });
   segs.forEach((s, i) => {
+    const pr = S.procs[i] || {};
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
     if (!s) {
       b2.insertAdjacentHTML('beforeend',
-        `<tr><td>${i+1}→${i+2}</td><td colspan="9" style="text-align:center;color:#999">—</td></tr>`);
+        `<tr><td>${fromI+1}→${toI+1}</td><td colspan="9" style="text-align:center;color:#999">—</td></tr>`);
       return;
     }
     const label = PROC_TYPES.find(p => p.v === s.type)?.t || s.type;
     const sign  = s.Q > 0.05 ? 'нагрев/увл.' : s.Q < -0.05 ? 'охл./осуш.' : '≈0';
     b2.insertAdjacentHTML('beforeend', `
       <tr style="background:${PROC_COLOR[s.type]||'#eee'}14">
-        <td>${i+1}→${i+2}</td><td>${label}</td>
+        <td>${fromI+1}→${toI+1}</td><td>${label}</td>
         <td>${s.V.toFixed(0)}</td>
         <td>${s.dT.toFixed(2)}</td>
         <td>${s.dW.toFixed(3)}</td>
@@ -842,12 +927,14 @@ function renderChart(sts) {
     <line class="psy-xh-h" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3,2"/>
     <circle class="psy-xh-dot" r="3" fill="#c62828" stroke="#fff" stroke-width="1"/>
   </g>`;
-  // сегменты
-  const badges = [];  // отрисуем бейджи после линий, чтобы они были поверх
-  for (let i = 0; i < sts.length - 1; i++) {
-    const a = sts[i], b = sts[i+1];
+  // сегменты — по всем рёбрам графа (fromIdx → toIdx)
+  const badges = [];
+  for (let i = 0; i < S.procs.length; i++) {
     const pr = S.procs[i] || { type: 'P' };
-    if (!a || !b || pr.type === 'none') continue;
+    const fromI = edgeFrom(pr, i);
+    const toI   = edgeTo(pr, i);
+    const a = sts[fromI], b = sts[toI];
+    if (!a || !b || pr.type === 'none' || fromI === toI) continue;
     const color = PROC_COLOR[pr.type] || '#0d47a1';
     overlay += drawProcessPath(ctx, a, b, pr.type, color);
     // Штриховая связь с опорной точкой для M/R (визуализация графа)
@@ -1206,6 +1293,12 @@ function loadDemo(key) {
   const demo = DEMOS[key] || DEMOS['summer'];
   S.alt = 0; S.P = 101325; S.rhMax = 100; S.tEvap = 15; S.vBase = 10000;
   demo.apply();
+  // Демо описывают S.procs как линейную цепочку (procs[i] = edge i→i+1).
+  // Проставляем явные fromIdx/toIdx чтобы граф-модель работала корректно.
+  S.procs.forEach((pr, i) => {
+    if (!Number.isFinite(+pr.fromIdx)) pr.fromIdx = i;
+    if (!Number.isFinite(+pr.toIdx))   pr.toIdx   = i + 1;
+  });
   syncTopInputs();
   renderCycle();
   update();
@@ -1251,7 +1344,8 @@ function fillProcWarnings(sts) {
     const box = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] [data-role="proc-warn"]`);
     if (!box) continue;
     const pr = S.procs[i];
-    const a = sts[i], b = sts[i+1];
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
+    const a = sts[fromI], b = sts[toI];
     const msgs = [];
     if (pr && a && b && pr.type !== 'none' && pr.type !== 'X') {
       const dA = a.W * 1000, dB = b.W * 1000;          // г/кг
@@ -1406,6 +1500,11 @@ function loadCycle() {
     if (Number.isFinite(o.dMaxChart)) S.dMaxChart = o.dMaxChart;
     S.points = o.points;
     S.procs  = o.procs;
+    // Миграция старых цепочек без fromIdx/toIdx — проставляем по индексу.
+    S.procs.forEach((pr, i) => {
+      if (!Number.isFinite(+pr.fromIdx)) pr.fromIdx = i;
+      if (!Number.isFinite(+pr.toIdx))   pr.toIdx   = i + 1;
+    });
     return true;
   } catch { return false; }
 }
@@ -1463,49 +1562,74 @@ function wire() {
     }, 50);
   });
 
-  $('psy-cycle').addEventListener('input', (e) => {
-    const col = e.target?.dataset?.col;
-    if (col && ['V','name','t','rh','x','h','Q','qw'].includes(col)) {
-      e.target.dataset.user = '1';
-      e.target.dataset.ts = String(performance.now());
-    }
-    update();
-  });
-  $('psy-cycle').addEventListener('change', (e) => {
-    const col = e.target?.dataset?.col;
-    // Смена типа процесса → перерисовка (поля смешения появляются/уходят)
-    if (col === 'proc-type') {
-      const i = +e.target.dataset.i;
-      S.procs[i] = S.procs[i] || {};
-      S.procs[i].type = e.target.value;
-      rerenderCycle();
-      return;
-    }
-    update();
-  });
-  // Blur с пустым значением → снимаем user-флаг (поле снова auto)
-  $('psy-cycle').addEventListener('blur', (e) => {
-    const col = e.target?.dataset?.col;
-    if (!col) return;
-    if (['V','t','rh','x','h','Q','qw'].includes(col) && e.target.value.trim() === '') {
-      e.target.dataset.user = '';
-      e.target.dataset.ts = '0';
+  // Делегирование input/change/blur/click на обе панели (узлы + рёбра)
+  const wireGraphHost = (hostId) => {
+    const host = $(hostId);
+    if (!host) return;
+    host.addEventListener('input', (e) => {
+      const col = e.target?.dataset?.col;
+      if (col && ['V','name','t','rh','x','h','Q','qw'].includes(col)) {
+        e.target.dataset.user = '1';
+        e.target.dataset.ts = String(performance.now());
+      }
       update();
-    }
-  }, true);
-  $('psy-cycle').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-act="del"]');
-    if (!b) return;
-    const i = +b.dataset.i;
-    S.points.splice(i, 1);
-    if (i < S.procs.length) S.procs.splice(i, 1);
-    else if (S.procs.length) S.procs.pop();
-    rerenderCycle();
-  });
+    });
+    host.addEventListener('change', (e) => {
+      const col = e.target?.dataset?.col;
+      if (col === 'proc-type') {
+        const i = +e.target.dataset.i;
+        S.procs[i] = S.procs[i] || {};
+        S.procs[i].type = e.target.value;
+        rerenderCycle();
+        return;
+      }
+      if (col === 'fromIdx' || col === 'toIdx') {
+        const i = +e.target.dataset.i;
+        S.procs[i] = S.procs[i] || {};
+        S.procs[i][col] = parseInt(e.target.value, 10);
+        rerenderCycle();
+        return;
+      }
+      update();
+    });
+    host.addEventListener('blur', (e) => {
+      const col = e.target?.dataset?.col;
+      if (!col) return;
+      if (['V','t','rh','x','h','Q','qw'].includes(col) && e.target.value.trim() === '') {
+        e.target.dataset.user = '';
+        e.target.dataset.ts = '0';
+        update();
+      }
+    }, true);
+    host.addEventListener('click', (e) => {
+      const delPt = e.target.closest('[data-act="del"]');
+      const delEd = e.target.closest('[data-act="del-edge"]');
+      if (delPt) {
+        const i = +delPt.dataset.i;
+        S.points.splice(i, 1);
+        reindexAfterPointDelete(i);
+        rerenderCycle();
+      } else if (delEd) {
+        const i = +delEd.dataset.i;
+        S.procs.splice(i, 1);
+        rerenderCycle();
+      }
+    });
+  };
+  wireGraphHost('psy-cycle');
+  wireGraphHost('psy-edges');
 
   $('psy-add').addEventListener('click', () => {
     S.points.push({ name:'', t:'', rh:'', x:'', h:'', V:'' });
-    S.procs.push({ type: 'X', Q:'', qw:'' });
+    rerenderCycle();
+  });
+  const btnAddEdge = $('psy-add-edge');
+  if (btnAddEdge) btnAddEdge.addEventListener('click', () => {
+    // По умолчанию: ребро из последнего узла в предыдущий (образует последовательность)
+    const N = S.points.length;
+    const fromIdx = N >= 2 ? N - 2 : 0;
+    const toIdx   = N >= 2 ? N - 1 : 0;
+    S.procs.push({ type: 'X', Q:'', qw:'', fromIdx, toIdx });
     rerenderCycle();
   });
   $('psy-clear').addEventListener('click', () => {
@@ -1553,12 +1677,14 @@ function exportCsv() {
   lines.push(['№','Тип','V,м³/ч','ΔT,°C','Δd,г/кг','Δh,кДж/кг','Gда,кг/ч','Q,кВт','qw,кг/ч'].join(sep));
   let sQh=0,sQc=0,sWh=0,sWd=0;
   segs.forEach((s, i) => {
-    if (!s) { lines.push([`${i+1}→${i+2}`, '—','','','','','','',''].join(sep)); return; }
+    const pr = S.procs[i] || {};
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
+    if (!s) { lines.push([`${fromI+1}→${toI+1}`, '—','','','','','','',''].join(sep)); return; }
     if (s.Q>0) sQh += s.Q; else sQc += -s.Q;
     if (s.qw>0) sWh += s.qw; else sWd += -s.qw;
     const label = PROC_TYPES.find(p=>p.v===s.type)?.t || s.type;
     lines.push([
-      `${i+1}→${i+2}`, q(label),
+      `${fromI+1}→${toI+1}`, q(label),
       s.V.toFixed(0), s.dT.toFixed(2), s.dW.toFixed(3), s.dh.toFixed(2),
       s.G.toFixed(0), s.Q.toFixed(2), s.qw.toFixed(3),
     ].map(x => String(x).replace('.', ',')).join(sep));
