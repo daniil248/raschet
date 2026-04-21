@@ -13,6 +13,24 @@ const pad = (s, n) => String(s).padEnd(n, ' ');
 const padL = (s, n) => String(s).padStart(n, ' ');
 const LINE = '-'.repeat(72);
 
+/** Три строки дроби с единой шириной линии и центрированием числителя/знаменателя.
+ *  prefix — текст слева (например "      mp = sp · h · r1 · (1 + k2) · ").
+ *  Возвращает массив [line1, line2, line3]. */
+function frac(prefix, top, bot) {
+  const t = String(top), b = String(bot);
+  const w = Math.max(t.length, b.length, 3);
+  const pre = ' '.repeat(prefix.length);
+  const cen = s => {
+    const gap = Math.max(0, Math.floor((w - s.length) / 2));
+    return ' '.repeat(gap) + s + ' '.repeat(w - gap - s.length);
+  };
+  return [
+    pre + cen(t),
+    prefix + '─'.repeat(w),
+    pre + cen(b),
+  ];
+}
+
 function center(text, w = 72) {
   const s = String(text);
   const gap = Math.max(0, Math.floor((w - s.length) / 2));
@@ -102,25 +120,22 @@ export function buildReport(ctx) {
   lines.push(`   Огнетушащее вещество: ${a.label} (сжиженный газ).`);
   lines.push('');
   lines.push('   Нормативная масса ГОТВ mp определяется по формуле:');
-  lines.push('                               Cн');
-  lines.push('      mp = sp · h · r1 · (1 + k2) · ---------');
-  lines.push('                              100 − Cн');
+  frac('      mp = sp · h · r1 · (1 + k2) · ', 'Cн', '100 − Cн').forEach(l => lines.push(l));
   lines.push('где k2 — коэффициент потерь ГОТВ через проёмы:');
-  lines.push('                     fs');
-  lines.push(`      k2 = П · --------- · tp · √h = ${r.k2}`);
-  lines.push('                   sp · h');
+  frac('      k2 = П · ', 'fs', 'sp · h').forEach(l => lines.push(l));
+  lines.push(`                           · tp · √h = ${r.k2}`);
   lines.push('');
   lines.push('   Плотность паров ГОТВ при заданной минимальной');
   lines.push('температуре и высоте над уровнем моря:');
-  lines.push('                          293');
-  lines.push(`      r1 = r0 · k3 · ---------- = ${r.r1} кг/м³`);
-  lines.push('                   273 + tm');
+  frac('      r1 = r0 · k3 · ', '293', '273 + tm').forEach(l => lines.push(l));
+  lines.push(`                          = ${r.r1} кг/м³`);
   lines.push(`где k3 = ${r.K3.toFixed(3)} — коэффициент высоты ${r.inputs.hm} м.`);
   lines.push('');
   lines.push('   Нормативная масса ГОТВ для подачи в защищаемое помещение:');
-  lines.push(`                                           ${r.inputs.Cn}`);
-  lines.push(`      mp = ${r.inputs.sp} · ${r.inputs.h} · ${r.r1} · (1 + ${r.k2}) · ---------- = ${r.mp} кг`);
-  lines.push(`                                          ${(100-r.inputs.Cn).toFixed(1)}`);
+  const _Cn = String(r.inputs.Cn);
+  const _Cd = (100 - r.inputs.Cn).toFixed(1);
+  frac(`      mp = ${r.inputs.sp} · ${r.inputs.h} · ${r.r1} · (1 + ${r.k2}) · `, _Cn, _Cd).forEach(l => lines.push(l));
+  lines.push(`                                          = ${r.mp} кг`);
 
   page(2);
   lines.push('   Расчётная масса ГОТВ для хранения в установке:');
@@ -167,16 +182,28 @@ export function buildReport(ctx) {
     kv('  Избыточное давление в модулях, МПа',    ((mod?.pressure_bar || 42) / 10).toFixed(1));
     lines.push('');
     lines.push('Расчётные значения трубной разводки и насадков');
-    lines.push('┌─────┬──────────┬──────┬────────┬─────────┬──────────┬──────────┐');
-    lines.push('│ №   │  Труба   │Длина │Перепад │ Площадь │Давление, │ Расход,  │');
-    lines.push('│     │(D × s), │  м   │высот, м│отверстий│   МПа    │   кг     │');
-    lines.push('│     │   мм    │      │        │  , мм²  │          │          │');
-    lines.push('├─────┼──────────┼──────┼────────┼─────────┼──────────┼──────────┤');
+    // Единые ширины колонок (без учёта боковых «│»): 4, 10, 7, 9, 9, 9, 9
+    const W = [4, 10, 7, 9, 9, 9, 9];
+    const sep = (l, m, r) => l + W.map(w => '─'.repeat(w)).join(m) + r;
+    const row = cells => '│' + cells.map((c, i) => {
+      const s = String(c ?? '');
+      // первая колонка (№) — по правому краю; «Труба» — по левому; остальные — по правому
+      return (i === 1 ? pad(s, W[i]) : padL(s, W[i]));
+    }).join('│') + '│';
+    const row3 = (a, b, c) => [row(a), row(b), row(c)];
+    lines.push(sep('┌', '┬', '┐'));
+    // шапка в три строки — все строки одинаковой ширины
+    row3(
+      ['№',  'Труба',     'Длина,', 'Перепад',  'Площадь',  'Давление,', 'Расход,'],
+      ['',   '(D × s),',  'м',      'высот, м', 'отверстий','МПа',       'кг'     ],
+      ['',   'мм',        '',       '',         'мм²',      '',          ''       ],
+    ).forEach(l => lines.push(l));
+    lines.push(sep('├', '┼', '┤'));
     (piping.segments || []).forEach(s => {
       const truba = s.OD && s.wall ? `${s.OD}×${s.wall}` : (s.DN ? `DN${s.DN}` : '—');
-      lines.push(`│${padL(s.id, 4)} │${pad(truba, 10)}│${padL(s.L ?? '—', 6)}│${padL(s.dH ?? '—', 8)}│${padL(s.area ?? '—', 9)}│${padL(s.P ?? '—', 10)}│${padL(s.G ?? '—', 10)}│`);
+      lines.push(row([s.id, truba, s.L ?? '—', s.dH ?? '—', s.area ?? '—', s.P ?? '—', s.G ?? '—']));
     });
-    lines.push('└─────┴──────────┴──────┴────────┴─────────┴──────────┴──────────┘');
+    lines.push(sep('└', '┴', '┘'));
     lines.push('');
     lines.push(`Расчётное время подачи 95% массы mp·0.95 = ${(r.mp*0.95).toFixed(1)} кг — ${r.tpd} с`);
     lines.push('');

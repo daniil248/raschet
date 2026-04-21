@@ -1509,10 +1509,12 @@ function autoDnForDirection(dir) {
   const inst = currentInst();
   const a = inst && AGENTS[inst.agent];
 
-  // Целевая скорость по фазе агента (рекомендации FSSA/ISO 14520/СП 485):
-  //   halocarbon (жидкая фаза в магистрали) — v ≤ ~20 м/с до насадка;
-  //   inert / CO₂ (газовая фаза)            — v ≤ ~40 м/с.
-  const vTarget = (a?.type === 'inert') ? 40 : (a?.type === 'co2') ? 25 : 20;
+  // Целевая скорость по фазе агента (FSSA Pipe Design 2012 / ISO 14520):
+  //   halocarbon — расчёт ведётся по плотности пара (ρ ≈ 7 кг/м³);
+  //                допустимая скорость 40–60 м/с, целим 50;
+  //   inert      — газ, допустимо до 80 м/с, целим 70;
+  //   CO₂        — жидко-паровой, целим 35.
+  const vTarget = (a?.type === 'inert') ? 70 : (a?.type === 'co2') ? 35 : 50;
   const totalMdot = r.mg / (r.tpd || 10);
   const totalNozz = pipe.filter(p => p.nozzle && p.nozzle !== 'none').length || 1;
   const rho = r.r2 || 7;
