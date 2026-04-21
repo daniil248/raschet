@@ -109,7 +109,7 @@ export const CHANGELOGS = {
       'Принадлежности из каталога: динамические строки (название + количество + примечание) — реле контроля фаз, лампы сигнализации, вентиляторы, термостаты, замки и т.п. Позиции попадают в composition как role="accessory".',
       'Итог (шаг 5) показывает группировку по ролям (meter-commercial/meter-technical/ct/monitoring/accessory) с количеством.',
       'Payload pendingPanelSelection.v1 расширен полями configuration.metering / ct / monitoring / accessories + позиции в composition (роли: meter-commercial, meter-technical, ct, monitoring, accessory).',
-      'Файлы: panel-config/index.html (+4-й шаг wizard, 5-й шаг Итог переиндексирован); panel-config/panel-config.js (расширен pcWizState, +PC_CT_PRIMARY_RATIOS / _pcPickCtPrimary, +_pcRenderStep4/_pcRefreshStep4Lists/_pcRenderAccessoryRows/_pcBuildMeteringComposition); panel-config/panel-config.css (+.pc-acc-section / .pc-acc-list / .pc-accessory-row).'
+      'Файлы: panel-config/index.html (+4-й шаг wizard, 5-й шаг Итог переиндексирован); panel-config/panel-config.js (расширен pcWizState, +PC_CT_PRIMARY_RATIOS / _pcPickCtPrimary, +_pcRenderStep4/_pcRefreshStep4Lists/_pcRenderAccessoryRows/_pcBuildMeteringComposition); panel-config/panel-config.css (+.pc-acc-section / .pc-acc-list / .pc-accessory-row); js/engine/index.js (_tryConsumePendingPanelSelection — сохраняет metering/ct/monitoring/accessories в node); js/engine/inspector/panel.js (read-only сводка учёта/ТТ/мониторинга в инспекторе).'
     ] },
     { version: '0.56.0', date: '2026-04-18', items: ['Справка модуля.'] },
     { version: '0.48.0', date: '2026-01-05', items: ['Конфигуратор НКУ (wizard) + пресеты шкафов.'] },

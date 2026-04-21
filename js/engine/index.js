@@ -227,6 +227,13 @@ function _tryConsumePendingPanelSelection() {
     if (cfg.form) node.form = cfg.form;
     if (cfg.composition) node.composition = cfg.composition;
     if (cfg.breakers) node.panelBreakers = cfg.breakers;
+    // v0.59.78: учёт / ТТ / мониторинг / аксессуары — сохраняем целиком,
+    // чтобы инспектор мог показать сводку, а повторный открытый wizard
+    // восстановил состояние (в будущей итерации).
+    if (cfg.metering) node.panelMetering = cfg.metering;
+    if (cfg.ct) node.panelCt = cfg.ct;
+    if (cfg.monitoring) node.panelMonitoring = cfg.monitoring;
+    if (cfg.accessories) node.panelAccessories = cfg.accessories;
     // Инициализация priorities если нужно
     if (cfg.inputs != null) {
       if (!Array.isArray(node.priorities)) node.priorities = [];

@@ -232,6 +232,47 @@ export function openPanelParamsModal(n) {
         <div class="muted" style="font-size:10px;margin-top:4px">Оболочка, шины и автоматы разных номиналов подбираются в конфигураторе и попадают в BOM.</div>
       </div>`);
     } catch (e) { /* опционально */ }
+
+    // v0.59.78: сводка учёта / ТТ / мониторинга / аксессуаров, если ранее
+    // задано в wizard'е panel-config. Read-only, правка — через wizard.
+    try {
+      const m = n.panelMetering || {};
+      const ct = n.panelCt || {};
+      const mon = n.panelMonitoring || {};
+      const acc = Array.isArray(n.panelAccessories) ? n.panelAccessories : [];
+      const hasAny =
+        (m.commercial && m.commercial.enabled) ||
+        (m.technical && m.technical.enabled) ||
+        ct.enabled || mon.enabled || acc.length;
+      if (hasAny) {
+        const lines = [];
+        if (m.commercial && m.commercial.enabled) {
+          lines.push(`🔵 Ком. учёт: ${m.commercial.type || '?'} (${m.commercial.pos === 'input' ? 'до ввода' : 'после ввода'})`);
+        }
+        if (m.technical && m.technical.enabled) {
+          const scopeLbl = m.technical.scope === 'each' ? 'каждая отх.' : m.technical.scope === 'input' ? 'вводы' : `выборочно (${(m.technical.selected || []).length})`;
+          lines.push(`🟢 Техн. учёт: ${m.technical.type || '?'} — ${scopeLbl}`);
+        }
+        if (ct.enabled) {
+          const scopeLbl = ct.scope === 'each' ? 'все автоматы' : ct.scope === 'input' ? 'вводы' : `выборочно (${(ct.selected || []).length})`;
+          const nRatios = Object.keys(ct.perBreaker || {}).length;
+          lines.push(`⚡ ТТ кл.${ct.accuracyClass || '?'}, ${ct.vaBurden || '?'} ВА, вт.${ct.secondary || 5}А — ${scopeLbl}${nRatios ? ` · ${nRatios} позиций` : ''}`);
+        }
+        if (mon.enabled) {
+          const scopeLbl = mon.scope === 'each' ? 'все' : mon.scope === 'input' ? 'вводы' : `выборочно (${(mon.selected || []).length})`;
+          const devLbl = { 'multimeter': 'Мультиметр', 'pq-analyzer': 'Анализатор кач-ва', 'aux-io': 'Дискр.вход', 'relay-output': 'Реле' }[mon.device] || mon.device;
+          lines.push(`📊 Мониторинг: ${devLbl} / ${mon.bus || '?'} — ${scopeLbl}`);
+        }
+        if (acc.length) {
+          lines.push(`🧩 Аксессуары: ${acc.length} поз. (${acc.slice(0, 3).map(a => a.name).filter(Boolean).join(', ')}${acc.length > 3 ? '…' : ''})`);
+        }
+        h.push(`<div style="margin:8px 0;padding:8px 10px;border:1px solid #d0d7e8;border-radius:4px;background:#fafbff;font-size:11px;line-height:1.6">
+          <div style="font-weight:600;color:#1976d2;margin-bottom:3px">Учёт · ТТ · Мониторинг</div>
+          ${lines.map(x => `<div>${x.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</div>`).join('')}
+          <div class="muted" style="font-size:10px;margin-top:4px">Для правки — открыть «⚙ Сконфигурировать НКУ подробно» выше.</div>
+        </div>`);
+      }
+    } catch (e) { /* опционально */ }
   }
 
   // Тип щита / входы / выходы / ёмкость — ТОЛЬКО для LV-щитов (НКУ).
