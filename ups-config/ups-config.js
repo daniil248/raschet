@@ -279,14 +279,66 @@ function renderSelected(list) {
   rows += `<div>Источник:</div><div class="muted">${esc(u.source || '—')}</div>`;
   if (u.notes) rows += `<div>Примечание:</div><div class="muted" style="font-size:11px">${esc(u.notes)}</div>`;
 
+  // Кнопка «Выбрать» — только для готовых ИБП (не для frame/module/battery).
+  // В standalone-режиме (без nodeId в URL) — сохраняем в
+  // raschet.lastUpsConfig.v1, откуда инспектор ИБП Конструктора схем
+  // подхватит через кнопку «⬇ Применить из Конфигуратора».
+  // В контексте конкретного узла (?nodeId=) — сразу пишем в
+  // raschet.pendingUpsSelection.v1 (старый канал), и закрываем вкладку.
+  const canApply = !(isFrame || isModule || isBattVrla || isBattS3);
+  const urlNodeId = new URLSearchParams(location.search).get('nodeId');
+  let applyBtnHtml = '';
+  if (canApply) {
+    if (urlNodeId) {
+      applyBtnHtml = `
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button id="sel-ups-apply-node" class="btn-sm btn-primary">✓ Применить к узлу на схеме</button>
+          <span class="muted" style="font-size:11px">Модель будет применена к узлу ИБП и вкладка закроется.</span>
+        </div>`;
+    } else {
+      applyBtnHtml = `
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button id="sel-ups-apply-standalone" class="btn-sm btn-primary">⬆ Выбрать эту модель</button>
+          <span class="muted" style="font-size:11px">Сохранит модель. В Конструкторе схем откройте параметры ИБП и нажмите «⬇ Применить из Конфигуратора».</span>
+        </div>`;
+    }
+  }
+
   box.innerHTML = `
     <h4>${esc(u.supplier)} · ${esc(u.model)}</h4>
     <div class="grid">${rows}</div>
+    ${applyBtnHtml}
     ${(isFrame || isModule || isBattVrla || isBattS3) ? `
     <p class="muted" style="font-size:11px;margin-top:10px;padding:6px 10px;background:#fff8e1;border-left:3px solid #e65100;border-radius:3px">
       ℹ Это BOM-запись (${typeTitle.replace(/^[^\s]+\s/, '')}). Она не применяется к узлу ИБП напрямую, а используется для спецификации и сметы. Расчёт автономии для S³ шкафов ведётся через модули в справочнике АКБ.
     </p>` : ''}
   `;
+
+  const btnNode = box.querySelector('#sel-ups-apply-node');
+  if (btnNode) btnNode.addEventListener('click', () => {
+    const payload = {
+      nodeId: urlNodeId,
+      ups: u,
+      selectedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem('raschet.pendingUpsSelection.v1', JSON.stringify(payload));
+      flash('Модель передана в Конструктор схем. Возврат…', 'success');
+      setTimeout(() => { try { window.close(); } catch {} }, 1200);
+    } catch (e) {
+      flash('Не удалось передать модель: ' + (e.message || e), 'error');
+    }
+  });
+  const btnStandalone = box.querySelector('#sel-ups-apply-standalone');
+  if (btnStandalone) btnStandalone.addEventListener('click', () => {
+    const payload = { ups: u, selectedAt: Date.now() };
+    try {
+      localStorage.setItem('raschet.lastUpsConfig.v1', JSON.stringify(payload));
+      flash('Модель сохранена. Откройте Конструктор схем → параметры ИБП → «⬇ Применить из Конфигуратора».', 'success');
+    } catch (e) {
+      flash('Не удалось сохранить: ' + (e.message || e), 'error');
+    }
+  });
 }
 
 // ====================== Модалка ручного добавления / редактирования ======================

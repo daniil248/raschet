@@ -74,6 +74,11 @@ export const CHANGELOGS = {
   ],
 
   'ups-config': [
+    { version: '0.59.73', date: '2026-04-21', items: [
+      'Standalone-режим (из Hub, без ?nodeId=): кнопка «⬆ Выбрать эту модель» в панели «Выбранная модель» сохраняет готовый ИБП в localStorage[raschet.lastUpsConfig.v1]. Инспектор ИБП главной схемы подхватывает и применяет по кнопке «⬇ Применить из Конфигуратора».',
+      'Node-targeted режим (из инспектора «⚙ Сконфигурировать подробно»): кнопка «✓ Применить к узлу на схеме» в той же панели — сразу пишет raschet.pendingUpsSelection.v1 и закрывает вкладку.',
+      'Кнопки не показываются для BOM-записей (frame / power-module / battery-cabinet) — они идут в спецификацию, а не в узел ИБП.'
+    ] },
     { version: '0.56.0', date: '2026-04-18', items: ['Справка модуля.'] },
     { version: '0.46.0', date: '2025-11-28', items: ['Wizard подбора ИБП по нагрузке + резерву.'] },
     { version: '0.44.0', date: '2025-10-10', items: ['Первая версия: каталог ИБП, интеграция с главной схемой.'] },
@@ -282,6 +287,12 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.73', date: '2026-04-21', items: [
+      'Конфигуратор ИБП: из Hub (без ?nodeId=) открывался просто как справочник — модель можно было посмотреть, но нельзя выбрать. Добавлена кнопка «⬆ Выбрать эту модель» в панели «Выбранная модель» для готовых ИБП (не для frame/module/battery-cabinet). Клик сохраняет модель в `localStorage[raschet.lastUpsConfig.v1]`.',
+      'В инспекторе ИБП Конструктора схем модалка «Параметры ИБП» теперь проверяет `raschet.lastUpsConfig.v1` и, если запись свежая (< 24 ч), показывает зелёную плашку с именем выбранной модели и двумя кнопками: «⬇ Применить из Конфигуратора» (вызывает applyUpsModel + render + notifyChange) и «✕ Забыть» (удаляет ключ).',
+      'Когда ups-config открыт с ?nodeId= (из инспектора ИБП «⚙ Сконфигурировать подробно»), панель «Выбранная модель» показывает кнопку «✓ Применить к узлу на схеме» — прямой канал через старый `raschet.pendingUpsSelection.v1`, вкладка закрывается автоматически.',
+      'Файлы: ups-config/ups-config.js (renderSelected — +applyBtnHtml + обработчики); js/engine/inspector/ups.js (+ плашка lastUpsConfig + +обработчики up-apply-last-config / up-clear-last-config).'
+    ] },
     { version: '0.59.72', date: '2026-04-21', items: [
       'Reserve-padding под футер теперь выдаётся централизованно через mountFooter() во всех модулях: mountFooter навешивает body.rs-with-mfoot + инжектит CSS `body.rs-with-mfoot { padding-bottom: 32px }`. Это покрывает конструктор схем и все подпрограммы (ups-config, mv-config, rack-config, cable, reports, suppression-config и т.д.) — одним изменением. В app.css правило переехало на body.rs-with-mfoot вместо безусловного body.'
     ] },

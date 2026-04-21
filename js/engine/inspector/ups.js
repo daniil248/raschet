@@ -71,6 +71,25 @@ export function openUpsParamsModal(n) {
     </div>`);
   } catch (e) { /* модуль опционален */ }
 
+  // Приём модели из standalone-сессии Конфигуратора ИБП
+  // (ups-config открыт из Hub без nodeId, пользователь выбрал модель
+  //  и нажал «⬆ Выбрать эту модель» — она легла в lastUpsConfig.v1).
+  try {
+    const rawLast = localStorage.getItem('raschet.lastUpsConfig.v1');
+    if (rawLast) {
+      const last = JSON.parse(rawLast);
+      const ageMin = last?.selectedAt ? Math.round((Date.now() - last.selectedAt) / 60000) : null;
+      const fresh = ageMin != null && ageMin < 24 * 60; // 24 часа
+      if (fresh && last.ups && (last.ups.supplier || last.ups.model)) {
+        h.push(`<div style="margin:6px 0 10px;padding:8px 10px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;font-size:12px">
+          <div style="margin-bottom:6px">В Конфигураторе ИБП выбрано: <b>${escHtml(last.ups.supplier || '')} · ${escHtml(last.ups.model || '')}</b> <span style="color:#888;font-size:11px">(${ageMin} мин назад)</span></div>
+          <button id="up-apply-last-config" class="btn-sm btn-primary" style="margin-right:6px">⬇ Применить из Конфигуратора</button>
+          <button id="up-clear-last-config" class="btn-sm">✕ Забыть</button>
+        </div>`);
+      }
+    }
+  } catch {}
+
   h.push('<h4 style="margin:14px 0 6px">Ручной ввод параметров</h4>');
   h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">Если модель не из справочника и конфигуратор не нужен — заполняйте поля ниже вручную. Для моноблока доступно поле «Выходная мощность», для модульного — frame/модули/резерв.</div>`);
   // Тип ИБП
@@ -268,6 +287,30 @@ export function openUpsParamsModal(n) {
       });
     }
   } catch (e) { /* опционально */ }
+
+  // Кнопки «Применить из Конфигуратора» / «Забыть» — связываем с
+  // raschet.lastUpsConfig.v1 (standalone-канал ups-config).
+  const applyLastBtn = document.getElementById('up-apply-last-config');
+  if (applyLastBtn) applyLastBtn.addEventListener('click', () => {
+    try {
+      const raw = localStorage.getItem('raschet.lastUpsConfig.v1');
+      if (!raw) { flash('Запись Конфигуратора не найдена', 'warn'); return; }
+      const last = JSON.parse(raw);
+      if (!last || !last.ups) { flash('Некорректная запись Конфигуратора', 'error'); return; }
+      snapshot('ups-params:' + n.id + ':lastConfig');
+      applyUpsModel(n, last.ups);
+      render(); notifyChange();
+      flash(`Применено: ${last.ups.supplier || ''} · ${last.ups.model || ''}`, 'success');
+      openUpsParamsModal(n); // перерисовать модалку с новыми параметрами
+    } catch (e) {
+      flash('Ошибка применения: ' + (e.message || e), 'error');
+    }
+  });
+  const clearLastBtn = document.getElementById('up-clear-last-config');
+  if (clearLastBtn) clearLastBtn.addEventListener('click', () => {
+    try { localStorage.removeItem('raschet.lastUpsConfig.v1'); } catch {}
+    openUpsParamsModal(n);
+  });
 
   // Живой перерисовщик при смене зависимых селектов (тип ИБП, режим
   // байпаса). Сохраняет все уже введённые видимые поля — иначе ввод
