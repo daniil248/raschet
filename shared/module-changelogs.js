@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.103', date: '2026-04-21', items: [
+      'Справка (ⓘ → Расчёты) обновлена под новую логику: описан расчёт needed per feed (2N/N+1 → полная demandKw; none → пропорц.), три независимые проверки (PDU < needed = err, PDU > 1.8·needed = warn, avail < needed = err). Явно указано, что PDU vs available больше не сравнивается.',
+      'Файл: rack-config/index.html (секция «Сверка с электрической схемой»).'
+    ] },
     { version: '0.59.102', date: '2026-04-21', items: [
       'Таблица «Вводы» (rc-feed-info) синхронизирована с новой логикой проверок: бейджи «PDU < нагрузки» (err), «ввод < нагрузки» (err), «PDU завышен» (warn при PDU > 1.8×нагрузки), «OK». В колонке PDU показывается «(нужно X кВт)».',
       'Файл: rack-config/rack-config.js (renderFeedInfo — needOf + 4-вариантный badge).'
