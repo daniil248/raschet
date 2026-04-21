@@ -89,7 +89,16 @@ function invertPws(pwsTarget) {
 /* ========================================================================
    Утилиты
    ======================================================================== */
-function nNum(v, d=NaN) { const n = Number(v); return Number.isFinite(n) ? n : d; }
+/* Безопасный парсер числа.
+   КРИТИЧНО: Number('') === 0 (а не NaN), что ломало pointState:
+   пустое поле d трактовалось как «d=0» и обнуляло W. */
+function nNum(v, d=NaN) {
+  if (v == null) return d;
+  const s = String(v).trim();
+  if (s === '') return d;
+  const n = Number(s.replace(',', '.'));
+  return Number.isFinite(n) ? n : d;
+}
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 /* Расчёт state для точки. Допустимые комбинации:
@@ -530,6 +539,23 @@ function writeComputed(p, st) {
 }
 
 
+/* Для каждой точки: если pointState валиден и d/h не введены пользователем —
+   вписываем вычисленные значения в p.x / p.h (без user-флага). Это нужно,
+   чтобы в input-полях «d» и «h» отображались посчитанные значения, а не
+   placeholder «авто». */
+function fillComputedDH() {
+  S.points.forEach(p => {
+    const st = pointState(p, S.P);
+    if (!st) return;
+    if (!p.xUser) p.x = Number((st.W * 1000).toFixed(3));
+    if (!p.hUser) p.h = Number(st.h.toFixed(3));
+    // Заодно синхронизируем t/rh, если они не введены пользователем
+    // (например после override по d — φ пересчитался)
+    if (!p.tUser)  p.t  = Number(st.T.toFixed(2));
+    if (!p.rhUser) p.rh = Number(st.RH.toFixed(2));
+  });
+}
+
 /* Записывает S.points значения в DOM input'ы (только auto-поля). */
 function writeCardsFromState() {
   S.points.forEach((p, i) => {
@@ -934,7 +960,8 @@ function syncTopInputs() {
 function update() {
   readInputs();
   cascade();                  // авто-имена + forward-compute точек по цели процесса
-  writeCardsFromState();      // пушим S → DOM для auto-полей (t, φ, имя) без user-флага
+  fillComputedDH();           // для каждой точки: если d/h не user — вписываем вычисленное
+  writeCardsFromState();      // пушим S → DOM для auto-полей без user-флага
   refreshComputedInCards();
   const { sts, segs, primaryIdx } = computeCycle();
   refreshAutoV(segs, primaryIdx);
