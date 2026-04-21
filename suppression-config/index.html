@@ -57,12 +57,12 @@
           <div class="sup-view-head">
             <h2 id="inst-title">Установка</h2>
             <div class="actions">
-              <button class="sup-btn sup-btn-primary" id="sup-add-dir">+ Направление</button>
-              <button class="sup-btn" id="sup-iso-all">Аксонометрия</button>
-              <button class="sup-btn" id="sup-auto-dn">Диаметры авто</button>
-              <button class="sup-btn" id="sup-hydraulic">Гидравлика</button>
-              <button class="sup-btn" id="sup-spec">Спецификация</button>
-              <button class="sup-btn" id="sup-report">Отчёт</button>
+              <button class="sup-btn sup-btn-primary" id="sup-add-dir" title="Добавить новое направление тушения (зал, машзал, склад и т.п.).">+ Направление</button>
+              <button class="sup-btn" id="sup-iso-all" title="Открыть общую 3D-схему по всем направлениям установки.">Аксонометрия</button>
+              <button class="sup-btn" id="sup-auto-dn" title="Автоматически подобрать DN каждого участка по расходу через него (ветки с меньшим числом насадок получат меньший диаметр).">Диаметры авто</button>
+              <button class="sup-btn" id="sup-hydraulic" title="Гидравлический расчёт Darcy–Weisbach + формула Альтшуля: скорости v, Re, λ, потери ΔP по участкам.">Гидравлика</button>
+              <button class="sup-btn" id="sup-spec" title="Сводная спецификация BOM: модули, насадки, трубы по всем направлениям. CSV и печать.">Спецификация</button>
+              <button class="sup-btn" id="sup-report" title="Текстовый отчёт с исходными данными, формулами и результатами по выбранной методике.">Отчёт</button>
             </div>
           </div>
           <div class="sup-cards" id="inst-cards"></div>
@@ -84,9 +84,9 @@
           <div class="sup-view-head">
             <h2>Сборка модулей</h2>
             <div class="actions">
-              <button class="sup-btn" id="asm-auto">Автосборка</button>
-              <button class="sup-btn sup-btn-primary" id="asm-add">+ Батарея</button>
-              <button class="sup-btn" id="asm-iso">Аксонометрия</button>
+              <button class="sup-btn" id="asm-auto" title="Автоматически создать батарею на каждое направление: основных модулей = N_calc, резервных = N_calc (если включено резервирование в установке).">Автосборка</button>
+              <button class="sup-btn sup-btn-primary" id="asm-add" title="Вручную добавить батарею (группу модулей) и привязать к направлению.">+ Батарея</button>
+              <button class="sup-btn" id="asm-iso" title="3D-схема сборок модулей с коллекторами.">Аксонометрия</button>
             </div>
           </div>
           <table class="sup-tbl" id="asm-tbl">
@@ -179,11 +179,11 @@
           <label><input type="radio" name="f-inst" value="central"> Централизованная</label>
         </div>
         <div class="sup-form-sub">Параметры объекта</div>
-        <label class="sup-field"><span>Наименование</span><input type="text" id="f-site-name"></label>
-        <label class="sup-field"><span>Адрес</span><input type="text" id="f-site-addr"></label>
-        <label class="sup-field"><span>Договор №</span><input type="text" id="f-site-contract"></label>
-        <label class="sup-field"><span>Заказчик</span><input type="text" id="f-site-customer"></label>
-        <label class="sup-field"><span>Дополнительно</span><textarea id="f-site-info" rows="2"></textarea></label>
+        <label class="sup-field"><span>Наименование</span><input type="text" id="f-site-name" title="Полное наименование объекта, напр. «ЦОД Алатау, корпус А»."></label>
+        <label class="sup-field"><span>Адрес</span><input type="text" id="f-site-addr" title="Физический адрес объекта."></label>
+        <label class="sup-field"><span>Договор №</span><input type="text" id="f-site-contract" title="Номер договора / ТЗ для отчёта."></label>
+        <label class="sup-field"><span>Заказчик</span><input type="text" id="f-site-customer" title="Юр. лицо заказчика — выводится в шапке отчёта."></label>
+        <label class="sup-field"><span>Дополнительно</span><textarea id="f-site-info" rows="2" title="Любые примечания: название раздела документации, шифр и т.п."></textarea></label>
       </div>
       <footer>
         <button value="ok" class="sup-btn sup-btn-primary">OK</button>
@@ -204,26 +204,26 @@
         </div>
         <label class="sup-field"><span>Температура минимальная Tмин, °C <sup title="Используется в формуле r1 = r0·k3·293/(273+tm). Чем ниже — тем выше требуемая масса ГОТВ.">ⓘ</sup></span><input type="number" id="d-tmin" value="20" step="1" title="Минимальная температура в защищаемом помещении в холодный период."></label>
         <label class="sup-field"><span>Требуемое время подачи ГОТВ t, с <sup title="По СП 485 / NFPA 2001 для хладонов — 10 с (95% массы), для инертных газов — 60 с, для CO₂ — 60 с.">ⓘ</sup></span><input type="number" id="d-feed" value="10" step="1" title="Нормативное время полного выпуска ГОТВ."></label>
-        <label class="sup-field sup-check"><input type="checkbox" id="d-smoke" checked><span>Газодымоудаление</span></label>
-        <label class="sup-field"><span>Огнестойкость стыковочных узлов</span>
-          <select id="d-fire"><option>EI30</option><option>EI45</option><option>EI60</option><option>EI90</option><option>EI120</option></select>
+        <label class="sup-field sup-check" title="Включите, если система вентиляции автоматически отключается при пуске АГПТ (клапаны закрываются)."><input type="checkbox" id="d-smoke" checked><span>Газодымоудаление <sup title="При включённом ГДУ вентиляционные проёмы в расчёте негерметичности не учитываются.">ⓘ</sup></span></label>
+        <label class="sup-field"><span>Огнестойкость стыковочных узлов <sup title="Требуемый предел огнестойкости проходок и стыков трубопровода сквозь ограждающие конструкции. EI60 — типовой для серверных.">ⓘ</sup></span>
+          <select id="d-fire" title="Предел огнестойкости в минутах по ГОСТ 30247."><option>EI30</option><option>EI45</option><option>EI60</option><option>EI90</option><option>EI120</option></select>
         </label>
-        <label class="sup-field"><span>Тип монтажа</span>
-          <select id="d-mount"><option value="wall">В стену</option><option value="ceiling">В потолок</option><option value="floor">В пол</option></select>
+        <label class="sup-field"><span>Тип монтажа <sup title="Способ монтажа трубопровода разводки. Влияет на коэффициенты местных сопротивлений и выбор креплений.">ⓘ</sup></span>
+          <select id="d-mount" title="Способ монтажа разводки."><option value="wall">В стену</option><option value="ceiling">В потолок</option><option value="floor">В пол</option></select>
         </label>
-        <label class="sup-field"><span>Место выброса</span>
-          <select id="d-exh"><option value="outside">Улица</option><option value="corridor">Коридор</option><option value="shaft">Шахта</option></select>
+        <label class="sup-field"><span>Место выброса <sup title="Куда отводится газ через клапан сброса избыточного давления (Прил. Ж СП 485).">ⓘ</sup></span>
+          <select id="d-exh" title="Куда направлен сброс избыточного давления при срабатывании."><option value="outside">Улица</option><option value="corridor">Коридор</option><option value="shaft">Шахта</option></select>
         </label>
-        <label class="sup-field"><span>Расстояние до выброса, м</span><input type="number" id="d-exh-d" value="10" step="1"></label>
-        <label class="sup-field sup-check"><input type="checkbox" id="d-prelief" checked><span>Сброс избыточного давления</span></label>
-        <label class="sup-field"><span>Исполнение</span>
-          <select id="d-exec"><option value="standard">Стандартное</option><option value="explosive">Взрывозащищённое</option><option value="marine">Морское</option></select>
+        <label class="sup-field"><span>Расстояние до выброса, м <sup title="Длина воздуховода от клапана сброса до точки выхода. Учитывается в потерях.">ⓘ</sup></span><input type="number" id="d-exh-d" value="10" step="1"></label>
+        <label class="sup-field sup-check" title="Включить расчёт площади сбросного проёма Fc по СП 485 Прил. Ж."><input type="checkbox" id="d-prelief" checked><span>Сброс избыточного давления <sup title="Если конструкции не выдерживают давление 3–5 кПа — нужен проём Fc (выключатель ниже).">ⓘ</sup></span></label>
+        <label class="sup-field"><span>Исполнение <sup title="Условия эксплуатации оборудования. Взрывозащищённое и морское — спецификация модулей с другими сертификатами.">ⓘ</sup></span>
+          <select id="d-exec" title="Требования к исполнению модулей."><option value="standard">Стандартное</option><option value="explosive">Взрывозащищённое</option><option value="marine">Морское</option></select>
         </label>
-        <label class="sup-field"><span>Класс пожара</span>
-          <select id="d-class"><option>A</option><option>A2</option><option>B</option></select>
+        <label class="sup-field"><span>Класс пожара <sup title="A — твёрдые горючие (бумага, дерево, кабели). A2 — твёрдые пластики. B — горючие жидкости. Определяет нормативную Cн.">ⓘ</sup></span>
+          <select id="d-class" title="Класс пожара по ГОСТ 27331."><option>A</option><option>A2</option><option>B</option></select>
         </label>
-        <label class="sup-field"><span>Класс герметичности</span>
-          <select id="d-leak"><option value="I">I (герметичное)</option><option value="II" selected>II (стандарт)</option><option value="III">III (с проёмами)</option></select>
+        <label class="sup-field"><span>Класс герметичности <sup title="I — полностью герметичное (сейф, морозильник); II — стандартное помещение; III — с открытыми проёмами. Влияет на коэффициент утечек k2.">ⓘ</sup></span>
+          <select id="d-leak" title="Класс герметичности ограждений."><option value="I">I (герметичное)</option><option value="II" selected>II (стандарт)</option><option value="III">III (с проёмами)</option></select>
         </label>
       </div>
       <footer>
@@ -295,15 +295,15 @@
       <div class="sup-iso-body">
         <div class="sup-iso-view">
           <div class="sup-iso-tb">
-            <button type="button" class="sup-btn" data-view="iso">Изометрия</button>
-            <button type="button" class="sup-btn" data-view="top">Сверху</button>
-            <button type="button" class="sup-btn" data-view="front">Спереди</button>
-            <button type="button" class="sup-btn" data-view="side">Сбоку</button>
+            <button type="button" class="sup-btn" data-view="iso" title="Изометрический вид (yaw 30° / pitch ≈25°).">Изометрия</button>
+            <button type="button" class="sup-btn" data-view="top" title="Вид сверху (план).">Сверху</button>
+            <button type="button" class="sup-btn" data-view="front" title="Вид спереди (фронтальный фасад).">Спереди</button>
+            <button type="button" class="sup-btn" data-view="side" title="Вид сбоку.">Сбоку</button>
             <span class="sep"></span>
-            <button type="button" class="sup-btn" id="iso-toggle-nums">№</button>
-            <button type="button" class="sup-btn" id="iso-toggle-nozz">Насадки</button>
-            <button type="button" class="sup-btn" id="iso-toggle-nodes">Узлы</button>
-            <button type="button" class="sup-btn" id="iso-zoom-fit">⌂</button>
+            <button type="button" class="sup-btn" id="iso-toggle-nums" title="Показать / скрыть номера участков.">№</button>
+            <button type="button" class="sup-btn" id="iso-toggle-nozz" title="Показать / скрыть насадки на концах участков.">Насадки</button>
+            <button type="button" class="sup-btn" id="iso-toggle-nodes" title="Показать / скрыть маркеры узлов (стыков) и подсказочные оси.">Узлы</button>
+            <button type="button" class="sup-btn" id="iso-zoom-fit" title="Вписать схему в окно (Fit).">⌂</button>
             <span class="sep"></span>
             <span class="sup-iso-stat" id="iso-vtr">V<sub>тр</sub> = 0.000 м³</span>
           </div>
@@ -321,23 +321,23 @@
             <h2>Новый участок от узла</h2>
             <div class="sup-hint">Выберите направление:</div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:4px 0;">
-              <button type="button" class="sup-btn" data-axis="x">X+ →</button>
-              <button type="button" class="sup-btn" data-axis="y">Y+ ↑</button>
-              <button type="button" class="sup-btn" data-axis="z">Z+ ⊗</button>
-              <button type="button" class="sup-btn" data-axis="-x">X− ←</button>
-              <button type="button" class="sup-btn" data-axis="-y">Y− ↓</button>
-              <button type="button" class="sup-btn" data-axis="-z">Z− ⊙</button>
+              <button type="button" class="sup-btn" data-axis="x" title="Добавить участок в положительном направлении оси X (вправо).">X+ →</button>
+              <button type="button" class="sup-btn" data-axis="y" title="Добавить участок в положительном направлении оси Y (вверх).">Y+ ↑</button>
+              <button type="button" class="sup-btn" data-axis="z" title="Добавить участок в положительном направлении оси Z (от наблюдателя).">Z+ ⊗</button>
+              <button type="button" class="sup-btn" data-axis="-x" title="Добавить участок в отрицательном направлении X (влево).">X− ←</button>
+              <button type="button" class="sup-btn" data-axis="-y" title="Добавить участок в отрицательном направлении Y (вниз).">Y− ↓</button>
+              <button type="button" class="sup-btn" data-axis="-z" title="Добавить участок в отрицательном направлении Z (к наблюдателю).">Z− ⊙</button>
             </div>
-            <label class="sup-field"><span>Длина, м</span><input type="number" id="seg-L" step="0.1" value="1"></label>
-            <label class="sup-field"><span>DN, мм</span>
-              <select id="seg-DN">
+            <label class="sup-field"><span>Длина, м <sup title="Длина участка вдоль выбранного направления. Можно изменить позже в списке «Участки».">ⓘ</sup></span><input type="number" id="seg-L" step="0.1" value="1" title="Длина нового участка, м."></label>
+            <label class="sup-field"><span>DN, мм <sup title="Условный диаметр трубы. Для магистрали DN40+; для отводов на одну насадку — DN15–20. Кнопкой «Диаметры авто» можно пересчитать автоматически.">ⓘ</sup></span>
+              <select id="seg-DN" title="Условный диаметр трубы, мм.">
                 <option>15</option><option>20</option><option>22</option><option>25</option><option>28</option>
                 <option>32</option><option>34</option><option>40</option><option>50</option><option>65</option>
                 <option>80</option><option>100</option>
               </select>
             </label>
-            <label class="sup-field"><span>Насадок на конце</span>
-              <select id="seg-noz">
+            <label class="sup-field"><span>Насадок на конце <sup title="R-360 — круговой (центр зоны); R-180 — пристенный; радиальный — для локального тушения. Участок без насадка — транзитный.">ⓘ</sup></span>
+              <select id="seg-noz" title="Тип выпускного устройства в конечной точке участка.">
                 <option value="none">Отсутствует</option>
                 <option value="R-360">Насадок R-360</option>
                 <option value="R-180">Насадок R-180</option>
