@@ -11,7 +11,7 @@ import {
   pressureAtAltitude, processPowerKW, processMoistureKgH,
   RHO_NORMAL, dewPointFromW,
 } from './psychrometrics-core.js';
-import { render, plotPoint, plotProcess, arrowDefs } from './psychrometrics-chart.js';
+import { render, plotPoint, plotProcess, arrowDefs, plotLegend } from './psychrometrics-chart.js';
 
 const $  = (id) => document.getElementById(id);
 const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -874,6 +874,10 @@ function renderChart(sts) {
     overlay += plotPoint(ctx, st, String(i+1), '#0d47a1');
     nPlotted++;
   });
+  // Легенда с детальными параметрами всех точек — в правый нижний угол
+  if (nPlotted > 0) {
+    overlay += plotLegend(opts, sts, S.points.map(p => p.name || ''));
+  }
   // Фолбэк: цикл пуст или все точки без t/φ — показываем подсказку
   if (nPlotted === 0) {
     const cx = (opts.marginL + (opts.width - opts.marginR)) / 2;

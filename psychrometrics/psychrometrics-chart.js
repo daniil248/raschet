@@ -127,14 +127,54 @@ export function plotPoint(ctx, st, label, color = '#0d47a1') {
   let s = `<g>`;
   s += `<circle cx="${x}" cy="${y}" r="4" fill="${color}" stroke="#fff" stroke-width="1.2"/>`;
   if (label) {
-    s += `<text x="${x + 7}" y="${y - 7}"
-            style="font-size:11px;fill:${color};font-weight:700;">${label}</text>`;
-    s += `<text x="${x + 7}" y="${y + 5}"
-            style="font-size:9px;fill:#555;">
-            t=${st.T}°C, φ=${st.RH}%, d=${(st.W*1000).toFixed(1)} г/кг, h=${st.h} кДж/кг</text>`;
+    // Только компактный номер возле кружка. Подробные параметры (t/φ/d/h)
+    // выводятся отдельной легендой в правом нижнем углу диаграммы —
+    // см. renderChart() в psychrometrics.js.
+    s += `<text x="${x + 7}" y="${y - 5}"
+            style="font-size:12px;fill:${color};font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3px;">${label}</text>`;
   }
   s += `</g>`;
   return s;
+}
+
+/* Легенда точек в правом нижнем углу диаграммы. Возвращает SVG-блок. */
+export function plotLegend(opts, sts, pointNames = []) {
+  const items = [];
+  sts.forEach((st, i) => {
+    if (!st) return;
+    const name = pointNames[i] ? ` ${pointNames[i].slice(0, 20)}` : '';
+    items.push({
+      idx: i + 1, name,
+      txt: `t=${st.T.toFixed(1)}°C · φ=${st.RH.toFixed(0)}% · d=${(st.W*1000).toFixed(2)} г/кг · h=${st.h.toFixed(2)} кДж/кг`
+    });
+  });
+  if (!items.length) return '';
+  const lineH = 14;
+  const padX = 8, padY = 6;
+  const boxW = 360;
+  const boxH = items.length * lineH + padY * 2 + 16; // +16 для заголовка
+  const x0 = opts.width - opts.marginR - boxW;
+  const y0 = opts.height - opts.marginB - boxH - 4;
+  let s = `<g class="psy-legend" pointer-events="none">`;
+  s += `<rect x="${x0}" y="${y0}" width="${boxW}" height="${boxH}" rx="4"
+          fill="#fff" stroke="#b0bec5" stroke-width="0.8" opacity="0.96"/>`;
+  s += `<text x="${x0 + padX}" y="${y0 + padY + 10}"
+          style="font-size:10px;font-weight:700;fill:#37474f;">Параметры точек</text>`;
+  items.forEach((it, k) => {
+    const y = y0 + padY + 16 + (k + 1) * lineH - 3;
+    s += `<text x="${x0 + padX}" y="${y}" style="font-size:10px;fill:#263238;">`
+       + `<tspan font-weight="700" fill="#0d47a1">${it.idx}.</tspan>`
+       + `<tspan fill="#455a64">${escXml(it.name)}</tspan>`
+       + ` <tspan fill="#263238">${it.txt}</tspan>`
+       + `</text>`;
+  });
+  s += `</g>`;
+  return s;
+}
+
+function escXml(s) {
+  return String(s).replace(/[<>&"']/g, c =>
+    ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
 }
 
 export function plotProcess(ctx, points, color = '#0d47a1') {
