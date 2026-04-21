@@ -293,16 +293,42 @@ export function consumerGroupItems(n) {
   }));
 }
 
-// Номинальный (установочный) ток потребителя или группы
+// Номинальный (установочный) ток потребителя или группы.
+// v0.59.95: для individual-группы суммируем токи по каждому прибору со
+// своим cos φ — раньше использовался общий n.cosPhi и завышал/занижал
+// ток при смешанных нагрузках (двигатель 0.85 + освещение 1.0).
 export function consumerNominalCurrent(n) {
-  const P = consumerTotalDemandKw(n);
-  return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n), isNodeDC(n));
+  const U = nodeVoltage(n);
+  const ph3 = isThreePhase(n);
+  const dc = isNodeDC(n);
+  if (n && n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 0) {
+    const members = consumerGroupItems(n);
+    let I = 0;
+    for (const m of members) I += computeCurrentA(m.demandKw, U, m.cosPhi, ph3, dc);
+    return I;
+  }
+  return computeCurrentA(consumerTotalDemandKw(n), U, n.cosPhi, ph3, dc);
 }
 
-// Расчётный ток (с учётом Ки и loadFactor сценария)
+// Расчётный ток (с учётом Ки и loadFactor сценария).
+// v0.59.95: для individual-группы применяется Ки и cos φ каждого прибора
+// индивидуально (с фолбэком на группу), а не общий n.kUse на всю группу.
 export function consumerRatedCurrent(n) {
-  const P = consumerTotalDemandKw(n) * (Number(n.kUse) || 1) * effectiveLoadFactor(n);
-  return computeCurrentA(P, nodeVoltage(n), n.cosPhi, isThreePhase(n), isNodeDC(n));
+  const U = nodeVoltage(n);
+  const ph3 = isThreePhase(n);
+  const dc = isNodeDC(n);
+  const lf = effectiveLoadFactor(n);
+  if (n && n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 0) {
+    const members = consumerGroupItems(n);
+    let I = 0;
+    for (const m of members) {
+      const P = m.demandKw * (Number(m.kUse) || 1) * lf;
+      I += computeCurrentA(P, U, m.cosPhi, ph3, dc);
+    }
+    return I;
+  }
+  const P = consumerTotalDemandKw(n) * (Number(n.kUse) || 1) * lf;
+  return computeCurrentA(P, U, n.cosPhi, ph3, dc);
 }
 
 // Пусковой ток.

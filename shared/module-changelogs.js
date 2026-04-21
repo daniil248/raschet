@@ -331,6 +331,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.95', date: '2026-04-21', items: [
+      'Номинальный и расчётный ток группы (individual-режим) считаются по каждому прибору отдельно — со своим cos φ и своим Ки, с фолбэком на параметры группы. Раньше использовался общий n.cosPhi / n.kUse на всю группу, что искажало ток при смешанных нагрузках (например: двигатель cosφ=0.85 + освещение cosφ=1.0 давали общий 0.92 и завышенный ток; или мотор Ки=0.8 + розетки Ки=0.3 давали среднее 0.55 на всех).',
+      'Теперь формула: I = Σ computeCurrentA(P_i × Ки_i × loadFactor, U, cosφ_i, …) — fair-share по приборам.',
+      'Файлы: js/engine/electrical.js (consumerNominalCurrent / consumerRatedCurrent — ветки для groupMode=individual через consumerGroupItems).'
+    ] },
     { version: '0.59.94', date: '2026-04-21', items: [
       'Пусковой ток группы (individual-режим) считается по сценарию «ступенчатый пуск»: все прочие приборы работают в номинале, стартует один самый тяжёлый со своим inrushFactor. Формула: I_peak = Σ I_nom_i + (inrush_max − 1) × I_nom_max. Раньше применялся плоский n.inrushFactor ко всей группе — что завышало пик, если у членов разные кратности пуска (например, группа «двигатель 5× + освещение 1× + розетка 1×» давала 5× от Σ, а реально пик ≈ Σ + 4·I_двигателя).',
       'Файлы: js/engine/electrical.js (consumerInrushCurrent — ветка для groupMode=individual через consumerGroupItems).'
