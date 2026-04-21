@@ -214,10 +214,10 @@ const FIELDS = {
   Gda: { label: 'G<sub>да</sub>',            unit: 'кг/ч',    precision: 2 },
   Gs:  { label: 'G<sub>да</sub>',            unit: 'кг/с',    precision: 4 },
   // Константы
-  Rda: { label: 'R<sub>да</sub>',            unit: 'Дж/(кг·К)', precision: 3, hint: 'константа' },
-  Rv:  { label: 'R<sub>в</sub>',             unit: 'Дж/(кг·К)', precision: 3, hint: 'константа' },
-  Ma:  { label: 'M (сух. воздух)',           unit: 'г/моль',   precision: 4, hint: 'константа' },
-  Mv:  { label: 'M (вода)',                  unit: 'г/моль',   precision: 4, hint: 'константа' },
+  Rda: { label: 'R<sub>да</sub>',            unit: 'Дж/(кг·К)', precision: 3, readOnly: true, hint: 'константа' },
+  Rv:  { label: 'R<sub>в</sub>',             unit: 'Дж/(кг·К)', precision: 3, readOnly: true, hint: 'константа' },
+  Ma:  { label: 'M (сух. воздух)',           unit: 'г/моль',   precision: 4, readOnly: true, hint: 'константа' },
+  Mv:  { label: 'M (вода)',                  unit: 'г/моль',   precision: 4, readOnly: true, hint: 'константа' },
 };
 
 const GROUPS = [

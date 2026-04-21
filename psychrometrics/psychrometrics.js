@@ -867,10 +867,23 @@ function renderChart(sts) {
                 <animate attributeName="opacity" values="0.85;0.35;0.85" dur="1.4s" repeatCount="indefinite"/>
                </circle>`;
   }
+  let nPlotted = 0;
   sts.forEach((st, i) => {
     if (!st) return;
     overlay += plotPoint(ctx, st, String(i+1), '#0d47a1');
+    nPlotted++;
   });
+  // Фолбэк: цикл пуст или все точки без t/φ — показываем подсказку
+  if (nPlotted === 0) {
+    const cx = (opts.marginL + (opts.width - opts.marginR)) / 2;
+    const cy = (opts.marginT + (opts.height - opts.marginB)) / 2;
+    overlay += `<g pointer-events="none">
+      <rect x="${cx-220}" y="${cy-40}" width="440" height="80" rx="6"
+            fill="#fff" stroke="#c62828" stroke-width="1.2" opacity="0.95"/>
+      <text x="${cx}" y="${cy-10}" text-anchor="middle" font-size="14" font-weight="700" fill="#c62828">Нет точек на диаграмме</text>
+      <text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="11" fill="#37474f">Задайте t и φ хотя бы в одной карточке или выберите «Демо-цикл»</text>
+    </g>`;
+  }
   host.innerHTML = svg.replace('</svg>', overlay + '</svg>');
   // Readout overlay (div над svg)
   let readout = host.querySelector('.psy-xh-readout');
