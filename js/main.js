@@ -406,10 +406,13 @@ function _showRemoteConflictModal(doc, diff) {
           <h2>🔄 Удалённые изменения проекта</h2>
         </div>
         <div class="modal-body" id="mrc-body"></div>
-        <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-          <button id="mrc-keep-local" type="button">Оставить локальные</button>
-          <button id="mrc-dismiss" type="button">Решить позже</button>
-          <button id="mrc-apply-remote" type="button" class="primary">Принять удалённые</button>
+        <div class="modal-foot" style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;align-items:center">
+          <button id="mrc-backup-local" type="button" title="Скачать текущее (локальное) состояние проекта как JSON-файл для последующего восстановления">💾 Сохранить локальное в файл</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="mrc-keep-local" type="button">Оставить локальные</button>
+            <button id="mrc-dismiss" type="button">Решить позже</button>
+            <button id="mrc-apply-remote" type="button" class="primary">Принять удалённые</button>
+          </div>
         </div>
       </div>`;
     document.body.appendChild(modal);
@@ -439,9 +442,10 @@ function _showRemoteConflictModal(doc, diff) {
     </div>
     <div style="font-size:11px;color:#666;line-height:1.55">
       Всего различий: <b>${total}</b>. Автор последнего сохранения: ${authorName}.<br>
-      <b>Принять удалённые</b> — потеряете свои несохранённые правки.<br>
+      <b>Принять удалённые</b> — потеряете свои несохранённые правки (рекомендуется, если разница большая и чужая версия новее).<br>
       <b>Оставить локальные</b> — при следующем сохранении ваша версия перезапишет удалённую.<br>
-      <b>Решить позже</b> — модалка скроется, можно будет вернуться к решению.
+      <b>Решить позже</b> — модалка скроется, можно будет вернуться к решению.<br>
+      <b>💾 Сохранить локальное в файл</b> — скачать JSON-снимок текущей схемы, чтобы потом при необходимости импортировать обратно (безопасная страховка перед «Принять удалённые»).
     </div>`;
   modal.classList.remove('hidden');
   return new Promise(resolve => {
@@ -449,6 +453,28 @@ function _showRemoteConflictModal(doc, diff) {
     modal.querySelector('#mrc-apply-remote').onclick = () => close('remote');
     modal.querySelector('#mrc-keep-local').onclick = () => close('local');
     modal.querySelector('#mrc-dismiss').onclick = () => close('dismiss');
+    // v0.59.82: страховка — скачать локальную версию как JSON до принятия
+    // remote. Модалка остаётся открытой, user сам решит что дальше.
+    const btnBackup = modal.querySelector('#mrc-backup-local');
+    if (btnBackup) btnBackup.onclick = () => {
+      try {
+        const scheme = window.Raschet.getScheme();
+        const p = state.currentProject || {};
+        const safeName = String(p.name || 'project').replace(/[^a-zA-Z0-9а-яА-Я _.-]/g, '_');
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const blob = new Blob([JSON.stringify(scheme, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${safeName}__local-backup__${ts}.json`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        flash('Локальная версия сохранена в файл', 'success');
+      } catch (e) {
+        console.error('[backup-local]', e);
+        flash('Не удалось экспортировать: ' + (e.message || e), 'error');
+      }
+    };
   });
 }
 
