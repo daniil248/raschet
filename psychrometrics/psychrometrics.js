@@ -203,6 +203,7 @@ function procArrow(pr, i) {
     </label>
     <label style="font-size:10px;color:#666;margin-top:2px">q<sub>w</sub>, кг/ч
       <input type="number" data-col="qw" data-i="${i}" data-user="${duQw}" data-ts="${tsQw}" value="${pr.qw ?? ''}" step="0.1" placeholder="авто">
+      <span data-role="condensate" style="display:none;margin-top:3px;padding:3px 5px;background:#e1f5fe;border:1px solid #4fc3f7;border-radius:3px;font-size:10px;color:#01579b;font-weight:600;"></span>
     </label>
     <label style="font-size:10px;color:#666;margin-top:4px">V процесса, м³/ч
       <input type="number" data-col="V" data-i="${i}" data-user="${hasUserV?'1':''}" value="${hasUserV?userV:''}" step="100" placeholder="авто (масса)">
@@ -790,6 +791,10 @@ function renderResults(sts, segs) {
   // Итоговая строка: суммы Q (нагрев / охл) и qw (увл / осуш)
   const anyProc = segs.some(s => s);
   if (anyProc) {
+    // Конденсат = |суммарное осушение| в кг/ч, л/ч, л/сут.
+    const condKgH = sumQwDeh;
+    const condLph = condKgH / 0.998;
+    const condLpd = condLph * 24;
     b2.insertAdjacentHTML('beforeend', `
       <tr style="background:#eceff1;font-weight:700;border-top:2px solid #90a4ae">
         <td colspan="7" style="text-align:right;color:#37474f">ИТОГО по циклу:</td>
@@ -801,6 +806,13 @@ function renderResults(sts, segs) {
         </td>
         <td style="font-size:10px;color:#37474f">нагрев/охл.<br>увл./осуш.</td>
       </tr>
+      ${condKgH > 0.001 ? `
+      <tr style="background:#e1f5fe;border-top:1px solid #4fc3f7">
+        <td colspan="7" style="text-align:right;color:#01579b;font-weight:700">💧 Конденсат (суммарно по осушению):</td>
+        <td colspan="3" style="color:#01579b;font-weight:700">
+          ${condKgH.toFixed(3)} кг/ч ≈ ${condLph.toFixed(3)} л/ч ≈ ${condLpd.toFixed(1)} л/сут
+        </td>
+      </tr>` : ''}
     `);
   }
 }
@@ -1223,6 +1235,7 @@ function update() {
   const { sts, segs, primaryIdx } = computeCycle();
   refreshAutoV(segs, primaryIdx);
   fillComputedQW(segs);       // для каждой стрелки: Q и qw — вычислены, если не user
+  fillCondensate(segs);       // для C/A с осушением — сколько конденсата (кг/ч, л/ч, л/сут)
   fillProcWarnings(sts);      // предупреждения о несовместимости типа процесса и целевой точки
   renderResults(sts, segs);
   renderChart(sts);
@@ -1324,6 +1337,36 @@ function fillComputedQW(segs) {
       const val = col === 'Q' ? s.Q.toFixed(2) : s.qw.toFixed(3);
       inp.value = val;
     });
+  });
+}
+
+/* Подсказка «сколько будет конденсата» при охлаждении с осушением.
+   При C-процессе (и при A/S/X с отрицательным qw — это физически тоже
+   осушение, если W₂<W₁) выводим под q_w синюю плашку:
+     • кг/ч — модуль qw
+     • л/ч — то же в литрах (ρ_воды ≈ 0.998 кг/л при 20°C, для простоты =1)
+     • л/сут — суточный объём конденсата (важно для дренажа)
+   Плюс суммарная точка росы t_р₁ входного потока — для проверки, что
+   t_поверхности охладителя ниже t_р (иначе осушения просто не будет). */
+function fillCondensate(segs) {
+  segs.forEach((s, i) => {
+    const arr = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"]`);
+    if (!arr) return;
+    const box = arr.querySelector('[data-role="condensate"]');
+    if (!box) return;
+    if (!s || !(s.qw < -0.001)) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+    const abs = Math.abs(s.qw);          // кг/ч
+    const lph = abs / 0.998;             // л/ч (ρ_воды ≈ 998 кг/м³ при 20 °C)
+    const lpd = lph * 24;                // л/сут
+    box.style.display = '';
+    box.innerHTML =
+      `💧 Конденсат: <b>${abs.toFixed(3)}</b> кг/ч ≈ `
+      + `<b>${lph.toFixed(3)}</b> л/ч ≈ `
+      + `<b>${lpd.toFixed(1)}</b> л/сут`;
   });
 }
 
