@@ -1059,15 +1059,71 @@ function renderFormulas() {
 /* ========================================================================
    Демо-циклы и действия
    ======================================================================== */
-function loadDemo() {
+const DEMOS = {
+  'summer': {
+    label: 'Лето: охл./осуш. → доводчик',
+    apply: () => {
+      const now = performance.now();
+      S.points = [
+        { name: 'Лето наружный',   nameUser: true, t: 35, tUser: true, tTs: now, rh: 50, rhUser: true, rhTs: now, x: '', h: '', V: '' },
+        { name: 'После охл./осуш.', nameUser: true, t: 14, tUser: true, tTs: now+1, rh: '', x: '', h: '', V: '' },
+        { name: 'Приточный',        nameUser: true, t: 22, tUser: true, tTs: now+2, rh: '', x: '', h: '', V: '' },
+      ];
+      S.procs = [ { type:'C', Q:'', qw:'' }, { type:'P', Q:'', qw:'' } ];
+    }
+  },
+  'winter': {
+    label: 'Зима: нагрев → адиабат. увлажн.',
+    apply: () => {
+      const now = performance.now();
+      S.points = [
+        { name: 'Зима наружный',    nameUser: true, t: -20, tUser: true, tTs: now, rh: 85, rhUser: true, rhTs: now, x: '', h: '', V: '' },
+        { name: 'После калорифера', nameUser: true, t: 28,  tUser: true, tTs: now+1, rh: '', x: '', h: '', V: '' },
+        { name: 'После увлажн.',    nameUser: true, t: '', rh: 40, rhUser: true, rhTs: now+2, x: '', h: '', V: '' },
+      ];
+      S.procs = [ { type:'P', Q:'', qw:'' }, { type:'A', Q:'', qw:'' } ];
+    }
+  },
+  'recup': {
+    label: 'Зима + рекуператор: утилизация тепла',
+    apply: () => {
+      const now = performance.now();
+      S.points = [
+        { name: 'Зима наружный',  nameUser: true, t: -20, tUser: true, tTs: now,   rh: 85, rhUser: true, rhTs: now,   x: '', h: '', V: '' },
+        { name: 'После рекуп.',   nameUser: true, t: '', rh: '', x: '', h: '', V: '' },
+        { name: 'После калорифера',nameUser: true, t: 22, tUser: true, tTs: now+2, rh: '', x: '', h: '', V: '' },
+        { name: 'Вытяжка из пом.', nameUser: true, t: 22, tUser: true, tTs: now+3, rh: 40, rhUser: true, rhTs: now+3, x: '', h: '', V: '' },
+      ];
+      S.procs = [
+        { type:'R', Q:'', qw:'', recupWith:'3', recupEff:'0.65' },
+        { type:'P', Q:'', qw:'' },
+        { type:'none', Q:'', qw:'' },    // вытяжка отдельная ветка (разрыв)
+      ];
+    }
+  },
+  'recirc': {
+    label: 'Рециркуляция: смешение с приточкой',
+    apply: () => {
+      const now = performance.now();
+      S.points = [
+        { name: 'Наружный',       nameUser: true, t: -10, tUser: true, tTs: now,   rh: 80, rhUser: true, rhTs: now,   x: '', h: '', V: '' },
+        { name: 'Смесь 30/70',    nameUser: true, t: '', rh: '', x: '', h: '', V: '' },
+        { name: 'После нагрева',  nameUser: true, t: 22, tUser: true, tTs: now+2, rh: '', x: '', h: '', V: '' },
+        { name: 'Рецирк. из пом.', nameUser: true, t: 22, tUser: true, tTs: now+3, rh: 40, rhUser: true, rhTs: now+3, x: '', h: '', V: '' },
+      ];
+      S.procs = [
+        { type:'M', Q:'', qw:'', mixWith:'3', mixRatio:'0.3' },
+        { type:'P', Q:'', qw:'' },
+        { type:'none', Q:'', qw:'' },
+      ];
+    }
+  },
+};
+
+function loadDemo(key) {
+  const demo = DEMOS[key] || DEMOS['summer'];
   S.alt = 0; S.P = 101325; S.rhMax = 100; S.tEvap = 15; S.vBase = 10000;
-  const now = performance.now();
-  S.points = [
-    { name: 'Лето наружный',  nameUser: true, t: 35, tUser: true, tTs: now, rh: 50, rhUser: true, rhTs: now, x: '', h: '', V: '' },
-    { name: '',               t: 14, tUser: true, tTs: now+1, rh: '', x: '', h: '', V: '' },
-    { name: '',               t: 22, tUser: true, tTs: now+2, rh: '', x: '', h: '', V: '' },
-  ];
-  S.procs = [ { type:'C', Q:'', qw:'' }, { type:'P', Q:'', qw:'' } ];
+  demo.apply();
   syncTopInputs();
   renderCycle();
   update();
@@ -1244,7 +1300,12 @@ function wire() {
     S.procs = [];
     rerenderCycle();
   });
-  $('psy-demo').addEventListener('click', loadDemo);
+  $('psy-demo').addEventListener('change', (e) => {
+    const key = e.target.value;
+    if (!key) return;
+    loadDemo(key);
+    e.target.value = '';   // reset select
+  });
   const btnCsv = $('psy-csv');
   if (btnCsv) btnCsv.addEventListener('click', exportCsv);
 }

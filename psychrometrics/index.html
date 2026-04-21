@@ -118,7 +118,13 @@
       <div class="psy-panel-title">
         Цикл (точки и процессы)
         <button type="button" id="psy-add" class="psy-btn psy-btn-primary">+ точка</button>
-        <button type="button" id="psy-demo" class="psy-btn">Демо-цикл «лето/зима»</button>
+        <select id="psy-demo" class="psy-btn" title="Загрузить демо-цикл">
+          <option value="">Демо-цикл…</option>
+          <option value="summer">Лето: охл./осуш. → доводчик</option>
+          <option value="winter">Зима: нагрев → адиабат. увлажн.</option>
+          <option value="recup">Зима + рекуператор</option>
+          <option value="recirc">Рециркуляция (смешение)</option>
+        </select>
         <button type="button" id="psy-clear" class="psy-btn">Очистить</button>
         <button type="button" id="psy-csv" class="psy-btn" title="Экспорт таблиц «Точки» и «Процессы» в CSV (UTF-8 BOM, разделитель ;)">CSV</button>
       </div>
