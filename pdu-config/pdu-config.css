@@ -274,3 +274,70 @@
 }
 .pc-static-footer a { color: var(--rs-fg-muted); }
 .pc-static-footer a:hover { color: var(--rs-accent); }
+
+/* ---- detail modal ---- */
+.rc-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rc-modal[hidden] { display: none; }
+.rc-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+}
+.rc-modal-panel {
+  position: relative;
+  z-index: 1;
+  background: var(--rs-bg-card);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-lg);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  width: min(640px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rc-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rs-border-hair);
+  background: var(--rs-bg-soft);
+}
+.rc-modal-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.rc-modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--rs-fg-muted);
+  padding: 0 6px;
+}
+.rc-modal-close:hover { color: var(--rs-fg); }
+.rc-modal-body {
+  padding: 14px 16px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.rc-modal-body hr {
+  border: none;
+  border-top: 1px solid var(--rs-border-hair);
+  margin: 10px 0;
+}
+.rc-modal-body h4 { margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
+
+/* ---- dynamic outlet inputs ---- */
+.pc-outlets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+}

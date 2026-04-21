@@ -36,9 +36,15 @@ const state = {
   rating: 32,            // минимум по вводу, A
   height: 'any',         // '0' | '1' | '2' | 'any'
   category: 'any',       // basic | metered | monitored | switched | hybrid | any
-  outlets: { c13: 20, c19: 4, schuko: 0 },
+  // outlets: map of type → required count. Любой ключ, сколько угодно типов.
+  outlets: { C13: 20, C19: 4 },
   mfgs: new Set(),       // пустой = все
 };
+
+// Нормализация имени типа розетки (заглавные, убираем пробелы/дефисы)
+const normType = s => String(s || '').trim().toUpperCase().replace(/[\s\-_/]+/g, '');
+// Канонические типы (для сортировки и автодополнения из контекста)
+const STD_OUTLET_TYPES = ['C13', 'C19', 'C15', 'C21', 'SCHUKO', 'NEMA515', 'NEMA520', 'NEMA L5-30', 'IEC309'];
 
 const CATEGORY_LABEL = {
   basic: 'Basic',
@@ -106,16 +112,81 @@ function applyContextToRequirements() {
   const r = computeFromContext();
   state.phases = ctx.phases;
   state.rating = r.rating;
-  state.outlets.c13 = r.c13;
-  state.outlets.c19 = r.c19;
-  // schuko оставляем как есть (контекст не задаёт)
-  // DOM-sync
+  state.outlets.C13 = r.c13;
+  state.outlets.C19 = r.c19;
+  // Прочие типы (Schuko, NEMA, IEC 309…) оставляем как есть — контекст их не задаёт
   document.getElementById('pc-phases').value = ctx.phases;
   document.getElementById('pc-rating').value = r.rating;
-  document.getElementById('pc-outlets-c13').value = r.c13;
-  document.getElementById('pc-outlets-c19').value = r.c19;
+  renderOutletInputs();
   render();
   renderContextSummary();
+}
+
+// Собрать список типов розеток из каталога + текущих требований
+function detectedOutletTypes() {
+  const set = new Set();
+  // Из требований (могут включать пользовательские)
+  for (const t of Object.keys(state.outlets)) set.add(normType(t));
+  // Из каталога
+  for (const p of _pdus) {
+    for (const o of (p.kindProps?.outlets || [])) {
+      if (o.type) set.add(normType(o.type));
+    }
+  }
+  // Приоритет в отображении: стандартные сверху, потом остальные
+  const std = STD_OUTLET_TYPES.map(normType);
+  const arr = Array.from(set);
+  arr.sort((a, b) => {
+    const ia = std.indexOf(a), ib = std.indexOf(b);
+    if (ia < 0 && ib < 0) return a.localeCompare(b);
+    if (ia < 0) return 1;
+    if (ib < 0) return -1;
+    return ia - ib;
+  });
+  return arr;
+}
+
+function displayType(t) {
+  const T = normType(t);
+  if (T === 'SCHUKO') return 'Schuko';
+  if (T === 'NEMA515') return 'NEMA 5-15';
+  if (T === 'NEMA520') return 'NEMA 5-20';
+  if (T === 'IEC309') return 'IEC 309';
+  return T;
+}
+
+function renderOutletInputs() {
+  const box = document.getElementById('pc-outlets-grid');
+  if (!box) return;
+  const types = detectedOutletTypes();
+  box.innerHTML = types.map(t => {
+    const val = state.outlets[t] ?? 0;
+    return `<label class="pc-field" style="margin:0">
+      <span>${esc(displayType(t))} (≥)</span>
+      <input type="number" min="0" max="96" data-outlet="${esc(t)}" value="${val}">
+    </label>`;
+  }).join('') + `
+    <label class="pc-field" style="margin:0">
+      <span>+ свой тип</span>
+      <input id="pc-outlet-custom" type="text" placeholder="напр. C15" title="Введите тип и Enter">
+    </label>`;
+  box.querySelectorAll('input[data-outlet]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const t = inp.dataset.outlet;
+      const v = Math.max(0, Number(inp.value) || 0);
+      if (v === 0) delete state.outlets[t]; else state.outlets[t] = v;
+      render();
+    });
+  });
+  const custom = box.querySelector('#pc-outlet-custom');
+  if (custom) custom.addEventListener('change', () => {
+    const t = normType(custom.value);
+    if (!t) return;
+    if (!state.outlets[t]) state.outlets[t] = 1;
+    custom.value = '';
+    renderOutletInputs();
+    render();
+  });
 }
 
 function renderContextSummary() {
@@ -135,19 +206,20 @@ function renderContextSummary() {
   `;
 }
 
-// ——— Подсчёт розеток в модели ———
+// ——— Подсчёт розеток в модели: map type → qty ———
 function countOutlets(pdu) {
   const outlets = pdu.kindProps?.outlets || [];
-  let c13 = 0, c19 = 0, schuko = 0, other = 0;
+  const map = {};
+  let total = 0;
   for (const o of outlets) {
-    const type = String(o.type || '').toLowerCase();
+    const t = normType(o.type);
+    if (!t) continue;
     const qty = Number(o.qty ?? o.count) || 0;
-    if (type === 'c13') c13 += qty;
-    else if (type === 'c19') c19 += qty;
-    else if (type === 'schuko' || type === 'cee7/4' || type === 'cee7') schuko += qty;
-    else other += qty;
+    map[t] = (map[t] || 0) + qty;
+    total += qty;
   }
-  return { c13, c19, schuko, other, total: c13 + c19 + schuko + other };
+  map.total = total;
+  return map;
 }
 
 // ——— Score ———
@@ -167,24 +239,33 @@ function scoreCandidate(pdu) {
 
   const has = countOutlets(pdu);
   const need = state.outlets;
-  const covC13    = need.c13 === 0    ? 1 : Math.min(1, has.c13    / need.c13);
-  const covC19    = need.c19 === 0    ? 1 : Math.min(1, has.c19    / need.c19);
-  const covSchuko = need.schuko === 0 ? 1 : Math.min(1, has.schuko / need.schuko);
-  const covAll = (covC13 + covC19 + covSchuko) / 3;
-  if (covAll < 1 && (need.c13 || need.c19 || need.schuko)) return null;
-  score += 50 * covAll;
+  const needTypes = Object.keys(need).filter(t => need[t] > 0);
+  let needTotal = 0;
+  if (needTypes.length) {
+    let covSum = 0;
+    for (const t of needTypes) {
+      const got = has[t] || 0;
+      if (got < need[t]) return null; // жёсткий минимум по каждому типу
+      covSum += Math.min(1, got / need[t]);
+      needTotal += need[t];
+    }
+    score += 50 * (covSum / needTypes.length);
+  } else {
+    score += 50;
+  }
 
   const ratingRatio = state.rating / rating;
   score += 20 * Math.max(0, ratingRatio);
 
-  const needTotal = need.c13 + need.c19 + need.schuko;
   const overhead = needTotal > 0 ? Math.max(0, has.total - needTotal) / Math.max(1, has.total) : 0;
   score += 15 * (1 - overhead);
 
   if (state.category !== 'any') score += 5;
   if (state.height !== 'any') score += 5;
 
-  reasons.push(`розетки: C13×${has.c13}, C19×${has.c19}, Schuko×${has.schuko}`);
+  const outletStr = Object.keys(has).filter(k => k !== 'total' && has[k] > 0)
+    .map(k => `${displayType(k)}×${has[k]}`).join(', ');
+  reasons.push('розетки: ' + (outletStr || '—'));
   reasons.push(`${rating} A (запрошено ≥${state.rating})`);
   if (kp.height !== undefined) reasons.push((kp.height === 0 || kp.height === '0') ? '0U' : `${kp.height}U`);
   if (kp.categoryLabel) reasons.push(kp.categoryLabel);
@@ -244,7 +325,7 @@ function render() {
         <td>${esc(p.label)}</td>
         <td>${esc(kp.categoryLabel || kp.category || '—')}</td>
         <td>${kp.rating || '—'} A · ${kp.phases || '?'}ф · ${h}</td>
-        <td>C13×${r.outlets.c13} C19×${r.outlets.c19}${r.outlets.schuko ? ' Sch×' + r.outlets.schuko : ''}</td>
+        <td>${Object.keys(r.outlets).filter(k => k !== 'total' && r.outlets[k] > 0).map(k => `${displayType(k)}×${r.outlets[k]}`).join(' ') || '—'}</td>
         <td class="pc-row-score">${r.score} ${bar}</td>
         <td class="pc-row-actions">
           <button class="pc-btn" data-act="detail">Детали</button>
@@ -352,16 +433,14 @@ function saveLastPduRequirementsOnly() {
     requirementsOnly: true,
     sku: '',
     manufacturer: '',
-    label: `Требования: ${state.rating}A · ${state.phases}ф · C13≥${state.outlets.c13}`,
+    label: `Требования: ${state.rating}A · ${state.phases}ф · ${Object.keys(state.outlets).filter(k=>state.outlets[k]>0).map(k=>displayType(k)+'≥'+state.outlets[k]).join(', ')}`,
     category: state.category !== 'any' ? state.category : '',
     phases: state.phases === 'any' ? 0 : Number(state.phases),
     rating: state.rating,
     height: state.height === 'any' ? 0 : Number(state.height),
-    outlets: [
-      { type: 'C13',    count: state.outlets.c13 },
-      { type: 'C19',    count: state.outlets.c19 },
-      { type: 'Schuko', count: state.outlets.schuko },
-    ].filter(o => o.count > 0),
+    outlets: Object.keys(state.outlets)
+      .filter(k => state.outlets[k] > 0)
+      .map(k => ({ type: displayType(k), count: state.outlets[k] })),
     selectedAt: Date.now(),
     context: { ...ctx, pdusCount: ctx.redundancy === '2N' ? 2 : 1 },
   };
@@ -435,7 +514,7 @@ function buildRequirementsText() {
     `- Фаз: ${state.phases === 'any' ? 'любое' : state.phases + 'ф'}`,
     `- Высота: ${h}`,
     `- Категория: ${cat}`,
-    `- Розетки (на PDU): C13 ≥ ${state.outlets.c13}, C19 ≥ ${state.outlets.c19}, Schuko ≥ ${state.outlets.schuko}`,
+    `- Розетки (на PDU): ${Object.keys(state.outlets).filter(k=>state.outlets[k]>0).map(k=>`${displayType(k)} ≥ ${state.outlets[k]}`).join(', ') || '—'}`,
     `- Производитель: ${mfgs}`,
     ``,
     `**Количество PDU в стойке:** ${r.pdusCount}`,
@@ -515,19 +594,16 @@ function wire() {
   }
   $('pc-apply-ctx').onclick = applyContextToRequirements;
 
-  // Требования
+  // Требования (розетки рендерятся динамически через renderOutletInputs)
   const commit = () => {
     state.phases = $('pc-phases').value;
     state.rating = Number($('pc-rating').value) || 0;
     state.height = $('pc-height').value;
     state.category = $('pc-category').value;
-    state.outlets.c13    = Number($('pc-outlets-c13').value) || 0;
-    state.outlets.c19    = Number($('pc-outlets-c19').value) || 0;
-    state.outlets.schuko = Number($('pc-outlets-schuko').value) || 0;
+    // outlets уже синхронизируются в renderOutletInputs через change-слушатели
     render();
   };
-  for (const id of ['pc-phases','pc-rating','pc-height','pc-category',
-                     'pc-outlets-c13','pc-outlets-c19','pc-outlets-schuko']) {
+  for (const id of ['pc-phases','pc-rating','pc-height','pc-category']) {
     const el = $(id);
     el.addEventListener('change', commit);
     if (el.tagName === 'INPUT') el.addEventListener('input', () => {
@@ -538,15 +614,13 @@ function wire() {
   $('pc-apply').onclick = commit;
   $('pc-reset').onclick = () => {
     state.phases = '3'; state.rating = 32; state.height = 'any'; state.category = 'any';
-    state.outlets = { c13: 20, c19: 4, schuko: 0 };
+    state.outlets = { C13: 20, C19: 4 };
     state.mfgs.clear();
     $('pc-phases').value = '3';
     $('pc-rating').value = 32;
     $('pc-height').value = 'any';
     $('pc-category').value = 'any';
-    $('pc-outlets-c13').value = 20;
-    $('pc-outlets-c19').value = 4;
-    $('pc-outlets-schuko').value = 0;
+    renderOutletInputs();
     render();
   };
 
@@ -572,6 +646,7 @@ function wire() {
   }
   wire();
   renderContextSummary();
+  renderOutletInputs();
   render();
   renderPendingBanner();
   if (!_pdus.length) {
