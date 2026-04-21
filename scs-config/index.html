@@ -66,5 +66,11 @@
       <p>Модуль создан как stub. Реализация — подфаза <b>1.24</b> в <a href="../ROADMAP.md">ROADMAP.md</a> (задачи 1.24.1–1.24.8). Запускается после Конфигуратора стойки (1.23).</p>
     </div>
   </div>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'scs-config', moduleTitle: 'СКС', entries: CHANGELOGS['scs-config'] || [] });
+  </script>
 </body>
 </html>

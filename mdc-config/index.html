@@ -167,5 +167,11 @@
   </div>
 
   <script type="module" src="mdc-config.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'mdc-config', moduleTitle: 'Модульный ЦОД', entries: CHANGELOGS['mdc-config'] || [] });
+  </script>
 </body>
 </html>

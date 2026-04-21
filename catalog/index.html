@@ -129,5 +129,11 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script type="module" src="catalog.js"></script>
   <script type="module" src="../shared/app-header.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'catalog', moduleTitle: 'Каталог', entries: CHANGELOGS['catalog'] || [] });
+  </script>
 </body>
 </html>

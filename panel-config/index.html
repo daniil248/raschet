@@ -224,5 +224,11 @@
   <div id="flash" class="flash"></div>
 
   <script type="module" src="panel-config.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'panel-config', moduleTitle: 'НКУ', entries: CHANGELOGS['panel-config'] || [] });
+  </script>
 </body>
 </html>

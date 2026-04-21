@@ -256,5 +256,11 @@
   <input type="file" id="sch-file-input" accept=".json,application/json" style="display:none">
 
   <script type="module" src="schematic.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'schematic', moduleTitle: 'Схема', entries: CHANGELOGS['schematic'] || [] });
+  </script>
 </body>
 </html>

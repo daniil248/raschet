@@ -89,5 +89,11 @@
   </div>
 
   <script type="module" src="psychrometrics.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'psychrometrics', moduleTitle: 'i-d диаграмма', entries: CHANGELOGS['psychrometrics'] || [] });
+  </script>
 </body>
 </html>
