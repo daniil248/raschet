@@ -54,6 +54,13 @@ let _render, _deleteNode, _deleteConn, _isTagUnique;
 // v0.58.55: запоминаем активную вкладку инспектора по id узла, чтобы
 // при re-render (change → renderInspector()) не сбрасывать её на «Общее».
 const _activeTabByNode = new Map();
+// v0.59.88: публичный setter активной модал-вкладки. Нужен, когда кнопка
+// «Параметры щита» в сайдбаре (вкладка Электрика) открывает модалку —
+// модалка должна открыться именно на «Электрика», а не на «Общее».
+export function setModalActiveTab(nodeId, tab) {
+  if (!nodeId || !tab) return;
+  _activeTabByNode.set(nodeId + ':modal', tab);
+}
 export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique }) {
   _render = render;
   _deleteNode = deleteNode;
@@ -2109,7 +2116,12 @@ export function wireInspectorInputs(n, root) {
   // Параметры щита
   const panelParamsBtn = document.getElementById('btn-open-panel-params');
   if (panelParamsBtn && n.type === 'panel') {
-    panelParamsBtn.addEventListener('click', () => openPanelParamsModal(n));
+    panelParamsBtn.addEventListener('click', () => {
+      // v0.59.88: кнопка живёт во вкладке «Электрика» сайдбара — модалку
+      // открываем сразу на вкладке «Электрика», не на «Общее».
+      setModalActiveTab(n.id, 'electrical');
+      openPanelParamsModal(n);
+    });
   }
   const upsParamsBtn = document.getElementById('btn-open-ups-params');
   if (upsParamsBtn && n.type === 'ups') {

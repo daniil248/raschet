@@ -1033,6 +1033,15 @@ input, select { font: inherit; }
   margin-left: -2px;
 }
 
+/* v0.59.88: стабильная высота модалок параметров узла — чтобы переключение
+   вкладок не «прыгало». Минимум подобран под самую длинную вкладку.
+   Если контента меньше — остаётся пустое пространство внизу вместо скачка. */
+#panel-params-body,
+#consumer-params-body,
+#source-params-body {
+  min-height: 560px;
+}
+
 /* Phase 2.3: линейка с мм-делениями поверх холста */
 .layout-ruler {
   position: absolute;
