@@ -687,12 +687,13 @@ async function _renderTccCoordination({ finalSize, breakerIn, params, isDC }) {
   ];
 
   const chartEl = document.getElementById('tcc-coord-chart');
+  // TCC-графики принято рисовать в портретном формате: X — ток (5 декад), Y — время (7 декад), отсюда высота заметно больше ширины.
   const handle = mountTccChart(chartEl, {
     items: baseItems,
     xRange: [Math.max(1, breakerIn * 0.8), Math.max(IkA * 1.5, breakerIn * 200)],
     yRange: [0.003, 10000],
-    width: Math.min(chartEl.clientWidth || 650, 750),
-    height: 400,
+    width: Math.min(chartEl.clientWidth || 520, 560),
+    height: 640,
     ikMax: IkA > 0 ? IkA : null,
   });
 
@@ -730,25 +731,35 @@ async function _renderTccCoordination({ finalSize, breakerIn, params, isDC }) {
       </div>
     `;
 
-    // Live-обновление графика при изменении настроек
+    // Live-обновление графика при изменении настроек.
+    // Важно: передаём item.settings = {Ir, Isd, tsd, Ii} — общий
+    // shared/tcc-chart.js (bandPoints → tccRelayBandPoints) умеет рисовать
+    // кривую definite-time overcurrent по IEC 60255 по этим уставкам. Без
+    // settings менялся бы только In, а форма кривой оставалась бы
+    // стандартной (кривая C), отсюда и ощущение, что «крутилки не работают».
     const applySettings = () => {
-      const Ir = Number(document.getElementById('tcc-Ir').value);
+      const Ir  = Number(document.getElementById('tcc-Ir').value);
       const Isd = Number(document.getElementById('tcc-Isd').value);
       const tsd = Number(document.getElementById('tcc-tsd').value);
+      const Ii  = Ir * 20; // мгновенный — 20×Ir (типово для LSI)
       document.getElementById('tcc-Ir-val').textContent = Ir;
       document.getElementById('tcc-Isd-val').textContent = Isd;
       document.getElementById('tcc-tsd-val').textContent = tsd.toFixed(2);
-      // Пересчитываем эффективный In = Ir (уставка теплового сдвигает кривую)
-      // для демонстрации используем упрощённую модель — реальный расчёт с
-      // аналитическим расцепителем требует shared/tcc-curves extension (Фаза 1.10.2)
       handle.update({
         items: [
-          { ...baseItems[0], In: Ir, label: `MCCB LSI · Ir=${Ir}A · Isd=${Isd}A · tsd=${tsd.toFixed(2)}с` },
+          {
+            ...baseItems[0],
+            In: Ir,
+            settings: { Ir, Isd, tsd, Ii },
+            label: `MCCB LSI · Ir=${Ir}A · Isd=${Isd}A · tsd=${tsd.toFixed(2)}с`,
+          },
           baseItems[1],
         ],
       });
     };
     controls.querySelectorAll('input[type=range]').forEach(r => r.addEventListener('input', applySettings));
+    // Начальный рендер с settings — чтобы график сразу рисовал реальную LSI-кривую, а не стандартную C.
+    applySettings();
   } else {
     controls.innerHTML = `<div class="muted" style="font-size:11px;padding:6px 10px;background:#fff4e5;border-radius:4px">
       У MCB (${breakerCurveFull}) характеристика фиксированная (термомагнитный расцепитель, настройки не регулируются).
