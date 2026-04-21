@@ -93,34 +93,81 @@ export function openConsumerParamsModal(n) {
     <label id="cp-demandKw-label">${_demandLabel}</label>
     <input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}">
   </div>`);
-  // v0.57.81: таблица индивидуальной группы
+  // v0.59.91: общие параметры нужны раньше (в карточках членов group'а для
+  // «унаследовать от родителя» и в основных селектах ниже).
+  const levels = GLOBAL.voltageLevels || [];
+  const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
+  const ph = n.phase || '3ph';
+  // v0.59.91: групповой потребитель (individual) = оболочка над N членами.
+  // Каждый член = «обычный потребитель» со своими параметрами (не только
+  // name+kW как было раньше). Раскладка — карточки, как секции многосекционного
+  // щита. Кнопка «⚙ Параметры» раскрывает полный блок полей: напряжение,
+  // фазность, cos φ, Ки, кратность пуска, запас и кривая автомата.
+  // Общие фолбэки: если у члена поле не задано — берётся из родителя.
   const _items = Array.isArray(n.items) ? n.items : [];
-  const _itemsRows = _items.map((it, idx) => `
-    <tr data-idx="${idx}">
-      <td style="padding:2px"><input type="text" class="cp-it-name" value="${escAttr(it.name || '')}" placeholder="Прибор ${idx + 1}" style="width:100%;font-size:11px;padding:3px"></td>
-      <td style="padding:2px;width:90px"><input type="number" class="cp-it-kw" min="0" step="0.1" value="${Number(it.demandKw) || 0}" style="width:100%;font-size:11px;padding:3px"></td>
-      <td style="padding:2px;width:28px"><button type="button" class="cp-it-del" title="Удалить" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px">✕</button></td>
-    </tr>`).join('');
+  const _vOptsFor = (curIdx) => {
+    let s = '';
+    for (let i = 0; i < levels.length; i++) {
+      s += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
+    }
+    return s;
+  };
+  // Карточка одного прибора в группе. Параметры — как у обычного потребителя,
+  // но свёрнуты в <details>; заголовок карточки — имя + сводка kW.
+  const _itemCardHtml = (it, idx) => {
+    const kwVal = Number(it.demandKw) || 0;
+    const vIdx = Number.isFinite(+it.voltageLevelIdx) ? Number(it.voltageLevelIdx) : curIdx;
+    const phV  = it.phase || ph;
+    const cos  = it.cosPhi != null && it.cosPhi !== '' ? Number(it.cosPhi) : Number(n.cosPhi ?? 0.92);
+    const ku   = it.kUse   != null && it.kUse   !== '' ? Number(it.kUse)   : Number(n.kUse ?? 1);
+    const inr  = it.inrushFactor != null && it.inrushFactor !== '' ? Number(it.inrushFactor) : Number(n.inrushFactor ?? 1);
+    const curveVal = it.curveHint || '';
+    const bmVal = (typeof it.breakerMarginPct === 'number') ? String(it.breakerMarginPct) : '';
+    return `
+    <div class="cp-it-card" data-idx="${idx}" style="border:1px solid #d7dde5;border-radius:4px;background:#fafbfc;margin-bottom:6px;padding:6px 8px;">
+      <div style="display:flex;gap:6px;align-items:center;">
+        <span style="font-weight:600;color:#37474f;font-size:11px;min-width:18px;text-align:right">${idx + 1}.</span>
+        <input type="text" class="cp-it-name" value="${escAttr(it.name || '')}" placeholder="Прибор ${idx + 1}" style="flex:1;font-size:11px;padding:3px 6px">
+        <input type="number" class="cp-it-kw" min="0" step="0.1" value="${kwVal}" title="kW" style="width:68px;font-size:11px;padding:3px 6px;text-align:right">
+        <span class="muted" style="font-size:11px">kW</span>
+        <button type="button" class="cp-it-gear" title="Показать/скрыть расширенные параметры" style="background:none;border:1px solid #cfd6df;color:#455a64;padding:2px 6px;border-radius:3px;cursor:pointer;font-size:11px">⚙</button>
+        <button type="button" class="cp-it-del" title="Удалить из группы" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px">✕</button>
+      </div>
+      <div class="cp-it-params" hidden style="margin-top:6px;padding-top:6px;border-top:1px dashed #d7dde5;display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:11px">
+        <label>Напряжение<br><select class="cp-it-voltage" style="width:100%;font-size:11px;padding:2px 4px">${_vOptsFor(vIdx)}</select></label>
+        <label>Фазность<br><select class="cp-it-phase" style="width:100%;font-size:11px;padding:2px 4px">
+          <option value="3ph"${phV==='3ph'?' selected':''}>3-фазный</option>
+          <option value="2ph"${phV==='2ph'?' selected':''}>2-фазный</option>
+          <option value="1ph"${phV==='1ph'||phV==='A'||phV==='B'||phV==='C'?' selected':''}>1-фазный</option>
+        </select></label>
+        <label>cos φ<br><input type="number" class="cp-it-cos" min="0.1" max="1" step="0.01" value="${cos}" style="width:100%;font-size:11px;padding:2px 4px"></label>
+        <label>Ки<br><input type="number" class="cp-it-ku" min="0" max="1" step="0.05" value="${ku}" style="width:100%;font-size:11px;padding:2px 4px"></label>
+        <label>Крат. пуска<br><input type="number" class="cp-it-inr" min="1" max="10" step="0.1" value="${inr}" style="width:100%;font-size:11px;padding:2px 4px"></label>
+        <label>Запас автомата, %<br><input type="number" class="cp-it-bm" min="0" max="100" step="5" value="${bmVal}" placeholder="авто" style="width:100%;font-size:11px;padding:2px 4px"></label>
+        <label style="grid-column:1/-1">Кривая автомата<br><select class="cp-it-curve" style="width:100%;font-size:11px;padding:2px 4px">
+          <option value=""${curveVal===''?' selected':''}>авто (от родителя)</option>
+          <option value="MCB_B"${curveVal==='MCB_B'?' selected':''}>MCB B — резистивная</option>
+          <option value="MCB_C"${curveVal==='MCB_C'?' selected':''}>MCB C — общее назначение</option>
+          <option value="MCB_D"${curveVal==='MCB_D'?' selected':''}>MCB D — двигатели</option>
+        </select></label>
+      </div>
+    </div>`;
+  };
+  const _itemsCardsHtml = _items.map((it, idx) => _itemCardHtml(it, idx)).join('');
   h.push(`<div id="cp-items-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? '' : 'display:none'}">
-    <label>Приборы в группе</label>
-    <table id="cp-items-tbl" style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px">
-      <thead><tr style="background:#f5f6f8"><th style="padding:3px;text-align:left">Имя</th><th style="padding:3px;text-align:right">kW</th><th></th></tr></thead>
-      <tbody id="cp-items-body">${_itemsRows}</tbody>
-    </table>
-    <div style="display:flex;gap:6px;align-items:center;font-size:11px">
-      <button type="button" id="cp-it-add" style="padding:3px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer">➕ Добавить</button>
+    <label>Приборы в группе <span class="muted" style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">— каждый с собственными параметрами; пусто = унаследовать от группы</span></label>
+    <div id="cp-items-body">${_itemsCardsHtml}</div>
+    <div style="display:flex;gap:6px;align-items:center;font-size:11px;margin-top:4px">
+      <button type="button" id="cp-it-add" style="padding:3px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer">➕ Добавить прибор</button>
       <span id="cp-items-sum" class="muted"></span>
     </div>
   </div>`);
 
-  const levels = GLOBAL.voltageLevels || [];
-  const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
   let vOpts = '';
   for (let i = 0; i < levels.length; i++) {
     vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
   }
   h.push(field('Уровень напряжения', `<select id="cp-voltage">${vOpts}</select>`));
-  const ph = n.phase || '3ph';
   h.push(field('Фазность', `<select id="cp-phase">
     <option value="3ph"${ph === '3ph' ? ' selected' : ''}>3-фазный</option>
     <option value="2ph"${ph === '2ph' ? ' selected' : ''}>2-фазный (split-phase)</option>
@@ -354,34 +401,42 @@ export function openConsumerParamsModal(n) {
   const demandWrap = document.getElementById('cp-demandKw-wrap');
   const serialWrap = document.getElementById('cp-serialMode-wrap');
   const itAddBtn = document.getElementById('cp-it-add');
+  // v0.59.91: карточки вместо строк таблицы. Каждая карточка — потенциально
+  // полный потребитель со своими параметрами (⚙ раскрывает блок).
   const refreshItemsSum = () => {
     if (!itemsBody || !itemsSum) return;
     let s = 0, cnt = 0;
-    itemsBody.querySelectorAll('tr').forEach(tr => {
-      const kw = Number(tr.querySelector('.cp-it-kw')?.value) || 0;
+    itemsBody.querySelectorAll('.cp-it-card').forEach(card => {
+      const kw = Number(card.querySelector('.cp-it-kw')?.value) || 0;
       s += kw; cnt++;
     });
     itemsSum.textContent = cnt ? `Σ ${s.toFixed(2).replace(/\.00$/, '')} kW · ${cnt} шт.` : '—';
   };
+  const _wireCard = (card) => {
+    card.querySelector('.cp-it-kw')?.addEventListener('input', refreshItemsSum);
+    card.querySelector('.cp-it-del')?.addEventListener('click', () => { card.remove(); refreshItemsSum(); });
+    const gear = card.querySelector('.cp-it-gear');
+    const params = card.querySelector('.cp-it-params');
+    if (gear && params) {
+      gear.addEventListener('click', () => {
+        params.hidden = !params.hidden;
+        gear.style.background = params.hidden ? 'none' : '#e3f2fd';
+      });
+    }
+  };
   const addItemRow = (name = '', kw = 0) => {
     if (!itemsBody) return;
     const idx = itemsBody.children.length;
-    const tr = document.createElement('tr');
-    tr.dataset.idx = String(idx);
-    tr.innerHTML = `
-      <td style="padding:2px"><input type="text" class="cp-it-name" value="${escAttr(name)}" placeholder="Прибор ${idx + 1}" style="width:100%;font-size:11px;padding:3px"></td>
-      <td style="padding:2px;width:90px"><input type="number" class="cp-it-kw" min="0" step="0.1" value="${Number(kw) || 0}" style="width:100%;font-size:11px;padding:3px"></td>
-      <td style="padding:2px;width:28px"><button type="button" class="cp-it-del" title="Удалить" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px">✕</button></td>`;
-    itemsBody.appendChild(tr);
-    tr.querySelector('.cp-it-kw').addEventListener('input', refreshItemsSum);
-    tr.querySelector('.cp-it-del').addEventListener('click', () => { tr.remove(); refreshItemsSum(); });
+    const wrap = document.createElement('div');
+    wrap.innerHTML = _itemCardHtml({ name, demandKw: kw }, idx);
+    const card = wrap.firstElementChild;
+    itemsBody.appendChild(card);
+    _wireCard(card);
+    refreshItemsSum();
   };
-  // Навесить обработчики на уже отрисованные строки
+  // Навесить обработчики на уже отрисованные карточки
   if (itemsBody) {
-    itemsBody.querySelectorAll('tr').forEach(tr => {
-      tr.querySelector('.cp-it-kw')?.addEventListener('input', refreshItemsSum);
-      tr.querySelector('.cp-it-del')?.addEventListener('click', () => { tr.remove(); refreshItemsSum(); });
-    });
+    itemsBody.querySelectorAll('.cp-it-card').forEach(_wireCard);
     refreshItemsSum();
   }
   if (itAddBtn) itAddBtn.addEventListener('click', () => addItemRow('', 0));
@@ -471,12 +526,35 @@ export function openConsumerParamsModal(n) {
     const _groupModeSel = _gmEl ? _gmEl.value : (n.groupMode || 'uniform');
     const _individual = (_groupModeSel === 'individual' && n.count > 1);
     if (_individual) {
-      const rows = document.querySelectorAll('#cp-items-body tr');
+      // v0.59.91: items теперь могут содержать расширенные поля (каждый прибор
+      // — полноценный потребитель). Пустые поля = унаследовать от родителя
+      // (удаляем ключ из item, чтобы compute читал n.cosPhi/kUse и т.п.).
+      const cards = document.querySelectorAll('#cp-items-body .cp-it-card');
       const items = [];
-      rows.forEach(tr => {
-        const nm = String(tr.querySelector('.cp-it-name')?.value || '').trim();
-        const kw = Number(tr.querySelector('.cp-it-kw')?.value) || 0;
-        items.push({ name: nm, demandKw: kw });
+      cards.forEach(card => {
+        const nm = String(card.querySelector('.cp-it-name')?.value || '').trim();
+        const kw = Number(card.querySelector('.cp-it-kw')?.value) || 0;
+        const it = { name: nm, demandKw: kw };
+        const readRich = (sel, key, numeric = false) => {
+          const el = card.querySelector(sel);
+          if (!el) return;
+          const raw = String(el.value ?? '').trim();
+          if (raw === '') return;
+          if (numeric) {
+            const v = Number(raw);
+            if (Number.isFinite(v)) it[key] = v;
+          } else {
+            it[key] = raw;
+          }
+        };
+        readRich('.cp-it-voltage', 'voltageLevelIdx', true);
+        readRich('.cp-it-phase', 'phase', false);
+        readRich('.cp-it-cos', 'cosPhi', true);
+        readRich('.cp-it-ku', 'kUse', true);
+        readRich('.cp-it-inr', 'inrushFactor', true);
+        readRich('.cp-it-bm', 'breakerMarginPct', true);
+        readRich('.cp-it-curve', 'curveHint', false);
+        items.push(it);
       });
       // Если пусто — откатываемся в uniform
       if (items.length === 0) {

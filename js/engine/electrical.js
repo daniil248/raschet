@@ -271,6 +271,28 @@ export function consumerCountEffective(n) {
   return Math.max(1, Number(n?.count) || 1);
 }
 
+// v0.59.91: группа как «оболочка» над членами. Возвращает массив
+// объектов-псевдопотребителей, каждый с полным набором параметров
+// (поля, не заданные в item, унаследованы из родителя). Используется
+// BOM / panel-wizard'ом, чтобы каждый прибор группы давал свою линию
+// и свой автомат с нужной кривой/запасом.
+export function consumerGroupItems(n) {
+  if (!n || n.groupMode !== 'individual' || !Array.isArray(n.items)) return [];
+  return n.items.map((it, i) => ({
+    name:             it?.name || `Прибор ${i + 1}`,
+    demandKw:         Number(it?.demandKw) || 0,
+    voltageLevelIdx:  Number.isFinite(+it?.voltageLevelIdx) ? +it.voltageLevelIdx
+                       : (Number.isFinite(+n.voltageLevelIdx) ? +n.voltageLevelIdx : 0),
+    phase:            it?.phase || n.phase || '3ph',
+    cosPhi:           (it?.cosPhi != null && it.cosPhi !== '') ? Number(it.cosPhi) : Number(n.cosPhi ?? 0.92),
+    kUse:             (it?.kUse   != null && it.kUse   !== '') ? Number(it.kUse)   : Number(n.kUse ?? 1),
+    inrushFactor:     (it?.inrushFactor != null && it.inrushFactor !== '') ? Number(it.inrushFactor) : Number(n.inrushFactor ?? 1),
+    curveHint:        it?.curveHint || n.curveHint || '',
+    breakerMarginPct: (typeof it?.breakerMarginPct === 'number') ? it.breakerMarginPct
+                       : (typeof n.breakerMarginPct === 'number' ? n.breakerMarginPct : null),
+  }));
+}
+
 // Номинальный (установочный) ток потребителя или группы
 export function consumerNominalCurrent(n) {
   const P = consumerTotalDemandKw(n);
