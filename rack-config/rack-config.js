@@ -900,16 +900,19 @@ function renderPduList() {
           <button type="button" class="rc-btn" data-add-outlet ${locked?'disabled':''}>+ тип</button>
         </div>
         <div class="rc-pdu-outlet-rows">
-          ${p.outlets.map((o, oi) => `
+          ${p.outlets.map((o, oi) => {
+            const STD = ['C13','C19','C13+C19','C15','C21','Schuko','NEMA 5-15','NEMA 5-20','NEMA L5-30','IEC 60309 16A','IEC 60309 32A','UK BS1363','разъём T-slot','смешанный'];
+            const opts = STD.slice();
+            if (o.type && !opts.includes(o.type)) opts.push(o.type); // round-trip custom types
+            return `
             <div class="rc-pdu-outlet">
               <select data-ok="type" data-oi="${oi}" ${locked?'disabled':''}>
-                ${['C13','C19','C13+C19','Schuko','NEMA 5-15','IEC 60309 16A','IEC 60309 32A','UK BS1363','разъём T-slot','смешанный'].map(x =>
-                  `<option value="${x}" ${o.type===x?'selected':''}>${x}</option>`).join('')}
+                ${opts.map(x => `<option value="${escape(x)}" ${o.type===x?'selected':''}>${escape(x)}</option>`).join('')}
               </select>
               <input type="number" min="1" step="1" data-ok="count" data-oi="${oi}" value="${o.count}" title="Количество розеток этого типа" ${locked?'disabled':''}>
               <button type="button" class="rc-btn rc-btn-danger rc-btn-mini" data-del-outlet="${oi}" title="Удалить строку" ${locked?'disabled':''}>✕</button>
             </div>
-          `).join('')}
+          `;}).join('')}
         </div>
         <div class="muted" style="font-size:11px">Итого розеток: ${p.outlets.reduce((s,o)=>s+(+o.count||0),0)}</div>
       </div>
