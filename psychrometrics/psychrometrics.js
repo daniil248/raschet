@@ -966,6 +966,37 @@ function attachCrosshair(host) {
   };
   host.addEventListener('mousemove', onMove);
   host.addEventListener('mouseleave', onLeave);
+
+  // Клик по диаграмме → записать t и φ в активную (в фокусе) карточку точки
+  host.addEventListener('click', (e) => {
+    if (!_chartCtx) return;
+    if (!Number.isFinite(_activePoint)) return;
+    const svg = host.querySelector('svg');
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const vb = svg.viewBox.baseVal;
+    const sx = vb.width / rect.width, sy = vb.height / rect.height;
+    const px = (e.clientX - rect.left) * sx;
+    const py = (e.clientY - rect.top)  * sy;
+    const { opts } = _chartCtx;
+    const plotW = opts.width - opts.marginL - opts.marginR;
+    const plotH = opts.height - opts.marginT - opts.marginB;
+    const W = opts.W_min + (px - opts.marginL) / plotW * (opts.W_max - opts.W_min);
+    const T = opts.T_max - (py - opts.marginT) / plotH * (opts.T_max - opts.T_min);
+    if (W < opts.W_min || W > opts.W_max || T < opts.T_min || T > opts.T_max) return;
+    // φ = pv/Pws; clamp в физический диапазон.
+    const pv = Math.max(0, W) * S.P / (0.621945 + Math.max(0, W));
+    const phi = Math.max(0, Math.min(100, 100 * pv / Pws(T)));
+    const now = performance.now();
+    const p = S.points[_activePoint];
+    if (!p) return;
+    p.t  = Number(T.toFixed(2));   p.tUser  = true;  p.tTs  = now;
+    p.rh = Number(phi.toFixed(1)); p.rhUser = true;  p.rhTs = now + 0.01;
+    // При клике d и h должны стать auto (пересчитаться из t+φ)
+    p.x = ''; p.xUser = false; p.xTs = 0;
+    p.h = ''; p.hUser = false; p.hTs = 0;
+    update();
+  });
 }
 
 /* Промежуточные точки, чтобы линия процесса шла по реалистичной траектории */
