@@ -67,7 +67,51 @@ function render() {
 
   renderList(list);
   renderSelected(list);
+  renderPendingBanner();
 }
+
+// Индикатор standalone-выбора: показывает какая модель сейчас лежит в
+// raschet.lastUpsConfig.v1 и ждёт применения в Конструкторе схем.
+// Виден только в standalone-режиме (без ?nodeId=), чтобы пользователь
+// видел, что выбор произведён даже после reload страницы.
+function renderPendingBanner() {
+  if (new URLSearchParams(location.search).get('nodeId')) return; // в wizard-режиме не нужно
+  let el = document.getElementById('pending-standalone-banner');
+  let last = null;
+  try {
+    const raw = localStorage.getItem('raschet.lastUpsConfig.v1');
+    if (raw) last = JSON.parse(raw);
+  } catch {}
+  const fresh = last?.ups && last.selectedAt && (Date.now() - last.selectedAt) < 24 * 60 * 60 * 1000;
+  if (!fresh) {
+    if (el) el.remove();
+    return;
+  }
+  const ageMin = Math.round((Date.now() - last.selectedAt) / 60000);
+  const ageStr = ageMin < 60 ? (ageMin + ' мин назад') : (Math.round(ageMin / 60) + ' ч назад');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'pending-standalone-banner';
+    el.style.cssText = 'margin:0 0 14px;padding:10px 14px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    const intro = document.querySelector('.page-intro');
+    if (intro) intro.after(el); else document.querySelector('main')?.prepend(el);
+  }
+  el.innerHTML = `
+    <span>✓ Сейчас выбрано: <b>${esc(last.ups.supplier || '')} · ${esc(last.ups.model || '')}</b>
+      <span class="muted" style="font-size:11px">(${ageStr})</span></span>
+    <span class="muted" style="font-size:11px;flex:1;min-width:200px">В Конструкторе схем → параметры ИБП → «⬇ Применить из Конфигуратора».</span>
+    <button id="pending-banner-clear" class="btn-sm">✕ Сбросить</button>
+  `;
+  const btn = el.querySelector('#pending-banner-clear');
+  if (btn) btn.addEventListener('click', () => {
+    try { localStorage.removeItem('raschet.lastUpsConfig.v1'); } catch {}
+    renderPendingBanner();
+    flash('Сброшено');
+  });
+}
+
+// Периодически обновляем «X мин назад» каждую минуту
+setInterval(() => { try { renderPendingBanner(); } catch {} }, 60000);
 
 function renderList(list) {
   const wrap = document.getElementById('catalog-list');
@@ -335,6 +379,7 @@ function renderSelected(list) {
     try {
       localStorage.setItem('raschet.lastUpsConfig.v1', JSON.stringify(payload));
       flash('Модель сохранена. Откройте Конструктор схем → параметры ИБП → «⬇ Применить из Конфигуратора».', 'success');
+      renderPendingBanner();
     } catch (e) {
       flash('Не удалось сохранить: ' + (e.message || e), 'error');
     }
