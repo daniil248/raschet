@@ -100,6 +100,11 @@ export function render(container, opts = {}) {
     }
   }
 
+  // Закрывающий тег SVG. Без него svg.replace('</svg>', overlay+'</svg>')
+  // в renderChart() не находит цель замены и overlay (точки/процессы/
+  // бейджи/crosshair) теряется — браузер сам закрывает svg уже после
+  // присвоения в innerHTML, но overlay в строку попасть не успевает.
+  svg += `</svg>`;
   return { svg, X, Y, opts: o };
 }
 
