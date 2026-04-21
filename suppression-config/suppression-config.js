@@ -1471,15 +1471,18 @@ function computeSupports(pipeline, nodes) {
     // Жёсткая опора возле фитинга/насадка со стороны конца (seg.id)
     const endFit = fitting.has(s.id) || endsAtNozzle.has(s.id);
     if (endFit && L > pad * 2) result.push({ segId: s.id, t: (L - pad) / L, type: 'rigid' });
-    // Скользящие опоры по шагу вдоль участка (между жёсткими)
-    const startT = startFit ? pad / L : 0;
-    const endT   = endFit   ? (L - pad) / L : 1;
-    const innerL = L * (endT - startT);
-    if (innerL > step) {
-      const n = Math.floor(innerL / step);
-      const gap = innerL / (n + 1);
+    // Промежуточные скользящие опоры: расстояние между любыми двумя соседними
+    // опорами (жёсткой или скользящей) не должно превышать supportStep(DN).
+    // Бьём интервал между жёсткими на (n+1) равных частей, где n — минимальное
+    // целое, при котором gap = span/(n+1) ≤ step.
+    const startPos = startFit ? pad : 0;
+    const endPos   = endFit   ? (L - pad) : L;
+    const span = Math.max(0, endPos - startPos);
+    if (span > step + 1e-6) {
+      const n = Math.ceil(span / step) - 1;     // минимум промежуточных
       for (let k = 1; k <= n; k++) {
-        result.push({ segId: s.id, t: startT + (k * gap) / L, type: 'slide' });
+        const pos = startPos + span * k / (n + 1);
+        result.push({ segId: s.id, t: pos / L, type: 'slide' });
       }
     }
   });
