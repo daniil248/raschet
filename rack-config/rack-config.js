@@ -34,6 +34,7 @@ import {
 } from '../shared/rack-catalog-data.js';
 import { initCatalogBridge } from '../shared/catalog-bridge.js';
 import { onLibraryChange } from '../shared/element-library.js';
+import { openPduPickerModal } from '../shared/pdu-picker-modal.js';
 initCatalogBridge();
 
 // Re-render при правках каталога (админ изменил встроенный rack/pdu/accessory).
@@ -261,12 +262,12 @@ function openKitCatalogModal() {
   back.addEventListener('click', e => { if (e.target === back) back.remove(); });
 }
 
-// Модал выбора PDU из каталога. Колонки: SKU | производитель | категория |
-// фазы | номинал | высота | розетки. Фильтры: mfg, category, phases, rating.
+// Модал выбора PDU из каталога. v0.59.117 — теперь использует общий
+// shared/pdu-picker-modal.js (тот же движок, что в standalone-модуле
+// /pdu-config/): ранжирование по score, требования «номинал ≥», розетки
+// «C13 ≥ / C19 ≥ / Schuko ≥», фильтр по производителю-чипсам, категория.
+// Сверху навешены rack-config-специфичные опции: «Парой на A+B» + цвет.
 function openPduCatalogModal(pdu) {
-  // v0.59.111: PDU обычно закупают парой (одинаковая модель на вводы A и B)
-  // для 2N/N+1-резервирования. По умолчанию включаем «подобрать парой»
-  // если режим резервирования 2N/N+1 и на противоположном вводе ещё нет PDU.
   const tpl = current();
   const mode = tpl.pduRedundancy || '2N';
   const thisFeed = (pdu && pdu.feed) || 'A';
@@ -274,176 +275,93 @@ function openPduCatalogModal(pdu) {
   const redMode = (mode === '2N' || mode === 'n+1');
   const pairAlreadyExists = tpl.pdus.some(p => p !== pdu && p.feed === pairFeed);
   const pairDefault = redMode && !pairAlreadyExists;
-  const PDUS = getLivePduCatalog();
-  const mfgs = Array.from(new Set(PDUS.map(p => p.mfg))).sort();
-  // v0.59.110: предустановка фильтров из уже заданных параметров PDU.
-  // Если пользователь указал фазы / категорию / номинал — сразу сузим
-  // каталог. Для номинала и высоты проверяем наличие в существующих
-  // каталожных значениях.
-  const ratings = Array.from(new Set(PDUS.map(p => p.rating))).sort((a, b) => a - b);
-  const heights = Array.from(new Set(PDUS.map(p => p.height))).sort((a, b) => a - b);
-  const st = {
-    search: '',
-    mfg: '__all__',
-    cat: (pdu && pdu.category && PDU_CATEGORY[pdu.category]) ? pdu.category : '__all__',
-    phases: (pdu && (pdu.phases === 1 || pdu.phases === 3)) ? String(pdu.phases) : '__all__',
-    rating: (pdu && ratings.includes(+pdu.rating)) ? String(pdu.rating) : '__all__',
-    height: (pdu && heights.includes(+pdu.height)) ? String(pdu.height) : '__all__',
-    pair: pairDefault,
-    colorA: (pdu && pdu.color) || '',
-    colorB: '',
+
+  // Подсчитываем текущие розетки PDU по типам — это минимумы фильтра.
+  const curOut = { c13: 0, c19: 0, schuko: 0 };
+  (pdu.outlets || []).forEach(o => {
+    const t2 = String(o.type || '').toLowerCase();
+    const n = Number(o.count ?? o.qty) || 0;
+    if (t2 === 'c13') curOut.c13 += n;
+    else if (t2 === 'c19') curOut.c19 += n;
+    else if (t2 === 'schuko' || t2 === 'cee7/4' || t2 === 'cee7') curOut.schuko += n;
+  });
+
+  const initial = {
+    phases: (pdu && (pdu.phases === 1 || pdu.phases === 3)) ? String(pdu.phases) : 'any',
+    rating: Number(pdu && pdu.rating) || 0,
+    height: (pdu && typeof pdu.height === 'number') ? String(pdu.height) : 'any',
+    category: (pdu && pdu.category) || 'any',
+    outlets: curOut,
   };
+  // State carriers for pair/color (мутируются обработчиками extraFooter)
+  const pairState = { pair: pairDefault, colorA: (pdu && pdu.color) || '', colorB: '' };
 
-  const back = document.createElement('div');
-  back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
-  const box = document.createElement('div');
-  box.style.cssText = 'background:var(--rs-bg-card);color:var(--rs-fg);border-radius:10px;max-width:1040px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)';
-  back.appendChild(box);
-  document.body.appendChild(back);
+  const extraFooter = `
+    <label style="display:flex;gap:6px;align-items:center;font-size:12px${pairAlreadyExists?';opacity:0.5':''}" ${pairAlreadyExists?'title="На вводе '+pairFeed+' уже есть PDU — пара не добавится автоматически"':''}>
+      <input type="checkbox" id="pdm-pair" ${pairState.pair?'checked':''} ${pairAlreadyExists?'disabled':''}>
+      Парой на ${thisFeed}+${pairFeed} ${redMode?'<span style="color:#1565c0;font-size:11px">(реком. для '+mode+')</span>':''}
+    </label>
+    <label style="display:flex;gap:4px;align-items:center;font-size:12px" title="Цвет корпуса PDU для ввода ${thisFeed}. Попадает в BOM и лист требований.">
+      Цвет ${thisFeed}: <input type="text" id="pdm-ca" value="${escape(pairState.colorA)}" style="width:80px;font-size:12px" placeholder="—">
+    </label>
+    <label style="display:flex;gap:4px;align-items:center;font-size:12px" title="Цвет корпуса PDU для ввода ${pairFeed}. Обычно отличается от ${thisFeed}.">
+      Цвет ${pairFeed}: <input type="text" id="pdm-cb" value="${escape(pairState.colorB)}" style="width:80px;font-size:12px" placeholder="—">
+    </label>
+  `;
 
-  function render() {
-    const q = st.search.trim().toLowerCase();
-    const rows = PDUS.filter(p => {
-      if (st.mfg !== '__all__' && p.mfg !== st.mfg) return false;
-      if (st.cat !== '__all__' && p.category !== st.cat) return false;
-      if (st.phases !== '__all__' && String(p.phases) !== st.phases) return false;
-      if (st.rating !== '__all__' && String(p.rating) !== st.rating) return false;
-      if (st.height !== '__all__' && String(p.height) !== st.height) return false;
-      if (q && !(p.sku.toLowerCase().includes(q)
-               || p.name.toLowerCase().includes(q)
-               || (PDU_CATEGORY[p.category]||'').toLowerCase().includes(q))) return false;
-      return true;
-    });
-    box.innerHTML = `
-      <div style="padding:16px 20px;border-bottom:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;align-items:center">
-        <h3 style="margin:0">Каталог PDU</h3>
-        <button type="button" class="rc-btn" id="rc-pm-close-x">✕</button>
-      </div>
-      <div style="padding:12px 20px;display:grid;grid-template-columns:1.6fr 1fr 1fr 0.8fr 0.9fr 0.9fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
-        <label class="rc-field"><span>Поиск</span>
-          <input type="text" id="rc-pm-search" value="${escape(st.search)}" placeholder="SKU, название, категория…">
-        </label>
-        <label class="rc-field"><span>Производитель</span>
-          <select id="rc-pm-mfg">
-            <option value="__all__" ${st.mfg==='__all__'?'selected':''}>Все</option>
-            ${mfgs.map(m => `<option value="${escape(m)}" ${st.mfg===m?'selected':''}>${escape(m)}</option>`).join('')}
-          </select>
-        </label>
-        <label class="rc-field"><span>Категория</span>
-          <select id="rc-pm-cat">
-            <option value="__all__" ${st.cat==='__all__'?'selected':''}>Все</option>
-            ${Object.keys(PDU_CATEGORY).map(c => `<option value="${c}" ${st.cat===c?'selected':''}>${escape(PDU_CATEGORY[c])}</option>`).join('')}
-          </select>
-        </label>
-        <label class="rc-field"><span>Фазы</span>
-          <select id="rc-pm-ph">
-            <option value="__all__" ${st.phases==='__all__'?'selected':''}>Все</option>
-            <option value="1" ${st.phases==='1'?'selected':''}>1ф</option>
-            <option value="3" ${st.phases==='3'?'selected':''}>3ф</option>
-          </select>
-        </label>
-        <label class="rc-field"><span>Номинал, A</span>
-          <select id="rc-pm-rat">
-            <option value="__all__" ${st.rating==='__all__'?'selected':''}>Все</option>
-            ${ratings.map(r => `<option value="${r}" ${String(st.rating)===String(r)?'selected':''}>${r}</option>`).join('')}
-          </select>
-        </label>
-        <label class="rc-field"><span>Высота</span>
-          <select id="rc-pm-h">
-            <option value="__all__" ${st.height==='__all__'?'selected':''}>Все</option>
-            ${heights.map(h => `<option value="${h}" ${String(st.height)===String(h)?'selected':''}>${h===0?'0U верт.':h+'U'}</option>`).join('')}
-          </select>
-        </label>
-        <div class="muted" style="font-size:11px;padding-bottom:6px">Найдено: <b>${rows.length}</b></div>
-      </div>
-      <div style="overflow:auto;flex:1 1 auto;padding:4px 20px 12px 20px">
-        <table class="rc-acc-table" style="margin-top:0">
-          <thead><tr>
-            <th>SKU</th><th>Наименование</th><th>Производитель</th><th>Категория</th><th>Фазы / A</th><th>Высота</th><th>Розетки</th><th style="width:90px"></th>
-          </tr></thead>
-          <tbody>
-            ${rows.length === 0 ? `<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Ничего не найдено.</td></tr>` :
-              rows.map(p => {
-                const sel = pdu.sku === p.sku;
-                const outs = p.outlets.map(o => `${o.count}×${o.type}`).join(' + ');
-                return `<tr${sel?' style="background:var(--rs-accent-bg)"':''}>
-                  <td><code>${escape(p.sku)}</code></td>
-                  <td>${escape(p.name)}</td>
-                  <td>${escape(p.mfg)}</td>
-                  <td>${escape(PDU_CATEGORY[p.category] || p.category)}</td>
-                  <td>${p.phases}ф / ${p.rating} A</td>
-                  <td>${p.height===0?'0U верт.':p.height+'U'}</td>
-                  <td style="font-size:11px">${escape(outs)}</td>
-                  <td><button type="button" class="rc-btn ${sel?'rc-btn-primary':''}" data-pm-pick="${escape(p.sku)}">${sel?'✓ выбран':'Выбрать'}</button></td>
-                </tr>`;
-              }).join('')}
-          </tbody>
-        </table>
-      </div>
-      <div style="padding:12px 20px;border-top:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-        <button type="button" class="rc-btn" id="rc-pm-clear">— Произвольная (лист требований) —</button>
-        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-          <label style="display:flex;gap:6px;align-items:center;font-size:12px${pairAlreadyExists?';opacity:0.5':''}" ${pairAlreadyExists?'title="На вводе '+pairFeed+' уже есть PDU — пара не добавится автоматически"':''}>
-            <input type="checkbox" id="rc-pm-pair" ${st.pair?'checked':''} ${pairAlreadyExists?'disabled':''}>
-            Парой на ${thisFeed}+${pairFeed} ${redMode?'<span style="color:#1565c0;font-size:11px">(реком. для '+mode+')</span>':''}
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;font-size:12px" title="Цвет корпуса PDU для ввода ${thisFeed} (напр. «серый», «чёрный»). Попадает в BOM и лист требований. Оставьте пустым, если цвет не важен.">
-            Цвет ${thisFeed}: <input type="text" id="rc-pm-ca" value="${escape(st.colorA)}" style="width:80px;font-size:12px" placeholder="—">
-          </label>
-          <label style="display:flex;gap:4px;align-items:center;font-size:12px${st.pair?'':';opacity:0.5'}" title="Цвет корпуса PDU для ввода ${pairFeed}. Обычно отличается от ${thisFeed}, чтобы визуально различать вводы в стойке.">
-            Цвет ${pairFeed}: <input type="text" id="rc-pm-cb" value="${escape(st.colorB)}" style="width:80px;font-size:12px" placeholder="—" ${st.pair?'':'disabled'}>
-          </label>
-        </div>
-        <button type="button" class="rc-btn" id="rc-pm-cancel">Закрыть</button>
-      </div>
-    `;
-    const close = () => back.remove();
-    const pick = sku => {
-      pdu.sku = sku || '';
-      const cat2 = sku ? pduBySku(sku) : null;
-      if (cat2) {
-        pdu.rating = cat2.rating;
-        pdu.phases = cat2.phases;
-        pdu.height = cat2.height;
-        pdu.outlets = JSON.parse(JSON.stringify(cat2.outlets));
-      }
-      // v0.59.111: записываем цвет и (если включено) добавляем парный PDU
-      if (st.colorA) pdu.color = st.colorA;
+  openPduPickerModal({
+    title: `Каталог PDU · ввод ${thisFeed}`,
+    selectedSku: (pdu && pdu.sku) || '',
+    initial,
+    extraFooter,
+    onExtraMount: box => {
+      const pairEl = box.querySelector('#pdm-pair');
+      if (pairEl) pairEl.addEventListener('change', e => { pairState.pair = e.target.checked; });
+      const caEl = box.querySelector('#pdm-ca');
+      if (caEl) caEl.addEventListener('input', e => { pairState.colorA = e.target.value; });
+      const cbEl = box.querySelector('#pdm-cb');
+      if (cbEl) cbEl.addEventListener('input', e => { pairState.colorB = e.target.value; });
+    },
+    onClear: () => {
+      // «Произвольная» — сохраняем цвет (если задан), сбрасываем sku
+      pdu.sku = '';
+      if (pairState.colorA) pdu.color = pairState.colorA;
       else if (pdu.color) delete pdu.color;
-      if (sku && st.pair && !pairAlreadyExists) {
+      renderPduList(); recalc();
+    },
+    onPick: ({ sku, pdu: picked }) => {
+      if (!sku || !picked) { renderPduList(); recalc(); return; }
+      const kp = picked.kindProps || {};
+      const el2 = picked.electrical || {};
+      pdu.sku = sku;
+      pdu.rating = Number(kp.rating || el2.capacityA || pdu.rating);
+      pdu.phases = Number(kp.phases || el2.phases || pdu.phases);
+      // height в rack-config — число (0/1/2); в element-library это тоже
+      // число (rack-catalog-data.js), но на всякий случай — нормализация.
+      const hRaw = kp.height;
+      const hNum = typeof hRaw === 'number' ? hRaw
+                 : (String(hRaw).match(/^(\d+)/) || [0, 0])[1];
+      pdu.height = Number(hNum) || 0;
+      // outlets: приводим к формату rack-config {type,count}
+      if (Array.isArray(kp.outlets)) {
+        pdu.outlets = kp.outlets.map(o => ({
+          type: o.type,
+          count: Number(o.count ?? o.qty) || 0,
+        }));
+      }
+      if (pairState.colorA) pdu.color = pairState.colorA;
+      else if (pdu.color) delete pdu.color;
+      // Парный PDU на противоположный ввод
+      if (pairState.pair && !pairAlreadyExists) {
         const twin = JSON.parse(JSON.stringify(pdu));
         twin.id = 'pdu' + Date.now() + '-' + pairFeed;
         twin.feed = pairFeed;
-        if (st.colorB) twin.color = st.colorB; else delete twin.color;
+        if (pairState.colorB) twin.color = pairState.colorB; else delete twin.color;
         tpl.pdus.push(twin);
       }
-      close();
       renderPduList(); recalc();
-    };
-    box.querySelector('#rc-pm-close-x').addEventListener('click', close);
-    box.querySelector('#rc-pm-cancel').addEventListener('click', close);
-    box.querySelector('#rc-pm-clear').addEventListener('click', () => pick(''));
-    box.querySelector('#rc-pm-search').addEventListener('input', e => {
-      st.search = e.target.value; render();
-      const inp = box.querySelector('#rc-pm-search');
-      if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
-    });
-    box.querySelector('#rc-pm-mfg').addEventListener('change', e => { st.mfg = e.target.value; render(); });
-    box.querySelector('#rc-pm-cat').addEventListener('change', e => { st.cat = e.target.value; render(); });
-    box.querySelector('#rc-pm-ph').addEventListener('change',  e => { st.phases = e.target.value; render(); });
-    box.querySelector('#rc-pm-rat').addEventListener('change', e => { st.rating = e.target.value; render(); });
-    box.querySelector('#rc-pm-h').addEventListener('change',   e => { st.height = e.target.value; render(); });
-    const pairEl = box.querySelector('#rc-pm-pair');
-    if (pairEl) pairEl.addEventListener('change', e => { st.pair = e.target.checked; render(); });
-    const caEl = box.querySelector('#rc-pm-ca');
-    if (caEl) caEl.addEventListener('input', e => { st.colorA = e.target.value; });
-    const cbEl = box.querySelector('#rc-pm-cb');
-    if (cbEl) cbEl.addEventListener('input', e => { st.colorB = e.target.value; });
-    box.querySelectorAll('[data-pm-pick]').forEach(btn =>
-      btn.addEventListener('click', () => pick(btn.dataset.pmPick)));
-  }
-  render();
-  back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+    },
+  });
 }
 function applyKitLocks() {
   const t = current();

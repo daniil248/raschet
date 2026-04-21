@@ -66,7 +66,7 @@ function scoreCandidate(pdu) {
   // Жёсткие фильтры — вернут -1 если не подходит.
   if (state.phases !== 'any' && String(kp.phases || el.phases || '') !== state.phases) return null;
   if (state.category !== 'any' && kp.category !== state.category) return null;
-  if (state.height !== 'any' && kp.height !== state.height) return null;
+  if (state.height !== 'any' && String(kp.height) !== String(state.height)) return null;
   if (state.mfgs.size > 0 && !state.mfgs.has(pdu.manufacturer)) return null;
 
   // Rating — должен быть ≥ запрошенного.
