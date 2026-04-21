@@ -1222,9 +1222,15 @@ function computeWarnings() {
     out.push({ lvl: 'warn',
       msg: `При тепловыделении ≥3 кВт рекомендуются перфорированные двери спереди и сзади.` });
   }
-  if (t.demandKw >= 5 && t.top !== 'fan' && t.top !== 'any') {
-    out.push({ lvl: 'warn',
-      msg: `При ≥5 кВт рекомендуется крыша с вентиляторными модулями.` });
+  // v0.59.134: для серверных шкафов при больших нагрузках — наоборот, максимально уплотняем корпус (cold/hot aisle containment), вентиляторные крыши не рекомендуются. Warn о незаделанных щелях:
+  if (t.demandKw >= 5) {
+    const leaky = [];
+    if (t.top === 'fan' || t.top === 'vent') leaky.push('вентиляторная/перфорированная крыша');
+    if (t.sides === 'none' || t.sides === 'left' || t.sides === 'right') leaky.push('отсутствуют боковые стенки');
+    if (t.floor === 'vent') leaky.push('перфорированный пол');
+    if (leaky.length) {
+      out.push({ lvl: 'warn', msg: `При ≥5 кВт серверный шкаф следует максимально уплотнять (cold/hot aisle containment). Обнаружены «щели»: ${leaky.join('; ')}. Перфорированы должны быть только передняя и задняя двери.` });
+    }
   }
 
   // Стенки
