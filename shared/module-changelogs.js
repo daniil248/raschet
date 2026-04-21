@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.105', date: '2026-04-21', items: [
+      'Практический floor для предупреждения «PDU завышен»: срабатывает только если нагрузка ≥ 3 кВт и номинал PDU > 4 кВт (~16 A 1ф). При малой нагрузке выбор PDU ограничен каталожной сеткой (минимум 16–32 A), и warn о «перезапасе» был бы шумом.',
+      'Файлы: rack-config/rack-config.js (computeWarnings + renderFeedInfo badge).'
+    ] },
     { version: '0.59.104', date: '2026-04-21', items: [
       'Убрано дублирование err о занижении PDU: для 2N/N+1 проверку занижения делает мода-специфичный блок (weakFeeds / remaining < demandKw), общая per-feed ошибка «PDU < needed» теперь срабатывает только в режиме «без резервирования», чтобы не плодить дубли. Предупреждение о завышенном PDU (>1.8×needed) остаётся во всех режимах.',
       'Файл: rack-config/rack-config.js (computeWarnings: пропуск err для redMode).'

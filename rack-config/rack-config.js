@@ -1014,8 +1014,13 @@ function computeWarnings() {
       out.push({ lvl: 'err',
         msg: `Ввод ${f}: номинал PDU ${byFeed[f].toFixed(2)} кВт меньше требуемой нагрузки ${need.toFixed(2)} кВт — не хватит запитать оборудование.` });
     } else if (byFeed[f] > need * 1.8 + 1e-6) {
-      out.push({ lvl: 'warn',
-        msg: `Ввод ${f}: номинал PDU ${byFeed[f].toFixed(2)} кВт сильно завышен относительно нагрузки ${need.toFixed(2)} кВт (>80% запаса) — можно подобрать меньший типоразмер.` });
+      // v0.59.105: не ругаемся на «завышение» если сама нагрузка мала
+      // (< 3 кВт) или PDU уже минимальный практический (≤ 4 кВт ≈ 16 A 1ф) —
+      // ниже этого уровня выбор номиналов ограничен каталожной сеткой.
+      if (need >= 3 && byFeed[f] > 4) {
+        out.push({ lvl: 'warn',
+          msg: `Ввод ${f}: номинал PDU ${byFeed[f].toFixed(2)} кВт сильно завышен относительно нагрузки ${need.toFixed(2)} кВт (>80% запаса) — можно подобрать меньший типоразмер.` });
+      }
     }
   });
 
@@ -1149,7 +1154,7 @@ function renderFeedInfo() {
       badge = `<span class="rc-feed-pill err">PDU &lt; нагрузки</span>`;
     } else if (need > 0 && need > availKw + 1e-6) {
       badge = `<span class="rc-feed-pill err">ввод &lt; нагрузки</span>`;
-    } else if (need > 0 && pduKw > need * 1.8 + 1e-6) {
+    } else if (need >= 3 && pduKw > 4 && pduKw > need * 1.8 + 1e-6) {
       badge = `<span class="rc-feed-pill warn">PDU завышен</span>`;
     } else {
       badge = `<span class="rc-feed-pill ok">OK</span>`;
