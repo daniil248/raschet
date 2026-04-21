@@ -34,6 +34,8 @@
           <tr><td style="color:#0277bd">C</td><td>Охлаждение / осушение</td><td>до t<sub>р</sub> <code>d=const</code>, ниже — по φ=100%</td><td>Испарители, чиллеры; выпадение конденсата при t &lt; t<sub>р</sub>.</td></tr>
           <tr><td style="color:#2e7d32">A</td><td>Адиабат. увлажнение</td><td><code>h = const</code></td><td>Форсуночные камеры, сотовые испарители. Предел — линия насыщения.</td></tr>
           <tr><td style="color:#6a1b9a">S</td><td>Паровое увлажнение</td><td><code>t ≈ const</code></td><td>Паровые увлажнители. d растёт, t почти не меняется.</td></tr>
+          <tr><td style="color:#00838f">M</td><td>Смешение с точкой</td><td><code>W_mix=α·W₁+(1−α)·W₂</code>, <code>h_mix=α·h₁+(1−α)·h₂</code></td><td>Рециркуляция, замыкание цикла. На стрелке: select опорной точки + α (доля по массе).</td></tr>
+          <tr><td style="color:#ad1457">R</td><td>Рекуператор (теплообмен)</td><td><code>t₂=t₁+η·(t<sub>ref</sub>−t₁)</code>, <code>d=const</code></td><td>Пластинчатый/роторный утилизатор тепла вытяжки. На стрелке: опорная точка (вытяжка) + η по температуре.</td></tr>
           <tr><td style="color:#424242">X</td><td>Произвольный</td><td>—</td><td>Соединяет две точки прямой (смешение, свободный переход).</td></tr>
         </table>
         <h4>Цвета и предупреждения</h4>
@@ -105,6 +107,7 @@
         <button type="button" id="psy-add" class="psy-btn psy-btn-primary">+ точка</button>
         <button type="button" id="psy-demo" class="psy-btn">Демо-цикл «лето/зима»</button>
         <button type="button" id="psy-clear" class="psy-btn">Очистить</button>
+        <button type="button" id="psy-csv" class="psy-btn" title="Экспорт таблиц «Точки» и «Процессы» в CSV (UTF-8 BOM, разделитель ;)">CSV</button>
       </div>
       <div class="psy-cycle" id="psy-cycle"></div>
     </div>

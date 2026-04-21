@@ -1204,6 +1204,60 @@ function wire() {
     rerenderCycle();
   });
   $('psy-demo').addEventListener('click', loadDemo);
+  const btnCsv = $('psy-csv');
+  if (btnCsv) btnCsv.addEventListener('click', exportCsv);
+}
+
+/* Экспорт точек и процессов в CSV (UTF-8 BOM, ';' — для Excel-RU). */
+function exportCsv() {
+  const { sts, segs } = computeCycle();
+  const sep = ';';
+  const q = (v) => {
+    const s = v == null ? '' : String(v);
+    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [];
+  lines.push(`# i-d диаграмма — экспорт ${new Date().toISOString().slice(0,19).replace('T',' ')}`);
+  lines.push(`# P = ${(S.P/1000).toFixed(3)} кПа; alt = ${S.alt} м; rhMax = ${S.rhMax}%; V_base = ${S.vBase} м³/ч`);
+  lines.push('');
+  lines.push('## Точки');
+  lines.push(['№','Имя','t,°C','φ,%','d,г/кг','h,кДж/кг','ρ,кг/м³','v,м³/кг','tр,°C','tм,°C'].join(sep));
+  sts.forEach((st, i) => {
+    if (!st) { lines.push([i+1, q(S.points[i]?.name||''), '—','—','—','—','—','—','—','—'].join(sep)); return; }
+    lines.push([
+      i+1, q(S.points[i]?.name||''),
+      st.T.toFixed(2), st.RH.toFixed(1),
+      (st.W*1000).toFixed(3), st.h.toFixed(2),
+      st.rho.toFixed(3), st.v.toFixed(4),
+      st.Td.toFixed(2), st.Twb.toFixed(2),
+    ].map(x => String(x).replace('.', ',')).join(sep));
+  });
+  lines.push('');
+  lines.push('## Процессы');
+  lines.push(['№','Тип','V,м³/ч','ΔT,°C','Δd,г/кг','Δh,кДж/кг','Gда,кг/ч','Q,кВт','qw,кг/ч'].join(sep));
+  let sQh=0,sQc=0,sWh=0,sWd=0;
+  segs.forEach((s, i) => {
+    if (!s) { lines.push([`${i+1}→${i+2}`, '—','','','','','','',''].join(sep)); return; }
+    if (s.Q>0) sQh += s.Q; else sQc += -s.Q;
+    if (s.qw>0) sWh += s.qw; else sWd += -s.qw;
+    const label = PROC_TYPES.find(p=>p.v===s.type)?.t || s.type;
+    lines.push([
+      `${i+1}→${i+2}`, q(label),
+      s.V.toFixed(0), s.dT.toFixed(2), s.dW.toFixed(3), s.dh.toFixed(2),
+      s.G.toFixed(0), s.Q.toFixed(2), s.qw.toFixed(3),
+    ].map(x => String(x).replace('.', ',')).join(sep));
+  });
+  lines.push('');
+  lines.push(['ИТОГО', '', '', '', '', '', '',
+              `нагрев: +${sQh.toFixed(2)} / охл: −${sQc.toFixed(2)}`,
+              `увл: +${sWh.toFixed(3)} / осуш: −${sWd.toFixed(3)}`].join(sep));
+  const csv = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `id-diagram-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
 }
 
 document.addEventListener('DOMContentLoaded', wire);
