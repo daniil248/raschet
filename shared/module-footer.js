@@ -90,24 +90,12 @@ export function mountFooter(opts) {
   _injectStyles();
   const { appVersion, moduleId, moduleTitle, entries = [], links = null } = opts;
 
-  // v0.59.89: слева — ссылки на связанные модули (hub / каталог / github),
-  // справа — версия и журнал. Раньше footer показывал только версию справа,
-  // и пользователи жаловались «футера нет» (левой половины действительно не было).
-  const defaultLinks = [
-    { label: 'Все программы', href: (location.pathname.includes('/raschet/') && !/\/raschet\/?$/.test(location.pathname) ? '../hub.html' : 'hub.html') },
-    { label: 'Каталог',       href: (location.pathname.match(/\/([^/]+)\//) && !/\/catalog\//.test(location.pathname) ? '../catalog/' : 'catalog/') },
-    { label: 'GitHub',        href: 'https://github.com/daniil248/raschet', external: true },
-  ];
-  const useLinks = Array.isArray(links) ? links : defaultLinks;
-  const linksHtml = useLinks.map(l =>
-    `<a href="${l.href}"${l.external ? ' target="_blank" rel="noopener"' : ''}>${l.label}${l.external ? ' ↗' : ''}</a>`
-  ).join('<span class="rs-mfoot-dot">·</span>');
-
+  // v0.59.128: футер упрощён по требованию пользователя — только версия
+  // и ссылка на журнал изменений. Никаких дополнительных ссылок.
   const foot = document.createElement('div');
   foot.className = 'rs-mfoot';
   foot.innerHTML = `
-    <div class="rs-mfoot-left">${linksHtml}</div>
-    <div class="rs-mfoot-right">
+    <div class="rs-mfoot-right" style="margin:0 auto">
       <span>Raschet <b>v${appVersion}</b></span>
       <span class="rs-mfoot-dot">·</span>
       <a data-act="log">Журнал изменений «${moduleTitle}»</a>

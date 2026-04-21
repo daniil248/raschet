@@ -167,8 +167,23 @@ function renderOutletInputs() {
     </label>`;
   }).join('') + `
     <label class="pc-field" style="margin:0">
-      <span>+ свой тип</span>
-      <input id="pc-outlet-custom" type="text" placeholder="напр. C15" title="Введите тип и Enter">
+      <span>+ добавить тип</span>
+      <select id="pc-outlet-add">
+        <option value="">— выбрать —</option>
+        <option value="C13">C13</option>
+        <option value="C19">C19</option>
+        <option value="C15">C15</option>
+        <option value="C21">C21</option>
+        <option value="SCHUKO">Schuko (CEE 7/4)</option>
+        <option value="NEMA515">NEMA 5-15</option>
+        <option value="NEMA520">NEMA 5-20</option>
+        <option value="NEMA L5-30">NEMA L5-30</option>
+        <option value="IEC309-16">IEC 60309 16 A</option>
+        <option value="IEC309-32">IEC 60309 32 A</option>
+        <option value="UK-BS1363">UK BS1363</option>
+        <option value="T-SLOT">T-slot</option>
+        <option value="__custom__">свой…</option>
+      </select>
     </label>`;
   box.querySelectorAll('input[data-outlet]').forEach(inp => {
     inp.addEventListener('change', () => {
@@ -178,12 +193,18 @@ function renderOutletInputs() {
       render();
     });
   });
-  const custom = box.querySelector('#pc-outlet-custom');
-  if (custom) custom.addEventListener('change', () => {
-    const t = normType(custom.value);
+  const addSel = box.querySelector('#pc-outlet-add');
+  if (addSel) addSel.addEventListener('change', () => {
+    let raw = addSel.value;
+    addSel.value = '';
+    if (!raw) return;
+    if (raw === '__custom__') {
+      raw = prompt('Введите тип разъёма (напр. «C13», «IEC309 63A»):');
+      if (!raw) return;
+    }
+    const t = normType(raw);
     if (!t) return;
     if (!state.outlets[t]) state.outlets[t] = 1;
-    custom.value = '';
     renderOutletInputs();
     render();
   });

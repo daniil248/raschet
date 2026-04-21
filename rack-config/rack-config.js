@@ -374,35 +374,46 @@ function applyPduPayload(pduIdx, payload) {
 }
 
 function renderPduReqsBlock(host, pdu, pduIdx) {
+  const outletsStr = (pdu.outlets || []).filter(o => o.count > 0)
+    .map(o => `${o.type}×${o.count}`).join(', ') || '—';
+  const heightStr = pdu.height === 0 ? '0U (верт.)' : (pdu.height ? pdu.height + 'U' : '—');
+  const ratingStr = pdu.rating ? `${pdu.rating} A` : '—';
+  const phasesStr = pdu.phases ? `${pdu.phases}ф` : '—';
+  const qtyStr = pdu.qty ? pdu.qty : 1;
+
   if (pdu.sku) {
-    // Модель выбрана — артикул + основные параметры
     const cat = pduBySku(pdu.sku);
     if (cat) {
       host.innerHTML = `
         <div class="rc-pdu-req-card rc-pdu-req-sku">
-          <div><b>✓ Модель:</b> ${escape(cat.mfg)} <code>${escape(cat.sku)}</code> — ${escape(cat.name)}</div>
-          <div class="muted" style="font-size:11px">В спецификации пойдёт с этим артикулом.</div>
+          <div><b>✓ Модель выбрана:</b> ${escape(cat.mfg)} <code>${escape(cat.sku)}</code> — ${escape(cat.name)}</div>
+          <div class="rc-pdu-req-grid">
+            <div><span>Кол-во</span><b>${qtyStr}</b></div>
+            <div><span>Номинал</span><b>${ratingStr}</b></div>
+            <div><span>Фаз</span><b>${phasesStr}</b></div>
+            <div><span>Высота</span><b>${heightStr}</b></div>
+            <div class="rc-pdu-req-full"><span>Розетки</span><b>${escape(outletsStr)}</b></div>
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:4px">В спецификации — с артикулом ${escape(cat.sku)}. Чтобы изменить — откройте «🧙 Конфигуратор PDU».</div>
         </div>`;
+      return;
     }
-    return;
   }
-  // Лист требований
-  const outletsStr = (pdu.outlets || []).filter(o => o.count > 0)
-    .map(o => `${o.type}×${o.count}`).join(', ') || '—';
   const req = pdu._requirements || {};
   const ctx = req.context;
   host.innerHTML = `
     <div class="rc-pdu-req-card rc-pdu-req-reqs">
       <div><b>📋 Лист требований (без SKU)</b></div>
       <div class="rc-pdu-req-grid">
-        <div><span>Номинал</span><b>≥ ${pdu.rating} A</b></div>
-        <div><span>Фаз</span><b>${pdu.phases}ф</b></div>
-        <div><span>Высота</span><b>${pdu.height === 0 ? '0U (верт.)' : pdu.height + 'U'}</b></div>
-        <div><span>Розетки</span><b>${escape(outletsStr)}</b></div>
+        <div><span>Кол-во</span><b>${qtyStr}</b></div>
+        <div><span>Номинал</span><b>≥ ${ratingStr}</b></div>
+        <div><span>Фаз</span><b>${phasesStr}</b></div>
+        <div><span>Высота</span><b>${heightStr}</b></div>
+        <div class="rc-pdu-req-full"><span>Розетки</span><b>${escape(outletsStr)}</b></div>
         ${req.category ? `<div><span>Категория</span><b>${escape(req.category)}</b></div>` : ''}
         ${ctx ? `<div class="rc-pdu-req-full"><span>Контекст</span><b>${ctx.servers || '?'} серверов × ${ctx.kwPerServer || '?'} кВт, cos φ=${ctx.cosPhi || '?'}, ${ctx.phases === '3' ? '3ф 400В' : '1ф 230В'}, резерв ${ctx.redundancy || 'N'}</b></div>` : ''}
       </div>
-      <div class="muted" style="font-size:11px;margin-top:4px">В BOM попадёт как <b>лист требований</b> — артикула нет. Чтобы выбрать конкретный PDU, откройте «🧙 Конфигуратор PDU» → «Выбрать эту модель».</div>
+      <div class="muted" style="font-size:11px;margin-top:4px">В BOM попадёт как <b>лист требований</b>. Чтобы выбрать артикул — «🧙 Конфигуратор PDU» → «Выбрать».</div>
     </div>`;
 }
 
@@ -863,6 +874,8 @@ function renderPduList() {
     const catLabel = cat
       ? `${cat.mfg} ${cat.sku} — ${PDU_CATEGORY[cat.category] || cat.category}`
       : '— Произвольная (лист требований) — открыть каталог…';
+    // Единственное редактируемое поле в строке — «Ввод». Всё остальное
+    // (номинал / фазы / высота / розетки / модель) задаётся в Конфигураторе PDU.
     row.innerHTML = `
       <div class="rc-pdu-head">
         <label class="rc-field" title="К какому вводу электрической схемы подключён этот PDU. PDU на одном вводе суммируются, на разных — резервируют друг друга.">
@@ -871,103 +884,29 @@ function renderPduList() {
             ${['A','B','C','D'].map(f => `<option value="${f}" ${p.feed===f?'selected':''}>Ввод ${f}</option>`).join('')}
           </select>
         </label>
-        <label class="rc-field"><span>Кол-во</span>
-          <input type="number" min="1" step="1" data-k="qty" value="${p.qty}">
-        </label>
-        <label class="rc-field ${locked?'rc-locked':''}"><span>Номинал, А</span>
-          <select data-k="rating" ${locked?'disabled':''}>
-            ${[10,16,20,25,32,40,63].map(a => `<option value="${a}" ${p.rating===a?'selected':''}>${a} A</option>`).join('')}
-          </select>
-        </label>
-        <label class="rc-field ${locked?'rc-locked':''}"><span>Фазы</span>
-          <select data-k="phases" ${locked?'disabled':''}>
-            <option value="1" ${p.phases===1?'selected':''}>1ф</option>
-            <option value="3" ${p.phases===3?'selected':''}>3ф</option>
-          </select>
-        </label>
-        <label class="rc-field ${locked?'rc-locked':''}"><span>Высота, U</span>
-          <select data-k="height" ${locked?'disabled':''}>
-            <option value="0" ${p.height===0?'selected':''}>0U (верт.)</option>
-            <option value="1" ${p.height===1?'selected':''}>1U</option>
-            <option value="2" ${p.height===2?'selected':''}>2U</option>
-          </select>
-        </label>
+        <div style="flex:1"></div>
         <button type="button" class="rc-btn rc-btn-danger" data-del="${idx}" title="Удалить PDU">✕</button>
-      </div>
-      <div class="rc-pdu-outlets">
-        <div class="rc-pdu-outlets-head">
-          <b>Розетки${locked?' <span class="muted" style="font-weight:normal;font-size:11px">(из каталога)</span>':''}</b>
-          <button type="button" class="rc-btn" data-add-outlet ${locked?'disabled':''}>+ тип</button>
-        </div>
-        <div class="rc-pdu-outlet-rows">
-          ${p.outlets.map((o, oi) => {
-            const STD = ['C13','C19','C13+C19','C15','C21','Schuko','NEMA 5-15','NEMA 5-20','NEMA L5-30','IEC 60309 16A','IEC 60309 32A','UK BS1363','разъём T-slot','смешанный'];
-            const opts = STD.slice();
-            if (o.type && !opts.includes(o.type)) opts.push(o.type); // round-trip custom types
-            return `
-            <div class="rc-pdu-outlet">
-              <select data-ok="type" data-oi="${oi}" ${locked?'disabled':''}>
-                ${opts.map(x => `<option value="${escape(x)}" ${o.type===x?'selected':''}>${escape(x)}</option>`).join('')}
-              </select>
-              <input type="number" min="1" step="1" data-ok="count" data-oi="${oi}" value="${o.count}" title="Количество розеток этого типа" ${locked?'disabled':''}>
-              <button type="button" class="rc-btn rc-btn-danger rc-btn-mini" data-del-outlet="${oi}" title="Удалить строку" ${locked?'disabled':''}>✕</button>
-            </div>
-          `;}).join('')}
-        </div>
-        <div class="muted" style="font-size:11px">Итого розеток: ${p.outlets.reduce((s,o)=>s+(+o.count||0),0)}</div>
       </div>
       <div class="rc-pdu-catalog" style="margin-top:8px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           <button type="button" class="rc-btn rc-btn-primary" data-pdu-wizard="${idx}" title="Открыть Конфигуратор PDU: задать контекст (серверы/кВт/резерв), автоподбор требований, ранжированные рекомендации. Результат (модель или лист требований) вернётся сюда одним кликом.">🧙 Конфигуратор PDU →</button>
-          <button type="button" class="rc-btn" data-pdu-cat="${idx}" title="Быстрый выбор артикула из встроенного справочника PDU.">📋 Каталог PDU (${escape(catLabel)})</button>
+          <button type="button" class="rc-btn" data-pdu-cat="${idx}" title="Быстрый выбор артикула из встроенного справочника PDU.">📋 Каталог PDU</button>
         </div>
         <div data-pdu-reqs="${idx}" class="rc-pdu-reqs"></div>
-        ${locked ? `<div class="rc-kit-includes"><b>${escape(cat.mfg)} ${escape(cat.sku)}:</b> ${escape(cat.name)} — <i>${escape(PDU_CATEGORY[cat.category] || cat.category)}</i></div>` : `<div class="muted" style="font-size:11px;margin-top:2px">Произвольная конфигурация — будет сгенерирован <b>лист требований</b> (спецификация) для закупки по ТЗ.</div>`}
       </div>
     `;
-    // основные поля
+    // feed
     row.querySelectorAll('[data-k]').forEach(inp => {
       inp.addEventListener('change', () => {
-        const k = inp.dataset.k;
-        const v = inp.value;
-        if (k === 'qty') p.qty = Math.max(1, parseInt(v,10)||1);
-        else if (k === 'phases' || k === 'height') p[k] = parseInt(v,10)||0;
-        else if (k === 'rating') p.rating = parseInt(v,10);
-        else if (k === 'feed') p.feed = v;
-        else p[k] = v;
-        recalc();
+        if (inp.dataset.k === 'feed') { p.feed = inp.value; recalc(); }
       });
     });
     const catBtn = row.querySelector('[data-pdu-cat]');
     if (catBtn) catBtn.addEventListener('click', () => openPduCatalogModal(p));
     const wizBtn = row.querySelector('[data-pdu-wizard]');
     if (wizBtn) wizBtn.addEventListener('click', () => openPduWizardModal(idx));
-    // Блок требований (виден всегда — показывает либо параметры текущего PDU, либо lastPdu)
     const reqsHost = row.querySelector(`[data-pdu-reqs="${idx}"]`);
     if (reqsHost) renderPduReqsBlock(reqsHost, p, idx);
-    // розетки
-    row.querySelectorAll('[data-ok]').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const oi = +inp.dataset.oi;
-        const ok = inp.dataset.ok;
-        if (!p.outlets[oi]) return;
-        if (ok === 'count') p.outlets[oi].count = Math.max(1, parseInt(inp.value,10)||1);
-        else p.outlets[oi].type = inp.value;
-        renderPduList(); recalc();
-      });
-    });
-    row.querySelector('[data-add-outlet]').addEventListener('click', () => {
-      p.outlets.push({ type: 'C19', count: 4 });
-      renderPduList(); recalc();
-    });
-    row.querySelectorAll('[data-del-outlet]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const oi = +btn.dataset.delOutlet;
-        if (p.outlets.length <= 1) { alert('Должен быть хотя бы один тип розеток.'); return; }
-        p.outlets.splice(oi, 1);
-        renderPduList(); recalc();
-      });
-    });
     row.querySelector('[data-del]').addEventListener('click', () => {
       t.pdus.splice(idx, 1); renderPduList(); recalc();
     });
