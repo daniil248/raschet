@@ -22,7 +22,7 @@
 }
 /* Нижний отступ страницы под фиксированный футер (32px), чтобы
    контент не скрывался под ним. */
-body { padding-bottom: 32px; box-sizing: border-box; }
+body { margin: 0; padding-bottom: 32px; box-sizing: border-box; }
 .rs-header-left { display: flex; align-items: center; gap: 12px; }
 .rs-header-right { display: flex; align-items: center; gap: 12px; }
 
