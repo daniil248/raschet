@@ -370,10 +370,11 @@ function initPanelWizard() {
   if (selectedPanel) selectedPanel.closest('.panel').style.display = 'none';
   // Справочник сворачиваем в аккордеон (доступ из wizard, но не мешает)
 
-  // v0.59.79: если узел уже был сконфигурирован — восстанавливаем
-  // metering/ct/monitoring/accessories/breakers из preload. Preload
-  // привязан к nodeId и пишется инспектором главной схемы при каждом
-  // render'е.
+  // v0.59.79/0.59.81: если узел уже был сконфигурирован — восстанавливаем
+  // metering/ct/monitoring/accessories/breakers из preload. Плюс
+  // реальные входящие/исходящие линии из схемы (incomingLines/
+  // outgoingLines) — wizard построит breakers из них, а не из
+  // дефолтного _pcGenerateBreakers.
   try {
     const rawPre = localStorage.getItem('raschet.panelWizardPreload.v1');
     if (rawPre) {
@@ -384,6 +385,15 @@ function initPanelWizard() {
         if (pre.ct) pcWizState.ct = Object.assign(pcWizState.ct, pre.ct);
         if (pre.monitoring) pcWizState.monitoring = Object.assign(pcWizState.monitoring, pre.monitoring);
         if (Array.isArray(pre.accessories)) pcWizState.accessories = pre.accessories;
+        pcWizState._incomingLines = Array.isArray(pre.incomingLines) ? pre.incomingLines : [];
+        pcWizState._outgoingLines = Array.isArray(pre.outgoingLines) ? pre.outgoingLines : [];
+        // Если breakers ещё не сохранены, а реальные линии есть —
+        // предзаполним количество вводов/отходящих в requirements
+        // под фактическую схему.
+        if ((!Array.isArray(pre.breakers) || !pre.breakers.length) && (pcWizState._incomingLines.length || pcWizState._outgoingLines.length)) {
+          if (pcWizState._incomingLines.length) pcWizState.requirements.inputs = pcWizState._incomingLines.length;
+          if (pcWizState._outgoingLines.length) pcWizState.requirements.outputs = pcWizState._outgoingLines.length;
+        }
       }
     }
   } catch (e) { console.warn('[panel-config] preload failed', e); }
@@ -531,34 +541,88 @@ function _pcGoStep2() {
 // ----- Шаг 3: автоматы -----
 function _pcGenerateBreakers() {
   const rq = pcWizState.requirements;
+  const incoming = pcWizState._incomingLines || [];
+  const outgoing = pcWizState._outgoingLines || [];
+  const hasReal = incoming.length || outgoing.length;
+
   const I_total = _pcCalcCurrent(rq.loadKw, rq.voltage);
   const I_in = I_total * (1 + rq.reserve / 100);
-  const inIn = _pcStandardBreakerIn(I_in);
-  // Средняя нагрузка на отходящую линию (с коэф. одновременности 0.7)
-  const I_per_out = (I_total * 0.7) / rq.outputs;
-  const inOut = _pcStandardBreakerIn(Math.max(I_per_out, 10));
+  const inInDefault = _pcStandardBreakerIn(I_in);
+  const I_per_out = (I_total * 0.7) / Math.max(rq.outputs, 1);
+  const inOutDefault = _pcStandardBreakerIn(Math.max(I_per_out, 10));
 
   const list = [];
-  // Вводные автоматы (по числу вводов)
+
+  // v0.59.81: строим по реальным линиям, если они есть (inspector
+  // передал incomingLines/outgoingLines из state.conns).
+  if (hasReal) {
+    // Вводные — из incoming или по requirements.inputs если связей нет
+    const inputsN = incoming.length || rq.inputs;
+    for (let i = 0; i < inputsN; i++) {
+      const line = incoming[i];
+      const inA = (line && line.breakerInA) || inInDefault;
+      const poles = (line && line.threePhase === false) ? 2 : (rq.voltage === 'lv-230' ? 2 : 4);
+      list.push({
+        role: 'input',
+        name: line
+          ? `Ввод от «${line.sourceName}»`
+          : (inputsN > 1 ? `Вводной ${i + 1}` : 'Вводной'),
+        inA,
+        curve: inA >= 125 ? 'MCCB' : 'MCB_C',
+        poles,
+      });
+    }
+    if (rq.kind === 'avr' && inputsN >= 2) {
+      list.push({ role: 'switch', name: 'АВР (переключатель)', inA: inInDefault, curve: '—', poles: 4 });
+    }
+    // Отходящие — из outgoing
+    if (outgoing.length) {
+      for (const line of outgoing) {
+        const inA = line.breakerInA || _pcStandardBreakerIn(
+          line.loadKw ? _pcCalcCurrent(line.loadKw, rq.voltage) * 1.1 : inOutDefault
+        );
+        const poles = (line.threePhase === false) ? 1 : (rq.voltage === 'lv-230' ? 1 : 3);
+        list.push({
+          role: 'output',
+          name: `→ «${line.targetName}»${line.loadKw ? ` · ${line.loadKw.toFixed(1)} kW` : ''}`,
+          inA,
+          curve: inA >= 125 ? 'MCCB' : 'MCB_C',
+          poles,
+        });
+      }
+    } else {
+      // Связей нет — генерируем дефолтные «Отходящая 1..N» по outputs
+      for (let i = 0; i < rq.outputs; i++) {
+        list.push({
+          role: 'output',
+          name: `Отходящая линия ${i + 1}`,
+          inA: inOutDefault,
+          curve: 'MCB_C',
+          poles: rq.voltage === 'lv-230' ? 1 : 3,
+        });
+      }
+    }
+    return list;
+  }
+
+  // Fallback: полностью дефолтный список (без схемы)
   for (let i = 0; i < rq.inputs; i++) {
     list.push({
       role: 'input',
       name: rq.inputs > 1 ? `Вводной ${i + 1}` : 'Вводной',
-      inA: inIn,
+      inA: inInDefault,
       curve: 'MCCB',
       poles: rq.voltage === 'lv-230' ? 2 : 4,
     });
   }
-  // Если АВР — добавим переключатель
   if (rq.kind === 'avr' && rq.inputs >= 2) {
-    list.push({ role: 'switch', name: 'АВР (переключатель)', inA: inIn, curve: '—', poles: 4 });
+    list.push({ role: 'switch', name: 'АВР (переключатель)', inA: inInDefault, curve: '—', poles: 4 });
   }
-  // Отходящие автоматы
   for (let i = 0; i < rq.outputs; i++) {
     list.push({
       role: 'output',
       name: `Отходящая линия ${i + 1}`,
-      inA: inOut,
+      inA: inOutDefault,
       curve: 'MCB_C',
       poles: rq.voltage === 'lv-230' ? 1 : 3,
     });
@@ -573,8 +637,19 @@ function _pcGoStep3() {
   if (!Array.isArray(pcWizState.breakers) || !pcWizState.breakers.length) {
     pcWizState.breakers = _pcGenerateBreakers();
   }
+
+  // v0.59.81: подсказка — откуда взяты автоматы
+  const srcHint = (pcWizState._outgoingLines && pcWizState._outgoingLines.length)
+    ? `<div style="margin:6px 0;padding:6px 10px;background:#e8f5e9;color:#2e7d32;border-radius:3px;font-size:11px">
+        ✓ Автоматы построены по ${pcWizState._outgoingLines.length} реальным отходящим линиям из схемы
+        ${pcWizState._incomingLines.length ? ` и ${pcWizState._incomingLines.length} вводам` : ''}. Номиналы взяты из расчёта (c._breakerIn).
+      </div>`
+    : `<div style="margin:6px 0;padding:6px 10px;background:#fff4e5;color:#8a5a00;border-radius:3px;font-size:11px">
+        ⚠ В схеме у узла нет подключённых линий. Автоматы сгенерированы по числу входов/выходов из шага 1. Подключите линии в Конструкторе и вернитесь сюда.
+      </div>`;
   const container = document.getElementById('pc-wiz-breakers');
   const html = [
+    srcHint,
     `<p class="muted" style="font-size:12px">Предварительный состав. Номиналы и типы можно подправить.</p>`,
     '<table class="pc-breakers-table"><thead><tr><th>Роль</th><th>Назначение</th><th>In, А</th><th>Тип</th><th>Полюса</th></tr></thead><tbody>',
   ];

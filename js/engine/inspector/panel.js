@@ -230,6 +230,46 @@ export function openPanelParamsModal(n) {
       // дефолтов. Перезаписываем на каждый рендер инспектора, чтобы
       // в wizard попадала актуальная версия.
       try {
+        // v0.59.81: собираем реальные входящие/исходящие линии из схемы,
+        // чтобы wizard начал не с дефолтных «Отходящая линия 1..N», а с
+        // фактически подключенных потребителей с их посчитанными
+        // номиналами автоматов (c._breakerIn из recalc).
+        const incomingLines = [];
+        const outgoingLines = [];
+        try {
+          for (const c of state.conns.values()) {
+            if (!c || !c.from || !c.to) continue;
+            if (c.to.nodeId === n.id) {
+              const src = state.nodes.get(c.from.nodeId);
+              if (!src) continue;
+              incomingLines.push({
+                port: c.to.port || 0,
+                sourceName: src.name || effectiveTag(src) || src.id,
+                sourceType: src.type,
+                breakerInA: Number(c._breakerIn) || null,
+                loadKw: Number(src._loadKw) || null,
+                threePhase: c._threePhase !== false,
+              });
+            } else if (c.from.nodeId === n.id) {
+              const dst = state.nodes.get(c.to.nodeId);
+              if (!dst) continue;
+              outgoingLines.push({
+                port: c.from.port || 0,
+                targetName: dst.name || effectiveTag(dst) || dst.id,
+                targetType: dst.type,
+                breakerInA: Number(c._breakerIn) || null,
+                breakerPerLine: Number(c._breakerPerLine) || null,
+                loadKw: Number(dst._loadKw) || null,
+                maxA: Number(c._maxA) || null,
+                threePhase: c._threePhase !== false,
+                cableLabel: c.cableTypeId || c.cable || null,
+              });
+            }
+          }
+          incomingLines.sort((a, b) => a.port - b.port);
+          outgoingLines.sort((a, b) => a.port - b.port);
+        } catch (ee) { console.warn('[panel] collect lines failed', ee); }
+
         const preload = {
           nodeId: n.id,
           breakers: Array.isArray(n.panelBreakers) ? n.panelBreakers : null,
@@ -237,21 +277,36 @@ export function openPanelParamsModal(n) {
           ct: n.panelCt || null,
           monitoring: n.panelMonitoring || null,
           accessories: Array.isArray(n.panelAccessories) ? n.panelAccessories : null,
+          incomingLines,
+          outgoingLines,
           savedAt: Date.now(),
         };
-        // Пишем ТОЛЬКО если есть что восстанавливать — чтобы не засорять
-        // storage и не мешать «чистому» запуску для новых узлов.
-        if (preload.breakers || preload.metering || preload.ct || preload.monitoring || preload.accessories) {
+        // v0.59.81: пишем всегда, если есть хотя бы реальные линии — даже
+        // для не-сконфигурированного узла, чтобы wizard сразу увидел
+        // подключенные автоматы. Очищаем только если совсем нечего
+        // передать (нет ни связей, ни сохранённой конфигурации).
+        const hasAny = preload.breakers || preload.metering || preload.ct ||
+                       preload.monitoring || preload.accessories ||
+                       incomingLines.length || outgoingLines.length;
+        if (hasAny) {
           localStorage.setItem('raschet.panelWizardPreload.v1', JSON.stringify(preload));
         } else {
           localStorage.removeItem('raschet.panelWizardPreload.v1');
         }
       } catch { /* quota / private-mode */ }
+      // v0.59.81: индикатор, что конфигурация сохранена
+      const hasBreakers = Array.isArray(n.panelBreakers) && n.panelBreakers.length;
+      const nBreakers = hasBreakers ? n.panelBreakers.length : 0;
+      const nIn = hasBreakers ? n.panelBreakers.filter(b => b.role === 'input').length : 0;
+      const nOut = hasBreakers ? n.panelBreakers.filter(b => b.role === 'output').length : 0;
+      const badge = hasBreakers
+        ? `<span style="display:inline-block;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">✓ ${nIn} вв / ${nOut} отх</span>`
+        : `<span style="display:inline-block;background:#fff4e5;color:#8a5a00;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">не сконфигурирован</span>`;
       h.push(`<div style="margin:10px 0">
         <a href="panel-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
-          ⚙ Сконфигурировать НКУ подробно (новая вкладка)
+          ⚙ ${hasBreakers ? 'Изменить конфигурацию НКУ' : 'Сконфигурировать НКУ подробно'} (новая вкладка)${badge}
         </a>
-        <div class="muted" style="font-size:10px;margin-top:4px">Оболочка, шины и автоматы разных номиналов подбираются в конфигураторе и попадают в BOM.</div>
+        <div class="muted" style="font-size:10px;margin-top:4px">Оболочка, шины и автоматы разных номиналов подбираются в конфигураторе и попадают в BOM. Wizard видит реальные связи узла из схемы.</div>
       </div>`);
     } catch (e) { /* опционально */ }
 
