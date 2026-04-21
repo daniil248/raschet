@@ -2181,6 +2181,67 @@ function openSpec() {
   $('dlg-spec').showModal();
 }
 
+/* ------------------- Self-tests (Phase 11.9) -------------------
+   Отдельный dialog #dlg-selftest показывает таблицу «кейс → метод →
+   проверяемые поля → ожидание/факт/Δ%/pass». Кейсы живут в
+   suppression-methods/validation-tests.js — это регрессионные тесты,
+   не полноценная верификация методик. Допуск ±5–10 % — ловит только
+   грубые регрессии. */
+async function openSelfTest() {
+  const { runAll } = await import('../suppression-methods/validation-tests.js');
+  const results = runAll();
+  const passCount = results.filter(r => r.ok).length;
+  const total = results.length;
+  const summaryClass = passCount === total ? 'pass' : 'fail';
+  const summaryText = passCount === total
+    ? `✓ Все ${total} тестов прошли`
+    : `✗ ${total - passCount} из ${total} тестов не прошли`;
+
+  const rowsHtml = results.map(r => {
+    if (r.error) {
+      return `<tr class="selftest-fail">
+        <td>${esc(r.label)}</td>
+        <td><code>${esc(r.methodId || '—')}</code></td>
+        <td colspan="4" class="selftest-err">Ошибка: ${esc(r.error)}</td>
+        <td>✗</td>
+      </tr>`;
+    }
+    const checksHtml = r.checks.map(c =>
+      `<div class="${c.ok ? 'selftest-ok' : 'selftest-fail'}">
+        <b>${esc(c.key)}</b>: ожидание ${c.expected}, факт ${c.actual}${typeof c.deltaPct === 'number' ? ` (Δ ${c.deltaPct}%)` : ''} ${c.ok ? '✓' : '✗'}
+      </div>`
+    ).join('');
+    return `<tr class="${r.ok ? 'selftest-row-ok' : 'selftest-row-fail'}">
+      <td>${esc(r.label)}<div class="muted" style="font-size:11px">${esc(r.ref || '')}</div></td>
+      <td><code>${esc(r.methodId)}</code></td>
+      <td colspan="4">${checksHtml}</td>
+      <td style="font-size:18px;font-weight:700;color:${r.ok ? '#2e7d32' : '#c62828'}">${r.ok ? '✓' : '✗'}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `
+    <div class="selftest-summary selftest-summary-${summaryClass}">
+      ${summaryText}
+      <div class="muted" style="font-size:11px;font-weight:400;margin-top:4px">
+        Это регрессионные тесты — ловят грубые изменения формул/коэффициентов.
+        Каждое ожидание сверяется с допуском ±5–10 %, указанным в кейсе.
+        Источник тестов: <code>suppression-methods/validation-tests.js</code>.
+      </div>
+    </div>
+    <table class="sup-tbl" style="margin-top:10px">
+      <thead><tr>
+        <th style="width:28%">Кейс</th>
+        <th>Метод</th>
+        <th colspan="4">Проверки</th>
+        <th style="width:40px">OK</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  `;
+  $('selftest-body').innerHTML = html;
+  $('dlg-selftest').showModal();
+}
+
 /* ------------------- Init ------------------- */
 function init() {
   S.installations = loadAll();
@@ -2278,6 +2339,9 @@ function init() {
     a.download = `АГПТ_спец_${currentInst().calcNo}.csv`; a.click();
   });
   $('spec-print').addEventListener('click', () => window.print());
+
+  // Phase 11.9: регрессионные тесты расчётных модулей.
+  $('sup-selftest').addEventListener('click', openSelfTest);
 
   // Help + footer
   mountHelp({

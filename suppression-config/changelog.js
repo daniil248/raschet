@@ -8,6 +8,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.59.37',
+    date: '2026-04-21',
+    items: [
+      'Фаза 11.9 завершена — регрессионные тесты расчётных модулей. В тулбар установки добавлена кнопка «✓ Тесты» (index.html: #sup-selftest) → диалог #dlg-selftest с таблицей pass/fail по 6 опорным кейсам: СП 485 Прил.Д FM-200 (30×3, 100×3), Novec 1230 30×3; NFPA 2001 FM-200 50 м³; ISO 14520 FM-200 100 м³; СП РК IG-541 100 м³. Каждый кейс сверяет mp / M / C / n с ожидаемым значением через допуск ±5–10 %. Файлы: suppression-methods/validation-tests.js (новый — TEST_CASES, runCase, runAll), suppression-config/index.html (+#dlg-selftest + кнопка), suppression-config/suppression-config.js (+openSelfTest через dynamic import), suppression-config/suppression-config.css (+.selftest-summary / -row-ok/-row-fail / -ok/-fail).',
+      'Ожидаемые значения кейсов выведены аналитически из формул методик (не «закреплённые результаты compute()», а реальные литературные формулы). Расхождение факт vs. ожидание > 5 % = регрессия. Это ловит грубые правки коэффициентов Ks/K1/Kalt/s(T) без потери чувствительности к доводке округлений.',
+    ],
+  },
+  {
     version: '0.59.36',
     date: '2026-04-21',
     items: [

@@ -76,6 +76,7 @@
               <button class="sup-btn" id="sup-hydraulic" title="Гидравлический расчёт Darcy–Weisbach + формула Альтшуля: скорости v, Re, λ, потери ΔP по участкам.">Гидравлика</button>
               <button class="sup-btn" id="sup-spec" title="Сводная спецификация BOM: модули, насадки, трубы по всем направлениям. CSV и печать.">Спецификация</button>
               <button class="sup-btn" id="sup-report" title="Текстовый отчёт с исходными данными, формулами и результатами по выбранной методике.">Отчёт</button>
+              <button class="sup-btn" id="sup-selftest" title="Регрессионные тесты расчётных модулей — проверка СП 485 / СП РК / NFPA 2001 / ISO 14520 против опорных примеров.">✓ Тесты</button>
             </div>
           </div>
           <div class="sup-cards" id="inst-cards"></div>
@@ -412,6 +413,18 @@
     <form method="dialog">
       <header><span>Гидравлический расчёт (Darcy-Weisbach)</span><button value="cancel" class="sup-dlg-x">✕</button></header>
       <div id="hydr-body" style="padding:14px 16px;max-height:72vh;overflow:auto;"></div>
+      <footer><button value="cancel" class="sup-btn">Закрыть</button></footer>
+    </form>
+  </dialog>
+
+  <!-- Self-tests (Phase 11.9) -->
+  <dialog id="dlg-selftest" class="sup-dlg sup-dlg-wide">
+    <form method="dialog">
+      <header>
+        <span>Регрессионные тесты расчётных модулей</span>
+        <button value="cancel" class="sup-dlg-x">✕</button>
+      </header>
+      <div id="selftest-body" style="padding:14px 16px;max-height:72vh;overflow:auto;"></div>
       <footer><button value="cancel" class="sup-btn">Закрыть</button></footer>
     </form>
   </dialog>
