@@ -1,0 +1,54 @@
+/* shared/calc-widget.css — универсальные карточки-калькуляторы
+   «заполни любые известные — получишь неизвестные». */
+
+.calc-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+
+.calc-card {
+  background: #fff; border: 1px solid #d6e1ef; border-radius: 6px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.calc-card-title {
+  font-size: 12px; color: #0d47a1; font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.calc-card-title .calc-reset {
+  background: transparent; border: 1px solid #cfd8dc; color: #607080;
+  font-size: 10px; padding: 2px 7px; border-radius: 3px; cursor: pointer;
+}
+.calc-card-title .calc-reset:hover { background:#eceff1; color:#263238; }
+.calc-card-desc { font-size: 11px; color: #546e7a; line-height: 1.35; }
+.calc-card-formula {
+  font-size: 11.5px; background: #f5f9ff; border: 1px dashed #b0c5e0;
+  border-radius: 4px; padding: 6px 8px; color: #0d47a1; line-height: 1.5;
+  font-family: 'Consolas','Menlo',monospace;
+}
+.calc-card-formula code { background: transparent; color:#0d47a1; padding:0; }
+
+.calc-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.calc-field { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+.calc-field > .calc-field-lbl { color: #37474f; font-weight: 500; display: flex; gap: 4px; }
+.calc-field > .calc-field-lbl em { color: #78909c; font-style: normal; font-weight: 400; }
+.calc-field input {
+  padding: 4px 6px; border: 1px solid #bdbdbd; border-radius: 3px;
+  font-size: 12px; font-family: inherit; background:#fff;
+}
+.calc-field[data-mode="out"] input {
+  background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20; font-weight: 600;
+}
+.calc-field[data-mode="in"] input {
+  background: #fffde7; border-color: #ffd54f; color: #5d4037; font-weight: 600;
+}
+.calc-field[data-mode="empty"] input {
+  background: #fafafa; border-color: #cfd8dc; color: #37474f;
+}
+.calc-field .calc-hint {
+  font-size: 10px; color: #90a4ae;
+}
+.calc-card-legend {
+  display: flex; gap: 10px; font-size: 10px; color: #78909c;
+  border-top: 1px dashed #e0e0e0; padding-top: 4px;
+}
+.calc-card-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: middle; border:1px solid #aaa; }
+.calc-card-legend .sw.in  { background: #fffde7; border-color: #ffd54f; }
+.calc-card-legend .sw.out { background: #e8f5e9; border-color: #a5d6a7; }

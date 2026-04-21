@@ -6,13 +6,64 @@
   <title>Raschet · ID-диаграмма Молье-Рамзина</title>
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="../shared/calc-widget.css">
   <link rel="stylesheet" href="psychrometrics.css">
 </head>
 <body>
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
+    import { mountHelp } from '../shared/help-panel.js';
     mountHeader({ title: 'ID-диаграмма Молье-Рамзина (ASHRAE 2021)', home: '../hub.html' });
+    mountHelp({
+      module: 'psychrometrics',
+      title: 'i-d диаграмма Молье-Рамзина',
+      usage: `
+        <h4>Как пользоваться</h4>
+        <ol>
+          <li>В «Условия объекта» укажите высоту над у. м. — атм. давление считается автоматически (ISA/ГОСТ 4401-81). Можно задать давление вручную.</li>
+          <li>В «Цикл» редактируйте карточки точек: имя, <code>t</code> (°C), <code>φ</code> (%). Под карточкой сразу выводятся <b>d, h, ρ, v, t<sub>р</sub>, t<sub>м</sub></b>.</li>
+          <li>Между точками — стрелка с селектором типа процесса. Цвет линии на диаграмме зависит от типа.</li>
+          <li><b>+ точка</b> добавляет новую в конец, <b>Демо-цикл</b> загружает «лето: охл.-осуш. → доводчик».</li>
+          <li>«d (override)» перекрывает φ — если оба заданы, φ пересчитывается из d.</li>
+        </ol>
+        <h4>Типы процессов</h4>
+        <table>
+          <tr><th>Код</th><th>Название</th><th>Что сохраняется</th><th>Применение</th></tr>
+          <tr><td style="color:#e65100">P</td><td>Нагрев</td><td><code>d = const</code></td><td>Калориферы (электро/водяные).</td></tr>
+          <tr><td style="color:#0277bd">C</td><td>Охлаждение / осушение</td><td>до t<sub>р</sub> <code>d=const</code>, ниже — по φ=100%</td><td>Испарители, чиллеры; выпадение конденсата при t &lt; t<sub>р</sub>.</td></tr>
+          <tr><td style="color:#2e7d32">A</td><td>Адиабат. увлажнение</td><td><code>h = const</code></td><td>Форсуночные камеры, сотовые испарители. Предел — линия насыщения.</td></tr>
+          <tr><td style="color:#6a1b9a">S</td><td>Паровое увлажнение</td><td><code>t ≈ const</code></td><td>Паровые увлажнители. d растёт, t почти не меняется.</td></tr>
+          <tr><td style="color:#424242">X</td><td>Произвольный</td><td>—</td><td>Соединяет две точки прямой (смешение, свободный переход).</td></tr>
+        </table>
+        <h4>Цвета и предупреждения</h4>
+        <ul>
+          <li>Карточка точки с красной рамкой — φ превышает «Макс. φ» (заданный в условиях).</li>
+          <li>В таблице «Процессы» столбец <b>Q</b>: красный = нагрев/увлажнение, синий = охлаждение/осушение.</li>
+        </ul>
+        <div class="note">Для каждого сегмента цикла: <code>G<sub>да</sub> = V·ρ/(1+W)</code> (кг/ч), <code>Q = G<sub>да</sub>/3600·Δh</code> (кВт), <code>q<sub>w</sub> = G<sub>да</sub>·ΔW</code> (кг/ч). V берётся из поля «V процесса» стрелки; если пусто — из «Базовый расход V».</div>
+      `,
+      calcs: `
+        <h4>Фундаментальные формулы (ASHRAE Fundamentals 2021, глава 1)</h4>
+        <h5>Давление насыщения (Hyland-Wexler 1983)</h5>
+        <p>Для T ≥ 273,15 К (вода):</p>
+        <p><code>ln P<sub>ws</sub> = C<sub>8</sub>/T + C<sub>9</sub> + C<sub>10</sub>T + C<sub>11</sub>T² + C<sub>12</sub>T³ + C<sub>13</sub>lnT</code></p>
+        <p>Для T &lt; 273,15 К (лёд) — 7-членный полином. Точность ±0,1% в диапазоне −40…+50 °C.</p>
+        <h5>Парциальное давление и d</h5>
+        <p><code>P<sub>пар</sub> = φ·P<sub>ws</sub>(t)</code>; <code>d = 621,945·P<sub>пар</sub>/(P−P<sub>пар</sub>)</code> [г/кг сух. возд.]</p>
+        <h5>Энтальпия</h5>
+        <p><code>h = 1,006·t + d/1000·(2501 + 1,86·t)</code> [кДж/кг сух. возд.]</p>
+        <h5>Удельный объём и плотность</h5>
+        <p><code>v = R<sub>a</sub>·T·(1 + 1,6078·W)/P</code>; <code>ρ = (1+W)/v</code>, R<sub>a</sub> = 287,055 Дж/(кг·К)</p>
+        <h5>Точка росы и t мокрого термометра</h5>
+        <p>t<sub>р</sub>: обратная Hyland-Wexler (Ньютон по ln). t<sub>м</sub>: психрометрическое уравнение <code>W = [(2501 − 2,326·t<sub>м</sub>)·W<sub>s</sub>(t<sub>м</sub>) − 1,006·(t − t<sub>м</sub>)] / (2501 + 1,86·t − 4,186·t<sub>м</sub>)</code> — решается итерацией.</p>
+        <h5>Барометрическое давление</h5>
+        <p><code>P(h) = P<sub>0</sub>·(1 − 2,25577·10⁻⁵·h)<sup>5,2559</sup></code> — ISA / ГОСТ 4401-81.</p>
+        <h5>Мощность процесса</h5>
+        <p>Массовый расход сух. возд.: <code>G<sub>да</sub> = V·ρ/(1+W)</code> [кг/ч]. Тепловая нагрузка: <code>Q = G<sub>да</sub>/3600·Δh</code> [кВт]. Влагоприток: <code>q<sub>w</sub> = G<sub>да</sub>·ΔW</code> [кг/ч].</p>
+        <div class="warn">Процесс C (охлаждение с осушением) выведен графически: пока воздух выше t<sub>р</sub> — по линии <code>d=const</code>; при пересечении точки росы — по линии φ=100% (насыщение) к целевой точке. Это реальная траектория на испарителе.</div>
+      `,
+    });
   </script>
 
   <div class="psy-wrap">
@@ -94,6 +145,15 @@
       </div>
     </div>
 
+    <!-- Калькуляторы: заполни любые известные → получишь неизвестные -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">
+        Калькуляторы параметров воздуха
+        <span style="font-weight:400;color:#607080;font-size:11px;margin-left:8px;">заполните любые известные значения — остальные будут вычислены автоматически</span>
+      </div>
+      <div id="psy-calcs"></div>
+    </div>
+
     <!-- Формулы -->
     <div class="psy-panel">
       <div class="psy-panel-title">Формулы и пояснения</div>
@@ -102,6 +162,10 @@
   </div>
 
   <script type="module" src="psychrometrics.js"></script>
+  <script type="module">
+    import { mountPsyCalculators } from './psy-calculators.js';
+    mountPsyCalculators(document.getElementById('psy-calcs'));
+  </script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';
