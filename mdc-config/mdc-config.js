@@ -51,6 +51,7 @@ const S = {
   totalRacks: 32, rackKw: 10, redundancy: 'N+1',
   autonomyMin: 15, battTech: 'VRLA',
   cosPhi: 0.9, upsLoadPct: 80, scaleReservePct: 20,
+  layoutVariant: 'A',
   ashrae: 'A2', tmax: 32, tmin: -28, elev: 200, humidity: 'norm',
   oduType: 'horiz-axial',
   scs: true, skud: true, video: true, fire: true, leak: false,
@@ -69,6 +70,7 @@ function read() {
   S.cosPhi       = num('mdc-cosphi', 0.9);
   S.upsLoadPct   = num('mdc-ups-load', 80);
   S.scaleReservePct = num('mdc-scale-reserve', 20);
+  S.layoutVariant = str('mdc-layout-variant', 'A');
   S.ashrae       = str('mdc-ashrae', 'A2');
   S.tmax         = num('mdc-tmax', 32);
   S.tmin         = num('mdc-tmin', -28);
@@ -297,23 +299,25 @@ function renderPlan(r) {
     const innerY0 = padTop + END_WALL_MM * scale;
     const Wi = tpl.widthMm * scale;
     const Di = tpl.lengthMm * scale;
-    // баллон в нижнем правом углу (центр), стояк идёт вверх к потолочной
-    // магистрали, далее к форсунке у верхнего торца
+    // Стояк АГПТ — строго по центру модуля. Баллон — с той же стороны,
+    // что и «целая плитка 600»: variant A — снизу, variant B — сверху.
+    const halfAtTop = S.layoutVariant === 'B';
     const cylX = innerX0 + Wi - 400*scale/2 - CABINET_GAP_MM*scale;
-    const cylY = innerY0 + Di - 400*scale/2 - 100*scale;
-    const riserX = innerX0 + Wi * 0.35;
-    const topY   = innerY0 + 600 * scale;
-    const nozzleY = innerY0 + 300 * scale;
+    const cylY = halfAtTop ? (innerY0 + 200*scale + 400*scale/2)
+                           : (innerY0 + Di - 400*scale/2 - 100*scale);
+    const riserX = innerX0 + Wi / 2;                  // строго по центру
+    const nearY  = halfAtTop ? (innerY0 + 600*scale) : (innerY0 + Di - 600*scale);
+    const farY   = halfAtTop ? (innerY0 + Di - 300*scale) : (innerY0 + 300*scale);
     const poly = [
       `${cylX},${cylY}`,
-      `${cylX},${topY}`,
-      `${riserX},${topY}`,
-      `${riserX},${nozzleY}`,
+      `${cylX},${nearY}`,
+      `${riserX},${nearY}`,
+      `${riserX},${farY}`,
     ].join(' ');
     svg += `<polyline points="${poly}" fill="none" stroke="#B85450"
              stroke-width="1.6" stroke-linejoin="round"/>`;
     svg += `<circle cx="${cylX}" cy="${cylY}" r="1.4" fill="#B85450"/>`;
-    svg += `<circle cx="${riserX}" cy="${nozzleY}" r="1.4" fill="#B85450"/>`;
+    svg += `<circle cx="${riserX}" cy="${farY}" r="1.4" fill="#B85450"/>`;
   }
 
   // AHU — снаружи сверху над зданием
@@ -428,17 +432,35 @@ function moduleSvg(m, pad, scale, padTop) {
          fill="#eceff1" stroke="#90a4ae" stroke-width="0.4"/>`;
   s += `<rect x="${outerX0 + frm + Wi}" y="${innerY0}" width="${frm}" height="${Di}"
          fill="#eceff1" stroke="#90a4ae" stroke-width="0.4"/>`;
-  // Стойки рамы — с шагом 600 мм вдоль длины, позиционированы относительно
-  // фальшпола. Первая стойка — на границе полуплитки (300 мм от верха),
-  // далее каждые 600 мм (= на границах целых плиток).
+  // Ряды и коридор зависят от варианта размещения (A/B).
+  // Вариант A: сверху 1800 (3 плитки) + ряд1 1200 + коридор 1200 + ряд2 1200
+  //            + снизу 1500 (2.5 плитки, полуплитка снизу)
+  // Вариант B: сверху 1500 (2.5, полуплитка сверху) + ряд1 1200 + коридор 1200
+  //            + ряд2 1200 + снизу 1800 (3 плитки)
+  const halfAtTop = S.layoutVariant === 'B';
+  const row1Y_mm = halfAtTop ? 1500 : 2100;
+  const row2Y_mm = row1Y_mm + 1200 + 1200;   // ряд1(1200) + коридор(1200)
+  const corrY_mm = row1Y_mm + 1200;
+  const row1Y = row1Y_mm * scale;
+  const row2Y = row2Y_mm * scale;
+  const corrY = corrY_mm * scale;
+  const corrH = 1200 * scale;
+
+  // Стойки рамы 50×100 мм с шагом 600 мм (по границам плиток), но НЕ в
+  // зоне коридора — там проход не должен сужаться.
   const postStep = POST_STEP_MM * scale;
   const halfTile0 = (FLOOR_TILE_MM / 2) * scale;
-  const postW = 8 * scale;      // 8 мм стойка
-  for (let py = floorPerim + halfTile0; py < Di; py += postStep) {
-    s += `<rect x="${outerX0}" y="${innerY0 + py - postW/2}"
-           width="${frm}" height="${postW}" fill="#455a64"/>`;
-    s += `<rect x="${outerX0 + frm + Wi}" y="${innerY0 + py - postW/2}"
-           width="${frm}" height="${postW}" fill="#455a64"/>`;
+  const postLen = 100 * scale;            // стойка 100 мм вдоль длины модуля
+  // Первая стойка: для варианта B (полуплитка сверху) — на 300 от верха;
+  //                для варианта A (целая сверху) — на 600 от верха.
+  const firstPostY = halfAtTop ? halfTile0 : (FLOOR_TILE_MM * scale);
+  for (let py = floorPerim + firstPostY; py < Di - 2; py += postStep) {
+    // пропустить стойки, попадающие в коридор между рядами
+    if (py + postLen/2 > corrY && py - postLen/2 < corrY + corrH) continue;
+    s += `<rect x="${outerX0}" y="${innerY0 + py - postLen/2}"
+           width="${frm}" height="${postLen}" fill="#455a64"/>`;
+    s += `<rect x="${outerX0 + frm + Wi}" y="${innerY0 + py - postLen/2}"
+           width="${frm}" height="${postLen}" fill="#455a64"/>`;
   }
 
   // === Фальшпол 600×600, отцентрован, 5 мм зазор от внутренней границы ===
@@ -462,24 +484,34 @@ function moduleSvg(m, pad, scale, padTop) {
            stroke="#cdd4da" stroke-width="0.3"/>`;
     gx += tile;
   }
-  // Горизонтальные линии: полуплитка 300 мм у ВЕРХНЕГО края, далее целые
-  // плитки 600 мм до нижнего края (где стоит баллон АГПТ).
-  s += `<line x1="${floorX}" y1="${floorY + halfTile}" x2="${floorX + floorW}" y2="${floorY + halfTile}"
-         stroke="#90a4ae" stroke-width="0.4"/>`;
-  let gy = halfTile + tile;
-  while (gy < floorD - 0.5) {
-    s += `<line x1="${floorX}" y1="${floorY + gy}" x2="${floorX + floorW}" y2="${floorY + gy}"
-           stroke="#cdd4da" stroke-width="0.3"/>`;
-    gy += tile;
+  // Горизонтальные линии фальшпола — в зависимости от варианта:
+  //   B: полуплитка 300 мм у верхнего края
+  //   A: полуплитка 300 мм у нижнего края
+  if (halfAtTop) {
+    s += `<line x1="${floorX}" y1="${floorY + halfTile}" x2="${floorX + floorW}" y2="${floorY + halfTile}"
+           stroke="#90a4ae" stroke-width="0.4"/>`;
+    let gy = halfTile + tile;
+    while (gy < floorD - 0.5) {
+      s += `<line x1="${floorX}" y1="${floorY + gy}" x2="${floorX + floorW}" y2="${floorY + gy}"
+             stroke="#cdd4da" stroke-width="0.3"/>`;
+      gy += tile;
+    }
+  } else {
+    let gy = tile;
+    while (gy < floorD - halfTile - 0.5) {
+      s += `<line x1="${floorX}" y1="${floorY + gy}" x2="${floorX + floorW}" y2="${floorY + gy}"
+             stroke="#cdd4da" stroke-width="0.3"/>`;
+      gy += tile;
+    }
+    s += `<line x1="${floorX}" y1="${floorY + floorD - halfTile}" x2="${floorX + floorW}" y2="${floorY + floorD - halfTile}"
+           stroke="#90a4ae" stroke-width="0.4"/>`;
   }
 
   // === Корпусные детали ===
   if (tpl.kind === 'IT') {
-    // Центральный проход 1200 мм между рядами (3500..4700 по длине)
-    const ay = 3500 * scale;
-    const ah = 1200 * scale;
-    s += `<rect x="${innerX0 + 100*scale}" y="${innerY0 + ay}"
-           width="${Wi - 200*scale}" height="${ah}"
+    // Центральный проход 1200 мм между рядами (положение зависит от варианта)
+    s += `<rect x="${innerX0}" y="${innerY0 + corrY}"
+           width="${Wi}" height="${corrH}"
            fill="none" stroke="#bdbdbd" stroke-width="0.4" stroke-dasharray="2,2"/>`;
     // Дверь входа 900 мм в нижней торцевой стене
     const doorW = 900 * scale;
@@ -515,16 +547,22 @@ function moduleSvg(m, pad, scale, padTop) {
 
   // === Слоты (оборудование) ===
   // Шкафы отстоят от торцевых стен на 5 мм (gap). JB — на торцевой стене.
+  // Y-позиция рядов переопределяется под выбранный вариант A/B:
+  //   шаблонные y=2300 → ряд1 (row1Y_mm); y=4700 → ряд2 (row2Y_mm).
+  const remapY = (yMm) => {
+    if (tpl.kind !== 'IT') return yMm;
+    if (yMm < 3500) return row1Y_mm;       // верхний ряд
+    if (yMm < 6000) return row2Y_mm;       // нижний ряд
+    return yMm;
+  };
   for (const slot of tpl.slots) {
     const isJb = slot.role === 'JB' || /JB/.test(slot.label || '');
     const sx = innerX0 + slot.x * scale;
-    // Смещение по Y: если слот касается верхнего торца — сдвиг вниз на gap,
-    //                если нижнего — сдвиг вверх на gap.
-    const slotTopY = slot.y;
-    const slotBotY = slot.y + slot.d;
-    const topAdj = slotTopY === 0 ? gap : 0;
-    const botAdj = slotBotY >= tpl.lengthMm ? gap : 0;
-    let sy = innerY0 + slotTopY * scale + topAdj;
+    const slotTopY_mm = remapY(slot.y);
+    const slotBotY_mm = slotTopY_mm + slot.d;
+    const topAdj = slot.y === 0 ? gap : 0;
+    const botAdj = slotBotY_mm >= tpl.lengthMm ? gap : 0;
+    let sy = innerY0 + slotTopY_mm * scale + topAdj;
     let sd = slot.d * scale - topAdj - botAdj;
     const sw = slot.w * scale;
     if (isJb) {
@@ -551,11 +589,13 @@ function moduleSvg(m, pad, scale, padTop) {
     }
   }
 
-  // АГПТ-баллон — 1 шт в IT-модулях, в нижнем углу (на целой плитке)
+  // АГПТ-баллон — 1 шт в IT-модулях, в углу со стороны целой плитки 600 мм
+  // (variant A: снизу; variant B: сверху).
   if (tpl.kind === 'IT') {
     const cylW = 400 * scale, cylD = 400 * scale;
     const cx = innerX0 + Wi - cylW - gap;
-    const cy = innerY0 + Di - cylD - 100 * scale;
+    const cy = halfAtTop ? (innerY0 + 200 * scale)
+                         : (innerY0 + Di - cylD - 100 * scale);
     s += COMPONENT_SVG['AGPT-cyl'](cx, cy, cylW, cylD);
   }
 
@@ -675,6 +715,7 @@ function exportBom() {
 function init() {
   const ids = ['mdc-total-racks','mdc-rack-kw','mdc-redundancy',
                'mdc-autonomy','mdc-batt-tech','mdc-cosphi','mdc-ups-load','mdc-scale-reserve',
+               'mdc-layout-variant',
                'mdc-ashrae','mdc-tmax','mdc-tmin','mdc-elev','mdc-humidity','mdc-odu-type',
                'mdc-scs','mdc-skud','mdc-video','mdc-fire','mdc-leak',
                'mdc-with-dgu','mdc-with-tp'];
