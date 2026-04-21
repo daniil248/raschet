@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { svg, layerZones, layerConns, layerNodes, layerOver, statsEl, modesListEl, isOnCurrentPage, sanitizeView, getCurrentPage, getPageKind, PAGE_KINDS_META } from './state.js';
-import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES, SYSTEMS_CATALOG, systemsForPageKind, getSystemMeta } from './constants.js';
+import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES, SYSTEMS_CATALOG, CABLE_SYSTEMS, systemsForPageKind, getSystemMeta } from './constants.js';
 
 // IEC installation method → legacy CHANNEL_TYPES key (для иконок/лейблов)
 const INSTALL_TO_CHANNEL_KEY = {
@@ -310,8 +310,15 @@ export function render() {
 // По умолчанию — ['electrical']. Zone и channel универсальны (все системы).
 export function getNodeSystems(n) {
   if (!n) return [];
+  // v0.59.100: channel = только кабельные системы (без труб/ГВС/газа).
+  if (n.type === 'channel') {
+    if (Array.isArray(n.systems) && n.systems.length) {
+      return n.systems.filter(s => CABLE_SYSTEMS.includes(s));
+    }
+    return CABLE_SYSTEMS.slice();
+  }
   if (Array.isArray(n.systems) && n.systems.length) return n.systems.slice();
-  if (n.type === 'zone' || n.type === 'channel') return SYSTEMS_CATALOG.map(s => s.id);
+  if (n.type === 'zone') return SYSTEMS_CATALOG.map(s => s.id);
   return ['electrical'];
 }
 // Нода совместима со страницей, если есть пересечение её систем с системами,

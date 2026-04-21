@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.59.99';
+export const APP_VERSION = '0.59.100';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -87,6 +87,11 @@ export const SYSTEMS_CATALOG = [
     { key: 'poeW',        label: 'PoE мощность', type: 'number', unit: 'Вт', min: 0, step: 0.5 },
   ] },
 ];
+// v0.59.100: системы, передающиеся кабелями (для channel-нод).
+// Кабельные каналы используются только для прокладки кабелей — силовых
+// и слаботочных (сигнал/данные/СКС/видео/пожарка/охрана), но НЕ для труб,
+// воздуховодов и газа. Это ограничивает скоп свойств канала.
+export const CABLE_SYSTEMS = ['electrical', 'low-voltage', 'data', 'fire', 'security', 'video'];
 export function getSystemMeta(id) {
   const built = SYSTEMS_CATALOG.find(s => s.id === id);
   if (built) return built;

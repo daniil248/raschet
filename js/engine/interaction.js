@@ -225,9 +225,18 @@ function finishPendingAtPort(portEl) {
     // v0.58.20: диагностика — проверяем систему endpoints
     const fromN = state.nodes.get(outEnd.nodeId);
     const toN = state.nodes.get(inEnd.nodeId);
-    const sys = (n) => (Array.isArray(n?.systems) && n.systems.length) ? n.systems
-      : (n?.type === 'zone' || n?.type === 'channel') ? ['electrical','low-voltage','data','pipes','hvac','gas','fire','security','video']
-      : ['electrical'];
+    const sys = (n) => {
+      if (!n) return ['electrical'];
+      // v0.59.100: channel — только кабельные системы.
+      if (n.type === 'channel') {
+        const base = ['electrical','low-voltage','data','fire','security','video'];
+        return (Array.isArray(n.systems) && n.systems.length)
+          ? n.systems.filter(s => base.includes(s)) : base;
+      }
+      if (Array.isArray(n.systems) && n.systems.length) return n.systems;
+      if (n.type === 'zone') return ['electrical','low-voltage','data','pipes','hvac','gas','fire','security','video'];
+      return ['electrical'];
+    };
     const shared = fromN && toN && sys(fromN).some(s => sys(toN).includes(s));
     if (fromN && toN && !shared) {
       flash('Нет общей системы: выберите пересекающиеся системы во вкладке «🧩 Системы»', 'error');
