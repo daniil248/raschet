@@ -216,6 +216,17 @@
 .sup-seg-list .seg-item:hover { background: #f5f9ff; }
 .sup-seg-list .seg-item.sel { background: #e3f2fd; font-weight: 600; }
 .sup-seg-list .seg-no { color: #0d47a1; font-weight: 700; width: 22px; }
+.sup-seg-list .seg-axis { color: #455a64; width: 28px; font-family: monospace; }
+.sup-seg-list .seg-edit {
+  font-size: 11px; padding: 1px 3px; border: 1px solid #cfd8dc;
+  border-radius: 3px; background: #fff;
+}
+.sup-seg-list .seg-edit:focus { outline: 1px solid #1976d2; border-color: #1976d2; }
+.sup-seg-list select.seg-edit { padding: 0 2px; }
+.sup-seg-list .seg-del-one {
+  margin-left: auto; width: 20px; height: 20px; line-height: 18px;
+  padding: 0; font-size: 11px;
+}
 
 @media print {
   body > *:not(#dlg-report) { display: none !important; }

@@ -4,6 +4,7 @@
 
 export const CHANGELOGS = {
   'suppression-config': [
+    { version: '0.59.9', date: '2026-04-21', items: ['Инлайн-редактирование участков (L/DN/насадок) и удаление любого участка с ответвлениями.'] },
     { version: '0.59.8', date: '2026-04-21', items: ['title-подсказки ко всем полям и кнопкам (направление, зона, 3D, объект, toolbar).'] },
     { version: '0.59.7', date: '2026-04-21', items: ['module-footer во всех модулях Raschet.'] },
     {

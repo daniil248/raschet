@@ -731,19 +731,62 @@ function renderIso(dirId) {
       <br>X = ${np.x.toFixed(2)} м · Y = ${np.y.toFixed(2)} м · Z = ${np.z.toFixed(2)} м`;
   } else $('iso-node-info').textContent = '— не выбран —';
 
-  // Segment list
+  // Segment list — inline edit + delete per row
   const list = $('seg-list');
+  const DN_OPTS = [15,20,22,25,28,32,34,40,50,65,80,100];
+  const NOZ_OPTS = [['none','—'],['R-360','R-360'],['R-180','R-180'],['radial','радиальный']];
   list.innerHTML = pipe.map((p, i) => {
     const isSel = p.id === V3.selectedNode;
+    const dnSel = DN_OPTS.map(dn => `<option ${+p.DN===dn?'selected':''}>${dn}</option>`).join('');
+    const nozSel = NOZ_OPTS.map(([v,t]) => `<option value="${v}" ${p.nozzle===v?'selected':''}>${t}</option>`).join('');
     return `<div class="seg-item ${isSel?'sel':''}" data-id="${p.id}">
-      <span class="seg-no">${i+1}</span>
-      <span>${p.axis} · ${p.L} м · DN${p.DN} · ${p.nozzle || '—'}</span>
+      <span class="seg-no" title="Кликните, чтобы выбрать узел в конце этого участка">${i+1}</span>
+      <span class="seg-axis" title="Направление участка">${p.axis}</span>
+      <input type="number" class="seg-edit" data-f="L" value="${p.L}" step="0.1" min="0" title="Длина участка, м" style="width:56px;">
+      <select class="seg-edit" data-f="DN" title="Условный диаметр, мм">${dnSel}</select>
+      <select class="seg-edit" data-f="nozzle" title="Насадок на конце">${nozSel}</select>
+      <button type="button" class="sup-ibtn sup-danger seg-del-one" data-id="${p.id}" title="Удалить этот участок и все его ответвления">✕</button>
     </div>`;
   }).join('') || `<div style="color:#888;padding:8px;">Нет участков. Выберите узел и направление.</div>`;
+
+  // Click row → select node
   list.onclick = (e) => {
+    if (e.target.closest('.seg-edit') || e.target.closest('.seg-del-one')) return;
     const it = e.target.closest('.seg-item');
     if (it) { V3.selectedNode = it.dataset.id; renderIso(S.isoDirId); }
   };
+  // Inline edit
+  list.onchange = (e) => {
+    const inp = e.target.closest('.seg-edit');
+    if (!inp) return;
+    const it = inp.closest('.seg-item'); if (!it) return;
+    const seg = pipe.find(p => p.id === it.dataset.id); if (!seg) return;
+    const f = inp.dataset.f;
+    if (f === 'L') seg.L = Math.max(0.01, +inp.value || 0.1);
+    else if (f === 'DN') seg.DN = +inp.value;
+    else if (f === 'nozzle') seg.nozzle = inp.value;
+    saveAll(); renderIso(S.isoDirId);
+  };
+  // Delete any segment + its subtree
+  list.querySelectorAll('.seg-del-one').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const inst = currentInst();
+      const target = S.isoDirId
+        ? inst.directions.find(d => d.id === S.isoDirId)
+        : null;
+      if (!target) return;
+      const descCount = countDescendants(target.pipeline, id);
+      const msg = descCount > 0
+        ? `Удалить участок и ${descCount} дочерних? (всего ${descCount+1})`
+        : 'Удалить этот участок?';
+      if (!confirm(msg)) return;
+      removeSegAndDescendants(target, id);
+      if (V3.selectedNode === id) V3.selectedNode = 'root';
+      saveAll(); renderIso(S.isoDirId);
+    });
+  });
 
   // Canvas handlers
   const canvas = $('iso-canvas');
@@ -984,6 +1027,36 @@ function countNozzlesDownstream(pipeline) {
   }
   pipeline.forEach(s => count(s.id));
   return memo;
+}
+
+/** Удалить участок и все его ответвления (рекурсивно по parent-связям). */
+function removeSegAndDescendants(dir, segId) {
+  const toRemove = new Set([segId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const s of dir.pipeline) {
+      if (!toRemove.has(s.id) && toRemove.has(s.parent)) {
+        toRemove.add(s.id); grew = true;
+      }
+    }
+  }
+  dir.pipeline = dir.pipeline.filter(s => !toRemove.has(s.id));
+}
+
+/** Сколько дочерних участков будет удалено вместе с segId (не считая его самого). */
+function countDescendants(pipeline, segId) {
+  const toRemove = new Set([segId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const s of pipeline) {
+      if (!toRemove.has(s.id) && toRemove.has(s.parent)) {
+        toRemove.add(s.id); grew = true;
+      }
+    }
+  }
+  return toRemove.size - 1;
 }
 
 function autoDnForDirection(dir) {
