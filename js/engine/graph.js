@@ -160,12 +160,23 @@ export function deleteNode(id, opts = {}) {
       for (const c of Array.from(state.conns.values())) {
         if (c.from.nodeId === lid || c.to.nodeId === lid) state.conns.delete(c.id);
       }
+      // v0.59.143: каскадное удаление patch-link'ов инфо-портов.
+      if (state.sysConns) {
+        for (const sc of Array.from(state.sysConns.values())) {
+          if (sc.fromNodeId === lid || sc.toNodeId === lid) state.sysConns.delete(sc.id);
+        }
+      }
       state.nodes.delete(lid);
       for (const m of state.modes) { if (m.overrides) delete m.overrides[lid]; }
     }
   }
   for (const c of Array.from(state.conns.values())) {
     if (c.from.nodeId === id || c.to.nodeId === id) state.conns.delete(c.id);
+  }
+  if (state.sysConns) {
+    for (const sc of Array.from(state.sysConns.values())) {
+      if (sc.fromNodeId === id || sc.toNodeId === id) state.sysConns.delete(sc.id);
+    }
   }
   state.nodes.delete(id);
   for (const m of state.modes) { if (m.overrides) delete m.overrides[id]; }

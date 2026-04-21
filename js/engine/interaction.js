@@ -460,6 +460,74 @@ export function initInteraction() {
     });
   }
 
+  // v0.59.143: patch-link для инфо-портов. Mousedown (capture) по кружку-
+  // коннектору (.sys-port-connector) — первый клик ставит sysPending, второй
+  // клик по другому кружку той же системы создаёт patch-link. Esc — отмена.
+  // Правило 1:1 — на каждый конкретный кружок не более одного patch-link'а.
+  // Используем mousedown+capture, чтобы перехватить до drag/select-логики
+  // основного mousedown-хендлера на svg.
+  svg.addEventListener('mousedown', e => {
+    if (state.readOnly) return;
+    if (e.button !== 0) return;
+    const circ = e.target.closest && e.target.closest('circle.sys-port-connector');
+    if (!circ) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const nodeId  = circ.dataset.nodeId;
+    const sysId   = circ.dataset.sysId || '';
+    const portKey = circ.dataset.portKey;
+    const portIdx = Number(circ.dataset.portIdx);
+    if (!nodeId || !portKey || !Number.isFinite(portIdx)) return;
+    // Уже занят patch-link'ом? (1:1)
+    const isOccupied = (nId, pK, pI) => {
+      for (const sc of state.sysConns.values()) {
+        if ((sc.fromNodeId === nId && sc.fromPortKey === pK && sc.fromPortIdx === pI) ||
+            (sc.toNodeId   === nId && sc.toPortKey   === pK && sc.toPortIdx   === pI)) return sc.id;
+      }
+      return null;
+    };
+    const occ = isOccupied(nodeId, portKey, portIdx);
+    // Если этот порт уже занят — удаляем существующий patch-link.
+    if (occ) {
+      snapshot('sys-patch-remove:' + occ);
+      state.sysConns.delete(occ);
+      state.sysPending = null;
+      try { notifyChange(); } catch {}
+      render();
+      return;
+    }
+    // Первый клик — запоминаем.
+    if (!state.sysPending) {
+      state.sysPending = { fromNodeId: nodeId, fromPortKey: portKey, fromPortIdx: portIdx, sysId };
+      circ.setAttribute('stroke', '#f59e0b');
+      circ.setAttribute('stroke-width', '2');
+      return;
+    }
+    // Второй клик — проверяем и создаём.
+    const p = state.sysPending;
+    if (p.fromNodeId === nodeId && p.fromPortKey === portKey && p.fromPortIdx === portIdx) {
+      // Клик по тому же кружку — отмена.
+      state.sysPending = null;
+      render();
+      return;
+    }
+    if (p.sysId && sysId && p.sysId !== sysId) {
+      alert('Patch-link соединяет порты одной системы. Источник: ' + p.sysId + ', цель: ' + sysId);
+      return;
+    }
+    // Создаём.
+    const id = uid('sc');
+    snapshot('sys-patch-create:' + id);
+    state.sysConns.set(id, {
+      id, sysId: sysId || p.sysId,
+      fromNodeId: p.fromNodeId, fromPortKey: p.fromPortKey, fromPortIdx: p.fromPortIdx,
+      toNodeId: nodeId,         toPortKey: portKey,         toPortIdx: portIdx,
+    });
+    state.sysPending = null;
+    try { notifyChange(); } catch {}
+    render();
+  }, true);
+
   svg.addEventListener('dragover', e => { if (state.readOnly) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
   svg.addEventListener('drop', e => {
     if (state.readOnly) return;
@@ -1425,6 +1493,8 @@ export function initInteraction() {
       return;
     }
     if (e.key === 'Escape' && state.pending) cancelPending();
+    // v0.59.143: Escape также отменяет pending patch-link инфо-порта.
+    if (e.key === 'Escape' && state.sysPending) { state.sysPending = null; render(); }
     // v0.58.32: навигация по этажам на layout-странице
     if (getPageKind(getCurrentPage()) === 'layout' && (e.key === 'PageUp' || e.key === 'PageDown' || e.key === 'Home')) {
       // собираем уникальные этажи на текущей странице

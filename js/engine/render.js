@@ -292,6 +292,10 @@ export function render() {
   recalc();
   renderConns();
   renderNodes();
+  // v0.59.143: patch-link'и инфо-портов рисуем ПОСЛЕ узлов — координаты
+  // кружков-коннекторов нужны уже отрендеренные в DOM (cx/cy читаются
+  // с SVG-элементов, затем сдвигаются на node.x/y для world-coords).
+  renderSysConns();
   renderLayoutFootprints();
   renderUnplacedPalette();
   renderStats();
@@ -300,6 +304,55 @@ export function render() {
   renderRemoteCursors();
   renderPageKindBanner();
   renderLayoutRuler();
+}
+
+// ================= Patch-link'и инфо-портов =================
+// Рендер отдельной коллекции state.sysConns. Для каждого patch-link'а
+// ищем в DOM два кружка-коннектора (класс .sys-port-connector) по
+// data-атрибутам nodeId/portKey/portIdx и соединяем их тонкой цветной
+// линией. Цвет берём из PORT_KEYS[sysId] (совпадает с цветом кружка).
+// Если один из endpoint'ов не найден (узел не на странице, порт убрали) —
+// patch-link просто не рисуется (данные сохраняются).
+export function renderSysConns() {
+  if (!state.sysConns || state.sysConns.size === 0) return;
+  // Таблица цветов по sysId — дублирует PORT_KEYS в renderNodes; держим
+  // локально чтобы не тащить наружу.
+  const SYS_COLOR = { data: '#059669', 'low-voltage': '#1e88e5', video: '#0284c7' };
+  const findConnector = (nodeId, portKey, portIdx) => {
+    const sel = `circle.sys-port-connector[data-node-id="${CSS.escape(nodeId)}"][data-port-key="${CSS.escape(portKey)}"][data-port-idx="${portIdx}"]`;
+    return layerNodes.querySelector(sel);
+  };
+  const absPos = (circ, nodeId) => {
+    const n = state.nodes.get(nodeId);
+    if (!n) return null;
+    const cx = Number(circ.getAttribute('cx'));
+    const cy = Number(circ.getAttribute('cy'));
+    if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+    return { x: n.x + cx, y: n.y + cy };
+  };
+  for (const sc of state.sysConns.values()) {
+    const cA = findConnector(sc.fromNodeId, sc.fromPortKey, sc.fromPortIdx);
+    const cB = findConnector(sc.toNodeId,   sc.toPortKey,   sc.toPortIdx);
+    if (!cA || !cB) continue;
+    const a = absPos(cA, sc.fromNodeId);
+    const b = absPos(cB, sc.toNodeId);
+    if (!a || !b) continue;
+    const color = SYS_COLOR[sc.sysId] || '#6366f1';
+    // Небольшой изгиб через середину — визуально разделяет параллельные
+    // патчкорды между теми же двумя узлами (идентичная прямая сольётся).
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2 - 6;
+    const line = el('path', {
+      class: 'sys-patch-link',
+      d: `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`,
+      fill: 'none',
+      stroke: color,
+      'stroke-width': 1.5,
+      'stroke-linecap': 'round',
+      'data-sys-conn-id': sc.id,
+    });
+    layerConns.appendChild(line);
+  }
 }
 
 // v0.58.11: палитра «Неразмещённые» — элементы проекта, которых нет

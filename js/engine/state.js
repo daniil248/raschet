@@ -32,6 +32,15 @@ export function getPageKind(p) {
 export const state = {
   nodes: new Map(),
   conns: new Map(),
+  // v0.59.143: patch-link'и для инфо-портов (продолжение v0.58.86).
+  // Отдельная коллекция от state.conns — слаботочные соединения 1:1
+  // (патчкорд между двумя конкретными кружками-коннекторами RJ45/SFP/…).
+  // Элемент: { id, sysId, fromNodeId, fromPortKey, fromPortIdx,
+  //            toNodeId,   toPortKey,   toPortIdx }.
+  sysConns: new Map(),
+  // Pending-состояние при создании patch-link (первый клик по кружку):
+  //   { fromNodeId, fromPortKey, fromPortIdx, sysId, mouseX, mouseY }
+  sysPending: null,
   pages: [],              // массив страниц
   currentPageId: null,    // id активной страницы
   // Параметры проекта (идут в шапку отчёта)

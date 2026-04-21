@@ -922,6 +922,11 @@ input, select { font: inherit; }
 .conn.selected { stroke: #2979ff !important; stroke-width: 5; filter: drop-shadow(0 0 3px rgba(41,121,255,0.5)); }
 
 .conn-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
+/* v0.59.143: patch-link'и инфо-портов (RJ45/SFP/слаботочка/видео). Тонкая цветная линия — «патчкорд» 1:1 между двумя кружками-коннекторами. Цвет задаётся в render.js per-линия (совпадает с цветом кружков). */
+.sys-patch-link { pointer-events: stroke; cursor: pointer; opacity: 0.85; }
+.sys-patch-link:hover { opacity: 1; stroke-width: 2.5; }
+.sys-port-connector { cursor: pointer; }
+.sys-port-connector:hover { r: 4.5; }
 .conn-link-label { font: 600 10px -apple-system, "Segoe UI", sans-serif; fill: #1565c0; cursor: pointer; }
 .conn-link-label:hover { fill: #0d47a1; text-decoration: underline; }
 /* В режиме "Показать все" подсвечиваем связи с linkMode=true: штрих + свечение.

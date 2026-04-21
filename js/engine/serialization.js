@@ -50,6 +50,8 @@ export function serialize() {
     nextId: getIdSeq(),
     nodes: Array.from(state.nodes.values()).map(stripRuntime),
     conns: Array.from(state.conns.values()).map(stripRuntime),
+    // v0.59.143: patch-link'и инфо-портов. Хранятся отдельно от conns.
+    sysConns: Array.from(state.sysConns.values()).map(stripRuntime),
     pages: (state.pages || []).map(p => {
       // v0.58.40: Firestore не принимает undefined — поэтому собираем объект
       // условно, без лишних ключей.
@@ -91,6 +93,12 @@ export function stripRuntime(obj) {
 export function deserialize(data) {
   state.nodes.clear();
   state.conns.clear();
+  if (state.sysConns) state.sysConns.clear(); else state.sysConns = new Map();
+  state.sysPending = null;
+  for (const sc of (data.sysConns || [])) {
+    if (!sc || !sc.id) continue;
+    state.sysConns.set(sc.id, sc);
+  }
   for (const n of (data.nodes || [])) {
     // Санитация координат — если проект сохранён с NaN/Infinity/null,
     // узел должен всё-равно быть загружаем (иначе весь рендер ломается).
