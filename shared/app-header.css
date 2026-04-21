@@ -5,6 +5,9 @@
    отступы. Левая часть: home-иконка + «Raschet» + название подпрограммы.
    ====================================================================== */
 .rs-header {
+  position: sticky;
+  top: 0;
+  z-index: 9990;
   flex: none;
   height: 56px;
   background: #fff;
@@ -17,6 +20,9 @@
   color: #1f2430;
   -webkit-font-smoothing: antialiased;
 }
+/* Нижний отступ страницы под фиксированный футер (32px), чтобы
+   контент не скрывался под ним. */
+body { padding-bottom: 32px; box-sizing: border-box; }
 .rs-header-left { display: flex; align-items: center; gap: 12px; }
 .rs-header-right { display: flex; align-items: center; gap: 12px; }
 

@@ -199,9 +199,20 @@ export function buildReport(ctx) {
       ['',   'мм',        '',       '',         'мм²',      '',          ''       ],
     ).forEach(l => lines.push(l));
     lines.push(sep('├', '┼', '┤'));
+    // Округление значений для отчёта: длина, перепад высот — до 0.01 м (см);
+    //   площадь отверстий — до мм² (int); давление — до 0.01 МПа; расход — до 0.1 кг.
+    //   Это убирает float-артефакты (3.6500000000000004 → 3.65) и даёт чёткую
+    //   читаемую таблицу.
+    const fmt = (v, d = 2) => (v === '' || v == null || v === '—')
+      ? '—' : (+(+v).toFixed(d));
     (piping.segments || []).forEach(s => {
       const truba = s.OD && s.wall ? `${s.OD}×${s.wall}` : (s.DN ? `DN${s.DN}` : '—');
-      lines.push(row([s.id, truba, s.L ?? '—', s.dH ?? '—', s.area ?? '—', s.P ?? '—', s.G ?? '—']));
+      lines.push(row([
+        s.id, truba,
+        fmt(s.L, 2), fmt(s.dH, 2),
+        (s.area === '' || s.area == null) ? '—' : Math.round(+s.area),
+        fmt(s.P, 2), fmt(s.G, 1),
+      ]));
     });
     lines.push(sep('└', '┴', '┘'));
     lines.push('');

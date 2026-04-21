@@ -24,12 +24,12 @@ function _injectStyles() {
   globalThis[STYLES_INJECTED] = true;
   const css = `
     .rs-mfoot {
-      position: fixed; right: 70px; bottom: 16px; z-index: 9989;
-      display: flex; align-items: center; gap: 6px;
-      font-family: system-ui, sans-serif; font-size: 11px; color: #607080;
-      background: rgba(255,255,255,0.92); border: 1px solid #e0e0e0;
-      border-radius: 4px; padding: 4px 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 9989;
+      height: 32px;
+      display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+      font-family: system-ui, sans-serif; font-size: 12px; color: #607080;
+      background: #fff; border-top: 1px solid #e0e3ea;
+      padding: 0 24px;
     }
     .rs-mfoot b { color: #0d47a1; font-weight: 600; }
     .rs-mfoot a { color: #1565c0; cursor: pointer; text-decoration: none; }
@@ -71,7 +71,9 @@ function _injectStyles() {
 
 /**
  * @param {Object} opts
- *   appVersion: string — общая версия Raschet
+ *   appVersion: string — общая версия Raschet (ядро/конструктор)
+ *   moduleVersion?: string — независимая версия модуля (если его changelog
+ *     развивается отдельно; берётся автоматически из entries[0].version)
  *   moduleId: string — для analytics/localStorage
  *   moduleTitle: string — короткое имя модуля в заголовке журнала
  *   entries: [{version, date, items:[string]}] — от новой к старой
@@ -85,7 +87,7 @@ export function mountFooter(opts) {
   foot.innerHTML = `
     <span>Raschet <b>v${appVersion}</b></span>
     <span class="rs-mfoot-dot">·</span>
-    <a data-act="log">Журнал «${moduleTitle}»</a>
+    <a data-act="log">Журнал изменений «${moduleTitle}»</a>
   `;
   document.body.appendChild(foot);
 

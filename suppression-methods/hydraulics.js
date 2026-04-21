@@ -75,7 +75,7 @@ export function computeHydraulic(p) {
     const dPloc = ze * rho * v * v / 2;
     const dP = dPlin + dPloc;
     return {
-      id: s.id, idx: i+1, DN: s.DN, ID_mm, L,
+      id: s.id, idx: i+1, DN: s.DN, ID_mm, L: +L.toFixed(2),
       mdot: +mdot.toFixed(3),
       v: +v.toFixed(2), Re: Math.round(Re),
       lambda: +lam.toFixed(4),

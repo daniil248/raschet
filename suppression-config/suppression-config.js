@@ -95,10 +95,25 @@ function defaultDirection(n = 1) {
     tmin: 20, feedTime: 10, smoke: true, fire: 'EI30', mount: 'wall',
     exhaust: 'outside', exhaustDist: 10, prelief: true, exec: 'standard',
     fireClass: 'A2', leakage: 'II', zones: [], pipeline: [],
+    // layout: 'central' — одна общая разводка на все зоны (по умолч.);
+    //        'modular' — каждая зона имеет собственную разводку и модуль
+    //        (одно помещение может содержать несколько обособленных модулей).
+    layout: 'central',
   };
 }
 function defaultZone(n = 1) {
-  return { id: newId('z-'), name: `зона ${n}`, S:15, H:3, Cn:7.2, fs:0, P:0.4, Ppr:0.003 };
+  return { id: newId('z-'), name: `зона ${n}`, S:15, H:3, Cn:7.2, fs:0, P:0.4, Ppr:0.003,
+           // Используется при dir.layout === 'modular' — обособленная
+           // трубная разводка для этой зоны (собственный модуль).
+           pipeline: [] };
+}
+
+/** Трубопровод, с которым работает эта зона:
+ *  • centralized — общий dir.pipeline;
+ *  • modular     — собственный zone.pipeline. */
+function effectivePipe(dir, zone) {
+  if (dir?.layout === 'modular' && zone) return zone.pipeline || (zone.pipeline = []);
+  return dir?.pipeline || [];
 }
 
 /** Глубокая копия с обновлением id у всех сущностей и сохранением parent-связей
@@ -179,6 +194,28 @@ function openInstDialog(existingId) {
   $('f-name').value = existing?.name ?? proj?.name ?? '';
   $('f-elev').value = existing?.elevation ?? 0;
   $('f-norm').value = existing?.norm ?? 'sp-485-annex-d';
+  // При смене методики показываем её специфические термины / рекомендуемые
+  // значения (каждый норматив оперирует своим набором входных величин).
+  const showNormHints = () => {
+    const hint = $('f-norm-hint'); if (!hint) return;
+    hint.innerHTML = normHintHtml($('f-norm').value);
+  };
+  showNormHints();
+  $('f-norm').onchange = () => {
+    showNormHints();
+    const prevNorm = existing?.norm || 'sp-485-annex-d';
+    const newNorm  = $('f-norm').value;
+    if (prevNorm !== newNorm) {
+      const kA = safetyFactor(newNorm, 'A'), kB = safetyFactor(newNorm, 'B');
+      const k1 = leakageK1(newNorm);
+      alert(`Выбрана методика: ${NORM_LABELS[newNorm] || newNorm}\n\n`
+        + `Применяемые коэффициенты (будут использованы ВО ВСЕХ узлах расчёта):\n`
+        + `  • k безопасности Cн = k·Cmin:  A → ${kA};  B → ${kB}\n`
+        + `  • k1 (утечки в дежурном): ${k1}\n`
+        + `  • плотности/скорости авто-DN сохраняются (физика потока не меняется)\n\n`
+        + `Значения Cн, mp, mg будут пересчитаны по новой методике после закрытия диалога.`);
+    }
+  };
   document.querySelectorAll('input[name="f-inst"]').forEach(r =>
     r.checked = (r.value === (existing?.installType || 'modular')));
   $('f-site-name').value    = existing?.site?.name     ?? proj?.name     ?? '';
@@ -586,20 +623,24 @@ function renderWarnings() {
 }
 
 /* ------------------- Computation ------------------- */
-/** Per-zone compute + aggregate over direction. */
+/** Per-zone compute + aggregate over direction.
+ *  centralized: общий dir.pipeline, обём трубопровода делится пропорционально V зон.
+ *  modular:     у каждой зоны свой zone.pipeline и собственная сборка модулей —
+ *               obtr считается по её собственной разводке. */
 function computeDir(dir) {
   const inst = currentInst();
   if (!inst || !dir.zones.length) return null;
+  const modular = dir.layout === 'modular';
   try {
-    const obtrTotal = (dir.pipeline || []).reduce((acc, p) => {
+    const volOf = (pipe) => (pipe || []).reduce((acc, p) => {
       const dn = +p.DN || 0, L = +p.L || 0;
       return acc + Math.PI * Math.pow(dn/2000, 2) * L * 1000;
     }, 0);
-    // split pipe volume proportional to zone volume
+    const obtrTotal = modular ? 0 : volOf(dir.pipeline);
     const totalV = dir.zones.reduce((a,z) => a + (z.S||0)*(z.H||0), 0) || 1;
     const zoneResults = dir.zones.map(z => {
       const V = (z.S||0) * (z.H||0);
-      const obtrZ = obtrTotal * V / totalV;
+      const obtrZ = modular ? volOf(z.pipeline) : (obtrTotal * V / totalV);
       const r = Annex.compute({
         agent: inst.agent, sp: z.S, h: z.H,
         tm: dir.tmin, hm: inst.elevation || 0,
@@ -654,6 +695,7 @@ function openDirDialog(existingId) {
   $('d-mount').value = d.mount; $('d-exh').value = d.exhaust;
   $('d-exh-d').value = d.exhaustDist; $('d-prelief').checked = d.prelief;
   $('d-exec').value = d.exec; $('d-class').value = d.fireClass; $('d-leak').value = d.leakage;
+  if ($('d-layout')) $('d-layout').value = d.layout || 'central';
   dlg.returnValue = ''; dlg.showModal();
   dlg.addEventListener('close', function onC() {
     dlg.removeEventListener('close', onC);
@@ -666,6 +708,7 @@ function openDirDialog(existingId) {
       mount: $('d-mount').value, exhaust: $('d-exh').value,
       exhaustDist: +$('d-exh-d').value, prelief: $('d-prelief').checked,
       exec: $('d-exec').value, fireClass: $('d-class').value, leakage: $('d-leak').value,
+      layout: $('d-layout') ? $('d-layout').value : (d.layout || 'central'),
     });
     if (!existing) {
       inst.directions.push(d);
@@ -691,6 +734,45 @@ function defaultPipelineSkeleton(dir) {
  *  NFPA 2001 и ISO 14520 учитывают запас в design concentration (k = 1.2/1.3…),
  *  поэтому k1 = 1.00. Все узлы расчёта (mp в Annex, mg в сводке, отчёт)
  *  используют одно и то же значение, согласованное с inst.norm. */
+const NORM_LABELS = {
+  'sp-485-annex-d': 'СП 485 Прил. Д',
+  'sp-485-2020':    'СП 485.1311500.2020',
+  'sp-rk-2022':     'СП РК 2.02-102-2022',
+  'nfpa-2001':      'NFPA 2001',
+  'iso-14520':      'ISO 14520-1',
+};
+
+/** HTML-подсказка по специфике выбранной методики: своя терминология,
+ *  ключевые входные величины и рекомендуемые значения. Показывается в
+ *  диалоге установки под селектором «Норматив». */
+function normHintHtml(norm) {
+  const blocks = {
+    'sp-485-annex-d': `
+      <b>СП 485 Прил. Д</b> — нормативная методика РФ (применяется по умолч.).
+      <div>Термины: Cн — нормативная концентрация, % об.; П — параметр негерметичности; fs — суммарная площадь проёмов, м²; Pпр — предельное давление в помещении, МПа; tпд — время подачи, с.</div>
+      <div>Коэффициенты: k1 = 1.05 (утечки), k2 = расчёт по проёмам, k3 по hm, k4 по tm.</div>
+      <div>Cн = 1.2·Cmin (A) / 1.3·Cmin (B).</div>`,
+    'sp-485-2020': `
+      <b>СП 485.1311500.2020</b> — актуализированная редакция; коэффициенты как в Прил. Д.
+      <div>Отличия от Прил. Д — в оформлении отчёта и ссылках; ядро расчёта (mp, mг, Fc) идентично.</div>`,
+    'sp-rk-2022': `
+      <b>СП РК 2.02-102-2022</b> — норматив Республики Казахстан.
+      <div>Термины и формулы близки к СП 485; k1 = 1.05, k = 1.2 (A) / 1.3 (B).</div>
+      <div>Отличия: локальные требования к огнестойкости ограждений и срабатыванию АПС.</div>`,
+    'nfpa-2001': `
+      <b>NFPA 2001</b> (Standard on Clean Agent Fire Extinguishing Systems).
+      <div>Термины: <i>design concentration</i> (расч. концентрация) = minimum extinguishing · safety factor; <i>flooding factor</i> (масса агента на м³); <i>discharge time</i> ≤ 10 s (halocarbon) / ≤ 60 s (inert).</div>
+      <div>Safety factor: class A → 1.2; class B → 1.35; class C → 1.2. k1 = 1.00 (запас уже включён в design concentration).</div>
+      <div>Рекомендуемые значения: t подачи = 10 с (halocarbon), 60 с (inert); проёмы — через integrity test (пересчёт через door-fan).</div>`,
+    'iso-14520': `
+      <b>ISO 14520-1</b> — международный стандарт gaseous fire-extinguishing systems.
+      <div>Термины: <i>design concentration</i> = min extinguishing · safety factor; <i>flooding quantity</i>; <i>discharge time</i>.</div>
+      <div>Safety factor: A → 1.2; B → 1.3; C → 1.3. k1 = 1.00.</div>
+      <div>Проёмы — по integrity test ISO 14520-1 Annex E.</div>`,
+  };
+  return blocks[norm] || `<i>Методика не опознана.</i>`;
+}
+
 function leakageK1(norm) {
   switch (norm) {
     case 'nfpa-2001': return 1.00;
@@ -766,7 +848,7 @@ function openZoneDialog(dir, existingId) {
 // Rotation state
 const V3 = {
   yaw: Math.PI/6, pitch: Math.PI/7, zoom: 1, panX: 0, panY: 0,
-  showNums: true, showNozz: true, showNodes: true,
+  showNums: true, showNozz: true, showNodes: true, showSup: true, showDims: false,
   selectedNode: 'root',  // 'root' or segment.id (endpoint of that segment)
   scale: 60,             // px per metre at zoom=1
 };
@@ -850,8 +932,11 @@ function renderIso(dirId) {
     <text x="${az.x+6}" y="${az.y+6}" font-size="20" font-weight="700" fill="#1565c0" paint-order="stroke" stroke="#fff" stroke-width="3">Z</text>
   </g>`;
 
-  // Cylinders at root: если у направления есть сборки — рисуем манифольд
-  // (N баллонов в ряд + горизонтальная подводящая труба). Иначе одиночный.
+  // Баллоны подключаются к КОРНЕВОМУ УЗЛУ трубопровода (O.x, O.y):
+  //   N = 1  → один баллон + гибкий рукав высокого давления (РВД) «змейкой»;
+  //   N ≥ 2  → коллектор (горизонтальный манифольд) + отвод, оканчивающийся
+  //            ровно в root-узле (там рисуется маркер «тройник»).
+  // Блок размещается слева и чуть ниже root, чтобы не перекрывать ось +Y.
   {
     let nCyl = 1;
     if (dirId && inst.assemblies) {
@@ -861,23 +946,46 @@ function renderIso(dirId) {
     const shown = Math.min(nCyl, 8);
     const w = 12, gap = 6, h = 38;
     const total = shown * w + (shown - 1) * gap;
-    const x0 = O.x - total - 12;  // manifold слева от коллектора
+    // смещаем рак баллонов так, чтобы подвод к root приходил снизу-слева
+    // и не ложился на ось +Y
+    const yRack = O.y + 18;
+    const yManifold = yRack - h - 6;
+    const x0 = O.x - total - 32;
+    // Баллоны
     svg += `<g fill="#e57373" stroke="#b71c1c" stroke-width="1.4">`;
     for (let i = 0; i < shown; i++) {
       const xi = x0 + i * (w + gap);
-      svg += `<rect x="${xi}" y="${O.y - h + 2}" width="${w}" height="${h}" rx="3"/>`;
-      // патрубок от баллона к манифольду
-      svg += `<line x1="${xi + w/2}" y1="${O.y - h + 2}" x2="${xi + w/2}" y2="${O.y - h - 4}" stroke="#b71c1c" stroke-width="1.4"/>`;
+      svg += `<rect x="${xi}" y="${yRack - h}" width="${w}" height="${h}" rx="3"/>`;
+      // патрубок от баллона к коллектору / РВД
+      svg += `<line x1="${xi + w/2}" y1="${yRack - h}" x2="${xi + w/2}" y2="${yManifold}" stroke="#b71c1c" stroke-width="1.4"/>`;
     }
     svg += `</g>`;
-    if (shown > 1) {
-      // манифольд (горизонтальная труба) + отвод к коллектору
-      svg += `<line x1="${x0 + w/2}" y1="${O.y - h - 4}" x2="${x0 + total - w/2}" y2="${O.y - h - 4}" stroke="#455a64" stroke-width="3"/>`;
-      svg += `<line x1="${x0 + total - w/2}" y1="${O.y - h - 4}" x2="${O.x}" y2="${O.y - h - 4}" stroke="#455a64" stroke-width="3"/>`;
-      svg += `<line x1="${O.x}" y1="${O.y - h - 4}" x2="${O.x}" y2="${O.y}" stroke="#455a64" stroke-width="3"/>`;
+    if (nCyl >= 2) {
+      // Коллектор (горизонтальная труба) + одиночный отвод в root-узел.
+      // Отвод идёт из правого конца коллектора диагональю в root,
+      // чтобы визуально завершался ИМЕННО в узле, а не упирался в участок.
+      const xLeft  = x0 + w/2;
+      const xRight = x0 + total - w/2;
+      svg += `<line x1="${xLeft}"  y1="${yManifold}" x2="${xRight}" y2="${yManifold}" stroke="#455a64" stroke-width="3"/>`;
+      svg += `<line x1="${xRight}" y1="${yManifold}" x2="${O.x}"   y2="${O.y}"       stroke="#455a64" stroke-width="3"/>`;
+      // маркер тройника в root (квадратик), чтобы было видно — подключение в узел
+      svg += `<rect x="${O.x-3}" y="${O.y-3}" width="6" height="6" fill="#455a64" stroke="#263238" stroke-width="1"/>`;
+      svg += `<text x="${xLeft - 4}" y="${yManifold - 6}" font-size="10" fill="#455a64" font-weight="600">Коллектор</text>`;
+    } else {
+      // Один баллон → рукав высокого давления (РВД), гибкая синусоида от
+      // патрубка баллона к root-узлу. Терминируется круглым маркером в узле.
+      const x1 = x0 + w/2, y1 = yManifold;
+      const x2 = O.x, y2 = O.y;
+      const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+      const cx1 = midX - 10, cy1 = y1 + 4;
+      const cx2 = midX + 10, cy2 = y2 - 4;
+      svg += `<path d="M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}" `
+           + `fill="none" stroke="#455a64" stroke-width="2" stroke-dasharray="6,3"/>`;
+      svg += `<circle cx="${O.x}" cy="${O.y}" r="3.5" fill="#455a64" stroke="#263238" stroke-width="1"/>`;
+      svg += `<text x="${midX + 6}" y="${midY - 4}" font-size="10" fill="#455a64" font-weight="600">РВД</text>`;
     }
     if (nCyl > shown) {
-      svg += `<text x="${x0 - 6}" y="${O.y - h/2 + 4}" text-anchor="end" font-size="10" fill="#b71c1c" font-weight="600">×${nCyl}</text>`;
+      svg += `<text x="${x0 - 6}" y="${yRack - h/2 + 4}" text-anchor="end" font-size="10" fill="#b71c1c" font-weight="600">×${nCyl}</text>`;
     }
   }
 
@@ -975,8 +1083,50 @@ function renderIso(dirId) {
     }
   }
 
+  // Размерные линии участков по ISO 129-1 (включаются кнопкой «Размеры»).
+  //   Для каждого участка рисуем две выносные линии (перпендикулярно участку,
+  //   экранная нормаль, с небольшим зазором от трубы), размерную линию между
+  //   ними и подпись длины в миллиметрах по центру (как принято на чертежах
+  //   трубопроводов). Засечки на концах — короткие наклонные штрихи 45°.
+  if (V3.showDims) {
+    const OFF = 22, GAP = 4, TICK = 5;
+    segsRender.forEach(({ seg, A, B }) => {
+      const L_mm = Math.round((+seg.L || 0) * 1000);
+      if (!L_mm) return;
+      const dx = B.x - A.x, dy = B.y - A.y;
+      const len = Math.hypot(dx, dy); if (len < 6) return;
+      const ux = dx / len, uy = dy / len;         // вдоль трубы
+      let nx = -uy, ny = ux;                      // перпендикуляр (нормаль)
+      // Выбираем сторону, удалённую от центра окна, — чтобы размеры не
+      // лезли на трубу.
+      const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+      if ((mx - W/2) * nx + (my - H/2) * ny < 0) { nx = -nx; ny = -ny; }
+      const A1 = { x: A.x + nx*GAP,       y: A.y + ny*GAP };
+      const A2 = { x: A.x + nx*(OFF+GAP), y: A.y + ny*(OFF+GAP) };
+      const B1 = { x: B.x + nx*GAP,       y: B.y + ny*GAP };
+      const B2 = { x: B.x + nx*(OFF+GAP), y: B.y + ny*(OFF+GAP) };
+      // выносные линии
+      svg += `<g pointer-events="none" stroke="#555" stroke-width="1" fill="none">`
+           + `<line x1="${A1.x}" y1="${A1.y}" x2="${A2.x}" y2="${A2.y}"/>`
+           + `<line x1="${B1.x}" y1="${B1.y}" x2="${B2.x}" y2="${B2.y}"/>`
+           + `<line x1="${A2.x}" y1="${A2.y}" x2="${B2.x}" y2="${B2.y}"/>`;
+      // засечки 45° (ISO 129-1 вариант slash)
+      const sx = (ux + nx) / Math.SQRT2, sy = (uy + ny) / Math.SQRT2;
+      svg += `<line x1="${A2.x - sx*TICK}" y1="${A2.y - sy*TICK}" x2="${A2.x + sx*TICK}" y2="${A2.y + sy*TICK}"/>`
+           + `<line x1="${B2.x - sx*TICK}" y1="${B2.y - sy*TICK}" x2="${B2.x + sx*TICK}" y2="${B2.y + sy*TICK}"/>`
+           + `</g>`;
+      // подпись: длина в мм, повёрнута вдоль размерной линии, над ней
+      const tx = (A2.x + B2.x) / 2, ty = (A2.y + B2.y) / 2;
+      let angDeg = Math.atan2(uy, ux) * 180 / Math.PI;
+      if (angDeg > 90 || angDeg < -90) angDeg += 180;  // текст не вверх-ногами
+      svg += `<text x="${tx}" y="${ty}" transform="rotate(${angDeg} ${tx} ${ty})" `
+           + `dy="-4" text-anchor="middle" font-size="11" font-weight="600" fill="#263238" `
+           + `paint-order="stroke" stroke="#fff" stroke-width="3" pointer-events="none">${L_mm}</text>`;
+    });
+  }
+
   // Опоры (рисуем поверх труб, но под узлами)
-  if (V3.showSupports !== false) {
+  if (V3.showSup) {
     supports.forEach(sup => {
       const seg = pipe.find(s => s.id === sup.segId); if (!seg) return;
       const a = nodes.get(seg.parent || 'root'), b = nodes.get(seg.id);
@@ -1362,6 +1512,8 @@ function setupIsoHandlers() {
   $('iso-toggle-nums').addEventListener('click',  () => { V3.showNums  = !V3.showNums;  renderIso(S.isoDirId); });
   $('iso-toggle-nozz').addEventListener('click',  () => { V3.showNozz  = !V3.showNozz;  renderIso(S.isoDirId); });
   $('iso-toggle-nodes').addEventListener('click', () => { V3.showNodes = !V3.showNodes; renderIso(S.isoDirId); });
+  $('iso-toggle-sup')?.addEventListener('click',   () => { V3.showSup   = !V3.showSup;   renderIso(S.isoDirId); });
+  $('iso-toggle-dims')?.addEventListener('click',  () => { V3.showDims  = !V3.showDims;  renderIso(S.isoDirId); });
   $('iso-zoom-fit').addEventListener('click', () => { fitView(S.isoDirId); renderIso(S.isoDirId); });
 }
 
@@ -1431,7 +1583,9 @@ function buildPipingSummary(dir) {
   const pipe = dir.pipeline || [];
   const segments = pipe.map((p, i) => ({
     id: i+1, OD: dnToOD(+p.DN).OD, wall: dnToOD(+p.DN).w,
-    DN: p.DN, L: p.L, dH: 0,
+    // Округляем длину до сантиметра (0.01 м) — этого достаточно для отчёта
+    // и убирает артефакты float-арифметики (3.6500000000000004 → 3.65).
+    DN: p.DN, L: +(+p.L || 0).toFixed(2), dH: 0,
     area: p.nozzle && p.nozzle !== 'none' ? 24 : '', P:'', G:'',
   }));
   const totalByDN = {};
@@ -1684,22 +1838,33 @@ function findAxisConflict(pipeline, nodeId, axis) {
     return `В узле уже сходятся ${(incoming ? 1 : 0) + childrenNow} трубы — добавление ещё одной даст крестовое соединение (не допускается по СП 485 / FSSA — используйте T-фитинги).`;
   }
 
-  // 4) Смешение плоскостей — правило зависит от НАПРАВЛЕНИЯ ПОТОКА (от баллона
-  //    к насадкам), т.е. от оси ВХОДЯЩЕГО участка:
-  //    — вход горизонтальный (X/Z): жидкая фаза halocarbon расслаивается по
-  //      низу трубы, поэтому в T-тройнике все отводы должны лежать в той же
-  //      горизонтальной плоскости (запрещаем вертикальные отводы ±Y);
-  //    — вход вертикальный (Y): поток «перемешан» по сечению, отводы в любую
-  //      горизонтальную сторону (и продолжение по вертикали) допустимы.
-  //    — вход из коллектора (root): ориентируемся по уже построенным детям —
-  //      если первый отвод был горизонтальный, далее только горизонтальные и
-  //      т.п. (ранее это было единственным правилом, теперь применяется
-  //      только к случаю root).
+  // 4) Смешение плоскостей — правило зависит от НАПРАВЛЕНИЯ ПОТОКА и от того,
+  //    является ли новый участок простым ПОВОРОТОМ (колено в конце трубы,
+  //    у узла ещё нет ответвлений) или ТРОЙНИКОМ (у узла уже есть отвод).
+  //    — Колено (children.length === 0) — разрешено любое направление, кроме
+  //      −Y от горизонтального входа (жидкая фаза halocarbon стекает в
+  //      опущенный участок — СП 485 / FSSA). Для инертных газов и этого
+  //      ограничения нет.
+  //    — Тройник (children.length ≥ 1):
+  //        • вход горизонтальный → все отводы в той же горизонтальной
+  //          плоскости (запрет ±Y как доп. отвода, чтобы не расслаивать
+  //          двухфазный поток halocarbon);
+  //        • вход вертикальный → строго типовой T: либо продолжение стояка,
+  //          либо противоположный горизонтальный отвод в той же оси.
+  //    — Вход из коллектора (root): правило одной плоскости среди детей.
   const children = pipeline.filter(s => (s.parent || 'root') === nodeId);
+  const instRef = currentInst();
+  const agentType = instRef && AGENTS[instRef.agent]?.type;
+  const isLiquidPhase = agentType !== 'inert';         // halocarbon / CO₂ → двухфазн.
   if (incoming) {
-    // Есть входящий участок — ориентируемся по нему.
-    if (!isVert(incoming.axis) && isVert(axis)) {
-      return `Входящий участок горизонтальный (${incoming.axis}) — вертикальный отвод от этого узла расслаивает двухфазный поток halocarbon (см. СП 485 / NFPA 2001: T-фитинги одной плоскости с магистралью). Используйте вертикальный стояк до этого узла, а отводы вниз/вверх — от следующего.`;
+    const isTee = children.length >= 1;                // это T-фитинг, а не колено
+    if (!isVert(incoming.axis) && axis === '-y' && isLiquidPhase) {
+      // Запрещаем опускание трубы ПОСЛЕ горизонтального участка для halocarbon/CO₂
+      // независимо от того, колено это или T — жидкая фаза стекает вниз.
+      return `Поворот вниз (−Y) после горизонтального участка недопустим для ${agentType === 'co2' ? 'CO₂' : 'halocarbon'}: жидкая фаза стекает в опущенную ветвь (СП 485 / NFPA 2001 / FSSA). Допустимо поднимать трубу (+Y) или продолжать в горизонт.`;
+    }
+    if (isTee && !isVert(incoming.axis) && isVert(axis)) {
+      return `T-фитинг на горизонтальной магистрали: все отводы должны лежать в той же горизонтальной плоскости (${axis} даёт расслоение двухфазного потока в боковой ветви). Поднять трубу можно простым поворотом (когда у узла ещё нет ответвлений) — удалите лишний отвод или используйте узел выше по потоку.`;
     }
     // Вход вертикальный (стояк) — T-фитинг должен быть строго типовым:
     //   • либо прямое продолжение стояка (±Y) без боковых отводов,
@@ -1777,10 +1942,34 @@ function countDescendants(pipeline, segId) {
 const DN_LIST = [15, 20, 25, 32, 40, 50, 65, 80, 100];
 
 function autoDnForDirection(dir) {
+  const inst = currentInst();
+  const r = computeDir(dir); if (!r) return;
+  // В модульном режиме каждая зона имеет собственный трубопровод и свою
+  // массу ГОТВ — подбираем DN отдельно по её pipeline (со своими mg/tpd из
+  // zoneResults). В централизованном — один общий dir.pipeline с суммарным mg.
+  if (dir.layout === 'modular' && r.zoneResults) {
+    r.zoneResults.forEach(zr => {
+      const pipe = zr.zone.pipeline || [];
+      if (!pipe.length) return;
+      autoDnOnPipe(pipe, {
+        inst,
+        mg: zr.r.mg || 0,
+        tpd: zr.r.tpd || 10,
+        moduleCode: r.moduleCode,
+      });
+    });
+    return;
+  }
   const pipe = dir.pipeline || [];
   if (!pipe.length) return;
-  const r = computeDir(dir); if (!r) return;
-  const inst = currentInst();
+  autoDnOnPipe(pipe, { inst, mg: r.mg, tpd: r.tpd || 10, moduleCode: r.moduleCode });
+}
+
+/** Подбор DN по готовому списку участков: расход, топология, гидравлика,
+ *  монотонность. Используется и для общей разводки, и для каждой обособленной
+ *  разводки зоны в модульном направлении. */
+function autoDnOnPipe(pipe, { inst, mg, tpd, moduleCode }) {
+  if (!pipe.length) return;
   const a = inst && AGENTS[inst.agent];
 
   // Расчётная плотность и целевая скорость по фазе агента. Для галокарбонов
@@ -1796,7 +1985,7 @@ function autoDnForDirection(dir) {
   if (a?.type === 'inert')       { vTarget = 40; rho = 120; }
   else if (a?.type === 'co2')    { vTarget = 15; rho = 700; }
   else                           { vTarget = 12; rho = 1200; } // halocarbon по умолч.
-  const totalMdot = r.mg / (r.tpd || 10);
+  const totalMdot = (mg || 0) / (tpd || 10);
   const totalNozz = pipe.filter(p => p.nozzle && p.nozzle !== 'none').length || 1;
   const counts = countNozzlesDownstream(pipe);
 
@@ -1828,11 +2017,11 @@ function autoDnForDirection(dir) {
 
   // 3) Итеративная проверка по computeHydraulic: пока не ОК — увеличиваем
   //    DN участка с максимальной скоростью (но не выше 100).
-  const mod = findVariant(r.moduleCode);
+  const mod = findVariant(moduleCode);
   for (let iter = 0; iter < 10; iter++) {
     const h = computeHydraulic({
-      pipeline: pipe, agent: inst.agent, moduleCode: r.moduleCode,
-      mg: r.mg, tp: r.tpd || a?.dischargeS || 10, r2: rho,
+      pipeline: pipe, agent: inst.agent, moduleCode,
+      mg, tp: tpd || a?.dischargeS || 10, r2: rho,
     });
     const tooFast = h.segments.filter(x => x.v > vTarget);
     const pressureLow = mod ? (h.P_out_bar < (mod.pmin_atm || 6) * 1.013) : false;
@@ -2068,6 +2257,19 @@ function init() {
     module: 'suppression',
     title: 'АГПТ — расчёт газового пожаротушения',
     usage: `
+      <h4>Термины — что такое «зона» и «направление»</h4>
+      <ul>
+        <li><b>Установка</b> (АГПТ) — весь проект газового пожаротушения на объекте: один норматив, один тип ГОТВ, одна серия модулей.</li>
+        <li><b>Направление</b> — область, которую тушит ОДНА общая сборка модулей (батарея баллонов). У направления своя группа зон и свой трубопровод (в централизованном исполнении — один общий, в модульном — по одному на зону). Физически направление — это «линия тушения» от выпускного клапана батареи до последнего насадка.</li>
+        <li><b>Зона</b> — конкретный защищаемый объём (комната, серверная, кабельный коллектор) с собственными S, H, классом пожара, проёмами. Одно направление может защищать несколько зон (расчёт mp/mg/n суммируется по всем зонам направления).</li>
+        <li><b>Схема трубопровода направления</b> (параметр «Общая / Обособленная по зонам»):
+          <ul>
+            <li><i>Общая (централизованная)</i> — одна магистраль с отводами на насадки всех зон. Общая разводка, один коллектор, одна сборка модулей.</li>
+            <li><i>Обособленная по зонам (модульно-распределённая)</i> — в одном помещении (или группе помещений) несколько ОБОСОБЛЕННЫХ систем: у каждой зоны собственный трубопровод и собственные модули. Применяется, когда зоны нельзя тушить единовременно (напр. разные режимы) или когда проще развести по модулям.</li>
+          </ul>
+        </li>
+        <li>Термины и нормируемые параметры могут отличаться в разных методиках: СП 485 оперирует Cн (нормативная концентрация), mp, mг, К1…К4; ISO 14520 — design concentration, total flooding quantity, agent mass; NFPA 2001 — design concentration, cylinder charge, flooding factor; СП РК 2.02-102-2022 — аналогично СП 485 с локальными поправками. При смене методики (диалог «Установка» → «Норматив») система подсказывает рекомендуемые значения для выбранной нормы.</li>
+      </ul>
       <h4>Как пользоваться</h4>
       <ol>
         <li><b>Установка</b> — корневая сущность. Задайте норматив (СП 485 / СП РК / NFPA / ISO), ГОТВ и серию модулей.</li>

@@ -12,7 +12,12 @@
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
-    mountHeader({ title: 'Расчёт газового пожаротушения (АГПТ)', home: '../hub.html' });
+    mountHeader({
+      title: 'Расчёт газового пожаротушения (АГПТ)',
+      home: '../hub.html',
+      moduleId: 'suppression-config',
+      moduleTitle: 'АГПТ',
+    });
   </script>
 
   <div class="sup-wrap">
@@ -170,6 +175,7 @@
             <option value="nfpa-2001">NFPA 2001 (США)</option>
             <option value="iso-14520">ISO 14520 (International)</option>
           </select>
+          <div id="f-norm-hint" style="margin-top:6px;padding:8px;background:#f5f7fa;border-left:3px solid #1565c0;border-radius:2px;font-size:12px;line-height:1.45;color:#263238;"></div>
         </label>
         <label class="sup-field"><span>ГОТВ <sup title="Газовое огнетушащее вещество. HFC-227ea (FM-200) — самый распространённый хладон; Novec 1230 — экологичная альтернатива; CO₂ — для необитаемых помещений; инертные (IG-541 и т.п.) — для серверных с людьми.">ⓘ</sup></span><select id="f-agent" title="Выберите огнетушащее вещество. Определяет нормативную концентрацию Cн и плотность r0."></select></label>
         <label class="sup-field"><span>Линейка модулей <sup title="halocarbon — для хладонов и Novec, inert — для аргона/азота, CO₂-HP/LP — для углекислоты.">ⓘ</sup></span><select id="f-series" title="Семейство модулей по рабочему давлению."></select></label>
@@ -224,6 +230,12 @@
         </label>
         <label class="sup-field"><span>Класс герметичности <sup title="I — полностью герметичное (сейф, морозильник); II — стандартное помещение; III — с открытыми проёмами. Влияет на коэффициент утечек k2.">ⓘ</sup></span>
           <select id="d-leak" title="Класс герметичности ограждений."><option value="I">I (герметичное)</option><option value="II" selected>II (стандарт)</option><option value="III">III (с проёмами)</option></select>
+        </label>
+        <label class="sup-field"><span>Схема трубопровода <sup title="«Общая» — одна трубная разводка на все зоны направления (централизованная система). «Обособленная по зонам» — помещение одно (или несколько), но система состоит из обособленных модулей, у каждой зоны своя трубная разводка и свой модуль (модульно-распределённая система).">ⓘ</sup></span>
+          <select id="d-layout" title="Способ трубной разводки для этого направления.">
+            <option value="central">Общая (централизованная)</option>
+            <option value="modular">Обособленная по зонам (модульно-распределённая)</option>
+          </select>
         </label>
       </div>
       <footer>
@@ -314,6 +326,8 @@
             <button type="button" class="sup-btn" id="iso-toggle-nums" title="Показать / скрыть номера участков.">№</button>
             <button type="button" class="sup-btn" id="iso-toggle-nozz" title="Показать / скрыть насадки на концах участков.">Насадки</button>
             <button type="button" class="sup-btn" id="iso-toggle-nodes" title="Показать / скрыть маркеры узлов (стыков) и подсказочные оси.">Узлы</button>
+            <button type="button" class="sup-btn" id="iso-toggle-sup" title="Показать / скрыть крепления трубопровода (жёсткие и скользящие опоры).">Крепления</button>
+            <button type="button" class="sup-btn" id="iso-toggle-dims" title="Показать / скрыть размерные линии участков трубопровода по ISO 129-1 (выносные линии + засечки + подпись длины в мм).">Размеры</button>
             <button type="button" class="sup-btn" id="iso-zoom-fit" title="Вписать схему в окно (Fit).">⌂</button>
             <span class="sep"></span>
             <span class="sup-iso-stat" id="iso-vtr">V<sub>тр</sub> = 0.000 м³</span>
