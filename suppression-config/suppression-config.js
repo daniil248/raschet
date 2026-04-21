@@ -1674,15 +1674,21 @@ function autoDnForDirection(dir) {
   const inst = currentInst();
   const a = inst && AGENTS[inst.agent];
 
-  // Целевая скорость по фазе агента (FSSA Pipe Design 2012 / ISO 14520):
-  //   halocarbon — расчёт ведётся по плотности пара (ρ ≈ 7 кг/м³);
-  //                допустимая скорость 40–60 м/с, целим 50;
-  //   inert      — газ, допустимо до 80 м/с, целим 70;
-  //   CO₂        — жидко-паровой, целим 35.
-  const vTarget = (a?.type === 'inert') ? 70 : (a?.type === 'co2') ? 35 : 50;
+  // Расчётная плотность и целевая скорость по фазе агента. Для галокарбонов
+  //   (HFC, Novec 1230) разряд ДВУХФАЗНЫЙ, но количественно доминирует ЖИДКАЯ
+  //   фаза — методики NFPA 2001 / ISO 14520 / FSSA Pipe Sizing считают по
+  //   плотности жидкости ≈ 1200 кг/м³ и рекомендуют v ≤ 12–15 м/с (что и
+  //   даёт реальные DN25 на магистрали 8–9 кг/с, как в референсных расчётах
+  //   — 34×3.5, 28×4, 22×3.5, а не DN100).
+  //   Для инертных газов (IG-541 / N₂ / Ar) — газовая фаза при ~100 бар
+  //   средн., ρ ≈ 120 кг/м³, v ≈ 40 м/с.
+  //   Для CO₂ (HP/LP) — двухфазный, ρ ≈ 700 кг/м³, v ≈ 15 м/с.
+  let vTarget, rho;
+  if (a?.type === 'inert')       { vTarget = 40; rho = 120; }
+  else if (a?.type === 'co2')    { vTarget = 15; rho = 700; }
+  else                           { vTarget = 12; rho = 1200; } // halocarbon по умолч.
   const totalMdot = r.mg / (r.tpd || 10);
   const totalNozz = pipe.filter(p => p.nozzle && p.nozzle !== 'none').length || 1;
-  const rho = r.r2 || 7;
   const counts = countNozzlesDownstream(pipe);
 
   // 1) Первичный подбор по массовому расходу ветви.
@@ -1749,8 +1755,12 @@ function autoCollectorForAssembly(inst, asm, dir) {
   if (!dir) { asm.collectorDN = asm.collectorDN || 40; return; }
   const r = computeDir(dir); if (!r) { asm.collectorDN = asm.collectorDN || 40; return; }
   const a = AGENTS[inst.agent];
-  const vTarget = (a?.type === 'inert') ? 70 : (a?.type === 'co2') ? 35 : 50;
-  const rho = r.r2 || 7;
+  // Те же плотности/скорости, что и в autoDnForDirection — иначе DN коллектора
+  // «поплывёт» относительно DN магистрали.
+  let vTarget, rho;
+  if (a?.type === 'inert')       { vTarget = 40; rho = 120; }
+  else if (a?.type === 'co2')    { vTarget = 15; rho = 700; }
+  else                           { vTarget = 12; rho = 1200; }
   const totalMdot = r.mg / (r.tpd || 10);
   asm.collectorDN = recommendDN(totalMdot, rho, vTarget);
   if (!+asm.collectorL) asm.collectorL = Math.max(0.5, nCyl * 0.3); // ~0.3 м на баллон
@@ -1981,7 +1991,7 @@ function init() {
       <ul>
         <li>Пользователь DN не вводит — он считается при каждом изменении схемы.</li>
         <li>Порядок: (1) топология — массовый расход ṁ через участок собирается снизу-вверх по насадкам-потомкам; (2) начальный DN = <code>recommendDN(ṁ, ρ, v_target)</code>; (3) итеративная проверка через <code>computeHydraulic</code> — если v &gt; v_max или P_выход &lt; 0.9·P_бат, шаг вверх по ряду DN15…DN100; (4) правило монотонности — отвод не толще магистрали.</li>
-        <li><b>Целевая скорость v_target</b> (FSSA Pipe Sizing / ISO 14520): halocarbon — 50 м/с (двухфазный поток), inert (IG-541/N₂/Ar) — 70 м/с, CO₂ — 35 м/с. Раньше было 20 м/с → давало DN100 там, где нужно DN25.</li>
+        <li><b>Расчётная плотность и целевая скорость</b> (NFPA 2001 / ISO 14520 / FSSA Pipe Sizing): halocarbon (HFC/Novec) — ρ = 1200 кг/м³ (доминирующая жидкая фаза двухфазного разряда), v_target = 12 м/с; inert (IG-541/N₂/Ar) — ρ = 120 кг/м³ (газ при ~100 бар средн.), v = 40 м/с; CO₂ — ρ = 700 кг/м³ (двухфазный), v = 15 м/с. До v0.59.25 использовалась плотность пара ≈ 7 кг/м³ — она даёт нереалистично большие DN для halocarbon (DN65-100 вместо DN25); теперь диаметры совпадают с эталонными расчётами (34×3.5 магистраль, 28×4 распределение, 22×3.5 отводы).</li>
         <li>Ряд условных диаметров: 15, 20, 25, 32, 40, 50, 65, 80, 100 мм. Соответствие ГОСТ 8734-75 (толст.): DN15 = 22×3.5, DN20 = 28×4, DN25 = 34×3.5, DN32 = 42×3.5 и т.д.</li>
         <li><b>Коллектор</b> сборки: при N ≤ 1 баллоне коллектор не нужен (скрывается); при N ≥ 2 — DN коллектора подбирается по суммарному расходу и фазе агента тем же алгоритмом.</li>
       </ul>
@@ -2040,7 +2050,7 @@ function init() {
       <p><b>Авто-DN (итеративный алгоритм):</b></p>
       <ul>
         <li>ṁ_seg = Σ ṁ_nozzle по всем потомкам-насадкам этого участка (снизу вверх по дереву).</li>
-        <li>seed DN = recommendDN(ṁ, ρ, v_target), где v_target = 50 (halocarbon) / 70 (inert) / 35 (CO₂) м/с.</li>
+        <li>seed DN = recommendDN(ṁ, ρ, v_target), где для halocarbon ρ = 1200 кг/м³, v = 12 м/с; inert ρ = 120, v = 40; CO₂ ρ = 700, v = 15.</li>
         <li>Проверка: если computeHydraulic даёт v &gt; v_max или P_выход &lt; 0.9·P_бат → DN := следующий по ряду {15,20,25,32,40,50,65,80,100}.</li>
         <li>Монотонность: DN_отвод ≤ DN_магистрали (родительского участка). Если нарушено — DN_отвод := DN_магистрали.</li>
       </ul>
