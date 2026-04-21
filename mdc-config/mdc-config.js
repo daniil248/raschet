@@ -1,7 +1,8 @@
 /* =========================================================================
    mdc-config.js — Конфигуратор модульного ЦОД (серия GDM-600)
-   v0.58.93 (Фаза 10.2+) — шаблонные модули из drawio «Планирование
-   конфигураций».
+   v0.58.95 (Фаза 10.2+) — стенки модулей 50 мм, зазор 5 мм шкаф↔стенка,
+   20 мм между модулями, тамбур между IT и силовыми, фальшпол 600×600,
+   ACU ≤ 2×65 ИЛИ 4×25 на модуль, резервирование холода учитывается.
 
    МОДЕЛЬ ДАННЫХ:
      ЦОД = последовательность модулей, пристыкованных длинными сторонами.
@@ -28,6 +29,14 @@ import {
 } from '../shared/gdm600-templates.js';
 
 const $ = (id) => document.getElementById(id);
+
+// ================== КОНСТАНТЫ КОМПОНОВКИ ==================
+// Конструкция модуля: боковые стенки (по направлению length) 50 мм.
+// Длинные стороны (по ширине) стыкуются с соседним модулем.
+const WALL_MM          = 50;   // толщина торцевой стенки модуля
+const CABINET_GAP_MM   = 5;    // зазор между шкафом и торцевой стенкой
+const BETWEEN_MODS_MM  = 20;   // зазор между модулями по ширине
+const TAMBOUR_MM       = 1500; // тамбур/коридор между IT и энергоблоком
 
 // ================== СОСТОЯНИЕ ==================
 const S = {
@@ -88,24 +97,28 @@ function compute() {
   if (modA === 0 && modB > 0) { modA = 1; modB = Math.max(0, modB - 1); }
   const powerModules = modA + modB;
 
-  // Последовательность модулей вдоль X
+  // Последовательность модулей вдоль X с зазорами BETWEEN_MODS_MM
+  // и тамбуром TAMBOUR_MM между IT и энергоблоком.
   const sequence = [];
   let xCur = 0;
   for (let i = 0; i < itModules; i++) {
     sequence.push({ templateId: itTplId, x: xCur, y: 0, num: i + 1 });
-    xCur += itTpl.widthMm;
+    xCur += itTpl.widthMm + BETWEEN_MODS_MM;
   }
+  // Тамбур между IT и силовыми модулями
+  const tambourX = xCur - BETWEEN_MODS_MM;   // приклеен к последнему IT
+  xCur += TAMBOUR_MM;
   for (let i = 0; i < modA; i++) {
     sequence.push({ templateId: 'MOD-PWR-A', x: xCur, y: 0, num: i + 1 });
-    xCur += MODULE_TEMPLATES['MOD-PWR-A'].widthMm;
+    xCur += MODULE_TEMPLATES['MOD-PWR-A'].widthMm + BETWEEN_MODS_MM;
   }
   for (let i = 0; i < modB; i++) {
     sequence.push({ templateId: 'MOD-PWR-B', x: xCur, y: 0, num: i + 1 });
-    xCur += MODULE_TEMPLATES['MOD-PWR-B'].widthMm;
+    xCur += MODULE_TEMPLATES['MOD-PWR-B'].widthMm + BETWEEN_MODS_MM;
   }
 
-  const buildingW = xCur;
-  const buildingD = itTpl.lengthMm;
+  const buildingW = xCur - BETWEEN_MODS_MM;
+  const buildingD = itTpl.lengthMm + 2 * WALL_MM;
 
   const totals = accumulate(sequence);
   totals.itModules    = itModules;
@@ -116,6 +129,11 @@ function compute() {
   totals.itKw = itKw;
   totals.upsKwNeed = upsKwNeed;
   totals.upsKwInstalled = modA * A_KW + modB * B_KW;
+
+  // Резервирование холода: N→1.0, N+1→+1 ACU на каждые 3 штатных, 2N→×2
+  const coolRedund = S.redundancy === '2N' ? 2 : (S.redundancy === 'N+1' ? 4/3 : 1);
+  totals.acuRequired    = Math.ceil(totals.acu * coolRedund);
+  totals.acuInRowRequired = Math.ceil(totals.acuInRow * coolRedund);
 
   // АКБ: паспорт Kehua — 3 шкафа S3 на один UPS 300 кВА при 15 мин.
   // Линейно масштабируем по автономии (базовая 15 мин = 1.0).
@@ -136,7 +154,7 @@ function compute() {
                          : 0;
   totals.tp  = S.withTp ? 1 : 0;
 
-  return { sequence, buildingW, buildingD, totals };
+  return { sequence, buildingW, buildingD, totals, tambourX };
 }
 
 function accumulate(sequence) {
@@ -185,7 +203,8 @@ function renderSummary(r) {
     <div class="card"><span class="label">UPS 300 / 200 кВА</span><span class="value">${t.ups300} / ${t.ups200}</span></div>
     <div class="card"><span class="label">UPS Σ (нужно / уст.)</span><span class="value">${t.upsKwNeed} / ${t.upsKwInstalled} кВт</span></div>
     <div class="card"><span class="label">АКБ S3 (58 кВт·ч)</span><span class="value">${t.batteries}</span></div>
-    <div class="card"><span class="label">ACU 65 / inRow 25</span><span class="value">${t.acu} / ${t.acuInRow}</span></div>
+    <div class="card"><span class="label">ACU 65 (уст. / с резервом)</span><span class="value">${t.acu} / ${t.acuRequired}</span></div>
+    <div class="card"><span class="label">inRow 25 (уст. / с резервом)</span><span class="value">${t.acuInRow} / ${t.acuInRowRequired}</span></div>
     <div class="card"><span class="label">AHU / ODU</span><span class="value">${t.ahu} / ${t.odu}</span></div>
     <div class="card"><span class="label">MDB / UDB / PDB</span><span class="value">${t.mdb}/${t.udb}/${t.pdb}</span></div>
     <div class="card"><span class="label">PDC / MON</span><span class="value">${t.pdc} / ${t.mon}</span></div>
@@ -205,30 +224,53 @@ function renderSummary(r) {
 /* ================== ПЛАНИРОВКА (SVG) ================== */
 function renderPlan(r) {
   const host = $('mdc-plan');
-  // Масштаб: укладываем здание в ~1200 px по ширине.
-  const padTop = 80;       // под AHU сверху
+  const padTop = 80;
   const padSide = 30;
-  const padRight = 80;     // под ODU справа
+  const padRight = 80;
   const pad = padSide;
   const targetW = 1200;
   const scale = Math.min(targetW / r.buildingW, 0.06);
 
   const vw = r.buildingW * scale + padSide + padRight;
-  const vh = r.buildingD * scale + padTop + 90 /* подписи + ТП/ДГУ */;
+  const vh = r.buildingD * scale + padTop + 90;
 
   let svg = `<svg viewBox="0 0 ${vw} ${vh}" xmlns="http://www.w3.org/2000/svg" style="background:#fafafa">`;
 
-  // Сетка пола 600×600 мм
-  svg += `<g opacity="0.22">`;
-  for (let gx = 0; gx <= r.buildingW; gx += 600) {
-    svg += `<line x1="${pad + gx*scale}" y1="${padTop}" x2="${pad + gx*scale}" y2="${padTop + r.buildingD*scale}" stroke="#999" stroke-width="0.3"/>`;
-  }
-  for (let gy = 0; gy <= r.buildingD; gy += 600) {
-    svg += `<line x1="${pad}" y1="${padTop + gy*scale}" x2="${pad + r.buildingW*scale}" y2="${padTop + gy*scale}" stroke="#999" stroke-width="0.3"/>`;
-  }
-  svg += `</g>`;
+  // defs — паттерн фальшпола 600×600
+  const tile = 600 * scale;
+  svg += `<defs>
+    <pattern id="raisedFloor" x="0" y="0" width="${tile}" height="${tile}" patternUnits="userSpaceOnUse">
+      <rect width="${tile}" height="${tile}" fill="#f3f5f7"/>
+      <rect x="0.4" y="0.4" width="${tile-0.8}" height="${tile-0.8}" fill="none" stroke="#cdd4da" stroke-width="0.35"/>
+      <circle cx="0.6" cy="0.6" r="0.35" fill="#b0bac2"/>
+      <circle cx="${tile-0.6}" cy="0.6" r="0.35" fill="#b0bac2"/>
+      <circle cx="0.6" cy="${tile-0.6}" r="0.35" fill="#b0bac2"/>
+      <circle cx="${tile-0.6}" cy="${tile-0.6}" r="0.35" fill="#b0bac2"/>
+    </pattern>
+  </defs>`;
 
-  // Модули
+  // Фальшпол под всей площадкой
+  svg += `<rect x="${pad}" y="${padTop}" width="${r.buildingW * scale}" height="${r.buildingD * scale}" fill="url(#raisedFloor)"/>`;
+
+  // Тамбур между IT и энергоблоком
+  if (r.tambourX != null) {
+    const tx = pad + r.tambourX * scale;
+    const tw = TAMBOUR_MM * scale;
+    svg += `<rect x="${tx}" y="${padTop}" width="${tw}" height="${r.buildingD * scale}"
+            fill="#eef3ee" stroke="#82a882" stroke-width="0.8" stroke-dasharray="3,2"/>`;
+    svg += `<text x="${tx + tw/2}" y="${padTop + r.buildingD*scale/2}"
+             text-anchor="middle" transform="rotate(-90 ${tx + tw/2} ${padTop + r.buildingD*scale/2})"
+             style="font-size:8px;font-weight:600;fill:#2e7d32;">ТАМБУР ${TAMBOUR_MM} мм</text>`;
+    // Двери (дуги) по обеим сторонам тамбура
+    const doorR = 900 * scale;
+    const doorY = padTop + r.buildingD*scale - WALL_MM*scale;
+    svg += `<path d="M ${tx} ${doorY} a ${doorR} ${doorR} 0 0 0 ${doorR} ${-doorR}"
+             fill="none" stroke="#8d6e63" stroke-width="0.6" stroke-dasharray="1.5,1"/>`;
+    svg += `<path d="M ${tx + tw} ${doorY} a ${doorR} ${doorR} 0 0 1 ${-doorR} ${-doorR}"
+             fill="none" stroke="#8d6e63" stroke-width="0.6" stroke-dasharray="1.5,1"/>`;
+  }
+
+  // Модули (со стенками и шкафами)
   for (const m of r.sequence) {
     svg += moduleSvg(m, pad, scale, padTop);
   }
@@ -298,9 +340,11 @@ function renderPlan(r) {
 function moduleSvg(m, pad, scale, padTop) {
   const tpl = MODULE_TEMPLATES[m.templateId];
   const x0 = pad + m.x * scale;
-  const y0 = (padTop || pad) + m.y * scale;
+  const y0 = (padTop || pad) + m.y * scale;      // верх торцевой стенки
   const W  = tpl.widthMm * scale;
-  const D  = tpl.lengthMm * scale;
+  const D  = tpl.lengthMm * scale;                // внутренняя длина (без стен)
+  const wall = WALL_MM * scale;
+  const gap  = CABINET_GAP_MM * scale;
 
   const bg = tpl.kind === 'POWER' ? '#fffdf5'
            : tpl.kind === 'IT'    ? '#f5f9ff'
@@ -309,35 +353,52 @@ function moduleSvg(m, pad, scale, padTop) {
                : tpl.kind === 'IT'    ? '#1565c0'
                : '#9e9e9e';
 
+  // полная высота модуля с двумя торцевыми стенками
+  const Dfull = D + 2 * wall;
+
   let s = `<g>`;
-  s += `<rect x="${x0}" y="${y0}" width="${W}" height="${D}"
-         fill="${bg}" stroke="${border}" stroke-width="1.2"/>`;
+  // внутреннее поле модуля
+  s += `<rect x="${x0}" y="${y0 + wall}" width="${W}" height="${D}"
+         fill="${bg}" stroke="${border}" stroke-width="0.8"/>`;
+  // торцевые стенки (сверху и снизу) — сэндвич-панели 50 мм
+  s += `<rect x="${x0}" y="${y0}" width="${W}" height="${wall}"
+         fill="#37474f" stroke="#263238" stroke-width="0.4"/>`;
+  s += `<rect x="${x0}" y="${y0 + wall + D}" width="${W}" height="${wall}"
+         fill="#37474f" stroke="#263238" stroke-width="0.4"/>`;
 
   // Центральный коридор 1200 мм на IT-модулях (между 3500 и 4700)
   if (tpl.kind === 'IT') {
     const ay = 3500 * scale;
     const ah = 1200 * scale;
-    s += `<rect x="${x0 + 100*scale}" y="${y0 + ay}"
+    s += `<rect x="${x0 + 100*scale}" y="${y0 + wall + ay}"
            width="${W - 200*scale}" height="${ah}"
            fill="#fcfcfc" stroke="#bdbdbd" stroke-width="0.4" stroke-dasharray="2,2"/>`;
+    // Дверь входа — в нижней торцевой стенке посередине
+    const doorW = 900 * scale;
+    const dx = x0 + W/2 - doorW/2;
+    const dy = y0 + wall + D;
+    s += `<rect x="${dx}" y="${dy}" width="${doorW}" height="${wall}"
+           fill="#a1887f" stroke="#5d4037" stroke-width="0.4"/>`;
+    s += `<path d="M ${dx} ${dy+wall} a ${doorW} ${doorW} 0 0 0 ${doorW} 0"
+           fill="none" stroke="#8d6e63" stroke-width="0.5" stroke-dasharray="1.5,1"/>`;
   }
 
-  // Слоты — с графикой компонентов (rack-полосы, UPS-дисплей, ACU-вентиляторы,
-  // inRow-жалюзи, батарейные полосы, АГПТ-баллон и т.п.)
+  // Слоты — сдвигаем внутрь на толщину стенки + 5 мм зазор.
+  // JB-роли протыкают стенку (интерфейс наружу); остальные — внутри.
   for (const slot of tpl.slots) {
-    const sx = x0 + slot.x * scale;
-    const sy = y0 + slot.y * scale;
-    const sw = slot.w * scale;
+    const isJb = slot.role === 'JB' || /JB/.test(slot.label || '');
+    const sx = x0 + slot.x * scale + (isJb ? 0 : gap);
+    const sy = y0 + wall + slot.y * scale;
+    const sw = slot.w * scale - (isJb ? 0 : 2*gap);
     const sd = slot.d * scale;
     const drawer = COMPONENT_SVG[slot.role];
     if (drawer) {
-      s += drawer(sx, sy, sw - 0.3, sd - 0.3);
+      s += drawer(sx, sy, Math.max(2, sw - 0.3), sd - 0.3);
     } else {
       const col = ROLE_COLORS[slot.role] || { fill: '#ccc', stroke: '#666', text: '#000' };
-      s += `<rect x="${sx}" y="${sy}" width="${sw - 0.3}" height="${sd - 0.3}"
+      s += `<rect x="${sx}" y="${sy}" width="${Math.max(2, sw - 0.3)}" height="${sd - 0.3}"
              fill="${col.fill}" stroke="${col.stroke}" stroke-width="0.6"/>`;
     }
-    // Мелкая текстовая метка роли (если слот шире ~12 px)
     if (sw > 14) {
       s += `<text x="${sx + sw/2}" y="${sy + sd - 3}" text-anchor="middle"
              fill="#000" style="font-size:6px;font-weight:600;pointer-events:none;opacity:0.7;">${slot.role}</text>`;
@@ -347,17 +408,17 @@ function moduleSvg(m, pad, scale, padTop) {
   // АГПТ-баллон — 1 шт в IT-модулях, в углу (внутри)
   if (tpl.kind === 'IT') {
     const cylW = 400 * scale, cylD = 400 * scale;
-    const cx = x0 + W - cylW - 2;
-    const cy = y0 + 100 * scale;
+    const cx = x0 + W - cylW - gap;
+    const cy = y0 + wall + 100 * scale;
     s += COMPONENT_SVG['AGPT-cyl'](cx, cy, cylW, cylD);
   }
 
-  // Заголовок
+  // Заголовок — на верхней стенке, белым
   const title = tpl.kind === 'POWER'
     ? (m.templateId === 'MOD-PWR-A' ? `PWR-A${m.num}` : `PWR-B${m.num}`)
     : tpl.kind === 'IT' ? `IT-${m.num}` : 'CORR';
-  s += `<text x="${x0 + W/2}" y="${y0 + 10}" text-anchor="middle"
-         style="font-size:9px;font-weight:700;fill:#263238">${title}</text>`;
+  s += `<text x="${x0 + W/2}" y="${y0 + wall*0.75}" text-anchor="middle"
+         style="font-size:7px;font-weight:700;fill:#eceff1">${title}</text>`;
 
   s += `</g>`;
   return s;
@@ -412,8 +473,8 @@ function exportBom() {
   if (t.mon)       add('MON',      'Шкаф мониторинга',             '600×1200×2000', t.mon, 'шт.', '');
 
   sec('Кондиционеры и вентиляция');
-  if (t.acu)       add('ACU.65',   'Прецизионный кондиционер 65 кВт','600×1200×2000', t.acu, 'шт.', 'ASHRAE ' + S.ashrae);
-  if (t.acuInRow)  add('ACU.25ir', 'inRow кондиционер 25 кВт',     '300×1200×2000', t.acuInRow, 'шт.', '');
+  if (t.acuRequired)      add('ACU.65',   'Прецизионный кондиционер 65 кВт','600×1200×2000', t.acuRequired, 'шт.', `ASHRAE ${S.ashrae}; ${t.acu} штатно + резерв ${S.redundancy}`);
+  if (t.acuInRowRequired) add('ACU.25ir', 'inRow кондиционер 25 кВт',     '300×1200×2000', t.acuInRowRequired, 'шт.', `${t.acuInRow} штатно + резерв ${S.redundancy}`);
   if (t.ahu)       add('AHU',      'Вентустановка (AHU)',          '800×1200',      t.ahu, 'шт.', 'приточно-вытяжная');
   if (t.odu)       add('ODU',      'Внешний блок (конденсатор)',   '900×900',       t.odu, 'шт.', 'наружная установка');
 

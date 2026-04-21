@@ -138,19 +138,19 @@ export const MODULE_TEMPLATES = {
   },
 
   // ===== IT-модули 2400×7200 =====
-  'MOD-IT-2400-SR30-ACU-ALT': {
-    label: 'IT 2400×7200 — 4×SR 30 + 4×ACU 65 (чередование)',
+  'MOD-IT-2400-SR30-ACU': {
+    label: 'IT 2400×7200 — 4×SR 30 + 2×ACU 65 (ACU на торцах)',
     kind: 'IT',
     widthMm: 2400, lengthMm: 7200,
     itKwPerRack: 30,
     slots: [
-      { id:'S1', x: 300, y: 200, w:600, d:1200, role:'PDC', label:'PDC',     swappable:['PDC','PDU'] },
+      { id:'S1', x: 900, y: 200, w:600, d:1200, role:'PDC', label:'PDC',     swappable:['PDC','PDU'] },
       { id:'S2', x:   0, y:2300, w:600, d:1200, role:'SR',  label:'SR 30',   swappable:['SR','ACU'] },
-      { id:'S3', x: 600, y:2300, w:600, d:1200, role:'ACU', label:'ACU 65',  swappable:['ACU','SR'] },
+      { id:'S3', x: 600, y:2300, w:600, d:1200, role:'SR',  label:'SR 30',   swappable:['SR','ACU'] },
       { id:'S4', x:1200, y:2300, w:600, d:1200, role:'SR',  label:'SR 30',   swappable:['SR','ACU'] },
       { id:'S5', x:1800, y:2300, w:600, d:1200, role:'ACU', label:'ACU 65',  swappable:['ACU','SR'] },
       { id:'S6', x:   0, y:4700, w:600, d:1200, role:'SR',  label:'SR 30',   swappable:['SR','ACU'] },
-      { id:'S7', x: 600, y:4700, w:600, d:1200, role:'ACU', label:'ACU 65',  swappable:['ACU','SR'] },
+      { id:'S7', x: 600, y:4700, w:600, d:1200, role:'SR',  label:'SR 30',   swappable:['SR','ACU'] },
       { id:'S8', x:1200, y:4700, w:600, d:1200, role:'SR',  label:'SR 30',   swappable:['SR','ACU'] },
       { id:'S9', x:1800, y:4700, w:600, d:1200, role:'ACU', label:'ACU 65',  swappable:['ACU','SR'] },
     ],
@@ -200,7 +200,7 @@ export function pickItTemplate(rackKw) {
   //   > 40 кВт  → MOD-IT-2400-HPC (2 стойки HPC 800)
   if (rackKw <= 10) return 'MOD-IT-3000-SR10x8-ACU';
   if (rackKw <= 20) return 'MOD-IT-3000-inRow25';
-  if (rackKw <= 40) return 'MOD-IT-2400-SR30-ACU-ALT';
+  if (rackKw <= 40) return 'MOD-IT-2400-SR30-ACU';
   return 'MOD-IT-2400-HPC';
 }
 
