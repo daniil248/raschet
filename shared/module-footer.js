@@ -23,6 +23,9 @@ function _injectStyles() {
   if (globalThis[STYLES_INJECTED]) return;
   globalThis[STYLES_INJECTED] = true;
   const css = `
+    /* Резерв снизу для body: фиксированный футер не должен перекрывать
+       контент. Применяется ко всем модулям при вызове mountFooter(). */
+    body.rs-with-mfoot { padding-bottom: 32px; }
     .rs-mfoot {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 9989;
       height: 32px;
@@ -90,6 +93,11 @@ export function mountFooter(opts) {
     <a data-act="log">Журнал изменений «${moduleTitle}»</a>
   `;
   document.body.appendChild(foot);
+  // Резервируем 32 px внизу body, чтобы фиксированный футер не
+  // перекрывал контент во всех модулях (вкладки страниц в конструкторе,
+  // формы / таблицы в подпрограммах). Класс, а не inline-стиль — чтобы
+  // модульные CSS могли переопределить при необходимости.
+  document.body.classList.add('rs-with-mfoot');
 
   foot.querySelector('[data-act="log"]').addEventListener('click', () => openLog(moduleTitle, entries));
 }

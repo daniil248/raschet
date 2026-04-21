@@ -16,9 +16,12 @@ body {
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  /* Освобождаем 32 px снизу под фиксированный module-footer (.rs-mfoot),
-     чтобы вкладки страниц (.page-tabs, bottom:0 в #canvas-wrap) и нижний
-     край инспектора не перекрывались строкой версии/changelog. */
+}
+/* Освобождаем 32 px снизу под фиксированный module-footer (.rs-mfoot),
+   чтобы вкладки страниц (.page-tabs, bottom:0 в #canvas-wrap) и нижний
+   край инспектора не перекрывались строкой версии/changelog. Класс
+   body.rs-with-mfoot добавляется mountFooter() в module-footer.js. */
+body.rs-with-mfoot {
   padding-bottom: 32px;
 }
 button { font: inherit; cursor: pointer; }

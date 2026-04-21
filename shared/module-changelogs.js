@@ -282,6 +282,9 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.72', date: '2026-04-21', items: [
+      'Reserve-padding под футер теперь выдаётся централизованно через mountFooter() во всех модулях: mountFooter навешивает body.rs-with-mfoot + инжектит CSS `body.rs-with-mfoot { padding-bottom: 32px }`. Это покрывает конструктор схем и все подпрограммы (ups-config, mv-config, rack-config, cable, reports, suppression-config и т.д.) — одним изменением. В app.css правило переехало на body.rs-with-mfoot вместо безусловного body.'
+    ] },
     { version: '0.59.71', date: '2026-04-21', items: [
       'Fix: фиксированный module-footer (position:fixed, height:32px) перекрывал нижнюю часть холста — в частности, вкладки страниц (.page-tabs, bottom:0 в #canvas-wrap) и нижний край инспектора. Добавлен padding-bottom:32px в body (app.css ~строка 19). Теперь внутренний layout (flex column: header + main + ничего) заканчивается над футером, вкладки страниц и лист видны полностью.'
     ] },
