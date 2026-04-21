@@ -74,6 +74,12 @@ export const CHANGELOGS = {
   ],
 
   'ups-config': [
+    { version: '0.59.75', date: '2026-04-21', items: [
+      'Мастер подбора ИБП работает и в standalone-режиме (из Hub, без ?nodeId=). В toolbar справочника появилась кнопка «🧙 Мастер подбора» — запускает тот же 3-шаговый wizard, что и из инспектора ИБП Конструктора схем: Шаг 1 требования (мощность kW, автономия мин, резервирование N/N+1/N+2/2N, тип modular/monoblock, VDC min/max, cos φ, число фаз) → Шаг 2 подходящие модели из справочника (фильтр по типу/VDC/capacity + расчёт числа установленных модулей через _calcModules) → Шаг 3 итог (композиция + цена).',
+      'На шаге 3 в standalone-режиме кнопка «✓ Выбрать эту конфигурацию» пишет тот же payload что и node-targeted режим (с полным `configuration`: frameId, upsType, capacityKw, moduleInstalled/Working/Redundant, frameKw, moduleKwRated, moduleSlots, redundancyScheme, batteryVdcMin/Max, batteryAutonomyMin, composition) в `raschet.lastUpsConfig.v1`. Wizard сворачивается, справочник показывается снова, зелёная плашка-индикатор под заголовком обновляется и показывает «<capacityKw> kW · резерв N+1 · автономия X мин».',
+      'Инспектор ИБП в Конструкторе схем: кнопка «⬇ Применить из Конфигуратора» теперь применяет не только базовые поля ups-модели (applyUpsModel), но и весь `configuration` (capacityKw реальный из wizard\'а, moduleInstalled, redundancyScheme, batteryVdcMin/Max, batteryAutonomyMin, composition) — один клик даёт полностью сконфигурированный узел.',
+      'Подробнее в changelog schematic 0.59.75.'
+    ] },
     { version: '0.59.74', date: '2026-04-21', items: [
       'Под заголовком страницы появилась зелёная плашка «✓ Сейчас выбрано: <supplier> · <model> (X мин назад)» — показывает какая модель лежит в raschet.lastUpsConfig.v1 и ждёт применения в Конструкторе схем. Видна только в standalone-режиме (без ?nodeId=), пережидает reload страницы, обновляется после клика по «⬆ Выбрать эту модель» и раз в минуту. Кнопка «✕ Сбросить» удаляет ключ.'
     ] },
@@ -290,6 +296,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.75', date: '2026-04-21', items: [
+      'Мастер подбора ИБП теперь работает без предварительного перехода из инспектора узла: кнопка «🧙 Мастер подбора» в toolbar ups-config запускает 3-шаговый wizard в standalone-режиме. Результат (полный `configuration`: capacityKw, moduleInstalled, redundancyScheme, VDC, автономия, composition) сохраняется в raschet.lastUpsConfig.v1.',
+      'Инспектор ИБП главной схемы: кнопка «⬇ Применить из Конфигуратора» теперь применяет весь configuration (а не только базовые поля ups-модели). applyUpsModel выставляет type/capacity/eff/cosPhi/VDC, затем сверху накладываются: capacityKw (реальный расчётный из fitInfo), moduleInstalled/Working/Redundant, frameKw, moduleKwRated, moduleSlots, redundancyScheme, batteryVdcMin/Max, batteryAutonomyMin, composition.',
+      'Файлы: ups-config/index.html (+btn-wizard-standalone в toolbar); ups-config/ups-config.js (initWizard разбит на launchStandaloneWizard + _openWizard + node-targeted init; _applyConfiguration ветвится по nodeId: pendingUpsSelection vs lastUpsConfig; renderPendingBanner показывает configuration-hint); js/engine/inspector/ups.js (apply-last-config читает last.configuration и накладывает все поля).'
+    ] },
     { version: '0.59.74', date: '2026-04-21', items: [
       'ups-config: видимый индикатор standalone-выбора — зелёная плашка под заголовком страницы показывает выбранную модель, ждущую применения в Конструкторе. См. changelog ups-config.'
     ] },

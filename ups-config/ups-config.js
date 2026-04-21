@@ -96,9 +96,14 @@ function renderPendingBanner() {
     const intro = document.querySelector('.page-intro');
     if (intro) intro.after(el); else document.querySelector('main')?.prepend(el);
   }
+  const cfg = last.configuration;
+  const cfgHint = cfg
+    ? `<span class="muted" style="font-size:11px">· ${cfg.capacityKw || '?'} kW · резерв ${esc(cfg.redundancyScheme || 'N')}${Number.isFinite(cfg.batteryAutonomyMin) ? ' · автономия ' + cfg.batteryAutonomyMin + ' мин' : ''}</span>`
+    : '';
   el.innerHTML = `
     <span>✓ Сейчас выбрано: <b>${esc(last.ups.supplier || '')} · ${esc(last.ups.model || '')}</b>
-      <span class="muted" style="font-size:11px">(${ageStr})</span></span>
+      <span class="muted" style="font-size:11px">(${ageStr})</span>
+      ${cfgHint}</span>
     <span class="muted" style="font-size:11px;flex:1;min-width:200px">В Конструкторе схем → параметры ИБП → «⬇ Применить из Конфигуратора».</span>
     <button id="pending-banner-clear" class="btn-sm">✕ Сбросить</button>
   `;
@@ -500,6 +505,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const addBtn = document.getElementById('btn-add-manual');
   if (addBtn) addBtn.addEventListener('click', openManualModal);
 
+  const wizBtn = document.getElementById('btn-wizard-standalone');
+  if (wizBtn) wizBtn.addEventListener('click', launchStandaloneWizard);
+
   // Kehua UPS defaults — загружает ВСЮ линейку Kehua из каталога
   // 2024-10-22: KR-RM 10-40 kVA, Myria 60-200 kW, MR33 120-1200 kVA
   // (30/50/100K модули), FR-UK33 GEL, FR-UK33, KR33, KR33-H. Все
@@ -586,7 +594,7 @@ const wizState = {
 function initWizard() {
   const qp = new URLSearchParams(location.search);
   const ctxNodeId = qp.get('nodeId');
-  if (!ctxNodeId) return; // обычный режим справочника
+  if (!ctxNodeId) return; // запуск wizard в standalone-режиме — через launchStandaloneWizard()
 
   wizState.nodeId = ctxNodeId;
   // Предзаполнение из query
@@ -600,19 +608,58 @@ function initWizard() {
   if (qp.get('cosPhi')) rq.cosPhi = Number(qp.get('cosPhi')) || rq.cosPhi;
   if (qp.get('phases')) rq.phases = Number(qp.get('phases')) || rq.phases;
 
-  // Показываем wizard, заполняем поля
+  _openWizard({ standalone: false });
+}
+
+// Запуск wizard в standalone-режиме: без ?nodeId=, inline-оверлей над
+// справочником. Результат уходит в raschet.lastUpsConfig.v1 вместе с
+// полным «configuration» (не только ups-моделью, но и composition,
+// installed/working/redundant, capacityKw реальный). Инспектор ИБП в
+// Конструкторе схем это всё применит.
+function launchStandaloneWizard() {
+  wizState.nodeId = null; // маркер standalone
+  _openWizard({ standalone: true });
+  // Прокрутить к wizard, чтобы пользователь его сразу увидел
+  const wizard = document.getElementById('configurator-wizard');
+  if (wizard && wizard.scrollIntoView) wizard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _openWizard({ standalone }) {
   const wizard = document.getElementById('configurator-wizard');
   if (!wizard) return;
   wizard.style.display = '';
   _fillWizStep1Fields();
 
-  // Скрываем «Выбранная модель» (она дублирует шаг 2)
+  // В standalone-режиме справочник и «Выбранная модель» остаются видимыми:
+  // пользователь может параллельно смотреть каталог. В node-targeted
+  // режиме — скрываем «Выбранная модель», чтобы не дублировать с wizard.
   const selectedPanel = document.getElementById('selected-ups-details');
-  if (selectedPanel) selectedPanel.closest('.panel').style.display = 'none';
+  if (selectedPanel) {
+    selectedPanel.closest('.panel').style.display = standalone ? '' : 'none';
+  }
 
-  // Кнопки wizard'а
+  // Меняем подзаголовок / подсказку шага 1 в зависимости от режима
+  const wiz1 = document.getElementById('wiz-step-1');
+  if (wiz1) {
+    const sub = wiz1.querySelector('p.muted');
+    if (sub) sub.textContent = standalone
+      ? 'Введите требования — мощность нагрузки и время автономии. Мастер выберет подходящие модели из справочника.'
+      : 'Параметры переданы из Конструктора схем. Можно подправить.';
+  }
+  // Кнопка «Применить» на шаге 3 в standalone меняет текст
+  const applyBtn = document.getElementById('wiz-btn-apply');
+  if (applyBtn) applyBtn.textContent = standalone
+    ? '✓ Выбрать эту конфигурацию'
+    : '✓ Применить к схеме';
+
+  // Кнопки wizard'а (переназначаем onclick, чтобы смена режима не ломала)
   document.getElementById('wiz-btn-cancel').onclick = () => {
-    if (confirm('Отменить конфигурирование?')) { try { window.close(); } catch {} }
+    if (standalone) {
+      wizard.style.display = 'none';
+      if (selectedPanel) selectedPanel.closest('.panel').style.display = '';
+    } else if (confirm('Отменить конфигурирование?')) {
+      try { window.close(); } catch {}
+    }
   };
   document.getElementById('wiz-btn-next-1').onclick = _goStep2;
   document.getElementById('wiz-btn-back-2').onclick = () => _showStep(1);
@@ -923,9 +970,25 @@ function _applyConfiguration() {
     selectedAt: Date.now(),
   };
   try {
-    localStorage.setItem('raschet.pendingUpsSelection.v1', JSON.stringify(payload));
-    flash('Конфигурация передана. Возврат в Конструктор схем…', 'success');
-    setTimeout(() => { try { window.close(); } catch {} }, 1500);
+    if (wizState.nodeId) {
+      // Node-targeted: прямой канал + автозакрытие вкладки
+      localStorage.setItem('raschet.pendingUpsSelection.v1', JSON.stringify(payload));
+      flash('Конфигурация передана. Возврат в Конструктор схем…', 'success');
+      setTimeout(() => { try { window.close(); } catch {} }, 1500);
+    } else {
+      // Standalone: сохраняем в lastUpsConfig.v1 — инспектор ИБП
+      // применит по кнопке «⬇ Применить из Конфигуратора».
+      // Payload тот же формат, что и pendingUpsSelection (nodeId=null),
+      // чтобы consumer-код в engine/index.js мог reuse логику.
+      localStorage.setItem('raschet.lastUpsConfig.v1', JSON.stringify(payload));
+      flash('Конфигурация сохранена. Откройте Конструктор схем → параметры ИБП → «⬇ Применить из Конфигуратора».', 'success');
+      renderPendingBanner();
+      // Сворачиваем wizard, показываем справочник обратно
+      const wizard = document.getElementById('configurator-wizard');
+      if (wizard) wizard.style.display = 'none';
+      const selectedPanel = document.getElementById('selected-ups-details');
+      if (selectedPanel) selectedPanel.closest('.panel').style.display = '';
+    }
   } catch (e) {
     flash('Не удалось передать конфигурацию: ' + (e.message || e), 'error');
   }

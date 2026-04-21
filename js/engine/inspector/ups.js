@@ -299,6 +299,23 @@ export function openUpsParamsModal(n) {
       if (!last || !last.ups) { flash('Некорректная запись Конфигуратора', 'error'); return; }
       snapshot('ups-params:' + n.id + ':lastConfig');
       applyUpsModel(n, last.ups);
+      // Если запись от wizard'а — применяем полный configuration
+      // (capacityKw реальный, moduleInstalled, redundancyScheme, AКБ-V, автономия)
+      const cfg = last.configuration;
+      if (cfg) {
+        if (cfg.frameId) n.elementId = cfg.frameId;
+        if (cfg.upsType) n.upsType = cfg.upsType;
+        if (Number.isFinite(cfg.capacityKw)) n.capacityKw = cfg.capacityKw;
+        if (Number.isFinite(cfg.moduleInstalled)) n.moduleInstalled = cfg.moduleInstalled;
+        if (Number.isFinite(cfg.frameKw)) n.frameKw = cfg.frameKw;
+        if (Number.isFinite(cfg.moduleKwRated)) n.moduleKwRated = cfg.moduleKwRated;
+        if (Number.isFinite(cfg.moduleSlots)) n.moduleSlots = cfg.moduleSlots;
+        if (cfg.redundancyScheme) n.redundancyScheme = cfg.redundancyScheme;
+        if (Number.isFinite(cfg.batteryVdcMin)) n.batteryVdcMin = cfg.batteryVdcMin;
+        if (Number.isFinite(cfg.batteryVdcMax)) n.batteryVdcMax = cfg.batteryVdcMax;
+        if (Number.isFinite(cfg.batteryAutonomyMin)) n.batteryAutonomyMin = cfg.batteryAutonomyMin;
+        if (Array.isArray(cfg.composition)) n.composition = cfg.composition;
+      }
       render(); notifyChange();
       flash(`Применено: ${last.ups.supplier || ''} · ${last.ups.model || ''}`, 'success');
       openUpsParamsModal(n); // перерисовать модалку с новыми параметрами
