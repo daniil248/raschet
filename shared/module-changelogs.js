@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.125', date: '2026-04-21', items: [
+      'Убраны ложные warnings «Двустворчатая дверь на стойке 600 мм — нетипично». В нашей типовой конфигурации все стойки 600 мм идут с двустворчатой задней дверью — это штатный вариант, не проблема. Правило удалено из rc-validate().',
+      'Файл: rack-config/rack-config.js (validateTemplate, секция 1).'
+    ] },
     { version: '0.59.122', date: '2026-04-21', items: [
       '<b>Fix: главная страница зависала на «Загрузка…».</b> GitHub Pages через Jekyll игнорирует файлы с префиксом <code>_</code> → <code>shared/catalogs/_helpers.js</code> отдавался как 404, цепочка импортов <code>rack-catalog-data.js</code> ломалась, main.js не инициализировался. Добавлен <code>.nojekyll</code> в корень репо — GitHub Pages теперь отдаёт файлы как есть, без Jekyll-препроцессинга.',
       'Параллельно: ссылка «Каталог ↗» в PDU-пикере использует корректный параметр <code>?filterKind=pdu</code> вместо <code>?kind=pdu</code> (catalog.js читает именно filterKind).',
@@ -182,7 +186,7 @@ export const CHANGELOGS = {
     { version: '0.59.124', date: '2026-04-21', items: [
       '<b>Динамические типы розеток.</b> Поля розеток больше не хардкод C13/C19/Schuko — грид автодетектит типы из каталога (C13, C19, Schuko, и любые новые — NEMA 5-15/20, IEC 309, C15 и т.п.). Есть поле «+ свой тип» — можно добавить произвольный тип и задать количество.',
       '<b>Фикс: модалка «Детали» теперь имеет стили.</b> Добавлены .rc-modal / .rc-modal-backdrop / .rc-modal-panel / .rc-modal-head / .rc-modal-close / .rc-modal-body в pdu-config.css — раньше ссылались на классы из rack-config.css, но те касались другого виджета и не применялись. Теперь карточка PDU открывается по центру с затемнением, заголовком и кнопкой закрытия.',
-      '<b>Фикс футера.</b> В changelog-записи 0.59.123 был эскейп <code>\\\'</code> внутри single-quoted string. Сам по себе эскейп валиден, но при import\'е модуля возникала ошибка парсера «Unexpected identifier \'ы\'» в некоторых браузерах — заменили на обычный текст, футер снова монтируется.',
+      '<b>Фикс футера.</b> В changelog-записи 0.59.123 был экранированный апостроф внутри single-quoted строки — в некоторых браузерах парсер спотыкался на «Unexpected identifier». Текст переписан без экранирования, футер снова монтируется.',
       'Файлы: pdu-config/pdu-config.js (state.outlets → map, detectedOutletTypes, renderOutletInputs, countOutlets → map, scoreCandidate), pdu-config/index.html (outlets-grid), pdu-config/pdu-config.css (+.rc-modal*, +.pc-outlets-grid), shared/module-changelogs.js (fix 0.59.123 entry).'
     ] },
     { version: '0.59.123', date: '2026-04-21', items: [
