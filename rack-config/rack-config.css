@@ -414,7 +414,7 @@
 
 /* ---- PDU wizard modal (iframe of /pdu-config/) ---- */
 .rc-pdu-wizard-modal {
-  position: fixed; inset: 0; z-index: 9500;
+  position: fixed; inset: 0; z-index: 10001;
   display: flex; align-items: stretch; justify-content: center;
 }
 .rc-pdu-wizard-backdrop {

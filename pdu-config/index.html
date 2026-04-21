@@ -220,7 +220,12 @@
       ]);
       const staticFoot = document.getElementById('pc-static-footer');
       if (staticFoot) staticFoot.remove();
-      mountFooter({ appVersion: APP_VERSION, moduleId: 'pdu-config', moduleTitle: 'PDU', entries: CHANGELOGS['pdu-config'] || [] });
+      // В embed-режиме (iframe внутри rack-config) футер не нужен —
+      // родитель показывает свой. Избегаем дублирования.
+      const isEmbed = new URLSearchParams(location.search).get('embed') === '1';
+      if (!isEmbed) {
+        mountFooter({ appVersion: APP_VERSION, moduleId: 'pdu-config', moduleTitle: 'PDU', entries: CHANGELOGS['pdu-config'] || [] });
+      }
     } catch (e) {
       console.error('[pdu-config] footer mount failed:', e);
       const bar = document.createElement('div');

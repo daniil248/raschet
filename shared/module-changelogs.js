@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.131', date: '2026-04-21', items: [
+      '<b>PDU-модалка поверх хедера и футера.</b> z-index поднят 9500 → 10001 (выше фиксированного футера 9989 и кнопки помощи 9990). Файл: rack-config/rack-config.css.',
+      '<b>Двойной футер в PDU-модалке убран.</b> В embed-режиме (<code>?embed=1</code>) pdu-config больше не монтирует свой футер — родительский rack-config отображает единый. Файл: pdu-config/index.html.'
+    ] },
     { version: '0.59.130', date: '2026-04-21', items: [
       'Кнопка помощи «?» поднята на 44 px от низа — больше не перекрывает фиксированный футер (32 px). Файл: shared/help-panel.js.'
     ] },
