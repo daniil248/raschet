@@ -370,6 +370,24 @@ function initPanelWizard() {
   if (selectedPanel) selectedPanel.closest('.panel').style.display = 'none';
   // Справочник сворачиваем в аккордеон (доступ из wizard, но не мешает)
 
+  // v0.59.79: если узел уже был сконфигурирован — восстанавливаем
+  // metering/ct/monitoring/accessories/breakers из preload. Preload
+  // привязан к nodeId и пишется инспектором главной схемы при каждом
+  // render'е.
+  try {
+    const rawPre = localStorage.getItem('raschet.panelWizardPreload.v1');
+    if (rawPre) {
+      const pre = JSON.parse(rawPre);
+      if (pre && pre.nodeId === ctxNodeId) {
+        if (Array.isArray(pre.breakers) && pre.breakers.length) pcWizState.breakers = pre.breakers;
+        if (pre.metering) pcWizState.metering = Object.assign(pcWizState.metering, pre.metering);
+        if (pre.ct) pcWizState.ct = Object.assign(pcWizState.ct, pre.ct);
+        if (pre.monitoring) pcWizState.monitoring = Object.assign(pcWizState.monitoring, pre.monitoring);
+        if (Array.isArray(pre.accessories)) pcWizState.accessories = pre.accessories;
+      }
+    }
+  } catch (e) { console.warn('[panel-config] preload failed', e); }
+
   _pcFillStep1();
   _pcShowStep(1);
 
@@ -549,7 +567,12 @@ function _pcGenerateBreakers() {
 }
 
 function _pcGoStep3() {
-  pcWizState.breakers = _pcGenerateBreakers();
+  // v0.59.79: если breakers уже есть (из preload при повторном запуске
+  // wizard для уже сконфигурированного узла) — не перезатираем.
+  // Генерируем только когда пусто.
+  if (!Array.isArray(pcWizState.breakers) || !pcWizState.breakers.length) {
+    pcWizState.breakers = _pcGenerateBreakers();
+  }
   const container = document.getElementById('pc-wiz-breakers');
   const html = [
     `<p class="muted" style="font-size:12px">Предварительный состав. Номиналы и типы можно подправить.</p>`,

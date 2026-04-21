@@ -225,6 +225,28 @@ export function openPanelParamsModal(n) {
       if (n.inputs) qp.set('inputs', String(n.inputs));
       if (n.outputs) qp.set('outputs', String(n.outputs));
       if (n.ipRating) qp.set('ip', n.ipRating);
+      // v0.59.79: preload для wizard — если узел уже был сконфигурирован,
+      // wizard восстановит чекбоксы/модели/охват/аксессуары вместо
+      // дефолтов. Перезаписываем на каждый рендер инспектора, чтобы
+      // в wizard попадала актуальная версия.
+      try {
+        const preload = {
+          nodeId: n.id,
+          breakers: Array.isArray(n.panelBreakers) ? n.panelBreakers : null,
+          metering: n.panelMetering || null,
+          ct: n.panelCt || null,
+          monitoring: n.panelMonitoring || null,
+          accessories: Array.isArray(n.panelAccessories) ? n.panelAccessories : null,
+          savedAt: Date.now(),
+        };
+        // Пишем ТОЛЬКО если есть что восстанавливать — чтобы не засорять
+        // storage и не мешать «чистому» запуску для новых узлов.
+        if (preload.breakers || preload.metering || preload.ct || preload.monitoring || preload.accessories) {
+          localStorage.setItem('raschet.panelWizardPreload.v1', JSON.stringify(preload));
+        } else {
+          localStorage.removeItem('raschet.panelWizardPreload.v1');
+        }
+      } catch { /* quota / private-mode */ }
       h.push(`<div style="margin:10px 0">
         <a href="panel-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
           ⚙ Сконфигурировать НКУ подробно (новая вкладка)
