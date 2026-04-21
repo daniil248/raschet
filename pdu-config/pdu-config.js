@@ -197,19 +197,29 @@ function openDetail(id) {
   const kp = p.kindProps || {};
   const outlets = kp.outlets || [];
   const rows = outlets.map(o => `<tr><td>${esc(o.type)}</td><td>${o.qty}</td></tr>`).join('');
+  const sku = kp.sku || p.variant || p.id;
   const body = `
     <div>
       <div><b>${esc(p.label)}</b></div>
-      <div class="muted" style="font-size:11px">${esc(p.manufacturer || '')} · ${esc(kp.sku || p.variant || '')}</div>
+      <div class="muted" style="font-size:11px">${esc(p.manufacturer || '')} · ${esc(sku)}</div>
       <hr>
       <div style="font-size:12px;line-height:1.8">
         <div><b>Категория:</b> ${esc(kp.categoryLabel || kp.category || '—')}</div>
         <div><b>Фаз:</b> ${kp.phases || '—'}</div>
         <div><b>Номинал:</b> ${kp.rating || '—'} A</div>
-        <div><b>Высота:</b> ${kp.height || '—'}</div>
+        <div><b>Высота:</b> ${kp.height === 0 || kp.height === '0' ? '0U (вертикальный)' : (kp.height ? kp.height + 'U' : '—')}</div>
       </div>
       <h4 style="margin-top:14px;font-size:13px">Розетки</h4>
       <table class="pc-results-table"><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${rows || '<tr><td colspan="2" class="pc-empty">нет данных</td></tr>'}</tbody></table>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid #eee;padding-top:12px">
+        <button id="pc-detail-pick" class="pc-btn pc-btn-primary">⬆ Выбрать эту модель</button>
+        <button id="pc-detail-open-rack" class="pc-btn">Открыть Конфигуратор стойки →</button>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:6px;line-height:1.5">
+        «Выбрать» сохранит модель в <code>raschet.lastPduConfig.v1</code>. В модалке подбора PDU
+        Конфигуратора стойки появится кнопка «⬇ Применить из Конфигуратора» — один клик и PDU
+        подставится в нужный ввод.
+      </div>
     </div>`;
   const modal = document.getElementById('pc-modal');
   document.getElementById('pc-modal-title').textContent = p.label;
@@ -217,7 +227,71 @@ function openDetail(id) {
   modal.hidden = false;
   modal.querySelector('.rc-modal-close').onclick = () => (modal.hidden = true);
   modal.querySelector('.rc-modal-backdrop').onclick = () => (modal.hidden = true);
+  document.getElementById('pc-detail-pick').onclick = () => {
+    saveLastPdu(p);
+    modal.hidden = true;
+    renderPendingBanner();
+  };
+  document.getElementById('pc-detail-open-rack').onclick = () => {
+    saveLastPdu(p);
+    location.href = '../rack-config/';
+  };
 }
+
+// ——— Handoff: standalone pick → rack-config ———
+function saveLastPdu(p) {
+  const kp = p.kindProps || {};
+  const payload = {
+    sku: kp.sku || p.variant || p.id,
+    manufacturer: p.manufacturer || '',
+    label: p.label || '',
+    category: kp.category || '',
+    phases: Number(kp.phases) || 0,
+    rating: Number(kp.rating) || 0,
+    height: Number(kp.height) || 0,
+    outlets: (kp.outlets || []).map(o => ({ type: o.type, count: Number(o.qty ?? o.count) || 0 })),
+    selectedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem('raschet.lastPduConfig.v1', JSON.stringify(payload));
+  } catch {}
+}
+
+function renderPendingBanner() {
+  let el = document.getElementById('pc-pending-banner');
+  let last = null;
+  try {
+    const raw = localStorage.getItem('raschet.lastPduConfig.v1');
+    if (raw) last = JSON.parse(raw);
+  } catch {}
+  const fresh = last && last.sku && last.selectedAt && (Date.now() - last.selectedAt) < 24 * 60 * 60 * 1000;
+  if (!fresh) {
+    if (el) el.remove();
+    return;
+  }
+  const ageMin = Math.round((Date.now() - last.selectedAt) / 60000);
+  const ageStr = ageMin < 60 ? (ageMin + ' мин назад') : (Math.round(ageMin / 60) + ' ч назад');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'pc-pending-banner';
+    el.style.cssText = 'margin:0 auto 14px;max-width:1400px;padding:10px 14px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    const wrap = document.querySelector('.pc-wrap');
+    if (wrap) wrap.before(el);
+  }
+  el.innerHTML = `
+    <span>✓ Сейчас выбрано: <b>${esc(last.manufacturer)} · ${esc(last.label)}</b>
+      <span class="muted" style="font-size:11px">(${ageStr})</span>
+      <span class="muted" style="font-size:11px">· ${last.phases || '?'}ф · ${last.rating || '?'} A · ${last.height === 0 ? '0U' : (last.height + 'U')}</span></span>
+    <span class="muted" style="font-size:11px;flex:1;min-width:200px">В Конфигураторе стойки → PDU → «Каталог» → «⬇ Применить из Конфигуратора».</span>
+    <button id="pc-pending-clear" class="pc-btn">✕ Сбросить</button>
+  `;
+  el.querySelector('#pc-pending-clear').onclick = () => {
+    try { localStorage.removeItem('raschet.lastPduConfig.v1'); } catch {}
+    renderPendingBanner();
+  };
+}
+// Обновляем «X мин назад» раз в минуту
+setInterval(() => { try { renderPendingBanner(); } catch {} }, 60000);
 
 // ——— Wire form ———
 function wire() {
@@ -268,6 +342,7 @@ function wire() {
   await loadPdus();
   wire();
   render();
+  renderPendingBanner();
   if (!_pdus.length) {
     document.getElementById('pc-results').innerHTML =
       `<div class="pc-empty">Библиотека PDU пуста. Откройте «Каталог и библиотеку элементов» — встроенные модели должны появиться автоматически (shared/rack-catalog-data.js).</div>`;

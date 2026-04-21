@@ -338,7 +338,22 @@ function openPduCatalogModal(pdu) {
   // State carriers for pair/color (мутируются обработчиками extraFooter)
   const pairState = { pair: pairDefault, colorA: (pdu && pdu.color) || '', colorB: '' };
 
+  // Standalone-pick из /pdu-config/ (raschet.lastPduConfig.v1) — если
+  // свежий (< 24 ч), показываем кнопку «⬇ Применить из Конфигуратора».
+  let lastPdu = null;
+  try {
+    const raw = localStorage.getItem('raschet.lastPduConfig.v1');
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && p.sku && p.selectedAt && (Date.now() - p.selectedAt) < 24*60*60*1000) lastPdu = p;
+    }
+  } catch {}
+  const lastPduBtn = lastPdu
+    ? `<button type="button" id="pdm-apply-last" class="pdm-btn pdm-btn-primary" title="Применить модель, выбранную в /pdu-config/ (${escape(lastPdu.manufacturer)} · ${escape(lastPdu.label)})">⬇ Из Конфигуратора PDU: ${escape(lastPdu.manufacturer)} ${escape(lastPdu.label)}</button>`
+    : '';
+
   const extraFooter = `
+    ${lastPduBtn}
     <label style="display:flex;gap:6px;align-items:center;font-size:12px${pairAlreadyExists?';opacity:0.5':''}" ${pairAlreadyExists?'title="На вводе '+pairFeed+' уже есть PDU — пара не добавится автоматически"':''}>
       <input type="checkbox" id="pdm-pair" ${pairState.pair?'checked':''} ${pairAlreadyExists?'disabled':''}>
       Парой на ${thisFeed}+${pairFeed} ${redMode?'<span style="color:#1565c0;font-size:11px">(реком. для '+mode+')</span>':''}
@@ -363,6 +378,29 @@ function openPduCatalogModal(pdu) {
       if (caEl) caEl.addEventListener('input', e => { pairState.colorA = e.target.value; });
       const cbEl = box.querySelector('#pdm-cb');
       if (cbEl) cbEl.addEventListener('input', e => { pairState.colorB = e.target.value; });
+      // «Применить из Конфигуратора PDU» — подставляет payload из
+      // raschet.lastPduConfig.v1 напрямую, минуя выбор по таблице.
+      const applyLast = box.querySelector('#pdm-apply-last');
+      if (applyLast && lastPdu) applyLast.addEventListener('click', () => {
+        pdu.sku = lastPdu.sku;
+        pdu.rating = Number(lastPdu.rating) || pdu.rating;
+        pdu.phases = Number(lastPdu.phases) || pdu.phases;
+        pdu.height = Number(lastPdu.height) || 0;
+        if (Array.isArray(lastPdu.outlets)) {
+          pdu.outlets = lastPdu.outlets.map(o => ({ type: o.type, count: Number(o.count) || 0 }));
+        }
+        if (pairState.colorA) pdu.color = pairState.colorA;
+        if (pairState.pair && !pairAlreadyExists) {
+          const twin = JSON.parse(JSON.stringify(pdu));
+          twin.id = 'pdu' + Date.now() + '-' + pairFeed;
+          twin.feed = pairFeed;
+          if (pairState.colorB) twin.color = pairState.colorB; else delete twin.color;
+          tpl.pdus.push(twin);
+        }
+        // box — внутренняя панель, её parent — backdrop с z-index 9999.
+        if (box.parentElement) box.parentElement.remove();
+        renderPduList(); recalc();
+      });
     },
     onClear: () => {
       // «Произвольная» — сохраняем цвет (если задан), сбрасываем sku

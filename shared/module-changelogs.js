@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.119', date: '2026-04-21', items: [
+      'Интеграция со standalone /pdu-config/: если в Конфигураторе PDU нажата кнопка «⬆ Выбрать эту модель» (в детальной карточке), сохраняется <code>raschet.lastPduConfig.v1</code>. В модалке «Каталог PDU» появляется синяя кнопка «⬇ Из Конфигуратора PDU: &lt;производитель&gt; &lt;модель&gt;» — один клик подставляет PDU в текущий ввод (со всеми параметрами: sku, rating, phases, height, outlets), учитывает галочку «Парой на A+B» и цвета корпусов A/B. Кнопка видна только если запись свежая (< 24 ч).',
+      'Файл: rack-config/rack-config.js (openPduCatalogModal: чтение lastPduConfig.v1, lastPduBtn в extraFooter, apply-last handler в onExtraMount).'
+    ] },
     { version: '0.59.118', date: '2026-04-21', items: [
       'Каталог базовых комплектов стоек: добавлена колонка <b>Score 0–100</b> и сортировка по убыванию — сразу видно, какой kit лучше совпадает с уже заданными параметрами. Распределение баллов: U (25: exact / 15 при ±3U), ширина (20 exact), глубина (15 exact / 8 при ±200 мм), двери перед+зад (по 10), стенки/крыша/пол (по 5), совпадение производителя по substring (5). Значение «— не важно —» у пользователя даёт полный балл (не штрафует).',
       'Файл: rack-config/rack-config.js (openKitCatalogModal: scoreKit + rows.sort + колонка «Score»).'
@@ -152,6 +156,18 @@ export const CHANGELOGS = {
   ],
 
   'pdu-config': [
+    { version: '0.59.119', date: '2026-04-21', items: [
+      'Standalone-пик переводит PDU в главный Конфигуратор стойки. В детальной карточке (клик на строку результата) добавлены:',
+      '— <b>⬆ Выбрать эту модель</b>: сохраняет <code>raschet.lastPduConfig.v1</code> (sku, производитель, категория, фазы, номинал, высота, розетки, timestamp). В Конфигураторе стойки в модалке «Каталог PDU» появится синяя кнопка «⬇ Из Конфигуратора PDU: …» — один клик подставит модель в текущий ввод.',
+      '— <b>Открыть Конфигуратор стойки →</b>: сохраняет тот же payload и сразу переходит на <code>../rack-config/</code>.',
+      'Зелёная плашка-индикатор над формой: «✓ Сейчас выбрано: &lt;производитель&gt; · &lt;модель&gt; (X мин назад) · 3ф · 32 A · 0U» + кнопка «✕ Сбросить». Видна, пока запись свежая (< 24 ч), обновляется раз в минуту, переживает reload.',
+      'Детальная карточка: исправлено отображение высоты (<code>0U (вертикальный)</code> вместо пустого «—» для kp.height=0).',
+      'Файл: pdu-config/pdu-config.js (+saveLastPdu, +renderPendingBanner, openDetail с двумя кнопками handoff).'
+    ] },
+    { version: '0.59.118', date: '2026-04-21', items: [
+      'Фильтр высоты заработал: option-значения сменены со строк "0U"/"1U"/"2U" на числа "0"/"1"/"2", чтобы совпадать с числовым <code>kp.height</code> из rack-catalog-data.js (seed\'ы хранят высоту как number, не string). Сравнение в scoreCandidate через <code>String(kp.height) !== String(state.height)</code> теперь одинаково работает и для модалки, и для standalone-страницы.',
+      'Файлы: pdu-config/index.html (option value), pdu-config/pdu-config.js (String-compare).'
+    ] },
     { version: '0.56.0', date: '2026-04-18', items: ['Справка модуля.'] },
     { version: '0.50.0', date: '2026-02-10', items: ['Каталог APC / Rittal / Raritan / Kehua; категории basic/metered/monitored/switched/hybrid.'] },
     { version: '0.45.0', date: '2025-11-15', items: ['Первая версия конфигуратора PDU.'] },
