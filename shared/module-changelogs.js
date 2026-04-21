@@ -179,6 +179,18 @@ export const CHANGELOGS = {
   ],
 
   'pdu-config': [
+    { version: '0.59.123', date: '2026-04-21', items: [
+      '<b>Нормальный конфигуратор PDU, а не фильтр.</b> Полный rewrite страницы: теперь это «контекст → требования → рекомендации → действие», а не голый фильтр по справочнику.',
+      '① <b>Контекст стойки</b> (акцентная секция): Серверов, кВт/сервер, C19-потребителей (GPU/blade), cos φ, система (1ф/3ф, 230/400 В), резерв (N или <b>2N</b> — два PDU A+B). Живая сводка: P<sub>rack</sub>, I<sub>rack</sub>, I<sub>треб</sub> (с запасом 1.25× по NEC 80%), рекомендуемый номинал, число розеток C13/C19 на один PDU, сколько PDU надо. Для 2N берём максимум из <code>0.6·I</code> (штатный режим) и <code>1.25·I</code> (отказ второго).',
+      '② <b>Требования</b> (derived, editable): поля номинала, фаз, высоты, категории, розеток автозаполняются из контекста, можно подправить руками.',
+      '③ <b>Рекомендации</b>: ranked-таблица по score (0-100), бейдж «✓ Лучшее» на первой строке, на каждой строке — кнопки <b>Детали</b> и <b>Выбрать</b>.',
+      '<b>Экспорт требований:</b> «⬇ Перенести требования» (без SKU, requirementsOnly-payload в rack-config), «🖨 Печать» (стилизованный лист требований), «📄 .md» (Markdown-экспорт), «Каталог ↗» (переход в /catalog/?filterKind=pdu).',
+      '<b>Футер:</b> inline-static-футер рендерится сразу в HTML, боевой mountFooter() его подменяет; при падении import\'ов показывается красная полоса с текстом ошибки — не молчаливая потеря UI.',
+      'Файлы: pdu-config/index.html (rewrite), pdu-config/pdu-config.js (rewrite: ctx, computeFromContext, applyContextToRequirements, exportMarkdown, printRequirements, flash, row-actions), pdu-config/pdu-config.css (+ .pc-section-accent, .pc-summary-grid, .pc-btn-full, .pc-actions-row, .pc-results-head, .pc-action-bar, .pc-banner, .pc-row-best, .pc-badge-best, .pc-row-actions, .pc-flash, .pc-static-footer).'
+    ] },
+    { version: '0.59.122', date: '2026-04-21', items: [
+      '<b>Фикс: .nojekyll в корне репо.</b> GitHub Pages по умолчанию прогоняет сайт через Jekyll, а Jekyll игнорирует файлы/папки с префиксом <code>_</code>. Из-за этого <code>shared/catalogs/_helpers.js</code> возвращал 404, barrel shared/rack-catalog-data.js валился на первом же import, вся цепочка main.js не стартовала, главная висла на «Загрузка…». Добавлен пустой файл <code>.nojekyll</code> в корень — Pages отключает Jekyll и отдаёт файлы как есть.'
+    ] },
     { version: '0.59.121', date: '2026-04-21', items: [
       '<b>Переиспользуемая модалка подбора PDU.</b> shared/pdu-picker-modal.js теперь: перемещаемая мышью, фиксированный размер (не схлопывается при сокращении списка), двухколоночный фильтр с заголовками секций, легенда Score, и новые экшены в футере — «⬇ Перенести требования» (сохраняет требования без SKU через raschet.lastPduConfig.v1, флаг requirementsOnly), «🖨 Распечатать» (лист требований), «Каталог ↗» (переход в /catalog/?kind=pdu).',
       'Seed-каталоги перенесены в <code>shared/catalogs/</code> — PDU-сиды теперь в shared/catalogs/pdus.js.',

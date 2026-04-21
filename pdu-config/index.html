@@ -23,54 +23,101 @@
       module: 'pdu-config',
       title: 'Конфигуратор PDU',
       usage: `
-        <h4>Назначение</h4>
-        <p>Подбор блока распределения питания (Power Distribution Unit) из единой библиотеки элементов (<code>shared/element-library.js</code>, kind = <code>pdu</code>). Ввод — требования проекта; результат — ранжированный список подходящих артикулов APC / Rittal / Raritan / Kehua с быстрой экспорт-спецификацией.</p>
+        <h4>Как работает</h4>
+        <ol>
+          <li><b>Контекст стойки</b> — задайте число серверов и мощность на сервер. Требования
+              (номинал, розетки, фазы) вычисляются автоматически. Режим <b>2N</b> делит нагрузку
+              на два PDU (A/B) — каждый на ~60% пиковой нагрузки.</li>
+          <li><b>Требования</b> — можно подправить вручную, если знаете точные цифры.</li>
+          <li><b>Рекомендации</b> — top-список с score, клик по строке для деталей.</li>
+          <li><b>Выбрать</b> — отправляет модель в Конфигуратор стойки (через localStorage).
+              <b>Перенести требования</b> — без привязки к SKU (только параметры).
+              <b>Печать</b> — лист требований для заказчика. <b>Экспорт .md</b> — markdown.</li>
+        </ol>
         <h4>Категории PDU</h4>
         <ul>
-          <li><b>basic</b> — только розетки, без измерений и управления. Дёшево, надёжно.</li>
-          <li><b>metered</b> — общий счётчик тока / мощности на вводе. Для аудита нагрузки на фидер.</li>
-          <li><b>monitored (outlet-metered)</b> — измерение тока на каждой розетке (per-outlet). Для детального учёта и аномалий.</li>
-          <li><b>switched</b> — удалённое вкл/выкл каждой розетки (reboot сервера без физ.доступа).</li>
-          <li><b>hybrid</b> — switched + monitored в одном устройстве.</li>
+          <li><b>basic</b> — только розетки.</li>
+          <li><b>metered</b> — счётчик на вводе (per-inlet).</li>
+          <li><b>monitored</b> — измерение на каждой розетке (per-outlet).</li>
+          <li><b>switched</b> — удалённое вкл/выкл каждой розетки.</li>
+          <li><b>hybrid</b> — switched + monitored.</li>
         </ul>
-        <h4>Как подбирать</h4>
-        <ol>
-          <li>Задать <b>число фаз</b> (1 или 3) и <b>номинал по вводу</b> (А) — должен быть ≥ расчётного тока нагрузки с учётом запаса 1.25×.</li>
-          <li>Выбрать <b>категорию</b> под задачу (ЦОД Tier III/IV — не ниже monitored; обычная серверная — basic / metered).</li>
-          <li>Указать <b>состав розеток</b> (C13 / C19 / Schuko). 1U-сервера — C13; blade/GPU — C19 (16А); офисная техника — Schuko.</li>
-          <li>Фильтр по <b>производителю</b> и <b>высоте</b> (0U / 1U / 2U) — опционально.</li>
-        </ol>
-        <h4>Ранжирование</h4>
-        <p>Каждая модель получает score (0–100) по соответствию требованиям: покрытие розеток (главное, 50%), номинал ≥ запрошенного (20%), точное попадание по фазам/категории/высоте (30%). Приоритет отдаётся модели с минимальным «перерасходом» розеток.</p>
       `,
       calcs: `
         <h4>Формулы</h4>
-        <h5>Нагрузка на PDU</h5>
-        <p><code>I<sub>PDU</sub> = Σ P<sub>серверов</sub> / (U<sub>L</sub> · √3 · cos φ)</code> — для 3-фазной;</p>
-        <p><code>I<sub>PDU</sub> = P / (U<sub>L</sub> · cos φ)</code> — для 1-фазной.</p>
-        <p>Номинал PDU должен быть <code>≥ 1.25 · I<sub>PDU</sub></code> (запас на пуск + защита).</p>
-        <h5>Резервирование (2N)</h5>
-        <p>Два независимых PDU от разных фидеров A/B. Сервера с двумя БП подключены к обоим. Для 2N на 4 ввода шкафа при 2 внешних линиях — T-сплиттеры IEC 60309 (см. Конфигуратор стойки).</p>
-        <h5>Стандарты</h5>
-        <ul>
-          <li>IEC 60320 — разъёмы C13/C14/C19/C20 (некоммутируемые приборные)</li>
-          <li>IEC 60309 — промышленные разъёмы (16/32A, 1ф/3ф, IP44/IP67)</li>
-          <li>UL 60950-1 / IEC 62368-1 — безопасность ИТ-оборудования</li>
-        </ul>
+        <h5>Нагрузка</h5>
+        <p><code>P<sub>rack</sub> = N<sub>serv</sub> × P<sub>serv</sub></code></p>
+        <p><code>I<sub>3ф</sub> = P / (√3 · U<sub>L</sub> · cosφ)</code>, <code>U<sub>L</sub>=400В</code></p>
+        <p><code>I<sub>1ф</sub> = P / (U<sub>ph</sub> · cosφ)</code>, <code>U<sub>ph</sub>=230В</code></p>
+        <h5>Требуемый номинал PDU</h5>
+        <p><code>I<sub>PDU</sub> ≥ 1.25 · I<sub>rack</sub></code> (запас по NEC 80%).</p>
+        <p>В режиме <b>2N</b>: каждый PDU должен выдержать ~<code>0.6 · I<sub>rack</sub></code> при
+           номинальном режиме и <code>1.25 · I<sub>rack</sub></code> при отказе второго — берём максимум.</p>
+        <h5>Розетки</h5>
+        <p>1 сервер = 2× C13 (по умолчанию; в полях можно уточнить). GPU/blade — C19.
+           Округляем к стандартным блокам C13 = 16/20/24, C19 = 4/6/8.</p>
       `,
       shortcuts: `
-        <p><kbd>Ctrl</kbd>+<kbd>Enter</kbd> — применить требования / пересчитать подбор</p>
-        <p>Клик по строке результата — детали модели</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Enter</kbd> — пересчитать</p>
+        <p>Клик по строке — детали модели</p>
       `,
     });
   </script>
 
   <main class="pc-wrap">
+    <!-- Banner: что ждёт отправки в rack-config -->
+    <div id="pc-pending-banner-slot"></div>
+
     <div class="pc-grid">
-      <!-- ==================== FORM ==================== -->
+      <!-- ==================== LEFT: form ==================== -->
       <aside>
+        <!-- Контекст: от чего считаем -->
+        <section class="pc-section pc-section-accent">
+          <h2>① Контекст стойки</h2>
+          <p class="pc-hint">Задайте сервера — требования посчитаются автоматически.</p>
+          <div class="pc-row">
+            <label class="pc-field">
+              <span>Серверов в стойке</span>
+              <input id="pc-ctx-servers" type="number" min="0" max="60" value="20">
+            </label>
+            <label class="pc-field">
+              <span>кВт на сервер</span>
+              <input id="pc-ctx-kw" type="number" min="0.1" max="20" step="0.1" value="0.6">
+            </label>
+          </div>
+          <div class="pc-row">
+            <label class="pc-field">
+              <span>C19-потребителей</span>
+              <input id="pc-ctx-c19" type="number" min="0" max="24" value="0" title="Blade / GPU / high-power устройства требуют C19 (16А)">
+            </label>
+            <label class="pc-field">
+              <span>cos φ</span>
+              <input id="pc-ctx-cos" type="number" min="0.5" max="1" step="0.01" value="0.92">
+            </label>
+          </div>
+          <div class="pc-row">
+            <label class="pc-field">
+              <span>Система</span>
+              <select id="pc-ctx-phases">
+                <option value="3" selected>3-фазная (400В)</option>
+                <option value="1">1-фазная (230В)</option>
+              </select>
+            </label>
+            <label class="pc-field">
+              <span>Резерв</span>
+              <select id="pc-ctx-redund">
+                <option value="N" selected>N (один PDU)</option>
+                <option value="2N">2N (два PDU A+B)</option>
+              </select>
+            </label>
+          </div>
+          <div id="pc-ctx-summary" class="pc-summary"></div>
+          <button id="pc-apply-ctx" class="pc-btn pc-btn-primary pc-btn-full">⟳ Пересчитать требования из контекста</button>
+        </section>
+
+        <!-- Требования (derived + editable) -->
         <section class="pc-section">
-          <h2>Требования</h2>
+          <h2>② Требования <span class="pc-sublabel">(можно править вручную)</span></h2>
           <div class="pc-row">
             <label class="pc-field">
               <span>Фаз</span>
@@ -98,21 +145,17 @@
             <span>Категория</span>
             <select id="pc-category">
               <option value="any">Любая</option>
-              <option value="basic">Basic (без измерений)</option>
-              <option value="metered">Metered (ввод)</option>
+              <option value="basic">Basic</option>
+              <option value="metered">Metered</option>
               <option value="monitored">Monitored (per-outlet)</option>
-              <option value="switched">Switched (удалённое упр.)</option>
-              <option value="hybrid">Hybrid (switched + monitored)</option>
+              <option value="switched">Switched</option>
+              <option value="hybrid">Hybrid</option>
             </select>
           </label>
-        </section>
-
-        <section class="pc-section">
-          <h2>Розетки</h2>
           <div class="pc-row">
             <label class="pc-field">
               <span>C13 (≥)</span>
-              <input id="pc-outlets-c13" type="number" min="0" max="48" value="16">
+              <input id="pc-outlets-c13" type="number" min="0" max="48" value="20">
             </label>
             <label class="pc-field">
               <span>C19 (≥)</span>
@@ -126,20 +169,29 @@
         </section>
 
         <section class="pc-section">
-          <h2>Производитель</h2>
+          <h2>③ Производитель</h2>
+          <p class="pc-hint">Клик — включить/выключить. Пусто = все.</p>
           <div id="pc-mfg-chips" class="pc-chips"></div>
         </section>
 
-        <div style="display:flex;gap:8px">
+        <div class="pc-actions-row">
           <button id="pc-apply" class="pc-btn pc-btn-primary">Подобрать</button>
-          <button id="pc-reset" class="pc-btn">Сбросить</button>
+          <button id="pc-reset" class="pc-btn">Сбросить всё</button>
         </div>
       </aside>
 
-      <!-- ==================== RESULTS ==================== -->
+      <!-- ==================== RIGHT: results ==================== -->
       <section>
         <div class="pc-section">
-          <h2>Подходящие артикулы <span id="pc-count" class="muted" style="font-size:12px;font-weight:400"></span></h2>
+          <div class="pc-results-head">
+            <h2>Подходящие артикулы <span id="pc-count" class="muted" style="font-size:12px;font-weight:400"></span></h2>
+            <div class="pc-action-bar">
+              <button id="pc-transfer-reqs" class="pc-btn" title="Сохранить требования без модели — в Конфигураторе стойки появится кнопка «Требования из Конфигуратора PDU»">⬇ Перенести требования</button>
+              <button id="pc-print" class="pc-btn" title="Печать листа требований">🖨 Печать</button>
+              <button id="pc-export-md" class="pc-btn" title="Экспорт в Markdown">📄 .md</button>
+              <a href="../catalog/?filterKind=pdu" target="_blank" class="pc-btn" rel="noopener">Каталог ↗</a>
+            </div>
+          </div>
           <div id="pc-results"></div>
         </div>
       </section>
@@ -158,12 +210,34 @@
     </div>
   </div>
 
+  <!-- ==================== FOOTER (inline-fallback + enhance) ==================== -->
+  <!-- Инлайн-статический футер на случай, если module-скрипт ниже не успеет
+       или упадёт. mountFooter() его удалит и подменит своим. -->
+  <div id="pc-static-footer" class="pc-static-footer">
+    <div><a href="../hub.html">Все программы</a> · <a href="../catalog/">Каталог</a> · <a href="https://github.com/daniil248/raschet" target="_blank" rel="noopener">GitHub ↗</a></div>
+    <div>Raschet · <a data-act="log-fallback">Журнал изменений «PDU»</a></div>
+  </div>
+
   <script type="module" src="pdu-config.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
-    import { CHANGELOGS } from '../shared/module-changelogs.js';
-    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'pdu-config', moduleTitle: 'PDU', entries: CHANGELOGS['pdu-config'] || [] });
+    // Монтируем боевой футер. Если что-то падает — показываем красную
+    // полосу, чтобы отладить, а не молча терять UI.
+    try {
+      const [{ mountFooter }, { APP_VERSION }, { CHANGELOGS }] = await Promise.all([
+        import('../shared/module-footer.js'),
+        import('../js/engine/constants.js'),
+        import('../shared/module-changelogs.js'),
+      ]);
+      const staticFoot = document.getElementById('pc-static-footer');
+      if (staticFoot) staticFoot.remove();
+      mountFooter({ appVersion: APP_VERSION, moduleId: 'pdu-config', moduleTitle: 'PDU', entries: CHANGELOGS['pdu-config'] || [] });
+    } catch (e) {
+      console.error('[pdu-config] footer mount failed:', e);
+      const bar = document.createElement('div');
+      bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9990;background:#ffebee;color:#b71c1c;border-top:1px solid #ef9a9a;padding:6px 12px;font:12px system-ui;';
+      bar.textContent = '[footer] ' + (e && e.message || e);
+      document.body.appendChild(bar);
+    }
   </script>
 </body>
 </html>
