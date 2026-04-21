@@ -386,16 +386,19 @@ function cascade() {
     if (proc.tgt && proc.tgtVal !== '' && proc.tgtVal != null) {
       // V сегмента: если у i-1 задан user V — используем, иначе через S.vBase
       let V_seg = nNum(S.points[i-1].V);
-      if (!(V_seg > 0)) {
-        // для простоты используем базовый (cascade до mass-balance)
-        V_seg = S.vBase;
-      }
+      if (!(V_seg > 0)) V_seg = S.vBase;
       const bState = forwardPoint(aState, proc, V_seg, S.P);
       if (bState) {
-        // Записываем в S.points[i] computed t/rh/x (без user-флага)
-        if (!p.tUser)  p.t  = Number(bState.T.toFixed(2));
-        if (!p.rhUser) p.rh = Number(bState.RH.toFixed(2));
-        if (!p.xUser)  p.x  = '';   // расчёт идёт от φ, override чистим
+        // Цель процесса главнее предыдущих пользовательских t/φ/d точки 2:
+        // если пользователь задал «процесс с Q=5,4 кВт», значит t₂/φ₂
+        // вычисляются процессом, а ранее введённые числа — просто старое
+        // отображение, которое надо обновить. Сбрасываем *User флаги.
+        p.tUser = false;
+        p.rhUser = false;
+        p.xUser = false;
+        p.t  = Number(bState.T.toFixed(2));
+        p.rh = Number(bState.RH.toFixed(2));
+        p.x  = '';
       }
     }
   }
@@ -409,6 +412,9 @@ function writeCardsFromState() {
     ['name','t','rh','x'].forEach(col => {
       const inp = card.querySelector(`[data-col="${col}"]`);
       if (!inp) return;
+      // S — источник истины. Если cascade() сбросил *User=false (цель
+      // процесса стала главной), то и DOM-атрибут синхронизируем.
+      if (!p[col + 'User']) inp.dataset.user = '';
       const isUser = inp.dataset.user === '1';
       if (isUser) return;  // не перезаписываем ввод пользователя
       if (document.activeElement === inp) return;
@@ -620,22 +626,28 @@ function attachCrosshair(host) {
       h.setAttribute('x1', opts.marginL); h.setAttribute('x2', opts.marginL + plotW);
       d.setAttribute('cx', px); d.setAttribute('cy', py);
     }
-    // Значения: W -> pv -> phi; h; rho
+    // Значения: W -> pv -> phi; h; rho. φ в физическом диапазоне [0..100].
+    // Если точка выше линии насыщения — это «перенасыщ.» (нефизично).
     const pv = W * S.P / (0.621945 + W);
-    const phi = Math.max(0, Math.min(200, 100 * pv / Pws(T)));
+    const phi_raw = 100 * pv / Pws(T);
+    const phi = Math.max(0, Math.min(100, phi_raw));
+    const supersat = phi_raw > 100.5;
     const h_v = 1.006 * T + W * (2501 + 1.86 * T);
     const v_sp = 287.055 * (T + 273.15) * (1 + 1.6078 * W) / S.P;
     const rho = (1 + W) / v_sp;
     const Td = (phi > 0.01) ? dewPointFromW(W, S.P) : -999;
     if (readout) {
       const ru = S.showRuNames;
+      const phiStr = supersat
+        ? `<span style="color:#c62828">перенасыщ. (выше φ=100%)</span>`
+        : `${phi.toFixed(1)} %`;
       readout.innerHTML =
         `<b>t</b>${ru?' (темп.)':''} = ${T.toFixed(1)} °C<br>` +
         `<b>d</b>${ru?' (влагосодерж.)':''} = ${(W*1000).toFixed(2)} г/кг<br>` +
-        `<b>φ</b>${ru?' (отн. влажн.)':''} = ${phi.toFixed(1)} %<br>` +
+        `<b>φ</b>${ru?' (отн. влажн.)':''} = ${phiStr}<br>` +
         `<b>h</b>${ru?' (энтальпия)':''} = ${h_v.toFixed(2)} кДж/кг<br>` +
         `<b>ρ</b>${ru?' (плотность)':''} = ${rho.toFixed(3)} кг/м³` +
-        (Td > -900 ? `<br><b>t<sub>р</sub></b>${ru?' (точка росы)':''} = ${Td.toFixed(1)} °C` : '');
+        (Td > -900 && !supersat ? `<br><b>t<sub>р</sub></b>${ru?' (точка росы)':''} = ${Td.toFixed(1)} °C` : '');
       // позиция: смещаем от курсора, учитываем границы
       const hostRect = host.getBoundingClientRect();
       let lx = e.clientX - hostRect.left + 12;

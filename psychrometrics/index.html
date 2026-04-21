@@ -168,7 +168,23 @@
   <script type="module" src="psychrometrics.js"></script>
   <script type="module">
     import { mountPsyCalculators } from './psy-calculators.js';
-    mountPsyCalculators(document.getElementById('psy-calcs'));
+    const calc = mountPsyCalculators(document.getElementById('psy-calcs'));
+    // Передаём калькулятору атмосферу из «Условия объекта» (P, h) как read-only
+    window.__psyCalc = calc;
+    const syncAtm = () => {
+      const altEl = document.getElementById('psy-alt');
+      const pEl   = document.getElementById('psy-P-kpa');
+      if (!altEl || !pEl || !calc.setExternalKnowns) return;
+      const h = parseFloat(altEl.value) || 0;
+      const Pk = parseFloat(pEl.value) || 101.325;
+      calc.setExternalKnowns({ h, P: Pk * 1000, Pk });
+    };
+    ['psy-alt','psy-P-kpa'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.addEventListener('input', syncAtm); el.addEventListener('change', syncAtm); }
+    });
+    // первая синхронизация после того, как main psychrometrics.js dompost-инит
+    setTimeout(syncAtm, 50);
   </script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';

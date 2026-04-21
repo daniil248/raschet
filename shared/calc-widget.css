@@ -42,6 +42,9 @@
 .calc-field[data-mode="empty"] input {
   background: #fafafa; border-color: #cfd8dc; color: #37474f;
 }
+.calc-field[data-mode="ro"] input {
+  background: #eceff1; border-color: #b0bec5; color: #455a64; font-weight: 600; cursor: not-allowed;
+}
 .calc-field .calc-hint {
   font-size: 10px; color: #90a4ae;
 }

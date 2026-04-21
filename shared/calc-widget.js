@@ -160,28 +160,35 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
       wrap.dataset.mode = 'empty';
       wrap.dataset.key = key;
       wrap.dataset.group = g.id;
+      const ro = !!f.readOnly;
       wrap.innerHTML = `
         <span class="calc-field-lbl">${f.label}${f.unit ? ` <em>${f.unit}</em>` : ''}</span>
         <div class="calc-field-row">
-          <input type="text" inputmode="decimal" autocomplete="off" placeholder="${f.placeholder || ''}">
-          <label class="calc-lock-wrap" title="Зафиксировать значение">
+          <input type="text" inputmode="decimal" autocomplete="off" placeholder="${f.placeholder || ''}"${ro?' readonly tabindex="-1"':''}>
+          ${ro ? '' : `<label class="calc-lock-wrap" title="Зафиксировать значение">
             <input type="checkbox" class="calc-field-lock">
             <span>🔒</span>
-          </label>
+          </label>`}
         </div>
         ${f.hint ? `<span class="calc-hint">${f.hint}</span>` : ''}
       `;
+      if (ro) { meta[key].readOnly = true; wrap.dataset.mode = 'ro'; }
       fw.appendChild(wrap);
     });
     body.appendChild(block);
   });
 
+  /* Внешние known'ы — для read-only полей, куда значения приходят из
+     главного модуля (P, h и т.п.). Пишется через card.setExternalKnowns(). */
+  const externalKnowns = {};
+
   /* собрать knowns с учётом coreSize групп. Locked всегда в knowns. */
   function readKnowns() {
     const rawUser = {};    // key → {num, ts}
-    const lockedKnown = {};
+    const lockedKnown = { ...externalKnowns };
     const lockedSet = new Set();
     allKeys.forEach(key => {
+      if (meta[key].readOnly) return;  // read-only поля не являются known от пользователя
       const wrap = body.querySelector(`[data-key="${key}"]`);
       const inp = wrap.querySelector('input[inputmode="decimal"]');
       const val = inp.value.trim().replace(',', '.');
@@ -224,7 +231,12 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
       const f = fields[key];
       const focused = document.activeElement === inp;
 
-      if (meta[key].locked) {
+      if (meta[key].readOnly) {
+        wrap.dataset.mode = 'ro';
+        if (Object.prototype.hasOwnProperty.call(outs, key) && Number.isFinite(outs[key])) {
+          inp.value = fmt(outs[key], f.precision ?? 3);
+        }
+      } else if (meta[key].locked) {
         wrap.dataset.mode = 'locked';
         // value — пользовательский, не трогаем
       } else if (meta[key].user && inp.value.trim() !== '') {
@@ -241,7 +253,7 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
         wrap.dataset.mode = 'empty';
         if (!focused && !meta[key].user) inp.value = '';
       }
-      lockCb.checked = meta[key].locked;
+      if (lockCb) lockCb.checked = meta[key].locked;
     });
   }
 
@@ -295,15 +307,31 @@ export function createMultiCalc({ title, desc, groups, fields, solve }) {
 
   card.querySelector('.calc-reset').addEventListener('click', () => {
     allKeys.forEach(key => {
+      if (meta[key].readOnly) return;  // read-only не сбрасываем
       meta[key].user = false;
       meta[key].locked = false;
       meta[key].ts = 0;
       const wrap = body.querySelector(`[data-key="${key}"]`);
       wrap.querySelector('input[inputmode="decimal"]').value = '';
-      wrap.querySelector('.calc-field-lock').checked = false;
+      const lcb = wrap.querySelector('.calc-field-lock');
+      if (lcb) lcb.checked = false;
     });
     recompute();
   });
+
+  /* Установить значения read-only полей извне (из главного модуля). */
+  card.setExternalKnowns = (obj) => {
+    Object.assign(externalKnowns, obj || {});
+    Object.entries(obj || {}).forEach(([k, v]) => {
+      if (!meta[k]) return;
+      const wrap = body.querySelector(`[data-key="${k}"]`);
+      const inp  = wrap && wrap.querySelector('input[inputmode="decimal"]');
+      if (inp && Number.isFinite(v) && meta[k].readOnly) {
+        inp.value = fmt(v, fields[k].precision ?? 3);
+      }
+    });
+    recompute();
+  };
 
   card.setValues = (values, mode = 'user') => {
     Object.entries(values).forEach(([key, num]) => {

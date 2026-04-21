@@ -115,6 +115,12 @@ export const CHANGELOGS = {
   ],
 
   'psychrometrics': [
+    { version: '0.59.41', date: '2026-04-21', items: [
+      'Калькулятор: газовые константы R<sub>да</sub>=287,055, R<sub>в</sub>=461,495, M<sub>да</sub>=28,9644, M<sub>в</sub>=18,015 теперь read-only и не принимают пользовательский ввод (psy-calculators.js: readOnly:true в FIELDS; shared/calc-widget.js: отдельный режим data-mode="ro", input readonly tabindex=-1, отсутствует чекбокс 🔒, поле исключено из knowns).',
+      'Атмосфера (h, P, Pₖ) в калькуляторе стала read-only и синхронизируется из «Условия объекта» главного модуля через calc.setExternalKnowns({h, P, Pk}) (index.html: sync-скрипт на input/change высоты и давления). Убрано дублирование ввода атм. давления.',
+      'Исправлено: цель процесса (Q, Δt, φ₂, d₂, h₂, …) теперь ДЕЙСТВИТЕЛЬНО перезаписывает t/φ/d следующей точки. Раньше cascade() сохранял старые *User=true флаги, из-за чего задание Q=5,4 кВт не меняло t₂. Теперь при наличии proc.tgt+tgtVal сбрасываются p.tUser/rhUser/xUser=false и значения перезаписываются вычисленными (psychrometrics.js: cascade() + writeCardsFromState синхронизирует data-user с S).',
+      'Crosshair: φ ограничена физическим диапазоном 0…100 %. Выше линии насыщения показывается красная пометка «перенасыщ. (выше φ=100%)», tр скрывается (psychrometrics.js: attachCrosshair).',
+    ] },
     { version: '0.59.40', date: '2026-04-21', items: [
       'Диаграмма: перекрестие (crosshair) по курсору с readout t/d/φ/h/ρ/tр в координатах точки под курсором (psychrometrics.js: renderChart хранит X/Y/opts в _chartCtx + attachCrosshair инвертирует масштаб SVG → (W, T) и считает все параметры на лету).',
       'Переключатель «Русские названия параметров» в панели «Условия объекта» (index.html: #psy-ru-names + psychrometrics.js: S.showRuNames с persist в localStorage). При включении подписи показывают SI-обозначение + русское название в скобках (t → «температура», φ → «отн. влажн.», d → «влагосодерж.», h → «энтальпия», ρ → «плотность», tр → «точка росы»).',

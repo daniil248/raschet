@@ -188,10 +188,10 @@ function solve(knowns, locked) {
 
 /* -------------------- метаданные полей -------------------- */
 const FIELDS = {
-  // Атмосфера
-  h:   { label: 'Высота h',                  unit: 'м',       precision: 0 },
-  P:   { label: 'P',                         unit: 'Па',      precision: 0 },
-  Pk:  { label: 'P',                         unit: 'кПа',     precision: 3 },
+  // Атмосфера (приходит из «Условия объекта», read-only)
+  h:   { label: 'Высота h',                  unit: 'м',       precision: 0, readOnly: true, hint: 'из «Условия объекта»' },
+  P:   { label: 'P',                         unit: 'Па',      precision: 0, readOnly: true, hint: 'из «Условия объекта»' },
+  Pk:  { label: 'P',                         unit: 'кПа',     precision: 3, readOnly: true, hint: 'из «Условия объекта»' },
   // Состояние
   t:   { label: 't',                         unit: '°C',      precision: 2 },
   T:   { label: 'T',                         unit: 'K',       precision: 2 },
