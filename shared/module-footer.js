@@ -95,7 +95,8 @@ export function mountFooter(opts) {
   const foot = document.createElement('div');
   foot.className = 'rs-mfoot';
   foot.innerHTML = `
-    <div class="rs-mfoot-right" style="margin:0 auto">
+    <div style="flex:1"></div>
+    <div class="rs-mfoot-right">
       <span>Raschet <b>v${appVersion}</b></span>
       <span class="rs-mfoot-dot">·</span>
       <a data-act="log">Журнал изменений «${moduleTitle}»</a>
