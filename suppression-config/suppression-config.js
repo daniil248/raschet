@@ -665,11 +665,36 @@ function renderIso(dirId) {
     <text x="${az.x+6}" y="${az.y+6}" font-size="20" font-weight="700" fill="#1565c0" paint-order="stroke" stroke="#fff" stroke-width="3">Z</text>
   </g>`;
 
-  // Cylinders at root (twin rectangles)
-  svg += `<g fill="#e57373" stroke="#b71c1c" stroke-width="1.5">
-    <rect x="${O.x-22}" y="${O.y-4}" width="14" height="40" rx="4"/>
-    <rect x="${O.x-4}"  y="${O.y-4}" width="14" height="40" rx="4"/>
-  </g>`;
+  // Cylinders at root: если у направления есть сборки — рисуем манифольд
+  // (N баллонов в ряд + горизонтальная подводящая труба). Иначе одиночный.
+  {
+    let nCyl = 1;
+    if (dirId && inst.assemblies) {
+      const asm = inst.assemblies.filter(a => a.dirId === dirId);
+      nCyl = Math.max(1, asm.reduce((a, x) => a + (+x.main || 0) + (+x.reserve || 0), 0));
+    }
+    const shown = Math.min(nCyl, 8);
+    const w = 12, gap = 6, h = 38;
+    const total = shown * w + (shown - 1) * gap;
+    const x0 = O.x - total - 12;  // manifold слева от коллектора
+    svg += `<g fill="#e57373" stroke="#b71c1c" stroke-width="1.4">`;
+    for (let i = 0; i < shown; i++) {
+      const xi = x0 + i * (w + gap);
+      svg += `<rect x="${xi}" y="${O.y - h + 2}" width="${w}" height="${h}" rx="3"/>`;
+      // патрубок от баллона к манифольду
+      svg += `<line x1="${xi + w/2}" y1="${O.y - h + 2}" x2="${xi + w/2}" y2="${O.y - h - 4}" stroke="#b71c1c" stroke-width="1.4"/>`;
+    }
+    svg += `</g>`;
+    if (shown > 1) {
+      // манифольд (горизонтальная труба) + отвод к коллектору
+      svg += `<line x1="${x0 + w/2}" y1="${O.y - h - 4}" x2="${x0 + total - w/2}" y2="${O.y - h - 4}" stroke="#455a64" stroke-width="3"/>`;
+      svg += `<line x1="${x0 + total - w/2}" y1="${O.y - h - 4}" x2="${O.x}" y2="${O.y - h - 4}" stroke="#455a64" stroke-width="3"/>`;
+      svg += `<line x1="${O.x}" y1="${O.y - h - 4}" x2="${O.x}" y2="${O.y}" stroke="#455a64" stroke-width="3"/>`;
+    }
+    if (nCyl > shown) {
+      svg += `<text x="${x0 - 6}" y="${O.y - h/2 + 4}" text-anchor="end" font-size="10" fill="#b71c1c" font-weight="600">×${nCyl}</text>`;
+    }
+  }
 
   // Segments
   let totalVol = 0;
@@ -694,13 +719,56 @@ function renderIso(dirId) {
       svg += `<text x="${mx}" y="${my}" text-anchor="middle" font-size="10" fill="#333" pointer-events="none">${idx+1}</text>`;
     }
     if (hasNoz && V3.showNozz) {
-      svg += `<circle cx="${B.x}" cy="${B.y}" r="6" fill="none" stroke="#1565c0" stroke-width="1.6" pointer-events="none"/>
-              <circle cx="${B.x}" cy="${B.y}" r="2.4" fill="#1565c0" pointer-events="none"/>`;
+      // Типовое обозначение насадка по СП 485 / NFPA 2001:
+      //  R-360 — окружность + 8 радиальных лучей (распыл во все стороны);
+      //  R-180 — полуокружность + 4 луча (односторонний распыл, направление = ось участка);
+      //  radial — окружность + крест (4 луча).
+      const C = { x: B.x, y: B.y };
+      const color = '#1565c0';
+      const R = 7;
+      if (seg.nozzle === 'R-360') {
+        svg += `<circle cx="${C.x}" cy="${C.y}" r="${R}" fill="#fff" stroke="${color}" stroke-width="1.5" pointer-events="none"/>`;
+        for (let k = 0; k < 8; k++) {
+          const a = k * Math.PI / 4;
+          const x1 = C.x + Math.cos(a) * (R - 1), y1 = C.y + Math.sin(a) * (R - 1);
+          const x2 = C.x + Math.cos(a) * (R + 4), y2 = C.y + Math.sin(a) * (R + 4);
+          svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.4" pointer-events="none"/>`;
+        }
+        svg += `<circle cx="${C.x}" cy="${C.y}" r="1.8" fill="${color}" pointer-events="none"/>`;
+      } else if (seg.nozzle === 'R-180') {
+        // направление распыла = направление участка (A→B)
+        const dx = B.x - A.x, dy = B.y - A.y;
+        const len = Math.max(1, Math.hypot(dx, dy));
+        const nx = dx / len, ny = dy / len;              // ось участка (вперёд)
+        const base = Math.atan2(ny, nx);                  // угол оси
+        // полукруг: от угла base-90° до base+90°, открытый «вперёд»
+        const a1 = base - Math.PI / 2, a2 = base + Math.PI / 2;
+        const p1x = C.x + Math.cos(a1) * R, p1y = C.y + Math.sin(a1) * R;
+        const p2x = C.x + Math.cos(a2) * R, p2y = C.y + Math.sin(a2) * R;
+        svg += `<path d="M ${p1x} ${p1y} A ${R} ${R} 0 0 1 ${p2x} ${p2y} Z" fill="#fff" stroke="${color}" stroke-width="1.5" pointer-events="none"/>`;
+        for (let k = 0; k < 4; k++) {
+          const a = base - Math.PI / 2 + (k + 0.5) * Math.PI / 4;
+          const x1 = C.x + Math.cos(a) * (R - 1), y1 = C.y + Math.sin(a) * (R - 1);
+          const x2 = C.x + Math.cos(a) * (R + 4), y2 = C.y + Math.sin(a) * (R + 4);
+          svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.4" pointer-events="none"/>`;
+        }
+      } else {
+        // radial / прочее — окружность с крестом (4 луча)
+        svg += `<circle cx="${C.x}" cy="${C.y}" r="${R}" fill="#fff" stroke="${color}" stroke-width="1.5" pointer-events="none"/>`;
+        [0, Math.PI/2, Math.PI, 3*Math.PI/2].forEach(a => {
+          const x1 = C.x + Math.cos(a) * (R - 1), y1 = C.y + Math.sin(a) * (R - 1);
+          const x2 = C.x + Math.cos(a) * (R + 4), y2 = C.y + Math.sin(a) * (R + 4);
+          svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.4" pointer-events="none"/>`;
+        });
+        svg += `<circle cx="${C.x}" cy="${C.y}" r="1.8" fill="${color}" pointer-events="none"/>`;
+      }
     }
   });
 
-  // Nodes (after segments)
+  // Nodes (after segments) + номера узлов (N0 = root, далее по порядку pipeline)
   if (V3.showNodes) {
+    const nodeIdx = new Map([['root', 0]]);
+    pipe.forEach((s, i) => nodeIdx.set(s.id, i + 1));
     for (const [id, p] of nodes) {
       const P2 = P(p);
       const sel = id === V3.selectedNode;
@@ -708,6 +776,10 @@ function renderIso(dirId) {
       const fill = id === 'root' ? '#1565c0' : (sel ? '#1565c0' : '#fff');
       svg += `<circle class="iso-node" data-node="${id}" cx="${P2.x}" cy="${P2.y}" r="${r}"
                fill="${fill}" stroke="#0d47a1" stroke-width="${sel?2:1.2}" style="cursor:pointer;"/>`;
+      if (V3.showNums) {
+        const n = nodeIdx.get(id) ?? '';
+        svg += `<text x="${P2.x + (sel?10:7)}" y="${P2.y - (sel?9:6)}" font-size="11" font-weight="600" fill="#0d47a1" paint-order="stroke" stroke="#fff" stroke-width="3" pointer-events="none">N${n}</text>`;
+      }
     }
   }
 
@@ -1211,18 +1283,42 @@ function collectFittingWarnings(dir) {
  * проложить участок (уже есть дочерний в этом направлении, или это инверсия
  * входящего участка = пойдёт обратно в родителя). Иначе null. */
 function findAxisConflict(pipeline, nodeId, axis) {
+  // 1) Если узел оканчивается насадком — от него нельзя продолжать трубопровод.
+  if (nodeId && nodeId !== 'root') {
+    const self = pipeline.find(s => s.id === nodeId);
+    if (self && self.nozzle && self.nozzle !== 'none') {
+      return `На узле установлен насадок (${self.nozzle}). От насадка нельзя продолжать трубопровод — выберите другой узел.`;
+    }
+  }
+  // 2) Уже есть дочерний участок в этом же направлении.
   const sameDir = pipeline.find(s => (s.parent || 'root') === nodeId && s.axis === axis);
   if (sameDir) {
     return `От этого узла уже построен участок в направлении ${axis}. Выберите другое направление или другой узел.`;
   }
-  // Обратное направление входящего участка = шаг «назад» в родителя.
+  // 3) Обратное направление входящего участка = шаг «назад» в родителя.
+  const isVert = a => a === 'y' || a === '-y';
+  let incoming = null;
   if (nodeId && nodeId !== 'root') {
-    const incoming = pipeline.find(s => s.id === nodeId);
+    incoming = pipeline.find(s => s.id === nodeId) || null;
     if (incoming) {
       const inv = incoming.axis.startsWith('-') ? incoming.axis.slice(1) : '-' + incoming.axis;
       if (axis === inv) {
         return `Направление ${axis} противоположно входящему участку (${incoming.axis}) и ведёт обратно по той же линии. Удалите или продлите существующий участок.`;
       }
+    }
+  }
+  // 4) Смешение плоскостей: от узла, где уже есть горизонтальные отводы,
+  //    нельзя пускать вертикальный (и наоборот). Учитываем и входящий участок.
+  const children = pipeline.filter(s => (s.parent || 'root') === nodeId);
+  const related  = incoming ? [incoming, ...children] : children;
+  if (related.length) {
+    const anyHoriz = related.some(s => !isVert(s.axis));
+    const anyVert  = related.some(s =>  isVert(s.axis));
+    if (isVert(axis) && anyHoriz) {
+      return `От этого узла уже идут горизонтальные участки — вертикальный отвод в этом же узле не допускается (см. СП 485: фитинги одной плоскости).`;
+    }
+    if (!isVert(axis) && anyVert) {
+      return `От этого узла уже идёт вертикальный участок — горизонтальный отвод в этом же узле не допускается (см. СП 485: фитинги одной плоскости).`;
     }
   }
   return null;
