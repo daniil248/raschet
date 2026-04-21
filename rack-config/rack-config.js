@@ -956,8 +956,9 @@ function computeWarnings() {
                `(${weakFeeds.map(f => `${f}: ${byFeed[f].toFixed(2)} кВт`).join('; ')}). При отказе второго ввода стойка обесточится.` });
       } else if (feeds.length >= 2) {
         const minCap = Math.min(...feeds.map(f => byFeed[f]));
+        const headroom = t.demandKw > 0 ? ((minCap / t.demandKw - 1) * 100) : 0;
         out.push({ lvl: 'ok',
-          msg: `2N: каждый ввод в одиночку обеспечивает ≥${t.demandKw} кВт (минимум ${minCap.toFixed(2)} кВт). Суммарная ёмкость ${sumCap.toFixed(2)} кВт в мощность не засчитывается дважды.` });
+          msg: `2N: каждый ввод в одиночку обеспечивает ≥${t.demandKw} кВт (минимум ${minCap.toFixed(2)} кВт, запас ${headroom >= 0 ? '+' : ''}${headroom.toFixed(0)}%). Суммарная ёмкость ${sumCap.toFixed(2)} кВт в мощность не засчитывается дважды.` });
       }
     } else if (mode === 'n+1') {
       // после выпадения самого «жирного» ввода оставшиеся должны покрыть demandKw
@@ -971,8 +972,9 @@ function computeWarnings() {
           out.push({ lvl: 'err',
             msg: `N+1: после отказа «жирного» ввода остаётся ${remaining.toFixed(2)} кВт < ${t.demandKw} кВт.` });
         } else {
+          const headroom = t.demandKw > 0 ? ((remaining / t.demandKw - 1) * 100) : 0;
           out.push({ lvl: 'ok',
-            msg: `N+1: после отказа «жирного» ввода остаётся ${remaining.toFixed(2)} кВт ≥ ${t.demandKw} кВт.` });
+            msg: `N+1: после отказа «жирного» ввода остаётся ${remaining.toFixed(2)} кВт ≥ ${t.demandKw} кВт (запас ${headroom >= 0 ? '+' : ''}${headroom.toFixed(0)}%).` });
         }
       }
     } else {
@@ -981,8 +983,9 @@ function computeWarnings() {
         out.push({ lvl: 'err',
           msg: `Суммарная ёмкость PDU ${sumCap.toFixed(2)} кВт < заявленная ${t.demandKw} кВт.` });
       } else {
+        const headroom = t.demandKw > 0 ? ((sumCap / t.demandKw - 1) * 100) : 0;
         out.push({ lvl: 'ok',
-          msg: `Одиночное питание: сумма PDU ${sumCap.toFixed(2)} кВт ≥ ${t.demandKw} кВт.` });
+          msg: `Одиночное питание: сумма PDU ${sumCap.toFixed(2)} кВт ≥ ${t.demandKw} кВт (запас ${headroom >= 0 ? '+' : ''}${headroom.toFixed(0)}%).` });
       }
     }
   }
