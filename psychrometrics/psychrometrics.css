@@ -47,6 +47,28 @@
   border-top: 1px dashed #c5d9ef; padding-top: 4px;
 }
 .psy-point .pt-computed b { color: #0d47a1; font-weight: 600; }
+.psy-point .pt-hint {
+  font-size: 9.5px; color: #78909c; line-height: 1.25;
+  margin-top: 2px; padding: 3px 5px; background: #eceff1;
+  border-radius: 3px; border-left: 2px solid #b0bec5;
+}
+/* Поля точки: подсветка «ввод» (пользовательское) vs «авто» (вычислено) */
+.psy-point input[data-user="1"][data-col="t"],
+.psy-point input[data-user="1"][data-col="rh"],
+.psy-point input[data-user="1"][data-col="x"],
+.psy-point input[data-user="1"][data-col="h"] {
+  background: #fffde7; border-color: #ffd54f; color: #5d4037; font-weight: 600;
+}
+.psy-point input[data-user=""][data-col="t"]:not(:placeholder-shown),
+.psy-point input[data-user=""][data-col="rh"]:not(:placeholder-shown),
+.psy-point input[data-user=""][data-col="x"]:not(:placeholder-shown),
+.psy-point input[data-user=""][data-col="h"]:not(:placeholder-shown) {
+  background: #e8f5e9; border-color: #a5d6a7; color: #1b5e20;
+}
+.psy-proc-arrow input[data-user="1"][data-col="Q"],
+.psy-proc-arrow input[data-user="1"][data-col="qw"] {
+  background: #fffde7; border-color: #ffd54f; color: #5d4037; font-weight: 600;
+}
 
 /* Стрелка процесса между точками */
 .psy-proc-arrow {
