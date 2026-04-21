@@ -47,7 +47,7 @@
         <section class="mdc-section">
           <h2>2. ИБП / АКБ</h2>
           <div class="mdc-hint">ИБП: Kehua MR33-200 / MR33-300 (всегда).<br>
-            АКБ: Kehua S3, 58 кВт·ч на шкаф, 10 шкафов на энергоблок (15 мин).</div>
+            АКБ: Kehua S3 (58 кВт·ч/шкаф) или Li-ion.</div>
           <label class="mdc-field">
             <span>Время автономии, мин</span>
             <select id="mdc-autonomy">
@@ -55,7 +55,27 @@
               <option value="10">10</option>
               <option value="15" selected>15</option>
               <option value="30">30</option>
+              <option value="60">60</option>
             </select>
+          </label>
+          <label class="mdc-field">
+            <span>Тип АКБ</span>
+            <select id="mdc-batt-tech">
+              <option value="VRLA" selected>VRLA свинцово-кислотные (S3)</option>
+              <option value="LiFePO4">Li-ion LFP (плотнее, дороже)</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>cos φ нагрузки</span>
+            <input type="number" id="mdc-cosphi" value="0.9" min="0.7" max="1" step="0.01">
+          </label>
+          <label class="mdc-field">
+            <span>Коэфф. загрузки ИБП, % (от Pнoм)</span>
+            <input type="number" id="mdc-ups-load" value="80" min="30" max="100" step="5">
+          </label>
+          <label class="mdc-field">
+            <span>Резерв масштабирования, %</span>
+            <input type="number" id="mdc-scale-reserve" value="20" min="0" max="100" step="5">
           </label>
         </section>
 
@@ -67,10 +87,39 @@
               <option value="A1">A1 (18–27 °C)</option>
               <option value="A2" selected>A2 (10–35 °C)</option>
               <option value="A3">A3 (5–40 °C)</option>
+              <option value="A4">A4 (5–45 °C)</option>
             </select>
           </label>
-          <div class="mdc-hint">inRow-ACU 65 кВт, 10 шт на машзал 300 кВт (N+1).
-            Габарит 600×1200×42U как у стоек.</div>
+          <label class="mdc-field">
+            <span>Расчётная Tmax снаружи (20-летн.), °C</span>
+            <input type="number" id="mdc-tmax" value="32" min="20" max="50" step="1">
+          </label>
+          <label class="mdc-field">
+            <span>Расчётная Tmin снаружи (20-летн.), °C</span>
+            <input type="number" id="mdc-tmin" value="-28" min="-50" max="10" step="1">
+          </label>
+          <label class="mdc-field">
+            <span>Высота над уровнем моря, м</span>
+            <input type="number" id="mdc-elev" value="200" min="0" max="3000" step="50">
+          </label>
+          <label class="mdc-field">
+            <span>Класс влажности</span>
+            <select id="mdc-humidity">
+              <option value="low">сухой (≤40%)</option>
+              <option value="norm" selected>нормальный (40–60%)</option>
+              <option value="high">влажный (≥60%)</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Наружный блок (ODU)</span>
+            <select id="mdc-odu-type">
+              <option value="horiz-axial" selected>горизонт. выдув, осевой</option>
+              <option value="horiz-radial">горизонт. выдув, радиальный</option>
+              <option value="vert">вертикальный выдув (для балкона)</option>
+            </select>
+          </label>
+          <div class="mdc-hint">inRow-ACU 25 кВт (300×1200) ≤ 4/модуль,
+            ACU-65 (600×1200) ≤ 2/модуль. Конденсаторы — на балконе.</div>
         </section>
 
         <section class="mdc-section">
