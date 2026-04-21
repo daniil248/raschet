@@ -42,11 +42,12 @@ const PROC_TYPES = [
   { v: 'A',    t: 'A · адиабат. увл. (h=const)'           },
   { v: 'S',    t: 'S · паровое увл. (t=const)'            },
   { v: 'M',    t: 'M · смешение с точкой'                 },
+  { v: 'R',    t: 'R · рекуператор (теплообмен с точкой)'  },
   { v: 'X',    t: 'X · произвольный'                      },
 ];
 
 const PROC_COLOR = {
-  none: '#b0bec5', P: '#e65100', C: '#0277bd', A: '#2e7d32', S: '#6a1b9a', M: '#00838f', X: '#424242',
+  none: '#b0bec5', P: '#e65100', C: '#0277bd', A: '#2e7d32', S: '#6a1b9a', M: '#00838f', R: '#ad1457', X: '#424242',
 };
 
 /* Авто-имя исходящей точки из типа предыдущего процесса */
@@ -56,6 +57,7 @@ const PROC_NAME_OUT = {
   A: 'После адиабат. увл.',
   S: 'После пар. увл.',
   M: 'После смешения',
+  R: 'После рекуператора',
   X: 'Смешение/переход',
   none: '',
 };
@@ -204,8 +206,29 @@ function procArrow(pr, i) {
       <span class="v-auto" data-role="v-auto" style="font-size:10px;color:#2e7d32;display:block;margin-top:2px;"></span>
     </label>
     ${pr.type === 'M' ? mixControls(pr, i) : ''}
+    ${pr.type === 'R' ? recupControls(pr, i) : ''}
   `;
   return el;
+}
+
+/* Поля для процесса «R» (рекуператор): опорная точка (вытяжка) + КПД η (по t).
+   Модель: t₂ = t₁ + η·(t_ref − t₁), W₂ = W₁ (сенсибельная модель). */
+function recupControls(pr, i) {
+  const rw = (pr.recupWith ?? '').toString();
+  const eff = (pr.recupEff ?? '0.6').toString();
+  const opts = S.points.map((pp, pi) =>
+    `<option value="${pi}" ${String(pi)===rw?'selected':''}>${pi+1}. ${escAttr((pp.name||'').slice(0,16))}</option>`
+  ).join('');
+  return `
+    <label style="font-size:10px;color:#ad1457;margin-top:4px;border-top:1px dashed #f48fb1;padding-top:4px" title="Опорная точка — поток, отдающий тепло (обычно вытяжка).">обменивать с точкой
+      <select data-col="recupWith" data-i="${i}">
+        <option value="">— выбрать —</option>${opts}
+      </select>
+    </label>
+    <label style="font-size:10px;color:#ad1457;margin-top:2px" title="КПД рекуператора по температуре (0…1). t₂ = t₁ + η·(t_ref − t₁), d=const.">η (по t)
+      <input type="number" data-col="recupEff" data-i="${i}" value="${eff}" step="0.05" min="0" max="1">
+    </label>
+  `;
 }
 
 /* Поля для процесса «M» (смешение): опорная точка + доля α */
@@ -312,8 +335,10 @@ function readInputs() {
     const isUser = el.dataset.user === '1';
     const ts = Number(el.dataset.ts) || 0;
     if (col === 'proc-type') { S.procs[i] = S.procs[i] || {}; S.procs[i].type = v; }
-    else if (col === 'mixWith')  { S.procs[i] = S.procs[i] || {}; S.procs[i].mixWith  = v; }
-    else if (col === 'mixRatio') { S.procs[i] = S.procs[i] || {}; S.procs[i].mixRatio = v; }
+    else if (col === 'mixWith')   { S.procs[i] = S.procs[i] || {}; S.procs[i].mixWith   = v; }
+    else if (col === 'mixRatio')  { S.procs[i] = S.procs[i] || {}; S.procs[i].mixRatio  = v; }
+    else if (col === 'recupWith') { S.procs[i] = S.procs[i] || {}; S.procs[i].recupWith = v; }
+    else if (col === 'recupEff')  { S.procs[i] = S.procs[i] || {}; S.procs[i].recupEff  = v; }
     else if (col === 'Q' || col === 'qw') {
       S.procs[i] = S.procs[i] || {};
       if (isUser && v !== '') {
@@ -506,6 +531,32 @@ function cascade() {
             p.rh = Number(rh_mix.toFixed(2));
             p.x = Number((W_mix * 1000).toFixed(3));
             p.h = Number(h_mix.toFixed(3));
+          }
+          continue;
+        }
+      }
+    }
+
+    // Процесс «рекуператор»: t₂ = t₁ + η·(t_ref − t₁), W₂ = W₁.
+    // Сенсибельная модель (без конденсата). Если t₂ опускается ниже точки
+    // росы входа — clamp по насыщению при d=const (конденсация на пластинах
+    // в данной MVP-модели игнорируется — это отдельная задача).
+    if (proc.type === 'R') {
+      const srcIdx = parseInt(proc.recupWith, 10);
+      const eta    = Math.max(0, Math.min(1, parseFloat(proc.recupEff)));
+      if (Number.isFinite(srcIdx) && srcIdx >= 0 && srcIdx < S.points.length && srcIdx !== i) {
+        const bSrc = pointState(S.points[srcIdx], S.P);
+        if (bSrc && Number.isFinite(eta)) {
+          const t2 = aState.T + eta * (bSrc.T - aState.T);
+          const W2 = aState.W;
+          const rh2 = Math.max(0, Math.min(100, RHfromW(t2, W2, S.P) * 100));
+          const h2  = 1.006 * t2 + W2 * (2501 + 1.86 * t2);
+          const anyUser = p.tUser || p.rhUser || p.xUser || p.hUser;
+          if (!anyUser) {
+            p.t = Number(t2.toFixed(2));
+            p.rh = Number(rh2.toFixed(2));
+            p.x = Number((W2 * 1000).toFixed(3));
+            p.h = Number(h2.toFixed(3));
           }
           continue;
         }
