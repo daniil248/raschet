@@ -857,7 +857,7 @@ function renderIso(dirId) {
     return `<div class="seg-item ${isSel?'sel':''}" data-id="${p.id}">
       <span class="seg-no" title="Кликните, чтобы выбрать узел в конце этого участка">${i+1}</span>
       <span class="seg-axis" title="Направление участка">${p.axis}</span>
-      <input type="number" class="seg-edit" data-f="L" value="${p.L}" step="0.1" min="0" title="Длина участка, м" style="width:56px;">
+      <input type="number" class="seg-edit" data-f="L" value="${(+p.L).toFixed(2)}" step="0.05" min="0.05" title="Длина участка, м (шаг 0,05 м)" style="width:62px;">
       <span class="seg-dn" title="Диаметр подбирается автоматически по расходу, фазе агента и давлению перед насадками">DN${p.DN}</span>
       <select class="seg-edit" data-f="nozzle" title="Насадок на конце">${nozSel}</select>
       <button type="button" class="sup-ibtn sup-danger seg-del-one" data-id="${p.id}" title="Удалить этот участок и все его ответвления">✕</button>
@@ -877,8 +877,22 @@ function renderIso(dirId) {
     const it = inp.closest('.seg-item'); if (!it) return;
     const seg = pipe.find(p => p.id === it.dataset.id); if (!seg) return;
     const f = inp.dataset.f;
-    if (f === 'L') seg.L = Math.max(0.01, +inp.value || 0.1);
-    else if (f === 'nozzle') seg.nozzle = inp.value;
+    if (f === 'L') {
+      const raw = Math.max(0.05, +inp.value || 0.05);
+      seg.L = Math.round(raw / 0.05) * 0.05;              // снап к 0,05 м
+    }
+    else if (f === 'nozzle') {
+      if (inp.value !== 'none') {
+        // Насадок можно ставить только в листовом узле (нет отводов)
+        const hasKids = pipe.some(x => (x.parent || 'root') === seg.id);
+        if (hasKids) {
+          alert('Нельзя установить насадок: от этого узла уже отходят участки (стык/отвод). Насадок ставится только на тупиковом конце.');
+          inp.value = seg.nozzle || 'none';
+          return;
+        }
+      }
+      seg.nozzle = inp.value;
+    }
     // DN вручную не редактируется — авто-пересчёт
     const inst = currentInst();
     const target = S.isoDirId ? inst.directions.find(d => d.id === S.isoDirId) : null;
@@ -1050,8 +1064,9 @@ function setupIsoHandlers() {
       const len2 = ux*ux + uy*uy;
       if (len2 < 1) return;
       const dL = (dx * ux + dy * uy) / len2;
-      seg.L = Math.max(0.05, +(seg.L + dL).toFixed(2));
-      saveAll();
+      const Lraw = Math.max(0.05, seg.L + dL);
+      seg.L = Math.round(Lraw / 0.05) * 0.05;            // снап к 0,05 м
+      onPipelineChange(target);
       renderIso(S.isoDirId);
       return;
     }
@@ -1093,10 +1108,19 @@ function setupIsoHandlers() {
       // Запрет построения по уже занятому направлению от текущего узла.
       const conflict = findAxisConflict(target.pipeline, V3.selectedNode, axis);
       if (conflict) { alert(conflict); return; }
+      // Снап длины к шагу 0,05 м
+      const Lraw = Math.max(0.05, +$('seg-L').value || 1);
+      const Lsnap = Math.round(Lraw / 0.05) * 0.05;
+      // Насадок — только если существующий узел-родитель не станет «стыком»
+      // (у него на момент добавления уже есть хотя бы один ребёнок → нельзя).
+      let noz = $('seg-noz').value;
+      if (noz && noz !== 'none') {
+        // Оставляем — это конец НОВОГО участка, а у нового конца детей нет.
+      }
       const seg = {
         id: newId('s-'), parent: V3.selectedNode,
-        axis, L: +$('seg-L').value || 1,
-        DN: +$('seg-DN').value, nozzle: $('seg-noz').value,
+        axis, L: Lsnap,
+        DN: +$('seg-DN').value, nozzle: noz,
       };
       target.pipeline.push(seg);
       V3.selectedNode = seg.id;
