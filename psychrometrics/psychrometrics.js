@@ -36,7 +36,12 @@ const S = {
     { type: 'P', Q: '', qw: '', fromIdx: 0, toIdx: 1 },  // 1→2 нагрев
     { type: 'A', Q: '', qw: '', fromIdx: 1, toIdx: 2 },  // 2→3 адиабат. увл.
   ],
+  /* Зоны (помещения): прямоугольники-подложки под узлы. Не участвуют в
+     расчёте, только визуал и подготовка к интеграции с конструктором схем,
+     где зоны = помещения/контейнеры. { id, name, cx, cy, w, h, color } */
+  zones: [],
 };
+let _zoneSeq = 1;
 
 const PROC_TYPES = [
   { v: 'none', t: '— (разрыв)'                            },
@@ -172,8 +177,143 @@ function reindexAfterPointDelete(delIdx) {
    Рендер редактора цикла — узлы и рёбра в РАЗНЫХ контейнерах.
    ======================================================================== */
 function renderCycle() {
+  renderZones();
   renderNodes();
   renderEdges();
+  renderZonesPanel();
+}
+
+/* ========================================================================
+   Зоны (помещения) — прямоугольные подложки на полотне.
+   ======================================================================== */
+function newZoneId() { return 'z' + (_zoneSeq++); }
+function renderZones() {
+  const host = $('psy-canvas-zones');
+  if (!host) return;
+  host.innerHTML = '';
+  S.zones.forEach((z) => {
+    if (!z.id) z.id = newZoneId();
+    const el = document.createElement('div');
+    el.className = 'psy-canvas-zone';
+    el.dataset.zoneId = z.id;
+    el.style.left   = (+z.cx || 0) + 'px';
+    el.style.top    = (+z.cy || 0) + 'px';
+    el.style.width  = Math.max(60, +z.w || 200) + 'px';
+    el.style.height = Math.max(60, +z.h || 120) + 'px';
+    const col = z.color || '#90caf9';
+    el.style.background   = hexToRgba(col, 0.12);
+    el.style.borderColor  = hexToRgba(col, 0.7);
+    el.innerHTML = `
+      <div class="psy-canvas-zone-label">${escAttr(z.name || 'Зона')}</div>
+      <div class="psy-canvas-zone-resize" data-act="zone-resize"></div>
+    `;
+    host.appendChild(el);
+    attachZoneDrag(el, z);
+    attachZoneResize(el, z);
+  });
+}
+function hexToRgba(hex, a) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return `rgba(144,202,249,${a})`;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+function attachZoneDrag(el, z) {
+  let moving = false, sx=0, sy=0, ox=0, oy=0;
+  el.addEventListener('mousedown', (e) => {
+    if (e.target.closest('[data-act="zone-resize"]')) return;
+    moving = true;
+    sx = e.clientX; sy = e.clientY;
+    ox = +z.cx || 0; oy = +z.cy || 0;
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  const onMove = (e) => {
+    if (!moving) return;
+    z.cx = Math.max(0, ox + (e.clientX - sx));
+    z.cy = Math.max(0, oy + (e.clientY - sy));
+    el.style.left = (z.cx|0) + 'px';
+    el.style.top  = (z.cy|0) + 'px';
+  };
+  const onUp = () => { if (!moving) return; moving=false; document.body.style.userSelect=''; saveCycle(); };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+function attachZoneResize(el, z) {
+  const grip = el.querySelector('[data-act="zone-resize"]');
+  if (!grip) return;
+  let rz = false, sx=0, sy=0, ow=0, oh=0;
+  grip.addEventListener('mousedown', (e) => {
+    rz = true;
+    sx = e.clientX; sy = e.clientY;
+    ow = +z.w || 200; oh = +z.h || 120;
+    document.body.style.userSelect = 'none';
+    e.preventDefault(); e.stopPropagation();
+  });
+  const onMove = (e) => {
+    if (!rz) return;
+    z.w = Math.max(60, ow + (e.clientX - sx));
+    z.h = Math.max(60, oh + (e.clientY - sy));
+    el.style.width  = (z.w|0) + 'px';
+    el.style.height = (z.h|0) + 'px';
+  };
+  const onUp = () => { if (!rz) return; rz=false; document.body.style.userSelect=''; saveCycle(); };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+function renderZonesPanel() {
+  const host = $('psy-zones-panel');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!S.zones.length) {
+    host.innerHTML = `<div style="padding:8px;color:#607080;font-size:11px">
+      Нет зон. Нажмите «+ зона» — появится прямоугольник на полотне, его можно двигать и растягивать.
+    </div>`;
+    return;
+  }
+  S.zones.forEach((z, i) => {
+    const row = document.createElement('div');
+    row.className = 'psy-zone-row';
+    row.innerHTML = `
+      <input type="color" data-zcol="color" data-i="${i}" value="${escAttr(z.color || '#90caf9')}" title="Цвет">
+      <input type="text"  data-zcol="name"  data-i="${i}" value="${escAttr(z.name || '')}" placeholder="Имя зоны">
+      <span style="color:#607080">x</span>
+      <input type="number" data-zcol="cx" data-i="${i}" value="${+z.cx||0}" step="10" title="X, px">
+      <span style="color:#607080">y</span>
+      <input type="number" data-zcol="cy" data-i="${i}" value="${+z.cy||0}" step="10" title="Y, px">
+      <span style="color:#607080">w</span>
+      <input type="number" data-zcol="w"  data-i="${i}" value="${+z.w||200}" step="10" min="60" title="Ширина, px">
+      <span style="color:#607080">h</span>
+      <input type="number" data-zcol="h"  data-i="${i}" value="${+z.h||120}" step="10" min="60" title="Высота, px">
+      <button type="button" class="psy-btn" data-act="zone-del" data-i="${i}" title="Удалить зону">✕</button>
+    `;
+    host.appendChild(row);
+  });
+}
+function wireZonesPanel() {
+  const host = $('psy-zones-panel');
+  if (!host) return;
+  host.addEventListener('change', (e) => {
+    const inp = e.target.closest('input[data-zcol]');
+    if (!inp) return;
+    const i = +inp.dataset.i;
+    const col = inp.dataset.zcol;
+    const z = S.zones[i]; if (!z) return;
+    if (col === 'name' || col === 'color') z[col] = inp.value;
+    else z[col] = parseFloat(inp.value) || 0;
+    renderZones();
+    saveCycle();
+  });
+  host.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-act="zone-del"]');
+    if (!del) return;
+    const i = +del.dataset.i;
+    S.zones.splice(i, 1);
+    renderZones();
+    renderZonesPanel();
+    saveCycle();
+  });
 }
 /* Автоматическая раскладка: узлам без cx/cy проставляем координаты сеткой.
    Шаг 220×260 — с запасом под высоту карточки (~200-220px при фиксированной
@@ -1456,6 +1596,13 @@ const DEMOS = {
         //         для теплообмена с приточной сторон узла 0→1).
         { type:'R', Q:'', qw:'', fromIdx:6, toIdx:7, recupWith:'1', recupEff:'0.6' },
       ];
+      // Зоны-подложки: улица / вент. камера приток / машзал / вытяжка.
+      S.zones = [
+        { id: newZoneId(), name: 'Улица', color:'#b0bec5', cx: 0,   cy: 0,   w: 220, h: 560 },
+        { id: newZoneId(), name: 'Вент. камера (приток)', color:'#90caf9', cx: 240, cy: 0,   w: 460, h: 240 },
+        { id: newZoneId(), name: 'Машзал ЦОД', color:'#ef9a9a', cx: 720, cy: 0,   w: 480, h: 380 },
+        { id: newZoneId(), name: 'Вент. камера (вытяжка)', color:'#a5d6a7', cx: 240, cy: 260, w: 460, h: 220 },
+      ];
     }
   },
 };
@@ -1463,6 +1610,7 @@ const DEMOS = {
 function loadDemo(key) {
   const demo = DEMOS[key] || DEMOS['summer'];
   S.alt = 0; S.P = 101325; S.rhMax = 100; S.tEvap = 15; S.vBase = 10000;
+  S.zones = [];
   demo.apply();
   // Демо описывают S.procs как линейную цепочку (procs[i] = edge i→i+1).
   // Проставляем явные fromIdx/toIdx чтобы граф-модель работала корректно.
@@ -1650,6 +1798,7 @@ function saveCycle() {
         alt: S.alt, P: S.P, rhMax: S.rhMax, tEvap: S.tEvap, vBase: S.vBase,
         tMinChart: S.tMinChart, tMaxChart: S.tMaxChart, dMaxChart: S.dMaxChart,
         points: S.points, procs: S.procs,
+        zones: S.zones,
       };
       localStorage.setItem(LS_KEY, JSON.stringify(payload));
     } catch {}
@@ -1671,6 +1820,13 @@ function loadCycle() {
     if (Number.isFinite(o.dMaxChart)) S.dMaxChart = o.dMaxChart;
     S.points = o.points;
     S.procs  = o.procs;
+    S.zones  = Array.isArray(o.zones) ? o.zones : [];
+    // Обновим _zoneSeq, чтобы новые id не конфликтовали с загруженными.
+    S.zones.forEach((z) => {
+      const m = /^z(\d+)$/.exec(String(z.id || ''));
+      if (m) _zoneSeq = Math.max(_zoneSeq, (+m[1]) + 1);
+      if (!z.id) z.id = newZoneId();
+    });
     // Миграция старых цепочек без fromIdx/toIdx — проставляем по индексу.
     S.procs.forEach((pr, i) => {
       if (!Number.isFinite(+pr.fromIdx)) pr.fromIdx = i;
@@ -1803,10 +1959,28 @@ function wire() {
     S.procs.push({ type: 'X', Q:'', qw:'', fromIdx, toIdx });
     rerenderCycle();
   });
+  const btnAddZone = $('psy-add-zone');
+  if (btnAddZone) btnAddZone.addEventListener('click', () => {
+    // Палитра приятных пастельных цветов — циклом по счётчику зон.
+    const palette = ['#90caf9','#a5d6a7','#ffcc80','#ce93d8','#ef9a9a','#80cbc4','#fff59d','#b0bec5'];
+    const color = palette[S.zones.length % palette.length];
+    S.zones.push({
+      id: newZoneId(),
+      name: 'Новая зона',
+      cx: 40 + (S.zones.length % 3) * 60,
+      cy: 40 + (S.zones.length % 3) * 60,
+      w: 300, h: 200, color,
+    });
+    renderZones();
+    renderZonesPanel();
+    saveCycle();
+  });
+  wireZonesPanel();
   $('psy-clear').addEventListener('click', () => {
     const now = performance.now();
     S.points = [{ name:'Точка 1', nameUser:true, t: 22, tUser:true, tTs: now, rh: 50, rhUser:true, rhTs: now, x: '', h:'', V: '' }];
     S.procs = [];
+    S.zones = [];
     rerenderCycle();
   });
   $('psy-demo').addEventListener('change', (e) => {

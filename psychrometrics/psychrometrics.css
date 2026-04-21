@@ -41,6 +41,52 @@
     linear-gradient(to bottom, #e3e8ee 1px, transparent 1px);
   background-size: 20px 20px;
 }
+.psy-canvas-zones {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+}
+.psy-canvas-zone {
+  position: absolute;
+  border: 2px dashed rgba(0,0,0,0.3);
+  border-radius: 6px;
+  box-sizing: border-box;
+  cursor: grab;
+  user-select: none;
+}
+.psy-canvas-zone:active { cursor: grabbing; }
+.psy-canvas-zone-label {
+  position: absolute;
+  top: 2px; left: 6px;
+  font-size: 12px; font-weight: 700;
+  padding: 2px 6px;
+  background: rgba(255,255,255,0.85);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.psy-canvas-zone-resize {
+  position: absolute;
+  right: -6px; bottom: -6px;
+  width: 14px; height: 14px;
+  background: #fff;
+  border: 1px solid #607080;
+  border-radius: 2px;
+  cursor: nwse-resize;
+}
+.psy-zones-panel {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.psy-zone-row {
+  display: flex; gap: 6px; align-items: center;
+  padding: 6px 8px;
+  background: #f5f7fa;
+  border: 1px solid #d4d9e0;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.psy-zone-row input[type="text"] { flex: 1; min-width: 80px; }
+.psy-zone-row input[type="number"] { width: 60px; }
+.psy-zone-row input[type="color"] { width: 32px; height: 22px; border: 0; padding: 0; }
 .psy-canvas-links {
   position: absolute; top: 0; left: 0;
   width: 100%; height: 100%;
