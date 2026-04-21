@@ -830,6 +830,7 @@ function renderChart(sts) {
     <circle class="psy-xh-dot" r="3" fill="#c62828" stroke="#fff" stroke-width="1"/>
   </g>`;
   // сегменты
+  const badges = [];  // отрисуем бейджи после линий, чтобы они были поверх
   for (let i = 0; i < sts.length - 1; i++) {
     const a = sts[i], b = sts[i+1];
     const pr = S.procs[i] || { type: 'P' };
@@ -846,7 +847,17 @@ function renderChart(sts) {
                      stroke="${color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>`;
       }
     }
+    // Бейдж типа процесса на середине сегмента
+    const mx = (X(a.W) + X(b.W)) / 2;
+    const my = (Y(a.T) + Y(b.T)) / 2;
+    badges.push({ x: mx, y: my, type: pr.type, color });
   }
+  badges.forEach(b => {
+    overlay += `<g transform="translate(${b.x},${b.y})">
+      <circle r="8" fill="#fff" stroke="${b.color}" stroke-width="1.5"/>
+      <text y="3.5" text-anchor="middle" font-size="10" font-weight="700" fill="${b.color}">${b.type}</text>
+    </g>`;
+  });
   // Кольцо-подсветка активной точки (если карточка в фокусе)
   if (Number.isFinite(_activePoint) && sts[_activePoint]) {
     const st = sts[_activePoint];
