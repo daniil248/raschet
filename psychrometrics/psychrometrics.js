@@ -797,6 +797,16 @@ function renderChart(sts) {
     if (!a || !b || pr.type === 'none') continue;
     const color = PROC_COLOR[pr.type] || '#0d47a1';
     overlay += drawProcessPath(ctx, a, b, pr.type, color);
+    // Штриховая связь с опорной точкой для M/R (визуализация графа)
+    if (pr.type === 'M' || pr.type === 'R') {
+      const refKey = pr.type === 'M' ? pr.mixWith : pr.recupWith;
+      const refIdx = parseInt(refKey, 10);
+      if (Number.isFinite(refIdx) && sts[refIdx]) {
+        const r = sts[refIdx];
+        overlay += `<line x1="${X(r.W)}" y1="${Y(r.T)}" x2="${X(b.W)}" y2="${Y(b.T)}"
+                     stroke="${color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>`;
+      }
+    }
   }
   sts.forEach((st, i) => {
     if (!st) return;
@@ -921,6 +931,9 @@ function drawProcessPath(ctx, a, b, type, color) {
   } else if (type === 'M') {
     // Смешение: прямая от a к b (линия смеси — отрезок на плоскости)
     pts.push([X(b.W), Y(b.T)]);
+  } else if (type === 'R') {
+    // Рекуператор: d=const (W=const), по вертикали до b.T
+    pts.push([X(a.W), Y(b.T)]);
   } else if (type === 'C') {
     // охлаждение с осушением: если dW < 0 — сначала по W=const до tр, затем по φ=100%
     if (b.W < a.W - 1e-6) {
