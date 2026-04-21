@@ -41,20 +41,6 @@
           </div>
         </section>
 
-        <section class="rc-section">
-          <h2>Базовый комплект</h2>
-          <p class="muted rc-hint">Выберите готовый артикул поставщика — поля, входящие в комплект, блокируются и автоматически попадают в BOM одной позицией. Если нужна произвольная сборка — оставьте «Произвольная конфигурация».</p>
-          <div class="rc-row">
-            <label class="rc-field"><span>Артикул / комплект</span>
-              <button type="button" id="rc-kit-btn" class="rc-catalog-btn" title="Открыть каталог базовых комплектов"></button>
-            </label>
-            <label class="rc-field"><span>Артикул (SKU)</span>
-              <input type="text" id="rc-kit-sku" placeholder="заполняется из каталога" readonly>
-            </label>
-          </div>
-          <div id="rc-kit-includes" class="rc-kit-includes muted"></div>
-        </section>
-
         <section class="rc-section" data-sec="corpus">
           <h2>Корпус</h2>
           <div class="rc-row">
@@ -189,6 +175,20 @@
               </select>
             </label>
           </div>
+        </section>
+
+        <section class="rc-section">
+          <h2>Базовый комплект</h2>
+          <p class="muted rc-hint">Параметры заданы выше — подберите готовый артикул поставщика, совместимый с ними. Поля, входящие в комплект, автоматически попадают в BOM одной позицией. Если нужна произвольная сборка — оставьте «Произвольная конфигурация».</p>
+          <div class="rc-row">
+            <label class="rc-field"><span>Артикул / комплект</span>
+              <button type="button" id="rc-kit-btn" class="rc-catalog-btn" title="Открыть каталог базовых комплектов"></button>
+            </label>
+            <label class="rc-field"><span>Артикул (SKU)</span>
+              <input type="text" id="rc-kit-sku" placeholder="заполняется из каталога" readonly>
+            </label>
+          </div>
+          <div id="rc-kit-includes" class="rc-kit-includes muted"></div>
         </section>
 
         <section class="rc-section">

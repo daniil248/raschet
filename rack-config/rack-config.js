@@ -761,13 +761,6 @@ function renderPduList() {
       ? `${cat.mfg} ${cat.sku} — ${PDU_CATEGORY[cat.category] || cat.category}`
       : '— Произвольная (лист требований) — открыть каталог…';
     row.innerHTML = `
-      <div class="rc-pdu-catalog">
-        <label class="rc-field" style="flex:1 1 100%" title="Открыть каталог PDU. При выборе поля номинала/фаз/высоты/розеток подставляются и блокируются.">
-          <span>Каталог PDU</span>
-          <button type="button" class="rc-catalog-btn" data-pdu-cat="${idx}">${escape(catLabel)}</button>
-        </label>
-        ${locked ? `<div class="rc-kit-includes"><b>${escape(cat.mfg)} ${escape(cat.sku)}:</b> ${escape(cat.name)} — <i>${escape(PDU_CATEGORY[cat.category] || cat.category)}</i></div>` : `<div class="muted" style="font-size:11px;margin-top:2px">Произвольная конфигурация — будет сгенерирован <b>лист требований</b> (спецификация) для закупки по ТЗ.</div>`}
-      </div>
       <div class="rc-pdu-head">
         <label class="rc-field" title="К какому вводу электрической схемы подключён этот PDU. PDU на одном вводе суммируются, на разных — резервируют друг друга.">
           <span>Ввод</span>
@@ -816,6 +809,13 @@ function renderPduList() {
           `).join('')}
         </div>
         <div class="muted" style="font-size:11px">Итого розеток: ${p.outlets.reduce((s,o)=>s+(+o.count||0),0)}</div>
+      </div>
+      <div class="rc-pdu-catalog" style="margin-top:8px">
+        <label class="rc-field" style="flex:1 1 100%" title="Параметры заданы выше — подберите готовый артикул PDU по ним. При выборе номинал/фазы/высота/розетки подставятся и заблокируются.">
+          <span>Каталог PDU (подобрать по параметрам)</span>
+          <button type="button" class="rc-catalog-btn" data-pdu-cat="${idx}">${escape(catLabel)}</button>
+        </label>
+        ${locked ? `<div class="rc-kit-includes"><b>${escape(cat.mfg)} ${escape(cat.sku)}:</b> ${escape(cat.name)} — <i>${escape(PDU_CATEGORY[cat.category] || cat.category)}</i></div>` : `<div class="muted" style="font-size:11px;margin-top:2px">Произвольная конфигурация — будет сгенерирован <b>лист требований</b> (спецификация) для закупки по ТЗ.</div>`}
       </div>
     `;
     // основные поля
