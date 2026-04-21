@@ -478,7 +478,19 @@ export function buildBOM() {
     if (c._breakerInternal) continue;
     const fromLbl = c.from ? nodeLabel(c.from.nodeId) : '';
     const toLbl   = c.to   ? nodeLabel(c.to.nodeId)   : '';
-    const note = fromLbl + ' → ' + toLbl;
+    // v0.59.93: если назначение — групповой потребитель в individual-режиме,
+    // помечаем это в note («→ Группа [N приб.]»), чтобы в спецификации было
+    // видно, что один conn-автомат покрывает группу из нескольких приборов.
+    let toNote = toLbl;
+    try {
+      const toNode = c.to ? state.nodes.get(c.to.nodeId) : null;
+      if (toNode && toNode.type === 'consumer'
+          && toNode.groupMode === 'individual'
+          && Array.isArray(toNode.items) && toNode.items.length > 1) {
+        toNote = `${toLbl} [группа ${toNode.items.length} приб.]`;
+      }
+    } catch {}
+    const note = fromLbl + ' → ' + toNote;
     const parallel = Math.max(1, Number(c._breakerCount) || 1);
     const kind  = c._protectionKind === 'fuse' ? 'fuse' : 'breaker';
     const curve = c._breakerCurveEff || c.breakerCurve || '';
