@@ -8,6 +8,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.59.34',
+    date: '2026-04-21',
+    items: [
+      'Отчёт: поле «Подготовил» автозаполняется именем авторизованного пользователя (window.Auth.currentUser.name → .email), если в установке не задано явное имя автора. Файлы: suppression-methods/report-text.js::resolveAuthor() — приоритет inst.author → Auth; suppression-config/index.html — подключены firebase-auth-compat + shared/auth.js, вызов Auth.init() после mountHeader.',
+      'Спецификация теперь двухуровневая: (1) по каждой системе (направлению) — внутри раздела отчёта соответствующего направления (было и раньше); (2) НОВОЕ — сводная «ОБЩАЯ СПЕЦИФИКАЦИЯ ПО УСТАНОВКЕ» в конце отчёта. Агрегирует: модули ГОТВ (по артикулу + разбивка по направлениям), трубопровод (по D×s, м + ИТОГО), насадки (по коду), опоры. Файлы: suppression-methods/report-text.js::buildCombinedBom(ctx); suppression-config.js::openReport() собирает perDir[] и вызывает buildCombinedBom в конце.',
+    ],
+  },
+  {
     version: '0.59.33',
     date: '2026-04-21',
     items: [

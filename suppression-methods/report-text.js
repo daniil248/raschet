@@ -234,7 +234,121 @@ export function buildReport(ctx) {
   lines.push('');
   lines.push(LINE);
   lines.push(`Расчёт выполнен в системе Raschet · модуль АГПТ (${norm.short}).`);
-  lines.push(`Подготовил: ${inst?.author || '—'}`);
+  lines.push(`Подготовил: ${resolveAuthor(inst)}`);
+  lines.push(`Дата: ${new Date().toLocaleDateString('ru-RU')}`);
+  return lines.join('\n');
+}
+
+/* --- Имя автора: приоритет inst.author → window.Auth.currentUser.name/email --- */
+function resolveAuthor(inst) {
+  if (inst?.author && String(inst.author).trim()) return String(inst.author).trim();
+  const u = (typeof window !== 'undefined' && window.Auth && window.Auth.currentUser) || null;
+  if (u) return u.name || u.email || '—';
+  return '—';
+}
+
+/* =========================================================================
+   Общая спецификация по всем направлениям установки.
+   Агрегирует: модули ГОТВ (по артикулу), трубопровод (по D×s), насадки.
+   Вызывается после всех direction-reports.
+   ctx: {
+     installation, norm,
+     directions: [{ dir, result, piping }]    // уже посчитанные
+   }
+   ========================================================================= */
+export function buildCombinedBom(ctx) {
+  const { installation: inst, directions = [] } = ctx;
+  const norm = NORM_META[inst?.norm] || NORM_META['sp-485-annex-d'];
+  const lines = [];
+  lines.push(center('ОБЩАЯ СПЕЦИФИКАЦИЯ ПО УСТАНОВКЕ', 72));
+  lines.push(center(`Установка: ${inst?.name || '—'} · ${norm.short}`, 72));
+  lines.push(LINE);
+  lines.push('');
+
+  // --- 1. Модули ГОТВ ---
+  const modules = {};   // key = moduleCode → {count, pressure}
+  directions.forEach(({ result, dir }) => {
+    if (!result) return;
+    const code = result.moduleCode || '—';
+    const mod = findVariant(code);
+    const n = +result.n || 0;
+    const key = `${code}`;
+    if (!modules[key]) modules[key] = {
+      code, count: 0, pressure: mod?.pressure_bar ? `${mod.pressure_bar} бар` : '—',
+      capacity: mod?.capacity_kg ? `${mod.capacity_kg} кг` : (mod?.capacity_l ? `${mod.capacity_l} л` : '—'),
+      dirs: [],
+    };
+    modules[key].count += n;
+    modules[key].dirs.push(`${dir.name} (${n})`);
+  });
+  lines.push('1. Модули газового пожаротушения');
+  if (!Object.keys(modules).length) {
+    lines.push('   — нет');
+  } else {
+    lines.push('   ' + pad('Артикул модуля', 30) + pad('Вместимость', 14) + pad('Давление', 12) + 'Всего');
+    Object.values(modules).forEach(m => {
+      lines.push('   ' + pad(m.code, 30) + pad(m.capacity, 14) + pad(m.pressure, 12) + `${m.count} шт.`);
+      lines.push('      └─ по направлениям: ' + m.dirs.join(', '));
+    });
+  }
+  lines.push('');
+
+  // --- 2. Трубопровод (суммарно по D×s) ---
+  const trubes = {};   // key = D×s → метры
+  directions.forEach(({ piping, dir }) => {
+    if (!piping) return;
+    Object.entries(piping.totalByDN || {}).forEach(([k, v]) => {
+      trubes[k] = +((trubes[k] || 0) + (+v || 0)).toFixed(2);
+    });
+  });
+  lines.push('2. Трубопровод (суммарно)');
+  if (!Object.keys(trubes).length) {
+    lines.push('   — нет');
+  } else {
+    lines.push('   ' + pad('Труба (D × s), мм', 26) + 'Длина, м');
+    Object.entries(trubes).forEach(([k, v]) => {
+      lines.push('   ' + pad(k, 26) + (+v).toFixed(2));
+    });
+    const totalM = Object.values(trubes).reduce((a, b) => a + b, 0);
+    lines.push('   ' + pad('ИТОГО', 26) + totalM.toFixed(2) + ' м');
+  }
+  lines.push('');
+
+  // --- 3. Насадки (суммарно по коду) ---
+  const nozzles = {};  // code → count
+  directions.forEach(({ piping }) => {
+    (piping?.nozzles || []).forEach(n => {
+      nozzles[n.code] = (nozzles[n.code] || 0) + (+n.count || 0);
+    });
+  });
+  lines.push('3. Насадки (суммарно)');
+  if (!Object.keys(nozzles).length) {
+    lines.push('   — нет');
+  } else {
+    lines.push('   ' + pad('Наименование', 30) + 'Кол-во');
+    Object.entries(nozzles).forEach(([code, count]) => {
+      lines.push('   ' + pad(code, 30) + count + ' шт.');
+    });
+  }
+  lines.push('');
+
+  // --- 4. Опоры трубопровода (если piping их считает) ---
+  const supports = { rigid: 0, sliding: 0 };
+  directions.forEach(({ piping }) => {
+    if (!piping?.supports) return;
+    supports.rigid   += piping.supports.rigid   || 0;
+    supports.sliding += piping.supports.sliding || 0;
+  });
+  if (supports.rigid + supports.sliding > 0) {
+    lines.push('4. Опоры трубопровода (суммарно)');
+    lines.push('   Жёсткие опоры — ' + supports.rigid + ' шт.');
+    lines.push('   Скользящие опоры — ' + supports.sliding + ' шт.');
+    lines.push('');
+  }
+
+  lines.push(LINE);
+  lines.push(`Расчёт выполнен в системе Raschet · модуль АГПТ (${norm.short}).`);
+  lines.push(`Подготовил: ${resolveAuthor(inst)}`);
   lines.push(`Дата: ${new Date().toLocaleDateString('ru-RU')}`);
   return lines.join('\n');
 }

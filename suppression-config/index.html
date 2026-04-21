@@ -7,6 +7,11 @@
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="suppression-config.css">
+  <!-- Firebase Auth (опционально) — автозаполнение «Подготовил» в отчёте. -->
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -18,6 +23,9 @@
       moduleId: 'suppression-config',
       moduleTitle: 'АГПТ',
     });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[suppression-config] auth init failed', e));
+    }
   </script>
 
   <div class="sup-wrap">

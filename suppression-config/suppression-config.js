@@ -10,7 +10,7 @@ import { AGENTS } from '../suppression-methods/agents.js';
 import { MODULE_SERIES, SERIES_LIST, listVariants, findVariant }
   from '../suppression-methods/modules-catalog.js';
 import * as Annex from '../suppression-methods/sp-485-annex-d.js';
-import { buildReport } from '../suppression-methods/report-text.js';
+import { buildReport, buildCombinedBom } from '../suppression-methods/report-text.js';
 import { computeHydraulic, recommendDN } from '../suppression-methods/hydraulics.js';
 import { mountHelp } from '../shared/help-panel.js';
 import { mountFooter } from '../shared/module-footer.js';
@@ -1567,16 +1567,29 @@ function openHydraulic() {
 function openReport() {
   const inst = currentInst();
   if (!inst.directions.length) { alert('Нет направлений для расчёта.'); return; }
-  const reports = inst.directions.map((d, i) => {
+  // Считаем каждое направление (= отдельная система), сохраняем результат
+  // для общей спецификации.
+  const perDir = inst.directions.map((d, i) => {
     const r = computeDir(d);
-    if (!r) return `Направление "${d.name}": недостаточно данных для расчёта.\n`;
-    const piping = buildPipingSummary(d);
-    return buildReport({
-      installation: inst, direction: d, zone: d.zones[0],
-      result: r, piping, calcNo: `${inst.calcNo}·${i+1}`,
-    });
+    const piping = r ? buildPipingSummary(d) : null;
+    const report = !r
+      ? `Направление "${d.name}": недостаточно данных для расчёта.\n`
+      : buildReport({
+          installation: inst, direction: d, zone: d.zones[0],
+          result: r, piping, calcNo: `${inst.calcNo}·${i+1}`,
+        });
+    return { dir: d, result: r, piping, report };
   });
-  $('rep-body').textContent = reports.join('\n\n' + '═'.repeat(72) + '\n\n');
+
+  // Спецификация по каждой системе уже внутри каждого direction-отчёта.
+  // Дополнительно — сводная спецификация по всей установке.
+  const combined = buildCombinedBom({
+    installation: inst,
+    directions: perDir.filter(x => x.result),
+  });
+
+  const sep = '\n\n' + '═'.repeat(72) + '\n\n';
+  $('rep-body').textContent = perDir.map(x => x.report).join(sep) + sep + combined;
   $('dlg-report').showModal();
 }
 function buildPipingSummary(dir) {
