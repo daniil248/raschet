@@ -698,5 +698,18 @@
     applyLayout();
   })();
   </script>
+  <script type="module">
+    // v0.59.85: единый module-footer и на хабе — раньше на hub.html
+    // не было вообще никакого футера (ни версии, ни журнала изменений).
+    import { mountFooter as mountModuleFooter } from './shared/module-footer.js';
+    import { APP_VERSION } from './js/engine/constants.js';
+    import { CHANGELOGS } from './shared/module-changelogs.js';
+    mountModuleFooter({
+      appVersion: APP_VERSION,
+      moduleId: 'hub',
+      moduleTitle: 'Хаб',
+      entries: CHANGELOGS['schematic'] || [],
+    });
+  </script>
 </body>
 </html>

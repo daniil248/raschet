@@ -555,5 +555,17 @@ window.addEventListener('resize', resizeAll);
 resizeAll();
 loadPreset();
 </script>
+<script type="module">
+  // v0.59.85: module-footer
+  import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+  import { APP_VERSION } from '../js/engine/constants.js';
+  import { CHANGELOGS } from '../shared/module-changelogs.js';
+  mountModuleFooter({
+    appVersion: APP_VERSION,
+    moduleId: 'configurator3d',
+    moduleTitle: '3D-конфигуратор',
+    entries: CHANGELOGS['configurator3d'] || CHANGELOGS['schematic'] || [],
+  });
+</script>
 </body>
 </html>

@@ -325,6 +325,10 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.85', date: '2026-04-21', items: [
+      'Общий футер (Raschet vX.Y.Z + Журнал изменений) теперь есть на хабе (hub.html) и в 3D-конфигураторе (configurator3d/). Раньше эти две страницы были без футера вообще — пользователь не видел ни версии, ни ссылки на changelog.',
+      'Файлы: hub.html, configurator3d/index.html (вставлен `<script type="module">` с mountFooter).'
+    ] },
     { version: '0.59.84', date: '2026-04-21', items: [
       'XLSX/CSV спецификация теперь включает начинку щита из panel-config wizard: автоматы, коммерческий и технический учёт, трансформаторы тока, мониторинг, аксессуары. Раньше всё это сохранялось на node.composition, попадало в отчёты (shared/bom.js), но терялось в основном экспорте BOM (engine buildBOM ограничивался одной строкой панели по panelCatalogId).',
       'Классификация по role → разделы BOM: breaker-* → «Автоматы», switch/ats → «АВР / рубильники», meter → «Счётчики», ct → «Трансформаторы тока», monitor → «Мониторинг», accessor → «Аксессуары щита». Одинаковые позиции из разных щитов агрегируются по label (ключ `panel-inline:<section>:<label>`).',
