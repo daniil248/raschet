@@ -29,11 +29,16 @@ function _injectStyles() {
     .rs-mfoot {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 9989;
       height: 32px;
-      display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
       font-family: system-ui, sans-serif; font-size: 12px; color: #607080;
       background: #fff; border-top: 1px solid #e0e3ea;
       padding: 0 24px;
     }
+    .rs-mfoot .rs-mfoot-left,
+    .rs-mfoot .rs-mfoot-right {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .rs-mfoot-left a { color: #455a64; }
     .rs-mfoot b { color: #0d47a1; font-weight: 600; }
     .rs-mfoot a { color: #1565c0; cursor: pointer; text-decoration: none; }
     .rs-mfoot a:hover { text-decoration: underline; }
@@ -83,14 +88,30 @@ function _injectStyles() {
  */
 export function mountFooter(opts) {
   _injectStyles();
-  const { appVersion, moduleId, moduleTitle, entries = [] } = opts;
+  const { appVersion, moduleId, moduleTitle, entries = [], links = null } = opts;
+
+  // v0.59.89: слева — ссылки на связанные модули (hub / каталог / github),
+  // справа — версия и журнал. Раньше footer показывал только версию справа,
+  // и пользователи жаловались «футера нет» (левой половины действительно не было).
+  const defaultLinks = [
+    { label: 'Все программы', href: (location.pathname.includes('/raschet/') && !/\/raschet\/?$/.test(location.pathname) ? '../hub.html' : 'hub.html') },
+    { label: 'Каталог',       href: (location.pathname.match(/\/([^/]+)\//) && !/\/catalog\//.test(location.pathname) ? '../catalog/' : 'catalog/') },
+    { label: 'GitHub',        href: 'https://github.com/daniil248/raschet', external: true },
+  ];
+  const useLinks = Array.isArray(links) ? links : defaultLinks;
+  const linksHtml = useLinks.map(l =>
+    `<a href="${l.href}"${l.external ? ' target="_blank" rel="noopener"' : ''}>${l.label}${l.external ? ' ↗' : ''}</a>`
+  ).join('<span class="rs-mfoot-dot">·</span>');
 
   const foot = document.createElement('div');
   foot.className = 'rs-mfoot';
   foot.innerHTML = `
-    <span>Raschet <b>v${appVersion}</b></span>
-    <span class="rs-mfoot-dot">·</span>
-    <a data-act="log">Журнал изменений «${moduleTitle}»</a>
+    <div class="rs-mfoot-left">${linksHtml}</div>
+    <div class="rs-mfoot-right">
+      <span>Raschet <b>v${appVersion}</b></span>
+      <span class="rs-mfoot-dot">·</span>
+      <a data-act="log">Журнал изменений «${moduleTitle}»</a>
+    </div>
   `;
   document.body.appendChild(foot);
   // Резервируем 32 px внизу body, чтобы фиксированный футер не

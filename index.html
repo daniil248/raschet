@@ -1020,13 +1020,12 @@
   <script type="module" src="js/main.js"></script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from './shared/module-footer.js';
-    import { mountFooter as mountAppFooter } from './shared/app-footer.js';
     import { APP_VERSION } from './js/engine/constants.js';
     import { CHANGELOGS } from './shared/module-changelogs.js';
+    // v0.59.89: в главном Конструкторе (SPA с overflow:hidden) обычный
+    // app-footer не вмещается — поэтому ссылки «Все программы / Каталог /
+    // GitHub» переехали в левую часть фиксированного module-footer.
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'schematic', moduleTitle: 'Конструктор', entries: CHANGELOGS['schematic'] || [] });
-    // v0.59.88: общий app-footer (о проекте / контакты / ссылки) — был пропущен
-    // в корневом index.html главного Конструктора.
-    window.addEventListener('DOMContentLoaded', () => mountAppFooter());
   </script>
 </body>
 </html>

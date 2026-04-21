@@ -325,6 +325,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.89', date: '2026-04-21', items: [
+      'Футер модуля (фиксированная строка внизу) теперь содержит ссылки «Все программы · Каталог · GitHub» слева — раньше показывалась только версия справа, и пользователи жаловались «футера нет». Работает во всех 12 модулях сразу (shared/module-footer.js).',
+      'В главном Конструкторе (корневой index.html) убран mountAppFooter: обычный app-footer с margin-top:32px не вмещается в SPA с body{overflow:hidden;height:100vh}. Ссылки теперь живут в module-footer.',
+      'Файлы: shared/module-footer.js (+rs-mfoot-left с linksHtml, justify-content:space-between), index.html (убран mountAppFooter).'
+    ] },
     { version: '0.59.88', date: '2026-04-21', items: [
       'Модалки параметров узла (щит / потребитель / источник) больше не «прыгают» по высоте при переключении вкладок Общее / Электрика / Габариты / Системы — закреплён min-height 560px у #panel-params-body / #consumer-params-body / #source-params-body. Контент разной длины теперь уходит в нижний свободный зазор вместо скачка всего окна.',
       'Кнопка «Параметры щита» из вкладки «Электрика» сайдбара теперь открывает модалку сразу на вкладке «Электрика», а не сбрасывает на «Общее». Добавлен публичный setModalActiveTab(nodeId, tab) в inspector.js, проброшен через btn-open-panel-params handler.',
