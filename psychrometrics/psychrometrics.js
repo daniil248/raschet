@@ -85,15 +85,7 @@ function renderCycle() {
 function pointCard(p, i) {
   const el = document.createElement('div');
   el.className = 'psy-point';
-  const st = pointState(p, S.P);
-  const stHtml = st
-    ? `<div class="pt-computed">
-         <b>d</b>=${(st.W*1000).toFixed(2)} г/кг · <b>h</b>=${st.h.toFixed(2)} кДж/кг<br>
-         <b>ρ</b>=${st.rho.toFixed(3)} · <b>v</b>=${st.v.toFixed(4)} · <b>t<sub>р</sub></b>=${st.Td.toFixed(1)} · <b>t<sub>м</sub></b>=${st.Twb.toFixed(1)}
-       </div>`
-    : `<div class="pt-computed" style="color:#c62828">Нет данных: укажите t и φ (или d).</div>`;
-  if (st && st.RH > S.rhMax + 0.1) el.classList.add('invalid');
-
+  el.dataset.pointIdx = String(i);
   el.innerHTML = `
     <div class="psy-point-header">
       <span>Точка ${i+1}</span>
@@ -103,7 +95,7 @@ function pointCard(p, i) {
     <label>t, °C<input type="number" data-col="t" data-i="${i}" value="${p.t ?? ''}" step="0.1"></label>
     <label>φ, %<input type="number" data-col="rh" data-i="${i}" value="${p.rh ?? ''}" step="1" min="0" max="100"></label>
     <label>d (override), г/кг<input type="number" data-col="x" data-i="${i}" value="${p.x ?? ''}" step="0.1" placeholder="авто из φ"></label>
-    ${stHtml}
+    <div class="pt-computed" data-role="pt-computed"></div>
   `;
   return el;
 }
@@ -111,18 +103,44 @@ function pointCard(p, i) {
 function procArrow(pr, i) {
   const el = document.createElement('div');
   el.className = 'psy-proc-arrow';
-  const Vused = (S.points[i] && nNum(S.points[i].V)) || S.vBase;
+  el.dataset.procIdx = String(i);
   el.innerHTML = `
     <div class="arr-label">${i+1} → ${i+2}</div>
     <select data-col="proc-type" data-i="${i}">
       ${PROC_TYPES.map(pt => `<option value="${pt.v}" ${pr.type===pt.v?'selected':''}>${pt.t}</option>`).join('')}
     </select>
-    <div class="arr" style="color:${PROC_COLOR[pr.type]||'#607080'}">↓</div>
+    <div class="arr" data-role="arr" style="color:${PROC_COLOR[pr.type]||'#607080'}">↓</div>
     <label style="font-size:10px;color:#666">V процесса, м³/ч
       <input type="number" data-col="V" data-i="${i}" value="${S.points[i].V ?? ''}" step="100" placeholder="${S.vBase}">
     </label>
   `;
   return el;
+}
+
+/* --- Обновляет только computed-блоки карточек БЕЗ пересоздания input'ов.
+   Так мы не теряем фокус при вводе. */
+function refreshComputedInCards() {
+  S.points.forEach((p, i) => {
+    const card = document.querySelector(`.psy-point[data-point-idx="${i}"]`);
+    if (!card) return;
+    const st = pointState(p, S.P);
+    const computed = card.querySelector('[data-role="pt-computed"]');
+    card.classList.toggle('invalid', !!(st && st.RH > S.rhMax + 0.1));
+    if (!computed) return;
+    if (!st) {
+      computed.innerHTML = `<span style="color:#c62828">Нет данных: укажите t и φ (или d).</span>`;
+    } else {
+      computed.innerHTML =
+        `<b>d</b>=${(st.W*1000).toFixed(2)} г/кг · <b>h</b>=${st.h.toFixed(2)} кДж/кг<br>` +
+        `<b>ρ</b>=${st.rho.toFixed(3)} · <b>v</b>=${st.v.toFixed(4)} · ` +
+        `<b>t<sub>р</sub></b>=${st.Td.toFixed(1)} · <b>t<sub>м</sub></b>=${st.Twb.toFixed(1)}`;
+    }
+  });
+  // Цвет стрелки процесса
+  S.procs.forEach((pr, i) => {
+    const arr = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] [data-role="arr"]`);
+    if (arr) arr.style.color = PROC_COLOR[pr.type] || '#607080';
+  });
 }
 
 function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
@@ -389,12 +407,18 @@ function syncTopInputs() {
 /* ========================================================================
    Main
    ======================================================================== */
+/* Полный пересчёт БЕЗ пересоздания inputs (чтобы не терять фокус). */
 function update() {
   readInputs();
-  renderCycle();
+  refreshComputedInCards();
   const { sts, segs } = computeCycle();
   renderResults(sts, segs);
   renderChart(sts);
+}
+/* Пересоздание цикла (добавить/удалить точку / загрузка демо). */
+function rerenderCycle() {
+  renderCycle();
+  update();
 }
 
 function wire() {
@@ -419,19 +443,19 @@ function wire() {
     S.points.splice(i, 1);
     if (i < S.procs.length) S.procs.splice(i, 1);
     else if (S.procs.length) S.procs.pop();
-    update();
+    rerenderCycle();
   });
 
   $('psy-add').addEventListener('click', () => {
     const last = S.points[S.points.length-1];
     S.points.push({ name:'', t: last?.t ?? 22, rh: last?.rh ?? 50, x:'', V:'' });
     S.procs.push({ type: 'X' });
-    update();
+    rerenderCycle();
   });
   $('psy-clear').addEventListener('click', () => {
     S.points = [{ name:'Точка 1', t: 22, rh: 50, x:'', V:'' }];
     S.procs = [];
-    update();
+    rerenderCycle();
   });
   $('psy-demo').addEventListener('click', loadDemo);
 }
