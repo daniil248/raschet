@@ -846,9 +846,12 @@ function _pcBuildMeteringComposition() {
     const entries = Object.entries(ct.perBreaker);
     for (const [idxStr, info] of entries) {
       const b = brs[Number(idxStr)]; if (!b || !info) continue;
-      const poles = b.poles || 3;
+      // ТТ устанавливаются только на фазные полюса, не на N/PE.
+      // 3P/4P → 3 ТТ (phases); 2P (L+N) → 1 ТТ (phase); 1P → 1 ТТ.
+      const poles = Number(b.poles) || 3;
+      const nCt = (poles >= 3) ? 3 : 1;
       out.push({
-        elementId: null, inline: true, qty: poles,
+        elementId: null, inline: true, qty: nCt,
         role: 'ct',
         label: `ТТ ${info.label} А кл.${ct.accuracyClass} ${ct.vaBurden}ВА → «${b.name}»`,
       });

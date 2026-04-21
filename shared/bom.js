@@ -110,7 +110,26 @@ export function expandComposition(element, multiplier = 1, depth = 0, seen = new
 
   const comp = Array.isArray(element.composition) ? element.composition : [];
   for (const c of comp) {
-    if (!c || !c.elementId) continue;
+    if (!c) continue;
+    // v0.59.80: inline-позиции без elementId (учёт / ТТ / мониторинг /
+    // аксессуары из panel-config wizard, inline-автоматы без справочника)
+    // тоже должны попадать в BOM как самостоятельные строки. Раньше
+    // такие записи пропускались — оставались только в сериализации узла.
+    if (!c.elementId) {
+      if (c.inline || c.label) {
+        items.push({
+          elementId: null,
+          label: c.label || (c.role || 'inline'),
+          kind: c.kind || c.role || null,
+          qty: (c.qty || 1) * multiplier,
+          role: c.role || null,
+          phantom: !!c.phantom,
+          depth: depth + 1,
+          path: [...path, element.id, (c.role || 'inline') + ':' + (c.label || '?')],
+        });
+      }
+      continue;
+    }
     const child = getElement(c.elementId);
     if (!child) {
       // Неизвестный id — выводим как placeholder
