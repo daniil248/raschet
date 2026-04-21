@@ -411,3 +411,49 @@
   .rc-section { border: none; box-shadow: none; padding: 6px 0; break-inside: avoid; }
   .rc-wrap { max-width: none; padding: 0; }
 }
+
+/* ---- PDU wizard modal (iframe of /pdu-config/) ---- */
+.rc-pdu-wizard-modal {
+  position: fixed; inset: 0; z-index: 9500;
+  display: flex; align-items: stretch; justify-content: center;
+}
+.rc-pdu-wizard-backdrop {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+}
+.rc-pdu-wizard-panel {
+  position: relative; z-index: 1; background: #fff;
+  width: min(1500px, 96vw); margin: 24px auto; border-radius: 10px;
+  box-shadow: 0 14px 50px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.rc-pdu-wizard-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid #e0e0e0;
+  background: #fafafa; font-size: 13px;
+}
+.rc-pdu-wizard-iframe {
+  flex: 1; width: 100%; height: calc(100vh - 130px); border: 0;
+  background: #fff;
+}
+
+/* ---- PDU requirements card (shown under each PDU row) ---- */
+.rc-pdu-reqs { margin-top: 4px; }
+.rc-pdu-req-card {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+}
+.rc-pdu-req-sku { background: #e8f5e9; border-color: #a5d6a7; }
+.rc-pdu-req-reqs { background: #fff8e1; border-color: #ffe082; }
+.rc-pdu-req-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 4px 16px;
+  margin-top: 4px;
+}
+.rc-pdu-req-grid > div { display: flex; justify-content: space-between; gap: 8px; }
+.rc-pdu-req-grid > div > span { color: #666; }
+.rc-pdu-req-full { grid-column: 1 / -1; }

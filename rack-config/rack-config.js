@@ -309,6 +309,103 @@ function openKitCatalogModal() {
 // /pdu-config/): ранжирование по score, требования «номинал ≥», розетки
 // «C13 ≥ / C19 ≥ / Schuko ≥», фильтр по производителю-чипсам, категория.
 // Сверху навешены rack-config-специфичные опции: «Парой на A+B» + цвет.
+// -------------------- Wizard modal: встраивает /pdu-config/ в iframe --------------------
+function openPduWizardModal(pduIdx) {
+  // Снимаем предыдущую модалку если есть
+  document.querySelectorAll('.rc-pdu-wizard-modal').forEach(n => n.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'rc-pdu-wizard-modal';
+  overlay.innerHTML = `
+    <div class="rc-pdu-wizard-backdrop"></div>
+    <div class="rc-pdu-wizard-panel">
+      <div class="rc-pdu-wizard-head">
+        <b>🧙 Конфигуратор PDU</b>
+        <span class="muted" style="font-size:11px;margin-left:8px">
+          Задайте контекст и требования; когда закончите — нажмите «Применить» и значения вернутся в PDU#${pduIdx + 1}.
+        </span>
+        <span style="flex:1"></span>
+        <button type="button" class="rc-btn" data-act="close">✕ Закрыть</button>
+      </div>
+      <iframe class="rc-pdu-wizard-iframe" src="../pdu-config/?embed=1&amp;pduIdx=${pduIdx}"></iframe>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => { overlay.remove(); window.removeEventListener('message', onMsg); };
+  overlay.querySelector('[data-act="close"]').onclick = close;
+  overlay.querySelector('.rc-pdu-wizard-backdrop').onclick = close;
+
+  function onMsg(ev) {
+    const d = ev && ev.data;
+    if (!d || typeof d !== 'object') return;
+    if (d.type === 'pdu-config:close') { close(); return; }
+    if (d.type !== 'pdu-config:apply') return;
+    applyPduPayload(pduIdx, d.payload);
+    close();
+  }
+  window.addEventListener('message', onMsg);
+}
+
+function applyPduPayload(pduIdx, payload) {
+  if (!payload) return;
+  const t = current();
+  const p = t.pdus[pduIdx];
+  if (!p) return;
+  if (payload.rating)  p.rating  = Number(payload.rating)  || p.rating;
+  if (payload.phases)  p.phases  = Number(payload.phases)  || p.phases;
+  if (payload.height !== undefined) p.height = Number(payload.height) || 0;
+  if (Array.isArray(payload.outlets) && payload.outlets.length) {
+    p.outlets = payload.outlets.map(o => ({ type: o.type, count: Number(o.count) || 1 }));
+  }
+  if (payload.requirementsOnly) {
+    p.sku = '';
+    p._requirements = {
+      label: payload.label || '',
+      category: payload.category || '',
+      context: payload.context || null,
+      savedAt: Date.now(),
+    };
+  } else if (payload.sku) {
+    p.sku = payload.sku;
+    delete p._requirements;
+  }
+  try { localStorage.setItem('raschet.lastPduConfig.v1', JSON.stringify({ ...payload, selectedAt: Date.now() })); } catch {}
+  renderPduList();
+  recalc();
+}
+
+function renderPduReqsBlock(host, pdu, pduIdx) {
+  if (pdu.sku) {
+    // Модель выбрана — артикул + основные параметры
+    const cat = pduBySku(pdu.sku);
+    if (cat) {
+      host.innerHTML = `
+        <div class="rc-pdu-req-card rc-pdu-req-sku">
+          <div><b>✓ Модель:</b> ${escape(cat.mfg)} <code>${escape(cat.sku)}</code> — ${escape(cat.name)}</div>
+          <div class="muted" style="font-size:11px">В спецификации пойдёт с этим артикулом.</div>
+        </div>`;
+    }
+    return;
+  }
+  // Лист требований
+  const outletsStr = (pdu.outlets || []).filter(o => o.count > 0)
+    .map(o => `${o.type}×${o.count}`).join(', ') || '—';
+  const req = pdu._requirements || {};
+  const ctx = req.context;
+  host.innerHTML = `
+    <div class="rc-pdu-req-card rc-pdu-req-reqs">
+      <div><b>📋 Лист требований (без SKU)</b></div>
+      <div class="rc-pdu-req-grid">
+        <div><span>Номинал</span><b>≥ ${pdu.rating} A</b></div>
+        <div><span>Фаз</span><b>${pdu.phases}ф</b></div>
+        <div><span>Высота</span><b>${pdu.height === 0 ? '0U (верт.)' : pdu.height + 'U'}</b></div>
+        <div><span>Розетки</span><b>${escape(outletsStr)}</b></div>
+        ${req.category ? `<div><span>Категория</span><b>${escape(req.category)}</b></div>` : ''}
+        ${ctx ? `<div class="rc-pdu-req-full"><span>Контекст</span><b>${ctx.servers || '?'} серверов × ${ctx.kwPerServer || '?'} кВт, cos φ=${ctx.cosPhi || '?'}, ${ctx.phases === '3' ? '3ф 400В' : '1ф 230В'}, резерв ${ctx.redundancy || 'N'}</b></div>` : ''}
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:4px">В BOM попадёт как <b>лист требований</b> — артикула нет. Чтобы выбрать конкретный PDU, откройте «🧙 Конфигуратор PDU» → «Выбрать эту модель».</div>
+    </div>`;
+}
+
 function openPduCatalogModal(pdu) {
   const tpl = current();
   const mode = tpl.pduRedundancy || '2N';
@@ -817,10 +914,11 @@ function renderPduList() {
         <div class="muted" style="font-size:11px">Итого розеток: ${p.outlets.reduce((s,o)=>s+(+o.count||0),0)}</div>
       </div>
       <div class="rc-pdu-catalog" style="margin-top:8px">
-        <label class="rc-field" style="flex:1 1 100%" title="Параметры заданы выше — подберите готовый артикул PDU по ним. При выборе номинал/фазы/высота/розетки подставятся и заблокируются.">
-          <span>Каталог PDU (подобрать по параметрам)</span>
-          <button type="button" class="rc-catalog-btn" data-pdu-cat="${idx}">${escape(catLabel)}</button>
-        </label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <button type="button" class="rc-btn rc-btn-primary" data-pdu-wizard="${idx}" title="Открыть Конфигуратор PDU: задать контекст (серверы/кВт/резерв), автоподбор требований, ранжированные рекомендации. Результат (модель или лист требований) вернётся сюда одним кликом.">🧙 Конфигуратор PDU →</button>
+          <button type="button" class="rc-btn" data-pdu-cat="${idx}" title="Быстрый выбор артикула из встроенного справочника PDU.">📋 Каталог PDU (${escape(catLabel)})</button>
+        </div>
+        <div data-pdu-reqs="${idx}" class="rc-pdu-reqs"></div>
         ${locked ? `<div class="rc-kit-includes"><b>${escape(cat.mfg)} ${escape(cat.sku)}:</b> ${escape(cat.name)} — <i>${escape(PDU_CATEGORY[cat.category] || cat.category)}</i></div>` : `<div class="muted" style="font-size:11px;margin-top:2px">Произвольная конфигурация — будет сгенерирован <b>лист требований</b> (спецификация) для закупки по ТЗ.</div>`}
       </div>
     `;
@@ -839,6 +937,11 @@ function renderPduList() {
     });
     const catBtn = row.querySelector('[data-pdu-cat]');
     if (catBtn) catBtn.addEventListener('click', () => openPduCatalogModal(p));
+    const wizBtn = row.querySelector('[data-pdu-wizard]');
+    if (wizBtn) wizBtn.addEventListener('click', () => openPduWizardModal(idx));
+    // Блок требований (виден всегда — показывает либо параметры текущего PDU, либо lastPdu)
+    const reqsHost = row.querySelector(`[data-pdu-reqs="${idx}"]`);
+    if (reqsHost) renderPduReqsBlock(reqsHost, p, idx);
     // розетки
     row.querySelectorAll('[data-ok]').forEach(inp => {
       inp.addEventListener('change', () => {

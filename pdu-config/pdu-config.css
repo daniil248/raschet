@@ -335,6 +335,21 @@
 }
 .rc-modal-body h4 { margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
 
+/* ---- embed mode (iframe в rack-config) ---- */
+body.pc-embed .pc-wrap { padding-bottom: 70px; }
+.pc-embed-bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 9600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--rs-bg-card);
+  border-top: 2px solid var(--rs-accent);
+  box-shadow: 0 -4px 14px rgba(0,0,0,0.08);
+}
+
 /* ---- dynamic outlet inputs ---- */
 .pc-outlets-grid {
   display: grid;

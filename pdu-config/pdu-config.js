@@ -401,6 +401,30 @@ function openDetail(id) {
   document.getElementById('pc-detail-open-rack').onclick = () => { pickModel(id); location.href = '../rack-config/'; };
 }
 
+// ——— Embed mode (iframe внутри rack-config) ———
+const IS_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+function postToParent(type, payload) {
+  try { window.parent.postMessage({ type, payload }, '*'); } catch {}
+}
+function injectEmbedBar() {
+  document.body.classList.add('pc-embed');
+  // Скрываем шапку приложения и статический футер — они не нужны внутри iframe
+  const hdr = document.getElementById('rs-header-mount'); if (hdr) hdr.style.display = 'none';
+  const sf = document.getElementById('pc-static-footer'); if (sf) sf.remove();
+  // Sticky-бар со «Применить требования» / «Закрыть»
+  const bar = document.createElement('div');
+  bar.className = 'pc-embed-bar';
+  bar.innerHTML = `
+    <span class="muted" style="font-size:12px">Режим встраивания · результат применяется к PDU в Конфигураторе стойки</span>
+    <span style="flex:1"></span>
+    <button type="button" class="pc-btn pc-btn-primary" id="pc-embed-apply-reqs">⬇ Применить требования</button>
+    <button type="button" class="pc-btn" id="pc-embed-close">✕ Закрыть</button>
+  `;
+  document.body.appendChild(bar);
+  document.getElementById('pc-embed-apply-reqs').onclick = saveLastPduRequirementsOnly;
+  document.getElementById('pc-embed-close').onclick = () => postToParent('pdu-config:close', null);
+}
+
 // ——— Handoff ———
 function pickModel(id) {
   const p = _pdus.find(x => x.id === id);
@@ -408,6 +432,20 @@ function pickModel(id) {
   saveLastPdu(p);
   renderPendingBanner();
   flash(`Выбрано: ${p.manufacturer || ''} ${p.label}`);
+  if (IS_EMBED) {
+    const kp = p.kindProps || {};
+    postToParent('pdu-config:apply', {
+      sku: kp.sku || p.variant || p.id,
+      manufacturer: p.manufacturer || '',
+      label: p.label || '',
+      category: kp.category || '',
+      phases: Number(kp.phases) || 0,
+      rating: Number(kp.rating) || 0,
+      height: Number(kp.height) || 0,
+      outlets: (kp.outlets || []).map(o => ({ type: o.type, count: Number(o.qty ?? o.count) || 0 })),
+      context: { ...ctx, pdusCount: ctx.redundancy === '2N' ? 2 : 1 },
+    });
+  }
 }
 
 function saveLastPdu(p) {
@@ -446,7 +484,12 @@ function saveLastPduRequirementsOnly() {
   };
   try { localStorage.setItem('raschet.lastPduConfig.v1', JSON.stringify(payload)); } catch {}
   renderPendingBanner();
-  flash('Требования сохранены. Откройте Конфигуратор стойки → PDU → «Каталог».');
+  if (IS_EMBED) {
+    postToParent('pdu-config:apply', payload);
+    flash('Требования применены к PDU в стойке.');
+  } else {
+    flash('Требования сохранены. Откройте Конфигуратор стойки → PDU → «Каталог».');
+  }
 }
 
 function renderPendingBanner() {
@@ -649,6 +692,7 @@ function wire() {
   renderOutletInputs();
   render();
   renderPendingBanner();
+  if (IS_EMBED) injectEmbedBar();
   if (!_pdus.length) {
     document.getElementById('pc-results').innerHTML =
       `<div class="pc-empty">Библиотека PDU пуста. Откройте <a href="../catalog/?filterKind=pdu">Каталог</a> — встроенные модели должны появиться автоматически.</div>`;
