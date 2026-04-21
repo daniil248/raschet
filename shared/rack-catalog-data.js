@@ -20,15 +20,15 @@ export {
   BLANK_LABEL, BLANK_U,
   KIT_CATALOG, kitById,
   listBuiltinRacks, getLiveKitCatalog,
-} from './racks-catalog-data.js';
+} from './catalogs/racks.js';
 
 export {
   PDU_CATEGORY, PDU_CATALOG, pduBySku,
   listBuiltinPdus, getLivePduCatalog,
-} from './pdus-catalog-data.js';
+} from './catalogs/pdus.js';
 
 export {
   ACC_CATEGORIES, ACCESSORY_CATALOG, accBySku,
   accessoryMatchesRackMfg, accessoryMfgList,
   listBuiltinRackAccessories, getLiveAccessoryCatalog,
-} from './rack-accessories-catalog-data.js';
+} from './catalogs/rack-accessories.js';

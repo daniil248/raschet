@@ -37,7 +37,7 @@ async function _loadPanels() {
 // Без legacy-каталога — сразу из breaker-seed.js.
 async function _loadBreakers() {
   try {
-    const m = await import('./breaker-seed.js');
+    const m = await import('./catalogs/breakers.js');
     return m.listBuiltinBreakers ? m.listBuiltinBreakers() : [];
   } catch (e) { console.warn('[catalog-bridge] breakers', e.message); return []; }
 }

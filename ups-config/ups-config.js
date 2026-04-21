@@ -9,7 +9,7 @@
 import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from '../shared/ups-catalog.js';
 import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
-import { KEHUA_MR33_UPSES } from '../shared/kehua-mr33-data.js';
+import { KEHUA_MR33_UPSES } from '../shared/catalogs/ups-kehua-mr33.js';
 import { pricesForElement } from '../shared/price-records.js';
 
 let cascadeHandle = null;

@@ -14,7 +14,7 @@
 //   kitById(id)              — поиск по id с fallback на «Произвольную»
 // ======================================================================
 
-import { _syncList } from './_catalog-helpers.js';
+import { _syncList } from './_helpers.js';
 
 /* ---------- справочные таблицы ---------- */
 export const DOOR_LABEL = {

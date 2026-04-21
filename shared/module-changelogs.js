@@ -50,6 +50,16 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.121', date: '2026-04-21', items: [
+      '<b>PDU picker: draggable + фикс. размер + структурированный фильтр + экшены.</b> shared/pdu-picker-modal.js переписан:',
+      '— <b>Перемещаемая</b> мышью за шапку (mousedown на .pdm-head), backdrop закрывает по mousedown вне панели.',
+      '— <b>Фиксированный размер</b> 1240×820 (min с vw/vh) — не прыгает при сокращении списка.',
+      '— <b>Структурированный фильтр</b>: две колонки .pdm-fgroup с заголовками (Монтаж / Электрика / Розетки), легенда с разбивкой Score.',
+      '— <b>Новые действия в футере</b>: «⬇ Перенести требования» (сохраняет только требования без SKU — флаг <code>requirementsOnly:true</code>), «🖨 Распечатать» (лист-требования в новом окне), «Каталог ↗» (ссылка в /catalog/?kind=pdu).',
+      '— Rack-config понимает <code>requirementsOnly</code>: кнопка «⬇ Требования из Конфигуратора PDU» применяет rating/phases/height/outlets, не трогая pdu.sku.',
+      'Каталоги seed собраны в отдельную папку <code>shared/catalogs/</code>: racks.js, pdus.js, rack-accessories.js, breakers.js, ups-kehua-mr33.js, battery-kehua-s3.js, _helpers.js — с README. Старые пути работают через barrel-реэкспорты.',
+      'Файлы: shared/pdu-picker-modal.js (~370 строк), rack-config/rack-config.js (lastPdu: приём requirementsOnly), js/engine/constants.js (0.59.121).'
+    ] },
     { version: '0.59.120', date: '2026-04-21', items: [
       '<b>Разделение seed-каталогов по типам.</b> Монолит shared/rack-catalog-data.js (493 строки, kit+pdu+acc вперемешку) разнесён на три файла — по одному на kind, плюс внутренние хелперы:',
       '— <code>shared/racks-catalog-data.js</code> — базовые комплекты стоек (KIT_CATALOG, DOOR/TOP/BASE/ENTRY/LOCK/BLANK label-таблицы, listBuiltinRacks, getLiveKitCatalog, kitById)',
@@ -164,6 +174,11 @@ export const CHANGELOGS = {
   ],
 
   'pdu-config': [
+    { version: '0.59.121', date: '2026-04-21', items: [
+      '<b>Переиспользуемая модалка подбора PDU.</b> shared/pdu-picker-modal.js теперь: перемещаемая мышью, фиксированный размер (не схлопывается при сокращении списка), двухколоночный фильтр с заголовками секций, легенда Score, и новые экшены в футере — «⬇ Перенести требования» (сохраняет требования без SKU через raschet.lastPduConfig.v1, флаг requirementsOnly), «🖨 Распечатать» (лист требований), «Каталог ↗» (переход в /catalog/?kind=pdu).',
+      'Seed-каталоги перенесены в <code>shared/catalogs/</code> — PDU-сиды теперь в shared/catalogs/pdus.js.',
+      'Файлы: shared/pdu-picker-modal.js, shared/catalogs/*, shared/rack-catalog-data.js (barrel).'
+    ] },
     { version: '0.59.120', date: '2026-04-21', items: [
       '<b>Фикс фильтра: «0 из 18» → корректный подбор.</b> Стандартные PDU-сиды в shared/pdus-catalog-data.js хранят кол-во розеток в поле <code>count</code>, а standalone /pdu-config/ читал поле <code>qty</code> — из-за этого <code>countOutlets()</code> всегда возвращал нули и ни одна модель не проходила минимум по розеткам. В модалке подбора PDU Конфигуратора стойки (shared/pdu-picker-modal.js) это было исправлено раньше через <code>o.qty ?? o.count</code>; теперь та же нормализация в pdu-config.js — и detail-модал показывает правильное количество.',
       'Файл: pdu-config/pdu-config.js (countOutlets + openDetail rows).'

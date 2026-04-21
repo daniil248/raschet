@@ -13,7 +13,7 @@
 // для линии. Цены не привязаны (это делается через catalog/).
 // ======================================================================
 
-import { createBreakerElement } from './element-schemas.js';
+import { createBreakerElement } from '../element-schemas.js';
 
 // Стандартный ряд In (A) для MCB — IEC 60898-1
 const MCB_IN_SERIES = [1, 2, 3, 6, 10, 13, 16, 20, 25, 32, 40, 50, 63];

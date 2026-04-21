@@ -345,11 +345,17 @@ function openPduCatalogModal(pdu) {
     const raw = localStorage.getItem('raschet.lastPduConfig.v1');
     if (raw) {
       const p = JSON.parse(raw);
-      if (p && p.sku && p.selectedAt && (Date.now() - p.selectedAt) < 24*60*60*1000) lastPdu = p;
+      // Принимаем либо полностью выбранную модель (sku), либо «только
+      // требования» (requirementsOnly:true без sku — из кнопки «Перенести
+      // требования» в модалке-пикере PDU).
+      const okTime = p && p.selectedAt && (Date.now() - p.selectedAt) < 24*60*60*1000;
+      if (okTime && (p.sku || p.requirementsOnly)) lastPdu = p;
     }
   } catch {}
   const lastPduBtn = lastPdu
-    ? `<button type="button" id="pdm-apply-last" class="pdm-btn pdm-btn-primary" title="Применить модель, выбранную в /pdu-config/ (${escape(lastPdu.manufacturer)} · ${escape(lastPdu.label)})">⬇ Из Конфигуратора PDU: ${escape(lastPdu.manufacturer)} ${escape(lastPdu.label)}</button>`
+    ? (lastPdu.requirementsOnly
+        ? `<button type="button" id="pdm-apply-last" class="pdm-btn pdm-btn-primary" title="Применить только требования (номинал/фазы/розетки), без конкретной модели">⬇ Требования из Конфигуратора PDU</button>`
+        : `<button type="button" id="pdm-apply-last" class="pdm-btn pdm-btn-primary" title="Применить модель, выбранную в /pdu-config/ (${escape(lastPdu.manufacturer)} · ${escape(lastPdu.label)})">⬇ Из Конфигуратора PDU: ${escape(lastPdu.manufacturer)} ${escape(lastPdu.label)}</button>`)
     : '';
 
   const extraFooter = `
@@ -382,7 +388,9 @@ function openPduCatalogModal(pdu) {
       // raschet.lastPduConfig.v1 напрямую, минуя выбор по таблице.
       const applyLast = box.querySelector('#pdm-apply-last');
       if (applyLast && lastPdu) applyLast.addEventListener('click', () => {
-        pdu.sku = lastPdu.sku;
+        // requirementsOnly: применяем параметры без привязки к конкретной SKU
+        if (lastPdu.requirementsOnly) pdu.sku = '';
+        else pdu.sku = lastPdu.sku;
         pdu.rating = Number(lastPdu.rating) || pdu.rating;
         pdu.phases = Number(lastPdu.phases) || pdu.phases;
         pdu.height = Number(lastPdu.height) || 0;

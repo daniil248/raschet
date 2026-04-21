@@ -11,7 +11,7 @@
 //   pduBySku(sku)         — поиск по SKU
 // ======================================================================
 
-import { _syncList, _slug } from './_catalog-helpers.js';
+import { _syncList, _slug } from './_helpers.js';
 
 export const PDU_CATEGORY = {
   basic:     'Базовый (без измерений)',

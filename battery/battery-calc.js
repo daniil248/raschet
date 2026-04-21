@@ -14,7 +14,7 @@ import * as B      from '../shared/report/blocks.js';
 // Последнее состояние расчёта АКБ для экспорта отчёта
 let lastBatteryCalc = null;
 import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
-import { KEHUA_S3_BATTERIES } from '../shared/kehua-s3-data.js';
+import { KEHUA_S3_BATTERIES } from '../shared/catalogs/battery-kehua-s3.js';
 import { listUpses, getUps } from '../shared/ups-catalog.js';
 
 const fmt = (n, d = 2) => {
