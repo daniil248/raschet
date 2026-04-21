@@ -1347,6 +1347,24 @@ function collectFittingWarnings(dir) {
       out.push(`участок #${i+1} (DN${s.DN}) длиной ${(+s.L||0).toFixed(2)} м — < 10·DN = ${Lmin.toFixed(2)} м между фитингами.`);
     }
   });
+  // Крестовые узлы (4+ трубы в одной точке).
+  const inc = new Map();               // nodeId → incoming seg count (0..1)
+  const kids = new Map();               // nodeId → outgoing seg count
+  pipe.forEach(s => {
+    inc.set(s.id, 1);                   // каждый seg «приходит» в свой конец
+    const p = s.parent || 'root';
+    kids.set(p, (kids.get(p) || 0) + 1);
+  });
+  const allNodes = new Set(['root', ...pipe.map(s => s.id)]);
+  const nodeIdx = new Map([['root', 0]]);
+  pipe.forEach((s, i) => nodeIdx.set(s.id, i + 1));
+  allNodes.forEach(id => {
+    const total = (inc.get(id) || 0) + (kids.get(id) || 0);
+    if (total >= 4) {
+      out.push(`узел N${nodeIdx.get(id)} — крестовое соединение (${total} труб); по СП 485 / FSSA допускаются только T-фитинги, замените на два T в соседних точках.`);
+    }
+  });
+
   // T-отвод вниз для жидкой фазы.
   const inst = currentInst();
   const a = inst && AGENTS[inst.agent];
@@ -1394,6 +1412,14 @@ function findAxisConflict(pipeline, nodeId, axis) {
       }
     }
   }
+  // 3a) Крестовое соединение недопустимо: в одном узле максимум T-фитинг
+  //     = 3 подходящих трубы (вход + проход + отвод). 4-я = крест.
+  const childrenNow = pipeline.filter(s => (s.parent || 'root') === nodeId).length;
+  const total = (incoming ? 1 : 0) + childrenNow + 1;      // +1 = новый участок
+  if (total > 3) {
+    return `В узле уже сходятся ${(incoming ? 1 : 0) + childrenNow} трубы — добавление ещё одной даст крестовое соединение (не допускается по СП 485 / FSSA — используйте T-фитинги).`;
+  }
+
   // 4) Смешение плоскостей: от узла, где уже есть горизонтальные отводы,
   //    нельзя пускать вертикальный (и наоборот). Учитываем и входящий участок.
   const children = pipeline.filter(s => (s.parent || 'root') === nodeId);
