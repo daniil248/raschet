@@ -812,6 +812,7 @@ function escHtml(s) {
    Диаграмма
    ======================================================================== */
 let _chartCtx = null;  // {X, Y, opts} последнего рендера — для crosshair
+let _activePoint = null;  // индекс карточки точки, на которой сейчас фокус
 function renderChart(sts) {
   const host = $('psy-chart');
   const { svg, X, Y, opts } = render(null, {
@@ -845,6 +846,15 @@ function renderChart(sts) {
                      stroke="${color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>`;
       }
     }
+  }
+  // Кольцо-подсветка активной точки (если карточка в фокусе)
+  if (Number.isFinite(_activePoint) && sts[_activePoint]) {
+    const st = sts[_activePoint];
+    overlay += `<circle cx="${X(st.W)}" cy="${Y(st.T)}" r="10" fill="none"
+                 stroke="#ff6f00" stroke-width="2" opacity="0.85">
+                <animate attributeName="r" values="10;14;10" dur="1.4s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.85;0.35;0.85" dur="1.4s" repeatCount="indefinite"/>
+               </circle>`;
   }
   sts.forEach((st, i) => {
     if (!st) return;
@@ -1249,6 +1259,27 @@ function wire() {
   // Делегирование событий в зоне цикла.
   // Любой РЕАЛЬНЫЙ ввод в текстовые/числовые поля помечает поле как
   // пользовательский ввод (data-user="1"), чтобы cascade не затирал его.
+  // Фокус на карточке → подсветка точки на диаграмме
+  $('psy-cycle').addEventListener('focusin', (e) => {
+    const card = e.target.closest('.psy-point');
+    if (!card) return;
+    const idx = +card.dataset.pointIdx;
+    if (Number.isFinite(idx) && idx !== _activePoint) {
+      _activePoint = idx;
+      update();       // перерисовать чтобы появилось кольцо
+    }
+  });
+  $('psy-cycle').addEventListener('focusout', (e) => {
+    // Задержка — если фокус перескакивает в другое поле той же карточки
+    setTimeout(() => {
+      const active = document.activeElement;
+      const card = active?.closest?.('.psy-point');
+      if (!card) {
+        if (_activePoint !== null) { _activePoint = null; update(); }
+      }
+    }, 50);
+  });
+
   $('psy-cycle').addEventListener('input', (e) => {
     const col = e.target?.dataset?.col;
     if (col && ['V','name','t','rh','x','h','Q','qw'].includes(col)) {
