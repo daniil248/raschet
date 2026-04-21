@@ -674,25 +674,47 @@ function defaultPipelineSkeleton(dir) {
   ];
 }
 
+/** Коэффициент безопасности k для Cн = k · Cmin по выбранной методике.
+ *  Все узлы расчёта (Cн в зонах, mp/mg через Annex, отчёт) используют
+ *  одно и то же k — согласовано с inst.norm. */
+function safetyFactor(norm, fireClass) {
+  const fc = String(fireClass || 'A').toUpperCase().startsWith('B') ? 'B'
+          : String(fireClass || 'A').toUpperCase().startsWith('C') ? 'C' : 'A';
+  switch (norm) {
+    case 'nfpa-2001':  return fc === 'B' ? 1.35 : 1.2;            // NFPA 2001 §5.4.2
+    case 'iso-14520':  return fc === 'B' ? 1.3  : fc === 'C' ? 1.3 : 1.2; // ISO 14520-1 §7.5
+    case 'sp-rk-2022': return fc === 'B' ? 1.3  : 1.2;            // СП РК 2.02-102-2022
+    case 'sp-485-2020':
+    case 'sp-485-annex-d':
+    default:           return fc === 'B' ? 1.3  : 1.2;            // СП 485 п. 9.1.1
+  }
+}
+
 /* ------------------- Zone dialog ------------------- */
 function openZoneDialog(dir, existingId) {
   const dlg = $('dlg-zone');
   const existing = existingId ? dir.zones.find(z => z.id === existingId) : null;
   $('dlg-zone-h').textContent = existing ? 'Зона: редактирование' : 'Зона: создание';
   const z = existing || defaultZone(dir.zones.length + 1);
-  // Cн — автоматически по выбранному агенту + классу пожара (СП 485 Прил. Д)
+  // Cн — автоматически по выбранному агенту + классу пожара.
+  // Коэффициент безопасности k зависит от выбранной в настройках установки
+  // методики (чтобы все узлы расчёта — Cн, mp, mg, Fc, DN — были
+  // согласованы по одной норме):
+  //   СП 485 / СП РК:  k = 1.2 для класса A (A2), 1.3 для B
+  //   ISO 14520:       k = 1.2 (A), 1.3 (B), 1.3 (C)
+  //   NFPA 2001:       k = 1.2 (A), 1.35 (B), 1.2 (C)
   const inst = currentInst();
   const agentObj = AGENTS[inst?.agent];
   const fc = String(dir.fireClass || 'A').toUpperCase();
-  const isB = fc.startsWith('B');
-  const kSafety = isB ? 1.3 : 1.2; // коэффициент безопасности (Сн = k · Сmin)
-  const cmin = agentObj ? (isB ? agentObj.Cmin_B : agentObj.Cmin_A) : 0;
+  const fcClass = fc.startsWith('B') ? 'B' : fc.startsWith('C') ? 'C' : 'A';
+  const kSafety = safetyFactor(inst?.norm, fcClass);
+  const cmin = agentObj ? (fcClass === 'B' ? agentObj.Cmin_B : agentObj.Cmin_A) : 0;
   const autoCn = cmin ? +(cmin * kSafety).toFixed(1) : z.Cn;
   z.Cn = autoCn;
   $('z-name').value = z.name; $('z-S').value = z.S; $('z-H').value = z.H;
   $('z-Cn').value = autoCn;
   $('z-Cn').title = agentObj
-    ? `Сн = k · Сmin = ${kSafety} · ${cmin}% = ${autoCn}%\nАгент: ${inst.agent}, класс пожара: ${fc}`
+    ? `Сн = k · Сmin = ${kSafety} · ${cmin}% = ${autoCn}%\nМетодика: ${inst?.norm}, агент: ${inst.agent}, класс пожара: ${fc}`
     : 'Сн нормируется выбранным ГОТВ';
   $('z-fs').value = z.fs;
   $('z-P').value = String(z.P);

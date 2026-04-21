@@ -198,9 +198,11 @@
 
 /* ---------- Axonometric ---------- */
 .sup-iso-body {
-  display: grid; grid-template-columns: 1fr 260px;
+  display: grid; grid-template-columns: 1fr 360px;
   height: 68vh; gap: 8px; padding: 10px;
 }
+.sup-iso-side, .sup-seg-list, .sup-seg-list .seg-item { overflow-x: hidden; }
+.sup-seg-list .seg-item { flex-wrap: wrap; }
 .sup-iso-view { display: flex; flex-direction: column; gap: 6px; border: 1px solid #e0e0e0; border-radius: 4px; background: #fff; }
 .sup-iso-tb {
   display: flex; gap: 6px; padding: 6px 8px;
