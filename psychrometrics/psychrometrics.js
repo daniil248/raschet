@@ -9,7 +9,7 @@
 import {
   state, RHfromW, humidityRatio, Pws, enthalpy, TfromHW,
   pressureAtAltitude, processPowerKW, processMoistureKgH,
-  RHO_NORMAL,
+  RHO_NORMAL, dewPointFromW,
 } from './psychrometrics-core.js';
 import { render, plotPoint, plotProcess, arrowDefs } from './psychrometrics-chart.js';
 
@@ -24,13 +24,13 @@ const S = {
   tEvap: 15,          // °C
   vBase: 10000,       // м³/ч
   points: [
-    { name: 'Наружный (зима)', t: -20, rh: 85, x: '', V: '' },
-    { name: 'После калорифера', t: 22,  rh: 18, x: '', V: '' },
-    { name: 'После увлажн.',    t: 18,  rh: 45, x: '', V: '' },
+    { name: 'Наружный (зима)', nameUser: true, t: -20, tUser: true, rh: 85, rhUser: true, x: '', V: '' },
+    { name: 'После калорифера', t: 22, tUser: true, rh: 18, rhUser: true, x: '', V: '' },
+    { name: 'После увлажн.',    t: 18, tUser: true, rh: 45, rhUser: true, x: '', V: '' },
   ],
   procs: [
-    { type: 'P' },    // 1→2 нагрев
-    { type: 'A' },    // 2→3 адиабат. увл.
+    { type: 'P', tgt: '', tgtVal: '' },    // 1→2 нагрев
+    { type: 'A', tgt: '', tgtVal: '' },    // 2→3 адиабат. увл.
   ],
 };
 
@@ -46,6 +46,42 @@ const PROC_TYPES = [
 const PROC_COLOR = {
   none: '#b0bec5', P: '#e65100', C: '#0277bd', A: '#2e7d32', S: '#6a1b9a', X: '#424242',
 };
+
+/* Авто-имя исходящей точки из типа предыдущего процесса */
+const PROC_NAME_OUT = {
+  P: 'После нагревателя',
+  C: 'После охл./осуш.',
+  A: 'После адиабат. увл.',
+  S: 'После пар. увл.',
+  X: 'Смешение/переход',
+  none: '',
+};
+
+/* Цели процесса: любую ОДНУ величину можно задать — точка 2 рассчитается */
+const PROC_TARGETS = [
+  { v: '',     t: '— (ввод точки)',  u: '' },
+  { v: 't2',   t: 't₂',               u: '°C' },
+  { v: 'dt',   t: 'Δt',               u: '°C' },
+  { v: 'phi2', t: 'φ₂',               u: '%' },
+  { v: 'd2',   t: 'd₂',               u: 'г/кг' },
+  { v: 'dd',   t: 'Δd',               u: 'г/кг' },
+  { v: 'h2',   t: 'h₂',               u: 'кДж/кг' },
+  { v: 'dh',   t: 'Δh',               u: 'кДж/кг' },
+  { v: 'Q',    t: 'Q (мощн.)',        u: 'кВт' },
+  { v: 'qw',   t: 'qw (влагопр.)',    u: 'кг/ч' },
+];
+
+/* Обратная Hyland-Wexler: по Pws → t (Ньютон по ln) */
+function invertPws(pwsTarget) {
+  let t = 20;
+  for (let i = 0; i < 60; i++) {
+    const f = Math.log(Pws(t)) - Math.log(Math.max(1e-3, pwsTarget));
+    const df = (Math.log(Pws(t + 0.01)) - Math.log(Pws(t - 0.01))) / 0.02;
+    const s = f / df; t -= s;
+    if (Math.abs(s) < 1e-4) break;
+  }
+  return t;
+}
 
 /* ========================================================================
    Утилиты
@@ -86,15 +122,16 @@ function pointCard(p, i) {
   const el = document.createElement('div');
   el.className = 'psy-point';
   el.dataset.pointIdx = String(i);
+  const du = (f) => p[f+'User'] ? '1' : '';
   el.innerHTML = `
     <div class="psy-point-header">
       <span>Точка ${i+1}</span>
       <button type="button" class="pt-del" title="Удалить точку" data-act="del" data-i="${i}">✕</button>
     </div>
-    <label>Имя<input type="text" data-col="name" data-i="${i}" value="${escAttr(p.name || '')}"></label>
-    <label>t, °C<input type="number" data-col="t" data-i="${i}" value="${p.t ?? ''}" step="0.1"></label>
-    <label>φ, %<input type="number" data-col="rh" data-i="${i}" value="${p.rh ?? ''}" step="1" min="0" max="100"></label>
-    <label>d (override), г/кг<input type="number" data-col="x" data-i="${i}" value="${p.x ?? ''}" step="0.1" placeholder="авто из φ"></label>
+    <label>Имя<input type="text" data-col="name" data-i="${i}" data-user="${du('name')}" value="${escAttr(p.name || '')}"></label>
+    <label>t, °C<input type="number" data-col="t" data-i="${i}" data-user="${du('t')}" value="${p.t ?? ''}" step="0.1"></label>
+    <label>φ, %<input type="number" data-col="rh" data-i="${i}" data-user="${du('rh')}" value="${p.rh ?? ''}" step="1" min="0" max="100"></label>
+    <label>d (override), г/кг<input type="number" data-col="x" data-i="${i}" data-user="${du('x')}" value="${p.x ?? ''}" step="0.1" placeholder="авто из φ"></label>
     <div class="pt-computed" data-role="pt-computed"></div>
   `;
   return el;
@@ -106,13 +143,23 @@ function procArrow(pr, i) {
   el.dataset.procIdx = String(i);
   const userV = S.points[i].V;
   const hasUserV = userV != null && userV !== '';
+  const tgt = pr.tgt || '';
+  const tgtUnit = PROC_TARGETS.find(x => x.v === tgt)?.u || '';
   el.innerHTML = `
     <div class="arr-label">${i+1} → ${i+2}</div>
     <select data-col="proc-type" data-i="${i}">
       ${PROC_TYPES.map(pt => `<option value="${pt.v}" ${pr.type===pt.v?'selected':''}>${pt.t}</option>`).join('')}
     </select>
     <div class="arr" data-role="arr" style="color:${PROC_COLOR[pr.type]||'#607080'}">↓</div>
-    <label style="font-size:10px;color:#666">V процесса, м³/ч
+    <label style="font-size:10px;color:#666;margin-top:4px">цель процесса
+      <select data-col="tgt" data-i="${i}">
+        ${PROC_TARGETS.map(pt => `<option value="${pt.v}" ${tgt===pt.v?'selected':''}>${pt.t}${pt.u?' ('+pt.u+')':''}</option>`).join('')}
+      </select>
+    </label>
+    <input type="number" data-col="tgtVal" data-i="${i}" value="${pr.tgtVal ?? ''}"
+      step="0.1" placeholder="${tgt ? 'значение '+tgtUnit : 'нет цели'}"
+      ${tgt ? '' : 'disabled'} style="margin-top:2px">
+    <label style="font-size:10px;color:#666;margin-top:4px">V процесса, м³/ч
       <input type="number" data-col="V" data-i="${i}" data-user="${hasUserV?'1':''}" value="${hasUserV?userV:''}" step="100">
       <span class="v-auto" data-role="v-auto" style="font-size:10px;color:#2e7d32;display:block;margin-top:2px;"></span>
     </label>
@@ -192,16 +239,190 @@ function readInputs() {
     const col = el.dataset.col;
     const i   = +el.dataset.i;
     const v   = el.value;
+    const isUser = el.dataset.user === '1';
     if (col === 'proc-type') { S.procs[i] = S.procs[i] || {}; S.procs[i].type = v; }
+    else if (col === 'tgt')    { S.procs[i] = S.procs[i] || {}; S.procs[i].tgt = v; }
+    else if (col === 'tgtVal') { S.procs[i] = S.procs[i] || {}; S.procs[i].tgtVal = v; }
     else if (col === 'V')    {
       S.points[i] = S.points[i] || {};
       // Только если пользователь реально ввёл значение (data-user="1") —
       // считаем его ведущим. Иначе — это просто отображение автосчитанного V.
-      if (el.dataset.user === '1' && v !== '') S.points[i].V = v;
+      if (isUser && v !== '') S.points[i].V = v;
       else S.points[i].V = '';
     }
-    else if (col === 'name') { S.points[i] = S.points[i] || {}; S.points[i].name = v; }
-    else                     { S.points[i] = S.points[i] || {}; S.points[i][col] = v; }
+    else if (col === 'name' || col === 't' || col === 'rh' || col === 'x') {
+      // data-user определяет, был ли ввод пользовательским. Если да — сохраняем
+      // значение и поднимаем <col>User=true. Если нет — это DOM-отражение
+      // авто-вычисленного, не трогаем S.points[i][col] (его задал cascade).
+      S.points[i] = S.points[i] || {};
+      if (isUser) { S.points[i][col] = v; S.points[i][col + 'User'] = true; }
+      else        { S.points[i][col + 'User'] = false; }
+    }
+  });
+}
+
+/* ========================================================================
+   Forward-compute: по a (state) + proc (type+tgt+tgtVal) + V + P → state b
+   ======================================================================== */
+function forwardPoint(a, proc, V, P) {
+  const tgt = proc.tgt;
+  const val = nNum(proc.tgtVal);
+  if (!tgt || !Number.isFinite(val)) return null;
+
+  const Gda = V * a.rho / (1 + a.W);  // кг_да/ч (от точки a)
+  let t2 = null, W2 = null, h2 = null;
+
+  /* 1. Инвариант процесса */
+  if (proc.type === 'P') W2 = a.W;
+  else if (proc.type === 'A') h2 = a.h;
+  else if (proc.type === 'S') t2 = a.T;
+  // C и X — без жёсткого инварианта (C обработаем отдельно)
+
+  /* 2. Цель */
+  switch (tgt) {
+    case 't2':  t2 = val; break;
+    case 'dt':  t2 = a.T + val; break;
+    case 'd2':  W2 = val / 1000; break;
+    case 'dd':  W2 = a.W + val / 1000; break;
+    case 'h2':  h2 = val; break;
+    case 'dh':  h2 = a.h + val; break;
+    case 'Q':   if (Gda > 0) h2 = a.h + val * 3600 / Gda; break;
+    case 'qw':  if (Gda > 0) W2 = a.W + val / Gda; break;
+    case 'phi2': {
+      const phi = val / 100;
+      if (proc.type === 'P') {
+        const pv = a.W * P / (0.621945 + a.W);
+        t2 = invertPws(pv / Math.max(1e-4, phi));
+        W2 = a.W;
+      } else if (proc.type === 'S') {
+        t2 = a.T;
+        const pv = phi * Pws(t2);
+        W2 = 0.621945 * pv / (P - pv);
+      } else if (proc.type === 'A') {
+        let tt = a.T - 3;
+        for (let it = 0; it < 40; it++) {
+          const pv = phi * Pws(tt);
+          const W_try = 0.621945 * pv / (P - pv);
+          const h_try = 1.006 * tt + W_try * (2501 + 1.86 * tt);
+          const tt2 = tt + 0.05;
+          const pv2 = phi * Pws(tt2);
+          const W2x = 0.621945 * pv2 / (P - pv2);
+          const h2x = 1.006 * tt2 + W2x * (2501 + 1.86 * tt2);
+          const f = h_try - a.h;
+          const df = (h2x - h_try) / 0.05;
+          if (Math.abs(df) < 1e-8) break;
+          const s = f / df; tt -= s;
+          if (Math.abs(s) < 1e-3) break;
+        }
+        t2 = tt;
+        const pv = phi * Pws(t2);
+        W2 = 0.621945 * pv / (P - pv);
+      } else if (proc.type === 'C') {
+        // C + φ2: охлаждение, конечная φ на насыщении — лучше сделать t2 из d=a.W
+        t2 = invertPws((a.W * P / (0.621945 + a.W)) / Math.max(1e-4, phi));
+        W2 = a.W;  // без осушения
+      } else {
+        // X: принимаем t2 = a.T (без изменения), W по φ
+        t2 = a.T;
+        const pv = phi * Pws(t2);
+        W2 = 0.621945 * pv / (P - pv);
+      }
+      break;
+    }
+  }
+
+  /* 3. Замыкание: h ↔ t/W */
+  if (t2 == null && W2 != null && h2 != null) t2 = (h2 - 2501 * W2) / (1.006 + 1.86 * W2);
+  if (W2 == null && t2 != null && h2 != null) W2 = (h2 - 1.006 * t2) / (2501 + 1.86 * t2);
+
+  /* 4. Специальная логика C (охлаждение с осушением) */
+  if (proc.type === 'C') {
+    if (W2 == null && t2 != null) {
+      // если t2 ниже точки росы a — идём по φ=100% (с осушением)
+      if (t2 < a.Td - 0.05) W2 = humidityRatio(t2, 1.0, P);
+      else W2 = a.W;   // сухое охлаждение
+    }
+    if (t2 == null && W2 != null) {
+      // если W2 < a.W — это осушение; t2 = температура насыщения при этом W
+      if (W2 < a.W - 1e-6) t2 = dewPointFromW(W2, P);
+      else t2 = a.T; // нечего делать
+    }
+  }
+
+  /* 5. X: если не хватает одной переменной — нельзя */
+  if (proc.type === 'X') {
+    if (t2 == null || W2 == null) return null;
+  }
+
+  if (t2 == null || W2 == null) return null;
+  // Ограничиваем W в пределах насыщения (строгое условие)
+  const Ws = humidityRatio(t2, 1.0, P);
+  if (W2 > Ws * 1.001) W2 = Ws;
+  if (W2 < 0) W2 = 0;
+  return state(t2, Math.max(0, Math.min(1, RHfromW(t2, W2, P))), P);
+}
+
+/* ========================================================================
+   Cascade: авто-имена + forward-compute точки 2+ если задана цель процесса
+   ======================================================================== */
+function cascade() {
+  for (let i = 1; i < S.points.length; i++) {
+    const proc = S.procs[i-1] || { type: 'P' };
+    const p = S.points[i];
+    // Авто-имя
+    if (!p.nameUser) {
+      p.name = PROC_NAME_OUT[proc.type] || '';
+    }
+    // Forward-compute если задана цель и точка i-1 валидна
+    const aState = pointState(S.points[i-1], S.P);
+    if (!aState) continue;
+    if (proc.tgt && proc.tgtVal !== '' && proc.tgtVal != null) {
+      // V сегмента: если у i-1 задан user V — используем, иначе через S.vBase
+      let V_seg = nNum(S.points[i-1].V);
+      if (!(V_seg > 0)) {
+        // для простоты используем базовый (cascade до mass-balance)
+        V_seg = S.vBase;
+      }
+      const bState = forwardPoint(aState, proc, V_seg, S.P);
+      if (bState) {
+        // Записываем в S.points[i] computed t/rh/x (без user-флага)
+        if (!p.tUser)  p.t  = Number(bState.T.toFixed(2));
+        if (!p.rhUser) p.rh = Number(bState.RH.toFixed(2));
+        if (!p.xUser)  p.x  = '';   // расчёт идёт от φ, override чистим
+      }
+    }
+  }
+}
+
+/* Записывает S.points значения в DOM input'ы (только auto-поля). */
+function writeCardsFromState() {
+  S.points.forEach((p, i) => {
+    const card = document.querySelector(`.psy-point[data-point-idx="${i}"]`);
+    if (!card) return;
+    ['name','t','rh','x'].forEach(col => {
+      const inp = card.querySelector(`[data-col="${col}"]`);
+      if (!inp) return;
+      const isUser = inp.dataset.user === '1';
+      if (isUser) return;  // не перезаписываем ввод пользователя
+      if (document.activeElement === inp) return;
+      const v = p[col];
+      inp.value = (v == null || v === '') ? '' : String(v);
+    });
+  });
+  // Обновляем placeholder и состояние tgtVal/tgt у стрелок
+  S.procs.forEach((pr, i) => {
+    const arr = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"]`);
+    if (!arr) return;
+    const tgt = pr.tgt || '';
+    const tgtInp = arr.querySelector('input[data-col="tgtVal"]');
+    if (tgtInp) {
+      if (tgt === '') { tgtInp.disabled = true; tgtInp.placeholder = 'нет цели'; }
+      else {
+        tgtInp.disabled = false;
+        const u = PROC_TARGETS.find(x => x.v === tgt)?.u || '';
+        tgtInp.placeholder = 'значение ' + u;
+      }
+    }
   });
 }
 
@@ -445,11 +666,11 @@ function renderFormulas() {
 function loadDemo() {
   S.alt = 0; S.P = 101325; S.rhMax = 100; S.tEvap = 15; S.vBase = 10000;
   S.points = [
-    { name: 'Лето наружный',  t: 35, rh: 50, x: '', V: '' },
-    { name: 'После охл./осуш.', t: 14, rh: 97, x: '', V: '' },
-    { name: 'После доводчика',  t: 22, rh: 48, x: '', V: '' },
+    { name: 'Лето наружный',  nameUser: true, t: 35, tUser: true, rh: 50, rhUser: true, x: '', V: '' },
+    { name: 'После охл./осуш.', t: 14, tUser: true, rh: 97, rhUser: true, x: '', V: '' },
+    { name: 'После доводчика',  t: 22, tUser: true, rh: 48, rhUser: true, x: '', V: '' },
   ];
-  S.procs = [ { type:'C' }, { type:'P' } ];
+  S.procs = [ { type:'C', tgt:'', tgtVal:'' }, { type:'P', tgt:'', tgtVal:'' } ];
   syncTopInputs();
   renderCycle();
   update();
@@ -469,6 +690,8 @@ function syncTopInputs() {
 /* Полный пересчёт БЕЗ пересоздания inputs (чтобы не терять фокус). */
 function update() {
   readInputs();
+  cascade();                  // авто-имена + forward-compute точек по цели процесса
+  writeCardsFromState();      // пушим S → DOM для auto-полей (t, φ, имя) без user-флага
   refreshComputedInCards();
   const { sts, segs, primaryIdx } = computeCycle();
   refreshAutoV(segs, primaryIdx);
@@ -493,13 +716,20 @@ function wire() {
     $(id).addEventListener('change', update);
   });
 
-  // Делегирование событий в зоне цикла
+  // Делегирование событий в зоне цикла.
+  // Любой РЕАЛЬНЫЙ ввод в текстовые/числовые поля помечает поле как
+  // пользовательский ввод (data-user="1"), чтобы cascade не затирал его.
   $('psy-cycle').addEventListener('input', (e) => {
-    // Помечаем V-поле как user-ввод только при реальном вводе
-    if (e.target?.dataset?.col === 'V') e.target.dataset.user = '1';
+    const col = e.target?.dataset?.col;
+    if (col && ['V','name','t','rh','x'].includes(col)) {
+      e.target.dataset.user = '1';
+    }
     update();
   });
-  $('psy-cycle').addEventListener('change', update);
+  $('psy-cycle').addEventListener('change', (e) => {
+    // select (proc-type, tgt) не помечаем user — это мета
+    update();
+  });
   // Blur на V с пустым значением → снимаем user-флаг (поле снова auto)
   $('psy-cycle').addEventListener('blur', (e) => {
     if (e.target?.dataset?.col === 'V' && e.target.value.trim() === '') {
@@ -520,11 +750,11 @@ function wire() {
   $('psy-add').addEventListener('click', () => {
     const last = S.points[S.points.length-1];
     S.points.push({ name:'', t: last?.t ?? 22, rh: last?.rh ?? 50, x:'', V:'' });
-    S.procs.push({ type: 'X' });
+    S.procs.push({ type: 'X', tgt:'', tgtVal:'' });
     rerenderCycle();
   });
   $('psy-clear').addEventListener('click', () => {
-    S.points = [{ name:'Точка 1', t: 22, rh: 50, x:'', V:'' }];
+    S.points = [{ name:'Точка 1', nameUser:true, t: 22, tUser:true, rh: 50, rhUser:true, x: '', V: '' }];
     S.procs = [];
     rerenderCycle();
   });
