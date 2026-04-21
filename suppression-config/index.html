@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Расчёт газового пожаротушения (АГПТ)</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="suppression-config.css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Расчёт газового пожаротушения (АГПТ)', home: '../hub.html' });
+  </script>
+
+  <div class="sup-wrap">
+    <div class="sup-grid">
+      <!-- ============ Форма ============ -->
+      <aside class="sup-form">
+        <section class="sup-section">
+          <h2>1. Методика расчёта</h2>
+          <label class="sup-field">
+            <span>Нормативный документ</span>
+            <select id="sup-method"></select>
+          </label>
+          <div class="sup-hint" id="sup-method-refs"></div>
+        </section>
+
+        <section class="sup-section">
+          <h2>2. Параметры защищаемого объёма</h2>
+          <label class="sup-field">
+            <span>Объём V, м³</span>
+            <input type="number" id="sup-V" value="120" min="1" step="1">
+          </label>
+          <label class="sup-field">
+            <span>Высота H, м</span>
+            <input type="number" id="sup-H" value="3" min="2" max="20" step="0.1">
+          </label>
+          <label class="sup-field">
+            <span>Класс пожара</span>
+            <select id="sup-class">
+              <option value="A" selected>A (твёрдые материалы, электроника)</option>
+              <option value="B">B (горючие жидкости)</option>
+              <option value="C">C (газы)</option>
+            </select>
+          </label>
+          <label class="sup-field">
+            <span>Класс герметичности</span>
+            <select id="sup-leak">
+              <option value="I">I (герметичное)</option>
+              <option value="II" selected>II (нормальное)</option>
+              <option value="III">III (с проёмами)</option>
+            </select>
+          </label>
+          <label class="sup-field">
+            <span>Температура в помещении, °C</span>
+            <input type="number" id="sup-temp" value="20" min="-30" max="60" step="1">
+          </label>
+          <label class="sup-field">
+            <span>Высота над уровнем моря, м</span>
+            <input type="number" id="sup-alt" value="200" min="0" max="3000" step="50">
+          </label>
+        </section>
+
+        <section class="sup-section">
+          <h2>3. ГОТВ</h2>
+          <label class="sup-field">
+            <span>Вид ГОТВ</span>
+            <select id="sup-agent"></select>
+          </label>
+          <div class="sup-hint" id="sup-agent-info"></div>
+          <label class="sup-field">
+            <span>Типоразмер баллона</span>
+            <select id="sup-cylinder"></select>
+          </label>
+        </section>
+
+        <section class="sup-section">
+          <h2>4. Трубопровод</h2>
+          <label class="sup-field">
+            <span>Материал трубы</span>
+            <select id="sup-pipe-mat">
+              <option value="steel">Сталь Ст.20 (бесшовная)</option>
+              <option value="stainless" selected>Нерж. сталь AISI 304/316</option>
+              <option value="copper">Медь</option>
+            </select>
+          </label>
+          <label class="sup-field">
+            <span>Эквивалентная длина, м (запас)</span>
+            <input type="number" id="sup-pipe-len" value="0" min="0" step="1">
+          </label>
+          <div class="sup-hint">Длина определяется автоматически по объёму.
+            При 0 — автоматический расчёт. Можно указать вручную.</div>
+        </section>
+
+        <div class="sup-actions">
+          <button type="button" class="sup-btn sup-btn-primary" id="sup-export-xlsx">📋 Отчёт (XLSX)</button>
+          <button type="button" class="sup-btn" id="sup-export-html">📄 HTML-отчёт</button>
+        </div>
+      </aside>
+
+      <!-- ============ Результат ============ -->
+      <main class="sup-view">
+        <div class="sup-tabs">
+          <div class="sup-tab active" data-tab="calc">Расчёт</div>
+          <div class="sup-tab" data-tab="pipe">Трубопровод (3D)</div>
+          <div class="sup-tab" data-tab="spec">Спецификация</div>
+        </div>
+
+        <div id="sup-panel-calc">
+          <div class="sup-summary" id="sup-summary"></div>
+          <h3 style="font-size:13px;color:#1565c0;margin:10px 0 6px;">Ход расчёта</h3>
+          <div class="sup-steps" id="sup-steps"></div>
+        </div>
+
+        <div id="sup-panel-pipe" style="display:none;">
+          <div class="sup-pipe" id="sup-pipe-view"></div>
+          <div class="sup-legend">
+            <span><i style="background:#B85450"></i>магистраль</span>
+            <span><i style="background:#6C8EBF"></i>распределительная сеть</span>
+            <span><i style="background:#82B366;border-radius:50%;"></i>форсунка</span>
+            <span><i style="background:#D79B00"></i>баллон ГОТВ</span>
+          </div>
+        </div>
+
+        <div id="sup-panel-spec" style="display:none;">
+          <div id="sup-spec"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="suppression-config.js"></script>
+</body>
+</html>

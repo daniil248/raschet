@@ -1,0 +1,95 @@
+/* =========================================================================
+   suppression-config.css — gas fire suppression calculator (АГПТ)
+   ========================================================================= */
+
+.sup-wrap { max-width: 1600px; margin: 0 auto; padding: 16px; }
+.sup-grid {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .sup-grid { grid-template-columns: 1fr; }
+}
+
+.sup-form, .sup-view {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.sup-section { margin-bottom: 14px; border-bottom: 1px dashed #eee; padding-bottom: 10px; }
+.sup-section:last-child { border-bottom: none; }
+.sup-section h2 {
+  font-size: 13px; margin: 0 0 8px; color: #1565c0;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.sup-field {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-bottom: 7px; font-size: 12px;
+}
+.sup-field span { color: #444; font-weight: 500; }
+.sup-field input, .sup-field select {
+  padding: 6px 8px; border: 1px solid #bdbdbd; border-radius: 4px;
+  font-size: 12px; background: #fff;
+}
+.sup-field input:focus, .sup-field select:focus {
+  outline: none; border-color: #1565c0;
+  box-shadow: 0 0 0 2px rgba(21,101,192,0.15);
+}
+.sup-hint { font-size: 11px; color: #666; padding: 4px 0; line-height: 1.35; }
+
+.sup-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.sup-btn {
+  padding: 7px 12px; border-radius: 4px; border: 1px solid #bdbdbd;
+  background: #fff; cursor: pointer; font-size: 12px; font-weight: 600;
+}
+.sup-btn:hover { background: #f5f5f5; }
+.sup-btn-primary { background: #1565c0; color: #fff; border-color: #0d47a1; }
+.sup-btn-primary:hover { background: #0d47a1; }
+
+.sup-tabs { display: flex; gap: 2px; border-bottom: 2px solid #e0e0e0; margin-bottom: 12px; }
+.sup-tab {
+  padding: 7px 14px; cursor: pointer; font-size: 12px; font-weight: 600;
+  color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px;
+}
+.sup-tab.active { color: #1565c0; border-bottom-color: #1565c0; }
+.sup-tab:hover { color: #1565c0; }
+
+.sup-summary {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px; margin-bottom: 14px;
+}
+.sup-summary .card {
+  background: #f5f9ff; border: 1px solid #c5d9ef; border-radius: 4px;
+  padding: 6px 8px; display: flex; flex-direction: column; gap: 2px;
+}
+.sup-summary .card.warn { background: #fff3e0; border-color: #ffb74d; }
+.sup-summary .card.big  { background: #e8f5e8; border-color: #81c784; }
+.sup-summary .label { font-size: 10px; color: #666; text-transform: uppercase; }
+.sup-summary .value { font-size: 14px; font-weight: 700; color: #0d47a1; }
+
+.sup-steps {
+  background: #fafbfc; border: 1px solid #e0e0e0; border-radius: 4px;
+  padding: 10px 12px; margin-bottom: 12px;
+  font-family: 'Consolas', 'Monaco', monospace; font-size: 11px;
+  line-height: 1.55; color: #263238; white-space: pre-wrap;
+}
+.sup-steps b { color: #1565c0; }
+
+.sup-report h3 { font-size: 13px; color: #1565c0; margin: 14px 0 6px; }
+.sup-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 8px; }
+.sup-table th, .sup-table td {
+  border: 1px solid #cfd8dc; padding: 4px 7px; text-align: left;
+}
+.sup-table th { background: #eceff1; font-weight: 700; }
+.sup-table td.num { text-align: right; font-family: Consolas, Monaco, monospace; }
+
+.sup-pipe { background: #fafafa; border: 1px solid #cfd8dc; border-radius: 4px; }
+.sup-pipe svg { display: block; width: 100%; height: auto; }
+.sup-legend { display: flex; gap: 10px; font-size: 11px; color: #555; padding: 6px 10px; flex-wrap: wrap; }
+.sup-legend i {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 4px; vertical-align: middle;
+}
