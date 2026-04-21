@@ -330,11 +330,11 @@ function openPduWizardModal(pduIdx) {
     </div>
   `;
   document.body.appendChild(overlay);
-  // Скрываем кнопку помощи «?» (rs-help-fab, z:9990) пока модалка открыта — иначе она проглядывает через backdrop рядом с нижними кнопками.
+  // Помощь «?» остаётся доступна поверх модалки: поднимаем её z-index выше оверлея (10001 → 10060) и сдвигаем выше, чтобы не перекрывать нижние кнопки iframe «Применить/Закрыть».
   const helpFab = document.querySelector('.rs-help-fab');
-  const helpFabPrevDisplay = helpFab ? helpFab.style.display : '';
-  if (helpFab) helpFab.style.display = 'none';
-  const close = () => { overlay.remove(); window.removeEventListener('message', onMsg); if (helpFab) helpFab.style.display = helpFabPrevDisplay; };
+  const prevFab = helpFab ? { z: helpFab.style.zIndex, b: helpFab.style.bottom } : null;
+  if (helpFab) { helpFab.style.zIndex = '10060'; helpFab.style.bottom = '92px'; }
+  const close = () => { overlay.remove(); window.removeEventListener('message', onMsg); if (helpFab && prevFab) { helpFab.style.zIndex = prevFab.z; helpFab.style.bottom = prevFab.b; } };
   overlay.querySelector('[data-act="close"]').onclick = close;
   overlay.querySelector('.rc-pdu-wizard-backdrop').onclick = close;
 
