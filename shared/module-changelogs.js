@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.104', date: '2026-04-21', items: [
+      'Убрано дублирование err о занижении PDU: для 2N/N+1 проверку занижения делает мода-специфичный блок (weakFeeds / remaining < demandKw), общая per-feed ошибка «PDU < needed» теперь срабатывает только в режиме «без резервирования», чтобы не плодить дубли. Предупреждение о завышенном PDU (>1.8×needed) остаётся во всех режимах.',
+      'Файл: rack-config/rack-config.js (computeWarnings: пропуск err для redMode).'
+    ] },
     { version: '0.59.103', date: '2026-04-21', items: [
       'Справка (ⓘ → Расчёты) обновлена под новую логику: описан расчёт needed per feed (2N/N+1 → полная demandKw; none → пропорц.), три независимые проверки (PDU < needed = err, PDU > 1.8·needed = warn, avail < needed = err). Явно указано, что PDU vs available больше не сравнивается.',
       'Файл: rack-config/index.html (секция «Сверка с электрической схемой»).'

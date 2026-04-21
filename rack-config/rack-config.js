@@ -1001,13 +1001,16 @@ function computeWarnings() {
     }
   });
 
-  // v0.59.101: проверка запаса PDU относительно требуемой мощности.
-  // PDU должен быть ≥ нагрузки (занижение = err); если > 80% запаса (PDU > 1.8×needed)
-  // — предупреждение о сильно завышенном типоразмере PDU.
+  // v0.59.104: проверка запаса PDU. Для 2N/N+1 занижение уже ловится
+  // модой-специфичной проверкой выше (weakFeeds / remaining < demandKw),
+  // дублировать err не нужно. Во всех режимах добавляем warn о перезапасе
+  // (PDU > 1.8×needed — рекомендуем меньший типоразмер). Для 'none'
+  // занижение PDU уже ловит общий `Σ < demandKw`, но per-feed здесь полезно.
   feeds.forEach(f => {
     const need = neededPerFeed[f] || 0;
     if (need <= 0) return;
-    if (byFeed[f] + 1e-6 < need) {
+    const redMode = (mode === '2N' || mode === '2n' || mode === 'n+1');
+    if (!redMode && byFeed[f] + 1e-6 < need) {
       out.push({ lvl: 'err',
         msg: `Ввод ${f}: номинал PDU ${byFeed[f].toFixed(2)} кВт меньше требуемой нагрузки ${need.toFixed(2)} кВт — не хватит запитать оборудование.` });
     } else if (byFeed[f] > need * 1.8 + 1e-6) {
