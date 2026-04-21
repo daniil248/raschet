@@ -181,16 +181,176 @@
         <div id="pc-wiz-breakers"></div>
         <div class="wiz-actions">
           <button id="pc-wiz-back-3" class="btn-sm">← Назад</button>
-          <button id="pc-wiz-next-3" class="btn-sm btn-primary">Далее → Итог</button>
+          <button id="pc-wiz-next-3" class="btn-sm btn-primary">Далее → Учёт и мониторинг</button>
         </div>
       </div>
 
-      <!-- Шаг 4: Итог -->
+      <!-- Шаг 4: Учёт, ТТ, мониторинг, аксессуары -->
       <div id="pc-wiz-step-4" class="wiz-step" style="display:none">
-        <h4>Шаг 4. Итоговая конфигурация</h4>
-        <div id="pc-wiz-summary"></div>
+        <h4>Шаг 4. Учёт, ТТ, мониторинг, аксессуары</h4>
+        <p class="muted" style="font-size:12px">Измерительные трансформаторы, приборы учёта, мониторинг и навесное оборудование. Можно включать для всех линий, только вводов или выборочно.</p>
+
+        <!-- Коммерческий учёт -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-meter-com-en"> <b>Коммерческий учёт</b> <span class="muted" style="font-size:11px">(АСКУЭ, класс 0.5S)</span></label>
+          </div>
+          <div id="pc-meter-com-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Прибор учёта
+                <select id="pc-meter-com-type">
+                  <option value="mercury-230">Меркурий 230</option>
+                  <option value="mercury-234">Меркурий 234</option>
+                  <option value="ce303">Энергомера СЕ303</option>
+                  <option value="a1800" selected>Landis+Gyr E650 / A1800</option>
+                  <option value="iem3255">Schneider iEM3255</option>
+                  <option value="other">Другой (указать в примечании)</option>
+                </select>
+              </label>
+              <label>Точка установки
+                <select id="pc-meter-com-pos">
+                  <option value="input" selected>На вводе (до автомата)</option>
+                  <option value="after-input">После вводного автомата</option>
+                </select>
+              </label>
+              <label>Примечание
+                <input type="text" id="pc-meter-com-note" placeholder="класс 0.5S, учёт активной+реактивной">
+              </label>
+            </div>
+            <div class="muted" style="font-size:11px">Класс точности 0.5S обязателен для расчёта с сетевой компанией. Требует ТТ класса 0.5S (включается автоматически ниже).</div>
+          </div>
+        </div>
+
+        <!-- Технический учёт -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-meter-tech-en"> <b>Технический учёт</b> <span class="muted" style="font-size:11px">(внутренний, по отходящим)</span></label>
+          </div>
+          <div id="pc-meter-tech-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Прибор учёта
+                <select id="pc-meter-tech-type">
+                  <option value="iem3155" selected>Schneider iEM3155</option>
+                  <option value="iem3255">Schneider iEM3255</option>
+                  <option value="pm2120">Schneider PM2120</option>
+                  <option value="mercury-236">Меркурий 236</option>
+                  <option value="ce308">Энергомера СЕ308</option>
+                  <option value="other">Другой</option>
+                </select>
+              </label>
+              <label>Охват
+                <select id="pc-meter-tech-scope">
+                  <option value="input">Только вводные</option>
+                  <option value="each">Каждая отходящая</option>
+                  <option value="selected" selected>Выборочно (ниже)</option>
+                </select>
+              </label>
+            </div>
+            <div id="pc-meter-tech-sel" class="pc-acc-list"></div>
+          </div>
+        </div>
+
+        <!-- Трансформаторы тока -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-ct-en"> <b>Трансформаторы тока (ТТ)</b> <span class="muted" style="font-size:11px">первичный номинал подбирается автоматически</span></label>
+          </div>
+          <div id="pc-ct-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Охват
+                <select id="pc-ct-scope">
+                  <option value="input" selected>Только вводные</option>
+                  <option value="each">Каждый автомат</option>
+                  <option value="selected">Выборочно</option>
+                </select>
+              </label>
+              <label>Класс точности
+                <select id="pc-ct-class">
+                  <option value="0.5S" selected>0.5S (коммерческий учёт)</option>
+                  <option value="0.5">0.5 (техн. учёт)</option>
+                  <option value="1">1.0 (амперметр/индикация)</option>
+                  <option value="3">3 (защита)</option>
+                  <option value="5P10">5P10 (защита)</option>
+                </select>
+              </label>
+              <label>Мощность, ВА
+                <select id="pc-ct-va">
+                  <option value="2.5">2.5</option>
+                  <option value="5" selected>5</option>
+                  <option value="10">10</option>
+                  <option value="15">15</option>
+                  <option value="30">30</option>
+                </select>
+              </label>
+              <label>Вторичная обмотка
+                <select id="pc-ct-secondary">
+                  <option value="5" selected>5 А</option>
+                  <option value="1">1 А</option>
+                </select>
+              </label>
+            </div>
+            <div id="pc-ct-list" class="pc-acc-list"></div>
+            <div class="muted" style="font-size:11px">Авто-номинал: ближайший стандартный ряд ≥ 1.25 · Iₙ автомата (ГОСТ 7746 / IEC 61869-2).</div>
+          </div>
+        </div>
+
+        <!-- Мониторинг -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-mon-en"> <b>Мониторинг</b> <span class="muted" style="font-size:11px">мультиметры / анализаторы качества / дискретные входы</span></label>
+          </div>
+          <div id="pc-mon-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Охват
+                <select id="pc-mon-scope">
+                  <option value="input" selected>Только вводные</option>
+                  <option value="each">Каждый автомат</option>
+                  <option value="selected">Выборочно</option>
+                </select>
+              </label>
+              <label>Устройство
+                <select id="pc-mon-device">
+                  <option value="multimeter" selected>Мультиметр (U, I, P, Q, S, cosφ)</option>
+                  <option value="pq-analyzer">Анализатор качества (THD, flicker)</option>
+                  <option value="aux-io">Дискр. вход (positions/trip)</option>
+                  <option value="relay-output">Сигнальное реле</option>
+                </select>
+              </label>
+              <label>Интерфейс
+                <select id="pc-mon-bus">
+                  <option value="modbus-rtu" selected>Modbus RTU (RS-485)</option>
+                  <option value="modbus-tcp">Modbus TCP</option>
+                  <option value="dry-contact">Сухие контакты</option>
+                  <option value="none">Только локальная индикация</option>
+                </select>
+              </label>
+            </div>
+            <div id="pc-mon-list" class="pc-acc-list"></div>
+          </div>
+        </div>
+
+        <!-- Аксессуары -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <b>Принадлежности из каталога</b>
+            <button type="button" id="pc-acc-add" class="btn-sm">+ Добавить</button>
+          </div>
+          <div id="pc-acc-rows"></div>
+          <div class="muted" style="font-size:11px">Реле напряжения, лампы сигнализации, замки, обогрев, вентиляторы, термостаты, шинодержатели и т.п. Позиции войдут в спецификацию.</div>
+        </div>
+
         <div class="wiz-actions">
           <button id="pc-wiz-back-4" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-next-4" class="btn-sm btn-primary">Далее → Итог</button>
+        </div>
+      </div>
+
+      <!-- Шаг 5: Итог -->
+      <div id="pc-wiz-step-5" class="wiz-step" style="display:none">
+        <h4>Шаг 5. Итоговая конфигурация</h4>
+        <div id="pc-wiz-summary"></div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-5" class="btn-sm">← Назад</button>
           <button id="pc-wiz-apply" class="btn-sm btn-primary">✓ Применить к схеме</button>
         </div>
       </div>

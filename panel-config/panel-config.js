@@ -282,7 +282,43 @@ const pcWizState = {
   },
   selectedEnclosure: null,
   breakers: [], // { name, inA, curve, role }
+  // v0.59.78: учёт / ТТ / мониторинг / аксессуары
+  metering: {
+    commercial: { enabled: false, type: 'a1800', pos: 'input', note: '' },
+    technical:  { enabled: false, type: 'iem3155', scope: 'selected', selected: [] },
+  },
+  ct: {
+    enabled: false,
+    scope: 'input',           // input | each | selected
+    selected: [],             // массив индексов breakers[]
+    accuracyClass: '0.5S',    // 0.5S | 0.5 | 1 | 3 | 5P10
+    vaBurden: 5,
+    secondary: 5,             // 5 или 1 А
+    perBreaker: {},           // idx → { primary: 200, label: '200/5' }
+  },
+  monitoring: {
+    enabled: false,
+    scope: 'input',           // input | each | selected
+    selected: [],
+    device: 'multimeter',
+    bus: 'modbus-rtu',
+  },
+  accessories: [],            // [{ name, qty, note }]
 };
+
+// Стандартный ряд первичных токов ТТ (ГОСТ 7746 / IEC 61869-2).
+const PC_CT_PRIMARY_RATIOS = [
+  50, 75, 100, 150, 200, 250, 300, 400, 500, 600, 750, 800,
+  1000, 1250, 1500, 1600, 2000, 2500, 3000, 4000, 5000, 6300
+];
+
+function _pcPickCtPrimary(breakerInA) {
+  // Авто-подбор: первичный >= 1.25·Iₙ автомата (типовой запас для защиты
+  // от насыщения и длительной перегрузки автомата). Не меньше Iₙ.
+  const need = Math.max(breakerInA || 0, (breakerInA || 0) * 1.25);
+  for (const p of PC_CT_PRIMARY_RATIOS) if (p >= need) return p;
+  return PC_CT_PRIMARY_RATIOS[PC_CT_PRIMARY_RATIOS.length - 1];
+}
 
 // Расчёт тока по мощности и напряжению
 function _pcCalcCurrent(kW, voltage) {
@@ -347,6 +383,8 @@ function initPanelWizard() {
   document.getElementById('pc-wiz-back-3').onclick = () => _pcShowStep(2);
   document.getElementById('pc-wiz-next-3').onclick = _pcGoStep4;
   document.getElementById('pc-wiz-back-4').onclick = () => _pcShowStep(3);
+  document.getElementById('pc-wiz-next-4').onclick = _pcGoStep5;
+  document.getElementById('pc-wiz-back-5').onclick = () => _pcShowStep(4);
   document.getElementById('pc-wiz-apply').onclick = _pcApplyConfiguration;
 }
 
@@ -377,13 +415,13 @@ function _pcReadStep1() {
 }
 
 function _pcShowStep(n) {
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     const el = document.getElementById('pc-wiz-step-' + i);
     if (el) el.style.display = (i === n) ? '' : 'none';
   });
   pcWizState.step = n;
   const ind = document.getElementById('pc-wiz-step-indicator');
-  if (ind) ind.textContent = 'Шаг ' + n + ' из 4';
+  if (ind) ind.textContent = 'Шаг ' + n + ' из 5';
 }
 
 // ----- Шаг 2: подбор оболочки -----
@@ -548,8 +586,279 @@ function _pcGoStep3() {
   _pcShowStep(3);
 }
 
-// ----- Шаг 4: итог -----
+// ----- Шаг 4: учёт, ТТ, мониторинг, аксессуары (v0.59.78) -----
 function _pcGoStep4() {
+  _pcRenderStep4();
+  _pcShowStep(4);
+}
+
+function _pcRenderStep4() {
+  const brs = pcWizState.breakers || [];
+
+  // ===== Коммерческий учёт =====
+  const g = id => document.getElementById(id);
+  const com = pcWizState.metering.commercial;
+  const tech = pcWizState.metering.technical;
+  const ct  = pcWizState.ct;
+  const mon = pcWizState.monitoring;
+
+  const setToggle = (chk, body, val) => {
+    if (!chk) return;
+    chk.checked = !!val;
+    if (body) body.style.display = val ? '' : 'none';
+  };
+  const bindToggle = (chkId, bodyId, prop) => {
+    const chk = g(chkId), body = g(bodyId);
+    if (!chk) return;
+    chk.onchange = () => {
+      prop.enabled = chk.checked;
+      if (body) body.style.display = chk.checked ? '' : 'none';
+      // пересчитать ТТ-список, т.к. коммерческий учёт обычно тянет за собой CT
+      if (chkId === 'pc-meter-com-en' && chk.checked && !ct.enabled) {
+        ct.enabled = true;
+        setToggle(g('pc-ct-en'), g('pc-ct-body'), true);
+      }
+      _pcRefreshStep4Lists();
+    };
+  };
+  setToggle(g('pc-meter-com-en'), g('pc-meter-com-body'), com.enabled);
+  setToggle(g('pc-meter-tech-en'), g('pc-meter-tech-body'), tech.enabled);
+  setToggle(g('pc-ct-en'), g('pc-ct-body'), ct.enabled);
+  setToggle(g('pc-mon-en'), g('pc-mon-body'), mon.enabled);
+  bindToggle('pc-meter-com-en', 'pc-meter-com-body', com);
+  bindToggle('pc-meter-tech-en', 'pc-meter-tech-body', tech);
+  bindToggle('pc-ct-en', 'pc-ct-body', ct);
+  bindToggle('pc-mon-en', 'pc-mon-body', mon);
+
+  // Значения коммерческого
+  if (g('pc-meter-com-type')) { g('pc-meter-com-type').value = com.type; g('pc-meter-com-type').onchange = e => com.type = e.target.value; }
+  if (g('pc-meter-com-pos'))  { g('pc-meter-com-pos').value = com.pos;  g('pc-meter-com-pos').onchange = e => com.pos = e.target.value; }
+  if (g('pc-meter-com-note')) { g('pc-meter-com-note').value = com.note || ''; g('pc-meter-com-note').oninput = e => com.note = e.target.value; }
+
+  // Технический учёт
+  if (g('pc-meter-tech-type'))  { g('pc-meter-tech-type').value = tech.type; g('pc-meter-tech-type').onchange = e => tech.type = e.target.value; }
+  if (g('pc-meter-tech-scope')) {
+    g('pc-meter-tech-scope').value = tech.scope;
+    g('pc-meter-tech-scope').onchange = e => { tech.scope = e.target.value; _pcRefreshStep4Lists(); };
+  }
+
+  // ТТ
+  if (g('pc-ct-scope'))     { g('pc-ct-scope').value = ct.scope;         g('pc-ct-scope').onchange = e => { ct.scope = e.target.value; _pcRefreshStep4Lists(); }; }
+  if (g('pc-ct-class'))     { g('pc-ct-class').value = ct.accuracyClass; g('pc-ct-class').onchange = e => ct.accuracyClass = e.target.value; }
+  if (g('pc-ct-va'))        { g('pc-ct-va').value = String(ct.vaBurden); g('pc-ct-va').onchange = e => ct.vaBurden = Number(e.target.value) || 5; }
+  if (g('pc-ct-secondary')) { g('pc-ct-secondary').value = String(ct.secondary); g('pc-ct-secondary').onchange = e => ct.secondary = Number(e.target.value) || 5; }
+
+  // Мониторинг
+  if (g('pc-mon-scope'))  { g('pc-mon-scope').value = mon.scope;   g('pc-mon-scope').onchange = e => { mon.scope = e.target.value; _pcRefreshStep4Lists(); }; }
+  if (g('pc-mon-device')) { g('pc-mon-device').value = mon.device; g('pc-mon-device').onchange = e => mon.device = e.target.value; }
+  if (g('pc-mon-bus'))    { g('pc-mon-bus').value = mon.bus;       g('pc-mon-bus').onchange = e => mon.bus = e.target.value; }
+
+  // Аксессуары
+  _pcRenderAccessoryRows();
+  const addBtn = g('pc-acc-add');
+  if (addBtn) addBtn.onclick = () => {
+    pcWizState.accessories.push({ name: '', qty: 1, note: '' });
+    _pcRenderAccessoryRows();
+  };
+
+  _pcRefreshStep4Lists();
+}
+
+// Список breakers с чекбоксами/индикаторами для «выборочно» + авто-ТТ
+function _pcRefreshStep4Lists() {
+  const brs = pcWizState.breakers || [];
+  const ct = pcWizState.ct;
+  const tech = pcWizState.metering.technical;
+  const mon = pcWizState.monitoring;
+
+  // Авто-пересчёт ТТ-номиналов для всех автоматов (по охвату)
+  ct.perBreaker = {};
+  brs.forEach((b, idx) => {
+    const inScope =
+      ct.scope === 'each' ||
+      (ct.scope === 'input' && b.role === 'input') ||
+      (ct.scope === 'selected' && ct.selected.includes(idx));
+    if (!inScope) return;
+    const primary = _pcPickCtPrimary(b.inA);
+    ct.perBreaker[idx] = { primary, label: `${primary}/${ct.secondary}` };
+  });
+
+  // CT список (отображаем все автоматы; чекбоксы активны только при scope=selected)
+  const ctList = document.getElementById('pc-ct-list');
+  if (ctList) {
+    const html = brs.map((b, idx) => {
+      const info = ct.perBreaker[idx];
+      const roleIcon = b.role === 'input' ? '🔌' : b.role === 'switch' ? '↔' : '→';
+      const canToggle = ct.scope === 'selected';
+      const checked = (ct.scope === 'each') ||
+                      (ct.scope === 'input' && b.role === 'input') ||
+                      (ct.scope === 'selected' && ct.selected.includes(idx));
+      return `<div class="pc-acc-list-row">
+        <input type="checkbox" data-ct-idx="${idx}" ${checked ? 'checked' : ''} ${canToggle ? '' : 'disabled'}>
+        <span class="pc-rl-role">${roleIcon}</span>
+        <span class="pc-rl-name">${esc(b.name)}</span>
+        <span class="pc-rl-in">${b.inA} А</span>
+        <span class="pc-rl-ct">${info ? 'ТТ ' + info.label : '—'}</span>
+      </div>`;
+    }).join('');
+    ctList.innerHTML = html || '<div class="muted" style="font-size:11px;padding:6px">Нет автоматов</div>';
+    ctList.querySelectorAll('input[data-ct-idx]').forEach(chk => {
+      chk.onchange = () => {
+        const idx = Number(chk.dataset.ctIdx);
+        if (chk.checked && !ct.selected.includes(idx)) ct.selected.push(idx);
+        else if (!chk.checked) ct.selected = ct.selected.filter(i => i !== idx);
+        _pcRefreshStep4Lists();
+      };
+    });
+  }
+
+  // Список тех.учёта (если scope=selected)
+  const techList = document.getElementById('pc-meter-tech-sel');
+  if (techList) {
+    if (tech.scope !== 'selected') {
+      techList.innerHTML = `<div class="muted" style="font-size:11px;padding:6px">Охват по всем ${tech.scope === 'input' ? 'вводным' : 'отходящим'} автоматам.</div>`;
+    } else {
+      techList.innerHTML = brs.map((b, idx) => `
+        <div class="pc-acc-list-row">
+          <input type="checkbox" data-tech-idx="${idx}" ${tech.selected.includes(idx) ? 'checked' : ''}>
+          <span class="pc-rl-role">${b.role === 'input' ? '🔌' : b.role === 'switch' ? '↔' : '→'}</span>
+          <span class="pc-rl-name">${esc(b.name)}</span>
+          <span class="pc-rl-in">${b.inA} А</span>
+        </div>`).join('') || '<div class="muted" style="font-size:11px;padding:6px">Нет автоматов</div>';
+      techList.querySelectorAll('input[data-tech-idx]').forEach(chk => {
+        chk.onchange = () => {
+          const idx = Number(chk.dataset.techIdx);
+          if (chk.checked && !tech.selected.includes(idx)) tech.selected.push(idx);
+          else if (!chk.checked) tech.selected = tech.selected.filter(i => i !== idx);
+        };
+      });
+    }
+  }
+
+  // Список мониторинга (если scope=selected)
+  const monList = document.getElementById('pc-mon-list');
+  if (monList) {
+    if (mon.scope !== 'selected') {
+      monList.innerHTML = `<div class="muted" style="font-size:11px;padding:6px">Охват: ${mon.scope === 'input' ? 'только вводные автоматы' : 'каждый автомат'}.</div>`;
+    } else {
+      monList.innerHTML = brs.map((b, idx) => `
+        <div class="pc-acc-list-row">
+          <input type="checkbox" data-mon-idx="${idx}" ${mon.selected.includes(idx) ? 'checked' : ''}>
+          <span class="pc-rl-role">${b.role === 'input' ? '🔌' : b.role === 'switch' ? '↔' : '→'}</span>
+          <span class="pc-rl-name">${esc(b.name)}</span>
+          <span class="pc-rl-in">${b.inA} А</span>
+        </div>`).join('') || '<div class="muted" style="font-size:11px;padding:6px">Нет автоматов</div>';
+      monList.querySelectorAll('input[data-mon-idx]').forEach(chk => {
+        chk.onchange = () => {
+          const idx = Number(chk.dataset.monIdx);
+          if (chk.checked && !mon.selected.includes(idx)) mon.selected.push(idx);
+          else if (!chk.checked) mon.selected = mon.selected.filter(i => i !== idx);
+        };
+      });
+    }
+  }
+}
+
+function _pcRenderAccessoryRows() {
+  const wrap = document.getElementById('pc-acc-rows');
+  if (!wrap) return;
+  const acc = pcWizState.accessories;
+  if (!acc.length) {
+    wrap.innerHTML = `<div class="muted" style="font-size:11px;padding:6px">Нет позиций. Нажмите «+ Добавить».</div>`;
+    return;
+  }
+  wrap.innerHTML = acc.map((a, i) => `
+    <div class="pc-accessory-row" data-idx="${i}">
+      <input type="text" data-f="name" placeholder="Реле контроля фаз / Лампа / Вентилятор…" value="${esc(a.name || '')}">
+      <input type="number" data-f="qty" min="1" step="1" value="${a.qty || 1}">
+      <input type="text" data-f="note" placeholder="примечание / арт." value="${esc(a.note || '')}">
+      <button type="button" class="btn-x" data-del="${i}" title="Удалить">×</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.pc-accessory-row').forEach(row => {
+    const i = Number(row.dataset.idx);
+    row.querySelectorAll('input').forEach(inp => {
+      inp.oninput = () => {
+        const f = inp.dataset.f;
+        if (f === 'qty') acc[i][f] = Math.max(1, Number(inp.value) || 1);
+        else acc[i][f] = inp.value;
+      };
+    });
+    row.querySelector('[data-del]').onclick = () => {
+      acc.splice(i, 1);
+      _pcRenderAccessoryRows();
+    };
+  });
+}
+
+// Сводка учёта для итога + composition
+function _pcBuildMeteringComposition() {
+  const out = [];
+  const com = pcWizState.metering.commercial;
+  const tech = pcWizState.metering.technical;
+  const ct = pcWizState.ct;
+  const mon = pcWizState.monitoring;
+  const brs = pcWizState.breakers || [];
+
+  if (com.enabled) {
+    out.push({
+      elementId: null, inline: true, qty: 1, role: 'meter-commercial',
+      label: `Счётчик коммерческого учёта (${com.type}, ${com.pos === 'input' ? 'до ввода' : 'после ввода'})${com.note ? ', ' + com.note : ''}`,
+    });
+  }
+  if (tech.enabled) {
+    const targets = tech.scope === 'each'
+      ? brs.map((_, i) => i)
+      : tech.scope === 'input'
+        ? brs.map((b, i) => b.role === 'input' ? i : -1).filter(i => i >= 0)
+        : tech.selected.slice();
+    for (const idx of targets) {
+      const b = brs[idx]; if (!b) continue;
+      out.push({
+        elementId: null, inline: true, qty: 1, role: 'meter-technical',
+        label: `Счётчик техн. учёта ${tech.type} → «${b.name}»`,
+      });
+    }
+  }
+  if (ct.enabled) {
+    const entries = Object.entries(ct.perBreaker);
+    for (const [idxStr, info] of entries) {
+      const b = brs[Number(idxStr)]; if (!b || !info) continue;
+      const poles = b.poles || 3;
+      out.push({
+        elementId: null, inline: true, qty: poles,
+        role: 'ct',
+        label: `ТТ ${info.label} А кл.${ct.accuracyClass} ${ct.vaBurden}ВА → «${b.name}»`,
+      });
+    }
+  }
+  if (mon.enabled) {
+    const targets = mon.scope === 'each'
+      ? brs.map((_, i) => i)
+      : mon.scope === 'input'
+        ? brs.map((b, i) => b.role === 'input' ? i : -1).filter(i => i >= 0)
+        : mon.selected.slice();
+    const devLabel = { 'multimeter': 'Мультиметр', 'pq-analyzer': 'Анализатор качества', 'aux-io': 'Дискр. вход', 'relay-output': 'Сигнальное реле' }[mon.device] || mon.device;
+    const busLabel = { 'modbus-rtu': 'Modbus RTU', 'modbus-tcp': 'Modbus TCP', 'dry-contact': 'сух. контакт', 'none': 'локально' }[mon.bus] || mon.bus;
+    for (const idx of targets) {
+      const b = brs[idx]; if (!b) continue;
+      out.push({
+        elementId: null, inline: true, qty: 1, role: 'monitoring',
+        label: `${devLabel} (${busLabel}) → «${b.name}»`,
+      });
+    }
+  }
+  for (const a of pcWizState.accessories) {
+    if (!a.name) continue;
+    out.push({
+      elementId: null, inline: true, qty: a.qty || 1, role: 'accessory',
+      label: a.name + (a.note ? ' (' + a.note + ')' : ''),
+    });
+  }
+  return out;
+}
+
+// ----- Шаг 5: итог -----
+function _pcGoStep5() {
   const rq = pcWizState.requirements;
   const enc = pcWizState.selectedEnclosure;
   const brs = pcWizState.breakers;
@@ -596,8 +905,40 @@ function _pcGoStep4() {
   }
   html.push('</tbody></table></div>');
 
+  // Учёт / ТТ / мониторинг / аксессуары
+  const metComp = _pcBuildMeteringComposition();
+  if (metComp.length) {
+    const groupByRole = {};
+    for (const it of metComp) {
+      const key = it.role;
+      if (!groupByRole[key]) groupByRole[key] = [];
+      groupByRole[key].push(it);
+    }
+    const roleTitle = {
+      'meter-commercial': 'Коммерческий учёт',
+      'meter-technical': 'Технический учёт',
+      'ct': 'Трансформаторы тока',
+      'monitoring': 'Мониторинг',
+      'accessory': 'Принадлежности',
+    };
+    html.push(`<div class="wiz-summary-box"><h5>Учёт, ТТ, мониторинг, аксессуары</h5>`);
+    for (const role of ['meter-commercial', 'meter-technical', 'ct', 'monitoring', 'accessory']) {
+      const arr = groupByRole[role];
+      if (!arr || !arr.length) continue;
+      html.push(`<div style="margin-top:6px;font-weight:600;font-size:12px;color:#444">${roleTitle[role]}</div>`);
+      html.push(`<table class="pc-breakers-table"><tbody>`);
+      for (const it of arr) {
+        html.push(`<tr><td style="width:34px;text-align:center">×${it.qty}</td><td>${esc(it.label)}</td></tr>`);
+      }
+      html.push(`</tbody></table>`);
+    }
+    html.push(`</div>`);
+  } else {
+    html.push(`<div class="wiz-summary-box"><h5>Учёт, ТТ, мониторинг</h5><p class="muted" style="font-size:12px">Не выбраны.</p></div>`);
+  }
+
   document.getElementById('pc-wiz-summary').innerHTML = html.join('');
-  _pcShowStep(4);
+  _pcShowStep(5);
 }
 
 function _pcApplyConfiguration() {
@@ -619,6 +960,8 @@ function _pcApplyConfiguration() {
       label: `${b.name} (${b.inA}A ${b.curve} ${b.poles}P)`,
     });
   }
+  // v0.59.78: учёт / ТТ / мониторинг / аксессуары
+  for (const it of _pcBuildMeteringComposition()) composition.push(it);
 
   const payload = {
     nodeId: pcWizState.nodeId,
@@ -633,6 +976,10 @@ function _pcApplyConfiguration() {
       form: rq.form,
       reservePct: rq.reserve,
       breakers: brs,
+      metering: pcWizState.metering,
+      ct: pcWizState.ct,
+      monitoring: pcWizState.monitoring,
+      accessories: pcWizState.accessories,
       composition,
     },
     selectedAt: Date.now(),

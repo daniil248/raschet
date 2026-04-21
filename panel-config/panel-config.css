@@ -287,3 +287,71 @@ main {
 .wiz-summary-table td { padding: 4px 8px; border-bottom: 1px solid #eee; }
 .wiz-summary-table td:first-child { color: #666; width: 45%; }
 .wiz-summary-table td:last-child { text-align: right; font-weight: 600; }
+
+/* ===== Step 4 (Учёт, ТТ, мониторинг, аксессуары) ===== */
+.pc-acc-section {
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  margin: 10px 0;
+  overflow: hidden;
+}
+.pc-acc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f6f8fa;
+  border-bottom: 1px solid var(--rs-border);
+}
+.pc-acc-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.pc-acc-toggle input { margin: 0; }
+.pc-acc-body { padding: 12px; }
+.pc-acc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--rs-border-hair);
+  border-radius: var(--rs-radius-sm);
+  padding: 6px;
+  margin-top: 8px;
+  background: #fafbfc;
+}
+.pc-acc-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.pc-acc-list-row:hover { background: #eef2ff; }
+.pc-acc-list-row .pc-rl-role { width: 54px; color: var(--rs-fg-muted); }
+.pc-acc-list-row .pc-rl-name { flex: 1; }
+.pc-acc-list-row .pc-rl-in { width: 52px; color: #444; text-align: right; }
+.pc-acc-list-row .pc-rl-ct { width: 90px; color: #2e7d32; font-variant-numeric: tabular-nums; }
+.pc-accessory-row {
+  display: grid;
+  grid-template-columns: 1fr 70px 1fr 28px;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+  font-size: 12px;
+}
+.pc-accessory-row input {
+  padding: 5px 7px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius-sm);
+  font: inherit;
+  font-size: 12px;
+}
+.pc-accessory-row .btn-x {
+  background: transparent;
+  border: 1px solid var(--rs-border);
+  border-radius: 3px;
+  cursor: pointer;
+  color: #c00;
+  font-weight: 600;
+}
+.pc-accessory-row .btn-x:hover { background: #fff0f0; }
