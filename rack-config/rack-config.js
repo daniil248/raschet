@@ -1316,7 +1316,31 @@ function computeWarnings() {
 function renderWarnings() {
   const host = el('rc-warn');
   host.innerHTML = '';
-  computeWarnings().forEach(w => {
+  // v0.59.115: сортируем по строгости (err → warn → ok) и добавляем шапку
+  // со счётчиком. Пусто = «нарушений не найдено».
+  const list = computeWarnings();
+  const rank = { err: 0, warn: 1, ok: 2 };
+  list.sort((a, b) => (rank[a.lvl] ?? 3) - (rank[b.lvl] ?? 3));
+  const nErr = list.filter(w => w.lvl === 'err').length;
+  const nWarn = list.filter(w => w.lvl === 'warn').length;
+  const nOk = list.filter(w => w.lvl === 'ok').length;
+  if (list.length === 0) {
+    const d = document.createElement('div');
+    d.className = 'rc-warn-item ok';
+    d.textContent = '✓ Нарушений и предупреждений не найдено.';
+    host.appendChild(d);
+    return;
+  }
+  const hdr = document.createElement('div');
+  hdr.className = 'rc-warn-summary';
+  hdr.style.cssText = 'display:flex;gap:10px;font-size:12px;padding:4px 0 6px 0;color:var(--rs-muted, #888)';
+  const parts = [];
+  if (nErr)  parts.push(`<span style="color:#c62828">⛔ ошибок: ${nErr}</span>`);
+  if (nWarn) parts.push(`<span style="color:#ef6c00">⚠ предупреждений: ${nWarn}</span>`);
+  if (nOk)   parts.push(`<span style="color:#2e7d32">✓ ок: ${nOk}</span>`);
+  hdr.innerHTML = parts.join(' · ');
+  host.appendChild(hdr);
+  list.forEach(w => {
     const d = document.createElement('div');
     d.className = 'rc-warn-item ' + w.lvl;
     d.textContent = (w.lvl === 'err' ? '⛔ ' : w.lvl === 'warn' ? '⚠ ' : '✓ ') + w.msg;
