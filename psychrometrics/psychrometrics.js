@@ -746,6 +746,14 @@ function renderResults(sts, segs) {
   });
 
   const b2 = $('psy-proc-body'); b2.innerHTML = '';
+  let sumQheat = 0, sumQcool = 0, sumQwHum = 0, sumQwDeh = 0;
+  segs.forEach((s) => {
+    if (!s) return;
+    if (s.Q > 0)  sumQheat += s.Q;
+    if (s.Q < 0)  sumQcool += -s.Q;
+    if (s.qw > 0) sumQwHum += s.qw;
+    if (s.qw < 0) sumQwDeh += -s.qw;
+  });
   segs.forEach((s, i) => {
     if (!s) {
       b2.insertAdjacentHTML('beforeend',
@@ -768,6 +776,22 @@ function renderResults(sts, segs) {
       </tr>
     `);
   });
+  // Итоговая строка: суммы Q (нагрев / охл) и qw (увл / осуш)
+  const anyProc = segs.some(s => s);
+  if (anyProc) {
+    b2.insertAdjacentHTML('beforeend', `
+      <tr style="background:#eceff1;font-weight:700;border-top:2px solid #90a4ae">
+        <td colspan="7" style="text-align:right;color:#37474f">ИТОГО по циклу:</td>
+        <td style="color:#c62828" title="Суммарная мощность нагрева/увл. (Q>0)">
+          +${sumQheat.toFixed(2)}<br><span style="font-weight:400;font-size:10px;color:#0277bd">−${sumQcool.toFixed(2)}</span>
+        </td>
+        <td style="color:#2e7d32" title="Суммарный влагоприток (qw>0) / осушение (qw<0)">
+          +${sumQwHum.toFixed(3)}<br><span style="font-weight:400;font-size:10px;color:#6a1b9a">−${sumQwDeh.toFixed(3)}</span>
+        </td>
+        <td style="font-size:10px;color:#37474f">нагрев/охл.<br>увл./осуш.</td>
+      </tr>
+    `);
+  }
 }
 
 function escHtml(s) {
