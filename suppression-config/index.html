@@ -340,13 +340,12 @@
               <button type="button" class="sup-btn sup-ax sup-ax-z" data-axis="-z" title="Добавить участок в отрицательном направлении Z (к наблюдателю).">Z− ⊙</button>
             </div>
             <label class="sup-field"><span>Длина, м <sup title="Длина участка вдоль выбранного направления. Можно изменить позже в списке «Участки».">ⓘ</sup></span><input type="number" id="seg-L" step="0.05" min="0.05" value="1" title="Длина нового участка, м (шаг 0,05 м)."></label>
-            <label class="sup-field"><span>DN, мм <sup title="Условный диаметр трубы. Для магистрали DN40+; для отводов на одну насадку — DN15–20. Кнопкой «Диаметры авто» можно пересчитать автоматически.">ⓘ</sup></span>
-              <select id="seg-DN" title="Условный диаметр трубы, мм.">
-                <option>15</option><option>20</option><option>22</option><option>25</option><option>28</option>
-                <option>32</option><option>34</option><option>40</option><option>50</option><option>65</option>
-                <option>80</option><option>100</option>
-              </select>
-            </label>
+            <!-- DN подбирается автоматически после добавления участка (hidden, для совместимости с save-handler) -->
+            <input type="hidden" id="seg-DN" value="25">
+            <div class="sup-field" style="opacity:.7;font-size:12px;">
+              <span>DN подбирается автоматически</span>
+              <span style="color:#607d8b;">по расходу, фазе агента (halocarbon/inert/CO₂), целевой скорости (50/70/35 м/с) и давлению перед насадками; проверяется v ≤ v_max и P_выход ≥ P_min; отводы ≤ магистрали.</span>
+            </div>
             <label class="sup-field"><span>Насадок на конце <sup title="R-360 — круговой (центр зоны); R-180 — пристенный; радиальный — для локального тушения. Участок без насадка — транзитный.">ⓘ</sup></span>
               <select id="seg-noz" title="Тип выпускного устройства в конечной точке участка.">
                 <option value="none">Отсутствует</option>
