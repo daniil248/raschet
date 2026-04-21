@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · ID-диаграмма Молье-Рамзина</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="psychrometrics.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'ID-диаграмма Молье-Рамзина (ASHRAE 2021)', home: '../hub.html' });
+  </script>
+
+  <div class="psy-wrap">
+    <div class="psy-grid">
+      <aside class="psy-form">
+        <section class="psy-section">
+          <h2>Точка 1 (приточный воздух)</h2>
+          <label class="psy-field">
+            <span>Температура t, °C</span>
+            <input type="number" id="psy-T1" value="22" min="-20" max="50" step="0.1">
+          </label>
+          <label class="psy-field">
+            <span>Относительная влажность φ, %</span>
+            <input type="number" id="psy-RH1" value="50" min="1" max="100" step="1">
+          </label>
+          <label class="psy-field">
+            <span>Давление P, Па</span>
+            <input type="number" id="psy-P" value="101325" min="50000" max="110000" step="100">
+          </label>
+          <div class="psy-hint">По умолчанию: стандартная атмосфера (1 атм).
+            Для объекта на высоте 500 м ≈ 95 460 Па, 1000 м ≈ 89 875 Па.</div>
+        </section>
+
+        <section class="psy-section">
+          <h2>HVAC-процесс</h2>
+          <label class="psy-field">
+            <span>Тип процесса</span>
+            <select id="psy-proc">
+              <option value="none">— без процесса —</option>
+              <option value="heat">Нагрев при постоянном W</option>
+              <option value="cool">Охлаждение сухое (без осушения)</option>
+              <option value="cool-dhu">Охлаждение с осушением (T стенки)</option>
+              <option value="humid-ad">Адиабатическое увлажнение (h=const)</option>
+              <option value="humid-steam">Паровое увлажнение (T=const)</option>
+              <option value="mix">Смешение с рециркуляцией</option>
+            </select>
+          </label>
+          <label class="psy-field" data-for="heat cool cool-dhu">
+            <span>Параметр: ΔT или T_стенки, °C</span>
+            <input type="number" id="psy-p1" value="10" step="0.5">
+          </label>
+          <label class="psy-field" data-for="cool-dhu">
+            <span>BF (bypass factor) 0–1</span>
+            <input type="number" id="psy-bf" value="0.15" step="0.05" min="0" max="1">
+          </label>
+          <label class="psy-field" data-for="humid-ad humid-steam">
+            <span>Целевое W (г/кг)</span>
+            <input type="number" id="psy-wtarget" value="10" step="0.5" min="0" max="30">
+          </label>
+          <label class="psy-field" data-for="mix">
+            <span>Рецирк.: t₂, °C</span>
+            <input type="number" id="psy-T2" value="-10" step="0.5">
+          </label>
+          <label class="psy-field" data-for="mix">
+            <span>Рецирк.: φ₂, %</span>
+            <input type="number" id="psy-RH2" value="80" step="1">
+          </label>
+          <label class="psy-field" data-for="mix">
+            <span>Доля рецирк. (m₂/m_общ)</span>
+            <input type="number" id="psy-mix" value="0.3" step="0.05" min="0" max="1">
+          </label>
+        </section>
+      </aside>
+
+      <main class="psy-view">
+        <div class="psy-state" id="psy-state1"></div>
+        <div id="psy-state2-wrap" style="display:none;">
+          <h3 style="font-size:12px;color:#1565c0;margin:8px 0 4px;">Точка 2 (после процесса)</h3>
+          <div class="psy-state" id="psy-state2"></div>
+        </div>
+        <div class="psy-chart" id="psy-chart"></div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="psychrometrics.js"></script>
+</body>
+</html>

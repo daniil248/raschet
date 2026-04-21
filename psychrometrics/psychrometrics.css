@@ -1,0 +1,55 @@
+/* psychrometrics.css */
+.psy-wrap { max-width: 1600px; margin: 0 auto; padding: 16px; }
+.psy-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) { .psy-grid { grid-template-columns: 1fr; } }
+
+.psy-form, .psy-view {
+  background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+  padding: 14px 16px;
+}
+.psy-section { margin-bottom: 14px; border-bottom: 1px dashed #eee; padding-bottom: 10px; }
+.psy-section:last-child { border-bottom: none; }
+.psy-section h2 {
+  font-size: 13px; margin: 0 0 8px; color: #1565c0;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.psy-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 7px; font-size: 12px; }
+.psy-field span { color: #444; font-weight: 500; }
+.psy-field input, .psy-field select {
+  padding: 6px 8px; border: 1px solid #bdbdbd; border-radius: 4px; font-size: 12px;
+}
+.psy-hint { font-size: 11px; color: #666; line-height: 1.35; padding: 4px 0; }
+
+.psy-state {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr));
+  gap: 5px; margin-bottom: 10px;
+}
+.psy-state .card {
+  background: #f5f9ff; border: 1px solid #c5d9ef; border-radius: 4px;
+  padding: 5px 7px; display: flex; flex-direction: column; gap: 1px;
+}
+.psy-state .label { font-size: 10px; color: #666; text-transform: uppercase; }
+.psy-state .value { font-size: 13px; font-weight: 700; color: #0d47a1; }
+
+.psy-processes { margin-top: 10px; }
+.psy-process-row {
+  display: grid; grid-template-columns: 80px 1fr 80px 60px 30px;
+  gap: 4px; margin-bottom: 4px; font-size: 11px;
+}
+.psy-process-row select, .psy-process-row input {
+  padding: 4px 6px; border: 1px solid #bdbdbd; border-radius: 3px; font-size: 11px;
+}
+.psy-btn {
+  padding: 5px 10px; border-radius: 3px; border: 1px solid #bdbdbd;
+  background: #fff; cursor: pointer; font-size: 11px;
+}
+.psy-btn:hover { background: #f5f5f5; }
+.psy-btn-primary { background: #1565c0; color:#fff; border-color: #0d47a1; }
+
+.psy-chart { overflow: auto; border: 1px solid #e0e0e0; border-radius: 4px; background:#fff; }
+.psy-chart svg { display: block; width: 100%; height: auto; }

@@ -145,6 +145,8 @@
     .hub-card-icon.orange { background: #fff3e0; color: #e65100; }
     .hub-card-icon.green { background: #e8f5e9; color: #2e7d32; }
     .hub-card-icon.purple { background: #ede7f6; color: #5e35b1; }
+    .hub-card-icon.red { background: #ffebee; color: #c62828; }
+    .hub-card-icon.cyan { background: #e0f7fa; color: #00838f; }
     .hub-card h2 {
       font-size: 20px;
       font-weight: 600;
@@ -394,6 +396,20 @@
         </div>
         <h2>Конфигуратор трансформатора</h2>
         <p>Подбор силового трансформатора: мощность, первичное / вторичное напряжение, группа соединений, потери ХХ / КЗ, u<sub>k</sub>, тип охлаждения. Результат применим к узлу «Источник → Трансформатор»</p>
+        <span class="badge new">В разработке</span>
+      </a>
+
+      <a class="hub-card" href="psychrometrics/">
+        <div class="hub-card-icon cyan">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 18 L9 10 L13 14 L21 5"/>
+            <path d="M3 21 L21 21"/>
+            <circle cx="9" cy="10" r="1.2" fill="currentColor"/>
+            <circle cx="13" cy="14" r="1.2" fill="currentColor"/>
+          </svg>
+        </div>
+        <h2>ID-диаграмма Молье-Рамзина</h2>
+        <p>Психрометрический расчёт влажного воздуха по ASHRAE Fundamentals 2021 (Hyland-Wexler 1983). Состояние: t, φ, d (W), h, t<sub>р</sub>, t<sub>м</sub>, ρ, v. HVAC-процессы: нагрев, охлаждение с осушением (bypass factor), адиабатическое и паровое увлажнение, смешение с рециркуляцией. SVG-диаграмма ID с изолиниями φ, h.</p>
         <span class="badge new">В разработке</span>
       </a>
 
