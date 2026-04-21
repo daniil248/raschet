@@ -140,10 +140,18 @@ export function plotProcess(ctx, points, color = '#0d47a1') {
 }
 
 export function arrowDefs() {
-  return `<defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
+  const colors = {
+    arrow:       '#0d47a1',
+    'arrow-P':   '#e65100',
+    'arrow-C':   '#0277bd',
+    'arrow-A':   '#2e7d32',
+    'arrow-S':   '#6a1b9a',
+    'arrow-X':   '#424242',
+  };
+  const markers = Object.entries(colors).map(([id, col]) => `
+    <marker id="${id}" viewBox="0 0 10 10" refX="8" refY="5"
             markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0d47a1"/>
-    </marker>
-  </defs>`;
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="${col}"/>
+    </marker>`).join('');
+  return `<defs>${markers}</defs>`;
 }

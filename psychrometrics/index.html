@@ -16,75 +16,88 @@
   </script>
 
   <div class="psy-wrap">
-    <div class="psy-grid">
-      <aside class="psy-form">
-        <section class="psy-section">
-          <h2>Точка 1 (приточный воздух)</h2>
-          <label class="psy-field">
-            <span>Температура t, °C</span>
-            <input type="number" id="psy-T1" value="22" min="-20" max="50" step="0.1">
-          </label>
-          <label class="psy-field">
-            <span>Относительная влажность φ, %</span>
-            <input type="number" id="psy-RH1" value="50" min="1" max="100" step="1">
-          </label>
-          <label class="psy-field">
-            <span>Давление P, Па</span>
-            <input type="number" id="psy-P" value="101325" min="50000" max="110000" step="100">
-          </label>
-          <div class="psy-hint">По умолчанию: стандартная атмосфера (1 атм).
-            Для объекта на высоте 500 м ≈ 95 460 Па, 1000 м ≈ 89 875 Па.</div>
-        </section>
+    <!-- Атмосфера / условия объекта -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">Условия объекта</div>
+      <div class="psy-top-row">
+        <label class="psy-field psy-inline" title="Высота над уровнем моря. Давление пересчитывается по ISA/ГОСТ 4401-81.">
+          <span>Высота над у. м., м</span>
+          <input type="number" id="psy-alt" value="0" step="10" min="0" max="5000">
+        </label>
+        <label class="psy-field psy-inline">
+          <span>Атм. давление, кПа</span>
+          <input type="number" id="psy-P-kpa" value="101.325" step="0.001">
+        </label>
+        <label class="psy-field psy-inline" title="Ограничение φ в цикле (уведомление если точка превышает).">
+          <span>Макс. φ, %</span>
+          <input type="number" id="psy-rhmax" value="100" step="1" min="20" max="100">
+        </label>
+        <label class="psy-field psy-inline" title="Температура поверхности холодного теплообменника (воды/хладоносителя). Влияет на процесс C (охлаждение с осушением) при автоподборе точки после испарителя.">
+          <span>t поверхности, °C</span>
+          <input type="number" id="psy-tevap" value="15" step="0.5">
+        </label>
+        <label class="psy-field psy-inline" title="Базовый расход воздуха по циклу. Используется, если у конкретного процесса не задан свой V.">
+          <span>Базовый расход V, м³/ч</span>
+          <input type="number" id="psy-vbase" value="10000" step="100" min="0">
+        </label>
+      </div>
+    </div>
 
-        <section class="psy-section">
-          <h2>HVAC-процесс</h2>
-          <label class="psy-field">
-            <span>Тип процесса</span>
-            <select id="psy-proc">
-              <option value="none">— без процесса —</option>
-              <option value="heat">Нагрев при постоянном W</option>
-              <option value="cool">Охлаждение сухое (без осушения)</option>
-              <option value="cool-dhu">Охлаждение с осушением (T стенки)</option>
-              <option value="humid-ad">Адиабатическое увлажнение (h=const)</option>
-              <option value="humid-steam">Паровое увлажнение (T=const)</option>
-              <option value="mix">Смешение с рециркуляцией</option>
-            </select>
-          </label>
-          <label class="psy-field" data-for="heat cool cool-dhu">
-            <span>Параметр: ΔT или T_стенки, °C</span>
-            <input type="number" id="psy-p1" value="10" step="0.5">
-          </label>
-          <label class="psy-field" data-for="cool-dhu">
-            <span>BF (bypass factor) 0–1</span>
-            <input type="number" id="psy-bf" value="0.15" step="0.05" min="0" max="1">
-          </label>
-          <label class="psy-field" data-for="humid-ad humid-steam">
-            <span>Целевое W (г/кг)</span>
-            <input type="number" id="psy-wtarget" value="10" step="0.5" min="0" max="30">
-          </label>
-          <label class="psy-field" data-for="mix">
-            <span>Рецирк.: t₂, °C</span>
-            <input type="number" id="psy-T2" value="-10" step="0.5">
-          </label>
-          <label class="psy-field" data-for="mix">
-            <span>Рецирк.: φ₂, %</span>
-            <input type="number" id="psy-RH2" value="80" step="1">
-          </label>
-          <label class="psy-field" data-for="mix">
-            <span>Доля рецирк. (m₂/m_общ)</span>
-            <input type="number" id="psy-mix" value="0.3" step="0.05" min="0" max="1">
-          </label>
-        </section>
-      </aside>
+    <!-- Цикл: карточки точек -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">
+        Цикл (точки и процессы)
+        <button type="button" id="psy-add" class="psy-btn psy-btn-primary">+ точка</button>
+        <button type="button" id="psy-demo" class="psy-btn">Демо-цикл «лето/зима»</button>
+        <button type="button" id="psy-clear" class="psy-btn">Очистить</button>
+      </div>
+      <div class="psy-cycle" id="psy-cycle"></div>
+    </div>
 
-      <main class="psy-view">
-        <div class="psy-state" id="psy-state1"></div>
-        <div id="psy-state2-wrap" style="display:none;">
-          <h3 style="font-size:12px;color:#1565c0;margin:8px 0 4px;">Точка 2 (после процесса)</h3>
-          <div class="psy-state" id="psy-state2"></div>
-        </div>
-        <div class="psy-chart" id="psy-chart"></div>
-      </main>
+    <!-- Диаграмма -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">Диаграмма Молье-Рамзина</div>
+      <div class="psy-chart" id="psy-chart"></div>
+    </div>
+
+    <!-- Результаты по точкам -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">Параметры воздуха по точкам</div>
+      <div class="psy-tbl-wrap">
+        <table class="psy-tbl psy-output" id="psy-output">
+          <thead>
+            <tr><th>Точка</th><th>Имя</th>
+              <th>t, °C</th><th>φ, %</th><th>d, г/кг</th><th>h, кДж/кг</th>
+              <th>ρ, кг/м³</th><th>v, м³/кг</th>
+              <th>t<sub>р</sub>, °C</th><th>t<sub>м</sub>, °C</th>
+            </tr>
+          </thead>
+          <tbody id="psy-output-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Сводка процессов -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">Процессы (тепловая мощность и влагоприток)</div>
+      <div class="psy-tbl-wrap">
+        <table class="psy-tbl psy-output" id="psy-proc-out">
+          <thead>
+            <tr><th>№</th><th>Процесс</th>
+              <th>V, м³/ч</th><th>ΔT, °C</th><th>Δd, г/кг</th><th>Δh, кДж/кг</th>
+              <th>G<sub>в</sub>, кг/ч</th><th>Q, кВт</th>
+              <th>q<sub>w</sub>, кг/ч</th><th>знак</th>
+            </tr>
+          </thead>
+          <tbody id="psy-proc-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Формулы -->
+    <div class="psy-panel">
+      <div class="psy-panel-title">Формулы и пояснения</div>
+      <div class="psy-formulas" id="psy-formulas"></div>
     </div>
   </div>
 

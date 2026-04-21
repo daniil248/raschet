@@ -13,7 +13,36 @@
      where T is in K, Pws in Pa.
    ========================================================================= */
 
-const T0 = 273.15;
+export const T0 = 273.15;
+
+/* --- Барометрическое давление на высоте h (м).
+   ISA / ГОСТ 4401-81: P(h) = P0·(1 − 2.25577·10⁻⁵·h)^5.2559,  P0 = 101325 Па. */
+export function pressureAtAltitude(h_m, P0 = 101325) {
+  return P0 * Math.pow(1 - 2.25577e-5 * Math.max(0, h_m || 0), 5.2559);
+}
+
+/* --- Нормальная плотность воздуха (20 °C, 101 325 Па, W=0) ≈ 1.2041 кг/м³.
+   Используется для Vn = V · (ρ / ρN) — приведение к нормальным условиям. */
+export const RHO_NORMAL = 1.2041;
+
+/* --- Тепловая мощность процесса воздухообмена (кВт).
+   Q = m_da · Δh,  где m_da = V · ρ_da / 3600 (кг/с), Δh в кДж/кг_да.
+   Для смешанной (humid) энтальпии это полная тепловая нагрузка. */
+export function processPowerKW(st1, st2, V_m3h) {
+  if (!(V_m3h > 0)) return 0;
+  const rho = st1.rho || 1.2;          // кг/м³ на входе
+  const m_da_s = (V_m3h * rho) / 3600 / (1 + (st1.W || 0));  // кг_да/с
+  return m_da_s * ((st2.h || 0) - (st1.h || 0));
+}
+
+/* --- Влагоприток процесса (кг/ч):
+   qw = m_da (кг/ч) · ΔW (кг/кг) */
+export function processMoistureKgH(st1, st2, V_m3h) {
+  if (!(V_m3h > 0)) return 0;
+  const rho = st1.rho || 1.2;
+  const m_da_h = (V_m3h * rho) / (1 + (st1.W || 0));  // кг_да/ч
+  return m_da_h * ((st2.W || 0) - (st1.W || 0));
+}
 
 // --- Saturation pressure of water (Pa) ---
 export function Pws(T_C) {
