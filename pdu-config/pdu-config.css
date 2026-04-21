@@ -336,7 +336,16 @@
 .rc-modal-body h4 { margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
 
 /* ---- embed mode (iframe в rack-config) ---- */
-body.pc-embed .pc-wrap { padding-bottom: 70px; }
+/* В embed-режиме окно iframe не скроллится — скроллится только список подходящих артикулов справа. Левая панель (контекст/требования/производитель) тоже скроллится сама, если не помещается. */
+html.pc-embed-html, body.pc-embed { height: 100%; overflow: hidden; margin: 0; }
+body.pc-embed .pc-wrap { height: 100vh; padding-bottom: 60px; overflow: hidden; display: flex; flex-direction: column; box-sizing: border-box; }
+body.pc-embed .pc-grid { flex: 1; min-height: 0; overflow: hidden; align-items: stretch; }
+body.pc-embed .pc-grid > aside { max-height: 100%; overflow-y: auto; padding-right: 4px; }
+body.pc-embed .pc-grid > section { min-height: 0; display: flex; flex-direction: column; }
+body.pc-embed .pc-grid > section > .pc-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+body.pc-embed #pc-results { flex: 1; min-height: 0; overflow-y: auto; }
+/* В embed-режиме баннер «✓ Модель … Открыть стойку →» не показываем никогда — он приводил к матрёшке при клике. */
+body.pc-embed #pc-pending-banner-slot, body.pc-embed .pc-banner { display: none !important; }
 .pc-embed-bar {
   position: fixed;
   left: 0; right: 0; bottom: 0;

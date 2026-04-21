@@ -405,7 +405,7 @@ function openDetail(id) {
       <table class="pc-results-table"><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${rows || '<tr><td colspan="2" class="pc-empty">нет данных</td></tr>'}</tbody></table>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid #eee;padding-top:12px">
         <button id="pc-detail-pick" class="pc-btn pc-btn-primary">⬆ Выбрать эту модель</button>
-        <button id="pc-detail-open-rack" class="pc-btn">Открыть Конфигуратор стойки →</button>
+        ${IS_EMBED ? '' : '<button id="pc-detail-open-rack" class="pc-btn">Открыть Конфигуратор стойки →</button>'}
       </div>
       <div class="muted" style="font-size:11px;margin-top:6px;line-height:1.5">
         «Выбрать» сохранит модель в <code>raschet.lastPduConfig.v1</code>. В Конфигураторе стойки
@@ -419,11 +419,14 @@ function openDetail(id) {
   modal.querySelector('.rc-modal-close').onclick = () => (modal.hidden = true);
   modal.querySelector('.rc-modal-backdrop').onclick = () => (modal.hidden = true);
   document.getElementById('pc-detail-pick').onclick = () => { pickModel(id); modal.hidden = true; };
-  document.getElementById('pc-detail-open-rack').onclick = () => { pickModel(id); location.href = '../rack-config/'; };
+  const openRackBtn = document.getElementById('pc-detail-open-rack');
+  if (openRackBtn) openRackBtn.onclick = () => { pickModel(id); if (IS_EMBED) { postToParent('pdu-config:close', null); } else { top.location.href = '../rack-config/'; } };
 }
 
 // ——— Embed mode (iframe внутри rack-config) ———
 const IS_EMBED = new URLSearchParams(location.search).get('embed') === '1';
+// Пометка body/html классами сразу при загрузке — до любого рендера, чтобы CSS-правила embed-режима (в т.ч. скрытие pc-banner) сработали даже если JS-рендер банера опередит нас.
+if (IS_EMBED) { try { document.documentElement.classList.add('pc-embed-html'); document.body && document.body.classList.add('pc-embed'); } catch {} }
 function postToParent(type, payload) {
   try { window.parent.postMessage({ type, payload }, '*'); } catch {}
 }

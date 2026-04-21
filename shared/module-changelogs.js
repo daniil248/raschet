@@ -50,6 +50,10 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.139', date: '2026-04-21', items: [
+      'Матрёшка PDU-модалок добита окончательно. Источник был не в баннере, а в детальной карточке PDU: кнопка «Открыть Конфигуратор стойки →» делала <code>location.href = "../rack-config/"</code>, что в embed-режиме перегружало САМ iframe на rack-config, после чего пользователь мог открыть внутри этого вложенного rack-config ещё один PDU-визард. Теперь в embed-режиме эта кнопка вовсе не рисуется; вне embed — навигация идёт через <code>top.location</code>, а не через iframe. Для надёжности добавлено CSS-правило <code>body.pc-embed .pc-banner { display: none !important }</code> и ранняя установка <code>html.pc-embed-html/body.pc-embed</code> при старте, до первого рендера. Файлы: pdu-config/pdu-config.js (openDetail, IS_EMBED-блок), pdu-config/pdu-config.css.',
+      'Список подходящих PDU в embed-режиме теперь скроллится сам, без скролла всего iframe-окна: добавлены flex-layout правила для <code>body.pc-embed .pc-wrap/.pc-grid/section/#pc-results</code>, а левая панель скроллится отдельно. Файл: pdu-config/pdu-config.css.'
+    ] },
     { version: '0.59.138', date: '2026-04-21', items: [
       'Расширен каталог PDU (shared/catalogs/pdus.js): добавлены все типоразмеры Rittal PSM 1U (DK 7856.008/200/201/202/203/250) и PSM ZeroU — Basic (DK 7955.100/110/120/130/140), Metered (7955.300/310/320/330), Switched (7955.400/410/420/430), Monitored+Switched (7955.500/510/520/530). Также добавлен отечественный производитель <b>ЦМО</b>: 1U-блоки R-16-2P-F / 6P-F / 8S-F / 9C13-F / 6C13-3C19-F и R-32-12C13-F / 8C13-4C19-F; вертикальные PV-16A-6S / 8C13 / 24C13, PV-32A-18C13-6C19, PV-32A-24C13-6C19; управляемые R-MM/R-MS и PV-MM/MS/MB/MH — 24×C13 + 6×C19, 3ф 32А.',
       'В фильтре производителей Конфигуратора PDU ЦМО появляется автоматически (список строится динамически).'

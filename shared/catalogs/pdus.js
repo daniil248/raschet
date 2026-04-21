@@ -75,6 +75,37 @@ export const PDU_CATALOG = [
   { sku: 'DK 7955.510', mfg: 'Rittal', category: 'hybrid', name: 'Rittal PDU metered+switched by outlet, ZeroU, 3ф 32A, 24×C13 + 6×C19', phases: 3, rating: 32, height: 0, outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
   { sku: 'DK 7955.520', mfg: 'Rittal', category: 'hybrid', name: 'Rittal PDU metered+switched by outlet, ZeroU, 1ф 32A, 20×C13 + 4×C19', phases: 1, rating: 32, height: 0, outlets: [{ type:'C13', count:20 }, { type:'C19', count:4 }] },
   { sku: 'DK 7955.530', mfg: 'Rittal', category: 'hybrid', name: 'Rittal PDU metered+switched by outlet, ZeroU, 3ф 16A, 24×C13 + 6×C19', phases: 3, rating: 16, height: 0, outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+  // Rittal — PSM ZeroU с увеличенной плотностью розеток (36×C13)
+  { sku: 'DK 7955.150', mfg: 'Rittal', category: 'basic', name: 'Rittal PDU basic, ZeroU, 3ф 32A, 36×C13 + 6×C19', phases: 3, rating: 32, height: 0, outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+  { sku: 'DK 7955.350', mfg: 'Rittal', category: 'metered', name: 'Rittal PDU metered, ZeroU, 3ф 32A, 36×C13 + 6×C19', phases: 3, rating: 32, height: 0, outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+  { sku: 'DK 7955.450', mfg: 'Rittal', category: 'switched', name: 'Rittal PDU switched, ZeroU, 3ф 32A, 36×C13 + 6×C19', phases: 3, rating: 32, height: 0, outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+  { sku: 'DK 7955.550', mfg: 'Rittal', category: 'hybrid', name: 'Rittal PDU metered+switched by outlet, ZeroU, 3ф 32A, 36×C13 + 6×C19', phases: 3, rating: 32, height: 0, outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
+  // Rittal — Schuko-варианты для EU-розеточного парка
+  { sku: 'DK 7955.160', mfg: 'Rittal', category: 'basic', name: 'Rittal PDU basic, ZeroU, 1ф 16A, 18×Schuko', phases: 1, rating: 16, height: 0, outlets: [{ type:'Schuko', count:18 }] },
+  { sku: 'DK 7955.360', mfg: 'Rittal', category: 'metered', name: 'Rittal PDU metered, ZeroU, 1ф 16A, 18×Schuko', phases: 1, rating: 16, height: 0, outlets: [{ type:'Schuko', count:18 }] },
+  { sku: 'DK 7955.460', mfg: 'Rittal', category: 'switched', name: 'Rittal PDU switched, ZeroU, 1ф 16A, 18×Schuko', phases: 1, rating: 16, height: 0, outlets: [{ type:'Schuko', count:18 }] },
+  // Rittal — смешанные гнёзда (C13+C19+Schuko)
+  { sku: 'DK 7955.170', mfg: 'Rittal', category: 'basic', name: 'Rittal PDU basic, ZeroU, 1ф 32A, 12×C13 + 6×C19 + 6×Schuko', phases: 1, rating: 32, height: 0, outlets: [{ type:'C13', count:12 }, { type:'C19', count:6 }, { type:'Schuko', count:6 }] },
+  { sku: 'DK 7955.370', mfg: 'Rittal', category: 'metered', name: 'Rittal PDU metered, ZeroU, 1ф 32A, 12×C13 + 6×C19 + 6×Schuko', phases: 1, rating: 32, height: 0, outlets: [{ type:'C13', count:12 }, { type:'C19', count:6 }, { type:'Schuko', count:6 }] },
+  // Rittal — 63A HD-линейка (для HPC/крупных нагрузок)
+  { sku: 'DK 7955.180', mfg: 'Rittal', category: 'basic', name: 'Rittal PDU basic, ZeroU, 3ф 63A, 30×C13 + 12×C19', phases: 3, rating: 63, height: 0, outlets: [{ type:'C13', count:30 }, { type:'C19', count:12 }] },
+  { sku: 'DK 7955.380', mfg: 'Rittal', category: 'metered', name: 'Rittal PDU metered, ZeroU, 3ф 63A, 30×C13 + 12×C19', phases: 3, rating: 63, height: 0, outlets: [{ type:'C13', count:30 }, { type:'C19', count:12 }] },
+  { sku: 'DK 7955.480', mfg: 'Rittal', category: 'switched', name: 'Rittal PDU switched, ZeroU, 3ф 63A, 30×C13 + 12×C19', phases: 3, rating: 63, height: 0, outlets: [{ type:'C13', count:30 }, { type:'C19', count:12 }] },
+  { sku: 'DK 7955.580', mfg: 'Rittal', category: 'hybrid', name: 'Rittal PDU metered+switched by outlet, ZeroU, 3ф 63A, 30×C13 + 12×C19', phases: 3, rating: 63, height: 0, outlets: [{ type:'C13', count:30 }, { type:'C19', count:12 }] },
+  // Rittal — 1U managed (DK 7856.3xx/4xx/5xx)
+  { sku: 'DK 7856.300', mfg: 'Rittal', category: 'metered', name: 'Rittal PSM metered, 1U, 1ф 16A, 8×C13', phases: 1, rating: 16, height: 1, outlets: [{ type:'C13', count:8 }] },
+  { sku: 'DK 7856.310', mfg: 'Rittal', category: 'metered', name: 'Rittal PSM metered, 1U, 1ф 16A, 6×C13 + 2×C19', phases: 1, rating: 16, height: 1, outlets: [{ type:'C13', count:6 }, { type:'C19', count:2 }] },
+  { sku: 'DK 7856.320', mfg: 'Rittal', category: 'metered', name: 'Rittal PSM metered, 1U, 1ф 32A, 8×C13 + 2×C19', phases: 1, rating: 32, height: 1, outlets: [{ type:'C13', count:8 }, { type:'C19', count:2 }] },
+  { sku: 'DK 7856.400', mfg: 'Rittal', category: 'switched', name: 'Rittal PSM switched, 1U, 1ф 16A, 8×C13', phases: 1, rating: 16, height: 1, outlets: [{ type:'C13', count:8 }] },
+  { sku: 'DK 7856.410', mfg: 'Rittal', category: 'switched', name: 'Rittal PSM switched, 1U, 1ф 16A, 6×C13 + 2×C19', phases: 1, rating: 16, height: 1, outlets: [{ type:'C13', count:6 }, { type:'C19', count:2 }] },
+  { sku: 'DK 7856.500', mfg: 'Rittal', category: 'hybrid', name: 'Rittal PSM metered+switched by outlet, 1U, 1ф 16A, 8×C13', phases: 1, rating: 16, height: 1, outlets: [{ type:'C13', count:8 }] },
+  { sku: 'DK 7856.510', mfg: 'Rittal', category: 'hybrid', name: 'Rittal PSM metered+switched by outlet, 1U, 1ф 32A, 8×C13 + 2×C19', phases: 1, rating: 32, height: 1, outlets: [{ type:'C13', count:8 }, { type:'C19', count:2 }] },
+  // Rittal — Monitored (metered-by-outlet)
+  { sku: 'DK 7955.600', mfg: 'Rittal', category: 'monitored', name: 'Rittal PDU metered-by-outlet, ZeroU, 1ф 16A, 20×C13 + 4×C19', phases: 1, rating: 16, height: 0, outlets: [{ type:'C13', count:20 }, { type:'C19', count:4 }] },
+  { sku: 'DK 7955.610', mfg: 'Rittal', category: 'monitored', name: 'Rittal PDU metered-by-outlet, ZeroU, 1ф 32A, 20×C13 + 4×C19', phases: 1, rating: 32, height: 0, outlets: [{ type:'C13', count:20 }, { type:'C19', count:4 }] },
+  { sku: 'DK 7955.620', mfg: 'Rittal', category: 'monitored', name: 'Rittal PDU metered-by-outlet, ZeroU, 3ф 16A, 24×C13 + 6×C19', phases: 3, rating: 16, height: 0, outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+  { sku: 'DK 7955.630', mfg: 'Rittal', category: 'monitored', name: 'Rittal PDU metered-by-outlet, ZeroU, 3ф 32A, 24×C13 + 6×C19', phases: 3, rating: 32, height: 0, outlets: [{ type:'C13', count:24 }, { type:'C19', count:6 }] },
+  { sku: 'DK 7955.650', mfg: 'Rittal', category: 'monitored', name: 'Rittal PDU metered-by-outlet, ZeroU, 3ф 32A, 36×C13 + 6×C19', phases: 3, rating: 32, height: 0, outlets: [{ type:'C13', count:36 }, { type:'C19', count:6 }] },
   // ЦМО — 19" 1U
   { sku: 'R-16-2P-F', mfg: 'ЦМО', category: 'basic', name: 'ЦМО Блок розеток R-16-2P-F, 1U, 1ф 16A, 2×Schuko, автомат + фильтр', phases: 1, rating: 16, height: 1, outlets: [{ type:'Schuko', count:2 }] },
   { sku: 'R-16-6P-F', mfg: 'ЦМО', category: 'basic', name: 'ЦМО Блок розеток R-16-6P-F, 1U, 1ф 16A, 6×Schuko, автомат + фильтр', phases: 1, rating: 16, height: 1, outlets: [{ type:'Schuko', count:6 }] },
