@@ -140,7 +140,18 @@ function openKitCatalogModal() {
   const mfgs = Array.from(new Set(
     KITS.filter(k => k.id).map(k => (k.preset && k.preset.manufacturer) || '—'))).sort();
   const us   = Array.from(new Set(KITS.filter(k => k.id).map(k => k.preset.u))).sort((a,b) => a-b);
-  const state = { search: '', mfg: '__all__', u: '__all__' };
+  const widths = Array.from(new Set(KITS.filter(k => k.id).map(k => k.preset.width))).sort((a,b) => a-b);
+  const depths = Array.from(new Set(KITS.filter(k => k.id).map(k => k.preset.depth))).sort((a,b) => a-b);
+  // v0.59.110: предустановка фильтров из текущих параметров шаблона, если
+  // пользователь уже задал U/ширину/глубину. Каталог сразу сузится до
+  // совместимых моделей.
+  const state = {
+    search: '',
+    mfg: '__all__',
+    u: us.includes(t.u) ? String(t.u) : '__all__',
+    width: widths.includes(t.width) ? String(t.width) : '__all__',
+    depth: depths.includes(t.depth) ? String(t.depth) : '__all__',
+  };
 
   const back = document.createElement('div');
   back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
@@ -161,6 +172,8 @@ function openKitCatalogModal() {
       const mfg = (k.preset && k.preset.manufacturer) || '';
       if (state.mfg !== '__all__' && mfg !== state.mfg) return false;
       if (state.u !== '__all__' && k.preset.u !== +state.u) return false;
+      if (state.width !== '__all__' && k.preset.width !== +state.width) return false;
+      if (state.depth !== '__all__' && k.preset.depth !== +state.depth) return false;
       if (q && !(k.sku.toLowerCase().includes(q)
                || k.name.toLowerCase().includes(q)
                || mfg.toLowerCase().includes(q))) return false;
@@ -171,7 +184,7 @@ function openKitCatalogModal() {
         <h3 style="margin:0">Каталог базовых комплектов стоек</h3>
         <button type="button" class="rc-btn" id="rc-km-close-x">✕</button>
       </div>
-      <div style="padding:12px 20px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
+      <div style="padding:12px 20px;display:grid;grid-template-columns:2fr 1fr 0.7fr 0.9fr 0.9fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
         <label class="rc-field"><span>Поиск</span>
           <input type="text" id="rc-km-search" value="${escape(state.search)}" placeholder="SKU, наименование, производитель…">
         </label>
@@ -185,6 +198,18 @@ function openKitCatalogModal() {
           <select id="rc-km-u">
             <option value="__all__" ${state.u==='__all__'?'selected':''}>Все</option>
             ${us.map(u => `<option value="${u}" ${String(state.u)===String(u)?'selected':''}>${u}U</option>`).join('')}
+          </select>
+        </label>
+        <label class="rc-field"><span>Ширина, мм</span>
+          <select id="rc-km-w">
+            <option value="__all__" ${state.width==='__all__'?'selected':''}>Все</option>
+            ${widths.map(w => `<option value="${w}" ${String(state.width)===String(w)?'selected':''}>${w}</option>`).join('')}
+          </select>
+        </label>
+        <label class="rc-field"><span>Глубина, мм</span>
+          <select id="rc-km-d">
+            <option value="__all__" ${state.depth==='__all__'?'selected':''}>Все</option>
+            ${depths.map(d => `<option value="${d}" ${String(state.depth)===String(d)?'selected':''}>${d}</option>`).join('')}
           </select>
         </label>
         <div class="muted" style="font-size:11px;padding-bottom:6px">Найдено: <b>${rows.length}</b></div>
@@ -227,6 +252,8 @@ function openKitCatalogModal() {
     });
     box.querySelector('#rc-km-mfg').addEventListener('change', e => { state.mfg = e.target.value; render(); });
     box.querySelector('#rc-km-u').addEventListener('change',   e => { state.u   = e.target.value; render(); });
+    box.querySelector('#rc-km-w').addEventListener('change',   e => { state.width = e.target.value; render(); });
+    box.querySelector('#rc-km-d').addEventListener('change',   e => { state.depth = e.target.value; render(); });
     box.querySelectorAll('[data-km-pick]').forEach(btn =>
       btn.addEventListener('click', () => pick(btn.dataset.kmPick)));
   }
@@ -239,7 +266,20 @@ function openKitCatalogModal() {
 function openPduCatalogModal(pdu) {
   const PDUS = getLivePduCatalog();
   const mfgs = Array.from(new Set(PDUS.map(p => p.mfg))).sort();
-  const st = { search: '', mfg: '__all__', cat: '__all__', phases: '__all__' };
+  // v0.59.110: предустановка фильтров из уже заданных параметров PDU.
+  // Если пользователь указал фазы / категорию / номинал — сразу сузим
+  // каталог. Для номинала и высоты проверяем наличие в существующих
+  // каталожных значениях.
+  const ratings = Array.from(new Set(PDUS.map(p => p.rating))).sort((a, b) => a - b);
+  const heights = Array.from(new Set(PDUS.map(p => p.height))).sort((a, b) => a - b);
+  const st = {
+    search: '',
+    mfg: '__all__',
+    cat: (pdu && pdu.category && PDU_CATEGORY[pdu.category]) ? pdu.category : '__all__',
+    phases: (pdu && (pdu.phases === 1 || pdu.phases === 3)) ? String(pdu.phases) : '__all__',
+    rating: (pdu && ratings.includes(+pdu.rating)) ? String(pdu.rating) : '__all__',
+    height: (pdu && heights.includes(+pdu.height)) ? String(pdu.height) : '__all__',
+  };
 
   const back = document.createElement('div');
   back.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
@@ -254,6 +294,8 @@ function openPduCatalogModal(pdu) {
       if (st.mfg !== '__all__' && p.mfg !== st.mfg) return false;
       if (st.cat !== '__all__' && p.category !== st.cat) return false;
       if (st.phases !== '__all__' && String(p.phases) !== st.phases) return false;
+      if (st.rating !== '__all__' && String(p.rating) !== st.rating) return false;
+      if (st.height !== '__all__' && String(p.height) !== st.height) return false;
       if (q && !(p.sku.toLowerCase().includes(q)
                || p.name.toLowerCase().includes(q)
                || (PDU_CATEGORY[p.category]||'').toLowerCase().includes(q))) return false;
@@ -264,7 +306,7 @@ function openPduCatalogModal(pdu) {
         <h3 style="margin:0">Каталог PDU</h3>
         <button type="button" class="rc-btn" id="rc-pm-close-x">✕</button>
       </div>
-      <div style="padding:12px 20px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
+      <div style="padding:12px 20px;display:grid;grid-template-columns:1.6fr 1fr 1fr 0.8fr 0.9fr 0.9fr auto;gap:10px;align-items:end;border-bottom:1px solid var(--rs-border-soft)">
         <label class="rc-field"><span>Поиск</span>
           <input type="text" id="rc-pm-search" value="${escape(st.search)}" placeholder="SKU, название, категория…">
         </label>
@@ -285,6 +327,18 @@ function openPduCatalogModal(pdu) {
             <option value="__all__" ${st.phases==='__all__'?'selected':''}>Все</option>
             <option value="1" ${st.phases==='1'?'selected':''}>1ф</option>
             <option value="3" ${st.phases==='3'?'selected':''}>3ф</option>
+          </select>
+        </label>
+        <label class="rc-field"><span>Номинал, A</span>
+          <select id="rc-pm-rat">
+            <option value="__all__" ${st.rating==='__all__'?'selected':''}>Все</option>
+            ${ratings.map(r => `<option value="${r}" ${String(st.rating)===String(r)?'selected':''}>${r}</option>`).join('')}
+          </select>
+        </label>
+        <label class="rc-field"><span>Высота</span>
+          <select id="rc-pm-h">
+            <option value="__all__" ${st.height==='__all__'?'selected':''}>Все</option>
+            ${heights.map(h => `<option value="${h}" ${String(st.height)===String(h)?'selected':''}>${h===0?'0U верт.':h+'U'}</option>`).join('')}
           </select>
         </label>
         <div class="muted" style="font-size:11px;padding-bottom:6px">Найдено: <b>${rows.length}</b></div>
@@ -342,6 +396,8 @@ function openPduCatalogModal(pdu) {
     box.querySelector('#rc-pm-mfg').addEventListener('change', e => { st.mfg = e.target.value; render(); });
     box.querySelector('#rc-pm-cat').addEventListener('change', e => { st.cat = e.target.value; render(); });
     box.querySelector('#rc-pm-ph').addEventListener('change',  e => { st.phases = e.target.value; render(); });
+    box.querySelector('#rc-pm-rat').addEventListener('change', e => { st.rating = e.target.value; render(); });
+    box.querySelector('#rc-pm-h').addEventListener('change',   e => { st.height = e.target.value; render(); });
     box.querySelectorAll('[data-pm-pick]').forEach(btn =>
       btn.addEventListener('click', () => pick(btn.dataset.pmPick)));
   }
