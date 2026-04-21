@@ -450,6 +450,8 @@ function renderWarnings() {
     if ((d.pipeline || []).length &&
         !d.pipeline.some(p => p.nozzle && p.nozzle !== 'none'))
       items.push({ t:`«${d.name}»: в трубопроводе нет насадков.`, cls:'' });
+    // Fitting-distance: min straight run 10·DN до/после фитингов.
+    collectFittingWarnings(d).forEach(w => items.push({ t:`«${d.name}»: ${w}`, cls:'warn' }));
   });
   if (!items.length) items.push({ t:'Без замечаний', cls:'ok' });
   ul.innerHTML = items.map(x => `<li class="${x.cls}">${esc(x.t)}</li>`).join('');
@@ -878,6 +880,9 @@ function setupIsoHandlers() {
         : inst.directions[0];
       if (!target) { alert('Нет направления.'); return; }
       const axis = b.dataset.axis;
+      // Запрет построения по уже занятому направлению от текущего узла.
+      const conflict = findAxisConflict(target.pipeline, V3.selectedNode, axis);
+      if (conflict) { alert(conflict); return; }
       const seg = {
         id: newId('s-'), parent: V3.selectedNode,
         axis, L: +$('seg-L').value || 1,
@@ -885,7 +890,10 @@ function setupIsoHandlers() {
       };
       target.pipeline.push(seg);
       V3.selectedNode = seg.id;
+      // Мягкое предупреждение о слишком короткой прямой между фитингами.
+      const warns = collectFittingWarnings(target);
       saveAll(); renderIso(S.isoDirId);
+      if (warns.length) console.warn('[АГПТ] fitting-distance:', warns);
     });
   });
 
@@ -1029,6 +1037,72 @@ function countNozzlesDownstream(pipeline) {
   return memo;
 }
 
+/** Минимально допустимая длина прямого участка между фитингами (СП 485 — 10·DN).
+ *  Возврат в метрах. */
+function minStraightRun(dn) {
+  return Math.max(0.05, 10 * (+dn || 0) / 1000);
+}
+
+/** Узлы, где установлен фитинг (поворот или тройник):
+ *   — любой узел, являющийся parent'ом для ≥1 сегмента, И при этом сам
+ *     является концом другого сегмента ИЛИ имеет ≥2 детей ИЛИ смена оси.
+ *   Возвращает Set(nodeId). */
+function nodesWithFitting(pipeline) {
+  const fitting = new Set();
+  const childrenByParent = new Map();
+  pipeline.forEach(s => {
+    const k = s.parent || 'root';
+    if (!childrenByParent.has(k)) childrenByParent.set(k, []);
+    childrenByParent.get(k).push(s);
+  });
+  for (const [parentId, kids] of childrenByParent) {
+    const parentSeg = parentId === 'root' ? null : pipeline.find(s => s.id === parentId);
+    if (kids.length >= 2) { fitting.add(parentId); continue; }          // тройник / крест
+    if (parentSeg && kids[0] && kids[0].axis !== parentSeg.axis) {      // поворот
+      fitting.add(parentId);
+    }
+  }
+  return fitting;
+}
+
+/** Возвращает массив сообщений-предупреждений про слишком короткие прямые
+ *  участки между фитингами (СП 485 — L ≥ 10·DN). */
+function collectFittingWarnings(dir) {
+  const pipe = dir.pipeline || [];
+  const fitting = nodesWithFitting(pipe);
+  const out = [];
+  pipe.forEach((s, i) => {
+    const Lmin = minStraightRun(s.DN);
+    const startAtFitting = fitting.has(s.parent || 'root');
+    const endAtFitting   = fitting.has(s.id);
+    if ((startAtFitting || endAtFitting) && (+s.L || 0) < Lmin) {
+      out.push(`участок #${i+1} (DN${s.DN}) длиной ${(+s.L||0).toFixed(2)} м — < 10·DN = ${Lmin.toFixed(2)} м между фитингами.`);
+    }
+  });
+  return out;
+}
+
+/** Возвращает сообщение, если от узла `nodeId` в направлении `axis` нельзя
+ * проложить участок (уже есть дочерний в этом направлении, или это инверсия
+ * входящего участка = пойдёт обратно в родителя). Иначе null. */
+function findAxisConflict(pipeline, nodeId, axis) {
+  const sameDir = pipeline.find(s => (s.parent || 'root') === nodeId && s.axis === axis);
+  if (sameDir) {
+    return `От этого узла уже построен участок в направлении ${axis}. Выберите другое направление или другой узел.`;
+  }
+  // Обратное направление входящего участка = шаг «назад» в родителя.
+  if (nodeId && nodeId !== 'root') {
+    const incoming = pipeline.find(s => s.id === nodeId);
+    if (incoming) {
+      const inv = incoming.axis.startsWith('-') ? incoming.axis.slice(1) : '-' + incoming.axis;
+      if (axis === inv) {
+        return `Направление ${axis} противоположно входящему участку (${incoming.axis}) и ведёт обратно по той же линии. Удалите или продлите существующий участок.`;
+      }
+    }
+  }
+  return null;
+}
+
 /** Удалить участок и все его ответвления (рекурсивно по parent-связям). */
 function removeSegAndDescendants(dir, segId) {
   const toRemove = new Set([segId]);
@@ -1095,7 +1169,7 @@ function buildSpecRows() {
         rows.nozzles[p.nozzle] = (rows.nozzles[p.nozzle] || 0) + 1;
       }
       const od = dnToOD(+p.DN);
-      const key = `${od.OD}×${od.wall} (DN${p.DN})`;
+      const key = `${od.OD}×${od.w} (DN${p.DN})`;
       rows.pipes[key] = +((rows.pipes[key] || 0) + (+p.L || 0)).toFixed(2);
     });
   });
@@ -1103,7 +1177,7 @@ function buildSpecRows() {
   inst.assemblies.forEach(a => {
     if (a.collectorL > 0) {
       const od = dnToOD(+a.collectorDN);
-      const key = `${od.OD}×${od.wall} (DN${a.collectorDN}) коллектор`;
+      const key = `${od.OD}×${od.w} (DN${a.collectorDN}) коллектор`;
       rows.pipes[key] = +((rows.pipes[key] || 0) + a.collectorL).toFixed(2);
     }
   });
@@ -1115,9 +1189,13 @@ function openSpec() {
   if (!inst.directions.length) { alert('Нет направлений.'); return; }
   const r = buildSpecRows();
   let no = 1;
+  const COLGROUP = `<colgroup>
+      <col style="width:48px"><col><col style="width:90px"><col style="width:60px"><col style="width:280px">
+    </colgroup>`;
   const section = (title, items) => items.length ? `
     <h3 style="color:#0d47a1;margin:12px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;">${title}</h3>
-    <table class="sup-tbl">
+    <table class="sup-tbl sup-spec-tbl">
+      ${COLGROUP}
       <thead><tr><th>№</th><th>Наименование</th><th class="num">Кол-во</th><th>Ед.</th><th>Примечание</th></tr></thead>
       <tbody>${items.map(r => `<tr>
         <td>${no++}</td><td>${esc(r.name)}</td><td class="num">${r.qty}</td><td>${r.unit}</td><td>${esc(r.note||'')}</td></tr>`).join('')}</tbody>

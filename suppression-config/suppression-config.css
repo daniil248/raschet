@@ -136,6 +136,7 @@
 .sup-warn li.ok { color: #2e7d32; }
 .sup-warn li.ok::before { content: "✓ "; }
 .sup-warn li.err { color: #c62828; }
+.sup-warn li.warn { color: #f57c00; }
 
 /* ---------- Dialog ---------- */
 .sup-dlg { border: none; border-radius: 6px; padding: 0; box-shadow: 0 8px 32px rgba(0,0,0,.18); }
@@ -216,6 +217,10 @@
 .sup-seg-list .seg-item:hover { background: #f5f9ff; }
 .sup-seg-list .seg-item.sel { background: #e3f2fd; font-weight: 600; }
 .sup-seg-list .seg-no { color: #0d47a1; font-weight: 700; width: 22px; }
+.sup-spec-tbl { table-layout: fixed; width: 100%; }
+.sup-spec-tbl td, .sup-spec-tbl th {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .sup-seg-list .seg-axis { color: #455a64; width: 28px; font-family: monospace; }
 .sup-seg-list .seg-edit {
   font-size: 11px; padding: 1px 3px; border: 1px solid #cfd8dc;
