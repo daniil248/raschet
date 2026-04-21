@@ -599,12 +599,13 @@ function renderResult(I, res, finalSize, increasedBy, In, vdropAmp, vdropFinal, 
 }
 
 // Синхронизация выпадающего «Характеристика автомата» с подобранным номиналом In.
-// Границы: MCB ≤ 125 А (IEC 60898-1), MCCB ≤ 1600 А (IEC 60947-2), выше — ACB.
+// Границы: MCB ≤ 125 А (IEC 60898-1), MCCB ≤ 3200 А (IEC 60947-2, ABB Tmax T8 /
+// Schneider Compact NS до 3200 А), выше — ACB.
 function syncBreakerCurveOptions(In) {
   const sel = document.getElementById('in-breakerCurve');
   if (!sel) return;
   const allowMcb  = In <= 125;
-  const allowMccb = In <= 1600;
+  const allowMccb = In <= 3200;
   const allowAcb  = true;
   const rules = { MCB_B: allowMcb, MCB_C: allowMcb, MCB_D: allowMcb, MCCB: allowMccb, ACB: allowAcb };
   for (const opt of sel.options) {

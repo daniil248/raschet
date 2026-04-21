@@ -70,11 +70,12 @@ export const phaseLoopModule = {
     const In = Number(input.breakerIn) || Number(input.In) || 0;
     let breakerCurve = input.breakerCurve || 'MCB_C';
     // Физические границы: MCB по IEC 60898 — до 125 А (обычно до 63 А),
-    // MCCB — до ~1600 А, далее ACB. Если пользователь оставил дефолт
-    // «MCB_C», а номинал уже явно MCCB/ACB — авто-повышаем, иначе в
-    // предупреждении будет абсурдная метка вида «MCB_C 400А × 10».
+    // MCCB по IEC 60947-2 — до ~3200 А (ABB Tmax T8, Schneider Compact NS),
+    // далее ACB. Если пользователь оставил дефолт «MCB_C», а номинал уже
+    // явно MCCB/ACB — авто-повышаем, иначе в предупреждении будет абсурдная
+    // метка вида «MCB_C 400А × 10».
     if (breakerCurve.startsWith('MCB_') && In > 125) {
-      breakerCurve = In > 1600 ? 'ACB' : 'MCCB';
+      breakerCurve = In > 3200 ? 'ACB' : 'MCCB';
     }
     const mult = MAG_MULT[breakerCurve] || 10;
     const Ia = In * mult;
