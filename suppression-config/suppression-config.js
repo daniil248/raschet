@@ -337,7 +337,11 @@ function renderAsmView() {
   const pu = document.querySelector('#pu-tbl tbody');
   pu.innerHTML = inst.directions.map(d => {
     const r = computeDir(d);
-    return `<tr><td>${esc(d.name)}</td><td class="num">${r?.n||0}</td><td class="num">${r?.n||0}</td></tr>`;
+    const nCalc = r?.n || 0;
+    const asm = inst.assemblies.filter(a => a.dirId === d.id);
+    const nFact = asm.reduce((a, x) => a + (+x.main || 0), 0);
+    const cls = nFact < nCalc ? 'style="color:#c62828;font-weight:600;"' : '';
+    return `<tr><td>${esc(d.name)}</td><td class="num">${nCalc}</td><td class="num" ${cls}>${nFact}</td></tr>`;
   }).join('') || `<tr><td colspan="3" style="color:#888;text-align:center;">—</td></tr>`;
 }
 
@@ -428,35 +432,68 @@ function renderWarnings() {
       if (param > paramMax)
         items.push({ t:`«${d.name}» / «${z.name}»: параметр негерметичности (${param.toFixed(4)} м⁻¹) > ${paramMax}.`, cls:'err' });
     });
+    // N_fact < N_calc
+    const r = computeDir(d);
+    if (r) {
+      const asm = inst.assemblies.filter(a => a.dirId === d.id);
+      const nFact = asm.reduce((a, x) => a + (+x.main || 0), 0);
+      if (nFact && nFact < r.n)
+        items.push({ t:`«${d.name}»: модулей по сборке ${nFact}, требуется ${r.n}.`, cls:'err' });
+    }
+    // pipeline sanity: only warn if explicitly emptied
+    if ((d.pipeline || []).length &&
+        !d.pipeline.some(p => p.nozzle && p.nozzle !== 'none'))
+      items.push({ t:`«${d.name}»: в трубопроводе нет насадков.`, cls:'' });
   });
   if (!items.length) items.push({ t:'Без замечаний', cls:'ok' });
   ul.innerHTML = items.map(x => `<li class="${x.cls}">${esc(x.t)}</li>`).join('');
 }
 
 /* ------------------- Computation ------------------- */
+/** Per-zone compute + aggregate over direction. */
 function computeDir(dir) {
   const inst = currentInst();
   if (!inst || !dir.zones.length) return null;
-  const z = dir.zones[0];
-  const totalS = dir.zones.reduce((a,b) => a + (b.S||0), 0);
-  const avgH = dir.zones.reduce((a,b) => a + (b.H||0)*((b.S||0)), 0) / Math.max(1, totalS);
   try {
-    const obtr = (dir.pipeline || []).reduce((acc, p) => {
-      const dn = +p.DN || 0; const L = +p.L || 0;
+    const obtrTotal = (dir.pipeline || []).reduce((acc, p) => {
+      const dn = +p.DN || 0, L = +p.L || 0;
       return acc + Math.PI * Math.pow(dn/2000, 2) * L * 1000;
     }, 0);
-    const r = Annex.compute({
-      agent: inst.agent, sp: totalS, h: avgH || z.H,
-      tm: dir.tmin, hm: inst.elevation || 0,
-      fs: z.fs, paramp: +z.P, cn: z.Cn, tp: dir.feedTime,
-      fireClass: dir.fireClass, moduleCode: inst.moduleCode,
-      obtr: +obtr.toFixed(2),
+    // split pipe volume proportional to zone volume
+    const totalV = dir.zones.reduce((a,z) => a + (z.S||0)*(z.H||0), 0) || 1;
+    const zoneResults = dir.zones.map(z => {
+      const V = (z.S||0) * (z.H||0);
+      const obtrZ = obtrTotal * V / totalV;
+      const r = Annex.compute({
+        agent: inst.agent, sp: z.S, h: z.H,
+        tm: dir.tmin, hm: inst.elevation || 0,
+        fs: z.fs, paramp: +z.P, cn: z.Cn, tp: dir.feedTime,
+        fireClass: dir.fireClass, moduleCode: inst.moduleCode,
+        obtr: +obtrZ.toFixed(2),
+      });
+      const rel = Annex.reliefArea({
+        mp: r.mp, r1: r.r1, tpd: r.tpd,
+        tm: r.inputs.tm, hm: r.inputs.hm, piz: z.Ppr, fs: r.inputs.fs,
+      });
+      return { zone: z, r, Fc: rel.Fc };
     });
-    const relief = Annex.reliefArea({
-      mp: r.mp, r1: r.r1, tpd: r.tpd,
-      tm: r.inputs.tm, hm: r.inputs.hm, piz: z.Ppr, fs: r.inputs.fs,
-    });
-    return { ...r, Fc: relief.Fc };
+    // aggregate: summable quantities are summed; representative params taken from max-mp zone
+    const sum = (k) => zoneResults.reduce((a, x) => a + (+x.r[k] || 0), 0);
+    const maxMp = zoneResults.reduce((a,b) => (b.r.mp > a.r.mp ? b : a), zoneResults[0]);
+    const mp  = +sum('mp').toFixed(1);
+    const mtr = +sum('mtr').toFixed(3);
+    const n   = zoneResults.reduce((a,x) => a + x.r.n, 0);
+    const mg  = +sum('mg').toFixed(1);
+    const m1  = +(mg - mp - mtr).toFixed(2);
+    const Fc  = +zoneResults.reduce((a,x) => Math.max(a, x.Fc), 0).toFixed(4);
+    const tpd = maxMp.r.tpd;
+    const r1  = maxMp.r.r1, r2 = maxMp.r.r2, ob = maxMp.r.ob, mb = maxMp.r.mb;
+    const kz_max = maxMp.r.kz_max, Mmin = mp;
+    return {
+      ...maxMp.r, // for any consumers needing scalar fallbacks
+      mp, mg, n, m1, mtr, Fc, tpd, r1, r2, ob, mb, kz_max, Mmin,
+      zoneResults,
+    };
   } catch (e) {
     console.warn('computeDir error:', e);
     return null;
@@ -490,10 +527,23 @@ function openDirDialog(existingId) {
       exhaustDist: +$('d-exh-d').value, prelief: $('d-prelief').checked,
       exec: $('d-exec').value, fireClass: $('d-class').value, leakage: $('d-leak').value,
     });
-    if (!existing) { inst.directions.push(d); S.selected = { kind:'dir', dirId: d.id }; }
+    if (!existing) {
+      inst.directions.push(d);
+      if (!d.pipeline.length) d.pipeline = defaultPipelineSkeleton(d);
+      S.selected = { kind:'dir', dirId: d.id };
+    }
     inst.assemblies = [];
     saveAll(); renderAll();
   }, { once: true });
+}
+
+/** Типовой скелет трубопровода: коллектор + отвод на насадок по умолчанию. */
+function defaultPipelineSkeleton(dir) {
+  return [
+    { id: newId('s-'), axis: 'x', L: 2.0, DN: 40, nozzle: 'none' },   // магистраль
+    { id: newId('s-'), axis: 'y', L: 2.5, DN: 25, nozzle: 'none' },   // стояк
+    { id: newId('s-'), axis: 'z', L: 1.5, DN: 20, nozzle: 'R-360' },  // насадок
+  ];
 }
 
 /* ------------------- Zone dialog ------------------- */
