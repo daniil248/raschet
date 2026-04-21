@@ -112,6 +112,7 @@ function procArrow(pr, i) {
     <div class="arr" data-role="arr" style="color:${PROC_COLOR[pr.type]||'#607080'}">↓</div>
     <label style="font-size:10px;color:#666">V процесса, м³/ч
       <input type="number" data-col="V" data-i="${i}" value="${S.points[i].V ?? ''}" step="100" placeholder="${S.vBase}">
+      <span class="v-auto" data-role="v-auto" style="font-size:10px;color:#2e7d32;display:block;margin-top:2px;"></span>
     </label>
   `;
   return el;
@@ -140,6 +141,29 @@ function refreshComputedInCards() {
   S.procs.forEach((pr, i) => {
     const arr = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] [data-role="arr"]`);
     if (arr) arr.style.color = PROC_COLOR[pr.type] || '#607080';
+  });
+}
+
+/* Обновить подписи «автоматический V» под полями V, когда сегмент ведомый. */
+function refreshAutoV(segs, primaryIdx) {
+  if (!segs) return;
+  segs.forEach((s, i) => {
+    const wrap = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] [data-role="v-auto"]`);
+    if (!wrap) return;
+    if (!s) { wrap.textContent = ''; return; }
+    if (s.derived) {
+      wrap.textContent = `авто: ${s.V.toFixed(0)} м³/ч (по массе)`;
+      wrap.style.color = '#2e7d32';
+    } else {
+      wrap.textContent = `ведущий · Gда=${s.G.toFixed(0)} кг/ч`;
+      wrap.style.color = '#1565c0';
+    }
+  });
+  // Обновить placeholder у пустых V — показать вычисленное авто-значение
+  segs.forEach((s, i) => {
+    const inp = document.querySelector(`.psy-proc-arrow[data-proc-idx="${i}"] input[data-col="V"]`);
+    if (!inp || !s) return;
+    if (s.derived) inp.placeholder = s.V.toFixed(0);
   });
 }
 
@@ -180,23 +204,51 @@ function readInputs() {
 function computeCycle() {
   const sts = S.points.map(p => pointState(p, S.P));
   const segs = [];
+
+  /* Сохранение массы: через весь цикл течёт одна и та же масса сух. воздуха
+     G_da [кг/ч] = V·ρ/(1+W). Если у какого-то сегмента V задан — он «ведущий»,
+     остальные сегменты пересчитывают V = G_da·(1+W)/ρ от СВОЕГО входного
+     состояния (т.к. при нагреве ρ падает → V растёт).  Если V не задан
+     нигде — ведущим считаем базовый расход S.vBase, приложенный к точке 0. */
+  let primaryIdx = -1;
+  for (let i = 0; i < S.points.length - 1; i++) {
+    if (nNum(S.points[i].V) > 0) { primaryIdx = i; break; }
+  }
+  let G_ref = 0;  // кг_да/ч — опорный массовый расход
+  if (primaryIdx >= 0 && sts[primaryIdx]) {
+    const a = sts[primaryIdx];
+    const V = nNum(S.points[primaryIdx].V);
+    G_ref = V * a.rho / (1 + a.W);
+  } else if (sts[0]) {
+    G_ref = S.vBase * sts[0].rho / (1 + sts[0].W);
+  }
+
   for (let i = 0; i < S.points.length - 1; i++) {
     const a = sts[i], b = sts[i+1];
     if (!a || !b) { segs.push(null); continue; }
     const pr = S.procs[i] || { type: 'P' };
-    const V = (nNum(S.points[i].V) || S.vBase);
-    const Q = processPowerKW(a, b, V);
+    const userV = nNum(S.points[i].V);
+    const hasOwnV = i === primaryIdx && Number.isFinite(userV) && userV > 0;
+    let V;
+    if (hasOwnV) {
+      V = userV;
+    } else if (G_ref > 0) {
+      V = G_ref * (1 + a.W) / a.rho;   // derived от массы
+    } else {
+      V = S.vBase;
+    }
+    const G  = V * a.rho / (1 + a.W);
+    const Q  = processPowerKW(a, b, V);
     const qw = processMoistureKgH(a, b, V);
-    const rho_da = a.rho / (1 + a.W);
-    const G = V * rho_da;    // кг_да/ч
     segs.push({
       type: pr.type, V, Q, qw, G,
+      derived: !hasOwnV,
       dT: +(b.T - a.T).toFixed(2),
       dW: +((b.W - a.W)*1000).toFixed(3),
       dh: +(b.h - a.h).toFixed(2),
     });
   }
-  return { sts, segs };
+  return { sts, segs, primaryIdx };
 }
 
 /* ========================================================================
@@ -411,7 +463,8 @@ function syncTopInputs() {
 function update() {
   readInputs();
   refreshComputedInCards();
-  const { sts, segs } = computeCycle();
+  const { sts, segs, primaryIdx } = computeCycle();
+  refreshAutoV(segs, primaryIdx);
   renderResults(sts, segs);
   renderChart(sts);
 }
