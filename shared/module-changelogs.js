@@ -50,6 +50,11 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.122', date: '2026-04-21', items: [
+      '<b>Fix: главная страница зависала на «Загрузка…».</b> GitHub Pages через Jekyll игнорирует файлы с префиксом <code>_</code> → <code>shared/catalogs/_helpers.js</code> отдавался как 404, цепочка импортов <code>rack-catalog-data.js</code> ломалась, main.js не инициализировался. Добавлен <code>.nojekyll</code> в корень репо — GitHub Pages теперь отдаёт файлы как есть, без Jekyll-препроцессинга.',
+      'Параллельно: ссылка «Каталог ↗» в PDU-пикере использует корректный параметр <code>?filterKind=pdu</code> вместо <code>?kind=pdu</code> (catalog.js читает именно filterKind).',
+      'Файлы: .nojekyll (новый), shared/pdu-picker-modal.js (resolvedCatalogHref).'
+    ] },
     { version: '0.59.121', date: '2026-04-21', items: [
       '<b>PDU picker: draggable + фикс. размер + структурированный фильтр + экшены.</b> shared/pdu-picker-modal.js переписан:',
       '— <b>Перемещаемая</b> мышью за шапку (mousedown на .pdm-head), backdrop закрывает по mousedown вне панели.',

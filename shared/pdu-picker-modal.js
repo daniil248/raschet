@@ -126,7 +126,7 @@ export async function openPduPickerModal(opts) {
   if (!resolvedCatalogHref) {
     const p = location.pathname;
     const m = p.match(/^(.*?\/raschet\/)/);
-    resolvedCatalogHref = (m ? m[1] : '../') + 'catalog/?kind=pdu';
+    resolvedCatalogHref = (m ? m[1] : '../') + 'catalog/?filterKind=pdu';
   }
 
   const back = document.createElement('div');
