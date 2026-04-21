@@ -726,7 +726,59 @@ function init() {
     if (el.type === 'number' || el.type === 'text') el.addEventListener('input', update);
   }
   $('mdc-export-bom').addEventListener('click', exportBom);
+  $('mdc-send-suppression')?.addEventListener('click', sendToSuppression);
   update();
+}
+
+/* ================== BRIDGE: MDC → АГПТ (Phase 11.8) ==================
+   Передаём в suppression-config геометрию IT- и силовых модулей как
+   готовые зоны пожаротушения. Формат — единый localStorage-мост
+   'raschet.mdcToSuppression.v1'. suppression-config на init проверяет
+   ключ и, если запись свежая (< 24 ч), предлагает создать установку.
+   Высота помещения — фиксированная H=2700 мм внутри модуля GDM-600
+   (от фальшпола до потолка). Площадь S = (widthMm × lengthMm) / 1e6. */
+function sendToSuppression() {
+  const r = compute();
+  const H = 2.7; // м, внутренняя высота GDM-600 от фальшпола
+  const zonesByDir = { IT: [], POWER: [] };
+  for (const m of r.sequence) {
+    const tpl = MODULE_TEMPLATES[m.templateId];
+    if (!tpl || tpl.kind === 'CORRIDOR') continue;
+    const Sm2 = +(tpl.widthMm * tpl.lengthMm / 1e6).toFixed(2);
+    const label = tpl.kind === 'POWER'
+      ? (m.templateId === 'MOD-PWR-A' ? `PWR-A${m.num}` : `PWR-B${m.num}`)
+      : `IT-${m.num}`;
+    zonesByDir[tpl.kind].push({
+      name: label, templateId: m.templateId,
+      S: Sm2, H, V: +(Sm2 * H).toFixed(2),
+      fireClass: tpl.kind === 'POWER' ? 'A' : 'A', // кабели/серверы — класс А (ТД)
+    });
+  }
+  const project = `ЦОД GDM-600 · ${r.totals.itKw} кВт · стоек ${r.totals.racks}${r.totals.racksWide ? '+' + r.totals.racksWide + 'w' : ''}`;
+  const payload = {
+    version: 1,
+    createdAt: Date.now(),
+    source: 'mdc-config',
+    project,
+    installations: [{
+      name: `АГПТ · ${project}`,
+      norm: 'SP485',         // дефолтный норматив — пользователь сможет сменить
+      agent: 'HFC-227ea',    // FM-200, типовой для ЦОД
+      directions: [
+        { name: 'IT-модули',    kind: 'common', zones: zonesByDir.IT },
+        { name: 'Силовые модули', kind: 'common', zones: zonesByDir.POWER },
+      ].filter(d => d.zones.length > 0),
+    }],
+  };
+  try {
+    localStorage.setItem('raschet.mdcToSuppression.v1', JSON.stringify(payload));
+  } catch (err) {
+    alert('Не удалось записать данные в localStorage: ' + err.message);
+    return;
+  }
+  // Открываем модуль АГПТ. Суп-модуль при init прочитает ключ и предложит
+  // импорт.
+  location.href = '../suppression-config/?from=mdc';
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -2435,6 +2435,61 @@ function init() {
     renderAll();
     openInstDialog(null);
   }
+
+  // Phase 11.8: MDC → АГПТ bridge. Если mdc-config записал геометрию
+  // IT-модулей в localStorage и запись свежая — предлагаем импорт.
+  maybeImportFromMdc();
+}
+
+/* -------------- MDC → АГПТ bridge (Phase 11.8) --------------
+   Если localStorage['raschet.mdcToSuppression.v1'] содержит свежую запись
+   (< 24 ч) — показываем confirm и создаём установку из переданных зон.
+   Формат payload — см. mdc-config/mdc-config.js::sendToSuppression(). */
+function maybeImportFromMdc() {
+  const KEY = 'raschet.mdcToSuppression.v1';
+  let payload;
+  try { payload = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { payload = null; }
+  if (!payload || payload.source !== 'mdc-config') return;
+  const ageMs = Date.now() - (payload.createdAt || 0);
+  if (ageMs > 24 * 3600 * 1000) return; // старше суток — игнорируем
+
+  const inst0 = payload.installations?.[0];
+  if (!inst0) return;
+  const zonesCount = (inst0.directions || []).reduce((s, d) => s + (d.zones?.length || 0), 0);
+  const dirCount = (inst0.directions || []).length;
+  const msg = `Конфигуратор ЦОД передал геометрию ${zonesCount} помещений (${dirCount} направления).\n\nСоздать установку АГПТ «${inst0.name}»?\n\nПосле создания запись из мостового ключа будет удалена.`;
+  const ok = confirm(msg);
+  if (!ok) return;
+
+  // Создаём установку на базе дефолтов + переопределяем нужными полями.
+  const base = defaultInstallation();
+  const inst = {
+    ...base,
+    name: inst0.name || base.name,
+    norm: inst0.norm === 'SP485' ? 'sp-485-annex-d' : base.norm,
+    agent: inst0.agent || base.agent,
+    site: { ...base.site, name: payload.project || '' },
+    directions: (inst0.directions || []).map((d, di) => {
+      const dir = defaultDirection(di + 1);
+      dir.name = d.name;
+      dir.layout = (d.kind === 'common' ? 'central' : 'modular');
+      dir.zones = (d.zones || []).map((z, zi) => {
+        const zn = defaultZone(zi + 1);
+        zn.name = z.name || zn.name;
+        zn.S = +z.S || zn.S;
+        zn.H = +z.H || zn.H;
+        if (z.fireClass) zn.fireClass = z.fireClass;
+        return zn;
+      });
+      return dir;
+    }),
+  };
+  S.installations[inst.id] = inst;
+  S.currentId = inst.id;
+  saveAll();
+  try { localStorage.removeItem(KEY); } catch {}
+  renderAll();
+  alert(`Установка «${inst.name}» создана (${zonesCount} зон в ${dirCount} направлениях).\nПроверьте норматив/ГОТВ/серию модулей в «Установка → Параметры», затем «Диаметры авто» для подбора DN.`);
 }
 
 document.addEventListener('DOMContentLoaded', init);

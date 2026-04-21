@@ -8,6 +8,15 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.59.36',
+    date: '2026-04-21',
+    items: [
+      'Фаза 11.8 завершена — интеграция с mdc-config (модульный ЦОД). В mdc-config добавлена кнопка «🔥 → АГПТ» (index.html: #mdc-send-suppression), которая собирает геометрию всех IT- и силовых модулей ЦОД (исключая коридор) и пишет её в localStorage как мост `raschet.mdcToSuppression.v1`. Payload содержит название проекта, норматив (SP485), ГОТВ (HFC-227ea по умолчанию) и два направления — «IT-модули» (central layout) и «Силовые модули» — где каждая зона = один модуль GDM-600 с S=widthMm·lengthMm и фиксированной H=2.7 м (внутренняя высота GDM-600 от фальшпола).',
+      'suppression-config на init вызывает maybeImportFromMdc(): если мостовой ключ свежий (< 24 ч и source=\'mdc-config\'), показывает confirm с количеством зон/направлений и, по согласию, создаёт установку на основе defaultInstallation()+defaultDirection()+defaultZone() с подстановкой S/H/name/fireClass из payload. После создания мостовой ключ удаляется, чтобы повторный заход не дублировал установку.',
+      'Файлы: mdc-config/mdc-config.js (+sendToSuppression, +обработчик #mdc-send-suppression), mdc-config/index.html (+кнопка), suppression-config/suppression-config.js (+maybeImportFromMdc после init).',
+    ],
+  },
+  {
     version: '0.59.35',
     date: '2026-04-21',
     items: [

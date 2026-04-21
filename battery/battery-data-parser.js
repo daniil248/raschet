@@ -38,11 +38,29 @@ function findColIdx(headerRow, candidates) {
 // Эвристическое определение химии по имени модели
 function guessChemistry(type) {
   const t = (type || '').toLowerCase();
-  if (/li|lfp|lifepo|lithium/.test(t)) return 'li-ion';
+  // Li-ion подтипы — LFP (LiFePO4) имеет cell voltage 3.2 В, NMC/NCA — 3.7 В.
+  if (/lfp|lifepo/.test(t)) return 'li-lfp';
+  if (/nmc|nca|ncm/.test(t)) return 'li-nmc';
+  if (/li|lithium/.test(t)) return 'li-ion';
   if (/nicd|ni-cd|никад/.test(t)) return 'nicd';
   if (/nimh|никмг/.test(t)) return 'nimh';
   // По умолчанию — свинцово-кислотная (VRLA/AGM/GEL)
   return 'vrla';
+}
+
+// Номинальное напряжение на элемент (cell) по химии — нужно для оценки
+// cellCount = blockVoltage / cellVoltageFor(chemistry). Для свинца 2.0 В,
+// для LFP 3.2 В, для NMC/NCA 3.7 В, для NiCd/NiMH 1.2 В.
+function cellVoltageFor(chemistry) {
+  switch (chemistry) {
+    case 'li-lfp':  return 3.2;
+    case 'li-nmc':  return 3.7;
+    case 'li-ion':  return 3.7; // общий кейс Li-Ion — считаем NMC-like
+    case 'nicd':
+    case 'nimh':    return 1.2;
+    case 'vrla':
+    default:        return 2.0;
+  }
 }
 
 // Оценка номинального напряжения блока по модели / end-voltage-диапазону.
@@ -158,14 +176,16 @@ export function parseBatteryXlsx(arrayBuffer, filename = 'upload.xlsx') {
   for (const g of groups.values()) {
     const endVs = g.dischargeTable.map(p => p.endV);
     const blockVoltage = inferBlockVoltage(g.type, endVs);
-    // cellCount = blockVoltage / 2 (для свинца; у Li-Ion оценивается иначе — TODO)
-    const cellCount = Math.round(blockVoltage / 2) || 6;
-    const cellVoltage = 2.0;
+    // cellCount и cellVoltage считаются по химии, а не фиксировано 2 В:
+    // свинец 2.0 В/элемент, LFP 3.2 В, NMC/NCA 3.7 В, NiCd/NiMH 1.2 В.
+    const chemistry = guessChemistry(g.type);
+    const cellVoltage = cellVoltageFor(chemistry);
+    const cellCount = Math.max(1, Math.round(blockVoltage / cellVoltage));
     // Сортируем таблицу разряда для стабильного порядка
     g.dischargeTable.sort((a, b) => (a.endV - b.endV) || (a.tMin - b.tMin));
     out.push({
       ...g,
-      chemistry: guessChemistry(g.type),
+      chemistry,
       blockVoltage,
       cellCount,
       cellVoltage,
