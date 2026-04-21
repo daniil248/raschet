@@ -146,6 +146,44 @@ function openModal(title, formHtml, onSave) {
 // ====================== TAB: ЭЛЕМЕНТЫ ======================
 const elFilters = { kind: '', source: '', search: '' };
 
+// v0.59.109: предустановка фильтров по URL (?filterKind=…&filterSearch=…
+// &nodeId=…). Используется при открытии каталога из инспектора узла —
+// чтобы сразу показать только подходящие изделия, а не весь каталог.
+// Мапим входящие параметры в канонические ELEMENT_KINDS. Поддерживаемые
+// подсказки от consumer.js: filterSubtype ∈ {rack, conditioner, …},
+// filterRole ∈ {rack, hvac, …}. Приоритет: явный filterKind → маппинг.
+(function applyUrlFilters() {
+  try {
+    const qp = new URLSearchParams(location.search);
+    const kindRaw = qp.get('filterKind') || '';
+    const subtype = qp.get('filterSubtype') || '';
+    const role = qp.get('filterRole') || '';
+    const search = qp.get('filterSearch') || qp.get('q') || '';
+    const KIND_MAP = {
+      // «какой модуль вызвал» → какой kind показать
+      rack: 'rack',
+      pdu: 'pdu',
+      conditioner: 'climate',
+      hvac: 'climate',
+      ups: 'ups',
+      battery: 'battery',
+      panel: 'panel',
+      transformer: 'transformer',
+      'mv-switchgear': 'mv-switchgear',
+      breaker: 'breaker',
+      cable: 'cable-sku',
+    };
+    let k = '';
+    if (kindRaw && (ELEMENT_KINDS[kindRaw] || KIND_MAP[kindRaw])) {
+      k = ELEMENT_KINDS[kindRaw] ? kindRaw : KIND_MAP[kindRaw];
+    }
+    if (!k && subtype && KIND_MAP[subtype]) k = KIND_MAP[subtype];
+    if (!k && role && KIND_MAP[role]) k = KIND_MAP[role];
+    if (k) elFilters.kind = k;
+    if (search) elFilters.search = search;
+  } catch {}
+})();
+
 function renderElementsTab() {
   const container = document.getElementById('tab-elements');
   const all = listElements();

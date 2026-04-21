@@ -49,8 +49,15 @@ export function openConsumerParamsModal(n) {
       return { href: null, label: '⚙ Конфигуратор (задать требования)' };
     })();
     const _catalogHref = (() => {
+      // v0.59.109: filterKind мапится в канонический ELEMENT_KINDS
+      // на стороне catalog/ (через KIND_MAP в catalog.js). Отправляем
+      // «интент» — какой подтип потребителя мы ищем; сторона каталога
+      // сама подберёт подходящий kind (rack → rack, conditioner → climate).
       const qp = new URLSearchParams();
-      qp.set('filterKind', 'consumer');
+      const _hint = (_sub === 'rack' || _cSub === 'rack') ? 'rack'
+                  : (_cSub === 'conditioner' || _sub === 'hvac') ? 'climate'
+                  : '';
+      if (_hint) qp.set('filterKind', _hint);
       if (_cSub) qp.set('filterSubtype', _cSub);
       if (_sub && _sub !== 'generic') qp.set('filterRole', _sub);
       qp.set('nodeId', n.id);

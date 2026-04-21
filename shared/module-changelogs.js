@@ -353,6 +353,12 @@ export const CHANGELOGS = {
   ],
 
   'catalog': [
+    { version: '0.59.109', date: '2026-04-21', items: [
+      'Предустановка фильтров по URL. При открытии каталога из инспектора узла (кнопка «📋 Выбрать из каталога») теперь сразу применяется фильтр по типу — для rack-потребителя видны только стойки (kind=rack), для кондиционера — только климатическое (kind=climate) и т.д. Раньше catalog игнорировал query-параметры и открывался на полный список (386 позиций).',
+      'Поддерживаемые параметры: filterKind (канонический ELEMENT_KINDS или псевдоним rack/pdu/conditioner/hvac/cable), filterSubtype / filterRole (как подсказка для маппинга), filterSearch (или q=…). Маппинг: rack→rack, pdu→pdu, conditioner/hvac→climate, cable→cable-sku и т.д.',
+      'consumer.js обновлён: вместо filterKind=consumer (не валидно) отправляет хинт rack/climate/пусто на основе subtype.',
+      'Файлы: catalog/catalog.js (IIFE applyUrlFilters перед первым render), js/engine/inspector/consumer.js (сборка query-string).'
+    ] },
     { version: '0.56.0', date: '2026-04-18', items: ['Справка модуля.'] },
     { version: '0.50.0', date: '2026-02-10', items: ['Цены в BOM + контрагенты.'] },
     { version: '0.45.1', date: '2025-11-20', items: ['Первая версия модуля каталога.'] },
