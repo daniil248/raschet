@@ -808,14 +808,24 @@ function renderPlan() {
   // Размещённые стойки
   placed.forEach(r => {
     const pos = plan.positions[r.id];
+    const s = rackStats(r);
+    const pct = s.u ? Math.round((s.usedU / s.u) * 100) : 0;
+    let cls = '';
+    if (pct >= 100) cls = ' over';
+    else if (pct >= 90) cls = ' hi';
+    else if (pct >= 70) cls = ' mid';
+    else if (pct > 0) cls = ' low';
+    else cls = ' empty';
+    const tag = getRackTag(r.id);
+    const isDraft = !tag.trim();
     const div = document.createElement('div');
-    div.className = 'sd-plan-rack';
+    div.className = 'sd-plan-rack' + cls + (isDraft ? ' draft' : '');
     div.dataset.id = r.id;
     div.style.left = (pos.x * PLAN_CELL_PX) + 'px';
     div.style.top = (pos.y * PLAN_CELL_PX) + 'px';
     div.style.width = (RACK_W_CELLS * PLAN_CELL_PX) + 'px';
     div.style.height = (RACK_H_CELLS * PLAN_CELL_PX) + 'px';
-    const tag = getRackTag(r.id);
+    div.title = `${tag || r.name || r.id}\nU: ${s.usedU}/${s.u} (${pct}%)\nУстр.: ${s.devCount} · Связей: ${s.linkCount}`;
     div.innerHTML = `<span class="sd-plan-rack-label">${escapeHtml(tag || r.name || r.id)}</span>
       <button type="button" class="sd-plan-rm" title="Убрать со схемы">✕</button>`;
     canvas.appendChild(div);
