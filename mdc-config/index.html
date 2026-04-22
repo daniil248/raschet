@@ -20,7 +20,8 @@
   <div class="mdc-wrap">
     <div class="mdc-grid">
       <!-- =========== Форма (опросник) =========== -->
-      <aside class="mdc-form">
+      <aside class="mdc-form rs-sidebar rs-sidebar-left">
+        <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
         <section class="mdc-section">
           <h2>1. IT-нагрузка (исходные данные)</h2>
           <label class="mdc-field">
@@ -167,6 +168,7 @@
     </div>
   </div>
 
+  <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="mdc-config.js"></script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';

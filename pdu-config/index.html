@@ -70,7 +70,8 @@
 
     <div class="pc-grid">
       <!-- ==================== LEFT: form ==================== -->
-      <aside>
+      <aside class="rs-sidebar rs-sidebar-left">
+        <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
         <!-- Контекст: от чего считаем -->
         <section class="pc-section pc-section-accent">
           <h2>① Контекст стойки</h2>
@@ -208,6 +209,7 @@
     <div>Raschet · <a data-act="log-fallback">Журнал изменений «PDU»</a></div>
   </div>
 
+  <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="pdu-config.js"></script>
   <script type="module">
     // Монтируем боевой футер. Если что-то падает — показываем красную

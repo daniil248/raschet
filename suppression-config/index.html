@@ -32,7 +32,8 @@
     <div class="sup-grid">
 
       <!-- ================ LEFT: Form / Navigator ================ -->
-      <aside class="sup-form">
+      <aside class="sup-form rs-sidebar rs-sidebar-left">
+        <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
         <section class="sup-section">
           <h2>
             <span id="sup-inst-name">Установка</span>
@@ -148,7 +149,8 @@
       </main>
 
       <!-- ================ RIGHT: Info + warnings ================ -->
-      <aside class="sup-right">
+      <aside class="sup-right rs-sidebar rs-sidebar-right">
+        <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
         <section class="sup-section">
           <h2>Сводка</h2>
           <div class="sup-kv"><label>Норматив</label><span id="i-norm">—</span></div>
@@ -429,6 +431,7 @@
     </form>
   </dialog>
 
+  <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="suppression-config.js"></script>
 </body>
 </html>

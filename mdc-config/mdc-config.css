@@ -6,7 +6,8 @@
 .mdc-wrap { padding: 16px; }
 .mdc-grid {
   display: grid;
-  grid-template-columns: 360px 1fr;
+  /* v0.59.180: левая форма — resizable sidebar. */
+  grid-template-columns: var(--rs-sidebar-left-w, 360px) 1fr;
   gap: 16px;
   align-items: start;
 }

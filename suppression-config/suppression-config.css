@@ -12,7 +12,8 @@
 }
 .sup-grid {
   display: grid;
-  grid-template-columns: 320px 1fr 280px;
+  /* v0.59.180: левый и правый сайдбары — resizable (CSS-переменные из base.css). */
+  grid-template-columns: var(--rs-sidebar-left-w, 320px) 1fr var(--rs-sidebar-right-w, 280px);
   gap: 16px;
   align-items: start;
 }

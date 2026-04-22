@@ -15,7 +15,8 @@
 
 .rc-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+  /* v0.59.180: правая колонка — resizable sidebar (CSS-переменная из base.css). */
+  grid-template-columns: minmax(0, 1fr) var(--rs-sidebar-right-w, 360px);
   gap: 20px;
   align-items: start;
 }

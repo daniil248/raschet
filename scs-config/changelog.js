@@ -3,6 +3,13 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.26',
+    date: '2026-04-22',
+    items: [
+      'v0.59.181 — единая resizable-панель распространена на другие подпрограммы: <code>rack-config</code> (правый превью-сайдбар), <code>mdc-config</code> (левый опросник), <code>suppression-config</code> (левая форма + правая сводка), <code>pdu-config</code> (левая форма). Все они используют <code>.rs-sidebar / .rs-sidebar-left / .rs-sidebar-right</code> + <code>.rs-sidebar-resizer</code> и подключают <code>shared/sidebar-resizer.js</code>. Ширина общая на все модули через CSS-переменные <code>--rs-sidebar-left-w / --rs-sidebar-right-w</code> + localStorage.',
+    ],
+  },
+  {
     version: '0.1.25',
     date: '2026-04-22',
     items: [

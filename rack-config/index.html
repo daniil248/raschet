@@ -251,7 +251,8 @@
       </div>
 
       <!-- ========== Превью / BOM ========== -->
-      <aside class="rc-preview">
+      <aside class="rc-preview rs-sidebar rs-sidebar-right">
+        <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
         <section class="rc-section">
           <h2>Проверки</h2>
           <div id="rc-warn"></div>
@@ -281,6 +282,7 @@
     </div>
   </div>
 
+  <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="rack-config.js"></script>
   <script type="module">
     import { mountHelp } from '../shared/help-panel.js';

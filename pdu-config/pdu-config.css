@@ -9,7 +9,8 @@
 
 .pc-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  /* v0.59.180: левый сайдбар-форма — resizable. */
+  grid-template-columns: var(--rs-sidebar-left-w, 360px) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
