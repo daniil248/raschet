@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.234', date: '2026-04-22', items: [
+      '🐛 Fix: изменения в Конфигураторе ИБП (и других per-user каталогах: АКБ, щиты, трансформаторы, кабели, контрагенты, цены, логистика, библиотека элементов) «откатывались» после Ctrl+F5. Причина: shared/auth.js в setTimeout-fallback через 2 сек перезаписывал localStorage["raschet.currentUserId"] на "anonymous", если Firebase ещё не ответил. storageKey() в per-user каталогах (raschet.<кат>.v1.<uid>) резко переключался на anonymous-срез, и пользователь видел пустой / старый справочник. После возврата Firebase кеш возвращался к реальному uid, но визуальное окно «отката» оставалось.',
+      'Решение: notify({definitive:false}) в таймаут-fallback не трогает LS-кеш uid — только уведомляет listener-ов что auth-state «неизвестен». Перезапись на "anonymous" теперь происходит только когда Firebase явно сообщил onAuthStateChanged(null) или SDK/конфиг недоступны (локальный режим).',
+      'Файлы: shared/auth.js (cacheCurrentUserId + notify с флагом definitive). В справке ups-config добавлен раздел «Где хранятся ваши данные» с описанием per-user ключа и этого исправления.',
+    ] },
     { version: '0.59.233', date: '2026-04-22', items: [
       '📚 Справочники — в левый выдвижной сайдбар. shared/reference-panels.js переписан: секции с data-reference-panel="1" автоматически переносятся в фиксированный левый drawer (420px, скрыт по умолчанию). Снаружи — узкий вертикальный таб-хэндл «📚 Справочник» слева, по клику drawer выезжает с backdrop-оверлеем. Esc / клик по backdrop / кнопка ✕ — закрыть. Состояние open/closed запоминается в localStorage на каждую страницу (raschet.refDrawer.open.v1:<path>). Применено в ups-config, panel-config, mv-config, transformer-config.',
       'Зачем: справочник — это БД, а не ежедневный инструмент. В конце страницы всё равно мешал прокруткой. Теперь основной рабочий флоу (мастер / параметры / расчёт) занимает весь экран, а справочник вызывается одним кликом.',

@@ -41,6 +41,9 @@
         </ol>
         <div class="note">Топологии по IEC 62040-3: <b>VFI-SS-111</b> (on-line double-conversion, высший класс, выход на 99% времени от инвертора) · <b>VI</b> (line-interactive, стабилизация AVR) · <b>VFD</b> (off-line / standby, только при отказе сети).</div>
         <div class="warn">Для ЦОД Tier III/IV, медицинских систем жизнеобеспечения, промышленной АСУ ТП — требуется <b>VFI (on-line double-conversion)</b>. VFD / VI для критичных систем не применяются.</div>
+        <h4>Где хранятся ваши данные</h4>
+        <p>Справочник ИБП хранится <b>per-user</b> в localStorage: <code>raschet.upsCatalog.v1.&lt;uid&gt;</code>. Если вы вошли через Google — uid привязан к аккаунту; если нет — используется ключ <code>…anonymous</code>. Сохранение срабатывает сразу при «+ Добавить», импорте XLSX или «⚡ Kehua UPS».</p>
+        <div class="note">С v0.59.234 исправлен редкий случай, когда после <kbd>Ctrl+F5</kbd> при медленной инициализации Firebase Auth cache кратко переключался на <code>anonymous</code> — и пользователь видел пустой / старый справочник. Теперь кеш uid обновляется только после явного ответа Firebase; до этого используется последний известный uid.</div>
       `,
       calcs: `
         <h4>Формулы и стандарты</h4>

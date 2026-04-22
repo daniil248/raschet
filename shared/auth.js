@@ -36,19 +36,35 @@ let firstStateResolved = false;
 let _firstStateResolve;
 const firstStatePromise = new Promise(r => { _firstStateResolve = r; });
 
-function cacheCurrentUserId(user) {
+// v0.59.234: различаем «definitive-null» (Firebase подтвердил: пользователь
+// не вошёл) и «unknown» (Firebase ещё не ответил). Во втором случае НЕ
+// перезаписываем raschet.currentUserId на 'anonymous' — иначе per-user
+// каталоги (ups-catalog, battery-catalog и т.д.) на Ctrl+F5 на короткое
+// окно показывают пустой «anonymous»-срез, и пользователь видит откат
+// изменений. Перезапись на 'anonymous' делаем только когда Firebase явно
+// сообщил «не вошёл» (onAuthStateChanged(null)) ИЛИ когда SDK/конфиг не
+// загружены вовсе (локальный режим).
+function cacheCurrentUserId(user, { definitive = true } = {}) {
   try {
-    if (user && user.uid) localStorage.setItem('raschet.currentUserId', user.uid);
-    else localStorage.setItem('raschet.currentUserId', 'anonymous');
+    if (user && user.uid) {
+      localStorage.setItem('raschet.currentUserId', user.uid);
+      return;
+    }
+    if (!definitive) {
+      // Не знаем ещё — оставляем предыдущий кеш, чтобы per-user ключи не
+      // «мигали» между uid и anonymous.
+      return;
+    }
+    localStorage.setItem('raschet.currentUserId', 'anonymous');
   } catch { /* localStorage недоступен — пропускаем */ }
 }
 
-function notify() {
+function notify({ definitive = true } = {}) {
   if (!firstStateResolved) {
     firstStateResolved = true;
     _firstStateResolve();
   }
-  cacheCurrentUserId(currentUser);
+  cacheCurrentUserId(currentUser, { definitive });
   for (const cb of listeners) {
     try { cb(currentUser); } catch (e) { console.error('[auth] listener failed', e); }
   }
@@ -77,8 +93,11 @@ async function init() {
     if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
     firebaseReady = true;
     // Страховка: если Firebase не вызовет onAuthStateChanged за 2 секунды
-    // (нет сессии, пустой кеш) — рендерим «не вошли»
-    setTimeout(() => { if (!firstStateResolved) notify(); }, 2000);
+    // (нет сессии, пустой кеш) — рендерим «не вошли», НО не перетираем
+    // кеш currentUserId на 'anonymous' — это лишь таймаут, реальный state
+    // ещё может прийти позже; listeners получат null, а per-user каталоги
+    // продолжают работать с предыдущим uid.
+    setTimeout(() => { if (!firstStateResolved) notify({ definitive: false }); }, 2000);
     firebase.auth().onAuthStateChanged(async user => {
       if (user) {
         currentUser = {
