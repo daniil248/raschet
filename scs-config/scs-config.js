@@ -36,6 +36,7 @@ const LS_CONTENTS  = 'scs-config.contents.v1';
 const LS_MATRIX    = 'scs-config.matrix.v1';
 const LS_TEMPLATES = 'scs-config.assemblyTemplates.v1'; // 1.24.7
 const LS_CART      = 'scs-config.cart.v1';              // 1.24.28
+const LS_RACKTAGS  = 'scs-config.rackTags.v1';          // 1.24.23 — { [rackId]: tag }
 
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
 const DEFAULT_CATALOG = [
@@ -65,6 +66,7 @@ const state = {
   matrix: {},        // { rackId: [link] }
   templates: [],     // [{id, name, contents, matrix}] — «готовые сборки» (1.24.7)
   cart: [],          // 1.24.28 — «тележка»: [{id, typeId, label, fromRackId, fromRackName, pduFeed, pduOutlet, takenAt}]
+  rackTags: {},      // 1.24.23 — { [rackId]: 'DC1.H3.R05' }
   // view mode: 'scs' — цвет по типу; 'power' — цвет по вводу PDU (1.24.11)
   viewMode: 'scs',
   // drag state
@@ -172,6 +174,23 @@ function saveContents()  { try { localStorage.setItem(LS_CONTENTS,  JSON.stringi
 function saveMatrix()    { try { localStorage.setItem(LS_MATRIX,    JSON.stringify(state.matrix));    } catch {} }
 function saveTemplates() { try { localStorage.setItem(LS_TEMPLATES, JSON.stringify(state.templates)); } catch {} }
 function saveCart()      { try { localStorage.setItem(LS_CART,      JSON.stringify(state.cart));      } catch {} }
+function saveRackTags()  { try { localStorage.setItem(LS_RACKTAGS,  JSON.stringify(state.rackTags));  } catch {} }
+
+/* Текущий TIA-тег стойки (из state.rackTags) или «DC1.R<u>» как fallback */
+function currentRackTag() {
+  const r = currentRack(); if (!r) return '';
+  return (state.rackTags[r.id] || '').trim();
+}
+/* Генерируемый тег устройства: <rackTag>.U<top>-U<bottom> (TIA-606) */
+function deviceTag(d) {
+  const r = currentRack(); if (!r) return '';
+  const tag = (state.rackTags[r.id] || '').trim();
+  if (!tag) return '';
+  const type = state.catalog.find(c => c.id === d.typeId);
+  const h = type ? type.heightU : 1;
+  const bottom = d.positionU - h + 1;
+  return h > 1 ? `${tag}.U${d.positionU}-${bottom}` : `${tag}.U${d.positionU}`;
+}
 
 /* ---- список доступных PDU-розеток текущей стойки (1.24.4 full) -------
    Разворачивает rack.pdus → плоский список { feed, outletIdx, typeLabel,
@@ -351,7 +370,7 @@ function renderContents() {
   if (!r) { t.innerHTML = '<tr><td>Нет выбранной стойки</td></tr>'; return; }
   const conflicts = detectConflicts(r, devices);
   const rows = [`<tr>
-    <th>U</th><th>Тип</th><th>Название</th><th>Ввод</th><th>PDU outlet</th>
+    <th>U</th><th>Тип</th><th>Название</th><th title="TIA-606">Тег</th><th>Ввод</th><th>PDU outlet</th>
     <th style="width:50px"></th>
   </tr>`];
   const feeds = pduFeeds(r);
@@ -378,12 +397,13 @@ function renderContents() {
       <td><input data-k="positionU" type="number" min="${h}" max="${r.u}" step="1" value="${d.positionU}" style="width:55px"></td>
       <td>${escape(type ? KIND_LABEL[type.kind] : 'Удалён')} · ${h}U</td>
       <td><input data-k="label" value="${escape(d.label)}"></td>
+      <td class="muted" style="font-family:monospace;font-size:11px">${escape(deviceTag(d) || '—')}</td>
       <td><select data-k="pduFeed" style="width:60px">${feedOptsHtml}</select></td>
       <td><select data-k="pduOutlet">${outletOptsHtml}</select></td>
       <td><button type="button" class="sc-btn sc-btn-danger" data-del="${d.id}">✕</button></td>
     </tr>`);
   });
-  if (!devices.length) rows.push('<tr><td colspan="6" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
+  if (!devices.length) rows.push('<tr><td colspan="7" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
   t.innerHTML = rows.join('');
   t.querySelectorAll('[data-k]').forEach(el => {
     el.addEventListener('change', () => {
@@ -598,9 +618,11 @@ function renderUnitMap(hostId, opts) {
     const conflict = conflicts.has(d.id);
     const fill = mode === 'power' ? feedColor(d.pduFeed) : (type.color || '#94a3b8');
     const stroke = conflict ? '#dc2626' : '#64748b';
+    const tag = deviceTag(d);
+    const tagSfx = tag ? ' · ' + tag : '';
     const labelTxt = mode === 'power'
-      ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}`
-      : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}`;
+      ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}${tagSfx}`
+      : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}${tagSfx}`;
     const iconX = 32 + bodyW - 18*scale;
     const iconY = y + (h * rowH) / 2;
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
@@ -859,8 +881,19 @@ function renderBom() {
 function exportBomCsv() {
   const items = computeBom();
   const r = currentRack();
+  const rackTag = currentRackTag();
   const rows = [['Позиция','Раздел','Кол-во','Длина, м','Вт/шт']];
   items.forEach(it => rows.push([it.label, it.kind, it.qty, it.lenM ? it.lenM.toFixed(1) : '', it.powerW ?? '']));
+  // 1.24.30 — список устройств с TIA-606 тегами (отдельной секцией)
+  if (r) {
+    rows.push([]);
+    rows.push([`Теги устройств TIA-606 (стойка ${rackTag || r.name || ''})`]);
+    rows.push(['Тег','U','Название','Тип','PDU ввод','PDU outlet']);
+    currentContents().slice().sort((a,b) => b.positionU - a.positionU).forEach(d => {
+      const t = state.catalog.find(c => c.id === d.typeId);
+      rows.push([deviceTag(d), d.positionU, d.label, t ? KIND_LABEL[t.kind] : '', d.pduFeed || '', d.pduOutlet || '']);
+    });
+  }
   const csv = rows.map(row => row.map(v => {
     const s = String(v ?? '');
     return /[;\"\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
@@ -1074,6 +1107,7 @@ function init() {
   state.matrix    = loadJson(LS_MATRIX,    {});
   state.templates = loadJson(LS_TEMPLATES, []);
   state.cart      = loadJson(LS_CART,      []);
+  state.rackTags  = loadJson(LS_RACKTAGS,  {});
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
   // auto-pick rack
   if (state.racks.length) state.currentRackId = state.racks[0].id;
@@ -1087,7 +1121,20 @@ function init() {
     const r = currentRack();
     $('sc-rack-u').textContent = r ? r.u : '—';
     $('sc-rack-occ').textContent = r ? r.occupied : '—';
+    $('sc-rack-tag').value = r ? (state.rackTags[r.id] || '') : '';
   });
+  // 1.24.23 — TIA-942 тег стойки
+  const tagInput = $('sc-rack-tag');
+  tagInput.addEventListener('change', () => {
+    const r = currentRack(); if (!r) return;
+    const v = tagInput.value.trim();
+    if (v) state.rackTags[r.id] = v;
+    else delete state.rackTags[r.id];
+    saveRackTags();
+    renderContents(); rerenderPreview();
+  });
+  // начальная подгрузка тега
+  if (state.currentRackId) tagInput.value = state.rackTags[state.currentRackId] || '';
   $('sc-cat-add').addEventListener('click', () => {
     state.catalog.push({
       id: uid('t'), kind: 'other', label: 'Новый тип',
