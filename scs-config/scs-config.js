@@ -1319,7 +1319,7 @@ function bindUnitMapDrag(svgId) {
       const yInSvg = (ev.clientY - rect.top) / zoom;
       const topIdx = Math.max(0, Math.min(r.u - h, Math.floor((yInSvg - 4) / rowHNow)));
       const wantU = r.u - topIdx;
-      const valid = canPlace(r, currentContents(), d.id, h, wantU);
+      const valid = canPlace(r, currentContents(), d.id, h, wantU, d.mountSide || 'front');
       state.drag.wantU = wantU;
       state.drag.valid = valid;
       const bodyW = +svgNow.dataset.bodyw || 220;
@@ -1694,6 +1694,8 @@ async function saveCurrentAsTemplate() {
     // Снимаем копии без id — применение сгенерирует новые
     contents: currentContents().map(d => ({
       typeId: d.typeId, label: d.label, positionU: d.positionU,
+      mountSide: d.mountSide || 'front',
+      depthMm: (typeof d.depthMm === 'number') ? d.depthMm : null,
       pduFeed: d.pduFeed || '', pduOutlet: d.pduOutlet || '',
     })),
     matrix: currentMatrix().map(l => ({
@@ -1723,7 +1725,9 @@ async function applyTemplate() {
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     if (d.positionU > r.u || d.positionU - h + 1 < 1) { dropped.push(d); return null; }
-    return { id: uid('dev'), typeId: d.typeId, label: d.label, positionU: d.positionU, pduFeed: d.pduFeed, pduOutlet: d.pduOutlet };
+    const nd = { id: uid('dev'), typeId: d.typeId, label: d.label, positionU: d.positionU, mountSide: d.mountSide || 'front', pduFeed: d.pduFeed, pduOutlet: d.pduOutlet };
+    if (typeof d.depthMm === 'number') nd.depthMm = d.depthMm;
+    return nd;
   }).filter(Boolean);
   const matrix = tmpl.matrix.map(l => ({ id: uid('lnk'), a: l.a, b: l.b, cable: l.cable, lengthM: l.lengthM, color: l.color }));
   state.contents[state.currentRackId] = contents;
@@ -1754,6 +1758,8 @@ function moveToCart(devId) {
     fromRackId: r ? r.id : null,
     fromRackName: r ? (r.name || '') : '',
     pduFeed: d.pduFeed || '', pduOutlet: d.pduOutlet || '',
+    mountSide: d.mountSide || 'front',
+    depthMm: (typeof d.depthMm === 'number') ? d.depthMm : null,
     takenAt: new Date().toISOString(),
   });
   state.contents[state.currentRackId] = devs.filter(x => x.id !== devId);
@@ -1768,16 +1774,20 @@ function installFromCart(cartId, wantTopU) {
   const item = state.cart[idx];
   const type = state.catalog.find(c => c.id === item.typeId);
   if (!type) { scToast('Тип оборудования из тележки не найден в каталоге', 'err'); return; }
+  const targetSide = item.mountSide || (state.faceMode === 'rear' ? 'rear' : 'front');
   const finalU = findNearestFreeSlot(r, currentContents(), type.heightU,
-    Number.isFinite(wantTopU) ? wantTopU : r.u - r.occupied);
+    Number.isFinite(wantTopU) ? wantTopU : r.u - r.occupied, targetSide);
   if (finalU == null) { scToast('Нет места в стойке (' + type.heightU + 'U)', 'err'); return; }
-  currentContents().push({
+  const newDev = {
     id: uid('dev'),
     typeId: item.typeId,
     label: item.label,
     positionU: finalU,
+    mountSide: targetSide,
     pduFeed: item.pduFeed || '', pduOutlet: '',  // розетку не тянем — другая стойка
-  });
+  };
+  if (typeof item.depthMm === 'number') newDev.depthMm = item.depthMm;
+  currentContents().push(newDev);
   state.cart.splice(idx, 1);
   saveCart(); saveContents();
   renderContents(); rerenderPreview(); renderCart();
