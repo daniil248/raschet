@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.226', date: '2026-04-22', items: [
+      '🧪 Мини-проекты внутри модулей: мастер меж-шкафных связей (scs-design) и внутри-шкафные связи (scs-config) теперь могут работать в рамках «мини-проекта» (kind=sketch), создаваемого прямо изнутри модуля — без обязательного похода в /projects/. Мини-проект привязан к модулю (ownerModule) и не замусоривает список «настоящих» проектов.',
+      'Project-switcher в topbar scs-design: dropdown со всеми полноценными проектами (🏢) + мини-проектами СКС (🧪). Кнопка «＋ Мини-проект» — inline-модалка с именем, создаёт sketch, сразу активирует, перезагружает страницу.',
+      'project-storage.js: createProject({kind, ownerModule}), createSketchForModule(moduleId, name), listProjectsForModule(moduleId). ID префикс: «p_» для full, «s_» для sketch.',
+      'Фаза 1.27.4 начата — exportProject / importProject переписаны: scoped-данные собираются сканированием LS по префиксу raschet.project.<pid>. (ранее использовался неверный _raw-namespace). Полный backup/share проекта теперь реально работает.',
+      'clearProjectData(pid) — очистка всех scoped данных (без удаления метаданных проекта).',
+      'Файлы: shared/project-storage.js (createSketchForModule/listProjectsForModule/clearProjectData/collectScoped + correct export/import), scs-design/{scs-design.js (project-switcher + sdPrompt inline-модалка), scs-design.css (.sd-project-bar select, .sd-overlay, .sd-modal)}.',
+    ] },
     { version: '0.59.225', date: '2026-04-22', items: [
       'Реестры (Реестр IT-оборудования, Реестр оборудования объекта) убраны с hub.html как самостоятельные модули. По архитектурному требованию: «модули с названием Реестр должны относиться только к проекту или к конфигурации модуля — сами по себе использоваться не могут». Доступ к ним теперь только через карточку активного проекта в /projects/ или через breadcrumbs изнутри scs-config.',
       'Баннер «📁 Проект: <имя>» добавлен в scs-config/inventory.html и facility-inventory/index.html. Если активного проекта нет — показывается предупреждение с ссылкой на /projects/.',

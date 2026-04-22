@@ -4,10 +4,23 @@
 .sd-project-bar {
   padding: 8px 14px; margin-bottom: 10px; border-radius: 8px;
   background: #1a202c; border: 1px solid #2a313e; color: #cbd5e1;
-  font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
 .sd-project-bar code { font-size: 11px; color: #94a3b8; }
 .sd-project-bar a { color: #60a5fa; }
+.sd-project-bar select {
+  padding: 5px 8px; border-radius: 6px;
+  background: #1f2937; color: #f1f5f9; border: 1px solid #475569; font-size: 13px;
+}
+.sd-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9998;
+  display: flex; align-items: center; justify-content: center;
+}
+.sd-modal {
+  background: #141922; border: 1px solid #2a313e; border-radius: 10px;
+  padding: 20px 24px; min-width: 360px; max-width: 90vw; color: #e5e7eb;
+}
+.sd-modal h3 { color: #f1f5f9; }
 
 .sd-tabs {
   display: flex; gap: 4px; border-bottom: 2px solid #e0e3ea;

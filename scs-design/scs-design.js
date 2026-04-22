@@ -7,7 +7,8 @@
    ============================================================ */
 
 import {
-  ensureDefaultProject, getActiveProjectId, getProject, projectKey
+  ensureDefaultProject, getActiveProjectId, setActiveProjectId, getProject, projectKey,
+  listProjectsForModule, createSketchForModule
 } from '../shared/project-storage.js';
 
 const LS_RACK      = 'rack-config.templates.v1';       // библиотека шаблонов, глобально
@@ -32,17 +33,65 @@ const OLD_KEYS = {
 function renderProjectBadge(pid) {
   const host = document.getElementById('sd-project-badge');
   if (!host) return;
+  const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  const projects = listProjectsForModule('scs-design');
   const p = pid ? getProject(pid) : null;
-  if (!p) {
-    host.innerHTML = `<span class="muted">Активный проект не выбран. <a href="../projects/">Открыть список проектов</a>.</span>`;
-    return;
-  }
+
+  const opts = projects.map(x => {
+    const label = (x.kind === 'sketch' ? '🧪 ' : '🏢 ') + (x.name || '(без имени)');
+    return `<option value="${esc(x.id)}" ${x.id === pid ? 'selected' : ''}>${esc(label)}</option>`;
+  }).join('');
+
   host.innerHTML = `
-    <span class="muted">Активный проект:</span>
-    <b>${(p.name || '(без имени)').replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</b>
-    <span class="muted">(id <code>${p.id}</code>)</span>
-    <a href="../projects/" style="margin-left:8px">→ сменить / управлять</a>
+    <span class="muted">Контекст:</span>
+    <select id="sd-project-switcher" title="Активный проект или мини-проект СКС">${opts}</select>
+    <button type="button" class="sd-btn-sel" id="sd-project-new-sketch" title="Создать мини-проект СКС (автономный черновик без обязательного полноценного проекта)">＋ Мини-проект</button>
+    ${p ? `<span class="muted">${p.kind === 'sketch' ? '· 🧪 черновик (мини-проект СКС)' : '· 🏢 полноценный проект'}</span>` : ''}
+    <a href="../projects/" style="margin-left:auto">→ управлять проектами</a>
   `;
+
+  document.getElementById('sd-project-switcher')?.addEventListener('change', e => {
+    setActiveProjectId(e.target.value);
+    location.reload();
+  });
+  document.getElementById('sd-project-new-sketch')?.addEventListener('click', async () => {
+    const name = await sdPrompt('Создать мини-проект СКС', 'Имя черновика', 'Черновик СКС');
+    if (!name) return;
+    const sp = createSketchForModule('scs-design', name);
+    setActiveProjectId(sp.id);
+    location.reload();
+  });
+}
+
+function sdPrompt(title, label, initial = '') {
+  return new Promise(res => {
+    const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+    const overlay = document.createElement('div');
+    overlay.className = 'sd-overlay';
+    overlay.innerHTML = `
+      <div class="sd-modal">
+        <h3 style="margin:0 0 8px">${esc(title)}</h3>
+        <label style="display:block;margin:6px 0 4px;color:#cbd5e1;font-size:13px">${esc(label)}</label>
+        <input type="text" style="width:100%;padding:8px 10px;border-radius:6px;background:#1f2937;color:#f1f5f9;border:1px solid #475569;box-sizing:border-box" value="${esc(initial)}">
+        <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="sd-btn-sel" data-act="no">Отмена</button>
+          <button type="button" class="sd-btn-export" data-act="yes">OK</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('input');
+    input.focus(); input.select();
+    const done = v => { overlay.remove(); res(v); };
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) done(null);
+      if (e.target.dataset?.act === 'yes') done((input.value || '').trim() || null);
+      if (e.target.dataset?.act === 'no')  done(null);
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  done((input.value || '').trim() || null);
+      if (e.key === 'Escape') done(null);
+    });
+  });
 }
 
 function rescopeToActiveProject() {

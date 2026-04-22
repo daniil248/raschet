@@ -86,13 +86,15 @@ export function getProject(id) {
   return listProjects().find(p => p.id === id) || null;
 }
 
-export function createProject({ name, description = '', status = 'draft' } = {}) {
+export function createProject({ name, description = '', status = 'draft', kind = 'full', ownerModule = null } = {}) {
   const now = Date.now();
   const p = {
-    id: uid(),
-    name: name || 'Новый проект',
+    id: (kind === 'sketch' ? 's_' : 'p_') + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4),
+    name: name || (kind === 'sketch' ? 'Мини-проект' : 'Новый проект'),
     description: description || '',
     status, // draft | planned | installed | operating
+    kind,   // full — полноценный; sketch — лёгкий мини-проект внутри модуля
+    ownerModule, // для sketch: какой модуль создал ('scs-design', 'scs-config', ...)
     schema: PROJECT_SCHEMA_VERSION,
     createdAt: now,
     updatedAt: now,
@@ -100,6 +102,24 @@ export function createProject({ name, description = '', status = 'draft' } = {})
   const arr = listProjects(); arr.push(p);
   saveJson(LS_PROJECTS, arr);
   return p;
+}
+
+// Мини-проект для модуля — создаёт sketch-проект, привязанный к модулю.
+// Используется из scs-design/scs-config чтобы работать автономно без
+// обязательного создания полноценного проекта в /projects/.
+export function createSketchForModule(moduleId, name) {
+  return createProject({
+    name: name || `Черновик ${moduleId}`,
+    description: `Мини-проект, созданный из модуля «${moduleId}» для быстрой прикидки без полноценного проекта.`,
+    kind: 'sketch',
+    ownerModule: moduleId,
+  });
+}
+
+// Все проекты, доступные для активации в данном модуле: все full-проекты
+// + sketch-проекты, принадлежащие этому модулю.
+export function listProjectsForModule(moduleId) {
+  return listProjects().filter(p => p.kind !== 'sketch' || p.ownerModule === moduleId);
 }
 
 export function updateProject(id, patch) {
@@ -168,16 +188,31 @@ export function projectSave(pid, module, key, value) {
 // (Управление объектом и т.п.) могли читать проект независимо от того,
 // откуда экспорт (LS / HTTP / backend).
 
+// Сбор всех scoped ключей проекта: сканируем LS по префиксу
+// raschet.project.<pid>. и собираем относительные ключи как `<module>.<key>`.
+function collectScoped(pid) {
+  const scoped = {};
+  const prefix = `raschet.project.${pid}.`;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(prefix)) continue;
+      const rel = k.slice(prefix.length); // напр. "scs-design.links.v1"
+      const raw = localStorage.getItem(k);
+      try { scoped[rel] = JSON.parse(raw); } catch { scoped[rel] = raw; }
+    }
+  } catch {}
+  return scoped;
+}
+
 export function exportProject(id) {
   const p = getProject(id); if (!p) return null;
-  const data = { schema: 'raschet.project/1', project: p, scoped: {} };
-  // Соберём проектные данные. В 1.27.0 это пусто (данные ещё в общих
-  // ключах). Начиная с 1.27.1 — будет наполняться.
-  for (const prefix of PROJECT_SCOPED_KEYS) {
-    const nsKey = projectKey(p.id, '_raw', prefix);
-    const v = loadJson(nsKey, null);
-    if (v != null) data.scoped[prefix] = v;
-  }
+  const data = {
+    schema: 'raschet.project/1',
+    exportedAt: Date.now(),
+    project: p,
+    scoped: collectScoped(p.id),
+  };
   return new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
 }
 
@@ -185,19 +220,33 @@ export function importProject(obj) {
   if (!obj || obj.schema !== 'raschet.project/1' || !obj.project) {
     throw new Error('Не похоже на проект Raschet (schema ≠ raschet.project/1)');
   }
-  // Если id уже есть — сгенерируем новый, чтобы не затирать
+  // Если id уже есть — создадим новый, чтобы не затирать существующий.
   const existing = getProject(obj.project.id);
   const p = existing
-    ? createProject({ name: obj.project.name + ' (import)', description: obj.project.description, status: obj.project.status })
+    ? createProject({ name: (obj.project.name || 'Проект') + ' (import)', description: obj.project.description, status: obj.project.status })
     : (() => {
         const arr = listProjects(); arr.push({ ...obj.project, updatedAt: Date.now() });
         saveJson(LS_PROJECTS, arr);
         return obj.project;
       })();
-  if (obj.scoped) {
-    for (const [prefix, value] of Object.entries(obj.scoped)) {
-      saveJson(projectKey(p.id, '_raw', prefix), value);
+  if (obj.scoped && typeof obj.scoped === 'object') {
+    const prefix = `raschet.project.${p.id}.`;
+    for (const [rel, value] of Object.entries(obj.scoped)) {
+      try { localStorage.setItem(prefix + rel, JSON.stringify(value)); } catch {}
     }
   }
   return p;
+}
+
+// Удаляет все scoped-данные проекта (но не метаданные). Использование —
+// «очистить проект» в UI. Метаданные удаляются отдельно через deleteProject().
+export function clearProjectData(pid) {
+  const prefix = `raschet.project.${pid}.`;
+  const toRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix)) toRemove.push(k);
+  }
+  toRemove.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+  return toRemove.length;
 }
