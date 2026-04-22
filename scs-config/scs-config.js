@@ -717,12 +717,15 @@ function renderSideView(hostId, opts) {
    render). Cleanup — cancelAnimationFrame + renderer.dispose() при
    переключении на другой face-mode (вызывается из renderUnitMap).
    ====================================================================== */
+// v0.59.248 fix: jsdelivr's OrbitControls.js использует bare-спецификатор
+// `import { ... } from 'three'`, который браузер не резолвит без import-map.
+// esm.sh перезаписывает такие импорты на абсолютные — поэтому грузим отсюда.
 let _threePromise = null;
 function loadThree() {
   if (_threePromise) return _threePromise;
   _threePromise = Promise.all([
-    import('https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js'),
-    import('https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js'),
+    import('https://esm.sh/three@0.160'),
+    import('https://esm.sh/three@0.160/examples/jsm/controls/OrbitControls.js'),
   ]).then(([THREE, orbit]) => ({ THREE, OrbitControls: orbit.OrbitControls }));
   return _threePromise;
 }
