@@ -244,6 +244,14 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.273', date: '2026-04-22', items: [
+      '🛡 Защита от «молчаливой поломки» композера. Ранее при повреждённом localStorage или runtime-ошибке инициализации интерфейс оставался пустым без единой подсказки (user: «Компоновщик вообще сломался»). Теперь:',
+      '  • init() обёрнут в try/catch — при сбое показывается красный баннер вверху страницы с сообщением ошибки и инструкцией (F12 → Console, localStorage.clear()).',
+      '  • window.error/unhandledrejection перехватывают runtime-ошибки и показывают всплывающий toast + пишут в console.',
+      '  • state.{racks,catalog,contents,matrix,templates,cart,rackTags,warehouse} принудительно приводятся к правильному типу (Array/Object) — защита от случаев, когда LS сохранил null/число/строку.',
+      '  • В пустом каталоге из-за фильтров показывается инфо-строка «⚠ Все N записей скрыты фильтрами. Нажмите ✕ Сброс».',
+      'Файлы: scs-config/scs-config.js (init try/catch + global error handlers + type guards + empty-catalog hint).',
+    ] },
     { version: '0.59.272', date: '2026-04-22', items: [
       '↕ Таблица «Содержимое стойки» сортируется сверху вниз по physicalU (positionU desc). На одном U — front перед rear. Порядок в state.contents НЕ меняется; dataset.idx ссылается на оригинальный индекс, правки и удаление/дублирование работают корректно.',
       'Файлы: scs-config/scs-config.js (viewOrder в renderContents).',

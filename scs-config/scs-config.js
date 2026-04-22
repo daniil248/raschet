@@ -418,6 +418,13 @@ function renderCatalog() {
       </td>
     </tr>`);
   });
+  // v0.59.273: если фильтры спрятали ВСЕ записи — явная подсказка, чтобы
+  // пользователь не думал что каталог «исчез».
+  if (shown === 0 && state.catalog.length > 0) {
+    rows.push(`<tr><td colspan="9" class="muted" style="text-align:center;padding:12px;background:#fffbeb;color:#92400e">⚠ Все ${state.catalog.length} записей скрыты фильтрами. Нажмите <b>✕ Сброс</b> для очистки.</td></tr>`);
+  } else if (state.catalog.length === 0) {
+    rows.push(`<tr><td colspan="9" class="muted" style="text-align:center;padding:12px">Каталог пуст. Нажмите <b>↺ Базовый набор</b> чтобы загрузить дефолтные типы.</td></tr>`);
+  }
   t.innerHTML = rows.join('');
   const cntEl = $('sc-cat-count');
   if (cntEl) cntEl.textContent = `${shown} / ${state.catalog.length}`;
@@ -2986,6 +2993,15 @@ function init() {
   state.cart      = loadJson(LS_CART,      []);
   state.rackTags  = loadJson(LS_RACKTAGS,  {});
   state.warehouse = loadJson(LS_WAREHOUSE, []);
+  // v0.59.273: защита от повреждённого LS — типизация важных структур.
+  if (!Array.isArray(state.racks))    state.racks = [];
+  if (!Array.isArray(state.catalog))  state.catalog = DEFAULT_CATALOG.slice();
+  if (!state.contents || typeof state.contents !== 'object' || Array.isArray(state.contents)) state.contents = {};
+  if (!state.matrix    || typeof state.matrix    !== 'object' || Array.isArray(state.matrix))    state.matrix = {};
+  if (!Array.isArray(state.templates)) state.templates = [];
+  if (!Array.isArray(state.cart))      state.cart = [];
+  if (!state.rackTags  || typeof state.rackTags  !== 'object' || Array.isArray(state.rackTags))  state.rackTags = {};
+  if (!Array.isArray(state.warehouse)) state.warehouse = [];
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
   // v0.59.245: миграция — depthMm для старых записей каталога.
   // Не перезаписываем если уже задано (user params are sacred).
@@ -3212,4 +3228,34 @@ function init() {
   });
 }
 
-init();
+// v0.59.273: обёртка init() с глобальным catch — при падении показываем
+// красный баннер вверху страницы вместо молчаливо-пустого интерфейса.
+try {
+  init();
+} catch (e) {
+  console.error('[scs-config] init() failed:', e);
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#b91c1c;color:#fff;padding:8px 14px;font:13px system-ui;box-shadow:0 2px 6px rgba(0,0,0,.25)';
+  banner.innerHTML = `⚠ Компоновщик не смог инициализироваться: <b>${(e && e.message || e)}</b>. Откройте DevTools (F12) → Console для стека. Попробуйте очистить LS: <code style="background:#7f1d1d;padding:1px 5px;border-radius:3px">localStorage.clear()</code> и перезагрузить.`;
+  document.body.appendChild(banner);
+}
+
+// v0.59.273: глобальный перехватчик runtime-ошибок и unhandled promise rejections.
+// Раньше silent-fail прятал баги типа ReferenceError в ленивых путях (renderSideView),
+// из-за чего пользователь видел «Компоновщик сломался» без подсказки.
+window.addEventListener('error', (ev) => {
+  try {
+    console.error('[scs-config] runtime error:', ev.error || ev.message);
+    if (!document.getElementById('sc-err-toast-global')) {
+      const t = document.createElement('div');
+      t.id = 'sc-err-toast-global';
+      t.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;font:12px system-ui;max-width:420px;box-shadow:0 4px 12px rgba(0,0,0,.15)';
+      t.innerHTML = `⚠ Ошибка: <b>${(ev.error && ev.error.message) || ev.message}</b><br><span style="font-size:11px;color:#7f1d1d">Детали в Console (F12)</span>`;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 8000);
+    }
+  } catch {}
+});
+window.addEventListener('unhandledrejection', (ev) => {
+  console.error('[scs-config] unhandled rejection:', ev.reason);
+});
