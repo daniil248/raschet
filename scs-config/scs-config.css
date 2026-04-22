@@ -339,3 +339,4 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
 tr.rl-draft { background: #fffbeb; }
 tr.rl-draft:hover { background: #fef3c7; }
 tr.rl-draft td { color: #78716c; }
+.sc-err { border-color: #ef4444 !important; background: #fee2e2 !important; }

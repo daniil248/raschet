@@ -48,7 +48,34 @@
       </table>
       <div class="sc-tools">
         <a class="sc-btn" href="../rack-config/">➕ Добавить шаблон стойки</a>
+        <button type="button" class="sc-btn" id="btn-deploy">🚀 Развернуть из шаблона</button>
         <a class="sc-btn" href="./rack.html">↻ Открыть последний активный</a>
+      </div>
+
+      <div id="deploy-box" style="display:none;margin-top:12px;padding:12px;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+          <label style="display:flex;flex-direction:column;font-size:12px;color:#475569">
+            <span>Шаблон-корпус</span>
+            <select id="deploy-template" style="font:inherit;padding:4px 6px;min-width:240px"></select>
+          </label>
+          <label style="display:flex;flex-direction:column;font-size:12px;color:#475569">
+            <span>Тег стойки (TIA-942)</span>
+            <input id="deploy-tag" type="text" placeholder="напр. DH1.SR2" maxlength="24"
+              style="font:inherit;padding:4px 6px;width:140px">
+          </label>
+          <label style="display:flex;flex-direction:column;font-size:12px;color:#475569">
+            <span>Имя экземпляра</span>
+            <input id="deploy-name" type="text" placeholder="Серверная №2" maxlength="64"
+              style="font:inherit;padding:4px 6px;width:200px">
+          </label>
+          <button type="button" class="sc-btn" id="btn-deploy-go">✓ Развернуть</button>
+          <button type="button" class="sc-btn" id="btn-deploy-cancel">Отмена</button>
+        </div>
+        <div class="muted" style="margin-top:6px;font-size:12px">
+          Клонирует корпус шаблона (габариты, U, PDU, заземление) в новую стойку
+          с уникальным id и тегом. Содержимое (железо) у клонированной стойки
+          пустое — настраивается отдельно в <code>rack.html</code>.
+        </div>
       </div>
     </section>
 

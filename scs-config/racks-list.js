@@ -152,5 +152,91 @@ function render() {
   `;
 }
 
+/* ---------- Deploy-from-template ---------- */
+function refreshDeployTemplates() {
+  const racks = loadJson(LS_RACK, []);
+  const tags = loadJson(LS_RACKTAGS, {});
+  const contents = loadJson(LS_CONTENTS, {});
+  const sel = $('deploy-template');
+  if (!sel) return;
+  // Кандидаты — все стойки (любая может служить корпусом), но с маркировкой:
+  // шаблоны (без тега, пустые) первыми; реальные с тегом — в конце и
+  // помечены «клонировать корпус из …».
+  const templates = racks.filter(r => !(tags[r.id] || '').trim());
+  const real = racks.filter(r => (tags[r.id] || '').trim());
+  const fmt = r => {
+    const devs = contents[r.id] || [];
+    return `${r.name || 'Без имени'} · ${r.u || 42}U${devs.length ? ` (в корпусе ${devs.length} устр.)` : ''}`;
+  };
+  const opts = [];
+  if (templates.length) {
+    opts.push('<optgroup label="📐 Шаблоны (без тега)">');
+    templates.forEach(r => opts.push(`<option value="${r.id}">${escapeHtml(fmt(r))}</option>`));
+    opts.push('</optgroup>');
+  }
+  if (real.length) {
+    opts.push('<optgroup label="🗄 Клонировать корпус из реальной стойки">');
+    real.forEach(r => opts.push(`<option value="${r.id}">${escapeHtml((tags[r.id] || '') + ' · ' + fmt(r))}</option>`));
+    opts.push('</optgroup>');
+  }
+  if (!opts.length) {
+    sel.innerHTML = '<option value="">— нет шаблонов, создайте в rack-config —</option>';
+  } else {
+    sel.innerHTML = opts.join('');
+  }
+}
+
+function deployFromTemplate() {
+  const sel = $('deploy-template');
+  const tagIn = $('deploy-tag');
+  const nameIn = $('deploy-name');
+  const srcId = sel?.value || '';
+  const tag = (tagIn?.value || '').trim();
+  const name = (nameIn?.value || '').trim();
+  if (!srcId) { tagIn && tagIn.focus(); return; }
+  if (!tag) { tagIn?.focus(); tagIn?.classList.add('sc-err'); return; }
+
+  const racks = loadJson(LS_RACK, []);
+  const tags = loadJson(LS_RACKTAGS, {});
+  const src = racks.find(r => r.id === srcId);
+  if (!src) return;
+
+  // Проверка уникальности тега
+  const tagInUse = Object.entries(tags).some(([rid, t]) => (t || '').trim() === tag && rid !== srcId);
+  if (tagInUse) {
+    tagIn?.classList.add('sc-err');
+    tagIn?.focus();
+    return;
+  }
+
+  // Клон корпуса: все поля кроме id и comment; contents не копируем.
+  const clone = JSON.parse(JSON.stringify(src));
+  clone.id = 'inst-' + Math.random().toString(36).slice(2, 10);
+  clone.name = name || `${src.name || 'Стойка'} (${tag})`;
+  clone.comment = `Развёрнуто из «${src.name || src.id}» ${new Date().toISOString().slice(0, 10)}`;
+  racks.push(clone);
+  saveJson(LS_RACK, racks);
+  tags[clone.id] = tag;
+  saveJson(LS_RACKTAGS, tags);
+
+  // Сброс формы
+  $('deploy-box').style.display = 'none';
+  if (tagIn) { tagIn.value = ''; tagIn.classList.remove('sc-err'); }
+  if (nameIn) nameIn.value = '';
+  render();
+}
+
+const deployBtn = $('btn-deploy');
+if (deployBtn) {
+  deployBtn.addEventListener('click', () => {
+    const box = $('deploy-box');
+    const show = box.style.display === 'none';
+    box.style.display = show ? '' : 'none';
+    if (show) refreshDeployTemplates();
+  });
+}
+$('btn-deploy-cancel')?.addEventListener('click', () => { $('deploy-box').style.display = 'none'; });
+$('btn-deploy-go')?.addEventListener('click', deployFromTemplate);
+
 render();
 window.addEventListener('storage', render);
