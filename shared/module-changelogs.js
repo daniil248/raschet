@@ -3,6 +3,18 @@
 // Подключается во всех модульных index.html через module-footer.js.
 
 export const CHANGELOGS = {
+  'scs-design': [
+    { version: '0.59.196', date: '2026-04-22', items: [
+      'Создан stub модуля «Проектирование СКС» (Подфаза 1.26.3). Пустая главная страница с описанием будущих вкладок (План зала / Стойки / Связи) и выделенным анонсом встроенного мастера меж-шкафных связей. Хаб уже ссылается на scs-design/ — карточка перестала вести на 404.',
+      'Файлы: scs-design/index.html (новый).',
+    ] },
+  ],
+  'facility-inventory': [
+    { version: '0.59.196', date: '2026-04-22', items: [
+      'Создан stub модуля «Реестр оборудования объекта» (Подфаза 1.26.5). Главная страница с картой источников данных: mv-config, ups-config, transformer-config, panel-config, mdc-config, suppression-config, rack-config, it-inventory. Наполнение реальными данными — в будущих итерациях.',
+      'Файлы: facility-inventory/index.html (новый).',
+    ] },
+  ],
   'scs-config': [
     { version: '0.59.195', date: '2026-04-22', items: [
       'Подфаза 1.26 — размежевание модулей. UI-рефактор без переноса файлов: scs-config/rack.html теперь «Компоновщик шкафа» (было «Конфигуратор шкафа» — конфликтовало с rack-config), inventory.html → «Реестр IT-оборудования». Breadcrumb-ссылки обновлены.',

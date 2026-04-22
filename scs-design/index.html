@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Проектирование СКС</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <style>
+    .stub-wrap { max-width: 960px; margin: 32px auto; padding: 0 24px; }
+    .stub-wrap h1 { font-size: 22px; margin-bottom: 8px; }
+    .stub-wrap .lead { color: #555; margin-bottom: 24px; line-height: 1.5; }
+    .stub-card {
+      background: #fff; border: 1px solid #e0e3ea; border-radius: 12px;
+      padding: 20px 24px; margin-bottom: 16px;
+    }
+    .stub-card h2 { font-size: 16px; margin-bottom: 8px; color: #1f2430; }
+    .stub-card p { color: #555; line-height: 1.55; font-size: 14px; }
+    .stub-card ul { margin: 8px 0 0 20px; color: #555; font-size: 14px; line-height: 1.7; }
+    .wip-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 10px;
+      background: #fff3e0; color: #e65100; font-size: 11px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+      margin-left: 8px; vertical-align: middle;
+    }
+    .kbd {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;
+      padding: 1px 6px; font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Проектирование СКС', home: '../hub.html' });
+  </script>
+
+  <main class="stub-wrap">
+    <h1>📡 Проектирование СКС <span class="wip-badge">Планируется</span></h1>
+    <p class="lead">
+      Модуль для проектирования структурированной кабельной системы объекта:
+      трассы, кроссы, пары порт ↔ порт на уровне здания и этажей, маркировка,
+      длины кабелей, BOM СКС. Roadmap: Подфаза 1.26 / бывшая 1.25.
+    </p>
+
+    <div class="stub-card">
+      <h2>Что будет внутри</h2>
+      <ul>
+        <li><b>План зала</b> — top-down план с расстановкой стоек (импорт координат из <a href="../mdc-config/">mdc-config</a> или ручное размещение).</li>
+        <li><b>Стойки проекта</b> — список из <a href="../scs-config/">Шкафы проекта</a> с их external-портами (1.24.15).</li>
+        <li><b>Связи port ↔ port</b> — соединения между внешними портами стоек с типом кабеля (copper / OM3 / OS2), длиной и маркировкой.</li>
+        <li><b>BOM СКС</b> — агрегированный по типу кабеля, с коэффициентом запаса длины.</li>
+        <li><b>Экспорт</b> — план в SVG/PDF, кабельный журнал в XLSX.</li>
+      </ul>
+    </div>
+
+    <div class="stub-card">
+      <h2>🧰 Мастер меж-шкафных связей</h2>
+      <p>
+        Встроенный рабочий стол внутри этого модуля: выбираете несколько стоек
+        проекта — они открываются рядом, можно тянуть линию от конкретного порта
+        одного шкафа к порту или патч-панели другого. Отдельного пункта в хабе
+        нет — мастер доступен только отсюда, вкладка «Связи».
+      </p>
+    </div>
+
+    <div class="stub-card">
+      <h2>Что уже можно сейчас</h2>
+      <p>
+        Внутренние патчкорды внутри одного шкафа — в
+        <a href="../scs-config/">Компоновщике шкафа</a> (СКС-матрица).
+        Этот модуль поднимается на уровень выше — трассы между шкафами и
+        кабельный журнал всего объекта.
+      </p>
+    </div>
+  </main>
+
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'scs-design', moduleTitle: 'Проектирование СКС', entries: CHANGELOGS['scs-design'] || [] });
+  </script>
+</body>
+</html>

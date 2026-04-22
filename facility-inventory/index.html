@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Реестр оборудования объекта</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <style>
+    .stub-wrap { max-width: 960px; margin: 32px auto; padding: 0 24px; }
+    .stub-wrap h1 { font-size: 22px; margin-bottom: 8px; }
+    .stub-wrap .lead { color: #555; margin-bottom: 24px; line-height: 1.5; }
+    .stub-card {
+      background: #fff; border: 1px solid #e0e3ea; border-radius: 12px;
+      padding: 20px 24px; margin-bottom: 16px;
+    }
+    .stub-card h2 { font-size: 16px; margin-bottom: 8px; color: #1f2430; }
+    .stub-card p { color: #555; line-height: 1.55; font-size: 14px; }
+    .stub-card ul { margin: 8px 0 0 20px; color: #555; font-size: 14px; line-height: 1.7; }
+    .wip-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 10px;
+      background: #fff3e0; color: #e65100; font-size: 11px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+      margin-left: 8px; vertical-align: middle;
+    }
+    table.scope { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+    table.scope th, table.scope td { padding: 6px 10px; border: 1px solid #e0e3ea; text-align: left; }
+    table.scope th { background: #f8fafc; font-weight: 600; color: #333; }
+    table.scope td a { color: #1976d2; }
+  </style>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Реестр оборудования объекта', home: '../hub.html' });
+  </script>
+
+  <main class="stub-wrap">
+    <h1>🏭 Реестр оборудования объекта <span class="wip-badge">Планируется</span></h1>
+    <p class="lead">
+      Единый журнал всего не-IT-имущества площадки: ИБП, АКБ, кондиционеры,
+      ДГУ, трансформаторы, щиты, СКУД, системы пожаротушения. Экземпляры с
+      привязкой к помещению / модулю ЦОД / линии питания. Общая крыша над
+      «Реестром IT-оборудования» на уровне «всё имущество объекта».
+      Roadmap: Подфаза 1.26 (п. 1.26.5).
+    </p>
+
+    <div class="stub-card">
+      <h2>Что будет внутри</h2>
+      <ul>
+        <li><b>Экземпляры</b> — каждый физический предмет (не тип): инв-№, серийный, заводской, место установки, дата ввода в эксплуатацию, гарантия, межрегламентный пробег.</li>
+        <li><b>Группировка по классам</b> — силовое, слаботочное, инженерное, климат, безопасность.</li>
+        <li><b>Привязка к проекту/площадке</b> — здание, этаж, помещение, стойка (для стоечных единиц) или модуль ЦОД.</li>
+        <li><b>Импорт из модулей-конфигураторов</b> — при сохранении конфигурации в mv-config / ups-config / mdc-config / suppression-config экземпляры попадают сюда автоматически.</li>
+        <li><b>Жизненный цикл</b> — установлено / на складе / в ремонте / списано. История перемещений.</li>
+      </ul>
+    </div>
+
+    <div class="stub-card">
+      <h2>Источники данных (откуда поедут экземпляры)</h2>
+      <table class="scope">
+        <thead><tr><th>Класс</th><th>Модуль-источник</th><th>Что попадает</th></tr></thead>
+        <tbody>
+          <tr><td>Силовое СН</td><td><a href="../mv-config/">mv-config</a></td><td>RM6 / SafeRing / ЩО-70 с уставками</td></tr>
+          <tr><td>ИБП + АКБ</td><td><a href="../ups-config/">ups-config</a>, <a href="../battery/">battery</a></td><td>Модули ИБП, АКБ-шкафы, таблицы разряда</td></tr>
+          <tr><td>Трансформаторы</td><td><a href="../transformer-config/">transformer-config</a></td><td>Силовые трансформаторы с паспортом</td></tr>
+          <tr><td>НКУ</td><td><a href="../panel-config/">panel-config</a></td><td>ВРУ / АВР / ЩС</td></tr>
+          <tr><td>Климат</td><td><a href="../mdc-config/">mdc-config</a></td><td>CRAC, ODU, перекачки</td></tr>
+          <tr><td>Пожаротушение</td><td><a href="../suppression-config/">suppression-config</a></td><td>Модули ГОТВ, пиропатроны, насадки</td></tr>
+          <tr><td>Шкафы серверные</td><td><a href="../rack-config/">rack-config</a></td><td>Корпуса шкафов (как единицы учёта)</td></tr>
+          <tr><td>IT-экземпляры</td><td><a href="../scs-config/inventory.html">it-inventory</a></td><td>Ссылка, не дублирование</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'facility-inventory', moduleTitle: 'Реестр оборудования объекта', entries: CHANGELOGS['facility-inventory'] || [] });
+  </script>
+</body>
+</html>
