@@ -180,6 +180,7 @@
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from './shared/app-header.js';
+    import './shared/dialog.js'; // регистрирует window.rsToast/rsConfirm/rsPrompt
     mountHeader({ title: 'платформа', showHome: false, home: 'hub.html' });
     if (window.Auth && typeof window.Auth.init === 'function') {
       window.Auth.init().catch(e => console.warn('[hub] auth init failed', e));
@@ -662,8 +663,11 @@
     }
 
     editBtn.addEventListener('click', function () { setEdit(!grid.classList.contains('edit')); });
-    resetBtn.addEventListener('click', function () {
-      if (!confirm('Сбросить настройку главного окна (видимость и порядок модулей)?')) return;
+    resetBtn.addEventListener('click', async function () {
+      var ok = window.rsConfirm
+        ? await window.rsConfirm('Сбросить настройку главного окна?', 'Видимость и порядок модулей будут сброшены.', { okLabel: 'Сбросить', cancelLabel: 'Отмена' })
+        : confirm('Сбросить настройку главного окна (видимость и порядок модулей)?');
+      if (!ok) return;
       prefs = { cols: 'auto', hidden: [], order: [] };
       savePrefs(prefs);
       colsSel.value = 'auto';

@@ -578,6 +578,9 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.186', date: '2026-04-22', items: [
+      '<b>dialog.js самодостаточен</b>: CSS инъектится модулем при первом вызове, больше не зависит от <code>shared/styles/base.css</code> в HTML (страницы <code>catalog/</code>, <code>elements/</code>, <code>schematic/</code>, <code>logistics/</code> и др. её не подключали — раньше rsToast/rsConfirm там бы рендерились без стилей). Добавлен keydown на <code>document</code> (Enter подтверждает rsConfirm без input, Escape отменяет), автофокус на OK-кнопке. Очищены последние нативные вызовы: <code>hub.html</code> (reset layout), <code>configurator3d/index.html</code> (импорт JSON). Файлы: shared/dialog.js, hub.html, configurator3d/index.html.',
+    ] },
     { version: '0.59.185', date: '2026-04-22', items: [
       '<b>Финальная зачистка нативных <code>alert/confirm/prompt</code> по проекту.</b> Все остальные модули переведены на <code>rsToast/rsConfirm/rsPrompt</code>: catalog (клон/удаление/откат/скрытие/цены/контрагенты/rollback/import-mode — 9 вызовов), logistics (3 удаления), reports (удаление шаблона, импорт, PDF/DOCX ошибки — 5), schematic (text prompt, import err — 2), elements-editor (клон/удаление/добавление/режим импорта — 4), suppression-config (методика/удаление-установки/направления/участка/насадок/аксонометрия/гидравлика/спецификация/MDC-мост — 15), js/main.js (ревизии/проекты/каталог изделий/пресеты/потребители/автофиксы/bulk-edit — 29). В проекте не осталось ни одного вызова <code>alert/confirm/prompt</code>. Файлы: catalog/catalog.js, logistics/logistics.js, reports/reports.js, schematic/schematic.js, elements/elements-editor.js, suppression-config/suppression-config.js, js/main.js.',
     ] },
