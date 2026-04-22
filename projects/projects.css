@@ -1,0 +1,74 @@
+.pr-wrap { max-width: 1280px; margin: 24px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 16px; }
+.pr-card {
+  background: #141922; border: 1px solid #2a313e; border-radius: 12px;
+  padding: 18px 20px; color: #e5e7eb;
+}
+.pr-card h2, .pr-card h3 { color: #f1f5f9; }
+.pr-card .muted { color: #94a3b8; }
+.pr-toolbar { display: flex; align-items: center; gap: 12px; }
+
+.pr-btn-primary, .pr-btn-sel, .pr-btn-danger {
+  padding: 7px 14px; border-radius: 7px; cursor: pointer; font-size: 13px; line-height: 1.2;
+  border: 1px solid #475569; background: #1f2937; color: #e5e7eb;
+}
+.pr-btn-primary { background: #2563eb; border-color: #1d4ed8; color: #fff; font-weight: 600; }
+.pr-btn-primary:hover { background: #1d4ed8; }
+.pr-btn-sel:hover { border-color: #60a5fa; }
+.pr-btn-danger { background: #7f1d1d; border-color: #991b1b; color: #fff; }
+.pr-btn-danger:hover { background: #991b1b; }
+
+.pr-project {
+  border: 1px solid #2a313e; border-radius: 10px; padding: 12px 14px;
+  margin-bottom: 10px; background: #1a202c; transition: border-color .15s;
+}
+.pr-project:hover { border-color: #475569; }
+.pr-project.active { border-color: #2563eb; box-shadow: 0 0 0 1px rgba(37,99,235,.35) inset; }
+.pr-project-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pr-project-title { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.pr-project-name { color: #f1f5f9; }
+.pr-badge-active {
+  background: #2563eb; color: #fff; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 500; letter-spacing: 0.3px;
+}
+.pr-project-desc { margin-top: 6px; color: #cbd5e1; font-size: 13px; }
+.pr-project-meta { margin-top: 6px; font-size: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+.pr-project-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pr-project-links { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px dashed #2a313e; padding-top: 10px; }
+.pr-link-chip {
+  padding: 5px 10px; border-radius: 6px; background: #0f172a; border: 1px solid #334155;
+  color: #cbd5e1; text-decoration: none; font-size: 12px;
+}
+.pr-link-chip:hover { border-color: #60a5fa; color: #f1f5f9; }
+
+.pr-empty {
+  padding: 28px; text-align: center; color: #94a3b8;
+  border: 1px dashed #334155; border-radius: 8px;
+}
+
+/* Toast + modal */
+#pr-toast-host { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.pr-toast {
+  padding: 10px 14px; border-radius: 6px; background: #1f2937;
+  color: #f1f5f9; border: 1px solid #475569; font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3); opacity: 1; transition: opacity .3s;
+}
+.pr-toast.leave { opacity: 0; }
+.pr-toast-err { background: #7f1d1d; border-color: #991b1b; }
+
+.pr-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9998;
+  display: flex; align-items: center; justify-content: center;
+}
+.pr-modal {
+  background: #141922; border: 1px solid #2a313e; border-radius: 10px;
+  padding: 20px 24px; min-width: 360px; max-width: 90vw; color: #e5e7eb;
+}
+.pr-modal h3 { margin: 0 0 10px; color: #f1f5f9; }
+.pr-modal-label { display: block; margin: 10px 0 4px; color: #cbd5e1; font-size: 13px; }
+.pr-modal-input {
+  width: 100%; padding: 8px 10px; border-radius: 6px;
+  background: #1f2937; color: #f1f5f9; border: 1px solid #475569; font-size: 14px;
+  box-sizing: border-box;
+}
+.pr-modal-input:focus { outline: none; border-color: #60a5fa; }
+.pr-modal-actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px; }

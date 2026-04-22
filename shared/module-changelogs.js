@@ -3,6 +3,15 @@
 // Подключается во всех модульных index.html через module-footer.js.
 
 export const CHANGELOGS = {
+  'projects': [
+    { version: '0.59.222', date: '2026-04-22', items: [
+      '🆕 Новый модуль «📁 Проекты» — центр управления проектами объектов. Каждый проект = единица проектной работы (схема электроснабжения + СКС + шкафы + реестры + заметки). LS: raschet.projects.v1 (метаданные), raschet.activeProjectId.v1 (активный).',
+      'MVP v1 (Фаза 1.27.0): создать / переименовать / удалить проект, сделать активным, экспорт/импорт JSON (schema «raschet.project/1»), бейдж «активен» у карточки. Inline-модалки (без window.prompt/confirm/alert). Автосоздание «Проекта по умолчанию» при первом открытии.',
+      'Архитектурный разворот: данные проекта должны жить в проекте, конфигураторы (rack-config, mv-config, ups-config и др.) — это только библиотека шаблонов. Фаза 1.27.1-1.27.4 переведёт данные scs-design / схемы / шкафов / реестров в проектный неймспейс (raschet.project.<pid>.<module>.*) через адаптер shared/project-storage.js. Сейчас данные модулей ещё в общих ключах — миграция постепенная.',
+      'Заложена архитектура для продаваемых/отдельно-деплоимых модулей (в частности «Управление объектом»): связь модулей через JSON-контракты со schema-version, адаптер project-storage абстрагирует LS vs HTTP — в Фазе 1.28 транспорт переключится без правок в модулях.',
+      'Файлы: projects/{index.html, projects.js, projects.css}, shared/project-storage.js (MVP API: listProjects/createProject/updateProject/deleteProject/getActiveProjectId/setActiveProjectId/ensureDefaultProject/projectKey/projectLoad/projectSave/exportProject/importProject), hub.html (плитка «📁 Проекты» первой).',
+    ] },
+  ],
   'scs-design': [
     { version: '0.59.221', date: '2026-04-22', items: [
       'Фильтры над таблицей меж-шкафных связей: поиск по шкафу/устройству/заметке, select-фильтр по типу кабеля, чекбокс «только без длины». Счётчик «показано/всего», кнопка сброса. Для проекта с 100+ линиями — найти «все fiber без длины в DH1» теперь в 3 клика. Фильтр живёт в памяти вкладки (не сохраняется в LS), чтобы открытие модуля всегда показывало весь журнал.',

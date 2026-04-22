@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Проекты</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="projects.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Проекты', home: '../hub.html' });
+  </script>
+
+  <main class="pr-wrap">
+    <section class="pr-card">
+      <div class="pr-toolbar">
+        <h2 style="margin:0;flex:1">📁 Проекты Raschet</h2>
+        <button type="button" id="pr-new" class="pr-btn-primary">＋ Новый проект</button>
+      </div>
+      <p class="muted" style="margin:8px 0 0">
+        Проект = единица проектной работы по объекту. Содержит схему электроснабжения,
+        СКС (меж-шкафные связи, план зала), шкафы с содержимым, реестры оборудования,
+        заметки. Конфигураторы (корпус шкафа, РУ СН, ИБП и т.п.) — это
+        <b>библиотека шаблонов</b>, они хранят только сохранённые пользователем
+        конфигурации и не лезут в данные проекта.
+      </p>
+    </section>
+
+    <section class="pr-card">
+      <h3 style="margin:0 0 12px">Список проектов</h3>
+      <div id="pr-list"></div>
+    </section>
+
+    <section class="pr-card">
+      <h3 style="margin:0 0 8px">Что содержит проект</h3>
+      <ul class="muted" style="margin-left:20px;line-height:1.7">
+        <li><b>Электрическая схема</b> — узлы, линии, кабели, защита (Конструктор схем).</li>
+        <li><b>СКС</b> — меж-шкафные связи, план зала, кабельный журнал (Проектирование СКС).</li>
+        <li><b>Шкафы</b> — содержимое каждого экземпляра (Компоновщик шкафа).</li>
+        <li><b>IT-реестр</b> — экземпляры серверов/свичей с S/N, IP, MAC (Реестр IT).</li>
+        <li><b>Не-IT имущество</b> — мебель, стеллажи, ЗИП (Реестр оборудования объекта).</li>
+        <li><b>Заметки проекта</b> — клиент, адрес, сроки, контакты.</li>
+      </ul>
+      <h3 style="margin:16px 0 8px">Что НЕ хранится в проекте</h3>
+      <ul class="muted" style="margin-left:20px;line-height:1.7">
+        <li>Библиотека корпусов шкафов (<a href="../rack-config/">Конфигуратор шкафа</a>) — общая.</li>
+        <li>Сохранённые конфигурации РУ СН (<a href="../mv-config/">mv-config</a>) — общая библиотека.</li>
+        <li>Каталоги элементов, кабелей, автоматов — общие для всех проектов.</li>
+        <li>Шаблоны ИБП, ПДУ, трансформаторов, МДЦ — общая библиотека.</li>
+      </ul>
+      <p class="muted" style="margin-top:12px">
+        <b>Правило:</b> всё, что проектируется для конкретного объекта — живёт в проекте.
+        Всё, что используется как типовое решение повторно — в конфигураторах.
+      </p>
+    </section>
+
+    <section class="pr-card">
+      <h3 style="margin:0 0 8px">🚧 Статус миграции</h3>
+      <p class="muted">
+        Фаза 1.27 в работе. В текущей версии модуль «Проекты» показывает список
+        проектов и «активный проект», но данные модулей (схема, СКС, шкафы)
+        пока хранятся в общих LS-ключах. Следующие подфазы переведут их
+        в проектный неймспейс:
+      </p>
+      <ul class="muted" style="margin-left:20px;line-height:1.7">
+        <li>1.27.0 — MVP: модуль, список, активный проект ✅</li>
+        <li>1.27.1 — неймспейс данных scs-design по проекту</li>
+        <li>1.27.2 — неймспейс схемы главного Конструктора (конфигурации из конструктора — в самом конструкторе)</li>
+        <li>1.27.3 — неймспейс содержимого шкафов (scs-config) и IT-реестра</li>
+        <li>1.27.4 — экспорт/импорт всего проекта одним JSON (полный backup)</li>
+        <li>1.27.5 — статусы проекта: draft → planned → installed → operating</li>
+      </ul>
+      <h3 style="margin:16px 0 8px">🔌 Фаза 1.28 — отделяемые модули (готовность к продаже)</h3>
+      <p class="muted">
+        Модуль «Управление объектом» (для действующих, уже построенных объектов —
+        мониторинг, эксплуатация, ЗИП) проектируется как
+        <b>отдельно-деплоимый продукт</b>: его можно поставить клиенту на его
+        сервер, и при этом получать обновления. Чтобы это было возможно,
+        архитектура разделяет:
+      </p>
+      <ul class="muted" style="margin-left:20px;line-height:1.7">
+        <li><b>Контракт данных</b> — schema-versioned JSON для всех типов объектов.</li>
+        <li><b>Транспорт</b> — сейчас localStorage, потом HTTP/IndexedDB (один адаптер shared/project-storage.js).</li>
+        <li><b>Модульная обновляемость</b> — manifest.json с версией модуля и требуемой версией схемы проекта.</li>
+        <li><b>Лицензирование</b> — организационный ключ + срок, проверка оффлайн (подпись) или через auth-сервер.</li>
+      </ul>
+      <p class="muted">
+        Подробнее — в <a href="../ROADMAP.md">ROADMAP.md</a>, Фаза 1.27 и 1.28.
+      </p>
+    </section>
+  </main>
+
+  <script type="module" src="projects.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'projects', moduleTitle: 'Проекты', entries: CHANGELOGS['projects'] || [] });
+  </script>
+</body>
+</html>
