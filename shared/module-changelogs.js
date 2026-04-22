@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.233', date: '2026-04-22', items: [
+      '📚 Справочники — в левый выдвижной сайдбар. shared/reference-panels.js переписан: секции с data-reference-panel="1" автоматически переносятся в фиксированный левый drawer (420px, скрыт по умолчанию). Снаружи — узкий вертикальный таб-хэндл «📚 Справочник» слева, по клику drawer выезжает с backdrop-оверлеем. Esc / клик по backdrop / кнопка ✕ — закрыть. Состояние open/closed запоминается в localStorage на каждую страницу (raschet.refDrawer.open.v1:<path>). Применено в ups-config, panel-config, mv-config, transformer-config.',
+      'Зачем: справочник — это БД, а не ежедневный инструмент. В конце страницы всё равно мешал прокруткой. Теперь основной рабочий флоу (мастер / параметры / расчёт) занимает весь экран, а справочник вызывается одним кликом.',
+      'Файлы: shared/reference-panels.js (drawer + handle + backdrop + LS-persist).',
+    ] },
     { version: '0.59.232', date: '2026-04-22', items: [
       '🛡 scs-config: запрет удаления/«на тележку» для оборудования с подключённым кабелем. Проверяется наличие связей в raschet.project.<pid>.scs-design.links.v1 (fromDevId/toDevId). При попытке — inline-toast «Нельзя удалить: подключено N кабелей. Сначала удалите связи в Проектирование СКС». Guard на обоих путях: [data-del] и moveToCart().',
       '📚 shared/reference-panels.js — общий auto-script: ищет элементы с data-reference-panel="1" на DOMContentLoaded и переносит их в конец родительского контейнера, с разделителем «📚 Справочники / база данных». Применён в battery, ups-config, panel-config, mv-config, transformer-config. Цель: справочники перестают занимать верхний экран, основная рабочая область видна сразу.',
