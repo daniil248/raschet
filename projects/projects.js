@@ -125,6 +125,8 @@ function render() {
         <div class="pr-project-actions">
           ${isActive ? '' : `<button type="button" class="pr-btn-sel" data-act="activate">Сделать активным</button>`}
           <button type="button" class="pr-btn-sel" data-act="rename">Переименовать</button>
+          <button type="button" class="pr-btn-sel" data-act="import-scheme" title="Скопировать текущую глобальную схему Конструктора в этот проект">⬇ Взять глобальную схему</button>
+          <button type="button" class="pr-btn-sel" data-act="apply-scheme" title="Применить схему проекта к главному Конструктору (перезапишет глобальную схему!)">⬆ Применить в Конструкторе</button>
           <button type="button" class="pr-btn-sel" data-act="export">Экспорт JSON</button>
           <button type="button" class="pr-btn-danger" data-act="delete">Удалить</button>
         </div>
@@ -157,6 +159,31 @@ function render() {
       updateProject(id, { name, description: desc || '' });
       prToast('✔ Обновлено');
       render();
+    });
+    el.querySelector('[data-act="import-scheme"]')?.addEventListener('click', async () => {
+      const raw = localStorage.getItem('raschet.scheme');
+      if (!raw) { prToast('⚠ Глобальная схема Конструктора пуста', 'err'); return; }
+      const ok = await prConfirm(
+        'Взять глобальную схему в проект?',
+        'В этот проект скопируется текущее содержимое главного Конструктора схем. Существующая схема проекта (если есть) будет перезаписана.'
+      );
+      if (!ok) return;
+      localStorage.setItem(`raschet.project.${id}.engine.scheme.v1`, raw);
+      updateProject(id, {});
+      prToast('✔ Схема скопирована в проект');
+      render();
+    });
+    el.querySelector('[data-act="apply-scheme"]')?.addEventListener('click', async () => {
+      const key = `raschet.project.${id}.engine.scheme.v1`;
+      const raw = localStorage.getItem(key);
+      if (!raw) { prToast('⚠ В проекте нет схемы. Сначала «⬇ Взять глобальную схему»', 'err'); return; }
+      const ok = await prConfirm(
+        'Применить схему проекта в Конструкторе?',
+        'Текущая глобальная схема Конструктора будет ПЕРЕЗАПИСАНА схемой этого проекта. Действие необратимо без backup — при необходимости сначала экспортируйте текущую глобальную схему через Конструктор.'
+      );
+      if (!ok) return;
+      localStorage.setItem('raschet.scheme', raw);
+      prToast('✔ Схема применена. Откройте Конструктор схем для проверки.');
     });
     el.querySelector('[data-act="export"]')?.addEventListener('click', () => {
       const blob = exportProject(id);

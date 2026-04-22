@@ -406,7 +406,7 @@ function openDetail(id) {
       <table class="pc-results-table"><thead><tr><th>Тип</th><th>Кол-во</th></tr></thead><tbody>${rows || '<tr><td colspan="2" class="pc-empty">нет данных</td></tr>'}</tbody></table>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid #eee;padding-top:12px">
         <button id="pc-detail-pick" class="pc-btn pc-btn-primary">⬆ Выбрать эту модель</button>
-        ${IS_EMBED ? '' : '<button id="pc-detail-open-rack" class="pc-btn">Открыть Конфигуратор стойки →</button>'}
+        ${(IS_EMBED || !/rack-config/i.test(document.referrer || '')) ? '' : '<button id="pc-detail-open-rack" class="pc-btn">Открыть Конфигуратор стойки →</button>'}
       </div>
       <div class="muted" style="font-size:11px;margin-top:6px;line-height:1.5">
         «Выбрать» сохранит модель в <code>raschet.lastPduConfig.v1</code>. В Конфигураторе стойки
@@ -535,6 +535,11 @@ function renderPendingBanner() {
     : `${esc(last.manufacturer)} · ${esc(last.label)}`;
   // В embed-режиме (iframe внутри rack-config) баннер не нужен: приведёт к вложенной модалке. Результат и так вернётся через postMessage.
   if (IS_EMBED) { slot.innerHTML = ''; return; }
+  // Standalone-открытие из главного окна (хаб/модули/прямой URL) — баннер
+  // «Открыть стойку →» не показываем: пользователь работает с конфигуратором
+  // как отдельным приложением. Показываем только если пришли из rack-config.
+  const fromRack = /rack-config/i.test(document.referrer || '');
+  if (!fromRack) { slot.innerHTML = ''; return; }
   slot.innerHTML = `
     <div class="pc-banner">
       <span><b>${kind}</b> · ${label} <span class="muted" style="font-size:11px">(${ageStr})</span></span>

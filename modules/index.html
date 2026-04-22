@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Модули — Raschet</title>
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #222; background: #f4f5f7; }
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+    main { flex: 1; padding: 24px 24px 40px; max-width: 1400px; margin: 0 auto; width: 100%; }
+    h1 { font-size: 22px; margin-bottom: 6px; }
+    .muted { color: #6b7280; font-size: 13px; margin-bottom: 18px; }
+    .mod-section { margin-bottom: 28px; }
+    .mod-section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .5px; color: #3730a3; margin-bottom: 10px; }
+    .mod-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .mod-card {
+      background: #fff; border: 1px solid #e0e3ea; border-radius: 10px; padding: 14px 16px;
+      text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: 4px;
+      transition: box-shadow 0.15s, transform 0.12s;
+    }
+    .mod-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-1px); border-color: #c7d2fe; }
+    .mod-card .title { font-size: 14px; font-weight: 600; color: #1f2430; }
+    .mod-card .desc { font-size: 12px; color: #6b7280; line-height: 1.4; }
+    .mod-card .meta { font-size: 11px; color: #94a3b8; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .mod-card .tag { padding: 1px 7px; border-radius: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+    .tag.standalone { background: #dcfce7; color: #166534; }
+    .tag.embedded   { background: #fef3c7; color: #92400e; }
+    .tag.info       { background: #dbeafe; color: #1e3a8a; }
+    .tag.draft      { background: #f3e8ff; color: #6b21a8; }
+  </style>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Модули', showHome: true, home: '../hub.html' });
+  </script>
+
+  <main>
+    <h1>Все модули платформы</h1>
+    <p class="muted">Полный перечень модулей — в том числе тех, которые на главном экране скрыты или доступны только через другой модуль (например, реестры — только внутри проекта).</p>
+
+    <div class="mod-section">
+      <h2>📁 Управление проектом</h2>
+      <div class="mod-grid">
+        <a class="mod-card" href="../projects/">
+          <span class="title">Проекты</span>
+          <span class="desc">Центр проектов: схема, СКС, шкафы, реестры — всё в рамках одного проекта.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+      </div>
+    </div>
+
+    <div class="mod-section">
+      <h2>⚡ Электротехника — расчёт и схема</h2>
+      <div class="mod-grid">
+        <a class="mod-card" href="../index.html">
+          <span class="title">Конструктор схем</span>
+          <span class="desc">Принципиальная схема электроснабжения, расчёт нагрузок, подбор кабелей и защиты.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../cable/">
+          <span class="title">Расчёт кабельной линии</span>
+          <span class="desc">Сечение кабеля по IEC/ПУЭ: температура, группирование, падение напряжения.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../schematic/">
+          <span class="title">Схема принципиальная</span>
+          <span class="desc">Редактор схем и РД. IEC 60617-DB-12M, листы ISO 216, основная надпись ISO 7200.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../battery/">
+          <span class="title">Расчёт АКБ</span>
+          <span class="desc">Ёмкость и конфигурация АКБ для ИБП. Kehua, Panasonic, SVC, Sonnenschein.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../ups-config/">
+          <span class="title">Конфигуратор ИБП</span>
+          <span class="desc">Подбор ИБП: моноблок/модульный, N+X, вход, батарейная цепь.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../panel-config/">
+          <span class="title">Конфигуратор НКУ (LV щит)</span>
+          <span class="desc">НКУ до 1 кВ (IEC 61439): ВРУ, АВР, ЩС, ЩО, ЩК.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../mv-config/">
+          <span class="title">Конфигуратор РУ СН</span>
+          <span class="desc">РУ 6-35 кВ: RM6, SafeRing, ЩО-70. Wizard-подбор ячеек.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../transformer-config/">
+          <span class="title">Конфигуратор трансформатора</span>
+          <span class="desc">Силовой трансформатор: S, U₁/U₂, группа, Δxx/Δкз, u_k, охлаждение.</span>
+          <span class="meta"><span class="tag standalone">standalone</span><span class="tag draft">draft</span></span>
+        </a>
+      </div>
+    </div>
+
+    <div class="mod-section">
+      <h2>🗄 Инфраструктура ЦОД</h2>
+      <div class="mod-grid">
+        <a class="mod-card" href="../mdc-config/">
+          <span class="title">Конфигуратор модульного ЦОД</span>
+          <span class="desc">GDM-600: зоны, стойки, ИБП+АКБ, охлаждение, top-view.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../rack-config/">
+          <span class="title">Конфигуратор шкафа — корпус</span>
+          <span class="desc">Типовой корпус, двери, PDU-слоты, BOM пустого шкафа.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../scs-config/">
+          <span class="title">Компоновщик шкафа</span>
+          <span class="desc">Карта юнитов, PDU, внутренние патчкорды, матрица питания.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../scs-design/">
+          <span class="title">Проектирование СКС</span>
+          <span class="desc">План зала, меж-шкафные связи, длины, кабельный журнал.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../pdu-config/">
+          <span class="title">Конфигуратор PDU</span>
+          <span class="desc">PDU: фазы, ток, розетки, категория, высота. APC/Rittal/Raritan/Kehua.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../scs-config/inventory.html">
+          <span class="title">Реестр IT-оборудования</span>
+          <span class="desc">Оборудование в стойках объекта. Доступен только из проекта.</span>
+          <span class="meta"><span class="tag embedded">в проекте</span></span>
+        </a>
+        <a class="mod-card" href="../facility-inventory/">
+          <span class="title">Реестр оборудования объекта</span>
+          <span class="desc">Инженерное оборудование объекта (не IT). Доступен только из проекта.</span>
+          <span class="meta"><span class="tag embedded">в проекте</span></span>
+        </a>
+      </div>
+    </div>
+
+    <div class="mod-section">
+      <h2>🔥 Климат и пожаротушение</h2>
+      <div class="mod-grid">
+        <a class="mod-card" href="../psychrometrics/">
+          <span class="title">ID-диаграмма Молье-Рамзина</span>
+          <span class="desc">Психрометрический расчёт влажного воздуха (ASHRAE 2021). HVAC-процессы.</span>
+          <span class="meta"><span class="tag standalone">standalone</span><span class="tag draft">draft</span></span>
+        </a>
+        <a class="mod-card" href="../suppression-config/">
+          <span class="title">Расчёт газового пожаротушения (АГПТ)</span>
+          <span class="desc">ГОТВ: FM-200, Novec 1230, HFC-125, CO₂, IG-541/55/100/01, SF₆.</span>
+          <span class="meta"><span class="tag standalone">standalone</span><span class="tag draft">draft</span></span>
+        </a>
+      </div>
+    </div>
+
+    <div class="mod-section">
+      <h2>📦 Каталоги и логистика</h2>
+      <div class="mod-grid">
+        <a class="mod-card" href="../catalog/">
+          <span class="title">Каталог и библиотека элементов</span>
+          <span class="desc">Единый справочник: ИБП, щиты, АКБ, автоматы, корпуса, кабели + цены.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+        <a class="mod-card" href="../logistics/">
+          <span class="title">Рабочее место логиста</span>
+          <span class="desc">Доставка, маршруты, склады, тарифы. Интеграция с BOM проекта.</span>
+          <span class="meta"><span class="tag standalone">standalone</span><span class="tag draft">draft</span></span>
+        </a>
+        <a class="mod-card" href="../reports/">
+          <span class="title">Шаблоны отчётов</span>
+          <span class="desc">Шаблоны оформления: страница, поля, логотип, колонтитулы. PDF/DOCX.</span>
+          <span class="meta"><span class="tag standalone">standalone</span></span>
+        </a>
+      </div>
+    </div>
+
+    <div class="mod-section">
+      <h2>📖 Документация</h2>
+      <div class="mod-grid">
+        <a class="mod-card" href="../roadmap.html">
+          <span class="title">Roadmap</span>
+          <span class="desc">План архитектурного развития: фазы, текущие задачи, очередь.</span>
+          <span class="meta"><span class="tag info">инфо</span></span>
+        </a>
+        <a class="mod-card" href="../changelog.html">
+          <span class="title">История изменений</span>
+          <span class="desc">Журнал версий платформы с описанием каждого релиза.</span>
+          <span class="meta"><span class="tag info">инфо</span></span>
+        </a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
