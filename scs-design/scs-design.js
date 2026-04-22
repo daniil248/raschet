@@ -101,6 +101,67 @@ function newId() { return 'ln_' + Math.random().toString(36).slice(2, 10); }
 
 /* ---------- UI state ---------- */
 let linkStart = null; // { rackId, devId, label }
+let lastLink = null;  // { fromRackId, fromDevId, toRackId, toDevId } — для batch wire
+
+function promptBatchWire() {
+  if (!lastLink) return;
+  const pFrom = devicePorts(lastLink.fromRackId, lastLink.fromDevId);
+  const pTo   = devicePorts(lastLink.toRackId,   lastLink.toDevId);
+  if (pFrom <= 1 || pTo <= 1) return;
+  const usedFrom = portsUsedOn(lastLink.fromRackId, lastLink.fromDevId);
+  const usedTo   = portsUsedOn(lastLink.toRackId,   lastLink.toDevId);
+  const freeFrom = pFrom - usedFrom.size;
+  const freeTo   = pTo   - usedTo.size;
+  const maxCount = Math.min(freeFrom, freeTo);
+  if (maxCount <= 0) { updateStatus(`⚠ Нет свободных портов для продолжения.`); return; }
+
+  const st = document.getElementById('sd-status');
+  if (!st) return;
+  st.innerHTML = `
+    <span>+ связей (1…${maxCount}):</span>
+    <input id="sd-batch-n" type="number" min="1" max="${maxCount}" value="${maxCount}" style="width:60px;margin:0 6px;padding:2px 4px">
+    <button id="sd-batch-ok" class="sd-btn-sel">Создать</button>
+    <button id="sd-batch-cancel" class="sd-btn-sel" style="margin-left:4px">Отмена</button>
+  `;
+  st.style.display = '';
+  document.getElementById('sd-batch-n').focus();
+  document.getElementById('sd-batch-ok').addEventListener('click', () => {
+    const n = Math.max(1, Math.min(maxCount, +document.getElementById('sd-batch-n').value || 1));
+    createBatchLinks(n);
+  });
+  document.getElementById('sd-batch-cancel').addEventListener('click', () => updateStatus(''));
+}
+
+function createBatchLinks(n) {
+  if (!lastLink || n <= 0) return;
+  const links = getLinks();
+  const usedFrom = portsUsedOn(lastLink.fromRackId, lastLink.fromDevId);
+  const usedTo   = portsUsedOn(lastLink.toRackId,   lastLink.toDevId);
+  const pFrom = devicePorts(lastLink.fromRackId, lastLink.fromDevId);
+  const pTo   = devicePorts(lastLink.toRackId,   lastLink.toDevId);
+  const fromSeq = [];
+  for (let p = 1; p <= pFrom && fromSeq.length < n; p++) if (!usedFrom.has(p)) fromSeq.push(p);
+  const toSeq = [];
+  for (let p = 1; p <= pTo && toSeq.length < n; p++) if (!usedTo.has(p)) toSeq.push(p);
+  const count = Math.min(fromSeq.length, toSeq.length);
+  const fromLabel = deviceLabel(lastLink.fromRackId, lastLink.fromDevId);
+  const toLabel = deviceLabel(lastLink.toRackId, lastLink.toDevId);
+  for (let i = 0; i < count; i++) {
+    links.push({
+      id: newId(),
+      fromRackId: lastLink.fromRackId, fromDevId: lastLink.fromDevId, fromLabel,
+      toRackId: lastLink.toRackId, toDevId: lastLink.toDevId, toLabel,
+      fromPort: fromSeq[i], toPort: toSeq[i],
+      cableType: 'cat6a', lengthM: null, note: '', createdAt: Date.now(),
+    });
+  }
+  setLinks(links);
+  updateStatus(`✔ Добавлено ${count} связей подряд (порты A:${fromSeq[0]}-${fromSeq[count-1]} ↔ B:${toSeq[0]}-${toSeq[count-1]}).`);
+  const selected = new Set(loadJson(LS_SELECTION, []));
+  renderSelected(selected, getRacks());
+  renderLinksList();
+  renderLegend();
+}
 
 /* ---------- Tabs ---------- */
 function setupTabs() {
@@ -313,9 +374,14 @@ function renderRackCard(r) {
         </div>`);
       } else {
         const isStart = linkStart && linkStart.rackId === r.id && linkStart.devId === d.id;
+        const ports = devicePorts(r.id, d.id);
+        const used = ports ? portsUsedOn(r.id, d.id).size : 0;
+        const portBadge = ports > 1
+          ? `<span class="u-pbadge${used >= ports ? ' full' : used ? ' part' : ''}" title="${used} из ${ports} портов занято">${used}/${ports}</span>`
+          : '';
         units.push(`<div class="sd-unit${h>1?' multi':''}${isStart ? ' sel' : ''}"${style} data-rack-id="${escapeAttr(r.id)}" data-dev-id="${escapeAttr(d.id)}" title="${escapeAttr(d.label || d.typeId || '')}">
           <span class="u-num">${uRange}</span>
-          <span class="u-label">${escapeHtml(d.label || d.typeId || '—')}${hBadge}</span>
+          <span class="u-label">${escapeHtml(d.label || d.typeId || '—')}${hBadge}${portBadge}</span>
         </div>`);
       }
     } else if (!cell) {
@@ -355,18 +421,39 @@ function onUnitClick(el) {
   }
   // создать связь
   const links = getLinks();
-  links.push({
+  const pFrom = devicePorts(linkStart.rackId, linkStart.devId);
+  const pTo   = devicePorts(rackId, devId);
+  // Если оба устройства многопортовые — автоподбор первых свободных портов
+  const usedFrom = portsUsedOn(linkStart.rackId, linkStart.devId);
+  const usedTo   = portsUsedOn(rackId, devId);
+  const firstFree = (max, used) => {
+    for (let p = 1; p <= max; p++) if (!used.has(p)) return p;
+    return null;
+  };
+  const fromPort = pFrom > 1 ? firstFree(pFrom, usedFrom) : null;
+  const toPort   = pTo   > 1 ? firstFree(pTo,   usedTo)   : null;
+  const newLink = {
     id: newId(),
     fromRackId: linkStart.rackId, fromDevId: linkStart.devId, fromLabel: linkStart.label,
     toRackId: rackId, toDevId: devId, toLabel: label,
+    fromPort, toPort,
     cableType: 'cat6a',
     lengthM: null,
     note: '',
     createdAt: Date.now(),
-  });
+  };
+  links.push(newLink);
   setLinks(links);
+  lastLink = { fromRackId: linkStart.rackId, fromDevId: linkStart.devId, toRackId: rackId, toDevId: devId };
   linkStart = null;
-  updateStatus(`✔ Связь добавлена: <b>${escapeHtml(label)}</b> ↔ выбранное устройство. Всего связей: ${links.length}.`);
+  const portInfo = (fromPort || toPort)
+    ? ` (${fromPort ? 'A:p'+fromPort : 'A'} ↔ ${toPort ? 'B:p'+toPort : 'B'})`
+    : '';
+  const batchBtn = (pFrom > 1 && pTo > 1)
+    ? ` <button id="sd-batch-btn" class="sd-btn-sel" style="margin-left:8px">+ ещё N связей подряд</button>`
+    : '';
+  updateStatus(`✔ Связь добавлена: <b>${escapeHtml(label)}</b>${portInfo}. Всего: ${links.length}.${batchBtn}`);
+  document.getElementById('sd-batch-btn')?.addEventListener('click', promptBatchWire);
   // перерисовать стойки (чтобы снять подсветку) и список
   const selected = new Set(loadJson(LS_SELECTION, []));
   renderSelected(selected, getRacks());

@@ -106,6 +106,14 @@
   background: #e0e7ff; color: #3730a3; font-size: 9px;
   border-radius: 8px; font-weight: 600; vertical-align: middle;
 }
+.sd-unit .u-pbadge {
+  display: inline-block; margin-left: 4px; padding: 1px 5px;
+  background: #f1f5f9; color: #64748b; font-size: 9px;
+  border-radius: 8px; font-weight: 600; vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+.sd-unit .u-pbadge.part { background: #fef3c7; color: #78350f; }
+.sd-unit .u-pbadge.full { background: #dcfce7; color: #14532d; }
 .sd-unit[data-dev-id].multi:hover { background: #eef2ff; }
 .sd-unit.empty { opacity: 0.35; color: #94a3b8; border-style: dashed; }
 .sd-unit.organizer {
