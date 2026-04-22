@@ -126,14 +126,26 @@ function renderLinksTab() {
   empty.style.display = 'none';
 
   const selected = new Set(loadJson(LS_SELECTION, []));
-  picker.innerHTML = racks.map(r => {
+  const real = racks.filter(r => (getRackTag(r.id) || '').trim());
+  const drafts = racks.filter(r => !(getRackTag(r.id) || '').trim());
+  const chipHtml = r => {
     const on = selected.has(r.id);
     const label = rackLabel(r);
     return `<label class="sd-rack-chip ${on ? 'on' : ''}" data-id="${r.id}">
       <input type="checkbox" ${on ? 'checked' : ''}>
       <span>${escapeHtml(label)}</span>
     </label>`;
-  }).join('');
+  };
+  const parts = [];
+  if (real.length) {
+    parts.push(`<div class="sd-rack-group-h">🗄 Реальные стойки (${real.length})</div>`);
+    parts.push(`<div class="sd-rack-group">${real.map(chipHtml).join('')}</div>`);
+  }
+  if (drafts.length) {
+    parts.push(`<div class="sd-rack-group-h draft">📐 Черновики / шаблоны без тега (${drafts.length})</div>`);
+    parts.push(`<div class="sd-rack-group draft">${drafts.map(chipHtml).join('')}</div>`);
+  }
+  picker.innerHTML = parts.join('');
 
   picker.querySelectorAll('.sd-rack-chip').forEach(chip => {
     const id = chip.dataset.id;
@@ -270,19 +282,24 @@ function renderRackCard(r) {
     const cell = occupancy[i];
     if (cell && cell.isTop) {
       const d = cell.dev;
+      const h = +d.heightU || 1;
+      // занимаемый диапазон: от top (i) до bottom (i - h + 1)
+      const bottom = i - h + 1;
+      const uRange = h > 1 ? `${i}-${bottom}` : `${i}`;
+      const hBadge = h > 1 ? `<span class="u-hbadge">${h}U</span>` : '';
+      // multi-U: высота = h × unit-row-height + (h-1) × gap. Рассчитывается через CSS var.
+      const style = h > 1 ? ` style="--u-span:${h}"` : '';
       const organizer = isOrganizer(d);
       if (organizer) {
-        // Органайзер — без data-dev-id (не кликабелен, не endpoint), но виден
-        // как занятый юнит; в будущем — точка маршрута для сплайна трассы.
-        units.push(`<div class="sd-unit organizer" title="Кабельный органайзер — только трассировка, не endpoint">
-          <span class="u-num">${i}</span>
-          <span class="u-label">⇋ ${escapeHtml(d.label || d.typeId || 'Органайзер')}</span>
+        units.push(`<div class="sd-unit organizer${h>1?' multi':''}"${style} title="Кабельный органайзер — только трассировка, не endpoint">
+          <span class="u-num">${uRange}</span>
+          <span class="u-label">⇋ ${escapeHtml(d.label || d.typeId || 'Органайзер')}${hBadge}</span>
         </div>`);
       } else {
         const isStart = linkStart && linkStart.rackId === r.id && linkStart.devId === d.id;
-        units.push(`<div class="sd-unit${isStart ? ' sel' : ''}" data-rack-id="${escapeAttr(r.id)}" data-dev-id="${escapeAttr(d.id)}" title="${escapeAttr(d.label || d.typeId || '')}">
-          <span class="u-num">${i}</span>
-          <span class="u-label">${escapeHtml(d.label || d.typeId || '—')}</span>
+        units.push(`<div class="sd-unit${h>1?' multi':''}${isStart ? ' sel' : ''}"${style} data-rack-id="${escapeAttr(r.id)}" data-dev-id="${escapeAttr(d.id)}" title="${escapeAttr(d.label || d.typeId || '')}">
+          <span class="u-num">${uRange}</span>
+          <span class="u-label">${escapeHtml(d.label || d.typeId || '—')}${hBadge}</span>
         </div>`);
       }
     } else if (!cell) {
@@ -527,7 +544,14 @@ function renderRacksSummary() {
   const kinds = Object.keys(KIND_ICON);
   const selected = new Set(loadJson(LS_SELECTION, []));
 
-  const rows = racks.map(r => {
+  // Сначала стойки с тегом (реальные), затем без тега (черновики/шаблоны)
+  const sorted = racks.slice().sort((a, b) => {
+    const ta = (getRackTag(a.id) || '').trim();
+    const tb = (getRackTag(b.id) || '').trim();
+    if (!!ta !== !!tb) return ta ? -1 : 1;
+    return ta.localeCompare(tb) || (a.name || '').localeCompare(b.name || '');
+  });
+  const rows = sorted.map(r => {
     const s = rackStats(r);
     const tag = getRackTag(r.id);
     const fillPct = Math.round((s.usedU / s.u) * 100);
@@ -537,8 +561,9 @@ function renderRacksSummary() {
       .map(k => `<span class="sd-kind-chip" title="${escapeAttr(KIND_ICON[k].label)}">${KIND_ICON[k].icon} ${s.byKind[k]}</span>`)
       .join('') || '<span class="muted">—</span>';
     const isSel = selected.has(r.id);
-    return `<tr data-id="${escapeAttr(r.id)}">
-      <td><code>${escapeHtml(tag || '—')}</code></td>
+    const draft = !tag.trim();
+    return `<tr data-id="${escapeAttr(r.id)}"${draft ? ' class="draft"' : ''} title="${draft ? 'Без тега — черновик/шаблон, не реальная стойка' : ''}">
+      <td>${draft ? '<span class="sd-draft-badge" title="Нет тега">📐 черновик</span>' : `<code>${escapeHtml(tag)}</code>`}</td>
       <td>${escapeHtml(r.name || 'Без имени')}</td>
       <td class="num">${s.usedU}/${s.u}
         <div class="sd-bar"><div class="sd-bar-fill${fillCls}" style="width:${Math.min(100, fillPct)}%"></div></div>
