@@ -1071,6 +1071,53 @@ function exportLinksCsv() {
   });
   downloadCsv('scs-links-' + dateStamp() + '.csv', rows);
 }
+/* ---------- Project JSON import / export ---------- */
+const PROJECT_SCHEMA = 'raschet.scs-design/1';
+
+function exportProjectJson() {
+  const payload = {
+    schema: PROJECT_SCHEMA,
+    exportedAt: new Date().toISOString(),
+    appVersion: (document.querySelector('[data-app-version]')?.textContent || '').trim(),
+    selection: loadJson(LS_SELECTION, []),
+    links: getLinks(),
+    plan: getPlan(),
+  };
+  const json = JSON.stringify(payload, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `scs-design-${dateStamp()}.json`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  const st = document.getElementById('sd-import-status');
+  if (st) st.textContent = `✔ Сохранено: ${payload.links.length} связей · ${Object.keys(payload.plan.positions || {}).length} позиций · ${payload.selection.length} выбр.стоек`;
+}
+
+function importProjectJson(file) {
+  const st = document.getElementById('sd-import-status');
+  const rd = new FileReader();
+  rd.onload = e => {
+    try {
+      const obj = JSON.parse(e.target.result);
+      if (!obj || obj.schema !== PROJECT_SCHEMA) {
+        if (st) st.textContent = `⚠ Не похоже на проект SCS (schema ≠ ${PROJECT_SCHEMA}).`;
+        return;
+      }
+      if (Array.isArray(obj.selection)) saveJson(LS_SELECTION, obj.selection);
+      if (Array.isArray(obj.links)) setLinks(obj.links);
+      if (obj.plan && typeof obj.plan === 'object') savePlan(obj.plan);
+      if (st) st.textContent = `✔ Импортировано: ${(obj.links || []).length} связей · ${Object.keys((obj.plan && obj.plan.positions) || {}).length} позиций · ${(obj.selection || []).length} выбр.стоек`;
+      renderLinksTab();
+      renderPlan();
+      renderRacksSummary();
+    } catch (err) {
+      if (st) st.textContent = `⚠ Ошибка чтения: ${err.message}`;
+    }
+  };
+  rd.readAsText(file);
+}
+
 function dateStamp() {
   const d = new Date();
   const p = n => String(n).padStart(2, '0');
@@ -1107,6 +1154,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-apply')?.addEventListener('click', applySuggestedLengths);
   document.getElementById('sd-plan-reset')?.addEventListener('click', resetPlan);
   document.getElementById('sd-plan-autolay')?.addEventListener('click', autoLayout);
+  document.getElementById('sd-export-json')?.addEventListener('click', exportProjectJson);
+  const importBtn = document.getElementById('sd-import-json');
+  const importFile = document.getElementById('sd-import-file');
+  if (importBtn && importFile) {
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (f) importProjectJson(f);
+      e.target.value = '';
+    });
+  }
   document.getElementById('sd-plan-step')?.addEventListener('change', e => {
     const p = getPlan(); p.step = Math.max(0.1, +e.target.value || PLAN_DEFAULT.step); savePlan(p); updatePlanInfo();
   });

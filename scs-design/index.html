@@ -128,6 +128,22 @@
     <!-- ========== О модуле ========== -->
     <section class="sd-panel" data-panel="about">
       <div class="sd-card">
+        <h2>Импорт / экспорт проекта СКС</h2>
+        <p class="muted" style="margin-bottom:8px">
+          Backup и шаринг. JSON содержит выбор стоек, все меж-шкафные связи
+          и расстановку на плане зала. Содержимое шкафов и сами стойки
+          (rack-config / scs-config) — отдельные хранилища, в этот файл
+          не входят.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" id="sd-export-json" class="sd-btn-export">⬇ Экспорт проекта (JSON)</button>
+          <button type="button" id="sd-import-json" class="sd-btn-export">⬆ Импорт проекта (JSON)</button>
+          <input type="file" id="sd-import-file" accept="application/json,.json" style="display:none">
+          <span id="sd-import-status" class="muted" style="align-self:center"></span>
+        </div>
+      </div>
+
+      <div class="sd-card">
         <h2>О модуле «Проектирование СКС»</h2>
         <p class="muted">
           Модуль отвечает за проектирование структурированной кабельной системы объекта:
