@@ -138,6 +138,58 @@ const STATUSES = [
 function statusMeta(id) { return STATUSES.find(s => s.id === id) || STATUSES[0]; }
 let showArchived = false;
 
+/* ---------- Счётчики содержимого проекта (Фаза 1.27.6) ---------- */
+// Читаем project-scoped LS-ключи и считаем: узлов в схеме, стоек в scs-config,
+// связей в scs-design, позиций в реестрах. Показываем бейджами в карточке —
+// чтобы сразу видно было, какой проект реально наполнен.
+function projectStats(pid) {
+  const s = { nodes: 0, racks: 0, links: 0, inventory: 0, facility: 0 };
+  try {
+    const sch = localStorage.getItem(`raschet.project.${pid}.engine.scheme.v1`);
+    if (sch) {
+      try { s.nodes = (JSON.parse(sch).nodes || []).length; } catch {}
+    }
+  } catch {}
+  try {
+    const rk = localStorage.getItem(`raschet.project.${pid}.rack-config.templates.v1`);
+    if (rk) {
+      try { s.racks = (JSON.parse(rk) || []).length; } catch {}
+    }
+  } catch {}
+  try {
+    const ln = localStorage.getItem(`raschet.project.${pid}.scs-design.links.v1`);
+    if (ln) {
+      try { s.links = (JSON.parse(ln) || []).length; } catch {}
+    }
+  } catch {}
+  try {
+    const inv = localStorage.getItem(`raschet.project.${pid}.scs-config.inventory.v1`);
+    if (inv) {
+      try { s.inventory = (JSON.parse(inv) || []).length; } catch {}
+    }
+  } catch {}
+  try {
+    const f = localStorage.getItem(`raschet.project.${pid}.facility-inventory.items.v1`);
+    if (f) {
+      try { s.facility = (JSON.parse(f) || []).length; } catch {}
+    }
+  } catch {}
+  return s;
+}
+function statsBadges(s) {
+  const items = [
+    { n: s.nodes,     lbl: 'узл',  title: 'Узлов в схеме электроснабжения', icon: '⚡' },
+    { n: s.racks,     lbl: 'стк',  title: 'Типов стоек в rack-config',      icon: '🗄' },
+    { n: s.links,     lbl: 'свз',  title: 'Меж-шкафных связей (scs-design)', icon: '🔗' },
+    { n: s.inventory, lbl: 'инв',  title: 'Позиций в реестре IT-оборудования', icon: '📋' },
+    { n: s.facility,  lbl: 'обд',  title: 'Позиций в реестре объекта',      icon: '🏭' },
+  ].filter(x => x.n > 0);
+  if (!items.length) return '<span class="muted" style="font-size:11px">· пусто</span>';
+  return items.map(x =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;color:#334155;padding:1px 7px;border-radius:10px;font-size:11px" title="${escapeHtml(x.title)}">${x.icon} <b>${x.n}</b> <span class="muted">${x.lbl}</span></span>`
+  ).join(' ');
+}
+
 /* ---------- Рендер ---------- */
 function render() {
   const host = document.getElementById('pr-list');
@@ -194,6 +246,7 @@ function render() {
         </div>
       </div>
       ${p.description ? `<div class="pr-project-desc">${escapeHtml(p.description)}</div>` : ''}
+      <div class="pr-project-stats" style="margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">${statsBadges(projectStats(p.id))}</div>
       <div class="pr-project-meta muted">
         <span>Создан: ${fmtDate(p.createdAt)}</span>
         <span>· Изменён: ${fmtDate(p.updatedAt)}</span>
