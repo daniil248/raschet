@@ -92,9 +92,13 @@ export function initToolbar() {
       const pid = getActiveProjectId();
       const key = schemeKey();
       let pname = '';
+      let pkind = 'full';
+      let powner = '';
       try {
         const p = (listProjects() || []).find(x => x.id === pid);
         pname = p?.name || '';
+        pkind = p?.kind || 'full';
+        powner = p?.ownerModule || '';
       } catch {}
       const hint = 'Список проектов хранится локально в этом браузере (localStorage). '
         + 'На другом компьютере/браузере проекты и их id не совпадают: одна и та же схема '
@@ -103,6 +107,13 @@ export function initToolbar() {
         + 'Cloud-sync каталога и проектов — Фаза 5.5.';
       if (key === 'raschet.scheme') {
         badge.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="projects/" style="color:#1565c0">выбрать проект →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
+      } else if (pkind === 'sketch') {
+        // Активный проект — мини-проект конкретного модуля. В главном Конструкторе
+        // такой «проект» использовать нельзя как полноценный: он привязан к
+        // своему мастеру (ownerModule) и засоряется его данными.
+        const ownerHint = powner ? ' (модуль: ' + powner.replace(/[<>&"]/g,'') + ')' : '';
+        const warn = 'Сейчас активен мини-проект' + ownerHint + '. Главный Конструктор рассчитан на полноценный проект. Перейдите в /projects/ и активируйте настоящий проект (или создайте новый).';
+        badge.innerHTML = '<span style="color:#b45309">🧪 Мини-проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b></span> · <a href="projects/" style="color:#1565c0">выбрать полноценный →</a> <span title="' + warn.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
       } else {
         badge.innerHTML = '📁 Проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b> · <a href="projects/" style="color:#1565c0">сменить →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
       }
