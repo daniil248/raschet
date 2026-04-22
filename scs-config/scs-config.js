@@ -1560,7 +1560,48 @@ function rerenderPreview() {
   if (dlg && dlg.open) renderUnitMap('sc-unitmap-dlg-body', { big: true });
   renderWarnings(); renderBom();
 }
-function rerender() { renderRackPicker(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); renderWarehouse(); }
+function rerender() { renderRackPicker(); renderRacksSidebar(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); renderWarehouse(); }
+
+/* 1.24.39 — сайдбар со списком всех шкафов проекта (в rack.html).
+   Клик по карточке переключает state.currentRackId + URL без перезагрузки. */
+function renderRacksSidebar() {
+  const host = $('sc-racks-side'); if (!host) return;
+  if (!state.racks.length) {
+    host.innerHTML = `<div class="sc-cart-empty">Нет шаблонов стоек.<br><a href="../rack-config/">Создать</a></div>`;
+    return;
+  }
+  host.innerHTML = state.racks.map(r => {
+    const devs = state.contents[r.id] || [];
+    const usedU = devs.reduce((s, d) => {
+      const t = state.catalog.find(c => c.id === d.typeId);
+      return s + (t ? (t.heightU || 1) : 1);
+    }, 0);
+    const tag = (state.rackTags[r.id] || '').trim();
+    const full = r.u || 0;
+    const pct = full ? Math.round(((usedU + (r.occupied || 0)) / full) * 100) : 0;
+    const active = r.id === state.currentRackId ? ' sc-rack-card-active' : '';
+    return `<div class="sc-rack-card${active}" data-rackid="${r.id}" title="Открыть">
+      <div class="sc-rack-card-top">
+        ${tag ? `<code>${escape(tag)}</code>` : `<span class="muted">—</span>`}
+        <span class="muted">${full}U</span>
+      </div>
+      <div class="sc-rack-card-name">${escape(r.name || 'Без имени')}</div>
+      <div class="sc-rack-card-bar">
+        <div style="width:${pct}%;background:${pct>90?'#dc2626':pct>70?'#f59e0b':'#10b981'}"></div>
+      </div>
+      <div class="sc-rack-card-meta"><span>${devs.length} уст.</span><span class="muted">${pct}%</span></div>
+    </div>`;
+  }).join('');
+  host.querySelectorAll('.sc-rack-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = card.dataset.rackid;
+      if (id === state.currentRackId) return;
+      state.currentRackId = id;
+      try { history.replaceState(null, '', `?rackId=${encodeURIComponent(id)}`); } catch {}
+      rerender();
+    });
+  });
+}
 
 /* ---- init -------------------------------------------------------------- */
 function init() {

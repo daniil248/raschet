@@ -142,12 +142,25 @@ function render() {
     return;
   }
 
+  const now = Date.now();
+  const MS_MONTH = 30 * 86400000;
   tb.innerHTML = rows.map((row, i) => {
     const d = row.item;
     const st = d.status || 'active';
     const statusOpts = Object.entries(STATUS).map(([k, v]) =>
       `<option value="${k}"${st===k?' selected':''}>${v.icon} ${v.label}</option>`).join('');
-    return `<tr data-i="${i}">
+    // подсветка ТО: overdue (красноватый) если lastMaintAt + maintMonths прошёл;
+    // due-soon (жёлтый) если до конца регламента ≤ 14 дней; также если регламент
+    // задан, но даты последнего ТО нет — due-soon.
+    let rowCls = '';
+    if (d.maintMonths && d.lastMaintAt) {
+      const nextDue = d.lastMaintAt + d.maintMonths * MS_MONTH;
+      if (nextDue < now) rowCls = ' class="inv-overdue"';
+      else if (nextDue < now + 14 * 86400000) rowCls = ' class="inv-due-soon"';
+    } else if (d.maintMonths && !d.lastMaintAt) {
+      rowCls = ' class="inv-due-soon"';
+    }
+    return `<tr data-i="${i}"${rowCls}>
       <td>${row.tag ? `<code>${esc(row.tag)}</code>` : '<span class="muted">—</span>'}</td>
       <td>${esc(d.label || '')}</td>
       <td>${esc(row.type?.label || '—')}</td>
