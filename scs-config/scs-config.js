@@ -134,6 +134,14 @@ import { SCS_DEFAULT_CATALOG, KIND_LABEL as _KIND_LABEL } from '../shared/scs-ca
 const DEFAULT_CATALOG = SCS_DEFAULT_CATALOG;
 const KIND_LABEL = _KIND_LABEL;
 
+/* v0.59.282: тип физического порта устройства — используется scs-design для
+   валидации «порт ↔ кабель». 'auto' = определяется по kind / label. */
+const PORT_TYPE_OPTIONS = [
+  ['', 'авто'], ['rj45', 'RJ45'], ['lc', 'LC (фибра)'], ['sc', 'SC (фибра)'],
+  ['sfp', 'SFP/SFP+'], ['bnc', 'BNC'], ['f', 'F-разъём'],
+  ['c13', 'C13'], ['c14', 'C14'], ['power', 'силовой'], ['none', 'без портов'],
+];
+
 /* ---- state ------------------------------------------------------------- */
 const state = {
   racks: [],         // шаблоны из rack-config
@@ -440,6 +448,7 @@ function renderCatalog() {
   const rows = [`<tr>
     <th>Тип</th><th>Название</th><th>U</th><th title="Монтажная глубина в мм — используется side-view и проверкой двустороннего монтажа">Глуб., мм</th><th>Вт</th><th>Порты</th>
     <th title="Порты также с тыла (dual-side): например коммутаторы с mgmt-RJ45 сзади">⇄</th>
+    <th title="Тип физического порта для валидации «порт ↔ кабель» в scs-design. «авто» = определяется по типу оборудования и названию.">Порт</th>
     <th style="width:40px">цвет</th><th style="width:90px"></th>
   </tr>`];
   let shown = 0;
@@ -458,6 +467,8 @@ function renderCatalog() {
       <td><input data-k="powerW" type="number" min="0" step="1" value="${c.powerW}"></td>
       <td><input data-k="ports" type="number" min="0" step="1" value="${c.ports}"></td>
       <td><input data-k="portsRear" type="checkbox"${c.portsRear ? ' checked' : ''} title="Порты также на задней панели"></td>
+      <td><select data-k="portType" style="font-size:11px;max-width:110px">${PORT_TYPE_OPTIONS.map(([v, lbl]) =>
+        `<option value="${v}"${(c.portType || '') === v ? ' selected' : ''}>${lbl}</option>`).join('')}</select></td>
       <td><input data-k="color" type="color" value="${c.color || '#94a3b8'}" style="width:40px;padding:0"></td>
       <td>
         <button type="button" class="sc-btn" data-add="${c.id}">➕ в стойку</button>
@@ -468,9 +479,9 @@ function renderCatalog() {
   // v0.59.273: если фильтры спрятали ВСЕ записи — явная подсказка, чтобы
   // пользователь не думал что каталог «исчез».
   if (shown === 0 && state.catalog.length > 0) {
-    rows.push(`<tr><td colspan="9" class="muted" style="text-align:center;padding:12px;background:#fffbeb;color:#92400e">⚠ Все ${state.catalog.length} записей скрыты фильтрами. Нажмите <b>✕ Сброс</b> для очистки.</td></tr>`);
+    rows.push(`<tr><td colspan="10" class="muted" style="text-align:center;padding:12px;background:#fffbeb;color:#92400e">⚠ Все ${state.catalog.length} записей скрыты фильтрами. Нажмите <b>✕ Сброс</b> для очистки.</td></tr>`);
   } else if (state.catalog.length === 0) {
-    rows.push(`<tr><td colspan="9" class="muted" style="text-align:center;padding:12px">Каталог пуст. Нажмите <b>↺ Базовый набор</b> чтобы загрузить дефолтные типы.</td></tr>`);
+    rows.push(`<tr><td colspan="10" class="muted" style="text-align:center;padding:12px">Каталог пуст. Нажмите <b>↺ Базовый набор</b> чтобы загрузить дефолтные типы.</td></tr>`);
   }
   t.innerHTML = rows.join('');
   const cntEl = $('sc-cat-count');
@@ -677,7 +688,7 @@ function renderContents() {
       <td style="white-space:nowrap"><button type="button" class="sc-btn sc-btn-sm" data-dup="${d.id}" title="Дублировать устройство: создаст копию с тем же типом/названием в ближайшем свободном U-слоте, без привязки к PDU-розетке">⎘</button><button type="button" class="sc-btn sc-btn-danger sc-btn-sm" data-del="${d.id}">✕</button></td>
     </tr>`);
   });
-  if (!devices.length) rows.push('<tr><td colspan="9" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
+  if (!devices.length) rows.push('<tr><td colspan="10" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
   t.innerHTML = rows.join('');
   t.querySelectorAll('[data-k]').forEach(el => {
     el.addEventListener('change', () => {
