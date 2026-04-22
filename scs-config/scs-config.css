@@ -278,9 +278,22 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
 /* Phase 1.26.8 — breadcrumb мигрирован на .rs-breadcrumb (shared/styles/base.css). */
 
 /* 1.24.39 — сайдбар со списком шкафов в rack.html */
-.sc-grid-3 { grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1.2fr); }
-@media (max-width: 1280px) { .sc-grid-3 { grid-template-columns: 180px 1fr; }
-  .sc-grid-3 > .sc-preview { grid-column: 1 / -1; } }
+/* v0.59.179: карта юнитов в центре (main.sc-mapcol), каталог+таблицы — справа.
+   Центр — самая широкая колонка; правая колонка — минимум 360px чтобы
+   таблицы каталога/размещения не схлопывались. */
+.sc-grid-3 { grid-template-columns: 220px minmax(0, 1.5fr) minmax(360px, 1fr); }
+.sc-mapcol { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (max-width: 1280px) {
+  .sc-grid-3 { grid-template-columns: 180px 1fr; }
+  .sc-grid-3 > .sc-mapcol { grid-column: 2 / 3; }
+  .sc-grid-3 > .sc-preview { grid-column: 1 / -1; }
+}
+@media (max-width: 1000px) {
+  .sc-grid-3 { grid-template-columns: 1fr; }
+  .sc-grid-3 > .sc-racks-side,
+  .sc-grid-3 > .sc-mapcol,
+  .sc-grid-3 > .sc-preview { grid-column: 1 / -1; }
+}
 .sc-racks-side {
   background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
   padding: 8px; display: flex; flex-direction: column; gap: 6px;

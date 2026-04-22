@@ -60,41 +60,8 @@
         <div id="sc-racks-side" class="sc-racks-side-list"></div>
       </aside>
 
-      <!-- ========== ЛЕВО: форма ========== -->
-      <div class="sc-col">
-
-        <section class="sc-section">
-          <h2>📦 Каталог типов оборудования</h2>
-          <p class="sc-hint muted">Базовые типы СКС-оборудования. Хранятся локально (раздел каталога «пользовательские типы»). Из каталога единицы добавляются в стойку через кнопку ➕.</p>
-          <table class="sc-cat" id="sc-catalog"></table>
-          <div class="sc-tools">
-            <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
-            <button type="button" id="sc-cat-reset" class="sc-btn" title="Сбросить к базовому набору (коммутатор 24-port, патч-панель 24-port, сервер 1U, КВМ, монитор 1U, UPS 1U)">↺ Базовый набор</button>
-          </div>
-        </section>
-
-        <section class="sc-section">
-          <h2>🔌 Размещение в стойке</h2>
-          <p class="sc-hint muted">Каждая единица занимает N U сверху вниз. Позиция <b>U</b> — верхний юнит устройства. Красная метка — конфликт (наезд на другое / на заглушки).</p>
-          <table class="sc-contents" id="sc-contents"></table>
-          <div class="sc-tools">
-            <button type="button" id="sc-auto" class="sc-btn" title="Авто-укладка сверху вниз без зазоров">⬇ Авто-укладка</button>
-          </div>
-        </section>
-
-        <section class="sc-section">
-          <h2>🧵 СКС-матрица (патч-корды)</h2>
-          <p class="sc-hint muted">Простой список соединений «порт A ↔ порт B» для BOM патч-кордов.</p>
-          <table class="sc-matrix" id="sc-matrix"></table>
-          <div class="sc-tools">
-            <button type="button" id="sc-matrix-add" class="sc-btn">+ соединение</button>
-          </div>
-        </section>
-
-      </div>
-
-      <!-- ========== ПРАВО: карта + BOM ========== -->
-      <aside class="sc-preview">
+      <!-- ========== ЦЕНТР: карта юнитов + тележка + склад (v0.59.179) ========== -->
+      <main class="sc-mapcol">
         <section class="sc-section">
           <div class="sc-unitmap-head">
             <h2 style="margin:0">🗺️ Карта юнитов</h2>
@@ -111,7 +78,7 @@
             <span class="sc-cart-ico" aria-hidden="true">🛒</span>
             <h2 style="margin:0">Тележка <span id="sc-cart-badge" class="sc-cart-badge">0</span></h2>
           </div>
-          <p class="sc-hint muted">Межстоечный буфер проекта. Перетащите устройство <b>из карты юнитов на тележку</b>, чтобы вытащить. Перетащите строку <b>с тележки на карту</b> любой стойки — установить. Видна при открытии любой стойки.</p>
+          <p class="sc-hint muted">Межстоечный буфер проекта. Перетащите устройство <b>из карты юнитов на тележку</b>, чтобы вытащить. Перетащите строку <b>с тележки на карту</b> любой стойки — установить.</p>
           <div id="sc-cart" class="sc-cart-body"></div>
           <div class="sc-cart-wheels" aria-hidden="true"><span></span><span></span></div>
         </section>
@@ -123,6 +90,37 @@
           </div>
           <p class="sc-hint muted">Долговременное хранение оборудования проекта. С тележки «→ на склад»; со склада «→ на тележку» (и дальше — в любую стойку).</p>
           <div id="sc-wh" class="sc-cart-body"></div>
+        </section>
+      </main>
+
+      <!-- ========== ПРАВО: каталог + размещение + матрица + BOM + проверки ========== -->
+      <aside class="sc-preview">
+        <section class="sc-section">
+          <h2>📦 Каталог типов оборудования</h2>
+          <p class="sc-hint muted">Базовые типы СКС-оборудования. Хранятся локально (раздел каталога «пользовательские типы»). Из каталога единицы добавляются в стойку через кнопку ➕.</p>
+          <table class="sc-cat" id="sc-catalog"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
+            <button type="button" id="sc-cat-reset" class="sc-btn" title="Сбросить к базовому набору">↺ Базовый набор</button>
+          </div>
+        </section>
+
+        <section class="sc-section">
+          <h2>🔌 Размещение в стойке</h2>
+          <p class="sc-hint muted">Каждая единица занимает N U сверху вниз. Позиция <b>U</b> — верхний юнит устройства. Красная метка — конфликт.</p>
+          <table class="sc-contents" id="sc-contents"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-auto" class="sc-btn" title="Авто-укладка сверху вниз без зазоров">⬇ Авто-укладка</button>
+          </div>
+        </section>
+
+        <section class="sc-section">
+          <h2>🧵 СКС-матрица (патч-корды)</h2>
+          <p class="sc-hint muted">Простой список соединений «порт A ↔ порт B» для BOM патч-кордов.</p>
+          <table class="sc-matrix" id="sc-matrix"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-matrix-add" class="sc-btn">+ соединение</button>
+          </div>
         </section>
 
         <section class="sc-section">

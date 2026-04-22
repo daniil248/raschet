@@ -871,12 +871,10 @@ function bindUnitMapDrag(svgId) {
    других». excludeDevId — игнорируем это устройство (для drag). */
 function canPlace(r, devices, excludeDevId, heightU, wantU) {
   if (wantU < heightU || wantU > r.u) return false;
-  // занятые стойкой верхние юниты
-  for (let u = r.u; u > r.u - r.occupied; u--) {
-    for (let k = 0; k < heightU; k++) {
-      if (wantU - k === u) return false;
-    }
-  }
+  // v0.59.179: удалён ошибочный цикл по r.occupied, который считал верхние
+  // U «занятыми стопкой» и блокировал любое перемещение в пределах
+  // обычной зоны установки оборудования. Реальная проверка overlap —
+  // цикл ниже по всем устройствам.
   for (const d of devices) {
     if (d.id === excludeDevId) continue;
     const t = state.catalog.find(c => c.id === d.typeId);
