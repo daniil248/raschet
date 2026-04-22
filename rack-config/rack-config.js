@@ -685,7 +685,40 @@ function readForm() {
   }
   t.manufacturer = el('rc-manufacturer').value.trim();
   t.manufacturer = el('rc-manufacturer').value.trim();
-  t.u            = parseInt(el('rc-u').value, 10) || 42;
+  // v0.59.239: защита при уменьшении U, если стойка уже наполнена в
+   // scs-config (реальная стойка проекта). Сканируем все ключи вида
+   // raschet.project.*.scs-config.contents.v1 и ищем максимальный
+   // positionU устройства, привязанного к этому rackId. Если newU < max —
+   // показываем toast с предупреждением и откатываем значение.
+  const newU = parseInt(el('rc-u').value, 10) || 42;
+  if (newU < (t.u || 0)) {
+    try {
+      let maxPos = 0; let count = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !/^raschet\.project\..+\.scs-config\.contents\.v1$/.test(k)) continue;
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        try {
+          const obj = JSON.parse(raw);
+          const arr = Array.isArray(obj?.[t.id]) ? obj[t.id] : null;
+          if (!arr) continue;
+          for (const d of arr) {
+            if (d && Number.isFinite(d.positionU)) {
+              if (d.positionU > maxPos) maxPos = d.positionU;
+              count++;
+            }
+          }
+        } catch {}
+      }
+      if (maxPos > newU) {
+        rsToast(`Нельзя: в стойке уже размещено ${count} устройств, верхний юнит U${maxPos} не помещается в ${newU}U. Сначала удалите/перенесите устройства в Компоновщике шкафа.`, 'warn');
+        el('rc-u').value = String(t.u);
+        return;
+      }
+    } catch {}
+  }
+  t.u = newU;
   t.width        = parseInt(el('rc-width').value, 10) || 600;
   t.depth        = parseInt(el('rc-depth').value, 10) || 1000;
   t.doorFront    = el('rc-door-front').value;
