@@ -3,7 +3,19 @@
    Редактируемые поля: sn, status, note, maintMonths, lastMaintAt. Сохраняются
    обратно в тот же источник (mutation по id). */
 
-import { ensureDefaultProject, getActiveProjectId, projectKey } from '../shared/project-storage.js';
+import { ensureDefaultProject, getActiveProjectId, getProject, projectKey } from '../shared/project-storage.js';
+
+function renderProjectBanner() {
+  const host = document.getElementById('pr-project-banner'); if (!host) return;
+  const pid = getActiveProjectId();
+  const p = pid ? getProject(pid) : null;
+  if (!p) {
+    host.innerHTML = `⚠ Реестр работает только в контексте проекта. <a href="../projects/">Создать/выбрать проект →</a>`;
+    return;
+  }
+  const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  host.innerHTML = `📁 Проект: <b>${esc(p.name)}</b> <span class="muted">· id <code>${esc(p.id)}</code></span> <a href="../projects/" style="margin-left:8px">→ сменить</a>`;
+}
 
 const LS_RACK    = 'rack-config.templates.v1';
 const LS_CATALOG = 'scs-config.catalog.v1';
@@ -232,4 +244,5 @@ function exportCsv() {
 ['flt-q','flt-loc','flt-status'].forEach(id => $(id).addEventListener('input', render));
 $('csv').addEventListener('click', exportCsv);
 window.addEventListener('storage', render);
+renderProjectBanner();
 render();
