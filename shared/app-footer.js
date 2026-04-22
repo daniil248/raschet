@@ -19,11 +19,10 @@ function esc(s) {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 
-const DEFAULT_LINKS = [
-  { label: 'Все программы', href: '../hub.html' },
-  { label: 'Библиотека и каталог', href: '../catalog/' },
-  { label: 'GitHub', href: 'https://github.com/daniil248/raschet', external: true },
-];
+// v0.59.229: блок ссылок в футере убран (Все программы / Каталог / GitHub).
+// Навигация по модулям теперь через шапку («🏠 Хаб») и страницу /modules/.
+// Оставляю массив пустым, чтобы не ломать внешние вызовы mountFooter({links:[...]}).
+const DEFAULT_LINKS = [];
 
 /**
  * Вставляет единый футер в mountEl (или в конец body если не задан).
