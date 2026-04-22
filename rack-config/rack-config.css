@@ -3,6 +3,13 @@
    Конфигуратор серверной / телеком стойки (19"). Форма слева, превью/BOM справа.
    ========================================================================= */
 
+/* ----- Карта юнитов (Phase 1.23.8) ----- */
+.rc-unitmap { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.rc-unitmap svg { max-width: 100%; height: auto; }
+.rc-unitmap-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 12px; color: #475569; }
+.rc-unitmap-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.rc-unitmap-legend i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
+
 .rc-wrap {
   max-width: 1400px;
   margin: 0 auto;

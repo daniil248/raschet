@@ -1496,6 +1496,99 @@ function recalc() {
   renderFeedInfo();
   renderWarnings();
   renderBom();
+  renderUnitMap();
+}
+
+/* ---------- 2D карта юнитов (Phase 1.23.8) ----------
+   Простая SVG-схема фронт-вью стойки: стек U сверху вниз, занятые —
+   в верхней части, заглушки — ниже, горизонтальные PDU (1U/2U) —
+   отдельные ряды внизу, 0U PDU — вертикальные «рельсы» по бокам.
+   Назначение — быстрое визуальное понимание наполнения стойки без
+   ручного пересчёта U, и приёмка BOM (занятые + заглушки = Utotal). */
+function renderUnitMap() {
+  const host = el('rc-unitmap'); if (!host) return;
+  const t = current();
+  if (!t) { host.innerHTML = ''; return; }
+
+  const totalU = Math.max(1, t.u || 42);
+  const occ = Math.min(totalU, Math.max(0, +t.occupied || 0));
+  // горизонтальные PDU занимают 1-2U в стойке, по высоте выберем ≥1
+  const horizPdus = [];
+  const vertPdus  = [];
+  (t.pdus || []).forEach(p => {
+    const qty = Math.max(1, +p.qty || 1);
+    for (let i = 0; i < qty; i++) {
+      if (+p.height > 0) horizPdus.push({ h: Math.min(+p.height, 2), rating: p.rating, phases: p.phases, feed: p.feed });
+      else               vertPdus.push({ rating: p.rating, phases: p.phases, feed: p.feed });
+    }
+  });
+  // распределим hz-PDU по самым нижним свободным юнитам (после заглушек)
+  const hzTotal = horizPdus.reduce((s, p) => s + p.h, 0);
+  const blanks = Math.max(0, totalU - occ - hzTotal);
+
+  // геометрия: высота ряда 16px, ширина 200px; «рельсы» — 18px по бокам
+  const rowH = 16, bodyW = 200, railW = vertPdus.length ? 18 : 0;
+  const svgW = bodyW + railW * 2 + 28; // +padding слева для номеров U
+  const svgH = totalU * rowH + 8;
+
+  const rows = [];
+  // сверху вниз: U(totalU)..U1. Заполняем с верха occupied, затем blanks, затем horiz PDU.
+  let u = totalU;
+  // occupied
+  for (let i = 0; i < occ; i++, u--) {
+    rows.push({ u, kind: 'eq', label: '' });
+  }
+  // blanks
+  for (let i = 0; i < blanks; i++, u--) {
+    rows.push({ u, kind: 'blank', label: '' });
+  }
+  // horizontal PDUs — снизу
+  horizPdus.forEach((p, idx) => {
+    for (let k = 0; k < p.h; k++, u--) {
+      rows.push({ u, kind: 'pdu-h', label: k === 0 ? `PDU ${p.rating}A/${p.phases}ф · ${p.feed}` : '' });
+    }
+  });
+
+  // vertPdus — две колонки-рельсы: чередуем L / R
+  const leftVert = [], rightVert = [];
+  vertPdus.forEach((p, i) => (i % 2 === 0 ? leftVert : rightVert).push(p));
+
+  const colorFor = k => k === 'eq' ? '#cbd5e1'
+                      : k === 'blank' ? '#f1f5f9'
+                      : k === 'pdu-h' ? '#bfdbfe'
+                      : '#bfdbfe';
+
+  const bodyX = railW + 28;
+  const rectsSvg = rows.map((r, i) => {
+    const y = 4 + i * rowH;
+    const fill = colorFor(r.kind);
+    const stroke = r.kind === 'blank' ? '#cbd5e1' : '#64748b';
+    const label = r.label
+      ? `<text x="${bodyX + 6}" y="${y + rowH/2 + 4}" font-size="10" fill="#0f172a">${escape(r.label)}</text>`
+      : '';
+    const num = `<text x="${railW + 22}" y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="end">${r.u}</text>`;
+    return `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>${num}${label}`;
+  }).join('');
+
+  const railSvg = (list, x) => list.length
+    ? `<rect x="${x}" y="4" width="${railW}" height="${totalU * rowH}" fill="#bfdbfe" stroke="#64748b" stroke-width="0.5"/>`
+      + `<text x="${x + railW/2}" y="${4 + totalU * rowH / 2}" font-size="9" fill="#0f172a" text-anchor="middle" transform="rotate(-90, ${x + railW/2}, ${4 + totalU * rowH / 2})">${list.length}× PDU 0U · ${list.map(p => p.feed).join('/')}</text>`
+    : '';
+
+  const svg = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">
+    ${railSvg(leftVert, 0)}
+    ${railSvg(rightVert, bodyX + bodyW + 4)}
+    ${rectsSvg}
+  </svg>`;
+
+  const legend = `<div class="rc-unitmap-legend">
+    <span><i style="background:#cbd5e1"></i>Оборудование · ${occ}U</span>
+    <span><i style="background:#f1f5f9;border:1px solid #cbd5e1"></i>Заглушка · ${blanks}U</span>
+    <span><i style="background:#bfdbfe"></i>PDU горизонт. · ${hzTotal}U</span>
+    ${vertPdus.length ? `<span><i style="background:#bfdbfe;border:1px solid #64748b"></i>PDU 0U (рельсы) · ${vertPdus.length} шт.</span>` : ''}
+  </div>`;
+
+  host.innerHTML = svg + legend;
 }
 
 /* ---------- лист требований на PDU (technical spec sheet) ----------
