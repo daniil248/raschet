@@ -3,6 +3,13 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.7',
+    date: '2026-04-22',
+    items: [
+      'UI — шкаф в модалке по центру. .sc-unitmap-dlg-body: align-items:center + margin:auto для svg + центрирование легенды.',
+    ],
+  },
+  {
     version: '0.1.6',
     date: '2026-04-22',
     items: [

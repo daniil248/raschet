@@ -103,7 +103,11 @@
 .sc-unitmap-dlg-body {
   padding: 14px 16px; overflow: auto; height: calc(92vh - 48px);
   display: flex; flex-direction: column; gap: 12px;
+  align-items: center;    /* шкаф по центру модалки */
+  justify-content: flex-start;
 }
+.sc-unitmap-dlg-body > svg { display: block; margin: 0 auto; }
+.sc-unitmap-dlg-body > .sc-unitmap-legend { justify-content: center; }
 
 /* ---- 1.24.10 DnD из каталога в карту ---- */
 .sc-cat tr[data-typeid] { cursor: grab; }
