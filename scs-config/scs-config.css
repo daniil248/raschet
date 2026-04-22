@@ -169,3 +169,36 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
 .sc-cart-tbl tr[data-cartid] { cursor: grab; }
 .sc-cart-tbl tr[data-cartid]:hover { background: #eff6ff; }
 .sc-cart-tbl tr.sc-drag-src { opacity: 0.55; }
+
+/* ---- Тележка-секция: визуал «реальной тележки» ---- */
+.sc-cart-section, .sc-wh-section {
+  position: relative;
+  border: 2px dashed #cbd5e1;
+  background: #f8fafc;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.sc-cart-section { border-radius: 6px 6px 14px 14px; padding-bottom: 22px; }
+.sc-wh-section   { border-radius: 6px; border-style: solid; background: #fffdf5; border-color: #fcd34d; }
+.sc-cart-section.sc-drop-hover,
+.sc-wh-section.sc-drop-hover {
+  border-color: #2563eb; background: #eff6ff; transform: scale(1.01);
+}
+.sc-cart-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.sc-cart-ico {
+  font-size: 22px; line-height: 1;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.08));
+}
+.sc-cart-body { min-height: 34px; }
+.sc-cart-empty { font-size: 12px; padding: 10px 6px; text-align: center; border: 1px dashed #e2e8f0; border-radius: 4px; }
+/* «колёсики» тележки */
+.sc-cart-wheels {
+  position: absolute; bottom: -8px; left: 18px; right: 18px; height: 16px;
+  display: flex; justify-content: space-between; pointer-events: none;
+}
+.sc-cart-wheels span {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #334155 0 4px, #0f172a 5px 7px, #334155 8px);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}

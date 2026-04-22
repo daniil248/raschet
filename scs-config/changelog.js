@@ -3,6 +3,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.10',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.24.28 доработка — тележка теперь визуально похожа на тележку: пунктирная рамка с скруглением 6/14px, «колёсики» снизу (два круга radial-gradient, absolute bottom:-8px), иконка 🛒. Drag-from-rack-to-cart через pointer events + document.elementFromPoint: во время pointermove проверяется .sc-cart-dropzone под курсором, устанавливается state.drag.overCart, устройство «замирает» пока курсор над тележкой; на pointerup — moveToCart(devId) если overCart.',
+      'Phase 1.24.32 базово — Склад (Warehouse). LS_WAREHOUSE=scs-config.warehouse.v1 для долговременного хранения неиспользуемого оборудования. Секция 📦 Склад в правой колонке (solid yellow border). Операции cartToWarehouse/warehouseToCart/discardWarehouseItem. HTML5 DnD cross-drag: тележка↔склад через разные mime-типы (application/x-scs-cartid для cart→wh, application/x-scs-whid для wh→cart). На складе строки draggable + кнопки «→ тележка» и «✕ удалить» (scConfirm). Визуальный feedback .sc-drop-hover (синий outline + scale 1.01).',
+    ],
+  },
+  {
     version: '0.1.9',
     date: '2026-04-22',
     items: [

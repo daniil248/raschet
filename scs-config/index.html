@@ -91,10 +91,23 @@
           <div id="sc-unitmap" class="sc-unitmap"></div>
         </section>
 
-        <section class="sc-section">
-          <h2>🛒 Тележка <span id="sc-cart-badge" class="sc-cart-badge">0</span></h2>
-          <p class="sc-hint muted">Буфер оборудования между стойками. Клик 🛒 у полосы в карте — вытащить. Перетащите строку на карту любой стойки — установить.</p>
-          <div id="sc-cart"></div>
+        <section class="sc-section sc-cart-section sc-cart-dropzone">
+          <div class="sc-cart-head">
+            <span class="sc-cart-ico" aria-hidden="true">🛒</span>
+            <h2 style="margin:0">Тележка <span id="sc-cart-badge" class="sc-cart-badge">0</span></h2>
+          </div>
+          <p class="sc-hint muted">Межстоечный буфер проекта. Перетащите устройство <b>из карты юнитов на тележку</b>, чтобы вытащить. Перетащите строку <b>с тележки на карту</b> любой стойки — установить. Видна при открытии любой стойки.</p>
+          <div id="sc-cart" class="sc-cart-body"></div>
+          <div class="sc-cart-wheels" aria-hidden="true"><span></span><span></span></div>
+        </section>
+
+        <section class="sc-section sc-wh-section sc-wh-dropzone">
+          <div class="sc-cart-head">
+            <span class="sc-cart-ico" aria-hidden="true">📦</span>
+            <h2 style="margin:0">Склад <span id="sc-wh-badge" class="sc-cart-badge">0</span></h2>
+          </div>
+          <p class="sc-hint muted">Долговременное хранение оборудования проекта. С тележки «→ на склад»; со склада «→ на тележку» (и дальше — в любую стойку).</p>
+          <div id="sc-wh" class="sc-cart-body"></div>
         </section>
 
         <section class="sc-section">

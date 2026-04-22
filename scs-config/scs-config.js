@@ -37,6 +37,7 @@ const LS_MATRIX    = 'scs-config.matrix.v1';
 const LS_TEMPLATES = 'scs-config.assemblyTemplates.v1'; // 1.24.7
 const LS_CART      = 'scs-config.cart.v1';              // 1.24.28
 const LS_RACKTAGS  = 'scs-config.rackTags.v1';          // 1.24.23 — { [rackId]: tag }
+const LS_WAREHOUSE = 'scs-config.warehouse.v1';         // 1.24.32 — склад проекта
 
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
 const DEFAULT_CATALOG = [
@@ -67,6 +68,7 @@ const state = {
   templates: [],     // [{id, name, contents, matrix}] — «готовые сборки» (1.24.7)
   cart: [],          // 1.24.28 — «тележка»: [{id, typeId, label, fromRackId, fromRackName, pduFeed, pduOutlet, takenAt}]
   rackTags: {},      // 1.24.23 — { [rackId]: 'DC1.H3.R05' }
+  warehouse: [],     // 1.24.32 — склад: та же модель что cart
   // view mode: 'scs' — цвет по типу; 'power' — цвет по вводу PDU (1.24.11)
   viewMode: 'scs',
   // drag state
@@ -175,6 +177,7 @@ function saveMatrix()    { try { localStorage.setItem(LS_MATRIX,    JSON.stringi
 function saveTemplates() { try { localStorage.setItem(LS_TEMPLATES, JSON.stringify(state.templates)); } catch {} }
 function saveCart()      { try { localStorage.setItem(LS_CART,      JSON.stringify(state.cart));      } catch {} }
 function saveRackTags()  { try { localStorage.setItem(LS_RACKTAGS,  JSON.stringify(state.rackTags));  } catch {} }
+function saveWarehouse() { try { localStorage.setItem(LS_WAREHOUSE, JSON.stringify(state.warehouse)); } catch {} }
 
 /* Текущий TIA-тег стойки (из state.rackTags) или «DC1.R<u>» как fallback */
 function currentRackTag() {
@@ -739,6 +742,13 @@ function bindUnitMapDrag(svgId) {
     });
     g.addEventListener('pointermove', ev => {
       if (!state.drag || state.drag.devId !== g.dataset.devid) return;
+      // 1.24.28-drag: детекция «над тележкой» — если курсор над .sc-cart-dropzone,
+      // подсвечиваем её и не двигаем устройство.
+      const overEl = document.elementFromPoint(ev.clientX, ev.clientY);
+      const overCart = !!(overEl && overEl.closest('.sc-cart-dropzone'));
+      state.drag.overCart = overCart;
+      document.querySelectorAll('.sc-cart-dropzone').forEach(el => el.classList.toggle('sc-drop-hover', overCart));
+      if (overCart) return; // не двигаем устройство пока курсор над тележкой
       const r = currentRack(); if (!r) return;
       const d = currentContents().find(x => x.id === state.drag.devId); if (!d) return;
       const dy = ev.clientY - state.drag.startY;
@@ -759,11 +769,17 @@ function bindUnitMapDrag(svgId) {
     });
     g.addEventListener('pointerup', () => {
       if (!state.drag) return;
+      document.querySelectorAll('.sc-cart-dropzone').forEach(el => el.classList.remove('sc-drop-hover'));
+      const drop = state.drag;
       state.drag = null;
-      saveContents();
-      renderContents();
-      renderWarnings();
-      renderBom();
+      if (drop.overCart) {
+        moveToCart(drop.devId); // вытащить на тележку
+      } else {
+        saveContents();
+        renderContents();
+        renderWarnings();
+        renderBom();
+      }
     });
     g.addEventListener('pointercancel', () => { state.drag = null; });
   });
@@ -1025,11 +1041,29 @@ function installFromCart(cartId, wantTopU) {
   renderContents(); rerenderPreview(); renderCart();
   scToast(`Установлено в U${finalU}`, 'ok');
 }
-async function discardCartItem(cartId) {
-  const ok = await scConfirm('Выгрузить на склад?', 'Устройство удалится с тележки совсем.', { okLabel: 'Выгрузить' });
+function cartToWarehouse(cartId) {
+  const idx = state.cart.findIndex(x => x.id === cartId);
+  if (idx < 0) return;
+  const item = state.cart.splice(idx, 1)[0];
+  state.warehouse.push(item);
+  saveCart(); saveWarehouse();
+  renderCart(); renderWarehouse();
+  scToast('Отправлено на склад', 'ok');
+}
+function warehouseToCart(whId) {
+  const idx = state.warehouse.findIndex(x => x.id === whId);
+  if (idx < 0) return;
+  const item = state.warehouse.splice(idx, 1)[0];
+  state.cart.push(item);
+  saveCart(); saveWarehouse();
+  renderCart(); renderWarehouse();
+  scToast('Взято со склада на тележку', 'ok');
+}
+async function discardWarehouseItem(whId) {
+  const ok = await scConfirm('Удалить со склада?', 'Устройство будет удалено безвозвратно.', { okLabel: 'Удалить' });
   if (!ok) return;
-  state.cart = state.cart.filter(x => x.id !== cartId);
-  saveCart(); renderCart();
+  state.warehouse = state.warehouse.filter(x => x.id !== whId);
+  saveWarehouse(); renderWarehouse();
 }
 function returnCartItem(cartId) {
   const item = state.cart.find(x => x.id === cartId); if (!item) return;
@@ -1062,32 +1096,95 @@ function renderCart() {
   const badge = $('sc-cart-badge');
   if (badge) badge.textContent = state.cart.length;
   if (!state.cart.length) {
-    host.innerHTML = '<div class="muted" style="font-size:12px;padding:6px 0">Тележка пуста. Перетащите устройство сюда или нажмите 🛒 у полосы в карте юнитов.</div>';
+    host.innerHTML = '<div class="sc-cart-empty muted">Пусто. Перетащите устройство с карты стойки сюда, чтобы вытащить.</div>';
+  } else {
+    const rows = [`<tr><th>Устройство</th><th>Из стойки</th><th style="width:180px"></th></tr>`];
+    state.cart.forEach(item => {
+      const fromLabel = item.fromRackName || (item.fromRackId ? '(стойка)' : '—');
+      rows.push(`<tr draggable="true" data-cartid="${item.id}">
+        <td>${escape(item.label)}</td>
+        <td class="muted">${escape(fromLabel)}</td>
+        <td>
+          <button type="button" class="sc-btn" data-act="return" data-id="${item.id}" title="Вернуть в исходную стойку">↩</button>
+          <button type="button" class="sc-btn" data-act="tosh" data-id="${item.id}" title="Отправить на склад">→ склад</button>
+        </td>
+      </tr>`);
+    });
+    host.innerHTML = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
+    host.querySelectorAll('tr[data-cartid]').forEach(tr => {
+      tr.addEventListener('dragstart', ev => {
+        ev.dataTransfer.setData('application/x-scs-cartid', tr.dataset.cartid);
+        ev.dataTransfer.effectAllowed = 'move';
+        tr.classList.add('sc-drag-src');
+      });
+      tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+    });
+    host.querySelectorAll('[data-act="return"]').forEach(b => b.addEventListener('click', () => returnCartItem(b.dataset.id)));
+    host.querySelectorAll('[data-act="tosh"]').forEach(b => b.addEventListener('click', () => cartToWarehouse(b.dataset.id)));
+  }
+}
+function renderWarehouse() {
+  const host = $('sc-wh'); if (!host) return;
+  const badge = $('sc-wh-badge');
+  if (badge) badge.textContent = state.warehouse.length;
+  if (!state.warehouse.length) {
+    host.innerHTML = '<div class="sc-cart-empty muted">Склад пуст.</div>';
     return;
   }
-  const rows = [`<tr><th>Устройство</th><th>Из стойки</th><th style="width:150px"></th></tr>`];
-  state.cart.forEach(item => {
-    const fromLabel = item.fromRackName || (item.fromRackId ? '(стойка)' : '—');
-    rows.push(`<tr draggable="true" data-cartid="${item.id}">
+  const rows = [`<tr><th>Устройство</th><th>Было в</th><th style="width:180px"></th></tr>`];
+  state.warehouse.forEach(item => {
+    const fromLabel = item.fromRackName || '—';
+    rows.push(`<tr draggable="true" data-whid="${item.id}">
       <td>${escape(item.label)}</td>
       <td class="muted">${escape(fromLabel)}</td>
       <td>
-        <button type="button" class="sc-btn" data-act="return" data-id="${item.id}" title="Вернуть в исходную стойку">↩ вернуть</button>
-        <button type="button" class="sc-btn sc-btn-danger" data-act="discard" data-id="${item.id}" title="Выгрузить на склад (удалить)">✕</button>
+        <button type="button" class="sc-btn" data-act="tocart" data-id="${item.id}" title="Взять на тележку">↑ на тележку</button>
+        <button type="button" class="sc-btn sc-btn-danger" data-act="del" data-id="${item.id}" title="Удалить со склада">✕</button>
       </td>
     </tr>`);
   });
   host.innerHTML = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
-  host.querySelectorAll('tr[data-cartid]').forEach(tr => {
+  host.querySelectorAll('tr[data-whid]').forEach(tr => {
     tr.addEventListener('dragstart', ev => {
-      ev.dataTransfer.setData('application/x-scs-cartid', tr.dataset.cartid);
+      ev.dataTransfer.setData('application/x-scs-whid', tr.dataset.whid);
       ev.dataTransfer.effectAllowed = 'move';
       tr.classList.add('sc-drag-src');
     });
     tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
   });
-  host.querySelectorAll('[data-act="return"]').forEach(b => b.addEventListener('click', () => returnCartItem(b.dataset.id)));
-  host.querySelectorAll('[data-act="discard"]').forEach(b => b.addEventListener('click', () => discardCartItem(b.dataset.id)));
+  host.querySelectorAll('[data-act="tocart"]').forEach(b => b.addEventListener('click', () => warehouseToCart(b.dataset.id)));
+  host.querySelectorAll('[data-act="del"]').forEach(b => b.addEventListener('click', () => discardWarehouseItem(b.dataset.id)));
+}
+
+/* HTML5-drop на тележку (для drag со склада, если доделаем; сейчас только
+   pointer-drag с карты обрабатывается в pointerup). */
+function bindCartWarehouseDropzones() {
+  const cartZone = document.querySelector('.sc-cart-dropzone');
+  const whZone = document.querySelector('.sc-wh-dropzone');
+  if (cartZone) {
+    cartZone.addEventListener('dragover', ev => {
+      if (!Array.from(ev.dataTransfer.types).includes('application/x-scs-whid')) return;
+      ev.preventDefault(); cartZone.classList.add('sc-drop-hover');
+    });
+    cartZone.addEventListener('dragleave', () => cartZone.classList.remove('sc-drop-hover'));
+    cartZone.addEventListener('drop', ev => {
+      cartZone.classList.remove('sc-drop-hover');
+      const whId = ev.dataTransfer.getData('application/x-scs-whid');
+      if (whId) { ev.preventDefault(); warehouseToCart(whId); }
+    });
+  }
+  if (whZone) {
+    whZone.addEventListener('dragover', ev => {
+      if (!Array.from(ev.dataTransfer.types).includes('application/x-scs-cartid')) return;
+      ev.preventDefault(); whZone.classList.add('sc-drop-hover');
+    });
+    whZone.addEventListener('dragleave', () => whZone.classList.remove('sc-drop-hover'));
+    whZone.addEventListener('drop', ev => {
+      whZone.classList.remove('sc-drop-hover');
+      const cartId = ev.dataTransfer.getData('application/x-scs-cartid');
+      if (cartId) { ev.preventDefault(); cartToWarehouse(cartId); }
+    });
+  }
 }
 
 /* ---- глобальный rerender ---------------------------------------------- */
@@ -1097,7 +1194,7 @@ function rerenderPreview() {
   if (dlg && dlg.open) renderUnitMap('sc-unitmap-dlg-body', { big: true });
   renderWarnings(); renderBom();
 }
-function rerender() { renderRackPicker(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); }
+function rerender() { renderRackPicker(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); renderWarehouse(); }
 
 /* ---- init -------------------------------------------------------------- */
 function init() {
@@ -1108,12 +1205,14 @@ function init() {
   state.templates = loadJson(LS_TEMPLATES, []);
   state.cart      = loadJson(LS_CART,      []);
   state.rackTags  = loadJson(LS_RACKTAGS,  {});
+  state.warehouse = loadJson(LS_WAREHOUSE, []);
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
   // auto-pick rack
   if (state.racks.length) state.currentRackId = state.racks[0].id;
 
   renderCatalog();
   rerender();
+  bindCartWarehouseDropzones();
 
   $('sc-rack').addEventListener('change', e => {
     state.currentRackId = e.target.value || null;
