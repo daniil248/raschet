@@ -609,8 +609,20 @@ function renderTemplateList() {
   const sel = el('rc-template');
   // Читаем теги стоек (scs-config.rackTags.v1), чтобы отличить реальные
   // развёрнутые экземпляры от «голых» шаблонов-корпусов.
+  // v0.59.255: rackTags переведены в project-scope; агрегируем по всем проектам,
+  // чтобы пометить «реальными» шкафы из любого проекта (rack-config глобален).
   let tags = {};
-  try { const raw = localStorage.getItem('scs-config.rackTags.v1'); tags = raw ? JSON.parse(raw) : {}; } catch {}
+  try {
+    // Базовый ключ (legacy) + все project-scoped ключи
+    const raw = localStorage.getItem('scs-config.rackTags.v1');
+    if (raw) Object.assign(tags, JSON.parse(raw) || {});
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && /^raschet\.project\..+\.scs-config\.rackTags\.v1$/.test(k)) {
+        try { Object.assign(tags, JSON.parse(localStorage.getItem(k)) || {}); } catch {}
+      }
+    }
+  } catch {}
   const tpls = state.templates.filter(t => !(tags[t.id] || '').trim());
   const insts = state.templates.filter(t => (tags[t.id] || '').trim());
   const parts = [];

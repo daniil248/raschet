@@ -155,7 +155,7 @@ function projectStats(pid) {
     // «стойками проекта» считаем те, у которых в scs-config.contents.v1
     // этого проекта есть хоть одно устройство или в racktags — тег.
     const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
-    const tags = localStorage.getItem(`raschet.project.${pid}.scs-config.racktags.v1`);
+    const tags = localStorage.getItem(`raschet.project.${pid}.scs-config.rackTags.v1`);
     const ids = new Set();
     try {
       const obj = cont ? JSON.parse(cont) : {};

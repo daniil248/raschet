@@ -248,7 +248,9 @@ export const CHANGELOGS = {
       '🧹 Модель «Физический шкаф» прояснена: в проекте показываются ТОЛЬКО стойки с тегом (развёрнутые физические шкафы). Бестеговые «Новый шаблон 42U» из глобальной библиотеки корпусов (rack-config.templates.v1) больше не попадают ни в реестр проекта, ни в сайдбар, ни в dropdown Компоновщика. При свежем запуске из хаба реестр проекта пуст — физические шкафы создаются через «➕ Развернуть».',
       '🔒 Сайдбар Компоновщика: клик по другой стойке теперь делает явный переход (location.href на ./rack.html?rackId=…) вместо тихой подмены state.currentRackId. Случайно переключиться на чужой шкаф невозможно — URL и breadcrumb сразу это отражают.',
       '📋 Реестр шкафов: убран раздел «Черновики/шаблоны без тега» — он не относится к проекту. Empty state указывает развернуть шкаф из шаблона корпуса. Summary упрощён.',
-      'Файлы: scs-config/scs-config.js (projectRacks() helper, renderRackPicker/renderRacksSidebar фильтр по тегу, клик в сайдбаре = location.href), scs-config/racks-list.js (render() без drafts, новый empty state и summary).',
+      '🐛 projects.js: ключ rackTags читался в lowercase (racktags.v1) — счётчик шкафов проекта на Странице проектов был занижен. Исправлено на rackTags.v1.',
+      '🗄 rack-config: чтение тегов теперь агрегирует все project-scoped ключи raschet.project.*.scs-config.rackTags.v1 — реальные стойки из любого проекта помечаются корректно в глобальном Конфигураторе корпуса.',
+      'Файлы: scs-config/scs-config.js (projectRacks() helper, renderRackPicker/renderRacksSidebar фильтр по тегу, клик в сайдбаре = location.href), scs-config/racks-list.js (render() без drafts, новый empty state и summary), projects/projects.js (регистр ключа), rack-config/rack-config.js (renderTemplateList — агрегация tags по проектам).',
     ] },
     { version: '0.59.254', date: '2026-04-22', items: [
       '🔧 Fix 3D: отвалился после v0.59.253 — в drawFacade новые Mesh создавались через Object.assign(new Mesh(...), {position: new Vector3(...)}) и это ломало внутренний matrix Object3D (position — accessor). Добавлен helper mkMesh с position.set(); все фасадные меши переведены на него.',
