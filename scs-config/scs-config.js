@@ -157,7 +157,9 @@ const state = {
   //   'front' — фронт (как раньше), монтаж — передние рельсы
   //   'rear'  — тыл, монтаж — задние рельсы
   //   'side'  — вид сбоку (профиль), виден depth + mountSide всех устройств
-  faceMode: 'front',
+  //   '3d'    — three.js (v0.59.246)
+  // v0.59.247: persist в LS (пользовательская настройка вида — пусть остаётся).
+  faceMode: (function(){ try { return localStorage.getItem('scs-config.faceMode.v1') || 'front'; } catch { return 'front'; } })(),
   // drag state
   drag: null,        // { devId, startY, startU, rowH, r }
 };
@@ -691,12 +693,16 @@ function renderSideView(hostId, opts) {
     ${collisionMarks.join('')}
   </svg>`;
 
-  // легенда
-  const depthConflictN = depthConflicts.size / 2 | 0; // пары → количество коллизий
+  // легенда + стат глубины
+  const depthConflictN = depthConflicts.size / 2 | 0;
+  const maxFront = devices.filter(d => (d.mountSide||'front')==='front').reduce((m,d) => Math.max(m, effDepth(d)), 0);
+  const maxRear  = devices.filter(d => (d.mountSide||'front')==='rear' ).reduce((m,d) => Math.max(m, effDepth(d)), 0);
+  const freeDepth = rackDepthMm - maxFront - maxRear - 50;
+  const depthStat = `max front: ${maxFront} · max rear: ${maxRear} · зазор: ${freeDepth >= 0 ? freeDepth : 0} мм${freeDepth < 0 ? ' <span style="color:#dc2626">(перегруз)</span>' : ''}`;
   const legend = [
     `<span><i style="background:#3b82f6"></i>Фронт (перед стойки)</span>`,
     `<span><i style="background:#ef4444"></i>Тыл (задняя сторона)</span>`,
-    `<span class="muted">Глубина стойки: ${rackDepthMm} мм</span>`,
+    `<span class="muted">Глубина стойки: ${rackDepthMm} мм · ${depthStat}</span>`,
   ];
   if (depthConflictN) legend.push(`<span style="color:#dc2626">⚠ Коллизий глубины: ${depthConflictN}</span>`);
 
@@ -866,6 +872,8 @@ function renderWarnings() {
   if (!r) { host.innerHTML = '<div class="sc-warn-item warn">Нет выбранной стойки.</div>'; return; }
   const devices = currentContents();
   const conflicts = detectConflicts(r, devices);
+  const depthConflicts = detectDepthConflicts(r, devices);
+  const uConflicts = new Set([...conflicts].filter(id => !depthConflicts.has(id)));
   const totalH = devices.reduce((s, d) => {
     const type = state.catalog.find(c => c.id === d.typeId);
     return s + (type ? type.heightU : 1);
@@ -876,7 +884,8 @@ function renderWarnings() {
   }, 0);
   const freeU = r.u - r.occupied;
   const items = [];
-  if (conflicts.size) items.push(`<div class="sc-warn-item err">Конфликты размещения: ${conflicts.size} ед. перекрываются или выходят за границы U (подсвечены красным).</div>`);
+  if (uConflicts.size) items.push(`<div class="sc-warn-item err">U-конфликты размещения: ${uConflicts.size} ед. перекрываются по юнитам или выходят за границы стойки.</div>`);
+  if (depthConflicts.size) items.push(`<div class="sc-warn-item err">⚠ Конфликты глубины: ${depthConflicts.size} ед. не помещаются при двустороннем монтаже (front+rear пересекаются по юнитам, а суммарная глубина + 50 мм зазор > ${(+r.depth)||'?'} мм). Откройте 📐 Бок — видно пересечение.</div>`);
   if (totalH > freeU) items.push(`<div class="sc-warn-item err">Суммарная высота оборудования ${totalH}U превышает свободное место (${freeU}U после «занятых» ${r.occupied}U).</div>`);
   // потребляемая мощность vs rack.demandKw
   if (r.demandKw && totalW / 1000 > r.demandKw * 1.0) {
@@ -2161,10 +2170,15 @@ function init() {
     });
   });
 
-  /* ---- v0.59.245 переключатель вида (Фронт / Тыл / Бок) -------------- */
+  /* ---- v0.59.245 переключатель вида (Фронт / Тыл / Бок / 3D) --------- */
+  // инициализация активной кнопки из persist-состояния
+  document.querySelectorAll('.sc-fm-btn').forEach(b => {
+    b.classList.toggle('sc-fm-active', b.dataset.face === state.faceMode);
+  });
   document.querySelectorAll('.sc-fm-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       state.faceMode = btn.dataset.face;
+      try { localStorage.setItem('scs-config.faceMode.v1', state.faceMode); } catch {}
       document.querySelectorAll('.sc-fm-btn').forEach(b => {
         b.classList.toggle('sc-fm-active', b.dataset.face === state.faceMode);
       });

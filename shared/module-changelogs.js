@@ -244,6 +244,12 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.247', date: '2026-04-22', items: [
+      '🚨 Предупреждения разделены: U-конфликты и конфликты глубины — отдельными строками в блоке «Проверки». У depth-конфликта подсказка открыть 📐 Бок-вид.',
+      '📊 В легенде Side-view — стат глубины: «max front: X мм · max rear: Y мм · зазор: Z мм». При отрицательном зазоре — красным.',
+      '💾 Выбор вида (Фронт/Тыл/Бок/3D) persist-ится в scs-config.faceMode.v1 — сохраняется между перезагрузками страницы.',
+      'Файлы: scs-config/scs-config.js (split warnings, depth-stats legend, faceMode persist).',
+    ] },
     { version: '0.59.246', date: '2026-04-22', items: [
       '🧊 3D-вид (ЭТАП 2, PoC). Кнопка «🧊 3D» в переключателе вида. При первом клике лениво подгружается three.js@0.160 с jsDelivr (ESM); рендерится wireframe-корпус стойки + solid-боксы устройств (цвет из каталога, размеры = rackW × heightU*44.45мм × depthMm). Front-боксы у z=dMm/2, rear — у z=rackD − dMm/2. Рельсы — полупрозрачные плоскости (синяя/красная). Коллизии глубины — красная обводка бокса.',
       '🎮 Управление: OrbitControls — ЛКМ вращать, колесо zoom, ПКМ pan. Damping. Пол — GridHelper. При уходе с 3D — _3dCleanup (cancelAnimationFrame + renderer.dispose + forceContextLoss).',
