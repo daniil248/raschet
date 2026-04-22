@@ -133,3 +133,47 @@ html, body {
 /* ===== Утилитарные классы ===== */
 .muted { color: var(--rs-fg-muted); }
 .subtle { color: var(--rs-fg-subtle); }
+
+/* =========================================================================
+   Phase 1.24.41 — единый полноэкранный дизайн всех модулей.
+   Отключает исторически сложившиеся max-width: 1200px / 1400px / 1600px
+   и centering (margin:0 auto) на обёртках подпрограмм. Модуль занимает
+   всю ширину вьюпорта, как «Конструктор схем» и «Подбор кабеля». Внутри
+   секций уже задаются нужные grid/flex-ограничения. Если какому-то окну
+   нужна узкая колонка для читаемости — оно использует inner-контейнер,
+   а не ограничивает внешнюю обёртку.
+   ========================================================================= */
+body > main,
+.page-wrap, .sc-wrap, .rc-wrap, .cb-wrap, .mv-wrap, .pdu-wrap, .ups-wrap,
+.xf-wrap, .el-wrap, .bat-wrap, .cat-wrap, .log-wrap, .mdc-wrap,
+.psy-wrap, .sup-wrap, .pc-wrap, .tr-wrap, .app-wrap {
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: auto !important;
+}
+
+/* Единая типографика для всех модулей — фиксируем base font-size и line-height,
+   чтобы убрать плавающие 13/14/15px в подпрограммах. */
+html { font-size: 14px; line-height: 1.45; }
+body { font-family: var(--rs-font); }
+code, kbd, samp, pre { font-family: var(--rs-font-mono); }
+
+/* Единые стили для таблиц «справочного» типа (класс .rs-table опционально).
+   Однотипная информация — однотипный вид: sticky thead, hover строк,
+   выравнивание чисел вправо через .num. */
+.rs-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+  background: var(--rs-bg-card); border: 1px solid var(--rs-border-soft);
+  border-radius: var(--rs-radius);
+}
+.rs-table thead th {
+  position: sticky; top: 0; background: var(--rs-bg-soft);
+  text-align: left; font-weight: 600; padding: 6px 8px;
+  border-bottom: 1px solid var(--rs-border-soft);
+}
+.rs-table tbody td {
+  padding: 4px 8px; border-bottom: 1px solid var(--rs-border-hair);
+}
+.rs-table tbody tr:hover { background: var(--rs-bg-hover); }
+.rs-table .num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--rs-font-mono); }

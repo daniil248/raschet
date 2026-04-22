@@ -3,6 +3,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.21',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.26 — единый дизайн всех модулей (см. ROADMAP 1.26.1-3). В <code>shared/styles/base.css</code> добавлены глобальные правила: (1) полноэкранное отображение — reset <code>max-width/margin:0 auto</code> на всех wrapper-классах (<code>.sc-wrap, .rc-wrap, .cb-wrap, .mv-wrap, .pdu-wrap, .ups-wrap, .mdc-wrap, .bat-wrap, .cat-wrap, .log-wrap, .psy-wrap, .sup-wrap, .pc-wrap, .tr-wrap, .app-wrap, .page-wrap, body > main</code>) через <code>!important</code>; (2) единая типографика — <code>html{font-size:14px;line-height:1.45}</code> и <code>body{font-family:var(--rs-font)}</code>; (3) класс <code>.rs-table</code> для справочных таблиц (sticky thead, hover, <code>.num</code> с tabular-nums).',
+      'ROADMAP — добавлена подфаза 1.26 «Единый дизайн всех модулей» с 9 пунктами: полноэкранное отображение (готово), типографика (готово), rs-table (готово), плюс backlog на единые статусные токены, формы, шапки, badge-ы, breadcrumb, аудит-скрипт.',
+    ],
+  },
+  {
     version: '0.1.20',
     date: '2026-04-22',
     items: [
