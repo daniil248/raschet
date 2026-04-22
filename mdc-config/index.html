@@ -22,6 +22,7 @@
       <!-- =========== Форма (опросник) =========== -->
       <aside class="mdc-form rs-sidebar rs-sidebar-left">
         <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+        <div id="mdc-cfg-mount" data-cfg-mount></div>
         <section class="mdc-section">
           <h2>1. IT-нагрузка (исходные данные)</h2>
           <label class="mdc-field">
@@ -175,6 +176,34 @@
     import { APP_VERSION } from '../js/engine/constants.js';
     import { CHANGELOGS } from '../shared/module-changelogs.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'mdc-config', moduleTitle: 'Модульный ЦОД', entries: CHANGELOGS['mdc-config'] || [] });
+  </script>
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (!isEmbeddedMode()) {
+      mountConfigSidebar({
+        kind: 'mdc',
+        title: 'Конфигурации модульных ЦОД',
+        sections: ['properties', 'list'],
+        mountEl: document.getElementById('mdc-cfg-mount'),
+        onSelect: (entry) => {
+          try { window.dispatchEvent(new CustomEvent('mdc-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const $ = (id) => document.getElementById(id);
+          const kw = $('mdc-it-kw')?.value || '';
+          const racks = $('mdc-racks')?.value || '';
+          const width = $('mdc-width')?.value || '';
+          const len = $('mdc-length')?.value || '';
+          return {
+            label: (racks ? (racks + ' стоек') : 'ЦОД') + (kw ? (' · ' + kw + ' кВт') : ''),
+            description: [width && (width + 'мм ширина'), len && (len + 'мм длина')].filter(Boolean).join(' · '),
+            payload: { itKw: kw, racks, width, length: len },
+          };
+        },
+      });
+    }
   </script>
 </body>
 </html>

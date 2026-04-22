@@ -98,19 +98,26 @@ export function mountConfigSidebar(opts) {
     return { enabled: false };
   }
 
+  const sections = Array.isArray(o.sections) && o.sections.length
+    ? o.sections : ['settings', 'properties', 'list'];
+  const has = (s) => sections.includes(s);
+
   const root = document.createElement('div');
   root.className = 'rs-cs-sidebar';
   root.innerHTML = `
+    ${has('settings') ? `
     <div class="rs-cs-sect">
       <div class="rs-cs-sect-head">Основные настройки</div>
       <div class="rs-cs-sect-body rs-cs-slot" data-slot="settings"></div>
-    </div>
+    </div>` : ''}
+    ${has('properties') ? `
     <div class="rs-cs-sect">
       <div class="rs-cs-sect-head">Свойства</div>
       <div class="rs-cs-sect-body" data-slot="properties">
         <div class="rs-cs-empty">Конфигурация не выбрана.</div>
       </div>
-    </div>
+    </div>` : ''}
+    ${has('list') ? `
     <div class="rs-cs-sect">
       <div class="rs-cs-sect-head">
         <span>${esc(o.title || 'Конфигурации')}</span>
@@ -120,7 +127,7 @@ export function mountConfigSidebar(opts) {
         <input class="rs-cs-search" type="text" placeholder="Поиск по id/метке/описанию…">
         <ul class="rs-cs-list" data-slot="list"><li class="rs-cs-empty">Нет записей</li></ul>
       </div>
-    </div>
+    </div>` : ''}
   `;
   mountEl.appendChild(root);
 
@@ -128,11 +135,15 @@ export function mountConfigSidebar(opts) {
   const slotProps    = root.querySelector('[data-slot="properties"]');
   const slotList     = root.querySelector('[data-slot="list"]');
   const searchInput  = root.querySelector('.rs-cs-search');
+  if (slotSettings && typeof o.renderSettings === 'function') {
+    try { o.renderSettings(slotSettings); } catch (e) { console.warn(e); }
+  }
 
   let activeId = null;
   let filter = '';
 
   function render() {
+    if (!slotList) return;
     const entries = listConfigs(kind, {
       projectCode: o.projectCode || undefined,
       search: filter || undefined,
@@ -157,6 +168,7 @@ export function mountConfigSidebar(opts) {
   }
 
   function renderProps(entry) {
+    if (!slotProps) return;
     if (!entry) {
       slotProps.innerHTML = '<div class="rs-cs-empty">Конфигурация не выбрана.</div>';
       return;
@@ -182,7 +194,7 @@ export function mountConfigSidebar(opts) {
   }
 
   // Делегирование кликов по списку
-  slotList.addEventListener('click', async (ev) => {
+  if (slotList) slotList.addEventListener('click', async (ev) => {
     const btn = ev.target.closest('[data-act]');
     const li = ev.target.closest('.rs-cs-item');
     if (!li) return;
@@ -219,7 +231,8 @@ export function mountConfigSidebar(opts) {
   });
 
   // Сохранить
-  root.querySelector('[data-act="save"]').addEventListener('click', async () => {
+  const saveBtn = root.querySelector('[data-act="save"]');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
     let data = {};
     if (typeof o.onSave === 'function') {
       try { data = o.onSave() || {}; }
@@ -241,7 +254,7 @@ export function mountConfigSidebar(opts) {
     rsToast('Сохранено: ' + saved.id, 'ok');
   });
 
-  searchInput.addEventListener('input', () => {
+  if (searchInput) searchInput.addEventListener('input', () => {
     filter = searchInput.value.trim();
     render();
   });

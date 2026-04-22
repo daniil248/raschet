@@ -8,6 +8,10 @@ export const CHANGELOGS = {
     { version: '0.1.0', date: '2026-04-22', items: ['Phase 1.24 MVP — первая рабочая версия. Выбор стойки из rack-config-шаблонов, каталог типов оборудования (коммутатор/патч-панель/сервер/KVM/монитор/ИБП-1U/органайзер/другое), размещение по U с авто-поиском свободной области и детекцией конфликтов (наезд / «занятые» юниты / границы), SVG-карта фронт-вью, предупреждения по мощности vs rack.demandKw и непривязанным к PDU устройствам, СКС-матрица (порт↔порт с типом кабеля и длиной), BOM + CSV, авто-укладка. Файлы: scs-config/* (новые).'] },
   ],
   'suppression-config': [
+    { version: '0.59.189', date: '2026-04-22', items: [
+      'Левый сайдбар дополнен секциями «Свойства» и «Конфигурации АГПТ» через shared/config-sidebar.js (sections=[properties,list]). Существующая форма установки остаётся, новый блок крепится сверху. В embedded-режиме не рендерится.',
+      'Файлы: suppression-config/index.html (#sup-cfg-mount + mountConfigSidebar).',
+    ] },
     { version: '0.59.39', date: '2026-04-21', items: ['Регрессионные тесты: обход кеша ES-модулей GitHub Pages (max-age=600). validation-tests.js теперь динамически импортирует ./index.js?v=<ts>, runAll() стала async. Это гарантирует свежий METHODS-реестр со вчерашнего фикса, даже если старый index.js лежит в HTTP-кеше браузера. Файлы: suppression-methods/validation-tests.js, suppression-config/suppression-config.js.'] },
     { version: '0.59.38', date: '2026-04-21', items: ['Fix регрессионных тестов: три кейса СП 485 Прил.Д (FM-200 30×3, 100×3, Novec 1230 30×3) падали с «Unknown method: sp-485-annex-d». Причина — suppression-methods/index.js не импортировал sp-485-annex-d.js, метода не было в реестре METHODS. Также validation-tests.js использовал ключ `Cn`, а compute() отдаёт концентрацию в поле `C`. Файлы: suppression-methods/{index.js,validation-tests.js}.'] },
     { version: '0.59.37', date: '2026-04-21', items: ['Phase 11.9 — регрессионные тесты. Кнопка «✓ Тесты» в тулбаре установки открывает диалог с таблицей pass/fail по 6 опорным кейсам (СП 485 Прил.Д: FM-200 30×3 и 100×3, Novec 1230 30×3; NFPA 2001 FM-200 50 м³; ISO 14520 FM-200 100 м³; СП РК IG-541 100 м³). Ожидания выведены аналитически из формул методик, допуск ±5–10 %. Ловит грубые регрессии в Ks/K1/Kalt/s(T). Файлы: suppression-methods/validation-tests.js (новый), suppression-config/{index.html,suppression-config.js,suppression-config.css}.'] },
@@ -247,6 +251,10 @@ export const CHANGELOGS = {
   ],
 
   'pdu-config': [
+    { version: '0.59.189', date: '2026-04-22', items: [
+      'Левый сайдбар дополнен блоком «Свойства» + «Конфигурации PDU» через shared/config-sidebar.js. Существующая форма контекста остаётся, новый блок закреплён сверху. В embedded-режиме (?embed=1) не монтируется.',
+      'Файлы: pdu-config/index.html (#pc-cfg-mount + mountConfigSidebar).',
+    ] },
     { version: '0.59.126', date: '2026-04-21', items: [
       '<b>Embed-режим для iframe в Конфигураторе стойки.</b> Страница детектирует <code>?embed=1</code>: скрывает шапку и футер, внизу рендерит sticky-бар со «⬇ Применить требования» и «✕ Закрыть». Клик по «Выбрать» на строке или по «Применить требования» отправляет postMessage parent-окну (rack-config), которое применяет данные к конкретной строке PDU.',
       'Файлы: pdu-config/pdu-config.js (IS_EMBED, postToParent, injectEmbedBar), pdu-config/pdu-config.css (+.pc-embed-bar).'
@@ -390,6 +398,10 @@ export const CHANGELOGS = {
   ],
 
   'mdc-config': [
+    { version: '0.59.189', date: '2026-04-22', items: [
+      'Левый сайдбар дополнен блоком «Свойства» + «Конфигурации модульных ЦОД» через shared/config-sidebar.js. Существующий опросник остаётся, блок закреплён сверху. В embedded-режиме не монтируется.',
+      'Файлы: mdc-config/index.html (#mdc-cfg-mount + mountConfigSidebar).',
+    ] },
     { version: '0.59.148', date: '2026-04-21', items: ['XLSX «Объём поставки» приближён к шаблону 26003-SCO-001: блок метаданных проекта (Объект / Заказчик / Договор / Ревизия / Дата) из localStorage[\'raschet.activeProject.v1\'], section-title через merged cells, итоги по каждому разделу (позиций + Σ кол-во) и общий total в конце. Без логотипов/подписей — для полного оформления нужен xlsx-js-style. Файл: mdc-config/mdc-config.js::exportBom.'] },
     { version: '0.59.146', date: '2026-04-21', items: ['Добавлена кнопка «🔥 → АГПТ» (Phase 11.8): собирает геометрию всех IT- и силовых модулей ЦОД (кроме коридора) и передаёт в suppression-config через localStorage-мост `raschet.mdcToSuppression.v1`. Зона = модуль GDM-600 (S=widthMm·lengthMm, H=2.7 м фикс), направления — «IT-модули» / «Силовые модули». Переход в модуль АГПТ по кнопке с query ?from=mdc. Файлы: index.html (+#mdc-send-suppression), mdc-config.js (+sendToSuppression + обработчик).'] },
     { version: '0.58.87', date: '2026-04-19', items: ['MVP: wizard + зоны + planview (серверная / ИБП+АКБ / CRAC).'] },

@@ -34,6 +34,7 @@
       <!-- ================ LEFT: Form / Navigator ================ -->
       <aside class="sup-form rs-sidebar rs-sidebar-left">
         <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+        <div id="sup-cfg-mount" data-cfg-mount></div>
         <section class="sup-section">
           <h2>
             <span id="sup-inst-name">Установка</span>
@@ -433,5 +434,28 @@
 
   <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="suppression-config.js"></script>
+  <script type="module">
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (!isEmbeddedMode()) {
+      mountConfigSidebar({
+        kind: 'suppression',
+        title: 'Конфигурации АГПТ',
+        sections: ['properties', 'list'],
+        mountEl: document.getElementById('sup-cfg-mount'),
+        onSelect: (entry) => {
+          try { window.dispatchEvent(new CustomEvent('suppression-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const name = document.getElementById('sup-inst-name')?.textContent?.trim() || 'АГПТ';
+          return {
+            label: name,
+            description: 'Установка автоматического газового пожаротушения',
+            payload: { instName: name },
+          };
+        },
+      });
+    }
+  </script>
 </body>
 </html>

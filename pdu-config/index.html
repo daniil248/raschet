@@ -72,6 +72,7 @@
       <!-- ==================== LEFT: form ==================== -->
       <aside class="rs-sidebar rs-sidebar-left">
         <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+        <div id="pc-cfg-mount" data-cfg-mount></div>
         <!-- Контекст: от чего считаем -->
         <section class="pc-section pc-section-accent">
           <h2>① Контекст стойки</h2>
@@ -234,6 +235,34 @@
       bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9990;background:#ffebee;color:#b71c1c;border-top:1px solid #ef9a9a;padding:6px 12px;font:12px system-ui;';
       bar.textContent = '[footer] ' + (e && e.message || e);
       document.body.appendChild(bar);
+    }
+  </script>
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (!isEmbeddedMode()) {
+      mountConfigSidebar({
+        kind: 'pdu',
+        title: 'Конфигурации PDU',
+        sections: ['properties', 'list'],
+        mountEl: document.getElementById('pc-cfg-mount'),
+        onSelect: (entry) => {
+          try { window.dispatchEvent(new CustomEvent('pdu-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const $ = (id) => document.getElementById(id);
+          const servers = $('pc-ctx-servers')?.value || '';
+          const kw = $('pc-ctx-kw')?.value || '';
+          const ph = $('pc-ctx-phases')?.value || '';
+          const red = $('pc-ctx-redund')?.value || '';
+          return {
+            label: red + ' · ' + servers + 'серв',
+            description: [servers && (servers + '×' + kw + 'кВт'), ph + 'ф', red].filter(Boolean).join(' · '),
+            payload: { servers, kwPerServer: kw, phases: ph, redundancy: red },
+          };
+        },
+      });
     }
   </script>
 </body>
