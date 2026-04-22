@@ -234,6 +234,13 @@
         kind: 'mv',
         title: 'Конфигурации РУ СН',
         onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('mv-wiz-family', p.family);
+          set('mv-wiz-uv', p.kv); set('mv-kv', p.kv);
           try { window.dispatchEvent(new CustomEvent('mv-config:load', { detail: entry })); } catch {}
         },
         onSave: () => {

@@ -399,6 +399,20 @@
         kind: 'panel',
         title: 'Конфигурации щитов',
         onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('pc-name', p.name);
+          set('pc-kind', p.kind);
+          set('pc-loadKw', p.loadKw);
+          set('pc-voltage', p.voltage);
+          set('pc-inputs', p.inputs);
+          set('pc-outputs', p.outputs);
+          set('pc-ip', p.ip);
+          set('pc-form', p.form);
+          set('pc-reserve', p.reserve);
           try { window.dispatchEvent(new CustomEvent('panel-config:load', { detail: entry })); } catch {}
         },
         onSave: () => {

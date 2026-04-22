@@ -188,6 +188,15 @@
         sections: ['properties', 'list'],
         mountEl: document.getElementById('mdc-cfg-mount'),
         onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('mdc-it-kw', p.itKw);
+          set('mdc-racks', p.racks);
+          set('mdc-width', p.width);
+          set('mdc-length', p.length);
           try { window.dispatchEvent(new CustomEvent('mdc-config:load', { detail: entry })); } catch {}
         },
         onSave: () => {

@@ -214,6 +214,14 @@
         kind: 'transformer',
         title: 'Конфигурации трансформаторов',
         onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('tx-wiz-snom', p.snom); set('tx-loadKw', p.snom);
+          set('tx-wiz-hv', p.hv); set('tx-wiz-lv', p.lv);
+          set('tx-wiz-type', p.type);
           try { window.dispatchEvent(new CustomEvent('transformer-config:load', { detail: entry })); } catch {}
         },
         onSave: () => {

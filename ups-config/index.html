@@ -209,6 +209,15 @@
         kind: 'ups',
         title: 'Конфигурации ИБП',
         onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('uc-loadKw', p.loadKw); set('uc-wiz-kw', p.loadKw);
+          set('uc-autonomy', p.autonomy); set('uc-wiz-aut', p.autonomy);
+          set('uc-wiz-red', p.redundancy);
+          set('uc-wiz-topology', p.topology);
           try { window.dispatchEvent(new CustomEvent('ups-config:load', { detail: entry })); } catch {}
         },
         onSave: () => {

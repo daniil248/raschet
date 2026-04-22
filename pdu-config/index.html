@@ -248,6 +248,15 @@
         sections: ['properties', 'list'],
         mountEl: document.getElementById('pc-cfg-mount'),
         onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('pc-ctx-servers', p.servers);
+          set('pc-ctx-kw', p.kwPerServer);
+          set('pc-ctx-phases', p.phases);
+          set('pc-ctx-redund', p.redundancy);
           try { window.dispatchEvent(new CustomEvent('pdu-config:load', { detail: entry })); } catch {}
         },
         onSave: () => {

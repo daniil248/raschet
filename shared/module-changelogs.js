@@ -347,6 +347,11 @@ export const CHANGELOGS = {
   ],
 
   'panel-config': [
+    { version: '0.59.191', date: '2026-04-22', items: [
+      'Клик по сохранённой конфигурации в сайдбаре теперь заполняет поля wizard (имя/тип/кВт/напряжение/IP/форма/вводы/отходящие/запас). Пропущенные поля не затираются (preserve-on-miss).',
+      'Аналогично в ups-config / transformer-config / mv-config / pdu-config / mdc-config — клик по записи восстанавливает параметры wizard из payload.',
+      'Файлы: panel-config/index.html, ups-config/index.html, transformer-config/index.html, mv-config/index.html, pdu-config/index.html, mdc-config/index.html.',
+    ] },
     { version: '0.59.190', date: '2026-04-22', items: [
       'Config-sidebar автоматически привязывается к коду активного проекта (localStorage.raschet.activeProject.v1.code). Если проект открыт — список конфигураций фильтруется по его projectCode, новые сохраняются с этим кодом, ID = PROJ-NN вместо YYMMDD-NN. В заголовке списка показывается «@ PROJ».',
       'Концептуальная чистота: конфигурация = шаблон (тип шкафа/боковины/PDU набор), физический элемент в схеме ссылается на конфигурацию и имеет собственный ID+Tag. Catalog хранит только шаблоны.',
