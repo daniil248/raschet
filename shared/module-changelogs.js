@@ -244,6 +244,12 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.246', date: '2026-04-22', items: [
+      '🧊 3D-вид (ЭТАП 2, PoC). Кнопка «🧊 3D» в переключателе вида. При первом клике лениво подгружается three.js@0.160 с jsDelivr (ESM); рендерится wireframe-корпус стойки + solid-боксы устройств (цвет из каталога, размеры = rackW × heightU*44.45мм × depthMm). Front-боксы у z=dMm/2, rear — у z=rackD − dMm/2. Рельсы — полупрозрачные плоскости (синяя/красная). Коллизии глубины — красная обводка бокса.',
+      '🎮 Управление: OrbitControls — ЛКМ вращать, колесо zoom, ПКМ pan. Damping. Пол — GridHelper. При уходе с 3D — _3dCleanup (cancelAnimationFrame + renderer.dispose + forceContextLoss).',
+      '📌 Это PoC: без текстур/теней/LOD. Достаточно чтобы визуально проверить расстановку и коллизии глубины. Оптимизации (InstancedMesh, raycaster-pick, glTF-экспорт) — отдельной итерацией.',
+      'Файлы: scs-config/scs-config.js (loadThree + renderRack3D + диспетчер), scs-config/rack.html (.sc-fm-btn data-face="3d"), scs-config/scs-config.css (.sc-3d-hint).',
+    ] },
     { version: '0.59.245', date: '2026-04-22', items: [
       '📐 Side-view + двустороннее размещение. Новый переключатель вида в карте юнитов: «🟦 Фронт | 🟥 Тыл | 📐 Бок». Front/Rear фильтруют устройства по mountSide; Side-view рисует профиль стойки сбоку с масштабированной глубиной — каждый девайс у своей рельсы (front = слева, rear = справа), ширина прямоугольника = его depthMm.',
       'Схема: в device добавлены mountSide («front»|«rear», default «front») и depthMm (override); в каталоге — depthMm на тип с разумными дефолтами (switch 280, server 1U=750/2U=800, PDU-подобное, патч-панель 100 мм и т.д.). Существующие записи мигрируются: depthMm добавляется, если typeof !== number (дефолт из каталога или 500/100 по kind).',
