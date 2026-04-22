@@ -3116,9 +3116,10 @@ function init() {
   const syncUnumBtn = () => {
     if (!unumBtn) return;
     unumBtn.textContent = state.uNumDir === 'td' ? '↕ 1↓' : '↕ 1↑';
-    unumBtn.title = state.uNumDir === 'td'
+    unumBtn.title = (state.uNumDir === 'td'
       ? 'U-нумерация: 1 сверху (top-down). Кликнуть — переключить на «1 снизу»'
-      : 'U-нумерация: 1 снизу (bottom-up, EIA-310). Кликнуть — переключить на «1 сверху»';
+      : 'U-нумерация: 1 снизу (bottom-up, EIA-310). Кликнуть — переключить на «1 сверху»')
+      + ' · горячая клавиша: U';
   };
   syncUnumBtn();
   if (unumBtn) unumBtn.addEventListener('click', () => {
@@ -3126,6 +3127,32 @@ function init() {
     try { localStorage.setItem('scs-config.uNumDir.v1', state.uNumDir); } catch {}
     syncUnumBtn();
     rerenderPreview();
+  });
+
+  /* ---- v0.59.270 горячие клавиши: U = toggle uNumDir; F = cycle face-mode */
+  document.addEventListener('keydown', (ev) => {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const tgt = ev.target;
+    const tag = (tgt && tgt.tagName || '').toUpperCase();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (tgt && tgt.isContentEditable)) return;
+    const key = ev.key.toLowerCase();
+    if (key === 'u') {
+      ev.preventDefault();
+      state.uNumDir = state.uNumDir === 'td' ? 'bu' : 'td';
+      try { localStorage.setItem('scs-config.uNumDir.v1', state.uNumDir); } catch {}
+      syncUnumBtn();
+      rerenderPreview();
+    } else if (key === 'f') {
+      ev.preventDefault();
+      const order = ['front', 'rear', 'both', 'side', '3d'];
+      const idx = order.indexOf(state.faceMode);
+      state.faceMode = order[(idx + 1) % order.length];
+      try { localStorage.setItem('scs-config.faceMode.v1', state.faceMode); } catch {}
+      document.querySelectorAll('.sc-fm-btn').forEach(b => {
+        b.classList.toggle('sc-fm-active', b.dataset.face === state.faceMode);
+      });
+      rerenderPreview();
+    }
   });
 
   /* ---- 1.24.12 полноэкранная карта (legacy — модалка удалена после 1.24.38) */

@@ -244,6 +244,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.270', date: '2026-04-22', items: [
+      '⌨ Горячие клавиши: `U` — переключить направление U-нумерации (bu↔td); `F` — циклически переключить вид стойки (Фронт → Тыл → Обе → Бок → 3D). Игнорируются в input/textarea/select/contentEditable и при Ctrl/Alt/Meta. Подсказки в title кнопок обновлены.',
+      'Файлы: scs-config/scs-config.js (document keydown listener), scs-config/rack.html (title-подсказки с «· F» и «· клавиша U»).',
+    ] },
     { version: '0.59.269', date: '2026-04-22', items: [
       '📊 Баланс по вводам PDU в панели предупреждений: для каждого feed (A/B/C/D) показывается load/cap кВт и %. Цвет по % (синий <50, зелёный 50–80, оранжевый 80–100, красный >100). Позволяет на глаз оценить балансировку 2N до того, как случится перегруз.',
       'Файлы: scs-config/scs-config.js (feedList в renderWarnings), scs-config/scs-config.css (.sc-warn-item.info).',
