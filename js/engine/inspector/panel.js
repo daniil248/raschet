@@ -333,7 +333,37 @@ export function openPanelParamsModal(n) {
       const badge = hasBreakers
         ? `<span style="display:inline-block;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">✓ ${nIn} вв / ${nOut} отх</span>`
         : `<span style="display:inline-block;background:#fff4e5;color:#8a5a00;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">не сконфигурирован</span>`;
+      // v0.59.194: инлайн-выбор сохранённого шаблона НКУ из каталога конфигураций.
+      // Физический щит сохраняет свой id/tag, лишь ссылается на шаблон.
+      let tmplHtml = '';
+      try {
+        const raw = localStorage.getItem('raschet.configurations.panel.v1');
+        const arr = raw ? JSON.parse(raw) : [];
+        let projCode = null;
+        try {
+          const pj = JSON.parse(localStorage.getItem('raschet.activeProject.v1') || 'null');
+          projCode = pj && (pj.code || pj.projectCode || pj.internalCode);
+          projCode = projCode ? String(projCode).trim().toUpperCase() : null;
+        } catch {}
+        const list = Array.isArray(arr)
+          ? arr.filter(e => !projCode || e.projectCode === projCode).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))
+          : [];
+        const appliedId = n.appliedConfigId || (n.appliedConfig && n.appliedConfig.panel && n.appliedConfig.panel.id) || '';
+        if (list.length) {
+          const opts = ['<option value="">— выбрать шаблон щита —</option>']
+            .concat(list.map(e => `<option value="${escAttr(e.id)}" ${e.id===appliedId?'selected':''}>${escHtml(e.id)}${e.label?' · '+escHtml(e.label):''}</option>`))
+            .join('');
+          const appliedBadge = appliedId
+            ? `<span style="display:inline-block;background:#eef2ff;color:#3730a3;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">шаблон: ${escHtml(appliedId)}</span>` : '';
+          tmplHtml = `<div style="margin:6px 0">
+            <label class="muted" style="font-size:11px">Применить сохранённый шаблон${appliedBadge}
+              <select data-act="apply-panel-tmpl" style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;margin-top:2px">${opts}</select>
+            </label>
+          </div>`;
+        }
+      } catch { /* catalog недоступен */ }
       h.push(`<div style="margin:10px 0">
+        ${tmplHtml}
         <a href="panel-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
           ⚙ ${hasBreakers ? 'Изменить конфигурацию НКУ' : 'Сконфигурировать НКУ подробно'} (новая вкладка)${badge}
         </a>

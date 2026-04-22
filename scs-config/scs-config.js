@@ -719,6 +719,7 @@ function bindZoomPan(wrap, svgId, baseW, baseH) {
   if (!wrap) return;
   const svg = $(svgId); if (!svg) return;
   wrap.addEventListener('wheel', ev => {
+    if (!ev.ctrlKey && !ev.metaKey) return; // без Ctrl — обычный скролл
     ev.preventDefault();
     const oldZ = state.dlgZoom || 1;
     const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
