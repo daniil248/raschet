@@ -578,6 +578,9 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.185', date: '2026-04-22', items: [
+      '<b>Финальная зачистка нативных <code>alert/confirm/prompt</code> по проекту.</b> Все остальные модули переведены на <code>rsToast/rsConfirm/rsPrompt</code>: catalog (клон/удаление/откат/скрытие/цены/контрагенты/rollback/import-mode — 9 вызовов), logistics (3 удаления), reports (удаление шаблона, импорт, PDF/DOCX ошибки — 5), schematic (text prompt, import err — 2), elements-editor (клон/удаление/добавление/режим импорта — 4), suppression-config (методика/удаление-установки/направления/участка/насадок/аксонометрия/гидравлика/спецификация/MDC-мост — 15), js/main.js (ревизии/проекты/каталог изделий/пресеты/потребители/автофиксы/bulk-edit — 29). В проекте не осталось ни одного вызова <code>alert/confirm/prompt</code>. Файлы: catalog/catalog.js, logistics/logistics.js, reports/reports.js, schematic/schematic.js, elements/elements-editor.js, suppression-config/suppression-config.js, js/main.js.',
+    ] },
     { version: '0.59.184', date: '2026-04-22', items: [
       '<b>Конфигурационные модули очищены от нативных <code>alert/confirm/prompt</code>.</b> Переведены на <code>rsToast/rsConfirm/rsPrompt</code>: rack-config (9 вызовов, шаблоны/удаление/дублирование фидов), mv-config (отмена wizard), pdu-config (outlet __custom__), mdc-config (2 alert), transformer-config (delete/save/clearCatalog), panel-config (4: del/save/clear/wiz-cancel), ups-config (6: del/edit/copy/save/clear/wiz-cancel), cable (2 alert в exportReport), battery (6: flash/del/save/clear + 2 в exportReport), shared/app-header (signOut/signIn). Callers приведены к async/await. Файлы: rack-config/rack-config.js, mv-config/mv-config.js, pdu-config/pdu-config.js, mdc-config/mdc-config.js, transformer-config/transformer-config.js, panel-config/panel-config.js, ups-config/ups-config.js, cable/cable-calc.js, battery/battery-calc.js, shared/app-header.js.',
     ] },

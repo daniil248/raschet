@@ -15,6 +15,7 @@ import * as B        from '../shared/report/blocks.js';
 import * as Catalog  from '../shared/report-catalog.js';
 import { BUILTIN_TEMPLATES, BUILTIN_VERSION, getDemoContent } from './templates-seed.js';
 import { openHelp }  from './help.js';
+import { rsToast, rsConfirm } from '../shared/dialog.js';
 
 // Версия встроенных шаблонов хранится отдельно — при смене перезаседаем
 // только builtin-записи, пользовательские не трогаем.
@@ -280,10 +281,10 @@ function onClone() {
   });
 }
 
-function onDelete() {
+async function onDelete() {
   const rec = state.selectedId ? Catalog.getTemplate(state.selectedId) : null;
   if (!rec || rec.source === 'builtin') return;
-  if (!confirm(`Удалить шаблон «${rec.name}»?`)) return;
+  if (!(await rsConfirm(`Удалить шаблон «${rec.name}»?`, '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
   Catalog.removeTemplate(rec.id);
   state.selectedId = null;
   renderList();
@@ -319,11 +320,11 @@ $fileImport.addEventListener('change', async () => {
   const text = await f.text();
   try {
     const res = Catalog.importCatalogJSON(text, 'merge');
-    alert(`Импорт завершён. Добавлено: ${res.added}, обновлено: ${res.updated}, всего: ${res.total}.`);
+    rsToast(`Импорт завершён. Добавлено: ${res.added}, обновлено: ${res.updated}, всего: ${res.total}.`, 'ok');
     renderList();
     renderDetail();
   } catch (e) {
-    alert('Ошибка импорта: ' + e.message);
+    rsToast('Ошибка импорта: ' + e.message, 'err');
   }
   $fileImport.value = '';
 });
@@ -334,7 +335,7 @@ async function onPdf() {
   const tpl = Report.createTemplate(rec.template);
   if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
   try { await Report.exportPDF(tpl, rec.name || 'report'); }
-  catch (e) { alert('Не удалось сформировать PDF: ' + e.message); }
+  catch (e) { rsToast('Не удалось сформировать PDF: ' + e.message, 'err'); }
 }
 
 async function onDocx() {
@@ -343,7 +344,7 @@ async function onDocx() {
   const tpl = Report.createTemplate(rec.template);
   if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
   try { await Report.exportDOCX(tpl, rec.name || 'report'); }
-  catch (e) { alert('Не удалось сформировать DOCX: ' + e.message); }
+  catch (e) { rsToast('Не удалось сформировать DOCX: ' + e.message, 'err'); }
 }
 
 // ——— события ———

@@ -14,6 +14,7 @@ import {
 } from '../shared/element-library.js';
 import { initCatalogBridge } from '../shared/catalog-bridge.js';
 import { createElement } from '../shared/element-schemas.js';
+import { rsConfirm, rsPrompt } from '../shared/dialog.js';
 
 // Важно: bridge регистрирует legacy-каталоги как builtin — иначе список
 // будет пустой (elements/ страница не загружает engine).
@@ -142,10 +143,10 @@ function editElement(id) {
   openEditModal({ title: 'Редактирование: ' + el.label, element: el });
 }
 
-function doClone(id) {
+async function doClone(id) {
   const el = getElement(id);
   if (!el) return flash('Элемент не найден', 'error');
-  const newName = prompt('Имя клона:', (el.label || id) + ' (копия)');
+  const newName = await rsPrompt('Имя клона:', (el.label || id) + ' (копия)');
   if (!newName) return;
   try {
     const cloned = cloneElement(id, newName);
@@ -156,11 +157,11 @@ function doClone(id) {
   }
 }
 
-function doDelete(id) {
+async function doDelete(id) {
   const el = getElement(id);
   if (!el) return;
   if (el.builtin) return flash('Встроенные нельзя удалить', 'warn');
-  if (!confirm('Удалить элемент «' + (el.label || id) + '»?')) return;
+  if (!(await rsConfirm('Удалить элемент «' + (el.label || id) + '»?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
   const ok = removeElement(id);
   flash(ok ? 'Удалено' : 'Не удалось удалить', ok ? 'success' : 'error');
   if (ok) render();
@@ -280,8 +281,8 @@ function wireToolbar() {
     flash('Обновлено', 'success');
   });
 
-  document.getElementById('btn-add').addEventListener('click', () => {
-    const id = prompt('ID нового элемента (например "my-panel-1"):');
+  document.getElementById('btn-add').addEventListener('click', async () => {
+    const id = await rsPrompt('ID нового элемента (например "my-panel-1"):', '');
     if (!id) return;
     if (getElement(id)) return flash('Элемент с таким ID уже существует', 'error');
     openEditModal({ title: 'Новый элемент', element: { id, kind: 'custom', label: id, source: 'user' } });
@@ -305,7 +306,7 @@ function wireToolbar() {
   document.getElementById('import-file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const mode = confirm('Режим «merge» (OK) — дополнить существующие. «replace» (Cancel) — заменить всё пользовательское.') ? 'merge' : 'replace';
+    const mode = (await rsConfirm('Режим импорта', 'Merge — дополнить существующие. Replace — заменить всё пользовательское.', { okLabel: 'Merge', cancelLabel: 'Replace' })) ? 'merge' : 'replace';
     try {
       const text = await file.text();
       const result = importLibraryJSON(text, mode);

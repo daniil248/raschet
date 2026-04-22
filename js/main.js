@@ -18,6 +18,7 @@ import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-s
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
 import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES } from './engine/constants.js';
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
+import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 
 (function () {
 'use strict';
@@ -645,7 +646,7 @@ async function openRevisionsModal() {
     body.innerHTML = rows;
     body.querySelectorAll('.mrv-restore').forEach(btn => btn.addEventListener('click', async () => {
       const revId = btn.dataset.rev;
-      if (!confirm('Восстановить эту версию? Текущая схема будет заменена. Перед восстановлением автоматически сохранится текущая версия.')) return;
+      if (!(await rsConfirm('Восстановить эту версию?', 'Текущая схема будет заменена. Перед восстановлением автоматически сохранится текущая версия.', { okLabel: 'Восстановить', cancelLabel: 'Отмена' }))) return;
       try {
         // Сохраняем текущую как «backup перед восстановлением»
         const cur = window.Raschet.getScheme();
@@ -666,13 +667,13 @@ async function openRevisionsModal() {
     }));
     body.querySelectorAll('.mrv-delete').forEach(btn => btn.addEventListener('click', async () => {
       const revId = btn.dataset.rev;
-      if (!confirm('Удалить эту версию безвозвратно?')) return;
+      if (!(await rsConfirm('Удалить эту версию безвозвратно?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       await window.Storage.deleteRevision(p.id, revId);
       refresh();
     }));
   };
   modal.querySelector('#mrv-snapshot').onclick = async () => {
-    const note = prompt('Короткое описание (необязательно):', '');
+    const note = await rsPrompt('Короткое описание (необязательно):', '');
     if (note === null) return;
     const scheme = window.Raschet.getScheme();
     const author = {
@@ -867,7 +868,7 @@ function renderCurrentTab() {
     card.querySelector('.pc-open').onclick = () => openProject(p.id);
     const rn = card.querySelector('.pc-rename');
     if (rn) rn.onclick = async () => {
-      const name = prompt('Новое название проекта:', p.name);
+      const name = await rsPrompt('Новое название проекта:', p.name);
       if (!name || name === p.name) return;
       try {
         await window.Storage.renameProject(p.id, name);
@@ -876,7 +877,7 @@ function renderCurrentTab() {
     };
     const del = card.querySelector('.pc-delete');
     if (del) del.onclick = async () => {
-      if (!confirm(`Удалить проект «${p.name}»? Это действие необратимо.`)) return;
+      if (!(await rsConfirm(`Удалить проект «${p.name}»?`, 'Это действие необратимо.', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       try {
         await window.Storage.deleteProject(p.id);
         refreshProjects();
@@ -1616,12 +1617,12 @@ function renderProductCatalogList() {
 
   // wire delete
   host.querySelectorAll('[data-prod-del]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault(); e.stopPropagation();
       const id = btn.getAttribute('data-prod-del');
       const prod = list.find(p => p.id === id);
       if (!prod) return;
-      if (!confirm(`Удалить изделие «${prod.name || id}» из каталога?\nУзлы, ссылающиеся на него, сохранят значения параметров, но потеряют диапазоны.`)) return;
+      if (!(await rsConfirm(`Удалить изделие «${prod.name || id}» из каталога?`, 'Узлы, ссылающиеся на него, сохранят значения параметров, но потеряют диапазоны.', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       proj.productCatalog = list.filter(p => p.id !== id);
       // очистить productId у всех узлов, ссылавшихся на него
       try {
@@ -1663,11 +1664,11 @@ function renderProductCatalogList() {
 
 // v0.58.54: «+ новое изделие» — создаёт пустую запись в каталоге с
 // выбором типа узла (source/panel/ups/consumer/channel/transformer).
-function _piAddBlankProduct() {
-  const name = prompt('Название нового изделия:', 'Новое изделие');
+async function _piAddBlankProduct() {
+  const name = await rsPrompt('Название нового изделия:', 'Новое изделие');
   if (!name) return;
   const typeOpts = ['source', 'generator', 'panel', 'ups', 'consumer', 'channel'];
-  const type = prompt('Тип узла (source / generator / panel / ups / consumer / channel):', 'consumer');
+  const type = await rsPrompt('Тип узла (source / generator / panel / ups / consumer / channel):', 'consumer');
   if (!type || !typeOpts.includes(type)) { flash('Некорректный тип'); return; }
   const proj = window.Raschet?._state?.project;
   if (!proj) return;
@@ -1714,8 +1715,8 @@ function saveProjectInfoModal() {
   if (typeof window.Raschet.notifyChange === 'function') window.Raschet.notifyChange();
 }
 
-function resetSettingsModal() {
-  if (!confirm('Сбросить все начальные условия к значениям по умолчанию?')) return;
+async function resetSettingsModal() {
+  if (!(await rsConfirm('Сбросить все начальные условия к значениям по умолчанию?', '', { okLabel: 'Сбросить', cancelLabel: 'Отмена' }))) return;
   try { localStorage.removeItem(SETTINGS_KEY); } catch {}
   // Перезагружаем страницу чтобы engine заново инициализировал GLOBAL
   // из DEFAULTS global-settings.js (единый источник правды).
@@ -1865,11 +1866,11 @@ function wirePalettePresetActions() {
   });
 }
 
-function duplicatePresetToUser(presetId) {
+async function duplicatePresetToUser(presetId) {
   if (!window.Presets) return;
   const src = window.Presets.get(presetId);
   if (!src) return;
-  const label = prompt('Название копии:', (src.params?.name || src.title || 'Копия') + ' (копия)');
+  const label = await rsPrompt('Название копии:', (src.params?.name || src.title || 'Копия') + ' (копия)');
   if (!label) return;
   const newPreset = {
     id: 'up_' + Date.now(),
@@ -1885,39 +1886,40 @@ function duplicatePresetToUser(presetId) {
 }
 
 // Редактирование имени пресета (работает для базовых и user — базовый сохранится в overrides)
-function editPresetLabel(presetId) {
+async function editPresetLabel(presetId) {
   if (!window.Presets) return;
   const p = window.Presets.get(presetId);
   if (!p) return;
-  const label = prompt('Название:', p.params?.name || p.title || '');
+  const label = await rsPrompt('Название:', p.params?.name || p.title || '');
   if (label === null) return;
   const patch = { title: label, params: { ...(p.params || {}), name: label } };
   window.Presets.update(presetId, patch);
   renderPalettePresets();
 }
 
-function deletePreset(presetId) {
+async function deletePreset(presetId) {
   if (!window.Presets) return;
   const p = window.Presets.get(presetId);
   if (!p) return;
   const isBuiltin = window.Presets.isBuiltin && window.Presets.isBuiltin(presetId);
-  const msg = isBuiltin
-    ? `Удалить базовый пресет «${presetDisplayName(p)}»?\n\nПресет скроется из палитры. Восстановить его можно через «Сбросить библиотеку» в настройках.`
+  const title = isBuiltin
+    ? `Удалить базовый пресет «${presetDisplayName(p)}»?`
     : `Удалить пресет «${presetDisplayName(p)}»?`;
-  if (!confirm(msg)) return;
+  const detail = isBuiltin ? 'Пресет скроется из палитры. Восстановить его можно через «Сбросить библиотеку» в настройках.' : '';
+  if (!(await rsConfirm(title, detail, { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
   window.Presets.remove(presetId);
   renderPalettePresets();
   flash(isBuiltin ? 'Пресет скрыт' : 'Пресет удалён');
 }
 
-function savePresetFromCurrentSelection(type) {
+async function savePresetFromCurrentSelection(type) {
   const sel = window.Raschet?._state?.selectedId;
   const node = sel && window.Raschet?._state?.nodes?.get(sel);
   if (!node || node.type !== type) {
     flash(`Сначала выделите на холсте объект типа «${type}», затем нажмите эту кнопку`, 'warn');
     return;
   }
-  const label = prompt('Название нового пресета:', node.name || type);
+  const label = await rsPrompt('Название нового пресета:', node.name || type);
   if (!label) return;
   const params = {};
   for (const k of Object.keys(node)) {
@@ -2084,9 +2086,9 @@ function renderPresets(query) {
 
   // Click delete button → remove custom preset
   els.presetsList.querySelectorAll('.pc-del').forEach(btn => {
-    btn.addEventListener('click', e => {
+    btn.addEventListener('click', async e => {
       e.stopPropagation();
-      if (!confirm('Удалить этот элемент из библиотеки?')) return;
+      if (!(await rsConfirm('Удалить этот элемент из библиотеки?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       window.Presets.removeUser(btn.dataset.delId);
       renderPresets(els.presetsSearch.value);
       flash('Удалено');
@@ -2119,11 +2121,11 @@ function renderPresets(query) {
 
   // "+" button in category headers — add new custom preset of that type
   els.presetsList.querySelectorAll('.pc-cat-add').forEach(btn => {
-    btn.addEventListener('click', e => {
+    btn.addEventListener('click', async e => {
       e.stopPropagation();
       const type = btn.dataset.catType;
       const catName = btn.dataset.catName;
-      const title = prompt('Название нового элемента:');
+      const title = await rsPrompt('Название нового элемента:', '');
       if (!title) return;
       const DEFAULTS_MAP = {
         source:    { name: title, capacityKw: 400, on: true },
@@ -2224,22 +2226,23 @@ function editPresetViaModal(preset) {
   else if (type === 'source' || type === 'generator') R.openImpedanceModal(vNode);
   else {
     // Для типов без модалки — простой prompt
-    const name = prompt('Имя элемента:', params.name || preset.title);
-    if (name !== null) {
-      preset.params.name = name;
-      preset.title = name;
-      if (preset.custom) {
-        try {
-          const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
-          const idx = stored.findIndex(p => p.id === preset.id);
-          if (idx >= 0) stored[idx] = preset;
-          else stored.push(preset);
-          localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
-        } catch {}
+    rsPrompt('Имя элемента:', params.name || preset.title).then(name => {
+      if (name !== null) {
+        preset.params.name = name;
+        preset.title = name;
+        if (preset.custom) {
+          try {
+            const stored = JSON.parse(localStorage.getItem('raschet.userPresets.v1') || '[]');
+            const idx = stored.findIndex(p => p.id === preset.id);
+            if (idx >= 0) stored[idx] = preset;
+            else stored.push(preset);
+            localStorage.setItem('raschet.userPresets.v1', JSON.stringify(stored));
+          } catch {}
+        }
+        renderPresets(els.presetsSearch.value);
       }
-      renderPresets(els.presetsSearch.value);
-    }
-    R._presetEditCallback = null;
+      R._presetEditCallback = null;
+    });
   }
 }
 
@@ -2298,18 +2301,18 @@ function renderConsumerCatalogModal() {
   body.innerHTML = h.join('');
   // Wire edit/delete
   body.querySelectorAll('.cc-edit').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const idx = Number(btn.dataset.ccIdx);
       const cat = customs[idx];
       if (!cat) return;
-      const label = prompt('Название:', cat.label);
+      const label = await rsPrompt('Название:', cat.label);
       if (label === null) return;
       cat.label = label;
-      const catPrompt = prompt('Категория (lighting / socket / power / hvac / it / lowvoltage / process / other):', cat.category || 'other');
+      const catPrompt = await rsPrompt('Категория (lighting / socket / power / hvac / it / lowvoltage / process / other):', cat.category || 'other');
       if (catPrompt !== null && CAT_DEFS[catPrompt]) cat.category = catPrompt;
-      const cos = prompt('cos φ:', cat.cosPhi);
+      const cos = await rsPrompt('cos φ:', cat.cosPhi);
       if (cos !== null) cat.cosPhi = Number(cos) || cat.cosPhi;
-      const ku = prompt('Ки:', cat.kUse);
+      const ku = await rsPrompt('Ки:', cat.kUse);
       if (ku !== null) cat.kUse = Number(ku) ?? cat.kUse;
       window.Raschet.setGlobal({ customConsumerCatalog: customs });
       if (typeof window.__raschetPersistUserCatalog === 'function') window.__raschetPersistUserCatalog();
@@ -2317,9 +2320,9 @@ function renderConsumerCatalogModal() {
     });
   });
   body.querySelectorAll('.cc-del').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const idx = Number(btn.dataset.ccIdx);
-      if (!confirm('Удалить тип «' + (customs[idx]?.label || '') + '»?')) return;
+      if (!(await rsConfirm('Удалить тип «' + (customs[idx]?.label || '') + '»?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       customs.splice(idx, 1);
       window.Raschet.setGlobal({ customConsumerCatalog: customs });
       if (typeof window.__raschetPersistUserCatalog === 'function') window.__raschetPersistUserCatalog();
@@ -3527,10 +3530,10 @@ function renderCableTable() {
   });
   // Phase 1.20.29: автофикс всех error-линий в текущей выборке одной кнопкой
   const autofixBtn = mount.querySelector('#ct-bulk-autofix');
-  if (autofixBtn) autofixBtn.addEventListener('click', () => {
+  if (autofixBtn) autofixBtn.addEventListener('click', async () => {
     const fixable = filtered.filter(c => _ctSuggestFix(c));
     if (!fixable.length) return;
-    if (!confirm(`Применить ${fixable.length} автофиксов к ошибочным линиям в текущей выборке? Действие обратимо через Ctrl+Z.`)) return;
+    if (!(await rsConfirm(`Применить ${fixable.length} автофиксов?`, 'К ошибочным линиям в текущей выборке. Действие обратимо через Ctrl+Z.', { okLabel: 'Применить', cancelLabel: 'Отмена' }))) return;
     snap('cable-table:autofix-all:' + fixable.length);
     let applied = 0;
     for (const c of fixable) {
@@ -5087,8 +5090,8 @@ function renderProjectIssues() {
   // Phase 1.20.21: «Исправить всё» — применяет все автофиксы одним snapshot'ом
   const fixAllBtn = mount.querySelector('#pi-fix-all');
   if (fixAllBtn) {
-    fixAllBtn.addEventListener('click', () => {
-      if (!confirm(`Применить ${fixableCount} автофиксов? Действие обратимо через Ctrl+Z.`)) return;
+    fixAllBtn.addEventListener('click', async () => {
+      if (!(await rsConfirm(`Применить ${fixableCount} автофиксов?`, 'Действие обратимо через Ctrl+Z.', { okLabel: 'Применить', cancelLabel: 'Отмена' }))) return;
       if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('issues:fix-all:' + fixableCount);
       let applied = 0;
       for (const it of cableErrors) {
@@ -5108,8 +5111,8 @@ function renderProjectIssues() {
   // Phase 1.20.48: bulk-autofix всех амплитудных нарушений
   const selFixAllBtn = mount.querySelector('#pi-sel-fix-all');
   if (selFixAllBtn && selFixable.length) {
-    selFixAllBtn.addEventListener('click', () => {
-      if (!confirm(`Поднять upstream-номиналы для ${selFixable.length} пар? Ctrl+Z отменяет.`)) return;
+    selFixAllBtn.addEventListener('click', async () => {
+      if (!(await rsConfirm(`Поднять upstream-номиналы для ${selFixable.length} пар?`, 'Ctrl+Z отменяет.', { okLabel: 'Поднять', cancelLabel: 'Отмена' }))) return;
       if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('issues:sel-fix-all:' + selFixable.length);
       let applied = 0;
       // Группируем по connId: несколько пар могут делить upstream — берём max.
@@ -5795,8 +5798,8 @@ function renderConsumersTable() {
     renderConsumersTable();
     flash(`Изменено: ${affected} из ${ids.length} потребителей`);
   };
-  const askNum = (title, def, min, max) => {
-    const v = prompt(title, String(def));
+  const askNum = async (title, def, min, max) => {
+    const v = await rsPrompt(title, String(def));
     if (v == null) return null;
     const n = Number(v);
     if (!Number.isFinite(n)) return null;
@@ -5805,23 +5808,23 @@ function renderConsumersTable() {
     return n;
   };
   const demBtn = mount.querySelector('#ctc-bulk-demand');
-  if (demBtn) demBtn.addEventListener('click', () => {
-    const v = askNum('Установить P (кВт) для выделенных:', 5, 0, 100000);
+  if (demBtn) demBtn.addEventListener('click', async () => {
+    const v = await askNum('Установить P (кВт) для выделенных:', 5, 0, 100000);
     if (v != null) bulkApply((n) => { n.demandKw = v; });
   });
   const cosBtn = mount.querySelector('#ctc-bulk-cosPhi');
-  if (cosBtn) cosBtn.addEventListener('click', () => {
-    const v = askNum('Установить cos φ (0.1..1) для выделенных:', 0.92, 0.1, 1);
+  if (cosBtn) cosBtn.addEventListener('click', async () => {
+    const v = await askNum('Установить cos φ (0.1..1) для выделенных:', 0.92, 0.1, 1);
     if (v != null) bulkApply((n) => { n.cosPhi = v; });
   });
   const kuBtn = mount.querySelector('#ctc-bulk-kUse');
-  if (kuBtn) kuBtn.addEventListener('click', () => {
-    const v = askNum('Установить Kи (0..1.5) для выделенных:', 1, 0, 1.5);
+  if (kuBtn) kuBtn.addEventListener('click', async () => {
+    const v = await askNum('Установить Kи (0..1.5) для выделенных:', 1, 0, 1.5);
     if (v != null) bulkApply((n) => { n.kUse = v; });
   });
   const phBtn = mount.querySelector('#ctc-bulk-phase');
-  if (phBtn) phBtn.addEventListener('click', () => {
-    const v = prompt('Установить фазу (1ph / 3ph / dc):', '3ph');
+  if (phBtn) phBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить фазу (1ph / 3ph / dc):', '3ph');
     if (!v) return;
     if (!['1ph', '3ph', 'dc'].includes(v)) { flash('Неверное значение', 'error'); return; }
     bulkApply((n) => { n.phase = v; });
@@ -6318,7 +6321,7 @@ async function init() {
         if (msg.template.manufacturer) n.manufacturer = msg.template.manufacturer;
         if (msg.template.demandKw != null) n.demandKw = Number(msg.template.demandKw) || 0;
         if (window.Raschet.rerender) window.Raschet.rerender();
-        alert('Конфигурация стойки применена к узлу «' + (n.tag || n.name || n.id) + '».');
+        rsToast('Конфигурация стойки применена к узлу «' + (n.tag || n.name || n.id) + '».', 'ok');
       } catch (e) { console.warn('rack.apply error', e); }
     }
   });
@@ -6547,8 +6550,8 @@ async function init() {
   if (projectParamsSave) projectParamsSave.addEventListener('click', saveProjectParamsModal);
   // Сброс базовых пресетов
   const btnPresetsReset = document.getElementById('btn-presets-reset-builtins');
-  if (btnPresetsReset) btnPresetsReset.addEventListener('click', () => {
-    if (!confirm('Восстановить все скрытые базовые пресеты и сбросить их изменения?')) return;
+  if (btnPresetsReset) btnPresetsReset.addEventListener('click', async () => {
+    if (!(await rsConfirm('Восстановить все скрытые базовые пресеты и сбросить их изменения?', '', { okLabel: 'Восстановить', cancelLabel: 'Отмена' }))) return;
     if (window.Presets && typeof window.Presets.resetBuiltins === 'function') {
       window.Presets.resetBuiltins();
       renderPalettePresets();
@@ -6566,8 +6569,8 @@ async function init() {
   const btnCatalog = document.getElementById('btn-open-consumer-catalog');
   if (btnCatalog) btnCatalog.addEventListener('click', openConsumerCatalogModal);
   const btnCatalogAdd = document.getElementById('consumer-catalog-add');
-  if (btnCatalogAdd) btnCatalogAdd.addEventListener('click', () => {
-    const label = prompt('Название нового типа:');
+  if (btnCatalogAdd) btnCatalogAdd.addEventListener('click', async () => {
+    const label = await rsPrompt('Название нового типа:', '');
     if (!label) return;
     const G = window.Raschet.getGlobal();
     if (!Array.isArray(G.customConsumerCatalog)) G.customConsumerCatalog = [];

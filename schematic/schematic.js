@@ -6,6 +6,7 @@
 
 import { IEC_SYMBOLS, getSymbolGroups, getSymbolById, GRID_MM } from './iec60617-symbols.js';
 import { getSheetSize, getFrameMargins, buildSheetFrame, buildZoneMarkers, buildTitleBlock } from './iso-paper.js';
+import { rsToast, rsPrompt } from '../shared/dialog.js';
 
 // ---------------------------------------------------------------- state
 const state = {
@@ -658,12 +659,14 @@ function onCanvasDown(ev) {
   }
 
   if (state.tool === 'text') {
-    const txt = prompt('Текст:');
-    if (txt) {
-      sheet.texts.push({ id: genId('t'), x: snap(pt.x), y: snap(pt.y), text: txt });
-      pushHistory();
-      render();
-    }
+    const x = snap(pt.x), y = snap(pt.y);
+    rsPrompt('Текст:', '').then(txt => {
+      if (txt) {
+        sheet.texts.push({ id: genId('t'), x, y, text: txt });
+        pushHistory();
+        render();
+      }
+    });
     return;
   }
 
@@ -956,7 +959,7 @@ function loadProjectFile(ev) {
       relayoutSheet();
       render();
     } catch (e) {
-      alert('Не удалось открыть файл: ' + e.message);
+      rsToast('Не удалось открыть файл: ' + e.message, 'err');
     }
   };
   reader.readAsText(file);

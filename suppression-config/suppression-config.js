@@ -16,6 +16,7 @@ import { mountHelp } from '../shared/help-panel.js';
 import { mountFooter } from '../shared/module-footer.js';
 import { APP_VERSION } from '../js/engine/constants.js';
 import { MODULE_CHANGELOG } from './changelog.js';
+import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 
 const $ = id => document.getElementById(id);
 const LS_KEY = 'raschet.sup.installations.v1';
@@ -208,12 +209,7 @@ function openInstDialog(existingId) {
     if (prevNorm !== newNorm) {
       const kA = safetyFactor(newNorm, 'A'), kB = safetyFactor(newNorm, 'B');
       const k1 = leakageK1(newNorm);
-      alert(`Выбрана методика: ${NORM_LABELS[newNorm] || newNorm}\n\n`
-        + `Применяемые коэффициенты (будут использованы ВО ВСЕХ узлах расчёта):\n`
-        + `  • k безопасности Cн = k·Cmin:  A → ${kA};  B → ${kB}\n`
-        + `  • k1 (утечки в дежурном): ${k1}\n`
-        + `  • плотности/скорости авто-DN сохраняются (физика потока не меняется)\n\n`
-        + `Значения Cн, mp, mg будут пересчитаны по новой методике после закрытия диалога.`);
+      rsToast(`Методика: ${NORM_LABELS[newNorm] || newNorm}. k (A)=${kA}, k (B)=${kB}, k1=${k1}. Cн, mp, mg пересчитаются.`, 'info');
     }
   };
   document.querySelectorAll('input[name="f-inst"]').forEach(r =>
@@ -269,11 +265,11 @@ function openOpenDialog() {
         <span class="date">${new Date(i.createdAt).toLocaleDateString('ru-RU')}</span>
         <span class="del" data-del="${i.id}" title="Удалить">✕</span>
       </li>`).join('');
-    list.onclick = (e) => {
+    list.onclick = async (e) => {
       const del = e.target.closest('[data-del]');
       if (del) {
         e.stopPropagation();
-        if (confirm('Удалить установку?')) {
+        if (await rsConfirm('Удалить установку?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' })) {
           delete S.installations[del.dataset.del]; saveAll(); openOpenDialog();
         }
         return;
@@ -313,7 +309,7 @@ function renderNav() {
       <button class="sup-ibtn" data-dup="${d.id}" title="Копировать направление вместе с зонами и схемой">⧉</button>
       <button class="sup-ibtn sup-danger" data-del="${d.id}" title="Удалить">✕</button>
     </li>`).join('') + `<li class="sup-add" data-add="1">+ Добавить направление</li>`;
-  dirs.onclick = (e) => {
+  dirs.onclick = async (e) => {
     const dup = e.target.closest('[data-dup]');
     if (dup) {
       e.stopPropagation();
@@ -323,7 +319,7 @@ function renderNav() {
     const del = e.target.closest('[data-del]');
     if (del) {
       e.stopPropagation();
-      if (!confirm('Удалить направление?')) return;
+      if (!(await rsConfirm('Удалить направление?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       inst.directions = inst.directions.filter(d => d.id !== del.dataset.del);
       inst.assemblies = [];
       if (S.selected.dirId === del.dataset.del) S.selected = { kind:'inst', dirId:null };
@@ -1227,7 +1223,7 @@ function renderIso(dirId) {
         // Насадок можно ставить только в листовом узле (нет отводов)
         const hasKids = pipe.some(x => (x.parent || 'root') === seg.id);
         if (hasKids) {
-          alert('Нельзя установить насадок: от этого узла уже отходят участки (стык/отвод). Насадок ставится только на тупиковом конце.');
+          rsToast('Нельзя установить насадок: от этого узла уже отходят участки. Насадок ставится только на тупиковом конце.', 'warn');
           inp.value = seg.nozzle || 'none';
           return;
         }
@@ -1242,7 +1238,7 @@ function renderIso(dirId) {
   };
   // Delete any segment + its subtree
   list.querySelectorAll('.seg-del-one').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = btn.dataset.id;
       const inst = currentInst();
@@ -1254,7 +1250,7 @@ function renderIso(dirId) {
       const msg = descCount > 0
         ? `Удалить участок и ${descCount} дочерних? (всего ${descCount+1})`
         : 'Удалить этот участок?';
-      if (!confirm(msg)) return;
+      if (!(await rsConfirm(msg, '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       removeSegAndDescendants(target, id);
       if (V3.selectedNode === id) V3.selectedNode = 'root';
       onPipelineChange(target); renderIso(S.isoDirId);
@@ -1296,7 +1292,7 @@ function openIso(dirId) {
 
 /** «Общая аксонометрия»: если централизованная система или фактически одна
  *  сборка/направление — объединённый просмотр; иначе — выбор направления. */
-function openIsoAll() {
+async function openIsoAll() {
   const inst = currentInst(); if (!inst) return;
   const central = inst.installType === 'centralized';
   const dirs = inst.directions || [];
@@ -1306,9 +1302,9 @@ function openIsoAll() {
   }
   // Несколько направлений с раздельными сборками — дать выбор
   const labels = dirs.map((d, i) => `${i + 1}) ${d.name}`).join('\n');
-  const ans = prompt(
-    `Система модульная: в ней ${dirs.length} направлений с отдельными сборками.\n` +
-    `Выберите номер направления для просмотра (0 — все вместе):\n\n${labels}`, '1');
+  const ans = await rsPrompt(
+    `Модульная система: ${dirs.length} направлений. Выберите номер (0 — все вместе):\n${labels}`,
+    '1');
   if (ans === null) return;
   const idx = parseInt(ans, 10);
   if (idx === 0) openIso(null);
@@ -1465,11 +1461,11 @@ function setupIsoHandlers() {
       const target = S.isoDirId
         ? inst.directions.find(d => d.id === S.isoDirId)
         : inst.directions[0];
-      if (!target) { alert('Нет направления.'); return; }
+      if (!target) { rsToast('Нет направления.', 'warn'); return; }
       const axis = b.dataset.axis;
       // Запрет построения по уже занятому направлению от текущего узла.
       const conflict = findAxisConflict(target.pipeline, V3.selectedNode, axis);
-      if (conflict) { alert(conflict); return; }
+      if (conflict) { rsToast(conflict, 'warn'); return; }
       // Снап длины к шагу 0,05 м
       const Lraw = Math.max(0.05, +$('seg-L').value || 1);
       const Lsnap = Math.round(Lraw / 0.05) * 0.05;
@@ -1494,13 +1490,13 @@ function setupIsoHandlers() {
     });
   });
 
-  $('seg-del').addEventListener('click', () => {
+  $('seg-del').addEventListener('click', async () => {
     const inst = currentInst();
     const target = S.isoDirId
       ? inst.directions.find(d => d.id === S.isoDirId)
       : null;
     if (!target || !target.pipeline.length) return;
-    if (!confirm('Удалить последний добавленный участок?')) return;
+    if (!(await rsConfirm('Удалить последний добавленный участок?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
     // Find last segment; if it is currently selected endpoint, clear selection
     const last = target.pipeline.pop();
     if (V3.selectedNode === last.id) V3.selectedNode = last.parent || 'root';
@@ -1520,7 +1516,7 @@ function setupIsoHandlers() {
 /* ------------------- Hydraulics ------------------- */
 function openHydraulic() {
   const inst = currentInst();
-  if (!inst.directions.length) { alert('Нет направлений.'); return; }
+  if (!inst.directions.length) { rsToast('Нет направлений.', 'warn'); return; }
   const parts = inst.directions.map(d => {
     const r = computeDir(d);
     if (!r) return `<h3 style="color:#0d47a1;">${esc(d.name)}</h3><div style="color:#888;">Нет данных.</div>`;
@@ -1566,7 +1562,7 @@ function openHydraulic() {
 /* ------------------- Report ------------------- */
 function openReport() {
   const inst = currentInst();
-  if (!inst.directions.length) { alert('Нет направлений для расчёта.'); return; }
+  if (!inst.directions.length) { rsToast('Нет направлений для расчёта.', 'warn'); return; }
   // Считаем каждое направление (= отдельная система), сохраняем результат
   // для общей спецификации.
   const perDir = inst.directions.map((d, i) => {
@@ -2136,7 +2132,7 @@ function buildSpecRows() {
 
 function openSpec() {
   const inst = currentInst();
-  if (!inst.directions.length) { alert('Нет направлений.'); return; }
+  if (!inst.directions.length) { rsToast('Нет направлений.', 'warn'); return; }
   const r = buildSpecRows();
   let no = 1;
   const COLGROUP = `<colgroup>
@@ -2283,9 +2279,9 @@ function init() {
 
   // Dir actions
   $('dir-edit').addEventListener('click', () => openDirDialog(S.selected.dirId));
-  $('dir-del').addEventListener('click', () => {
+  $('dir-del').addEventListener('click', async () => {
     const inst = currentInst();
-    if (!confirm('Удалить направление?')) return;
+    if (!(await rsConfirm('Удалить направление?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
     inst.directions = inst.directions.filter(d => d.id !== S.selected.dirId);
     inst.assemblies = [];
     S.selected = { kind:'inst', dirId:null };
@@ -2512,7 +2508,7 @@ function init() {
    Если localStorage['raschet.mdcToSuppression.v1'] содержит свежую запись
    (< 24 ч) — показываем confirm и создаём установку из переданных зон.
    Формат payload — см. mdc-config/mdc-config.js::sendToSuppression(). */
-function maybeImportFromMdc() {
+async function maybeImportFromMdc() {
   const KEY = 'raschet.mdcToSuppression.v1';
   let payload;
   try { payload = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { payload = null; }
@@ -2524,8 +2520,10 @@ function maybeImportFromMdc() {
   if (!inst0) return;
   const zonesCount = (inst0.directions || []).reduce((s, d) => s + (d.zones?.length || 0), 0);
   const dirCount = (inst0.directions || []).length;
-  const msg = `Конфигуратор ЦОД передал геометрию ${zonesCount} помещений (${dirCount} направления).\n\nСоздать установку АГПТ «${inst0.name}»?\n\nПосле создания запись из мостового ключа будет удалена.`;
-  const ok = confirm(msg);
+  const ok = await rsConfirm(
+    `Создать установку АГПТ «${inst0.name}»?`,
+    `Конфигуратор ЦОД передал геометрию ${zonesCount} помещений (${dirCount} направления). После создания запись из мостового ключа будет удалена.`,
+    { okLabel: 'Создать', cancelLabel: 'Отмена' });
   if (!ok) return;
 
   // Создаём установку на базе дефолтов + переопределяем нужными полями.
@@ -2556,7 +2554,7 @@ function maybeImportFromMdc() {
   saveAll();
   try { localStorage.removeItem(KEY); } catch {}
   renderAll();
-  alert(`Установка «${inst.name}» создана (${zonesCount} зон в ${dirCount} направлениях).\nПроверьте норматив/ГОТВ/серию модулей в «Установка → Параметры», затем «Диаметры авто» для подбора DN.`);
+  rsToast(`Установка «${inst.name}» создана (${zonesCount} зон в ${dirCount} направлениях). Проверьте параметры и запустите «Диаметры авто».`, 'ok');
 }
 
 document.addEventListener('DOMContentLoaded', init);

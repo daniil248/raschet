@@ -31,6 +31,7 @@ import {
   onCounterpartiesChange, COUNTERPARTY_TYPES, validateInn, makeCounterpartyId,
 } from '../shared/counterparty-catalog.js';
 import { initCatalogBridge } from '../shared/catalog-bridge.js';
+import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 
 initCatalogBridge();
 
@@ -382,7 +383,7 @@ function renderElementsTab() {
   container.querySelectorAll('tr[data-id]').forEach(row => {
     const id = row.dataset.id;
     row.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         const act = btn.dataset.act;
         if (act === 'view') openViewElementModal(id);
         else if (act === 'add-price') openPriceModal({ elementId: id });
@@ -391,20 +392,20 @@ function renderElementsTab() {
         else if (act === 'view-prices') { elFilters.search = ''; switchTab('prices'); priceFilters.elementId = id; renderPricesTab(); }
         else if (act === 'edit') openAddElementModal(id);
         else if (act === 'clone') {
-          const name = prompt('Имя клона:', (getElement(id)?.label || '') + ' (копия)');
+          const name = await rsPrompt('Имя клона:', (getElement(id)?.label || '') + ' (копия)');
           if (name) { try { cloneElement(id, name); flash('Клонировано', 'success'); } catch (e) { flash(e.message, 'error'); } }
         }
         else if (act === 'del') {
-          if (confirm('Удалить?')) { removeElement(id); flash('Удалено', 'success'); }
+          if (await rsConfirm('Удалить?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' })) { removeElement(id); flash('Удалено', 'success'); }
         }
         else if (act === 'reset') {
-          if (confirm('Откатить правки к исходным данным?')) {
+          if (await rsConfirm('Откатить правки к исходным данным?', '', { okLabel: 'Откатить', cancelLabel: 'Отмена' })) {
             try { resetBuiltinOverride(id); flash('Откачено', 'success'); }
             catch (err) { flash(err.message, 'error'); }
           }
         }
         else if (act === 'tombstone') {
-          if (confirm('Скрыть этот встроенный элемент?\n\nВосстановить можно через «↺» в списке правок встроенных.')) {
+          if (await rsConfirm('Скрыть этот встроенный элемент?', 'Восстановить можно через «↺» в списке правок встроенных.', { okLabel: 'Скрыть', cancelLabel: 'Отмена' })) {
             try { removeElement(id); flash('Скрыто', 'success'); }
             catch (err) { flash(err.message, 'error'); }
           }
@@ -938,8 +939,8 @@ function openViewElementModal(id) {
     cloneBtn.textContent = 'Клонировать для редактирования';
     cloneBtn.className = 'view-clone-btn';
     cloneBtn.style.marginRight = 'auto';
-    cloneBtn.onclick = () => {
-      const name = prompt('Имя клона:', (el.label || id) + ' (копия)');
+    cloneBtn.onclick = async () => {
+      const name = await rsPrompt('Имя клона:', (el.label || id) + ' (копия)');
       if (!name) return;
       try {
         const c = cloneElement(id, name);
@@ -1249,9 +1250,9 @@ function renderPricesTab() {
   container.querySelectorAll('tr[data-id]').forEach(row => {
     const id = row.dataset.id;
     row.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         if (btn.dataset.act === 'edit') openPriceModal(null, id);
-        else if (btn.dataset.act === 'del') { if (confirm('Удалить запись цены?')) { removePrice(id); flash('Удалено', 'success'); } }
+        else if (btn.dataset.act === 'del') { if (await rsConfirm('Удалить запись цены?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' })) { removePrice(id); flash('Удалено', 'success'); } }
       };
     });
   });
@@ -1375,9 +1376,9 @@ function renderCounterpartiesTab() {
   container.querySelectorAll('tr[data-id]').forEach(row => {
     const id = row.dataset.id;
     row.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         if (btn.dataset.act === 'edit') openCpModal(id);
-        else if (btn.dataset.act === 'del') { if (confirm('Удалить контрагента?')) { removeCounterparty(id); flash('Удалено', 'success'); } }
+        else if (btn.dataset.act === 'del') { if (await rsConfirm('Удалить контрагента?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' })) { removeCounterparty(id); flash('Удалено', 'success'); } }
       };
     });
   });
@@ -1523,10 +1524,10 @@ function renderImportHistory() {
   html.push('</tbody></table>');
   wrap.innerHTML = html.join('');
   wrap.querySelectorAll('[data-act="rollback"]').forEach(btn => {
-    btn.onclick = () => {
+    btn.onclick = async () => {
       const src = btn.dataset.src;
       const bucket = Number(btn.dataset.bucket) || 0;
-      if (!confirm(`Удалить все цены из партии «${src}» (${new Date(bucket).toLocaleString('ru-RU')})?\nЭто действие необратимо.`)) return;
+      if (!(await rsConfirm(`Удалить все цены из партии «${src}»?`, `${new Date(bucket).toLocaleString('ru-RU')}. Это действие необратимо.`, { okLabel: 'Откатить', cancelLabel: 'Отмена' }))) return;
       const removed = rollbackImportBatch(src, bucket);
       flash(`Удалено записей: ${removed}`, removed > 0 ? 'success' : 'warn');
       renderImportHistory();
@@ -1553,7 +1554,7 @@ function wireImportTab() {
   jsonFile.onchange = async e => {
     const f = e.target.files[0];
     if (!f) return;
-    const mode = confirm('Merge (OK) или Replace (Cancel)?') ? 'merge' : 'replace';
+    const mode = (await rsConfirm('Режим импорта', 'Объединить с существующими (Merge) или заменить всё (Replace)?', { okLabel: 'Merge', cancelLabel: 'Replace' })) ? 'merge' : 'replace';
     try {
       const text = await f.text();
       const result = (jsonMode === 'prices' ? importPricesJSON : importLibraryJSON)(text, mode);

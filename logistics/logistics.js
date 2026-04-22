@@ -13,6 +13,7 @@ import {
   calcShipmentCost,
 } from '../shared/logistics-schemas.js';
 import { listCounterparties } from '../shared/counterparty-catalog.js';
+import { rsConfirm } from '../shared/dialog.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -104,10 +105,10 @@ function renderShipmentsTab() {
   container.querySelectorAll('tr[data-id]').forEach(row => {
     const id = row.dataset.id;
     row.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         if (btn.dataset.act === 'edit') openShipmentModal(id);
         else if (btn.dataset.act === 'print') printShipment(id);
-        else if (btn.dataset.act === 'del' && confirm('Удалить?')) { removeShipment(id); flash('Удалено', 'success'); }
+        else if (btn.dataset.act === 'del' && (await rsConfirm('Удалить?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) { removeShipment(id); flash('Удалено', 'success'); }
       };
     });
   });
@@ -348,9 +349,9 @@ function renderWarehousesTab() {
   container.querySelectorAll('tr[data-id]').forEach(row => {
     const id = row.dataset.id;
     row.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         if (btn.dataset.act === 'edit') openWarehouseModal(id);
-        else if (btn.dataset.act === 'del' && confirm('Удалить склад?')) { removeWarehouse(id); flash('Удалено', 'success'); }
+        else if (btn.dataset.act === 'del' && (await rsConfirm('Удалить склад?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) { removeWarehouse(id); flash('Удалено', 'success'); }
       };
     });
   });
@@ -429,9 +430,9 @@ function renderRatesTab() {
   container.querySelectorAll('tr[data-id]').forEach(row => {
     const id = row.dataset.id;
     row.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         if (btn.dataset.act === 'edit') openRateModal(id);
-        else if (btn.dataset.act === 'del' && confirm('Удалить?')) { removeCarrierRate(id); flash('Удалено', 'success'); }
+        else if (btn.dataset.act === 'del' && (await rsConfirm('Удалить?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) { removeCarrierRate(id); flash('Удалено', 'success'); }
       };
     });
   });
