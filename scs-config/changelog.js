@@ -3,6 +3,15 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.25',
+    date: '2026-04-22',
+    items: [
+      'rack.html — layout перестроен: <b>центральная колонка</b> (main.sc-mapcol) теперь содержит карту юнитов + «Размещение в стойке» + «СКС-матрица» + «Проверки» + «BOM» (всё под главным планом стойки). <b>Правый сайдбар</b> (aside.sc-preview) — каталог + тележка + склад. Левый сайдбар — список шкафов проекта.',
+      'Единый resizable-сайдбар во всех подпрограммах: <code>shared/sidebar-resizer.js</code> + CSS-переменные <code>--rs-sidebar-left-w / --rs-sidebar-right-w / --rs-sidebar-min-w / --rs-sidebar-max-w</code> в <code>shared/styles/base.css</code>. Ширина хранится в localStorage (<code>raschet.rs-sidebar-left-w / -right-w</code>) и действует во всех модулях, где aside помечен классом <code>.rs-sidebar</code> + <code>.rs-sidebar-left/right</code> и содержит <code>.rs-sidebar-resizer</code>. <code>.sc-grid-3</code> теперь использует <code>var(--rs-sidebar-left-w)</code> и <code>var(--rs-sidebar-right-w)</code>.',
+      'Fix: drag-n-drop внутрь пустого U внутри той же стойки (и между стойками) не срабатывал из-за отсутствия класса <code>sc-unitmap-svg</code> на SVG — <code>pointermove</code> искал <code>overEl.closest("svg.sc-unitmap-svg")</code> и не находил, выставляя valid=false. Класс добавлен в <code>renderUnitMap()</code>.',
+    ],
+  },
+  {
     version: '0.1.24',
     date: '2026-04-22',
     items: [

@@ -264,3 +264,40 @@ code, kbd, samp, pre { font-family: var(--rs-font-mono); }
 .rs-breadcrumb > .sep { color: var(--rs-fg-subtle); }
 .rs-breadcrumb > strong { color: var(--rs-fg); font-weight: 600; }
 .rs-breadcrumb > .spacer { flex: 1; }
+
+/* =========================================================================
+   v0.59.180 — Универсальный resizable sidebar для всех подпрограмм.
+   Единая ширина по умолчанию (var --rs-sidebar-left-w / --rs-sidebar-right-w),
+   сохраняется в localStorage через shared/sidebar-resizer.js.
+   HTML:
+     <aside class="rs-sidebar rs-sidebar-left">...контент...
+       <div class="rs-sidebar-resizer"></div></aside>
+     <aside class="rs-sidebar rs-sidebar-right">
+       <div class="rs-sidebar-resizer"></div>...контент...</aside>
+   ========================================================================= */
+:root {
+  --rs-sidebar-left-w:  240px;
+  --rs-sidebar-right-w: 360px;
+  --rs-sidebar-min-w:   180px;
+  --rs-sidebar-max-w:   560px;
+}
+.rs-sidebar {
+  position: relative;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.rs-sidebar-resizer {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  background: transparent;
+  transition: background 0.15s;
+  z-index: 20;
+}
+.rs-sidebar-left  .rs-sidebar-resizer { right: -3px; }
+.rs-sidebar-right .rs-sidebar-resizer { left:  -3px; }
+.rs-sidebar-resizer:hover,
+.rs-sidebar-resizer.rs-dragging { background: var(--rs-accent); }
+body.rs-sidebar-resizing { cursor: ew-resize !important; user-select: none; }

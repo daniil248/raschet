@@ -281,7 +281,15 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
 /* v0.59.179: карта юнитов в центре (main.sc-mapcol), каталог+таблицы — справа.
    Центр — самая широкая колонка; правая колонка — минимум 360px чтобы
    таблицы каталога/размещения не схлопывались. */
-.sc-grid-3 { grid-template-columns: 220px minmax(0, 1.5fr) minmax(360px, 1fr); }
+/* v0.59.180: ширины сайдбаров управляются CSS-переменными из shared/styles/base.css
+   (--rs-sidebar-left-w / --rs-sidebar-right-w) и меняются перетаскиванием ручек
+   .rs-sidebar-resizer (см. shared/sidebar-resizer.js). */
+.sc-grid-3 {
+  grid-template-columns:
+    var(--rs-sidebar-left-w, 240px)
+    minmax(0, 1fr)
+    var(--rs-sidebar-right-w, 360px);
+}
 .sc-mapcol { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 @media (max-width: 1280px) {
   .sc-grid-3 { grid-template-columns: 180px 1fr; }

@@ -698,7 +698,7 @@ function renderUnitMap(hostId, opts) {
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
   const totalW = svgW + extraRight;
   const z = opts.big ? (state.dlgZoom || 1) : 1;
-  const svgEl = `<svg id="${svgId}" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32">
+  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32">
     ${rects.join('')}
     ${deviceGroups}
     ${wires}
