@@ -30,14 +30,57 @@
    схемы: можно спроектировать стойку отдельно для закупки.
    ========================================================================= */
 
-const LS_RACK      = 'rack-config.templates.v1';
-const LS_CATALOG   = 'scs-config.catalog.v1';
-const LS_CONTENTS  = 'scs-config.contents.v1';
-const LS_MATRIX    = 'scs-config.matrix.v1';
-const LS_TEMPLATES = 'scs-config.assemblyTemplates.v1'; // 1.24.7
-const LS_CART      = 'scs-config.cart.v1';              // 1.24.28
-const LS_RACKTAGS  = 'scs-config.rackTags.v1';          // 1.24.23 — { [rackId]: tag }
-const LS_WAREHOUSE = 'scs-config.warehouse.v1';         // 1.24.32 — склад проекта
+import {
+  ensureDefaultProject, getActiveProjectId, projectKey
+} from '../shared/project-storage.js';
+
+const LS_RACK      = 'rack-config.templates.v1';        // библиотека корпусов (глобальная)
+const LS_CATALOG   = 'scs-config.catalog.v1';           // глобальный каталог IT-типов
+const LS_TEMPLATES = 'scs-config.assemblyTemplates.v1'; // глобальная библиотека шаблонов сборок
+
+// Проектные ключи — переопределяются в rescopeToActiveProject() при запуске.
+let LS_CONTENTS  = 'scs-config.contents.v1';
+let LS_MATRIX    = 'scs-config.matrix.v1';
+let LS_CART      = 'scs-config.cart.v1';
+let LS_RACKTAGS  = 'scs-config.rackTags.v1';
+let LS_WAREHOUSE = 'scs-config.warehouse.v1';
+
+const OLD_SCS_KEYS = {
+  contents:  'scs-config.contents.v1',
+  matrix:    'scs-config.matrix.v1',
+  cart:      'scs-config.cart.v1',
+  rackTags:  'scs-config.rackTags.v1',
+  warehouse: 'scs-config.warehouse.v1',
+};
+
+function rescopeToActiveProject() {
+  ensureDefaultProject();
+  const pid = getActiveProjectId();
+  LS_CONTENTS  = projectKey(pid, 'scs-config', 'contents.v1');
+  LS_MATRIX    = projectKey(pid, 'scs-config', 'matrix.v1');
+  LS_CART      = projectKey(pid, 'scs-config', 'cart.v1');
+  LS_RACKTAGS  = projectKey(pid, 'scs-config', 'rackTags.v1');
+  LS_WAREHOUSE = projectKey(pid, 'scs-config', 'warehouse.v1');
+  const pairs = [
+    [OLD_SCS_KEYS.contents,  LS_CONTENTS],
+    [OLD_SCS_KEYS.matrix,    LS_MATRIX],
+    [OLD_SCS_KEYS.cart,      LS_CART],
+    [OLD_SCS_KEYS.rackTags,  LS_RACKTAGS],
+    [OLD_SCS_KEYS.warehouse, LS_WAREHOUSE],
+  ];
+  let migrated = 0;
+  for (const [oldK, newK] of pairs) {
+    if (oldK === newK) continue;
+    try {
+      if (localStorage.getItem(newK) == null && localStorage.getItem(oldK) != null) {
+        localStorage.setItem(newK, localStorage.getItem(oldK));
+        migrated++;
+      }
+    } catch {}
+  }
+  return { pid, migrated };
+}
+rescopeToActiveProject();
 
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
 const DEFAULT_CATALOG = [

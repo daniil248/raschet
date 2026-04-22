@@ -13,6 +13,12 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.224', date: '2026-04-22', items: [
+      '🔀 Фаза 1.27.3 — scs-config (содержимое шкафов, теги, корзина, склад проекта) тоже переведён на проектный неймспейс. Ключи contents/matrix/cart/rackTags/warehouse.v1 → raschet.project.<pid>.scs-config.<key>. scs-design читает эти данные тоже через проектный неймспейс (scs-design и scs-config теперь «в одном проекте»).',
+      'Одноразовая миграция при первом открытии любого модуля из пары scs-config / scs-config/inventory / scs-config/racks / scs-design — глобальные ключи копируются в активный проект, старые оставлены резервом.',
+      'Что осталось глобальным в scs-config: rack-config.templates.v1 (корпуса = библиотека), scs-config.catalog.v1 (каталог IT-типов), scs-config.assemblyTemplates.v1 (шаблоны сборок = библиотека).',
+      'Файлы: scs-config/{scs-config.js, inventory.js, racks-list.js (rescopeToActiveProject + миграция)}, scs-design/scs-design.js (LS_CONTENTS/LS_RACKTAGS → project-scoped).',
+    ] },
     { version: '0.59.223', date: '2026-04-22', items: [
       '🔀 Фаза 1.27.1 — scs-design переведён на проектный неймспейс. LS-ключи selection.v1 / links.v1 / plan.v1 теперь хранятся как raschet.project.<pid>.scs-design.<key>. Одноразовая миграция: если в новом ключе пусто, а в старом (глобальном) есть данные — автоматически копируются в активный проект при первом открытии. Старые ключи оставлены как резерв (удалятся в 1.27.4 после полного backup-экспорта).',
       'В верхней части модуля — бейдж «Активный проект: <имя>» со ссылкой на /projects для смены/управления. При отсутствии активного проекта — ссылка на создание.',

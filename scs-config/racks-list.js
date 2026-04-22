@@ -3,12 +3,25 @@
    Клик по строке → переход в rack.html?rackId=<id>.
    Inline-действие «присвоить тег» — быстро превращает черновик в реальную стойку. */
 
-const LS_RACK      = 'rack-config.templates.v1';
-const LS_CONTENTS  = 'scs-config.contents.v1';
-const LS_RACKTAGS  = 'scs-config.rackTags.v1';
-const LS_CATALOG   = 'scs-config.catalog.v1';
-const LS_CART      = 'scs-config.cart.v1';
-const LS_WAREHOUSE = 'scs-config.warehouse.v1';
+import { ensureDefaultProject, getActiveProjectId, projectKey } from '../shared/project-storage.js';
+
+const LS_RACK    = 'rack-config.templates.v1';
+const LS_CATALOG = 'scs-config.catalog.v1';
+
+// Проектные ключи — rescope при загрузке.
+let LS_CONTENTS  = 'scs-config.contents.v1';
+let LS_RACKTAGS  = 'scs-config.rackTags.v1';
+let LS_CART      = 'scs-config.cart.v1';
+let LS_WAREHOUSE = 'scs-config.warehouse.v1';
+
+(function rescope(){
+  ensureDefaultProject();
+  const pid = getActiveProjectId();
+  LS_CONTENTS  = projectKey(pid, 'scs-config', 'contents.v1');
+  LS_RACKTAGS  = projectKey(pid, 'scs-config', 'rackTags.v1');
+  LS_CART      = projectKey(pid, 'scs-config', 'cart.v1');
+  LS_WAREHOUSE = projectKey(pid, 'scs-config', 'warehouse.v1');
+})();
 
 const $ = id => document.getElementById(id);
 const loadJson = (k, f) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : f; } catch { return f; } };

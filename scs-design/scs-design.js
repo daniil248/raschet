@@ -12,8 +12,9 @@ import {
 
 const LS_RACK      = 'rack-config.templates.v1';       // библиотека шаблонов, глобально
 const LS_CATALOG   = 'scs-config.catalog.v1';          // глобальный каталог IT
-const LS_CONTENTS  = 'scs-config.contents.v1';         // scs-config содержимое (1.27.3 → проект)
-const LS_RACKTAGS  = 'scs-config.rackTags.v1';         // scs-config теги (1.27.3 → проект)
+// LS_CONTENTS / LS_RACKTAGS переведены на проектный неймспейс (1.27.3).
+let LS_CONTENTS    = 'scs-config.contents.v1';
+let LS_RACKTAGS    = 'scs-config.rackTags.v1';
 
 // Проектные данные — в неймспейсе активного проекта.
 // Ключи инициализируются в rescopeToActiveProject() один раз при запуске.
@@ -50,6 +51,9 @@ function rescopeToActiveProject() {
   LS_SELECTION = projectKey(pid, 'scs-design', 'selection.v1');
   LS_LINKS     = projectKey(pid, 'scs-design', 'links.v1');
   LS_PLAN      = projectKey(pid, 'scs-design', 'plan.v1');
+  // scs-config shared проектные ключи (1.27.3) — читаем уже из проектного неймспейса.
+  LS_CONTENTS  = projectKey(pid, 'scs-config', 'contents.v1');
+  LS_RACKTAGS  = projectKey(pid, 'scs-config', 'rackTags.v1');
   // Одноразовая миграция: если в новом ключе пусто, а в старом есть — копируем.
   const pairs = [
     [OLD_KEYS.selection, LS_SELECTION],
