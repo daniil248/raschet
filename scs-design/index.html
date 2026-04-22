@@ -54,6 +54,20 @@
         <h2>Меж-шкафные связи</h2>
         <div id="sd-links-list"></div>
       </div>
+
+      <div class="sd-card">
+        <h2>Кабельный журнал (BOM СКС)</h2>
+        <p class="muted" style="margin-bottom:8px">
+          Агрегация по типу кабеля: количество линий + суммарная длина
+          с коэффициентом запаса 1.3 (манхэттен × запас). Линии без
+          указанной длины в сумму не попадают, но считаются.
+        </p>
+        <div id="sd-bom"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" id="sd-export-csv" class="sd-btn-export">⬇ Экспорт CSV (кабельный журнал)</button>
+          <button type="button" id="sd-export-links-csv" class="sd-btn-export">⬇ Экспорт CSV (все связи)</button>
+        </div>
+      </div>
     </section>
 
     <!-- ========== Вкладка План зала ========== -->

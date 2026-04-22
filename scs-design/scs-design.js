@@ -230,9 +230,11 @@ function renderLinksList() {
   const links = getLinks();
   if (!links.length) {
     host.innerHTML = `<div class="sd-empty-state">Пока нет ни одной меж-шкафной связи. Кликните на устройство в одной стойке, затем на устройство в другой — появится связь.</div>`;
+    renderBom();
     return;
   }
   const opts = CABLE_TYPES.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+  // сначала таблицу нарисуем, BOM — отдельной функцией
   host.innerHTML = `
     <table class="sd-links-table">
       <thead>
@@ -281,15 +283,138 @@ function renderLinksList() {
       const cur = getLinks().filter(x => x.id !== id);
       setLinks(cur);
       renderLinksList();
+      renderBom();
     });
   });
+  renderBom();
 }
+/* ---------- BOM (cable journal) ---------- */
+const BOM_RESERVE = 1.3; // коэфф. запаса длины
+
+function renderBom() {
+  const host = document.getElementById('sd-bom'); if (!host) return;
+  const links = getLinks();
+  if (!links.length) { host.innerHTML = `<div class="muted">Пока нет связей — BOM пуст.</div>`; return; }
+
+  const byType = new Map();
+  let totalLinesAll = 0, totalLenAll = 0, totalLenRawAll = 0, withoutLen = 0;
+  for (const l of links) {
+    totalLinesAll++;
+    const t = l.cableType || 'other';
+    if (!byType.has(t)) byType.set(t, { lines: 0, lenRaw: 0, withoutLen: 0 });
+    const row = byType.get(t);
+    row.lines++;
+    if (l.lengthM != null && !Number.isNaN(+l.lengthM)) {
+      row.lenRaw += +l.lengthM;
+      totalLenRawAll += +l.lengthM;
+    } else {
+      row.withoutLen++;
+      withoutLen++;
+    }
+  }
+  const rows = [];
+  const cableLabel = id => (CABLE_TYPES.find(c => c.id === id)?.label) || id;
+  for (const [t, r] of byType.entries()) {
+    const lenWithRes = r.lenRaw * BOM_RESERVE;
+    totalLenAll += lenWithRes;
+    rows.push(`<tr>
+      <td>${escapeHtml(cableLabel(t))}</td>
+      <td class="num">${r.lines}</td>
+      <td class="num">${r.lenRaw ? r.lenRaw.toFixed(1) : '—'}</td>
+      <td class="num">${r.lenRaw ? lenWithRes.toFixed(1) : '—'}</td>
+      <td class="num">${r.withoutLen || ''}</td>
+    </tr>`);
+  }
+  host.innerHTML = `
+    <table class="sd-bom-table">
+      <thead><tr>
+        <th>Тип кабеля</th>
+        <th class="num">Линий</th>
+        <th class="num">Σ длин, м</th>
+        <th class="num">С запасом ×${BOM_RESERVE}, м</th>
+        <th class="num">Без длины</th>
+      </tr></thead>
+      <tbody>
+        ${rows.join('')}
+        <tr class="total">
+          <td>Итого</td>
+          <td class="num">${totalLinesAll}</td>
+          <td class="num">${totalLenRawAll ? totalLenRawAll.toFixed(1) : '—'}</td>
+          <td class="num">${totalLenAll ? totalLenAll.toFixed(1) : '—'}</td>
+          <td class="num">${withoutLen || ''}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+/* ---------- CSV export ---------- */
+function downloadCsv(filename, rows) {
+  const csv = rows.map(r => r.map(cell => {
+    const s = String(cell == null ? '' : cell);
+    return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(';')).join('\r\n');
+  // BOM для Excel + UTF-8
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+
+function exportBomCsv() {
+  const links = getLinks();
+  const byType = new Map();
+  for (const l of links) {
+    const t = l.cableType || 'other';
+    if (!byType.has(t)) byType.set(t, { lines: 0, lenRaw: 0, withoutLen: 0 });
+    const r = byType.get(t);
+    r.lines++;
+    if (l.lengthM != null && !Number.isNaN(+l.lengthM)) r.lenRaw += +l.lengthM;
+    else r.withoutLen++;
+  }
+  const cableLabel = id => (CABLE_TYPES.find(c => c.id === id)?.label) || id;
+  const rows = [['Тип кабеля', 'Линий', 'Σ длин, м', `С запасом ×${BOM_RESERVE}, м`, 'Без длины']];
+  for (const [t, r] of byType.entries()) {
+    rows.push([cableLabel(t), r.lines, r.lenRaw.toFixed(1), (r.lenRaw * BOM_RESERVE).toFixed(1), r.withoutLen || '']);
+  }
+  downloadCsv('scs-bom-' + dateStamp() + '.csv', rows);
+}
+
+function exportLinksCsv() {
+  const links = getLinks();
+  const cableLabel = id => (CABLE_TYPES.find(c => c.id === id)?.label) || id;
+  const rows = [['#', 'Шкаф A', 'Устройство A', 'Шкаф B', 'Устройство B', 'Кабель', 'Длина, м', 'С запасом, м', 'Заметка']];
+  links.forEach((l, i) => {
+    const len = l.lengthM != null && !Number.isNaN(+l.lengthM) ? +l.lengthM : null;
+    rows.push([
+      i + 1,
+      getRackShortLabel(l.fromRackId),
+      deviceLabel(l.fromRackId, l.fromDevId),
+      getRackShortLabel(l.toRackId),
+      deviceLabel(l.toRackId, l.toDevId),
+      cableLabel(l.cableType),
+      len == null ? '' : len.toFixed(1),
+      len == null ? '' : (len * BOM_RESERVE).toFixed(1),
+      l.note || '',
+    ]);
+  });
+  downloadCsv('scs-links-' + dateStamp() + '.csv', rows);
+}
+function dateStamp() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
 function updateLink(id, patch) {
   const cur = getLinks();
   const i = cur.findIndex(x => x.id === id);
   if (i < 0) return;
   cur[i] = { ...cur[i], ...patch };
   setLinks(cur);
+  renderBom();
 }
 
 function escapeHtml(s) {
@@ -303,6 +428,8 @@ function escapeAttr(s) { return escapeHtml(s); }
 document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   renderLinksTab();
+  document.getElementById('sd-export-csv')?.addEventListener('click', exportBomCsv);
+  document.getElementById('sd-export-links-csv')?.addEventListener('click', exportLinksCsv);
   window.addEventListener('storage', (e) => {
     if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) renderLinksTab();
   });
