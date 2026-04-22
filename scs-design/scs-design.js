@@ -858,6 +858,66 @@ function resetPlan() {
   renderPlan();
 }
 
+/* Автораскладка: реальные стойки с тегом группируются по «ряду» — префиксу
+   до первой точки (например, DH1.SR1/DH1.SR2 → ряд DH1). Каждый ряд —
+   отдельная строка плана, стойки вдоль неё. Черновики (без тега) — в отдельный
+   последний ряд. Ряды разделены 2 клетками аисла. */
+function autoLayout() {
+  const racks = getRacks();
+  if (!racks.length) return;
+  const plan = getPlan();
+  const tags = {};
+  racks.forEach(r => { tags[r.id] = (getRackTag(r.id) || '').trim(); });
+
+  const rows = new Map(); // rowKey -> [rackIds]
+  racks.forEach(r => {
+    const tag = tags[r.id];
+    let key;
+    if (!tag) key = '__draft__';
+    else {
+      const dot = tag.indexOf('.');
+      key = dot > 0 ? tag.slice(0, dot) : tag;
+    }
+    if (!rows.has(key)) rows.set(key, []);
+    rows.get(key).push(r);
+  });
+
+  // В рамках ряда сортируем по тегу (SR1 перед SR2…)
+  for (const arr of rows.values()) {
+    arr.sort((a, b) => (tags[a.id] || '').localeCompare(tags[b.id] || '', 'ru', { numeric: true }));
+  }
+
+  const positions = {};
+  const rowKeys = Array.from(rows.keys()).sort((a, b) => {
+    if (a === '__draft__') return 1;
+    if (b === '__draft__') return -1;
+    return a.localeCompare(b, 'ru', { numeric: true });
+  });
+  const rowGap = 2;  // клетки между рядами (hot/cold aisle approximation)
+  const colGap = 0;  // соседние стойки впритык
+  const rackW = RACK_W_CELLS + colGap;
+  const maxCols = Math.floor((PLAN_COLS - 1) / rackW) || 1;
+  let curRow = 1;
+  rowKeys.forEach(key => {
+    const arr = rows.get(key);
+    let col = 1;
+    arr.forEach(r => {
+      if (col + RACK_W_CELLS > PLAN_COLS) {
+        // перенос на следующую подстроку
+        col = 1;
+        curRow += RACK_H_CELLS + rowGap;
+      }
+      positions[r.id] = { x: col, y: curRow };
+      col += rackW;
+    });
+    curRow += RACK_H_CELLS + rowGap;
+  });
+
+  savePlan({ ...plan, positions });
+  renderPlan();
+  updateStatus(`✔ Автораскладка: ${Object.keys(positions).length} стоек размещено в ${rowKeys.length} рядов.`);
+}
+
 /* ---------- CSV export ---------- */
 function downloadCsv(filename, rows) {
   const csv = rows.map(r => r.map(cell => {
@@ -949,6 +1009,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-racks-csv')?.addEventListener('click', exportRacksCsv);
   document.getElementById('sd-plan-apply')?.addEventListener('click', applySuggestedLengths);
   document.getElementById('sd-plan-reset')?.addEventListener('click', resetPlan);
+  document.getElementById('sd-plan-autolay')?.addEventListener('click', autoLayout);
   document.getElementById('sd-plan-step')?.addEventListener('change', e => {
     const p = getPlan(); p.step = Math.max(0.1, +e.target.value || PLAN_DEFAULT.step); savePlan(p); updatePlanInfo();
   });
