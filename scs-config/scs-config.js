@@ -549,6 +549,29 @@ function renderContents() {
     const ranges = r ? freeURanges(r, devices) : [];
     freeEl.textContent = ranges.length ? ranges.join(', ') : (r ? 'нет' : '—');
   }
+  // v0.59.268: «⚡ Мощность» — суммарная заявленная, с % от demandKw
+  const pwEl = $('sc-rack-power');
+  if (pwEl) {
+    if (r) {
+      const totalW = devices.reduce((s, d) => {
+        const type = state.catalog.find(c => c.id === d.typeId);
+        return s + (type ? (type.powerW || 0) : 0);
+      }, 0);
+      const kw = totalW / 1000;
+      const demand = +r.demandKw || 0;
+      const pct = demand ? Math.round((kw / demand) * 100) : null;
+      pwEl.textContent = demand
+        ? `${kw.toFixed(2)} / ${demand.toFixed(2)} кВт (${pct}%)`
+        : `${totalW} Вт`;
+      pwEl.style.color = (pct != null && pct > 100) ? '#b91c1c' : (pct != null && pct > 80) ? '#c2410c' : '';
+      pwEl.title = demand
+        ? `Σ powerW = ${totalW} Вт; demandKw стойки = ${demand} кВт; использование ${pct}%`
+        : `Σ powerW = ${totalW} Вт (demandKw стойки не задан в rack-config)`;
+    } else {
+      pwEl.textContent = '—';
+      pwEl.style.color = '';
+    }
+  }
   if (!r) { t.innerHTML = '<tr><td>Нет выбранной стойки</td></tr>'; return; }
   const conflicts = detectConflicts(r, devices);
   const rows = [`<tr>
