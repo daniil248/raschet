@@ -20,8 +20,14 @@
   gap: 20px;
   align-items: start;
 }
+/* v0.59.245: когда смонтирован левый сайдбар (standalone) — 3 колонки. */
+body.rc-has-left-sidebar .rc-grid {
+  grid-template-columns: var(--rs-sidebar-left-w, 280px) minmax(0, 1fr) var(--rs-sidebar-right-w, 360px);
+}
+.rc-left-sidebar { position: sticky; top: 0; max-height: calc(100vh - 20px); overflow: hidden; }
 @media (max-width: 1100px) {
-  .rc-grid { grid-template-columns: 1fr; }
+  .rc-grid,
+  body.rc-has-left-sidebar .rc-grid { grid-template-columns: 1fr; }
 }
 
 /* ===== Форма ===== */

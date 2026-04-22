@@ -1960,6 +1960,31 @@ function init() {
   renderTemplateList();
   renderForm();
   bind();
+
+  // Публичный API для левого сайдбара (rack-sidebar.js) и других
+  // внешних потребителей. loadExternalTemplate принимает шаблон из любого
+  // хранилища (глобального или project-scoped) и делает его текущим.
+  // Шаблон клонируется; id пересоздаётся, чтобы не было коллизий с локальным
+  // state.templates. Сохранение в LS_KEY происходит только при явном
+  // действии пользователя (кнопка «💾 Сохранить шаблон»).
+  window.__rackConfig = {
+    loadExternalTemplate(src) {
+      if (!src || typeof src !== 'object') return;
+      const t = JSON.parse(JSON.stringify(src));
+      t.id = 'tpl-ext-' + Math.random().toString(36).slice(2, 9);
+      const baseName = (t.name || 'Шаблон').trim();
+      let nm = baseName, n = 2;
+      const clash = x => state.templates.some(y => (y.name || '').trim().toLowerCase() === x.toLowerCase());
+      while (clash(nm)) { nm = `${baseName} (${n++})`; }
+      t.name = nm;
+      state.templates.unshift(t);
+      state.currentId = t.id;
+      renderTemplateList();
+      renderForm();
+      rsToast('Загружен шаблон «' + (t.name || '—') + '»', 'ok');
+    },
+  };
+  try { window.dispatchEvent(new CustomEvent('rack-config:ready')); } catch {}
 }
 
 function injectApplyUi() {
