@@ -776,15 +776,16 @@ function bindUnitMapDrag(svgId) {
       const devId = g.dataset.devid;
       const d = currentContents().find(x => x.id === devId); if (!d) return;
       const type = state.catalog.find(c => c.id === d.typeId);
-      state.drag = { devId, startY: ev.clientY, startU: d.positionU, rowH, svgId };
+      const h = +g.dataset.h || 1;
+      state.drag = { devId, startY: ev.clientY, startU: d.positionU, rowH, svgId, h, wantU: d.positionU, valid: true, intra: true };
       g.setPointerCapture(ev.pointerId);
-      g.style.cursor = 'grabbing';
-      g.style.opacity = '0.55';
-      // 1.24.36 — плавающий ghost при pointer-drag (как в HTML5 DnD)
+      // 1.24.37 — «отрываем» девайс от шкафа на время drag: скрываем полностью
+      g.style.display = 'none';
+      // плавающий ghost как в cart→rack drag
       if (type) {
         const ghost = document.createElement('div');
         ghost.className = 'sc-drag-ghost sc-drag-ghost-live';
-        ghost.textContent = `${d.label} · ${type.heightU || 1}U`;
+        ghost.textContent = `${d.label} · ${h}U`;
         ghost.style.background = type.color || '#94a3b8';
         ghost.style.left = (ev.clientX + 12) + 'px';
         ghost.style.top = (ev.clientY + 12) + 'px';
@@ -794,13 +795,10 @@ function bindUnitMapDrag(svgId) {
     });
     g.addEventListener('pointermove', ev => {
       if (!state.drag || state.drag.devId !== g.dataset.devid) return;
-      // плавающий ghost следует за курсором
       if (state.drag.ghostEl) {
         state.drag.ghostEl.style.left = (ev.clientX + 12) + 'px';
         state.drag.ghostEl.style.top = (ev.clientY + 12) + 'px';
       }
-      // 1.24.28-drag: детекция «над тележкой/складом» — если курсор над .sc-cart-dropzone
-      // или .sc-wh-dropzone, подсвечиваем её и не двигаем устройство.
       const overEl = document.elementFromPoint(ev.clientX, ev.clientY);
       const overCart = !!(overEl && overEl.closest('.sc-cart-dropzone'));
       const overWh = !!(overEl && !overCart && overEl.closest('.sc-wh-dropzone'));
@@ -808,73 +806,63 @@ function bindUnitMapDrag(svgId) {
       state.drag.overWh = overWh;
       document.querySelectorAll('.sc-cart-dropzone').forEach(el => el.classList.toggle('sc-drop-hover', overCart));
       document.querySelectorAll('.sc-wh-dropzone').forEach(el => el.classList.toggle('sc-drop-hover', overWh));
-      if (overCart || overWh) {
-        // показываем превью в SVG? Нет, устройство останется на месте → скрыть превью.
-        const svgNow = $(state.drag.svgId);
-        const oldPrev = svgNow && svgNow.querySelector('.sc-drop-preview'); if (oldPrev) oldPrev.remove();
-        return;
-      }
+      // preview — в том SVG, над которым сейчас курсор (любой сtg.sc-unitmap-svg)
+      document.querySelectorAll('.sc-drop-preview').forEach(el => el.remove());
+      if (overCart || overWh) { state.drag.valid = false; return; }
+      const svgNow = overEl && overEl.closest && overEl.closest('svg.sc-unitmap-svg');
+      if (!svgNow) { state.drag.valid = false; return; }
+      const rowHNow = +svgNow.dataset.rowh || rowH;
       const r = currentRack(); if (!r) return;
       const d = currentContents().find(x => x.id === state.drag.devId); if (!d) return;
-      const dy = ev.clientY - state.drag.startY;
-      const zoom = +svg.dataset.zoom || 1;
-      const drows = Math.round(-dy / (rowH * zoom)); // вверх по экрану = больший U
-      const h = +g.dataset.h || 1;
-      const wantU = Math.max(h, Math.min(r.u, state.drag.startU + drows));
-      if (wantU === d.positionU) return;
-      // 1.24.29 — запрет наложения. Если wantU занят другим devices или
-      // rack-occupied, сохраняем последнюю валидную позицию и показываем
-      // dashed-превью на wantU красного цвета (неприемлемый target).
+      const h = state.drag.h;
+      // вычисляем wantU по координате курсора внутри svg
+      const rect = svgNow.getBoundingClientRect();
+      const zoom = +svgNow.dataset.zoom || 1;
+      const yInSvg = (ev.clientY - rect.top) / zoom;
+      const topIdx = Math.max(0, Math.min(r.u - h, Math.floor((yInSvg - 4) / rowHNow)));
+      const wantU = r.u - topIdx;
       const valid = canPlace(r, currentContents(), d.id, h, wantU);
-      const svgNow0 = $(state.drag.svgId);
-      if (svgNow0) {
-        const old = svgNow0.querySelector('.sc-drop-preview'); if (old) old.remove();
-        const bodyW = +svgNow0.dataset.bodyw || 220;
-        const bodyX = +svgNow0.dataset.bodyx || 32;
-        const topIdx = r.u - wantU;
-        const y = 4 + topIdx * rowH;
-        const color = valid ? '#2563eb' : '#dc2626';
-        const g2 = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g2.setAttribute('class', 'sc-drop-preview');
-        g2.setAttribute('pointer-events', 'none');
-        g2.innerHTML = `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${h * rowH - 1}"
-          fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
-        svgNow0.appendChild(g2);
-      }
-      if (!valid) return;
-      d.positionU = wantU;
-      rerenderPreview(); // и основная, и модалка
-      // g уничтожен — re-query в ТОМ ЖЕ svg, где был drag
-      const svgNow = $(state.drag.svgId);
-      const gNew = svgNow && svgNow.querySelector(`g.sc-devband[data-devid="${state.drag.devId}"]`);
-      if (gNew) { gNew.setPointerCapture(ev.pointerId); gNew.style.cursor = 'grabbing'; gNew.style.opacity = '0.55'; }
+      state.drag.wantU = wantU;
+      state.drag.valid = valid;
+      const bodyW = +svgNow.dataset.bodyw || 220;
+      const bodyX = +svgNow.dataset.bodyx || 32;
+      const y = 4 + (r.u - wantU) * rowHNow;
+      const color = valid ? '#2563eb' : '#dc2626';
+      const g2 = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g2.setAttribute('class', 'sc-drop-preview');
+      g2.setAttribute('pointer-events', 'none');
+      g2.innerHTML = `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${h * rowHNow - 1}"
+        fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+      svgNow.appendChild(g2);
     });
     g.addEventListener('pointerup', () => {
       if (!state.drag) return;
       document.querySelectorAll('.sc-cart-dropzone,.sc-wh-dropzone').forEach(el => el.classList.remove('sc-drop-hover'));
       if (state.drag.ghostEl) { try { state.drag.ghostEl.remove(); } catch {} }
-      // убираем preview rect из всех svg
       document.querySelectorAll('.sc-drop-preview').forEach(el => el.remove());
       const drop = state.drag;
       state.drag = null;
       if (drop.overCart) {
-        moveToCart(drop.devId); // вытащить на тележку
+        moveToCart(drop.devId);
       } else if (drop.overWh) {
-        // прямо на склад — через буфер cart (переиспользуем moveToCart + cartToWarehouse)
         moveToCart(drop.devId);
         const last = state.cart[state.cart.length - 1];
         if (last) cartToWarehouse(last.id);
+      } else if (drop.valid && drop.wantU !== drop.startU) {
+        const d = currentContents().find(x => x.id === drop.devId);
+        if (d) { d.positionU = drop.wantU; saveContents(); }
+        renderContents(); renderWarnings(); renderBom(); rerenderPreview();
       } else {
-        saveContents();
-        renderContents();
-        renderWarnings();
-        renderBom();
+        // откат — просто re-render, чтобы девайс появился снова
+        rerenderPreview();
       }
     });
     g.addEventListener('pointercancel', () => {
       if (state.drag && state.drag.ghostEl) { try { state.drag.ghostEl.remove(); } catch {} }
       document.querySelectorAll('.sc-drop-preview').forEach(el => el.remove());
+      document.querySelectorAll('.sc-cart-dropzone,.sc-wh-dropzone').forEach(el => el.classList.remove('sc-drop-hover'));
       state.drag = null;
+      rerenderPreview();
     });
   });
 }
