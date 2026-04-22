@@ -8,6 +8,7 @@ import { renderInspector } from './inspector.js';
 import { createMode } from './modes.js';
 import { flash } from './utils.js';
 import { exportBomXlsx, exportBomCsv, buildBOM } from './bom.js';
+import { rsToast, rsConfirm, rsPrompt } from '../../shared/dialog.js';
 
 export function initToolbar() {
   // Zoom
@@ -24,8 +25,8 @@ export function initToolbar() {
   updateUndoButtons();
 
   // Clear
-  document.getElementById('btn-clear').onclick = () => {
-    if (state.nodes.size && !confirm('Очистить схему?')) return;
+  document.getElementById('btn-clear').onclick = async () => {
+    if (state.nodes.size && !(await rsConfirm('Очистить схему?', 'Все узлы и соединения будут удалены.', { okLabel: 'Очистить', cancelLabel: 'Отмена' }))) return;
     snapshot();
     state.nodes.clear(); state.conns.clear(); state.modes = []; state.activeModeId = null;
     state.selectedKind = null; state.selectedId = null;
@@ -126,7 +127,7 @@ export function initToolbar() {
   // «Сохранить как…» — копия проекта с новым именем
   bind('btn-save-as', async () => {
     const curName = document.getElementById('project-name')?.textContent || 'Проект';
-    const newName = prompt('Сохранить копию проекта как:', curName + ' (копия)');
+    const newName = await rsPrompt('Сохранить копию проекта как:', curName + ' (копия)');
     if (!newName) return;
     try {
       const scheme = serialize();
@@ -179,7 +180,7 @@ export function initToolbar() {
         render();
         renderInspector();
         flash('Импортировано из файла');
-      } catch (err) { alert('Ошибка импорта: ' + err.message); }
+      } catch (err) { rsToast('Ошибка импорта: ' + err.message, 'err'); }
     };
     r.readAsText(f);
     // Сбросим value, чтобы повторный выбор того же файла работал.
@@ -354,7 +355,7 @@ export function initToolbar() {
     if (type === 'linked') {
       const src = (state.pages || []).find(p => p.id === sourcePageId && p.type !== 'linked');
       if (!src) {
-        alert('Для ссылочной страницы нужно выбрать родительскую независимую страницу.');
+        rsToast('Для ссылочной страницы нужно выбрать родительскую независимую страницу.', 'warn');
         return;
       }
     }
@@ -427,11 +428,11 @@ export function initToolbar() {
     if (!p) return;
     if (type === 'linked') {
       if (!sourcePageId || sourcePageId === pageId) {
-        alert('Выберите родительскую независимую страницу.');
+        rsToast('Выберите родительскую независимую страницу.', 'warn');
         return;
       }
       const src = state.pages.find(x => x.id === sourcePageId && x.type !== 'linked');
-      if (!src) { alert('Родитель должен быть независимой страницей.'); return; }
+      if (!src) { rsToast('Родитель должен быть независимой страницей.', 'warn'); return; }
       p.type = 'linked';
       p.sourcePageId = sourcePageId;
     } else {
@@ -451,11 +452,14 @@ export function initToolbar() {
     renderPageTabs();
   };
 
-  const deletePage = (pageId) => {
-    if ((state.pages || []).length <= 1) { alert('Нельзя удалить единственную страницу'); return; }
+  const deletePage = async (pageId) => {
+    if ((state.pages || []).length <= 1) { rsToast('Нельзя удалить единственную страницу', 'warn'); return; }
     const p = state.pages.find(p => p.id === pageId);
     if (!p) return;
-    if (!confirm(`Удалить страницу "${p.name || p.id}"?\n\nУзлы, принадлежавшие ТОЛЬКО этой странице, будут удалены. Узлы, которые есть и на других страницах, останутся.`)) return;
+    if (!(await rsConfirm(
+      `Удалить страницу «${p.name || p.id}»?`,
+      'Узлы, принадлежавшие ТОЛЬКО этой странице, будут удалены. Узлы, которые есть и на других страницах, останутся.',
+      { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
     // v0.59.77: сохраняем позиции ТЕКУЩЕЙ страницы (если она не удаляемая)
     // ДО каких-либо мутаций, чтобы n.x/n.y других страниц не потерялись.
     const deletedIsCurrent = (state.currentPageId === pageId);

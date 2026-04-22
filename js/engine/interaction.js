@@ -9,6 +9,7 @@ import { render, updateViewBox, el, bezier } from './render.js';
 import { createNode, deleteNode, deleteConn, tryConnect, wouldCreateCycle, nextFreeTag } from './graph.js';
 import { tryAttachToZone, detachFromZones, findZoneForMember, findParentZone, isNodeFullyInside, nodesInZone, copyZoneWithMembers } from './zones.js';
 import { flash } from './utils.js';
+import { rsToast } from '../../shared/dialog.js';
 
 /* ---- late-bound deps (set via bindInteractionDeps) ---- */
 let _undo = () => {};
@@ -512,7 +513,7 @@ export function initInteraction() {
       return;
     }
     if (p.sysId && sysId && p.sysId !== sysId) {
-      alert('Patch-link соединяет порты одной системы. Источник: ' + p.sysId + ', цель: ' + sysId);
+      rsToast('Patch-link соединяет порты одной системы. Источник: ' + p.sysId + ', цель: ' + sysId, 'warn');
       return;
     }
     // Создаём.

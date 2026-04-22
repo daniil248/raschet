@@ -578,6 +578,18 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.182', date: '2026-04-22', items: [
+      '<b>Единые in-page диалоги</b> (<code>shared/dialog.js</code>): <code>rsToast</code> / <code>rsConfirm</code> / <code>rsPrompt</code> — без нативных <code>alert/confirm/prompt</code>, как этого требует внутренняя политика проекта. Стили в <code>shared/styles/base.css</code> (#rs-ui-host, .rs-toast-*, .rs-modal-*). Легаси-обёртки <code>window.rsToast/rsConfirm/rsPrompt</code> доступны глобально.',
+      'Заменены критичные нативные вызовы в engine: patch-link «разные системы» → <code>rsToast(\'warn\')</code> (js/engine/interaction.js:515), «Очистить схему» → <code>rsConfirm</code>, «Сохранить как…» / импорт JSON → <code>rsPrompt/rsToast</code>, ошибки страниц (linked без родителя, удаление единственной) → <code>rsToast/rsConfirm</code>, переименование этажа → <code>rsPrompt</code>. Оставшиеся prompt/confirm в <code>inspector.js</code>/<code>consumer.js</code>/<code>graph.js</code> — задача следующей итерации (требуют перевода callers в async).',
+    ] },
+    { version: '0.59.181', date: '2026-04-22', items: [
+      'Resizable-сайдбары распространены: <code>rack-config</code> (правый превью), <code>mdc-config</code> (левый опросник), <code>suppression-config</code> (и левая форма, и правая сводка), <code>pdu-config</code> (левая форма). Все через <code>.rs-sidebar[.-left/-right]</code> + <code>.rs-sidebar-resizer</code>; ширина единая на проект через CSS-переменные <code>--rs-sidebar-left-w / --rs-sidebar-right-w</code> + localStorage (<code>raschet.rs-sidebar-left-w / -right-w</code>).',
+    ] },
+    { version: '0.59.180', date: '2026-04-22', items: [
+      'Resizable-сайдбары во всех подпрограммах: <code>shared/sidebar-resizer.js</code> (универсальный) + CSS-переменные + localStorage. Применено в <code>scs-config/rack.html</code> (левый «Шкафы», правый «Каталог+Тележка+Склад»).',
+      'Fix: intra-rack drag-n-drop юнита в пустой U не срабатывал — SVG-карта потеряла класс <code>sc-unitmap-svg</code>, pointermove.closest() не находил родителя. Класс возвращён в <code>renderUnitMap()</code>.',
+      'Layout <code>scs-config/rack.html</code> перестроен: центр = карта юнитов + Размещение + СКС-матрица + Проверки + BOM; правый сайдбар = Каталог + Тележка + Склад; левый = шкафы проекта.',
+    ] },
     { version: '0.59.145', date: '2026-04-21', items: [
       'Patch-link pending-подсветка: раньше жёлтое кольцо вокруг первого выбранного кружка-коннектора навешивалось прямо на DOM (setAttribute stroke/stroke-width) и слетало при любом последующем render() — например, при drag\'е другого узла или notifyChange. Теперь подсветка вычисляется в render.js по state.sysPending и переживает все перерисовки. Файлы: js/engine/render.js (ветка b.count коннекторов — +isPending +class sys-port-connector--pending +stroke/stroke-width), js/engine/interaction.js (mousedown-handler — после установки sysPending вызывается render() вместо прямой правки DOM).'
     ] },

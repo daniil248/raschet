@@ -301,3 +301,53 @@ code, kbd, samp, pre { font-family: var(--rs-font-mono); }
 .rs-sidebar-resizer:hover,
 .rs-sidebar-resizer.rs-dragging { background: var(--rs-accent); }
 body.rs-sidebar-resizing { cursor: ew-resize !important; user-select: none; }
+
+/* =========================================================================
+   v0.59.182 — единые in-page диалоги (shared/dialog.js): rsToast/rsConfirm/
+   rsPrompt. Никаких нативных alert/confirm/prompt. Хост #rs-ui-host
+   создаётся лениво. Стили дублируют scToast/scModal из scs-config.
+   ========================================================================= */
+#rs-ui-host {
+  position: fixed; inset: 0; pointer-events: none; z-index: 10000;
+}
+.rs-toast {
+  position: absolute; right: 20px; bottom: 20px;
+  padding: 10px 14px; border-radius: 6px; font-size: 13px;
+  background: #0f172a; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  pointer-events: auto; opacity: 0; transform: translateY(8px);
+  transition: opacity .2s, transform .2s; max-width: 420px;
+}
+.rs-toast + .rs-toast { bottom: 68px; }
+.rs-toast-shown { opacity: 1; transform: translateY(0); }
+.rs-toast-ok   { background: #16a34a; }
+.rs-toast-warn { background: #d97706; }
+.rs-toast-err  { background: #dc2626; }
+.rs-toast-info { background: #334155; }
+
+.rs-modal-back {
+  position: absolute; inset: 0; background: rgba(15,23,42,0.38);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; opacity: 0; transition: opacity .15s;
+}
+.rs-modal-open { opacity: 1; }
+.rs-modal-card {
+  background: #fff; border-radius: 8px; padding: 18px 20px;
+  min-width: 340px; max-width: 520px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  border: 1px solid #e2e8f0;
+}
+.rs-modal-title { font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 6px; }
+.rs-modal-msg   { font-size: 13px; color: #475569; margin-bottom: 12px; line-height: 1.45; }
+.rs-modal-input {
+  width: 100%; padding: 6px 8px; font-size: 13px;
+  border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: 12px;
+  box-sizing: border-box;
+}
+.rs-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.rs-btn {
+  font-size: 13px; padding: 6px 14px; border: 1px solid #cbd5e1; background: #fff;
+  border-radius: 4px; cursor: pointer; color: #0f172a;
+}
+.rs-btn:hover { background: #f8fafc; }
+.rs-btn-primary { border-color: #2563eb; color: #fff; background: #2563eb; }
+.rs-btn-primary:hover { background: #1d4ed8; }

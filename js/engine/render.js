@@ -30,6 +30,7 @@ import { effectiveTag } from './zones.js';
 import { fmt, fmtPower, escHtml, escAttr } from './utils.js';
 import { snapshot, notifyChange } from './history.js';
 import { computeCurrentA, nodeVoltage, isThreePhase, cableVoltageClass, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
+import { rsToast, rsPrompt } from '../../shared/dialog.js';
 
 let _renderInspector;
 export function bindRenderDeps({ renderInspector }) { _renderInspector = renderInspector; }
@@ -1001,12 +1002,12 @@ function _updateFloorFilterUI() {
   if (lbl && !lbl.dataset.bound) {
     lbl.dataset.bound = '1';
     lbl.style.cursor = 'pointer';
-    lbl.addEventListener('dblclick', () => {
+    lbl.addEventListener('dblclick', async () => {
       const cur = state.floorFilter;
-      if (cur == null) { alert('Выберите конкретный этаж в списке, чтобы его переименовать.'); return; }
+      if (cur == null) { rsToast('Выберите конкретный этаж в списке, чтобы его переименовать.', 'warn'); return; }
       const names = (state.project.floorNames || {});
       const old = names[String(cur)] || '';
-      const nm = prompt(`Название этажа ${cur > 0 ? '+' + cur : cur}:`, old);
+      const nm = await rsPrompt(`Название этажа ${cur > 0 ? '+' + cur : cur}:`, old);
       if (nm === null) return;
       if (!state.project.floorNames) state.project.floorNames = {};
       const trimmed = String(nm).trim();
