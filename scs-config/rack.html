@@ -53,7 +53,9 @@
         <span>Корпус (шаблон)</span>
         <select id="sc-corpus"></select>
       </label>
-      <button type="button" id="sc-corpus-apply" class="sc-btn" title="Применить шаблон корпуса — перезаписать U, размеры, PDU и «занятые U» из выбранного шаблона">↪ Применить корпус</button>
+      <button type="button" id="sc-corpus-apply" class="sc-btn" title="Применить шаблон корпуса — перезаписать U, размеры, PDU и «занятые U» из выбранного шаблона. Перед применением создаётся снимок для отката.">↪ Применить корпус</button>
+      <button type="button" id="sc-corpus-revert" class="sc-btn" style="display:none" title="Откатить последнее «Применить корпус» — вернуть стойку к состоянию до применения.">↶ Вернуть</button>
+      <button type="button" id="sc-corpus-save-as" class="sc-btn" title="Сохранить текущую геометрию стойки как новый шаблон корпуса в глобальный каталог rack-config (имя уникально).">💾 В новый шаблон</button>
       <label class="sc-field">
         <span>Готовая сборка (устройства)</span>
         <select id="sc-template"></select>

@@ -2603,6 +2603,32 @@ function renderCorpusPicker() {
     ? '<option value="">— выбрать шаблон —</option>' +
       tpls.map(t => `<option value="${t.id}"${t.id === curTpl ? ' selected' : ''}>${escape(t.name || t.id)} · ${t.u}U</option>`).join('')
     : '<option value="">— нет шаблонов в rack-config —</option>';
+  // v0.59.280: показываем «↶ Вернуть» только если есть снимок.
+  const revertBtn = $('sc-corpus-revert');
+  if (revertBtn) revertBtn.style.display = (r && r._corpusBackup) ? '' : 'none';
+}
+
+/* v0.59.280: делаем снимок критичных полей стойки ДО применения корпуса.
+   Хранится прямо на объекте r как r._corpusBackup. По кнопке «↶ Вернуть»
+   возвращаем исходное состояние. Содержимое (устройства) — в state.contents
+   по rackId, здесь не трогается, но резервируем и его, т.к. изменение
+   ёмкости (U) может косвенно повлиять на валидность позиций. */
+const CORPUS_FIELDS = [
+  'u','width','depth','railFrontOffset','railDepth','railRearOffset','railAutoField',
+  'doorFront','doorRear','doorWithLock','lock','sides','top','base','comboTopBase',
+  'entryTop','entryBot','entryType','occupied','blankType','demandKw','cosphi',
+  'pduRedundancy','pdus','accessories','kitId','manufacturer','name'
+];
+
+function snapshotCorpus(r) {
+  const snap = {};
+  CORPUS_FIELDS.forEach(k => {
+    snap[k] = (r[k] && typeof r[k] === 'object') ? JSON.parse(JSON.stringify(r[k])) : r[k];
+  });
+  snap.sourceTemplateId   = r.sourceTemplateId || null;
+  snap.sourceTemplateName = r.sourceTemplateName || null;
+  snap._ts = Date.now();
+  return snap;
 }
 
 async function applyCorpus() {
@@ -2612,24 +2638,105 @@ async function applyCorpus() {
   if (!id) { scToast('Выберите шаблон корпуса', 'warn'); return; }
   const tpl = state.racks.find(x => x.id === id);
   if (!tpl) { scToast('Шаблон не найден', 'err'); return; }
+
+  // diff-превью: показываем, какие ключевые параметры поменяются.
+  const diffLines = [];
+  const pairs = [
+    ['u', 'U'], ['width', 'Ширина, мм'], ['depth', 'Глубина, мм'],
+    ['occupied', 'Занято корпусом, U'], ['doorFront', 'Дверь фасад'],
+    ['doorRear', 'Дверь тыл'],
+  ];
+  pairs.forEach(([k, lbl]) => {
+    const a = r[k], b = tpl[k];
+    if (String(a ?? '—') !== String(b ?? '—')) diffLines.push(`${lbl}: ${a ?? '—'} → ${b ?? '—'}`);
+  });
+  const pdusA = Array.isArray(r.pdus) ? r.pdus.length : 0;
+  const pdusB = Array.isArray(tpl.pdus) ? tpl.pdus.length : 0;
+  if (pdusA !== pdusB) diffLines.push(`PDU: ${pdusA} → ${pdusB}`);
+  const detail = (diffLines.length
+    ? 'Изменится: ' + diffLines.join('; ') + '. '
+    : 'Параметры совпадают — применение будет no-op. ')
+    + 'Содержимое (устройства) не затрагивается. Текущее состояние можно вернуть кнопкой «↶ Вернуть корпус».';
+
   const ok = await scConfirm(
     `Применить корпус «${tpl.name}» к стойке «${rackLabel(r)}»?`,
-    'U, ширина, глубина, двери, PDU и «занято корпусом» будут взяты из шаблона. Содержимое (устройства) — не затрагивается.',
+    detail,
     { okLabel: 'Применить' }
   );
   if (!ok) return;
-  // Копируем геометрию. НЕ копируем id/comment/sourceTemplate*.
-  const SKIP = new Set(['id', 'comment', 'sourceTemplateId', 'sourceTemplateName']);
+
+  // Бэкап до применения — даст возможность отменить.
+  r._corpusBackup = snapshotCorpus(r);
+
+  // Копируем геометрию. НЕ копируем id/comment/sourceTemplate*/_corpusBackup.
+  const SKIP = new Set(['id', 'comment', 'sourceTemplateId', 'sourceTemplateName', '_corpusBackup']);
   Object.keys(tpl).forEach(k => {
     if (SKIP.has(k)) return;
-    // Deep copy чтобы pdus[] и прочие массивы не были общими ссылками.
     r[k] = (tpl[k] && typeof tpl[k] === 'object') ? JSON.parse(JSON.stringify(tpl[k])) : tpl[k];
   });
   r.sourceTemplateId = tpl.id;
   r.sourceTemplateName = tpl.name || tpl.id;
   saveRacks();
   rerender();
-  scToast(`Корпус «${tpl.name}» применён`, 'ok');
+  scToast(`Корпус «${tpl.name}» применён · можно отменить ↶`, 'ok');
+}
+
+/* v0.59.280: вернуть стойку к состоянию ДО последнего applyCorpus. */
+async function revertCorpus() {
+  const r = currentRack();
+  if (!r || !r._corpusBackup) { scToast('Нечего отменять.', 'warn'); return; }
+  const snap = r._corpusBackup;
+  const ok = await scConfirm(
+    `Откатить применение корпуса у стойки «${rackLabel(r)}»?`,
+    'Вернётся состояние, которое было непосредственно перед применением шаблона. Содержимое стойки не изменится.',
+    { okLabel: 'Откатить' }
+  );
+  if (!ok) return;
+  CORPUS_FIELDS.forEach(k => {
+    r[k] = (snap[k] && typeof snap[k] === 'object') ? JSON.parse(JSON.stringify(snap[k])) : snap[k];
+  });
+  r.sourceTemplateId   = snap.sourceTemplateId || null;
+  r.sourceTemplateName = snap.sourceTemplateName || null;
+  delete r._corpusBackup;
+  saveRacks();
+  rerender();
+  scToast('Корпус стойки откатан.', 'ok');
+}
+
+/* v0.59.280: сохранить текущую геометрию стойки как НОВЫЙ шаблон корпуса
+   (в глобальный каталог rack-config). Шаблон получает уникальный tpl-* id
+   и дефолтное имя; пользователь задаёт своё имя в prompt. Саму стойку не
+   трогаем — sourceTemplateId по желанию можно перепривязать на новый шаблон. */
+async function saveCorpusAsNewTemplate() {
+  const r = currentRack();
+  if (!r) { scToast('Нет выбранной стойки.', 'warn'); return; }
+  const defName = `Корпус · ${r.u || '?'}U · ${r.width || '?'}×${r.depth || '?'}`;
+  const name = await scPrompt('Имя нового шаблона корпуса', defName);
+  if (name == null) return;
+  const nm = String(name).trim();
+  if (!nm) { scToast('Имя не может быть пустым.', 'warn'); return; }
+  const dup = state.racks.some(x => (x.name || '').trim().toLowerCase() === nm.toLowerCase());
+  if (dup) { scToast(`Имя «${nm}» уже занято.`, 'warn'); return; }
+  const tpl = JSON.parse(JSON.stringify(r));
+  tpl.id = 'tpl-' + Math.random().toString(36).slice(2, 9);
+  tpl.name = nm;
+  delete tpl.comment;
+  delete tpl.sourceTemplateId;
+  delete tpl.sourceTemplateName;
+  delete tpl._corpusBackup;
+  state.racks.push(tpl);
+  const relink = await scConfirm(
+    'Перепривязать текущую стойку к новому шаблону?',
+    `Шаблон «${nm}» создан. Хотите, чтобы текущая стойка указывала на него как на источник корпуса (sourceTemplateId)?`,
+    { okLabel: 'Перепривязать', cancelLabel: 'Оставить как есть' }
+  );
+  if (relink) {
+    r.sourceTemplateId = tpl.id;
+    r.sourceTemplateName = tpl.name;
+  }
+  saveRacks();
+  rerender();
+  scToast(`Шаблон «${nm}» сохранён в rack-config.`, 'ok');
 }
 async function saveCurrentAsTemplate() {
   const r = currentRack(); if (!r) { scToast('Нет выбранной стойки', 'warn'); return; }
@@ -3257,6 +3364,9 @@ function init() {
   $('sc-template-apply').addEventListener('click', applyTemplate);
   // v0.59.277: применить шаблон корпуса (rack-config tpl) к текущему экземпляру.
   $('sc-corpus-apply')?.addEventListener('click', applyCorpus);
+  // v0.59.280: откат применения корпуса + сохранение как новый шаблон.
+  $('sc-corpus-revert')?.addEventListener('click', revertCorpus);
+  $('sc-corpus-save-as')?.addEventListener('click', saveCorpusAsNewTemplate);
 
   /* ---- 1.24.11 переключатель режима (СКС / Питание) ------------------ */
   document.querySelectorAll('.sc-vm-btn').forEach(btn => {
