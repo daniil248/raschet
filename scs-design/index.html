@@ -6,29 +6,7 @@
   <title>Raschet · Проектирование СКС</title>
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
-  <style>
-    .stub-wrap { max-width: 960px; margin: 32px auto; padding: 0 24px; }
-    .stub-wrap h1 { font-size: 22px; margin-bottom: 8px; }
-    .stub-wrap .lead { color: #555; margin-bottom: 24px; line-height: 1.5; }
-    .stub-card {
-      background: #fff; border: 1px solid #e0e3ea; border-radius: 12px;
-      padding: 20px 24px; margin-bottom: 16px;
-    }
-    .stub-card h2 { font-size: 16px; margin-bottom: 8px; color: #1f2430; }
-    .stub-card p { color: #555; line-height: 1.55; font-size: 14px; }
-    .stub-card ul { margin: 8px 0 0 20px; color: #555; font-size: 14px; line-height: 1.7; }
-    .wip-badge {
-      display: inline-block; padding: 3px 10px; border-radius: 10px;
-      background: #fff3e0; color: #e65100; font-size: 11px;
-      font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
-      margin-left: 8px; vertical-align: middle;
-    }
-    .kbd {
-      font-family: ui-monospace, Menlo, Consolas, monospace;
-      background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;
-      padding: 1px 6px; font-size: 12px;
-    }
-  </style>
+  <link rel="stylesheet" href="scs-design.css">
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -37,46 +15,85 @@
     mountHeader({ title: 'Проектирование СКС', home: '../hub.html' });
   </script>
 
-  <main class="stub-wrap">
-    <h1>📡 Проектирование СКС <span class="wip-badge">Планируется</span></h1>
-    <p class="lead">
-      Модуль для проектирования структурированной кабельной системы объекта:
-      трассы, кроссы, пары порт ↔ порт на уровне здания и этажей, маркировка,
-      длины кабелей, BOM СКС. Roadmap: Подфаза 1.26 / бывшая 1.25.
-    </p>
-
-    <div class="stub-card">
-      <h2>Что будет внутри</h2>
-      <ul>
-        <li><b>План зала</b> — top-down план с расстановкой стоек (импорт координат из <a href="../mdc-config/">mdc-config</a> или ручное размещение).</li>
-        <li><b>Стойки проекта</b> — список из <a href="../scs-config/">Шкафы проекта</a> с их external-портами (1.24.15).</li>
-        <li><b>Связи port ↔ port</b> — соединения между внешними портами стоек с типом кабеля (copper / OM3 / OS2), длиной и маркировкой.</li>
-        <li><b>BOM СКС</b> — агрегированный по типу кабеля, с коэффициентом запаса длины.</li>
-        <li><b>Экспорт</b> — план в SVG/PDF, кабельный журнал в XLSX.</li>
-      </ul>
+  <main class="sd-wrap">
+    <div class="sd-tabs">
+      <button class="sd-tab active" data-tab="links">🔗 Связи (мастер меж-шкафных)</button>
+      <button class="sd-tab" data-tab="plan">🗺️ План зала</button>
+      <button class="sd-tab" data-tab="racks">🗄 Стойки проекта</button>
+      <button class="sd-tab" data-tab="about">ℹ О модуле</button>
     </div>
 
-    <div class="stub-card">
-      <h2>🧰 Мастер меж-шкафных связей</h2>
-      <p>
-        Встроенный рабочий стол внутри этого модуля: выбираете несколько стоек
-        проекта — они открываются рядом, можно тянуть линию от конкретного порта
-        одного шкафа к порту или патч-панели другого. Отдельного пункта в хабе
-        нет — мастер доступен только отсюда, вкладка «Связи».
-      </p>
-    </div>
+    <!-- ========== Вкладка Связи ========== -->
+    <section class="sd-panel active" data-panel="links">
+      <div class="sd-card">
+        <h2>🧰 Мастер меж-шкафных связей</h2>
+        <p class="muted">
+          Выберите несколько стоек проекта — они появятся рядом для проектирования
+          связей между конкретными портами/патч-панелями. Содержимое шкафов читается
+          из <a href="../scs-config/">Компоновщика шкафа</a> (LS <code>scs-config.contents.v1</code>).
+          Внутренние патчкорды одного шкафа настраиваются там же — этот модуль про
+          <b>связи между разными шкафами</b>.
+        </p>
+        <div class="sd-rack-picker" id="sd-rack-picker"></div>
+        <div class="sd-empty-state" id="sd-empty" style="display:none"></div>
+      </div>
 
-    <div class="stub-card">
-      <h2>Что уже можно сейчас</h2>
-      <p>
-        Внутренние патчкорды внутри одного шкафа — в
-        <a href="../scs-config/">Компоновщике шкафа</a> (СКС-матрица).
-        Этот модуль поднимается на уровень выше — трассы между шкафами и
-        кабельный журнал всего объекта.
-      </p>
-    </div>
+      <div class="sd-card">
+        <h2>Выбранные стойки</h2>
+        <div class="sd-racks-row" id="sd-racks-row"></div>
+      </div>
+
+      <div class="sd-card">
+        <h2>Следующие шаги (roadmap 1.26.4)</h2>
+        <ul class="muted" style="margin-left:20px;line-height:1.7">
+          <li>Клик по юниту A → клик по юниту B = создать связь port ↔ port (с выбором конкретных портов, если тип оборудования описывает их).</li>
+          <li>Связи сохраняются в <code>localStorage['scs-design.links.v1']</code>.</li>
+          <li>Отрисовка линий поверх карточек стоек (кривые Безье, цвет по типу кабеля).</li>
+          <li>BOM межстоечных кабелей: агрегация по типу, длина — манхэттен × запас 1.3.</li>
+          <li>Экспорт плана СКС в SVG/PDF, кабельный журнал в XLSX.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ========== Вкладка План зала ========== -->
+    <section class="sd-panel" data-panel="plan">
+      <div class="sd-stub">
+        <h3>🗺️ План зала (в разработке)</h3>
+        <p>Top-down план с расстановкой стоек. Импорт координат из <a href="../mdc-config/">mdc-config</a> или ручное размещение. Привязка стоек к рядам TIA-942.</p>
+      </div>
+    </section>
+
+    <!-- ========== Вкладка Стойки ========== -->
+    <section class="sd-panel" data-panel="racks">
+      <div class="sd-stub">
+        <h3>🗄 Стойки проекта</h3>
+        <p>Список стоек с их external-портами (1.24.15) — контракт с <a href="../scs-config/">Компоновщиком шкафа</a>. Пока используйте вкладку «Связи» для выбора стоек.</p>
+        <p style="margin-top:12px"><a href="../scs-config/">→ Открыть «Шкафы проекта»</a></p>
+      </div>
+    </section>
+
+    <!-- ========== О модуле ========== -->
+    <section class="sd-panel" data-panel="about">
+      <div class="sd-card">
+        <h2>О модуле «Проектирование СКС»</h2>
+        <p class="muted">
+          Модуль отвечает за проектирование структурированной кабельной системы объекта:
+          трассы, кроссы, пары порт ↔ порт на уровне здания и этажей, маркировка,
+          длины кабелей, BOM СКС. Roadmap: Подфаза 1.26 (поглотила 1.25).
+        </p>
+        <h2 style="margin-top:16px">Где что живёт</h2>
+        <ul class="muted" style="margin-left:20px;line-height:1.7">
+          <li><a href="../rack-config/">Конфигуратор шкафа — корпус</a> — типовое железо шкафа (шаблоны).</li>
+          <li><a href="../scs-config/">Компоновщик шкафа</a> — наполнение конкретного экземпляра, <b>патчкорды внутри одного шкафа</b>.</li>
+          <li><a href="../scs-config/inventory.html">Реестр IT-оборудования</a> — экземпляры сервер/свич/хранилище с S/N, IP, MAC.</li>
+          <li><b>Здесь</b> — <b>связи между разными шкафами</b>, трассы, кабельный журнал.</li>
+          <li><a href="../facility-inventory/">Реестр оборудования объекта</a> — всё не-IT имущество площадки.</li>
+        </ul>
+      </div>
+    </section>
   </main>
 
+  <script type="module" src="scs-design.js"></script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';

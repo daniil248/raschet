@@ -1,0 +1,84 @@
+/* scs-design.css — Проектирование СКС (1.26) */
+
+.sd-wrap { max-width: 1400px; margin: 16px auto; padding: 0 16px; }
+
+.sd-tabs {
+  display: flex; gap: 4px; border-bottom: 2px solid #e0e3ea;
+  margin-bottom: 16px;
+}
+.sd-tab {
+  padding: 8px 16px; background: none; border: none; cursor: pointer;
+  font: inherit; font-size: 14px; color: #555;
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+}
+.sd-tab.active { color: #1976d2; border-bottom-color: #1976d2; font-weight: 600; }
+.sd-tab:hover { background: #f8fafc; }
+
+.sd-panel { display: none; }
+.sd-panel.active { display: block; }
+
+.sd-card {
+  background: #fff; border: 1px solid #e0e3ea; border-radius: 12px;
+  padding: 16px 20px; margin-bottom: 16px;
+}
+.sd-card h2 { font-size: 15px; margin-bottom: 10px; color: #1f2430; }
+.sd-card .muted { color: #777; font-size: 13px; line-height: 1.5; }
+
+/* --- Вкладка Связи: мульти-выбор стоек --- */
+.sd-rack-picker {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+}
+.sd-rack-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 16px;
+  font-size: 13px; cursor: pointer; user-select: none;
+  background: #f8fafc;
+}
+.sd-rack-chip.on { background: #dbeafe; border-color: #1e40af; color: #1e3a8a; font-weight: 600; }
+.sd-rack-chip input { margin: 0; }
+
+.sd-racks-row {
+  display: flex; gap: 16px; overflow-x: auto; padding: 8px 0 16px;
+  align-items: flex-start;
+}
+.sd-rack-card {
+  flex-shrink: 0; width: 220px; background: #fff;
+  border: 1px solid #d4d8e0; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.sd-rack-card .sd-rack-head {
+  padding: 8px 10px; background: #f1f5f9; border-bottom: 1px solid #d4d8e0;
+  font-size: 12px; font-weight: 600; color: #1f2430;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.sd-rack-head .tag { color: #64748b; font-weight: 400; font-size: 11px; }
+.sd-rack-card .sd-units {
+  padding: 4px; display: flex; flex-direction: column-reverse; gap: 2px;
+  max-height: 640px; overflow-y: auto;
+}
+.sd-unit {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 6px; border: 1px solid #e2e8f0; border-radius: 4px;
+  background: #fafafa; font-size: 11px; color: #333;
+  min-height: 18px;
+}
+.sd-unit.empty { opacity: 0.35; color: #94a3b8; border-style: dashed; }
+.sd-unit .u-num {
+  flex-shrink: 0; width: 18px; color: #64748b;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  text-align: right;
+}
+.sd-unit .u-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sd-empty-state {
+  padding: 24px; text-align: center; color: #777;
+  background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;
+}
+.sd-empty-state a { color: #1976d2; }
+
+/* Пустые вкладки «План зала» и «Стойки» — stub */
+.sd-stub {
+  padding: 32px 24px; text-align: center; color: #555;
+  background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;
+}
+.sd-stub h3 { font-size: 16px; margin-bottom: 8px; color: #333; }
