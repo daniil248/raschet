@@ -244,6 +244,11 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.249', date: '2026-04-22', items: [
+      '📋 BOM: добавлена колонка «Глуб., мм» — полезно для закупки (селекция шкафов по глубине оборудования).',
+      '📄 CSV-экспорт расширен: в секции BOM — колонка depth; в секции TIA-тегов — столбцы «Сторона» (фронт/тыл) и «Глуб., мм» на каждое устройство.',
+      'Файлы: scs-config/scs-config.js (computeBom + renderBom + exportBomCsv).',
+    ] },
     { version: '0.59.248', date: '2026-04-22', items: [
       '🐛 Fix: 3D-вид не работал. Причина: OrbitControls.js на jsDelivr содержит bare-импорт `from \'three\'`, который браузер не резолвит без import-map. Переключились на esm.sh — он перезаписывает bare-спецификаторы на абсолютные URL. Теперь 🧊 3D грузится с первого клика.',
       'Файлы: scs-config/scs-config.js (loadThree — esm.sh вместо jsdelivr).',

@@ -1440,7 +1440,7 @@ function computeBom() {
     const type = state.catalog.find(c => c.id === d.typeId);
     if (!type) return;
     const key = type.id;
-    const row = byType.get(key) || { label: type.label, kind: KIND_LABEL[type.kind], qty: 0, powerW: type.powerW };
+    const row = byType.get(key) || { label: type.label, kind: KIND_LABEL[type.kind], qty: 0, powerW: type.powerW, depthMm: type.depthMm || 0 };
     row.qty++;
     byType.set(key, row);
   });
@@ -1457,27 +1457,29 @@ function computeBom() {
 function renderBom() {
   const t = $('sc-bom');
   const items = computeBom();
-  const rows = [`<tr><th>Позиция</th><th>Раздел</th><th>Кол-во</th><th>Длина, м</th><th>Вт/шт</th></tr>`];
+  const rows = [`<tr><th>Позиция</th><th>Раздел</th><th>Кол-во</th><th>Длина, м</th><th>Вт/шт</th><th title="Монтажная глубина, мм">Глуб., мм</th></tr>`];
   items.forEach(it => {
-    rows.push(`<tr><td>${escape(it.label)}</td><td>${escape(it.kind)}</td><td>${it.qty}</td><td>${it.lenM ? it.lenM.toFixed(1) : '—'}</td><td>${it.powerW ?? '—'}</td></tr>`);
+    rows.push(`<tr><td>${escape(it.label)}</td><td>${escape(it.kind)}</td><td>${it.qty}</td><td>${it.lenM ? it.lenM.toFixed(1) : '—'}</td><td>${it.powerW ?? '—'}</td><td>${it.depthMm || '—'}</td></tr>`);
   });
-  if (!items.length) rows.push('<tr><td colspan="5" class="muted">— пусто —</td></tr>');
+  if (!items.length) rows.push('<tr><td colspan="6" class="muted">— пусто —</td></tr>');
   t.innerHTML = rows.join('');
 }
 function exportBomCsv() {
   const items = computeBom();
   const r = currentRack();
   const rackTag = currentRackTag();
-  const rows = [['Позиция','Раздел','Кол-во','Длина, м','Вт/шт']];
-  items.forEach(it => rows.push([it.label, it.kind, it.qty, it.lenM ? it.lenM.toFixed(1) : '', it.powerW ?? '']));
+  const rows = [['Позиция','Раздел','Кол-во','Длина, м','Вт/шт','Глуб., мм']];
+  items.forEach(it => rows.push([it.label, it.kind, it.qty, it.lenM ? it.lenM.toFixed(1) : '', it.powerW ?? '', it.depthMm || '']));
   // 1.24.30 — список устройств с TIA-606 тегами (отдельной секцией)
   if (r) {
     rows.push([]);
     rows.push([`Теги устройств TIA-606 (стойка ${rackTag || r.name || ''})`]);
-    rows.push(['Тег','U','Название','Тип','PDU ввод','PDU outlet']);
+    rows.push(['Тег','U','Название','Тип','Сторона','Глуб., мм','PDU ввод','PDU outlet']);
     currentContents().slice().sort((a,b) => b.positionU - a.positionU).forEach(d => {
       const t = state.catalog.find(c => c.id === d.typeId);
-      rows.push([deviceTag(d), d.positionU, d.label, t ? KIND_LABEL[t.kind] : '', d.pduFeed || '', d.pduOutlet || '']);
+      const dmm = (typeof d.depthMm === 'number' && d.depthMm > 0) ? d.depthMm : (t?.depthMm || '');
+      const side = (d.mountSide || 'front') === 'rear' ? 'тыл' : 'фронт';
+      rows.push([deviceTag(d), d.positionU, d.label, t ? KIND_LABEL[t.kind] : '', side, dmm, d.pduFeed || '', d.pduOutlet || '']);
     });
   }
   const csv = rows.map(row => row.map(v => {
