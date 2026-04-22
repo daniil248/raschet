@@ -49,7 +49,7 @@ const LS_KEY  = 'rack-config.templates.v1';
 const BRIDGE_KEY_PREFIX = 'raschet.rack.bridge.';
 
 /* ---------- state ---------- */
-function makeBlankTemplate(name = 'Новый шаблон') {
+function makeBlankTemplate(name = 'Новый шкаф') {
   return {
     id: 'tpl-' + Math.random().toString(36).slice(2, 9),
     name,
@@ -647,7 +647,23 @@ function renderForm() {
 function readForm() {
   const t = current();
   if (!t) return;
-  t.name         = el('rc-name').value.trim();
+  // 1.24.40 — уникальность обозначения (name) стойки в проекте
+  const newName = el('rc-name').value.trim();
+  if (newName && newName !== t.name) {
+    const dup = state.templates.find(x => x.id !== t.id && (x.name || '').trim().toLowerCase() === newName.toLowerCase());
+    if (dup) {
+      // откатываем DOM на предыдущее значение
+      el('rc-name').value = t.name || '';
+      if (typeof toast === 'function') toast(`Обозначение «${newName}» уже занято другой стойкой проекта. Должно быть уникальным.`, 'warn');
+      else alert(`Обозначение «${newName}» уже занято другой стойкой проекта.`);
+      // остальные поля всё равно читаем
+    } else {
+      t.name = newName;
+    }
+  } else {
+    t.name = newName;
+  }
+  t.manufacturer = el('rc-manufacturer').value.trim();
   t.manufacturer = el('rc-manufacturer').value.trim();
   t.u            = parseInt(el('rc-u').value, 10) || 42;
   t.width        = parseInt(el('rc-width').value, 10) || 600;
@@ -1733,6 +1749,12 @@ function addTemplate(src) {
   const t = src ? JSON.parse(JSON.stringify(src)) : makeBlankTemplate();
   t.id = 'tpl-' + Math.random().toString(36).slice(2, 9);
   if (src) t.name = (src.name || 'Шаблон') + ' (копия)';
+  // 1.24.40 — автоинкремент имени если оно уже занято (уникальность в проекте)
+  const baseName = (t.name || 'Новый шкаф').trim();
+  let name = baseName, n = 2;
+  const clash = nm => state.templates.some(x => (x.name || '').trim().toLowerCase() === nm.toLowerCase());
+  while (clash(name)) { name = `${baseName} (${n++})`; }
+  t.name = name;
   state.templates.push(t);
   state.currentId = t.id;
   saveTemplates();

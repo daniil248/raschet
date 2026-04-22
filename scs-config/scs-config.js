@@ -1555,7 +1555,8 @@ function bindCartWarehouseDropzones() {
 
 /* ---- глобальный rerender ---------------------------------------------- */
 function rerenderPreview() {
-  renderUnitMap('sc-unitmap', { big: false });
+  // 1.24.40 — основная карта в rack.html теперь всегда с zoom/pan (как раньше в модалке)
+  renderUnitMap('sc-unitmap', { big: true });
   const dlg = $('sc-unitmap-dlg');
   if (dlg && dlg.open) renderUnitMap('sc-unitmap-dlg-body', { big: true });
   renderWarnings(); renderBom();
@@ -1647,15 +1648,28 @@ function init() {
       history.replaceState(null, '', url);
     }
   });
-  // 1.24.23 — TIA-942 тег стойки
+  // 1.24.23 — TIA-942 тег стойки (+1.24.40: уникальность в проекте)
   const tagInput = $('sc-rack-tag');
   tagInput.addEventListener('change', () => {
     const r = currentRack(); if (!r) return;
     const v = tagInput.value.trim();
-    if (v) state.rackTags[r.id] = v;
-    else delete state.rackTags[r.id];
+    if (v) {
+      // проверка: тег не должен совпадать с тегом другой стойки
+      const dup = Object.entries(state.rackTags).find(([id, t]) =>
+        id !== r.id && (t || '').trim().toLowerCase() === v.toLowerCase());
+      if (dup) {
+        const other = state.racks.find(x => x.id === dup[0]);
+        scToast(`Тег «${v}» уже присвоен стойке «${other?.name || dup[0]}». Тег должен быть уникальным.`, 'warn');
+        tagInput.value = state.rackTags[r.id] || '';
+        return;
+      }
+      state.rackTags[r.id] = v;
+    } else {
+      delete state.rackTags[r.id];
+    }
     saveRackTags();
     renderContents(); rerenderPreview();
+    renderRacksSidebar && renderRacksSidebar();
   });
   // начальная подгрузка тега
   if (state.currentRackId) tagInput.value = state.rackTags[state.currentRackId] || '';
