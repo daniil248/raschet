@@ -221,10 +221,13 @@ function renderLinksTab() {
   const parts = [];
   // поиск
   const totalAll = racks.length;
-  const totalShown = real.length + drafts.length;
+  const shown = [...real, ...drafts];
+  const totalShown = shown.length;
+  const allShownSelected = totalShown > 0 && shown.every(r => selected.has(r.id));
   parts.push(`<div class="sd-picker-search">
     <input type="search" id="sd-picker-q" placeholder="🔍 поиск по тегу / имени / id" value="${escapeHtml(pickerQuery || '')}" autocomplete="off">
     <span class="muted">${q ? `${totalShown}/${totalAll}` : `${totalAll} шт.`}</span>
+    ${totalShown > 0 ? `<button type="button" class="sd-btn-sel" id="sd-picker-toggle-all" title="Выбрать/снять все ${q ? 'найденные' : ''}">${allShownSelected ? '☐ снять все' : '☑ выбрать все'}</button>` : ''}
     ${q ? '<button type="button" class="sd-btn-sel" id="sd-picker-clear">×</button>' : ''}
   </div>`);
   if (real.length) {
@@ -252,6 +255,12 @@ function renderLinksTab() {
   }
   document.getElementById('sd-picker-clear')?.addEventListener('click', () => {
     pickerQuery = '';
+    renderLinksTab();
+  });
+  document.getElementById('sd-picker-toggle-all')?.addEventListener('click', () => {
+    if (allShownSelected) shown.forEach(r => selected.delete(r.id));
+    else shown.forEach(r => selected.add(r.id));
+    saveJson(LS_SELECTION, Array.from(selected));
     renderLinksTab();
   });
 
@@ -1334,6 +1343,16 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
   const cleaned = sanitizeLinks();
   renderLinksTab();
+  // Esc — снять фокус с трассы на плане
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+    if (focusRackId) {
+      focusRackId = null;
+      renderPlan();
+    }
+  });
   if (cleaned > 0) {
     updateStatus(`⚠ Удалено ${cleaned} связь(ей) с кабельными органайзерами — у них нет портов, они используются только для трассировки.`);
   }
