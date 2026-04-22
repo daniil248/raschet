@@ -120,18 +120,39 @@ function rescopeToActiveProject() {
 rescopeToActiveProject();
 
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
+/* v0.59.245: depthMm — глубина устройства в мм. Нужна для проверки
+   коллизий front+rear на одном U и для рисования вида сверху/«обе стороны».
+   Дефолты по категориям: сервер 750, коммутатор 400, патч-панель 200,
+   кабельный органайзер 60, ИБП 700, консоль/KVM/монитор 600. */
 const DEFAULT_CATALOG = [
-  { id: 'sw-24',   kind: 'switch',       label: 'Коммутатор 24×1G',         heightU: 1, powerW: 45,  ports: 24, color: '#60a5fa' },
-  { id: 'sw-48',   kind: 'switch',       label: 'Коммутатор 48×1G + 4SFP+', heightU: 1, powerW: 95,  ports: 48, color: '#3b82f6' },
-  { id: 'pp-24',   kind: 'patch-panel',  label: 'Патч-панель 24 cat.6',     heightU: 1, powerW: 0,   ports: 24, color: '#fbbf24' },
-  { id: 'pp-48',   kind: 'patch-panel',  label: 'Патч-панель 48 cat.6',     heightU: 2, powerW: 0,   ports: 48, color: '#f59e0b' },
-  { id: 'srv-1u',  kind: 'server',       label: 'Сервер 1U',                heightU: 1, powerW: 450, ports: 4,  color: '#a78bfa' },
-  { id: 'srv-2u',  kind: 'server',       label: 'Сервер 2U',                heightU: 2, powerW: 750, ports: 4,  color: '#8b5cf6' },
-  { id: 'kvm',     kind: 'kvm',          label: 'Консоль KVM 1U',           heightU: 1, powerW: 20,  ports: 8,  color: '#34d399' },
-  { id: 'mon-1u',  kind: 'monitor',      label: 'Монитор 1U (выдвижной)',   heightU: 1, powerW: 25,  ports: 1,  color: '#10b981' },
-  { id: 'ups-1u',  kind: 'ups',          label: 'ИБП 1U 1 кВА',             heightU: 1, powerW: 900, ports: 0,  color: '#f472b6' },
-  { id: 'cm-1u',   kind: 'cable-manager',label: 'Кабельный органайзер 1U',  heightU: 1, powerW: 0,   ports: 0,  color: '#94a3b8' },
+  { id: 'sw-24',   kind: 'switch',       label: 'Коммутатор 24×1G',         heightU: 1, depthMm: 400, powerW: 45,  ports: 24, color: '#60a5fa' },
+  { id: 'sw-48',   kind: 'switch',       label: 'Коммутатор 48×1G + 4SFP+', heightU: 1, depthMm: 400, powerW: 95,  ports: 48, color: '#3b82f6' },
+  { id: 'pp-24',   kind: 'patch-panel',  label: 'Патч-панель 24 cat.6',     heightU: 1, depthMm: 200, powerW: 0,   ports: 24, color: '#fbbf24' },
+  { id: 'pp-48',   kind: 'patch-panel',  label: 'Патч-панель 48 cat.6',     heightU: 2, depthMm: 200, powerW: 0,   ports: 48, color: '#f59e0b' },
+  { id: 'srv-1u',  kind: 'server',       label: 'Сервер 1U',                heightU: 1, depthMm: 750, powerW: 450, ports: 4,  color: '#a78bfa' },
+  { id: 'srv-2u',  kind: 'server',       label: 'Сервер 2U',                heightU: 2, depthMm: 750, powerW: 750, ports: 4,  color: '#8b5cf6' },
+  { id: 'kvm',     kind: 'kvm',          label: 'Консоль KVM 1U',           heightU: 1, depthMm: 600, powerW: 20,  ports: 8,  color: '#34d399' },
+  { id: 'mon-1u',  kind: 'monitor',      label: 'Монитор 1U (выдвижной)',   heightU: 1, depthMm: 600, powerW: 25,  ports: 1,  color: '#10b981' },
+  { id: 'ups-1u',  kind: 'ups',          label: 'ИБП 1U 1 кВА',             heightU: 1, depthMm: 700, powerW: 900, ports: 0,  color: '#f472b6' },
+  { id: 'cm-1u',   kind: 'cable-manager',label: 'Кабельный органайзер 1U',  heightU: 1, depthMm: 60,  powerW: 0,   ports: 0,  color: '#94a3b8' },
 ];
+
+/* Дефолт глубины по kind — для миграции старых каталогов без depthMm и
+   добавления пользовательских типов. */
+const DEFAULT_DEPTH_BY_KIND = {
+  'switch': 400, 'patch-panel': 200, 'server': 750,
+  'kvm': 600, 'monitor': 600, 'ups': 700,
+  'cable-manager': 60, 'other': 400,
+};
+function defaultDepthForKind(kind) {
+  return DEFAULT_DEPTH_BY_KIND[kind] || 400;
+}
+
+/* Запас на кабель-менеджмент между front- и rear-устройствами (мм).
+   Реалистично 50–100 мм: кабели, PDU-розетки, воздушные зазоры. */
+const REAR_CABLE_CLEARANCE_MM = 80;
+/* Дефолт глубины стойки если rack-config не задал — 1000 мм. */
+const DEFAULT_RACK_DEPTH_MM = 1000;
 
 const KIND_LABEL = {
   'switch': 'Коммутатор', 'patch-panel': 'Патч-панель', 'server': 'Сервер',
@@ -151,6 +172,8 @@ const state = {
   warehouse: [],     // 1.24.32 — склад: та же модель что cart
   // view mode: 'scs' — цвет по типу; 'power' — цвет по вводу PDU (1.24.11)
   viewMode: 'scs',
+  // v0.59.245 side view: 'front' | 'rear' | 'both'
+  sideView: 'front',
   // drag state
   drag: null,        // { devId, startY, startU, rowH, r }
 };
@@ -348,7 +371,7 @@ function renderRackPicker() {
 function renderCatalog() {
   const t = $('sc-catalog');
   const rows = [`<tr>
-    <th>Тип</th><th>Название</th><th>U</th><th>Вт</th><th>Порты</th>
+    <th>Тип</th><th>Название</th><th>U</th><th title="Глубина устройства, мм">Гл. мм</th><th>Вт</th><th>Порты</th>
     <th style="width:40px">цвет</th><th style="width:90px"></th>
   </tr>`];
   state.catalog.forEach((c, idx) => {
@@ -357,6 +380,7 @@ function renderCatalog() {
         `<option value="${k}"${c.kind===k?' selected':''}>${KIND_LABEL[k]}</option>`).join('')}</select></td>
       <td><input data-k="label" value="${escape(c.label)}"></td>
       <td><input data-k="heightU" type="number" min="1" step="1" value="${c.heightU}"></td>
+      <td><input data-k="depthMm" type="number" min="20" step="10" value="${+c.depthMm || defaultDepthForKind(c.kind)}" title="Глубина устройства, мм"></td>
       <td><input data-k="powerW" type="number" min="0" step="1" value="${c.powerW}"></td>
       <td><input data-k="ports" type="number" min="0" step="1" value="${c.ports}"></td>
       <td><input data-k="color" type="color" value="${c.color || '#94a3b8'}" style="width:40px;padding:0"></td>
@@ -403,21 +427,30 @@ function renderCatalog() {
 }
 
 /* ---- добавление устройства в стойку ------------------------------------ */
-function addToRack(typeId, forcedU) {
+/* v0.59.245: mountSide ('front'|'rear') — сторона монтажа. Передаётся
+   из drag+Alt или из UI-селектора. Default='front'. */
+function addToRack(typeId, forcedU, mountSide) {
   const r = currentRack(); if (!r) { scToast('Сначала выберите стойку', 'warn'); return; }
   const type = state.catalog.find(c => c.id === typeId); if (!type) return;
+  const side = mountSide === 'rear' ? 'rear' : 'front';
   let positionU;
   if (Number.isFinite(forcedU)) {
     // clamp так чтобы устройство влезло: top должен быть ≥ heightU
     positionU = Math.max(type.heightU, Math.min(r.u, forcedU));
   } else {
-    positionU = findFirstFreeSlot(r, currentContents(), type.heightU);
+    positionU = findFirstFreeSlot(r, currentContents(), type.heightU, side);
   }
+  /* v0.59.245: проверка глубины перед установкой. Если не влезает даже на
+     пустое место (dep > rack.depth - clearance) — отказ. */
+  const depthCheck = checkDepthFit(r, currentContents(), null, type, positionU, side);
+  if (!depthCheck.ok) { scToast(depthCheck.reason, 'err'); return; }
   const dev = {
     id: uid('dev'),
     typeId,
     label: type.label,
     positionU, // номер верхнего U устройства (1…r.u)
+    mountSide: side,
+    offsetMmFromRail: 0,
     pduFeed: '', pduOutlet: '',
   };
   currentContents().push(dev);
@@ -427,16 +460,77 @@ function addToRack(typeId, forcedU) {
   return dev;
 }
 
+/* v0.59.245: эффективная глубина стойки. rack-config задаёт depth в мм,
+   но для старых стоек/черновиков поле может отсутствовать. Fallback =
+   DEFAULT_RACK_DEPTH_MM. */
+function rackDepthMm(r) {
+  if (!r) return DEFAULT_RACK_DEPTH_MM;
+  const d = +r.depth;
+  return Number.isFinite(d) && d > 0 ? d : DEFAULT_RACK_DEPTH_MM;
+}
+
+/* v0.59.245: занятые U для одной стороны монтажа. */
+function occupiedUsBySide(devices, side) {
+  const occ = new Set();
+  devices.forEach(d => {
+    if ((d.mountSide || 'front') !== side) return;
+    const t = state.catalog.find(c => c.id === d.typeId);
+    const h = t ? t.heightU : 1;
+    for (let k = 0; k < h; k++) occ.add(d.positionU - k);
+  });
+  return occ;
+}
+
+/* v0.59.245: проверка по глубине.
+   - Устройство должно помещаться в стойку (depthMm <= rackDepth).
+   - Если на тех же U уже стоит устройство с противоположной стороны —
+     сумма глубин + clearance не должна превышать rack.depth.
+   Возвращает {ok:true} или {ok:false, reason}. excludeDevId — id самого
+   устройства при перемещении (его старое место игнорируется). */
+function checkDepthFit(r, devices, excludeDevId, type, positionU, side) {
+  if (!r || !type) return { ok: true };
+  const rackD = rackDepthMm(r);
+  const myD = +type.depthMm > 0 ? +type.depthMm : defaultDepthForKind(type.kind);
+  const h = type.heightU || 1;
+  if (myD > rackD) {
+    return { ok: false, reason: `Устройство глубиной ${myD} мм не помещается в стойку глубиной ${rackD} мм.` };
+  }
+  const other = side === 'front' ? 'rear' : 'front';
+  const mineUs = [];
+  for (let k = 0; k < h; k++) mineUs.push(positionU - k);
+  for (const d of devices) {
+    if (excludeDevId && d.id === excludeDevId) continue;
+    const dSide = d.mountSide || 'front';
+    if (dSide !== other) continue;
+    const t2 = state.catalog.find(c => c.id === d.typeId);
+    if (!t2) continue;
+    const h2 = t2.heightU || 1;
+    const d2 = +t2.depthMm > 0 ? +t2.depthMm : defaultDepthForKind(t2.kind);
+    for (let k = 0; k < h2; k++) {
+      const u = d.positionU - k;
+      if (mineUs.indexOf(u) >= 0) {
+        const total = myD + d2 + REAR_CABLE_CLEARANCE_MM;
+        if (total > rackD) {
+          return { ok: false, reason: `Коллизия по глубине на U${u}: ${side==='front'?'front':'rear'} ${myD} мм + ${other} ${d2} мм + запас ${REAR_CABLE_CLEARANCE_MM} мм = ${total} мм > стойка ${rackD} мм.` };
+        }
+      }
+    }
+  }
+  return { ok: true };
+}
+
 /* Ищет первую свободную область heightU подряд сверху вниз, с учётом занятых
    юнитов (r.occupied сверху) и уже расставленных устройств. Возвращает U-номер
-   верхнего юнита устройства или r.u - r.occupied (первый после «оборудования»). */
-function findFirstFreeSlot(r, devices, heightU) {
-  // занятость: массив length=r.u, true если занято
+   верхнего юнита устройства или r.u - r.occupied (первый после «оборудования»).
+   v0.59.245: учитывает сторону монтажа — front/rear независимы. */
+function findFirstFreeSlot(r, devices, heightU, side) {
+  side = side || 'front';
+  // занятость: массив length=r.u, true если занято на ЭТОЙ стороне
   const occ = new Array(r.u + 1).fill(false); // 1..r.u
-  // верхние "occupied" юниты стойки — считаем, что это уже занятое оборудование «общей группой»
-  // в rack-config это верхний блок. Нас интересуют только свободные/заглушечные места.
+  // верхние "occupied" юниты стойки — «общий» блок, занимает обе стороны
   for (let u = r.u; u > r.u - r.occupied; u--) occ[u] = true;
   devices.forEach(d => {
+    if ((d.mountSide || 'front') !== side) return;
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     for (let k = 0; k < h; k++) occ[d.positionU - k] = true;
@@ -458,7 +552,7 @@ function renderContents() {
   if (!r) { t.innerHTML = '<tr><td>Нет выбранной стойки</td></tr>'; return; }
   const conflicts = detectConflicts(r, devices);
   const rows = [`<tr>
-    <th>U</th><th>Тип</th><th>Название</th><th title="TIA-606">Тег</th><th>Ввод</th><th>PDU outlet</th>
+    <th>U</th><th>Тип</th><th>Название</th><th title="TIA-606">Тег</th><th title="Сторона монтажа">Сторона</th><th>Ввод</th><th>PDU outlet</th>
     <th style="width:50px"></th>
   </tr>`];
   const feeds = pduFeeds(r);
@@ -481,17 +575,23 @@ function renderContents() {
       })).join('');
     const feedOptsHtml = ['<option value="">—</option>']
       .concat(feeds.map(f => `<option value="${f}"${d.pduFeed === f ? ' selected' : ''}>${f}</option>`)).join('');
+    const side = d.mountSide === 'rear' ? 'rear' : 'front';
+    const depthMm = type ? (+type.depthMm > 0 ? +type.depthMm : defaultDepthForKind(type.kind)) : 0;
     rows.push(`<tr data-idx="${idx}" class="${conflict ? 'sc-conflict' : ''}">
       <td><input data-k="positionU" type="number" min="${h}" max="${r.u}" step="1" value="${d.positionU}" style="width:55px"></td>
-      <td>${escape(type ? KIND_LABEL[type.kind] : 'Удалён')} · ${h}U</td>
+      <td title="Глубина ${depthMm} мм">${escape(type ? KIND_LABEL[type.kind] : 'Удалён')} · ${h}U${depthMm?' · '+depthMm+' мм':''}</td>
       <td><input data-k="label" value="${escape(d.label)}"></td>
       <td class="muted" style="font-family:monospace;font-size:11px">${escape(deviceTag(d) || '—')}</td>
+      <td><select data-k="mountSide" class="sc-side-sel sc-side-${side}" title="Сторона монтажа (front=фронт, rear=тыл)">
+        <option value="front"${side==='front'?' selected':''}>▲ front</option>
+        <option value="rear"${side==='rear'?' selected':''}>▼ rear</option>
+      </select></td>
       <td><select data-k="pduFeed" style="width:60px">${feedOptsHtml}</select></td>
       <td><select data-k="pduOutlet">${outletOptsHtml}</select></td>
       <td><button type="button" class="sc-btn sc-btn-danger" data-del="${d.id}">✕</button></td>
     </tr>`);
   });
-  if (!devices.length) rows.push('<tr><td colspan="7" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
+  if (!devices.length) rows.push('<tr><td colspan="8" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
   t.innerHTML = rows.join('');
   t.querySelectorAll('[data-k]').forEach(el => {
     el.addEventListener('change', () => {
@@ -499,7 +599,22 @@ function renderContents() {
       const idx = +tr.dataset.idx;
       const k = el.dataset.k;
       const v = el.type === 'number' ? +el.value : el.value;
-      devices[idx][k] = v;
+      const dev = devices[idx];
+      /* v0.59.245: смена стороны — предварительная проверка коллизии
+         по глубине + U-наезду на этой же стороне. При конфликте
+         откатываем и показываем toast. */
+      if (k === 'mountSide' && (v === 'front' || v === 'rear') && v !== (dev.mountSide || 'front')) {
+        const type = state.catalog.find(c => c.id === dev.typeId);
+        if (type) {
+          const ok = canPlace(r, devices, dev.id, type.heightU || 1, dev.positionU, v, type);
+          if (!ok) {
+            scToast(`Нельзя поставить на ${v==='rear'?'тыл':'фронт'}: коллизия по U или глубине.`, 'err');
+            el.value = dev.mountSide || 'front';
+            return;
+          }
+        }
+      }
+      dev[k] = v;
       saveContents();
       rerender();
     });
@@ -519,14 +634,23 @@ function renderContents() {
 }
 
 /* ---- конфликты: наезд U / переполнение PDU ---------------------------- */
+/* v0.59.245: front и rear считаются независимо — две карты занятости;
+   дополнительно проверяем коллизию по глубине (front+rear на одном U). */
 function detectConflicts(r, devices) {
   const conflicts = new Set();
-  // карта занятости со стороной rack.occupied (его считаем непересекаемым «общим» блоком)
-  const slot = new Array(r.u + 1).fill(null); // 1..r.u → id
-  for (let u = r.u; u > r.u - r.occupied; u--) slot[u] = '__rack_occ__';
+  const slotFront = new Array(r.u + 1).fill(null); // 1..r.u → id
+  const slotRear  = new Array(r.u + 1).fill(null);
+  /* rack.occupied — «общий» верхний блок, блокирует обе стороны. */
+  for (let u = r.u; u > r.u - r.occupied; u--) {
+    slotFront[u] = '__rack_occ__';
+    slotRear[u]  = '__rack_occ__';
+  }
+  const rackD = rackDepthMm(r);
   devices.forEach(d => {
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
+    const side = (d.mountSide || 'front');
+    const slot = side === 'rear' ? slotRear : slotFront;
     for (let k = 0; k < h; k++) {
       const u = d.positionU - k;
       if (u < 1 || u > r.u) { conflicts.add(d.id); continue; }
@@ -538,6 +662,22 @@ function detectConflicts(r, devices) {
       }
     }
   });
+  /* Коллизия глубины: front+rear на одном U → суммарная глубина. */
+  for (let u = 1; u <= r.u; u++) {
+    const fId = slotFront[u], rId = slotRear[u];
+    if (!fId || !rId || fId === '__rack_occ__' || rId === '__rack_occ__' || fId === rId) continue;
+    const dF = devices.find(x => x.id === fId);
+    const dR = devices.find(x => x.id === rId);
+    if (!dF || !dR) continue;
+    const tF = state.catalog.find(c => c.id === dF.typeId);
+    const tR = state.catalog.find(c => c.id === dR.typeId);
+    if (!tF || !tR) continue;
+    const depthF = +tF.depthMm > 0 ? +tF.depthMm : defaultDepthForKind(tF.kind);
+    const depthR = +tR.depthMm > 0 ? +tR.depthMm : defaultDepthForKind(tR.kind);
+    if (depthF + depthR + REAR_CABLE_CLEARANCE_MM > rackD) {
+      conflicts.add(fId); conflicts.add(rId);
+    }
+  }
   return conflicts;
 }
 
@@ -657,7 +797,12 @@ function addMatrixRow() {
   renderMatrix();
 }
 
-/* ---- render: карта юнитов (SVG фронт-вью) ----------------------------- */
+/* ---- render: карта юнитов (SVG) ---------------------------------------
+   v0.59.245: sideView управляет отображением:
+   - 'front' — фронт-сторона (старое поведение, только front-устройства)
+   - 'rear'  — тыл-сторона (только rear-устройства; в той же ориентации)
+   - 'both'  — вид сверху: две половины шкафа (front слева, rear справа),
+     ширина устройства пропорциональна depthMm/rack.depth. */
 function renderUnitMap(hostId, opts) {
   hostId = hostId || 'sc-unitmap';
   opts = opts || {};
@@ -673,54 +818,96 @@ function renderUnitMap(hostId, opts) {
   const svgH = r.u * rowH + 8;
   const svgW = bodyW + 40;
   const mode = state.viewMode;
-  // slot → device; индексы U=1..r.u (1 — снизу, r.u — сверху)
-  const slot = new Array(r.u + 1).fill(null);
-  for (let u = r.u; u > r.u - r.occupied; u--) slot[u] = { kind: 'rack-occ' };
-  devices.forEach(d => {
-    const type = state.catalog.find(c => c.id === d.typeId);
-    const h = type ? type.heightU : 1;
-    for (let k = 0; k < h; k++) {
-      const u = d.positionU - k;
-      if (u < 1 || u > r.u) continue;
-      slot[u] = { device: d, type, isTop: k === 0, conflict: conflicts.has(d.id) };
-    }
-  });
+  const sideView = state.sideView || 'front';
+  const rackD = rackDepthMm(r);
 
-  // Сам шкаф (рамка + все U с нумерацией) рисуется всегда — и на
-  // маленькой карте, и в модалке. В модалке отличие только в наличии
-  // слоя патч-кордов (wires). См. renderUnitMap ниже.
+  // Сам шкаф (рамка + все U с нумерацией).
   const rects = [];
   for (let i = 0; i < r.u; i++) {
     const u = r.u - i; // сверху вниз
     const y = 4 + i * rowH;
-    const s = slot[u];
-    if (!s || s.kind === 'rack-occ') {
-      const fill = s && s.kind === 'rack-occ' ? '#cbd5e1' : '#f1f5f9';
-      const stroke = s && s.kind === 'rack-occ' ? '#64748b' : '#cbd5e1';
-      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
-    }
+    const isRackOcc = u > r.u - r.occupied;
+    const fill = isRackOcc ? '#cbd5e1' : '#f1f5f9';
+    const stroke = isRackOcc ? '#64748b' : '#cbd5e1';
+    rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
     rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
   }
-  // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
+
+  /* В режиме 'both' рисуем центральную ось рельса — визуально делит
+     шкаф на фронт и тыл. */
+  let railAxis = '';
+  if (sideView === 'both') {
+    const midX = 32 + bodyW / 2;
+    railAxis = `<line x1="${midX}" y1="4" x2="${midX}" y2="${4 + r.u * rowH - 1}" stroke="#64748b" stroke-width="0.8" stroke-dasharray="2 2"/>
+      <text x="${32 + 4}" y="14" font-size="${8*scale}" fill="#94a3b8">фронт</text>
+      <text x="${32 + bodyW - 36}" y="14" font-size="${8*scale}" fill="#94a3b8">тыл</text>`;
+  } else if (sideView === 'rear') {
+    railAxis = `<text x="${32 + 4}" y="14" font-size="${8*scale}" fill="#94a3b8">вид с тыла</text>`;
+  }
+
+  // Устройства — ОДНОЙ группой на устройство (для drag-n-drop).
+  // В режимах 'front'/'rear' фильтруем по стороне.
+  // В режиме 'both' рисуем обе стороны с шириной пропорционально depthMm.
   const deviceGroups = devices.map(d => {
     const type = state.catalog.find(c => c.id === d.typeId);
     if (!type) return '';
     const h = type.heightU;
+    const side = d.mountSide || 'front';
+    if ((sideView === 'front' && side !== 'front') ||
+        (sideView === 'rear'  && side !== 'rear')) return '';
     const topIdx = r.u - d.positionU; // row index (0=сверху)
     const y = 4 + topIdx * rowH;
     const conflict = conflicts.has(d.id);
-    const fill = mode === 'power' ? feedColor(d.pduFeed) : (type.color || '#94a3b8');
+    const baseFill = mode === 'power' ? feedColor(d.pduFeed) : (type.color || '#94a3b8');
     const stroke = conflict ? '#dc2626' : '#64748b';
     const tag = deviceTag(d);
     const tagSfx = tag ? ' · ' + tag : '';
+    const depthMm = +type.depthMm > 0 ? +type.depthMm : defaultDepthForKind(type.kind);
+    const sideSfx = sideView === 'both' ? '' : ' · ' + (side==='rear'?'тыл':'фронт');
     const labelTxt = mode === 'power'
-      ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}${tagSfx}`
-      : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}${tagSfx}`;
-    return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
-      <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
+      ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}${sideSfx}${tagSfx}`
+      : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}${sideSfx} · ${depthMm} мм${tagSfx}`;
+
+    if (sideView === 'both') {
+      // Ширина половины шкафа в пикселях; глубина устройства в тех же единицах.
+      const halfW = bodyW / 2;
+      const w = Math.max(6, Math.round(halfW * Math.min(depthMm / rackD, 1)));
+      // front: от левой границы внутрь (вправо); rear: от правой границы внутрь (влево).
+      const x = side === 'front' ? 32 : 32 + bodyW - w;
+      const hatchId = `sc-hatch-${side}`;
+      const gradId  = `sc-grad-${side}`;
+      return `<g class="sc-devband sc-devband-both sc-devband-${side}" data-devid="${d.id}" data-h="${h}" data-side="${side}" style="cursor:grab">
+        <rect x="${x}" y="${y}" width="${w}" height="${h * rowH - 1}" fill="url(#${gradId})" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
+        <rect x="${x}" y="${y}" width="${w}" height="${h * rowH - 1}" fill="url(#${hatchId})" opacity="0.35"/>
+        <rect x="${x}" y="${y}" width="${w}" height="${h * rowH - 1}" fill="${baseFill}" fill-opacity="0.55"/>
+        <text x="${x + 4}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#0f172a">${escape(d.label + (tag ? ' · '+tag : ''))}</text>
+        <text x="${x + w - 4}" y="${y + h*rowH - 4}" font-size="${7*scale}" fill="#475569" text-anchor="end">${depthMm} мм · ${side==='rear'?'▼ тыл':'▲ фронт'}</text>
+      </g>`;
+    }
+    return `<g class="sc-devband sc-devband-${side}" data-devid="${d.id}" data-h="${h}" data-side="${side}" style="cursor:grab">
+      <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${baseFill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
       <text x="${38}" y="${y + rowH/2 + 4}" font-size="${10*scale}" fill="#0f172a">${escape(labelTxt)}</text>
     </g>`;
   }).join('');
+
+  /* SVG-defs для 'both': градиенты (имитация глубины) и штриховка
+     (визуально отличает front/rear сразу). */
+  const defs = sideView === 'both' ? `<defs>
+      <linearGradient id="sc-grad-front" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+        <stop offset="100%" stop-color="#000000" stop-opacity="0.15"/>
+      </linearGradient>
+      <linearGradient id="sc-grad-rear" x1="1" y1="0" x2="0" y2="0">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+        <stop offset="100%" stop-color="#000000" stop-opacity="0.15"/>
+      </linearGradient>
+      <pattern id="sc-hatch-front" patternUnits="userSpaceOnUse" width="6" height="6">
+        <path d="M-1,1 l2,-2 M0,6 l6,-6 M5,7 l2,-2" stroke="#64748b" stroke-width="0.6" opacity="0.6"/>
+      </pattern>
+      <pattern id="sc-hatch-rear" patternUnits="userSpaceOnUse" width="6" height="6">
+        <path d="M-1,5 l2,2 M0,0 l6,6 M5,-1 l2,2" stroke="#64748b" stroke-width="0.6" opacity="0.6"/>
+      </pattern>
+    </defs>` : '';
 
   const legend = [];
   if (mode === 'power') {
@@ -786,8 +973,10 @@ function renderUnitMap(hostId, opts) {
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
   const totalW = svgW + extraRight;
   const z = opts.big ? (state.dlgZoom || 1) : 1;
-  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32">
+  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32" data-sideview="${sideView}">
+    ${defs}
     ${rects.join('')}
+    ${railAxis}
     ${deviceGroups}
     ${wires}
   </svg>`;
@@ -910,7 +1099,13 @@ function bindUnitMapDrag(svgId) {
       const yInSvg = (ev.clientY - rect.top) / zoom;
       const topIdx = Math.max(0, Math.min(r.u - h, Math.floor((yInSvg - 4) / rowHNow)));
       const wantU = r.u - topIdx;
-      const valid = canPlace(r, currentContents(), d.id, h, wantU);
+      /* v0.59.245: с Alt — меняем сторону монтажа. Для drag девайса по
+         карте определяем сторону по целевой половине SVG, если mode=both;
+         иначе сохраняем текущую (с возможностью переключить Alt). */
+      const devType = state.catalog.find(c => c.id === d.typeId);
+      const side = pickDragSide(ev, svgNow, d);
+      state.drag.side = side;
+      const valid = canPlace(r, currentContents(), d.id, h, wantU, side, devType);
       state.drag.wantU = wantU;
       state.drag.valid = valid;
       const bodyW = +svgNow.dataset.bodyw || 220;
@@ -937,9 +1132,13 @@ function bindUnitMapDrag(svgId) {
         moveToCart(drop.devId);
         const last = state.cart[state.cart.length - 1];
         if (last) cartToWarehouse(last.id);
-      } else if (drop.valid && drop.wantU !== drop.startU) {
+      } else if (drop.valid && (drop.wantU !== drop.startU || (drop.side && drop.side !== (currentContents().find(x => x.id === drop.devId)?.mountSide || 'front')))) {
         const d = currentContents().find(x => x.id === drop.devId);
-        if (d) { d.positionU = drop.wantU; saveContents(); }
+        if (d) {
+          d.positionU = drop.wantU;
+          if (drop.side) d.mountSide = drop.side;
+          saveContents();
+        }
         renderContents(); renderWarnings(); renderBom(); rerenderPreview();
       } else {
         // откат — просто re-render, чтобы девайс появился снова
@@ -957,15 +1156,18 @@ function bindUnitMapDrag(svgId) {
 }
 
 /* 1.24.29 — проверка «влезет ли устройство в позицию wantU, не задев
-   других». excludeDevId — игнорируем это устройство (для drag). */
-function canPlace(r, devices, excludeDevId, heightU, wantU) {
+   других». excludeDevId — игнорируем это устройство (для drag).
+   v0.59.245: mountSide — сторона, в которую пытаемся поставить. Устройства
+   на противоположной стороне не блокируют по U, но проверяются по глубине
+   через checkDepthFit (передаётся typeForDepth — опционально, используется
+   драг-превью). */
+function canPlace(r, devices, excludeDevId, heightU, wantU, mountSide, typeForDepth) {
   if (wantU < heightU || wantU > r.u) return false;
-  // v0.59.179: удалён ошибочный цикл по r.occupied, который считал верхние
-  // U «занятыми стопкой» и блокировал любое перемещение в пределах
-  // обычной зоны установки оборудования. Реальная проверка overlap —
-  // цикл ниже по всем устройствам.
+  const side = mountSide === 'rear' ? 'rear' : 'front';
+  // v0.59.179: удалён ошибочный цикл по r.occupied.
   for (const d of devices) {
     if (d.id === excludeDevId) continue;
+    if ((d.mountSide || 'front') !== side) continue; // другая сторона — не мешает по U
     const t = state.catalog.find(c => c.id === d.typeId);
     const dh = t ? t.heightU : 1;
     for (let k = 0; k < heightU; k++) {
@@ -974,6 +1176,11 @@ function canPlace(r, devices, excludeDevId, heightU, wantU) {
         if (myU === d.positionU - j) return false;
       }
     }
+  }
+  /* Глубина (если есть тип — проверяем столкновение с противоположной стороной). */
+  if (typeForDepth) {
+    const fit = checkDepthFit(r, devices, excludeDevId, typeForDepth, wantU, side);
+    if (!fit.ok) return false;
   }
   return true;
 }
@@ -987,7 +1194,7 @@ function canPlace(r, devices, excludeDevId, heightU, wantU) {
    каталога/тележки/склада, следует за курсором. state._dragMeta хранит
    высоту текущего dragged для превью в SVG. */
 function setDragGhost(ev, type, label) {
-  state._dragMeta = { h: type.heightU || 1, label, color: type.color || '#94a3b8' };
+  state._dragMeta = { h: type.heightU || 1, label, color: type.color || '#94a3b8', typeId: type.id };
   const ghost = document.createElement('div');
   ghost.className = 'sc-drag-ghost';
   ghost.textContent = `${label} · ${type.heightU || 1}U`;
@@ -996,6 +1203,35 @@ function setDragGhost(ev, type, label) {
   try { ev.dataTransfer.setDragImage(ghost, 100, 14); } catch {}
   // убираем ghost из DOM после снимка (браузер копирует его визуально)
   setTimeout(() => { try { ghost.remove(); } catch {} }, 0);
+}
+
+/* v0.59.245: выбор стороны монтажа при drag.
+   - Если зажат Alt — переключаем относительно текущей (для drag внутри
+     карты) или ставим 'rear' (для drag из каталога).
+   - В режиме viewMode=both: определяем сторону по горизонтальной позиции
+     курсора относительно центра SVG (левая половина — front, правая — rear).
+   - Иначе наследуем текущую сторону (для drag существующего девайса) или
+     берём дефолт 'front' (для drag нового из каталога). */
+function pickDragSide(ev, svg, existingDev) {
+  if (state.sideView === 'both' && svg) {
+    const rect = svg.getBoundingClientRect();
+    const bodyW = +svg.dataset.bodyw || 220;
+    const bodyX = +svg.dataset.bodyx || 32;
+    const zoom = +svg.dataset.zoom || 1;
+    const xInSvg = (ev.clientX - rect.left) / zoom;
+    // В режиме both рисуем две половины: front-band слева, rear-band справа,
+    // с центральной осью rail посередине bodyX + bodyW/2.
+    const mid = bodyX + bodyW / 2;
+    const left = xInSvg < mid;
+    let side = left ? 'front' : 'rear';
+    if (ev.altKey) side = side === 'front' ? 'rear' : 'front';
+    return side;
+  }
+  // В режимах просмотра одной стороны — по умолчанию ставим на ту же сторону.
+  // Для drag существующего девайса — наследуем его сторону. Alt переключает.
+  let base = existingDev ? (existingDev.mountSide || 'front') : (state.sideView === 'rear' ? 'rear' : 'front');
+  if (ev.altKey) base = base === 'front' ? 'rear' : 'front';
+  return base;
 }
 
 function bindUnitMapDrop(svg, rowH) {
@@ -1058,25 +1294,32 @@ function bindUnitMapDrop(svg, rowH) {
     ev.preventDefault();
     const r = currentRack(); if (!r) return;
     const wantTopU = computeTopU(ev.clientY); if (wantTopU == null) return;
+    /* v0.59.245: сторону выбираем либо по курсору (режим both), либо
+       Alt=rear, иначе front. pickDragSide определяет автоматически. */
+    const side = pickDragSide(ev, svg, null);
     if (whId) {
       warehouseToCart(whId);
       const justAdded = state.cart[state.cart.length - 1];
-      if (justAdded) installFromCart(justAdded.id, wantTopU);
+      if (justAdded) installFromCart(justAdded.id, wantTopU, side);
     } else if (cartId) {
-      installFromCart(cartId, wantTopU);
+      installFromCart(cartId, wantTopU, side);
     } else {
       const type = state.catalog.find(c => c.id === typeId); if (!type) return;
-      const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU);
-      if (finalU == null) { scToast('Нет свободного места для устройства (' + type.heightU + 'U)', 'err'); return; }
-      addToRack(typeId, finalU);
+      const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU, side, type);
+      if (finalU == null) {
+        scToast('Нет свободного места для устройства (' + type.heightU + 'U, сторона ' + (side==='rear'?'тыл':'фронт') + ')', 'err');
+        return;
+      }
+      addToRack(typeId, finalU, side);
     }
   });
 }
 
 /* 1.24.29 — поиск ближайшего свободного блока heightU к wantU (сначала
-   выше, потом ниже). Возвращает top-U или null если нет места. */
-function findNearestFreeSlot(r, devices, heightU, wantU) {
-  const okAt = (u) => canPlace(r, devices, null, heightU, u);
+   выше, потом ниже). Возвращает top-U или null если нет места.
+   v0.59.245: side/typeForDepth — учёт стороны монтажа и глубины. */
+function findNearestFreeSlot(r, devices, heightU, wantU, side, typeForDepth) {
+  const okAt = (u) => canPlace(r, devices, null, heightU, u, side, typeForDepth);
   if (okAt(wantU)) return wantU;
   for (let delta = 1; delta <= r.u; delta++) {
     const up = wantU + delta;
@@ -1283,6 +1526,8 @@ async function saveCurrentAsTemplate() {
     // Снимаем копии без id — применение сгенерирует новые
     contents: currentContents().map(d => ({
       typeId: d.typeId, label: d.label, positionU: d.positionU,
+      mountSide: d.mountSide || 'front',
+      offsetMmFromRail: +d.offsetMmFromRail || 0,
       pduFeed: d.pduFeed || '', pduOutlet: d.pduOutlet || '',
     })),
     matrix: currentMatrix().map(l => ({
@@ -1312,7 +1557,7 @@ async function applyTemplate() {
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     if (d.positionU > r.u || d.positionU - h + 1 < 1) { dropped.push(d); return null; }
-    return { id: uid('dev'), typeId: d.typeId, label: d.label, positionU: d.positionU, pduFeed: d.pduFeed, pduOutlet: d.pduOutlet };
+    return { id: uid('dev'), typeId: d.typeId, label: d.label, positionU: d.positionU, mountSide: d.mountSide === 'rear' ? 'rear' : 'front', offsetMmFromRail: +d.offsetMmFromRail || 0, pduFeed: d.pduFeed, pduOutlet: d.pduOutlet };
   }).filter(Boolean);
   const matrix = tmpl.matrix.map(l => ({ id: uid('lnk'), a: l.a, b: l.b, cable: l.cable, lengthM: l.lengthM, color: l.color }));
   state.contents[state.currentRackId] = contents;
@@ -1342,6 +1587,8 @@ function moveToCart(devId) {
     label: d.label,
     fromRackId: r ? r.id : null,
     fromRackName: r ? (r.name || '') : '',
+    mountSide: d.mountSide || 'front',
+    offsetMmFromRail: +d.offsetMmFromRail || 0,
     pduFeed: d.pduFeed || '', pduOutlet: d.pduOutlet || '',
     takenAt: new Date().toISOString(),
   });
@@ -1350,27 +1597,30 @@ function moveToCart(devId) {
   renderContents(); rerenderPreview(); renderCart();
   scToast('Устройство вытащено на тележку', 'ok');
 }
-function installFromCart(cartId, wantTopU) {
+function installFromCart(cartId, wantTopU, mountSide) {
   const r = currentRack(); if (!r) { scToast('Выберите стойку', 'warn'); return; }
   const idx = state.cart.findIndex(x => x.id === cartId);
   if (idx < 0) return;
   const item = state.cart[idx];
   const type = state.catalog.find(c => c.id === item.typeId);
   if (!type) { scToast('Тип оборудования из тележки не найден в каталоге', 'err'); return; }
+  const side = mountSide === 'rear' ? 'rear' : (item.mountSide === 'rear' ? 'rear' : 'front');
   const finalU = findNearestFreeSlot(r, currentContents(), type.heightU,
-    Number.isFinite(wantTopU) ? wantTopU : r.u - r.occupied);
-  if (finalU == null) { scToast('Нет места в стойке (' + type.heightU + 'U)', 'err'); return; }
+    Number.isFinite(wantTopU) ? wantTopU : r.u - r.occupied, side, type);
+  if (finalU == null) { scToast('Нет места в стойке (' + type.heightU + 'U, сторона ' + (side==='rear'?'тыл':'фронт') + ')', 'err'); return; }
   currentContents().push({
     id: uid('dev'),
     typeId: item.typeId,
     label: item.label,
     positionU: finalU,
+    mountSide: side,
+    offsetMmFromRail: +item.offsetMmFromRail || 0,
     pduFeed: item.pduFeed || '', pduOutlet: '',  // розетку не тянем — другая стойка
   });
   state.cart.splice(idx, 1);
   saveCart(); saveContents();
   renderContents(); rerenderPreview(); renderCart();
-  scToast(`Установлено в U${finalU}`, 'ok');
+  scToast(`Установлено в U${finalU} (${side==='rear'?'тыл':'фронт'})`, 'ok');
 }
 function cartToWarehouse(cartId) {
   const idx = state.cart.findIndex(x => x.id === cartId);
@@ -1453,13 +1703,14 @@ function returnCartItem(cartId) {
   const cnt = currentContents();
   const type = state.catalog.find(c => c.id === item.typeId);
   const h = type ? type.heightU : 1;
-  const finalU = findNearestFreeSlot(rack, cnt, h, rack.u - rack.occupied);
+  const side = item.mountSide === 'rear' ? 'rear' : 'front';
+  const finalU = findNearestFreeSlot(rack, cnt, h, rack.u - rack.occupied, side, type);
   if (finalU == null) {
     state.currentRackId = prevRackId;
     scToast('В исходной стойке нет места', 'err');
     return;
   }
-  cnt.push({ id: uid('dev'), typeId: item.typeId, label: item.label, positionU: finalU, pduFeed: item.pduFeed || '', pduOutlet: item.pduOutlet || '' });
+  cnt.push({ id: uid('dev'), typeId: item.typeId, label: item.label, positionU: finalU, mountSide: side, offsetMmFromRail: +item.offsetMmFromRail || 0, pduFeed: item.pduFeed || '', pduOutlet: item.pduOutlet || '' });
   state.cart = state.cart.filter(x => x.id !== cartId);
   saveContents(); saveCart();
   // вернуться на текущую стойку, пользователь не ожидает прыжка
@@ -1722,7 +1973,27 @@ function init() {
   renderProjectBadge();
   state.racks     = loadRacks();
   state.catalog   = loadJson(LS_CATALOG,   DEFAULT_CATALOG.slice());
+  /* v0.59.245: миграция depthMm в существующих каталогах (старые записи
+     без этого поля). Заполняем дефолтами по kind. */
+  let catMigrated = 0;
+  state.catalog.forEach(c => {
+    if (!Number.isFinite(+c.depthMm) || +c.depthMm <= 0) {
+      c.depthMm = defaultDepthForKind(c.kind);
+      catMigrated++;
+    }
+  });
+  if (catMigrated) saveCatalog();
   state.contents  = loadJson(LS_CONTENTS,  {});
+  /* v0.59.245: миграция mountSide в существующих размещениях (default='front').
+     offsetMmFromRail остаётся undefined если не задан (по центру/от рейла 0). */
+  let devMigrated = 0;
+  Object.values(state.contents).forEach(list => {
+    if (!Array.isArray(list)) return;
+    list.forEach(d => {
+      if (d.mountSide !== 'front' && d.mountSide !== 'rear') { d.mountSide = 'front'; devMigrated++; }
+    });
+  });
+  if (devMigrated) saveContents();
   state.matrix    = loadJson(LS_MATRIX,    {});
   state.templates = loadJson(LS_TEMPLATES, []);
   state.cart      = loadJson(LS_CART,      []);
@@ -1790,7 +2061,7 @@ function init() {
   $('sc-cat-add').addEventListener('click', () => {
     state.catalog.push({
       id: uid('t'), kind: 'other', label: 'Новый тип',
-      heightU: 1, powerW: 0, ports: 0, color: '#94a3b8'
+      heightU: 1, depthMm: defaultDepthForKind('other'), powerW: 0, ports: 0, color: '#94a3b8'
     });
     saveCatalog();
     renderCatalog();
@@ -1815,6 +2086,17 @@ function init() {
       state.viewMode = btn.dataset.mode;
       document.querySelectorAll('.sc-vm-btn').forEach(b => {
         b.classList.toggle('sc-vm-active', b.dataset.mode === state.viewMode);
+      });
+      rerenderPreview();
+    });
+  });
+
+  /* ---- v0.59.245 переключатель стороны (front / rear / both) ---- */
+  document.querySelectorAll('.sc-sv-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.sideView = btn.dataset.side;
+      document.querySelectorAll('.sc-sv-btn').forEach(b => {
+        b.classList.toggle('sc-sv-active', b.dataset.side === state.sideView);
       });
       rerenderPreview();
     });

@@ -66,10 +66,18 @@
         <section class="sc-section">
           <div class="sc-unitmap-head">
             <h2 style="margin:0">🗺️ Карта юнитов</h2>
+            <div class="sc-sideview" role="tablist" aria-label="Сторона монтажа" title="Что показывать на карте. Front — фронтальные рельсы. Rear — тыловые. Обе — вид сверху: ширина устройства ∝ глубине.">
+              <button type="button" class="sc-sv-btn sc-sv-active" data-side="front" title="Только фронтальные устройства">▲ фронт</button>
+              <button type="button" class="sc-sv-btn" data-side="rear" title="Только тыловые устройства">▼ тыл</button>
+              <button type="button" class="sc-sv-btn" data-side="both" title="Обе стороны одновременно (вид сверху, ширина ∝ глубине)">⇄ обе</button>
+            </div>
             <div class="sc-viewmode" role="tablist" aria-label="Режим отображения карты">
               <button type="button" class="sc-vm-btn sc-vm-active" data-mode="scs" title="Цвет по типу оборудования (СКС-вид)">🧵 СКС</button>
               <button type="button" class="sc-vm-btn" data-mode="power" title="Цвет по вводу PDU (A/B/без ввода)">⚡ Питание</button>
             </div>
+          </div>
+          <div class="sc-map-hint muted" style="font-size:11px;margin:-4px 0 6px">
+            При добавлении из каталога зажмите <kbd>Alt</kbd>, чтобы поставить на тыл. В режиме «⇄ обе» сторона выбирается по половине карты, на которую бросаете.
           </div>
           <div id="sc-unitmap" class="sc-unitmap"></div>
         </section>

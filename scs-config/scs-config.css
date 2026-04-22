@@ -86,7 +86,6 @@
 }
 .sc-viewmode {
   display: inline-flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden;
-  margin-left: auto;
 }
 .sc-vm-btn {
   padding: 4px 10px; font-size: 12px; background: #fff; color: #334155; border: 0;
@@ -96,6 +95,38 @@
 .sc-vm-btn:hover { background: #f1f5f9; }
 .sc-vm-active { background: #2563eb; color: #fff; }
 .sc-vm-active:hover { background: #1d4ed8; }
+
+/* v0.59.245 — переключатель стороны монтажа (front / rear / both) */
+.sc-sideview {
+  display: inline-flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden;
+  margin-left: auto;
+}
+.sc-sv-btn {
+  padding: 4px 10px; font-size: 12px; background: #fff; color: #334155; border: 0;
+  border-right: 1px solid #e2e8f0; cursor: pointer;
+}
+.sc-sv-btn:last-child { border-right: 0; }
+.sc-sv-btn:hover { background: #f1f5f9; }
+.sc-sv-active { background: #0f766e; color: #fff; }
+.sc-sv-active:hover { background: #115e59; }
+
+/* v0.59.245 — селектор стороны в таблице размещения */
+.sc-side-sel { font-size: 11px; padding: 2px 3px !important; width: auto !important; min-width: 70px; }
+.sc-side-sel.sc-side-front { background: #eff6ff; border-color: #93c5fd !important; color: #1e40af; }
+.sc-side-sel.sc-side-rear  { background: #fff7ed; border-color: #fdba74 !important; color: #9a3412; }
+
+/* v0.59.245 — устройства на карте, стили по стороне (для front/rear вида) */
+.sc-unitmap svg g.sc-devband-rear > rect:first-of-type {
+  stroke-dasharray: 3 2;
+}
+/* «обе стороны» — подсказка при hover */
+.sc-unitmap svg g.sc-devband-both { transition: filter .12s; }
+.sc-unitmap svg g.sc-devband-both:hover { filter: brightness(1.08); }
+
+kbd {
+  font-family: monospace; font-size: 11px; background: #f1f5f9; border: 1px solid #cbd5e1;
+  border-radius: 3px; padding: 1px 4px;
+}
 
 /* ---- 1.24.12 полноэкранный <dialog> с картой ---- */
 .sc-unitmap-dlg {
