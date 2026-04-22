@@ -13,16 +13,17 @@ const LS_SELECTION = 'scs-design.selection.v1';
 const LS_LINKS     = 'scs-design.links.v1';
 
 const CABLE_TYPES = [
-  { id: 'cat6', label: 'Cat.6 U/UTP' },
-  { id: 'cat6a', label: 'Cat.6A F/UTP' },
-  { id: 'cat7', label: 'Cat.7 S/FTP' },
-  { id: 'om3', label: 'OM3 LC-LC' },
-  { id: 'om4', label: 'OM4 LC-LC' },
-  { id: 'os2', label: 'OS2 LC-LC' },
-  { id: 'coax', label: 'Coax / RF' },
-  { id: 'power-c13', label: 'Питание C13/C14' },
-  { id: 'other', label: 'Другое' },
+  { id: 'cat6',      label: 'Cat.6 U/UTP',     color: '#1976d2' },
+  { id: 'cat6a',     label: 'Cat.6A F/UTP',    color: '#1565c0' },
+  { id: 'cat7',      label: 'Cat.7 S/FTP',     color: '#0d47a1' },
+  { id: 'om3',       label: 'OM3 LC-LC',       color: '#ea580c' },
+  { id: 'om4',       label: 'OM4 LC-LC',       color: '#c2410c' },
+  { id: 'os2',       label: 'OS2 LC-LC',       color: '#facc15' },
+  { id: 'coax',      label: 'Coax / RF',       color: '#7c3aed' },
+  { id: 'power-c13', label: 'Питание C13/C14', color: '#dc2626' },
+  { id: 'other',     label: 'Другое',          color: '#64748b' },
 ];
+const CABLE_COLOR = id => (CABLE_TYPES.find(c => c.id === id)?.color) || '#64748b';
 
 /* ---------- storage ---------- */
 function loadJson(key, fb) {
@@ -64,6 +65,7 @@ function setupTabs() {
       const key = tab.dataset.tab;
       tabs.forEach(t => t.classList.toggle('active', t === tab));
       panels.forEach(p => p.classList.toggle('active', p.dataset.panel === key));
+      if (key === 'links') scheduleOverlay();
     });
   });
 }
@@ -112,6 +114,17 @@ function renderLinksTab() {
 
   renderSelected(selected, racks);
   renderLinksList();
+  renderLegend();
+}
+
+function renderLegend() {
+  const host = document.getElementById('sd-legend'); if (!host) return;
+  const used = new Set(getLinks().map(l => l.cableType || 'other'));
+  if (!used.size) { host.innerHTML = ''; return; }
+  host.innerHTML = '<span class="muted">Цвета кабелей:</span>' + CABLE_TYPES
+    .filter(t => used.has(t.id))
+    .map(t => `<span class="lg"><span class="lg-dot" style="background:${t.color}"></span>${escapeHtml(t.label)}</span>`)
+    .join('');
 }
 
 function renderSelected(selected, racks) {
@@ -119,6 +132,7 @@ function renderSelected(selected, racks) {
   const arr = racks.filter(r => selected.has(r.id));
   if (!arr.length) {
     row.innerHTML = `<div class="sd-empty-state">Выберите чекбоксами стойки выше — они появятся здесь рядом для проектирования связей.</div>`;
+    drawLinkOverlay();
     return;
   }
   row.innerHTML = arr.map(r => renderRackCard(r)).join('');
@@ -127,6 +141,78 @@ function renderSelected(selected, racks) {
   row.querySelectorAll('.sd-unit[data-dev-id]').forEach(el => {
     el.addEventListener('click', () => onUnitClick(el));
   });
+
+  // подсветить устройства, участвующие в связях
+  const links = getLinks();
+  const involved = new Set();
+  links.forEach(l => {
+    involved.add(l.fromRackId + '|' + l.fromDevId);
+    involved.add(l.toRackId + '|' + l.toDevId);
+  });
+  row.querySelectorAll('.sd-unit[data-dev-id]').forEach(el => {
+    const key = el.dataset.rackId + '|' + el.dataset.devId;
+    el.classList.toggle('linked', involved.has(key));
+  });
+
+  drawLinkOverlay();
+}
+
+/* ---------- SVG overlay: кривые Безье между устройствами ---------- */
+function drawLinkOverlay() {
+  const svg = document.getElementById('sd-links-svg');
+  const wrap = svg?.parentElement;
+  const row = document.getElementById('sd-racks-row');
+  if (!svg || !wrap || !row) return;
+  const wrapRect = wrap.getBoundingClientRect();
+  svg.setAttribute('width', wrapRect.width);
+  svg.setAttribute('height', wrapRect.height);
+  svg.setAttribute('viewBox', `0 0 ${wrapRect.width} ${wrapRect.height}`);
+
+  const getCenter = (rackId, devId, side) => {
+    const el = row.querySelector(`.sd-unit[data-rack-id="${CSS.escape(rackId)}"][data-dev-id="${CSS.escape(devId)}"]`);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const y = r.top - wrapRect.top + r.height / 2;
+    const x = side === 'left' ? (r.left - wrapRect.left) : (r.right - wrapRect.left);
+    return { x, y };
+  };
+
+  const cardXCenter = rackId => {
+    const firstUnit = row.querySelector(`.sd-unit[data-rack-id="${CSS.escape(rackId)}"]`)
+      || row.querySelector(`.sd-rack-card:has([data-rack-id="${CSS.escape(rackId)}"])`);
+    if (!firstUnit) return null;
+    const card = firstUnit.closest('.sd-rack-card');
+    if (!card) return null;
+    const r = card.getBoundingClientRect();
+    return (r.left + r.right) / 2 - wrapRect.left;
+  };
+
+  const parts = [];
+  const links = getLinks();
+  links.forEach(l => {
+    const fromCenter = cardXCenter(l.fromRackId);
+    const toCenter = cardXCenter(l.toRackId);
+    if (fromCenter == null || toCenter == null) return;
+    const fromSide = fromCenter < toCenter ? 'right' : 'left';
+    const toSide   = fromCenter < toCenter ? 'left'  : 'right';
+    const A = getCenter(l.fromRackId, l.fromDevId, fromSide);
+    const B = getCenter(l.toRackId, l.toDevId, toSide);
+    if (!A || !B) return;
+    const dx = Math.abs(B.x - A.x);
+    const bend = Math.max(40, dx * 0.35);
+    const c1x = A.x + (fromSide === 'right' ? bend : -bend);
+    const c2x = B.x + (toSide === 'right' ? bend : -bend);
+    const color = CABLE_COLOR(l.cableType);
+    parts.push(`<path class="sd-link-path" d="M ${A.x} ${A.y} C ${c1x} ${A.y}, ${c2x} ${B.y}, ${B.x} ${B.y}" stroke="${color}"><title>${escapeAttr(getRackShortLabel(l.fromRackId) + ' · ' + deviceLabel(l.fromRackId, l.fromDevId) + ' ↔ ' + getRackShortLabel(l.toRackId) + ' · ' + deviceLabel(l.toRackId, l.toDevId))}</title></path>`);
+  });
+  svg.innerHTML = parts.join('');
+}
+
+// Перерисовка линий при скролле/ресайзе
+let overlayRaf = 0;
+function scheduleOverlay() {
+  if (overlayRaf) return;
+  overlayRaf = requestAnimationFrame(() => { overlayRaf = 0; drawLinkOverlay(); });
 }
 
 function renderRackCard(r) {
@@ -274,7 +360,7 @@ function renderLinksList() {
   `;
   host.querySelectorAll('tr[data-id]').forEach(tr => {
     const id = tr.dataset.id;
-    tr.querySelector('[data-act="cable"]').addEventListener('change', e => updateLink(id, { cableType: e.target.value }));
+    tr.querySelector('[data-act="cable"]').addEventListener('change', e => { updateLink(id, { cableType: e.target.value }); drawLinkOverlay(); });
     tr.querySelector('[data-act="length"]').addEventListener('change', e => {
       const v = e.target.value; updateLink(id, { lengthM: v === '' ? null : +v });
     });
@@ -284,6 +370,10 @@ function renderLinksList() {
       setLinks(cur);
       renderLinksList();
       renderBom();
+      renderLegend();
+      // перерисовать подсветку linked в карточках
+      const selected = new Set(loadJson(LS_SELECTION, []));
+      renderSelected(selected, getRacks());
     });
   });
   renderBom();
@@ -433,4 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('storage', (e) => {
     if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) renderLinksTab();
   });
+  // пересчёт линий при скролле ряда стоек, скролле юнитов внутри карточки и ресайзе окна
+  document.getElementById('sd-racks-row')?.addEventListener('scroll', scheduleOverlay, true);
+  window.addEventListener('resize', scheduleOverlay);
 });
