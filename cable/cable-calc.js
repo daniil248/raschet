@@ -1,5 +1,6 @@
 import { GLOBAL } from '../js/engine/constants.js';
 import { formatVoltageLevelLabel } from '../js/engine/electrical.js';
+import { rsToast } from '../shared/dialog.js';
 import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../js/methods/index.js';
 import { runModules, listModules } from '../shared/calc-modules/index.js';
 import * as Report from '../shared/report/index.js';
@@ -775,7 +776,7 @@ async function _renderTccCoordination({ finalSize, breakerIn, params, isDC }) {
 // через shared/report/. Для DOCX можно заменить exportPDF на exportDOCX.
 async function exportReport() {
   if (!lastCalc) {
-    alert('Сначала выполните расчёт.');
+    rsToast('Сначала выполните расчёт.', 'warn');
     return;
   }
   const rec = await Report.pickTemplate({
@@ -792,7 +793,7 @@ async function exportReport() {
   try {
     await Report.exportPDF(tpl, 'Расчёт кабельной линии');
   } catch (e) {
-    alert('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e));
+    rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err');
   }
 }
 

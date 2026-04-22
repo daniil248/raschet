@@ -17,6 +17,7 @@
 
 import { listElements } from '../shared/element-library.js';
 import { initCatalogBridge, syncLegacyToLibrary } from '../shared/catalog-bridge.js';
+import { rsPrompt } from '../shared/dialog.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -194,12 +195,12 @@ function renderOutletInputs() {
     });
   });
   const addSel = box.querySelector('#pc-outlet-add');
-  if (addSel) addSel.addEventListener('change', () => {
+  if (addSel) addSel.addEventListener('change', async () => {
     let raw = addSel.value;
     addSel.value = '';
     if (!raw) return;
     if (raw === '__custom__') {
-      raw = prompt('Введите тип разъёма (напр. «C13», «IEC309 63A»):');
+      raw = await rsPrompt('Введите тип разъёма (напр. «C13», «IEC309 63A»):', '');
       if (!raw) return;
     }
     const t = normType(raw);

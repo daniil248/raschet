@@ -12,6 +12,7 @@
 // ======================================================================
 
 import { openSettingsModal } from './global-settings.js';
+import { rsToast, rsConfirm } from './dialog.js';
 
 const HOME_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>`;
 const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
@@ -96,8 +97,8 @@ function _wireAuthWidget(header) {
       }
       if (nameEl) nameEl.textContent = u.name || u.email || 'User';
       chip.title = u.email || u.name || '';
-      chip.onclick = () => {
-        if (confirm('Выйти из аккаунта?')) {
+      chip.onclick = async () => {
+        if (await rsConfirm('Выйти из аккаунта?', '', { okLabel: 'Выйти', cancelLabel: 'Отмена' })) {
           try { window.Auth.signOut(); } catch (e) { console.warn(e); }
         }
       };
@@ -112,10 +113,10 @@ function _wireAuthWidget(header) {
       if (window.Auth && typeof window.Auth.signIn === 'function') {
         await window.Auth.signIn();
       } else {
-        alert('Модуль авторизации не подключён на этой странице.');
+        rsToast('Модуль авторизации не подключён на этой странице.', 'warn');
       }
     } catch (e) {
-      alert('Ошибка входа: ' + (e.message || e));
+      rsToast('Ошибка входа: ' + (e.message || e), 'err');
     }
   });
 

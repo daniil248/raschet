@@ -6,6 +6,7 @@
 // ======================================================================
 
 import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId } from './battery-catalog.js';
+import { rsToast, rsConfirm } from '../shared/dialog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
 import { calcAutonomy, calcRequiredBlocks } from './battery-discharge.js';
 import * as Report from '../shared/report/index.js';
@@ -29,7 +30,7 @@ const escHtml = s => String(s ?? '').replace(/[&<>"']/g, ch => ({
 
 function flash(msg, kind = 'info') {
   const el = document.getElementById('flash');
-  if (!el) { alert(msg); return; }
+  if (!el) { rsToast(msg, 'info'); return; }
   el.textContent = msg;
   el.className = 'flash ' + kind;
   el.style.opacity = '1';
@@ -136,10 +137,10 @@ function renderCatalog() {
   h.push('</tbody></table>');
   wrap.innerHTML = h.join('');
   wrap.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', e => {
+    btn.addEventListener('click', async e => {
       e.stopPropagation();
       const id = btn.dataset.del;
-      if (!confirm('Удалить эту запись из справочника?')) return;
+      if (!(await rsConfirm('Удалить эту запись из справочника?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       removeBattery(id);
       renderCatalog();
       renderBatterySelector();
@@ -286,7 +287,7 @@ function openManualBatteryModal(existing = null, prefill = null) {
   g('mb-save').addEventListener('click', () => {
     const supplier = g('mb-supplier').value.trim() || 'Custom';
     const type = g('mb-type').value.trim();
-    if (!type) { alert('Заполните поле «Модель»'); return; }
+    if (!type) { rsToast('Заполните поле «Модель»', 'warn'); return; }
     const chemistry = g('mb-chemistry').value;
     const blockVoltage = Number(g('mb-blockV').value) || 12;
     const capacityAh = Number(g('mb-capAh').value) || 0;
@@ -694,8 +695,8 @@ function wireUpload() {
   });
 
   const clrBtn = document.getElementById('btn-clear-catalog');
-  if (clrBtn) clrBtn.addEventListener('click', () => {
-    if (!confirm('Очистить весь справочник АКБ?')) return;
+  if (clrBtn) clrBtn.addEventListener('click', async () => {
+    if (!(await rsConfirm('Очистить весь справочник АКБ?', 'Действие нельзя отменить.', { okLabel: 'Очистить', cancelLabel: 'Отмена' }))) return;
     clearCatalog();
     renderCatalog();
     renderBatterySelector();
@@ -859,7 +860,7 @@ function wireCalcForm() {
 // ================ Экспорт отчёта АКБ ================
 async function exportBatteryReport() {
   if (!lastBatteryCalc) {
-    alert('Сначала выполните расчёт.');
+    rsToast('Сначала выполните расчёт.', 'warn');
     return;
   }
   const rec = await Report.pickTemplate({
@@ -871,7 +872,7 @@ async function exportBatteryReport() {
   tpl.meta.title = 'Расчёт аккумуляторной батареи';
   tpl.content = buildBatteryReportBlocks(lastBatteryCalc);
   try { await Report.exportPDF(tpl, 'Расчёт АКБ'); }
-  catch (e) { alert('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e)); }
+  catch (e) { rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err'); }
 }
 
 function buildBatteryReportBlocks(state) {

@@ -11,6 +11,7 @@ import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-pa
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/catalogs/ups-kehua-mr33.js';
 import { pricesForElement } from '../shared/price-records.js';
+import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -189,8 +190,8 @@ function renderList(list) {
       <tbody>${rows}</tbody>
     </table>`;
   wrap.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!confirm('Удалить эту запись?')) return;
+    btn.addEventListener('click', async () => {
+      if (!(await rsConfirm('Удалить эту запись?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       removeUps(btn.dataset.del);
       flash('Удалено');
       render();
@@ -216,19 +217,19 @@ function renderList(list) {
       if (!u) return;
       const kind = u.kind || 'ups';
       if (kind !== 'ups') {
-        alert('Редактирование записей типа «' + kind + '» через эту форму пока не поддерживается. Удалите и создайте заново.');
+        rsToast('Редактирование записей типа «' + kind + '» через эту форму пока не поддерживается. Удалите и создайте заново.', 'warn');
         return;
       }
       openManualModal(u);
     });
   });
   wrap.querySelectorAll('[data-copy]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const id = btn.dataset.copy;
       const u = list.find(x => x.id === id);
       if (!u) return;
       const suggested = (u.model || '') + ' (копия)';
-      const newModel = prompt('Название новой модели:', suggested);
+      const newModel = await rsPrompt('Название новой модели:', suggested);
       if (newModel == null) return;
       const trimmed = newModel.trim();
       if (!trimmed) { flash('Пустое имя модели', 'warn'); return; }
@@ -458,7 +459,7 @@ function openManualModal(existing) {
   g('mu-save').addEventListener('click', () => {
     const supplier = g('mu-supplier').value.trim();
     const model = g('mu-model').value.trim();
-    if (!supplier || !model) { alert('Заполните Производителя и Модель'); return; }
+    if (!supplier || !model) { rsToast('Заполните Производителя и Модель', 'warn'); return; }
     const newId = makeUpsId(supplier, model);
     const record = {
       ...(isEdit ? existing : {}),
@@ -559,8 +560,8 @@ document.addEventListener('DOMContentLoaded', () => {
     render();
   });
   const clrBtn = document.getElementById('btn-clear-catalog');
-  if (clrBtn) clrBtn.addEventListener('click', () => {
-    if (!confirm('Очистить весь справочник ИБП?')) return;
+  if (clrBtn) clrBtn.addEventListener('click', async () => {
+    if (!(await rsConfirm('Очистить весь справочник ИБП?', 'Действие нельзя отменить.', { okLabel: 'Очистить', cancelLabel: 'Отмена' }))) return;
     clearCatalog();
     cascadeState.supplier = cascadeState.series = cascadeState.modelId = '';
     render();
@@ -660,11 +661,11 @@ function _openWizard({ standalone }) {
     : '✓ Применить к схеме';
 
   // Кнопки wizard'а (переназначаем onclick, чтобы смена режима не ломала)
-  document.getElementById('wiz-btn-cancel').onclick = () => {
+  document.getElementById('wiz-btn-cancel').onclick = async () => {
     if (standalone) {
       wizard.style.display = 'none';
       if (selectedPanel) selectedPanel.closest('.panel').style.display = '';
-    } else if (confirm('Отменить конфигурирование?')) {
+    } else if (await rsConfirm('Отменить конфигурирование?', '', { okLabel: 'Отменить', cancelLabel: 'Продолжить' })) {
       try { window.close(); } catch {}
     }
   };

@@ -35,6 +35,7 @@ import {
 import { initCatalogBridge } from '../shared/catalog-bridge.js';
 import { onLibraryChange } from '../shared/element-library.js';
 import { openPduPickerModal } from '../shared/pdu-picker-modal.js';
+import { rsToast, rsConfirm } from '../shared/dialog.js';
 initCatalogBridge();
 
 // Re-render при правках каталога (админ изменил встроенный rack/pdu/accessory).
@@ -110,7 +111,7 @@ function loadTemplates() {
 }
 function saveTemplates() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(state.templates)); }
-  catch (e) { alert('Не удалось сохранить: ' + e.message); }
+  catch (e) { rsToast('Не удалось сохранить: ' + e.message, 'err'); }
 }
 
 /* ---------- helpers ---------- */
@@ -654,8 +655,7 @@ function readForm() {
     if (dup) {
       // откатываем DOM на предыдущее значение
       el('rc-name').value = t.name || '';
-      if (typeof toast === 'function') toast(`Обозначение «${newName}» уже занято другой стойкой проекта. Должно быть уникальным.`, 'warn');
-      else alert(`Обозначение «${newName}» уже занято другой стойкой проекта.`);
+      rsToast(`Обозначение «${newName}» уже занято другой стойкой проекта. Должно быть уникальным.`, 'warn');
       // остальные поля всё равно читаем
     } else {
       t.name = newName;
@@ -1702,17 +1702,20 @@ function showPduSpec() {
 }
 
 /* ---------- сдвоить PDU на каждом вводе ---------- */
-function duplicatePdusPerFeed() {
+async function duplicatePdusPerFeed() {
   const t = current();
   // группируем существующие PDU по вводам
   const byFeed = {};
   t.pdus.forEach(p => { (byFeed[p.feed] = byFeed[p.feed] || []).push(p); });
   const feeds = Object.keys(byFeed);
-  if (!feeds.length) { alert('Нет PDU для дублирования.'); return; }
-  if (!confirm(
-    `На каждом из ${feeds.length} вводов (${feeds.join(', ')}) будет добавлена по одной копии PDU — всего +${feeds.length} шт.\n\n` +
+  if (!feeds.length) { rsToast('Нет PDU для дублирования.', 'warn'); return; }
+  const ok = await rsConfirm(
+    `Дублировать PDU на ${feeds.length} вводах?`,
+    `На каждом из вводов (${feeds.join(', ')}) будет добавлена по одной копии PDU — всего +${feeds.length} шт. ` +
     `Это типовая схема «2 PDU на ввод»: один кабель от основной схемы расщепляется в шкафу через T-сплиттер / клипс-бокс IEC 60309. ` +
-    `В BOM автоматически добавится распределитель на каждый ввод.\n\nПродолжить?`)) return;
+    `В BOM автоматически добавится распределитель на каждый ввод.`,
+    { okLabel: 'Продолжить', cancelLabel: 'Отмена' });
+  if (!ok) return;
   feeds.forEach(f => {
     const src = byFeed[f][0];
     t.pdus.push(JSON.parse(JSON.stringify({
@@ -1761,8 +1764,8 @@ function addTemplate(src) {
   renderTemplateList();
   renderForm();
 }
-function deleteTemplate() {
-  if (!confirm('Удалить текущий шаблон?')) return;
+async function deleteTemplate() {
+  if (!(await rsConfirm('Удалить текущий шаблон?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
   const idx = state.templates.findIndex(t => t.id === state.currentId);
   if (idx < 0) return;
   state.templates.splice(idx, 1);
@@ -1790,12 +1793,12 @@ function loadFromBridge(nodeId) {
 }
 function sendApplyToHost() {
   const t = current();
-  if (!state.nodeId) { alert('Шаблон не привязан к узлу схемы.'); return; }
+  if (!state.nodeId) { rsToast('Шаблон не привязан к узлу схемы.', 'warn'); return; }
   readForm();
   try {
     localStorage.setItem(BRIDGE_KEY_PREFIX + state.nodeId,
       JSON.stringify({ applied: true, ts: Date.now(), template: t }));
-  } catch (e) { alert('Не удалось передать шаблон: ' + e.message); return; }
+  } catch (e) { rsToast('Не удалось передать шаблон: ' + e.message, 'err'); return; }
   // postMessage родительскому окну если есть
   try {
     if (window.opener && !window.opener.closed) {
@@ -1804,7 +1807,7 @@ function sendApplyToHost() {
       }, '*');
     }
   } catch {}
-  alert('Шаблон применён к узлу схемы. Можно закрыть вкладку.');
+  rsToast('Шаблон применён к узлу схемы. Можно закрыть вкладку.', 'ok');
 }
 
 /* ---------- bind ---------- */
@@ -1853,7 +1856,7 @@ function bind() {
     readForm();
     saveTemplates();
     renderTemplateList();
-    alert('Шаблон «' + (current().name || '—') + '» сохранён в localStorage.');
+    rsToast('Шаблон «' + (current().name || '—') + '» сохранён в localStorage.', 'ok');
   });
   el('rc-bom-csv').addEventListener('click', () => { readForm(); exportCsv(); });
   el('rc-bom-print').addEventListener('click', () => window.print());

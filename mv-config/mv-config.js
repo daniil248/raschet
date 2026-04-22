@@ -12,6 +12,7 @@
 import { listElements, getElement } from '../shared/element-library.js';
 import { initCatalogBridge } from '../shared/catalog-bridge.js';
 import { pricesForElement } from '../shared/price-records.js';
+import { rsConfirm } from '../shared/dialog.js';
 
 initCatalogBridge();
 
@@ -133,8 +134,10 @@ function initWizard() {
   _fillStep1();
   _showStep(1);
 
-  document.getElementById('mv-wiz-cancel').onclick = () => {
-    if (confirm('Отменить конфигурирование?')) { try { window.close(); } catch {} }
+  document.getElementById('mv-wiz-cancel').onclick = async () => {
+    if (await rsConfirm('Отменить конфигурирование?', '', { okLabel: 'Отменить', cancelLabel: 'Продолжить' })) {
+      try { window.close(); } catch {}
+    }
   };
   document.getElementById('mv-wiz-next-1').onclick = _goStep2;
   document.getElementById('mv-wiz-back-2').onclick = () => _showStep(1);

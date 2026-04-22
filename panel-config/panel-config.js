@@ -9,6 +9,7 @@
 import { listPanels, addPanel, removePanel, clearCatalog, makePanelId } from '../shared/panel-catalog.js';
 import { parsePanelXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountPanelPicker } from '../shared/panel-picker.js';
+import { rsToast, rsConfirm } from '../shared/dialog.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -96,8 +97,8 @@ function renderList(list) {
       <tbody>${rows}</tbody>
     </table>`;
   wrap.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!confirm('Удалить эту запись?')) return;
+    btn.addEventListener('click', async () => {
+      if (!(await rsConfirm('Удалить эту запись?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       removePanel(btn.dataset.del);
       flash('Удалено');
       render();
@@ -186,7 +187,7 @@ function openManualModal() {
     const supplier = g('mp-supplier').value.trim();
     const series = g('mp-series').value.trim();
     const variant = g('mp-variant').value.trim();
-    if (!supplier || !series || !variant) { alert('Заполните Производителя, Серию и Типоразмер'); return; }
+    if (!supplier || !series || !variant) { rsToast('Заполните Производителя, Серию и Типоразмер', 'warn'); return; }
     const record = {
       id: makePanelId(supplier, series, variant),
       supplier, series, variant,
@@ -252,8 +253,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const clrBtn = document.getElementById('btn-clear-catalog');
-  if (clrBtn) clrBtn.addEventListener('click', () => {
-    if (!confirm('Очистить весь справочник щитов?')) return;
+  if (clrBtn) clrBtn.addEventListener('click', async () => {
+    if (!(await rsConfirm('Очистить весь справочник щитов?', 'Действие нельзя отменить.', { okLabel: 'Очистить', cancelLabel: 'Отмена' }))) return;
     clearCatalog();
     cascadeState.supplier = cascadeState.series = cascadeState.modelId = '';
     render();
@@ -402,13 +403,13 @@ function initPanelWizard() {
   _pcShowStep(1);
 
   // Кнопки навигации
-  document.getElementById('pc-wiz-cancel').onclick = () => {
+  document.getElementById('pc-wiz-cancel').onclick = async () => {
     if (standalone) {
       const w = document.getElementById('pc-wizard');
       if (w) w.style.display = 'none';
       const sp = document.getElementById('selected-panel-details');
       if (sp) sp.closest('.panel').style.display = '';
-    } else if (confirm('Отменить конфигурирование щита?')) {
+    } else if (await rsConfirm('Отменить конфигурирование щита?', '', { okLabel: 'Отменить', cancelLabel: 'Продолжить' })) {
       try { window.close(); } catch {}
     }
   };

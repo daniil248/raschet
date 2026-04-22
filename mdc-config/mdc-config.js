@@ -29,6 +29,7 @@ import {
   MODULE_TEMPLATES, pickItTemplate, POWER_PAIR, POWER_PAIR_KW,
   countRole, ROLE_COLORS, COMPONENT_SVG, COMPONENT_SPECS,
 } from '../shared/gdm600-templates.js';
+import { rsToast } from '../shared/dialog.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -622,7 +623,7 @@ function update() {
 /* ================== ЭКСПОРТ BOM (XLSX) ================== */
 function exportBom() {
   if (typeof window === 'undefined' || !window.XLSX) {
-    alert('SheetJS не загружен. Проверьте интернет-подключение (CDN).');
+    rsToast('SheetJS не загружен. Проверьте интернет-подключение (CDN).', 'err');
     return;
   }
   const r = compute();
@@ -820,7 +821,7 @@ function sendToSuppression() {
   try {
     localStorage.setItem('raschet.mdcToSuppression.v1', JSON.stringify(payload));
   } catch (err) {
-    alert('Не удалось записать данные в localStorage: ' + err.message);
+    rsToast('Не удалось записать данные в localStorage: ' + err.message, 'err');
     return;
   }
   // Открываем модуль АГПТ. Суп-модуль при init прочитает ключ и предложит

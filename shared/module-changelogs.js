@@ -578,6 +578,9 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.184', date: '2026-04-22', items: [
+      '<b>Конфигурационные модули очищены от нативных <code>alert/confirm/prompt</code>.</b> Переведены на <code>rsToast/rsConfirm/rsPrompt</code>: rack-config (9 вызовов, шаблоны/удаление/дублирование фидов), mv-config (отмена wizard), pdu-config (outlet __custom__), mdc-config (2 alert), transformer-config (delete/save/clearCatalog), panel-config (4: del/save/clear/wiz-cancel), ups-config (6: del/edit/copy/save/clear/wiz-cancel), cable (2 alert в exportReport), battery (6: flash/del/save/clear + 2 в exportReport), shared/app-header (signOut/signIn). Callers приведены к async/await. Файлы: rack-config/rack-config.js, mv-config/mv-config.js, pdu-config/pdu-config.js, mdc-config/mdc-config.js, transformer-config/transformer-config.js, panel-config/panel-config.js, ups-config/ups-config.js, cable/cable-calc.js, battery/battery-calc.js, shared/app-header.js.',
+    ] },
     { version: '0.59.183', date: '2026-04-22', items: [
       '<b>Engine полностью очищен от нативных alert/confirm/prompt.</b> Заменено на <code>rsToast/rsConfirm/rsPrompt</code> из <code>shared/dialog.js</code>: custom-systems управление (добавление параметра, удаление системы, создание новой) в <code>inspector.js</code>, сохранение узла как изделия и как preset'а — все переведены в async. «Требуемая мощность» и «Название типа потребителя» в <code>consumer.js</code> — через <code>rsPrompt</code>. Подтверждение удаления ноды перенесено из <code>graph.js</code> в caller (<code>interaction.js</code> палитра-×) с inline-модалкой. Keyboard Delete на холсте не требует подтверждения (soft-delete в реестр, Ctrl+Z возвращает). Файлы: js/engine/inspector.js, js/engine/inspector/consumer.js, js/engine/graph.js, js/engine/interaction.js.',
     ] },

@@ -11,6 +11,7 @@ import {
 } from '../shared/transformer-catalog.js';
 import { mountTransformerPicker, computeTransformerIk } from '../shared/transformer-picker.js';
 import { parseTransformerXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
+import { rsToast, rsConfirm } from '../shared/dialog.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -104,8 +105,8 @@ function renderList(list) {
       <tbody>${rows}</tbody>
     </table>`;
   wrap.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!confirm('Удалить эту запись?')) return;
+    btn.addEventListener('click', async () => {
+      if (!(await rsConfirm('Удалить эту запись?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       removeTransformer(btn.dataset.del);
       flash('Удалено');
       render();
@@ -204,7 +205,7 @@ function openManualModal() {
     const supplier = g('mt-supplier').value.trim();
     const series = g('mt-series').value.trim();
     const sKva = Number(g('mt-s').value) || 0;
-    if (!supplier || !series || !sKva) { alert('Заполните Производителя, Серию и мощность S'); return; }
+    if (!supplier || !series || !sKva) { rsToast('Заполните Производителя, Серию и мощность S', 'warn'); return; }
     const record = {
       id: makeTransformerId(supplier, series, sKva),
       supplier, series,
@@ -270,8 +271,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const clrBtn = document.getElementById('btn-clear-catalog');
-  if (clrBtn) clrBtn.addEventListener('click', () => {
-    if (!confirm('Очистить весь справочник трансформаторов?')) return;
+  if (clrBtn) clrBtn.addEventListener('click', async () => {
+    if (!(await rsConfirm('Очистить весь справочник трансформаторов?', 'Действие нельзя отменить.', { okLabel: 'Очистить', cancelLabel: 'Отмена' }))) return;
     clearCatalog();
     cascadeState.supplier = cascadeState.series = cascadeState.modelId = '';
     render();
