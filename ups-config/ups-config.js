@@ -571,7 +571,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // ====================== Интеграция с Конструктором схем (Фаза 1.4.5) ======================
   // Если страница открыта из инспектора ИБП (?nodeId=), запускаем
   // WIZARD конфигуратора вместо показа одного справочника.
-  initWizard();
+  // Если открыта standalone (без nodeId) — всё равно показываем wizard
+  // сразу на шаге 1, чтобы модуль работал как КОНФИГУРАТОР, а не только
+  // как каталог. Каталог остаётся ниже как справочник.
+  const startedViaNode = initWizard();
+  if (!startedViaNode) {
+    try { launchStandaloneWizard(); } catch (e) { console.warn('[ups-config] auto-wizard', e); }
+  }
 });
 
 // ====================== WIZARD конфигуратора ======================
@@ -594,7 +600,7 @@ const wizState = {
 function initWizard() {
   const qp = new URLSearchParams(location.search);
   const ctxNodeId = qp.get('nodeId');
-  if (!ctxNodeId) return; // запуск wizard в standalone-режиме — через launchStandaloneWizard()
+  if (!ctxNodeId) return false; // standalone-режим запускается отдельно
 
   wizState.nodeId = ctxNodeId;
   // Предзаполнение из query
@@ -609,6 +615,7 @@ function initWizard() {
   if (qp.get('phases')) rq.phases = Number(qp.get('phases')) || rq.phases;
 
   _openWizard({ standalone: false });
+  return true;
 }
 
 // Запуск wizard в standalone-режиме: без ?nodeId=, inline-оверлей над

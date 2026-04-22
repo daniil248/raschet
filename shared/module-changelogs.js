@@ -292,6 +292,11 @@ export const CHANGELOGS = {
   ],
 
   'ups-config': [
+    { version: '0.59.176', date: '2026-04-22', items: [
+      'Модуль стал КОНФИГУРАТОРОМ, а не каталогом: при открытии ups-config/ сразу виден wizard подбора (Шаг 1 — требования: мощность, автономия, резервирование N/N+1/N+2/2N, тип, V_DC, cos φ). Раньше wizard появлялся только при входе из инспектора с ?nodeId=, а все прочие точки входа («Конфигуратор ИБП» в Hub, кнопки в инспекторе) показывали только справочник — создавалось впечатление, что модуль = каталог.',
+      'Файлы: ups-config/index.html (#configurator-wizard: убран display:none, обновлён page-intro на формулировку «подбор по требованиям»); ups-config/ups-config.js (DOMContentLoaded: если нет ?nodeId=, авто-запускается launchStandaloneWizard; initWizard возвращает boolean чтобы не перезапускаться дважды).',
+      'Справочник моделей остаётся в секции ниже для пополнения/просмотра. Каскадный пикер и «Выбрать эту модель» работают как раньше — для случаев, когда пользователь хочет просто выбрать конкретную модель без wizard-подбора.'
+    ] },
     { version: '0.59.75', date: '2026-04-21', items: [
       'Мастер подбора ИБП работает и в standalone-режиме (из Hub, без ?nodeId=). В toolbar справочника появилась кнопка «🧙 Мастер подбора» — запускает тот же 3-шаговый wizard, что и из инспектора ИБП Конструктора схем: Шаг 1 требования (мощность kW, автономия мин, резервирование N/N+1/N+2/2N, тип modular/monoblock, VDC min/max, cos φ, число фаз) → Шаг 2 подходящие модели из справочника (фильтр по типу/VDC/capacity + расчёт числа установленных модулей через _calcModules) → Шаг 3 итог (композиция + цена).',
       'На шаге 3 в standalone-режиме кнопка «✓ Выбрать эту конфигурацию» пишет тот же payload что и node-targeted режим (с полным `configuration`: frameId, upsType, capacityKw, moduleInstalled/Working/Redundant, frameKw, moduleKwRated, moduleSlots, redundancyScheme, batteryVdcMin/Max, batteryAutonomyMin, composition) в `raschet.lastUpsConfig.v1`. Wizard сворачивается, справочник показывается снова, зелёная плашка-индикатор под заголовком обновляется и показывает «<capacityKw> kW · резерв N+1 · автономия X мин».',

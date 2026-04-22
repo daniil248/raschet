@@ -80,14 +80,15 @@
     <div class="page-intro">
       <h2>Конфигуратор ИБП</h2>
       <p class="muted">
-        Справочник моделей ИБП и подбор по параметрам. Данные хранятся
-        per-user в localStorage и доступны в инспекторе ИБП на главной
-        схеме через общий <code>shared/ups-picker.js</code>.
+        Подбор конфигурации ИБП по требованиям: мощность, автономия,
+        резервирование (N / N+1 / N+2 / 2N), тип (моноблок / модульный),
+        V<sub>DC</sub>, cos φ. Ниже — мастер подбора; в самом низу
+        страницы — справочник моделей (можно пополнять вручную или из XLSX).
       </p>
     </div>
 
-    <!-- Wizard конфигуратора (Фаза 1.4.5): появляется когда ?nodeId= в URL -->
-    <section id="configurator-wizard" class="panel" style="display:none;margin-bottom:16px;border:2px solid #1976d2">
+    <!-- Wizard конфигуратора (Фаза 1.4.5): основной UI модуля, виден по умолчанию -->
+    <section id="configurator-wizard" class="panel" style="margin-bottom:16px;border:2px solid #1976d2">
       <div class="panel-head" style="background:#f0f4ff">
         <h3>🧙 Конфигуратор ИБП для проекта</h3>
         <div id="wiz-step-indicator" class="muted" style="font-size:12px"></div>
