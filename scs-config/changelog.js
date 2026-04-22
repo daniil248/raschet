@@ -3,6 +3,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.15',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.24.24 базово — URL-роутинг. Поддержка ?rackId=<id> и ?tag=<TIA> в query (напр. ?tag=DC1.H3.R05 открывает стойку с этим тегом). Смена стойки в picker обновляет URL через history.replaceState — можно шарить ссылку на конкретную стойку. Без параметров — поведение прежнее (auto-pick первой стойки).',
+      'Fix — live-превью target-U в SVG использует dataset.bodyw / dataset.bodyx вместо вычисления из svg.getAttribute(\'width\'). Раньше в модалке ширина превью ошибочно включала extraRight=120 под кривые кабелей. Теперь превью точно совпадает с реальной шириной полосы устройства.',
+    ],
+  },
+  {
     version: '0.1.14',
     date: '2026-04-22',
     items: [

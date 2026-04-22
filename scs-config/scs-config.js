@@ -698,7 +698,7 @@ function renderUnitMap(hostId, opts) {
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
   const totalW = svgW + extraRight;
   const z = opts.big ? (state.dlgZoom || 1) : 1;
-  const svgEl = `<svg id="${svgId}" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}">
+  const svgEl = `<svg id="${svgId}" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32">
     ${rects.join('')}
     ${deviceGroups}
     ${wires}
@@ -899,11 +899,12 @@ function bindUnitMapDrop(svg, rowH) {
     const wantU = Math.min(topU, r.u);
     const topIdx = r.u - wantU;
     const y = 4 + topIdx * rowH;
-    const bodyW = (+svg.getAttribute('width') / (+svg.dataset.zoom || 1)) - 40;
+    const bodyW = +svg.dataset.bodyw || 220;
+    const bodyX = +svg.dataset.bodyx || 32;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('class', 'sc-drop-preview');
     g.setAttribute('pointer-events', 'none');
-    g.innerHTML = `<rect x="32" y="${y}" width="${bodyW}" height="${ph * rowH - 1}"
+    g.innerHTML = `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${ph * rowH - 1}"
       fill="#2563eb" fill-opacity="0.25" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4 3"/>`;
     svg.appendChild(g);
   };
@@ -1539,8 +1540,19 @@ function init() {
   state.rackTags  = loadJson(LS_RACKTAGS,  {});
   state.warehouse = loadJson(LS_WAREHOUSE, []);
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
-  // auto-pick rack
-  if (state.racks.length) state.currentRackId = state.racks[0].id;
+  // 1.24.24 URL-роутинг: ?rackId=<id> предпочитает выбор стойки из URL;
+  // ?tag=<tia> ищет стойку по TIA-тегу (DC1.H3.R05). Если нет — auto-pick первой.
+  const qp = new URLSearchParams(location.search);
+  const qRackId = qp.get('rackId');
+  const qTag = qp.get('tag');
+  let pickedId = null;
+  if (qRackId && state.racks.find(r => r.id === qRackId)) pickedId = qRackId;
+  else if (qTag) {
+    const match = Object.entries(state.rackTags).find(([id, t]) => t.toLowerCase() === qTag.toLowerCase());
+    if (match && state.racks.find(r => r.id === match[0])) pickedId = match[0];
+  }
+  if (!pickedId && state.racks.length) pickedId = state.racks[0].id;
+  state.currentRackId = pickedId;
 
   renderCatalog();
   rerender();
@@ -1553,6 +1565,13 @@ function init() {
     $('sc-rack-u').textContent = r ? r.u : '—';
     $('sc-rack-occ').textContent = r ? r.occupied : '—';
     $('sc-rack-tag').value = r ? (state.rackTags[r.id] || '') : '';
+    // 1.24.24 — синхронизируем URL (без перезагрузки), чтобы ссылки делились
+    if (state.currentRackId) {
+      const url = new URL(location.href);
+      url.searchParams.set('rackId', state.currentRackId);
+      url.searchParams.delete('tag');
+      history.replaceState(null, '', url);
+    }
   });
   // 1.24.23 — TIA-942 тег стойки
   const tagInput = $('sc-rack-tag');
