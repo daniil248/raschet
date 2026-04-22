@@ -63,6 +63,42 @@
   min-height: 18px;
 }
 .sd-unit.empty { opacity: 0.35; color: #94a3b8; border-style: dashed; }
+.sd-unit[data-dev-id] { cursor: pointer; }
+.sd-unit[data-dev-id]:hover { background: #eef2ff; border-color: #6366f1; }
+.sd-unit.sel {
+  background: #fde68a !important; border-color: #f59e0b !important;
+  color: #78350f; font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, .35);
+}
+
+#sd-status {
+  margin: 8px 0; padding: 8px 12px; border-radius: 6px;
+  background: #ecfeff; border: 1px solid #22d3ee; color: #155e75;
+  font-size: 13px;
+}
+#sd-status a { color: #0e7490; }
+
+.sd-links-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+  background: #fff;
+}
+.sd-links-table th, .sd-links-table td {
+  padding: 6px 8px; border: 1px solid #e5e7eb; text-align: left;
+  vertical-align: top;
+}
+.sd-links-table th { background: #f8fafc; font-weight: 600; }
+.sd-links-table td .muted { color: #64748b; font-size: 11px; }
+.sd-links-table select, .sd-links-table input {
+  font: inherit; font-size: 12px; padding: 2px 4px;
+  border: 1px solid #cbd5e1; border-radius: 4px; width: 100%;
+}
+.sd-btn-del {
+  background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;
+  border-radius: 4px; cursor: pointer; padding: 2px 8px;
+  font: inherit; font-size: 13px;
+}
+.sd-btn-del:hover { background: #fca5a5; }
+.sd-links-footer { margin-top: 8px; font-size: 12px; color: #64748b; }
 .sd-unit .u-num {
   flex-shrink: 0; width: 18px; color: #64748b;
   font-family: ui-monospace, Menlo, Consolas, monospace;
