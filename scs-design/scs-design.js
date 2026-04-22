@@ -987,7 +987,7 @@ function exportPlanSvg() {
   for (let r = 1; r < PLAN_ROWS; r++) gridParts.push(`<line x1="0" y1="${r*PLAN_CELL_PX}" x2="${W}" y2="${r*PLAN_CELL_PX}" stroke="#e5e7eb" stroke-width="0.5"/>`);
   lines.push(gridParts.join(''));
 
-  // Кабели (L-образные)
+  // Кабели (L-образные) + подписи длин
   getLinks().forEach(l => {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
@@ -996,7 +996,13 @@ function exportPlanSvg() {
     const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
     const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
     const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
-    lines.push(`<path d="M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}" stroke="${CABLE_COLOR(l.cableType)}" stroke-width="2" fill="none" opacity="0.7"/>`);
+    const color = CABLE_COLOR(l.cableType);
+    lines.push(`<path d="M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>`);
+    const cells = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    const lenM = (cells * plan.step * plan.kRoute).toFixed(1);
+    const lx = bx, ly = (ay + by) / 2;
+    lines.push(`<rect x="${lx - 18}" y="${ly - 7}" width="36" height="14" rx="2" fill="#ffffff" stroke="${color}" stroke-width="0.5" opacity="0.92"/>`);
+    lines.push(`<text x="${lx}" y="${ly + 4}" text-anchor="middle" font-size="9" fill="#1f2937">${lenM} м</text>`);
   });
 
   // Стойки
