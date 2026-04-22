@@ -120,17 +120,19 @@ function rescopeToActiveProject() {
 rescopeToActiveProject();
 
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
+// v0.59.245: depthMm — монтажная глубина устройства, мм. Используется
+// side-view и depth-collision check. Дефолты — типичные для категории.
 const DEFAULT_CATALOG = [
-  { id: 'sw-24',   kind: 'switch',       label: 'Коммутатор 24×1G',         heightU: 1, powerW: 45,  ports: 24, color: '#60a5fa' },
-  { id: 'sw-48',   kind: 'switch',       label: 'Коммутатор 48×1G + 4SFP+', heightU: 1, powerW: 95,  ports: 48, color: '#3b82f6' },
-  { id: 'pp-24',   kind: 'patch-panel',  label: 'Патч-панель 24 cat.6',     heightU: 1, powerW: 0,   ports: 24, color: '#fbbf24' },
-  { id: 'pp-48',   kind: 'patch-panel',  label: 'Патч-панель 48 cat.6',     heightU: 2, powerW: 0,   ports: 48, color: '#f59e0b' },
-  { id: 'srv-1u',  kind: 'server',       label: 'Сервер 1U',                heightU: 1, powerW: 450, ports: 4,  color: '#a78bfa' },
-  { id: 'srv-2u',  kind: 'server',       label: 'Сервер 2U',                heightU: 2, powerW: 750, ports: 4,  color: '#8b5cf6' },
-  { id: 'kvm',     kind: 'kvm',          label: 'Консоль KVM 1U',           heightU: 1, powerW: 20,  ports: 8,  color: '#34d399' },
-  { id: 'mon-1u',  kind: 'monitor',      label: 'Монитор 1U (выдвижной)',   heightU: 1, powerW: 25,  ports: 1,  color: '#10b981' },
-  { id: 'ups-1u',  kind: 'ups',          label: 'ИБП 1U 1 кВА',             heightU: 1, powerW: 900, ports: 0,  color: '#f472b6' },
-  { id: 'cm-1u',   kind: 'cable-manager',label: 'Кабельный органайзер 1U',  heightU: 1, powerW: 0,   ports: 0,  color: '#94a3b8' },
+  { id: 'sw-24',   kind: 'switch',       label: 'Коммутатор 24×1G',         heightU: 1, depthMm: 280, powerW: 45,  ports: 24, color: '#60a5fa' },
+  { id: 'sw-48',   kind: 'switch',       label: 'Коммутатор 48×1G + 4SFP+', heightU: 1, depthMm: 380, powerW: 95,  ports: 48, color: '#3b82f6' },
+  { id: 'pp-24',   kind: 'patch-panel',  label: 'Патч-панель 24 cat.6',     heightU: 1, depthMm: 100, powerW: 0,   ports: 24, color: '#fbbf24' },
+  { id: 'pp-48',   kind: 'patch-panel',  label: 'Патч-панель 48 cat.6',     heightU: 2, depthMm: 100, powerW: 0,   ports: 48, color: '#f59e0b' },
+  { id: 'srv-1u',  kind: 'server',       label: 'Сервер 1U',                heightU: 1, depthMm: 750, powerW: 450, ports: 4,  color: '#a78bfa' },
+  { id: 'srv-2u',  kind: 'server',       label: 'Сервер 2U',                heightU: 2, depthMm: 800, powerW: 750, ports: 4,  color: '#8b5cf6' },
+  { id: 'kvm',     kind: 'kvm',          label: 'Консоль KVM 1U',           heightU: 1, depthMm: 520, powerW: 20,  ports: 8,  color: '#34d399' },
+  { id: 'mon-1u',  kind: 'monitor',      label: 'Монитор 1U (выдвижной)',   heightU: 1, depthMm: 620, powerW: 25,  ports: 1,  color: '#10b981' },
+  { id: 'ups-1u',  kind: 'ups',          label: 'ИБП 1U 1 кВА',             heightU: 1, depthMm: 600, powerW: 900, ports: 0,  color: '#f472b6' },
+  { id: 'cm-1u',   kind: 'cable-manager',label: 'Кабельный органайзер 1U',  heightU: 1, depthMm: 80,  powerW: 0,   ports: 0,  color: '#94a3b8' },
 ];
 
 const KIND_LABEL = {
@@ -151,6 +153,11 @@ const state = {
   warehouse: [],     // 1.24.32 — склад: та же модель что cart
   // view mode: 'scs' — цвет по типу; 'power' — цвет по вводу PDU (1.24.11)
   viewMode: 'scs',
+  // v0.59.245: face mode — какой «вид» стойки рисуется.
+  //   'front' — фронт (как раньше), монтаж — передние рельсы
+  //   'rear'  — тыл, монтаж — задние рельсы
+  //   'side'  — вид сбоку (профиль), виден depth + mountSide всех устройств
+  faceMode: 'front',
   // drag state
   drag: null,        // { devId, startY, startU, rowH, r }
 };
@@ -348,7 +355,7 @@ function renderRackPicker() {
 function renderCatalog() {
   const t = $('sc-catalog');
   const rows = [`<tr>
-    <th>Тип</th><th>Название</th><th>U</th><th>Вт</th><th>Порты</th>
+    <th>Тип</th><th>Название</th><th>U</th><th title="Монтажная глубина в мм — используется side-view и проверкой двустороннего монтажа">Глуб., мм</th><th>Вт</th><th>Порты</th>
     <th style="width:40px">цвет</th><th style="width:90px"></th>
   </tr>`];
   state.catalog.forEach((c, idx) => {
@@ -357,6 +364,7 @@ function renderCatalog() {
         `<option value="${k}"${c.kind===k?' selected':''}>${KIND_LABEL[k]}</option>`).join('')}</select></td>
       <td><input data-k="label" value="${escape(c.label)}"></td>
       <td><input data-k="heightU" type="number" min="1" step="1" value="${c.heightU}"></td>
+      <td><input data-k="depthMm" type="number" min="30" max="1200" step="10" value="${c.depthMm}" style="width:60px"></td>
       <td><input data-k="powerW" type="number" min="0" step="1" value="${c.powerW}"></td>
       <td><input data-k="ports" type="number" min="0" step="1" value="${c.ports}"></td>
       <td><input data-k="color" type="color" value="${c.color || '#94a3b8'}" style="width:40px;padding:0"></td>
@@ -417,6 +425,9 @@ function addToRack(typeId, forcedU) {
     id: uid('dev'),
     typeId,
     label: type.label,
+    // v0.59.245: двустороннее размещение. По умолчанию — перед.
+    mountSide: 'front', // 'front' | 'rear'
+    // depthMm — если не задан, берётся из caталога type.depthMm
     positionU, // номер верхнего U устройства (1…r.u)
     pduFeed: '', pduOutlet: '',
   };
@@ -458,7 +469,7 @@ function renderContents() {
   if (!r) { t.innerHTML = '<tr><td>Нет выбранной стойки</td></tr>'; return; }
   const conflicts = detectConflicts(r, devices);
   const rows = [`<tr>
-    <th>U</th><th>Тип</th><th>Название</th><th title="TIA-606">Тег</th><th>Ввод</th><th>PDU outlet</th>
+    <th>U</th><th>Тип</th><th>Название</th><th title="TIA-606">Тег</th><th title="Сторона монтажа: передние рельсы (front) или задние (rear). Двустороннее размещение позволяет использовать обе стороны стойки, если позволяет глубина.">Сторона</th><th title="Монтажная глубина, мм. Пусто = из каталога (type.depthMm). Коллизия front+rear на одних U, когда depthA+depthB > rack.depth.">Глуб., мм</th><th>Ввод</th><th>PDU outlet</th>
     <th style="width:50px"></th>
   </tr>`];
   const feeds = pduFeeds(r);
@@ -481,17 +492,21 @@ function renderContents() {
       })).join('');
     const feedOptsHtml = ['<option value="">—</option>']
       .concat(feeds.map(f => `<option value="${f}"${d.pduFeed === f ? ' selected' : ''}>${f}</option>`)).join('');
+    const mSide = d.mountSide || 'front';
+    const effDepth = (typeof d.depthMm === 'number' ? d.depthMm : (type ? type.depthMm : 0)) || 0;
     rows.push(`<tr data-idx="${idx}" class="${conflict ? 'sc-conflict' : ''}">
       <td><input data-k="positionU" type="number" min="${h}" max="${r.u}" step="1" value="${d.positionU}" style="width:55px"></td>
       <td>${escape(type ? KIND_LABEL[type.kind] : 'Удалён')} · ${h}U</td>
       <td><input data-k="label" value="${escape(d.label)}"></td>
       <td class="muted" style="font-family:monospace;font-size:11px">${escape(deviceTag(d) || '—')}</td>
+      <td><select data-k="mountSide" style="width:72px" title="Сторона монтажа"><option value="front"${mSide==='front'?' selected':''}>Фронт</option><option value="rear"${mSide==='rear'?' selected':''}>Тыл</option></select></td>
+      <td><input data-k="depthMm" type="number" min="30" max="1200" step="10" value="${effDepth}" style="width:68px" title="Глубина устройства в мм. Каталожное значение: ${type?.depthMm ?? '—'} мм"></td>
       <td><select data-k="pduFeed" style="width:60px">${feedOptsHtml}</select></td>
       <td><select data-k="pduOutlet">${outletOptsHtml}</select></td>
       <td><button type="button" class="sc-btn sc-btn-danger" data-del="${d.id}">✕</button></td>
     </tr>`);
   });
-  if (!devices.length) rows.push('<tr><td colspan="7" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
+  if (!devices.length) rows.push('<tr><td colspan="9" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
   t.innerHTML = rows.join('');
   t.querySelectorAll('[data-k]').forEach(el => {
     el.addEventListener('change', () => {
@@ -521,12 +536,16 @@ function renderContents() {
 /* ---- конфликты: наезд U / переполнение PDU ---------------------------- */
 function detectConflicts(r, devices) {
   const conflicts = new Set();
-  // карта занятости со стороной rack.occupied (его считаем непересекаемым «общим» блоком)
-  const slot = new Array(r.u + 1).fill(null); // 1..r.u → id
-  for (let u = r.u; u > r.u - r.occupied; u--) slot[u] = '__rack_occ__';
+  // v0.59.245: проверяем U-коллизии ОТДЕЛЬНО по сторонам монтажа.
+  // Устройство на front не мешает устройству на rear, пока их суммарная
+  // глубина помещается в rack.depth (см. detectDepthConflicts).
+  const slotFront = new Array(r.u + 1).fill(null);
+  const slotRear  = new Array(r.u + 1).fill(null);
+  for (let u = r.u; u > r.u - r.occupied; u--) { slotFront[u] = '__rack_occ__'; slotRear[u] = '__rack_occ__'; }
   devices.forEach(d => {
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
+    const slot = (d.mountSide || 'front') === 'rear' ? slotRear : slotFront;
     for (let k = 0; k < h; k++) {
       const u = d.positionU - k;
       if (u < 1 || u > r.u) { conflicts.add(d.id); continue; }
@@ -538,7 +557,150 @@ function detectConflicts(r, devices) {
       }
     }
   });
+  // depth-коллизии: front+rear на пересекающихся U, если depth_front + depth_rear > rack.depth
+  const depthConflicts = detectDepthConflicts(r, devices);
+  depthConflicts.forEach(id => conflicts.add(id));
   return conflicts;
+}
+
+// v0.59.245: коллизии глубины. Для каждой пары (front-device, rear-device)
+// с пересекающимся диапазоном U: если depthFront + depthRear > rack.depth
+// с учётом зазора ~50 мм (воздух/кабели) — помечаем обе как конфликт.
+function detectDepthConflicts(r, devices) {
+  const out = new Set();
+  if (!r?.depth || r.depth === 'any') return out; // глубина не задана — пропускаем
+  const rackDepth = +r.depth || 0;
+  if (!rackDepth) return out;
+  const GAP = 50; // мм — минимальный внутренний промежуток
+  const effDepth = d => {
+    if (typeof d.depthMm === 'number' && d.depthMm > 0) return d.depthMm;
+    const t = state.catalog.find(c => c.id === d.typeId);
+    return t?.depthMm || 0;
+  };
+  const uRange = d => {
+    const t = state.catalog.find(c => c.id === d.typeId);
+    const h = t ? t.heightU : 1;
+    return [d.positionU - h + 1, d.positionU];
+  };
+  const fronts = devices.filter(d => (d.mountSide || 'front') === 'front');
+  const rears  = devices.filter(d => (d.mountSide || 'front') === 'rear');
+  fronts.forEach(a => {
+    const [a1, a2] = uRange(a);
+    const da = effDepth(a);
+    rears.forEach(b => {
+      const [b1, b2] = uRange(b);
+      const db = effDepth(b);
+      const overlap = Math.max(a1, b1) <= Math.min(a2, b2);
+      if (!overlap) return;
+      if (da + db + GAP > rackDepth) { out.add(a.id); out.add(b.id); }
+    });
+  });
+  return out;
+}
+
+// v0.59.245: Side-view — профиль стойки сбоку. Ось Y — юниты (как во фронте),
+// ось X — глубина (в мм, масштабируется к bodyW). Левая грань = перед стойки,
+// правая = зад. Front-устройства рисуются у левой грани, rear — у правой.
+// Конфликты (frontDepth + rearDepth + GAP > rackDepth на пересечении U) —
+// красная обводка + штриховка в зоне пересечения.
+function renderSideView(hostId, opts) {
+  const host = $(hostId); if (!host) return;
+  const r = currentRack(); if (!r) { host.innerHTML = '<div class="muted">Нет выбранной стойки.</div>'; return; }
+  const devices = currentContents();
+  const conflicts = detectConflicts(r, devices);
+  const depthConflicts = detectDepthConflicts(r, devices);
+  const scale = opts?.big ? 2 : 1;
+  const rowH = 16 * scale;
+  const bodyW = 260 * scale; // ширина панели глубины
+  const leftPad = 32;
+  const svgH = r.u * rowH + 8;
+  const svgW = bodyW + leftPad + 20;
+  const rackDepthMm = (+r.depth === +r.depth && r.depth !== 'any') ? +r.depth : 1000;
+  const mmToPx = (bodyW) / rackDepthMm;
+
+  const bgParts = [];
+  // профиль стойки
+  bgParts.push(`<rect x="${leftPad}" y="4" width="${bodyW}" height="${r.u * rowH}" fill="#f8fafc" stroke="#64748b" stroke-width="1"/>`);
+  // передние/задние рельсы — вертикальные линии у краёв
+  bgParts.push(`<line x1="${leftPad + 3}" y1="4" x2="${leftPad + 3}" y2="${4 + r.u * rowH}" stroke="#3b82f6" stroke-width="2" stroke-dasharray="3,2" opacity="0.6"/>`);
+  bgParts.push(`<line x1="${leftPad + bodyW - 3}" y1="4" x2="${leftPad + bodyW - 3}" y2="${4 + r.u * rowH}" stroke="#ef4444" stroke-width="2" stroke-dasharray="3,2" opacity="0.6"/>`);
+  // сетка юнитов
+  for (let i = 0; i < r.u; i++) {
+    const u = r.u - i;
+    const y = 4 + i * rowH;
+    bgParts.push(`<line x1="${leftPad}" y1="${y}" x2="${leftPad + bodyW}" y2="${y}" stroke="#e2e8f0" stroke-width="0.5"/>`);
+    bgParts.push(`<text x="${leftPad - 4}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
+  }
+  // «занято стойкой» сверху
+  if (r.occupied) {
+    const y = 4;
+    const h = r.occupied * rowH;
+    bgParts.push(`<rect x="${leftPad}" y="${y}" width="${bodyW}" height="${h}" fill="#cbd5e1" stroke="#64748b" stroke-width="0.5"/>`);
+    bgParts.push(`<text x="${leftPad + bodyW/2}" y="${y + h/2 + 4}" font-size="${10*scale}" fill="#475569" text-anchor="middle">занято (${r.occupied}U)</text>`);
+  }
+  // подписи сторон
+  bgParts.push(`<text x="${leftPad}" y="${svgH}" font-size="${9*scale}" fill="#3b82f6">◀ перед</text>`);
+  bgParts.push(`<text x="${leftPad + bodyW}" y="${svgH}" font-size="${9*scale}" fill="#ef4444" text-anchor="end">зад ▶</text>`);
+
+  const effDepth = d => {
+    if (typeof d.depthMm === 'number' && d.depthMm > 0) return d.depthMm;
+    const t = state.catalog.find(c => c.id === d.typeId);
+    return t?.depthMm || 0;
+  };
+
+  const deviceRects = devices.map(d => {
+    const type = state.catalog.find(c => c.id === d.typeId);
+    if (!type) return '';
+    const h = type.heightU;
+    const topIdx = r.u - d.positionU;
+    const y = 4 + topIdx * rowH;
+    const side = (d.mountSide || 'front');
+    const dmm = effDepth(d);
+    const dpx = Math.min(bodyW, Math.max(4, dmm * mmToPx));
+    const x = side === 'rear' ? (leftPad + bodyW - dpx) : leftPad;
+    const hasConflict = conflicts.has(d.id);
+    const depthOverflow = dmm > rackDepthMm;
+    const fill = type.color || '#94a3b8';
+    const stroke = (hasConflict || depthOverflow) ? '#dc2626' : (side === 'rear' ? '#991b1b' : '#1e40af');
+    const sw = (hasConflict || depthOverflow) ? 1.5 : 0.6;
+    const lbl = `${d.label} · ${dmm}мм · ${side === 'rear' ? 'тыл' : 'фронт'}`;
+    return `<g class="sc-sideband" data-devid="${d.id}">
+      <rect x="${x}" y="${y}" width="${dpx}" height="${h*rowH - 1}" fill="${fill}" fill-opacity="0.85" stroke="${stroke}" stroke-width="${sw}"/>
+      <text x="${x + 4}" y="${y + rowH/2 + 3}" font-size="${9*scale}" fill="#0f172a" clip-path="inset(0 0 0 0)">${escape(lbl)}</text>
+    </g>`;
+  }).join('');
+
+  // «мостики» коллизий — штриховка между front и rear на пересечении U, если суммарно не помещается
+  const collisionMarks = [];
+  depthConflicts.forEach(id => {
+    // рисовать только один раз на устройство (иначе двойная штриховка)
+    // Упрощённо: помечаем ⚠ иконкой справа от устройства.
+    const d = devices.find(x => x.id === id); if (!d) return;
+    const type = state.catalog.find(c => c.id === d.typeId); if (!type) return;
+    const topIdx = r.u - d.positionU;
+    const y = 4 + topIdx * rowH;
+    const side = (d.mountSide || 'front');
+    const iconX = side === 'rear' ? (leftPad + 6) : (leftPad + bodyW - 14);
+    collisionMarks.push(`<text x="${iconX}" y="${y + rowH/2 + 4}" font-size="${12*scale}" fill="#dc2626" font-weight="bold" title="Коллизия глубины">⚠</text>`);
+  });
+
+  const svgId = opts?.big ? 'sc-sideview-svg-big' : 'sc-sideview-svg';
+  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg sc-sideview-svg" width="${svgW}" height="${svgH + 14}" viewBox="0 0 ${svgW} ${svgH + 14}" xmlns="http://www.w3.org/2000/svg">
+    ${bgParts.join('')}
+    ${deviceRects}
+    ${collisionMarks.join('')}
+  </svg>`;
+
+  // легенда
+  const depthConflictN = depthConflicts.size / 2 | 0; // пары → количество коллизий
+  const legend = [
+    `<span><i style="background:#3b82f6"></i>Фронт (перед стойки)</span>`,
+    `<span><i style="background:#ef4444"></i>Тыл (задняя сторона)</span>`,
+    `<span class="muted">Глубина стойки: ${rackDepthMm} мм</span>`,
+  ];
+  if (depthConflictN) legend.push(`<span style="color:#dc2626">⚠ Коллизий глубины: ${depthConflictN}</span>`);
+
+  host.innerHTML = `${svgEl}<div class="sc-unitmap-legend">${legend.join('')}</div>`;
 }
 
 /* ---- render: предупреждения ------------------------------------------- */
@@ -665,6 +827,9 @@ function renderUnitMap(hostId, opts) {
   if (!host) return;
   const r = currentRack();
   if (!r) { host.innerHTML = '<div class="muted">Нет выбранной стойки.</div>'; return; }
+  // v0.59.245: side-view — делегируется renderSideView. Front/Rear — обычный
+  // unit map, но с фильтром по mountSide.
+  if (state.faceMode === 'side') { renderSideView(hostId, opts); return; }
   const devices = currentContents();
   const conflicts = detectConflicts(r, devices);
   // В модалке делаем юнит крупнее для удобства
@@ -676,7 +841,14 @@ function renderUnitMap(hostId, opts) {
   // slot → device; индексы U=1..r.u (1 — снизу, r.u — сверху)
   const slot = new Array(r.u + 1).fill(null);
   for (let u = r.u; u > r.u - r.occupied; u--) slot[u] = { kind: 'rack-occ' };
-  devices.forEach(d => {
+  // v0.59.245: в front-виде показываем устройства со mountSide='front' (+legacy
+  // без поля = front). В rear-виде — только 'rear'. U-номера показываются
+  // «как видит наблюдатель»: в тыле часто нумеруют зеркально, но большинство
+  // DC-систем (TIA-606) сохраняют единую U-нумерацию независимо от стороны,
+  // поэтому рисуем одинаково. Разная только выборка devices и цвет рамки.
+  const face = state.faceMode === 'rear' ? 'rear' : 'front';
+  const visibleDevices = devices.filter(d => (d.mountSide || 'front') === face);
+  visibleDevices.forEach(d => {
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     for (let k = 0; k < h; k++) {
@@ -702,7 +874,7 @@ function renderUnitMap(hostId, opts) {
     rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
-  const deviceGroups = devices.map(d => {
+  const deviceGroups = visibleDevices.map(d => {
     const type = state.catalog.find(c => c.id === d.typeId);
     if (!type) return '';
     const h = type.heightU;
@@ -1729,6 +1901,15 @@ function init() {
   state.rackTags  = loadJson(LS_RACKTAGS,  {});
   state.warehouse = loadJson(LS_WAREHOUSE, []);
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
+  // v0.59.245: миграция — depthMm для старых записей каталога.
+  // Не перезаписываем если уже задано (user params are sacred).
+  state.catalog.forEach(c => {
+    if (typeof c.depthMm !== 'number') {
+      const def = DEFAULT_CATALOG.find(d => d.id === c.id);
+      c.depthMm = def?.depthMm || (c.kind === 'patch-panel' || c.kind === 'cable-manager' ? 100 : 500);
+    }
+  });
+  saveCatalog();
   // 1.24.24 URL-роутинг: ?rackId=<id> предпочитает выбор стойки из URL;
   // ?tag=<tia> ищет стойку по TIA-тегу (DC1.H3.R05). Если нет — auto-pick первой.
   const qp = new URLSearchParams(location.search);
@@ -1815,6 +1996,17 @@ function init() {
       state.viewMode = btn.dataset.mode;
       document.querySelectorAll('.sc-vm-btn').forEach(b => {
         b.classList.toggle('sc-vm-active', b.dataset.mode === state.viewMode);
+      });
+      rerenderPreview();
+    });
+  });
+
+  /* ---- v0.59.245 переключатель вида (Фронт / Тыл / Бок) -------------- */
+  document.querySelectorAll('.sc-fm-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.faceMode = btn.dataset.face;
+      document.querySelectorAll('.sc-fm-btn').forEach(b => {
+        b.classList.toggle('sc-fm-active', b.dataset.face === state.faceMode);
       });
       rerenderPreview();
     });

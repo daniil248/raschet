@@ -97,6 +97,17 @@
 .sc-vm-active { background: #2563eb; color: #fff; }
 .sc-vm-active:hover { background: #1d4ed8; }
 
+/* v0.59.245 — переключатель вида (Фронт/Тыл/Бок) */
+.sc-fm-btn {
+  padding: 4px 10px; font-size: 12px; background: #fff; color: #334155; border: 0;
+  border-right: 1px solid #e2e8f0; cursor: pointer;
+}
+.sc-fm-btn:last-child { border-right: 0; }
+.sc-fm-btn:hover { background: #f1f5f9; }
+.sc-fm-active { background: #0f766e; color: #fff; }
+.sc-fm-active:hover { background: #115e59; }
+.sc-sideview-svg { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; }
+
 /* ---- 1.24.12 полноэкранный <dialog> с картой ---- */
 .sc-unitmap-dlg {
   width: 96vw; max-width: 96vw; height: 92vh; max-height: 92vh;
