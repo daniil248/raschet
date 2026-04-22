@@ -30,10 +30,11 @@
    схемы: можно спроектировать стойку отдельно для закупки.
    ========================================================================= */
 
-const LS_RACK     = 'rack-config.templates.v1';
-const LS_CATALOG  = 'scs-config.catalog.v1';
-const LS_CONTENTS = 'scs-config.contents.v1';
-const LS_MATRIX   = 'scs-config.matrix.v1';
+const LS_RACK      = 'rack-config.templates.v1';
+const LS_CATALOG   = 'scs-config.catalog.v1';
+const LS_CONTENTS  = 'scs-config.contents.v1';
+const LS_MATRIX    = 'scs-config.matrix.v1';
+const LS_TEMPLATES = 'scs-config.assemblyTemplates.v1'; // 1.24.7
 
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
 const DEFAULT_CATALOG = [
@@ -61,6 +62,9 @@ const state = {
   catalog: [],       // типы оборудования
   contents: {},      // { rackId: [device] }
   matrix: {},        // { rackId: [link] }
+  templates: [],     // [{id, name, contents, matrix}] — «готовые сборки» (1.24.7)
+  // drag state
+  drag: null,        // { devId, startY, startU, rowH, r }
 };
 
 /* ---- utils ------------------------------------------------------------- */
@@ -86,9 +90,45 @@ function loadJson(key, fallback) {
     return JSON.parse(raw);
   } catch (e) { return fallback; }
 }
-function saveCatalog()  { try { localStorage.setItem(LS_CATALOG,  JSON.stringify(state.catalog));  } catch {} }
-function saveContents() { try { localStorage.setItem(LS_CONTENTS, JSON.stringify(state.contents)); } catch {} }
-function saveMatrix()   { try { localStorage.setItem(LS_MATRIX,   JSON.stringify(state.matrix));   } catch {} }
+function saveCatalog()   { try { localStorage.setItem(LS_CATALOG,   JSON.stringify(state.catalog));   } catch {} }
+function saveContents()  { try { localStorage.setItem(LS_CONTENTS,  JSON.stringify(state.contents));  } catch {} }
+function saveMatrix()    { try { localStorage.setItem(LS_MATRIX,    JSON.stringify(state.matrix));    } catch {} }
+function saveTemplates() { try { localStorage.setItem(LS_TEMPLATES, JSON.stringify(state.templates)); } catch {} }
+
+/* ---- список доступных PDU-розеток текущей стойки (1.24.4 full) -------
+   Разворачивает rack.pdus → плоский список { feed, outletIdx, typeLabel,
+   pduLabel }. Каждый PDU может иметь qty>1 → создаём отдельные блоки
+   «PDU-инстансов» по qty. outletIdx нумеруется в пределах инстанса PDU. */
+function pduOutletOptions(rack) {
+  if (!rack || !Array.isArray(rack.pdus)) return [];
+  const opts = [];
+  rack.pdus.forEach((p, pduIdx) => {
+    const qty = Math.max(1, +p.qty || 1);
+    for (let q = 0; q < qty; q++) {
+      const pduLabel = `PDU${pduIdx + 1}${qty > 1 ? '.' + (q + 1) : ''} ${p.rating}A/${p.phases}ф · ${p.feed}`;
+      const outlets = Array.isArray(p.outlets) ? p.outlets : [];
+      let slot = 1;
+      outlets.forEach(o => {
+        const count = Math.max(0, +o.count || 0);
+        for (let i = 0; i < count; i++, slot++) {
+          opts.push({
+            feed: p.feed,
+            outlet: `P${pduIdx + 1}${qty > 1 ? '.' + (q + 1) : ''}-${slot}`,
+            typeLabel: o.type,
+            pduLabel,
+          });
+        }
+      });
+    }
+  });
+  return opts;
+}
+
+/** unique feeds в стойке (для простого dropdown ввода) */
+function pduFeeds(rack) {
+  if (!rack || !Array.isArray(rack.pdus)) return [];
+  return [...new Set(rack.pdus.map(p => p.feed).filter(Boolean))];
+}
 
 /* ---- current rack helpers --------------------------------------------- */
 function currentRack() {
@@ -218,16 +258,32 @@ function renderContents() {
     <th>U</th><th>Тип</th><th>Название</th><th>Ввод</th><th>PDU outlet</th>
     <th style="width:50px"></th>
   </tr>`];
+  const feeds = pduFeeds(r);
+  const allOutlets = pduOutletOptions(r);
+  // счётчик использования розеток для проверки «один слот = одно устройство»
+  const outletUsage = new Map();
+  devices.forEach(d => {
+    if (d.pduOutlet) outletUsage.set(d.pduOutlet, (outletUsage.get(d.pduOutlet) || 0) + 1);
+  });
   devices.forEach((d, idx) => {
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     const conflict = conflicts.has(d.id);
+    // dropdown розеток фильтруется по выбранному feed; если feed пуст — показываем все
+    const outletsForFeed = d.pduFeed ? allOutlets.filter(o => o.feed === d.pduFeed) : allOutlets;
+    const outletOptsHtml = ['<option value="">—</option>']
+      .concat(outletsForFeed.map(o => {
+        const taken = outletUsage.get(o.outlet) >= 1 && d.pduOutlet !== o.outlet;
+        return `<option value="${o.outlet}"${d.pduOutlet === o.outlet ? ' selected' : ''}${taken ? ' disabled' : ''}>${o.outlet} · ${o.typeLabel}${taken ? ' (занят)' : ''}</option>`;
+      })).join('');
+    const feedOptsHtml = ['<option value="">—</option>']
+      .concat(feeds.map(f => `<option value="${f}"${d.pduFeed === f ? ' selected' : ''}>${f}</option>`)).join('');
     rows.push(`<tr data-idx="${idx}" class="${conflict ? 'sc-conflict' : ''}">
       <td><input data-k="positionU" type="number" min="${h}" max="${r.u}" step="1" value="${d.positionU}" style="width:55px"></td>
       <td>${escape(type ? KIND_LABEL[type.kind] : 'Удалён')} · ${h}U</td>
       <td><input data-k="label" value="${escape(d.label)}"></td>
-      <td><input data-k="pduFeed" value="${escape(d.pduFeed || '')}" placeholder="A/B/…" style="width:50px"></td>
-      <td><input data-k="pduOutlet" value="${escape(d.pduOutlet || '')}" placeholder="№"></td>
+      <td><select data-k="pduFeed" style="width:60px">${feedOptsHtml}</select></td>
+      <td><select data-k="pduOutlet">${outletOptsHtml}</select></td>
       <td><button type="button" class="sc-btn sc-btn-danger" data-del="${d.id}">✕</button></td>
     </tr>`);
   });
@@ -305,6 +361,41 @@ function renderWarnings() {
     return type && type.powerW > 0 && !d.pduFeed;
   });
   if (unfed.length) items.push(`<div class="sc-warn-item warn">${unfed.length} устройств с питанием не привязаны к вводу PDU.</div>`);
+
+  // hard check: перегруз по вводу (сумма powerW устройств на ввод A/B/C/… vs допустимая)
+  // допустимая = rating × sqrt(3 if phases=3 else 1) × 230V × cosphi_rack (≈0.9)
+  const byFeed = new Map();
+  devices.forEach(d => {
+    if (!d.pduFeed) return;
+    const type = state.catalog.find(c => c.id === d.typeId);
+    const w = type ? (type.powerW || 0) : 0;
+    byFeed.set(d.pduFeed, (byFeed.get(d.pduFeed) || 0) + w);
+  });
+  if (r.pdus) {
+    const cosphi = +r.cosphi || 0.9;
+    const pduByFeed = new Map();
+    r.pdus.forEach(p => {
+      const cap = p.rating * (p.phases === 3 ? Math.sqrt(3) : 1) * 230 * cosphi;
+      const qty = Math.max(1, +p.qty || 1);
+      pduByFeed.set(p.feed, (pduByFeed.get(p.feed) || 0) + cap * qty);
+    });
+    byFeed.forEach((load, feed) => {
+      const cap = pduByFeed.get(feed) || 0;
+      if (cap > 0 && load > cap) {
+        items.push(`<div class="sc-warn-item err">Перегруз ввода <b>${escape(feed)}</b>: нагрузка ≈ ${(load/1000).toFixed(2)} кВт > ёмкости PDU ≈ ${(cap/1000).toFixed(2)} кВт.</div>`);
+      }
+    });
+  }
+
+  // дубли розеток (один слот = одно устройство)
+  const outletUsage = new Map();
+  devices.forEach(d => {
+    if (d.pduOutlet) outletUsage.set(d.pduOutlet, (outletUsage.get(d.pduOutlet) || 0) + 1);
+  });
+  const dupOutlets = [...outletUsage.entries()].filter(([, n]) => n > 1);
+  if (dupOutlets.length) {
+    items.push(`<div class="sc-warn-item err">Дублирование PDU-розетки: ${dupOutlets.map(([o, n]) => `${o} (×${n})`).join(', ')}. Один слот должен занимать одно устройство.</div>`);
+  }
   if (!items.length) items.push('<div class="sc-warn-item ok">Всё ок: размещение корректно, конфликтов нет.</div>');
   host.innerHTML = items.join('');
 }
@@ -380,24 +471,35 @@ function renderUnitMap() {
     }
   });
 
+  // сначала пустые ряды / занятые стойкой
   const rects = [];
   for (let i = 0; i < r.u; i++) {
     const u = r.u - i; // сверху вниз
     const y = 4 + i * rowH;
     const s = slot[u];
-    let fill = '#f1f5f9', stroke = '#cbd5e1', label = '';
-    if (s) {
-      if (s.kind === 'rack-occ') { fill = '#cbd5e1'; stroke = '#64748b'; }
-      else if (s.type) {
-        fill = s.type.color || '#94a3b8';
-        stroke = s.conflict ? '#dc2626' : '#64748b';
-        if (s.isTop) label = `${s.device.label}${s.device.pduFeed ? ' · '+s.device.pduFeed : ''}`;
-      }
+    if (!s || s.kind === 'rack-occ') {
+      const fill = s && s.kind === 'rack-occ' ? '#cbd5e1' : '#f1f5f9';
+      const stroke = s && s.kind === 'rack-occ' ? '#64748b' : '#cbd5e1';
+      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
     }
-    rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${s && s.conflict ? 1.5 : 0.5}"/>`);
     rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="end">${u}</text>`);
-    if (label) rects.push(`<text x="38" y="${y + rowH/2 + 4}" font-size="10" fill="#0f172a">${escape(label)}</text>`);
   }
+  // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
+  const deviceGroups = devices.map(d => {
+    const type = state.catalog.find(c => c.id === d.typeId);
+    if (!type) return '';
+    const h = type.heightU;
+    const topIdx = r.u - d.positionU; // row index (0=сверху)
+    const y = 4 + topIdx * rowH;
+    const conflict = conflicts.has(d.id);
+    const fill = type.color || '#94a3b8';
+    const stroke = conflict ? '#dc2626' : '#64748b';
+    const labelTxt = `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}`;
+    return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
+      <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
+      <text x="38" y="${y + rowH/2 + 4}" font-size="10" fill="#0f172a">${escape(labelTxt)}</text>
+    </g>`;
+  }).join('');
 
   const legend = [];
   const seen = new Set();
@@ -409,8 +511,59 @@ function renderUnitMap() {
   });
   if (r.occupied) legend.unshift(`<span><i style="background:#cbd5e1"></i>Занято стойкой · ${r.occupied}U</span>`);
 
-  host.innerHTML = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">${rects.join('')}</svg>
-    <div class="sc-unitmap-legend">${legend.join('') || '<span class="muted">— пусто —</span>'}</div>`;
+  host.innerHTML = `<svg id="sc-unitmap-svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}">
+    ${rects.join('')}
+    ${deviceGroups}
+  </svg>
+  <div class="sc-unitmap-legend">${legend.join('') || '<span class="muted">— пусто —</span>'}</div>`;
+  bindUnitMapDrag();
+}
+
+/* ---- drag-n-drop в SVG (1.24.3 full) ---------------------------------
+   Pointerdown на <g.sc-devband> — захват; pointermove — двигаем полосу,
+   snap к целому U; pointerup — коммит (saveContents) или откат (если
+   вышли за границы). Используются Pointer Events API (работает для мыши
+   и сенсорного ввода). SetPointerCapture позволяет таскать за пределами
+   исходного rect. */
+function bindUnitMapDrag() {
+  const svg = $('sc-unitmap-svg'); if (!svg) return;
+  const rowH = +svg.dataset.rowh || 16;
+  svg.querySelectorAll('g.sc-devband').forEach(g => {
+    g.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      const devId = g.dataset.devid;
+      const d = currentContents().find(x => x.id === devId); if (!d) return;
+      state.drag = { devId, startY: ev.clientY, startU: d.positionU, rowH, g };
+      g.setPointerCapture(ev.pointerId);
+      g.style.cursor = 'grabbing';
+      g.style.opacity = '0.75';
+    });
+    g.addEventListener('pointermove', ev => {
+      if (!state.drag || state.drag.devId !== g.dataset.devid) return;
+      const r = currentRack(); if (!r) return;
+      const d = currentContents().find(x => x.id === state.drag.devId); if (!d) return;
+      const dy = ev.clientY - state.drag.startY;
+      const drows = Math.round(-dy / rowH); // вверх по экрану = больший U
+      const h = +g.dataset.h || 1;
+      const newU = Math.max(h, Math.min(r.u, state.drag.startU + drows));
+      if (newU !== d.positionU) {
+        d.positionU = newU;
+        renderUnitMap();   // re-draw (rebinds listeners)
+        // состояние drag нужно перезахватить, т.к. g уничтожен
+        const gNew = document.querySelector(`g.sc-devband[data-devid="${state.drag.devId}"]`);
+        if (gNew) { gNew.setPointerCapture(ev.pointerId); gNew.style.cursor = 'grabbing'; gNew.style.opacity = '0.75'; }
+      }
+    });
+    g.addEventListener('pointerup', () => {
+      if (!state.drag) return;
+      state.drag = null;
+      saveContents();
+      renderContents();
+      renderWarnings();
+      renderBom();
+    });
+    g.addEventListener('pointercancel', () => { state.drag = null; });
+  });
 }
 
 /* ---- BOM --------------------------------------------------------------- */
@@ -478,16 +631,71 @@ function autoPack() {
   rerenderPreview();
 }
 
+/* ---- шаблоны «готовой сборки» (1.24.7) --------------------------------
+   Снапшот currentContents + currentMatrix сохраняется под именем. Применение
+   к другой стойке = клонирование с новыми id и с обрезкой устройств, которые
+   не помещаются по высоте (новая стойка может быть меньше). */
+function renderTemplates() {
+  const sel = $('sc-template'); if (!sel) return;
+  sel.innerHTML = state.templates.length
+    ? '<option value="">— выбрать —</option>' + state.templates.map(t => `<option value="${t.id}">${escape(t.name)}</option>`).join('')
+    : '<option value="">— нет сохранённых —</option>';
+}
+function saveCurrentAsTemplate() {
+  const r = currentRack(); if (!r) { alert('Нет выбранной стойки.'); return; }
+  const name = prompt('Имя шаблона сборки:', `Сборка · ${r.name || r.u + 'U'}`);
+  if (!name) return;
+  const tmpl = {
+    id: uid('tmpl'),
+    name: name.trim(),
+    // Снимаем копии без id — применение сгенерирует новые
+    contents: currentContents().map(d => ({
+      typeId: d.typeId, label: d.label, positionU: d.positionU,
+      pduFeed: d.pduFeed || '', pduOutlet: d.pduOutlet || '',
+    })),
+    matrix: currentMatrix().map(l => ({
+      a: l.a, b: l.b, cable: l.cable, lengthM: l.lengthM, color: l.color || '',
+    })),
+    createdAt: new Date().toISOString(),
+  };
+  state.templates.push(tmpl);
+  saveTemplates();
+  renderTemplates();
+  $('sc-template').value = tmpl.id;
+}
+function applyTemplate() {
+  const sel = $('sc-template'); const id = sel.value;
+  const tmpl = state.templates.find(t => t.id === id);
+  const r = currentRack();
+  if (!tmpl || !r) { alert('Выберите шаблон и стойку.'); return; }
+  if (!confirm(`Применить шаблон «${tmpl.name}» к текущей стойке? Существующее содержимое и матрица будут заменены.`)) return;
+  // обрезка по высоте стойки: не помещается устройство, если positionU > r.u или (positionU - h + 1) < 1
+  const dropped = [];
+  const contents = tmpl.contents.map(d => {
+    const type = state.catalog.find(c => c.id === d.typeId);
+    const h = type ? type.heightU : 1;
+    if (d.positionU > r.u || d.positionU - h + 1 < 1) { dropped.push(d); return null; }
+    return { id: uid('dev'), typeId: d.typeId, label: d.label, positionU: d.positionU, pduFeed: d.pduFeed, pduOutlet: d.pduOutlet };
+  }).filter(Boolean);
+  const matrix = tmpl.matrix.map(l => ({ id: uid('lnk'), a: l.a, b: l.b, cable: l.cable, lengthM: l.lengthM, color: l.color }));
+  state.contents[state.currentRackId] = contents;
+  state.matrix[state.currentRackId] = matrix;
+  saveContents(); saveMatrix();
+  rerender();
+  if (dropped.length) alert(`Не поместилось ${dropped.length} устройств (стойка меньше исходной или другое занятое пространство).`);
+}
+
 /* ---- глобальный rerender ---------------------------------------------- */
 function rerenderPreview() { renderUnitMap(); renderWarnings(); renderBom(); }
-function rerender() { renderRackPicker(); renderContents(); renderMatrix(); rerenderPreview(); }
+function rerender() { renderRackPicker(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); }
 
 /* ---- init -------------------------------------------------------------- */
 function init() {
-  state.racks    = loadRacks();
-  state.catalog  = loadJson(LS_CATALOG, DEFAULT_CATALOG.slice());
-  state.contents = loadJson(LS_CONTENTS, {});
-  state.matrix   = loadJson(LS_MATRIX, {});
+  state.racks     = loadRacks();
+  state.catalog   = loadJson(LS_CATALOG,   DEFAULT_CATALOG.slice());
+  state.contents  = loadJson(LS_CONTENTS,  {});
+  state.matrix    = loadJson(LS_MATRIX,    {});
+  state.templates = loadJson(LS_TEMPLATES, []);
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
   // auto-pick rack
   if (state.racks.length) state.currentRackId = state.racks[0].id;
@@ -519,6 +727,8 @@ function init() {
   $('sc-auto').addEventListener('click', autoPack);
   $('sc-matrix-add').addEventListener('click', addMatrixRow);
   $('sc-bom-csv').addEventListener('click', exportBomCsv);
+  $('sc-template-save').addEventListener('click', saveCurrentAsTemplate);
+  $('sc-template-apply').addEventListener('click', applyTemplate);
 
   // pick up rack template changes in other tabs
   window.addEventListener('storage', e => {

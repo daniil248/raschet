@@ -3,6 +3,15 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.1',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.24.3 full — drag-n-drop в SVG-карте юнитов. Pointer Events API с setPointerCapture, snap к целому U, визуальная обратная связь (cursor=grabbing, opacity=0.75). На pointerup коммит в contents + rerender.',
+      'Phase 1.24.4 full — интеграция с розетками PDU из rack-config. Dropdown `pduFeed` из уникальных вводов стойки (A/B/C/…), dropdown `pduOutlet` из развёрнутых rack.pdus[].outlets (тип + номер, с учётом qty инстансов PDU). Занятые другими устройствами розетки показываются disabled. Hard-check перегруза по каждому вводу: сумма powerW vs rating·√3(для 3ф)·230·cosφ·qty. Детекция дублирования розеток.',
+      'Phase 1.24.7 — «готовая сборка» как шаблон. Новое хранилище `scs-config.assemblyTemplates.v1` = [{id, name, contents, matrix, createdAt}]. Кнопки «💾 Сохранить как шаблон» и «↪ Применить» в верхней панели. Применение клонирует с новыми id и обрезает устройства, не помещающиеся в меньшую стойку (с уведомлением).',
+    ],
+  },
+  {
     version: '0.1.0',
     date: '2026-04-22',
     items: [
