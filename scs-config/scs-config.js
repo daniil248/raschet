@@ -595,6 +595,8 @@ function detectDepthConflicts(r, devices) {
   if (!r?.depth || r.depth === 'any') return out; // глубина не задана — пропускаем
   const rackDepth = +r.depth || 0;
   if (!rackDepth) return out;
+  // v0.59.256: сравниваем с railDepth (устройства крепятся на рельсы, не в корпус).
+  const railDepth = (typeof r.railDepth === 'number' && r.railDepth >= 300) ? +r.railDepth : Math.max(300, rackDepth - 250);
   const GAP = 50; // мм — минимальный внутренний промежуток
   const effDepth = d => {
     if (typeof d.depthMm === 'number' && d.depthMm > 0) return d.depthMm;
@@ -616,7 +618,7 @@ function detectDepthConflicts(r, devices) {
       const db = effDepth(b);
       const overlap = Math.max(a1, b1) <= Math.min(a2, b2);
       if (!overlap) return;
-      if (da + db + GAP > rackDepth) { out.add(a.id); out.add(b.id); }
+      if (da + db + GAP > railDepth) { out.add(a.id); out.add(b.id); }
     });
   });
   return out;
@@ -640,14 +642,24 @@ function renderSideView(hostId, opts) {
   const svgH = r.u * rowH + 8;
   const svgW = bodyW + leftPad + 20;
   const rackDepthMm = (+r.depth === +r.depth && r.depth !== 'any') ? +r.depth : 1000;
+  // v0.59.256: railDepth — расстояние между 19"-рельсами (adjustable).
+  const railDepthMm = (typeof r.railDepth === 'number' && r.railDepth >= 300) ? +r.railDepth : Math.max(300, rackDepthMm - 250);
+  const frontClearance = Math.max(0, (rackDepthMm - railDepthMm) / 2);
   const mmToPx = (bodyW) / rackDepthMm;
+  const frontRailX = leftPad + frontClearance * mmToPx;
+  const rearRailX  = leftPad + (rackDepthMm - frontClearance) * mmToPx;
 
   const bgParts = [];
   // профиль стойки
   bgParts.push(`<rect x="${leftPad}" y="4" width="${bodyW}" height="${r.u * rowH}" fill="#f8fafc" stroke="#64748b" stroke-width="1"/>`);
-  // передние/задние рельсы — вертикальные линии у краёв
-  bgParts.push(`<line x1="${leftPad + 3}" y1="4" x2="${leftPad + 3}" y2="${4 + r.u * rowH}" stroke="#3b82f6" stroke-width="2" stroke-dasharray="3,2" opacity="0.6"/>`);
-  bgParts.push(`<line x1="${leftPad + bodyW - 3}" y1="4" x2="${leftPad + bodyW - 3}" y2="${4 + r.u * rowH}" stroke="#ef4444" stroke-width="2" stroke-dasharray="3,2" opacity="0.6"/>`);
+  // передние/задние рельсы — вертикальные линии в позициях railDepth (не у краёв корпуса)
+  bgParts.push(`<line x1="${frontRailX}" y1="4" x2="${frontRailX}" y2="${4 + r.u * rowH}" stroke="#3b82f6" stroke-width="2" opacity="0.75"><title>Передний 19"-рельс</title></line>`);
+  bgParts.push(`<line x1="${rearRailX}" y1="4" x2="${rearRailX}" y2="${4 + r.u * rowH}" stroke="#ef4444" stroke-width="2" opacity="0.75"><title>Задний 19"-рельс (railDepth=${railDepthMm} мм)</title></line>`);
+  // «зазор до двери» — тонкая штриховка на передней и задней областях (между краем корпуса и рельсом)
+  if (frontClearance > 0) {
+    bgParts.push(`<rect x="${leftPad}" y="4" width="${frontRailX - leftPad}" height="${r.u * rowH}" fill="#3b82f6" fill-opacity="0.04"/>`);
+    bgParts.push(`<rect x="${rearRailX}" y="4" width="${leftPad + bodyW - rearRailX}" height="${r.u * rowH}" fill="#ef4444" fill-opacity="0.04"/>`);
+  }
   // сетка юнитов
   for (let i = 0; i < r.u; i++) {
     const u = r.u - i;
@@ -681,9 +693,10 @@ function renderSideView(hostId, opts) {
     const side = (d.mountSide || 'front');
     const dmm = effDepth(d);
     const dpx = Math.min(bodyW, Math.max(4, dmm * mmToPx));
-    const x = side === 'rear' ? (leftPad + bodyW - dpx) : leftPad;
+    // v0.59.256: устройства крепятся на рельсы, поэтому начинаются от railX, а не от корпуса
+    const x = side === 'rear' ? (rearRailX - dpx) : frontRailX;
     const hasConflict = conflicts.has(d.id);
-    const depthOverflow = dmm > rackDepthMm;
+    const depthOverflow = dmm > railDepthMm;
     const fill = type.color || '#94a3b8';
     const stroke = (hasConflict || depthOverflow) ? '#dc2626' : (side === 'rear' ? '#991b1b' : '#1e40af');
     const sw = (hasConflict || depthOverflow) ? 1.5 : 0.6;
@@ -704,7 +717,7 @@ function renderSideView(hostId, opts) {
     const topIdx = r.u - d.positionU;
     const y = 4 + topIdx * rowH;
     const side = (d.mountSide || 'front');
-    const iconX = side === 'rear' ? (leftPad + 6) : (leftPad + bodyW - 14);
+    const iconX = side === 'rear' ? (frontRailX + 6) : (rearRailX - 14);
     collisionMarks.push(`<text x="${iconX}" y="${y + rowH/2 + 4}" font-size="${12*scale}" fill="#dc2626" font-weight="bold" title="Коллизия глубины">⚠</text>`);
   });
 
@@ -719,12 +732,12 @@ function renderSideView(hostId, opts) {
   const depthConflictN = depthConflicts.size / 2 | 0;
   const maxFront = devices.filter(d => (d.mountSide||'front')==='front').reduce((m,d) => Math.max(m, effDepth(d)), 0);
   const maxRear  = devices.filter(d => (d.mountSide||'front')==='rear' ).reduce((m,d) => Math.max(m, effDepth(d)), 0);
-  const freeDepth = rackDepthMm - maxFront - maxRear - 50;
-  const depthStat = `max front: ${maxFront} · max rear: ${maxRear} · зазор: ${freeDepth >= 0 ? freeDepth : 0} мм${freeDepth < 0 ? ' <span style="color:#dc2626">(перегруз)</span>' : ''}`;
+  const freeDepth = railDepthMm - maxFront - maxRear - 50;
+  const depthStat = `max front: ${maxFront} · max rear: ${maxRear} · зазор между устройствами: ${freeDepth >= 0 ? freeDepth : 0} мм${freeDepth < 0 ? ' <span style="color:#dc2626">(перегруз)</span>' : ''}`;
   const legend = [
     `<span><i style="background:#3b82f6"></i>Фронт (перед стойки)</span>`,
     `<span><i style="background:#ef4444"></i>Тыл (задняя сторона)</span>`,
-    `<span class="muted">Глубина стойки: ${rackDepthMm} мм · ${depthStat}</span>`,
+    `<span class="muted">Корпус: ${rackDepthMm} мм · Рельсы: <b>${railDepthMm}</b> мм · ${depthStat}</span>`,
   ];
   if (depthConflictN) legend.push(`<span style="color:#dc2626">⚠ Коллизий глубины: ${depthConflictN}</span>`);
 
@@ -870,6 +883,10 @@ async function renderRack3D(hostId, opts) {
   const rackD = (+r.depth === +r.depth && r.depth !== 'any') ? +r.depth : 1000;
   const FR = 6; // толщина стенок / панелей, мм
   const RAIL_W = 16; // толщина стойки-рельса, мм
+  // v0.59.256: расстояние между 19"-рельсами из настройки стойки (с fallback).
+  const railDepthMm = (typeof r.railDepth === 'number' && r.railDepth >= 300) ? +r.railDepth : Math.max(300, rackD - 250);
+  const railFrontZ  = Math.max(20, (rackD - railDepthMm) / 2); // равный зазор спереди/сзади
+  const railRearZ   = railFrontZ + railDepthMm;
 
   const width = Math.max(400, host.clientWidth || 500);
   const height = 480;
@@ -945,12 +962,12 @@ async function renderRack3D(hostId, opts) {
   const railH = rackH - 2 * FR;
   const frontRailMat = new THREE.MeshLambertMaterial({ color: 0x1d4ed8 });
   const rearRailMat  = new THREE.MeshLambertMaterial({ color: 0x991b1b });
-  // передняя пара
-  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, railInset + RAIL_W/2,          railY, 40 + RAIL_W/2));
-  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, rackW - railInset - RAIL_W/2,  railY, 40 + RAIL_W/2));
-  // задняя пара
-  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, rearRailMat,  railInset + RAIL_W/2,          railY, rackD - 40 - RAIL_W/2));
-  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, rearRailMat,  rackW - railInset - RAIL_W/2,  railY, rackD - 40 - RAIL_W/2));
+  // передняя пара (z-центр на railFrontZ)
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, railInset + RAIL_W/2,          railY, railFrontZ));
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, rackW - railInset - RAIL_W/2,  railY, railFrontZ));
+  // задняя пара (z-центр на railRearZ)
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, rearRailMat,  railInset + RAIL_W/2,          railY, railRearZ));
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, rearRailMat,  rackW - railInset - RAIL_W/2,  railY, railRearZ));
 
   // боковые стенки — тогл
   const walls = new THREE.Group();
@@ -996,26 +1013,25 @@ async function renderRack3D(hostId, opts) {
     const isShelf = type.kind === 'shelf';
     const portsRear = !!type.portsRear;
 
-    // Полка — тонкий поддон: рисуем плоскость по всей глубине между рельсами
+    // v0.59.256: монтажные плоскости определяются railFrontZ / railRearZ.
+    // Полка — тонкий поддон: рисуем плоскость между рельсами
     if (isShelf) {
       const shelfH = Math.max(6, U_MM * 0.25);
-      const shelfDepth = Math.min(rackD - 2*40 - 2*RAIL_W, dMm || 500);
-      const shelfZ = side === 'rear' ? (rackD - 40 - RAIL_W - shelfDepth/2) : (40 + RAIL_W + shelfDepth/2);
+      const shelfDepth = Math.min(railDepthMm - RAIL_W, dMm || 500);
+      const shelfZ = side === 'rear' ? (railRearZ - RAIL_W/2 - shelfDepth/2) : (railFrontZ + RAIL_W/2 + shelfDepth/2);
       scene.add(mkBox(innerW, shelfH, shelfDepth, devMat, rackW/2, yBottom + shelfH/2, shelfZ));
-      // передняя планка полки (бортик)
-      const lipZ = side === 'rear' ? (rackD - 40 - RAIL_W - EAR_PLATE/2) : (40 + RAIL_W + EAR_PLATE/2);
+      // передняя планка полки (бортик) — у монтажной плоскости
+      const lipZ = side === 'rear' ? (railRearZ + EAR_PLATE/2) : (railFrontZ - EAR_PLATE/2);
       scene.add(mkBox(innerW, bodyH, EAR_PLATE, earMat, rackW/2, yCenter, lipZ));
     } else {
-      // Корпус между рельсами
-      const zCenter = side === 'rear' ? (rackD - 40 - RAIL_W - dMm/2) : (40 + RAIL_W + dMm/2);
+      // Корпус между рельсами: крепится к монтажной плоскости и уходит вглубь на dMm
+      const zCenter = side === 'rear' ? (railRearZ - RAIL_W/2 - dMm/2) : (railFrontZ + RAIL_W/2 + dMm/2);
       scene.add(mkBox(innerW, bodyH, dMm, devMat, rackW/2, yCenter, zCenter));
     }
 
     // «Уши» 19": плоские пластины СНАРУЖИ рельсов на монтажной плоскости.
-    // Для фронт-монтажа — в z≈40 (перед фронтовой стойкой, по ширине от
-    // innerW до rackW). Для тыла — в z≈rackD-40.
-    const earZFront = 40 - EAR_PLATE/2;
-    const earZRear  = rackD - 40 + EAR_PLATE/2;
+    const earZFront = railFrontZ - RAIL_W/2 - EAR_PLATE/2;
+    const earZRear  = railRearZ + RAIL_W/2 + EAR_PLATE/2;
     const earZ = side === 'rear' ? earZRear : earZFront;
     const earLeftCX  = EAR_WIDTH / 2;               // центр от x=0 до x=EAR_WIDTH
     const earRightCX = rackW - EAR_WIDTH / 2;
@@ -1026,8 +1042,8 @@ async function renderRack3D(hostId, opts) {
     const drawFacade = (faceSide) => {
       if (isShelf) return;
       const faceZ = faceSide === 'rear'
-        ? rackD - 40 + EAR_PLATE + 0.2
-        : 40 - EAR_PLATE - 0.2;
+        ? railRearZ + RAIL_W/2 + EAR_PLATE + 0.2
+        : railFrontZ - RAIL_W/2 - EAR_PLATE - 0.2;
       const kind = type.kind || '';
       const padY = Math.max(2, bodyH * 0.12);
       const usableH = bodyH - 2 * padY;
@@ -1084,7 +1100,7 @@ async function renderRack3D(hostId, opts) {
     if (portsRear) drawFacade(side === 'front' ? 'rear' : 'front');
 
     if (depthConflicts.has(d.id)) {
-      const zCenter2 = side === 'rear' ? (rackD - 40 - RAIL_W - dMm/2) : (40 + RAIL_W + dMm/2);
+      const zCenter2 = side === 'rear' ? (railRearZ - RAIL_W/2 - dMm/2) : (railFrontZ + RAIL_W/2 + dMm/2);
       const eg = new THREE.BoxGeometry(innerW + 1, bodyH + 1, dMm + 1);
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(eg),
         new THREE.LineBasicMaterial({ color: 0xdc2626 }));

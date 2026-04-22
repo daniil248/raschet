@@ -57,6 +57,8 @@ function makeBlankTemplate(name = 'Новый шкаф') {
     manufacturer: '',
     kitId: '',
     u: 42, width: 600, depth: 1000,
+    // v0.59.256: глубина между 19"-рельсами (adjustable). По умолчанию ≈ depth-250.
+    railDepth: 750,
     doorFront: 'mesh',
     doorRear:  'double-mesh',
     doorWithLock: true,
@@ -653,6 +655,7 @@ function renderForm() {
   el('rc-u').value            = String(t.u);
   el('rc-width').value        = String(t.width);
   el('rc-depth').value        = String(t.depth);
+  if (el('rc-rail-depth')) el('rc-rail-depth').value = String(t.railDepth ?? Math.max(300, (typeof t.depth === 'number' ? t.depth - 250 : 750)));
   el('rc-door-front').value   = t.doorFront;
   el('rc-door-rear').value    = t.doorRear;
   el('rc-door-with-lock').checked = !!t.doorWithLock;
@@ -733,6 +736,16 @@ function readForm() {
   t.u = newU;
   t.width        = parseInt(el('rc-width').value, 10) || 600;
   t.depth        = parseInt(el('rc-depth').value, 10) || 1000;
+  // v0.59.256: railDepth — preserve-on-miss (user params are sacred).
+  if (el('rc-rail-depth')) {
+    const rd = parseInt(el('rc-rail-depth').value, 10);
+    if (Number.isFinite(rd) && rd >= 300 && rd <= 1150) {
+      // sanity: railDepth не может быть больше глубины корпуса минус зазоры на двери (2×40 мм).
+      const maxFit = (typeof t.depth === 'number' ? t.depth - 80 : 1150);
+      t.railDepth = Math.min(rd, maxFit);
+      if (t.railDepth !== rd) el('rc-rail-depth').value = String(t.railDepth);
+    }
+  }
   t.doorFront    = el('rc-door-front').value;
   t.doorRear     = el('rc-door-rear').value;
   t.doorWithLock = el('rc-door-with-lock').checked;
@@ -1877,7 +1890,7 @@ function sendApplyToHost() {
 
 /* ---------- bind ---------- */
 function bind() {
-  const ids = ['rc-name','rc-manufacturer','rc-u','rc-width','rc-depth',
+  const ids = ['rc-name','rc-manufacturer','rc-u','rc-width','rc-depth','rc-rail-depth',
     'rc-door-front','rc-door-rear','rc-door-with-lock','rc-lock',
     'rc-sides','rc-top','rc-base','rc-combo-top-base',
     'rc-entry-top','rc-entry-bot','rc-entry-type',
