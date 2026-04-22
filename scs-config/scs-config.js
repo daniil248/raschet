@@ -303,8 +303,10 @@ function renderCatalog() {
       ev.dataTransfer.setData('application/x-scs-typeid', tr.dataset.typeid);
       ev.dataTransfer.effectAllowed = 'copy';
       tr.classList.add('sc-drag-src');
+      const type = state.catalog.find(c => c.id === tr.dataset.typeid);
+      if (type) setDragGhost(ev, type, type.label);
     });
-    tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+    tr.addEventListener('dragend', () => { tr.classList.remove('sc-drag-src'); state._dragMeta = null; });
   });
   t.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.del;
@@ -860,32 +862,82 @@ function canPlace(r, devices, excludeDevId, heightU, wantU) {
    На SVG принимаем перетаскивание <tr data-typeid> из каталога. При drop
    вычисляем U по clientY относительно SVG (учитываем что U=1 — снизу),
    создаём устройство в этой позиции. */
+/* 1.24.36 — кастомный drag-ghost: цветной прямоугольник с названием
+   устройства (как полоса в стойке). Показывается при HTML5-drag из
+   каталога/тележки/склада, следует за курсором. state._dragMeta хранит
+   высоту текущего dragged для превью в SVG. */
+function setDragGhost(ev, type, label) {
+  state._dragMeta = { h: type.heightU || 1, label, color: type.color || '#94a3b8' };
+  const ghost = document.createElement('div');
+  ghost.className = 'sc-drag-ghost';
+  ghost.textContent = `${label} · ${type.heightU || 1}U`;
+  ghost.style.background = type.color || '#94a3b8';
+  document.body.appendChild(ghost);
+  try { ev.dataTransfer.setDragImage(ghost, 100, 14); } catch {}
+  // убираем ghost из DOM после снимка (браузер копирует его визуально)
+  setTimeout(() => { try { ghost.remove(); } catch {} }, 0);
+}
+
 function bindUnitMapDrop(svg, rowH) {
   const highlight = (on) => svg.classList.toggle('sc-drop-hover', on);
   const acceptType = (types) => types.includes('application/x-scs-typeid') || types.includes('application/x-scs-cartid') || types.includes('application/x-scs-whid');
-  svg.addEventListener('dragover', ev => {
-    if (!acceptType(Array.from(ev.dataTransfer.types))) return;
+  const computeTopU = (clientY) => {
+    const r = currentRack(); if (!r) return null;
+    const rect = svg.getBoundingClientRect();
+    const svgH = svg.viewBox.baseVal.height || rect.height;
+    const yClient = clientY - rect.top;
+    const yView = yClient * (svgH / rect.height);
+    const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
+    return r.u - rowIdx;
+  };
+  const updatePreview = (clientY, typeId, h) => {
+    const topU = computeTopU(clientY); if (topU == null) return;
+    const r = currentRack();
+    // удалить старый превью
+    const old = svg.querySelector('.sc-drop-preview'); if (old) old.remove();
+    const ph = h || 1;
+    const wantU = Math.min(topU, r.u);
+    const topIdx = r.u - wantU;
+    const y = 4 + topIdx * rowH;
+    const bodyW = (+svg.getAttribute('width') / (+svg.dataset.zoom || 1)) - 40;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'sc-drop-preview');
+    g.setAttribute('pointer-events', 'none');
+    g.innerHTML = `<rect x="32" y="${y}" width="${bodyW}" height="${ph * rowH - 1}"
+      fill="#2563eb" fill-opacity="0.25" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    svg.appendChild(g);
+  };
+  const clearPreview = () => { const p = svg.querySelector('.sc-drop-preview'); if (p) p.remove(); };
+  const onDragOver = (ev) => {
+    const types = Array.from(ev.dataTransfer.types);
+    if (!acceptType(types)) return;
     ev.preventDefault();
-    ev.dataTransfer.dropEffect = 'copy';
+    // dropEffect должен быть совместим с effectAllowed источника:
+    // каталог → copy, тележка/склад → move.
+    ev.dataTransfer.dropEffect = types.includes('application/x-scs-typeid') ? 'copy' : 'move';
     highlight(true);
+    // превью размера: по типу / тележке / складу
+    let h = 1;
+    const s = state._dragMeta; if (s && s.h) h = s.h;
+    updatePreview(ev.clientY, null, h);
+  };
+  svg.addEventListener('dragenter', onDragOver);
+  svg.addEventListener('dragover', onDragOver);
+  svg.addEventListener('dragleave', (ev) => {
+    // dragleave fires on children — проверим что реально покинули svg
+    if (ev.relatedTarget && svg.contains(ev.relatedTarget)) return;
+    highlight(false); clearPreview();
   });
-  svg.addEventListener('dragleave', () => highlight(false));
   svg.addEventListener('drop', ev => {
-    highlight(false);
+    highlight(false); clearPreview();
     const typeId = ev.dataTransfer.getData('application/x-scs-typeid');
     const cartId = ev.dataTransfer.getData('application/x-scs-cartid');
     const whId = ev.dataTransfer.getData('application/x-scs-whid');
     if (!typeId && !cartId && !whId) return;
     ev.preventDefault();
     const r = currentRack(); if (!r) return;
-    const rect = svg.getBoundingClientRect();
-    const svgH = svg.viewBox.baseVal.height || rect.height;
-    const yClient = ev.clientY - rect.top;
-    const yView = yClient * (svgH / rect.height);
-    const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
-    const wantTopU = r.u - rowIdx;
+    const wantTopU = computeTopU(ev.clientY); if (wantTopU == null) return;
     if (whId) {
-      // со склада напрямую в стойку: wh → cart → install
       warehouseToCart(whId);
       const justAdded = state.cart[state.cart.length - 1];
       if (justAdded) installFromCart(justAdded.id, wantTopU);
@@ -1319,8 +1371,11 @@ function renderCart() {
         ev.dataTransfer.setData('application/x-scs-cartid', tr.dataset.cartid);
         ev.dataTransfer.effectAllowed = 'move';
         tr.classList.add('sc-drag-src');
+        const item = state.cart.find(x => x.id === tr.dataset.cartid);
+        const type = item && state.catalog.find(c => c.id === item.typeId);
+        if (item && type) setDragGhost(ev, type, item.label);
       });
-      tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+      tr.addEventListener('dragend', () => { tr.classList.remove('sc-drag-src'); state._dragMeta = null; });
     });
     host.querySelectorAll('[data-act="return"]').forEach(b => b.addEventListener('click', () => returnCartItem(b.dataset.id)));
     host.querySelectorAll('[data-act="tosh"]').forEach(b => b.addEventListener('click', () => cartToWarehouse(b.dataset.id)));
@@ -1395,8 +1450,11 @@ function renderWarehouse() {
         ev.dataTransfer.setData('application/x-scs-whid', tr.dataset.whid);
         ev.dataTransfer.effectAllowed = 'move';
         tr.classList.add('sc-drag-src');
+        const item = state.warehouse.find(x => x.id === tr.dataset.whid);
+        const type = item && state.catalog.find(c => c.id === item.typeId);
+        if (item && type) setDragGhost(ev, type, item.label);
       });
-      tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+      tr.addEventListener('dragend', () => { tr.classList.remove('sc-drag-src'); state._dragMeta = null; });
     });
     host.querySelectorAll('[data-act="tocart"]').forEach(b => b.addEventListener('click', () => warehouseToCart(b.dataset.id)));
     host.querySelectorAll('[data-act="del"]').forEach(b => b.addEventListener('click', () => discardWarehouseItem(b.dataset.id)));
@@ -1430,12 +1488,13 @@ async function editWarehouseAddress(whId) {
 /* HTML5-drop на тележку (для drag со склада, если доделаем; сейчас только
    pointer-drag с карты обрабатывается в pointerup). */
 function bindCartWarehouseDropzones() {
-  const cartZone = document.querySelector('.sc-cart-dropzone');
-  const whZone = document.querySelector('.sc-wh-dropzone');
-  if (cartZone) {
+  // привязываем ВСЕ зоны (основная страница + модалка)
+  document.querySelectorAll('.sc-cart-dropzone').forEach(cartZone => {
     cartZone.addEventListener('dragover', ev => {
       if (!Array.from(ev.dataTransfer.types).includes('application/x-scs-whid')) return;
-      ev.preventDefault(); cartZone.classList.add('sc-drop-hover');
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      cartZone.classList.add('sc-drop-hover');
     });
     cartZone.addEventListener('dragleave', () => cartZone.classList.remove('sc-drop-hover'));
     cartZone.addEventListener('drop', ev => {
@@ -1443,11 +1502,13 @@ function bindCartWarehouseDropzones() {
       const whId = ev.dataTransfer.getData('application/x-scs-whid');
       if (whId) { ev.preventDefault(); warehouseToCart(whId); }
     });
-  }
-  if (whZone) {
+  });
+  document.querySelectorAll('.sc-wh-dropzone').forEach(whZone => {
     whZone.addEventListener('dragover', ev => {
       if (!Array.from(ev.dataTransfer.types).includes('application/x-scs-cartid')) return;
-      ev.preventDefault(); whZone.classList.add('sc-drop-hover');
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      whZone.classList.add('sc-drop-hover');
     });
     whZone.addEventListener('dragleave', () => whZone.classList.remove('sc-drop-hover'));
     whZone.addEventListener('drop', ev => {
@@ -1455,7 +1516,7 @@ function bindCartWarehouseDropzones() {
       const cartId = ev.dataTransfer.getData('application/x-scs-cartid');
       if (cartId) { ev.preventDefault(); cartToWarehouse(cartId); }
     });
-  }
+  });
 }
 
 /* ---- глобальный rerender ---------------------------------------------- */

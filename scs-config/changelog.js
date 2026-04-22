@@ -3,6 +3,17 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.14',
+    date: '2026-04-22',
+    items: [
+      'Fix — drag из тележки/склада в стойку (в модалке и в основной). Причина: dropEffect=\'move\' при effectAllowed=\'copy\' (каталог) блокировал drop по HTML5-спеке. Теперь dropEffect выбирается по источнику: typeId→copy, cartId/whId→move.',
+      'Fix — bindCartWarehouseDropzones теперь привязывает ВСЕ .sc-cart-dropzone / .sc-wh-dropzone (и основные, и в модалке), а не только первые по querySelector.',
+      'Phase 1.24.36 — визуальный ghost при HTML5-drag. setDragGhost(ev, type, label) создаёт цветной div с названием и высотой (H U), цвет фона = type.color, помещает в document.body и передаёт в dataTransfer.setDragImage. Ghost повторяет вид полосы в стойке. Вызывается из dragstart для каталога, тележки и склада.',
+      'Phase 1.24.36 — live-превью target-U при dragover на SVG. Полупрозрачный (fill-opacity 0.25) синий прямоугольник с пунктирной рамкой в строке под курсором, высота = heightU dragged-устройства. Обновляется в реальном времени. state._dragMeta хранит { h, label, color } на время drag. Убирается на dragleave/drop.',
+      'UI — убран padding у .sc-zoomwrap (0 вместо 8px), чтобы исключить зоны вне SVG, которые не ловят drop. Drop теперь надёжно срабатывает по всей площади карты.',
+    ],
+  },
+  {
     version: '0.1.13',
     date: '2026-04-22',
     items: [

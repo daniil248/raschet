@@ -122,7 +122,7 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 8px;
+  padding: 0;
   box-sizing: border-box;
 }
 .sc-zoomwrap:active { cursor: grabbing; }
@@ -222,6 +222,17 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
 .sc-wh-search {
   flex: 1; font-size: 12px; padding: 4px 8px;
   border: 1px solid #cbd5e1; border-radius: 4px; min-width: 0;
+}
+
+/* 1.24.36 custom drag ghost */
+.sc-drag-ghost {
+  position: fixed; top: -9999px; left: -9999px;
+  width: 220px; padding: 6px 12px;
+  color: #0f172a; font-size: 13px; font-weight: 500;
+  border: 1px solid #334155; border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+  pointer-events: none; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sc-cart-tbl tr.sc-drag-src { opacity: 0.55; }
 
