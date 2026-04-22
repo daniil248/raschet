@@ -342,16 +342,29 @@ function currentMatrix() {
   return state.matrix[state.currentRackId];
 }
 
+/* v0.59.255: "Физический шкаф проекта" — только стойки с тегом.
+   Без тега — это глобальные шаблоны корпусов (hardware blueprint), они
+   не относятся к проекту и в списках/дропдаунах/сайдбаре модуля СКС не показываются. */
+function projectRacks() {
+  return state.racks.filter(r => ((state.rackTags && state.rackTags[r.id]) || '').trim());
+}
+
 /* ---- render: верх (выбор стойки) --------------------------------------- */
 function renderRackPicker() {
   const sel = $('sc-rack');
-  sel.innerHTML = state.racks.length
-    ? state.racks.map(r => `<option value="${r.id}">${escape(r.name || 'Без имени')} · ${r.u}U</option>`).join('')
-    : `<option value="">— нет шаблонов стоек; создайте в Конфигураторе стойки —</option>`;
-  if (state.currentRackId) sel.value = state.currentRackId;
-  else if (state.racks[0]) {
-    state.currentRackId = state.racks[0].id;
+  const list = projectRacks();
+  sel.innerHTML = list.length
+    ? list.map(r => {
+        const tag = (state.rackTags[r.id] || '').trim();
+        return `<option value="${r.id}">${tag ? tag + ' · ' : ''}${escape(r.name || 'Без имени')} · ${r.u}U</option>`;
+      }).join('')
+    : `<option value="">— в проекте нет физических шкафов; разверните в Реестре IT-оборудования —</option>`;
+  if (state.currentRackId && list.find(r => r.id === state.currentRackId)) sel.value = state.currentRackId;
+  else if (list[0]) {
+    state.currentRackId = list[0].id;
     sel.value = state.currentRackId;
+  } else {
+    state.currentRackId = null;
   }
   const r = currentRack();
   $('sc-rack-u').textContent = r ? r.u : '—';
@@ -2420,11 +2433,12 @@ function rerender() { renderRackPicker(); renderRacksSidebar(); renderTemplates(
    Клик по карточке переключает state.currentRackId + URL без перезагрузки. */
 function renderRacksSidebar() {
   const host = $('sc-racks-side'); if (!host) return;
-  if (!state.racks.length) {
-    host.innerHTML = `<div class="sc-cart-empty">Нет шаблонов стоек.<br><a href="../rack-config/">Создать</a></div>`;
+  const list = projectRacks();
+  if (!list.length) {
+    host.innerHTML = `<div class="sc-cart-empty">В проекте нет физических шкафов.<br><a href="./index.html">Реестр шкафов →</a></div>`;
     return;
   }
-  host.innerHTML = state.racks.map(r => {
+  host.innerHTML = list.map(r => {
     const devs = state.contents[r.id] || [];
     const usedU = devs.reduce((s, d) => {
       const t = state.catalog.find(c => c.id === d.typeId);
@@ -2446,13 +2460,13 @@ function renderRacksSidebar() {
       <div class="sc-rack-card-meta"><span>${devs.length} уст.</span><span class="muted">${pct}%</span></div>
     </div>`;
   }).join('');
+  // v0.59.255: клик — явный переход (URL + full reload), чтобы пользователь
+  // не переключал стойку случайно. Активная карточка не кликабельна.
   host.querySelectorAll('.sc-rack-card').forEach(card => {
     card.addEventListener('click', () => {
       const id = card.dataset.rackid;
       if (id === state.currentRackId) return;
-      state.currentRackId = id;
-      try { history.replaceState(null, '', `?rackId=${encodeURIComponent(id)}`); } catch {}
-      rerender();
+      location.href = `./rack.html?rackId=${encodeURIComponent(id)}`;
     });
   });
 }

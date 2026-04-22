@@ -102,26 +102,22 @@ function render() {
   const warehouse = loadJson(LS_WAREHOUSE, []);
 
   const tbody = $('racks-tbody');
-  if (!racks.length) {
+  // v0.59.255: проект видит ТОЛЬКО физические шкафы (с тегом).
+  // Шаблоны корпусов без тега — это глобальная библиотека корпусов, она
+  // живёт в Конфигураторе стойки, а не в реестре проекта.
+  const real = racks.filter(r => (tags[r.id] || '').trim());
+
+  if (!real.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">
-      Нет шаблонов стоек. Создайте стойку в <a href="../rack-config/">Конфигураторе шкафа — корпус</a>.
+      В проекте нет физических шкафов. Разверните шкаф из шаблона корпуса (кнопка «➕ Развернуть» выше) — задайте тег (например, <code>DH1.SR2</code>) и имя.
     </td></tr>`;
     $('summary').innerHTML = '';
     return;
   }
 
-  const real = racks.filter(r => (tags[r.id] || '').trim());
-  const drafts = racks.filter(r => !(tags[r.id] || '').trim());
-
   const parts = [];
-  if (real.length) {
-    parts.push(groupHeader('🗄 Реальные стойки (с тегом)', real.length));
-    parts.push(real.map(r => rowHtml(r, tags[r.id] || '', contents[r.id] || [], catalog)).join(''));
-  }
-  if (drafts.length) {
-    parts.push(groupHeader('📐 Черновики / шаблоны без тега', drafts.length, 'draft'));
-    parts.push(drafts.map(r => rowHtml(r, '', contents[r.id] || [], catalog)).join(''));
-  }
+  parts.push(groupHeader('🗄 Физические шкафы проекта', real.length));
+  parts.push(real.map(r => rowHtml(r, tags[r.id] || '', contents[r.id] || [], catalog)).join(''));
   tbody.innerHTML = parts.join('');
 
   // navigation
@@ -142,7 +138,7 @@ function render() {
 
   // totals
   let totalU = 0, totalUsedU = 0, totalDevices = 0;
-  for (const r of racks) {
+  for (const r of real) {
     const devs = contents[r.id] || [];
     const usedU = devs.reduce((s, d) => {
       const t = catalog.find(c => c.id === d.typeId);
@@ -154,8 +150,7 @@ function render() {
   }
   $('summary').innerHTML = `
     <div class="muted" style="display:flex;gap:20px;flex-wrap:wrap;font-size:13px">
-      <span>🗄 Реальных: <b>${real.length}</b></span>
-      <span>📐 Черновиков: <b>${drafts.length}</b></span>
+      <span>🗄 Физических шкафов: <b>${real.length}</b></span>
       <span>Всего U: <b>${totalU}</b></span>
       <span>Занято U: <b>${totalUsedU}</b></span>
       <span>Устройств в стойках: <b>${totalDevices}</b></span>
