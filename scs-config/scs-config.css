@@ -109,6 +109,52 @@
 .sc-unitmap-dlg-body > svg { display: block; margin: 0 auto; }
 .sc-unitmap-dlg-body > .sc-unitmap-legend { justify-content: center; }
 
+/* 1.24.33 zoom/pan wrapper */
+.sc-zoomwrap {
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(92vh - 160px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: grab;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.sc-zoomwrap:active { cursor: grabbing; }
+.sc-zoomwrap > svg { flex: 0 0 auto; }
+
+/* Модалка: двухколоночный layout — карта + мини-тележка+склад */
+.sc-unitmap-dlg-body {
+  flex-direction: row !important;
+  align-items: stretch !important;
+  gap: 12px;
+}
+.sc-unitmap-dlg-map {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 10px;
+  align-items: center;
+}
+.sc-unitmap-dlg-side {
+  flex: 0 0 280px;
+  display: flex; flex-direction: column; gap: 10px;
+  overflow-y: auto;
+}
+.sc-unitmap-dlg-side .sc-cart-section,
+.sc-unitmap-dlg-side .sc-wh-section {
+  padding: 10px 12px 18px;
+  border-radius: 6px 6px 14px 14px;
+  background: #f8fafc;
+}
+.sc-unitmap-dlg-side .sc-wh-section {
+  border-radius: 6px;
+  padding-bottom: 10px;
+}
+
 /* ---- 1.24.10 DnD из каталога в карту ---- */
 .sc-cat tr[data-typeid] { cursor: grab; }
 .sc-cat tr[data-typeid]:hover { background: #f1f5f9; }

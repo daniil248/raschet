@@ -626,15 +626,9 @@ function renderUnitMap(hostId, opts) {
     const labelTxt = mode === 'power'
       ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}${tagSfx}`
       : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}${tagSfx}`;
-    const iconX = 32 + bodyW - 18*scale;
-    const iconY = y + (h * rowH) / 2;
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
       <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
       <text x="${38}" y="${y + rowH/2 + 4}" font-size="${10*scale}" fill="#0f172a">${escape(labelTxt)}</text>
-      <g class="sc-dev-cart" data-cart-devid="${d.id}" style="cursor:pointer" pointer-events="all">
-        <circle cx="${iconX}" cy="${iconY}" r="${7*scale}" fill="#fff" stroke="#64748b" stroke-width="0.7"/>
-        <text x="${iconX}" y="${iconY + 3*scale}" font-size="${9*scale}" text-anchor="middle">🛒</text>
-      </g>
     </g>`;
   }).join('');
 
@@ -700,13 +694,67 @@ function renderUnitMap(hostId, opts) {
   // В модалке SVG шире — добавим запас справа под кривые кабелей.
   const extraRight = opts.big ? 120 : 0;
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
-  host.innerHTML = `<svg id="${svgId}" width="${svgW + extraRight}" height="${svgH}" viewBox="0 0 ${svgW + extraRight} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}">
+  const totalW = svgW + extraRight;
+  const z = opts.big ? (state.dlgZoom || 1) : 1;
+  const svgEl = `<svg id="${svgId}" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}">
     ${rects.join('')}
     ${deviceGroups}
     ${wires}
-  </svg>
-  <div class="sc-unitmap-legend">${legend.join('') || '<span class="muted">— пусто —</span>'}</div>`;
+  </svg>`;
+  const legendEl = `<div class="sc-unitmap-legend">${legend.join('') || '<span class="muted">— пусто —</span>'}</div>`;
+  if (opts.big) {
+    host.innerHTML = `<div class="sc-zoomwrap" id="sc-zoomwrap">${svgEl}</div>${legendEl}`;
+    bindZoomPan($('sc-zoomwrap'), svgId, totalW, svgH);
+  } else {
+    host.innerHTML = `${svgEl}${legendEl}`;
+  }
   bindUnitMapDrag(svgId);
+}
+
+/* 1.24.33 — zoom/pan в модалке. Wheel — zoom at cursor; drag по пустому
+   месту (не по полосе устройства) — pan через scrollLeft/scrollTop. */
+function bindZoomPan(wrap, svgId, baseW, baseH) {
+  if (!wrap) return;
+  const svg = $(svgId); if (!svg) return;
+  wrap.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const oldZ = state.dlgZoom || 1;
+    const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const newZ = Math.max(0.4, Math.min(5, oldZ * factor));
+    if (Math.abs(newZ - oldZ) < 0.001) return;
+    const rect = wrap.getBoundingClientRect();
+    const cx = ev.clientX - rect.left + wrap.scrollLeft;
+    const cy = ev.clientY - rect.top + wrap.scrollTop;
+    const k = newZ / oldZ;
+    state.dlgZoom = newZ;
+    svg.setAttribute('width', baseW * newZ);
+    svg.setAttribute('height', baseH * newZ);
+    svg.setAttribute('data-zoom', newZ);
+    wrap.scrollLeft = cx * k - (ev.clientX - rect.left);
+    wrap.scrollTop = cy * k - (ev.clientY - rect.top);
+  }, { passive: false });
+  let pan = null;
+  wrap.addEventListener('pointerdown', ev => {
+    // пан только по пустому месту (не по полосе устройства) и основным кнопкам
+    if (ev.target.closest('g.sc-devband')) return;
+    if (ev.button !== 0 && ev.button !== 1) return;
+    pan = { x: ev.clientX, y: ev.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop, pid: ev.pointerId };
+    wrap.setPointerCapture(ev.pointerId);
+    wrap.style.cursor = 'grabbing';
+  });
+  wrap.addEventListener('pointermove', ev => {
+    if (!pan) return;
+    wrap.scrollLeft = pan.sl - (ev.clientX - pan.x);
+    wrap.scrollTop  = pan.st - (ev.clientY - pan.y);
+  });
+  const endPan = ev => {
+    if (!pan) return;
+    try { wrap.releasePointerCapture(pan.pid); } catch {}
+    pan = null;
+    wrap.style.cursor = '';
+  };
+  wrap.addEventListener('pointerup', endPan);
+  wrap.addEventListener('pointercancel', endPan);
 }
 
 /* ---- drag-n-drop в SVG (1.24.3 full) ---------------------------------
@@ -720,18 +768,8 @@ function bindUnitMapDrag(svgId) {
   const svg = $(svgId); if (!svg) return;
   const rowH = +svg.dataset.rowh || 16;
   bindUnitMapDrop(svg, rowH);
-  // клик по иконке 🛒 внутри полосы — отправить на тележку; останавливаем
-  // propagation до pointerdown, иначе стартует drag
-  svg.querySelectorAll('g.sc-dev-cart').forEach(ic => {
-    ic.addEventListener('pointerdown', ev => { ev.stopPropagation(); });
-    ic.addEventListener('click', ev => {
-      ev.stopPropagation();
-      moveToCart(ic.dataset.cartDevid);
-    });
-  });
   svg.querySelectorAll('g.sc-devband').forEach(g => {
     g.addEventListener('pointerdown', ev => {
-      if (ev.target.closest('.sc-dev-cart')) return;
       ev.preventDefault();
       const devId = g.dataset.devid;
       const d = currentContents().find(x => x.id === devId); if (!d) return;
@@ -742,17 +780,21 @@ function bindUnitMapDrag(svgId) {
     });
     g.addEventListener('pointermove', ev => {
       if (!state.drag || state.drag.devId !== g.dataset.devid) return;
-      // 1.24.28-drag: детекция «над тележкой» — если курсор над .sc-cart-dropzone,
-      // подсвечиваем её и не двигаем устройство.
+      // 1.24.28-drag: детекция «над тележкой/складом» — если курсор над .sc-cart-dropzone
+      // или .sc-wh-dropzone, подсвечиваем её и не двигаем устройство.
       const overEl = document.elementFromPoint(ev.clientX, ev.clientY);
       const overCart = !!(overEl && overEl.closest('.sc-cart-dropzone'));
+      const overWh = !!(overEl && !overCart && overEl.closest('.sc-wh-dropzone'));
       state.drag.overCart = overCart;
+      state.drag.overWh = overWh;
       document.querySelectorAll('.sc-cart-dropzone').forEach(el => el.classList.toggle('sc-drop-hover', overCart));
-      if (overCart) return; // не двигаем устройство пока курсор над тележкой
+      document.querySelectorAll('.sc-wh-dropzone').forEach(el => el.classList.toggle('sc-drop-hover', overWh));
+      if (overCart || overWh) return; // не двигаем устройство пока курсор над зоной сброса
       const r = currentRack(); if (!r) return;
       const d = currentContents().find(x => x.id === state.drag.devId); if (!d) return;
       const dy = ev.clientY - state.drag.startY;
-      const drows = Math.round(-dy / rowH); // вверх по экрану = больший U
+      const zoom = +svg.dataset.zoom || 1;
+      const drows = Math.round(-dy / (rowH * zoom)); // вверх по экрану = больший U
       const h = +g.dataset.h || 1;
       const wantU = Math.max(h, Math.min(r.u, state.drag.startU + drows));
       if (wantU === d.positionU) return;
@@ -769,11 +811,16 @@ function bindUnitMapDrag(svgId) {
     });
     g.addEventListener('pointerup', () => {
       if (!state.drag) return;
-      document.querySelectorAll('.sc-cart-dropzone').forEach(el => el.classList.remove('sc-drop-hover'));
+      document.querySelectorAll('.sc-cart-dropzone,.sc-wh-dropzone').forEach(el => el.classList.remove('sc-drop-hover'));
       const drop = state.drag;
       state.drag = null;
       if (drop.overCart) {
         moveToCart(drop.devId); // вытащить на тележку
+      } else if (drop.overWh) {
+        // прямо на склад — через буфер cart (переиспользуем moveToCart + cartToWarehouse)
+        moveToCart(drop.devId);
+        const last = state.cart[state.cart.length - 1];
+        if (last) cartToWarehouse(last.id);
       } else {
         saveContents();
         renderContents();
@@ -815,7 +862,7 @@ function canPlace(r, devices, excludeDevId, heightU, wantU) {
    создаём устройство в этой позиции. */
 function bindUnitMapDrop(svg, rowH) {
   const highlight = (on) => svg.classList.toggle('sc-drop-hover', on);
-  const acceptType = (types) => types.includes('application/x-scs-typeid') || types.includes('application/x-scs-cartid');
+  const acceptType = (types) => types.includes('application/x-scs-typeid') || types.includes('application/x-scs-cartid') || types.includes('application/x-scs-whid');
   svg.addEventListener('dragover', ev => {
     if (!acceptType(Array.from(ev.dataTransfer.types))) return;
     ev.preventDefault();
@@ -827,7 +874,8 @@ function bindUnitMapDrop(svg, rowH) {
     highlight(false);
     const typeId = ev.dataTransfer.getData('application/x-scs-typeid');
     const cartId = ev.dataTransfer.getData('application/x-scs-cartid');
-    if (!typeId && !cartId) return;
+    const whId = ev.dataTransfer.getData('application/x-scs-whid');
+    if (!typeId && !cartId && !whId) return;
     ev.preventDefault();
     const r = currentRack(); if (!r) return;
     const rect = svg.getBoundingClientRect();
@@ -836,7 +884,12 @@ function bindUnitMapDrop(svg, rowH) {
     const yView = yClient * (svgH / rect.height);
     const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
     const wantTopU = r.u - rowIdx;
-    if (cartId) {
+    if (whId) {
+      // со склада напрямую в стойку: wh → cart → install
+      warehouseToCart(whId);
+      const justAdded = state.cart[state.cart.length - 1];
+      if (justAdded) installFromCart(justAdded.id, wantTopU);
+    } else if (cartId) {
       installFromCart(cartId, wantTopU);
     } else {
       const type = state.catalog.find(c => c.id === typeId); if (!type) return;
@@ -922,19 +975,90 @@ function exportBomCsv() {
 }
 
 /* ---- auto-pack: уложить всё сверху вниз без зазоров ------------------- */
+/* 1.24.34 — Умная авто-укладка по правилам размещения в стойке.
+   - ИБП (тяжёлые) в самый низ (низкий центр тяжести, короткие силовые
+     кабели до PDU).
+   - Патч-панели и коммутаторы сверху (кабельный ввод с верхнего лотка,
+     короткие патч-корды копперной части).
+   - KVM + монитор в середине на уровне глаз оператора.
+   - Серверы заполняют середину.
+   - Органайзеры ставятся между активным оборудованием как разделители.
+   - Между зонами (top/middle/bottom) — 1U зазор для вентиляции/кабелей,
+     если есть место. */
 function autoPack() {
   const r = currentRack(); if (!r) return;
   const devices = currentContents();
-  let u = r.u - r.occupied;
-  devices.forEach(d => {
-    const type = state.catalog.find(c => c.id === d.typeId);
-    const h = type ? type.heightU : 1;
-    d.positionU = u;
-    u -= h;
+  if (!devices.length) return;
+
+  // priority: меньше = ближе к верху стойки
+  const PRIO = { patch: 5, switch: 15, kvm: 35, monitor: 40, server: 55, other: 60, organizer: 70, ups: 95 };
+  const zoneOf = (p) => p < 25 ? 'top' : p > 80 ? 'bottom' : 'middle';
+
+  const enriched = devices.map(d => {
+    const t = state.catalog.find(c => c.id === d.typeId);
+    return { d, h: t ? t.heightU : 1, prio: PRIO[t ? t.kind : 'other'] ?? 60, kind: t ? t.kind : 'other' };
   });
+
+  // Top: патч сверху, коммутатор под ним. Сортировка prio asc, затем h asc (мелкие выше).
+  const top = enriched.filter(x => zoneOf(x.prio) === 'top' && x.kind !== 'organizer').sort((a,b) => a.prio - b.prio || a.h - b.h);
+  // Middle: KVM/монитор — выше; серверы — ниже. Крупные серверы ближе к верху middle.
+  const mid = enriched.filter(x => zoneOf(x.prio) === 'middle' && x.kind !== 'organizer').sort((a,b) => a.prio - b.prio || b.h - a.h);
+  // Bottom: ИБП самые тяжёлые — ниже всех. Крупные (больше h) в самый низ.
+  const bot = enriched.filter(x => zoneOf(x.prio) === 'bottom' && x.kind !== 'organizer').sort((a,b) => b.prio - a.prio || b.h - a.h);
+  // Органайзеры — как разделители между группами middle.
+  const organizers = enriched.filter(x => x.kind === 'organizer');
+
+  // U=r.u сверху, U=1 снизу. positionU = верхний U устройства.
+  // Top размещается сверху вниз от U=r.u - r.occupied.
+  let uTop = r.u - r.occupied;
+  let uBot = 1; // next free bottom base-U
+
+  // Проверка выхода за границы: если не влезает — оставляем старую позицию.
+  top.forEach(x => {
+    if (uTop < x.h) return;
+    x.d.positionU = uTop;
+    uTop -= x.h;
+  });
+
+  // Bottom снизу вверх: positionU = uBot + h - 1
+  bot.forEach(x => {
+    const topU = uBot + x.h - 1;
+    if (topU > uTop) return; // некуда
+    x.d.positionU = topU;
+    uBot = topU + 1;
+  });
+
+  // 1U зазор между top и middle (если есть место и есть что разделять)
+  if (top.length && (mid.length || bot.length) && uTop - uBot + 1 > 0) uTop -= 1;
+
+  // Middle: сверху вниз, между uTop и uBot. Разделитель-органайзер между
+  // разными kind-ами (если есть запас органайзеров).
+  let prevKind = null;
+  let orgPool = organizers.slice();
+  mid.forEach(x => {
+    if (uTop < x.h || uTop < uBot + x.h - 1) return;
+    if (prevKind && prevKind !== x.kind && orgPool.length && uTop >= 1 + x.h) {
+      const org = orgPool.shift();
+      org.d.positionU = uTop;
+      uTop -= 1;
+      if (uTop < x.h) return;
+    }
+    x.d.positionU = uTop;
+    uTop -= x.h;
+    prevKind = x.kind;
+  });
+
+  // Оставшиеся органайзеры — прямо над bottom-зоной (между middle и bottom).
+  orgPool.forEach(x => {
+    if (uTop < 1 || uTop < uBot) return;
+    x.d.positionU = uTop;
+    uTop -= 1;
+  });
+
   saveContents();
   renderContents();
   rerenderPreview();
+  scToast('Авто-укладка по правилам размещения', 'ok');
 }
 
 /* ---- шаблоны «готовой сборки» (1.24.7) --------------------------------
@@ -1116,11 +1240,12 @@ function returnCartItem(cartId) {
 }
 
 function renderCart() {
-  const host = $('sc-cart'); if (!host) return;
-  const badge = $('sc-cart-badge');
-  if (badge) badge.textContent = state.cart.length;
+  const hosts = ['sc-cart', 'sc-cart-dlg'].map(id => $(id)).filter(Boolean);
+  const badges = ['sc-cart-badge', 'sc-cart-badge-dlg'].map(id => $(id)).filter(Boolean);
+  badges.forEach(b => b.textContent = state.cart.length);
+  let html;
   if (!state.cart.length) {
-    host.innerHTML = '<div class="sc-cart-empty muted">Пусто. Перетащите устройство с карты стойки сюда, чтобы вытащить.</div>';
+    html = '<div class="sc-cart-empty muted">Пусто. Перетащите устройство с карты стойки сюда, чтобы вытащить.</div>';
   } else {
     const rows = [`<tr><th>Устройство</th><th>Из стойки</th><th style="width:180px"></th></tr>`];
     state.cart.forEach(item => {
@@ -1134,7 +1259,10 @@ function renderCart() {
         </td>
       </tr>`);
     });
-    host.innerHTML = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
+    html = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
+  }
+  hosts.forEach(host => {
+    host.innerHTML = html;
     host.querySelectorAll('tr[data-cartid]').forEach(tr => {
       tr.addEventListener('dragstart', ev => {
         ev.dataTransfer.setData('application/x-scs-cartid', tr.dataset.cartid);
@@ -1145,46 +1273,84 @@ function renderCart() {
     });
     host.querySelectorAll('[data-act="return"]').forEach(b => b.addEventListener('click', () => returnCartItem(b.dataset.id)));
     host.querySelectorAll('[data-act="tosh"]').forEach(b => b.addEventListener('click', () => cartToWarehouse(b.dataset.id)));
-  }
+  });
 }
 function renderWarehouse() {
-  const host = $('sc-wh'); if (!host) return;
-  const badge = $('sc-wh-badge');
-  if (badge) badge.textContent = state.warehouse.length;
+  const hosts = ['sc-wh', 'sc-wh-dlg'].map(id => $(id)).filter(Boolean);
+  const badges = ['sc-wh-badge', 'sc-wh-badge-dlg'].map(id => $(id)).filter(Boolean);
+  badges.forEach(b => b.textContent = state.warehouse.length);
+  let html;
   if (!state.warehouse.length) {
-    host.innerHTML = '<div class="sc-cart-empty muted">Склад пуст.</div>';
-    return;
-  }
-  const rows = [`<tr><th>Устройство</th><th>S/N · заметка</th><th>Было в</th><th>Хранится</th><th style="width:220px"></th></tr>`];
-  const sorted = [...state.warehouse].sort((a, b) => (b.storedAt || 0) - (a.storedAt || 0));
-  sorted.forEach(item => {
-    const fromLabel = item.fromRackName || '—';
-    const snNote = [item.serial ? `S/N: ${escape(item.serial)}` : '', item.note ? escape(item.note) : '']
-      .filter(Boolean).join(' · ') || '<span class="muted">—</span>';
-    rows.push(`<tr draggable="true" data-whid="${item.id}">
-      <td>${escape(item.label)}</td>
-      <td style="font-size:11px">${snNote}</td>
-      <td class="muted">${escape(fromLabel)}</td>
-      <td class="muted" title="${item.storedAt ? new Date(item.storedAt).toLocaleString() : ''}">${fmtAge(item.storedAt)}</td>
-      <td>
-        <button type="button" class="sc-btn" data-act="edit" data-id="${item.id}" title="Редактировать S/N и заметку">📝</button>
-        <button type="button" class="sc-btn" data-act="tocart" data-id="${item.id}" title="Взять на тележку">↑ на тележку</button>
-        <button type="button" class="sc-btn sc-btn-danger" data-act="del" data-id="${item.id}" title="Удалить со склада">✕</button>
-      </td>
-    </tr>`);
-  });
-  host.innerHTML = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
-  host.querySelectorAll('tr[data-whid]').forEach(tr => {
-    tr.addEventListener('dragstart', ev => {
-      ev.dataTransfer.setData('application/x-scs-whid', tr.dataset.whid);
-      ev.dataTransfer.effectAllowed = 'move';
-      tr.classList.add('sc-drag-src');
+    html = '<div class="sc-cart-empty muted">Склад пуст.</div>';
+  } else {
+    const rows = [`<tr><th>Адрес</th><th>Устройство</th><th>S/N · заметка</th><th>Было в</th><th>Хранится</th><th style="width:240px"></th></tr>`];
+    // сортировка по адресу (натуральная), пустые — в конец; в пределах равного адреса — по дате desc
+    const sorted = [...state.warehouse].sort((a, b) => {
+      const aa = a.address || '\uFFFF'; const bb = b.address || '\uFFFF';
+      const cmp = aa.localeCompare(bb, 'ru', { numeric: true });
+      if (cmp !== 0) return cmp;
+      return (b.storedAt || 0) - (a.storedAt || 0);
     });
-    tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+    sorted.forEach(item => {
+      const fromLabel = item.fromRackName || '—';
+      const snNote = [item.serial ? `S/N: ${escape(item.serial)}` : '', item.note ? escape(item.note) : '']
+        .filter(Boolean).join(' · ') || '<span class="muted">—</span>';
+      const addr = item.address
+        ? `<code style="background:#fef3c7;padding:1px 5px;border-radius:3px;font-size:11px">${escape(item.address)}</code>`
+        : '<span class="muted" style="font-size:11px">— нет —</span>';
+      rows.push(`<tr draggable="true" data-whid="${item.id}">
+        <td>${addr}</td>
+        <td>${escape(item.label)}</td>
+        <td style="font-size:11px">${snNote}</td>
+        <td class="muted">${escape(fromLabel)}</td>
+        <td class="muted" title="${item.storedAt ? new Date(item.storedAt).toLocaleString() : ''}">${fmtAge(item.storedAt)}</td>
+        <td>
+          <button type="button" class="sc-btn" data-act="addr" data-id="${item.id}" title="Адрес хранения (зона-стеллаж-полка-ячейка)">📍</button>
+          <button type="button" class="sc-btn" data-act="edit" data-id="${item.id}" title="Редактировать S/N и заметку">📝</button>
+          <button type="button" class="sc-btn" data-act="tocart" data-id="${item.id}" title="Взять на тележку">↑ на тележку</button>
+          <button type="button" class="sc-btn sc-btn-danger" data-act="del" data-id="${item.id}" title="Удалить со склада">✕</button>
+        </td>
+      </tr>`);
+    });
+    html = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
+  }
+  hosts.forEach(host => {
+    host.innerHTML = html;
+    host.querySelectorAll('tr[data-whid]').forEach(tr => {
+      tr.addEventListener('dragstart', ev => {
+        ev.dataTransfer.setData('application/x-scs-whid', tr.dataset.whid);
+        ev.dataTransfer.effectAllowed = 'move';
+        tr.classList.add('sc-drag-src');
+      });
+      tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+    });
+    host.querySelectorAll('[data-act="tocart"]').forEach(b => b.addEventListener('click', () => warehouseToCart(b.dataset.id)));
+    host.querySelectorAll('[data-act="del"]').forEach(b => b.addEventListener('click', () => discardWarehouseItem(b.dataset.id)));
+    host.querySelectorAll('[data-act="edit"]').forEach(b => b.addEventListener('click', () => editWarehouseItem(b.dataset.id)));
+    host.querySelectorAll('[data-act="addr"]').forEach(b => b.addEventListener('click', () => editWarehouseAddress(b.dataset.id)));
   });
-  host.querySelectorAll('[data-act="tocart"]').forEach(b => b.addEventListener('click', () => warehouseToCart(b.dataset.id)));
-  host.querySelectorAll('[data-act="del"]').forEach(b => b.addEventListener('click', () => discardWarehouseItem(b.dataset.id)));
-  host.querySelectorAll('[data-act="edit"]').forEach(b => b.addEventListener('click', () => editWarehouseItem(b.dataset.id)));
+}
+
+/* 1.24.35 — адресное хранение на складе. Формат: зона-стеллаж-полка-ячейка
+   (напр. A-12-3-2). Свободная строка, сортировка по адресу через
+   localeCompare numeric. */
+async function editWarehouseAddress(whId) {
+  const item = state.warehouse.find(x => x.id === whId); if (!item) return;
+  const v = await scPrompt('Адрес хранения', item.address || '');
+  if (v === null) return;
+  const addr = v.trim();
+  if (addr) {
+    // проверка дубликата адреса (один адрес = одна единица хранения)
+    const dup = state.warehouse.find(x => x.id !== whId && (x.address || '').toLowerCase() === addr.toLowerCase());
+    if (dup) {
+      const ok = await scConfirm('Адрес занят', `По адресу «${addr}» уже хранится «${dup.label}». Всё равно присвоить?`, { okLabel: 'Да' });
+      if (!ok) return;
+    }
+    item.address = addr;
+  } else {
+    delete item.address;
+  }
+  saveWarehouse(); renderWarehouse();
 }
 
 /* HTML5-drop на тележку (для drag со склада, если доделаем; сейчас только

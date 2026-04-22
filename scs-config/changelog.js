@@ -3,6 +3,18 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.12',
+    date: '2026-04-22',
+    items: [
+      'Убрана иконка 🛒 с полос устройств на карте (drag-on-cart работает напрямую). Теперь на карте чисто — только полосы и метки.',
+      'Phase 1.24.32 доводка — drag со склада напрямую в стойку. application/x-scs-whid добавлен в accept-список SVG drop-zone (bindUnitMapDrop). Путь: warehouseToCart → последний элемент тележки → installFromCart(cart[-1].id, wantTopU). Drag с карты прямо на склад: pointerup при overWh = moveToCart + cartToWarehouse.',
+      'Phase 1.24.33 — тележка и склад в полноэкранной модалке. Модалка разделена на 2 колонки: карта слева (flex:1) + боковая панель 280px с мини-тележкой и мини-складом справа. Оба — полноценные .sc-cart-dropzone / .sc-wh-dropzone, принимают drag с карты модалки через elementFromPoint. renderCart/renderWarehouse теперь рендерят в оба хоста (main + dlg). Новые id: #sc-cart-dlg #sc-wh-dlg #sc-cart-badge-dlg #sc-wh-badge-dlg.',
+      'Phase 1.24.33 — zoom + pan карты в модалке. Wheel на .sc-zoomwrap — зум 0.4×–5× с якорем в точке курсора (сохраняется видимая точка при изменении масштаба). Drag по пустому месту карты (не по полосе устройства) — pan через scrollLeft/scrollTop с setPointerCapture. state.dlgZoom хранит текущий зум между перерисовками. svg.setAttribute width/height * zoom вместо CSS transform (нативный скролл, корректные координаты). Drag устройств учитывает zoom: drows = -dy / (rowH * zoom).',
+      'Phase 1.24.34 — умная авто-укладка по правилам размещения. PRIO = { patch:5, switch:15, kvm:35, monitor:40, server:55, other:60, organizer:70, ups:95 }. Зоны top(<25)/middle/bottom(>80). Патч-панели и коммутаторы — сверху (ввод кабелей с верхнего лотка), KVM/монитор — середина (уровень глаз), серверы — середина, ИБП — в самый низ (низкий центр тяжести, короткие силовые до PDU). 1U зазор между зонами для вентиляции. Органайзеры как разделители между разными kind-ами в middle-зоне. Крупные серверы выше внутри middle, крупные ИБП ниже внутри bottom.',
+      'Phase 1.24.35 — адресное хранение на складе. item.address (свободная строка «зона-стеллаж-полка-ячейка», напр. A-12-3-2). Кнопка 📍 → scPrompt, с проверкой дубликата адреса (warn с ок/отмена). Новая колонка «Адрес» первой в таблице склада (код-стиль, жёлтый фон). Сортировка по адресу localeCompare numeric (A-2 < A-10), пустые адреса в конец, в пределах равного адреса — по storedAt desc.',
+    ],
+  },
+  {
     version: '0.1.11',
     date: '2026-04-22',
     items: [
