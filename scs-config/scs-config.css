@@ -73,6 +73,7 @@
 .sc-warn-item.err  { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
 .sc-warn-item.warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
 .sc-warn-item.ok   { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.sc-warn-item.info { background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; }
 
 /* ---- Карта юнитов (front view) ---- */
 .sc-unitmap { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }

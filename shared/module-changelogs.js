@@ -244,6 +244,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.269', date: '2026-04-22', items: [
+      '📊 Баланс по вводам PDU в панели предупреждений: для каждого feed (A/B/C/D) показывается load/cap кВт и %. Цвет по % (синий <50, зелёный 50–80, оранжевый 80–100, красный >100). Позволяет на глаз оценить балансировку 2N до того, как случится перегруз.',
+      'Файлы: scs-config/scs-config.js (feedList в renderWarnings), scs-config/scs-config.css (.sc-warn-item.info).',
+    ] },
     { version: '0.59.268', date: '2026-04-22', items: [
       '⚡ Новое поле «Мощность» в top-bar: сумма powerW всех устройств стойки. Если у стойки задан demandKw — показывается и % использования (цвет: >80% оранжевый, >100% красный).',
       'Файлы: scs-config/rack.html (output#sc-rack-power), scs-config/scs-config.js (renderContents: totalW/pct/color).',

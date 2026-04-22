@@ -1500,6 +1500,19 @@ function renderWarnings() {
         items.push(`<div class="sc-warn-item err">Перегруз ввода <b>${escape(feed)}</b>: нагрузка ≈ ${(load/1000).toFixed(2)} кВт > ёмкости PDU ≈ ${(cap/1000).toFixed(2)} кВт.</div>`);
       }
     });
+    // v0.59.269: инфо-строка с балансом по вводам (даже если перегруза нет)
+    const feedList = [];
+    const allFeeds = new Set([...byFeed.keys(), ...pduByFeed.keys()]);
+    Array.from(allFeeds).sort().forEach(feed => {
+      const load = byFeed.get(feed) || 0;
+      const cap = pduByFeed.get(feed) || 0;
+      const pct = cap > 0 ? Math.round((load / cap) * 100) : null;
+      const color = pct == null ? '#64748b' : pct > 100 ? '#b91c1c' : pct > 80 ? '#c2410c' : pct > 50 ? '#047857' : '#2563eb';
+      feedList.push(`<span style="color:${color}"><b>${escape(feed)}</b> ${(load/1000).toFixed(2)}${cap ? `/${(cap/1000).toFixed(2)}` : ''} кВт${pct != null ? ` · ${pct}%` : ''}</span>`);
+    });
+    if (feedList.length) {
+      items.push(`<div class="sc-warn-item info" title="Баланс нагрузки по вводам PDU. В идеале A и B (и C/D) должны быть близки по % для резервирования 2N.">📊 По вводам: ${feedList.join(' · ')}</div>`);
+    }
   }
 
   // дубли розеток (один слот = одно устройство)
