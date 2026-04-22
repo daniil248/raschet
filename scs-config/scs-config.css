@@ -156,3 +156,16 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
   box-sizing: border-box;
 }
 .sc-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ---- 1.24.28 тележка ---- */
+.sc-cart-badge {
+  display: inline-block; min-width: 18px; padding: 1px 6px; margin-left: 6px;
+  font-size: 11px; background: #2563eb; color: #fff; border-radius: 9px; text-align: center;
+  vertical-align: middle;
+}
+.sc-cart-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sc-cart-tbl th { text-align: left; color: #475569; font-weight: 600; background: #f8fafc; padding: 4px 6px; border-bottom: 1px solid #e2e8f0; }
+.sc-cart-tbl td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; }
+.sc-cart-tbl tr[data-cartid] { cursor: grab; }
+.sc-cart-tbl tr[data-cartid]:hover { background: #eff6ff; }
+.sc-cart-tbl tr.sc-drag-src { opacity: 0.55; }

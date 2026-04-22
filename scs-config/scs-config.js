@@ -35,6 +35,7 @@ const LS_CATALOG   = 'scs-config.catalog.v1';
 const LS_CONTENTS  = 'scs-config.contents.v1';
 const LS_MATRIX    = 'scs-config.matrix.v1';
 const LS_TEMPLATES = 'scs-config.assemblyTemplates.v1'; // 1.24.7
+const LS_CART      = 'scs-config.cart.v1';              // 1.24.28
 
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
 const DEFAULT_CATALOG = [
@@ -63,6 +64,7 @@ const state = {
   contents: {},      // { rackId: [device] }
   matrix: {},        // { rackId: [link] }
   templates: [],     // [{id, name, contents, matrix}] — «готовые сборки» (1.24.7)
+  cart: [],          // 1.24.28 — «тележка»: [{id, typeId, label, fromRackId, fromRackName, pduFeed, pduOutlet, takenAt}]
   // view mode: 'scs' — цвет по типу; 'power' — цвет по вводу PDU (1.24.11)
   viewMode: 'scs',
   // drag state
@@ -169,6 +171,7 @@ function saveCatalog()   { try { localStorage.setItem(LS_CATALOG,   JSON.stringi
 function saveContents()  { try { localStorage.setItem(LS_CONTENTS,  JSON.stringify(state.contents));  } catch {} }
 function saveMatrix()    { try { localStorage.setItem(LS_MATRIX,    JSON.stringify(state.matrix));    } catch {} }
 function saveTemplates() { try { localStorage.setItem(LS_TEMPLATES, JSON.stringify(state.templates)); } catch {} }
+function saveCart()      { try { localStorage.setItem(LS_CART,      JSON.stringify(state.cart));      } catch {} }
 
 /* ---- список доступных PDU-розеток текущей стойки (1.24.4 full) -------
    Разворачивает rack.pdus → плоский список { feed, outletIdx, typeLabel,
@@ -598,9 +601,15 @@ function renderUnitMap(hostId, opts) {
     const labelTxt = mode === 'power'
       ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}`
       : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}`;
+    const iconX = 32 + bodyW - 18*scale;
+    const iconY = y + (h * rowH) / 2;
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
       <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
       <text x="${38}" y="${y + rowH/2 + 4}" font-size="${10*scale}" fill="#0f172a">${escape(labelTxt)}</text>
+      <g class="sc-dev-cart" data-cart-devid="${d.id}" style="cursor:pointer" pointer-events="all">
+        <circle cx="${iconX}" cy="${iconY}" r="${7*scale}" fill="#fff" stroke="#64748b" stroke-width="0.7"/>
+        <text x="${iconX}" y="${iconY + 3*scale}" font-size="${9*scale}" text-anchor="middle">🛒</text>
+      </g>
     </g>`;
   }).join('');
 
@@ -686,8 +695,18 @@ function bindUnitMapDrag(svgId) {
   const svg = $(svgId); if (!svg) return;
   const rowH = +svg.dataset.rowh || 16;
   bindUnitMapDrop(svg, rowH);
+  // клик по иконке 🛒 внутри полосы — отправить на тележку; останавливаем
+  // propagation до pointerdown, иначе стартует drag
+  svg.querySelectorAll('g.sc-dev-cart').forEach(ic => {
+    ic.addEventListener('pointerdown', ev => { ev.stopPropagation(); });
+    ic.addEventListener('click', ev => {
+      ev.stopPropagation();
+      moveToCart(ic.dataset.cartDevid);
+    });
+  });
   svg.querySelectorAll('g.sc-devband').forEach(g => {
     g.addEventListener('pointerdown', ev => {
+      if (ev.target.closest('.sc-dev-cart')) return;
       ev.preventDefault();
       const devId = g.dataset.devid;
       const d = currentContents().find(x => x.id === devId); if (!d) return;
@@ -758,34 +777,35 @@ function canPlace(r, devices, excludeDevId, heightU, wantU) {
    создаём устройство в этой позиции. */
 function bindUnitMapDrop(svg, rowH) {
   const highlight = (on) => svg.classList.toggle('sc-drop-hover', on);
+  const acceptType = (types) => types.includes('application/x-scs-typeid') || types.includes('application/x-scs-cartid');
   svg.addEventListener('dragover', ev => {
-    if (!Array.from(ev.dataTransfer.types).includes('application/x-scs-typeid')) return;
+    if (!acceptType(Array.from(ev.dataTransfer.types))) return;
     ev.preventDefault();
     ev.dataTransfer.dropEffect = 'copy';
     highlight(true);
   });
   svg.addEventListener('dragleave', () => highlight(false));
   svg.addEventListener('drop', ev => {
-    const typeId = ev.dataTransfer.getData('application/x-scs-typeid');
     highlight(false);
-    if (!typeId) return;
+    const typeId = ev.dataTransfer.getData('application/x-scs-typeid');
+    const cartId = ev.dataTransfer.getData('application/x-scs-cartid');
+    if (!typeId && !cartId) return;
     ev.preventDefault();
     const r = currentRack(); if (!r) return;
-    const type = state.catalog.find(c => c.id === typeId); if (!type) return;
     const rect = svg.getBoundingClientRect();
     const svgH = svg.viewBox.baseVal.height || rect.height;
     const yClient = ev.clientY - rect.top;
     const yView = yClient * (svgH / rect.height);
     const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
     const wantTopU = r.u - rowIdx;
-    // 1.24.29 — запрет наложения при drop: ищем ближайший свободный U
-    // (сначала вверх от wantTopU, потом вниз). Если ничего — alert.
-    const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU);
-    if (finalU == null) {
-      scToast('В стойке нет свободного места для устройства (' + type.heightU + 'U)', 'err');
-      return;
+    if (cartId) {
+      installFromCart(cartId, wantTopU);
+    } else {
+      const type = state.catalog.find(c => c.id === typeId); if (!type) return;
+      const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU);
+      if (finalU == null) { scToast('Нет свободного места для устройства (' + type.heightU + 'U)', 'err'); return; }
+      addToRack(typeId, finalU);
     }
-    addToRack(typeId, finalU);
   });
 }
 
@@ -927,6 +947,116 @@ async function applyTemplate() {
   if (dropped.length) scToast(`Не поместилось ${dropped.length} устройств — стойка меньше исходной`, 'warn');
 }
 
+/* =========================================================================
+   1.24.28 — «тележка» (moving cart).
+   Модель как в реальном ЦОД: вытащил сервер из одной стойки → везёт →
+   установил в другую. Общий буфер между всеми стойками проекта.
+   ========================================================================= */
+function moveToCart(devId) {
+  const devs = currentContents();
+  const d = devs.find(x => x.id === devId); if (!d) return;
+  const r = currentRack();
+  state.cart.push({
+    id: uid('cart'),
+    typeId: d.typeId,
+    label: d.label,
+    fromRackId: r ? r.id : null,
+    fromRackName: r ? (r.name || '') : '',
+    pduFeed: d.pduFeed || '', pduOutlet: d.pduOutlet || '',
+    takenAt: new Date().toISOString(),
+  });
+  state.contents[state.currentRackId] = devs.filter(x => x.id !== devId);
+  saveCart(); saveContents();
+  renderContents(); rerenderPreview(); renderCart();
+  scToast('Устройство вытащено на тележку', 'ok');
+}
+function installFromCart(cartId, wantTopU) {
+  const r = currentRack(); if (!r) { scToast('Выберите стойку', 'warn'); return; }
+  const idx = state.cart.findIndex(x => x.id === cartId);
+  if (idx < 0) return;
+  const item = state.cart[idx];
+  const type = state.catalog.find(c => c.id === item.typeId);
+  if (!type) { scToast('Тип оборудования из тележки не найден в каталоге', 'err'); return; }
+  const finalU = findNearestFreeSlot(r, currentContents(), type.heightU,
+    Number.isFinite(wantTopU) ? wantTopU : r.u - r.occupied);
+  if (finalU == null) { scToast('Нет места в стойке (' + type.heightU + 'U)', 'err'); return; }
+  currentContents().push({
+    id: uid('dev'),
+    typeId: item.typeId,
+    label: item.label,
+    positionU: finalU,
+    pduFeed: item.pduFeed || '', pduOutlet: '',  // розетку не тянем — другая стойка
+  });
+  state.cart.splice(idx, 1);
+  saveCart(); saveContents();
+  renderContents(); rerenderPreview(); renderCart();
+  scToast(`Установлено в U${finalU}`, 'ok');
+}
+async function discardCartItem(cartId) {
+  const ok = await scConfirm('Выгрузить на склад?', 'Устройство удалится с тележки совсем.', { okLabel: 'Выгрузить' });
+  if (!ok) return;
+  state.cart = state.cart.filter(x => x.id !== cartId);
+  saveCart(); renderCart();
+}
+function returnCartItem(cartId) {
+  const item = state.cart.find(x => x.id === cartId); if (!item) return;
+  if (!item.fromRackId) { scToast('Исходная стойка неизвестна', 'warn'); return; }
+  const rack = state.racks.find(r => r.id === item.fromRackId);
+  if (!rack) { scToast('Исходная стойка удалена', 'err'); return; }
+  // переключаемся на исходную стойку и ставим
+  const prevRackId = state.currentRackId;
+  state.currentRackId = item.fromRackId;
+  const cnt = currentContents();
+  const type = state.catalog.find(c => c.id === item.typeId);
+  const h = type ? type.heightU : 1;
+  const finalU = findNearestFreeSlot(rack, cnt, h, rack.u - rack.occupied);
+  if (finalU == null) {
+    state.currentRackId = prevRackId;
+    scToast('В исходной стойке нет места', 'err');
+    return;
+  }
+  cnt.push({ id: uid('dev'), typeId: item.typeId, label: item.label, positionU: finalU, pduFeed: item.pduFeed || '', pduOutlet: item.pduOutlet || '' });
+  state.cart = state.cart.filter(x => x.id !== cartId);
+  saveContents(); saveCart();
+  // вернуться на текущую стойку, пользователь не ожидает прыжка
+  state.currentRackId = prevRackId;
+  rerender(); renderCart();
+  scToast(`Возвращено в «${rack.name || rack.u+'U'}» U${finalU}`, 'ok');
+}
+
+function renderCart() {
+  const host = $('sc-cart'); if (!host) return;
+  const badge = $('sc-cart-badge');
+  if (badge) badge.textContent = state.cart.length;
+  if (!state.cart.length) {
+    host.innerHTML = '<div class="muted" style="font-size:12px;padding:6px 0">Тележка пуста. Перетащите устройство сюда или нажмите 🛒 у полосы в карте юнитов.</div>';
+    return;
+  }
+  const rows = [`<tr><th>Устройство</th><th>Из стойки</th><th style="width:150px"></th></tr>`];
+  state.cart.forEach(item => {
+    const fromLabel = item.fromRackName || (item.fromRackId ? '(стойка)' : '—');
+    rows.push(`<tr draggable="true" data-cartid="${item.id}">
+      <td>${escape(item.label)}</td>
+      <td class="muted">${escape(fromLabel)}</td>
+      <td>
+        <button type="button" class="sc-btn" data-act="return" data-id="${item.id}" title="Вернуть в исходную стойку">↩ вернуть</button>
+        <button type="button" class="sc-btn sc-btn-danger" data-act="discard" data-id="${item.id}" title="Выгрузить на склад (удалить)">✕</button>
+      </td>
+    </tr>`);
+  });
+  host.innerHTML = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
+  host.querySelectorAll('tr[data-cartid]').forEach(tr => {
+    tr.addEventListener('dragstart', ev => {
+      ev.dataTransfer.setData('application/x-scs-cartid', tr.dataset.cartid);
+      ev.dataTransfer.effectAllowed = 'move';
+      tr.classList.add('sc-drag-src');
+    });
+    tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+  });
+  host.querySelectorAll('[data-act="return"]').forEach(b => b.addEventListener('click', () => returnCartItem(b.dataset.id)));
+  host.querySelectorAll('[data-act="discard"]').forEach(b => b.addEventListener('click', () => discardCartItem(b.dataset.id)));
+}
+
 /* ---- глобальный rerender ---------------------------------------------- */
 function rerenderPreview() {
   renderUnitMap('sc-unitmap', { big: false });
@@ -934,7 +1064,7 @@ function rerenderPreview() {
   if (dlg && dlg.open) renderUnitMap('sc-unitmap-dlg-body', { big: true });
   renderWarnings(); renderBom();
 }
-function rerender() { renderRackPicker(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); }
+function rerender() { renderRackPicker(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); }
 
 /* ---- init -------------------------------------------------------------- */
 function init() {
@@ -943,6 +1073,7 @@ function init() {
   state.contents  = loadJson(LS_CONTENTS,  {});
   state.matrix    = loadJson(LS_MATRIX,    {});
   state.templates = loadJson(LS_TEMPLATES, []);
+  state.cart      = loadJson(LS_CART,      []);
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
   // auto-pick rack
   if (state.racks.length) state.currentRackId = state.racks[0].id;
