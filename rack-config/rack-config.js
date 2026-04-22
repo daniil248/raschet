@@ -1762,6 +1762,8 @@ function renderUnitMap() {
   const rightRailX = unumRightX + UNUM_W + 2;
   const svgW = rightRailX + rightRailW + 6;
 
+  // v0.59.265: направление U-нумерации — общий LS-ключ со scs-config.
+  const uNumDir = (() => { try { return localStorage.getItem('scs-config.uNumDir.v1') || 'bu'; } catch { return 'bu'; } })();
   const rectsSvg = rows.map((r, i) => {
     const y = 4 + i * rowH;
     const fill = colorFor(r.kind);
@@ -1769,8 +1771,9 @@ function renderUnitMap() {
     const label = r.label
       ? `<text x="${bodyX + 6}" y="${y + rowH/2 + 4}" font-size="10" fill="#0f172a">${escape(r.label)}</text>`
       : '';
-    const numL = `<text x="${unumLeftX + UNUM_W}" y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="end">${r.u}</text>`;
-    const numR = `<text x="${unumRightX}"          y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="start">${r.u}</text>`;
+    const uLabel = uNumDir === 'td' ? (totalU - r.u + 1) : r.u;
+    const numL = `<text x="${unumLeftX + UNUM_W}" y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="end">${uLabel}</text>`;
+    const numR = `<text x="${unumRightX}"          y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="start">${uLabel}</text>`;
     return `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>${numL}${numR}${label}`;
   }).join('');
 
