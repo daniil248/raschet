@@ -623,6 +623,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.193', date: '2026-04-22', items: [
+      'Главная схема теперь принимает postMessage типа *-config:apply от embedded-конфигуратора (panel/ups/transformer/mv/pdu/mdc/suppression). Из сообщения {type, entry, targetNodeIds} узлы с указанными ID получают n.appliedConfig.<kind> = entry и n.appliedConfigId = entry.id. Собственный n.id и n.tag физического элемента не затрагиваются — конфигурация это отдельный шаблон, а узел на схеме лишь ссылается на него.',
+      'mountEmbeddedPicker читает ?targets=id1,id2 из URL и передаёт список target-nodeId в onApply(entry, targets). URL-схема для родителя: configurator/?embedded=1&targets=nid1,nid2,nid3.',
+      'Файлы: js/main.js (+applyKinds handler в postMessage-listener); shared/config-sidebar.js (+readTargets в mountEmbeddedPicker); 7× */index.html (onApply(entry, targets) + targetNodeIds в postMessage).',
+    ] },
     { version: '0.59.186', date: '2026-04-22', items: [
       '<b>dialog.js самодостаточен</b>: CSS инъектится модулем при первом вызове, больше не зависит от <code>shared/styles/base.css</code> в HTML (страницы <code>catalog/</code>, <code>elements/</code>, <code>schematic/</code>, <code>logistics/</code> и др. её не подключали — раньше rsToast/rsConfirm там бы рендерились без стилей). Добавлен keydown на <code>document</code> (Enter подтверждает rsConfirm без input, Escape отменяет), автофокус на OK-кнопке. Очищены последние нативные вызовы: <code>hub.html</code> (reset layout), <code>configurator3d/index.html</code> (импорт JSON). Файлы: shared/dialog.js, hub.html, configurator3d/index.html.',
     ] },

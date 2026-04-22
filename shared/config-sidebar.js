@@ -327,12 +327,22 @@ export function mountEmbeddedPicker(opts) {
     `).join('');
   }
 
+  // Распарсить target nodeIds, переданные родителем через URL:
+  //   ?embedded=1&targets=id1,id2,id3
+  function readTargets() {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const s = p.get('targets') || p.get('target') || '';
+      return s ? s.split(',').map(x => x.trim()).filter(Boolean) : [];
+    } catch { return []; }
+  }
+
   listEl.addEventListener('click', ev => {
     const li = ev.target.closest('.rs-cs-item');
     if (!li) return;
     const e = getConfig(kind, li.getAttribute('data-id'));
     if (e && typeof o.onApply === 'function') {
-      try { o.onApply(e); } catch (err) { console.warn(err); }
+      try { o.onApply(e, readTargets()); } catch (err) { console.warn(err); }
     }
   });
   search.addEventListener('input', () => { filter = search.value.trim(); render(); });

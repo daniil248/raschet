@@ -401,8 +401,8 @@
         kind: 'panel',
         title: 'Выберите шаблон щита',
         mountEl: slot,
-        onApply: (entry) => {
-          try { window.parent?.postMessage({ type: 'panel-config:apply', entry }, '*'); } catch {}
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'panel-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
           try { window.dispatchEvent(new CustomEvent('panel-config:pick', { detail: entry })); } catch {}
         },
       });

@@ -444,8 +444,8 @@
         kind: 'suppression',
         title: 'Выберите шаблон АГПТ',
         mountEl: host,
-        onApply: (entry) => {
-          try { window.parent?.postMessage({ type: 'suppression-config:apply', entry }, '*'); } catch {}
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'suppression-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
         },
       });
     }

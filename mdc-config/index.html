@@ -188,8 +188,8 @@
         kind: 'mdc',
         title: 'Выберите шаблон модульного ЦОД',
         mountEl: host,
-        onApply: (entry) => {
-          try { window.parent?.postMessage({ type: 'mdc-config:apply', entry }, '*'); } catch {}
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'mdc-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
         },
       });
     }

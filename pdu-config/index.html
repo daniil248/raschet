@@ -249,8 +249,8 @@
         kind: 'pdu',
         title: 'Выберите шаблон PDU',
         mountEl: host,
-        onApply: (entry) => {
-          try { window.parent?.postMessage({ type: 'pdu-config:apply', entry }, '*'); } catch {}
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'pdu-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
         },
       });
     }

@@ -6324,6 +6324,35 @@ async function init() {
         rsToast('Конфигурация стойки применена к узлу «' + (n.tag || n.name || n.id) + '».', 'ok');
       } catch (e) { console.warn('rack.apply error', e); }
     }
+    // v0.59.193: унифицированная обработка *-config:apply из mountEmbeddedPicker.
+    // У физического узла остаётся свой id/tag; шаблон сохраняется отдельно в
+    // поле n.appliedConfig.<kind> и n.appliedConfigId — как ссылка.
+    const applyKinds = {
+      'panel-config:apply':       { field: 'panel',       label: 'щита' },
+      'ups-config:apply':         { field: 'ups',         label: 'ИБП' },
+      'transformer-config:apply': { field: 'transformer', label: 'трансформатора' },
+      'mv-config:apply':          { field: 'mv',          label: 'РУ СН' },
+      'pdu-config:apply':         { field: 'pdu',         label: 'PDU' },
+      'mdc-config:apply':         { field: 'mdc',         label: 'ЦОД' },
+      'suppression-config:apply': { field: 'suppression', label: 'АГПТ' },
+    };
+    if (applyKinds[msg.type] && msg.entry && Array.isArray(msg.targetNodeIds)) {
+      try {
+        const st = window.Raschet && window.Raschet._state;
+        if (!st) return;
+        const info = applyKinds[msg.type];
+        let count = 0;
+        for (const nid of msg.targetNodeIds) {
+          const n = st.nodes.get(nid); if (!n) continue;
+          n.appliedConfig = n.appliedConfig || {};
+          n.appliedConfig[info.field] = JSON.parse(JSON.stringify(msg.entry));
+          n.appliedConfigId = msg.entry.id; // собственный ID узла (n.id/n.tag) не трогаем
+          count++;
+        }
+        if (window.Raschet.rerender) window.Raschet.rerender();
+        rsToast(`Шаблон ${info.label} «${msg.entry.id}» применён к ${count} элем.`, 'ok');
+      } catch (e) { console.warn('config.apply error', e); }
+    }
   });
   // Также — резервный путь через localStorage storage-event, если вкладка
   // rack-config открыта в другом окне без window.opener (например, через

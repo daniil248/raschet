@@ -236,8 +236,8 @@
         kind: 'mv',
         title: 'Выберите шаблон РУ СН',
         mountEl: slot,
-        onApply: (entry) => {
-          try { window.parent?.postMessage({ type: 'mv-config:apply', entry }, '*'); } catch {}
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'mv-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
         },
       });
     } else {

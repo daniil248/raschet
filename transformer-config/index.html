@@ -216,8 +216,8 @@
         kind: 'transformer',
         title: 'Выберите шаблон трансформатора',
         mountEl: slot,
-        onApply: (entry) => {
-          try { window.parent?.postMessage({ type: 'transformer-config:apply', entry }, '*'); } catch {}
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'transformer-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
         },
       });
     } else {
