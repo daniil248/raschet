@@ -47,6 +47,7 @@
 .sc-btn-danger:hover { background: #fef2f2; }
 .sc-btn-primary { border-color: #2563eb; color: #fff; background: #2563eb; }
 .sc-btn-primary:hover { background: #1d4ed8; }
+.sc-btn-sm { font-size: 11px; padding: 2px 6px; }
 .sc-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
 .sc-cat, .sc-contents, .sc-matrix, .sc-bom {

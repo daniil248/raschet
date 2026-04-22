@@ -2968,6 +2968,16 @@ function init() {
   bindCatFilter('sc-cat-kind-filter', 'kind', 'change');
   bindCatFilter('sc-cat-u-min', 'uMin');
   bindCatFilter('sc-cat-u-max', 'uMax');
+  // v0.59.266: кнопка сброса фильтров
+  const clrBtn = $('sc-cat-filter-clear');
+  if (clrBtn) clrBtn.addEventListener('click', () => {
+    state.catFilter = { q: '', kind: '', uMin: '', uMax: '' };
+    saveCatFilter();
+    ['sc-cat-search','sc-cat-kind-filter','sc-cat-u-min','sc-cat-u-max'].forEach(id => {
+      const el = $(id); if (el) el.value = '';
+    });
+    renderCatalog();
+  });
 
   $('sc-cat-add').addEventListener('click', () => {
     state.catalog.push({
