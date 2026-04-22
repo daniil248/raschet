@@ -177,3 +177,90 @@ code, kbd, samp, pre { font-family: var(--rs-font-mono); }
 }
 .rs-table tbody tr:hover { background: var(--rs-bg-hover); }
 .rs-table .num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--rs-font-mono); }
+
+/* =========================================================================
+   Phase 1.26.4-8 — единые токены для форм, заголовков, chip'ов,
+   статусов и breadcrumb'ов. Цель: во всех модулях однотипная
+   информация выглядит идентично. Старые модульные классы (.sc-field,
+   .rc-field, .field) остаются ради обратной совместимости, но новые
+   элементы используют rs-*.
+   ========================================================================= */
+
+/* ---- rs-field — единая форма «label + ввод» ---------------------------- */
+.rs-field {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 12px; color: var(--rs-fg-muted);
+}
+.rs-field > span:first-child { font-size: 11px; text-transform: none; letter-spacing: 0; }
+.rs-field input, .rs-field select, .rs-field textarea {
+  font: inherit; color: var(--rs-fg);
+  padding: 4px 8px; min-height: 28px;
+  border: 1px solid var(--rs-border); border-radius: var(--rs-radius-sm);
+  background: var(--rs-bg-card);
+  transition: border-color .12s, box-shadow .12s;
+}
+.rs-field input:focus, .rs-field select:focus, .rs-field textarea:focus {
+  outline: none; border-color: var(--rs-accent);
+  box-shadow: 0 0 0 2px var(--rs-accent-bg);
+}
+.rs-field output {
+  font: inherit; padding: 4px 8px; min-height: 28px;
+  color: var(--rs-fg); background: var(--rs-bg-soft);
+  border: 1px solid var(--rs-border-soft); border-radius: var(--rs-radius-sm);
+}
+.rs-field.inline { flex-direction: row; align-items: center; gap: 8px; }
+.rs-field.inline > span:first-child { font-size: 12px; }
+
+/* ---- rs-section — единая «карточка-секция» ----------------------------- */
+.rs-section {
+  background: var(--rs-bg-card);
+  border: 1px solid var(--rs-border-soft);
+  border-radius: var(--rs-radius);
+  padding: 12px 14px;
+  box-shadow: var(--rs-shadow-card);
+}
+.rs-section + .rs-section { margin-top: 10px; }
+.rs-section > h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; color: var(--rs-fg); }
+.rs-section > h3 { font-size: 13px; font-weight: 600; margin: 10px 0 6px; color: var(--rs-fg); }
+.rs-section > p.hint, .rs-section > p.muted {
+  font-size: 12px; color: var(--rs-fg-muted); margin: 0 0 8px; line-height: 1.45;
+}
+
+/* ---- rs-chip — единые «чипы» для badge / статусов ---------------------- */
+.rs-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px; font-size: 11px; line-height: 1.4;
+  border-radius: 999px; background: var(--rs-bg-soft);
+  border: 1px solid var(--rs-border-soft); color: var(--rs-fg);
+  font-weight: 500; white-space: nowrap;
+}
+.rs-chip-info    { background: var(--rs-accent-bg);  border-color: var(--rs-accent);  color: var(--rs-accent); }
+.rs-chip-success { background: var(--rs-success-bg); border-color: var(--rs-success); color: var(--rs-success); }
+.rs-chip-warn    { background: var(--rs-warn-bg);    border-color: var(--rs-warn);    color: var(--rs-warn); }
+.rs-chip-danger  { background: var(--rs-danger-bg);  border-color: var(--rs-danger);  color: var(--rs-danger); }
+.rs-chip-muted   { background: var(--rs-bg-soft);    border-color: var(--rs-border); color: var(--rs-fg-muted); }
+
+/* ---- rs-status — единые «статусы» оборудования -------------------------
+   Используется везде (inventory, BOM, TCC, планы ТО). Набор зафиксирован,
+   иконки/цвета одинаковы в любом модуле. */
+.rs-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.rs-status::before { display: inline-block; width: 8px; height: 8px; border-radius: 50%; content: ''; }
+.rs-status-active   { color: var(--rs-success); }  .rs-status-active::before   { background: var(--rs-success); }
+.rs-status-standby  { color: var(--rs-warn); }     .rs-status-standby::before  { background: var(--rs-warn); }
+.rs-status-maint    { color: var(--rs-accent); }   .rs-status-maint::before    { background: var(--rs-accent); }
+.rs-status-decom    { color: var(--rs-fg-subtle);} .rs-status-decom::before    { background: var(--rs-fg-subtle); }
+.rs-status-error    { color: var(--rs-danger); }   .rs-status-error::before    { background: var(--rs-danger); }
+
+/* ---- rs-breadcrumb — единая навигация между подстраницами модуля ------ */
+.rs-breadcrumb {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; margin-bottom: 10px;
+  background: var(--rs-bg-soft);
+  border: 1px solid var(--rs-border-soft); border-radius: var(--rs-radius);
+  font-size: 13px;
+}
+.rs-breadcrumb a { color: var(--rs-accent); text-decoration: none; }
+.rs-breadcrumb a:hover { text-decoration: underline; }
+.rs-breadcrumb > .sep { color: var(--rs-fg-subtle); }
+.rs-breadcrumb > strong { color: var(--rs-fg); font-weight: 600; }
+.rs-breadcrumb > .spacer { flex: 1; }

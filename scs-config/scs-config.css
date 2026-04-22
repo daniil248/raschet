@@ -275,16 +275,7 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
-/* 1.24.38 — breadcrumb навигация между index.html / rack.html / inventory.html */
-.sc-breadcrumb {
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px;
-  margin-bottom: 10px; font-size: 14px;
-}
-.sc-breadcrumb a { color: #2563eb; text-decoration: none; }
-.sc-breadcrumb a:hover { text-decoration: underline; }
-.sc-breadcrumb span { color: #94a3b8; }
-.sc-breadcrumb strong { color: #0f172a; }
+/* Phase 1.26.8 — breadcrumb мигрирован на .rs-breadcrumb (shared/styles/base.css). */
 
 /* 1.24.39 — сайдбар со списком шкафов в rack.html */
 .sc-grid-3 { grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1.2fr); }

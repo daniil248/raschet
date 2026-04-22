@@ -3,6 +3,15 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.22',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.26.4-8 — в <code>shared/styles/base.css</code> добавлены единые классы дизайн-системы: <code>.rs-field</code> (label + input/select/textarea/output, inline-вариант), <code>.rs-section</code> (карточка-секция с унифицированными h2/h3/p.hint), <code>.rs-chip</code> + варианты <code>info/success/warn/danger/muted</code>, <code>.rs-status-*</code> (active/standby/maint/decom/error — цветной индикатор), <code>.rs-breadcrumb</code> (с классами <code>.sep</code> и <code>.spacer</code>).',
+      'Phase 1.26.8 — breadcrumb мигрирован в scs-config на единый <code>.rs-breadcrumb</code> во всех трёх страницах (index / rack / inventory). Старый локальный <code>.sc-breadcrumb</code> удалён из scs-config.css.',
+      'ROADMAP 1.26.4-8 отмечены как готовые, добавлен 1.26.10 — миграция sc-field/rc-field/mv-field/field → rs-field.',
+    ],
+  },
+  {
     version: '0.1.21',
     date: '2026-04-22',
     items: [
