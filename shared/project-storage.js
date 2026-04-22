@@ -131,6 +131,81 @@ export function updateProject(id, patch) {
   return arr[i];
 }
 
+// v0.59.278: копирование проекта. Копирует метаданные (name + «(копия)») и
+// ВСЕ scoped-данные (raschet.project.<srcPid>.* → raschet.project.<dstPid>.*).
+// Возвращает объект созданного проекта. Не переносит неявные зависимости
+// между id внутри данных — например, если в content.v1 есть ссылки на
+// id устройств из другого источника, они сохранятся как есть.
+// Для rack instances (raschet.project.<pid>.rack-config.instances.v1) при
+// копировании генерируются новые inst-* id и ссылки в других scoped-ключах
+// (scs-config.contents/matrix/rackTags) автоматически переписываются.
+export function copyProject(srcId, { nameSuffix = ' (копия)', kind } = {}) {
+  const src = getProject(srcId);
+  if (!src) return null;
+  const dst = createProject({
+    name: (src.name || 'Проект') + nameSuffix,
+    description: src.description || '',
+    status: 'draft',
+    kind: kind || src.kind || 'full',
+    ownerModule: src.ownerModule || null,
+  });
+  // Сканируем LS, собираем все ключи srcPid и записываем под dstPid.
+  const srcPrefix = `raschet.project.${src.id}.`;
+  const dstPrefix = `raschet.project.${dst.id}.`;
+  const payload = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(srcPrefix)) {
+        payload.push([k.slice(srcPrefix.length), localStorage.getItem(k)]);
+      }
+    }
+  } catch {}
+  // Если есть экземпляры стоек — создаём id-карту (inst-* в новом проекте).
+  // Ключ `rack-config.instances.v1` обрабатываем первым, чтобы id-map был готов,
+  // потом прогоняем остальные ключи через него (замена подстроки безопасна:
+  // inst-xxxxxxxx уникален в LS).
+  const idMap = {};
+  const rest = [];
+  payload.forEach(([rel, raw]) => {
+    if (rel === 'rack-config.instances.v1' && raw) {
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          const remapped = arr.map(r => {
+            if (!r || !r.id) return r;
+            const nid = 'inst-' + Math.random().toString(36).slice(2, 10);
+            idMap[r.id] = nid;
+            return { ...r, id: nid };
+          });
+          try { localStorage.setItem(dstPrefix + rel, JSON.stringify(remapped)); } catch {}
+        } else {
+          try { localStorage.setItem(dstPrefix + rel, raw); } catch {}
+        }
+      } catch { try { localStorage.setItem(dstPrefix + rel, raw); } catch {} }
+    } else {
+      rest.push([rel, raw]);
+    }
+  });
+  // Переписать inst-id в остальных scoped-ключах (если они ссылаются).
+  rest.forEach(([rel, raw]) => {
+    let out = raw;
+    if (out && Object.keys(idMap).length) {
+      try {
+        let s = out;
+        for (const [oldId, newId] of Object.entries(idMap)) {
+          // regex для точного матча (по кавычкам — все id хранятся как JSON-строки)
+          s = s.split(oldId).join(newId);
+        }
+        out = s;
+      } catch {}
+    }
+    try { localStorage.setItem(dstPrefix + rel, out); } catch {}
+  });
+  updateProject(dst.id, {});
+  return dst;
+}
+
 // v0.59.242: по умолчанию удаляем и scoped-данные проекта (иначе они
 // становятся «бесхозными» в LS). Передать { keepData: true } чтобы только
 // убрать метаданные.

@@ -10,8 +10,13 @@ import {
   ensureDefaultProject, getActiveProjectId, setActiveProjectId, getProject, projectKey,
   listProjectsForModule, createSketchForModule
 } from '../shared/project-storage.js';
+// v0.59.278: project-scoped экземпляры стоек (см. shared/rack-storage.js).
+import {
+  loadAllRacksForActiveProject, saveAllRacksForActiveProject, migrateLegacyInstances,
+  LS_TEMPLATES_GLOBAL
+} from '../shared/rack-storage.js';
 
-const LS_RACK      = 'rack-config.templates.v1';       // библиотека шаблонов, глобально
+const LS_RACK      = LS_TEMPLATES_GLOBAL;              // для совместимости storage-listener
 const LS_CATALOG   = 'scs-config.catalog.v1';          // глобальный каталог IT
 // LS_CONTENTS / LS_RACKTAGS переведены на проектный неймспейс (1.27.3).
 let LS_CONTENTS    = 'scs-config.contents.v1';
@@ -114,7 +119,9 @@ function sdRackWizard() {
 // Создать стойку в проекте: добавить шаблон в библиотеку, создать запись
 // в contents (с опциональной базовой комплектацией) и тег. Возвращает id.
 function createProjectRack(opts) {
-  const id = 'tpl-' + Math.random().toString(36).slice(2, 9);
+  // v0.59.278: новый экземпляр в проекте должен иметь префикс 'inst-',
+  // чтобы попадать в project-scoped хранилище, а не глобальные шаблоны.
+  const id = 'inst-' + Math.random().toString(36).slice(2, 10);
   const racks = getRacks();
   racks.push({
     id, name: opts.name, manufacturer: '', kitId: '',
@@ -125,7 +132,7 @@ function createProjectRack(opts) {
     occupied: 0, blankType: '1U-solid',
     demandKw: 5, cosphi: 0.9, pduRedundancy: '2N', pdus: [],
   });
-  saveJson(LS_RACK, racks);
+  try { saveAllRacksForActiveProject(racks); } catch (e) { saveJson(LS_RACK, racks); }
 
   // contents в проекте
   const all = loadJson(LS_CONTENTS, {});
@@ -253,7 +260,11 @@ function loadJson(key, fb) {
 }
 function saveJson(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
-function getRacks() { const r = loadJson(LS_RACK, []); return Array.isArray(r) ? r : []; }
+function getRacks() {
+  // v0.59.278: шаблоны глобальные + экземпляры активного проекта.
+  try { migrateLegacyInstances(); return loadAllRacksForActiveProject(); }
+  catch { const r = loadJson(LS_RACK, []); return Array.isArray(r) ? r : []; }
+}
 function getRackTag(id) { const t = loadJson(LS_RACKTAGS, {}); return (t && typeof t === 'object') ? (t[id] || '') : ''; }
 function getContents(id) {
   const all = loadJson(LS_CONTENTS, {});

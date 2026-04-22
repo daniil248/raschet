@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.278', date: '2026-04-22', items: [
+      '📄 Кнопка «Копировать» у проекта: создаёт копию метаданных и всех scoped-данных (raschet.project.<pid>.*). Экземплярам стоек выдаются новые inst-* id, ссылки на них в других ключах проекта (contents, matrix, rackTags) автоматически переписываются через id-map. Глобальные данные (шаблоны корпусов, каталог IT-типов) — общие, не копируются.',
+      '📄 Кнопка «📄 Копия» у мини-проекта — такой же механизм, без подтверждения (черновики быстро клонируются).',
+      'Файлы: shared/project-storage.js (copyProject), projects/projects.js (кнопки + обработчики).',
+    ] },
     { version: '0.59.245', date: '2026-04-22', items: [
       '🔗 В rack-config (Конфигуратор стойки) в standalone-режиме появился левый сайдбар со всеми сохранёнными типами стоек. Важно для /projects/: сайдбар видит не только глобальные шаблоны, но и конфигурации из любого проекта (full и sketch) — вход raschet.project.<pid>.rack-config.templates.v1. Проект/мини-проект проставляется чипом в строке. Так из одной точки (rack-config) можно подхватить стойку из любого проекта и использовать как основу.',
       'Подробности — в changelog rack-config v0.59.245.',
@@ -244,6 +249,13 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.278', date: '2026-04-22', items: [
+      '📦 Этап 2 рефакторинга: экземпляры стоек (inst-*) переехали в project-scoped хранилище <code>raschet.project.&lt;pid&gt;.rack-config.instances.v1</code>. Шаблоны корпусов (tpl-* и без префикса) остались в <code>rack-config.templates.v1</code> (глобально). Одноразовая миграция при первой загрузке разбивает старый смешанный массив по id-префиксу и переносит inst-* в активный проект. Маркер <code>rack-config.instances.migrated.v1</code>.',
+      '🧭 Теперь экземпляры проекта строго изолированы: удаление/копирование проекта автоматически чистит/клонирует и стойки (см. projects.js copyProject → id-map на inst-*). Два разных проекта больше не «видят» стойки друг друга даже если у них совпадают теги.',
+      '🆕 shared/rack-storage.js — единая точка: loadAllRacksForActiveProject/saveAllRacksForActiveProject/loadTemplates/loadInstances/migrateLegacyInstances/cloneInstancesBetweenProjects/wipeInstancesForProject. Все модули (scs-config, racks-list, scs-design, inventory) читают/пишут через него.',
+      '🔧 scs-design: createProjectRack теперь создаёт <code>inst-*</code> id (раньше tpl-*), чтобы сразу попадать в project-scope.',
+      'Файлы: shared/rack-storage.js (новый), scs-config/scs-config.js (loadRacks → shared, saveRacks, applyCorpus), scs-config/racks-list.js, scs-config/inventory.js, scs-design/scs-design.js.',
+    ] },
     { version: '0.59.277', date: '2026-04-22', items: [
       '🗄 Этап 1 крупного рефакторинга «стойка ↔ шаблон корпуса + project-scope». Теперь экземпляр стойки в проекте хранит ссылку <code>sourceTemplateId</code>/<code>sourceTemplateName</code> на шаблон из Конфигуратора стоек. В сайдбаре и в дропдауне «Физический шкаф» отображается label вида <code>A-02 (600x1200x42U Тип 1 · 42U)</code> — один шаблон может использоваться для многих экземпляров.',
       '🧰 В топ-баре композера добавлен новый селектор «Корпус (шаблон)» с кнопкой «↪ Применить корпус». Применение копирует геометрию (U, ширина, глубина, двери, PDU, «занято корпусом») из выбранного шаблона на текущую стойку и фиксирует <code>sourceTemplateId</code>. Содержимое (устройства) не затрагивается.',

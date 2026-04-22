@@ -4,6 +4,8 @@
    обратно в тот же источник (mutation по id). */
 
 import { ensureDefaultProject, getActiveProjectId, getProject, projectKey } from '../shared/project-storage.js';
+// v0.59.278: project-scoped экземпляры стоек.
+import { loadAllRacksForActiveProject, migrateLegacyInstances, LS_TEMPLATES_GLOBAL } from '../shared/rack-storage.js';
 
 function renderProjectBanner() {
   const host = document.getElementById('pr-project-banner'); if (!host) return;
@@ -17,7 +19,7 @@ function renderProjectBanner() {
   host.innerHTML = `📁 Проект: <b>${esc(p.name)}</b> <span class="muted">· id <code>${esc(p.id)}</code></span> <a href="../projects/" style="margin-left:8px">→ сменить</a>`;
 }
 
-const LS_RACK    = 'rack-config.templates.v1';
+const LS_RACK    = LS_TEMPLATES_GLOBAL;
 const LS_CATALOG = 'scs-config.catalog.v1';
 
 // Проектные ключи — выставляются в rescope при загрузке.
@@ -69,7 +71,8 @@ function fmtAge(ts) {
 }
 
 function collect() {
-  const racks     = loadJson(LS_RACK, []);
+  migrateLegacyInstances();
+  const racks     = loadAllRacksForActiveProject();
   const catalog   = loadJson(LS_CATALOG, []);
   const contents  = loadJson(LS_CONTENTS, {});
   const tags      = loadJson(LS_RACKTAGS, {});

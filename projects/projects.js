@@ -4,7 +4,7 @@
 // проектный неймспейс — в подфазах 1.27.1+ (см. shared/project-storage.js).
 
 import {
-  listProjects, createProject, updateProject, deleteProject,
+  listProjects, createProject, updateProject, deleteProject, copyProject,
   getActiveProjectId, setActiveProjectId, ensureDefaultProject,
   exportProject, importProject,
 } from '../shared/project-storage.js';
@@ -262,6 +262,7 @@ function render() {
           <button type="button" class="pr-btn-sel" data-act="import-scheme" title="Скопировать текущую глобальную схему Конструктора в этот проект">⬇ Взять глобальную схему</button>
           <button type="button" class="pr-btn-sel" data-act="apply-scheme" title="Применить схему проекта к главному Конструктору (перезапишет глобальную схему!)">⬆ Применить в Конструкторе</button>
           <button type="button" class="pr-btn-sel" data-act="export">Экспорт JSON</button>
+          <button type="button" class="pr-btn-sel" data-act="copy" title="Создать копию проекта: метаданные + все scoped-данные (стойки, связи, инвентарь). Новые id для экземпляров стоек.">📄 Копировать</button>
           <button type="button" class="pr-btn-danger" data-act="delete">Удалить</button>
         </div>
       </div>
@@ -340,6 +341,18 @@ function render() {
       setTimeout(() => URL.revokeObjectURL(a.href), 1500);
       prToast('✔ JSON сохранён');
     });
+    el.querySelector('[data-act="copy"]')?.addEventListener('click', async () => {
+      const p = listProjects().find(x => x.id === id); if (!p) return;
+      const ok = await prConfirm(
+        `Создать копию проекта «${p.name}»?`,
+        'Скопируются метаданные и все проектные данные (стойки, связи, инвентарь, схема). Экземплярам стоек присваиваются новые inst-* id, ссылки внутри проекта переписываются автоматически. Глобальные данные (шаблоны корпусов, каталог IT-типов) — общие.'
+      );
+      if (!ok) return;
+      const copy = copyProject(id);
+      if (!copy) { prToast('⚠ Копирование не удалось', 'err'); return; }
+      prToast(`✔ Создана копия «${copy.name}»`);
+      render();
+    });
     el.querySelector('[data-act="delete"]')?.addEventListener('click', async () => {
       const p = listProjects().find(x => x.id === id); if (!p) return;
       const s = projectStats(p.id);
@@ -406,6 +419,7 @@ function renderSketches() {
               <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.name || '(без имени)')}</span>
               <span class="muted" style="font-size:11px">${total ? statsBadges(st) : '<i>пусто</i>'}</span>
               <span class="muted" style="font-size:11px;white-space:nowrap">${fmtDate(s.updatedAt)}</span>
+              <button type="button" class="pr-btn-sel" data-act="copy-sketch" style="font-size:12px;padding:3px 8px" title="Копия мини-проекта с новыми id экземпляров стоек">📄 Копия</button>
               <button type="button" class="pr-btn-danger" data-act="del-sketch" style="font-size:12px;padding:3px 8px">Удалить</button>
             </div>`;
           }).join('')}
@@ -415,6 +429,17 @@ function renderSketches() {
 
   host.querySelector('.pr-sketches-panel')?.addEventListener('toggle', e => {
     sketchesOpen = !!e.target.open;
+  });
+  host.querySelectorAll('[data-act="copy-sketch"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('.pr-sketch-row');
+      const id = row?.dataset.id; if (!id) return;
+      const s = listProjects().find(x => x.id === id); if (!s) return;
+      const copy = copyProject(id);
+      if (!copy) { prToast('⚠ Копирование не удалось', 'err'); return; }
+      prToast(`✔ Создана копия «${copy.name}»`);
+      render();
+    });
   });
   host.querySelectorAll('[data-act="del-sketch"]').forEach(btn => {
     btn.addEventListener('click', async () => {

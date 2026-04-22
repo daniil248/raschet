@@ -4,8 +4,13 @@
    Inline-действие «присвоить тег» — быстро превращает черновик в реальную стойку. */
 
 import { ensureDefaultProject, getActiveProjectId, projectKey } from '../shared/project-storage.js';
+// v0.59.278: project-scoped экземпляры стоек.
+import {
+  loadAllRacksForActiveProject, saveAllRacksForActiveProject, migrateLegacyInstances,
+  LS_TEMPLATES_GLOBAL
+} from '../shared/rack-storage.js';
 
-const LS_RACK    = 'rack-config.templates.v1';
+const LS_RACK    = LS_TEMPLATES_GLOBAL;
 const LS_CATALOG = 'scs-config.catalog.v1';
 
 // Проектные ключи — rescope при загрузке.
@@ -94,7 +99,8 @@ function saveTag(rackId) {
 }
 
 function render() {
-  const racks = loadJson(LS_RACK, []);
+  migrateLegacyInstances();
+  const racks = loadAllRacksForActiveProject();
   const contents = loadJson(LS_CONTENTS, {});
   const tags = loadJson(LS_RACKTAGS, {});
   const catalog = loadJson(LS_CATALOG, []);
@@ -162,7 +168,7 @@ function render() {
 
 /* ---------- Deploy-from-template ---------- */
 function refreshDeployTemplates() {
-  const racks = loadJson(LS_RACK, []);
+  const racks = loadAllRacksForActiveProject();
   const tags = loadJson(LS_RACKTAGS, {});
   const contents = loadJson(LS_CONTENTS, {});
   const sel = $('deploy-template');
@@ -204,7 +210,7 @@ function deployFromTemplate() {
   if (!srcId) { tagIn && tagIn.focus(); return; }
   if (!tag) { tagIn?.focus(); tagIn?.classList.add('sc-err'); return; }
 
-  const racks = loadJson(LS_RACK, []);
+  const racks = loadAllRacksForActiveProject();
   const tags = loadJson(LS_RACKTAGS, {});
   const src = racks.find(r => r.id === srcId);
   if (!src) return;
@@ -228,7 +234,8 @@ function deployFromTemplate() {
   clone.sourceTemplateId = src.id;
   clone.sourceTemplateName = src.name || src.id;
   racks.push(clone);
-  saveJson(LS_RACK, racks);
+  // v0.59.278: saveAllRacksForActiveProject разложит по ключам — inst-* в проект.
+  saveAllRacksForActiveProject(racks);
   tags[clone.id] = tag;
   saveJson(LS_RACKTAGS, tags);
 

@@ -33,8 +33,14 @@
 import {
   ensureDefaultProject, getActiveProjectId, projectKey, listProjects
 } from '../shared/project-storage.js';
+// v0.59.278: единая точка доступа к стойкам. Шаблоны — глобальные
+// (rack-config.templates.v1), экземпляры — project-scoped.
+import {
+  loadAllRacksForActiveProject, saveAllRacksForActiveProject,
+  migrateLegacyInstances, LS_TEMPLATES_GLOBAL
+} from '../shared/rack-storage.js';
 
-const LS_RACK      = 'rack-config.templates.v1';        // библиотека корпусов (глобальная)
+const LS_RACK      = LS_TEMPLATES_GLOBAL;               // оставлен для storage-listener совместимости
 const LS_CATALOG   = 'scs-config.catalog.v1';           // глобальный каталог IT-типов
 const LS_TEMPLATES = 'scs-config.assemblyTemplates.v1'; // глобальная библиотека шаблонов сборок
 
@@ -243,12 +249,16 @@ function scPrompt(title, defaultValue) {
 
 /* ---- persistence ------------------------------------------------------- */
 function loadRacks() {
+  // v0.59.278: объединение глобальных шаблонов + экземпляров активного
+  // проекта. Шаблоны общие, экземпляры — строго в рамках проекта.
   try {
-    const raw = localStorage.getItem(LS_RACK);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch (e) { return []; }
+    migrateLegacyInstances();
+    return loadAllRacksForActiveProject();
+  } catch (e) { console.warn('[scs-config] loadRacks error', e); return []; }
+}
+function saveRacks() {
+  // v0.59.278: разложить state.racks по соответствующим ключам.
+  try { saveAllRacksForActiveProject(state.racks); } catch (e) { console.warn('[scs-config] saveRacks error', e); }
 }
 function loadJson(key, fallback) {
   try {
@@ -2617,8 +2627,7 @@ async function applyCorpus() {
   });
   r.sourceTemplateId = tpl.id;
   r.sourceTemplateName = tpl.name || tpl.id;
-  // Сохраняем весь массив стоек в LS.
-  try { localStorage.setItem(LS_RACK, JSON.stringify(state.racks)); } catch {}
+  saveRacks();
   rerender();
   scToast(`Корпус «${tpl.name}» применён`, 'ok');
 }
