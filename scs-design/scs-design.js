@@ -927,11 +927,29 @@ function updatePlanInfo() {
   const info = document.getElementById('sd-plan-info');
   if (!info) return;
   const plan = getPlan();
+  const racks = getRacks();
+  const placed = racks.filter(r => plan.positions[r.id]).length;
   const links = getLinks();
   const total = links.length;
   const withPos = links.filter(l => plan.positions[l.fromRackId] && plan.positions[l.toRackId]).length;
   const missing = links.filter(l => (l.lengthM == null) && plan.positions[l.fromRackId] && plan.positions[l.toRackId]).length;
-  info.innerHTML = `связей: <b>${withPos}</b>/${total} размещено · без длины: <b>${missing}</b>`;
+  // суммарная длина с коэф. по типам (берём реальные lengthM, а где нет — suggested)
+  const byType = new Map();
+  let totalM = 0;
+  links.forEach(l => {
+    const len = (l.lengthM != null) ? l.lengthM : computeSuggestedLength(l, plan);
+    if (len == null) return;
+    const v = len * 1.3; // запас на спуск/подъём как в BOM
+    const k = l.cableType || '—';
+    byType.set(k, (byType.get(k) || 0) + v);
+    totalM += v;
+  });
+  const typeStr = Array.from(byType.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k, v]) => `${k}: ${Math.round(v)}м`)
+    .join(' · ');
+  info.innerHTML = `стоек: <b>${placed}</b>/${racks.length} · связей: <b>${withPos}</b>/${total} · без длины: <b>${missing}</b> · Σ с запасом: <b>${Math.round(totalM)}м</b>${typeStr ? ' (' + typeStr + ')' : ''}`;
 }
 
 function applySuggestedLengths() {
