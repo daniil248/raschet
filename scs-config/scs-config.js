@@ -338,7 +338,21 @@ function currentMatrix() {
    Без тега — это глобальные шаблоны корпусов (hardware blueprint), они
    не относятся к проекту и в списках/дропдаунах/сайдбаре модуля СКС не показываются. */
 function projectRacks() {
-  return state.racks.filter(r => ((state.rackTags && state.rackTags[r.id]) || '').trim());
+  // v0.59.274: если URL содержит ?rackId=<id>, а такая стойка есть в библиотеке,
+  // но без TIA-тега в текущем проекте — всё равно включаем её в список, чтобы
+  // ссылка вида rack.html?rackId=inst-… открывалась, а пользователь видел
+  // конкретную причину (см. renderWarnings: «стойка без TIA-тега»).
+  let pinned = null;
+  try {
+    const qp = new URLSearchParams(location.search);
+    pinned = qp.get('rackId') || null;
+  } catch {}
+  return state.racks.filter(r => {
+    const hasTag = ((state.rackTags && state.rackTags[r.id]) || '').trim();
+    if (hasTag) return true;
+    if (pinned && r.id === pinned) return true;
+    return false;
+  });
 }
 
 /* ---- render: верх (выбор стойки) --------------------------------------- */
@@ -1503,6 +1517,12 @@ function renderWarnings() {
   }, 0);
   const freeU = r.u - r.occupied;
   const items = [];
+  // v0.59.274: если текущая стойка пришла по URL, но у неё нет TIA-тега в этом проекте —
+  // предупреждаем пользователя и предлагаем присвоить тег (иначе она «невидима» и в BOM).
+  const curTag = ((state.rackTags && state.rackTags[r.id]) || '').trim();
+  if (!curTag) {
+    items.push(`<div class="sc-warn-item warn">⚠ Стойка <b>${escape(r.name || r.id)}</b> (<code>${escape(r.id)}</code>) не имеет TIA-942 тега в этом проекте. Присвойте тег в поле выше (например <code>DC1.H3.R05</code>), иначе она считается «глобальным шаблоном корпуса» и скрывается из сайдбара/BOM модуля СКС.</div>`);
+  }
   if (uConflicts.size) items.push(`<div class="sc-warn-item err">U-конфликты размещения: ${uConflicts.size} ед. перекрываются по юнитам или выходят за границы стойки.</div>`);
   if (depthConflicts.size) items.push(`<div class="sc-warn-item err">⚠ Конфликты глубины: ${depthConflicts.size} ед. не помещаются при двустороннем монтаже (front+rear пересекаются по юнитам, а суммарная глубина + 50 мм зазор > ${(+r.depth)||'?'} мм). Откройте 📐 Бок — видно пересечение.</div>`);
   if (totalH > freeU) items.push(`<div class="sc-warn-item err">Суммарная высота оборудования ${totalH}U превышает свободное место (${freeU}U после «занятых» ${r.occupied}U).</div>`);
@@ -3003,6 +3023,17 @@ function init() {
   if (!state.rackTags  || typeof state.rackTags  !== 'object' || Array.isArray(state.rackTags))  state.rackTags = {};
   if (!Array.isArray(state.warehouse)) state.warehouse = [];
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
+  // v0.59.275: санитарная проверка catFilter — если сохранённый фильтр скрывает
+  // весь каталог (например uMin > max heightU), сбрасываем его, чтобы юзер
+  // не видел пустой каталог без подсказки при открытии страницы.
+  try {
+    const f = state.catFilter || {};
+    const maxU = state.catalog.reduce((m,c)=>Math.max(m, +c.heightU||0), 0);
+    if ((f.uMin !== '' && +f.uMin > maxU) || (f.uMax !== '' && +f.uMax < 1)) {
+      state.catFilter = { q:'', kind:'', uMin:'', uMax:'' };
+      localStorage.setItem('scs-config.catFilter.v1', JSON.stringify(state.catFilter));
+    }
+  } catch {}
   // v0.59.245: миграция — depthMm для старых записей каталога.
   // Не перезаписываем если уже задано (user params are sacred).
   state.catalog.forEach(c => {

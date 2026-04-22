@@ -173,6 +173,52 @@
 
   </div>
 
+  <!-- v0.59.275: ранний watchdog — ловит ошибки загрузки модуля scs-config.js
+       (syntax-error, failed import, top-level throw), которые регистрируются
+       в window до того, как сам модуль успеет повесить свои обработчики.
+       Без него пользователь видел «пустой композер» без подсказок. -->
+  <script>
+    (function(){
+      var errs = [];
+      function showBanner(msg, detail){
+        try {
+          var id = 'sc-boot-err';
+          if (document.getElementById(id)) return;
+          var b = document.createElement('div');
+          b.id = id;
+          b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;padding:10px 14px;font:13px/1.4 system-ui;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+          b.innerHTML = '⚠ Композер не смог загрузиться: <b>' + String(msg).replace(/[<>&]/g,'') + '</b>' +
+            (detail ? '<br><span style="font-size:11px;opacity:.85">' + String(detail).replace(/[<>&]/g,'').slice(0,400) + '</span>' : '') +
+            '<br><span style="font-size:11px;opacity:.85">Откройте DevTools (F12) → Console для стека. Попробуйте <code style="background:#7f1d1d;padding:1px 5px;border-radius:3px">localStorage.clear()</code> и перезагрузить страницу.</span>';
+          document.body && document.body.appendChild(b);
+        } catch(e) {}
+      }
+      window.addEventListener('error', function(ev){
+        var src = ev.filename || '';
+        var msg = (ev.error && ev.error.message) || ev.message || 'unknown';
+        errs.push({msg:msg, src:src, line:ev.lineno});
+        if (src.indexOf('scs-config.js') !== -1 || /scs-config/i.test(msg)) {
+          showBanner(msg, src + ':' + ev.lineno);
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function(ev){
+        var msg = (ev.reason && ev.reason.message) || String(ev.reason || '');
+        errs.push({msg:msg, src:'(promise)'});
+      });
+      // Watchdog: через 800 мс после загрузки проверяем, успел ли модуль
+      // отрисовать каталог. Если нет — показываем диагностический баннер.
+      window.addEventListener('load', function(){
+        setTimeout(function(){
+          var tbl = document.getElementById('sc-catalog');
+          var has = tbl && tbl.querySelector('tr');
+          if (!has) {
+            var detail = errs.length ? errs.map(function(e){return e.msg + ' @ ' + (e.src||'?') + (e.line?':'+e.line:'');}).join(' | ') : 'модуль не выполнился (нет ошибок в window.error — возможно блок загрузки module). Проверьте Network (F12) → scs-config.js — статус и MIME.';
+            showBanner('интерфейс не инициализировался за 800 мс', detail);
+          }
+        }, 800);
+      });
+    })();
+  </script>
   <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="scs-config.js"></script>
   <script type="module">
