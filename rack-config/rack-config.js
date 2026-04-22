@@ -607,9 +607,29 @@ function applyKitPreset() {
 /* ---------- форма ↔ state ---------- */
 function renderTemplateList() {
   const sel = el('rc-template');
-  sel.innerHTML = state.templates.map(t =>
-    `<option value="${t.id}">${escape(t.name || '(без имени)')}</option>`).join('');
+  // Читаем теги стоек (scs-config.rackTags.v1), чтобы отличить реальные
+  // развёрнутые экземпляры от «голых» шаблонов-корпусов.
+  let tags = {};
+  try { const raw = localStorage.getItem('scs-config.rackTags.v1'); tags = raw ? JSON.parse(raw) : {}; } catch {}
+  const tpls = state.templates.filter(t => !(tags[t.id] || '').trim());
+  const insts = state.templates.filter(t => (tags[t.id] || '').trim());
+  const parts = [];
+  if (tpls.length) {
+    parts.push('<optgroup label="📐 Шаблоны корпуса (без тега)">');
+    tpls.forEach(t => parts.push(`<option value="${t.id}">${escape(t.name || '(без имени)')}</option>`));
+    parts.push('</optgroup>');
+  }
+  if (insts.length) {
+    parts.push('<optgroup label="🗄 Реальные стойки — редактируются в scs-config">');
+    insts.forEach(t => parts.push(`<option value="${t.id}">${escape((tags[t.id] || '') + ' · ' + (t.name || ''))}</option>`));
+    parts.push('</optgroup>');
+  }
+  sel.innerHTML = parts.join('') || '<option>—</option>';
   if (state.currentId) sel.value = state.currentId;
+  // Подсветить предупреждение, если выбрана реальная стойка
+  const isInst = !!(tags[state.currentId] || '').trim();
+  const warn = el('rc-instance-warn');
+  if (warn) warn.style.display = isInst ? '' : 'none';
 }
 
 function renderForm() {
