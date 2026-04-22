@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор шкафа</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="scs-config.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Конфигуратор шкафа', home: '../hub.html' });
+  </script>
+
+  <div class="sc-wrap">
+    <nav class="sc-breadcrumb">
+      <a href="./index.html">🗄 Шкафы проекта</a>
+      <span>›</span>
+      <strong>Конфигуратор шкафа</strong>
+      <a href="./inventory.html" style="margin-left:auto">📋 Реестр оборудования</a>
+    </nav>
+    <!-- ========== Верхняя панель: выбор стойки ========== -->
+    <section class="sc-section sc-topbar">
+      <label class="sc-field">
+        <span>Стойка (шаблон из Конфигуратора стойки)</span>
+        <select id="sc-rack"></select>
+      </label>
+      <label class="sc-field">
+        <span>Всего U</span>
+        <output id="sc-rack-u">—</output>
+      </label>
+      <label class="sc-field">
+        <span>Занято оборудованием</span>
+        <output id="sc-rack-occ">—</output>
+      </label>
+      <label class="sc-field" title="TIA-942 тег стойки: зал.ряд.стойка (напр. DC1.H3.R05). Автоматически попадает в теги устройств (TIA-606) и в подписи на карте/BOM.">
+        <span>Тег стойки (TIA-942)</span>
+        <input id="sc-rack-tag" type="text" placeholder="DC1.H3.R05" maxlength="24" style="width:140px">
+      </label>
+      <label class="sc-field">
+        <span>Готовая сборка (шаблон)</span>
+        <select id="sc-template"></select>
+      </label>
+      <button type="button" id="sc-template-apply" class="sc-btn" title="Применить выбранный шаблон к текущей стойке — заменить содержимое и матрицу">↪ Применить</button>
+      <button type="button" id="sc-template-save" class="sc-btn sc-btn-primary" title="Сохранить текущее содержимое + матрицу как шаблон сборки">💾 Сохранить как шаблон</button>
+      <a class="sc-link" href="../rack-config/">➡ Править стойку</a>
+    </section>
+
+    <div class="sc-grid">
+      <!-- ========== ЛЕВО: форма ========== -->
+      <div class="sc-col">
+
+        <section class="sc-section">
+          <h2>📦 Каталог типов оборудования</h2>
+          <p class="sc-hint muted">Базовые типы СКС-оборудования. Хранятся локально (раздел каталога «пользовательские типы»). Из каталога единицы добавляются в стойку через кнопку ➕.</p>
+          <table class="sc-cat" id="sc-catalog"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
+            <button type="button" id="sc-cat-reset" class="sc-btn" title="Сбросить к базовому набору (коммутатор 24-port, патч-панель 24-port, сервер 1U, КВМ, монитор 1U, UPS 1U)">↺ Базовый набор</button>
+          </div>
+        </section>
+
+        <section class="sc-section">
+          <h2>🔌 Размещение в стойке</h2>
+          <p class="sc-hint muted">Каждая единица занимает N U сверху вниз. Позиция <b>U</b> — верхний юнит устройства. Красная метка — конфликт (наезд на другое / на заглушки).</p>
+          <table class="sc-contents" id="sc-contents"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-auto" class="sc-btn" title="Авто-укладка сверху вниз без зазоров">⬇ Авто-укладка</button>
+          </div>
+        </section>
+
+        <section class="sc-section">
+          <h2>🧵 СКС-матрица (патч-корды)</h2>
+          <p class="sc-hint muted">Простой список соединений «порт A ↔ порт B» для BOM патч-кордов.</p>
+          <table class="sc-matrix" id="sc-matrix"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-matrix-add" class="sc-btn">+ соединение</button>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ========== ПРАВО: карта + BOM ========== -->
+      <aside class="sc-preview">
+        <section class="sc-section">
+          <div class="sc-unitmap-head">
+            <h2 style="margin:0">🗺️ Карта юнитов</h2>
+            <div class="sc-viewmode" role="tablist" aria-label="Режим отображения карты">
+              <button type="button" class="sc-vm-btn sc-vm-active" data-mode="scs" title="Цвет по типу оборудования (СКС-вид)">🧵 СКС</button>
+              <button type="button" class="sc-vm-btn" data-mode="power" title="Цвет по вводу PDU (A/B/без ввода)">⚡ Питание</button>
+            </div>
+          </div>
+          <div id="sc-unitmap" class="sc-unitmap"></div>
+        </section>
+
+        <section class="sc-section sc-cart-section sc-cart-dropzone">
+          <div class="sc-cart-head">
+            <span class="sc-cart-ico" aria-hidden="true">🛒</span>
+            <h2 style="margin:0">Тележка <span id="sc-cart-badge" class="sc-cart-badge">0</span></h2>
+          </div>
+          <p class="sc-hint muted">Межстоечный буфер проекта. Перетащите устройство <b>из карты юнитов на тележку</b>, чтобы вытащить. Перетащите строку <b>с тележки на карту</b> любой стойки — установить. Видна при открытии любой стойки.</p>
+          <div id="sc-cart" class="sc-cart-body"></div>
+          <div class="sc-cart-wheels" aria-hidden="true"><span></span><span></span></div>
+        </section>
+
+        <section class="sc-section sc-wh-section sc-wh-dropzone">
+          <div class="sc-cart-head">
+            <span class="sc-cart-ico" aria-hidden="true">📦</span>
+            <h2 style="margin:0">Склад <span id="sc-wh-badge" class="sc-cart-badge">0</span></h2>
+          </div>
+          <p class="sc-hint muted">Долговременное хранение оборудования проекта. С тележки «→ на склад»; со склада «→ на тележку» (и дальше — в любую стойку).</p>
+          <div id="sc-wh" class="sc-cart-body"></div>
+        </section>
+
+        <section class="sc-section">
+          <h2>⚠ Проверки</h2>
+          <div id="sc-warn"></div>
+        </section>
+
+        <section class="sc-section">
+          <h2>📊 BOM по оборудованию</h2>
+          <table class="sc-bom" id="sc-bom"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-bom-csv" class="sc-btn">CSV</button>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+  </div>
+
+  <script type="module" src="scs-config.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'scs-config', moduleTitle: 'СКС', entries: CHANGELOGS['scs-config'] || [] });
+  </script>
+</body>
+</html>

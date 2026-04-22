@@ -1651,15 +1651,17 @@ function init() {
     });
   });
 
-  /* ---- 1.24.12 полноэкранная карта ----------------------------------- */
+  /* ---- 1.24.12 полноэкранная карта (legacy — модалка удалена после 1.24.38) */
   const dlg = $('sc-unitmap-dlg');
-  $('sc-unitmap-fullscreen').addEventListener('click', () => {
-    if (!dlg) return;
-    if (typeof dlg.showModal === 'function') dlg.showModal();
-    else dlg.setAttribute('open', '');
-    renderUnitMap('sc-unitmap-dlg-body', { big: true });
-  });
-  $('sc-unitmap-dlg-close').addEventListener('click', () => { if (dlg && dlg.close) dlg.close(); else dlg.removeAttribute('open'); });
+  const fsBtn = $('sc-unitmap-fullscreen');
+  if (fsBtn && dlg) {
+    fsBtn.addEventListener('click', () => {
+      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+      renderUnitMap('sc-unitmap-dlg-body', { big: true });
+    });
+    const closeBtn = $('sc-unitmap-dlg-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); });
+  }
 
   // pick up rack template changes in other tabs
   window.addEventListener('storage', e => {
