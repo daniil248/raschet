@@ -76,6 +76,17 @@
   min-height: 18px;
 }
 .sd-unit.empty { opacity: 0.35; color: #94a3b8; border-style: dashed; }
+.sd-unit.organizer {
+  background: repeating-linear-gradient(
+    -45deg, #f1f5f9, #f1f5f9 4px, #e2e8f0 4px, #e2e8f0 8px
+  );
+  border-color: #cbd5e1; color: #475569;
+  cursor: default;
+}
+.sd-unit.organizer:hover { background: repeating-linear-gradient(
+    -45deg, #f1f5f9, #f1f5f9 4px, #e2e8f0 4px, #e2e8f0 8px
+  ); border-color: #cbd5e1; }
+.sd-unit.organizer .u-label { font-style: italic; }
 .sd-unit[data-dev-id] { cursor: pointer; }
 .sd-unit[data-dev-id]:hover { background: #eef2ff; border-color: #6366f1; }
 .sd-unit.sel {

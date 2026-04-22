@@ -7,10 +7,15 @@
    ============================================================ */
 
 const LS_RACK      = 'rack-config.templates.v1';
+const LS_CATALOG   = 'scs-config.catalog.v1';
 const LS_CONTENTS  = 'scs-config.contents.v1';
 const LS_RACKTAGS  = 'scs-config.rackTags.v1';
 const LS_SELECTION = 'scs-design.selection.v1';
 const LS_LINKS     = 'scs-design.links.v1';
+
+/* Типы оборудования, у которых нет портов — могут служить только каналом
+   для трассировки сплайна, но не endpoint-ом связи. */
+const NO_PORT_KINDS = new Set(['cable-manager']);
 
 const CABLE_TYPES = [
   { id: 'cat6',      label: 'Cat.6 U/UTP',     color: '#1976d2' },
@@ -42,6 +47,32 @@ function getContents(id) {
 function getLinks() { const l = loadJson(LS_LINKS, []); return Array.isArray(l) ? l : []; }
 function setLinks(arr) { saveJson(LS_LINKS, arr); }
 function rackById(id) { return getRacks().find(r => r.id === id); }
+function getCatalog() { const c = loadJson(LS_CATALOG, []); return Array.isArray(c) ? c : []; }
+function catalogType(typeId) { return getCatalog().find(t => t.id === typeId) || null; }
+function isOrganizer(dev) {
+  if (!dev) return false;
+  const t = catalogType(dev.typeId);
+  return !!(t && NO_PORT_KINDS.has(t.kind));
+}
+
+/* Очистка некорректных связей: endpoint = безпортовое устройство (органайзер
+   и т.п.). Запускается один раз при инициализации. Возвращает число удалённых. */
+function sanitizeLinks() {
+  const cur = getLinks();
+  if (!cur.length) return 0;
+  const keep = cur.filter(l => {
+    const from = getContents(l.fromRackId).find(x => x.id === l.fromDevId);
+    const to = getContents(l.toRackId).find(x => x.id === l.toDevId);
+    // Если устройство удалено (from/to === undefined) — оставляем, это отдельная
+    // проблема «battle damaged» связи. Фильтруем только явные органайзеры.
+    if (from && isOrganizer(from)) return false;
+    if (to && isOrganizer(to)) return false;
+    return true;
+  });
+  const removed = cur.length - keep.length;
+  if (removed > 0) setLinks(keep);
+  return removed;
+}
 function deviceLabel(rackId, devId) {
   const d = getContents(rackId).find(x => x.id === devId);
   return d ? (d.label || d.typeId || devId) : '(удалено)';
@@ -236,11 +267,21 @@ function renderRackCard(r) {
     const cell = occupancy[i];
     if (cell && cell.isTop) {
       const d = cell.dev;
-      const isStart = linkStart && linkStart.rackId === r.id && linkStart.devId === d.id;
-      units.push(`<div class="sd-unit${isStart ? ' sel' : ''}" data-rack-id="${escapeAttr(r.id)}" data-dev-id="${escapeAttr(d.id)}" title="${escapeAttr(d.label || d.typeId || '')}">
-        <span class="u-num">${i}</span>
-        <span class="u-label">${escapeHtml(d.label || d.typeId || '—')}</span>
-      </div>`);
+      const organizer = isOrganizer(d);
+      if (organizer) {
+        // Органайзер — без data-dev-id (не кликабелен, не endpoint), но виден
+        // как занятый юнит; в будущем — точка маршрута для сплайна трассы.
+        units.push(`<div class="sd-unit organizer" title="Кабельный органайзер — только трассировка, не endpoint">
+          <span class="u-num">${i}</span>
+          <span class="u-label">⇋ ${escapeHtml(d.label || d.typeId || 'Органайзер')}</span>
+        </div>`);
+      } else {
+        const isStart = linkStart && linkStart.rackId === r.id && linkStart.devId === d.id;
+        units.push(`<div class="sd-unit${isStart ? ' sel' : ''}" data-rack-id="${escapeAttr(r.id)}" data-dev-id="${escapeAttr(d.id)}" title="${escapeAttr(d.label || d.typeId || '')}">
+          <span class="u-num">${i}</span>
+          <span class="u-label">${escapeHtml(d.label || d.typeId || '—')}</span>
+        </div>`);
+      }
     } else if (!cell) {
       units.push(`<div class="sd-unit empty"><span class="u-num">${i}</span><span class="u-label">·</span></div>`);
     }
@@ -517,7 +558,11 @@ function escapeAttr(s) { return escapeHtml(s); }
 /* ---------- Init ---------- */
 document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
+  const cleaned = sanitizeLinks();
   renderLinksTab();
+  if (cleaned > 0) {
+    updateStatus(`⚠ Удалено ${cleaned} связь(ей) с кабельными органайзерами — у них нет портов, они используются только для трассировки.`);
+  }
   document.getElementById('sd-export-csv')?.addEventListener('click', exportBomCsv);
   document.getElementById('sd-export-links-csv')?.addEventListener('click', exportLinksCsv);
   window.addEventListener('storage', (e) => {
