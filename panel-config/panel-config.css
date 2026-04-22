@@ -12,6 +12,28 @@ main {
   width: 100%;
 }
 
+/* v0.59.187 — layout с левым сайдбаром (standalone-режим).
+   В embedded-режиме aside#pc-sidebar скрывается через body.pc-embed. */
+main.pc-layout {
+  display: grid;
+  grid-template-columns: var(--rs-sidebar-left-w, 260px) 1fr;
+  gap: 16px;
+  padding: 16px;
+  align-items: start;
+}
+main.pc-layout > .rs-sidebar-left {
+  position: sticky;
+  top: 8px;
+  max-height: calc(100vh - 24px);
+  background: var(--rs-bg-card, #fff);
+  border: 1px solid var(--rs-border-soft, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+main.pc-layout > .pc-content { min-width: 0; }
+body.pc-embed main.pc-layout { grid-template-columns: 1fr; }
+body.pc-embed main.pc-layout > .rs-sidebar-left { display: none; }
+
 .page-intro { margin-bottom: 24px; }
 .page-intro h2 {
   font-size: 22px;

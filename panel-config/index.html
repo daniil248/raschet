@@ -86,7 +86,11 @@
     window.addEventListener('DOMContentLoaded', () => mountFooter());
   </script>
 
-  <main>
+  <main class="pc-layout">
+    <aside class="rs-sidebar rs-sidebar-left" id="pc-sidebar">
+      <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+    </aside>
+    <div class="pc-content">
     <div class="page-intro">
       <h2>Конфигуратор НКУ (LV, до 1 кВ)</h2>
       <p class="muted">
@@ -379,11 +383,45 @@
       </div>
       <div id="selected-panel-details" class="empty">Выберите модель в каскаде выше.</div>
     </section>
+    </div><!-- /.pc-content -->
   </main>
 
   <div id="flash" class="flash"></div>
 
   <script type="module" src="panel-config.js"></script>
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (isEmbeddedMode()) document.body.classList.add('pc-embed');
+    else {
+      mountConfigSidebar({
+        kind: 'panel',
+        title: 'Конфигурации щитов',
+        onSelect: (entry) => {
+          try { window.dispatchEvent(new CustomEvent('panel-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const name = (document.getElementById('pc-name')?.value || '').trim();
+          const kind = document.getElementById('pc-kind')?.value || '';
+          const kw = document.getElementById('pc-loadKw')?.value || '';
+          const v = document.getElementById('pc-voltage')?.value || '';
+          const ip = document.getElementById('pc-ip')?.value || '';
+          return {
+            label: name || 'Щит',
+            description: [kind, kw && (kw + ' кВт'), v, ip].filter(Boolean).join(' · '),
+            payload: {
+              name, kind, loadKw: kw, voltage: v, ip,
+              inputs: document.getElementById('pc-inputs')?.value,
+              outputs: document.getElementById('pc-outputs')?.value,
+              form: document.getElementById('pc-form')?.value,
+              reserve: document.getElementById('pc-reserve')?.value,
+            },
+          };
+        },
+      });
+    }
+  </script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';

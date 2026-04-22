@@ -327,6 +327,12 @@ export const CHANGELOGS = {
   ],
 
   'panel-config': [
+    { version: '0.59.187', date: '2026-04-22', items: [
+      'Добавлена инфраструктура каталога конфигураций (shared/configuration-catalog.js) с единым API для всех 9 конфигураторов: listConfigs/getConfig/saveConfig/removeConfig/onConfigsChange/nextConfigId/isEmbeddedMode. ID по умолчанию YYMMDD-NN (дата + порядковый), при указании projectCode — PROJ-NN (код проекта + порядковый).',
+      'Добавлен универсальный левый сайдбар (shared/config-sidebar.js) с тремя секциями: «Основные настройки» (слот), «Свойства» (read-only метаданные), «Перечень конфигураций» (CRUD + поиск + «+ Сохранить»). В embedded-режиме (?embedded=1 или window.name=raschet-embed) сайдбар скрывается, вместо него mountEmbeddedPicker показывает список шаблонов «Применить к группе элементов».',
+      'panel-config — первый референс-модуль: main.pc-layout = grid с рис-сайдбаром слева, подключён sidebar-resizer. Сохранение конфигурации из Шага 1 wizard (имя/тип/кВт/напряжение/IP) одной кнопкой «+ Сохранить».',
+      'Файлы: shared/configuration-catalog.js (новый, 188 строк); shared/config-sidebar.js (новый, 267 строк); panel-config/index.html (aside + mount); panel-config/panel-config.css (grid-layout с body.pc-embed).',
+    ] },
     { version: '0.59.177', date: '2026-04-22', items: [
       'Модуль стал КОНФИГУРАТОРОМ, а не каталогом: wizard подбора щита (5 шагов) виден по умолчанию при открытии panel-config/ без ?nodeId=. Раньше wizard появлялся только при входе из инспектора узла, а все прочие точки входа показывали только справочник.',
       '_pcApplyConfiguration() теперь различает режимы: при nodeId пишет в raschet.pendingPanelSelection.v1 и закрывает вкладку (как раньше); в standalone — пишет в raschet.lastPanelConfig.v1 для последующего применения из инспектора кнопкой «⬇ Применить из Конфигуратора».',
