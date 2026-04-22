@@ -79,8 +79,10 @@
 
 .sd-racks-wrap { position: relative; }
 .sd-racks-row {
+  /* v0.59.285: выравнивание карточек по низу — U1 всегда на одной линии,
+     независимо от разной высоты стоек (42U vs 47U и т.п.). */
   display: flex; gap: 16px; overflow-x: auto; padding: 8px 0 16px;
-  align-items: flex-start;
+  align-items: flex-end;
 }
 .sd-links-svg {
   position: absolute; top: 0; left: 0; pointer-events: none;
