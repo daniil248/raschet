@@ -585,7 +585,18 @@ function renderContents() {
   devices.forEach(d => {
     if (d.pduOutlet) outletUsage.set(d.pduOutlet, (outletUsage.get(d.pduOutlet) || 0) + 1);
   });
-  devices.forEach((d, idx) => {
+  // v0.59.272: визуальная сортировка — сверху стойки вниз (positionU desc).
+  // В state.contents порядок не меняем; dataset.idx ссылается на оригинальный индекс.
+  const viewOrder = devices.map((d, i) => i).sort((a, b) => {
+    const ua = devices[a].positionU, ub = devices[b].positionU;
+    if (ub !== ua) return ub - ua;
+    // на одном U: front перед rear (как на карте)
+    const sa = devices[a].mountSide === 'rear' ? 1 : 0;
+    const sb = devices[b].mountSide === 'rear' ? 1 : 0;
+    return sa - sb;
+  });
+  viewOrder.forEach(idx => {
+    const d = devices[idx];
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     const conflict = conflicts.has(d.id);

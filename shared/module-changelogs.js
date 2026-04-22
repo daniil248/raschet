@@ -244,6 +244,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.272', date: '2026-04-22', items: [
+      '↕ Таблица «Содержимое стойки» сортируется сверху вниз по physicalU (positionU desc). На одном U — front перед rear. Порядок в state.contents НЕ меняется; dataset.idx ссылается на оригинальный индекс, правки и удаление/дублирование работают корректно.',
+      'Файлы: scs-config/scs-config.js (viewOrder в renderContents).',
+    ] },
     { version: '0.59.271', date: '2026-04-22', items: [
       '⎘ Кнопка «Дублировать» в каждой строке содержимого стойки: создаёт копию устройства в ближайшем свободном U-слоте той же стороны (front/rear), с пометкой «(копия)» в названии. pduOutlet сбрасывается (slot-specific — 1 розетка = 1 устройство). Toast с U-номером размещения.',
       'Файлы: scs-config/scs-config.js (data-dup handler в renderContents).',
