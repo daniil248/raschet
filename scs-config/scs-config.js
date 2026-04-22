@@ -908,7 +908,17 @@ async function renderRack3D(hostId, opts) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf8fafc);
   const camera = new THREE.PerspectiveCamera(45, width / height, 1, 10000);
-  camera.position.set(rackW * 1.8, rackH * 1.2, rackD * 1.5);
+  // v0.59.262: persist позиции камеры между открытиями 3D (ключ — геометрия rack'а,
+  // чтобы при смене стойки не наследовать неподходящий вид).
+  const camKey = `scs-config.cam3d.v1.${r.u}x${rackW}x${rackD}`;
+  const loadedCam = (() => {
+    try { return JSON.parse(localStorage.getItem(camKey) || 'null'); } catch { return null; }
+  })();
+  if (loadedCam && Array.isArray(loadedCam.pos) && Array.isArray(loadedCam.tgt)) {
+    camera.position.set(...loadedCam.pos);
+  } else {
+    camera.position.set(rackW * 1.8, rackH * 1.2, rackD * 1.5);
+  }
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
@@ -922,7 +932,8 @@ async function renderRack3D(hostId, opts) {
   host.appendChild(hint);
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(rackW / 2, rackH / 2, rackD / 2);
+  if (loadedCam && Array.isArray(loadedCam.tgt)) controls.target.set(...loadedCam.tgt);
+  else controls.target.set(rackW / 2, rackH / 2, rackD / 2);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   // v0.59.258: панорамирование — явно включено; screen-space pan удобнее для
@@ -1309,6 +1320,20 @@ async function renderRack3D(hostId, opts) {
   };
   loop();
 
+  // v0.59.262: debounced persist позиции камеры при любых изменениях OrbitControls.
+  let saveTO = 0;
+  controls.addEventListener('change', () => {
+    clearTimeout(saveTO);
+    saveTO = setTimeout(() => {
+      try {
+        localStorage.setItem(camKey, JSON.stringify({
+          pos: camera.position.toArray(),
+          tgt: controls.target.toArray(),
+        }));
+      } catch {}
+    }, 200);
+  });
+
   // hint-легенда + чекбоксы видимости
   const hint = document.createElement('div');
   hint.className = 'sc-3d-hint';
@@ -1332,6 +1357,7 @@ async function renderRack3D(hostId, opts) {
 
   host._3dCleanup = () => {
     cancelAnimationFrame(raf);
+    clearTimeout(saveTO);
     try { controls.dispose(); } catch {}
     try { renderer.dispose(); } catch {}
     try { renderer.forceContextLoss?.(); } catch {}
