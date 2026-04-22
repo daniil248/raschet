@@ -31,7 +31,7 @@
    ========================================================================= */
 
 import {
-  ensureDefaultProject, getActiveProjectId, projectKey
+  ensureDefaultProject, getActiveProjectId, projectKey, listProjects
 } from '../shared/project-storage.js';
 
 const LS_RACK      = 'rack-config.templates.v1';        // библиотека корпусов (глобальная)
@@ -1697,7 +1697,29 @@ function renderRacksSidebar() {
 }
 
 /* ---- init -------------------------------------------------------------- */
+// v0.59.244: project badge — показать активный проект + sketch-warning.
+function renderProjectBadge() {
+  const el = document.getElementById('sc-project-badge');
+  if (!el) return;
+  const pid = getActiveProjectId();
+  if (!pid) {
+    el.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="../projects/" style="color:#1565c0">выбрать проект →</a>';
+    return;
+  }
+  let p = null;
+  try { p = (listProjects() || []).find(x => x.id === pid) || null; } catch {}
+  const pname = (p?.name || pid).replace(/[<>&"]/g, '');
+  if (p?.kind === 'sketch') {
+    const owner = (p.ownerModule || '').replace(/[<>&"]/g, '');
+    const hint = 'Активен мини-проект' + (owner ? ' модуля «' + owner + '»' : '') + '. Шкафы, которые вы здесь создадите, будут видны только в этом черновике. Для полноценной работы выберите или создайте настоящий проект в /projects/.';
+    el.innerHTML = '<span style="color:#b45309">🧪 Мини-проект: <b>' + pname + '</b></span> · <a href="../projects/" style="color:#1565c0">выбрать полноценный →</a> <span title="' + hint.replace(/"/g, '&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
+  } else {
+    el.innerHTML = '📁 Проект: <b>' + pname + '</b> · <a href="../projects/" style="color:#1565c0">сменить →</a>';
+  }
+}
+
 function init() {
+  renderProjectBadge();
   state.racks     = loadRacks();
   state.catalog   = loadJson(LS_CATALOG,   DEFAULT_CATALOG.slice());
   state.contents  = loadJson(LS_CONTENTS,  {});
