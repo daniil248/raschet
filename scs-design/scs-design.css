@@ -287,6 +287,9 @@
 .sd-plan-legend .sw.hi    { background: #f59e0b; }
 .sd-plan-legend .sw.over  { background: #dc2626; }
 .sd-plan-legend .sw.draft { background: #94a3b8; border: 1px dashed #334155; }
+.sd-picker-search { display:flex; align-items:center; gap:8px; margin: 0 0 8px; padding: 4px 0; }
+.sd-picker-search input { flex: 1; min-width: 160px; padding: 6px 10px; border: 1px solid #4b5563; border-radius: 6px; background: #1f2937; color: #f1f5f9; }
+.sd-picker-search input:focus { outline: none; border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,.25); }
 .sd-plan-rack.dragging { opacity: 0.7; z-index: 10; }
 .sd-plan-rack.focused { outline: 3px solid #fbbf24; outline-offset: 1px; z-index: 6; }
 .sd-plan-rack.dimmed { opacity: 0.35; }

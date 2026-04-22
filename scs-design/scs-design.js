@@ -201,8 +201,15 @@ function renderLinksTab() {
   empty.style.display = 'none';
 
   const selected = new Set(loadJson(LS_SELECTION, []));
-  const real = racks.filter(r => (getRackTag(r.id) || '').trim());
-  const drafts = racks.filter(r => !(getRackTag(r.id) || '').trim());
+  const q = (pickerQuery || '').trim().toLowerCase();
+  const matches = r => {
+    if (!q) return true;
+    const tag = (getRackTag(r.id) || '').toLowerCase();
+    const name = (r.name || '').toLowerCase();
+    return tag.includes(q) || name.includes(q) || r.id.toLowerCase().includes(q);
+  };
+  const real = racks.filter(r => (getRackTag(r.id) || '').trim()).filter(matches);
+  const drafts = racks.filter(r => !(getRackTag(r.id) || '').trim()).filter(matches);
   const chipHtml = r => {
     const on = selected.has(r.id);
     const label = rackLabel(r);
@@ -212,6 +219,14 @@ function renderLinksTab() {
     </label>`;
   };
   const parts = [];
+  // поиск
+  const totalAll = racks.length;
+  const totalShown = real.length + drafts.length;
+  parts.push(`<div class="sd-picker-search">
+    <input type="search" id="sd-picker-q" placeholder="🔍 поиск по тегу / имени / id" value="${escapeHtml(pickerQuery || '')}" autocomplete="off">
+    <span class="muted">${q ? `${totalShown}/${totalAll}` : `${totalAll} шт.`}</span>
+    ${q ? '<button type="button" class="sd-btn-sel" id="sd-picker-clear">×</button>' : ''}
+  </div>`);
   if (real.length) {
     parts.push(`<div class="sd-rack-group-h">🗄 Реальные стойки (${real.length})</div>`);
     parts.push(`<div class="sd-rack-group">${real.map(chipHtml).join('')}</div>`);
@@ -220,7 +235,25 @@ function renderLinksTab() {
     parts.push(`<div class="sd-rack-group-h draft">📐 Черновики / шаблоны без тега (${drafts.length})</div>`);
     parts.push(`<div class="sd-rack-group draft">${drafts.map(chipHtml).join('')}</div>`);
   }
+  if (!real.length && !drafts.length && q) {
+    parts.push(`<div class="sd-empty-state" style="padding:8px">Ничего не найдено по «${escapeHtml(q)}». Проверьте раскладку или очистите поиск.</div>`);
+  }
   picker.innerHTML = parts.join('');
+
+  const qInput = document.getElementById('sd-picker-q');
+  if (qInput) {
+    qInput.addEventListener('input', e => {
+      pickerQuery = e.target.value;
+      renderLinksTab();
+      // вернуть фокус в поле после re-render
+      const q2 = document.getElementById('sd-picker-q');
+      if (q2) { q2.focus(); q2.setSelectionRange(q2.value.length, q2.value.length); }
+    });
+  }
+  document.getElementById('sd-picker-clear')?.addEventListener('click', () => {
+    pickerQuery = '';
+    renderLinksTab();
+  });
 
   picker.querySelectorAll('.sd-rack-chip').forEach(chip => {
     const id = chip.dataset.id;
@@ -926,6 +959,7 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
 }
 
 let focusRackId = null;
+let pickerQuery = '';
 
 function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);

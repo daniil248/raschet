@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'scs-design': [
+    { version: '0.59.219', date: '2026-04-22', items: [
+      'Поиск по стойкам в picker-е вкладки «Связи»: поле «🔍 поиск по тегу / имени / id», фильтрует обе группы (реальные и черновики), показывает счётчик «найдено/всего», кнопка × для сброса. Работает и когда уже есть выделенные — выделенные сохраняются при фильтрации. На проектах с 20+ шкафами вместо скролла сразу DH1.SR → появляются только нужные.',
+      'Файлы: scs-design/{scs-design.js (pickerQuery state, renderLinksTab: search input + filter), scs-design.css (.sd-picker-search)}.',
+    ] },
     { version: '0.59.218', date: '2026-04-22', items: [
       'Клик по стойке на плане зала = фокус на её трассы: трассы этой стойки становятся жирнее и ярче (stroke-width 3.5, opacity 1.0), остальные тускнеют до 0.15. Сама стойка получает жёлтую рамку, остальные — opacity 0.35. Повторный клик снимает фокус. Drag и кнопка «✕» не триггерят фокус (move-threshold 3px, click-threshold 400 мс). На больших планах (40+ стоек) сразу видно, что приходит в конкретный шкаф.',
       'Файлы: scs-design/{scs-design.js (focusRackId, click-vs-drag detection, focus-state в drawPlanLinks), scs-design.css (.sd-plan-rack.focused/.dimmed)}.',
