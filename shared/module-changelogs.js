@@ -3,6 +3,9 @@
 // Подключается во всех модульных index.html через module-footer.js.
 
 export const CHANGELOGS = {
+  'scs-config': [
+    { version: '0.1.0', date: '2026-04-22', items: ['Phase 1.24 MVP — первая рабочая версия. Выбор стойки из rack-config-шаблонов, каталог типов оборудования (коммутатор/патч-панель/сервер/KVM/монитор/ИБП-1U/органайзер/другое), размещение по U с авто-поиском свободной области и детекцией конфликтов (наезд / «занятые» юниты / границы), SVG-карта фронт-вью, предупреждения по мощности vs rack.demandKw и непривязанным к PDU устройствам, СКС-матрица (порт↔порт с типом кабеля и длиной), BOM + CSV, авто-укладка. Файлы: scs-config/* (новые).'] },
+  ],
   'suppression-config': [
     { version: '0.59.39', date: '2026-04-21', items: ['Регрессионные тесты: обход кеша ES-модулей GitHub Pages (max-age=600). validation-tests.js теперь динамически импортирует ./index.js?v=<ts>, runAll() стала async. Это гарантирует свежий METHODS-реестр со вчерашнего фикса, даже если старый index.js лежит в HTTP-кеше браузера. Файлы: suppression-methods/validation-tests.js, suppression-config/suppression-config.js.'] },
     { version: '0.59.38', date: '2026-04-21', items: ['Fix регрессионных тестов: три кейса СП 485 Прил.Д (FM-200 30×3, 100×3, Novec 1230 30×3) падали с «Unknown method: sp-485-annex-d». Причина — suppression-methods/index.js не импортировал sp-485-annex-d.js, метода не было в реестре METHODS. Также validation-tests.js использовал ключ `Cn`, а compute() отдаёт концентрацию в поле `C`. Файлы: suppression-methods/{index.js,validation-tests.js}.'] },

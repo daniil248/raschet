@@ -6,15 +6,7 @@
   <title>Raschet · Конфигуратор СКС / телеком</title>
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
-  <style>
-    .wrap { max-width: 880px; margin: 0 auto; padding: 24px; }
-    h1 { margin: 0 0 8px; }
-    .tag { display:inline-block; padding:3px 10px; border-radius:12px; background:#fef3c7; color:#92400e; font-size:12px; font-weight:600; margin-left:8px; }
-    .section { background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:16px 20px; margin:14px 0; }
-    .section h2 { margin:0 0 8px; font-size:16px; }
-    ul { line-height: 1.7; }
-    code { background:#f1f5f9; padding:1px 5px; border-radius:3px; font-size:12px; }
-  </style>
+  <link rel="stylesheet" href="scs-config.css">
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -22,50 +14,83 @@
     import { mountHeader } from '../shared/app-header.js';
     mountHeader({ title: 'Конфигуратор СКС / телеком', home: '../hub.html' });
   </script>
-  <div class="wrap">
-    <h1>Конфигуратор СКС / телеком оборудования <span class="tag">в разработке</span></h1>
-    <p class="muted">Модуль описывает содержимое стойки — сетевые устройства, патч-панели, серверы — с привязкой к разъёмам PDU, заданным в <a href="../rack-config/">Конфигураторе стойки</a>.</p>
 
-    <div class="section">
-      <h2>Что будет в модуле</h2>
-      <ul>
-        <li><b>Коммутатор:</b> порты (8/16/24/48), Base-T / SFP / SFP+, класс PoE (off/af/at/bt), потребляемая мощность.</li>
-        <li><b>Патч-панель:</b> порты (12/24/48), keystone / модульная, категория (5e/6/6A/7/оптика), высота U.</li>
-        <li><b>Сервер:</b> 1U/2U/4U, мощность Вт, блоки питания (1+1 / 2+0), входные разъёмы (C13/C14/C19/C20).</li>
-        <li><b>Базовые устройства:</b> КВМ, монитор 1U, ИБП rack-mount.</li>
-      </ul>
-    </div>
+  <div class="sc-wrap">
+    <!-- ========== Верхняя панель: выбор стойки ========== -->
+    <section class="sc-section sc-topbar">
+      <label class="sc-field">
+        <span>Стойка (шаблон из Конфигуратора стойки)</span>
+        <select id="sc-rack"></select>
+      </label>
+      <label class="sc-field">
+        <span>Всего U</span>
+        <output id="sc-rack-u">—</output>
+      </label>
+      <label class="sc-field">
+        <span>Занято оборудованием</span>
+        <output id="sc-rack-occ">—</output>
+      </label>
+      <a class="sc-link" href="../rack-config/">➡ Править стойку</a>
+    </section>
 
-    <div class="section">
-      <h2>Интеграция со стойкой</h2>
-      <ul>
-        <li>Drag-n-drop в карту юнитов стойки: одна единица = N U; нельзя наложить на заглушку или другое устройство.</li>
-        <li>Каждое устройство привязывается к конкретной розетке <b>PDU</b> из конфигурации стойки. Один слот = одно устройство. Проверка перегруза PDU.</li>
-        <li>Параметры хранятся в <code>rack.contents[]</code> — round-trip через serialize/deserialize.</li>
-      </ul>
-    </div>
+    <div class="sc-grid">
+      <!-- ========== ЛЕВО: форма ========== -->
+      <div class="sc-col">
 
-    <div class="section">
-      <h2>СКС-матрица</h2>
-      <ul>
-        <li>Для патч-панелей — список соединений «порт ↔ порт» (другие панели / коммутаторы).</li>
-        <li>BOM по патч-кордам: длина × тип × цвет.</li>
-      </ul>
-    </div>
+        <section class="sc-section">
+          <h2>📦 Каталог типов оборудования</h2>
+          <p class="sc-hint muted">Базовые типы СКС-оборудования. Хранятся локально (раздел каталога «пользовательские типы»). Из каталога единицы добавляются в стойку через кнопку ➕.</p>
+          <table class="sc-cat" id="sc-catalog"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
+            <button type="button" id="sc-cat-reset" class="sc-btn" title="Сбросить к базовому набору (коммутатор 24-port, патч-панель 24-port, сервер 1U, КВМ, монитор 1U, UPS 1U)">↺ Базовый набор</button>
+          </div>
+        </section>
 
-    <div class="section">
-      <h2>Шаблоны</h2>
-      <ul>
-        <li>Конфигурация (стойка + содержимое) сохраняется как шаблон.</li>
-        <li>Одним кликом применяется к другим идентичным стойкам проекта.</li>
-      </ul>
-    </div>
+        <section class="sc-section">
+          <h2>🔌 Размещение в стойке</h2>
+          <p class="sc-hint muted">Каждая единица занимает N U сверху вниз. Позиция <b>U</b> — верхний юнит устройства. Красная метка — конфликт (наезд на другое / на заглушки).</p>
+          <table class="sc-contents" id="sc-contents"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-auto" class="sc-btn" title="Авто-укладка сверху вниз без зазоров">⬇ Авто-укладка</button>
+          </div>
+        </section>
 
-    <div class="section">
-      <h2>Статус</h2>
-      <p>Модуль создан как stub. Реализация — подфаза <b>1.24</b> в <a href="../ROADMAP.md">ROADMAP.md</a> (задачи 1.24.1–1.24.8). Запускается после Конфигуратора стойки (1.23).</p>
+        <section class="sc-section">
+          <h2>🧵 СКС-матрица (патч-корды)</h2>
+          <p class="sc-hint muted">Простой список соединений «порт A ↔ порт B» для BOM патч-кордов.</p>
+          <table class="sc-matrix" id="sc-matrix"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-matrix-add" class="sc-btn">+ соединение</button>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ========== ПРАВО: карта + BOM ========== -->
+      <aside class="sc-preview">
+        <section class="sc-section">
+          <h2>🗺️ Карта юнитов</h2>
+          <div id="sc-unitmap" class="sc-unitmap"></div>
+        </section>
+
+        <section class="sc-section">
+          <h2>⚠ Проверки</h2>
+          <div id="sc-warn"></div>
+        </section>
+
+        <section class="sc-section">
+          <h2>📊 BOM по оборудованию</h2>
+          <table class="sc-bom" id="sc-bom"></table>
+          <div class="sc-tools">
+            <button type="button" id="sc-bom-csv" class="sc-btn">CSV</button>
+          </div>
+        </section>
+      </aside>
     </div>
   </div>
+
+  <script type="module" src="scs-config.js"></script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';
