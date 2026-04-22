@@ -214,6 +214,15 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
 .sc-cart-tbl td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; }
 .sc-cart-tbl tr[data-cartid] { cursor: grab; }
 .sc-cart-tbl tr[data-cartid]:hover { background: #eff6ff; }
+
+/* 1.24.35 toolbar склада */
+.sc-wh-toolbar {
+  display: flex; gap: 6px; margin-bottom: 6px; align-items: center;
+}
+.sc-wh-search {
+  flex: 1; font-size: 12px; padding: 4px 8px;
+  border: 1px solid #cbd5e1; border-radius: 4px; min-width: 0;
+}
 .sc-cart-tbl tr.sc-drag-src { opacity: 0.55; }
 
 /* ---- Тележка-секция: визуал «реальной тележки» ---- */

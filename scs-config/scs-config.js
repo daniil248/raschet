@@ -974,6 +974,35 @@ function exportBomCsv() {
   a.click();
 }
 
+/* 1.24.35 доводка — CSV экспорт инвентаря склада. */
+function exportWarehouseCsv() {
+  if (!state.warehouse.length) { scToast('Склад пуст', 'warn'); return; }
+  const rows = [['Адрес','Устройство','S/N','Заметка','Было в (стойка)','Дата поступления']];
+  const sorted = [...state.warehouse].sort((a, b) => {
+    const aa = a.address || '\uFFFF'; const bb = b.address || '\uFFFF';
+    return aa.localeCompare(bb, 'ru', { numeric: true });
+  });
+  sorted.forEach(it => {
+    rows.push([
+      it.address || '',
+      it.label || '',
+      it.serial || '',
+      it.note || '',
+      it.fromRackName || '',
+      it.storedAt ? new Date(it.storedAt).toISOString().slice(0,10) : '',
+    ]);
+  });
+  const csv = rows.map(row => row.map(v => {
+    const s = String(v ?? '');
+    return /[;\"\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(';')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `warehouse_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
 /* ---- auto-pack: уложить всё сверху вниз без зазоров ------------------- */
 /* 1.24.34 — Умная авто-укладка по правилам размещения в стойке.
    - ИБП (тяжёлые) в самый низ (низкий центр тяжести, короткие силовые
@@ -1170,10 +1199,32 @@ function cartToWarehouse(cartId) {
   if (idx < 0) return;
   const item = state.cart.splice(idx, 1)[0];
   item.storedAt = Date.now();
+  if (!item.address) item.address = suggestNextAddress();
   state.warehouse.push(item);
   saveCart(); saveWarehouse();
   renderCart(); renderWarehouse();
-  scToast('Отправлено на склад', 'ok');
+  scToast(`Отправлено на склад · ${item.address}`, 'ok');
+}
+
+/* 1.24.35 доводка — авто-назначение следующего адреса на складе.
+   Ищет все адреса вида <prefix>-<...числа...>; инкрементирует последнее
+   число. Если склад пуст — стартовый A-01-1-1. */
+function suggestNextAddress() {
+  const addrs = state.warehouse.map(x => x.address).filter(Boolean);
+  if (!addrs.length) return 'A-01-1-1';
+  // берём самый «поздний» по natural-sort и инкрементируем последний сегмент
+  const sorted = addrs.slice().sort((a, b) => a.localeCompare(b, 'ru', { numeric: true }));
+  const last = sorted[sorted.length - 1];
+  const m = last.match(/^(.*?)(\d+)(\D*)$/);
+  if (!m) return last + '-2';
+  const prefix = m[1], num = m[2], suffix = m[3] || '';
+  const next = String(+num + 1).padStart(num.length, '0');
+  let candidate = prefix + next + suffix;
+  // если внезапно занят — добавляем -2
+  if (state.warehouse.some(x => (x.address || '').toLowerCase() === candidate.toLowerCase())) {
+    candidate += '-2';
+  }
+  return candidate;
 }
 function warehouseToCart(whId) {
   const idx = state.warehouse.findIndex(x => x.id === whId);
@@ -1280,17 +1331,28 @@ function renderWarehouse() {
   const badges = ['sc-wh-badge', 'sc-wh-badge-dlg'].map(id => $(id)).filter(Boolean);
   badges.forEach(b => b.textContent = state.warehouse.length);
   let html;
+  const toolbar = `<div class="sc-wh-toolbar">
+    <input type="search" class="sc-wh-search" placeholder="🔎 поиск по адресу/названию/S/N" value="${escape(state.whFilter || '')}">
+    <button type="button" class="sc-btn" data-act="whcsv" title="Экспорт инвентаря в CSV">CSV</button>
+  </div>`;
   if (!state.warehouse.length) {
-    html = '<div class="sc-cart-empty muted">Склад пуст.</div>';
+    html = toolbar + '<div class="sc-cart-empty muted">Склад пуст.</div>';
   } else {
     const rows = [`<tr><th>Адрес</th><th>Устройство</th><th>S/N · заметка</th><th>Было в</th><th>Хранится</th><th style="width:240px"></th></tr>`];
     // сортировка по адресу (натуральная), пустые — в конец; в пределах равного адреса — по дате desc
-    const sorted = [...state.warehouse].sort((a, b) => {
+    const f = (state.whFilter || '').trim().toLowerCase();
+    const matches = (it) => !f ||
+      (it.address || '').toLowerCase().includes(f) ||
+      (it.label || '').toLowerCase().includes(f) ||
+      (it.serial || '').toLowerCase().includes(f) ||
+      (it.note || '').toLowerCase().includes(f);
+    const sorted = state.warehouse.filter(matches).sort((a, b) => {
       const aa = a.address || '\uFFFF'; const bb = b.address || '\uFFFF';
       const cmp = aa.localeCompare(bb, 'ru', { numeric: true });
       if (cmp !== 0) return cmp;
       return (b.storedAt || 0) - (a.storedAt || 0);
     });
+    if (!sorted.length) rows.push('<tr><td colspan="6" class="muted">— по фильтру ничего —</td></tr>');
     sorted.forEach(item => {
       const fromLabel = item.fromRackName || '—';
       const snNote = [item.serial ? `S/N: ${escape(item.serial)}` : '', item.note ? escape(item.note) : '']
@@ -1312,10 +1374,22 @@ function renderWarehouse() {
         </td>
       </tr>`);
     });
-    html = `<table class="sc-cart-tbl">${rows.join('')}</table>`;
+    html = toolbar + `<table class="sc-cart-tbl">${rows.join('')}</table>`;
   }
   hosts.forEach(host => {
     host.innerHTML = html;
+    const search = host.querySelector('.sc-wh-search');
+    if (search) search.addEventListener('input', ev => {
+      state.whFilter = ev.target.value;
+      renderWarehouse();
+      // refocus после re-render (innerHTML уничтожает старый input)
+      requestAnimationFrame(() => {
+        const sNew = host.querySelector('.sc-wh-search');
+        if (sNew) { sNew.focus(); sNew.setSelectionRange(sNew.value.length, sNew.value.length); }
+      });
+    });
+    const csvBtn = host.querySelector('[data-act="whcsv"]');
+    if (csvBtn) csvBtn.addEventListener('click', exportWarehouseCsv);
     host.querySelectorAll('tr[data-whid]').forEach(tr => {
       tr.addEventListener('dragstart', ev => {
         ev.dataTransfer.setData('application/x-scs-whid', tr.dataset.whid);
