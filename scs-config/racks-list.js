@@ -222,6 +222,11 @@ function deployFromTemplate() {
   clone.id = 'inst-' + Math.random().toString(36).slice(2, 10);
   clone.name = name || `${src.name || 'Стойка'} (${tag})`;
   clone.comment = `Развёрнуто из «${src.name || src.id}» ${new Date().toISOString().slice(0, 10)}`;
+  // v0.59.277: сохраняем ссылку на исходный шаблон корпуса, чтобы в композере
+  // показывался label вида «A-02 (600x1200x42U Тип 1)» и можно было позже
+  // пере-синхронизировать геометрию при правках шаблона.
+  clone.sourceTemplateId = src.id;
+  clone.sourceTemplateName = src.name || src.id;
   racks.push(clone);
   saveJson(LS_RACK, racks);
   tags[clone.id] = tag;

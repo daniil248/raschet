@@ -356,14 +356,37 @@ function projectRacks() {
 }
 
 /* ---- render: верх (выбор стойки) --------------------------------------- */
+/* v0.59.277: label стойки = «TAG (TemplateName · Uu)».
+   Правила:
+   — если у экземпляра задан sourceTemplateId и шаблон найден → берём его name
+   — иначе → r.name (собственное имя экземпляра), если оно не совпадает с тегом
+   — Uu добавляется в конце (из шаблона, если геометрия взята оттуда, иначе из r.u).
+   Это даёт пользователю однозначную строку: «A-02 (600x1200x42U Тип 1 · 42U)». */
+function rackLabel(r) {
+  if (!r) return '';
+  const tag = ((state.rackTags && state.rackTags[r.id]) || '').trim();
+  // ищем шаблон корпуса по sourceTemplateId; fallback — snapshot'ное имя.
+  let corpusName = '';
+  if (r.sourceTemplateId) {
+    const tpl = state.racks.find(x => x.id === r.sourceTemplateId);
+    corpusName = tpl ? (tpl.name || '') : (r.sourceTemplateName || '');
+  }
+  if (!corpusName) corpusName = r.name || '';
+  const uPart = (r.u ? r.u + 'U' : '');
+  // если tag уже совпадает с name (старые экземпляры имели name=«Стойка (TAG)») —
+  // не дублируем, показываем просто «TAG (Uu)».
+  const suffix = corpusName
+    ? `${corpusName}${uPart ? ' · ' + uPart : ''}`
+    : uPart;
+  if (tag) return suffix ? `${tag} (${suffix})` : tag;
+  return suffix || r.id;
+}
+
 function renderRackPicker() {
   const sel = $('sc-rack');
   const list = projectRacks();
   sel.innerHTML = list.length
-    ? list.map(r => {
-        const tag = (state.rackTags[r.id] || '').trim();
-        return `<option value="${r.id}">${tag ? tag + ' · ' : ''}${escape(r.name || 'Без имени')} · ${r.u}U</option>`;
-      }).join('')
+    ? list.map(r => `<option value="${r.id}">${escape(rackLabel(r))}</option>`).join('')
     : `<option value="">— в проекте нет физических шкафов; разверните в Реестре IT-оборудования —</option>`;
   if (state.currentRackId && list.find(r => r.id === state.currentRackId)) sel.value = state.currentRackId;
   else if (list[0]) {
@@ -2550,6 +2573,55 @@ function renderTemplates() {
     ? '<option value="">— выбрать —</option>' + state.templates.map(t => `<option value="${t.id}">${escape(t.name)}</option>`).join('')
     : '<option value="">— нет сохранённых —</option>';
 }
+
+/* v0.59.277: picker шаблонов КОРПУСА стойки (в отличие от «Готовая сборка»
+   — тот пресет содержимого). Источник — state.racks без тега (tpl-* и
+   старые tpl без префикса). Применение копирует геометрию в текущую стойку
+   и фиксирует sourceTemplateId → в label появится «TAG (TplName · Uu)». */
+function renderCorpusPicker() {
+  const sel = $('sc-corpus'); if (!sel) return;
+  // Шаблоны = стойки БЕЗ тега. Исключаем саму текущую стойку (если она
+  // оказалась tpl-* без тега — пограничный случай).
+  const curId = state.currentRackId;
+  const tpls = state.racks.filter(r => {
+    const hasTag = ((state.rackTags && state.rackTags[r.id]) || '').trim();
+    return !hasTag && r.id !== curId;
+  });
+  const r = currentRack();
+  const curTpl = r && r.sourceTemplateId;
+  sel.innerHTML = tpls.length
+    ? '<option value="">— выбрать шаблон —</option>' +
+      tpls.map(t => `<option value="${t.id}"${t.id === curTpl ? ' selected' : ''}>${escape(t.name || t.id)} · ${t.u}U</option>`).join('')
+    : '<option value="">— нет шаблонов в rack-config —</option>';
+}
+
+async function applyCorpus() {
+  const sel = $('sc-corpus'); const id = sel && sel.value;
+  const r = currentRack();
+  if (!r) { scToast('Сначала выберите стойку', 'warn'); return; }
+  if (!id) { scToast('Выберите шаблон корпуса', 'warn'); return; }
+  const tpl = state.racks.find(x => x.id === id);
+  if (!tpl) { scToast('Шаблон не найден', 'err'); return; }
+  const ok = await scConfirm(
+    `Применить корпус «${tpl.name}» к стойке «${rackLabel(r)}»?`,
+    'U, ширина, глубина, двери, PDU и «занято корпусом» будут взяты из шаблона. Содержимое (устройства) — не затрагивается.',
+    { okLabel: 'Применить' }
+  );
+  if (!ok) return;
+  // Копируем геометрию. НЕ копируем id/comment/sourceTemplate*.
+  const SKIP = new Set(['id', 'comment', 'sourceTemplateId', 'sourceTemplateName']);
+  Object.keys(tpl).forEach(k => {
+    if (SKIP.has(k)) return;
+    // Deep copy чтобы pdus[] и прочие массивы не были общими ссылками.
+    r[k] = (tpl[k] && typeof tpl[k] === 'object') ? JSON.parse(JSON.stringify(tpl[k])) : tpl[k];
+  });
+  r.sourceTemplateId = tpl.id;
+  r.sourceTemplateName = tpl.name || tpl.id;
+  // Сохраняем весь массив стоек в LS.
+  try { localStorage.setItem(LS_RACK, JSON.stringify(state.racks)); } catch {}
+  rerender();
+  scToast(`Корпус «${tpl.name}» применён`, 'ok');
+}
 async function saveCurrentAsTemplate() {
   const r = currentRack(); if (!r) { scToast('Нет выбранной стойки', 'warn'); return; }
   const name = await scPrompt('Имя пресета сборки', `Сборка · ${r.name || r.u + 'U'}`);
@@ -2940,7 +3012,7 @@ function rerenderPreview() {
   if (dlg && dlg.open) renderUnitMap('sc-unitmap-dlg-body', { big: true });
   renderWarnings(); renderBom();
 }
-function rerender() { renderRackPicker(); renderRacksSidebar(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); renderWarehouse(); }
+function rerender() { renderRackPicker(); renderRacksSidebar(); renderTemplates(); renderCorpusPicker(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); renderWarehouse(); }
 
 /* 1.24.39 — сайдбар со списком всех шкафов проекта (в rack.html).
    Клик по карточке переключает state.currentRackId + URL без перезагрузки. */
@@ -2961,12 +3033,20 @@ function renderRacksSidebar() {
     const full = r.u || 0;
     const pct = full ? Math.round(((usedU + (r.occupied || 0)) / full) * 100) : 0;
     const active = r.id === state.currentRackId ? ' sc-rack-card-active' : '';
+    // v0.59.277: под именем экземпляра показываем ссылку на шаблон корпуса
+    // (если задан). Это делает сайдбар однозначным: «A-02 / 600x1200x42U Тип 1».
+    let corpusName = '';
+    if (r.sourceTemplateId) {
+      const tpl = state.racks.find(x => x.id === r.sourceTemplateId);
+      corpusName = tpl ? (tpl.name || '') : (r.sourceTemplateName || '');
+    }
     return `<div class="sc-rack-card${active}" data-rackid="${r.id}" title="Открыть">
       <div class="sc-rack-card-top">
         ${tag ? `<code>${escape(tag)}</code>` : `<span class="muted">—</span>`}
         <span class="muted">${full}U</span>
       </div>
       <div class="sc-rack-card-name">${escape(r.name || 'Без имени')}</div>
+      ${corpusName ? `<div class="sc-rack-card-corpus" title="Шаблон корпуса">🗄 ${escape(corpusName)}</div>` : ''}
       <div class="sc-rack-card-bar">
         <div style="width:${pct}%;background:${pct>90?'#dc2626':pct>70?'#f59e0b':'#10b981'}"></div>
       </div>
@@ -3071,7 +3151,7 @@ function init() {
 
   $('sc-rack').addEventListener('change', e => {
     state.currentRackId = e.target.value || null;
-    renderContents(); renderMatrix(); rerenderPreview();
+    renderContents(); renderMatrix(); rerenderPreview(); renderCorpusPicker();
     const r = currentRack();
     $('sc-rack-u').textContent = r ? r.u : '—';
     $('sc-rack-occ').textContent = r ? r.occupied : '—';
@@ -3166,6 +3246,8 @@ function init() {
   $('sc-bom-csv').addEventListener('click', exportBomCsv);
   $('sc-template-save').addEventListener('click', saveCurrentAsTemplate);
   $('sc-template-apply').addEventListener('click', applyTemplate);
+  // v0.59.277: применить шаблон корпуса (rack-config tpl) к текущему экземпляру.
+  $('sc-corpus-apply')?.addEventListener('click', applyCorpus);
 
   /* ---- 1.24.11 переключатель режима (СКС / Питание) ------------------ */
   document.querySelectorAll('.sc-vm-btn').forEach(btn => {

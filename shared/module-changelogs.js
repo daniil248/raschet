@@ -244,6 +244,13 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.277', date: '2026-04-22', items: [
+      '🗄 Этап 1 крупного рефакторинга «стойка ↔ шаблон корпуса + project-scope». Теперь экземпляр стойки в проекте хранит ссылку <code>sourceTemplateId</code>/<code>sourceTemplateName</code> на шаблон из Конфигуратора стоек. В сайдбаре и в дропдауне «Физический шкаф» отображается label вида <code>A-02 (600x1200x42U Тип 1 · 42U)</code> — один шаблон может использоваться для многих экземпляров.',
+      '🧰 В топ-баре композера добавлен новый селектор «Корпус (шаблон)» с кнопкой «↪ Применить корпус». Применение копирует геометрию (U, ширина, глубина, двери, PDU, «занято корпусом») из выбранного шаблона на текущую стойку и фиксирует <code>sourceTemplateId</code>. Содержимое (устройства) не затрагивается.',
+      '🔧 racks-list.js / deployFromTemplate: при развёртывании шаблона в проект в экземпляре сохраняются <code>sourceTemplateId</code> и <code>sourceTemplateName</code>.',
+      'Следующие этапы (отдельными итерациями): (2) Разделение хранения шаблонов и экземпляров + project-scope storage вместо глобального rack-config.templates.v1; (3) Копирование и удаление мини-проектов; (4) Фильтрация в scs-design (план-зал, меж-шкафные связи) строго по проекту; (5) Модель port-type / line-type в кабельных связях — совместимость портов.',
+      'Файлы: scs-config/rack.html (новый селектор + кнопка), scs-config/scs-config.js (rackLabel, renderCorpusPicker, applyCorpus + хуки на rerender/rack-change), scs-config/scs-config.css (.sc-rack-card-corpus), scs-config/racks-list.js (deployFromTemplate сохраняет sourceTemplate*).',
+    ] },
     { version: '0.59.276', date: '2026-04-22', items: [
       '🐛 КРИТ-ФИКС: <code>SyntaxError: Identifier \'hint\' has already been declared</code> на строке 1471 — в функции 3D-рендера переменная <code>hint</code> объявлялась дважды (первый раз на ~стр. 1047 — hint-оверлей управления камерой, второй — hint-легенда с чекбоксами видимости). Ошибка парсинга ES-модуля глушила ВЕСЬ scs-config.js ДО выполнения первой строки: пустой композер, нет каталога, нет стоек, нет обработчиков кликов (user: «шкафы есть, но при открытии пусто»). Второй <code>const hint</code> переименован в <code>legend</code>, все последующие обращения <code>hint.*</code> внутри блока — тоже. Найдено благодаря v0.59.275 boot-watchdog, показавшему текст SyntaxError в красном баннере.',
       'Файлы: scs-config/scs-config.js (строки 1470–1489: hint → legend).',

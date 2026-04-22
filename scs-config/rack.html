@@ -49,8 +49,13 @@
         <span>Тег стойки (TIA-942)</span>
         <input id="sc-rack-tag" type="text" placeholder="DC1.H3.R05" maxlength="24" style="width:140px">
       </label>
+      <label class="sc-field" title="Шаблон корпуса из Конфигуратора стоек. Применение копирует геометрию (U, ширина, глубина, двери, PDU) и «занятые U» из шаблона на эту стойку. Содержимое (устройства) — не затрагивается.">
+        <span>Корпус (шаблон)</span>
+        <select id="sc-corpus"></select>
+      </label>
+      <button type="button" id="sc-corpus-apply" class="sc-btn" title="Применить шаблон корпуса — перезаписать U, размеры, PDU и «занятые U» из выбранного шаблона">↪ Применить корпус</button>
       <label class="sc-field">
-        <span>Готовая сборка (шаблон)</span>
+        <span>Готовая сборка (устройства)</span>
         <select id="sc-template"></select>
       </label>
       <button type="button" id="sc-template-apply" class="sc-btn" title="Применить выбранный шаблон к текущей стойке — заменить содержимое и матрицу">↪ Применить</button>
