@@ -167,11 +167,17 @@ function createProjectRack(opts) {
 // «В проекте» = либо есть запись в contents активного проекта, либо есть
 // тег в racktags активного проекта (пустая стойка, но явно названа).
 function getProjectRackIds() {
+  // v0.59.281: источник истины — экземпляры активного проекта (inst-*)
+  // из project-scoped хранилища + fallback на legacy-contents/tags (на случай
+  // миграций). Глобальные шаблоны (tpl-*) никогда сюда не попадают.
+  const ids = new Set();
+  try { getProjectInstances().forEach(r => { if (r && r.id) ids.add(r.id); }); } catch {}
   const byContent = loadJson(LS_CONTENTS, {});
   const byTag     = loadJson(LS_RACKTAGS, {});
-  const ids = new Set();
-  Object.keys(byContent || {}).forEach(id => ids.add(id));
-  Object.keys(byTag || {}).forEach(id => { if ((byTag[id] || '').trim()) ids.add(id); });
+  Object.keys(byContent || {}).forEach(id => { if (String(id).startsWith('inst-')) ids.add(id); });
+  Object.keys(byTag || {}).forEach(id => {
+    if (String(id).startsWith('inst-') && (byTag[id] || '').trim()) ids.add(id);
+  });
   return ids;
 }
 
@@ -253,6 +259,64 @@ const CABLE_TYPES = [
 ];
 const CABLE_COLOR = id => (CABLE_TYPES.find(c => c.id === id)?.color) || '#64748b';
 
+/* v0.59.281: лёгкая модель типов портов для валидации меж-шкафных связей.
+   Полноценное моделирование портов (RJ45/LC/SC/SFP/BNC/…) — тема Phase
+   1.1.3 (element-library). Пока — эвристика по kind каталога + optional
+   override в catalog[i].portType. */
+const DEFAULT_PORT_BY_KIND = {
+  'switch': 'rj45',
+  'patch-panel': 'rj45',
+  'server': 'rj45',
+  'ups': 'power',
+  'cable-manager': null,
+  'kvm': 'rj45',
+  'firewall': 'rj45',
+  'router': 'rj45',
+  'other': 'rj45',
+};
+
+/* Кабель → какие типы портов допустимы на обоих концах. */
+const CABLE_PORT_COMPAT = {
+  'cat6':  new Set(['rj45']),
+  'cat6a': new Set(['rj45']),
+  'cat7':  new Set(['rj45']),
+  'om3':   new Set(['lc', 'sc', 'sfp']),
+  'om4':   new Set(['lc', 'sc', 'sfp']),
+  'os2':   new Set(['lc', 'sc', 'sfp']),
+  'coax':  new Set(['bnc', 'f']),
+  'power-c13': new Set(['c13', 'c14', 'power']),
+  'other': null, // 'other' пропускаем — не валидируем
+};
+
+function inferPortType(dev) {
+  if (!dev) return null;
+  const t = catalogType(dev.typeId);
+  if (!t) return null;
+  if (t.portType) return String(t.portType).toLowerCase();
+  const hint = ((t.label || '') + ' ' + (dev.label || '')).toLowerCase();
+  if (/\bsfp|\bfib|оптик|lc[-\s]|\blc\b/.test(hint)) return 'lc';
+  if (/\bкоакс|\bcoax|bnc/.test(hint)) return 'bnc';
+  return DEFAULT_PORT_BY_KIND[t.kind] || 'rj45';
+}
+
+/* Возвращает { ok, reason } для меж-шкафной связи. */
+function linkCompat(l) {
+  if (!l) return { ok: true };
+  const from = getContents(l.fromRackId).find(x => x.id === l.fromDevId);
+  const to   = getContents(l.toRackId  ).find(x => x.id === l.toDevId);
+  const pa = inferPortType(from);
+  const pb = inferPortType(to);
+  const ct = l.cableType || '';
+  const compat = CABLE_PORT_COMPAT[ct];
+  const reasons = [];
+  if (pa && pb && pa !== pb) reasons.push(`несовпадение типов портов (A: ${pa}, B: ${pb})`);
+  if (compat) {
+    if (pa && !compat.has(pa)) reasons.push(`порт A «${pa}» не подходит для «${ct}»`);
+    if (pb && !compat.has(pb)) reasons.push(`порт B «${pb}» не подходит для «${ct}»`);
+  }
+  return { ok: reasons.length === 0, reason: reasons.join('; '), portA: pa, portB: pb };
+}
+
 /* ---------- storage ---------- */
 function loadJson(key, fb) {
   try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : fb; }
@@ -274,6 +338,14 @@ function getContents(id) {
 function getLinks() { const l = loadJson(LS_LINKS, []); return Array.isArray(l) ? l : []; }
 function setLinks(arr) { saveJson(LS_LINKS, arr); }
 function rackById(id) { return getRacks().find(r => r.id === id); }
+
+/* v0.59.281: строгий project-scope для модуля проектирования СКС.
+   Плейсмент на план-зал, меж-шкафные связи и т.п. должны работать ТОЛЬКО
+   с развёрнутыми стойками текущего проекта (id = inst-*). Глобальные
+   шаблоны (tpl-*) — это дизайны корпусов, их не размещают в зал. */
+function getProjectInstances() {
+  return getRacks().filter(r => r && r.id && String(r.id).startsWith('inst-'));
+}
 function getCatalog() { const c = loadJson(LS_CATALOG, []); return Array.isArray(c) ? c : []; }
 function catalogType(typeId) { return getCatalog().find(t => t.id === typeId) || null; }
 function isOrganizer(dev) {
@@ -731,12 +803,20 @@ function onUnitClick(el) {
   };
   const fromPort = pFrom > 1 ? firstFree(pFrom, usedFrom) : null;
   const toPort   = pTo   > 1 ? firstFree(pTo,   usedTo)   : null;
+  // v0.59.281: дефолт кабеля зависит от типа порта на концах.
+  const fromDev = getContents(linkStart.rackId).find(x => x.id === linkStart.devId);
+  const toDev   = getContents(rackId).find(x => x.id === devId);
+  const pTypeA = inferPortType(fromDev), pTypeB = inferPortType(toDev);
+  let defCable = 'cat6a';
+  if (pTypeA === 'lc' || pTypeB === 'lc' || pTypeA === 'sfp' || pTypeB === 'sfp') defCable = 'om4';
+  else if (pTypeA === 'bnc' || pTypeB === 'bnc') defCable = 'coax';
+  else if (pTypeA === 'power' || pTypeB === 'power') defCable = 'power-c13';
   const newLink = {
     id: newId(),
     fromRackId: linkStart.rackId, fromDevId: linkStart.devId, fromLabel: linkStart.label,
     toRackId: rackId, toDevId: devId, toLabel: label,
     fromPort, toPort,
-    cableType: 'cat6a',
+    cableType: defCable,
     lengthM: null,
     note: '',
     createdAt: Date.now(),
@@ -849,6 +929,12 @@ function renderLinksList() {
             </td>
             <td>
               <select data-act="cable">${opts.replace(`value="${l.cableType}"`, `value="${l.cableType}" selected`)}</select>
+              ${(() => {
+                // v0.59.281: валидатор совместимости порт ↔ кабель.
+                const c = linkCompat(l);
+                if (c.ok) return '';
+                return `<div class="sd-link-warn" style="margin-top:4px;font-size:11px;color:#b91c1c" title="${escapeAttr(c.reason)}">⚠ ${escapeHtml(c.reason)}</div>`;
+              })()}
             </td>
             <td><input type="number" min="0" step="0.1" value="${l.lengthM == null ? '' : l.lengthM}" data-act="length" style="width:80px"></td>
             <td><input type="text" value="${escapeAttr(l.note || '')}" data-act="note" placeholder="—"></td>
@@ -990,7 +1076,9 @@ function rackStats(rack) {
 function renderRacksSummary() {
   const host = document.getElementById('sd-racks-summary');
   if (!host) return;
-  const racks = getRacks();
+  // v0.59.281: сводка — только проектные стойки (inst-*). Глобальные шаблоны
+  // корпусов здесь не показываем, это не «стойки в зале».
+  const racks = getProjectInstances();
   if (!racks.length) {
     host.innerHTML = `<div class="sd-empty-state">
       В проекте ещё нет шкафов. Создайте их в
@@ -1058,7 +1146,7 @@ function renderRacksSummary() {
 }
 
 function exportRacksCsv() {
-  const racks = getRacks();
+  const racks = getProjectInstances();
   const rows = [['Тег', 'Имя', 'U занято', 'U всего', 'U свободно', 'Мощность, кВт', 'Устройств', 'Свичи', 'Патч-панели', 'Серверы', 'ИБП-1U', 'Органайзеры', 'Другое', 'Связей']];
   racks.forEach(r => {
     const s = rackStats(r);
@@ -1111,7 +1199,9 @@ function renderPlan() {
   if (stepIn) stepIn.value = plan.step;
   if (krIn) krIn.value = plan.kRoute;
 
-  const racks = getRacks();
+  // v0.59.281: на план-зал размещаем только экземпляры текущего проекта.
+  // Глобальные шаблоны (tpl-*) — это дизайны корпусов, не реальные шкафы.
+  const racks = getProjectInstances();
   const placed = racks.filter(r => plan.positions[r.id]);
   const unplaced = racks.filter(r => !plan.positions[r.id]);
 
@@ -1302,7 +1392,7 @@ function updatePlanInfo() {
   const info = document.getElementById('sd-plan-info');
   if (!info) return;
   const plan = getPlan();
-  const racks = getRacks();
+  const racks = getProjectInstances();
   const placed = racks.filter(r => plan.positions[r.id]).length;
   const links = getLinks();
   const total = links.length;
@@ -1350,7 +1440,7 @@ function resetPlan() {
 
 function exportPlanSvg() {
   const plan = getPlan();
-  const racks = getRacks();
+  const racks = getProjectInstances();
   const placed = racks.filter(r => plan.positions[r.id]);
   if (!placed.length) { updateStatus('⚠ План пуст — нечего экспортировать. Используйте «⊞ Автораскладка» или перетащите стойки.'); return; }
 

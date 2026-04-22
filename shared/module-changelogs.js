@@ -113,6 +113,12 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.281', date: '2026-04-22', items: [
+      '🔒 Строгий project-scope: план-зал, сводная таблица «Стойки проекта», CSV-экспорт и план-инфо теперь используют getProjectInstances() и видят только inst-* текущего проекта. Глобальные шаблоны корпусов (tpl-*) больше никогда не «просачиваются» в палитру плана, чипы мастера связей и т.п. getProjectRackIds обновлён: источник истины — inst-* активного проекта + fallback на scoped contents/tags только с inst-* префиксом.',
+      '🔌 Валидация порт ↔ кабель для меж-шкафных связей. Лёгкая модель: inferPortType(dev) определяет тип порта из catalog.kind + optional catalog[i].portType + эвристика по label (SFP/fiber → lc, coax → bnc). Cable → set допустимых типов портов (cat6/6a/7 → rj45; om3/om4/os2 → lc/sc/sfp; coax → bnc/f; power-c13 → power/c13/c14; other — без валидации). В таблице связей рядом с выбором кабеля показывается красное ⚠ с причиной при несовпадении.',
+      '🆕 Дефолтный тип кабеля при создании связи выбирается по типам портов на концах: LC/SFP → om4, BNC → coax, power → power-c13, иначе cat6a.',
+      'Файлы: scs-design/scs-design.js (getProjectInstances, getProjectRackIds inst-only, DEFAULT_PORT_BY_KIND, CABLE_PORT_COMPAT, inferPortType, linkCompat, renderPlan/renderRacksSummary/updatePlanInfo/exportRacksCsv/exportPlanSvg → instances, onUnitClick defCable, renderLinksList warn chip).',
+    ] },
     { version: '0.59.224', date: '2026-04-22', items: [
       '🔀 Фаза 1.27.3 — scs-config (содержимое шкафов, теги, корзина, склад проекта) тоже переведён на проектный неймспейс. Ключи contents/matrix/cart/rackTags/warehouse.v1 → raschet.project.<pid>.scs-config.<key>. scs-design читает эти данные тоже через проектный неймспейс (scs-design и scs-config теперь «в одном проекте»).',
       'Одноразовая миграция при первом открытии любого модуля из пары scs-config / scs-config/inventory / scs-config/racks / scs-design — глобальные ключи копируются в активный проект, старые оставлены резервом.',
