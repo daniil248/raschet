@@ -4,11 +4,8 @@
    Визуально выровнен с rack-config.
    ========================================================================= */
 
-.pc-wrap {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 16px 20px 60px;
-}
+/* Phase 1.26.1 — full-width */
+.pc-wrap { padding: 16px 20px 60px; }
 
 .pc-grid {
   display: grid;
@@ -261,8 +258,7 @@
 .pc-flash-in { opacity: 1; transform: translateY(0); }
 
 .pc-static-footer {
-  max-width: 1400px;
-  margin: 24px auto 12px;
+  margin: 24px 0 12px;
   padding: 10px 20px;
   font-size: 11px;
   color: var(--rs-fg-muted);

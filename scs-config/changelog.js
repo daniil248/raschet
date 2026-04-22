@@ -3,6 +3,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.23',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.26.9 — аудит-скрипт <code>scripts/audit-design.py</code>. Парсит CSS, ищет в wrapper-селекторах (body&gt;main, main, .*-wrap) одновременное <code>max-width:&lt;N&gt;px</code> и <code>margin:0 auto</code>; при находках exit 1 и печать <code>файл:строка селектор</code>. Работает на Python 3 (node не требуется).',
+      'Phase 1.26.1 — вычищены 11 исходных нарушений full-width (в base.css оставался только !important-override, исходники продолжали содержать ограничения): battery-calc, catalog, elements, logistics, panel-config, rack-config, transformer-config, ups-config, mdc-config, psychrometrics, suppression-config, pdu-config. Теперь во всех этих модулях wrapper = только <code>padding</code>, max-width/margin:auto удалены. Аудит зелёный.',
+    ],
+  },
+  {
     version: '0.1.22',
     date: '2026-04-22',
     items: [

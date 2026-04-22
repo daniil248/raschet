@@ -5,11 +5,8 @@ body {
   color: #24292e;
   font-size: 14px;
 }
-.page-wrap {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 16px 40px;
-}
+/* Phase 1.26.1 — full-width */
+.page-wrap { padding: 0 16px 40px; }
 .muted { color: #666; }
 a { color: #1976d2; }
 h1 { color: #1f2328; }

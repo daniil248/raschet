@@ -1,5 +1,6 @@
 /* psychrometrics.css — cycle editor style (no Excel grid) */
-.psy-wrap { max-width: 1600px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+/* Phase 1.26.1 — full-width */
+.psy-wrap { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 
 .psy-panel {
   background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;

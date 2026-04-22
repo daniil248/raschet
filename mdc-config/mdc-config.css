@@ -2,11 +2,8 @@
    mdc-config.css — Конфигуратор модульного ЦОД (GDM-600)
    ========================================================================= */
 
-.mdc-wrap {
-  max-width: 1600px;
-  margin: 0 auto;
-  padding: 16px;
-}
+/* Phase 1.26.1 — full-width */
+.mdc-wrap { padding: 16px; }
 .mdc-grid {
   display: grid;
   grid-template-columns: 360px 1fr;

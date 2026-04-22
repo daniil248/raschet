@@ -10,11 +10,8 @@
 .rc-unitmap-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .rc-unitmap-legend i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
 
-.rc-wrap {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 16px 20px 60px;
-}
+/* Phase 1.26.1 — full-width */
+.rc-wrap { padding: 16px 20px 60px; }
 
 .rc-grid {
   display: grid;

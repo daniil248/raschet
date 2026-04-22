@@ -6,12 +6,11 @@
 html, body { height: 100%; }
 body { display: flex; flex-direction: column; min-height: 100vh; }
 
+/* Phase 1.26.1 — full-width; max-width/margin-auto сняты. */
 main {
   flex: 1;
   padding: 24px;
-  max-width: 1200px;
   width: 100%;
-  margin: 0 auto;
 }
 
 .tabs {

@@ -2,7 +2,8 @@
    suppression-config.css — АГПТ в стиле Raschet
    ========================================================================= */
 
-.sup-wrap { max-width: 1600px; margin: 0 auto; padding: 16px; }
+/* Phase 1.26.1 — full-width */
+.sup-wrap { padding: 16px; }
 .seg-dn {
   display: inline-block; min-width: 52px; padding: 2px 6px;
   background: #eceff1; color: #263238; border-radius: 4px;

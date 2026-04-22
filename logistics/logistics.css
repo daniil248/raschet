@@ -7,11 +7,8 @@ body {
   color: #24292e;
   font-size: 14px;
 }
-.page-wrap {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 16px 40px;
-}
+/* Phase 1.26.1 — full-width */
+.page-wrap { padding: 0 16px 40px; }
 .page-title { font-size: 22px; margin: 16px 0 6px; }
 .page-desc { font-size: 13px; color: #666; margin-bottom: 16px; }
 

@@ -826,9 +826,14 @@ logistics, psychrometrics, suppression-config) должны выглядеть
   для разделителей, `.spacer` для выравнивания вправо). Мигрированы
   три страницы scs-config (index / rack / inventory); старый
   `.sc-breadcrumb` удалён из scs-config.css (v0.59.174).
-- [ ] **1.26.9** Аудит-скрипт. CI/локальный скрипт проверяет, что
-  никакой модуль не ставит `max-width: <число>px; margin: 0 auto;`
-  на корневую обёртку (только на inner-колонки при необходимости).
+- [x] **1.26.9** Аудит-скрипт `scripts/audit-design.py`. Ищет
+  `max-width:<число>px` + `margin:0 auto` в одном блоке на
+  wrapper-селекторах (`body > main`, `main`, `.*-wrap`). Код
+  возврата 1 — нарушения найдены. Первый прогон нашёл 11 нарушений
+  в battery, catalog, elements, logistics, panel-config,
+  rack-config, transformer-config, ups-config, mdc-config,
+  psychrometrics, suppression-config, pdu-config — все вычищены
+  (v0.59.175), текущий прогон зелёный.
 - [ ] **1.26.10** Миграция существующих `.sc-field`/`.rc-field`/
   `.mv-field`/`.field` → `.rs-field`. Шаг за шагом, чтобы не ломать
   модули.

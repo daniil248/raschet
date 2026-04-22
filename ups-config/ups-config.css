@@ -5,13 +5,8 @@
 html, body { height: 100%; }
 body { display: flex; flex-direction: column; min-height: 100vh; }
 
-main {
-  flex: 1;
-  padding: 24px;
-  max-width: 1000px;
-  width: 100%;
-  margin: 0 auto;
-}
+/* Phase 1.26.1 — full-width */
+main { flex: 1; padding: 24px; width: 100%; }
 
 .page-intro {
   margin-bottom: 24px;
