@@ -570,25 +570,20 @@ function renderUnitMap(hostId, opts) {
     }
   });
 
-  // Маленькая карта — только заполненные юниты + rack-occupied; модалка —
-  // полная (все U с нумерацией + пустые рамки).
+  // Сам шкаф (рамка + все U с нумерацией) рисуется всегда — и на
+  // маленькой карте, и в модалке. В модалке отличие только в наличии
+  // слоя патч-кордов (wires). См. renderUnitMap ниже.
   const rects = [];
-  const showEmpty = !!opts.big;
   for (let i = 0; i < r.u; i++) {
     const u = r.u - i; // сверху вниз
     const y = 4 + i * rowH;
     const s = slot[u];
-    const isOcc = s && s.kind === 'rack-occ';
-    const isDev = s && s.device;
-    if (isOcc) {
-      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="#cbd5e1" stroke="#64748b" stroke-width="0.5"/>`);
-    } else if (!isDev && showEmpty) {
-      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.5"/>`);
+    if (!s || s.kind === 'rack-occ') {
+      const fill = s && s.kind === 'rack-occ' ? '#cbd5e1' : '#f1f5f9';
+      const stroke = s && s.kind === 'rack-occ' ? '#64748b' : '#cbd5e1';
+      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
     }
-    // нумерация U: в модалке — всегда; в маленькой — только для занятых
-    if (showEmpty || isOcc || isDev) {
-      rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
-    }
+    rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
   const deviceGroups = devices.map(d => {
