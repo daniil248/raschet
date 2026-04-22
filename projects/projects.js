@@ -103,7 +103,10 @@ const LINKED_MODULES = [
 function render() {
   const host = document.getElementById('pr-list');
   if (!host) return;
-  const projects = listProjects();
+  // v0.59.236: мини-проекты (kind='sketch') создаются из мастеров конкретных
+  // модулей (scs-design и т.п.) и живут только в их dropdown'ах. В общий
+  // список /projects/ они не попадают — это центр настоящих проектов.
+  const projects = listProjects().filter(p => (p.kind || 'full') !== 'sketch');
   const activeId = getActiveProjectId();
 
   if (!projects.length) {
