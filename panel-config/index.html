@@ -391,10 +391,22 @@
   <script type="module" src="panel-config.js"></script>
   <script type="module">
     import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
     import { isEmbeddedMode } from '../shared/configuration-catalog.js';
-    if (isEmbeddedMode()) document.body.classList.add('pc-embed');
-    else {
+    if (isEmbeddedMode()) {
+      document.body.classList.add('pc-embed');
+      const slot = document.createElement('div');
+      document.querySelector('main')?.prepend(slot);
+      mountEmbeddedPicker({
+        kind: 'panel',
+        title: 'Выберите шаблон щита',
+        mountEl: slot,
+        onApply: (entry) => {
+          try { window.parent?.postMessage({ type: 'panel-config:apply', entry }, '*'); } catch {}
+          try { window.dispatchEvent(new CustomEvent('panel-config:pick', { detail: entry })); } catch {}
+        },
+      });
+    } else {
       mountConfigSidebar({
         kind: 'panel',
         title: 'Конфигурации щитов',

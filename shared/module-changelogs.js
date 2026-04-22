@@ -347,6 +347,11 @@ export const CHANGELOGS = {
   ],
 
   'panel-config': [
+    { version: '0.59.192', date: '2026-04-22', items: [
+      'Embedded-режим: при запуске конфигуратора из главной схемы (iframe, ?embedded=1) сверху показывается компактный пикер «Выберите шаблон» со списком сохранённых конфигураций. Клик по шаблону → postMessage parent-окну типа {type:\'*-config:apply\', entry}, чтобы родитель применил конфигурацию к выбранной группе элементов.',
+      'Аналогично во всех 7 конфигураторах: panel/ups/transformer/mv/pdu/mdc/suppression.',
+      'Файлы: */index.html (mountEmbeddedPicker в embedded-ветке).',
+    ] },
     { version: '0.59.191', date: '2026-04-22', items: [
       'Клик по сохранённой конфигурации в сайдбаре теперь заполняет поля wizard (имя/тип/кВт/напряжение/IP/форма/вводы/отходящие/запас). Пропущенные поля не затираются (preserve-on-miss).',
       'Аналогично в ups-config / transformer-config / mv-config / pdu-config / mdc-config — клик по записи восстанавливает параметры wizard из payload.',

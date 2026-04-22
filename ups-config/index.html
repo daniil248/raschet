@@ -201,10 +201,21 @@
   <script type="module" src="ups-config.js"></script>
   <script type="module">
     import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
     import { isEmbeddedMode } from '../shared/configuration-catalog.js';
-    if (isEmbeddedMode()) document.body.classList.add('uc-embed');
-    else {
+    if (isEmbeddedMode()) {
+      document.body.classList.add('uc-embed');
+      const slot = document.createElement('div');
+      document.querySelector('main')?.prepend(slot);
+      mountEmbeddedPicker({
+        kind: 'ups',
+        title: 'Выберите шаблон ИБП',
+        mountEl: slot,
+        onApply: (entry) => {
+          try { window.parent?.postMessage({ type: 'ups-config:apply', entry }, '*'); } catch {}
+        },
+      });
+    } else {
       mountConfigSidebar({
         kind: 'ups',
         title: 'Конфигурации ИБП',

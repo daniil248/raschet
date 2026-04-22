@@ -206,10 +206,21 @@
   <script type="module" src="transformer-config.js"></script>
   <script type="module">
     import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
     import { isEmbeddedMode } from '../shared/configuration-catalog.js';
-    if (isEmbeddedMode()) document.body.classList.add('tc-embed');
-    else {
+    if (isEmbeddedMode()) {
+      document.body.classList.add('tc-embed');
+      const slot = document.createElement('div');
+      document.querySelector('main')?.prepend(slot);
+      mountEmbeddedPicker({
+        kind: 'transformer',
+        title: 'Выберите шаблон трансформатора',
+        mountEl: slot,
+        onApply: (entry) => {
+          try { window.parent?.postMessage({ type: 'transformer-config:apply', entry }, '*'); } catch {}
+        },
+      });
+    } else {
       mountConfigSidebar({
         kind: 'transformer',
         title: 'Конфигурации трансформаторов',

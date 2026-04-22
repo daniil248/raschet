@@ -179,8 +179,20 @@
   </script>
   <script type="module">
     import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
     import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (isEmbeddedMode()) {
+      const host = document.createElement('div');
+      document.querySelector('.mdc-wrap')?.prepend(host);
+      mountEmbeddedPicker({
+        kind: 'mdc',
+        title: 'Выберите шаблон модульного ЦОД',
+        mountEl: host,
+        onApply: (entry) => {
+          try { window.parent?.postMessage({ type: 'mdc-config:apply', entry }, '*'); } catch {}
+        },
+      });
+    }
     if (!isEmbeddedMode()) {
       mountConfigSidebar({
         kind: 'mdc',
