@@ -3,6 +3,13 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.5',
+    date: '2026-04-22',
+    items: [
+      'UX — полный отказ от браузерных alert/confirm/prompt. Введён in-page слой: scToast(msg, kind) с 4 вариантами (info/ok/warn/err, auto-hide 3-5 сек, fade-in/out в правом нижнем углу) и scConfirm(title, msg, {okLabel, cancelLabel, input}) → Promise, scPrompt(title, default) поверх scConfirm. Заменены все 8 точек (удаление типа, addToRack без стойки, drop без места, save/apply пресета, reset каталога, shrink при применении). Esc/клик по подложке = отмена, Enter в prompt = OK.',
+    ],
+  },
+  {
     version: '0.1.4',
     date: '2026-04-22',
     items: [

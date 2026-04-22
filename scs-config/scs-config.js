@@ -83,6 +83,72 @@ function escape(s) {
 }
 function uid(prefix) { return prefix + '-' + Math.random().toString(36).slice(2, 9); }
 
+/* =========================================================================
+   In-page UI вместо alert/confirm/prompt браузера.
+   Host-контейнер создаётся лениво и монтируется в <body>.
+   ========================================================================= */
+function scUiHost() {
+  let h = document.getElementById('sc-ui-host');
+  if (!h) {
+    h = document.createElement('div');
+    h.id = 'sc-ui-host';
+    document.body.appendChild(h);
+  }
+  return h;
+}
+function scToast(msg, kind) {
+  kind = kind || 'info'; // info | ok | warn | err
+  const host = scUiHost();
+  const el = document.createElement('div');
+  el.className = 'sc-toast sc-toast-' + kind;
+  el.textContent = msg;
+  host.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('sc-toast-shown'));
+  setTimeout(() => {
+    el.classList.remove('sc-toast-shown');
+    setTimeout(() => el.remove(), 250);
+  }, kind === 'err' ? 5000 : 3000);
+}
+function scConfirm(title, message, opts) {
+  opts = opts || {};
+  return new Promise(resolve => {
+    const host = scUiHost();
+    const back = document.createElement('div');
+    back.className = 'sc-modal-back';
+    back.innerHTML = `
+      <div class="sc-modal-card" role="dialog" aria-modal="true">
+        <div class="sc-modal-title">${escape(title)}</div>
+        ${message ? `<div class="sc-modal-msg">${escape(message)}</div>` : ''}
+        ${opts.input != null ? `<input class="sc-modal-input" type="text" value="${escape(opts.input)}" />` : ''}
+        <div class="sc-modal-actions">
+          <button type="button" class="sc-btn" data-v="0">${escape(opts.cancelLabel || 'Отмена')}</button>
+          <button type="button" class="sc-btn sc-btn-primary" data-v="1">${escape(opts.okLabel || 'OK')}</button>
+        </div>
+      </div>`;
+    host.appendChild(back);
+    const input = back.querySelector('.sc-modal-input');
+    const close = (result) => {
+      back.classList.remove('sc-modal-open');
+      setTimeout(() => back.remove(), 150);
+      resolve(result);
+    };
+    back.querySelector('[data-v="1"]').addEventListener('click', () => close(input ? (input.value || '') : true));
+    back.querySelector('[data-v="0"]').addEventListener('click', () => close(input ? null : false));
+    back.addEventListener('click', ev => { if (ev.target === back) close(input ? null : false); });
+    requestAnimationFrame(() => {
+      back.classList.add('sc-modal-open');
+      if (input) { input.focus(); input.select(); }
+    });
+    back.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape') close(input ? null : false);
+      if (ev.key === 'Enter' && input) close(input.value || '');
+    });
+  });
+}
+function scPrompt(title, defaultValue) {
+  return scConfirm(title, '', { input: defaultValue ?? '' });
+}
+
 /* ---- persistence ------------------------------------------------------- */
 function loadRacks() {
   try {
@@ -217,16 +283,18 @@ function renderCatalog() {
   });
   t.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.del;
-    if (!confirm('Удалить тип оборудования из каталога? Уже размещённые единицы в стойках НЕ будут удалены.')) return;
-    state.catalog = state.catalog.filter(c => c.id !== id);
-    saveCatalog();
-    renderCatalog();
+    scConfirm('Удалить тип оборудования?', 'Уже размещённые единицы в стойках НЕ будут удалены.', { okLabel: 'Удалить' }).then(ok => {
+      if (!ok) return;
+      state.catalog = state.catalog.filter(c => c.id !== id);
+      saveCatalog();
+      renderCatalog();
+    });
   }));
 }
 
 /* ---- добавление устройства в стойку ------------------------------------ */
 function addToRack(typeId, forcedU) {
-  const r = currentRack(); if (!r) { alert('Сначала выберите стойку.'); return; }
+  const r = currentRack(); if (!r) { scToast('Сначала выберите стойку', 'warn'); return; }
   const type = state.catalog.find(c => c.id === typeId); if (!type) return;
   let positionU;
   if (Number.isFinite(forcedU)) {
@@ -719,7 +787,7 @@ function bindUnitMapDrop(svg, rowH) {
     // (сначала вверх от wantTopU, потом вниз). Если ничего — alert.
     const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU);
     if (finalU == null) {
-      alert('В стойке нет свободного места для этого устройства (' + type.heightU + 'U).');
+      scToast('В стойке нет свободного места для устройства (' + type.heightU + 'U)', 'err');
       return;
     }
     addToRack(typeId, finalU);
@@ -815,13 +883,13 @@ function renderTemplates() {
     ? '<option value="">— выбрать —</option>' + state.templates.map(t => `<option value="${t.id}">${escape(t.name)}</option>`).join('')
     : '<option value="">— нет сохранённых —</option>';
 }
-function saveCurrentAsTemplate() {
-  const r = currentRack(); if (!r) { alert('Нет выбранной стойки.'); return; }
-  const name = prompt('Имя шаблона сборки:', `Сборка · ${r.name || r.u + 'U'}`);
+async function saveCurrentAsTemplate() {
+  const r = currentRack(); if (!r) { scToast('Нет выбранной стойки', 'warn'); return; }
+  const name = await scPrompt('Имя пресета сборки', `Сборка · ${r.name || r.u + 'U'}`);
   if (!name) return;
   const tmpl = {
     id: uid('tmpl'),
-    name: name.trim(),
+    name: String(name).trim(),
     // Снимаем копии без id — применение сгенерирует новые
     contents: currentContents().map(d => ({
       typeId: d.typeId, label: d.label, positionU: d.positionU,
@@ -837,12 +905,17 @@ function saveCurrentAsTemplate() {
   renderTemplates();
   $('sc-template').value = tmpl.id;
 }
-function applyTemplate() {
+async function applyTemplate() {
   const sel = $('sc-template'); const id = sel.value;
   const tmpl = state.templates.find(t => t.id === id);
   const r = currentRack();
-  if (!tmpl || !r) { alert('Выберите шаблон и стойку.'); return; }
-  if (!confirm(`Применить шаблон «${tmpl.name}» к текущей стойке? Существующее содержимое и матрица будут заменены.`)) return;
+  if (!tmpl || !r) { scToast('Выберите пресет и стойку', 'warn'); return; }
+  const ok = await scConfirm(
+    `Применить пресет «${tmpl.name}»?`,
+    'Существующее содержимое и матрица текущей стойки будут заменены.',
+    { okLabel: 'Применить' }
+  );
+  if (!ok) return;
   // обрезка по высоте стойки: не помещается устройство, если positionU > r.u или (positionU - h + 1) < 1
   const dropped = [];
   const contents = tmpl.contents.map(d => {
@@ -856,7 +929,7 @@ function applyTemplate() {
   state.matrix[state.currentRackId] = matrix;
   saveContents(); saveMatrix();
   rerender();
-  if (dropped.length) alert(`Не поместилось ${dropped.length} устройств (стойка меньше исходной или другое занятое пространство).`);
+  if (dropped.length) scToast(`Не поместилось ${dropped.length} устройств — стойка меньше исходной`, 'warn');
 }
 
 /* ---- глобальный rerender ---------------------------------------------- */
@@ -898,10 +971,12 @@ function init() {
     renderCatalog();
   });
   $('sc-cat-reset').addEventListener('click', () => {
-    if (!confirm('Сбросить каталог типов к базовому набору? Пользовательские типы будут удалены.')) return;
-    state.catalog = DEFAULT_CATALOG.slice();
-    saveCatalog();
-    renderCatalog();
+    scConfirm('Сбросить каталог к базовому набору?', 'Пользовательские типы будут удалены.', { okLabel: 'Сбросить' }).then(ok => {
+      if (!ok) return;
+      state.catalog = DEFAULT_CATALOG.slice();
+      saveCatalog();
+      renderCatalog();
+    });
   });
   $('sc-auto').addEventListener('click', autoPack);
   $('sc-matrix-add').addEventListener('click', addMatrixRow);

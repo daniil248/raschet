@@ -110,3 +110,45 @@
 .sc-cat tr[data-typeid]:hover { background: #f1f5f9; }
 .sc-cat tr.sc-drag-src { opacity: 0.55; }
 svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; background: #eff6ff; }
+
+/* ---- In-page UI (toast + confirm/prompt) вместо браузерных диалогов ---- */
+#sc-ui-host {
+  position: fixed; inset: 0; pointer-events: none; z-index: 10000;
+}
+.sc-toast {
+  position: absolute; right: 20px; bottom: 20px;
+  padding: 10px 14px; border-radius: 6px; font-size: 13px;
+  background: #0f172a; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  pointer-events: auto; opacity: 0; transform: translateY(8px);
+  transition: opacity .2s, transform .2s;
+  max-width: 420px;
+}
+.sc-toast + .sc-toast { bottom: 68px; }
+.sc-toast-shown { opacity: 1; transform: translateY(0); }
+.sc-toast-ok   { background: #16a34a; }
+.sc-toast-warn { background: #d97706; }
+.sc-toast-err  { background: #dc2626; }
+.sc-toast-info { background: #334155; }
+
+.sc-modal-back {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.38);
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: auto;
+  opacity: 0; transition: opacity .15s;
+}
+.sc-modal-open { opacity: 1; }
+.sc-modal-card {
+  background: #fff; border-radius: 8px; padding: 18px 20px;
+  min-width: 340px; max-width: 520px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  border: 1px solid #e2e8f0;
+}
+.sc-modal-title { font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 6px; }
+.sc-modal-msg   { font-size: 13px; color: #475569; margin-bottom: 12px; line-height: 1.45; }
+.sc-modal-input {
+  width: 100%; padding: 6px 8px; font-size: 13px;
+  border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: 12px;
+  box-sizing: border-box;
+}
+.sc-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
