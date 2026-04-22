@@ -777,7 +777,7 @@ function renderRackCard(r) {
   }
 
   // v0.59.283: кнопка ✎ ведёт в Компоновщик шкафа (rack.html) с этим rackId.
-  const editBtn = `<a class="sd-rack-edit" href="../scs-config/rack.html?rackId=${encodeURIComponent(r.id)}" title="Редактировать стойку в Компоновщике (мастере)" onclick="event.stopPropagation()">✎</a>`;
+  const editBtn = `<a class="sd-rack-edit" href="../scs-config/rack.html?rackId=${encodeURIComponent(r.id)}&from=scs-design" title="Редактировать стойку в Компоновщике (мастере)" onclick="event.stopPropagation()">✎</a>`;
   return `<div class="sd-rack-card" data-rack-card-id="${escapeAttr(r.id)}">
     <div class="sd-rack-head">
       <span style="display:flex;align-items:center;gap:4px;flex:1;min-width:0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.name || 'Без имени')}</span>${editBtn}</span>

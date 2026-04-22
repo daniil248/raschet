@@ -17,12 +17,38 @@
 
   <div class="sc-wrap">
     <nav class="rs-breadcrumb">
+      <a href="#" id="sc-back-link" style="display:none">← Назад</a>
+      <span class="sep" id="sc-back-sep" style="display:none">·</span>
       <a href="./index.html">🗄 Шкафы проекта</a>
       <span class="sep">›</span>
       <strong>Компоновщик шкафа</strong>
       <span class="spacer"></span>
       <a href="./inventory.html">📋 Реестр IT-оборудования</a>
     </nav>
+    <script type="module">
+      // v0.59.286: если открыты из другого модуля (?from=scs-design|mv-config|…),
+      // показываем «← Назад» слева от крошек, чтобы вернуться без меню.
+      (() => {
+        const FROM = {
+          'scs-design': { href: '../scs-design/', label: '← Назад в «Проектирование СКС»' },
+          'mv-config':  { href: '../mv-config/',  label: '← Назад в «Конфигуратор РУ СН»' },
+          'mdc-config': { href: '../mdc-config/', label: '← Назад в «Конфигуратор МЦОД»' },
+          'projects':   { href: '../projects/',   label: '← Назад к проектам' },
+          'rack-config':{ href: '../rack-config/',label: '← Назад в Конфигуратор стойки' },
+          'hub':        { href: '../hub.html',    label: '← Назад на главную' },
+        };
+        const qp = new URLSearchParams(location.search);
+        const from = (qp.get('from') || '').toLowerCase();
+        if (!from || !FROM[from]) return;
+        const a = document.getElementById('sc-back-link');
+        const sep = document.getElementById('sc-back-sep');
+        if (!a || !sep) return;
+        a.href = FROM[from].href;
+        a.textContent = FROM[from].label;
+        a.style.display = '';
+        sep.style.display = '';
+      })();
+    </script>
     <!-- ========== Верхняя панель: выбор стойки ========== -->
     <section class="sc-section sc-topbar">
       <label class="sc-field" title="Физический шкаф: корпус + принадлежности + PDU. Создаётся в Конфигураторе стойки, название должно быть уникальным в проекте.">
