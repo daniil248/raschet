@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.232', date: '2026-04-22', items: [
+      '🛡 scs-config: запрет удаления/«на тележку» для оборудования с подключённым кабелем. Проверяется наличие связей в raschet.project.<pid>.scs-design.links.v1 (fromDevId/toDevId). При попытке — inline-toast «Нельзя удалить: подключено N кабелей. Сначала удалите связи в Проектирование СКС». Guard на обоих путях: [data-del] и moveToCart().',
+      '📚 shared/reference-panels.js — общий auto-script: ищет элементы с data-reference-panel="1" на DOMContentLoaded и переносит их в конец родительского контейнера, с разделителем «📚 Справочники / база данных». Применён в battery, ups-config, panel-config, mv-config, transformer-config. Цель: справочники перестают занимать верхний экран, основная рабочая область видна сразу.',
+      'Файлы: scs-config/scs-config.js (hasAttachedCables/countAttachedCables + guards в двух путях удаления), shared/reference-panels.js (новый), battery/index.html + ups-config/index.html + panel-config/index.html + mv-config/index.html + transformer-config/index.html (data-reference-panel="1" + подключение скрипта).',
+    ] },
     { version: '0.59.230', date: '2026-04-22', items: [
       '🔀 Фаза 1.27.2 — главная схема Конструктора переведена на проектный неймспейс. Кнопки «💾 Сохр. локально» и «📂 Загр. локально» теперь сохраняют/читают ключ raschet.project.<pid>.engine.scheme.v1 активного проекта. Одноразовая миграция: если в проекте пусто, а в глобальном raschet.scheme есть схема — она копируется в активный проект при первом save/load, чтобы пользователь не потерял работу.',
       'В боковой панели Конструктора над кнопкой «💾 Сохр. локально» появился бейдж «📁 Проект: <имя> · сменить →» со ссылкой на /projects/. Если активного проекта нет — «⚠ Вне проекта · выбрать проект →».',

@@ -45,6 +45,43 @@ let LS_CART      = 'scs-config.cart.v1';
 let LS_RACKTAGS  = 'scs-config.rackTags.v1';
 let LS_WAREHOUSE = 'scs-config.warehouse.v1';
 
+/* v0.59.232: защита от удаления подключённых устройств. Читаем
+   scs-design.links активного проекта; если устройство (rackId+devId)
+   фигурирует как fromRackId+fromDevId или toRackId+toDevId хотя бы в
+   одной связи — удаление/«на тележку» запрещены. Требование: «если к
+   оборудованию был подключен хоть один кабель, оборудование удалять из
+   проекта нельзя». */
+function hasAttachedCables(rackId, devId) {
+  try {
+    const pid = getActiveProjectId();
+    if (!pid) return false;
+    const key = projectKey(pid, 'scs-design', 'links.v1');
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return false;
+    return arr.some(l =>
+      (l.fromRackId === rackId && l.fromDevId === devId) ||
+      (l.toRackId   === rackId && l.toDevId   === devId)
+    );
+  } catch { return false; }
+}
+function countAttachedCables(rackId, devId) {
+  try {
+    const pid = getActiveProjectId();
+    if (!pid) return 0;
+    const key = projectKey(pid, 'scs-design', 'links.v1');
+    const raw = localStorage.getItem(key);
+    if (!raw) return 0;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return 0;
+    return arr.filter(l =>
+      (l.fromRackId === rackId && l.fromDevId === devId) ||
+      (l.toRackId   === rackId && l.toDevId   === devId)
+    ).length;
+  } catch { return 0; }
+}
+
 const OLD_SCS_KEYS = {
   contents:  'scs-config.contents.v1',
   matrix:    'scs-config.matrix.v1',
@@ -469,6 +506,11 @@ function renderContents() {
   });
   t.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.del;
+    const n = countAttachedCables(state.currentRackId, id);
+    if (n > 0) {
+      scToast(`Нельзя удалить: к устройству подключено ${n} ${n === 1 ? 'кабель' : (n < 5 ? 'кабеля' : 'кабелей')}. Сначала удалите связи в «Проектирование СКС».`, 'warn');
+      return;
+    }
     state.contents[state.currentRackId] = devices.filter(d => d.id !== id);
     saveContents();
     renderContents();
@@ -1288,6 +1330,11 @@ async function applyTemplate() {
 function moveToCart(devId) {
   const devs = currentContents();
   const d = devs.find(x => x.id === devId); if (!d) return;
+  const n = countAttachedCables(state.currentRackId, devId);
+  if (n > 0) {
+    scToast(`Нельзя вытащить: к устройству подключено ${n} ${n === 1 ? 'кабель' : (n < 5 ? 'кабеля' : 'кабелей')}. Сначала удалите связи в «Проектирование СКС».`, 'warn');
+    return;
+  }
   const r = currentRack();
   state.cart.push({
     id: uid('cart'),

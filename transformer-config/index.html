@@ -175,7 +175,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-reference-panel="1">
       <div class="panel-head">
         <h3>Справочник трансформаторов</h3>
         <div style="display:flex;gap:8px">
@@ -204,6 +204,7 @@
   <div id="flash" class="flash"></div>
 
   <script type="module" src="transformer-config.js"></script>
+  <script type="module" src="../shared/reference-panels.js"></script>
   <script type="module">
     import '../shared/sidebar-resizer.js';
     import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';

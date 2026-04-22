@@ -89,13 +89,13 @@
 
   <main>
     <div class="tabs">
-      <button class="tab-btn active" data-tab="tab-catalog">Справочник АКБ</button>
-      <button class="tab-btn" data-tab="tab-calc">Расчёт разряда</button>
+      <button class="tab-btn active" data-tab="tab-calc">Расчёт разряда</button>
       <button class="tab-btn" data-tab="tab-rack">Компоновка VRLA-шкафа</button>
+      <button class="tab-btn tab-ref" data-tab="tab-catalog" title="Справочник — в конце, как справочная БД">📚 Справочник АКБ</button>
     </div>
 
-    <!-- ================== Справочник АКБ ================== -->
-    <section id="tab-catalog" class="tab-panel active">
+    <!-- ================== Справочник АКБ (вынесен в конец, справочная БД) ================== -->
+    <section id="tab-catalog" class="tab-panel">
       <div id="upload-zone" class="upload-zone">
         <div><strong>+ Загрузить</strong> XLSX-файлы с таблицами разряда</div>
         <div class="hint">Перетащите файлы или кликните. Формат: Battery_Supplier | Battery_Type | Capacity | End_Voltage | Time_Value | Power_Value.</div>
@@ -135,7 +135,7 @@
     </section>
 
     <!-- ================== Расчёт разряда ================== -->
-    <section id="tab-calc" class="tab-panel">
+    <section id="tab-calc" class="tab-panel active">
       <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
         <button type="button" id="btn-help-method" class="btn-sm">📐 Справка по методике</button>
       </div>

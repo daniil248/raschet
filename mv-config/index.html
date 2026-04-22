@@ -211,7 +211,7 @@
     </section>
 
     <!-- Справочник MV (когда открыто без nodeId) -->
-    <section id="mv-catalog-panel" class="panel">
+    <section id="mv-catalog-panel" class="panel" data-reference-panel="1">
       <div class="panel-head">
         <h3>Справочник РУ СН</h3>
         <div class="muted" style="font-size:11px">Управление справочником — в модуле <a href="../catalog/" target="_blank" style="color:#1976d2">«Каталог и библиотека»</a> (фильтр kind = «Распределительное устройство СН»).</div>
@@ -224,6 +224,7 @@
   <div id="flash" class="flash"></div>
 
   <script type="module" src="mv-config.js"></script>
+  <script type="module" src="../shared/reference-panels.js"></script>
   <script type="module">
     import '../shared/sidebar-resizer.js';
     import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
