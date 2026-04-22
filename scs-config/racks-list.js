@@ -3,7 +3,11 @@
    Клик по строке → переход в rack.html?rackId=<id>.
    Inline-действие «присвоить тег» — быстро превращает черновик в реальную стойку. */
 
-import { ensureDefaultProject, getActiveProjectId, projectKey } from '../shared/project-storage.js';
+import {
+  ensureDefaultProject, getActiveProjectId, setActiveProjectId, getProject,
+  listProjectsForModule, createSketchForModule, projectKey
+} from '../shared/project-storage.js';
+import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 // v0.59.278: project-scoped экземпляры стоек.
 import {
   loadAllRacksForActiveProject, saveAllRacksForActiveProject, migrateLegacyInstances,
@@ -245,6 +249,134 @@ function deployFromTemplate() {
   if (nameIn) nameIn.value = '';
   render();
 }
+
+/* ---------- v0.59.284: Project bar + "Новая стойка в проект" wizard ---------- */
+function renderProjectBadge() {
+  const host = $('sc-project-badge');
+  if (!host) return;
+  const pid = getActiveProjectId();
+  const projects = listProjectsForModule('scs-config');
+  const p = pid ? getProject(pid) : null;
+  const opts = projects.map(x => {
+    const label = (x.kind === 'sketch' ? '🧪 ' : '🏢 ') + (x.name || '(без имени)');
+    return `<option value="${escapeHtml(x.id)}" ${x.id === pid ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+  host.innerHTML = `
+    <span class="muted">Контекст:</span>
+    <select id="sc-project-switcher" title="Активный проект или мини-проект СКС" style="font:inherit;padding:3px 6px;margin-left:6px">${opts}</select>
+    <button type="button" class="sc-btn sc-btn-sm" id="sc-project-new-sketch" title="Создать мини-проект СКС" style="margin-left:6px;padding:3px 10px">＋ Мини-проект</button>
+    ${p ? `<span class="muted" style="margin-left:8px">${p.kind === 'sketch' ? '· 🧪 черновик' : '· 🏢 полноценный проект'}</span>` : ''}
+    <a href="../projects/" style="margin-left:auto;float:right">→ управлять проектами</a>
+  `;
+  $('sc-project-switcher')?.addEventListener('change', e => {
+    setActiveProjectId(e.target.value);
+    location.reload();
+  });
+  $('sc-project-new-sketch')?.addEventListener('click', async () => {
+    const name = await rsPrompt({ title: 'Создать мини-проект СКС', message: 'Имя черновика', defaultValue: 'Черновик СКС', okLabel: 'Создать' });
+    if (!name) return;
+    const sp = createSketchForModule('scs-config', name);
+    setActiveProjectId(sp.id);
+    location.reload();
+  });
+}
+
+/* Inline-wizard: создаёт inst-* прямо в активном проекте (не шаблон!).
+   Шаблоны корпусов — отдельная сущность в Конфигураторе стойки. */
+function newRackWizard() {
+  return new Promise(res => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10000;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:10px;padding:18px 22px;min-width:380px;max-width:480px;box-shadow:0 10px 40px rgba(0,0,0,.25);font:13px/1.4 system-ui,sans-serif;color:#0f172a">
+        <div style="font-size:15px;font-weight:600;margin-bottom:10px">➕ Новая стойка в проект</div>
+        <label style="display:block;margin:8px 0 4px;color:#475569">Имя</label>
+        <input type="text" id="nrw-name" value="Стойка A-01" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit">
+        <label style="display:block;margin:10px 0 4px;color:#475569">Тег (TIA-942, напр. DH1.SR2) — можно пусто</label>
+        <input type="text" id="nrw-tag" value="" maxlength="24" style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit">
+        <div style="display:flex;gap:10px;margin-top:10px">
+          <label style="flex:1"><span style="display:block;color:#475569;margin-bottom:4px">Высота, U</span>
+            <select id="nrw-u" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit">
+              <option>18</option><option>24</option><option>32</option><option selected>42</option><option>47</option>
+            </select>
+          </label>
+          <label style="flex:1"><span style="display:block;color:#475569;margin-bottom:4px">Ширина, мм</span>
+            <select id="nrw-w" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit">
+              <option selected>600</option><option>800</option>
+            </select>
+          </label>
+          <label style="flex:1"><span style="display:block;color:#475569;margin-bottom:4px">Глубина, мм</span>
+            <select id="nrw-d" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit">
+              <option>800</option><option selected>1000</option><option>1200</option>
+            </select>
+          </label>
+        </div>
+        <div class="muted" style="margin-top:8px;color:#64748b;font-size:12px">
+          Стойка создаётся как экземпляр проекта (inst-*) — шаблон в глобальной
+          библиотеке НЕ создаётся. Дальнейшая настройка (PDU, устройства,
+          заземление) — в Компоновщике (rack.html) либо в Конфигураторе стойки.
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="sc-btn" data-act="no">Отмена</button>
+          <button type="button" class="sc-btn" style="background:#2563eb;color:#fff;border-color:#2563eb" data-act="yes">Создать</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const name = overlay.querySelector('#nrw-name');
+    name.focus(); name.select();
+    const done = v => { overlay.remove(); res(v); };
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) return done(null);
+      if (e.target.dataset?.act === 'no') return done(null);
+      if (e.target.dataset?.act === 'yes') {
+        const n = (overlay.querySelector('#nrw-name').value || '').trim();
+        if (!n) { name.focus(); return; }
+        done({
+          name: n,
+          tag: (overlay.querySelector('#nrw-tag').value || '').trim(),
+          u: +overlay.querySelector('#nrw-u').value || 42,
+          width: +overlay.querySelector('#nrw-w').value || 600,
+          depth: +overlay.querySelector('#nrw-d').value || 1000,
+        });
+      }
+    });
+  });
+}
+
+async function createNewInstance() {
+  const data = await newRackWizard();
+  if (!data) return;
+  // tag uniqueness (across current project)
+  if (data.tag) {
+    const tags = loadJson(LS_RACKTAGS, {});
+    const dup = Object.entries(tags).some(([, t]) => (t || '').trim().toLowerCase() === data.tag.toLowerCase());
+    if (dup) { rsToast(`Тег «${data.tag}» уже занят в этом проекте.`, 'warn'); return; }
+  }
+  const racks = loadAllRacksForActiveProject();
+  const id = 'inst-' + Math.random().toString(36).slice(2, 10);
+  racks.push({
+    id,
+    name: data.name,
+    u: data.u,
+    width: data.width,
+    depth: data.depth,
+    occupied: 0,
+    doorFront: 'metal',
+    doorRear: 'metal',
+    comment: `Создано в «Шкафы проекта» ${new Date().toISOString().slice(0, 10)}`,
+  });
+  saveAllRacksForActiveProject(racks);
+  if (data.tag) {
+    const tags = loadJson(LS_RACKTAGS, {});
+    tags[id] = data.tag;
+    saveJson(LS_RACKTAGS, tags);
+  }
+  rsToast(`✔ Создана стойка «${data.name}».`, 'ok');
+  render();
+}
+
+renderProjectBadge();
+$('btn-new-rack')?.addEventListener('click', createNewInstance);
 
 const deployBtn = $('btn-deploy');
 if (deployBtn) {
