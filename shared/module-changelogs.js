@@ -244,6 +244,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.264', date: '2026-04-22', items: [
+      '💾 Фильтры каталога персистятся между сессиями: подстрока поиска, тип, U-min/U-max. Ключ localStorage `scs-config.catFilter.v1`. При открытии модуля инпуты восстанавливаются из сохранённого значения; select «Все типы» получает нужную selection после populate.',
+      'Файлы: scs-config/scs-config.js (state.catFilter init из LS + saveCatFilter() в bindCatFilter + post-populate kf.value в renderCatalog).',
+    ] },
     { version: '0.59.263', date: '2026-04-22', items: [
       '🔧 Критический fix: в renderSideView (📐 Бок) переменная frontClearance использовалась, но не была объявлена → ReferenceError валил рендер side-view при любом открытии. Добавлены frontClearance = railFrontOffset и rearClearance = rackDepth − railFrontOffset − railDepth. Обе зоны клиренса теперь подсвечиваются голубым/красным полупрозрачно с title-тултипами в мм.',
       'Файлы: scs-config/scs-config.js (renderSideView: fix ReferenceError).',

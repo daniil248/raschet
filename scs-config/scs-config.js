@@ -151,6 +151,12 @@ const state = {
   // v0.59.258: направление U-нумерации. 'bu' = 1 снизу (классика, EIA-310),
   // 'td' = 1 сверху (нек-рые внутренние стандарты операторов).
   uNumDir: (function(){ try { return localStorage.getItem('scs-config.uNumDir.v1') || 'bu'; } catch { return 'bu'; } })(),
+  // v0.59.264: фильтры каталога persist. Диапазон U и подстрока часто нужны
+  // повторно, при переключении стоек/сборок — пусть не сбрасываются.
+  catFilter: (function(){
+    try { return JSON.parse(localStorage.getItem('scs-config.catFilter.v1') || 'null') || { q:'', kind:'', uMin:'', uMax:'' }; }
+    catch { return { q:'', kind:'', uMin:'', uMax:'' }; }
+  })(),
   // drag state
   drag: null,        // { devId, startY, startU, rowH, r }
 };
@@ -374,6 +380,8 @@ function renderCatalog() {
       opt.value = k; opt.textContent = KIND_LABEL[k];
       kf.appendChild(opt);
     });
+    // v0.59.264: после populate — применить сохранённое значение
+    if (kindSel) kf.value = kindSel;
   }
   const rows = [`<tr>
     <th>Тип</th><th>Название</th><th>U</th><th title="Монтажная глубина в мм — используется side-view и проверкой двустороннего монтажа">Глуб., мм</th><th>Вт</th><th>Порты</th>
@@ -2941,11 +2949,18 @@ function init() {
   // начальная подгрузка тега
   if (state.currentRackId) tagInput.value = state.rackTags[state.currentRackId] || '';
   // v0.59.258: фильтры каталога
+  // v0.59.264: persist в LS + restore значений инпутов при открытии
+  const saveCatFilter = () => {
+    try { localStorage.setItem('scs-config.catFilter.v1', JSON.stringify(state.catFilter)); } catch {}
+  };
   const bindCatFilter = (id, key, ev = 'input') => {
     const el = $(id); if (!el) return;
+    // restore сохранённого значения в UI
+    if (state.catFilter && state.catFilter[key] != null) el.value = state.catFilter[key];
     el.addEventListener(ev, () => {
       if (!state.catFilter) state.catFilter = { q: '', kind: '', uMin: '', uMax: '' };
       state.catFilter[key] = el.value;
+      saveCatFilter();
       renderCatalog();
     });
   };
