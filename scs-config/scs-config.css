@@ -332,3 +332,10 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
 /* inventory — подсветка просроченного ТО */
 .inv-overdue { background: #fef2f2; }
 .inv-due-soon { background: #fffbeb; }
+
+/* racks-list: группы «реальные» vs «черновики» */
+.rl-group-h td { background: #f1f5f9 !important; }
+.rl-group-h.draft td { background: #fef3c7 !important; color: #78350f; }
+tr.rl-draft { background: #fffbeb; }
+tr.rl-draft:hover { background: #fef3c7; }
+tr.rl-draft td { color: #78716c; }
