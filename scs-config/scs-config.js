@@ -133,11 +133,16 @@ const DEFAULT_CATALOG = [
   { id: 'mon-1u',  kind: 'monitor',      label: 'Монитор 1U (выдвижной)',   heightU: 1, depthMm: 620, powerW: 25,  ports: 1,  color: '#10b981' },
   { id: 'ups-1u',  kind: 'ups',          label: 'ИБП 1U 1 кВА',             heightU: 1, depthMm: 600, powerW: 900, ports: 0,  color: '#f472b6' },
   { id: 'cm-1u',   kind: 'cable-manager',label: 'Кабельный органайзер 1U',  heightU: 1, depthMm: 80,  powerW: 0,   ports: 0,  color: '#94a3b8' },
+  { id: 'shelf-1u',kind: 'shelf',       label: 'Полка 1U (400 мм)',         heightU: 1, depthMm: 400, powerW: 0,   ports: 0,  color: '#d97706' },
+  { id: 'shelf-2u',kind: 'shelf',       label: 'Полка 2U (600 мм)',         heightU: 2, depthMm: 600, powerW: 0,   ports: 0,  color: '#b45309' },
+  // сетевой свитч с портами менеджмента на тыле (пример dual-side ports)
+  { id: 'sw-48-mgmt', kind: 'switch',   label: 'Коммутатор 48×1G + mgmt-rear', heightU: 1, depthMm: 380, powerW: 95, ports: 48, color: '#2563eb', portsRear: true },
 ];
 
 const KIND_LABEL = {
   'switch': 'Коммутатор', 'patch-panel': 'Патч-панель', 'server': 'Сервер',
-  'kvm': 'KVM', 'monitor': 'Монитор', 'ups': 'ИБП-1U', 'cable-manager': 'Органайзер', 'other': 'Другое',
+  'kvm': 'KVM', 'monitor': 'Монитор', 'ups': 'ИБП-1U', 'cable-manager': 'Органайзер',
+  'shelf': 'Полка', 'other': 'Другое',
 };
 
 /* ---- state ------------------------------------------------------------- */
@@ -358,6 +363,7 @@ function renderCatalog() {
   const t = $('sc-catalog');
   const rows = [`<tr>
     <th>Тип</th><th>Название</th><th>U</th><th title="Монтажная глубина в мм — используется side-view и проверкой двустороннего монтажа">Глуб., мм</th><th>Вт</th><th>Порты</th>
+    <th title="Порты также с тыла (dual-side): например коммутаторы с mgmt-RJ45 сзади">⇄</th>
     <th style="width:40px">цвет</th><th style="width:90px"></th>
   </tr>`];
   state.catalog.forEach((c, idx) => {
@@ -369,6 +375,7 @@ function renderCatalog() {
       <td><input data-k="depthMm" type="number" min="30" max="1200" step="10" value="${c.depthMm}" style="width:60px"></td>
       <td><input data-k="powerW" type="number" min="0" step="1" value="${c.powerW}"></td>
       <td><input data-k="ports" type="number" min="0" step="1" value="${c.ports}"></td>
+      <td><input data-k="portsRear" type="checkbox"${c.portsRear ? ' checked' : ''} title="Порты также на задней панели"></td>
       <td><input data-k="color" type="color" value="${c.color || '#94a3b8'}" style="width:40px;padding:0"></td>
       <td>
         <button type="button" class="sc-btn" data-add="${c.id}">➕ в стойку</button>
@@ -383,7 +390,7 @@ function renderCatalog() {
       const tr = el.closest('tr');
       const idx = +tr.dataset.idx;
       const k = el.dataset.k;
-      const v = el.type === 'number' ? +el.value : el.value;
+      const v = el.type === 'number' ? +el.value : (el.type === 'checkbox' ? el.checked : el.value);
       state.catalog[idx][k] = v;
       saveCatalog();
       rerender(); // цвет/heightU → перерисовать карту, BOM
@@ -689,7 +696,7 @@ function renderSideView(hostId, opts) {
   });
 
   const svgId = opts?.big ? 'sc-sideview-svg-big' : 'sc-sideview-svg';
-  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg sc-sideview-svg" width="${svgW}" height="${svgH + 14}" viewBox="0 0 ${svgW} ${svgH + 14}" xmlns="http://www.w3.org/2000/svg">
+  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg sc-sideview-svg" width="${svgW}" height="${svgH + 14}" viewBox="0 0 ${svgW} ${svgH + 14}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-bodyw="${bodyW}" data-bodyx="${leftPad}" data-face="side">
     ${bgParts.join('')}
     ${deviceRects}
     ${collisionMarks.join('')}
@@ -709,6 +716,99 @@ function renderSideView(hostId, opts) {
   if (depthConflictN) legend.push(`<span style="color:#dc2626">⚠ Коллизий глубины: ${depthConflictN}</span>`);
 
   host.innerHTML = `${svgEl}<div class="sc-unitmap-legend">${legend.join('')}</div>`;
+  bindSideViewDrop(svgId, rowH, leftPad, bodyW, rackDepthMm);
+}
+
+/* v0.59.253 — drop-target на вид сбоку. По X определяется сторона (левая
+   половина профиля = фронт, правая = тыл); по Y — U-позиция. Превью
+   рисует box с глубиной типа вдоль рельсы. */
+function bindSideViewDrop(svgId, rowH, leftPad, bodyW, rackDepthMm) {
+  const svg = $(svgId); if (!svg) return;
+  const highlight = (on) => svg.classList.toggle('sc-drop-hover', on);
+  const acceptType = (types) => types.includes('application/x-scs-typeid') || types.includes('application/x-scs-cartid') || types.includes('application/x-scs-whid');
+  const toViewX = (clientX) => {
+    const rect = svg.getBoundingClientRect();
+    const svgW = svg.viewBox.baseVal.width || rect.width;
+    return (clientX - rect.left) * (svgW / rect.width);
+  };
+  const toViewY = (clientY) => {
+    const rect = svg.getBoundingClientRect();
+    const svgH = svg.viewBox.baseVal.height || rect.height;
+    return (clientY - rect.top) * (svgH / rect.height);
+  };
+  const computeTopU = (clientY) => {
+    const r = currentRack(); if (!r) return null;
+    const yView = toViewY(clientY);
+    const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
+    return r.u - rowIdx;
+  };
+  const computeSide = (clientX) => {
+    const xView = toViewX(clientX);
+    return xView < leftPad + bodyW / 2 ? 'front' : 'rear';
+  };
+  const clearPreview = () => { const p = svg.querySelector('.sc-drop-preview'); if (p) p.remove(); };
+  const updatePreview = (clientX, clientY, h, depthMm) => {
+    const topU = computeTopU(clientY); if (topU == null) return;
+    const r = currentRack();
+    clearPreview();
+    const wantU = Math.min(topU, r.u);
+    const side = computeSide(clientX);
+    const topIdx = r.u - wantU;
+    const y = 4 + topIdx * rowH;
+    const ph = h || 1;
+    const dpx = Math.min(bodyW, Math.max(6, (depthMm || 400) * (bodyW / rackDepthMm)));
+    const x = side === 'rear' ? (leftPad + bodyW - dpx) : leftPad;
+    const valid = canPlace(r, currentContents(), null, ph, wantU, side);
+    const color = valid ? '#2563eb' : '#dc2626';
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'sc-drop-preview');
+    g.setAttribute('pointer-events', 'none');
+    g.innerHTML = `<rect x="${x}" y="${y}" width="${dpx}" height="${ph*rowH - 1}"
+      fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="${x + dpx/2}" y="${y + ph*rowH/2 + 4}" font-size="10" fill="${color}" text-anchor="middle" font-weight="bold">${side === 'rear' ? '🟥 тыл' : '🟦 фронт'} · U${wantU}</text>`;
+    svg.appendChild(g);
+  };
+  const onOver = (ev) => {
+    const types = Array.from(ev.dataTransfer.types);
+    if (!acceptType(types)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = types.includes('application/x-scs-typeid') ? 'copy' : 'move';
+    highlight(true);
+    const meta = state._dragMeta || {};
+    // depth из каталога: нужен typeId. В _dragMeta его нет — используем дефолт.
+    updatePreview(ev.clientX, ev.clientY, meta.h || 1, meta.depthMm || 400);
+  };
+  svg.addEventListener('dragenter', onOver);
+  svg.addEventListener('dragover', onOver);
+  svg.addEventListener('dragleave', ev => {
+    if (ev.relatedTarget && svg.contains(ev.relatedTarget)) return;
+    highlight(false); clearPreview();
+  });
+  svg.addEventListener('drop', ev => {
+    highlight(false); clearPreview();
+    const typeId = ev.dataTransfer.getData('application/x-scs-typeid');
+    const cartId = ev.dataTransfer.getData('application/x-scs-cartid');
+    const whId = ev.dataTransfer.getData('application/x-scs-whid');
+    if (!typeId && !cartId && !whId) return;
+    ev.preventDefault();
+    const r = currentRack(); if (!r) return;
+    const wantTopU = computeTopU(ev.clientY); if (wantTopU == null) return;
+    const side = computeSide(ev.clientX);
+    if (whId) {
+      warehouseToCart(whId);
+      const justAdded = state.cart[state.cart.length - 1];
+      if (justAdded) { justAdded.mountSide = side; installFromCart(justAdded.id, wantTopU); }
+    } else if (cartId) {
+      const item = state.cart.find(x => x.id === cartId);
+      if (item) item.mountSide = side;
+      installFromCart(cartId, wantTopU);
+    } else {
+      const type = state.catalog.find(c => c.id === typeId); if (!type) return;
+      const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU, side);
+      if (finalU == null) { scToast('Нет свободного места для устройства (' + type.heightU + 'U)', 'err'); return; }
+      addToRack(typeId, finalU, side);
+    }
+  });
 }
 
 /* ======================================================================
@@ -853,10 +953,15 @@ async function renderRack3D(hostId, opts) {
                       rackW/2, rackH - FR - occH/2, rackD/2));
   }
 
-  // --- устройства с «ушами» ---
+  // --- устройства с «ушами» + фасад + полки ---
   const depthConflicts = detectDepthConflicts(r, devices);
-  const EAR_W = (rackW - innerW) / 2 - 1; // ширина уха, мм (обычно ~58 мм)
-  const EAR_THICK = 4; // толщина уха вперёд/назад
+  const EAR_WIDTH = (rackW - innerW) / 2;   // ~58.7 мм — зона от корпуса до стенки
+  const EAR_PLATE = 3;                       // толщина уха по Z (снаружи рельса)
+  const earMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
+  const facadeMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
+  const ledGreen = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+  const ledBlue  = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+  const ledAmber = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
   devices.forEach(d => {
     const type = state.catalog.find(c => c.id === d.typeId); if (!type) return;
     const h = type.heightU;
@@ -867,23 +972,102 @@ async function renderRack3D(hostId, opts) {
     const yCenter = yBottom + bodyH / 2;
     const hex = parseInt((type.color || '#94a3b8').replace('#',''), 16);
     const devMat = new THREE.MeshLambertMaterial({ color: hex });
+    const isShelf = type.kind === 'shelf';
+    const portsRear = !!type.portsRear;
 
-    // корпус между рельсами
-    const zCenter = side === 'rear' ? (rackD - 40 - RAIL_W - dMm/2) : (40 + RAIL_W + dMm/2);
-    const box = mkBox(innerW, bodyH, dMm, devMat, rackW/2, yCenter, zCenter);
-    scene.add(box);
+    // Полка — тонкий поддон: рисуем плоскость по всей глубине между рельсами
+    if (isShelf) {
+      const shelfH = Math.max(6, U_MM * 0.25);
+      const shelfDepth = Math.min(rackD - 2*40 - 2*RAIL_W, dMm || 500);
+      const shelfZ = side === 'rear' ? (rackD - 40 - RAIL_W - shelfDepth/2) : (40 + RAIL_W + shelfDepth/2);
+      scene.add(mkBox(innerW, shelfH, shelfDepth, devMat, rackW/2, yBottom + shelfH/2, shelfZ));
+      // передняя планка полки (бортик)
+      const lipZ = side === 'rear' ? (rackD - 40 - RAIL_W - EAR_PLATE/2) : (40 + RAIL_W + EAR_PLATE/2);
+      scene.add(mkBox(innerW, bodyH, EAR_PLATE, earMat, rackW/2, yCenter, lipZ));
+    } else {
+      // Корпус между рельсами
+      const zCenter = side === 'rear' ? (rackD - 40 - RAIL_W - dMm/2) : (40 + RAIL_W + dMm/2);
+      scene.add(mkBox(innerW, bodyH, dMm, devMat, rackW/2, yCenter, zCenter));
+    }
 
-    // «уши» 19" — узкие пластины слева/справа, заподлицо с рельсами
-    const earZ = side === 'rear' ? (rackD - 40 - RAIL_W - EAR_THICK/2) : (40 + RAIL_W + EAR_THICK/2);
-    const earMat = new THREE.MeshLambertMaterial({ color: 0x1e293b });
-    scene.add(mkBox(EAR_W, bodyH, EAR_THICK, earMat, railInset + EAR_W/2 + RAIL_W,                          yCenter, earZ));
-    scene.add(mkBox(EAR_W, bodyH, EAR_THICK, earMat, rackW - railInset - EAR_W/2 - RAIL_W,                  yCenter, earZ));
+    // «Уши» 19": плоские пластины СНАРУЖИ рельсов на монтажной плоскости.
+    // Для фронт-монтажа — в z≈40 (перед фронтовой стойкой, по ширине от
+    // innerW до rackW). Для тыла — в z≈rackD-40.
+    const earZFront = 40 - EAR_PLATE/2;
+    const earZRear  = rackD - 40 + EAR_PLATE/2;
+    const earZ = side === 'rear' ? earZRear : earZFront;
+    const earLeftCX  = EAR_WIDTH / 2;               // центр от x=0 до x=EAR_WIDTH
+    const earRightCX = rackW - EAR_WIDTH / 2;
+    scene.add(mkBox(EAR_WIDTH - 2, bodyH, EAR_PLATE, earMat, earLeftCX,  yCenter, earZ));
+    scene.add(mkBox(EAR_WIDTH - 2, bodyH, EAR_PLATE, earMat, earRightCX, yCenter, earZ));
+
+    // --- Фасад (pattern по type.kind) ---
+    const drawFacade = (faceSide) => {
+      if (isShelf) return;
+      const faceZ = faceSide === 'rear'
+        ? rackD - 40 + EAR_PLATE + 0.2
+        : 40 - EAR_PLATE - 0.2;
+      const kind = type.kind || '';
+      const padY = Math.max(2, bodyH * 0.12);
+      const usableH = bodyH - 2 * padY;
+      const usableW = innerW - 24;
+      if (kind === 'switch') {
+        // ряды портов — тёмные квадратики 8x8 вдоль полосы
+        const rows = Math.max(1, Math.floor(usableH / 10));
+        const cols = Math.max(8, Math.min(24, Math.floor(usableW / 12)));
+        const panelW = cols * 12 + 8;
+        scene.add(mkBox(panelW, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
+        for (let rIdx = 0; rIdx < rows; rIdx++) {
+          for (let c = 0; c < cols; c++) {
+            const px = rackW/2 - panelW/2 + 8 + c*12;
+            const py = yCenter - usableH/2 + 4 + rIdx*10;
+            const portGeo = new THREE.BoxGeometry(9, 7, 0.4);
+            scene.add(Object.assign(new THREE.Mesh(portGeo, ledGreen), { position: new THREE.Vector3(px, py, faceZ) }));
+          }
+        }
+      } else if (kind === 'patch-panel') {
+        const cols = 24;
+        const panelW = cols * 12 + 8;
+        scene.add(mkBox(panelW, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
+        for (let c = 0; c < cols; c++) {
+          const px = rackW/2 - panelW/2 + 8 + c*12;
+          const portGeo = new THREE.BoxGeometry(9, Math.min(9, usableH*0.7), 0.4);
+          scene.add(Object.assign(new THREE.Mesh(portGeo, ledAmber), { position: new THREE.Vector3(px, yCenter, faceZ) }));
+        }
+      } else if (kind === 'pdu') {
+        // ряд розеток
+        const cols = Math.min(24, Math.max(6, Math.floor(usableH / 8)));
+        for (let c = 0; c < cols; c++) {
+          const py = yCenter - usableH/2 + (c+0.5) * (usableH/cols);
+          const outlet = new THREE.BoxGeometry(18, 6, 0.4);
+          scene.add(Object.assign(new THREE.Mesh(outlet, ledBlue), { position: new THREE.Vector3(rackW/2, py, faceZ) }));
+        }
+      } else if (kind === 'server-1U' || kind === 'server-2U' || kind === 'server') {
+        // отсек HDD + LED-индикатор
+        const bays = kind === 'server-2U' ? 8 : 4;
+        const bayW = Math.min(30, (innerW * 0.7) / bays);
+        const row = bays * bayW;
+        scene.add(mkBox(row + 20, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
+        for (let b = 0; b < bays; b++) {
+          const px = rackW/2 - row/2 + (b + 0.5)*bayW;
+          scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(bayW - 2, usableH*0.7, 0.5), ledBlue), { position: new THREE.Vector3(px, yCenter, faceZ) }));
+        }
+      } else {
+        // дефолт — тонкая полоса с 2 светодиодами
+        scene.add(mkBox(40, 4, 0.6, facadeMat, rackW/2 - 20, yCenter, faceZ));
+        scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 3, 0.5), ledGreen), { position: new THREE.Vector3(rackW/2 + 30, yCenter, faceZ) }));
+        scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 3, 0.5), ledAmber), { position: new THREE.Vector3(rackW/2 + 40, yCenter, faceZ) }));
+      }
+    };
+    drawFacade(side);
+    if (portsRear) drawFacade(side === 'front' ? 'rear' : 'front');
 
     if (depthConflicts.has(d.id)) {
+      const zCenter2 = side === 'rear' ? (rackD - 40 - RAIL_W - dMm/2) : (40 + RAIL_W + dMm/2);
       const eg = new THREE.BoxGeometry(innerW + 1, bodyH + 1, dMm + 1);
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(eg),
         new THREE.LineBasicMaterial({ color: 0xdc2626 }));
-      edges.position.set(rackW/2, yCenter, zCenter);
+      edges.position.set(rackW/2, yCenter, zCenter2);
       scene.add(edges);
     }
   });
@@ -1076,9 +1260,12 @@ function renderUnitMap(hostId, opts) {
   // «как видит наблюдатель»: в тыле часто нумеруют зеркально, но большинство
   // DC-систем (TIA-606) сохраняют единую U-нумерацию независимо от стороны,
   // поэтому рисуем одинаково. Разная только выборка devices и цвет рамки.
+  const isBoth = state.faceMode === 'both';
   const face = state.faceMode === 'rear' ? 'rear' : 'front';
-  const visibleDevices = devices.filter(d => (d.mountSide || 'front') === face);
-  visibleDevices.forEach(d => {
+  const visibleDevices = isBoth ? devices.slice() : devices.filter(d => (d.mountSide || 'front') === face);
+  // в режиме «обе стороны» slot-массив не используем (front и rear могут
+  // занимать один и тот же U законно — разная сторона).
+  if (!isBoth) visibleDevices.forEach(d => {
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     for (let k = 0; k < h; k++) {
@@ -1104,6 +1291,9 @@ function renderUnitMap(hostId, opts) {
     rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
+  // v0.59.253: режим 'both' — шкаф делим пополам. Левая половина = фронт,
+  // правая = тыл. Рамка спереди — синяя, сзади — красная штриховая.
+  const halfW = bodyW / 2;
   const deviceGroups = visibleDevices.map(d => {
     const type = state.catalog.find(c => c.id === d.typeId);
     if (!type) return '';
@@ -1111,25 +1301,95 @@ function renderUnitMap(hostId, opts) {
     const topIdx = r.u - d.positionU; // row index (0=сверху)
     const y = 4 + topIdx * rowH;
     const conflict = conflicts.has(d.id);
+    const devSide = d.mountSide || 'front';
     const fill = mode === 'power' ? feedColor(d.pduFeed) : (type.color || '#94a3b8');
-    const stroke = conflict ? '#dc2626' : '#64748b';
+    const sideStroke = isBoth ? (devSide === 'rear' ? '#dc2626' : '#2563eb') : '#64748b';
+    const stroke = conflict ? '#dc2626' : sideStroke;
+    const dashAttr = (isBoth && devSide === 'rear') ? ' stroke-dasharray="4 2"' : '';
     const tag = deviceTag(d);
     const tagSfx = tag ? ' · ' + tag : '';
+    const sideBadge = isBoth ? (devSide === 'rear' ? '🟥 ' : '🟦 ') : '';
     const labelTxt = mode === 'power'
-      ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}${tagSfx}`
-      : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}${tagSfx}`;
-    // «уши» 19" — узкие тёмные пластины слева/справа, выступающие за корпус
-    const earW = 5 * scale;
+      ? `${sideBadge}${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}${tagSfx}`
+      : `${sideBadge}${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}${tagSfx}`;
+    // v0.59.253: «уши» 19" теперь узкие прямоугольники ВНУТРИ корпуса слева/
+    // справа (а не снаружи), как на реальных rack-mount устройствах с
+    // винтами через фланцы. Толщина масштабируется по scale.
+    const earW = Math.max(3, 3 * scale);
     const earY = y;
     const earH = h * rowH - 1;
-    const earFill = '#1e293b';
-    return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
-      <rect x="${32 - earW}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}" stroke="${stroke}" stroke-width="0.3"/>
-      <rect x="${32 + bodyW}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}" stroke="${stroke}" stroke-width="0.3"/>
-      <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
-      <text x="${38}" y="${y + rowH/2 + 4}" font-size="${10*scale}" fill="#0f172a">${escape(labelTxt)}</text>
+    const earFill = '#0f172a';
+    const isShelf = type.kind === 'shelf';
+    const portsRear = !!type.portsRear;
+    // расположение корпуса
+    const bodyX = isBoth ? (devSide === 'rear' ? (32 + halfW) : 32) : 32;
+    const bodyWidth = isBoth ? halfW : bodyW;
+    // уши — тонкие вертикальные полосы у самого края корпуса, изнутри
+    const leftEarX = bodyX;
+    const rightEarX = bodyX + bodyWidth - earW;
+    // фасад — небольшой паттерн внутри корпуса по type.kind (лампы/порты)
+    const facadeX = bodyX + earW + 2;
+    const facadeW = Math.max(0, bodyWidth - 2*earW - 4);
+    const facadeY = y + 2;
+    const facadeH = h * rowH - 5;
+    const facadeHtml = isShelf
+      ? `<pattern id="shelf-hatch-${d.id}" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#475569" stroke-width="1"/></pattern>`
+        + `<rect x="${bodyX}" y="${y}" width="${bodyWidth}" height="${h*rowH-1}" fill="url(#shelf-hatch-${d.id})" opacity="0.6"/>`
+      : (() => {
+          const kind = type.kind || '';
+          if (kind === 'switch' || kind === 'patch-panel') {
+            const portCount = Math.min(24, Math.max(8, Math.floor(facadeW / 5)));
+            const pw = Math.max(1.5, facadeW / portCount - 1);
+            const py = facadeY + facadeH*0.4;
+            const pc = kind === 'patch-panel' ? '#f59e0b' : '#22c55e';
+            const parts = [];
+            for (let i = 0; i < portCount; i++) {
+              const px = facadeX + i * (pw + 1) + 0.5;
+              parts.push(`<rect x="${px}" y="${py}" width="${pw}" height="${Math.max(2, facadeH*0.35)}" fill="${pc}" opacity="0.85"/>`);
+            }
+            return parts.join('');
+          } else if (kind === 'pdu') {
+            // ряд «розеток» — синие круги
+            const n = Math.min(16, Math.max(4, Math.floor(facadeW / 7)));
+            const parts = [];
+            for (let i = 0; i < n; i++) {
+              const cx = facadeX + (i + 0.5) * (facadeW / n);
+              parts.push(`<circle cx="${cx}" cy="${facadeY + facadeH/2}" r="${Math.max(1.5, facadeH*0.22)}" fill="#3b82f6" opacity="0.85"/>`);
+            }
+            return parts.join('');
+          } else if (kind === 'server-1U' || kind === 'server-2U' || kind === 'server') {
+            const bays = kind === 'server-2U' ? 8 : 4;
+            const bw = facadeW / bays - 2;
+            const parts = [];
+            for (let i = 0; i < bays; i++) {
+              const bx = facadeX + i * (bw + 2) + 1;
+              parts.push(`<rect x="${bx}" y="${facadeY + facadeH*0.15}" width="${bw}" height="${facadeH*0.7}" fill="#1e293b" stroke="#334155" stroke-width="0.3"/>`);
+            }
+            // LED-indicator
+            parts.push(`<circle cx="${facadeX + facadeW - 3}" cy="${facadeY + 3}" r="1.5" fill="#22c55e"/>`);
+            return parts.join('');
+          }
+          // default — 2 LED
+          return `<circle cx="${facadeX + 3}" cy="${facadeY + facadeH/2}" r="1.5" fill="#22c55e"/>`
+               + `<circle cx="${facadeX + 9}" cy="${facadeY + facadeH/2}" r="1.5" fill="#f59e0b"/>`;
+        })();
+    // если у типа порты есть и на тыле — маркер звёздочки
+    const rearMark = (portsRear && !isBoth) ? `<text x="${bodyX + bodyWidth - 14}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#dc2626" title="порты и с тыла">⇄</text>` : '';
+    return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" data-side="${devSide}" style="cursor:grab">
+      <rect x="${bodyX}" y="${y}" width="${bodyWidth}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}"${dashAttr} stroke-width="${conflict ? 1.5 : (isBoth ? 1 : 0.5)}"/>
+      ${isShelf ? '' : `<rect x="${leftEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
+      ${isShelf ? '' : `<rect x="${rightEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
+      ${facadeHtml}
+      ${rearMark}
+      <text x="${bodyX + earW + 4}" y="${y + rowH/2 + 4}" font-size="${(isBoth ? 9 : 10)*scale}" fill="#0f172a">${escape(labelTxt)}</text>
     </g>`;
   }).join('');
+  // в режиме «обе стороны» — центральная разделительная линия между front и rear
+  const splitter = isBoth
+    ? `<line x1="${32 + halfW}" y1="4" x2="${32 + halfW}" y2="${4 + r.u * rowH}" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2 2"/>`
+      + `<text x="${32 + halfW/2}" y="${rowH - 4}" font-size="${8*scale}" fill="#2563eb" text-anchor="middle">🟦 фронт</text>`
+      + `<text x="${32 + halfW + halfW/2}" y="${rowH - 4}" font-size="${8*scale}" fill="#dc2626" text-anchor="middle">🟥 тыл</text>`
+    : '';
 
   const legend = [];
   if (mode === 'power') {
@@ -1195,8 +1455,9 @@ function renderUnitMap(hostId, opts) {
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
   const totalW = svgW + extraRight;
   const z = opts.big ? (state.dlgZoom || 1) : 1;
-  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32">
+  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32" data-face="${state.faceMode}">
     ${rects.join('')}
+    ${splitter}
     ${deviceGroups}
     ${wires}
   </svg>`;
@@ -1395,7 +1656,7 @@ function canPlace(r, devices, excludeDevId, heightU, wantU, side) {
    каталога/тележки/склада, следует за курсором. state._dragMeta хранит
    высоту текущего dragged для превью в SVG. */
 function setDragGhost(ev, type, label) {
-  state._dragMeta = { h: type.heightU || 1, label, color: type.color || '#94a3b8' };
+  state._dragMeta = { h: type.heightU || 1, label, color: type.color || '#94a3b8', depthMm: +type.depthMm || 400 };
   const ghost = document.createElement('div');
   ghost.className = 'sc-drag-ghost';
   ghost.textContent = `${label} · ${type.heightU || 1}U`;
@@ -1418,10 +1679,23 @@ function bindUnitMapDrop(svg, rowH) {
     const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
     return r.u - rowIdx;
   };
-  const updatePreview = (clientY, typeId, h) => {
+  // v0.59.253: в режиме «Обе» сторона монтажа определяется X-координатой
+  // курсора (левая половина → фронт, правая → тыл).
+  const computeSide = (clientX) => {
+    const face = svg.dataset.face || 'front';
+    if (face === 'rear') return 'rear';
+    if (face !== 'both') return 'front';
+    const rect = svg.getBoundingClientRect();
+    const svgW = svg.viewBox.baseVal.width || rect.width;
+    const xView = (clientX - rect.left) * (svgW / rect.width);
+    const bodyW = +svg.dataset.bodyw || 220;
+    const bodyX = +svg.dataset.bodyx || 32;
+    const halfW = bodyW / 2;
+    return xView < bodyX + halfW ? 'front' : 'rear';
+  };
+  const updatePreview = (clientX, clientY, h) => {
     const topU = computeTopU(clientY); if (topU == null) return;
     const r = currentRack();
-    // удалить старый превью
     const old = svg.querySelector('.sc-drop-preview'); if (old) old.remove();
     const ph = h || 1;
     const wantU = Math.min(topU, r.u);
@@ -1429,11 +1703,22 @@ function bindUnitMapDrop(svg, rowH) {
     const y = 4 + topIdx * rowH;
     const bodyW = +svg.dataset.bodyw || 220;
     const bodyX = +svg.dataset.bodyx || 32;
+    const face = svg.dataset.face || 'front';
+    const side = computeSide(clientX);
+    const isBoth = face === 'both';
+    const halfW = bodyW / 2;
+    const px = isBoth ? (side === 'rear' ? (bodyX + halfW) : bodyX) : bodyX;
+    const pw = isBoth ? halfW : bodyW;
+    // проверим можно ли сюда поставить
+    const valid = canPlace(r, currentContents(), null, ph, wantU, side);
+    const color = valid ? '#2563eb' : '#dc2626';
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('class', 'sc-drop-preview');
     g.setAttribute('pointer-events', 'none');
-    g.innerHTML = `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${ph * rowH - 1}"
-      fill="#2563eb" fill-opacity="0.25" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    const badge = isBoth ? (side === 'rear' ? '🟥 тыл' : '🟦 фронт') : '';
+    g.innerHTML = `<rect x="${px}" y="${y}" width="${pw}" height="${ph * rowH - 1}"
+      fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/>
+      ${badge ? `<text x="${px + pw/2}" y="${y + (ph*rowH)/2 + 4}" font-size="11" fill="${color}" text-anchor="middle" font-weight="bold">${badge}</text>` : ''}`;
     svg.appendChild(g);
   };
   const clearPreview = () => { const p = svg.querySelector('.sc-drop-preview'); if (p) p.remove(); };
@@ -1441,19 +1726,15 @@ function bindUnitMapDrop(svg, rowH) {
     const types = Array.from(ev.dataTransfer.types);
     if (!acceptType(types)) return;
     ev.preventDefault();
-    // dropEffect должен быть совместим с effectAllowed источника:
-    // каталог → copy, тележка/склад → move.
     ev.dataTransfer.dropEffect = types.includes('application/x-scs-typeid') ? 'copy' : 'move';
     highlight(true);
-    // превью размера: по типу / тележке / складу
     let h = 1;
     const s = state._dragMeta; if (s && s.h) h = s.h;
-    updatePreview(ev.clientY, null, h);
+    updatePreview(ev.clientX, ev.clientY, h);
   };
   svg.addEventListener('dragenter', onDragOver);
   svg.addEventListener('dragover', onDragOver);
   svg.addEventListener('dragleave', (ev) => {
-    // dragleave fires on children — проверим что реально покинули svg
     if (ev.relatedTarget && svg.contains(ev.relatedTarget)) return;
     highlight(false); clearPreview();
   });
@@ -1466,15 +1747,17 @@ function bindUnitMapDrop(svg, rowH) {
     ev.preventDefault();
     const r = currentRack(); if (!r) return;
     const wantTopU = computeTopU(ev.clientY); if (wantTopU == null) return;
+    const targetSide = computeSide(ev.clientX);
     if (whId) {
       warehouseToCart(whId);
       const justAdded = state.cart[state.cart.length - 1];
-      if (justAdded) installFromCart(justAdded.id, wantTopU);
+      if (justAdded) { justAdded.mountSide = targetSide; installFromCart(justAdded.id, wantTopU); }
     } else if (cartId) {
+      const item = state.cart.find(x => x.id === cartId);
+      if (item) item.mountSide = targetSide;
       installFromCart(cartId, wantTopU);
     } else {
       const type = state.catalog.find(c => c.id === typeId); if (!type) return;
-      const targetSide = state.faceMode === 'rear' ? 'rear' : 'front';
       const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU, targetSide);
       if (finalU == null) { scToast('Нет свободного места для устройства (' + type.heightU + 'U)', 'err'); return; }
       addToRack(typeId, finalU, targetSide);
