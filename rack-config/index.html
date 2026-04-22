@@ -89,9 +89,16 @@
                 <option value="any">— не важно —</option>
               </select>
             </label>
-            <label class="rc-field" title="Расстояние между монтажными плоскостями передних и задних 19&quot;-рельсов. Обычно регулируется в пределах 400…900 мм и определяет максимальную глубину оборудования (серверов). Не путать с глубиной корпуса (шкафа) — рельсы утоплены от передней и задней двери на равное расстояние.">
-              <span>Глубина рельс, мм</span>
+          </div>
+          <div class="rc-row" title="Геометрия монтажных рельсов. Заполните любые два из трёх полей — третье вычисляется автоматически (зелёная метка). Сумма фиксирована: отступ от фасада + глубина рельс + отступ от тыла = глубина корпуса. Обычно фронт-отступ 50–80 мм (под дверь), тыл-отступ 100–200 мм (под кабель-менеджмент).">
+            <label class="rc-field"><span>Отступ от фасада, мм <span id="rc-rail-auto-front" class="rc-rail-auto" style="display:none;color:#16a34a">=auto</span></span>
+              <input id="rc-rail-front" type="number" min="0" max="1150" step="5" value="125" style="width:80px">
+            </label>
+            <label class="rc-field"><span>Глубина рельс, мм <span id="rc-rail-auto-depth" class="rc-rail-auto" style="display:none;color:#16a34a">=auto</span></span>
               <input id="rc-rail-depth" type="number" min="300" max="1150" step="10" value="750" style="width:80px">
+            </label>
+            <label class="rc-field"><span>Отступ от тыла, мм <span id="rc-rail-auto-rear" class="rc-rail-auto" style="display:inline;color:#16a34a">=auto</span></span>
+              <input id="rc-rail-rear" type="number" min="0" max="1150" step="5" value="125" style="width:80px">
             </label>
           </div>
         </section>

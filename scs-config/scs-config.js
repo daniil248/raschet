@@ -122,28 +122,11 @@ rescopeToActiveProject();
 /* ---- базовый каталог типов оборудования (1.24.2) ---------------------- */
 // v0.59.245: depthMm — монтажная глубина устройства, мм. Используется
 // side-view и depth-collision check. Дефолты — типичные для категории.
-const DEFAULT_CATALOG = [
-  { id: 'sw-24',   kind: 'switch',       label: 'Коммутатор 24×1G',         heightU: 1, depthMm: 280, powerW: 45,  ports: 24, color: '#60a5fa' },
-  { id: 'sw-48',   kind: 'switch',       label: 'Коммутатор 48×1G + 4SFP+', heightU: 1, depthMm: 380, powerW: 95,  ports: 48, color: '#3b82f6' },
-  { id: 'pp-24',   kind: 'patch-panel',  label: 'Патч-панель 24 cat.6',     heightU: 1, depthMm: 100, powerW: 0,   ports: 24, color: '#fbbf24' },
-  { id: 'pp-48',   kind: 'patch-panel',  label: 'Патч-панель 48 cat.6',     heightU: 2, depthMm: 100, powerW: 0,   ports: 48, color: '#f59e0b' },
-  { id: 'srv-1u',  kind: 'server',       label: 'Сервер 1U',                heightU: 1, depthMm: 750, powerW: 450, ports: 4,  color: '#a78bfa' },
-  { id: 'srv-2u',  kind: 'server',       label: 'Сервер 2U',                heightU: 2, depthMm: 800, powerW: 750, ports: 4,  color: '#8b5cf6' },
-  { id: 'kvm',     kind: 'kvm',          label: 'Консоль KVM 1U',           heightU: 1, depthMm: 520, powerW: 20,  ports: 8,  color: '#34d399' },
-  { id: 'mon-1u',  kind: 'monitor',      label: 'Монитор 1U (выдвижной)',   heightU: 1, depthMm: 620, powerW: 25,  ports: 1,  color: '#10b981' },
-  { id: 'ups-1u',  kind: 'ups',          label: 'ИБП 1U 1 кВА',             heightU: 1, depthMm: 600, powerW: 900, ports: 0,  color: '#f472b6' },
-  { id: 'cm-1u',   kind: 'cable-manager',label: 'Кабельный органайзер 1U',  heightU: 1, depthMm: 80,  powerW: 0,   ports: 0,  color: '#94a3b8' },
-  { id: 'shelf-1u',kind: 'shelf',       label: 'Полка 1U (400 мм)',         heightU: 1, depthMm: 400, powerW: 0,   ports: 0,  color: '#d97706' },
-  { id: 'shelf-2u',kind: 'shelf',       label: 'Полка 2U (600 мм)',         heightU: 2, depthMm: 600, powerW: 0,   ports: 0,  color: '#b45309' },
-  // сетевой свитч с портами менеджмента на тыле (пример dual-side ports)
-  { id: 'sw-48-mgmt', kind: 'switch',   label: 'Коммутатор 48×1G + mgmt-rear', heightU: 1, depthMm: 380, powerW: 95, ports: 48, color: '#2563eb', portsRear: true },
-];
-
-const KIND_LABEL = {
-  'switch': 'Коммутатор', 'patch-panel': 'Патч-панель', 'server': 'Сервер',
-  'kvm': 'KVM', 'monitor': 'Монитор', 'ups': 'ИБП-1U', 'cable-manager': 'Органайзер',
-  'shelf': 'Полка', 'other': 'Другое',
-};
+/* v0.59.257: каталог вынесен в shared/scs-catalog-data.js (по образцу
+   rack-catalog-data.js). Здесь — только импорт под прежними именами. */
+import { SCS_DEFAULT_CATALOG, KIND_LABEL as _KIND_LABEL } from '../shared/scs-catalog-data.js';
+const DEFAULT_CATALOG = SCS_DEFAULT_CATALOG;
+const KIND_LABEL = _KIND_LABEL;
 
 /* ---- state ------------------------------------------------------------- */
 const state = {
@@ -643,11 +626,14 @@ function renderSideView(hostId, opts) {
   const svgW = bodyW + leftPad + 20;
   const rackDepthMm = (+r.depth === +r.depth && r.depth !== 'any') ? +r.depth : 1000;
   // v0.59.256: railDepth — расстояние между 19"-рельсами (adjustable).
-  const railDepthMm = (typeof r.railDepth === 'number' && r.railDepth >= 300) ? +r.railDepth : Math.max(300, rackDepthMm - 250);
-  const frontClearance = Math.max(0, (rackDepthMm - railDepthMm) / 2);
+  // v0.59.257: front/rear offsets из rack-config (3-field geometry).
+  const railDepthMm = (typeof r.railDepth === 'number' && r.railDepth >= 100) ? +r.railDepth : Math.max(300, rackDepthMm - 250);
+  const railFrontOff = (typeof r.railFrontOffset === 'number' && r.railFrontOffset >= 0)
+    ? +r.railFrontOffset
+    : Math.max(0, (rackDepthMm - railDepthMm) / 2);
   const mmToPx = (bodyW) / rackDepthMm;
-  const frontRailX = leftPad + frontClearance * mmToPx;
-  const rearRailX  = leftPad + (rackDepthMm - frontClearance) * mmToPx;
+  const frontRailX = leftPad + railFrontOff * mmToPx;
+  const rearRailX  = leftPad + (railFrontOff + railDepthMm) * mmToPx;
 
   const bgParts = [];
   // профиль стойки
@@ -883,9 +869,10 @@ async function renderRack3D(hostId, opts) {
   const rackD = (+r.depth === +r.depth && r.depth !== 'any') ? +r.depth : 1000;
   const FR = 6; // толщина стенок / панелей, мм
   const RAIL_W = 16; // толщина стойки-рельса, мм
-  // v0.59.256: расстояние между 19"-рельсами из настройки стойки (с fallback).
-  const railDepthMm = (typeof r.railDepth === 'number' && r.railDepth >= 300) ? +r.railDepth : Math.max(300, rackD - 250);
-  const railFrontZ  = Math.max(20, (rackD - railDepthMm) / 2); // равный зазор спереди/сзади
+  // v0.59.256/257: геометрия рельс (front-offset + railDepth + rear-offset).
+  const railDepthMm = (typeof r.railDepth === 'number' && r.railDepth >= 100) ? +r.railDepth : Math.max(300, rackD - 250);
+  const railFrontOff = (typeof r.railFrontOffset === 'number' && r.railFrontOffset >= 0) ? +r.railFrontOffset : Math.max(20, (rackD - railDepthMm) / 2);
+  const railFrontZ  = railFrontOff;
   const railRearZ   = railFrontZ + railDepthMm;
 
   const width = Math.max(400, host.clientWidth || 500);
@@ -1081,13 +1068,80 @@ async function renderRack3D(hostId, opts) {
         }
       } else if (kind === 'server-1U' || kind === 'server-2U' || kind === 'server') {
         // отсек HDD + LED-индикатор
-        const bays = kind === 'server-2U' ? 8 : 4;
+        const bays = h >= 2 ? 8 : 4;
         const bayW = Math.min(30, (innerW * 0.7) / bays);
         const row = bays * bayW;
         scene.add(mkBox(row + 20, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
         for (let b = 0; b < bays; b++) {
           const px = rackW/2 - row/2 + (b + 0.5)*bayW;
           scene.add(mkMesh(new THREE.BoxGeometry(bayW - 2, usableH*0.7, 0.5), ledBlue, px, yCenter, faceZ));
+        }
+      } else if (kind === 'server-gpu') {
+        // AI/GPU сервер: радиатор-рёбра сверху + ряд GPU-модулей + LED-bar
+        const panelW = innerW - 20;
+        scene.add(mkBox(panelW, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
+        // рёбра сверху (heatsink band)
+        const finBand = Math.min(usableH * 0.2, 30);
+        const finY = yCenter + usableH/2 - finBand/2;
+        const finCount = Math.max(20, Math.floor(panelW / 6));
+        for (let i = 0; i < finCount; i++) {
+          const fx = rackW/2 - panelW/2 + (i + 0.5) * (panelW/finCount);
+          scene.add(mkMesh(new THREE.BoxGeometry(0.8, finBand, 0.6), facadeMat, fx, finY, faceZ));
+        }
+        // GPU-модули
+        const gpuN = Math.max(4, Math.min(8, type.gpuCount || 8));
+        const gw = panelW / gpuN - 4;
+        const gBand = usableH * 0.55;
+        const gYCenter = yCenter - finBand/2;
+        const gpuBodyMat = new THREE.MeshLambertMaterial({ color: 0x0b132b });
+        const nvidiaGreenMat = new THREE.MeshBasicMaterial({ color: 0x76b900 });
+        for (let i = 0; i < gpuN; i++) {
+          const gx = rackW/2 - panelW/2 + (i + 0.5) * (panelW/gpuN);
+          scene.add(mkBox(gw, gBand, 1.2, gpuBodyMat, gx, gYCenter, faceZ));
+          // зелёная светящаяся полоса NVIDIA
+          scene.add(mkMesh(new THREE.BoxGeometry(gw - 3, Math.max(1, gBand*0.08), 0.4), nvidiaGreenMat, gx, gYCenter + gBand/2 - 2, faceZ + 0.6));
+        }
+        // LED-линейка снизу
+        const ledN = Math.min(16, Math.floor(panelW / 14));
+        const ledYPos = yCenter - usableH/2 + 3;
+        for (let i = 0; i < ledN; i++) {
+          const lx = rackW/2 - panelW/2 + (i + 0.5) * (panelW / ledN);
+          const m = i < ledN*0.7 ? ledGreen : (i < ledN*0.9 ? ledAmber : new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+          scene.add(mkMesh(new THREE.BoxGeometry(2.5, 2.5, 0.5), m, lx, ledYPos, faceZ));
+        }
+      } else if (kind === 'storage') {
+        // JBOD: сетка HDD-отсеков, front-loaded
+        const bays = type.bays || 24;
+        const panelW = innerW - 10;
+        scene.add(mkBox(panelW, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
+        const cols = Math.ceil(Math.sqrt(bays * (panelW / usableH)));
+        const rows = Math.ceil(bays / cols);
+        const bw = panelW / cols - 1.2;
+        const bh = usableH / rows - 1.2;
+        let n = 0;
+        const trayMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
+        for (let r = 0; r < rows && n < bays; r++) {
+          for (let c = 0; c < cols && n < bays; c++, n++) {
+            const bx = rackW/2 - panelW/2 + (c + 0.5) * (panelW / cols);
+            const by = yCenter + usableH/2 - (r + 0.5) * (usableH / rows);
+            scene.add(mkBox(bw, bh, 0.5, trayMat, bx, by, faceZ));
+            // LED активности (угловой)
+            const ledMat = (n % 7 === 0) ? ledAmber : ledGreen;
+            scene.add(mkMesh(new THREE.BoxGeometry(0.9, 0.9, 0.4), ledMat, bx + bw/2 - 0.8, by + bh/2 - 0.8, faceZ + 0.3));
+          }
+        }
+      } else if (kind === 'firewall') {
+        // тёмная панель + «дисплей» + ряд LED
+        const panelW = innerW - 20;
+        scene.add(mkBox(panelW, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
+        const dispW = panelW * 0.22, dispH = usableH * 0.45;
+        const dispMat = new THREE.MeshBasicMaterial({ color: 0x064e3b });
+        scene.add(mkBox(dispW, dispH, 0.4, dispMat, rackW/2 - panelW/2 + dispW/2 + 4, yCenter, faceZ));
+        const ledN = Math.min(16, Math.floor(panelW/14));
+        for (let i = 0; i < ledN; i++) {
+          const lx = rackW/2 - panelW/2 + dispW + 10 + (i + 0.5) * ((panelW - dispW - 14) / ledN);
+          const m = i % 3 === 0 ? new THREE.MeshBasicMaterial({ color: 0xef4444 }) : ledGreen;
+          scene.add(mkMesh(new THREE.BoxGeometry(2.5, 2.5, 0.5), m, lx, yCenter, faceZ));
         }
       } else {
         // дефолт — тонкая полоса с 2 светодиодами
@@ -1439,15 +1493,87 @@ function renderUnitMap(hostId, opts) {
             }
             return parts.join('');
           } else if (kind === 'server-1U' || kind === 'server-2U' || kind === 'server') {
-            const bays = kind === 'server-2U' ? 8 : 4;
+            const bays = (h >= 2) ? Math.max(8, Math.min(12, Math.round(facadeW/16))) : Math.max(4, Math.min(10, Math.round(facadeW/20)));
             const bw = facadeW / bays - 2;
             const parts = [];
             for (let i = 0; i < bays; i++) {
               const bx = facadeX + i * (bw + 2) + 1;
               parts.push(`<rect x="${bx}" y="${facadeY + facadeH*0.15}" width="${bw}" height="${facadeH*0.7}" fill="#1e293b" stroke="#334155" stroke-width="0.3"/>`);
+              parts.push(`<circle cx="${bx + bw/2}" cy="${facadeY + facadeH*0.82}" r="0.7" fill="#22c55e" opacity="0.7"/>`);
             }
-            // LED-indicator
             parts.push(`<circle cx="${facadeX + facadeW - 3}" cy="${facadeY + 3}" r="1.5" fill="#22c55e"/>`);
+            parts.push(`<circle cx="${facadeX + facadeW - 8}" cy="${facadeY + 3}" r="1.2" fill="#3b82f6"/>`);
+            return parts.join('');
+          } else if (kind === 'server-gpu') {
+            // AI/GPU сервер: верх — радиатор (рёбра), низ — GPU-модули с LED-линейкой.
+            const parts = [];
+            const finsY = facadeY + 1;
+            const finsH = Math.max(3, facadeH*0.18);
+            const nFins = Math.max(20, Math.floor(facadeW / 3));
+            for (let i = 0; i < nFins; i++) {
+              const fx = facadeX + i * (facadeW / nFins);
+              parts.push(`<line x1="${fx}" y1="${finsY}" x2="${fx}" y2="${finsY + finsH}" stroke="#334155" stroke-width="0.5"/>`);
+            }
+            const gpuN = Math.max(4, Math.min(8, type.gpuCount || 8));
+            const gBandY = facadeY + facadeH*0.25;
+            const gBandH = facadeH*0.55;
+            const gw = facadeW / gpuN - 2;
+            for (let i = 0; i < gpuN; i++) {
+              const gx = facadeX + i * (gw + 2) + 1;
+              parts.push(`<rect x="${gx}" y="${gBandY}" width="${gw}" height="${gBandH}" fill="#0b132b" stroke="#76b900" stroke-width="0.5"/>`);
+              // NVIDIA-green accent
+              parts.push(`<rect x="${gx + 1}" y="${gBandY + 1}" width="${gw - 2}" height="${Math.max(1, gBandH*0.12)}" fill="#76b900" opacity="0.85"/>`);
+              parts.push(`<text x="${gx + gw/2}" y="${gBandY + gBandH/2 + 2}" font-size="${Math.max(2, 4*scale)}" fill="#94a3b8" text-anchor="middle">GPU${i+1}</text>`);
+            }
+            // LED-bar снизу (активность/мощность)
+            const ledY = facadeY + facadeH - 2.5;
+            const ledN = Math.min(16, Math.floor(facadeW / 4));
+            for (let i = 0; i < ledN; i++) {
+              const lx = facadeX + (i + 0.5) * (facadeW / ledN);
+              const col = i < ledN*0.7 ? '#22c55e' : (i < ledN*0.9 ? '#f59e0b' : '#ef4444');
+              parts.push(`<circle cx="${lx}" cy="${ledY}" r="0.8" fill="${col}"/>`);
+            }
+            return parts.join('');
+          } else if (kind === 'storage') {
+            // JBOD: сетка HDD-отсеков
+            const bays = type.bays || 24;
+            const cols = Math.ceil(Math.sqrt(bays * (facadeW/facadeH)));
+            const rows = Math.ceil(bays / cols);
+            const bw = facadeW / cols - 1;
+            const bh = facadeH / rows - 1;
+            const parts = [];
+            let n = 0;
+            for (let r = 0; r < rows && n < bays; r++) {
+              for (let c = 0; c < cols && n < bays; c++, n++) {
+                const bx = facadeX + c * (bw + 1);
+                const by = facadeY + r * (bh + 1);
+                parts.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#0f172a" stroke="#475569" stroke-width="0.3"/>`);
+                parts.push(`<rect x="${bx+0.8}" y="${by + bh*0.35}" width="${bw*0.5}" height="${bh*0.2}" fill="#1e293b"/>`);
+                parts.push(`<circle cx="${bx + bw - 1.3}" cy="${by + 1.3}" r="0.5" fill="${(n%7===0)?'#f59e0b':'#22c55e'}"/>`);
+              }
+            }
+            return parts.join('');
+          } else if (kind === 'firewall') {
+            // тёмная панель + ряд LED + ЖК-полоса
+            const parts = [];
+            parts.push(`<rect x="${facadeX}" y="${facadeY + facadeH*0.25}" width="${facadeW*0.25}" height="${facadeH*0.35}" fill="#1e293b" stroke="#475569" stroke-width="0.3"/>`);
+            parts.push(`<text x="${facadeX + facadeW*0.125}" y="${facadeY + facadeH*0.5}" font-size="${Math.max(2, 4*scale)}" fill="#22c55e" text-anchor="middle" font-family="monospace">OK</text>`);
+            const ledN = Math.min(16, Math.floor(facadeW/8));
+            for (let i = 0; i < ledN; i++) {
+              const lx = facadeX + facadeW*0.3 + (i + 0.5) * (facadeW*0.65 / ledN);
+              parts.push(`<circle cx="${lx}" cy="${facadeY + facadeH*0.45}" r="1.2" fill="${i%3===0?'#ef4444':'#22c55e'}" opacity="0.85"/>`);
+            }
+            return parts.join('');
+          } else if (kind === 'router') {
+            // модули (SFP-cages) + LED
+            const mods = Math.max(4, Math.min(12, Math.floor(facadeW/14)));
+            const mw = facadeW / mods - 2;
+            const parts = [];
+            for (let i = 0; i < mods; i++) {
+              const mx = facadeX + i * (mw + 2) + 1;
+              parts.push(`<rect x="${mx}" y="${facadeY + facadeH*0.3}" width="${mw}" height="${facadeH*0.4}" fill="#334155" stroke="#475569" stroke-width="0.3"/>`);
+              parts.push(`<circle cx="${mx + mw/2}" cy="${facadeY + facadeH*0.78}" r="0.7" fill="#3b82f6"/>`);
+            }
             return parts.join('');
           }
           // default — 2 LED
@@ -2528,6 +2654,11 @@ function init() {
       c.depthMm = def?.depthMm || (c.kind === 'patch-panel' || c.kind === 'cable-manager' ? 100 : 500);
     }
   });
+  // v0.59.257: auto-append новых моделей из DEFAULT_CATALOG по id (Supermicro
+  // AI-серверы, Cisco/Arista/NVIDIA свитчи и т.п.). Не перезаписываем
+  // существующие записи — пользовательские правки sacred.
+  const have = new Set(state.catalog.map(c => c.id));
+  DEFAULT_CATALOG.forEach(d => { if (!have.has(d.id)) state.catalog.push({ ...d }); });
   saveCatalog();
   // 1.24.24 URL-роутинг: ?rackId=<id> предпочитает выбор стойки из URL;
   // ?tag=<tia> ищет стойку по TIA-тегу (DC1.H3.R05). Если нет — auto-pick первой.

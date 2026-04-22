@@ -244,6 +244,15 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.257', date: '2026-04-22', items: [
+      '🗂 Каталог IT-оборудования вынесен в отдельный shared/scs-catalog-data.js (по образцу shared/rack-catalog-data.js, breaker-seed.js и т.п.). Категории: GENERIC_CATALOG / AI_SERVERS_CATALOG / GP_SERVERS_CATALOG / SWITCHES_CATALOG / STORAGE_CATALOG / SECURITY_CATALOG. Единый SCS_DEFAULT_CATALOG = сумма категорий.',
+      '🤖 Добавлено ~25 реальных моделей: Supermicro SYS-821GE-TNHR / 421GE-TNHR2 / AS-8125GS-TNHR / 521GE-TNRT / ARS-211GL-NHIR / 741GE-TNRT; NVIDIA DGX H100, DGX H200, Quantum-2 QM9700, Spectrum SN3700/SN5600; Cisco Nexus 9336C-FX2, 93180YC-FX3, Catalyst 9300, UCS C240 M7; Arista 7050CX3-32S, 7280R3; Dell R760/R660, PowerVault ME5084; HPE DL380/DL360 Gen11, Cray XD685; Lenovo SR650 V3; Juniper QFX5120; HPE Aruba CX 6300M; Supermicro SuperStorage 6049P; Palo Alto PA-5450.',
+      '🎨 Новые kind + подробная графика: server-gpu (радиатор-рёбра сверху, ряд GPU-модулей с NVIDIA-green акцентом, LED-линейка активности), storage (grid HDD-отсеков с per-bay LED), firewall (дисплей OK + LED ряды), router (SFP-cages). В SVG и 3D.',
+      '📏 Геометрия рельс — 3 связанных поля: «Отступ от фасада» + «Глубина рельс» + «Отступ от тыла» (сумма = глубина корпуса). Пользователь заполняет любые 2, третье вычисляется автоматически (зелёная метка =auto). Последнее отредактированное поле ведёт очередь LRU: auto-полем становится то, что трогали давнее всего.',
+      '🧵 scs-config использует railFrontOffset из rack-config для позиции передних рельсов (не симметрично, как в v0.59.256): side-view и 3D-вид рисуют рельсы в настоящем месте, где они закреплены в корпусе.',
+      '🔄 Миграция каталога: auto-append новых моделей по id при загрузке localStorage — существующие пользовательские правки не перезаписываются.',
+      'Файлы: shared/scs-catalog-data.js (новый, 6 категорий + KIND_LABEL), scs-config/scs-config.js (import + auto-append миграция + новые facade-рендеры для server-gpu/storage/firewall/router), rack-config/index.html (3-поле rail-front/depth/rear), rack-config/rack-config.js (ensureRailLru / renderRailFields / onRailFieldInput / reconcileRailGeometry).',
+    ] },
     { version: '0.59.256', date: '2026-04-22', items: [
       '📏 Новая настройка «Глубина рельс, мм» в Конфигураторе корпуса (rack-config): расстояние между монтажными плоскостями передних и задних 19"-рельсов. Диапазон 300…1150 мм (по умолчанию 750). Ограничение: railDepth ≤ depth − 80 (зазор на двери). Preserve-on-miss: если поле пустое или значение вне диапазона — старое t.railDepth сохраняется.',
       '🧵 Side-view в Компоновщике: рельсы теперь рисуются в корректных позициях по railDepth (не на краях корпуса). Зазор между корпусом и рельсом слегка подсвечен цветом стороны. Устройства начинаются от монтажной плоскости, а не от края корпуса.',

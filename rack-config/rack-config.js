@@ -58,7 +58,12 @@ function makeBlankTemplate(name = 'Новый шкаф') {
     kitId: '',
     u: 42, width: 600, depth: 1000,
     // v0.59.256: глубина между 19"-рельсами (adjustable). По умолчанию ≈ depth-250.
+    // v0.59.257: geometry = frontOffset + railDepth + rearOffset = depth.
+    // Два поля редактируются, третье (railAutoField) вычисляется. По умолчанию auto=rear.
+    railFrontOffset: 125,
     railDepth: 750,
+    railRearOffset: 125,
+    railAutoField: 'rear',
     doorFront: 'mesh',
     doorRear:  'double-mesh',
     doorWithLock: true,
@@ -599,6 +604,84 @@ function applyKitLocks() {
     host.innerHTML = '<b>Входит в комплект:</b> ' + escape(items.join(', ')) + '.';
   }
 }
+/* v0.59.257: геометрия рельс как три связанных поля.
+   Правило: front + depth + rear = rack.depth. Два поля — manual,
+   третье (t.railAutoField) вычисляется. Клик в любом инпуте делает его
+   manual; auto-полем становится тот, у которого сейчас наименьший
+   «приоритет» (очередь LRU из поля state `_railLru`). */
+const RAIL_LRU_DEFAULT = ['depth', 'front', 'rear']; // recent → oldest
+function ensureRailLru(t) {
+  if (!Array.isArray(t._railLru) || t._railLru.length !== 3) {
+    t._railLru = RAIL_LRU_DEFAULT.slice();
+    t.railAutoField = t._railLru[t._railLru.length - 1];
+  }
+}
+function renderRailFields() {
+  const t = current(); if (!t) return;
+  ensureRailLru(t);
+  // fallback для очень старых записей без railFrontOffset/railRearOffset
+  if (typeof t.railFrontOffset !== 'number' || typeof t.railRearOffset !== 'number' || typeof t.railDepth !== 'number') {
+    const depth = (typeof t.depth === 'number' ? t.depth : 1000);
+    if (typeof t.railDepth !== 'number') t.railDepth = Math.max(300, depth - 250);
+    const rest = Math.max(0, depth - t.railDepth);
+    if (typeof t.railFrontOffset !== 'number') t.railFrontOffset = Math.round(rest / 2);
+    if (typeof t.railRearOffset !== 'number') t.railRearOffset = rest - t.railFrontOffset;
+  }
+  if (el('rc-rail-front')) el('rc-rail-front').value = String(t.railFrontOffset);
+  if (el('rc-rail-depth')) el('rc-rail-depth').value = String(t.railDepth);
+  if (el('rc-rail-rear'))  el('rc-rail-rear').value  = String(t.railRearOffset);
+  ['front','depth','rear'].forEach(k => {
+    const b = el('rc-rail-auto-' + k);
+    if (b) b.style.display = (t.railAutoField === k) ? 'inline' : 'none';
+    const inp = el('rc-rail-' + k);
+    if (inp) inp.readOnly = (t.railAutoField === k);
+  });
+}
+function onRailFieldInput(which) {
+  const t = current(); if (!t) return;
+  ensureRailLru(t);
+  // Пользователь коснулся поля — делаем его "manual" (перемещаем в начало LRU),
+  // то, что в конце LRU — становится auto.
+  t._railLru = [which, ...t._railLru.filter(x => x !== which)];
+  t.railAutoField = t._railLru[t._railLru.length - 1];
+  // Прочитать два manual поля из DOM; третье пересчитать.
+  const rackDepth = parseInt(el('rc-depth').value, 10) || t.depth || 1000;
+  const rawFront = parseInt(el('rc-rail-front').value, 10);
+  const rawDepth = parseInt(el('rc-rail-depth').value, 10);
+  const rawRear  = parseInt(el('rc-rail-rear').value, 10);
+  const f = Number.isFinite(rawFront) ? rawFront : t.railFrontOffset;
+  const dp = Number.isFinite(rawDepth) ? rawDepth : t.railDepth;
+  const rr = Number.isFinite(rawRear) ? rawRear : t.railRearOffset;
+  let nf = f, nd = dp, nr = rr;
+  if (t.railAutoField === 'rear')       nr = rackDepth - nf - nd;
+  else if (t.railAutoField === 'front') nf = rackDepth - nd - nr;
+  else                                   nd = rackDepth - nf - nr;
+  // Clamp с warn: если auto < 0 — обрезаем до 0 и показываем toast, manual не трогаем.
+  if (nd < 300) { rsToast('Глубина рельс < 300 мм — геометрия не реализуема.', 'warn'); }
+  if (nf < 0 || nr < 0) { rsToast('Отступ не может быть отрицательным — скорректируйте другие поля.', 'warn'); nf = Math.max(0, nf); nr = Math.max(0, nr); }
+  t.railFrontOffset = nf;
+  t.railDepth = Math.max(100, nd);
+  t.railRearOffset = nr;
+  renderRailFields();
+}
+function reconcileRailGeometry(t) {
+  ensureRailLru(t);
+  const depth = (typeof t.depth === 'number' ? t.depth : 1000);
+  const f = Number(t.railFrontOffset) || 0;
+  const dp = Number(t.railDepth) || 0;
+  const rr = Number(t.railRearOffset) || 0;
+  let nf = f, nd = dp, nr = rr;
+  if (t.railAutoField === 'rear')       nr = depth - nf - nd;
+  else if (t.railAutoField === 'front') nf = depth - nd - nr;
+  else                                   nd = depth - nf - nr;
+  if (nd < 100) nd = 100;
+  if (nf < 0) nf = 0;
+  if (nr < 0) nr = 0;
+  t.railFrontOffset = nf;
+  t.railDepth = nd;
+  t.railRearOffset = nr;
+}
+
 function applyKitPreset() {
   const t = current();
   const kit = kitById(t.kitId || '');
@@ -655,7 +738,8 @@ function renderForm() {
   el('rc-u').value            = String(t.u);
   el('rc-width').value        = String(t.width);
   el('rc-depth').value        = String(t.depth);
-  if (el('rc-rail-depth')) el('rc-rail-depth').value = String(t.railDepth ?? Math.max(300, (typeof t.depth === 'number' ? t.depth - 250 : 750)));
+  // v0.59.257: rail geometry — three linked fields.
+  renderRailFields();
   el('rc-door-front').value   = t.doorFront;
   el('rc-door-rear').value    = t.doorRear;
   el('rc-door-with-lock').checked = !!t.doorWithLock;
@@ -736,16 +820,11 @@ function readForm() {
   t.u = newU;
   t.width        = parseInt(el('rc-width').value, 10) || 600;
   t.depth        = parseInt(el('rc-depth').value, 10) || 1000;
-  // v0.59.256: railDepth — preserve-on-miss (user params are sacred).
-  if (el('rc-rail-depth')) {
-    const rd = parseInt(el('rc-rail-depth').value, 10);
-    if (Number.isFinite(rd) && rd >= 300 && rd <= 1150) {
-      // sanity: railDepth не может быть больше глубины корпуса минус зазоры на двери (2×40 мм).
-      const maxFit = (typeof t.depth === 'number' ? t.depth - 80 : 1150);
-      t.railDepth = Math.min(rd, maxFit);
-      if (t.railDepth !== rd) el('rc-rail-depth').value = String(t.railDepth);
-    }
-  }
+  // v0.59.257: 3-поле геометрии рельс. Любые 2 заполнены → 3-е auto.
+  // Значения берутся из state (readRailFieldsToState обновляет их на change).
+  // Здесь просто фиксируем sum-constraint под текущую глубину корпуса и
+  // корректируем auto-поле если нужно.
+  reconcileRailGeometry(t);
   t.doorFront    = el('rc-door-front').value;
   t.doorRear     = el('rc-door-rear').value;
   t.doorWithLock = el('rc-door-with-lock').checked;
@@ -1890,7 +1969,7 @@ function sendApplyToHost() {
 
 /* ---------- bind ---------- */
 function bind() {
-  const ids = ['rc-name','rc-manufacturer','rc-u','rc-width','rc-depth','rc-rail-depth',
+  const ids = ['rc-name','rc-manufacturer','rc-u','rc-width','rc-depth',
     'rc-door-front','rc-door-rear','rc-door-with-lock','rc-lock',
     'rc-sides','rc-top','rc-base','rc-combo-top-base',
     'rc-entry-top','rc-entry-bot','rc-entry-type',
@@ -1900,6 +1979,13 @@ function bind() {
     const node = el(id);
     if (!node) return;
     node.addEventListener('change', () => { readForm(); renderTemplateList(); recalc(); });
+  });
+
+  // v0.59.257: 3-поле геометрии рельс — click-to-focus делает поле manual,
+  // auto-поле пересчитывается.
+  ['front','depth','rear'].forEach(k => {
+    const n = el('rc-rail-' + k); if (!n) return;
+    n.addEventListener('change', () => { onRailFieldInput(k); readForm(); recalc(); });
   });
 
   const kitBtn = el('rc-kit-btn');
