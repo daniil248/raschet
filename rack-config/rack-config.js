@@ -35,7 +35,7 @@ import {
 import { initCatalogBridge } from '../shared/catalog-bridge.js';
 import { onLibraryChange } from '../shared/element-library.js';
 import { openPduPickerModal } from '../shared/pdu-picker-modal.js';
-import { rsToast, rsConfirm } from '../shared/dialog.js';
+import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 initCatalogBridge();
 
 // Re-render при правках каталога (админ изменил встроенный rack/pdu/accessory).
@@ -48,6 +48,29 @@ try {
 
 const LS_KEY  = 'rack-config.templates.v1';
 const BRIDGE_KEY_PREFIX = 'raschet.rack.bridge.';
+
+/* v0.59.279 — сколько экземпляров (в любом проекте) ссылаются на шаблон
+   через sourceTemplateId. Сканирует все project-scoped ключи
+   raschet.project.<pid>.rack-config.instances.v1. */
+function countInstancesUsingTemplate(tplId) {
+  if (!tplId) return 0;
+  let n = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !/^raschet\.project\..+\.rack-config\.instances\.v1$/.test(k)) continue;
+      try {
+        const arr = JSON.parse(localStorage.getItem(k) || '[]');
+        if (Array.isArray(arr)) {
+          for (const r of arr) {
+            if (r && r.sourceTemplateId === tplId) n++;
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  return n;
+}
 
 /* ---------- state ---------- */
 function makeBlankTemplate(name = 'Новый шкаф') {
@@ -723,9 +746,15 @@ function renderTemplateList() {
   const tpls = state.templates.filter(t => !(tags[t.id] || '').trim());
   const insts = state.templates.filter(t => (tags[t.id] || '').trim());
   const parts = [];
+  const usage = {};
+  state.templates.forEach(t => { usage[t.id] = countInstancesUsingTemplate(t.id); });
   if (tpls.length) {
     parts.push('<optgroup label="📐 Шаблоны корпуса (без тега)">');
-    tpls.forEach(t => parts.push(`<option value="${t.id}">${escape(t.name || '(без имени)')}</option>`));
+    tpls.forEach(t => {
+      const u = usage[t.id] || 0;
+      const suffix = u ? ` · исп. ${u}` : '';
+      parts.push(`<option value="${t.id}">${escape((t.name || '(без имени)') + suffix)}</option>`);
+    });
     parts.push('</optgroup>');
   }
   if (insts.length) {
@@ -739,6 +768,22 @@ function renderTemplateList() {
   const isInst = !!(tags[state.currentId] || '').trim();
   const warn = el('rc-instance-warn');
   if (warn) warn.style.display = isInst ? '' : 'none';
+  // v0.59.279: индикатор использования + блокировка удаления если count > 0.
+  const u = usage[state.currentId] || 0;
+  const usageEl = el('rc-usage');
+  if (usageEl) {
+    usageEl.textContent = u ? `· используется в ${u} стойках` : '· не используется';
+    usageEl.style.color = u ? '#ea580c' : '#64748b';
+  }
+  const delBtn = el('rc-del');
+  if (delBtn) {
+    delBtn.disabled = u > 0;
+    delBtn.title = u > 0
+      ? `Нельзя удалить: шаблон используется ${u} стойками. Сначала измените корпус у этих стоек или удалите их.`
+      : 'Удалить текущий шаблон';
+    delBtn.style.opacity = u > 0 ? '0.5' : '';
+    delBtn.style.cursor = u > 0 ? 'not-allowed' : '';
+  }
 }
 
 function renderForm() {
@@ -1956,8 +2001,14 @@ function addTemplate(src) {
   renderForm();
 }
 async function deleteTemplate() {
+  const curId = state.currentId;
+  const used = countInstancesUsingTemplate(curId);
+  if (used > 0) {
+    rsToast(`Нельзя удалить: шаблон используется ${used} стойками. Сначала измените корпус этих стоек или удалите сами стойки в «Шкафы проекта».`, 'warn');
+    return;
+  }
   if (!(await rsConfirm('Удалить текущий шаблон?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
-  const idx = state.templates.findIndex(t => t.id === state.currentId);
+  const idx = state.templates.findIndex(t => t.id === curId);
   if (idx < 0) return;
   state.templates.splice(idx, 1);
   if (!state.templates.length) state.templates.push(makeBlankTemplate());
@@ -1965,6 +2016,25 @@ async function deleteTemplate() {
   saveTemplates();
   renderTemplateList();
   renderForm();
+  rsToast('Шаблон удалён.', 'ok');
+  try { window.dispatchEvent(new CustomEvent('rack-config:templates-changed')); } catch {}
+}
+async function renameTemplate() {
+  const t = current();
+  if (!t) { rsToast('Нет выбранного шаблона.', 'warn'); return; }
+  const cur = t.name || '';
+  let nm = await rsPrompt('Новое имя шаблона', cur);
+  if (nm == null) return;
+  nm = String(nm).trim();
+  if (!nm) { rsToast('Имя не может быть пустым.', 'warn'); return; }
+  if (nm === cur) return;
+  const dup = state.templates.some(x => x.id !== t.id && (x.name || '').trim().toLowerCase() === nm.toLowerCase());
+  if (dup) { rsToast(`Имя «${nm}» уже занято другим шаблоном.`, 'warn'); return; }
+  t.name = nm;
+  const rcName = el('rc-name'); if (rcName) rcName.value = nm;
+  saveTemplates();
+  renderTemplateList();
+  rsToast('Шаблон переименован.', 'ok');
 }
 
 /* ---------- мост с основной схемой (роадмап 1.23.10) ---------- */
@@ -2032,6 +2102,8 @@ function bind() {
   el('rc-new').addEventListener('click', () => addTemplate(null));
   el('rc-dup').addEventListener('click', () => { readForm(); addTemplate(current()); });
   el('rc-del').addEventListener('click', deleteTemplate);
+  const renameBtn = el('rc-rename');
+  if (renameBtn) renameBtn.addEventListener('click', renameTemplate);
   const specBtn = el('rc-pdu-spec');
   if (specBtn) specBtn.addEventListener('click', () => { readForm(); showPduSpec(); });
   const dupBtn = el('rc-pdu-duplicate');

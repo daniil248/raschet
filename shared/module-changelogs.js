@@ -526,6 +526,12 @@ export const CHANGELOGS = {
   ],
 
   'rack-config': [
+    { version: '0.59.279', date: '2026-04-22', items: [
+      '🧹 Убрано дублирование имени: поле «Название шаблона» в разделе «Идентификация» удалено — имя редактируется кнопкой «✎ переименовать» в тулбаре рядом с выпадающим списком шаблонов (в нём и так видно имя). Фактическое хранилище имени не изменилось (rc-name теперь hidden-input для совместимости).',
+      '🔒 Удаление шаблона заблокировано, если на него ссылается хотя бы одна развёрнутая стойка (любой проект, по полю sourceTemplateId). Кнопка «✕ удалить» disabled + tooltip со счётчиком использований. Рядом с тулбаром показывается бейдж «· используется в N стойках» (оранжевый) или «· не используется» (серый).',
+      'В выпадающем списке шаблонов к имени дописывается «· исп. N» у используемых шаблонов, чтобы сразу видеть в списке, что трогать опасно.',
+      'Файлы: rack-config/index.html (hidden rc-name + новая кнопка rc-rename + span#rc-usage), rack-config/rack-config.js (countInstancesUsingTemplate, renderTemplateList usage-annotation + disable delete, deleteTemplate guard, renameTemplate + bind).',
+    ] },
     { version: '0.59.265', date: '2026-04-22', items: [
       '🔢 Мини-карта юнитов теперь учитывает направление U-нумерации (`bu` снизу / `td` сверху), выбранное в scs-config — используется общий LS-ключ `scs-config.uNumDir.v1`. Единый стиль между шаблоном стойки (rack-config) и размещением в ней (scs-config).',
       'Файлы: rack-config/rack-config.js (renderUnitMapPreview: чтение uNumDir из LS + uLabel = totalU − r.u + 1 для td).',

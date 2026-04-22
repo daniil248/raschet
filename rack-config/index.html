@@ -30,7 +30,9 @@
           </label>
           <button type="button" id="rc-new" class="rc-btn">+ новый</button>
           <button type="button" id="rc-dup" class="rc-btn">⎘ дубль</button>
-          <button type="button" id="rc-del" class="rc-btn rc-btn-danger">✕ удалить</button>
+          <button type="button" id="rc-rename" class="rc-btn" title="Переименовать текущий шаблон">✎ переименовать</button>
+          <button type="button" id="rc-del" class="rc-btn rc-btn-danger" title="Удалить шаблон. Невозможно, если он используется хотя бы одной стойкой в любом проекте.">✕ удалить</button>
+          <span id="rc-usage" class="rc-usage muted" style="margin-left:8px;font-size:12px;color:#64748b" title="Сколько стоек в проектах ссылаются на этот шаблон"></span>
         </div>
         <div id="rc-instance-warn" style="display:none;margin:6px 0 10px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;color:#78350f;font-size:13px">
           ⚠ Это <b>реальная стойка</b> (с тегом). Обычно корпусные параметры
@@ -43,14 +45,15 @@
         <section class="rc-section">
           <h2>Идентификация</h2>
           <div class="rc-row">
-            <label class="rc-field"><span>Название шаблона</span>
-              <input type="text" id="rc-name" placeholder="Стойка серверная #1">
-            </label>
+            <!-- v0.59.279: имя редактируется кнопкой «✎ переименовать» в тулбаре
+                 (там же, где выбор шаблона), чтобы не дублировать одно и то же поле. -->
             <label class="rc-field"><span>Производитель / серия</span>
               <input type="text" id="rc-manufacturer" placeholder="APC NetShelter SX, ЦМО, Rittal TS IT, …">
             </label>
           </div>
         </section>
+        <!-- Скрытый носитель имени шаблона для совместимости с readForm/renderForm. -->
+        <input type="hidden" id="rc-name">
 
         <section class="rc-section" data-sec="corpus">
           <h2>Корпус</h2>
