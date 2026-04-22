@@ -9,6 +9,26 @@ import { createMode } from './modes.js';
 import { flash } from './utils.js';
 import { exportBomXlsx, exportBomCsv, buildBOM } from './bom.js';
 import { rsToast, rsConfirm, rsPrompt } from '../../shared/dialog.js';
+import { getActiveProjectId, ensureDefaultProject, listProjects } from '../../shared/project-storage.js';
+
+/* ---------- Фаза 1.27.2: save/load главной схемы в неймспейс активного
+   проекта. Если активного проекта нет (edge-case) — падаем на глобальный
+   ключ raschet.scheme. Одноразовая миграция: если в проекте пусто, а в
+   глобальном ключе есть схема — копируем её в проект при первом save/load,
+   чтобы пользователь не потерял свою работу. ---------- */
+function schemeKey() {
+  let pid = getActiveProjectId();
+  if (!pid) { try { ensureDefaultProject(); pid = getActiveProjectId(); } catch {} }
+  if (!pid) return 'raschet.scheme';
+  const key = `raschet.project.${pid}.engine.scheme.v1`;
+  try {
+    if (localStorage.getItem(key) == null) {
+      const legacy = localStorage.getItem('raschet.scheme');
+      if (legacy != null) localStorage.setItem(key, legacy);
+    }
+  } catch {}
+  return key;
+}
 
 export function initToolbar() {
   // Zoom
@@ -38,9 +58,14 @@ export function initToolbar() {
   document.getElementById('btn-new-mode').onclick = () => createMode();
 
   // === Файловые операции (sidebar + legacy toolbar IDs) ===
-  const saveLocalFn = () => { localStorage.setItem('raschet.scheme', JSON.stringify(serialize())); flash('Сохранено в браузере'); };
+  const saveLocalFn = () => {
+    const key = schemeKey();
+    localStorage.setItem(key, JSON.stringify(serialize()));
+    flash(key === 'raschet.scheme' ? 'Сохранено в браузере' : 'Сохранено в проект');
+  };
   const loadLocalFn = () => {
-    const s = localStorage.getItem('raschet.scheme');
+    const key = schemeKey();
+    const s = localStorage.getItem(key);
     if (!s) return flash('Нет сохранения');
     try { deserialize(JSON.parse(s)); render(); renderInspector(); flash('Загружено'); }
     catch (err) { flash('Ошибка: ' + err.message); }
@@ -60,6 +85,25 @@ export function initToolbar() {
 
   // Привязка к sidebar-кнопкам
   const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+  // Project badge — показывает активный проект, в который сохраняется схема.
+  try {
+    const badge = document.getElementById('rs-project-badge');
+    if (badge) {
+      const pid = getActiveProjectId();
+      const key = schemeKey();
+      let pname = '';
+      try {
+        const p = (listProjects() || []).find(x => x.id === pid);
+        pname = p?.name || '';
+      } catch {}
+      if (key === 'raschet.scheme') {
+        badge.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="projects/" style="color:#1565c0">выбрать проект →</a>';
+      } else {
+        badge.innerHTML = '📁 Проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b> · <a href="projects/" style="color:#1565c0">сменить →</a>';
+      }
+    }
+  } catch {}
+
   bind('btn-save-local-side', saveLocalFn);
   bind('btn-load-local-side', loadLocalFn);
   bind('btn-export-side', exportJsonFn);
