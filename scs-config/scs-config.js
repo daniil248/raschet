@@ -1467,10 +1467,13 @@ async function renderRack3D(hostId, opts) {
     }, 200);
   });
 
-  // hint-легенда + чекбоксы видимости
-  const hint = document.createElement('div');
-  hint.className = 'sc-3d-hint';
-  hint.innerHTML = `
+  // v0.59.276: переименовано в legend (был SyntaxError "Identifier 'hint' has
+  // already been declared" — hint уже объявлен в этой же функции выше на ~стр.
+  // 1047). Ошибка парсинга ES-модуля глушила ВЕСЬ scs-config.js: пустой
+  // композер, нет каталога, нет стоек. Fix: legend вместо второго hint.
+  const legend = document.createElement('div');
+  legend.className = 'sc-3d-hint';
+  legend.innerHTML = `
     <div>🧊 <b>3D</b> · ЛКМ — вращать · колесо — zoom · ПКМ — pan</div>
     <div class="muted">Шкаф ${r.u}U · ${rackW}×${rackD} мм${depthConflicts.size ? ' · <span style="color:#fca5a5">⚠ коллизии глубины</span>' : ''}</div>
     <div class="sc-3d-toggles">
@@ -1479,8 +1482,8 @@ async function renderRack3D(hostId, opts) {
       <label><input type="checkbox" data-tog="doorRear" checked> дверь тыл</label>
     </div>
   `;
-  host.appendChild(hint);
-  hint.querySelectorAll('[data-tog]').forEach(cb => {
+  host.appendChild(legend);
+  legend.querySelectorAll('[data-tog]').forEach(cb => {
     cb.addEventListener('change', () => {
       const k = cb.dataset.tog;
       const obj = k === 'walls' ? walls : (k === 'doorFront' ? doorFront : doorRear);
