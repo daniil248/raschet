@@ -61,10 +61,10 @@ function collect() {
     (devs || []).forEach(d => {
       const t = catBy[d.typeId];
       const h = t ? (t.heightU || 1) : 1;
-      const devTag = tag ? (h > 1 ? `${tag}.U${d.positionU}-${d.positionU - h + 1}` : `${tag}.U${d.positionU}`) : '';
+      const devTag = tag ? `${tag}.U${d.positionU - h + 1}` : '';
       rows.push({
         loc: 'rack',
-        locLabel: `<a href="./rack.html?rackId=${encodeURIComponent(rackId)}">${esc(r.name)} · U${d.positionU}</a>`,
+        locLabel: `<a href="./rack.html?rackId=${encodeURIComponent(rackId)}">${esc(r.name)} · U${d.positionU - h + 1}</a>`,
         tag: devTag,
         item: d,
         type: t,

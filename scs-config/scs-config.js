@@ -184,7 +184,10 @@ function currentRackTag() {
   const r = currentRack(); if (!r) return '';
   return (state.rackTags[r.id] || '').trim();
 }
-/* Генерируемый тег устройства: <rackTag>.U<top>-U<bottom> (TIA-606) */
+/* Генерируемый тег устройства: <rackTag>.U<bottom> (TIA-606).
+   Для многоюнитных устройств адрес определяется НИЖНЕЙ точкой крепления
+   (монтажный референс), без диапазона — например 2U с top=43 → "U42".
+   Высота подставляется отдельно в колонку размера устройства. */
 function deviceTag(d) {
   const r = currentRack(); if (!r) return '';
   const tag = (state.rackTags[r.id] || '').trim();
@@ -192,7 +195,7 @@ function deviceTag(d) {
   const type = state.catalog.find(c => c.id === d.typeId);
   const h = type ? type.heightU : 1;
   const bottom = d.positionU - h + 1;
-  return h > 1 ? `${tag}.U${d.positionU}-${bottom}` : `${tag}.U${d.positionU}`;
+  return `${tag}.U${bottom}`;
 }
 
 /* ---- список доступных PDU-розеток текущей стойки (1.24.4 full) -------
