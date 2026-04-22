@@ -630,11 +630,23 @@ function renderRailFields() {
   if (el('rc-rail-front')) el('rc-rail-front').value = String(t.railFrontOffset);
   if (el('rc-rail-depth')) el('rc-rail-depth').value = String(t.railDepth);
   if (el('rc-rail-rear'))  el('rc-rail-rear').value  = String(t.railRearOffset);
+  // v0.59.260: auto-поле НЕ делаем readOnly — иначе пользователь не может
+  // кликнуть в него, и «последнее» поле застревает в auto навсегда.
+  // Вместо этого: любое редактирование поля поднимает его в начало LRU,
+  // а auto-полем становится то, что редактировали давнее всего (см. onRailFieldInput).
+  // Визуально auto-поле обозначено зелёной меткой «=auto» у label (rc-rail-auto-*)
+  // и подсветкой фона.
   ['front','depth','rear'].forEach(k => {
     const b = el('rc-rail-auto-' + k);
     if (b) b.style.display = (t.railAutoField === k) ? 'inline' : 'none';
     const inp = el('rc-rail-' + k);
-    if (inp) inp.readOnly = (t.railAutoField === k);
+    if (inp) {
+      inp.readOnly = false;
+      inp.style.background = (t.railAutoField === k) ? '#ecfdf5' : '';
+      inp.title = (t.railAutoField === k)
+        ? 'Это поле сейчас «auto» и считается из двух других. Начните вводить — поле станет manual, auto перейдёт на то, что трогали давнее всего.'
+        : '';
+    }
   });
 }
 function onRailFieldInput(which) {
@@ -1699,9 +1711,10 @@ function renderUnitMap() {
   const hzTotal = horizPdus.reduce((s, p) => s + p.h, 0);
   const blanks = Math.max(0, totalU - occ - hzTotal);
 
-  // геометрия: высота ряда 16px, ширина 200px; «рельсы» — 18px по бокам
-  const rowH = 16, bodyW = 200, railW = vertPdus.length ? 18 : 0;
-  const svgW = bodyW + railW * 2 + 28; // +padding слева для номеров U
+  // геометрия: высота ряда 16px, ширина 200px; «рельсы» — 18px по бокам.
+  // v0.59.260: номера U — С ДВУХ СТОРОН (справа тоже).
+  const rowH = 16, bodyW = 200;
+  // leftVert/rightVert рассчитаны ниже — railW для каждой стороны считаем отдельно
   const svgH = totalU * rowH + 8;
 
   const rows = [];
@@ -1722,16 +1735,33 @@ function renderUnitMap() {
     }
   });
 
-  // vertPdus — две колонки-рельсы: чередуем L / R
+  // v0.59.260: vertPdus распределяются по сторонам по вводу (как в scs-config):
+  // A, C → слева; B, D → справа; прочие — чередованием.
   const leftVert = [], rightVert = [];
-  vertPdus.forEach((p, i) => (i % 2 === 0 ? leftVert : rightVert).push(p));
+  vertPdus.forEach((p, i) => {
+    const f = (p.feed || '').toUpperCase();
+    if (f === 'A' || f === 'C') leftVert.push(p);
+    else if (f === 'B' || f === 'D') rightVert.push(p);
+    else (i % 2 === 0 ? leftVert : rightVert).push(p);
+  });
 
   const colorFor = k => k === 'eq' ? '#cbd5e1'
                       : k === 'blank' ? '#f1f5f9'
                       : k === 'pdu-h' ? '#bfdbfe'
                       : '#bfdbfe';
 
-  const bodyX = railW + 28;
+  // Раскладка: [PDU_L | U#L | RACK | U#R | PDU_R | (label handled inside rack)]
+  const RAIL_W = 18;
+  const UNUM_W = 14;
+  const leftRailW  = leftVert.length  ? RAIL_W : 0;
+  const rightRailW = rightVert.length ? RAIL_W : 0;
+  const leftRailX  = 2;
+  const unumLeftX  = leftRailX + leftRailW + 2;
+  const bodyX      = unumLeftX + UNUM_W;
+  const unumRightX = bodyX + bodyW + 4;
+  const rightRailX = unumRightX + UNUM_W + 2;
+  const svgW = rightRailX + rightRailW + 6;
+
   const rectsSvg = rows.map((r, i) => {
     const y = 4 + i * rowH;
     const fill = colorFor(r.kind);
@@ -1739,18 +1769,19 @@ function renderUnitMap() {
     const label = r.label
       ? `<text x="${bodyX + 6}" y="${y + rowH/2 + 4}" font-size="10" fill="#0f172a">${escape(r.label)}</text>`
       : '';
-    const num = `<text x="${railW + 22}" y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="end">${r.u}</text>`;
-    return `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>${num}${label}`;
+    const numL = `<text x="${unumLeftX + UNUM_W}" y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="end">${r.u}</text>`;
+    const numR = `<text x="${unumRightX}"          y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="start">${r.u}</text>`;
+    return `<rect x="${bodyX}" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>${numL}${numR}${label}`;
   }).join('');
 
-  const railSvg = (list, x) => list.length
-    ? `<rect x="${x}" y="4" width="${railW}" height="${totalU * rowH}" fill="#bfdbfe" stroke="#64748b" stroke-width="0.5"/>`
-      + `<text x="${x + railW/2}" y="${4 + totalU * rowH / 2}" font-size="9" fill="#0f172a" text-anchor="middle" transform="rotate(-90, ${x + railW/2}, ${4 + totalU * rowH / 2})">${list.length}× PDU 0U · ${list.map(p => p.feed).join('/')}</text>`
+  const railSvg = (list, x, w) => list.length
+    ? `<rect x="${x}" y="4" width="${w}" height="${totalU * rowH}" fill="#bfdbfe" stroke="#64748b" stroke-width="0.5"/>`
+      + `<text x="${x + w/2}" y="${4 + totalU * rowH / 2}" font-size="9" fill="#0f172a" text-anchor="middle" transform="rotate(-90, ${x + w/2}, ${4 + totalU * rowH / 2})">${list.length}× PDU 0U · ${list.map(p => p.feed).join('/')}</text>`
     : '';
 
   const svg = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">
-    ${railSvg(leftVert, 0)}
-    ${railSvg(rightVert, bodyX + bodyW + 4)}
+    ${railSvg(leftVert,  leftRailX,  leftRailW)}
+    ${railSvg(rightVert, rightRailX, rightRailW)}
     ${rectsSvg}
   </svg>`;
 
