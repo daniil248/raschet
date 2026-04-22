@@ -578,6 +578,9 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.183', date: '2026-04-22', items: [
+      '<b>Engine полностью очищен от нативных alert/confirm/prompt.</b> Заменено на <code>rsToast/rsConfirm/rsPrompt</code> из <code>shared/dialog.js</code>: custom-systems управление (добавление параметра, удаление системы, создание новой) в <code>inspector.js</code>, сохранение узла как изделия и как preset'а — все переведены в async. «Требуемая мощность» и «Название типа потребителя» в <code>consumer.js</code> — через <code>rsPrompt</code>. Подтверждение удаления ноды перенесено из <code>graph.js</code> в caller (<code>interaction.js</code> палитра-×) с inline-модалкой. Keyboard Delete на холсте не требует подтверждения (soft-delete в реестр, Ctrl+Z возвращает). Файлы: js/engine/inspector.js, js/engine/inspector/consumer.js, js/engine/graph.js, js/engine/interaction.js.',
+    ] },
     { version: '0.59.182', date: '2026-04-22', items: [
       '<b>Единые in-page диалоги</b> (<code>shared/dialog.js</code>): <code>rsToast</code> / <code>rsConfirm</code> / <code>rsPrompt</code> — без нативных <code>alert/confirm/prompt</code>, как этого требует внутренняя политика проекта. Стили в <code>shared/styles/base.css</code> (#rs-ui-host, .rs-toast-*, .rs-modal-*). Легаси-обёртки <code>window.rsToast/rsConfirm/rsPrompt</code> доступны глобально.',
       'Заменены критичные нативные вызовы в engine: patch-link «разные системы» → <code>rsToast(\'warn\')</code> (js/engine/interaction.js:515), «Очистить схему» → <code>rsConfirm</code>, «Сохранить как…» / импорт JSON → <code>rsPrompt/rsToast</code>, ошибки страниц (linked без родителя, удаление единственной) → <code>rsToast/rsConfirm</code>, переименование этажа → <code>rsPrompt</code>. Оставшиеся prompt/confirm в <code>inspector.js</code>/<code>consumer.js</code>/<code>graph.js</code> — задача следующей итерации (требуют перевода callers в async).',

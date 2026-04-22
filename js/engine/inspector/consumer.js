@@ -9,6 +9,7 @@ import { snapshot, notifyChange } from '../history.js';
 import { setEffectiveLoadFactor } from '../modes.js';
 import { render } from '../render.js';
 import { formatVoltageLevelLabel } from '../electrical.js';
+import { rsPrompt } from '../../../shared/dialog.js';
 
 let _renderInspector = null;
 export function bindInspectorConsumerDeps({ renderInspector }) {
@@ -386,8 +387,8 @@ export function openConsumerParamsModal(n) {
   // wizard-конфигуратор для consumer будет в следующей итерации.
   const cfgStub = document.getElementById('cp-cfg-stub');
   if (cfgStub) {
-    cfgStub.addEventListener('click', () => {
-      const kw = prompt('Требуемая мощность, кВт (и при желании — доп. требование, напр. "60, net sensible 45"):',
+    cfgStub.addEventListener('click', async () => {
+      const kw = await rsPrompt('Требуемая мощность, кВт (и при желании — доп. требование, напр. "60, net sensible 45"):',
         String(Number(n.demandKw) || ''));
       if (!kw) return;
       const parts = kw.split(',').map(s => s.trim()).filter(Boolean);
@@ -405,8 +406,8 @@ export function openConsumerParamsModal(n) {
 
   const saveBtn = document.getElementById('cp-save-catalog');
   if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
-      const label = prompt('Название типа потребителя:');
+    saveBtn.addEventListener('click', async () => {
+      const label = await rsPrompt('Название типа потребителя:');
       if (!label) return;
       const id = 'user_' + Date.now();
       const currentCategory = document.getElementById('cp-category')?.value || 'other';

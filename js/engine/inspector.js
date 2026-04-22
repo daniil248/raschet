@@ -13,6 +13,7 @@ import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './c
 import { getMethod } from '../methods/index.js';
 import { listTransformers } from '../../shared/transformer-catalog.js';
 import { mountTransformerPicker, applyTransformerModel } from '../../shared/transformer-picker.js';
+import { rsPrompt, rsConfirm } from '../../shared/dialog.js';
 
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
 import {
@@ -1358,23 +1359,23 @@ export function wireSystemsBlock(n, root) {
   host.querySelectorAll('[data-sys-manage-add]').forEach(b => {
     // клик по кнопке не должен переключать чекбокс родительского label
     b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-    b.addEventListener('click', (e) => {
+    b.addEventListener('click', async (e) => {
       const sysId = b.getAttribute('data-sys-manage-add');
       const sys = (state.project.customSystems || []).find(s => s.id === sysId);
       if (!sys) return;
-      const label = prompt('Название параметра (отображается в UI):', '');
+      const label = await rsPrompt('Название параметра (отображается в UI):', '');
       if (!label) return;
-      const keyRaw = prompt('Ключ (латиница/цифры):', label.toLowerCase().replace(/[^a-z0-9]+/g, ''));
+      const keyRaw = await rsPrompt('Ключ (латиница/цифры):', label.toLowerCase().replace(/[^a-z0-9]+/g, ''));
       const key = String(keyRaw || '').trim();
       if (!key || !/^[a-z0-9_]+$/i.test(key)) { flash('Ключ должен быть a-z0-9_', 'error'); return; }
       if (!Array.isArray(sys.params)) sys.params = [];
       if (sys.params.find(p => p.key === key)) { flash('Параметр с таким ключом уже существует', 'error'); return; }
-      const type = (prompt('Тип параметра: number / text / select', 'text') || 'text').trim();
-      const unit = prompt('Единицы измерения (можно пусто):', '') || '';
+      const type = ((await rsPrompt('Тип параметра: number / text / select', 'text')) || 'text').trim();
+      const unit = (await rsPrompt('Единицы измерения (можно пусто):', '')) || '';
       const p = { key, label, type: ['number','text','select'].includes(type) ? type : 'text' };
       if (unit) p.unit = unit;
       if (p.type === 'select') {
-        const opts = prompt('Варианты через запятую:', '') || '';
+        const opts = (await rsPrompt('Варианты через запятую:', '')) || '';
         p.options = [''].concat(opts.split(',').map(o => o.trim()).filter(Boolean));
       }
       if (p.type === 'number') { p.min = 0; p.step = 1; }
@@ -1387,9 +1388,9 @@ export function wireSystemsBlock(n, root) {
   });
   host.querySelectorAll('[data-sys-manage-del]').forEach(b => {
     b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-    b.addEventListener('click', () => {
+    b.addEventListener('click', async () => {
       const sysId = b.getAttribute('data-sys-manage-del');
-      if (!confirm('Удалить систему «' + sysId + '» из проекта? Она исчезнет у всех элементов.')) return;
+      if (!(await rsConfirm('Удалить систему «' + sysId + '» из проекта?', 'Она исчезнет у всех элементов.', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
       snapshot('custom-system-del:' + sysId);
       state.project.customSystems = (state.project.customSystems || []).filter(s => s.id !== sysId);
       // убрать упоминания систем и параметров из всех узлов
@@ -1405,17 +1406,17 @@ export function wireSystemsBlock(n, root) {
   });
   // v0.58.24: добавление пользовательской системы
   const addBtn = host.querySelector('#btn-add-custom-system');
-  if (addBtn) addBtn.addEventListener('click', () => {
-    const label = prompt('Название системы (отображается в UI и отчётах):', '');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    const label = await rsPrompt('Название системы (отображается в UI и отчётах):', '');
     if (!label) return;
-    const idRaw = prompt('ID (латиница, цифры, дефис):', label.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, ''));
+    const idRaw = await rsPrompt('ID (латиница, цифры, дефис):', label.toLowerCase().replace(/[^a-z0-9\-]+/g, '-').replace(/^-+|-+$/g, ''));
     const id = String(idRaw || '').trim();
     if (!id || !/^[a-z0-9\-]+$/i.test(id)) { flash('ID должен содержать только a-z, 0-9 и дефис', 'error'); return; }
     const all = getAllSystems();
     if (all.find(s => s.id === id)) { flash('Система с таким ID уже существует', 'error'); return; }
-    const icon = (prompt('Иконка (emoji, 1 символ):', '🔧') || '🔧').slice(0, 2);
-    const color = (prompt('Цвет (#RRGGBB):', '#6366f1') || '#6366f1').trim();
-    const kindsRaw = prompt('Виды страниц через запятую (schematic, low-voltage, data, mechanical). Пусто = везде:', 'low-voltage');
+    const icon = ((await rsPrompt('Иконка (emoji, 1 символ):', '🔧')) || '🔧').slice(0, 2);
+    const color = ((await rsPrompt('Цвет (#RRGGBB):', '#6366f1')) || '#6366f1').trim();
+    const kindsRaw = await rsPrompt('Виды страниц через запятую (schematic, low-voltage, data, mechanical). Пусто = везде:', 'low-voltage');
     const pageKinds = String(kindsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
     snapshot('custom-system-add:' + id);
     if (!Array.isArray(state.project.customSystems)) state.project.customSystems = [];
@@ -1747,9 +1748,9 @@ function _applyProductBinding(n, productId) {
 
 // v0.58.52 (1.22.4): «Сохранить как изделие» — создаёт запись в
 // state.project.productCatalog из текущих n.systemParams (min=max=default=val).
-function _saveNodeAsProduct(n) {
+async function _saveNodeAsProduct(n) {
   const defaultName = n.modelRef || n.name || n.tag || n.type;
-  const name = prompt('Название изделия в каталоге:', defaultName);
+  const name = await rsPrompt('Название изделия в каталоге:', defaultName);
   if (!name) return;
   const ranges = {};
   const sp = (n.systemParams && typeof n.systemParams === 'object') ? n.systemParams : {};
@@ -1829,9 +1830,9 @@ export function saveUserPresets(list) {
   try { localStorage.setItem(USER_PRESET_KEY, JSON.stringify(list)); }
   catch (e) { console.error('[userPresets]', e); }
 }
-export function saveNodeAsPreset(n) {
+export async function saveNodeAsPreset(n) {
   const name = n.name || n.type;
-  if (!confirm(`Сохранить «${name}» в библиотеку?`)) return;
+  if (!(await rsConfirm(`Сохранить «${name}» в библиотеку?`, '', { okLabel: 'Сохранить', cancelLabel: 'Отмена' }))) return;
   const params = JSON.parse(JSON.stringify(n));
   delete params.id; delete params.x; delete params.y; delete params.tag;
   for (const k of Object.keys(params)) if (k.startsWith('_')) delete params[k];

@@ -9,7 +9,7 @@ import { render, updateViewBox, el, bezier } from './render.js';
 import { createNode, deleteNode, deleteConn, tryConnect, wouldCreateCycle, nextFreeTag } from './graph.js';
 import { tryAttachToZone, detachFromZones, findZoneForMember, findParentZone, isNodeFullyInside, nodesInZone, copyZoneWithMembers } from './zones.js';
 import { flash } from './utils.js';
-import { rsToast } from '../../shared/dialog.js';
+import { rsToast, rsConfirm } from '../../shared/dialog.js';
 
 /* ---- late-bound deps (set via bindInteractionDeps) ---- */
 let _undo = () => {};
@@ -421,8 +421,19 @@ export function initInteraction() {
       if (delBtn) {
         e.stopPropagation();
         const id = delBtn.dataset.delId;
-        deleteNode(id, { hard: true });
-        notifyChange(); render();
+        const n0 = state.nodes.get(id);
+        const label = n0 && (n0.name || n0.tag) || id;
+        const pids = n0 && Array.isArray(n0.pageIds) ? n0.pageIds.length : 0;
+        (async () => {
+          const ok = await rsConfirm(
+            `Удалить «${label}» из проекта?`,
+            (pids > 0 ? `Элемент размещён на ${pids} стр. — исчезнет отовсюду.\n` : `Элемент хранится в реестре без размещения.\n`)
+            + `Связанные кабельные линии тоже будут удалены. Можно отменить через Ctrl+Z.`,
+            { okLabel: 'Удалить', cancelLabel: 'Отмена' });
+          if (!ok) return;
+          deleteNode(id, { hard: true, silent: true });
+          notifyChange(); render();
+        })();
         return;
       }
       const item = e.target.closest('.pal-reg-item');

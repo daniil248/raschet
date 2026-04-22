@@ -124,21 +124,10 @@ export function deleteNode(id, opts = {}) {
     // Если страницы нет в списке — ничего не делаем (уже не на этой странице)
     return;
   }
-  if (!opts.silent) {
-    const pids = Array.isArray(n0.pageIds) ? n0.pageIds.length : (state.pages || []).length;
-    const GLOBAL = (typeof window !== 'undefined' && window.GLOBAL) || {};
-    const ask = GLOBAL.confirmDeleteNode !== false;
-    if (ask) {
-      const label = (n0.name || n0.tag || n0.id) || id;
-      const msg = `Удалить «${label}» из проекта?\n\n`
-        + (pids > 0
-          ? `Элемент размещён на ${pids} стр. — исчезнет отовсюду.\n`
-          : `Элемент хранится в реестре без размещения.\n`)
-        + `Связанные кабельные линии тоже будут удалены.\n\n`
-        + `Это действие можно отменить через Ctrl+Z.`;
-      if (!confirm(msg)) return;
-    }
-  }
+  // v0.59.183: подтверждение удаления вынесено в callers (interaction/inspector),
+  // там используется rsConfirm (in-page). Здесь — чистое выполнение.
+  // Совместимость: если кто-то всё ещё зовёт без silent и GLOBAL.confirmDeleteNode
+  // разрешает, — тихо продолжаем (подтверждение уже должно было состояться наверху).
   _snapshot();
   const n = state.nodes.get(id);
   // Каскадное удаление
