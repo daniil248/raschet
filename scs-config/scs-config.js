@@ -1045,6 +1045,7 @@ function cartToWarehouse(cartId) {
   const idx = state.cart.findIndex(x => x.id === cartId);
   if (idx < 0) return;
   const item = state.cart.splice(idx, 1)[0];
+  item.storedAt = Date.now();
   state.warehouse.push(item);
   saveCart(); saveWarehouse();
   renderCart(); renderWarehouse();
@@ -1054,10 +1055,33 @@ function warehouseToCart(whId) {
   const idx = state.warehouse.findIndex(x => x.id === whId);
   if (idx < 0) return;
   const item = state.warehouse.splice(idx, 1)[0];
+  delete item.storedAt;
   state.cart.push(item);
   saveCart(); saveWarehouse();
   renderCart(); renderWarehouse();
   scToast('Взято со склада на тележку', 'ok');
+}
+async function editWarehouseItem(whId) {
+  const item = state.warehouse.find(x => x.id === whId); if (!item) return;
+  const serial = await scPrompt('Серийный номер', item.serial || '');
+  if (serial === null) return;
+  const note = await scPrompt('Заметка', item.note || '');
+  if (note === null) return;
+  item.serial = serial.trim() || undefined;
+  item.note = note.trim() || undefined;
+  saveWarehouse(); renderWarehouse();
+}
+function fmtAge(ts) {
+  if (!ts) return '—';
+  const diff = Date.now() - ts;
+  const d = Math.floor(diff / 86400000);
+  if (d < 1) return 'сегодня';
+  if (d === 1) return 'вчера';
+  if (d < 30) return `${d} дн. назад`;
+  const m = Math.floor(d / 30);
+  if (m < 12) return `${m} мес. назад`;
+  const y = Math.floor(d / 365);
+  return `${y} г. назад`;
 }
 async function discardWarehouseItem(whId) {
   const ok = await scConfirm('Удалить со склада?', 'Устройство будет удалено безвозвратно.', { okLabel: 'Удалить' });
@@ -1131,13 +1155,19 @@ function renderWarehouse() {
     host.innerHTML = '<div class="sc-cart-empty muted">Склад пуст.</div>';
     return;
   }
-  const rows = [`<tr><th>Устройство</th><th>Было в</th><th style="width:180px"></th></tr>`];
-  state.warehouse.forEach(item => {
+  const rows = [`<tr><th>Устройство</th><th>S/N · заметка</th><th>Было в</th><th>Хранится</th><th style="width:220px"></th></tr>`];
+  const sorted = [...state.warehouse].sort((a, b) => (b.storedAt || 0) - (a.storedAt || 0));
+  sorted.forEach(item => {
     const fromLabel = item.fromRackName || '—';
+    const snNote = [item.serial ? `S/N: ${escape(item.serial)}` : '', item.note ? escape(item.note) : '']
+      .filter(Boolean).join(' · ') || '<span class="muted">—</span>';
     rows.push(`<tr draggable="true" data-whid="${item.id}">
       <td>${escape(item.label)}</td>
+      <td style="font-size:11px">${snNote}</td>
       <td class="muted">${escape(fromLabel)}</td>
+      <td class="muted" title="${item.storedAt ? new Date(item.storedAt).toLocaleString() : ''}">${fmtAge(item.storedAt)}</td>
       <td>
+        <button type="button" class="sc-btn" data-act="edit" data-id="${item.id}" title="Редактировать S/N и заметку">📝</button>
         <button type="button" class="sc-btn" data-act="tocart" data-id="${item.id}" title="Взять на тележку">↑ на тележку</button>
         <button type="button" class="sc-btn sc-btn-danger" data-act="del" data-id="${item.id}" title="Удалить со склада">✕</button>
       </td>
@@ -1154,6 +1184,7 @@ function renderWarehouse() {
   });
   host.querySelectorAll('[data-act="tocart"]').forEach(b => b.addEventListener('click', () => warehouseToCart(b.dataset.id)));
   host.querySelectorAll('[data-act="del"]').forEach(b => b.addEventListener('click', () => discardWarehouseItem(b.dataset.id)));
+  host.querySelectorAll('[data-act="edit"]').forEach(b => b.addEventListener('click', () => editWarehouseItem(b.dataset.id)));
 }
 
 /* HTML5-drop на тележку (для drag со склада, если доделаем; сейчас только

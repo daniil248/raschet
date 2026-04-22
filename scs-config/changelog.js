@@ -3,6 +3,13 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.11',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.24.32 доводка — инвентарь на складе. item.storedAt (timestamp) ставится при cartToWarehouse и сбрасывается при warehouseToCart. item.serial (S/N) и item.note (заметка) редактируются через editWarehouseItem → scPrompt x2. Таблица Склада перестроена: колонки [Устройство][S/N · заметка][Было в][Хранится][Действия]. Сортировка по storedAt desc (новые сверху). Относительный возраст через fmtAge (сегодня / N дн. / N мес. / N г.) с tooltip = точная дата/время. Кнопка 📝 для редактирования S/N + заметки.',
+    ],
+  },
+  {
     version: '0.1.10',
     date: '2026-04-22',
     items: [
