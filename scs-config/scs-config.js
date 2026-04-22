@@ -1343,6 +1343,13 @@ function renderWarnings() {
   if (dupOutlets.length) {
     items.push(`<div class="sc-warn-item err">Дублирование PDU-розетки: ${dupOutlets.map(([o, n]) => `${o} (×${n})`).join(', ')}. Один слот должен занимать одно устройство.</div>`);
   }
+  // v0.59.259: физическая влезаемость 0U-PDU по сторонам (A,C — левая; B,D — правая)
+  if (Array.isArray(r.pdus) && r.pdus.length) {
+    const L = r.pdus.filter(p => ['A','C'].includes((p.feed || '').toUpperCase())).length;
+    const R = r.pdus.filter(p => ['B','D'].includes((p.feed || '').toUpperCase())).length;
+    if (L > 2) items.push(`<div class="sc-warn-item err">На левую сторону стойки (вводы A/C) назначено ${L} вертикальных PDU — физически умещается не более 2.</div>`);
+    if (R > 2) items.push(`<div class="sc-warn-item err">На правую сторону стойки (вводы B/D) назначено ${R} вертикальных PDU — физически умещается не более 2.</div>`);
+  }
   if (!items.length) items.push('<div class="sc-warn-item ok">Всё ок: размещение корректно, конфликтов нет.</div>');
   host.innerHTML = items.join('');
 }
@@ -1539,12 +1546,10 @@ function renderUnitMap(hostId, opts) {
     drawPduStrip(p, sx);
   });
   if (pduFitBad.left) {
-    pduStrips.push(`<rect x="${PDU_LEFT_X - 1}" y="4" width="${PDU_ZONE_LEFT_W}" height="3" fill="#dc2626"/>`);
-    pduStrips.push(`<title>⚠ На левую сторону стойки назначено ${pduLeft.length} PDU (помещается 2). Физически не влезают.</title>`);
+    pduStrips.push(`<g><rect x="${PDU_LEFT_X - 1}" y="4" width="${PDU_ZONE_LEFT_W}" height="3" fill="#dc2626"><title>⚠ На левую сторону стойки назначено ${pduLeft.length} PDU (помещается 2). Физически не влезают.</title></rect></g>`);
   }
   if (pduFitBad.right) {
-    pduStrips.push(`<rect x="${PDU_RIGHT_X - 1}" y="4" width="${PDU_ZONE_RIGHT_W}" height="3" fill="#dc2626"/>`);
-    pduStrips.push(`<title>⚠ На правую сторону стойки назначено ${pduRight.length} PDU (помещается 2). Физически не влезают.</title>`);
+    pduStrips.push(`<g><rect x="${PDU_RIGHT_X - 1}" y="4" width="${PDU_ZONE_RIGHT_W}" height="3" fill="#dc2626"><title>⚠ На правую сторону стойки назначено ${pduRight.length} PDU (помещается 2). Физически не влезают.</title></rect></g>`);
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
   // v0.59.253: режим 'both' — шкаф делим пополам. Левая половина = фронт,

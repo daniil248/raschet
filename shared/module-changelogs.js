@@ -244,6 +244,11 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.259', date: '2026-04-22', items: [
+      '🔧 Fix: красная warn-полоса над переполненной PDU-зоной теперь реально показывает tooltip — <title> перенесён ВНУТРЬ <rect> (SVG-хост для title-элемента).',
+      '⚠ Дублирующая текстовая проверка в блоке «Предупреждения» (sc-warn): если вводов A/C > 2 или B/D > 2 — отдельной err-строкой. Чтобы пользователь видел ошибку даже не глядя на SVG.',
+      'Файлы: scs-config/scs-config.js (renderUnitMap: <g><rect><title>…; renderWarnings: pdu fit-side checks).',
+    ] },
     { version: '0.59.258', date: '2026-04-22', items: [
       '🔢 U-номера теперь показываются с ОБЕИХ сторон стойки (слева и справа). Левая — text-anchor=end, правая — text-anchor=start. Нумерация синхронна.',
       '↕ Переключатель направления U-нумерации: кнопка «↕ 1↓/1↑» в режиме-баре карты юнитов. «bu» (по умолчанию, EIA-310) — 1 снизу; «td» — 1 сверху. Persist в localStorage[\'scs-config.uNumDir.v1\'].',
