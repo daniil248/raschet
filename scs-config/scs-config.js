@@ -911,6 +911,14 @@ async function renderRack3D(hostId, opts) {
     grp.add(m); grp.add(e);
     return grp;
   };
+  // v0.59.254: раньше фасад создавался через Object.assign(new Mesh, {position:...})
+  // — это ломало внутренний matrix Object3D (position — accessor) и 3D падал без
+  // ошибки рендера. Используем явный helper.
+  const mkMesh = (geo, mat, x, y, z) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    return m;
+  };
 
   // пол и крыша — всегда
   cabinet.add(mkBox(rackW, FR, rackD, metalMat, rackW/2, FR/2, rackD/2));
@@ -1022,7 +1030,7 @@ async function renderRack3D(hostId, opts) {
             const px = rackW/2 - panelW/2 + 8 + c*12;
             const py = yCenter - usableH/2 + 4 + rIdx*10;
             const portGeo = new THREE.BoxGeometry(9, 7, 0.4);
-            scene.add(Object.assign(new THREE.Mesh(portGeo, ledGreen), { position: new THREE.Vector3(px, py, faceZ) }));
+            scene.add(mkMesh(portGeo, ledGreen, px, py, faceZ));
           }
         }
       } else if (kind === 'patch-panel') {
@@ -1032,7 +1040,7 @@ async function renderRack3D(hostId, opts) {
         for (let c = 0; c < cols; c++) {
           const px = rackW/2 - panelW/2 + 8 + c*12;
           const portGeo = new THREE.BoxGeometry(9, Math.min(9, usableH*0.7), 0.4);
-          scene.add(Object.assign(new THREE.Mesh(portGeo, ledAmber), { position: new THREE.Vector3(px, yCenter, faceZ) }));
+          scene.add(mkMesh(portGeo, ledAmber, px, yCenter, faceZ));
         }
       } else if (kind === 'pdu') {
         // ряд розеток
@@ -1040,7 +1048,7 @@ async function renderRack3D(hostId, opts) {
         for (let c = 0; c < cols; c++) {
           const py = yCenter - usableH/2 + (c+0.5) * (usableH/cols);
           const outlet = new THREE.BoxGeometry(18, 6, 0.4);
-          scene.add(Object.assign(new THREE.Mesh(outlet, ledBlue), { position: new THREE.Vector3(rackW/2, py, faceZ) }));
+          scene.add(mkMesh(outlet, ledBlue, rackW/2, py, faceZ));
         }
       } else if (kind === 'server-1U' || kind === 'server-2U' || kind === 'server') {
         // отсек HDD + LED-индикатор
@@ -1050,13 +1058,13 @@ async function renderRack3D(hostId, opts) {
         scene.add(mkBox(row + 20, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
         for (let b = 0; b < bays; b++) {
           const px = rackW/2 - row/2 + (b + 0.5)*bayW;
-          scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(bayW - 2, usableH*0.7, 0.5), ledBlue), { position: new THREE.Vector3(px, yCenter, faceZ) }));
+          scene.add(mkMesh(new THREE.BoxGeometry(bayW - 2, usableH*0.7, 0.5), ledBlue, px, yCenter, faceZ));
         }
       } else {
         // дефолт — тонкая полоса с 2 светодиодами
         scene.add(mkBox(40, 4, 0.6, facadeMat, rackW/2 - 20, yCenter, faceZ));
-        scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 3, 0.5), ledGreen), { position: new THREE.Vector3(rackW/2 + 30, yCenter, faceZ) }));
-        scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 3, 0.5), ledAmber), { position: new THREE.Vector3(rackW/2 + 40, yCenter, faceZ) }));
+        scene.add(mkMesh(new THREE.BoxGeometry(3, 3, 0.5), ledGreen, rackW/2 + 30, yCenter, faceZ));
+        scene.add(mkMesh(new THREE.BoxGeometry(3, 3, 0.5), ledAmber, rackW/2 + 40, yCenter, faceZ));
       }
     };
     drawFacade(side);
@@ -1249,8 +1257,19 @@ function renderUnitMap(hostId, opts) {
   // В модалке делаем юнит крупнее для удобства
   const scale = opts.big ? 2 : 1;
   const rowH = 16 * scale, bodyW = 220 * scale;
+  // v0.59.254: свежая раскладка. Слева: U-номера (x=4..18), потом колонка
+  // вертикальных PDU (для r.pdus). Далее корпус стойки (x=32..32+bodyW).
+  // Справа от стойки — подписи устройств (labelW), в модалке — ещё wires.
+  const UNUM_X = 16 * scale;     // правый край U-номеров (text-anchor=end)
+  const PDU_X  = 18 * scale;     // старт зоны PDU
+  const PDU_STRIP = 6 * scale;   // ширина одной полосы PDU
+  const pduCount = Math.min(2, (r.pdus || []).length);
+  const PDU_ZONE_W = pduCount ? pduCount * (PDU_STRIP + 1) + 2 : 0;
+  const RACK_X = Math.max(32, PDU_X + PDU_ZONE_W + 4);
+  const LABEL_GAP = 6;
+  const LABEL_W = 200 * scale;
   const svgH = r.u * rowH + 8;
-  const svgW = bodyW + 40;
+  const svgW = RACK_X + bodyW + LABEL_GAP + LABEL_W;
   const mode = state.viewMode;
   // slot → device; индексы U=1..r.u (1 — снизу, r.u — сверху)
   const slot = new Array(r.u + 1).fill(null);
@@ -1286,9 +1305,42 @@ function renderUnitMap(hostId, opts) {
     if (!s || s.kind === 'rack-occ') {
       const fill = s && s.kind === 'rack-occ' ? '#cbd5e1' : '#f1f5f9';
       const stroke = s && s.kind === 'rack-occ' ? '#64748b' : '#cbd5e1';
-      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
+      rects.push(`<rect x="${RACK_X}" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
     }
-    rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
+    rects.push(`<text x="${UNUM_X}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
+  }
+
+  // v0.59.254: вертикальные PDU слева от стойки — одна полоса на ввод.
+  // Рисуется на всю высоту стойки; количество розеток ≈ ceil(r.u * 1.5) — просто
+  // для визуализации. Занятые розетки помечаются зелёным, по pduOutlet.
+  const pduStrips = [];
+  if (pduCount) {
+    const outletsByFeed = new Map();
+    devices.forEach(d => {
+      const f = d.pduFeed || '';
+      if (!f || !d.pduOutlet) return;
+      const m = String(d.pduOutlet).match(/(\d+)/);
+      if (!m) return;
+      if (!outletsByFeed.has(f)) outletsByFeed.set(f, new Set());
+      outletsByFeed.get(f).add(+m[1]);
+    });
+    (r.pdus || []).slice(0, pduCount).forEach((p, i) => {
+      const sx = PDU_X + i * (PDU_STRIP + 1);
+      const strips = 4 + Math.ceil(r.u * (p.phases === 3 ? 0.7 : 1.2));
+      const color = feedColor(p.feed);
+      // корпус PDU
+      pduStrips.push(`<rect x="${sx}" y="4" width="${PDU_STRIP}" height="${r.u * rowH}" fill="#1f2937" stroke="${color}" stroke-width="1"/>`);
+      // розетки вдоль
+      const stepY = (r.u * rowH - 4) / strips;
+      const used = outletsByFeed.get(p.feed) || new Set();
+      for (let j = 0; j < strips; j++) {
+        const oy = 4 + 2 + j * stepY + stepY / 2;
+        const on = used.has(j + 1);
+        pduStrips.push(`<circle cx="${sx + PDU_STRIP/2}" cy="${oy}" r="${Math.max(1, PDU_STRIP*0.28)}" fill="${on ? color : '#334155'}" stroke="${on ? '#fff' : '#111827'}" stroke-width="0.3"/>`);
+      }
+      // подпись ввода сверху
+      pduStrips.push(`<text x="${sx + PDU_STRIP/2}" y="${2}" font-size="${7*scale}" fill="${color}" text-anchor="middle" dominant-baseline="hanging">${escape(p.feed || '?')}</text>`);
+    });
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
   // v0.59.253: режим 'both' — шкаф делим пополам. Левая половина = фронт,
@@ -1322,7 +1374,7 @@ function renderUnitMap(hostId, opts) {
     const isShelf = type.kind === 'shelf';
     const portsRear = !!type.portsRear;
     // расположение корпуса
-    const bodyX = isBoth ? (devSide === 'rear' ? (32 + halfW) : 32) : 32;
+    const bodyX = isBoth ? (devSide === 'rear' ? (RACK_X + halfW) : RACK_X) : RACK_X;
     const bodyWidth = isBoth ? halfW : bodyW;
     // уши — тонкие вертикальные полосы у самого края корпуса, изнутри
     const leftEarX = bodyX;
@@ -1375,20 +1427,24 @@ function renderUnitMap(hostId, opts) {
         })();
     // если у типа порты есть и на тыле — маркер звёздочки
     const rearMark = (portsRear && !isBoth) ? `<text x="${bodyX + bodyWidth - 14}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#dc2626" title="порты и с тыла">⇄</text>` : '';
+    // v0.59.254: подпись — СНАРУЖИ стойки, справа. Связывающая линия тонкая.
+    const labelX = RACK_X + bodyW + LABEL_GAP;
+    const labelY = y + rowH/2 + 4;
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" data-side="${devSide}" style="cursor:grab">
       <rect x="${bodyX}" y="${y}" width="${bodyWidth}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}"${dashAttr} stroke-width="${conflict ? 1.5 : (isBoth ? 1 : 0.5)}"/>
       ${isShelf ? '' : `<rect x="${leftEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
       ${isShelf ? '' : `<rect x="${rightEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
       ${facadeHtml}
       ${rearMark}
-      <text x="${bodyX + earW + 4}" y="${y + rowH/2 + 4}" font-size="${(isBoth ? 9 : 10)*scale}" fill="#0f172a">${escape(labelTxt)}</text>
+      <line x1="${bodyX + bodyWidth}" y1="${labelY - 2}" x2="${labelX - 2}" y2="${labelY - 2}" stroke="${type.color || '#94a3b8'}" stroke-width="1" opacity="0.7"/>
+      <text x="${labelX}" y="${labelY}" font-size="${(isBoth ? 10 : 11)*scale}" fill="#0f172a">${escape(labelTxt)}</text>
     </g>`;
   }).join('');
   // в режиме «обе стороны» — центральная разделительная линия между front и rear
   const splitter = isBoth
-    ? `<line x1="${32 + halfW}" y1="4" x2="${32 + halfW}" y2="${4 + r.u * rowH}" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2 2"/>`
-      + `<text x="${32 + halfW/2}" y="${rowH - 4}" font-size="${8*scale}" fill="#2563eb" text-anchor="middle">🟦 фронт</text>`
-      + `<text x="${32 + halfW + halfW/2}" y="${rowH - 4}" font-size="${8*scale}" fill="#dc2626" text-anchor="middle">🟥 тыл</text>`
+    ? `<line x1="${RACK_X + halfW}" y1="4" x2="${RACK_X + halfW}" y2="${4 + r.u * rowH}" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2 2"/>`
+      + `<text x="${RACK_X + halfW/2}" y="${rowH - 4}" font-size="${8*scale}" fill="#2563eb" text-anchor="middle">🟦 фронт</text>`
+      + `<text x="${RACK_X + halfW + halfW/2}" y="${rowH - 4}" font-size="${8*scale}" fill="#dc2626" text-anchor="middle">🟥 тыл</text>`
     : '';
 
   const legend = [];
@@ -1432,7 +1488,7 @@ function renderUnitMap(hostId, opts) {
       return 4 + topIdx * rowH + (h * rowH) / 2;
     };
     const wireParts = [];
-    const rightX = 32 + bodyW;
+    const rightX = RACK_X + bodyW + LABEL_GAP + LABEL_W; // wires стартуют за подписями
     links.forEach((l, idx) => {
       const a = lookup(l.a), b = lookup(l.b);
       if (!a || !b || a === b) return;
@@ -1455,8 +1511,9 @@ function renderUnitMap(hostId, opts) {
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
   const totalW = svgW + extraRight;
   const z = opts.big ? (state.dlgZoom || 1) : 1;
-  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="32" data-face="${state.faceMode}">
+  const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="${RACK_X}" data-face="${state.faceMode}">
     ${rects.join('')}
+    ${pduStrips.join('')}
     ${splitter}
     ${deviceGroups}
     ${wires}
