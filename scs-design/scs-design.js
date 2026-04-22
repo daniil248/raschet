@@ -63,6 +63,111 @@ function renderProjectBadge(pid) {
   });
 }
 
+// Wizard создания стойки в проект: имя, высота U, опционально базовая
+// комплектация (патч-панель + коммутатор 1U). Возвращает null при отмене.
+function sdRackWizard() {
+  return new Promise(res => {
+    const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+    const overlay = document.createElement('div');
+    overlay.className = 'sd-overlay';
+    overlay.innerHTML = `
+      <div class="sd-modal" style="min-width:360px">
+        <h3 style="margin:0 0 10px">＋ Новая стойка в проект</h3>
+        <label style="display:block;margin:8px 0 4px;color:#cbd5e1;font-size:13px">Имя</label>
+        <input type="text" id="rw-name" style="width:100%;padding:8px 10px;border-radius:6px;background:#1f2937;color:#f1f5f9;border:1px solid #475569;box-sizing:border-box" value="Стойка A-01" autocomplete="off">
+        <label style="display:block;margin:10px 0 4px;color:#cbd5e1;font-size:13px">Тег (A-01, RACK-A1…) — можно пусто</label>
+        <input type="text" id="rw-tag" style="width:100%;padding:8px 10px;border-radius:6px;background:#1f2937;color:#f1f5f9;border:1px solid #475569;box-sizing:border-box" value="A-01" autocomplete="off">
+        <label style="display:block;margin:10px 0 4px;color:#cbd5e1;font-size:13px">Высота, U</label>
+        <select id="rw-u" style="width:100%;padding:8px 10px;border-radius:6px;background:#1f2937;color:#f1f5f9;border:1px solid #475569">
+          <option>12</option><option>18</option><option>24</option><option>32</option><option selected>42</option><option>47</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:8px;margin:14px 0 4px;color:#cbd5e1;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="rw-basic" checked>
+          <span>Базовая комплектация: 1× патч-панель 24 порта (U1) + 1× коммутатор 24 порта (U2) + 1× 1U-органайзер (U3)</span>
+        </label>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="sd-btn-sel" data-act="no">Отмена</button>
+          <button type="button" class="sd-btn-export" data-act="yes">Создать</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#rw-name').focus();
+    overlay.querySelector('#rw-name').select();
+    const done = v => { overlay.remove(); res(v); };
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) return done(null);
+      if (e.target.dataset?.act === 'no') return done(null);
+      if (e.target.dataset?.act === 'yes') {
+        const name = (overlay.querySelector('#rw-name').value || '').trim();
+        if (!name) { overlay.querySelector('#rw-name').focus(); return; }
+        done({
+          name,
+          tag: (overlay.querySelector('#rw-tag').value || '').trim(),
+          u: +overlay.querySelector('#rw-u').value || 42,
+          basic: overlay.querySelector('#rw-basic').checked,
+        });
+      }
+    });
+  });
+}
+
+// Создать стойку в проекте: добавить шаблон в библиотеку, создать запись
+// в contents (с опциональной базовой комплектацией) и тег. Возвращает id.
+function createProjectRack(opts) {
+  const id = 'tpl-' + Math.random().toString(36).slice(2, 9);
+  const racks = getRacks();
+  racks.push({
+    id, name: opts.name, manufacturer: '', kitId: '',
+    u: opts.u || 42, width: 600, depth: 1000,
+    doorFront: 'mesh', doorRear: 'double-mesh', doorWithLock: true,
+    lock: 'key', sides: 'pair-sku', top: 'vent', base: 'feet',
+    comboTopBase: false, entryTop: 2, entryBot: 2, entryType: 'brush',
+    occupied: 0, blankType: '1U-solid',
+    demandKw: 5, cosphi: 0.9, pduRedundancy: '2N', pdus: [],
+  });
+  saveJson(LS_RACK, racks);
+
+  // contents в проекте
+  const all = loadJson(LS_CONTENTS, {});
+  const devices = [];
+  if (opts.basic) {
+    const cat = getCatalog();
+    const findByKind = k => cat.find(t => t.kind === k);
+    const patch  = findByKind('patch-panel');
+    const sw     = findByKind('switch');
+    const cm     = findByKind('cable-manager');
+    const mkDev = (typeId, label, uStart, heightU, ports) => ({
+      id: 'd-' + Math.random().toString(36).slice(2, 9),
+      typeId: typeId || '', label, uStart, heightU: heightU || 1,
+      ports: ports || 0, powerW: 0,
+    });
+    devices.push(mkDev(patch?.id, 'Патч-панель 24', 1, 1, 24));
+    devices.push(mkDev(sw?.id,    'Коммутатор 24', 2, 1, 24));
+    devices.push(mkDev(cm?.id,    'Органайзер 1U', 3, 1, 0));
+  }
+  all[id] = devices;
+  saveJson(LS_CONTENTS, all);
+
+  // тег в проекте
+  if (opts.tag) {
+    const tags = loadJson(LS_RACKTAGS, {});
+    tags[id] = opts.tag;
+    saveJson(LS_RACKTAGS, tags);
+  }
+  return id;
+}
+
+// «В проекте» = либо есть запись в contents активного проекта, либо есть
+// тег в racktags активного проекта (пустая стойка, но явно названа).
+function getProjectRackIds() {
+  const byContent = loadJson(LS_CONTENTS, {});
+  const byTag     = loadJson(LS_RACKTAGS, {});
+  const ids = new Set();
+  Object.keys(byContent || {}).forEach(id => ids.add(id));
+  Object.keys(byTag || {}).forEach(id => { if ((byTag[id] || '').trim()) ids.add(id); });
+  return ids;
+}
+
 function sdPrompt(title, label, initial = '') {
   return new Promise(res => {
     const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
@@ -318,8 +423,16 @@ function renderLinksTab() {
     const name = (r.name || '').toLowerCase();
     return tag.includes(q) || name.includes(q) || r.id.toLowerCase().includes(q);
   };
-  const real = racks.filter(r => (getRackTag(r.id) || '').trim()).filter(matches);
-  const drafts = racks.filter(r => !(getRackTag(r.id) || '').trim()).filter(matches);
+  // Фаза 1.27.4+: разделение «стойки проекта» vs «библиотека шаблонов».
+  // В проекте = есть запись в LS_CONTENTS или тег в LS_RACKTAGS (оба scope'ятся
+  // по pid). Библиотечные шаблоны = всё остальное. Библиотеку показываем
+  // свернутой — кликом она добавляется в проект (создаётся пустая запись
+  // contents), и стойка всплывает наверх в «Стойки проекта».
+  const projIds = getProjectRackIds();
+  const inProject  = racks.filter(r => projIds.has(r.id)).filter(matches);
+  const library    = racks.filter(r => !projIds.has(r.id)).filter(matches);
+  const real       = inProject.filter(r => (getRackTag(r.id) || '').trim());
+  const drafts     = inProject.filter(r => !(getRackTag(r.id) || '').trim());
   const chipHtml = r => {
     const on = selected.has(r.id);
     const label = rackLabel(r);
@@ -331,7 +444,7 @@ function renderLinksTab() {
   const parts = [];
   // поиск
   const totalAll = racks.length;
-  const shown = [...real, ...drafts];
+  const shown = [...real, ...drafts, ...library];
   const totalShown = shown.length;
   const allShownSelected = totalShown > 0 && shown.every(r => selected.has(r.id));
   parts.push(`<div class="sd-picker-search">
@@ -339,16 +452,21 @@ function renderLinksTab() {
     <span class="muted">${q ? `${totalShown}/${totalAll}` : `${totalAll} шт.`}</span>
     ${totalShown > 0 ? `<button type="button" class="sd-btn-sel" id="sd-picker-toggle-all" title="Выбрать/снять все ${q ? 'найденные' : ''}">${allShownSelected ? '☐ снять все' : '☑ выбрать все'}</button>` : ''}
     ${q ? '<button type="button" class="sd-btn-sel" id="sd-picker-clear">×</button>' : ''}
+    <button type="button" class="sd-btn-export" id="sd-new-rack" title="Создать новую стойку в этом проекте (имя/тег/U, опционально — базовое оборудование)">＋ Новая стойка</button>
   </div>`);
   if (real.length) {
-    parts.push(`<div class="sd-rack-group-h">🗄 Реальные стойки (${real.length})</div>`);
+    parts.push(`<div class="sd-rack-group-h">🗄 Стойки проекта — с тегом (${real.length})</div>`);
     parts.push(`<div class="sd-rack-group">${real.map(chipHtml).join('')}</div>`);
   }
   if (drafts.length) {
-    parts.push(`<div class="sd-rack-group-h draft">📐 Черновики / шаблоны без тега (${drafts.length})</div>`);
+    parts.push(`<div class="sd-rack-group-h draft">📐 Стойки проекта — без тега / черновики (${drafts.length})</div>`);
     parts.push(`<div class="sd-rack-group draft">${drafts.map(chipHtml).join('')}</div>`);
   }
-  if (!real.length && !drafts.length && q) {
+  if (library.length) {
+    parts.push(`<div class="sd-rack-group-h" style="opacity:.7">📚 Библиотека шаблонов (${library.length}) — клик добавит в проект</div>`);
+    parts.push(`<div class="sd-rack-group" style="opacity:.75">${library.map(chipHtml).join('')}</div>`);
+  }
+  if (!real.length && !drafts.length && !library.length && q) {
     parts.push(`<div class="sd-empty-state" style="padding:8px">Ничего не найдено по «${escapeHtml(q)}». Проверьте раскладку или очистите поиск.</div>`);
   }
   picker.innerHTML = parts.join('');
@@ -374,10 +492,28 @@ function renderLinksTab() {
     renderLinksTab();
   });
 
+  // Кнопка «＋ Новая стойка»: создать и сразу выбрать в мастер
+  document.getElementById('sd-new-rack')?.addEventListener('click', async () => {
+    const opts = await sdRackWizard();
+    if (!opts) return;
+    const newId = createProjectRack(opts);
+    const sel = new Set(loadJson(LS_SELECTION, []));
+    sel.add(newId);
+    saveJson(LS_SELECTION, Array.from(sel));
+    renderLinksTab();
+  });
+
   picker.querySelectorAll('.sd-rack-chip').forEach(chip => {
     const id = chip.dataset.id;
     const input = chip.querySelector('input');
     input.addEventListener('change', () => {
+      // Если пользователь выбирает стойку из библиотеки — автоматически
+      // добавляем её в проект (пустая запись contents), чтобы в следующий
+      // раз она показалась в группе «Стойки проекта».
+      if (input.checked && !projIds.has(id)) {
+        const all = loadJson(LS_CONTENTS, {});
+        if (!all[id]) { all[id] = []; saveJson(LS_CONTENTS, all); }
+      }
       if (input.checked) selected.add(id); else selected.delete(id);
       saveJson(LS_SELECTION, Array.from(selected));
       chip.classList.toggle('on', input.checked);
