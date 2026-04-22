@@ -703,6 +703,162 @@ function renderSideView(hostId, opts) {
   host.innerHTML = `${svgEl}<div class="sc-unitmap-legend">${legend.join('')}</div>`;
 }
 
+/* ======================================================================
+   v0.59.246 — ЭТАП 2: 3D-вид (PoC, three.js через ESM CDN).
+   Ленивая загрузка при первом клике 🧊 3D. Корпус — wireframe box,
+   устройства — solid boxes с цветом из каталога. OrbitControls для
+   вращения/zoom. Без оптимизаций (полная пересборка сцены на каждый
+   render). Cleanup — cancelAnimationFrame + renderer.dispose() при
+   переключении на другой face-mode (вызывается из renderUnitMap).
+   ====================================================================== */
+let _threePromise = null;
+function loadThree() {
+  if (_threePromise) return _threePromise;
+  _threePromise = Promise.all([
+    import('https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js'),
+    import('https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/controls/OrbitControls.js'),
+  ]).then(([THREE, orbit]) => ({ THREE, OrbitControls: orbit.OrbitControls }));
+  return _threePromise;
+}
+
+async function renderRack3D(hostId, opts) {
+  const host = $(hostId); if (!host) return;
+  const r = currentRack();
+  if (!r) { host.innerHTML = '<div class="muted">Нет выбранной стойки.</div>'; return; }
+  // cleanup предыдущего 3D (например, смена стойки в 3D-режиме)
+  if (host._3dCleanup) { try { host._3dCleanup(); } catch {} host._3dCleanup = null; }
+  host.innerHTML = '<div class="muted" style="padding:20px">🧊 Загрузка three.js…</div>';
+
+  let THREE, OrbitControls;
+  try { ({ THREE, OrbitControls } = await loadThree()); }
+  catch (e) {
+    host.innerHTML = '<div class="sc-warn-item err">Не удалось загрузить three.js. Проверьте сеть.</div>';
+    return;
+  }
+  // пока грузилось — пользователь мог уйти с 3D-режима
+  if (state.faceMode !== '3d') return;
+
+  const devices = currentContents();
+  const U_MM = 44.45; // 1U = 44.45 мм (EIA-310)
+  const rackW = 600;  // типовая ширина, мм (в модели rack нет прямого поля width — берём 600)
+  const rackH = r.u * U_MM;
+  const rackD = (+r.depth === +r.depth && r.depth !== 'any') ? +r.depth : 1000;
+
+  const width = Math.max(400, host.clientWidth || 500);
+  const height = 460;
+  host.innerHTML = '';
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8fafc);
+  const camera = new THREE.PerspectiveCamera(45, width / height, 1, 10000);
+  camera.position.set(rackW * 1.8, rackH * 1.2, rackD * 1.5);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  host.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(rackW / 2, rackH / 2, rackD / 2);
+  controls.enableDamping = true;
+  controls.update();
+
+  // свет
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.5);
+  dir.position.set(2000, 3000, 2000);
+  scene.add(dir);
+
+  // пол (ориентация)
+  const grid = new THREE.GridHelper(rackD * 3, 20, 0xcbd5e1, 0xe2e8f0);
+  grid.position.set(rackW / 2, 0, rackD / 2);
+  scene.add(grid);
+
+  // корпус стойки — wireframe
+  const rackGeo = new THREE.BoxGeometry(rackW, rackH, rackD);
+  const rackWire = new THREE.LineSegments(
+    new THREE.EdgesGeometry(rackGeo),
+    new THREE.LineBasicMaterial({ color: 0x64748b })
+  );
+  rackWire.position.set(rackW / 2, rackH / 2, rackD / 2);
+  scene.add(rackWire);
+
+  // передние рельсы — синяя полупрозрачная плоскость у z=0; задние — красная у z=rackD
+  const frontRail = new THREE.Mesh(
+    new THREE.PlaneGeometry(rackW, rackH),
+    new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.06, side: THREE.DoubleSide })
+  );
+  frontRail.position.set(rackW / 2, rackH / 2, 2);
+  scene.add(frontRail);
+  const rearRail = new THREE.Mesh(
+    new THREE.PlaneGeometry(rackW, rackH),
+    new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.06, side: THREE.DoubleSide })
+  );
+  rearRail.position.set(rackW / 2, rackH / 2, rackD - 2);
+  scene.add(rearRail);
+
+  // «занято стойкой» сверху
+  if (r.occupied) {
+    const occH = r.occupied * U_MM;
+    const occGeo = new THREE.BoxGeometry(rackW - 10, occH - 2, rackD - 10);
+    const occMat = new THREE.MeshLambertMaterial({ color: 0xcbd5e1 });
+    const occ = new THREE.Mesh(occGeo, occMat);
+    occ.position.set(rackW / 2, rackH - occH / 2, rackD / 2);
+    scene.add(occ);
+  }
+
+  // устройства
+  const depthConflicts = detectDepthConflicts(r, devices);
+  devices.forEach(d => {
+    const type = state.catalog.find(c => c.id === d.typeId); if (!type) return;
+    const h = type.heightU;
+    const dMm = (typeof d.depthMm === 'number' && d.depthMm > 0) ? d.depthMm : (type.depthMm || 400);
+    const side = d.mountSide || 'front';
+    const geo = new THREE.BoxGeometry(rackW - 20, h * U_MM - 1.5, dMm);
+    const hex = parseInt((type.color || '#94a3b8').replace('#',''), 16);
+    const mat = new THREE.MeshLambertMaterial({ color: hex });
+    const mesh = new THREE.Mesh(geo, mat);
+    const yBottom = (d.positionU - h) * U_MM;
+    mesh.position.x = rackW / 2;
+    mesh.position.y = yBottom + (h * U_MM) / 2;
+    mesh.position.z = side === 'rear' ? (rackD - dMm / 2) : (dMm / 2);
+    scene.add(mesh);
+    // обводка — красная при depth-коллизии, иначе тёмно-серая
+    const edgeColor = depthConflicts.has(d.id) ? 0xdc2626 : 0x334155;
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color: edgeColor, linewidth: 2 })
+    );
+    edges.position.copy(mesh.position);
+    scene.add(edges);
+  });
+
+  let raf = 0;
+  const loop = () => {
+    controls.update();
+    renderer.render(scene, camera);
+    raf = requestAnimationFrame(loop);
+  };
+  loop();
+
+  // hint-легенда поверх канваса
+  const hint = document.createElement('div');
+  hint.className = 'sc-3d-hint';
+  hint.innerHTML = `
+    <div>🧊 <b>3D PoC</b> · ЛКМ — вращать · колесо — zoom · ПКМ — pan</div>
+    <div class="muted">Стойка ${r.u}U · ${rackW}×${rackD} мм${depthConflicts.size ? ' · <span style="color:#fca5a5">⚠ коллизии глубины</span>' : ''}</div>
+  `;
+  host.appendChild(hint);
+
+  host._3dCleanup = () => {
+    cancelAnimationFrame(raf);
+    try { controls.dispose(); } catch {}
+    try { renderer.dispose(); } catch {}
+    try { renderer.forceContextLoss?.(); } catch {}
+    try { renderer.domElement?.remove(); } catch {}
+  };
+}
+
 /* ---- render: предупреждения ------------------------------------------- */
 function renderWarnings() {
   const host = $('sc-warn');
@@ -828,8 +984,12 @@ function renderUnitMap(hostId, opts) {
   const r = currentRack();
   if (!r) { host.innerHTML = '<div class="muted">Нет выбранной стойки.</div>'; return; }
   // v0.59.245: side-view — делегируется renderSideView. Front/Rear — обычный
-  // unit map, но с фильтром по mountSide.
+  // unit map, но с фильтром по mountSide. 3D — renderRack3D (lazy three.js).
   if (state.faceMode === 'side') { renderSideView(hostId, opts); return; }
+  if (state.faceMode === '3d')   { renderRack3D(hostId, opts); return; }
+  // при уходе с 3D — освободить GL-контекст
+  const prevHost = $(hostId);
+  if (prevHost && prevHost._3dCleanup) { try { prevHost._3dCleanup(); } catch {} prevHost._3dCleanup = null; }
   const devices = currentContents();
   const conflicts = detectConflicts(r, devices);
   // В модалке делаем юнит крупнее для удобства

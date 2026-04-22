@@ -108,6 +108,15 @@
 .sc-fm-active:hover { background: #115e59; }
 .sc-sideview-svg { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; }
 
+/* v0.59.246 — 3D PoC */
+#sc-unitmap { position: relative; }
+.sc-3d-hint {
+  position: absolute; top: 8px; left: 8px; background: rgba(15,23,42,0.82);
+  color: #f8fafc; padding: 6px 10px; border-radius: 6px; font-size: 12px;
+  line-height: 1.45; pointer-events: none;
+}
+.sc-3d-hint .muted { color: #cbd5e1; }
+
 /* ---- 1.24.12 полноэкранный <dialog> с картой ---- */
 .sc-unitmap-dlg {
   width: 96vw; max-width: 96vw; height: 92vh; max-height: 92vh;
