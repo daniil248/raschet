@@ -955,6 +955,101 @@ function resetPlan() {
   renderPlan();
 }
 
+function exportPlanSvg() {
+  const plan = getPlan();
+  const racks = getRacks();
+  const placed = racks.filter(r => plan.positions[r.id]);
+  if (!placed.length) { updateStatus('⚠ План пуст — нечего экспортировать. Используйте «⊞ Автораскладка» или перетащите стойки.'); return; }
+
+  const W = PLAN_COLS * PLAN_CELL_PX;
+  const H = PLAN_ROWS * PLAN_CELL_PX;
+  const rackFill = pct => {
+    if (pct === 0) return '#94a3b8';
+    if (pct < 70)  return '#10b981';
+    if (pct < 90)  return '#0891b2';
+    if (pct < 100) return '#f59e0b';
+    return '#dc2626';
+  };
+
+  // Заголовок/рамка
+  const lines = [];
+  lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W + 40}" height="${H + 80}" viewBox="0 0 ${W + 40} ${H + 80}" font-family="-apple-system,Segoe UI,Arial,sans-serif">`);
+  lines.push(`<rect width="100%" height="100%" fill="#ffffff"/>`);
+  lines.push(`<text x="20" y="26" font-size="16" font-weight="600" fill="#1f2937">План зала СКС · ${new Date().toLocaleDateString('ru')} · шаг ${plan.step} м × коэф.${plan.kRoute}</text>`);
+
+  // Сетка
+  const gx = 20, gy = 46;
+  lines.push(`<g transform="translate(${gx},${gy})">`);
+  lines.push(`<rect width="${W}" height="${H}" fill="#fafafa" stroke="#d4d8e0"/>`);
+  const gridParts = [];
+  for (let c = 1; c < PLAN_COLS; c++) gridParts.push(`<line x1="${c*PLAN_CELL_PX}" y1="0" x2="${c*PLAN_CELL_PX}" y2="${H}" stroke="#e5e7eb" stroke-width="0.5"/>`);
+  for (let r = 1; r < PLAN_ROWS; r++) gridParts.push(`<line x1="0" y1="${r*PLAN_CELL_PX}" x2="${W}" y2="${r*PLAN_CELL_PX}" stroke="#e5e7eb" stroke-width="0.5"/>`);
+  lines.push(gridParts.join(''));
+
+  // Кабели (L-образные)
+  getLinks().forEach(l => {
+    const a = plan.positions[l.fromRackId];
+    const b = plan.positions[l.toRackId];
+    if (!a || !b) return;
+    const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+    const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+    const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    lines.push(`<path d="M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}" stroke="${CABLE_COLOR(l.cableType)}" stroke-width="2" fill="none" opacity="0.7"/>`);
+  });
+
+  // Стойки
+  placed.forEach(r => {
+    const pos = plan.positions[r.id];
+    const s = rackStats(r);
+    const pct = s.u ? Math.round((s.usedU / s.u) * 100) : 0;
+    const fill = rackFill(pct);
+    const tag = getRackTag(r.id);
+    const isDraft = !tag.trim();
+    const x = pos.x * PLAN_CELL_PX;
+    const y = pos.y * PLAN_CELL_PX;
+    const w = RACK_W_CELLS * PLAN_CELL_PX;
+    const h = RACK_H_CELLS * PLAN_CELL_PX;
+    const textFill = pct >= 70 && pct < 90 ? '#1f2937' : '#ffffff';
+    const strokeAttr = isDraft ? ' stroke="#ffffff" stroke-width="1.5" stroke-dasharray="3 2"' : '';
+    const opacityAttr = isDraft ? ' opacity="0.75"' : '';
+    lines.push(`<g${opacityAttr}><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${fill}"${strokeAttr}/><text x="${x + w/2}" y="${y + h/2 + 3}" text-anchor="middle" font-size="9" font-weight="600" fill="${textFill}">${escapeSvg(tag || r.name || r.id)}</text></g>`);
+  });
+
+  lines.push(`</g>`);
+
+  // Легенда
+  const ly = gy + H + 10;
+  const legendItems = [
+    { color: '#94a3b8', label: 'пусто' },
+    { color: '#10b981', label: '<70%' },
+    { color: '#0891b2', label: '70-89%' },
+    { color: '#f59e0b', label: '90-99%' },
+    { color: '#dc2626', label: '≥100%' },
+  ];
+  let lx = gx;
+  legendItems.forEach(it => {
+    lines.push(`<rect x="${lx}" y="${ly}" width="18" height="10" fill="${it.color}" rx="1"/>`);
+    lines.push(`<text x="${lx + 22}" y="${ly + 9}" font-size="11" fill="#475569">${escapeSvg(it.label)}</text>`);
+    lx += 22 + (it.label.length * 6) + 14;
+  });
+
+  lines.push(`</svg>`);
+  const svg = lines.join('\n');
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `scs-plan-${dateStamp()}.svg`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  updateStatus(`✔ План экспортирован: ${placed.length} стоек, ${getLinks().length} связей.`);
+}
+
+function escapeSvg(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 /* Автораскладка: реальные стойки с тегом группируются по «ряду» — префиксу
    до первой точки (например, DH1.SR1/DH1.SR2 → ряд DH1). Каждый ряд —
    отдельная строка плана, стойки вдоль неё. Черновики (без тега) — в отдельный
@@ -1154,6 +1249,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-apply')?.addEventListener('click', applySuggestedLengths);
   document.getElementById('sd-plan-reset')?.addEventListener('click', resetPlan);
   document.getElementById('sd-plan-autolay')?.addEventListener('click', autoLayout);
+  document.getElementById('sd-plan-svg')?.addEventListener('click', exportPlanSvg);
   document.getElementById('sd-export-json')?.addEventListener('click', exportProjectJson);
   const importBtn = document.getElementById('sd-import-json');
   const importFile = document.getElementById('sd-import-file');
