@@ -106,13 +106,70 @@
     <div class="page-intro">
       <h2>Конфигуратор трансформатора</h2>
       <p class="muted">
-        Справочник силовых трансформаторов: мощность, первичное / вторичное
-        напряжение, группа соединений, u<sub>k</sub>, потери, охлаждение.
-        Расчёт I<sub>k</sub> по паспортным данным. Данные хранятся per-user
-        и доступны в инспекторе источника главной схемы через общий
-        <code>shared/transformer-picker.js</code>.
+        Подбор силового трансформатора по требованиям: мощность нагрузки,
+        напряжения (HV / LV), тип (масляный / сухой), группа соединений,
+        охлаждение. Ниже — мастер подбора; в самом низу — справочник моделей.
       </p>
     </div>
+
+    <!-- Wizard подбора трансформатора -->
+    <section id="tx-wizard" class="panel" style="margin-bottom:16px;border:2px solid #1976d2">
+      <div class="panel-head" style="background:#f0f4ff">
+        <h3>🧙 Мастер подбора трансформатора</h3>
+      </div>
+      <div style="padding:12px">
+        <p class="muted" style="font-size:12px;margin:0 0 10px">
+          Введите требования — мастер покажет подходящие модели из справочника
+          (фильтр по U<sub>HV</sub>/U<sub>LV</sub>, типу, минимальной мощности
+          с учётом запаса).
+        </p>
+        <div class="form-grid">
+          <label>Нагрузка, кВА
+            <input type="number" id="tx-wiz-loadKva" min="1" step="1" value="630">
+          </label>
+          <label>Запас, %
+            <input type="number" id="tx-wiz-reserve" min="0" max="100" step="5" value="25">
+          </label>
+          <label>U<sub>HV</sub>, кВ
+            <select id="tx-wiz-uhv">
+              <option value="">Любое</option>
+              <option value="6">6</option>
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+              <option value="35">35</option>
+            </select>
+          </label>
+          <label>U<sub>LV</sub>, В
+            <select id="tx-wiz-ulv">
+              <option value="">Любое</option>
+              <option value="230">230</option>
+              <option value="400" selected>400</option>
+              <option value="690">690</option>
+            </select>
+          </label>
+          <label>Тип
+            <select id="tx-wiz-type">
+              <option value="">Любой</option>
+              <option value="oil">Масляный (ТМГ / ТМ / ТМЗ)</option>
+              <option value="dry">Сухой (ТСЛ / ТСЗГЛ)</option>
+            </select>
+          </label>
+          <label>Группа соединений
+            <select id="tx-wiz-group">
+              <option value="">Любая</option>
+              <option value="Dyn11" selected>Dyn11</option>
+              <option value="Yyn0">Yyn0</option>
+              <option value="Yzn11">Yzn11</option>
+            </select>
+          </label>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button id="tx-wiz-run" class="btn-sm btn-primary">Подобрать</button>
+          <button id="tx-wiz-reset" class="btn-sm">Сброс фильтров</button>
+        </div>
+        <div id="tx-wiz-results" style="margin-top:14px"></div>
+      </div>
+    </section>
 
     <section class="panel">
       <div class="panel-head">

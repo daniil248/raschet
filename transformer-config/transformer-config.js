@@ -277,5 +277,127 @@ document.addEventListener('DOMContentLoaded', () => {
     render();
     flash('Справочник очищен');
   });
+  // Wizard подбора
+  const wizRun = document.getElementById('tx-wiz-run');
+  if (wizRun) wizRun.addEventListener('click', runTxWizard);
+  const wizReset = document.getElementById('tx-wiz-reset');
+  if (wizReset) wizReset.addEventListener('click', () => {
+    document.getElementById('tx-wiz-loadKva').value = 630;
+    document.getElementById('tx-wiz-reserve').value = 25;
+    document.getElementById('tx-wiz-uhv').value = '10';
+    document.getElementById('tx-wiz-ulv').value = '400';
+    document.getElementById('tx-wiz-type').value = '';
+    document.getElementById('tx-wiz-group').value = 'Dyn11';
+    document.getElementById('tx-wiz-results').innerHTML = '';
+  });
+
   render();
 });
+
+// ===== WIZARD подбора трансформатора =====
+function _classifyTxType(t) {
+  const s = String(t.series || t.model || '').toUpperCase();
+  // ТСЛ / ТСЗГЛ / ТС / dry — сухие
+  if (/ТСЛ|ТСЗГЛ|ТС[ЗГ]?\b|DRY|СУХ/.test(s) || t.coolingType === 'AN' || t.coolingType === 'AF') return 'dry';
+  // ТМ / ТМГ / ТМЗ / ТМН — масляные
+  if (/ТМ|OIL|МАСЛ|ONAN|ONAF/.test(s) || t.coolingType === 'ONAN' || t.coolingType === 'ONAF') return 'oil';
+  return '';
+}
+
+function runTxWizard() {
+  const loadKva = Number(document.getElementById('tx-wiz-loadKva').value) || 0;
+  const reserve = Number(document.getElementById('tx-wiz-reserve').value) || 0;
+  const uhv = document.getElementById('tx-wiz-uhv').value;
+  const ulv = document.getElementById('tx-wiz-ulv').value;
+  const type = document.getElementById('tx-wiz-type').value;
+  const group = document.getElementById('tx-wiz-group').value;
+  const results = document.getElementById('tx-wiz-results');
+
+  if (loadKva <= 0) {
+    results.innerHTML = '<div class="empty" style="padding:14px">Укажите нагрузку &gt; 0 кВА.</div>';
+    return;
+  }
+  const sRequired = loadKva * (1 + reserve / 100);
+
+  const catalog = listTransformers();
+  const matched = [];
+  for (const t of catalog) {
+    const s = Number(t.ratedPowerKva || t.sKva || t.powerKva) || 0;
+    if (s <= 0 || s < sRequired) continue;
+    if (uhv && Number(t.primaryVoltageKv || t.uhvKv) !== Number(uhv)) continue;
+    if (ulv && Number(t.secondaryVoltageV || t.ulvV) !== Number(ulv)) continue;
+    if (type) {
+      const cl = _classifyTxType(t);
+      if (cl && cl !== type) continue;
+    }
+    if (group && (t.connectionGroup || t.vectorGroup || t.group) &&
+        String(t.connectionGroup || t.vectorGroup || t.group).toUpperCase() !== group.toUpperCase()) continue;
+    const util = loadKva / s;
+    matched.push({ t, s, util });
+  }
+  matched.sort((a, b) => b.util - a.util); // наибольшая утилизация сверху
+
+  if (!matched.length) {
+    results.innerHTML = `
+      <div class="empty" style="padding:14px;text-align:center">
+        Подходящих моделей не найдено. Попробуйте: ослабить фильтры, увеличить запас,
+        или добавить модели в справочник (кнопка «+ Добавить вручную» / «📊 Импорт XLSX»).
+      </div>`;
+    return;
+  }
+
+  const rows = matched.slice(0, 20).map(({ t, s, util }, idx) => {
+    const pct = Math.round(util * 100);
+    const uhvStr = t.primaryVoltageKv || t.uhvKv || '—';
+    const ulvStr = t.secondaryVoltageV || t.ulvV || '—';
+    const grp = t.connectionGroup || t.vectorGroup || t.group || '—';
+    const uk = t.impedanceUk ?? t.uk;
+    const ukStr = uk != null ? Number(uk).toFixed(1) + '%' : '—';
+    const cl = _classifyTxType(t);
+    const typeStr = cl === 'oil' ? 'масл.' : (cl === 'dry' ? 'сух.' : '—');
+    return `
+      <tr data-id="${esc(t.id)}" style="${idx === 0 ? 'background:#f0fff4' : ''}">
+        <td>${idx === 0 ? '<b>★</b>' : (idx + 1)}</td>
+        <td><b>${esc(t.supplier || '—')}</b></td>
+        <td>${esc(t.model || t.series || t.id)}</td>
+        <td style="text-align:right">${s} кВА</td>
+        <td>${uhvStr} / ${ulvStr} В</td>
+        <td>${typeStr}</td>
+        <td>${esc(grp)}</td>
+        <td>${ukStr}</td>
+        <td style="text-align:right">${pct}%</td>
+        <td><button class="btn-sm" data-pick="${esc(t.id)}">Выбрать</button></td>
+      </tr>`;
+  }).join('');
+
+  results.innerHTML = `
+    <div class="muted" style="font-size:11px;margin-bottom:6px">
+      Требуется ≥ ${sRequired.toFixed(0)} кВА (нагрузка ${loadKva} + запас ${reserve}%).
+      Найдено моделей: <b>${matched.length}</b>.
+    </div>
+    <table class="cat-table">
+      <thead><tr>
+        <th>#</th><th>Производитель</th><th>Модель</th><th>S</th>
+        <th>U<sub>HV</sub>/U<sub>LV</sub></th><th>Тип</th><th>Группа</th>
+        <th>u<sub>k</sub></th><th>Загрузка</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  results.querySelectorAll('[data-pick]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.pick;
+      cascadeState.modelId = id;
+      const list = listTransformers();
+      const t = list.find(x => x.id === id);
+      if (t) {
+        cascadeState.supplier = t.supplier || '';
+        cascadeState.series = t.series || '';
+      }
+      render();
+      const sel = document.getElementById('selected-tx-details');
+      if (sel && sel.scrollIntoView) sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      flash('Модель выбрана — см. «Выбранная модель»', 'success');
+    });
+  });
+}
