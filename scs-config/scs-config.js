@@ -63,9 +63,18 @@ const state = {
   contents: {},      // { rackId: [device] }
   matrix: {},        // { rackId: [link] }
   templates: [],     // [{id, name, contents, matrix}] — «готовые сборки» (1.24.7)
+  // view mode: 'scs' — цвет по типу; 'power' — цвет по вводу PDU (1.24.11)
+  viewMode: 'scs',
   // drag state
   drag: null,        // { devId, startY, startU, rowH, r }
 };
+
+/* ---- цвет вводов для view=power (1.24.11) ----------------------------- */
+const FEED_COLORS = { 'A': '#3b82f6', 'B': '#ef4444', 'C': '#22c55e', 'D': '#a855f7' };
+function feedColor(feed) {
+  if (!feed) return '#cbd5e1';
+  return FEED_COLORS[feed] || '#f59e0b';
+}
 
 /* ---- utils ------------------------------------------------------------- */
 function $(id) { return document.getElementById(id); }
@@ -449,15 +458,21 @@ function addMatrixRow() {
 }
 
 /* ---- render: карта юнитов (SVG фронт-вью) ----------------------------- */
-function renderUnitMap() {
-  const host = $('sc-unitmap');
+function renderUnitMap(hostId, opts) {
+  hostId = hostId || 'sc-unitmap';
+  opts = opts || {};
+  const host = $(hostId);
+  if (!host) return;
   const r = currentRack();
   if (!r) { host.innerHTML = '<div class="muted">Нет выбранной стойки.</div>'; return; }
   const devices = currentContents();
   const conflicts = detectConflicts(r, devices);
-  const rowH = 16, bodyW = 220;
+  // В модалке делаем юнит крупнее для удобства
+  const scale = opts.big ? 2 : 1;
+  const rowH = 16 * scale, bodyW = 220 * scale;
   const svgH = r.u * rowH + 8;
   const svgW = bodyW + 40;
+  const mode = state.viewMode;
   // slot → device; индексы U=1..r.u (1 — снизу, r.u — сверху)
   const slot = new Array(r.u + 1).fill(null);
   for (let u = r.u; u > r.u - r.occupied; u--) slot[u] = { kind: 'rack-occ' };
@@ -482,7 +497,7 @@ function renderUnitMap() {
       const stroke = s && s.kind === 'rack-occ' ? '#64748b' : '#cbd5e1';
       rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
     }
-    rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="9" fill="#64748b" text-anchor="end">${u}</text>`);
+    rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
   const deviceGroups = devices.map(d => {
@@ -492,31 +507,44 @@ function renderUnitMap() {
     const topIdx = r.u - d.positionU; // row index (0=сверху)
     const y = 4 + topIdx * rowH;
     const conflict = conflicts.has(d.id);
-    const fill = type.color || '#94a3b8';
+    const fill = mode === 'power' ? feedColor(d.pduFeed) : (type.color || '#94a3b8');
     const stroke = conflict ? '#dc2626' : '#64748b';
-    const labelTxt = `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}`;
+    const labelTxt = mode === 'power'
+      ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}`
+      : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}`;
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
       <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
-      <text x="38" y="${y + rowH/2 + 4}" font-size="10" fill="#0f172a">${escape(labelTxt)}</text>
+      <text x="${38}" y="${y + rowH/2 + 4}" font-size="${10*scale}" fill="#0f172a">${escape(labelTxt)}</text>
     </g>`;
   }).join('');
 
   const legend = [];
-  const seen = new Set();
-  devices.forEach(d => {
-    const type = state.catalog.find(c => c.id === d.typeId);
-    if (!type || seen.has(type.id)) return;
-    seen.add(type.id);
-    legend.push(`<span><i style="background:${type.color}"></i>${escape(KIND_LABEL[type.kind])}</span>`);
-  });
+  if (mode === 'power') {
+    const seenFeeds = new Set();
+    devices.forEach(d => {
+      const f = d.pduFeed || '';
+      if (seenFeeds.has(f)) return;
+      seenFeeds.add(f);
+      legend.push(`<span><i style="background:${feedColor(f)}"></i>${f ? 'Ввод '+f : '⚠ Без PDU'}</span>`);
+    });
+  } else {
+    const seen = new Set();
+    devices.forEach(d => {
+      const type = state.catalog.find(c => c.id === d.typeId);
+      if (!type || seen.has(type.id)) return;
+      seen.add(type.id);
+      legend.push(`<span><i style="background:${type.color}"></i>${escape(KIND_LABEL[type.kind])}</span>`);
+    });
+  }
   if (r.occupied) legend.unshift(`<span><i style="background:#cbd5e1"></i>Занято стойкой · ${r.occupied}U</span>`);
 
-  host.innerHTML = `<svg id="sc-unitmap-svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}">
+  const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
+  host.innerHTML = `<svg id="${svgId}" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}">
     ${rects.join('')}
     ${deviceGroups}
   </svg>
   <div class="sc-unitmap-legend">${legend.join('') || '<span class="muted">— пусто —</span>'}</div>`;
-  bindUnitMapDrag();
+  bindUnitMapDrag(svgId);
 }
 
 /* ---- drag-n-drop в SVG (1.24.3 full) ---------------------------------
@@ -525,8 +553,8 @@ function renderUnitMap() {
    вышли за границы). Используются Pointer Events API (работает для мыши
    и сенсорного ввода). SetPointerCapture позволяет таскать за пределами
    исходного rect. */
-function bindUnitMapDrag() {
-  const svg = $('sc-unitmap-svg'); if (!svg) return;
+function bindUnitMapDrag(svgId) {
+  const svg = $(svgId || 'sc-unitmap-svg'); if (!svg) return;
   const rowH = +svg.dataset.rowh || 16;
   svg.querySelectorAll('g.sc-devband').forEach(g => {
     g.addEventListener('pointerdown', ev => {
@@ -686,7 +714,12 @@ function applyTemplate() {
 }
 
 /* ---- глобальный rerender ---------------------------------------------- */
-function rerenderPreview() { renderUnitMap(); renderWarnings(); renderBom(); }
+function rerenderPreview() {
+  renderUnitMap('sc-unitmap', { big: false });
+  const dlg = $('sc-unitmap-dlg');
+  if (dlg && dlg.open) renderUnitMap('sc-unitmap-dlg-body', { big: true });
+  renderWarnings(); renderBom();
+}
 function rerender() { renderRackPicker(); renderTemplates(); renderContents(); renderMatrix(); rerenderPreview(); }
 
 /* ---- init -------------------------------------------------------------- */
@@ -729,6 +762,27 @@ function init() {
   $('sc-bom-csv').addEventListener('click', exportBomCsv);
   $('sc-template-save').addEventListener('click', saveCurrentAsTemplate);
   $('sc-template-apply').addEventListener('click', applyTemplate);
+
+  /* ---- 1.24.11 переключатель режима (СКС / Питание) ------------------ */
+  document.querySelectorAll('.sc-vm-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.viewMode = btn.dataset.mode;
+      document.querySelectorAll('.sc-vm-btn').forEach(b => {
+        b.classList.toggle('sc-vm-active', b.dataset.mode === state.viewMode);
+      });
+      rerenderPreview();
+    });
+  });
+
+  /* ---- 1.24.12 полноэкранная карта ----------------------------------- */
+  const dlg = $('sc-unitmap-dlg');
+  $('sc-unitmap-fullscreen').addEventListener('click', () => {
+    if (!dlg) return;
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+    else dlg.setAttribute('open', '');
+    renderUnitMap('sc-unitmap-dlg-body', { big: true });
+  });
+  $('sc-unitmap-dlg-close').addEventListener('click', () => { if (dlg && dlg.close) dlg.close(); else dlg.removeAttribute('open'); });
 
   // pick up rack template changes in other tabs
   window.addEventListener('storage', e => {

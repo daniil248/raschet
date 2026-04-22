@@ -76,7 +76,14 @@
       <!-- ========== ПРАВО: карта + BOM ========== -->
       <aside class="sc-preview">
         <section class="sc-section">
-          <h2>🗺️ Карта юнитов</h2>
+          <div class="sc-unitmap-head">
+            <h2 style="margin:0">🗺️ Карта юнитов</h2>
+            <div class="sc-viewmode" role="tablist" aria-label="Режим отображения карты">
+              <button type="button" class="sc-vm-btn sc-vm-active" data-mode="scs" title="Цвет по типу оборудования (СКС-вид)">🧵 СКС</button>
+              <button type="button" class="sc-vm-btn" data-mode="power" title="Цвет по вводу PDU (A/B/без ввода)">⚡ Питание</button>
+            </div>
+            <button type="button" id="sc-unitmap-fullscreen" class="sc-btn" title="Открыть карту на весь экран">⛶ Во весь экран</button>
+          </div>
           <div id="sc-unitmap" class="sc-unitmap"></div>
         </section>
 
@@ -94,6 +101,19 @@
         </section>
       </aside>
     </div>
+
+    <!-- ========== Полноэкранная карта (1.24.12) ========== -->
+    <dialog id="sc-unitmap-dlg" class="sc-unitmap-dlg">
+      <div class="sc-unitmap-dlg-bar">
+        <strong>Карта юнитов — на весь экран</strong>
+        <div class="sc-viewmode" role="tablist" aria-label="Режим отображения карты">
+          <button type="button" class="sc-vm-btn sc-vm-active" data-mode="scs" data-target="dlg">🧵 СКС</button>
+          <button type="button" class="sc-vm-btn" data-mode="power" data-target="dlg">⚡ Питание</button>
+        </div>
+        <button type="button" id="sc-unitmap-dlg-close" class="sc-btn">✕ Закрыть</button>
+      </div>
+      <div id="sc-unitmap-dlg-body" class="sc-unitmap-dlg-body"></div>
+    </dialog>
   </div>
 
   <script type="module" src="scs-config.js"></script>

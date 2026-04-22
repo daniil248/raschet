@@ -3,6 +3,14 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.2',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.24.11 — два режима отображения карты юнитов. Переключатель «🧵 СКС / ⚡ Питание» справа от заголовка карты. В режиме СКС полосы красятся по типу оборудования (как раньше). В режиме «Питание» — по вводу PDU: A=синий, B=красный, C=зелёный, D=фиолетовый, «без PDU» — серый + иконка ⚠. Легенда перестраивается под режим. Подписи устройств в режиме «Питание» показывают «ввод X · Y Вт».',
+      'Phase 1.24.12 — полноэкранная карта в <dialog>. Кнопка «⛶ Во весь экран» открывает модалку 96vw × 92vh, полосы увеличены вдвое (rowH=32, bodyW=440), свой переключатель режима и кнопка «✕ Закрыть». Dnd работает внутри модалки. Файлы: scs-config/{index.html(+dialog, +head с toggle), scs-config.js(renderUnitMap(hostId, {big}) + viewMode в state + feedColor + bindUnitMapDrag(svgId)), scs-config.css(+60 строк: .sc-viewmode, .sc-unitmap-dlg, .sc-unitmap-dlg-bar, .sc-unitmap-dlg-body)}.',
+    ],
+  },
+  {
     version: '0.1.1',
     date: '2026-04-22',
     items: [
