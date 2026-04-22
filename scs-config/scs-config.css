@@ -116,6 +116,9 @@
   line-height: 1.45; pointer-events: none;
 }
 .sc-3d-hint .muted { color: #cbd5e1; }
+.sc-3d-toggles { margin-top: 4px; display: flex; gap: 10px; pointer-events: auto; }
+.sc-3d-toggles label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.sc-3d-toggles input { margin: 0; cursor: pointer; }
 
 /* ---- 1.24.12 полноэкранный <dialog> с картой ---- */
 .sc-unitmap-dlg {

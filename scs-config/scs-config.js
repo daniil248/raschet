@@ -413,24 +413,26 @@ function renderCatalog() {
 }
 
 /* ---- добавление устройства в стойку ------------------------------------ */
-function addToRack(typeId, forcedU) {
+function addToRack(typeId, forcedU, forcedSide) {
   const r = currentRack(); if (!r) { scToast('Сначала выберите стойку', 'warn'); return; }
   const type = state.catalog.find(c => c.id === typeId); if (!type) return;
+  // v0.59.250: если активный вид — rear, новое устройство ставим на заднюю
+  // сторону. Front/Side/3D — на переднюю. forcedSide (из drag API) имеет
+  // приоритет. Occupancy считается ТОЛЬКО по этой стороне — front и rear
+  // независимы по юнитам.
+  const side = forcedSide || (state.faceMode === 'rear' ? 'rear' : 'front');
   let positionU;
   if (Number.isFinite(forcedU)) {
-    // clamp так чтобы устройство влезло: top должен быть ≥ heightU
     positionU = Math.max(type.heightU, Math.min(r.u, forcedU));
   } else {
-    positionU = findFirstFreeSlot(r, currentContents(), type.heightU);
+    positionU = findFirstFreeSlot(r, currentContents(), type.heightU, side);
   }
   const dev = {
     id: uid('dev'),
     typeId,
     label: type.label,
-    // v0.59.245: двустороннее размещение. По умолчанию — перед.
-    mountSide: 'front', // 'front' | 'rear'
-    // depthMm — если не задан, берётся из caталога type.depthMm
-    positionU, // номер верхнего U устройства (1…r.u)
+    mountSide: side,
+    positionU,
     pduFeed: '', pduOutlet: '',
   };
   currentContents().push(dev);
@@ -441,15 +443,15 @@ function addToRack(typeId, forcedU) {
 }
 
 /* Ищет первую свободную область heightU подряд сверху вниз, с учётом занятых
-   юнитов (r.occupied сверху) и уже расставленных устройств. Возвращает U-номер
-   верхнего юнита устройства или r.u - r.occupied (первый после «оборудования»). */
-function findFirstFreeSlot(r, devices, heightU) {
-  // занятость: массив length=r.u, true если занято
-  const occ = new Array(r.u + 1).fill(false); // 1..r.u
-  // верхние "occupied" юниты стойки — считаем, что это уже занятое оборудование «общей группой»
-  // в rack-config это верхний блок. Нас интересуют только свободные/заглушечные места.
+   юнитов (r.occupied сверху) и уже расставленных устройств на той же
+   стороне монтажа (v0.59.250). Возвращает U-номер верхнего юнита
+   устройства или r.u - r.occupied. */
+function findFirstFreeSlot(r, devices, heightU, side) {
+  const targetSide = side || 'front';
+  const occ = new Array(r.u + 1).fill(false);
   for (let u = r.u; u > r.u - r.occupied; u--) occ[u] = true;
   devices.forEach(d => {
+    if ((d.mountSide || 'front') !== targetSide) return; // другая сторона — не мешает
     const type = state.catalog.find(c => c.id === d.typeId);
     const h = type ? type.heightU : 1;
     for (let k = 0; k < h; k++) occ[d.positionU - k] = true;
@@ -749,12 +751,15 @@ async function renderRack3D(hostId, opts) {
 
   const devices = currentContents();
   const U_MM = 44.45; // 1U = 44.45 мм (EIA-310)
-  const rackW = 600;  // типовая ширина, мм (в модели rack нет прямого поля width — берём 600)
+  const rackW = 600;  // типовая ширина корпуса, мм
+  const innerW = 482.6; // ширина между 19" рельсами (EIA-310 inside)
   const rackH = r.u * U_MM;
   const rackD = (+r.depth === +r.depth && r.depth !== 'any') ? +r.depth : 1000;
+  const FR = 6; // толщина стенок / панелей, мм
+  const RAIL_W = 16; // толщина стойки-рельса, мм
 
   const width = Math.max(400, host.clientWidth || 500);
-  const height = 460;
+  const height = 480;
   host.innerHTML = '';
 
   const scene = new THREE.Scene();
@@ -773,73 +778,114 @@ async function renderRack3D(hostId, opts) {
   controls.update();
 
   // свет
-  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.5);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.55);
   dir.position.set(2000, 3000, 2000);
   scene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0xffffff, 0.25);
+  dir2.position.set(-1500, 1000, -1500);
+  scene.add(dir2);
 
-  // пол (ориентация)
-  const grid = new THREE.GridHelper(rackD * 3, 20, 0xcbd5e1, 0xe2e8f0);
+  // пол-ориентир (сетка)
+  const grid = new THREE.GridHelper(Math.max(rackD, rackW) * 3, 20, 0xcbd5e1, 0xe2e8f0);
   grid.position.set(rackW / 2, 0, rackD / 2);
   scene.add(grid);
 
-  // корпус стойки — wireframe
-  const rackGeo = new THREE.BoxGeometry(rackW, rackH, rackD);
-  const rackWire = new THREE.LineSegments(
-    new THREE.EdgesGeometry(rackGeo),
-    new THREE.LineBasicMaterial({ color: 0x64748b })
-  );
-  rackWire.position.set(rackW / 2, rackH / 2, rackD / 2);
-  scene.add(rackWire);
+  // --- корпус шкафа ---
+  const cabinet = new THREE.Group();
+  scene.add(cabinet);
 
-  // передние рельсы — синяя полупрозрачная плоскость у z=0; задние — красная у z=rackD
-  const frontRail = new THREE.Mesh(
-    new THREE.PlaneGeometry(rackW, rackH),
-    new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.06, side: THREE.DoubleSide })
-  );
-  frontRail.position.set(rackW / 2, rackH / 2, 2);
-  scene.add(frontRail);
-  const rearRail = new THREE.Mesh(
-    new THREE.PlaneGeometry(rackW, rackH),
-    new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.06, side: THREE.DoubleSide })
-  );
-  rearRail.position.set(rackW / 2, rackH / 2, rackD - 2);
-  scene.add(rearRail);
+  const metalMat = new THREE.MeshLambertMaterial({ color: 0x475569 }); // темно-серый металл
+  const panelMat = new THREE.MeshLambertMaterial({ color: 0x64748b, transparent: true, opacity: 0.55 });
+  const doorMat = new THREE.MeshLambertMaterial({ color: 0x334155, transparent: true, opacity: 0.55 });
+  const railMat = new THREE.MeshLambertMaterial({ color: 0x1e293b });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x0f172a });
 
-  // «занято стойкой» сверху
+  const mkBox = (w, h, d, mat, x, y, z) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    const m = new THREE.Mesh(g, mat);
+    m.position.set(x, y, z);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat);
+    e.position.copy(m.position);
+    const grp = new THREE.Group();
+    grp.add(m); grp.add(e);
+    return grp;
+  };
+
+  // пол и крыша — всегда
+  cabinet.add(mkBox(rackW, FR, rackD, metalMat, rackW/2, FR/2, rackD/2));
+  cabinet.add(mkBox(rackW, FR, rackD, metalMat, rackW/2, rackH - FR/2, rackD/2));
+
+  // 4 стойки (рельсы): передние — ближе к z=0; задние — у z=rackD.
+  // Рельсы стоят на отступе (rackW - innerW)/2 от боков. Цвет — тёмно-синий спереди,
+  // тёмно-красный сзади (чтобы ориентироваться).
+  const railInset = (rackW - innerW) / 2;
+  const railY = rackH / 2;
+  const railH = rackH - 2 * FR;
+  const frontRailMat = new THREE.MeshLambertMaterial({ color: 0x1d4ed8 });
+  const rearRailMat  = new THREE.MeshLambertMaterial({ color: 0x991b1b });
+  // передняя пара
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, railInset + RAIL_W/2,          railY, 40 + RAIL_W/2));
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, rackW - railInset - RAIL_W/2,  railY, 40 + RAIL_W/2));
+  // задняя пара
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, rearRailMat,  railInset + RAIL_W/2,          railY, rackD - 40 - RAIL_W/2));
+  cabinet.add(mkBox(RAIL_W, railH, RAIL_W, rearRailMat,  rackW - railInset - RAIL_W/2,  railY, rackD - 40 - RAIL_W/2));
+
+  // боковые стенки — тогл
+  const walls = new THREE.Group();
+  walls.add(mkBox(FR, rackH - 2*FR, rackD - 2*FR, panelMat, FR/2,          rackH/2, rackD/2));
+  walls.add(mkBox(FR, rackH - 2*FR, rackD - 2*FR, panelMat, rackW - FR/2,  rackH/2, rackD/2));
+  cabinet.add(walls);
+
+  // передняя дверь
+  const doorFront = new THREE.Group();
+  doorFront.add(mkBox(rackW - 2*FR, rackH - 2*FR, FR, doorMat, rackW/2, rackH/2, FR/2));
+  cabinet.add(doorFront);
+  // задняя дверь
+  const doorRear = new THREE.Group();
+  doorRear.add(mkBox(rackW - 2*FR, rackH - 2*FR, FR, doorMat, rackW/2, rackH/2, rackD - FR/2));
+  cabinet.add(doorRear);
+
+  // «занято стойкой» сверху (фиктивный блок, например патч-панель/органайзер)
   if (r.occupied) {
     const occH = r.occupied * U_MM;
-    const occGeo = new THREE.BoxGeometry(rackW - 10, occH - 2, rackD - 10);
-    const occMat = new THREE.MeshLambertMaterial({ color: 0xcbd5e1 });
-    const occ = new THREE.Mesh(occGeo, occMat);
-    occ.position.set(rackW / 2, rackH - occH / 2, rackD / 2);
-    scene.add(occ);
+    cabinet.add(mkBox(innerW, occH - 2, rackD - 2*FR - 20, new THREE.MeshLambertMaterial({ color: 0x94a3b8 }),
+                      rackW/2, rackH - FR - occH/2, rackD/2));
   }
 
-  // устройства
+  // --- устройства с «ушами» ---
   const depthConflicts = detectDepthConflicts(r, devices);
+  const EAR_W = (rackW - innerW) / 2 - 1; // ширина уха, мм (обычно ~58 мм)
+  const EAR_THICK = 4; // толщина уха вперёд/назад
   devices.forEach(d => {
     const type = state.catalog.find(c => c.id === d.typeId); if (!type) return;
     const h = type.heightU;
     const dMm = (typeof d.depthMm === 'number' && d.depthMm > 0) ? d.depthMm : (type.depthMm || 400);
     const side = d.mountSide || 'front';
-    const geo = new THREE.BoxGeometry(rackW - 20, h * U_MM - 1.5, dMm);
-    const hex = parseInt((type.color || '#94a3b8').replace('#',''), 16);
-    const mat = new THREE.MeshLambertMaterial({ color: hex });
-    const mesh = new THREE.Mesh(geo, mat);
+    const bodyH = h * U_MM - 1.5;
     const yBottom = (d.positionU - h) * U_MM;
-    mesh.position.x = rackW / 2;
-    mesh.position.y = yBottom + (h * U_MM) / 2;
-    mesh.position.z = side === 'rear' ? (rackD - dMm / 2) : (dMm / 2);
-    scene.add(mesh);
-    // обводка — красная при depth-коллизии, иначе тёмно-серая
-    const edgeColor = depthConflicts.has(d.id) ? 0xdc2626 : 0x334155;
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(geo),
-      new THREE.LineBasicMaterial({ color: edgeColor, linewidth: 2 })
-    );
-    edges.position.copy(mesh.position);
-    scene.add(edges);
+    const yCenter = yBottom + bodyH / 2;
+    const hex = parseInt((type.color || '#94a3b8').replace('#',''), 16);
+    const devMat = new THREE.MeshLambertMaterial({ color: hex });
+
+    // корпус между рельсами
+    const zCenter = side === 'rear' ? (rackD - 40 - RAIL_W - dMm/2) : (40 + RAIL_W + dMm/2);
+    const box = mkBox(innerW, bodyH, dMm, devMat, rackW/2, yCenter, zCenter);
+    scene.add(box);
+
+    // «уши» 19" — узкие пластины слева/справа, заподлицо с рельсами
+    const earZ = side === 'rear' ? (rackD - 40 - RAIL_W - EAR_THICK/2) : (40 + RAIL_W + EAR_THICK/2);
+    const earMat = new THREE.MeshLambertMaterial({ color: 0x1e293b });
+    scene.add(mkBox(EAR_W, bodyH, EAR_THICK, earMat, railInset + EAR_W/2 + RAIL_W,                          yCenter, earZ));
+    scene.add(mkBox(EAR_W, bodyH, EAR_THICK, earMat, rackW - railInset - EAR_W/2 - RAIL_W,                  yCenter, earZ));
+
+    if (depthConflicts.has(d.id)) {
+      const eg = new THREE.BoxGeometry(innerW + 1, bodyH + 1, dMm + 1);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(eg),
+        new THREE.LineBasicMaterial({ color: 0xdc2626 }));
+      edges.position.set(rackW/2, yCenter, zCenter);
+      scene.add(edges);
+    }
   });
 
   let raf = 0;
@@ -850,14 +896,26 @@ async function renderRack3D(hostId, opts) {
   };
   loop();
 
-  // hint-легенда поверх канваса
+  // hint-легенда + чекбоксы видимости
   const hint = document.createElement('div');
   hint.className = 'sc-3d-hint';
   hint.innerHTML = `
-    <div>🧊 <b>3D PoC</b> · ЛКМ — вращать · колесо — zoom · ПКМ — pan</div>
-    <div class="muted">Стойка ${r.u}U · ${rackW}×${rackD} мм${depthConflicts.size ? ' · <span style="color:#fca5a5">⚠ коллизии глубины</span>' : ''}</div>
+    <div>🧊 <b>3D</b> · ЛКМ — вращать · колесо — zoom · ПКМ — pan</div>
+    <div class="muted">Шкаф ${r.u}U · ${rackW}×${rackD} мм${depthConflicts.size ? ' · <span style="color:#fca5a5">⚠ коллизии глубины</span>' : ''}</div>
+    <div class="sc-3d-toggles">
+      <label><input type="checkbox" data-tog="walls" checked> стенки</label>
+      <label><input type="checkbox" data-tog="doorFront" checked> дверь фронт</label>
+      <label><input type="checkbox" data-tog="doorRear" checked> дверь тыл</label>
+    </div>
   `;
   host.appendChild(hint);
+  hint.querySelectorAll('[data-tog]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const k = cb.dataset.tog;
+      const obj = k === 'walls' ? walls : (k === 'doorFront' ? doorFront : doorRear);
+      obj.visible = cb.checked;
+    });
+  });
 
   host._3dCleanup = () => {
     cancelAnimationFrame(raf);
@@ -1060,7 +1118,14 @@ function renderUnitMap(hostId, opts) {
     const labelTxt = mode === 'power'
       ? `${d.label}${d.pduFeed ? ' · ввод '+d.pduFeed : ' · ⚠ без PDU'}${type.powerW ? ' · '+type.powerW+' Вт' : ''}${tagSfx}`
       : `${d.label}${d.pduFeed ? ' · '+d.pduFeed : ''}${tagSfx}`;
+    // «уши» 19" — узкие тёмные пластины слева/справа, выступающие за корпус
+    const earW = 5 * scale;
+    const earY = y;
+    const earH = h * rowH - 1;
+    const earFill = '#1e293b';
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" style="cursor:grab">
+      <rect x="${32 - earW}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}" stroke="${stroke}" stroke-width="0.3"/>
+      <rect x="${32 + bodyW}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}" stroke="${stroke}" stroke-width="0.3"/>
       <rect x="32" y="${y}" width="${bodyW}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="${conflict ? 1.5 : 0.5}"/>
       <text x="${38}" y="${y + rowH/2 + 4}" font-size="${10*scale}" fill="#0f172a">${escape(labelTxt)}</text>
     </g>`;
@@ -1302,14 +1367,13 @@ function bindUnitMapDrag(svgId) {
 
 /* 1.24.29 — проверка «влезет ли устройство в позицию wantU, не задев
    других». excludeDevId — игнорируем это устройство (для drag). */
-function canPlace(r, devices, excludeDevId, heightU, wantU) {
+function canPlace(r, devices, excludeDevId, heightU, wantU, side) {
   if (wantU < heightU || wantU > r.u) return false;
-  // v0.59.179: удалён ошибочный цикл по r.occupied, который считал верхние
-  // U «занятыми стопкой» и блокировал любое перемещение в пределах
-  // обычной зоны установки оборудования. Реальная проверка overlap —
-  // цикл ниже по всем устройствам.
+  const targetSide = side || 'front';
   for (const d of devices) {
     if (d.id === excludeDevId) continue;
+    // v0.59.250: другая сторона монтажа не создаёт U-коллизию.
+    if ((d.mountSide || 'front') !== targetSide) continue;
     const t = state.catalog.find(c => c.id === d.typeId);
     const dh = t ? t.heightU : 1;
     for (let k = 0; k < heightU; k++) {
@@ -1410,17 +1474,18 @@ function bindUnitMapDrop(svg, rowH) {
       installFromCart(cartId, wantTopU);
     } else {
       const type = state.catalog.find(c => c.id === typeId); if (!type) return;
-      const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU);
+      const targetSide = state.faceMode === 'rear' ? 'rear' : 'front';
+      const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU, targetSide);
       if (finalU == null) { scToast('Нет свободного места для устройства (' + type.heightU + 'U)', 'err'); return; }
-      addToRack(typeId, finalU);
+      addToRack(typeId, finalU, targetSide);
     }
   });
 }
 
 /* 1.24.29 — поиск ближайшего свободного блока heightU к wantU (сначала
    выше, потом ниже). Возвращает top-U или null если нет места. */
-function findNearestFreeSlot(r, devices, heightU, wantU) {
-  const okAt = (u) => canPlace(r, devices, null, heightU, u);
+function findNearestFreeSlot(r, devices, heightU, wantU, side) {
+  const okAt = (u) => canPlace(r, devices, null, heightU, u, side);
   if (okAt(wantU)) return wantU;
   for (let delta = 1; delta <= r.u; delta++) {
     const up = wantU + delta;
