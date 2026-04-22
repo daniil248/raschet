@@ -244,6 +244,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.271', date: '2026-04-22', items: [
+      '⎘ Кнопка «Дублировать» в каждой строке содержимого стойки: создаёт копию устройства в ближайшем свободном U-слоте той же стороны (front/rear), с пометкой «(копия)» в названии. pduOutlet сбрасывается (slot-specific — 1 розетка = 1 устройство). Toast с U-номером размещения.',
+      'Файлы: scs-config/scs-config.js (data-dup handler в renderContents).',
+    ] },
     { version: '0.59.270', date: '2026-04-22', items: [
       '⌨ Горячие клавиши: `U` — переключить направление U-нумерации (bu↔td); `F` — циклически переключить вид стойки (Фронт → Тыл → Обе → Бок → 3D). Игнорируются в input/textarea/select/contentEditable и при Ctrl/Alt/Meta. Подсказки в title кнопок обновлены.',
       'Файлы: scs-config/scs-config.js (document keydown listener), scs-config/rack.html (title-подсказки с «· F» и «· клавиша U»).',

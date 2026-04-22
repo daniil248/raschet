@@ -609,7 +609,7 @@ function renderContents() {
       <td><input data-k="depthMm" type="number" min="30" max="1200" step="10" value="${effDepth}" style="width:68px" title="Глубина устройства в мм. Каталожное значение: ${type?.depthMm ?? '—'} мм"></td>
       <td><select data-k="pduFeed" style="width:60px">${feedOptsHtml}</select></td>
       <td><select data-k="pduOutlet">${outletOptsHtml}</select></td>
-      <td><button type="button" class="sc-btn sc-btn-danger" data-del="${d.id}">✕</button></td>
+      <td style="white-space:nowrap"><button type="button" class="sc-btn sc-btn-sm" data-dup="${d.id}" title="Дублировать устройство: создаст копию с тем же типом/названием в ближайшем свободном U-слоте, без привязки к PDU-розетке">⎘</button><button type="button" class="sc-btn sc-btn-danger sc-btn-sm" data-del="${d.id}">✕</button></td>
     </tr>`);
   });
   if (!devices.length) rows.push('<tr><td colspan="9" class="muted">— пусто — добавьте из каталога кнопкой ➕</td></tr>');
@@ -636,6 +636,28 @@ function renderContents() {
     saveContents();
     renderContents();
     rerenderPreview();
+  }));
+  // v0.59.271: дублировать устройство (в ближайший свободный слот, без pduOutlet)
+  t.querySelectorAll('[data-dup]').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.dup;
+    const src = devices.find(d => d.id === id);
+    if (!src) return;
+    const type = state.catalog.find(c => c.id === src.typeId);
+    const h = type ? type.heightU : 1;
+    const targetSide = src.mountSide || 'front';
+    const topU = findFirstFreeSlot(r, devices, h, targetSide);
+    const copy = {
+      ...src,
+      id: uid('d'),
+      positionU: topU,
+      pduOutlet: '',  // slot-specific — не наследуем (проверка «1 розетка = 1 устройство»)
+      label: src.label + ' (копия)',
+    };
+    state.contents[state.currentRackId] = [...devices, copy];
+    saveContents();
+    renderContents();
+    rerenderPreview();
+    scToast(`Дублировано: ${copy.label} → U${topU}`, 'ok');
   }));
 }
 
