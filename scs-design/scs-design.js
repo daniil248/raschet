@@ -78,6 +78,20 @@ function deviceLabel(rackId, devId) {
   const d = getContents(rackId).find(x => x.id === devId);
   return d ? (d.label || d.typeId || devId) : '(удалено)';
 }
+function devicePorts(rackId, devId) {
+  const d = getContents(rackId).find(x => x.id === devId); if (!d) return 0;
+  const t = catalogType(d.typeId);
+  return (t && +t.ports) || 0;
+}
+function portsUsedOn(rackId, devId, excludeLinkId) {
+  const used = new Set();
+  getLinks().forEach(l => {
+    if (excludeLinkId && l.id === excludeLinkId) return;
+    if (l.fromRackId === rackId && l.fromDevId === devId && l.fromPort) used.add(+l.fromPort);
+    if (l.toRackId === rackId && l.toDevId === devId && l.toPort) used.add(+l.toPort);
+  });
+  return used;
+}
 function rackLabel(r) {
   const tag = getRackTag(r.id);
   const name = r.name || 'Без имени';
@@ -249,7 +263,9 @@ function drawLinkOverlay() {
     const c1x = A.x + (fromSide === 'right' ? bend : -bend);
     const c2x = B.x + (toSide === 'right' ? bend : -bend);
     const color = CABLE_COLOR(l.cableType);
-    parts.push(`<path class="sd-link-path" d="M ${A.x} ${A.y} C ${c1x} ${A.y}, ${c2x} ${B.y}, ${B.x} ${B.y}" stroke="${color}"><title>${escapeAttr(getRackShortLabel(l.fromRackId) + ' · ' + deviceLabel(l.fromRackId, l.fromDevId) + ' ↔ ' + getRackShortLabel(l.toRackId) + ' · ' + deviceLabel(l.toRackId, l.toDevId))}</title></path>`);
+    const fromTxt = getRackShortLabel(l.fromRackId) + ' · ' + deviceLabel(l.fromRackId, l.fromDevId) + (l.fromPort ? ` p${l.fromPort}` : '');
+    const toTxt   = getRackShortLabel(l.toRackId)   + ' · ' + deviceLabel(l.toRackId,   l.toDevId)   + (l.toPort   ? ` p${l.toPort}`   : '');
+    parts.push(`<path class="sd-link-path" d="M ${A.x} ${A.y} C ${c1x} ${A.y}, ${c2x} ${B.y}, ${B.x} ${B.y}" stroke="${color}"><title>${escapeAttr(fromTxt + ' ↔ ' + toTxt)}</title></path>`);
   });
   svg.innerHTML = parts.join('');
 }
@@ -396,16 +412,28 @@ function renderLinksList() {
         </tr>
       </thead>
       <tbody>
-        ${links.map((l, i) => `
+        ${links.map((l, i) => {
+          const fromMax = devicePorts(l.fromRackId, l.fromDevId);
+          const toMax   = devicePorts(l.toRackId,   l.toDevId);
+          const fromUsed = portsUsedOn(l.fromRackId, l.fromDevId, l.id);
+          const toUsed   = portsUsedOn(l.toRackId,   l.toDevId,   l.id);
+          const fromDup = l.fromPort && fromUsed.has(+l.fromPort);
+          const toDup   = l.toPort   && toUsed.has(+l.toPort);
+          const portInput = (who, max, dup, val) => max > 1
+            ? `<input class="sd-port-in${dup ? ' sd-err' : ''}" data-act="${who}-port" type="number" min="1" max="${max}" value="${val == null ? '' : val}" placeholder="порт 1-${max}" style="width:78px;font-size:11px;margin-top:3px" title="Физический порт на устройстве (1…${max})${dup ? ' — конфликт: занят другой связью' : ''}">`
+            : '';
+          return `
           <tr data-id="${escapeAttr(l.id)}">
             <td>${i + 1}</td>
             <td>
               <div><b>${escapeHtml(getRackShortLabel(l.fromRackId))}</b></div>
-              <div class="muted">${escapeHtml(deviceLabel(l.fromRackId, l.fromDevId))}</div>
+              <div class="muted">${escapeHtml(deviceLabel(l.fromRackId, l.fromDevId))}${l.fromPort ? ` · <b>p${l.fromPort}</b>` : ''}</div>
+              ${portInput('from', fromMax, fromDup, l.fromPort)}
             </td>
             <td>
               <div><b>${escapeHtml(getRackShortLabel(l.toRackId))}</b></div>
-              <div class="muted">${escapeHtml(deviceLabel(l.toRackId, l.toDevId))}</div>
+              <div class="muted">${escapeHtml(deviceLabel(l.toRackId, l.toDevId))}${l.toPort ? ` · <b>p${l.toPort}</b>` : ''}</div>
+              ${portInput('to', toMax, toDup, l.toPort)}
             </td>
             <td>
               <select data-act="cable">${opts.replace(`value="${l.cableType}"`, `value="${l.cableType}" selected`)}</select>
@@ -414,7 +442,7 @@ function renderLinksList() {
             <td><input type="text" value="${escapeAttr(l.note || '')}" data-act="note" placeholder="—"></td>
             <td><button data-act="del" class="sd-btn-del" title="Удалить связь">✕</button></td>
           </tr>
-        `).join('')}
+        `;}).join('')}
       </tbody>
     </table>
     <div class="sd-links-footer muted">Всего связей: ${links.length}. Хранилище: <code>scs-design.links.v1</code>.</div>
@@ -426,6 +454,14 @@ function renderLinksList() {
       const v = e.target.value; updateLink(id, { lengthM: v === '' ? null : +v });
     });
     tr.querySelector('[data-act="note"]').addEventListener('change', e => updateLink(id, { note: e.target.value }));
+    tr.querySelector('[data-act="from-port"]')?.addEventListener('change', e => {
+      const v = e.target.value; updateLink(id, { fromPort: v === '' ? null : +v });
+      renderLinksList();
+    });
+    tr.querySelector('[data-act="to-port"]')?.addEventListener('change', e => {
+      const v = e.target.value; updateLink(id, { toPort: v === '' ? null : +v });
+      renderLinksList();
+    });
     tr.querySelector('[data-act="del"]').addEventListener('click', () => {
       const cur = getLinks().filter(x => x.id !== id);
       setLinks(cur);
@@ -859,15 +895,17 @@ function exportBomCsv() {
 function exportLinksCsv() {
   const links = getLinks();
   const cableLabel = id => (CABLE_TYPES.find(c => c.id === id)?.label) || id;
-  const rows = [['#', 'Шкаф A', 'Устройство A', 'Шкаф B', 'Устройство B', 'Кабель', 'Длина, м', 'С запасом, м', 'Заметка']];
+  const rows = [['#', 'Шкаф A', 'Устройство A', 'Порт A', 'Шкаф B', 'Устройство B', 'Порт B', 'Кабель', 'Длина, м', 'С запасом, м', 'Заметка']];
   links.forEach((l, i) => {
     const len = l.lengthM != null && !Number.isNaN(+l.lengthM) ? +l.lengthM : null;
     rows.push([
       i + 1,
       getRackShortLabel(l.fromRackId),
       deviceLabel(l.fromRackId, l.fromDevId),
+      l.fromPort || '',
       getRackShortLabel(l.toRackId),
       deviceLabel(l.toRackId, l.toDevId),
+      l.toPort || '',
       cableLabel(l.cableType),
       len == null ? '' : len.toFixed(1),
       len == null ? '' : (len * BOM_RESERVE).toFixed(1),

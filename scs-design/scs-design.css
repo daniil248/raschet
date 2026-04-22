@@ -148,6 +148,11 @@
   font: inherit; font-size: 12px; padding: 2px 4px;
   border: 1px solid #cbd5e1; border-radius: 4px; width: 100%;
 }
+.sd-port-in {
+  display: block; padding: 2px 4px; border: 1px solid #cbd5e1;
+  border-radius: 4px; font: inherit;
+}
+.sd-port-in.sd-err { border-color: #ef4444; background: #fee2e2; }
 .sd-btn-del {
   background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;
   border-radius: 4px; cursor: pointer; padding: 2px 8px;
