@@ -6,13 +6,70 @@
    • список связей с типом кабеля и удалением.
    ============================================================ */
 
-const LS_RACK      = 'rack-config.templates.v1';
-const LS_CATALOG   = 'scs-config.catalog.v1';
-const LS_CONTENTS  = 'scs-config.contents.v1';
-const LS_RACKTAGS  = 'scs-config.rackTags.v1';
-const LS_SELECTION = 'scs-design.selection.v1';
-const LS_LINKS     = 'scs-design.links.v1';
-const LS_PLAN      = 'scs-design.plan.v1'; // { step, kRoute, positions:{[rackId]:{x,y}} }
+import {
+  ensureDefaultProject, getActiveProjectId, getProject, projectKey
+} from '../shared/project-storage.js';
+
+const LS_RACK      = 'rack-config.templates.v1';       // библиотека шаблонов, глобально
+const LS_CATALOG   = 'scs-config.catalog.v1';          // глобальный каталог IT
+const LS_CONTENTS  = 'scs-config.contents.v1';         // scs-config содержимое (1.27.3 → проект)
+const LS_RACKTAGS  = 'scs-config.rackTags.v1';         // scs-config теги (1.27.3 → проект)
+
+// Проектные данные — в неймспейсе активного проекта.
+// Ключи инициализируются в rescopeToActiveProject() один раз при запуске.
+let LS_SELECTION = 'scs-design.selection.v1';
+let LS_LINKS     = 'scs-design.links.v1';
+let LS_PLAN      = 'scs-design.plan.v1';
+
+// Старые (глобальные) ключи — для одноразовой миграции в активный проект.
+const OLD_KEYS = {
+  selection: 'scs-design.selection.v1',
+  links:     'scs-design.links.v1',
+  plan:      'scs-design.plan.v1',
+};
+
+function renderProjectBadge(pid) {
+  const host = document.getElementById('sd-project-badge');
+  if (!host) return;
+  const p = pid ? getProject(pid) : null;
+  if (!p) {
+    host.innerHTML = `<span class="muted">Активный проект не выбран. <a href="../projects/">Открыть список проектов</a>.</span>`;
+    return;
+  }
+  host.innerHTML = `
+    <span class="muted">Активный проект:</span>
+    <b>${(p.name || '(без имени)').replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</b>
+    <span class="muted">(id <code>${p.id}</code>)</span>
+    <a href="../projects/" style="margin-left:8px">→ сменить / управлять</a>
+  `;
+}
+
+function rescopeToActiveProject() {
+  ensureDefaultProject();
+  const pid = getActiveProjectId();
+  LS_SELECTION = projectKey(pid, 'scs-design', 'selection.v1');
+  LS_LINKS     = projectKey(pid, 'scs-design', 'links.v1');
+  LS_PLAN      = projectKey(pid, 'scs-design', 'plan.v1');
+  // Одноразовая миграция: если в новом ключе пусто, а в старом есть — копируем.
+  const pairs = [
+    [OLD_KEYS.selection, LS_SELECTION],
+    [OLD_KEYS.links,     LS_LINKS],
+    [OLD_KEYS.plan,      LS_PLAN],
+  ];
+  let migrated = 0;
+  for (const [oldK, newK] of pairs) {
+    if (oldK === newK) continue; // если проект ещё не создан и ключ совпал — пропустим
+    try {
+      const newExists = localStorage.getItem(newK) != null;
+      const oldVal = localStorage.getItem(oldK);
+      if (!newExists && oldVal != null) {
+        localStorage.setItem(newK, oldVal);
+        migrated++;
+      }
+    } catch {}
+  }
+  return { pid, migrated };
+}
 
 /* Типы оборудования, у которых нет портов — могут служить только каналом
    для трассировки сплайна, но не endpoint-ом связи. */
@@ -1379,6 +1436,11 @@ function escapeAttr(s) { return escapeHtml(s); }
 
 /* ---------- Init ---------- */
 document.addEventListener('DOMContentLoaded', () => {
+  const { pid, migrated } = rescopeToActiveProject();
+  renderProjectBadge(pid);
+  if (migrated > 0) {
+    updateStatus(`ℹ Данные СКС перенесены в активный проект (перенесено ключей: ${migrated}). Старые глобальные ключи оставлены как резерв.`);
+  }
   setupTabs();
   const cleaned = sanitizeLinks();
   renderLinksTab();

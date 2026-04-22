@@ -1,6 +1,13 @@
 /* scs-design.css — Проектирование СКС (1.26) */
 
 .sd-wrap { max-width: 1400px; margin: 16px auto; padding: 0 16px; }
+.sd-project-bar {
+  padding: 8px 14px; margin-bottom: 10px; border-radius: 8px;
+  background: #1a202c; border: 1px solid #2a313e; color: #cbd5e1;
+  font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.sd-project-bar code { font-size: 11px; color: #94a3b8; }
+.sd-project-bar a { color: #60a5fa; }
 
 .sd-tabs {
   display: flex; gap: 4px; border-bottom: 2px solid #e0e3ea;
