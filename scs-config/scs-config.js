@@ -502,18 +502,25 @@ function renderUnitMap(hostId, opts) {
     }
   });
 
-  // сначала пустые ряды / занятые стойкой
+  // Маленькая карта — только заполненные юниты + rack-occupied; модалка —
+  // полная (все U с нумерацией + пустые рамки).
   const rects = [];
+  const showEmpty = !!opts.big;
   for (let i = 0; i < r.u; i++) {
     const u = r.u - i; // сверху вниз
     const y = 4 + i * rowH;
     const s = slot[u];
-    if (!s || s.kind === 'rack-occ') {
-      const fill = s && s.kind === 'rack-occ' ? '#cbd5e1' : '#f1f5f9';
-      const stroke = s && s.kind === 'rack-occ' ? '#64748b' : '#cbd5e1';
-      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
+    const isOcc = s && s.kind === 'rack-occ';
+    const isDev = s && s.device;
+    if (isOcc) {
+      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="#cbd5e1" stroke="#64748b" stroke-width="0.5"/>`);
+    } else if (!isDev && showEmpty) {
+      rects.push(`<rect x="32" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.5"/>`);
     }
-    rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
+    // нумерация U: в модалке — всегда; в маленькой — только для занятых
+    if (showEmpty || isOcc || isDev) {
+      rects.push(`<text x="28" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
+    }
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
   const deviceGroups = devices.map(d => {
@@ -554,10 +561,52 @@ function renderUnitMap(hostId, opts) {
   }
   if (r.occupied) legend.unshift(`<span><i style="background:#cbd5e1"></i>Занято стойкой · ${r.occupied}U</span>`);
 
+  // Патч-корды — только в модалке (full view). Соединяем устройства,
+  // метка которых появляется как префикс в link.a или link.b. Рисуем
+  // кривую Безье справа от стойки: вход/выход на правой грани устройства.
+  let wires = '';
+  if (opts.big) {
+    const links = currentMatrix();
+    const lookup = (endpoint) => {
+      const s = String(endpoint || '').trim().toLowerCase();
+      if (!s) return null;
+      return devices.find(d => {
+        const lbl = String(d.label || '').toLowerCase();
+        return lbl && (s.startsWith(lbl) || lbl.startsWith(s.split(/[\s\/\-:]/)[0]));
+      }) || null;
+    };
+    const centerY = (d) => {
+      const t = state.catalog.find(c => c.id === d.typeId);
+      const h = t ? t.heightU : 1;
+      const topIdx = r.u - d.positionU;
+      return 4 + topIdx * rowH + (h * rowH) / 2;
+    };
+    const wireParts = [];
+    const rightX = 32 + bodyW;
+    links.forEach((l, idx) => {
+      const a = lookup(l.a), b = lookup(l.b);
+      if (!a || !b || a === b) return;
+      const y1 = centerY(a), y2 = centerY(b);
+      const color = l.color && /^#|^[a-z]+$/i.test(l.color) ? l.color
+        : (l.cable && l.cable.includes('OM') ? '#f59e0b'
+           : l.cable && l.cable.includes('OS') ? '#eab308' : '#2563eb');
+      const dx = 20 + Math.abs(y2 - y1) * 0.25;
+      const path = `M ${rightX} ${y1} C ${rightX+dx} ${y1}, ${rightX+dx} ${y2}, ${rightX} ${y2}`;
+      wireParts.push(`<path d="${path}" fill="none" stroke="${color}" stroke-width="${1.5*scale}" opacity="0.85"/>`);
+      // маркеры концов
+      wireParts.push(`<circle cx="${rightX}" cy="${y1}" r="${2.5*scale}" fill="${color}"/>`);
+      wireParts.push(`<circle cx="${rightX}" cy="${y2}" r="${2.5*scale}" fill="${color}"/>`);
+    });
+    wires = `<g class="sc-wires">${wireParts.join('')}</g>`;
+  }
+
+  // В модалке SVG шире — добавим запас справа под кривые кабелей.
+  const extraRight = opts.big ? 120 : 0;
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
-  host.innerHTML = `<svg id="${svgId}" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}">
+  host.innerHTML = `<svg id="${svgId}" width="${svgW + extraRight}" height="${svgH}" viewBox="0 0 ${svgW + extraRight} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}">
     ${rects.join('')}
     ${deviceGroups}
+    ${wires}
   </svg>
   <div class="sc-unitmap-legend">${legend.join('') || '<span class="muted">— пусто —</span>'}</div>`;
   bindUnitMapDrag(svgId);
@@ -570,7 +619,8 @@ function renderUnitMap(hostId, opts) {
    и сенсорного ввода). SetPointerCapture позволяет таскать за пределами
    исходного rect. */
 function bindUnitMapDrag(svgId) {
-  const svg = $(svgId || 'sc-unitmap-svg'); if (!svg) return;
+  svgId = svgId || 'sc-unitmap-svg';
+  const svg = $(svgId); if (!svg) return;
   const rowH = +svg.dataset.rowh || 16;
   bindUnitMapDrop(svg, rowH);
   svg.querySelectorAll('g.sc-devband').forEach(g => {
@@ -578,7 +628,7 @@ function bindUnitMapDrag(svgId) {
       ev.preventDefault();
       const devId = g.dataset.devid;
       const d = currentContents().find(x => x.id === devId); if (!d) return;
-      state.drag = { devId, startY: ev.clientY, startU: d.positionU, rowH, g };
+      state.drag = { devId, startY: ev.clientY, startU: d.positionU, rowH, svgId };
       g.setPointerCapture(ev.pointerId);
       g.style.cursor = 'grabbing';
       g.style.opacity = '0.75';
@@ -590,14 +640,18 @@ function bindUnitMapDrag(svgId) {
       const dy = ev.clientY - state.drag.startY;
       const drows = Math.round(-dy / rowH); // вверх по экрану = больший U
       const h = +g.dataset.h || 1;
-      const newU = Math.max(h, Math.min(r.u, state.drag.startU + drows));
-      if (newU !== d.positionU) {
-        d.positionU = newU;
-        renderUnitMap();   // re-draw (rebinds listeners)
-        // состояние drag нужно перезахватить, т.к. g уничтожен
-        const gNew = document.querySelector(`g.sc-devband[data-devid="${state.drag.devId}"]`);
-        if (gNew) { gNew.setPointerCapture(ev.pointerId); gNew.style.cursor = 'grabbing'; gNew.style.opacity = '0.75'; }
-      }
+      const wantU = Math.max(h, Math.min(r.u, state.drag.startU + drows));
+      if (wantU === d.positionU) return;
+      // 1.24.29 — запрет наложения. Если wantU занят другим devices или
+      // rack-occupied, откатываемся на последнюю валидную позицию (не
+      // продвигаемся сквозь препятствие).
+      if (!canPlace(r, currentContents(), d.id, h, wantU)) return;
+      d.positionU = wantU;
+      rerenderPreview(); // и основная, и модалка
+      // g уничтожен — re-query в ТОМ ЖЕ svg, где был drag
+      const svgNow = $(state.drag.svgId);
+      const gNew = svgNow && svgNow.querySelector(`g.sc-devband[data-devid="${state.drag.devId}"]`);
+      if (gNew) { gNew.setPointerCapture(ev.pointerId); gNew.style.cursor = 'grabbing'; gNew.style.opacity = '0.75'; }
     });
     g.addEventListener('pointerup', () => {
       if (!state.drag) return;
@@ -609,6 +663,30 @@ function bindUnitMapDrag(svgId) {
     });
     g.addEventListener('pointercancel', () => { state.drag = null; });
   });
+}
+
+/* 1.24.29 — проверка «влезет ли устройство в позицию wantU, не задев
+   других». excludeDevId — игнорируем это устройство (для drag). */
+function canPlace(r, devices, excludeDevId, heightU, wantU) {
+  if (wantU < heightU || wantU > r.u) return false;
+  // занятые стойкой верхние юниты
+  for (let u = r.u; u > r.u - r.occupied; u--) {
+    for (let k = 0; k < heightU; k++) {
+      if (wantU - k === u) return false;
+    }
+  }
+  for (const d of devices) {
+    if (d.id === excludeDevId) continue;
+    const t = state.catalog.find(c => c.id === d.typeId);
+    const dh = t ? t.heightU : 1;
+    for (let k = 0; k < heightU; k++) {
+      const myU = wantU - k;
+      for (let j = 0; j < dh; j++) {
+        if (myU === d.positionU - j) return false;
+      }
+    }
+  }
+  return true;
 }
 
 /* ---- 1.24.10 drop-target: палитра каталога → карта юнитов --------------
@@ -630,16 +708,36 @@ function bindUnitMapDrop(svg, rowH) {
     if (!typeId) return;
     ev.preventDefault();
     const r = currentRack(); if (!r) return;
+    const type = state.catalog.find(c => c.id === typeId); if (!type) return;
     const rect = svg.getBoundingClientRect();
-    // SVG viewBox = 0..svgH; но мы вычисляем по clientY относительно rect, с учётом масштабирования CSS
     const svgH = svg.viewBox.baseVal.height || rect.height;
     const yClient = ev.clientY - rect.top;
     const yView = yClient * (svgH / rect.height);
-    // в renderUnitMap первый ряд стартует с y=4, высота ряда=rowH; rowIdx=0 — это U=r.u
     const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
-    const topU = r.u - rowIdx;
-    addToRack(typeId, topU);
+    const wantTopU = r.u - rowIdx;
+    // 1.24.29 — запрет наложения при drop: ищем ближайший свободный U
+    // (сначала вверх от wantTopU, потом вниз). Если ничего — alert.
+    const finalU = findNearestFreeSlot(r, currentContents(), type.heightU, wantTopU);
+    if (finalU == null) {
+      alert('В стойке нет свободного места для этого устройства (' + type.heightU + 'U).');
+      return;
+    }
+    addToRack(typeId, finalU);
   });
+}
+
+/* 1.24.29 — поиск ближайшего свободного блока heightU к wantU (сначала
+   выше, потом ниже). Возвращает top-U или null если нет места. */
+function findNearestFreeSlot(r, devices, heightU, wantU) {
+  const okAt = (u) => canPlace(r, devices, null, heightU, u);
+  if (okAt(wantU)) return wantU;
+  for (let delta = 1; delta <= r.u; delta++) {
+    const up = wantU + delta;
+    if (up <= r.u && okAt(up)) return up;
+    const dn = wantU - delta;
+    if (dn >= heightU && okAt(dn)) return dn;
+  }
+  return null;
 }
 
 /* ---- BOM --------------------------------------------------------------- */
