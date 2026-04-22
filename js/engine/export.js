@@ -96,11 +96,17 @@ export function initToolbar() {
         const p = (listProjects() || []).find(x => x.id === pid);
         pname = p?.name || '';
       } catch {}
+      const hint = 'Список проектов хранится локально в этом браузере (localStorage). '
+        + 'На другом компьютере/браузере проекты и их id не совпадают: одна и та же схема '
+        + 'может быть привязана к разным проектам. Чтобы синхронизировать — используйте '
+        + '«Экспорт JSON» в карточке проекта и «Импорт» на другом устройстве. '
+        + 'Cloud-sync каталога и проектов — Фаза 5.5.';
       if (key === 'raschet.scheme') {
-        badge.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="projects/" style="color:#1565c0">выбрать проект →</a>';
+        badge.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="projects/" style="color:#1565c0">выбрать проект →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
       } else {
-        badge.innerHTML = '📁 Проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b> · <a href="projects/" style="color:#1565c0">сменить →</a>';
+        badge.innerHTML = '📁 Проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b> · <a href="projects/" style="color:#1565c0">сменить →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
       }
+      badge.title = hint;
     }
   } catch {}
 
