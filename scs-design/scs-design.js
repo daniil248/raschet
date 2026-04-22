@@ -337,6 +337,22 @@ function getContents(id) {
 }
 function getLinks() { const l = loadJson(LS_LINKS, []); return Array.isArray(l) ? l : []; }
 function setLinks(arr) { saveJson(LS_LINKS, arr); }
+/* v0.59.283: фантомные связи (endpoint на tpl-*, на стойку чужого проекта
+   или на удалённое устройство) НЕ показываются в UI Проектирования СКС —
+   отображаются только «действующие» кабели. В storage исходные записи
+   остаются: если стойка/устройство вернётся, связь снова станет видимой. */
+function isLinkLive(l, instIds) {
+  if (!instIds.has(l.fromRackId) || !instIds.has(l.toRackId)) return false;
+  const from = getContents(l.fromRackId).find(x => x.id === l.fromDevId);
+  const to   = getContents(l.toRackId).find(x => x.id === l.toDevId);
+  return !!from && !!to;
+}
+function getVisibleLinks() {
+  const raw = getLinks();
+  if (!raw.length) return raw;
+  const instIds = new Set(getProjectInstances().map(r => r.id));
+  return raw.filter(l => isLinkLive(l, instIds));
+}
 function rackById(id) { return getRacks().find(r => r.id === id); }
 
 /* v0.59.281: строгий project-scope для модуля проектирования СКС.
@@ -611,7 +627,7 @@ function renderLinksTab() {
 
 function renderLegend() {
   const host = document.getElementById('sd-legend'); if (!host) return;
-  const used = new Set(getLinks().map(l => l.cableType || 'other'));
+  const used = new Set(getVisibleLinks().map(l => l.cableType || 'other'));
   if (!used.size) { host.innerHTML = ''; return; }
   host.innerHTML = '<span class="muted">Цвета кабелей:</span>' + CABLE_TYPES
     .filter(t => used.has(t.id))
@@ -680,7 +696,7 @@ function drawLinkOverlay() {
   };
 
   const parts = [];
-  const links = getLinks();
+  const links = getVisibleLinks();
   links.forEach(l => {
     const fromCenter = cardXCenter(l.fromRackId);
     const toCenter = cardXCenter(l.toRackId);
@@ -760,9 +776,11 @@ function renderRackCard(r) {
     }
   }
 
-  return `<div class="sd-rack-card">
+  // v0.59.283: кнопка ✎ ведёт в Компоновщик шкафа (rack.html) с этим rackId.
+  const editBtn = `<a class="sd-rack-edit" href="../scs-config/rack.html?rackId=${encodeURIComponent(r.id)}" title="Редактировать стойку в Компоновщике (мастере)" onclick="event.stopPropagation()">✎</a>`;
+  return `<div class="sd-rack-card" data-rack-card-id="${escapeAttr(r.id)}">
     <div class="sd-rack-head">
-      <span>${escapeHtml(r.name || 'Без имени')}</span>
+      <span style="display:flex;align-items:center;gap:4px;flex:1;min-width:0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.name || 'Без имени')}</span>${editBtn}</span>
       <span class="tag">${escapeHtml(tag || '—')}</span>
     </div>
     <div class="sd-units">${units.join('')}</div>
@@ -856,9 +874,9 @@ function updateStatus(html) {
 function renderLinksList() {
   const host = document.getElementById('sd-links-list');
   if (!host) return;
-  const allLinks = getLinks();
+  const allLinks = getVisibleLinks();
   if (!allLinks.length) {
-    host.innerHTML = `<div class="sd-empty-state">Пока нет ни одной меж-шкафной связи. Кликните на устройство в одной стойке, затем на устройство в другой — появится связь.</div>`;
+    host.innerHTML = `<div class="sd-empty-state">Пока нет ни одной действующей меж-шкафной связи. Кликните на устройство в одной стойке, затем на устройство в другой — появится связь.</div>`;
     renderBom();
     return;
   }
@@ -988,7 +1006,7 @@ const BOM_RESERVE = 1.3; // коэфф. запаса длины
 
 function renderBom() {
   const host = document.getElementById('sd-bom'); if (!host) return;
-  const links = getLinks();
+  const links = getVisibleLinks();
   if (!links.length) { host.innerHTML = `<div class="muted">Пока нет связей — BOM пуст.</div>`; return; }
 
   const byType = new Map();
@@ -1069,7 +1087,7 @@ function rackStats(rack) {
     const kind = (t && t.kind) || 'other';
     byKind[kind] = (byKind[kind] || 0) + 1;
   }
-  const links = getLinks().filter(l => l.fromRackId === rack.id || l.toRackId === rack.id);
+  const links = getVisibleLinks().filter(l => l.fromRackId === rack.id || l.toRackId === rack.id);
   return { u, usedU, freeU: Math.max(0, u - usedU), powerW, devCount: devices.length, byKind, linkCount: links.length };
 }
 
@@ -1251,7 +1269,7 @@ function renderPlan() {
     div.style.width = (RACK_W_CELLS * PLAN_CELL_PX) + 'px';
     div.style.height = (RACK_H_CELLS * PLAN_CELL_PX) + 'px';
     // подробный тултип: + исходящие связи и метраж от этой стойки
-    const rackLinks = getLinks().filter(l => l.fromRackId === r.id || l.toRackId === r.id);
+    const rackLinks = getVisibleLinks().filter(l => l.fromRackId === r.id || l.toRackId === r.id);
     let fromM = 0;
     rackLinks.forEach(l => {
       const len = (l.lengthM != null) ? l.lengthM : computeSuggestedLength(l, plan);
@@ -1358,7 +1376,7 @@ let linksMissingOnly = false;
 
 function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
-  const links = getLinks();
+  const links = getVisibleLinks();
   links.forEach(l => {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
@@ -1394,7 +1412,7 @@ function updatePlanInfo() {
   const plan = getPlan();
   const racks = getProjectInstances();
   const placed = racks.filter(r => plan.positions[r.id]).length;
-  const links = getLinks();
+  const links = getVisibleLinks();
   const total = links.length;
   const withPos = links.filter(l => plan.positions[l.fromRackId] && plan.positions[l.toRackId]).length;
   const missing = links.filter(l => (l.lengthM == null) && plan.positions[l.fromRackId] && plan.positions[l.toRackId]).length;
@@ -1470,8 +1488,8 @@ function exportPlanSvg() {
   for (let r = 1; r < PLAN_ROWS; r++) gridParts.push(`<line x1="0" y1="${r*PLAN_CELL_PX}" x2="${W}" y2="${r*PLAN_CELL_PX}" stroke="#e5e7eb" stroke-width="0.5"/>`);
   lines.push(gridParts.join(''));
 
-  // Кабели (L-образные) + подписи длин
-  getLinks().forEach(l => {
+  // Кабели (L-образные) + подписи длин — только действующие
+  getVisibleLinks().forEach(l => {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
     if (!a || !b) return;
@@ -1532,7 +1550,7 @@ function exportPlanSvg() {
   a.href = url; a.download = `scs-plan-${dateStamp()}.svg`;
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
-  updateStatus(`✔ План экспортирован: ${placed.length} стоек, ${getLinks().length} связей.`);
+  updateStatus(`✔ План экспортирован: ${placed.length} стоек, ${getVisibleLinks().length} связей.`);
 }
 
 function escapeSvg(s) {
@@ -1615,7 +1633,7 @@ function downloadCsv(filename, rows) {
 }
 
 function exportBomCsv() {
-  const links = getLinks();
+  const links = getVisibleLinks();
   const byType = new Map();
   for (const l of links) {
     const t = l.cableType || 'other';
@@ -1634,7 +1652,7 @@ function exportBomCsv() {
 }
 
 function exportLinksCsv() {
-  const links = getLinks();
+  const links = getVisibleLinks();
   const cableLabel = id => (CABLE_TYPES.find(c => c.id === id)?.label) || id;
   const rows = [['#', 'Шкаф A', 'Устройство A', 'Порт A', 'Шкаф B', 'Устройство B', 'Порт B', 'Кабель', 'Длина, м', 'С запасом, м', 'Заметка']];
   links.forEach((l, i) => {

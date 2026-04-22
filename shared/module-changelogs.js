@@ -113,6 +113,13 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.283', date: '2026-04-22', items: [
+      '👻 Фантомные меж-шкафные связи больше не отображаются. Показываем ТОЛЬКО «действующие» кабели — у которых оба конца указывают на inst-* стойку текущего проекта и устройства ещё присутствуют в содержимом. Сырые записи в scs-design.links.v1 остаются — если стойка/устройство вернётся (например, пересохранение scs-config), связи снова станут видимыми.',
+      '📐 Карточки стоек в мастере связей теперь растут по высоте стойки целиком — убран локальный overflow-y/скролл (max-height: 640px). Вся стойка видна без внутренней полосы прокрутки.',
+      '✎ На заголовке каждой карточки стойки в мастере связей добавлена кнопка-линк «✎» — открывает стойку в Компоновщике (scs-config/rack.html?rackId=<id>) для правок оборудования/геометрии.',
+      'Файлы: scs-design/scs-design.js (getVisibleLinks + isLinkLive + замена getLinks() на getVisibleLinks() в renderLegend/drawLinkOverlay/renderLinksList/renderBom/renderRacksSummary(stats)/renderPlan.rackLinks/drawPlanLinks/updatePlanInfo/exportBomCsv/exportLinksCsv/exportPlanSvg; renderRackCard добавляет .sd-rack-edit); scs-design/scs-design.css (.sd-units без max-height, .sd-rack-edit стили).',
+      'Примечание по защите от удаления: оборудование с подключёнными кабелями уже защищено (scs-config.js: hasAttachedCables — 708/2815). Удаление шаблонов стоек также блокируется счётчиком использующих их инстансов (rack-config v0.59.279). Прямое удаление экземпляра стойки (inst-*) в UI сейчас отсутствует — соответственно, невозможно.',
+    ] },
     { version: '0.59.281', date: '2026-04-22', items: [
       '🔒 Строгий project-scope: план-зал, сводная таблица «Стойки проекта», CSV-экспорт и план-инфо теперь используют getProjectInstances() и видят только inst-* текущего проекта. Глобальные шаблоны корпусов (tpl-*) больше никогда не «просачиваются» в палитру плана, чипы мастера связей и т.п. getProjectRackIds обновлён: источник истины — inst-* активного проекта + fallback на scoped contents/tags только с inst-* префиксом.',
       '🔌 Валидация порт ↔ кабель для меж-шкафных связей. Лёгкая модель: inferPortType(dev) определяет тип порта из catalog.kind + optional catalog[i].portType + эвристика по label (SFP/fiber → lc, coax → bnc). Cable → set допустимых типов портов (cat6/6a/7 → rj45; om3/om4/os2 → lc/sc/sfp; coax → bnc/f; power-c13 → power/c13/c14; other — без валидации). В таблице связей рядом с выбором кабеля показывается красное ⚠ с причиной при несовпадении.',
