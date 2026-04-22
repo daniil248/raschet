@@ -8,6 +8,22 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 /* Phase 1.26.1 — full-width */
 main { flex: 1; padding: 24px; width: 100%; }
 
+/* v0.59.188 — layout с левым сайдбаром (standalone). */
+main.tc-layout {
+  display: grid;
+  grid-template-columns: var(--rs-sidebar-left-w, 260px) 1fr;
+  gap: 16px; padding: 16px; align-items: start;
+}
+main.tc-layout > .rs-sidebar-left {
+  position: sticky; top: 8px; max-height: calc(100vh - 24px);
+  background: var(--rs-bg-card, #fff);
+  border: 1px solid var(--rs-border-soft, #e2e8f0);
+  border-radius: 8px; overflow: hidden;
+}
+main.tc-layout > .tc-content { min-width: 0; }
+body.tc-embed main.tc-layout { grid-template-columns: 1fr; }
+body.tc-embed main.tc-layout > .rs-sidebar-left { display: none; }
+
 .page-intro { margin-bottom: 24px; }
 .page-intro h2 {
   font-size: 22px;

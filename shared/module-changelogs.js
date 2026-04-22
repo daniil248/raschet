@@ -234,6 +234,10 @@ export const CHANGELOGS = {
   ],
 
   'mv-config': [
+    { version: '0.59.188', date: '2026-04-22', items: [
+      'Левый сайдбар standalone-режима: «Основные настройки» / «Свойства» / «Конфигурации РУ СН» через shared/config-sidebar.js. В embedded-режиме (body.mvc-embed) скрывается.',
+      'Файлы: mv-config/index.html (main.mvc-layout + aside + mount); mv-config/mv-config.css (grid-layout).',
+    ] },
     { version: '0.56.4', date: '2026-04-15', items: ['Уставки MV-реле (Ir/Isd/tsd/Ii) в TCC и селективности.'] },
     { version: '0.56.2', date: '2026-04-12', items: ['Редактор уставок MV-реле — модалка по клику на VCB-ячейке.'] },
     { version: '0.56.1', date: '2026-04-10', items: ['ABB SafeRing (typo fix); lockedId блокирует альтернативные семейства.'] },
@@ -292,6 +296,10 @@ export const CHANGELOGS = {
   ],
 
   'ups-config': [
+    { version: '0.59.188', date: '2026-04-22', items: [
+      'Левый сайдбар standalone-режима: «Основные настройки» / «Свойства» / «Конфигурации ИБП» через shared/config-sidebar.js. Сохраняются kW/автономия/резервирование/топология wizard. В embedded-режиме (body.uc-embed) скрывается.',
+      'Файлы: ups-config/index.html (main.uc-layout + aside + mount); ups-config/ups-config.css (grid-layout).',
+    ] },
     { version: '0.59.176', date: '2026-04-22', items: [
       'Модуль стал КОНФИГУРАТОРОМ, а не каталогом: при открытии ups-config/ сразу виден wizard подбора (Шаг 1 — требования: мощность, автономия, резервирование N/N+1/N+2/2N, тип, V_DC, cos φ). Раньше wizard появлялся только при входе из инспектора с ?nodeId=, а все прочие точки входа («Конфигуратор ИБП» в Hub, кнопки в инспекторе) показывали только справочник — создавалось впечатление, что модуль = каталог.',
       'Файлы: ups-config/index.html (#configurator-wizard: убран display:none, обновлён page-intro на формулировку «подбор по требованиям»); ups-config/ups-config.js (DOMContentLoaded: если нет ?nodeId=, авто-запускается launchStandaloneWizard; initWizard возвращает boolean чтобы не перезапускаться дважды).',
@@ -317,6 +325,10 @@ export const CHANGELOGS = {
   ],
 
   'transformer-config': [
+    { version: '0.59.188', date: '2026-04-22', items: [
+      'Левый сайдбар standalone-режима: «Основные настройки» / «Свойства» / «Конфигурации трансформаторов» через shared/config-sidebar.js. В embedded-режиме (body.tc-embed) скрывается.',
+      'Файлы: transformer-config/index.html (main.tc-layout + aside + mount); transformer-config/transformer-config.css (grid-layout).',
+    ] },
     { version: '0.59.178', date: '2026-04-22', items: [
       'Модуль стал КОНФИГУРАТОРОМ, а не просто каталогом: добавлен мастер подбора (#tx-wizard) с фильтром по нагрузке (кВА + %запаса), U_HV (6/10/20/35), U_LV (230/400/690), типу (масляный/сухой по классификации серии), группе соединений (Dyn11/Yyn0/Yzn11). Результат — таблица подходящих моделей, отсортированная по утилизации, с кнопкой «Выбрать» (выделяет модель в каскадном пикере справочника).',
       'Файлы: transformer-config/index.html (#tx-wizard с form-grid + кнопки Подобрать/Сброс + #tx-wiz-results); transformer-config.js (runTxWizard, _classifyTxType по серии ТМ*/ТС* + coolingType). Требуется S_nom ≥ loadKva·(1 + reserve/100); совпадение U_HV/U_LV точное; тип и группа — фильтры по строке серии.'

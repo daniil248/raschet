@@ -76,7 +76,11 @@
     }
   </script>
 
-  <main>
+  <main class="uc-layout">
+    <aside class="rs-sidebar rs-sidebar-left" id="uc-sidebar">
+      <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+    </aside>
+    <div class="uc-content">
     <div class="page-intro">
       <h2>Конфигуратор ИБП</h2>
       <p class="muted">
@@ -189,11 +193,39 @@
       </div>
       <div id="selected-ups-details" class="empty">Выберите модель в каскаде выше.</div>
     </section>
+    </div><!-- /.uc-content -->
   </main>
 
   <div id="flash" class="flash"></div>
 
   <script type="module" src="ups-config.js"></script>
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (isEmbeddedMode()) document.body.classList.add('uc-embed');
+    else {
+      mountConfigSidebar({
+        kind: 'ups',
+        title: 'Конфигурации ИБП',
+        onSelect: (entry) => {
+          try { window.dispatchEvent(new CustomEvent('ups-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const $ = (id) => document.getElementById(id);
+          const kw = $('uc-loadKw')?.value || $('uc-wiz-kw')?.value || '';
+          const aut = $('uc-autonomy')?.value || $('uc-wiz-aut')?.value || '';
+          const red = $('uc-wiz-red')?.value || '';
+          const top = $('uc-wiz-topology')?.value || '';
+          return {
+            label: kw ? (kw + ' кВт ИБП') : 'ИБП',
+            description: [top, red, aut && (aut + ' мин')].filter(Boolean).join(' · '),
+            payload: { loadKw: kw, autonomy: aut, redundancy: red, topology: top },
+          };
+        },
+      });
+    }
+  </script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';

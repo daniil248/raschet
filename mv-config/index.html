@@ -96,7 +96,11 @@
     window.addEventListener('DOMContentLoaded', () => mountFooter());
   </script>
 
-  <main>
+  <main class="mvc-layout">
+    <aside class="rs-sidebar rs-sidebar-left" id="mvc-sidebar">
+      <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+    </aside>
+    <div class="mvc-content">
     <div class="page-intro">
       <h2>Конфигуратор РУ среднего напряжения</h2>
       <p class="muted">
@@ -214,11 +218,37 @@
       </div>
       <div id="mv-catalog-list"></div>
     </section>
+    </div><!-- /.mvc-content -->
   </main>
 
   <div id="flash" class="flash"></div>
 
   <script type="module" src="mv-config.js"></script>
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (isEmbeddedMode()) document.body.classList.add('mvc-embed');
+    else {
+      mountConfigSidebar({
+        kind: 'mv',
+        title: 'Конфигурации РУ СН',
+        onSelect: (entry) => {
+          try { window.dispatchEvent(new CustomEvent('mv-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const $ = (id) => document.getElementById(id);
+          const kv = $('mv-wiz-uv')?.value || $('mv-kv')?.value || '';
+          const fam = $('mv-wiz-family')?.value || '';
+          return {
+            label: fam || 'РУ СН',
+            description: [fam, kv && (kv + ' кВ')].filter(Boolean).join(' · '),
+            payload: { family: fam, kv },
+          };
+        },
+      });
+    }
+  </script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';

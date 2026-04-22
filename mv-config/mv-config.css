@@ -1,5 +1,21 @@
 /* mv-config.css — отдельные стили для MV-конфигуратора поверх panel-config.css */
 
+/* v0.59.188 — layout с левым сайдбаром (standalone). */
+main.mvc-layout {
+  display: grid;
+  grid-template-columns: var(--rs-sidebar-left-w, 260px) 1fr;
+  gap: 16px; padding: 16px; align-items: start;
+}
+main.mvc-layout > .rs-sidebar-left {
+  position: sticky; top: 8px; max-height: calc(100vh - 24px);
+  background: var(--rs-bg-card, #fff);
+  border: 1px solid var(--rs-border-soft, #e2e8f0);
+  border-radius: 8px; overflow: hidden;
+}
+main.mvc-layout > .mvc-content { min-width: 0; }
+body.mvc-embed main.mvc-layout { grid-template-columns: 1fr; }
+body.mvc-embed main.mvc-layout > .rs-sidebar-left { display: none; }
+
 .mv-item {
   display: flex;
   align-items: center;

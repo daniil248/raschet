@@ -102,7 +102,11 @@
     }
   </script>
 
-  <main>
+  <main class="tc-layout">
+    <aside class="rs-sidebar rs-sidebar-left" id="tc-sidebar">
+      <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+    </aside>
+    <div class="tc-content">
     <div class="page-intro">
       <h2>Конфигуратор трансформатора</h2>
       <p class="muted">
@@ -194,11 +198,39 @@
       </div>
       <div id="selected-tx-details" class="empty">Выберите модель в каскаде выше.</div>
     </section>
+    </div><!-- /.tc-content -->
   </main>
 
   <div id="flash" class="flash"></div>
 
   <script type="module" src="transformer-config.js"></script>
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (isEmbeddedMode()) document.body.classList.add('tc-embed');
+    else {
+      mountConfigSidebar({
+        kind: 'transformer',
+        title: 'Конфигурации трансформаторов',
+        onSelect: (entry) => {
+          try { window.dispatchEvent(new CustomEvent('transformer-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const $ = (id) => document.getElementById(id);
+          const s = $('tx-wiz-snom')?.value || $('tx-loadKw')?.value || '';
+          const hv = $('tx-wiz-hv')?.value || '';
+          const lv = $('tx-wiz-lv')?.value || '';
+          const type = $('tx-wiz-type')?.value || '';
+          return {
+            label: s ? (s + ' kVA') : 'Трансформатор',
+            description: [type, hv && lv && (hv + '/' + lv + ' В')].filter(Boolean).join(' · '),
+            payload: { snom: s, hv, lv, type },
+          };
+        },
+      });
+    }
+  </script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';
