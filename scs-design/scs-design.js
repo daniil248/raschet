@@ -519,15 +519,41 @@ function updateStatus(html) {
 function renderLinksList() {
   const host = document.getElementById('sd-links-list');
   if (!host) return;
-  const links = getLinks();
-  if (!links.length) {
+  const allLinks = getLinks();
+  if (!allLinks.length) {
     host.innerHTML = `<div class="sd-empty-state">Пока нет ни одной меж-шкафной связи. Кликните на устройство в одной стойке, затем на устройство в другой — появится связь.</div>`;
     renderBom();
     return;
   }
+  // фильтр: поиск (шкаф/устройство/заметка) + тип кабеля + только без длины
+  const q = (linksQuery || '').trim().toLowerCase();
+  const ct = linksCableFilter || '';
+  const missingOnly = !!linksMissingOnly;
+  const linkMatches = l => {
+    if (ct && (l.cableType || '') !== ct) return false;
+    if (missingOnly && l.lengthM != null) return false;
+    if (!q) return true;
+    const hay = [
+      getRackShortLabel(l.fromRackId), deviceLabel(l.fromRackId, l.fromDevId),
+      getRackShortLabel(l.toRackId),   deviceLabel(l.toRackId,   l.toDevId),
+      l.note || ''
+    ].join(' ').toLowerCase();
+    return hay.includes(q);
+  };
+  const links = allLinks.filter(linkMatches);
+  const cableOpts = ['<option value="">все типы</option>'].concat(
+    CABLE_TYPES.map(t => `<option value="${t.id}" ${ct === t.id ? 'selected' : ''}>${escapeHtml(t.label)}</option>`)
+  ).join('');
   const opts = CABLE_TYPES.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
   // сначала таблицу нарисуем, BOM — отдельной функцией
   host.innerHTML = `
+    <div class="sd-picker-search">
+      <input type="search" id="sd-links-q" placeholder="🔍 шкаф / устройство / заметка" value="${escapeHtml(linksQuery || '')}" autocomplete="off">
+      <select id="sd-links-ct" title="Тип кабеля">${cableOpts}</select>
+      <label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" id="sd-links-missing" ${missingOnly ? 'checked' : ''}> только без длины</label>
+      <span class="muted">${(q || ct || missingOnly) ? `${links.length}/${allLinks.length}` : `${allLinks.length} шт.`}</span>
+      ${(q || ct || missingOnly) ? '<button type="button" class="sd-btn-sel" id="sd-links-clear">× сброс</button>' : ''}
+    </div>
     <table class="sd-links-table">
       <thead>
         <tr>
@@ -574,8 +600,18 @@ function renderLinksList() {
         `;}).join('')}
       </tbody>
     </table>
-    <div class="sd-links-footer muted">Всего связей: ${links.length}. Хранилище: <code>scs-design.links.v1</code>.</div>
+    <div class="sd-links-footer muted">Показано: ${links.length} из ${allLinks.length}. Хранилище: <code>scs-design.links.v1</code>.</div>
   `;
+  const qInput = document.getElementById('sd-links-q');
+  if (qInput) qInput.addEventListener('input', e => {
+    linksQuery = e.target.value;
+    renderLinksList();
+    const q2 = document.getElementById('sd-links-q');
+    if (q2) { q2.focus(); q2.setSelectionRange(q2.value.length, q2.value.length); }
+  });
+  document.getElementById('sd-links-ct')?.addEventListener('change', e => { linksCableFilter = e.target.value; renderLinksList(); });
+  document.getElementById('sd-links-missing')?.addEventListener('change', e => { linksMissingOnly = e.target.checked; renderLinksList(); });
+  document.getElementById('sd-links-clear')?.addEventListener('click', () => { linksQuery = ''; linksCableFilter = ''; linksMissingOnly = false; renderLinksList(); });
   host.querySelectorAll('tr[data-id]').forEach(tr => {
     const id = tr.dataset.id;
     tr.querySelector('[data-act="cable"]').addEventListener('change', e => { updateLink(id, { cableType: e.target.value }); drawLinkOverlay(); });
@@ -969,6 +1005,9 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
 
 let focusRackId = null;
 let pickerQuery = '';
+let linksQuery = '';
+let linksCableFilter = '';
+let linksMissingOnly = false;
 
 function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
