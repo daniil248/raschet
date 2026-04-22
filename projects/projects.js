@@ -76,6 +76,34 @@ function prPrompt(title, label, initial = '', placeholder = '') {
   });
 }
 
+function prStatusPicker(current) {
+  return new Promise(res => {
+    const overlay = document.createElement('div');
+    overlay.className = 'pr-overlay';
+    const rows = STATUSES.map(s => `
+      <button type="button" class="pr-status-row" data-id="${s.id}" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid ${s.id === current ? s.color : '#e2e8f0'};background:${s.id === current ? s.bg : '#fff'};border-radius:8px;cursor:pointer;margin-bottom:6px;text-align:left">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${s.color}"></span>
+        <b style="color:${s.color}">${s.label}</b>
+        ${s.id === current ? '<span style="margin-left:auto;color:' + s.color + ';font-size:12px">✓ текущий</span>' : ''}
+      </button>`).join('');
+    overlay.innerHTML = `
+      <div class="pr-modal" style="max-width:420px">
+        <h3>Статус проекта</h3>
+        <p class="muted" style="font-size:12px">Используется для визуальной сортировки. Статус «Архив» прячет проект из общего списка (можно вернуть через «Показать архивные»).</p>
+        <div style="margin:10px 0">${rows}</div>
+        <div class="pr-modal-actions"><button type="button" class="pr-btn-sel" data-act="no">Закрыть</button></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const done = v => { overlay.remove(); res(v); };
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) done(null);
+      const row = e.target.closest('.pr-status-row');
+      if (row) done(row.dataset.id);
+      if (e.target.dataset?.act === 'no') done(null);
+    });
+  });
+}
+
 function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -99,6 +127,17 @@ const LINKED_MODULES = [
   { href: '../facility-inventory/',  label: '🏭 Реестр оборудования объекта' },
 ];
 
+/* ---------- Статусы проекта (Фаза 1.27.5) ---------- */
+const STATUSES = [
+  { id: 'draft',     label: 'Черновик',        color: '#64748b', bg: '#e2e8f0' },
+  { id: 'planned',   label: 'Проектируется',   color: '#1d4ed8', bg: '#dbeafe' },
+  { id: 'installed', label: 'Смонтирован',     color: '#b45309', bg: '#fef3c7' },
+  { id: 'operating', label: 'Эксплуатируется', color: '#047857', bg: '#d1fae5' },
+  { id: 'archived',  label: 'Архив',           color: '#475569', bg: '#f1f5f9' },
+];
+function statusMeta(id) { return STATUSES.find(s => s.id === id) || STATUSES[0]; }
+let showArchived = false;
+
 /* ---------- Рендер ---------- */
 function render() {
   const host = document.getElementById('pr-list');
@@ -106,8 +145,24 @@ function render() {
   // v0.59.236: мини-проекты (kind='sketch') создаются из мастеров конкретных
   // модулей (scs-design и т.п.) и живут только в их dropdown'ах. В общий
   // список /projects/ они не попадают — это центр настоящих проектов.
-  const projects = listProjects().filter(p => (p.kind || 'full') !== 'sketch');
+  let projects = listProjects().filter(p => (p.kind || 'full') !== 'sketch');
   const activeId = getActiveProjectId();
+
+  // v0.59.238: фильтр архивных.
+  const totalArchived = projects.filter(p => p.status === 'archived').length;
+  if (!showArchived) projects = projects.filter(p => p.status !== 'archived');
+  const filterHost = document.getElementById('pr-status-filter');
+  if (filterHost) {
+    filterHost.innerHTML = `
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#64748b;cursor:pointer">
+        <input type="checkbox" id="pr-show-archived" ${showArchived ? 'checked' : ''}>
+        Показать архивные ${totalArchived ? `<span style="background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:10px;font-size:11px">${totalArchived}</span>` : ''}
+      </label>`;
+    filterHost.querySelector('#pr-show-archived')?.addEventListener('change', e => {
+      showArchived = !!e.target.checked;
+      render();
+    });
+  }
 
   if (!projects.length) {
     host.innerHTML = `<div class="pr-empty">Пока нет ни одного проекта. Нажмите «＋ Новый проект», чтобы создать первый.</div>`;
@@ -118,15 +173,19 @@ function render() {
 
   host.innerHTML = projects.map(p => {
     const isActive = p.id === activeId;
+    const st = statusMeta(p.status || 'draft');
+    const statusBadge = `<span class="pr-badge-status" style="background:${st.bg};color:${st.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600" title="Кликните «Статус ▾» чтобы сменить">${escapeHtml(st.label)}</span>`;
     return `
-    <div class="pr-project ${isActive ? 'active' : ''}" data-id="${escapeHtml(p.id)}">
+    <div class="pr-project ${isActive ? 'active' : ''}" data-id="${escapeHtml(p.id)}" data-status="${escapeHtml(p.status || 'draft')}"${p.status === 'archived' ? ' style="opacity:.7"' : ''}>
       <div class="pr-project-head">
         <div class="pr-project-title">
           <span class="pr-project-name">${escapeHtml(p.name || '(без имени)')}</span>
           ${isActive ? '<span class="pr-badge-active">активен</span>' : ''}
+          ${statusBadge}
         </div>
         <div class="pr-project-actions">
           ${isActive ? '' : `<button type="button" class="pr-btn-sel" data-act="activate">Сделать активным</button>`}
+          <button type="button" class="pr-btn-sel" data-act="status">Статус ▾</button>
           <button type="button" class="pr-btn-sel" data-act="rename">Переименовать</button>
           <button type="button" class="pr-btn-sel" data-act="import-scheme" title="Скопировать текущую глобальную схему Конструктора в этот проект">⬇ Взять глобальную схему</button>
           <button type="button" class="pr-btn-sel" data-act="apply-scheme" title="Применить схему проекта к главному Конструктору (перезапишет глобальную схему!)">⬆ Применить в Конструкторе</button>
@@ -152,6 +211,14 @@ function render() {
     el.querySelector('[data-act="activate"]')?.addEventListener('click', () => {
       setActiveProjectId(id);
       prToast('✔ Проект сделан активным');
+      render();
+    });
+    el.querySelector('[data-act="status"]')?.addEventListener('click', async () => {
+      const p = listProjects().find(x => x.id === id); if (!p) return;
+      const next = await prStatusPicker(p.status || 'draft');
+      if (next == null || next === p.status) return;
+      updateProject(id, { status: next });
+      prToast('✔ Статус: ' + statusMeta(next).label);
       render();
     });
     el.querySelector('[data-act="rename"]')?.addEventListener('click', async () => {
