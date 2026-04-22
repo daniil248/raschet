@@ -233,6 +233,12 @@ svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; backgroun
   box-shadow: 0 4px 14px rgba(0,0,0,0.25);
   pointer-events: none; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 10001;
+}
+/* 1.24.36 live-ghost (pointer-drag внутри стойки) — сразу видим, привязан к курсору */
+.sc-drag-ghost-live {
+  opacity: 0.92;
+  transform: translateZ(0);
 }
 .sc-cart-tbl tr.sc-drag-src { opacity: 0.55; }
 
