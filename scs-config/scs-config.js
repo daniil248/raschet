@@ -361,6 +361,13 @@ function renderRackPicker() {
   const r = currentRack();
   $('sc-rack-u').textContent = r ? r.u : '—';
   $('sc-rack-occ').textContent = r ? r.occupied : '—';
+  // v0.59.267: свободные диапазоны
+  const freeEl = $('sc-rack-free');
+  if (freeEl) {
+    const ranges = r ? freeURanges(r, currentContents()) : [];
+    freeEl.textContent = ranges.length ? ranges.join(', ') : (r ? 'нет' : '—');
+    freeEl.title = r ? `Непрерывные свободные U: ${ranges.length} диапазон(ов)` : '';
+  }
 }
 
 /* ---- render: каталог типов --------------------------------------------- */
@@ -483,6 +490,35 @@ function addToRack(typeId, forcedU, forcedSide) {
    юнитов (r.occupied сверху) и уже расставленных устройств на той же
    стороне монтажа (v0.59.250). Возвращает U-номер верхнего юнита
    устройства или r.u - r.occupied. */
+/* v0.59.267: Непрерывные свободные диапазоны U для отображения в top-bar.
+   Возвращает массив строк: ["U3–U5", "U10", …] сверху вниз.
+   occupied = true если юнит занят ЛЮБОЙ стороной (front/rear/rack-занятые сверху).
+   Отдельно по сторонам не выводим (слишком шумно) — считаем пересечение. */
+function freeURanges(r, devices) {
+  if (!r) return [];
+  const occ = new Array(r.u + 1).fill(false);
+  // занятые стойкой сверху
+  for (let u = r.u; u > r.u - (r.occupied || 0); u--) occ[u] = true;
+  // устройства (front и rear оба «съедают» место с точки зрения доступных U)
+  devices.forEach(d => {
+    const type = state.catalog.find(c => c.id === d.typeId);
+    const h = type ? type.heightU : 1;
+    for (let k = 0; k < h; k++) {
+      const u = d.positionU - k;
+      if (u >= 1 && u <= r.u) occ[u] = true;
+    }
+  });
+  // свободные интервалы сверху вниз
+  const ranges = [];
+  let start = null;
+  for (let u = r.u; u >= 1; u--) {
+    if (!occ[u]) { if (start == null) start = u; }
+    else if (start != null) { ranges.push([start, u + 1]); start = null; }
+  }
+  if (start != null) ranges.push([start, 1]);
+  return ranges.map(([a, b]) => a === b ? `U${a}` : `U${a}–U${b}`);
+}
+
 function findFirstFreeSlot(r, devices, heightU, side) {
   const targetSide = side || 'front';
   const occ = new Array(r.u + 1).fill(false);
@@ -507,6 +543,12 @@ function renderContents() {
   const t = $('sc-contents');
   const r = currentRack();
   const devices = currentContents();
+  // v0.59.267: обновить «Свободно» при любой перерисовке контента
+  const freeEl = $('sc-rack-free');
+  if (freeEl) {
+    const ranges = r ? freeURanges(r, devices) : [];
+    freeEl.textContent = ranges.length ? ranges.join(', ') : (r ? 'нет' : '—');
+  }
   if (!r) { t.innerHTML = '<tr><td>Нет выбранной стойки</td></tr>'; return; }
   const conflicts = detectConflicts(r, devices);
   const rows = [`<tr>
@@ -2914,6 +2956,11 @@ function init() {
     const r = currentRack();
     $('sc-rack-u').textContent = r ? r.u : '—';
     $('sc-rack-occ').textContent = r ? r.occupied : '—';
+    const freeEl2 = $('sc-rack-free');
+    if (freeEl2) {
+      const ranges = r ? freeURanges(r, currentContents()) : [];
+      freeEl2.textContent = ranges.length ? ranges.join(', ') : (r ? 'нет' : '—');
+    }
     $('sc-rack-tag').value = r ? (state.rackTags[r.id] || '') : '';
     // 1.24.24 — синхронизируем URL (без перезагрузки), чтобы ссылки делились
     if (state.currentRackId) {

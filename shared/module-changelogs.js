@@ -244,6 +244,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.267', date: '2026-04-22', items: [
+      '📏 Новое поле «Свободно» в top-bar: показывает непрерывные свободные U-диапазоны (например «U3–U8, U15, U22–U24») с учётом «занятых стойкой» сверху и всех размещённых устройств. Обновляется при смене стойки и любой перерисовке контента (renderContents).',
+      'Файлы: scs-config/rack.html (output#sc-rack-free), scs-config/scs-config.js (freeURanges + calls in renderOverview/renderContents/rack-change handler).',
+    ] },
     { version: '0.59.266', date: '2026-04-22', items: [
       '✕ Кнопка «Сброс» в фильтрах каталога — разом очищает поиск, тип, U-min и U-max (и в state, и в LS, и в DOM-инпутах).',
       'Файлы: scs-config/rack.html (button#sc-cat-filter-clear), scs-config/scs-config.js (handler), scs-config/scs-config.css (.sc-btn-sm).',
