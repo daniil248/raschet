@@ -348,9 +348,9 @@ function _pcIpCovers(candidateIp, requiredIp) {
 function initPanelWizard() {
   const qp = new URLSearchParams(location.search);
   const ctxNodeId = qp.get('nodeId');
-  if (!ctxNodeId) return;
+  const standalone = !ctxNodeId;
 
-  pcWizState.nodeId = ctxNodeId;
+  pcWizState.nodeId = ctxNodeId || null;
   const rq = pcWizState.requirements;
   if (qp.get('name')) rq.name = qp.get('name');
   if (qp.get('kind')) rq.kind = qp.get('kind');
@@ -403,7 +403,14 @@ function initPanelWizard() {
 
   // Кнопки навигации
   document.getElementById('pc-wiz-cancel').onclick = () => {
-    if (confirm('Отменить конфигурирование щита?')) { try { window.close(); } catch {} }
+    if (standalone) {
+      const w = document.getElementById('pc-wizard');
+      if (w) w.style.display = 'none';
+      const sp = document.getElementById('selected-panel-details');
+      if (sp) sp.closest('.panel').style.display = '';
+    } else if (confirm('Отменить конфигурирование щита?')) {
+      try { window.close(); } catch {}
+    }
   };
   document.getElementById('pc-wiz-next-1').onclick = _pcGoStep2;
   document.getElementById('pc-wiz-back-2').onclick = () => _pcShowStep(1);
@@ -1100,9 +1107,15 @@ function _pcApplyConfiguration() {
     selectedAt: Date.now(),
   };
   try {
-    localStorage.setItem('raschet.pendingPanelSelection.v1', JSON.stringify(payload));
-    flash('Конфигурация передана. Возврат в Конструктор схем…', 'success');
-    setTimeout(() => { try { window.close(); } catch {} }, 1500);
+    if (pcWizState.nodeId) {
+      localStorage.setItem('raschet.pendingPanelSelection.v1', JSON.stringify(payload));
+      flash('Конфигурация передана. Возврат в Конструктор схем…', 'success');
+      setTimeout(() => { try { window.close(); } catch {} }, 1500);
+    } else {
+      // standalone: сохраняем как последнюю выбранную конфигурацию
+      localStorage.setItem('raschet.lastPanelConfig.v1', JSON.stringify(payload));
+      flash('Конфигурация сохранена. Откройте Конструктор схем → параметры щита → «⬇ Применить из Конфигуратора».', 'success');
+    }
   } catch (e) {
     flash('Не удалось передать конфигурацию: ' + (e.message || e), 'error');
   }

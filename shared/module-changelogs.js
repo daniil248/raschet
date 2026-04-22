@@ -323,6 +323,12 @@ export const CHANGELOGS = {
   ],
 
   'panel-config': [
+    { version: '0.59.177', date: '2026-04-22', items: [
+      'Модуль стал КОНФИГУРАТОРОМ, а не каталогом: wizard подбора щита (5 шагов) виден по умолчанию при открытии panel-config/ без ?nodeId=. Раньше wizard появлялся только при входе из инспектора узла, а все прочие точки входа показывали только справочник.',
+      '_pcApplyConfiguration() теперь различает режимы: при nodeId пишет в raschet.pendingPanelSelection.v1 и закрывает вкладку (как раньше); в standalone — пишет в raschet.lastPanelConfig.v1 для последующего применения из инспектора кнопкой «⬇ Применить из Конфигуратора».',
+      'Cancel на Шаге 1 в standalone сворачивает wizard и возвращает справочник вместо window.close().',
+      'Файлы: panel-config/index.html (#pc-wizard: убран display:none); panel-config/panel-config.js (standalone-ветка в initWizard cancel + _pcApplyConfiguration).'
+    ] },
     { version: '0.59.81', date: '2026-04-21', items: [
       'Wizard теперь видит реальные автоматы из схемы: инспектор главной схемы собирает все c.from.nodeId === n.id (исходящие) и c.to.nodeId === n.id (входящие) связи узла-щита и передаёт их в preload (incomingLines/outgoingLines с targetName, breakerInA, loadKw, threePhase, cableLabel). _pcGenerateBreakers() строит breakers-список по фактическим линиям, а не по абстрактному числу outputs.',
       'Имя автомата: «→ «Офис 1 этаж» · 15.2 kW» вместо «Отходящая линия 1». Номинал берётся из c._breakerIn (посчитан recalc) или подбирается по loadKw нагрузки за линией. Кривая: MCCB для ≥125А, MCB_C иначе. Полюса: 1P/3P по threePhase флагу связи.',
