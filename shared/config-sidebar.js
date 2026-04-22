@@ -27,7 +27,7 @@
 
 import {
   listConfigs, getConfig, saveConfig, removeConfig,
-  onConfigsChange, formatConfigLine, isEmbeddedMode,
+  onConfigsChange, formatConfigLine, isEmbeddedMode, getActiveProjectCode,
 } from './configuration-catalog.js';
 import { rsConfirm, rsPrompt, rsToast } from './dialog.js';
 
@@ -101,6 +101,10 @@ export function mountConfigSidebar(opts) {
   const sections = Array.isArray(o.sections) && o.sections.length
     ? o.sections : ['settings', 'properties', 'list'];
   const has = (s) => sections.includes(s);
+  // Авто-привязка к активному проекту, если не задано явно
+  const projectCode = o.projectCode != null ? o.projectCode : getActiveProjectCode();
+  const projHint = projectCode
+    ? `<span style="font-size:10px;color:#64748b;font-weight:400;margin-left:6px">@ ${esc(projectCode)}</span>` : '';
 
   const root = document.createElement('div');
   root.className = 'rs-cs-sidebar';
@@ -120,7 +124,7 @@ export function mountConfigSidebar(opts) {
     ${has('list') ? `
     <div class="rs-cs-sect">
       <div class="rs-cs-sect-head">
-        <span>${esc(o.title || 'Конфигурации')}</span>
+        <span>${esc(o.title || 'Конфигурации')}${projHint}</span>
         <button type="button" class="rs-cs-btn rs-cs-btn-primary" data-act="save">+ Сохранить</button>
       </div>
       <div class="rs-cs-sect-body">
@@ -145,7 +149,7 @@ export function mountConfigSidebar(opts) {
   function render() {
     if (!slotList) return;
     const entries = listConfigs(kind, {
-      projectCode: o.projectCode || undefined,
+      projectCode: projectCode || undefined,
       search: filter || undefined,
     });
     if (!entries.length) {
@@ -246,7 +250,7 @@ export function mountConfigSidebar(opts) {
     if (description == null) return;
     const saved = saveConfig(kind, {
       label, description,
-      projectCode: data.projectCode || o.projectCode || undefined,
+      projectCode: data.projectCode || projectCode || undefined,
       payload: data.payload || {},
     });
     activeId = saved.id;

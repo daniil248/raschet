@@ -347,6 +347,11 @@ export const CHANGELOGS = {
   ],
 
   'panel-config': [
+    { version: '0.59.190', date: '2026-04-22', items: [
+      'Config-sidebar автоматически привязывается к коду активного проекта (localStorage.raschet.activeProject.v1.code). Если проект открыт — список конфигураций фильтруется по его projectCode, новые сохраняются с этим кодом, ID = PROJ-NN вместо YYMMDD-NN. В заголовке списка показывается «@ PROJ».',
+      'Концептуальная чистота: конфигурация = шаблон (тип шкафа/боковины/PDU набор), физический элемент в схеме ссылается на конфигурацию и имеет собственный ID+Tag. Catalog хранит только шаблоны.',
+      'Файлы: shared/configuration-catalog.js (+getActiveProjectCode); shared/config-sidebar.js (авто-projectCode из проекта).',
+    ] },
     { version: '0.59.187', date: '2026-04-22', items: [
       'Добавлена инфраструктура каталога конфигураций (shared/configuration-catalog.js) с единым API для всех 9 конфигураторов: listConfigs/getConfig/saveConfig/removeConfig/onConfigsChange/nextConfigId/isEmbeddedMode. ID по умолчанию YYMMDD-NN (дата + порядковый), при указании projectCode — PROJ-NN (код проекта + порядковый).',
       'Добавлен универсальный левый сайдбар (shared/config-sidebar.js) с тремя секциями: «Основные настройки» (слот), «Свойства» (read-only метаданные), «Перечень конфигураций» (CRUD + поиск + «+ Сохранить»). В embedded-режиме (?embedded=1 или window.name=raschet-embed) сайдбар скрывается, вместо него mountEmbeddedPicker показывает список шаблонов «Применить к группе элементов».',

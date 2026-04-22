@@ -153,6 +153,21 @@ export function nextConfigId(kind, projectCode) {
 }
 
 // =========================================================================
+// Активный проект (для привязки конфигураций к коду проекта).
+// Структура: localStorage['raschet.activeProject.v1'] = { name, code, ... }
+// =========================================================================
+export function getActiveProjectCode() {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('raschet.activeProject.v1');
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    const code = p && (p.code || p.projectCode || p.internalCode);
+    return code ? String(code).trim().toUpperCase() : null;
+  } catch { return null; }
+}
+
+// =========================================================================
 // Детект режима: standalone vs embedded
 // embedded = запуск из другой подпрограммы или из главной схемы
 // Определяется по URL-параметру ?embedded=1 или ?mode=embedded, либо по
