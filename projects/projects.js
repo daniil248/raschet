@@ -151,10 +151,21 @@ function projectStats(pid) {
     }
   } catch {}
   try {
-    const rk = localStorage.getItem(`raschet.project.${pid}.rack-config.templates.v1`);
-    if (rk) {
-      try { s.racks = (JSON.parse(rk) || []).length; } catch {}
-    }
+    // Шаблоны стоек (rack-config.templates.v1) хранятся глобально. Per-project
+    // «стойками проекта» считаем те, у которых в scs-config.contents.v1
+    // этого проекта есть хоть одно устройство или в racktags — тег.
+    const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
+    const tags = localStorage.getItem(`raschet.project.${pid}.scs-config.racktags.v1`);
+    const ids = new Set();
+    try {
+      const obj = cont ? JSON.parse(cont) : {};
+      Object.keys(obj || {}).forEach(k => { if (Array.isArray(obj[k]) && obj[k].length) ids.add(k); });
+    } catch {}
+    try {
+      const obj = tags ? JSON.parse(tags) : {};
+      Object.keys(obj || {}).forEach(k => { if ((obj[k] || '').trim()) ids.add(k); });
+    } catch {}
+    s.racks = ids.size;
   } catch {}
   try {
     const ln = localStorage.getItem(`raschet.project.${pid}.scs-design.links.v1`);
@@ -163,26 +174,34 @@ function projectStats(pid) {
     }
   } catch {}
   try {
-    const inv = localStorage.getItem(`raschet.project.${pid}.scs-config.inventory.v1`);
-    if (inv) {
-      try { s.inventory = (JSON.parse(inv) || []).length; } catch {}
+    // IT-оборудование = устройства из contents.v1, просуммированные по всем стойкам.
+    const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
+    if (cont) {
+      try {
+        const obj = JSON.parse(cont) || {};
+        s.inventory = Object.values(obj).reduce((n, arr) => n + (Array.isArray(arr) ? arr.length : 0), 0);
+      } catch {}
     }
   } catch {}
   try {
-    const f = localStorage.getItem(`raschet.project.${pid}.facility-inventory.items.v1`);
+    const f = localStorage.getItem(`raschet.project.${pid}.facility-inventory.v1`);
     if (f) {
-      try { s.facility = (JSON.parse(f) || []).length; } catch {}
+      try {
+        const obj = JSON.parse(f);
+        if (Array.isArray(obj)) s.facility = obj.length;
+        else if (obj && Array.isArray(obj.items)) s.facility = obj.items.length;
+      } catch {}
     }
   } catch {}
   return s;
 }
 function statsBadges(s) {
   const items = [
-    { n: s.nodes,     lbl: 'узл',  title: 'Узлов в схеме электроснабжения', icon: '⚡' },
-    { n: s.racks,     lbl: 'стк',  title: 'Типов стоек в rack-config',      icon: '🗄' },
-    { n: s.links,     lbl: 'свз',  title: 'Меж-шкафных связей (scs-design)', icon: '🔗' },
-    { n: s.inventory, lbl: 'инв',  title: 'Позиций в реестре IT-оборудования', icon: '📋' },
-    { n: s.facility,  lbl: 'обд',  title: 'Позиций в реестре объекта',      icon: '🏭' },
+    { n: s.nodes,     lbl: 'узл. в схеме',      title: 'Узлов в схеме электроснабжения',   icon: '⚡' },
+    { n: s.racks,     lbl: 'стоек',             title: 'Стоек в проекте (scs-config)',     icon: '🗄' },
+    { n: s.links,     lbl: 'связей',            title: 'Меж-шкафных связей (scs-design)',  icon: '🔗' },
+    { n: s.inventory, lbl: 'IT-устройств',      title: 'Устройств в шкафах (все стойки)',  icon: '📋' },
+    { n: s.facility,  lbl: 'поз. объекта',      title: 'Позиций в реестре оборудования объекта', icon: '🏭' },
   ].filter(x => x.n > 0);
   if (!items.length) return '<span class="muted" style="font-size:11px">· пусто</span>';
   return items.map(x =>
