@@ -75,6 +75,8 @@
               <button type="button" class="sc-fm-btn" data-face="both" title="Обе стороны: показать устройства и с фронта, и с тыла на одной карте (фронт — синяя рамка, тыл — красная штриховая)">🟪 Обе</button>
               <button type="button" class="sc-fm-btn" data-face="side" title="Вид сбоку (профиль): видно глубину и двустороннее размещение">📐 Бок</button>
               <button type="button" class="sc-fm-btn" data-face="3d" title="3D-вид (three.js). PoC: вращение Orbit, колесо — zoom. Загружается при первом открытии.">🧊 3D</button>
+              <span style="width:1px;height:20px;background:#e2e8f0;margin:0 4px"></span>
+              <button type="button" id="sc-unum-toggle" class="sc-fm-btn" title="Направление U-нумерации (снизу↑ / сверху↓)">↕ 1↓</button>
             </div>
           </div>
           <div id="sc-unitmap" class="sc-unitmap"></div>
@@ -116,10 +118,23 @@
       <aside class="sc-preview rs-sidebar rs-sidebar-right">
         <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
 
-        <section class="sc-section">
+        <section class="sc-section sc-catalog-section">
           <h2>📦 Каталог типов оборудования</h2>
           <p class="sc-hint muted">Базовые типы СКС-оборудования. Из каталога единицы добавляются в стойку через кнопку ➕.</p>
-          <table class="sc-cat" id="sc-catalog"></table>
+          <div class="sc-cat-filters">
+            <input type="search" id="sc-cat-search" class="sc-cat-search" placeholder="🔎 поиск по названию…" autocomplete="off"/>
+            <select id="sc-cat-kind-filter" class="sc-cat-kindfilter" title="Фильтр по типу">
+              <option value="">Все типы</option>
+            </select>
+            <label class="sc-cat-hu-lbl">U:
+              <input type="number" id="sc-cat-u-min" min="0" step="1" placeholder="от" class="sc-cat-unum"/>
+              <input type="number" id="sc-cat-u-max" min="0" step="1" placeholder="до" class="sc-cat-unum"/>
+            </label>
+            <span id="sc-cat-count" class="sc-cat-count muted"></span>
+          </div>
+          <div class="sc-cat-scroll">
+            <table class="sc-cat" id="sc-catalog"></table>
+          </div>
           <div class="sc-tools">
             <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
             <button type="button" id="sc-cat-reset" class="sc-btn" title="Сбросить к базовому набору">↺ Базовый набор</button>

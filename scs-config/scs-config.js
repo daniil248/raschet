@@ -148,6 +148,9 @@ const state = {
   //   '3d'    — three.js (v0.59.246)
   // v0.59.247: persist в LS (пользовательская настройка вида — пусть остаётся).
   faceMode: (function(){ try { return localStorage.getItem('scs-config.faceMode.v1') || 'front'; } catch { return 'front'; } })(),
+  // v0.59.258: направление U-нумерации. 'bu' = 1 снизу (классика, EIA-310),
+  // 'td' = 1 сверху (нек-рые внутренние стандарты операторов).
+  uNumDir: (function(){ try { return localStorage.getItem('scs-config.uNumDir.v1') || 'bu'; } catch { return 'bu'; } })(),
   // drag state
   drag: null,        // { devId, startY, startU, rowH, r }
 };
@@ -357,12 +360,33 @@ function renderRackPicker() {
 /* ---- render: каталог типов --------------------------------------------- */
 function renderCatalog() {
   const t = $('sc-catalog');
+  // v0.59.258: фильтры каталога
+  const f = state.catFilter || (state.catFilter = { q: '', kind: '', uMin: '', uMax: '' });
+  const q = (f.q || '').trim().toLowerCase();
+  const kindSel = f.kind || '';
+  const uMin = f.uMin === '' ? null : +f.uMin;
+  const uMax = f.uMax === '' ? null : +f.uMax;
+  // populate kind-filter dropdown (один раз при первом рендере)
+  const kf = $('sc-cat-kind-filter');
+  if (kf && kf.options.length <= 1) {
+    Object.keys(KIND_LABEL).forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k; opt.textContent = KIND_LABEL[k];
+      kf.appendChild(opt);
+    });
+  }
   const rows = [`<tr>
     <th>Тип</th><th>Название</th><th>U</th><th title="Монтажная глубина в мм — используется side-view и проверкой двустороннего монтажа">Глуб., мм</th><th>Вт</th><th>Порты</th>
     <th title="Порты также с тыла (dual-side): например коммутаторы с mgmt-RJ45 сзади">⇄</th>
     <th style="width:40px">цвет</th><th style="width:90px"></th>
   </tr>`];
+  let shown = 0;
   state.catalog.forEach((c, idx) => {
+    if (q && !((c.label || '').toLowerCase().includes(q) || (c.id || '').toLowerCase().includes(q))) return;
+    if (kindSel && c.kind !== kindSel) return;
+    if (uMin !== null && !(c.heightU >= uMin)) return;
+    if (uMax !== null && !(c.heightU <= uMax)) return;
+    shown++;
     rows.push(`<tr data-idx="${idx}" draggable="true" data-typeid="${c.id}" title="Перетащите на карту юнитов чтобы разместить в конкретный U">
       <td><select data-k="kind">${Object.keys(KIND_LABEL).map(k =>
         `<option value="${k}"${c.kind===k?' selected':''}>${KIND_LABEL[k]}</option>`).join('')}</select></td>
@@ -380,6 +404,8 @@ function renderCatalog() {
     </tr>`);
   });
   t.innerHTML = rows.join('');
+  const cntEl = $('sc-cat-count');
+  if (cntEl) cntEl.textContent = `${shown} / ${state.catalog.length}`;
   // bind cell editing
   t.querySelectorAll('[data-k]').forEach(el => {
     el.addEventListener('change', () => {
@@ -887,24 +913,70 @@ async function renderRack3D(hostId, opts) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.domElement.style.display = 'block';
   host.appendChild(renderer.domElement);
+  // v0.59.258: hint-оверлей с напоминанием про управление камерой.
+  const hint = document.createElement('div');
+  hint.textContent = 'ЛКМ — вращать · ПКМ / Shift+ЛКМ / ← ↑ → ↓ — пан · колёсико — zoom';
+  hint.style.cssText = 'font-size:11px;color:#64748b;padding:4px 6px;background:rgba(255,255,255,0.85);border-top:1px solid #e2e8f0;';
+  host.appendChild(hint);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(rackW / 2, rackH / 2, rackD / 2);
   controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  // v0.59.258: панорамирование — явно включено; screen-space pan удобнее для
+  // вертикально-ориентированных объектов (стоек). Средняя кнопка / Shift+ЛКМ /
+  // стрелки — пан; ПКМ также pan у OrbitControls (по умолчанию у them pan на
+  // ПКМ, но включаем явно и ускоряем).
+  controls.enablePan = true;
+  controls.screenSpacePanning = true;
+  controls.panSpeed = 1.2;
+  controls.keyPanSpeed = 30;
+  controls.zoomSpeed = 1.1;
+  controls.rotateSpeed = 0.9;
+  controls.listenToKeyEvents(window);
+  controls.minDistance = 300;
+  controls.maxDistance = rackD * 12;
+  // Renderer: физически-корректное освещение для MeshStandard
+  renderer.outputColorSpace = THREE.SRGBColorSpace || THREE.LinearSRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   controls.update();
 
-  // свет
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.55);
-  dir.position.set(2000, 3000, 2000);
+  // свет: hemisphere (небо/пол) + ключевой + заполняющий + rim
+  scene.add(new THREE.HemisphereLight(0xeef2f7, 0x3b4252, 0.55));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.95);
+  dir.position.set(2000, 3500, 1800);
+  dir.castShadow = true;
+  dir.shadow.mapSize.set(1024, 1024);
+  dir.shadow.camera.near = 100;
+  dir.shadow.camera.far = 8000;
+  dir.shadow.camera.left = -rackW * 3;
+  dir.shadow.camera.right = rackW * 3;
+  dir.shadow.camera.top = rackH * 2;
+  dir.shadow.camera.bottom = -rackH * 0.2;
   scene.add(dir);
-  const dir2 = new THREE.DirectionalLight(0xffffff, 0.25);
-  dir2.position.set(-1500, 1000, -1500);
-  scene.add(dir2);
+  const fill = new THREE.DirectionalLight(0xb4c7e4, 0.35);
+  fill.position.set(-1800, 1200, -1500);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffd28a, 0.25);
+  rim.position.set(500, 1500, -2500);
+  scene.add(rim);
 
-  // пол-ориентир (сетка)
-  const grid = new THREE.GridHelper(Math.max(rackD, rackW) * 3, 20, 0xcbd5e1, 0xe2e8f0);
+  // пол: плоскость принимает тени + сетка
+  const floorSize = Math.max(rackD, rackW) * 4;
+  const floorGeo = new THREE.PlaneGeometry(floorSize, floorSize);
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.95, metalness: 0.0 });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(rackW / 2, -0.5, rackD / 2);
+  floor.receiveShadow = true;
+  scene.add(floor);
+  const grid = new THREE.GridHelper(floorSize, 40, 0xcbd5e1, 0xe2e8f0);
   grid.position.set(rackW / 2, 0, rackD / 2);
   scene.add(grid);
 
@@ -912,16 +984,19 @@ async function renderRack3D(hostId, opts) {
   const cabinet = new THREE.Group();
   scene.add(cabinet);
 
-  const metalMat = new THREE.MeshLambertMaterial({ color: 0x475569 }); // темно-серый металл
-  const panelMat = new THREE.MeshLambertMaterial({ color: 0x64748b, transparent: true, opacity: 0.55 });
-  const doorMat = new THREE.MeshLambertMaterial({ color: 0x334155, transparent: true, opacity: 0.55 });
-  const railMat = new THREE.MeshLambertMaterial({ color: 0x1e293b });
-  const edgeMat = new THREE.LineBasicMaterial({ color: 0x0f172a });
+  // v0.59.258: PBR-материалы (MeshStandard) для более правдоподобного вида.
+  const metalMat = new THREE.MeshStandardMaterial({ color: 0x3b4454, roughness: 0.42, metalness: 0.78 });
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.35, metalness: 0.55, transparent: true, opacity: 0.48 });
+  const doorMat  = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.25, metalness: 0.3,  transparent: true, opacity: 0.38 });
+  const railMat  = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.55, metalness: 0.65 });
+  const edgeMat  = new THREE.LineBasicMaterial({ color: 0x0f172a, opacity: 0.6, transparent: true });
 
   const mkBox = (w, h, d, mat, x, y, z) => {
     const g = new THREE.BoxGeometry(w, h, d);
     const m = new THREE.Mesh(g, mat);
     m.position.set(x, y, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat);
     e.position.copy(m.position);
     const grp = new THREE.Group();
@@ -947,8 +1022,8 @@ async function renderRack3D(hostId, opts) {
   const railInset = (rackW - innerW) / 2;
   const railY = rackH / 2;
   const railH = rackH - 2 * FR;
-  const frontRailMat = new THREE.MeshLambertMaterial({ color: 0x1d4ed8 });
-  const rearRailMat  = new THREE.MeshLambertMaterial({ color: 0x991b1b });
+  const frontRailMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.55, metalness: 0.6 });
+  const rearRailMat  = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.55, metalness: 0.6 });
   // передняя пара (z-центр на railFrontZ)
   cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, railInset + RAIL_W/2,          railY, railFrontZ));
   cabinet.add(mkBox(RAIL_W, railH, RAIL_W, frontRailMat, rackW - railInset - RAIL_W/2,  railY, railFrontZ));
@@ -982,8 +1057,8 @@ async function renderRack3D(hostId, opts) {
   const depthConflicts = detectDepthConflicts(r, devices);
   const EAR_WIDTH = (rackW - innerW) / 2;   // ~58.7 мм — зона от корпуса до стенки
   const EAR_PLATE = 3;                       // толщина уха по Z (снаружи рельса)
-  const earMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
-  const facadeMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
+  const earMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6, metalness: 0.55 });
+  const facadeMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.55, metalness: 0.35 });
   const ledGreen = new THREE.MeshBasicMaterial({ color: 0x22c55e });
   const ledBlue  = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
   const ledAmber = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
@@ -996,7 +1071,7 @@ async function renderRack3D(hostId, opts) {
     const yBottom = (d.positionU - h) * U_MM;
     const yCenter = yBottom + bodyH / 2;
     const hex = parseInt((type.color || '#94a3b8').replace('#',''), 16);
-    const devMat = new THREE.MeshLambertMaterial({ color: hex });
+    const devMat = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, metalness: 0.35 });
     const isShelf = type.kind === 'shelf';
     const portsRear = !!type.portsRear;
 
@@ -1343,16 +1418,40 @@ function renderUnitMap(hostId, opts) {
   // v0.59.254: свежая раскладка. Слева: U-номера (x=4..18), потом колонка
   // вертикальных PDU (для r.pdus). Далее корпус стойки (x=32..32+bodyW).
   // Справа от стойки — подписи устройств (labelW), в модалке — ещё wires.
-  const UNUM_X = 16 * scale;     // правый край U-номеров (text-anchor=end)
-  const PDU_X  = 18 * scale;     // старт зоны PDU
+  // v0.59.258: PDU теперь разводятся по сторонам по вводу:
+  //   A,C → левая стойка, B,D → правая. Снаружи U-номеров.
+  //   Раскладка слева-направо:
+  //   [PDU-LEFT | U# LEFT | RACK | U# RIGHT | PDU-RIGHT | LABEL_GAP | LABELS]
   const PDU_STRIP = 6 * scale;   // ширина одной полосы PDU
-  const pduCount = Math.min(2, (r.pdus || []).length);
-  const PDU_ZONE_W = pduCount ? pduCount * (PDU_STRIP + 1) + 2 : 0;
-  const RACK_X = Math.max(32, PDU_X + PDU_ZONE_W + 4);
+  const allPdus = (r.pdus || []);
+  // распределение по сторонам
+  const leftFeeds = new Set(['A', 'C']);
+  const rightFeeds = new Set(['B', 'D']);
+  const pduLeft = [];
+  const pduRight = [];
+  allPdus.forEach((p, i) => {
+    const f = (p.feed || '').toUpperCase();
+    if (leftFeeds.has(f)) pduLeft.push(p);
+    else if (rightFeeds.has(f)) pduRight.push(p);
+    else { (i % 2 === 0 ? pduLeft : pduRight).push(p); }
+  });
+  // ограничиваем до 2 строк на сторону (физически больше не уместить)
+  const pduLeftShown = pduLeft.slice(0, 2);
+  const pduRightShown = pduRight.slice(0, 2);
+  const PDU_PAD = 2;
+  const PDU_ZONE_LEFT_W  = pduLeftShown.length  ? pduLeftShown.length  * (PDU_STRIP + 1) + PDU_PAD : 0;
+  const PDU_ZONE_RIGHT_W = pduRightShown.length ? pduRightShown.length * (PDU_STRIP + 1) + PDU_PAD : 0;
+  const UNUM_COL_W = 14 * scale;
+  const PDU_LEFT_X  = 2;
+  const UNUM_LEFT_X = PDU_LEFT_X + PDU_ZONE_LEFT_W + 2; // правый край — UNUM_LEFT_X + UNUM_COL_W (anchor=end)
+  const UNUM_X = UNUM_LEFT_X + UNUM_COL_W;
+  const RACK_X = UNUM_X + 4;
+  const UNUM_RIGHT_X = RACK_X + bodyW + 4;             // левый край (anchor=start)
+  const PDU_RIGHT_X  = UNUM_RIGHT_X + UNUM_COL_W + 2;
   const LABEL_GAP = 6;
   const LABEL_W = 200 * scale;
   const svgH = r.u * rowH + 8;
-  const svgW = RACK_X + bodyW + LABEL_GAP + LABEL_W;
+  const svgW = PDU_RIGHT_X + PDU_ZONE_RIGHT_W + LABEL_GAP + LABEL_W;
   const mode = state.viewMode;
   // slot → device; индексы U=1..r.u (1 — снизу, r.u — сверху)
   const slot = new Array(r.u + 1).fill(null);
@@ -1380,9 +1479,14 @@ function renderUnitMap(hostId, opts) {
   // Сам шкаф (рамка + все U с нумерацией) рисуется всегда — и на
   // маленькой карте, и в модалке. В модалке отличие только в наличии
   // слоя патч-кордов (wires). См. renderUnitMap ниже.
+  // v0.59.258: направление нумерации. 'bu' (классика) — 1 снизу, r.u сверху.
+  // 'td' — 1 сверху, r.u снизу. Физические позиции (positionU) не меняются —
+  // меняется только подпись строки.
+  const uNumDir = state.uNumDir || 'bu';
   const rects = [];
   for (let i = 0; i < r.u; i++) {
-    const u = r.u - i; // сверху вниз
+    const u = r.u - i;                     // логический U слота (bu: 1 снизу)
+    const label = uNumDir === 'td' ? (r.u - u + 1) : u;
     const y = 4 + i * rowH;
     const s = slot[u];
     if (!s || s.kind === 'rack-occ') {
@@ -1390,40 +1494,57 @@ function renderUnitMap(hostId, opts) {
       const stroke = s && s.kind === 'rack-occ' ? '#64748b' : '#cbd5e1';
       rects.push(`<rect x="${RACK_X}" y="${y}" width="${bodyW}" height="${rowH - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
     }
-    rects.push(`<text x="${UNUM_X}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${u}</text>`);
+    // U-номер слева
+    rects.push(`<text x="${UNUM_X}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="end">${label}</text>`);
+    // U-номер справа (симметрично)
+    rects.push(`<text x="${UNUM_RIGHT_X}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#64748b" text-anchor="start">${label}</text>`);
   }
 
   // v0.59.254: вертикальные PDU слева от стойки — одна полоса на ввод.
   // Рисуется на всю высоту стойки; количество розеток ≈ ceil(r.u * 1.5) — просто
   // для визуализации. Занятые розетки помечаются зелёным, по pduOutlet.
   const pduStrips = [];
-  if (pduCount) {
-    const outletsByFeed = new Map();
-    devices.forEach(d => {
-      const f = d.pduFeed || '';
-      if (!f || !d.pduOutlet) return;
-      const m = String(d.pduOutlet).match(/(\d+)/);
-      if (!m) return;
-      if (!outletsByFeed.has(f)) outletsByFeed.set(f, new Set());
-      outletsByFeed.get(f).add(+m[1]);
-    });
-    (r.pdus || []).slice(0, pduCount).forEach((p, i) => {
-      const sx = PDU_X + i * (PDU_STRIP + 1);
-      const strips = 4 + Math.ceil(r.u * (p.phases === 3 ? 0.7 : 1.2));
-      const color = feedColor(p.feed);
-      // корпус PDU
-      pduStrips.push(`<rect x="${sx}" y="4" width="${PDU_STRIP}" height="${r.u * rowH}" fill="#1f2937" stroke="${color}" stroke-width="1"/>`);
-      // розетки вдоль
-      const stepY = (r.u * rowH - 4) / strips;
-      const used = outletsByFeed.get(p.feed) || new Set();
-      for (let j = 0; j < strips; j++) {
-        const oy = 4 + 2 + j * stepY + stepY / 2;
-        const on = used.has(j + 1);
-        pduStrips.push(`<circle cx="${sx + PDU_STRIP/2}" cy="${oy}" r="${Math.max(1, PDU_STRIP*0.28)}" fill="${on ? color : '#334155'}" stroke="${on ? '#fff' : '#111827'}" stroke-width="0.3"/>`);
-      }
-      // подпись ввода сверху
-      pduStrips.push(`<text x="${sx + PDU_STRIP/2}" y="${2}" font-size="${7*scale}" fill="${color}" text-anchor="middle" dominant-baseline="hanging">${escape(p.feed || '?')}</text>`);
-    });
+  const outletsByFeed = new Map();
+  devices.forEach(d => {
+    const f = d.pduFeed || '';
+    if (!f || !d.pduOutlet) return;
+    const m = String(d.pduOutlet).match(/(\d+)/);
+    if (!m) return;
+    if (!outletsByFeed.has(f)) outletsByFeed.set(f, new Set());
+    outletsByFeed.get(f).add(+m[1]);
+  });
+  // проверка физической влезаемости вертикальных (0U) PDU: на одну сторону
+  // умещается не более 2 полос одинаковой длины = высоте стойки. Если больше —
+  // рисуем красную шапку и warn-крест.
+  const pduFitBad = { left: pduLeft.length > 2, right: pduRight.length > 2 };
+  const drawPduStrip = (p, sx) => {
+    const strips = 4 + Math.ceil(r.u * (p.phases === 3 ? 0.7 : 1.2));
+    const color = feedColor(p.feed);
+    pduStrips.push(`<rect x="${sx}" y="4" width="${PDU_STRIP}" height="${r.u * rowH}" fill="#1f2937" stroke="${color}" stroke-width="1"/>`);
+    const stepY = (r.u * rowH - 4) / strips;
+    const used = outletsByFeed.get(p.feed) || new Set();
+    for (let j = 0; j < strips; j++) {
+      const oy = 4 + 2 + j * stepY + stepY / 2;
+      const on = used.has(j + 1);
+      pduStrips.push(`<circle cx="${sx + PDU_STRIP/2}" cy="${oy}" r="${Math.max(1, PDU_STRIP*0.28)}" fill="${on ? color : '#334155'}" stroke="${on ? '#fff' : '#111827'}" stroke-width="0.3"/>`);
+    }
+    pduStrips.push(`<text x="${sx + PDU_STRIP/2}" y="${2}" font-size="${7*scale}" fill="${color}" text-anchor="middle" dominant-baseline="hanging">${escape(p.feed || '?')}</text>`);
+  };
+  pduLeftShown.forEach((p, i) => {
+    const sx = PDU_LEFT_X + i * (PDU_STRIP + 1);
+    drawPduStrip(p, sx);
+  });
+  pduRightShown.forEach((p, i) => {
+    const sx = PDU_RIGHT_X + i * (PDU_STRIP + 1);
+    drawPduStrip(p, sx);
+  });
+  if (pduFitBad.left) {
+    pduStrips.push(`<rect x="${PDU_LEFT_X - 1}" y="4" width="${PDU_ZONE_LEFT_W}" height="3" fill="#dc2626"/>`);
+    pduStrips.push(`<title>⚠ На левую сторону стойки назначено ${pduLeft.length} PDU (помещается 2). Физически не влезают.</title>`);
+  }
+  if (pduFitBad.right) {
+    pduStrips.push(`<rect x="${PDU_RIGHT_X - 1}" y="4" width="${PDU_ZONE_RIGHT_W}" height="3" fill="#dc2626"/>`);
+    pduStrips.push(`<title>⚠ На правую сторону стойки назначено ${pduRight.length} PDU (помещается 2). Физически не влезают.</title>`);
   }
   // затем устройства — ОДНОЙ группой на устройство (для drag-n-drop; 1.24.3 full).
   // v0.59.253: режим 'both' — шкаф делим пополам. Левая половина = фронт,
@@ -1582,8 +1703,9 @@ function renderUnitMap(hostId, opts) {
         })();
     // если у типа порты есть и на тыле — маркер звёздочки
     const rearMark = (portsRear && !isBoth) ? `<text x="${bodyX + bodyWidth - 14}" y="${y + rowH/2 + 4}" font-size="${9*scale}" fill="#dc2626" title="порты и с тыла">⇄</text>` : '';
-    // v0.59.254: подпись — СНАРУЖИ стойки, справа. Связывающая линия тонкая.
-    const labelX = RACK_X + bodyW + LABEL_GAP;
+    // v0.59.258: подпись — справа от правой зоны PDU, чтобы ни PDU, ни U-номера
+    // не перекрывались текстом.
+    const labelX = PDU_RIGHT_X + PDU_ZONE_RIGHT_W + LABEL_GAP;
     const labelY = y + rowH/2 + 4;
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" data-side="${devSide}" style="cursor:grab">
       <rect x="${bodyX}" y="${y}" width="${bodyWidth}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}"${dashAttr} stroke-width="${conflict ? 1.5 : (isBoth ? 1 : 0.5)}"/>
@@ -1643,7 +1765,7 @@ function renderUnitMap(hostId, opts) {
       return 4 + topIdx * rowH + (h * rowH) / 2;
     };
     const wireParts = [];
-    const rightX = RACK_X + bodyW + LABEL_GAP + LABEL_W; // wires стартуют за подписями
+    const rightX = PDU_RIGHT_X + PDU_ZONE_RIGHT_W + LABEL_GAP + LABEL_W; // wires стартуют за подписями
     links.forEach((l, idx) => {
       const a = lookup(l.a), b = lookup(l.b);
       if (!a || !b || a === b) return;
@@ -2718,6 +2840,20 @@ function init() {
   });
   // начальная подгрузка тега
   if (state.currentRackId) tagInput.value = state.rackTags[state.currentRackId] || '';
+  // v0.59.258: фильтры каталога
+  const bindCatFilter = (id, key, ev = 'input') => {
+    const el = $(id); if (!el) return;
+    el.addEventListener(ev, () => {
+      if (!state.catFilter) state.catFilter = { q: '', kind: '', uMin: '', uMax: '' };
+      state.catFilter[key] = el.value;
+      renderCatalog();
+    });
+  };
+  bindCatFilter('sc-cat-search', 'q');
+  bindCatFilter('sc-cat-kind-filter', 'kind', 'change');
+  bindCatFilter('sc-cat-u-min', 'uMin');
+  bindCatFilter('sc-cat-u-max', 'uMax');
+
   $('sc-cat-add').addEventListener('click', () => {
     state.catalog.push({
       id: uid('t'), kind: 'other', label: 'Новый тип',
@@ -2765,6 +2901,23 @@ function init() {
       });
       rerenderPreview();
     });
+  });
+
+  /* ---- v0.59.258 направление U-нумерации (bu / td) ------------------- */
+  const unumBtn = $('sc-unum-toggle');
+  const syncUnumBtn = () => {
+    if (!unumBtn) return;
+    unumBtn.textContent = state.uNumDir === 'td' ? '↕ 1↓' : '↕ 1↑';
+    unumBtn.title = state.uNumDir === 'td'
+      ? 'U-нумерация: 1 сверху (top-down). Кликнуть — переключить на «1 снизу»'
+      : 'U-нумерация: 1 снизу (bottom-up, EIA-310). Кликнуть — переключить на «1 сверху»';
+  };
+  syncUnumBtn();
+  if (unumBtn) unumBtn.addEventListener('click', () => {
+    state.uNumDir = state.uNumDir === 'td' ? 'bu' : 'td';
+    try { localStorage.setItem('scs-config.uNumDir.v1', state.uNumDir); } catch {}
+    syncUnumBtn();
+    rerenderPreview();
   });
 
   /* ---- 1.24.12 полноэкранная карта (legacy — модалка удалена после 1.24.38) */

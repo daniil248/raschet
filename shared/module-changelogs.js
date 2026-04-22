@@ -244,6 +244,17 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.258', date: '2026-04-22', items: [
+      '🔢 U-номера теперь показываются с ОБЕИХ сторон стойки (слева и справа). Левая — text-anchor=end, правая — text-anchor=start. Нумерация синхронна.',
+      '↕ Переключатель направления U-нумерации: кнопка «↕ 1↓/1↑» в режиме-баре карты юнитов. «bu» (по умолчанию, EIA-310) — 1 снизу; «td» — 1 сверху. Persist в localStorage[\'scs-config.uNumDir.v1\'].',
+      '⚡ PDU разведены по сторонам: вводы A, C рисуются слева от стойки (снаружи U-номеров), B, D — справа. PDU без feed распределяются попеременно. На каждую сторону физически умещается не более 2 вертикальных 0U-PDU; если назначено больше — сверху над лишней зоной рисуется красная полоса с <title> warn-tooltip.',
+      '🏷 Подписи устройств сдвинуты дальше вправо — за правую зону PDU + U-номера, чтобы не перекрываться.',
+      'Раскладка: [PDU_L | U# L | RACK | U# R | PDU_R | GAP | LABEL]. svgW пересчитан; wire rightX тоже.',
+      '📦 Каталог оборудования в правом сайдбаре теперь скроллится отдельно от страницы (max-height: 70vh, sticky-шапка таблицы). Добавлены фильтры: поиск по названию/id, выпадающий фильтр по типу (kind), диапазон U (от/до), счётчик «показано / всего».',
+      '🧊 3D-вид: явно включено панорамирование (screen-space pan) через ПКМ, Shift+ЛКМ и стрелки; повышена скорость пана и keyPanSpeed=30. Снизу канваса hint-подсказка по управлению камерой.',
+      '🧊 3D-рендер более правдоподобный: MeshStandard (PBR) вместо Lambert для рельс/корпуса/дверей/ушей/фасада/устройств, HemisphereLight (небо-пол) + ключевой + заполняющий + rim-свет, ACES-тонмаппинг, PCFSoft-тени (cast/receive у всех боксов), пол — плоскость, принимающая тени, под сеткой.',
+      'Файлы: scs-config/scs-config.js (state.uNumDir, новые константы раскладки unit-map, dual-side U-rendering, split PDU leftFeeds/rightFeeds, pduFitBad warn-rect, labelX через PDU_RIGHT_X+zone, bind sc-unum-toggle; renderCatalog — state.catFilter + сборка dropdown kind + подсчёт shown/total; renderRack3D — OrbitControls.enablePan/screenSpacePanning/keyPanSpeed/listenToKeyEvents, hemisphere+rim light, ACES tone mapping, PCFSoft shadows, MeshStandard по всем материалам), scs-config/rack.html (кнопка #sc-unum-toggle, блок .sc-cat-filters + .sc-cat-scroll), scs-config/scs-config.css (.sc-catalog-section flex-column + max-height: 70vh, sticky-header таблицы, стили фильтров).',
+    ] },
     { version: '0.59.257', date: '2026-04-22', items: [
       '🗂 Каталог IT-оборудования вынесен в отдельный shared/scs-catalog-data.js (по образцу shared/rack-catalog-data.js, breaker-seed.js и т.п.). Категории: GENERIC_CATALOG / AI_SERVERS_CATALOG / GP_SERVERS_CATALOG / SWITCHES_CATALOG / STORAGE_CATALOG / SECURITY_CATALOG. Единый SCS_DEFAULT_CATALOG = сумма категорий.',
       '🤖 Добавлено ~25 реальных моделей: Supermicro SYS-821GE-TNHR / 421GE-TNHR2 / AS-8125GS-TNHR / 521GE-TNRT / ARS-211GL-NHIR / 741GE-TNRT; NVIDIA DGX H100, DGX H200, Quantum-2 QM9700, Spectrum SN3700/SN5600; Cisco Nexus 9336C-FX2, 93180YC-FX3, Catalyst 9300, UCS C240 M7; Arista 7050CX3-32S, 7280R3; Dell R760/R660, PowerVault ME5084; HPE DL380/DL360 Gen11, Cray XD685; Lenovo SR650 V3; Juniper QFX5120; HPE Aruba CX 6300M; Supermicro SuperStorage 6049P; Palo Alto PA-5450.',

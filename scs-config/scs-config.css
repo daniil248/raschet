@@ -186,6 +186,23 @@
   padding-bottom: 10px;
 }
 
+/* ---- v0.59.258 каталог: независимый скролл + фильтры ---- */
+.sc-catalog-section { display: flex; flex-direction: column; min-height: 0; max-height: 70vh; }
+.sc-cat-filters {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid #e2e8f0; margin-bottom: 6px;
+  position: sticky; top: 0; background: #fff; z-index: 2;
+}
+.sc-cat-search { flex: 1 1 140px; min-width: 120px; padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; }
+.sc-cat-kindfilter { padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; }
+.sc-cat-hu-lbl { font-size: 12px; color: #475569; display: inline-flex; align-items: center; gap: 4px; }
+.sc-cat-unum { width: 46px; padding: 3px 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; }
+.sc-cat-count { font-size: 11px; margin-left: auto; }
+.sc-cat-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid #e2e8f0; border-radius: 4px; }
+.sc-cat-scroll .sc-cat { border: none; }
+.sc-cat-scroll .sc-cat thead th,
+.sc-cat-scroll .sc-cat tr:first-child th { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
+
 /* ---- 1.24.10 DnD из каталога в карту ---- */
 .sc-cat tr[data-typeid] { cursor: grab; }
 .sc-cat tr[data-typeid]:hover { background: #f1f5f9; }
