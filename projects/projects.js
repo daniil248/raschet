@@ -237,6 +237,7 @@ function render() {
 
   if (!projects.length) {
     host.innerHTML = `<div class="pr-empty">Пока нет ни одного проекта. Нажмите «＋ Новый проект», чтобы создать первый.</div>`;
+    renderSketches();
     return;
   }
 
@@ -356,7 +357,83 @@ function render() {
       render();
     });
   });
+
+  renderSketches();
 }
+
+// v0.59.243: аудит-панель мини-проектов. Sketches живут в dropdown'ах
+// своих модулей и не мешаются в основном списке, но они всё ещё занимают
+// место в LS — если пользователь создал много черновиков и забросил,
+// они могут захламлять. Панель показывает их сгруппированными по
+// ownerModule, со статистикой и кнопкой «Удалить» (каскадно).
+function renderSketches() {
+  const host = document.getElementById('pr-sketches');
+  if (!host) return;
+  const sketches = listProjects().filter(p => p.kind === 'sketch');
+  if (!sketches.length) { host.innerHTML = ''; return; }
+
+  // группировка по ownerModule
+  const byOwner = {};
+  for (const s of sketches) {
+    const k = s.ownerModule || '(без модуля)';
+    (byOwner[k] ||= []).push(s);
+  }
+  const ownerLabel = m => ({
+    'scs-design': 'Проектирование СКС',
+    'scs-config': 'Компоновщик шкафов',
+    'rack-config': 'Конфигуратор стойки',
+    'mv-config':  'Конфигуратор РУ СН',
+    'mdc-config': 'Конфигуратор МЦОД',
+  }[m] || m);
+
+  const totalN = sketches.length;
+  host.innerHTML = `
+    <details class="pr-sketches-panel" ${sketchesOpen ? 'open' : ''} style="margin-top:24px;padding:10px 14px;background:#fafbfc;border:1px solid #e5e7eb;border-radius:8px">
+      <summary style="cursor:pointer;font-weight:600;color:#475569;user-select:none">
+        🧪 Мини-проекты (${totalN}) <span class="muted" style="font-weight:400;font-size:12px">— черновики мастеров, живут в своих модулях</span>
+      </summary>
+      <div style="margin-top:10px;color:#64748b;font-size:13px">
+        Мини-проекты создаются внутри конкретного мастера (scs-design, mv-config и т.п.) для быстрых прикидок без создания полноценного проекта. Они видны только в dropdown'е своего модуля. Здесь — аудит на случай, если черновики накопились.
+      </div>
+      ${Object.entries(byOwner).map(([owner, items]) => `
+        <div style="margin-top:12px">
+          <div style="font-weight:600;color:#334155;font-size:13px;margin-bottom:6px">${escapeHtml(ownerLabel(owner))} <span class="muted" style="font-weight:400">· ${items.length}</span></div>
+          ${items.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(s => {
+            const st = projectStats(s.id);
+            const total = st.nodes + st.racks + st.links + st.inventory + st.facility;
+            return `
+            <div class="pr-sketch-row" data-id="${escapeHtml(s.id)}" style="display:flex;align-items:center;gap:10px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.name || '(без имени)')}</span>
+              <span class="muted" style="font-size:11px">${total ? statsBadges(st) : '<i>пусто</i>'}</span>
+              <span class="muted" style="font-size:11px;white-space:nowrap">${fmtDate(s.updatedAt)}</span>
+              <button type="button" class="pr-btn-danger" data-act="del-sketch" style="font-size:12px;padding:3px 8px">Удалить</button>
+            </div>`;
+          }).join('')}
+        </div>
+      `).join('')}
+    </details>`;
+
+  host.querySelector('.pr-sketches-panel')?.addEventListener('toggle', e => {
+    sketchesOpen = !!e.target.open;
+  });
+  host.querySelectorAll('[data-act="del-sketch"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('.pr-sketch-row');
+      const id = row?.dataset.id; if (!id) return;
+      const s = listProjects().find(x => x.id === id); if (!s) return;
+      const ok = await prConfirm(
+        `Удалить мини-проект «${s.name}»?`,
+        'Удалятся метаданные и все scoped-данные мини-проекта. Модуль, который его создал, перестанет его видеть в своём dropdown\'е.'
+      );
+      if (!ok) return;
+      const { removedKeys } = deleteProject(id);
+      prToast(`✔ Мини-проект удалён${removedKeys ? ' (стёрто ' + removedKeys + ' ключей LS)' : ''}`);
+      render();
+    });
+  });
+}
+
+let sketchesOpen = false;
 
 function dateStamp() {
   const d = new Date();
