@@ -182,6 +182,54 @@
 .sd-btn-sel:hover { background: #f1f5f9; }
 .sd-btn-sel.on { background: #dcfce7; border-color: #16a34a; color: #14532d; font-weight: 600; }
 
+/* --- Вкладка «План зала» --- */
+.sd-plan-toolbar {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  margin-bottom: 10px; font-size: 13px; color: #334155;
+}
+.sd-plan-toolbar input[type="number"] {
+  font: inherit; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 4px;
+}
+.sd-plan-palette {
+  display: flex; flex-wrap: wrap; gap: 6px; min-height: 34px;
+  padding: 6px 8px; background: #f8fafc; border: 1px dashed #cbd5e1;
+  border-radius: 6px; margin-bottom: 8px;
+}
+.sd-plan-chip {
+  display: inline-block; padding: 3px 10px; background: #dbeafe;
+  border: 1px solid #93c5fd; border-radius: 14px; font-size: 12px;
+  color: #1e40af; cursor: grab; user-select: none;
+}
+.sd-plan-chip:active { cursor: grabbing; }
+.sd-plan-wrap { overflow: auto; border: 1px solid #d4d8e0; border-radius: 6px; background: #fff; }
+.sd-plan-canvas {
+  position: relative;
+  background-image:
+    linear-gradient(#e5e7eb 1px, transparent 1px),
+    linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+  background-color: #fafafa;
+}
+.sd-plan-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; }
+.sd-plan-rack {
+  position: absolute; z-index: 2;
+  background: #1976d2; color: #fff; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600;
+  cursor: move; user-select: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,.15);
+  padding: 0 4px;
+}
+.sd-plan-rack.dragging { opacity: 0.7; z-index: 10; }
+.sd-plan-rack-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sd-plan-rm {
+  position: absolute; top: -7px; right: -7px;
+  width: 14px; height: 14px; font-size: 10px; line-height: 1;
+  padding: 0; border-radius: 50%;
+  background: #ef4444; color: #fff; border: 1px solid #fff;
+  cursor: pointer;
+}
+.sd-plan-rm:hover { background: #dc2626; }
+
 /* Пустые вкладки «План зала» и «Стойки» — stub */
 .sd-stub {
   padding: 32px 24px; text-align: center; color: #555;

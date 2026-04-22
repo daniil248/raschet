@@ -76,9 +76,25 @@
 
     <!-- ========== Вкладка План зала ========== -->
     <section class="sd-panel" data-panel="plan">
-      <div class="sd-stub">
-        <h3>🗺️ План зала (в разработке)</h3>
-        <p>Top-down план с расстановкой стоек. Импорт координат из <a href="../mdc-config/">mdc-config</a> или ручное размещение. Привязка стоек к рядам TIA-942.</p>
+      <div class="sd-card">
+        <h2>🗺️ План зала</h2>
+        <p class="muted" style="margin-bottom:8px">
+          Top-view расстановка стоек на сетке. Перетаскивайте чипы из палитры
+          неразмещённых стоек на план, двигайте их мышью. Масштаб сетки задаётся
+          ниже и используется для подсказки длины меж-шкафных связей
+          (манхэттен-расстояние × масштаб × коэффициент трассы).
+        </p>
+        <div class="sd-plan-toolbar">
+          <label>Шаг сетки, м: <input id="sd-plan-step" type="number" min="0.3" step="0.1" value="0.6" style="width:70px"></label>
+          <label>Коэф. трассы: <input id="sd-plan-kroute" type="number" min="1.0" step="0.05" value="1.3" style="width:70px" title="Запас на спуск/подъём по стойке, обход и маркировку"></label>
+          <button type="button" id="sd-plan-apply" class="sd-btn-export">↪ Применить длины к связям без длины</button>
+          <button type="button" id="sd-plan-reset" class="sd-btn-sel">Сбросить план</button>
+          <span id="sd-plan-info" class="muted" style="margin-left:auto"></span>
+        </div>
+        <div class="sd-plan-palette" id="sd-plan-palette"></div>
+        <div class="sd-plan-wrap">
+          <div class="sd-plan-canvas" id="sd-plan-canvas"></div>
+        </div>
       </div>
     </section>
 

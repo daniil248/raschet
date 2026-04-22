@@ -12,6 +12,7 @@ const LS_CONTENTS  = 'scs-config.contents.v1';
 const LS_RACKTAGS  = 'scs-config.rackTags.v1';
 const LS_SELECTION = 'scs-design.selection.v1';
 const LS_LINKS     = 'scs-design.links.v1';
+const LS_PLAN      = 'scs-design.plan.v1'; // { step, kRoute, positions:{[rackId]:{x,y}} }
 
 /* Типы оборудования, у которых нет портов — могут служить только каналом
    для трассировки сплайна, но не endpoint-ом связи. */
@@ -98,6 +99,7 @@ function setupTabs() {
       panels.forEach(p => p.classList.toggle('active', p.dataset.panel === key));
       if (key === 'links') scheduleOverlay();
       if (key === 'racks') renderRacksSummary();
+      if (key === 'plan')  renderPlan();
     });
   });
 }
@@ -590,6 +592,211 @@ function exportRacksCsv() {
   downloadCsv('scs-racks-' + dateStamp() + '.csv', rows);
 }
 
+/* ---------- Tab «План зала» ---------- */
+const PLAN_DEFAULT = { step: 0.6, kRoute: 1.3, positions: {} };
+const PLAN_CELL_PX = 24; // одна клетка = 24 px на экране
+const PLAN_COLS = 40, PLAN_ROWS = 24;
+const RACK_W_CELLS = 2; // прямоугольник стойки 2×1 клетки
+const RACK_H_CELLS = 1;
+
+function getPlan() {
+  const p = loadJson(LS_PLAN, PLAN_DEFAULT);
+  return {
+    step: +p?.step || PLAN_DEFAULT.step,
+    kRoute: +p?.kRoute || PLAN_DEFAULT.kRoute,
+    positions: (p && p.positions && typeof p.positions === 'object') ? p.positions : {},
+  };
+}
+function savePlan(p) { saveJson(LS_PLAN, p); }
+
+function manhattanCells(a, b) {
+  // центр прямоугольника стойки
+  const ax = a.x + RACK_W_CELLS / 2, ay = a.y + RACK_H_CELLS / 2;
+  const bx = b.x + RACK_W_CELLS / 2, by = b.y + RACK_H_CELLS / 2;
+  return Math.abs(ax - bx) + Math.abs(ay - by);
+}
+
+function renderPlan() {
+  const canvas = document.getElementById('sd-plan-canvas');
+  const palette = document.getElementById('sd-plan-palette');
+  const info = document.getElementById('sd-plan-info');
+  const stepIn = document.getElementById('sd-plan-step');
+  const krIn = document.getElementById('sd-plan-kroute');
+  if (!canvas || !palette) return;
+
+  const plan = getPlan();
+  if (stepIn) stepIn.value = plan.step;
+  if (krIn) krIn.value = plan.kRoute;
+
+  const racks = getRacks();
+  const placed = racks.filter(r => plan.positions[r.id]);
+  const unplaced = racks.filter(r => !plan.positions[r.id]);
+
+  // Палитра
+  palette.innerHTML = unplaced.length
+    ? unplaced.map(r => `<span class="sd-plan-chip" draggable="true" data-id="${escapeAttr(r.id)}">${escapeHtml(getRackShortLabel(r.id))}</span>`).join('')
+    : '<span class="muted">Все стойки размещены на плане.</span>';
+
+  palette.querySelectorAll('.sd-plan-chip').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/sd-rack', el.dataset.id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
+
+  // Canvas
+  canvas.style.width = (PLAN_COLS * PLAN_CELL_PX) + 'px';
+  canvas.style.height = (PLAN_ROWS * PLAN_CELL_PX) + 'px';
+  canvas.style.backgroundSize = `${PLAN_CELL_PX}px ${PLAN_CELL_PX}px`;
+  canvas.innerHTML = '';
+
+  // SVG слой для линий связей
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('sd-plan-svg');
+  svg.setAttribute('width', PLAN_COLS * PLAN_CELL_PX);
+  svg.setAttribute('height', PLAN_ROWS * PLAN_CELL_PX);
+  canvas.appendChild(svg);
+
+  // Размещённые стойки
+  placed.forEach(r => {
+    const pos = plan.positions[r.id];
+    const div = document.createElement('div');
+    div.className = 'sd-plan-rack';
+    div.dataset.id = r.id;
+    div.style.left = (pos.x * PLAN_CELL_PX) + 'px';
+    div.style.top = (pos.y * PLAN_CELL_PX) + 'px';
+    div.style.width = (RACK_W_CELLS * PLAN_CELL_PX) + 'px';
+    div.style.height = (RACK_H_CELLS * PLAN_CELL_PX) + 'px';
+    const tag = getRackTag(r.id);
+    div.innerHTML = `<span class="sd-plan-rack-label">${escapeHtml(tag || r.name || r.id)}</span>
+      <button type="button" class="sd-plan-rm" title="Убрать со схемы">✕</button>`;
+    canvas.appendChild(div);
+
+    // drag для перемещения
+    let dragging = false, startX = 0, startY = 0, startCell = null;
+    div.addEventListener('pointerdown', e => {
+      if (e.target.classList.contains('sd-plan-rm')) return;
+      dragging = true;
+      div.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      startCell = { x: pos.x, y: pos.y };
+      div.classList.add('dragging');
+    });
+    div.addEventListener('pointermove', e => {
+      if (!dragging) return;
+      const dx = Math.round((e.clientX - startX) / PLAN_CELL_PX);
+      const dy = Math.round((e.clientY - startY) / PLAN_CELL_PX);
+      const nx = Math.max(0, Math.min(PLAN_COLS - RACK_W_CELLS, startCell.x + dx));
+      const ny = Math.max(0, Math.min(PLAN_ROWS - RACK_H_CELLS, startCell.y + dy));
+      div.style.left = (nx * PLAN_CELL_PX) + 'px';
+      div.style.top = (ny * PLAN_CELL_PX) + 'px';
+      pos.x = nx; pos.y = ny;
+      drawPlanLinks(svg, plan);
+    });
+    div.addEventListener('pointerup', e => {
+      if (!dragging) return;
+      dragging = false;
+      div.classList.remove('dragging');
+      const p2 = getPlan();
+      p2.positions[r.id] = { x: pos.x, y: pos.y };
+      savePlan(p2);
+      updatePlanInfo();
+    });
+    div.querySelector('.sd-plan-rm').addEventListener('click', () => {
+      const p2 = getPlan();
+      delete p2.positions[r.id];
+      savePlan(p2);
+      renderPlan();
+    });
+  });
+
+  // Drop target
+  canvas.addEventListener('dragover', e => {
+    if (Array.from(e.dataTransfer.types).includes('text/sd-rack')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    }
+  });
+  canvas.addEventListener('drop', e => {
+    const id = e.dataTransfer.getData('text/sd-rack');
+    if (!id) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(PLAN_COLS - RACK_W_CELLS, Math.floor((e.clientX - rect.left) / PLAN_CELL_PX)));
+    const y = Math.max(0, Math.min(PLAN_ROWS - RACK_H_CELLS, Math.floor((e.clientY - rect.top) / PLAN_CELL_PX)));
+    const p2 = getPlan();
+    p2.positions[id] = { x, y };
+    savePlan(p2);
+    renderPlan();
+  });
+
+  drawPlanLinks(svg, plan);
+  updatePlanInfo();
+}
+
+function drawPlanLinks(svg, plan) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const links = getLinks();
+  links.forEach(l => {
+    const a = plan.positions[l.fromRackId];
+    const b = plan.positions[l.toRackId];
+    if (!a || !b) return;
+    const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+    const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+    const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    // L-образная манхэттен-трасса
+    const color = CABLE_COLOR(l.cableType);
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}`);
+    path.setAttribute('stroke', color);
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('opacity', '0.7');
+    svg.appendChild(path);
+  });
+}
+
+function computeSuggestedLength(link, plan) {
+  const a = plan.positions[link.fromRackId];
+  const b = plan.positions[link.toRackId];
+  if (!a || !b) return null;
+  const cells = manhattanCells(a, b);
+  return cells * plan.step * plan.kRoute;
+}
+
+function updatePlanInfo() {
+  const info = document.getElementById('sd-plan-info');
+  if (!info) return;
+  const plan = getPlan();
+  const links = getLinks();
+  const total = links.length;
+  const withPos = links.filter(l => plan.positions[l.fromRackId] && plan.positions[l.toRackId]).length;
+  const missing = links.filter(l => (l.lengthM == null) && plan.positions[l.fromRackId] && plan.positions[l.toRackId]).length;
+  info.innerHTML = `связей: <b>${withPos}</b>/${total} размещено · без длины: <b>${missing}</b>`;
+}
+
+function applySuggestedLengths() {
+  const plan = getPlan();
+  const links = getLinks();
+  let n = 0;
+  links.forEach(l => {
+    if (l.lengthM != null) return;
+    const len = computeSuggestedLength(l, plan);
+    if (len != null) { l.lengthM = Math.round(len * 10) / 10; n++; }
+  });
+  setLinks(links);
+  updateStatus(`✔ Заполнено длин: ${n}. Масштаб ${plan.step} м/клетка × коэф. ${plan.kRoute}.`);
+  renderLinksList();
+  updatePlanInfo();
+  drawLinkOverlay();
+}
+
+function resetPlan() {
+  savePlan({ ...getPlan(), positions: {} });
+  renderPlan();
+}
+
 /* ---------- CSV export ---------- */
 function downloadCsv(filename, rows) {
   const csv = rows.map(r => r.map(cell => {
@@ -677,6 +884,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-export-csv')?.addEventListener('click', exportBomCsv);
   document.getElementById('sd-export-links-csv')?.addEventListener('click', exportLinksCsv);
   document.getElementById('sd-racks-csv')?.addEventListener('click', exportRacksCsv);
+  document.getElementById('sd-plan-apply')?.addEventListener('click', applySuggestedLengths);
+  document.getElementById('sd-plan-reset')?.addEventListener('click', resetPlan);
+  document.getElementById('sd-plan-step')?.addEventListener('change', e => {
+    const p = getPlan(); p.step = Math.max(0.1, +e.target.value || PLAN_DEFAULT.step); savePlan(p); updatePlanInfo();
+  });
+  document.getElementById('sd-plan-kroute')?.addEventListener('change', e => {
+    const p = getPlan(); p.kRoute = Math.max(1.0, +e.target.value || PLAN_DEFAULT.kRoute); savePlan(p); updatePlanInfo();
+  });
   window.addEventListener('storage', (e) => {
     if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) renderLinksTab();
   });
