@@ -825,7 +825,20 @@ function renderPlan() {
     div.style.top = (pos.y * PLAN_CELL_PX) + 'px';
     div.style.width = (RACK_W_CELLS * PLAN_CELL_PX) + 'px';
     div.style.height = (RACK_H_CELLS * PLAN_CELL_PX) + 'px';
-    div.title = `${tag || r.name || r.id}\nU: ${s.usedU}/${s.u} (${pct}%)\nУстр.: ${s.devCount} · Связей: ${s.linkCount}`;
+    // подробный тултип: + исходящие связи и метраж от этой стойки
+    const rackLinks = getLinks().filter(l => l.fromRackId === r.id || l.toRackId === r.id);
+    let fromM = 0;
+    rackLinks.forEach(l => {
+      const len = (l.lengthM != null) ? l.lengthM : computeSuggestedLength(l, plan);
+      if (len != null) fromM += len * 1.3;
+    });
+    const byType = new Map();
+    rackLinks.forEach(l => { byType.set(l.cableType || '—', (byType.get(l.cableType || '—') || 0) + 1); });
+    const typesStr = Array.from(byType.entries()).map(([k, v]) => `${k}×${v}`).join(', ');
+    div.title = `${tag || r.name || r.id}${isDraft ? ' [черновик]' : ''}
+U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
+Связей: ${rackLinks.length}${typesStr ? ' (' + typesStr + ')' : ''}
+Кабеля от стойки: ~${Math.round(fromM)} м (с запасом 1.3)`;
     div.innerHTML = `<span class="sd-plan-rack-label">${escapeHtml(tag || r.name || r.id)}</span>
       <button type="button" class="sd-plan-rm" title="Убрать со схемы">✕</button>`;
     canvas.appendChild(div);
