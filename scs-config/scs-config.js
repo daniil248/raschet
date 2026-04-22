@@ -660,17 +660,23 @@ function renderSideView(hostId, opts) {
   const mmToPx = (bodyW) / rackDepthMm;
   const frontRailX = leftPad + railFrontOff * mmToPx;
   const rearRailX  = leftPad + (railFrontOff + railDepthMm) * mmToPx;
+  // v0.59.263 fix: frontClearance / rearClearance были не определены — ReferenceError
+  // в strict-mode модуля приводил к падению renderSideView.
+  const frontClearance = railFrontOff;
+  const rearClearance  = Math.max(0, rackDepthMm - railFrontOff - railDepthMm);
 
   const bgParts = [];
   // профиль стойки
   bgParts.push(`<rect x="${leftPad}" y="4" width="${bodyW}" height="${r.u * rowH}" fill="#f8fafc" stroke="#64748b" stroke-width="1"/>`);
   // передние/задние рельсы — вертикальные линии в позициях railDepth (не у краёв корпуса)
-  bgParts.push(`<line x1="${frontRailX}" y1="4" x2="${frontRailX}" y2="${4 + r.u * rowH}" stroke="#3b82f6" stroke-width="2" opacity="0.75"><title>Передний 19"-рельс</title></line>`);
-  bgParts.push(`<line x1="${rearRailX}" y1="4" x2="${rearRailX}" y2="${4 + r.u * rowH}" stroke="#ef4444" stroke-width="2" opacity="0.75"><title>Задний 19"-рельс (railDepth=${railDepthMm} мм)</title></line>`);
-  // «зазор до двери» — тонкая штриховка на передней и задней областях (между краем корпуса и рельсом)
+  bgParts.push(`<line x1="${frontRailX}" y1="4" x2="${frontRailX}" y2="${4 + r.u * rowH}" stroke="#3b82f6" stroke-width="2" opacity="0.75"><title>Передний 19"-рельс (отступ ${railFrontOff} мм)</title></line>`);
+  bgParts.push(`<line x1="${rearRailX}" y1="4" x2="${rearRailX}" y2="${4 + r.u * rowH}" stroke="#ef4444" stroke-width="2" opacity="0.75"><title>Задний 19"-рельс (railDepth=${railDepthMm} мм, отступ от тыла ${rearClearance} мм)</title></line>`);
+  // «зазор до двери» — тонкая штриховка на передней и задней областях
   if (frontClearance > 0) {
-    bgParts.push(`<rect x="${leftPad}" y="4" width="${frontRailX - leftPad}" height="${r.u * rowH}" fill="#3b82f6" fill-opacity="0.04"/>`);
-    bgParts.push(`<rect x="${rearRailX}" y="4" width="${leftPad + bodyW - rearRailX}" height="${r.u * rowH}" fill="#ef4444" fill-opacity="0.04"/>`);
+    bgParts.push(`<rect x="${leftPad}" y="4" width="${frontRailX - leftPad}" height="${r.u * rowH}" fill="#3b82f6" fill-opacity="0.06"><title>Зазор фасад → передний рельс: ${frontClearance} мм</title></rect>`);
+  }
+  if (rearClearance > 0) {
+    bgParts.push(`<rect x="${rearRailX}" y="4" width="${leftPad + bodyW - rearRailX}" height="${r.u * rowH}" fill="#ef4444" fill-opacity="0.06"><title>Зазор задний рельс → тыл: ${rearClearance} мм</title></rect>`);
   }
   // сетка юнитов
   for (let i = 0; i < r.u; i++) {

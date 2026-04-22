@@ -244,6 +244,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.263', date: '2026-04-22', items: [
+      '🔧 Критический fix: в renderSideView (📐 Бок) переменная frontClearance использовалась, но не была объявлена → ReferenceError валил рендер side-view при любом открытии. Добавлены frontClearance = railFrontOffset и rearClearance = rackDepth − railFrontOffset − railDepth. Обе зоны клиренса теперь подсвечиваются голубым/красным полупрозрачно с title-тултипами в мм.',
+      'Файлы: scs-config/scs-config.js (renderSideView: fix ReferenceError).',
+    ] },
     { version: '0.59.262', date: '2026-04-22', items: [
       '💾 3D: персист позиции камеры между открытиями. Ключ localStorage зависит от геометрии стойки (U × width × depth), чтобы при переходе на стойку другого размера не наследовать неподходящий кадр. Сохраняется debounced (200 мс) на controls.change; очищается таймер в _3dCleanup.',
       'Файлы: scs-config/scs-config.js (camKey + load/save в renderRack3D).',
