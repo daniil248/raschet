@@ -1037,14 +1037,77 @@ async function renderRack3D(hostId, opts) {
   walls.add(mkBox(FR, rackH - 2*FR, rackD - 2*FR, panelMat, rackW - FR/2,  rackH/2, rackD/2));
   cabinet.add(walls);
 
-  // передняя дверь
+  // v0.59.261: перфорированные двери — canvas-текстура с сеткой отверстий
+  // (реальные ЦОД-стойки имеют ~63-83% открытую площадь на дверях).
+  const mkPerfTexture = () => {
+    const cv = document.createElement('canvas');
+    cv.width = 256; cv.height = 256;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = '#f1f5f9';
+    const step = 10, r = 3;
+    for (let y = step; y < 256; y += step) {
+      for (let x = step; x < 256; x += step) {
+        ctx.beginPath();
+        ctx.arc(x + ((y / step) % 2 ? step/2 : 0), y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  };
+  const perfTex = mkPerfTexture();
+  // повторяем с учётом реальных размеров (≈ 1 тайл = 80 мм)
+  perfTex.repeat.set((rackW - 2*FR) / 80, (rackH - 2*FR) / 80);
+  const perfDoorMat = new THREE.MeshStandardMaterial({
+    color: 0x334155, roughness: 0.35, metalness: 0.55,
+    transparent: true, opacity: 0.86, alphaMap: perfTex,
+  });
+
+  // передняя дверь с перфорацией + ручка + петли
   const doorFront = new THREE.Group();
-  doorFront.add(mkBox(rackW - 2*FR, rackH - 2*FR, FR, doorMat, rackW/2, rackH/2, FR/2));
+  doorFront.add(mkBox(rackW - 2*FR, rackH - 2*FR, FR, perfDoorMat, rackW/2, rackH/2, FR/2));
+  // рамка двери (непрозрачная) по периметру
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.45, metalness: 0.7 });
+  const FRAME_W = 8;
+  doorFront.add(mkBox(rackW - 2*FR, FRAME_W, FR, frameMat, rackW/2, FR + FRAME_W/2, FR/2));
+  doorFront.add(mkBox(rackW - 2*FR, FRAME_W, FR, frameMat, rackW/2, rackH - FR - FRAME_W/2, FR/2));
+  doorFront.add(mkBox(FRAME_W, rackH - 2*FR, FR, frameMat, FR + FRAME_W/2, rackH/2, FR/2));
+  doorFront.add(mkBox(FRAME_W, rackH - 2*FR, FR, frameMat, rackW - FR - FRAME_W/2, rackH/2, FR/2));
+  // ручка
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.3, metalness: 0.9 });
+  doorFront.add(mkBox(30, 80, 8, handleMat, rackW - FR - FRAME_W - 20, rackH * 0.52, -4));
   cabinet.add(doorFront);
-  // задняя дверь
+
+  // задняя дверь — тоже перфорированная
+  const perfTexRear = mkPerfTexture();
+  perfTexRear.repeat.set((rackW - 2*FR) / 80, (rackH - 2*FR) / 80);
+  const perfDoorMatRear = new THREE.MeshStandardMaterial({
+    color: 0x334155, roughness: 0.35, metalness: 0.55,
+    transparent: true, opacity: 0.86, alphaMap: perfTexRear,
+  });
   const doorRear = new THREE.Group();
-  doorRear.add(mkBox(rackW - 2*FR, rackH - 2*FR, FR, doorMat, rackW/2, rackH/2, rackD - FR/2));
+  doorRear.add(mkBox(rackW - 2*FR, rackH - 2*FR, FR, perfDoorMatRear, rackW/2, rackH/2, rackD - FR/2));
+  doorRear.add(mkBox(rackW - 2*FR, FRAME_W, FR, frameMat, rackW/2, FR + FRAME_W/2, rackD - FR/2));
+  doorRear.add(mkBox(rackW - 2*FR, FRAME_W, FR, frameMat, rackW/2, rackH - FR - FRAME_W/2, rackD - FR/2));
+  doorRear.add(mkBox(FRAME_W, rackH - 2*FR, FR, frameMat, FR + FRAME_W/2, rackH/2, rackD - FR/2));
+  doorRear.add(mkBox(FRAME_W, rackH - 2*FR, FR, frameMat, rackW - FR - FRAME_W/2, rackH/2, rackD - FR/2));
+  doorRear.add(mkBox(30, 80, 8, handleMat, FR + FRAME_W + 20, rackH * 0.52, rackD + 4));
   cabinet.add(doorRear);
+
+  // v0.59.261: ножки — под корпусом, уходят вниз от y=0 (пол смещён ниже).
+  // Не шевелим cabinet.position — иначе сломаем координаты устройств (они в scene).
+  const footMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6, metalness: 0.5 });
+  const FOOT_H = 40, FOOT_D = 50;
+  [[rackW * 0.1, rackD * 0.1], [rackW * 0.9, rackD * 0.1],
+   [rackW * 0.1, rackD * 0.9], [rackW * 0.9, rackD * 0.9]].forEach(([fx, fz]) => {
+    scene.add(mkBox(FOOT_D, FOOT_H, FOOT_D, footMat, fx, -FOOT_H/2, fz));
+  });
+  // пол опустить на высоту ножек, чтобы они стояли на нём
+  floor.position.y = -FOOT_H;
+  grid.position.y  = -FOOT_H + 0.1;
 
   // «занято стойкой» сверху (фиктивный блок, например патч-панель/органайзер)
   if (r.occupied) {
