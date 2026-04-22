@@ -131,10 +131,18 @@ export function updateProject(id, patch) {
   return arr[i];
 }
 
-export function deleteProject(id) {
+// v0.59.242: по умолчанию удаляем и scoped-данные проекта (иначе они
+// становятся «бесхозными» в LS). Передать { keepData: true } чтобы только
+// убрать метаданные.
+export function deleteProject(id, { keepData = false } = {}) {
+  let removedKeys = 0;
+  if (!keepData) {
+    try { removedKeys = clearProjectData(id); } catch {}
+  }
   const arr = listProjects().filter(p => p.id !== id);
   saveJson(LS_PROJECTS, arr);
   if (getActiveProjectId() === id) setActiveProjectId(arr[0]?.id || null);
+  return { removedKeys };
 }
 
 // ---------------- Активный проект ----------------

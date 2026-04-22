@@ -341,13 +341,18 @@ function render() {
     });
     el.querySelector('[data-act="delete"]')?.addEventListener('click', async () => {
       const p = listProjects().find(x => x.id === id); if (!p) return;
+      const s = projectStats(p.id);
+      const total = s.nodes + s.racks + s.links + s.inventory + s.facility;
+      const tail = total
+        ? `\n\nБудут стёрты project-scoped данные: ⚡${s.nodes} узл · 🗄${s.racks} стоек · 🔗${s.links} связей · 📋${s.inventory} IT · 🏭${s.facility} поз. объекта. Действие необратимо.`
+        : '\n\n(в проекте нет данных — удаление безопасно)';
       const ok = await prConfirm(
         `Удалить проект «${p.name}»?`,
-        'Метаданные проекта удалятся. Данные модулей, уже сохранённые в общих LS-ключах (схема, СКС, шкафы), не затрагиваются — они станут «бесхозными» до следующей фазы миграции (1.27.1+).'
+        'Удалятся метаданные проекта И все его scoped-данные (raschet.project.' + p.id + '.*).' + tail
       );
       if (!ok) return;
-      deleteProject(id);
-      prToast('✔ Удалено');
+      const { removedKeys } = deleteProject(id);
+      prToast(`✔ Удалено${removedKeys ? ' (стёрто ' + removedKeys + ' ключей LS)' : ''}`);
       render();
     });
   });
