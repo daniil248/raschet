@@ -178,7 +178,7 @@ function renderCatalog() {
     <th style="width:40px">цвет</th><th style="width:90px"></th>
   </tr>`];
   state.catalog.forEach((c, idx) => {
-    rows.push(`<tr data-idx="${idx}">
+    rows.push(`<tr data-idx="${idx}" draggable="true" data-typeid="${c.id}" title="Перетащите на карту юнитов чтобы разместить в конкретный U">
       <td><select data-k="kind">${Object.keys(KIND_LABEL).map(k =>
         `<option value="${k}"${c.kind===k?' selected':''}>${KIND_LABEL[k]}</option>`).join('')}</select></td>
       <td><input data-k="label" value="${escape(c.label)}"></td>
@@ -206,6 +206,15 @@ function renderCatalog() {
     });
   });
   t.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => addToRack(b.dataset.add)));
+  // 1.24.10 drag-source: строка каталога → карта юнитов
+  t.querySelectorAll('tr[data-typeid]').forEach(tr => {
+    tr.addEventListener('dragstart', ev => {
+      ev.dataTransfer.setData('application/x-scs-typeid', tr.dataset.typeid);
+      ev.dataTransfer.effectAllowed = 'copy';
+      tr.classList.add('sc-drag-src');
+    });
+    tr.addEventListener('dragend', () => tr.classList.remove('sc-drag-src'));
+  });
   t.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
     const id = b.dataset.del;
     if (!confirm('Удалить тип оборудования из каталога? Уже размещённые единицы в стойках НЕ будут удалены.')) return;
@@ -216,10 +225,16 @@ function renderCatalog() {
 }
 
 /* ---- добавление устройства в стойку ------------------------------------ */
-function addToRack(typeId) {
+function addToRack(typeId, forcedU) {
   const r = currentRack(); if (!r) { alert('Сначала выберите стойку.'); return; }
   const type = state.catalog.find(c => c.id === typeId); if (!type) return;
-  const positionU = findFirstFreeSlot(r, currentContents(), type.heightU);
+  let positionU;
+  if (Number.isFinite(forcedU)) {
+    // clamp так чтобы устройство влезло: top должен быть ≥ heightU
+    positionU = Math.max(type.heightU, Math.min(r.u, forcedU));
+  } else {
+    positionU = findFirstFreeSlot(r, currentContents(), type.heightU);
+  }
   const dev = {
     id: uid('dev'),
     typeId,
@@ -231,6 +246,7 @@ function addToRack(typeId) {
   saveContents();
   renderContents();
   rerenderPreview();
+  return dev;
 }
 
 /* Ищет первую свободную область heightU подряд сверху вниз, с учётом занятых
@@ -556,6 +572,7 @@ function renderUnitMap(hostId, opts) {
 function bindUnitMapDrag(svgId) {
   const svg = $(svgId || 'sc-unitmap-svg'); if (!svg) return;
   const rowH = +svg.dataset.rowh || 16;
+  bindUnitMapDrop(svg, rowH);
   svg.querySelectorAll('g.sc-devband').forEach(g => {
     g.addEventListener('pointerdown', ev => {
       ev.preventDefault();
@@ -591,6 +608,37 @@ function bindUnitMapDrag(svgId) {
       renderBom();
     });
     g.addEventListener('pointercancel', () => { state.drag = null; });
+  });
+}
+
+/* ---- 1.24.10 drop-target: палитра каталога → карта юнитов --------------
+   На SVG принимаем перетаскивание <tr data-typeid> из каталога. При drop
+   вычисляем U по clientY относительно SVG (учитываем что U=1 — снизу),
+   создаём устройство в этой позиции. */
+function bindUnitMapDrop(svg, rowH) {
+  const highlight = (on) => svg.classList.toggle('sc-drop-hover', on);
+  svg.addEventListener('dragover', ev => {
+    if (!Array.from(ev.dataTransfer.types).includes('application/x-scs-typeid')) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+    highlight(true);
+  });
+  svg.addEventListener('dragleave', () => highlight(false));
+  svg.addEventListener('drop', ev => {
+    const typeId = ev.dataTransfer.getData('application/x-scs-typeid');
+    highlight(false);
+    if (!typeId) return;
+    ev.preventDefault();
+    const r = currentRack(); if (!r) return;
+    const rect = svg.getBoundingClientRect();
+    // SVG viewBox = 0..svgH; но мы вычисляем по clientY относительно rect, с учётом масштабирования CSS
+    const svgH = svg.viewBox.baseVal.height || rect.height;
+    const yClient = ev.clientY - rect.top;
+    const yView = yClient * (svgH / rect.height);
+    // в renderUnitMap первый ряд стартует с y=4, высота ряда=rowH; rowIdx=0 — это U=r.u
+    const rowIdx = Math.max(0, Math.min(r.u - 1, Math.floor((yView - 4) / rowH)));
+    const topU = r.u - rowIdx;
+    addToRack(typeId, topU);
   });
 }
 

@@ -104,3 +104,9 @@
   padding: 14px 16px; overflow: auto; height: calc(92vh - 48px);
   display: flex; flex-direction: column; gap: 12px;
 }
+
+/* ---- 1.24.10 DnD из каталога в карту ---- */
+.sc-cat tr[data-typeid] { cursor: grab; }
+.sc-cat tr[data-typeid]:hover { background: #f1f5f9; }
+.sc-cat tr.sc-drag-src { opacity: 0.55; }
+svg.sc-drop-hover { outline: 2px dashed #2563eb; outline-offset: -2px; background: #eff6ff; }

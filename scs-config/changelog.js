@@ -3,6 +3,13 @@
 
 export const MODULE_CHANGELOG = [
   {
+    version: '0.1.3',
+    date: '2026-04-22',
+    items: [
+      'Phase 1.24.10 базово — drag-n-drop из каталога в карту юнитов. Строки таблицы каталога получили draggable=true + dragstart(application/x-scs-typeid). Карта (обычная и в модалке) приняла dragover/drop: при сбросе вычисляется U по clientY (с учётом scale и viewBox), устройство создаётся в этом U (clamp по heightU). Визуальный фидбэк: курсор grab на строках, opacity 0.55 для тащимой строки, outline+фон на SVG при hover.',
+    ],
+  },
+  {
     version: '0.1.2',
     date: '2026-04-22',
     items: [
