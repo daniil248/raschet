@@ -873,12 +873,32 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
       savePlan(p2);
       updatePlanInfo();
     });
-    div.querySelector('.sd-plan-rm').addEventListener('click', () => {
+    div.querySelector('.sd-plan-rm').addEventListener('click', (e) => {
+      e.stopPropagation();
       const p2 = getPlan();
       delete p2.positions[r.id];
       savePlan(p2);
+      if (focusRackId === r.id) focusRackId = null;
       renderPlan();
     });
+    // click (без drag) = фокус на трассы этой стойки
+    let downAt = 0, downPt = null;
+    div.addEventListener('pointerdown', e => { downAt = Date.now(); downPt = { x: e.clientX, y: e.clientY }; });
+    div.addEventListener('click', e => {
+      if (e.target.classList.contains('sd-plan-rm')) return;
+      const dx = Math.abs(e.clientX - (downPt?.x || 0));
+      const dy = Math.abs(e.clientY - (downPt?.y || 0));
+      const dt = Date.now() - downAt;
+      if (dx > 3 || dy > 3 || dt > 400) return; // это был drag, не клик
+      focusRackId = (focusRackId === r.id) ? null : r.id;
+      document.querySelectorAll('.sd-plan-rack').forEach(el => {
+        el.classList.toggle('focused', el.dataset.id === focusRackId);
+        el.classList.toggle('dimmed', focusRackId && el.dataset.id !== focusRackId);
+      });
+      drawPlanLinks(svg, getPlan());
+    });
+    if (focusRackId === r.id) div.classList.add('focused');
+    else if (focusRackId) div.classList.add('dimmed');
   });
 
   // Drop target
@@ -905,6 +925,8 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
   updatePlanInfo();
 }
 
+let focusRackId = null;
+
 function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const links = getLinks();
@@ -916,14 +938,15 @@ function drawPlanLinks(svg, plan) {
     const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
     const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
     const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
-    // L-образная манхэттен-трасса
     const color = CABLE_COLOR(l.cableType);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', `M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}`);
     path.setAttribute('stroke', color);
-    path.setAttribute('stroke-width', '2');
+    const isFocused = focusRackId && (l.fromRackId === focusRackId || l.toRackId === focusRackId);
+    const dimmed = focusRackId && !isFocused;
+    path.setAttribute('stroke-width', isFocused ? '3.5' : '2');
     path.setAttribute('fill', 'none');
-    path.setAttribute('opacity', '0.7');
+    path.setAttribute('opacity', dimmed ? '0.15' : (isFocused ? '1' : '0.7'));
     svg.appendChild(path);
   });
 }
