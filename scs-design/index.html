@@ -84,10 +84,18 @@
 
     <!-- ========== Вкладка Стойки ========== -->
     <section class="sd-panel" data-panel="racks">
-      <div class="sd-stub">
-        <h3>🗄 Стойки проекта</h3>
-        <p>Список стоек с их external-портами (1.24.15) — контракт с <a href="../scs-config/">Компоновщиком шкафа</a>. Пока используйте вкладку «Связи» для выбора стоек.</p>
-        <p style="margin-top:12px"><a href="../scs-config/">→ Открыть «Шкафы проекта»</a></p>
+      <div class="sd-card">
+        <h2>🗄 Стойки проекта</h2>
+        <p class="muted" style="margin-bottom:8px">
+          Сводка по каждой стойке: занятость U, разбивка устройств по роли,
+          мощность и число меж-шкафных связей (участвует как endpoint).
+          Кнопка «Выбрать» добавляет стойку в мастер связей.
+        </p>
+        <div id="sd-racks-summary"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" id="sd-racks-csv" class="sd-btn-export">⬇ Экспорт CSV (сводка по стойкам)</button>
+          <a href="../scs-config/" class="sd-btn-export" style="text-decoration:none;display:inline-block">→ Открыть Шкафы проекта</a>
+        </div>
       </div>
     </section>
 

@@ -97,6 +97,7 @@ function setupTabs() {
       tabs.forEach(t => t.classList.toggle('active', t === tab));
       panels.forEach(p => p.classList.toggle('active', p.dataset.panel === key));
       if (key === 'links') scheduleOverlay();
+      if (key === 'racks') renderRacksSummary();
     });
   });
 }
@@ -479,6 +480,116 @@ function renderBom() {
   `;
 }
 
+/* ---------- Tab «Стойки проекта» ---------- */
+const KIND_ICON = {
+  'switch':        { icon: '🔀', label: 'Свичи' },
+  'patch-panel':   { icon: '🎛', label: 'Патч-панели' },
+  'server':        { icon: '🖥', label: 'Серверы' },
+  'storage':       { icon: '💾', label: 'СХД' },
+  'kvm':           { icon: '⌨', label: 'KVM' },
+  'monitor':       { icon: '📺', label: 'Мониторы' },
+  'ups':           { icon: '🔋', label: 'ИБП-1U' },
+  'cable-manager': { icon: '⇋',  label: 'Органайзеры' },
+  'other':         { icon: '▫',  label: 'Другое' },
+};
+
+function rackStats(rack) {
+  const u = +rack.u || 42;
+  const devices = getContents(rack.id);
+  let usedU = 0, powerW = 0;
+  const byKind = {};
+  for (const d of devices) {
+    const t = catalogType(d.typeId);
+    const h = +d.heightU || (t && +t.heightU) || 1;
+    usedU += h;
+    powerW += (+d.powerW) || (t && +t.powerW) || 0;
+    const kind = (t && t.kind) || 'other';
+    byKind[kind] = (byKind[kind] || 0) + 1;
+  }
+  const links = getLinks().filter(l => l.fromRackId === rack.id || l.toRackId === rack.id);
+  return { u, usedU, freeU: Math.max(0, u - usedU), powerW, devCount: devices.length, byKind, linkCount: links.length };
+}
+
+function renderRacksSummary() {
+  const host = document.getElementById('sd-racks-summary');
+  if (!host) return;
+  const racks = getRacks();
+  if (!racks.length) {
+    host.innerHTML = `<div class="sd-empty-state">
+      В проекте ещё нет шкафов. Создайте их в
+      <a href="../rack-config/">Конфигураторе шкафа — корпус</a> (шаблоны)
+      и наполните в <a href="../scs-config/">Компоновщике шкафа</a>.
+    </div>`;
+    return;
+  }
+  const kinds = Object.keys(KIND_ICON);
+  const selected = new Set(loadJson(LS_SELECTION, []));
+
+  const rows = racks.map(r => {
+    const s = rackStats(r);
+    const tag = getRackTag(r.id);
+    const fillPct = Math.round((s.usedU / s.u) * 100);
+    const fillCls = fillPct >= 90 ? ' over' : fillPct >= 70 ? ' hi' : '';
+    const breakdown = kinds
+      .filter(k => s.byKind[k])
+      .map(k => `<span class="sd-kind-chip" title="${escapeAttr(KIND_ICON[k].label)}">${KIND_ICON[k].icon} ${s.byKind[k]}</span>`)
+      .join('') || '<span class="muted">—</span>';
+    const isSel = selected.has(r.id);
+    return `<tr data-id="${escapeAttr(r.id)}">
+      <td><code>${escapeHtml(tag || '—')}</code></td>
+      <td>${escapeHtml(r.name || 'Без имени')}</td>
+      <td class="num">${s.usedU}/${s.u}
+        <div class="sd-bar"><div class="sd-bar-fill${fillCls}" style="width:${Math.min(100, fillPct)}%"></div></div>
+      </td>
+      <td class="num">${s.powerW ? (s.powerW / 1000).toFixed(2) + ' кВт' : '—'}</td>
+      <td class="num">${s.devCount}</td>
+      <td class="kinds">${breakdown}</td>
+      <td class="num">${s.linkCount || '<span class="muted">—</span>'}</td>
+      <td>
+        <button type="button" class="sd-btn-sel ${isSel ? 'on' : ''}" data-act="toggle-sel">${isSel ? '✓ выбрана' : '+ в мастер'}</button>
+        <a href="../scs-config/rack.html?rackId=${encodeURIComponent(r.id)}" class="sd-btn-sel" style="text-decoration:none;margin-left:4px">открыть</a>
+      </td>
+    </tr>`;
+  }).join('');
+
+  host.innerHTML = `<table class="sd-racks-table">
+    <thead><tr>
+      <th>Тег</th><th>Имя</th><th class="num">U</th><th class="num">Мощность</th>
+      <th class="num">Устр.</th><th>Разбивка</th><th class="num">Связей</th><th></th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  host.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    tr.querySelector('[data-act="toggle-sel"]')?.addEventListener('click', () => {
+      const sel = new Set(loadJson(LS_SELECTION, []));
+      if (sel.has(id)) sel.delete(id); else sel.add(id);
+      saveJson(LS_SELECTION, Array.from(sel));
+      renderRacksSummary();
+      renderLinksTab(); // обновить чипы в мастере
+    });
+  });
+}
+
+function exportRacksCsv() {
+  const racks = getRacks();
+  const rows = [['Тег', 'Имя', 'U занято', 'U всего', 'U свободно', 'Мощность, кВт', 'Устройств', 'Свичи', 'Патч-панели', 'Серверы', 'ИБП-1U', 'Органайзеры', 'Другое', 'Связей']];
+  racks.forEach(r => {
+    const s = rackStats(r);
+    const tag = getRackTag(r.id);
+    rows.push([
+      tag, r.name || '', s.usedU, s.u, s.freeU,
+      s.powerW ? (s.powerW / 1000).toFixed(2) : '',
+      s.devCount,
+      s.byKind['switch'] || 0, s.byKind['patch-panel'] || 0, s.byKind['server'] || 0,
+      s.byKind['ups'] || 0, s.byKind['cable-manager'] || 0, s.byKind['other'] || 0,
+      s.linkCount,
+    ]);
+  });
+  downloadCsv('scs-racks-' + dateStamp() + '.csv', rows);
+}
+
 /* ---------- CSV export ---------- */
 function downloadCsv(filename, rows) {
   const csv = rows.map(r => r.map(cell => {
@@ -565,6 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.getElementById('sd-export-csv')?.addEventListener('click', exportBomCsv);
   document.getElementById('sd-export-links-csv')?.addEventListener('click', exportLinksCsv);
+  document.getElementById('sd-racks-csv')?.addEventListener('click', exportRacksCsv);
   window.addEventListener('storage', (e) => {
     if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) renderLinksTab();
   });
