@@ -1699,6 +1699,35 @@ function snapTrayPosition(t, nx, ny, plan) {
       if (Math.abs((ny + t.len) - o.y) <= SNAP) { ny = o.y - t.len; snapped = true; }
     }
   }
+  // v0.59.316: snap канала к стенам/углам стоек.
+  // Если стена канала близко к стене стойки — прилипаем (угол стойки важнее
+  // узла сетки, т.к. стойка 800мм ≠ кратна шагу сетки 600мм).
+  const racksList = getRacks();
+  for (const [rid, rp] of Object.entries(plan.positions || {})) {
+    const rr = racksList.find(x => x.id === rid);
+    if (!rr) continue;
+    const rrot = ((+rp.rot) || 0) % 360;
+    const [rwF, rhF] = rackSizeCells(rr, plan, rrot);
+    const rL = +rp.x, rR = +rp.x + rwF;
+    const rT = +rp.y, rB = +rp.y + rhF;
+    if (isH) {
+      // канал по y прилипает к верхней/нижней стене стойки
+      if (Math.abs(ny - rB) <= SNAP) { ny = rB; snapped = true; }
+      else if (Math.abs(ny + TRAY_W_CELLS - rT) <= SNAP) { ny = rT - TRAY_W_CELLS; snapped = true; }
+      // по x — начало/конец канала к левому/правому углу стойки
+      if (Math.abs(nx - rL) <= SNAP) { nx = rL; snapped = true; }
+      else if (Math.abs(nx - rR) <= SNAP) { nx = rR; snapped = true; }
+      if (Math.abs((nx + t.len) - rR) <= SNAP) { nx = rR - t.len; snapped = true; }
+      else if (Math.abs((nx + t.len) - rL) <= SNAP) { nx = rL - t.len; snapped = true; }
+    } else {
+      if (Math.abs(nx - rR) <= SNAP) { nx = rR; snapped = true; }
+      else if (Math.abs(nx + TRAY_W_CELLS - rL) <= SNAP) { nx = rL - TRAY_W_CELLS; snapped = true; }
+      if (Math.abs(ny - rT) <= SNAP) { ny = rT; snapped = true; }
+      else if (Math.abs(ny - rB) <= SNAP) { ny = rB; snapped = true; }
+      if (Math.abs((ny + t.len) - rB) <= SNAP) { ny = rB - t.len; snapped = true; }
+      else if (Math.abs((ny + t.len) - rT) <= SNAP) { ny = rT - t.len; snapped = true; }
+    }
+  }
   const wCells = isH ? t.len : TRAY_W_CELLS;
   const hCells = isH ? TRAY_W_CELLS : t.len;
   nx = Math.max(0, Math.min(PLAN_COLS - wCells, nx));
