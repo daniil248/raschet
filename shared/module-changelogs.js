@@ -113,6 +113,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.311', date: '2026-04-23', items: [
+      '📐 <b>autoLayout и Авто-каналы учитывают реальные размеры стоек.</b> Было: обе функции использовали жёсткие <code>RACK_W_CELLS=2</code> / <code>RACK_H_CELLS=1</code> — 800мм стойка или повёрнутая 1200×600 раскладывались как 2×1, накладываясь на соседей или оставляя пустоту. Стало: (a) autoLayout — для каждой стойки <code>rackSizeCells(r, plan, rot)</code> даёт реальные <code>wC×hC</code> в клетках; высота ряда = max(hC), ширина колонки = wC i-й стойки. rot сохраняется в новой position. (b) autoGenerateTrays — правый край H-канала = <code>max(x + wC)</code> по строке, а не <code>max(x) + 1</code>.',
+      'Файлы: scs-design/scs-design.js (autoLayout: rackSizeCells в цикле + rowMaxH + сохранение rot; autoGenerateTrays: учёт wC каждой стойки при расчёте left/right).',
+    ] },
     { version: '0.59.310', date: '2026-04-23', items: [
       '📋 <b>Кабельные каналы в BOM CSV.</b> После секции кабелей в <code>scs-bom-*.csv</code> теперь идёт пустая строка + таблица каналов: «Сечение канала (WхD, мм) · Шт · Σ длин, м · С запасом ×{BOM_RESERVE}, м». Группировка по размеру сечения; сортировка по убыванию суммарной длины. Длина каждого канала = <code>t.len × plan.step</code> (без коэф. трассы, т.к. сам канал прямой). Отдельно закупать можно по размеру — готово для спецификации.',
       'Файлы: scs-design/scs-design.js (exportBomCsv: +секция trays group-by WхD).',

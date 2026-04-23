@@ -2317,22 +2317,26 @@ function autoLayout() {
   });
   const rowGap = 2;  // клетки между рядами (hot/cold aisle approximation)
   const colGap = 0;  // соседние стойки впритык
-  const rackW = RACK_W_CELLS + colGap;
-  const maxCols = Math.floor((PLAN_COLS - 1) / rackW) || 1;
+  // v0.59.311: autoLayout учитывает физические размеры стойки + поворот.
+  // Высота ряда = max(h_i) из всех стоек ряда, ширина i-й стойки = её wC.
   let curRow = 1;
   rowKeys.forEach(key => {
     const arr = rows.get(key);
     let col = 1;
+    let rowMaxH = 1;
     arr.forEach(r => {
-      if (col + RACK_W_CELLS > PLAN_COLS) {
-        // перенос на следующую подстроку
+      const rot = rackRot(plan, r.id);
+      const [wC, hC] = rackSizeCells(r, plan, rot);
+      if (col + wC > PLAN_COLS) {
         col = 1;
-        curRow += RACK_H_CELLS + rowGap;
+        curRow += rowMaxH + rowGap;
+        rowMaxH = 1;
       }
-      positions[r.id] = { x: col, y: curRow };
-      col += rackW;
+      positions[r.id] = { x: col, y: curRow, rot };
+      col += wC + colGap;
+      if (hC > rowMaxH) rowMaxH = hC;
     });
-    curRow += RACK_H_CELLS + rowGap;
+    curRow += rowMaxH + rowGap;
   });
 
   savePlan({ ...plan, positions });
@@ -2353,20 +2357,24 @@ function autoGenerateTrays() {
   const entries = Object.entries(positions);
   if (!entries.length) { updateStatus('⚠ На плане нет стоек — автогенерация каналов невозможна.'); return; }
   // группировка по y-координате
+  const racksList = getRacks();
+  const byId = new Map(racksList.map(r => [r.id, r]));
   const rows = new Map();
   entries.forEach(([id, p]) => {
     const y = p.y | 0;
     if (!rows.has(y)) rows.set(y, []);
-    rows.get(y).push({ id, x: p.x | 0 });
+    const r = byId.get(id);
+    const rot = ((+p.rot) || 0) % 360;
+    const [wC] = r ? rackSizeCells(r, plan, rot) : [1, 1];
+    rows.get(y).push({ id, x: p.x | 0, w: wC });
   });
   const newTrays = [];
   const sortedRowsY = Array.from(rows.keys()).sort((a, b) => a - b);
   let minLeft = Infinity, maxRight = -Infinity;
   sortedRowsY.forEach(y => {
     const row = rows.get(y);
-    const xs = row.map(r => r.x);
-    const left = Math.min(...xs);
-    const right = Math.max(...xs) + 1; // +1 клетка запаса
+    const left = Math.min(...row.map(r => r.x));
+    const right = Math.max(...row.map(r => r.x + r.w)); // правый край последней стойки
     const lenCells = Math.max(2, right - left + 2); // +1 клетка по краям
     const trayY = Math.max(0, y - 1); // над рядом
     newTrays.push({
