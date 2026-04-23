@@ -1383,6 +1383,51 @@ function fitPlanZoom() {
   setPlanZoom(Math.min(zx, zy));
 }
 
+// v0.59.317: Fit to content — зум и скролл до bbox размещённых стоек + каналов.
+// Если на плане пусто — fallback к fitPlanZoom (весь план).
+function fitPlanToContent() {
+  const wrap = document.querySelector('.sd-plan-wrap');
+  if (!wrap) return;
+  const plan = getPlan();
+  const racks = getRacks();
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [rid, pos] of Object.entries(plan.positions || {})) {
+    const r = racks.find(x => x.id === rid); if (!r) continue;
+    const [wF, hF] = rackSizeCells(r, plan, ((+pos.rot) || 0) % 360);
+    minX = Math.min(minX, +pos.x);
+    minY = Math.min(minY, +pos.y);
+    maxX = Math.max(maxX, +pos.x + wF);
+    maxY = Math.max(maxY, +pos.y + hF);
+  }
+  (plan.trays || []).forEach(t => {
+    const w = t.orient === 'h' ? t.len : 1;
+    const h = t.orient === 'v' ? t.len : 1;
+    minX = Math.min(minX, t.x);
+    minY = Math.min(minY, t.y);
+    maxX = Math.max(maxX, t.x + w);
+    maxY = Math.max(maxY, t.y + h);
+  });
+  if (!isFinite(minX) || !isFinite(minY)) { fitPlanZoom(); return; }
+  const pad = 1; // клеток отступ вокруг
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(PLAN_COLS, maxX + pad);
+  maxY = Math.min(PLAN_ROWS, maxY + pad);
+  const bw = (maxX - minX) * PLAN_CELL_PX;
+  const bh = (maxY - minY) * PLAN_CELL_PX;
+  const padPx = 24;
+  const zx = (wrap.clientWidth  - padPx * 2) / bw;
+  const zy = (wrap.clientHeight - padPx * 2) / bh;
+  const z = Math.min(zx, zy, PLAN_ZOOM_MAX);
+  setPlanZoom(Math.max(PLAN_ZOOM_MIN, z));
+  // скролл к левому-верхнему углу bbox
+  const rectW = wrap.clientWidth, rectH = wrap.clientHeight;
+  const cx = (minX + maxX) / 2 * PLAN_CELL_PX * z;
+  const cy = (minY + maxY) / 2 * PLAN_CELL_PX * z;
+  wrap.scrollLeft = Math.max(0, cx - rectW / 2);
+  wrap.scrollTop  = Math.max(0, cy - rectH / 2);
+}
+
 function manhattanCells(a, b) {
   // центр прямоугольника стойки
   const ax = a.x + RACK_W_CELLS / 2, ay = a.y + RACK_H_CELLS / 2;
@@ -2748,6 +2793,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-add-tray-v')?.addEventListener('click', () => addTray('v'));
   document.getElementById('sd-plan-auto-trays')?.addEventListener('click', autoGenerateTrays);
   document.getElementById('sd-plan-fit-all')?.addEventListener('click', fitAllTrays);
+  document.getElementById('sd-plan-fit-content')?.addEventListener('click', fitPlanToContent);
   // v0.59.295: zoom/pan только мышью (кнопки убраны). Двойной клик = 1:1.
   const planWrap = document.querySelector('.sd-plan-wrap');
   if (planWrap) {
