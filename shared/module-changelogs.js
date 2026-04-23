@@ -113,6 +113,11 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.288', date: '2026-04-22', items: [
+      '⚡ Валидация скорости кабеля vs скорости порта. CABLE_TYPES получили поле maxGbps: Cat.6 = 1G, Cat.6A/7 = 10G, OM3 = 40G, OM4 = 100G, OS2 = 400G (питание/coax/other — не валидируем). parseGbps(«1G»/«10G»/«100G»/«100M») читает catalog[].portSpeed. В linkCompat появляются причины «порт A 100G > max кабеля 10G» — показываются ⚠ чипом в таблице связей.',
+      '🎯 Автовыбор типа кабеля при создании связи теперь учитывает требуемую скорость: RJ45 → Cat.6A при >1G, иначе Cat.6; оптика → OM3/OM4/OS2 в зависимости от needG. До этого всегда бралось Cat.6A для медь и OM4 для оптики независимо от скорости портов.',
+      'Файлы: scs-design/scs-design.js (CABLE_TYPES[].maxGbps, parseGbps, linkCompat +speed-check, onUnitClick defCable по needG).',
+    ] },
     { version: '0.59.287', date: '2026-04-22', items: [
       '🔍 План зала: зум и пан. Ctrl+колёсико — зум в точке курсора; кнопки −/+/1:1/⤢ (вписать). Пан — средней кнопкой мыши или Shift+ЛКМ на пустой области; полосы прокрутки также работают. Уровень зума сохраняется в plan.zoom (раскладка между визитами не теряется). Реализация через CSS `zoom` на #sd-plan-canvas; drag-n-drop и перемещение стоек компенсируют масштаб (coords / (PLAN_CELL_PX × zoom)).',
       'Файлы: scs-design/scs-design.js (PLAN_ZOOM_MIN/MAX, planZoom, applyPlanZoomStyle/setPlanZoom/fitPlanZoom, getPlan{zoom}, wheel+mouseup+mousemove handlers, компенсация zoom в drop/pointer-move); scs-design/index.html (toolbar zoom-кнопки + подсказка «Ctrl+колёсико / Shift+ЛКМ»).',

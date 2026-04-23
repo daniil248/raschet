@@ -247,16 +247,27 @@ function rescopeToActiveProject() {
 const NO_PORT_KINDS = new Set(['cable-manager']);
 
 const CABLE_TYPES = [
-  { id: 'cat6',      label: 'Cat.6 U/UTP',     color: '#1976d2' },
-  { id: 'cat6a',     label: 'Cat.6A F/UTP',    color: '#1565c0' },
-  { id: 'cat7',      label: 'Cat.7 S/FTP',     color: '#0d47a1' },
-  { id: 'om3',       label: 'OM3 LC-LC',       color: '#ea580c' },
-  { id: 'om4',       label: 'OM4 LC-LC',       color: '#c2410c' },
-  { id: 'os2',       label: 'OS2 LC-LC',       color: '#facc15' },
-  { id: 'coax',      label: 'Coax / RF',       color: '#7c3aed' },
-  { id: 'power-c13', label: 'Питание C13/C14', color: '#dc2626' },
-  { id: 'other',     label: 'Другое',          color: '#64748b' },
+  // maxGbps — практический потолок скорости кабеля (NULL = неприменимо).
+  { id: 'cat6',      label: 'Cat.6 U/UTP',     color: '#1976d2', maxGbps: 1 },
+  { id: 'cat6a',     label: 'Cat.6A F/UTP',    color: '#1565c0', maxGbps: 10 },
+  { id: 'cat7',      label: 'Cat.7 S/FTP',     color: '#0d47a1', maxGbps: 10 },
+  { id: 'om3',       label: 'OM3 LC-LC',       color: '#ea580c', maxGbps: 40 },
+  { id: 'om4',       label: 'OM4 LC-LC',       color: '#c2410c', maxGbps: 100 },
+  { id: 'os2',       label: 'OS2 LC-LC',       color: '#facc15', maxGbps: 400 },
+  { id: 'coax',      label: 'Coax / RF',       color: '#7c3aed', maxGbps: null },
+  { id: 'power-c13', label: 'Питание C13/C14', color: '#dc2626', maxGbps: null },
+  { id: 'other',     label: 'Другое',          color: '#64748b', maxGbps: null },
 ];
+/* Разбор скорости устройства (portSpeed из каталога) в Гбит/с.
+   Принимает: «1G», «10G», «40G», «100G», «400G», «1 Gbps», «100M»→0.1. */
+function parseGbps(s) {
+  if (!s) return null;
+  const m = String(s).match(/([\d.]+)\s*(g|m|k)?/i);
+  if (!m) return null;
+  const v = +m[1]; if (!Number.isFinite(v)) return null;
+  const u = (m[2] || 'g').toLowerCase();
+  return u === 'k' ? v / 1e6 : u === 'm' ? v / 1000 : v;
+}
 const CABLE_COLOR = id => (CABLE_TYPES.find(c => c.id === id)?.color) || '#64748b';
 
 /* v0.59.281: лёгкая модель типов портов для валидации меж-шкафных связей.
@@ -313,6 +324,17 @@ function linkCompat(l) {
   if (compat) {
     if (pa && !compat.has(pa)) reasons.push(`порт A «${pa}» не подходит для «${ct}»`);
     if (pb && !compat.has(pb)) reasons.push(`порт B «${pb}» не подходит для «${ct}»`);
+  }
+  // Валидация скорости: кабель не должен быть «тоньше» чем порт устройства.
+  const cable = CABLE_TYPES.find(c => c.id === ct);
+  const maxG = cable?.maxGbps;
+  if (maxG != null) {
+    const fromT = from ? catalogType(from.typeId) : null;
+    const toT   = to   ? catalogType(to.typeId)   : null;
+    const sA = parseGbps(fromT?.portSpeed);
+    const sB = parseGbps(toT?.portSpeed);
+    if (sA != null && sA > maxG) reasons.push(`порт A ${sA}G > max кабеля ${maxG}G`);
+    if (sB != null && sB > maxG) reasons.push(`порт B ${sB}G > max кабеля ${maxG}G`);
   }
   return { ok: reasons.length === 0, reason: reasons.join('; '), portA: pa, portB: pb };
 }
@@ -825,10 +847,19 @@ function onUnitClick(el) {
   const fromDev = getContents(linkStart.rackId).find(x => x.id === linkStart.devId);
   const toDev   = getContents(rackId).find(x => x.id === devId);
   const pTypeA = inferPortType(fromDev), pTypeB = inferPortType(toDev);
+  const fromT = fromDev ? catalogType(fromDev.typeId) : null;
+  const toT   = toDev   ? catalogType(toDev.typeId)   : null;
+  const sA = parseGbps(fromT?.portSpeed);
+  const sB = parseGbps(toT?.portSpeed);
+  const needG = Math.max(sA || 0, sB || 0);
   let defCable = 'cat6a';
-  if (pTypeA === 'lc' || pTypeB === 'lc' || pTypeA === 'sfp' || pTypeB === 'sfp') defCable = 'om4';
-  else if (pTypeA === 'bnc' || pTypeB === 'bnc') defCable = 'coax';
+  if (pTypeA === 'lc' || pTypeB === 'lc' || pTypeA === 'sfp' || pTypeB === 'sfp') {
+    // оптика — выбираем по требуемой скорости
+    defCable = needG > 100 ? 'os2' : needG > 40 ? 'om4' : needG > 10 ? 'om4' : 'om3';
+  } else if (pTypeA === 'bnc' || pTypeB === 'bnc') defCable = 'coax';
   else if (pTypeA === 'power' || pTypeB === 'power') defCable = 'power-c13';
+  else if (needG > 1) defCable = 'cat6a'; // 10G/25G → Cat.6A
+  else defCable = 'cat6';
   const newLink = {
     id: newId(),
     fromRackId: linkStart.rackId, fromDevId: linkStart.devId, fromLabel: linkStart.label,
