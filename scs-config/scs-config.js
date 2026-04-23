@@ -415,7 +415,10 @@ function renderRackPicker() {
   }
   const r = currentRack();
   $('sc-rack-u').textContent = r ? r.u : '—';
-  $('sc-rack-occ').textContent = r ? r.occupied : '—';
+  // v0.59.335: занято = reserved корпусом + сумма U всех размещённых устройств.
+  // Раньше показывался только r.occupied (U, зарезервированных корпусом под
+  // шасси), поэтому при 13 установленных устройствах показывало «0».
+  $('sc-rack-occ').textContent = r ? computeOccupiedU(r, currentContents()) : '—';
   // v0.59.267: свободные диапазоны
   const freeEl = $('sc-rack-free');
   if (freeEl) {
@@ -561,6 +564,29 @@ function addToRack(typeId, forcedU, forcedSide) {
    Возвращает массив строк: ["U3–U5", "U10", …] сверху вниз.
    occupied = true если юнит занят ЛЮБОЙ стороной (front/rear/rack-занятые сверху).
    Отдельно по сторонам не выводим (слишком шумно) — считаем пересечение. */
+// v0.59.335: суммарно занятые U — reserved корпусом сверху (r.occupied) +
+// сумма высот всех размещённых устройств (по каталогу). Если front и rear
+// не перекрываются, считаем реальное число «съеденных» юнитов (пересечение
+// по сторонам). Используется в top-bar и sidebar-карточках.
+function computeOccupiedU(r, devices) {
+  if (!r) return 0;
+  const occ = new Array(r.u + 1).fill(false);
+  for (let u = r.u; u > r.u - (r.occupied || 0); u--) occ[u] = true;
+  (devices || []).forEach(d => {
+    const type = state.catalog.find(c => c.id === d.typeId);
+    const uh = type ? Math.max(1, Number(type.u) || 1) : 1;
+    const top = Number(d.u) || 0;
+    if (!top) return;
+    for (let i = 0; i < uh; i++) {
+      const uu = top + i;
+      if (uu >= 1 && uu <= r.u) occ[uu] = true;
+    }
+  });
+  let c = 0;
+  for (let u = 1; u <= r.u; u++) if (occ[u]) c++;
+  return c;
+}
+
 function freeURanges(r, devices) {
   if (!r) return [];
   const occ = new Array(r.u + 1).fill(false);
@@ -3372,7 +3398,7 @@ function init() {
     renderContents(); renderMatrix(); rerenderPreview(); renderCorpusPicker();
     const r = currentRack();
     $('sc-rack-u').textContent = r ? r.u : '—';
-    $('sc-rack-occ').textContent = r ? r.occupied : '—';
+    $('sc-rack-occ').textContent = r ? computeOccupiedU(r, currentContents()) : '—';
     const freeEl2 = $('sc-rack-free');
     if (freeEl2) {
       const ranges = r ? freeURanges(r, currentContents()) : [];
