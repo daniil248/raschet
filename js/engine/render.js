@@ -407,10 +407,34 @@ export function renderUnplacedPalette() {
   }
   if (countEl) countEl.textContent = String(unplaced.length);
   if (emptyEl) emptyEl.hidden = unplaced.length > 0;
-  if (!unplaced.length) { list.innerHTML = ''; return; }
-  unplaced.sort((a, b) => String(a.tag || a.name || '').localeCompare(String(b.tag || b.name || '')));
+  // v0.59.333: фильтр и в «Неразмещённых» (симметрично с Реестром).
+  const totalUnplaced = unplaced.length;
+  const filterQ = (state._unpFilter?.q || '').toLowerCase().trim();
+  const filterPlace = state._unpFilter?.place || 'all';
+  const matches = (n) => {
+    const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+    if (filterPlace === 'nowhere' && pids.length !== 0) return false;
+    if (filterPlace === 'elsewhere' && pids.length === 0) return false;
+    if (!filterQ) return true;
+    const hay = `${n.tag || ''} ${n.name || ''} ${n.type || ''}`.toLowerCase();
+    return hay.includes(filterQ);
+  };
+  const filtered = unplaced.filter(matches);
   const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, m => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[m]));
-  const rows = unplaced.map(n => {
+  const qVal = esc(state._unpFilter?.q || '');
+  const pv = state._unpFilter?.place || 'all';
+  const filterBar = totalUnplaced >= 4 ? `<div class="pal-reg-filter" style="display:flex;gap:6px;margin:4px 0 8px;align-items:center;flex-wrap:wrap">
+    <input type="search" id="pal-unp-q" placeholder="🔎 поиск" value="${qVal}" style="flex:1;min-width:100px;font-size:11px;padding:4px 6px;border:1px solid #ccc;border-radius:3px">
+    <select id="pal-unp-place" style="font-size:11px;padding:3px 6px;border:1px solid #ccc;border-radius:3px">
+      <option value="all"${pv === 'all' ? ' selected' : ''}>Все</option>
+      <option value="nowhere"${pv === 'nowhere' ? ' selected' : ''}>Нигде</option>
+      <option value="elsewhere"${pv === 'elsewhere' ? ' selected' : ''}>На других стр.</option>
+    </select>
+    ${(filterQ || pv !== 'all') ? `<span class="muted" style="font-size:10px">${filtered.length}/${totalUnplaced}</span>` : ''}
+  </div>` : '';
+  if (!unplaced.length) { list.innerHTML = ''; return; }
+  filtered.sort((a, b) => String(a.tag || a.name || '').localeCompare(String(b.tag || b.name || '')));
+  const rows = filtered.map(n => {
     const tag = effectiveTag(n) || n.tag || '';
     const name = n.name || n.type || '';
     const typeLabel = _unplacedTypeIcon(n);

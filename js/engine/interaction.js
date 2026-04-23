@@ -833,9 +833,17 @@ export function initInteraction() {
       const nid = addId || delId;
       const nn = state.nodes.get(nid);
       if (nn && nn.type === 'panel') {
+        const isTerminal = nn.switchMode === 'terminal';
         if (addId) {
           snapshot('port-add:' + nid);
           nn.outputs = Math.min(30, (Number(nn.outputs) || 0) + 1);
+          if (isTerminal) {
+            // Клеммная коробка: входов = выходов (клеммное соединение 1:1)
+            nn.inputs = nn.outputs;
+            if (!Array.isArray(nn.channelProtection)) nn.channelProtection = [];
+            while (nn.channelProtection.length < nn.outputs) nn.channelProtection.push(false);
+            nn.channelProtection.length = nn.outputs;
+          }
           render(); notifyChange();
           renderInspector();
         } else if (delId) {
@@ -848,8 +856,24 @@ export function initInteraction() {
             flash('Сначала отключите линию с выхода №' + cur, 'error');
             return;
           }
+          if (isTerminal) {
+            const inUsed = [...state.conns.values()].some(c => c.to.nodeId === nid && c.to.port === lastIdx);
+            if (inUsed) {
+              flash('Сначала отключите линию со входа №' + cur, 'error');
+              return;
+            }
+          }
           snapshot('port-del:' + nid);
           nn.outputs = cur - 1;
+          if (isTerminal) {
+            nn.inputs = nn.outputs;
+            if (Array.isArray(nn.channelProtection)) nn.channelProtection.length = nn.outputs;
+            if (Array.isArray(nn.channelJumpers)) {
+              nn.channelJumpers = nn.channelJumpers.filter(pair =>
+                Array.isArray(pair) && pair.every(i => i < nn.outputs)
+              );
+            }
+          }
           render(); notifyChange();
           renderInspector();
         }
