@@ -596,6 +596,19 @@ export function initInteraction() {
         node.switchMode = initSwitchMode;
         if (initSwitchMode === 'terminal') {
           node.name = node.name && node.name !== 'НКУ' ? node.name : 'Клеммная коробка';
+          // v0.59.328: terminal — 1:1 passthrough; inputs===outputs.
+          const n0 = Math.max(2, Number(node.inputs) || 2);
+          node.inputs = n0;
+          node.outputs = n0;
+          node.capacityA = 0;
+          node.kSim = 1;
+          if (!Array.isArray(node.channelProtection)) {
+            node.channelProtection = new Array(n0).fill(false);
+          }
+          if (!Array.isArray(node.channelJumpers)) {
+            // массив пар [i,j] — перемычки между входами (i<j), только до защиты
+            node.channelJumpers = [];
+          }
         }
       }
     }

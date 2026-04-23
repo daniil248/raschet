@@ -491,10 +491,16 @@ export function openPanelParamsModal(n) {
 
   // Базовые настройки — только для несекционных LV-щитов
   if (!isSectioned && !n.isMv) {
-    h.push('<div style="display:flex;gap:12px">');
-    h.push('<div style="flex:1">' + field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`) + '</div>');
-    h.push('<div style="flex:1">' + field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`) + '</div>');
-    h.push('</div>');
+    if (isTerminal) {
+      // v0.59.328: клеммная коробка — 1:1 passthrough, inputs===outputs.
+      h.push(field('Количество цепей', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`));
+      h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Каждый вход идёт на свой выход (клеммное соединение). Количество входов = количество выходов.</div>`);
+    } else {
+      h.push('<div style="display:flex;gap:12px">');
+      h.push('<div style="flex:1">' + field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`) + '</div>');
+      h.push('<div style="flex:1">' + field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`) + '</div>');
+      h.push('</div>');
+    }
     // v0.59.326: клеммная коробка не имеет автоматов, Ксим, запаса — только
     // клеммник + маленькая коробка. Эти поля не показываем.
     if (!isTerminal) {
@@ -520,7 +526,31 @@ export function openPanelParamsModal(n) {
       h.push('<div style="flex:1">' + field('Макс. запас, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`) + '</div>');
       h.push('</div>');
     } else {
-      h.push(`<div class="muted" style="font-size:11px;margin-bottom:10px">Клеммная коробка — пассивный узел: только клеммник, без автоматов, Ксим, запаса. Все входы проходят на все выходы.</div>`);
+      // v0.59.328: клеммная коробка — редактор цепей и перемычек.
+      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">Клеммная коробка — пассивный узел: клеммник + корпус. Вход i → выход i. В каждой цепи можно поставить защитный аппарат; перемычки между входами допустимы только <b>до защиты</b>.</div>`);
+      const N = n.inputs || 0;
+      const prot = Array.isArray(n.channelProtection) ? n.channelProtection : [];
+      const jumps = Array.isArray(n.channelJumpers) ? n.channelJumpers.slice() : [];
+      h.push('<h4 style="margin:10px 0 6px">Цепи</h4>');
+      h.push('<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">');
+      for (let i = 0; i < N; i++) {
+        const has = !!prot[i];
+        h.push(`<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid #eee;border-radius:4px">`);
+        h.push(`<span style="font-size:11px;min-width:92px">Цепь ${i + 1}: вх${i + 1} → вых${i + 1}</span>`);
+        h.push(`<label style="font-size:11px;cursor:pointer"><input type="checkbox" class="pp-chprot" data-idx="${i}"${has ? ' checked' : ''}> защитный аппарат</label>`);
+        h.push(`</div>`);
+      }
+      h.push('</div>');
+      if (N >= 2) {
+        h.push('<h4 style="margin:10px 0 6px">Перемычки между входами (до защиты)</h4>');
+        h.push('<div style="font-size:11px;color:#666;margin-bottom:6px">Объединённые входы работают от общей шины — питание с любого из них проходит на все выходы группы.</div>');
+        h.push('<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">');
+        for (let i = 0; i < N - 1; i++) {
+          const active = jumps.some(p => Array.isArray(p) && ((p[0] === i && p[1] === i + 1) || (p[0] === i + 1 && p[1] === i)));
+          h.push(`<label style="font-size:11px;cursor:pointer;padding:2px 6px;border:1px solid ${active ? '#1976d2' : '#ccc'};border-radius:3px;background:${active ? '#e3f2fd' : '#fff'}"><input type="checkbox" class="pp-chjump" data-i="${i}" data-j="${i + 1}"${active ? ' checked' : ''} style="margin-right:4px">${i + 1}↔${i + 2}</label>`);
+        }
+        h.push('</div>');
+      }
     }
 
     // v0.59.327: для клеммной коробки система заземления на выходе не задаётся —
@@ -821,6 +851,30 @@ export function openPanelParamsModal(n) {
     if (curSm !== 'sectioned') n.inputs = readNum('pp-inputs', n.inputs ?? 1);
     else { n.inputs = 0; n.outputs = 0; }
     n.outputs = readNum('pp-outputs', n.outputs ?? 1);
+    // v0.59.328: terminal — inputs===outputs, sync always.
+    if (curSm === 'terminal') {
+      n.outputs = n.inputs;
+      // channelProtection[]
+      const prot = Array.isArray(n.channelProtection) ? n.channelProtection.slice() : [];
+      while (prot.length < n.inputs) prot.push(false);
+      prot.length = n.inputs;
+      body.querySelectorAll('input.pp-chprot').forEach(el => {
+        const idx = Number(el.dataset.idx);
+        if (Number.isInteger(idx) && idx >= 0 && idx < n.inputs) prot[idx] = !!el.checked;
+      });
+      n.channelProtection = prot;
+      // channelJumpers — pairs [i,j]
+      const jumps = [];
+      body.querySelectorAll('input.pp-chjump').forEach(el => {
+        if (el.checked) {
+          const i = Number(el.dataset.i), j = Number(el.dataset.j);
+          if (Number.isInteger(i) && Number.isInteger(j)) jumps.push([Math.min(i, j), Math.max(i, j)]);
+        }
+      });
+      n.channelJumpers = jumps;
+      n.capacityA = 0;
+      n.kSim = 1;
+    }
     n.kSim = readNum('pp-kSim', n.kSim ?? 1);
     n.capacityA = readNum('pp-capacityA', n.capacityA ?? 160);
     n.marginMinPct = readNum('pp-marginMin', n.marginMinPct ?? 2);

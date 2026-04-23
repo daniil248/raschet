@@ -660,14 +660,57 @@ function recalc() {
               res = [{ conn: target, share: 1 }];
             }
           }
-        } else if (n.type === 'panel' && (n.switchMode === 'parallel' || n.switchMode === 'terminal')) {
-          // v0.59.326: клеммная коробка обрабатывается как parallel.
-          // Все входы с включёнными автоматами (для terminal — все) → на все выходы.
+        } else if (n.type === 'panel' && n.switchMode === 'terminal') {
+          // v0.59.328: клеммная коробка — 1:1 passthrough (вход i → выход i),
+          // + перемычки между входами (только до защиты) объединяют группы
+          // общей шиной. Внутри группы все входы равнозначны; если у выхода
+          // стоит защитный аппарат — downstream-кабель видит это как
+          // собственный автомат, иначе наследует защиту вышестоящего.
+          // Для propagate мы собираем res как объединение живых входов;
+          // _termPortMap задаёт какие выходы каким входам соответствуют.
+          const jumpers = Array.isArray(n.channelJumpers) ? n.channelJumpers : [];
+          // Строим группы (union-find) по перемычкам: входы в одной группе
+          // питаются общей шиной.
+          const N = n.inputs || 0;
+          const parent = new Array(N).fill(0).map((_, i) => i);
+          const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+          const uni = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+          for (const j of jumpers) {
+            if (Array.isArray(j) && j.length === 2 && j[0] < N && j[1] < N) uni(j[0] | 0, j[1] | 0);
+          }
+          // Для каждого выхода: группа = group(input i). Выход активен, если
+          // в группе есть live-вход.
+          const groupLive = new Map();
+          for (const c of ins) {
+            if (!isConnLive(c)) continue;
+            const g = find(c.to.port | 0);
+            if (!groupLive.has(g)) groupLive.set(g, []);
+            groupLive.get(g).push(c);
+          }
+          const activePorts = new Set();
+          const perOutput = [];
+          for (let o = 0; o < (n.outputs || 0); o++) {
+            const g = find(o);
+            const arr = groupLive.get(g);
+            if (arr && arr.length) {
+              activePorts.add(o);
+              for (const c of arr) perOutput.push({ conn: c, share: 1 / arr.length });
+            }
+          }
+          if (perOutput.length) {
+            // dedup (один conn может повторяться если выходов в группе >1)
+            const byConn = new Map();
+            for (const r of perOutput) {
+              const k = r.conn.id;
+              if (!byConn.has(k)) byConn.set(k, r);
+            }
+            res = [...byConn.values()];
+            n._watchdogActivePorts = activePorts;
+          }
+        } else if (n.type === 'panel' && n.switchMode === 'parallel') {
+          // Щит-параллель: все входы с включёнными автоматами → на все выходы.
           const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
-          // terminal: коробка не имеет автоматов → вход всегда живой.
-          const selected = (n.switchMode === 'terminal')
-            ? ins.slice()
-            : ins.filter(c => inBrk[c.to.port] !== false);
+          const selected = ins.filter(c => inBrk[c.to.port] !== false);
           const live = selected.filter(c => isConnLive(c));
           if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
         } else if (n.type === 'panel' && n.switchMode === 'avr_paired') {
@@ -1851,6 +1894,44 @@ function recalc() {
     }
     const toN = state.nodes.get(c.to.nodeId);
     if (!toN) { c._breakerIn = null; c._breakerPerLine = null; c._breakerCount = 0; continue; }
+
+    // v0.59.328: терминал — если на цепи нет защиты, отходящий кабель
+    // защищается вышестоящим автоматом (наследует номинал со стороны входа
+    // соответствующего канала). В BOM отдельный автомат НЕ добавляется.
+    if (fromN.type === 'panel' && fromN.switchMode === 'terminal') {
+      const prot = Array.isArray(fromN.channelProtection) ? fromN.channelProtection : [];
+      const outPort = c.from.port | 0;
+      if (!prot[outPort]) {
+        // Ищем входящий кабель на тот же канал (входной порт == outPort,
+        // либо через перемычку в той же группе).
+        const N = fromN.inputs || 0;
+        const jumps = Array.isArray(fromN.channelJumpers) ? fromN.channelJumpers : [];
+        const parent = new Array(N).fill(0).map((_, i) => i);
+        const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+        const uni = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+        for (const j of jumps) if (Array.isArray(j) && j.length === 2) uni(j[0] | 0, j[1] | 0);
+        const gOut = find(outPort);
+        let upBrk = null;
+        for (const cc of state.conns.values()) {
+          if (cc.to.nodeId !== fromN.id) continue;
+          if (find((cc.to.port | 0)) !== gOut) continue;
+          if (cc._breakerIn && (!upBrk || cc._breakerIn > upBrk)) upBrk = cc._breakerIn;
+        }
+        c._breakerInternal = true;
+        c._breakerInternalSource = 'terminal-passthrough';
+        c._breakerExcludeFromBom = true;
+        c._breakerIn = upBrk || null;
+        c._breakerPerLine = null;
+        c._breakerCount = 0;
+        const Iz = c._cableIz || 0;
+        const par = Math.max(1, c._cableParallel || 1);
+        c._breakerAgainstCable = !!(upBrk && Iz > 0 && upBrk > Iz * par);
+        c._breakerUndersize = !!(upBrk && c._maxA && upBrk < c._maxA);
+        c._breakerCurveEff = 'MCCB';
+        continue;
+      }
+      // иначе — защита в цепи есть, обычный расчёт ниже.
+    }
 
     // Фаза 1.19.9: ввод от городской сети — абстрактный участок по ТУ
     // поставщика. Аппарат защиты подбирается электроснабжающей организацией,
