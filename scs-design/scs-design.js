@@ -1499,38 +1499,82 @@ function nearestOnTray(px, py, t) {
 // Если каналы у A и B совпадают → трасса через него; если нет — двойной канал;
 // если каналов нет или они слишком далеко → прямая L-линия.
 // Возвращает массив точек [[x,y], ...] и суммарную длину в клетках.
+// Чистый Manhattan-сегмент от P→Q. Если (px,py) и (qx,qy) различаются по обеим
+// осям — добавляется L-точка (qx,py) (или (px,qy)) так, чтобы все сегменты были
+// строго горизонтальные или вертикальные.
+function pushManhattan(pts, qx, qy, preferAxis /* 'h'|'v' */) {
+  const last = pts[pts.length - 1];
+  const [lx, ly] = last;
+  if (lx === qx && ly === qy) return;
+  if (lx === qx || ly === qy) { pts.push([qx, qy]); return; }
+  // нужен L-угол
+  if (preferAxis === 'v') pts.push([lx, qy]);
+  else pts.push([qx, ly]);
+  pts.push([qx, qy]);
+}
+
+// Строит трассу A → ближайшая точка канала → вдоль канала → ближайшая к B → B.
+// v0.59.296: строгий Manhattan (без диагоналей) + принуждение канала, если он
+// ближе, чем расстояние между самими стойками.
 function buildCableRoute(ax, ay, bx, by, trays) {
-  const direct = [[ax, ay], [bx, ay], [bx, by]];
+  const direct = [[ax, ay]];
+  pushManhattan(direct, bx, by, 'h'); // сначала горизонтально, потом вертикально
   const directCells = (Math.abs(ax - bx) + Math.abs(ay - by)) / PLAN_CELL_PX;
   if (!trays || !trays.length) return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 
-  const nearA = trays.map(t => nearestOnTray(ax, ay, t));
-  const nearB = trays.map(t => nearestOnTray(bx, by, t));
-  nearA.sort((a, b) => a.d - b.d);
-  nearB.sort((a, b) => a.d - b.d);
+  const nearA = trays.map(t => nearestOnTray(ax, ay, t)).sort((a, b) => a.d - b.d);
+  const nearB = trays.map(t => nearestOnTray(bx, by, t)).sort((a, b) => a.d - b.d);
   const bestA = nearA[0];
   const bestB = nearB[0];
   if (!bestA || !bestB) return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 
+  // дистанция «стойка ↔ стойка» (манхэттен). Если ближайший канал ближе этой
+  // дистанции — кабель ОБЯЗАН идти через него (даже если даёт обход).
+  const interRack = Math.abs(ax - bx) + Math.abs(ay - by);
+  const forceTray = (bestA.d <= interRack) || (bestB.d <= interRack);
+
+  // один канал для обоих концов
   if (bestA.tray === bestB.tray) {
     const pts = [[ax, ay]];
-    pts.push([bestA.qx, ay]);
-    pts.push([bestA.qx, bestA.qy]);
-    if (bestA.qx !== bestB.qx || bestA.qy !== bestB.qy) pts.push([bestB.qx, bestB.qy]);
-    pts.push([bestB.qx, by]);
-    pts.push([bx, by]);
+    const isH = bestA.tray.orient === 'h';
+    // войти на канал перпендикулярно: сначала идём по оси канала-нормали
+    if (isH) {
+      pushManhattan(pts, bestA.qx, ay, 'h');
+      pushManhattan(pts, bestA.qx, bestA.qy, 'v'); // встаём на ось канала
+      pushManhattan(pts, bestB.qx, bestB.qy, 'h'); // идём вдоль канала
+      pushManhattan(pts, bestB.qx, by, 'v');
+    } else {
+      pushManhattan(pts, ax, bestA.qy, 'v');
+      pushManhattan(pts, bestA.qx, bestA.qy, 'h');
+      pushManhattan(pts, bestB.qx, bestB.qy, 'v');
+      pushManhattan(pts, bx, bestB.qy, 'h');
+    }
+    pushManhattan(pts, bx, by, isH ? 'h' : 'v');
     const cells = routeCells(pts);
-    if (cells < directCells * 1.6) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id] };
+    if (forceTray || cells < directCells * 1.8) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id] };
     return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
   }
-  const pts = [[ax, ay], [bestA.qx, ay], [bestA.qx, bestA.qy]];
+
+  // два разных канала → хоп между ними
+  const pts = [[ax, ay]];
+  const aH = bestA.tray.orient === 'h';
+  const bH = bestB.tray.orient === 'h';
+  // войти на bestA
+  if (aH) { pushManhattan(pts, bestA.qx, ay, 'h'); pushManhattan(pts, bestA.qx, bestA.qy, 'v'); }
+  else    { pushManhattan(pts, ax, bestA.qy, 'v'); pushManhattan(pts, bestA.qx, bestA.qy, 'h'); }
+  // хоп — находим ближайшую точку на bestB.tray к текущей позиции на bestA
   const hop = nearestOnTray(bestA.qx, bestA.qy, bestB.tray);
-  pts.push([hop.qx, hop.qy]);
-  pts.push([bestB.qx, bestB.qy]);
-  pts.push([bestB.qx, by]);
-  pts.push([bx, by]);
+  // переходим с bestA на hop: двигаемся вдоль bestA, потом L на bestB
+  if (aH) pushManhattan(pts, hop.qx, bestA.qy, 'h');
+  else    pushManhattan(pts, bestA.qx, hop.qy, 'v');
+  pushManhattan(pts, hop.qx, hop.qy, aH ? 'v' : 'h');
+  // идём вдоль bestB к bestB-точке
+  pushManhattan(pts, bestB.qx, bestB.qy, bH ? 'h' : 'v');
+  // выход с bestB к цели
+  if (bH) { pushManhattan(pts, bestB.qx, by, 'v'); pushManhattan(pts, bx, by, 'h'); }
+  else    { pushManhattan(pts, bx, bestB.qy, 'h'); pushManhattan(pts, bx, by, 'v'); }
   const cells = routeCells(pts);
-  if (cells < directCells * 2.0) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id, bestB.tray.id] };
+  if (forceTray || cells < directCells * 2.2) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id, bestB.tray.id] };
   return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 }
 
