@@ -1674,10 +1674,14 @@ export function renderNodes() {
     const srcSubLabel = subtype === 'other' ? 'Внешняя сеть'
       : subtype === 'generator' ? ('Генератор' + (n.backupMode ? ' (резерв)' : ''))
       : 'Трансформатор';
+    // v0.59.327: клеммная коробка — пассивный узел, без In/Макс.
+    const panelSub = (n.type === 'panel' && n.switchMode === 'terminal')
+      ? `Клеммная коробка · ${(n.inputs || 0)} вх / ${(n.outputs || 0)} вых`
+      : `In ${fmt(n.capacityA || 0)} A · Макс: ${fmt(n._maxLoadA || 0)} A / ${fmt(n._maxLoadKw || 0)} kW`;
     const subTxt = {
       source:    srcSubLabel,
       generator: 'Генератор' + (n.backupMode ? ' (резерв)' : ''),
-      panel:     `In ${fmt(n.capacityA || 0)} A · Макс: ${fmt(n._maxLoadA || 0)} A / ${fmt(n._maxLoadKw || 0)} kW`,
+      panel:     panelSub,
       ups:       `ИБП · КПД ${Math.round(Number(n.efficiency) || 100)}%` +
                    (n._onStaticBypass ? ' · БАЙПАС' : ''),
       consumer:  ((n.consumerSubtype === 'outdoor_unit' ? 'Наруж. блок'

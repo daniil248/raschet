@@ -36,7 +36,10 @@ export function openPanelParamsModal(n) {
   // Фаза 1.19.2: динамический заголовок в зависимости от типа щита
   const titleEl = document.getElementById('panel-params-title');
   if (titleEl) {
-    titleEl.textContent = n.isMv ? 'Параметры РУ СН (MV)' : 'Параметры НКУ (LV щит)';
+    // v0.59.327: заголовок отражает тип щита — клеммная коробка получает свой.
+    titleEl.textContent = n.isMv
+      ? 'Параметры РУ СН (MV)'
+      : (n.switchMode === 'terminal' ? 'Параметры клеммной коробки' : 'Параметры НКУ (LV щит)');
   }
   const h = [];
   // v0.59.87: Обозначение/Имя вынесены ТОЛЬКО в вкладку «Общее» (см.
@@ -213,7 +216,8 @@ export function openPanelParamsModal(n) {
   // выбираются ТОЛЬКО в wizard-конфигураторе и попадают в BOM. В инлайн-модалке
   // (этой) показываем лишь кнопку перехода в конфигуратор — без inline-picker'а
   // модели из справочника (он дублировал логику и путал пользователя).
-  if (!n.isMv) {
+  if (!n.isMv && n.switchMode !== 'terminal') {
+    // v0.59.327: клеммной коробке конфигуратор НКУ не нужен (нет автоматов/шин).
     try {
       const qp = new URLSearchParams();
       qp.set('nodeId', n.id);
@@ -519,10 +523,9 @@ export function openPanelParamsModal(n) {
       h.push(`<div class="muted" style="font-size:11px;margin-bottom:10px">Клеммная коробка — пассивный узел: только клеммник, без автоматов, Ксим, запаса. Все входы проходят на все выходы.</div>`);
     }
 
-    // Система заземления для линий, ВЫХОДЯЩИХ из этого щита.
-    // Доступны: наследование от глобальной + все варианты IEC 60364-4-41.
-    // Дополнительно — tri-state флаги N/PE для нюансов перехода.
-    {
+    // v0.59.327: для клеммной коробки система заземления на выходе не задаётся —
+    // коробка не преобразует земляную систему, проходит N/PE сквозь.
+    if (!isTerminal) {
       const eo = n.earthingOut || '';
       h.push(field('Система заземления на выходе', `
         <select id="pp-earthingOut">
@@ -544,7 +547,8 @@ export function openPanelParamsModal(n) {
 
     if (multiInput && !isSectioned) {
 
-      const hasAVR = sm !== 'parallel';
+      // v0.59.327: клеммная коробка — пассивный узел, АВР/приоритеты/задержки не применимы.
+      const hasAVR = sm !== 'parallel' && sm !== 'terminal';
 
       if (hasAVR) {
         // Приоритеты — только для стандартного АВР (auto)

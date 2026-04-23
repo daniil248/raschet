@@ -104,6 +104,17 @@ export function deserialize(data) {
     // узел должен всё-равно быть загружаем (иначе весь рендер ломается).
     if (!Number.isFinite(n.x)) n.x = 0;
     if (!Number.isFinite(n.y)) n.y = 0;
+    // v0.59.327: миграция legacy 'junction-box' → panel с switchMode='terminal'.
+    // Прежний тип был отдельным узлом с каналами/bridges/protection — теперь
+    // клеммная коробка это вариант обычного щита в общем dropdown «Тип щита».
+    if (n.type === 'junction-box') {
+      n.type = 'panel';
+      n.switchMode = 'terminal';
+      if (!n.outputs) n.outputs = n.inputs || 2;
+      if (!n.name || n.name === 'Клеммная коробка') n.name = 'Клеммная коробка';
+      // channels/bridges/ipRating остаются в узле как метаданные на случай
+      // обратной миграции, но инспектор их не показывает.
+    }
     state.nodes.set(n.id, n);
   }
   for (const c of (data.conns || [])) {

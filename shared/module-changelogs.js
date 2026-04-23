@@ -1343,6 +1343,13 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.327', date: '2026-04-23', items: [
+      '🧹 <b>Исходный junction-box удалён, клеммная коробка = panel + switchMode="terminal".</b> Теперь это один узел с общим инспектором и общими правилами. Палитра: «Клеммная коробка» создаёт обычный <code>panel</code> и сразу ставит <code>switchMode="terminal"</code>. Старые проекты мигрируются автоматически при загрузке (<code>serialization.js</code>): <code>type="junction-box" → type="panel", switchMode="terminal"</code>, сохраняя имя и inputs/outputs.',
+      '🙈 <b>Для клеммной коробки скрыты все неприменимые блоки инспектора:</b> (1) кнопка «Сконфигурировать НКУ подробно» (нет автоматов/шин); (2) «Задержки» (<code>hasAVR = sm !== "parallel" && sm !== "terminal"</code>); (3) «Система заземления на выходе» (коробка не преобразует N/PE, проходит сквозь); (4) Ксим / In (А) / Мин./Макс. запас (уже было в v0.59.326).',
+      '📝 <b>Заголовок модалки и подпись узла адаптированы:</b> вместо «Параметры НКУ (LV щит)» → «Параметры клеммной коробки». Вместо «In 160 A · Макс: 0 A / 0 kW» под узлом — «Клеммная коробка · N вх / M вых».',
+      'TYPE_CATEGORY для пользовательских пресетов очищен от legacy-ключа <code>junction-box</code>. DEFAULTS["junction-box"] временно оставлен (на случай импорта старого JSON до миграции loader\'а).',
+      'Файлы: js/engine/inspector/panel.js, js/engine/inspector.js, js/engine/render.js, js/engine/interaction.js, js/engine/serialization.js, index.html.',
+    ] },
     { version: '0.59.326', date: '2026-04-23', items: [
       '🧯 <b>Клеммная коробка в dropdown «Тип щита».</b> Новый <code>switchMode = "terminal"</code>. Управляется как обычный щит из общего списка (inspector → Параметры НКУ → Электрика → Тип щита), условия — пассивный узел: все входы проходят на все выходы (логика <code>parallel</code>, но без <code>inputBreakerStates</code> — коробка без автоматов). В панели параметров скрыты поля Ксим, In (А), Мин./Макс. запас — они не применимы. Вместо них подсказка «Клеммная коробка — пассивный узел: только клеммник, без автоматов, Ксим, запаса».',
       'recalc.js: ветка <code>n.switchMode === "parallel"</code> расширена на <code>"terminal"</code> с игнором <code>inputBreakerStates</code> (все входы живые).',

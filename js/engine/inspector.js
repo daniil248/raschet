@@ -1918,7 +1918,8 @@ export async function saveNodeAsPreset(n) {
   // Убираем привязки к конкретным элементам схемы
   delete params.linkedOutdoorId; delete params.linkedIndoorId;
   const list = loadUserPresets();
-  const TYPE_CATEGORY = { source: 'Источники', generator: 'Генераторы', panel: 'НКУ', ups: 'ИБП', consumer: 'Потребители', channel: 'Каналы', 'junction-box': 'Клеммные коробки' };
+  // v0.59.327: junction-box удалён как отдельный тип — клеммная коробка это panel c switchMode='terminal'.
+  const TYPE_CATEGORY = { source: 'Источники', generator: 'Генераторы', panel: 'НКУ', ups: 'ИБП', consumer: 'Потребители', channel: 'Каналы' };
   list.push({
     id: 'user-' + Date.now().toString(36),
     category: n.type === 'panel' && n.isMv ? 'Среднее напряжение' : (TYPE_CATEGORY[n.type] || 'Прочее'),

@@ -117,7 +117,9 @@
               <div class="pal-item" data-type="panel" draggable="true">
                 <span class="chip pnl"></span>НКУ (базовое)
               </div>
-              <div class="pal-item" data-type="junction-box" draggable="true">
+              <!-- v0.59.327: клеммная коробка больше не отдельный тип узла.
+                   Её можно выбрать в Параметры НКУ → Тип щита → «Клеммная коробка». -->
+              <div class="pal-item" data-type="panel" data-init-switch-mode="terminal" draggable="true">
                 <span class="chip pnl" style="background:#4f7a2c"></span>Клеммная коробка
               </div>
               <div class="pal-presets" data-pal-presets-type="panel" data-pal-voltage="lv"></div>
