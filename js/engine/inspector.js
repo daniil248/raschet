@@ -713,33 +713,19 @@ export function renderInspectorNode(n) {
 
     // Ксим перенесён в параметры щита
 
-    // Daisy-chain: шлейф по входу от другого НКУ
-    if (!isSection && !isSectionedContainer && !n.isMv) {
-      const sameVoltPanels = [];
-      for (const nd of state.nodes.values()) {
-        if (nd.id === n.id) continue;
-        if (nd.type !== 'panel') continue;
-        if (!!nd.isMv !== !!n.isMv) continue;
-        // избегаем циклов
-        let cur = nd;
-        let cyc = false;
-        const seen = new Set();
-        while (cur && cur.chainedFromId) {
-          if (seen.has(cur.id)) { cyc = true; break; }
-          seen.add(cur.id);
-          if (cur.chainedFromId === n.id) { cyc = true; break; }
-          cur = state.nodes.get(cur.chainedFromId);
-        }
-        if (!cyc) sameVoltPanels.push(nd);
+    // Шлейф (daisy-chain): определяется автоматически — если на входной
+    // порт щита подключено ≥2 линии, щит вместе с peer-щитами по этому
+    // порту образует цепочку. Один автомат выше защищает все кабели в
+    // цепочке, поэтому сечения подбираются по суммарной нагрузке.
+    {
+      const chainInputs = [];
+      for (let i = 0; i < (n.inputs || 0); i++) {
+        let cnt = 0;
+        for (const cc of state.conns.values()) if (cc.to.nodeId === n.id && cc.to.port === i) cnt++;
+        if (cnt >= 2) chainInputs.push(i + 1);
       }
-      let opts = '<option value="">— отдельная линия —</option>';
-      for (const p of sameVoltPanels) {
-        const sel = n.chainedFromId === p.id ? ' selected' : '';
-        opts += `<option value="${p.id}"${sel}>${(p.tag || p.name || p.id).replace(/"/g, '&quot;')}</option>`;
-      }
-      h.push(field('Питание по входу', `<select data-panel-chain>${opts}</select>`));
-      if (n.chainedFromId) {
-        h.push(`<div class="muted" style="font-size:10px;line-height:1.4;margin-top:-4px">⛓ Шлейф: кабели цепочки защищены одним автоматом вышестоящего щита и подбираются по макс. суммарной нагрузке.</div>`);
+      if (chainInputs.length) {
+        h.push(`<div class="muted" style="font-size:10px;line-height:1.4;margin-top:4px;padding:4px 6px;background:#fef3c7;border-left:3px solid #f59e0b">⛓ Шлейф на вход${chainInputs.length > 1 ? 'ах' : 'е'} ${chainInputs.join(', ')}. Кабели защищены одним автоматом upstream-щита и подбираются по макс. суммарной нагрузке цепочки.</div>`);
       }
     }
 
@@ -754,18 +740,28 @@ export function renderInspectorNode(n) {
     h.push(field('Каналов (вх=вых)', `<input type="number" min="1" max="32" step="1" data-jb-n value="${N}">`));
     h.push(field('IP', `<input type="text" data-jb-ip value="${(n.ipRating || 'IP54').replace(/"/g,'&quot;')}">`));
     h.push(field('Ток ошиновки, A', `<input type="number" min="1" step="1" data-jb-cap value="${Number(n.capacityA) || 63}">`));
-    // Список каналов: защита да/нет, протип, ток
+    // Есть ли защита хоть в одном канале → показываем колонку «Вкл»
+    const anyProt = ch.some(cc => cc && cc.hasProtection);
+    // Maintenance: весь junction-box обесточен
+    h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-top:6px">` +
+      `<input type="checkbox" data-jb-maint${n.maintenance ? ' checked' : ''}>` +
+      `<span>🛠 Обслуживание — коробка полностью обесточена</span></label>`);
+    // Список каналов: защита да/нет, протип, ток, вкл/выкл
     let tbl = '<div class="inspector-section"><h4>Каналы (вход i → выход i)</h4>';
     tbl += '<table style="width:100%;font-size:11px;border-collapse:collapse">';
-    tbl += '<thead><tr><th>#</th><th>Защита</th><th>Тип</th><th>In, A</th></tr></thead><tbody>';
+    tbl += '<thead><tr><th>#</th><th>Защита</th><th>Тип</th><th>In, A</th>' +
+      (anyProt ? '<th title="Состояние защитного аппарата">Вкл</th>' : '') +
+      '</tr></thead><tbody>';
     for (let i = 0; i < N; i++) {
-      const c = ch[i] || { hasProtection: false, protKind: 'breaker', breakerA: 0, fuseA: 0 };
+      const c = ch[i] || { hasProtection: false, protKind: 'breaker', breakerA: 0, fuseA: 0, closed: true };
       const iA = c.protKind === 'fuse' ? (c.fuseA || 0) : (c.breakerA || 0);
+      const isClosed = c.closed !== false; // default: включён
       tbl += `<tr data-jb-row="${i}">` +
         `<td style="text-align:center">${i + 1}</td>` +
         `<td style="text-align:center"><input type="checkbox" data-jb-has="${i}"${c.hasProtection ? ' checked' : ''}></td>` +
         `<td><select data-jb-kind="${i}" ${c.hasProtection ? '' : 'disabled'} style="width:100%"><option value="breaker"${c.protKind !== 'fuse' ? ' selected' : ''}>Автомат</option><option value="fuse"${c.protKind === 'fuse' ? ' selected' : ''}>Предохранитель</option></select></td>` +
         `<td><input type="number" min="0" step="1" data-jb-in="${i}" ${c.hasProtection ? '' : 'disabled'} value="${iA}" style="width:60px"></td>` +
+        (anyProt ? `<td style="text-align:center">${c.hasProtection ? `<input type="checkbox" data-jb-closed="${i}"${isClosed ? ' checked' : ''}>` : '<span class="muted">—</span>'}</td>` : '') +
         `</tr>`;
     }
     tbl += '</tbody></table>';
@@ -2377,6 +2373,21 @@ export function wireInspectorInputs(n, root) {
         notifyChange();
       });
     });
+    const maintBox = host.querySelector('[data-jb-maint]');
+    if (maintBox) maintBox.addEventListener('change', () => {
+      snapshot('jb:maint:' + n.id);
+      n.maintenance = !!maintBox.checked;
+      _render(); renderInspector(); notifyChange();
+    });
+    host.querySelectorAll('[data-jb-closed]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const i = parseInt(cb.dataset.jbClosed, 10);
+        snapshot('jb:closed:' + n.id + ':' + i);
+        ensureChannels(n.inputs || n.channels.length || 2);
+        n.channels[i].closed = !!cb.checked;
+        _render(); renderInspector(); notifyChange();
+      });
+    });
     host.querySelectorAll('[data-jb-br-del]').forEach(btn => {
       btn.addEventListener('click', () => {
         const k = parseInt(btn.dataset.jbBrDel, 10);
@@ -2397,16 +2408,6 @@ export function wireInspectorInputs(n, root) {
       const exists = n.bridges.some(p => (p[0] === ia && p[1] === ib) || (p[0] === ib && p[1] === ia));
       if (!exists) n.bridges.push([ia, ib]);
       renderInspector(); notifyChange();
-    });
-  }
-
-  // Daisy-chain dropdown на панели
-  const chainSel = host.querySelector('[data-panel-chain]');
-  if (chainSel && n.type === 'panel') {
-    chainSel.addEventListener('change', () => {
-      snapshot('panel:chain:' + n.id);
-      n.chainedFromId = chainSel.value || null;
-      _render(); renderInspector(); notifyChange();
     });
   }
 

@@ -474,6 +474,12 @@ function recalc() {
     if (fromN.type === 'panel' && fromN.maintenance) return false;
     if (fromN._watchdogActivePorts && !fromN._watchdogActivePorts.has(c.from.port)) return false;
     if (fromN.type === 'panel' && Array.isArray(fromN.breakerStates) && fromN.breakerStates[c.from.port] === false) return false;
+    // Junction-box: maintenance + канал разомкнут (если защита стоит)
+    if (fromN.type === 'junction-box' && fromN.maintenance) return false;
+    if (fromN.type === 'junction-box' && Array.isArray(fromN.channels)) {
+      const ch = fromN.channels[c.from.port];
+      if (ch && ch.hasProtection && ch.closed === false) return false;
+    }
     // Выходной автомат QF3 ИБП разомкнут — питание на downstream не идёт
     if (fromN.type === 'ups' && fromN.hasOutputBreaker !== false && fromN.outputBreakerOn === false) return false;
     // Автомат входа downstream-щита отключён
@@ -481,6 +487,11 @@ function recalc() {
     if (toN && toN.type === 'panel' && Array.isArray(toN.inputBreakerStates) && toN.inputBreakerStates[c.to.port] === false) return false;
     // Режим обслуживания downstream
     if (toN && toN.type === 'panel' && toN.maintenance) return false;
+    if (toN && toN.type === 'junction-box' && toN.maintenance) return false;
+    if (toN && toN.type === 'junction-box' && Array.isArray(toN.channels)) {
+      const ch = toN.channels[c.to.port];
+      if (ch && ch.hasProtection && ch.closed === false) return false;
+    }
     return activeInputs(c.from.nodeId) !== null;
   }
 
@@ -1587,60 +1598,69 @@ function recalc() {
         // КАЖДЫЙ кабель внутри цепочки (включая вход на головной щит)
         // подбирается по суммарной нагрузке всей цепочки.
         //
-        // Правила участия кабеля в цепочке:
-        //   - toN — panel с chainedFromId (т. е. подключён шлейфом)
-        //   - или fromN — panel, и существует panel с chainedFromId === fromN.id
-        //     (т. е. fromN уже кормит шлейф дальше)
+        // Авто-детекция (без chainedFromId): если на входном порту щита
+        // подключено ≥2 линии, этот терминал — узел шлейфа. Все щиты,
+        // "сидящие" на таких терминалах, объединяются транзитивно.
         try {
-          const chainPanels = [];
-          const addChain = (root) => {
-            if (!root || chainPanels.includes(root)) return;
-            chainPanels.push(root);
-            for (const p of state.nodes.values()) {
-              if (p.type === 'panel' && p.chainedFromId === root.id) addChain(p);
+          const isChainTerm = (nodeId, port) => {
+            let cnt = 0;
+            for (const cc of state.conns.values()) {
+              if (cc.to.nodeId === nodeId && cc.to.port === port) cnt++;
+              if (cnt >= 2) return true;
             }
+            return false;
           };
-          let chainRoot = null;
-          if (toN.type === 'panel' && toN.chainedFromId) {
-            // найдём корень (цепочка вверх)
-            let cur = toN;
-            const seen = new Set();
-            while (cur && cur.chainedFromId && !seen.has(cur.id)) {
-              seen.add(cur.id);
-              const parent = state.nodes.get(cur.chainedFromId);
-              if (!parent || parent.type !== 'panel') break;
-              cur = parent;
-            }
-            chainRoot = cur;
-          } else if (fromN && fromN.type === 'panel') {
-            // есть ли хоть один potomok с chainedFromId === fromN.id?
-            let hasChild = false;
-            for (const p of state.nodes.values()) {
-              if (p.type === 'panel' && p.chainedFromId === fromN.id) { hasChild = true; break; }
-            }
-            if (hasChild) {
-              // головой цепочки fromN может и сам быть chained — найдём корень
-              let cur = fromN;
-              const seen = new Set();
-              while (cur && cur.chainedFromId && !seen.has(cur.id)) {
-                seen.add(cur.id);
-                const parent = state.nodes.get(cur.chainedFromId);
-                if (!parent || parent.type !== 'panel') break;
-                cur = parent;
-              }
-              chainRoot = cur;
+          const involved = new Set();
+          // Если c оканчивается на chain-терминал → эта связь — часть шлейфа.
+          // Также если c исходит из узла, чей входной порт — chain-терминал
+          // и c представляет «перемычку» на следующий щит.
+          const toChain = (toN && (toN.type === 'panel' || toN.type === 'junction-box'))
+            ? isChainTerm(toN.id, c.to.port) : false;
+          if (toChain) involved.add(toN.id);
+          // Если fromN — panel и его какой-то вход является chain-терминалом,
+          // это означает: fromN — промежуточный щит цепочки, а c уходит с
+          // клеммы на следующий peer. Включаем fromN.
+          if (fromN && (fromN.type === 'panel' || fromN.type === 'junction-box')) {
+            for (let ii = 0; ii < (fromN.inputs || 0); ii++) {
+              if (isChainTerm(fromN.id, ii)) { involved.add(fromN.id); break; }
             }
           }
-          if (chainRoot) {
-            addChain(chainRoot);
-            // макс. нагрузка корня = уже включает потомков (simpleDownstream)
-            const chainKw = simpleDownstream(chainRoot.id);
-            const chainA = computeCurrentA(chainKw, U, 0.92, threePhase, _isDC);
+          if (involved.size) {
+            // Транзитивно расширяем: все panels, связанные cable с участниками
+            // через любой порт (чтобы охватить всю цепочку).
+            let grew = true;
+            while (grew) {
+              grew = false;
+              for (const cc of state.conns.values()) {
+                const a = state.nodes.get(cc.from.nodeId);
+                const b = state.nodes.get(cc.to.nodeId);
+                if (!a || !b) continue;
+                const aIs = (a.type === 'panel' || a.type === 'junction-box');
+                const bIs = (b.type === 'panel' || b.type === 'junction-box');
+                if (!aIs || !bIs) continue;
+                // связь между двумя панелями: если один уже в chain и
+                // терминал с ≥2 связями → включить второй
+                const endHub = isChainTerm(cc.to.nodeId, cc.to.port);
+                if (!endHub) continue;
+                if (involved.has(a.id) && !involved.has(b.id)) { involved.add(b.id); grew = true; }
+                if (involved.has(b.id) && !involved.has(a.id)) { involved.add(a.id); grew = true; }
+              }
+            }
+            // Суммарная нагрузка цепочки = сумма downstream-нагрузок каждого
+            // участника, исключая двойной счёт внутри (разные участники могут
+            // «видеть» друг друга через панели — simpleDownstream считает
+            // полный downstream, так что берём max — upstream-root цепочки
+            // должен выдержать всю её нагрузку).
+            let maxChainKw = 0;
+            for (const pid of involved) {
+              const kw = simpleDownstream(pid);
+              if (kw > maxChainKw) maxChainKw = kw;
+            }
+            const chainA = computeCurrentA(maxChainKw, U, 0.92, threePhase, _isDC);
             if (chainA > sizingCurrent) {
               sizingCurrent = chainA;
               c._daisyChain = true;
-              c._daisyChainRootId = chainRoot.id;
-              c._daisyChainSize = chainPanels.length;
+              c._daisyChainSize = involved.size;
             }
           }
         } catch (e) { /* ignore */ }

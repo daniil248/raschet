@@ -223,11 +223,17 @@ export function wouldCreateCycle(fromNodeId, toNodeId) {
 }
 export function tryConnect(from, to) {
   if (from.nodeId === to.nodeId) return false;
+  // Вход щита/клеммной коробки может принимать до 2 линий (шлейф /
+  // daisy-chain). Все прочие узлы — не более 1 связи на входной порт.
+  const toNodeForLimit = state.nodes.get(to.nodeId);
+  const inputMax = (toNodeForLimit && (toNodeForLimit.type === 'panel' || toNodeForLimit.type === 'junction-box')) ? 2 : 1;
+  let existingOnTo = 0;
   for (const c of state.conns.values()) {
-    if (c.to.nodeId === to.nodeId && c.to.port === to.port) return false;
+    if (c.to.nodeId === to.nodeId && c.to.port === to.port) existingOnTo++;
     // Выход может иметь только одну исходящую связь
     if (c.from.nodeId === from.nodeId && c.from.port === from.port) return false;
   }
+  if (existingOnTo >= inputMax) return false;
   // v0.58.20: у endpoint-ов должна быть хотя бы одна общая система.
   // На странице определённого вида дополнительно эта система должна быть в
   // systemsForPageKind(kind) — иначе визуально связь сразу скроется.
