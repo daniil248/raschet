@@ -2301,6 +2301,67 @@ function autoLayout() {
   updateStatus(`✔ Автораскладка: ${Object.keys(positions).length} стоек размещено в ${rowKeys.length} рядов.`);
 }
 
+/* v0.59.306: автогенерация каналов.
+   Стратегия: группируем стойки по y-координате (ряды), для каждого ряда строим
+   горизонтальный канал прямо над рядом (y = rowY - 1) длиной от самой левой до
+   самой правой стойки + 1 клетка с каждого края. Затем — один вертикальный
+   спинальный канал в самой левой доступной колонке, соединяющий все ряды.
+   Старые trays c id начинающимся на `auto-` заменяются; пользовательские
+   (добавленные вручную) сохраняются. */
+function autoGenerateTrays() {
+  const plan = getPlan();
+  const positions = plan.positions || {};
+  const entries = Object.entries(positions);
+  if (!entries.length) { updateStatus('⚠ На плане нет стоек — автогенерация каналов невозможна.'); return; }
+  // группировка по y-координате
+  const rows = new Map();
+  entries.forEach(([id, p]) => {
+    const y = p.y | 0;
+    if (!rows.has(y)) rows.set(y, []);
+    rows.get(y).push({ id, x: p.x | 0 });
+  });
+  const newTrays = [];
+  const sortedRowsY = Array.from(rows.keys()).sort((a, b) => a - b);
+  let minLeft = Infinity, maxRight = -Infinity;
+  sortedRowsY.forEach(y => {
+    const row = rows.get(y);
+    const xs = row.map(r => r.x);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs) + 1; // +1 клетка запаса
+    const lenCells = Math.max(2, right - left + 2); // +1 клетка по краям
+    const trayY = Math.max(0, y - 1); // над рядом
+    newTrays.push({
+      id: 'auto-h-' + y,
+      orient: 'h',
+      x: Math.max(0, left - 1),
+      y: trayY,
+      len: Math.min(lenCells, PLAN_COLS - Math.max(0, left - 1)),
+      widthMm: 200, depthMm: 100, fillLimitPct: 40,
+    });
+    if (left < minLeft) minLeft = left;
+    if (right > maxRight) maxRight = right;
+  });
+  // вертикальный спинальный канал слева
+  if (sortedRowsY.length >= 2) {
+    const topY = Math.max(0, sortedRowsY[0] - 1);
+    const botY = sortedRowsY[sortedRowsY.length - 1] + 1;
+    const spineX = Math.max(0, minLeft - 2);
+    newTrays.push({
+      id: 'auto-v-spine',
+      orient: 'v',
+      x: spineX,
+      y: topY,
+      len: Math.max(2, botY - topY + 1),
+      widthMm: 300, depthMm: 150, fillLimitPct: 40,
+    });
+  }
+  // сохраняем: заменяем все auto-*, оставляем пользовательские
+  const userTrays = (plan.trays || []).filter(t => !String(t.id || '').startsWith('auto-'));
+  savePlan({ ...plan, trays: [...userTrays, ...newTrays] });
+  renderPlan();
+  updateStatus(`✔ Авто-каналы: ${newTrays.length} канал(а/ов) сгенерировано по ${sortedRowsY.length} рядам.`);
+}
+
 /* ---------- CSV export ---------- */
 function downloadCsv(filename, rows) {
   const csv = rows.map(r => r.map(cell => {
@@ -2458,6 +2519,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-svg')?.addEventListener('click', exportPlanSvg);
   document.getElementById('sd-plan-add-tray-h')?.addEventListener('click', () => addTray('h'));
   document.getElementById('sd-plan-add-tray-v')?.addEventListener('click', () => addTray('v'));
+  document.getElementById('sd-plan-auto-trays')?.addEventListener('click', autoGenerateTrays);
   // v0.59.295: zoom/pan только мышью (кнопки убраны). Двойной клик = 1:1.
   const planWrap = document.querySelector('.sd-plan-wrap');
   if (planWrap) {
