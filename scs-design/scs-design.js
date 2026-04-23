@@ -2401,6 +2401,39 @@ function autoGenerateTrays() {
   updateStatus(`✔ Авто-каналы: ${newTrays.length} канал(а/ов) сгенерировано по ${sortedRowsY.length} рядам.`);
 }
 
+/* v0.59.309: подогнать сечения ВСЕХ перегруженных каналов одним кликом.
+   Для каждого канала с pct > fillLimitPct: neededCross = usedMm2 / (limit/100),
+   затем новые W/D с сохранением соотношения сторон, округление ceil(W/50)×50 и
+   ceil(D/10)×10. Размеры только увеличиваются (никогда не уменьшаются). */
+function fitAllTrays() {
+  const plan = getPlan();
+  const trays = plan.trays || [];
+  if (!trays.length) { updateStatus('⚠ На плане нет каналов — нечего подгонять.'); return; }
+  const fills = computeTrayFills(plan);
+  let fixed = 0;
+  trays.forEach(t => {
+    const f = fills.get(t.id);
+    if (!f) return;
+    const limit = (t.fillLimitPct || 40) / 100;
+    if (limit <= 0 || f.pct <= (t.fillLimitPct || 40)) return;
+    const usedMm2 = f.usedMm2 || 0;
+    if (usedMm2 <= 0) return;
+    const neededCross = usedMm2 / limit;
+    const ratio = (t.widthMm || 100) / Math.max(1, t.depthMm || 50);
+    let newW = Math.sqrt(neededCross * ratio);
+    newW = Math.ceil(newW / 50) * 50;
+    let newD = Math.ceil((neededCross / newW) / 10) * 10;
+    const oldW = t.widthMm || 100, oldD = t.depthMm || 50;
+    t.widthMm = Math.max(oldW, newW);
+    t.depthMm = Math.max(oldD, newD);
+    if (t.widthMm !== oldW || t.depthMm !== oldD) fixed++;
+  });
+  if (!fixed) { updateStatus('✓ Все каналы в пределах лимита — подгонка не требуется.'); return; }
+  savePlan(plan);
+  renderPlan();
+  updateStatus(`✔ Подогнано ${fixed} канал(а/ов): сечение увеличено до лимита заполнения.`);
+}
+
 /* ---------- CSV export ---------- */
 function downloadCsv(filename, rows) {
   const csv = rows.map(r => r.map(cell => {
@@ -2559,6 +2592,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-add-tray-h')?.addEventListener('click', () => addTray('h'));
   document.getElementById('sd-plan-add-tray-v')?.addEventListener('click', () => addTray('v'));
   document.getElementById('sd-plan-auto-trays')?.addEventListener('click', autoGenerateTrays);
+  document.getElementById('sd-plan-fit-all')?.addEventListener('click', fitAllTrays);
   // v0.59.295: zoom/pan только мышью (кнопки убраны). Двойной клик = 1:1.
   const planWrap = document.querySelector('.sd-plan-wrap');
   if (planWrap) {
