@@ -113,6 +113,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.318', date: '2026-04-23', items: [
+      '⌨ <b>Клавиатурные шорткаты на plan-view.</b> Когда стойка выделена кликом (<code>focusRackId</code>): <kbd>R</kbd> — повернуть на 90° (RU/EN раскладка: R/к), <kbd>Delete</kbd>/<kbd>Backspace</kbd> — убрать со схемы, <kbd>←</kbd>/<kbd>→</kbd>/<kbd>↑</kbd>/<kbd>↓</kbd> — nudge на 1 клетку (с <kbd>Shift</kbd> — 5 клеток). Шорткаты игнорируются, когда фокус в <code>input</code>/<code>textarea</code>/<code>select</code>/contenteditable — чтобы не мешать редактированию свойств.',
+      'Файлы: scs-design/scs-design.js (global keydown listener после planWrap-wiring; проверка focusRackId + tag.name гардов).',
+    ] },
     { version: '0.59.317', date: '2026-04-23', items: [
       '⇲ <b>Кнопка «Fit» — zoom к содержимому plan-view.</b> В тулбаре появилась кнопка: считает bbox всех размещённых стоек + каналов (с отступом 1 клетка), подбирает zoom так, чтобы bbox целиком попал в видимую область wrap\'а (с padding 24 px по краям), и центрирует скролл на центр bbox. Если план пуст — fallback к fitPlanZoom (весь PLAN_COLS×PLAN_ROWS).',
       'Зачем: Ctrl+wheel zoom + grab-pan — удобно для работы, но когда нужно быстро увидеть всю картину, приходилось кликать двойной клик (zoom 1:1) и скроллить руками. Теперь — один клик.',

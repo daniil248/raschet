@@ -2832,6 +2832,41 @@ document.addEventListener('DOMContentLoaded', () => {
       if (onItem) return;
       setPlanZoom(1);
     });
+    // v0.59.318: клавиатурные шорткаты при активном focusRackId.
+    // R — повернуть на 90°, Delete — убрать со схемы, стрелки — nudge на 1 клетку.
+    // Игнорируем, когда фокус в <input> / <textarea> / contenteditable.
+    document.addEventListener('keydown', e => {
+      if (!focusRackId) return;
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+      const p2 = getPlan();
+      const cur = p2.positions[focusRackId];
+      if (!cur) return;
+      const r = getRacks().find(x => x.id === focusRackId);
+      if (!r) return;
+      const [wF, hF] = rackSizeCells(r, p2, cur.rot || 0);
+      let handled = false;
+      if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') {
+        const nextRot = ((+cur.rot || 0) + 90) % 360;
+        const [nwF, nhF] = rackSizeCells(r, p2, nextRot);
+        cur.rot = nextRot;
+        cur.x = Math.max(0, Math.min(PLAN_COLS - nwF, cur.x));
+        cur.y = Math.max(0, Math.min(PLAN_ROWS - nhF, cur.y));
+        savePlan(p2); renderPlan(); handled = true;
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        delete p2.positions[focusRackId];
+        focusRackId = null;
+        savePlan(p2); renderPlan(); handled = true;
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const step = e.shiftKey ? 5 : 1;
+        if (e.key === 'ArrowLeft')  cur.x = Math.max(0, cur.x - step);
+        if (e.key === 'ArrowRight') cur.x = Math.min(PLAN_COLS - wF, cur.x + step);
+        if (e.key === 'ArrowUp')    cur.y = Math.max(0, cur.y - step);
+        if (e.key === 'ArrowDown')  cur.y = Math.min(PLAN_ROWS - hF, cur.y + step);
+        savePlan(p2); renderPlan(); handled = true;
+      }
+      if (handled) e.preventDefault();
+    });
   }
   document.getElementById('sd-export-json')?.addEventListener('click', exportProjectJson);
   const importBtn = document.getElementById('sd-import-json');
