@@ -1459,6 +1459,7 @@ function renderPlan() {
     div.style.width = (wC * PLAN_CELL_PX) + 'px';
     div.style.height = (hC * PLAN_CELL_PX) + 'px';
     if (rot === 90 || rot === 270) div.classList.add('rot-tall');
+    div.classList.add('rot-' + rot); // v0.59.314: индикатор передней стены
     // подробный тултип: + исходящие связи и метраж от этой стойки
     const rackLinks = getVisibleLinks().filter(l => l.fromRackId === r.id || l.toRackId === r.id);
     let fromM = 0;
