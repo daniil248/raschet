@@ -2465,6 +2465,27 @@ function exportBomCsv() {
   for (const [t, r] of byType.entries()) {
     rows.push([cableLabel(t), r.lines, r.lenRaw.toFixed(1), (r.lenRaw * BOM_RESERVE).toFixed(1), r.withoutLen || '']);
   }
+  // v0.59.310: секция «Кабельные каналы» — группировка по размеру сечения
+  const plan = getPlan();
+  const trays = plan.trays || [];
+  if (trays.length) {
+    const bySize = new Map();
+    trays.forEach(t => {
+      const key = `${t.widthMm || 100}×${t.depthMm || 50}`;
+      const lenM = (t.len || 0) * plan.step;
+      if (!bySize.has(key)) bySize.set(key, { count: 0, totalM: 0 });
+      const r = bySize.get(key);
+      r.count++;
+      r.totalM += lenM;
+    });
+    rows.push([]);
+    rows.push(['Сечение канала, мм', 'Шт', 'Σ длин, м', `С запасом ×${BOM_RESERVE}, м`, '']);
+    Array.from(bySize.entries())
+      .sort((a, b) => b[1].totalM - a[1].totalM)
+      .forEach(([size, r]) => {
+        rows.push([size, r.count, r.totalM.toFixed(1), (r.totalM * BOM_RESERVE).toFixed(1), '']);
+      });
+  }
   downloadCsv('scs-bom-' + dateStamp() + '.csv', rows);
 }
 
