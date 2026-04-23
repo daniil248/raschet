@@ -392,6 +392,40 @@
 .sd-plan-tray-lm  { bottom: -7px; right: 14px; background: #64748b; }
 .sd-plan-tray-lp  { bottom: -7px; right: -7px; background: #64748b; }
 .sd-plan-tray-rm  { top: -7px; right: -7px; background: #ef4444; }
+/* v0.59.301: визуальные ручки изменения длины канала (тяни за край). */
+.sd-plan-tray-resize {
+  position: absolute; background: #64748b;
+  border: 2px solid #fff; border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  z-index: 12;
+}
+.sd-plan-tray.h .sd-plan-tray-resize {
+  width: 10px; height: 18px; top: 50%; transform: translateY(-50%);
+  cursor: ew-resize;
+}
+.sd-plan-tray.h .sd-plan-tray-resize-start { left: -6px; }
+.sd-plan-tray.h .sd-plan-tray-resize-end   { right: -6px; }
+.sd-plan-tray.v .sd-plan-tray-resize {
+  width: 18px; height: 10px; left: 50%; transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.sd-plan-tray.v .sd-plan-tray-resize-start { top: -6px; }
+.sd-plan-tray.v .sd-plan-tray-resize-end   { bottom: -6px; }
+.sd-plan-tray-resize:hover { background: #6366f1; }
+/* редактор свойств канала внутри pop-over */
+.sd-tray-props {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px;
+  margin-bottom: 6px; padding-bottom: 6px;
+  border-bottom: 1px solid #eef2ff;
+  align-items: center;
+}
+.sd-tray-props label { font-size: 11px; color: #475569; }
+.sd-tray-props input[type="number"] {
+  width: 70px; padding: 2px 4px; font-size: 11px;
+  border: 1px solid #cbd5e1; border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.sd-tray-props .u { color: #64748b; font-size: 10px; }
 
 /* Пустые вкладки «План зала» и «Стойки» — stub */
 .sd-stub {

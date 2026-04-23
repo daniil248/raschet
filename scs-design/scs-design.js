@@ -1608,8 +1608,9 @@ function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
     }
     pushManhattan(pts, bx, by, isH ? 'h' : 'v');
     const cells = routeCells(pts);
-    if (cells <= directCells * 1.1) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id] };
-    return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
+    // v0.59.301: канал ближе interRack → идём через него без порога длины
+    // (пользователь: «если канал дальше чем между стойками, идём напрямую»).
+    return { pts, cells, viaTray: true, trayIds: [bestA.tray.id] };
   }
 
   // два разных канала → хоп между ними
@@ -1631,8 +1632,7 @@ function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
   if (bH) { pushManhattan(pts, bestB.qx, by, 'v'); pushManhattan(pts, bx, by, 'h'); }
   else    { pushManhattan(pts, bx, bestB.qy, 'h'); pushManhattan(pts, bx, by, 'v'); }
   const cells = routeCells(pts);
-  if (cells <= directCells * 1.2) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id, bestB.tray.id] };
-  return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
+  return { pts, cells, viaTray: true, trayIds: [bestA.tray.id, bestB.tray.id] };
 }
 
 // Вычисляет заполнение каждого канала: сумма площадей сечений проходящих
@@ -1749,6 +1749,12 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
     `Кабелей: ${fillInfo?.cables.length || 0}`;
   const isSelected = selectedTrayId === t.id;
   if (isSelected) div.classList.add('selected');
+  // v0.59.301: редактор свойств канала (ширина/глубина/лимит заполнения)
+  const propsHtml = isSelected ? `<div class="sd-tray-props">
+    <label>Ширина</label><input type="number" min="20" step="10" value="${t.widthMm}" data-prop="widthMm"><span class="u">мм</span>
+    <label>Глубина</label><input type="number" min="20" step="10" value="${t.depthMm}" data-prop="depthMm"><span class="u">мм</span>
+    <label>Лимит</label><input type="number" min="10" max="100" step="5" value="${t.fillLimitPct || 40}" data-prop="fillLimitPct"><span class="u">%</span>
+  </div>` : '';
   // v0.59.299: выделение → показать список кабелей в всплывающем pop-over
   let cablesHtml = '';
   if (isSelected && fillInfo && fillInfo.cables && fillInfo.cables.length) {
@@ -1770,11 +1776,15 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
       </div>`;
     }).join('');
     cablesHtml = `<div class="sd-tray-popover">
+      ${propsHtml}
       <div class="sd-tray-popover-h">Кабелей: ${fillInfo.cables.length} · ${pct}% · лимит ${limit}%</div>
       ${rows}
     </div>`;
   } else if (isSelected) {
-    cablesHtml = `<div class="sd-tray-popover"><div class="sd-tray-popover-h">В этом канале пока нет кабелей</div></div>`;
+    cablesHtml = `<div class="sd-tray-popover">
+      ${propsHtml}
+      <div class="sd-tray-popover-h">В этом канале пока нет кабелей</div>
+    </div>`;
   }
   div.innerHTML = `<span class="sd-plan-tray-label">⬚ L=${(t.len * plan.step).toFixed(1)}м · ${t.widthMm}×${t.depthMm} · <b class="sd-tray-fill-pct">${pct}%</b></span>
     <button type="button" class="sd-plan-tray-rot" title="Повернуть">⟳</button>
@@ -1897,6 +1907,26 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
   };
   wireResize(div.querySelector('.sd-plan-tray-resize-start'), false);
   wireResize(div.querySelector('.sd-plan-tray-resize-end'), true);
+
+  // v0.59.301: pop-over — не начинать drag/select по клику внутри него
+  const pop = div.querySelector('.sd-tray-popover');
+  if (pop) {
+    pop.addEventListener('pointerdown', e => e.stopPropagation());
+    pop.addEventListener('click', e => e.stopPropagation());
+    pop.querySelectorAll('input[data-prop]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const p2 = getPlan();
+        const target = (p2.trays || []).find(x => x.id === t.id);
+        if (!target) return;
+        const prop = inp.dataset.prop;
+        const v = +inp.value || 0;
+        if (prop === 'widthMm') target.widthMm = Math.max(20, v);
+        else if (prop === 'depthMm') target.depthMm = Math.max(20, v);
+        else if (prop === 'fillLimitPct') target.fillLimitPct = Math.max(10, Math.min(100, v));
+        savePlan(p2); renderPlan();
+      });
+    });
+  }
 }
 
 function addTray(orient) {

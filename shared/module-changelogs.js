@@ -113,6 +113,12 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.301', date: '2026-04-23', items: [
+      '🔧 <b>Видимые ручки изменения длины канала.</b> Было: невидимые (CSS не задан) — тянуть за край без визуальной подсказки. Стало: серые прямоугольные ручки на обоих концах канала — курсор <code>ew-resize</code> для h-канала, <code>ns-resize</code> для v-канала. Hover → синий фон.',
+      '⚙️ <b>Редактор свойств канала в pop-over.</b> При выделении канала — сверху pop-over поля: <b>Ширина</b> (мм), <b>Глубина</b> (мм), <b>Лимит</b> заполнения (%). Изменения сохраняются в <code>plan.trays[]</code> и сразу пересчитывают <code>pct</code> + цветовой класс low/mid/hi/over.',
+      '🛣 <b>Если канал ближе расстояния между стойками — кабель идёт через него.</b> Пороги 1.1×/1.2× (v0.59.298) отменены — они блокировали использование канала, когда он физически рядом, но давал небольшой обход. Теперь: <code>bestA.d &gt; interRack && bestB.d &gt; interRack</code> → direct; иначе — всегда через канал(ы). Это убирает ситуации «канал стоит, а кабель идёт мимо».',
+      'Файлы: scs-design/scs-design.js (renderTray — propsHtml + pop-over input wiring + stopPropagation; buildCableRoute — сняты пороги cells<=directCells*1.1/1.2); scs-design/scs-design.css (.sd-plan-tray-resize-start/-end размер/курсор + .sd-tray-props — grid-форма редактора).',
+    ] },
     { version: '0.59.300', date: '2026-04-23', items: [
       '📏 <b>Одинаковая высота карточек стоек независимо от заполнения.</b> Раньше карточка с большим числом multi-U устройств была короче карточки, где те же юниты заполнены одиночными 1U-ячейками: <code>.sd-unit.multi</code> считал <code>min-height = h×u-row + (h-1)×gap</code>, но <code>--u-row</code> был голые 18px контента, тогда как одиночный U-элемент добавлял ещё padding 3×2 + border 1×2 = 8px (итого 26px). Итог: 5U multi был 98px, а 5×1U = 138px — разница 40px × каждое multi-U × стойка. Фикс: <code>box-sizing: border-box</code> + <code>--u-row: 26px</code> (полная высота ряда с padding/border) + жёстко <code>height</code> не только <code>min-height</code>.',
       'Файлы: scs-design/scs-design.css (.sd-unit box-sizing + --u-row 26px, .sd-unit.multi height+min-height с учётом полного ряда).',
