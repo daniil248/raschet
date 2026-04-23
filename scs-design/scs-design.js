@@ -1213,7 +1213,8 @@ function exportRacksCsv() {
 }
 
 /* ---------- Tab «План зала» ---------- */
-const PLAN_DEFAULT = { step: 0.6, kRoute: 1.3, positions: {}, zoom: 1 };
+const PLAN_DEFAULT = { step: 0.6, kRoute: 1.3, positions: {}, zoom: 1, trays: [] };
+const TRAY_W_CELLS = 1; // ширина трассы (клеток поперёк оси)
 const PLAN_CELL_PX = 24; // одна клетка = 24 px на экране
 const PLAN_COLS = 40, PLAN_ROWS = 24;
 const PLAN_ZOOM_MIN = 0.25, PLAN_ZOOM_MAX = 4;
@@ -1228,6 +1229,13 @@ function getPlan() {
     kRoute: +p?.kRoute || PLAN_DEFAULT.kRoute,
     positions: (p && p.positions && typeof p.positions === 'object') ? p.positions : {},
     zoom: (p && +p.zoom > 0) ? Math.min(PLAN_ZOOM_MAX, Math.max(PLAN_ZOOM_MIN, +p.zoom)) : 1,
+    trays: Array.isArray(p?.trays) ? p.trays.map(t => ({
+      id: String(t.id || ('tr-' + Math.random().toString(36).slice(2, 8))),
+      x: Math.max(0, Math.min(PLAN_COLS - 1, +t.x || 0)),
+      y: Math.max(0, Math.min(PLAN_ROWS - 1, +t.y || 0)),
+      len: Math.max(2, Math.min(Math.max(PLAN_COLS, PLAN_ROWS), +t.len || 6)),
+      orient: t.orient === 'v' ? 'v' : 'h',
+    })) : [],
   };
   planZoom = out.zoom;
   return out;
@@ -1322,6 +1330,9 @@ function renderPlan() {
   svg.setAttribute('width', PLAN_COLS * PLAN_CELL_PX);
   svg.setAttribute('height', PLAN_ROWS * PLAN_CELL_PX);
   canvas.appendChild(svg);
+
+  // Кабельные каналы (trays) — рисуем ДО стоек, чтобы стойки были сверху
+  (plan.trays || []).forEach(t => renderTray(canvas, svg, t, plan));
 
   // Размещённые стойки
   placed.forEach(r => {
@@ -1453,9 +1464,94 @@ let linksQuery = '';
 let linksCableFilter = '';
 let linksMissingOnly = false;
 
+// Ближайшая точка на отрезке tray к точке (px, py). Возвращает {qx, qy, d, tray}.
+// tray = {x, y, len, orient} в КЛЕТКАХ; точки возвращаем в px (центр клетки).
+function nearestOnTray(px, py, t) {
+  const cx0 = (t.x + 0.5) * PLAN_CELL_PX;
+  const cy0 = (t.y + 0.5) * PLAN_CELL_PX;
+  let qx, qy;
+  if (t.orient === 'h') {
+    const x1 = cx0;
+    const x2 = (t.x + t.len - 1 + 0.5) * PLAN_CELL_PX;
+    qx = Math.max(x1, Math.min(x2, px));
+    qy = cy0;
+  } else {
+    const y1 = cy0;
+    const y2 = (t.y + t.len - 1 + 0.5) * PLAN_CELL_PX;
+    qx = cx0;
+    qy = Math.max(y1, Math.min(y2, py));
+  }
+  const d = Math.abs(px - qx) + Math.abs(py - qy);
+  return { qx, qy, d, tray: t };
+}
+
+// Строит трассу A → ближайшая точка канала → вдоль канала → ближайшая к B → B.
+// Если каналы у A и B совпадают → трасса через него; если нет — двойной канал;
+// если каналов нет или они слишком далеко → прямая L-линия.
+// Возвращает массив точек [[x,y], ...] и суммарную длину в клетках.
+function buildCableRoute(ax, ay, bx, by, trays) {
+  const direct = [[ax, ay], [bx, ay], [bx, by]];
+  const directCells = (Math.abs(ax - bx) + Math.abs(ay - by)) / PLAN_CELL_PX;
+  if (!trays || !trays.length) return { pts: direct, cells: directCells, viaTray: false };
+
+  // Для каждого из концов — ближайшая точка на любом канале
+  const nearA = trays.map(t => nearestOnTray(ax, ay, t));
+  const nearB = trays.map(t => nearestOnTray(bx, by, t));
+  nearA.sort((a, b) => a.d - b.d);
+  nearB.sort((a, b) => a.d - b.d);
+  const bestA = nearA[0];
+  const bestB = nearB[0];
+  if (!bestA || !bestB) return { pts: direct, cells: directCells, viaTray: false };
+
+  // Отклонение «через канал» не должно быть намного хуже прямой
+  // (иначе канал бесполезен — рисуем прямую).
+  // Если оба конца тянутся к одному каналу:
+  if (bestA.tray === bestB.tray) {
+    const pts = [[ax, ay]];
+    // стык на канал (L-углом)
+    pts.push([bestA.qx, ay]);
+    pts.push([bestA.qx, bestA.qy]);
+    // по каналу до точки выхода
+    if (bestA.qx !== bestB.qx || bestA.qy !== bestB.qy) pts.push([bestB.qx, bestB.qy]);
+    // в B (L)
+    pts.push([bestB.qx, by]);
+    pts.push([bx, by]);
+    const cells = routeCells(pts);
+    if (cells < directCells * 1.6) return { pts, cells, viaTray: true };
+    return { pts: direct, cells: directCells, viaTray: false };
+  }
+  // Два разных канала — переход от канала1 к каналу2 прямой L-линией
+  const pts = [[ax, ay], [bestA.qx, ay], [bestA.qx, bestA.qy]];
+  // пересекаем в точку, ближайшую от bestA.qx/qy до второго канала
+  const hop = nearestOnTray(bestA.qx, bestA.qy, bestB.tray);
+  pts.push([hop.qx, hop.qy]);
+  pts.push([bestB.qx, bestB.qy]);
+  pts.push([bestB.qx, by]);
+  pts.push([bx, by]);
+  const cells = routeCells(pts);
+  if (cells < directCells * 2.0) return { pts, cells, viaTray: true };
+  return { pts: direct, cells: directCells, viaTray: false };
+}
+
+function routeCells(pts) {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) {
+    len += Math.abs(pts[i][0] - pts[i - 1][0]) + Math.abs(pts[i][1] - pts[i - 1][1]);
+  }
+  return len / PLAN_CELL_PX;
+}
+
+function ptsToPath(pts) {
+  if (!pts.length) return '';
+  let d = `M ${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length; i++) d += ` L ${pts[i][0]} ${pts[i][1]}`;
+  return d;
+}
+
 function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const links = getVisibleLinks();
+  const trays = plan.trays || [];
   links.forEach(l => {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
@@ -1464,15 +1560,17 @@ function drawPlanLinks(svg, plan) {
     const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
     const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
     const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    const route = buildCableRoute(ax, ay, bx, by, trays);
     const color = CABLE_COLOR(l.cableType);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', `M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}`);
+    path.setAttribute('d', ptsToPath(route.pts));
     path.setAttribute('stroke', color);
     const isFocused = focusRackId && (l.fromRackId === focusRackId || l.toRackId === focusRackId);
     const dimmed = focusRackId && !isFocused;
     path.setAttribute('stroke-width', isFocused ? '3.5' : '2');
     path.setAttribute('fill', 'none');
     path.setAttribute('opacity', dimmed ? '0.15' : (isFocused ? '1' : '0.7'));
+    if (route.viaTray) path.setAttribute('stroke-dasharray', '');
     svg.appendChild(path);
   });
 }
@@ -1481,8 +1579,108 @@ function computeSuggestedLength(link, plan) {
   const a = plan.positions[link.fromRackId];
   const b = plan.positions[link.toRackId];
   if (!a || !b) return null;
-  const cells = manhattanCells(a, b);
-  return cells * plan.step * plan.kRoute;
+  const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+  const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+  const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+  const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+  const route = buildCableRoute(ax, ay, bx, by, plan.trays || []);
+  return route.cells * plan.step * plan.kRoute;
+}
+
+// Рендер кабельного канала (tray) на плане
+function renderTray(canvas, svg, t, plan) {
+  const div = document.createElement('div');
+  div.className = 'sd-plan-tray' + (t.orient === 'v' ? ' v' : ' h');
+  div.dataset.id = t.id;
+  const w = (t.orient === 'h' ? t.len : TRAY_W_CELLS) * PLAN_CELL_PX;
+  const h = (t.orient === 'v' ? t.len : TRAY_W_CELLS) * PLAN_CELL_PX;
+  div.style.left = (t.x * PLAN_CELL_PX) + 'px';
+  div.style.top = (t.y * PLAN_CELL_PX) + 'px';
+  div.style.width = w + 'px';
+  div.style.height = h + 'px';
+  div.title = `Кабельный канал · ${t.orient === 'h' ? '↔' : '↕'} · ${t.len} клеток ≈ ${(t.len * plan.step).toFixed(1)} м`;
+  div.innerHTML = `<span class="sd-plan-tray-label">⬚ ${t.len}кл</span>
+    <button type="button" class="sd-plan-tray-rot" title="Повернуть">⟳</button>
+    <button type="button" class="sd-plan-tray-lm" title="Короче">−</button>
+    <button type="button" class="sd-plan-tray-lp" title="Длиннее">+</button>
+    <button type="button" class="sd-plan-tray-rm" title="Удалить">✕</button>`;
+  canvas.appendChild(div);
+
+  // drag
+  let dragging = false, sx = 0, sy = 0, sCell = null;
+  div.addEventListener('pointerdown', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    div.setPointerCapture(e.pointerId);
+    sx = e.clientX; sy = e.clientY;
+    sCell = { x: t.x, y: t.y };
+    div.classList.add('dragging');
+  });
+  div.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const z = planZoom || 1;
+    const dx = Math.round((e.clientX - sx) / (PLAN_CELL_PX * z));
+    const dy = Math.round((e.clientY - sy) / (PLAN_CELL_PX * z));
+    const wCells = (t.orient === 'h' ? t.len : TRAY_W_CELLS);
+    const hCells = (t.orient === 'v' ? t.len : TRAY_W_CELLS);
+    const nx = Math.max(0, Math.min(PLAN_COLS - wCells, sCell.x + dx));
+    const ny = Math.max(0, Math.min(PLAN_ROWS - hCells, sCell.y + dy));
+    div.style.left = (nx * PLAN_CELL_PX) + 'px';
+    div.style.top = (ny * PLAN_CELL_PX) + 'px';
+    t.x = nx; t.y = ny;
+    drawPlanLinks(svg, plan);
+  });
+  div.addEventListener('pointerup', () => {
+    if (!dragging) return;
+    dragging = false;
+    div.classList.remove('dragging');
+    const p2 = getPlan();
+    const target = (p2.trays || []).find(x => x.id === t.id);
+    if (target) { target.x = t.x; target.y = t.y; savePlan(p2); }
+    updatePlanInfo();
+  });
+
+  div.querySelector('.sd-plan-tray-rm').addEventListener('click', e => {
+    e.stopPropagation();
+    const p2 = getPlan();
+    p2.trays = (p2.trays || []).filter(x => x.id !== t.id);
+    savePlan(p2); renderPlan();
+  });
+  div.querySelector('.sd-plan-tray-rot').addEventListener('click', e => {
+    e.stopPropagation();
+    const p2 = getPlan();
+    const target = (p2.trays || []).find(x => x.id === t.id);
+    if (!target) return;
+    target.orient = target.orient === 'h' ? 'v' : 'h';
+    // удерживаем в границах
+    const w = target.orient === 'h' ? target.len : TRAY_W_CELLS;
+    const h = target.orient === 'v' ? target.len : TRAY_W_CELLS;
+    target.x = Math.max(0, Math.min(PLAN_COLS - w, target.x));
+    target.y = Math.max(0, Math.min(PLAN_ROWS - h, target.y));
+    savePlan(p2); renderPlan();
+  });
+  const changeLen = (delta) => {
+    const p2 = getPlan();
+    const target = (p2.trays || []).find(x => x.id === t.id);
+    if (!target) return;
+    const max = target.orient === 'h' ? PLAN_COLS - target.x : PLAN_ROWS - target.y;
+    target.len = Math.max(2, Math.min(max, target.len + delta));
+    savePlan(p2); renderPlan();
+  };
+  div.querySelector('.sd-plan-tray-lp').addEventListener('click', e => { e.stopPropagation(); changeLen(+1); });
+  div.querySelector('.sd-plan-tray-lm').addEventListener('click', e => { e.stopPropagation(); changeLen(-1); });
+}
+
+function addTray(orient) {
+  const p2 = getPlan();
+  if (!Array.isArray(p2.trays)) p2.trays = [];
+  const id = 'tr-' + Math.random().toString(36).slice(2, 8);
+  const len = 6;
+  // спавним в центре и двигаем левее/выше, если не влезает
+  let x = Math.max(0, Math.floor((PLAN_COLS - (orient === 'h' ? len : 1)) / 2));
+  let y = Math.max(0, Math.floor((PLAN_ROWS - (orient === 'v' ? len : 1)) / 2));
+  p2.trays.push({ id, x, y, len, orient });
+  savePlan(p2); renderPlan();
 }
 
 function updatePlanInfo() {
@@ -1851,6 +2049,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-reset')?.addEventListener('click', resetPlan);
   document.getElementById('sd-plan-autolay')?.addEventListener('click', autoLayout);
   document.getElementById('sd-plan-svg')?.addEventListener('click', exportPlanSvg);
+  document.getElementById('sd-plan-add-tray-h')?.addEventListener('click', () => addTray('h'));
+  document.getElementById('sd-plan-add-tray-v')?.addEventListener('click', () => addTray('v'));
   // v0.59.287: zoom + pan для плана зала
   document.getElementById('sd-plan-zoom-in')?.addEventListener('click', () => setPlanZoom(planZoom * 1.25));
   document.getElementById('sd-plan-zoom-out')?.addEventListener('click', () => setPlanZoom(planZoom / 1.25));

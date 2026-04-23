@@ -332,6 +332,34 @@
 }
 .sd-plan-rm:hover { background: #dc2626; }
 
+/* Кабельный канал (tray) на плане */
+.sd-plan-tray {
+  position: absolute;
+  background: repeating-linear-gradient(45deg, #cbd5e1 0 6px, #94a3b8 6px 10px);
+  border: 1.5px solid #475569;
+  border-radius: 3px;
+  box-sizing: border-box;
+  color: #1e293b;
+  font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: move;
+  z-index: 3;
+  opacity: 0.85;
+}
+.sd-plan-tray.dragging { opacity: 0.7; z-index: 11; }
+.sd-plan-tray-label { pointer-events: none; font-weight: 600; text-shadow: 0 0 2px #fff; }
+.sd-plan-tray button {
+  position: absolute;
+  width: 14px; height: 14px; font-size: 10px; line-height: 1;
+  padding: 0; border-radius: 50%;
+  background: #475569; color: #fff; border: 1px solid #fff;
+  cursor: pointer;
+}
+.sd-plan-tray-rot { top: -7px; left: -7px; }
+.sd-plan-tray-lm  { bottom: -7px; right: 14px; background: #64748b; }
+.sd-plan-tray-lp  { bottom: -7px; right: -7px; background: #64748b; }
+.sd-plan-tray-rm  { top: -7px; right: -7px; background: #ef4444; }
+
 /* Пустые вкладки «План зала» и «Стойки» — stub */
 .sd-stub {
   padding: 32px 24px; text-align: center; color: #555;
