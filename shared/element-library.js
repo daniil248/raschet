@@ -182,6 +182,8 @@ export function resetBuiltinOverride(id) {
 export const ELEMENT_KINDS = {
   panel:         { category: 'equipment', label: 'НКУ (LV щит, IEC 61439)', pricable: true,
                    note: 'Низковольтное комплектное устройство до 1000 В (ВРУ, ЩС, ЩО, ЩК). Стандарт IEC 61439, формы разделения 1-4.' },
+  'junction-box':{ category: 'equipment', label: 'Клеммная коробка (Junction Box)', pricable: true,
+                   note: 'Коробка N-вход → N-выход: каждый вход идёт напрямую в свой выход через клеммник. Опционально в цепь ставится защитный аппарат (автомат / предохранитель). Возможны перемычки между входами ДО защитного аппарата.' },
   ups:           { category: 'equipment', label: 'Источник бесперебойного питания', pricable: true },
   battery:       { category: 'equipment', label: 'Аккумуляторная батарея', pricable: true },
   transformer:   { category: 'equipment', label: 'Трансформатор', pricable: true },

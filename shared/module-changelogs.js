@@ -1163,6 +1163,10 @@ export const CHANGELOGS = {
   ],
 
   'elements': [
+    { version: '0.59.289', date: '2026-04-23', items: [
+      '🆕 Добавлен kind <code>junction-box</code> (клеммная коробка) в ELEMENT_KINDS: category=equipment, pricable=true. Назначение — коробка N-вход → N-выход с клеммным соединением в каждой цепи, опциональным защитным аппаратом (автомат/предохранитель) и перемычками между входами до защиты. Это шаг 1/3 в реализации Junction Box (следующие шаги: kindProps-схема + инспектор, учёт защиты при подборе сечения отходящего кабеля).',
+      'Файлы: shared/element-library.js (+junction-box после panel).',
+    ] },
     { version: '0.56.0', date: '2026-04-18', items: ['Справка модуля.'] },
     { version: '0.44.0', date: '2025-10-10', items: ['Редактор Element-library (MVP).'] },
   ],
