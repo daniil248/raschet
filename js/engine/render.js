@@ -540,6 +540,7 @@ function _unplacedTypeIcon(n) {
     case 'panel':     return '⬛';
     case 'consumer':  return '💡';
     case 'channel':   return '🔗';
+    case 'junction-box': return '🟩';
     default:          return '▪';
   }
 }
@@ -1026,6 +1027,7 @@ function _typeColor(t) {
     case 'panel':     return { fill: '#e3f2fd', stroke: '#1565c0' };
     case 'consumer':  return { fill: '#e8f5e9', stroke: '#2e7d32' };
     case 'channel':   return { fill: '#eceff1', stroke: '#455a64' };
+    case 'junction-box': return { fill: '#f1f8e9', stroke: '#4f7a2c' };
     default:          return { fill: '#fafafa', stroke: '#555'    };
   }
 }

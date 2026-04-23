@@ -1163,6 +1163,10 @@ export const CHANGELOGS = {
   ],
 
   'elements': [
+    { version: '0.59.290', date: '2026-04-23', items: [
+      '🔧 Junction Box — шаг 2/3: узел ставится из палитры. Добавлен DEFAULTS[\'junction-box\'] (inputs=outputs=2, channels[] с per-channel защитой, bridges[] — перемычки входов ДО защиты, ipRating=\'IP54\', capacityA=63). Палитра: новая секция «Клеммная коробка (Junction Box)» зелёного цвета. TAG_PREFIX.junction-box=\'JB\'. TYPE_CATEGORY: «Клеммные коробки». В рендере: иконка 🟩, цвет fill=#f1f8e9 / stroke=#4f7a2c. Логика подбора кабеля с учётом защиты канала — в шаге 3/3.',
+      'Файлы: js/engine/constants.js (+DEFAULTS[\'junction-box\'], +TAG_PREFIX), index.html (+pal-type секция), js/engine/inspector.js (+TYPE_CATEGORY), js/engine/render.js (+icon +color).',
+    ] },
     { version: '0.59.289', date: '2026-04-23', items: [
       '🆕 Добавлен kind <code>junction-box</code> (клеммная коробка) в ELEMENT_KINDS: category=equipment, pricable=true. Назначение — коробка N-вход → N-выход с клеммным соединением в каждой цепи, опциональным защитным аппаратом (автомат/предохранитель) и перемычками между входами до защиты. Это шаг 1/3 в реализации Junction Box (следующие шаги: kindProps-схема + инспектор, учёт защиты при подборе сечения отходящего кабеля).',
       'Файлы: shared/element-library.js (+junction-box после panel).',
