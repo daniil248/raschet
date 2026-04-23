@@ -361,6 +361,44 @@ export function initInteraction() {
       setTimeout(() => { _palDragActive = false; }, 150);
     });
     // v0.58.43: click-to-place убран — пользователю нужно только перетаскивание.
+    // v0.59.334: × во вкладке «Неразмещённые» удаляет узел из проекта (с тем
+    // же guard'ом, что и в реестре — проверяем pageIds=0 и conn-count=0).
+    unplacedList.addEventListener('click', (e) => {
+      const delBtn = e.target.closest('.pal-reg-del');
+      if (!delBtn) return;
+      e.stopPropagation();
+      const id = delBtn.dataset.delId;
+      const n0 = state.nodes.get(id);
+      if (!n0) return;
+      const label = (n0.name || n0.tag) || id;
+      const pids = Array.isArray(n0.pageIds) ? n0.pageIds.length : 0;
+      if (pids > 0) {
+        flash(`«${label}» размещён на ${pids} стр. — сначала снимите его со всех холстов`, 'error');
+        return;
+      }
+      let cc = 0;
+      for (const k of state.conns.values()) {
+        if (k.from?.nodeId === id || k.to?.nodeId === id) cc++;
+      }
+      if (state.sysConns) {
+        for (const k of state.sysConns.values()) {
+          if (k.from?.nodeId === id || k.to?.nodeId === id) cc++;
+        }
+      }
+      if (cc > 0) {
+        flash(`«${label}» имеет ${cc} подключённых линий — сначала снимите их`, 'error');
+        return;
+      }
+      (async () => {
+        const ok = await rsConfirm(
+          `Удалить «${label}» из проекта?`,
+          `Элемент нигде не размещён и не имеет подключений. Можно отменить через Ctrl+Z.`,
+          { okLabel: 'Удалить', cancelLabel: 'Отмена' });
+        if (!ok) return;
+        deleteNode(id, { hard: true, silent: true });
+        notifyChange(); render();
+      })();
+    });
   }
   // v0.58.13: вкладки инспектора (Свойства / Неразмещённые / Реестр)
   const inspTabs = document.querySelectorAll('.insp-tab');
@@ -433,6 +471,21 @@ export function initInteraction() {
         // снять его со всех холстов.
         if (pids > 0) {
           flash(`«${label}» размещён на ${pids} стр. — сначала снимите его со всех холстов, затем удаляйте из реестра`, 'error');
+          return;
+        }
+        // v0.59.334: блокируем хард-удаление, если к узлу ещё привязаны линии
+        // (иначе удаление оставит сиротские conn/sysConn в других проекциях).
+        let connCount = 0;
+        for (const k of state.conns.values()) {
+          if (k.from?.nodeId === id || k.to?.nodeId === id) connCount++;
+        }
+        if (state.sysConns) {
+          for (const k of state.sysConns.values()) {
+            if (k.from?.nodeId === id || k.to?.nodeId === id) connCount++;
+          }
+        }
+        if (connCount > 0) {
+          flash(`«${label}» имеет ${connCount} подключённых линий — сначала снимите их, затем удаляйте из реестра`, 'error');
           return;
         }
         (async () => {

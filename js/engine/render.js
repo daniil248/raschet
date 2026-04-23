@@ -432,29 +432,71 @@ export function renderUnplacedPalette() {
     </select>
     ${(filterQ || pv !== 'all') ? `<span class="muted" style="font-size:10px">${filtered.length}/${totalUnplaced}</span>` : ''}
   </div>` : '';
-  if (!unplaced.length) { list.innerHTML = ''; return; }
+  if (!unplaced.length) { list.innerHTML = filterBar; return; }
   filtered.sort((a, b) => String(a.tag || a.name || '').localeCompare(String(b.tag || b.name || '')));
   const rows = filtered.map(n => {
     const tag = effectiveTag(n) || n.tag || '';
     const name = n.name || n.type || '';
     const typeLabel = _unplacedTypeIcon(n);
     const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+    const connCount = _nodeConnCount(n.id);
     const badge = pids.length === 0 ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён нигде">∅</span>' : '';
+    const connBadge = connCount > 0
+      ? `<span class="pal-reg-badge pal-reg-badge-conn" title="Подключено линий: ${connCount}. Снимите линии прежде чем удалять." style="background:#fde68a;color:#92400e">🔗${connCount}</span>`
+      : '';
     const sysDots = _systemDotsHtml(n);
-    // v0.59.332: × показываем ТОЛЬКО если элемент не размещён вообще нигде.
-    // Это соблюдает правило «удалить из проекта можно только когда снят со
-    // всех холстов» — пользователю не надо идти в «Реестр».
-    const delBtn = pids.length === 0
-      ? `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта (элемент нигде не размещён)">×</button>`
+    // v0.59.332/334: × показываем ТОЛЬКО если элемент (а) не размещён нигде
+    // и (б) не имеет активных кабельных подключений и patch-link'ов. Иначе
+    // удаление оставит сиротские линии.
+    const delBtn = (pids.length === 0 && connCount === 0)
+      ? `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта (элемент нигде не размещён, подключений нет)">×</button>`
       : '';
     return `<div class="pal-unplaced-item" draggable="true" data-unplaced-id="${esc(n.id)}" title="Перетащите на холст">
       <span class="pal-unplaced-icon">${typeLabel}</span>
       <span class="pal-unplaced-tag">${esc(tag)}</span>
       <span class="pal-unplaced-name">${esc(name)}</span>
-      ${sysDots}${badge}${delBtn}
+      ${sysDots}${badge}${connBadge}${delBtn}
     </div>`;
   }).join('');
-  list.innerHTML = rows;
+  list.innerHTML = filterBar + rows;
+  // v0.59.333: live-фильтр
+  const qEl = document.getElementById('pal-unp-q');
+  const pEl = document.getElementById('pal-unp-place');
+  if (qEl) {
+    qEl.addEventListener('input', () => {
+      state._unpFilter = state._unpFilter || {};
+      state._unpFilter.q = qEl.value;
+      renderUnplacedPalette();
+      const nq = document.getElementById('pal-unp-q');
+      if (nq) { nq.focus(); nq.setSelectionRange(qEl.value.length, qEl.value.length); }
+    });
+  }
+  if (pEl) {
+    pEl.addEventListener('change', () => {
+      state._unpFilter = state._unpFilter || {};
+      state._unpFilter.place = pEl.value;
+      renderUnplacedPalette();
+    });
+  }
+}
+
+// v0.59.334: общее число кабельных линий + patch-link'ов, привязанных к узлу.
+// Используется, чтобы не показывать × у узла, к которому ещё привязаны линии
+// (иначе удаление оставит сиротские conn/sysConn, которые пользователь видит
+// как «провисающие» линии когда карточка снова появляется на холсте).
+function _nodeConnCount(nodeId) {
+  let c = 0;
+  if (state.conns) {
+    for (const k of state.conns.values()) {
+      if (k.from?.nodeId === nodeId || k.to?.nodeId === nodeId) c++;
+    }
+  }
+  if (state.sysConns) {
+    for (const k of state.sysConns.values()) {
+      if (k.from?.nodeId === nodeId || k.to?.nodeId === nodeId) c++;
+    }
+  }
+  return c;
 }
 
 // v0.58.18: цветные точки-системы для элемента в палитре/реестре.
@@ -522,12 +564,21 @@ export function renderProjectRegistry() {
       const placeBtn = onPage
         ? ''
         : `<button type="button" class="pal-reg-place" data-place-id="${esc(n.id)}" title="Добавить на текущую страницу">＋</button>`;
-      const delBtn = `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта">×</button>`;
+      const connCount = _nodeConnCount(n.id);
+      const connBadge = connCount > 0
+        ? `<span class="pal-reg-badge pal-reg-badge-conn" title="Подключено линий: ${connCount}. Снимите линии прежде чем удалять." style="background:#fde68a;color:#92400e">🔗${connCount}</span>`
+        : '';
+      // v0.59.334: × скрываем, если к узлу ещё привязаны линии (иначе удаление
+      // оставит сиротские conn/sysConn). Размещённость на страницах проверяется
+      // отдельно в handler'е (toast-сообщение).
+      const delBtn = connCount === 0
+        ? `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта">×</button>`
+        : '';
       return `<div class="pal-reg-item" draggable="true" data-reg-id="${esc(n.id)}" title="Клик — открыть свойства, drag — разместить на текущей странице">
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>
         <span class="pal-unplaced-name">${esc(name)}</span>
-        ${_systemDotsHtml(n)}${placement}${placeBtn}${delBtn}
+        ${_systemDotsHtml(n)}${placement}${connBadge}${placeBtn}${delBtn}
       </div>`;
     }).join('');
     chunks.push(`<div class="pal-reg-group"><h4 class="pal-reg-group-head">${esc(label)} <span class="muted">(${arr.length})</span></h4>${items}</div>`);
