@@ -348,6 +348,33 @@
 }
 .sd-plan-tray.dragging { opacity: 0.7; z-index: 11; }
 .sd-plan-tray.snapped { outline: 2px solid #22c55e; outline-offset: 1px; }
+.sd-plan-tray.selected { outline: 2px solid #6366f1; outline-offset: 1px; z-index: 10; }
+.sd-tray-popover {
+  position: absolute; top: 100%; left: 0; margin-top: 6px;
+  min-width: 240px; max-width: 420px; max-height: 260px; overflow: auto;
+  background: #fff; border: 1px solid #6366f1; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  padding: 6px 8px; font-size: 11px; color: #0f172a; z-index: 40;
+  pointer-events: auto;
+}
+.sd-tray-popover-h {
+  font-weight: 600; padding: 2px 0 6px;
+  border-bottom: 1px solid #e2e8f0; margin-bottom: 4px;
+  color: #1f2937;
+}
+.sd-tray-cable-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 0; font-variant-numeric: tabular-nums;
+  border-bottom: 1px dashed #eef2ff;
+}
+.sd-tray-cable-row:last-child { border-bottom: 0; }
+.sd-tray-cable-sw {
+  width: 12px; height: 12px; border-radius: 2px; flex: 0 0 12px;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+.sd-tray-cable-type { font-weight: 600; min-width: 60px; }
+.sd-tray-cable-d { color: #64748b; min-width: 58px; }
+.sd-tray-cable-ep { color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sd-plan-tray-label { pointer-events: none; font-weight: 600; text-shadow: 0 0 2px #fff; }
 .sd-plan-tray button {
   position: absolute;

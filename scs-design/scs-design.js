@@ -1224,6 +1224,7 @@ const PLAN_CELL_PX = 24; // одна клетка = 24 px на экране
 const PLAN_COLS = 40, PLAN_ROWS = 24;
 const PLAN_ZOOM_MIN = 0.25, PLAN_ZOOM_MAX = 4;
 let planZoom = 1;
+let selectedTrayId = null;
 const RACK_W_CELLS = 2; // прямоугольник стойки 2×1 клетки
 const RACK_H_CELLS = 1;
 
@@ -1746,18 +1747,50 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
   div.title = `Кабельный канал · ${t.orient === 'h' ? '↔' : '↕'} · ${t.len} кл ≈ ${(t.len * plan.step).toFixed(1)} м · ${t.widthMm}×${t.depthMm} мм\n` +
     `Заполнение: ${pct}% (${(fillInfo?.usedMm2 || 0).toFixed(0)} / ${(fillInfo?.crossMm2 || 0).toFixed(0)} мм², лимит ${limit}%)\n` +
     `Кабелей: ${fillInfo?.cables.length || 0}`;
+  const isSelected = selectedTrayId === t.id;
+  if (isSelected) div.classList.add('selected');
+  // v0.59.299: выделение → показать список кабелей в всплывающем pop-over
+  let cablesHtml = '';
+  if (isSelected && fillInfo && fillInfo.cables && fillInfo.cables.length) {
+    const rackNameOf = id => {
+      const r = getRacks().find(x => x.id === id);
+      const tag = getRackTag(id);
+      return tag || (r && r.name) || id;
+    };
+    const rows = fillInfo.cables.map(c => {
+      const lk = (getLinks().find(x => x.id === c.linkId)) || {};
+      const fromN = rackNameOf(lk.fromRackId);
+      const toN = rackNameOf(lk.toRackId);
+      const color = CABLE_COLOR(c.type);
+      return `<div class="sd-tray-cable-row">
+        <span class="sd-tray-cable-sw" style="background:${color}"></span>
+        <span class="sd-tray-cable-type">${escapeHtml(c.type)}</span>
+        <span class="sd-tray-cable-d">⌀${(c.diameterMm||0).toFixed(1)}мм</span>
+        <span class="sd-tray-cable-ep">${escapeHtml(fromN)} → ${escapeHtml(toN)}</span>
+      </div>`;
+    }).join('');
+    cablesHtml = `<div class="sd-tray-popover">
+      <div class="sd-tray-popover-h">Кабелей: ${fillInfo.cables.length} · ${pct}% · лимит ${limit}%</div>
+      ${rows}
+    </div>`;
+  } else if (isSelected) {
+    cablesHtml = `<div class="sd-tray-popover"><div class="sd-tray-popover-h">В этом канале пока нет кабелей</div></div>`;
+  }
   div.innerHTML = `<span class="sd-plan-tray-label">⬚ L=${(t.len * plan.step).toFixed(1)}м · ${t.widthMm}×${t.depthMm} · <b class="sd-tray-fill-pct">${pct}%</b></span>
     <button type="button" class="sd-plan-tray-rot" title="Повернуть">⟳</button>
     <button type="button" class="sd-plan-tray-rm" title="Удалить">✕</button>
     <div class="sd-plan-tray-resize sd-plan-tray-resize-start" title="Растянуть/сократить (перетащите)"></div>
-    <div class="sd-plan-tray-resize sd-plan-tray-resize-end" title="Растянуть/сократить (перетащите)"></div>`;
+    <div class="sd-plan-tray-resize sd-plan-tray-resize-end" title="Растянуть/сократить (перетащите)"></div>
+    ${cablesHtml}`;
   canvas.appendChild(div);
 
   // drag
-  let dragging = false, sx = 0, sy = 0, sCell = null;
+  let dragging = false, sx = 0, sy = 0, sCell = null, movedPx = 0;
   div.addEventListener('pointerdown', e => {
     if (e.target.tagName === 'BUTTON') return;
+    if (e.target.classList && e.target.classList.contains('sd-plan-tray-resize')) return;
     dragging = true;
+    movedPx = 0;
     div.setPointerCapture(e.pointerId);
     sx = e.clientX; sy = e.clientY;
     sCell = { x: t.x, y: t.y };
@@ -1766,6 +1799,7 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
   div.addEventListener('pointermove', e => {
     if (!dragging) return;
     const z = planZoom || 1;
+    movedPx = Math.max(movedPx, Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy));
     const dx = Math.round((e.clientX - sx) / (PLAN_CELL_PX * z));
     const dy = Math.round((e.clientY - sy) / (PLAN_CELL_PX * z));
     const wCells = (t.orient === 'h' ? t.len : TRAY_W_CELLS);
@@ -1785,6 +1819,12 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
     if (!dragging) return;
     dragging = false;
     div.classList.remove('dragging');
+    // Клик без реального перемещения → выделить/снять выделение + показать кабели
+    if (movedPx < 5) {
+      selectedTrayId = (selectedTrayId === t.id) ? null : t.id;
+      renderPlan();
+      return;
+    }
     const p2 = getPlan();
     const target = (p2.trays || []).find(x => x.id === t.id);
     if (target) { target.x = t.x; target.y = t.y; savePlan(p2); }
