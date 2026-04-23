@@ -117,7 +117,12 @@ export function getCurrentPage() {
 export function isOnCurrentPage(obj) {
   if (!obj) return false;
   const pids = obj.pageIds;
-  if (!Array.isArray(pids) || pids.length === 0) return true;
+  // v0.59.331: разделяем два случая:
+  //  - pageIds === undefined — legacy-узел, в миграции до pages, показываем везде;
+  //  - pageIds === [] — явно «unplaced» (снят soft-delete'ом со всех страниц),
+  //    не показываем на холсте, только в реестре.
+  if (!Array.isArray(pids)) return true;
+  if (pids.length === 0) return false;
   return pids.includes(state.currentPageId);
 }
 // Phase 2.3 (v0.58.3): per-page positions.

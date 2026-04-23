@@ -112,6 +112,22 @@ export function deleteNode(id, opts = {}) {
   const fromPage = opts.fromPage || null;
   if (fromPage && !opts.hard && !opts.silent) {
     const pids = Array.isArray(n0.pageIds) ? n0.pageIds : [];
+    // v0.59.331: блокируем удаление с холста, если к узлу подключены кабели
+    // (линии или patch-link инфо-портов). Пользователь должен сперва снять
+    // связи, потом удалять карточку.
+    let hasConn = false;
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId === id || c.to.nodeId === id) { hasConn = true; break; }
+    }
+    if (!hasConn && state.sysConns) {
+      for (const sc of state.sysConns.values()) {
+        if (sc.fromNodeId === id || sc.toNodeId === id) { hasConn = true; break; }
+      }
+    }
+    if (hasConn) {
+      try { opts.onBlocked && opts.onBlocked('has-cables'); } catch (e) { /* ignore */ }
+      return { blocked: 'has-cables' };
+    }
     if (pids.includes(fromPage)) {
       _snapshot();
       n0.pageIds = pids.filter(p => p !== fromPage);
@@ -119,10 +135,22 @@ export function deleteNode(id, opts = {}) {
       if (state.selectedKind === 'node' && state.selectedId === id) {
         state.selectedKind = null; state.selectedId = null;
       }
-      return;
+      _render();
+      _renderInspector();
+      _notifyChange();
+      return { softDeleted: true };
     }
     // Если страницы нет в списке — ничего не делаем (уже не на этой странице)
     return;
+  }
+  // v0.59.331: хард-удаление (из реестра) блокируется, если узел ещё
+  // размещён хотя бы на одной странице. Сначала снять со всех холстов.
+  if (opts.hard && !opts.silent && !opts.force) {
+    const pids = Array.isArray(n0.pageIds) ? n0.pageIds : [];
+    if (pids.length > 0) {
+      try { opts.onBlocked && opts.onBlocked('on-pages'); } catch (e) { /* ignore */ }
+      return { blocked: 'on-pages', pages: pids.slice() };
+    }
   }
   // v0.59.183: подтверждение удаления вынесено в callers (interaction/inspector),
   // там используется rsConfirm (in-page). Здесь — чистое выполнение.

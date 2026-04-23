@@ -428,11 +428,17 @@ export function initInteraction() {
         const n0 = state.nodes.get(id);
         const label = n0 && (n0.name || n0.tag) || id;
         const pids = n0 && Array.isArray(n0.pageIds) ? n0.pageIds.length : 0;
+        // v0.59.331: блокируем хард-удаление из реестра, если элемент ещё
+        // размещён хотя бы на одной странице. Пользователь должен сперва
+        // снять его со всех холстов.
+        if (pids > 0) {
+          flash(`«${label}» размещён на ${pids} стр. — сначала снимите его со всех холстов, затем удаляйте из реестра`, 'error');
+          return;
+        }
         (async () => {
           const ok = await rsConfirm(
             `Удалить «${label}» из проекта?`,
-            (pids > 0 ? `Элемент размещён на ${pids} стр. — исчезнет отовсюду.\n` : `Элемент хранится в реестре без размещения.\n`)
-            + `Связанные кабельные линии тоже будут удалены. Можно отменить через Ctrl+Z.`,
+            `Элемент хранится в реестре без размещения. Можно отменить через Ctrl+Z.`,
             { okLabel: 'Удалить', cancelLabel: 'Отмена' });
           if (!ok) return;
           deleteNode(id, { hard: true, silent: true });
@@ -1563,16 +1569,27 @@ export function initInteraction() {
       // v0.58.14: удаление с холста — «мягкое», элемент только снимается с
       // текущей страницы и уходит в реестр (unplaced). Хард-удаление —
       // через × в палитре «Реестр».
+      // v0.59.331: блокируем удаление карточки если к ней подключены кабели.
       const fromPage = state.currentPageId || null;
+      let blockedCount = 0; let deletedCount = 0;
+      const delOne = (id) => {
+        const r = deleteNode(id, { fromPage });
+        if (r && r.blocked === 'has-cables') blockedCount++;
+        else if (r && r.softDeleted) deletedCount++;
+        else deletedCount++; // legacy: hard-delete без fromPage тоже считаем удалением
+      };
       if (state.selection.size) {
         snapshot();
-        for (const id of [...state.selection]) deleteNode(id, { fromPage });
-        state.selection.clear();
+        for (const id of [...state.selection]) delOne(id);
+        if (deletedCount) state.selection.clear();
         e.preventDefault();
       } else if (state.selectedKind === 'node' && state.selectedId) {
-        deleteNode(state.selectedId, { fromPage }); e.preventDefault();
+        delOne(state.selectedId); e.preventDefault();
       } else if (state.selectedKind === 'conn' && state.selectedId) {
         deleteConn(state.selectedId); e.preventDefault();
+      }
+      if (blockedCount) {
+        flash(`Сначала снимите кабельные линии с ${blockedCount === 1 ? 'элемента' : blockedCount + ' элементов'} — потом удаляйте карточку с холста`, 'error');
       }
     }
   });
