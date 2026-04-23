@@ -113,6 +113,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.312', date: '2026-04-23', items: [
+      '🎯 <b>Drop на plan: реальные размеры + автоматическое избежание коллизий.</b> Было: drag-n-drop стойки из палитры бросал её в <code>(x, y)</code> с clamp по жёстким <code>RACK_W_CELLS=2 / RACK_H_CELLS=1</code>, и если ячейка уже занята — стойки накладывались. Стало: (a) clamp по реальным <code>wC×hC</code> из <code>rackSizeCells</code>; (b) перед сохранением проверяем коллизию с другими стойками (их прямоугольники с учётом rot); (c) если коллизия — ищем ближайшую свободную позицию спиральным обходом (радиус 1, 2, 3…) и ставим туда. Пользователь видит стойку, «скользнувшую» в свободное место.',
+      'Файлы: scs-design/scs-design.js (drop handler: rackSizeCells(dropped, rot), collides(cx,cy) через wC×hC всех других, спиральный поиск свободной клетки).',
+    ] },
     { version: '0.59.311', date: '2026-04-23', items: [
       '📐 <b>autoLayout и Авто-каналы учитывают реальные размеры стоек.</b> Было: обе функции использовали жёсткие <code>RACK_W_CELLS=2</code> / <code>RACK_H_CELLS=1</code> — 800мм стойка или повёрнутая 1200×600 раскладывались как 2×1, накладываясь на соседей или оставляя пустоту. Стало: (a) autoLayout — для каждой стойки <code>rackSizeCells(r, plan, rot)</code> даёт реальные <code>wC×hC</code> в клетках; высота ряда = max(hC), ширина колонки = wC i-й стойки. rot сохраняется в новой position. (b) autoGenerateTrays — правый край H-канала = <code>max(x + wC)</code> по строке, а не <code>max(x) + 1</code>.',
       'Файлы: scs-design/scs-design.js (autoLayout: rackSizeCells в цикле + rowMaxH + сохранение rot; autoGenerateTrays: учёт wC каждой стойки при расчёте left/right).',

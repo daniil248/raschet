@@ -1526,10 +1526,38 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
     const rect = canvas.getBoundingClientRect();
     // CSS `zoom` увеличивает rect в N раз, компенсируем делением на planZoom.
     const z = planZoom || 1;
-    const x = Math.max(0, Math.min(PLAN_COLS - RACK_W_CELLS, Math.floor((e.clientX - rect.left) / (PLAN_CELL_PX * z))));
-    const y = Math.max(0, Math.min(PLAN_ROWS - RACK_H_CELLS, Math.floor((e.clientY - rect.top) / (PLAN_CELL_PX * z))));
+    // v0.59.312: drop учитывает реальные размеры стойки + проверяет коллизии
     const p2 = getPlan();
-    p2.positions[id] = { x, y };
+    const racksNow = getRacks();
+    const dropped = racksNow.find(r => r.id === id);
+    const rot = rackRot(p2, id);
+    const [wC, hC] = dropped ? rackSizeCells(dropped, p2, rot) : [2, 1];
+    let x = Math.max(0, Math.min(PLAN_COLS - wC, Math.floor((e.clientX - rect.left) / (PLAN_CELL_PX * z))));
+    let y = Math.max(0, Math.min(PLAN_ROWS - hC, Math.floor((e.clientY - rect.top) / (PLAN_CELL_PX * z))));
+    // Проверка на пересечение с другими стойками — если занято, ищем свободную ячейку по спирали.
+    const collides = (cx, cy) => {
+      for (const [otherId, op] of Object.entries(p2.positions || {})) {
+        if (otherId === id) continue;
+        const or = racksNow.find(r => r.id === otherId);
+        if (!or) continue;
+        const orot = ((+op.rot) || 0) % 360;
+        const [owC, ohC] = rackSizeCells(or, p2, orot);
+        if (cx < (op.x | 0) + owC && cx + wC > (op.x | 0) &&
+            cy < (op.y | 0) + ohC && cy + hC > (op.y | 0)) return true;
+      }
+      return false;
+    };
+    if (collides(x, y)) {
+      outer: for (let radius = 1; radius <= Math.max(PLAN_COLS, PLAN_ROWS); radius++) {
+        for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.abs(dy) !== radius && Math.abs(dx) !== radius) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx + wC > PLAN_COLS || ny + hC > PLAN_ROWS) continue;
+          if (!collides(nx, ny)) { x = nx; y = ny; break outer; }
+        }
+      }
+    }
+    p2.positions[id] = { x, y, rot };
     savePlan(p2);
     renderPlan();
   });
