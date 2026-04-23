@@ -248,16 +248,19 @@ const NO_PORT_KINDS = new Set(['cable-manager']);
 
 const CABLE_TYPES = [
   // maxGbps — практический потолок скорости кабеля (NULL = неприменимо).
-  { id: 'cat6',      label: 'Cat.6 U/UTP',     color: '#1976d2', maxGbps: 1 },
-  { id: 'cat6a',     label: 'Cat.6A F/UTP',    color: '#1565c0', maxGbps: 10 },
-  { id: 'cat7',      label: 'Cat.7 S/FTP',     color: '#0d47a1', maxGbps: 10 },
-  { id: 'om3',       label: 'OM3 LC-LC',       color: '#ea580c', maxGbps: 40 },
-  { id: 'om4',       label: 'OM4 LC-LC',       color: '#c2410c', maxGbps: 100 },
-  { id: 'os2',       label: 'OS2 LC-LC',       color: '#facc15', maxGbps: 400 },
-  { id: 'coax',      label: 'Coax / RF',       color: '#7c3aed', maxGbps: null },
-  { id: 'power-c13', label: 'Питание C13/C14', color: '#dc2626', maxGbps: null },
-  { id: 'other',     label: 'Другое',          color: '#64748b', maxGbps: null },
+  // diameterMm — внешний диаметр оболочки кабеля (для расчёта заполнения
+  // кабельного канала). Типовые значения производителей.
+  { id: 'cat6',      label: 'Cat.6 U/UTP',     color: '#1976d2', maxGbps: 1,    diameterMm: 6.2 },
+  { id: 'cat6a',     label: 'Cat.6A F/UTP',    color: '#1565c0', maxGbps: 10,   diameterMm: 7.5 },
+  { id: 'cat7',      label: 'Cat.7 S/FTP',     color: '#0d47a1', maxGbps: 10,   diameterMm: 8.0 },
+  { id: 'om3',       label: 'OM3 LC-LC',       color: '#ea580c', maxGbps: 40,   diameterMm: 3.0 },
+  { id: 'om4',       label: 'OM4 LC-LC',       color: '#c2410c', maxGbps: 100,  diameterMm: 3.0 },
+  { id: 'os2',       label: 'OS2 LC-LC',       color: '#facc15', maxGbps: 400,  diameterMm: 3.0 },
+  { id: 'coax',      label: 'Coax / RF',       color: '#7c3aed', maxGbps: null, diameterMm: 7.0 },
+  { id: 'power-c13', label: 'Питание C13/C14', color: '#dc2626', maxGbps: null, diameterMm: 10.0 },
+  { id: 'other',     label: 'Другое',          color: '#64748b', maxGbps: null, diameterMm: 8.0 },
 ];
+const CABLE_DIAMETER = id => (CABLE_TYPES.find(c => c.id === id)?.diameterMm) || 8.0;
 /* Разбор скорости устройства (portSpeed из каталога) в Гбит/с.
    Принимает: «1G», «10G», «40G», «100G», «400G», «1 Gbps», «100M»→0.1. */
 function parseGbps(s) {
@@ -551,7 +554,7 @@ function renderLinksTab() {
   // contents), и стойка всплывает наверх в «Стойки проекта».
   const projIds = getProjectRackIds();
   const inProject  = racks.filter(r => projIds.has(r.id)).filter(matches);
-  const library    = racks.filter(r => !projIds.has(r.id)).filter(matches);
+  const library    = []; // v0.59.295: библиотека шаблонов убрана из мастера связей
   const real       = inProject.filter(r => (getRackTag(r.id) || '').trim());
   const drafts     = inProject.filter(r => !(getRackTag(r.id) || '').trim());
   const chipHtml = r => {
@@ -754,7 +757,8 @@ function renderRackCard(r) {
   const occupancy = Array.from({ length: u + 1 }, () => null);
   devices.forEach(d => {
     const top = +d.positionU || 1;
-    const h = +d.heightU || 1;
+    const t = catalogType(d.typeId);
+    const h = +d.heightU || (t && +t.heightU) || 1;
     for (let i = 0; i < h; i++) {
       const idx = top - i;
       if (idx >= 1 && idx <= u && !occupancy[idx]) {
@@ -768,7 +772,8 @@ function renderRackCard(r) {
     const cell = occupancy[i];
     if (cell && cell.isTop) {
       const d = cell.dev;
-      const h = +d.heightU || 1;
+      const tc = catalogType(d.typeId);
+      const h = +d.heightU || (tc && +tc.heightU) || 1;
       // занимаемый диапазон: от top (i) до bottom (i - h + 1)
       const bottom = i - h + 1;
       const uRange = h > 1 ? `${i}-${bottom}` : `${i}`;
@@ -1235,6 +1240,11 @@ function getPlan() {
       y: Math.max(0, Math.min(PLAN_ROWS - 1, +t.y || 0)),
       len: Math.max(2, Math.min(Math.max(PLAN_COLS, PLAN_ROWS), +t.len || 6)),
       orient: t.orient === 'v' ? 'v' : 'h',
+      // Размеры поперечного сечения канала (мм). Дефолт — 100×50.
+      widthMm: +t.widthMm > 0 ? +t.widthMm : 100,
+      depthMm: +t.depthMm > 0 ? +t.depthMm : 50,
+      // Макс. допустимое заполнение (%), 40 по умолчанию (IEC/РЭ).
+      fillLimitPct: +t.fillLimitPct > 0 ? +t.fillLimitPct : 40,
     })) : [],
   };
   planZoom = out.zoom;
@@ -1492,45 +1502,70 @@ function nearestOnTray(px, py, t) {
 function buildCableRoute(ax, ay, bx, by, trays) {
   const direct = [[ax, ay], [bx, ay], [bx, by]];
   const directCells = (Math.abs(ax - bx) + Math.abs(ay - by)) / PLAN_CELL_PX;
-  if (!trays || !trays.length) return { pts: direct, cells: directCells, viaTray: false };
+  if (!trays || !trays.length) return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 
-  // Для каждого из концов — ближайшая точка на любом канале
   const nearA = trays.map(t => nearestOnTray(ax, ay, t));
   const nearB = trays.map(t => nearestOnTray(bx, by, t));
   nearA.sort((a, b) => a.d - b.d);
   nearB.sort((a, b) => a.d - b.d);
   const bestA = nearA[0];
   const bestB = nearB[0];
-  if (!bestA || !bestB) return { pts: direct, cells: directCells, viaTray: false };
+  if (!bestA || !bestB) return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 
-  // Отклонение «через канал» не должно быть намного хуже прямой
-  // (иначе канал бесполезен — рисуем прямую).
-  // Если оба конца тянутся к одному каналу:
   if (bestA.tray === bestB.tray) {
     const pts = [[ax, ay]];
-    // стык на канал (L-углом)
     pts.push([bestA.qx, ay]);
     pts.push([bestA.qx, bestA.qy]);
-    // по каналу до точки выхода
     if (bestA.qx !== bestB.qx || bestA.qy !== bestB.qy) pts.push([bestB.qx, bestB.qy]);
-    // в B (L)
     pts.push([bestB.qx, by]);
     pts.push([bx, by]);
     const cells = routeCells(pts);
-    if (cells < directCells * 1.6) return { pts, cells, viaTray: true };
-    return { pts: direct, cells: directCells, viaTray: false };
+    if (cells < directCells * 1.6) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id] };
+    return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
   }
-  // Два разных канала — переход от канала1 к каналу2 прямой L-линией
   const pts = [[ax, ay], [bestA.qx, ay], [bestA.qx, bestA.qy]];
-  // пересекаем в точку, ближайшую от bestA.qx/qy до второго канала
   const hop = nearestOnTray(bestA.qx, bestA.qy, bestB.tray);
   pts.push([hop.qx, hop.qy]);
   pts.push([bestB.qx, bestB.qy]);
   pts.push([bestB.qx, by]);
   pts.push([bx, by]);
   const cells = routeCells(pts);
-  if (cells < directCells * 2.0) return { pts, cells, viaTray: true };
-  return { pts: direct, cells: directCells, viaTray: false };
+  if (cells < directCells * 2.0) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id, bestB.tray.id] };
+  return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
+}
+
+// Вычисляет заполнение каждого канала: сумма площадей сечений проходящих
+// через него кабелей / полезная площадь канала.
+// Возвращает Map<trayId, { areaMm2, pct, cables: [{ linkId, type, diameterMm }] }>
+function computeTrayFills(plan) {
+  const fills = new Map();
+  (plan.trays || []).forEach(t => {
+    const crossMm2 = (t.widthMm || 100) * (t.depthMm || 50);
+    fills.set(t.id, { tray: t, crossMm2, usedMm2: 0, pct: 0, cables: [] });
+  });
+  const links = getVisibleLinks();
+  const trays = plan.trays || [];
+  links.forEach(l => {
+    const a = plan.positions[l.fromRackId];
+    const b = plan.positions[l.toRackId];
+    if (!a || !b) return;
+    const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+    const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
+    const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    const route = buildCableRoute(ax, ay, bx, by, trays);
+    if (!route.viaTray) return;
+    const d = CABLE_DIAMETER(l.cableType);
+    const area = Math.PI * (d / 2) * (d / 2);
+    route.trayIds.forEach(tid => {
+      const f = fills.get(tid);
+      if (!f) return;
+      f.usedMm2 += area;
+      f.cables.push({ linkId: l.id, type: l.cableType, diameterMm: d });
+    });
+  });
+  fills.forEach(f => { f.pct = f.crossMm2 > 0 ? (f.usedMm2 / f.crossMm2) * 100 : 0; });
+  return fills;
 }
 
 function routeCells(pts) {
@@ -1588,7 +1623,7 @@ function computeSuggestedLength(link, plan) {
 }
 
 // Рендер кабельного канала (tray) на плане
-function renderTray(canvas, svg, t, plan) {
+function renderTray(canvas, svg, t, plan, fillInfo) {
   const div = document.createElement('div');
   div.className = 'sd-plan-tray' + (t.orient === 'v' ? ' v' : ' h');
   div.dataset.id = t.id;
@@ -1598,12 +1633,22 @@ function renderTray(canvas, svg, t, plan) {
   div.style.top = (t.y * PLAN_CELL_PX) + 'px';
   div.style.width = w + 'px';
   div.style.height = h + 'px';
-  div.title = `Кабельный канал · ${t.orient === 'h' ? '↔' : '↕'} · ${t.len} клеток ≈ ${(t.len * plan.step).toFixed(1)} м`;
-  div.innerHTML = `<span class="sd-plan-tray-label">⬚ ${t.len}кл</span>
+  const pct = fillInfo ? Math.round(fillInfo.pct) : 0;
+  const limit = t.fillLimitPct || 40;
+  let fillClass = '';
+  if (pct >= 100) fillClass = ' over';
+  else if (pct >= limit) fillClass = ' hi';
+  else if (pct >= limit * 0.7) fillClass = ' mid';
+  else if (pct > 0) fillClass = ' low';
+  div.className += fillClass;
+  div.title = `Кабельный канал · ${t.orient === 'h' ? '↔' : '↕'} · ${t.len} кл ≈ ${(t.len * plan.step).toFixed(1)} м · ${t.widthMm}×${t.depthMm} мм\n` +
+    `Заполнение: ${pct}% (${(fillInfo?.usedMm2 || 0).toFixed(0)} / ${(fillInfo?.crossMm2 || 0).toFixed(0)} мм², лимит ${limit}%)\n` +
+    `Кабелей: ${fillInfo?.cables.length || 0}`;
+  div.innerHTML = `<span class="sd-plan-tray-label">⬚ ${t.len}кл · ${t.widthMm}×${t.depthMm} · <b class="sd-tray-fill-pct">${pct}%</b></span>
     <button type="button" class="sd-plan-tray-rot" title="Повернуть">⟳</button>
-    <button type="button" class="sd-plan-tray-lm" title="Короче">−</button>
-    <button type="button" class="sd-plan-tray-lp" title="Длиннее">+</button>
-    <button type="button" class="sd-plan-tray-rm" title="Удалить">✕</button>`;
+    <button type="button" class="sd-plan-tray-rm" title="Удалить">✕</button>
+    <div class="sd-plan-tray-resize sd-plan-tray-resize-start" title="Растянуть/сократить (перетащите)"></div>
+    <div class="sd-plan-tray-resize sd-plan-tray-resize-end" title="Растянуть/сократить (перетащите)"></div>`;
   canvas.appendChild(div);
 
   // drag
@@ -1652,23 +1697,60 @@ function renderTray(canvas, svg, t, plan) {
     const target = (p2.trays || []).find(x => x.id === t.id);
     if (!target) return;
     target.orient = target.orient === 'h' ? 'v' : 'h';
-    // удерживаем в границах
     const w = target.orient === 'h' ? target.len : TRAY_W_CELLS;
     const h = target.orient === 'v' ? target.len : TRAY_W_CELLS;
     target.x = Math.max(0, Math.min(PLAN_COLS - w, target.x));
     target.y = Math.max(0, Math.min(PLAN_ROWS - h, target.y));
     savePlan(p2); renderPlan();
   });
-  const changeLen = (delta) => {
-    const p2 = getPlan();
-    const target = (p2.trays || []).find(x => x.id === t.id);
-    if (!target) return;
-    const max = target.orient === 'h' ? PLAN_COLS - target.x : PLAN_ROWS - target.y;
-    target.len = Math.max(2, Math.min(max, target.len + delta));
-    savePlan(p2); renderPlan();
+
+  // Ручное растягивание за края канала
+  const wireResize = (handle, isEnd) => {
+    if (!handle) return;
+    let drag = null;
+    handle.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      drag = { sx: e.clientX, sy: e.clientY, sLen: t.len, sX: t.x, sY: t.y };
+    });
+    handle.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const z = planZoom || 1;
+      const dx = Math.round((e.clientX - drag.sx) / (PLAN_CELL_PX * z));
+      const dy = Math.round((e.clientY - drag.sy) / (PLAN_CELL_PX * z));
+      const along = (t.orient === 'h') ? dx : dy;
+      if (isEnd) {
+        // тянем конец → меняется только len
+        const maxLen = (t.orient === 'h') ? (PLAN_COLS - drag.sX) : (PLAN_ROWS - drag.sY);
+        t.len = Math.max(2, Math.min(maxLen, drag.sLen + along));
+      } else {
+        // тянем начало → сдвигаем x/y и уменьшаем/увеличиваем len
+        const newLen = Math.max(2, drag.sLen - along);
+        const delta = drag.sLen - newLen;
+        if (t.orient === 'h') t.x = Math.max(0, drag.sX + delta);
+        else t.y = Math.max(0, drag.sY + delta);
+        t.len = newLen;
+      }
+      const wPx = (t.orient === 'h' ? t.len : TRAY_W_CELLS) * PLAN_CELL_PX;
+      const hPx = (t.orient === 'v' ? t.len : TRAY_W_CELLS) * PLAN_CELL_PX;
+      div.style.left = (t.x * PLAN_CELL_PX) + 'px';
+      div.style.top = (t.y * PLAN_CELL_PX) + 'px';
+      div.style.width = wPx + 'px';
+      div.style.height = hPx + 'px';
+      drawPlanLinks(svg, plan);
+    });
+    handle.addEventListener('pointerup', e => {
+      if (!drag) return;
+      drag = null;
+      handle.releasePointerCapture(e.pointerId);
+      const p2 = getPlan();
+      const target = (p2.trays || []).find(x => x.id === t.id);
+      if (target) { target.x = t.x; target.y = t.y; target.len = t.len; savePlan(p2); }
+      renderPlan();
+    });
   };
-  div.querySelector('.sd-plan-tray-lp').addEventListener('click', e => { e.stopPropagation(); changeLen(+1); });
-  div.querySelector('.sd-plan-tray-lm').addEventListener('click', e => { e.stopPropagation(); changeLen(-1); });
+  wireResize(div.querySelector('.sd-plan-tray-resize-start'), false);
+  wireResize(div.querySelector('.sd-plan-tray-resize-end'), true);
 }
 
 function addTray(orient) {
@@ -2051,11 +2133,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-svg')?.addEventListener('click', exportPlanSvg);
   document.getElementById('sd-plan-add-tray-h')?.addEventListener('click', () => addTray('h'));
   document.getElementById('sd-plan-add-tray-v')?.addEventListener('click', () => addTray('v'));
-  // v0.59.287: zoom + pan для плана зала
-  document.getElementById('sd-plan-zoom-in')?.addEventListener('click', () => setPlanZoom(planZoom * 1.25));
-  document.getElementById('sd-plan-zoom-out')?.addEventListener('click', () => setPlanZoom(planZoom / 1.25));
-  document.getElementById('sd-plan-zoom-1')?.addEventListener('click', () => setPlanZoom(1));
-  document.getElementById('sd-plan-zoom-fit')?.addEventListener('click', fitPlanZoom);
+  // v0.59.295: zoom/pan только мышью (кнопки убраны). Двойной клик = 1:1.
   const planWrap = document.querySelector('.sd-plan-wrap');
   if (planWrap) {
     // Ctrl+wheel zoom
@@ -2086,6 +2164,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!panStart) return;
       panStart = null;
       planWrap.style.cursor = '';
+    });
+    // Dblclick на пустом месте канваса — reset зума на 1:1
+    planWrap.addEventListener('dblclick', e => {
+      const onItem = e.target.closest('.sd-plan-rack, .sd-plan-tray, .sd-plan-chip, button, input');
+      if (onItem) return;
+      setPlanZoom(1);
     });
   }
   document.getElementById('sd-export-json')?.addEventListener('click', exportProjectJson);
