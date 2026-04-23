@@ -1582,6 +1582,69 @@ function recalc() {
         const _curveForSizing = c.breakerCurve || _consCurveHint || autoBreakerCurve(_consInrush, 0);
 
         let sizingCurrent = maxCurrent;
+
+        // Daisy-chain panels: один автомат защищает всю цепочку, поэтому
+        // КАЖДЫЙ кабель внутри цепочки (включая вход на головной щит)
+        // подбирается по суммарной нагрузке всей цепочки.
+        //
+        // Правила участия кабеля в цепочке:
+        //   - toN — panel с chainedFromId (т. е. подключён шлейфом)
+        //   - или fromN — panel, и существует panel с chainedFromId === fromN.id
+        //     (т. е. fromN уже кормит шлейф дальше)
+        try {
+          const chainPanels = [];
+          const addChain = (root) => {
+            if (!root || chainPanels.includes(root)) return;
+            chainPanels.push(root);
+            for (const p of state.nodes.values()) {
+              if (p.type === 'panel' && p.chainedFromId === root.id) addChain(p);
+            }
+          };
+          let chainRoot = null;
+          if (toN.type === 'panel' && toN.chainedFromId) {
+            // найдём корень (цепочка вверх)
+            let cur = toN;
+            const seen = new Set();
+            while (cur && cur.chainedFromId && !seen.has(cur.id)) {
+              seen.add(cur.id);
+              const parent = state.nodes.get(cur.chainedFromId);
+              if (!parent || parent.type !== 'panel') break;
+              cur = parent;
+            }
+            chainRoot = cur;
+          } else if (fromN && fromN.type === 'panel') {
+            // есть ли хоть один potomok с chainedFromId === fromN.id?
+            let hasChild = false;
+            for (const p of state.nodes.values()) {
+              if (p.type === 'panel' && p.chainedFromId === fromN.id) { hasChild = true; break; }
+            }
+            if (hasChild) {
+              // головой цепочки fromN может и сам быть chained — найдём корень
+              let cur = fromN;
+              const seen = new Set();
+              while (cur && cur.chainedFromId && !seen.has(cur.id)) {
+                seen.add(cur.id);
+                const parent = state.nodes.get(cur.chainedFromId);
+                if (!parent || parent.type !== 'panel') break;
+                cur = parent;
+              }
+              chainRoot = cur;
+            }
+          }
+          if (chainRoot) {
+            addChain(chainRoot);
+            // макс. нагрузка корня = уже включает потомков (simpleDownstream)
+            const chainKw = simpleDownstream(chainRoot.id);
+            const chainA = computeCurrentA(chainKw, U, 0.92, threePhase, _isDC);
+            if (chainA > sizingCurrent) {
+              sizingCurrent = chainA;
+              c._daisyChain = true;
+              c._daisyChainRootId = chainRoot.id;
+              c._daisyChainSize = chainPanels.length;
+            }
+          }
+        } catch (e) { /* ignore */ }
+
         // v0.59.97: для individual-группы каждый кабель из N параллельных несёт
         // ток СВОЕГО прибора (а не среднее Itotal/N). Узкое место — максимальный
         // из членов; единое сечение кабеля должно покрывать его. Раньше Iper

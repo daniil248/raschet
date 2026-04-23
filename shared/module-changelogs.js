@@ -1163,6 +1163,10 @@ export const CHANGELOGS = {
   ],
 
   'elements': [
+    { version: '0.59.292', date: '2026-04-23', items: [
+      '⛓ Daisy-chain НКУ — шлейфовое подключение по входу. В инспекторе щита появилось поле «Питание по входу» с dropdown: «отдельная линия» (по умолчанию) или «от щита X» (из списка НКУ того же напряжения, исключая циклы). При выборе шлейфа текущий щит помечается <code>n.chainedFromId</code>. Recalc: для любого кабеля, у которого приёмник или источник — панель, участвующая в цепочке, sizingCurrent берётся по суммарной нагрузке всей цепочки (simpleDownstream корня). Это гарантирует: один автомат вышестоящего шкафа защищает ВСЕ кабели цепочки; кабели в шлейфе подбираются по наибольшей общей нагрузке. Отмечается флагом <code>c._daisyChain</code>.',
+      'Файлы: js/engine/constants.js (+chainedFromId в DEFAULTS.panel), js/engine/inspector.js (+select [data-panel-chain] с анти-цикл фильтром + handler), js/engine/recalc.js (+блок daisy-chain перед selectCable: walk до корня + simpleDownstream + computeCurrentA).',
+    ] },
     { version: '0.59.291', date: '2026-04-23', items: [
       '🔧 Junction Box — инспектор. В правой панели для узла junction-box появился редактор: число каналов (1-32, входы=выходы), IP, ток ошиновки, таблица каналов с чекбоксом «защита» + тип (автомат/предохранитель) + ток защиты, редактор перемычек между входами (до защиты). Меняешь N — массив channels[] и bridges[] авто-подрезается/растёт с сохранением существующих значений. Recalc: junction-box теперь walkable как passthrough в downstreamLoadKw / scenarioWalk / sectionCables (аналогично panel/channel). Подбор сечения с учётом защиты канала — в следующем шаге (3b/3c).',
       'Файлы: js/engine/inspector.js (+блок UI для n.type === \'junction-box\' + wire-handlers с ensureChannels, data-jb-* селекторы), js/engine/recalc.js (3 места: +\'junction-box\' в panel|channel-traversal).',

@@ -713,6 +713,36 @@ export function renderInspectorNode(n) {
 
     // Ксим перенесён в параметры щита
 
+    // Daisy-chain: шлейф по входу от другого НКУ
+    if (!isSection && !isSectionedContainer && !n.isMv) {
+      const sameVoltPanels = [];
+      for (const nd of state.nodes.values()) {
+        if (nd.id === n.id) continue;
+        if (nd.type !== 'panel') continue;
+        if (!!nd.isMv !== !!n.isMv) continue;
+        // избегаем циклов
+        let cur = nd;
+        let cyc = false;
+        const seen = new Set();
+        while (cur && cur.chainedFromId) {
+          if (seen.has(cur.id)) { cyc = true; break; }
+          seen.add(cur.id);
+          if (cur.chainedFromId === n.id) { cyc = true; break; }
+          cur = state.nodes.get(cur.chainedFromId);
+        }
+        if (!cyc) sameVoltPanels.push(nd);
+      }
+      let opts = '<option value="">— отдельная линия —</option>';
+      for (const p of sameVoltPanels) {
+        const sel = n.chainedFromId === p.id ? ' selected' : '';
+        opts += `<option value="${p.id}"${sel}>${(p.tag || p.name || p.id).replace(/"/g, '&quot;')}</option>`;
+      }
+      h.push(field('Питание по входу', `<select data-panel-chain>${opts}</select>`));
+      if (n.chainedFromId) {
+        h.push(`<div class="muted" style="font-size:10px;line-height:1.4;margin-top:-4px">⛓ Шлейф: кабели цепочки защищены одним автоматом вышестоящего щита и подбираются по макс. суммарной нагрузке.</div>`);
+      }
+    }
+
     h.push(`<button type="button" class="full-btn" id="btn-balance-panel" style="margin-top:8px">⚖ Балансировка фаз на щите</button>`);
     h.push(panelStatusBlock(n));
   } else if (n.type === 'junction-box') {
@@ -2367,6 +2397,16 @@ export function wireInspectorInputs(n, root) {
       const exists = n.bridges.some(p => (p[0] === ia && p[1] === ib) || (p[0] === ib && p[1] === ia));
       if (!exists) n.bridges.push([ia, ib]);
       renderInspector(); notifyChange();
+    });
+  }
+
+  // Daisy-chain dropdown на панели
+  const chainSel = host.querySelector('[data-panel-chain]');
+  if (chainSel && n.type === 'panel') {
+    chainSel.addEventListener('change', () => {
+      snapshot('panel:chain:' + n.id);
+      n.chainedFromId = chainSel.value || null;
+      _render(); renderInspector(); notifyChange();
     });
   }
 
