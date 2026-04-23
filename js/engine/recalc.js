@@ -37,8 +37,8 @@ function simpleDownstream(nodeId) {
       } else if (to.type === 'generator' && to.auxInput && c.to.port === 0) {
         // auxInput ДГУ — только собственные нужды
         total += Number(to.auxDemandKw) || 0;
-      } else if (to.type === 'panel' || to.type === 'channel') {
-        // БЕЗ share — считаем полную нагрузку
+      } else if (to.type === 'panel' || to.type === 'channel' || to.type === 'junction-box') {
+        // БЕЗ share — считаем полную нагрузку. Junction-box — passthrough.
         total += walk(to.id);
       }
     }
@@ -272,7 +272,7 @@ function downstreamPQ(nodeId) {
         const tan = Math.sqrt(1 - cos * cos) / cos;
         P += p;
         Q += p * tan;
-      } else if (to.type === 'panel' || to.type === 'channel') {
+      } else if (to.type === 'panel' || to.type === 'channel' || to.type === 'junction-box') {
         stack.push(to.id);
       } else if (to.type === 'generator' && to.auxInput && c.to.port === 0) {
         // auxInput ДГУ — учитываем только собственные нужды как consumer
@@ -2400,7 +2400,7 @@ function recalc() {
                 totalCharge += upsChargeKw(to);
                 sumEff += eff; uCnt++;
                 scenarioWalk(to.id, new Set(path), true);
-              } else if (to.type === 'panel' || to.type === 'channel') {
+              } else if (to.type === 'panel' || to.type === 'channel' || to.type === 'junction-box') {
                 scenarioWalk(to.id, new Set(path), throughUps);
               }
             }

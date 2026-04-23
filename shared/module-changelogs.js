@@ -1163,6 +1163,10 @@ export const CHANGELOGS = {
   ],
 
   'elements': [
+    { version: '0.59.291', date: '2026-04-23', items: [
+      '🔧 Junction Box — инспектор. В правой панели для узла junction-box появился редактор: число каналов (1-32, входы=выходы), IP, ток ошиновки, таблица каналов с чекбоксом «защита» + тип (автомат/предохранитель) + ток защиты, редактор перемычек между входами (до защиты). Меняешь N — массив channels[] и bridges[] авто-подрезается/растёт с сохранением существующих значений. Recalc: junction-box теперь walkable как passthrough в downstreamLoadKw / scenarioWalk / sectionCables (аналогично panel/channel). Подбор сечения с учётом защиты канала — в следующем шаге (3b/3c).',
+      'Файлы: js/engine/inspector.js (+блок UI для n.type === \'junction-box\' + wire-handlers с ensureChannels, data-jb-* селекторы), js/engine/recalc.js (3 места: +\'junction-box\' в panel|channel-traversal).',
+    ] },
     { version: '0.59.290', date: '2026-04-23', items: [
       '🔧 Junction Box — шаг 2/3: узел ставится из палитры. Добавлен DEFAULTS[\'junction-box\'] (inputs=outputs=2, channels[] с per-channel защитой, bridges[] — перемычки входов ДО защиты, ipRating=\'IP54\', capacityA=63). Палитра: новая секция «Клеммная коробка (Junction Box)» зелёного цвета. TAG_PREFIX.junction-box=\'JB\'. TYPE_CATEGORY: «Клеммные коробки». В рендере: иконка 🟩, цвет fill=#f1f8e9 / stroke=#4f7a2c. Логика подбора кабеля с учётом защиты канала — в шаге 3/3.',
       'Файлы: js/engine/constants.js (+DEFAULTS[\'junction-box\'], +TAG_PREFIX), index.html (+pal-type секция), js/engine/inspector.js (+TYPE_CATEGORY), js/engine/render.js (+icon +color).',

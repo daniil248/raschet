@@ -715,6 +715,59 @@ export function renderInspectorNode(n) {
 
     h.push(`<button type="button" class="full-btn" id="btn-balance-panel" style="margin-top:8px">⚖ Балансировка фаз на щите</button>`);
     h.push(panelStatusBlock(n));
+  } else if (n.type === 'junction-box') {
+    const ch = Array.isArray(n.channels) ? n.channels : [];
+    const N = Math.max(1, Number(n.inputs) || ch.length || 2);
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:6px">` +
+      `Клеммная коробка N-вход → N-выход. Каждый вход идёт напрямую на свой выход. ` +
+      `Перемычки между входами возможны ТОЛЬКО до защитного аппарата.</div>`);
+    h.push(field('Каналов (вх=вых)', `<input type="number" min="1" max="32" step="1" data-jb-n value="${N}">`));
+    h.push(field('IP', `<input type="text" data-jb-ip value="${(n.ipRating || 'IP54').replace(/"/g,'&quot;')}">`));
+    h.push(field('Ток ошиновки, A', `<input type="number" min="1" step="1" data-jb-cap value="${Number(n.capacityA) || 63}">`));
+    // Список каналов: защита да/нет, протип, ток
+    let tbl = '<div class="inspector-section"><h4>Каналы (вход i → выход i)</h4>';
+    tbl += '<table style="width:100%;font-size:11px;border-collapse:collapse">';
+    tbl += '<thead><tr><th>#</th><th>Защита</th><th>Тип</th><th>In, A</th></tr></thead><tbody>';
+    for (let i = 0; i < N; i++) {
+      const c = ch[i] || { hasProtection: false, protKind: 'breaker', breakerA: 0, fuseA: 0 };
+      const iA = c.protKind === 'fuse' ? (c.fuseA || 0) : (c.breakerA || 0);
+      tbl += `<tr data-jb-row="${i}">` +
+        `<td style="text-align:center">${i + 1}</td>` +
+        `<td style="text-align:center"><input type="checkbox" data-jb-has="${i}"${c.hasProtection ? ' checked' : ''}></td>` +
+        `<td><select data-jb-kind="${i}" ${c.hasProtection ? '' : 'disabled'} style="width:100%"><option value="breaker"${c.protKind !== 'fuse' ? ' selected' : ''}>Автомат</option><option value="fuse"${c.protKind === 'fuse' ? ' selected' : ''}>Предохранитель</option></select></td>` +
+        `<td><input type="number" min="0" step="1" data-jb-in="${i}" ${c.hasProtection ? '' : 'disabled'} value="${iA}" style="width:60px"></td>` +
+        `</tr>`;
+    }
+    tbl += '</tbody></table>';
+    // Bridges editor (перемычки между входами — только среди каналов без защиты для сторон)
+    const br = Array.isArray(n.bridges) ? n.bridges : [];
+    tbl += '<div style="margin-top:8px"><b>Перемычки между входами (до защиты):</b></div>';
+    if (!br.length) {
+      tbl += '<div class="muted" style="font-size:11px;margin:2px 0 4px">Нет</div>';
+    } else {
+      tbl += '<div style="display:flex;flex-direction:column;gap:2px;margin:2px 0 4px">';
+      br.forEach((p, k) => {
+        tbl += `<div style="display:flex;gap:4px;align-items:center;font-size:11px">` +
+          `<span>${(p[0] | 0) + 1} ⇌ ${(p[1] | 0) + 1}</span>` +
+          `<button type="button" data-jb-br-del="${k}" style="padding:1px 6px;font-size:10px;cursor:pointer">✕</button>` +
+          `</div>`;
+      });
+      tbl += '</div>';
+    }
+    tbl += `<div style="display:flex;gap:4px;align-items:center">` +
+      `<input type="number" min="1" max="${N}" step="1" data-jb-br-a placeholder="A" style="width:50px">` +
+      `<span>⇌</span>` +
+      `<input type="number" min="1" max="${N}" step="1" data-jb-br-b placeholder="B" style="width:50px">` +
+      `<button type="button" id="btn-jb-br-add" style="padding:2px 8px;font-size:11px;cursor:pointer">＋ добавить</button>` +
+      `</div>`;
+    tbl += '</div>';
+    h.push(tbl);
+    h.push(`<div class="muted" style="font-size:10px;line-height:1.5;margin-top:4px">` +
+      `Если у канала <b>есть защита</b> — отходящий кабель подбирается по ней. ` +
+      `Если защиты нет — по защите вышестоящего шкафа (вход i). ` +
+      `Перемычки объединяют входы в общую шину ДО защиты (на их каналах кабель = max нагрузки).` +
+      `</div>`);
+    h.push(statusBlock(n));
   } else if (n.type === 'ups') {
     h.push(`<button class="full-btn" id="btn-open-ups-control" style="margin-bottom:4px">🔌 Управление ИБП</button>`);
     h.push(`<button class="full-btn" id="btn-open-ups-battery" style="margin-bottom:4px">🔋 АКБ</button>`);
@@ -2235,6 +2288,88 @@ export function wireInspectorInputs(n, root) {
   });
 
   // Фазные кнопки для потребителя
+  // === Junction Box ===
+  if (n.type === 'junction-box') {
+    const ensureChannels = (N) => {
+      const cur = Array.isArray(n.channels) ? n.channels : [];
+      const out = [];
+      for (let i = 0; i < N; i++) {
+        out.push(cur[i] ? { ...cur[i] } : { hasProtection: false, protKind: 'breaker', breakerA: 0, fuseA: 0 });
+      }
+      n.channels = out;
+      // bridges с индексами ≥ N удаляем
+      if (Array.isArray(n.bridges)) {
+        n.bridges = n.bridges.filter(p => (p[0] | 0) < N && (p[1] | 0) < N && (p[0] | 0) !== (p[1] | 0));
+      } else n.bridges = [];
+    };
+    const nInp = host.querySelector('[data-jb-n]');
+    if (nInp) nInp.addEventListener('change', () => {
+      snapshot('jb:N:' + n.id);
+      const N = Math.max(1, Math.min(32, parseInt(nInp.value, 10) || 2));
+      n.inputs = N; n.outputs = N;
+      ensureChannels(N);
+      _render(); renderInspector(); notifyChange();
+    });
+    const ipInp = host.querySelector('[data-jb-ip]');
+    if (ipInp) ipInp.addEventListener('change', () => {
+      snapshot('jb:ip:' + n.id); n.ipRating = String(ipInp.value || 'IP54'); notifyChange();
+    });
+    const capInp = host.querySelector('[data-jb-cap]');
+    if (capInp) capInp.addEventListener('change', () => {
+      snapshot('jb:cap:' + n.id); n.capacityA = Math.max(1, parseInt(capInp.value, 10) || 63); notifyChange();
+    });
+    host.querySelectorAll('[data-jb-has]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const i = parseInt(cb.dataset.jbHas, 10);
+        snapshot('jb:has:' + n.id + ':' + i);
+        ensureChannels(n.inputs || n.channels.length || 2);
+        n.channels[i].hasProtection = !!cb.checked;
+        _render(); renderInspector(); notifyChange();
+      });
+    });
+    host.querySelectorAll('[data-jb-kind]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const i = parseInt(sel.dataset.jbKind, 10);
+        snapshot('jb:kind:' + n.id + ':' + i);
+        ensureChannels(n.inputs || n.channels.length || 2);
+        n.channels[i].protKind = sel.value === 'fuse' ? 'fuse' : 'breaker';
+        renderInspector(); notifyChange();
+      });
+    });
+    host.querySelectorAll('[data-jb-in]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const i = parseInt(inp.dataset.jbIn, 10);
+        snapshot('jb:in:' + n.id + ':' + i);
+        ensureChannels(n.inputs || n.channels.length || 2);
+        const v = Math.max(0, parseFloat(inp.value) || 0);
+        if (n.channels[i].protKind === 'fuse') n.channels[i].fuseA = v;
+        else n.channels[i].breakerA = v;
+        notifyChange();
+      });
+    });
+    host.querySelectorAll('[data-jb-br-del]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const k = parseInt(btn.dataset.jbBrDel, 10);
+        snapshot('jb:br-del:' + n.id + ':' + k);
+        if (Array.isArray(n.bridges)) n.bridges.splice(k, 1);
+        renderInspector(); notifyChange();
+      });
+    });
+    const addBtn = document.getElementById('btn-jb-br-add');
+    if (addBtn) addBtn.addEventListener('click', () => {
+      const a = parseInt(host.querySelector('[data-jb-br-a]')?.value, 10);
+      const b = parseInt(host.querySelector('[data-jb-br-b]')?.value, 10);
+      const N = n.inputs || (Array.isArray(n.channels) ? n.channels.length : 0) || 2;
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a < 1 || b < 1 || a > N || b > N || a === b) return;
+      snapshot('jb:br-add:' + n.id);
+      if (!Array.isArray(n.bridges)) n.bridges = [];
+      const ia = a - 1, ib = b - 1;
+      const exists = n.bridges.some(p => (p[0] === ia && p[1] === ib) || (p[0] === ib && p[1] === ia));
+      if (!exists) n.bridges.push([ia, ib]);
+      renderInspector(); notifyChange();
+    });
+  }
+
   host.querySelectorAll('[data-phase-btn]').forEach(btn => {
     btn.addEventListener('click', () => {
       snapshot('phase:' + n.id);
