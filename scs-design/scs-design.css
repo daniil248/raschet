@@ -289,6 +289,22 @@
   background-color: #fafafa;
 }
 .sd-plan-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; }
+/* v0.59.315: scale-bar в правом-нижнем углу plan-view */
+.sd-plan-scale {
+  position: sticky; bottom: 8px; left: auto; margin-left: auto; margin-right: 8px;
+  width: fit-content; z-index: 20;
+  background: rgba(255,255,255,0.92); padding: 4px 8px;
+  border: 1px solid #cbd5e1; border-radius: 4px;
+  font-size: 10px; color: #334155;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+  pointer-events: none;
+}
+.sd-plan-scale-bar {
+  height: 4px; background: #1f2937; margin-bottom: 2px;
+  border-left: 1px solid #1f2937; border-right: 1px solid #1f2937;
+  box-shadow: inset 0 0 0 1px #1f2937;
+}
+.sd-plan-scale-label { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sd-plan-rack {
   position: absolute; z-index: 2;
   background: #1976d2; color: #fff; border-radius: 3px;

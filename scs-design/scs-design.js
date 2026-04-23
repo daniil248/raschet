@@ -1367,6 +1367,7 @@ function setPlanZoom(z, anchor) {
   plan.zoom = clamp;
   savePlan(plan);
   applyPlanZoomStyle();
+  renderPlanScaleBar(plan); // v0.59.315: синхронизация scale-bar при изменении zoom
   if (wrap && anchor && prev > 0) {
     const k = clamp / prev;
     wrap.scrollLeft = anchorX * k - (anchor.clientX - wrap.getBoundingClientRect().left);
@@ -1610,6 +1611,29 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
   drawPlanLinks(svg, plan);
   updatePlanInfo();
   applyPlanZoomStyle();
+  renderPlanScaleBar(plan);
+}
+
+// v0.59.315: Scale bar — небольшой индикатор масштаба в правом-нижнем углу
+// plan-wrap: чёрная полоса 1 м (или 5 м, если шаг крупный) с подписью.
+// Берётся физическая длина по plan.step и зуму.
+function renderPlanScaleBar(plan) {
+  const el = document.getElementById('sd-plan-scale');
+  if (!el) return;
+  const step = plan.step || 0.6; // м/клетка
+  const zoom = planZoom || 1;
+  const pxPerM = (PLAN_CELL_PX / step) * zoom;
+  // Подберём «красивую» длину шкалы: 1 м, 2 м, 5 м, 10 м, 20 м…
+  const targetPx = 110;
+  const candidates = [1, 2, 5, 10, 20, 50, 100];
+  let chosen = candidates[0];
+  for (const c of candidates) {
+    if (c * pxPerM <= targetPx * 1.3) chosen = c;
+    else break;
+  }
+  const widthPx = chosen * pxPerM;
+  el.innerHTML = `<div class="sd-plan-scale-bar" style="width:${widthPx.toFixed(0)}px"></div>
+    <div class="sd-plan-scale-label">${chosen} м · шаг ${step} м · zoom ${(zoom * 100).toFixed(0)}%</div>`;
 }
 
 let focusRackId = null;
