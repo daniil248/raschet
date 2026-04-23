@@ -1895,7 +1895,9 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
     const crossSvg = renderTrayCrossSection(t, fillInfo);
     cablesHtml = `<div class="sd-tray-popover">
       ${propsHtml}
-      <div class="sd-tray-popover-h">Кабелей: ${fillInfo.cables.length} · ${pct}% · лимит ${limit}%</div>
+      <div class="sd-tray-popover-h">Кабелей: ${fillInfo.cables.length} · ${pct}% · лимит ${limit}%
+        ${pct > limit ? `<button type="button" class="sd-tray-fit" title="Увеличить сечение канала до ${limit}% лимита">↗ Подогнать</button>` : ''}
+      </div>
       ${crossSvg}
       ${rows}
     </div>`;
@@ -2032,6 +2034,28 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
   if (pop) {
     pop.addEventListener('pointerdown', e => e.stopPropagation());
     pop.addEventListener('click', e => e.stopPropagation());
+    // v0.59.307: кнопка «↗ Подогнать» — увеличивает widthMm (при необходимости
+    // и depthMm) до тех пор, пока pct ≤ fillLimitPct, округляя до 10 мм вверх.
+    const fitBtn = pop.querySelector('.sd-tray-fit');
+    if (fitBtn) {
+      fitBtn.addEventListener('click', () => {
+        const p2 = getPlan();
+        const target = (p2.trays || []).find(x => x.id === t.id);
+        if (!target) return;
+        const usedMm2 = (fillInfo?.usedMm2) || 0;
+        const limit = (target.fillLimitPct || 40) / 100;
+        if (limit <= 0 || usedMm2 <= 0) return;
+        const neededCross = usedMm2 / limit;
+        // сохраняем соотношение сторон, округляем ширину вверх до 50 мм
+        const ratio = (target.widthMm || 100) / Math.max(1, target.depthMm || 50);
+        let newW = Math.sqrt(neededCross * ratio);
+        newW = Math.ceil(newW / 50) * 50;
+        let newD = Math.ceil((neededCross / newW) / 10) * 10;
+        target.widthMm = Math.max(target.widthMm || 100, newW);
+        target.depthMm = Math.max(target.depthMm || 50, newD);
+        savePlan(p2); renderPlan();
+      });
+    }
     pop.querySelectorAll('input[data-prop]').forEach(inp => {
       inp.addEventListener('change', () => {
         const p2 = getPlan();
