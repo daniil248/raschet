@@ -347,6 +347,7 @@
   opacity: 0.85;
 }
 .sd-plan-tray.dragging { opacity: 0.7; z-index: 11; }
+.sd-plan-tray.snapped { outline: 2px solid #22c55e; outline-offset: 1px; }
 .sd-plan-tray-label { pointer-events: none; font-weight: 600; text-shadow: 0 0 2px #fff; }
 .sd-plan-tray button {
   position: absolute;

@@ -1495,6 +1495,49 @@ function nearestOnTray(px, py, t) {
   return { qx, qy, d, tray: t };
 }
 
+// v0.59.297: прилипание каналов друг к другу (T/крестовые стыки).
+function snapTrayPosition(t, nx, ny, plan) {
+  const SNAP = 1; // клеток
+  const others = (plan.trays || []).filter(o => o.id !== t.id);
+  let snapped = false;
+  const isH = t.orient === 'h';
+  const cx = nx + (isH ? t.len / 2 : TRAY_W_CELLS / 2);
+  const cy = ny + (isH ? TRAY_W_CELLS / 2 : t.len / 2);
+  for (const o of others) {
+    const oH = o.orient === 'h';
+    const oCx = o.x + (oH ? o.len / 2 : TRAY_W_CELLS / 2);
+    const oCy = o.y + (oH ? TRAY_W_CELLS / 2 : o.len / 2);
+    if (isH && !oH) {
+      if (Math.abs(cy - oCy) <= SNAP &&
+          oCx >= nx - SNAP && oCx <= nx + t.len + SNAP) {
+        ny = Math.round(oCy - TRAY_W_CELLS / 2); snapped = true;
+      }
+      if (Math.abs(nx - oCx) <= SNAP) { nx = Math.round(oCx); snapped = true; }
+      if (Math.abs((nx + t.len) - oCx) <= SNAP) { nx = Math.round(oCx - t.len); snapped = true; }
+    } else if (!isH && oH) {
+      if (Math.abs(cx - oCx) <= SNAP &&
+          oCy >= ny - SNAP && oCy <= ny + t.len + SNAP) {
+        nx = Math.round(oCx - TRAY_W_CELLS / 2); snapped = true;
+      }
+      if (Math.abs(ny - oCy) <= SNAP) { ny = Math.round(oCy); snapped = true; }
+      if (Math.abs((ny + t.len) - oCy) <= SNAP) { ny = Math.round(oCy - t.len); snapped = true; }
+    } else if (isH && oH) {
+      if (Math.abs(ny - o.y) <= SNAP) { ny = o.y; snapped = true; }
+      if (Math.abs(nx - (o.x + o.len)) <= SNAP) { nx = o.x + o.len; snapped = true; }
+      if (Math.abs((nx + t.len) - o.x) <= SNAP) { nx = o.x - t.len; snapped = true; }
+    } else {
+      if (Math.abs(nx - o.x) <= SNAP) { nx = o.x; snapped = true; }
+      if (Math.abs(ny - (o.y + o.len)) <= SNAP) { ny = o.y + o.len; snapped = true; }
+      if (Math.abs((ny + t.len) - o.y) <= SNAP) { ny = o.y - t.len; snapped = true; }
+    }
+  }
+  const wCells = isH ? t.len : TRAY_W_CELLS;
+  const hCells = isH ? TRAY_W_CELLS : t.len;
+  nx = Math.max(0, Math.min(PLAN_COLS - wCells, nx));
+  ny = Math.max(0, Math.min(PLAN_ROWS - hCells, ny));
+  return { x: nx, y: ny, snapped };
+}
+
 // Строит трассу A → ближайшая точка канала → вдоль канала → ближайшая к B → B.
 // Если каналы у A и B совпадают → трасса через него; если нет — двойной канал;
 // если каналов нет или они слишком далеко → прямая L-линия.
@@ -1516,22 +1559,35 @@ function pushManhattan(pts, qx, qy, preferAxis /* 'h'|'v' */) {
 // Строит трассу A → ближайшая точка канала → вдоль канала → ближайшая к B → B.
 // v0.59.296: строгий Manhattan (без диагоналей) + принуждение канала, если он
 // ближе, чем расстояние между самими стойками.
-function buildCableRoute(ax, ay, bx, by, trays) {
+function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
   const direct = [[ax, ay]];
   pushManhattan(direct, bx, by, 'h'); // сначала горизонтально, потом вертикально
   const directCells = (Math.abs(ax - bx) + Math.abs(ay - by)) / PLAN_CELL_PX;
   if (!trays || !trays.length) return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 
-  const nearA = trays.map(t => nearestOnTray(ax, ay, t)).sort((a, b) => a.d - b.d);
-  const nearB = trays.map(t => nearestOnTray(bx, by, t)).sort((a, b) => a.d - b.d);
+  // v0.59.297: вес = геом. дистанция × (1 + fill/100 × 1.5). Канал с заполнением
+  // 90% смотрится как 2.35× дальше — система уйдёт на более свободный канал.
+  // Если fillsMap не передан — обычная сортировка по расстоянию.
+  const weighted = n => {
+    if (!fillsMap) return n.d;
+    const f = fillsMap.get(n.tray.id);
+    if (!f) return n.d;
+    const pct = Math.max(0, Math.min(150, f.pct || 0));
+    return n.d * (1 + (pct / 100) * 1.5);
+  };
+  const nearA = trays.map(t => nearestOnTray(ax, ay, t)).sort((a, b) => weighted(a) - weighted(b));
+  const nearB = trays.map(t => nearestOnTray(bx, by, t)).sort((a, b) => weighted(a) - weighted(b));
   const bestA = nearA[0];
   const bestB = nearB[0];
   if (!bestA || !bestB) return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 
-  // дистанция «стойка ↔ стойка» (манхэттен). Если ближайший канал ближе этой
-  // дистанции — кабель ОБЯЗАН идти через него (даже если даёт обход).
+  // v0.59.298: если канал дальше, чем сами стойки друг от друга — идём
+  // напрямую (мимо канала), потому что заход на канал увеличит трассу.
+  // Если ближе — рассматриваем трассу через канал и сравниваем по длине.
   const interRack = Math.abs(ax - bx) + Math.abs(ay - by);
-  const forceTray = (bestA.d <= interRack) || (bestB.d <= interRack);
+  if (bestA.d > interRack && bestB.d > interRack) {
+    return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
+  }
 
   // один канал для обоих концов
   if (bestA.tray === bestB.tray) {
@@ -1551,7 +1607,7 @@ function buildCableRoute(ax, ay, bx, by, trays) {
     }
     pushManhattan(pts, bx, by, isH ? 'h' : 'v');
     const cells = routeCells(pts);
-    if (forceTray || cells < directCells * 1.8) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id] };
+    if (cells <= directCells * 1.1) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id] };
     return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
   }
 
@@ -1574,7 +1630,7 @@ function buildCableRoute(ax, ay, bx, by, trays) {
   if (bH) { pushManhattan(pts, bestB.qx, by, 'v'); pushManhattan(pts, bx, by, 'h'); }
   else    { pushManhattan(pts, bx, bestB.qy, 'h'); pushManhattan(pts, bx, by, 'v'); }
   const cells = routeCells(pts);
-  if (forceTray || cells < directCells * 2.2) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id, bestB.tray.id] };
+  if (cells <= directCells * 1.2) return { pts, cells, viaTray: true, trayIds: [bestA.tray.id, bestB.tray.id] };
   return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
 }
 
@@ -1631,6 +1687,8 @@ function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const links = getVisibleLinks();
   const trays = plan.trays || [];
+  // v0.59.297: заполнение каналов считаем один раз — маршрут учитывает его веса.
+  const fillsMap = trays.length ? computeTrayFills(plan) : null;
   links.forEach(l => {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
@@ -1639,7 +1697,7 @@ function drawPlanLinks(svg, plan) {
     const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
     const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
     const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
-    const route = buildCableRoute(ax, ay, bx, by, trays);
+    const route = buildCableRoute(ax, ay, bx, by, trays, fillsMap);
     const color = CABLE_COLOR(l.cableType);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', ptsToPath(route.pts));
@@ -1688,7 +1746,7 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
   div.title = `Кабельный канал · ${t.orient === 'h' ? '↔' : '↕'} · ${t.len} кл ≈ ${(t.len * plan.step).toFixed(1)} м · ${t.widthMm}×${t.depthMm} мм\n` +
     `Заполнение: ${pct}% (${(fillInfo?.usedMm2 || 0).toFixed(0)} / ${(fillInfo?.crossMm2 || 0).toFixed(0)} мм², лимит ${limit}%)\n` +
     `Кабелей: ${fillInfo?.cables.length || 0}`;
-  div.innerHTML = `<span class="sd-plan-tray-label">⬚ ${t.len}кл · ${t.widthMm}×${t.depthMm} · <b class="sd-tray-fill-pct">${pct}%</b></span>
+  div.innerHTML = `<span class="sd-plan-tray-label">⬚ L=${(t.len * plan.step).toFixed(1)}м · ${t.widthMm}×${t.depthMm} · <b class="sd-tray-fill-pct">${pct}%</b></span>
     <button type="button" class="sd-plan-tray-rot" title="Повернуть">⟳</button>
     <button type="button" class="sd-plan-tray-rm" title="Удалить">✕</button>
     <div class="sd-plan-tray-resize sd-plan-tray-resize-start" title="Растянуть/сократить (перетащите)"></div>
@@ -1712,8 +1770,12 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
     const dy = Math.round((e.clientY - sy) / (PLAN_CELL_PX * z));
     const wCells = (t.orient === 'h' ? t.len : TRAY_W_CELLS);
     const hCells = (t.orient === 'v' ? t.len : TRAY_W_CELLS);
-    const nx = Math.max(0, Math.min(PLAN_COLS - wCells, sCell.x + dx));
-    const ny = Math.max(0, Math.min(PLAN_ROWS - hCells, sCell.y + dy));
+    let nx = Math.max(0, Math.min(PLAN_COLS - wCells, sCell.x + dx));
+    let ny = Math.max(0, Math.min(PLAN_ROWS - hCells, sCell.y + dy));
+    // v0.59.297: snap к соседним каналам (T/крестовые стыки).
+    const snapped = snapTrayPosition(t, nx, ny, plan);
+    nx = snapped.x; ny = snapped.y;
+    div.classList.toggle('snapped', snapped.snapped);
     div.style.left = (nx * PLAN_CELL_PX) + 'px';
     div.style.top = (ny * PLAN_CELL_PX) + 'px';
     t.x = nx; t.y = ny;
