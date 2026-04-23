@@ -1343,6 +1343,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.326', date: '2026-04-23', items: [
+      '🧯 <b>Клеммная коробка в dropdown «Тип щита».</b> Новый <code>switchMode = "terminal"</code>. Управляется как обычный щит из общего списка (inspector → Параметры НКУ → Электрика → Тип щита), условия — пассивный узел: все входы проходят на все выходы (логика <code>parallel</code>, но без <code>inputBreakerStates</code> — коробка без автоматов). В панели параметров скрыты поля Ксим, In (А), Мин./Макс. запас — они не применимы. Вместо них подсказка «Клеммная коробка — пассивный узел: только клеммник, без автоматов, Ксим, запаса».',
+      'recalc.js: ветка <code>n.switchMode === "parallel"</code> расширена на <code>"terminal"</code> с игнором <code>inputBreakerStates</code> (все входы живые).',
+      'Файлы: js/engine/inspector/panel.js (+ option Клеммная коробка + условный рендер полей), js/engine/recalc.js (ветка parallel||terminal).',
+    ] },
     { version: '0.59.193', date: '2026-04-22', items: [
       'Главная схема теперь принимает postMessage типа *-config:apply от embedded-конфигуратора (panel/ups/transformer/mv/pdu/mdc/suppression). Из сообщения {type, entry, targetNodeIds} узлы с указанными ID получают n.appliedConfig.<kind> = entry и n.appliedConfigId = entry.id. Собственный n.id и n.tag физического элемента не затрагиваются — конфигурация это отдельный шаблон, а узел на схеме лишь ссылается на него.',
       'mountEmbeddedPicker читает ?targets=id1,id2 из URL и передаёт список target-nodeId в onApply(entry, targets). URL-схема для родителя: configurator/?embedded=1&targets=nid1,nid2,nid3.',

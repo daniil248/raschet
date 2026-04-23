@@ -475,10 +475,15 @@ export function openPanelParamsModal(n) {
       smOpts += `<option value="switchover"${sm === 'switchover' ? ' selected' : ''}>Подменный</option>`;
       smOpts += `<option value="watchdog"${sm === 'watchdog' ? ' selected' : ''}>Watchdog</option>`;
     }
+    // v0.59.326: клеммная коробка — такой же щит из общего списка, логика
+    // parallel (все входы проходят на все выходы), но без защиты/kSim/запаса
+    // (в BOM — клеммник + маленькая коробка, а не НКУ с автоматами).
+    smOpts += `<option value="terminal"${sm === 'terminal' ? ' selected' : ''}>Клеммная коробка</option>`;
     h.push(field('Тип щита', `<select id="pp-switchMode">${smOpts}</select>`));
   }
 
   const isSectioned = sm === 'sectioned';
+  const isTerminal = sm === 'terminal';
 
   // Базовые настройки — только для несекционных LV-щитов
   if (!isSectioned && !n.isMv) {
@@ -486,27 +491,33 @@ export function openPanelParamsModal(n) {
     h.push('<div style="flex:1">' + field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`) + '</div>');
     h.push('<div style="flex:1">' + field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`) + '</div>');
     h.push('</div>');
-    h.push('<div style="display:flex;gap:12px">');
-    h.push('<div style="flex:1">' + field('Ксим', `<input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}">`) + '</div>');
-    {
-      const curA = n.capacityA ?? 160;
-      let opts = '';
-      let hasCur = false;
-      for (const v of BREAKER_SERIES) {
-        if (v === curA) hasCur = true;
-        opts += `<option value="${v}"${v === curA ? ' selected' : ''}>${v} А</option>`;
+    // v0.59.326: клеммная коробка не имеет автоматов, Ксим, запаса — только
+    // клеммник + маленькая коробка. Эти поля не показываем.
+    if (!isTerminal) {
+      h.push('<div style="display:flex;gap:12px">');
+      h.push('<div style="flex:1">' + field('Ксим', `<input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}">`) + '</div>');
+      {
+        const curA = n.capacityA ?? 160;
+        let opts = '';
+        let hasCur = false;
+        for (const v of BREAKER_SERIES) {
+          if (v === curA) hasCur = true;
+          opts += `<option value="${v}"${v === curA ? ' selected' : ''}>${v} А</option>`;
+        }
+        if (!hasCur) opts = `<option value="${curA}" selected>${curA} А</option>` + opts;
+        h.push('<div style="flex:1">' + field('In, А', `<select id="pp-capacityA">${opts}</select>`) + '</div>');
       }
-      if (!hasCur) opts = `<option value="${curA}" selected>${curA} А</option>` + opts;
-      h.push('<div style="flex:1">' + field('In, А', `<select id="pp-capacityA">${opts}</select>`) + '</div>');
+      h.push('</div>');
+      if (n._capacityKwFromA) {
+        h.push(`<div class="muted" style="font-size:11px;margin-top:-8px;margin-bottom:10px">Эквивалент: <b>${fmt(n._capacityKwFromA)} kW</b></div>`);
+      }
+      h.push('<div style="display:flex;gap:12px">');
+      h.push('<div style="flex:1">' + field('Мин. запас, %', `<input type="number" id="pp-marginMin" min="0" max="50" step="1" value="${n.marginMinPct ?? 2}">`) + '</div>');
+      h.push('<div style="flex:1">' + field('Макс. запас, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`) + '</div>');
+      h.push('</div>');
+    } else {
+      h.push(`<div class="muted" style="font-size:11px;margin-bottom:10px">Клеммная коробка — пассивный узел: только клеммник, без автоматов, Ксим, запаса. Все входы проходят на все выходы.</div>`);
     }
-    h.push('</div>');
-    if (n._capacityKwFromA) {
-      h.push(`<div class="muted" style="font-size:11px;margin-top:-8px;margin-bottom:10px">Эквивалент: <b>${fmt(n._capacityKwFromA)} kW</b></div>`);
-    }
-    h.push('<div style="display:flex;gap:12px">');
-    h.push('<div style="flex:1">' + field('Мин. запас, %', `<input type="number" id="pp-marginMin" min="0" max="50" step="1" value="${n.marginMinPct ?? 2}">`) + '</div>');
-    h.push('<div style="flex:1">' + field('Макс. запас, %', `<input type="number" id="pp-marginMax" min="5" max="500" step="1" value="${n.marginMaxPct ?? 30}">`) + '</div>');
-    h.push('</div>');
 
     // Система заземления для линий, ВЫХОДЯЩИХ из этого щита.
     // Доступны: наследование от глобальной + все варианты IEC 60364-4-41.

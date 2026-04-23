@@ -660,11 +660,14 @@ function recalc() {
               res = [{ conn: target, share: 1 }];
             }
           }
-        } else if (n.type === 'panel' && n.switchMode === 'parallel') {
-          // Щит без АВР — все входы с включёнными автоматами работают
+        } else if (n.type === 'panel' && (n.switchMode === 'parallel' || n.switchMode === 'terminal')) {
+          // v0.59.326: клеммная коробка обрабатывается как parallel.
+          // Все входы с включёнными автоматами (для terminal — все) → на все выходы.
           const inBrk = Array.isArray(n.inputBreakerStates) ? n.inputBreakerStates : [];
-          // Если inputBreakerStates не задан — все входы включены
-          const selected = ins.filter(c => inBrk[c.to.port] !== false);
+          // terminal: коробка не имеет автоматов → вход всегда живой.
+          const selected = (n.switchMode === 'terminal')
+            ? ins.slice()
+            : ins.filter(c => inBrk[c.to.port] !== false);
           const live = selected.filter(c => isConnLive(c));
           if (live.length) res = live.map(c => ({ conn: c, share: 1 / live.length }));
         } else if (n.type === 'panel' && n.switchMode === 'avr_paired') {
