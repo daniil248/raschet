@@ -1182,21 +1182,65 @@ function exportRacksCsv() {
 }
 
 /* ---------- Tab «План зала» ---------- */
-const PLAN_DEFAULT = { step: 0.6, kRoute: 1.3, positions: {} };
+const PLAN_DEFAULT = { step: 0.6, kRoute: 1.3, positions: {}, zoom: 1 };
 const PLAN_CELL_PX = 24; // одна клетка = 24 px на экране
 const PLAN_COLS = 40, PLAN_ROWS = 24;
+const PLAN_ZOOM_MIN = 0.25, PLAN_ZOOM_MAX = 4;
+let planZoom = 1;
 const RACK_W_CELLS = 2; // прямоугольник стойки 2×1 клетки
 const RACK_H_CELLS = 1;
 
 function getPlan() {
   const p = loadJson(LS_PLAN, PLAN_DEFAULT);
-  return {
+  const out = {
     step: +p?.step || PLAN_DEFAULT.step,
     kRoute: +p?.kRoute || PLAN_DEFAULT.kRoute,
     positions: (p && p.positions && typeof p.positions === 'object') ? p.positions : {},
+    zoom: (p && +p.zoom > 0) ? Math.min(PLAN_ZOOM_MAX, Math.max(PLAN_ZOOM_MIN, +p.zoom)) : 1,
   };
+  planZoom = out.zoom;
+  return out;
 }
 function savePlan(p) { saveJson(LS_PLAN, p); }
+function applyPlanZoomStyle() {
+  const canvas = document.getElementById('sd-plan-canvas');
+  if (!canvas) return;
+  // Используем CSS `zoom` вместо `transform: scale`, чтобы scrollbars во wrap
+  // корректно расширялись по размеру отмасштабированного канваса.
+  canvas.style.zoom = String(planZoom);
+  const val = document.getElementById('sd-plan-zoom-val');
+  if (val) val.textContent = Math.round(planZoom * 100) + '%';
+}
+function setPlanZoom(z, anchor) {
+  const clamp = Math.min(PLAN_ZOOM_MAX, Math.max(PLAN_ZOOM_MIN, z));
+  const wrap = document.querySelector('.sd-plan-wrap');
+  let anchorX, anchorY, prevSL, prevST;
+  if (wrap && anchor) {
+    prevSL = wrap.scrollLeft; prevST = wrap.scrollTop;
+    const rect = wrap.getBoundingClientRect();
+    anchorX = anchor.clientX - rect.left + prevSL;
+    anchorY = anchor.clientY - rect.top + prevST;
+  }
+  const prev = planZoom;
+  planZoom = clamp;
+  const plan = getPlan();
+  plan.zoom = clamp;
+  savePlan(plan);
+  applyPlanZoomStyle();
+  if (wrap && anchor && prev > 0) {
+    const k = clamp / prev;
+    wrap.scrollLeft = anchorX * k - (anchor.clientX - wrap.getBoundingClientRect().left);
+    wrap.scrollTop  = anchorY * k - (anchor.clientY - wrap.getBoundingClientRect().top);
+  }
+}
+function fitPlanZoom() {
+  const wrap = document.querySelector('.sd-plan-wrap');
+  if (!wrap) return;
+  const pad = 16;
+  const zx = (wrap.clientWidth  - pad) / (PLAN_COLS * PLAN_CELL_PX);
+  const zy = (wrap.clientHeight - pad) / (PLAN_ROWS * PLAN_CELL_PX);
+  setPlanZoom(Math.min(zx, zy));
+}
 
 function manhattanCells(a, b) {
   // центр прямоугольника стойки
@@ -1298,8 +1342,9 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
     });
     div.addEventListener('pointermove', e => {
       if (!dragging) return;
-      const dx = Math.round((e.clientX - startX) / PLAN_CELL_PX);
-      const dy = Math.round((e.clientY - startY) / PLAN_CELL_PX);
+      const z = planZoom || 1;
+      const dx = Math.round((e.clientX - startX) / (PLAN_CELL_PX * z));
+      const dy = Math.round((e.clientY - startY) / (PLAN_CELL_PX * z));
       const nx = Math.max(0, Math.min(PLAN_COLS - RACK_W_CELLS, startCell.x + dx));
       const ny = Math.max(0, Math.min(PLAN_ROWS - RACK_H_CELLS, startCell.y + dy));
       div.style.left = (nx * PLAN_CELL_PX) + 'px';
@@ -1356,8 +1401,10 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
     if (!id) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    const x = Math.max(0, Math.min(PLAN_COLS - RACK_W_CELLS, Math.floor((e.clientX - rect.left) / PLAN_CELL_PX)));
-    const y = Math.max(0, Math.min(PLAN_ROWS - RACK_H_CELLS, Math.floor((e.clientY - rect.top) / PLAN_CELL_PX)));
+    // CSS `zoom` увеличивает rect в N раз, компенсируем делением на planZoom.
+    const z = planZoom || 1;
+    const x = Math.max(0, Math.min(PLAN_COLS - RACK_W_CELLS, Math.floor((e.clientX - rect.left) / (PLAN_CELL_PX * z))));
+    const y = Math.max(0, Math.min(PLAN_ROWS - RACK_H_CELLS, Math.floor((e.clientY - rect.top) / (PLAN_CELL_PX * z))));
     const p2 = getPlan();
     p2.positions[id] = { x, y };
     savePlan(p2);
@@ -1366,6 +1413,7 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
 
   drawPlanLinks(svg, plan);
   updatePlanInfo();
+  applyPlanZoomStyle();
 }
 
 let focusRackId = null;
@@ -1772,6 +1820,43 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-reset')?.addEventListener('click', resetPlan);
   document.getElementById('sd-plan-autolay')?.addEventListener('click', autoLayout);
   document.getElementById('sd-plan-svg')?.addEventListener('click', exportPlanSvg);
+  // v0.59.287: zoom + pan для плана зала
+  document.getElementById('sd-plan-zoom-in')?.addEventListener('click', () => setPlanZoom(planZoom * 1.25));
+  document.getElementById('sd-plan-zoom-out')?.addEventListener('click', () => setPlanZoom(planZoom / 1.25));
+  document.getElementById('sd-plan-zoom-1')?.addEventListener('click', () => setPlanZoom(1));
+  document.getElementById('sd-plan-zoom-fit')?.addEventListener('click', fitPlanZoom);
+  const planWrap = document.querySelector('.sd-plan-wrap');
+  if (planWrap) {
+    // Ctrl+wheel zoom
+    planWrap.addEventListener('wheel', e => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setPlanZoom(planZoom * delta, { clientX: e.clientX, clientY: e.clientY });
+    }, { passive: false });
+    // Middle-button / Shift+LMB grab-pan
+    let panStart = null;
+    planWrap.addEventListener('mousedown', e => {
+      const isMiddle = e.button === 1;
+      const isShiftLeft = e.button === 0 && e.shiftKey;
+      // Shift+LMB на пустом канвасе (не на стойке/кнопке)
+      const onRack = e.target.closest('.sd-plan-rack, .sd-plan-chip, button, input');
+      if (!(isMiddle || (isShiftLeft && !onRack))) return;
+      e.preventDefault();
+      panStart = { x: e.clientX, y: e.clientY, sl: planWrap.scrollLeft, st: planWrap.scrollTop };
+      planWrap.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', e => {
+      if (!panStart) return;
+      planWrap.scrollLeft = panStart.sl - (e.clientX - panStart.x);
+      planWrap.scrollTop  = panStart.st - (e.clientY - panStart.y);
+    });
+    window.addEventListener('mouseup', () => {
+      if (!panStart) return;
+      panStart = null;
+      planWrap.style.cursor = '';
+    });
+  }
   document.getElementById('sd-export-json')?.addEventListener('click', exportProjectJson);
   const importBtn = document.getElementById('sd-import-json');
   const importFile = document.getElementById('sd-import-file');

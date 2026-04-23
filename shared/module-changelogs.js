@@ -113,6 +113,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.287', date: '2026-04-22', items: [
+      '🔍 План зала: зум и пан. Ctrl+колёсико — зум в точке курсора; кнопки −/+/1:1/⤢ (вписать). Пан — средней кнопкой мыши или Shift+ЛКМ на пустой области; полосы прокрутки также работают. Уровень зума сохраняется в plan.zoom (раскладка между визитами не теряется). Реализация через CSS `zoom` на #sd-plan-canvas; drag-n-drop и перемещение стоек компенсируют масштаб (coords / (PLAN_CELL_PX × zoom)).',
+      'Файлы: scs-design/scs-design.js (PLAN_ZOOM_MIN/MAX, planZoom, applyPlanZoomStyle/setPlanZoom/fitPlanZoom, getPlan{zoom}, wheel+mouseup+mousemove handlers, компенсация zoom в drop/pointer-move); scs-design/index.html (toolbar zoom-кнопки + подсказка «Ctrl+колёсико / Shift+ЛКМ»).',
+    ] },
     { version: '0.59.285', date: '2026-04-22', items: [
       '📏 Карточки стоек в мастере связей выровнены по низу (align-items: flex-end). Теперь U1 у всех стоек стоит на одной горизонтальной линии независимо от их высоты (42U рядом с 47U больше не «плавают» по центру/верху).',
       'Файлы: scs-design/scs-design.css (.sd-racks-row align-items: flex-end).',
@@ -266,6 +270,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.287', date: '2026-04-22', items: [
+      '📋 В «Каталог типов оборудования» добавлена колонка «Скор.» (свободный текст: 1G/10G/40G/100G…). Значение сохраняется в catalog[i].portSpeed. Вместе с уже существующими «Порты» (количество) и «Порт» (тип разъёма: RJ45/LC/SC/SFP/BNC/F/C13/C14/power) — полный набор полей для описания сетевого порта.',
+      'Файлы: scs-config/scs-config.js (renderCatalog: +колонка Скор. перед цветом, +input data-k="portSpeed"; colspan 10→11).',
+    ] },
     { version: '0.59.286', date: '2026-04-22', items: [
       '← «Назад» в Компоновщике шкафа: если URL содержит ?from=scs-design|mv-config|mdc-config|projects|rack-config|hub, слева в крошках появляется линк «← Назад в «Проектирование СКС»» (подпись зависит от from). Решает сценарий: пользователь пришёл из scs-design по ✎ на карточке стойки → сконфигурировал → нажал «Назад» → вернулся туда, откуда пришёл, не блуждая по главному меню.',
       'scs-design автоматически добавляет ?from=scs-design при построении ссылки ✎ на карточке стойки (renderRackCard).',
