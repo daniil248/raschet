@@ -119,14 +119,19 @@
 }
 .sd-rack-head .sd-rack-edit:hover { background: #eef2ff; border-color: #6366f1; }
 .sd-unit {
-  --u-row: 18px; --u-gap: 2px;
+  /* v0.59.300: row включает padding+border (box-sizing: border-box), чтобы
+     multi-U блок занимал в точности ту же высоту, что N одиночных U-ячеек. */
+  --u-row: 26px; --u-gap: 2px;
+  box-sizing: border-box;
   display: flex; align-items: center; gap: 6px;
   padding: 3px 6px; border: 1px solid #e2e8f0; border-radius: 4px;
   background: #fafafa; font-size: 11px; color: #333;
-  min-height: var(--u-row);
+  height: var(--u-row); min-height: var(--u-row);
 }
-/* Многоюнитовое устройство: высота = h строк + (h-1) промежутков. */
+/* Многоюнитовое устройство: высота = h строк + (h-1) промежутков.
+   height включает padding+border благодаря box-sizing: border-box. */
 .sd-unit.multi {
+  height: calc(var(--u-span, 1) * var(--u-row) + (var(--u-span, 1) - 1) * var(--u-gap));
   min-height: calc(var(--u-span, 1) * var(--u-row) + (var(--u-span, 1) - 1) * var(--u-gap));
   align-items: center; line-height: 1.3;
 }

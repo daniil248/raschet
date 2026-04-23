@@ -113,6 +113,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.300', date: '2026-04-23', items: [
+      '📏 <b>Одинаковая высота карточек стоек независимо от заполнения.</b> Раньше карточка с большим числом multi-U устройств была короче карточки, где те же юниты заполнены одиночными 1U-ячейками: <code>.sd-unit.multi</code> считал <code>min-height = h×u-row + (h-1)×gap</code>, но <code>--u-row</code> был голые 18px контента, тогда как одиночный U-элемент добавлял ещё padding 3×2 + border 1×2 = 8px (итого 26px). Итог: 5U multi был 98px, а 5×1U = 138px — разница 40px × каждое multi-U × стойка. Фикс: <code>box-sizing: border-box</code> + <code>--u-row: 26px</code> (полная высота ряда с padding/border) + жёстко <code>height</code> не только <code>min-height</code>.',
+      'Файлы: scs-design/scs-design.css (.sd-unit box-sizing + --u-row 26px, .sd-unit.multi height+min-height с учётом полного ряда).',
+    ] },
     { version: '0.59.299', date: '2026-04-23', items: [
       '🖱 <b>Выбор канала и просмотр кабелей в нём.</b> Клик по телу канала (без перетаскивания) выделяет его синей рамкой и открывает под ним pop-over со списком кабелей, проходящих через канал: цветной swatch по типу, тип кабеля (cat6a / om4 / power-c13 …), диаметр в мм, концы связи (стойка → стойка). Повторный клик или клик по другому каналу — переключает выделение. Порог «клик vs drag» — 5 px перемещения.',
       'Файлы: scs-design/scs-design.js (selectedTrayId state, renderTray — popover с fillInfo.cables + имена стоек по tag/name, pointerdown/up — movedPx-трекер); scs-design/scs-design.css (.sd-plan-tray.selected, .sd-tray-popover/-h, .sd-tray-cable-row/-sw/-type/-d/-ep).',
