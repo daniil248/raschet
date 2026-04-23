@@ -2481,6 +2481,55 @@ function exportPlanSvg() {
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
   updateStatus(`✔ План экспортирован: ${placed.length} стоек, ${getVisibleLinks().length} связей.`);
+  return { svg, W: W + 40, H: H + 80, racks: placed.length, links: getVisibleLinks().length };
+}
+
+// v0.59.320: PNG-экспорт через растеризацию SVG в <canvas>.
+// Переиспользует тот же SVG-билдер (exportPlanSvg с перехватом download).
+function exportPlanPng() {
+  const plan = getPlan();
+  const racks = getProjectInstances();
+  const placed = racks.filter(r => plan.positions[r.id]);
+  if (!placed.length) { updateStatus('⚠ План пуст — нечего экспортировать.'); return; }
+  // Перехватываем download: временно подменяем HTMLAnchorElement.click,
+  // перехватываем URL созданный через URL.createObjectURL, читаем blob как SVG,
+  // рендерим в canvas и экспортируем PNG.
+  const origCreate = URL.createObjectURL;
+  let svgBlob = null;
+  URL.createObjectURL = (b) => { svgBlob = b; return 'javascript:void(0)'; };
+  const origAppendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (el) => { if (el.tagName !== 'A') origAppendChild(el); return el; };
+  try { exportPlanSvg(); } finally {
+    URL.createObjectURL = origCreate;
+    document.body.appendChild = origAppendChild;
+  }
+  if (!svgBlob) { updateStatus('⚠ PNG: не удалось сгенерировать SVG.'); return; }
+  const scale = 2; // ретина-масштаб для чёткости
+  svgBlob.text().then(svgText => {
+    const img = new Image();
+    const blobUrl = origCreate(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }));
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth * scale;
+      canvas.height = img.naturalHeight * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(blob => {
+        if (!blob) { updateStatus('⚠ PNG: canvas.toBlob вернул пусто.'); return; }
+        const url = origCreate(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `scs-plan-${dateStamp()}.png`;
+        document.body.appendChild(a); a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); URL.revokeObjectURL(blobUrl); }, 0);
+        updateStatus(`✔ PNG экспортирован (${canvas.width}×${canvas.height}).`);
+      }, 'image/png');
+    };
+    img.onerror = () => { updateStatus('⚠ PNG: <img> не смог загрузить SVG.'); URL.revokeObjectURL(blobUrl); };
+    img.src = blobUrl;
+  });
 }
 
 function escapeSvg(s) {
@@ -2825,6 +2874,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-reset')?.addEventListener('click', resetPlan);
   document.getElementById('sd-plan-autolay')?.addEventListener('click', autoLayout);
   document.getElementById('sd-plan-svg')?.addEventListener('click', exportPlanSvg);
+  document.getElementById('sd-plan-png')?.addEventListener('click', exportPlanPng);
   document.getElementById('sd-plan-add-tray-h')?.addEventListener('click', () => addTray('h'));
   document.getElementById('sd-plan-add-tray-v')?.addEventListener('click', () => addTray('v'));
   document.getElementById('sd-plan-auto-trays')?.addEventListener('click', autoGenerateTrays);

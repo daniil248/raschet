@@ -113,6 +113,11 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.320', date: '2026-04-23', items: [
+      '🖼 <b>PNG-экспорт плана.</b> В тулбаре plan-view добавлена кнопка «⬇ PNG» рядом с «⬇ SVG». Переиспользует тот же SVG-builder (перехватывая URL.createObjectURL и временную подмену document.body.appendChild, чтобы не скачался SVG), рендерит SVG в <code>&lt;img&gt;</code>, рисует на <code>&lt;canvas&gt;</code> с <b>×2 масштабом</b> (для ретины/печати) и экспортирует через <code>canvas.toBlob("image/png")</code>. Белый фон под SVG. В status-строке — итоговое разрешение файла.',
+      'Зачем: SVG лучше для векторных презентаций/вставки в CAD, но для отчётов/email/Telegram удобнее PNG. Теперь оба варианта.',
+      'Файлы: scs-design/scs-design.js (+exportPlanPng: patch-URL.createObjectURL + canvas×2); scs-design/index.html (+#sd-plan-png).',
+    ] },
     { version: '0.59.319', date: '2026-04-23', items: [
       '↶ <b>Undo / Redo на plan-view.</b> Каждый <code>savePlan</code> теперь оборачивается: предыдущее состояние пушится в <code>undoStack</code> (лимит 30 снапшотов), <code>redoStack</code> сбрасывается (new branch). Кнопки «↶ Undo» и «↷ Redo» в тулбаре + горячие клавиши: <kbd>Ctrl+Z</kbd> — отмена, <kbd>Ctrl+Y</kbd> или <kbd>Ctrl+Shift+Z</kbd> — повтор. RU-раскладка (я/н) тоже работает. Стеки в памяти — переживают только сессию (после F5 пропадают; сохраняется сам plan).',
       'Зачем: после неудачного drag или Автораскладки или случайного Delete не нужно восстанавливать план руками — один Ctrl+Z откатывает.',
