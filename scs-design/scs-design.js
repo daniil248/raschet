@@ -1242,13 +1242,54 @@ function getRackDimsMm(r) {
 }
 
 // Размер стойки в клетках плана с учётом поворота (0/90/180/270°).
+// v0.59.313: возвращает ТОЧНЫЕ размеры стойки в клетках (float), без округления.
+// Раньше делалось Math.round → стойка 800 мм при шаге 600 мм становилась 1
+// клеткой (600 мм физически), после чего соседняя стойка вплотную оказывалась в
+// 400 мм, а не 0 мм. Теперь wC/hC — float, рендер и коллизии — физически точные,
+// а snap-к-узлу-сетки выполняется отдельно при drop/drag.
 function rackSizeCells(r, plan, rot) {
   const { widthMm, depthMm } = getRackDimsMm(r);
   const step = (plan && +plan.step) || 0.6;
-  let wC = Math.max(1, Math.round(widthMm / 1000 / step));
-  let hC = Math.max(1, Math.round(depthMm / 1000 / step));
+  let wC = Math.max(0.1, widthMm / 1000 / step);
+  let hC = Math.max(0.1, depthMm / 1000 / step);
   if (rot === 90 || rot === 270) { const t = wC; wC = hC; hC = t; }
   return [wC, hC];
+}
+
+// v0.59.313: snap-позиции стойки.
+// Порядок: (1) grid-snap к ближайшему целому узлу сетки; (2) если стена стойки
+// в пределах толерантности от стены соседней стойки — пристыковываем стена-к-
+// стене (соседний угол важнее узла сетки, т.к. 800 мм стойка ≠ целому числу
+// клеток при шаге 600 мм). Возвращает [x, y] в клетках (float).
+function snapRackPos(rawX, rawY, wF, hF, selfId, plan, racks) {
+  const TOL = 0.5; // толерантность snap-к-соседу, в клетках
+  let sx = Math.round(rawX);
+  let sy = Math.round(rawY);
+  for (const [oid, op] of Object.entries(plan.positions || {})) {
+    if (oid === selfId) continue;
+    const or = racks.find(rr => rr.id === oid);
+    if (!or) continue;
+    const orot = ((+op.rot) || 0) % 360;
+    const [owF, ohF] = rackSizeCells(or, plan, orot);
+    const oL = +op.x, oR = +op.x + owF;
+    const oT = +op.y, oB = +op.y + ohF;
+    // Горизонтальный snap: нужно пересечение по y
+    const curT = rawY, curB = rawY + hF;
+    const yOverlap = !(curB <= oT - 0.001 || curT >= oB + 0.001);
+    if (yOverlap) {
+      if (Math.abs(rawX - oR) < TOL) sx = oR;            // левая стена → правый край соседа
+      else if (Math.abs((rawX + wF) - oL) < TOL) sx = oL - wF; // правая → левый край соседа
+    }
+    const curL = rawX, curR = rawX + wF;
+    const xOverlap = !(curR <= oL - 0.001 || curL >= oR + 0.001);
+    if (xOverlap) {
+      if (Math.abs(rawY - oB) < TOL) sy = oB;
+      else if (Math.abs((rawY + hF) - oT) < TOL) sy = oT - hF;
+    }
+  }
+  sx = Math.max(0, Math.min(PLAN_COLS - wF, sx));
+  sy = Math.max(0, Math.min(PLAN_ROWS - hF, sy));
+  return [sx, sy];
 }
 
 function rackRot(plan, rackId) {
@@ -1451,10 +1492,10 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
     div.addEventListener('pointermove', e => {
       if (!dragging) return;
       const z = planZoom || 1;
-      const dx = Math.round((e.clientX - startX) / (PLAN_CELL_PX * z));
-      const dy = Math.round((e.clientY - startY) / (PLAN_CELL_PX * z));
-      const nx = Math.max(0, Math.min(PLAN_COLS - wC, startCell.x + dx));
-      const ny = Math.max(0, Math.min(PLAN_ROWS - hC, startCell.y + dy));
+      // v0.59.313: raw-позиция в float-клетках + snap (grid + neighbor-edge)
+      const rawX = startCell.x + (e.clientX - startX) / (PLAN_CELL_PX * z);
+      const rawY = startCell.y + (e.clientY - startY) / (PLAN_CELL_PX * z);
+      const [nx, ny] = snapRackPos(rawX, rawY, wC, hC, r.id, plan, getRacks());
       div.style.left = (nx * PLAN_CELL_PX) + 'px';
       div.style.top = (ny * PLAN_CELL_PX) + 'px';
       pos.x = nx; pos.y = ny;
@@ -1526,15 +1567,17 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
     const rect = canvas.getBoundingClientRect();
     // CSS `zoom` увеличивает rect в N раз, компенсируем делением на planZoom.
     const z = planZoom || 1;
-    // v0.59.312: drop учитывает реальные размеры стойки + проверяет коллизии
+    // v0.59.313: drop с реальными размерами, grid+neighbor snap и avoid-overlap
     const p2 = getPlan();
     const racksNow = getRacks();
     const dropped = racksNow.find(r => r.id === id);
     const rot = rackRot(p2, id);
     const [wC, hC] = dropped ? rackSizeCells(dropped, p2, rot) : [2, 1];
-    let x = Math.max(0, Math.min(PLAN_COLS - wC, Math.floor((e.clientX - rect.left) / (PLAN_CELL_PX * z))));
-    let y = Math.max(0, Math.min(PLAN_ROWS - hC, Math.floor((e.clientY - rect.top) / (PLAN_CELL_PX * z))));
-    // Проверка на пересечение с другими стойками — если занято, ищем свободную ячейку по спирали.
+    // raw float-позиция (курсор = угол), снап сначала к сетке, затем к соседу.
+    const rawX = (e.clientX - rect.left) / (PLAN_CELL_PX * z);
+    const rawY = (e.clientY - rect.top) / (PLAN_CELL_PX * z);
+    let [x, y] = snapRackPos(rawX, rawY, wC, hC, id, p2, racksNow);
+    // Проверка коллизий — если накрыли соседа, ищем свободную клетку по спирали.
     const collides = (cx, cy) => {
       for (const [otherId, op] of Object.entries(p2.positions || {})) {
         if (otherId === id) continue;
@@ -1542,8 +1585,9 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
         if (!or) continue;
         const orot = ((+op.rot) || 0) % 360;
         const [owC, ohC] = rackSizeCells(or, p2, orot);
-        if (cx < (op.x | 0) + owC && cx + wC > (op.x | 0) &&
-            cy < (op.y | 0) + ohC && cy + hC > (op.y | 0)) return true;
+        const EPS = 0.01;
+        if (cx + EPS < (+op.x) + owC && cx + wC - EPS > (+op.x) &&
+            cy + EPS < (+op.y) + ohC && cy + hC - EPS > (+op.y)) return true;
       }
       return false;
     };
