@@ -1676,7 +1676,15 @@ export function renderNodes() {
       : 'Трансформатор';
     // v0.59.327: клеммная коробка — пассивный узел, без In/Макс.
     const panelSub = (n.type === 'panel' && n.switchMode === 'terminal')
-      ? `Клеммная коробка · ${(n.inputs || 0)} вх / ${(n.outputs || 0)} вых`
+      ? (() => {
+          const N = n.inputs || 0;
+          const prot = Array.isArray(n.channelProtection) ? n.channelProtection.filter(Boolean).length : 0;
+          const jumps = Array.isArray(n.channelJumpers) ? n.channelJumpers.length : 0;
+          const parts = [`Клеммная коробка · ${N} цеп.`];
+          if (prot) parts.push(`защ ${prot}`);
+          if (jumps) parts.push(`перем ${jumps}`);
+          return parts.join(' · ');
+        })()
       : `In ${fmt(n.capacityA || 0)} A · Макс: ${fmt(n._maxLoadA || 0)} A / ${fmt(n._maxLoadKw || 0)} kW`;
     const subTxt = {
       source:    srcSubLabel,

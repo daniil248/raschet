@@ -1343,6 +1343,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.329', date: '2026-04-23', items: [
+      '🔁 <b>Миграция terminal при загрузке.</b> В <code>serialization.js</code> добавлен блок: любой <code>panel + switchMode="terminal"</code> при загрузке получает <code>inputs === outputs</code> (берётся max из двух), дозаполняет <code>channelProtection[]</code> до длины N нулями, гарантирует <code>channelJumpers=[]</code>. Legacy <code>channels[].hasProtection</code> от старого <code>junction-box</code> мигрирует в <code>channelProtection[]</code>.',
+      '🏷 <b>Подпись узла-коробки.</b> Вместо «N вх / M вых» теперь «N цеп.» + опц. «защ K» (количество цепей с защитой) + «перем M» (количество перемычек). Файл: <code>js/engine/render.js</code>.',
+      'Файлы: js/engine/serialization.js, js/engine/render.js, js/engine/constants.js.',
+    ] },
     { version: '0.59.328', date: '2026-04-23', items: [
       '🔌 <b>Клеммная коробка — функциональная модель восстановлена.</b> Вход i идёт ровно на выход i (1:1 passthrough), а не «все на все». Количество входов = количество выходов и синхронизируется автоматически при смене «Цепей» в инспекторе. В <code>interaction.js</code> дроп из палитры инициализирует <code>inputs=outputs=2</code>, <code>channelProtection=[false,false]</code>, <code>channelJumpers=[]</code>.',
       '🛡 <b>Защитный аппарат на цепь (per-channel).</b> В инспекторе под списком «Цепи» для каждой цепи i чекбокс «защитный аппарат». При <code>channelProtection[i]=true</code> отходящий кабель защищается ЛОКАЛЬНЫМ автоматом (обычный расчёт). При <code>false</code> — наследует номинал со стороны входа того же канала: <code>_breakerInternal=true</code>, <code>_breakerInternalSource="terminal-passthrough"</code>, <code>_breakerExcludeFromBom=true</code>, <code>_breakerIn</code> = max(<code>_breakerIn</code>) входящих кабелей в той же группе. Это значит: если вышестоящий щит уже дал автомат, отдельный автомат на выходе коробки в BOM не попадает.',

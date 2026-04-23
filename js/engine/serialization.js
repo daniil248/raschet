@@ -112,8 +112,22 @@ export function deserialize(data) {
       n.switchMode = 'terminal';
       if (!n.outputs) n.outputs = n.inputs || 2;
       if (!n.name || n.name === 'Клеммная коробка') n.name = 'Клеммная коробка';
+      // v0.59.328: channels[].hasProtection → channelProtection[], единый массив.
+      if (Array.isArray(n.channels) && !Array.isArray(n.channelProtection)) {
+        n.channelProtection = n.channels.map(ch => !!(ch && ch.hasProtection));
+      }
       // channels/bridges/ipRating остаются в узле как метаданные на случай
       // обратной миграции, но инспектор их не показывает.
+    }
+    // v0.59.328: terminal всегда inputs===outputs (1:1 passthrough).
+    if (n.type === 'panel' && n.switchMode === 'terminal') {
+      const N = Math.max(Number(n.inputs) || 2, Number(n.outputs) || 2, 1);
+      n.inputs = N;
+      n.outputs = N;
+      if (!Array.isArray(n.channelProtection)) n.channelProtection = new Array(N).fill(false);
+      while (n.channelProtection.length < N) n.channelProtection.push(false);
+      n.channelProtection.length = N;
+      if (!Array.isArray(n.channelJumpers)) n.channelJumpers = [];
     }
     state.nodes.set(n.id, n);
   }
