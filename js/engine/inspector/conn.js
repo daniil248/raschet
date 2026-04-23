@@ -440,9 +440,19 @@ export function renderInspectorConn(c) {
     h.push('</details>');
   }
 
-  // Автомат защиты — для всех линий (не только активных).
-  // Фаза 1.19.8: для ввода от городской сети блок скрыт.
-  if (!isUtilityInfeed) {
+  // v0.59.330: клеммная коробка без защиты на цепи — отходящий кабель
+  // защищается вышестоящим автоматом. Отдельный выбор номинала/типа защиты
+  // не показываем — только компактная заметка со ссылкой на источник.
+  if (c._breakerInternalSource === 'terminal-passthrough') {
+    const up = c._breakerIn || 0;
+    h.push('<div class="inspector-section">');
+    h.push('<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><h4 style="margin:0;font-size:12px">Защитный аппарат</h4></div>');
+    h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:8px;font-size:11px;color:#1565c0;line-height:1.5">
+      Защита — <b>вышестоящий автомат</b>${up ? ` <b>${up} А</b>` : ''}.<br>
+      В этой цепи клеммной коробки нет собственного защитного аппарата, поэтому отходящий кабель рассматривается как продолжение вышестоящего сегмента: одно сечение, один автомат, общая длина для падения напряжения и КЗ.
+    </div>`);
+    h.push('</div>');
+  } else if (!isUtilityInfeed) {
     // Используем единый справочник из constants.js
     const autoIn = c._breakerIn || c._breakerPerLine || 0;
     const manualBreaker = !!(c.manualBreakerIn || c.manualFuseIn);

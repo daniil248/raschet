@@ -1343,6 +1343,11 @@ export const CHANGELOGS = {
   ],
 
   'schematic': [
+    { version: '0.59.330', date: '2026-04-23', items: [
+      '🛑 <b>Passthrough-кабель клеммной коробки больше не получает собственного автомата.</b> Если у цепи terminal-коробки нет защиты (<code>channelProtection[i]=false</code>), отходящий кабель помечен <code>_breakerInternalSource="terminal-passthrough"</code> и теперь: (а) в инспекторе кабеля вместо блока «Защитный аппарат» (с типом/номиналом/auto-ручной/мастер) показывается пояснение «Защита — вышестоящий автомат N А» со ссылкой на upstream; (б) на канве бейдж автомата над выходным портом НЕ рисуется; (в) в link-mode (текст над линией) номинал тоже не выводится. Поведение BOM и расчёта кабеля не изменилось (<code>_breakerExcludeFromBom=true</code>, sizing — по максимуму downstream + <code>_breakerAgainstCable</code> предупреждает если upstream In > Iz).',
+      '📐 <b>Про длину линии.</b> Пользователь попросил «считать вместе с верхним кабелем». Сделано через semantic: passthrough-кабель и upstream-кабель — это разные сегменты в графе, и SC/vdrop калькулятор (<code>nodeIk</code>, <code>_cableLength</code>) уже проходит цепочку сегмент-за-сегментом, суммируя импедансы и падения. Поэтому складывать длины в один кабель нельзя (был бы двойной счёт); в коде добавлен явный комментарий.',
+      'Файлы: js/engine/recalc.js (комментарий о не-агрегации длины), js/engine/render.js (скрытие badge автомата для passthrough на канве и в link-mode), js/engine/inspector/conn.js (альтернативный блок «Защита — вышестоящий автомат»), js/engine/constants.js.',
+    ] },
     { version: '0.59.329', date: '2026-04-23', items: [
       '🔁 <b>Миграция terminal при загрузке.</b> В <code>serialization.js</code> добавлен блок: любой <code>panel + switchMode="terminal"</code> при загрузке получает <code>inputs === outputs</code> (берётся max из двух), дозаполняет <code>channelProtection[]</code> до длины N нулями, гарантирует <code>channelJumpers=[]</code>. Legacy <code>channels[].hasProtection</code> от старого <code>junction-box</code> мигрирует в <code>channelProtection[]</code>.',
       '🏷 <b>Подпись узла-коробки.</b> Вместо «N вх / M вых» теперь «N цеп.» + опц. «защ K» (количество цепей с защитой) + «перем M» (количество перемычек). Файл: <code>js/engine/render.js</code>.',

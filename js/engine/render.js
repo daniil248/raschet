@@ -2270,7 +2270,7 @@ export function renderConns() {
 
       // Формируем текст автомата (если включено)
       let brkTxt = null;
-      if (GLOBAL.showLinkBreakers && (c._breakerIn || c._breakerPerLine)) {
+      if (GLOBAL.showLinkBreakers && (c._breakerIn || c._breakerPerLine) && c._breakerInternalSource !== 'terminal-passthrough') {
         if (c._breakerIn && c._breakerPerLine && c._breakerCount > 1) {
           brkTxt = `${c._breakerIn}А (${c._breakerCount}×${c._breakerPerLine}А)`;
         } else if (c._breakerPerLine && c._breakerCount > 1) {
@@ -2538,8 +2538,11 @@ export function renderConns() {
       }
     }
 
-    // Бейдж автомата — под выходным портом, повёрнут -90°, с белой подложкой
-    const hasBreaker = c._breakerIn || c._breakerPerLine;
+    // Бейдж автомата — под выходным портом, повёрнут -90°, с белой подложкой.
+    // v0.59.330: для terminal-passthrough бейдж НЕ рисуем (это не собственный
+    // автомат сегмента, а указатель на upstream-защиту — её бейдж виден
+    // на upstream-кабеле).
+    const hasBreaker = (c._breakerIn || c._breakerPerLine) && c._breakerInternalSource !== 'terminal-passthrough';
     if (!effLinkMode && GLOBAL.showBreakerLabels !== false && hasBreaker) {
       // Позиция = выходной порт (from)
       const bx = a.x;
