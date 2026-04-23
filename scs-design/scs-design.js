@@ -1225,15 +1225,64 @@ const PLAN_COLS = 40, PLAN_ROWS = 24;
 const PLAN_ZOOM_MIN = 0.25, PLAN_ZOOM_MAX = 4;
 let planZoom = 1;
 let selectedTrayId = null;
-const RACK_W_CELLS = 2; // прямоугольник стойки 2×1 клетки
+const RACK_W_CELLS = 2; // legacy фолбэк, если нет физических размеров
 const RACK_H_CELLS = 1;
+
+// v0.59.303: извлечение физических размеров стойки (widthMm × depthMm).
+// Источники в порядке приоритета: r.widthMm/r.depthMm → парсинг r.name
+// (шаблон «600x1200x42U» или «800×1000»). Фолбэк 600×1000.
+function getRackDimsMm(r) {
+  let w = +r?.widthMm || 0;
+  let d = +r?.depthMm || 0;
+  if ((!w || !d) && r?.name) {
+    const m = String(r.name).match(/(\d{3,4})\s*[x×]\s*(\d{3,4})/i);
+    if (m) { w = w || +m[1]; d = d || +m[2]; }
+  }
+  return { widthMm: w || 600, depthMm: d || 1000 };
+}
+
+// Размер стойки в клетках плана с учётом поворота (0/90/180/270°).
+function rackSizeCells(r, plan, rot) {
+  const { widthMm, depthMm } = getRackDimsMm(r);
+  const step = (plan && +plan.step) || 0.6;
+  let wC = Math.max(1, Math.round(widthMm / 1000 / step));
+  let hC = Math.max(1, Math.round(depthMm / 1000 / step));
+  if (rot === 90 || rot === 270) { const t = wC; wC = hC; hC = t; }
+  return [wC, hC];
+}
+
+function rackRot(plan, rackId) {
+  const p = plan?.positions?.[rackId];
+  return ((p && +p.rot) || 0) % 360;
+}
+
+// Центр стойки (в пикселях плана) с учётом её размеров и поворота.
+function rackCenterPx(rackId, plan) {
+  const pos = plan?.positions?.[rackId];
+  if (!pos) return null;
+  const r = getRacks().find(x => x.id === rackId);
+  if (!r) return [(pos.x + RACK_W_CELLS/2) * PLAN_CELL_PX, (pos.y + RACK_H_CELLS/2) * PLAN_CELL_PX];
+  const [wC, hC] = rackSizeCells(r, plan, pos.rot || 0);
+  return [(pos.x + wC/2) * PLAN_CELL_PX, (pos.y + hC/2) * PLAN_CELL_PX];
+}
 
 function getPlan() {
   const p = loadJson(LS_PLAN, PLAN_DEFAULT);
   const out = {
     step: +p?.step || PLAN_DEFAULT.step,
     kRoute: +p?.kRoute || PLAN_DEFAULT.kRoute,
-    positions: (p && p.positions && typeof p.positions === 'object') ? p.positions : {},
+    positions: (p && p.positions && typeof p.positions === 'object') ? (() => {
+      // v0.59.303: нормализация positions — поддержка поля rot (0/90/180/270).
+      const out = {};
+      for (const [id, pos] of Object.entries(p.positions)) {
+        if (!pos || typeof pos !== 'object') continue;
+        let rot = +pos.rot || 0;
+        rot = ((rot % 360) + 360) % 360;
+        if (rot !== 0 && rot !== 90 && rot !== 180 && rot !== 270) rot = 0;
+        out[id] = { x: +pos.x || 0, y: +pos.y || 0, rot };
+      }
+      return out;
+    })() : {},
     zoom: (p && +p.zoom > 0) ? Math.min(PLAN_ZOOM_MAX, Math.max(PLAN_ZOOM_MIN, +p.zoom)) : 1,
     trays: Array.isArray(p?.trays) ? p.trays.map(t => ({
       id: String(t.id || ('tr-' + Math.random().toString(36).slice(2, 8))),
@@ -1361,10 +1410,14 @@ function renderPlan() {
     const div = document.createElement('div');
     div.className = 'sd-plan-rack' + cls + (isDraft ? ' draft' : '');
     div.dataset.id = r.id;
+    const rot = rackRot(plan, r.id);
+    const [wC, hC] = rackSizeCells(r, plan, rot);
+    const dims = getRackDimsMm(r);
     div.style.left = (pos.x * PLAN_CELL_PX) + 'px';
     div.style.top = (pos.y * PLAN_CELL_PX) + 'px';
-    div.style.width = (RACK_W_CELLS * PLAN_CELL_PX) + 'px';
-    div.style.height = (RACK_H_CELLS * PLAN_CELL_PX) + 'px';
+    div.style.width = (wC * PLAN_CELL_PX) + 'px';
+    div.style.height = (hC * PLAN_CELL_PX) + 'px';
+    if (rot === 90 || rot === 270) div.classList.add('rot-tall');
     // подробный тултип: + исходящие связи и метраж от этой стойки
     const rackLinks = getVisibleLinks().filter(l => l.fromRackId === r.id || l.toRackId === r.id);
     let fromM = 0;
@@ -1379,7 +1432,8 @@ function renderPlan() {
 U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
 Связей: ${rackLinks.length}${typesStr ? ' (' + typesStr + ')' : ''}
 Кабеля от стойки: ~${Math.round(fromM)} м (с запасом 1.3)`;
-    div.innerHTML = `<span class="sd-plan-rack-label">${escapeHtml(tag || r.name || r.id)}</span>
+    div.innerHTML = `<span class="sd-plan-rack-label">${escapeHtml(tag || r.name || r.id)} <small class="sd-plan-rack-dim">${dims.widthMm}×${dims.depthMm}${rot?` · ${rot}°`:''}</small></span>
+      <button type="button" class="sd-plan-rack-rot" title="Повернуть на 90°">⟳</button>
       <button type="button" class="sd-plan-rm" title="Убрать со схемы">✕</button>`;
     canvas.appendChild(div);
 
@@ -1387,6 +1441,7 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
     let dragging = false, startX = 0, startY = 0, startCell = null;
     div.addEventListener('pointerdown', e => {
       if (e.target.classList.contains('sd-plan-rm')) return;
+      if (e.target.classList.contains('sd-plan-rack-rot')) return;
       dragging = true;
       div.setPointerCapture(e.pointerId);
       startX = e.clientX; startY = e.clientY;
@@ -1398,8 +1453,8 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
       const z = planZoom || 1;
       const dx = Math.round((e.clientX - startX) / (PLAN_CELL_PX * z));
       const dy = Math.round((e.clientY - startY) / (PLAN_CELL_PX * z));
-      const nx = Math.max(0, Math.min(PLAN_COLS - RACK_W_CELLS, startCell.x + dx));
-      const ny = Math.max(0, Math.min(PLAN_ROWS - RACK_H_CELLS, startCell.y + dy));
+      const nx = Math.max(0, Math.min(PLAN_COLS - wC, startCell.x + dx));
+      const ny = Math.max(0, Math.min(PLAN_ROWS - hC, startCell.y + dy));
       div.style.left = (nx * PLAN_CELL_PX) + 'px';
       div.style.top = (ny * PLAN_CELL_PX) + 'px';
       pos.x = nx; pos.y = ny;
@@ -1420,6 +1475,21 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
       delete p2.positions[r.id];
       savePlan(p2);
       if (focusRackId === r.id) focusRackId = null;
+      renderPlan();
+    });
+    // v0.59.303: поворот стойки на 90°
+    div.querySelector('.sd-plan-rack-rot').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const p2 = getPlan();
+      const cur = p2.positions[r.id] || { x: pos.x, y: pos.y, rot: 0 };
+      const nextRot = (cur.rot + 90) % 360;
+      // после поворота пересчитаем размеры, проверим границы
+      const [nwC, nhC] = rackSizeCells(r, p2, nextRot);
+      cur.rot = nextRot;
+      cur.x = Math.max(0, Math.min(PLAN_COLS - nwC, cur.x));
+      cur.y = Math.max(0, Math.min(PLAN_ROWS - nhC, cur.y));
+      p2.positions[r.id] = cur;
+      savePlan(p2);
       renderPlan();
     });
     // click (без drag) = фокус на трассы этой стойки
@@ -1650,10 +1720,9 @@ function computeTrayFills(plan) {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
     if (!a || !b) return;
-    const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-    const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
-    const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-    const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    // v0.59.303: центр стойки с учётом её физических размеров и поворота.
+    const [ax, ay] = rackCenterPx(l.fromRackId, plan);
+    const [bx, by] = rackCenterPx(l.toRackId, plan);
     const route = buildCableRoute(ax, ay, bx, by, trays);
     if (!route.viaTray) return;
     const d = CABLE_DIAMETER(l.cableType);
@@ -1694,10 +1763,9 @@ function drawPlanLinks(svg, plan) {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
     if (!a || !b) return;
-    const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-    const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
-    const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-    const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    // v0.59.303: центр стойки с учётом её физических размеров и поворота.
+    const [ax, ay] = rackCenterPx(l.fromRackId, plan);
+    const [bx, by] = rackCenterPx(l.toRackId, plan);
     const route = buildCableRoute(ax, ay, bx, by, trays, fillsMap);
     const color = CABLE_COLOR(l.cableType);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -1717,10 +1785,8 @@ function computeSuggestedLength(link, plan) {
   const a = plan.positions[link.fromRackId];
   const b = plan.positions[link.toRackId];
   if (!a || !b) return null;
-  const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-  const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
-  const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-  const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+  const [ax, ay] = rackCenterPx(link.fromRackId, plan);
+  const [bx, by] = rackCenterPx(link.toRackId, plan);
   const route = buildCableRoute(ax, ay, bx, by, plan.trays || []);
   return route.cells * plan.step * plan.kRoute;
 }
@@ -2028,10 +2094,9 @@ function exportPlanSvg() {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
     if (!a || !b) return;
-    const ax = (a.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-    const ay = (a.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
-    const bx = (b.x + RACK_W_CELLS / 2) * PLAN_CELL_PX;
-    const by = (b.y + RACK_H_CELLS / 2) * PLAN_CELL_PX;
+    // v0.59.303: центр стойки с учётом её физических размеров и поворота.
+    const [ax, ay] = rackCenterPx(l.fromRackId, plan);
+    const [bx, by] = rackCenterPx(l.toRackId, plan);
     const color = CABLE_COLOR(l.cableType);
     lines.push(`<path d="M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>`);
     const cells = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);

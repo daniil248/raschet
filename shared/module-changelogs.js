@@ -113,6 +113,12 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.303', date: '2026-04-23', items: [
+      '📐 <b>Физические размеры стоек в плане.</b> Стойка на plan-view теперь рисуется по реальным габаритам <code>widthMm × depthMm</code> (из каталога корпусов rack-config или паттерна имени «600x1200»). Ширина/глубина → количество клеток = <code>round(mm / plan.step)</code>, минимум 1×1. Под стойкой — подпись <code>600×1200</code> серым.',
+      '🔄 <b>Поворот стойки 0°/90°/180°/270°.</b> На карточке стойки — маленькая круглая кнопка <code>⟳</code> (16×16, правый-верхний угол): инкремент 90°. При нечётном повороте ширина/глубина меняются местами, подпись стойки поворачивается вертикально. Rot сохраняется в <code>plan.positions[id].rot</code>. Позиция clamp-ается в границы plan при повороте.',
+      '🎯 <b>Центр стойки в расчётах.</b> Введён хелпер <code>rackCenterPx(rackId, plan)</code> — возвращает центр с учётом реальных размеров и rot. Используется в: drawPlanLinks (старт/конец кабеля), computeTrayFills, computeSuggestedLength, renderTray (якори). Раньше везде было <code>(x + RACK_W_CELLS/2) × PLAN_CELL_PX</code> с жёстко зашитыми 2×1 клетки — линии шли не по центру больших стоек.',
+      'Файлы: scs-design/scs-design.js (+getRackDimsMm/rackSizeCells/rackRot/rackCenterPx хелперы; getPlan нормализует positions.rot; renderPlan — использует [wC,hC] из rackSizeCells; +.sd-plan-rack-rot кнопка + handler; replace all RACK_W_CELLS/2 → rackCenterPx в 5 местах); scs-design/scs-design.css (+.sd-plan-rack-rot, +.sd-plan-rack-dim, +.sd-plan-rack.rot-tall .sd-plan-rack-label — text vertical writing-mode).',
+    ] },
     { version: '0.59.301', date: '2026-04-23', items: [
       '🔧 <b>Видимые ручки изменения длины канала.</b> Было: невидимые (CSS не задан) — тянуть за край без визуальной подсказки. Стало: серые прямоугольные ручки на обоих концах канала — курсор <code>ew-resize</code> для h-канала, <code>ns-resize</code> для v-канала. Hover → синий фон.',
       '⚙️ <b>Редактор свойств канала в pop-over.</b> При выделении канала — сверху pop-over поля: <b>Ширина</b> (мм), <b>Глубина</b> (мм), <b>Лимит</b> заполнения (%). Изменения сохраняются в <code>plan.trays[]</code> и сразу пересчитывают <code>pct</code> + цветовой класс low/mid/hi/over.',
