@@ -1341,7 +1341,43 @@ function getPlan() {
   planZoom = out.zoom;
   return out;
 }
-function savePlan(p) { saveJson(LS_PLAN, p); }
+// v0.59.319: undo/redo для plan. Перед каждым savePlan пушим текущее
+// состояние в undoStack, redoStack сбрасывается (new branch). Стек ограничен
+// 30 снапшотами. В memory, без persistence — переживает только сессию.
+const UNDO_LIMIT = 30;
+const undoStack = [];
+const redoStack = [];
+function savePlan(p) {
+  try {
+    const prev = loadJson(LS_PLAN, PLAN_DEFAULT);
+    undoStack.push(JSON.stringify(prev));
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    redoStack.length = 0;
+  } catch (_) { /* не блокируем запись из-за ошибки undo */ }
+  saveJson(LS_PLAN, p);
+}
+function undoPlan() {
+  if (!undoStack.length) { updateStatus('⚠ Нет действий для отмены.'); return; }
+  const cur = loadJson(LS_PLAN, PLAN_DEFAULT);
+  redoStack.push(JSON.stringify(cur));
+  if (redoStack.length > UNDO_LIMIT) redoStack.shift();
+  const prevJson = undoStack.pop();
+  saveJson(LS_PLAN, JSON.parse(prevJson));
+  planZoom = (+JSON.parse(prevJson).zoom) || 1;
+  renderPlan();
+  updateStatus(`↶ Отменено. В стеке осталось: ${undoStack.length}.`);
+}
+function redoPlan() {
+  if (!redoStack.length) { updateStatus('⚠ Нет действий для повтора.'); return; }
+  const cur = loadJson(LS_PLAN, PLAN_DEFAULT);
+  undoStack.push(JSON.stringify(cur));
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  const nextJson = redoStack.pop();
+  saveJson(LS_PLAN, JSON.parse(nextJson));
+  planZoom = (+JSON.parse(nextJson).zoom) || 1;
+  renderPlan();
+  updateStatus(`↷ Повторено. В redo-стеке осталось: ${redoStack.length}.`);
+}
 function applyPlanZoomStyle() {
   const canvas = document.getElementById('sd-plan-canvas');
   if (!canvas) return;
@@ -2794,6 +2830,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-auto-trays')?.addEventListener('click', autoGenerateTrays);
   document.getElementById('sd-plan-fit-all')?.addEventListener('click', fitAllTrays);
   document.getElementById('sd-plan-fit-content')?.addEventListener('click', fitPlanToContent);
+  document.getElementById('sd-plan-undo')?.addEventListener('click', undoPlan);
+  document.getElementById('sd-plan-redo')?.addEventListener('click', redoPlan);
   // v0.59.295: zoom/pan только мышью (кнопки убраны). Двойной клик = 1:1.
   const planWrap = document.querySelector('.sd-plan-wrap');
   if (planWrap) {
@@ -2836,9 +2874,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // R — повернуть на 90°, Delete — убрать со схемы, стрелки — nudge на 1 клетку.
     // Игнорируем, когда фокус в <input> / <textarea> / contenteditable.
     document.addEventListener('keydown', e => {
-      if (!focusRackId) return;
       const tag = (e.target?.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+      const typing = (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable);
+      // v0.59.319: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y — undo/redo на plan-view.
+      // Только если активна вкладка plan (sd-plan-wrap визуально показан).
+      const planVisible = !!document.querySelector('.sd-plan-wrap')?.offsetParent;
+      if (!typing && planVisible && (e.ctrlKey || e.metaKey)) {
+        if (e.key === 'z' || e.key === 'Z' || e.key === 'я' || e.key === 'Я') {
+          if (e.shiftKey) redoPlan(); else undoPlan();
+          e.preventDefault(); return;
+        }
+        if (e.key === 'y' || e.key === 'Y' || e.key === 'н' || e.key === 'Н') {
+          redoPlan(); e.preventDefault(); return;
+        }
+      }
+      if (!focusRackId) return;
+      if (typing) return;
       const p2 = getPlan();
       const cur = p2.positions[focusRackId];
       if (!cur) return;

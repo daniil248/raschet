@@ -113,6 +113,11 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-design': [
+    { version: '0.59.319', date: '2026-04-23', items: [
+      '↶ <b>Undo / Redo на plan-view.</b> Каждый <code>savePlan</code> теперь оборачивается: предыдущее состояние пушится в <code>undoStack</code> (лимит 30 снапшотов), <code>redoStack</code> сбрасывается (new branch). Кнопки «↶ Undo» и «↷ Redo» в тулбаре + горячие клавиши: <kbd>Ctrl+Z</kbd> — отмена, <kbd>Ctrl+Y</kbd> или <kbd>Ctrl+Shift+Z</kbd> — повтор. RU-раскладка (я/н) тоже работает. Стеки в памяти — переживают только сессию (после F5 пропадают; сохраняется сам plan).',
+      'Зачем: после неудачного drag или Автораскладки или случайного Delete не нужно восстанавливать план руками — один Ctrl+Z откатывает.',
+      'Файлы: scs-design/scs-design.js (savePlan оборачивает push в undoStack; +undoPlan/redoPlan; Ctrl+Z/Y hotkey в global keydown; wire кнопок); scs-design/index.html (+#sd-plan-undo/#sd-plan-redo в тулбаре).',
+    ] },
     { version: '0.59.318', date: '2026-04-23', items: [
       '⌨ <b>Клавиатурные шорткаты на plan-view.</b> Когда стойка выделена кликом (<code>focusRackId</code>): <kbd>R</kbd> — повернуть на 90° (RU/EN раскладка: R/к), <kbd>Delete</kbd>/<kbd>Backspace</kbd> — убрать со схемы, <kbd>←</kbd>/<kbd>→</kbd>/<kbd>↑</kbd>/<kbd>↓</kbd> — nudge на 1 клетку (с <kbd>Shift</kbd> — 5 клеток). Шорткаты игнорируются, когда фокус в <code>input</code>/<code>textarea</code>/<code>select</code>/contenteditable — чтобы не мешать редактированию свойств.',
       'Файлы: scs-design/scs-design.js (global keydown listener после planWrap-wiring; проверка focusRackId + tag.name гардов).',
