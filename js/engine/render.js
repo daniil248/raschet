@@ -417,11 +417,17 @@ export function renderUnplacedPalette() {
     const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
     const badge = pids.length === 0 ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён нигде">∅</span>' : '';
     const sysDots = _systemDotsHtml(n);
+    // v0.59.332: × показываем ТОЛЬКО если элемент не размещён вообще нигде.
+    // Это соблюдает правило «удалить из проекта можно только когда снят со
+    // всех холстов» — пользователю не надо идти в «Реестр».
+    const delBtn = pids.length === 0
+      ? `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта (элемент нигде не размещён)">×</button>`
+      : '';
     return `<div class="pal-unplaced-item" draggable="true" data-unplaced-id="${esc(n.id)}" title="Перетащите на холст">
       <span class="pal-unplaced-icon">${typeLabel}</span>
       <span class="pal-unplaced-tag">${esc(tag)}</span>
       <span class="pal-unplaced-name">${esc(name)}</span>
-      ${sysDots}${badge}
+      ${sysDots}${badge}${delBtn}
     </div>`;
   }).join('');
   list.innerHTML = rows;
@@ -454,8 +460,20 @@ export function renderProjectRegistry() {
   if (countEl) countEl.textContent = String(all.length);
   if (emptyEl) emptyEl.hidden = all.length > 0;
   if (!all.length) { list.innerHTML = ''; return; }
+  // v0.59.332: фильтр по тегу/имени/типу + placement (все/размещён/не размещён).
+  const filterQ = (state._regFilter?.q || '').toLowerCase().trim();
+  const filterPlace = state._regFilter?.place || 'all';
+  const matches = (n) => {
+    const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+    if (filterPlace === 'placed' && pids.length === 0) return false;
+    if (filterPlace === 'unplaced' && pids.length > 0) return false;
+    if (!filterQ) return true;
+    const hay = `${n.tag || ''} ${n.name || ''} ${n.type || ''}`.toLowerCase();
+    return hay.includes(filterQ);
+  };
+  const filtered = all.filter(matches);
   const byType = new Map();
-  for (const n of all) {
+  for (const n of filtered) {
     const t = n.type || 'other';
     if (!byType.has(t)) byType.set(t, []);
     byType.get(t).push(n);
@@ -490,7 +508,39 @@ export function renderProjectRegistry() {
     }).join('');
     chunks.push(`<div class="pal-reg-group"><h4 class="pal-reg-group-head">${esc(label)} <span class="muted">(${arr.length})</span></h4>${items}</div>`);
   }
-  list.innerHTML = chunks.join('');
+  // v0.59.332: фильтр-бар
+  const qVal = esc(state._regFilter?.q || '');
+  const pv = state._regFilter?.place || 'all';
+  const filterBar = `<div class="pal-reg-filter" style="display:flex;gap:6px;margin:4px 0 8px;align-items:center;flex-wrap:wrap">
+    <input type="search" id="pal-reg-q" placeholder="🔎 поиск по тегу/имени/типу" value="${qVal}" style="flex:1;min-width:140px;font-size:11px;padding:4px 6px;border:1px solid #ccc;border-radius:3px">
+    <select id="pal-reg-place" style="font-size:11px;padding:3px 6px;border:1px solid #ccc;border-radius:3px">
+      <option value="all"${pv === 'all' ? ' selected' : ''}>Все</option>
+      <option value="placed"${pv === 'placed' ? ' selected' : ''}>Размещённые</option>
+      <option value="unplaced"${pv === 'unplaced' ? ' selected' : ''}>Не размещённые</option>
+    </select>
+    ${(filterQ || pv !== 'all') ? `<span class="muted" style="font-size:10px">${filtered.length} / ${all.length}</span>` : ''}
+  </div>`;
+  list.innerHTML = filterBar + (chunks.length ? chunks.join('') : `<div class="muted" style="font-size:11px;padding:8px">Нет элементов, соответствующих фильтру.</div>`);
+  // Прицепим live-обработчики на фильтры (без render() — локальный re-render).
+  const qEl = document.getElementById('pal-reg-q');
+  const pEl = document.getElementById('pal-reg-place');
+  if (qEl) {
+    qEl.addEventListener('input', () => {
+      state._regFilter = state._regFilter || {};
+      state._regFilter.q = qEl.value;
+      renderProjectRegistry();
+      // вернуть фокус обратно в поле ввода после re-render
+      const nq = document.getElementById('pal-reg-q');
+      if (nq) { nq.focus(); nq.setSelectionRange(qEl.value.length, qEl.value.length); }
+    });
+  }
+  if (pEl) {
+    pEl.addEventListener('change', () => {
+      state._regFilter = state._regFilter || {};
+      state._regFilter.place = pEl.value;
+      renderProjectRegistry();
+    });
+  }
 }
 // v0.58.16: полоска систем над карточкой — сегменты цветов по n.systems.
 // Система, совпадающая с видом текущей страницы, толще (4px) и выделена
