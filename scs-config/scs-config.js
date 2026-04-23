@@ -1692,6 +1692,70 @@ function addMatrixRow() {
   renderMatrix();
 }
 
+/* v0.59.302: какие порты устройства уже заняты существующими патч-кордами.
+   Эндпойнты в матрице имеют свободный формат; распознаём «Label/pN» и «Label/N». */
+function portsUsedForDev(dev) {
+  const used = new Set();
+  if (!dev) return used;
+  const links = currentMatrix();
+  const label = String(dev.label || '').trim().toLowerCase();
+  if (!label) return used;
+  const check = ep => {
+    const s = String(ep || '').trim().toLowerCase();
+    if (!s.startsWith(label)) return;
+    const rest = s.slice(label.length);
+    const m = rest.match(/^[\s\/\-:]*p?(\d+)/);
+    if (m) used.add(+m[1]);
+  };
+  links.forEach(l => { check(l.a); check(l.b); });
+  return used;
+}
+
+/* v0.59.302: клик по порту → выбор + клик по другому порту → патч-корд */
+function onPortClick(devId, port) {
+  const devices = currentContents();
+  const dev = devices.find(d => d.id === devId);
+  if (!dev) return;
+  const sel = state._portSel;
+  // повторный клик по тому же порту — отмена
+  if (sel && sel.devId === devId && sel.port === port) {
+    state._portSel = null;
+    renderUnitMap();
+    return;
+  }
+  // первый выбор
+  if (!sel) {
+    state._portSel = { devId, port };
+    renderUnitMap();
+    return;
+  }
+  // второй клик — разные устройства (внутри одного шкафа — это и есть патч-корд)
+  if (sel.devId === devId) {
+    // тот же девайс, другой порт — пока не поддерживаем loopback
+    state._portSel = { devId, port };
+    renderUnitMap();
+    return;
+  }
+  const aDev = devices.find(d => d.id === sel.devId);
+  if (!aDev) { state._portSel = null; renderUnitMap(); return; }
+  // сформировать эндпойнты в формате «Label/pN»
+  const a = `${aDev.label}/p${sel.port}`;
+  const b = `${dev.label}/p${port}`;
+  const links = currentMatrix();
+  // угадать тип кабеля: если хоть одно — patch-panel → cat.6a, если оптика по type.portType — om4
+  const aType = state.catalog.find(c => c.id === aDev.typeId);
+  const bType = state.catalog.find(c => c.id === dev.typeId);
+  const optical = s => /^(lc|sc|fc|st|mpo|sfp)/i.test(String(s || ''));
+  const isOptic = optical(aType && aType.portType) || optical(bType && bType.portType);
+  const cable = isOptic ? 'om4' : 'cat.6a';
+  links.push({ id: uid('lnk'), a, b, cable, lengthM: 2, color: '' });
+  saveMatrix();
+  state._portSel = null;
+  renderUnitMap();
+  renderMatrix();
+  renderBom();
+}
+
 /* ---- render: карта юнитов (SVG фронт-вью) ----------------------------- */
 function renderUnitMap(hostId, opts) {
   hostId = hostId || 'sc-unitmap';
@@ -1889,14 +1953,25 @@ function renderUnitMap(hostId, opts) {
       : (() => {
           const kind = type.kind || '';
           if (kind === 'switch' || kind === 'patch-panel') {
-            const portCount = Math.min(24, Math.max(8, Math.floor(facadeW / 5)));
+            // v0.59.302: порты кликабельные — можно создавать патч-корды кликами.
+            // Реальное число портов — из type.ports; рисуем ровно столько, сколько
+            // задекларировано (ограничение 48 — визуально всё равно не влезет).
+            const portCount = Math.max(1, Math.min(48, +(type.ports) || 24));
             const pw = Math.max(1.5, facadeW / portCount - 1);
             const py = facadeY + facadeH*0.4;
+            const ph = Math.max(2, facadeH*0.35);
             const pc = kind === 'patch-panel' ? '#f59e0b' : '#22c55e';
+            const usedSet = portsUsedForDev(d);
+            const sel = state._portSel;
             const parts = [];
             for (let i = 0; i < portCount; i++) {
               const px = facadeX + i * (pw + 1) + 0.5;
-              parts.push(`<rect x="${px}" y="${py}" width="${pw}" height="${Math.max(2, facadeH*0.35)}" fill="${pc}" opacity="0.85"/>`);
+              const pIdx = i + 1;
+              const isUsed = usedSet.has(pIdx);
+              const isSel  = sel && sel.devId === d.id && sel.port === pIdx;
+              const pFill  = isSel ? '#6366f1' : (isUsed ? '#ef4444' : pc);
+              const stroke = isSel ? '#1e1b4b' : (isUsed ? '#7f1d1d' : '#0b4d2a');
+              parts.push(`<rect class="sc-port${isSel?' sel':''}${isUsed?' used':''}" data-devid="${d.id}" data-port="${pIdx}" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="${pFill}" stroke="${stroke}" stroke-width="0.4" opacity="0.95" style="cursor:pointer"><title>${escape(d.label)} · порт ${pIdx}${isUsed?' · занят':''}</title></rect>`);
             }
             return parts.join('');
           } else if (kind === 'pdu') {
@@ -2098,6 +2173,18 @@ function renderUnitMap(hostId, opts) {
     host.innerHTML = `${svgEl}${legendEl}`;
   }
   bindUnitMapDrag(svgId);
+  // v0.59.302: клики по портам → создание патч-кордов
+  const svgNode = $(svgId);
+  if (svgNode) {
+    svgNode.addEventListener('click', ev => {
+      const p = ev.target.closest('.sc-port');
+      if (!p) return;
+      ev.stopPropagation();
+      const devId = p.getAttribute('data-devid');
+      const port = +p.getAttribute('data-port');
+      if (devId && port) onPortClick(devId, port);
+    });
+  }
 }
 
 /* 1.24.33 — zoom/pan в модалке. Wheel — zoom at cursor; drag по пустому
@@ -2160,6 +2247,8 @@ function bindUnitMapDrag(svgId) {
   bindUnitMapDrop(svg, rowH);
   svg.querySelectorAll('g.sc-devband').forEach(g => {
     g.addEventListener('pointerdown', ev => {
+      // v0.59.302: клик по порту не должен запускать drag устройства
+      if (ev.target && ev.target.classList && ev.target.classList.contains('sc-port')) return;
       ev.preventDefault();
       const devId = g.dataset.devid;
       const d = currentContents().find(x => x.id === devId); if (!d) return;
