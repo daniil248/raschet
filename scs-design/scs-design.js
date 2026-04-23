@@ -2110,7 +2110,22 @@ function updatePlanInfo() {
     .slice(0, 3)
     .map(([k, v]) => `${k}: ${Math.round(v)}м`)
     .join(' · ');
-  info.innerHTML = `стоек: <b>${placed}</b>/${racks.length} · связей: <b>${withPos}</b>/${total} · без длины: <b>${missing}</b> · Σ с запасом: <b>${Math.round(totalM)}м</b>${typeStr ? ' (' + typeStr + ')' : ''}`;
+  // v0.59.308: сводка по каналам — среднее заполнение + переполненные
+  const trays = plan.trays || [];
+  let trayStr = '';
+  if (trays.length) {
+    const fills = computeTrayFills(plan);
+    let sum = 0, n = 0, over = 0;
+    trays.forEach(t => {
+      const f = fills.get(t.id);
+      if (!f) return;
+      sum += f.pct; n++;
+      if (f.pct > (t.fillLimitPct || 40)) over++;
+    });
+    const avg = n ? Math.round(sum / n) : 0;
+    trayStr = ` · каналов: <b>${trays.length}</b> (${avg}% avg${over ? `, <span style="color:#dc2626">⚠ ${over} перегруж.</span>` : ''})`;
+  }
+  info.innerHTML = `стоек: <b>${placed}</b>/${racks.length} · связей: <b>${withPos}</b>/${total} · без длины: <b>${missing}</b> · Σ с запасом: <b>${Math.round(totalM)}м</b>${typeStr ? ' (' + typeStr + ')' : ''}${trayStr}`;
 }
 
 function applySuggestedLengths() {
