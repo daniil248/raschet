@@ -2089,7 +2089,31 @@ function exportPlanSvg() {
   for (let r = 1; r < PLAN_ROWS; r++) gridParts.push(`<line x1="0" y1="${r*PLAN_CELL_PX}" x2="${W}" y2="${r*PLAN_CELL_PX}" stroke="#e5e7eb" stroke-width="0.5"/>`);
   lines.push(gridParts.join(''));
 
-  // Кабели (L-образные) + подписи длин — только действующие
+  // v0.59.304: Каналы (trays) — рисуем ДО кабелей, чтобы кабели визуально шли
+  // поверх. Цвет заливки — по заполнению (green/cyan/amber/red).
+  const trayFillsMap = computeTrayFills(plan);
+  const trayColor = pct => {
+    if (pct < 30) return '#10b981';
+    if (pct < 60) return '#0891b2';
+    if (pct < 90) return '#f59e0b';
+    return '#dc2626';
+  };
+  (plan.trays || []).forEach(t => {
+    const fi = trayFillsMap.get(t.id) || { pct: 0 };
+    const isH = t.orient !== 'v';
+    const x = t.x * PLAN_CELL_PX;
+    const y = t.y * PLAN_CELL_PX;
+    const w = isH ? t.len * PLAN_CELL_PX : PLAN_CELL_PX;
+    const h = isH ? PLAN_CELL_PX : t.len * PLAN_CELL_PX;
+    const col = trayColor(fi.pct);
+    lines.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col}" opacity="0.18" stroke="${col}" stroke-width="1" stroke-dasharray="3 2" rx="1"/>`);
+    const lenM = (t.len * plan.step).toFixed(1);
+    const lbl = `⬚ L=${lenM}м · ${t.widthMm}×${t.depthMm} · ${Math.round(fi.pct)}%`;
+    const lx = x + w / 2, ly = y + h / 2;
+    lines.push(`<text x="${lx}" y="${ly + 3}" text-anchor="middle" font-size="9" fill="#475569">${escapeSvg(lbl)}</text>`);
+  });
+
+  // Кабели (Manhattan через каналы) + подписи длин — только действующие
   getVisibleLinks().forEach(l => {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
@@ -2098,10 +2122,14 @@ function exportPlanSvg() {
     const [ax, ay] = rackCenterPx(l.fromRackId, plan);
     const [bx, by] = rackCenterPx(l.toRackId, plan);
     const color = CABLE_COLOR(l.cableType);
-    lines.push(`<path d="M ${ax} ${ay} L ${bx} ${ay} L ${bx} ${by}" stroke="${color}" stroke-width="2" fill="none" opacity="0.7"/>`);
-    const cells = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-    const lenM = (cells * plan.step * plan.kRoute).toFixed(1);
-    const lx = bx, ly = (ay + by) / 2;
+    // v0.59.304: используем ту же Manhattan-трассу через каналы, что и на экране.
+    const route = buildCableRoute(ax, ay, bx, by, plan.trays || [], trayFillsMap);
+    const pts = route.pts || [[ax, ay], [bx, by]];
+    const d = pts.map((p, i) => (i ? 'L ' : 'M ') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    lines.push(`<path d="${d}" stroke="${color}" stroke-width="2" fill="none" opacity="0.8"/>`);
+    const lenM = ((route.cells || 0) * plan.step * plan.kRoute).toFixed(1);
+    const mid = pts[Math.floor(pts.length / 2)];
+    const lx = mid[0], ly = mid[1];
     lines.push(`<rect x="${lx - 18}" y="${ly - 7}" width="36" height="14" rx="2" fill="#ffffff" stroke="${color}" stroke-width="0.5" opacity="0.92"/>`);
     lines.push(`<text x="${lx}" y="${ly + 4}" text-anchor="middle" font-size="9" fill="#1f2937">${lenM} м</text>`);
   });
@@ -2114,10 +2142,13 @@ function exportPlanSvg() {
     const fill = rackFill(pct);
     const tag = getRackTag(r.id);
     const isDraft = !tag.trim();
+    // v0.59.304: физические размеры + поворот.
+    const rot = rackRot(plan, r.id);
+    const [wC, hC] = rackSizeCells(r, plan, rot);
     const x = pos.x * PLAN_CELL_PX;
     const y = pos.y * PLAN_CELL_PX;
-    const w = RACK_W_CELLS * PLAN_CELL_PX;
-    const h = RACK_H_CELLS * PLAN_CELL_PX;
+    const w = wC * PLAN_CELL_PX;
+    const h = hC * PLAN_CELL_PX;
     const textFill = pct >= 70 && pct < 90 ? '#1f2937' : '#ffffff';
     const strokeAttr = isDraft ? ' stroke="#ffffff" stroke-width="1.5" stroke-dasharray="3 2"' : '';
     const opacityAttr = isDraft ? ' opacity="0.75"' : '';
