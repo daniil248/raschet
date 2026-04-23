@@ -1749,40 +1749,65 @@ function nearestOnTray(px, py, t) {
   return { qx, qy, d, tray: t };
 }
 
-// v0.59.297: прилипание каналов друг к другу (T/крестовые стыки).
+// v0.59.297 / v0.59.325: прилипание каналов друг к другу (T/+ стыки).
+// Модель: у каждого канала 4 «направляющих» — 2 стены и 2 конца. При drag
+// сравниваем каждую направляющую активного канала с направляющими соседей
+// (по перпендикулярной координате) и со СТЕНОЙ/осью соседа, если он
+// перпендикулярный. Радиус snap расширен до 1.8 клетки для удобства.
+// Float-координаты сохраняются (не Math.round).
 function snapTrayPosition(t, nx, ny, plan) {
-  const SNAP = 1; // клеток
+  const SNAP = 1.8;
   const others = (plan.trays || []).filter(o => o.id !== t.id);
   let snapped = false;
   const isH = t.orient === 'h';
-  const cx = nx + (isH ? t.len / 2 : TRAY_W_CELLS / 2);
-  const cy = ny + (isH ? TRAY_W_CELLS / 2 : t.len / 2);
+  // bbox активного канала
+  const tL = nx, tR = nx + (isH ? t.len : TRAY_W_CELLS);
+  const tT = ny, tB = ny + (isH ? TRAY_W_CELLS : t.len);
+  const tCx = (tL + tR) / 2, tCy = (tT + tB) / 2;
   for (const o of others) {
     const oH = o.orient === 'h';
-    const oCx = o.x + (oH ? o.len / 2 : TRAY_W_CELLS / 2);
-    const oCy = o.y + (oH ? TRAY_W_CELLS / 2 : o.len / 2);
+    const oL = o.x, oR = o.x + (oH ? o.len : TRAY_W_CELLS);
+    const oT = o.y, oB = o.y + (oH ? TRAY_W_CELLS : o.len);
+    const oCx = (oL + oR) / 2, oCy = (oT + oB) / 2;
+
     if (isH && !oH) {
-      if (Math.abs(cy - oCy) <= SNAP &&
-          oCx >= nx - SNAP && oCx <= nx + t.len + SNAP) {
-        ny = Math.round(oCy - TRAY_W_CELLS / 2); snapped = true;
+      // H активный, V сосед. Два класса стыка:
+      // (a) крест/T — H пересекает V: выравниваем центр H на центр V по Y.
+      //     Сработает, если X-проекции пересекаются (ось V внутри отрезка H)
+      //     или близки (до SNAP).
+      const overlapX = oCx >= tL - SNAP && oCx <= tR + SNAP;
+      if (overlapX) {
+        if (Math.abs(tT - oT) <= SNAP)      { ny = oT; snapped = true; }       // верх H ↔ верх V
+        else if (Math.abs(tB - oB) <= SNAP) { ny = oB - TRAY_W_CELLS; snapped = true; } // низ ↔ низ
+        else if (Math.abs(tCy - oCy) <= SNAP) { ny = oCy - TRAY_W_CELLS / 2; snapped = true; } // центры
       }
-      if (Math.abs(nx - oCx) <= SNAP) { nx = Math.round(oCx); snapped = true; }
-      if (Math.abs((nx + t.len) - oCx) <= SNAP) { nx = Math.round(oCx - t.len); snapped = true; }
+      // (b) торец H примыкает к стене V (L-угол): конец H ↔ стена V.
+      if (Math.abs(tR - oL) <= SNAP) { nx = oL - t.len; snapped = true; }
+      else if (Math.abs(tL - oR) <= SNAP) { nx = oR; snapped = true; }
+      else if (Math.abs(tR - oR) <= SNAP) { nx = oR - t.len; snapped = true; } // конец H заподлицо с правой стеной V
+      else if (Math.abs(tL - oL) <= SNAP) { nx = oL; snapped = true; }
     } else if (!isH && oH) {
-      if (Math.abs(cx - oCx) <= SNAP &&
-          oCy >= ny - SNAP && oCy <= ny + t.len + SNAP) {
-        nx = Math.round(oCx - TRAY_W_CELLS / 2); snapped = true;
+      const overlapY = oCy >= tT - SNAP && oCy <= tB + SNAP;
+      if (overlapY) {
+        if (Math.abs(tL - oL) <= SNAP)      { nx = oL; snapped = true; }
+        else if (Math.abs(tR - oR) <= SNAP) { nx = oR - TRAY_W_CELLS; snapped = true; }
+        else if (Math.abs(tCx - oCx) <= SNAP) { nx = oCx - TRAY_W_CELLS / 2; snapped = true; }
       }
-      if (Math.abs(ny - oCy) <= SNAP) { ny = Math.round(oCy); snapped = true; }
-      if (Math.abs((ny + t.len) - oCy) <= SNAP) { ny = Math.round(oCy - t.len); snapped = true; }
+      if (Math.abs(tB - oT) <= SNAP) { ny = oT - t.len; snapped = true; }
+      else if (Math.abs(tT - oB) <= SNAP) { ny = oB; snapped = true; }
+      else if (Math.abs(tB - oB) <= SNAP) { ny = oB - t.len; snapped = true; }
+      else if (Math.abs(tT - oT) <= SNAP) { ny = oT; snapped = true; }
     } else if (isH && oH) {
-      if (Math.abs(ny - o.y) <= SNAP) { ny = o.y; snapped = true; }
-      if (Math.abs(nx - (o.x + o.len)) <= SNAP) { nx = o.x + o.len; snapped = true; }
-      if (Math.abs((nx + t.len) - o.x) <= SNAP) { nx = o.x - t.len; snapped = true; }
+      // коллинеарные: стык торцами + общая y-ось
+      if (Math.abs(tT - oT) <= SNAP) { ny = oT; snapped = true; }
+      else if (Math.abs(tB - oB) <= SNAP) { ny = oB - TRAY_W_CELLS; snapped = true; }
+      if (Math.abs(tL - oR) <= SNAP) { nx = oR; snapped = true; }
+      else if (Math.abs(tR - oL) <= SNAP) { nx = oL - t.len; snapped = true; }
     } else {
-      if (Math.abs(nx - o.x) <= SNAP) { nx = o.x; snapped = true; }
-      if (Math.abs(ny - (o.y + o.len)) <= SNAP) { ny = o.y + o.len; snapped = true; }
-      if (Math.abs((ny + t.len) - o.y) <= SNAP) { ny = o.y - t.len; snapped = true; }
+      if (Math.abs(tL - oL) <= SNAP) { nx = oL; snapped = true; }
+      else if (Math.abs(tR - oR) <= SNAP) { nx = oR - TRAY_W_CELLS; snapped = true; }
+      if (Math.abs(tT - oB) <= SNAP) { ny = oB; snapped = true; }
+      else if (Math.abs(tB - oT) <= SNAP) { ny = oT - t.len; snapped = true; }
     }
   }
   // v0.59.316: snap канала к стенам/углам стоек.
@@ -1950,8 +1975,10 @@ function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
 
 // Вычисляет заполнение каждого канала: сумма площадей сечений проходящих
 // через него кабелей / полезная площадь канала.
-// Возвращает Map<trayId, { areaMm2, pct, cables: [{ linkId, type, diameterMm }] }>
-function computeTrayFills(plan) {
+// v0.59.325: accepts optional prevFills для сходимости (1-я проходка без
+// штрафа → 2-я с ним). Также группирует связи по паре стоек, строит route
+// ОДИН раз на группу и умножает area × N.
+function computeTrayFills(plan, prevFills) {
   const fills = new Map();
   (plan.trays || []).forEach(t => {
     const crossMm2 = (t.widthMm || 100) * (t.depthMm || 50);
@@ -1959,22 +1986,28 @@ function computeTrayFills(plan) {
   });
   const links = getVisibleLinks();
   const trays = plan.trays || [];
+  // группировка по неупорядоченной паре — один route на группу
+  const groups = new Map();
   links.forEach(l => {
-    const a = plan.positions[l.fromRackId];
-    const b = plan.positions[l.toRackId];
-    if (!a || !b) return;
-    // v0.59.303: центр стойки с учётом её физических размеров и поворота.
-    const [ax, ay] = rackCenterPx(l.fromRackId, plan);
-    const [bx, by] = rackCenterPx(l.toRackId, plan);
-    const route = buildCableRoute(ax, ay, bx, by, trays);
+    if (!plan.positions[l.fromRackId] || !plan.positions[l.toRackId]) return;
+    const key = [l.fromRackId, l.toRackId].sort().join('|');
+    if (!groups.has(key)) groups.set(key, { fromRackId: l.fromRackId, toRackId: l.toRackId, links: [] });
+    groups.get(key).links.push(l);
+  });
+  groups.forEach(g => {
+    const [ax, ay] = rackCenterPx(g.fromRackId, plan);
+    const [bx, by] = rackCenterPx(g.toRackId, plan);
+    const route = buildCableRoute(ax, ay, bx, by, trays, prevFills);
     if (!route.viaTray) return;
-    const d = CABLE_DIAMETER(l.cableType);
-    const area = Math.PI * (d / 2) * (d / 2);
-    route.trayIds.forEach(tid => {
-      const f = fills.get(tid);
-      if (!f) return;
-      f.usedMm2 += area;
-      f.cables.push({ linkId: l.id, type: l.cableType, diameterMm: d });
+    g.links.forEach(l => {
+      const d = CABLE_DIAMETER(l.cableType);
+      const area = Math.PI * (d / 2) * (d / 2);
+      route.trayIds.forEach(tid => {
+        const f = fills.get(tid);
+        if (!f) return;
+        f.usedMm2 += area;
+        f.cables.push({ linkId: l.id, type: l.cableType, diameterMm: d });
+      });
     });
   });
   fills.forEach(f => { f.pct = f.crossMm2 > 0 ? (f.usedMm2 / f.crossMm2) * 100 : 0; });
@@ -2049,7 +2082,10 @@ function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const links = getVisibleLinks();
   const trays = plan.trays || [];
-  const fillsMap = trays.length ? computeTrayFills(plan) : null;
+  // v0.59.325: 2-проходная сходимость — 1-й раз без штрафа, 2-й с ним.
+  const fillsMap = trays.length
+    ? computeTrayFills(plan, computeTrayFills(plan))
+    : null;
 
   // v0.59.324: группируем связи по неупорядоченной паре стоек и рисуем ОДНУ
   // «линию прохода кабелей» на пару. Все правила маршрутизации одинаковые
