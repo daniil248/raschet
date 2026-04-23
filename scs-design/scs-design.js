@@ -1232,8 +1232,11 @@ const RACK_H_CELLS = 1;
 // Источники в порядке приоритета: r.widthMm/r.depthMm → парсинг r.name
 // (шаблон «600x1200x42U» или «800×1000»). Фолбэк 600×1000.
 function getRackDimsMm(r) {
-  let w = +r?.widthMm || 0;
-  let d = +r?.depthMm || 0;
+  // v0.59.321: rack-config хранит ширину/глубину в полях r.width / r.depth
+  // (целые мм, например 600/1000). Поля widthMm/depthMm — fallback на случай
+  // старых инстансов / импорта. Парсинг name — последний резерв.
+  let w = +r?.width || +r?.widthMm || 0;
+  let d = +r?.depth || +r?.depthMm || 0;
   if ((!w || !d) && r?.name) {
     const m = String(r.name).match(/(\d{3,4})\s*[x×]\s*(\d{3,4})/i);
     if (m) { w = w || +m[1]; d = d || +m[2]; }
