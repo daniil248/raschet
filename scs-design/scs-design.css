@@ -390,6 +390,12 @@
   border-bottom: 1px dashed #eef2ff;
 }
 .sd-tray-cable-row:last-child { border-bottom: 0; }
+/* v0.59.305: поперечное сечение канала */
+.sd-tray-cross {
+  padding: 4px 0 6px; display: flex; justify-content: center;
+  border-bottom: 1px dashed #eef2ff; margin-bottom: 4px;
+}
+.sd-tray-cross svg { display: block; }
 .sd-tray-cable-sw {
   width: 12px; height: 12px; border-radius: 2px; flex: 0 0 12px;
   border: 1px solid rgba(0,0,0,0.15);

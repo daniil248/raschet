@@ -1738,6 +1738,55 @@ function computeTrayFills(plan) {
   return fills;
 }
 
+// v0.59.305: SVG-визуализация поперечного сечения канала.
+// Прямоугольник widthMm×depthMm в масштабе + круги кабелей (greedy shelf packing,
+// ряды слева-направо + wrap). Масштаб выбирается так, чтобы вся графика
+// вписалась в ~220×90 px при любых размерах канала. Возвращает готовый
+// <div class="sd-tray-cross"> с inline SVG и подписями.
+function renderTrayCrossSection(t, fillInfo) {
+  const wMm = Math.max(20, t.widthMm || 100);
+  const hMm = Math.max(20, t.depthMm || 50);
+  const cables = (fillInfo && Array.isArray(fillInfo.cables)) ? fillInfo.cables.slice() : [];
+  const MAX_W = 220, MAX_H = 90;
+  const scale = Math.min(MAX_W / wMm, MAX_H / hMm);
+  const boxW = wMm * scale;
+  const boxH = hMm * scale;
+  const pad = 6;
+  const svgW = boxW + pad * 2 + 42; // место под вертикальную подпись глубины справа
+  const svgH = boxH + pad * 2 + 18; // место под подпись ширины снизу
+  // Greedy shelf packing: сортируем по убыванию диаметра, укладываем слева→направо
+  // в «полки» высотой = maxD текущей полки. Если не влезает в ширину — следующая полка.
+  const sorted = cables.map(c => ({ ...c })).sort((a, b) => (b.diameterMm || 0) - (a.diameterMm || 0));
+  const placed = [];
+  let cx = 0, cy = 0, rowH = 0;
+  sorted.forEach(c => {
+    const d = Math.max(1, c.diameterMm || 0);
+    if (cx + d > wMm) { cy += rowH; cx = 0; rowH = 0; }
+    placed.push({ cx: cx + d / 2, cy: cy + d / 2, d, type: c.type });
+    cx += d;
+    if (d > rowH) rowH = d;
+  });
+  const circles = placed.map(p => {
+    const px = pad + p.cx * scale;
+    const py = pad + p.cy * scale;
+    const pr = (p.d / 2) * scale;
+    const col = CABLE_COLOR(p.type);
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${Math.max(1, pr).toFixed(1)}" fill="${col}" fill-opacity="0.6" stroke="${col}" stroke-width="0.7"/>`;
+  }).join('');
+  const overflow = cy + rowH > hMm;
+  const boxStroke = overflow ? '#dc2626' : '#64748b';
+  const widthLabel = `${wMm} мм`;
+  const depthLabel = `${hMm} мм`;
+  return `<div class="sd-tray-cross" title="Поперечное сечение канала ${wMm}×${hMm} мм, пакинг ${placed.length} кабелей${overflow ? ' — НЕ ВМЕЩАЕТСЯ' : ''}">
+    <svg xmlns="http://www.w3.org/2000/svg" width="${svgW.toFixed(0)}" height="${svgH.toFixed(0)}" viewBox="0 0 ${svgW.toFixed(1)} ${svgH.toFixed(1)}">
+      <rect x="${pad}" y="${pad}" width="${boxW.toFixed(1)}" height="${boxH.toFixed(1)}" fill="#f8fafc" stroke="${boxStroke}" stroke-width="1.2"/>
+      ${circles}
+      <text x="${(pad + boxW/2).toFixed(1)}" y="${(pad + boxH + 12).toFixed(1)}" text-anchor="middle" font-size="9" fill="#475569">${widthLabel}</text>
+      <text x="${(pad + boxW + 6).toFixed(1)}" y="${(pad + boxH/2 + 3).toFixed(1)}" font-size="9" fill="#475569">${depthLabel}</text>
+    </svg>
+  </div>`;
+}
+
 function routeCells(pts) {
   let len = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -1841,9 +1890,13 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
         <span class="sd-tray-cable-ep">${escapeHtml(fromN)} → ${escapeHtml(toN)}</span>
       </div>`;
     }).join('');
+    // v0.59.305: визуализация поперечного сечения канала — прямоугольник
+    // widthMm×depthMm в масштабе + круги кабелей (greedy shelf packing).
+    const crossSvg = renderTrayCrossSection(t, fillInfo);
     cablesHtml = `<div class="sd-tray-popover">
       ${propsHtml}
       <div class="sd-tray-popover-h">Кабелей: ${fillInfo.cables.length} · ${pct}% · лимит ${limit}%</div>
+      ${crossSvg}
       ${rows}
     </div>`;
   } else if (isSelected) {
