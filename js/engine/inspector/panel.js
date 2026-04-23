@@ -863,12 +863,14 @@ export function openPanelParamsModal(n) {
         if (Number.isInteger(idx) && idx >= 0 && idx < n.inputs) prot[idx] = !!el.checked;
       });
       n.channelProtection = prot;
-      // channelJumpers — pairs [i,j]
+      // channelJumpers — pairs [i,j], оставляем только валидные в пределах N.
       const jumps = [];
       body.querySelectorAll('input.pp-chjump').forEach(el => {
         if (el.checked) {
           const i = Number(el.dataset.i), j = Number(el.dataset.j);
-          if (Number.isInteger(i) && Number.isInteger(j)) jumps.push([Math.min(i, j), Math.max(i, j)]);
+          if (Number.isInteger(i) && Number.isInteger(j) && i < n.inputs && j < n.inputs) {
+            jumps.push([Math.min(i, j), Math.max(i, j)]);
+          }
         }
       });
       n.channelJumpers = jumps;
