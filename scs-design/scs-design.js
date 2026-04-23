@@ -1894,10 +1894,30 @@ function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
     return pts;
   };
 
-  let best = { pts: direct, cells: directCells, weighted: directCells, viaTray: false, trayIds: [] };
+  const interRack = Math.abs(ax - bx) + Math.abs(ay - by);
+
+  // v0.59.324: правило «канал обязателен, если он ближе direct-прямой».
+  // Т.е. если ЕСТЬ хотя бы один канал, точка входа которого ближе, чем
+  // расстояние между стойками — кабель должен идти через канал (пусть даже
+  // обход длиннее). Это соответствует реальной прокладке: кабели кладут в
+  // лотки, а не через свободное пространство. Если же ВСЕ каналы дальше
+  // direct-маршрута — разрешаем direct (канал физически не достижим).
+  const REACH = interRack; // каждый канал «достижим», если ближе чем direct
+  const reachable = trays.filter(t => {
+    const qA = nearestOnTray(ax, ay, t);
+    const qB = nearestOnTray(bx, by, t);
+    return Math.min(qA.d, qB.d) <= REACH;
+  });
+  const allowDirect = reachable.length === 0;
+
+  let best = allowDirect
+    ? { pts: direct, cells: directCells, weighted: directCells, viaTray: false, trayIds: [] }
+    : { pts: null, cells: Infinity, weighted: Infinity, viaTray: true, trayIds: [] };
+
+  const pool = allowDirect ? trays : reachable;
 
   // single-tray кандидаты
-  for (const t of trays) {
+  for (const t of pool) {
     const qA = nearestOnTray(ax, ay, t);
     const qB = nearestOnTray(bx, by, t);
     const pts = buildSingle(t, qA, qB);
@@ -1906,11 +1926,11 @@ function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
     if (w < best.weighted) best = { pts, cells, weighted: w, viaTray: true, trayIds: [t.id] };
   }
 
-  // two-tray кандидаты — только для ПЕРПЕНДИКУЛЯРНЫХ пар (H+V), иначе хоп вырождается.
-  for (let i = 0; i < trays.length; i++) {
-    for (let j = 0; j < trays.length; j++) {
+  // two-tray кандидаты — только для ПЕРПЕНДИКУЛЯРНЫХ пар (H+V).
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = 0; j < pool.length; j++) {
       if (i === j) continue;
-      const tA = trays[i], tB = trays[j];
+      const tA = pool[i], tB = pool[j];
       if (tA.orient === tB.orient) continue;
       const qA = nearestOnTray(ax, ay, tA);
       const qB = nearestOnTray(bx, by, tB);
@@ -1921,6 +1941,10 @@ function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
     }
   }
 
+  if (!best.pts) {
+    // safety: reachable был не пуст, но ни single/two-tray не собрался — fallback direct
+    return { pts: direct, cells: directCells, viaTray: false, trayIds: [] };
+  }
   return { pts: best.pts, cells: best.cells, viaTray: best.viaTray, trayIds: best.trayIds };
 }
 
@@ -2025,27 +2049,77 @@ function drawPlanLinks(svg, plan) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const links = getVisibleLinks();
   const trays = plan.trays || [];
-  // v0.59.297: заполнение каналов считаем один раз — маршрут учитывает его веса.
   const fillsMap = trays.length ? computeTrayFills(plan) : null;
+
+  // v0.59.324: группируем связи по неупорядоченной паре стоек и рисуем ОДНУ
+  // «линию прохода кабелей» на пару. Все правила маршрутизации одинаковые
+  // (одни и те же rack-центры + каналы + fill-штраф) → все кабели пары идут
+  // по одному маршруту. Раньше каждая связь рисовалась отдельной линией
+  // (N одинаковых путей поверх друг друга, сдвиг только из-за сглаживания).
+  const groups = new Map();
   links.forEach(l => {
     const a = plan.positions[l.fromRackId];
     const b = plan.positions[l.toRackId];
     if (!a || !b) return;
-    // v0.59.303: центр стойки с учётом её физических размеров и поворота.
-    const [ax, ay] = rackCenterPx(l.fromRackId, plan);
-    const [bx, by] = rackCenterPx(l.toRackId, plan);
+    const key = [l.fromRackId, l.toRackId].sort().join('|');
+    if (!groups.has(key)) {
+      groups.set(key, { fromRackId: l.fromRackId, toRackId: l.toRackId, links: [] });
+    }
+    groups.get(key).links.push(l);
+  });
+
+  groups.forEach(g => {
+    const [ax, ay] = rackCenterPx(g.fromRackId, plan);
+    const [bx, by] = rackCenterPx(g.toRackId, plan);
     const route = buildCableRoute(ax, ay, bx, by, trays, fillsMap);
-    const color = CABLE_COLOR(l.cableType);
+    const n = g.links.length;
+    const isFocused = focusRackId && (g.fromRackId === focusRackId || g.toRackId === focusRackId);
+    const dimmed = focusRackId && !isFocused;
+    // цвет — усреднённо нейтральный серый (группа может содержать кабели
+    // разных типов), толщина растёт с числом кабелей.
+    const color = '#475569';
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', ptsToPath(route.pts));
     path.setAttribute('stroke', color);
-    const isFocused = focusRackId && (l.fromRackId === focusRackId || l.toRackId === focusRackId);
-    const dimmed = focusRackId && !isFocused;
-    path.setAttribute('stroke-width', isFocused ? '3.5' : '2');
+    const baseW = Math.min(8, 2 + Math.log2(Math.max(1, n)) * 1.4);
+    path.setAttribute('stroke-width', String(isFocused ? baseW + 1.5 : baseW));
     path.setAttribute('fill', 'none');
     path.setAttribute('opacity', dimmed ? '0.15' : (isFocused ? '1' : '0.7'));
-    if (route.viaTray) path.setAttribute('stroke-dasharray', '');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
     svg.appendChild(path);
+    // бейдж с количеством кабелей в группе (показываем только если >1)
+    if (n > 1 && route.pts.length >= 2) {
+      const mid = Math.floor(route.pts.length / 2);
+      const p0 = route.pts[mid - 1] || route.pts[0];
+      const p1 = route.pts[mid] || route.pts[route.pts.length - 1];
+      const mx = (p0[0] + p1[0]) / 2;
+      const my = (p0[1] + p1[1]) / 2;
+      const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      const label = `×${n}`;
+      const padX = 4, padY = 2;
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.setAttribute('x', String(mx));
+      txt.setAttribute('y', String(my + 3));
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('font-size', '10');
+      txt.setAttribute('font-weight', '700');
+      txt.setAttribute('fill', '#0f172a');
+      txt.textContent = label;
+      const approxW = label.length * 6 + padX * 2;
+      const approxH = 14 + padY;
+      bg.setAttribute('x', String(mx - approxW / 2));
+      bg.setAttribute('y', String(my - approxH / 2));
+      bg.setAttribute('width', String(approxW));
+      bg.setAttribute('height', String(approxH));
+      bg.setAttribute('rx', '4');
+      bg.setAttribute('fill', '#fff');
+      bg.setAttribute('stroke', '#cbd5e1');
+      bg.setAttribute('stroke-width', '1');
+      bg.setAttribute('opacity', dimmed ? '0.2' : '0.95');
+      svg.appendChild(bg);
+      svg.appendChild(txt);
+    }
   });
 }
 
