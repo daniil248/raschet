@@ -115,13 +115,21 @@ export function deleteNode(id, opts = {}) {
     // v0.59.331: блокируем удаление с холста, если к узлу подключены кабели
     // (линии или patch-link инфо-портов). Пользователь должен сперва снять
     // связи, потом удалять карточку.
+    // v0.59.395: для интегрированного ИБП проверяем не только сам узел,
+    // но и все дочерние panel-узлы композита (integratedChildIds), исключая
+    // внутренние связи (_internalIntegratedUps) — их сносим вместе с узлом.
+    const compIds = new Set([id]);
+    if (Array.isArray(n0.integratedChildIds)) {
+      for (const cid of n0.integratedChildIds) compIds.add(cid);
+    }
     let hasConn = false;
     for (const c of state.conns.values()) {
-      if (c.from.nodeId === id || c.to.nodeId === id) { hasConn = true; break; }
+      if (c._internalIntegratedUps) continue;
+      if (compIds.has(c.from.nodeId) || compIds.has(c.to.nodeId)) { hasConn = true; break; }
     }
     if (!hasConn && state.sysConns) {
       for (const sc of state.sysConns.values()) {
-        if (sc.fromNodeId === id || sc.toNodeId === id) { hasConn = true; break; }
+        if (compIds.has(sc.fromNodeId) || compIds.has(sc.toNodeId)) { hasConn = true; break; }
       }
     }
     if (hasConn) {

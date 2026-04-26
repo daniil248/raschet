@@ -14,6 +14,23 @@
 import { state, uid } from './state.js';
 import { DEFAULTS, GLOBAL } from './constants.js';
 
+// Возвращает массив внешних связей композита (тех, что выходят за пределы
+// границы UPS+children, не считая внутренней заводской проводки).
+// Используется для блокировки удаления/замены ИБП с активными подключениями.
+export function getIntegratedUpsExternalConns(n) {
+  if (!n) return [];
+  const ids = new Set([n.id]);
+  if (Array.isArray(n.integratedChildIds)) {
+    for (const cid of n.integratedChildIds) ids.add(cid);
+  }
+  const ext = [];
+  for (const c of state.conns.values()) {
+    if (c._internalIntegratedUps) continue;
+    if (ids.has(c.from.nodeId) || ids.has(c.to.nodeId)) ext.push(c);
+  }
+  return ext;
+}
+
 function _deleteChildren(n) {
   if (!Array.isArray(n.integratedChildIds)) return;
   for (const cid of n.integratedChildIds) {

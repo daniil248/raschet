@@ -13,7 +13,7 @@ import { readUpsDcParams, mountUpsPicker, applyUpsModel } from '../../../shared/
 import { listUpses } from '../../../shared/ups-catalog.js';
 // v0.59.386: реестр типов ИБП-плагинов (см. shared/ups-types/).
 import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from '../../../shared/ups-types/index.js';
-import { syncIntegratedUpsComposite } from '../ups-composite.js';
+import { syncIntegratedUpsComposite, getIntegratedUpsExternalConns } from '../ups-composite.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -307,6 +307,14 @@ export function openUpsParamsModal(n) {
           n._upsSelSupplier = st.supplier || null;
           n._upsSelSeries = st.series || null;
           if (st.modelId && st.ups && st.modelId !== n.upsCatalogId) {
+            // v0.59.395: блокируем смену модели, если к ИБП (или его композиту)
+            // уже подключены кабели — пользователь должен сперва их отключить.
+            const ext = getIntegratedUpsExternalConns(n);
+            if (ext.length > 0) {
+              flash(`Нельзя сменить модель ИБП: подключено ${ext.length} ${ext.length === 1 ? 'кабель' : 'кабел' + (ext.length < 5 ? 'я' : 'ей')}. Сперва отключите линии от ИБП и распред. панелей.`, 'warn');
+              openUpsParamsModal(n); // re-render чтобы откатить selected в picker
+              return;
+            }
             snapshot('ups-params:' + n.id + ':catalog');
             applyUpsModel(n, st.ups);
             try { syncIntegratedUpsComposite(n.id); } catch (e) { console.warn('[ups-composite]', e); }
@@ -332,6 +340,12 @@ export function openUpsParamsModal(n) {
       if (!raw) { flash('Запись Конфигуратора не найдена', 'warn'); return; }
       const last = JSON.parse(raw);
       if (!last || !last.ups) { flash('Некорректная запись Конфигуратора', 'error'); return; }
+      // v0.59.395: блокируем замену модели при наличии внешних кабелей.
+      const ext2 = getIntegratedUpsExternalConns(n);
+      if (ext2.length > 0) {
+        flash(`Нельзя применить новую модель ИБП: подключено ${ext2.length} ${ext2.length === 1 ? 'кабель' : 'кабел' + (ext2.length < 5 ? 'я' : 'ей')}. Сперва отключите линии от ИБП и распред. панелей.`, 'warn');
+        return;
+      }
       snapshot('ups-params:' + n.id + ':lastConfig');
       applyUpsModel(n, last.ups);
       try { syncIntegratedUpsComposite(n.id); } catch (e) { console.warn('[ups-composite]', e); }
@@ -404,6 +418,14 @@ export function openUpsParamsModal(n) {
   const upsTypeSel = document.getElementById('up-upsType');
   if (upsTypeSel) {
     upsTypeSel.addEventListener('change', () => {
+      // v0.59.395: блокируем смену типа при наличии подключённых кабелей.
+      const ext = getIntegratedUpsExternalConns(n);
+      if (ext.length > 0) {
+        const cur = n.kind === 'ups-integrated' ? 'integrated' : (n.upsType || 'monoblock');
+        upsTypeSel.value = cur;
+        flash(`Нельзя сменить тип ИБП: подключено ${ext.length} ${ext.length === 1 ? 'кабель' : 'кабел' + (ext.length < 5 ? 'я' : 'ей')}. Сперва отключите линии от ИБП и распред. панелей.`, 'warn');
+        return;
+      }
       snapshotVisibleFields();
       // v0.59.386: применяем дефолты выбранного типа из реестра плагинов.
       // Поля legacy: n.upsType ('monoblock'|'modular') + n.kind для расширенных типов.

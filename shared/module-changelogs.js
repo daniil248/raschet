@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.395', date: '2026-04-26', items: [
+      '🛡 <b>Защита интегрированного ИБП от удаления/замены при наличии подключённых линий.</b>',
+      '• <code>js/engine/ups-composite.js#getIntegratedUpsExternalConns(n)</code> — новая функция: возвращает список внешних связей композита (UPS + integratedChildIds), исключая внутреннюю заводскую проводку (<code>_internalIntegratedUps</code>).',
+      '• <code>js/engine/graph.js#deleteNode</code>: проверка hasConn расширена — учитывает не только сам узел ИБП, но и все его дочерние panel-узлы. Внутренние связи композита игнорируются (они снесутся вместе с узлом). Soft-delete с холста блокируется через стандартный <code>onBlocked(\'has-cables\')</code>.',
+      '• <code>js/engine/inspector/ups.js</code> — три точки блокировки:',
+      '&nbsp;&nbsp;◦ Picker «Производитель/Серия/Модель»: при попытке сменить модель показывается <code>flash(...)</code> и переключение откатывается.',
+      '&nbsp;&nbsp;◦ Кнопка «Применить из Конфигуратора»: блокируется аналогично.',
+      '&nbsp;&nbsp;◦ Селектор типа (моноблок/модульный/интегрированный): блокируется, значение откатывается на текущее.',
+      '• Сообщение пользователю: «Нельзя сменить модель ИБП: подключено N кабелей. Сперва отключите линии от ИБП и распред. панелей.»',
+      'Файлы: js/engine/ups-composite.js (+15 строк), js/engine/graph.js (~10 строк в deleteNode), js/engine/inspector/ups.js (3 блока guard-а).',
+    ] },
     { version: '0.59.394', date: '2026-04-26', items: [
       '🐞 <b>Fix: схема не загружалась из-за неверного импорта в ups-composite.js.</b>',
       '• <code>js/engine/ups-composite.js</code> импортировал <code>GLOBAL</code> из <code>./state.js</code>, но <code>GLOBAL</code> экспортируется из <code>./constants.js</code>. ES-модуль с несуществующим именованным импортом падает на загрузке, что блокировало весь граф модулей и оставляло страницу на «Загрузка…».',
