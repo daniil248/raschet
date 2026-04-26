@@ -64,7 +64,7 @@ function rowHtmlScheme(r, tag, devs, catalog) {
   </tr>`;
 }
 
-function rowHtml(r, tag, devs, catalog) {
+function rowHtml(r, tag, devs, catalog, orphan = false) {
   const usedU = devs.reduce((s, d) => {
     const t = catalog.find(c => c.id === d.typeId);
     return s + (t ? (t.heightU || 1) : 1);
@@ -78,9 +78,12 @@ function rowHtml(r, tag, devs, catalog) {
   const tagCell = tag
     ? `<code>${escapeHtml(tag)}</code>`
     : `<button class="sc-btn sc-btn-sm" data-act="assign-tag" data-rackid="${r.id}" title="Присвоить тег (например, DH1.SR2) — стойка станет реальной" style="padding:2px 8px;font-size:11px">+ тег</button>`;
+  const orphanBadge = orphan
+    ? ` <span title="Соответствующего узла в схеме больше нет (узел удалён или count уменьшен). Стойку можно оставить или удалить вручную." style="background:#fef3c7;color:#b45309;font-size:10px;padding:1px 6px;border-radius:3px;margin-left:4px">⚠ orphan</span>`
+    : '';
   return `<tr data-rackid="${r.id}" style="cursor:pointer"${tag ? '' : ' class="rl-draft"'}>
     <td>${tagCell}</td>
-    <td>${escapeHtml(r.name || 'Без имени')}</td>
+    <td>${escapeHtml(r.name || 'Без имени')}${orphanBadge}</td>
     <td>${full}</td>
     <td>${corpus}</td>
     <td>${devs.length}</td>
@@ -91,10 +94,11 @@ function rowHtml(r, tag, devs, catalog) {
   </tr>`;
 }
 
-function groupHeader(title, n, extraCls = '') {
+function groupHeader(title, n, extraCls = '', actionHtml = '') {
   return `<tr class="rl-group-h ${extraCls}">
     <td colspan="7" style="background:#f1f5f9;font-weight:600;padding:6px 10px;color:#1f2937">
       ${title} <span class="muted" style="font-weight:400">· ${n}</span>
+      ${actionHtml ? `<span style="float:right;font-weight:400">${actionHtml}</span>` : ''}
     </td>
   </tr>`;
 }
@@ -165,12 +169,19 @@ function render() {
   }
 
   const parts = [];
+  // v0.59.347: индекс «живых» виртуальных схема-стоек по schemeNodeId+index
+  // — если у материализованной стойки соответствующая виртуальная исчезла,
+  // показываем «orphan» бейдж.
+  const liveSchemeKeys = new Set(virtuals.map(v => `${v.schemeNodeId}#${v.schemeIndex}`));
+  const isOrphan = (r) => !!r.schemeNodeId && !liveSchemeKeys.has(`${r.schemeNodeId}#${r.schemeIndex || 1}`);
+
   if (real.length) {
     parts.push(groupHeader('🗄 Физические шкафы проекта', real.length));
-    parts.push(real.map(r => rowHtml(r, tags[r.id] || '', contents[r.id] || [], catalog)).join(''));
+    parts.push(real.map(r => rowHtml(r, tags[r.id] || '', contents[r.id] || [], catalog, isOrphan(r))).join(''));
   }
   if (visibleVirtuals.length) {
-    parts.push(groupHeader('🔗 Стойки из схемы (Конструктор) — авто', visibleVirtuals.length));
+    const bulkBtn = `<button type="button" class="sc-btn sc-btn-sm" data-act="materialize-all" title="Создать реальные экземпляры для всех ${visibleVirtuals.length} виртуальных стоек разом" style="font-size:11px;padding:2px 8px">▸▸ Материализовать все (${visibleVirtuals.length})</button>`;
+    parts.push(groupHeader('🔗 Стойки из схемы (Конструктор) — авто', visibleVirtuals.length, '', bulkBtn));
     parts.push(visibleVirtuals.map(r => rowHtmlScheme(r, r.autoTag, contents[r.id] || [], catalog)).join(''));
   }
   tbody.innerHTML = parts.join('');
@@ -196,6 +207,18 @@ function render() {
   // с тем же tag, после чего виртуальная скрывается из списка автоматически.
   tbody.querySelectorAll('[data-act="materialize"]').forEach(btn => {
     btn.addEventListener('click', ev => { ev.stopPropagation(); materializeFromScheme(btn.dataset.virtid, btn.dataset.tag); });
+  });
+  // v0.59.347: bulk-материализация всех виртуальных одной кнопкой.
+  tbody.querySelectorAll('[data-act="materialize-all"]').forEach(btn => {
+    btn.addEventListener('click', async ev => {
+      ev.stopPropagation();
+      const ok = await rsConfirm(
+        'Материализовать все стойки из схемы?',
+        `Будет создано ${visibleVirtuals.length} реальных экземпляров (inst-*) с авто-тегами. Можно потом править имя/корпус через Конфигуратор стойки.`
+      );
+      if (!ok) return;
+      materializeAllFromScheme();
+    });
   });
 
   // totals
@@ -255,6 +278,40 @@ function materializeFromScheme(virtId, tag) {
   tags[inst.id] = tag;
   saveJson(LS_RACKTAGS, tags);
   rsToast('Стойка ' + tag + ' материализована', 'ok');
+  render();
+}
+
+/* v0.59.347: bulk-материализация — все виртуальные «из схемы» сразу. */
+function materializeAllFromScheme() {
+  const pid = getActiveProjectId();
+  const virtuals = loadSchemeVirtualRacks(pid);
+  if (!virtuals.length) return;
+  const tags = loadJson(LS_RACKTAGS, {});
+  const usedTags = new Set(Object.values(tags).map(t => (t || '').trim()).filter(Boolean));
+  const racks = loadAllRacksForActiveProject();
+  let created = 0, skipped = 0;
+  for (const v of virtuals) {
+    if (usedTags.has(v.autoTag)) { skipped++; continue; }
+    const inst = {
+      id: 'inst-' + Math.random().toString(36).slice(2, 10),
+      name: v.name,
+      u: v.u || 42,
+      occupied: v.occupied || 0,
+      comment: `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, ${v.schemeIndex}/${v.schemeTotal})`,
+      schemeNodeId: v.schemeNodeId,
+      schemeIndex: v.schemeIndex,
+    };
+    racks.push(inst);
+    tags[inst.id] = v.autoTag;
+    usedTags.add(v.autoTag);
+    created++;
+  }
+  saveAllRacksForActiveProject(racks);
+  saveJson(LS_RACKTAGS, tags);
+  const msg = created
+    ? `Создано ${created} стоек${skipped ? ` (${skipped} пропущено — теги заняты)` : ''}`
+    : 'Все теги уже заняты — нечего материализовать';
+  rsToast(msg, created ? 'ok' : 'info');
   render();
 }
 
