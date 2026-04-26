@@ -1250,7 +1250,20 @@ export function renderPageKindBanner() {
     return;
   }
   el.hidden = false;
-  el.innerHTML = `<span class="pkb-icon">${meta.icon}</span>${meta.label}<span class="pkb-beta">бета-вид</span>`;
+  // v0.59.349: для low-voltage/data добавляем быструю ссылку на отдельный
+  // модуль «Проектирование СКС» с сохранением project-контекста через URL.
+  // Это даёт «embed-like» доступ — кнопка прямо в баннере над холстом, без
+  // ухода в hub.html. (Полноценный inline iframe-embed — следующий шаг.)
+  let extra = '';
+  try {
+    if (kind === 'low-voltage' || kind === 'data') {
+      const sp = new URLSearchParams(location.search);
+      const pid = sp.get('project') || '';
+      const pidQS = pid ? `?project=${encodeURIComponent(pid)}&from=schematic` : '';
+      extra = `<a href="scs-design/${pidQS}" class="pkb-action" title="Меж-шкафные связи и план зала — отдельный модуль с сохранением проекта" style="margin-left:10px;padding:2px 8px;background:#0d9488;color:#fff;border-radius:3px;text-decoration:none;font-size:11px">🔗 Проектирование СКС →</a>`;
+    }
+  } catch {}
+  el.innerHTML = `<span class="pkb-icon">${meta.icon}</span>${meta.label}<span class="pkb-beta">бета-вид</span>${extra}`;
   el.title = meta.desc;
 }
 
