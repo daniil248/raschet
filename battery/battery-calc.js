@@ -923,7 +923,19 @@ function _applyBatteryLock() {
   const b = sel && sel.value ? getBattery(sel.value) : null;
   // v0.59.428: показываем S³-опции только когда выбран модуль S³.
   const s3Box = document.getElementById('calc-s3-options');
-  if (s3Box) s3Box.style.display = isS3Module(b) ? 'block' : 'none';
+  const isS3 = isS3Module(b);
+  if (s3Box) s3Box.style.display = isS3 ? 'block' : 'none';
+  // v0.59.433: для S³ скрываем VRLA-специфичные поля — End voltage,
+  // «Цепочек параллельно», «Ёмкость блока (fallback)», «Напряжение блока».
+  // Они не применимы к модульной LFP-системе, где модуль = готовый блок
+  // с BMS и фиксированной ячейкой.
+  const hideForS3 = ['calc-endv', 'calc-strings', 'calc-capAh', 'calc-blockv'];
+  hideForS3.forEach(id => {
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    const wrap = inp.closest('div') || inp.parentElement;
+    if (wrap) wrap.style.display = isS3 ? 'none' : '';
+  });
   const lock = (id, val) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1122,6 +1134,23 @@ function _refreshDcExplanation() {
   const hint = document.getElementById('calc-dcv-hint');
   if (!hint) return;
   const get = id => document.getElementById(id);
+  // v0.59.433: для S³ (и других модульных Li-Ion систем) логика подбора N
+  // блоков по end-voltage не применима — там фиксированные топологии 240 /
+  // ±240 / 480 ВDC модуля. Показываем короткое пояснение вместо VRLA-формул.
+  const selBatt = get('calc-battery');
+  const battery = (selBatt && selBatt.value) ? getBattery(selBatt.value) : null;
+  if (battery && isS3Module(battery)) {
+    const v0 = _getCurrentVdcRange(Number(get('calc-dcv')?.value) || 0);
+    hint.innerHTML =
+      `<div style="background:#eef7ff;border:1px solid #b3d4ff;padding:6px 8px;border-radius:4px;line-height:1.55">`
+      + `<b>🔷 S³ Li-Ion:</b> топология DC-шины задаётся типом модуля (`
+      + `${battery.blockVoltage} В номинал) и диапазоном V<sub>DC</sub> ИБП ${v0.known ? `${v0.min}…${v0.max} В` : ''}. `
+      + `Подбор N-блоков и end-voltage на элемент (1.75 В…) не применим: `
+      + `модуль уже укомплектован BMS и фиксированными ячейками LFP. `
+      + `Число модулей и состав шкафов подбираются ниже автоматически.`
+      + `</div>`;
+    return;
+  }
   const blockV = Number(get('calc-blockv')?.value) || 12;
   const endV = Number(get('calc-endv')?.value) || 1.75;
   const chemistry = get('calc-chem')?.value || 'vrla';
@@ -1246,10 +1275,13 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
     spec.warnings.forEach(w => { html += `<div class="warn" style="margin-top:6px">⚠ ${escHtml(w)}</div>`; });
   }
   if (cRateChk && !cRateChk.ok) {
-    html += `<div class="warn" style="margin-top:6px;background:#ffebee;border:1px solid #ef9a9a;padding:8px;border-radius:4px">⚠ <b>Превышение C-rate.</b> ${escHtml(cRateChk.reason)}</div>`;
+    html += `<div class="warn" style="margin-top:6px;background:#ffebee;border:1px solid #ef9a9a;padding:8px;border-radius:4px">⚠ <b>Превышение лимита.</b> ${escHtml(cRateChk.reason)}</div>`;
   } else if (cRateChk && cRateChk.cRate) {
     const used = cRateChk.reqKw / cRateChk.ratedSystemKw * 100;
-    html += `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспортной мощности системы (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${totalModules} мод.).</div>`;
+    const cabLine = (cRateChk.cabinetsCount && cRateChk.perCabinetKw != null)
+      ? ` На шкаф: ${fmt(cRateChk.perCabinetKw)} кВт / ${cRateChk.cabinetMaxKw} кВт лимит (${cRateChk.cabinetsCount} шкаф${cRateChk.cabinetsCount === 1 ? '' : 'ов'}).`
+      : '';
+    html += `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспортной мощности системы (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${totalModules} мод.).${cabLine}</div>`;
   }
   html += `</div>`;
   return html;

@@ -136,6 +136,10 @@ export const s3LiIonType = {
 
   // Проверка max C-rate: реальная мощность нагрузки на модуль не должна
   // превышать паспортную (rated cell discharge × Vnom × Ah / 1000).
+  // Доп. проверка: PER-CABINET DC-power limit. Каждый шкаф S³ рассчитан
+  // на максимум CABINET_MAX_KW кВт по выходной DC-мощности (ограничено
+  // силовыми клеммами/шиной шкафа). Для оценки делим reqKw на число
+  // реальных шкафов (master+slave, без combiner) и сравниваем с лимитом.
   validateMaxCRate({ module, loadKw, totalModules, invEff = 0.96, cosPhi = 1 }) {
     if (!isS3Module(module)) return { ok: true };
     const pk = module.packaging || {};
@@ -147,14 +151,30 @@ export const s3LiIonType = {
     const ratedPerModuleKw = (cRate * blockV * ah) / 1000;
     const ratedSystemKw = ratedPerModuleKw * totalModules;
     const reqKw = (loadKw || 0) * (cosPhi || 1) / Math.max(0.5, invEff || 0.96);
+    // Лимит по шкафу: 200 кВт (паспортная max DC-мощность шкафа S³).
+    // Можно переопределить per-module через packaging.cabinetMaxKw.
+    const CABINET_MAX_KW = Number(pk.cabinetMaxKw) || 200;
+    const lim = getS3Limits(module);
+    const cabinetsCount = Math.max(1, Math.ceil(totalModules / Math.max(1, lim.maxPerCabinet)));
+    const perCabinetKw = reqKw / cabinetsCount;
+    if (perCabinetKw > CABINET_MAX_KW + 1e-6) {
+      return {
+        ok: false,
+        reason: `Нагрузка на шкаф ${perCabinetKw.toFixed(1)} кВт превышает паспортный лимит шкафа S³ (${CABINET_MAX_KW} кВт). Увеличьте число шкафов (модулей в системе).`,
+        ratedSystemKw, ratedPerModuleKw, reqKw, cRate,
+        cabinetsCount, perCabinetKw, cabinetMaxKw: CABINET_MAX_KW,
+      };
+    }
     if (reqKw > ratedSystemKw + 1e-6) {
       return {
         ok: false,
         reason: `Нагрузка ${reqKw.toFixed(1)} кВт превышает max C-rate системы: ${cRate}C × ${totalModules} модулей = ${ratedSystemKw.toFixed(1)} кВт. Увеличьте число модулей или выберите модель с большим C-rate.`,
         ratedSystemKw, ratedPerModuleKw, reqKw, cRate,
+        cabinetsCount, perCabinetKw, cabinetMaxKw: CABINET_MAX_KW,
       };
     }
-    return { ok: true, ratedSystemKw, ratedPerModuleKw, reqKw, cRate };
+    return { ok: true, ratedSystemKw, ratedPerModuleKw, reqKw, cRate,
+             cabinetsCount, perCabinetKw, cabinetMaxKw: CABINET_MAX_KW };
   },
 
   // BOM-строки из SystemSpec. Возвращает массив объектов
