@@ -249,17 +249,10 @@ function renderInspectorPage() {
     }
   }
 
-  // Тип страницы + parent для ссылочной
-  const independents = (state.pages || []).filter(p => p.type !== 'linked' && p.id !== page.id);
-  let typeHtml = `
-    <select id="pg-type">
-      <option value="independent"${page.type !== 'linked' ? ' selected' : ''}>Независимая</option>`;
-  for (const parent of independents) {
-    const sel = page.type === 'linked' && page.sourcePageId === parent.id;
-    typeHtml += `<option value="linked:${escAttr(parent.id)}"${sel ? ' selected' : ''}>Ссылочная → ${escHtml(parent.name || parent.id)}</option>`;
-  }
-  typeHtml += `</select>`;
-  h.push(field('Тип', typeHtml));
+  // v0.59.398: убрано поле «Тип» (Независимая/Ссылочная) из свойств страницы.
+  // В проекте всегда набор видов одной схемы (см. v0.58.5 — убрано из контекст-
+  // меню), все элементы видны на всех страницах. Поле было реликтом ранней
+  // архитектуры и вводило пользователей в заблуждение.
 
   // Статистика страницы
   const nodeCount = [...state.nodes.values()].filter(n => {

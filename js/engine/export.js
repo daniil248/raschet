@@ -517,9 +517,20 @@ export function initToolbar() {
     if ((state.pages || []).length <= 1) { rsToast('Нельзя удалить единственную страницу', 'warn'); return; }
     const p = state.pages.find(p => p.id === pageId);
     if (!p) return;
+    // v0.59.398: подсчёт узлов, которые потеряются при удалении (узлы,
+    // принадлежавшие ТОЛЬКО этой странице). Если 0 — не пугаем диалогом.
+    let nodesLost = 0;
+    for (const n of state.nodes.values()) {
+      if (Array.isArray(n.pageIds) && n.pageIds.includes(pageId) && n.pageIds.length === 1) {
+        nodesLost++;
+      }
+    }
+    const msg = nodesLost > 0
+      ? `Удалятся ${nodesLost} узл${nodesLost === 1 ? '' : (nodesLost < 5 ? 'а' : 'ов')}, принадлежавших ТОЛЬКО этой странице. Узлы, которые есть и на других страницах, останутся.`
+      : 'На странице нет уникальных узлов — удаление безопасно.';
     if (!(await rsConfirm(
       `Удалить страницу «${p.name || p.id}»?`,
-      'Узлы, принадлежавшие ТОЛЬКО этой странице, будут удалены. Узлы, которые есть и на других страницах, останутся.',
+      msg,
       { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
     // v0.59.77: сохраняем позиции ТЕКУЩЕЙ страницы (если она не удаляемая)
     // ДО каких-либо мутаций, чтобы n.x/n.y других страниц не потерялись.
