@@ -21,11 +21,19 @@ let _threePromise = null;
 function loadThree() {
   if (_threePromise) return _threePromise;
   _threePromise = (async () => {
-    const THREE = await import('https://unpkg.com/three@0.160.0/build/three.module.js');
-    const { OrbitControls } = await import(
-      'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js'
-    );
-    return { THREE, OrbitControls };
+    // esm.sh резолвит bare-imports внутри OrbitControls.js (`import 'three'`)
+    // автоматически, поэтому не требуется importmap в HTML-страницах.
+    // Запасной фолбэк через jsdelivr/skypack — на случай блокировки esm.sh.
+    const tryLoad = async (base) => {
+      const T = await import(/* @vite-ignore */ `${base}/three@0.160.0`);
+      const o = await import(/* @vite-ignore */ `${base}/three@0.160.0/examples/jsm/controls/OrbitControls.js`);
+      return { THREE: T, OrbitControls: o.OrbitControls };
+    };
+    try { return await tryLoad('https://esm.sh'); }
+    catch (e1) {
+      try { return await tryLoad('https://esm.run'); }
+      catch (e2) { throw e2; }
+    }
   })();
   return _threePromise;
 }

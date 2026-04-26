@@ -87,8 +87,25 @@ export const s3LiIonType = {
     }
 
     // Combiner — нужен при cabinetsCount > 2 (User Manual §3, Figure3-28).
+    // v0.59.439: ограничение по подключаемым шкафам на 1 combiner
+    // (User Manual Figure3-36/37): 6 отверстий в каждом busbar — 4 по
+    // краям для шкафов АКБ + 2 в середине для UPS. Без демонтажа задних
+    // плит — 4 шкафа АКБ. С демонтажем — до 8 (rear busbars те же).
+    // Свыше 8 — требуется ещё один combiner.
+    const MAX_CABS_PER_COMBINER_FRONT = 4;
+    const MAX_CABS_PER_COMBINER_FULL  = 8;
+    let combinersCount = 0;
+    let combinerNeedsRearPlate = false;
     if (cabinetsCount > 2) {
-      cabinets.push({ role: 'combiner', variant: '', model: 'S3-Combiner', modulesInCabinet: 0, emptySlots: 0 });
+      combinersCount = Math.ceil(cabinetsCount / MAX_CABS_PER_COMBINER_FULL);
+      combinerNeedsRearPlate = cabinetsCount > MAX_CABS_PER_COMBINER_FRONT * combinersCount;
+      for (let i = 0; i < combinersCount; i++) {
+        cabinets.push({
+          role: 'combiner', variant: '', model: 'S3-Combiner',
+          modulesInCabinet: 0, emptySlots: 0,
+          rearPlate: combinerNeedsRearPlate,
+        });
+      }
     }
 
     // Аксессуары
@@ -121,6 +138,11 @@ export const s3LiIonType = {
     }
     if (totalModules === 1) {
       warnings.push('1 модуль — система всегда master, slave не требуется.');
+    }
+    if (combinersCount > 1) {
+      warnings.push(`Свыше 8 шкафов АКБ на 1 комбайнер — добавлено ${combinersCount} комбайнеров (по ≤8 шкафов каждый, User Manual Figure 3-36).`);
+    } else if (combinerNeedsRearPlate) {
+      warnings.push('Подключение >4 шкафов к комбайнеру требует демонтажа задних плит и использования задних шин (User Manual §3, замечание к Figure 3-36).');
     }
 
     return {
