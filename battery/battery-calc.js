@@ -1288,7 +1288,24 @@ function _refreshDcExplanation() {
         + `Номинал V<sub>DC</sub> = ${o.N}×${blockV} = <b>${dc} В</b>. `
         + `Конечное при разряде ≈ ${dcEnd} В, при float ≈ ${dcFloat} В — оба в допуске.`
       : `<b style="color:#c62828">⚠ Диапазон не покрывается:</b> N<sub>min</sub>=${o.nLow} > N<sub>max</sub>=${o.nHigh}. `
-        + `Проверьте блок/endV или расширьте диапазон ИБП.`)
+        + (() => {
+            // v0.59.451: подсказываем подходящий блок. Окно V_DC задаёт допустимый
+            // диапазон blockV: blockV ≤ V_DC_max_eff/(N·floatV/blockV) и
+            // blockV ≥ V_DC_min_eff/(N·endV/blockV). Перебираем стандартные.
+            const candidates = [2, 4, 6, 12].filter(bv => bv !== blockV);
+            const altsOk = candidates.filter(bv => {
+              const cells = Math.max(1, Math.round(bv / 2));
+              const endB = endV * cells;
+              const flB  = o.floatVperCell * cells;
+              const nMin = Math.ceil(o.vMinEff / endB);
+              const nMax = Math.floor(o.vMaxEff / flB);
+              return nMin <= nMax && nMin >= 1;
+            });
+            const tip = altsOk.length
+              ? `Попробуйте блок <b>${altsOk.join(' или ')} В</b> вместо ${blockV} В — окно V<sub>DC</sub> для них покрывается. `
+              : `Окно V<sub>DC</sub> ${(o.vMinEff/(1+(o.vdcSafetyPct/100||0))).toFixed(0)}…${(o.vMaxEff/(1-(o.vdcSafetyPct/100||0))).toFixed(0)} В слишком узкое — нужен другой ИБП. `;
+            return tip + `Альтернативно: уменьшите endV (типично 1.80…1.85 для VRLA) или Vdc-safety.`;
+          })())
     + `</div>`;
 }
 
