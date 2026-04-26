@@ -1225,6 +1225,24 @@ export function renderPageKindBanner() {
     }
   }
 
+  // v0.59.346: индикатор «вид» в палитре + dim для секций, не подходящих
+  // для текущего вида. Конструктор схем — универсальный (электрика/СКС/
+  // гидравлика/механика); палитра подсказывает, какие секции «родные»
+  // для текущей страницы.
+  try {
+    const palLabel = document.getElementById('pal-page-kind-label');
+    const palHint = document.getElementById('pal-page-kind-hint');
+    if (palLabel && meta) palLabel.textContent = `${meta.icon} ${meta.label}`;
+    else if (palLabel) palLabel.textContent = '⚡ Принципиальная';
+    if (palHint) palHint.textContent = (kind && kind !== 'schematic') ? 'некоторые секции — не для этого вида' : '';
+    document.querySelectorAll('.pal-type[data-page-kinds]').forEach(sec => {
+      const allowed = String(sec.dataset.pageKinds || '').split(',').map(s => s.trim()).filter(Boolean);
+      const ok = !allowed.length || allowed.includes(kind);
+      sec.style.opacity = ok ? '' : '0.45';
+      sec.title = ok ? '' : 'Эта группа элементов не предназначена для текущего вида страницы (' + (meta?.label || kind) + ')';
+    });
+  } catch {}
+
   if (!el) return;
   if (!page || kind === 'schematic' || !meta) {
     el.hidden = true;

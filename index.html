@@ -75,15 +75,22 @@
       <aside id="palette">
         <div id="palette-resizer"></div>
         <div class="brand">Raschet</div>
-        <div class="subtitle">Конструктор схем</div>
+        <div class="subtitle" title="Универсальный редактор: электрика, СКС, гидравлика, механика — переключается видом страницы (Свойства страницы → Вид)">Конструктор схем · универсальный</div>
 
         <h3>Элементы</h3>
+        <!-- v0.59.346: индикатор «вид текущей страницы» — даёт понять, что
+             редактор универсальный и палитра/расчёты зависят от вида. -->
+        <div id="pal-page-kind-bar" style="display:flex;align-items:center;gap:6px;margin:4px 0 8px;padding:5px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px;font-size:11px;color:#cbd5e1">
+          <span style="opacity:0.7">Страница:</span>
+          <span id="pal-page-kind-label" style="font-weight:600;color:#fbbf24">⚡ Принципиальная</span>
+          <span id="pal-page-kind-hint" class="muted" style="margin-left:auto;font-size:10px;opacity:0.6"></span>
+        </div>
         <div class="pal-search-wrap">
           <input type="search" id="palette-search" placeholder="Поиск в библиотеке…" autocomplete="off">
         </div>
         <div id="palette-sections">
 
-          <div class="pal-type collapsed" data-pal-type="source">
+          <div class="pal-type collapsed" data-pal-type="source" data-page-kinds="schematic">
             <div class="pal-type-head"><span class="chip src"></span>Источники питания<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-group" data-pal-group="source">
@@ -111,7 +118,7 @@
             </div>
           </div>
 
-          <div class="pal-type collapsed" data-pal-type="panel">
+          <div class="pal-type collapsed" data-pal-type="panel" data-page-kinds="schematic">
             <div class="pal-type-head"><span class="chip pnl"></span>НКУ (низкое напряжение)<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-item" data-type="panel" draggable="true">
@@ -126,7 +133,7 @@
             </div>
           </div>
 
-          <div class="pal-type collapsed" data-pal-type="panel-mv">
+          <div class="pal-type collapsed" data-pal-type="panel-mv" data-page-kinds="schematic">
             <div class="pal-type-head"><span class="chip pnl" style="background:#c67300"></span>РУ СН (среднее напряжение)<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-item" data-type="panel" data-is-mv="1" draggable="true">
@@ -136,7 +143,7 @@
             </div>
           </div>
 
-          <div class="pal-type collapsed" data-pal-type="ups">
+          <div class="pal-type collapsed" data-pal-type="ups" data-page-kinds="schematic">
             <div class="pal-type-head"><span class="chip ups"></span>ИБП<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-item" data-type="ups" draggable="true">
@@ -146,7 +153,7 @@
             </div>
           </div>
 
-          <div class="pal-type collapsed" data-pal-type="consumer">
+          <div class="pal-type collapsed" data-pal-type="consumer" data-page-kinds="schematic">
             <div class="pal-type-head"><span class="chip cns"></span>Потребители<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-item" data-type="consumer" draggable="true">
@@ -156,7 +163,7 @@
             </div>
           </div>
 
-          <div class="pal-type collapsed" data-pal-type="channel">
+          <div class="pal-type collapsed" data-pal-type="channel" data-page-kinds="schematic,low-voltage,data,mechanical">
             <div class="pal-type-head"><span class="chip chn"></span>Кабельные каналы<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-item" data-type="channel" draggable="true">
@@ -166,7 +173,7 @@
             </div>
           </div>
 
-          <div class="pal-type collapsed" data-pal-type="zone">
+          <div class="pal-type collapsed" data-pal-type="zone" data-page-kinds="schematic,low-voltage,data,mechanical,layout">
             <div class="pal-type-head"><span class="chip zne"></span>Зоны / помещения<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-item" data-type="zone" draggable="true">
