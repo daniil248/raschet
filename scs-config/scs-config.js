@@ -960,6 +960,78 @@ function renderSideView(hostId, opts) {
 
   host.innerHTML = `${svgEl}<div class="sc-unitmap-legend">${legend.join('')}</div>`;
   bindSideViewDrop(svgId, rowH, leftPad, bodyW, rackDepthMm);
+  bindSideViewMove(svgId, rowH, leftPad, bodyW);
+}
+
+/* v0.59.365 — drag-to-move уже размещённых устройств на виде сбоку.
+   ЛКМ по полосе → перетаскивание по Y меняет positionU, по X (левая/правая
+   половина) — переключает фронт/тыл. Превью рисуется dashed-обводкой. */
+function bindSideViewMove(svgId, rowH, leftPad, bodyW) {
+  const svg = $(svgId); if (!svg) return;
+  const r = currentRack(); if (!r) return;
+  svg.querySelectorAll('g.sc-sideband').forEach(g => {
+    g.style.cursor = 'grab';
+    g.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      const devId = g.dataset.devid;
+      const d = currentContents().find(x => x.id === devId); if (!d) return;
+      const type = state.catalog.find(c => c.id === d.typeId); if (!type) return;
+      const h = type.heightU || 1;
+      state.sideDrag = { devId, h, startU: d.positionU, startSide: d.mountSide || 'front', wantU: d.positionU, wantSide: d.mountSide || 'front', valid: true };
+      g.setPointerCapture(ev.pointerId);
+      g.style.opacity = '0.4';
+      g.style.cursor = 'grabbing';
+    });
+    g.addEventListener('pointermove', ev => {
+      if (!state.sideDrag || state.sideDrag.devId !== g.dataset.devid) return;
+      const rect = svg.getBoundingClientRect();
+      const svgH = svg.viewBox.baseVal.height || rect.height;
+      const svgW = svg.viewBox.baseVal.width || rect.width;
+      const xView = (ev.clientX - rect.left) * (svgW / rect.width);
+      const yView = (ev.clientY - rect.top) * (svgH / rect.height);
+      const r2 = currentRack(); if (!r2) return;
+      const h = state.sideDrag.h;
+      const topIdx = Math.max(0, Math.min(r2.u - h, Math.floor((yView - 4) / rowH)));
+      const wantU = r2.u - topIdx;
+      const wantSide = xView < leftPad + bodyW / 2 ? 'front' : 'rear';
+      const valid = canPlace(r2, currentContents(), state.sideDrag.devId, h, wantU, wantSide);
+      state.sideDrag.wantU = wantU;
+      state.sideDrag.wantSide = wantSide;
+      state.sideDrag.valid = valid;
+      svg.querySelectorAll('.sc-sidemove-preview').forEach(el => el.remove());
+      const y = 4 + (r2.u - wantU) * rowH;
+      const previewW = bodyW * 0.45;
+      const previewX = wantSide === 'rear' ? (leftPad + bodyW - previewW) : leftPad;
+      const color = valid ? '#16a34a' : '#dc2626';
+      const g2 = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g2.setAttribute('class', 'sc-sidemove-preview');
+      g2.setAttribute('pointer-events', 'none');
+      g2.innerHTML = `<rect x="${previewX}" y="${y}" width="${previewW}" height="${h * rowH - 1}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${previewX + previewW/2}" y="${y + h*rowH/2 + 4}" font-size="10" fill="${color}" text-anchor="middle" font-weight="bold">${wantSide === 'rear' ? '🟥 тыл' : '🟦 фронт'} · U${wantU}</text>`;
+      svg.appendChild(g2);
+    });
+    const finish = ev => {
+      if (!state.sideDrag) return;
+      svg.querySelectorAll('.sc-sidemove-preview').forEach(el => el.remove());
+      g.style.opacity = '';
+      g.style.cursor = 'grab';
+      const drag = state.sideDrag; state.sideDrag = null;
+      try { g.releasePointerCapture(ev.pointerId); } catch {}
+      const moved = drag.wantU !== drag.startU || drag.wantSide !== drag.startSide;
+      if (drag.valid && moved) {
+        const d = currentContents().find(x => x.id === drag.devId);
+        if (d) {
+          d.positionU = drag.wantU;
+          d.mountSide = drag.wantSide;
+          saveContents();
+          renderContents(); renderWarnings(); renderBom(); rerenderPreview();
+        }
+      } else {
+        rerenderPreview();
+      }
+    };
+    g.addEventListener('pointerup', finish);
+    g.addEventListener('pointercancel', finish);
+  });
 }
 
 /* v0.59.253 — drop-target на вид сбоку. По X определяется сторона (левая
@@ -1404,13 +1476,23 @@ async function renderRack3D(hostId, opts) {
           }
         }
       } else if (kind === 'patch-panel') {
-        const cols = 24;
-        const panelW = cols * 12 + 8;
+        // v0.59.365: 2 ряда, если 2U+ или ports>24 (реальные patch-panel
+        // на 48 портов имеют двухрядную раскладку).
+        const totalPorts = Math.max(1, Math.min(96, +(type.ports) || 24));
+        const rowsP = (h >= 2 || totalPorts > 24) ? 2 : 1;
+        const colsP = Math.ceil(totalPorts / rowsP);
+        const panelW = colsP * 12 + 8;
         scene.add(mkBox(panelW, usableH, 0.6, facadeMat, rackW/2, yCenter, faceZ - 0.4));
-        for (let c = 0; c < cols; c++) {
-          const px = rackW/2 - panelW/2 + 8 + c*12;
-          const portGeo = new THREE.BoxGeometry(9, Math.min(9, usableH*0.7), 0.4);
-          scene.add(mkMesh(portGeo, ledAmber, px, yCenter, faceZ));
+        const portH = Math.min(9, (usableH - 4) / rowsP - 2);
+        const rowSpan = portH + 2;
+        for (let rIdx = 0; rIdx < rowsP; rIdx++) {
+          const py = yCenter + (rIdx - (rowsP - 1)/2) * rowSpan;
+          const colsThis = (rIdx === rowsP - 1) ? (totalPorts - rIdx*colsP) : colsP;
+          for (let c = 0; c < colsThis; c++) {
+            const px = rackW/2 - panelW/2 + 8 + c*12;
+            const portGeo = new THREE.BoxGeometry(9, portH, 0.4);
+            scene.add(mkMesh(portGeo, ledAmber, px, py, faceZ));
+          }
         }
       } else if (kind === 'pdu') {
         // ряд розеток
@@ -1967,9 +2049,12 @@ function renderUnitMap(hostId, opts) {
     const earFill = '#0f172a';
     const isShelf = type.kind === 'shelf';
     const portsRear = !!type.portsRear;
-    // расположение корпуса
-    const bodyX = isBoth ? (devSide === 'rear' ? (RACK_X + halfW) : RACK_X) : RACK_X;
-    const bodyWidth = isBoth ? halfW : bodyW;
+    // v0.59.365: в режиме «обе стороны» корпус НЕ сжимается до halfW — устройство
+    // рисуется на полную ширину, но клипуется по соответствующей половине.
+    // Левая половина = front, правая = rear. Пользователю важно видеть фронт/тыл
+    // в реальных пропорциях (фасад, порты, надписи), без зажатия в 50%.
+    const bodyX = RACK_X;
+    const bodyWidth = bodyW;
     // уши — тонкие вертикальные полосы у самого края корпуса, изнутри
     const leftEarX = bodyX;
     const rightEarX = bodyX + bodyWidth - earW;
@@ -1987,16 +2072,25 @@ function renderUnitMap(hostId, opts) {
             // v0.59.302: порты кликабельные — можно создавать патч-корды кликами.
             // Реальное число портов — из type.ports; рисуем ровно столько, сколько
             // задекларировано (ограничение 48 — визуально всё равно не влезет).
-            const portCount = Math.max(1, Math.min(48, +(type.ports) || 24));
-            const pw = Math.max(1.5, facadeW / portCount - 1);
-            const py = facadeY + facadeH*0.4;
-            const ph = Math.max(2, facadeH*0.35);
+            const portCount = Math.max(1, Math.min(96, +(type.ports) || 24));
+            // v0.59.365: если устройство 2U+ или портов много — раскладываем
+            // в 2 ряда (так выглядят реальные patch-panel/switch с 48 портами).
+            const rows = (h >= 2 || portCount > 24) ? 2 : 1;
+            const perRow = Math.ceil(portCount / rows);
+            const pw = Math.max(1.5, facadeW / perRow - 1);
+            const ph = Math.max(2, (rows === 2 ? facadeH*0.32 : facadeH*0.35));
+            const rowGap = rows === 2 ? Math.max(1, facadeH*0.08) : 0;
+            const totalRowsH = rows*ph + (rows-1)*rowGap;
+            const rowsY0 = facadeY + (facadeH - totalRowsH)/2;
             const pc = kind === 'patch-panel' ? '#f59e0b' : '#22c55e';
             const usedSet = portsUsedForDev(d);
             const sel = state._portSel;
             const parts = [];
             for (let i = 0; i < portCount; i++) {
-              const px = facadeX + i * (pw + 1) + 0.5;
+              const r = Math.floor(i / perRow);
+              const c = i % perRow;
+              const px = facadeX + c * (pw + 1) + 0.5;
+              const py = rowsY0 + r * (ph + rowGap);
               const pIdx = i + 1;
               const isUsed = usedSet.has(pIdx);
               const isSel  = sel && sel.devId === d.id && sel.port === pIdx;
@@ -2108,12 +2202,22 @@ function renderUnitMap(hostId, opts) {
     // не перекрывались текстом.
     const labelX = PDU_RIGHT_X + PDU_ZONE_RIGHT_W + LABEL_GAP;
     const labelY = y + rowH/2 + 4;
+    // v0.59.365: в режиме «обе стороны» инлайн-clip-path даёт корпусу+фасаду
+    // показать только левую половину (front) или только правую (rear). Сама
+    // подпись/линия-«leader» НЕ клипуются — они рисуются справа от стойки.
+    const halfClipFront = `<clipPath id="sc-half-front-${d.id}"><rect x="${RACK_X}" y="${y - 1}" width="${halfW}" height="${h*rowH + 2}"/></clipPath>`;
+    const halfClipRear  = `<clipPath id="sc-half-rear-${d.id}"><rect x="${RACK_X + halfW}" y="${y - 1}" width="${halfW}" height="${h*rowH + 2}"/></clipPath>`;
+    const clipDef = isBoth ? (devSide === 'rear' ? halfClipRear : halfClipFront) : '';
+    const clipAttr = isBoth ? ` clip-path="url(#sc-half-${devSide === 'rear' ? 'rear' : 'front'}-${d.id})"` : '';
     return `<g class="sc-devband" data-devid="${d.id}" data-h="${h}" data-side="${devSide}" style="cursor:grab">
-      <rect x="${bodyX}" y="${y}" width="${bodyWidth}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}"${dashAttr} stroke-width="${conflict ? 1.5 : (isBoth ? 1 : 0.5)}"/>
-      ${isShelf ? '' : `<rect x="${leftEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
-      ${isShelf ? '' : `<rect x="${rightEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
-      ${facadeHtml}
-      ${rearMark}
+      ${clipDef}
+      <g${clipAttr}>
+        <rect x="${bodyX}" y="${y}" width="${bodyWidth}" height="${h * rowH - 1}" fill="${fill}" stroke="${stroke}"${dashAttr} stroke-width="${conflict ? 1.5 : (isBoth ? 1 : 0.5)}"/>
+        ${isShelf ? '' : `<rect x="${leftEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
+        ${isShelf ? '' : `<rect x="${rightEarX}" y="${earY}" width="${earW}" height="${earH}" fill="${earFill}"/>`}
+        ${facadeHtml}
+        ${rearMark}
+      </g>
       <line x1="${bodyX + bodyWidth}" y1="${labelY - 2}" x2="${labelX - 2}" y2="${labelY - 2}" stroke="${type.color || '#94a3b8'}" stroke-width="1" opacity="0.7"/>
       <text x="${labelX}" y="${labelY}" font-size="${(isBoth ? 10 : 11)*scale}" fill="#0f172a">${escape(labelTxt)}</text>
     </g>`;
