@@ -405,6 +405,42 @@ function render() {
     modulesHost.querySelectorAll('a[href]').forEach(a => {
       a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
     });
+
+    // v0.59.374: дополнительно показываем в группе «Схемы» legacy-схемы
+    // из window.Storage (то, что видно на главной «Мои схемы» и привязано
+    // к этому проекту через scheme.projectId === p.id). Подпроект-«схема»
+    // и схема в storage — пока разные сущности; пользователь видит обе.
+    (async () => {
+      try {
+        if (!window.Storage || typeof window.Storage.listProjects !== 'function') return;
+        const all = await window.Storage.listProjects();
+        const mine = (all || []).filter(s => s && s.projectId === p.id);
+        if (!mine.length) return;
+        const grp = modulesHost.querySelector('.pr-art-group[data-kind="schematic"]');
+        if (!grp) return;
+        // обновить счётчик в шапке
+        const headSpan = grp.querySelector('div .muted');
+        const total = subSchemes.length + mine.length;
+        if (headSpan) headSpan.textContent = '· ' + total;
+        // убрать «Схем нет — нажмите…» если он был
+        const placeholder = Array.from(grp.children).find(c => c.classList && c.classList.contains('muted'));
+        if (placeholder) placeholder.remove();
+        // дописываем строки legacy-схем
+        const rowsHtml = mine.map(s => {
+          const href = '../index.html?project=' + encodeURIComponent(s.id) + '&from=projects&fromCtx=' + encodeURIComponent(p.id);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
+            <span style="font-size:16px">⚡</span>
+            <span style="background:#10b981;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">схема</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.name || '')}">${esc(s.name || '(без имени)')}</span>
+            <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px;text-decoration:none">Открыть →</a>
+          </div>`;
+        }).join('');
+        grp.insertAdjacentHTML('beforeend', rowsHtml);
+        grp.querySelectorAll('a[href]').forEach(a => {
+          a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
+        });
+      } catch (e) { console.warn('[project.js] legacy schemes load failed', e); }
+    })();
   }
 
   if (actionsHost) {
