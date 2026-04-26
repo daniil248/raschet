@@ -1788,6 +1788,11 @@ function renderUnitMap(hostId, opts) {
   opts = opts || {};
   const host = $(hostId);
   if (!host) return;
+  // v0.59.340: сохранить scrollLeft/Top уже отрисованного scroll-обёрток
+  // (sc-zoomwrap-main или sc-zoomwrap), чтобы клик по порту не сбрасывал
+  // положение вьюпорта.
+  const _prevWrap = host.querySelector('.sc-zoomwrap');
+  const _prevScroll = _prevWrap ? { l: _prevWrap.scrollLeft, t: _prevWrap.scrollTop } : null;
   const r = currentRack();
   if (!r) { host.innerHTML = '<div class="muted">Нет выбранной стойки.</div>'; return; }
   // v0.59.245: side-view — делегируется renderSideView. Front/Rear — обычный
@@ -2183,7 +2188,12 @@ function renderUnitMap(hostId, opts) {
   const extraRight = opts.big ? 120 : 0;
   const svgId = opts.big ? 'sc-unitmap-svg-big' : 'sc-unitmap-svg';
   const totalW = svgW + extraRight;
-  const z = opts.big ? (state.dlgZoom || 1) : 1;
+  // v0.59.340: zoom/pan теперь работает и на основной (не-modal) карте.
+  // Раньше z=1 фиксировался для !big — поэтому Ctrl+wheel ничего не делал
+  // и при port-click не было состояния масштаба, которое можно было бы
+  // сохранить. Теперь state.mapZoom персистится между renderUnitMap.
+  const zoomStateKey = opts.big ? 'dlgZoom' : 'mapZoom';
+  const z = state[zoomStateKey] || 1;
   const svgEl = `<svg id="${svgId}" class="sc-unitmap-svg" width="${totalW * z}" height="${svgH * z}" viewBox="0 0 ${totalW} ${svgH}" xmlns="http://www.w3.org/2000/svg" data-rowh="${rowH}" data-zoom="${z}" data-bodyw="${bodyW}" data-bodyx="${RACK_X}" data-face="${state.faceMode}">
     ${rects.join('')}
     ${pduStrips.join('')}
@@ -2194,11 +2204,19 @@ function renderUnitMap(hostId, opts) {
   const legendEl = `<div class="sc-unitmap-legend">${legend.join('') || '<span class="muted">— пусто —</span>'}</div>`;
   if (opts.big) {
     host.innerHTML = `<div class="sc-zoomwrap" id="sc-zoomwrap">${svgEl}</div>${legendEl}`;
-    bindZoomPan($('sc-zoomwrap'), svgId, totalW, svgH);
+    bindZoomPan($('sc-zoomwrap'), svgId, totalW, svgH, 'dlgZoom');
   } else {
-    host.innerHTML = `${svgEl}${legendEl}`;
+    // v0.59.340: оборачиваем в scroll-контейнер с фиксированной max-height,
+    // чтобы Ctrl+wheel мог зумить, а pan сдвигал scrollLeft/Top.
+    host.innerHTML = `<div class="sc-zoomwrap sc-zoomwrap-main" id="sc-zoomwrap-main" style="overflow:auto;max-height:70vh;border:1px solid #e2e8f0;border-radius:4px">${svgEl}</div>${legendEl}`;
+    bindZoomPan($('sc-zoomwrap-main'), svgId, totalW, svgH, 'mapZoom');
   }
   bindUnitMapDrag(svgId);
+  // v0.59.340: восстановить положение прокрутки
+  if (_prevScroll) {
+    const newWrap = host.querySelector('.sc-zoomwrap');
+    if (newWrap) { newWrap.scrollLeft = _prevScroll.l; newWrap.scrollTop = _prevScroll.t; }
+  }
   // v0.59.302: клики по портам → создание патч-кордов
   const svgNode = $(svgId);
   if (svgNode) {
@@ -2215,13 +2233,16 @@ function renderUnitMap(hostId, opts) {
 
 /* 1.24.33 — zoom/pan в модалке. Wheel — zoom at cursor; drag по пустому
    месту (не по полосе устройства) — pan через scrollLeft/scrollTop. */
-function bindZoomPan(wrap, svgId, baseW, baseH) {
+function bindZoomPan(wrap, svgId, baseW, baseH, stateKey) {
   if (!wrap) return;
   const svg = $(svgId); if (!svg) return;
+  // v0.59.340: универсализован под несколько zoom-state'ов (dlgZoom для
+  // модалки, mapZoom для основной карты).
+  stateKey = stateKey || 'dlgZoom';
   wrap.addEventListener('wheel', ev => {
     if (!ev.ctrlKey && !ev.metaKey) return; // без Ctrl — обычный скролл
     ev.preventDefault();
-    const oldZ = state.dlgZoom || 1;
+    const oldZ = state[stateKey] || 1;
     const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
     const newZ = Math.max(0.4, Math.min(5, oldZ * factor));
     if (Math.abs(newZ - oldZ) < 0.001) return;
@@ -2229,7 +2250,7 @@ function bindZoomPan(wrap, svgId, baseW, baseH) {
     const cx = ev.clientX - rect.left + wrap.scrollLeft;
     const cy = ev.clientY - rect.top + wrap.scrollTop;
     const k = newZ / oldZ;
-    state.dlgZoom = newZ;
+    state[stateKey] = newZ;
     svg.setAttribute('width', baseW * newZ);
     svg.setAttribute('height', baseH * newZ);
     svg.setAttribute('data-zoom', newZ);

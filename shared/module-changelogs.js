@@ -424,6 +424,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.340', date: '2026-04-23', items: [
+      '🔍 <b>Zoom/pan на основной карте юнитов + сохранение масштаба при port-click.</b> Раньше Ctrl+wheel работал только в модалке (<code>opts.big</code>), а в основном <code>#sc-unitmap</code> зум был принудительно z=1. Когда пользователь кликал порт для патч-корда, <code>renderUnitMap()</code> перерисовывал всё, и любой UI-state сбрасывался — отсюда жалоба «нельзя увеличить во время подключения». Теперь: (а) основная карта оборачивается в <code>.sc-zoomwrap-main</code> с <code>overflow:auto</code> и max-height:70vh; (б) <code>bindZoomPan</code> универсализован под параметр <code>stateKey</code> — модалка по-прежнему держит <code>state.dlgZoom</code>, основная карта — <code>state.mapZoom</code>; (в) перед перерисовкой сохраняется <code>scrollLeft/Top</code> текущего обёртка и восстанавливается на новом — клик по порту не «прыгает» виджет в начало.',
+      'Файлы: scs-config/scs-config.js (renderUnitMap — sc-zoomwrap-main + scroll preservation; bindZoomPan — параметр stateKey).',
+    ] },
     { version: '0.59.339', date: '2026-04-23', items: [
       '📦 <b>Каталог Компоновщика свёрнут до кнопки «+ Открыть».</b> Раньше каталог занимал бо́льшую часть правого сайдбара (фильтры + таблица), сжимая «Тележку» и «Склад» и забирая ширину карты юнитов. Теперь в сайдбаре только кнопка «+ Открыть»; полное окно с фильтрами/поиском/U-диапазоном/drag&drop появляется в модалке (<code>#sc-cat-modal</code>, ширина до 1100px, 90vh). DOM-узлы каталога перемещаются между скрытым host-блоком и модалкой — так не теряются listeners (<code>renderCatalog</code> и drag-binding в <code>scs-config.js</code> работают с теми же id). Закрытие — кнопкой ✕, кликом по подложке или Esc.',
       'Файлы: scs-config/rack.html (sc-catalog-section → компактная карточка + sc-cat-host скрыт + sc-cat-modal с overlay).',
