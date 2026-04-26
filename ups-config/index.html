@@ -92,6 +92,10 @@
         V<sub>DC</sub>, cos φ. Ниже — мастер подбора; в самом низу
         страницы — справочник моделей (можно пополнять вручную или из XLSX).
       </p>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn-secondary" id="uc-export-config">⬇ Экспорт конфигурации</button>
+        <button type="button" class="btn-secondary" id="uc-import-config">⬆ Импорт конфигурации<input type="file" id="uc-import-file" accept="application/json,.json" hidden></button>
+      </div>
     </div>
 
     <!-- Wizard конфигуратора (Фаза 1.4.5): основной UI модуля, виден по умолчанию -->

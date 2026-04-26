@@ -12,6 +12,8 @@ import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/catalogs/ups-kehua-mr33.js';
 import { pricesForElement } from '../shared/price-records.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+import { wireExportImport } from '../shared/config-io.js';
+import { APP_VERSION } from '../js/engine/constants.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -508,6 +510,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const wizBtn = document.getElementById('btn-wizard-standalone');
   if (wizBtn) wizBtn.addEventListener('click', launchStandaloneWizard);
+
+  // v0.59.365: экспорт/импорт конфигурации в JSON.
+  wireExportImport({
+    exportBtn: document.getElementById('uc-export-config'),
+    importBtn: document.getElementById('uc-import-config'),
+    fileInput: document.getElementById('uc-import-file'),
+    schema: 'raschet.ups-config.v1',
+    lsKeys: ['raschet.lastUpsConfig.v1', 'raschet.pendingUpsSelection.v1'],
+    filenamePrefix: 'ups-config',
+    appVersion: APP_VERSION,
+    toast: (m, t) => rsToast(m, t === 'err' ? 'error' : (t === 'ok' ? 'success' : 'info')),
+  });
 
   // Kehua UPS defaults — загружает ВСЮ линейку Kehua из каталога
   // 2024-10-22: KR-RM 10-40 kVA, Myria 60-200 kW, MR33 120-1200 kVA

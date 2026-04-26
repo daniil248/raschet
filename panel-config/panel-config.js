@@ -10,6 +10,8 @@ import { listPanels, addPanel, removePanel, clearCatalog, makePanelId } from '..
 import { parsePanelXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountPanelPicker } from '../shared/panel-picker.js';
 import { rsToast, rsConfirm } from '../shared/dialog.js';
+import { wireExportImport } from '../shared/config-io.js';
+import { APP_VERSION } from '../js/engine/constants.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -264,6 +266,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Фаза 1.7: wizard конфигуратора при ?nodeId=
   initPanelWizard();
+
+  // v0.59.365: экспорт/импорт конфигурации (LS-ключи модуля).
+  wireExportImport({
+    exportBtn: document.getElementById('pc-export-config'),
+    importBtn: document.getElementById('pc-import-config'),
+    fileInput: document.getElementById('pc-import-file'),
+    schema: 'raschet.panel-config.v1',
+    lsKeys: [
+      'raschet.lastPanelConfig.v1',
+      'raschet.pendingPanelSelection.v1',
+      'raschet.panelWizardPreload.v1',
+    ],
+    filenamePrefix: 'panel-config',
+    appVersion: APP_VERSION,
+    toast: (m, t) => rsToast(m, t === 'err' ? 'error' : (t === 'ok' ? 'success' : 'info')),
+    onAfterImport: () => { try { render(); } catch {} },
+  });
 });
 
 // ====================== WIZARD (Фаза 1.7) ======================

@@ -98,6 +98,10 @@
         ВРУ, ВРУ с АВР, ЩС, ЩО, ЩК. Для РУ среднего напряжения (6-35 кВ) —
         отдельный <a href="../mv-config/" style="color:#1976d2">Конфигуратор РУ СН</a>.
       </p>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn-secondary" id="pc-export-config" title="Сохранить конфигурацию НКУ в JSON-файл">⬇ Экспорт</button>
+        <button type="button" class="btn-secondary" id="pc-import-config" title="Загрузить конфигурацию НКУ из JSON-файла">⬆ Импорт<input type="file" id="pc-import-file" accept="application/json,.json" hidden></button>
+      </div>
     </div>
 
     <!-- Wizard конфигуратора (Фаза 1.7): основной UI модуля, виден по умолчанию -->

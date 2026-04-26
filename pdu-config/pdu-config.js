@@ -17,7 +17,9 @@
 
 import { listElements } from '../shared/element-library.js';
 import { initCatalogBridge, syncLegacyToLibrary } from '../shared/catalog-bridge.js';
-import { rsPrompt } from '../shared/dialog.js';
+import { rsPrompt, rsToast } from '../shared/dialog.js';
+import { wireExportImport } from '../shared/config-io.js';
+import { APP_VERSION } from '../js/engine/constants.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -724,6 +726,19 @@ function wire() {
   renderOutletInputs();
   render();
   renderPendingBanner();
+
+  // v0.59.365: экспорт/импорт конфигурации.
+  wireExportImport({
+    exportBtn: document.getElementById('pdu-export-config'),
+    importBtn: document.getElementById('pdu-import-config'),
+    fileInput: document.getElementById('pdu-import-file'),
+    schema: 'raschet.pdu-config.v1',
+    lsKeys: ['raschet.lastPduConfig.v1'],
+    filenamePrefix: 'pdu-config',
+    appVersion: APP_VERSION,
+    toast: (m, t) => rsToast(m, t === 'err' ? 'error' : (t === 'ok' ? 'success' : 'info')),
+    onAfterImport: () => { try { renderContextSummary(); render(); renderPendingBanner(); } catch {} },
+  });
   if (IS_EMBED) injectEmbedBar();
   if (!_pdus.length) {
     document.getElementById('pc-results').innerHTML =

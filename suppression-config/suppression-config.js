@@ -17,6 +17,7 @@ import { mountFooter } from '../shared/module-footer.js';
 import { APP_VERSION } from '../js/engine/constants.js';
 import { MODULE_CHANGELOG } from './changelog.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+import { wireExportImport } from '../shared/config-io.js';
 
 const $ = id => document.getElementById(id);
 const LS_KEY = 'raschet.sup.installations.v1';
@@ -2244,6 +2245,19 @@ async function openSelfTest() {
 /* ------------------- Init ------------------- */
 function init() {
   S.installations = loadAll();
+
+  // v0.59.365: экспорт/импорт всех установок (LS_KEY).
+  wireExportImport({
+    exportBtn: document.getElementById('sup-export-config'),
+    importBtn: document.getElementById('sup-import-config'),
+    fileInput: document.getElementById('sup-import-file'),
+    schema: 'raschet.suppression-config.v1',
+    lsKeys: [LS_KEY],
+    filenamePrefix: 'suppression-config',
+    appVersion: APP_VERSION,
+    toast: (m, t) => rsToast(m, t === 'err' ? 'error' : (t === 'ok' ? 'success' : 'info')),
+    onAfterImport: () => { try { S.installations = loadAll(); renderAll(); } catch {} },
+  });
 
   // Header actions
   $('sup-inst-edit').addEventListener('click', () => {

@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.366', date: '2026-04-26', items: [
+      '⬇⬆ <b>Экспорт/импорт конфигураций в JSON-файл.</b> Добавлено в panel-config (НКУ), ups-config (ИБП), pdu-config (PDU), suppression-config (АГПТ).',
+      '• Новый общий модуль <code>shared/config-io.js</code>: <code>exportConfig({schema, lsKeys, filename, appVersion})</code>, <code>importConfig(file, {schema})</code>, <code>restoreLsKeys(payload)</code>, <code>wireExportImport({exportBtn, importBtn, fileInput, schema, lsKeys, filenamePrefix, appVersion, toast, onAfterImport})</code>.',
+      '• Схема файла: <code>{schema, savedAt, appVersion, payload:{&lt;lsKey&gt;:&lt;json&gt;,...}}</code>. При импорте проверяется поле <code>schema</code>.',
+      '• Кнопки «⬇ Экспорт» / «⬆ Импорт» добавлены в page-intro каждого модуля. Импорт восстанавливает LS-ключи и вызывает re-render через <code>onAfterImport</code>.',
+      '• Схемы: <code>raschet.panel-config.v1</code>, <code>raschet.ups-config.v1</code>, <code>raschet.pdu-config.v1</code>, <code>raschet.suppression-config.v1</code> (плюс ранее <code>raschet.mv-config.v1</code> в v0.59.363).',
+      '<b>Очередь:</b> rack-config, scs-config, mdc-config, cable, transformer-config — у них сложнее storage (project-namespaced), будут отдельным батчом.',
+      'Файлы: shared/config-io.js (новый), panel-config/{index.html,panel-config.js}, ups-config/{index.html,ups-config.js}, pdu-config/{index.html,pdu-config.js}, suppression-config/{index.html,suppression-config.js}.',
+    ] },
     { version: '0.59.365', date: '2026-04-26', items: [
       '🔌 <b>scs-config: порты в 2 ряда для 2U+ patch-panel и 48-портовых коммутаторов.</b> Реальная panel на 48 портов имеет двухрядную раскладку — теперь и в 2D-фасаде, и в 3D-виде.',
       '• Если <code>type.heightU &gt;= 2</code> или <code>type.ports &gt; 24</code> — порты автоматически распределяются в 2 ряда (по <code>ceil(N/2)</code> в каждом).',
