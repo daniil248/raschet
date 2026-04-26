@@ -1731,6 +1731,13 @@ export const CHANGELOGS = {
   ],
 
   'battery': [
+    { version: '0.59.427', date: '2026-04-26', items: [
+      '🏗 <b>battery-calc показывает автосборку шкафов S³.</b> После расчёта S³-конфигурации (autonomy / required) под основным блоком теперь рендерится секция «<b>Состав системы (автосборка)</b>» с таблицей шкафов: <i>Master</i> (S3C040-6C-20-M / S3C050-4C-20-M / S3C100-1C-12-M), <i>Slave</i> при N&gt;1 и <i>Combiner</i> при N&gt;2 — по архитектуре Figure3-28 User Manual. Заполнение каждого шкафа: число модулей + число заглушек Blank Panel. Master всегда первый (включает touch-screen и BMS-контроллер).',
+      '📦 <b>Таблица аксессуаров BOM.</b> Под составом шкафов — отдельная таблица аксессуаров: <i>Slave Wire Kit</i> (по 1 на каждый slave: cabinet comm wire #2 + power wire #3 + network wire #1 4.5 м + 2× RJ45), <i>Networking Device</i> (8-port switch, по 1 на каждые 7 шкафов), <i>Blank Panel</i> (по 1 на каждый пустой слот, отдельный SKU для S3M040/050 vs S3M100). Описания берутся из <code>systemDescription</code> аксессуаров в каталоге.',
+      '🚦 <b>Валидация max C-rate.</b> Если расчётная мощность нагрузки превышает паспортную (rated cell discharge × Vnom × Ah × N мод.) — выводится красное предупреждение «Превышение C-rate» с подсказкой: увеличьте число модулей или выберите модель с большим C-rate (6C vs 4C vs 1C). При корректной нагрузке — серая строка «Загрузка по C-rate: X% от паспортной мощности».',
+      '<b>Зачем:</b> пользователь сразу видит, сколько шкафов нужно купить и какие — без необходимости открывать User Manual. Это закрывает roadmap-пункт v0.59.427 из плана архитектурного рефакторинга АКБ.',
+      'Файлы: battery/battery-calc.js (импорт s3LiIonType, новая функция _renderS3SystemSpecHtml ~50 строк, вызов в _doCalcS3 после основного блока).',
+    ] },
     { version: '0.59.426', date: '2026-04-26', items: [
       '🧩 <b>Каркас плагинов типов АКБ — <code>shared/battery-types/</code>.</b> Зеркалит существующую архитектуру <code>shared/ups-types/</code>. Чтобы добавить новый тип АКБ (Pylon UP5000, Huawei LUNA, BYD B-Box и т.п.) — достаточно создать файл <code>shared/battery-types/&lt;id&gt;.js</code> с descriptor\'ом и импортировать его в <code>index.js</code>. Новый тип автоматически получит picker, автосборку шкафов, master/slave-логику, BOM-генерацию.',
       '<b>Файлы каркаса:</b>',

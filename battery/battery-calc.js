@@ -19,6 +19,8 @@ import { KEHUA_S3_BATTERIES } from '../shared/catalogs/battery-kehua-s3.js';
 import { listUpses, getUps } from '../shared/ups-catalog.js';
 // v0.59.417: ЕДИНЫЙ источник логики S³ — тот же модуль, что в инспекторе.
 import { isS3Module, computeS3Configuration, findMinimalS3Config } from '../shared/battery-s3-logic.js';
+// v0.59.427: плагин типа АКБ S³ — автосборка master/slave/combiner + аксессуары.
+import { s3LiIonType } from '../shared/battery-types/s3-li-ion.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -1188,6 +1190,60 @@ function _autoSelectStrings({ battery, loadKw, blocksPerString, blockV, endV, in
 // (тот же модуль, что и инспектор). Авто-определяет N (модулей в шкафу) =
 // maxPerCabinet и C (шкафов) = ceil(loadKw / cabinetPowerKw); для обратного
 // режима — findMinimalS3Config. Никакого дублирования логики — всё в shared.
+// v0.59.427: рендер блока «состав системы S³» на основе плагина
+// s3LiIonType.buildSystem(). Показывает шкафы (master / slave / combiner)
+// и аксессуары (wire-kit / networking device / blank panels), плюс
+// предупреждение от validateMaxCRate если есть.
+function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
+  if (!battery || !(totalModules > 0)) return '';
+  const allBatts = listBatteries();
+  const accessoryCatalog = allBatts.filter(b => b.systemSubtype === 'accessory');
+  const spec = s3LiIonType.buildSystem({ module: battery, totalModules });
+  const bom  = s3LiIonType.bomLines(spec, { module: battery, accessoryCatalog });
+  const cRateChk = s3LiIonType.validateMaxCRate({ module: battery, loadKw, totalModules, invEff });
+
+  const cabinetRows = spec.cabinets.map(c => {
+    const roleLabel = c.role === 'master' ? 'Master' : c.role === 'slave' ? 'Slave' : 'Combiner';
+    const fillStr = c.role === 'combiner' ? '— (шинная разводка DC)' :
+      `${c.modulesInCabinet} мод.${c.emptySlots > 0 ? ` + ${c.emptySlots} заглушек` : ''}`;
+    return `<tr><td>${escHtml(roleLabel)}</td><td><b>${escHtml(c.model)}</b></td><td>${fillStr}</td></tr>`;
+  }).join('');
+
+  const accRows = (spec.accessories || []).map(a => {
+    const cat = accessoryCatalog.find(x => x.id === a.id);
+    const name = cat ? (cat.type || cat.id) : a.id;
+    const desc = cat ? (cat.systemDescription || '') : '';
+    return `<tr><td>${escHtml(name)}</td><td>${a.qty}</td><td class="muted" style="font-size:11px">${escHtml(desc)}</td></tr>`;
+  }).join('');
+
+  let html = `<div class="result-block" style="margin-top:14px">`;
+  html += `<div class="result-title">Состав системы (автосборка)</div>`;
+  html += `<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">`;
+  html += `<thead><tr style="background:#f5f7fa"><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Роль</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Модель шкафа</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Заполнение</th></tr></thead>`;
+  html += `<tbody>${cabinetRows.replace(/<td>/g, '<td style="padding:6px;border:1px solid #e0e3ea">')}</tbody>`;
+  html += `</table>`;
+
+  if (accRows) {
+    html += `<div class="result-title" style="margin-top:12px;font-size:13px">Аксессуары (BOM)</div>`;
+    html += `<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:12px">`;
+    html += `<thead><tr style="background:#f5f7fa"><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Наименование</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Кол-во</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Описание</th></tr></thead>`;
+    html += `<tbody>${accRows.replace(/<td>/g, '<td style="padding:6px;border:1px solid #e0e3ea;vertical-align:top">')}</tbody>`;
+    html += `</table>`;
+  }
+
+  if (spec.warnings && spec.warnings.length) {
+    spec.warnings.forEach(w => { html += `<div class="warn" style="margin-top:6px">⚠ ${escHtml(w)}</div>`; });
+  }
+  if (cRateChk && !cRateChk.ok) {
+    html += `<div class="warn" style="margin-top:6px;background:#ffebee;border:1px solid #ef9a9a;padding:8px;border-radius:4px">⚠ <b>Превышение C-rate.</b> ${escHtml(cRateChk.reason)}</div>`;
+  } else if (cRateChk && cRateChk.cRate) {
+    const used = cRateChk.reqKw / cRateChk.ratedSystemKw * 100;
+    html += `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспортной мощности системы (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${totalModules} мод.).</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff }) {
   const out = document.getElementById('calc-result');
   if (!out) return;
@@ -1284,6 +1340,14 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
       html += `<div class="result-block error">Не удалось подобрать S³-конфигурацию: ${escHtml(found.reason || 'unknown')}</div>`;
     }
   }
+  // v0.59.427: блок «состав шкафов + аксессуары» — собирается плагином
+  // s3LiIonType.buildSystem({module, totalModules}) на основе результата
+  // computeS3Configuration. Показывает master/slave/combiner и BOM-список
+  // аксессуаров (Slave Wire Kit, Networking Device, Blank Panel).
+  if (s3Cfg && s3Cfg.totalModules > 0) {
+    html += _renderS3SystemSpecHtml(battery, s3Cfg.totalModules, loadKwEff, invEff);
+  }
+
   // График разряда + zoom (как для обычной АКБ — battery.dischargeTable есть).
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда модуля</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Кривая P(t) для одного модуля. Красный маркер — рабочая точка.</div></div>`;
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">Детализация в рабочей зоне (zoom)</div><div id="calc-chart-zoom-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div></div>`;
