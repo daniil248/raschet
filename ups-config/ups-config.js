@@ -723,6 +723,9 @@ function _openWizard({ standalone }) {
   document.getElementById('wiz-btn-apply').onclick = _applyConfiguration;
   const saveCfgBtn = document.getElementById('wiz-btn-save-cfg');
   if (saveCfgBtn) saveCfgBtn.onclick = _saveWizardConfiguration;
+  // v0.59.420: печатный отчёт о подобранной конфигурации.
+  const printBtn = document.getElementById('wiz-btn-print');
+  if (printBtn) printBtn.onclick = _printUpsReport;
   _showStep(1);
 }
 
@@ -1238,4 +1241,146 @@ function _applyConfiguration() {
   } catch (e) {
     flash('Не удалось передать конфигурацию: ' + (e.message || e), 'error');
   }
+}
+
+// v0.59.420: печатный отчёт о подобранной конфигурации ИБП.
+// Открывает новое окно с разделами «Исходные требования», «Подобранная
+// конфигурация», «Стоимость», «Состав комплекта (BOM)» и AKB (если
+// выбрана). Используется системный «Печать в PDF» через window.print().
+// CSS-правила симметричны battery-calc: h2 не отрывается от следующего
+// блока (break-after: avoid), секции и таблицы не разрываются на
+// странице (break-inside: avoid).
+function _printUpsReport() {
+  const comp = wizState.composition;
+  if (!comp) { flash('Сначала выберите конфигурацию (Шаг 4)', 'warn'); return; }
+  const u = comp.ups || {};
+  const fi = comp.fitInfo || {};
+  const rq = wizState.requirements || {};
+  const battery = wizState.battery || null;
+  const upsLabel = [u.supplier, u.model || u.id].filter(Boolean).join(' ') || 'ИБП';
+  const priceUnit = (comp.unitPrice != null)
+    ? Number(comp.unitPrice).toLocaleString('ru-RU') + ' ' + (comp.currency || '')
+    : 'нет в каталоге';
+  const priceTotal = (comp.totalPrice != null)
+    ? Number(comp.totalPrice).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ' + (comp.currency || '')
+    : 'не указана';
+
+  const row = (k, v, unit) => `<tr><td>${esc(k)}</td><td style="text-align:right">${esc(String(v ?? '—'))}</td><td style="text-align:center;color:#666">${esc(unit || '')}</td></tr>`;
+  const tbl = (rows) => `<table class="rep"><thead><tr><th>Параметр</th><th style="text-align:right">Значение</th><th style="text-align:center">Ед.</th></tr></thead><tbody>${rows.filter(Boolean).join('')}</tbody></table>`;
+
+  let html = `<!doctype html><html><head><meta charset="utf-8"><title>Конфигурация ИБП — ${esc(upsLabel)}</title>`;
+  html += `<style>
+    body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; color:#1f2430; max-width: 920px; margin: 20px auto; padding: 0 16px; line-height:1.45; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 15px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #ccd;
+         break-after: avoid-page; page-break-after: avoid; break-inside: avoid; }
+    .muted { color:#666; font-size: 12px; }
+    table.rep { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0 10px; }
+    table.rep th, table.rep td { border: 1px solid #ddd; padding: 4px 8px; }
+    table.rep th { background: #f4f6fa; text-align: left; }
+    .warn { background:#fff3e0; border:1px solid #ffb74d; padding:6px 10px; border-radius:4px; margin:6px 0; font-size:12px; }
+    .section { break-inside: avoid; page-break-inside: avoid; }
+    .actions { position:fixed; top:10px; right:14px; }
+    .actions button { padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    @media print {
+      .actions { display:none; }
+      body { margin: 0; max-width: none; }
+      h2 { break-after: avoid-page; page-break-after: avoid; }
+      h2 + table, h2 + p, h2 + div { break-before: avoid-page; page-break-before: avoid; }
+      .section { break-inside: avoid; page-break-inside: avoid; }
+      tr, thead { break-inside: avoid; page-break-inside: avoid; }
+    }
+  </style></head><body>`;
+  html += `<div class="actions"><button onclick="window.print()">🖨 Печать</button> <button onclick="window.close()">✕ Закрыть</button></div>`;
+  html += `<h1>Отчёт о подобранной конфигурации ИБП</h1>`;
+  html += `<div class="muted">Модель: <b>${esc(upsLabel)}</b> · Дата: ${new Date().toLocaleString('ru-RU')}</div>`;
+
+  // 1. Исходные требования
+  html += `<div class="section"><h2>1. Исходные требования</h2>`;
+  const upsTypeLabel = rq.upsType ? ((getUpsType(rq.upsType) || {}).label || rq.upsType) : 'любой';
+  html += tbl([
+    row('Нагрузка', rq.loadKw, 'кВт'),
+    row('Автономия', rq.autonomyMin, 'мин'),
+    row('Резервирование', rq.redundancy, ''),
+    row('Тип ИБП', upsTypeLabel, ''),
+    row('V_DC (по паспорту ИБП)', `${u.vdcMin || '—'}…${u.vdcMax || '—'}`, 'В'),
+    row('cos φ', rq.cosPhi, '—'),
+    row('Фазы', rq.phases, ''),
+    row('АКБ', wizState.batteryChoice === 'skip'
+      ? 'пропущены'
+      : (battery ? [(battery.supplier || ''), (battery.model || battery.id || '')].filter(Boolean).join(' ') : '—'), ''),
+  ]);
+  html += `</div>`;
+
+  // 2. Подобранная конфигурация
+  html += `<div class="section"><h2>2. Подобранная конфигурация</h2>`;
+  const tDef = getUpsTypeOrFallback(u);
+  const upsTypeName = tDef && tDef.label ? tDef.label : (u.upsType || '—');
+  // Frame/modules детализация для модульного типа.
+  const isModular = (u.upsType === 'modular') || Number(u.frameKw) > 0 || Number(u.moduleSlots) > 0;
+  html += tbl([
+    row('Модель', upsLabel, ''),
+    row('Тип', upsTypeName, ''),
+    isModular ? row('Корпус (frame)', u.frameKw, 'кВт') : '',
+    isModular ? row('Модуль', u.moduleKwRated, 'кВт') : '',
+    isModular ? row('Установлено модулей', `${fi.installed} из ${u.moduleSlots || '—'}`, 'шт.') : '',
+    isModular ? row('Рабочих модулей', fi.working, 'шт.') : '',
+    isModular ? row('Резерв', fi.redundant, 'шт.') : '',
+    row('Реальная мощность', fi.realCapacity || fi.usable, 'кВт'),
+    row('Итоговая мощность', fi.usable, 'кВт'),
+    row('КПД DC–AC', u.efficiency, '%'),
+    row('cos φ ИБП', u.cosPhi, '—'),
+    row('Топология (IEC 62040-3)', u.topology, ''),
+    row('V_DC мин/макс', `${u.vdcMin || '—'}…${u.vdcMax || '—'}`, 'В'),
+    row('Входов / Выходов', `${u.inputs || 1} / ${u.outputs || 1}`, ''),
+  ]);
+  html += `</div>`;
+
+  // 3. Стоимость
+  html += `<div class="section"><h2>3. Стоимость (оборудование ИБП)</h2>`;
+  html += tbl([
+    row('Цена за единицу', priceUnit, ''),
+    row('Количество', fi.installed, 'шт.'),
+    row('Итого ИБП', priceTotal, ''),
+  ]);
+  html += `<p class="muted">АКБ подбирается отдельно в «Калькуляторе АКБ». Цены пополняются в модуле «Каталог и цены».</p>`;
+  html += `</div>`;
+
+  // 4. Состав комплекта (BOM) — если есть.
+  if (Array.isArray(comp.composition) && comp.composition.length) {
+    html += `<div class="section"><h2>4. Состав комплекта (BOM)</h2>`;
+    html += `<table class="rep"><thead><tr><th>Поз.</th><th>Наименование</th><th style="text-align:right">Кол-во</th><th style="text-align:right">Цена за ед.</th><th style="text-align:right">Сумма</th></tr></thead><tbody>`;
+    comp.composition.forEach((it, idx) => {
+      const qty  = Number(it.qty) || 0;
+      const unit = (it.unitPrice != null) ? Number(it.unitPrice).toLocaleString('ru-RU') + ' ' + (it.currency || comp.currency || '') : '—';
+      const sum  = (it.unitPrice != null) ? (qty * Number(it.unitPrice)).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ' + (it.currency || comp.currency || '') : '—';
+      const name = [it.supplier || '', it.label || it.model || it.id || it.kind || ''].filter(Boolean).join(' ');
+      html += `<tr><td>${idx + 1}</td><td>${esc(name)}</td><td style="text-align:right">${qty}</td><td style="text-align:right">${esc(unit)}</td><td style="text-align:right">${esc(sum)}</td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // 5. АКБ — если выбрана.
+  if (battery && wizState.batteryChoice !== 'skip') {
+    html += `<div class="section"><h2>${Array.isArray(comp.composition) && comp.composition.length ? '5' : '4'}. Аккумуляторная батарея</h2>`;
+    html += tbl([
+      row('Производитель', battery.supplier, ''),
+      row('Модель', battery.model || battery.type || battery.id, ''),
+      row('Химия', battery.chemistry === 'li-ion' ? 'Li-Ion (LFP)' : 'VRLA', ''),
+      row('Напряжение блока', battery.blockVoltage, 'В'),
+      row('Ёмкость блока', battery.capacityAh, 'А·ч'),
+    ]);
+    html += `<p class="muted">Полный расчёт автономии и подбор числа цепочек — в подпрограмме «Расчёт АКБ» (отдельный отчёт).</p>`;
+    html += `</div>`;
+  }
+
+  html += `<hr style="margin-top:18px"><p class="muted">Документ сформирован автоматически Raschet · ${new Date().toLocaleDateString('ru-RU')}</p>`;
+  html += `</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { flash('Не удалось открыть окно печати — проверьте блокировщик всплывающих окон.', 'error'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => { try { w.focus(); } catch (e) {} }, 200);
 }
