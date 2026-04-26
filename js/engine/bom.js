@@ -30,6 +30,8 @@ import {
 } from '../../shared/rack-catalog-data.js';
 import { pricesForElement } from '../../shared/price-records.js';
 import { getCounterparty } from '../../shared/counterparty-catalog.js';
+// v0.59.387: реестр типов ИБП — bom делегирует подкомпоненты плагину типа.
+import { detectUpsType } from '../../shared/ups-types/index.js';
 
 // Внутренний slug — тот же алгоритм, что в shared/rack-catalog-data.js._slug.
 // Нужен, чтобы id в BOM совпадал с id в element-library ('pdu.'+slug и т.п.)
@@ -149,6 +151,20 @@ export function buildBOM() {
           // Моноблок — одна строка
           pushAgg('ИБП', ups, 1, nodeLabel);
         }
+        // v0.59.387: подкомпоненты типа ИБП (встроенный АВР, PDM-панели и т.п.)
+        // получаем от плагина типа через type.bomSubItems(). Так BOM
+        // расширяется автоматически при добавлении нового типа.
+        try {
+          const _t = detectUpsType(ups);
+          if (_t && typeof _t.bomSubItems === 'function') {
+            const subs = _t.bomSubItems(ups) || [];
+            for (const s of subs) {
+              pushAgg(s.category, {
+                id: s.id, supplier: s.supplier, model: s.model,
+              }, s.qty || 1, nodeLabel);
+            }
+          }
+        } catch (e) { console.warn('[bom] type.bomSubItems failed', e); }
       }
     }
 

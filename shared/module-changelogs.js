@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.387', date: '2026-04-26', items: [
+      '📑 <b>BOM детализирует подкомпоненты типа ИБП через плагин.</b> Расширение реестра типов из v0.59.385/386.',
+      '• В descriptor типа ИБП добавлен опциональный метод <code>bomSubItems(u)</code> → массив <code>{category,id,supplier,model,qty}</code>.',
+      '• Интегрированный тип (<code>shared/ups-types/integrated.js</code>) реализует <code>bomSubItems</code>:',
+      '&nbsp;&nbsp;◦ «Встроенный АВР ИБП» — 1 шт., если <code>hasIntegratedAts=true</code>.',
+      '&nbsp;&nbsp;◦ «Распред. панели ИБП (PDM)» — по одной строке на каждую панель из <code>pdmModules[]</code> (PDM-AC, PDM-IT1, PDM-IT2 для Kehua MR33 60-150K).',
+      '• <code>js/engine/bom.js</code> после обработки фрейма+модулей вызывает <code>detectUpsType(ups).bomSubItems(ups)</code> и агрегирует строки. Хардкод по <code>kind===\'ups-integrated\'</code> убран — добавление нового типа с новыми подкомпонентами не требует правки bom.js.',
+      'Файлы: shared/ups-types/integrated.js (+метод bomSubItems, ~25 строк), js/engine/bom.js (импорт detectUpsType + вызов плагина, ~12 строк).',
+    ] },
     { version: '0.59.386', date: '2026-04-26', items: [
       '🧩 <b>Реестр типов ИБП распространён на инспектор схемы и picker.</b> Доводка плагин-архитектуры из v0.59.385.',
       '• <code>js/engine/inspector/ups.js</code>: dropdown «Тип ИБП» в модалке параметров теперь заполняется из <code>listUpsTypes()</code>. Поддержан тип «Интегрированный» (выбор → автоматически проставляются <code>n.kind=\'ups-integrated\'</code> + дефолты <code>hasIntegratedAts/pdmModules/cabinet*</code>).',

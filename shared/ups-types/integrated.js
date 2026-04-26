@@ -175,6 +175,34 @@ export const integratedType = {
     return out;
   },
 
+  // v0.59.387: дополнительные подкомпоненты для BOM (встроенный АВР + PDM).
+  // bom.js может опционально вызвать этот метод вместо хардкода.
+  bomSubItems(u) {
+    const out = [];
+    if (u.hasIntegratedAts) {
+      out.push({
+        category: 'Встроенный АВР ИБП',
+        id: `ups-int-ats-${u.id}`,
+        supplier: u.supplier,
+        model: `${u.model} · встроенный входной АВР`,
+        qty: 1,
+      });
+    }
+    if (Array.isArray(u.pdmModules)) {
+      for (const p of u.pdmModules) {
+        const lbl = `${p.label || p.id} (${p.source}, ${p.maxBreakers}×${p.polarity})`;
+        out.push({
+          category: 'Распред. панели ИБП (PDM)',
+          id: `ups-int-pdm-${u.id}-${p.id}`,
+          supplier: u.supplier,
+          model: `${u.model} · ${lbl}`,
+          qty: 1,
+        });
+      }
+    }
+    return out;
+  },
+
   summaryRowsHtml(u, fi) {
     const pdmN = Array.isArray(u.pdmModules) ? u.pdmModules.length : 0;
     return `
