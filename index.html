@@ -173,6 +173,51 @@
             </div>
           </div>
 
+          <!-- v0.59.350: доменные секции палитры — раскрывают универсальный
+               характер Конструктора схем. Все элементы — это consumer-узлы
+               с разными subtype, что уже поддерживается ядром (см.
+               inspector.js «Подтип») и render. На разных видах страниц секции
+               соответственно подсвечиваются/диммятся через data-page-kinds. -->
+          <div class="pal-type collapsed" data-pal-type="scs" data-page-kinds="schematic,low-voltage,data">
+            <div class="pal-type-head"><span class="chip cns" style="background:#0d9488"></span>СКС / слаботочка<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="consumer" data-subtype="rack" draggable="true" title="Серверная/телеком стойка — после размещения раскрывается штучно с уникальным Tag в Компоновщике шкафа">
+                <span class="chip cns" style="background:#0d9488"></span>🗄 Серверная/телеком стойка
+              </div>
+              <div class="pal-presets" data-pal-presets-type="consumer-rack"></div>
+            </div>
+          </div>
+
+          <div class="pal-type collapsed" data-pal-type="hvac" data-page-kinds="schematic,mechanical">
+            <div class="pal-type-head"><span class="chip cns" style="background:#64748b"></span>Климат / HVAC<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="consumer" data-subtype="hvac" draggable="true" title="Кондиционер / прецизионный CRAC — мощность, фазность, два блока (наружный/внутренний)">
+                <span class="chip cns" style="background:#64748b"></span>❄ Кондиционер / CRAC
+              </div>
+              <div class="pal-presets" data-pal-presets-type="consumer-hvac"></div>
+            </div>
+          </div>
+
+          <div class="pal-type collapsed" data-pal-type="motor" data-page-kinds="schematic,mechanical">
+            <div class="pal-type-head"><span class="chip cns" style="background:#7c3aed"></span>Двигатели / приводы<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="consumer" data-subtype="motor" draggable="true" title="Электродвигатель / насос / компрессор — учёт пускового тока (inrushFactor)">
+                <span class="chip cns" style="background:#7c3aed"></span>⚙️ Двигатель / насос
+              </div>
+              <div class="pal-presets" data-pal-presets-type="consumer-motor"></div>
+            </div>
+          </div>
+
+          <div class="pal-type collapsed" data-pal-type="lighting" data-page-kinds="schematic">
+            <div class="pal-type-head"><span class="chip cns" style="background:#f59e0b"></span>Освещение<span class="pal-type-arrow">▾</span></div>
+            <div class="pal-type-items">
+              <div class="pal-item" data-type="consumer" data-subtype="lighting" draggable="true" title="Светильники / групповая нагрузка освещения">
+                <span class="chip cns" style="background:#f59e0b"></span>💡 Освещение
+              </div>
+              <div class="pal-presets" data-pal-presets-type="consumer-lighting"></div>
+            </div>
+          </div>
+
           <div class="pal-type collapsed" data-pal-type="zone" data-page-kinds="schematic,low-voltage,data,mechanical,layout">
             <div class="pal-type-head"><span class="chip zne"></span>Зоны / помещения<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">

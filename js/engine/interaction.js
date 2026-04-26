@@ -641,6 +641,21 @@ export function initInteraction() {
     if (!type || !DEFAULTS[type]) return;
     const p = clientToSvg(e.clientX, e.clientY);
     const newId = createNode(type, p.x, p.y, subtype ? { subtype } : undefined);
+    // v0.59.350: для consumer-узлов с domain-подтипом (rack/hvac/motor/lighting)
+    // явно записываем n.subtype — DEFAULTS.consumer его не читает, но inspector
+    // и render используют это поле для иконок и configurator-кнопки.
+    if (subtype && newId && type === 'consumer') {
+      const node = state.nodes.get(newId);
+      if (node && !node.subtype) {
+        node.subtype = subtype;
+        // Имя по умолчанию по подтипу — пользователь увидит «Стойка», а не
+        // «Потребитель», сразу после drop'а.
+        const subtypeNames = { rack: 'Серверная стойка', hvac: 'Кондиционер', motor: 'Двигатель', lighting: 'Освещение', heater: 'Нагреватель' };
+        if (subtypeNames[subtype] && (!node.name || node.name === 'Потребитель')) {
+          node.name = subtypeNames[subtype];
+        }
+      }
+    }
     if (isMv && newId) {
       const node = state.nodes.get(newId);
       if (node) {
