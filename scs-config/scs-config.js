@@ -3391,7 +3391,12 @@ function renderRacksSidebar() {
   const host = $('sc-racks-side'); if (!host) return;
   const list = projectRacks();
   if (!list.length) {
-    host.innerHTML = `<div class="sc-cart-empty">В проекте нет физических шкафов.<br><a href="./index.html">Реестр шкафов →</a></div>`;
+    host.innerHTML = `<div class="sc-cart-empty">В проекте нет физических шкафов.<br>
+      <button type="button" class="sc-btn sc-btn-primary" data-act="new-rack" style="margin-top:8px">➕ Новая стойка</button>
+      <br><a href="./index.html" style="font-size:11px">Реестр шкафов →</a></div>`;
+    host.querySelector('[data-act="new-rack"]')?.addEventListener('click', () => {
+      location.href = './index.html?new=1';
+    });
     return;
   }
   host.innerHTML = list.map(r => {

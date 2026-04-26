@@ -535,6 +535,19 @@ async function createNewInstance() {
 renderProjectBadge();
 $('btn-new-rack')?.addEventListener('click', createNewInstance);
 
+// v0.59.376: ссылка из rack.html «➕ Новая» ведёт сюда с ?new=1 — авто-
+// открываем wizard. После сценария убираем флаг, чтобы перезагрузка не
+// триггерила его повторно.
+try {
+  const _u = new URLSearchParams(location.search);
+  if (_u.get('new') === '1') {
+    _u.delete('new');
+    const _qs = _u.toString();
+    history.replaceState(null, '', location.pathname + (_qs ? '?' + _qs : ''));
+    setTimeout(() => { createNewInstance(); }, 50);
+  }
+} catch {}
+
 const deployBtn = $('btn-deploy');
 if (deployBtn) {
   deployBtn.addEventListener('click', () => {
