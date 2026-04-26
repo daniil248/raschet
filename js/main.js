@@ -6794,6 +6794,19 @@ if (document.readyState === 'loading') {
 // v0.59.352: глобальный toggle для встраиваемой панели «Проектирование СКС».
 // Вызывается из page-kind-баннера (см. render.js renderPageKindBanner) и
 // горячей клавишей Ctrl+Shift+L.
+// v0.59.359: ширина embed-панели сохраняется в LS, восстанавливается при toggle
+const SCS_EMBED_WIDTH_KEY = 'raschet.scsEmbed.width.v1';
+function _loadScsEmbedWidth() {
+  try {
+    const v = localStorage.getItem(SCS_EMBED_WIDTH_KEY);
+    if (v && /^(\d+(\.\d+)?)(%|px)$/.test(v)) return v;
+  } catch {}
+  return '50%';
+}
+function _saveScsEmbedWidth(w) {
+  try { localStorage.setItem(SCS_EMBED_WIDTH_KEY, w); } catch {}
+}
+
 window.__raschetToggleScsEmbed = function() {
   const panel = document.getElementById('scs-embed-panel');
   const frame = document.getElementById('scs-embed-frame');
@@ -6808,6 +6821,7 @@ window.__raschetToggleScsEmbed = function() {
       frame.src = 'scs-design/' + qs;
     }
     if (open) open.href = 'scs-design/' + qs.replace(/[?&]embed=1/, '');
+    panel.style.width = _loadScsEmbedWidth();
     panel.hidden = false;
   } else {
     panel.hidden = true;
@@ -6831,9 +6845,53 @@ document.addEventListener('click', e => {
     const cur = p.style.width || '50%';
     const seq = ['33%', '50%', '67%', '80%'];
     const idx = seq.indexOf(cur);
-    p.style.width = seq[(idx + 1) % seq.length];
+    const next = seq[(idx + 1) % seq.length];
+    p.style.width = next;
+    _saveScsEmbedWidth(next);
   }
 });
+
+// v0.59.359: drag-resize по разделителю слева от панели. Перетягивание ЛКМ
+// меняет ширину панели; результат сохраняется в LS. iframe-events не
+// мешают потому что во время drag поверх iframe кладём прозрачный overlay.
+(function _wireScsEmbedDivider() {
+  const div = document.getElementById('scs-embed-divider');
+  if (!div) return;
+  const panel = document.getElementById('scs-embed-panel');
+  if (!panel) return;
+  let dragging = false;
+  let overlay = null;
+  div.addEventListener('mouseenter', () => { div.style.background = 'rgba(13,148,136,0.35)'; });
+  div.addEventListener('mouseleave', () => { if (!dragging) div.style.background = 'transparent'; });
+  div.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    dragging = true;
+    div.setPointerCapture(e.pointerId);
+    div.style.background = 'rgba(13,148,136,0.6)';
+    // overlay поверх всего, чтобы iframe не съедал mousemove
+    overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize';
+    document.body.appendChild(overlay);
+  });
+  div.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    // ширина панели от правой кромки окна до курсора
+    const w = Math.max(320, Math.min(vw - 200, vw - e.clientX));
+    const pct = Math.round((w / vw) * 1000) / 10; // 0.1% step
+    panel.style.width = pct + '%';
+  });
+  const finish = e => {
+    if (!dragging) return;
+    dragging = false;
+    try { div.releasePointerCapture(e.pointerId); } catch {}
+    div.style.background = 'transparent';
+    if (overlay) { overlay.remove(); overlay = null; }
+    _saveScsEmbedWidth(panel.style.width || '50%');
+  };
+  div.addEventListener('pointerup', finish);
+  div.addEventListener('pointercancel', finish);
+})();
 
 // v0.59.358: deep-link на узел схемы. URL ?focusNode=<id> приходит из
 // inventory.html (бейдж «🔗 на схеме» — см. v0.59.357). Находим узел,
