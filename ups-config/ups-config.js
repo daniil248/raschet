@@ -10,6 +10,10 @@ import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from '../shared
 import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/catalogs/ups-kehua-mr33.js';
+// v0.59.385: типы ИБП — плагин-архитектура. Чтобы добавить новый тип
+// (моноблок/модульный/интегрированный/...), создайте файл в
+// shared/ups-types/ и зарегистрируйте его в shared/ups-types/index.js.
+import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from '../shared/ups-types/index.js';
 import { pricesForElement } from '../shared/price-records.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 import { wireExportImport } from '../shared/config-io.js';
@@ -139,13 +143,17 @@ function renderList(list) {
     wrap.innerHTML = `<div class="empty">По фильтру ничего не найдено. Очистите каскад.</div>`;
     return;
   }
-  const kindIcon = (k) => {
+  const kindIcon = (k, u) => {
     switch (k) {
       case 'frame':              return '📦';
       case 'power-module':       return '🔌';
       case 'batt-cabinet-vrla':  return '🔋';
       case 'batt-cabinet-s3':    return '🏛';
-      default:                   return '⚡'; // готовый ИБП
+      default: {
+        // Готовый ИБП — иконка из плагина типа
+        const t = detectUpsType(u);
+        return (t && t.icon) || '⚡';
+      }
     }
   };
   const kindLabel = (u) => {
@@ -154,7 +162,9 @@ function renderList(list) {
     if (k === 'power-module')      return 'Силовой модуль';
     if (k === 'batt-cabinet-vrla') return 'Шкаф VRLA';
     if (k === 'batt-cabinet-s3')   return 'Шкаф S³';
-    return u.upsType === 'modular' ? 'ИБП (модульный)' : 'ИБП (моноблок)';
+    // Готовый ИБП — short-label из плагина типа
+    const t = detectUpsType(u);
+    return (t && t.shortLabel) || 'ИБП';
   };
   const mainValue = (u) => {
     const k = u.kind || 'ups';
@@ -168,7 +178,7 @@ function renderList(list) {
     const k = u.kind || 'ups';
     return `
       <tr data-id="${esc(u.id)}">
-        <td style="text-align:center;font-size:14px" title="${esc(kindLabel(u))}">${kindIcon(k)}</td>
+        <td style="text-align:center;font-size:14px" title="${esc(kindLabel(u))}">${kindIcon(k, u)}</td>
         <td><b>${esc(u.supplier)}</b></td>
         <td>${esc(u.model)}</td>
         <td>${esc(kindLabel(u))}</td>
@@ -280,17 +290,19 @@ function renderSelected(list) {
   else if (isModule)  typeTitle = '🔌 Силовой модуль';
   else if (isBattVrla) typeTitle = '🔋 Шкаф батарейный (VRLA/AGM)';
   else if (isBattS3)   typeTitle = '🏛 Шкаф батарейный (Kehua S³)';
-  else typeTitle = u.upsType === 'modular' ? '⚡ ИБП (модульный)' : '⚡ ИБП (моноблок)';
+  else {
+    const t = getUpsTypeOrFallback(u);
+    typeTitle = (t.icon || '⚡') + ' ' + t.shortLabel;
+  }
 
   let rows = `<div>Тип записи:</div><div><b>${typeTitle}</b></div>`;
   if (!isFrame && !isModule && !isBattVrla && !isBattS3) {
-    // Готовый ИБП
+    // Готовый ИБП — общие поля + типо-специфичные строки из плагина.
+    const t = getUpsTypeOrFallback(u);
+    const typedRows = t.detailRowsHtml ? t.detailRowsHtml(u) : '';
     rows += `
       <div>Номинал:</div><div><b>${fmt(u.capacityKw)} kW</b></div>
-      ${u.upsType === 'modular' ? `
-      <div>Корпус:</div><div><b>${fmt(u.frameKw)} kW</b> · ${u.moduleSlots || '—'} слотов</div>
-      <div>Модуль:</div><div><b>${fmt(u.moduleKwRated)} kW</b></div>
-      ` : ''}
+      ${typedRows}
       <div>КПД DC–AC:</div><div><b>${fmt(u.efficiency, 0)}%</b></div>
       <div>cos φ:</div><div><b>${fmt(u.cosPhi, 2)}</b></div>
       <div>V<sub>DC</sub>:</div><div><b>${fmt(u.vdcMin, 0)}…${fmt(u.vdcMax, 0)} В</b></div>
@@ -419,15 +431,18 @@ function openManualModal(existing) {
   const v = (x, d) => (x == null || x === '' ? d : x);
   const src = existing || {};
   const body = document.getElementById('manual-ups-body');
+  // v0.59.385: тип-плагин из реестра. Опции в dropdown собираются динамически.
+  const types = listUpsTypes();
+  const initialType = detectUpsType(src) || types[0];
+  const typeOptionsHtml = types.map(t =>
+    `<option value="${esc(t.id)}" ${t.id === initialType.id ? 'selected' : ''}>${esc(t.label)}</option>`
+  ).join('');
   body.innerHTML = `
     <div class="form-grid">
       <label>Производитель<input id="mu-supplier" type="text" placeholder="ABB" value="${esc(v(src.supplier, ''))}"></label>
       <label>Модель<input id="mu-model" type="text" placeholder="PowerWave 33 300 kW" value="${esc(v(src.model, ''))}"></label>
       <label>Тип
-        <select id="mu-type">
-          <option value="monoblock" ${src.upsType === 'modular' ? '' : 'selected'}>Моноблок</option>
-          <option value="modular" ${src.upsType === 'modular' ? 'selected' : ''}>Модульный</option>
-        </select>
+        <select id="mu-type">${typeOptionsHtml}</select>
       </label>
       <label>Номинал, kW<input id="mu-cap" type="number" min="1" step="1" value="${v(src.capacityKw, 100)}"></label>
       <label>КПД DC–AC, %<input id="mu-eff" type="number" min="50" max="99" step="1" value="${v(src.efficiency, 95)}"></label>
@@ -436,12 +451,8 @@ function openManualModal(existing) {
       <label>V<sub>DC</sub> max, В<input id="mu-vdcmax" type="number" min="24" max="1200" step="1" value="${v(src.vdcMax, 480)}"></label>
       <label>Входов<input id="mu-inputs" type="number" min="1" max="2" step="1" value="${v(src.inputs, 1)}"></label>
       <label>Выходов<input id="mu-outputs" type="number" min="1" max="20" step="1" value="${v(src.outputs, 1)}"></label>
-      <div id="mu-modular-fields" style="display:none;grid-column:1/-1">
-        <div class="form-grid">
-          <label>Корпус, kW<input id="mu-frame" type="number" min="1" step="5" value="${v(src.frameKw, 200)}"></label>
-          <label>Модуль, kW<input id="mu-modkw" type="number" min="1" step="1" value="${v(src.moduleKwRated, 25)}"></label>
-          <label>Слотов в корпусе<input id="mu-slots" type="number" min="1" max="32" step="1" value="${v(src.moduleSlots, 8)}"></label>
-        </div>
+      <div id="mu-typed-fields" style="grid-column:1/-1">
+        <div class="form-grid"></div>
       </div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
@@ -450,24 +461,26 @@ function openManualModal(existing) {
     </div>
   `;
   const g = id => document.getElementById(id);
-  // Показ/скрытие блока модульных полей
-  const toggleModular = () => {
-    const isModular = g('mu-type').value === 'modular';
-    g('mu-modular-fields').style.display = isModular ? 'block' : 'none';
+  const typedWrap = body.querySelector('#mu-typed-fields .form-grid');
+  // Рендер доп. полей выбранного типа
+  const renderTypedFields = () => {
+    const t = getUpsType(g('mu-type').value) || types[0];
+    typedWrap.innerHTML = t.formFieldsHtml ? t.formFieldsHtml(src) : '';
   };
-  g('mu-type').addEventListener('change', toggleModular);
-  toggleModular();
+  g('mu-type').addEventListener('change', renderTypedFields);
+  renderTypedFields();
   g('mu-cancel').addEventListener('click', () => modal.classList.remove('show'));
   g('mu-save').addEventListener('click', () => {
     const supplier = g('mu-supplier').value.trim();
     const model = g('mu-model').value.trim();
     if (!supplier || !model) { rsToast('Заполните Производителя и Модель', 'warn'); return; }
     const newId = makeUpsId(supplier, model);
-    const record = {
+    const t = getUpsType(g('mu-type').value) || types[0];
+    // Базовая часть (общие поля)
+    let record = {
       ...(isEdit ? existing : {}),
       id: newId,
       supplier, model,
-      upsType: g('mu-type').value || 'monoblock',
       capacityKw: Number(g('mu-cap').value) || 0,
       efficiency: Number(g('mu-eff').value) || 95,
       cosPhi: Number(g('mu-cosphi').value) || 1,
@@ -479,15 +492,26 @@ function openManualModal(existing) {
       importedAt: Date.now(),
       custom: true,
     };
-    if (record.upsType === 'modular') {
-      record.frameKw = Number(g('mu-frame').value) || 200;
-      record.moduleKwRated = Number(g('mu-modkw').value) || 25;
-      record.moduleSlots = Number(g('mu-slots').value) || 8;
-    } else {
-      delete record.frameKw;
-      delete record.moduleKwRated;
-      delete record.moduleSlots;
+    // Сначала: если тип сменился — очищаем поля старого типа.
+    if (isEdit) {
+      const oldType = detectUpsType(existing);
+      if (oldType && oldType.id !== t.id) {
+        ['frameKw', 'moduleKwRated', 'moduleSlots',
+         'hasIntegratedAts', 'pdmModules',
+         'cabinetWidthMm', 'cabinetDepthMm', 'cabinetHeightMm',
+        ].forEach(k => delete record[k]);
+        delete record.kind;
+      }
     }
+    // Применяем дефолты типа (только то, чего нет)
+    const defs = t.defaults ? t.defaults() : {};
+    for (const k of Object.keys(defs)) {
+      if (record[k] == null) record[k] = defs[k];
+    }
+    // Записываем типо-специфичные поля из формы
+    const getField = name => typedWrap.querySelector(`[data-ut-field="${name}"]`)?.value;
+    const patch = t.readForm ? t.readForm(getField, typedWrap) : {};
+    record = { ...record, ...patch };
     // Если id сменился (переименование) — убираем старую запись
     if (isEdit && existing.id !== newId) {
       removeUps(existing.id);
@@ -696,6 +720,15 @@ function _fillWizStep1Fields() {
   document.getElementById('wiz-loadKw').value = rq.loadKw;
   document.getElementById('wiz-autonomy').value = rq.autonomyMin;
   document.getElementById('wiz-redundancy').value = rq.redundancy;
+  // v0.59.385: опции «Тип» в wizard'е собираются из реестра типов.
+  const typeSel = document.getElementById('wiz-upsType');
+  if (typeSel) {
+    const opts = ['<option value="">Любой</option>'];
+    for (const t of listUpsTypes()) {
+      opts.push(`<option value="${esc(t.id)}">${esc(t.label)}</option>`);
+    }
+    typeSel.innerHTML = opts.join('');
+  }
   document.getElementById('wiz-upsType').value = rq.upsType || '';
   document.getElementById('wiz-vdcMin').value = rq.vdcMin;
   document.getElementById('wiz-vdcMax').value = rq.vdcMax;
@@ -747,36 +780,19 @@ function _pickSuitable() {
   const rq = wizState.requirements;
   const catalog = listUpses();
   const out = [];
-  const r = _parseRedundancy(rq.redundancy);
   for (const u of catalog) {
+    // Распознаём тип-плагин записи. Записи без типа (frame/module/batt-*) — пропускаем.
+    const t = detectUpsType(u);
+    if (!t) continue;
     // Фильтр по типу (если указан)
-    if (rq.upsType && u.upsType !== rq.upsType) continue;
+    if (rq.upsType && t.id !== rq.upsType) continue;
     // Фильтр по Vdc (диапазон ИБП должен пересекаться с требуемым)
     if (u.vdcMax && u.vdcMin) {
       if (u.vdcMax < rq.vdcMin || u.vdcMin > rq.vdcMax) continue;
     }
-    let fits = false;
-    let fitInfo = null;
-    if (u.upsType === 'modular') {
-      if (!u.moduleKwRated || !u.moduleSlots) continue;
-      const mc = _calcModules(rq.loadKw, u.moduleKwRated, u.moduleSlots, rq.redundancy);
-      if (!mc.fits) continue;
-      fits = true;
-      const realCapacity = mc.working * u.moduleKwRated;
-      fitInfo = { ...mc, realCapacity, usable: mc.working * u.moduleKwRated };
-    } else {
-      // Моноблок: capacity * N ≥ loadKw с учётом резерва
-      const cap = Number(u.capacityKw) || 0;
-      if (cap <= 0) continue;
-      let requiredQty = 1;
-      if (r.mode === '2N') requiredQty = 2;
-      else requiredQty = Math.ceil(rq.loadKw / cap) + r.x;
-      if (cap * (requiredQty - r.x) >= rq.loadKw) {
-        fits = true;
-        fitInfo = { working: requiredQty - r.x, redundant: r.x, installed: requiredQty, realCapacity: cap, usable: cap * (requiredQty - r.x) };
-      }
-    }
-    if (fits) out.push({ ups: u, fitInfo });
+    // Подбор делегируется плагину
+    const fitInfo = t.pickFit ? t.pickFit(rq, u, _parseRedundancy) : null;
+    if (fitInfo) out.push({ ups: u, fitInfo, type: t });
   }
   // Сортировка: сначала модульные, потом по утилизации
   out.sort((a, b) => {
@@ -807,24 +823,22 @@ function _goStep2() {
     return;
   }
   const html = ['<div class="suitable-list">'];
-  suitable.forEach(({ ups, fitInfo }, idx) => {
+  suitable.forEach(({ ups, fitInfo, type }, idx) => {
     const priceInfo = pricesForElement(ups.id);
     const priceStr = priceInfo.latest
       ? Number(priceInfo.latest.price).toLocaleString('ru-RU') + ' ' + priceInfo.latest.currency
       : '—';
     const isRec = idx === 0 ? ' recommended' : '';
-    const typeLabel = ups.upsType === 'modular' ? 'Модульный' : 'Моноблок';
-    const calcText = ups.upsType === 'modular'
-      ? `${fitInfo.working}×${ups.moduleKwRated}kW (работа) + ${fitInfo.redundant}×${ups.moduleKwRated}kW (резерв) = ${fitInfo.installed}/${ups.moduleSlots} слотов`
-      : `${fitInfo.installed} × ${fitInfo.realCapacity}kW (${fitInfo.working} работа + ${fitInfo.redundant} резерв)`;
+    const t = type || getUpsTypeOrFallback(ups);
+    const typeLabel = t.label;
+    const metaText = t.metaLabel ? t.metaLabel(ups) : '';
+    const calcText = t.fitDescription ? t.fitDescription(ups, fitInfo) : '';
     html.push(`
       <div class="suitable-item${isRec}" data-id="${esc(ups.id)}" data-idx="${idx}">
         <div class="suitable-main">
-          <div class="suitable-title">${esc(ups.supplier || '')} ${esc(ups.model || ups.id)} <span class="muted" style="font-size:11px">· ${typeLabel}</span></div>
+          <div class="suitable-title">${esc(ups.supplier || '')} ${esc(ups.model || ups.id)} <span class="muted" style="font-size:11px">· ${esc(typeLabel)}</span></div>
           <div class="suitable-meta">
-            ${ups.upsType === 'modular'
-              ? `Frame ${ups.frameKw}kW · модуль ${ups.moduleKwRated}kW × ${ups.moduleSlots} слотов`
-              : `${ups.capacityKw}kW, КПД ${ups.efficiency}%`}
+            ${metaText}
             · V<sub>DC</sub> ${ups.vdcMin}–${ups.vdcMax}V · Цена ${priceStr}
           </div>
         </div>
@@ -855,35 +869,12 @@ function _buildComposition() {
   const rq = wizState.requirements;
   if (!sel) return null;
   const { ups, fitInfo } = sel;
-  const composition = [];
-  // Корень — сам ИБП (фрейм)
-  if (ups.upsType === 'modular') {
-    // Фрейм + модули. Фрейм — сам ups. Модули — phantom-child.
-    // В текущей архитектуре модули хранятся как число (moduleInstalled) —
-    // формальной отдельной записи модуля в каталоге пока нет. В будущем
-    // модули станут отдельными Element'ами (1.5.8+).
-    composition.push({
-      elementId: ups.id,
-      qty: 1,
-      role: 'frame',
-      label: ups.supplier + ' ' + ups.model + ' (фрейм)',
-    });
-    // Информационно:
-    composition.push({
-      elementId: null,
-      inline: true,
-      qty: fitInfo.installed,
-      role: 'module',
-      label: `Силовой модуль ${ups.moduleKwRated}kW (${fitInfo.working} раб + ${fitInfo.redundant} резерв)`,
-    });
-  } else {
-    composition.push({
-      elementId: ups.id,
-      qty: fitInfo.installed,
-      role: fitInfo.redundant ? 'active+standby' : 'active',
-      label: ups.supplier + ' ' + ups.model,
-    });
-  }
+  const t = sel.type || getUpsTypeOrFallback(ups);
+  // Состав делегируется плагину типа.
+  const composition = t.buildComposition ? t.buildComposition(ups, fitInfo) : [{
+    elementId: ups.id, qty: fitInfo.installed,
+    role: 'active', label: (ups.supplier || '') + ' ' + (ups.model || ups.id),
+  }];
   // Цена
   const priceInfo = pricesForElement(ups.id);
   const unitPrice = priceInfo.latest ? Number(priceInfo.latest.price) : null;
@@ -917,7 +908,7 @@ function _goStep3() {
         <tr><td>Нагрузка</td><td>${rq.loadKw} kW</td></tr>
         <tr><td>Автономия</td><td>${rq.autonomyMin} мин</td></tr>
         <tr><td>Резервирование</td><td>${rq.redundancy}</td></tr>
-        <tr><td>Тип</td><td>${rq.upsType || 'любой'}</td></tr>
+        <tr><td>Тип</td><td>${rq.upsType ? esc((getUpsType(rq.upsType) || {}).label || rq.upsType) : 'любой'}</td></tr>
         <tr><td>V<sub>DC</sub></td><td>${rq.vdcMin}–${rq.vdcMax} В</td></tr>
         <tr><td>cos φ / фазы</td><td>${rq.cosPhi} / ${rq.phases}ph</td></tr>
       </table>
@@ -926,19 +917,9 @@ function _goStep3() {
       <h5>Подобранная конфигурация</h5>
       <table class="wiz-summary-table">
         <tr><td>Модель</td><td>${esc(u.supplier || '')} ${esc(u.model || u.id)}</td></tr>
-        <tr><td>Тип</td><td>${u.upsType === 'modular' ? 'Модульный' : 'Моноблок'}</td></tr>
-        ${u.upsType === 'modular' ? `
-          <tr><td>Корпус (frame)</td><td>${u.frameKw} kW</td></tr>
-          <tr><td>Модуль</td><td>${u.moduleKwRated} kW</td></tr>
-          <tr><td>Установлено модулей</td><td>${fi.installed} из ${u.moduleSlots}</td></tr>
-          <tr><td>Рабочих модулей</td><td>${fi.working}</td></tr>
-          <tr><td>Резерв</td><td>${fi.redundant}</td></tr>
-          <tr><td>Реальная мощность</td><td>${fi.realCapacity} kW</td></tr>
-        ` : `
-          <tr><td>Мощность ед.</td><td>${u.capacityKw} kW</td></tr>
-          <tr><td>Количество ИБП</td><td>${fi.installed}</td></tr>
-          <tr><td>Итоговая мощность</td><td>${fi.usable} kW</td></tr>
-        `}
+        <tr><td>Тип</td><td>${esc(getUpsTypeOrFallback(u).label)}</td></tr>
+        ${(getUpsTypeOrFallback(u).summaryRowsHtml ? getUpsTypeOrFallback(u).summaryRowsHtml(u, fi) : '')}
+        <tr><td>Итоговая мощность</td><td>${fi.usable} kW</td></tr>
         <tr><td>КПД</td><td>${u.efficiency}%</td></tr>
         <tr><td>V<sub>DC</sub></td><td>${u.vdcMin}–${u.vdcMax} В</td></tr>
       </table>

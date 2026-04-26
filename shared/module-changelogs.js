@@ -4,6 +4,24 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.385', date: '2026-04-26', items: [
+      '🧩 <b>Типы ИБП — плагин-архитектура.</b> Запрос пользователя: «вынести типы ИБП в отдельные файлы… добавление модуля в папку с типами должно давать доступность выбора в конфигураторе».',
+      '• Создан каталог <code>shared/ups-types/</code> с реестром типов:',
+      '&nbsp;&nbsp;◦ <code>shared/ups-types/index.js</code> — реестр (<code>listUpsTypes / getUpsType / detectUpsType / getUpsTypeOrFallback</code>).',
+      '&nbsp;&nbsp;◦ <code>shared/ups-types/monoblock.js</code> — моноблок (descriptor).',
+      '&nbsp;&nbsp;◦ <code>shared/ups-types/modular.js</code> — модульный (фрейм + слоты).',
+      '&nbsp;&nbsp;◦ <code>shared/ups-types/integrated.js</code> — интегрированный (АВР + до 3 PDM).',
+      '&nbsp;&nbsp;◦ <code>shared/ups-types/_helpers.js</code> — esc/fmt/v.',
+      '• Каждый descriptor реализует интерфейс: <code>matches / defaults / formFieldsHtml / readForm / detailRowsHtml / metaLabel / pickFit / fitDescription / buildComposition / summaryRowsHtml</code>.',
+      '• <code>ups-config/ups-config.js</code> теперь читает типы из реестра:',
+      '&nbsp;&nbsp;◦ Dropdown «Тип» в форме ручного ввода — опции из <code>listUpsTypes()</code>.',
+      '&nbsp;&nbsp;◦ Доп. поля формы — <code>type.formFieldsHtml(src)</code>; чтение — <code>type.readForm()</code>. Поддержано переключение типа: при смене очищаются поля старого типа.',
+      '&nbsp;&nbsp;◦ Иконка/метка в таблице — <code>type.icon / type.shortLabel</code>.',
+      '&nbsp;&nbsp;◦ Карточка деталей — общий блок + <code>type.detailRowsHtml(u)</code>.',
+      '&nbsp;&nbsp;◦ Wizard: фильтр «Тип» собирается динамически; подбор делегируется <code>type.pickFit()</code>; meta/fit-описание — <code>type.metaLabel/fitDescription</code>; шаг 3 (summary) — <code>type.summaryRowsHtml()</code>; состав — <code>type.buildComposition()</code>.',
+      '• Чтобы добавить НОВЫЙ тип ИБП — создаётся файл в <code>shared/ups-types/</code> + одна строка в <code>index.js</code>. Никаких правок в самом конфигураторе не требуется.',
+      'Файлы: shared/ups-types/index.js (новый), shared/ups-types/_helpers.js (новый), shared/ups-types/monoblock.js (новый), shared/ups-types/modular.js (новый), shared/ups-types/integrated.js (новый), ups-config/ups-config.js (~120 строк рефакторинга: openManualModal, render, renderSelected, _fillWizStep1Fields, _pickSuitable, _goStep2, _buildComposition, _goStep3).',
+    ] },
     { version: '0.59.384', date: '2026-04-26', items: [
       '🔋 <b>Новый тип ИБП: «Интегрированный ИБП» (Kehua MR33 60-150K).</b> Запрос пользователя: «добавь новый тип ИБП Интегрированный ИБП включающий в себя собственно ИБП, возможность входного АВР или без, а так же до трех распределительных панелей».',
       '• Источник: <code>Kehua_UPS_MR33_60-150k_User manual_2023-01-01_4402-03908 004_ENG_Intergrated UPS.pdf</code>.',
