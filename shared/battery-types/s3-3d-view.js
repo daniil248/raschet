@@ -256,8 +256,10 @@ function buildCabinet(THREE, role, opts) {
         group.add(m);
       }
     }
-    // v0.59.442: панель автоматов сразу над модулями
-    const breakerCount = role === 'master' ? 2 : 1;
+    // v0.59.443: число автоматов зависит от ёмкости модуля
+    // (по эскизам User Manual): 100 А·ч → 1 автомат; 40/50 А·ч → 2 автомата.
+    const isHundredAh = Number(opts.capacityAh) === 100;
+    const breakerCount = isHundredAh ? 1 : 2;
     const panel = buildBreakerPanel(THREE, innerW, innerD * 0.7, breakerCount);
     panel.position.set(0, t + innerH + breakerH / 2 + 0.02, 0);
     group.add(panel);
@@ -398,13 +400,27 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   const { THREE, OrbitControls } = mod;
   container.removeChild(ph);
 
-  // v0.59.442: высота по умолчанию увеличена до 520 px (было 380).
-  const height = opts.height || 520;
+  // v0.59.443: компоновка — слева 3D, справа 2D top-view (минимум 220 px).
+  // По умолчанию высота 480 px (было 520, но из-за широкого canvas высота
+  // казалась маленькой). При узком контейнере 2D-вид прячется под 3D.
+  const height = opts.height || 480;
+  const root = document.createElement('div');
+  root.style.cssText = `display:flex;flex-wrap:wrap;gap:8px;width:100%`;
+  container.appendChild(root);
+
   const wrap = document.createElement('div');
   wrap.style.cssText =
-    `position:relative;width:100%;height:${height}px;border:1px solid #2a2f3a;` +
-    `border-radius:8px;overflow:hidden`;
-  container.appendChild(wrap);
+    `position:relative;flex:1 1 480px;min-width:320px;height:${height}px;` +
+    `border:1px solid #2a2f3a;border-radius:8px;overflow:hidden`;
+  root.appendChild(wrap);
+
+  // 2D top-view (план)
+  const view2d = document.createElement('div');
+  view2d.style.cssText =
+    `flex:0 1 260px;min-width:220px;height:${height}px;border:1px solid #2a2f3a;` +
+    `border-radius:8px;background:#f7f8fb;padding:10px;box-sizing:border-box;` +
+    `overflow:auto;font:11px system-ui;color:#1a2a44`;
+  root.appendChild(view2d);
 
   // подсказка
   const hint = document.createElement('div');
@@ -482,6 +498,10 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   const total = cabs.length;
   const startX = -((total - 1) * W) / 2;
   const doorPivots = [];
+  // v0.59.443: пробрасываем capacityAh модуля в каждый шкаф для
+  // правильного выбора кол-ва автоматов (1 для 100 А·ч, 2 для 40/50).
+  const capacityAh = (spec && spec.module && spec.module.capacityAh) ||
+                     (opts.modelInfo && opts.modelInfo.capacityAh) || null;
   cabs.forEach((cab, i) => {
     const totalSlots = (cab.modulesInCabinet || 0) + (cab.emptySlots || 0);
     const layout = moduleLayout(totalSlots, cab.model);
@@ -489,6 +509,7 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
       ...sharedOpts,
       modulesInCabinet: cab.modulesInCabinet || 0,
       layout,
+      capacityAh,
       collectDoor: (pivot, role) => doorPivots.push({ pivot, role }),
       label: cab.model || (cab.role === 'combiner' ? 'Combiner' : cab.role),
       subLabel: (cab.role === 'master' ? 'Master' :
@@ -555,6 +576,77 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   applyBackground('sky');
   rebuildGrid(600);
 
+  // === 2D top-view ===
+  function render2dTopView() {
+    const W_MM = 600, D_MM = 850, H_COMB = 2000;
+    const COMB_W = 400, COMB_D = 860;
+    const margin = 8;
+    // Считаем общую ширину ряда: master+slave×W + combiners×COMB_W
+    let total_w = 0;
+    for (const cab of cabs) total_w += (cab.role === 'combiner' ? COMB_W : W_MM);
+    const total_d = Math.max(D_MM, COMB_D);
+    const cw = view2d.clientWidth - 2 * margin - 20;
+    const ch = view2d.clientHeight - 2 * margin - 60;
+    const scale = Math.min((cw > 0 ? cw : 200) / total_w, (ch > 0 ? ch : 200) / total_d);
+    const svgW = Math.max(180, total_w * scale + 40);
+    const svgH = Math.max(140, total_d * scale + 80);
+    let parts = [`<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">`];
+    parts.push(`<text x="${svgW/2}" y="14" text-anchor="middle" font-size="11" fill="#5a6680" font-weight="bold">План (вид сверху)</text>`);
+    let x = 20;
+    const yTop = 30;
+    for (const cab of cabs) {
+      const w_mm = cab.role === 'combiner' ? COMB_W : W_MM;
+      const d_mm = cab.role === 'combiner' ? COMB_D : D_MM;
+      const w = w_mm * scale, d = d_mm * scale;
+      const fill = cab.role === 'master' ? '#cfe0ff' :
+                   cab.role === 'slave' ? '#d6f0d6' :
+                   '#f0d8b8';
+      const stroke = cab.role === 'master' ? '#3463b8' :
+                     cab.role === 'slave' ? '#2c8a4a' :
+                     '#a85a18';
+      parts.push(`<rect x="${x}" y="${yTop}" width="${w}" height="${d}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`);
+      // дверь — линия снизу
+      parts.push(`<line x1="${x}" y1="${yTop + d}" x2="${x + w}" y2="${yTop + d}" stroke="${stroke}" stroke-width="2"/>`);
+      // петля
+      parts.push(`<circle cx="${x + 3}" cy="${yTop + d - 2}" r="2" fill="${stroke}"/>`);
+      const lab = cab.role === 'master' ? 'M' : cab.role === 'slave' ? 'S' : 'C';
+      parts.push(`<text x="${x + w/2}" y="${yTop + d/2 + 4}" text-anchor="middle" font-size="11" font-weight="bold" fill="${stroke}">${lab}</text>`);
+      // подпись модели
+      parts.push(`<text x="${x + w/2}" y="${yTop + d + 14}" text-anchor="middle" font-size="9" fill="#1a2a44">${(cab.model || '').slice(-12)}</text>`);
+      // габариты
+      parts.push(`<text x="${x + w/2}" y="${yTop - 4}" text-anchor="middle" font-size="8" fill="#8a93a6">${w_mm}</text>`);
+      x += w;
+    }
+    // глубина справа
+    parts.push(`<text x="${svgW - 6}" y="${yTop + (D_MM*scale)/2}" text-anchor="end" font-size="8" fill="#8a93a6" transform="rotate(-90 ${svgW-6} ${yTop + (D_MM*scale)/2})">${D_MM} мм</text>`);
+    parts.push(`</svg>`);
+    // Состав
+    let composition = '<div style="margin-top:8px;line-height:1.5">';
+    composition += `<div style="font-weight:bold;margin-bottom:4px">Состав ряда</div>`;
+    const counts = { master: 0, slave: 0, combiner: 0 };
+    for (const c of cabs) counts[c.role] = (counts[c.role] || 0) + 1;
+    if (counts.master) composition += `<div>● Master: <b>${counts.master}</b></div>`;
+    if (counts.slave) composition += `<div>● Slave: <b>${counts.slave}</b></div>`;
+    if (counts.combiner) {
+      const combTypes = {};
+      for (const c of cabs) {
+        if (c.role === 'combiner') {
+          const k = c.model || 'Combiner';
+          combTypes[k] = (combTypes[k] || 0) + 1;
+        }
+      }
+      for (const [k, v] of Object.entries(combTypes)) {
+        composition += `<div>● ${k}: <b>${v}</b></div>`;
+      }
+    }
+    // Габариты ряда
+    composition += `<div style="margin-top:6px;color:#5a6680">Длина ряда: <b>${total_w} мм</b></div>`;
+    composition += `<div style="color:#5a6680">Глубина: <b>${total_d} мм</b></div>`;
+    composition += '</div>';
+    view2d.innerHTML = parts.join('') + composition;
+  }
+  render2dTopView();
+
   // камера + рендерер
   const initW = wrap.clientWidth || 800;
   const initH = height;
@@ -609,42 +701,80 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   ro.observe(wrap);
 
   // === модалка «Развернуть» ===
+  // v0.59.443: правильное полноэкранное окно. Корень модалки = position:fixed
+  // на весь viewport, wrap занимает всю площадь (без flex-смешения с padding).
   let modalOverlay = null;
-  let originalParent = wrap.parentNode;
-  let originalHeight = height;
+  const origStyles = { position: '', width: '', height: '', flex: '', minWidth: '' };
   function enterFullscreen() {
     if (modalOverlay) return;
+    // запоминаем плейсхолдер на месте wrap, чтобы потом вернуть
+    const placeholder = document.createElement('div');
+    placeholder.style.cssText = `flex:1 1 480px;min-width:320px;height:${height}px`;
+    wrap.parentNode.insertBefore(placeholder, wrap);
+    wrap.dataset._placeholderHook = '1';
+    wrap._placeholder = placeholder;
+
     modalOverlay = document.createElement('div');
     modalOverlay.style.cssText =
       'position:fixed;left:0;top:0;right:0;bottom:0;z-index:9999;' +
-      'background:rgba(10,12,18,0.94);display:flex;flex-direction:column;' +
-      'padding:18px;box-sizing:border-box';
+      'background:rgba(10,12,18,0.96);box-sizing:border-box';
+    document.body.appendChild(modalOverlay);
+
+    // wrap → 100%×100% viewport
+    origStyles.position = wrap.style.position;
+    origStyles.width = wrap.style.width;
+    origStyles.height = wrap.style.height;
+    origStyles.flex = wrap.style.flex;
+    origStyles.minWidth = wrap.style.minWidth;
+    wrap.style.position = 'absolute';
+    wrap.style.left = '0';
+    wrap.style.top = '0';
+    wrap.style.width = '100vw';
+    wrap.style.height = '100vh';
+    wrap.style.flex = '0 0 auto';
+    wrap.style.minWidth = '0';
+    wrap.style.borderRadius = '0';
+    wrap.style.border = 'none';
+    modalOverlay.appendChild(wrap);
+
     const closeBtn = document.createElement('button');
     closeBtn.style.cssText =
-      'position:absolute;right:16px;top:16px;z-index:10000;font:13px system-ui;' +
+      'position:fixed;right:16px;top:16px;z-index:10000;font:13px system-ui;' +
       'color:#fff;background:#a83a3a;border:1px solid #c95252;border-radius:4px;' +
-      'padding:7px 14px;cursor:pointer';
+      'padding:8px 16px;cursor:pointer;font-weight:bold';
     closeBtn.textContent = '✕ Закрыть (Esc)';
     closeBtn.addEventListener('click', exitFullscreen);
     modalOverlay.appendChild(closeBtn);
-    wrap.style.height = '100%';
-    wrap.style.flex = '1';
-    modalOverlay.appendChild(wrap);
-    document.body.appendChild(modalOverlay);
+    modalOverlay._closeBtn = closeBtn;
+
     fullBtn.textContent = '⤓ Свернуть';
     document.addEventListener('keydown', escHandler);
-    requestAnimationFrame(resize);
+    // Принудительно перерисовываем canvas под новые размеры
+    requestAnimationFrame(() => requestAnimationFrame(resize));
   }
   function exitFullscreen() {
     if (!modalOverlay) return;
     document.removeEventListener('keydown', escHandler);
-    wrap.style.height = originalHeight + 'px';
-    wrap.style.flex = '';
-    originalParent.appendChild(wrap);
+    // возвращаем wrap на место плейсхолдера
+    const ph = wrap._placeholder;
+    wrap.style.position = origStyles.position;
+    wrap.style.left = '';
+    wrap.style.top = '';
+    wrap.style.width = '';
+    wrap.style.height = `${height}px`;
+    wrap.style.flex = '1 1 480px';
+    wrap.style.minWidth = '320px';
+    wrap.style.borderRadius = '8px';
+    wrap.style.border = '1px solid #2a2f3a';
+    if (ph && ph.parentNode) {
+      ph.parentNode.insertBefore(wrap, ph);
+      ph.remove();
+    }
+    delete wrap._placeholder;
     modalOverlay.remove();
     modalOverlay = null;
     fullBtn.textContent = '⛶ Развернуть';
-    requestAnimationFrame(resize);
+    requestAnimationFrame(() => requestAnimationFrame(resize));
   }
   function escHandler(e) { if (e.key === 'Escape') exitFullscreen(); }
   fullBtn.addEventListener('click', () => {
@@ -660,6 +790,7 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
       try { controls.dispose(); } catch {}
       try { renderer.dispose(); } catch {}
       try { wrap.remove(); } catch {}
+      try { root.remove(); } catch {}
     },
   };
 }

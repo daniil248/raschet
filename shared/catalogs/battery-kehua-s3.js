@@ -318,21 +318,48 @@ export const KEHUA_S3_CABINETS = [
 // Эти записи НЕ участвуют в расчёте автономии (systemSubtype: 'accessory').
 // Используются BOM-логикой и кодом авто-сборки шкафов (v0.59.426+).
 export const KEHUA_S3_ACCESSORIES = [
+  // v0.59.443: combiner — 2 типоразмера (User Manual Figure 2-24, Table 2-9):
+  // S3C-2000 — до 4 шкафов АКБ, 2000 А, 120 кг.
+  // S3C-4000 — до 8 шкафов АКБ, 4000 А, 140 кг.
+  // Габариты обоих: 400×860×2000 мм. Авто-подбор по числу шкафов.
   {
-    id: 'kehua-s3-combiner',
+    id: 'kehua-s3-combiner-2000',
     supplier: 'Kehua',
-    type: 'S3-Combiner',
+    type: 'S3-Combiner-2000',
+    model: 'S3C-2000',
     chemistry: 'li-ion',
     isSystem: true,
     systemType: 'kehua-s3',
     systemSubtype: 'accessory',
     accessoryRole: 'combiner',
-    systemDescription: 'Шкаф-комбайнер для параллельной сборки нескольких шкафов S³. Шинная DC-разводка, защитные автоматы. Ставится правее последнего slave (Master + Slave1…SlaveN + Combiner).',
+    combinerCurrentA: 2000,
+    combinerMaxCabinets: 4,
+    systemDescription: 'Шкаф-комбайнер S3C-2000: шинная DC-разводка для параллельной сборки до 4 шкафов АКБ S³. Выходной ток 2000 А. Ставится правее последнего slave.',
     appliesTo: ['S3C040-6C-20', 'S3C050-4C-20', 'S3C100-1C-12'],
-    requiredWhen: 'cabinetsCount > 2',
-    cabinetWeightKg: null,
-    cabinetDimensionsMm: null,
-    source: 'Kehua S³ User Manual, Figure3-28',
+    requiredWhen: 'cabinetsCount > 2 && cabinetsPerCombiner ≤ 4',
+    cabinetWeightKg: 120,
+    cabinetDimensionsMm: { w: 400, d: 860, h: 2000 },
+    source: 'Kehua S³ User Manual, Figure 2-24, Table 2-9',
+    importedAt: 0, custom: false,
+  },
+  {
+    id: 'kehua-s3-combiner-4000',
+    supplier: 'Kehua',
+    type: 'S3-Combiner-4000',
+    model: 'S3C-4000',
+    chemistry: 'li-ion',
+    isSystem: true,
+    systemType: 'kehua-s3',
+    systemSubtype: 'accessory',
+    accessoryRole: 'combiner',
+    combinerCurrentA: 4000,
+    combinerMaxCabinets: 8,
+    systemDescription: 'Шкаф-комбайнер S3C-4000: шинная DC-разводка для параллельной сборки до 8 шкафов АКБ S³. Выходной ток 4000 А. Ставится правее последнего slave.',
+    appliesTo: ['S3C040-6C-20', 'S3C050-4C-20', 'S3C100-1C-12'],
+    requiredWhen: 'cabinetsPerCombiner > 4',
+    cabinetWeightKg: 140,
+    cabinetDimensionsMm: { w: 400, d: 860, h: 2000 },
+    source: 'Kehua S³ User Manual, Figure 2-24, Table 2-9',
     importedAt: 0, custom: false,
   },
   {

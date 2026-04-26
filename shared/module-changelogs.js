@@ -4,6 +4,22 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.443', date: '2026-04-26', items: [
+      'ⓘ <b>Подсказка к End Voltage в калькуляторе АКБ.</b> Добавлен tooltip-бейдж <code>ⓘ</code> рядом с полем «End voltage» с пояснением: чем НИЖЕ EoD, тем БОЛЬШЕ блоков может потребоваться (окно V_DC ИБП требует <code>N · endV · cells ≥ V_DC_min</code>; глубокий разряд = большая просадка U/блок = больше блоков для удержания V_DC). IEEE 485 §6.4.',
+      '🚪 <b>3D S³: автоматы защиты теперь зависят от ёмкости модуля, а не от роли.</b> По эскизам User Manual: <b>1 автомат</b> в шкафах с модулями <b>100 А·ч</b> (один DC-ввод); <b>2 автомата</b> в шкафах с модулями <b>40/50 А·ч</b> (два DC-ввода). Раньше код смотрел на роль (master=2, slave=1) — это было неправильно. Файлы: <code>shared/battery-types/s3-3d-view.js</code> — <code>buildCabinet()</code> теперь читает <code>opts.capacityAh</code>; <code>mountS3ThreeDView()</code> пробрасывает его из <code>spec.module.capacityAh</code>.',
+      '📐 <b>Combiner: 2 типоразмера (S3C-2000 / S3C-4000) с авто-подбором.</b> User Manual Figure 2-24, Table 2-9:',
+      '• <b>S3C-2000</b> — 400×860×2000 мм, 120 кг, выход 2000 А, до 4 шкафов АКБ.',
+      '• <b>S3C-4000</b> — 400×860×2000 мм, 140 кг, выход 4000 А, до 8 шкафов АКБ.',
+      '• Авто-подбор: распределяем шкафы поровну между N комбайнерами; для каждого, если приходится ≤4 шкафа — S3C-2000, иначе S3C-4000.',
+      '• <code>shared/catalogs/battery-kehua-s3.js</code> — <code>kehua-s3-combiner</code> заменён на <code>kehua-s3-combiner-2000</code> и <code>kehua-s3-combiner-4000</code> с полями <code>combinerCurrentA</code>, <code>combinerMaxCabinets</code>, <code>cabinetWeightKg</code>, <code>cabinetDimensionsMm</code>.',
+      '• <code>shared/battery-types/s3-li-ion.js</code> — <code>buildSystem()</code> формирует <code>combinerInfos[]</code> с подбором SKU и пишет в <code>accessories[]</code> отдельной агрегацией по типоразмеру.',
+      '🪟 <b>3D-вид: компоновка 3D + 2D top-view + исправлен полноэкранный режим.</b>',
+      '• Раскладка: 3D слева (flex:1 1 480px), 2D-план справа (flex:0 1 260px) — на узких экранах 2D переносится под 3D.',
+      '• 2D top-view (SVG): шкафы в виде прямоугольников 600×850 мм (master/slave) и 400×860 мм (combiner) с цветовой индикацией ролей, петлями и подписями моделей. Внизу — состав ряда и общие габариты.',
+      '• Fix полноэкранного режима: модалка теперь position:fixed на 100vw×100vh, wrap абсолютным позиционированием занимает весь viewport (без проблем с flex/padding overlay). Кнопка «✕ Закрыть» в правом верхнем углу overlay. На месте wrap остаётся placeholder для возврата при сворачивании.',
+      'Файлы: <code>shared/battery-types/s3-3d-view.js</code> — добавлены <code>render2dTopView()</code>, переписаны <code>enterFullscreen()/exitFullscreen()</code> с placeholder-механизмом.',
+      'Файлы tooltip: <code>battery/index.html</code> — <code>title</code> на label + span ⓘ для End voltage.',
+    ] },
     { version: '0.59.442', date: '2026-04-26', items: [
       '🖥 <b>3D-вид S³: крупное окно + полноэкранная модалка.</b> Дефолтная высота встроенного canvas — 520 px (было 380). Кнопка <code>⛶ Развернуть</code> в тулбаре открывает 3D на весь экран (overlay 94% непрозрачности), Esc / кнопка <code>⤓ Свернуть</code> возвращает обратно в страницу. Canvas переезжает между местами без пересоздания сцены — состояние камеры, анимация дверей, открытые/закрытые двери сохраняются.',
       '🌤 <b>Настройки фона и плоскости.</b> Селекторы в правом нижнем углу: фон — Небо (градиент голубой-белый, по умолчанию) / Тёмный / Белый; сетка — 600 мм (по умолчанию) / 300 мм / 100 мм / скрыть. Плоскость — серая <code>#9aa0aa</code>, сетка темнее <code>#6a707a</code>. Размер поля 24×24 м.',

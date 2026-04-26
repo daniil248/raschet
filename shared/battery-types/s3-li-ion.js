@@ -98,17 +98,32 @@ export const s3LiIonType = {
     // Свыше 8 — требуется ещё один combiner.
     const MAX_CABS_PER_COMBINER_FRONT = 4;
     const MAX_CABS_PER_COMBINER_FULL  = 8;
+    // v0.59.443: авто-подбор типоразмера combiner.
+    // S3C-2000 (2000 А) — до 4 шкафов; S3C-4000 (4000 А) — до 8 шкафов.
+    // На N комбайнеров делим шкафы поровну; для каждого комбайнера выбираем
+    // S3C-2000 если на него приходится ≤4 шкафов, иначе S3C-4000.
     let combinersCount = 0;
     let combinerNeedsRearPlate = false;
+    const combinerInfos = [];
     if (cabinetsCount > 2) {
       combinersCount = Math.ceil(cabinetsCount / MAX_CABS_PER_COMBINER_FULL);
       combinerNeedsRearPlate = cabinetsCount > MAX_CABS_PER_COMBINER_FRONT * combinersCount;
+      const baseCabsPer = Math.floor(cabinetsCount / combinersCount);
+      const extraCabs   = cabinetsCount - baseCabsPer * combinersCount;
       for (let i = 0; i < combinersCount; i++) {
-        cabinets.push({
-          role: 'combiner', variant: '', model: 'S3-Combiner',
+        const cabsOnThis = baseCabsPer + (i < extraCabs ? 1 : 0);
+        const useLarge = cabsOnThis > MAX_CABS_PER_COMBINER_FRONT;
+        const info = {
+          role: 'combiner', variant: '',
+          model: useLarge ? 'S3C-4000' : 'S3C-2000',
+          accessoryId: useLarge ? 'kehua-s3-combiner-4000' : 'kehua-s3-combiner-2000',
+          combinerCurrentA: useLarge ? 4000 : 2000,
+          cabinetsConnected: cabsOnThis,
           modulesInCabinet: 0, emptySlots: 0,
-          rearPlate: combinerNeedsRearPlate,
-        });
+          rearPlate: useLarge,
+        };
+        cabinets.push(info);
+        combinerInfos.push(info);
       }
     }
 
@@ -133,6 +148,14 @@ export const s3LiIonType = {
       const isHundredAh = (Number(module.capacityAh) === 100);
       const blankId = isHundredAh ? 'kehua-s3-blank-panel-100' : 'kehua-s3-blank-panel-040-050';
       accessories.push({ id: blankId, role: 'blank-panel', qty: totalEmpty });
+    }
+    // v0.59.443: combiner SKUs — отдельной агрегацией по типоразмеру.
+    if (combinerInfos.length > 0) {
+      const byId = {};
+      for (const c of combinerInfos) byId[c.accessoryId] = (byId[c.accessoryId] || 0) + 1;
+      for (const [id, qty] of Object.entries(byId)) {
+        accessories.push({ id, role: 'combiner', qty });
+      }
     }
 
     // Предупреждения

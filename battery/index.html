@@ -265,7 +265,7 @@
           <input id="calc-capAh" type="number" min="1" step="1" value="100">
         </div>
         <div>
-          <label>End voltage (В/элемент)</label>
+          <label title="Конечное напряжение элемента при разряде. Внимание: чем НИЖЕ End Voltage, тем БОЛЬШЕ блоков может потребоваться — потому что окно V_DC ИБП требует, чтобы N · endV · cellsPerBlock ≥ V_DC_min. При глубоком разряде каждый блок проседает сильнее → нужно больше блоков в цепочке. Эффект окна V_DC доминирует над эффектом «больше энергии на блок».">End voltage (В/элемент) <span style="color:#5a6680;cursor:help" title="Чем НИЖЕ End Voltage, тем БОЛЬШЕ блоков может выйти. См. IEEE 485 §6.4: N_min = ⌈V_DC_min / (endV·cells)⌉. Глубокий разряд = большая просадка U/блок = больше блоков в цепочке для удержания V_DC ИБП ≥ минимума.">ⓘ</span></label>
           <select id="calc-endv">
             <option value="1.6">1.60</option>
             <option value="1.65">1.65</option>
