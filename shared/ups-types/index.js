@@ -32,8 +32,9 @@
 import { monoblockType  } from './monoblock.js';
 import { modularType    } from './modular.js';
 import { integratedType } from './integrated.js';
+import { allInOneType   } from './all-in-one.js';
 
-const ALL_TYPES = [monoblockType, modularType, integratedType];
+const ALL_TYPES = [monoblockType, modularType, integratedType, allInOneType];
 
 // Стабильно отсортированный массив.
 export function listUpsTypes() {

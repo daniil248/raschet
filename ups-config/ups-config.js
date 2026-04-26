@@ -10,6 +10,7 @@ import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from '../shared
 import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/catalogs/ups-kehua-mr33.js';
+import { KEHUA_S3_AIO_UPSES } from '../shared/catalogs/ups-kehua-s3-aio.js';
 // v0.59.385: типы ИБП — плагин-архитектура. Чтобы добавить новый тип
 // (моноблок/модульный/интегрированный/...), создайте файл в
 // shared/ups-types/ и зарегистрируйте его в shared/ups-types/index.js.
@@ -595,6 +596,16 @@ document.addEventListener('DOMContentLoaded', () => {
       addUps({ ...rec, importedAt: Date.now() });
     }
     flash(`Загружено Kehua UPS: ${n} моделей`, 'success');
+    render();
+  });
+  // v0.59.421: Kehua S³C All-in-One — отдельный seed-button.
+  const aioBtn = document.getElementById('btn-seed-kehua-aio');
+  if (aioBtn) aioBtn.addEventListener('click', () => {
+    const n = KEHUA_S3_AIO_UPSES.length;
+    for (const rec of KEHUA_S3_AIO_UPSES) {
+      addUps({ ...rec, importedAt: Date.now() });
+    }
+    flash(`Загружено Kehua S³C AIO: ${n} моделей (моноблок со встроенной АКБ)`, 'success');
     render();
   });
   const clrBtn = document.getElementById('btn-clear-catalog');
