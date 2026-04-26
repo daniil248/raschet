@@ -1235,12 +1235,28 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
   const masterVariant = (document.getElementById('calc-s3-master-variant')?.value) || 'M';
   const slaveVariant  = (document.getElementById('calc-s3-slave-variant')?.value)  || 'S';
   const fireFighting  = (document.getElementById('calc-s3-fire-fighting')?.value)  || 'X';
+  // v0.59.434: предварительная проверка лимита 200 кВт/шкаф — если он
+  // превышен при «естественном» числе шкафов (по числу модулей), мы
+  // АВТОМАТИЧЕСКИ добавляем шкафы вместо того, чтобы показывать red-бан.
+  // Передаём options.minCabinets в buildSystem; пользователь видит реальную
+  // итоговую конфигурацию, а под таблицей — info-строку «авто-добавлено N шкафов».
+  const preChk = s3LiIonType.validateMaxCRate({ module: battery, loadKw, totalModules, invEff });
+  const minCabinets = (preChk && preChk.suggestedMinCabinets) || 0;
   const spec = s3LiIonType.buildSystem({
     module: battery, totalModules,
-    options: { masterVariant, slaveVariant, fireFighting },
+    options: { masterVariant, slaveVariant, fireFighting, minCabinets },
   });
   const bom  = s3LiIonType.bomLines(spec, { module: battery, accessoryCatalog });
-  const cRateChk = s3LiIonType.validateMaxCRate({ module: battery, loadKw, totalModules, invEff });
+  // Финальный чек уже на фактической конфигурации (cabinetsCount после bump).
+  const cRateChk = s3LiIonType.validateMaxCRate({
+    module: battery, loadKw, totalModules: spec.totalModules || totalModules, invEff,
+  });
+  // Override cabinetsCount in cRateChk to match spec — для корректной строки «На шкаф».
+  if (cRateChk && spec.cabinetsCount) {
+    cRateChk.cabinetsCount = spec.cabinets.filter(c => c.role !== 'combiner').length;
+    cRateChk.perCabinetKw = cRateChk.reqKw / Math.max(1, cRateChk.cabinetsCount);
+  }
+  const autoBumped = minCabinets > 0 && spec.cabinets.filter(c => c.role !== 'combiner').length > Math.ceil(totalModules / (battery.packaging?.maxPerCabinet || 4));
 
   const cabinetRows = spec.cabinets.map(c => {
     const roleLabel = c.role === 'master' ? 'Master' : c.role === 'slave' ? 'Slave' : 'Combiner';
@@ -1273,6 +1289,10 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
 
   if (spec.warnings && spec.warnings.length) {
     spec.warnings.forEach(w => { html += `<div class="warn" style="margin-top:6px">⚠ ${escHtml(w)}</div>`; });
+  }
+  if (autoBumped) {
+    const realCabinets = spec.cabinets.filter(c => c.role !== 'combiner').length;
+    html += `<div style="margin-top:6px;background:#e8f5e9;border:1px solid #a5d6a7;padding:8px;border-radius:4px;font-size:12px">ℹ <b>Авто-добавление шкафов.</b> Расчётная нагрузка превышала лимит 200 кВт/шкаф — система автоматически расширена до <b>${realCabinets} шкаф${realCabinets === 1 ? '' : 'ов'}</b> (нагрузка/шкаф ≤ 200 кВт). Свободные слоты заполнены blank-панелями.</div>`;
   }
   if (cRateChk && !cRateChk.ok) {
     html += `<div class="warn" style="margin-top:6px;background:#ffebee;border:1px solid #ef9a9a;padding:8px;border-radius:4px">⚠ <b>Превышение лимита.</b> ${escHtml(cRateChk.reason)}</div>`;

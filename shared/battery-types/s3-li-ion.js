@@ -65,7 +65,12 @@ export const s3LiIonType = {
     // Распределяем модули по шкафам сверху вниз: первый шкаф (master)
     // заполняется сначала. Можно переопределить через options.distribution
     // = 'even' для равномерного, default 'top-down' (как в брошюре).
-    const cabinetsCount = Math.ceil(totalModules / lim.maxPerCabinet);
+    // v0.59.434: options.minCabinets — нижняя граница числа шкафов (обычно
+    // приходит из расчёта по power-limit 200 кВт/шкаф). Если задано —
+    // итоговое число шкафов = max(ceil(modules/maxPerCabinet), minCabinets).
+    const fromModules = Math.ceil(totalModules / lim.maxPerCabinet);
+    const minByPower  = Math.max(0, Number(options.minCabinets) || 0);
+    const cabinetsCount = Math.max(fromModules, minByPower);
     const cabinets = [];
     let remaining = totalModules;
     for (let i = 0; i < cabinetsCount; i++) {
@@ -157,13 +162,13 @@ export const s3LiIonType = {
     const lim = getS3Limits(module);
     const cabinetsCount = Math.max(1, Math.ceil(totalModules / Math.max(1, lim.maxPerCabinet)));
     const perCabinetKw = reqKw / cabinetsCount;
+    // v0.59.434: per-cabinet limit — НЕ бан, а подсказка по числу шкафов.
+    // Если нагрузка/шкаф > 200 кВт, возвращаем suggestedMinCabinets, чтобы
+    // вызывающий код мог автоматически добавить шкафы (через
+    // buildSystem({options.minCabinets})).
+    let suggestedMinCabinets = 0;
     if (perCabinetKw > CABINET_MAX_KW + 1e-6) {
-      return {
-        ok: false,
-        reason: `Нагрузка на шкаф ${perCabinetKw.toFixed(1)} кВт превышает паспортный лимит шкафа S³ (${CABINET_MAX_KW} кВт). Увеличьте число шкафов (модулей в системе).`,
-        ratedSystemKw, ratedPerModuleKw, reqKw, cRate,
-        cabinetsCount, perCabinetKw, cabinetMaxKw: CABINET_MAX_KW,
-      };
+      suggestedMinCabinets = Math.max(1, Math.ceil(reqKw / CABINET_MAX_KW));
     }
     if (reqKw > ratedSystemKw + 1e-6) {
       return {
@@ -171,10 +176,12 @@ export const s3LiIonType = {
         reason: `Нагрузка ${reqKw.toFixed(1)} кВт превышает max C-rate системы: ${cRate}C × ${totalModules} модулей = ${ratedSystemKw.toFixed(1)} кВт. Увеличьте число модулей или выберите модель с большим C-rate.`,
         ratedSystemKw, ratedPerModuleKw, reqKw, cRate,
         cabinetsCount, perCabinetKw, cabinetMaxKw: CABINET_MAX_KW,
+        suggestedMinCabinets,
       };
     }
     return { ok: true, ratedSystemKw, ratedPerModuleKw, reqKw, cRate,
-             cabinetsCount, perCabinetKw, cabinetMaxKw: CABINET_MAX_KW };
+             cabinetsCount, perCabinetKw, cabinetMaxKw: CABINET_MAX_KW,
+             suggestedMinCabinets };
   },
 
   // BOM-строки из SystemSpec. Возвращает массив объектов

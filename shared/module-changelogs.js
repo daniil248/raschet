@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.434', date: '2026-04-26', items: [
+      '🟢 <b>S³: лимит 200 кВт/шкаф больше не банит — система автоматически добавляет шкафы.</b> Раньше при превышении лимита показывался красный «⚠ Превышение лимита». Теперь:',
+      '• <code>validateMaxCRate</code> при превышении возвращает <code>suggestedMinCabinets = ceil(reqKw / cabinetMaxKw)</code> вместо <code>ok:false</code>.',
+      '• <code>buildSystem(options.minCabinets)</code> расширяет систему до этого числа: <code>cabinetsCount = max(ceil(modules/maxPerCabinet), minCabinets)</code>. totalModules не меняется — лишние слоты заполняются blank-панелями (BOM сам учтёт).',
+      '• В battery-calc и инспекторе ИБП выводится зелёная info-плашка «ℹ Авто-добавлено до N шкафов (лимит 200 кВт/шкаф). Свободные слоты — blank-панели.»',
+      '• Под таблицей всё так же печатается «На шкаф: X кВт / 200 кВт лимит» — теперь после bump перецеплено на актуальное число шкафов.',
+      'Файлы: shared/battery-types/s3-li-ion.js (buildSystem.options.minCabinets, validateMaxCRate.suggestedMinCabinets); battery/battery-calc.js (_renderS3SystemSpecHtml — pre-check + autoBumped блок); js/engine/inspector/ups.js (тот же паттерн в S³-секции).',
+    ] },
     { version: '0.59.433', date: '2026-04-26', items: [
       '🔷 <b>S³ Li-Ion: убраны нерелевантные VRLA-параметры.</b> Когда выбран модуль S³ (или другая модульная Li-Ion система с <code>systemType=\'modular-li-ion\'</code>):',
       '• <b>Скрыт</b> dropdown «End voltage (В/элемент)» с VRLA-значениями 1.60…1.85 — для LFP-модуля (240 В номинал, BMS) end-voltage на элемент задан внутри модуля и пользователю не доступен.',

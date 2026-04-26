@@ -1257,9 +1257,14 @@ function _renderUpsBatteryBody(n) {
       const masterVar = n.batteryMasterVariant || 'M';
       const slaveVar  = n.batterySlaveVariant  || 'S';
       const fireFighting = n.batteryFireFighting != null ? n.batteryFireFighting : 'X';
+      // v0.59.434: авто-добавление шкафов по power-limit 200 кВт.
+      const _preChk = _s3LiIonType.validateMaxCRate({
+        module: picked, loadKw, totalModules: s3Cfg.totalModules, invEff,
+      });
+      const _minCabs = (_preChk && _preChk.suggestedMinCabinets) || 0;
       const spec = _s3LiIonType.buildSystem({
         module: picked, totalModules: s3Cfg.totalModules,
-        options: { masterVariant: masterVar, slaveVariant: slaveVar, fireFighting },
+        options: { masterVariant: masterVar, slaveVariant: slaveVar, fireFighting, minCabinets: _minCabs },
       });
       const accessoryCatalog = catalog.filter(b => b && b.systemSubtype === 'accessory');
       const cabRows = spec.cabinets.map(c => {
@@ -1278,11 +1283,16 @@ function _renderUpsBatteryBody(n) {
         totalModules: s3Cfg.totalModules, invEff,
       });
       let cRateBlock = '';
+      const _realCabs = spec.cabinets.filter(c => c.role !== 'combiner').length;
+      if (_minCabs > 0) {
+        cRateBlock += `<div style="margin-top:6px;padding:6px 8px;background:#e8f5e9;border-left:3px solid #43a047;border-radius:3px;font-size:11px">ℹ Авто-добавлено до <b>${_realCabs} шкафов</b> (лимит 200 кВт/шкаф). Свободные слоты — blank-панели.</div>`;
+      }
       if (cRateChk && !cRateChk.ok) {
-        cRateBlock = `<div style="margin-top:6px;padding:6px 8px;background:#ffebee;border-left:3px solid #c62828;border-radius:3px;font-size:11px;color:#c62828">⚠ ${escHtml(cRateChk.reason)}</div>`;
+        cRateBlock += `<div style="margin-top:6px;padding:6px 8px;background:#ffebee;border-left:3px solid #c62828;border-radius:3px;font-size:11px;color:#c62828">⚠ ${escHtml(cRateChk.reason)}</div>`;
       } else if (cRateChk && cRateChk.cRate) {
         const used = cRateChk.reqKw / cRateChk.ratedSystemKw * 100;
-        cRateBlock = `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспорта (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${s3Cfg.totalModules} мод.)</div>`;
+        const perCab = cRateChk.reqKw / Math.max(1, _realCabs);
+        cRateBlock += `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспорта (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${s3Cfg.totalModules} мод.) · На шкаф: ${fmt(perCab)} кВт / 200 кВт лимит.</div>`;
       }
       h.push(`<details style="margin-top:8px;background:#eff7ff;border:1px solid #bbdefb;border-radius:6px;padding:8px 12px">
         <summary style="cursor:pointer;font-weight:600;font-size:12px">Состав системы S³ (автосборка) — ${spec.cabinets.length} шкаф(ов)${(spec.accessories||[]).length ? ' + ' + spec.accessories.length + ' аксессуаров' : ''}</summary>
