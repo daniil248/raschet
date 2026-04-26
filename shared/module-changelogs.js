@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.440', date: '2026-04-26', items: [
+      '🖱 <b>Клик по сохранённой конфигурации в сайдбаре «Конфигурации ИБП» открывает саму конфигурацию.</b> Раньше клик только заполнял 4 поля Шага 1 и НЕ восстанавливал ни выбранный ИБП, ни АКБ — пользователь видел только пустой Wizard и думал, что работает только переименование. Теперь:',
+      '• <code>ups-config/ups-config.js</code> — добавлена функция <code>_loadFromSavedPayload(payload)</code> и слушатель события <code>ups-config:load</code>: восстанавливает <code>wizState.requirements</code>, <code>wizState.batteryChoice</code>/<code>battery</code>, стичит <code>wizState.composition</code> (ups + fitInfo) из плоского payload и прыгает на <b>Шаг 4 «Итог»</b>, где видна подобранная модель ИБП. Если <code>upsId</code> в payload пустой — открывает Шаг 1 (старое поведение).',
+      '📄 <b>Расчёт АКБ — на новой странице отчёта ИБП.</b> Раньше секция «Аккумуляторная батарея» содержала только 5 полей (производитель/модель/химия/V/Ah) и шла внутри основного отчёта. Теперь:',
+      '• <code>ups-config.js</code> — секция АКБ начинается с новой страницы (<code>page-break-before: always</code>). Только если АКБ были подобраны (<code>batteryChoice !== \'skip\'</code> и <code>battery</code> задан).',
+      '• Артикул модели в верхнем регистре (<code>String(model||type||id).toUpperCase()</code>) — было «kehua-s3m100-1c-240-x», стало «KEHUA-S3M100-1C-240-X».',
+      '• «Химия» переименована в «Тип АКБ» (по соглашению UI).',
+      '• Расширена таблица: V_DC шины, блоков в цепочке, цепочек, всего блоков, кВт·ч, расчётная автономия, конечное U элемента, КПД инвертора, режим. Доп. секция «Коэффициенты расчёта (IEEE 485 / IEC 62040)»: k_age, k_temp, k_design, k_total, окно V_DC, резерв SoC.',
+      '• <code>battery/battery-calc.js</code> — payload <code>raschet.upsBatteryReturn.v1</code> теперь несёт <code>type</code>, <code>mode</code>, <code>targetMin</code>, <code>endV</code>, <code>invEff</code>, <code>derate</code>; <code>ups-config.js _consumeUpsBatteryReturn</code> их забирает в <code>wizState.battery</code>.',
+    ] },
     { version: '0.59.439', date: '2026-04-26', items: [
       '🚌 <b>Combiner: учёт ограничения по числу подключаемых шкафов АКБ.</b> Из User Manual Figure 3-36/3-37: каждая шина combiner имеет 6 отверстий — 4 по краям для шкафов АКБ + 2 в середине для UPS. Без демонтажа задних плит — до 4 шкафов АКБ на 1 combiner; с демонтажем задних плит — до 8 (задние шины те же). Свыше 8 — нужен ещё один combiner.',
       '• <code>shared/battery-types/s3-li-ion.js</code> — <code>combinersCount = ⌈cabinetsCount / 8⌉</code>; в каждый combiner-объект пишется флаг <code>rearPlate</code> (true когда суммарно >4·N комбайнеров).',

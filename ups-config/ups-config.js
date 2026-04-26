@@ -1095,10 +1095,13 @@ function _consumeUpsBatteryReturn() {
   if (!p) return false;
   wizState.battery = {
     id: p.battery?.id, supplier: p.battery?.supplier, model: p.battery?.model,
+    type: p.battery?.type,
     chemistry: p.battery?.chemistry,
     capacityAh: p.battery?.capacityAh, blockVoltage: p.battery?.blockVoltage,
     strings: p.strings, blocksPerString: p.blocksPerString, totalBlocks: p.totalBlocks,
     autonomyMin: p.autonomyMin, totalKwh: p.totalKwh, dcVoltage: p.dcVoltage,
+    mode: p.mode, targetMin: p.targetMin, endV: p.endV, invEff: p.invEff,
+    derate: p.derate,
   };
   wizState.batteryChoice = 'pick';
   const next3Btn = document.getElementById('wiz-btn-next-3');
@@ -1170,6 +1173,61 @@ function _openBatteryPicker() {
   _renderBatteryInfo();
   flash('Модуль «Расчёт АКБ» открыт в новой вкладке. После выбора модели вернитесь сюда и нажмите «Далее → Итог».', 'info');
 }
+
+// v0.59.440: восстановление сохранённой конфигурации из сайдбара —
+// клик в `Конфигурации ИБП` теперь открывает не только переименование
+// (это делалось через onRename в config-sidebar), а САМУ конфигурацию:
+// заполняет требования, восстанавливает battery / composition и
+// прыгает на Шаг 4 (Итог), где пользователь видит подобранный ИБП.
+function _loadFromSavedPayload(p) {
+  if (!p) return;
+  // 1. Требования
+  const rq = wizState.requirements;
+  if (p.loadKw != null) rq.loadKw = Number(p.loadKw) || rq.loadKw;
+  if (p.autonomy != null) rq.autonomyMin = Number(p.autonomy) || rq.autonomyMin;
+  if (p.redundancy) rq.redundancy = p.redundancy;
+  if (p.upsType) rq.upsType = p.upsType;
+  if (p.cosPhi != null) rq.cosPhi = Number(p.cosPhi) || rq.cosPhi;
+  if (p.phases != null) rq.phases = Number(p.phases) || rq.phases;
+  if (p.vdcMin != null) rq.vdcMin = Number(p.vdcMin) || rq.vdcMin;
+  if (p.vdcMax != null) rq.vdcMax = Number(p.vdcMax) || rq.vdcMax;
+  // 2. АКБ
+  wizState.batteryChoice = p.batteryChoice || null;
+  wizState.battery = p.battery || null;
+  // 3. Подобранный ИБП — восстанавливаем comp.ups + fitInfo из плоского payload
+  const u = {
+    id: p.upsId, supplier: p.upsSupplier, model: p.upsModel,
+    upsType: p.upsType,
+    frameKw: p.frameKw, moduleKwRated: p.moduleKwRated, moduleSlots: p.moduleSlots,
+    efficiency: p.efficiency, cosPhi: p.cosPhi,
+    vdcMin: p.vdcMin, vdcMax: p.vdcMax,
+    inputs: p.inputs, outputs: p.outputs, topology: p.topology,
+  };
+  const fi = {
+    installed: p.moduleInstalled, working: p.moduleWorking,
+    redundant: p.moduleRedundant,
+    realCapacity: p.capacityKw, usable: p.capacityKw,
+  };
+  wizState.composition = {
+    ups: u, fitInfo: fi,
+    unitPrice: null, totalPrice: p.totalPrice, currency: p.currency,
+    composition: p.composition || null,
+  };
+  // 4. Открываем wizard на Шаге 1 (с заполненными данными), пользователь
+  //    может листать Далее → или прыгнуть в Итог (Шаг 4).
+  _openWizard({ standalone: true });
+  _fillWizStep1Fields();
+  if (u.id) {
+    _goStep4();
+  } else {
+    _showStep(1);
+  }
+}
+window.addEventListener('ups-config:load', (e) => {
+  const entry = e && e.detail;
+  const payload = entry && entry.payload;
+  if (payload) _loadFromSavedPayload(payload);
+});
 
 function _goStep4() {
   const comp = wizState.composition;
@@ -1397,17 +1455,40 @@ function _printUpsReport() {
     html += `</tbody></table></div>`;
   }
 
-  // 5. АКБ — если выбрана.
+  // 5. АКБ — если выбрана. На новой странице.
   if (battery && wizState.batteryChoice !== 'skip') {
-    html += `<div class="section"><h2>${Array.isArray(comp.composition) && comp.composition.length ? '5' : '4'}. Аккумуляторная батарея</h2>`;
+    const sectionNo = Array.isArray(comp.composition) && comp.composition.length ? '5' : '4';
+    const articleUpper = String(battery.model || battery.type || battery.id || '').toUpperCase();
+    html += `<div class="section" style="page-break-before:always;break-before:page"><h2>${sectionNo}. Аккумуляторная батарея</h2>`;
     html += tbl([
       row('Производитель', battery.supplier, ''),
-      row('Модель', battery.model || battery.type || battery.id, ''),
-      row('Химия', battery.chemistry === 'li-ion' ? 'Li-Ion (LFP)' : 'VRLA', ''),
+      row('Модель', articleUpper, ''),
+      row('Тип АКБ', battery.chemistry === 'li-ion' ? 'Li-Ion (LFP)' : 'VRLA', ''),
       row('Напряжение блока', battery.blockVoltage, 'В'),
       row('Ёмкость блока', battery.capacityAh, 'А·ч'),
+      battery.dcVoltage != null ? row('Напряжение DC-шины', battery.dcVoltage, 'В') : '',
+      battery.blocksPerString != null ? row('Блоков в цепочке', battery.blocksPerString, 'шт.') : '',
+      battery.strings != null ? row('Параллельных цепочек', battery.strings, 'шт.') : '',
+      battery.totalBlocks != null ? row('Всего блоков (модулей)', battery.totalBlocks, 'шт.') : '',
+      battery.totalKwh != null ? row('Суммарная ёмкость АКБ', Number(battery.totalKwh).toFixed(1), 'кВт·ч') : '',
+      battery.autonomyMin != null ? row('Расчётная автономия', Number(battery.autonomyMin).toFixed(1), 'мин') : '',
+      battery.endV != null ? row('Конечное напряжение элемента', battery.endV, 'В') : '',
+      battery.invEff != null ? row('КПД инвертора (учёт)', (Number(battery.invEff) * 100).toFixed(0), '%') : '',
+      battery.mode ? row('Режим расчёта', battery.mode === 'autonomy' ? 'Прямой (автономия по блокам)' : 'Обратный (блоки по автономии)', '') : '',
     ]);
-    html += `<p class="muted">Полный расчёт автономии и подбор числа цепочек — в подпрограмме «Расчёт АКБ» (отдельный отчёт).</p>`;
+    if (battery.derate && (battery.derate.kAge || battery.derate.kTemp || battery.derate.kDesign)) {
+      const d = battery.derate;
+      html += `<h2 style="margin-top:14px">Коэффициенты расчёта (IEEE 485 / IEC 62040)</h2>`;
+      html += tbl([
+        d.kAge    != null ? row('k_age (старение, EOL)', Number(d.kAge).toFixed(2), '—') : '',
+        d.kTemp   != null ? row('k_temp (температура)',   Number(d.kTemp).toFixed(2), '—') : '',
+        d.kDesign != null ? row('k_design (запас)',       Number(d.kDesign).toFixed(2), '—') : '',
+        d.kTotal  != null ? row('k_total',                Number(d.kTotal).toFixed(3), '—') : '',
+        d.vdcSafetyPct != null ? row('Окно V_DC',         '±' + Number(d.vdcSafetyPct).toFixed(1), '%') : '',
+        d.socMinPct    != null ? row('Резерв SoC (Li-ion)', Number(d.socMinPct).toFixed(0), '%') : '',
+      ]);
+    }
+    html += `<p class="muted">Расчёт выполнен в подпрограмме «Расчёт АКБ»; полный отчёт с графиком разряда доступен там же.</p>`;
     html += `</div>`;
   }
 

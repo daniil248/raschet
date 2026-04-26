@@ -2863,9 +2863,14 @@ function initUpsHandoff() {
       selectedAt: Date.now(),
       battery: battery ? {
         id: battery.id, supplier: battery.supplier, model: battery.model,
+        type: battery.type,
         chemistry: battery.chemistry, capacityAh: battery.capacityAh,
         blockVoltage: battery.blockVoltage,
       } : null,
+      // v0.59.440: extra-поля для расширенного «Расчёт АКБ» в отчёте ИБП.
+      mode: params.mode, targetMin: params.targetMin,
+      endV: params.endV, invEff: params.invEff,
+      derate: calcResult.derate || null,
       strings, blocksPerString, autonomyMin: autonomy,
       totalBlocks: strings * blocksPerString,
       totalKwh, dcVoltage,
