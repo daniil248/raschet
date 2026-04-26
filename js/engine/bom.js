@@ -32,6 +32,10 @@ import { pricesForElement } from '../../shared/price-records.js';
 import { getCounterparty } from '../../shared/counterparty-catalog.js';
 // v0.59.387: реестр типов ИБП — bom делегирует подкомпоненты плагину типа.
 import { detectUpsType } from '../../shared/ups-types/index.js';
+// v0.59.436: плагин типов АКБ — bom делегирует автосборку шкафов S³ +
+// аксессуаров (combiner, networking device, blank panels, wire kits) сюда.
+import { s3LiIonType } from '../../shared/battery-types/s3-li-ion.js';
+import { isS3Module } from '../../shared/battery-s3-logic.js';
 
 // Внутренний slug — тот же алгоритм, что в shared/rack-catalog-data.js._slug.
 // Нужен, чтобы id в BOM совпадал с id в element-library ('pdu.'+slug и т.п.)
@@ -180,11 +184,60 @@ export function buildBOM() {
           const battLabel = `${batt.supplier} ${batt.type}${batt.capacityAh ? ' ' + batt.capacityAh + ' А·ч' : ''}`;
           pushAgg('АКБ блоки', batt, totalBlocks, `${nodeLabel}: ${strings} струн × ${blocksPer} бл`);
 
-          // Подбор батарейного шкафа. Если выбран Kehua S³ (по модели) —
-          // подбираем s3Cabs, иначе vrla. Критерий: минимальный шкаф с
-          // rackSlots >= totalBlocks. Число шкафов = ceil(total/cap).
-          const isS3 = /s3|kehua.*s³/i.test(batt.supplier + ' ' + batt.type);
-          const cabPool = isS3 ? s3Cabs : vrlaCabs;
+          // v0.59.436: для S³-модулей (модульная LFP-система) делегируем
+          // автосборку шкафов и аксессуаров плагину s3LiIonType. Получаем
+          // полный BOM: модули уже учтены выше (АКБ блоки), здесь — шкафы
+          // (master/slave/combiner) + аксессуары (networking-device,
+          // blank-panels, slave-wire-kit). Старый legacy-путь s3Cabs
+          // оставлен только для не-плагинных записей (на случай каталога
+          // batt-cabinet-s3 без systemType=modular-li-ion).
+          if (isS3Module(batt)) {
+            try {
+              const masterVar = n.batteryMasterVariant || 'M';
+              const slaveVar  = n.batterySlaveVariant  || 'S';
+              const fireFighting = n.batteryFireFighting != null ? n.batteryFireFighting : 'X';
+              // Авто-добавление шкафов по power-limit 200 кВт/шкаф.
+              const loadKw = Number(n.demandKw) || Number(n.upsRatedKw) || 0;
+              const invEff = Number(n.upsInverterEff) || 0.96;
+              const preChk = s3LiIonType.validateMaxCRate({
+                module: batt, loadKw, totalModules: totalBlocks, invEff,
+              });
+              const minCabinets = (preChk && preChk.suggestedMinCabinets) || 0;
+              const spec = s3LiIonType.buildSystem({
+                module: batt, totalModules: totalBlocks,
+                options: { masterVariant: masterVar, slaveVariant: slaveVar, fireFighting, minCabinets },
+              });
+              const accessoryCatalog = battCat.filter(b => b && b.systemSubtype === 'accessory');
+              // Группируем шкафы по (role+model+fill) и пишем как одну строку.
+              const grp = new Map();
+              for (const c of spec.cabinets) {
+                const key = `${c.role}|${c.model}`;
+                if (!grp.has(key)) grp.set(key, { ...c, qty: 0 });
+                grp.get(key).qty += 1;
+              }
+              for (const g of grp.values()) {
+                const cat = g.role === 'combiner' ? 'АКБ S³ — комбайнер' : 'АКБ S³ — шкафы';
+                pushAgg(cat, {
+                  id: `s3-cab-${g.role}-${g.model}`,
+                  supplier: batt.supplier || 'Kehua',
+                  type: g.model, model: g.model,
+                }, g.qty, `${nodeLabel}: ${g.role}${g.role !== 'combiner' ? ` (${g.modulesInCabinet}/${g.modulesInCabinet + (g.emptySlots||0)} мод.)` : ''}`);
+              }
+              for (const a of (spec.accessories || [])) {
+                const cat = accessoryCatalog.find(x => x.id === a.id);
+                pushAgg('АКБ S³ — аксессуары', {
+                  id: a.id,
+                  supplier: (cat && cat.supplier) || batt.supplier || 'Kehua',
+                  type: (cat && cat.type) || a.id,
+                  model: (cat && cat.type) || a.id,
+                }, a.qty, nodeLabel);
+              }
+              continue; // skip старый s3Cabs/vrlaCabs branch для S³
+            } catch (e) { console.warn('[bom] s3 plugin BOM failed', e); }
+          }
+          // Старый путь: подбор батарейного шкафа по rackSlots (vrla/legacy s3).
+          const isS3Legacy = /s3|kehua.*s³/i.test(batt.supplier + ' ' + batt.type);
+          const cabPool = isS3Legacy ? s3Cabs : vrlaCabs;
           if (cabPool.length) {
             // Сортировка по slots ↑
             const sorted = [...cabPool].sort((a, b) => (a.rackSlots || 0) - (b.rackSlots || 0));

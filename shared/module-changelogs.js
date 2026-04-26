@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.436', date: '2026-04-26', items: [
+      '📦 <b>BOM-интеграция S³: шкафы master/slave/combiner + аксессуары теперь попадают в общий BOM проекта.</b> Раньше для узла ИБП с S³-модулем engine/bom.js использовал старый путь (поиск batt-cabinet-s3 по rackSlots) — без combiner, без networking-device, без blank-panels, без slave-wire-kit. Теперь:',
+      '• <code>buildBOM()</code> при <code>isS3Module(batt)===true</code> вызывает <code>s3LiIonType.buildSystem({totalModules, options:{masterVariant, slaveVariant, fireFighting, minCabinets}})</code> — те же опции, что в инспекторе. Auto-add шкафов по 200 кВт/шкаф работает и тут (через <code>validateMaxCRate.suggestedMinCabinets</code>).',
+      '• Шкафы группируются по <code>(role, model)</code> в одну BOM-строку с qty (например: <code>АКБ S³ — шкафы · S3C100-1C-12-MX-S · 3</code>).',
+      '• Аксессуары добавляются в раздел <code>«АКБ S³ — аксессуары»</code> с supplier/model из accessory-catalog (<code>battCat[systemSubtype===\'accessory\']</code>).',
+      '• Combiner — отдельный раздел <code>«АКБ S³ — комбайнер»</code>.',
+      '• Старый legacy-путь s3Cabs/vrlaCabs остался для не-плагинных S³-каталогов и для VRLA.',
+      'Файлы: js/engine/bom.js (импорт s3LiIonType + isS3Module; ветка <code>if (isS3Module(batt))</code> в обработчике АКБ ~50 строк перед старым vrla-цепочкой).',
+    ] },
     { version: '0.59.435', date: '2026-04-26', items: [
       '🎨 <b>Изометрический «3D» вид сборки шкафов S³.</b> В battery-calc и в инспекторе ИБП в блоке «Состав системы (автосборка)» над таблицей теперь отрисовывается SVG-схема сборки — ряд шкафов в косоугольной проекции, с верхней и боковой гранью, тенью под полом, полками модулей внутри двери, заглушками в пустых слотах и индикаторами роли:',
       '• <b>master</b> — touch-screen экран в верхней панели (синий с глоу),',
