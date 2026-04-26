@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.364', date: '2026-04-26', items: [
+      '🚀 <b>scs-config: авто-переход в Компоновщик при наличии стоек.</b> Список «Шкафы проекта» дублируется сайдбаром Компоновщика — теперь, если в проекте уже есть хотя бы одна стойка или тег, <code>scs-config/index.html</code> автоматически редиректит на <code>rack.html</code>.',
+      '• Параметр <code>?list=1</code> в URL отключает редирект (для случаев, когда нужен сам реестр — массовые операции, развёртывание шаблона).',
+      '• В breadcrumb компоновщика ссылка «🗄 Шкафы проекта» теперь ведёт на <code>?list=1</code>, чтобы возврат не закольцевал редирект.',
+      'Файлы: scs-config/index.html (+inline auto-redirect script), scs-config/rack.html (link → ?list=1).',
+    ] },
     { version: '0.59.363', date: '2026-04-26', items: [
       '🧹 <b>Iframe-embed «Проектирование СКС» удалён.</b> Вместо отдельной правой панели в Конструкторе схем — нативный page-kind <code>scs</code>: создайте новую страницу со значением «🔗 СКС» в селекторе вида.',
       '• Удалён <code>#scs-embed-panel</code> и весь сопутствующий код (drag-resize, postMessage-bridge схема↔embed, Ctrl+Shift+L, LS-ключ <code>raschet.scsEmbed.width.v1</code>).',

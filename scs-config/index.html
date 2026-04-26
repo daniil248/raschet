@@ -15,6 +15,37 @@
     mountHeader({ title: 'Шкафы проекта', home: '../hub.html' });
   </script>
 
+  <!-- v0.59.364: если в проекте уже есть стойки — перейти сразу в Компоновщик
+       (rack.html), потому что список стоек дублируется сайдбаром «Шкафы».
+       Параметр ?list=1 в URL отключает редирект (позволяет открыть список явно). -->
+  <script type="module">
+    (async () => {
+      try {
+        const sp = new URLSearchParams(location.search);
+        if (sp.get('list') === '1') return;             // явно запрошен список
+        const { ensureDefaultProject, getActiveProjectId, projectKey } =
+          await import('../shared/project-storage.js');
+        const { loadAllRacksForActiveProject } = await import('../shared/rack-storage.js');
+        ensureDefaultProject();
+        const pid = getActiveProjectId();
+        const racks = loadAllRacksForActiveProject() || [];
+        let hasContent = racks.length > 0;
+        // дополнительно: проверим что есть хоть один tag или хоть какое-то содержимое
+        if (!hasContent) {
+          try {
+            const tagsRaw = localStorage.getItem(projectKey(pid, 'scs-config', 'rackTags.v1'));
+            const tags = tagsRaw ? JSON.parse(tagsRaw) : {};
+            hasContent = Object.values(tags || {}).some(v => (v || '').trim());
+          } catch {}
+        }
+        if (hasContent) {
+          const qs = location.search ? location.search : '';
+          location.replace('./rack.html' + qs);
+        }
+      } catch (e) { console.warn('[scs-config index redirect]', e); }
+    })();
+  </script>
+
   <div class="sc-wrap">
     <nav class="rs-breadcrumb">
       <strong>🗄 Шкафы проекта</strong>
