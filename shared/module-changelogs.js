@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.384', date: '2026-04-26', items: [
+      '🔋 <b>Новый тип ИБП: «Интегрированный ИБП» (Kehua MR33 60-150K).</b> Запрос пользователя: «добавь новый тип ИБП Интегрированный ИБП включающий в себя собственно ИБП, возможность входного АВР или без, а так же до трех распределительных панелей».',
+      '• Источник: <code>Kehua_UPS_MR33_60-150k_User manual_2023-01-01_4402-03908 004_ENG_Intergrated UPS.pdf</code>.',
+      '• Добавлено 4 SKU: <code>MR3390-B</code> (90 кВт, одиночный MCCB), <code>MR3390-S</code> (90 кВт, встроенный АВР), <code>MR33150-B</code> (150 кВт, MCCB), <code>MR33150-S</code> (150 кВт, АВР).',
+      '• Новые поля записи каталога ИБП:',
+      '&nbsp;&nbsp;◦ <code>kind: \'ups-integrated\'</code> — отличает от моноблока/модульного.',
+      '&nbsp;&nbsp;◦ <code>hasIntegratedAts: bool</code> — встроенный входной АВР (-S) или одиночный ввод MCCB (-B).',
+      '&nbsp;&nbsp;◦ <code>pdmModules: [{id,label,source,maxBreakers,polarity,screenPrefix}]</code> — до 3 распределительных панелей: PDM-AC (7×3P, на сети), PDM-IT1 (24×1P, на инверторе), PDM-IT2 (24×1P, на байпасе).',
+      '&nbsp;&nbsp;◦ <code>cabinetWidthMm/DepthMm/HeightMm/WeightKg</code> — габариты шкафа 600×1200×2000 мм, 338…438 кг.',
+      'Файлы: shared/catalogs/ups-kehua-mr33.js (+~110 строк, 4 новых записи в KEHUA_MR33_UPSES).',
+    ] },
     { version: '0.59.383', date: '2026-04-26', items: [
       '🔌 <b>Клеммная коробка: автоматов на однолинейке больше нет (если явно не указаны).</b> Жалоба пользователя: «для клеммной коробки не должно быть автоматов на схеме, если явно не указан автомат на выходе. На входе никогда не может быть автомата».',
       '• До этого <code>openPanelControlModal()</code> рисовал автоматы и на входах, и на выходах независимо от <code>switchMode</code>. Для клеммной коробки (<code>switchMode=\'terminal\'</code>) это противоречит ТЗ: вход — пассивный клеммник, выход без защиты — прямое соединение, автомат — только при явно отмеченной <code>n.channelProtection[i]=true</code>.',
