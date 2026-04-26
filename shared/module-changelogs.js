@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.391', date: '2026-04-26', items: [
+      '📥 <b>XLSX-импорт каталога ИБП поддерживает интегрированный тип.</b> Закрываем последнюю «дыру» в pipeline для типа integrated.',
+      '• <code>shared/catalog-xlsx-parser.js#UPS_SCHEMA</code>:',
+      '&nbsp;&nbsp;◦ Распознавание <code>upsType</code>: «integrated / интегрированный» → <code>kind=\'ups-integrated\'</code> (legacy <code>upsType=\'modular\'</code> сохраняется, т.к. внутри integrated имеет фрейм + модули).',
+      '&nbsp;&nbsp;◦ Новые колонки в импорте: <code>HasIntegratedAts</code>, <code>Cabinet_Width_mm/Depth_mm/Height_mm/Weight_kg</code>, и три группы PDM-полей <code>PDM1..3_Id/Source/Max/Polarity</code>.',
+      '&nbsp;&nbsp;◦ Хелпер <code>_buildIntegratedFields(r)</code> собирает массив <code>pdmModules[]</code> из плоских колонок и нормализует значения (бул как 1/yes/да/✓; source как utility/inverter/bypass).',
+      '• <code>makeCatalogTemplate(\'ups\')</code> теперь содержит пример-строку Kehua MR33150-S со всеми полями интегрированного ИБП, чтобы пользователь сразу видел формат.',
+      'Файлы: shared/catalog-xlsx-parser.js (~50 строк: схема UPS + хелпер _buildIntegratedFields + строка template).',
+    ] },
     { version: '0.59.390', date: '2026-04-26', items: [
       '📐 <b>element-schemas: тип «integrated» в схеме createUpsElement.</b> Закрепляем интегрированный ИБП в канонической схеме элементов.',
       '• <code>shared/element-schemas.js#createUpsElement</code>:',

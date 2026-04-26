@@ -127,15 +127,27 @@ const UPS_SCHEMA = {
     vdcMax:       ['Vdc_Max', 'DC_Max', 'Umax_DC', 'Udc_max'],
     inputs:       ['Inputs', 'Вводов', 'N_Inputs'],
     outputs:      ['Outputs', 'Выходов', 'N_Outputs'],
+    // v0.59.391: интегрированный ИБП (kind='ups-integrated').
+    hasIntegratedAts: ['HasIntegratedAts', 'Integrated_ATS', 'АВР_встроенный', 'Has_ATS'],
+    cabinetWidthMm:  ['Cabinet_Width_mm',  'Шкаф_W_мм',  'Width_mm'],
+    cabinetDepthMm:  ['Cabinet_Depth_mm',  'Шкаф_D_мм',  'Depth_mm'],
+    cabinetHeightMm: ['Cabinet_Height_mm', 'Шкаф_H_мм',  'Height_mm'],
+    cabinetWeightKg: ['Cabinet_Weight_kg', 'Шкаф_масса_кг', 'Weight_kg'],
+    pdm1_id: ['PDM1_Id'], pdm1_source: ['PDM1_Source'], pdm1_max: ['PDM1_Max'], pdm1_pol: ['PDM1_Polarity'],
+    pdm2_id: ['PDM2_Id'], pdm2_source: ['PDM2_Source'], pdm2_max: ['PDM2_Max'], pdm2_pol: ['PDM2_Polarity'],
+    pdm3_id: ['PDM3_Id'], pdm3_source: ['PDM3_Source'], pdm3_max: ['PDM3_Max'], pdm3_pol: ['PDM3_Polarity'],
   },
   required: ['supplier', 'model'],
   toRecord(r, filename) {
     const supplier = strVal(r.supplier);
     const model = strVal(r.model);
     if (!supplier || !model) return null;
-    // Нормализация upsType: «модульный / modular» → 'modular', иначе monoblock
+    // v0.59.391: распознаём 3 значения upsType — modular / integrated / monoblock.
+    // Для integrated дополнительно ставим kind='ups-integrated' (legacy upsType
+    // оставляем 'modular', т.к. внутри integrated имеет фрейм + модули).
     const typeRaw = norm(r.upsType);
-    const upsType = /modul|моду/.test(typeRaw) ? 'modular' : 'monoblock';
+    const isIntegrated = /integr|интегр/.test(typeRaw);
+    const upsType = (isIntegrated || /modul|моду/.test(typeRaw)) ? 'modular' : 'monoblock';
     // kVA → kW через cos φ (если есть kW — используем его)
     let capacityKw = numVal(r.capacityKw);
     const cosPhi = numVal(r.cosPhi) || 0.9;
@@ -163,9 +175,40 @@ const UPS_SCHEMA = {
       source: 'импорт XLSX: ' + filename,
       importedAt: Date.now(),
       custom: false,
+      ...(isIntegrated ? _buildIntegratedFields(r) : {}),
     };
   },
 };
+
+// v0.59.391: парсинг полей интегрированного ИБП из плоской XLSX-строки.
+function _buildIntegratedFields(r) {
+  const _bool = (v) => {
+    const s = norm(v);
+    return /^(1|true|yes|y|да|есть|✓)$/.test(s);
+  };
+  const pdmModules = [];
+  for (const i of [1, 2, 3]) {
+    const id     = strVal(r['pdm' + i + '_id']);
+    const source = strVal(r['pdm' + i + '_source']);
+    if (!id || !source) continue;
+    pdmModules.push({
+      id,
+      label: id.toUpperCase(),
+      source: norm(source).replace(/^utility|сеть$/, 'utility'),
+      maxBreakers: numVal(r['pdm' + i + '_max']) || 0,
+      polarity: strVal(r['pdm' + i + '_pol']) || '1P',
+    });
+  }
+  return {
+    kind: 'ups-integrated',
+    hasIntegratedAts: _bool(r.hasIntegratedAts),
+    pdmModules,
+    cabinetWidthMm:  numVal(r.cabinetWidthMm)  || 0,
+    cabinetDepthMm:  numVal(r.cabinetDepthMm)  || 0,
+    cabinetHeightMm: numVal(r.cabinetHeightMm) || 0,
+    cabinetWeightKg: numVal(r.cabinetWeightKg) || 0,
+  };
+}
 
 export function parseUpsXlsx(arrayBuffer, filename = 'ups.xlsx') {
   const out = parseSheet(arrayBuffer, filename, UPS_SCHEMA);
@@ -311,6 +354,13 @@ export function makeCatalogTemplate(kind) {
       { supplier: 'ABB', model: 'PowerValue 11 RT 6 kVA', upsType: 'monoblock', capacityKw: 6, capacityKva: 6, efficiency: 94, cosPhi: 1.0, vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1 },
       { supplier: 'Schneider', model: 'Galaxy VM 100 kW', upsType: 'monoblock', capacityKw: 100, capacityKva: 100, efficiency: 96, cosPhi: 1.0, vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 2 },
       { supplier: 'Vertiv', model: 'Liebert APM 300', upsType: 'modular', capacityKw: 300, frameKw: 300, moduleKwRated: 30, moduleSlots: 10, efficiency: 96.5, cosPhi: 1.0, vdcMin: 320, vdcMax: 448, inputs: 2, outputs: 2 },
+      // v0.59.391: пример интегрированного ИБП (Kehua MR33150-S).
+      { supplier: 'Kehua', model: 'MR33150-S (example)', upsType: 'integrated', capacityKw: 150, frameKw: 150, moduleKwRated: 30, moduleSlots: 6, efficiency: 95, cosPhi: 1.0, vdcMin: 336, vdcMax: 552, inputs: 2, outputs: 3,
+        hasIntegratedAts: 'yes',
+        pdm1_id: 'ac',  pdm1_source: 'utility',  pdm1_max: 7,  pdm1_pol: '3P',
+        pdm2_id: 'it1', pdm2_source: 'inverter', pdm2_max: 24, pdm2_pol: '1P',
+        pdm3_id: 'it2', pdm3_source: 'bypass',   pdm3_max: 24, pdm3_pol: '1P',
+        cabinetWidthMm: 600, cabinetDepthMm: 1200, cabinetHeightMm: 2000, cabinetWeightKg: 438 },
     ];
   } else if (kind === 'panel') {
     schema = PANEL_SCHEMA;
