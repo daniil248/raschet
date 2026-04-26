@@ -895,7 +895,11 @@ function _sortBatteries(list) {
 function renderBatterySelector() {
   const sel = document.getElementById('calc-battery');
   if (!sel) return;
-  const all = listBatteries();
+  // v0.59.424: фильтруем шкафы (systemSubtype='cabinet') из списка выбора —
+  // для S³ и аналогичных модульных систем шкаф не выбирается пользователем,
+  // а собирается автоматически из количества модулей. Шкафы остаются
+  // видимыми только в общем справочнике АКБ как metadata.
+  const all = listBatteries().filter(b => b.systemSubtype !== 'cabinet');
   _populateCalcFilterOptions(all);
   const f = _calcFilters();
   const list = _sortBatteries(_filterBatteries(all, f));
