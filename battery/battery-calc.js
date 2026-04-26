@@ -1216,10 +1216,22 @@ function _filterUpses(list, f) {
     return true;
   });
 }
+// Только полнокомплектные ИБП. Из каталога исключаются:
+//   - kind:'frame'           (пустой корпус MR33 — не работает без модулей)
+//   - kind:'power-module'    (силовой модуль — не работает без фрейма)
+//   - kind:'batt-cabinet-*'  (батарейные шкафы — не ИБП)
+// Записи без kind или с kind:'ups-integrated' считаются полноценными ИБП.
+function _isStandaloneUps(u) {
+  if (!u) return false;
+  const k = u.kind;
+  if (!k) return true;
+  if (k === 'ups-integrated') return true;
+  return false;
+}
 function renderUpsPicker() {
   const sel = document.getElementById('calc-ups-pick');
   if (!sel) return;
-  const all = listUpses();
+  const all = listUpses().filter(_isStandaloneUps);
   // populate filter dropdowns
   const sSupp = document.getElementById('calc-ups-flt-supp');
   if (sSupp && sSupp.options.length <= 1) {
