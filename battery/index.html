@@ -257,6 +257,55 @@
           <input id="calc-target" type="number" min="1" step="1" value="10">
         </div>
 
+        <!-- ============ Расчётные коэффициенты (IEEE 485 / IEC 62040) ============ -->
+        <details class="field-full" id="calc-derating-block" style="grid-column:1/-1;margin-top:6px;border:1px solid #d6dde6;border-radius:6px;padding:6px 10px;background:#fafbfc">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">
+            🛡 Расчётные коэффициенты (старение, температура, запас, окно V<sub>DC</sub>)
+            <span class="muted" style="font-weight:400;font-size:11px">· по умолчанию IEEE 485</span>
+          </summary>
+          <div style="font-size:11px;color:#555;line-height:1.5;margin:6px 0 8px">
+            Эффективная ёмкость АКБ к концу срока службы и в неблагоприятных
+            условиях ниже паспортной. Стандарты IEEE 485 / IEC 62040 предписывают
+            применять понижающие коэффициенты. Итоговый множитель нагрузки на блок:
+            <code>k = k<sub>age</sub> × k<sub>temp</sub> × k<sub>design</sub></code>.
+            Окно V<sub>DC</sub> (%) сужает диапазон ИБП симметрично сверху и снизу.
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button type="button" data-derate-preset="ieee485"  style="font-size:11px;padding:3px 8px;cursor:pointer">IEEE 485 (по умолч.)</button>
+            <button type="button" data-derate-preset="iec62040" style="font-size:11px;padding:3px 8px;cursor:pointer">IEC 62040 (мягче)</button>
+            <button type="button" data-derate-preset="aggressive" style="font-size:11px;padding:3px 8px;cursor:pointer">Жёсткий (тропики/EOL)</button>
+            <button type="button" data-derate-preset="none"     style="font-size:11px;padding:3px 8px;cursor:pointer">Без запаса (теор.)</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
+            <div>
+              <label style="font-size:11px">k<sub>age</sub> · старение (EOL)</label>
+              <input id="calc-k-age" type="number" min="1" max="2" step="0.01" value="1.25"
+                title="IEEE 485: 1.25 (к концу срока АКБ даёт 80% ёмкости).">
+            </div>
+            <div>
+              <label style="font-size:11px">k<sub>temp</sub> · температура</label>
+              <input id="calc-k-temp" type="number" min="1" max="2" step="0.01" value="1.00"
+                title="При 25 °C = 1.00. При +10 °C ≈ 1.11. При +5 °C ≈ 1.18.">
+            </div>
+            <div>
+              <label style="font-size:11px">k<sub>design</sub> · конструкт. запас</label>
+              <input id="calc-k-design" type="number" min="1" max="2" step="0.01" value="1.10"
+                title="IEEE 485: 1.10–1.15. Учитывает погрешности расчёта и нагрузки.">
+            </div>
+            <div>
+              <label style="font-size:11px">Окно V<sub>DC</sub>, %</label>
+              <input id="calc-vdc-safety" type="number" min="0" max="20" step="0.5" value="3"
+                title="Сужение диапазона ИБП: vdcMin·(1+x/100) … vdcMax·(1−x/100). По умолчанию 3% — учёт ripple, переходных процессов, падения на шине.">
+            </div>
+            <div>
+              <label style="font-size:11px">SoC мин (Li), %</label>
+              <input id="calc-soc-min" type="number" min="0" max="50" step="1" value="10"
+                title="Минимально допустимый SoC для Li-ion. 10% — типовой запас (защита BMS). На VRLA не влияет.">
+            </div>
+          </div>
+          <div id="calc-derate-summary" class="muted" style="font-size:11px;margin-top:8px;padding:6px 8px;background:#f0f7ff;border:1px solid #b3d4ff;border-radius:4px;line-height:1.5"></div>
+        </details>
+
         <div style="display:flex;gap:8px;margin-top:4px">
           <button type="submit" style="flex:1">Рассчитать</button>
           <button type="button" id="btn-battery-report"

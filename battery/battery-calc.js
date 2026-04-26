@@ -978,6 +978,47 @@ function _getCurrentVdcRange(dcRaw) {
 }
 const _handoffVdc = { min: 0, max: 0 };
 
+// v0.59.413: Расчётные коэффициенты (IEEE 485 / IEC 62040).
+// Старение, температура, конструктивный запас, окно V_DC, SoC-min для Li.
+function _readDerating() {
+  const get = id => Number(document.getElementById(id)?.value) || 0;
+  const kAge    = Math.max(1, get('calc-k-age')    || 1.25);
+  const kTemp   = Math.max(1, get('calc-k-temp')   || 1.00);
+  const kDesign = Math.max(1, get('calc-k-design') || 1.10);
+  const vdcSafetyPct = Math.max(0, Math.min(20, get('calc-vdc-safety') || 0));
+  const socMinPct    = Math.max(0, Math.min(50, get('calc-soc-min') || 0));
+  const kTotal = kAge * kTemp * kDesign;
+  return { kAge, kTemp, kDesign, kTotal, vdcSafetyPct, socMinPct };
+}
+const DERATING_PRESETS = {
+  ieee485:    { kAge: 1.25, kTemp: 1.00, kDesign: 1.10, vdcSafetyPct: 3, socMinPct: 10 },
+  iec62040:   { kAge: 1.20, kTemp: 1.00, kDesign: 1.05, vdcSafetyPct: 2, socMinPct: 10 },
+  aggressive: { kAge: 1.25, kTemp: 1.11, kDesign: 1.15, vdcSafetyPct: 5, socMinPct: 20 },
+  none:       { kAge: 1.00, kTemp: 1.00, kDesign: 1.00, vdcSafetyPct: 0, socMinPct: 0  },
+};
+function _applyDeratingPreset(name) {
+  const p = DERATING_PRESETS[name];
+  if (!p) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('calc-k-age', p.kAge);
+  set('calc-k-temp', p.kTemp);
+  set('calc-k-design', p.kDesign);
+  set('calc-vdc-safety', p.vdcSafetyPct);
+  set('calc-soc-min', p.socMinPct);
+  _refreshDerateSummary();
+  _refreshDcExplanation();
+}
+function _refreshDerateSummary() {
+  const el = document.getElementById('calc-derate-summary');
+  if (!el) return;
+  const d = _readDerating();
+  el.innerHTML =
+    `Итог: <b>k<sub>age</sub>×k<sub>temp</sub>×k<sub>design</sub> = ${d.kAge.toFixed(2)}×${d.kTemp.toFixed(2)}×${d.kDesign.toFixed(2)} = ${d.kTotal.toFixed(3)}</b>`
+    + ` — нагрузка на блок умножается на ${d.kTotal.toFixed(2)} (расчёт ёмкости с запасом ~${Math.round((d.kTotal - 1) * 100)}%).`
+    + (d.vdcSafetyPct > 0 ? ` Окно V<sub>DC</sub> ±${d.vdcSafetyPct}%.` : '')
+    + (d.socMinPct > 0 ? ` Резерв SoC (Li) ${d.socMinPct}%.` : '');
+}
+
 // v0.59.412: Подбор экономически оптимального числа блоков в цепочке.
 // Не «середина диапазона», а МИНИМУМ блоков, удовлетворяющий двум физическим
 // ограничениям ИБП:
@@ -988,16 +1029,20 @@ const _handoffVdc = { min: 0, max: 0 };
 // Также проверяется номинал: nMinNom ≤ N ≤ nMaxNom (на всякий случай).
 // Из всех допустимых N выбирается минимальное (минимум блоков = минимум
 // стоимости АКБ и занимаемой площади).
-function _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry) {
+function _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry, vdcSafetyPct) {
   const cellsPerBlock = Math.max(1, Math.round(blockV / 2));
-  // Float V/cell: 2.27V для VRLA (типовое), 3.45V для Li-ion.
   const floatVperCell = chemistry === 'li-ion' ? 3.45 : 2.27;
   const endVperBlock   = endV * cellsPerBlock;
   const floatVperBlock = floatVperCell * cellsPerBlock;
-  const nMinDischarge = Math.ceil((vMin || 0) / endVperBlock);
-  const nMaxFloat     = Math.floor((vMax || 0) / floatVperBlock);
-  const nMinNom       = Math.ceil((vMin || 0) / blockV);
-  const nMaxNom       = Math.floor((vMax || 0) / blockV);
+  // v0.59.413: окно V_DC сужает диапазон ИБП симметрично — учёт ripple,
+  // переходных процессов, падения на DC-шине и предохранителях.
+  const safety = Math.max(0, Math.min(20, Number(vdcSafetyPct) || 0)) / 100;
+  const vMinEff = (vMin || 0) * (1 + safety);
+  const vMaxEff = (vMax || 0) * (1 - safety);
+  const nMinDischarge = Math.ceil(vMinEff / endVperBlock);
+  const nMaxFloat     = Math.floor(vMaxEff / floatVperBlock);
+  const nMinNom       = Math.ceil(vMinEff / blockV);
+  const nMaxNom       = Math.floor(vMaxEff / blockV);
   const nLow  = Math.max(nMinDischarge, nMinNom, 1);
   const nHigh = Math.min(nMaxFloat, nMaxNom);
   const feasible = nLow <= nHigh && nLow >= 1;
@@ -1006,6 +1051,7 @@ function _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry) {
     feasible, nLow, nHigh,
     cellsPerBlock, endVperBlock, floatVperBlock, floatVperCell,
     nMinDischarge, nMaxFloat, nMinNom, nMaxNom,
+    vMinEff, vMaxEff, vdcSafetyPct: safety * 100,
   };
 }
 
@@ -1021,21 +1067,25 @@ function _refreshDcExplanation() {
   const chemistry = get('calc-chem')?.value || 'vrla';
   const v = _getCurrentVdcRange(Number(get('calc-dcv')?.value) || 0);
   if (!v.known) { hint.innerHTML = ''; return; }
-  const o = _pickOptimalBlocks(v.min, v.max, blockV, endV, chemistry);
+  const d = _readDerating();
+  const o = _pickOptimalBlocks(v.min, v.max, blockV, endV, chemistry, d.vdcSafetyPct);
   const dc = o.N * blockV;
   const dcEnd   = (o.N * o.endVperBlock).toFixed(0);
   const dcFloat = (o.N * o.floatVperBlock).toFixed(0);
+  const winNote = d.vdcSafetyPct > 0
+    ? ` (с окном ±${d.vdcSafetyPct}% → эффективно ${o.vMinEff.toFixed(0)}…${o.vMaxEff.toFixed(0)} В)`
+    : '';
   hint.innerHTML =
     `<div style="background:#f0f7ff;border:1px solid #b3d4ff;padding:6px 8px;border-radius:4px;line-height:1.55">`
     + `<b>📐 Подбор N (экономически оптимальный):</b><br>`
-    + `Диапазон ИБП V<sub>DC</sub> мин/макс: <b>${v.min}…${v.max} В</b>. `
+    + `Диапазон ИБП V<sub>DC</sub> мин/макс: <b>${v.min}…${v.max} В</b>${winNote}. `
     + `Блок ${blockV} В = ${o.cellsPerBlock} элементов. `
     + `End ${endV} В/эл → ${o.endVperBlock.toFixed(2)} В/блок. `
     + `Float ${o.floatVperCell} В/эл → ${o.floatVperBlock.toFixed(2)} В/блок.<br>`
-    + `Нижняя граница N (чтобы при разряде V<sub>DC</sub> ≥ ${v.min} В): `
-    + `⌈${v.min}/${o.endVperBlock.toFixed(2)}⌉ = <b>${o.nMinDischarge}</b>.<br>`
-    + `Верхняя граница N (чтобы при float-заряде V<sub>DC</sub> ≤ ${v.max} В): `
-    + `⌊${v.max}/${o.floatVperBlock.toFixed(2)}⌋ = <b>${o.nMaxFloat}</b>.<br>`
+    + `Нижняя граница N (чтобы при разряде V<sub>DC</sub> ≥ ${o.vMinEff.toFixed(0)} В): `
+    + `⌈${o.vMinEff.toFixed(0)}/${o.endVperBlock.toFixed(2)}⌉ = <b>${o.nMinDischarge}</b>.<br>`
+    + `Верхняя граница N (чтобы при float V<sub>DC</sub> ≤ ${o.vMaxEff.toFixed(0)} В): `
+    + `⌊${o.vMaxEff.toFixed(0)}/${o.floatVperBlock.toFixed(2)}⌋ = <b>${o.nMaxFloat}</b>.<br>`
     + (o.feasible
       ? `Выбран <b>МИНИМУМ N = ${o.N}</b> (минимум блоков → минимум стоимости и места). `
         + `Номинал V<sub>DC</sub> = ${o.N}×${blockV} = <b>${dc} В</b>. `
@@ -1095,6 +1145,17 @@ function doCalc() {
 
   const blockV = battery ? battery.blockVoltage : (Number(get('calc-blockv').value) || 12);
 
+  // v0.59.413: коэффициенты дерейтинга (IEEE 485 / IEC 62040).
+  const derate = _readDerating();
+  // Эффективная нагрузка для расчёта ёмкости АКБ. k_total учитывает
+  // старение, температуру и конструктивный запас. Для Li-ion дополнительно
+  // делим располагаемую ёмкость на (1 - socMin/100) — что эквивалентно
+  // увеличению нагрузки. Для VRLA — без socMin (используется только endV).
+  let loadKwEff = loadKw * derate.kTotal;
+  if (chemistry === 'li-ion' && derate.socMinPct > 0) {
+    loadKwEff = loadKwEff / Math.max(0.5, 1 - derate.socMinPct / 100);
+  }
+
   // Получаем V_DC min/max из текущего источника (UPS picker / manual / handoff).
   // Если диапазон неизвестен — допускаем ±5% от dcVoltageRaw (мягкая граница).
   const vRange = _getCurrentVdcRange(dcVoltageRaw);
@@ -1105,7 +1166,7 @@ function doCalc() {
   // → N_min_safe = ⌈vdcMin / (endV · cellsPerBlock)⌉
   // → N_max_safe = ⌊vdcMax / (floatV · cellsPerBlock)⌋
   // → оптимально = N_min_safe.
-  const opt = _pickOptimalBlocks(vRange.min, vRange.max, blockV, endV, chemistry);
+  const opt = _pickOptimalBlocks(vRange.min, vRange.max, blockV, endV, chemistry, derate.vdcSafetyPct);
   let blocksPerString = opt.N;
   let dcWarn = null;
   if (!opt.feasible) {
@@ -1119,7 +1180,7 @@ function doCalc() {
   // максимум таблицы (или хотя бы feasible в усреднённой модели).
   // При loadKw=0 — strings=1 (нет нагрузки).
   const stringsAuto = _autoSelectStrings({
-    battery, loadKw, blocksPerString, blockV, endV, invEff, chemistry,
+    battery, loadKw: loadKwEff, blocksPerString, blockV, endV, invEff, chemistry,
     capacityAh: battery ? battery.capacityAh : capacityAh,
     mode, targetMin,
   });
@@ -1137,17 +1198,25 @@ function doCalc() {
   if (mode === 'autonomy') {
     // Прямая задача: дано — сколько блоков, нагрузка → автономия
     const r = calcAutonomy({
-      battery, loadKw, dcVoltage, strings, blocksPerString,
+      battery, loadKw: loadKwEff, dcVoltage, strings, blocksPerString,
       endV, invEff, chemistry,
       capacityAh: battery ? battery.capacityAh : capacityAh,
     });
-    calcResult = { kind: 'autonomy', r, blocksPerString };
+    calcResult = { kind: 'autonomy', r, blocksPerString, derate, loadKwEff };
     html += `<div class="result-block">`;
     html += `<div class="result-title">Автономия системы</div>`;
     html += `<div class="result-value">${Number.isFinite(r.autonomyMin) ? fmt(r.autonomyMin) + ' мин' : '∞'}</div>`;
     html += `<div class="result-sub">Метод: <b>${r.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель'}</b></div>`;
     html += `<div class="result-sub">Конфигурация (авто): <b>${strings} цеп. × ${blocksPerString} бл.</b> · V<sub>DC</sub>=${dcVoltage} В ${vRange.known ? `(в диапазоне ${vRange.min}…${vRange.max} В)` : ''}</div>`;
     html += `<div class="result-sub">На блок: <b>${fmt(r.blockPowerW)} W</b>, всего блоков: <b>${strings * blocksPerString}</b></div>`;
+    if (derate.kTotal > 1.001 || derate.vdcSafetyPct > 0 || derate.socMinPct > 0) {
+      html += `<div class="result-sub" style="background:#f0f7ff;padding:4px 6px;border-radius:3px;font-size:11px">`
+        + `Учтены коэффициенты: k<sub>age</sub>×k<sub>temp</sub>×k<sub>design</sub> = ${derate.kAge.toFixed(2)}×${derate.kTemp.toFixed(2)}×${derate.kDesign.toFixed(2)} = <b>${derate.kTotal.toFixed(3)}</b>`
+        + ` → расчётная нагрузка <b>${fmt(loadKwEff)} kW</b> (паспортная ${fmt(loadKw)} kW).`
+        + (derate.vdcSafetyPct > 0 ? ` Окно V<sub>DC</sub> ±${derate.vdcSafetyPct}%.` : '')
+        + (chemistry === 'li-ion' && derate.socMinPct > 0 ? ` Резерв SoC ${derate.socMinPct}%.` : '')
+        + `</div>`;
+    }
     if (dcWarn) html += `<div class="warn">⚠ ${escHtml(dcWarn)}</div>`;
     if (stringsAuto.warning) html += `<div class="warn">⚠ ${escHtml(stringsAuto.warning)}</div>`;
     if (r.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время разряда находится вне таблицы производителя — значение получено линейной экстраполяцией. Не подтверждено производителем.</div>`;
@@ -1156,12 +1225,12 @@ function doCalc() {
   } else {
     // Обратная задача: дано — нагрузка + целевое время → сколько блоков
     const found = calcRequiredBlocks({
-      battery, loadKw, dcVoltage, endV, invEff, chemistry,
+      battery, loadKw: loadKwEff, dcVoltage, endV, invEff, chemistry,
       capacityAh: battery ? battery.capacityAh : capacityAh,
       blocksPerString,
       targetMin,
     });
-    calcResult = { kind: 'required', found, blocksPerString };
+    calcResult = { kind: 'required', found, blocksPerString, derate, loadKwEff };
     if (found) {
       html += `<div class="result-block">`;
       html += `<div class="result-title">Минимум блоков для автономии ≥ ${targetMin} мин</div>`;
@@ -1169,6 +1238,14 @@ function doCalc() {
       html += `<div class="result-sub">Цепочек (авто): <b>${found.strings}</b> × блоков в цепочке: <b>${found.blocksPerString}</b> · V<sub>DC</sub>=${found.blocksPerString * blockV} В ${vRange.known ? `(в диапазоне ${vRange.min}…${vRange.max} В)` : ''}</div>`;
       if (dcWarn) html += `<div class="warn">⚠ ${escHtml(dcWarn)}</div>`;
       html += `<div class="result-sub">Реальная автономия: <b>${fmt(found.result.autonomyMin)} мин</b>, метод: <b>${found.result.method === 'table' ? 'по таблице' : 'среднее'}</b></div>`;
+      if (derate.kTotal > 1.001 || derate.vdcSafetyPct > 0 || derate.socMinPct > 0) {
+        html += `<div class="result-sub" style="background:#f0f7ff;padding:4px 6px;border-radius:3px;font-size:11px">`
+          + `Учтены коэффициенты: k<sub>age</sub>×k<sub>temp</sub>×k<sub>design</sub> = ${derate.kAge.toFixed(2)}×${derate.kTemp.toFixed(2)}×${derate.kDesign.toFixed(2)} = <b>${derate.kTotal.toFixed(3)}</b>`
+          + ` → расчётная нагрузка <b>${fmt(loadKwEff)} kW</b> (паспортная ${fmt(loadKw)} kW).`
+          + (derate.vdcSafetyPct > 0 ? ` Окно V<sub>DC</sub> ±${derate.vdcSafetyPct}%.` : '')
+          + (chemistry === 'li-ion' && derate.socMinPct > 0 ? ` Резерв SoC ${derate.socMinPct}%.` : '')
+          + `</div>`;
+      }
       if (found.result.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время разряда вне таблицы производителя — значение получено линейной экстраполяцией двух ближайших точек. Не подтверждено производителем.</div>`;
       html += `</div>`;
     } else {
@@ -1357,7 +1434,7 @@ function _applyUpsPickerLock() {
       const blockV = Number(document.getElementById('calc-blockv')?.value) || 12;
       const endV   = Number(document.getElementById('calc-endv')?.value)   || 1.75;
       const chem   = document.getElementById('calc-chem')?.value || 'vrla';
-      const o = _pickOptimalBlocks(u.vdcMin, u.vdcMax, blockV, endV, chem);
+      const o = _pickOptimalBlocks(u.vdcMin, u.vdcMax, blockV, endV, chem, _readDerating().vdcSafetyPct);
       const optV = o.N * blockV;
       const dc = document.getElementById('calc-dcv');
       if (dc) { dc.value = optV; dc.title = `Подобрано экономически оптимально: N=${o.N} блоков (минимум) → V_DC=${optV} В. Диапазон ИБП ${u.vdcMin}…${u.vdcMax} В.`; }
@@ -1474,7 +1551,7 @@ function wireCalcForm() {
         const blockV = Number(document.getElementById('calc-blockv')?.value) || 12;
         const endV   = Number(document.getElementById('calc-endv')?.value)   || 1.75;
         const chem   = document.getElementById('calc-chem')?.value || 'vrla';
-        const o = _pickOptimalBlocks(a, b, blockV, endV, chem);
+        const o = _pickOptimalBlocks(a, b, blockV, endV, chem, _readDerating().vdcSafetyPct);
         const dc = document.getElementById('calc-dcv');
         if (dc) dc.value = o.N * blockV;
       }
@@ -1482,8 +1559,18 @@ function wireCalcForm() {
       _renderCapacityRecommend();
     });
   });
+  // v0.59.413: коэффициенты дерейтинга. Кнопки-пресеты + живые input'ы.
+  document.querySelectorAll('[data-derate-preset]').forEach(btn => {
+    btn.addEventListener('click', () => _applyDeratingPreset(btn.dataset.deratePreset));
+  });
+  ['calc-k-age','calc-k-temp','calc-k-design','calc-vdc-safety','calc-soc-min'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input',  () => { _refreshDerateSummary(); _refreshDcExplanation(); });
+    el.addEventListener('change', () => { _refreshDerateSummary(); _refreshDcExplanation(); });
+  });
   // Первичный рендер объяснения (после монтирования формы).
-  setTimeout(() => _refreshDcExplanation(), 0);
+  setTimeout(() => { _refreshDerateSummary(); _refreshDcExplanation(); }, 0);
 }
 
 // ================ Экспорт отчёта АКБ ================
