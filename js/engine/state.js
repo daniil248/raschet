@@ -22,6 +22,7 @@ export const PAGE_KINDS_META = {
   'mechanical':  { label: 'Механика',          icon: '⚙',  desc: 'Трубопроводы, вентиляция, каркасы — Фаза 2.5' },
   'low-voltage': { label: 'Слаботочка',        icon: '📡', desc: 'Связь, СКС, пожарная сигнализация' },
   'data':        { label: 'Данные',            icon: '🗂', desc: 'Информационные соединения (logical только)' },
+  'scs':         { label: 'СКС',               icon: '🔗', desc: 'Структурированная кабельная: меж-шкафные связи + план зала' },
   '3d':          { label: '3D',                icon: '🧊', desc: 'Трёхмерное представление — Фаза 4' },
 };
 export const PAGE_KINDS = Object.keys(PAGE_KINDS_META);

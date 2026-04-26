@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.363', date: '2026-04-26', items: [
+      '🧹 <b>Iframe-embed «Проектирование СКС» удалён.</b> Вместо отдельной правой панели в Конструкторе схем — нативный page-kind <code>scs</code>: создайте новую страницу со значением «🔗 СКС» в селекторе вида.',
+      '• Удалён <code>#scs-embed-panel</code> и весь сопутствующий код (drag-resize, postMessage-bridge схема↔embed, Ctrl+Shift+L, LS-ключ <code>raschet.scsEmbed.width.v1</code>).',
+      '• В <code>PAGE_KINDS_META</code> добавлен <code>scs</code> (🔗 СКС): «Структурированная кабельная: меж-шкафные связи + план зала».',
+      '• На баннере вида страницы для kind=scs/low-voltage/data — кнопка «↗ Полноэкранный модуль СКС» (открытие <code>scs-design/</code> в новой вкладке).',
+      '• <b>МV-конфигуратор (РУ СН) теперь standalone-конфигуратор.</b> Добавлена панель «Самостоятельная конфигурация»: кнопка «🧙 Запустить wizard», экспорт/импорт JSON.',
+      '• Конфигурация сохраняется как <code>raschet.mv-config.v1</code>-схема (requirements + selected + cells).',
+      'Файлы: js/engine/state.js (+scs), js/engine/render.js (баннер kind=scs), index.html (-#scs-embed-panel), js/main.js (-iframe-bridge), mv-config/index.html (+standalone-panel), mv-config/mv-config.js (+_startStandaloneWizard, +_exportCurrentConfig, +_importConfigFromFile).',
+    ] },
     { version: '0.59.362', date: '2026-04-26', items: [
       '🐛 <b>Fix: «Запросить доступ» больше не открывается для локальных проектов.</b> Проекты, созданные через /projects/ (id-префиксы <code>p_</code>/<code>s_</code>/<code>lp_</code>), хранятся в localStorage. Когда пользователь авторизован в Firebase, <code>window.Storage</code> по умолчанию делегировал в Firestore-адаптер, а тот не находил документ → permission-denied → main.js показывал модалку «Запросить доступ».',
       '• <code>window.Storage.getProject/saveProject/renameProject/deleteProject</code> теперь маршрутизируют локальные id напрямую в <code>Local</code>-адаптер мимо Firestore.',

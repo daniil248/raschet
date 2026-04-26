@@ -210,6 +210,21 @@
       </div>
     </section>
 
+    <!-- v0.59.363: standalone-режим. Запуск конфигуратора без nodeId. -->
+    <section class="panel" id="mv-standalone-panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <h3>Самостоятельная конфигурация</h3>
+      </div>
+      <div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <button id="mv-start-standalone" class="btn-sm btn-primary" type="button">🧙 Запустить wizard подбора</button>
+        <button id="mv-export-config" class="btn-sm" type="button" title="Сохранить текущую конфигурацию из wizard'а в JSON-файл">⬇ Экспорт конфигурации</button>
+        <label class="btn-sm" style="cursor:pointer" title="Загрузить JSON-конфигурацию">
+          ⬆ Импорт<input type="file" id="mv-import-config" accept=".json,application/json" style="display:none">
+        </label>
+        <span class="muted" style="font-size:11px;margin-left:auto">Конфигурации можно экспортировать/импортировать как JSON-файлы для переноса между проектами или машинами.</span>
+      </div>
+    </section>
+
     <!-- Справочник MV (когда открыто без nodeId) -->
     <section id="mv-catalog-panel" class="panel" data-reference-panel="1">
       <div class="panel-head">

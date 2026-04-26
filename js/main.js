@@ -6791,107 +6791,9 @@ if (document.readyState === 'loading') {
   init();
 }
 
-// v0.59.352: глобальный toggle для встраиваемой панели «Проектирование СКС».
-// Вызывается из page-kind-баннера (см. render.js renderPageKindBanner) и
-// горячей клавишей Ctrl+Shift+L.
-// v0.59.359: ширина embed-панели сохраняется в LS, восстанавливается при toggle
-const SCS_EMBED_WIDTH_KEY = 'raschet.scsEmbed.width.v1';
-function _loadScsEmbedWidth() {
-  try {
-    const v = localStorage.getItem(SCS_EMBED_WIDTH_KEY);
-    if (v && /^(\d+(\.\d+)?)(%|px)$/.test(v)) return v;
-  } catch {}
-  return '50%';
-}
-function _saveScsEmbedWidth(w) {
-  try { localStorage.setItem(SCS_EMBED_WIDTH_KEY, w); } catch {}
-}
-
-window.__raschetToggleScsEmbed = function() {
-  const panel = document.getElementById('scs-embed-panel');
-  const frame = document.getElementById('scs-embed-frame');
-  const open = document.getElementById('scs-embed-open');
-  if (!panel || !frame) return;
-  const willOpen = panel.hidden;
-  if (willOpen) {
-    let pid = '';
-    try { pid = new URLSearchParams(location.search).get('project') || ''; } catch {}
-    const qs = pid ? `?project=${encodeURIComponent(pid)}&from=schematic&embed=1` : '?embed=1';
-    if (frame.src === 'about:blank' || !frame.src.includes('scs-design/')) {
-      frame.src = 'scs-design/' + qs;
-    }
-    if (open) open.href = 'scs-design/' + qs.replace(/[?&]embed=1/, '');
-    panel.style.width = _loadScsEmbedWidth();
-    panel.hidden = false;
-  } else {
-    panel.hidden = true;
-  }
-};
-
-document.addEventListener('keydown', e => {
-  if (e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l')) {
-    e.preventDefault();
-    window.__raschetToggleScsEmbed?.();
-  }
-});
-
-document.addEventListener('click', e => {
-  const t = e.target;
-  if (!t) return;
-  if (t.id === 'scs-embed-close') { document.getElementById('scs-embed-panel').hidden = true; return; }
-  if (t.id === 'scs-embed-resize') {
-    const p = document.getElementById('scs-embed-panel');
-    if (!p) return;
-    const cur = p.style.width || '50%';
-    const seq = ['33%', '50%', '67%', '80%'];
-    const idx = seq.indexOf(cur);
-    const next = seq[(idx + 1) % seq.length];
-    p.style.width = next;
-    _saveScsEmbedWidth(next);
-  }
-});
-
-// v0.59.359: drag-resize по разделителю слева от панели. Перетягивание ЛКМ
-// меняет ширину панели; результат сохраняется в LS. iframe-events не
-// мешают потому что во время drag поверх iframe кладём прозрачный overlay.
-(function _wireScsEmbedDivider() {
-  const div = document.getElementById('scs-embed-divider');
-  if (!div) return;
-  const panel = document.getElementById('scs-embed-panel');
-  if (!panel) return;
-  let dragging = false;
-  let overlay = null;
-  div.addEventListener('mouseenter', () => { div.style.background = 'rgba(13,148,136,0.35)'; });
-  div.addEventListener('mouseleave', () => { if (!dragging) div.style.background = 'transparent'; });
-  div.addEventListener('pointerdown', e => {
-    e.preventDefault();
-    dragging = true;
-    div.setPointerCapture(e.pointerId);
-    div.style.background = 'rgba(13,148,136,0.6)';
-    // overlay поверх всего, чтобы iframe не съедал mousemove
-    overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize';
-    document.body.appendChild(overlay);
-  });
-  div.addEventListener('pointermove', e => {
-    if (!dragging) return;
-    const vw = window.innerWidth || document.documentElement.clientWidth;
-    // ширина панели от правой кромки окна до курсора
-    const w = Math.max(320, Math.min(vw - 200, vw - e.clientX));
-    const pct = Math.round((w / vw) * 1000) / 10; // 0.1% step
-    panel.style.width = pct + '%';
-  });
-  const finish = e => {
-    if (!dragging) return;
-    dragging = false;
-    try { div.releasePointerCapture(e.pointerId); } catch {}
-    div.style.background = 'transparent';
-    if (overlay) { overlay.remove(); overlay = null; }
-    _saveScsEmbedWidth(panel.style.width || '50%');
-  };
-  div.addEventListener('pointerup', finish);
-  div.addEventListener('pointercancel', finish);
-})();
+// v0.59.363: iframe-embed для СКС полностью удалён. Вместо отдельной
+// панели — нативный page-kind 'scs' (см. PAGE_KINDS_META в state.js).
+// Создайте новую страницу со значением «🔗 СКС» в селекторе вида.
 
 // v0.59.358: deep-link на узел схемы. URL ?focusNode=<id> приходит из
 // inventory.html (бейдж «🔗 на схеме» — см. v0.59.357). Находим узел,
@@ -6943,56 +6845,6 @@ function _focusSchemeNodeFromUrl() {
 }
 _focusSchemeNodeFromUrl();
 
-// v0.59.361: обратная связь embed → схема. Клик по стойке на план-зале СКС
-// внутри iframe → postMessage 'rs-plan-rack-clicked' → выбираем узел в схеме.
-window.addEventListener('message', e => {
-  const d = e && e.data;
-  if (!d || d.type !== 'rs-plan-rack-clicked') return;
-  if (!d.schemeNodeId) return;
-  try {
-    const st = _engineState;
-    if (!st || !st.nodes || !st.nodes.get) return;
-    const node = st.nodes.get(d.schemeNodeId);
-    if (!node) return;
-    if (node.pageId && st.currentPageId !== node.pageId) {
-      st.currentPageId = node.pageId;
-    }
-    _engineSelectNode(d.schemeNodeId);
-  } catch (err) { console.warn('[plan-rack-clicked]', err); }
-});
-
-// v0.59.360: sync «выбран rack-узел в схеме → подсвечена стойка в embed-панели».
-// Простое 250ms-поллинг по state.selectedId — на каждое изменение шлём
-// postMessage в iframe scs-design (если открыт). iframe слушает и highlight'ит.
-(function _wireScsEmbedSelectionSync() {
-  let lastSent = null;
-  setInterval(() => {
-    try {
-      const panel = document.getElementById('scs-embed-panel');
-      const frame = document.getElementById('scs-embed-frame');
-      if (!panel || panel.hidden || !frame || !frame.contentWindow) { lastSent = null; return; }
-      const st = _engineState;
-      if (!st || st.selectedKind !== 'node' || !st.selectedId) {
-        if (lastSent !== null) {
-          frame.contentWindow.postMessage({ type: 'rs-scheme-select-rack', schemeNodeId: null }, '*');
-          lastSent = null;
-        }
-        return;
-      }
-      const n = st.nodes && st.nodes.get && st.nodes.get(st.selectedId);
-      if (!n || n.type !== 'consumer' || n.subtype !== 'rack') return;
-      if (lastSent === n.id) return;
-      const tag = (n.tag || '').trim();
-      const count = Math.max(1, parseInt(n.count, 10) || 1);
-      frame.contentWindow.postMessage({
-        type: 'rs-scheme-select-rack',
-        schemeNodeId: n.id,
-        tag,
-        count,
-      }, '*');
-      lastSent = n.id;
-    } catch (err) { /* silent */ }
-  }, 250);
-})();
+// v0.59.363: postMessage-bridge embed↔схема убран вместе с iframe.
 
 })();

@@ -581,8 +581,106 @@ function _applyConfiguration() {
   }
 }
 
+// ==================== Standalone-режим (v0.59.363) ====================
+// Wizard теперь доступен и без ?nodeId — пользователь может запустить
+// подбор РУ как отдельный калькулятор и экспортировать результат в файл.
+function _startStandaloneWizard() {
+  // имитируем nodeId, чтобы initWizard и _applyConfiguration не валились
+  if (!wizState.nodeId) wizState.nodeId = 'standalone-' + Date.now().toString(36);
+  const wizard = document.getElementById('mv-wizard');
+  if (!wizard) return;
+  wizard.style.display = '';
+  document.getElementById('mv-catalog-panel').style.display = 'none';
+  document.getElementById('mv-standalone-panel').style.display = 'none';
+  _fillStep1();
+  _showStep(1);
+  document.getElementById('mv-wiz-cancel').onclick = () => {
+    wizard.style.display = 'none';
+    document.getElementById('mv-catalog-panel').style.display = '';
+    document.getElementById('mv-standalone-panel').style.display = '';
+    wizState.nodeId = null;
+  };
+  document.getElementById('mv-wiz-next-1').onclick = _goStep2;
+  document.getElementById('mv-wiz-back-2').onclick = () => _showStep(1);
+  document.getElementById('mv-wiz-next-2').onclick = _goStep3;
+  document.getElementById('mv-wiz-back-3').onclick = () => _showStep(2);
+  document.getElementById('mv-wiz-next-3').onclick = _goStep4;
+  document.getElementById('mv-wiz-back-4').onclick = () => _showStep(3);
+  document.getElementById('mv-wiz-apply').onclick = () => {
+    // в standalone-режиме «Применить» = экспорт в файл
+    _exportCurrentConfig();
+  };
+}
+
+function _exportCurrentConfig() {
+  try {
+    const rq = wizState.requirements;
+    const sel = wizState.selected;
+    const payload = {
+      schema: 'raschet.mv-config.v1',
+      exportedAt: new Date().toISOString(),
+      requirements: { ...rq },
+      selected: sel ? {
+        id: sel.el?.id,
+        label: sel.el?.label,
+        manufacturer: sel.el?.manufacturer,
+        series: sel.el?.series,
+        kindProps: sel.el?.kindProps,
+      } : null,
+      cells: wizState.cells,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const safe = (rq.name || 'mv-config').replace(/[^\w\-]+/g, '_').slice(0, 40);
+    a.download = `mv-config-${safe}-${Date.now()}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    flash('✔ Конфигурация выгружена в JSON', 'success');
+  } catch (e) {
+    flash('Ошибка экспорта: ' + (e.message || e), 'error');
+  }
+}
+
+function _importConfigFromFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (data.schema !== 'raschet.mv-config.v1') {
+        flash('Неподдерживаемая схема: ' + (data.schema || '(нет)'), 'error');
+        return;
+      }
+      Object.assign(wizState.requirements, data.requirements || {});
+      wizState.cells = Array.isArray(data.cells) ? data.cells : [];
+      _startStandaloneWizard();
+      flash('✔ Конфигурация загружена. Проверьте Шаг 1.', 'success');
+    } catch (e) {
+      flash('Не удалось распарсить файл: ' + (e.message || e), 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
 // ==================== Bootstrap ====================
 document.addEventListener('DOMContentLoaded', () => {
   renderCatalog();
   initWizard();
+  // standalone-кнопки (видны только когда нет ?nodeId)
+  const startBtn = document.getElementById('mv-start-standalone');
+  if (startBtn) startBtn.addEventListener('click', _startStandaloneWizard);
+  const expBtn = document.getElementById('mv-export-config');
+  if (expBtn) expBtn.addEventListener('click', _exportCurrentConfig);
+  const impInput = document.getElementById('mv-import-config');
+  if (impInput) impInput.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) _importConfigFromFile(f);
+    e.target.value = '';
+  });
+  // если запущено с ?nodeId — скрываем standalone-панель
+  if (new URLSearchParams(location.search).get('nodeId')) {
+    const sp = document.getElementById('mv-standalone-panel');
+    if (sp) sp.style.display = 'none';
+  }
 });
