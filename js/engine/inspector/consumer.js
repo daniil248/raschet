@@ -21,6 +21,13 @@ export function openConsumerParamsModal(n) {
   if (!body) return;
   const isOutdoor = n.consumerSubtype === 'outdoor_unit';
   const h = [];
+  // v0.59.371: fullCatalog поднят наверх — раньше он использовался в блоке
+  // catalogLocked (строка ~83), но declared ниже (строка ~94), что давало
+  // TDZ ReferenceError → модалка не открывалась для узлов с catalogLocked=true.
+  // Это маскировалось как «не открывается для однофазных потребителей»,
+  // потому что 1ф-нагрузки (освещение, бытовые) чаще привязаны к каталогу.
+  const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])]
+    .map(c => ({ ...c, category: c.category || 'other' }));
   // v0.59.98: только обозначение + название (read-only) над вкладками —
   // пользователь просит редактируемые поля убрать в свою вкладку. Для
   // редактирования имени открывается вкладка «Общее».
@@ -90,9 +97,8 @@ export function openConsumerParamsModal(n) {
     }
   }
 
-  // Миграция: старые user-записи без category получают 'other'
-  const fullCatalog = [...CONSUMER_CATALOG, ...(GLOBAL.customConsumerCatalog || [])]
-    .map(c => ({ ...c, category: c.category || 'other' }));
+  // Миграция: старые user-записи без category получают 'other'.
+  // (fullCatalog объявлен выше — см. v0.59.371.)
   if (!isOutdoor) {
     const curSub = n.consumerSubtype || 'custom';
     const curEntry = fullCatalog.find(c => c.id === curSub);

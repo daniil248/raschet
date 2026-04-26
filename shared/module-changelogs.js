@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.371', date: '2026-04-26', items: [
+      '🐛 <b>Fix: «Параметры потребителя» теперь открываются для catalog-locked узлов (часто 1Ф-нагрузки).</b> Жалоба пользователя: «не открываются Параметры потребителя для однофазных потребителей».',
+      '• Корень: в <code>openConsumerParamsModal()</code> блок <code>if (n.catalogLocked)</code> на строке ~83 обращался к <code>fullCatalog.find(...)</code>, но переменная <code>fullCatalog</code> была <code>const</code>-declared ниже на строке ~94 → <b>ReferenceError (TDZ)</b>, модалка падала молча.',
+      '• Это маскировалось как «не открывается для однофазных», потому что 1Ф-потребители (освещение, бытовые) чаще всего привязываются к каталожным записям (<code>catalogLocked=true</code>).',
+      '• Объявление <code>fullCatalog</code> поднято в начало функции, перед первым использованием.',
+      'Файлы: js/engine/inspector/consumer.js (openConsumerParamsModal: order of fullCatalog declaration).',
+    ] },
     { version: '0.59.370', date: '2026-04-26', items: [
       '🧹 <b>Заголовок группы проекта на «Мои схемы» больше не выглядит как отдельная карточка.</b> Жалоба пользователя: «зачем в проектах, отдельно наряду со схемами, сами проекты???».',
       '• Раньше <code>project-group-head</code> вставлялся в CSS-grid <code>.projects-grid</code> как обычный элемент, занимая колонку 1 → выглядел как «карточка проекта» рядом со схемами.',
