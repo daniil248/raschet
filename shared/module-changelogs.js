@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.360', date: '2026-04-26', items: [
+      '🎯 <b>Sync схема ↔ embed-панель СКС.</b> При выборе rack-узла в Конструкторе схем соответствующая стойка на план-зале СКС подсвечивается tealiт-пульсацией.',
+      '• Родитель (main.js) поллит state.selectedId каждые 250 мс. Если выбран consumer/rack — постит <code>{type:\'rs-scheme-select-rack\', schemeNodeId, tag, count}</code> в iframe scs-design.',
+      '• scs-design слушает postMessage и находит все материализованные стойки с <code>schemeNodeId</code>=присланному (count&gt;1 даёт несколько). Добавляет класс <code>.scheme-flash</code> с outline+keyframes-пульсацией; первый элемент scrollIntoView(center).',
+      '• При снятии выделения (или выборе не-rack-узла) — postMessage с <code>schemeNodeId:null</code> очищает подсветку.',
+      '<b>Что впереди:</b> обратное направление (клик по стойке на плане → выбор узла в схеме); switch на вкладку «План» автоматически если пользователь смотрел «Связи».',
+      'Файлы: js/main.js (_wireScsEmbedSelectionSync), scs-design/scs-design.js (window.addEventListener message), scs-design/scs-design.css (.scheme-flash + sd-scheme-pulse keyframes).',
+    ] },
     { version: '0.59.359', date: '2026-04-26', items: [
       '↔ <b>Drag-resize и LS-память ширины embed-панели СКС.</b> Расширяет v0.59.352, где была только пошаговая кнопка ⇔ (33→50→67→80%).',
       '• Слева от панели появилась тонкая (8px) draggable-полоса. Hover — подсветка #0d9488; drag ЛКМ — плавный resize. Нижний предел 320px, верхний — vw-200px.',

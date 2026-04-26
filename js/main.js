@@ -6943,4 +6943,38 @@ function _focusSchemeNodeFromUrl() {
 }
 _focusSchemeNodeFromUrl();
 
+// v0.59.360: sync «выбран rack-узел в схеме → подсвечена стойка в embed-панели».
+// Простое 250ms-поллинг по state.selectedId — на каждое изменение шлём
+// postMessage в iframe scs-design (если открыт). iframe слушает и highlight'ит.
+(function _wireScsEmbedSelectionSync() {
+  let lastSent = null;
+  setInterval(() => {
+    try {
+      const panel = document.getElementById('scs-embed-panel');
+      const frame = document.getElementById('scs-embed-frame');
+      if (!panel || panel.hidden || !frame || !frame.contentWindow) { lastSent = null; return; }
+      const st = _engineState;
+      if (!st || st.selectedKind !== 'node' || !st.selectedId) {
+        if (lastSent !== null) {
+          frame.contentWindow.postMessage({ type: 'rs-scheme-select-rack', schemeNodeId: null }, '*');
+          lastSent = null;
+        }
+        return;
+      }
+      const n = st.nodes && st.nodes.get && st.nodes.get(st.selectedId);
+      if (!n || n.type !== 'consumer' || n.subtype !== 'rack') return;
+      if (lastSent === n.id) return;
+      const tag = (n.tag || '').trim();
+      const count = Math.max(1, parseInt(n.count, 10) || 1);
+      frame.contentWindow.postMessage({
+        type: 'rs-scheme-select-rack',
+        schemeNodeId: n.id,
+        tag,
+        count,
+      }, '*');
+      lastSent = n.id;
+    } catch (err) { /* silent */ }
+  }, 250);
+})();
+
 })();

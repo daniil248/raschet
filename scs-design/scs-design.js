@@ -3223,4 +3223,31 @@ document.addEventListener('DOMContentLoaded', () => {
   // пересчёт линий при скролле ряда стоек, скролле юнитов внутри карточки и ресайзе окна
   document.getElementById('sd-racks-row')?.addEventListener('scroll', scheduleOverlay, true);
   window.addEventListener('resize', scheduleOverlay);
+
+  // v0.59.360: sync «выбран rack-узел в схеме → подсветка стойки на плане».
+  // Родитель (Конструктор схем) шлёт postMessage с schemeNodeId; находим
+  // соответствующую размещённую стойку и flash'им её в plan-canvas.
+  window.addEventListener('message', e => {
+    const d = e && e.data;
+    if (!d || d.type !== 'rs-scheme-select-rack') return;
+    const canvas = document.getElementById('sd-plan-canvas');
+    if (!canvas) return;
+    // снять предыдущую подсветку
+    canvas.querySelectorAll('.sd-plan-rack.scheme-flash').forEach(el => el.classList.remove('scheme-flash'));
+    if (!d.schemeNodeId) return;
+    // найти все материализованные стойки этого узла (может быть несколько при count>1)
+    const racks = getProjectInstances().filter(r => r.schemeNodeId === d.schemeNodeId);
+    if (!racks.length) return;
+    let scrolled = false;
+    racks.forEach(r => {
+      const el = canvas.querySelector(`.sd-plan-rack[data-id="${CSS.escape(r.id)}"]`);
+      if (el) {
+        el.classList.add('scheme-flash');
+        if (!scrolled && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+          scrolled = true;
+        }
+      }
+    });
+  });
 });

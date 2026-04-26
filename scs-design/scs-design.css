@@ -286,6 +286,17 @@
   border-style: dashed;
 }
 .sd-plan-chip-virt small { color: #047857; opacity: 0.8; }
+/* v0.59.360: подсветка стойки при выборе соответствующего узла в Конструкторе схем (postMessage из родителя) */
+@keyframes sd-scheme-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(13,148,136,0); }
+  40% { box-shadow: 0 0 0 8px rgba(13,148,136,0.5); }
+}
+.sd-plan-rack.scheme-flash {
+  outline: 3px solid #0d9488 !important;
+  outline-offset: 2px;
+  animation: sd-scheme-pulse 1.4s ease-in-out infinite;
+  z-index: 5;
+}
 .sd-plan-wrap { overflow: auto; border: 1px solid #d4d8e0; border-radius: 6px; background: #fff; }
 .sd-plan-canvas {
   position: relative;
