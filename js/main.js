@@ -868,7 +868,11 @@ function renderCurrentTab() {
     const ctxP = pid ? ctxMap.get(pid) : null;
     const header = document.createElement('div');
     header.className = 'project-group-head';
-    header.style.cssText = 'margin:18px 0 8px;padding:6px 10px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:3px;font-size:13px;font-weight:600;color:#3730a3';
+    // v0.59.370: header распахиваем на всю ширину grid'а — иначе выглядит
+    // как отдельная карточка-«проект» в колонке 1, что путает пользователя
+    // («зачем в проектах сами проекты наряду со схемами?»). Это просто
+    // визуальный разделитель между группами схем, а не объект каталога.
+    header.style.cssText = 'grid-column:1/-1;margin:18px 0 4px;padding:6px 10px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:3px;font-size:13px;font-weight:600;color:#3730a3';
     header.innerHTML = pid
       ? `📁 ${escHtml(ctxP.name)} <span style="color:#6b7280;font-weight:400;font-size:11px">· ${list.length} схем${list.length === 1 ? 'а' : list.length < 5 ? 'ы' : ''}${ctxP.kind === 'sketch' ? ' · мини-проект' : ''}</span>`
       : `📂 Без проекта <span style="color:#6b7280;font-weight:400;font-size:11px">· ${list.length}</span>`;
@@ -877,7 +881,7 @@ function renderCurrentTab() {
   }
   // Кнопка создания нового проекта-контекста
   const ctrls = document.createElement('div');
-  ctrls.style.cssText = 'margin:18px 0 6px;padding:8px;text-align:center';
+  ctrls.style.cssText = 'grid-column:1/-1;margin:18px 0 6px;padding:8px;text-align:center';
   ctrls.innerHTML = '<button type="button" id="btn-new-proj-ctx" class="pc-open" style="background:#f1f5f9;color:#334155;border:1px dashed #94a3b8;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">+ Новый проект (контекст для группы схем)</button>';
   ctrls.querySelector('#btn-new-proj-ctx').onclick = async () => {
     const name = await rsPrompt('Название проекта:', '');
