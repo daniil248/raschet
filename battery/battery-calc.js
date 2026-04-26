@@ -1254,13 +1254,18 @@ function doCalc() {
   }
   // Контейнер для графика разряда с отметкой рассчитанной точки
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда АКБ</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Красный маркер — рассчитанная рабочая точка (мощность на блок и время разряда). Оранжевый — экстраполированная (за пределами таблицы производителя).</div></div>`;
+  // v0.59.414: дополнительный зум-график с детализацией в зоне рабочей точки.
+  html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">Детализация в рабочей зоне (zoom)</div><div id="calc-chart-zoom-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Окно ±70% от рабочей точки по обеим осям. Линейные шкалы для удобной оценки запаса.</div></div>`;
   out.innerHTML = html;
   _renderCalcDischargeChart(params, calcResult, blocksPerString, blockV);
+  _renderCalcDischargeChartZoom(params, calcResult, blocksPerString, blockV);
 
   // Сохраняем состояние для экспорта отчёта и разблокируем кнопку
-  lastBatteryCalc = { params, calcResult };
+  lastBatteryCalc = { params, calcResult, vRange, opt, dcVoltageRaw, blockV, dcWarn };
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
+  const btnPrn = document.getElementById('btn-battery-print');
+  if (btnPrn) btnPrn.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
 }
 
 // Рендер графика разряда после расчёта: если у выбранной АКБ есть таблица —
@@ -1312,6 +1317,148 @@ function _renderCalcDischargeChart(params, calcResult, blocksPerString, blockV) 
   });
   _renderDischargeChart(mount, rows, [endV || 1.75], highlight);
 }
+// v0.59.414: zoomed chart — окно вокруг рабочей точки, линейные шкалы.
+// Filtering rows: tMin ∈ [highlight.tMin × 0.3 … × 3], powerW аналогично.
+// Если точек < 3, расширяем окно до × 5.
+function _renderCalcDischargeChartZoom(params, calcResult, blocksPerString, blockV) {
+  const mount = document.getElementById('calc-chart-zoom-mount');
+  if (!mount) return;
+  const { battery, endV, chemistry, capacityAh } = params;
+  let autonomyMin = null, blockPowerW = null, extrapolated = false;
+  if (calcResult && calcResult.kind === 'autonomy' && calcResult.r) {
+    autonomyMin = calcResult.r.autonomyMin;
+    blockPowerW = calcResult.r.blockPowerW;
+    extrapolated = !!calcResult.r.extrapolated;
+  } else if (calcResult && calcResult.kind === 'required' && calcResult.found) {
+    autonomyMin = calcResult.found.result?.autonomyMin;
+    blockPowerW = calcResult.found.result?.blockPowerW;
+    extrapolated = !!calcResult.found.result?.extrapolated;
+  }
+  if (!Number.isFinite(autonomyMin) || !Number.isFinite(blockPowerW) || autonomyMin <= 0 || blockPowerW <= 0) {
+    mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет рабочей точки для детализации</div>';
+    return;
+  }
+  const highlight = { tMin: autonomyMin, powerW: blockPowerW, extrapolated, label: `${fmt(autonomyMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}` };
+  // Источник кривых
+  let allRows, endVs;
+  if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
+    const all = battery.dischargeTable;
+    const allEvs = [...new Set(all.map(p => p.endV))].sort((a, b) => a - b);
+    let bestEv = allEvs[0], bestDiff = Math.abs(allEvs[0] - (endV || 1.75));
+    for (const ev of allEvs) {
+      const d = Math.abs(ev - (endV || 1.75));
+      if (d < bestDiff) { bestDiff = d; bestEv = ev; }
+    }
+    allRows = all.filter(p => p.endV === bestEv);
+    endVs = [bestEv];
+  } else {
+    const chem = (battery && battery.chemistry) || chemistry || 'vrla';
+    const cap = (battery && battery.capacityAh) || capacityAh || 100;
+    const blkV = (battery && battery.blockVoltage) || blockV || 12;
+    const tPoints = [1, 3, 5, 10, 15, 30, 60, 120, 180, 240, 360, 480, 600];
+    allRows = tPoints.map(t => {
+      const eff = _avgEffShim(chem, t);
+      const usableWh = blkV * cap * eff;
+      const powerW = usableWh / (t / 60);
+      return { endV: endV || 1.75, tMin: t, powerW };
+    });
+    endVs = [endV || 1.75];
+  }
+  // Окно
+  const filterWindow = (factor) => {
+    const tLo = highlight.tMin / factor, tHi = highlight.tMin * factor;
+    const pLo = highlight.powerW / factor, pHi = highlight.powerW * factor;
+    return allRows.filter(r => r.tMin >= tLo && r.tMin <= tHi && r.powerW >= pLo && r.powerW <= pHi);
+  };
+  let rows = filterWindow(2.0);
+  if (rows.length < 3) rows = filterWindow(3.5);
+  if (rows.length < 2) rows = allRows.slice();
+  _renderDischargeChartLinear(mount, rows, endVs, highlight);
+}
+
+// Линейный вариант графика (X = время мин, Y = мощность W) — для зум-окна.
+// Без log-шкалы, чтобы запас по обеим осям визуализировался пропорционально.
+function _renderDischargeChartLinear(mount, rows, endVs, highlight = null) {
+  if (!mount) return;
+  const palette = ['#1565c0', '#2e7d32', '#f57f17', '#c62828', '#6a1b9a', '#00695c'];
+  const W = 860, H = 320;
+  const padL = 70, padR = 20, padT = 20, padB = 44;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const allT = rows.map(p => p.tMin).filter(v => v > 0);
+  const allP = rows.map(p => p.powerW).filter(v => v > 0);
+  if (!allT.length || !allP.length) {
+    mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет данных для зум-графика</div>';
+    return;
+  }
+  let tMin = Math.min(...allT), tMax = Math.max(...allT);
+  let pMin = Math.min(...allP), pMax = Math.max(...allP);
+  if (highlight) {
+    tMin = Math.min(tMin, highlight.tMin * 0.85);
+    tMax = Math.max(tMax, highlight.tMin * 1.15);
+    pMin = Math.min(pMin, highlight.powerW * 0.85);
+    pMax = Math.max(pMax, highlight.powerW * 1.15);
+  }
+  // Запас 5% по краям
+  const tPad = (tMax - tMin) * 0.05 || 1;
+  const pPad = (pMax - pMin) * 0.05 || 1;
+  tMin -= tPad; tMax += tPad; pMin -= pPad; pMax += pPad;
+  if (pMin < 0) pMin = 0;
+  if (tMin < 0) tMin = 0;
+  const xOf = t => padL + ((t - tMin) / Math.max(0.001, tMax - tMin)) * plotW;
+  const yOf = p => padT + plotH - ((p - pMin) / Math.max(0.001, pMax - pMin)) * plotH;
+  // Тики
+  const niceTicks = (lo, hi, n = 5) => {
+    const span = hi - lo, step0 = span / n;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const norm = step0 / mag;
+    const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    const start = Math.ceil(lo / step) * step;
+    const ticks = [];
+    for (let v = start; v <= hi + 1e-9; v += step) ticks.push(+v.toFixed(6));
+    return ticks;
+  };
+  const xTicks = niceTicks(tMin, tMax, 6);
+  const yTicks = niceTicks(pMin, pMax, 5);
+  const parts = [`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;font-family:-apple-system,sans-serif;font-size:11px">`];
+  parts.push(`<rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="#fff" stroke="#e0e3ea" stroke-width="1"/>`);
+  for (const t of xTicks) {
+    const x = xOf(t);
+    parts.push(`<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + plotH}" stroke="#f0f0f0" stroke-width="1"/>`);
+    parts.push(`<text x="${x}" y="${padT + plotH + 16}" text-anchor="middle" fill="#6b7280">${t % 1 === 0 ? t : t.toFixed(1)}</text>`);
+  }
+  for (const p of yTicks) {
+    const y = yOf(p);
+    parts.push(`<line x1="${padL}" y1="${y}" x2="${padL + plotW}" y2="${y}" stroke="#f0f0f0" stroke-width="1"/>`);
+    parts.push(`<text x="${padL - 6}" y="${y + 4}" text-anchor="end" fill="#6b7280">${p >= 1000 ? (p / 1000).toFixed(1) + 'k' : Math.round(p)}</text>`);
+  }
+  parts.push(`<text x="${padL + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#1f2430" font-weight="600">Время разряда, мин</text>`);
+  parts.push(`<text transform="rotate(-90 16 ${padT + plotH / 2})" x="16" y="${padT + plotH / 2}" text-anchor="middle" fill="#1f2430" font-weight="600">Мощность на блок, W</text>`);
+  endVs.forEach((ev, idx) => {
+    const color = palette[idx % palette.length];
+    const curve = rows.filter(r => r.endV === ev).filter(r => r.powerW > 0 && r.tMin > 0).sort((a, b) => a.tMin - b.tMin);
+    if (!curve.length) return;
+    const d = curve.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(p.tMin).toFixed(1)},${yOf(p.powerW).toFixed(1)}`).join(' ');
+    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>`);
+    for (const p of curve) {
+      parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="4" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${ev} В · ${p.tMin} мин · ${p.powerW} W</title></circle>`);
+    }
+  });
+  if (highlight && Number.isFinite(highlight.tMin) && Number.isFinite(highlight.powerW)) {
+    const cx = xOf(highlight.tMin), cy = yOf(highlight.powerW);
+    const stroke = highlight.extrapolated ? '#ff9800' : '#d32f2f';
+    parts.push(`<line x1="${padL}" y1="${cy.toFixed(1)}" x2="${(padL + plotW).toFixed(1)}" y2="${cy.toFixed(1)}" stroke="${stroke}" stroke-width="1.2" stroke-dasharray="5 3" opacity="0.7"/>`);
+    parts.push(`<line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${(padT + plotH).toFixed(1)}" stroke="${stroke}" stroke-width="1.2" stroke-dasharray="5 3" opacity="0.7"/>`);
+    parts.push(`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="8" fill="${stroke}" stroke="#fff" stroke-width="2.5"/>`);
+    const lbl = highlight.label || `${fmt(highlight.tMin)} мин · ${fmt(highlight.powerW)} W/блок`;
+    const tx = cx + 12, ty = Math.max(padT + 14, cy - 10);
+    parts.push(`<rect x="${tx - 3}" y="${ty - 11}" width="${(lbl.length * 6.5 + 8).toFixed(0)}" height="17" fill="#fff" stroke="${stroke}" rx="3"/>`);
+    parts.push(`<text x="${tx + 2}" y="${ty + 2}" fill="${stroke}" font-weight="700">${escHtml(lbl)}</text>`);
+  }
+  parts.push('</svg>');
+  mount.innerHTML = parts.join('');
+}
+
 // Локальная копия avgEfficiency, чтобы не тащить лишний импорт
 function _avgEffShim(chemistry, tMin) {
   if (chemistry === 'li-ion') {
@@ -1509,6 +1656,8 @@ function wireCalcForm() {
   modeSel.dispatchEvent(new Event('change'));
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
+  const btnPrn = document.getElementById('btn-battery-print');
+  if (btnPrn) btnPrn.addEventListener('click', printBatteryReport);
   // Фильтры и выбор модели
   ['calc-filter-text','calc-filter-supp','calc-filter-chem-flt','calc-filter-vblk','calc-filter-capmin','calc-filter-capmax'].forEach(id => {
     const el = document.getElementById(id);
@@ -1671,9 +1820,198 @@ function buildBatteryReportBlocks(state) {
     }
   }
 
+  // v0.59.414: добавляем разделы по дерейтингу и подбору N (если есть данные).
+  const derate = r && r.derate;
+  if (derate && (derate.kTotal > 1.001 || derate.vdcSafetyPct > 0 || derate.socMinPct > 0)) {
+    blocks.push(B.h2('3. Расчётные коэффициенты (IEEE 485 / IEC 62040)'));
+    blocks.push(B.table(
+      [
+        { text: 'Коэффициент', width: 80 },
+        { text: 'Значение', align: 'right', width: 40 },
+        { text: 'Назначение', width: 80 },
+      ],
+      [
+        ['k_age',    derate.kAge.toFixed(2),    'Старение АКБ к концу срока службы'],
+        ['k_temp',   derate.kTemp.toFixed(2),   'Температурная коррекция'],
+        ['k_design', derate.kDesign.toFixed(2), 'Конструктивный запас (design margin)'],
+        ['k_total',  derate.kTotal.toFixed(3),  'Произведение коэффициентов'],
+        ['Окно V_DC ±%',   derate.vdcSafetyPct.toFixed(1) + ' %', 'Симметричное сужение допустимого диапазона V_DC ИБП'],
+        ['Резерв SoC, %',  derate.socMinPct.toFixed(0) + ' %',    'Только для Li-ion: минимальный остаточный заряд'],
+      ],
+    ));
+    if (Number.isFinite(r.loadKwEff)) {
+      blocks.push(B.paragraph('Расчётная нагрузка: ' + fmt(r.loadKwEff) + ' кВт (паспортная ' + fmt(p.loadKw) + ' кВт), коэффициент дерейтинга k_total = ' + derate.kTotal.toFixed(3) + '.'));
+    }
+  }
+  // Подбор N (V_DC оптимизация)
+  if (state.opt && state.vRange) {
+    const o = state.opt, vR = state.vRange;
+    blocks.push(B.h2((derate && (derate.kTotal > 1.001 || derate.vdcSafetyPct > 0 || derate.socMinPct > 0)) ? '4. Подбор числа блоков (V_DC оптимизация)' : '3. Подбор числа блоков (V_DC оптимизация)'));
+    blocks.push(B.paragraph('Цель: выбрать минимальное число блоков N в цепочке, при котором напряжение DC-шины остаётся в допустимом диапазоне ИБП и в режиме разряда (до endV), и в режиме плавающего заряда (float).'));
+    blocks.push(B.table(
+      [
+        { text: 'Параметр', width: 80 },
+        { text: 'Значение', align: 'right', width: 40 },
+        { text: 'Ед.', align: 'center', width: 18 },
+      ],
+      [
+        ['Диапазон V_DC ИБП',         vR.min + '…' + vR.max,                        'В'],
+        ['Окно после safety',         o.vMinEff.toFixed(0) + '…' + o.vMaxEff.toFixed(0), 'В'],
+        ['Элементов в блоке',         String(o.cellsPerBlock),                      'шт.'],
+        ['Конец разряда на блок',     o.endVperBlock.toFixed(2),                    'В/блок'],
+        ['Float-напряжение на блок',  o.floatVperBlock.toFixed(2),                  'В/блок'],
+        ['N_min (по разряду)',        String(o.nMinDischarge),                      'шт.'],
+        ['N_max (по float)',          String(o.nMaxFloat),                          'шт.'],
+        ['Принято (минимум по экономике)', String(blocksPerString),                 'шт.'],
+      ],
+    ));
+    blocks.push(B.paragraph('Формулы: N_min = ⌈V_DC_min_eff / (endV · cellsPerBlock)⌉, N_max = ⌊V_DC_max_eff / (floatV · cellsPerBlock)⌋. Выбран N = N_min для минимизации количества блоков и стоимости.'));
+    if (state.dcWarn) blocks.push(B.paragraph('⚠ ' + state.dcWarn));
+  }
+
   blocks.push(B.hr());
   blocks.push(B.caption('Документ сформирован автоматически.'));
   return blocks;
+}
+
+// v0.59.414: открывает новое окно с печатным отчётом — таблицами + обоими
+// SVG-графиками — и вызывает window.print(). Альтернатива PDF-экспорту,
+// удобна для быстрой печати без выбора шаблона.
+function printBatteryReport() {
+  if (!lastBatteryCalc) {
+    rsToast('Сначала выполните расчёт.', 'warn');
+    return;
+  }
+  const s = lastBatteryCalc;
+  const p = s.params, r = s.calcResult;
+  const batName = p.battery
+    ? [p.battery.supplier, p.battery.model].filter(Boolean).join(' ')
+    : 'усреднённая модель, химия ' + p.chemistry;
+  const blockV = p.battery ? p.battery.blockVoltage : (s.blockV || 12);
+  const capAh = p.battery ? p.battery.capacityAh : p.capacityAh;
+  const blocksPerString = r.blocksPerString;
+
+  const row = (k, v, u) => `<tr><td>${escHtml(k)}</td><td style="text-align:right">${escHtml(String(v))}</td><td style="text-align:center;color:#666">${escHtml(u || '')}</td></tr>`;
+  const tbl = (rows) => `<table class="rep"><thead><tr><th>Параметр</th><th style="text-align:right">Значение</th><th style="text-align:center">Ед.</th></tr></thead><tbody>${rows.filter(Boolean).join('')}</tbody></table>`;
+
+  let html = `<!doctype html><html><head><meta charset="utf-8"><title>Расчёт АКБ — ${escHtml(batName)}</title>`;
+  html += `<style>
+    body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; color:#1f2430; max-width: 920px; margin: 20px auto; padding: 0 16px; line-height:1.45; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 15px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #ccd; }
+    .muted { color:#666; font-size: 12px; }
+    table.rep { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0 10px; }
+    table.rep th, table.rep td { border: 1px solid #ddd; padding: 4px 8px; }
+    table.rep th { background: #f4f6fa; text-align: left; }
+    .warn { background:#fff3e0; border:1px solid #ffb74d; padding:6px 10px; border-radius:4px; margin:6px 0; font-size:12px; }
+    .chart { background:#fafbfc; border:1px solid #e0e3ea; border-radius:6px; padding:10px; margin: 6px 0 12px; }
+    .actions { position:fixed; top:10px; right:14px; }
+    .actions button { padding: 6px 12px; font-size: 13px; cursor: pointer; }
+    @media print { .actions { display:none; } body { margin: 0; max-width: none; } }
+  </style></head><body>`;
+  html += `<div class="actions"><button onclick="window.print()">🖨 Печать</button> <button onclick="window.close()">✕ Закрыть</button></div>`;
+  html += `<h1>Отчёт о расчёте аккумуляторной батареи</h1>`;
+  html += `<div class="muted">Модель: <b>${escHtml(batName)}</b> · Дата: ${new Date().toLocaleString('ru-RU')}</div>`;
+
+  html += `<h2>1. Исходные данные</h2>`;
+  html += tbl([
+    row('Мощность нагрузки', p.loadKw, 'кВт'),
+    row('КПД инвертора', (p.invEff * 100).toFixed(0), '%'),
+    row('Напряжение DC-шины', p.dcVoltage, 'В'),
+    row('Конечное напряжение элемента', p.endV, 'В'),
+    row('Ёмкость блока', capAh, 'Ач'),
+    row('Номинальное напряжение блока', blockV, 'В'),
+    row('Параллельных цепочек', p.strings, '—'),
+    row('Блоков в цепочке', blocksPerString, '—'),
+    row('Режим расчёта', p.mode === 'autonomy' ? 'Прямой (автономия по блокам)' : 'Обратный (блоки по автономии)', ''),
+    p.mode === 'required' ? row('Требуемая автономия', p.targetMin, 'мин') : '',
+  ]);
+
+  html += `<h2>2. Результаты</h2>`;
+  if (r.kind === 'autonomy' && r.r) {
+    html += tbl([
+      row('Автономия', Number.isFinite(r.r.autonomyMin) ? fmt(r.r.autonomyMin) : '∞', 'мин'),
+      row('Метод', r.r.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель', ''),
+      row('Мощность на блок', fmt(r.r.blockPowerW), 'Вт'),
+      row('Всего блоков', p.strings * blocksPerString, 'шт.'),
+      row('Конфигурация', p.strings + ' цеп. × ' + blocksPerString + ' бл.', ''),
+    ]);
+    if (r.r.extrapolated) html += `<div class="warn">⚠ Условный расчёт: запрошенное время вне таблицы производителя — линейная экстраполяция.</div>`;
+    if (r.r.warnings && r.r.warnings.length) html += r.r.warnings.map(w => `<div class="warn">⚠ ${escHtml(w)}</div>`).join('');
+  } else if (r.kind === 'required' && r.found) {
+    const f = r.found;
+    html += tbl([
+      row('Минимум блоков', f.totalBlocks, 'шт.'),
+      row('Параллельных цепочек', f.strings, '—'),
+      row('Блоков в цепочке', f.blocksPerString, '—'),
+      row('Реальная автономия', fmt(f.result.autonomyMin), 'мин'),
+      row('Метод', f.result.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель', ''),
+    ]);
+    if (f.result.extrapolated) html += `<div class="warn">⚠ Условный расчёт: запрошенное время вне таблицы — линейная экстраполяция.</div>`;
+  }
+
+  // Дерейтинг
+  const d = r.derate;
+  if (d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) {
+    html += `<h2>3. Расчётные коэффициенты (IEEE 485 / IEC 62040)</h2>`;
+    html += tbl([
+      row('k_age', d.kAge.toFixed(2), '—'),
+      row('k_temp', d.kTemp.toFixed(2), '—'),
+      row('k_design', d.kDesign.toFixed(2), '—'),
+      row('k_total', d.kTotal.toFixed(3), '—'),
+      row('Окно V_DC', '±' + d.vdcSafetyPct.toFixed(1), '%'),
+      row('Резерв SoC (Li-ion)', d.socMinPct.toFixed(0), '%'),
+      Number.isFinite(r.loadKwEff) ? row('Расчётная нагрузка', fmt(r.loadKwEff), 'кВт') : '',
+    ]);
+  }
+
+  // Подбор N
+  if (s.opt && s.vRange) {
+    const o = s.opt, vR = s.vRange;
+    html += `<h2>${(d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) ? '4' : '3'}. Подбор числа блоков (V_DC оптимизация)</h2>`;
+    html += `<p style="font-size:12px">Минимальное N в цепочке при условии: V_DC в окне ИБП и при разряде, и при float-заряде.</p>`;
+    html += tbl([
+      row('Диапазон V_DC ИБП', vR.min + '…' + vR.max, 'В'),
+      row('Окно после safety', o.vMinEff.toFixed(0) + '…' + o.vMaxEff.toFixed(0), 'В'),
+      row('Элементов в блоке', o.cellsPerBlock, 'шт.'),
+      row('endV на блок', o.endVperBlock.toFixed(2), 'В'),
+      row('floatV на блок', o.floatVperBlock.toFixed(2), 'В'),
+      row('N_min (разряд)', o.nMinDischarge, 'шт.'),
+      row('N_max (float)', o.nMaxFloat, 'шт.'),
+      row('Принято N', blocksPerString, 'шт.'),
+    ]);
+    html += `<p style="font-size:12px;color:#444">Формулы: N_min = ⌈V_DC_min_eff / (endV · cellsPerBlock)⌉; N_max = ⌊V_DC_max_eff / (floatV · cellsPerBlock)⌋. Выбран минимум — экономически оптимально.</p>`;
+    if (s.dcWarn) html += `<div class="warn">⚠ ${escHtml(s.dcWarn)}</div>`;
+  }
+
+  // Графики (вытягиваем innerHTML текущих SVG)
+  const mainChart = document.getElementById('calc-chart-mount');
+  const zoomChart = document.getElementById('calc-chart-zoom-mount');
+  const nextN = (d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) ? (s.opt ? '5' : '4') : (s.opt ? '4' : '3');
+  if (mainChart && mainChart.innerHTML.trim()) {
+    html += `<h2>${nextN}. График разряда АКБ</h2>`;
+    html += `<div class="chart">${mainChart.innerHTML}</div>`;
+    html += `<p class="muted">Красный маркер — рассчитанная рабочая точка. Оранжевый — экстраполированная (за пределами таблицы производителя).</p>`;
+  }
+  if (zoomChart && zoomChart.innerHTML.trim()) {
+    html += `<h2>${+nextN + 1}. Детализация в рабочей зоне</h2>`;
+    html += `<div class="chart">${zoomChart.innerHTML}</div>`;
+    html += `<p class="muted">Окно вокруг рабочей точки. Линейные шкалы для оценки запаса по обеим осям.</p>`;
+  }
+
+  html += `<hr style="margin-top:18px"><p class="muted">Документ сформирован автоматически Raschet · ${new Date().toLocaleDateString('ru-RU')}</p>`;
+  html += `</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) {
+    rsToast('Не удалось открыть окно печати — проверьте блокировщик всплывающих окон.', 'err');
+    return;
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  // Auto-focus и небольшая задержка для рендера SVG перед печатью
+  setTimeout(() => { try { w.focus(); } catch (e) {} }, 200);
 }
 
 // ================= Вкладки =================
