@@ -91,6 +91,7 @@ import { analyzeSelectivity as _analyzeSelectivity } from './selectivity-check.j
 // возвращается на эту вкладку). При совпадении nodeId с узлом в state —
 // применяем через applyUpsModel и сохраняем upsCatalogId.
 import { applyUpsModel } from '../../shared/ups-picker.js';
+import { syncIntegratedUpsComposite } from './ups-composite.js';
 const PENDING_UPS_KEY = 'raschet.pendingUpsSelection.v1';
 function _tryConsumePendingUpsSelection() {
   let raw;
@@ -113,6 +114,9 @@ function _tryConsumePendingUpsSelection() {
     snapshot('ups-config:apply:' + node.id);
     // Применяем базовую модель (backward-compat)
     applyUpsModel(node, payload.ups);
+    // v0.59.392: интегрированный ИБП → автоматически развёртывается
+    // в композит (вход ATS/MCCB + N PDM-панелей) согласно фирменной топологии.
+    try { syncIntegratedUpsComposite(node.id); } catch (e) { console.warn('[ups-composite]', e); }
     // Фаза 1.4.5: если есть configuration от wizard'а — применяем её
     if (payload.configuration) {
       const cfg = payload.configuration;

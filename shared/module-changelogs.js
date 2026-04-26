@@ -4,6 +4,20 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.392', date: '2026-04-26', items: [
+      '🧩 <b>Интегрированный ИБП отображается на схеме в полном виде.</b> Композит из типовых элементов согласно фирменной топологии (Kehua MR33 60-150K и аналоги).',
+      '• Новый модуль <code>js/engine/ups-composite.js#syncIntegratedUpsComposite(upsId)</code> автоматически разворачивает узел ИБП с <code>kind=\'ups-integrated\'</code> в композит:',
+      '&nbsp;&nbsp;◦ Входная панель <code>UPS.IN</code> (тип <code>panel</code>): «ATS/MCCB» при <code>hasIntegratedAts=true</code> (2 ввода, switchMode=auto) или «MCCB» (1 ввод, manual). Выходов = 1 (на ИБП) + N (на utility/bypass-PDM).',
+      '&nbsp;&nbsp;◦ PDM-панели <code>UPS.PDM-AC / UPS.PDM-IT1 / UPS.PDM-IT2</code> (тип <code>panel</code>): по одной на каждый <code>pdmModules[]</code>. Inputs=1, outputs=<code>maxBreakers</code>.',
+      '&nbsp;&nbsp;◦ Связи: входная панель → ИБП (port 0); входная панель → utility/bypass-PDM (порты 1..N); выходы ИБП → inverter-PDM (порты 0..K).',
+      '&nbsp;&nbsp;◦ Дочерние узлы помечены полем <code>_integratedParent=upsId</code>; список их id хранится у родителя в <code>n.integratedChildIds[]</code>.',
+      '• Идемпотентность: повторный вызов с уже развёрнутым узлом — no-op (preserve пользовательских правок). При смене модели на не-integrated дочерние узлы и их связи удаляются.',
+      '• Точки вызова (после <code>applyUpsModel</code>):',
+      '&nbsp;&nbsp;◦ <code>js/engine/index.js#_tryConsumePendingUpsSelection</code> — приём из ups-config wizard.',
+      '&nbsp;&nbsp;◦ <code>js/engine/inspector/ups.js</code> — picker «Производитель/Серия/Модель» в модалке параметров ИБП и кнопка «Применить из Конфигуратора».',
+      '• Использует прямые операции с <code>state.nodes/state.conns</code> (<code>uid()</code> + <code>DEFAULTS.panel()</code> + <code>GLOBAL.default*</code>), чтобы избежать лишних снапшотов истории при пакетной вставке.',
+      'Файлы: js/engine/ups-composite.js (новый, ~115 строк), js/engine/index.js (+2 строки), js/engine/inspector/ups.js (+3 строки), js/engine/constants.js (APP_VERSION).',
+    ] },
     { version: '0.59.391', date: '2026-04-26', items: [
       '📥 <b>XLSX-импорт каталога ИБП поддерживает интегрированный тип.</b> Закрываем последнюю «дыру» в pipeline для типа integrated.',
       '• <code>shared/catalog-xlsx-parser.js#UPS_SCHEMA</code>:',

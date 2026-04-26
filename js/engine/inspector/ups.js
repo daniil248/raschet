@@ -13,6 +13,7 @@ import { readUpsDcParams, mountUpsPicker, applyUpsModel } from '../../../shared/
 import { listUpses } from '../../../shared/ups-catalog.js';
 // v0.59.386: реестр типов ИБП-плагинов (см. shared/ups-types/).
 import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from '../../../shared/ups-types/index.js';
+import { syncIntegratedUpsComposite } from '../ups-composite.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -308,6 +309,7 @@ export function openUpsParamsModal(n) {
           if (st.modelId && st.ups && st.modelId !== n.upsCatalogId) {
             snapshot('ups-params:' + n.id + ':catalog');
             applyUpsModel(n, st.ups);
+            try { syncIntegratedUpsComposite(n.id); } catch (e) { console.warn('[ups-composite]', e); }
             render(); notifyChange();
             openUpsParamsModal(n);
           } else if (!st.modelId && n.upsCatalogId) {
@@ -332,6 +334,7 @@ export function openUpsParamsModal(n) {
       if (!last || !last.ups) { flash('Некорректная запись Конфигуратора', 'error'); return; }
       snapshot('ups-params:' + n.id + ':lastConfig');
       applyUpsModel(n, last.ups);
+      try { syncIntegratedUpsComposite(n.id); } catch (e) { console.warn('[ups-composite]', e); }
       // Если запись от wizard'а — применяем полный configuration
       // (capacityKw реальный, moduleInstalled, redundancyScheme, AКБ-V, автономия)
       const cfg = last.configuration;
