@@ -82,9 +82,21 @@ function interpTimeByPower(table, endV, powerW) {
   }
   const curve = table.filter(p => p.endV === bestEv).sort((a, b) => a.tMin - b.tMin);
   if (!curve.length) return null;
-  // Кривая: с ростом tMin — powerW ПАДАЕТ (дольше разряд → меньше мощности)
-  // Ищем отрезок где powerW >= target >= powerW следующего
-  if (powerW > curve[0].powerW) return 0;
+  // Кривая: с ростом tMin — powerW ПАДАЕТ. Возврат: число (в пределах таблицы)
+  // или объект { tMin, extrapolated:true } за её пределами.
+  if (powerW > curve[0].powerW) {
+    // Запрошенная мощность выше первой точки — экстраполируем влево по
+    // двум первым точкам в координатах (P, t).
+    if (curve.length >= 2) {
+      const a = curve[0], b = curve[1];
+      if (a.powerW !== b.powerW) {
+        const k = (a.powerW - powerW) / (a.powerW - b.powerW);
+        const t = a.tMin + (b.tMin - a.tMin) * k;
+        return { tMin: Math.max(0, t), extrapolated: true };
+      }
+    }
+    return { tMin: 0, extrapolated: true };
+  }
   if (powerW < curve[curve.length - 1].powerW) return Infinity;
   for (let i = 0; i < curve.length - 1; i++) {
     const a = curve[i], b = curve[i + 1];
@@ -133,15 +145,23 @@ export function calcAutonomy(input) {
 
   // === Режим по таблице ===
   if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
-    const tMin = interpTimeByPower(battery.dischargeTable, endV, blockPowerW);
-    if (tMin == null) {
+    const raw = interpTimeByPower(battery.dischargeTable, endV, blockPowerW);
+    let tMin, extrapolated = false;
+    if (raw == null) {
       warnings.push('Не удалось интерполировать по таблице');
-    } else if (!Number.isFinite(tMin)) {
-      return { autonomyMin: Infinity, feasible: true, blockPowerW, method: 'table', warnings };
+    } else if (raw === Infinity || raw && raw === Infinity) {
+      return { autonomyMin: Infinity, feasible: true, blockPowerW, method: 'table', warnings, extrapolated: false };
+    } else if (typeof raw === 'object' && raw !== null) {
+      tMin = raw.tMin;
+      extrapolated = !!raw.extrapolated;
     } else {
+      tMin = raw;
+    }
+    if (tMin != null) {
       const feasible = tMin > 0;
-      if (!feasible) warnings.push('Запрошенная мощность на блок превышает характеристики при самых коротких временах разряда — нужно больше блоков');
-      return { autonomyMin: tMin, feasible, blockPowerW, method: 'table', warnings };
+      if (extrapolated) warnings.push('Условный расчёт: запрошенный режим вне таблицы производителя — значение получено экстраполяцией двух первых точек кривой и не подтверждено производителем');
+      else if (!feasible) warnings.push('Запрошенная мощность на блок превышает характеристики при самых коротких временах разряда — нужно больше блоков');
+      return { autonomyMin: tMin, feasible: feasible || extrapolated, blockPowerW, method: 'table', warnings, extrapolated };
     }
   }
 

@@ -761,17 +761,127 @@ function wireUpload() {
 }
 
 // ================= Селектор батареи в калькуляторе =================
+function _calcFilters() {
+  const v = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  return {
+    text: v('calc-filter-text').toLowerCase(),
+    supp: v('calc-filter-supp'),
+    chem: v('calc-filter-chem-flt'),
+    vblk: v('calc-filter-vblk'),
+    capMin: Number(v('calc-filter-capmin')) || 0,
+    capMax: Number(v('calc-filter-capmax')) || 0,
+  };
+}
+function _populateCalcFilterOptions(list) {
+  const supps = [...new Set(list.map(b => b.supplier).filter(Boolean))].sort();
+  const vblks = [...new Set(list.map(b => Number(b.blockVoltage)).filter(v => v > 0))].sort((a,b)=>a-b);
+  const sSupp = document.getElementById('calc-filter-supp');
+  const sVblk = document.getElementById('calc-filter-vblk');
+  if (sSupp && sSupp.options.length <= 1) {
+    let h = '<option value="">Все поставщики</option>';
+    for (const s of supps) h += `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
+    sSupp.innerHTML = h;
+  }
+  if (sVblk && sVblk.options.length <= 1) {
+    let h = '<option value="">V блока: любое</option>';
+    for (const v of vblks) h += `<option value="${v}">${v} В</option>`;
+    sVblk.innerHTML = h;
+  }
+}
+function _filterBatteries(list, f) {
+  return list.filter(b => {
+    if (f.text) {
+      const s = ((b.supplier||'')+' '+(b.type||'')+' '+(b.model||'')+' '+(b.source||'')).toLowerCase();
+      if (!s.includes(f.text)) return false;
+    }
+    if (f.supp && b.supplier !== f.supp) return false;
+    if (f.chem && b.chemistry !== f.chem) return false;
+    if (f.vblk && Number(b.blockVoltage) !== Number(f.vblk)) return false;
+    if (f.capMin && !(Number(b.capacityAh) >= f.capMin)) return false;
+    if (f.capMax && !(Number(b.capacityAh) <= f.capMax)) return false;
+    return true;
+  });
+}
 function renderBatterySelector() {
   const sel = document.getElementById('calc-battery');
   if (!sel) return;
-  const list = listBatteries();
+  const all = listBatteries();
+  _populateCalcFilterOptions(all);
+  const f = _calcFilters();
+  const list = _filterBatteries(all, f);
   const cur = sel.value;
   let h = '<option value="">— средняя модель (без таблицы) —</option>';
   for (const b of list) {
     h += `<option value="${escHtml(b.id)}">${escHtml(b.supplier)} · ${escHtml(b.type)} (${fmt(b.blockVoltage)} В / ${b.capacityAh != null ? fmt(b.capacityAh) + ' А·ч' : '—'})</option>`;
   }
+  const info = document.getElementById('calc-battery-info');
+  if (info) info.textContent = `Подходит ${list.length} из ${all.length} моделей`;
   sel.innerHTML = h;
-  if (cur) sel.value = cur;
+  if (cur && list.some(b => b.id === cur)) sel.value = cur;
+  _applyBatteryLock();
+  _renderCapacityRecommend();
+}
+function _applyBatteryLock() {
+  const sel = document.getElementById('calc-battery');
+  const b = sel && sel.value ? getBattery(sel.value) : null;
+  const lock = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (b && val != null && Number.isFinite(Number(val))) {
+      el.value = val;
+      el.readOnly = true;
+      el.style.background = '#f0f0f0';
+      el.title = 'Заблокировано — параметр взят из выбранной модели АКБ';
+    } else {
+      el.readOnly = false;
+      el.style.background = '';
+      el.title = '';
+    }
+  };
+  if (b) {
+    lock('calc-blockv', b.blockVoltage);
+    lock('calc-capAh', b.capacityAh);
+    // выставим dcVoltage кратно blockV если хоть как-то
+    const blkV = Number(b.blockVoltage);
+    const dc = document.getElementById('calc-dcv');
+    if (dc && blkV > 0) {
+      const cur = Number(dc.value) || 0;
+      const n = Math.max(1, Math.round(cur / blkV));
+      dc.value = n * blkV;
+    }
+  } else {
+    lock('calc-blockv', null);
+    lock('calc-capAh', null);
+  }
+}
+function _renderCapacityRecommend() {
+  const box = document.getElementById('calc-recommend');
+  if (!box) return;
+  const get = id => document.getElementById(id);
+  const loadKw = Number(get('calc-load') && get('calc-load').value) || 0;
+  const targetMin = Number(get('calc-target') && get('calc-target').value) || 0;
+  const dcV = Number(get('calc-dcv') && get('calc-dcv').value) || 0;
+  const invEff = Math.max(0.5, Math.min(1, (Number(get('calc-inveff') && get('calc-inveff').value) || 94) / 100));
+  const chem = (get('calc-chem') && get('calc-chem').value) || 'vrla';
+  const mode = get('calc-mode') && get('calc-mode').value;
+  if (mode !== 'required' || !(loadKw > 0) || !(targetMin > 0) || !(dcV > 0)) {
+    box.style.display = 'none';
+    return;
+  }
+  // Энергобаланс с учётом эффективности и aging+temperature reserve
+  const eff = (chem === 'li-ion') ? 0.93 : 0.70;
+  const aging = 1.25; // 80% EoL
+  const tempK = 1.0;  // нейтрально, можно расширить
+  const energyWh = (loadKw * 1000 / invEff) * (targetMin / 60);
+  const usableWh = energyWh * aging * tempK / eff;
+  const ahNeeded = usableWh / dcV;
+  // Рекомендованная номинальная ёмкость на цепочку (одна цепочка)
+  const sug = [50, 65, 75, 100, 125, 150, 200, 250].find(x => x >= ahNeeded) || Math.ceil(ahNeeded/50)*50;
+  box.style.display = '';
+  box.innerHTML =
+    `<b>Рекомендуемая ёмкость АКБ:</b> ≈ <b>${fmt(ahNeeded)} А·ч</b> на цепочку (ближайший стандарт: <b>${sug} А·ч</b>)<br>` +
+    `<span class="muted">P=${loadKw} кВт · t=${targetMin} мин · η_inv=${(invEff*100).toFixed(0)}% · K_aging=${aging} · η_${chem}=${(eff*100).toFixed(0)}%. ` +
+    `Использовано: применить фильтр «Ah ≥ ${Math.round(ahNeeded)}» в подборе.</span>`;
 }
 
 // ================= Расчёт =================
@@ -810,6 +920,7 @@ function doCalc() {
     html += `<div class="result-value">${Number.isFinite(r.autonomyMin) ? fmt(r.autonomyMin) + ' мин' : '∞'}</div>`;
     html += `<div class="result-sub">Метод: <b>${r.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель'}</b></div>`;
     html += `<div class="result-sub">На блок: <b>${fmt(r.blockPowerW)} W</b>, всего блоков: <b>${strings * blocksPerString}</b> (${strings} × ${blocksPerString})</div>`;
+    if (r.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время разряда находится вне таблицы производителя — значение получено линейной экстраполяцией. Не подтверждено производителем.</div>`;
     if (r.warnings.length) html += r.warnings.map(w => `<div class="warn">⚠ ${escHtml(w)}</div>`).join('');
     html += `</div>`;
   } else {
@@ -827,6 +938,7 @@ function doCalc() {
       html += `<div class="result-value">${found.totalBlocks}</div>`;
       html += `<div class="result-sub">Цепочек: <b>${found.strings}</b> × блоков в цепочке: <b>${found.blocksPerString}</b></div>`;
       html += `<div class="result-sub">Реальная автономия: <b>${fmt(found.result.autonomyMin)} мин</b>, метод: <b>${found.result.method === 'table' ? 'по таблице' : 'среднее'}</b></div>`;
+      if (found.result.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время разряда вне таблицы производителя — значение получено линейной экстраполяцией двух ближайших точек. Не подтверждено производителем.</div>`;
       html += `</div>`;
     } else {
       html += `<div class="result-block error">Не удалось подобрать конфигурацию в пределах 2000 блоков. Проверьте нагрузку / параметры.</div>`;
@@ -851,10 +963,32 @@ function wireCalcForm() {
       const wanted = el.dataset.modeOnly;
       el.style.display = (wanted === modeSel.value) ? '' : 'none';
     });
+    _renderCapacityRecommend();
   });
   modeSel.dispatchEvent(new Event('change'));
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
+  // Фильтры и выбор модели
+  ['calc-filter-text','calc-filter-supp','calc-filter-chem-flt','calc-filter-vblk','calc-filter-capmin','calc-filter-capmax'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(ev, () => renderBatterySelector());
+  });
+  const reset = document.getElementById('calc-filter-reset');
+  if (reset) reset.addEventListener('click', () => {
+    ['calc-filter-text','calc-filter-supp','calc-filter-chem-flt','calc-filter-vblk','calc-filter-capmin','calc-filter-capmax'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    renderBatterySelector();
+  });
+  const sel = document.getElementById('calc-battery');
+  if (sel) sel.addEventListener('change', () => { _applyBatteryLock(); _renderCapacityRecommend(); });
+  ['calc-load','calc-target','calc-dcv','calc-inveff','calc-chem'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => _renderCapacityRecommend());
+    if (el) el.addEventListener('change', () => _renderCapacityRecommend());
+  });
 }
 
 // ================ Экспорт отчёта АКБ ================

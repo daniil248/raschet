@@ -141,9 +141,31 @@
       </div>
       <form id="calc-form" class="calc-form">
         <div class="field-full">
+          <label style="display:flex;justify-content:space-between;align-items:center">
+            <span>Фильтры моделей АКБ</span>
+            <button type="button" id="calc-filter-reset" class="btn-sm" style="font-size:11px;padding:2px 8px">Сбросить</button>
+          </label>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-top:4px">
+            <input id="calc-filter-text" type="search" placeholder="🔍 модель/поставщик" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+            <select id="calc-filter-supp" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px"><option value="">Все поставщики</option></select>
+            <select id="calc-filter-chem-flt" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+              <option value="">Вся химия</option>
+              <option value="vrla">VRLA</option>
+              <option value="li-ion">Li-Ion</option>
+              <option value="nicd">NiCd</option>
+              <option value="nimh">NiMH</option>
+            </select>
+            <select id="calc-filter-vblk" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px"><option value="">V блока: любое</option></select>
+            <input id="calc-filter-capmin" type="number" min="0" step="1" placeholder="Ah ≥" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+            <input id="calc-filter-capmax" type="number" min="0" step="1" placeholder="Ah ≤" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+          </div>
+        </div>
+        <div class="field-full">
           <label>Модель АКБ</label>
           <select id="calc-battery"></select>
+          <div id="calc-battery-info" class="muted" style="font-size:11px;margin-top:4px"></div>
         </div>
+        <div class="field-full" id="calc-recommend" style="display:none;background:#f5fbf5;border:1px solid #c8e6c9;border-radius:5px;padding:8px;font-size:12px"></div>
 
         <div>
           <label>Режим расчёта</label>
