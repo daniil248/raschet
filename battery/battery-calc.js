@@ -932,7 +932,21 @@ function renderBatterySelector() {
     if (useCompat) list = compatible;
   }
   const cur = sel.value;
+  // v0.59.450: если ранее выбранная модель отфильтрована — оставляем её
+  // в списке с пометкой «(несовместима с ИБП)», чтобы пользователь видел
+  // текущий выбор и мог сознательно его поменять.
+  let extraCurrent = null;
+  if (cur && !list.some(b => b.id === cur)) {
+    const curB = getBattery(cur);
+    if (curB && curB.systemSubtype !== 'cabinet' && curB.systemSubtype !== 'accessory') {
+      extraCurrent = curB;
+    }
+  }
   let h = '<option value="">— средняя модель (без таблицы) —</option>';
+  if (extraCurrent) {
+    const tag = ups && !_isBatteryCompatibleWithUps(extraCurrent, ups).ok ? ' — несовместима с ИБП' : ' — отфильтрована';
+    h += `<option value="${escHtml(extraCurrent.id)}">⚠ ${escHtml(extraCurrent.supplier)} · ${escHtml(extraCurrent.type)} (${fmt(extraCurrent.blockVoltage)} В / ${extraCurrent.capacityAh != null ? fmt(extraCurrent.capacityAh) + ' А·ч' : '—'})${tag}</option>`;
+  }
   for (const b of list) {
     h += `<option value="${escHtml(b.id)}">${escHtml(b.supplier)} · ${escHtml(b.type)} (${fmt(b.blockVoltage)} В / ${b.capacityAh != null ? fmt(b.capacityAh) + ' А·ч' : '—'})</option>`;
   }
@@ -943,7 +957,7 @@ function renderBatterySelector() {
     info.textContent = txt;
   }
   sel.innerHTML = h;
-  if (cur && list.some(b => b.id === cur)) sel.value = cur;
+  if (cur && (list.some(b => b.id === cur) || (extraCurrent && extraCurrent.id === cur))) sel.value = cur;
   _applyBatteryLock();
   _renderUpsCompatHint();
   _renderCapacityRecommend();
