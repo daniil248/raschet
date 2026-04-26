@@ -2103,7 +2103,7 @@ function buildBatteryReportBlocks(state) {
   const p = state.params;
   const r = state.calcResult;
   const batName = p.battery
-    ? [p.battery.supplier, p.battery.model].filter(Boolean).join(' ')
+    ? [p.battery.supplier, p.battery.type || p.battery.model, p.battery.capacityAh ? (p.battery.capacityAh + ' А·ч') : ''].filter(Boolean).join(' · ')
     : 'усреднённая модель, химия ' + p.chemistry;
   const capAh = p.battery ? p.battery.capacityAh : p.capacityAh;
   const blockV = p.battery ? p.battery.blockVoltage : 12;
@@ -2244,7 +2244,7 @@ function printBatteryReport() {
   const s = lastBatteryCalc;
   const p = s.params, r = s.calcResult;
   const batName = p.battery
-    ? [p.battery.supplier, p.battery.model].filter(Boolean).join(' ')
+    ? [p.battery.supplier, p.battery.type || p.battery.model, p.battery.capacityAh ? (p.battery.capacityAh + ' А·ч') : ''].filter(Boolean).join(' · ')
     : 'усреднённая модель, химия ' + p.chemistry;
   const blockV = p.battery ? p.battery.blockVoltage : (s.blockV || 12);
   const capAh = p.battery ? p.battery.capacityAh : p.capacityAh;
