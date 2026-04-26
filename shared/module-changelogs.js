@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.379', date: '2026-04-26', items: [
+      '🔑 <b>Fix: счётчик и список шкафов проекта читают правильный ключ.</b> Продолжение фикса v0.59.377.',
+      '• До этого <code>projectStats.racks</code> и legacy-детектор «🗄 Шкафы проекта» считали стойки по rackId\'ам в <code>scs-config.contents.v1</code>/<code>scs-config.rackTags.v1</code>. Это «orphan»-данные размещения и тегов; реальные экземпляры физических стоек — в <code>raschet.project.&lt;pid&gt;.rack-config.instances.v1</code> (см. <code>shared/rack-storage.js</code>).',
+      '• Теперь сначала смотрим <code>rack-config.instances.v1</code>; если он пуст, fallback на orphan-подсчёт со специальной пометкой «(только размещение/теги — экземпляры отсутствуют, проверьте миграцию)» — это сразу указывает на проблему миграции при v0.59.278.',
+      '• Также исправлен ошибочный ключ <code>scs-config.racks.v1</code> (его не существует).',
+      'Файлы: projects/project.js (projectStats: rack-config.instances.v1 priority; legacy-rack detector: правильный ключ + fallback-meta).',
+    ] },
     { version: '0.59.378', date: '2026-04-26', items: [
       '🏷 <b>scs-design: понятный индикатор «legacy режим» для проектов с до-v0.59.372 СКС-данными.</b>',
       '• До этого, когда пользователь открывал scs-design с <code>?project=&lt;parentId&gt;</code>, и у проекта уже есть СКС-связи/план, но подпроектов нет — dropdown показывал «— подпроект СКС не выбран —», что было запутывающе (данные есть, но «не выбрано»).',

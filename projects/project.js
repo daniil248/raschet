@@ -199,12 +199,21 @@ function projectStats(pid) {
     if (sch) { try { s.nodes = (JSON.parse(sch).nodes || []).length; } catch {} }
   } catch {}
   try {
-    const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
-    const tags = localStorage.getItem(`raschet.project.${pid}.scs-config.rackTags.v1`);
-    const ids = new Set();
-    try { const o = cont ? JSON.parse(cont) : {}; Object.keys(o || {}).forEach(k => { if (Array.isArray(o[k]) && o[k].length) ids.add(k); }); } catch {}
-    try { const o = tags ? JSON.parse(tags) : {}; Object.keys(o || {}).forEach(k => { if ((o[k] || '').trim()) ids.add(k); }); } catch {}
-    s.racks = ids.size;
+    // v0.59.379: предпочитаем считать по реальным экземплярам стоек проекта
+    // (rack-config.instances.v1), а не по orphan-данным contents/rackTags.
+    const inst = localStorage.getItem(`raschet.project.${pid}.rack-config.instances.v1`);
+    let nInst = 0;
+    try { const arr = inst ? JSON.parse(inst) : []; nInst = Array.isArray(arr) ? arr.length : 0; } catch {}
+    if (nInst > 0) {
+      s.racks = nInst;
+    } else {
+      const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
+      const tags = localStorage.getItem(`raschet.project.${pid}.scs-config.rackTags.v1`);
+      const ids = new Set();
+      try { const o = cont ? JSON.parse(cont) : {}; Object.keys(o || {}).forEach(k => { if (Array.isArray(o[k]) && o[k].length) ids.add(k); }); } catch {}
+      try { const o = tags ? JSON.parse(tags) : {}; Object.keys(o || {}).forEach(k => { if ((o[k] || '').trim()) ids.add(k); }); } catch {}
+      s.racks = ids.size;
+    }
   } catch {}
   try {
     const ln = localStorage.getItem(`raschet.project.${pid}.scs-design.links.v1`);
@@ -497,26 +506,30 @@ function render() {
       }
     } catch (e) { console.warn('[project.js] legacy scs-design check failed', e); }
 
-    // v0.59.377: legacy-стойки в этом проекте — данные под
-    // raschet.project.<p.id>.scs-config.contents.v1 / .rackTags.v1.
-    // Если есть хоть одна стойка — добавляем «Шкафы (в проекте)» строку.
+    // v0.59.377/379: стойки в этом проекте.
+    // — экземпляры (физические стойки) — raschet.project.<p.id>.rack-config.instances.v1
+    //   (см. shared/rack-storage.js — instancesKey()).
+    // — также учитываем legacy: rackId, под которыми есть contents/rackTags
+    //   (это данные размещения и тегов; инстансы могли быть удалены, а содержимое осталось).
     try {
+      const instRaw    = localStorage.getItem(`raschet.project.${p.id}.rack-config.instances.v1`);
       const rcContents = localStorage.getItem(`raschet.project.${p.id}.scs-config.contents.v1`);
       const rcTags     = localStorage.getItem(`raschet.project.${p.id}.scs-config.rackTags.v1`);
-      const rackIds = new Set();
-      try { const o = rcContents ? JSON.parse(rcContents) : {}; Object.keys(o || {}).forEach(k => { if (Array.isArray(o[k]) && o[k].length) rackIds.add(k); }); } catch {}
-      try { const o = rcTags ? JSON.parse(rcTags) : {}; Object.keys(o || {}).forEach(k => { if ((o[k] || '').trim()) rackIds.add(k); }); } catch {}
-      // также экземпляры стоек проекта (rack-storage) — raschet.project.<p.id>.scs-config.racks.v1
-      const rcRacksRaw = localStorage.getItem(`raschet.project.${p.id}.scs-config.racks.v1`);
-      let nRacks = 0;
-      try { const o = rcRacksRaw ? JSON.parse(rcRacksRaw) : []; nRacks = Array.isArray(o) ? o.length : 0; } catch {}
-      const total = Math.max(rackIds.size, nRacks);
+      let nInstances = 0;
+      try { const arr = instRaw ? JSON.parse(instRaw) : []; nInstances = Array.isArray(arr) ? arr.length : 0; } catch {}
+      const orphanIds = new Set();
+      try { const o = rcContents ? JSON.parse(rcContents) : {}; Object.keys(o || {}).forEach(k => { if (Array.isArray(o[k]) && o[k].length) orphanIds.add(k); }); } catch {}
+      try { const o = rcTags ? JSON.parse(rcTags) : {}; Object.keys(o || {}).forEach(k => { if ((o[k] || '').trim()) orphanIds.add(k); }); } catch {}
+      const total = Math.max(nInstances, orphanIds.size);
       if (total > 0) {
+        const meta = nInstances > 0
+          ? `${nInstances} физических стоек`
+          : `${orphanIds.size} стоек (только размещение/теги — экземпляры отсутствуют, проверьте миграцию)`;
         const href = '../scs-config/?project=' + encodeURIComponent(p.id) + '&from=projects';
         const rowHtml = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
           <span style="font-size:16px">🗄</span>
           <span style="background:#7c3aed;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">в проекте</span>
-          <span style="flex:1;min-width:0">Шкафы проекта <span class="muted" style="font-size:11px">· ${total} стоек</span></span>
+          <span style="flex:1;min-width:0">Шкафы проекта <span class="muted" style="font-size:11px">· ${esc(meta)}</span></span>
           <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px;text-decoration:none">Открыть →</a>
         </div>`;
         _enrichGroup('scs-config', rowHtml, 1);
