@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.368', date: '2026-04-26', items: [
+      '🐛 <b>Fix: «Параметры потребителя» (и аналогичные модалки) теперь открываются всегда.</b> Жалоба пользователя: кнопка «⚙ Параметры потребителя» в инспекторе не открывает модальное окно в некоторых схемах.',
+      '• Добавлен defensive event-delegation на <code>inspectorBody</code> в <code>bindInspectorDeps()</code>. Capturing-listener реагирует на клики по кнопкам с известными id (<code>btn-open-consumer-params</code>, <code>btn-open-panel-params</code>, <code>btn-open-panel-control</code>, <code>btn-open-ups-params</code>, <code>btn-open-ups-control</code>, <code>btn-open-ups-battery</code>) и вызывает соответствующую <code>open*Modal(n)</code>.',
+      '• Это страховка от race-condition: direct-binding в <code>wireInspectorInputs()</code> мог не успеть привязаться при определённом порядке re-render системных вкладок. Делегирование гарантирует открытие, даже если прямой listener потерян.',
+      '• Узел берётся из <code>state.selectedId</code>; защищено try/catch с <code>console.warn</code>.',
+      'Файлы: js/engine/inspector.js (bindInspectorDeps + delegated click capture).',
+    ] },
     { version: '0.59.367', date: '2026-04-26', items: [
       '⬇⬆ <b>Экспорт/импорт конфигураций — продолжение.</b> Добавлено в rack-config (шаблоны корпусов), mdc-config (модульный ЦОД), scs-config (СКС активного проекта).',
       '• <b>rack-config</b>: схема <code>raschet.rack-config.v1</code>, ключ <code>rack-config.templates.v1</code>. Экспортируются все шаблоны корпусов глобальной библиотеки.',

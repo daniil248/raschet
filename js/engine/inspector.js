@@ -82,6 +82,39 @@ export function bindInspectorDeps({ render, deleteNode, deleteConn, isTagUnique 
     bindWrapModalTabsSource(wrapModalWithSystemTabs);
     bindWrapModalTabsPanel(wrapModalWithSystemTabs);
   } catch {}
+  // v0.59.368: defensive event delegation на inspectorBody для модальных
+  // кнопок типа «Параметры потребителя/щита/ИБП». Прямой listener
+  // в wireInspectorInputs() мог терять привязку при re-render
+  // (или при условиях, где wire не успел отработать в порядке загрузки
+  // системных вкладок). Делегирование гарантирует, что click всегда
+  // открывает модалку, даже если direct binding ещё не успел.
+  if (inspectorBody && !inspectorBody.__rsDelegated) {
+    inspectorBody.__rsDelegated = true;
+    inspectorBody.addEventListener('click', (ev) => {
+      const t = ev.target && ev.target.closest && ev.target.closest('button');
+      if (!t || !t.id) return;
+      // Если у узла state.selectedKind/Id указывают на node — берём узел.
+      let n = null;
+      if (state.selectedKind === 'node') n = state.nodes.get(state.selectedId) || null;
+      if (!n) return;
+      try {
+        if (t.id === 'btn-open-consumer-params' && n.type === 'consumer') {
+          openConsumerParamsModal(n);
+        } else if (t.id === 'btn-open-panel-params' && n.type === 'panel') {
+          setModalActiveTab(n.id, 'electrical');
+          openPanelParamsModal(n);
+        } else if (t.id === 'btn-open-panel-control' && n.type === 'panel') {
+          openPanelControlModal(n);
+        } else if (t.id === 'btn-open-ups-params' && n.type === 'ups') {
+          openUpsParamsModal(n);
+        } else if (t.id === 'btn-open-ups-control' && n.type === 'ups') {
+          openUpsControlModal(n);
+        } else if (t.id === 'btn-open-ups-battery' && n.type === 'ups') {
+          openUpsBatteryModal(n);
+        }
+      } catch (e) { console.warn('[inspector delegated click]', t.id, e); }
+    }, true); // capture, чтобы сработать даже если direct listener вызвал stopPropagation
+  }
 }
 
 // ================= Инспектор =================
