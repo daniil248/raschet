@@ -67,6 +67,13 @@ export const modularType = {
     const working = Math.ceil(rq.loadKw / u.moduleKwRated);
     const installed = (r.mode === '2N') ? working * 2 : working + r.x;
     if (installed > u.moduleSlots) return null;
+    // v0.59.407: жёсткий кап по паспортной мощности модели — модуль с
+    // capacityKw=120 (MR33 120) не должен «вмещать» 180 кВт даже если
+    // moduleSlots=10 в копии записи. Проверяем что working×moduleKwRated и
+    // installed×moduleKwRated не выходят за nameplate capacityKw / frameKw.
+    const cap = Number(u.capacityKw) || Number(u.frameKw) || 0;
+    if (cap > 0 && working * u.moduleKwRated > cap + 1e-6) return null;
+    if (cap > 0 && installed * u.moduleKwRated > cap + 1e-6) return null;
     const realCapacity = working * u.moduleKwRated;
     return {
       working, redundant: r.x, installed,

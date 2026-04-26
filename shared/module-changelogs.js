@@ -1519,6 +1519,9 @@ export const CHANGELOGS = {
   ],
 
   'ups-config': [
+    { version: '0.59.407', date: '2026-04-26', items: [
+      '🐛 <b>Фикс: при нагрузке 180 кВт wizard предлагал MR33 120.</b> Раньше fitter <code>modular.pickFit</code> проверял только условие <code>installed ≤ moduleSlots</code>, но игнорировал паспортную мощность модели. Если в каталоге есть «копия» записи MR33 120 с расширенным <code>moduleSlots=10</code>, fitter считал что 6×30=180 кВт умещаются — и предлагал модель, рассчитанную всего на 120 кВт. Теперь добавлен жёсткий кап: <code>working × moduleKwRated ≤ capacityKw (или frameKw)</code> — если сумма модулей превышает паспорт модели, кандидат отбрасывается. Файл: shared/ups-types/modular.js (pickFit).',
+    ] },
     { version: '0.59.400', date: '2026-04-26', items: [
       '🧙 <b>Wizard ИБП реструктурирован под практический поток подбора (4 шага).</b>',
       '<b>Шаг 1.</b> Только параметры для определения самого ИБП: нагрузка kW, автономия, тип, cos φ, фазы. <b>V<sub>DC</sub> min/max убраны</b> — это параметры для подбора АКБ, а не ИБП-фрейма.',
@@ -1650,6 +1653,11 @@ export const CHANGELOGS = {
   ],
 
   'battery': [
+    { version: '0.59.407', date: '2026-04-26', items: [
+      '🎯 <b>V<sub>DC</sub> мин/макс — отдельные видимые поля в форме.</b> Раньше они были «закопаны» внутри блока «Параметры ИБП → ввести вручную» либо просто в hint-тексте. Теперь — два поля прямо в основной форме рядом с «V<sub>DC</sub> номинальное», которое стало readonly (выбирается автоматически = N · V<sub>блока</sub>). Если ИБП выбран из каталога / handoff из конструктора схем / handoff из ИБП-конфигуратора — поля заполняются и блокируются (источник в подсказке). Если нет — пользователь редактирует напрямую, при вводе сразу обновляется hint и пересчёт рекомендации.',
+      '📈 <b>График разряда показывает только выбранный End-of-Discharge.</b> Раньше выводились все 5+ кривых endV (1.6, 1.65, 1.7, 1.75, 1.8) — рабочая точка на одной из них, остальные — мусор. Теперь рисуется только ближайшая к выбранному <code>calc-endv</code> кривая. Файл: battery/battery-calc.js (_renderCalcDischargeChart).',
+      'Файлы: battery/index.html (отдельные поля calc-vdcmin/calc-vdcmax + readonly calc-dcv), battery/battery-calc.js (_getCurrentVdcRange приоритет form-полей, _applyUpsPickerLock + initUpsHandoff + ctx-handoff пишут в видимые поля, wireCalcForm — input-handlers для V_DC мин/макс).',
+    ] },
     { version: '0.59.406', date: '2026-04-26', items: [
       '🔧 <b>Фикс: <code>calcRequiredBlocks</code> уважает blocksPerString от вызывающего.</b> До этого функция всегда пересчитывала <code>blocksPerString = round(dcVoltage / blockVoltage)</code>, что в режиме «обратной задачи» откатывало выбор N, сделанный с учётом диапазона V<sub>DC</sub> мин/макс в v0.59.405. Теперь N берётся как есть, fallback на <code>round(dc/blockV)</code> только если N не передан. Файл: battery/battery-discharge.js (calcRequiredBlocks).',
     ] },

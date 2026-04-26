@@ -959,20 +959,24 @@ function _renderCapacityRecommend() {
 //   3) handoff из ИБП-конфигуратора / схемы (через _handoffVdc)
 //   4) fallback ±5% от dcRaw
 function _getCurrentVdcRange(dcRaw) {
-  // 1. catalog UPS
+  // Главные поля V_DC мин/макс — всегда видны и редактируемы (если не залочены ИБП).
+  const a = Number(document.getElementById('calc-vdcmin')?.value) || 0;
+  const b = Number(document.getElementById('calc-vdcmax')?.value) || 0;
+  if (a > 0 && b > 0 && a < b) return { min: a, max: b, known: true, source: 'form' };
+  // Fallback на старые поля ввода в блоке «Параметры ИБП — вручную»
+  const a2 = Number(document.getElementById('calc-ups-vdcmin')?.value) || 0;
+  const b2 = Number(document.getElementById('calc-ups-vdcmax')?.value) || 0;
+  if (a2 > 0 && b2 > 0 && a2 < b2) return { min: a2, max: b2, known: true, source: 'manual' };
+  // Handoff
+  if (_handoffVdc.min && _handoffVdc.max) return { min: _handoffVdc.min, max: _handoffVdc.max, known: true, source: 'handoff' };
+  // UPS catalog
   const sel = document.getElementById('calc-ups-pick');
   const id = sel ? sel.value : '';
   if (id) {
     const u = getUps(id);
     if (u && u.vdcMin && u.vdcMax) return { min: u.vdcMin, max: u.vdcMax, known: true, source: 'ups-catalog' };
   }
-  // 2. manual
-  const a = Number(document.getElementById('calc-ups-vdcmin')?.value) || 0;
-  const b = Number(document.getElementById('calc-ups-vdcmax')?.value) || 0;
-  if (a > 0 && b > 0 && a < b) return { min: a, max: b, known: true, source: 'manual' };
-  // 3. handoff
-  if (_handoffVdc.min && _handoffVdc.max) return { min: _handoffVdc.min, max: _handoffVdc.max, known: true, source: 'handoff' };
-  // 4. fallback ±5%
+  // Fallback ±5%
   if (dcRaw > 0) return { min: Math.round(dcRaw * 0.95), max: Math.round(dcRaw * 1.05), known: false, source: 'fallback' };
   return { min: 0, max: 0, known: false, source: 'none' };
 }
@@ -1139,11 +1143,18 @@ function _renderCalcDischargeChart(params, calcResult, blocksPerString, blockV) 
   const highlight = (Number.isFinite(autonomyMin) && Number.isFinite(blockPowerW) && autonomyMin > 0 && blockPowerW > 0)
     ? { tMin: autonomyMin, powerW: blockPowerW, extrapolated, label: `${fmt(autonomyMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}` }
     : null;
-  // Если есть таблица — рисуем её
+  // Если есть таблица — рисуем ТОЛЬКО кривую выбранного endV (ближайшее
+  // значение из таблицы), не все 5+ кривых.
   if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
-    const rows = battery.dischargeTable;
-    const endVs = [...new Set(rows.map(p => p.endV))].sort((a, b) => a - b);
-    _renderDischargeChart(mount, rows, endVs, highlight);
+    const all = battery.dischargeTable;
+    const endVs = [...new Set(all.map(p => p.endV))].sort((a, b) => a - b);
+    let bestEv = endVs[0], bestDiff = Math.abs(endVs[0] - (endV || 1.75));
+    for (const ev of endVs) {
+      const d = Math.abs(ev - (endV || 1.75));
+      if (d < bestDiff) { bestDiff = d; bestEv = ev; }
+    }
+    const rows = all.filter(p => p.endV === bestEv);
+    _renderDischargeChart(mount, rows, [bestEv], highlight);
     return;
   }
   // Иначе — синтетическая кривая через avgEfficiency для chemistry
@@ -1267,7 +1278,12 @@ function _applyUpsPickerLock() {
     if (u.vdcMin && u.vdcMax) {
       const mid = Math.round((u.vdcMin + u.vdcMax) / 2);
       const dc = document.getElementById('calc-dcv');
-      if (dc) { dc.value = mid; dc.readOnly = false; dc.title = `Допустимый диапазон V_DC: ${u.vdcMin}…${u.vdcMax} В`; dc.style.background = '#f5fbf5'; dc.min = u.vdcMin; dc.max = u.vdcMax; }
+      if (dc) { dc.value = mid; dc.title = `Фактическое V_DC будет подобрано из диапазона ${u.vdcMin}…${u.vdcMax} В`; }
+      // Заполняем основные поля V_DC мин/макс и блокируем (источник — паспорт ИБП).
+      const vmin = document.getElementById('calc-vdcmin');
+      const vmax = document.getElementById('calc-vdcmax');
+      if (vmin) { vmin.value = u.vdcMin; vmin.readOnly = true; vmin.style.background = '#f0f0f0'; vmin.title = `Из паспорта ${u.supplier || ''} ${u.model || ''}`; }
+      if (vmax) { vmax.value = u.vdcMax; vmax.readOnly = true; vmax.style.background = '#f0f0f0'; vmax.title = `Из паспорта ${u.supplier || ''} ${u.model || ''}`; }
     }
     _setDcvRangeHint(u.vdcMin, u.vdcMax, `по паспорту ${u.supplier || ''} ${u.model || ''}`.trim());
     if (info) info.innerHTML = `Выбран: <b>${escHtml(u.supplier)} ${escHtml(u.model)}</b> · ${u.capacityKw} кВт · η=${(((u.efficiency||0.94)*100<1?(u.efficiency*100):u.efficiency)||94).toFixed(0)}% · V<sub>DC</sub> ${u.vdcMin||'?'}…${u.vdcMax||'?'} В`;
@@ -1276,7 +1292,12 @@ function _applyUpsPickerLock() {
     if (loadEl) { loadEl.readOnly = false; loadEl.style.background = ''; loadEl.title = ''; loadEl.placeholder = ''; loadEl.removeAttribute('max'); }
     lock('calc-inveff', null);
     const dc = document.getElementById('calc-dcv');
-    if (dc) { dc.style.background = ''; dc.title = ''; dc.removeAttribute('max'); }
+    if (dc) { dc.style.background = '#f0f0f0'; dc.title = ''; dc.removeAttribute('max'); }
+    // Разлок V_DC мин/макс — позволяем пользователю редактировать
+    const vmin = document.getElementById('calc-vdcmin');
+    const vmax = document.getElementById('calc-vdcmax');
+    if (vmin) { vmin.readOnly = false; vmin.style.background = ''; vmin.title = ''; }
+    if (vmax) { vmax.readOnly = false; vmax.style.background = ''; vmax.title = ''; }
     _setDcvRangeHint(null, null, '');
   }
   _renderCapacityRecommend();
@@ -1373,6 +1394,23 @@ function wireCalcForm() {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', () => _renderCapacityRecommend());
     if (el) el.addEventListener('change', () => _renderCapacityRecommend());
+  });
+  // V_DC мин/макс — обновляем подсказку и рекомендацию при ручном вводе.
+  ['calc-vdcmin','calc-vdcmax'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      const a = Number(document.getElementById('calc-vdcmin')?.value) || 0;
+      const b = Number(document.getElementById('calc-vdcmax')?.value) || 0;
+      if (a > 0 && b > 0 && a < b) {
+        _setDcvRangeHint(a, b, 'ручной ввод');
+        const dc = document.getElementById('calc-dcv');
+        if (dc) dc.value = Math.round((a + b) / 2);
+      } else {
+        _setDcvRangeHint(null, null, '');
+      }
+      _renderCapacityRecommend();
+    });
   });
 }
 
@@ -1774,6 +1812,10 @@ function initSchemaContext() {
     if (vdcMin && vdcMax) {
       _handoffVdc.min = Number(vdcMin) || 0;
       _handoffVdc.max = Number(vdcMax) || 0;
+      const vmin = document.getElementById('calc-vdcmin');
+      const vmax = document.getElementById('calc-vdcmax');
+      if (vmin) { vmin.value = _handoffVdc.min; vmin.readOnly = true; vmin.style.background = '#f0f0f0'; vmin.title = 'Из контекста схемы'; }
+      if (vmax) { vmax.value = _handoffVdc.max; vmax.readOnly = true; vmax.style.background = '#f0f0f0'; vmax.title = 'Из контекста схемы'; }
       _setDcvRangeHint(_handoffVdc.min, _handoffVdc.max, 'из контекста схемы');
     }
     const batEl = document.getElementById('calc-battery');
@@ -1870,6 +1912,10 @@ function initUpsHandoff() {
       if (vdcMin && vdcMax) {
         _handoffVdc.min = Number(vdcMin) || 0;
         _handoffVdc.max = Number(vdcMax) || 0;
+        const vminEl = document.getElementById('calc-vdcmin');
+        const vmaxEl = document.getElementById('calc-vdcmax');
+        if (vminEl) { vminEl.value = _handoffVdc.min; vminEl.readOnly = true; vminEl.style.background = '#f0f0f0'; vminEl.title = 'Из ИБП-конфигуратора'; }
+        if (vmaxEl) { vmaxEl.value = _handoffVdc.max; vmaxEl.readOnly = true; vmaxEl.style.background = '#f0f0f0'; vmaxEl.title = 'Из ИБП-конфигуратора'; }
         _setDcvRangeHint(_handoffVdc.min, _handoffVdc.max, 'из ИБП-конфигуратора');
       }
     }
