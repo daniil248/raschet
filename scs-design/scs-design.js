@@ -1732,6 +1732,18 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
         el.classList.toggle('dimmed', focusRackId && el.dataset.id !== focusRackId);
       });
       drawPlanLinks(svg, getPlan());
+      // v0.59.361: если работаем внутри embed-iframe — оповестить родителя
+      // (Конструктор схем) о клике по стойке. Родитель выберет соответствующий
+      // rack-узел в схеме (если стойка матерализована из узла со schemeNodeId).
+      try {
+        if (window.parent && window.parent !== window && r.schemeNodeId) {
+          window.parent.postMessage({
+            type: 'rs-plan-rack-clicked',
+            schemeNodeId: r.schemeNodeId,
+            rackId: r.id,
+          }, '*');
+        }
+      } catch {}
     });
     if (focusRackId === r.id) div.classList.add('focused');
     else if (focusRackId) div.classList.add('dimmed');

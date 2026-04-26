@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.361', date: '2026-04-26', items: [
+      '🔄 <b>Обратный sync embed-панель → схема.</b> Замыкает двунаправленную связь после v0.59.360.',
+      '• Клик по стойке на план-зале СКС внутри embed-iframe постит <code>{type:\'rs-plan-rack-clicked\', schemeNodeId, rackId}</code> в родительский Конструктор схем.',
+      '• Родитель находит узел по schemeNodeId, переключается на его страницу (если задана) и вызывает selectNode — узел выделяется, инспектор открывается.',
+      '• postMessage уходит только если стойка действительно материализована из схемы (есть поле <code>schemeNodeId</code>); ручные стойки кликаются как раньше без эффекта на родителя.',
+      '<b>Цикл целиком:</b> v0.59.352 (iframe-embed) → v0.59.359 (drag-resize+LS) → v0.59.360 (схема→план) → v0.59.361 (план→схема). Двусторонняя живая связь готова.',
+      'Файлы: scs-design/scs-design.js (postMessage в родителя при клике на стойку с schemeNodeId), js/main.js (обработчик rs-plan-rack-clicked).',
+    ] },
     { version: '0.59.360', date: '2026-04-26', items: [
       '🎯 <b>Sync схема ↔ embed-панель СКС.</b> При выборе rack-узла в Конструкторе схем соответствующая стойка на план-зале СКС подсвечивается tealiт-пульсацией.',
       '• Родитель (main.js) поллит state.selectedId каждые 250 мс. Если выбран consumer/rack — постит <code>{type:\'rs-scheme-select-rack\', schemeNodeId, tag, count}</code> в iframe scs-design.',

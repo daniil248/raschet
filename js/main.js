@@ -6943,6 +6943,24 @@ function _focusSchemeNodeFromUrl() {
 }
 _focusSchemeNodeFromUrl();
 
+// v0.59.361: обратная связь embed → схема. Клик по стойке на план-зале СКС
+// внутри iframe → postMessage 'rs-plan-rack-clicked' → выбираем узел в схеме.
+window.addEventListener('message', e => {
+  const d = e && e.data;
+  if (!d || d.type !== 'rs-plan-rack-clicked') return;
+  if (!d.schemeNodeId) return;
+  try {
+    const st = _engineState;
+    if (!st || !st.nodes || !st.nodes.get) return;
+    const node = st.nodes.get(d.schemeNodeId);
+    if (!node) return;
+    if (node.pageId && st.currentPageId !== node.pageId) {
+      st.currentPageId = node.pageId;
+    }
+    _engineSelectNode(d.schemeNodeId);
+  } catch (err) { console.warn('[plan-rack-clicked]', err); }
+});
+
 // v0.59.360: sync «выбран rack-узел в схеме → подсвечена стойка в embed-панели».
 // Простое 250ms-поллинг по state.selectedId — на каждое изменение шлём
 // postMessage в iframe scs-design (если открыт). iframe слушает и highlight'ит.
