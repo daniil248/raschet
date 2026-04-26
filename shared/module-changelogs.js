@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.362', date: '2026-04-26', items: [
+      '🐛 <b>Fix: «Запросить доступ» больше не открывается для локальных проектов.</b> Проекты, созданные через /projects/ (id-префиксы <code>p_</code>/<code>s_</code>/<code>lp_</code>), хранятся в localStorage. Когда пользователь авторизован в Firebase, <code>window.Storage</code> по умолчанию делегировал в Firestore-адаптер, а тот не находил документ → permission-denied → main.js показывал модалку «Запросить доступ».',
+      '• <code>window.Storage.getProject/saveProject/renameProject/deleteProject</code> теперь маршрутизируют локальные id напрямую в <code>Local</code>-адаптер мимо Firestore.',
+      '• <code>listMyProjects()</code> объединяет cloud + local-проекты в один список (без дублей по id), чтобы экран /projects/ показывал и облачные, и локальные.',
+      '• Добавлен helper <code>isLocalProjectId(id)</code> с regex по префиксам.',
+      'Файлы: js/projects.js (window.Storage wrapper, isLocalProjectId, _mergedListMyProjects).',
+    ] },
     { version: '0.59.361', date: '2026-04-26', items: [
       '🔄 <b>Обратный sync embed-панель → схема.</b> Замыкает двунаправленную связь после v0.59.360.',
       '• Клик по стойке на план-зале СКС внутри embed-iframe постит <code>{type:\'rs-plan-rack-clicked\', schemeNodeId, rackId}</code> в родительский Конструктор схем.',

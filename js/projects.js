@@ -526,17 +526,36 @@ function getStorage() {
   return Local;
 }
 
+// v0.59.362: id-префиксы локально созданных проектов из /projects/projects.js
+// и shared/project-storage.js. Когда такой id попадает в облачный режим,
+// Firestore не находит документ → выкидывает permission-denied → main.js
+// открывает «Запросить доступ». Маршрутим такие id напрямую в Local.
+function isLocalProjectId(id) {
+  if (!id) return false;
+  return /^(lp_|p_|s_|_demo_)/.test(String(id));
+}
+async function _mergedListMyProjects() {
+  const cloud = await getStorage().listMyProjects().catch(() => []);
+  const local = await Local.listMyProjects().catch(() => []);
+  // Local-проекты с id-префиксами p_/s_/lp_ всегда «свои».
+  // Сливаем без дублей по id (cloud имеет приоритет на случай совпадений).
+  const seen = new Set(cloud.map(p => p.id));
+  const out = cloud.slice();
+  for (const p of local) if (!seen.has(p.id)) out.push(p);
+  return out;
+}
+
 window.Storage = {
   get mode() { return getStorage().mode; },
   get isCloud() { return getStorage().mode === 'firestore'; },
-  listMyProjects()      { return getStorage().listMyProjects(); },
+  listMyProjects()      { return _mergedListMyProjects(); },
   listSharedProjects()  { return getStorage().listSharedProjects(); },
   listAccessRequests()  { return getStorage().listAccessRequests(); },
-  getProject(id)        { return getStorage().getProject(id); },
+  getProject(id)        { return isLocalProjectId(id) ? Local.getProject(id) : getStorage().getProject(id); },
   createProject(n, s)   { return getStorage().createProject(n, s); },
-  saveProject(id, patch) { return getStorage().saveProject(id, patch); },
-  renameProject(id, n)  { return getStorage().renameProject(id, n); },
-  deleteProject(id)     { return getStorage().deleteProject(id); },
+  saveProject(id, patch) { return isLocalProjectId(id) ? Local.saveProject(id, patch) : getStorage().saveProject(id, patch); },
+  renameProject(id, n)  { return isLocalProjectId(id) ? Local.renameProject(id, n) : getStorage().renameProject(id, n); },
+  deleteProject(id)     { return isLocalProjectId(id) ? Local.deleteProject(id) : getStorage().deleteProject(id); },
   shareProject(id, e, r) { return getStorage().shareProject(id, e, r); },
   unshareMember(id, u)  { return getStorage().unshareMember(id, u); },
   setVisibility(id, v)  { return getStorage().setVisibility(id, v); },
