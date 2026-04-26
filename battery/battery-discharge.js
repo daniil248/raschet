@@ -191,12 +191,14 @@ export function calcAutonomy(input) {
  */
 export function calcRequiredBlocks(input) {
   const { targetMin = 10, maxBlocks = 2000 } = input;
-  // Пробуем разное количество blocksPerString при фиксированных strings=1.
-  // Если battery.blockVoltage задано, ограничиваем по dcVoltage.
-  let blocksPerString = input.blocksPerString || 1;
-  if (input.dcVoltage && input.battery && input.battery.blockVoltage) {
+  // blocksPerString берётся как есть — вызывающая сторона уже учла
+  // диапазон V_DC мин/макс при выборе N (см. battery-calc.js).
+  // Только если N не передан — fallback к round(dcVoltage / blockV).
+  let blocksPerString = input.blocksPerString || 0;
+  if (!blocksPerString && input.dcVoltage && input.battery && input.battery.blockVoltage) {
     blocksPerString = Math.max(1, Math.round(input.dcVoltage / input.battery.blockVoltage));
   }
+  if (!blocksPerString) blocksPerString = 1;
   for (let strings = 1; strings * blocksPerString <= maxBlocks; strings++) {
     const r = calcAutonomy({ ...input, strings, blocksPerString });
     if (r.feasible && r.autonomyMin >= targetMin) {
