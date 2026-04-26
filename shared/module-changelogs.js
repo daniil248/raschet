@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.417', date: '2026-04-26', items: [
+      '🔋 <b>Battery-калькулятор переведён на единый shared-модуль для S³.</b> Продолжение DRY-рефакторинга v0.59.416. В <code>battery/battery-calc.js</code> добавлена выделенная ветка <code>_doCalcS3({battery, loadKw, mode, targetMin, vRange, derate, invEff})</code>, которая вызывается из <code>doCalc()</code> при <code>isS3Module(battery)</code>. Логика расчёта (Vdc parallel/series, мощность на модуль, перегруз, минимум шкафов) идёт через <code>computeS3Configuration(...)</code> — ровно тот же вызов, что и в инспекторе. Никаких параллельных реализаций.',
+      '• <b>Авто-конфигурация.</b> Прямая задача (autonomy): N = maxPerCabinet (минимум шкафов = минимум стоимости каркаса), C = ceil(loadKw·k<sub>total</sub>/(invEff·cabinetPowerKw)). Обратная задача (required): <code>findMinimalS3Config(...)</code> с передачей <code>calcAutonomy</code> как callback (избегаем циклических импортов).',
+      '• <b>UI-вывод.</b> Для S³ показывается: «N шкаф(ов) × M модулей», модель шкафа, паспортная мощность, рабочее V<sub>DC</sub> с режимом (parallel 240 / series 2×240), мощность на модуль, ёмкость кВт·ч, плашка перегруза при превышении паспортной мощности.',
+      'Файлы: battery/battery-calc.js (+ _doCalcS3 ~110 строк, ранний return в doCalc для isS3Module), импорт shared/battery-s3-logic.js.',
+      'Roadmap: v0.59.418 — каталог All-in-One (S3C-{xx}-{phase}{kVA}, max 8/4 модулей) + UPS-тип. v0.59.419 — интегрированный ИБП как многосекционный щит.',
+    ] },
     { version: '0.59.416', date: '2026-04-26', items: [
       '🔗 <b>Единый источник истины для расчётов Kehua S³ (DRY).</b> Принцип: всё, что можно сделать в одном месте, делается в одном месте. Раньше логика расчёта S³-конфигурации (Vdc-режим parallel/series, мощность шкафа, проверка перегруза) жила inline в js/engine/inspector/ups.js (≈80 строк inline-математики). При исправлении ошибки правка нужна была в нескольких местах. Теперь — <code>shared/battery-s3-logic.js</code> с чистыми функциями: <code>isS3Module(b)</code>, <code>resolveS3Wiring({module, requestedWiring, vdcMin, vdcMax})</code>, <code>computeS3Configuration({module, loadKw, vdcMin/Max, invEff, cosPhi, modulesPerCabinet, cabinetsCount, dcWiring})</code>, <code>findMinimalS3Config({...})</code>. Без DOM, без localStorage — pure functions, удобно для тестов.',
       '• <b>Инспектор переведён на единый модуль.</b> Все S³-вычисления (Vdc operating, batteryPwrReqKw, powerPerModuleW, stringCurrentA, systemPowerKw, overload, minCabinetsForLoad) теперь берутся из результата одного вызова <code>_computeS3Configuration(...)</code>. BOM-блок и плашка перегруза рендерятся из этого же объекта.',
@@ -1699,6 +1706,17 @@ export const CHANGELOGS = {
   ],
 
   'battery': [
+    { version: '0.59.418', date: '2026-04-26', items: [
+      '📄 <b>Печатный отчёт: заголовки больше не висят в одиночестве в конце страницы.</b> Жалоба + скриншот: «не разделяй заголовок от следующего за ним текста или изображения, если нужно, переноси заголовки на следующую страницу». Раньше при печати раздел «6. Детализация в рабочей зоне» оставался в конце одной страницы, а график уезжал на следующую — некрасиво.',
+      '• <b>Что сделано в CSS:</b> на <code>h2</code> добавлены <code>break-after: avoid-page</code> + <code>page-break-after: avoid</code>; каждая секция (заголовок + следующий блок: таблица / график / параграф) обёрнута в <code>&lt;div class="section"&gt;</code> с <code>break-inside: avoid</code>; на <code>.chart</code> — <code>break-inside: avoid</code>, чтобы график не разрывался; на <code>tr/thead</code> таблиц тоже <code>break-inside: avoid</code>. Логика @media print: если перед заголовком не помещается весь блок «h2 + содержимое», движок переносит h2 на следующую страницу целиком.',
+      'Файл: battery/battery-calc.js (printBatteryReport: расширены @media print правила, все 6 секций обёрнуты в .section).',
+    ] },
+    { version: '0.59.417', date: '2026-04-26', items: [
+      '🔋 <b>Расчёт АКБ Kehua S³ — теперь через тот же модуль, что и инспектор схем.</b> Жалоба: «в модуле конструктор схем подбор АКБ Литиевых намного правильней сделано, почему в основном конфигураторе не так». Раньше в standalone-калькуляторе S³-модули обсчитывались как обычные VRLA — strings × blocks, без понятия «шкаф / модулей в шкафу», без проверки паспортной мощности шкафа. Теперь при выборе S³-модуля (S3M040/050/100-…-X) включается отдельная ветка <code>_doCalcS3()</code>, которая зовёт <code>computeS3Configuration(...)</code> из <code>shared/battery-s3-logic.js</code> — единого модуля. Та же функция используется в инспекторе ИБП в схеме. Принцип DRY: исправление любой ошибки в S³-расчёте автоматически отражается в обоих местах.',
+      '• <b>Авто-конфигурация шкафов и модулей.</b> Прямая задача (autonomy): N = max модулей в шкафу (минимум шкафов = минимум денег и места), C шкафов = ceil(P<sub>battery</sub>/P<sub>cabinet</sub>). Обратная задача (минимум для targetMin): <code>findMinimalS3Config()</code> перебирает C от minByPower и N от 1, возвращает первую конфигурацию, дающую ≥ targetMin минут.',
+      '• <b>Что отображается:</b> «N шкаф(ов) × M модулей = K мод.», модель шкафа (S3C040-6C-20-MX и т.п.), V<sub>DC</sub> с режимом (parallel 240 / series 2×240), мощность на модуль (W), паспортная мощность шкафа и системы (кВт), предупреждение о перегрузе, ёмкость кВт·ч.',
+      'Файл: battery/battery-calc.js (новая функция _doCalcS3 ~110 строк, ранний return в doCalc для S³-модулей). Импорт shared/battery-s3-logic.js.',
+    ] },
     { version: '0.59.409', date: '2026-04-26', items: [
       '🧹 <b>Убран radio-переключатель «из каталога ИБП / ввести вручную».</b> Логика теперь проще и единообразнее: блок «ИБП из каталога» — необязательный пикер. Если модель выбрана — V<sub>DC</sub> мин/макс и КПД блокируются паспортом; если нет — пользователь заполняет поля формы вручную. Удалены: блок <code>calc-ups-manual-row</code> с дублирующими полями V<sub>DC</sub> мин/макс (они и так есть в основной форме после v0.59.407), radio-инпуты <code>calc-ups-mode</code>, обработчик переключения, fallback в <code>_getCurrentVdcRange</code>. Файлы: battery/index.html (~30 строк удалено), battery/battery-calc.js (упрощён _wireUpsPicker, _getCurrentVdcRange).',
     ] },

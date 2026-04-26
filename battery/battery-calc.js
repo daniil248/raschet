@@ -17,6 +17,8 @@ let lastBatteryCalc = null;
 import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
 import { KEHUA_S3_BATTERIES } from '../shared/catalogs/battery-kehua-s3.js';
 import { listUpses, getUps } from '../shared/ups-catalog.js';
+// v0.59.417: ЕДИНЫЙ источник логики S³ — тот же модуль, что в инспекторе.
+import { isS3Module, computeS3Configuration, findMinimalS3Config } from '../shared/battery-s3-logic.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -1177,6 +1179,128 @@ function _autoSelectStrings({ battery, loadKw, blocksPerString, blockV, endV, in
   return { strings: 1, warning: 'Не удалось подобрать число цепочек ≤ ' + maxStrings };
 }
 
+// v0.59.417: S³-ветка doCalc(). Использует ЕДИНЫЙ shared/battery-s3-logic.js
+// (тот же модуль, что и инспектор). Авто-определяет N (модулей в шкафу) =
+// maxPerCabinet и C (шкафов) = ceil(loadKw / cabinetPowerKw); для обратного
+// режима — findMinimalS3Config. Никакого дублирования логики — всё в shared.
+function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff }) {
+  const out = document.getElementById('calc-result');
+  if (!out) return;
+  const lim = (battery.packaging || {});
+  // Эффективная нагрузка с дерейтингом и SoC-резервом (как для VRLA).
+  let loadKwEff = loadKw * derate.kTotal;
+  if (derate.socMinPct > 0) loadKwEff = loadKwEff / Math.max(0.5, 1 - derate.socMinPct / 100);
+
+  // Wiring — авто. Определяется в computeS3Configuration по диапазону Vdc ИБП.
+  // Авто-N: максимум на шкаф (минимизирует число шкафов и стоимость каркаса).
+  // Авто-C: для autonomy — минимум, в котором мощность вписывается; для
+  // required — calcAutonomy перебирает в findMinimalS3Config.
+  let s3Cfg = null, found = null, calcResult = null, html = '';
+  if (mode === 'autonomy') {
+    const probe = computeS3Configuration({
+      module: battery, loadKw: loadKwEff,
+      vdcMin: vRange.min, vdcMax: vRange.max, invEff,
+      modulesPerCabinet: Number(lim.maxPerCabinet) || 20,
+      cabinetsCount: 1,
+    });
+    const C = probe ? probe.minCabinetsForLoad : 1;
+    s3Cfg = computeS3Configuration({
+      module: battery, loadKw: loadKwEff,
+      vdcMin: vRange.min, vdcMax: vRange.max, invEff,
+      modulesPerCabinet: Number(lim.maxPerCabinet) || 20,
+      cabinetsCount: C,
+    });
+    const r = calcAutonomy({
+      battery, loadKw: loadKwEff,
+      dcVoltage: s3Cfg.vdcOper, strings: s3Cfg.cabinetsCount,
+      blocksPerString: s3Cfg.modulesPerCabinet,
+      endV: 1.75, invEff, chemistry: 'li-ion',
+      capacityAh: battery.capacityAh,
+    });
+    calcResult = { kind: 'autonomy', r, blocksPerString: s3Cfg.modulesPerCabinet, derate, loadKwEff, s3Cfg };
+    html += `<div class="result-block">`;
+    html += `<div class="result-title">Автономия системы Kehua S³ (${escHtml(battery.type)})</div>`;
+    html += `<div class="result-value">${Number.isFinite(r.autonomyMin) ? fmt(r.autonomyMin) + ' мин' : '∞'}</div>`;
+    html += `<div class="result-sub">Конфигурация (авто): <b>${s3Cfg.cabinetsCount} шкаф(ов) × ${s3Cfg.modulesPerCabinet} модулей</b> = ${s3Cfg.totalModules} мод. · V<sub>DC</sub>=${s3Cfg.vdcOper} В (${s3Cfg.wiring === 'series' ? 'series 2×240' : 'parallel 240'})</div>`;
+    html += `<div class="result-sub">Шкаф: <b>${escHtml(s3Cfg.cabinetModel)}</b> · паспорт ${fmt(s3Cfg.cabinetPowerKw)} кВт · до ${s3Cfg.nMax} модулей</div>`;
+    html += `<div class="result-sub">На модуль: <b>${fmt(s3Cfg.powerPerModuleW)} W</b> · ёмкость системы: <b>${fmt(s3Cfg.totalKwh)} кВт·ч</b></div>`;
+    html += `<div class="result-sub">Требуемая мощность от АКБ: ${fmt(s3Cfg.batteryPwrReqKw)} кВт · паспорт системы: ${fmt(s3Cfg.systemPowerKw)} кВт</div>`;
+    if (s3Cfg.overload) {
+      html += `<div class="warn">⚠ Перегруз шкафа: требуется ${fmt(s3Cfg.batteryPwrReqKw)} кВт > паспортные ${fmt(s3Cfg.systemPowerKw)} кВт. Минимум шкафов: ${s3Cfg.minCabinetsForLoad}.</div>`;
+    }
+    if (derate.kTotal > 1.001 || derate.socMinPct > 0) {
+      html += `<div class="result-sub" style="background:#f0f7ff;padding:4px 6px;border-radius:3px;font-size:11px">`
+        + `k<sub>age</sub>×k<sub>temp</sub>×k<sub>design</sub> = ${derate.kAge.toFixed(2)}×${derate.kTemp.toFixed(2)}×${derate.kDesign.toFixed(2)} = <b>${derate.kTotal.toFixed(3)}</b>`
+        + ` → расчётная нагрузка <b>${fmt(loadKwEff)} kW</b> (паспортная ${fmt(loadKw)} kW).`
+        + (derate.socMinPct > 0 ? ` Резерв SoC ${derate.socMinPct}%.` : '')
+        + `</div>`;
+    }
+    if (r.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время вне таблицы производителя — линейная экстраполяция.</div>`;
+    if (r.warnings && r.warnings.length) html += r.warnings.map(w => `<div class="warn">⚠ ${escHtml(w)}</div>`).join('');
+    html += `</div>`;
+  } else {
+    // Обратный режим: минимум модулей и шкафов для targetMin.
+    found = findMinimalS3Config({
+      module: battery, loadKw: loadKwEff, requiredAutonomyMin: targetMin,
+      vdcMin: vRange.min, vdcMax: vRange.max, invEff,
+      calcAutonomyFn: calcAutonomy,
+    });
+    if (found.ok) {
+      s3Cfg = computeS3Configuration({
+        module: battery, loadKw: loadKwEff,
+        vdcMin: vRange.min, vdcMax: vRange.max, invEff,
+        modulesPerCabinet: found.modulesPerCabinet,
+        cabinetsCount: found.cabinetsCount,
+      });
+      calcResult = {
+        kind: 'required',
+        found: {
+          totalBlocks: found.total,
+          strings: found.cabinetsCount,
+          blocksPerString: found.modulesPerCabinet,
+          result: { autonomyMin: found.autonomyMin, blockPowerW: s3Cfg.powerPerModuleW, method: 'table' },
+        },
+        blocksPerString: found.modulesPerCabinet, derate, loadKwEff, s3Cfg,
+      };
+      html += `<div class="result-block">`;
+      html += `<div class="result-title">Минимум для автономии ≥ ${targetMin} мин (Kehua S³ ${escHtml(battery.type)})</div>`;
+      html += `<div class="result-value">${found.cabinetsCount} шкаф(ов) × ${found.modulesPerCabinet} мод. = ${found.total}</div>`;
+      html += `<div class="result-sub">V<sub>DC</sub>=${s3Cfg.vdcOper} В (${s3Cfg.wiring === 'series' ? 'series 2×240' : 'parallel 240'}) · шкаф <b>${escHtml(s3Cfg.cabinetModel)}</b> · паспорт ${fmt(s3Cfg.cabinetPowerKw)} кВт</div>`;
+      html += `<div class="result-sub">Реальная автономия: <b>${fmt(found.autonomyMin)} мин</b> · на модуль: <b>${fmt(s3Cfg.powerPerModuleW)} W</b> · ёмкость: <b>${fmt(s3Cfg.totalKwh)} кВт·ч</b></div>`;
+      if (found.limitedByPower) html += `<div class="result-sub" style="color:#666;font-size:11px">Число шкафов ограничено паспортной мощностью системы (${fmt(s3Cfg.systemPowerKw)} кВт).</div>`;
+      if (derate.kTotal > 1.001 || derate.socMinPct > 0) {
+        html += `<div class="result-sub" style="background:#f0f7ff;padding:4px 6px;border-radius:3px;font-size:11px">`
+          + `k<sub>total</sub> = <b>${derate.kTotal.toFixed(3)}</b> → расч. <b>${fmt(loadKwEff)} kW</b> (пасп. ${fmt(loadKw)} kW).`
+          + (derate.socMinPct > 0 ? ` SoC ${derate.socMinPct}%.` : '')
+          + `</div>`;
+      }
+      html += `</div>`;
+    } else {
+      html += `<div class="result-block error">Не удалось подобрать S³-конфигурацию: ${escHtml(found.reason || 'unknown')}</div>`;
+    }
+  }
+  // График разряда + zoom (как для обычной АКБ — battery.dischargeTable есть).
+  html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда модуля</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Кривая P(t) для одного модуля. Красный маркер — рабочая точка.</div></div>`;
+  html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">Детализация в рабочей зоне (zoom)</div><div id="calc-chart-zoom-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div></div>`;
+  out.innerHTML = html;
+
+  const params = {
+    battery, chemistry: 'li-ion', loadKw,
+    dcVoltage: s3Cfg ? s3Cfg.vdcOper : 0,
+    strings: s3Cfg ? s3Cfg.cabinetsCount : 1,
+    endV: 1.75, invEff, mode, targetMin,
+    capacityAh: battery.capacityAh,
+  };
+  _renderCalcDischargeChart(params, calcResult, s3Cfg ? s3Cfg.modulesPerCabinet : 1, battery.blockVoltage);
+  _renderCalcDischargeChartZoom(params, calcResult, s3Cfg ? s3Cfg.modulesPerCabinet : 1, battery.blockVoltage);
+
+  lastBatteryCalc = { params, calcResult, vRange, opt: null, dcVoltageRaw: 0, blockV: battery.blockVoltage, dcWarn: null, s3Cfg };
+  const btnRpt = document.getElementById('btn-battery-report');
+  if (btnRpt) btnRpt.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
+  const btnPrn = document.getElementById('btn-battery-print');
+  if (btnPrn) btnPrn.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
+}
+
 function doCalc() {
   const out = document.getElementById('calc-result');
   if (!out) return;
@@ -1190,6 +1314,14 @@ function doCalc() {
   const mode = get('calc-mode').value;
   const targetMin = Number(get('calc-target').value) || 10;
   const capacityAh = Number(get('calc-capAh').value) || 100;
+
+  // v0.59.417: S³-модуль идёт по отдельной ветке через ЕДИНЫЙ shared-модуль
+  // (тот же, что в инспекторе ИБП). Авто-N=maxPerCabinet, авто-C по мощности.
+  if (battery && isS3Module(battery)) {
+    const vRange = _getCurrentVdcRange(dcVoltageRaw);
+    const derate = _readDerating();
+    return _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff });
+  }
 
   const blockV = battery ? battery.blockVoltage : (Number(get('calc-blockv').value) || 12);
 
@@ -1947,22 +2079,36 @@ function printBatteryReport() {
   html += `<style>
     body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; color:#1f2430; max-width: 920px; margin: 20px auto; padding: 0 16px; line-height:1.45; }
     h1 { font-size: 20px; margin: 0 0 4px; }
-    h2 { font-size: 15px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #ccd; }
+    h2 { font-size: 15px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #ccd;
+         break-after: avoid-page; page-break-after: avoid; break-inside: avoid; }
     .muted { color:#666; font-size: 12px; }
     table.rep { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0 10px; }
     table.rep th, table.rep td { border: 1px solid #ddd; padding: 4px 8px; }
     table.rep th { background: #f4f6fa; text-align: left; }
     .warn { background:#fff3e0; border:1px solid #ffb74d; padding:6px 10px; border-radius:4px; margin:6px 0; font-size:12px; }
-    .chart { background:#fafbfc; border:1px solid #e0e3ea; border-radius:6px; padding:10px; margin: 6px 0 12px; }
+    .chart { background:#fafbfc; border:1px solid #e0e3ea; border-radius:6px; padding:10px; margin: 6px 0 12px;
+             break-inside: avoid; page-break-inside: avoid; }
+    /* v0.59.418: «секция» = h2 + следующий блок (таблица / график / параграф).
+       break-inside: avoid удерживает заголовок вместе с первым следующим блоком,
+       чтобы заголовок не висел в одиночестве в конце страницы. */
+    .section { break-inside: avoid; page-break-inside: avoid; }
     .actions { position:fixed; top:10px; right:14px; }
     .actions button { padding: 6px 12px; font-size: 13px; cursor: pointer; }
-    @media print { .actions { display:none; } body { margin: 0; max-width: none; } }
+    @media print {
+      .actions { display:none; }
+      body { margin: 0; max-width: none; }
+      h2 { break-after: avoid-page; page-break-after: avoid; }
+      h2 + table, h2 + .chart, h2 + p, h2 + div { break-before: avoid-page; page-break-before: avoid; }
+      .section { break-inside: avoid; page-break-inside: avoid; }
+      .chart { break-inside: avoid; page-break-inside: avoid; }
+      tr, thead { break-inside: avoid; page-break-inside: avoid; }
+    }
   </style></head><body>`;
   html += `<div class="actions"><button onclick="window.print()">🖨 Печать</button> <button onclick="window.close()">✕ Закрыть</button></div>`;
   html += `<h1>Отчёт о расчёте аккумуляторной батареи</h1>`;
   html += `<div class="muted">Модель: <b>${escHtml(batName)}</b> · Дата: ${new Date().toLocaleString('ru-RU')}</div>`;
 
-  html += `<h2>1. Исходные данные</h2>`;
+  html += `<div class="section"><h2>1. Исходные данные</h2>`;
   html += tbl([
     row('Мощность нагрузки', p.loadKw, 'кВт'),
     row('КПД инвертора', (p.invEff * 100).toFixed(0), '%'),
@@ -1975,8 +2121,9 @@ function printBatteryReport() {
     row('Режим расчёта', p.mode === 'autonomy' ? 'Прямой (автономия по блокам)' : 'Обратный (блоки по автономии)', ''),
     p.mode === 'required' ? row('Требуемая автономия', p.targetMin, 'мин') : '',
   ]);
+  html += `</div>`;
 
-  html += `<h2>2. Результаты</h2>`;
+  html += `<div class="section"><h2>2. Результаты</h2>`;
   if (r.kind === 'autonomy' && r.r) {
     html += tbl([
       row('Автономия', Number.isFinite(r.r.autonomyMin) ? fmt(r.r.autonomyMin) : '∞', 'мин'),
@@ -1998,11 +2145,12 @@ function printBatteryReport() {
     ]);
     if (f.result.extrapolated) html += `<div class="warn">⚠ Условный расчёт: запрошенное время вне таблицы — линейная экстраполяция.</div>`;
   }
+  html += `</div>`;
 
   // Дерейтинг
   const d = r.derate;
   if (d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) {
-    html += `<h2>3. Расчётные коэффициенты (IEEE 485 / IEC 62040)</h2>`;
+    html += `<div class="section"><h2>3. Расчётные коэффициенты (IEEE 485 / IEC 62040)</h2>`;
     html += tbl([
       row('k_age', d.kAge.toFixed(2), '—'),
       row('k_temp', d.kTemp.toFixed(2), '—'),
@@ -2012,12 +2160,13 @@ function printBatteryReport() {
       row('Резерв SoC (Li-ion)', d.socMinPct.toFixed(0), '%'),
       Number.isFinite(r.loadKwEff) ? row('Расчётная нагрузка', fmt(r.loadKwEff), 'кВт') : '',
     ]);
+    html += `</div>`;
   }
 
   // Подбор N
   if (s.opt && s.vRange) {
     const o = s.opt, vR = s.vRange;
-    html += `<h2>${(d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) ? '4' : '3'}. Подбор числа блоков (V_DC оптимизация)</h2>`;
+    html += `<div class="section"><h2>${(d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) ? '4' : '3'}. Подбор числа блоков (V_DC оптимизация)</h2>`;
     html += `<p style="font-size:12px">Минимальное N в цепочке при условии: V_DC в окне ИБП и при разряде, и при float-заряде.</p>`;
     html += tbl([
       row('Диапазон V_DC ИБП', vR.min + '…' + vR.max, 'В'),
@@ -2031,6 +2180,7 @@ function printBatteryReport() {
     ]);
     html += `<p style="font-size:12px;color:#444">Формулы: N_min = ⌈V_DC_min_eff / (endV · cellsPerBlock)⌉; N_max = ⌊V_DC_max_eff / (floatV · cellsPerBlock)⌋. Выбран минимум — экономически оптимально.</p>`;
     if (s.dcWarn) html += `<div class="warn">⚠ ${escHtml(s.dcWarn)}</div>`;
+    html += `</div>`;
   }
 
   // Графики (вытягиваем innerHTML текущих SVG)
@@ -2038,14 +2188,16 @@ function printBatteryReport() {
   const zoomChart = document.getElementById('calc-chart-zoom-mount');
   const nextN = (d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) ? (s.opt ? '5' : '4') : (s.opt ? '4' : '3');
   if (mainChart && mainChart.innerHTML.trim()) {
-    html += `<h2>${nextN}. График разряда АКБ</h2>`;
+    html += `<div class="section"><h2>${nextN}. График разряда АКБ</h2>`;
     html += `<div class="chart">${mainChart.innerHTML}</div>`;
     html += `<p class="muted">Красный маркер — рассчитанная рабочая точка. Оранжевый — экстраполированная (за пределами таблицы производителя).</p>`;
+    html += `</div>`;
   }
   if (zoomChart && zoomChart.innerHTML.trim()) {
-    html += `<h2>${+nextN + 1}. Детализация в рабочей зоне</h2>`;
+    html += `<div class="section"><h2>${+nextN + 1}. Детализация в рабочей зоне</h2>`;
     html += `<div class="chart">${zoomChart.innerHTML}</div>`;
     html += `<p class="muted">Окно вокруг рабочей точки. Линейные шкалы для оценки запаса по обеим осям.</p>`;
+    html += `</div>`;
   }
 
   html += `<hr style="margin-top:18px"><p class="muted">Документ сформирован автоматически Raschet · ${new Date().toLocaleDateString('ru-RU')}</p>`;
