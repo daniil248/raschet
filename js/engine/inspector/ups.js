@@ -304,10 +304,14 @@ export function openUpsParamsModal(n) {
     const upsCatalog = listUpses();
     const upsPickerMount = document.getElementById('up-cat-picker-mount');
     if (upsCatalog.length && upsPickerMount) {
-      // В инспекторе ИБП показываем ТОЛЬКО готовые ИБП (kind==='ups' или
-      // без kind), исключая BOM-заготовки: фреймы, силовые модули,
-      // батарейные шкафы. Их пользователь видит в подпрограмме ups-config/.
-      const upsOnly = upsCatalog.filter(u => !u.kind || u.kind === 'ups');
+      // В инспекторе ИБП показываем ТОЛЬКО полнокомплектные ИБП:
+      // классические (без kind) и интегрированные (kind:'ups-integrated').
+      // Исключаются BOM-заготовки: фреймы, силовые модули, батарейные шкафы.
+      // v0.59.411: добавлен 'ups-integrated' — ранее ошибочно отсеивался,
+      // и MR3390-B/MR33150-S не появлялись в каскадном пикере инспектора.
+      const upsOnly = upsCatalog.filter(u =>
+        !u.kind || u.kind === 'ups' || u.kind === 'ups-integrated'
+      );
       mountUpsPicker(upsPickerMount, {
         list: upsOnly,
         selectedId: n.upsCatalogId || null,

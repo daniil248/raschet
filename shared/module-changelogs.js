@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.411', date: '2026-04-26', items: [
+      '🩹 <b>Каскадный пикер ИБП в инспекторе показывает интегрированные модели.</b> Раньше фильтр в <code>js/engine/inspector/ups.js</code> был <code>!u.kind || u.kind === \'ups\'</code> — это случайно отсеивало записи <code>kind:\'ups-integrated\'</code> (MR3390-B, MR3390-S, MR33150-B, MR33150-S). В каскаде Производитель → Серия → Модель пользователь не мог выбрать интегрированный ИБП — приходилось идти в полноценный <code>ups-config</code>. Теперь фильтр явно разрешает <code>!u.kind || kind===\'ups\' || kind===\'ups-integrated\'</code>; продолжают отсеиваться только BOM-заготовки (frame / power-module / batt-cabinet-*). Файл: js/engine/inspector/ups.js (renderUpsInspector — фильтр upsOnly).',
+    ] },
     { version: '0.59.410', date: '2026-04-26', items: [
       '🧹 <b>Battery-калькулятор: из списка ИБП убраны несамостоятельные записи.</b> Жалоба: «зачем ты в список ИБП включил силовые модули, они не работают сами по себе». Раньше выпадающий «ИБП из каталога» в <code>battery/index.html</code> показывал все записи каталога, включая <code>kind:\'frame\'</code> (пустые корпуса MR33), <code>kind:\'power-module\'</code> (силовые модули PM 30K/50K/100K) и батарейные шкафы (<code>kind:\'batt-cabinet-vrla/s3\'</code>). Все они имеют <code>capacityKw=0</code> — выбор такой записи в качестве «ИБП» приводил к ошибке расчёта АКБ (нагрузка 150 кВт против шкафа 0 кВт → «Не удалось подобрать конфигурацию в пределах 2000 блоков»).',
       '• Введён фильтр <code>_isStandaloneUps(u)</code> в <code>renderUpsPicker</code>: пропускаются только записи без поля <code>kind</code> (классические готовые ИБП) и с <code>kind:\'ups-integrated\'</code> (интегрированные). Frames, power-modules и battery-cabinets — отсеиваются. Wizard <code>ups-config</code> уже фильтровал такие записи через <code>detectUpsType</code> — здесь логика приведена к тому же поведению.',
