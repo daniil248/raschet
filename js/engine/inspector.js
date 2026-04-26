@@ -13,6 +13,9 @@ import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './c
 import { getMethod } from '../methods/index.js';
 import { listTransformers } from '../../shared/transformer-catalog.js';
 import { mountTransformerPicker, applyTransformerModel } from '../../shared/transformer-picker.js';
+// v0.59.351: автоматический матч узла схемы с реестрами проекта по S/N или Инв.№.
+import { findInventoryMatch } from '../../shared/inventory-bridge.js';
+import { getActiveProjectId as _activeProjectId } from '../../shared/project-storage.js';
 import { rsPrompt, rsConfirm } from '../../shared/dialog.js';
 
 // Внешние зависимости, устанавливаемые через bindInspectorDeps
@@ -1220,6 +1223,36 @@ export function renderGeneralPanel(n) {
   h.push(field('Имя', `<input type="text" data-prop="name" value="${escAttr(n.name || '')}">`));
   h.push(field('Инв. №&nbsp;/&nbsp;паспорт', `<input type="text" data-prop="assetId" value="${escAttr(n.assetId || '')}" placeholder="например, INV-0042">`));
   h.push(field('Серийный №', `<input type="text" data-prop="serialNo" value="${escAttr(n.serialNo || '')}" placeholder="необязательно">`));
+  // v0.59.351: автоматический матч с реестрами проекта по S/N или Инв.№.
+  // Если узел уже описан в реестре IT (scs-config) или объекта (facility-
+  // inventory) — показываем чип со ссылкой. Чисто read-only, никаких полей
+  // на узле не добавляем (lookup делается каждый раз при рендере инспектора).
+  try {
+    if ((n.serialNo && n.serialNo.trim()) || (n.assetId && n.assetId.trim())) {
+      const pid = _activeProjectId();
+      const m = findInventoryMatch(pid, n.serialNo || '', n.assetId || '');
+      if (m) {
+        if (m.kind === 'it') {
+          const tag = m.rackTag ? ` · стойка <b>${escHtml(m.rackTag)}</b>` : '';
+          const devLabel = (m.device && (m.device.label || m.device.name)) || '?';
+          h.push(`<div style="margin-top:6px;padding:6px 10px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:4px;font-size:11px;color:#065f46">
+            ✓ Найден в реестре IT: <b>${escHtml(devLabel)}</b>${tag}
+            <a href="../scs-config/inventory.html" style="margin-left:8px;color:#047857" title="Открыть реестр IT-оборудования">→ открыть</a>
+          </div>`);
+        } else if (m.kind === 'facility') {
+          const itLabel = (m.item && (m.item.name || m.item.label)) || '?';
+          h.push(`<div style="margin-top:6px;padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;font-size:11px;color:#92400e">
+            ✓ Найден в реестре объекта: <b>${escHtml(itLabel)}</b>
+            <a href="../facility-inventory/" style="margin-left:8px;color:#b45309" title="Открыть реестр оборудования объекта">→ открыть</a>
+          </div>`);
+        }
+      } else {
+        h.push(`<div class="muted" style="margin-top:6px;font-size:11px;opacity:0.7">
+          🔍 В реестрах проекта не найден (по S/N или Инв.№)
+        </div>`);
+      }
+    }
+  } catch {}
   h.push(`<div class="muted" style="font-size:11px;margin-top:4px">UUID: <code style="font-size:11px">${escHtml(n.id)}</code></div>`);
   h.push(`</div>`);
 
