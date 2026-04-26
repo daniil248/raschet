@@ -27,10 +27,14 @@ const MODULE_PATH_RX = /\/(schematic|cable|scs-design|scs-config|facility-invent
 function inferModuleId() {
   try {
     const p = location.pathname.toLowerCase();
+    // hub.html — главный экран программ.
+    if (/\/hub\.html$/.test(p)) return 'hub';
+    // /projects/project.html — детальная карточка одного проекта (push'ит в
+    // back-stack: с неё уходят в модули и возвращаются обратно).
+    if (/\/projects\/project\.html$/.test(p)) return 'project-detail';
     const m = p.match(/\/([\w-]+)\/(?:index\.html|inventory\.html)?$/);
     if (m) {
       const dir = m[1];
-      // inventory.html лежит в scs-config — отдельный moduleId.
       if (dir === 'scs-config' && /inventory\.html$/i.test(p)) return 'scs-config-inventory';
       if (dir === 'projects') return 'projects';
       return dir;
@@ -80,26 +84,39 @@ export function mountHeader(opts = {}) {
   }
 
   // v0.59.342: project-badge + back-кнопка для cross-module навигации.
+  // v0.59.344: правила:
+  //  - hub (главный экран программ) — никаких project-фич: ни back, ни
+  //    project-badge, ни link-rewriter. Это «корень» приложения.
+  //  - /projects/ — пушать в стек не нужно; это «лист проектов», точка входа.
+  //  - direct-entry в конфигуратор (URL без ?project=) — пользователь хочет
+  //    разовый расчёт; не показываем back/badge и не переписываем ссылки.
+  //    Это значит: «штучные» модули (cable, mv-config, ups-config, и т.п.),
+  //    запускаемые с hub, не предлагают переходов в другие модули.
+  //  - project-mode (URL содержит ?project=) — полный набор фич: pushNavStep,
+  //    badge, back-кнопка, link-rewriter с пробросом контекста.
   const ctx = (() => { try { return getProjectContext(); } catch { return {}; } })();
-  // Регистрируем текущую страницу в back-stack — следующий модуль сможет
-  // вернуться сюда через ←-кнопку. Для /projects/ сами не пушим (там
-  // clearNavStack при клике по ссылке модуля).
-  if (moduleId && moduleId !== 'projects') {
+  const isHub = moduleId === 'hub';
+  const isProjectsList = moduleId === 'projects';
+  const inProjectMode = !!ctx.projectId && !isHub;
+
+  // Push в back-stack только в project-mode и не для самого /projects/.
+  if (moduleId && !isHub && !isProjectsList && inProjectMode) {
     try { pushNavStep({ moduleId, projectId: ctx.projectId, url: location.href }); } catch {}
   }
-  const prev = (() => { try { return getPreviousStep(); } catch { return null; } })();
-  const proj = ctx.projectId ? (() => { try { return getProject(ctx.projectId); } catch { return null; } })() : null;
 
-  // Если нет стека, но в URL есть ?from= — синтезируем "виртуальный" prev,
-  // чтобы пользователь, перешедший напрямую по сохранённой ссылке, тоже
-  // увидел back-кнопку.
-  const effectivePrev = prev || (ctx.fromModule ? { moduleId: ctx.fromModule, url: null } : null);
+  const prev = inProjectMode ? (() => { try { return getPreviousStep(); } catch { return null; } })() : null;
+  const proj = inProjectMode ? (() => { try { return getProject(ctx.projectId); } catch { return null; } })() : null;
+
+  // Виртуальный prev из ?from= — только в project-mode.
+  const effectivePrev = inProjectMode
+    ? (prev || (ctx.fromModule ? { moduleId: ctx.fromModule, url: null } : null))
+    : null;
 
   const backBtnHtml = effectivePrev
     ? `<button type="button" class="rs-back-btn" title="Вернуться: ${esc(moduleLabel(effectivePrev.moduleId))}" aria-label="Назад" data-from="${esc(effectivePrev.moduleId)}">←&nbsp;${esc(moduleLabel(effectivePrev.moduleId).replace(/^[^\s]+\s/,''))}</button>`
     : '';
   const projBadgeHtml = proj
-    ? `<span class="rs-proj-badge" title="Активный проект: ${esc(proj.name || proj.id)}\nКликните чтобы вернуться к списку проектов">📁&nbsp;${esc(proj.name || proj.id)}</span>`
+    ? `<span class="rs-proj-badge" title="Активный проект: ${esc(proj.name || proj.id)}\nКликните чтобы вернуться к проекту">📁&nbsp;${esc(proj.name || proj.id)}</span>`
     : '';
 
   const header = document.createElement('header');
@@ -132,29 +149,36 @@ export function mountHeader(opts = {}) {
   if (backBtn) backBtn.addEventListener('click', (e) => {
     e.preventDefault();
     const fromAttr = backBtn.getAttribute('data-from');
-    // Если ?from=projects — идём на /projects/ (особый случай).
+    const inSub = location.pathname.split('/').filter(Boolean).length > 1;
+    // Особые цели вне back-stack:
     if (fromAttr === 'projects') {
-      // Из подпапки '../projects/'; из корня './projects/'.
-      const inSub = !/\/(?:index\.html)?$/.test(location.pathname) && location.pathname.split('/').filter(Boolean).length > 1;
       location.href = inSub ? '../projects/' : './projects/';
       return;
     }
-    try { navigateBack('../projects/'); } catch { history.back(); }
+    if (fromAttr === 'project-detail' && ctx.projectId) {
+      const base = inSub ? '../projects/project.html' : './projects/project.html';
+      location.href = buildModuleHref(base, { projectId: ctx.projectId });
+      return;
+    }
+    if (fromAttr === 'hub') {
+      location.href = inSub ? '../hub.html' : './hub.html';
+      return;
+    }
+    // По умолчанию: pop из back-stack или fallback на карточку проекта.
+    const fallback = ctx.projectId
+      ? buildModuleHref((inSub ? '../projects/project.html' : './projects/project.html'), { projectId: ctx.projectId })
+      : (inSub ? '../projects/' : './projects/');
+    try { navigateBack(fallback); } catch { history.back(); }
   });
 
-  // Project-badge — клик ведёт к /projects/.
+  // Project-badge — клик ведёт к карточке проекта /projects/project.html.
   const projBadge = header.querySelector('.rs-proj-badge');
-  if (projBadge) {
+  if (projBadge && ctx.projectId) {
     projBadge.style.cursor = 'pointer';
     projBadge.addEventListener('click', () => {
-      // Пытаемся определить относительный путь к /projects/.
-      const path = location.pathname;
-      const depth = (path.match(/\/[^\/]+\//g) || []).length;
-      // Простая эвристика: если мы в подпапке (e.g. /scs-config/) — '../projects/'
-      const href = path.endsWith('/projects/') || path.endsWith('/projects/index.html')
-        ? location.href
-        : (path.includes('/projects/') ? './' : '../projects/');
-      location.href = href;
+      const inSub = !/^\/(?:index\.html)?$/.test(location.pathname) && location.pathname.split('/').filter(Boolean).length > 1;
+      const base = inSub ? '../projects/project.html' : './projects/project.html';
+      location.href = buildModuleHref(base, { projectId: ctx.projectId });
     });
   }
 
@@ -164,7 +188,10 @@ export function mountHeader(opts = {}) {
   // v0.59.342: глобальный делегат на клик по ссылкам других модулей —
   // дописывает ?project=&from=<thisModule> «на лету», чтобы не править
   // каждый <a> в каждом модуле.
-  if (moduleId) _wireModuleLinks(moduleId);
+  // v0.59.344: link-rewriter активируется ТОЛЬКО в project-mode. В hub и
+  // direct-entry — обычные ссылки без проброса контекста; пользователь явно
+  // решил «штучный» запуск.
+  if (moduleId && inProjectMode) _wireModuleLinks(moduleId);
 
   return header;
 }

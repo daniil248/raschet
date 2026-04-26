@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Проект</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="projects.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'Карточка проекта', home: '../hub.html' });
+  </script>
+
+  <main class="pr-wrap">
+    <section class="pr-card" id="pr-detail-head">
+      <!-- Заполняется project.js -->
+    </section>
+
+    <section class="pr-card">
+      <h3 style="margin:0 0 12px">Модули проекта</h3>
+      <p class="muted" style="margin:0 0 14px">
+        Только модули, которые имеют смысл в контексте проекта. «Штучные»
+        конфигураторы (Расчёт кабельной линии, РУ СН, ИБП, щит, PDU,
+        трансформатор, АГПТ, корпус шкафа) — на главном экране
+        <a href="../hub.html">Программы</a>; они вызываются разово или из
+        других модулей по контексту.
+      </p>
+      <div id="pr-detail-modules"></div>
+    </section>
+
+    <section class="pr-card">
+      <h3 style="margin:0 0 12px">Действия с проектом</h3>
+      <div id="pr-detail-actions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </section>
+
+    <section class="pr-card">
+      <h3 style="margin:0 0 8px">Заметки и метаданные</h3>
+      <div id="pr-detail-meta"></div>
+    </section>
+  </main>
+
+  <script type="module" src="project.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'projects', moduleTitle: 'Карточка проекта', entries: CHANGELOGS['projects'] || [] });
+  </script>
+</body>
+</html>

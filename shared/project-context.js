@@ -54,6 +54,7 @@ export function getProjectContext() {
 /** Имя модуля по id для подписей в breadcrumb. */
 export const MODULE_LABELS = {
   'projects':              'Проекты',
+  'project-detail':        '📁 Карточка проекта',
   'schematic':             '⚡ Конструктор схем',
   'cable':                 '🧮 Расчёт кабельной линии',
   'scs-design':            '🔗 Проектирование СКС',

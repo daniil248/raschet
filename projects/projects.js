@@ -119,31 +119,14 @@ function fmtDate(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/* ---------- Ссылки на связанные модули ----------
-   v0.59.342: к каждой ссылке добавляется ?project=<pid>&from=projects, чтобы
-   модуль вошёл в режим «работа в проекте» (только данные этого проекта).
-   Список расширен на все конфигураторы — раньше показывались только пять,
-   а пользовательские проекты часто требуют РУ СН/ИБП/щит/PDU/трансформатор. */
-const LINKED_MODULES = [
-  { id: 'schematic',            href: '../index.html',                  label: '⚡ Конструктор схем' },
-  { id: 'cable',                href: '../cable/',                      label: '🧮 Расчёт кабельной линии' },
-  { id: 'scs-design',           href: '../scs-design/',                 label: '🔗 Проектирование СКС' },
-  { id: 'scs-config',           href: '../scs-config/',                 label: '🗄 Компоновщик шкафа' },
-  { id: 'scs-config-inventory', href: '../scs-config/inventory.html',   label: '📦 Реестр IT-оборудования' },
-  { id: 'facility-inventory',   href: '../facility-inventory/',         label: '🏭 Реестр оборудования объекта' },
-  { id: 'rack-config',          href: '../rack-config/',                label: '🗄 Конфигуратор стойки' },
-  { id: 'mv-config',            href: '../mv-config/',                  label: '⚡ РУ СН' },
-  { id: 'ups-config',           href: '../ups-config/',                 label: '🔋 Конфигуратор ИБП' },
-  { id: 'panel-config',         href: '../panel-config/',               label: '🔌 Конфигуратор щита' },
-  { id: 'pdu-config',           href: '../pdu-config/',                 label: '🔌 Конфигуратор PDU' },
-  { id: 'transformer-config',   href: '../transformer-config/',         label: '🔄 Конфигуратор трансформатора' },
-  { id: 'mdc-config',           href: '../mdc-config/',                 label: '🏗 Модульный ЦОД' },
-  { id: 'suppression-config',   href: '../suppression-config/',         label: '🔥 АГПТ' },
-];
-
-function moduleHrefForProject(pid, mod) {
-  return buildModuleHref(mod.href, { projectId: pid, fromModule: 'projects' });
-}
+/* v0.59.344: на странице /projects/ выводим ТОЛЬКО список проектов
+   (имя, описание, статус, статистика, метаданные, базовые действия).
+   Чипы модулей перенесены в детальную карточку /projects/project.html,
+   которая показывает только осмысленный для проекта набор: схемы, СКС,
+   реестры оборудования, модульный ЦОД. «Штучные» конфигураторы (cable,
+   ИБП, РУ СН, щит, PDU, трансформатор, АГПТ, конфигуратор стойки) с
+   проекта не запускаются — они вызываются из других модулей по контексту
+   или с hub.html для разовых расчётов. */
 
 /* ---------- Статусы проекта (Фаза 1.27.5) ---------- */
 const STATUSES = [
@@ -274,11 +257,10 @@ function render() {
           ${statusBadge}
         </div>
         <div class="pr-project-actions">
+          <a href="project.html?project=${escapeHtml(p.id)}" class="pr-btn-primary" data-act="open" title="Перейти к карточке проекта (схемы, реестры, СКС, ЦОД)">Открыть проект →</a>
           ${isActive ? '' : `<button type="button" class="pr-btn-sel" data-act="activate">Сделать активным</button>`}
           <button type="button" class="pr-btn-sel" data-act="status">Статус ▾</button>
           <button type="button" class="pr-btn-sel" data-act="rename">Переименовать</button>
-          <button type="button" class="pr-btn-sel" data-act="import-scheme" title="Скопировать текущую глобальную схему Конструктора в этот проект">⬇ Взять глобальную схему</button>
-          <button type="button" class="pr-btn-sel" data-act="apply-scheme" title="Применить схему проекта к главному Конструктору (перезапишет глобальную схему!)">⬆ Применить в Конструкторе</button>
           <button type="button" class="pr-btn-sel" data-act="export">Экспорт JSON</button>
           <button type="button" class="pr-btn-sel" data-act="copy" title="Создать копию проекта: метаданные + все scoped-данные (стойки, связи, инвентарь). Новые id для экземпляров стоек.">📄 Копировать</button>
           <button type="button" class="pr-btn-danger" data-act="delete">Удалить</button>
@@ -291,15 +273,11 @@ function render() {
         <span>· Изменён: ${fmtDate(p.updatedAt)}</span>
         <span>· ID: <code>${escapeHtml(p.id)}</code></span>
       </div>
-      <div class="pr-project-links">
-        ${LINKED_MODULES.map(m => `<a href="${moduleHrefForProject(p.id, m)}" class="pr-link-chip" data-mod="${m.id}">${m.label}</a>`).join('')}
-      </div>
     </div>`;
   }).join('');
 
-  // v0.59.342: при клике по ссылке модуля сбрасываем back-stack — это
-  // «корневой» переход из проектов, неоткуда возвращаться.
-  host.querySelectorAll('.pr-link-chip').forEach(a => {
+  // v0.59.344: «Открыть проект» — корневой переход, очищаем back-stack.
+  host.querySelectorAll('[data-act="open"]').forEach(a => {
     a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
   });
 
@@ -327,31 +305,8 @@ function render() {
       prToast('✔ Обновлено');
       render();
     });
-    el.querySelector('[data-act="import-scheme"]')?.addEventListener('click', async () => {
-      const raw = localStorage.getItem('raschet.scheme');
-      if (!raw) { prToast('⚠ Глобальная схема Конструктора пуста', 'err'); return; }
-      const ok = await prConfirm(
-        'Взять глобальную схему в проект?',
-        'В этот проект скопируется текущее содержимое главного Конструктора схем. Существующая схема проекта (если есть) будет перезаписана.'
-      );
-      if (!ok) return;
-      localStorage.setItem(`raschet.project.${id}.engine.scheme.v1`, raw);
-      updateProject(id, {});
-      prToast('✔ Схема скопирована в проект');
-      render();
-    });
-    el.querySelector('[data-act="apply-scheme"]')?.addEventListener('click', async () => {
-      const key = `raschet.project.${id}.engine.scheme.v1`;
-      const raw = localStorage.getItem(key);
-      if (!raw) { prToast('⚠ В проекте нет схемы. Сначала «⬇ Взять глобальную схему»', 'err'); return; }
-      const ok = await prConfirm(
-        'Применить схему проекта в Конструкторе?',
-        'Текущая глобальная схема Конструктора будет ПЕРЕЗАПИСАНА схемой этого проекта. Действие необратимо без backup — при необходимости сначала экспортируйте текущую глобальную схему через Конструктор.'
-      );
-      if (!ok) return;
-      localStorage.setItem('raschet.scheme', raw);
-      prToast('✔ Схема применена. Откройте Конструктор схем для проверки.');
-    });
+    // v0.59.344: import/apply-scheme перенесены в детальную карточку
+    // /projects/project.html — на странице списка их быть не должно.
     el.querySelector('[data-act="export"]')?.addEventListener('click', () => {
       const blob = exportProject(id);
       if (!blob) { prToast('⚠ Проект не найден', 'err'); return; }
