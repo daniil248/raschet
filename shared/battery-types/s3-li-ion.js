@@ -71,13 +71,17 @@ export const s3LiIonType = {
     const fromModules = Math.ceil(totalModules / lim.maxPerCabinet);
     const minByPower  = Math.max(0, Number(options.minCabinets) || 0);
     const cabinetsCount = Math.max(fromModules, minByPower);
+    // v0.59.442: равномерное распределение модулей по шкафам.
+    // Раньше первый шкаф заполнялся полностью, остаток шёл во второй.
+    // Теперь base = floor(total/cabs), первые (total % cabs) шкафов
+    // получают +1 модуль (так распределение максимально ровное).
     const cabinets = [];
-    let remaining = totalModules;
+    const baseFill = cabinetsCount > 0 ? Math.floor(totalModules / cabinetsCount) : 0;
+    const extra    = cabinetsCount > 0 ? (totalModules - baseFill * cabinetsCount) : 0;
     for (let i = 0; i < cabinetsCount; i++) {
       const role = (i === 0) ? 'master' : 'slave';
       const variant = (i === 0) ? masterVariant : slaveVariant;
-      const fillModules = Math.min(remaining, lim.maxPerCabinet);
-      remaining -= fillModules;
+      const fillModules = Math.min(lim.maxPerCabinet, baseFill + (i < extra ? 1 : 0));
       cabinets.push({
         role, variant,
         model: baseModel + '-' + variant,

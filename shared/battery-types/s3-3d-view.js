@@ -1,29 +1,24 @@
 // ======================================================================
-// shared/battery-types/s3-3d-view.js (v0.59.437)
+// shared/battery-types/s3-3d-view.js (v0.59.442)
 // Настоящий 3D-вид сборки шкафов S³ на Three.js с OrbitControls.
 //
 // API:
-//   mountS3ThreeDView(container, spec, { height = 360, modelInfo } = {})
+//   mountS3ThreeDView(container, spec, { height = 520, modelInfo } = {})
 //     → { dispose() }
 //
-// container — пустой DOM-элемент, в который монтируется WebGL-канвас.
-// spec      — результат s3LiIonType.buildSystem().
-// modelInfo — паспорт модуля (для угадывания типа: S3M040/050 узкий
-//             с 2 колонками модулей или S3M100 широкий с 1 колонкой).
-//
-// Габариты по User Manual S³:
-//   шкаф 600 W × 850 D × 2000 H мм (Figure 3-7)
-//   фронт — перфорированная мет. дверь во всю высоту, ручка справа,
-//   тач-скрин слева сверху на master, у combiner — горизонтальные шины.
+// v0.59.442:
+//   - крупное окно по умолчанию (520 px) + кнопка «⛶ Развернуть» (модалка
+//     на весь экран с тем же canvas).
+//   - над модулями каждого master/slave — модуль с автоматами защиты
+//     (DC SPD), 1 автомат у slave, 2 автомата у master (User Manual S³).
+//   - настройки фона (небо/тёмный/белый) и плоскости (серая 600/300/100 мм
+//     или скрыта). По умолчанию — небо + серая плоскость + 600×600 мм.
 // ======================================================================
 
 let _threePromise = null;
 function loadThree() {
   if (_threePromise) return _threePromise;
   _threePromise = (async () => {
-    // esm.sh резолвит bare-imports внутри OrbitControls.js (`import 'three'`)
-    // автоматически, поэтому не требуется importmap в HTML-страницах.
-    // Запасной фолбэк через jsdelivr/skypack — на случай блокировки esm.sh.
     const tryLoad = async (base) => {
       const T = await import(/* @vite-ignore */ `${base}/three@0.160.0`);
       const o = await import(/* @vite-ignore */ `${base}/three@0.160.0/examples/jsm/controls/OrbitControls.js`);
@@ -38,26 +33,22 @@ function loadThree() {
   return _threePromise;
 }
 
-// Процедурная текстура перфорированной двери (тёмный фон + сетка точек).
+// Текстура перфорированной двери.
 function makePerforatedTexture(THREE, w = 256, h = 768) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
-  // фон
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, '#2a2d33');
   grad.addColorStop(1, '#1a1c22');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
-  // перфорация
   ctx.fillStyle = '#0a0b0e';
   const step = 8, r = 1.6;
   for (let y = step; y < h - step; y += step) {
     const off = (Math.floor(y / step) % 2) ? step / 2 : 0;
     for (let x = step + off; x < w - step; x += step) {
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -66,26 +57,22 @@ function makePerforatedTexture(THREE, w = 256, h = 768) {
   return tex;
 }
 
-// Текстура combiner-двери — горизонтальные шины + надпись.
 function makeCombinerTexture(THREE, w = 256, h = 768) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#3a3f48';
   ctx.fillRect(0, 0, w, h);
-  // болты по периметру
   ctx.fillStyle = '#1a1c22';
   for (let i = 0; i < 8; i++) {
     const y = 20 + i * (h - 40) / 7;
     ctx.beginPath(); ctx.arc(12, y, 3, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(w - 12, y, 3, 0, Math.PI * 2); ctx.fill();
   }
-  // шины
   ctx.fillStyle = '#c97a2a';
   ctx.fillRect(40, h * 0.30, w - 80, 18);
   ctx.fillRect(40, h * 0.42, w - 80, 18);
   ctx.fillRect(40, h * 0.54, w - 80, 18);
-  // подпись
   ctx.fillStyle = '#e6e8ee';
   ctx.font = 'bold 18px system-ui';
   ctx.textAlign = 'center';
@@ -97,33 +84,7 @@ function makeCombinerTexture(THREE, w = 256, h = 768) {
   return tex;
 }
 
-// Текстура одного модуля для отрытой двери (если режим explode).
-function makeModuleTexture(THREE) {
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 32;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#3d4855';
-  ctx.fillRect(0, 0, 128, 32);
-  // решётка перфорации
-  ctx.fillStyle = '#0a0b0e';
-  for (let y = 4; y < 28; y += 4) {
-    for (let x = 6; x < 100; x += 4) {
-      ctx.fillRect(x, y, 1.2, 1.2);
-    }
-  }
-  // ручка справа
-  ctx.fillStyle = '#222';
-  ctx.fillRect(108, 10, 14, 12);
-  // LED
-  ctx.fillStyle = '#7bd88f';
-  ctx.fillRect(102, 12, 3, 3);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-// Колонки/ряды модулей в шкафу по типу. S3C040/050 — 2 col × 11 row,
-// S3C100 — 1 col × 12 row (по фото User Manual). Фолбэк: maxPerCabinet>12 → 2 col.
+// Раскладка модулей.
 function moduleLayout(maxPerCabinet, modelHint) {
   const m = String(modelHint || '');
   if (/100/.test(m)) return { cols: 1, rows: 12 };
@@ -135,10 +96,9 @@ function moduleLayout(maxPerCabinet, modelHint) {
   return { cols: 1, rows: Math.max(8, maxPerCabinet) };
 }
 
-// Полка-модуль: тонкая horizontal-slab с перфорированной мордой и LED.
+// Полка-модуль АКБ.
 function buildModuleMesh(THREE, w, h, d, opts = {}) {
   const g = new THREE.Group();
-  // корпус
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
     new THREE.MeshStandardMaterial({
@@ -150,7 +110,6 @@ function buildModuleMesh(THREE, w, h, d, opts = {}) {
     }),
   );
   g.add(body);
-  // фронтальная сетка
   if (!opts.empty) {
     const c = document.createElement('canvas');
     c.width = 192; c.height = 48;
@@ -162,10 +121,8 @@ function buildModuleMesh(THREE, w, h, d, opts = {}) {
         ctx.fillRect(x, y, 1.2, 1.2);
       }
     }
-    // ручка справа
     ctx.fillStyle = '#1a1c22';
     ctx.fillRect(160, 14, 22, 20);
-    // LED-зелёный
     ctx.fillStyle = '#7bd88f';
     ctx.fillRect(154, 18, 4, 4);
     const tex = new THREE.CanvasTexture(c);
@@ -177,7 +134,6 @@ function buildModuleMesh(THREE, w, h, d, opts = {}) {
     front.position.set(0, 0, d / 2 + 0.0008);
     g.add(front);
   } else {
-    // заглушка — крестик из тонких рейлов
     const mat = new THREE.MeshBasicMaterial({ color: 0x4a4f58 });
     const r1 = new THREE.Mesh(new THREE.BoxGeometry(w * 0.9, 0.004, 0.001), mat);
     r1.position.set(0, 0, d / 2 + 0.001);
@@ -186,49 +142,99 @@ function buildModuleMesh(THREE, w, h, d, opts = {}) {
   return g;
 }
 
+// v0.59.442: модуль с автоматами защиты DC (над АКБ-модулями).
+// 1 автомат у slave (1 строка), 2 автомата у master (2 строки)
+// — по эскизам User Manual S³.
+function buildBreakerPanel(THREE, w, d, breakerCount) {
+  const g = new THREE.Group();
+  // высота панели ~120 мм
+  const h = 0.12;
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x3a3f48, metalness: 0.45, roughness: 0.55,
+  });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bodyMat);
+  g.add(body);
+  // фронтальная пластина с автоматами (canvas-текстура)
+  const c = document.createElement('canvas');
+  c.width = 384; c.height = 96;
+  const ctx = c.getContext('2d');
+  // фон панели (металл со штриховкой)
+  const grad = ctx.createLinearGradient(0, 0, 0, 96);
+  grad.addColorStop(0, '#4a4f58');
+  grad.addColorStop(1, '#3a3f48');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 384, 96);
+  // винты по углам
+  ctx.fillStyle = '#1a1c22';
+  for (const [x, y] of [[12, 12], [372, 12], [12, 84], [372, 84]]) {
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  // автоматы (DC MCB-style: серое тело + белый рычажок-«флажок»)
+  const breakers = Math.max(1, Math.min(2, breakerCount | 0));
+  const totalW = 384;
+  // распределение: 1 → справа (slave), 2 → слева+справа (master)
+  const positions = breakers === 1 ? [totalW * 0.72] : [totalW * 0.28, totalW * 0.72];
+  for (const cx of positions) {
+    const bw = 56, bh = 48;
+    const bx = cx - bw / 2, by = 24;
+    // корпус автомата
+    ctx.fillStyle = '#1d2026';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = '#0a0b0e';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(bx, by, bw, bh);
+    // окно «I/O» (рычажок) — белый прямоугольник
+    ctx.fillStyle = '#e6e8ee';
+    ctx.fillRect(bx + bw / 2 - 9, by + bh / 2 - 7, 18, 14);
+    // подпись
+    ctx.fillStyle = '#cfd3dc';
+    ctx.font = 'bold 8px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('DC', cx, by + 8);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const front = new THREE.Mesh(
+    new THREE.PlaneGeometry(w * 0.97, h * 0.92),
+    new THREE.MeshStandardMaterial({ map: tex, metalness: 0.3, roughness: 0.65 }),
+  );
+  front.position.set(0, 0, d / 2 + 0.001);
+  g.add(front);
+  return g;
+}
+
 function buildCabinet(THREE, role, opts) {
-  // unit: 1 = 1 м, шкаф 0.6 × 0.85 × 2.0
   const W = 0.6, D = 0.85, H = 2.0;
   const group = new THREE.Group();
 
-  // полый корпус: 5 стенок (без передней) — чтобы видеть модули внутри
   const bodyMat = new THREE.MeshStandardMaterial({
     color: 0x4a4f58, metalness: 0.5, roughness: 0.55, side: THREE.DoubleSide,
   });
   const innerMat = new THREE.MeshStandardMaterial({
     color: 0x2a2c30, metalness: 0.4, roughness: 0.7, side: THREE.DoubleSide,
   });
-  const t = 0.012; // толщина стенок
-  // задняя
+  const t = 0.012;
   const back = new THREE.Mesh(new THREE.BoxGeometry(W, H, t), innerMat);
-  back.position.set(0, H / 2, -D / 2 + t / 2);
-  group.add(back);
-  // левая
+  back.position.set(0, H / 2, -D / 2 + t / 2); group.add(back);
   const left = new THREE.Mesh(new THREE.BoxGeometry(t, H, D), bodyMat);
-  left.position.set(-W / 2 + t / 2, H / 2, 0);
-  group.add(left);
-  // правая
+  left.position.set(-W / 2 + t / 2, H / 2, 0); group.add(left);
   const right = new THREE.Mesh(new THREE.BoxGeometry(t, H, D), bodyMat);
-  right.position.set(W / 2 - t / 2, H / 2, 0);
-  group.add(right);
-  // верх
+  right.position.set(W / 2 - t / 2, H / 2, 0); group.add(right);
   const top = new THREE.Mesh(new THREE.BoxGeometry(W, t, D), bodyMat);
-  top.position.set(0, H - t / 2, 0);
-  group.add(top);
-  // низ
+  top.position.set(0, H - t / 2, 0); group.add(top);
   const bot = new THREE.Mesh(new THREE.BoxGeometry(W, t, D), bodyMat);
-  bot.position.set(0, t / 2, 0);
-  group.add(bot);
+  bot.position.set(0, t / 2, 0); group.add(bot);
 
-  // === модули внутри (только для master/slave) ===
+  // === модули + панель автоматов (для master/slave) ===
   if (role === 'master' || role === 'slave') {
     const lay = opts.layout || { cols: 2, rows: 11 };
     const filled = Math.max(0, opts.modulesInCabinet || 0);
-    const total = lay.cols * lay.rows;
-    // зона размещения: внутр. ширина W-2t, высота H-2t-(top reserved 0.18 для контроллера),
-    // глубина D-2t.
     const innerW = W - 2 * t - 0.04;
-    const innerH = H - 2 * t - 0.20; // оставляем сверху на тач-скрин/панель
+    // v0.59.442: резервируем 0.16 м под панель автоматов сверху
+    // и 0.06 м под верхний короб контроллера
+    const breakerH = 0.12;
+    const reservedTop = breakerH + 0.10;
+    const innerH = H - 2 * t - reservedTop;
     const innerD = D - 2 * t - 0.04;
     const modH = innerH / lay.rows * 0.92;
     const modGap = innerH / lay.rows * 0.08;
@@ -238,9 +244,6 @@ function buildCabinet(THREE, role, opts) {
     const startX = -innerW / 2 + modW / 2;
     for (let r = 0; r < lay.rows; r++) {
       for (let c = 0; c < lay.cols; c++) {
-        const idx = r * lay.cols + c; // top-down — но мы строим снизу вверх,
-        // поэтому invert: считаем filled от верхних рядов?
-        // По User Manual модули заполняют сверху. Инвертируем r:
         const rTop = (lay.rows - 1 - r);
         const idxTop = rTop * lay.cols + c;
         const isFilled = idxTop < filled;
@@ -253,11 +256,15 @@ function buildCabinet(THREE, role, opts) {
         group.add(m);
       }
     }
+    // v0.59.442: панель автоматов сразу над модулями
+    const breakerCount = role === 'master' ? 2 : 1;
+    const panel = buildBreakerPanel(THREE, innerW, innerD * 0.7, breakerCount);
+    panel.position.set(0, t + innerH + breakerH / 2 + 0.02, 0);
+    group.add(panel);
   }
 
-  // === дверь (отдельная группа, поворачивается на левой петле) ===
+  // дверь
   const doorPivot = new THREE.Group();
-  // петля — на левой стороне, дверь смещена вправо от pivot.
   doorPivot.position.set(-W / 2 + 0.005, H / 2, D / 2 + 0.002);
   group.add(doorPivot);
 
@@ -276,12 +283,10 @@ function buildCabinet(THREE, role, opts) {
     new THREE.PlaneGeometry(W * 0.96, H * 0.96),
     doorMat,
   );
-  door.position.set(W * 0.96 / 2, 0, 0); // pivot на левом краю
+  door.position.set(W * 0.96 / 2, 0, 0);
   doorPivot.add(door);
-  // регистрируем pivot для toggle-открытия
   if (opts.collectDoor) opts.collectDoor(doorPivot, role);
 
-  // ручка двери справа (на самой двери — относительно doorPivot)
   const handleMat = new THREE.MeshStandardMaterial({
     color: 0x2a2c30, metalness: 0.7, roughness: 0.4,
   });
@@ -292,24 +297,17 @@ function buildCabinet(THREE, role, opts) {
   handle.position.set(W * 0.92, 0, 0.025);
   doorPivot.add(handle);
   for (const dy of [-0.18, 0.18]) {
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.025, 0.02, 0.05),
-      handleMat,
-    );
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.02, 0.05), handleMat);
     m.position.set(W * 0.92, dy, 0.012);
     doorPivot.add(m);
   }
 
-  // тач-скрин master — на двери, слева сверху (относительно doorPivot)
   if (role === 'master') {
     const screenBase = new THREE.Mesh(
       new THREE.BoxGeometry(0.18, 0.13, 0.012),
-      new THREE.MeshStandardMaterial({
-        color: 0x121418, metalness: 0.3, roughness: 0.6,
-      }),
+      new THREE.MeshStandardMaterial({ color: 0x121418, metalness: 0.3, roughness: 0.6 }),
     );
     screenBase.position.set(W * 0.18, H * 0.33, 0.008);
-    group.add(screenBase);
     doorPivot.add(screenBase);
     const screenGlow = new THREE.Mesh(
       new THREE.PlaneGeometry(0.15, 0.10),
@@ -326,7 +324,6 @@ function buildCabinet(THREE, role, opts) {
     doorPivot.add(led);
   }
 
-  // основание — небольшая металлическая плита
   const base = new THREE.Mesh(
     new THREE.BoxGeometry(W * 1.02, 0.04, D * 1.02),
     new THREE.MeshStandardMaterial({ color: 0x1a1c22, metalness: 0.6, roughness: 0.5 }),
@@ -334,7 +331,6 @@ function buildCabinet(THREE, role, opts) {
   base.position.set(0, 0.02, 0);
   group.add(base);
 
-  // подпись модели сверху (текстовый спрайт)
   if (opts.label) {
     const sprite = makeLabelSprite(THREE, opts.label, opts.subLabel);
     sprite.position.set(0, H + 0.18, 0);
@@ -370,10 +366,24 @@ function makeLabelSprite(THREE, text, sub) {
   return sp;
 }
 
+// v0.59.442: текстура неба (вертикальный градиент).
+function makeSkyTexture(THREE) {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0.0, '#7ec1ff'); // зенит
+  g.addColorStop(0.55, '#cbe4f7');
+  g.addColorStop(1.0, '#f4f8fc');  // у горизонта
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export async function mountS3ThreeDView(container, spec, opts = {}) {
   if (!container) return { dispose() {} };
   container.innerHTML = '';
-  // плейсхолдер
   const ph = document.createElement('div');
   ph.style.cssText = 'padding:14px;color:#888;font-size:12px;text-align:center';
   ph.textContent = 'Загрузка 3D-вида (Three.js)…';
@@ -388,42 +398,56 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   const { THREE, OrbitControls } = mod;
   container.removeChild(ph);
 
-  const height = opts.height || 380;
+  // v0.59.442: высота по умолчанию увеличена до 520 px (было 380).
+  const height = opts.height || 520;
   const wrap = document.createElement('div');
   wrap.style.cssText =
     `position:relative;width:100%;height:${height}px;border:1px solid #2a2f3a;` +
-    `border-radius:8px;background:linear-gradient(180deg,#1a1d24 0%,#0e1014 100%);` +
-    `overflow:hidden`;
+    `border-radius:8px;overflow:hidden`;
   container.appendChild(wrap);
 
+  // подсказка
   const hint = document.createElement('div');
   hint.style.cssText =
-    'position:absolute;left:8px;top:8px;font:11px system-ui;color:#8a93a6;' +
-    'background:rgba(0,0,0,0.4);padding:3px 7px;border-radius:4px;pointer-events:none;z-index:2';
+    'position:absolute;left:8px;top:8px;font:11px system-ui;color:#1a2a44;' +
+    'background:rgba(255,255,255,0.75);padding:3px 7px;border-radius:4px;pointer-events:none;z-index:2';
   hint.innerHTML = '🖱 ЛКМ — вращать · колесо — зум · ПКМ — панорама';
   wrap.appendChild(hint);
 
-  // легенда справа сверху
+  // легенда
   const legend = document.createElement('div');
   legend.style.cssText =
-    'position:absolute;right:8px;top:8px;font:11px system-ui;color:#cfd3dc;' +
-    'background:rgba(0,0,0,0.45);padding:6px 9px;border-radius:4px;line-height:1.5;z-index:2';
+    'position:absolute;right:8px;top:8px;font:11px system-ui;color:#1a2a44;' +
+    'background:rgba(255,255,255,0.78);padding:6px 9px;border-radius:4px;line-height:1.5;z-index:2';
   const cabs = spec.cabinets || [];
   const counts = { master: 0, slave: 0, combiner: 0 };
   for (const c of cabs) counts[c.role] = (counts[c.role] || 0) + 1;
   legend.innerHTML =
     `<b>${cabs.length}</b> шкаф(ов): ` +
-    (counts.master ? `<span style="color:#4a8eff">●</span> ${counts.master} master ` : '') +
-    (counts.slave  ? `<span style="color:#7bd88f">●</span> ${counts.slave} slave ` : '') +
-    (counts.combiner ? `<span style="color:#c97a2a">●</span> ${counts.combiner} combiner` : '');
+    (counts.master ? `<span style="color:#1f5fcf">●</span> ${counts.master} master ` : '') +
+    (counts.slave  ? `<span style="color:#2c8a4a">●</span> ${counts.slave} slave ` : '') +
+    (counts.combiner ? `<span style="color:#a85a18">●</span> ${counts.combiner} combiner` : '');
   wrap.appendChild(legend);
 
-  // сцена
   const scene = new THREE.Scene();
-  scene.background = null; // прозрачный — фон от wrap
+
+  // === фон / плоскость ===
+  const skyTex = makeSkyTexture(THREE);
+
+  function applyBackground(kind) {
+    if (kind === 'sky') {
+      scene.background = skyTex;
+    } else if (kind === 'dark') {
+      scene.background = new THREE.Color(0x0e1014);
+    } else if (kind === 'white') {
+      scene.background = new THREE.Color(0xf4f6fa);
+    } else {
+      scene.background = null;
+    }
+  }
 
   // освещение
-  scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
   const key = new THREE.DirectionalLight(0xffffff, 0.85);
   key.position.set(2.5, 4, 3);
   scene.add(key);
@@ -431,26 +455,34 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   fill.position.set(-3, 2, -2);
   scene.add(fill);
 
-  // пол
+  // плоскость (пол) + сетка
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(20, 20),
-    new THREE.MeshStandardMaterial({ color: 0x14161c, roughness: 0.95, metalness: 0.0 }),
+    new THREE.PlaneGeometry(40, 40),
+    new THREE.MeshStandardMaterial({ color: 0x9aa0aa, roughness: 0.95, metalness: 0.0 }),
   );
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
-  // сетка
-  const grid = new THREE.GridHelper(10, 20, 0x2a2f3a, 0x1a1c22);
-  grid.position.y = 0.001;
-  scene.add(grid);
 
-  // ряд шкафов вдоль X. Шкаф 0.6 м, между шкафами зазор 0 (стоят впритык).
+  // сетка с шагом 0.6 м (600 мм). 40 м × 40 м → 67 делений ≈ округлим до 60.
+  let gridHelper = null;
+  function rebuildGrid(stepMm) {
+    if (gridHelper) { scene.remove(gridHelper); gridHelper.geometry.dispose(); }
+    if (!stepMm) { gridHelper = null; return; }
+    const stepM = stepMm / 1000;
+    const size = 24; // 24 м поля
+    const divisions = Math.round(size / stepM);
+    gridHelper = new THREE.GridHelper(size, divisions, 0x4a4f58, 0x6a707a);
+    gridHelper.position.y = 0.001;
+    scene.add(gridHelper);
+  }
+
+  // === шкафы ===
   const sharedOpts = {};
   const W = 0.6, D = 0.85;
   const total = cabs.length;
   const startX = -((total - 1) * W) / 2;
-  const doorPivots = []; // для toggle-открытия
+  const doorPivots = [];
   cabs.forEach((cab, i) => {
-    // total slots = modulesInCabinet + emptySlots; layout по модели шкафа.
     const totalSlots = (cab.modulesInCabinet || 0) + (cab.emptySlots || 0);
     const layout = moduleLayout(totalSlots, cab.model);
     const g = buildCabinet(THREE, cab.role, {
@@ -467,59 +499,95 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     scene.add(g);
   });
 
-  // === toggle «Открыть/закрыть двери» ===
+  // === Тулбар (низ-лево): двери + развернуть ===
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText =
+    'position:absolute;left:8px;bottom:8px;display:flex;gap:6px;z-index:3';
+  wrap.appendChild(toolbar);
+
+  const btnBase = 'font:11px system-ui;color:#fff;background:#234a8a;' +
+    'border:1px solid #3463b8;border-radius:4px;padding:6px 11px;cursor:pointer';
+
   const toggleBtn = document.createElement('button');
-  toggleBtn.style.cssText =
-    'position:absolute;left:8px;bottom:8px;font:11px system-ui;color:#e6e8ee;' +
-    'background:#234a8a;border:1px solid #3463b8;border-radius:4px;padding:5px 10px;' +
-    'cursor:pointer;z-index:2';
+  toggleBtn.style.cssText = btnBase;
   toggleBtn.textContent = '🚪 Открыть двери';
   let doorsOpen = false;
-  let animProgress = 0; // 0..1
+  let animProgress = 0;
   toggleBtn.addEventListener('click', () => {
     doorsOpen = !doorsOpen;
     toggleBtn.textContent = doorsOpen ? '🚪 Закрыть двери' : '🚪 Открыть двери';
   });
-  wrap.appendChild(toggleBtn);
+  toolbar.appendChild(toggleBtn);
 
-  // камера
-  const initW = wrap.clientWidth || 600;
+  const fullBtn = document.createElement('button');
+  fullBtn.style.cssText = btnBase + ';background:#2a3f5a;border-color:#3a557a';
+  fullBtn.textContent = '⛶ Развернуть';
+  toolbar.appendChild(fullBtn);
+
+  // === Панель настроек (низ-право): фон + сетка ===
+  const settings = document.createElement('div');
+  settings.style.cssText =
+    'position:absolute;right:8px;bottom:8px;display:flex;gap:8px;align-items:center;' +
+    'background:rgba(255,255,255,0.85);padding:6px 9px;border-radius:6px;' +
+    'font:11px system-ui;color:#1a2a44;z-index:3';
+  settings.innerHTML =
+    '<label style="display:flex;align-items:center;gap:4px">Фон ' +
+      '<select data-role="bg" style="font:11px system-ui;padding:1px 3px">' +
+        '<option value="sky" selected>Небо</option>' +
+        '<option value="dark">Тёмный</option>' +
+        '<option value="white">Белый</option>' +
+      '</select></label>' +
+    '<label style="display:flex;align-items:center;gap:4px">Сетка ' +
+      '<select data-role="grid" style="font:11px system-ui;padding:1px 3px">' +
+        '<option value="600" selected>600 мм</option>' +
+        '<option value="300">300 мм</option>' +
+        '<option value="100">100 мм</option>' +
+        '<option value="0">скрыть</option>' +
+      '</select></label>';
+  wrap.appendChild(settings);
+
+  const bgSel = settings.querySelector('[data-role="bg"]');
+  const gridSel = settings.querySelector('[data-role="grid"]');
+  bgSel.addEventListener('change', () => applyBackground(bgSel.value));
+  gridSel.addEventListener('change', () => rebuildGrid(Number(gridSel.value) || 0));
+
+  // дефолты: небо + 600 мм сетка
+  applyBackground('sky');
+  rebuildGrid(600);
+
+  // камера + рендерер
+  const initW = wrap.clientWidth || 800;
   const initH = height;
-  const camera = new THREE.PerspectiveCamera(38, initW / initH, 0.05, 50);
-  // вид с фронта-сверху-сбоку, как на фото User Manual
+  const camera = new THREE.PerspectiveCamera(38, initW / initH, 0.05, 100);
   const sceneWidth = Math.max(2.5, total * W + 1.8);
-  camera.position.set(sceneWidth * 0.55, 1.6, sceneWidth * 0.85);
+  camera.position.set(sceneWidth * 0.55, 1.6, sceneWidth * 0.95);
   camera.lookAt(0, 1.0, 0);
 
-  // рендерер
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(initW, initH);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   wrap.appendChild(renderer.domElement);
   renderer.domElement.style.display = 'block';
 
-  // OrbitControls
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 1.0, 0);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.minDistance = 1.5;
-  controls.maxDistance = 12;
-  controls.maxPolarAngle = Math.PI * 0.495; // не пускаем под пол
+  controls.minDistance = 1.2;
+  controls.maxDistance = 20;
+  controls.maxPolarAngle = Math.PI * 0.495;
   controls.update();
 
   let stopped = false;
-  const MAX_ANGLE = Math.PI * 0.65; // ~117° — настежь
+  const MAX_ANGLE = Math.PI * 0.65;
   function loop() {
     if (stopped) return;
     controls.update();
-    // плавная анимация дверей
     const target = doorsOpen ? 1 : 0;
     if (Math.abs(animProgress - target) > 0.001) {
       animProgress += (target - animProgress) * 0.12;
       for (const { pivot } of doorPivots) {
-        // отриц. угол — дверь открывается наружу (правый край → +z)
         pivot.rotation.y = -animProgress * MAX_ANGLE;
       }
     }
@@ -529,19 +597,65 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   loop();
 
   // ресайз
-  const ro = new ResizeObserver(() => {
-    const w = wrap.clientWidth || initW;
-    const h = wrap.clientHeight || initH;
+  const resize = () => {
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
     if (!w || !h) return;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
-  });
+  };
+  const ro = new ResizeObserver(resize);
   ro.observe(wrap);
+
+  // === модалка «Развернуть» ===
+  let modalOverlay = null;
+  let originalParent = wrap.parentNode;
+  let originalHeight = height;
+  function enterFullscreen() {
+    if (modalOverlay) return;
+    modalOverlay = document.createElement('div');
+    modalOverlay.style.cssText =
+      'position:fixed;left:0;top:0;right:0;bottom:0;z-index:9999;' +
+      'background:rgba(10,12,18,0.94);display:flex;flex-direction:column;' +
+      'padding:18px;box-sizing:border-box';
+    const closeBtn = document.createElement('button');
+    closeBtn.style.cssText =
+      'position:absolute;right:16px;top:16px;z-index:10000;font:13px system-ui;' +
+      'color:#fff;background:#a83a3a;border:1px solid #c95252;border-radius:4px;' +
+      'padding:7px 14px;cursor:pointer';
+    closeBtn.textContent = '✕ Закрыть (Esc)';
+    closeBtn.addEventListener('click', exitFullscreen);
+    modalOverlay.appendChild(closeBtn);
+    wrap.style.height = '100%';
+    wrap.style.flex = '1';
+    modalOverlay.appendChild(wrap);
+    document.body.appendChild(modalOverlay);
+    fullBtn.textContent = '⤓ Свернуть';
+    document.addEventListener('keydown', escHandler);
+    requestAnimationFrame(resize);
+  }
+  function exitFullscreen() {
+    if (!modalOverlay) return;
+    document.removeEventListener('keydown', escHandler);
+    wrap.style.height = originalHeight + 'px';
+    wrap.style.flex = '';
+    originalParent.appendChild(wrap);
+    modalOverlay.remove();
+    modalOverlay = null;
+    fullBtn.textContent = '⛶ Развернуть';
+    requestAnimationFrame(resize);
+  }
+  function escHandler(e) { if (e.key === 'Escape') exitFullscreen(); }
+  fullBtn.addEventListener('click', () => {
+    if (modalOverlay) exitFullscreen(); else enterFullscreen();
+  });
 
   return {
     dispose() {
       stopped = true;
+      try { document.removeEventListener('keydown', escHandler); } catch {}
+      try { if (modalOverlay) modalOverlay.remove(); } catch {}
       try { ro.disconnect(); } catch {}
       try { controls.dispose(); } catch {}
       try { renderer.dispose(); } catch {}
