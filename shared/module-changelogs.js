@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.448', date: '2026-04-26', items: [
+      '🔋 <b>Single source of truth для каталога АКБ (Kehua S³).</b> Раньше у новых пользователей каталог АКБ был пустой, пока не кликнули «Загрузить Kehua S³» — та же проблема «двух источников», что была у UPS до v0.59.446.',
+      '• Создан <code>shared/battery-seed.js</code> — идемпотентный авто-seed модулей/шкафов/аксессуаров S³ при импорте.',
+      '• Подключён в <code>battery/battery-calc.js</code> и <code>js/engine/index.js</code> (для инспектора ИБП в главной схеме).',
+      '• Идемпотентный режим (только missing-id): не ломает правки пользователя в существующих записях. seedVersion=1 как стартовый, бампается при изменениях seed-данных.',
+    ] },
     { version: '0.59.447', date: '2026-04-26', items: [
       '🏷 <b>Fix: kind у новых ИБП — \'ups\' (стандартный), а не \'ups-integrated\'.</b> «Интегрированный» — это специфика Kehua с встроенными PDM-панелями распределения. Schneider/Eaton/Legrand/DKC — обычные моноблоки или модульные ИБП. Раньше все 40 новых записей имели <code>kind:\'ups-integrated\'</code>, и в wizard\'е ups-config они отображались как «Интегрированный». Теперь корректно классифицируются по <code>upsType</code> через реестр <code>shared/ups-types/</code>.',
       '🔬 <b>Battery-calc: фильтр «Тип» теперь динамический.</b> Раньше — хардкод 2 опции (Моноблок/Модульный). Теперь — populate из <code>listUpsTypes()</code>: Моноблок / Модульный / Интегрированный / All-in-One. Фильтрация — через <code>detectUpsType(u).id</code>, single source of truth с wizard\'ом.',

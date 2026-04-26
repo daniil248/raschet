@@ -20,6 +20,9 @@ import { listUpses, getUps } from '../shared/ups-catalog.js';
 // v0.59.446: единый источник правды seed-данных ИБП (Kehua MR33/S3 AIO,
 // Schneider, Eaton, Legrand, DKC). Импорт инициализирует каталог.
 import '../shared/ups-seed.js';
+// v0.59.448: единый источник правды seed-данных АКБ (Kehua S³).
+// Аналогично ups-seed.js — раньше требовался ручной клик на кнопку.
+import '../shared/battery-seed.js';
 // v0.59.447: реестр типов ИБП (плагины) — single source of truth для
 // фильтра «Тип» (моноблок/модульный/интегрированный/all-in-one).
 import { listUpsTypes, detectUpsType } from '../shared/ups-types/index.js';

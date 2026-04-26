@@ -97,6 +97,8 @@ import { listUpses, addUps } from '../../shared/ups-catalog.js';
 // Импорт сам вызывает ensureBuiltinUpsSeeds() — каталог гарантированно
 // инициализирован к моменту первого listUpses().
 import '../../shared/ups-seed.js';
+// v0.59.448: единый seed-модуль для каталога АКБ (Kehua S³ модули/шкафы).
+import '../../shared/battery-seed.js';
 const PENDING_UPS_KEY = 'raschet.pendingUpsSelection.v1';
 function _tryConsumePendingUpsSelection() {
   let raw;
