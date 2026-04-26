@@ -1448,6 +1448,49 @@ export function renderNodes() {
     zoneParent.appendChild(g);
   }
 
+  // v0.59.430: интегрированный ИБП (kind='ups-integrated') — рисуем
+  // прямоугольник-оболочку вокруг ИБП и его дочерних PDM-панелей. Визуально
+  // это выглядит как единый шкаф (Kehua MR33 60-150K), внутри которого
+  // плотно стоят секции ATS/MCCB и PDM-AC/IT/Bypass. Bounds считаются
+  // динамически по координатам родителя + всех children из integratedChildIds.
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'ups' || n.kind !== 'ups-integrated') continue;
+    if (!isOnCurrentPage(n)) continue;
+    const childIds = Array.isArray(n.integratedChildIds) ? n.integratedChildIds : [];
+    if (!childIds.length) continue;
+    const members = [n, ...childIds.map(id => state.nodes.get(id)).filter(Boolean)];
+    if (members.length < 2) continue;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const m of members) {
+      const mw = nodeWidth(m), mh = nodeHeight(m);
+      if (m.x < minX) minX = m.x;
+      if (m.y < minY) minY = m.y;
+      if (m.x + mw > maxX) maxX = m.x + mw;
+      if (m.y + mh > maxY) maxY = m.y + mh;
+    }
+    const pad = 14;
+    const wx = minX - pad, wy = minY - pad - 18;
+    const ww = maxX - minX + pad * 2, wh = maxY - minY + pad * 2 + 18;
+    const g = el('g', {
+      class: 'integrated-ups-shell',
+      transform: `translate(${wx},${wy})`,
+    });
+    // Корпус — заливка и обводка цвета фирменного шкафа.
+    g.appendChild(el('rect', {
+      x: 0, y: 0, width: ww, height: wh,
+      fill: '#fafbfc', 'fill-opacity': '0.55',
+      stroke: '#37474f', 'stroke-width': 1.5,
+      'stroke-dasharray': '4 3', rx: 6,
+      'pointer-events': 'none',
+    }));
+    // Заголовок «Integrated UPS Cabinet — TAG model».
+    const tag = effectiveTag(n) || n.tag || 'UPS';
+    const cap = (n.supplier ? n.supplier + ' ' : '') + (n.model || '');
+    g.appendChild(text(8, 12, `📦 ${tag}${cap ? ' · ' + cap : ''} (Integrated)`, 'node-tag'));
+    // Кладём оболочку В САМЫЙ НИЗ, чтобы не перекрывать дочерние элементы.
+    layerNodes.insertBefore(g, layerNodes.firstChild);
+  }
+
   // Многосекционные щиты — обёртка-контейнер (рисуется как зона)
   for (const n of state.nodes.values()) {
     if (n.type !== 'panel' || n.switchMode !== 'sectioned') continue;

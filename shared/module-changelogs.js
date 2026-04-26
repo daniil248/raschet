@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.430', date: '2026-04-26', items: [
+      '📦 <b>SVG-оболочка вокруг интегрированного ИБП.</b> Закрыт roadmap-пункт из v0.59.422: вокруг родительского узла <code>ups-integrated</code> и его дочерних PDM-панелей (utility/bypass/inverter) теперь отрисовывается общая прямоугольная оболочка с пунктирной рамкой (#37474f, dasharray 4 3) и полупрозрачной заливкой (#fafbfc / 0.55), скруглением rx=6 и заголовком «📦 TAG · supplier model (Integrated)» в верхнем-левом углу. Визуально шкаф теперь выглядит как единый корпус, а не россыпь отдельных узлов.',
+      '• <b>Алгоритм:</b> bounds = объединение bbox родителя и всех узлов из <code>n.integratedChildIds</code>; padding 14 px + 18 px сверху под подпись.',
+      '• <b>Z-order:</b> <code>&lt;g class="integrated-ups-shell"&gt;</code> вставляется первым в <code>layerNodes</code> (через <code>insertBefore(firstChild)</code>), чтобы оболочка всегда была ПОД дочерними узлами и не перехватывала клики (<code>pointer-events: none</code> на rect).',
+      'Файлы: js/engine/render.js (новый блок ~30 строк перед sectioned-panel wrapper, рядом с другими общими оболочками).',
+    ] },
     { version: '0.59.429', date: '2026-04-26', items: [
       '🔷 <b>Состав системы S³ + варианты в модалке «Управление АКБ» инспектора.</b> Когда узел ИБП на схеме использует S³-модуль, в модалке инспектора под основным BOM-блоком теперь появляется свернутая секция <code>&lt;details&gt;</code> «Состав системы S³ (автосборка) — N шкаф(ов) + M аксессуаров» с такой же таблицей, как в standalone battery-calc: Master / Slave / Combiner + аксессуары (wire-kit, networking device, blank panels).',
       '🎛 <b>Inline-селекторы master/slave/fire-fighting.</b> Внутри секции — три select\'а (Master variant, Slave variant, Fire-fighting). Сохраняются в узле как <code>n.batteryMasterVariant</code>, <code>n.batterySlaveVariant</code>, <code>n.batteryFireFighting</code>. При смене модалка перерендеривается и в таблице обновляются суффиксы моделей шкафов (S3C040-6C-20-<b>M1</b> вместо -M и т.п.).',
