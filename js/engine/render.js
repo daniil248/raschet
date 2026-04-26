@@ -2258,9 +2258,12 @@ function _renderConnsLayout() {
     const b = _centerFor(toN);
     const color = _connColor(fromN, toN);
     // Невидимая «толстая» дорожка для удобного попадания клика.
+    // class='conn-hit' — обработчики interaction.js делают
+    // e.target.closest('.conn-hit, .conn') и выбирают связь по dataset.connId.
     const hit = el('line', {
       x1: a.x, y1: a.y, x2: b.x, y2: b.y,
       stroke: 'transparent', 'stroke-width': 18,
+      class: 'conn-hit',
       style: 'pointer-events:stroke;cursor:pointer',
     });
     hit.dataset.connId = c.id;
@@ -2273,8 +2276,10 @@ function _renderConnsLayout() {
       stroke: color, 'stroke-width': selected ? 6 : 4,
       'stroke-linecap': 'round',
       'stroke-opacity': 0.85,
+      class: 'conn',
       style: 'pointer-events:none',
     });
+    ln.dataset.connId = c.id;
     if (c.lineMode === 'damaged') ln.setAttribute('stroke-dasharray', '8 6');
     else if (c.lineMode === 'disabled') ln.setAttribute('stroke-opacity', '0.35');
     layerConns.appendChild(ln);

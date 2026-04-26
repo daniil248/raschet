@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.382', date: '2026-04-26', items: [
+      '🖱 <b>Layout-связи теперь кликабельны.</b> Доводка v0.59.380.',
+      '• До этого hit-line у географических линий не имел класса <code>.conn-hit</code>, а видимая линия — класса <code>.conn</code>; обработчики выбора в <code>interaction.js</code> делают <code>e.target.closest(\'.conn-hit, .conn\')</code> — без класса связь не находилась, клик по линии ничего не делал.',
+      '• Добавлены классы и <code>dataset.connId</code> на видимую линию. Теперь связь на layout-странице выделяется и попадает в инспектор.',
+      'Файлы: js/engine/render.js (_renderConnsLayout: class=conn-hit / conn).',
+    ] },
     { version: '0.59.381', date: '2026-04-26', items: [
       '🔓 <b>Категория и тип потребителя больше не привязывают параметры.</b> Жалоба пользователя: «выбор категории не должен привязывать параметры».',
       '• До этого смена «Категория» автоматически выбирала первый «Тип» из новой категории и dispatched change → handler перезаписывал demandKw/cosPhi/kUse/inrushFactor/curveHint значениями из каталожной записи и ставил <code>catalogLocked=true</code>. Пользовательские значения молча терялись.',
