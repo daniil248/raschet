@@ -169,6 +169,36 @@ export function openUpsParamsModal(n) {
     </div>`);
   }
 
+  // v0.59.388: блок «Интегрированные компоненты» для типа integrated.
+  // Показывает встроенный АВР и список распред. панелей PDM (read-only).
+  // Источник истины — сам узел (n.hasIntegratedAts, n.pdmModules).
+  if (n.kind === 'ups-integrated') {
+    h.push('<h4 style="margin:16px 0 8px">Интегрированные компоненты</h4>');
+    const atsLine = n.hasIntegratedAts
+      ? '<b>Входной АВР:</b> встроенный (2 ввода с автоматическим переключением)'
+      : '<b>Входной АВР:</b> нет (1 ввод через MCCB)';
+    const pdms = Array.isArray(n.pdmModules) ? n.pdmModules : [];
+    const pdmRows = pdms.length
+      ? pdms.map(p => {
+          const src = p.source === 'utility'  ? 'сеть'
+                    : p.source === 'inverter' ? 'инвертор'
+                    : p.source === 'bypass'   ? 'байпас'
+                    : (p.source || '—');
+          return `<li><b>${escHtml(p.label || p.id)}</b> · ${escHtml(src)} · ${Number(p.maxBreakers) || 0}×${escHtml(p.polarity || '1P')}</li>`;
+        }).join('')
+      : '<li class="muted">Распределительные панели не настроены</li>';
+    const cab = (n.cabinetWidthMm || n.cabinetDepthMm || n.cabinetHeightMm)
+      ? `<div class="muted" style="font-size:11px;margin-top:6px">Габариты шкафа: ${n.cabinetWidthMm || '—'} × ${n.cabinetDepthMm || '—'} × ${n.cabinetHeightMm || '—'} мм</div>`
+      : '';
+    h.push(`<div class="muted" style="font-size:11.5px;line-height:1.65;padding:8px 10px;background:#f0f7ff;border-radius:6px;border:1px solid #cfe2ff">
+      ${atsLine}
+      <div style="margin-top:6px"><b>Распред. панели (PDM):</b></div>
+      <ul style="margin:4px 0 0 18px;padding:0">${pdmRows}</ul>
+      ${cab}
+      <div style="margin-top:6px;font-size:10.5px;color:#666">Параметры берутся из каталога при выборе модели и попадают в BOM (категории «Встроенный АВР ИБП», «Распред. панели ИБП (PDM)»).</div>
+    </div>`);
+  }
+
   // Состав защитных аппаратов
   h.push('<h4 style="margin:16px 0 8px">Состав защитных аппаратов</h4>');
   h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">Отметьте какие автоматы физически присутствуют в ИБП. Отсутствующие не будут показаны в панели управления.</div>');
