@@ -17,6 +17,9 @@ let lastBatteryCalc = null;
 import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
 import { KEHUA_S3_BATTERIES } from '../shared/catalogs/battery-kehua-s3.js';
 import { listUpses, getUps } from '../shared/ups-catalog.js';
+// v0.59.446: единый источник правды seed-данных ИБП (Kehua MR33/S3 AIO,
+// Schneider, Eaton, Legrand, DKC). Импорт инициализирует каталог.
+import '../shared/ups-seed.js';
 // v0.59.417: ЕДИНЫЙ источник логики S³ — тот же модуль, что в инспекторе.
 import { isS3Module, computeS3Configuration, findMinimalS3Config } from '../shared/battery-s3-logic.js';
 // v0.59.427: плагин типа АКБ S³ — автосборка master/slave/combiner + аксессуары.

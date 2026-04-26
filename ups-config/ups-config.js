@@ -11,6 +11,8 @@ import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-pa
 import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
 import { KEHUA_MR33_UPSES } from '../shared/catalogs/ups-kehua-mr33.js';
 import { KEHUA_S3_AIO_UPSES } from '../shared/catalogs/ups-kehua-s3-aio.js';
+// v0.59.446: единый источник правды seed-данных ИБП (все 6 каталогов).
+import '../shared/ups-seed.js';
 // v0.59.385: типы ИБП — плагин-архитектура. Чтобы добавить новый тип
 // (моноблок/модульный/интегрированный/...), создайте файл в
 // shared/ups-types/ и зарегистрируйте его в shared/ups-types/index.js.

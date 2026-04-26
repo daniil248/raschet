@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.446', date: '2026-04-26', items: [
+      '🏭 <b>Каталог ИБП: +40 моделей (Schneider/Eaton/Legrand/DKC) и единый источник правды.</b>',
+      '• Schneider Electric: Galaxy VS 10/20/40/60/100 кВА (моноблок), VL 200/300/500 кВт (модульный), VX 750/1500 кВт (модульный).',
+      '• Eaton: 9PX 6/11 кВА (1ф моноблок), 93PS 8/20/40 кВт (3ф моноблок), 93PM 50/100/200 кВт (модульный), 9395P 500/1100 кВт (моноблок).',
+      '• Legrand: Keor LP 3 кВА, SP 6/10 кВА, T evo 10/20 кВА, HP 100/200 кВА, HPE 400 кВА, MOD 30 кВт, MP 300 кВт.',
+      '• DKC: Small Tower 1/3 кВА, SMALL+ 6/10 кВА, TwinDom 20/40/80 кВА, Modulys GP 25/100 кВт, Modulys XL 300 кВт.',
+      '🔧 <b>Single Source of Truth.</b> Раньше Kehua MR33 авто-импортировался в <code>engine/index.js</code>, а Kehua S³ AIO + сторонние требовали ручного нажатия кнопки в ups-config. На главной схеме / в калькуляторе АКБ пользователь видел только Kehua и считал это «двумя источниками».',
+      '• Создан <code>shared/ups-seed.js</code> — единый seed-модуль, идемпотентно загружающий все 6 каталогов в localStorage. Импорт авто-вызывает seed.',
+      '• Точки входа: <code>js/engine/index.js</code>, <code>battery/battery-calc.js</code>, <code>ups-config/ups-config.js</code> — все теперь импортируют <code>shared/ups-seed.js</code>. seedVersion bump до 5 → у всех существующих пользователей доимпортируются недостающие записи.',
+      'Файлы: <code>shared/catalogs/ups-schneider.js</code>, <code>ups-eaton.js</code>, <code>ups-legrand.js</code>, <code>ups-dkc.js</code> (новые); <code>shared/ups-seed.js</code> (новый); <code>js/engine/index.js</code>, <code>battery/battery-calc.js</code>, <code>ups-config/ups-config.js</code> (импорты).',
+    ] },
     { version: '0.59.445', date: '2026-04-26', items: [
       '🔋 <b>Fix: Li-Ion EoD по умолчанию = 2.5 В/элемент (было 1.75).</b> 1.75 В — это VRLA-значение, для LFP типичный EoD ≈ 2.5 В. Файлы: <code>battery/battery-calc.js</code> — два места инициализации <code>endV</code> в Li-Ion-ветке.',
       '💾 <b>«Сохранить конфигурацию» в калькуляторе АКБ.</b> Кнопка рядом с «Отчёт/Печать»; запрашивает имя (scsPrompt → prompt fallback), сохраняет полный snapshot (battery info, mode/targetMin/endV/invEff, derate, strings/blocks, totalKwh, autonomyMin, dcVoltage, s3Cfg) в <code>configuration-catalog</code> с kind=battery. Включается при наличии валидного результата.',

@@ -93,31 +93,10 @@ import { analyzeSelectivity as _analyzeSelectivity } from './selectivity-check.j
 import { applyUpsModel } from '../../shared/ups-picker.js';
 import { syncIntegratedUpsComposite } from './ups-composite.js';
 import { listUpses, addUps } from '../../shared/ups-catalog.js';
-import { KEHUA_MR33_UPSES } from '../../shared/catalogs/ups-kehua-mr33.js';
-
-// v0.59.396: авто-доимпорт встроенных записей Kehua MR33 (включая
-// интегрированные MR3390-B/-S и MR33150-B/-S, добавленные в v0.59.384).
-// Если каталог пользователя был сформирован до этой версии, они отсутствуют
-// и не появляются в picker. Идемпотентно: addUps — upsert по id.
-function _ensureBuiltinUpsSeeds() {
-  try {
-    const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-    const CURRENT_VERSION = '4'; // повышать при добавлении новых seed-записей
-    const stored = (() => { try { return localStorage.getItem(KEY); } catch { return null; } })();
-    if (stored === CURRENT_VERSION) return;
-    const existing = new Set(listUpses().map(u => u.id));
-    let added = 0;
-    for (const rec of KEHUA_MR33_UPSES) {
-      if (!existing.has(rec.id)) {
-        addUps({ ...rec, importedAt: Date.now() });
-        added++;
-      }
-    }
-    try { localStorage.setItem(KEY, CURRENT_VERSION); } catch {}
-    if (added > 0) console.info(`[ups-seed] Auto-imported ${added} missing Kehua MR33 records`);
-  } catch (e) { console.warn('[ups-seed]', e); }
-}
-_ensureBuiltinUpsSeeds();
+// v0.59.446: единый источник правды для seed-данных ИБП. См. shared/ups-seed.js
+// Импорт сам вызывает ensureBuiltinUpsSeeds() — каталог гарантированно
+// инициализирован к моменту первого listUpses().
+import '../../shared/ups-seed.js';
 const PENDING_UPS_KEY = 'raschet.pendingUpsSelection.v1';
 function _tryConsumePendingUpsSelection() {
   let raw;
