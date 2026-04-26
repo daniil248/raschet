@@ -559,6 +559,53 @@ function openDischargeTableModal(battery) {
   modal.classList.add('show');
 }
 
+// v0.59.415: монотонный кубический Hermite (Fritsch-Carlson) — сглаживает
+// ломаную в плавный сплайн БЕЗ overshoot для монотонных данных. Принимает
+// массив точек [{x,y}] в экранных координатах, возвращает SVG path d-string.
+// На монотонно убывающей кривой разряда даёт визуально гладкую линию,
+// которая нигде не выпирает за входные точки.
+function _smoothPathMonotone(pts) {
+  const n = pts.length;
+  if (n < 2) return '';
+  if (n === 2) return `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)} L${pts[1].x.toFixed(2)},${pts[1].y.toFixed(2)}`;
+  // Секущие наклоны
+  const dx = new Array(n - 1), dy = new Array(n - 1), m = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1].x - pts[i].x;
+    dy[i] = pts[i + 1].y - pts[i].y;
+    m[i] = dx[i] === 0 ? 0 : dy[i] / dx[i];
+  }
+  // Касательные в узлах
+  const t = new Array(n);
+  t[0] = m[0];
+  t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (m[i - 1] * m[i] <= 0) t[i] = 0; // смена знака → плоская
+    else t[i] = (m[i - 1] + m[i]) / 2;
+  }
+  // Ограничение Fritsch-Carlson — без overshoot
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i] / m[i], b = t[i + 1] / m[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const k = 3 / Math.sqrt(s);
+      t[i]     = k * a * m[i];
+      t[i + 1] = k * b * m[i];
+    }
+  }
+  // Hermite → Bezier
+  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const c1x = pts[i].x     + dx[i] / 3;
+    const c1y = pts[i].y     + t[i]     * dx[i] / 3;
+    const c2x = pts[i + 1].x - dx[i] / 3;
+    const c2y = pts[i + 1].y - t[i + 1] * dx[i] / 3;
+    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${pts[i + 1].x.toFixed(2)},${pts[i + 1].y.toFixed(2)}`;
+  }
+  return d;
+}
+
 // Рисует SVG-кривые разряда: X = время (log), Y = мощность (log),
 // одна кривая на каждое endV. Линия + маркеры точек.
 function _renderDischargeChart(mount, rows, endVs, highlight = null) {
@@ -643,9 +690,10 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
       .filter(r => r.powerW > 0 && r.tMin > 0)
       .sort((a, b) => a.tMin - b.tMin);
     if (!curve.length) return;
-    // Линия
-    const d = curve.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(p.tMin).toFixed(1)},${yOf(p.powerW).toFixed(1)}`).join(' ');
-    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`);
+    // Линия — гладкий монотонный сплайн (Fritsch-Carlson), без overshoot
+    const ptsScreen = curve.map(p => ({ x: xOf(p.tMin), y: yOf(p.powerW) }));
+    const d = _smoothPathMonotone(ptsScreen);
+    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
     // Маркеры
     for (const p of curve) {
       parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1"><title>${ev} В · ${p.tMin} мин · ${p.powerW} W</title></circle>`);
@@ -1438,8 +1486,9 @@ function _renderDischargeChartLinear(mount, rows, endVs, highlight = null) {
     const color = palette[idx % palette.length];
     const curve = rows.filter(r => r.endV === ev).filter(r => r.powerW > 0 && r.tMin > 0).sort((a, b) => a.tMin - b.tMin);
     if (!curve.length) return;
-    const d = curve.map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(p.tMin).toFixed(1)},${yOf(p.powerW).toFixed(1)}`).join(' ');
-    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>`);
+    const ptsScreen = curve.map(p => ({ x: xOf(p.tMin), y: yOf(p.powerW) }));
+    const d = _smoothPathMonotone(ptsScreen);
+    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`);
     for (const p of curve) {
       parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="4" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${ev} В · ${p.tMin} мин · ${p.powerW} W</title></circle>`);
     }
