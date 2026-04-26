@@ -364,6 +364,29 @@ function render() {
         if (!opt) return;
         const name = await prPrompt(`Добавить ${opt.label}`, 'Имя', opt.defaultName);
         if (name == null) return;
+
+        // v0.59.375: для «схемы» используем настоящий window.Storage —
+        // создаём legacy-схему и привязываем к проекту через
+        // scheme.projectId. Так схема видна и на главной «Мои схемы»,
+        // и на странице проекта (без двойного списка sub-проектов).
+        if (moduleId === 'schematic') {
+          try {
+            if (!window.Storage || typeof window.Storage.createProject !== 'function') {
+              prToast('Storage не готов — попробуйте позже', 'error'); return;
+            }
+            const created = await window.Storage.createProject(name, null);
+            if (!created || !created.id) throw new Error('createProject не вернул id');
+            await window.Storage.saveProject(created.id, { projectId: p.id });
+            prToast(`✔ Создана схема «${name}»`);
+            try { clearNavStack(); } catch {}
+            location.href = '../index.html?project=' + encodeURIComponent(created.id) + '&from=projects&fromCtx=' + encodeURIComponent(p.id);
+          } catch (e) {
+            console.error('[+ Добавить схему]', e);
+            prToast('Ошибка создания схемы: ' + (e.message || e), 'error');
+          }
+          return;
+        }
+
         const designation = await prPrompt('Обозначение', `Короткий код в рамках проекта (напр. ${opt.defaultDesig})`, opt.defaultDesig);
         const sp = createSubProject(p.id, moduleId, { name, designation: designation || '' });
         setActiveProjectId(sp.id);
