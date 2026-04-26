@@ -135,7 +135,32 @@ function loadTemplates() {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    // Дедуп: до v0.59.431 был баг — каждый клик в сайдбаре по сохранённому
+    // шаблону + «Сохранить» добавлял копию «Имя (2)», «(3)»… В LS могли
+    // накопиться дубликаты с одинаковым контентом. Чистим один раз при
+    // загрузке: сравниваем по сигнатуре (контент без id/name/updatedAt).
+    const sig = t => {
+      try {
+        const c = { ...t };
+        delete c.id; delete c.name; delete c.updatedAt; delete c._extSig;
+        return JSON.stringify(c);
+      } catch { return Math.random().toString(); }
+    };
+    const seen = new Set();
+    const out = [];
+    let removed = 0;
+    for (const t of arr) {
+      const s = sig(t);
+      if (seen.has(s)) { removed++; continue; }
+      seen.add(s);
+      out.push(t);
+    }
+    if (removed > 0) {
+      try { localStorage.setItem(LS_KEY, JSON.stringify(out)); } catch {}
+      try { setTimeout(() => rsToast(`Удалено дубликатов шаблонов: ${removed}`, 'ok'), 300); } catch {}
+    }
+    return out;
   } catch (e) {
     console.warn('rack-config: не удалось загрузить шаблоны', e);
     return [];
@@ -2211,8 +2236,23 @@ function init() {
   window.__rackConfig = {
     loadExternalTemplate(src) {
       if (!src || typeof src !== 'object') return;
+      // Сигнатура внешнего источника: id + updatedAt. Если такой шаблон уже
+      // загружали в этой сессии — просто переключаемся на него, а не плодим
+      // дубли «(2)», «(3)» и т.д. при каждом клике в сайдбаре.
+      const extSig = String(src.id || '') + '|' + String(src.updatedAt || '');
+      if (extSig !== '|') {
+        const existing = state.templates.find(y => y && y._extSig === extSig);
+        if (existing) {
+          state.currentId = existing.id;
+          renderTemplateList();
+          renderForm();
+          rsToast('Шаблон «' + (existing.name || '—') + '» уже загружен', 'ok');
+          return;
+        }
+      }
       const t = JSON.parse(JSON.stringify(src));
       t.id = 'tpl-ext-' + Math.random().toString(36).slice(2, 9);
+      if (extSig !== '|') t._extSig = extSig;
       const baseName = (t.name || 'Шаблон').trim();
       let nm = baseName, n = 2;
       const clash = x => state.templates.some(y => (y.name || '').trim().toLowerCase() === x.toLowerCase());
