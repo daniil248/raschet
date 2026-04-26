@@ -86,7 +86,7 @@ export function getProject(id) {
   return listProjects().find(p => p.id === id) || null;
 }
 
-export function createProject({ name, description = '', status = 'draft', kind = 'full', ownerModule = null } = {}) {
+export function createProject({ name, description = '', status = 'draft', kind = 'full', ownerModule = null, parentProjectId = null, designation = '' } = {}) {
   const now = Date.now();
   const p = {
     id: (kind === 'sketch' ? 's_' : 'p_') + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4),
@@ -95,6 +95,12 @@ export function createProject({ name, description = '', status = 'draft', kind =
     status, // draft | planned | installed | operating
     kind,   // full — полноценный; sketch — лёгкий мини-проект внутри модуля
     ownerModule, // для sketch: какой модуль создал ('scs-design', 'scs-config', ...)
+    // v0.59.372: подпроекты внутри родительского проекта. parentProjectId
+    // ссылается на full-проект (объект-контейнер). designation — короткий
+    // код подпроекта в рамках родителя ('СКС-1', 'PIPING-A' и т.п.) для
+    // обозначения в чертежах/обозначениях.
+    parentProjectId: parentProjectId || null,
+    designation: designation || '',
     schema: PROJECT_SCHEMA_VERSION,
     createdAt: now,
     updatedAt: now,
@@ -102,6 +108,35 @@ export function createProject({ name, description = '', status = 'draft', kind =
   const arr = listProjects(); arr.push(p);
   saveJson(LS_PROJECTS, arr);
   return p;
+}
+
+// v0.59.372: подпроекты — sketch-проекты с parentProjectId, привязанные
+// к родительскому full-проекту И к семейству модуля. Например, СКС-проект
+// внутри парентa «25013_Qarmet Темиртау» — это отдельная сущность с
+// собственным обозначением (designation), но scoped LS-данные лежат под
+// id подпроекта (не родителя).
+export function listSubProjects(parentProjectId, moduleId) {
+  if (!parentProjectId) return [];
+  const fam = _familyOf(moduleId);
+  return listProjects().filter(p =>
+    p.parentProjectId === parentProjectId &&
+    p.kind === 'sketch' &&
+    fam.includes(p.ownerModule)
+  );
+}
+
+// v0.59.372: создать подпроект внутри родительского. Возвращает созданный
+// объект. Имя/обозначение задаёт пользователь; ownerModule = тот модуль,
+// откуда был открыт мастер.
+export function createSubProject(parentProjectId, moduleId, { name, designation = '' } = {}) {
+  return createProject({
+    name: name || `Подпроект ${moduleId}`,
+    description: `Подпроект «${designation || moduleId}» внутри проекта ${parentProjectId}.`,
+    kind: 'sketch',
+    ownerModule: moduleId,
+    parentProjectId,
+    designation,
+  });
 }
 
 // Мини-проект для модуля — создаёт sketch-проект, привязанный к модулю.

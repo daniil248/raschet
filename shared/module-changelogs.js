@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.372', date: '2026-04-26', items: [
+      '🏗 <b>СКС-проект — теперь подпроект внутри родительского, со своим обозначением.</b> Замечание пользователя: «проект СКС должен быть не как общий проект, а как проект со своим обозначением внутри проекта».',
+      '• До этого СКС-«мини-проект» лежал плоско рядом с родительскими full-проектами в одном dropdown\'е → пользователь видел в списке и «25013_Qarmet Темиртау» (родитель), и СКС-черновик как равноценные сущности.',
+      '• Теперь в <code>scs-design/</code> два уровня выбора: <b>Проект</b> (родительский full) и <b>СКС-проект</b> (подпроект-sketch внутри него с полем <code>designation</code>). Активный <code>setActiveProjectId()</code> = id подпроекта; project-scoped LS-данные лежат под подпроектом.',
+      '• Добавлены поля <code>parentProjectId</code> и <code>designation</code> в <code>createProject()</code>; новые экспортируемые помощники: <code>listSubProjects(parentId, moduleId)</code>, <code>createSubProject(parentId, moduleId, {name, designation})</code>.',
+      '• При создании нового СКС-подпроекта пользователь вводит имя и обозначение (напр. «СКС-1»); подпроект виден только внутри своего родителя и только в семействе scs-* модулей.',
+      'Файлы: shared/project-storage.js (createProject + listSubProjects + createSubProject), scs-design/scs-design.js (renderProjectBadge: parent + sub-project pickers).',
+    ] },
     { version: '0.59.371', date: '2026-04-26', items: [
       '🐛 <b>Fix: «Параметры потребителя» теперь открываются для catalog-locked узлов (часто 1Ф-нагрузки).</b> Жалоба пользователя: «не открываются Параметры потребителя для однофазных потребителей».',
       '• Корень: в <code>openConsumerParamsModal()</code> блок <code>if (n.catalogLocked)</code> на строке ~83 обращался к <code>fullCatalog.find(...)</code>, но переменная <code>fullCatalog</code> была <code>const</code>-declared ниже на строке ~94 → <b>ReferenceError (TDZ)</b>, модалка падала молча.',

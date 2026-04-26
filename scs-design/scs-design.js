@@ -8,7 +8,9 @@
 
 import {
   ensureDefaultProject, getActiveProjectId, setActiveProjectId, getProject, projectKey,
-  listProjectsForModule, createSketchForModule
+  listProjectsForModule, createSketchForModule,
+  // v0.59.372: подпроекты внутри родительского.
+  listSubProjects, createSubProject
 } from '../shared/project-storage.js';
 // v0.59.278: project-scoped экземпляры стоек (см. shared/rack-storage.js).
 import {
@@ -52,35 +54,80 @@ function renderProjectBadge(pid) {
   try { urlPid = new URLSearchParams(location.search).get('project'); } catch {}
   const lockedFromUrl = !!urlPid;
 
-  if (lockedFromUrl) {
-    host.innerHTML = `
-      <span class="muted">📌 Работа в проекте — переключение контекста заблокировано.</span>
-      <a href="../projects/" style="margin-left:auto">→ к списку проектов</a>
-    `;
-    return;
+  // v0.59.372: СКС-проект больше не пара «как полноценный, так и мини».
+  // Это всегда подпроект (sketch с parentProjectId) внутри родительского
+  // full-проекта со своим обозначением (designation, например «СКС-1»).
+  // - Если URL передал ?project=parentId → родитель залочен, выбираем
+  //   подпроект внутри него или создаём новый.
+  // - Без URL → выбираем родителя из списка full-проектов, потом подпроект.
+  const fullProjects = projects.filter(x => x.kind === 'full');
+  let parentPid = urlPid;
+  // Если активный проект сам — sketch с parentProjectId, наследуем родителя.
+  if (!parentPid && p && p.kind === 'sketch' && p.parentProjectId) {
+    parentPid = p.parentProjectId;
   }
+  // Без явного родителя — пробуем первый доступный full.
+  if (!parentPid && fullProjects[0]) parentPid = fullProjects[0].id;
 
-  const opts = projects.map(x => {
-    const label = (x.kind === 'sketch' ? '🧪 ' : '🏢 ') + (x.name || '(без имени)');
-    return `<option value="${esc(x.id)}" ${x.id === pid ? 'selected' : ''}>${esc(label)}</option>`;
-  }).join('');
+  const parent = parentPid ? getProject(parentPid) : null;
+  const subs = parent ? listSubProjects(parent.id, 'scs-design') : [];
+  const activeSubId = (p && p.parentProjectId === (parent?.id || null)) ? p.id : '';
+
+  const parentSel = lockedFromUrl
+    ? `<b>${esc(parent?.name || '?')}</b>`
+    : `<select id="sd-parent-switcher" title="Родительский проект-объект">${
+        fullProjects.map(x => `<option value="${esc(x.id)}"${x.id === parent?.id ? ' selected' : ''}>${esc(x.name || '(без имени)')}</option>`).join('')
+      }</select>`;
+
+  const subOpts = subs.length
+    ? subs.map(s => {
+        const labelDesig = s.designation ? `[${esc(s.designation)}] ` : '';
+        return `<option value="${esc(s.id)}"${s.id === activeSubId ? ' selected' : ''}>${labelDesig}${esc(s.name || '(без имени)')}</option>`;
+      }).join('')
+    : `<option value="">— подпроект СКС не выбран —</option>`;
 
   host.innerHTML = `
-    <span class="muted">Контекст:</span>
-    <select id="sd-project-switcher" title="Активный проект или мини-проект СКС">${opts}</select>
-    <button type="button" class="sd-btn-sel" id="sd-project-new-sketch" title="Создать мини-проект СКС (автономный черновик без обязательного полноценного проекта)">＋ Мини-проект</button>
-    ${p ? `<span class="muted">${p.kind === 'sketch' ? '· 🧪 черновик (мини-проект СКС)' : '· 🏢 полноценный проект'}</span>` : ''}
+    <span class="muted">Проект:</span>
+    ${parentSel}
+    <span class="muted" style="margin-left:14px">СКС-проект:</span>
+    <select id="sd-subproject-switcher" title="Подпроект СКС внутри выбранного проекта">${subOpts}</select>
+    <button type="button" class="sd-btn-sel" id="sd-sub-new" title="Создать новый СКС-подпроект внутри выбранного проекта (имя + обозначение, напр. «СКС-1»)">＋ Новый СКС-проект</button>
+    ${p && p.parentProjectId === parent?.id ? `<span class="muted" style="margin-left:8px">${p.designation ? `· обозначение: <b>${esc(p.designation)}</b>` : '· без обозначения'}</span>` : ''}
     <a href="../projects/" style="margin-left:auto">→ управлять проектами</a>
   `;
 
-  document.getElementById('sd-project-switcher')?.addEventListener('change', e => {
+  document.getElementById('sd-parent-switcher')?.addEventListener('change', e => {
+    // При смене родителя — активируем первый подпроект под ним (или ничего).
+    const newParent = e.target.value;
+    const newSubs = listSubProjects(newParent, 'scs-design');
+    if (newSubs[0]) setActiveProjectId(newSubs[0].id);
+    else {
+      // Подпроекта ещё нет — оставляем активным сам родитель временно,
+      // но scoped-данные будут лежать под id родителя. Лучше попросить
+      // пользователя сразу создать подпроект.
+      setActiveProjectId(newParent);
+    }
+    location.reload();
+  });
+  document.getElementById('sd-subproject-switcher')?.addEventListener('change', e => {
+    if (!e.target.value) return;
     setActiveProjectId(e.target.value);
     location.reload();
   });
-  document.getElementById('sd-project-new-sketch')?.addEventListener('click', async () => {
-    const name = await sdPrompt('Создать мини-проект СКС', 'Имя черновика', 'Черновик СКС');
+  document.getElementById('sd-sub-new')?.addEventListener('click', async () => {
+    if (!parent) {
+      // Без родителя — попросить выбрать его в dropdown'е выше.
+      const ph = document.createElement('div');
+      ph.textContent = 'Сначала выберите родительский проект.';
+      ph.style.cssText = 'position:fixed;top:60px;right:20px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:6px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.3)';
+      document.body.appendChild(ph);
+      setTimeout(() => ph.remove(), 2500);
+      return;
+    }
+    const name = await sdPrompt('Новый СКС-подпроект', `Имя внутри проекта «${parent.name}»`, 'СКС');
     if (!name) return;
-    const sp = createSketchForModule('scs-design', name);
+    const designation = await sdPrompt('Обозначение', 'Короткий код подпроекта (напр. СКС-1)', 'СКС-1');
+    const sp = createSubProject(parent.id, 'scs-design', { name, designation: designation || '' });
     setActiveProjectId(sp.id);
     location.reload();
   });
