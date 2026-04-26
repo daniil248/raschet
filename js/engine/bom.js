@@ -223,6 +223,24 @@ export function buildBOM() {
                   type: g.model, model: g.model,
                 }, g.qty, `${nodeLabel}: ${g.role}${g.role !== 'combiner' ? ` (${g.modulesInCabinet}/${g.modulesInCabinet + (g.emptySlots||0)} мод.)` : ''}`);
               }
+              // v0.59.437: модули в BOM — отдельная позиция, не «20 мод.»
+              // строкой описания, а самостоятельная запись с supplier/type/Ah.
+              let totalModulesUsed = 0;
+              for (const c of spec.cabinets) totalModulesUsed += (c.modulesInCabinet || 0);
+              if (totalModulesUsed > 0) {
+                const moduleModel = batt.type || batt.model || 'S3M';
+                pushAgg('АКБ S³ — модули', {
+                  id: `s3-mod-${moduleModel}`,
+                  supplier: batt.supplier || 'Kehua',
+                  type: moduleModel,
+                  model: moduleModel,
+                  capacityAh: batt.capacityAh,
+                  blockVoltage: batt.blockVoltage,
+                }, totalModulesUsed,
+                `${nodeLabel}: ${moduleModel}` +
+                (batt.capacityAh ? ` (${batt.capacityAh} А·ч` : '') +
+                (batt.blockVoltage ? ` · ${batt.blockVoltage} В DC)` : (batt.capacityAh ? ')' : '')));
+              }
               for (const a of (spec.accessories || [])) {
                 const cat = accessoryCatalog.find(x => x.id === a.id);
                 pushAgg('АКБ S³ — аксессуары', {

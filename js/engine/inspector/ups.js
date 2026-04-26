@@ -20,6 +20,7 @@ import { isS3Module as _isS3Module, resolveS3Wiring as _resolveS3Wiring,
 // v0.59.429: плагин типа АКБ S³ для автосборки шкафов в модалке инспектора.
 import { s3LiIonType as _s3LiIonType } from '../../../shared/battery-types/s3-li-ion.js';
 import { renderS3IsoSvg as _renderS3IsoSvg } from '../../../shared/battery-types/s3-iso-view.js';
+import { mountS3ThreeDView as _mountS3ThreeDView } from '../../../shared/battery-types/s3-3d-view.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -1277,10 +1278,19 @@ function _renderUpsBatteryBody(n) {
         const f = _grp.find(g => g.k === k);
         if (f) f.qty += 1; else _grp.push({ k, role: c.role, model: c.model, fill, qty: 1 });
       }
-      const cabRows = _grp.map(g => {
+      const cabRowsArr = _grp.map(g => {
         const role = g.role === 'master' ? 'Master' : g.role === 'slave' ? 'Slave' : 'Combiner';
         return `<tr><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${role}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea"><b>${escHtml(g.model)}</b></td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${g.fill}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea;text-align:center"><b>${g.qty}</b></td></tr>`;
-      }).join('');
+      });
+      // v0.59.437: модули — отдельная строка таблицы
+      let _modUsed = 0;
+      for (const c of spec.cabinets) _modUsed += (c.modulesInCabinet || 0);
+      if (_modUsed > 0 && picked) {
+        const _mm = picked.type || picked.model || 'S3M';
+        const _ah = picked.capacityAh ? ` · ${picked.capacityAh} А·ч` : '';
+        cabRowsArr.push(`<tr style="background:#f5fbf5"><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">Модуль</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea"><b>${escHtml(_mm)}</b></td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${escHtml((picked.supplier||'Kehua') + _ah)}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea;text-align:center"><b>${_modUsed}</b></td></tr>`);
+      }
+      const cabRows = cabRowsArr.join('');
       const accRows = (spec.accessories || []).map(a => {
         const cat = accessoryCatalog.find(x => x.id === a.id);
         const name = cat ? (cat.type || cat.id) : a.id;
@@ -1302,13 +1312,14 @@ function _renderUpsBatteryBody(n) {
         const perCab = cRateChk.reqKw / Math.max(1, _realCabs);
         cRateBlock += `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспорта (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${s3Cfg.totalModules} мод.) · На шкаф: ${fmt(perCab)} кВт / 200 кВт лимит.</div>`;
       }
-      // v0.59.435: изометрический «3D» вид сборки.
-      let _isoSvg = '';
-      try { _isoSvg = _renderS3IsoSvg(spec, { capacityAh: picked && picked.capacityAh }) || ''; } catch (_e) {}
+      // v0.59.437: настоящий 3D-вид (Three.js) — монтируется лениво в DOM
+      // через id-плейсхолдер, после insertion innerHTML инспектора.
+      const _s3v3dId = 's3-3d-insp-' + Math.random().toString(36).slice(2, 8);
+      window.__pendingS3MountInsp = { id: _s3v3dId, spec };
       h.push(`<details style="margin-top:8px;background:#eff7ff;border:1px solid #bbdefb;border-radius:6px;padding:8px 12px">
         <summary style="cursor:pointer;font-weight:600;font-size:12px">Состав системы S³ (автосборка) — ${spec.cabinets.length} шкаф(ов)${(spec.accessories||[]).length ? ' + ' + spec.accessories.length + ' аксессуаров' : ''}</summary>
         <div style="margin-top:8px">
-          ${_isoSvg ? `<div style="margin-bottom:8px;overflow:auto">${_isoSvg}</div>` : ''}
+          <div id="${_s3v3dId}" style="margin-bottom:8px"></div>
           <table style="width:100%;border-collapse:collapse;font-size:11px">
             <thead><tr style="background:#fff"><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Роль</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Модель</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Заполнение</th><th style="text-align:center;padding:3px 8px;border-bottom:2px solid #bbdefb;width:60px">Кол-во</th></tr></thead>
             <tbody>${cabRows}</tbody>
@@ -1407,6 +1418,16 @@ function _renderUpsBatteryBody(n) {
   h.push('</div>');
 
   body.innerHTML = h.join('');
+
+  // v0.59.437: монтируем настоящий 3D S³ в инспекторе (если плейсхолдер есть).
+  try {
+    const pend = window.__pendingS3MountInsp;
+    if (pend && pend.id) {
+      const cont = document.getElementById(pend.id);
+      if (cont) _mountS3ThreeDView(cont, pend.spec, { height: 320 });
+      window.__pendingS3MountInsp = null;
+    }
+  } catch (e) { console.warn('[inspector] s3 3d mount failed', e); }
 
   // Если выбрана модель из справочника — точный расчёт автономии по
   // таблице Constant Power Discharge из battery/battery-discharge.js.

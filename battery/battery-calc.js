@@ -22,6 +22,7 @@ import { isS3Module, computeS3Configuration, findMinimalS3Config } from '../shar
 // v0.59.427: плагин типа АКБ S³ — автосборка master/slave/combiner + аксессуары.
 import { s3LiIonType } from '../shared/battery-types/s3-li-ion.js';
 import { renderS3IsoSvg } from '../shared/battery-types/s3-iso-view.js';
+import { mountS3ThreeDView } from '../shared/battery-types/s3-3d-view.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -1274,6 +1275,16 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
     const roleLabel = g.role === 'master' ? 'Master' : g.role === 'slave' ? 'Slave' : 'Combiner';
     return `<tr><td>${escHtml(roleLabel)}</td><td><b>${escHtml(g.model)}</b></td><td>${g.fillStr}</td><td style="text-align:center"><b>${g.qty}</b></td></tr>`;
   }).join('');
+  // v0.59.437: отдельная строка «модули» в таблице — battery.type N шт.
+  let modulesRow = '';
+  let totalModulesUsedUi = 0;
+  for (const c of spec.cabinets) totalModulesUsedUi += (c.modulesInCabinet || 0);
+  if (totalModulesUsedUi > 0) {
+    const modModel = battery.type || battery.model || 'S3M';
+    const ahStr = battery.capacityAh ? ` · ${battery.capacityAh} А·ч` : '';
+    const vStr  = battery.blockVoltage ? ` · ${battery.blockVoltage} В` : '';
+    modulesRow = `<tr style="background:#f5fbf5"><td>Модуль</td><td><b>${escHtml(modModel)}</b></td><td>${escHtml((battery.supplier||'Kehua') + ahStr + vStr)}</td><td style="text-align:center"><b>${totalModulesUsedUi}</b></td></tr>`;
+  }
 
   const accRows = (spec.accessories || []).map(a => {
     const cat = accessoryCatalog.find(x => x.id === a.id);
@@ -1284,14 +1295,17 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
 
   let html = `<div class="result-block" style="margin-top:14px">`;
   html += `<div class="result-title">Состав системы (автосборка)</div>`;
-  // v0.59.435: изометрический «3D» вид сборки шкафов.
-  try {
-    const iso = renderS3IsoSvg(spec, { capacityAh: battery.capacityAh });
-    if (iso) html += `<div style="margin-top:10px;overflow:auto">${iso}</div>`;
-  } catch (e) { /* iso-вид опционален */ }
+  // v0.59.437: настоящий 3D-вид (Three.js + OrbitControls). Контейнер
+  // монтируется лениво из _renderS3SystemSpecHtml's caller (после insert-html).
+  // Здесь просто оставляем плейсхолдер, mountS3ThreeDView вызовется в DOM.
+  const _s3v3dId = 's3-3d-view-' + Math.random().toString(36).slice(2, 8);
+  html += `<div id="${_s3v3dId}" data-s3-3d-mount="1" style="margin-top:10px"></div>`;
+  // запоминаем spec для post-mount через MutationObserver-стиль:
+  // прокидываем через окно (singleton — последний рендер). Простое решение.
+  window.__pendingS3Mount = { id: _s3v3dId, spec };
   html += `<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">`;
   html += `<thead><tr style="background:#f5f7fa"><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Роль</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Модель шкафа</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Заполнение</th><th style="text-align:center;padding:6px;border:1px solid #e0e3ea;width:60px">Кол-во</th></tr></thead>`;
-  html += `<tbody>${cabinetRows.replace(/<td>/g, '<td style="padding:6px;border:1px solid #e0e3ea">')}</tbody>`;
+  html += `<tbody>${(cabinetRows + modulesRow).replace(/<td>/g, '<td style="padding:6px;border:1px solid #e0e3ea">')}</tbody>`;
   html += `</table>`;
 
   if (accRows) {
@@ -1430,6 +1444,16 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда модуля</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Кривая P(t) для одного модуля. Красный маркер — рабочая точка.</div></div>`;
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">Детализация в рабочей зоне (zoom)</div><div id="calc-chart-zoom-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div></div>`;
   out.innerHTML = html;
+
+  // v0.59.437: монтируем настоящий 3D-вид S³ (Three.js) после insert-html.
+  try {
+    const pend = window.__pendingS3Mount;
+    if (pend && pend.id) {
+      const cont = document.getElementById(pend.id);
+      if (cont) mountS3ThreeDView(cont, pend.spec, { height: 380 });
+      window.__pendingS3Mount = null;
+    }
+  } catch (e) { console.warn('[battery-calc] s3 3d mount failed', e); }
 
   const params = {
     battery, chemistry: 'li-ion', loadKw,
