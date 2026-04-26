@@ -1130,9 +1130,9 @@ function _readDerating() {
   return { kAge, kTemp, kDesign, kTotal, vdcSafetyPct, socMinPct };
 }
 const DERATING_PRESETS = {
-  ieee485:    { kAge: 1.25, kTemp: 1.00, kDesign: 1.10, vdcSafetyPct: 3, socMinPct: 10 },
-  iec62040:   { kAge: 1.20, kTemp: 1.00, kDesign: 1.05, vdcSafetyPct: 2, socMinPct: 10 },
-  aggressive: { kAge: 1.25, kTemp: 1.11, kDesign: 1.15, vdcSafetyPct: 5, socMinPct: 20 },
+  ieee485:    { kAge: 1.25, kTemp: 1.00, kDesign: 1.10, vdcSafetyPct: 0, socMinPct: 10 },
+  iec62040:   { kAge: 1.20, kTemp: 1.00, kDesign: 1.05, vdcSafetyPct: 0, socMinPct: 10 },
+  aggressive: { kAge: 1.25, kTemp: 1.11, kDesign: 1.15, vdcSafetyPct: 3, socMinPct: 20 },
   none:       { kAge: 1.00, kTemp: 1.00, kDesign: 1.00, vdcSafetyPct: 0, socMinPct: 0  },
 };
 function _applyDeratingPreset(name) {
@@ -1195,8 +1195,11 @@ function _isBatteryCompatibleWithUps(b, ups) {
   }
   const chem = b.chemistry || 'vrla';
   const cellsPerBlock = Math.max(1, Math.round(blockV / 2));
-  const endVperCell = chem === 'li-ion' ? 2.5 : 1.75;
-  const floatVperCell = chem === 'li-ion' ? 3.45 : 2.27;
+  // v0.59.452: float 2.25 В/эл — типичная рекомендация ИБП-производителей
+  // для VRLA (Eaton/Schneider/APC). 2.27 — теоретическая верхняя граница
+  // от vendor'ов АКБ; на практике приводит к перезаряду в backup-режиме.
+  const endVperCell = chem === 'li-ion' ? 2.5 : 1.85;
+  const floatVperCell = chem === 'li-ion' ? 3.45 : 2.25;
   const endVperBlock = endVperCell * cellsPerBlock;
   const floatVperBlock = floatVperCell * cellsPerBlock;
   const nMin = Math.ceil(vMinEff / endVperBlock);
@@ -1211,7 +1214,9 @@ function _isBatteryCompatibleWithUps(b, ups) {
 
 function _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry, vdcSafetyPct) {
   const cellsPerBlock = Math.max(1, Math.round(blockV / 2));
-  const floatVperCell = chemistry === 'li-ion' ? 3.45 : 2.27;
+  // v0.59.452: float 2.25 В/эл — типичная рекомендация ИБП-производителей
+  // (см. также _isBatteryCompatibleWithUps).
+  const floatVperCell = chemistry === 'li-ion' ? 3.45 : 2.25;
   const endVperBlock   = endV * cellsPerBlock;
   const floatVperBlock = floatVperCell * cellsPerBlock;
   // v0.59.413: окно V_DC сужает диапазон ИБП симметрично — учёт ripple,
