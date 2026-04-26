@@ -93,26 +93,39 @@ export function openUpsParamsModal(n) {
     }
   } catch {}
 
+  // v0.59.408: если узел привязан к каталожной модели — паспортные
+  // параметры заблокированы. Пользователь может менять только проектные
+  // настройки (резервирование, установлено модулей, breakers).
+  const _isFromCatalog = !!n.upsCatalogId;
+  const _lockAttr = _isFromCatalog ? ' readonly title="🔒 Параметр из справочника — нельзя менять при выбранной модели. Сбросьте модель в каскадном пикере выше для ручной правки." style="background:#f0f0f0;cursor:not-allowed"' : '';
+  const _lockSelAttr = _isFromCatalog ? ' disabled title="🔒 Параметр из справочника — сбросьте модель для ручной правки"' : '';
+
   h.push('<h4 style="margin:14px 0 6px">Ручной ввод параметров</h4>');
-  h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">Если модель не из справочника и конфигуратор не нужен — заполняйте поля ниже вручную. Для моноблока доступно поле «Выходная мощность», для модульного — frame/модули/резерв.</div>`);
+  if (_isFromCatalog) {
+    h.push(`<div style="font-size:11.5px;margin:-2px 0 10px;padding:8px 10px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;line-height:1.5">
+      🔒 <b>Паспортные параметры заблокированы</b> — модель выбрана из справочника. Тип, КПД, V<sub>DC</sub> мин/макс, корпус, мощность модуля и слоты редактировать нельзя. Для ручной правки сбросьте модель в каскадном пикере выше (Производитель/Серия/Модель → пустое значение).
+    </div>`);
+  } else {
+    h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">Если модель не из справочника и конфигуратор не нужен — заполняйте поля ниже вручную. Для моноблока доступно поле «Выходная мощность», для модульного — frame/модули/резерв.</div>`);
+  }
   // Тип ИБП — опции собираются из реестра плагинов (v0.59.386).
   // Текущий тип распознаётся через detectUpsType(n) с фолбэком на 'monoblock'.
   const _curType = detectUpsType(n) || getUpsType('monoblock');
   const _typeOpts = listUpsTypes().map(t =>
     `<option value="${t.id}"${t.id === _curType.id ? ' selected' : ''}>${t.label}</option>`
   ).join('');
-  h.push(field('Тип ИБП', `<select id="up-upsType">${_typeOpts}</select>`));
+  h.push(field('Тип ИБП', `<select id="up-upsType"${_lockSelAttr}>${_typeOpts}</select>`));
   // Для моноблока — прямое поле мощности. Для модульного — вычисляется ниже.
   if (n.upsType !== 'modular') {
-    h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
+    h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}"${_lockAttr}>`));
   } else {
     h.push(`<div class="muted" style="font-size:11px;margin:-4px 0 8px;padding:6px 8px;background:#fff8e1;border-radius:4px;border:1px solid #ffe0a0">
       Для модульного ИБП мощность считается автоматически из frame/модулей/резерва (см. блок «Модули и резервирование» ниже). Чтобы ввести мощность вручную — переключите тип на «Моноблок».
     </div>`);
   }
-  h.push(field('КПД DC–AC, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}">`));
-  h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="2" step="1" value="${Math.min(2, Math.max(1, Number(n.inputs) || 1))}">`));
-  h.push(field('Выходов', `<input type="number" id="up-outputs" min="1" max="20" step="1" value="${n.outputs}">`));
+  h.push(field('КПД DC–AC, %', `<input type="number" id="up-eff" min="30" max="100" step="1" value="${n.efficiency}"${_lockAttr}>`));
+  h.push(field('Входов', `<input type="number" id="up-inputs" min="1" max="2" step="1" value="${Math.min(2, Math.max(1, Number(n.inputs) || 1))}"${_lockAttr}>`));
+  h.push(field('Выходов', `<input type="number" id="up-outputs" min="1" max="20" step="1" value="${n.outputs}"${_lockAttr}>`));
 
   // Параметры DC-входа (батарейной цепи): диапазон напряжения инвертора.
   // Используется при каталожном подборе АКБ для расчёта min/max числа
@@ -120,9 +133,9 @@ export function openUpsParamsModal(n) {
   h.push('<h4 style="margin:16px 0 8px">Параметры DC-входа (батарейная цепь)</h4>');
   h.push('<div style="display:flex;gap:8px">');
   h.push(`<div style="flex:1">${field('V<sub>DC</sub> min, В',
-    `<input type="number" id="up-vdcMin" min="24" max="1200" step="1" value="${Number(n.batteryVdcMin ?? 340)}">`)}</div>`);
+    `<input type="number" id="up-vdcMin" min="24" max="1200" step="1" value="${Number(n.batteryVdcMin ?? 340)}"${_lockAttr}>`)}</div>`);
   h.push(`<div style="flex:1">${field('V<sub>DC</sub> max, В',
-    `<input type="number" id="up-vdcMax" min="24" max="1200" step="1" value="${Number(n.batteryVdcMax ?? 480)}">`)}</div>`);
+    `<input type="number" id="up-vdcMax" min="24" max="1200" step="1" value="${Number(n.batteryVdcMax ?? 480)}"${_lockAttr}>`)}</div>`);
   h.push('</div>');
   h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Рабочий диапазон напряжения инвертора на стороне АКБ. Определяет допустимое число блоков в цепочке при подборе АКБ из справочника.</div>');
 
@@ -139,12 +152,12 @@ export function openUpsParamsModal(n) {
     h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Корпус (frame) задаёт максимум системы. Устанавливаемые модули должны помещаться в слоты. Схема N+X означает: X модулей в резерве, рабочих = Установлено − X.</div>');
 
     h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('Корпус, kW (frame)', `<input type="number" id="up-frameKw" min="1" step="5" value="${n.frameKw}">`)}</div>`);
-    h.push(`<div style="flex:1">${field('Мощность модуля, kW', `<input type="number" id="up-modKwRated" min="1" step="0.5" value="${n.moduleKwRated}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('Корпус, kW (frame)', `<input type="number" id="up-frameKw" min="1" step="5" value="${n.frameKw}"${_lockAttr}>`)}</div>`);
+    h.push(`<div style="flex:1">${field('Мощность модуля, kW', `<input type="number" id="up-modKwRated" min="1" step="0.5" value="${n.moduleKwRated}"${_lockAttr}>`)}</div>`);
     h.push('</div>');
     h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('Слотов в корпусе', `<input type="number" id="up-slots" min="1" max="32" step="1" value="${n.moduleSlots}">`)}</div>`);
-    h.push(`<div style="flex:1">${field('Установлено модулей', `<input type="number" id="up-installed" min="0" max="32" step="1" value="${n.moduleInstalled}">`)}</div>`);
+    h.push(`<div style="flex:1">${field('Слотов в корпусе', `<input type="number" id="up-slots" min="1" max="32" step="1" value="${n.moduleSlots}"${_lockAttr}>`)}</div>`);
+    h.push(`<div style="flex:1">${field('Установлено модулей <span class="muted" style="font-size:10px;font-weight:400">· проектное</span>', `<input type="number" id="up-installed" min="0" max="32" step="1" value="${n.moduleInstalled}">`)}</div>`);
     h.push('</div>');
     h.push(field('Схема резервирования', `
       <select id="up-redund">
@@ -240,7 +253,7 @@ export function openUpsParamsModal(n) {
     vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
   }
   h.push(field('Уровень напряжения', `<select id="up-voltage">${vOpts}</select>`));
-  h.push(field('cos φ', `<input type="number" id="up-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi || 1.0}">`));
+  h.push(field('cos φ', `<input type="number" id="up-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi || 1.0}"${_lockAttr}>`));
 
   // Блок «Батарея (АКБ)» полностью перенесён в отдельную модалку
   // «🔋 АКБ» (кнопка в инспекторе ИБП). Здесь — только короткая ссылка.
