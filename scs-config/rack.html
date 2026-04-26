@@ -49,52 +49,49 @@
         sep.style.display = '';
       })();
     </script>
-    <!-- ========== Верхняя панель: выбор стойки ========== -->
-    <section class="sc-section sc-topbar">
-      <label class="sc-field" title="Физический шкаф: корпус + принадлежности + PDU. Создаётся в Конфигураторе стойки, название должно быть уникальным в проекте.">
-        <span>Физический шкаф</span>
-        <select id="sc-rack"></select>
-      </label>
-      <label class="sc-field">
-        <span>Всего U</span>
-        <output id="sc-rack-u">—</output>
-      </label>
-      <label class="sc-field">
-        <span>Занято оборудованием</span>
-        <output id="sc-rack-occ">—</output>
-      </label>
-      <label class="sc-field" title="Непрерывные свободные диапазоны U с учётом размещённых устройств и «занятых стойкой» юнитов (сверху). Формат: U-номера; отдельно для front/rear, если расхождение.">
-        <span>Свободно</span>
-        <output id="sc-rack-free">—</output>
-      </label>
-      <label class="sc-field" title="Сумма заявленной мощности (Σ powerW по каталогу). Если задан demandKw стойки — показывается % использования.">
-        <span>⚡ Мощность</span>
-        <output id="sc-rack-power">—</output>
-      </label>
-      <label class="sc-field" title="TIA-942 тег стойки: зал.ряд.стойка (напр. DC1.H3.R05). Автоматически попадает в теги устройств (TIA-606) и в подписи на карте/BOM.">
-        <span>Тег стойки (TIA-942)</span>
-        <input id="sc-rack-tag" type="text" placeholder="DC1.H3.R05" maxlength="24" style="width:140px">
-      </label>
-      <label class="sc-field" title="Шаблон корпуса из Конфигуратора стоек. Применение копирует геометрию (U, ширина, глубина, двери, PDU) и «занятые U» из шаблона на эту стойку. Содержимое (устройства) — не затрагивается.">
-        <span>Корпус (шаблон)</span>
-        <select id="sc-corpus"></select>
-      </label>
-      <button type="button" id="sc-corpus-apply" class="sc-btn" title="Применить шаблон корпуса — перезаписать U, размеры, PDU и «занятые U» из выбранного шаблона. Перед применением создаётся снимок для отката.">↪ Применить корпус</button>
-      <button type="button" id="sc-corpus-revert" class="sc-btn" style="display:none" title="Откатить последнее «Применить корпус» — вернуть стойку к состоянию до применения.">↶ Вернуть</button>
-      <button type="button" id="sc-corpus-save-as" class="sc-btn" title="Сохранить текущую геометрию стойки как новый шаблон корпуса в глобальный каталог rack-config (имя уникально).">💾 В новый шаблон</button>
-      <label class="sc-field">
-        <span>Готовая сборка (устройства)</span>
-        <select id="sc-template"></select>
-      </label>
-      <button type="button" id="sc-template-apply" class="sc-btn" title="Применить выбранный шаблон к текущей стойке — заменить содержимое и матрицу">↪ Применить</button>
-      <button type="button" id="sc-template-save" class="sc-btn sc-btn-primary" title="Сохранить текущее содержимое + матрицу как шаблон сборки">💾 Сохранить как шаблон</button>
-      <a class="sc-link" href="../rack-config/">➡ Править стойку</a>
-    </section>
-
     <div class="sc-grid sc-grid-3">
-      <!-- ========== ЛЕВЫЙ САЙДБАР: список шкафов проекта (resizable, v0.59.180) ========== -->
+      <!-- ========== ЛЕВЫЙ САЙДБАР: топбар + список шкафов проекта (v0.59.338) ========== -->
       <aside class="sc-racks-side rs-sidebar rs-sidebar-left">
-        <div class="sc-racks-side-head">
+        <!-- v0.59.338: Топбар (выбор стойки + параметры + действия) переехал
+             в левый сайдбар как компактный вертикальный блок. -->
+        <details class="sc-topbar-side" id="sc-topbar-side" open>
+          <summary style="cursor:pointer;font-weight:600;font-size:12px;padding:6px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0">⚙ Параметры стойки</summary>
+          <div style="padding:8px;display:flex;flex-direction:column;gap:6px;font-size:11px">
+            <label class="sc-field-v" title="Физический шкаф: корпус + принадлежности + PDU.">
+              <span style="color:#64748b">Физический шкаф</span>
+              <select id="sc-rack" style="width:100%"></select>
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+              <div><span style="color:#64748b">Всего U:</span> <output id="sc-rack-u" style="font-weight:600">—</output></div>
+              <div><span style="color:#64748b">Занято:</span> <output id="sc-rack-occ" style="font-weight:600">—</output></div>
+            </div>
+            <div style="font-size:10px"><span style="color:#64748b">Свободно:</span> <output id="sc-rack-free">—</output></div>
+            <div style="font-size:10px"><span style="color:#64748b">⚡ Мощность:</span> <output id="sc-rack-power">—</output></div>
+            <label class="sc-field-v" title="TIA-942 тег стойки.">
+              <span style="color:#64748b">Тег (TIA-942)</span>
+              <input id="sc-rack-tag" type="text" placeholder="DC1.H3.R05" maxlength="24" style="width:100%">
+            </label>
+            <label class="sc-field-v" title="Шаблон корпуса из Конфигуратора стоек.">
+              <span style="color:#64748b">Корпус (шаблон)</span>
+              <select id="sc-corpus" style="width:100%"></select>
+            </label>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button type="button" id="sc-corpus-apply" class="sc-btn" style="font-size:10px;padding:3px 6px" title="Применить шаблон корпуса.">↪ Применить корпус</button>
+              <button type="button" id="sc-corpus-revert" class="sc-btn" style="display:none;font-size:10px;padding:3px 6px" title="Откатить.">↶ Вернуть</button>
+              <button type="button" id="sc-corpus-save-as" class="sc-btn" style="font-size:10px;padding:3px 6px" title="Сохранить как шаблон корпуса.">💾 В шаблон</button>
+            </div>
+            <label class="sc-field-v" title="Готовая сборка устройств.">
+              <span style="color:#64748b">Готовая сборка</span>
+              <select id="sc-template" style="width:100%"></select>
+            </label>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              <button type="button" id="sc-template-apply" class="sc-btn" style="font-size:10px;padding:3px 6px" title="Применить сборку.">↪ Применить</button>
+              <button type="button" id="sc-template-save" class="sc-btn sc-btn-primary" style="font-size:10px;padding:3px 6px" title="Сохранить сборку.">💾 Сохранить</button>
+            </div>
+            <a class="sc-link" href="../rack-config/" style="font-size:11px">➡ Править стойку</a>
+          </div>
+        </details>
+        <div class="sc-racks-side-head" style="margin-top:8px">
           <strong>🗄 Шкафы</strong>
           <a href="./index.html" class="sc-link" title="К реестру всех шкафов">все →</a>
         </div>

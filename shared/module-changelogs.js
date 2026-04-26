@@ -424,6 +424,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.338', date: '2026-04-23', items: [
+      '📐 <b>Топбар Компоновщика шкафа переехал в левый сайдбар.</b> Раньше выбор «Физический шкаф», поля Всего U / Занято / Свободно / Мощность, Тег, корпус-шаблон, готовая сборка и кнопки занимали всю ширину сверху и дублировали список «🗄 Шкафы» сбоку. Теперь это компактный вертикальный <code>&lt;details&gt;</code> «⚙ Параметры стойки» в левом сайдбаре над списком шкафов: его можно свернуть, остаются только нужные поля. Карта юнитов получает значительно больше высоты. Все ID полей сохранены — JS-биндинги <code>scs-config.js</code> работают без изменений.',
+      'Файлы: scs-config/rack.html (sc-topbar → sc-topbar-side в aside.sc-racks-side).',
+    ] },
     { version: '0.59.337', date: '2026-04-23', items: [
       '🤝 <b>Мини-проекты теперь общие в семействе модулей.</b> Раньше <code>listProjectsForModule(\'scs-design\')</code> возвращал только sketch-проекты с <code>ownerModule===\'scs-design\'</code>, и наоборот для scs-config — поэтому черновик, созданный в «Проектировании СКС» (Мастер меж-шкафных связей), не появлялся в «Шкафах проекта», и пользователю предлагалось создать новый. Введён конструкт <code>MODULE_FAMILIES</code> в <code>shared/project-storage.js</code>: семейство СКС = [scs-design, scs-config, scs-config-inventory, mdc-config]; семейство электрики = [schematic, panel-config, mv-config, ups-config, pdu-config, rack-config]. Теперь sketch-проект, созданный в любом модуле семейства, виден во всех остальных модулях того же семейства.',
       'Файлы: shared/project-storage.js (+_familyOf, расширение listProjectsForModule по семейству).',
