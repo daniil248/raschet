@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.444', date: '2026-04-26', items: [
+      '🔌 <b>Fix: 3D-вид S³ — кол-во автоматов теперь правильно зависит от ёмкости модуля.</b> В v0.59.443 логика была добавлена, но <code>spec.module</code> не возвращался из <code>buildSystem()</code>, поэтому 3D-вид всегда падал на default (2 автомата). Теперь <code>buildSystem()</code> возвращает <code>spec.module = { id, type, capacityAh, blockVoltage, supplier }</code> — 3D-вид читает <code>spec.module.capacityAh</code> и рисует <b>1 автомат</b> для 100 А·ч и <b>2 автомата</b> для 40/50 А·ч.',
+      'Файлы: <code>shared/battery-types/s3-li-ion.js</code> — добавлено поле <code>module</code> в return <code>buildSystem()</code>.',
+    ] },
     { version: '0.59.443', date: '2026-04-26', items: [
       'ⓘ <b>Подсказка к End Voltage в калькуляторе АКБ.</b> Добавлен tooltip-бейдж <code>ⓘ</code> рядом с полем «End voltage» с пояснением: чем НИЖЕ EoD, тем БОЛЬШЕ блоков может потребоваться (окно V_DC ИБП требует <code>N · endV · cells ≥ V_DC_min</code>; глубокий разряд = большая просадка U/блок = больше блоков для удержания V_DC). IEEE 485 §6.4.',
       '🚪 <b>3D S³: автоматы защиты теперь зависят от ёмкости модуля, а не от роли.</b> По эскизам User Manual: <b>1 автомат</b> в шкафах с модулями <b>100 А·ч</b> (один DC-ввод); <b>2 автомата</b> в шкафах с модулями <b>40/50 А·ч</b> (два DC-ввода). Раньше код смотрел на роль (master=2, slave=1) — это было неправильно. Файлы: <code>shared/battery-types/s3-3d-view.js</code> — <code>buildCabinet()</code> теперь читает <code>opts.capacityAh</code>; <code>mountS3ThreeDView()</code> пробрасывает его из <code>spec.module.capacityAh</code>.',

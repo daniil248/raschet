@@ -179,6 +179,15 @@ export const s3LiIonType = {
       cabinetsCount,
       totalModules,
       warnings,
+      // v0.59.443: пробрасываем модуль (для 3D-вида — кол-во автоматов
+      // и для отчётов).
+      module: {
+        id: module.id,
+        type: module.type,
+        capacityAh: module.capacityAh,
+        blockVoltage: module.blockVoltage,
+        supplier: module.supplier,
+      },
     };
   },
 
