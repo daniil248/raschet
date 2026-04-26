@@ -46,6 +46,11 @@ function _mkConn(from, to) {
     bundling: 'touching',
     lengthM: 1,
     cableMark: GLOBAL.projectMainCableLv || null,
+    // Внутренняя заводская проводка интегрированного шкафа ИБП.
+    // Не учитывается в BOM (кабели и автоматы) — она уже входит в
+    // стоимость готового изделия (Kehua MR33 60-150K и т.п.).
+    _internalIntegratedUps: true,
+    _breakerInternal: true,
   });
 }
 

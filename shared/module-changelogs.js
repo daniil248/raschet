@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.393', date: '2026-04-26', items: [
+      '🔧 <b>Внутренняя проводка интегрированного ИБП исключена из BOM.</b> Доводка композита из v0.59.392.',
+      '• Связи входная панель ↔ ИБП ↔ PDM, созданные <code>syncIntegratedUpsComposite</code>, помечаются флагами <code>_internalIntegratedUps=true</code> и <code>_breakerInternal=true</code>. Заводская проводка шкафа уже включена в стоимость готового изделия (Kehua MR33 60-150K и аналоги).',
+      '• <code>js/engine/report-sections.js#sectionCables</code>: фильтр кабельных линий пропускает связи с <code>_internalIntegratedUps</code>.',
+      '• <code>js/engine/bom.js</code>: автоматы внутри композита не учитываются (флаг <code>_breakerInternal</code> уже фильтровался — теперь применяется и к auto-conns).',
+      '• <code>js/engine/graph.js#deleteNode</code>: каскадное удаление — при удалении интегрированного ИБП все его дочерние panel-узлы (<code>integratedChildIds</code>) удаляются автоматически вместе со связями (по аналогии с <code>linkedOutdoorId</code>/<code>sectionIds</code>).',
+      'Файлы: js/engine/ups-composite.js (флаги в _mkConn), js/engine/report-sections.js (1 строка), js/engine/graph.js (4 строки в deleteNode).',
+    ] },
     { version: '0.59.392', date: '2026-04-26', items: [
       '🧩 <b>Интегрированный ИБП отображается на схеме в полном виде.</b> Композит из типовых элементов согласно фирменной топологии (Kehua MR33 60-150K и аналоги).',
       '• Новый модуль <code>js/engine/ups-composite.js#syncIntegratedUpsComposite(upsId)</code> автоматически разворачивает узел ИБП с <code>kind=\'ups-integrated\'</code> в композит:',

@@ -167,6 +167,11 @@ export function deleteNode(id, opts = {}) {
     if (n.switchMode === 'sectioned' && Array.isArray(n.sectionIds)) {
       for (const sid of n.sectionIds) linkedIds.push(sid);
     }
+    // v0.59.392: каскадное удаление дочерних panel-узлов интегрированного ИБП
+    // (вход ATS/MCCB + PDM-распределители).
+    if (Array.isArray(n.integratedChildIds)) {
+      for (const cid of n.integratedChildIds) linkedIds.push(cid);
+    }
   }
   for (const lid of linkedIds) {
     const linked = state.nodes.get(lid);

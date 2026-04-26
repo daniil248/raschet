@@ -204,7 +204,7 @@ function collectCables() {
     const from = state.nodes.get(c.from?.nodeId);
     return from && from.type === 'source' && (from.sourceSubtype === 'utility' || from.sourceSubtype === 'grid');
   };
-  const list = [...state.conns.values()].filter(c => (c._cableSize || c._busbarNom) && connInSpace(c) && !isUtilityInfeed(c));
+  const list = [...state.conns.values()].filter(c => (c._cableSize || c._busbarNom) && connInSpace(c) && !isUtilityInfeed(c) && !c._internalIntegratedUps);
   list.sort((a, b) => {
     const aFrom = effectiveTag(state.nodes.get(a.from.nodeId)) || '';
     const aTo   = effectiveTag(state.nodes.get(a.to.nodeId))   || '';
