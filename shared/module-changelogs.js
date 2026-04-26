@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.389', date: '2026-04-26', items: [
+      '🔗 <b>applyUpsModel переносит интегрированные поля из каталога в узел схемы.</b> Замыкаем pipeline catalog → schematic для типа integrated.',
+      '• Без этой правки выбор MR3390-S/MR33150-S в picker\'е давал на схеме обычный модульный ИБП — поля <code>kind / hasIntegratedAts / pdmModules / cabinet*</code> терялись, блок «Интегрированные компоненты» (v0.59.388) не появлялся, BOM не агрегировал PDM-панели и АВР.',
+      '• <code>shared/ups-picker.js#applyUpsModel</code> расширен:',
+      '&nbsp;&nbsp;◦ Если <code>u.kind===\'ups-integrated\'</code> — на узел копируются <code>kind, hasIntegratedAts, pdmModules</code> (deep-copy, чтобы правки на узле не утекали в каталог), <code>cabinetWidthMm/DepthMm/HeightMm/WeightKg</code>.',
+      '&nbsp;&nbsp;◦ <code>node.outputs</code> = число PDM-панелей (если у узла outputs ещё не задан).',
+      '&nbsp;&nbsp;◦ При встроенном АВР: <code>node.inputs=2</code> (если меньше).',
+      '&nbsp;&nbsp;◦ Preserve-on-miss соблюдается: пользовательские <code>inputs/outputs</code>, если они уже выставлены, не перезаписываются.',
+      '&nbsp;&nbsp;◦ При смене модели с integrated на обычную — поля очищаются (delete), чтобы инспектор/BOM не показывали призраки.',
+      'Файлы: shared/ups-picker.js (~35 строк в applyUpsModel).',
+    ] },
     { version: '0.59.388', date: '2026-04-26', items: [
       '🏗 <b>Блок «Интегрированные компоненты» в модалке параметров ИБП.</b> Доводка типа integrated.',
       '• Если узел ИБП имеет <code>kind=\'ups-integrated\'</code> — после блока «Модули и резервирование» в модалке отображается информационная секция:',

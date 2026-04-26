@@ -303,6 +303,40 @@ export function applyUpsModel(node, upsRecord) {
   if (Number.isFinite(u.cosPhi))     node.cosPhi = u.cosPhi;
   if (Number.isFinite(u.vdcMin))     node.batteryVdcMin = u.vdcMin;
   if (Number.isFinite(u.vdcMax))     node.batteryVdcMax = u.vdcMax;
+  // v0.59.389: интегрированный ИБП — паспортные поля (АВР, PDM, габариты)
+  // и обновление n.kind. Без этого блока «Интегрированные компоненты» в
+  // инспекторе и подкомпоненты в BOM не появятся при выборе модели из каталога.
+  if (u.kind === 'ups-integrated') {
+    node.kind = 'ups-integrated';
+    node.hasIntegratedAts = !!u.hasIntegratedAts;
+    if (Array.isArray(u.pdmModules)) {
+      // Глубокая копия, чтобы пользовательские правки не утекали в каталог.
+      node.pdmModules = u.pdmModules.map(p => ({ ...p }));
+    }
+    if (Number.isFinite(u.cabinetWidthMm))  node.cabinetWidthMm  = u.cabinetWidthMm;
+    if (Number.isFinite(u.cabinetDepthMm))  node.cabinetDepthMm  = u.cabinetDepthMm;
+    if (Number.isFinite(u.cabinetHeightMm)) node.cabinetHeightMm = u.cabinetHeightMm;
+    if (Number.isFinite(u.cabinetWeightKg)) node.cabinetWeightKg = u.cabinetWeightKg;
+    // Число выходов = число PDM-панелей (по умолчанию). Только если не
+    // настроено пользователем (preserve-on-miss).
+    if (!Number.isFinite(node.outputs) || node.outputs < 1) {
+      const pdmN = Array.isArray(u.pdmModules) ? u.pdmModules.length : 0;
+      node.outputs = Math.max(1, pdmN);
+    }
+    // Число входов: при встроенном АВР — 2 (utility + bypass).
+    if (u.hasIntegratedAts && (!Number.isFinite(node.inputs) || node.inputs < 2)) {
+      node.inputs = 2;
+    }
+  } else if (node.kind === 'ups-integrated') {
+    // При смене на не-integrated модель чистим поля, чтобы не путать BOM/инспектор.
+    delete node.kind;
+    delete node.hasIntegratedAts;
+    delete node.pdmModules;
+    delete node.cabinetWidthMm;
+    delete node.cabinetDepthMm;
+    delete node.cabinetHeightMm;
+    delete node.cabinetWeightKg;
+  }
   // Помечаем источник
   node.upsCatalogId = u.id || null;
 }
