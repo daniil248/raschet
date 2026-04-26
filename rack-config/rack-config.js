@@ -2236,10 +2236,9 @@ function init() {
   window.__rackConfig = {
     loadExternalTemplate(src) {
       if (!src || typeof src !== 'object') return;
-      // Сигнатура внешнего источника: id + updatedAt. Если такой шаблон уже
-      // загружали в этой сессии — просто переключаемся на него, а не плодим
-      // дубли «(2)», «(3)» и т.д. при каждом клике в сайдбаре.
+      // Сигнатура внешнего источника: id + updatedAt.
       const extSig = String(src.id || '') + '|' + String(src.updatedAt || '');
+      // Если уже загружен ровно этот шаблон — просто переключаемся.
       if (extSig !== '|') {
         const existing = state.templates.find(y => y && y._extSig === extSig);
         if (existing) {
@@ -2250,6 +2249,19 @@ function init() {
           return;
         }
       }
+      // Любой другой ext-шаблон, ранее загруженный из сайдбара (имеющий
+      // _extSig) и НЕ сохранённый пользователем явно через «💾 Сохранить
+      // шаблон», вытесняется новым. Это держит выпадающий список чистым:
+      // максимум одна ephemeral-запись из сайдбара одновременно.
+      // Признак «сохранённый» = шаблон есть в LS. Сейчас saveTemplates пишет
+      // всё state.templates целиком, поэтому проверяем по LS-снапшоту.
+      let savedIds = new Set();
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(arr)) for (const x of arr) if (x && x.id) savedIds.add(x.id);
+      } catch {}
+      state.templates = state.templates.filter(y => !y._extSig || savedIds.has(y.id));
       const t = JSON.parse(JSON.stringify(src));
       t.id = 'tpl-ext-' + Math.random().toString(36).slice(2, 9);
       if (extSig !== '|') t._extSig = extSig;
