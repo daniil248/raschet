@@ -153,13 +153,74 @@
             </div>
           </div>
 
-          <div class="pal-type collapsed" data-pal-type="consumer" data-page-kinds="schematic">
-            <div class="pal-type-head"><span class="chip cns"></span>Потребители<span class="pal-type-arrow">▾</span></div>
+          <!-- v0.59.397: «Потребители» объединяют все доменные подтипы как
+               подгруппы (раньше СКС / Климат / Двигатели / Освещение были
+               отдельными секциями верхнего уровня — это ломало логику «всё
+               это consumer-узлы с разными subtype»). Подгруппы раскрываются
+               через ▸ как уже сделано для «Источников питания». -->
+          <div class="pal-type collapsed" data-pal-type="consumer" data-page-kinds="schematic,low-voltage,data,mechanical">
+            <div class="pal-type-head"><span class="chip cns"></span>Потребители (компоненты)<span class="pal-type-arrow">▾</span></div>
             <div class="pal-type-items">
               <div class="pal-item" data-type="consumer" draggable="true">
                 <span class="chip cns"></span>Потребитель (базовый)
               </div>
               <div class="pal-presets" data-pal-presets-type="consumer"></div>
+
+              <!-- Подгруппа: СКС / слаботочка -->
+              <div class="pal-group" data-pal-group="consumer-scs" data-page-kinds="schematic,low-voltage,data">
+                <div class="pal-item pal-item-head" data-type="consumer" data-subtype="rack" draggable="true">
+                  <span class="chip cns" style="background:#0d9488"></span>СКС / слаботочка
+                  <button class="pal-expand" type="button" aria-label="Показать подтипы">▸</button>
+                </div>
+                <div class="pal-sub">
+                  <div class="pal-item pal-item-sub" data-type="consumer" data-subtype="rack" draggable="true" title="Серверная/телеком стойка — после размещения раскрывается штучно с уникальным Tag в Компоновщике шкафа">
+                    <span class="pal-sub-icon" style="background:#0d9488"></span>🗄 Серверная/телеком стойка
+                  </div>
+                  <div class="pal-presets" data-pal-presets-type="consumer-rack"></div>
+                </div>
+              </div>
+
+              <!-- Подгруппа: Климат / HVAC -->
+              <div class="pal-group" data-pal-group="consumer-hvac" data-page-kinds="schematic,mechanical">
+                <div class="pal-item pal-item-head" data-type="consumer" data-subtype="hvac" draggable="true">
+                  <span class="chip cns" style="background:#64748b"></span>Климат / HVAC
+                  <button class="pal-expand" type="button" aria-label="Показать подтипы">▸</button>
+                </div>
+                <div class="pal-sub">
+                  <div class="pal-item pal-item-sub" data-type="consumer" data-subtype="hvac" draggable="true" title="Кондиционер / прецизионный CRAC — мощность, фазность, два блока (наружный/внутренний)">
+                    <span class="pal-sub-icon" style="background:#64748b"></span>❄ Кондиционер / CRAC
+                  </div>
+                  <div class="pal-presets" data-pal-presets-type="consumer-hvac"></div>
+                </div>
+              </div>
+
+              <!-- Подгруппа: Двигатели / приводы -->
+              <div class="pal-group" data-pal-group="consumer-motor" data-page-kinds="schematic,mechanical">
+                <div class="pal-item pal-item-head" data-type="consumer" data-subtype="motor" draggable="true">
+                  <span class="chip cns" style="background:#7c3aed"></span>Двигатели / приводы
+                  <button class="pal-expand" type="button" aria-label="Показать подтипы">▸</button>
+                </div>
+                <div class="pal-sub">
+                  <div class="pal-item pal-item-sub" data-type="consumer" data-subtype="motor" draggable="true" title="Электродвигатель / насос / компрессор — учёт пускового тока (inrushFactor)">
+                    <span class="pal-sub-icon" style="background:#7c3aed"></span>⚙️ Двигатель / насос
+                  </div>
+                  <div class="pal-presets" data-pal-presets-type="consumer-motor"></div>
+                </div>
+              </div>
+
+              <!-- Подгруппа: Освещение -->
+              <div class="pal-group" data-pal-group="consumer-lighting" data-page-kinds="schematic">
+                <div class="pal-item pal-item-head" data-type="consumer" data-subtype="lighting" draggable="true">
+                  <span class="chip cns" style="background:#f59e0b"></span>Освещение
+                  <button class="pal-expand" type="button" aria-label="Показать подтипы">▸</button>
+                </div>
+                <div class="pal-sub">
+                  <div class="pal-item pal-item-sub" data-type="consumer" data-subtype="lighting" draggable="true" title="Светильники / групповая нагрузка освещения">
+                    <span class="pal-sub-icon" style="background:#f59e0b"></span>💡 Освещение
+                  </div>
+                  <div class="pal-presets" data-pal-presets-type="consumer-lighting"></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -170,51 +231,6 @@
                 <span class="chip chn"></span>Кабельный канал
               </div>
               <div class="pal-presets" data-pal-presets-type="channel"></div>
-            </div>
-          </div>
-
-          <!-- v0.59.350: доменные секции палитры — раскрывают универсальный
-               характер Конструктора схем. Все элементы — это consumer-узлы
-               с разными subtype, что уже поддерживается ядром (см.
-               inspector.js «Подтип») и render. На разных видах страниц секции
-               соответственно подсвечиваются/диммятся через data-page-kinds. -->
-          <div class="pal-type collapsed" data-pal-type="scs" data-page-kinds="schematic,low-voltage,data">
-            <div class="pal-type-head"><span class="chip cns" style="background:#0d9488"></span>СКС / слаботочка<span class="pal-type-arrow">▾</span></div>
-            <div class="pal-type-items">
-              <div class="pal-item" data-type="consumer" data-subtype="rack" draggable="true" title="Серверная/телеком стойка — после размещения раскрывается штучно с уникальным Tag в Компоновщике шкафа">
-                <span class="chip cns" style="background:#0d9488"></span>🗄 Серверная/телеком стойка
-              </div>
-              <div class="pal-presets" data-pal-presets-type="consumer-rack"></div>
-            </div>
-          </div>
-
-          <div class="pal-type collapsed" data-pal-type="hvac" data-page-kinds="schematic,mechanical">
-            <div class="pal-type-head"><span class="chip cns" style="background:#64748b"></span>Климат / HVAC<span class="pal-type-arrow">▾</span></div>
-            <div class="pal-type-items">
-              <div class="pal-item" data-type="consumer" data-subtype="hvac" draggable="true" title="Кондиционер / прецизионный CRAC — мощность, фазность, два блока (наружный/внутренний)">
-                <span class="chip cns" style="background:#64748b"></span>❄ Кондиционер / CRAC
-              </div>
-              <div class="pal-presets" data-pal-presets-type="consumer-hvac"></div>
-            </div>
-          </div>
-
-          <div class="pal-type collapsed" data-pal-type="motor" data-page-kinds="schematic,mechanical">
-            <div class="pal-type-head"><span class="chip cns" style="background:#7c3aed"></span>Двигатели / приводы<span class="pal-type-arrow">▾</span></div>
-            <div class="pal-type-items">
-              <div class="pal-item" data-type="consumer" data-subtype="motor" draggable="true" title="Электродвигатель / насос / компрессор — учёт пускового тока (inrushFactor)">
-                <span class="chip cns" style="background:#7c3aed"></span>⚙️ Двигатель / насос
-              </div>
-              <div class="pal-presets" data-pal-presets-type="consumer-motor"></div>
-            </div>
-          </div>
-
-          <div class="pal-type collapsed" data-pal-type="lighting" data-page-kinds="schematic">
-            <div class="pal-type-head"><span class="chip cns" style="background:#f59e0b"></span>Освещение<span class="pal-type-arrow">▾</span></div>
-            <div class="pal-type-items">
-              <div class="pal-item" data-type="consumer" data-subtype="lighting" draggable="true" title="Светильники / групповая нагрузка освещения">
-                <span class="chip cns" style="background:#f59e0b"></span>💡 Освещение
-              </div>
-              <div class="pal-presets" data-pal-presets-type="consumer-lighting"></div>
             </div>
           </div>
 
