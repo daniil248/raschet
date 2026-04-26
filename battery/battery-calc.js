@@ -978,6 +978,73 @@ function _getCurrentVdcRange(dcRaw) {
 }
 const _handoffVdc = { min: 0, max: 0 };
 
+// v0.59.412: Подбор экономически оптимального числа блоков в цепочке.
+// Не «середина диапазона», а МИНИМУМ блоков, удовлетворяющий двум физическим
+// ограничениям ИБП:
+//   • End-of-discharge: при разряде до endV V/cell итоговое V_DC ≥ vdcMin.
+//     N · endV · cellsPerBlock ≥ vdcMin → N ≥ ⌈vdcMin / (endV · cells)⌉
+//   • Float charge: при подзаряде V_DC ≤ vdcMax.
+//     N · floatV · cellsPerBlock ≤ vdcMax → N ≤ ⌊vdcMax / (floatV · cells)⌋
+// Также проверяется номинал: nMinNom ≤ N ≤ nMaxNom (на всякий случай).
+// Из всех допустимых N выбирается минимальное (минимум блоков = минимум
+// стоимости АКБ и занимаемой площади).
+function _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry) {
+  const cellsPerBlock = Math.max(1, Math.round(blockV / 2));
+  // Float V/cell: 2.27V для VRLA (типовое), 3.45V для Li-ion.
+  const floatVperCell = chemistry === 'li-ion' ? 3.45 : 2.27;
+  const endVperBlock   = endV * cellsPerBlock;
+  const floatVperBlock = floatVperCell * cellsPerBlock;
+  const nMinDischarge = Math.ceil((vMin || 0) / endVperBlock);
+  const nMaxFloat     = Math.floor((vMax || 0) / floatVperBlock);
+  const nMinNom       = Math.ceil((vMin || 0) / blockV);
+  const nMaxNom       = Math.floor((vMax || 0) / blockV);
+  const nLow  = Math.max(nMinDischarge, nMinNom, 1);
+  const nHigh = Math.min(nMaxFloat, nMaxNom);
+  const feasible = nLow <= nHigh && nLow >= 1;
+  return {
+    N: feasible ? nLow : Math.max(1, nLow),
+    feasible, nLow, nHigh,
+    cellsPerBlock, endVperBlock, floatVperBlock, floatVperCell,
+    nMinDischarge, nMaxFloat, nMinNom, nMaxNom,
+  };
+}
+
+// Обновляет подсказку под полем V_DC номинальное: показывает формулу,
+// границы и причину выбора. Вызывается при изменении vdcMin/vdcMax/blockV/
+// endV/chemistry и при выборе модели ИБП. Без зависимости от doCalc().
+function _refreshDcExplanation() {
+  const hint = document.getElementById('calc-dcv-hint');
+  if (!hint) return;
+  const get = id => document.getElementById(id);
+  const blockV = Number(get('calc-blockv')?.value) || 12;
+  const endV = Number(get('calc-endv')?.value) || 1.75;
+  const chemistry = get('calc-chem')?.value || 'vrla';
+  const v = _getCurrentVdcRange(Number(get('calc-dcv')?.value) || 0);
+  if (!v.known) { hint.innerHTML = ''; return; }
+  const o = _pickOptimalBlocks(v.min, v.max, blockV, endV, chemistry);
+  const dc = o.N * blockV;
+  const dcEnd   = (o.N * o.endVperBlock).toFixed(0);
+  const dcFloat = (o.N * o.floatVperBlock).toFixed(0);
+  hint.innerHTML =
+    `<div style="background:#f0f7ff;border:1px solid #b3d4ff;padding:6px 8px;border-radius:4px;line-height:1.55">`
+    + `<b>📐 Подбор N (экономически оптимальный):</b><br>`
+    + `Диапазон ИБП V<sub>DC</sub> мин/макс: <b>${v.min}…${v.max} В</b>. `
+    + `Блок ${blockV} В = ${o.cellsPerBlock} элементов. `
+    + `End ${endV} В/эл → ${o.endVperBlock.toFixed(2)} В/блок. `
+    + `Float ${o.floatVperCell} В/эл → ${o.floatVperBlock.toFixed(2)} В/блок.<br>`
+    + `Нижняя граница N (чтобы при разряде V<sub>DC</sub> ≥ ${v.min} В): `
+    + `⌈${v.min}/${o.endVperBlock.toFixed(2)}⌉ = <b>${o.nMinDischarge}</b>.<br>`
+    + `Верхняя граница N (чтобы при float-заряде V<sub>DC</sub> ≤ ${v.max} В): `
+    + `⌊${v.max}/${o.floatVperBlock.toFixed(2)}⌋ = <b>${o.nMaxFloat}</b>.<br>`
+    + (o.feasible
+      ? `Выбран <b>МИНИМУМ N = ${o.N}</b> (минимум блоков → минимум стоимости и места). `
+        + `Номинал V<sub>DC</sub> = ${o.N}×${blockV} = <b>${dc} В</b>. `
+        + `Конечное при разряде ≈ ${dcEnd} В, при float ≈ ${dcFloat} В — оба в допуске.`
+      : `<b style="color:#c62828">⚠ Диапазон не покрывается:</b> N<sub>min</sub>=${o.nLow} > N<sub>max</sub>=${o.nHigh}. `
+        + `Проверьте блок/endV или расширьте диапазон ИБП.`)
+    + `</div>`;
+}
+
 // Авто-подбор числа параллельных цепочек:
 // - autonomy mode: минимум strings, при котором blockPower вписывается в таблицу
 //   (для table-based расчёта) или усреднённая модель даёт positive autonomy.
@@ -1031,18 +1098,19 @@ function doCalc() {
   // Получаем V_DC min/max из текущего источника (UPS picker / manual / handoff).
   // Если диапазон неизвестен — допускаем ±5% от dcVoltageRaw (мягкая граница).
   const vRange = _getCurrentVdcRange(dcVoltageRaw);
-  // Подбор blocksPerString в пределах диапазона V_DC.
-  const nMin = Math.max(1, Math.ceil(vRange.min / blockV));
-  const nMax = Math.max(nMin, Math.floor(vRange.max / blockV));
-  let blocksPerString;
+  // v0.59.412: ЭКОНОМИЧЕСКИ ОПТИМАЛЬНЫЙ подбор N (а не середина диапазона).
+  // Минимум блоков → минимум денег и места. Ограничения:
+  //   1) при разряде до endV V/cell напряжение не должно упасть ниже vdcMin;
+  //   2) при float-charge напряжение не должно превысить vdcMax.
+  // → N_min_safe = ⌈vdcMin / (endV · cellsPerBlock)⌉
+  // → N_max_safe = ⌊vdcMax / (floatV · cellsPerBlock)⌋
+  // → оптимально = N_min_safe.
+  const opt = _pickOptimalBlocks(vRange.min, vRange.max, blockV, endV, chemistry);
+  let blocksPerString = opt.N;
   let dcWarn = null;
-  if (nMin > nMax) {
-    blocksPerString = Math.max(1, Math.round(dcVoltageRaw / blockV) || 1);
-    dcWarn = `Напряжение блока ${blockV} В не позволяет уложить цепочку в диапазон V_DC ${vRange.min}…${vRange.max} В — выбран компромисс ${blocksPerString}×${blockV}=${blocksPerString*blockV} В`;
-  } else {
-    // Берём середину диапазона (чтобы и в conservative и в overcharge state V_DC оставалось валидным).
-    const nMid = Math.round(((vRange.min + vRange.max) / 2) / blockV);
-    blocksPerString = Math.max(nMin, Math.min(nMax, nMid));
+  if (!opt.feasible) {
+    blocksPerString = Math.max(1, opt.N);
+    dcWarn = `Невозможно строго уложить цепочку в диапазон ИБП ${vRange.min}…${vRange.max} В при блоке ${blockV} В, endV ${endV} В/эл (≈${opt.endVperBlock.toFixed(1)} В/блок) и float ≈${opt.floatVperBlock.toFixed(1)} В/блок. Нижняя граница N=${opt.nLow}, верхняя N=${opt.nHigh}. Принят минимум ${blocksPerString}.`;
   }
   const dcVoltage = blocksPerString * blockV;
 
@@ -1284,9 +1352,15 @@ function _applyUpsPickerLock() {
     }
     lock('calc-inveff', Math.round((u.efficiency || 0.94) * 100 < 1 ? (u.efficiency || 94) : (u.efficiency || 94)), true);
     if (u.vdcMin && u.vdcMax) {
-      const mid = Math.round((u.vdcMin + u.vdcMax) / 2);
+      // v0.59.412: показываем не середину, а экономически оптимальное N×blockV
+      // (минимум блоков с учётом end/float). Полная формула — в hint под полем.
+      const blockV = Number(document.getElementById('calc-blockv')?.value) || 12;
+      const endV   = Number(document.getElementById('calc-endv')?.value)   || 1.75;
+      const chem   = document.getElementById('calc-chem')?.value || 'vrla';
+      const o = _pickOptimalBlocks(u.vdcMin, u.vdcMax, blockV, endV, chem);
+      const optV = o.N * blockV;
       const dc = document.getElementById('calc-dcv');
-      if (dc) { dc.value = mid; dc.title = `Фактическое V_DC будет подобрано из диапазона ${u.vdcMin}…${u.vdcMax} В`; }
+      if (dc) { dc.value = optV; dc.title = `Подобрано экономически оптимально: N=${o.N} блоков (минимум) → V_DC=${optV} В. Диапазон ИБП ${u.vdcMin}…${u.vdcMax} В.`; }
       // Заполняем основные поля V_DC мин/макс и блокируем (источник — паспорт ИБП).
       const vmin = document.getElementById('calc-vdcmin');
       const vmax = document.getElementById('calc-vdcmax');
@@ -1294,6 +1368,7 @@ function _applyUpsPickerLock() {
       if (vmax) { vmax.value = u.vdcMax; vmax.readOnly = true; vmax.style.background = '#f0f0f0'; vmax.title = `Из паспорта ${u.supplier || ''} ${u.model || ''}`; }
     }
     _setDcvRangeHint(u.vdcMin, u.vdcMax, `по паспорту ${u.supplier || ''} ${u.model || ''}`.trim());
+    _refreshDcExplanation();
     if (info) info.innerHTML = `Выбран: <b>${escHtml(u.supplier)} ${escHtml(u.model)}</b> · ${u.capacityKw} кВт · η=${(((u.efficiency||0.94)*100<1?(u.efficiency*100):u.efficiency)||94).toFixed(0)}% · V<sub>DC</sub> ${u.vdcMin||'?'}…${u.vdcMax||'?'} В`;
   } else {
     const loadEl = document.getElementById('calc-load');
@@ -1307,6 +1382,7 @@ function _applyUpsPickerLock() {
     if (vmin) { vmin.readOnly = false; vmin.style.background = ''; vmin.title = ''; }
     if (vmax) { vmax.readOnly = false; vmax.style.background = ''; vmax.title = ''; }
     _setDcvRangeHint(null, null, '');
+    _refreshDcExplanation();
   }
   _renderCapacityRecommend();
 }
@@ -1374,8 +1450,15 @@ function wireCalcForm() {
   if (sel) sel.addEventListener('change', () => { _applyBatteryLock(); _renderCapacityRecommend(); });
   ['calc-load','calc-target','calc-dcv','calc-inveff','calc-chem'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('input', () => _renderCapacityRecommend());
-    if (el) el.addEventListener('change', () => _renderCapacityRecommend());
+    if (el) el.addEventListener('input', () => { _renderCapacityRecommend(); _refreshDcExplanation(); });
+    if (el) el.addEventListener('change', () => { _renderCapacityRecommend(); _refreshDcExplanation(); });
+  });
+  // v0.59.412: blockV / endV влияют на оптимальный N — обновляем объяснение.
+  ['calc-blockv','calc-endv'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => { _refreshDcExplanation(); _renderCapacityRecommend(); });
+    el.addEventListener('change', () => { _refreshDcExplanation(); _renderCapacityRecommend(); });
   });
   // V_DC мин/макс — обновляем подсказку и рекомендацию при ручном вводе.
   ['calc-vdcmin','calc-vdcmax'].forEach(id => {
@@ -1385,15 +1468,22 @@ function wireCalcForm() {
       const a = Number(document.getElementById('calc-vdcmin')?.value) || 0;
       const b = Number(document.getElementById('calc-vdcmax')?.value) || 0;
       if (a > 0 && b > 0 && a < b) {
-        _setDcvRangeHint(a, b, 'ручной ввод');
+        // v0.59.412: предзаполняем поле «номинальное V_DC» оптимальным N
+        // (минимум блоков, удовлетворяющий end-of-discharge и float),
+        // а не средней точкой диапазона.
+        const blockV = Number(document.getElementById('calc-blockv')?.value) || 12;
+        const endV   = Number(document.getElementById('calc-endv')?.value)   || 1.75;
+        const chem   = document.getElementById('calc-chem')?.value || 'vrla';
+        const o = _pickOptimalBlocks(a, b, blockV, endV, chem);
         const dc = document.getElementById('calc-dcv');
-        if (dc) dc.value = Math.round((a + b) / 2);
-      } else {
-        _setDcvRangeHint(null, null, '');
+        if (dc) dc.value = o.N * blockV;
       }
+      _refreshDcExplanation();
       _renderCapacityRecommend();
     });
   });
+  // Первичный рендер объяснения (после монтирования формы).
+  setTimeout(() => _refreshDcExplanation(), 0);
 }
 
 // ================ Экспорт отчёта АКБ ================
