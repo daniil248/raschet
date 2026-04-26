@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.342', date: '2026-04-26', items: [
+      '🧭 <b>Project-context через URL + back-stack между конфигураторами (фундамент Фазы 1.27.7).</b> Раньше «активный проект» жил только в localStorage — переход «Конструктор схем» из карточки проекта не передавал контекст, нельзя было открыть несколько проектов в разных вкладках, а из конфигуратора нельзя было вернуться в предыдущий. Теперь:',
+      '• <b>shared/project-context.js</b> (новый) — <code>getProjectContext()</code> читает <code>?project=&from=</code> из URL (приоритетнее LS); <code>buildModuleHref(href, {projectId, fromModule})</code> дописывает параметры; back-stack живёт в sessionStorage (до 8 шагов); <code>navigateBack()</code> возвращает на предыдущий модуль.',
+      '• <b>shared/app-header.js</b> — автоматически: (1) пушит текущую страницу в back-stack при init; (2) рендерит project-badge с именем активного проекта (клик → /projects/); (3) рендерит ←-кнопку с лейблом предыдущего модуля; (4) перехватывает клики по <code>&lt;a&gt;</code> на другие модули и дописывает <code>?project=&from=&lt;текущий&gt;</code> на лету — все 14+ модулей получают наследование контекста бесплатно.',
+      '• <b>projects/projects.js</b> — карточка ЛЮБОГО проекта (не только активного) показывает чипы всех 14 конфигураторов с готовыми <code>?project=<pid>&from=projects</code>; список расширен (cable, mv-config, ups-config, panel-config, pdu-config, transformer-config, mdc-config, suppression-config, rack-config). Клик по чипу очищает back-stack — это «корневой» переход.',
+      '• <b>shared/app-header.css</b> — стили <code>.rs-back-btn</code> и <code>.rs-proj-badge</code>.',
+      '<b>Что ещё впереди (Фаза 1.27.8+):</b> per-module project-gate (фильтр list-видов конфигураторов к текущему проекту, скрытие project-items в direct-entry режиме), унификация хедера в root /index.html (Конструктор схем — пока со своим editor-specific хедером).',
+      'Файлы: shared/project-context.js (новый), shared/app-header.js, shared/app-header.css, projects/projects.js.',
+    ] },
     { version: '0.59.278', date: '2026-04-22', items: [
       '📄 Кнопка «Копировать» у проекта: создаёт копию метаданных и всех scoped-данных (raschet.project.<pid>.*). Экземплярам стоек выдаются новые inst-* id, ссылки на них в других ключах проекта (contents, matrix, rackTags) автоматически переписываются через id-map. Глобальные данные (шаблоны корпусов, каталог IT-типов) — общие, не копируются.',
       '📄 Кнопка «📄 Копия» у мини-проекта — такой же механизм, без подтверждения (черновики быстро клонируются).',

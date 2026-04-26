@@ -8,6 +8,7 @@ import {
   getActiveProjectId, setActiveProjectId, ensureDefaultProject,
   exportProject, importProject,
 } from '../shared/project-storage.js';
+import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
 
 /* ---------- inline modal / toast (без window.prompt/confirm/alert) ---------- */
 function prToast(msg, kind = 'info') {
@@ -118,14 +119,31 @@ function fmtDate(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/* ---------- Ссылки на связанные модули ---------- */
+/* ---------- Ссылки на связанные модули ----------
+   v0.59.342: к каждой ссылке добавляется ?project=<pid>&from=projects, чтобы
+   модуль вошёл в режим «работа в проекте» (только данные этого проекта).
+   Список расширен на все конфигураторы — раньше показывались только пять,
+   а пользовательские проекты часто требуют РУ СН/ИБП/щит/PDU/трансформатор. */
 const LINKED_MODULES = [
-  { href: '../index.html',           label: '⚡ Конструктор схем' },
-  { href: '../scs-design/',          label: '🔗 Проектирование СКС' },
-  { href: '../scs-config/',          label: '🗄 Компоновщик шкафа' },
-  { href: '../scs-config/inventory.html', label: '📦 Реестр IT-оборудования' },
-  { href: '../facility-inventory/',  label: '🏭 Реестр оборудования объекта' },
+  { id: 'schematic',            href: '../index.html',                  label: '⚡ Конструктор схем' },
+  { id: 'cable',                href: '../cable/',                      label: '🧮 Расчёт кабельной линии' },
+  { id: 'scs-design',           href: '../scs-design/',                 label: '🔗 Проектирование СКС' },
+  { id: 'scs-config',           href: '../scs-config/',                 label: '🗄 Компоновщик шкафа' },
+  { id: 'scs-config-inventory', href: '../scs-config/inventory.html',   label: '📦 Реестр IT-оборудования' },
+  { id: 'facility-inventory',   href: '../facility-inventory/',         label: '🏭 Реестр оборудования объекта' },
+  { id: 'rack-config',          href: '../rack-config/',                label: '🗄 Конфигуратор стойки' },
+  { id: 'mv-config',            href: '../mv-config/',                  label: '⚡ РУ СН' },
+  { id: 'ups-config',           href: '../ups-config/',                 label: '🔋 Конфигуратор ИБП' },
+  { id: 'panel-config',         href: '../panel-config/',               label: '🔌 Конфигуратор щита' },
+  { id: 'pdu-config',           href: '../pdu-config/',                 label: '🔌 Конфигуратор PDU' },
+  { id: 'transformer-config',   href: '../transformer-config/',         label: '🔄 Конфигуратор трансформатора' },
+  { id: 'mdc-config',           href: '../mdc-config/',                 label: '🏗 Модульный ЦОД' },
+  { id: 'suppression-config',   href: '../suppression-config/',         label: '🔥 АГПТ' },
 ];
+
+function moduleHrefForProject(pid, mod) {
+  return buildModuleHref(mod.href, { projectId: pid, fromModule: 'projects' });
+}
 
 /* ---------- Статусы проекта (Фаза 1.27.5) ---------- */
 const STATUSES = [
@@ -273,12 +291,17 @@ function render() {
         <span>· Изменён: ${fmtDate(p.updatedAt)}</span>
         <span>· ID: <code>${escapeHtml(p.id)}</code></span>
       </div>
-      ${isActive ? `
       <div class="pr-project-links">
-        ${LINKED_MODULES.map(m => `<a href="${m.href}" class="pr-link-chip">${m.label}</a>`).join('')}
-      </div>` : ''}
+        ${LINKED_MODULES.map(m => `<a href="${moduleHrefForProject(p.id, m)}" class="pr-link-chip" data-mod="${m.id}">${m.label}</a>`).join('')}
+      </div>
     </div>`;
   }).join('');
+
+  // v0.59.342: при клике по ссылке модуля сбрасываем back-stack — это
+  // «корневой» переход из проектов, неоткуда возвращаться.
+  host.querySelectorAll('.pr-link-chip').forEach(a => {
+    a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
+  });
 
   host.querySelectorAll('.pr-project').forEach(el => {
     const id = el.dataset.id;

@@ -121,3 +121,48 @@ body { margin: 0; padding-bottom: 32px; box-sizing: border-box; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ===== v0.59.342: back-кнопка и project-badge ===== */
+.rs-back-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  margin-left: 4px;
+}
+.rs-back-btn:hover {
+  background: #f1f5f9;
+  border-color: #1976d2;
+  color: #1976d2;
+}
+.rs-proj-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #c7d2fe;
+  border-radius: 16px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s, border-color 0.15s;
+}
+.rs-proj-badge:hover {
+  background: #e0e7ff;
+  border-color: #6366f1;
+}
