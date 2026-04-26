@@ -1250,18 +1250,11 @@ export function renderPageKindBanner() {
     return;
   }
   el.hidden = false;
-  // v0.59.363: для page-kind 'scs' даём ссылку «↗ Открыть в полном модуле»
-  // (полноэкранный scs-design.html). Iframe-embed убран.
-  let extra = '';
-  try {
-    if (kind === 'scs' || kind === 'low-voltage' || kind === 'data') {
-      const sp = new URLSearchParams(location.search);
-      const pid = sp.get('project') || '';
-      const pidQS = pid ? `?project=${encodeURIComponent(pid)}&from=schematic` : '';
-      extra = `<a href="scs-design/${pidQS}" class="pkb-action" title="Открыть в полноэкранном модуле" style="margin-left:10px;padding:2px 8px;background:#0f766e;color:#fff;border-radius:3px;text-decoration:none;font-size:11px">↗ Полноэкранный модуль СКС</a>`;
-    }
-  } catch {}
-  el.innerHTML = `<span class="pkb-icon">${meta.icon}</span>${meta.label}<span class="pkb-beta">бета-вид</span>${extra}`;
+  // v0.59.369: кнопка «↗ Полноэкранный модуль СКС» убрана с баннера
+  // page-kind. СКС-проектирование — отдельный модуль (scs-design),
+  // в Конструкторе схем у него места нет. Слаботочные/data-страницы
+  // здесь — это просто принципиальные виды на схеме.
+  el.innerHTML = `<span class="pkb-icon">${meta.icon}</span>${meta.label}<span class="pkb-beta">бета-вид</span>`;
   el.title = meta.desc;
 }
 

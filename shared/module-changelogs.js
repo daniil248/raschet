@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.369', date: '2026-04-26', items: [
+      '🧹 <b>Убрана кнопка «↗ Полноэкранный модуль СКС» с баннера вида страницы в Конструкторе схем.</b> Замечание пользователя: «зачем на схеме слаботочка модуль СКС???».',
+      '• На страницах с kind=scs/low-voltage/data баннер показывал ссылку на <code>scs-design/</code>. Это смешивало два разных модуля: Конструктор схем (принципиальные виды) и СКС-проектирование (отдельная сущность с матрицами и связями).',
+      '• Теперь на баннере остаётся только иконка+название вида и пометка «бета-вид». Открыть СКС-модуль можно из hub.html / меню проекта.',
+      'Файлы: js/engine/render.js (renderPageKindBanner: убран блок <code>extra</code>).',
+    ] },
     { version: '0.59.368', date: '2026-04-26', items: [
       '🐛 <b>Fix: «Параметры потребителя» (и аналогичные модалки) теперь открываются всегда.</b> Жалоба пользователя: кнопка «⚙ Параметры потребителя» в инспекторе не открывает модальное окно в некоторых схемах.',
       '• Добавлен defensive event-delegation на <code>inspectorBody</code> в <code>bindInspectorDeps()</code>. Capturing-listener реагирует на клики по кнопкам с известными id (<code>btn-open-consumer-params</code>, <code>btn-open-panel-params</code>, <code>btn-open-panel-control</code>, <code>btn-open-ups-params</code>, <code>btn-open-ups-control</code>, <code>btn-open-ups-battery</code>) и вызывает соответствующую <code>open*Modal(n)</code>.',
