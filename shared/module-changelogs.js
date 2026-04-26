@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.367', date: '2026-04-26', items: [
+      '⬇⬆ <b>Экспорт/импорт конфигураций — продолжение.</b> Добавлено в rack-config (шаблоны корпусов), mdc-config (модульный ЦОД), scs-config (СКС активного проекта).',
+      '• <b>rack-config</b>: схема <code>raschet.rack-config.v1</code>, ключ <code>rack-config.templates.v1</code>. Экспортируются все шаблоны корпусов глобальной библиотеки.',
+      '• <b>mdc-config</b>: схема <code>raschet.mdc-config.v1</code>, payload содержит in-memory <code>S</code> (totalRacks/rackKw/redundancy/ASHRAE/ИБП-настройки/слаботочка). При импорте значения проталкиваются в форму и вызывается update().',
+      '• <b>scs-config</b>: схема <code>raschet.scs-config.v1</code>. Экспортируются project-namespaced LS-ключи (contents, matrix, cart, rackTags, warehouse) + глобальные (catalog, assemblyTemplates) + список стоек активного проекта в <code>_extra.racks</code>. После импорта — <code>location.reload()</code>.',
+      '<b>Итог:</b> экспорт/импорт работает в 8 модулях (panel, ups, pdu, suppression, rack, mdc, scs, mv).',
+      'Файлы: rack-config/{index.html,rack-config.js}, mdc-config/{index.html,mdc-config.js}, scs-config/{rack.html,scs-config.js}.',
+    ] },
     { version: '0.59.366', date: '2026-04-26', items: [
       '⬇⬆ <b>Экспорт/импорт конфигураций в JSON-файл.</b> Добавлено в panel-config (НКУ), ups-config (ИБП), pdu-config (PDU), suppression-config (АГПТ).',
       '• Новый общий модуль <code>shared/config-io.js</code>: <code>exportConfig({schema, lsKeys, filename, appVersion})</code>, <code>importConfig(file, {schema})</code>, <code>restoreLsKeys(payload)</code>, <code>wireExportImport({exportBtn, importBtn, fileInput, schema, lsKeys, filenamePrefix, appVersion, toast, onAfterImport})</code>.',

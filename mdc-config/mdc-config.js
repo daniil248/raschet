@@ -30,6 +30,8 @@ import {
   countRole, ROLE_COLORS, COMPONENT_SVG, COMPONENT_SPECS,
 } from '../shared/gdm600-templates.js';
 import { rsToast } from '../shared/dialog.js';
+import { download, importConfig } from '../shared/config-io.js';
+import { APP_VERSION } from '../js/engine/constants.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -775,6 +777,59 @@ function init() {
   }
   $('mdc-export-bom').addEventListener('click', exportBom);
   $('mdc-send-suppression')?.addEventListener('click', sendToSuppression);
+
+  // v0.59.367: экспорт/импорт конфигурации ЦОД (in-memory S → JSON-файл).
+  $('mdc-export-config')?.addEventListener('click', () => {
+    try {
+      read(); // обновить S из формы
+      const obj = {
+        schema: 'raschet.mdc-config.v1',
+        savedAt: new Date().toISOString(),
+        appVersion: APP_VERSION,
+        payload: { state: { ...S } },
+      };
+      const fname = 'mdc-config-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.json';
+      download(JSON.stringify(obj, null, 2), fname);
+      rsToast('Конфигурация ЦОД выгружена в файл', 'success');
+    } catch (e) {
+      rsToast('Ошибка экспорта: ' + (e.message || e), 'error');
+    }
+  });
+  const importBtn = $('mdc-import-config');
+  const importFile = $('mdc-import-file');
+  if (importBtn && importFile) {
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', async () => {
+      const f = importFile.files && importFile.files[0];
+      if (!f) return;
+      try {
+        const { payload } = await importConfig(f, { schema: 'raschet.mdc-config.v1' });
+        const st = payload && payload.state;
+        if (!st || typeof st !== 'object') throw new Error('Нет поля payload.state');
+        Object.assign(S, st);
+        // протолкнуть значения в форму
+        for (const k of Object.keys(S)) {
+          const idMap = {
+            totalRacks:'mdc-total-racks', rackKw:'mdc-rack-kw', redundancy:'mdc-redundancy',
+            autonomyMin:'mdc-autonomy', battTech:'mdc-batt-tech', cosPhi:'mdc-cosphi',
+            upsLoadPct:'mdc-ups-load', scaleReservePct:'mdc-scale-reserve',
+            layoutVariant:'mdc-layout-variant', ashrae:'mdc-ashrae', tmax:'mdc-tmax',
+            tmin:'mdc-tmin', elev:'mdc-elev', humidity:'mdc-humidity', oduType:'mdc-odu-type',
+            scs:'mdc-scs', skud:'mdc-skud', video:'mdc-video', fire:'mdc-fire', leak:'mdc-leak',
+            withDgu:'mdc-with-dgu', withTp:'mdc-with-tp',
+          };
+          const el = $(idMap[k]); if (!el) continue;
+          if (el.type === 'checkbox') el.checked = !!S[k];
+          else el.value = S[k];
+        }
+        update();
+        rsToast('Конфигурация ЦОД загружена', 'success');
+      } catch (e) {
+        rsToast('Ошибка импорта: ' + (e.message || e), 'error');
+      } finally { importFile.value = ''; }
+    });
+  }
+
   update();
 }
 

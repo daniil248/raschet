@@ -131,6 +131,8 @@ rescopeToActiveProject();
 /* v0.59.257: каталог вынесен в shared/scs-catalog-data.js (по образцу
    rack-catalog-data.js). Здесь — только импорт под прежними именами. */
 import { SCS_DEFAULT_CATALOG, KIND_LABEL as _KIND_LABEL } from '../shared/scs-catalog-data.js';
+import { wireExportImport } from '../shared/config-io.js';
+import { APP_VERSION } from '../js/engine/constants.js';
 const DEFAULT_CATALOG = SCS_DEFAULT_CATALOG;
 const KIND_LABEL = _KIND_LABEL;
 
@@ -3613,6 +3615,33 @@ function init() {
   $('sc-auto').addEventListener('click', autoPack);
   $('sc-matrix-add').addEventListener('click', addMatrixRow);
   $('sc-bom-csv').addEventListener('click', exportBomCsv);
+
+  // v0.59.367: экспорт/импорт всей конфигурации СКС активного проекта.
+  // LS_CONTENTS/LS_MATRIX/LS_CART/LS_RACKTAGS/LS_WAREHOUSE — project-namespaced
+  // (вычисляются в startup из projectKey()), LS_CATALOG/LS_TEMPLATES — глобальные.
+  // Также сохраняем список стоек активного проекта (через rack-storage).
+  wireExportImport({
+    exportBtn: document.getElementById('sc-export-config'),
+    importBtn: document.getElementById('sc-import-config'),
+    fileInput: document.getElementById('sc-import-file'),
+    schema: 'raschet.scs-config.v1',
+    lsKeys: [LS_CATALOG, LS_TEMPLATES, LS_CONTENTS, LS_MATRIX, LS_CART, LS_RACKTAGS, LS_WAREHOUSE],
+    filenamePrefix: 'scs-config',
+    appVersion: APP_VERSION,
+    getExtra: () => {
+      try { return { racks: loadAllRacksForActiveProject() || [] }; }
+      catch { return null; }
+    },
+    onAfterImport: (payload) => {
+      try {
+        if (payload && payload._extra && Array.isArray(payload._extra.racks)) {
+          saveAllRacksForActiveProject(payload._extra.racks);
+        }
+        // полная перезагрузка: проще, чем синхронизировать state в живом UI
+        location.reload();
+      } catch (e) { console.warn('[scs-config import]', e); }
+    },
+  });
   $('sc-template-save').addEventListener('click', saveCurrentAsTemplate);
   $('sc-template-apply').addEventListener('click', applyTemplate);
   // v0.59.277: применить шаблон корпуса (rack-config tpl) к текущему экземпляру.

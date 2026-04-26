@@ -36,6 +36,8 @@ import { initCatalogBridge } from '../shared/catalog-bridge.js';
 import { onLibraryChange } from '../shared/element-library.js';
 import { openPduPickerModal } from '../shared/pdu-picker-modal.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+import { wireExportImport } from '../shared/config-io.js';
+import { APP_VERSION } from '../js/engine/constants.js';
 initCatalogBridge();
 
 // Re-render при правках каталога (админ изменил встроенный rack/pdu/accessory).
@@ -2177,6 +2179,28 @@ function init() {
   renderTemplateList();
   renderForm();
   bind();
+
+  // v0.59.367: экспорт/импорт всех шаблонов корпусов в JSON-файл.
+  wireExportImport({
+    exportBtn: document.getElementById('rc-export-config'),
+    importBtn: document.getElementById('rc-import-config'),
+    fileInput: document.getElementById('rc-import-file'),
+    schema: 'raschet.rack-config.v1',
+    lsKeys: [LS_KEY],
+    filenamePrefix: 'rack-config-templates',
+    appVersion: APP_VERSION,
+    toast: (m, t) => rsToast(m, t === 'err' ? 'error' : (t === 'ok' ? 'success' : 'info')),
+    onAfterImport: () => {
+      try {
+        state.templates = loadTemplates();
+        if (state.templates.length && !state.templates.find(t => t.id === state.currentId)) {
+          state.currentId = state.templates[0].id;
+        }
+        renderTemplateList();
+        renderForm();
+      } catch {}
+    },
+  });
 
   // Публичный API для левого сайдбара (rack-sidebar.js) и других
   // внешних потребителей. loadExternalTemplate принимает шаблон из любого

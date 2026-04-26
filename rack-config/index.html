@@ -33,6 +33,10 @@
           <button type="button" id="rc-rename" class="rc-btn" title="Переименовать текущий шаблон">✎ переименовать</button>
           <button type="button" id="rc-del" class="rc-btn rc-btn-danger" title="Удалить шаблон. Невозможно, если он используется хотя бы одной стойкой в любом проекте.">✕ удалить</button>
           <span id="rc-usage" class="rc-usage muted" style="margin-left:8px;font-size:12px;color:#64748b" title="Сколько стоек в проектах ссылаются на этот шаблон"></span>
+          <span style="margin-left:auto;display:inline-flex;gap:6px">
+            <button type="button" id="rc-export-config" class="rc-btn" title="Сохранить все шаблоны корпусов в JSON-файл">⬇ Экспорт</button>
+            <button type="button" id="rc-import-config" class="rc-btn" title="Загрузить шаблоны корпусов из JSON-файла">⬆ Импорт<input type="file" id="rc-import-file" accept="application/json,.json" hidden></button>
+          </span>
         </div>
         <div id="rc-instance-warn" style="display:none;margin:6px 0 10px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;color:#78350f;font-size:13px">
           ⚠ Это <b>реальная стойка</b> (с тегом). Обычно корпусные параметры
