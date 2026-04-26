@@ -731,6 +731,9 @@ function _openWizard({ standalone }) {
   if (pickBtn) pickBtn.onclick = _openBatteryPicker;
   if (next3Btn) next3Btn.onclick = _goStep4;
   if (back4Btn) back4Btn.onclick = () => _showStep(3);
+  // v0.59.441: кнопка «Изменить конфигурацию» — возврат к шагу 1 с сохранёнными значениями.
+  const editCfgBtn = document.getElementById('wiz-btn-edit-cfg');
+  if (editCfgBtn) editCfgBtn.onclick = () => { _fillWizStep1Fields(); _showStep(1); };
   document.getElementById('wiz-btn-apply').onclick = _applyConfiguration;
   const saveCfgBtn = document.getElementById('wiz-btn-save-cfg');
   if (saveCfgBtn) saveCfgBtn.onclick = _saveWizardConfiguration;

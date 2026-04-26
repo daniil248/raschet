@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.441', date: '2026-04-26', items: [
+      '✏ <b>Кнопка «Изменить конфигурацию» на Шаге 4 wizard\'а ИБП.</b> После открытия сохранённой конфигурации (или после прохождения wizard\'а) на экране «Итог» теперь есть кнопка возврата к Шагу 1 без потери параметров. Поля Шага 1 уже заполнены через <code>_fillWizStep1Fields()</code>, так что пользователь видит свои значения и может править нагрузку/автономию/напряжение.',
+      '• <code>ups-config/index.html</code> — добавлен <code>&lt;button id="wiz-btn-edit-cfg"&gt;</code> между «← Назад» и «💾 Сохранить в перечень».',
+      '• <code>ups-config/ups-config.js</code> — обработчик: <code>_fillWizStep1Fields(); _showStep(1);</code>',
+    ] },
     { version: '0.59.440', date: '2026-04-26', items: [
       '🖱 <b>Клик по сохранённой конфигурации в сайдбаре «Конфигурации ИБП» открывает саму конфигурацию.</b> Раньше клик только заполнял 4 поля Шага 1 и НЕ восстанавливал ни выбранный ИБП, ни АКБ — пользователь видел только пустой Wizard и думал, что работает только переименование. Теперь:',
       '• <code>ups-config/ups-config.js</code> — добавлена функция <code>_loadFromSavedPayload(payload)</code> и слушатель события <code>ups-config:load</code>: восстанавливает <code>wizState.requirements</code>, <code>wizState.batteryChoice</code>/<code>battery</code>, стичит <code>wizState.composition</code> (ups + fitInfo) из плоского payload и прыгает на <b>Шаг 4 «Итог»</b>, где видна подобранная модель ИБП. Если <code>upsId</code> в payload пустой — открывает Шаг 1 (старое поведение).',
