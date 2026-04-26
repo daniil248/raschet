@@ -6789,4 +6789,48 @@ if (document.readyState === 'loading') {
   init();
 }
 
+// v0.59.352: глобальный toggle для встраиваемой панели «Проектирование СКС».
+// Вызывается из page-kind-баннера (см. render.js renderPageKindBanner) и
+// горячей клавишей Ctrl+Shift+L.
+window.__raschetToggleScsEmbed = function() {
+  const panel = document.getElementById('scs-embed-panel');
+  const frame = document.getElementById('scs-embed-frame');
+  const open = document.getElementById('scs-embed-open');
+  if (!panel || !frame) return;
+  const willOpen = panel.hidden;
+  if (willOpen) {
+    let pid = '';
+    try { pid = new URLSearchParams(location.search).get('project') || ''; } catch {}
+    const qs = pid ? `?project=${encodeURIComponent(pid)}&from=schematic&embed=1` : '?embed=1';
+    if (frame.src === 'about:blank' || !frame.src.includes('scs-design/')) {
+      frame.src = 'scs-design/' + qs;
+    }
+    if (open) open.href = 'scs-design/' + qs.replace(/[?&]embed=1/, '');
+    panel.hidden = false;
+  } else {
+    panel.hidden = true;
+  }
+};
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l')) {
+    e.preventDefault();
+    window.__raschetToggleScsEmbed?.();
+  }
+});
+
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (!t) return;
+  if (t.id === 'scs-embed-close') { document.getElementById('scs-embed-panel').hidden = true; return; }
+  if (t.id === 'scs-embed-resize') {
+    const p = document.getElementById('scs-embed-panel');
+    if (!p) return;
+    const cur = p.style.width || '50%';
+    const seq = ['33%', '50%', '67%', '80%'];
+    const idx = seq.indexOf(cur);
+    p.style.width = seq[(idx + 1) % seq.length];
+  }
+});
+
 })();

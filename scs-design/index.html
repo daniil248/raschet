@@ -12,8 +12,22 @@
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
-    mountHeader({ title: 'Проектирование СКС', home: '../hub.html' });
+    // v0.59.352: режим embed=1 — модуль открыт внутри iframe в Конструкторе схем.
+    // Скрываем собственный хедер (он дублирует обвязку родителя) и сжимаем отступы.
+    let _embed = false;
+    try { _embed = new URLSearchParams(location.search).get('embed') === '1'; } catch {}
+    if (_embed) {
+      document.documentElement.classList.add('rs-embed');
+      const m = document.getElementById('rs-header-mount');
+      if (m) m.style.display = 'none';
+    } else {
+      mountHeader({ title: 'Проектирование СКС', home: '../hub.html' });
+    }
   </script>
+  <style>
+    html.rs-embed body { padding: 0; }
+    html.rs-embed .sd-wrap { padding: 8px; }
+  </style>
 
   <main class="sd-wrap">
     <div class="sd-project-bar" id="sd-project-badge"></div>

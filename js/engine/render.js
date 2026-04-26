@@ -1250,21 +1250,26 @@ export function renderPageKindBanner() {
     return;
   }
   el.hidden = false;
-  // v0.59.349: для low-voltage/data добавляем быструю ссылку на отдельный
-  // модуль «Проектирование СКС» с сохранением project-контекста через URL.
-  // Это даёт «embed-like» доступ — кнопка прямо в баннере над холстом, без
-  // ухода в hub.html. (Полноценный inline iframe-embed — следующий шаг.)
+  // v0.59.349/352: для low-voltage/data добавляем (1) inline-кнопку «панель»,
+  // открывающую iframe-embed scs-design прямо в холсте, и (2) запасной link
+  // в новую вкладку. Контекст проекта пробрасывается через URL.
   let extra = '';
   try {
     if (kind === 'low-voltage' || kind === 'data') {
       const sp = new URLSearchParams(location.search);
       const pid = sp.get('project') || '';
-      const pidQS = pid ? `?project=${encodeURIComponent(pid)}&from=schematic` : '';
-      extra = `<a href="scs-design/${pidQS}" class="pkb-action" title="Меж-шкафные связи и план зала — отдельный модуль с сохранением проекта" style="margin-left:10px;padding:2px 8px;background:#0d9488;color:#fff;border-radius:3px;text-decoration:none;font-size:11px">🔗 Проектирование СКС →</a>`;
+      const pidQS = pid ? `?project=${encodeURIComponent(pid)}&from=schematic&embed=1` : '?embed=1';
+      extra = `<button type="button" data-act="scs-embed-toggle" class="pkb-action" title="Открыть «Проектирование СКС» как панель прямо здесь" style="margin-left:10px;padding:2px 8px;background:#0d9488;color:#fff;border:0;border-radius:3px;cursor:pointer;font-size:11px">🔗 Панель СКС</button>` +
+        `<a href="scs-design/${pidQS.replace('&embed=1','').replace('?embed=1','')}" class="pkb-action" title="Открыть в полноэкранном модуле" style="margin-left:6px;padding:2px 8px;background:#0f766e;color:#fff;border-radius:3px;text-decoration:none;font-size:11px">↗ В новой вкладке</a>`;
     }
   } catch {}
   el.innerHTML = `<span class="pkb-icon">${meta.icon}</span>${meta.label}<span class="pkb-beta">бета-вид</span>${extra}`;
   el.title = meta.desc;
+  // v0.59.352: wire embed-toggle (idempotent — каждый рендер баннера).
+  try {
+    const tgl = el.querySelector('[data-act="scs-embed-toggle"]');
+    if (tgl) tgl.addEventListener('click', () => { try { window.__raschetToggleScsEmbed?.(); } catch {} });
+  } catch {}
 }
 
 // v0.57.78 (Collaboration C.6): курсоры других участников сессии.
