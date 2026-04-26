@@ -221,13 +221,14 @@
           <input id="calc-load" type="number" min="0" step="0.1" value="10">
         </div>
         <div>
-          <label>Напряжение блока DC, В</label>
+          <label>Напряжение DC-шины, В <span id="calc-dcv-range" class="muted" style="font-size:10px;font-weight:400"></span></label>
           <input id="calc-dcv" type="number" min="12" step="1" value="384">
+          <div id="calc-dcv-hint" class="muted" style="font-size:10px;margin-top:2px"></div>
         </div>
 
         <div>
-          <label>Цепочек параллельно</label>
-          <input id="calc-strings" type="number" min="1" step="1" value="1">
+          <label>Цепочек параллельно <span class="muted" style="font-size:10px;font-weight:400">· выбирается автоматически</span></label>
+          <input id="calc-strings" type="number" min="1" step="1" value="1" readonly style="background:#f0f0f0" title="Число цепочек подбирается автоматически по нагрузке и характеристикам АКБ">
         </div>
         <div>
           <label>Напряжение одного блока, В</label>

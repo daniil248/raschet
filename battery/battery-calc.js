@@ -953,6 +953,65 @@ function _renderCapacityRecommend() {
 }
 
 // ================= Расчёт =================
+// Достаём V_DC min/max из текущего источника:
+//   1) UPS picker (catalog) — паспорт ИБП
+//   2) Manual V_DC min/max поля
+//   3) handoff из ИБП-конфигуратора / схемы (через _handoffVdc)
+//   4) fallback ±5% от dcRaw
+function _getCurrentVdcRange(dcRaw) {
+  // 1. catalog UPS
+  const sel = document.getElementById('calc-ups-pick');
+  const id = sel ? sel.value : '';
+  if (id) {
+    const u = getUps(id);
+    if (u && u.vdcMin && u.vdcMax) return { min: u.vdcMin, max: u.vdcMax, known: true, source: 'ups-catalog' };
+  }
+  // 2. manual
+  const a = Number(document.getElementById('calc-ups-vdcmin')?.value) || 0;
+  const b = Number(document.getElementById('calc-ups-vdcmax')?.value) || 0;
+  if (a > 0 && b > 0 && a < b) return { min: a, max: b, known: true, source: 'manual' };
+  // 3. handoff
+  if (_handoffVdc.min && _handoffVdc.max) return { min: _handoffVdc.min, max: _handoffVdc.max, known: true, source: 'handoff' };
+  // 4. fallback ±5%
+  if (dcRaw > 0) return { min: Math.round(dcRaw * 0.95), max: Math.round(dcRaw * 1.05), known: false, source: 'fallback' };
+  return { min: 0, max: 0, known: false, source: 'none' };
+}
+const _handoffVdc = { min: 0, max: 0 };
+
+// Авто-подбор числа параллельных цепочек:
+// - autonomy mode: минимум strings, при котором blockPower вписывается в таблицу
+//   (для table-based расчёта) или усреднённая модель даёт positive autonomy.
+// - required mode: вернуть 1 (calcRequiredBlocks сам итерирует по strings).
+function _autoSelectStrings({ battery, loadKw, blocksPerString, blockV, endV, invEff, chemistry, capacityAh, mode, targetMin }) {
+  if (!(loadKw > 0)) return { strings: 1, warning: null };
+  if (mode === 'required') return { strings: 1, warning: null }; // calcRequiredBlocks сам подбирает
+  const maxStrings = 200;
+  const totalPowerW = (loadKw * 1000) / Math.max(0.5, invEff);
+  // Ищем minimum strings, при котором расчёт даёт sane результат (без extrapolation если возможно)
+  let bestNoExtrap = null;
+  for (let s = 1; s <= maxStrings; s++) {
+    const r = calcAutonomy({
+      battery, loadKw, dcVoltage: blocksPerString * blockV,
+      strings: s, blocksPerString, endV, invEff, chemistry, capacityAh,
+    });
+    if (r.feasible && r.autonomyMin > 0 && Number.isFinite(r.autonomyMin)) {
+      if (!r.extrapolated) { bestNoExtrap = s; break; }
+    }
+  }
+  if (bestNoExtrap) return { strings: bestNoExtrap, warning: null };
+  // Если без экстраполяции не нашли — берём minimum, при котором хоть feasible
+  for (let s = 1; s <= maxStrings; s++) {
+    const r = calcAutonomy({
+      battery, loadKw, dcVoltage: blocksPerString * blockV,
+      strings: s, blocksPerString, endV, invEff, chemistry, capacityAh,
+    });
+    if (r.feasible && r.autonomyMin > 0) {
+      return { strings: s, warning: 'Решение получено экстраполяцией — таблица производителя не покрывает запрошенный режим' };
+    }
+  }
+  return { strings: 1, warning: 'Не удалось подобрать число цепочек ≤ ' + maxStrings };
+}
+
 function doCalc() {
   const out = document.getElementById('calc-result');
   if (!out) return;
@@ -960,18 +1019,50 @@ function doCalc() {
   const battery = get('calc-battery').value ? getBattery(get('calc-battery').value) : null;
   const chemistry = get('calc-chem').value;
   const loadKw = Number(get('calc-load').value) || 0;
-  const dcVoltage = Number(get('calc-dcv').value) || 0;
-  const strings = Math.max(1, Number(get('calc-strings').value) || 1);
+  const dcVoltageRaw = Number(get('calc-dcv').value) || 0;
   const endV = Number(get('calc-endv').value) || 1.75;
   const invEff = Math.max(0.5, Math.min(1, (Number(get('calc-inveff').value) || 94) / 100));
   const mode = get('calc-mode').value;
   const targetMin = Number(get('calc-target').value) || 10;
   const capacityAh = Number(get('calc-capAh').value) || 100;
-  const params = { battery, chemistry, loadKw, dcVoltage, strings, endV, invEff, mode, targetMin, capacityAh };
 
-  // Блоков в цепочке определяем из dcVoltage / blockVoltage
   const blockV = battery ? battery.blockVoltage : (Number(get('calc-blockv').value) || 12);
-  const blocksPerString = Math.max(1, Math.round(dcVoltage / blockV) || 1);
+
+  // Получаем V_DC min/max из текущего источника (UPS picker / manual / handoff).
+  // Если диапазон неизвестен — допускаем ±5% от dcVoltageRaw (мягкая граница).
+  const vRange = _getCurrentVdcRange(dcVoltageRaw);
+  // Подбор blocksPerString в пределах диапазона V_DC.
+  const nMin = Math.max(1, Math.ceil(vRange.min / blockV));
+  const nMax = Math.max(nMin, Math.floor(vRange.max / blockV));
+  let blocksPerString;
+  let dcWarn = null;
+  if (nMin > nMax) {
+    blocksPerString = Math.max(1, Math.round(dcVoltageRaw / blockV) || 1);
+    dcWarn = `Напряжение блока ${blockV} В не позволяет уложить цепочку в диапазон V_DC ${vRange.min}…${vRange.max} В — выбран компромисс ${blocksPerString}×${blockV}=${blocksPerString*blockV} В`;
+  } else {
+    // Берём середину диапазона (чтобы и в conservative и в overcharge state V_DC оставалось валидным).
+    const nMid = Math.round(((vRange.min + vRange.max) / 2) / blockV);
+    blocksPerString = Math.max(nMin, Math.min(nMax, nMid));
+  }
+  const dcVoltage = blocksPerString * blockV;
+
+  // Авто-выбор числа цепочек (strings).
+  // Стратегия: минимум strings, при котором мощность на блок не превышает
+  // максимум таблицы (или хотя бы feasible в усреднённой модели).
+  // При loadKw=0 — strings=1 (нет нагрузки).
+  const stringsAuto = _autoSelectStrings({
+    battery, loadKw, blocksPerString, blockV, endV, invEff, chemistry,
+    capacityAh: battery ? battery.capacityAh : capacityAh,
+    mode, targetMin,
+  });
+  const strings = stringsAuto.strings;
+  // Отражаем авто-значение в UI
+  const strEl = get('calc-strings');
+  if (strEl) strEl.value = strings;
+  const dcEl = get('calc-dcv');
+  if (dcEl) dcEl.value = dcVoltage;
+
+  const params = { battery, chemistry, loadKw, dcVoltage, strings, endV, invEff, mode, targetMin, capacityAh };
 
   let html = '';
   let calcResult = null;
@@ -987,7 +1078,10 @@ function doCalc() {
     html += `<div class="result-title">Автономия системы</div>`;
     html += `<div class="result-value">${Number.isFinite(r.autonomyMin) ? fmt(r.autonomyMin) + ' мин' : '∞'}</div>`;
     html += `<div class="result-sub">Метод: <b>${r.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель'}</b></div>`;
-    html += `<div class="result-sub">На блок: <b>${fmt(r.blockPowerW)} W</b>, всего блоков: <b>${strings * blocksPerString}</b> (${strings} × ${blocksPerString})</div>`;
+    html += `<div class="result-sub">Конфигурация (авто): <b>${strings} цеп. × ${blocksPerString} бл.</b> · V<sub>DC</sub>=${dcVoltage} В ${vRange.known ? `(в диапазоне ${vRange.min}…${vRange.max} В)` : ''}</div>`;
+    html += `<div class="result-sub">На блок: <b>${fmt(r.blockPowerW)} W</b>, всего блоков: <b>${strings * blocksPerString}</b></div>`;
+    if (dcWarn) html += `<div class="warn">⚠ ${escHtml(dcWarn)}</div>`;
+    if (stringsAuto.warning) html += `<div class="warn">⚠ ${escHtml(stringsAuto.warning)}</div>`;
     if (r.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время разряда находится вне таблицы производителя — значение получено линейной экстраполяцией. Не подтверждено производителем.</div>`;
     if (r.warnings.length) html += r.warnings.map(w => `<div class="warn">⚠ ${escHtml(w)}</div>`).join('');
     html += `</div>`;
@@ -1004,7 +1098,8 @@ function doCalc() {
       html += `<div class="result-block">`;
       html += `<div class="result-title">Минимум блоков для автономии ≥ ${targetMin} мин</div>`;
       html += `<div class="result-value">${found.totalBlocks}</div>`;
-      html += `<div class="result-sub">Цепочек: <b>${found.strings}</b> × блоков в цепочке: <b>${found.blocksPerString}</b></div>`;
+      html += `<div class="result-sub">Цепочек (авто): <b>${found.strings}</b> × блоков в цепочке: <b>${found.blocksPerString}</b> · V<sub>DC</sub>=${found.blocksPerString * blockV} В ${vRange.known ? `(в диапазоне ${vRange.min}…${vRange.max} В)` : ''}</div>`;
+      if (dcWarn) html += `<div class="warn">⚠ ${escHtml(dcWarn)}</div>`;
       html += `<div class="result-sub">Реальная автономия: <b>${fmt(found.result.autonomyMin)} мин</b>, метод: <b>${found.result.method === 'table' ? 'по таблице' : 'среднее'}</b></div>`;
       if (found.result.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время разряда вне таблицы производителя — значение получено линейной экстраполяцией двух ближайших точек. Не подтверждено производителем.</div>`;
       html += `</div>`;
@@ -1158,23 +1253,41 @@ function _applyUpsPickerLock() {
   };
   const info = document.getElementById('calc-ups-info');
   if (u) {
-    // Из паспорта ИБП: capacityKw, efficiency, vdcMin/Max
-    lock('calc-load', u.capacityKw, true);
+    // Из паспорта ИБП: КПД и V_DC берём жёстко, нагрузка остаётся за
+    // пользователем (ИБП на 1000 кВт может питать и 100 кВт нагрузку).
+    const loadEl = document.getElementById('calc-load');
+    if (loadEl) {
+      loadEl.readOnly = false;
+      loadEl.style.background = '';
+      loadEl.title = `Номинал ИБП ${u.capacityKw} кВт — введите фактическую нагрузку`;
+      loadEl.placeholder = `до ${u.capacityKw} кВт`;
+      loadEl.max = u.capacityKw;
+    }
     lock('calc-inveff', Math.round((u.efficiency || 0.94) * 100 < 1 ? (u.efficiency || 94) : (u.efficiency || 94)), true);
-    // Среднее V_DC
     if (u.vdcMin && u.vdcMax) {
       const mid = Math.round((u.vdcMin + u.vdcMax) / 2);
       const dc = document.getElementById('calc-dcv');
-      if (dc) { dc.value = mid; dc.readOnly = false; dc.title = `Допустимый диапазон V_DC: ${u.vdcMin}…${u.vdcMax} В`; dc.style.background = '#f5fbf5'; }
+      if (dc) { dc.value = mid; dc.readOnly = false; dc.title = `Допустимый диапазон V_DC: ${u.vdcMin}…${u.vdcMax} В`; dc.style.background = '#f5fbf5'; dc.min = u.vdcMin; dc.max = u.vdcMax; }
     }
+    _setDcvRangeHint(u.vdcMin, u.vdcMax, `по паспорту ${u.supplier || ''} ${u.model || ''}`.trim());
     if (info) info.innerHTML = `Выбран: <b>${escHtml(u.supplier)} ${escHtml(u.model)}</b> · ${u.capacityKw} кВт · η=${(((u.efficiency||0.94)*100<1?(u.efficiency*100):u.efficiency)||94).toFixed(0)}% · V<sub>DC</sub> ${u.vdcMin||'?'}…${u.vdcMax||'?'} В`;
   } else {
-    lock('calc-load', null);
+    const loadEl = document.getElementById('calc-load');
+    if (loadEl) { loadEl.readOnly = false; loadEl.style.background = ''; loadEl.title = ''; loadEl.placeholder = ''; loadEl.removeAttribute('max'); }
     lock('calc-inveff', null);
     const dc = document.getElementById('calc-dcv');
-    if (dc) { dc.style.background = ''; dc.title = ''; }
+    if (dc) { dc.style.background = ''; dc.title = ''; dc.removeAttribute('max'); }
+    _setDcvRangeHint(null, null, '');
   }
   _renderCapacityRecommend();
+}
+function _setDcvRangeHint(vmin, vmax, source) {
+  const range = document.getElementById('calc-dcv-range');
+  const hint = document.getElementById('calc-dcv-hint');
+  if (range) range.textContent = (vmin && vmax) ? `· допустимо ${vmin}…${vmax} В` : '';
+  if (hint) hint.innerHTML = (vmin && vmax)
+    ? `Диапазон V<sub>DC</sub> мин/макс: <b>${vmin}…${vmax} В</b>${source ? ` <span class="muted">(${escHtml(source)})</span>` : ''}. Число блоков в цепочке подберётся автоматически — фактическое V<sub>DC</sub> = N · V<sub>блока</sub> должно попасть в этот диапазон.`
+    : '';
 }
 function _wireUpsPicker() {
   // Mode radios
@@ -1658,6 +1771,11 @@ function initSchemaContext() {
       const mid = (Number(vdcMin || vdcMax) + Number(vdcMax || vdcMin)) / 2;
       if (Number.isFinite(mid)) dcvEl.value = mid;
     }
+    if (vdcMin && vdcMax) {
+      _handoffVdc.min = Number(vdcMin) || 0;
+      _handoffVdc.max = Number(vdcMax) || 0;
+      _setDcvRangeHint(_handoffVdc.min, _handoffVdc.max, 'из контекста схемы');
+    }
     const batEl = document.getElementById('calc-battery');
     if (batEl && selected) batEl.value = selected;
     // Режим «найти минимум блоков для автономии ≥ target»
@@ -1749,6 +1867,11 @@ function initUpsHandoff() {
     if (vdcMin || vdcMax) {
       const mid = (Number(vdcMin || vdcMax) + Number(vdcMax || vdcMin)) / 2;
       if (Number.isFinite(mid)) set('calc-dcv', Math.round(mid));
+      if (vdcMin && vdcMax) {
+        _handoffVdc.min = Number(vdcMin) || 0;
+        _handoffVdc.max = Number(vdcMax) || 0;
+        _setDcvRangeHint(_handoffVdc.min, _handoffVdc.max, 'из ИБП-конфигуратора');
+      }
     }
     if (invEffPct) set('calc-inveff', Math.round(Number(invEffPct)));
     const modeEl = document.getElementById('calc-mode');

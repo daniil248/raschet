@@ -721,7 +721,69 @@ function _openWizard({ standalone }) {
   if (next3Btn) next3Btn.onclick = _goStep4;
   if (back4Btn) back4Btn.onclick = () => _showStep(3);
   document.getElementById('wiz-btn-apply').onclick = _applyConfiguration;
+  const saveCfgBtn = document.getElementById('wiz-btn-save-cfg');
+  if (saveCfgBtn) saveCfgBtn.onclick = _saveWizardConfiguration;
   _showStep(1);
+}
+
+// v0.59.405: сохранение полной конфигурации wizard'а в перечень слева.
+// Использует общий shared/configuration-catalog.js (kind='ups'), чтобы
+// запись попадала в тот же список, что и кнопка «+ Сохранить» в шапке
+// сайдбара. В payload — полное состояние wizard (требования + frame +
+// модули + АКБ + резервирование), чтобы при выборе из списка можно было
+// разом восстановить все поля.
+async function _saveWizardConfiguration() {
+  const comp = wizState.composition;
+  if (!comp) { flash('Сначала выберите конфигурацию (Шаг 4)', 'warn'); return; }
+  const u = comp.ups;
+  const fi = comp.fitInfo;
+  const rq = wizState.requirements;
+  // Имя по умолчанию
+  const defLabel = `${u.supplier || ''} ${u.model || u.id} · ${fi.usable} kW · ${rq.redundancy}`.trim();
+  let label = defLabel;
+  try {
+    const res = await rsPrompt('Название конфигурации', defLabel, { okLabel: 'Сохранить', cancelLabel: 'Отмена' });
+    if (res === null || res === undefined) return; // отмена
+    label = String(res || '').trim() || defLabel;
+  } catch { label = defLabel; }
+  const description = [
+    rq.upsType ? (getUpsType(rq.upsType) || {}).label : '',
+    rq.redundancy,
+    `${rq.autonomyMin} мин`,
+    wizState.batteryChoice === 'skip' ? 'без АКБ' : (wizState.battery ? `АКБ: ${wizState.battery.supplier || ''} ${wizState.battery.model || ''}`.trim() : ''),
+  ].filter(Boolean).join(' · ');
+  const payload = {
+    // Требования
+    loadKw: rq.loadKw, autonomy: rq.autonomyMin, redundancy: rq.redundancy,
+    upsType: rq.upsType, cosPhi: rq.cosPhi, phases: rq.phases,
+    // Подобранный frame
+    upsId: u.id, upsSupplier: u.supplier, upsModel: u.model,
+    capacityKw: fi.realCapacity || fi.usable,
+    moduleInstalled: fi.installed, moduleWorking: fi.working, moduleRedundant: fi.redundant,
+    frameKw: u.frameKw, moduleKwRated: u.moduleKwRated, moduleSlots: u.moduleSlots,
+    efficiency: u.efficiency, vdcMin: u.vdcMin, vdcMax: u.vdcMax,
+    // АКБ
+    batteryChoice: wizState.batteryChoice || null,
+    battery: wizState.battery || null,
+    // Цена
+    totalPrice: comp.totalPrice, currency: comp.currency,
+    // Композиция (для standalone-режима с модулями)
+    composition: comp.composition,
+  };
+  try {
+    const { saveConfig, getActiveProjectCode } = await import('../shared/configuration-catalog.js');
+    const entry = saveConfig('ups', {
+      label,
+      description,
+      projectCode: getActiveProjectCode() || null,
+      payload,
+    });
+    flash(`Конфигурация сохранена: ${entry.id} · ${label}`, 'success');
+    // Тригернём refresh сайдбара (он подписан на onConfigsChange)
+    try { window.dispatchEvent(new CustomEvent('ups-config:configs-changed')); } catch {}
+  } catch (e) {
+    flash('Не удалось сохранить: ' + (e.message || e), 'error');
+  }
 }
 
 function _fillWizStep1Fields() {
