@@ -405,6 +405,41 @@ function rackById(id) { return getRacks().find(r => r.id === id); }
 function getProjectInstances() {
   return getRacks().filter(r => r && r.id && String(r.id).startsWith('inst-'));
 }
+
+/* v0.59.354: материализация виртуальной (из схемы) стойки прямо на плане
+   зала — пользователь перетаскивает чип «📐 …», он становится реальным
+   inst-*-экземпляром в scs-config (как при clicks «Принять» в racks-list).
+   Возвращает id созданной стойки или null при ошибке. */
+function _materializeVirtualForPlan(virtId, tag) {
+  if (!virtId || !tag) return null;
+  const tags = loadJson(LS_RACKTAGS, {});
+  const tagInUse = Object.values(tags).some(t => (t || '').trim() === tag);
+  if (tagInUse) {
+    console.warn('[scs-design] tag busy: ' + tag);
+    return null;
+  }
+  const virtuals = loadSchemeVirtualRacks(getActiveProjectId());
+  const v = virtuals.find(x => x.id === virtId);
+  if (!v) {
+    console.warn('[scs-design] virtual rack not found: ' + virtId);
+    return null;
+  }
+  const racks = (function(){ try { return loadAllRacksForActiveProject(); } catch { return []; } })();
+  const inst = {
+    id: 'inst-' + Math.random().toString(36).slice(2, 10),
+    name: v.name,
+    u: v.u || 42,
+    occupied: v.occupied || 0,
+    comment: `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, экземпляр ${v.schemeIndex}/${v.schemeTotal})`,
+    schemeNodeId: v.schemeNodeId,
+    schemeIndex: v.schemeIndex,
+  };
+  racks.push(inst);
+  try { saveAllRacksForActiveProject(racks); } catch { saveJson(LS_RACK, racks); }
+  tags[inst.id] = tag;
+  saveJson(LS_RACKTAGS, tags);
+  return inst.id;
+}
 function getCatalog() { const c = loadJson(LS_CATALOG, []); return Array.isArray(c) ? c : []; }
 function catalogType(typeId) { return getCatalog().find(t => t.id === typeId) || null; }
 function isOrganizer(dev) {
@@ -1528,14 +1563,39 @@ function renderPlan() {
   const placed = racks.filter(r => plan.positions[r.id]);
   const unplaced = racks.filter(r => !plan.positions[r.id]);
 
+  // v0.59.354: виртуальные стойки из схемы (consumer/rack узлы), которые
+  // ещё не материализованы в scs-config. Показываем их в палитре отдельным
+  // блоком — при drop материализуются inline (создаётся real-instance).
+  const pid = getActiveProjectId();
+  const allVirtuals = loadSchemeVirtualRacks(pid);
+  const realByNode = new Map();
+  racks.forEach(r => {
+    if (r.schemeNodeId) {
+      const k = r.schemeNodeId + ':' + (r.schemeIndex || 1);
+      realByNode.set(k, true);
+    }
+  });
+  const virtualsOnly = allVirtuals.filter(v => !realByNode.has(v.schemeNodeId + ':' + v.schemeIndex));
+
   // Палитра
-  palette.innerHTML = unplaced.length
-    ? unplaced.map(r => `<span class="sd-plan-chip" draggable="true" data-id="${escapeAttr(r.id)}">${escapeHtml(getRackShortLabel(r.id))}</span>`).join('')
-    : '<span class="muted">Все стойки размещены на плане.</span>';
+  const realChips = unplaced.map(r => `<span class="sd-plan-chip" draggable="true" data-id="${escapeAttr(r.id)}">${escapeHtml(getRackShortLabel(r.id))}</span>`).join('');
+  const virtChips = virtualsOnly.map(v =>
+    `<span class="sd-plan-chip sd-plan-chip-virt" draggable="true" data-virt-id="${escapeAttr(v.id)}" data-virt-tag="${escapeAttr(v.autoTag)}" title="Виртуальная стойка из схемы (узел ${escapeAttr(v.schemeNodeId)}, ${v.schemeIndex}/${v.schemeTotal}). При drop будет материализована.">📐 ${escapeHtml(v.autoTag)} <small>· из схемы</small></span>`
+  ).join('');
+  if (!realChips && !virtChips) {
+    palette.innerHTML = '<span class="muted">Все стойки размещены на плане.</span>';
+  } else {
+    palette.innerHTML = realChips + (realChips && virtChips ? '<span class="muted" style="margin:0 6px">·</span>' : '') + virtChips;
+  }
 
   palette.querySelectorAll('.sd-plan-chip').forEach(el => {
     el.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('text/sd-rack', el.dataset.id);
+      // v0.59.354: virtual-chip несёт virt-id + tag, real-chip — просто id
+      if (el.classList.contains('sd-plan-chip-virt')) {
+        e.dataTransfer.setData('text/sd-rack-virt', el.dataset.virtId + '|' + el.dataset.virtTag);
+      } else {
+        e.dataTransfer.setData('text/sd-rack', el.dataset.id);
+      }
       e.dataTransfer.effectAllowed = 'move';
     });
   });
@@ -1679,13 +1739,26 @@ U: ${s.usedU}/${s.u} (${pct}%) · Устр.: ${s.devCount}
 
   // Drop target
   canvas.addEventListener('dragover', e => {
-    if (Array.from(e.dataTransfer.types).includes('text/sd-rack')) {
+    const types = Array.from(e.dataTransfer.types);
+    if (types.includes('text/sd-rack') || types.includes('text/sd-rack-virt')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
     }
   });
   canvas.addEventListener('drop', e => {
-    const id = e.dataTransfer.getData('text/sd-rack');
+    let id = e.dataTransfer.getData('text/sd-rack');
+    // v0.59.354: drop виртуальной стойки — материализуем inline и переходим к
+    // обычному размещению с уже-настоящим id.
+    if (!id) {
+      const virtPayload = e.dataTransfer.getData('text/sd-rack-virt');
+      if (virtPayload) {
+        const sep = virtPayload.indexOf('|');
+        const virtId = sep >= 0 ? virtPayload.slice(0, sep) : virtPayload;
+        const tag = sep >= 0 ? virtPayload.slice(sep + 1) : '';
+        id = _materializeVirtualForPlan(virtId, tag);
+        if (!id) { e.preventDefault(); return; }
+      }
+    }
     if (!id) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
