@@ -82,7 +82,8 @@ function renderCatalog() {
 
   const { text, chem, custom } = _getCatalogFilters();
   // Применяем фильтры (включая каскад Производитель → Серия → Модель)
-  const list = all.filter(b => {
+  // и сортировку (по поставщику → V блока → Ah → модели).
+  const list = _sortBatteries(all.filter(b => {
     if (chem && (b.chemistry || '').toLowerCase() !== chem) return false;
     if (custom === 'imported' && b.custom === true) return false;
     if (custom === 'custom' && b.custom !== true) return false;
@@ -94,7 +95,7 @@ function renderCatalog() {
       if (!hay.includes(text)) return false;
     }
     return true;
-  });
+  }));
   if (!all.length) {
     wrap.innerHTML = `<div class="empty">Справочник пуст. Загрузите XLSX-файлы через «+ Загрузить» или добавьте запись вручную.</div>`;
     return;
@@ -104,7 +105,7 @@ function renderCatalog() {
     return;
   }
   const h = ['<table class="cat-table">'];
-  h.push('<thead><tr><th></th><th>Поставщик</th><th>Модель</th><th>Химия</th><th>Блок</th><th>Ёмкость</th><th>Точек</th><th>Источник</th><th></th></tr></thead>');
+  h.push('<thead><tr><th></th><th>Поставщик</th><th>Модель</th><th>Тип АКБ</th><th>Блок</th><th>Ёмкость</th><th>Точек</th><th>Источник</th><th></th></tr></thead>');
   h.push('<tbody>');
   for (const b of list) {
     const isCustom = b.custom === true;
@@ -802,13 +803,27 @@ function _filterBatteries(list, f) {
     return true;
   });
 }
+function _sortBatteries(list) {
+  return list.slice().sort((a, b) => {
+    const sa = (a.supplier || '').toLowerCase();
+    const sb = (b.supplier || '').toLowerCase();
+    if (sa !== sb) return sa.localeCompare(sb, 'ru');
+    const va = Number(a.blockVoltage) || 0;
+    const vb = Number(b.blockVoltage) || 0;
+    if (va !== vb) return va - vb;
+    const ca = Number(a.capacityAh) || 0;
+    const cb = Number(b.capacityAh) || 0;
+    if (ca !== cb) return ca - cb;
+    return String(a.type || a.model || '').localeCompare(String(b.type || b.model || ''), 'ru');
+  });
+}
 function renderBatterySelector() {
   const sel = document.getElementById('calc-battery');
   if (!sel) return;
   const all = listBatteries();
   _populateCalcFilterOptions(all);
   const f = _calcFilters();
-  const list = _filterBatteries(all, f);
+  const list = _sortBatteries(_filterBatteries(all, f));
   const cur = sel.value;
   let h = '<option value="">— средняя модель (без таблицы) —</option>';
   for (const b of list) {
@@ -841,6 +856,20 @@ function _applyBatteryLock() {
   if (b) {
     lock('calc-blockv', b.blockVoltage);
     lock('calc-capAh', b.capacityAh);
+    // Химия: автоматически выбираем по chemistry АКБ и блокируем select
+    const chemSel = document.getElementById('calc-chem');
+    if (chemSel && b.chemistry) {
+      // Если в select нет такого option (например, NiCd) — добавим его
+      if (!Array.from(chemSel.options).some(o => o.value === b.chemistry)) {
+        const op = document.createElement('option');
+        op.value = b.chemistry; op.textContent = b.chemistry.toUpperCase();
+        chemSel.appendChild(op);
+      }
+      chemSel.value = b.chemistry;
+      chemSel.disabled = true;
+      chemSel.title = 'Заблокировано — химия определена выбранной моделью АКБ';
+      chemSel.style.background = '#f0f0f0';
+    }
     // выставим dcVoltage кратно blockV если хоть как-то
     const blkV = Number(b.blockVoltage);
     const dc = document.getElementById('calc-dcv');
@@ -852,6 +881,12 @@ function _applyBatteryLock() {
   } else {
     lock('calc-blockv', null);
     lock('calc-capAh', null);
+    const chemSel = document.getElementById('calc-chem');
+    if (chemSel) {
+      chemSel.disabled = false;
+      chemSel.title = '';
+      chemSel.style.background = '';
+    }
   }
 }
 function _renderCapacityRecommend() {
@@ -958,6 +993,149 @@ function doCalc() {
   lastBatteryCalc = { params, calcResult };
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
+}
+
+// ================ UPS picker (standalone-режим battery) ================
+function _sortUpses(list) {
+  return list.slice().sort((a, b) => {
+    const sa = (a.supplier || '').toLowerCase();
+    const sb = (b.supplier || '').toLowerCase();
+    if (sa !== sb) return sa.localeCompare(sb, 'ru');
+    const ka = Number(a.capacityKw) || 0;
+    const kb = Number(b.capacityKw) || 0;
+    if (ka !== kb) return ka - kb;
+    return String(a.model || '').localeCompare(String(b.model || ''), 'ru');
+  });
+}
+function _upsFilters() {
+  const v = id => { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  return {
+    text: v('calc-ups-flt-text').toLowerCase(),
+    supp: v('calc-ups-flt-supp'),
+    type: v('calc-ups-flt-type'),
+    kwMin: Number(v('calc-ups-flt-kw')) || 0,
+  };
+}
+function _filterUpses(list, f) {
+  return list.filter(u => {
+    if (f.text) {
+      const s = ((u.supplier||'')+' '+(u.model||'')).toLowerCase();
+      if (!s.includes(f.text)) return false;
+    }
+    if (f.supp && u.supplier !== f.supp) return false;
+    if (f.type && u.upsType !== f.type) return false;
+    if (f.kwMin && !(Number(u.capacityKw) >= f.kwMin)) return false;
+    return true;
+  });
+}
+function renderUpsPicker() {
+  const sel = document.getElementById('calc-ups-pick');
+  if (!sel) return;
+  const all = listUpses();
+  // populate filter dropdowns
+  const sSupp = document.getElementById('calc-ups-flt-supp');
+  if (sSupp && sSupp.options.length <= 1) {
+    const supps = [...new Set(all.map(u => u.supplier).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+    let h = '<option value="">Все поставщики</option>';
+    for (const s of supps) h += `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
+    sSupp.innerHTML = h;
+  }
+  const f = _upsFilters();
+  const list = _sortUpses(_filterUpses(all, f));
+  const cur = sel.value;
+  let h = '<option value="">— не выбран (заполните вручную параметры расчёта) —</option>';
+  for (const u of list) {
+    const vdc = (u.vdcMin && u.vdcMax) ? `, V_DC ${u.vdcMin}…${u.vdcMax}` : '';
+    h += `<option value="${escHtml(u.id)}">${escHtml(u.supplier)} · ${escHtml(u.model)} (${u.capacityKw} кВт, ${u.upsType==='modular'?'модульный':'моноблок'}${vdc})</option>`;
+  }
+  sel.innerHTML = h;
+  if (cur && list.some(u => u.id === cur)) sel.value = cur;
+  const info = document.getElementById('calc-ups-info');
+  if (info) info.textContent = `Подходит ${list.length} из ${all.length} ИБП в каталоге`;
+}
+function _applyUpsPickerLock() {
+  const sel = document.getElementById('calc-ups-pick');
+  const id = sel ? sel.value : '';
+  const u = id ? getUps(id) : null;
+  const lock = (fid, val, hard) => {
+    const el = document.getElementById(fid);
+    if (!el) return;
+    if (u && val != null && Number.isFinite(Number(val))) {
+      el.value = val;
+      el.readOnly = hard;
+      if (hard) { el.style.background = '#f0f0f0'; el.title = 'Заблокировано — берётся из выбранного ИБП'; }
+    } else {
+      el.readOnly = false;
+      el.style.background = '';
+      el.title = '';
+    }
+  };
+  const info = document.getElementById('calc-ups-info');
+  if (u) {
+    // Из паспорта ИБП: capacityKw, efficiency, vdcMin/Max
+    lock('calc-load', u.capacityKw, true);
+    lock('calc-inveff', Math.round((u.efficiency || 0.94) * 100 < 1 ? (u.efficiency || 94) : (u.efficiency || 94)), true);
+    // Среднее V_DC
+    if (u.vdcMin && u.vdcMax) {
+      const mid = Math.round((u.vdcMin + u.vdcMax) / 2);
+      const dc = document.getElementById('calc-dcv');
+      if (dc) { dc.value = mid; dc.readOnly = false; dc.title = `Допустимый диапазон V_DC: ${u.vdcMin}…${u.vdcMax} В`; dc.style.background = '#f5fbf5'; }
+    }
+    if (info) info.innerHTML = `Выбран: <b>${escHtml(u.supplier)} ${escHtml(u.model)}</b> · ${u.capacityKw} кВт · η=${(((u.efficiency||0.94)*100<1?(u.efficiency*100):u.efficiency)||94).toFixed(0)}% · V<sub>DC</sub> ${u.vdcMin||'?'}…${u.vdcMax||'?'} В`;
+  } else {
+    lock('calc-load', null);
+    lock('calc-inveff', null);
+    const dc = document.getElementById('calc-dcv');
+    if (dc) { dc.style.background = ''; dc.title = ''; }
+  }
+  _renderCapacityRecommend();
+}
+function _wireUpsPicker() {
+  // Mode radios
+  const radios = document.querySelectorAll('input[name="calc-ups-mode"]');
+  const catRow = document.getElementById('calc-ups-catalog-row');
+  const manRow = document.getElementById('calc-ups-manual-row');
+  radios.forEach(r => r.addEventListener('change', () => {
+    const mode = document.querySelector('input[name="calc-ups-mode"]:checked')?.value || 'catalog';
+    if (catRow) catRow.style.display = mode === 'catalog' ? '' : 'none';
+    if (manRow) manRow.style.display = mode === 'manual' ? '' : 'none';
+    if (mode === 'manual') {
+      // отпускаем лок от каталожного ИБП
+      const sel = document.getElementById('calc-ups-pick');
+      if (sel) sel.value = '';
+      _applyUpsPickerLock();
+    }
+  }));
+  ['calc-ups-flt-text','calc-ups-flt-supp','calc-ups-flt-type','calc-ups-flt-kw'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(ev, () => renderUpsPicker());
+  });
+  const sel = document.getElementById('calc-ups-pick');
+  if (sel) sel.addEventListener('change', () => _applyUpsPickerLock());
+  // Manual V_DC: при вводе — выставляем calc-dcv = (min+max)/2
+  ['calc-ups-vdcmin','calc-ups-vdcmax'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      const a = Number(document.getElementById('calc-ups-vdcmin').value) || 0;
+      const b = Number(document.getElementById('calc-ups-vdcmax').value) || 0;
+      if (a > 0 && b > 0) {
+        const dc = document.getElementById('calc-dcv');
+        if (dc) { dc.value = Math.round((a + b) / 2); dc.title = `Допустимый диапазон V_DC: ${a}…${b} В`; dc.style.background = '#f5fbf5'; }
+        _renderCapacityRecommend();
+      }
+    });
+  });
+  // В handoff-режиме (?fromUps=1) скрываем блок — ИБП уже определён
+  try {
+    const qp = new URLSearchParams(location.search);
+    if (qp.get('fromUps') === '1' || qp.get('fromCtx') === '1') {
+      const block = document.getElementById('calc-ups-source-block');
+      if (block) block.style.display = 'none';
+    }
+  } catch {}
 }
 
 function wireCalcForm() {
@@ -1139,7 +1317,7 @@ function wireTabs() {
 function renderRackBatterySelector() {
   const sel = document.getElementById('rack-battery');
   if (!sel) return;
-  const list = listBatteries().filter(b => b.chemistry === 'vrla');
+  const list = _sortBatteries(listBatteries().filter(b => b.chemistry === 'vrla'));
   const cur = sel.value;
   let h = '<option value="">— задать габариты вручную —</option>';
   for (const b of list) {
@@ -1353,6 +1531,9 @@ window.addEventListener('DOMContentLoaded', () => {
   renderCatalog();
   renderBatterySelector();
   renderRackBatterySelector();
+  // v0.59.403: UPS picker внутри battery (standalone-режим)
+  _wireUpsPicker();
+  renderUpsPicker();
   // Фаза 1.4.4: интеграция с Конструктором схем
   initSchemaContext();
   // v0.59.400: handoff из ups-config (?fromUps=1) — предзаполнение и возврат.

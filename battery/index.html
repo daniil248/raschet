@@ -118,7 +118,7 @@
         <input id="cat-filter-text" type="search" placeholder="🔍 Поиск по поставщику / модели / источнику…"
                style="flex:1;min-width:240px;padding:8px 12px;font:inherit;font-size:13px;border:1px solid #d0d0d0;border-radius:5px">
         <select id="cat-filter-chem" style="padding:8px 10px;font:inherit;font-size:13px;border:1px solid #d0d0d0;border-radius:5px">
-          <option value="">Вся химия</option>
+          <option value="">Все типы АКБ</option>
           <option value="vrla">VRLA</option>
           <option value="li-ion">Li-Ion</option>
           <option value="nicd">NiCd</option>
@@ -140,6 +140,40 @@
         <button type="button" id="btn-help-method" class="btn-sm">📐 Справка по методике</button>
       </div>
       <form id="calc-form" class="calc-form">
+        <!-- v0.59.403: блок «Параметры ИБП» — позволяет в standalone-режиме
+             выбрать ИБП из каталога или указать V_DC min/max вручную. -->
+        <div class="field-full" id="calc-ups-source-block" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:5px;padding:8px 10px">
+          <label style="display:flex;justify-content:space-between;align-items:center">
+            <span>Параметры ИБП (источник напряжения и нагрузки)</span>
+          </label>
+          <div style="display:flex;gap:14px;margin-top:6px;font-size:12px;align-items:center">
+            <label style="display:inline-flex;gap:5px;cursor:pointer"><input type="radio" name="calc-ups-mode" value="catalog" checked> из каталога ИБП</label>
+            <label style="display:inline-flex;gap:5px;cursor:pointer"><input type="radio" name="calc-ups-mode" value="manual"> ввести вручную</label>
+          </div>
+          <div id="calc-ups-catalog-row" style="margin-top:6px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:6px">
+              <input id="calc-ups-flt-text" type="search" placeholder="🔍 поставщик/модель" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+              <select id="calc-ups-flt-supp" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px"><option value="">Все поставщики</option></select>
+              <select id="calc-ups-flt-type" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+                <option value="">Любой тип</option>
+                <option value="monoblock">Моноблок</option>
+                <option value="modular">Модульный</option>
+              </select>
+              <input id="calc-ups-flt-kw" type="number" min="0" step="1" placeholder="кВт ≥" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+            </div>
+            <select id="calc-ups-pick" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
+              <option value="">— не выбран (заполните вручную параметры расчёта) —</option>
+            </select>
+            <div id="calc-ups-info" class="muted" style="font-size:11px;margin-top:4px"></div>
+          </div>
+          <div id="calc-ups-manual-row" style="display:none;margin-top:6px">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:12px">
+              <label>V<sub>DC</sub> мин, В<input id="calc-ups-vdcmin" type="number" min="0" step="1" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px"></label>
+              <label>V<sub>DC</sub> макс, В<input id="calc-ups-vdcmax" type="number" min="0" step="1" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px"></label>
+            </div>
+            <div class="muted" style="font-size:11px;margin-top:4px">При вводе диапазона напряжение блока DC ниже подбирается автоматически как среднее.</div>
+          </div>
+        </div>
         <div class="field-full">
           <label style="display:flex;justify-content:space-between;align-items:center">
             <span>Фильтры моделей АКБ</span>
@@ -149,7 +183,7 @@
             <input id="calc-filter-text" type="search" placeholder="🔍 модель/поставщик" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
             <select id="calc-filter-supp" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px"><option value="">Все поставщики</option></select>
             <select id="calc-filter-chem-flt" style="padding:6px 8px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px">
-              <option value="">Вся химия</option>
+              <option value="">Все типы АКБ</option>
               <option value="vrla">VRLA</option>
               <option value="li-ion">Li-Ion</option>
               <option value="nicd">NiCd</option>
@@ -175,7 +209,7 @@
           </select>
         </div>
         <div>
-          <label>Химия (если таблицы нет)</label>
+          <label>Тип АКБ (если таблицы нет)</label>
           <select id="calc-chem">
             <option value="vrla">Свинцово-кислотные (VRLA)</option>
             <option value="li-ion">Литий-ионные (LiFePO4)</option>
