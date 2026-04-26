@@ -49,6 +49,79 @@
         sep.style.display = '';
       })();
     </script>
+    <div id="sc-prefill-banner" style="display:none"></div>
+    <script type="module">
+      // v0.59.356: prefill-баннер на rack.html. Читает prefillTag/Name/Sn/
+      // AssetId из URL (приходят из inventory.html — см. v0.59.355). Кнопка
+      // «📋 Применить к последнему» проставляет эти поля у последнего
+      // (наиболее «новой по id») записи в state.contents текущей стойки и
+      // перезагружает страницу.
+      import { ensureDefaultProject, getActiveProjectId, projectKey } from '../shared/project-storage.js';
+      (() => {
+        let q;
+        try { q = new URLSearchParams(location.search); } catch { return; }
+        const pTag = (q.get('prefillTag') || '').trim();
+        const pName = (q.get('prefillName') || '').trim();
+        const pSn = (q.get('prefillSn') || '').trim();
+        const pAsset = (q.get('prefillAssetId') || '').trim();
+        const rackId = (q.get('id') || '').trim();
+        if (!pTag && !pName && !pSn && !pAsset) return;
+        ensureDefaultProject();
+        const pid = getActiveProjectId();
+        const LS_CONTENTS = projectKey(pid, 'scs-config', 'contents.v1');
+        const host = document.getElementById('sc-prefill-banner');
+        if (!host) return;
+        const esc = s => String(s || '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+        const fields = [
+          pName ? `<b>Имя:</b> ${esc(pName)}` : '',
+          pSn ? `<b>S/N:</b> <code>${esc(pSn)}</code>` : '',
+          pAsset ? `<b>Инв.№:</b> <code>${esc(pAsset)}</code>` : '',
+          pTag ? `<span class="muted">(тег узла схемы: ${esc(pTag)})</span>` : '',
+        ].filter(Boolean).join(' · ');
+        host.style.display = 'block';
+        host.style.cssText = 'display:block;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:6px;padding:10px 14px;margin:8px 0;color:#065f46';
+        host.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <b>➕ Создание устройства из узла схемы</b>
+            <span style="flex:1;min-width:200px">${fields}</span>
+            <button type="button" id="sc-prefill-apply" class="sc-btn">📋 Применить к последнему</button>
+            <button type="button" id="sc-prefill-close" style="background:none;border:0;font-size:16px;cursor:pointer;color:#065f46">×</button>
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:4px">Кликните в каталоге нужный тип устройства, чтобы добавить его в стойку, затем нажмите «📋 Применить» — поля будут заполнены.</div>
+        `;
+        document.getElementById('sc-prefill-close')?.addEventListener('click', () => {
+          host.style.display = 'none';
+          try {
+            const url = new URL(location.href);
+            ['prefillTag','prefillName','prefillSn','prefillAssetId'].forEach(k => url.searchParams.delete(k));
+            history.replaceState(null, '', url.toString());
+          } catch {}
+        });
+        document.getElementById('sc-prefill-apply')?.addEventListener('click', () => {
+          let contents;
+          try { contents = JSON.parse(localStorage.getItem(LS_CONTENTS) || '{}') || {}; } catch { contents = {}; }
+          const arr = Array.isArray(contents[rackId]) ? contents[rackId] : null;
+          if (!arr || !arr.length) {
+            const btn = document.getElementById('sc-prefill-apply');
+            if (btn) { const orig = btn.textContent; btn.textContent = '⚠ Стойка пуста — сначала добавьте устройство'; btn.disabled = true; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500); }
+            return;
+          }
+          // последнее = с наибольшим суффиксом id (uid('dev') использует Date.now+rand)
+          const last = arr[arr.length - 1];
+          if (pName) last.label = pName;
+          if (pSn) last.sn = pSn;
+          if (pAsset) last.assetId = pAsset;
+          contents[rackId] = arr;
+          try { localStorage.setItem(LS_CONTENTS, JSON.stringify(contents)); } catch {}
+          // очистить prefill из URL и перезагрузить, чтобы UI подтянул новые поля
+          try {
+            const url = new URL(location.href);
+            ['prefillTag','prefillName','prefillSn','prefillAssetId'].forEach(k => url.searchParams.delete(k));
+            location.replace(url.toString());
+          } catch { location.reload(); }
+        });
+      })();
+    </script>
     <div class="sc-grid sc-grid-3">
       <!-- ========== ЛЕВЫЙ САЙДБАР: топбар + список шкафов проекта (v0.59.338) ========== -->
       <aside class="sc-racks-side rs-sidebar rs-sidebar-left">
