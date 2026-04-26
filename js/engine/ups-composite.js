@@ -11,8 +11,8 @@
 // Идемпотентно: запись о созданных дочерних узлах хранится в n.integratedChildIds.
 // При смене модели на не-integrated дочерние узлы удаляются автоматически.
 
-import { state, GLOBAL, uid } from './state.js';
-import { DEFAULTS } from './constants.js';
+import { state, uid } from './state.js';
+import { DEFAULTS, GLOBAL } from './constants.js';
 
 function _deleteChildren(n) {
   if (!Array.isArray(n.integratedChildIds)) return;

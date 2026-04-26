@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.394', date: '2026-04-26', items: [
+      '🐞 <b>Fix: схема не загружалась из-за неверного импорта в ups-composite.js.</b>',
+      '• <code>js/engine/ups-composite.js</code> импортировал <code>GLOBAL</code> из <code>./state.js</code>, но <code>GLOBAL</code> экспортируется из <code>./constants.js</code>. ES-модуль с несуществующим именованным импортом падает на загрузке, что блокировало весь граф модулей и оставляло страницу на «Загрузка…».',
+      '• Исправлено: <code>GLOBAL</code> импортируется из <code>constants.js</code>, <code>state/uid</code> — из <code>state.js</code>.',
+      'Файлы: js/engine/ups-composite.js (1 строка импорта).',
+    ] },
     { version: '0.59.393', date: '2026-04-26', items: [
       '🔧 <b>Внутренняя проводка интегрированного ИБП исключена из BOM.</b> Доводка композита из v0.59.392.',
       '• Связи входная панель ↔ ИБП ↔ PDM, созданные <code>syncIntegratedUpsComposite</code>, помечаются флагами <code>_internalIntegratedUps=true</code> и <code>_breakerInternal=true</code>. Заводская проводка шкафа уже включена в стоимость готового изделия (Kehua MR33 60-150K и аналоги).',
