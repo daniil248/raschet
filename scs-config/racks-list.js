@@ -257,6 +257,18 @@ function renderProjectBadge() {
   const pid = getActiveProjectId();
   const projects = listProjectsForModule('scs-config');
   const p = pid ? getProject(pid) : null;
+
+  // v0.59.343: вошли с ?project= — контекст зафиксирован, dropdown скрыт.
+  let urlPid = null;
+  try { urlPid = new URLSearchParams(location.search).get('project'); } catch {}
+  if (urlPid) {
+    host.innerHTML = `
+      <span class="muted">📌 Работа в проекте — переключение контекста заблокировано.</span>
+      <a href="../projects/" style="margin-left:auto;float:right">→ к списку проектов</a>
+    `;
+    return;
+  }
+
   const opts = projects.map(x => {
     const label = (x.kind === 'sketch' ? '🧪 ' : '🏢 ') + (x.name || '(без имени)');
     return `<option value="${escapeHtml(x.id)}" ${x.id === pid ? 'selected' : ''}>${escapeHtml(label)}</option>`;

@@ -42,6 +42,22 @@ function renderProjectBadge(pid) {
   const projects = listProjectsForModule('scs-design');
   const p = pid ? getProject(pid) : null;
 
+  // v0.59.343: если модуль открыт из карточки проекта (URL содержит
+  // ?project=&from=projects), переключатель проекта недоступен — контекст
+  // зафиксирован. Имя проекта уже выводится в общем хедере (project-badge).
+  // В direct-entry режиме (без URL-параметра) показываем dropdown как раньше.
+  let urlPid = null;
+  try { urlPid = new URLSearchParams(location.search).get('project'); } catch {}
+  const lockedFromUrl = !!urlPid;
+
+  if (lockedFromUrl) {
+    host.innerHTML = `
+      <span class="muted">📌 Работа в проекте — переключение контекста заблокировано.</span>
+      <a href="../projects/" style="margin-left:auto">→ к списку проектов</a>
+    `;
+    return;
+  }
+
   const opts = projects.map(x => {
     const label = (x.kind === 'sketch' ? '🧪 ' : '🏢 ') + (x.name || '(без имени)');
     return `<option value="${esc(x.id)}" ${x.id === pid ? 'selected' : ''}>${esc(label)}</option>`;

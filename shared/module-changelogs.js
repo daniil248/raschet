@@ -433,6 +433,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.343', date: '2026-04-26', items: [
+      '🔒 <b>Project-lock в scs-config и scs-design при входе из карточки проекта.</b> Если URL содержит <code>?project=&lt;pid&gt;</code> (вход из <code>/projects/</code>), внутримодульный switcher проекта (dropdown «Контекст: …») скрыт и заменяется подсказкой «📌 Работа в проекте — переключение контекста заблокировано». Имя проекта уже выводится в общем хедере (project-badge из v0.59.342), поэтому дублирующий dropdown избыточен и сбивал пользователя. В direct-entry режиме (без URL-параметра) поведение прежнее — dropdown активен.',
+      'Файлы: scs-config/racks-list.js (renderProjectBadge: проверка URL до рендера), scs-design/scs-design.js (renderProjectBadge: тот же гард).',
+    ] },
     { version: '0.59.341', date: '2026-04-26', items: [
       '🩹 <b>Фикс: пустая модалка каталога после v0.59.339.</b> Подход «host hidden → DOM-move children в modal-body на open» оказался ненадёжен — пользователь видел только заголовок-полоску. Решение: разметка каталога (фильтры + <code>#sc-catalog</code> + tools) размещена напрямую внутри <code>#sc-cat-modal-body</code>, без скрытого host. Открытие/закрытие — простой toggle <code>modal.hidden</code>. ID полей сохранены, <code>renderCatalog()</code> и drag-binding работают как обычно.',
       'Файлы: scs-config/rack.html (#sc-cat-host удалён; разметка каталога перенесена в #sc-cat-modal-body; JS upmodal упрощён до toggle hidden).',
