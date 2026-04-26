@@ -18,6 +18,10 @@
 //   applyUpsModel(node, upsRecord)   — применение выбранной модели к узлу
 // ======================================================================
 
+// v0.59.386: реестр типов ИБП (плагины). Импорт здесь не создаёт цикл —
+// shared/ups-types/ не импортирует ups-picker.
+import { detectUpsType as _detectUpsType } from './ups-types/index.js';
+
 // Значения по умолчанию для DC-параметров батарейной цепи ИБП. Совпадают
 // с дефолтами в openUpsParamsModal, чтобы «пустые» значения не расходились.
 export const UPS_DC_DEFAULTS = Object.freeze({
@@ -66,8 +70,13 @@ export function formatUpsSummary(node) {
   const n = node || {};
   const { nominalKw } = readUpsCapacity(node);
   const { efficiency, cosPhi } = readUpsDcParams(node);
-  const type = n.upsType === 'modular' ? 'Модульный' : 'Моноблок';
-  return `${type} · ${Math.round(nominalKw)} kW · КПД ${efficiency}% · cos φ ${cosPhi.toFixed(2)}`;
+  // v0.59.386: метка типа берётся из реестра плагинов.
+  let typeLabel = (n.upsType === 'modular' ? 'Модульный' : 'Моноблок');
+  try {
+    const t = _detectUpsType(n);
+    if (t && t.label) typeLabel = t.label;
+  } catch {}
+  return `${typeLabel} · ${Math.round(nominalKw)} kW · КПД ${efficiency}% · cos φ ${cosPhi.toFixed(2)}`;
 }
 
 // ======================================================================
@@ -138,7 +147,10 @@ export function buildUpsCascadeOptions(grouped, cur = {}, placeholders = {}) {
   if (curSup && curSer) {
     const list = grouped.get(curSup).get(curSer) || [];
     for (const u of list) {
-      const label = `${u.model}${u.capacityKw ? ' · ' + u.capacityKw + ' kW' : ''}${u.upsType === 'modular' ? ' · модульный' : ''}`;
+      // v0.59.386: суффикс типа из реестра плагинов (lower-case label).
+      const _t = _detectUpsType(u);
+      const _typeSuffix = _t ? ' · ' + _t.label.toLowerCase() : '';
+      const label = `${u.model}${u.capacityKw ? ' · ' + u.capacityKw + ' kW' : ''}${_typeSuffix}`;
       const selected = cur.modelId === u.id ? ' selected' : '';
       if (cur.modelId === u.id) curMod = u.id;
       modOpts.push(`<option value="${_esc(u.id)}"${selected}>${_esc(label)}</option>`);

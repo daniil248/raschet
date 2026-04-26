@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.386', date: '2026-04-26', items: [
+      '🧩 <b>Реестр типов ИБП распространён на инспектор схемы и picker.</b> Доводка плагин-архитектуры из v0.59.385.',
+      '• <code>js/engine/inspector/ups.js</code>: dropdown «Тип ИБП» в модалке параметров теперь заполняется из <code>listUpsTypes()</code>. Поддержан тип «Интегрированный» (выбор → автоматически проставляются <code>n.kind=\'ups-integrated\'</code> + дефолты <code>hasIntegratedAts/pdmModules/cabinet*</code>).',
+      '• Change-handler типа применяет <code>type.defaults()</code> ко всем недостающим полям узла (только если они не заданы — параметры пользователя сохраняются согласно правилу «User parameters are sacred»).',
+      '• Apply-handler инспектора корректно мапит type-id → legacy <code>n.upsType</code> + <code>n.kind</code>.',
+      '• <code>shared/ups-picker.js</code>:',
+      '&nbsp;&nbsp;◦ <code>formatUpsSummary()</code> использует <code>detectUpsType(n).label</code> (для «Интегрированный» вернёт корректную метку, не «Модульный»).',
+      '&nbsp;&nbsp;◦ Суффикс типа в опциях dropdown'+"'"+'а модели — также из реестра.',
+      '• <code>recalc.js</code> / <code>bom.js</code> / <code>serialization.js</code> продолжают работать на legacy-полях (<code>n.upsType===\'modular\'</code>) — интегрированный наследует это поведение через свой <code>defaults().upsType=\'modular\'</code>, а различается через <code>n.kind=\'ups-integrated\'</code>. Дополнительной правки этих файлов не потребовалось.',
+      'Файлы: js/engine/inspector/ups.js (импорт реестра + 2 блока: рендер dropdown\'а и change/apply-хендлеры, ~30 строк), shared/ups-picker.js (импорт реестра + 2 точки рендера меток, ~10 строк).',
+    ] },
     { version: '0.59.385', date: '2026-04-26', items: [
       '🧩 <b>Типы ИБП — плагин-архитектура.</b> Запрос пользователя: «вынести типы ИБП в отдельные файлы… добавление модуля в папку с типами должно давать доступность выбора в конфигураторе».',
       '• Создан каталог <code>shared/ups-types/</code> с реестром типов:',

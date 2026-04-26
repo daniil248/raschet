@@ -11,6 +11,8 @@ import { render } from '../render.js';
 import { mountBatteryPicker } from '../../../shared/battery-picker.js';
 import { readUpsDcParams, mountUpsPicker, applyUpsModel } from '../../../shared/ups-picker.js';
 import { listUpses } from '../../../shared/ups-catalog.js';
+// v0.59.386: реестр типов ИБП-плагинов (см. shared/ups-types/).
+import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from '../../../shared/ups-types/index.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -92,12 +94,13 @@ export function openUpsParamsModal(n) {
 
   h.push('<h4 style="margin:14px 0 6px">Ручной ввод параметров</h4>');
   h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">Если модель не из справочника и конфигуратор не нужен — заполняйте поля ниже вручную. Для моноблока доступно поле «Выходная мощность», для модульного — frame/модули/резерв.</div>`);
-  // Тип ИБП
-  h.push(field('Тип ИБП', `
-    <select id="up-upsType">
-      <option value="monoblock"${n.upsType !== 'modular' ? ' selected' : ''}>Моноблок</option>
-      <option value="modular"${n.upsType === 'modular' ? ' selected' : ''}>Модульный</option>
-    </select>`));
+  // Тип ИБП — опции собираются из реестра плагинов (v0.59.386).
+  // Текущий тип распознаётся через detectUpsType(n) с фолбэком на 'monoblock'.
+  const _curType = detectUpsType(n) || getUpsType('monoblock');
+  const _typeOpts = listUpsTypes().map(t =>
+    `<option value="${t.id}"${t.id === _curType.id ? ' selected' : ''}>${t.label}</option>`
+  ).join('');
+  h.push(field('Тип ИБП', `<select id="up-upsType">${_typeOpts}</select>`));
   // Для моноблока — прямое поле мощности. Для модульного — вычисляется ниже.
   if (n.upsType !== 'modular') {
     h.push(field('Выходная мощность, kW', `<input type="number" id="up-capKw" min="0" step="0.1" value="${n.capacityKw}">`));
@@ -369,7 +372,20 @@ export function openUpsParamsModal(n) {
   if (upsTypeSel) {
     upsTypeSel.addEventListener('change', () => {
       snapshotVisibleFields();
-      n.upsType = upsTypeSel.value || 'monoblock';
+      // v0.59.386: применяем дефолты выбранного типа из реестра плагинов.
+      // Поля legacy: n.upsType ('monoblock'|'modular') + n.kind для расширенных типов.
+      const typeId = upsTypeSel.value || 'monoblock';
+      const t = getUpsType(typeId);
+      const defs = (t && t.defaults) ? t.defaults() : {};
+      // Legacy-mapping: integrated тоже хранит upsType='modular' (frame+modules),
+      // но различается по n.kind='ups-integrated'.
+      n.upsType = defs.upsType || (typeId === 'modular' ? 'modular' : 'monoblock');
+      if (defs.kind) n.kind = defs.kind; else delete n.kind;
+      // Применяем недостающие поля типа (только если у узла их ещё нет).
+      for (const k of Object.keys(defs)) {
+        if (k === 'upsType' || k === 'kind') continue;
+        if (n[k] == null) n[k] = defs[k];
+      }
       openUpsParamsModal(n);
     });
   }
@@ -399,7 +415,12 @@ export function openUpsParamsModal(n) {
       const v = Number(raw);
       return Number.isFinite(v) ? v : curr;
     };
-    n.upsType = document.getElementById('up-upsType')?.value || n.upsType || 'monoblock';
+    // v0.59.386: тип-id из реестра → legacy n.upsType + n.kind.
+    const _typeId = document.getElementById('up-upsType')?.value || (detectUpsType(n) || {}).id || 'monoblock';
+    const _tApply = getUpsType(_typeId);
+    const _defsApply = (_tApply && _tApply.defaults) ? _tApply.defaults() : {};
+    n.upsType = _defsApply.upsType || (_typeId === 'modular' ? 'modular' : 'monoblock');
+    if (_defsApply.kind) n.kind = _defsApply.kind; else delete n.kind;
     if (n.upsType === 'modular') {
       n.frameKw = Math.max(1, readNum('up-frameKw', n.frameKw ?? 200));
       n.moduleKwRated = Math.max(1, readNum('up-modKwRated', n.moduleKwRated ?? 25));
