@@ -878,10 +878,18 @@ function _renderCapacityRecommend() {
   // Рекомендованная номинальная ёмкость на цепочку (одна цепочка)
   const sug = [50, 65, 75, 100, 125, 150, 200, 250].find(x => x >= ahNeeded) || Math.ceil(ahNeeded/50)*50;
   box.style.display = '';
+  const ahMin = Math.round(ahNeeded);
   box.innerHTML =
-    `<b>Рекомендуемая ёмкость АКБ:</b> ≈ <b>${fmt(ahNeeded)} А·ч</b> на цепочку (ближайший стандарт: <b>${sug} А·ч</b>)<br>` +
-    `<span class="muted">P=${loadKw} кВт · t=${targetMin} мин · η_inv=${(invEff*100).toFixed(0)}% · K_aging=${aging} · η_${chem}=${(eff*100).toFixed(0)}%. ` +
-    `Использовано: применить фильтр «Ah ≥ ${Math.round(ahNeeded)}» в подборе.</span>`;
+    `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">` +
+      `<div style="flex:1;min-width:240px"><b>Рекомендуемая ёмкость АКБ:</b> ≈ <b>${fmt(ahNeeded)} А·ч</b> на цепочку (ближайший стандарт: <b>${sug} А·ч</b>)</div>` +
+      `<button type="button" id="calc-apply-recommend" class="btn-sm" style="font-size:11px">→ Фильтр «Ah ≥ ${ahMin}»</button>` +
+    `</div>` +
+    `<div class="muted" style="margin-top:4px">P=${loadKw} кВт · t=${targetMin} мин · η_inv=${(invEff*100).toFixed(0)}% · K_aging=${aging} · η_${chem}=${(eff*100).toFixed(0)}%</div>`;
+  const btn = document.getElementById('calc-apply-recommend');
+  if (btn) btn.addEventListener('click', () => {
+    const f = document.getElementById('calc-filter-capmin');
+    if (f) { f.value = ahMin; renderBatterySelector(); }
+  });
 }
 
 // ================= Расчёт =================
@@ -1387,7 +1395,12 @@ function initSchemaContext() {
     if (batEl && selected) batEl.value = selected;
     // Режим «найти минимум блоков для автономии ≥ target»
     const modeEl = document.getElementById('calc-mode');
-    if (modeEl && autonomyMin) modeEl.value = 'required';
+    if (modeEl && autonomyMin) {
+      modeEl.value = 'required';
+      modeEl.dispatchEvent(new Event('change'));
+    }
+    try { _renderCapacityRecommend(); } catch {}
+    try { _applyBatteryLock(); } catch {}
   }, 150);
 
   // Баннер сверху
@@ -1472,7 +1485,14 @@ function initUpsHandoff() {
     }
     if (invEffPct) set('calc-inveff', Math.round(Number(invEffPct)));
     const modeEl = document.getElementById('calc-mode');
-    if (modeEl && autonomyMin) modeEl.value = 'required';
+    if (modeEl && autonomyMin) {
+      modeEl.value = 'required';
+      modeEl.dispatchEvent(new Event('change'));
+    }
+    // Programmatic value set не триггерит input/change — вручную дёргаем
+    // зависимые рендеры (рекомендация ёмкости, лок V/Ah)
+    try { _renderCapacityRecommend(); } catch {}
+    try { _applyBatteryLock(); } catch {}
   }, 150);
   const banner = document.createElement('div');
   banner.style.cssText = 'position:sticky;top:0;z-index:100;padding:10px 16px;background:#6366f1;color:#fff;display:flex;align-items:center;gap:12px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.15)';
