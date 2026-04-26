@@ -124,7 +124,6 @@ export function openConsumerParamsModal(n) {
 
   h.push(field('Количество в группе', `<input type="number" id="cp-count" min="1" max="999" step="1" value="${n.count || 1}">`));
   const _cpCount = Math.max(1, Number(n.count) || 1);
-  const _serial = _cpCount > 1 && !!n.serialMode;
   const _loadSpec = (n.loadSpec === 'total') ? 'total' : 'per-unit';
   // v0.57.81: режим группы. 'uniform' — один demandKw на все приборы
   // (count × demandKw). 'individual' — массив items [{name, demandKw}]
@@ -139,7 +138,10 @@ export function openConsumerParamsModal(n) {
       </select>
     </div>`);
     h.push(`<div class="field check" id="cp-serialMode-wrap" style="${_groupMode === 'individual' ? 'display:none' : ''}"><input type="checkbox" id="cp-serialMode"${n.serialMode ? ' checked' : ''}><label>Последовательное соединение (цепочка)</label></div>`);
-    h.push(`<div id="cp-loadSpec-wrap" class="field" style="${_serial && _groupMode !== 'individual' ? '' : 'display:none'}">
+    // v0.59.381: «Указание нагрузки» теперь доступно ВСЕГДА при count>1
+    // (не только при последовательном) — пользователь может ввести
+    // суммарную мощность группы и не пересчитывать единичную вручную.
+    h.push(`<div id="cp-loadSpec-wrap" class="field" style="${_groupMode === 'individual' ? 'display:none' : ''}">
       <label>Указание нагрузки</label>
       <select id="cp-loadSpec">
         <option value="per-unit"${_loadSpec === 'per-unit' ? ' selected' : ''}>На каждый элемент</option>
@@ -149,11 +151,14 @@ export function openConsumerParamsModal(n) {
   }
   h.push(`</div>`); // /tp-panel general
   h.push(`<div class="tp-panel" data-panel="electrical">`);
-  const _displayDemand = (_serial && _loadSpec === 'total')
+  // v0.59.381: режим «На всю группу» теперь не зависит от serialMode —
+  // умножаем/делим всегда, когда count>1 и loadSpec=total.
+  const _isTotalDisplay = (_cpCount > 1 && _loadSpec === 'total');
+  const _displayDemand = _isTotalDisplay
     ? (Number(n.demandKw || 0) * _cpCount)
     : Number(n.demandKw || 0);
   const _demandLabel = (_cpCount > 1)
-    ? ((_serial && _loadSpec === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
+    ? (_isTotalDisplay ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
     : 'Установленная мощность, kW';
   // v0.59.99.2: флаг блокировки полей, зависящих от каталожного изделия.
   // Используется `disabled + title` на input, а для select — `disabled`
@@ -437,7 +442,9 @@ export function openConsumerParamsModal(n) {
     });
   }
 
-  // Смена категории → перезаполнить список типов и выбрать первый
+  // v0.59.381: смена категории — ТОЛЬКО фильтр списка типов. Не трогаем
+  // n.consumerSubtype до Apply, не дёргаем cp-catalog change. Категория
+  // помогает найти нужный тип, но не привязывает параметры.
   const categorySelect = document.getElementById('cp-category');
   if (categorySelect) {
     categorySelect.addEventListener('change', () => {
@@ -445,43 +452,23 @@ export function openConsumerParamsModal(n) {
       const typesInCat = fullCatalog.filter(c => c.category === newCat);
       const typeSel = document.getElementById('cp-catalog');
       if (!typeSel) return;
+      // Выбираем первый тип из новой категории как «значение по умолчанию»
+      // в select'е, но НЕ применяем параметры из каталожной записи и НЕ
+      // помечаем catalogLocked. Записывается на Apply через n.consumerSubtype.
       typeSel.innerHTML = typesInCat.map(c =>
         `<option value="${c.id}">${escHtml(c.label)}</option>`
       ).join('');
-      // Применим первый тип новой категории
-      if (typesInCat[0]) {
-        typeSel.value = typesInCat[0].id;
-        typeSel.dispatchEvent(new Event('change'));
-      }
+      if (typesInCat[0]) typeSel.value = typesInCat[0].id;
     });
   }
 
-  const catSelect = document.getElementById('cp-catalog');
-  if (catSelect) {
-    catSelect.addEventListener('change', () => {
-      const cat = fullCatalog.find(c => c.id === catSelect.value);
-      if (!cat) return;
-      // v0.59.99.2: выбор из каталога → привязка. Параметры из записи
-      // применяются к узлу, поля в инспекторе блокируются. Снять — кнопкой
-      // «Отвязать» на «Общее».
-      snapshot('catalog-bind:' + n.id);
-      n.demandKw = Number(cat.demandKw) || 0;
-      n.cosPhi = Number(cat.cosPhi) || 0.92;
-      n.kUse = Number(cat.kUse) ?? 1;
-      n.inrushFactor = Number(cat.inrushFactor) || 1;
-      if (typeof cat.breakerMarginPct === 'number') n.breakerMarginPct = cat.breakerMarginPct;
-      else delete n.breakerMarginPct;
-      n.curveHint = cat.curveHint || '';
-      n.consumerSubtype = cat.id;
-      if (cat.id === 'conditioner') {
-        n.outdoorKw = cat.outdoorKw || 0.3;
-        n.outdoorCosPhi = cat.outdoorCosPhi || 0.85;
-      }
-      n.catalogLocked = true;
-      notifyChange();
-      openConsumerParamsModal(n);
-    });
-  }
+  // v0.59.381: смена типа потребителя — БЕЗ авто-привязки к каталогу.
+  // Это просто метаданные узла (consumerSubtype), которые показывают/скрывают
+  // секции (например, «Наружный блок» для conditioner). Привязка параметров
+  // из каталожной записи теперь только через явную кнопку
+  // «📋 Выбрать из каталога» на вкладке «Общее».
+  // Раньше change-handler писал demandKw/cosPhi/kUse/inrushFactor/curveHint
+  // и ставил catalogLocked=true → пользовательские значения молча терялись.
 
   // v0.59.99.2: кнопка «Отвязать» — снять catalogLocked, разрешить правки
   const unlockBtn = document.getElementById('cp-catalog-unlock');
@@ -565,41 +552,48 @@ export function openConsumerParamsModal(n) {
   const demandInput = document.getElementById('cp-demandKw');
   const demandLabel = document.getElementById('cp-demandKw-label');
   const countInput = document.getElementById('cp-count');
-  const updateDemandUi = (prevSerial, prevLoadSpec) => {
+  // v0.59.381: loadSpec независим от serialMode. Показываем поле всегда
+  // при count>1; пересчёт total↔per-unit срабатывает по смене loadSpec
+  // и/или count (без участия serialMode).
+  const updateDemandUi = (prevLoadSpec) => {
     const cnt = Math.max(1, Number(countInput?.value) || 1);
-    const serial = !!serialCb?.checked;
     const ls = (loadSpecSel?.value === 'total') ? 'total' : 'per-unit';
-    if (loadSpecWrap) loadSpecWrap.style.display = serial ? '' : 'none';
+    if (loadSpecWrap) loadSpecWrap.style.display = (cnt > 1) ? '' : 'none';
     if (demandLabel) {
       demandLabel.textContent = (cnt > 1)
-        ? ((serial && ls === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
+        ? ((ls === 'total') ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
         : 'Установленная мощность, kW';
     }
     if (demandInput) {
       const cur = Number(demandInput.value) || 0;
-      const wasTotal = !!prevSerial && prevLoadSpec === 'total' && cnt > 1;
-      const isTotal = serial && ls === 'total' && cnt > 1;
+      const wasTotal = prevLoadSpec === 'total' && cnt > 1;
+      const isTotal  = ls === 'total' && cnt > 1;
       if (wasTotal !== isTotal) {
         if (isTotal) demandInput.value = (cur * cnt).toFixed(2).replace(/\.00$/, '');
         else demandInput.value = (cur / cnt).toFixed(2).replace(/\.00$/, '');
       }
     }
   };
-  if (serialCb) {
-    let _prevSerial = serialCb.checked;
-    let _prevLS = loadSpecSel?.value || 'per-unit';
-    serialCb.addEventListener('change', () => {
-      updateDemandUi(_prevSerial, _prevLS);
-      _prevSerial = serialCb.checked;
-      _prevLS = loadSpecSel?.value || 'per-unit';
+  let _prevLS = loadSpecSel?.value || 'per-unit';
+  if (loadSpecSel) {
+    loadSpecSel.addEventListener('change', () => {
+      updateDemandUi(_prevLS);
+      _prevLS = loadSpecSel.value || 'per-unit';
     });
-    if (loadSpecSel) {
-      loadSpecSel.addEventListener('change', () => {
-        updateDemandUi(_prevSerial, _prevLS);
-        _prevSerial = serialCb.checked;
-        _prevLS = loadSpecSel.value || 'per-unit';
-      });
-    }
+  }
+  if (countInput) {
+    countInput.addEventListener('change', () => {
+      // При изменении count просто обновляем лейбл/видимость; пересчёт
+      // не делаем — пользователь сам решит что у него в поле (на единицу
+      // или на группу), переключив loadSpec.
+      updateDemandUi(_prevLS);
+    });
+  }
+  if (serialCb) {
+    serialCb.addEventListener('change', () => {
+      // Только переключаем видимость serial-зависимых меток (если будут).
+      // На loadSpec/demand больше не влияет.
+    });
   }
 
   const applyBtn = document.getElementById('consumer-params-apply');
@@ -677,7 +671,8 @@ export function openConsumerParamsModal(n) {
       const demandEl = document.getElementById('cp-demandKw');
       if (demandEl && String(demandEl.value ?? '').trim() !== '') {
         const _rawDemand = Number(demandEl.value) || 0;
-        n.demandKw = (n.serialMode && n.loadSpec === 'total' && n.count > 1)
+        // v0.59.381: total↔per-unit независим от serialMode.
+        n.demandKw = (n.loadSpec === 'total' && n.count > 1)
           ? (_rawDemand / n.count)
           : _rawDemand;
       }
