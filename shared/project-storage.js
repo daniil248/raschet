@@ -116,10 +116,26 @@ export function createSketchForModule(moduleId, name) {
   });
 }
 
+// v0.59.337: семейства модулей. Mini-проект, созданный в одном модуле
+// семейства, должен быть виден во всех остальных — иначе пользователь
+// в scs-design создал черновик, перешёл в scs-config и не видит его
+// (хотя данные там общие). Каноничный moduleId внутри семейства —
+// первый в массиве (используется для фильтрации записи).
+const MODULE_FAMILIES = [
+  ['scs-design', 'scs-config', 'scs-config-inventory', 'mdc-config'],
+  // electric-семейство (главная схема + ИБП/НКУ/MV/PDU/конфигуратор стойки)
+  ['schematic', 'panel-config', 'mv-config', 'ups-config', 'pdu-config', 'rack-config'],
+];
+function _familyOf(moduleId) {
+  return MODULE_FAMILIES.find(f => f.includes(moduleId)) || [moduleId];
+}
+
 // Все проекты, доступные для активации в данном модуле: все full-проекты
-// + sketch-проекты, принадлежащие этому модулю.
+// + sketch-проекты, принадлежащие этому модулю или любому модулю того же
+// семейства (см. MODULE_FAMILIES).
 export function listProjectsForModule(moduleId) {
-  return listProjects().filter(p => p.kind !== 'sketch' || p.ownerModule === moduleId);
+  const fam = _familyOf(moduleId);
+  return listProjects().filter(p => p.kind !== 'sketch' || fam.includes(p.ownerModule));
 }
 
 export function updateProject(id, patch) {

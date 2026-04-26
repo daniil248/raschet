@@ -424,6 +424,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.337', date: '2026-04-23', items: [
+      '🤝 <b>Мини-проекты теперь общие в семействе модулей.</b> Раньше <code>listProjectsForModule(\'scs-design\')</code> возвращал только sketch-проекты с <code>ownerModule===\'scs-design\'</code>, и наоборот для scs-config — поэтому черновик, созданный в «Проектировании СКС» (Мастер меж-шкафных связей), не появлялся в «Шкафах проекта», и пользователю предлагалось создать новый. Введён конструкт <code>MODULE_FAMILIES</code> в <code>shared/project-storage.js</code>: семейство СКС = [scs-design, scs-config, scs-config-inventory, mdc-config]; семейство электрики = [schematic, panel-config, mv-config, ups-config, pdu-config, rack-config]. Теперь sketch-проект, созданный в любом модуле семейства, виден во всех остальных модулях того же семейства.',
+      'Файлы: shared/project-storage.js (+_familyOf, расширение listProjectsForModule по семейству).',
+    ] },
     { version: '0.59.335', date: '2026-04-23', items: [
       '🔢 <b>Фикс: «Занято оборудованием» в топбаре Компоновщика показывало 0 даже при полной стойке.</b> Раньше поле <code>#sc-rack-occ</code> выводило <code>r.occupied</code> — это число юнитов, <i>зарезервированных корпусом стойки</i> (шасси, вентиляторы), а не суммарная занятость. На скриншоте пользователя SR01 показывал «13 уст.» в сайдбаре и «62%» загрузки, но топбар — «0». Теперь вычисляется <code>computeOccupiedU(r, currentContents())</code>: объединение occupied-массива по front+rear с учётом высот устройств (<code>type.u</code> из каталога) плюс <code>r.occupied</code> сверху. Расхождение между сайдбаром и топбаром устранено.',
       'Файлы: scs-config/scs-config.js (+computeOccupiedU, замена <code>$(\'sc-rack-occ\').textContent = r.occupied</code> в двух местах).',
