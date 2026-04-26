@@ -429,26 +429,39 @@ function render() {
       a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
     });
 
-    // v0.59.374: дополнительно показываем в группе «Схемы» legacy-схемы
+    // v0.59.377: helper — заменить empty-hint и обновить счётчик группы
+    const _enrichGroup = (kindAttr, addedRowsHtml, addedCount) => {
+      if (!addedRowsHtml) return;
+      const grp = modulesHost.querySelector(`.pr-art-group[data-kind="${kindAttr}"]`);
+      if (!grp) return;
+      // убрать «X нет — нажмите…»
+      const placeholder = Array.from(grp.children).find(c => c.classList && c.classList.contains('muted'));
+      if (placeholder) placeholder.remove();
+      grp.insertAdjacentHTML('beforeend', addedRowsHtml);
+      grp.querySelectorAll('a[href]').forEach(a => {
+        a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
+      });
+      // обновить счётчик в шапке
+      const headSpan = grp.querySelector('div .muted');
+      if (headSpan) {
+        const m = (headSpan.textContent || '').match(/(\d+)/);
+        const cur = m ? +m[1] : 0;
+        headSpan.textContent = '· ' + (cur + addedCount);
+      }
+    };
+
+    // v0.59.374/377: дополнительно показываем в группе «Схемы» legacy-схемы
     // из window.Storage (то, что видно на главной «Мои схемы» и привязано
-    // к этому проекту через scheme.projectId === p.id). Подпроект-«схема»
-    // и схема в storage — пока разные сущности; пользователь видит обе.
+    // к этому проекту через scheme.projectId === p.id).
     (async () => {
       try {
-        if (!window.Storage || typeof window.Storage.listProjects !== 'function') return;
-        const all = await window.Storage.listProjects();
+        if (!window.Storage || typeof window.Storage.listMyProjects !== 'function') {
+          console.warn('[project.js] window.Storage не готов — схемы не загружены');
+          return;
+        }
+        const all = await window.Storage.listMyProjects();
         const mine = (all || []).filter(s => s && s.projectId === p.id);
         if (!mine.length) return;
-        const grp = modulesHost.querySelector('.pr-art-group[data-kind="schematic"]');
-        if (!grp) return;
-        // обновить счётчик в шапке
-        const headSpan = grp.querySelector('div .muted');
-        const total = subSchemes.length + mine.length;
-        if (headSpan) headSpan.textContent = '· ' + total;
-        // убрать «Схем нет — нажмите…» если он был
-        const placeholder = Array.from(grp.children).find(c => c.classList && c.classList.contains('muted'));
-        if (placeholder) placeholder.remove();
-        // дописываем строки legacy-схем
         const rowsHtml = mine.map(s => {
           const href = '../index.html?project=' + encodeURIComponent(s.id) + '&from=projects&fromCtx=' + encodeURIComponent(p.id);
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
@@ -458,12 +471,57 @@ function render() {
             <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px;text-decoration:none">Открыть →</a>
           </div>`;
         }).join('');
-        grp.insertAdjacentHTML('beforeend', rowsHtml);
-        grp.querySelectorAll('a[href]').forEach(a => {
-          a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
-        });
+        _enrichGroup('schematic', rowsHtml, mine.length);
       } catch (e) { console.warn('[project.js] legacy schemes load failed', e); }
     })();
+
+    // v0.59.377: legacy-СКС в этом проекте — данные лежат под
+    // raschet.project.<p.id>.scs-design.links.v1 (без подпроекта).
+    // Если они есть — показываем единичную «СКС-проект (в проекте)» строку.
+    try {
+      const scsLinksRaw = localStorage.getItem(`raschet.project.${p.id}.scs-design.links.v1`);
+      const scsPlanRaw  = localStorage.getItem(`raschet.project.${p.id}.scs-design.plan.v1`);
+      let scsLinks = []; let hasPlan = false;
+      try { scsLinks = scsLinksRaw ? (JSON.parse(scsLinksRaw) || []) : []; } catch {}
+      try { const o = scsPlanRaw ? JSON.parse(scsPlanRaw) : null; hasPlan = !!(o && (o.items || []).length); } catch {}
+      if ((Array.isArray(scsLinks) && scsLinks.length) || hasPlan) {
+        const href = '../scs-design/?project=' + encodeURIComponent(p.id) + '&from=projects';
+        const meta = `${scsLinks.length} связ${scsLinks.length === 1 ? 'ь' : (scsLinks.length < 5 ? 'и' : 'ей')}` + (hasPlan ? ' · план' : '');
+        const rowHtml = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
+          <span style="font-size:16px">🔗</span>
+          <span style="background:#0d9488;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">в проекте</span>
+          <span style="flex:1;min-width:0">СКС-данные проекта <span class="muted" style="font-size:11px">· ${esc(meta)}</span></span>
+          <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px;text-decoration:none">Открыть →</a>
+        </div>`;
+        _enrichGroup('scs-design', rowHtml, 1);
+      }
+    } catch (e) { console.warn('[project.js] legacy scs-design check failed', e); }
+
+    // v0.59.377: legacy-стойки в этом проекте — данные под
+    // raschet.project.<p.id>.scs-config.contents.v1 / .rackTags.v1.
+    // Если есть хоть одна стойка — добавляем «Шкафы (в проекте)» строку.
+    try {
+      const rcContents = localStorage.getItem(`raschet.project.${p.id}.scs-config.contents.v1`);
+      const rcTags     = localStorage.getItem(`raschet.project.${p.id}.scs-config.rackTags.v1`);
+      const rackIds = new Set();
+      try { const o = rcContents ? JSON.parse(rcContents) : {}; Object.keys(o || {}).forEach(k => { if (Array.isArray(o[k]) && o[k].length) rackIds.add(k); }); } catch {}
+      try { const o = rcTags ? JSON.parse(rcTags) : {}; Object.keys(o || {}).forEach(k => { if ((o[k] || '').trim()) rackIds.add(k); }); } catch {}
+      // также экземпляры стоек проекта (rack-storage) — raschet.project.<p.id>.scs-config.racks.v1
+      const rcRacksRaw = localStorage.getItem(`raschet.project.${p.id}.scs-config.racks.v1`);
+      let nRacks = 0;
+      try { const o = rcRacksRaw ? JSON.parse(rcRacksRaw) : []; nRacks = Array.isArray(o) ? o.length : 0; } catch {}
+      const total = Math.max(rackIds.size, nRacks);
+      if (total > 0) {
+        const href = '../scs-config/?project=' + encodeURIComponent(p.id) + '&from=projects';
+        const rowHtml = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
+          <span style="font-size:16px">🗄</span>
+          <span style="background:#7c3aed;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">в проекте</span>
+          <span style="flex:1;min-width:0">Шкафы проекта <span class="muted" style="font-size:11px">· ${total} стоек</span></span>
+          <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px;text-decoration:none">Открыть →</a>
+        </div>`;
+        _enrichGroup('scs-config', rowHtml, 1);
+      }
+    } catch (e) { console.warn('[project.js] legacy scs-config check failed', e); }
   }
 
   if (actionsHost) {

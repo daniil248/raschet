@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.377', date: '2026-04-26', items: [
+      '🐛 <b>Fix: на странице проекта теперь видны схемы, СКС-данные и шкафы проекта (а не только подпроекты).</b> Жалоба пользователя: «у меня есть схема для этого проекта, но на странице проекта нет упоминания о ней, и так же и для СКС».',
+      '• <b>Корни проблемы (3 шт.):</b>',
+      '• 1. <code>project.html</code> не подгружал <code>js/projects.js</code> — <code>window.Storage</code> был undefined, async-загрузка legacy-схем тихо завершалась без ошибки. Добавлены <code>firebase-*</code>+<code>auth.js</code>+<code>js/projects.js</code> в шапку страницы.',
+      '• 2. Вызывался несуществующий метод <code>window.Storage.listProjects()</code> (правильно — <code>listMyProjects()</code>). Исправлено.',
+      '• 3. Группы «🔗 СКС-проекты» и «🗄 Компоновки шкафов» рендерились только из <code>listSubProjects()</code>, но у пользователей с до-v0.59.372 данными СКС-связи и стойки лежат в namespace родительского проекта (<code>raschet.project.&lt;p.id&gt;.scs-design.links.v1</code> / <code>.scs-config.contents.v1</code> / <code>.scs-config.racks.v1</code>) — без подпроектов.',
+      '• Добавлены два legacy-детектора: если есть СКС-связи/план или стойки в namespace проекта — в соответствующую группу добавляется строка «в проекте» с кнопкой «Открыть →» на <code>scs-design/?project=&lt;p.id&gt;</code> / <code>scs-config/?project=&lt;p.id&gt;</code>.',
+      '• Счётчик в шапке группы обновляется с учётом legacy-записей.',
+      'Файлы: projects/project.html (загрузка js/projects.js + firebase + auth), projects/project.js (listMyProjects + helper _enrichGroup + legacy SCS/rack detectors).',
+    ] },
     { version: '0.59.376', date: '2026-04-26', items: [
       '➕ <b>В Компоновщике шкафа теперь есть кнопка «Новая стойка».</b> Жалоба пользователя: «нет кнопки добавить стойку. Как мне создать новую стойку?».',
       '• В сайдбаре «🗄 Шкафы» (rack.html) добавлена ссылка <b>➕ Новая</b> рядом с «все →».',
