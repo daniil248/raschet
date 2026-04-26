@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.422', date: '2026-04-26', items: [
+      '🏗 <b>Интегрированный ИБП — многосекционный щит.</b> Раньше композит <code>ups-integrated</code> разворачивался в большое поле панелей с количеством выходов = <code>maxBreakers</code> на каждой PDM (8…24 выходов на одну панель), что выглядело перегружено и не соответствовало физической реальности — у фирменного шкафа Kehua MR33 наружу выходит сборная шина секции, а не каждый автомат отдельно.',
+      '• <b>По одному выходу на панель.</b> В <code>js/engine/ups-composite.js</code> у всех PDM-панелей (utility / bypass / inverter) <code>outputs: 1</code>. Внутренняя разводка автоматов остаётся внутри щита (учитывается в BOM как <code>_pdmMaxBreakers</code> metadata, не как порты).',
+      '• <b>Плотная компоновка.</b> Шаги <code>dx = 180, dy = 90</code> (было 220/110) — панели теперь визуально стоят впритык к ИБП, как секции одного шкафа.',
+      '• <b>Разметка секций.</b> На каждом дочернем узле теперь <code>_integratedSection</code> = <code>"input" | "utility" | "bypass" | "inverter"</code> для будущей отрисовки общей оболочки.',
+      'Файлы: js/engine/ups-composite.js (syncIntegratedUpsComposite — outputs:1, tighter spacing, _integratedSection метки).',
+      'Roadmap: v0.59.423 — отрисовать общую SVG-оболочку (bounding rect) вокруг ИБП + дочерних панелей, чтобы интегрированный шкаф визуально выглядел как единый корпус.',
+    ] },
     { version: '0.59.417', date: '2026-04-26', items: [
       '🔋 <b>Battery-калькулятор переведён на единый shared-модуль для S³.</b> Продолжение DRY-рефакторинга v0.59.416. В <code>battery/battery-calc.js</code> добавлена выделенная ветка <code>_doCalcS3({battery, loadKw, mode, targetMin, vRange, derate, invEff})</code>, которая вызывается из <code>doCalc()</code> при <code>isS3Module(battery)</code>. Логика расчёта (Vdc parallel/series, мощность на модуль, перегруз, минимум шкафов) идёт через <code>computeS3Configuration(...)</code> — ровно тот же вызов, что и в инспекторе. Никаких параллельных реализаций.',
       '• <b>Авто-конфигурация.</b> Прямая задача (autonomy): N = maxPerCabinet (минимум шкафов = минимум стоимости каркаса), C = ceil(loadKw·k<sub>total</sub>/(invEff·cabinetPowerKw)). Обратная задача (required): <code>findMinimalS3Config(...)</code> с передачей <code>calcAutonomy</code> как callback (избегаем циклических импортов).',

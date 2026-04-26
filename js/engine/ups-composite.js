@@ -93,52 +93,64 @@ export function syncIntegratedUpsComposite(upsId) {
   const utilityPdms = pdms.filter(p => p.source === 'utility' || p.source === 'bypass');
   const inverterPdms = pdms.filter(p => p.source === 'inverter');
 
+  // v0.59.422: «многосекционный щит». Ставим панели плотнее вокруг ИБП —
+  // визуально это выглядит как корпус с внутренними секциями. Один выход
+  // на панель (внутренняя разводка автоматов остаётся внутри щита,
+  // наружу выходит только сборная шина данной секции). Для нагрузки —
+  // одна линия на потребителя, что не загромождает схему.
   const x0 = n.x;
   const y0 = n.y;
-  const dx = 220;
-  const dy = 110;
+  const dx = 180;
+  const dy = 90;
   const childIds = [];
 
-  // 1) Входная панель (ATS/MCCB) — слева от ИБП
+  // 1) Входная панель (ATS/MCCB) — слева от ИБП. По одному выходу на
+  //    «получателя» — 1 на ИБП + по одному на каждую utility/bypass PDM.
   const inPanel = _mkPanel(x0 - dx, y0, n.id, {
     name: hasAts ? 'ATS/MCCB' : 'MCCB',
     tag: tag + '.IN',
     inputs: hasAts ? 2 : 1,
-    outputs: 1 + utilityPdms.length, // 1 на ИБП + N на utility/bypass PDM
+    outputs: 1 + utilityPdms.length, // 1 на ИБП + 1 на каждую utility/bypass-секцию
     switchMode: hasAts ? 'auto' : 'manual',
     capacityA: 250,
+    _integratedSection: 'input',
   });
   childIds.push(inPanel.id);
-  // Вход ИБП ← вход inPanel out 0
   _mkConn({ nodeId: inPanel.id, port: 0 }, { nodeId: n.id, port: 0 });
 
-  // 2) PDM-панели utility/bypass — справа сверху, питаются от inPanel
+  // 2) PDM-панели utility/bypass — справа сверху, питаются от inPanel.
+  //    Один выход = одна сборная шина секции (внутренние автоматы скрыты).
   utilityPdms.forEach((p, i) => {
     const py = y0 - dy * (utilityPdms.length - 1) / 2 + i * dy;
     const pdm = _mkPanel(x0 + dx, py, n.id, {
       name: p.label || p.id || 'PDM',
       tag: tag + '.' + String(p.id || ('PDM' + (i+1))).toUpperCase(),
       inputs: 1,
-      outputs: Math.max(1, Number(p.maxBreakers) || 8),
+      outputs: 1, // v0.59.422: один порт на панель (как требовал пользователь)
       switchMode: 'manual',
       capacityA: 160,
       _pdmSource: p.source,
+      _pdmMaxBreakers: Number(p.maxBreakers) || 0, // metadata для BOM, не для портов
+      _integratedSection: p.source,
     });
     childIds.push(pdm.id);
     _mkConn({ nodeId: inPanel.id, port: i + 1 }, { nodeId: pdm.id, port: 0 });
   });
 
-  // 3) PDM-панели inverter — справа снизу, питаются от выходов ИБП
+  // 3) PDM-панели inverter — справа снизу, питаются от выходов ИБП.
+  //    Тоже один выход на панель.
   inverterPdms.forEach((p, i) => {
     const py = y0 + dy * (utilityPdms.length || 1) + i * dy;
     const pdm = _mkPanel(x0 + dx, py, n.id, {
       name: p.label || p.id || 'PDM',
       tag: tag + '.' + String(p.id || ('PDM' + (i+1))).toUpperCase(),
       inputs: 1,
-      outputs: Math.max(1, Number(p.maxBreakers) || 8),
+      outputs: 1, // v0.59.422: один порт на панель
       switchMode: 'manual',
       capacityA: 160,
       _pdmSource: p.source,
+      _pdmMaxBreakers: Number(p.maxBreakers) || 0,
+      _integratedSection: p.source,
     });
     childIds.push(pdm.id);
     _mkConn({ nodeId: n.id, port: i }, { nodeId: pdm.id, port: 0 });
