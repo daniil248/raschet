@@ -14,7 +14,7 @@ import { getMethod } from '../methods/index.js';
 import { listTransformers } from '../../shared/transformer-catalog.js';
 import { mountTransformerPicker, applyTransformerModel } from '../../shared/transformer-picker.js';
 // v0.59.351: автоматический матч узла схемы с реестрами проекта по S/N или Инв.№.
-import { findInventoryMatch } from '../../shared/inventory-bridge.js';
+import { findInventoryMatch, listAllItDevices, listAllFacilityItems } from '../../shared/inventory-bridge.js';
 import { getActiveProjectId as _activeProjectId } from '../../shared/project-storage.js';
 import { rsPrompt, rsConfirm } from '../../shared/dialog.js';
 
@@ -1252,6 +1252,12 @@ export function renderGeneralPanel(n) {
         </div>`);
       }
     }
+    // v0.59.353: кнопки ручной привязки и создания записи. Показываем всегда —
+    // даже если S/N пуст (тогда picker сам заполнит поле выбранным значением).
+    h.push(`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button type="button" data-action="link-inventory" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:3px;cursor:pointer">🔗 Привязать вручную…</button>
+      <button type="button" data-action="create-inventory-it" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:3px;cursor:pointer">➕ Создать запись в реестре IT</button>
+    </div>`);
   } catch {}
   h.push(`<div class="muted" style="font-size:11px;margin-top:4px">UUID: <code style="font-size:11px">${escHtml(n.id)}</code></div>`);
   h.push(`</div>`);
@@ -1786,6 +1792,90 @@ export function wrapModalWithSystemTabs(bodyEl, n) {
   try { wireGeneralPanelInputs(n, bodyEl); } catch {}
 }
 
+// v0.59.353: модалка-picker для ручной привязки узла к реестрам проекта.
+// Показывает плоский список IT-устройств и позиций реестра объекта с
+// поиском. По клику записывает sn/assetId в узел.
+function _openInventoryPickerForNode(n) {
+  const pid = _activeProjectId();
+  const itList = listAllItDevices(pid);
+  const facList = listAllFacilityItems(pid);
+  const all = [
+    ...itList.map(x => ({ kind: 'it', ...x })),
+    ...facList.map(x => ({ kind: 'facility', ...x })),
+  ];
+  // Снять предыдущий picker если есть
+  const prev = document.getElementById('rs-inv-picker-overlay');
+  if (prev) prev.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'rs-inv-picker-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10000;display:flex;align-items:center;justify-content:center';
+  const renderRows = (q) => {
+    const ql = (q || '').trim().toLowerCase();
+    const filtered = !ql ? all : all.filter(r => {
+      const hay = [r.label, r.sn, r.assetId, r.rackTag || ''].join(' ').toLowerCase();
+      return hay.includes(ql);
+    });
+    if (!filtered.length) return `<div class="muted" style="padding:16px;text-align:center">Записей не найдено</div>`;
+    return filtered.slice(0, 200).map((r, i) => {
+      const idx = all.indexOf(r);
+      const tagHtml = r.rackTag ? ` · <span style="color:#0369a1">стойка ${escHtml(r.rackTag)}</span>` : '';
+      const meta = [r.sn ? `S/N: ${escHtml(r.sn)}` : '', r.assetId ? `Инв.№: ${escHtml(r.assetId)}` : ''].filter(Boolean).join(' · ');
+      const kindBadge = r.kind === 'it' ? '<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;font-size:10px">IT</span>' : '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:3px;font-size:10px">объект</span>';
+      return `<div class="rs-inv-row" data-idx="${idx}" style="padding:8px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;gap:8px;align-items:center"><b>${escHtml(r.label)}</b>${kindBadge}${tagHtml}</div>
+        <div class="muted" style="font-size:11px">${meta || '<i>без идентификаторов</i>'}</div>
+      </div>`;
+    }).join('');
+  };
+  overlay.innerHTML = `<div style="background:#fff;border-radius:6px;width:560px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.25)">
+    <div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px">
+      <b>🔗 Привязка к реестру проекта</b>
+      <span class="muted" style="font-size:11px;margin-left:auto">${all.length} записей</span>
+      <button type="button" id="rs-inv-close" style="background:none;border:0;font-size:18px;cursor:pointer;padding:0 4px">×</button>
+    </div>
+    <div style="padding:10px 14px;border-bottom:1px solid #f1f5f9">
+      <input type="text" id="rs-inv-search" placeholder="Поиск по имени / S/N / Инв.№ / стойке..." style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+    </div>
+    <div id="rs-inv-list" style="overflow:auto;flex:1;min-height:120px">${renderRows('')}</div>
+    <div style="padding:8px 14px;border-top:1px solid #e5e7eb;font-size:11px;color:#64748b">Клик по записи запишет S/N и Инв.№ выбранного устройства в текущий узел.</div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('#rs-inv-close').addEventListener('click', close);
+  const listEl = overlay.querySelector('#rs-inv-list');
+  const searchEl = overlay.querySelector('#rs-inv-search');
+  searchEl.addEventListener('input', () => { listEl.innerHTML = renderRows(searchEl.value); });
+  listEl.addEventListener('click', e => {
+    const row = e.target.closest('.rs-inv-row');
+    if (!row) return;
+    const idx = parseInt(row.dataset.idx, 10);
+    const r = all[idx];
+    if (!r) return;
+    snapshot('inv-link:' + n.id);
+    if (r.sn) n.serialNo = r.sn;
+    if (r.assetId) n.assetId = r.assetId;
+    close();
+    try { renderInspector(); } catch {}
+    notifyChange();
+    flash('Привязано: ' + (r.label || ''));
+  });
+  setTimeout(() => searchEl.focus(), 30);
+}
+
+function _createInventoryEntryForNode(n) {
+  const pid = _activeProjectId();
+  const params = new URLSearchParams();
+  if (pid) params.set('project', pid);
+  params.set('from', 'schematic');
+  if (n.tag) params.set('prefillTag', n.tag);
+  if (n.name) params.set('prefillName', n.name);
+  if (n.serialNo) params.set('prefillSn', n.serialNo);
+  if (n.assetId) params.set('prefillAssetId', n.assetId);
+  const url = '../scs-config/inventory.html?' + params.toString();
+  window.open(url, '_blank');
+}
+
 // v0.58.50: минимальная провязка инпутов вкладки «Общее» на заданном root.
 // Используется в модалках (openPanelParamsModal/openUpsParamsModal/…),
 // чтобы не дублировать глобальные обработчики кнопок из wireInspectorInputs.
@@ -1824,6 +1914,13 @@ export function wireGeneralPanelInputs(n, root) {
   // v0.58.52: кнопка «Сохранить как изделие» — работает и в sidebar, и в модалке
   root.querySelectorAll('[data-action="save-product"]').forEach(btn => {
     btn.addEventListener('click', () => _saveNodeAsProduct(n));
+  });
+  // v0.59.353: кнопки ручной привязки и создания записи в реестре
+  root.querySelectorAll('[data-action="link-inventory"]').forEach(btn => {
+    btn.addEventListener('click', () => _openInventoryPickerForNode(n));
+  });
+  root.querySelectorAll('[data-action="create-inventory-it"]').forEach(btn => {
+    btn.addEventListener('click', () => _createInventoryEntryForNode(n));
   });
 }
 
@@ -1976,6 +2073,13 @@ export function wireInspectorInputs(n, root) {
   // v0.58.52: кнопка «Сохранить как изделие» в sidebar-инспекторе
   host.querySelectorAll('[data-action="save-product"]').forEach(btn => {
     btn.addEventListener('click', () => _saveNodeAsProduct(n));
+  });
+  // v0.59.353: ручная привязка к реестрам / создание записи (sidebar)
+  host.querySelectorAll('[data-action="link-inventory"]').forEach(btn => {
+    btn.addEventListener('click', () => _openInventoryPickerForNode(n));
+  });
+  host.querySelectorAll('[data-action="create-inventory-it"]').forEach(btn => {
+    btn.addEventListener('click', () => _createInventoryEntryForNode(n));
   });
   host.querySelectorAll('[data-prop]').forEach(inp => {
     const prop = inp.dataset.prop;

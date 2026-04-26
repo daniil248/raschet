@@ -72,6 +72,48 @@ export function findFacilityItemByIdentifiers(pid, sn, assetId) {
 }
 
 /**
+ * Список всех IT-устройств проекта (плоский, для picker'а).
+ * @returns {Array<{ device, rackId, rackTag, label, sn, assetId }>}
+ */
+export function listAllItDevices(pid) {
+  if (!pid) return [];
+  const contents = loadJson(projectKey(pid, 'scs-config', 'contents.v1'), {}) || {};
+  const tags = loadJson(projectKey(pid, 'scs-config', 'rackTags.v1'), {}) || {};
+  const out = [];
+  for (const [rackId, devs] of Object.entries(contents)) {
+    if (!Array.isArray(devs)) continue;
+    const rackTag = (tags[rackId] || '').trim();
+    for (const d of devs) {
+      if (!d) continue;
+      out.push({
+        device: d,
+        rackId,
+        rackTag: rackTag || null,
+        label: (d.label || d.name || d.model || d.kind || '?'),
+        sn: (d.sn || '').trim(),
+        assetId: (d.assetId || d.address || '').trim(),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Список всех позиций реестра объекта.
+ */
+export function listAllFacilityItems(pid) {
+  if (!pid) return [];
+  const raw = loadJson(projectKey(pid, 'facility-inventory', 'v1'), null);
+  const items = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.items) ? raw.items : []);
+  return items.map(it => ({
+    item: it,
+    label: (it && (it.name || it.label || it.model)) || '?',
+    sn: ((it && (it.sn || it.serialNo)) || '').trim(),
+    assetId: ((it && (it.assetId || it.invNo)) || '').trim(),
+  }));
+}
+
+/**
  * Полный поиск по обоим реестрам. Возвращает первый найденный матч.
  */
 export function findInventoryMatch(pid, sn, assetId) {

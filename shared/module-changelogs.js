@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.353', date: '2026-04-26', items: [
+      '🔗 <b>Picker для ручной привязки узла к реестрам проекта</b> — продолжение v0.59.351 (auto-match по S/N).',
+      '• Под полем S/N в инспекторе теперь всегда есть две кнопки: <b>«🔗 Привязать вручную…»</b> и <b>«➕ Создать запись в реестре IT»</b>. Раньше была только read-only-плашка матча.',
+      '• <b>Picker</b> — модалка со списком всех IT-устройств (по всем стойкам проекта, читается из scs-config contents.v1) и позиций реестра объекта (facility-inventory). Полнотекстовый поиск по имени / S/N / Инв.№ / тегу стойки. Клик по записи — пишет её S/N и Инв.№ в текущий узел (через snapshot — Undo работает).',
+      '• <b>Кнопка ➕</b> — открывает /scs-config/inventory.html в новой вкладке с prefill-параметрами (project, prefillTag, prefillName, prefillSn, prefillAssetId). Сам реестр пока эти параметры не читает — это задел; быстрый путь от «не нашёл устройство» к «создал запись».',
+      '<b>Что впереди:</b> чтение prefill-* в inventory.html для автозаполнения формы добавления устройства; обратный список «связанные узлы схемы» в реестре IT.',
+      'Файлы: shared/inventory-bridge.js (listAllItDevices/listAllFacilityItems), js/engine/inspector.js (модалка _openInventoryPickerForNode + кнопки в renderGeneralPanel + wire в обоих wireInspectorInputs/wireGeneralPanelInputs).',
+    ] },
     { version: '0.59.352', date: '2026-04-26', items: [
       '🔗 <b>Inline iframe-embed «Проектирование СКС» в Конструкторе схем.</b> Полноценная встраиваемая панель — следующий шаг после quick-link v0.59.349.',
       '• На страницах с видом 📡 Слаботочка / 🗂 Данные в page-kind баннере появилась кнопка <b>«🔗 Панель СКС»</b>. Клик открывает выезжающую справа панель с iframe scs-design (контекст проекта пробрасывается через URL <code>?project=&from=schematic&embed=1</code>).',
