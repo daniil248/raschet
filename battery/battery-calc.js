@@ -580,12 +580,12 @@ function _renderDischargeChart(mount, rows, endVs) {
   const pMin = Math.min(...allP);
   const pMax = Math.max(...allP);
 
-  // Логарифмические оси для лучшего распределения точек
-  const logTMin = Math.log10(tMin);
-  const logTMax = Math.log10(tMax);
+  // v0.59.400: ось X — линейная по времени (раньше была log10, искажала
+  // короткие времена). Ось Y оставляем log — мощность падает на порядки
+  // при увеличении длительности разряда, иначе мелкие точки слипаются.
   const logPMin = Math.log10(pMin);
   const logPMax = Math.log10(pMax);
-  const xOf = (t) => padL + ((Math.log10(t) - logTMin) / Math.max(0.001, logTMax - logTMin)) * plotW;
+  const xOf = (t) => padL + ((t - tMin) / Math.max(0.001, tMax - tMin)) * plotW;
   const yOf = (p) => padT + plotH - ((Math.log10(p) - logPMin) / Math.max(0.001, logPMax - logPMin)) * plotH;
 
   // Тики по X (целые степени 10 и промежуточные)
@@ -622,7 +622,7 @@ function _renderDischargeChart(mount, rows, endVs) {
   }
 
   // Подписи осей
-  parts.push(`<text x="${padL + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#1f2430" font-weight="600">Время разряда, мин (log)</text>`);
+  parts.push(`<text x="${padL + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#1f2430" font-weight="600">Время разряда, мин</text>`);
   parts.push(`<text transform="rotate(-90 16 ${padT + plotH / 2})" x="16" y="${padT + plotH / 2}" text-anchor="middle" fill="#1f2430" font-weight="600">Мощность на блок, W (log)</text>`);
 
   // Кривые по каждому endV
@@ -1213,6 +1213,8 @@ window.addEventListener('DOMContentLoaded', () => {
   renderRackBatterySelector();
   // Фаза 1.4.4: интеграция с Конструктором схем
   initSchemaContext();
+  // v0.59.400: handoff из ups-config (?fromUps=1) — предзаполнение и возврат.
+  initUpsHandoff();
 });
 
 // ================= Интеграция с Конструктором схем (Фаза 1.4.4) =================
@@ -1304,6 +1306,89 @@ function initSchemaContext() {
     }
   });
   document.getElementById('ctx-cancel-battery')?.addEventListener('click', () => {
+    try { window.close(); } catch {}
+  });
+}
+
+// v0.59.400: интеграция с конфигуратором ИБП. Когда battery открывается из
+// ups-config (?fromUps=1), берём параметры из query-string и localStorage
+// handoff (raschet.upsHandoff.v1). Заполняем форму расчёта (нагрузка,
+// V_DC, целевая автономия, КПД инвертора). Показываем баннер «Из
+// конфигуратора ИБП». При нажатии «Применить → ИБП» сохраняем выбор АКБ в
+// raschet.upsBatteryReturn.v1 для подбора в wizard'е ИБП.
+function initUpsHandoff() {
+  const qp = new URLSearchParams(location.search);
+  if (qp.get('fromUps') !== '1') return;
+  let h = {};
+  try { h = JSON.parse(localStorage.getItem('raschet.upsHandoff.v1') || '{}'); } catch {}
+  const loadKw = qp.get('loadKw') || h.loadKw;
+  const autonomyMin = qp.get('autonomyMin') || h.autonomyMin;
+  const vdcMin = qp.get('vdcMin') || h.vdcMin;
+  const vdcMax = qp.get('vdcMax') || h.vdcMax;
+  const invEffPct = qp.get('invEff') || (h.invEff != null ? h.invEff * 100 : null);
+  setTimeout(() => {
+    const calcTab = document.querySelector('[data-tab="tab-calc"]');
+    if (calcTab) calcTab.click();
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
+    set('calc-load', loadKw);
+    set('calc-target', autonomyMin);
+    if (vdcMin || vdcMax) {
+      const mid = (Number(vdcMin || vdcMax) + Number(vdcMax || vdcMin)) / 2;
+      if (Number.isFinite(mid)) set('calc-dcv', Math.round(mid));
+    }
+    if (invEffPct) set('calc-inveff', Math.round(Number(invEffPct)));
+    const modeEl = document.getElementById('calc-mode');
+    if (modeEl && autonomyMin) modeEl.value = 'required';
+  }, 150);
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:sticky;top:0;z-index:100;padding:10px 16px;background:#6366f1;color:#fff;display:flex;align-items:center;gap:12px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.15)';
+  banner.innerHTML = `
+    <span style="flex:1">⚡ Подбор АКБ для ИБП <b>${escHtml(h.upsLabel || '')}</b>${vdcMin && vdcMax ? ` · V<sub>DC</sub> ${vdcMin}…${vdcMax} В` : ''}. Параметры предзаполнены — выберите модель и рассчитайте, затем нажмите «Применить → ИБП».</span>
+    <button type="button" id="ups-apply-battery" style="background:#fff;color:#4338ca;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Применить → ИБП</button>
+    <button type="button" id="ups-cancel-battery" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:4px;cursor:pointer">Отмена</button>
+  `;
+  document.body.insertBefore(banner, document.body.firstChild);
+  document.getElementById('ups-apply-battery')?.addEventListener('click', () => {
+    if (!lastBatteryCalc || !lastBatteryCalc.calcResult) {
+      flash('Сначала выполните расчёт — выберите АКБ и нажмите «Рассчитать»', 'warn');
+      return;
+    }
+    const { params, calcResult } = lastBatteryCalc;
+    let strings = 1, blocksPerString = calcResult.blocksPerString || 1, autonomy = null;
+    if (calcResult.kind === 'autonomy') {
+      strings = params.strings || 1;
+      autonomy = calcResult.r?.autonomyMin || null;
+    } else if (calcResult.kind === 'required' && calcResult.found) {
+      strings = calcResult.found.strings || 1;
+      blocksPerString = calcResult.found.blocksPerString || blocksPerString;
+      autonomy = calcResult.found.result?.autonomyMin || null;
+    }
+    const battery = params.battery;
+    const totalKwh = battery
+      ? strings * blocksPerString * (battery.capacityAh || 0) * (battery.blockVoltage || 0) / 1000
+      : null;
+    const dcVoltage = battery && battery.blockVoltage ? battery.blockVoltage * blocksPerString : null;
+    const payload = {
+      source: 'battery-calc',
+      selectedAt: Date.now(),
+      battery: battery ? {
+        id: battery.id, supplier: battery.supplier, model: battery.model,
+        chemistry: battery.chemistry, capacityAh: battery.capacityAh,
+        blockVoltage: battery.blockVoltage,
+      } : null,
+      strings, blocksPerString, autonomyMin: autonomy,
+      totalBlocks: strings * blocksPerString,
+      totalKwh, dcVoltage,
+    };
+    try {
+      localStorage.setItem('raschet.upsBatteryReturn.v1', JSON.stringify(payload));
+      flash('Готово. Вернитесь на вкладку конфигуратора ИБП и нажмите «Далее → Итог».', 'success');
+      setTimeout(() => { try { window.close(); } catch {} }, 2000);
+    } catch (e) {
+      flash('Не удалось передать результат: ' + (e.message || e), 'error');
+    }
+  });
+  document.getElementById('ups-cancel-battery')?.addEventListener('click', () => {
     try { window.close(); } catch {}
   });
 }

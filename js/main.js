@@ -1334,27 +1334,24 @@ async function createNewProject() {
   const name = els.newName.value.trim() || 'Новый проект';
   const withDemo = els.newDemo.checked;
   try {
-    // v0.59.399: «+ Новый проект» теперь создаёт project-context (контейнер
-    // для группы схем), а не саму схему. Раньше клик создавал window.Storage-
-    // схему с именем проекта; при её удалении «исчезал» весь проект — это
-    // путало пользователя. Теперь:
-    //  — создаётся пустой project-context (shared/project-storage)
-    //  — если отмечено «загрузить демо», дополнительно создаётся схема,
-    //    привязанная к этому контексту через projectId
-    //  — пользователь оказывается на странице со списком, видит свой пустой
-    //    проект-группу и может добавлять в неё схемы кнопкой «+ Схема».
+    // v0.59.400: «+ Новый проект» создаёт project-context (контейнер) и
+    // сразу одну схему внутри него с тем же именем. Если отмечено «демо» —
+    // схема предзаполнена; иначе пустая. Сценарий пользователя: кликнул
+    // «+ Новый проект» → ожидает увидеть свою схему открытой, а не пустой
+    // заголовок-контейнер. При этом удаление этой первой схемы НЕ убивает
+    // проект (контекст остаётся видимым как «· пусто», в него можно
+    // добавлять новые схемы кнопкой «+ Схема» в шапке группы).
     const ctx = _createProjectCtx({ name });
-    let openedSchemeId = null;
+    let scheme = null;
     if (withDemo) {
       window.Raschet.loadDemo();
-      const scheme = window.Raschet.getScheme();
-      const p = await window.Storage.createProject(name, scheme);
-      await window.Storage.saveProject(p.id, { projectId: ctx.id });
-      openedSchemeId = p.id;
+      scheme = window.Raschet.getScheme();
     }
+    const p = await window.Storage.createProject(name, scheme);
+    await window.Storage.saveProject(p.id, { projectId: ctx.id });
     closeModal('modal-new');
     await refreshProjects();
-    if (openedSchemeId) openProject(openedSchemeId);
+    openProject(p.id);
   } catch (e) {
     flash(e.message || 'Ошибка создания', 'error');
   }

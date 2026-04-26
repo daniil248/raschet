@@ -711,6 +711,15 @@ function _openWizard({ standalone }) {
   document.getElementById('wiz-btn-back-2').onclick = () => _showStep(1);
   document.getElementById('wiz-btn-next-2').onclick = _goStep3;
   document.getElementById('wiz-btn-back-3').onclick = () => _showStep(2);
+  // v0.59.400: шаг 3 — выбор АКБ или пропустить, шаг 4 — итог.
+  const skipBtn = document.getElementById('wiz-btn-skip-batt');
+  const pickBtn = document.getElementById('wiz-btn-pick-batt');
+  const next3Btn = document.getElementById('wiz-btn-next-3');
+  const back4Btn = document.getElementById('wiz-btn-back-4');
+  if (skipBtn) skipBtn.onclick = () => { wizState.batteryChoice = 'skip'; if (next3Btn) next3Btn.disabled = false; _renderBatteryInfo(); _goStep4(); };
+  if (pickBtn) pickBtn.onclick = _openBatteryPicker;
+  if (next3Btn) next3Btn.onclick = _goStep4;
+  if (back4Btn) back4Btn.onclick = () => _showStep(3);
   document.getElementById('wiz-btn-apply').onclick = _applyConfiguration;
   _showStep(1);
 }
@@ -719,7 +728,6 @@ function _fillWizStep1Fields() {
   const rq = wizState.requirements;
   document.getElementById('wiz-loadKw').value = rq.loadKw;
   document.getElementById('wiz-autonomy').value = rq.autonomyMin;
-  document.getElementById('wiz-redundancy').value = rq.redundancy;
   // v0.59.385: опции «Тип» в wizard'е собираются из реестра типов.
   const typeSel = document.getElementById('wiz-upsType');
   if (typeSel) {
@@ -730,31 +738,36 @@ function _fillWizStep1Fields() {
     typeSel.innerHTML = opts.join('');
   }
   document.getElementById('wiz-upsType').value = rq.upsType || '';
-  document.getElementById('wiz-vdcMin').value = rq.vdcMin;
-  document.getElementById('wiz-vdcMax').value = rq.vdcMax;
   document.getElementById('wiz-cosPhi').value = rq.cosPhi;
   document.getElementById('wiz-phases').value = rq.phases;
+  // v0.59.400: резервирование выехало на шаг 2.
+  const redSel = document.getElementById('wiz-redundancy');
+  if (redSel) redSel.value = rq.redundancy;
 }
 
 function _showStep(n) {
-  [1, 2, 3].forEach(i => {
+  [1, 2, 3, 4].forEach(i => {
     const s = document.getElementById('wiz-step-' + i);
     if (s) s.style.display = (i === n) ? '' : 'none';
   });
   const ind = document.getElementById('wiz-step-indicator');
-  if (ind) ind.textContent = 'Шаг ' + n + ' из 3';
+  if (ind) ind.textContent = 'Шаг ' + n + ' из 4';
 }
 
 function _readStep1() {
   const rq = wizState.requirements;
   rq.loadKw = Number(document.getElementById('wiz-loadKw').value) || rq.loadKw;
   rq.autonomyMin = Number(document.getElementById('wiz-autonomy').value) || 0;
-  rq.redundancy = document.getElementById('wiz-redundancy').value;
   rq.upsType = document.getElementById('wiz-upsType').value;
-  rq.vdcMin = Number(document.getElementById('wiz-vdcMin').value) || rq.vdcMin;
-  rq.vdcMax = Number(document.getElementById('wiz-vdcMax').value) || rq.vdcMax;
   rq.cosPhi = Number(document.getElementById('wiz-cosPhi').value) || rq.cosPhi;
   rq.phases = Number(document.getElementById('wiz-phases').value) || 3;
+}
+
+// v0.59.400: чтение фильтров и резервирования с шага 2.
+function _readStep2() {
+  const rq = wizState.requirements;
+  const redSel = document.getElementById('wiz-redundancy');
+  if (redSel) rq.redundancy = redSel.value || 'N';
 }
 
 // ====================== Шаг 2: Подбор ======================
@@ -786,10 +799,7 @@ function _pickSuitable() {
     if (!t) continue;
     // Фильтр по типу (если указан)
     if (rq.upsType && t.id !== rq.upsType) continue;
-    // Фильтр по Vdc (диапазон ИБП должен пересекаться с требуемым)
-    if (u.vdcMax && u.vdcMin) {
-      if (u.vdcMax < rq.vdcMin || u.vdcMin > rq.vdcMax) continue;
-    }
+    // v0.59.400: фильтр по V_DC убран — параметры АКБ задаются на отдельном шаге.
     // Подбор делегируется плагину
     const fitInfo = t.pickFit ? t.pickFit(rq, u, _parseRedundancy) : null;
     if (fitInfo) out.push({ ups: u, fitInfo, type: t });
@@ -803,27 +813,71 @@ function _pickSuitable() {
   return out;
 }
 
-function _goStep2() {
-  _readStep1();
-  const rq = wizState.requirements;
-  if (rq.loadKw <= 0) { flash('Укажите нагрузку > 0', 'warn'); return; }
-  const suitable = _pickSuitable();
+// v0.59.400: применить пользовательские фильтры на шаге 2 (производитель,
+// топология, диапазон мощности, текстовый поиск). Возвращает суженный
+// список из _pickSuitable.
+function _applyStep2Filters(suitable) {
+  const sup = (document.getElementById('wiz-filter-supplier')?.value || '').toLowerCase();
+  const top = (document.getElementById('wiz-filter-topology')?.value || '').toLowerCase();
+  const kwMin = Number(document.getElementById('wiz-filter-kwMin')?.value) || 0;
+  const kwMax = Number(document.getElementById('wiz-filter-kwMax')?.value) || Infinity;
+  const txt = (document.getElementById('wiz-filter-text')?.value || '').trim().toLowerCase();
+  return suitable.filter(({ ups, fitInfo }) => {
+    if (sup && (ups.supplier || '').toLowerCase() !== sup) return false;
+    if (top && (ups.topology || '').toLowerCase() !== top) return false;
+    const kw = fitInfo.usable || ups.frameKw || ups.capacityKw || 0;
+    if (kw < kwMin) return false;
+    if (kw > kwMax) return false;
+    if (txt) {
+      const hay = [ups.supplier, ups.model, ups.id, ups.series, ups.topology].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(txt)) return false;
+    }
+    return true;
+  });
+}
+
+// v0.59.400: заполнить выпадающие списки фильтров шага 2 уникальными значениями
+// из текущего набора подходящих моделей.
+function _populateStep2FilterOptions(suitable) {
+  const supSel = document.getElementById('wiz-filter-supplier');
+  const topSel = document.getElementById('wiz-filter-topology');
+  if (supSel) {
+    const cur = supSel.value;
+    const sups = [...new Set(suitable.map(s => s.ups.supplier).filter(Boolean))].sort();
+    supSel.innerHTML = '<option value="">Все</option>' + sups.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (sups.includes(cur)) supSel.value = cur;
+  }
+  if (topSel) {
+    const cur = topSel.value;
+    const tops = [...new Set(suitable.map(s => s.ups.topology).filter(Boolean))].sort();
+    topSel.innerHTML = '<option value="">Все</option>' + tops.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (tops.includes(cur)) topSel.value = cur;
+  }
+}
+
+// v0.59.400: построить _и_ отрисовать список моделей с учётом фильтров шага 2.
+function _renderSuitableList() {
   const list = document.getElementById('wiz-suitable-list');
-  if (!suitable.length) {
+  if (!list) return;
+  _readStep2();
+  const all = _pickSuitable();
+  _populateStep2FilterOptions(all);
+  const filtered = _applyStep2Filters(all);
+  const next2 = document.getElementById('wiz-btn-next-2');
+  if (!filtered.length) {
     list.innerHTML = `
       <div class="suitable-list">
         <div class="empty" style="padding:30px;text-align:center">
-          Подходящих моделей не найдено.<br>
-          Добавьте модели в справочник (кнопка «Kehua UPS» или импорт XLSX),
-          либо смягчите требования (уменьшите нагрузку / уберите фильтр по типу).
+          ${all.length
+            ? 'Под фильтры ничего не попало — ослабьте критерии (производитель, диапазон kW, текст).'
+            : 'Подходящих моделей не найдено. Добавьте модели в справочник или смягчите требования (уменьшите нагрузку / уберите фильтр по типу).'}
         </div>
       </div>`;
-    document.getElementById('wiz-btn-next-2').disabled = true;
-    _showStep(2);
+    if (next2) next2.disabled = true;
     return;
   }
   const html = ['<div class="suitable-list">'];
-  suitable.forEach(({ ups, fitInfo, type }, idx) => {
+  filtered.forEach(({ ups, fitInfo, type }, idx) => {
     const priceInfo = pricesForElement(ups.id);
     const priceStr = priceInfo.latest
       ? Number(priceInfo.latest.price).toLocaleString('ru-RU') + ' ' + priceInfo.latest.currency
@@ -833,13 +887,14 @@ function _goStep2() {
     const typeLabel = t.label;
     const metaText = t.metaLabel ? t.metaLabel(ups) : '';
     const calcText = t.fitDescription ? t.fitDescription(ups, fitInfo) : '';
+    const vdcStr = (ups.vdcMin && ups.vdcMax) ? `· V<sub>DC</sub> ${ups.vdcMin}–${ups.vdcMax}V ` : '';
     html.push(`
       <div class="suitable-item${isRec}" data-id="${esc(ups.id)}" data-idx="${idx}">
         <div class="suitable-main">
-          <div class="suitable-title">${esc(ups.supplier || '')} ${esc(ups.model || ups.id)} <span class="muted" style="font-size:11px">· ${esc(typeLabel)}</span></div>
+          <div class="suitable-title">${esc(ups.supplier || '')} ${esc(ups.model || ups.id)} <span class="muted" style="font-size:11px">· ${esc(typeLabel)}${ups.topology ? ' · ' + esc(ups.topology) : ''}</span></div>
           <div class="suitable-meta">
             ${metaText}
-            · V<sub>DC</sub> ${ups.vdcMin}–${ups.vdcMax}V · Цена ${priceStr}
+            ${vdcStr}· Цена ${priceStr}
           </div>
         </div>
         <div class="suitable-calc">${calcText}</div>
@@ -852,14 +907,35 @@ function _goStep2() {
       list.querySelectorAll('.suitable-item').forEach(i => i.classList.remove('selected'));
       item.classList.add('selected');
       const idx = Number(item.dataset.idx);
-      wizState.selected = suitable[idx];
-      document.getElementById('wiz-btn-next-2').disabled = false;
+      wizState.selected = filtered[idx];
+      if (next2) next2.disabled = false;
     };
   });
-  // Авто-выбор первого (рекомендованного)
-  if (suitable[0]) {
+  // Авто-выбор первого (рекомендованного), если ничего не выбрано
+  const curId = wizState.selected?.ups?.id;
+  const keep = curId && filtered.findIndex(s => s.ups.id === curId);
+  if (keep != null && keep >= 0) {
+    list.querySelectorAll('.suitable-item')[keep]?.click();
+  } else if (filtered[0]) {
     list.querySelector('.suitable-item')?.click();
   }
+}
+
+function _goStep2() {
+  _readStep1();
+  const rq = wizState.requirements;
+  if (rq.loadKw <= 0) { flash('Укажите нагрузку > 0', 'warn'); return; }
+  // Подвешиваем live-обновление фильтров (на повторных входах не дублируем).
+  const filterIds = ['wiz-redundancy', 'wiz-filter-supplier', 'wiz-filter-topology', 'wiz-filter-kwMin', 'wiz-filter-kwMax', 'wiz-filter-text'];
+  for (const id of filterIds) {
+    const el = document.getElementById(id);
+    if (el && !el._wizBound) {
+      el.addEventListener('change', _renderSuitableList);
+      el.addEventListener('input', _renderSuitableList);
+      el._wizBound = true;
+    }
+  }
+  _renderSuitableList();
   _showStep(2);
 }
 
@@ -890,10 +966,112 @@ function _buildComposition() {
   };
 }
 
+// v0.59.400: шаг 3 — выбор АКБ или пропустить.
 function _goStep3() {
+  _readStep2();
+  if (!wizState.selected) { flash('Не выбрана модель ИБП', 'warn'); return; }
+  // Готовим composition (нужен для V_DC из паспорта выбранного ИБП).
   const comp = _buildComposition();
-  if (!comp) { flash('Не выбрана модель', 'warn'); return; }
+  if (!comp) { flash('Не удалось рассчитать конфигурацию', 'error'); return; }
   wizState.composition = comp;
+  wizState.batteryChoice = wizState.batteryChoice || null; // 'skip' | 'pick' | null
+  _renderBatteryInfo();
+  _showStep(3);
+}
+
+// v0.59.400: подхват результата возврата из battery/. Если пользователь
+// сделал расчёт и нажал «Применить → ИБП», битч-ся payload в
+// raschet.upsBatteryReturn.v1 — забираем его и кладём в wizState.battery.
+function _consumeUpsBatteryReturn() {
+  let p = null;
+  try {
+    const raw = localStorage.getItem('raschet.upsBatteryReturn.v1');
+    if (!raw) return false;
+    p = JSON.parse(raw);
+    localStorage.removeItem('raschet.upsBatteryReturn.v1');
+  } catch { return false; }
+  if (!p) return false;
+  wizState.battery = {
+    id: p.battery?.id, supplier: p.battery?.supplier, model: p.battery?.model,
+    chemistry: p.battery?.chemistry,
+    capacityAh: p.battery?.capacityAh, blockVoltage: p.battery?.blockVoltage,
+    strings: p.strings, blocksPerString: p.blocksPerString, totalBlocks: p.totalBlocks,
+    autonomyMin: p.autonomyMin, totalKwh: p.totalKwh, dcVoltage: p.dcVoltage,
+  };
+  wizState.batteryChoice = 'pick';
+  const next3Btn = document.getElementById('wiz-btn-next-3');
+  if (next3Btn) next3Btn.disabled = false;
+  return true;
+}
+// При фокусе вкладки — пробуем подхватить возврат из battery/.
+window.addEventListener('focus', () => {
+  if (_consumeUpsBatteryReturn()) {
+    _renderBatteryInfo();
+    flash('Подбор АКБ получен из «Расчёт АКБ».', 'success');
+  }
+});
+
+function _renderBatteryInfo() {
+  const info = document.getElementById('wiz-battery-info');
+  if (!info) return;
+  const comp = wizState.composition;
+  const rq = wizState.requirements;
+  if (!comp) { info.textContent = ''; return; }
+  const u = comp.ups;
+  const lines = [];
+  lines.push(`Выбран ИБП: <b>${esc(u.supplier || '')} ${esc(u.model || u.id)}</b>`);
+  if (u.vdcMin && u.vdcMax) lines.push(`Диапазон V<sub>DC</sub> по паспорту: <b>${u.vdcMin}…${u.vdcMax} В</b>`);
+  lines.push(`Нагрузка: <b>${rq.loadKw} kW</b>, автономия: <b>${rq.autonomyMin} мин</b>, cos φ: <b>${rq.cosPhi}</b>`);
+  if (wizState.batteryChoice === 'skip') {
+    lines.push(`<div style="margin-top:6px;color:#92400e">⚠ АКБ пропущены — конфигурация будет применена без батарей.</div>`);
+  } else if (wizState.battery) {
+    const b = wizState.battery;
+    lines.push(`<div style="margin-top:6px;color:#065f46">✓ Подобрана АКБ: <b>${esc(b.supplier || '')} ${esc(b.model || b.id)}</b>${b.dcVoltage ? ' · V<sub>DC</sub> ' + b.dcVoltage + ' В' : ''}${b.totalBlocks ? ' · ' + b.totalBlocks + ' блок(ов)' : ''}</div>`);
+  } else {
+    lines.push(`<div style="margin-top:6px;color:#6b7280">Выберите дальнейшее действие.</div>`);
+  }
+  info.innerHTML = lines.join('<br>');
+}
+
+// v0.59.400: открыть модуль «Расчёт АКБ» с переданными параметрами ИБП.
+// Параметры идут двумя путями: query-string (для удобной отладки) и
+// localStorage handoff (для надёжности; battery-calc.js его подхватит).
+function _openBatteryPicker() {
+  const comp = wizState.composition;
+  if (!comp) { flash('Сначала выберите ИБП', 'warn'); return; }
+  const u = comp.ups;
+  const rq = wizState.requirements;
+  const handoff = {
+    source: 'ups-config',
+    selectedAt: Date.now(),
+    loadKw: rq.loadKw,
+    autonomyMin: rq.autonomyMin,
+    cosPhi: rq.cosPhi,
+    invEff: (u.efficiency || 94) / 100,
+    vdcMin: u.vdcMin || null,
+    vdcMax: u.vdcMax || null,
+    upsLabel: [u.supplier, u.model || u.id].filter(Boolean).join(' '),
+    upsId: u.id,
+  };
+  try { localStorage.setItem('raschet.upsHandoff.v1', JSON.stringify(handoff)); } catch {}
+  const url = new URL('../battery/', location.href);
+  url.searchParams.set('fromUps', '1');
+  url.searchParams.set('loadKw', rq.loadKw);
+  url.searchParams.set('autonomyMin', rq.autonomyMin);
+  if (u.vdcMin) url.searchParams.set('vdcMin', u.vdcMin);
+  if (u.vdcMax) url.searchParams.set('vdcMax', u.vdcMax);
+  if (u.efficiency) url.searchParams.set('invEff', u.efficiency);
+  window.open(url.toString(), '_blank');
+  wizState.batteryChoice = 'pick';
+  const next3Btn = document.getElementById('wiz-btn-next-3');
+  if (next3Btn) next3Btn.disabled = false;
+  _renderBatteryInfo();
+  flash('Модуль «Расчёт АКБ» открыт в новой вкладке. После выбора модели вернитесь сюда и нажмите «Далее → Итог».', 'info');
+}
+
+function _goStep4() {
+  const comp = wizState.composition;
+  if (!comp) { flash('Нет выбранной конфигурации', 'warn'); return; }
   const rq = wizState.requirements;
   const u = comp.ups;
   const fi = comp.fitInfo;
@@ -909,8 +1087,9 @@ function _goStep3() {
         <tr><td>Автономия</td><td>${rq.autonomyMin} мин</td></tr>
         <tr><td>Резервирование</td><td>${rq.redundancy}</td></tr>
         <tr><td>Тип</td><td>${rq.upsType ? esc((getUpsType(rq.upsType) || {}).label || rq.upsType) : 'любой'}</td></tr>
-        <tr><td>V<sub>DC</sub></td><td>${rq.vdcMin}–${rq.vdcMax} В</td></tr>
+        <tr><td>V<sub>DC</sub> (по паспорту ИБП)</td><td>${u.vdcMin || '—'}–${u.vdcMax || '—'} В</td></tr>
         <tr><td>cos φ / фазы</td><td>${rq.cosPhi} / ${rq.phases}ph</td></tr>
+        <tr><td>АКБ</td><td>${wizState.batteryChoice === 'skip' ? '<i>пропущены</i>' : (wizState.battery ? esc((wizState.battery.supplier||'') + ' ' + (wizState.battery.model||wizState.battery.id||'')) : '—')}</td></tr>
       </table>
     </div>
     <div class="wiz-summary-box">
@@ -937,7 +1116,7 @@ function _goStep3() {
       </p>
     </div>
   `;
-  _showStep(3);
+  _showStep(4);
 }
 
 function _applyConfiguration() {
@@ -963,9 +1142,11 @@ function _applyConfiguration() {
       moduleKwRated: u.moduleKwRated,
       moduleSlots: u.moduleSlots,
       redundancyScheme: rq.redundancy,
-      batteryVdcMin: rq.vdcMin,
-      batteryVdcMax: rq.vdcMax,
+      batteryVdcMin: u.vdcMin || null,
+      batteryVdcMax: u.vdcMax || null,
       batteryAutonomyMin: rq.autonomyMin,
+      batterySelection: wizState.battery || null,
+      batteryChoice: wizState.batteryChoice || null,
       composition: comp.composition,
       totalPrice: comp.totalPrice,
       currency: comp.currency,

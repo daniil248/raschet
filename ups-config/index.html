@@ -105,10 +105,10 @@
         <div id="wiz-step-indicator" class="muted" style="font-size:12px"></div>
       </div>
 
-      <!-- Шаг 1: Требования -->
+      <!-- Шаг 1: Требования к ИБП (без V_DC — это для АКБ, см. шаг 3) -->
       <div id="wiz-step-1" class="wiz-step">
-        <h4>Шаг 1. Требования из проекта</h4>
-        <p class="muted" style="font-size:12px">Параметры переданы из Конструктора схем. Можно подправить.</p>
+        <h4>Шаг 1. Требования к ИБП</h4>
+        <p class="muted" style="font-size:12px">Параметры для определения самого ИБП. V<sub>DC</sub> и резервирование задаются на следующих шагах.</p>
         <div class="wiz-grid">
           <label>Нагрузка, kW
             <input type="number" id="wiz-loadKw" min="0" step="0.5">
@@ -116,26 +116,12 @@
           <label>Автономия, мин
             <input type="number" id="wiz-autonomy" min="0" step="1">
           </label>
-          <label>Схема резервирования
-            <select id="wiz-redundancy">
-              <option value="N">N (без резерва)</option>
-              <option value="N+1">N+1</option>
-              <option value="N+2">N+2</option>
-              <option value="2N">2N</option>
-            </select>
-          </label>
           <label>Тип
             <select id="wiz-upsType">
               <option value="">Любой</option>
               <option value="modular">Модульный (рекомендовано)</option>
               <option value="monoblock">Моноблок</option>
             </select>
-          </label>
-          <label>V<sub>DC</sub> min, В
-            <input type="number" id="wiz-vdcMin" min="24" max="1200">
-          </label>
-          <label>V<sub>DC</sub> max, В
-            <input type="number" id="wiz-vdcMax" min="24" max="1200">
           </label>
           <label>cos φ
             <input type="number" id="wiz-cosPhi" min="0.5" max="1" step="0.01" value="0.9">
@@ -153,23 +139,65 @@
         </div>
       </div>
 
-      <!-- Шаг 2: Подбор -->
+      <!-- Шаг 2: Подбор фрейма + резервирование + фильтры -->
       <div id="wiz-step-2" class="wiz-step" style="display:none">
         <h4>Шаг 2. Подбор фрейма / модели</h4>
-        <p class="muted" style="font-size:12px">Подходящие модели из справочника. Для модульных — учтено резервирование.</p>
+        <p class="muted" style="font-size:12px">Подходящие модели из справочника. Резервирование (N / N+1 / N+2 / 2N) задаётся здесь — для модульных ИБП оно влияет на число модулей в фрейме.</p>
+        <div class="wiz-grid" style="margin-bottom:8px">
+          <label>Резервирование
+            <select id="wiz-redundancy">
+              <option value="N">N (без резерва)</option>
+              <option value="N+1">N+1</option>
+              <option value="N+2">N+2</option>
+              <option value="2N">2N</option>
+            </select>
+          </label>
+          <label>Производитель
+            <select id="wiz-filter-supplier">
+              <option value="">Все</option>
+            </select>
+          </label>
+          <label>Топология
+            <select id="wiz-filter-topology">
+              <option value="">Все</option>
+            </select>
+          </label>
+          <label>Мощность ≥ kW
+            <input type="number" id="wiz-filter-kwMin" min="0" step="1" placeholder="0">
+          </label>
+          <label>Мощность ≤ kW
+            <input type="number" id="wiz-filter-kwMax" min="0" step="1" placeholder="∞">
+          </label>
+          <label>Поиск по модели
+            <input type="search" id="wiz-filter-text" placeholder="модель / серия">
+          </label>
+        </div>
         <div id="wiz-suitable-list"></div>
         <div class="wiz-actions">
           <button id="wiz-btn-back-2" class="btn-sm">← Назад</button>
-          <button id="wiz-btn-next-2" class="btn-sm btn-primary" disabled>Далее → Итог</button>
+          <button id="wiz-btn-next-2" class="btn-sm btn-primary" disabled>Далее → АКБ</button>
         </div>
       </div>
 
-      <!-- Шаг 3: Итог -->
+      <!-- Шаг 3: АКБ (выбор / пропустить) -->
       <div id="wiz-step-3" class="wiz-step" style="display:none">
-        <h4>Шаг 3. Итоговая конфигурация</h4>
+        <h4>Шаг 3. Аккумуляторные батареи</h4>
+        <p class="muted" style="font-size:12px">Подобрать АКБ под выбранный ИБП в модуле «Расчёт АКБ» (откроется в новой вкладке с переданными V<sub>DC</sub>, мощностью и автономией) или пропустить — конфигурацию ИБП можно применить и без батарей.</p>
+        <div id="wiz-battery-info" style="margin:10px 0;padding:10px;background:#f8fafc;border-left:3px solid #6366f1;border-radius:4px;font-size:12px"></div>
+        <div class="wiz-actions" style="gap:10px">
+          <button id="wiz-btn-back-3" class="btn-sm">← Назад</button>
+          <button id="wiz-btn-skip-batt" class="btn-sm">Пропустить АКБ</button>
+          <button id="wiz-btn-pick-batt" class="btn-sm btn-primary">⚡ Подобрать АКБ →</button>
+          <button id="wiz-btn-next-3" class="btn-sm btn-primary" disabled>Далее → Итог</button>
+        </div>
+      </div>
+
+      <!-- Шаг 4: Итог -->
+      <div id="wiz-step-4" class="wiz-step" style="display:none">
+        <h4>Шаг 4. Итоговая конфигурация</h4>
         <div id="wiz-summary"></div>
         <div class="wiz-actions">
-          <button id="wiz-btn-back-3" class="btn-sm">← Назад</button>
+          <button id="wiz-btn-back-4" class="btn-sm">← Назад</button>
           <button id="wiz-btn-apply" class="btn-sm btn-primary">✓ Применить к схеме</button>
         </div>
       </div>
