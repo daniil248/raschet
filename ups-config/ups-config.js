@@ -941,14 +941,40 @@ function _renderSuitableList() {
   const filtered = _applyStep2Filters(all);
   const next2 = document.getElementById('wiz-btn-next-2');
   if (!filtered.length) {
+    // v0.59.423: если выбран All-in-One, а в справочнике нет AIO моделей —
+    // показать кнопку «Загрузить каталог Kehua S³C AIO» прямо здесь.
+    const rq = wizState.requirements;
+    const catalog = listUpses();
+    const hasAio = catalog.some(u => (u.kind === 'ups-all-in-one'));
+    let extra = '';
+    if (rq.upsType === 'all-in-one' && !hasAio) {
+      extra = `
+        <div style="margin-top:10px">
+          <button id="wiz-btn-seed-aio" class="primary" type="button">
+            📦 Загрузить каталог Kehua S³C AIO (6 моделей)
+          </button>
+          <div class="muted" style="font-size:11px;margin-top:6px">
+            All-in-One моноблочные шкафы со встроенной АКБ Li-Ion. После загрузки модели появятся в этом списке.
+          </div>
+        </div>`;
+    }
     list.innerHTML = `
       <div class="suitable-list">
         <div class="empty" style="padding:30px;text-align:center">
           ${all.length
             ? 'Под фильтры ничего не попало — ослабьте критерии (производитель, диапазон kW, текст).'
             : 'Подходящих моделей не найдено. Добавьте модели в справочник или смягчите требования (уменьшите нагрузку / уберите фильтр по типу).'}
+          ${extra}
         </div>
       </div>`;
+    const seedBtn = document.getElementById('wiz-btn-seed-aio');
+    if (seedBtn) {
+      seedBtn.addEventListener('click', () => {
+        for (const rec of KEHUA_S3_AIO_UPSES) addUps({ ...rec, importedAt: Date.now() });
+        flash(`Загружено Kehua S³C AIO: ${KEHUA_S3_AIO_UPSES.length} моделей`, 'success');
+        _renderSuitableList();
+      });
+    }
     if (next2) next2.disabled = true;
     return;
   }
