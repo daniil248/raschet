@@ -424,6 +424,10 @@ export const CHANGELOGS = {
     ] },
   ],
   'scs-config': [
+    { version: '0.59.341', date: '2026-04-26', items: [
+      '🩹 <b>Фикс: пустая модалка каталога после v0.59.339.</b> Подход «host hidden → DOM-move children в modal-body на open» оказался ненадёжен — пользователь видел только заголовок-полоску. Решение: разметка каталога (фильтры + <code>#sc-catalog</code> + tools) размещена напрямую внутри <code>#sc-cat-modal-body</code>, без скрытого host. Открытие/закрытие — простой toggle <code>modal.hidden</code>. ID полей сохранены, <code>renderCatalog()</code> и drag-binding работают как обычно.',
+      'Файлы: scs-config/rack.html (#sc-cat-host удалён; разметка каталога перенесена в #sc-cat-modal-body; JS upmodal упрощён до toggle hidden).',
+    ] },
     { version: '0.59.340', date: '2026-04-23', items: [
       '🔍 <b>Zoom/pan на основной карте юнитов + сохранение масштаба при port-click.</b> Раньше Ctrl+wheel работал только в модалке (<code>opts.big</code>), а в основном <code>#sc-unitmap</code> зум был принудительно z=1. Когда пользователь кликал порт для патч-корда, <code>renderUnitMap()</code> перерисовывал всё, и любой UI-state сбрасывался — отсюда жалоба «нельзя увеличить во время подключения». Теперь: (а) основная карта оборачивается в <code>.sc-zoomwrap-main</code> с <code>overflow:auto</code> и max-height:70vh; (б) <code>bindZoomPan</code> универсализован под параметр <code>stateKey</code> — модалка по-прежнему держит <code>state.dlgZoom</code>, основная карта — <code>state.mapZoom</code>; (в) перед перерисовкой сохраняется <code>scrollLeft/Top</code> текущего обёртка и восстанавливается на новом — клик по порту не «прыгает» виджет в начало.',
       'Файлы: scs-config/scs-config.js (renderUnitMap — sc-zoomwrap-main + scroll preservation; bindZoomPan — параметр stateKey).',

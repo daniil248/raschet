@@ -166,30 +166,6 @@
           </div>
           <p class="sc-hint muted" style="margin-top:4px">Открой каталог в модалке — фильтры, поиск, drag&drop в стойку.</p>
         </section>
-        <!-- Скрытый исходный каталог: сюда биндится renderCatalog. При открытии
-             модалки его DOM-узлы перемещаются внутрь modal-body, при закрытии —
-             возвращаются обратно. Так не дублируем listeners и id. -->
-        <div id="sc-cat-host" hidden>
-          <div class="sc-cat-filters">
-            <input type="search" id="sc-cat-search" class="sc-cat-search" placeholder="🔎 поиск по названию…" autocomplete="off"/>
-            <select id="sc-cat-kind-filter" class="sc-cat-kindfilter" title="Фильтр по типу">
-              <option value="">Все типы</option>
-            </select>
-            <label class="sc-cat-hu-lbl">U:
-              <input type="number" id="sc-cat-u-min" min="0" step="1" placeholder="от" class="sc-cat-unum"/>
-              <input type="number" id="sc-cat-u-max" min="0" step="1" placeholder="до" class="sc-cat-unum"/>
-            </label>
-            <span id="sc-cat-count" class="sc-cat-count muted"></span>
-            <button type="button" id="sc-cat-filter-clear" class="sc-btn sc-btn-sm" title="Очистить все фильтры каталога">✕ Сброс</button>
-          </div>
-          <div class="sc-cat-scroll">
-            <table class="sc-cat" id="sc-catalog"></table>
-          </div>
-          <div class="sc-tools">
-            <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
-            <button type="button" id="sc-cat-reset" class="sc-btn" title="Сбросить к базовому набору">↺ Базовый набор</button>
-          </div>
-        </div>
 
         <section class="sc-section sc-cart-section sc-cart-dropzone">
           <div class="sc-cart-head">
@@ -214,42 +190,51 @@
 
   </div>
 
-  <!-- v0.59.339: модалка каталога. Содержимое (DOM-узлы #sc-cat-host)
-       перемещается сюда при open и возвращается на место при close. -->
-  <div id="sc-cat-modal" hidden style="position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px">
+  <!-- v0.59.341: модалка каталога. Содержимое размещено напрямую в modal-body
+       (без DOM-move host→body), модалка просто скрыта/показана через hidden. -->
+  <div id="sc-cat-modal" hidden style="position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:20px">
     <div style="background:#fff;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.4);width:min(1100px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
         <strong style="font-size:14px">📦 Каталог типов оборудования</strong>
         <span class="muted" style="font-size:11px;flex:1">Перетащите строку из каталога на карту юнитов слева — устройство добавится в текущую стойку.</span>
         <button type="button" id="sc-cat-modal-close" class="sc-btn" style="font-size:13px;padding:4px 12px">✕ Закрыть</button>
       </div>
-      <div id="sc-cat-modal-body" style="flex:1;overflow:auto;padding:12px"></div>
+      <div id="sc-cat-modal-body" style="flex:1;overflow:auto;padding:12px">
+        <div class="sc-cat-filters">
+          <input type="search" id="sc-cat-search" class="sc-cat-search" placeholder="🔎 поиск по названию…" autocomplete="off"/>
+          <select id="sc-cat-kind-filter" class="sc-cat-kindfilter" title="Фильтр по типу">
+            <option value="">Все типы</option>
+          </select>
+          <label class="sc-cat-hu-lbl" title="Высота в юнитах">U:
+            <input type="number" id="sc-cat-u-min" min="0" max="60" step="1" placeholder="мин" style="width:48px"/>
+            <span style="opacity:.6">–</span>
+            <input type="number" id="sc-cat-u-max" min="0" max="60" step="1" placeholder="макс" style="width:48px"/>
+          </label>
+          <span id="sc-cat-count" class="sc-cat-count muted"></span>
+          <button type="button" id="sc-cat-filter-clear" class="sc-btn sc-btn-sm" title="Сбросить фильтры">✕ Сброс</button>
+        </div>
+        <div class="sc-cat-scroll">
+          <table class="sc-cat" id="sc-catalog"></table>
+        </div>
+        <div class="sc-tools">
+          <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
+          <button type="button" id="sc-cat-reset" class="sc-btn">↺ Базовый набор</button>
+        </div>
+      </div>
     </div>
   </div>
   <script>
     (function() {
       function $(id){return document.getElementById(id);}
-      function openModal() {
-        const host = $('sc-cat-host'); const body = $('sc-cat-modal-body'); const modal = $('sc-cat-modal');
-        if (!host || !body || !modal) return;
-        // Перенести содержимое hidden-host в modal-body.
-        while (host.firstChild) body.appendChild(host.firstChild);
-        host.hidden = true;
-        modal.hidden = false;
-      }
-      function closeModal() {
-        const host = $('sc-cat-host'); const body = $('sc-cat-modal-body'); const modal = $('sc-cat-modal');
-        if (!host || !body || !modal) return;
-        while (body.firstChild) host.appendChild(body.firstChild);
-        modal.hidden = true;
-      }
+      function openModal(){ const m=$('sc-cat-modal'); if(!m) return; m.hidden=false; m.style.display='flex'; }
+      function closeModal(){ const m=$('sc-cat-modal'); if(!m) return; m.hidden=true; m.style.display=''; }
       document.addEventListener('click', (e) => {
         if (e.target.closest('#sc-cat-open-modal')) { e.preventDefault(); openModal(); return; }
         if (e.target.closest('#sc-cat-modal-close')) { e.preventDefault(); closeModal(); return; }
         if (e.target.id === 'sc-cat-modal') { closeModal(); return; }
       });
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !$('sc-cat-modal').hidden) closeModal();
+        const m = $('sc-cat-modal'); if (e.key === 'Escape' && m && !m.hidden) closeModal();
       });
     })();
   </script>
