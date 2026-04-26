@@ -803,7 +803,21 @@ function renderCurrentTab() {
   els.projectsList.innerHTML = '';
   const tab = state.currentTab;
   const data = state.tabData[tab] || [];
-  if (data.length === 0) {
+  // v0.59.399: для вкладки «Мои» учитываем ещё и пустые project-context'ы
+  // (контейнеры без схем). Раньше при отсутствии схем сразу показывалось
+  // «Пока нет проектов», даже если у пользователя были созданы проекты-
+  // контейнеры — это и приводило к ощущению «удалил схему — пропал проект».
+  let ctxFullEmpty = false;
+  if (tab === 'mine') {
+    try {
+      const all = _listProjectCtx() || [];
+      // Только full-проекты как контейнеры; sketch'и (СКС/HVAC/PDU и т.п.
+      // мини-черновики модулей) сюда не показываем — они живут на странице
+      // /projects/.
+      ctxFullEmpty = all.some(p => p.kind !== 'sketch');
+    } catch {}
+  }
+  if (data.length === 0 && !ctxFullEmpty) {
     els.projectsEmpty.textContent = {
       mine: state.currentUser || window.Storage.mode === 'local'
         ? 'Пока нет проектов. Создайте новый.'
@@ -851,7 +865,12 @@ function renderCurrentTab() {
 
   // v0.59.336: группировка схем по проект-контексту (shared/project-storage).
   // Каждая схема может иметь p.projectId; без projectId → группа «Без проекта».
-  const ctxProjects = (() => { try { return _listProjectCtx() || []; } catch { return []; } })();
+  // v0.59.399: исключаем sketch-проекты (СКС/HVAC/PDU и прочие мини-проекты
+  // модулей) — они не относятся к главным электрическим схемам и живут на
+  // странице /projects/. Также показываем пустые full-контексты (без схем),
+  // чтобы пользователь не терял свой проект после удаления единственной схемы.
+  const ctxProjectsAll = (() => { try { return _listProjectCtx() || []; } catch { return []; } })();
+  const ctxProjects = ctxProjectsAll.filter(p => p.kind !== 'sketch');
   const ctxMap = new Map(ctxProjects.map(p => [p.id, p]));
   const groups = new Map();
   for (const p of data) {
@@ -859,8 +878,12 @@ function renderCurrentTab() {
     if (!groups.has(pid)) groups.set(pid, []);
     groups.get(pid).push(p);
   }
+  // Пустые full-контексты тоже показываем (как заголовок без карточек).
+  for (const cp of ctxProjects) {
+    if (!groups.has(cp.id)) groups.set(cp.id, []);
+  }
   const orderedPids = [
-    ...ctxProjects.map(p => p.id).filter(id => groups.has(id)),
+    ...ctxProjects.map(p => p.id),
     ...(groups.has('') ? [''] : []),
   ];
   for (const pid of orderedPids) {
@@ -872,11 +895,60 @@ function renderCurrentTab() {
     // как отдельная карточка-«проект» в колонке 1, что путает пользователя
     // («зачем в проектах сами проекты наряду со схемами?»). Это просто
     // визуальный разделитель между группами схем, а не объект каталога.
-    header.style.cssText = 'grid-column:1/-1;margin:18px 0 4px;padding:6px 10px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:3px;font-size:13px;font-weight:600;color:#3730a3';
-    header.innerHTML = pid
-      ? `📁 ${escHtml(ctxP.name)} <span style="color:#6b7280;font-weight:400;font-size:11px">· ${list.length} схем${list.length === 1 ? 'а' : list.length < 5 ? 'ы' : ''}${ctxP.kind === 'sketch' ? ' · мини-проект' : ''}</span>`
-      : `📂 Без проекта <span style="color:#6b7280;font-weight:400;font-size:11px">· ${list.length}</span>`;
+    header.style.cssText = 'grid-column:1/-1;margin:18px 0 4px;padding:6px 10px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:3px;font-size:13px;font-weight:600;color:#3730a3;display:flex;align-items:center;gap:10px;justify-content:space-between';
+    const cntTxt = list.length
+      ? ` <span style="color:#6b7280;font-weight:400;font-size:11px">· ${list.length} схем${list.length === 1 ? 'а' : list.length < 5 ? 'ы' : ''}</span>`
+      : ` <span style="color:#9ca3af;font-weight:400;font-size:11px">· пусто</span>`;
+    if (pid) {
+      header.innerHTML = `<span>📁 ${escHtml(ctxP.name)}${cntTxt}</span>`
+        + `<span style="display:flex;gap:6px">`
+        +   `<button type="button" data-act="add-scheme" data-pid="${escAttr(pid)}" style="background:#fff;color:#1565c0;border:1px solid #93c5fd;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px">+ Схема</button>`
+        +   `<button type="button" data-act="rename-ctx" data-pid="${escAttr(pid)}" style="background:transparent;color:#6366f1;border:1px solid #c7d2fe;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px">Переименовать</button>`
+        +   `<button type="button" data-act="del-ctx" data-pid="${escAttr(pid)}" style="background:transparent;color:#b91c1c;border:1px solid #fecaca;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px">Удалить</button>`
+        + `</span>`;
+    } else {
+      header.innerHTML = `<span>📂 Без проекта${cntTxt}</span>`;
+    }
     els.projectsList.appendChild(header);
+    // Действия в шапке группы
+    const addBtn = header.querySelector('[data-act="add-scheme"]');
+    if (addBtn) addBtn.onclick = async () => {
+      const nm = await rsPrompt('Имя новой схемы:', ctxP.name);
+      if (!nm) return;
+      try {
+        const created = await window.Storage.createProject(nm, null);
+        await window.Storage.saveProject(created.id, { projectId: pid });
+        await refreshProjects();
+        openProject(created.id);
+      } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+    };
+    const rnBtn = header.querySelector('[data-act="rename-ctx"]');
+    if (rnBtn) rnBtn.onclick = async () => {
+      const nm = await rsPrompt('Новое название проекта:', ctxP.name);
+      if (!nm || nm === ctxP.name) return;
+      try {
+        const { updateProject } = await import('../shared/project-storage.js');
+        updateProject(pid, { name: nm });
+        refreshProjects();
+      } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+    };
+    const delBtn = header.querySelector('[data-act="del-ctx"]');
+    if (delBtn) delBtn.onclick = async () => {
+      const cnt = list.length;
+      const msg = cnt > 0
+        ? `В проекте ${cnt} схем${cnt === 1 ? 'а' : cnt < 5 ? 'ы' : ''}. Они станут «Без проекта». Удалить контейнер?`
+        : 'Удалить пустой проект?';
+      if (!(await rsConfirm(`Удалить проект «${ctxP.name}»?`, msg, { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
+      try {
+        // Открепляем схемы, удаляем context.
+        for (const sc of list) {
+          try { await window.Storage.saveProject(sc.id, { projectId: null }); } catch {}
+        }
+        const { deleteProject } = await import('../shared/project-storage.js');
+        deleteProject(pid);
+        refreshProjects();
+      } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+    };
     for (const p of list) _renderSchemeCard(p, ctxProjects);
   }
   // Кнопка создания нового проекта-контекста
@@ -1262,15 +1334,27 @@ async function createNewProject() {
   const name = els.newName.value.trim() || 'Новый проект';
   const withDemo = els.newDemo.checked;
   try {
-    let scheme = null;
+    // v0.59.399: «+ Новый проект» теперь создаёт project-context (контейнер
+    // для группы схем), а не саму схему. Раньше клик создавал window.Storage-
+    // схему с именем проекта; при её удалении «исчезал» весь проект — это
+    // путало пользователя. Теперь:
+    //  — создаётся пустой project-context (shared/project-storage)
+    //  — если отмечено «загрузить демо», дополнительно создаётся схема,
+    //    привязанная к этому контексту через projectId
+    //  — пользователь оказывается на странице со списком, видит свой пустой
+    //    проект-группу и может добавлять в неё схемы кнопкой «+ Схема».
+    const ctx = _createProjectCtx({ name });
+    let openedSchemeId = null;
     if (withDemo) {
       window.Raschet.loadDemo();
-      scheme = window.Raschet.getScheme();
+      const scheme = window.Raschet.getScheme();
+      const p = await window.Storage.createProject(name, scheme);
+      await window.Storage.saveProject(p.id, { projectId: ctx.id });
+      openedSchemeId = p.id;
     }
-    const p = await window.Storage.createProject(name, scheme);
     closeModal('modal-new');
     await refreshProjects();
-    openProject(p.id);
+    if (openedSchemeId) openProject(openedSchemeId);
   } catch (e) {
     flash(e.message || 'Ошибка создания', 'error');
   }
