@@ -15,6 +15,8 @@ import {
   loadAllRacksForActiveProject, saveAllRacksForActiveProject, migrateLegacyInstances,
   LS_TEMPLATES_GLOBAL
 } from '../shared/rack-storage.js';
+// v0.59.348: stickers-baner о виртуальных стойках из схемы.
+import { loadSchemeVirtualRacks } from '../shared/scheme-rack-bridge.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;              // для совместимости storage-listener
 const LS_CATALOG   = 'scs-config.catalog.v1';          // глобальный каталог IT
@@ -1149,11 +1151,29 @@ function renderRacksSummary() {
   // v0.59.281: сводка — только проектные стойки (inst-*). Глобальные шаблоны
   // корпусов здесь не показываем, это не «стойки в зале».
   const racks = getProjectInstances();
+
+  // v0.59.348: баннер о виртуальных стойках «из схемы» (consumer/rack узлы
+  // в Конструкторе схем). Их нельзя ставить в зал и связывать кабелями —
+  // в них нет содержимого. Чтобы участвовать в проектировании СКС — нужно
+  // материализовать в Компоновщике.
+  const pid = getActiveProjectId();
+  const virtuals = (() => { try { return loadSchemeVirtualRacks(pid) || []; } catch { return []; } })();
+  // Считаем нескрытые: тег ещё не занят реальной стойкой
+  const tags = loadJson(LS_RACKTAGS, {});
+  const usedTags = new Set(Object.values(tags).map(t => (t || '').trim()).filter(Boolean));
+  const unmaterialized = virtuals.filter(v => !usedTags.has(v.autoTag));
+  const schemeBanner = unmaterialized.length
+    ? `<div style="margin-bottom:10px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;color:#1e3a8a">
+        🔗 В Конструкторе схем размещено <b>${unmaterialized.length}</b> ${unmaterialized.length === 1 ? 'виртуальная стойка' : (unmaterialized.length < 5 ? 'виртуальные стойки' : 'виртуальных стоек')} — они пока не участвуют в плане зала и связях. <a href="../scs-config/" style="color:#1d4ed8;font-weight:600">Материализовать → Компоновщик шкафа</a>
+      </div>`
+    : '';
+
   if (!racks.length) {
-    host.innerHTML = `<div class="sd-empty-state">
+    host.innerHTML = schemeBanner + `<div class="sd-empty-state">
       В проекте ещё нет шкафов. Создайте их в
       <a href="../rack-config/">Конфигураторе шкафа — корпус</a> (шаблоны)
       и наполните в <a href="../scs-config/">Компоновщике шкафа</a>.
+      ${unmaterialized.length ? '<br>Либо материализуйте виртуальные стойки из схемы (см. баннер выше).' : ''}
     </div>`;
     return;
   }
@@ -1195,7 +1215,7 @@ function renderRacksSummary() {
     </tr>`;
   }).join('');
 
-  host.innerHTML = `<table class="sd-racks-table">
+  host.innerHTML = schemeBanner + `<table class="sd-racks-table">
     <thead><tr>
       <th>Тег</th><th>Имя</th><th class="num">U</th><th class="num">Мощность</th>
       <th class="num">Устр.</th><th>Разбивка</th><th class="num">Связей</th><th></th>
