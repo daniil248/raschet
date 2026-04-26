@@ -2490,6 +2490,7 @@ function initSchemaContext() {
   const vdcMax = qp.get('vdcMax');
   const autonomyMin = qp.get('autonomyMin');
   const selected = qp.get('selected');
+  const invEffPct = qp.get('invEff');
 
   // Переключаемся на вкладку «Расчёт разряда»
   const calcTab = document.querySelector('[data-tab="calc"]');
@@ -2515,6 +2516,19 @@ function initSchemaContext() {
       if (vmin) { vmin.value = _handoffVdc.min; vmin.readOnly = true; vmin.style.background = '#f0f0f0'; vmin.title = 'Из контекста схемы'; }
       if (vmax) { vmax.value = _handoffVdc.max; vmax.readOnly = true; vmax.style.background = '#f0f0f0'; vmax.title = 'Из контекста схемы'; }
       _setDcvRangeHint(_handoffVdc.min, _handoffVdc.max, 'из контекста схемы');
+    }
+    // v0.59.419: КПД инвертора из паспорта ИБП — блокируем поле, чтобы
+    // пользователь не мог случайно изменить и получить расчёт, не
+    // соответствующий выбранному ИБП.
+    if (invEffPct) {
+      const ie = document.getElementById('calc-inveff');
+      const v = Math.round(Number(invEffPct));
+      if (ie && Number.isFinite(v) && v > 0) {
+        ie.value = v;
+        ie.readOnly = true;
+        ie.style.background = '#f0f0f0';
+        ie.title = 'Из паспорта ИБП — нельзя менять при подборе для конкретной модели';
+      }
     }
     const batEl = document.getElementById('calc-battery');
     if (batEl && selected) batEl.value = selected;
@@ -2617,7 +2631,17 @@ function initUpsHandoff() {
         _setDcvRangeHint(_handoffVdc.min, _handoffVdc.max, 'из ИБП-конфигуратора');
       }
     }
-    if (invEffPct) set('calc-inveff', Math.round(Number(invEffPct)));
+    if (invEffPct) {
+      const ie = document.getElementById('calc-inveff');
+      const v = Math.round(Number(invEffPct));
+      if (ie && Number.isFinite(v) && v > 0) {
+        ie.value = v;
+        // v0.59.419: блокируем — паспорт ИБП.
+        ie.readOnly = true;
+        ie.style.background = '#f0f0f0';
+        ie.title = 'Из ИБП-конфигуратора — нельзя менять при подборе для конкретной модели';
+      }
+    }
     const modeEl = document.getElementById('calc-mode');
     if (modeEl && autonomyMin) {
       modeEl.value = 'required';

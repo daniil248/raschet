@@ -917,6 +917,9 @@ function _renderUpsBatteryBody(n) {
     if (n.batteryVdcMax) qp2.set('vdcMax', String(n.batteryVdcMax));
     if (n.batteryCatalogId) qp2.set('selected', n.batteryCatalogId);
     if (n.batteryAutonomyMin) qp2.set('autonomyMin', String(n.batteryAutonomyMin));
+    // v0.59.419: КПД инвертора передаём из паспорта ИБП (n.efficiency, %).
+    // В battery-calc он попадает в поле «КПД инвертора ИБП» и блокируется.
+    if (Number.isFinite(Number(n.efficiency)) && Number(n.efficiency) > 0) qp2.set('invEff', String(Number(n.efficiency)));
     h.push(`<div style="margin:4px 0 10px">
       <a href="battery/?${qp2.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
         🔋 Подобрать АКБ в калькуляторе (новая вкладка)
