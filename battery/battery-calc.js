@@ -963,10 +963,6 @@ function _getCurrentVdcRange(dcRaw) {
   const a = Number(document.getElementById('calc-vdcmin')?.value) || 0;
   const b = Number(document.getElementById('calc-vdcmax')?.value) || 0;
   if (a > 0 && b > 0 && a < b) return { min: a, max: b, known: true, source: 'form' };
-  // Fallback на старые поля ввода в блоке «Параметры ИБП — вручную»
-  const a2 = Number(document.getElementById('calc-ups-vdcmin')?.value) || 0;
-  const b2 = Number(document.getElementById('calc-ups-vdcmax')?.value) || 0;
-  if (a2 > 0 && b2 > 0 && a2 < b2) return { min: a2, max: b2, known: true, source: 'manual' };
   // Handoff
   if (_handoffVdc.min && _handoffVdc.max) return { min: _handoffVdc.min, max: _handoffVdc.max, known: true, source: 'handoff' };
   // UPS catalog
@@ -1311,21 +1307,9 @@ function _setDcvRangeHint(vmin, vmax, source) {
     : '';
 }
 function _wireUpsPicker() {
-  // Mode radios
-  const radios = document.querySelectorAll('input[name="calc-ups-mode"]');
-  const catRow = document.getElementById('calc-ups-catalog-row');
-  const manRow = document.getElementById('calc-ups-manual-row');
-  radios.forEach(r => r.addEventListener('change', () => {
-    const mode = document.querySelector('input[name="calc-ups-mode"]:checked')?.value || 'catalog';
-    if (catRow) catRow.style.display = mode === 'catalog' ? '' : 'none';
-    if (manRow) manRow.style.display = mode === 'manual' ? '' : 'none';
-    if (mode === 'manual') {
-      // отпускаем лок от каталожного ИБП
-      const sel = document.getElementById('calc-ups-pick');
-      if (sel) sel.value = '';
-      _applyUpsPickerLock();
-    }
-  }));
+  // v0.59.409: убран radio-toggle catalog/manual. Логика проще:
+  //   модель выбрана  → V_DC мин/макс + КПД блокируются паспортом;
+  //   модель не выбрана → пользователь редактирует поля формы вручную.
   ['calc-ups-flt-text','calc-ups-flt-supp','calc-ups-flt-type','calc-ups-flt-kw'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1334,20 +1318,6 @@ function _wireUpsPicker() {
   });
   const sel = document.getElementById('calc-ups-pick');
   if (sel) sel.addEventListener('change', () => _applyUpsPickerLock());
-  // Manual V_DC: при вводе — выставляем calc-dcv = (min+max)/2
-  ['calc-ups-vdcmin','calc-ups-vdcmax'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('input', () => {
-      const a = Number(document.getElementById('calc-ups-vdcmin').value) || 0;
-      const b = Number(document.getElementById('calc-ups-vdcmax').value) || 0;
-      if (a > 0 && b > 0) {
-        const dc = document.getElementById('calc-dcv');
-        if (dc) { dc.value = Math.round((a + b) / 2); dc.title = `Допустимый диапазон V_DC: ${a}…${b} В`; dc.style.background = '#f5fbf5'; }
-        _renderCapacityRecommend();
-      }
-    });
-  });
   // В handoff-режиме (?fromUps=1) скрываем блок — ИБП уже определён
   try {
     const qp = new URLSearchParams(location.search);
