@@ -23,6 +23,7 @@ import { isS3Module, computeS3Configuration, findMinimalS3Config } from '../shar
 import { s3LiIonType } from '../shared/battery-types/s3-li-ion.js';
 import { renderS3IsoSvg } from '../shared/battery-types/s3-iso-view.js';
 import { mountS3ThreeDView } from '../shared/battery-types/s3-3d-view.js';
+import { saveConfig as _saveConfig, nextConfigId as _nextConfigId, getActiveProjectCode as _getActiveProjectCode } from '../shared/configuration-catalog.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -1367,7 +1368,8 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
       battery, loadKw: loadKwEff,
       dcVoltage: s3Cfg.vdcOper, strings: s3Cfg.cabinetsCount,
       blocksPerString: s3Cfg.modulesPerCabinet,
-      endV: 1.75, invEff, chemistry: 'li-ion',
+      // v0.59.445: для Li-Ion (LFP) EoD ~2.5 В/элемент, не 1.75 В как у VRLA.
+      endV: 2.5, invEff, chemistry: 'li-ion',
       capacityAh: battery.capacityAh,
     });
     calcResult = { kind: 'autonomy', r, blocksPerString: s3Cfg.modulesPerCabinet, derate, loadKwEff, s3Cfg };
@@ -1459,7 +1461,8 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
     battery, chemistry: 'li-ion', loadKw,
     dcVoltage: s3Cfg ? s3Cfg.vdcOper : 0,
     strings: s3Cfg ? s3Cfg.cabinetsCount : 1,
-    endV: 1.75, invEff, mode, targetMin,
+    // v0.59.445: для Li-Ion (LFP) EoD ~2.5 В/элемент, не 1.75 В как у VRLA.
+    endV: 2.5, invEff, mode, targetMin,
     capacityAh: battery.capacityAh,
   };
   _renderCalcDischargeChart(params, calcResult, s3Cfg ? s3Cfg.modulesPerCabinet : 1, battery.blockVoltage);
@@ -1470,6 +1473,8 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
   if (btnRpt) btnRpt.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
   const btnPrn = document.getElementById('btn-battery-print');
   if (btnPrn) btnPrn.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
+  const btnSav = document.getElementById('btn-battery-save-config');
+  if (btnSav) btnSav.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
 }
 
 function doCalc() {
@@ -1617,6 +1622,8 @@ function doCalc() {
   if (btnRpt) btnRpt.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
   const btnPrn = document.getElementById('btn-battery-print');
   if (btnPrn) btnPrn.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
+  const btnSav = document.getElementById('btn-battery-save-config');
+  if (btnSav) btnSav.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
 }
 
 // Рендер графика разряда после расчёта: если у выбранной АКБ есть таблица —
@@ -2010,6 +2017,9 @@ function wireCalcForm() {
   if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
   const btnPrn = document.getElementById('btn-battery-print');
   if (btnPrn) btnPrn.addEventListener('click', printBatteryReport);
+  // v0.59.445: «Сохранить конфигурацию» → запись в configuration-catalog (kind='battery').
+  const btnSave = document.getElementById('btn-battery-save-config');
+  if (btnSave) btnSave.addEventListener('click', _saveBatteryConfiguration);
   // Фильтры и выбор модели
   ['calc-filter-text','calc-filter-supp','calc-filter-chem-flt','calc-filter-vblk','calc-filter-capmin','calc-filter-capmax'].forEach(id => {
     const el = document.getElementById(id);
@@ -2079,6 +2089,85 @@ function wireCalcForm() {
   });
   // Первичный рендер объяснения (после монтирования формы).
   setTimeout(() => { _refreshDerateSummary(); _refreshDcExplanation(); }, 0);
+}
+
+// ================ Сохранение конфигурации АКБ ================
+// v0.59.445: записывает текущий расчёт в configuration-catalog (kind='battery').
+// Дальше его можно увидеть в боковом перечне (если он смонтирован) или
+// открыть из ups-config'а как стартовую точку для подбора ИБП.
+async function _saveBatteryConfiguration() {
+  if (!lastBatteryCalc || !lastBatteryCalc.calcResult) {
+    rsToast('Сначала выполните расчёт.', 'warn');
+    return;
+  }
+  const { params, calcResult, s3Cfg } = lastBatteryCalc;
+  const battery = params.battery || {};
+  let strings = 1, blocksPerString = 1, autonomyMin = null;
+  if (calcResult.kind === 'autonomy') {
+    strings = params.strings || 1;
+    blocksPerString = calcResult.blocksPerString || 1;
+    autonomyMin = calcResult.r?.autonomyMin || null;
+  } else if (calcResult.kind === 'required' && calcResult.found) {
+    strings = calcResult.found.strings || 1;
+    blocksPerString = calcResult.found.blocksPerString || 1;
+    autonomyMin = calcResult.found.result?.autonomyMin || null;
+  }
+  const totalBlocks = strings * blocksPerString;
+  const totalKwh = totalBlocks * (battery.capacityAh || 0) * (battery.blockVoltage || 0) / 1000;
+  // диалог имени
+  let defaultLabel = '';
+  if (s3Cfg) {
+    defaultLabel = `S³ ${battery.type || ''} · ${s3Cfg.cabinetsCount}шкаф×${s3Cfg.modulesPerCabinet}мод`;
+  } else {
+    defaultLabel = `${battery.supplier || ''} ${battery.type || battery.model || ''} · ${strings}×${blocksPerString}`.trim();
+  }
+  const name = (window.scsPrompt
+    ? await window.scsPrompt('Сохранение конфигурации АКБ', 'Имя конфигурации:', defaultLabel)
+    : prompt('Имя конфигурации АКБ:', defaultLabel));
+  if (!name) return;
+  const projectCode = _getActiveProjectCode();
+  const id = _nextConfigId('battery', projectCode);
+  const description = [
+    battery.supplier,
+    battery.type || battery.model,
+    battery.capacityAh && (battery.capacityAh + ' А·ч'),
+    battery.blockVoltage && (battery.blockVoltage + ' В'),
+    `${strings}×${blocksPerString} = ${totalBlocks} бл.`,
+    autonomyMin && (Number(autonomyMin).toFixed(1) + ' мин'),
+  ].filter(Boolean).join(' · ');
+  const entry = {
+    id, kind: 'battery', label: name.trim(), description,
+    projectCode: projectCode || undefined,
+    payload: {
+      source: 'battery-calc',
+      battery: {
+        id: battery.id, supplier: battery.supplier, model: battery.model,
+        type: battery.type, chemistry: battery.chemistry,
+        capacityAh: battery.capacityAh, blockVoltage: battery.blockVoltage,
+      },
+      mode: params.mode, targetMin: params.targetMin,
+      endV: params.endV, invEff: params.invEff,
+      derate: calcResult.derate || null,
+      strings, blocksPerString, totalBlocks, totalKwh,
+      autonomyMin,
+      dcVoltage: battery.blockVoltage ? battery.blockVoltage * blocksPerString : null,
+      s3Cfg: s3Cfg ? {
+        cabinetsCount: s3Cfg.cabinetsCount,
+        modulesPerCabinet: s3Cfg.modulesPerCabinet,
+        totalModules: s3Cfg.totalModules,
+        cabinetModel: s3Cfg.cabinetModel,
+        vdcOper: s3Cfg.vdcOper,
+        wiring: s3Cfg.wiring,
+      } : null,
+    },
+    createdAt: Date.now(), updatedAt: Date.now(),
+  };
+  try {
+    _saveConfig('battery', entry);
+    rsToast(`Сохранено: ${entry.label} (${entry.id})`, 'success');
+  } catch (e) {
+    rsToast('Не удалось сохранить: ' + (e && e.message ? e.message : e), 'err');
+  }
 }
 
 // ================ Экспорт отчёта АКБ ================

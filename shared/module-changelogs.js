@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.445', date: '2026-04-26', items: [
+      '🔋 <b>Fix: Li-Ion EoD по умолчанию = 2.5 В/элемент (было 1.75).</b> 1.75 В — это VRLA-значение, для LFP типичный EoD ≈ 2.5 В. Файлы: <code>battery/battery-calc.js</code> — два места инициализации <code>endV</code> в Li-Ion-ветке.',
+      '💾 <b>«Сохранить конфигурацию» в калькуляторе АКБ.</b> Кнопка рядом с «Отчёт/Печать»; запрашивает имя (scsPrompt → prompt fallback), сохраняет полный snapshot (battery info, mode/targetMin/endV/invEff, derate, strings/blocks, totalKwh, autonomyMin, dcVoltage, s3Cfg) в <code>configuration-catalog</code> с kind=battery. Включается при наличии валидного результата.',
+      '🪟 <b>3D-вид S³: 2D-вкладки (план/фасад/сбоку) + узкое-высокое 3D + переписанный fullscreen.</b>',
+      '• 2D-пайн стал переключаемым между «План (сверху)», «Фасад» и «Сбоку». Все три вида рисуются SVG c размерами шкафов в мм; фасад показывает высоту, секцию автоматов и горизонты модулей.',
+      '• 3D-окно: <code>max-width:680px; height:600px</code> — выше и уже в обычном виде по запросу пользователя.',
+      '• Fullscreen переписан: один <code>wrap</code> через <code>position:fixed; inset:0; z-index:9999</code>, body.overflow заблокирован, кнопка «✕ Закрыть» добавляется к <code>document.body</code>. Esc — выход.',
+      'Файлы: <code>shared/battery-types/s3-3d-view.js</code>, <code>battery/index.html</code>, <code>battery/battery-calc.js</code>.',
+    ] },
     { version: '0.59.444', date: '2026-04-26', items: [
       '🔌 <b>Fix: 3D-вид S³ — кол-во автоматов теперь правильно зависит от ёмкости модуля.</b> В v0.59.443 логика была добавлена, но <code>spec.module</code> не возвращался из <code>buildSystem()</code>, поэтому 3D-вид всегда падал на default (2 автомата). Теперь <code>buildSystem()</code> возвращает <code>spec.module = { id, type, capacityAh, blockVoltage, supplier }</code> — 3D-вид читает <code>spec.module.capacityAh</code> и рисует <b>1 автомат</b> для 100 А·ч и <b>2 автомата</b> для 40/50 А·ч.',
       'Файлы: <code>shared/battery-types/s3-li-ion.js</code> — добавлено поле <code>module</code> в return <code>buildSystem()</code>.',
