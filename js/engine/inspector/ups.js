@@ -17,6 +17,8 @@ import { syncIntegratedUpsComposite, getIntegratedUpsExternalConns } from '../up
 // v0.59.416: единый модуль логики Kehua S³ — DRY с battery-calc.
 import { isS3Module as _isS3Module, resolveS3Wiring as _resolveS3Wiring,
          computeS3Configuration as _computeS3Configuration } from '../../../shared/battery-s3-logic.js';
+// v0.59.429: плагин типа АКБ S³ для автосборки шкафов в модалке инспектора.
+import { s3LiIonType as _s3LiIonType } from '../../../shared/battery-types/s3-li-ion.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -1250,6 +1252,70 @@ function _renderUpsBatteryBody(n) {
     </div>
     ${s3OverloadBlock}`);
 
+    // v0.59.429: состав системы S³ + аксессуары через плагин s3LiIonType.
+    if (isS3Module && s3Cfg && s3Cfg.totalModules > 0) {
+      const masterVar = n.batteryMasterVariant || 'M';
+      const slaveVar  = n.batterySlaveVariant  || 'S';
+      const fireFighting = n.batteryFireFighting != null ? n.batteryFireFighting : 'X';
+      const spec = _s3LiIonType.buildSystem({
+        module: picked, totalModules: s3Cfg.totalModules,
+        options: { masterVariant: masterVar, slaveVariant: slaveVar, fireFighting },
+      });
+      const accessoryCatalog = catalog.filter(b => b && b.systemSubtype === 'accessory');
+      const cabRows = spec.cabinets.map(c => {
+        const role = c.role === 'master' ? 'Master' : c.role === 'slave' ? 'Slave' : 'Combiner';
+        const fill = c.role === 'combiner' ? '— (DC busbar)' :
+          `${c.modulesInCabinet} мод.${c.emptySlots > 0 ? ` + ${c.emptySlots} заглушек` : ''}`;
+        return `<tr><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${role}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea"><b>${escHtml(c.model)}</b></td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${fill}</td></tr>`;
+      }).join('');
+      const accRows = (spec.accessories || []).map(a => {
+        const cat = accessoryCatalog.find(x => x.id === a.id);
+        const name = cat ? (cat.type || cat.id) : a.id;
+        return `<tr><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${escHtml(name)}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${a.qty}</td></tr>`;
+      }).join('');
+      const cRateChk = _s3LiIonType.validateMaxCRate({
+        module: picked, loadKw: loadKw,
+        totalModules: s3Cfg.totalModules, invEff,
+      });
+      let cRateBlock = '';
+      if (cRateChk && !cRateChk.ok) {
+        cRateBlock = `<div style="margin-top:6px;padding:6px 8px;background:#ffebee;border-left:3px solid #c62828;border-radius:3px;font-size:11px;color:#c62828">⚠ ${escHtml(cRateChk.reason)}</div>`;
+      } else if (cRateChk && cRateChk.cRate) {
+        const used = cRateChk.reqKw / cRateChk.ratedSystemKw * 100;
+        cRateBlock = `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспорта (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${s3Cfg.totalModules} мод.)</div>`;
+      }
+      h.push(`<details style="margin-top:8px;background:#eff7ff;border:1px solid #bbdefb;border-radius:6px;padding:8px 12px">
+        <summary style="cursor:pointer;font-weight:600;font-size:12px">Состав системы S³ (автосборка) — ${spec.cabinets.length} шкаф(ов)${(spec.accessories||[]).length ? ' + ' + spec.accessories.length + ' аксессуаров' : ''}</summary>
+        <div style="margin-top:8px">
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr style="background:#fff"><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Роль</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Модель</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Заполнение</th></tr></thead>
+            <tbody>${cabRows}</tbody>
+          </table>
+          ${accRows ? `<div style="margin-top:8px;font-size:11px;font-weight:600">Аксессуары</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:4px">
+            <thead><tr style="background:#fff"><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Наименование</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Кол-во</th></tr></thead>
+            <tbody>${accRows}</tbody>
+          </table>` : ''}
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px">
+            <label>Master <select id="ups-batt-master-variant" style="width:100%;font-size:11px">
+              <option value="M" ${masterVar==='M'?'selected':''}>-M (touch)</option>
+              <option value="M1" ${masterVar==='M1'?'selected':''}>-M1 (1 breaker)</option>
+              <option value="M2" ${masterVar==='M2'?'selected':''}>-M2 (KR)</option>
+            </select></label>
+            <label>Slave <select id="ups-batt-slave-variant" style="width:100%;font-size:11px">
+              <option value="S" ${slaveVar==='S'?'selected':''}>-S (LED)</option>
+              <option value="S2" ${slaveVar==='S2'?'selected':''}>-S2 (KR)</option>
+            </select></label>
+            <label>Fire-fighting <select id="ups-batt-fire" style="width:100%;font-size:11px">
+              <option value="X" ${fireFighting==='X'?'selected':''}>X (есть)</option>
+              <option value="" ${fireFighting===''?'selected':''}>— (нет)</option>
+            </select></label>
+          </div>
+          ${cRateBlock}
+        </div>
+      </details>`);
+    }
+
     // Сохраняем в узле ключевые параметры для rerender после изменения
     n.batteryVdcMin = vdcMin;
     n.batteryVdcMax = vdcMax;
@@ -1681,6 +1747,27 @@ function _renderUpsBatteryBody(n) {
       n.batteryChargePct = Number(btn.dataset.upsBattSet) || 0;
       render(); notifyChange(); _renderUpsBatteryBody(n);
     });
+  });
+  // v0.59.429: селекторы вариантов S³ (master / slave / fire-fighting).
+  // При смене сохраняем в узле и рендерим заново — состав шкафов
+  // обновится с новыми суффиксами модели (-M1, -S2, -X и т.п.).
+  const mvar = body.querySelector('#ups-batt-master-variant');
+  if (mvar) mvar.addEventListener('change', () => {
+    snapshot('ups-batt:' + n.id + ':masterVariant');
+    n.batteryMasterVariant = mvar.value || 'M';
+    notifyChange(); _renderUpsBatteryBody(n);
+  });
+  const svar = body.querySelector('#ups-batt-slave-variant');
+  if (svar) svar.addEventListener('change', () => {
+    snapshot('ups-batt:' + n.id + ':slaveVariant');
+    n.batterySlaveVariant = svar.value || 'S';
+    notifyChange(); _renderUpsBatteryBody(n);
+  });
+  const fire = body.querySelector('#ups-batt-fire');
+  if (fire) fire.addEventListener('change', () => {
+    snapshot('ups-batt:' + n.id + ':fireFighting');
+    n.batteryFireFighting = fire.value;
+    notifyChange(); _renderUpsBatteryBody(n);
   });
 }
 

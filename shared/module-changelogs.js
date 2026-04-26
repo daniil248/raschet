@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.429', date: '2026-04-26', items: [
+      '🔷 <b>Состав системы S³ + варианты в модалке «Управление АКБ» инспектора.</b> Когда узел ИБП на схеме использует S³-модуль, в модалке инспектора под основным BOM-блоком теперь появляется свернутая секция <code>&lt;details&gt;</code> «Состав системы S³ (автосборка) — N шкаф(ов) + M аксессуаров» с такой же таблицей, как в standalone battery-calc: Master / Slave / Combiner + аксессуары (wire-kit, networking device, blank panels).',
+      '🎛 <b>Inline-селекторы master/slave/fire-fighting.</b> Внутри секции — три select\'а (Master variant, Slave variant, Fire-fighting). Сохраняются в узле как <code>n.batteryMasterVariant</code>, <code>n.batterySlaveVariant</code>, <code>n.batteryFireFighting</code>. При смене модалка перерендеривается и в таблице обновляются суффиксы моделей шкафов (S3C040-6C-20-<b>M1</b> вместо -M и т.п.).',
+      '🚦 <b>Валидация max C-rate</b> там же: красный бан при превышении ratedSystemKw, серая строка с процентом загрузки при норме.',
+      '<b>Зачем:</b> у пользователя единый интерфейс для S³ и в standalone-калькуляторе battery-calc, и в инспекторе ИБП на схеме. Та же таблица, те же селекторы, те же предупреждения.',
+      'Файлы: js/engine/inspector/ups.js (импорт s3LiIonType; блок <code>&lt;details&gt;</code> ~50 строк после s3OverloadBlock; 3 change-handler\'а после ups-batt-set обработчиков).',
+    ] },
     { version: '0.59.422', date: '2026-04-26', items: [
       '🏗 <b>Интегрированный ИБП — многосекционный щит.</b> Раньше композит <code>ups-integrated</code> разворачивался в большое поле панелей с количеством выходов = <code>maxBreakers</code> на каждой PDM (8…24 выходов на одну панель), что выглядело перегружено и не соответствовало физической реальности — у фирменного шкафа Kehua MR33 наружу выходит сборная шина секции, а не каждый автомат отдельно.',
       '• <b>По одному выходу на панель.</b> В <code>js/engine/ups-composite.js</code> у всех PDM-панелей (utility / bypass / inverter) <code>outputs: 1</code>. Внутренняя разводка автоматов остаётся внутри щита (учитывается в BOM как <code>_pdmMaxBreakers</code> metadata, не как порты).',
