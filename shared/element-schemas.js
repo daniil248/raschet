@@ -98,7 +98,10 @@ export function createUpsElement(patch = {}) {
     views: {},
     composition: p.composition || [],   // модульные ИБП: frame + modules + bypass
     kindProps: {
-      upsType: p.upsType || 'monoblock',      // monoblock | modular
+      // v0.59.390: добавлен подтип 'integrated' (Kehua MR33 60-150K и т.п.) —
+      // ИБП в шкафу со встроенным АВР и распределительными панелями.
+      // Источник истины для типа = реестр shared/ups-types/.
+      upsType: p.upsType || 'monoblock',      // monoblock | modular | integrated
       frameKw: Number(p.frameKw || 0),
       moduleKwRated: Number(p.moduleKwRated || 0),
       moduleSlots: Number(p.moduleSlots || 0),
@@ -106,6 +109,22 @@ export function createUpsElement(patch = {}) {
       vdcMax: Number(p.vdcMax || 0),
       inputs: Number(p.inputs || 1),
       outputs: Number(p.outputs || 1),
+      // Поля типа 'integrated' (опционально, см. shared/ups-types/integrated.js).
+      hasIntegratedAts: !!p.hasIntegratedAts,
+      pdmModules: Array.isArray(p.pdmModules)
+        ? p.pdmModules.map(m => ({
+            id: String(m.id || ''),
+            label: String(m.label || ''),
+            source: String(m.source || ''),    // 'utility' | 'inverter' | 'bypass'
+            maxBreakers: Number(m.maxBreakers || 0),
+            polarity: String(m.polarity || '1P'),
+            screenPrefix: String(m.screenPrefix || ''),
+          }))
+        : [],
+      cabinetWidthMm:  Number(p.cabinetWidthMm  || 0),
+      cabinetDepthMm:  Number(p.cabinetDepthMm  || 0),
+      cabinetHeightMm: Number(p.cabinetHeightMm || 0),
+      cabinetWeightKg: Number(p.cabinetWeightKg || 0),
     },
     source: p.source || 'user',
     builtin: !!p.builtin,

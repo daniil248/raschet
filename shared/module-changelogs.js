@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.390', date: '2026-04-26', items: [
+      '📐 <b>element-schemas: тип «integrated» в схеме createUpsElement.</b> Закрепляем интегрированный ИБП в канонической схеме элементов.',
+      '• <code>shared/element-schemas.js#createUpsElement</code>:',
+      '&nbsp;&nbsp;◦ В <code>kindProps.upsType</code> добавлено значение <code>\'integrated\'</code> (помимо monoblock/modular). Источник истины для типа — реестр <code>shared/ups-types/</code>.',
+      '&nbsp;&nbsp;◦ Новые поля <code>kindProps</code>: <code>hasIntegratedAts</code>, <code>pdmModules[]</code> (с нормализацией id/label/source/maxBreakers/polarity/screenPrefix), <code>cabinetWidthMm/DepthMm/HeightMm/WeightKg</code>.',
+      '&nbsp;&nbsp;◦ Глубокое копирование <code>pdmModules</code> при создании элемента — input-данные не мутируются.',
+      '• Подготовка к Phase 5.5 (центр. хранение библиотеки): когда ups-catalog мигрирует на element-library, поля интегрированного типа уже описаны в каноне.',
+      'Файлы: shared/element-schemas.js (~25 строк, расширены kindProps в createUpsElement).',
+    ] },
     { version: '0.59.389', date: '2026-04-26', items: [
       '🔗 <b>applyUpsModel переносит интегрированные поля из каталога в узел схемы.</b> Замыкаем pipeline catalog → schematic для типа integrated.',
       '• Без этой правки выбор MR3390-S/MR33150-S в picker\'е давал на схеме обычный модульный ИБП — поля <code>kind / hasIntegratedAts / pdmModules / cabinet*</code> терялись, блок «Интегрированные компоненты» (v0.59.388) не появлялся, BOM не агрегировал PDM-панели и АВР.',
