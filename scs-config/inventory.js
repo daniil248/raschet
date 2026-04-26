@@ -70,6 +70,26 @@ function fmtAge(ts) {
   return `${Math.floor(months / 12)} г. назад`;
 }
 
+// v0.59.357: «обратная связь схема → реестр». Строим map по S/N и Инв.№ из
+// узлов scheme.v1 проекта, чтобы в строке устройства показать бейдж
+// «🔗 на схеме: <tag>».
+function loadSchemeIndexBySnAsset(pid) {
+  const out = { sn: new Map(), asset: new Map() };
+  if (!pid) return out;
+  let scheme;
+  try { scheme = JSON.parse(localStorage.getItem(projectKey(pid, 'engine', 'scheme.v1')) || 'null'); } catch { scheme = null; }
+  const nodes = scheme && Array.isArray(scheme.nodes) ? scheme.nodes : [];
+  for (const n of nodes) {
+    if (!n) continue;
+    const ref = { id: n.id, tag: n.tag || '', name: n.name || '' };
+    const sn = (n.serialNo || '').trim();
+    const aid = (n.assetId || '').trim();
+    if (sn) out.sn.set(sn, ref);
+    if (aid) out.asset.set(aid, ref);
+  }
+  return out;
+}
+
 function collect() {
   migrateLegacyInstances();
   const racks     = loadAllRacksForActiveProject();
@@ -173,8 +193,16 @@ function render() {
 
   const now = Date.now();
   const MS_MONTH = 30 * 86400000;
+  const schemeIdx = loadSchemeIndexBySnAsset(getActiveProjectId());
   tb.innerHTML = rows.map((row, i) => {
     const d = row.item;
+    // v0.59.357: бейдж «🔗 на схеме» если S/N или Инв.№ матчится с узлом
+    const sn = (d.sn || '').trim();
+    const aid = (d.assetId || d.address || '').trim();
+    const schemeMatch = (sn && schemeIdx.sn.get(sn)) || (aid && schemeIdx.asset.get(aid)) || null;
+    const schemeBadge = schemeMatch
+      ? `<a href="../index.html" title="Узел схемы: ${esc(schemeMatch.tag || schemeMatch.name || schemeMatch.id)}" style="display:inline-block;margin-left:4px;padding:1px 6px;background:#dbeafe;border:1px solid #93c5fd;border-radius:3px;font-size:10px;color:#1e40af;text-decoration:none;vertical-align:middle">🔗 ${esc(schemeMatch.tag || 'схема')}</a>`
+      : '';
     const st = d.status || 'active';
     const statusOpts = Object.entries(STATUS).map(([k, v]) =>
       `<option value="${k}"${st===k?' selected':''}>${v.icon} ${v.label}</option>`).join('');
@@ -194,7 +222,7 @@ function render() {
       <td>${esc(d.label || '')}</td>
       <td>${esc(row.type?.label || '—')}</td>
       <td>${row.locLabel}</td>
-      <td><input data-k="sn" value="${esc(d.sn||'')}" placeholder="—" style="width:120px"></td>
+      <td><input data-k="sn" value="${esc(d.sn||'')}" placeholder="—" style="width:120px">${schemeBadge}</td>
       <td><select data-k="status">${statusOpts}</select></td>
       <td><input data-k="maintMonths" type="number" min="0" step="1" value="${d.maintMonths ?? ''}" placeholder="—" style="width:60px"></td>
       <td><input data-k="lastMaintAt" type="date" value="${dateToInput(d.lastMaintAt)}"></td>
