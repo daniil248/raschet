@@ -917,18 +917,59 @@ function renderBatterySelector() {
   const all = listBatteries().filter(b => b.systemSubtype !== 'cabinet' && b.systemSubtype !== 'accessory');
   _populateCalcFilterOptions(all);
   const f = _calcFilters();
-  const list = _sortBatteries(_filterBatteries(all, f));
+  let list = _sortBatteries(_filterBatteries(all, f));
+  // v0.59.449: фильтр совместимости с выбранным ИБП по окну V_DC.
+  const upsSel = document.getElementById('calc-ups-pick');
+  const ups = upsSel && upsSel.value ? getUps(upsSel.value) : null;
+  const compatWrap = document.getElementById('calc-filter-ups-compat-wrap');
+  if (compatWrap) compatWrap.style.display = ups ? 'inline-flex' : 'none';
+  const compatChk = document.getElementById('calc-filter-ups-compat');
+  const useCompat = !!(ups && compatChk && compatChk.checked);
+  let totalForUps = list.length, compatN = list.length;
+  if (ups) {
+    const compatible = list.filter(b => _isBatteryCompatibleWithUps(b, ups).ok);
+    compatN = compatible.length;
+    if (useCompat) list = compatible;
+  }
   const cur = sel.value;
   let h = '<option value="">— средняя модель (без таблицы) —</option>';
   for (const b of list) {
     h += `<option value="${escHtml(b.id)}">${escHtml(b.supplier)} · ${escHtml(b.type)} (${fmt(b.blockVoltage)} В / ${b.capacityAh != null ? fmt(b.capacityAh) + ' А·ч' : '—'})</option>`;
   }
   const info = document.getElementById('calc-battery-info');
-  if (info) info.textContent = `Подходит ${list.length} из ${all.length} моделей`;
+  if (info) {
+    let txt = `Подходит ${list.length} из ${all.length} моделей`;
+    if (ups) txt += ` · совместимых с ИБП: ${compatN} из ${totalForUps}`;
+    info.textContent = txt;
+  }
   sel.innerHTML = h;
   if (cur && list.some(b => b.id === cur)) sel.value = cur;
   _applyBatteryLock();
+  _renderUpsCompatHint();
   _renderCapacityRecommend();
+}
+
+// v0.59.449: подсказка под селектором АКБ — почему текущая пара
+// «АКБ + ИБП» несовместима (если несовместима). Делает ошибку
+// «Диапазон не покрывается» гораздо понятнее.
+function _renderUpsCompatHint() {
+  const sel = document.getElementById('calc-battery');
+  const upsSel = document.getElementById('calc-ups-pick');
+  const info = document.getElementById('calc-battery-info');
+  if (!sel || !info) return;
+  const b = sel.value ? getBattery(sel.value) : null;
+  const u = upsSel && upsSel.value ? getUps(upsSel.value) : null;
+  // удаляем старый блок
+  const old = document.getElementById('calc-ups-compat-hint');
+  if (old) old.remove();
+  if (!b || !u) return;
+  const r = _isBatteryCompatibleWithUps(b, u);
+  if (r.ok) return;
+  const div = document.createElement('div');
+  div.id = 'calc-ups-compat-hint';
+  div.style.cssText = 'margin-top:6px;padding:8px 10px;border:1px solid #f5b7a0;background:#fff5f0;border-radius:5px;font-size:12px;line-height:1.55;color:#7a2a00';
+  div.innerHTML = `<b>⚠ Несовместимо:</b> ${escHtml(r.reason)}<br><span class="muted">Снимите галочку «Только совместимые», чтобы увидеть все модели, либо выберите АКБ с другим напряжением блока (напр., 6 В вместо 12 В для узкого окна V<sub>DC</sub>).</span>`;
+  info.parentElement.appendChild(div);
 }
 function _applyBatteryLock() {
   const sel = document.getElementById('calc-battery');
@@ -1113,6 +1154,47 @@ function _refreshDerateSummary() {
 // Также проверяется номинал: nMinNom ≤ N ≤ nMaxNom (на всякий случай).
 // Из всех допустимых N выбирается минимальное (минимум блоков = минимум
 // стоимости АКБ и занимаемой площади).
+// v0.59.449: совместимость АКБ с конкретным ИБП.
+// Возвращает { ok, reason, nLow, nHigh } — есть ли целое N блоков, при котором
+// одновременно: N·endV·cellsPerBlock ≥ vdcMin·(1+safety) (выдержит разряд)
+// и N·floatV·cellsPerBlock ≤ vdcMax·(1−safety) (не превысит на флоате).
+// Для модульных систем (Kehua S³) blockVoltage = фиксированное напряжение
+// готового модуля → проверяем, что vdcMin ≤ N·blockV ≤ vdcMax при N∈{1..3}.
+function _isBatteryCompatibleWithUps(b, ups) {
+  if (!b || !ups) return { ok: true, reason: '' };
+  const vMin = Number(ups.vdcMin) || 0;
+  const vMax = Number(ups.vdcMax) || 0;
+  if (!(vMin > 0 && vMax > 0 && vMax >= vMin)) return { ok: true, reason: '' };
+  const blockV = Number(b.blockVoltage) || 0;
+  if (blockV <= 0) return { ok: true, reason: '' };
+  const safety = Math.max(0, Math.min(20, _readDerating().vdcSafetyPct)) / 100;
+  const vMinEff = vMin * (1 + safety);
+  const vMaxEff = vMax * (1 - safety);
+  // Для S³ и других «готовых» Li-Ion модулей подбор N по end-voltage не применим:
+  // ячейки/BMS зашиты в модуль, есть свой диапазон. Берём номинал.
+  if (isS3Module(b)) {
+    for (let N = 1; N <= 3; N++) {
+      const v = N * blockV;
+      if (v >= vMinEff && v <= vMaxEff) return { ok: true, reason: '' };
+    }
+    return { ok: false, reason: `Номинал модуля ${blockV} В не попадает в окно ИБП ${vMin}…${vMax} В (с запасом ${(safety*100).toFixed(0)}%).` };
+  }
+  const chem = b.chemistry || 'vrla';
+  const cellsPerBlock = Math.max(1, Math.round(blockV / 2));
+  const endVperCell = chem === 'li-ion' ? 2.5 : 1.75;
+  const floatVperCell = chem === 'li-ion' ? 3.45 : 2.27;
+  const endVperBlock = endVperCell * cellsPerBlock;
+  const floatVperBlock = floatVperCell * cellsPerBlock;
+  const nMin = Math.ceil(vMinEff / endVperBlock);
+  const nMax = Math.floor(vMaxEff / floatVperBlock);
+  if (nMin <= nMax && nMin >= 1) return { ok: true, reason: '', nLow: nMin, nHigh: nMax };
+  return {
+    ok: false,
+    nLow: nMin, nHigh: nMax,
+    reason: `Окно V_DC ИБП ${vMin}…${vMax} В не покрывает блок ${blockV} В: для разряда нужно N≥${nMin} (end ${endVperCell} В/эл.), для флоата N≤${nMax} (float ${floatVperCell} В/эл.). Слишком узкое окно для этой модели.`
+  };
+}
+
 function _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry, vdcSafetyPct) {
   const cellsPerBlock = Math.max(1, Math.round(blockV / 2));
   const floatVperCell = chemistry === 'li-ion' ? 3.45 : 2.27;
@@ -2020,7 +2102,10 @@ function _wireUpsPicker() {
     el.addEventListener(ev, () => renderUpsPicker());
   });
   const sel = document.getElementById('calc-ups-pick');
-  if (sel) sel.addEventListener('change', () => _applyUpsPickerLock());
+  if (sel) sel.addEventListener('change', () => { _applyUpsPickerLock(); renderBatterySelector(); });
+  // v0.59.449: чекбокс «совместимость с ИБП» → перерендер списка АКБ.
+  const compatChk = document.getElementById('calc-filter-ups-compat');
+  if (compatChk) compatChk.addEventListener('change', () => renderBatterySelector());
   // В handoff-режиме (?fromUps=1) скрываем блок — ИБП уже определён
   try {
     const qp = new URLSearchParams(location.search);
