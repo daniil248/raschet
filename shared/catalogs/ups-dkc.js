@@ -9,7 +9,7 @@ export const DKC_UPSES = [
   // ── Small (1ph small online) ─────────────────────────────────────
   {
     id: 'dkc-small-1k', supplier: 'DKC',
-    model: 'Small Tower 1 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'Small Tower 1 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 1, capacityKw: 0.9, phases: 1,
     efficiency: 90, cosPhi: 0.9,
     vdcMin: 24, vdcMax: 28, inputs: 1, outputs: 1,
@@ -20,7 +20,7 @@ export const DKC_UPSES = [
   },
   {
     id: 'dkc-small-3k', supplier: 'DKC',
-    model: 'Small Tower 3 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'Small Tower 3 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 3, capacityKw: 2.7, phases: 1,
     efficiency: 92, cosPhi: 0.9,
     vdcMin: 72, vdcMax: 96, inputs: 1, outputs: 1,
@@ -31,7 +31,7 @@ export const DKC_UPSES = [
   },
   {
     id: 'dkc-small-6k', supplier: 'DKC',
-    model: 'SMALL+ 6 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'SMALL+ 6 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 6, capacityKw: 5.4, phases: 1,
     efficiency: 95, cosPhi: 0.9,
     vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
@@ -42,7 +42,7 @@ export const DKC_UPSES = [
   },
   {
     id: 'dkc-small-10k', supplier: 'DKC',
-    model: 'SMALL+ 10 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'SMALL+ 10 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 10, capacityKw: 9, phases: 1,
     efficiency: 95, cosPhi: 0.9,
     vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
@@ -54,7 +54,7 @@ export const DKC_UPSES = [
   // ── TwinDom (3ph monoblock) ──────────────────────────────────────
   {
     id: 'dkc-twindom-20k', supplier: 'DKC',
-    model: 'TwinDom 20 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'TwinDom 20 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 20, capacityKw: 20, phases: 3,
     efficiency: 95, cosPhi: 1.0,
     vdcMin: 240, vdcMax: 360, inputs: 1, outputs: 1,
@@ -65,7 +65,7 @@ export const DKC_UPSES = [
   },
   {
     id: 'dkc-twindom-40k', supplier: 'DKC',
-    model: 'TwinDom 40 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'TwinDom 40 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 40, capacityKw: 40, phases: 3,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 360, vdcMax: 480, inputs: 1, outputs: 1,
@@ -76,7 +76,7 @@ export const DKC_UPSES = [
   },
   {
     id: 'dkc-twindom-80k', supplier: 'DKC',
-    model: 'TwinDom 80 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'TwinDom 80 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 80, capacityKw: 80, phases: 3,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
@@ -88,7 +88,7 @@ export const DKC_UPSES = [
   // ── Modulys (modular, OEM Socomec) ───────────────────────────────
   {
     id: 'dkc-modulys-25k', supplier: 'DKC',
-    model: 'Modulys GP 25', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Modulys GP 25', kind: 'ups', upsType: 'modular',
     capacityKva: 25, capacityKw: 25, phases: 3,
     frameKw: 200, moduleKwRated: 25, moduleSlots: 8,
     efficiency: 96, cosPhi: 1.0,
@@ -100,7 +100,7 @@ export const DKC_UPSES = [
   },
   {
     id: 'dkc-modulys-100k', supplier: 'DKC',
-    model: 'Modulys GP 100', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Modulys GP 100', kind: 'ups', upsType: 'modular',
     capacityKva: 100, capacityKw: 100, phases: 3,
     frameKw: 200, moduleKwRated: 25, moduleSlots: 8,
     efficiency: 96.5, cosPhi: 1.0,
@@ -112,7 +112,7 @@ export const DKC_UPSES = [
   },
   {
     id: 'dkc-modulys-xl-300k', supplier: 'DKC',
-    model: 'Modulys XL 300', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Modulys XL 300', kind: 'ups', upsType: 'modular',
     capacityKva: 300, capacityKw: 300, phases: 3,
     frameKw: 600, moduleKwRated: 50, moduleSlots: 12,
     efficiency: 97, cosPhi: 1.0,

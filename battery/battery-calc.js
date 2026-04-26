@@ -20,6 +20,9 @@ import { listUpses, getUps } from '../shared/ups-catalog.js';
 // v0.59.446: единый источник правды seed-данных ИБП (Kehua MR33/S3 AIO,
 // Schneider, Eaton, Legrand, DKC). Импорт инициализирует каталог.
 import '../shared/ups-seed.js';
+// v0.59.447: реестр типов ИБП (плагины) — single source of truth для
+// фильтра «Тип» (моноблок/модульный/интегрированный/all-in-one).
+import { listUpsTypes, detectUpsType } from '../shared/ups-types/index.js';
 // v0.59.417: ЕДИНЫЙ источник логики S³ — тот же модуль, что в инспекторе.
 import { isS3Module, computeS3Configuration, findMinimalS3Config } from '../shared/battery-s3-logic.js';
 // v0.59.427: плагин типа АКБ S³ — автосборка master/slave/combiner + аксессуары.
@@ -1865,7 +1868,13 @@ function _filterUpses(list, f) {
       if (!s.includes(f.text)) return false;
     }
     if (f.supp && u.supplier !== f.supp) return false;
-    if (f.type && u.upsType !== f.type) return false;
+    if (f.type) {
+      // v0.59.447: фильтр типа — по детектору плагин-реестра, а не по
+      // upsType вручную. Поддерживает 'monoblock' / 'modular' /
+      // 'integrated' / 'all-in-one'.
+      const t = detectUpsType(u);
+      if (!t || t.id !== f.type) return false;
+    }
     if (f.kwMin && !(Number(u.capacityKw) >= f.kwMin)) return false;
     return true;
   });
@@ -1874,13 +1883,14 @@ function _filterUpses(list, f) {
 //   - kind:'frame'           (пустой корпус MR33 — не работает без модулей)
 //   - kind:'power-module'    (силовой модуль — не работает без фрейма)
 //   - kind:'batt-cabinet-*'  (батарейные шкафы — не ИБП)
-// Записи без kind или с kind:'ups-integrated' считаются полноценными ИБП.
+// v0.59.447: kind 'ups' (стандартный моноблок/модульный сторонних
+// производителей), 'ups-integrated' (Kehua с встроенными PDM),
+// 'ups-all-in-one' (Kehua S³C со встроенной АКБ) — все показываются.
 function _isStandaloneUps(u) {
   if (!u) return false;
   const k = u.kind;
-  if (!k) return true;
-  if (k === 'ups-integrated') return true;
-  return false;
+  if (!k) return true; // legacy: запись без kind считается полноценным ИБП
+  return (k === 'ups' || k === 'ups-integrated' || k === 'ups-all-in-one');
 }
 function renderUpsPicker() {
   const sel = document.getElementById('calc-ups-pick');
@@ -1894,13 +1904,29 @@ function renderUpsPicker() {
     for (const s of supps) h += `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
     sSupp.innerHTML = h;
   }
+  // v0.59.447: фильтр «Тип» — динамически из реестра плагинов (single
+  // source of truth с wizard'ом ups-config). При первой загрузке
+  // дополняем 2 хардкод-опции (моноблок/модульный) до полного списка
+  // (+ Интегрированный, + All-in-One).
+  const sType = document.getElementById('calc-ups-flt-type');
+  if (sType && sType.options.length <= 3) {
+    const cur = sType.value;
+    let h = '<option value="">Любой тип</option>';
+    for (const t of listUpsTypes()) {
+      h += `<option value="${escHtml(t.id)}">${escHtml(t.label || t.id)}</option>`;
+    }
+    sType.innerHTML = h;
+    if (cur) sType.value = cur;
+  }
   const f = _upsFilters();
   const list = _sortUpses(_filterUpses(all, f));
   const cur = sel.value;
   let h = '<option value="">— не выбран (заполните вручную параметры расчёта) —</option>';
   for (const u of list) {
     const vdc = (u.vdcMin && u.vdcMax) ? `, V_DC ${u.vdcMin}…${u.vdcMax}` : '';
-    h += `<option value="${escHtml(u.id)}">${escHtml(u.supplier)} · ${escHtml(u.model)} (${u.capacityKw} кВт, ${u.upsType==='modular'?'модульный':'моноблок'}${vdc})</option>`;
+    const t = detectUpsType(u);
+    const typeLbl = t ? (t.shortLabel || t.label || t.id) : (u.upsType==='modular'?'модульный':'моноблок');
+    h += `<option value="${escHtml(u.id)}">${escHtml(u.supplier)} · ${escHtml(u.model)} (${u.capacityKw} кВт, ${escHtml(typeLbl)}${vdc})</option>`;
   }
   sel.innerHTML = h;
   if (cur && list.some(u => u.id === cur)) sel.value = cur;

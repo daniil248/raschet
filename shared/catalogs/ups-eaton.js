@@ -8,7 +8,7 @@ export const EATON_UPSES = [
   // ── 9PX (5–11 kVA, monoblock 1ph) ────────────────────────────────
   {
     id: 'eaton-9px-6k', supplier: 'Eaton',
-    model: '9PX 6000', kind: 'ups-integrated', upsType: 'monoblock',
+    model: '9PX 6000', kind: 'ups', upsType: 'monoblock',
     capacityKva: 6, capacityKw: 5.4, phases: 1,
     efficiency: 95, cosPhi: 0.9,
     vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
@@ -19,7 +19,7 @@ export const EATON_UPSES = [
   },
   {
     id: 'eaton-9px-11k', supplier: 'Eaton',
-    model: '9PX 11000', kind: 'ups-integrated', upsType: 'monoblock',
+    model: '9PX 11000', kind: 'ups', upsType: 'monoblock',
     capacityKva: 11, capacityKw: 10, phases: 1,
     efficiency: 95, cosPhi: 0.9,
     vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
@@ -31,7 +31,7 @@ export const EATON_UPSES = [
   // ── 93PS (8–40 kW, monoblock 3ph) ────────────────────────────────
   {
     id: 'eaton-93ps-8k', supplier: 'Eaton',
-    model: '93PS 8 kW', kind: 'ups-integrated', upsType: 'monoblock',
+    model: '93PS 8 kW', kind: 'ups', upsType: 'monoblock',
     capacityKva: 8, capacityKw: 8, phases: 3,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 240, vdcMax: 360, inputs: 1, outputs: 1,
@@ -42,7 +42,7 @@ export const EATON_UPSES = [
   },
   {
     id: 'eaton-93ps-20k', supplier: 'Eaton',
-    model: '93PS 20 kW', kind: 'ups-integrated', upsType: 'monoblock',
+    model: '93PS 20 kW', kind: 'ups', upsType: 'monoblock',
     capacityKva: 20, capacityKw: 20, phases: 3,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 360, vdcMax: 480, inputs: 1, outputs: 1,
@@ -53,7 +53,7 @@ export const EATON_UPSES = [
   },
   {
     id: 'eaton-93ps-40k', supplier: 'Eaton',
-    model: '93PS 40 kW', kind: 'ups-integrated', upsType: 'monoblock',
+    model: '93PS 40 kW', kind: 'ups', upsType: 'monoblock',
     capacityKva: 40, capacityKw: 40, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
     vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
@@ -65,7 +65,7 @@ export const EATON_UPSES = [
   // ── 93PM (50–200 kW, modular) ────────────────────────────────────
   {
     id: 'eaton-93pm-50k', supplier: 'Eaton',
-    model: '93PM 50', kind: 'ups-integrated', upsType: 'modular',
+    model: '93PM 50', kind: 'ups', upsType: 'modular',
     capacityKva: 50, capacityKw: 50, phases: 3,
     frameKw: 200, moduleKwRated: 50, moduleSlots: 4,
     efficiency: 97, cosPhi: 1.0,
@@ -77,7 +77,7 @@ export const EATON_UPSES = [
   },
   {
     id: 'eaton-93pm-100k', supplier: 'Eaton',
-    model: '93PM 100', kind: 'ups-integrated', upsType: 'modular',
+    model: '93PM 100', kind: 'ups', upsType: 'modular',
     capacityKva: 100, capacityKw: 100, phases: 3,
     frameKw: 200, moduleKwRated: 50, moduleSlots: 4,
     efficiency: 97, cosPhi: 1.0,
@@ -89,7 +89,7 @@ export const EATON_UPSES = [
   },
   {
     id: 'eaton-93pm-200k', supplier: 'Eaton',
-    model: '93PM 200', kind: 'ups-integrated', upsType: 'modular',
+    model: '93PM 200', kind: 'ups', upsType: 'modular',
     capacityKva: 200, capacityKw: 200, phases: 3,
     frameKw: 200, moduleKwRated: 50, moduleSlots: 4,
     efficiency: 97, cosPhi: 1.0,
@@ -102,7 +102,7 @@ export const EATON_UPSES = [
   // ── 9395 (большие моноблоки 275–1100 kVA) ────────────────────────
   {
     id: 'eaton-9395-500k', supplier: 'Eaton',
-    model: '9395P 500', kind: 'ups-integrated', upsType: 'monoblock',
+    model: '9395P 500', kind: 'ups', upsType: 'monoblock',
     capacityKva: 500, capacityKw: 500, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
     vdcMin: 432, vdcMax: 540, inputs: 2, outputs: 1,
@@ -113,7 +113,7 @@ export const EATON_UPSES = [
   },
   {
     id: 'eaton-9395-1100k', supplier: 'Eaton',
-    model: '9395P 1100', kind: 'ups-integrated', upsType: 'monoblock',
+    model: '9395P 1100', kind: 'ups', upsType: 'monoblock',
     capacityKva: 1100, capacityKw: 1100, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
     vdcMin: 432, vdcMax: 540, inputs: 2, outputs: 1,

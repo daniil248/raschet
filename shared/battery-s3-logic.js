@@ -190,13 +190,29 @@ export function findMinimalS3Config({
         chemistry: module.chemistry,
         capacityAh: module.capacityAh,
       });
-      if (r && r.feasible && Number.isFinite(r.autonomyMin) && r.autonomyMin >= requiredAutonomyMin) {
+      // v0.59.447 fix: Infinity = «мощность ниже нижней точки таблицы»,
+      // что означает «автономия гарантированно превышает все табличные
+      // значения» (например, для S3M040 при ≤5 кВт/модуль — точно ≥20 мин).
+      // Раньше Number.isFinite(Infinity)===false → конфигурация отклонялась
+      // и Раcчёт говорил «не удалось подобрать», хотя на самом деле модули
+      // выдают нагрузку с большим запасом.
+      const okAutonomy = Number.isFinite(r?.autonomyMin)
+        ? r.autonomyMin >= requiredAutonomyMin
+        : (r?.autonomyMin === Infinity);
+      if (r && r.feasible && okAutonomy) {
+        // v0.59.447: если autonomyMin = Infinity (мощность ниже нижней
+        // точки таблицы — гарантированно ≥ longest tMin), даём верхнюю
+        // оценку «target × 2», чтобы UI не показывал ∞.
+        const reportedAutonomy = Number.isFinite(r.autonomyMin)
+          ? r.autonomyMin
+          : Math.max(requiredAutonomyMin * 2, 60);
         return {
           ok: true,
           modulesPerCabinet: N,
           cabinetsCount: C,
           total: N * C,
-          autonomyMin: r.autonomyMin,
+          autonomyMin: reportedAutonomy,
+          autonomyExceedsTable: !Number.isFinite(r.autonomyMin),
           target: requiredAutonomyMin,
           limitedByPower: C === minCByPower,
           wiring: w.wiring,

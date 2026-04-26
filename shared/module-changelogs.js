@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.447', date: '2026-04-26', items: [
+      '🏷 <b>Fix: kind у новых ИБП — \'ups\' (стандартный), а не \'ups-integrated\'.</b> «Интегрированный» — это специфика Kehua с встроенными PDM-панелями распределения. Schneider/Eaton/Legrand/DKC — обычные моноблоки или модульные ИБП. Раньше все 40 новых записей имели <code>kind:\'ups-integrated\'</code>, и в wizard\'е ups-config они отображались как «Интегрированный». Теперь корректно классифицируются по <code>upsType</code> через реестр <code>shared/ups-types/</code>.',
+      '🔬 <b>Battery-calc: фильтр «Тип» теперь динамический.</b> Раньше — хардкод 2 опции (Моноблок/Модульный). Теперь — populate из <code>listUpsTypes()</code>: Моноблок / Модульный / Интегрированный / All-in-One. Фильтрация — через <code>detectUpsType(u).id</code>, single source of truth с wizard\'ом.',
+      '✅ <b>Battery-calc: метка типа в выпадающем списке моделей — из реестра.</b> Раньше «модульный/моноблок» считалось из <code>u.upsType</code>, теперь — <code>detectUpsType(u).shortLabel</code>: «ИБП (моноблок)» / «ИБП (модульный)» / «ИБП (интегрированный)» / «ИБП (All-in-One)».',
+      '🛠 <b>Fix: _isStandaloneUps принимает kind=\'ups\' и \'ups-all-in-one\'.</b> Раньше из калькулятора были видны только записи с <code>kind=undefined</code> или <code>\'ups-integrated\'</code>. Теперь корректно показываются стандартные ИБП (kind=\'ups\') и AIO-шкафы. Файлы: <code>battery/battery-calc.js</code>.',
+      '⚡ <b>Fix: findMinimalS3Config больше не отвергает «бесконечную» автономию.</b> Когда мощность на модуль ниже нижней точки <code>dischargeTable</code>, <code>interpTimeByPower</code> возвращает <code>Infinity</code> (что значит «автономия гарантированно превышает все табличные значения»). Раньше <code>Number.isFinite(Infinity)===false</code> → конфигурация отвергалась → ошибка «Не удалось подобрать S³-конфигурацию».',
+      '• Пример: P=120 кВт, t=25 мин, S3M040 (rated 5 кВт/20 мин). При 26+ модулях power/module ≤ 5 кВт → tMin=∞ (гарантированно ≥20 мин). Конфиг 2 шкафа × 13 модулей = 26 модулей теперь корректно подбирается.',
+      '• Возвращаемый <code>autonomyMin</code> при Infinity заменяется на <code>max(target×2, 60)</code> + флаг <code>autonomyExceedsTable=true</code>, чтобы UI не показывал ∞.',
+      'Файлы: <code>shared/battery-s3-logic.js</code> — <code>findMinimalS3Config()</code>.',
+      '🔄 <b>seedVersion bump 5→6 + force-upsert.</b> Раньше <code>ups-seed.js</code> доимпортировал только отсутствующие id; нельзя было исправить ошибку в seed-данных (как раз случай <code>kind</code>). Теперь при bump версии все seed-записи force-upsert\'ятся (они <code>custom:false</code> — пользовательские записи под другими id).',
+    ] },
     { version: '0.59.446', date: '2026-04-26', items: [
       '🏭 <b>Каталог ИБП: +40 моделей (Schneider/Eaton/Legrand/DKC) и единый источник правды.</b>',
       '• Schneider Electric: Galaxy VS 10/20/40/60/100 кВА (моноблок), VL 200/300/500 кВт (модульный), VX 750/1500 кВт (модульный).',

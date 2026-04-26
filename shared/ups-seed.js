@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '5'; // v0.59.446: +S3 AIO +Schneider +Eaton +Legrand +DKC
+const CURRENT_VERSION = '6'; // v0.59.447: kind:'ups' (вместо 'ups-integrated') у Schneider/Eaton/Legrand/DKC
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,
@@ -46,16 +46,19 @@ export function ensureBuiltinUpsSeeds() {
     const stored = (() => { try { return localStorage.getItem(KEY); } catch { return null; } })();
     if (stored === CURRENT_VERSION) return;
     const existing = new Set(listUpses().map(u => u.id));
-    let added = 0;
+    let added = 0, updated = 0;
+    // v0.59.447: при bump версии — force-upsert ВСЕХ seed-записей. Раньше
+    // делали `if (!existing.has)` → не было способа исправить ошибку в
+    // seed-данных (например, поменять kind c 'ups-integrated' на 'ups').
+    // Это безопасно, т.к. seed-записи имеют custom:false; пользовательские
+    // имеют другие id (custom:true) и не пересекаются.
     for (const rec of ALL_UPS_SEEDS) {
-      if (!existing.has(rec.id)) {
-        addUps({ ...rec, importedAt: Date.now() });
-        added++;
-      }
+      addUps({ ...rec, importedAt: Date.now() });
+      if (existing.has(rec.id)) updated++; else added++;
     }
     try { localStorage.setItem(KEY, CURRENT_VERSION); } catch {}
-    if (added > 0) {
-      console.info(`[ups-seed] Auto-imported ${added} UPS records (Kehua MR33/S³ AIO + Schneider + Eaton + Legrand + DKC)`);
+    if (added > 0 || updated > 0) {
+      console.info(`[ups-seed] +${added} new, ${updated} updated (Kehua MR33/S³ AIO + Schneider + Eaton + Legrand + DKC)`);
     }
   } catch (e) { console.warn('[ups-seed]', e); }
 }

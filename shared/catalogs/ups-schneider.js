@@ -2,8 +2,8 @@
 // shared/catalogs/ups-schneider.js
 // Schneider Electric (APC) Galaxy series UPS — 10 моделей.
 // Источник: Schneider Electric Galaxy VS / VL / VX / VM datasheets 2023-2024.
-// Все записи — kind:'ups-integrated', т.е. полнокомплектные ИБП (видны в
-// калькуляторе АКБ через _isStandaloneUps).
+// Все записи — kind:'ups' (стандартный моноблок/модульный), НЕ
+// 'ups-integrated' (это специфика Kehua с встроенными PDM-панелями).
 // V_DC дан по паспорту «Battery DC voltage range» (рабочий диапазон).
 // ======================================================================
 
@@ -11,7 +11,7 @@ export const SCHNEIDER_UPSES = [
   // ── Galaxy VS (10–150 kVA, monoblock) ────────────────────────────
   {
     id: 'schneider-galaxy-vs-10k', supplier: 'Schneider Electric',
-    model: 'Galaxy VS 10 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'Galaxy VS 10 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 10, capacityKw: 10, phases: 1,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
@@ -22,7 +22,7 @@ export const SCHNEIDER_UPSES = [
   },
   {
     id: 'schneider-galaxy-vs-20k', supplier: 'Schneider Electric',
-    model: 'Galaxy VS 20 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'Galaxy VS 20 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 20, capacityKw: 20, phases: 3,
     efficiency: 96, cosPhi: 1.0,
     vdcMin: 240, vdcMax: 360, inputs: 1, outputs: 1,
@@ -33,7 +33,7 @@ export const SCHNEIDER_UPSES = [
   },
   {
     id: 'schneider-galaxy-vs-40k', supplier: 'Schneider Electric',
-    model: 'Galaxy VS 40 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'Galaxy VS 40 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 40, capacityKw: 40, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
     vdcMin: 360, vdcMax: 480, inputs: 1, outputs: 1,
@@ -44,7 +44,7 @@ export const SCHNEIDER_UPSES = [
   },
   {
     id: 'schneider-galaxy-vs-60k', supplier: 'Schneider Electric',
-    model: 'Galaxy VS 60 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'Galaxy VS 60 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 60, capacityKw: 60, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
     vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
@@ -55,7 +55,7 @@ export const SCHNEIDER_UPSES = [
   },
   {
     id: 'schneider-galaxy-vs-100k', supplier: 'Schneider Electric',
-    model: 'Galaxy VS 100 kVA', kind: 'ups-integrated', upsType: 'monoblock',
+    model: 'Galaxy VS 100 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 100, capacityKw: 100, phases: 3,
     efficiency: 97, cosPhi: 1.0,
     vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
@@ -67,7 +67,7 @@ export const SCHNEIDER_UPSES = [
   // ── Galaxy VL (200–500 kVA, modular) ─────────────────────────────
   {
     id: 'schneider-galaxy-vl-200k', supplier: 'Schneider Electric',
-    model: 'Galaxy VL 200 kVA', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Galaxy VL 200 kVA', kind: 'ups', upsType: 'modular',
     capacityKva: 200, capacityKw: 200, phases: 3,
     frameKw: 500, moduleKwRated: 50, moduleSlots: 10,
     efficiency: 97, cosPhi: 1.0,
@@ -79,7 +79,7 @@ export const SCHNEIDER_UPSES = [
   },
   {
     id: 'schneider-galaxy-vl-300k', supplier: 'Schneider Electric',
-    model: 'Galaxy VL 300 kVA', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Galaxy VL 300 kVA', kind: 'ups', upsType: 'modular',
     capacityKva: 300, capacityKw: 300, phases: 3,
     frameKw: 500, moduleKwRated: 50, moduleSlots: 10,
     efficiency: 97, cosPhi: 1.0,
@@ -91,7 +91,7 @@ export const SCHNEIDER_UPSES = [
   },
   {
     id: 'schneider-galaxy-vl-500k', supplier: 'Schneider Electric',
-    model: 'Galaxy VL 500 kVA', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Galaxy VL 500 kVA', kind: 'ups', upsType: 'modular',
     capacityKva: 500, capacityKw: 500, phases: 3,
     frameKw: 500, moduleKwRated: 50, moduleSlots: 10,
     efficiency: 97, cosPhi: 1.0,
@@ -104,7 +104,7 @@ export const SCHNEIDER_UPSES = [
   // ── Galaxy VX (500–1500 kVA, large modular) ──────────────────────
   {
     id: 'schneider-galaxy-vx-750k', supplier: 'Schneider Electric',
-    model: 'Galaxy VX 750 kVA', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Galaxy VX 750 kVA', kind: 'ups', upsType: 'modular',
     capacityKva: 750, capacityKw: 750, phases: 3,
     frameKw: 1500, moduleKwRated: 250, moduleSlots: 6,
     efficiency: 96.5, cosPhi: 1.0,
@@ -116,7 +116,7 @@ export const SCHNEIDER_UPSES = [
   },
   {
     id: 'schneider-galaxy-vx-1500k', supplier: 'Schneider Electric',
-    model: 'Galaxy VX 1500 kVA', kind: 'ups-integrated', upsType: 'modular',
+    model: 'Galaxy VX 1500 kVA', kind: 'ups', upsType: 'modular',
     capacityKva: 1500, capacityKw: 1500, phases: 3,
     frameKw: 1500, moduleKwRated: 250, moduleSlots: 6,
     efficiency: 96.5, cosPhi: 1.0,
