@@ -1386,9 +1386,11 @@ function _renderUpsBatteryBody(n) {
   // применяем её характеристики к узлу и пересобираем тело.
   const pickerMount = document.getElementById('ups-batt-picker-mount');
   if (pickerMount) {
-    // Для UPS battery modal скрываем записи-«шкафы» (systemSubtype:'cabinet'):
-    // они только metadata, расчёт всегда ведётся по модулю (или обычной АКБ).
-    const pickerList = catalog.filter(b => !(b.isSystem && b.systemSubtype === 'cabinet'));
+    // Для UPS battery modal скрываем «не-модули» (cabinet / accessory):
+    // расчёт всегда ведётся по модулю (или обычной АКБ).
+    // v0.59.425: добавлен фильтр accessory (combiner, networking device,
+    // blank panels, wire kits) — они добавляются автоматически BOM-логикой.
+    const pickerList = catalog.filter(b => !(b.isSystem && (b.systemSubtype === 'cabinet' || b.systemSubtype === 'accessory')));
     mountBatteryPicker(pickerMount, {
       list: pickerList,
       selectedId: n.batteryCatalogId || null,

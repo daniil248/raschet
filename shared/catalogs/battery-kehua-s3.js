@@ -63,12 +63,37 @@ export const KEHUA_S3_MODULES = [
     systemSubtype: 'module',    // участвует в расчёте автономии
     systemDescription: 'Модуль S3M040-6C-240-X · 40 А·ч LFP · rated 10 кВт / 10 мин. Ставится в шкаф S3C040-6C-20-MX (до 20 модулей).',
     packaging: {
-      cabinetModel: 'S3C040-6C-20-MX',
+      cabinetModel: 'S3C040-6C-20',
+      cabinetVariants: ['-M', '-S', '-S2', '-M1', '-M2'],
       maxPerCabinet: 20,
       cabinetPowerKw: 200,
-      cabinetKwh: 41,
+      cabinetKwh: 46,                     // v0.59.425: уточнено по User Manual A (было 41)
       maxCabinets: 15,
       dcOutputV: '240 / ±240 / 480',
+      // v0.59.425: добавлено из User Manual S³ Tech Specifications:
+      dischargeRateC: 6,                  // Cell discharge rate
+      chargeCurrentMaxA: 40,
+      chargeCurrentDefaultA: 20,
+      inputVdcCharge: '265 / ±265 / 530',
+      overloadProfile: [                  // Overload capacity (discharge)
+        { loadPctMin: 125, loadPctMax: 135, holdSec: 60 },
+        { loadPctMin: 135, loadPctMax: 150, holdSec: 30 },
+        { loadPctMin: 150, loadPctMax: Infinity, holdSec: 0.5 },
+      ],
+      unbalancePct: 3,                    // Module/cabinet equalized-current unbalance ≤3%
+      socAccuracyPct: 95,
+      sohAccuracyPct: 90,
+      comms: { tcpip: true, rs485: true },
+      protections: ['over-temperature','over-current','short-circuit','battery-over-voltage','battery-under-voltage','low-soc'],
+      fireControl: 'module-level',
+      coldStart: true, epo: true, selfStart: true, cellInsulation: true,
+      opTempC: { min: 0, max: 40 },
+      storageTempC: { min: -10, max: 45 },
+      humidityPct: { min: 5, max: 95, condensation: false },
+      altitudeMaxM: 4000,
+      derateAbove2000m: 'IEC 62040-3',
+      noiseDb: 65,
+      overVoltageLevel: 2,
     },
     moduleWeightKg: 36,
     moduleDimensionsMm: '223×665×152',
@@ -96,12 +121,31 @@ export const KEHUA_S3_MODULES = [
     systemSubtype: 'module',
     systemDescription: 'Модуль S3M050-4C-240-X · 50 А·ч LFP · rated 10 кВт / 15 мин. Ставится в шкаф S3C050-4C-20-MX (до 20 модулей).',
     packaging: {
-      cabinetModel: 'S3C050-4C-20-MX',
+      cabinetModel: 'S3C050-4C-20',
+      cabinetVariants: ['-M', '-S', '-S2', '-M1', '-M2'],
       maxPerCabinet: 20,
       cabinetPowerKw: 200,
       cabinetKwh: 58,
       maxCabinets: 15,
       dcOutputV: '240 / ±240 / 480',
+      dischargeRateC: 4,
+      chargeCurrentMaxA: 40,
+      chargeCurrentDefaultA: 20,
+      inputVdcCharge: '265 / ±265 / 530',
+      overloadProfile: [
+        { loadPctMin: 125, loadPctMax: 135, holdSec: 60 },
+        { loadPctMin: 135, loadPctMax: 150, holdSec: 30 },
+        { loadPctMin: 150, loadPctMax: Infinity, holdSec: 0.5 },
+      ],
+      unbalancePct: 3,
+      socAccuracyPct: 95, sohAccuracyPct: 90,
+      comms: { tcpip: true, rs485: true },
+      fireControl: 'module-level',
+      coldStart: true, epo: true, selfStart: true, cellInsulation: true,
+      opTempC: { min: 0, max: 40 }, storageTempC: { min: -10, max: 45 },
+      humidityPct: { min: 5, max: 95, condensation: false },
+      altitudeMaxM: 4000, derateAbove2000m: 'IEC 62040-3',
+      noiseDb: 65, overVoltageLevel: 2,
     },
     moduleWeightKg: 38,
     moduleDimensionsMm: '223×665×152',
@@ -130,12 +174,31 @@ export const KEHUA_S3_MODULES = [
     systemSubtype: 'module',
     systemDescription: 'Модуль S3M100-1C-240-X · 100 А·ч LFP · rated 5 кВт / 1 ч (long-time backup). Ставится в шкаф S3C100-1C-12-MX (до 12 модулей).',
     packaging: {
-      cabinetModel: 'S3C100-1C-12-MX',
+      cabinetModel: 'S3C100-1C-12',
+      cabinetVariants: ['-M', '-S'],     // У 100 А·ч только M и S по User Manual A
       maxPerCabinet: 12,
       cabinetPowerKw: 60,
       cabinetKwh: 69,
       maxCabinets: 15,
       dcOutputV: '240 / ±240 / 480',
+      dischargeRateC: 1,
+      chargeCurrentMaxA: 40,
+      chargeCurrentDefaultA: 20,
+      inputVdcCharge: '265 / ±265 / 530',
+      overloadProfile: [
+        { loadPctMin: 125, loadPctMax: 135, holdSec: 60 },
+        { loadPctMin: 135, loadPctMax: 150, holdSec: 30 },
+        { loadPctMin: 150, loadPctMax: Infinity, holdSec: 0.5 },
+      ],
+      unbalancePct: 3,
+      socAccuracyPct: 95, sohAccuracyPct: 90,
+      comms: { tcpip: true, rs485: true },
+      fireControl: 'module-level',
+      coldStart: true, epo: true, selfStart: true, cellInsulation: true,
+      opTempC: { min: 0, max: 40 }, storageTempC: { min: -10, max: 45 },
+      humidityPct: { min: 5, max: 95, condensation: false },
+      altitudeMaxM: 4000, derateAbove2000m: 'IEC 62040-3',
+      noiseDb: 65, overVoltageLevel: 2,
     },
     moduleWeightKg: 50,
     moduleDimensionsMm: '440×665×132',
@@ -233,6 +296,117 @@ export const KEHUA_S3_CABINETS = [
   },
 ];
 
+// ========== АКСЕССУАРЫ S³ ==========
+// v0.59.425: вспомогательные элементы системы S³ согласно User Manual
+// (раздел 2.8 Optionals + раздел 3 Installation, Figure3-28).
+//
+// Применение в архитектуре системы:
+//   • 1 шкаф       → master (-M / -M1 / -M2), slave НЕ нужны.
+//   • 2…N шкафов   → 1×master + (N−1)×slave (-S / -S2). Slave требует
+//     комплект соединительных проводов (cabinet communication wire #2,
+//     cabinet power wire #3, network wire #1, 2× RJ45 connector).
+//   • >2 шкафов    → дополнительно ставится Combiner (отдельный шкаф
+//     с шинной разводкой DC, см. Figure3-28: Master + Slave1…SlaveN +
+//     Combiner). Используется для большого количества модулей.
+//   • Communication между шкафами идёт через Networking Device
+//     (managed switch, 8 RJ45 портов, до 7 шкафов на устройство).
+//     При >7 шкафов ставится второе Networking Device.
+//   • В неполностью заполненных шкафах пустые слоты закрываются
+//     заглушками Blank Panel of Module (отдельные SKU для S3M040/050
+//     и для S3M100 — разная высота слота).
+//
+// Эти записи НЕ участвуют в расчёте автономии (systemSubtype: 'accessory').
+// Используются BOM-логикой и кодом авто-сборки шкафов (v0.59.426+).
+export const KEHUA_S3_ACCESSORIES = [
+  {
+    id: 'kehua-s3-combiner',
+    supplier: 'Kehua',
+    type: 'S3-Combiner',
+    chemistry: 'li-ion',
+    isSystem: true,
+    systemType: 'kehua-s3',
+    systemSubtype: 'accessory',
+    accessoryRole: 'combiner',
+    systemDescription: 'Шкаф-комбайнер для параллельной сборки нескольких шкафов S³. Шинная DC-разводка, защитные автоматы. Ставится правее последнего slave (Master + Slave1…SlaveN + Combiner).',
+    appliesTo: ['S3C040-6C-20', 'S3C050-4C-20', 'S3C100-1C-12'],
+    requiredWhen: 'cabinetsCount > 2',
+    cabinetWeightKg: null,
+    cabinetDimensionsMm: null,
+    source: 'Kehua S³ User Manual, Figure3-28',
+    importedAt: 0, custom: false,
+  },
+  {
+    id: 'kehua-s3-networking-device',
+    supplier: 'Kehua',
+    type: 'S3-Networking-Device',
+    chemistry: 'li-ion',
+    isSystem: true,
+    systemType: 'kehua-s3',
+    systemSubtype: 'accessory',
+    accessoryRole: 'networking-device',
+    systemDescription: 'Управляемый коммутатор связи между шкафами S³. 8× RJ45, поддерживает до 7 шкафов системы. При >7 шкафов добавляется ещё одно устройство.',
+    portsCount: 8,
+    cabinetsPerDevice: 7,
+    appliesTo: ['S3C040-6C-20', 'S3C050-4C-20', 'S3C100-1C-12'],
+    requiredWhen: 'cabinetsCount >= 2',
+    source: 'Kehua S³ User Manual, §2.8.1, Figure2-21',
+    importedAt: 0, custom: false,
+  },
+  {
+    id: 'kehua-s3-blank-panel-040-050',
+    supplier: 'Kehua',
+    type: 'Blank Panel S3M040/S3M050',
+    chemistry: 'li-ion',
+    isSystem: true,
+    systemType: 'kehua-s3',
+    systemSubtype: 'accessory',
+    accessoryRole: 'blank-panel',
+    systemDescription: 'Декоративная заглушка пустого слота шкафа S³C040/S³C050. Размер совпадает с модулями S3M040/050 (высота 1U слота). Заполняет неиспользованные позиции в шкафу.',
+    appliesTo: ['S3C040-6C-20', 'S3C050-4C-20'],
+    matchesModules: ['S3M040-6C-240-X', 'S3M050-4C-240-X'],
+    requiredWhen: 'modulesPerCabinet < maxPerCabinet',
+    source: 'Kehua S³ User Manual, §2.8.2, Figure2-22',
+    importedAt: 0, custom: false,
+  },
+  {
+    id: 'kehua-s3-blank-panel-100',
+    supplier: 'Kehua',
+    type: 'Blank Panel S3M100',
+    chemistry: 'li-ion',
+    isSystem: true,
+    systemType: 'kehua-s3',
+    systemSubtype: 'accessory',
+    accessoryRole: 'blank-panel',
+    systemDescription: 'Декоративная заглушка пустого слота шкафа S³C100. Размер увеличенный (1.5×) под высоту модуля S3M100. Заполняет неиспользованные позиции в шкафу.',
+    appliesTo: ['S3C100-1C-12'],
+    matchesModules: ['S3M100-1C-240-X'],
+    requiredWhen: 'modulesPerCabinet < maxPerCabinet',
+    source: 'Kehua S³ User Manual, §2.8.2, Figure2-23',
+    importedAt: 0, custom: false,
+  },
+  {
+    id: 'kehua-s3-slave-wire-kit',
+    supplier: 'Kehua',
+    type: 'S3-Slave-Wire-Kit',
+    chemistry: 'li-ion',
+    isSystem: true,
+    systemType: 'kehua-s3',
+    systemSubtype: 'accessory',
+    accessoryRole: 'wire-kit',
+    systemDescription: 'Комплект межшкафных соединений для slave-шкафа (-S / -S2): cabinet communication wire #2 (1 шт), cabinet power wire #3 (1 шт), network wire #1 (4.5 м), RJ45 connector (2 шт). По одному комплекту на каждый slave. Master (-M / -M1 / -M2) комплект НЕ требует.',
+    contents: [
+      { id: 'comm-wire-2', label: 'Cabinet communication wire #2', qty: 1 },
+      { id: 'power-wire-3', label: 'Cabinet power wire #3', qty: 1 },
+      { id: 'network-wire-1', label: 'Network wire #1 (4.5 м)', qty: 1, lengthM: 4.5 },
+      { id: 'rj45', label: 'RJ45 connector', qty: 2 },
+    ],
+    appliesTo: ['S3C040-6C-20-S', 'S3C040-6C-20-S2', 'S3C050-4C-20-S', 'S3C050-4C-20-S2', 'S3C100-1C-12-S'],
+    requiredWhen: 'variant in [-S, -S2]',
+    source: 'Kehua S³ User Manual, §3.8.1 Wire preparation',
+    importedAt: 0, custom: false,
+  },
+];
+
 // Объединённый экспорт для загрузки одной кнопкой.
-// При загрузке каталога S3 получает ВСЁ: 3 модуля + 3 шкафа.
-export const KEHUA_S3_BATTERIES = [...KEHUA_S3_MODULES, ...KEHUA_S3_CABINETS];
+// При загрузке каталога S3 получает ВСЁ: 3 модуля + 3 шкафа + аксессуары.
+export const KEHUA_S3_BATTERIES = [...KEHUA_S3_MODULES, ...KEHUA_S3_CABINETS, ...KEHUA_S3_ACCESSORIES];
