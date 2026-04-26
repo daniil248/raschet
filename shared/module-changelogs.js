@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.358', date: '2026-04-26', items: [
+      '↗ <b>Deep-link к узлу схемы.</b> Бейдж «🔗 на схеме» в реестре IT (v0.59.357) теперь не просто открывает Конструктор, а сразу выделяет нужный узел и подсвечивает его пульсацией.',
+      '• URL вида <code>/?project=&lt;pid&gt;&amp;focusNode=&lt;nodeId&gt;</code> запускает в main.js асинхронный лукап (ждём пока engine + проект загрузятся, до 5 сек), затем переключает страницу узла, вызывает <code>selectNode</code> и добавляет CSS-класс <code>.rs-flash-focus</code> с двукратной зелёной пульсацией.',
+      '• Параметр <code>focusNode</code> снимается из URL через <code>history.replaceState</code> — повторная перезагрузка не сработает.',
+      '• <code>scrollIntoView({block:center, inline:center, behavior:smooth})</code> на DOM-элементе узла — если канвас прокручиваем, прокрутится к нему.',
+      'Файлы: js/main.js (_focusSchemeNodeFromUrl + ES-импорты state/selectNode), app.css (rs-flash-focus + keyframes), scs-config/inventory.js (schemeBadge href с focusNode).',
+    ] },
     { version: '0.59.357', date: '2026-04-26', items: [
       '🔗 <b>Обратная связь схема → реестр IT.</b> В таблице inventory.html напротив S/N теперь появляется синий бейдж <b>🔗 &lt;tag&gt;</b>, если S/N или Инв.№ устройства совпадает с узлом схемы текущего проекта.',
       '• Лукап делается один раз на render: читаем <code>raschet.project.&lt;pid&gt;.engine.scheme.v1</code> и строим Map по sn/assetId.',

@@ -200,8 +200,12 @@ function render() {
     const sn = (d.sn || '').trim();
     const aid = (d.assetId || d.address || '').trim();
     const schemeMatch = (sn && schemeIdx.sn.get(sn)) || (aid && schemeIdx.asset.get(aid)) || null;
+    // v0.59.358: deep-link с ?focusNode — выделяет узел и flash'ит его при загрузке схемы
+    const schemeHref = schemeMatch
+      ? `../index.html?project=${encodeURIComponent(getActiveProjectId() || '')}&focusNode=${encodeURIComponent(schemeMatch.id)}`
+      : '';
     const schemeBadge = schemeMatch
-      ? `<a href="../index.html" title="Узел схемы: ${esc(schemeMatch.tag || schemeMatch.name || schemeMatch.id)}" style="display:inline-block;margin-left:4px;padding:1px 6px;background:#dbeafe;border:1px solid #93c5fd;border-radius:3px;font-size:10px;color:#1e40af;text-decoration:none;vertical-align:middle">🔗 ${esc(schemeMatch.tag || 'схема')}</a>`
+      ? `<a href="${esc(schemeHref)}" title="Перейти к узлу схемы: ${esc(schemeMatch.tag || schemeMatch.name || schemeMatch.id)}" style="display:inline-block;margin-left:4px;padding:1px 6px;background:#dbeafe;border:1px solid #93c5fd;border-radius:3px;font-size:10px;color:#1e40af;text-decoration:none;vertical-align:middle">🔗 ${esc(schemeMatch.tag || 'схема')}</a>`
       : '';
     const st = d.status || 'active';
     const statusOpts = Object.entries(STATUS).map(([k, v]) =>

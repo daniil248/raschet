@@ -20,6 +20,8 @@ import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES } fr
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 import { listProjects as _listProjectCtx, createProject as _createProjectCtx } from '../shared/project-storage.js';
+import { state as _engineState } from './engine/state.js';
+import { selectNode as _engineSelectNode } from './engine/inspector.js';
 
 (function () {
 'use strict';
@@ -6832,5 +6834,55 @@ document.addEventListener('click', e => {
     p.style.width = seq[(idx + 1) % seq.length];
   }
 });
+
+// v0.59.358: deep-link на узел схемы. URL ?focusNode=<id> приходит из
+// inventory.html (бейдж «🔗 на схеме» — см. v0.59.357). Находим узел,
+// при необходимости переключаемся на его страницу, выделяем и flash'им.
+function _focusSchemeNodeFromUrl() {
+  let nodeId = '';
+  try { nodeId = (new URLSearchParams(location.search).get('focusNode') || '').trim(); } catch {}
+  if (!nodeId) return;
+  // отложить — engine, проект и схема грузятся асинхронно
+  let attempts = 0;
+  const tryFocus = () => {
+    attempts++;
+    try {
+      const st = _engineState;
+      if (!st || !st.nodes || !st.nodes.get) {
+        if (attempts < 40) return setTimeout(tryFocus, 120);
+        return;
+      }
+      const node = st.nodes.get(nodeId);
+      if (!node) {
+        if (attempts < 40) return setTimeout(tryFocus, 120);
+        return;
+      }
+      // переключиться на страницу узла, если задана
+      try {
+        if (node.pageId && st.currentPageId !== node.pageId) {
+          st.currentPageId = node.pageId;
+        }
+      } catch {}
+      try { _engineSelectNode(nodeId); } catch {}
+      // flash на DOM-элементе узла
+      try {
+        const el = document.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`) || document.getElementById('node-' + nodeId);
+        if (el) {
+          el.classList.add('rs-flash-focus');
+          setTimeout(() => el.classList.remove('rs-flash-focus'), 2200);
+          if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }
+      } catch {}
+      // снять focusNode из URL, чтобы не сработало повторно при ручной перезагрузке
+      try {
+        const url = new URL(location.href);
+        url.searchParams.delete('focusNode');
+        history.replaceState(null, '', url.toString());
+      } catch {}
+    } catch (err) { console.warn('[focusNode]', err); }
+  };
+  setTimeout(tryFocus, 300);
+}
+_focusSchemeNodeFromUrl();
 
 })();
