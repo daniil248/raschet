@@ -6,6 +6,8 @@
 import {
   listProjects, getProject, updateProject, deleteProject, copyProject,
   setActiveProjectId, exportProject,
+  // v0.59.373: подпроекты — артефакты внутри родителя (схемы, СКС, шкафы).
+  listSubProjects, createSubProject,
 } from '../shared/project-storage.js';
 import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
 
@@ -280,21 +282,127 @@ function render() {
   }
 
   if (modulesHost) {
+    // v0.59.373: вместо плоских плашек конфигураторов — модель «артефактов»
+    // внутри проекта. Кнопка «+ Добавить» создаёт подпроект (sketch с
+    // parentProjectId) нужного типа: схема / СКС / шкаф. Реестры (IT и
+    // объект) — singleton'ы проекта, выводятся отдельными кнопками.
+    const subSchemes  = listSubProjects(p.id, 'schematic');
+    const subScs      = listSubProjects(p.id, 'scs-design');
+    const subRacks    = listSubProjects(p.id, 'scs-config');
+    const subMdc      = listSubProjects(p.id, 'mdc-config');
+
+    const renderSubList = (subs, modHref, icon, emptyHint) => {
+      if (!subs.length) return `<div class="muted" style="font-size:12px;padding:6px 0">${emptyHint}</div>`;
+      return subs.map(sp => {
+        const href = buildModuleHref(modHref, { projectId: sp.id, fromModule: 'projects' });
+        const desig = sp.designation ? `<span style="background:#1d4ed8;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-right:6px">${esc(sp.designation)}</span>` : '';
+        return `
+        <div class="pr-sub-row" data-sub-id="${esc(sp.id)}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
+          <span style="font-size:16px">${icon}</span>
+          ${desig}
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sp.name || '(без имени)')}</span>
+          <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px">Открыть →</a>
+          <button type="button" class="pr-btn-sel" data-act="rename-sub" style="font-size:12px;padding:3px 8px">✎</button>
+          <button type="button" class="pr-btn-danger" data-act="delete-sub" style="font-size:12px;padding:3px 8px">✕</button>
+        </div>`;
+      }).join('');
+    };
+
     modulesHost.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
-        ${PROJECT_MODULES.map(m => {
-          const href = buildModuleHref(m.href, { projectId: p.id, fromModule: 'projects' });
-          return `
-          <a href="${esc(href)}" class="pr-mod-card" data-mod="${esc(m.id)}" style="display:block;padding:14px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;text-decoration:none;color:#1f2430;transition:all .15s;border-left:3px solid ${m.color}">
-            <div style="font-size:18px;font-weight:600;margin-bottom:6px">
-              <span style="margin-right:6px">${m.icon}</span>${esc(m.label)}
-            </div>
-            <div style="font-size:12px;color:#64748b;line-height:1.4">${esc(m.desc)}</div>
-          </a>`;
-        }).join('')}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div style="position:relative">
+          <button type="button" class="pr-btn-primary" id="pr-add-btn">＋ Добавить ▾</button>
+          <div id="pr-add-menu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:10;min-width:240px">
+            <button type="button" data-add="schematic" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px">⚡ Добавить схему</button>
+            <button type="button" data-add="scs-design" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px;border-top:1px solid #f1f5f9">🔗 Добавить СКС-проект</button>
+            <button type="button" data-add="scs-config" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px;border-top:1px solid #f1f5f9">🗄 Добавить шкаф (компоновка)</button>
+            <button type="button" data-add="mdc-config" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px;border-top:1px solid #f1f5f9">🏗 Добавить модульный ЦОД</button>
+          </div>
+        </div>
+        <a href="${esc(buildModuleHref('../scs-config/inventory.html', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel pr-mod-card" style="text-decoration:none">📦 Реестр IT-оборудования</a>
+        <a href="${esc(buildModuleHref('../facility-inventory/', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel pr-mod-card" style="text-decoration:none">🏭 Реестр оборудования объекта</a>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
+        <div class="pr-art-group" data-kind="schematic" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+          <div style="font-weight:600;font-size:13px;color:#1d4ed8;margin-bottom:8px">⚡ Схемы <span class="muted" style="font-weight:400">· ${subSchemes.length}</span></div>
+          ${renderSubList(subSchemes, '../index.html', '⚡', 'Схем нет — нажмите «+ Добавить → схему».')}
+        </div>
+        <div class="pr-art-group" data-kind="scs-design" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+          <div style="font-weight:600;font-size:13px;color:#0d9488;margin-bottom:8px">🔗 СКС-проекты <span class="muted" style="font-weight:400">· ${subScs.length}</span></div>
+          ${renderSubList(subScs, '../scs-design/', '🔗', 'СКС-проектов нет — нажмите «+ Добавить → СКС».')}
+        </div>
+        <div class="pr-art-group" data-kind="scs-config" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+          <div style="font-weight:600;font-size:13px;color:#7c3aed;margin-bottom:8px">🗄 Компоновки шкафов <span class="muted" style="font-weight:400">· ${subRacks.length}</span></div>
+          ${renderSubList(subRacks, '../scs-config/', '🗄', 'Компоновок нет — нажмите «+ Добавить → шкаф».')}
+        </div>
+        ${subMdc.length ? `<div class="pr-art-group" data-kind="mdc-config" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+          <div style="font-weight:600;font-size:13px;color:#be185d;margin-bottom:8px">🏗 Модульные ЦОД <span class="muted" style="font-weight:400">· ${subMdc.length}</span></div>
+          ${renderSubList(subMdc, '../mdc-config/', '🏗', '')}
+        </div>` : ''}
       </div>`;
-    // Сбрасываем back-stack при «корневом» переходе из карточки.
-    modulesHost.querySelectorAll('.pr-mod-card').forEach(a => {
+
+    // — меню «+ Добавить ▾»
+    const addBtn = modulesHost.querySelector('#pr-add-btn');
+    const addMenu = modulesHost.querySelector('#pr-add-menu');
+    addBtn?.addEventListener('click', e => {
+      e.stopPropagation();
+      addMenu.style.display = addMenu.style.display === 'block' ? 'none' : 'block';
+    });
+    document.addEventListener('click', () => { if (addMenu) addMenu.style.display = 'none'; });
+    const addOpts = {
+      'schematic':  { label: 'схема',         href: '../index.html',     defaultDesig: 'Схема-1', defaultName: 'Схема' },
+      'scs-design': { label: 'СКС-проект',    href: '../scs-design/',    defaultDesig: 'СКС-1',   defaultName: 'СКС-проект' },
+      'scs-config': { label: 'шкаф',          href: '../scs-config/',    defaultDesig: 'Ш-1',     defaultName: 'Компоновка шкафа' },
+      'mdc-config': { label: 'модульный ЦОД', href: '../mdc-config/',    defaultDesig: 'МЦОД-1',  defaultName: 'Модульный ЦОД' },
+    };
+    modulesHost.querySelectorAll('[data-add]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        addMenu.style.display = 'none';
+        const moduleId = btn.dataset.add;
+        const opt = addOpts[moduleId];
+        if (!opt) return;
+        const name = await prPrompt(`Добавить ${opt.label}`, 'Имя', opt.defaultName);
+        if (name == null) return;
+        const designation = await prPrompt('Обозначение', `Короткий код в рамках проекта (напр. ${opt.defaultDesig})`, opt.defaultDesig);
+        const sp = createSubProject(p.id, moduleId, { name, designation: designation || '' });
+        setActiveProjectId(sp.id);
+        prToast(`✔ Создан подпроект «${sp.name}»`);
+        try { clearNavStack(); } catch {}
+        location.href = buildModuleHref(opt.href, { projectId: sp.id, fromModule: 'projects' });
+      });
+    });
+
+    // — переименовать / удалить подпроект
+    modulesHost.querySelectorAll('.pr-sub-row [data-act="rename-sub"]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const id = b.closest('.pr-sub-row')?.dataset.subId;
+        const sp = id ? getProject(id) : null; if (!sp) return;
+        const name = await prPrompt('Переименовать подпроект', 'Имя', sp.name || '');
+        if (name == null) return;
+        const designation = await prPrompt('Обозначение', 'Короткий код', sp.designation || '');
+        updateProject(id, { name, designation: designation || '' });
+        prToast('✔ Обновлено');
+        render();
+      });
+    });
+    modulesHost.querySelectorAll('.pr-sub-row [data-act="delete-sub"]').forEach(b => {
+      b.addEventListener('click', async () => {
+        const id = b.closest('.pr-sub-row')?.dataset.subId;
+        const sp = id ? getProject(id) : null; if (!sp) return;
+        const ok = await prConfirm(
+          `Удалить подпроект «${sp.name}»?`,
+          'Удалятся метаданные и все scoped-данные подпроекта (raschet.project.' + sp.id + '.*). Действие необратимо.'
+        );
+        if (!ok) return;
+        const { removedKeys } = deleteProject(id);
+        prToast(`✔ Удалено${removedKeys ? ' (' + removedKeys + ' ключей LS)' : ''}`);
+        render();
+      });
+    });
+
+    // Сбрасываем back-stack при переходе.
+    modulesHost.querySelectorAll('a[href]').forEach(a => {
       a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
     });
   }
