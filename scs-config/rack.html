@@ -156,9 +156,20 @@
       <aside class="sc-preview rs-sidebar rs-sidebar-right">
         <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
 
-        <section class="sc-section sc-catalog-section">
-          <h2>📦 Каталог типов оборудования</h2>
-          <p class="sc-hint muted">Базовые типы СКС-оборудования. Из каталога единицы добавляются в стойку через кнопку ➕.</p>
+        <!-- v0.59.339: каталог свёрнут в кнопку «+ Открыть каталог», полное
+             окно — отдельная модалка #sc-cat-modal. Узкий сайдбар освобождает
+             место для тележки/склада и не давит карту юнитов. -->
+        <section class="sc-section sc-catalog-section" id="sc-catalog-section-side">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+            <h2 style="margin:0">📦 Каталог</h2>
+            <button type="button" id="sc-cat-open-modal" class="sc-btn sc-btn-primary" style="font-size:11px;padding:4px 10px" title="Открыть полный каталог в отдельном окне">+ Открыть</button>
+          </div>
+          <p class="sc-hint muted" style="margin-top:4px">Открой каталог в модалке — фильтры, поиск, drag&drop в стойку.</p>
+        </section>
+        <!-- Скрытый исходный каталог: сюда биндится renderCatalog. При открытии
+             модалки его DOM-узлы перемещаются внутрь modal-body, при закрытии —
+             возвращаются обратно. Так не дублируем listeners и id. -->
+        <div id="sc-cat-host" hidden>
           <div class="sc-cat-filters">
             <input type="search" id="sc-cat-search" class="sc-cat-search" placeholder="🔎 поиск по названию…" autocomplete="off"/>
             <select id="sc-cat-kind-filter" class="sc-cat-kindfilter" title="Фильтр по типу">
@@ -178,7 +189,7 @@
             <button type="button" id="sc-cat-add" class="sc-btn">+ тип оборудования</button>
             <button type="button" id="sc-cat-reset" class="sc-btn" title="Сбросить к базовому набору">↺ Базовый набор</button>
           </div>
-        </section>
+        </div>
 
         <section class="sc-section sc-cart-section sc-cart-dropzone">
           <div class="sc-cart-head">
@@ -202,6 +213,46 @@
     </div>
 
   </div>
+
+  <!-- v0.59.339: модалка каталога. Содержимое (DOM-узлы #sc-cat-host)
+       перемещается сюда при open и возвращается на место при close. -->
+  <div id="sc-cat-modal" hidden style="position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.4);width:min(1100px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+        <strong style="font-size:14px">📦 Каталог типов оборудования</strong>
+        <span class="muted" style="font-size:11px;flex:1">Перетащите строку из каталога на карту юнитов слева — устройство добавится в текущую стойку.</span>
+        <button type="button" id="sc-cat-modal-close" class="sc-btn" style="font-size:13px;padding:4px 12px">✕ Закрыть</button>
+      </div>
+      <div id="sc-cat-modal-body" style="flex:1;overflow:auto;padding:12px"></div>
+    </div>
+  </div>
+  <script>
+    (function() {
+      function $(id){return document.getElementById(id);}
+      function openModal() {
+        const host = $('sc-cat-host'); const body = $('sc-cat-modal-body'); const modal = $('sc-cat-modal');
+        if (!host || !body || !modal) return;
+        // Перенести содержимое hidden-host в modal-body.
+        while (host.firstChild) body.appendChild(host.firstChild);
+        host.hidden = true;
+        modal.hidden = false;
+      }
+      function closeModal() {
+        const host = $('sc-cat-host'); const body = $('sc-cat-modal-body'); const modal = $('sc-cat-modal');
+        if (!host || !body || !modal) return;
+        while (body.firstChild) host.appendChild(body.firstChild);
+        modal.hidden = true;
+      }
+      document.addEventListener('click', (e) => {
+        if (e.target.closest('#sc-cat-open-modal')) { e.preventDefault(); openModal(); return; }
+        if (e.target.closest('#sc-cat-modal-close')) { e.preventDefault(); closeModal(); return; }
+        if (e.target.id === 'sc-cat-modal') { closeModal(); return; }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !$('sc-cat-modal').hidden) closeModal();
+      });
+    })();
+  </script>
 
   <!-- v0.59.275: ранний watchdog — ловит ошибки загрузки модуля scs-config.js
        (syntax-error, failed import, top-level throw), которые регистрируются
