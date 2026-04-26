@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.396', date: '2026-04-26', items: [
+      '🌱 <b>Авто-доимпорт встроенных записей Kehua MR33 на старте.</b> Интегрированные MR3390-B/-S и MR33150-B/-S теперь видны в picker без ручного нажатия «Загрузить Kehua».',
+      '• Раньше: записи в <code>shared/catalogs/ups-kehua-mr33.js</code> (включая интегрированные, добавленные в v0.59.384) попадали в localStorage только через кнопку «Загрузить Kehua MR33» в ups-config. Если каталог пользователя был сформирован до v0.59.384 — интегрированных моделей в выпадающем списке нет.',
+      '• <code>js/engine/index.js#_ensureBuiltinUpsSeeds()</code> — на старте сравнивает <code>raschet.upsCatalog.kehua.seedVersion</code> в localStorage с текущей константой и upsert\'ит недостающие записи (по id). Идемпотентно, версия повышается при каждом расширении seed.',
+      '• Запускается один раз при загрузке engine/index.js. После v0.59.396 интегрированные ИБП появятся в picker автоматически у всех пользователей.',
+      'Файлы: js/engine/index.js (~25 строк, новая функция _ensureBuiltinUpsSeeds + импорт KEHUA_MR33_UPSES, listUpses, addUps).',
+    ] },
     { version: '0.59.395', date: '2026-04-26', items: [
       '🛡 <b>Защита интегрированного ИБП от удаления/замены при наличии подключённых линий.</b>',
       '• <code>js/engine/ups-composite.js#getIntegratedUpsExternalConns(n)</code> — новая функция: возвращает список внешних связей композита (UPS + integratedChildIds), исключая внутреннюю заводскую проводку (<code>_internalIntegratedUps</code>).',
