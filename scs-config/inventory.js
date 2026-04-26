@@ -249,3 +249,77 @@ $('csv').addEventListener('click', exportCsv);
 window.addEventListener('storage', render);
 renderProjectBanner();
 render();
+
+// v0.59.355: prefill-баннер. Если URL содержит ?prefillTag=…&prefillName=…&
+// prefillSn=…&prefillAssetId=… (приходят из инспектора Конструктора схем
+// при клике «➕ Создать запись в реестре IT» — см. v0.59.353), показываем
+// баннер с этими данными и список стоек проекта. Клик по стойке открывает
+// её редактор с теми же параметрами в URL — чтобы rack.html (отдельный
+// шаг) мог автозаполнить форму добавления устройства.
+function renderPrefillBanner() {
+  const host = document.getElementById('inv-prefill-banner');
+  if (!host) return;
+  let q;
+  try { q = new URLSearchParams(location.search); } catch { return; }
+  const pTag = (q.get('prefillTag') || '').trim();
+  const pName = (q.get('prefillName') || '').trim();
+  const pSn = (q.get('prefillSn') || '').trim();
+  const pAsset = (q.get('prefillAssetId') || '').trim();
+  if (!pTag && !pName && !pSn && !pAsset) {
+    host.style.display = 'none';
+    return;
+  }
+  const racks = loadAllRacksForActiveProject();
+  const tags = loadJson(LS_RACKTAGS, {});
+  const fwd = new URLSearchParams();
+  if (pTag) fwd.set('prefillTag', pTag);
+  if (pName) fwd.set('prefillName', pName);
+  if (pSn) fwd.set('prefillSn', pSn);
+  if (pAsset) fwd.set('prefillAssetId', pAsset);
+  const rackList = racks.map(r => {
+    const t = (tags[r.id] || '').trim() || '(без тега)';
+    const href = `./rack.html?id=${encodeURIComponent(r.id)}&${fwd.toString()}`;
+    return `<a href="${esc(href)}" class="sc-btn" style="text-decoration:none">🗄 ${esc(t)}</a>`;
+  }).join(' ');
+  const fields = [
+    pTag ? `<b>Тег:</b> ${esc(pTag)}` : '',
+    pName ? `<b>Имя:</b> ${esc(pName)}` : '',
+    pSn ? `<b>S/N:</b> <code>${esc(pSn)}</code>` : '',
+    pAsset ? `<b>Инв.№:</b> <code>${esc(pAsset)}</code>` : '',
+  ].filter(Boolean).join(' · ');
+  host.style.display = '';
+  host.style.cssText = 'display:block;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:6px;padding:12px 14px;margin:8px 0';
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <b style="color:#065f46">➕ Создание записи для узла из схемы</b>
+      <button type="button" id="inv-prefill-copy" class="sc-btn" style="margin-left:auto">📋 Копировать данные</button>
+      <button type="button" id="inv-prefill-close" style="background:none;border:0;font-size:16px;cursor:pointer;color:#065f46">×</button>
+    </div>
+    <div style="margin-bottom:8px;color:#065f46">${fields}</div>
+    ${racks.length
+      ? `<div style="font-size:12px;color:#065f46;margin-bottom:4px">Откройте стойку, в которой будет создано устройство:</div>
+         <div style="display:flex;gap:6px;flex-wrap:wrap">${rackList}</div>`
+      : `<div class="muted" style="font-size:12px">В проекте пока нет стоек — <a href="./index.html">создайте стойку</a>.</div>`
+    }
+  `;
+  document.getElementById('inv-prefill-close')?.addEventListener('click', () => {
+    host.style.display = 'none';
+    try {
+      const url = new URL(location.href);
+      ['prefillTag','prefillName','prefillSn','prefillAssetId'].forEach(k => url.searchParams.delete(k));
+      history.replaceState(null, '', url.toString());
+    } catch {}
+  });
+  document.getElementById('inv-prefill-copy')?.addEventListener('click', () => {
+    const txt = [
+      pTag ? `Тег: ${pTag}` : '',
+      pName ? `Имя: ${pName}` : '',
+      pSn ? `S/N: ${pSn}` : '',
+      pAsset ? `Инв.№: ${pAsset}` : '',
+    ].filter(Boolean).join('\n');
+    try { navigator.clipboard.writeText(txt); } catch {}
+    const btn = document.getElementById('inv-prefill-copy');
+    if (btn) { btn.textContent = '✓ Скопировано'; setTimeout(() => btn.textContent = '📋 Копировать данные', 1500); }
+  });
+}
+renderPrefillBanner();
