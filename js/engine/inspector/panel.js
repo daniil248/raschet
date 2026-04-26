@@ -1596,6 +1596,211 @@ function openMvCellSettingsModal(node, cellIdx) {
   });
 }
 
+// v0.59.383: рендер однолинейки клеммной коробки.
+// ТЗ: автомат на ВХОДЕ не ставится никогда. Автомат на ВЫХОДЕ ставится только
+// если явно отмечено n.channelProtection[i]=true. Перемычки между входами
+// (n.channelJumpers — массив пар [i,j]) рисуются ДО защиты — горизонтальной
+// линией на уровне клеммника, выше зоны автоматов.
+function _renderTerminalBoxControl(n, body) {
+  const N = Math.max(1, n.inputs || 0); // inputs===outputs
+  const prot = Array.isArray(n.channelProtection) ? n.channelProtection : [];
+  const jumps = Array.isArray(n.channelJumpers) ? n.channelJumpers : [];
+  const colW = 90;
+  const svgW = Math.max(N * colW + 40, 300);
+  const inLampY = 22;     // лампочка под подписью входа
+  const inTermY = 50;     // уровень клеммника входа (горизонтальная риска)
+  const brkY = 80;        // зона автомата (если стоит)
+  const brkH = 28;
+  const outTermY = brkY + brkH + 10; // клеммник выхода
+  const svgH = outTermY + 90; // место под подпись выхода (вертикальную)
+
+  // Состояние входов: tag питателя + powered-флаг (по _state связи).
+  const inputStates = [];
+  for (let i = 0; i < N; i++) {
+    let feederTag = '—', hasPower = false;
+    for (const c of state.conns.values()) {
+      if (c.to.nodeId === n.id && c.to.port === i) {
+        const from = state.nodes.get(c.from.nodeId);
+        feederTag = from ? (effectiveTag(from) || from.name || '?') : '?';
+        hasPower = c._state === 'active' || c._state === 'powered';
+        break;
+      }
+    }
+    inputStates.push({ feederTag, powered: hasPower });
+  }
+
+  // Группы перемычек (Union-Find): вход i и j в одной группе → питание делится.
+  const parent = Array.from({ length: N }, (_, i) => i);
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+  for (const p of jumps) {
+    if (Array.isArray(p) && p.length === 2 && p[0] >= 0 && p[1] >= 0 && p[0] < N && p[1] < N) {
+      union(p[0], p[1]);
+    }
+  }
+  const groupPowered = new Map();
+  for (let i = 0; i < N; i++) {
+    const g = find(i);
+    if (!groupPowered.has(g)) groupPowered.set(g, false);
+    if (inputStates[i].powered) groupPowered.set(g, true);
+  }
+  const isCircuitPowered = (i) => !!groupPowered.get(find(i));
+
+  // Состояние выходов: dest tag + breakerOn (только если есть автомат).
+  const outputStates = [];
+  const outBreakers = Array.isArray(n.breakerStates) ? n.breakerStates : [];
+  for (let i = 0; i < N; i++) {
+    let destTag = '—';
+    for (const c of state.conns.values()) {
+      if (c.from.nodeId === n.id && c.from.port === i) {
+        const to = state.nodes.get(c.to.nodeId);
+        destTag = to ? (effectiveTag(to) || to.name || '?') : '?';
+        break;
+      }
+    }
+    const breakerOn = !prot[i] || outBreakers[i] !== false; // нет автомата = всегда «замкнуто»
+    outputStates.push({ destTag, breakerOn });
+  }
+
+  let h = '';
+  h += `<h3 style="margin-top:0">${escHtml(effectiveTag(n))} ${escHtml(n.name)} <span class="muted" style="font-size:11px;font-weight:400">— клеммная коробка</span></h3>`;
+  h += `<div id="pc-svg-wrap" style="display:flex;justify-content:center;align-items:flex-start;overflow:auto;flex:1">`;
+  h += `<svg id="pc-svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="font-family:sans-serif;font-size:10px">`;
+
+  const colX = (i) => 20 + (i + 0.5) * ((svgW - 40) / N);
+
+  // Перемычки между входами — рисуем сплошной линией на уровне клеммника, ДО автоматов.
+  // Только соседние перемычки (по UI), но общая шина группы будет правильно
+  // отражать power propagation через Union-Find.
+  for (const p of jumps) {
+    if (!Array.isArray(p) || p.length !== 2) continue;
+    const a = Math.min(p[0], p[1]);
+    const b = Math.max(p[0], p[1]);
+    if (a < 0 || b >= N) continue;
+    const xa = colX(a), xb = colX(b);
+    const grpPow = isCircuitPowered(a);
+    const col = grpPow ? '#1976d2' : '#90caf9';
+    h += `<line x1="${xa}" y1="${inTermY}" x2="${xb}" y2="${inTermY}" stroke="${col}" stroke-width="3" stroke-linecap="round"/>`;
+    // Маркер «перемычка»
+    const xm = (xa + xb) / 2;
+    h += `<text x="${xm}" y="${inTermY - 6}" text-anchor="middle" fill="${col}" font-size="9" font-weight="600">⌐⌐ перемычка</text>`;
+  }
+
+  for (let i = 0; i < N; i++) {
+    const x = colX(i);
+    const sIn = inputStates[i];
+    const lineAlivePre = sIn.powered;             // прямой вход
+    const lineAliveBus = isCircuitPowered(i);     // питание группы (через перемычки)
+    const sOut = outputStates[i];
+    const protOn = !!prot[i];
+    const breakerPasses = !protOn || sOut.breakerOn;
+    const lineAlivePost = lineAliveBus && breakerPasses;
+
+    const colTop = lineAlivePre ? '#e53935' : '#bbb';
+    const colBus = lineAliveBus ? '#e53935' : '#bbb';
+    const colOut = lineAlivePost ? '#e53935' : '#bbb';
+
+    // Метка источника
+    h += `<text x="${x}" y="12" text-anchor="middle" fill="#333" font-size="9" font-weight="600">${escHtml(sIn.feederTag)}</text>`;
+    // Линия от подписи до лампочки
+    h += `<line x1="${x}" y1="16" x2="${x}" y2="${inLampY - 4}" stroke="${colTop}" stroke-width="2"/>`;
+    // Лампочка
+    if (lineAlivePre) {
+      h += `<circle cx="${x}" cy="${inLampY}" r="4" fill="#43a047" opacity="0.85"/>`;
+    } else {
+      h += `<circle cx="${x}" cy="${inLampY}" r="4" fill="none" stroke="#ccc" stroke-width="1"/>`;
+    }
+    // Линия от лампочки до клеммника
+    h += `<line x1="${x}" y1="${inLampY + 4}" x2="${x}" y2="${inTermY}" stroke="${colTop}" stroke-width="2"/>`;
+    // Клеммная риска (горизонтальная)
+    h += `<line x1="${x - 6}" y1="${inTermY}" x2="${x + 6}" y2="${inTermY}" stroke="#444" stroke-width="2"/>`;
+    h += `<text x="${x + 8}" y="${inTermY + 3}" fill="#666" font-size="8">кл${i + 1}</text>`;
+
+    // Линия от клеммника вниз
+    if (protOn) {
+      // → автомат → дальше вниз
+      h += `<line x1="${x}" y1="${inTermY}" x2="${x}" y2="${brkY}" stroke="${colBus}" stroke-width="2"/>`;
+      const brk = svgBreaker(x, brkY, sOut.breakerOn, colOut, '#ff9800');
+      h += brk.svg;
+      // Кликабельная зона
+      h += `<rect x="${x - 14}" y="${brkY - 2}" width="28" height="${brkH + 4}" fill="transparent" style="cursor:pointer" data-breaker-toggle="${i}"/>`;
+      h += `<line x1="${x}" y1="${brkY + brkH}" x2="${x}" y2="${outTermY}" stroke="${colOut}" stroke-width="2"/>`;
+    } else {
+      // прямое соединение клеммник→клеммник без автомата
+      h += `<line x1="${x}" y1="${inTermY}" x2="${x}" y2="${outTermY}" stroke="${colBus}" stroke-width="2"/>`;
+    }
+    // Клеммная риска выхода
+    h += `<line x1="${x - 6}" y1="${outTermY}" x2="${x + 6}" y2="${outTermY}" stroke="#444" stroke-width="2"/>`;
+    // Линия вниз к подписи
+    h += `<line x1="${x}" y1="${outTermY}" x2="${x}" y2="${outTermY + 14}" stroke="${colOut}" stroke-width="2"/>`;
+    // Подпись назначения (вертикальная)
+    let outLabel;
+    let labelColor = '#333';
+    if (sOut.destTag === '—') { outLabel = 'Резерв'; labelColor = '#bbb'; }
+    else outLabel = sOut.destTag;
+    const labelY = outTermY + 16;
+    h += `<text x="${x}" y="${labelY}" fill="${labelColor}" font-size="9" font-weight="600" text-anchor="end" dominant-baseline="central" transform="rotate(-90 ${x} ${labelY})">${escHtml(outLabel)}</text>`;
+  }
+
+  h += `</svg></div>`;
+  body.innerHTML = h;
+
+  // Settings panel — для клеммной коробки скрываем (нет АВР)
+  const sp = document.getElementById('pc-settings-panel');
+  if (sp) sp.innerHTML = '';
+
+  // Зум
+  {
+    let pcZoom = _pcZoomState.zoom;
+    const pcSvg = document.getElementById('pc-svg');
+    const pcLabel = document.getElementById('pc-zoom-label');
+    const pcWrap = document.getElementById('pc-svg-wrap');
+    const applyZoom = () => {
+      if (pcSvg) {
+        pcSvg.style.width = (svgW * pcZoom) + 'px';
+        pcSvg.style.height = (svgH * pcZoom) + 'px';
+      }
+      if (pcLabel) pcLabel.textContent = Math.round(pcZoom * 100) + '%';
+      _pcZoomState.zoom = pcZoom;
+    };
+    applyZoom();
+    const zoomIn = document.getElementById('pc-zoom-in');
+    const zoomOut = document.getElementById('pc-zoom-out');
+    if (zoomIn) zoomIn.onclick = () => { pcZoom = Math.min(3, pcZoom * 1.25); applyZoom(); };
+    if (zoomOut) zoomOut.onclick = () => { pcZoom = Math.max(0.3, pcZoom / 1.25); applyZoom(); };
+    if (pcWrap) pcWrap.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey) return; e.preventDefault();
+      pcZoom = e.deltaY < 0 ? Math.min(3, pcZoom * 1.1) : Math.max(0.3, pcZoom / 1.1);
+      applyZoom();
+    }, { passive: false });
+  }
+
+  // Fullscreen
+  const fsBtn = document.getElementById('pc-fullscreen');
+  const modalBox = body.closest('.modal-box');
+  if (fsBtn && modalBox) {
+    if (_pcZoomState.fullscreen) { modalBox.classList.add('modal-fullscreen'); fsBtn.textContent = '⤡'; }
+    fsBtn.onclick = () => {
+      modalBox.classList.toggle('modal-fullscreen');
+      _pcZoomState.fullscreen = modalBox.classList.contains('modal-fullscreen');
+      fsBtn.textContent = _pcZoomState.fullscreen ? '⤡' : '⤢';
+    };
+  }
+
+  // Клик по автомату выхода — переключение (только для цепей с защитой)
+  body.querySelectorAll('[data-breaker-toggle]').forEach(elBtn => {
+    elBtn.addEventListener('click', () => {
+      snapshot('breaker:' + n.id);
+      const idx = Number(elBtn.dataset.breakerToggle);
+      if (!Array.isArray(n.breakerStates)) n.breakerStates = new Array(N).fill(true);
+      while (n.breakerStates.length < N) n.breakerStates.push(true);
+      n.breakerStates[idx] = !n.breakerStates[idx];
+      render(); notifyChange();
+      openPanelControlModal(n);
+    });
+  });
+}
+
 export function openPanelControlModal(n) {
   const body = document.getElementById('panel-control-body');
   if (!body) return;
@@ -1603,6 +1808,13 @@ export function openPanelControlModal(n) {
   // Многосекционный щит — отдельный рендер
   if (n.switchMode === 'sectioned') {
     _renderSectionedPanelControl(n, body);
+    return;
+  }
+  // v0.59.383: клеммная коробка — пассивный узел без шины и без автоматов на
+  // входе. Автоматы на выходе только если явно указаны в n.channelProtection.
+  // Перемычки между входами (n.channelJumpers) рисуются ДО защиты.
+  if (n.switchMode === 'terminal') {
+    _renderTerminalBoxControl(n, body);
     return;
   }
 
