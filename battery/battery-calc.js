@@ -561,7 +561,7 @@ function openDischargeTableModal(battery) {
 
 // Рисует SVG-кривые разряда: X = время (log), Y = мощность (log),
 // одна кривая на каждое endV. Линия + маркеры точек.
-function _renderDischargeChart(mount, rows, endVs) {
+function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   if (!mount) return;
   // Палитра цветов по endV (холодный→тёплый)
   const palette = ['#1565c0', '#2e7d32', '#f57f17', '#c62828', '#6a1b9a', '#00695c'];
@@ -576,10 +576,20 @@ function _renderDischargeChart(mount, rows, endVs) {
     mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет данных для графика</div>';
     return;
   }
-  const tMin = Math.min(...allT);
-  const tMax = Math.max(...allT);
-  const pMin = Math.min(...allP);
-  const pMax = Math.max(...allP);
+  let tMin = Math.min(...allT);
+  let tMax = Math.max(...allT);
+  let pMin = Math.min(...allP);
+  let pMax = Math.max(...allP);
+  // Расширяем диапазон, чтобы маркер рассчитанной точки гарантированно
+  // попал в видимую область (не упёрся в границу).
+  if (highlight && Number.isFinite(highlight.tMin) && highlight.tMin > 0) {
+    tMin = Math.min(tMin, highlight.tMin * 0.9);
+    tMax = Math.max(tMax, highlight.tMin * 1.1);
+  }
+  if (highlight && Number.isFinite(highlight.powerW) && highlight.powerW > 0) {
+    pMin = Math.min(pMin, highlight.powerW * 0.9);
+    pMax = Math.max(pMax, highlight.powerW * 1.1);
+  }
 
   // v0.59.400: ось X — линейная по времени (раньше была log10, искажала
   // короткие времена). Ось Y оставляем log — мощность падает на порядки
@@ -641,6 +651,21 @@ function _renderDischargeChart(mount, rows, endVs) {
       parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1"><title>${ev} В · ${p.tMin} мин · ${p.powerW} W</title></circle>`);
     }
   });
+
+  // Маркер рассчитанной точки — крестовина + кружок + подпись
+  if (highlight && Number.isFinite(highlight.tMin) && Number.isFinite(highlight.powerW) && highlight.tMin > 0 && highlight.powerW > 0) {
+    const cx = xOf(highlight.tMin);
+    const cy = yOf(highlight.powerW);
+    const stroke = highlight.extrapolated ? '#ff9800' : '#d32f2f';
+    parts.push(`<line x1="${padL}" y1="${cy.toFixed(1)}" x2="${(padL + plotW).toFixed(1)}" y2="${cy.toFixed(1)}" stroke="${stroke}" stroke-width="1" stroke-dasharray="4 3" opacity="0.6"/>`);
+    parts.push(`<line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${(padT + plotH).toFixed(1)}" stroke="${stroke}" stroke-width="1" stroke-dasharray="4 3" opacity="0.6"/>`);
+    parts.push(`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="6" fill="${stroke}" stroke="#fff" stroke-width="2"/>`);
+    const lbl = highlight.label || `${fmt(highlight.tMin)} мин · ${fmt(highlight.powerW)} W/блок`;
+    const tx = cx + 10;
+    const ty = Math.max(padT + 14, cy - 8);
+    parts.push(`<rect x="${tx - 2}" y="${ty - 11}" width="${(lbl.length * 6.5 + 6).toFixed(0)}" height="16" fill="#fff" stroke="${stroke}" rx="3"/>`);
+    parts.push(`<text x="${tx + 2}" y="${ty + 1}" fill="${stroke}" font-weight="600">${escHtml(lbl)}</text>`);
+  }
 
   // Легенда справа вверху
   const legendX = W - padR - 110;
@@ -987,12 +1012,73 @@ function doCalc() {
       html += `<div class="result-block error">Не удалось подобрать конфигурацию в пределах 2000 блоков. Проверьте нагрузку / параметры.</div>`;
     }
   }
+  // Контейнер для графика разряда с отметкой рассчитанной точки
+  html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда АКБ</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Красный маркер — рассчитанная рабочая точка (мощность на блок и время разряда). Оранжевый — экстраполированная (за пределами таблицы производителя).</div></div>`;
   out.innerHTML = html;
+  _renderCalcDischargeChart(params, calcResult, blocksPerString, blockV);
 
   // Сохраняем состояние для экспорта отчёта и разблокируем кнопку
   lastBatteryCalc = { params, calcResult };
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.disabled = !calcResult || (calcResult.kind === 'required' && !calcResult.found);
+}
+
+// Рендер графика разряда после расчёта: если у выбранной АКБ есть таблица —
+// рисуем её кривые; иначе синтезируем кривую через avgEfficiency. В обоих
+// случаях добавляем маркер рассчитанной рабочей точки (tMin = автономия,
+// powerW = blockPowerW), чтобы пользователь видел, где он на графике.
+function _renderCalcDischargeChart(params, calcResult, blocksPerString, blockV) {
+  const mount = document.getElementById('calc-chart-mount');
+  if (!mount) return;
+  const { battery, endV, chemistry, capacityAh } = params;
+  let autonomyMin = null, blockPowerW = null, extrapolated = false;
+  if (calcResult && calcResult.kind === 'autonomy' && calcResult.r) {
+    autonomyMin = calcResult.r.autonomyMin;
+    blockPowerW = calcResult.r.blockPowerW;
+    extrapolated = !!calcResult.r.extrapolated;
+  } else if (calcResult && calcResult.kind === 'required' && calcResult.found) {
+    autonomyMin = calcResult.found.result?.autonomyMin;
+    blockPowerW = calcResult.found.result?.blockPowerW;
+    extrapolated = !!calcResult.found.result?.extrapolated;
+  }
+  const highlight = (Number.isFinite(autonomyMin) && Number.isFinite(blockPowerW) && autonomyMin > 0 && blockPowerW > 0)
+    ? { tMin: autonomyMin, powerW: blockPowerW, extrapolated, label: `${fmt(autonomyMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}` }
+    : null;
+  // Если есть таблица — рисуем её
+  if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
+    const rows = battery.dischargeTable;
+    const endVs = [...new Set(rows.map(p => p.endV))].sort((a, b) => a - b);
+    _renderDischargeChart(mount, rows, endVs, highlight);
+    return;
+  }
+  // Иначе — синтетическая кривая через avgEfficiency для chemistry
+  const chem = (battery && battery.chemistry) || chemistry || 'vrla';
+  const cap = (battery && battery.capacityAh) || capacityAh || 100;
+  const blkV = (battery && battery.blockVoltage) || blockV || 12;
+  // Импорт avgEfficiency: реэкспортирован из battery-discharge.js
+  const tPoints = [1, 3, 5, 10, 15, 30, 60, 120, 180, 240, 360, 480, 600];
+  const rows = tPoints.map(t => {
+    const eff = _avgEffShim(chem, t);
+    const usableWh = blkV * cap * eff;
+    const powerW = usableWh / (t / 60);
+    return { endV: endV || 1.75, tMin: t, powerW };
+  });
+  _renderDischargeChart(mount, rows, [endV || 1.75], highlight);
+}
+// Локальная копия avgEfficiency, чтобы не тащить лишний импорт
+function _avgEffShim(chemistry, tMin) {
+  if (chemistry === 'li-ion') {
+    if (tMin < 5) return 0.88;
+    if (tMin < 15) return 0.92;
+    if (tMin < 60) return 0.95;
+    return 0.96;
+  }
+  if (tMin < 5)   return 0.45;
+  if (tMin < 15)  return 0.58;
+  if (tMin < 30)  return 0.68;
+  if (tMin < 60)  return 0.78;
+  if (tMin < 180) return 0.85;
+  return 0.90;
 }
 
 // ================ UPS picker (standalone-режим battery) ================
