@@ -19,6 +19,7 @@ import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog
 import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES } from './engine/constants.js';
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+import { listProjects as _listProjectCtx, createProject as _createProjectCtx } from '../shared/project-storage.js';
 
 (function () {
 'use strict';
@@ -846,45 +847,97 @@ function renderCurrentTab() {
     return;
   }
 
+  // v0.59.336: группировка схем по проект-контексту (shared/project-storage).
+  // Каждая схема может иметь p.projectId; без projectId → группа «Без проекта».
+  const ctxProjects = (() => { try { return _listProjectCtx() || []; } catch { return []; } })();
+  const ctxMap = new Map(ctxProjects.map(p => [p.id, p]));
+  const groups = new Map();
   for (const p of data) {
-    const card = document.createElement('div');
-    card.className = 'project-card';
-    const role = p._role || 'viewer';
-    const roleLabel = { owner: 'владелец', editor: 'редактор', viewer: 'просмотр' }[role] || role;
-    card.innerHTML = `
-      <div class="pc-head">
-        <div class="pc-name" title="${escAttr(p.name)}">${escHtml(p.name)}</div>
-        <div class="pc-role pc-role-${role}">${roleLabel}</div>
-      </div>
-      <div class="pc-meta">
-        ${p.ownerName ? `<span>${escHtml(p.ownerName)}</span>` : ''}
-      </div>
-      <div class="pc-actions">
-        <button class="pc-open">Открыть</button>
-        ${role === 'owner' ? '<button class="pc-rename">Переименовать</button>' : ''}
-        ${role === 'owner' ? '<button class="pc-delete">Удалить</button>' : ''}
-      </div>
-    `;
-    card.querySelector('.pc-open').onclick = () => openProject(p.id);
-    const rn = card.querySelector('.pc-rename');
-    if (rn) rn.onclick = async () => {
-      const name = await rsPrompt('Новое название проекта:', p.name);
-      if (!name || name === p.name) return;
-      try {
-        await window.Storage.renameProject(p.id, name);
-        refreshProjects();
-      } catch (e) { flash(e.message || 'Ошибка', 'error'); }
-    };
-    const del = card.querySelector('.pc-delete');
-    if (del) del.onclick = async () => {
-      if (!(await rsConfirm(`Удалить проект «${p.name}»?`, 'Это действие необратимо.', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
-      try {
-        await window.Storage.deleteProject(p.id);
-        refreshProjects();
-      } catch (e) { flash(e.message || 'Ошибка', 'error'); }
-    };
-    els.projectsList.appendChild(card);
+    const pid = p.projectId && ctxMap.has(p.projectId) ? p.projectId : '';
+    if (!groups.has(pid)) groups.set(pid, []);
+    groups.get(pid).push(p);
   }
+  const orderedPids = [
+    ...ctxProjects.map(p => p.id).filter(id => groups.has(id)),
+    ...(groups.has('') ? [''] : []),
+  ];
+  for (const pid of orderedPids) {
+    const list = groups.get(pid) || [];
+    const ctxP = pid ? ctxMap.get(pid) : null;
+    const header = document.createElement('div');
+    header.className = 'project-group-head';
+    header.style.cssText = 'margin:18px 0 8px;padding:6px 10px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:3px;font-size:13px;font-weight:600;color:#3730a3';
+    header.innerHTML = pid
+      ? `📁 ${escHtml(ctxP.name)} <span style="color:#6b7280;font-weight:400;font-size:11px">· ${list.length} схем${list.length === 1 ? 'а' : list.length < 5 ? 'ы' : ''}${ctxP.kind === 'sketch' ? ' · мини-проект' : ''}</span>`
+      : `📂 Без проекта <span style="color:#6b7280;font-weight:400;font-size:11px">· ${list.length}</span>`;
+    els.projectsList.appendChild(header);
+    for (const p of list) _renderSchemeCard(p, ctxProjects);
+  }
+  // Кнопка создания нового проекта-контекста
+  const ctrls = document.createElement('div');
+  ctrls.style.cssText = 'margin:18px 0 6px;padding:8px;text-align:center';
+  ctrls.innerHTML = '<button type="button" id="btn-new-proj-ctx" class="pc-open" style="background:#f1f5f9;color:#334155;border:1px dashed #94a3b8;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">+ Новый проект (контекст для группы схем)</button>';
+  ctrls.querySelector('#btn-new-proj-ctx').onclick = async () => {
+    const name = await rsPrompt('Название проекта:', '');
+    if (!name) return;
+    try { _createProjectCtx({ name }); refreshProjects(); } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+  };
+  els.projectsList.appendChild(ctrls);
+}
+
+// v0.59.336: карточка отдельной схемы с селектом проекта-контекста.
+function _renderSchemeCard(p, ctxProjects) {
+  const card = document.createElement('div');
+  card.className = 'project-card';
+  const role = p._role || 'viewer';
+  const roleLabel = { owner: 'владелец', editor: 'редактор', viewer: 'просмотр' }[role] || role;
+  const optsHtml = [
+    '<option value="">— без проекта —</option>',
+    ...ctxProjects.map(cp => `<option value="${escAttr(cp.id)}"${p.projectId === cp.id ? ' selected' : ''}>${escHtml(cp.name)}${cp.kind === 'sketch' ? ' (мини)' : ''}</option>`),
+  ].join('');
+  card.innerHTML = `
+    <div class="pc-head">
+      <div class="pc-name" title="${escAttr(p.name)}">${escHtml(p.name)}</div>
+      <div class="pc-role pc-role-${role}">${roleLabel}</div>
+    </div>
+    <div class="pc-meta">
+      ${p.ownerName ? `<span>${escHtml(p.ownerName)}</span>` : ''}
+    </div>
+    ${role === 'owner' ? `<div class="pc-proj" style="margin:6px 0;font-size:11px;color:#6b7280">
+      Проект: <select class="pc-projsel" style="font-size:11px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px;max-width:160px">${optsHtml}</select>
+    </div>` : ''}
+    <div class="pc-actions">
+      <button class="pc-open">Открыть</button>
+      ${role === 'owner' ? '<button class="pc-rename">Переименовать</button>' : ''}
+      ${role === 'owner' ? '<button class="pc-delete">Удалить</button>' : ''}
+    </div>
+  `;
+  card.querySelector('.pc-open').onclick = () => openProject(p.id);
+  const rn = card.querySelector('.pc-rename');
+  if (rn) rn.onclick = async () => {
+    const name = await rsPrompt('Новое название проекта:', p.name);
+    if (!name || name === p.name) return;
+    try {
+      await window.Storage.renameProject(p.id, name);
+      refreshProjects();
+    } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+  };
+  const del = card.querySelector('.pc-delete');
+  if (del) del.onclick = async () => {
+    if (!(await rsConfirm(`Удалить проект «${p.name}»?`, 'Это действие необратимо.', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
+    try {
+      await window.Storage.deleteProject(p.id);
+      refreshProjects();
+    } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+  };
+  const sel = card.querySelector('.pc-projsel');
+  if (sel) sel.onchange = async () => {
+    try {
+      await window.Storage.saveProject(p.id, { projectId: sel.value || null });
+      refreshProjects();
+    } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+  };
+  els.projectsList.appendChild(card);
 }
 
 function selectTab(name) {
