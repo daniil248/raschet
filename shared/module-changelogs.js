@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.345', date: '2026-04-26', items: [
+      '🔗 <b>Стойки из схемы → штучно с уникальным Tag в Компоновщике шкафа.</b> Раньше один consumer/rack-узел в Конструкторе схем с count=N показывался как одна позиция в реестре стоек проекта. Теперь:',
+      '• <b>shared/scheme-rack-bridge.js (новый)</b> — <code>loadSchemeVirtualRacks(pid)</code> читает <code>raschet.project.&lt;pid&gt;.engine.scheme.v1</code>, находит узлы <code>type=consumer + subtype=rack</code> и раскрывает count=N в N виртуальных позиций с детерминированными id (<code>scheme-&lt;nodeId&gt;-&lt;i&gt;</code>) и авто-тегами вида <code>&lt;tag&gt;-1, &lt;tag&gt;-2…</code> (если count=1 — просто <code>&lt;tag&gt;</code>).',
+      '• <b>scs-config/racks-list.js</b> — отдельная группа в реестре «🔗 Стойки из схемы (Конструктор) — авто». У каждой строки кнопка «▸ Материализовать» — создаёт реальный <code>inst-*</code> экземпляр с этим тегом. После материализации виртуальная позиция автоматически скрывается (тег уже в rackTags).',
+      '• Уникальность авто-тегов гарантирована раскрытием count: если в схеме нарисованы 3 узла «SR» с count=1,2,3 — в списке появятся <code>SR, SR-1, SR-2, SR-1, SR-2, SR-3</code> (дубликаты решает пользователь, переименовав узлы в схеме).',
+      '<b>Что впереди:</b> размещение виртуальных стоек на план-зале scs-design без обязательной материализации; bulk-материализация всех «из схемы»; синхронизация удалённых узлов схемы (виртуальные пропадают сами, но реально материализованные требуют чистки).',
+      'Файлы: shared/scheme-rack-bridge.js (новый), scs-config/racks-list.js (rowHtmlScheme + materializeFromScheme + merge in render).',
+    ] },
     { version: '0.59.344', date: '2026-04-26', items: [
       '🧭 <b>Hub-aware навигация + детальный экран проекта + курируемый набор модулей.</b> По требованиям пользователя:',
       '• На <b>главном экране /hub.html</b> теперь НЕ рендерится back-кнопка и project-badge — это корневой экран. <code>shared/app-header.js</code> распознаёт moduleId=hub и пропускает push в back-stack и link-rewriter.',

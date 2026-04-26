@@ -13,6 +13,9 @@ import {
   loadAllRacksForActiveProject, saveAllRacksForActiveProject, migrateLegacyInstances,
   LS_TEMPLATES_GLOBAL
 } from '../shared/rack-storage.js';
+// v0.59.345: «стойки из схемы» — индивидуальные виртуальные экземпляры
+// для consumer/rack узлов с count=N в Конструкторе схем.
+import { loadSchemeVirtualRacks, mergeWithSchemeRacks } from '../shared/scheme-rack-bridge.js';
 
 const LS_RACK    = LS_TEMPLATES_GLOBAL;
 const LS_CATALOG = 'scs-config.catalog.v1';
@@ -36,6 +39,30 @@ const $ = id => document.getElementById(id);
 const loadJson = (k, f) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : f; } catch { return f; } };
 const saveJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 const escapeHtml = s => String(s ?? '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+
+function rowHtmlScheme(r, tag, devs, catalog) {
+  const usedU = devs.reduce((s, d) => {
+    const t = catalog.find(c => c.id === d.typeId);
+    return s + (t ? (t.heightU || 1) : 1);
+  }, 0);
+  const corpus = r.occupied || 0;
+  const full = r.u || 0;
+  const occPct = full ? Math.round(((usedU + corpus) / full) * 100) : 0;
+  const bar = `<div style="background:#e5e7eb;border-radius:4px;width:100px;height:10px;overflow:hidden;display:inline-block">
+    <div style="width:${occPct}%;height:100%;background:${occPct>90?'#dc2626':occPct>70?'#f59e0b':'#10b981'}"></div>
+  </div> <span class="muted">${occPct}%</span>`;
+  return `<tr data-rackid="${r.id}" class="rl-scheme">
+    <td><code style="background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:3px" title="Авто-тег из схемы (count=${r.schemeTotal||1})">${escapeHtml(tag)}</code></td>
+    <td>${escapeHtml(r.name || 'Серверная стойка')} <span class="muted" style="font-size:11px">· из схемы</span></td>
+    <td>${full}</td>
+    <td>${corpus}</td>
+    <td>${devs.length}</td>
+    <td>${bar}</td>
+    <td>
+      <button class="sc-btn sc-btn-sm" data-act="materialize" data-virtid="${r.id}" data-tag="${escapeHtml(tag)}" title="Создать реальный экземпляр стойки с этим тегом" style="padding:2px 8px;font-size:11px">▸ Материализовать</button>
+    </td>
+  </tr>`;
+}
 
 function rowHtml(r, tag, devs, catalog) {
   const usedU = devs.reduce((s, d) => {
@@ -117,21 +144,40 @@ function render() {
   // живёт в Конфигураторе стойки, а не в реестре проекта.
   const real = racks.filter(r => (tags[r.id] || '').trim());
 
-  if (!real.length) {
+  // v0.59.345: «стойки из схемы» — раскрытые consumer/rack узлы (count=N → N
+  // позиций с уникальными авто-тегами). Если пользователь уже материализовал
+  // позицию (есть реальная стойка с тем же тегом) — виртуальная скрывается.
+  const pid = getActiveProjectId();
+  const virtuals = loadSchemeVirtualRacks(pid);
+  const { merged: visibleVirtuals } = (() => {
+    const m = mergeWithSchemeRacks([], tags, virtuals); // только virtuals не-перекрытые
+    // mergeWithSchemeRacks возвращает realRacks ⊕ virtuals; нам тут нужны только virtuals.
+    return { merged: m.merged };
+  })();
+
+  if (!real.length && !visibleVirtuals.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">
-      В проекте нет физических шкафов. Разверните шкаф из шаблона корпуса (кнопка «➕ Развернуть» выше) — задайте тег (например, <code>DH1.SR2</code>) и имя.
+      В проекте нет физических шкафов. Разверните шкаф из шаблона корпуса (кнопка «➕ Развернуть» выше) — задайте тег (например, <code>DH1.SR2</code>) и имя.<br>
+      Либо разместите серверную стойку в Конструкторе схем — она появится здесь автоматически.
     </td></tr>`;
     $('summary').innerHTML = '';
     return;
   }
 
   const parts = [];
-  parts.push(groupHeader('🗄 Физические шкафы проекта', real.length));
-  parts.push(real.map(r => rowHtml(r, tags[r.id] || '', contents[r.id] || [], catalog)).join(''));
+  if (real.length) {
+    parts.push(groupHeader('🗄 Физические шкафы проекта', real.length));
+    parts.push(real.map(r => rowHtml(r, tags[r.id] || '', contents[r.id] || [], catalog)).join(''));
+  }
+  if (visibleVirtuals.length) {
+    parts.push(groupHeader('🔗 Стойки из схемы (Конструктор) — авто', visibleVirtuals.length));
+    parts.push(visibleVirtuals.map(r => rowHtmlScheme(r, r.autoTag, contents[r.id] || [], catalog)).join(''));
+  }
   tbody.innerHTML = parts.join('');
 
-  // navigation
-  tbody.querySelectorAll('tr[data-rackid]').forEach(tr => {
+  // navigation — реальные открываются в rack.html; виртуальные не открываются
+  // (нет содержимого/корпуса), пользователь сначала материализует.
+  tbody.querySelectorAll('tr[data-rackid]:not(.rl-scheme)').forEach(tr => {
     tr.addEventListener('click', ev => {
       if (ev.target.closest('a,button,input')) return;
       location.href = `./rack.html?rackId=${encodeURIComponent(tr.dataset.rackid)}`;
@@ -144,6 +190,12 @@ function render() {
   });
   tbody.querySelectorAll('[data-act="save-tag"]').forEach(btn => {
     btn.addEventListener('click', ev => { ev.stopPropagation(); saveTag(btn.dataset.rackid); });
+  });
+
+  // v0.59.345: материализация виртуальной (из схемы) → создаёт inst-* запись
+  // с тем же tag, после чего виртуальная скрывается из списка автоматически.
+  tbody.querySelectorAll('[data-act="materialize"]').forEach(btn => {
+    btn.addEventListener('click', ev => { ev.stopPropagation(); materializeFromScheme(btn.dataset.virtid, btn.dataset.tag); });
   });
 
   // totals
@@ -161,6 +213,7 @@ function render() {
   $('summary').innerHTML = `
     <div class="muted" style="display:flex;gap:20px;flex-wrap:wrap;font-size:13px">
       <span>🗄 Физических шкафов: <b>${real.length}</b></span>
+      ${visibleVirtuals.length ? `<span>🔗 Из схемы: <b>${visibleVirtuals.length}</b></span>` : ''}
       <span>Всего U: <b>${totalU}</b></span>
       <span>Занято U: <b>${totalUsedU}</b></span>
       <span>Устройств в стойках: <b>${totalDevices}</b></span>
@@ -168,6 +221,41 @@ function render() {
       <span>На складе: <b>${warehouse.length}</b></span>
     </div>
   `;
+}
+
+/* ---------- v0.59.345: Materialize virtual scheme-rack ----------
+   Создаёт реальный inst-* экземпляр с тем же тегом, что и виртуальная
+   позиция «из схемы». Корпус берём дефолтный (42U); пользователь сможет
+   позже сменить через rack-config. */
+function materializeFromScheme(virtId, tag) {
+  if (!virtId || !tag) return;
+  // Уникальность тега
+  const tags = loadJson(LS_RACKTAGS, {});
+  const tagInUse = Object.values(tags).some(t => (t || '').trim() === tag);
+  if (tagInUse) {
+    rsToast('Тег ' + tag + ' уже занят — материализация отменена', 'error');
+    return;
+  }
+  const virtuals = loadSchemeVirtualRacks(getActiveProjectId());
+  const v = virtuals.find(x => x.id === virtId);
+  if (!v) { rsToast('Виртуальная стойка не найдена (схема изменилась?)', 'error'); render(); return; }
+
+  const racks = loadAllRacksForActiveProject();
+  const inst = {
+    id: 'inst-' + Math.random().toString(36).slice(2, 10),
+    name: v.name,
+    u: v.u || 42,
+    occupied: v.occupied || 0,
+    comment: `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, экземпляр ${v.schemeIndex}/${v.schemeTotal})`,
+    schemeNodeId: v.schemeNodeId,
+    schemeIndex: v.schemeIndex,
+  };
+  racks.push(inst);
+  saveAllRacksForActiveProject(racks);
+  tags[inst.id] = tag;
+  saveJson(LS_RACKTAGS, tags);
+  rsToast('Стойка ' + tag + ' материализована', 'ok');
+  render();
 }
 
 /* ---------- Deploy-from-template ---------- */
