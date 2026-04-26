@@ -188,6 +188,34 @@
           <div id="calc-battery-info" class="muted" style="font-size:11px;margin-top:4px"></div>
         </div>
         <div class="field-full" id="calc-recommend" style="display:none;background:#f5fbf5;border:1px solid #c8e6c9;border-radius:5px;padding:8px;font-size:12px"></div>
+        <!-- v0.59.428: S³-specific options. Видимо только при выборе модуля S³. -->
+        <div class="field-full" id="calc-s3-options" style="display:none;background:#eff7ff;border:1px solid #bbdefb;border-radius:5px;padding:10px">
+          <div style="font-weight:600;font-size:12px;margin-bottom:6px">Опции системы Kehua S³</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <label style="font-size:12px">Master шкаф
+              <select id="calc-s3-master-variant" style="width:100%">
+                <option value="M">-M (master, touch-screen)</option>
+                <option value="M1">-M1 (master, 1 battery breaker)</option>
+                <option value="M2">-M2 (master для KR modular UPS)</option>
+              </select>
+            </label>
+            <label style="font-size:12px">Slave шкафы
+              <select id="calc-s3-slave-variant" style="width:100%">
+                <option value="S">-S (slave, LED-индикаторы)</option>
+                <option value="S2">-S2 (slave для KR modular UPS)</option>
+              </select>
+            </label>
+            <label style="font-size:12px">Fire-fighting
+              <select id="calc-s3-fire-fighting" style="width:100%">
+                <option value="X" selected>X — с пожаротушением</option>
+                <option value="">— без пожаротушения</option>
+              </select>
+            </label>
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:6px">
+            Варианты применяются ко всем шкафам системы (master — к одному, slave — к остальным). Combiner-шкаф добавляется автоматически при cabinetsCount&gt;2. Network device — при N≥2 (1 на 7 шкафов).
+          </div>
+        </div>
 
         <div>
           <label>Режим расчёта</label>

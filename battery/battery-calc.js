@@ -921,6 +921,9 @@ function renderBatterySelector() {
 function _applyBatteryLock() {
   const sel = document.getElementById('calc-battery');
   const b = sel && sel.value ? getBattery(sel.value) : null;
+  // v0.59.428: показываем S³-опции только когда выбран модуль S³.
+  const s3Box = document.getElementById('calc-s3-options');
+  if (s3Box) s3Box.style.display = isS3Module(b) ? 'block' : 'none';
   const lock = (id, val) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1198,7 +1201,15 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
   if (!battery || !(totalModules > 0)) return '';
   const allBatts = listBatteries();
   const accessoryCatalog = allBatts.filter(b => b.systemSubtype === 'accessory');
-  const spec = s3LiIonType.buildSystem({ module: battery, totalModules });
+  // v0.59.428: читаем выбранные пользователем опции S³ (master variant /
+  // slave variant / fire-fighting). Дефолты — 'M', 'S', 'X'.
+  const masterVariant = (document.getElementById('calc-s3-master-variant')?.value) || 'M';
+  const slaveVariant  = (document.getElementById('calc-s3-slave-variant')?.value)  || 'S';
+  const fireFighting  = (document.getElementById('calc-s3-fire-fighting')?.value)  || 'X';
+  const spec = s3LiIonType.buildSystem({
+    module: battery, totalModules,
+    options: { masterVariant, slaveVariant, fireFighting },
+  });
   const bom  = s3LiIonType.bomLines(spec, { module: battery, accessoryCatalog });
   const cRateChk = s3LiIonType.validateMaxCRate({ module: battery, loadKw, totalModules, invEff });
 
@@ -1924,6 +1935,13 @@ function wireCalcForm() {
   });
   const sel = document.getElementById('calc-battery');
   if (sel) sel.addEventListener('change', () => { _applyBatteryLock(); _renderCapacityRecommend(); });
+  // v0.59.428: смена опций S³ → перезапуск расчёта, чтобы блок «Состав
+  // системы» сразу отразил новые варианты master/slave (-M vs -M1 vs -M2,
+  // -S vs -S2, X vs blank).
+  ['calc-s3-master-variant','calc-s3-slave-variant','calc-s3-fire-fighting'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => { try { doCalc(); } catch {} });
+  });
   ['calc-load','calc-target','calc-dcv','calc-inveff','calc-chem'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', () => { _renderCapacityRecommend(); _refreshDcExplanation(); });

@@ -1731,6 +1731,15 @@ export const CHANGELOGS = {
   ],
 
   'battery': [
+    { version: '0.59.428', date: '2026-04-26', items: [
+      '🎛 <b>Селекторы вариантов S³ в battery-calc.</b> При выборе модуля Kehua S³ под пикером появляется голубой блок «Опции системы Kehua S³» с тремя выпадающими списками:',
+      '• <b>Master шкаф</b>: <code>-M</code> (master с touch-screen, default), <code>-M1</code> (master с одним battery breaker на выходе), <code>-M2</code> (master, согласованный с Kehua KR modular UPS).',
+      '• <b>Slave шкафы</b>: <code>-S</code> (slave с LED-индикаторами, default), <code>-S2</code> (slave для KR modular UPS).',
+      '• <b>Fire-fighting</b>: <code>X</code> (с пожаротушением module-level, default — соответствует каталожным S3M040-6C-240-<b>X</b> и т.п.) или blank (без пожаротушения).',
+      '🔄 <b>Live-обновление состава.</b> При смене любого селектора блок «Состав системы (автосборка)» перерисовывается мгновенно (через повторный вызов <code>doCalc()</code>) — пользователь видит как меняется модель шкафа в таблице.',
+      '👁 <b>Видимость.</b> Блок появляется только при выборе модуля S³ (<code>isS3Module(b) === true</code>). Для VRLA / AGM / Gel — скрыт. Реализовано в <code>_applyBatteryLock()</code>.',
+      'Файлы: battery/index.html (новый <code>#calc-s3-options</code> блок с 3 select), battery/battery-calc.js (показ/скрытие в _applyBatteryLock; чтение значений в _renderS3SystemSpecHtml; addEventListener change на 3 select → doCalc).',
+    ] },
     { version: '0.59.427', date: '2026-04-26', items: [
       '🏗 <b>battery-calc показывает автосборку шкафов S³.</b> После расчёта S³-конфигурации (autonomy / required) под основным блоком теперь рендерится секция «<b>Состав системы (автосборка)</b>» с таблицей шкафов: <i>Master</i> (S3C040-6C-20-M / S3C050-4C-20-M / S3C100-1C-12-M), <i>Slave</i> при N&gt;1 и <i>Combiner</i> при N&gt;2 — по архитектуре Figure3-28 User Manual. Заполнение каждого шкафа: число модулей + число заглушек Blank Panel. Master всегда первый (включает touch-screen и BMS-контроллер).',
       '📦 <b>Таблица аксессуаров BOM.</b> Под составом шкафов — отдельная таблица аксессуаров: <i>Slave Wire Kit</i> (по 1 на каждый slave: cabinet comm wire #2 + power wire #3 + network wire #1 4.5 м + 2× RJ45), <i>Networking Device</i> (8-port switch, по 1 на каждые 7 шкафов), <i>Blank Panel</i> (по 1 на каждый пустой слот, отдельный SKU для S3M040/050 vs S3M100). Описания берутся из <code>systemDescription</code> аксессуаров в каталоге.',
