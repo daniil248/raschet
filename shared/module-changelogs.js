@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'projects': [
+    { version: '0.59.380', date: '2026-04-26', items: [
+      '🗺 <b>Phase 2: на layout-странице теперь видны связи между футпринтами как географические линии.</b>',
+      '• До этого CSS-правило <code>svg.layout-mode #layer-conns { display:none }</code> полностью прятало слой связей на расстановке — пользователь видел только корпуса карточек без линий между ними.',
+      '• Теперь <code>renderConns()</code> на layout-странице вызывает новую ветку <code>_renderConnsLayout()</code>: для каждой связи рисуется прямая линия между центрами футпринтов (W=widthMm, H=depthMm||heightMm). Цвет — по доминирующей системе из <code>getSystemMeta()</code>; damaged → пунктир; disabled → opacity 0.35; selected → толще.',
+      '• Это НЕ ортогональная схематическая маршрутизация (waypoints, повороты — задача более поздних фаз), а простой географический connector «откуда — куда».',
+      'Файлы: js/engine/render.js (renderConns: layout-branch + новая функция _renderConnsLayout, ~80 строк), app.css (убран #layer-conns из svg.layout-mode display:none правила).',
+    ] },
     { version: '0.59.379', date: '2026-04-26', items: [
       '🔑 <b>Fix: счётчик и список шкафов проекта читают правильный ключ.</b> Продолжение фикса v0.59.377.',
       '• До этого <code>projectStats.racks</code> и legacy-детектор «🗄 Шкафы проекта» считали стойки по rackId\'ам в <code>scs-config.contents.v1</code>/<code>scs-config.rackTags.v1</code>. Это «orphan»-данные размещения и тегов; реальные экземпляры физических стоек — в <code>raschet.project.&lt;pid&gt;.rack-config.instances.v1</code> (см. <code>shared/rack-storage.js</code>).',

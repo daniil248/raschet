@@ -2196,8 +2196,101 @@ export function renderNodes() {
   }
 }
 
+// v0.59.380 (Phase 2): рендер связей на layout-странице — простые
+// прямые линии между центрами футпринтов узлов (вид сверху). Цвет — по
+// первой системе, общей для обоих концов и совместимой со страницей.
+// Не используется orthogonal-роутинг и порты схемы (на layout их нет);
+// также не показываем control-линии триггеров (это понятие схемы).
+function _renderConnsLayout() {
+  const pageId = state.currentPageId;
+  const _floorFilter = (state.floorFilter == null) ? null : Number(state.floorFilter);
+
+  // Размещён ли узел явно на текущей layout-странице (см. _renderNodesLayout).
+  const _placed = (n) => {
+    if (!n) return false;
+    const pids = n.pageIds;
+    if (Array.isArray(pids) && pids.includes(pageId)) return true;
+    const pos = n.positionsByPage && n.positionsByPage[pageId];
+    return !!(pos && Number.isFinite(pos.x) && Number.isFinite(pos.y));
+  };
+
+  // Центр футпринта первого экземпляра узла на layout (мм-координаты).
+  function _centerFor(n) {
+    const geom = getNodeGeometryMm(n);
+    const W = geom?.widthMm || 400;
+    const H = (geom?.depthMm && geom.depthMm > 0) ? geom.depthMm : (geom?.heightMm || 300);
+    const instPos = (n.instancePositions && pageId && n.instancePositions[pageId]) || [];
+    let x, y;
+    if (instPos[0] && Number.isFinite(instPos[0].x) && Number.isFinite(instPos[0].y)) {
+      x = instPos[0].x; y = instPos[0].y;
+    } else if (n.positionsByPage && n.positionsByPage[pageId] && Number.isFinite(n.positionsByPage[pageId].x)) {
+      x = n.positionsByPage[pageId].x; y = n.positionsByPage[pageId].y;
+    } else {
+      x = n.x; y = n.y;
+    }
+    return { x: x + W / 2, y: y + H / 2 };
+  }
+
+  // Доминирующая система для цвета. Берём первую общую систему обоих концов.
+  function _connColor(fromN, toN) {
+    const fs = getNodeSystems(fromN);
+    const ts = getNodeSystems(toN);
+    for (const s of fs) {
+      if (!ts.includes(s)) continue;
+      const meta = getSystemMeta(s);
+      if (meta && meta.color) return meta.color;
+    }
+    return '#64748b'; // нейтральный серый
+  }
+
+  for (const c of state.conns.values()) {
+    const fromN = state.nodes.get(c.from.nodeId);
+    const toN   = state.nodes.get(c.to.nodeId);
+    if (!fromN || !toN) continue;
+    if (!isOnCurrentPage(fromN) || !isOnCurrentPage(toN)) continue;
+    if (!_placed(fromN) || !_placed(toN)) continue;
+    if (_floorFilter !== null) {
+      const ff = Number(fromN.floor) || 0;
+      const tf = Number(toN.floor) || 0;
+      if (ff !== _floorFilter || tf !== _floorFilter) continue;
+    }
+    const a = _centerFor(fromN);
+    const b = _centerFor(toN);
+    const color = _connColor(fromN, toN);
+    // Невидимая «толстая» дорожка для удобного попадания клика.
+    const hit = el('line', {
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y,
+      stroke: 'transparent', 'stroke-width': 18,
+      style: 'pointer-events:stroke;cursor:pointer',
+    });
+    hit.dataset.connId = c.id;
+    layerConns.appendChild(hit);
+    // Видимая линия. Толщина 4px (paper-units не нужны — линия отображается
+    // с zoom как и узлы); чуть толще, если связь выделена.
+    const selected = state.selectedKind === 'conn' && state.selectedId === c.id;
+    const ln = el('line', {
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y,
+      stroke: color, 'stroke-width': selected ? 6 : 4,
+      'stroke-linecap': 'round',
+      'stroke-opacity': 0.85,
+      style: 'pointer-events:none',
+    });
+    if (c.lineMode === 'damaged') ln.setAttribute('stroke-dasharray', '8 6');
+    else if (c.lineMode === 'disabled') ln.setAttribute('stroke-opacity', '0.35');
+    layerConns.appendChild(ln);
+  }
+}
+
 export function renderConns() {
   while (layerConns.firstChild) layerConns.removeChild(layerConns.firstChild);
+
+  // v0.59.380 (Phase 2): на layout-странице рисуем географические линии
+  // между центрами футпринтов узлов. Раньше layerConns на layout полностью
+  // скрывался CSS-правилом — связи между шкафами/нагрузками были невидимы.
+  if (getPageKind(getCurrentPage()) === 'layout') {
+    _renderConnsLayout();
+    return;
+  }
 
   // Control-линии: от каждого триггера к генератору
   for (const n of state.nodes.values()) {

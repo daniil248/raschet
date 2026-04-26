@@ -1060,14 +1060,14 @@ input, select { font: inherit; }
   pointer-events: auto;
 }
 /* Phase 2.3 (v0.58.3): на layout-странице (расстановка) нет коннекторов —
-   скрываем порты и линии связи, остаются только корпуса карточек. */
+   скрываем порты. v0.59.380: #layer-conns больше НЕ скрываем — там теперь
+   рендерятся географические линии между футпринтами (см. _renderConnsLayout). */
 svg.layout-mode .port,
 svg.layout-mode .port.in,
 svg.layout-mode .port.out,
 svg.layout-mode .port-btn,
 svg.layout-mode .port-lamp,
-svg.layout-mode .port-lamp-core,
-svg.layout-mode #layer-conns { display: none; }
+svg.layout-mode .port-lamp-core { display: none; }
 .page-kind-banner .pkb-beta {
   margin-left: 8px;
   font-weight: 400;
