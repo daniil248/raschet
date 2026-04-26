@@ -14,6 +14,9 @@ import { listUpses } from '../../../shared/ups-catalog.js';
 // v0.59.386: реестр типов ИБП-плагинов (см. shared/ups-types/).
 import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from '../../../shared/ups-types/index.js';
 import { syncIntegratedUpsComposite, getIntegratedUpsExternalConns } from '../ups-composite.js';
+// v0.59.416: единый модуль логики Kehua S³ — DRY с battery-calc.
+import { isS3Module as _isS3Module, resolveS3Wiring as _resolveS3Wiring,
+         computeS3Configuration as _computeS3Configuration } from '../../../shared/battery-s3-logic.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -931,7 +934,7 @@ function _renderUpsBatteryBody(n) {
     const cellsPerBlock = Number(picked.cellCount) || 6;
     const blockVnom = Number(picked.blockVoltage) || (cellsPerBlock * (Number(picked.cellVoltage) || 2));
     const capAhBlock = Number(picked.capacityAh) || 100;
-    const isS3Module = picked.isSystem && picked.systemSubtype === 'module' && picked.packaging;
+    const isS3Module = _isS3Module(picked); // v0.59.416: shared detector
 
     // Параметры ИБП для подбора АКБ — читаются через единый shared-хелпер.
     // Редактирование этих полей — ТОЛЬКО в основной модалке «Параметры ИБП»;
@@ -949,18 +952,13 @@ function _renderUpsBatteryBody(n) {
     // Хранится в n.batteryDcWiring. Дефолт: если Vdc min ИБП ≥ 320 В
     // (≈ MR33 с ±240 В шиной) — series; иначе parallel. Пользователь
     // может переключить вручную.
-    let s3Wiring = n.batteryDcWiring || (isS3Module ? (vdcMin >= 320 ? 'series' : 'parallel') : null);
-    // Проверка: если series даёт Vdc вне допустимого диапазона ИБП —
-    // форсим parallel, и наоборот. Форс нужен, чтобы не рассчитывать
-    // с невалидной конфигурацией.
+    // v0.59.416: разрешение wiring через shared-модуль (см. battery-s3-logic.js)
+    let s3Wiring = null, s3Vdc = blockVnom;
     if (isS3Module) {
-      const vSeries = blockVnom * 2, vParallel = blockVnom;
-      const seriesOk = vSeries >= vdcMin && vSeries <= vdcMax;
-      const parallelOk = vParallel >= vdcMin && vParallel <= vdcMax;
-      if (s3Wiring === 'series' && !seriesOk && parallelOk) s3Wiring = 'parallel';
-      if (s3Wiring === 'parallel' && !parallelOk && seriesOk) s3Wiring = 'series';
+      const _w = _resolveS3Wiring({ module: picked, requestedWiring: n.batteryDcWiring, vdcMin, vdcMax });
+      s3Wiring = _w.wiring;
+      s3Vdc = _w.vdcOper;
     }
-    const s3Vdc = s3Wiring === 'series' ? (blockVnom * 2) : blockVnom;
     // Дефолт end-voltage на элемент зависит от химии:
     //   VRLA (свинцово-кислотные, 2 В/эл.) → 1.75 В/элемент (~87%)
     //   Li-Ion LiFePO4 (3.2 В/эл.)         → 2.80 В/элемент (cut-off ~87% от 3.2)
@@ -1019,15 +1017,27 @@ function _renderUpsBatteryBody(n) {
       n._s3StringsAutoInit = true;
     }
 
-    // Активная мощность нагрузки (из load, kW) с учётом cos φ и КПД инвертора
-    const activePowerKw = loadKw * (cosPhi || 1);
-    const batteryPwrReqKw = activePowerKw / invEff;
-    const powerPerBlockW = (batteryPwrReqKw * 1000) / (stringsCat * blocksPerString);
-    // S³: Vdc = 240 или 480 в зависимости от выбранного режима подключения
-    //      DC/DC выходов (parallel / series). Обычные АКБ: v = blockVnom × N.
-    const vdcOper = isS3Module ? s3Vdc : (blockVnom * blocksPerString);
-    // Ток на шкаф (S³) или цепочку (VRLA): мощность шкафа / Vdc / stringsCat
-    const stringCurrentA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / stringsCat : 0;
+    // v0.59.416: для S³ модулей — единый расчёт через computeS3Configuration.
+    // Для обычных VRLA остаётся локальная формула (не S³-specific).
+    let batteryPwrReqKw, powerPerBlockW, vdcOper, stringCurrentA;
+    let s3Cfg = null; // detail из shared-модуля, потом используется в BOM-блоке
+    if (isS3Module) {
+      s3Cfg = _computeS3Configuration({
+        module: picked, loadKw, vdcMin, vdcMax, invEff, cosPhi,
+        modulesPerCabinet: blocksPerString, cabinetsCount: stringsCat,
+        dcWiring: s3Wiring,
+      });
+      batteryPwrReqKw = s3Cfg.batteryPwrReqKw;
+      powerPerBlockW  = s3Cfg.powerPerModuleW;
+      vdcOper         = s3Cfg.vdcOper;
+      stringCurrentA  = s3Cfg.stringCurrentA;
+    } else {
+      const activePowerKw = loadKw * (cosPhi || 1);
+      batteryPwrReqKw = activePowerKw / invEff;
+      powerPerBlockW = (batteryPwrReqKw * 1000) / (stringsCat * blocksPerString);
+      vdcOper = blockVnom * blocksPerString;
+      stringCurrentA = vdcOper > 0 ? (batteryPwrReqKw * 1000 / vdcOper) / stringsCat : 0;
+    }
 
     // Параметры ИБП — read-only, редактируются в основной модалке
     // «⚙ Параметры ИБП». Здесь только отображение текущих значений,
@@ -1136,11 +1146,8 @@ function _renderUpsBatteryBody(n) {
     const stringsLabel = isS3Module ? `Шкафов в параллель (1…${stringsMax})` : 'Параллельных цепочек';
     // Предварительный расчёт перегруза: нужен для красной рамки input'а.
     // Мощность шкафа — паспортная константа из cabinetPowerKw.
-    let s3OverloadForInput = false;
-    if (isS3Module) {
-      const _cabPower = Number(picked.packaging.cabinetPowerKw) || 200;
-      s3OverloadForInput = (batteryPwrReqKw > _cabPower * stringsCat);
-    }
+    // v0.59.416: переиспользуем результат из единого источника (computeS3Configuration)
+    const s3OverloadForInput = !!(isS3Module && s3Cfg && s3Cfg.overload);
     const stringsInputStyle = s3OverloadForInput
       ? ' style="border-color:#c62828;background:#ffebee"' : '';
     h.push(`<div style="flex:1">${field(stringsLabel,
@@ -1209,36 +1216,23 @@ function _renderUpsBatteryBody(n) {
     const currentLabel = isS3Module ? 'Ток шкафа' : 'Ток цепочки';
     let bomBlock = '';
     let s3OverloadBlock = '';
-    if (isS3Module) {
+    if (isS3Module && s3Cfg) {
+      // v0.59.416: все BOM-числа берутся из единого расчёта computeS3Configuration.
+      // cabinetPowerKw (200/200/60) — паспортная константа System rated output
+      // power, не зависит от числа модулей в шкафу. Число модулей определяет
+      // только автономию (кВт·ч), не мгновенную мощность.
       const pk = picked.packaging;
-      // Мощность одного шкафа = min(modulesInCabinet × rated_per_module,
-      //                              cabinetPowerKw из паспорта).
-      // cabinetPowerKw (200 / 60 кВт) — это System rated output power:
-      // физический лимит DC/DC-преобразователей и шин шкафа.
-      // ВАЖНО: мощность шкафа — КОНСТАНТА из паспорта (System rated
-      // output power: 200 кВт для S3C040/050, 60 кВт для S3C100).
-      // Она НЕ зависит от числа модулей в шкафу. Модули в шкафу включены
-      // параллельно, и DC/DC-преобразователи суммарно могут выдать
-      // максимум 200 (60) кВт независимо от того, 2 в шкафу или 20.
-      // Число модулей определяет только АВТОНОМИЮ — сколько энергии
-      // (кВт·ч) шкаф способен отдать на этой мощности до разряда.
-      const cabPowerKw = Number(pk.cabinetPowerKw) || 200;
-      const systemPower = cabPowerKw * stringsCat;
-      // Нагрузка, которую система должна отдать (со стороны АКБ, после КПД)
-      const loadPerSystemKw = batteryPwrReqKw;
-      const s3Overload = loadPerSystemKw > systemPower;
       bomBlock = `
-        <div>Шкафов:</div><div><b>${stringsCat}</b> × ${escHtml(pk.cabinetModel || '—')}</div>
-        <div>Модулей/шкаф:</div><div><b>${blocksPerString}</b> из ${pk.maxPerCabinet}</div>
-        <div>P шкафа:</div><div><b>${fmt(cabPowerKw)} кВт</b> (паспорт System rated output)</div>
-        <div>P системы:</div><div><b${s3Overload ? ' style="color:#c62828"' : ''}>${fmt(systemPower)} кВт</b> (${fmt(cabPowerKw)} × ${stringsCat})</div>
-        <div>P<sub>треб.</sub> от АКБ:</div><div><b${s3Overload ? ' style="color:#c62828"' : ''}>${fmt(loadPerSystemKw)} кВт</b></div>`;
-      if (s3Overload) {
-        const minCabinets = Math.ceil(loadPerSystemKw / cabPowerKw);
+        <div>Шкафов:</div><div><b>${s3Cfg.cabinetsCount}</b> × ${escHtml(s3Cfg.cabinetModel || '—')}</div>
+        <div>Модулей/шкаф:</div><div><b>${s3Cfg.modulesPerCabinet}</b> из ${s3Cfg.nMax}</div>
+        <div>P шкафа:</div><div><b>${fmt(s3Cfg.cabinetPowerKw)} кВт</b> (паспорт System rated output)</div>
+        <div>P системы:</div><div><b${s3Cfg.overload ? ' style="color:#c62828"' : ''}>${fmt(s3Cfg.systemPowerKw)} кВт</b> (${fmt(s3Cfg.cabinetPowerKw)} × ${s3Cfg.cabinetsCount})</div>
+        <div>P<sub>треб.</sub> от АКБ:</div><div><b${s3Cfg.overload ? ' style="color:#c62828"' : ''}>${fmt(s3Cfg.batteryPwrReqKw)} кВт</b></div>`;
+      if (s3Cfg.overload) {
         s3OverloadBlock = `<div style="margin-top:8px;padding:8px 12px;background:#ffebee;border-left:3px solid #c62828;border-radius:4px;font-size:11px;color:#c62828;line-height:1.6">
-          <b>⛔ Лимит системы превышен.</b> Требуемая мощность АКБ <b>${fmt(loadPerSystemKw)} кВт</b>
-          превышает суммарную мощность ${stringsCat} шкаф(ов) × ${fmt(cabPowerKw)} кВт = <b>${fmt(systemPower)} кВт</b>.<br>
-          Увеличьте число шкафов минимум до <b>${minCabinets}</b>${picked.type.startsWith('S3M100') ? ' или выберите модули S3M040/S3M050 (200 кВт на шкаф вместо 60)' : ''}.
+          <b>⛔ Лимит системы превышен.</b> Требуемая мощность АКБ <b>${fmt(s3Cfg.batteryPwrReqKw)} кВт</b>
+          превышает суммарную мощность ${s3Cfg.cabinetsCount} шкаф(ов) × ${fmt(s3Cfg.cabinetPowerKw)} кВт = <b>${fmt(s3Cfg.systemPowerKw)} кВт</b>.<br>
+          Увеличьте число шкафов минимум до <b>${s3Cfg.minCabinetsForLoad}</b>${picked.type.startsWith('S3M100') ? ' или выберите модули S3M040/S3M050 (200 кВт на шкаф вместо 60)' : ''}.
         </div>`;
       }
     }

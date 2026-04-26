@@ -61,7 +61,7 @@ export const KEHUA_S3_MODULES = [
     isSystem: true,
     systemType: 'kehua-s3',
     systemSubtype: 'module',    // участвует в расчёте автономии
-    systemDescription: 'Модуль S3M040-6C-240 · 40 А·ч LFP · rated 10 кВт / 10 мин. Ставится в шкаф S3C040-6C-20-MX (до 20 модулей).',
+    systemDescription: 'Модуль S3M040-6C-240-X · 40 А·ч LFP · rated 10 кВт / 10 мин. Ставится в шкаф S3C040-6C-20-MX (до 20 модулей).',
     packaging: {
       cabinetModel: 'S3C040-6C-20-MX',
       maxPerCabinet: 20,
@@ -94,7 +94,7 @@ export const KEHUA_S3_MODULES = [
     isSystem: true,
     systemType: 'kehua-s3',
     systemSubtype: 'module',
-    systemDescription: 'Модуль S3M050-4C-240 · 50 А·ч LFP · rated 10 кВт / 15 мин. Ставится в шкаф S3C050-4C-20-MX (до 20 модулей).',
+    systemDescription: 'Модуль S3M050-4C-240-X · 50 А·ч LFP · rated 10 кВт / 15 мин. Ставится в шкаф S3C050-4C-20-MX (до 20 модулей).',
     packaging: {
       cabinetModel: 'S3C050-4C-20-MX',
       maxPerCabinet: 20,
@@ -128,7 +128,7 @@ export const KEHUA_S3_MODULES = [
     isSystem: true,
     systemType: 'kehua-s3',
     systemSubtype: 'module',
-    systemDescription: 'Модуль S3M100-1C-240 · 100 А·ч LFP · rated 5 кВт / 1 ч (long-time backup). Ставится в шкаф S3C100-1C-12-MX (до 12 модулей).',
+    systemDescription: 'Модуль S3M100-1C-240-X · 100 А·ч LFP · rated 5 кВт / 1 ч (long-time backup). Ставится в шкаф S3C100-1C-12-MX (до 12 модулей).',
     packaging: {
       cabinetModel: 'S3C100-1C-12-MX',
       maxPerCabinet: 12,
