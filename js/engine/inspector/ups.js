@@ -19,6 +19,7 @@ import { isS3Module as _isS3Module, resolveS3Wiring as _resolveS3Wiring,
          computeS3Configuration as _computeS3Configuration } from '../../../shared/battery-s3-logic.js';
 // v0.59.429: плагин типа АКБ S³ для автосборки шкафов в модалке инспектора.
 import { s3LiIonType as _s3LiIonType } from '../../../shared/battery-types/s3-li-ion.js';
+import { renderS3IsoSvg as _renderS3IsoSvg } from '../../../shared/battery-types/s3-iso-view.js';
 
 // forward-объявление — renderInspector устанавливается через bind
 let _renderInspector = null;
@@ -1267,11 +1268,18 @@ function _renderUpsBatteryBody(n) {
         options: { masterVariant: masterVar, slaveVariant: slaveVar, fireFighting, minCabinets: _minCabs },
       });
       const accessoryCatalog = catalog.filter(b => b && b.systemSubtype === 'accessory');
-      const cabRows = spec.cabinets.map(c => {
-        const role = c.role === 'master' ? 'Master' : c.role === 'slave' ? 'Slave' : 'Combiner';
+      // v0.59.435: группируем одинаковые шкафы.
+      const _grp = [];
+      for (const c of spec.cabinets) {
         const fill = c.role === 'combiner' ? '— (DC busbar)' :
           `${c.modulesInCabinet} мод.${c.emptySlots > 0 ? ` + ${c.emptySlots} заглушек` : ''}`;
-        return `<tr><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${role}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea"><b>${escHtml(c.model)}</b></td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${fill}</td></tr>`;
+        const k = `${c.role}|${c.model}|${fill}`;
+        const f = _grp.find(g => g.k === k);
+        if (f) f.qty += 1; else _grp.push({ k, role: c.role, model: c.model, fill, qty: 1 });
+      }
+      const cabRows = _grp.map(g => {
+        const role = g.role === 'master' ? 'Master' : g.role === 'slave' ? 'Slave' : 'Combiner';
+        return `<tr><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${role}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea"><b>${escHtml(g.model)}</b></td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea">${g.fill}</td><td style="padding:3px 8px;border-bottom:1px solid #e0e3ea;text-align:center"><b>${g.qty}</b></td></tr>`;
       }).join('');
       const accRows = (spec.accessories || []).map(a => {
         const cat = accessoryCatalog.find(x => x.id === a.id);
@@ -1294,11 +1302,15 @@ function _renderUpsBatteryBody(n) {
         const perCab = cRateChk.reqKw / Math.max(1, _realCabs);
         cRateBlock += `<div class="muted" style="font-size:11px;margin-top:6px">Загрузка по C-rate: ${used.toFixed(1)}% от паспорта (${fmt(cRateChk.ratedSystemKw)} кВт при ${cRateChk.cRate}C × ${s3Cfg.totalModules} мод.) · На шкаф: ${fmt(perCab)} кВт / 200 кВт лимит.</div>`;
       }
+      // v0.59.435: изометрический «3D» вид сборки.
+      let _isoSvg = '';
+      try { _isoSvg = _renderS3IsoSvg(spec, { capacityAh: picked && picked.capacityAh }) || ''; } catch (_e) {}
       h.push(`<details style="margin-top:8px;background:#eff7ff;border:1px solid #bbdefb;border-radius:6px;padding:8px 12px">
         <summary style="cursor:pointer;font-weight:600;font-size:12px">Состав системы S³ (автосборка) — ${spec.cabinets.length} шкаф(ов)${(spec.accessories||[]).length ? ' + ' + spec.accessories.length + ' аксессуаров' : ''}</summary>
         <div style="margin-top:8px">
+          ${_isoSvg ? `<div style="margin-bottom:8px;overflow:auto">${_isoSvg}</div>` : ''}
           <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <thead><tr style="background:#fff"><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Роль</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Модель</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Заполнение</th></tr></thead>
+            <thead><tr style="background:#fff"><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Роль</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Модель</th><th style="text-align:left;padding:3px 8px;border-bottom:2px solid #bbdefb">Заполнение</th><th style="text-align:center;padding:3px 8px;border-bottom:2px solid #bbdefb;width:60px">Кол-во</th></tr></thead>
             <tbody>${cabRows}</tbody>
           </table>
           ${accRows ? `<div style="margin-top:8px;font-size:11px;font-weight:600">Аксессуары</div>

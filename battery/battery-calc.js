@@ -21,6 +21,7 @@ import { listUpses, getUps } from '../shared/ups-catalog.js';
 import { isS3Module, computeS3Configuration, findMinimalS3Config } from '../shared/battery-s3-logic.js';
 // v0.59.427: плагин типа АКБ S³ — автосборка master/slave/combiner + аксессуары.
 import { s3LiIonType } from '../shared/battery-types/s3-li-ion.js';
+import { renderS3IsoSvg } from '../shared/battery-types/s3-iso-view.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -1258,11 +1259,20 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
   }
   const autoBumped = minCabinets > 0 && spec.cabinets.filter(c => c.role !== 'combiner').length > Math.ceil(totalModules / (battery.packaging?.maxPerCabinet || 4));
 
-  const cabinetRows = spec.cabinets.map(c => {
-    const roleLabel = c.role === 'master' ? 'Master' : c.role === 'slave' ? 'Slave' : 'Combiner';
+  // v0.59.435: группируем одинаковые шкафы (роль + модель + заполнение)
+  // и выводим колонку «Кол-во» вместо повторения N одинаковых строк.
+  const groups = [];
+  for (const c of spec.cabinets) {
     const fillStr = c.role === 'combiner' ? '— (шинная разводка DC)' :
       `${c.modulesInCabinet} мод.${c.emptySlots > 0 ? ` + ${c.emptySlots} заглушек` : ''}`;
-    return `<tr><td>${escHtml(roleLabel)}</td><td><b>${escHtml(c.model)}</b></td><td>${fillStr}</td></tr>`;
+    const key = `${c.role}|${c.model}|${fillStr}`;
+    const found = groups.find(g => g.key === key);
+    if (found) found.qty += 1;
+    else groups.push({ key, role: c.role, model: c.model, fillStr, qty: 1 });
+  }
+  const cabinetRows = groups.map(g => {
+    const roleLabel = g.role === 'master' ? 'Master' : g.role === 'slave' ? 'Slave' : 'Combiner';
+    return `<tr><td>${escHtml(roleLabel)}</td><td><b>${escHtml(g.model)}</b></td><td>${g.fillStr}</td><td style="text-align:center"><b>${g.qty}</b></td></tr>`;
   }).join('');
 
   const accRows = (spec.accessories || []).map(a => {
@@ -1274,8 +1284,13 @@ function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
 
   let html = `<div class="result-block" style="margin-top:14px">`;
   html += `<div class="result-title">Состав системы (автосборка)</div>`;
+  // v0.59.435: изометрический «3D» вид сборки шкафов.
+  try {
+    const iso = renderS3IsoSvg(spec, { capacityAh: battery.capacityAh });
+    if (iso) html += `<div style="margin-top:10px;overflow:auto">${iso}</div>`;
+  } catch (e) { /* iso-вид опционален */ }
   html += `<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">`;
-  html += `<thead><tr style="background:#f5f7fa"><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Роль</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Модель шкафа</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Заполнение</th></tr></thead>`;
+  html += `<thead><tr style="background:#f5f7fa"><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Роль</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Модель шкафа</th><th style="text-align:left;padding:6px;border:1px solid #e0e3ea">Заполнение</th><th style="text-align:center;padding:6px;border:1px solid #e0e3ea;width:60px">Кол-во</th></tr></thead>`;
   html += `<tbody>${cabinetRows.replace(/<td>/g, '<td style="padding:6px;border:1px solid #e0e3ea">')}</tbody>`;
   html += `</table>`;
 
