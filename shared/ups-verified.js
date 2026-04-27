@@ -18,7 +18,7 @@ const VERIFIED_VDC_IDS = new Set([
   'eaton-93ps-40k',
   'eaton-9395-500k', 'eaton-9395-1100k',
   // Schneider
-  'schneider-galaxy-vs-60k',
+  'schneider-galaxy-vs-60k', 'schneider-galaxy-vs-100k',
   // Kehua — указаны страницы каталога в source
   'kehua-mr33120-30k', 'kehua-mr33200-50k', 'kehua-mr33300-50k',
   'kehua-mr33400-50k', 'kehua-mr33500-50k', 'kehua-mr33600-50k',

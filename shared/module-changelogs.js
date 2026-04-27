@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.483', date: '2026-04-27', items: [
+      '✅ <b>Schneider Galaxy VS 100 kW — V_DC окно verified.</b> 384-480 (estimate) → <b>384-576 В</b> по datasheet (securepower.com GVSUPS100KGS): external battery 480-576 VDC at float, EoD 384 VDC. То же окно что у уже verified VS 60 kW — общее семейство.',
+      '• Запись в <code>shared/ups-verified.js</code>, seedVersion 10→11 force-upsert.',
+      'Verified в preview: «Schneider Galaxy VS 100 kVA · V_DC 384…576 В ✓».',
+    ] },
     { version: '0.59.482', date: '2026-04-27', items: [
       '✅ <b>Eaton 9395P 1100 kVA — V_DC окно verified.</b> Datasheet «Power Xpert 9395P 1000-1200 kVA Technical Specification»: 38-41 jars × 12В × 6 cells, EoD 1.67-1.75 VPC, battery DC voltage range <b>456-492 В</b> (то же узкое окно что у 500-600 kVA — характерно для всей серии 9395P).',
       '• Запись в <code>shared/ups-verified.js</code> — green ✓ в info-строке Battery-calc.',

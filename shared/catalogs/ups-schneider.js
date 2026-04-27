@@ -59,9 +59,11 @@ export const SCHNEIDER_UPSES = [
     model: 'Galaxy VS 100 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 100, capacityKw: 100, phases: 3,
     efficiency: 97, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
+    // Galaxy VS 100kW: external battery 480-576 VDC at float, EoD 384 VDC.
+    // Operating range 384-576 (verified securepower.com GVSUPS100KGS).
+    vdcMin: 384, vdcMax: 576, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VS datasheet 2024',
+    source: 'Schneider Galaxy VS 100kVA datasheet (battery 384-576 VDC)',
     importedAt: 0, custom: false,
     notes: 'Моноблок 100 кВА · 3ф · ECOnversion eco-mode 99%.',
   },
