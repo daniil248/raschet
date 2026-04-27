@@ -2017,7 +2017,13 @@ function doCalc() {
   const endV = Number(get('calc-endv').value) || 1.75;
   const invEff = Math.max(0.5, Math.min(1, (Number(get('calc-inveff').value) || 94) / 100));
   const mode = get('calc-mode').value;
-  const targetMin = Number(get('calc-target').value) || 10;
+  // v0.59.485: для auto-режима читаем calc-target-auto (свой input), для
+  // required — calc-target. Раньше всегда читался calc-target → в auto
+  // режиме targetMin был зашит на дефолт 10 независимо от ввода
+  // пользователя в видимое поле «Целевая автономия» auto-варианта.
+  const targetMin = (mode === 'auto')
+    ? (Number(get('calc-target-auto')?.value) || Number(get('calc-target')?.value) || 10)
+    : (Number(get('calc-target')?.value) || 10);
   const capacityAh = Number(get('calc-capAh').value) || 100;
 
   // v0.59.417: S³-модуль идёт по отдельной ветке через ЕДИНЫЙ shared-модуль

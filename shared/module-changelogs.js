@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.485', date: '2026-04-27', items: [
+      '🐛 <b>Fix: auto-режим игнорировал поле «Целевая автономия» (auto-вариант).</b> В режиме «Авто-оптимум» видимое поле — <code>#calc-target-auto</code>, но <code>doCalc</code> всегда читал <code>#calc-target</code> (для режима required, который скрыт в auto). Поэтому targetMin был зашит на дефолт 10 мин — независимо от того, что пользователь вводил «20», «100» или любое другое значение, S³-результат всегда был одинаковым (42 модуля).',
+      '• Fix: <code>const targetMin = (mode === \'auto\') ? get(\'calc-target-auto\').value : get(\'calc-target\').value</code>.',
+      '• Verified в preview: target=100 → 5 шкафов × 17 мод = 85; target=20 → 3 шкафа × 17 = 51 (разный результат от target).',
+      'Файлы: <code>battery/battery-calc.js</code> — функция <code>doCalc</code>.',
+    ] },
     { version: '0.59.484', date: '2026-04-27', items: [
       '🔧 <b>Fix: «развернуть» 3D-вид — нормальный fullscreen-оверлей.</b> Раньше при клике 3D-окно «застревало» в верхней части страницы (после v0.59.479 кнопка работала, но переключение position:fixed на самом wrap не давало корректный результат — родительский <code>display:flex</code> и стили мешали). Теперь:',
       '• Создаётся выделенный <code>position:fixed; inset:0; z-index:99999</code> body-level overlay.',
