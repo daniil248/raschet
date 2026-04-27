@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.490', date: '2026-04-27', items: [
+      '✅ <b>Schneider Galaxy VS 40 kW — V_DC окно verified.</b> 400V вариант GVSUPS40KHS: battery <b>384-480 VDC</b>. Раньше 360-480 estimate. Для 480V варианта (GVSUPS40KGS) — 480-576 VDC, отмечено в notes.',
+      '• Запись добавлена в <code>shared/ups-verified.js</code> → green ✓ в Battery-calc.',
+      '• seedVersion 12→13 force-upsert.',
+      'Verified в preview: «Galaxy VS 40 kVA · 40 кВт · η=97% · V_DC 384…480 В ✓».',
+    ] },
     { version: '0.59.489', date: '2026-04-27', items: [
       '🔧 <b>S³ в режиме «Автономия» — manual N/M + терминология модулей.</b> Раньше для S³ нельзя было задать конкретную сборку (N модулей × M шкафов) — алгоритм всегда брал максимум модулей и минимум шкафов по нагрузке. Теперь:',
       '• Поле «Блоков в цепочке (N)» → <b>«Модулей в шкафу (N)»</b> при выбранном S³-модуле.',

@@ -36,9 +36,11 @@ export const SCHNEIDER_UPSES = [
     model: 'Galaxy VS 40 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 40, capacityKw: 40, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
-    vdcMin: 360, vdcMax: 480, inputs: 1, outputs: 1,
+    // Galaxy VS 40 kW (400V вариант GVSUPS40KHS): battery 384-480 VDC.
+    // Для 480V варианта (GVSUPS40KGS) — 480-576 VDC.
+    vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VS datasheet 2024',
+    source: 'Schneider Galaxy VS 40kW 400V datasheet (battery 384-480 VDC)',
     importedAt: 0, custom: false,
     notes: 'Моноблок 40 кВА · 3ф.',
   },
