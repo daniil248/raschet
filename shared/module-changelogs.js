@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.523', date: '2026-04-27', items: [
+      '🩹 <b>Fix: карточка проекта показывает «Схемы · 0», хотя на главной «Мои схемы» эта схема привязана</b>. По репорту пользователя — расхождение между двумя страницами проекта 25013_Qarmet Темиртау.',
+      '• <b>Корень бага</b>: <code>projects/project.js</code> async-блок enrichment для группы «Схемы» использовал <code>await window.Storage.listMyProjects()</code>. Storage-адаптер инициализируется асинхронно (Firebase compat scripts), и до его готовности listMyProjects может вернуть пусто или закидать в catch. Если не успеет до рендера — группа остаётся «Схем нет».',
+      '• <b>Fix</b>: переписано на синхронный <code>listProjects()</code> из <code>shared/project-storage.js</code>. Это тот же LS-ключ <code>raschet.projects.v1</code> что и Local Storage-адаптер использует, но без зависимостей от Firebase init. Фильтр <code>s.projectId === p.id</code> + защита от попадания project-контейнеров (по id-префиксу p_/s_ и kind=full/sketch).',
+      '• <b>Эффект</b>: после Ctrl+F5 на карточке проекта 25013_Qarmet Темиртау должна появиться схема «25013-GEP-ENG-ELC-901_Qarmet Те...» в группе «⚡ Схемы · 1».',
+      'Файлы: <code>projects/project.js</code> — переписан async-блок на синхронный read.',
+    ] },
     { version: '0.59.522', date: '2026-04-27', items: [
       '🗑 <b>Страница «Шкафы проекта» (реестр) удалена</b>. По решению пользователя: функциональность полностью покрывает sidebar Компоновщика шкафа (rack.html), а двойной список с разными счётчиками вносил путаницу (репорт «нет соответствия»).',
       '• <b>scs-config/index.html</b> — теперь thin-redirect на <code>./rack.html</code>. Безусловный (даже если в проекте 0 racks). Параметр <code>?list=1</code> игнорируется. URL <code>/scs-config/</code> продолжает работать — все внешние ссылки (project.js, scs-design, hub, закладки) ведут на компоновщик.',

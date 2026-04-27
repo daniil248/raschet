@@ -459,18 +459,24 @@ function render() {
       }
     };
 
-    // v0.59.374/377: дополнительно показываем в группе «Схемы» legacy-схемы
-    // из window.Storage (то, что видно на главной «Мои схемы» и привязано
-    // к этому проекту через scheme.projectId === p.id).
-    (async () => {
-      try {
-        if (!window.Storage || typeof window.Storage.listMyProjects !== 'function') {
-          console.warn('[project.js] window.Storage не готов — схемы не загружены');
-          return;
-        }
-        const all = await window.Storage.listMyProjects();
-        const mine = (all || []).filter(s => s && s.projectId === p.id);
-        if (!mine.length) return;
+    // v0.59.374/377/523: показываем в группе «Схемы» Storage-схемы
+    // (то, что видно на главной «Мои схемы» и привязано к этому проекту
+    // через scheme.projectId === p.id). Раньше использовался async
+    // window.Storage.listMyProjects(), но он зависел от Storage init и
+    // мог не вернуть данные вовремя. Теперь читаем напрямую из LS
+    // (raschet.projects.v1) синхронно — тот же массив записей. Storage-
+    // схемы детектируются по lp_-префиксу или Storage-полям
+    // (scheme/memberUids/ownerEmail), исключая project-контейнеры.
+    try {
+      const allRecs = listProjects() || [];
+      const mine = allRecs.filter(s => {
+        if (!s || !s.id || s.projectId !== p.id) return false;
+        // Защита: сюда не должны попадать project-контейнеры
+        if (s.id.startsWith('p_') || s.id.startsWith('s_')) return false;
+        if (s.kind === 'full' || s.kind === 'sketch') return false;
+        return true;
+      });
+      if (mine.length) {
         const rowsHtml = mine.map(s => {
           const href = '../index.html?project=' + encodeURIComponent(s.id) + '&from=projects&fromCtx=' + encodeURIComponent(p.id);
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
@@ -481,8 +487,8 @@ function render() {
           </div>`;
         }).join('');
         _enrichGroup('schematic', rowsHtml, mine.length);
-      } catch (e) { console.warn('[project.js] legacy schemes load failed', e); }
-    })();
+      }
+    } catch (e) { console.warn('[project.js] schemes load failed', e); }
 
     // v0.59.377: legacy-СКС в этом проекте — данные лежат под
     // raschet.project.<p.id>.scs-design.links.v1 (без подпроекта).
