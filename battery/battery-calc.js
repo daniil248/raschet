@@ -1294,9 +1294,7 @@ function _refreshDcExplanation() {
         + `Конечное при разряде ≈ ${dcEnd} В, при float ≈ ${dcFloat} В — оба в допуске.`
       : `<b style="color:#c62828">⚠ Диапазон не покрывается:</b> N<sub>min</sub>=${o.nLow} > N<sub>max</sub>=${o.nHigh}. `
         + (() => {
-            // v0.59.451: подсказываем подходящий блок. Окно V_DC задаёт допустимый
-            // диапазон blockV: blockV ≤ V_DC_max_eff/(N·floatV/blockV) и
-            // blockV ≥ V_DC_min_eff/(N·endV/blockV). Перебираем стандартные.
+            // v0.59.451: подсказываем подходящий блок.
             const candidates = [2, 4, 6, 12].filter(bv => bv !== blockV);
             const altsOk = candidates.filter(bv => {
               const cells = Math.max(1, Math.round(bv / 2));
@@ -1306,10 +1304,24 @@ function _refreshDcExplanation() {
               const nMax = Math.floor(o.vMaxEff / flB);
               return nMin <= nMax && nMin >= 1;
             });
+            // v0.59.454: считаем минимальный endV, при котором уравнение
+            // решается. endV_min = vMinEff / (nMaxFloat · cellsPerBlock).
+            // Также показываем при каком U/блок ИБП отключится при N=nMaxFloat.
+            const endVmin = o.nMaxFloat > 0
+              ? (o.vMinEff / (o.nMaxFloat * o.cellsPerBlock))
+              : null;
             const tip = altsOk.length
               ? `Попробуйте блок <b>${altsOk.join(' или ')} В</b> вместо ${blockV} В — окно V<sub>DC</sub> для них покрывается. `
-              : `Окно V<sub>DC</sub> ${(o.vMinEff/(1+(o.vdcSafetyPct/100||0))).toFixed(0)}…${(o.vMaxEff/(1-(o.vdcSafetyPct/100||0))).toFixed(0)} В слишком узкое — нужен другой ИБП. `;
-            return tip + `Альтернативно: уменьшите endV (типично 1.80…1.85 для VRLA) или Vdc-safety.`;
+              : '';
+            const physics = endVmin && endVmin <= 2.0
+              ? `<br><b>Физический смысл:</b> при N=${o.nMaxFloat} блоков (макс. для флоата ${o.floatVperBlock.toFixed(2)} В/блок) ИБП отключится по нижнему порогу при `
+                + `${(o.vMinEff/o.nMaxFloat).toFixed(2)} В/блок = <b>${endVmin.toFixed(2)} В/эл.</b> — это и есть <b>минимальный достижимый endV</b> на этом ИБП. `
+                + `Глубже разрядить нельзя: ИБП первым уйдёт в shutdown.`
+              : `<br><b>Физический смысл:</b> соотношение float/end = ${(o.floatVperCell/endV).toFixed(3)} больше окна ИБП V<sub>max</sub>/V<sub>min</sub> = ${(o.vMaxEff/o.vMinEff).toFixed(3)} → батарея «качается» сильнее, чем готов терпеть ИБП. Нужен ИБП с более широким окном.`;
+            const action = endVmin && endVmin <= 2.0
+              ? `<br><b>Решение:</b> установите endV ≥ ${endVmin.toFixed(2)} В/эл. (рекомендую ${Math.ceil(endVmin*100)/100} В/эл.) — тогда N=${o.nMaxFloat} впишется и в разряд, и во флоат.`
+              : `<br><b>Решение:</b> снизьте float (если допускает АКБ) или возьмите ИБП с более широким V<sub>DC</sub>.`;
+            return tip + physics + action;
           })())
     + `</div>`;
 }
