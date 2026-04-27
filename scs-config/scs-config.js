@@ -165,6 +165,9 @@ const state = {
   cart: [],          // 1.24.28 — «тележка»: [{id, typeId, label, fromRackId, fromRackName, pduFeed, pduOutlet, takenAt}]
   rackTags: {},      // 1.24.23 — { [rackId]: 'DC1.H3.R05' }
   warehouse: [],     // 1.24.32 — склад: та же модель что cart
+  // v0.59.538: множественный выбор стоек в сайдбаре для bulk-операций
+  // (применить корпус, переименовать по маске и т.п.). Set<rackId>.
+  bulkSelection: new Set(),
   // view mode: 'scs' — цвет по типу; 'power' — цвет по вводу PDU (1.24.11)
   viewMode: 'scs',
   // v0.59.245: face mode — какой «вид» стойки рисуется.
@@ -3456,7 +3459,10 @@ function rerenderPreview() {
 function rerender() { renderRackPicker(); renderRacksSidebar(); renderTemplates(); renderCorpusPicker(); renderContents(); renderMatrix(); rerenderPreview(); renderCart(); renderWarehouse(); }
 
 /* 1.24.39 — сайдбар со списком всех шкафов проекта (в rack.html).
-   Клик по карточке переключает state.currentRackId + URL без перезагрузки. */
+   Клик по карточке переключает state.currentRackId + URL без перезагрузки.
+   v0.59.538: + чекбокс multi-select в углу карточки. Когда отмечено ≥1,
+   над списком появляется bulk-toolbar (применить корпус / переименовать по
+   маске / снять выбор). */
 function renderRacksSidebar() {
   const host = $('sc-racks-side'); if (!host) return;
   const list = projectRacks();
@@ -3469,7 +3475,23 @@ function renderRacksSidebar() {
     });
     return;
   }
-  host.innerHTML = list.map(r => {
+  // Чистка выбора от устаревших id (если стойка ушла из списка).
+  const validIds = new Set(list.map(r => r.id));
+  for (const id of [...state.bulkSelection]) {
+    if (!validIds.has(id)) state.bulkSelection.delete(id);
+  }
+  const selN = state.bulkSelection.size;
+  const toolbarHtml = selN > 0
+    ? `<div class="sc-bulk-toolbar" style="position:sticky;top:0;z-index:5;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <b style="color:#92400e">✓ ${selN}</b>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-corpus" title="Применить выбранный шаблон корпуса ко всем отмеченным стойкам" style="font-size:10px;padding:3px 8px">📐 Корпус</button>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-mask" title="Переименовать теги по маске. Поддерживается {n} (1,2,3…) и {n:0K} с zero-padding (например {n:02} → 01,02…)" style="font-size:10px;padding:3px 8px">🏷 Маска</button>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-attrs" title="Изменить общие параметры (U/ширина/глубина/комментарий) у всех отмеченных" style="font-size:10px;padding:3px 8px">✏️ Параметры</button>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-all" title="Отметить все стойки списка" style="font-size:10px;padding:3px 8px">⊕ Все</button>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-clear" title="Снять отметку со всех" style="font-size:10px;padding:3px 8px;margin-left:auto">✕</button>
+      </div>`
+    : `<div class="sc-bulk-hint" style="font-size:10px;color:#94a3b8;padding:2px 4px 6px"><label style="cursor:pointer"><input type="checkbox" data-act="bulk-all-cb" style="vertical-align:middle;margin-right:4px"> Множ. выбор</label></div>`;
+  host.innerHTML = toolbarHtml + list.map(r => {
     const devs = state.contents[r.id] || [];
     const usedU = devs.reduce((s, d) => {
       const t = state.catalog.find(c => c.id === d.typeId);
@@ -3494,8 +3516,10 @@ function renderRacksSidebar() {
       : (r.fromPorGroup
         ? `<span title="Слот POR-группы потребителей (count=${r.schemeTotal||1}). Может быть анонимным или уже материализованным членом." style="background:#ecfccb;color:#3f6212;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">⊞ из группы</span>`
         : '');
-    return `<div class="sc-rack-card${active}${isVirtual ? ' sc-rack-card-virtual' : ''}" data-rackid="${r.id}" title="${isVirtual ? 'Виртуальная (из схемы/группы) — открыть и наполнить' : 'Открыть'}">
-      <div class="sc-rack-card-top">
+    const isChecked = state.bulkSelection.has(r.id);
+    return `<div class="sc-rack-card${active}${isVirtual ? ' sc-rack-card-virtual' : ''}${isChecked ? ' sc-rack-card-bulk' : ''}" data-rackid="${r.id}" title="${isVirtual ? 'Виртуальная (из схемы/группы) — открыть и наполнить' : 'Открыть'}" style="${isChecked ? 'box-shadow:0 0 0 2px #f59e0b;background:#fffbeb;' : ''}position:relative">
+      <input type="checkbox" class="sc-rack-card-cb" data-bulk-rackid="${r.id}" ${isChecked ? 'checked' : ''} title="Множественный выбор" style="position:absolute;top:6px;right:6px;cursor:pointer;width:14px;height:14px;margin:0;z-index:2">
+      <div class="sc-rack-card-top" style="padding-right:22px">
         ${tag ? `<code>${escape(tag)}</code>` : `<span class="muted">—</span>`}${virtualBadge}
         <span class="muted">${full}U</span>
       </div>
@@ -3509,13 +3533,245 @@ function renderRacksSidebar() {
   }).join('');
   // v0.59.255: клик — явный переход (URL + full reload), чтобы пользователь
   // не переключал стойку случайно. Активная карточка не кликабельна.
+  // v0.59.538: клик по чекбоксу/тулбару не должен триггерить навигацию.
   host.querySelectorAll('.sc-rack-card').forEach(card => {
-    card.addEventListener('click', () => {
+    card.addEventListener('click', (ev) => {
+      if (ev.target.closest('.sc-rack-card-cb')) return; // чекбокс
       const id = card.dataset.rackid;
       if (id === state.currentRackId) return;
       location.href = `./rack.html?rackId=${encodeURIComponent(id)}`;
     });
   });
+  // Чекбоксы: toggle selection.
+  host.querySelectorAll('.sc-rack-card-cb').forEach(cb => {
+    cb.addEventListener('click', ev => ev.stopPropagation());
+    cb.addEventListener('change', () => {
+      const id = cb.dataset.bulkRackid;
+      if (cb.checked) state.bulkSelection.add(id);
+      else state.bulkSelection.delete(id);
+      renderRacksSidebar();
+    });
+  });
+  // Toolbar кнопки.
+  host.querySelector('[data-act="bulk-corpus"]')?.addEventListener('click', bulkApplyCorpus);
+  host.querySelector('[data-act="bulk-mask"]')?.addEventListener('click', bulkRenameByMask);
+  host.querySelector('[data-act="bulk-attrs"]')?.addEventListener('click', bulkEditAttrs);
+  host.querySelector('[data-act="bulk-all"]')?.addEventListener('click', () => {
+    list.forEach(r => state.bulkSelection.add(r.id));
+    renderRacksSidebar();
+  });
+  host.querySelector('[data-act="bulk-clear"]')?.addEventListener('click', () => {
+    state.bulkSelection.clear();
+    renderRacksSidebar();
+  });
+  host.querySelector('[data-act="bulk-all-cb"]')?.addEventListener('change', e => {
+    if (e.target.checked) {
+      list.forEach(r => state.bulkSelection.add(r.id));
+      renderRacksSidebar();
+    }
+  });
+}
+
+/* ---- v0.59.538: bulk-операции над выбранными стойками ----------------- */
+
+/** Парсит маску с {n} или {n:0K}: 'SR{n:02}' + idx=3 → 'SR03'. */
+function expandMask(mask, idx) {
+  return String(mask || '').replace(/\{n(?::0(\d+))?\}/g, (_, w) => {
+    const s = String(idx);
+    return w ? s.padStart(parseInt(w, 10), '0') : s;
+  });
+}
+
+/** Стоики, отмеченные галочкой, в текущем порядке list-а (a→z по UI-сортировке). */
+function _bulkSelected() {
+  const list = projectRacks();
+  return list.filter(r => state.bulkSelection.has(r.id));
+}
+
+/** Применить шаблон корпуса ко всем отмеченным стойкам. */
+async function bulkApplyCorpus() {
+  const sel = _bulkSelected();
+  if (!sel.length) { scToast('Не отмечено ни одной стойки', 'warn'); return; }
+  // Виртуалы (fromScheme/fromPorGroup) не имеют записи в state.racks как
+  // настоящего объекта — у них нет r-обьекта, который можно записать. Их
+  // надо сначала материализовать. Сообщаем — пропустим.
+  const realSel = sel.filter(r => !(r.fromScheme || r.fromPorGroup));
+  const skippedVirt = sel.length - realSel.length;
+  if (!realSel.length) { scToast('Все отмеченные — виртуальные. Сначала материализуйте через Реестр шкафов.', 'warn'); return; }
+  // Только шаблоны корпусов (без тега) — кандидаты.
+  const templates = state.racks.filter(r => !((state.rackTags && state.rackTags[r.id]) || '').trim() && !r.fromScheme && !r.fromPorGroup);
+  if (!templates.length) { scToast('Нет шаблонов корпусов. Создайте их в Конфигураторе стойки.', 'warn'); return; }
+  // Модалка с выпадающим списком шаблонов.
+  const tplId = await new Promise(resolve => {
+    const back = document.createElement('div');
+    back.className = 'sc-modal-back';
+    back.innerHTML = `
+      <div class="sc-modal-card" role="dialog" aria-modal="true" style="min-width:420px">
+        <div class="sc-modal-title">📐 Применить корпус — ${realSel.length} стоек${skippedVirt ? ` <span style="font-size:11px;color:#b45309">(${skippedVirt} виртуальных пропущено)</span>` : ''}</div>
+        <div class="sc-modal-msg">Геометрия (U/ширина/глубина/двери) и PDU-набор будут заменены на выбранный шаблон. Содержимое (устройства) сохранится.</div>
+        <select id="sc-bulk-corpus-sel" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:6px">
+          ${templates.map(t => `<option value="${escape(t.id)}">${escape(t.name || t.id)} · ${t.u || 42}U · ${t.width || 600}×${t.depth || 800}мм</option>`).join('')}
+        </select>
+        <div class="sc-modal-actions" style="margin-top:14px">
+          <button type="button" class="sc-btn" data-v="0">Отмена</button>
+          <button type="button" class="sc-btn sc-btn-primary" data-v="1">Применить ко всем</button>
+        </div>
+      </div>`;
+    scUiHost().appendChild(back);
+    const close = (id) => { back.classList.remove('sc-modal-open'); setTimeout(() => back.remove(), 150); resolve(id); };
+    back.querySelector('[data-v="1"]').addEventListener('click', () => close(back.querySelector('#sc-bulk-corpus-sel').value));
+    back.querySelector('[data-v="0"]').addEventListener('click', () => close(null));
+    back.addEventListener('click', ev => { if (ev.target === back) close(null); });
+    requestAnimationFrame(() => back.classList.add('sc-modal-open'));
+  });
+  if (!tplId) return;
+  const tpl = state.racks.find(x => x.id === tplId);
+  if (!tpl) { scToast('Шаблон не найден', 'err'); return; }
+  const SKIP = new Set(['id', 'comment', 'sourceTemplateId', 'sourceTemplateName', '_corpusBackup']);
+  let applied = 0;
+  for (const r of realSel) {
+    r._corpusBackup = snapshotCorpus(r);
+    Object.keys(tpl).forEach(k => {
+      if (SKIP.has(k)) return;
+      r[k] = (tpl[k] && typeof tpl[k] === 'object') ? JSON.parse(JSON.stringify(tpl[k])) : tpl[k];
+    });
+    r.sourceTemplateId = tpl.id;
+    r.sourceTemplateName = tpl.name || tpl.id;
+    applied++;
+  }
+  saveRacks();
+  rerender();
+  scToast(`Корпус «${tpl.name}» применён к ${applied} стойкам${skippedVirt ? ` (${skippedVirt} виртуальных пропущено)` : ''}`, 'ok');
+}
+
+/** Переименовать теги по маске. Маска: 'SR{n:02}' → SR01, SR02, …. */
+async function bulkRenameByMask() {
+  const sel = _bulkSelected();
+  if (!sel.length) { scToast('Не отмечено ни одной стойки', 'warn'); return; }
+  const realSel = sel.filter(r => !(r.fromScheme || r.fromPorGroup));
+  const skippedVirt = sel.length - realSel.length;
+  if (!realSel.length) { scToast('Виртуалы переименовываются на стороне схемы (узел consumer-rack) или POR-группы. Здесь — только реальные стойки.', 'warn'); return; }
+  const result = await new Promise(resolve => {
+    const back = document.createElement('div');
+    back.className = 'sc-modal-back';
+    back.innerHTML = `
+      <div class="sc-modal-card" role="dialog" aria-modal="true" style="min-width:460px">
+        <div class="sc-modal-title">🏷 Переименовать по маске — ${realSel.length} стоек${skippedVirt ? ` <span style="font-size:11px;color:#b45309">(${skippedVirt} виртуальных пропущено)</span>` : ''}</div>
+        <div class="sc-modal-msg">Тег каждой отмеченной стойки заменяется на результат подстановки маски. Поддерживается:<br>
+          <code>{n}</code> — счётчик (1, 2, 3…),  <code>{n:02}</code> — с дополнением нулями (01, 02…).
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-top:8px">
+          <label style="font-size:12px">Маска <input id="sc-bulk-mask" type="text" value="SR{n:02}" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:2px"></label>
+          <label style="font-size:12px">Старт <input id="sc-bulk-start" type="number" value="1" min="0" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:2px"></label>
+        </div>
+        <div id="sc-bulk-preview" style="margin-top:10px;font-size:11px;color:#475569;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:6px 8px;max-height:120px;overflow:auto"></div>
+        <div class="sc-modal-actions" style="margin-top:14px">
+          <button type="button" class="sc-btn" data-v="0">Отмена</button>
+          <button type="button" class="sc-btn sc-btn-primary" data-v="1">Переименовать</button>
+        </div>
+      </div>`;
+    scUiHost().appendChild(back);
+    const maskEl  = back.querySelector('#sc-bulk-mask');
+    const startEl = back.querySelector('#sc-bulk-start');
+    const prevEl  = back.querySelector('#sc-bulk-preview');
+    const updatePreview = () => {
+      const start = parseInt(startEl.value, 10) || 0;
+      const items = realSel.map((r, i) => {
+        const newTag = expandMask(maskEl.value, start + i);
+        const oldTag = (state.rackTags[r.id] || '').trim() || '—';
+        return `<div><code>${escape(oldTag)}</code> → <code style="color:#0369a1">${escape(newTag)}</code></div>`;
+      });
+      prevEl.innerHTML = items.join('');
+    };
+    maskEl.addEventListener('input', updatePreview);
+    startEl.addEventListener('input', updatePreview);
+    updatePreview();
+    const close = (v) => { back.classList.remove('sc-modal-open'); setTimeout(() => back.remove(), 150); resolve(v); };
+    back.querySelector('[data-v="1"]').addEventListener('click', () => close({
+      mask: maskEl.value,
+      start: parseInt(startEl.value, 10) || 0,
+    }));
+    back.querySelector('[data-v="0"]').addEventListener('click', () => close(null));
+    back.addEventListener('click', ev => { if (ev.target === back) close(null); });
+    requestAnimationFrame(() => { back.classList.add('sc-modal-open'); maskEl.focus(); maskEl.select(); });
+  });
+  if (!result) return;
+  // Проверяем уникальность новых тегов и отсутствие конфликтов с
+  // существующими (не отмеченными) стойками.
+  const newTags = realSel.map((r, i) => expandMask(result.mask, result.start + i));
+  if (new Set(newTags).size !== newTags.length) {
+    scToast('Маска даёт повторяющиеся теги — увеличьте zero-padding или измените префикс', 'err');
+    return;
+  }
+  const otherTags = new Set(
+    Object.entries(state.rackTags || {})
+      .filter(([id]) => !state.bulkSelection.has(id))
+      .map(([, t]) => (t || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const conflicts = newTags.filter(t => otherTags.has(t.toLowerCase()));
+  if (conflicts.length) {
+    scToast(`Конфликт тегов с существующими: ${conflicts.slice(0,3).join(', ')}${conflicts.length>3?'…':''}`, 'err');
+    return;
+  }
+  realSel.forEach((r, i) => { state.rackTags[r.id] = newTags[i]; });
+  saveRackTags();
+  rerender();
+  scToast(`Переименовано ${realSel.length} стоек по маске «${result.mask}»`, 'ok');
+}
+
+/** Изменить общие параметры (U / width / depth / comment) у выбранных. */
+async function bulkEditAttrs() {
+  const sel = _bulkSelected();
+  if (!sel.length) { scToast('Не отмечено ни одной стойки', 'warn'); return; }
+  const realSel = sel.filter(r => !(r.fromScheme || r.fromPorGroup));
+  const skippedVirt = sel.length - realSel.length;
+  if (!realSel.length) { scToast('Виртуалы редактируются через узел схемы / POR-группу.', 'warn'); return; }
+  const result = await new Promise(resolve => {
+    const back = document.createElement('div');
+    back.className = 'sc-modal-back';
+    back.innerHTML = `
+      <div class="sc-modal-card" role="dialog" aria-modal="true" style="min-width:420px">
+        <div class="sc-modal-title">✏️ Параметры — ${realSel.length} стоек${skippedVirt ? ` <span style="font-size:11px;color:#b45309">(${skippedVirt} виртуальных пропущено)</span>` : ''}</div>
+        <div class="sc-modal-msg">Отмеченные поля будут установлены у всех отмеченных стоек. Не отмеченные — не трогаются.</div>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;margin-top:8px;font-size:12px">
+          <label><input type="checkbox" data-k="u"> U</label>
+          <input type="number" data-v="u" min="1" max="99" value="42" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px">
+          <label><input type="checkbox" data-k="width"> Ширина, мм</label>
+          <input type="number" data-v="width" min="0" value="600" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px">
+          <label><input type="checkbox" data-k="depth"> Глубина, мм</label>
+          <input type="number" data-v="depth" min="0" value="1000" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px">
+          <label><input type="checkbox" data-k="comment"> Коммент.</label>
+          <input type="text" data-v="comment" value="" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px">
+        </div>
+        <div class="sc-modal-actions" style="margin-top:14px">
+          <button type="button" class="sc-btn" data-v="0">Отмена</button>
+          <button type="button" class="sc-btn sc-btn-primary" data-v="1">Применить</button>
+        </div>
+      </div>`;
+    scUiHost().appendChild(back);
+    const close = (v) => { back.classList.remove('sc-modal-open'); setTimeout(() => back.remove(), 150); resolve(v); };
+    back.querySelector('[data-v="1"]').addEventListener('click', () => {
+      const out = {};
+      back.querySelectorAll('[data-k]').forEach(cb => {
+        if (!cb.checked) return;
+        const k = cb.dataset.k;
+        const inp = back.querySelector(`[data-v="${k}"]`);
+        out[k] = (k === 'comment') ? inp.value : Number(inp.value);
+      });
+      close(out);
+    });
+    back.querySelector('[data-v="0"]').addEventListener('click', () => close(null));
+    back.addEventListener('click', ev => { if (ev.target === back) close(null); });
+    requestAnimationFrame(() => back.classList.add('sc-modal-open'));
+  });
+  if (!result || !Object.keys(result).length) return;
+  realSel.forEach(r => {
+    Object.entries(result).forEach(([k, v]) => { r[k] = v; });
+  });
+  saveRacks();
+  rerender();
+  scToast(`Применены параметры [${Object.keys(result).join(', ')}] к ${realSel.length} стойкам`, 'ok');
 }
 
 /* ---- init -------------------------------------------------------------- */
