@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.498', date: '2026-04-27', items: [
+      '✅ <b>DKC Small Tower 1/3 + SMALL+ 6/10 + Modulys GP 25/100 — V_DC verified.</b> Использован <code>pdftotext</code> локально + найдены OEM-источники для DKC (DKC ребрендирует UPS других производителей).',
+      '• <b>DKC Small Tower 1 kVA</b> (User Manual a696d39a, table 16): «Battery Voltage 24 V - 36 V» (2…3 × 12В VRLA в зависимости от backup-варианта standard/long). Раньше 24-28 — слишком узко.',
+      '• <b>DKC Small Tower 3 kVA</b> (тот же manual): «Battery Voltage 72 V - 96 V» (6…8 × 12В VRLA). Существующее <b>72-96</b> совпадает с datasheet — только улучшен notes.',
+      '• <b>DKC SMALL+ 6/10 kVA</b> = OEM <b>Legrand DAKER DK Plus</b> (LE09706AB): «Number of batteries: 20, Rated Battery Voltage: 240 Vdc». Operating window 20 × 12В VRLA = <b>200…288 VDC</b>. Раньше 192-240 — занижено по верхней границе.',
+      '• <b>DKC Modulys GP 25/100</b> = OEM <b>Socomec Modulys GP UL</b> (Brochure DOC-214063USA): «Number of battery blocks (VRLA): from 18+18 to 24+24» (split bus). Operating range rail-to-rail = <b>360…691 VDC</b> (18+18 EoD до 24+24 float). Раньше 360-480 — покрывало только 18+18 конфигурацию.',
+      '• Все 6 id добавлены в <code>shared/ups-verified.js</code>.',
+      '• seedVersion 19→20 force-upsert.',
+      '⏳ <b>Ещё не verified:</b> DKC TwinDom 20/40/80, Modulys XL 300 — datasheets не найдены в открытом доступе. Также Keor HP 100/200 ждёт per-model PDF.',
+      'Файлы: <code>shared/catalogs/ups-dkc.js</code> (small-1k/3k/6k/10k + modulys-25k/100k full update), <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.497', date: '2026-04-27', items: [
       '✅ <b>Legrand Keor LP 3 + HPE 400 + MOD 30 (→25) + MP 300 (→200) — V_DC verified.</b> Использован <code>pdftotext</code> локально на скачанных PDFs (Web-search snippets были недостаточны). Исправлены также два model-name discrepancy:',
       '• <b>Keor LP 3 kVA</b> (datasheet 310158): 72V ном., 6 × 12В VRLA, 36 ячеек. EoD 1.67 → float 2.40 VPC = <b>60…86 VDC</b>. Раньше 72-96 — превышало boost-предел VRLA.',

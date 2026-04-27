@@ -19,6 +19,9 @@
 //   • Legrand Keor MOD 25 (id 30)    → 440-634 (Tech Spec 38559, split bus +/-264V, 44 × 12В)
 //   • Legrand Keor MP 200 (id 300)   → 432-600 (Brochure + UPS_LGR_0241, 432-600 VDC VRLA)
 //   • Legrand Keor HPE 400           → 620-840 (Tech Spec UPS-LGR-0120 + 200-300KVA, 360-372 cells × 12В)
+//   • DKC Small Tower 1/3 kVA        → 24-36 / 72-96 (DKC Small Tower 1000-3000 User Manual)
+//   • DKC SMALL+ 6/10 (= DAKER DK)   → 200-288 (Legrand DAKER DK Plus datasheet LE09706AB, 20 × 12В VRLA)
+//   • DKC Modulys GP 25/100 (= Socomec) → 360-691 (Socomec Modulys GP UL Brochure, 18+18 to 24+24 × 12В split bus)
 //   • Все Kehua MR33/S3 AIO  → паспорт Kehua UPS Catalog 2024-10-22
 // ======================================================================
 
@@ -39,6 +42,10 @@ const VERIFIED_VDC_IDS = new Set([
   'legrand-keor-lp-3k',
   'legrand-keor-mod-30k', 'legrand-keor-mp-300k',
   'legrand-keor-hpe-400k',
+  // DKC
+  'dkc-small-1k', 'dkc-small-3k',
+  'dkc-small-6k', 'dkc-small-10k',
+  'dkc-modulys-25k', 'dkc-modulys-100k',
   // Kehua — указаны страницы каталога в source
   'kehua-mr33120-30k', 'kehua-mr33200-50k', 'kehua-mr33300-50k',
   'kehua-mr33400-50k', 'kehua-mr33500-50k', 'kehua-mr33600-50k',

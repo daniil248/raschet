@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '19'; // v0.59.497: Legrand Keor LP 3 + HPE 400 + MOD 30 (→25) + MP 300 (→200) — verified V_DC через pdftotext PDFs
+const CURRENT_VERSION = '20'; // v0.59.498: DKC Small Tower 1/3 + SMALL+ 6/10 + Modulys GP 25/100 — verified V_DC через pdftotext PDFs (OEM источники: DAKER DK, Socomec)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,
