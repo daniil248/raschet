@@ -127,11 +127,15 @@ export const SCHNEIDER_UPSES = [
     capacityKva: 750, capacityKw: 750, phases: 3,
     frameKw: 1500, moduleKwRated: 250, moduleSlots: 6,
     efficiency: 96.5, cosPhi: 1.0,
-    vdcMin: 432, vdcMax: 540, inputs: 2, outputs: 1,
+    // Galaxy VX 500-1500 kW (общая battery system, та же что у Galaxy VL):
+    // external battery 384-576 VDC. 40 blocks → 480V ном., float 545V;
+    // 48 blocks → 576V ном., float 654V. EoD at full load = 384 VDC.
+    // Раньше 432-540 — было сужено и не покрывало 48-block.
+    vdcMin: 384, vdcMax: 576, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VX datasheet 2024',
+    source: 'Schneider Galaxy VX 500-1500 kW Tech Spec 990-5783 (40-48 × 12В VRLA, 384-576 VDC, EoD 384V)',
     importedAt: 0, custom: false,
-    notes: 'Модульный 750 кВА (3×250 кВт) · 3ф · ЦОД-класс.',
+    notes: 'Модульный 750 кВА (3×250 кВт) · 3ф · ЦОД-класс. АКБ: 40…48 × 12В, 384…576 VDC.',
   },
   {
     id: 'schneider-galaxy-vx-1500k', supplier: 'Schneider Electric',
@@ -139,10 +143,10 @@ export const SCHNEIDER_UPSES = [
     capacityKva: 1500, capacityKw: 1500, phases: 3,
     frameKw: 1500, moduleKwRated: 250, moduleSlots: 6,
     efficiency: 96.5, cosPhi: 1.0,
-    vdcMin: 432, vdcMax: 540, inputs: 2, outputs: 1,
+    vdcMin: 384, vdcMax: 576, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VX datasheet 2024',
+    source: 'Schneider Galaxy VX 500-1500 kW Tech Spec 990-5783 (40-48 × 12В VRLA, 384-576 VDC, EoD 384V)',
     importedAt: 0, custom: false,
-    notes: 'Модульный 1500 кВА (6×250 кВт) · 3ф · ЦОД-класс.',
+    notes: 'Модульный 1500 кВА (6×250 кВт) · 3ф · ЦОД-класс. АКБ: 40…48 × 12В, 384…576 VDC.',
   },
 ];

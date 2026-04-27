@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '16'; // v0.59.494: Schneider Galaxy VL 200/300/500 — verified V_DC 384-576 (40/48 × 12В VRLA)
+const CURRENT_VERSION = '17'; // v0.59.495: Schneider Galaxy VX 750/1500 — verified V_DC 384-576 (та же battery system что у VL)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,

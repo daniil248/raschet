@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.495', date: '2026-04-27', items: [
+      '✅ <b>Schneider Galaxy VX 750 / 1500 kVA — V_DC окно verified.</b> Раньше у обоих было 432-540 — это сужение под 36-jar конфигурацию, которая для Galaxy VX не стандартна. По datasheet «Galaxy VX 500-1500 kW Tech Spec 990-5783» Galaxy VX использует ту же battery system что у Galaxy VL:',
+      '• <b>40 блоков</b>: 480V ном., float 545V.',
+      '• <b>48 блоков</b>: 576V ном., float 654V.',
+      '• EoD at full load = <b>384 VDC</b>. Operating range = <b>384-576 VDC</b>.',
+      '• Battery system общая для всей серии Galaxy VX 500-1500 kW (различаются только числом power-модулей 250 кВт), окно одинаковое.',
+      '• Записи добавлены в <code>shared/ups-verified.js</code> → green ✓ в Battery-calc.',
+      '• seedVersion 16→17 force-upsert.',
+      'Файлы: <code>shared/catalogs/ups-schneider.js</code> (vx-750k / 1500k vdcMin/Max + notes), <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.494', date: '2026-04-27', items: [
       '✅ <b>Schneider Galaxy VL 200 / 300 / 500 kW — V_DC окно verified.</b> Раньше у всех трёх было 384-480 — это покрывало только 40-block конфигурацию, не 48. По datasheet «Galaxy VL Tech Spec 990-91377 (IEC) / 990-91399 (UL)» Galaxy VL поддерживает обе конфигурации внешних АКБ:',
       '• <b>40 блоков</b>: 480V ном., float 545V, max boost 571V.',
