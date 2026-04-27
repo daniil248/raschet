@@ -15,7 +15,8 @@ import {
 } from '../shared/rack-storage.js';
 // v0.59.345: «стойки из схемы» — индивидуальные виртуальные экземпляры
 // для consumer/rack узлов с count=N в Конструкторе схем.
-import { loadSchemeVirtualRacks, mergeWithSchemeRacks } from '../shared/scheme-rack-bridge.js';
+// v0.59.532: + POR consumer-group rack-membership (анонимные слоты ×N).
+import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks, mergeWithSchemeRacks } from '../shared/scheme-rack-bridge.js';
 
 const LS_RACK    = LS_TEMPLATES_GLOBAL;
 const LS_CATALOG = 'scs-config.catalog.v1';
@@ -151,8 +152,17 @@ function render() {
   // v0.59.345: «стойки из схемы» — раскрытые consumer/rack узлы (count=N → N
   // позиций с уникальными авто-тегами). Если пользователь уже материализовал
   // позицию (есть реальная стойка с тем же тегом) — виртуальная скрывается.
+  // v0.59.533: + POR consumer-group rack-membership (анонимные слоты ×N).
   const pid = getActiveProjectId();
-  const virtuals = loadSchemeVirtualRacks(pid);
+  const schemeVirtuals = loadSchemeVirtualRacks(pid);
+  const porGroupVirtuals = loadPorGroupVirtualRacks(pid);
+  // dedup: если scheme-virtual и por-group-virtual ссылаются на один и тот же
+  // объект (по id) — оставляем scheme-virtual (engine-узел авторитетнее).
+  const seenVids = new Set(schemeVirtuals.map(v => v.id));
+  const virtuals = [
+    ...schemeVirtuals,
+    ...porGroupVirtuals.filter(v => !seenVids.has(v.id)),
+  ];
   const { merged: visibleVirtuals } = (() => {
     const m = mergeWithSchemeRacks([], tags, virtuals); // только virtuals не-перекрытые
     // mergeWithSchemeRacks возвращает realRacks ⊕ virtuals; нам тут нужны только virtuals.
@@ -259,9 +269,12 @@ function materializeFromScheme(virtId, tag) {
     rsToast('Тег ' + tag + ' уже занят — материализация отменена', 'error');
     return;
   }
-  const virtuals = loadSchemeVirtualRacks(getActiveProjectId());
-  const v = virtuals.find(x => x.id === virtId);
-  if (!v) { rsToast('Виртуальная стойка не найдена (схема изменилась?)', 'error'); render(); return; }
+  const pid = getActiveProjectId();
+  // v0.59.533: ищем virtual и в scheme-, и в POR-group-источниках.
+  const schemeVs = loadSchemeVirtualRacks(pid);
+  const porGroupVs = loadPorGroupVirtualRacks(pid);
+  const v = schemeVs.find(x => x.id === virtId) || porGroupVs.find(x => x.id === virtId);
+  if (!v) { rsToast('Виртуальная стойка не найдена (схема/группа изменилась?)', 'error'); render(); return; }
 
   const racks = loadAllRacksForActiveProject();
   const inst = {
@@ -269,7 +282,9 @@ function materializeFromScheme(virtId, tag) {
     name: v.name,
     u: v.u || 42,
     occupied: v.occupied || 0,
-    comment: `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, экземпляр ${v.schemeIndex}/${v.schemeTotal})`,
+    comment: v.fromPorGroup
+      ? `Материализовано из POR-группы ${new Date().toISOString().slice(0, 10)} (group ${v.porGroupId}, slot ${v.porGroupSlot}/${v.schemeTotal})`
+      : `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, экземпляр ${v.schemeIndex}/${v.schemeTotal})`,
     schemeNodeId: v.schemeNodeId,
     schemeIndex: v.schemeIndex,
   };
@@ -281,10 +296,14 @@ function materializeFromScheme(virtId, tag) {
   render();
 }
 
-/* v0.59.347: bulk-материализация — все виртуальные «из схемы» сразу. */
+/* v0.59.347: bulk-материализация — все виртуальные «из схемы» сразу.
+   v0.59.533: + POR-group виртуалы (id с дедупом). */
 function materializeAllFromScheme() {
   const pid = getActiveProjectId();
-  const virtuals = loadSchemeVirtualRacks(pid);
+  const schemeVs = loadSchemeVirtualRacks(pid);
+  const porGroupVs = loadPorGroupVirtualRacks(pid);
+  const seenVids = new Set(schemeVs.map(v => v.id));
+  const virtuals = [...schemeVs, ...porGroupVs.filter(v => !seenVids.has(v.id))];
   if (!virtuals.length) return;
   const tags = loadJson(LS_RACKTAGS, {});
   const usedTags = new Set(Object.values(tags).map(t => (t || '').trim()).filter(Boolean));
@@ -297,7 +316,9 @@ function materializeAllFromScheme() {
       name: v.name,
       u: v.u || 42,
       occupied: v.occupied || 0,
-      comment: `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, ${v.schemeIndex}/${v.schemeTotal})`,
+      comment: v.fromPorGroup
+        ? `Материализовано из POR-группы ${new Date().toISOString().slice(0, 10)} (group ${v.porGroupId}, ${v.porGroupSlot}/${v.schemeTotal})`
+        : `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, ${v.schemeIndex}/${v.schemeTotal})`,
       schemeNodeId: v.schemeNodeId,
       schemeIndex: v.schemeIndex,
     };
