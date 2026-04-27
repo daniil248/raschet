@@ -183,9 +183,19 @@ function renderProjectBadge(pid) {
   let legacyStuckAfterAttempt = false;
   if (legacyActive && parent && !parentIsOrphan) {
     const _attemptedFlag = `raschet.scs-design.legacy-migrate-attempted.${parent.id}.session`;
-    const alreadyAttempted = (() => {
+    let alreadyAttempted = (() => {
       try { return sessionStorage.getItem(_attemptedFlag) === '1'; } catch { return false; }
     })();
+    // v0.59.569: если флаг попытки стоит, но sub так и не создан — в прошлый
+    // раз createSubProject упал/вернул null. Сбрасываем флаг и пробуем снова.
+    // Без этого пользователь застревает в state «subs=0 + legacy stuck»
+    // навечно (видит кнопки «Создать СКС» + «Принять legacy», но ни одна
+    // не работает корректно).
+    if (alreadyAttempted && subs.length === 0) {
+      console.info('[scs-design] previous migrate attempt left no sub — resetting flag for retry');
+      try { sessionStorage.removeItem(_attemptedFlag); } catch {}
+      alreadyAttempted = false;
+    }
     if (alreadyAttempted) {
       // Уже пробовали — значит legacy «застрял»: показываем кнопку force-merge.
       legacyStuckAfterAttempt = true;
@@ -196,7 +206,13 @@ function renderProjectBadge(pid) {
         let createdSub = false;
         if (!dest) {
           dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
-          createdSub = true;
+          if (!dest || !dest.id) {
+            // v0.59.569: явная диагностика — раньше silent-fail приводил
+            // к застреванию пользователя на «Создать СКС» + «Принять legacy».
+            console.error('[scs-design] createSubProject returned invalid result:', dest);
+          } else {
+            createdSub = true;
+          }
         }
         if (dest && dest.id) {
           const moved = _migrateLegacyScsToSub(parent.id, dest.id);
