@@ -4363,17 +4363,27 @@ function init() {
   // Удалить фантомы»; теперь это делается прозрачно. Session-flag в
   // sessionStorage чтобы не дёргать каждую перезагрузку, но возобновлять
   // в новой вкладке/после refresh.
+  // v0.59.555: + auto-dedup POR-стоек (одинаковый tag+kW+габариты).
+  // Раньше дубликаты копились (DH1.SR1 ×2, А-01 ×2, L11 ×2 в реальном
+  // проекте пользователя) и требовали ручного клика. Теперь устраняются
+  // автоматически тем же session-flag механизмом.
   try {
     const _pid = getActiveProjectId();
-    if (_pid && typeof window !== 'undefined' && window.RaschetLegacyRackMigration?.cleanupStale) {
+    if (_pid && typeof window !== 'undefined' && window.RaschetLegacyRackMigration) {
       const _flagKey = `raschet.scs-config.cleanup-stale-pid.${_pid}.session`;
       if (!sessionStorage.getItem(_flagKey)) {
-        const _r = window.RaschetLegacyRackMigration.cleanupStale(_pid);
+        const lib = window.RaschetLegacyRackMigration;
+        const _r1 = lib.cleanupStale ? lib.cleanupStale(_pid) : { removed: 0 };
+        const _r2 = lib.dedupOne ? lib.dedupOne(_pid) : { removed: 0 };
         sessionStorage.setItem(_flagKey, '1');
-        if (_r && _r.removed > 0) {
-          console.info(`[scs-config] auto-cleanup: удалено ${_r.removed} фантомных POR-стоек`);
+        const removed = (_r1.removed || 0) + (_r2.removed || 0);
+        if (removed > 0) {
+          const parts = [];
+          if (_r1.removed) parts.push(`фантомов: ${_r1.removed}`);
+          if (_r2.removed) parts.push(`дубликатов: ${_r2.removed}`);
+          console.info(`[scs-config] auto-cleanup: ${parts.join(', ')}`);
           setTimeout(() => {
-            try { scToast(`🧹 Авто-очистка: удалено ${_r.removed} фантомных POR-стоек`, 'ok'); } catch {}
+            try { scToast(`🧹 Авто-очистка POR: удалено ${removed} (${parts.join(', ')})`, 'ok'); } catch {}
           }, 600);
         }
       }
