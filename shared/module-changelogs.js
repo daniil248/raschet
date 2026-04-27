@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.496', date: '2026-04-27', items: [
+      '✅ <b>Legrand Keor S 6 / 10 + Keor T EVO 10 / 20 — V_DC окно verified + Fix модели.</b>',
+      '🔤 <b>Rename Keor SP 6/10 → Keor S 6/10.</b> Раньше в каталоге значилось «Keor SP», но реальная серия — <b>Keor S</b> (3-6-10 kVA online double-conversion VFI-SS-111). Keor SP — это другая серия, line-interactive 600-2000 VA, у нас не используется. Id (<code>legrand-keor-sp-6k/10k</code>) сохранены для обратной совместимости — комментарий поясняет.',
+      '• <b>Keor S 6 kVA</b> + <b>Keor S 10 kVA</b> (Brochure_KEOR_S_GB.pdf): 240 VDC ном., 20 × 12В VRLA. Operating window EoD 1.67 → float 2.40 VPC = <b>200…288 VDC</b>. Раньше 192-240 — было занижено.',
+      '• <b>Keor T EVO 10 kVA</b> + <b>Keor T EVO 20 kVA</b> (Manual LE10507AD): конфигурируемая батарея 24…40 × 12В VRLA single-bus. Operating window <b>240…576 VDC</b> (24 jars EoD до 40 jars float). Раньше 240-360 — покрывало только 24-jar EoD до 30-jar float.',
+      '• Все 4 id добавлены в <code>shared/ups-verified.js</code> → green ✓ в Battery-calc.',
+      '• seedVersion 17→18 force-upsert.',
+      '⏳ <b>Ещё не verified:</b> Keor LP 3, HP 100/200, HPE 400, MOD 30, MP 300 — datasheet PDF не парсятся через web-search; нужны прямые ссылки или OCR. Оставлены с пометкой ⚠.',
+      'Файлы: <code>shared/catalogs/ups-legrand.js</code> (sp-6k/10k rename + 240-576; tevo-10k/20k vdcMax → 576), <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.495', date: '2026-04-27', items: [
       '✅ <b>Schneider Galaxy VX 750 / 1500 kVA — V_DC окно verified.</b> Раньше у обоих было 432-540 — это сужение под 36-jar конфигурацию, которая для Galaxy VX не стандартна. По datasheet «Galaxy VX 500-1500 kW Tech Spec 990-5783» Galaxy VX использует ту же battery system что у Galaxy VL:',
       '• <b>40 блоков</b>: 480V ном., float 545V.',

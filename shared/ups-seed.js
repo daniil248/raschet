@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '17'; // v0.59.495: Schneider Galaxy VX 750/1500 — verified V_DC 384-576 (та же battery system что у VL)
+const CURRENT_VERSION = '18'; // v0.59.496: Legrand Keor S 6/10 (был SP) + T EVO 10/20 — verified V_DC; rename SP→S
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,

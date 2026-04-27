@@ -13,6 +13,8 @@
 //   • Schneider Galaxy VS 60 → 384-576 (securepower.com GVSUPS60KGS)
 //   • Schneider Galaxy VL 200/300/500 → 384-576 (Tech Spec 990-91377/91399)
 //   • Schneider Galaxy VX 750/1500   → 384-576 (Tech Spec 990-5783, та же battery system что у VL)
+//   • Legrand Keor S 6/10 (id «sp»)  → 200-288 (Brochure_KEOR_S_GB, 240V ном., 20 × 12В VRLA)
+//   • Legrand Keor T EVO 10/20      → 240-576 (Manual LE10507AD, 24…40 × 12В VRLA)
 //   • Все Kehua MR33/S3 AIO  → паспорт Kehua UPS Catalog 2024-10-22
 // ======================================================================
 
@@ -27,6 +29,9 @@ const VERIFIED_VDC_IDS = new Set([
   'schneider-galaxy-vs-40k', 'schneider-galaxy-vs-60k', 'schneider-galaxy-vs-100k',
   'schneider-galaxy-vl-200k', 'schneider-galaxy-vl-300k', 'schneider-galaxy-vl-500k',
   'schneider-galaxy-vx-750k', 'schneider-galaxy-vx-1500k',
+  // Legrand
+  'legrand-keor-sp-6k', 'legrand-keor-sp-10k',
+  'legrand-keor-tevo-10k', 'legrand-keor-tevo-20k',
   // Kehua — указаны страницы каталога в source
   'kehua-mr33120-30k', 'kehua-mr33200-50k', 'kehua-mr33300-50k',
   'kehua-mr33400-50k', 'kehua-mr33500-50k', 'kehua-mr33600-50k',
