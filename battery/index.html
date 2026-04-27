@@ -391,10 +391,14 @@
       </p>
       <form id="rack-form" class="calc-form">
         <div class="field-full">
-          <label>Модель блока из справочника (опц.)</label>
+          <label style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <span>Модель блока из справочника</span>
+            <button type="button" id="rack-battery-save-dims" class="btn-sm" disabled style="font-size:11px;padding:3px 10px" title="Сохранить введённые габариты L/W/H/масса в выбранную запись каталога — будут использоваться повторно во всех расчётах">💾 Сохранить габариты в каталог</button>
+          </label>
           <select id="rack-battery">
             <option value="">— задать габариты вручную —</option>
           </select>
+          <div id="rack-battery-info" class="muted" style="font-size:11px;margin-top:4px"></div>
         </div>
         <div>
           <label>Длина блока L, мм</label>

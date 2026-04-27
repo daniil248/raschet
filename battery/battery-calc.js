@@ -3038,15 +3038,70 @@ function wireTabs() {
 function renderRackBatterySelector() {
   const sel = document.getElementById('rack-battery');
   if (!sel) return;
-  const list = _sortBatteries(listBatteries().filter(b => b.chemistry === 'vrla'));
+  // v0.59.464: показываем ВСЕ VRLA АКБ (даже без габаритов). Пользователь
+  // выбирает модель, заполняет габариты вручную если их нет, и кнопкой
+  // «💾 Сохранить» записывает их обратно в каталог для дальнейшего
+  // использования (через addBattery, который делает upsert по id).
+  const list = _sortBatteries(listBatteries().filter(b => b.chemistry === 'vrla' && b.systemSubtype !== 'cabinet' && b.systemSubtype !== 'accessory'));
   const cur = sel.value;
   let h = '<option value="">— задать габариты вручную —</option>';
+  let withDims = 0, noDims = 0;
   for (const b of list) {
-    if (!b.lengthMm && !b.widthMm) continue; // без габаритов не показываем
-    h += `<option value="${escHtml(b.id)}">${escHtml(b.supplier)} · ${escHtml(b.type)} (${b.lengthMm}×${b.widthMm}×${b.heightMm} мм, ${b.weightKg || '?'} кг)</option>`;
+    const has = b.lengthMm > 0 && b.widthMm > 0 && b.heightMm > 0;
+    const tag = has
+      ? `${b.lengthMm}×${b.widthMm}×${b.heightMm} мм, ${b.weightKg || '?'} кг`
+      : '⚠ габариты не заданы';
+    h += `<option value="${escHtml(b.id)}">${escHtml(b.supplier)} · ${escHtml(b.type)} (${tag})</option>`;
+    if (has) withDims++; else noDims++;
   }
   sel.innerHTML = h;
   if (cur) sel.value = cur;
+  const info = document.getElementById('rack-battery-info');
+  if (info) {
+    info.textContent = `АКБ в каталоге: ${list.length} (с габаритами: ${withDims}, без: ${noDims})`;
+  }
+}
+
+// v0.59.464: применяет габариты выбранной АКБ к полям формы. Если габаритов
+// нет — поля очищаются, чтобы пользователь ввёл вручную.
+function _applyRackBatteryToForm() {
+  const sel = document.getElementById('rack-battery');
+  if (!sel || !sel.value) return;
+  const b = getBattery(sel.value);
+  if (!b) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el && Number.isFinite(Number(v)) && Number(v) > 0) el.value = v; };
+  set('rack-L', b.lengthMm);
+  set('rack-W', b.widthMm);
+  set('rack-H', b.heightMm);
+  set('rack-Wt', b.weightKg);
+  // Активируем/деактивируем кнопку «Сохранить»
+  const btn = document.getElementById('rack-battery-save-dims');
+  if (btn) btn.disabled = !sel.value;
+}
+
+// v0.59.464: сохраняет введённые габариты в выбранную запись каталога АКБ.
+// addBattery() делает upsert по id, так что повторное использование тут же
+// доступно во всех остальных местах (расчёт автономии, отчёт).
+function _saveRackBatteryDims() {
+  const sel = document.getElementById('rack-battery');
+  if (!sel || !sel.value) {
+    rsToast('Сначала выберите АКБ из справочника', 'warn');
+    return;
+  }
+  const b = getBattery(sel.value);
+  if (!b) return;
+  const num = id => { const v = Number(document.getElementById(id)?.value); return Number.isFinite(v) && v > 0 ? v : null; };
+  const L = num('rack-L'), W = num('rack-W'), H = num('rack-H'), Wt = num('rack-Wt');
+  if (!L || !W || !H) {
+    rsToast('Заполните L, W, H перед сохранением', 'warn');
+    return;
+  }
+  const updated = { ...b, lengthMm: L, widthMm: W, heightMm: H };
+  if (Wt) updated.weightKg = Wt;
+  addBattery(updated);
+  rsToast(`Габариты ${b.supplier} ${b.type} сохранены в каталог`, 'ok');
+  renderRackBatterySelector();
+  renderCatalog();
 }
 
 function doRackCalc() {
@@ -3171,6 +3226,8 @@ function wireRackForm() {
   const sel = document.getElementById('rack-battery');
   if (sel) sel.addEventListener('change', () => {
     const id = sel.value;
+    const btn = document.getElementById('rack-battery-save-dims');
+    if (btn) btn.disabled = !id;
     if (!id) return;
     const b = getBattery(id);
     if (!b) return;
@@ -3181,6 +3238,9 @@ function wireRackForm() {
     g('rack-Wt', b.weightKg);
     if (b.terminalClearanceMm) g('rack-termClear', b.terminalClearanceMm);
   });
+  // v0.59.464: кнопка «Сохранить габариты в каталог».
+  const saveBtn = document.getElementById('rack-battery-save-dims');
+  if (saveBtn) saveBtn.addEventListener('click', () => _saveRackBatteryDims());
   // Селектор VRLA-шкафа из ups-catalog. При выборе записи подставляем
   // её внутренние габариты + ограничение по числу блоков (rackSlots).
   const cabSel = document.getElementById('rack-cabinet');
