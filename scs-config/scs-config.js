@@ -4357,6 +4357,29 @@ function renderProjectBadge() {
 
 function init() {
   renderProjectBadge();
+  // v0.59.554: автоматическая чистка фантомных POR-стоек (id с префиксами
+  // tpl-/scheme-/por-group-) при первом заходе на проект в этой сессии.
+  // Раньше пользователь должен был сам идти в POR Playground и жать «🗑
+  // Удалить фантомы»; теперь это делается прозрачно. Session-flag в
+  // sessionStorage чтобы не дёргать каждую перезагрузку, но возобновлять
+  // в новой вкладке/после refresh.
+  try {
+    const _pid = getActiveProjectId();
+    if (_pid && typeof window !== 'undefined' && window.RaschetLegacyRackMigration?.cleanupStale) {
+      const _flagKey = `raschet.scs-config.cleanup-stale-pid.${_pid}.session`;
+      if (!sessionStorage.getItem(_flagKey)) {
+        const _r = window.RaschetLegacyRackMigration.cleanupStale(_pid);
+        sessionStorage.setItem(_flagKey, '1');
+        if (_r && _r.removed > 0) {
+          console.info(`[scs-config] auto-cleanup: удалено ${_r.removed} фантомных POR-стоек`);
+          setTimeout(() => {
+            try { scToast(`🧹 Авто-очистка: удалено ${_r.removed} фантомных POR-стоек`, 'ok'); } catch {}
+          }, 600);
+        }
+      }
+    }
+  } catch (e) { console.warn('[scs-config] auto-cleanup failed:', e); }
+
   state.racks     = loadRacks();
   state.catalog   = loadJson(LS_CATALOG,   DEFAULT_CATALOG.slice());
   state.contents  = loadJson(LS_CONTENTS,  {});
