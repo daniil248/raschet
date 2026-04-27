@@ -302,8 +302,15 @@ function _startCollab(project, initialUpdatedAtMs) {
   state.unsubProjectDoc = window.Storage.subscribeProjectDoc(project.id, (doc) => {
     const u = doc.updatedAt?.toMillis ? doc.updatedAt.toMillis() : (doc.updatedAt || 0);
     if (!u || u <= state.lastKnownUpdatedAtMs) return;
-    const isOwnEcho = state.saving || (Date.now() - state.lastLocalWriteAtMs < 10000);
-    if (isOwnEcho) {
+    // v0.59.478: главный детектор echo — по uid автора. Если writer = я,
+    // это всегда мой write (даже если я открыл проект в двух вкладках).
+    // Окно времени остаётся как fallback для совместимости со старыми
+    // doc'ами без _lastWriterUid.
+    const ownUid = state.currentUser?.uid || '';
+    const writerUid = doc._lastWriterUid || '';
+    const isOwnByUid = ownUid && writerUid && ownUid === writerUid;
+    const isOwnByTime = state.saving || (Date.now() - state.lastLocalWriteAtMs < 10000);
+    if (isOwnByUid || isOwnByTime) {
       state.lastKnownUpdatedAtMs = u;
       return;
     }
@@ -1219,7 +1226,16 @@ async function saveCurrent(isAuto) {
     const _timeoutP = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('timeout: сохранение заняло больше 30 с')), 30000);
     });
-    const saved = await Promise.race([window.Storage.saveProject(p.id, { scheme }), _timeoutP]);
+    // v0.59.478: записываем uid автора — чтобы subscribe-callback мог
+    // надёжно отличить свой echo от чужого write (раньше использовалось
+    // только окно времени lastLocalWriteAtMs ≤ 10s, и одинокий пользователь
+    // на медленной сети получал ложные «удалённые изменения»).
+    const writerInfo = {
+      _lastWriterUid: state.currentUser?.uid || '',
+      _lastWriterName: state.currentUser?.name || '',
+      _lastWriterEmail: state.currentUser?.email || '',
+    };
+    const saved = await Promise.race([window.Storage.saveProject(p.id, { scheme, ...writerInfo }), _timeoutP]);
     // Обновляем lastKnownUpdatedAtMs, чтобы snapshot от нашего же write не поднял тост
     if (saved?.updatedAt) {
       state.lastKnownUpdatedAtMs = saved.updatedAt?.toMillis ? saved.updatedAt.toMillis() : (saved.updatedAt || Date.now());

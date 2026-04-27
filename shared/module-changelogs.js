@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.478', date: '2026-04-27', items: [
+      '🔇 <b>Fix: ложные «Удалённые изменения проекта» когда пользователь один.</b> Раньше echo-detection делалось только по окну времени (10 сек после save). На медленной сети или когда Firestore возвращал snapshot с задержкой, своё же сохранение определялось как «чужой write» — появлялась модалка с предложением принять/отвергнуть собственные изменения.',
+      '• Добавлен надёжный детектор по UID: при <code>saveProject()</code> в документ записываются <code>_lastWriterUid / _lastWriterName / _lastWriterEmail</code>. В subscribe-callback сравниваем <code>doc._lastWriterUid === state.currentUser.uid</code> — если совпадает, всегда трактуем как свой echo (даже из другой вкладки).',
+      '• Окно времени осталось как fallback для совместимости со старыми doc\'ами без поля <code>_lastWriterUid</code>.',
+      'Файлы: <code>js/main.js</code> — <code>saveCurrent</code> (передача writerInfo); <code>subscribeProjectDoc</code> callback (проверка по UID).',
+    ] },
     { version: '0.59.477', date: '2026-04-27', items: [
       '🩹 <b>Fix №1: точка экстраполяции вне графика.</b> Раньше bounds chart расширялись через <code>Math.min(tMin, highlight.tMin*0.9)</code> — но логика была хрупкой при граничных случаях. Теперь явные проверки <code>if (highlight.tMin &lt; tMin) tMin = highlight.tMin*0.85</code> с padding 15% (было 10%). Точка с экстраполяцией (например, P&gt;rated) гарантированно внутри plot-области.',
       '🩹 <b>Fix №2: кнопка «⛶ Развернуть» 3D-вида.</b> Click-handler проверял <code>modalOverlay</code> — переменную из старой реализации, которая не определялась. Из-за этого кнопка ничего не делала. Теперь проверка через <code>isFs</code> (флаг fullscreen-состояния, который actually обновляется в enterFullscreen/exitFullscreen).',
