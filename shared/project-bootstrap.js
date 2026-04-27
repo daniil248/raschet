@@ -55,6 +55,18 @@ const PROJECT_ADAPTER_BINDINGS = [
  */
 export function bootstrapProject(pid) {
   if (!pid) return;
+  // v0.59.508: при первом bootstrap-е любого pid — мигрируем legacy
+  // rack-instances этого проекта в POR (если ещё не мигрировали).
+  // Запускается до setAdapter, чтобы adapter увидел уже мигрированные
+  // данные. Дедуп по legacyRackId.
+  try {
+    import('./legacy-rack-migration.js').then(mod => {
+      const r = mod.migrateProjectLegacyRacks(pid);
+      if (r && r.created > 0) {
+        console.info(`[bootstrap] legacy racks for pid=${pid}: +${r.created} POR-объектов`);
+      }
+    }).catch(() => {});
+  } catch {}
   for (const b of PROJECT_ADAPTER_BINDINGS) {
     let adapter = null;
     if (b.kind === 'type') {

@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.508', date: '2026-04-27', items: [
+      '🏗 <b>Миграция legacy rack-instances → POR</b>. По репорту пользователя: бейджик «8 стоек» на карточке проекта показывал данные, но в самом СКС-модуле «legacy режим, ничего нет». Это потому что разные модули читают РАЗНЫЕ LS-ключи. POR должен стать единым источником.',
+      '• <b>Источники миграции (<code>shared/legacy-rack-migration.js</code>)</b>:',
+      '  ⚬ <code>raschet.project.&lt;pid&gt;.rack-config.instances.v1</code> — главный источник instance-данных (имя, U, габариты, demandKw).',
+      '  ⚬ <code>raschet.project.&lt;pid&gt;.scs-config.rackTags.v1</code> — пары <code>rackId→tag</code>.',
+      '  ⚬ <code>raschet.project.&lt;pid&gt;.scs-config.contents.v1</code> — стойки с содержимым (если их нет в instances — добавляются как tag-only).',
+      '• <b>Дедупликация</b>: каждый POR-объект type=\'rack\' хранит <code>legacyRackId</code> и <code>legacySource</code>. Повторный запуск миграции пропускает уже мигрированные.',
+      '• <b>Триггер</b>: при <code>refreshProjects</code> на главной «Мои схемы» (одиночный сессия-флаг <code>raschet.legacy-rack-migration.v2</code>) и при каждом <code>bootstrapProject(pid)</code> для конкретного pid (per-project дедуп).',
+      '• <b>Console</b>: <code>[legacy-rack-migration] pid=p_xxx rack INST_xxx (TAG) → POR por_yyy</code> на каждый созданный объект. Принудительный re-run: <code>RaschetLegacyRackMigration.runAll({force:true})</code>.',
+      '• <b>Эффект для пользователя</b>: после загрузки v0.59.508, открой POR Playground для проекта — твои 8 стоек должны появиться. Открой POR Playground для «Тестового проекта» (<code>?project=p_jhd9c9n0qh</code>) → должно быть 8 строк в таблице.',
+      'Файлы: <code>shared/legacy-rack-migration.js</code> (новый, ~180 строк), <code>js/main.js</code> (вызов из refreshProjects + flash), <code>shared/project-bootstrap.js</code> (per-project миграция).',
+    ] },
     { version: '0.59.507', date: '2026-04-27', items: [
       '🔗 <b>Авто-миграция orphan-схем</b>. По репорту пользователя на главной «Мои схемы»: 7 схем висели в группе «Без проекта» — с именами совпадающими с существующими проектами («Проект по умолчанию», «25006_TBC Bank», «Тестовый проект» и т.д.). Раньше каждая такая схема показывалась как отдельный orphan, требовала ручной привязки.',
       '• <b>Стратегия миграции (<code>shared/scheme-orphan-migration.js</code>)</b>:',

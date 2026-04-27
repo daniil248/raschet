@@ -783,6 +783,18 @@ async function refreshProjects() {
       }
     } catch (e) { console.warn('[main] scheme-orphan-migration failed:', e); }
 
+    // v0.59.508: миграция legacy rack-instances всех проектов в POR.
+    // Один раз на сессию (флаг raschet.legacy-rack-migration.v2). После
+    // этого 8 стоек (и др.) из rack-config/scs-config попадают в POR и
+    // видны в POR Playground.
+    try {
+      const mod = await import('../shared/legacy-rack-migration.js');
+      const r = mod.migrateAllLegacyRacks();
+      if (r && r.created > 0) {
+        flash(`Стойки в POR: создано ${r.created} объектов из ${r.processed} проектов`);
+      }
+    } catch (e) { console.warn('[main] legacy-rack-migration failed:', e); }
+
     const handleErr = (label) => (e) => {
       console.error('[refreshProjects:' + label + ']', e);
       if (String(e && e.message || '').includes('index')) {
