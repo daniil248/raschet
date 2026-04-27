@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.480', date: '2026-04-27', items: [
+      '🔋 <b>findMinimalS3Config: hard-constraint по паспортной мощности модуля.</b> Раньше алгоритм мог вернуть конфигурацию, где per-module power > rated (например 28 модулей при 292 кВт даёт 10.45 кВт/модуль > rated 10 кВт). Это означает перегрузку BMS и срабатывание защиты.',
+      '• Теперь нижний предел числа модулей: <code>minTotalByPower = ceil(batteryPwrReqKw / moduleRatedKw)</code>. Алгоритм стартует с этого значения, не пытается меньше.',
+      '• Реальный кейс: 200 кВт нагрузка × derate 1.375 / inv 0.94 / (1−SoC 10%) = 325 кВт. Требует ≥33 модулей, округление до 2 шкафов × 17 = <b>34</b>. Per-module 9.56 кВт ≤ rated 10 кВт ✓.',
+      '• Раньше для того же кейса возвращалось 28 модулей (over-rated). После фикса — 34 (within rated).',
+      'Файлы: <code>shared/battery-s3-logic.js</code> — <code>findMinimalS3Config</code>.',
+    ] },
     { version: '0.59.479', date: '2026-04-27', items: [
       '🩹 <b>Hotfix: SyntaxError в s3-3d-view.js — двойное объявление <code>total_w</code>.</b> В моём v0.59.477 я добавил размерные стрелки в renderTopView/renderFrontView через <code>const total_w = totalRowWidth()</code>, но эта переменная уже была объявлена в начале каждой функции. Браузер бросал <code>SyntaxError: Identifier \'total_w\' has already been declared</code> → весь скрипт не загружался → конфигуратор не работал. Удалены повторные объявления.',
       '🏷 <b>Подписи режима подключения S³ → ИБП Kehua: «±240 В биполярная» вместо технического «series 2×240».</b> Реальное физическое подключение S³ к Kehua MR33 — биполярная DC-шина ±240 В (нейтраль посередине). Раньше выводилось «series 2×240» — корректно по топологии (два выхода 240 В в series=480 В между плюсом и минусом), но непонятно для пользователя. Теперь: <code>±240 В биполярная (series 2×240)</code> для series-режима и <code>240 В параллельная (parallel)</code> для parallel.',

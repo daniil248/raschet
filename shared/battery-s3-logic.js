@@ -179,7 +179,14 @@ export function findMinimalS3Config({
   // (например 3 × 12 вместо 2 × 20). Теперь шкафы автоматически
   // заполняются полностью прежде чем добавляется следующий.
   const maxTotal = lim.maxPerCabinet * lim.maxCabinets;
-  for (let total = 1; total <= maxTotal; total++) {
+  // v0.59.480: дополнительный hard-constraint — мощность на модуль не
+  // должна превышать паспортную (cabinetPowerKw / maxPerCabinet). Раньше
+  // алгоритм возвращал «28 модулей» для 200 кВт×1.375/0.94=292 кВт ⇒
+  // 10.45 кВт/модуль > rated 10 кВт. BMS перегружался.
+  // Теперь минимум total = max(минимум по автономии, минимум по мощности).
+  const moduleRatedKw = lim.cabinetPowerKw / Math.max(1, lim.maxPerCabinet);
+  const minTotalByPower = Math.max(1, Math.ceil(batteryPwrReqKw / moduleRatedKw));
+  for (let total = minTotalByPower; total <= maxTotal; total++) {
     const C = Math.max(1, Math.ceil(total / lim.maxPerCabinet));
     if (C > lim.maxCabinets) break;
     // Распределение модулей: первые (total mod C) шкафов получают +1.
