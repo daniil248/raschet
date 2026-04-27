@@ -3661,7 +3661,16 @@ function init() {
       const ranges = r ? freeURanges(r, currentContents()) : [];
       freeEl2.textContent = ranges.length ? ranges.join(', ') : (r ? 'нет' : '—');
     }
-    $('sc-rack-tag').value = r ? (state.rackTags[r.id] || '') : '';
+    // v0.59.535: для виртуалов из схемы / POR-группы — показываем autoTag
+    // как placeholder (фактический value пустой, т.к. в state.rackTags нет
+    // записи для virtual-id). Если пользователь введёт явный тег —
+    // он перепишет autoTag и станет авторитетным.
+    const _tagInput = $('sc-rack-tag');
+    if (_tagInput) {
+      _tagInput.value = r ? (state.rackTags[r.id] || '') : '';
+      _tagInput.placeholder = (r && (r.fromScheme || r.fromPorGroup) && r.autoTag)
+        ? `авто: ${r.autoTag}` : 'DC1.H3.R05';
+    }
     // 1.24.24 — синхронизируем URL (без перезагрузки), чтобы ссылки делились
     if (state.currentRackId) {
       const url = new URL(location.href);
