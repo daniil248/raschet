@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.519', date: '2026-04-27', items: [
+      '⬇ <b>POR → Engine pull: POR-only racks автоматически появляются в «Неразмещённые»</b>. Раньше mirror был односторонний: engine → POR (rack-узлы из схемы зеркалятся в POR), но НЕ обратно. Если SCS-инженер добавлял стойки в POR Playground / scs-config / другом модуле — engine их не видел, главный инженер не мог разместить их на схеме.',
+      '• <b>Логика pull</b>: при активации mirror\'а (<code>enableEngineMirror</code>) и при cross-tab <code>add</code>/<code>sync</code>-events — для каждого POR-объекта <code>type=\'rack\'</code> без соответствующего engine-узла создаётся <b>UNPLACED</b> engine-узел (<code>type=\'consumer\'</code>, <code>subtype=\'rack\'</code>, <code>pageIds=[]</code>, <code>porObjectId</code> линк).',
+      '• <b>Эффект</b>: эти узлы появляются в инспекторе во вкладке «📋 Неразмещённые» — главный инженер видит их и drag-and-drop размещает на нужной странице.',
+      '• <b>Fields переноса</b>: tag, name, demandKw/cosPhi/phases/voltageV (electrical), widthMm/depthMm/heightMm/u (mechanical).',
+      '• <b>Console</b>: <code>activated for pid=X (..., pulled из POR: N)</code> при активации; <code>pulled POR rack obj_xx (TAG) → unplaced engine node nN</code> на каждый pull.',
+      '• <b>API</b>: <code>window.RaschetEnginePorMirror.pullPorRacksToEngine()</code> — ручной вызов.',
+      'Файлы: <code>shared/engine-por-mirror.js</code> (новая функция <code>pullPorRacksToEngine</code>, applyPorEvent обрабатывает add-events для несвязанных объектов).',
+    ] },
     { version: '0.59.518', date: '2026-04-27', items: [
       '🐛 <b>НАСТОЯЩИЙ корень бага «Без проекта · 5 схем»</b>. Это была НЕ orphan-миграция, а баг в <code>Local.listMyProjects()</code> в <code>js/projects.js</code>. Раньше функция возвращала ВСЕ записи из <code>raschet.projects.v1</code> — включая project-контейнеры (<code>p_*</code>/<code>s_*</code>), которые лежат в том же LS-ключе. Контейнеры не имеют <code>projectId</code> поля → render в main.js помещал их в группу «Без проекта» как фантомные «схемы» с именами проектов.',
       '• <b>Фикс</b>: добавлен <code>_isStorageProject(p)</code> фильтр — исключает project-контейнеры (<code>id startsWith p_/s_</code> или <code>kind === \'full\'/\'sketch\'</code>); оставляет Storage-схемы (<code>lp_*</code>, <code>scheme/memberUids/ownerEmail</code>). Применён в <code>listMyProjects</code>.',

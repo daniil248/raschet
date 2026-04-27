@@ -17,7 +17,7 @@
 // открытии проекта.
 // ======================================================================
 
-import { state } from '../js/engine/state.js';
+import { state, uid as engineUid } from '../js/engine/state.js';
 import { addChangeListener } from '../js/engine/state.js';
 import {
   getObject, getObjects, addObject, patchObject, removeObject, subscribe as porSubscribe,
@@ -198,19 +198,27 @@ function syncEngineToPOR() {
 function applyPorEvent(ev) {
   if (!_activePid || _suppressSync) return;
   if (ev.source === 'local') return;  // локальные события (этот же таб) уже отражены
-  // Find engine node linked to this POR object (by porObjectId match)
   const oid = ev.oid || (ev.object && ev.object.id) || (ev.before && ev.before.id);
   if (!oid) {
-    // sync-event (другой таб переписал store) — пройдёмся по всем узлам.
+    // sync-event (другой таб переписал store) — pull новых racks + refresh.
+    pullPorRacksToEngine();
     refreshAllNodesFromPor();
     return;
   }
   const targetNode = [...state.nodes.values()].find(n => n.porObjectId === oid);
-  if (!targetNode) return;
   if (ev.kind === 'remove') {
-    // Не удаляем engine-узел автоматически (decision: пользователь сам
-    // решает). Снимаем линк.
-    targetNode.porObjectId = null;
+    if (targetNode) {
+      // Не удаляем engine-узел автоматически (decision: пользователь сам
+      // решает). Снимаем линк.
+      targetNode.porObjectId = null;
+    }
+    return;
+  }
+  if (!targetNode) {
+    // POR add/patch для НОВОГО объекта (не было engine-узла) → pull.
+    if (ev.kind === 'add') {
+      pullPorRacksToEngine();
+    }
     return;
   }
   const obj = ev.after || ev.object || getObject(_activePid, oid);
@@ -218,7 +226,6 @@ function applyPorEvent(ev) {
   _suppressSync = true;
   try {
     if (applyPorToNode(targetNode, obj)) {
-      // Запускаем render через Raschet.rerender (если доступен).
       if (typeof window !== 'undefined' && window.Raschet) {
         try { window.Raschet.rerender && window.Raschet.rerender(); } catch {}
       }
@@ -247,6 +254,66 @@ function refreshAllNodesFromPor() {
   }
 }
 
+/**
+ * POR → Engine pull: если POR-объект type='rack' существует, но в engine
+ * нет узла с этим porObjectId — создаём UNPLACED engine-узел (pageIds=[]).
+ * Он появится в инспекторе во вкладке «Неразмещённые», и main-инженер
+ * сможет drag-and-drop поместить его на схему.
+ *
+ * Запускается:
+ *   • При активации mirror'а (enableEngineMirror) — pull всего что есть.
+ *   • При cross-tab sync-event — кто-то добавил rack в другом окне.
+ *
+ * Защита от рекурсии: _suppressSync, как у syncEngineToPOR.
+ */
+function pullPorRacksToEngine() {
+  if (!_activePid || _suppressSync) return 0;
+  _suppressSync = true;
+  let pulled = 0;
+  try {
+    const porRacks = getObjects(_activePid, { type: 'rack' }) || [];
+    if (!porRacks.length) return 0;
+    const linkedOids = new Set();
+    for (const n of state.nodes.values()) {
+      if (n.porObjectId) linkedOids.add(n.porObjectId);
+    }
+    for (const obj of porRacks) {
+      if (linkedOids.has(obj.id)) continue;
+      const m = (obj.domains && obj.domains.mechanical) || {};
+      const e = (obj.domains && obj.domains.electrical) || {};
+      const nid = engineUid('n');
+      const node = {
+        id: nid,
+        type: 'consumer',
+        subtype: 'rack',
+        consumerKind: 'rack',
+        tag:        obj.tag      || '',
+        name:       obj.name     || 'Стойка',
+        demandKw:   Number(e.demandKw)  || 0,
+        cosPhi:     Number(e.cosPhi)    || 0.95,
+        phases:     Number(e.phases)    || 3,
+        voltageV:   Number(e.voltageV)  || 400,
+        widthMm:    Number(m.widthMm)   || 600,
+        depthMm:    Number(m.depthMm)   || 800,
+        heightMm:   Number(m.heightMm)  || 1991,
+        u:          Number(m.rackUnits) || 42,
+        x: 0, y: 0,
+        pageIds: [],          // ← unplaced (см. js/engine/state.js::isOnCurrentPage)
+        inputs: 1, outputs: 0,
+        porObjectId: obj.id,  // линк к POR-объекту
+      };
+      state.nodes.set(nid, node);
+      pulled++;
+      console.info(`[engine-por-mirror] pulled POR rack ${obj.id} (${obj.tag||''}) → unplaced engine node ${nid}`);
+    }
+    if (pulled > 0 && typeof window !== 'undefined' && window.Raschet) {
+      try { window.Raschet.rerender && window.Raschet.rerender(); } catch {}
+    }
+  } catch (e) { console.warn('[engine-por-mirror] pull failed:', e); }
+  finally { _suppressSync = false; }
+  return pulled;
+}
+
 // ─── Public API ──────────────────────────────────────────────────────
 
 export function enableEngineMirror(pid) {
@@ -265,7 +332,9 @@ export function enableEngineMirror(pid) {
     const mp = _porMapping(n); return mp && mp.porType === 'consumer-system';
   }).length;
   syncEngineToPOR();
-  console.info(`[engine-por-mirror] activated for pid=${pid} (rack-узлов: ${initialRacks}, систем: ${initialSystems})`);
+  // Pull: POR-объекты type='rack' без engine-узла → unplaced engine-узлы.
+  const pulled = pullPorRacksToEngine();
+  console.info(`[engine-por-mirror] activated for pid=${pid} (rack-узлов: ${initialRacks}, систем: ${initialSystems}, pulled из POR: ${pulled})`);
   if (typeof window !== 'undefined') {
     window.__engine_por_mirror_pid = pid;
   }
@@ -281,5 +350,8 @@ export function disableEngineMirror() {
 export function getEngineMirrorPid() { return _activePid; }
 
 if (typeof window !== 'undefined') {
-  window.RaschetEnginePorMirror = { enableEngineMirror, disableEngineMirror, getEngineMirrorPid };
+  window.RaschetEnginePorMirror = {
+    enableEngineMirror, disableEngineMirror, getEngineMirrorPid,
+    pullPorRacksToEngine, syncEngineToPOR,
+  };
 }
