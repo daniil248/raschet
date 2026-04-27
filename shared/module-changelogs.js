@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.507', date: '2026-04-27', items: [
+      '🔗 <b>Авто-миграция orphan-схем</b>. По репорту пользователя на главной «Мои схемы»: 7 схем висели в группе «Без проекта» — с именами совпадающими с существующими проектами («Проект по умолчанию», «25006_TBC Bank», «Тестовый проект» и т.д.). Раньше каждая такая схема показывалась как отдельный orphan, требовала ручной привязки.',
+      '• <b>Стратегия миграции (<code>shared/scheme-orphan-migration.js</code>)</b>:',
+      '  ⚬ для каждой schema без <code>projectId</code> — нормализуем имя (trim/lowercase/collapse spaces) и ищем project-контейнер с тем же именем;',
+      '  ⚬ если найден — линкуем (matched);',
+      '  ⚬ иначе — создаём новый контейнер с этим именем (created).',
+      '• <b>Запуск</b>: триггерится при первом заходе на главную «Мои схемы» (<code>refreshProjects()</code>) или на <code>/projects/</code>. Один раз через LS-флаг <code>raschet.scheme-orphan-migration.v1</code>. Toast пользователю с результатами.',
+      '• <b>Console</b>: <code>[orphan-migration] scheme lp_xxx «Имя» → СУЩЕСТВУЮЩИЙ контейнер p_yyy</code> на каждую миграцию. Принудительный re-run: <code>RaschetSchemeMigration.run({force:true})</code>.',
+      '• Не зовём <code>Storage.saveProject</code> (требует window.Storage init); подменяем <code>scheme.projectId</code> напрямую в <code>raschet.projects.v1</code>.',
+      'Файлы: <code>shared/scheme-orphan-migration.js</code> (новый), <code>js/main.js</code> (вызов из <code>refreshProjects</code>), <code>projects/projects.js</code> (вызов на module-load).',
+    ] },
     { version: '0.59.506', date: '2026-04-27', items: [
       '🧹 <b>Fix: схемы внутри проекта больше не дублируются как top-level проекты в <code>/projects/</code></b>. По репорту пользователя: создал «Схема S1» через «+ Добавить → Схема» внутри «Тестового проекта» — она появилась И как scheme внутри проекта, И как отдельный top-level проект «S1» в общем списке. Это вносило путаницу.',
       '• <b>Причина</b>: Storage-схемы (созданные через <code>window.Storage.createProject</code>, id <code>lp_*</code>, поля <code>scheme/memberUids/ownerId</code>) делят с project-контейнерами (<code>p_*</code>/<code>s_*</code>) одну LS-таблицу <code>raschet.projects.v1</code>. Фильтр в <code>/projects/</code> рендере отсекал только sketch-проекты, но не Storage-схемы.',

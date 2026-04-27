@@ -771,6 +771,18 @@ function renderAuthUI() {
 // ================= Список проектов =================
 async function refreshProjects() {
   try {
+    // v0.59.507: автоматическая миграция orphan-схем перед рендером списка.
+    // Schemes без projectId → привязываем к контейнеру с тем же именем
+    // (если есть) или создаём новый. Запускается ровно один раз
+    // (флаг raschet.scheme-orphan-migration.v1). Без user-action.
+    try {
+      const mod = await import('../shared/scheme-orphan-migration.js');
+      const r = mod.migrateOrphanSchemes();
+      if (r && (r.matched > 0 || r.created > 0)) {
+        flash(`Миграция: ${r.matched ? `привязано схем — ${r.matched}` : ''}${r.matched && r.created ? ', ' : ''}${r.created ? `создано контейнеров — ${r.created}` : ''}`);
+      }
+    } catch (e) { console.warn('[main] scheme-orphan-migration failed:', e); }
+
     const handleErr = (label) => (e) => {
       console.error('[refreshProjects:' + label + ']', e);
       if (String(e && e.message || '').includes('index')) {

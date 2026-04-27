@@ -9,6 +9,17 @@ import {
   exportProject, importProject,
 } from '../shared/project-storage.js';
 import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
+import { migrateOrphanSchemes } from '../shared/scheme-orphan-migration.js';
+
+// v0.59.507: автоматическая миграция orphan-схем при первом заходе на
+// /projects/. Schemes без projectId → привязываем к контейнеру с тем же
+// именем (если есть) или создаём новый. Один раз через LS-флаг.
+try {
+  const r = migrateOrphanSchemes();
+  if (r && (r.matched > 0 || r.created > 0)) {
+    console.info(`[/projects/] orphan-migration: matched=${r.matched}, created=${r.created}`);
+  }
+} catch (e) { console.warn('[/projects/] scheme-orphan-migration failed:', e); }
 
 /* ---------- inline modal / toast (без window.prompt/confirm/alert) ---------- */
 function prToast(msg, kind = 'info') {
