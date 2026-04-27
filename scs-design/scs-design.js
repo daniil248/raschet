@@ -60,23 +60,41 @@ function renderProjectBadge(pid) {
   // - Если URL передал ?project=parentId → родитель залочен, выбираем
   //   подпроект внутри него или создаём новый.
   // - Без URL → выбираем родителя из списка full-проектов, потом подпроект.
+  // v0.59.531: orphan-sketches (kind='sketch' без parentProjectId), созданные
+  // до v0.59.372, всё ещё валидны как «мини-проект СКС без родителя». Их
+  // нельзя терять. Включаем в parent-dropdown отдельной optgroup-ой; при
+  // выборе orphan-sketch активируем его как самостоятельный контекст СКС
+  // (legacy/standalone режим).
   const fullProjects = projects.filter(x => x.kind === 'full');
+  const orphanSketches = projects.filter(x => x.kind === 'sketch' && !x.parentProjectId);
   let parentPid = urlPid;
   // Если активный проект сам — sketch с parentProjectId, наследуем родителя.
   if (!parentPid && p && p.kind === 'sketch' && p.parentProjectId) {
     parentPid = p.parentProjectId;
   }
+  // Если активный — orphan-sketch (без родителя) — он сам себе «parent».
+  const activeIsOrphan = !!(p && p.kind === 'sketch' && !p.parentProjectId);
+  if (!parentPid && activeIsOrphan) {
+    parentPid = p.id;
+  }
   // Без явного родителя — пробуем первый доступный full.
   if (!parentPid && fullProjects[0]) parentPid = fullProjects[0].id;
 
   const parent = parentPid ? getProject(parentPid) : null;
-  const subs = parent ? listSubProjects(parent.id, 'scs-design') : [];
+  const parentIsOrphan = !!(parent && parent.kind === 'sketch' && !parent.parentProjectId);
+  const subs = (parent && !parentIsOrphan) ? listSubProjects(parent.id, 'scs-design') : [];
   const activeSubId = (p && p.parentProjectId === (parent?.id || null)) ? p.id : '';
 
   const parentSel = lockedFromUrl
     ? `<b>${esc(parent?.name || '?')}</b>`
     : `<select id="sd-parent-switcher" title="Родительский проект-объект">${
-        fullProjects.map(x => `<option value="${esc(x.id)}"${x.id === parent?.id ? ' selected' : ''}>${esc(x.name || '(без имени)')}</option>`).join('')
+        (fullProjects.length ? `<optgroup label="🏢 Проекты">${
+          fullProjects.map(x => `<option value="${esc(x.id)}"${x.id === parent?.id ? ' selected' : ''}>${esc(x.name || '(без имени)')}</option>`).join('')
+        }</optgroup>` : '')
+      }${
+        (orphanSketches.length ? `<optgroup label="🧪 Мини-проекты СКС (без родителя)">${
+          orphanSketches.map(x => `<option value="${esc(x.id)}"${x.id === parent?.id ? ' selected' : ''}>${esc(x.name || '(без имени)')}</option>`).join('')
+        }</optgroup>` : '')
       }</select>`;
 
   // v0.59.378: legacy-режим — активный проект = сам родитель, подпроектов
@@ -95,21 +113,26 @@ function renderProjectBadge(pid) {
     }
   } catch {}
 
-  const subOpts = subs.length
-    ? subs.map(s => {
-        const labelDesig = s.designation ? `[${esc(s.designation)}] ` : '';
-        return `<option value="${esc(s.id)}"${s.id === activeSubId ? ' selected' : ''}>${labelDesig}${esc(s.name || '(без имени)')}</option>`;
-      }).join('')
-    : (legacyActive
-        ? `<option value="" selected>— СКС в проекте (legacy, без обозначения) —</option>`
-        : `<option value="" selected>— подпроект СКС не выбран —</option>`);
+  // v0.59.531: для orphan-sketch родителем является сам sketch — у него
+  // нет подпроектов, и кнопку «+ Новый СКС-проект» здесь скрываем (нельзя
+  // создать sub под sketch'ом без full-родителя).
+  const subOpts = parentIsOrphan
+    ? `<option value="" selected>— мини-проект (без подпроектов) —</option>`
+    : (subs.length
+        ? subs.map(s => {
+            const labelDesig = s.designation ? `[${esc(s.designation)}] ` : '';
+            return `<option value="${esc(s.id)}"${s.id === activeSubId ? ' selected' : ''}>${labelDesig}${esc(s.name || '(без имени)')}</option>`;
+          }).join('')
+        : (legacyActive
+            ? `<option value="" selected>— СКС в проекте (legacy, без обозначения) —</option>`
+            : `<option value="" selected>— подпроект СКС не выбран —</option>`));
 
   host.innerHTML = `
     <span class="muted">Проект:</span>
     ${parentSel}
     <span class="muted" style="margin-left:14px">СКС-проект:</span>
-    <select id="sd-subproject-switcher" title="Подпроект СКС внутри выбранного проекта">${subOpts}</select>
-    <button type="button" class="sd-btn-sel" id="sd-sub-new" title="Создать новый СКС-подпроект внутри выбранного проекта (имя + обозначение, напр. «СКС-1»)">＋ Новый СКС-проект</button>
+    <select id="sd-subproject-switcher" ${parentIsOrphan ? 'disabled' : ''} title="${parentIsOrphan ? 'Мини-проект СКС — самостоятельный контекст, у него нет под-проектов' : 'Подпроект СКС внутри выбранного проекта'}">${subOpts}</select>
+    ${parentIsOrphan ? '' : `<button type="button" class="sd-btn-sel" id="sd-sub-new" title="Создать новый СКС-подпроект внутри выбранного проекта (имя + обозначение, напр. «СКС-1»)">＋ Новый СКС-проект</button>`}
     ${p && p.parentProjectId === parent?.id ? `<span class="muted" style="margin-left:8px">${p.designation ? `· обозначение: <b>${esc(p.designation)}</b>` : '· без обозначения'}</span>` : ''}
     ${legacyActive ? `<span class="muted" title="Эти СКС-данные хранятся под id самого проекта, без отдельного подпроекта (старый формат до v0.59.372). Создайте подпроект, если хотите вести несколько вариантов СКС в одном объекте." style="margin-left:8px;color:#b45309;cursor:help">· legacy режим ⓘ</span>` : ''}
     <a href="../projects/" style="margin-left:auto">→ управлять проектами</a>
@@ -117,14 +140,21 @@ function renderProjectBadge(pid) {
 
   document.getElementById('sd-parent-switcher')?.addEventListener('change', e => {
     // При смене родителя — активируем первый подпроект под ним (или ничего).
+    // v0.59.531: для orphan-sketch (kind='sketch' без parentProjectId) —
+    // активируем сам sketch (он и есть контекст), под-проектов у него нет.
     const newParent = e.target.value;
-    const newSubs = listSubProjects(newParent, 'scs-design');
-    if (newSubs[0]) setActiveProjectId(newSubs[0].id);
-    else {
-      // Подпроекта ещё нет — оставляем активным сам родитель временно,
-      // но scoped-данные будут лежать под id родителя. Лучше попросить
-      // пользователя сразу создать подпроект.
+    const np = getProject(newParent);
+    if (np && np.kind === 'sketch' && !np.parentProjectId) {
       setActiveProjectId(newParent);
+    } else {
+      const newSubs = listSubProjects(newParent, 'scs-design');
+      if (newSubs[0]) setActiveProjectId(newSubs[0].id);
+      else {
+        // Подпроекта ещё нет — оставляем активным сам родитель временно,
+        // но scoped-данные будут лежать под id родителя. Лучше попросить
+        // пользователя сразу создать подпроект.
+        setActiveProjectId(newParent);
+      }
     }
     location.reload();
   });

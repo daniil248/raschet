@@ -401,6 +401,18 @@ function renderSketches() {
     'mv-config':  'Конфигуратор РУ СН',
     'mdc-config': 'Конфигуратор МЦОД',
   }[m] || m);
+  // v0.59.531: ссылка «▶ Открыть» — открывает мини-проект в его модуле,
+  // активируя его как контекст. Ранее у sketches не было входа из /projects/,
+  // и пользователь, создавший мини-проект СКС в scs-design, терял его, если
+  // переключал scs-design в полноценный проект (мини оставался в LS, но
+  // dropdown-ы модулей его не показывали).
+  const ownerHref = m => ({
+    'scs-design': '../scs-design/',
+    'scs-config': '../scs-config/',
+    'rack-config': '../rack-config/',
+    'mv-config':  '../mv-config/',
+    'mdc-config': '../mdc-config/',
+  }[m] || '../');
 
   const totalN = sketches.length;
   host.innerHTML = `
@@ -422,6 +434,7 @@ function renderSketches() {
               <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.name || '(без имени)')}</span>
               <span class="muted" style="font-size:11px">${total ? statsBadges(st) : '<i>пусто</i>'}</span>
               <span class="muted" style="font-size:11px;white-space:nowrap">${fmtDate(s.updatedAt)}</span>
+              <a class="pr-btn-sel" data-act="open-sketch" data-owner="${escapeHtml(s.ownerModule || '')}" href="${escapeHtml(buildModuleHref(ownerHref(s.ownerModule), { projectId: s.id, fromModule: 'projects' }))}" style="font-size:12px;padding:3px 10px;text-decoration:none" title="Открыть мини-проект в модуле, который его создал, и сделать его активным контекстом">▶ Открыть</a>
               <button type="button" class="pr-btn-sel" data-act="copy-sketch" style="font-size:12px;padding:3px 8px" title="Копия мини-проекта с новыми id экземпляров стоек">📄 Копия</button>
               <button type="button" class="pr-btn-danger" data-act="del-sketch" style="font-size:12px;padding:3px 8px">Удалить</button>
             </div>`;
@@ -432,6 +445,14 @@ function renderSketches() {
 
   host.querySelector('.pr-sketches-panel')?.addEventListener('toggle', e => {
     sketchesOpen = !!e.target.open;
+  });
+  host.querySelectorAll('[data-act="open-sketch"]').forEach(a => {
+    a.addEventListener('click', () => {
+      // setActiveProjectId — для модулей, которые читают getActiveProjectId()
+      // (а не только URL ?project=). location перейдёт ссылкой <a>.
+      const row = a.closest('.pr-sketch-row');
+      const id = row?.dataset.id; if (id) setActiveProjectId(id);
+    });
   });
   host.querySelectorAll('[data-act="copy-sketch"]').forEach(btn => {
     btn.addEventListener('click', async () => {
