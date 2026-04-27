@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.516', date: '2026-04-27', items: [
+      '🔗 <b>scs-config читает racks из POR (в дополнение к legacy)</b>. По плану Phase 2.5: scs-config теперь видит стойки, которые добавлены через engine mirror, POR Playground или другие POR-aware модули — без необходимости миграции данных в legacy LS-формат.',
+      '• <b>Источники объединяются</b> в <code>loadRacks()</code>:',
+      '  ⚬ Legacy: <code>loadAllRacksForActiveProject()</code> (rack-config templates + project-scoped instances).',
+      '  ⚬ POR: <code>getObjects(pid, {type:\'rack\'})</code>.',
+      '• <b>Дедуп по id</b>: если POR-объект имеет <code>legacyRackId</code> (после миграции), он совпадает с id legacy-копии — POR-копия пропускается, legacy остаётся (т.к. он отрисовывается в UI с pdu/accessories).',
+      '• <b>POR-only racks</b> (созданные в playground / engine mirror без legacy) добавляются в список с маркером <code>_source: \'por\'</code> и id из <code>legacyRackId || por.id</code>.',
+      '• <b>Конвертер</b> POR → scs-config: <code>{id, name, manufacturer, tag, u, width, depth, demandKw, cosphi, phases}</code> заполняется из <code>domains.mechanical/electrical</code>.',
+      '• <b>Эффект</b>: 10 racks Kehua (SR01-08, CR01, MR01) в Qarmet после переноса (v0.59.514) теперь видны в СКС-модуле проекта 25013_Qarmet Темиртау. Pdu/accessories пока пустые (будут наполняться через scs-config UI).',
+      'Файлы: <code>scs-config/scs-config.js</code> — импорт <code>getObjects</code> из <code>shared/por.js</code>, новый <code>_porRackToScsRack</code>, расширенный <code>loadRacks()</code>.',
+    ] },
     { version: '0.59.515', date: '2026-04-27', items: [
       '🔄 <b>scs-config: dropdown переключения проекта прямо в шапке</b>. По вопросу пользователя «как изменить проект для СКС?». Раньше можно было только через ссылку «сменить →» в <code>/projects/</code> — выбрать другой проект и снова перейти в СКС. Теперь:',
       '• <b>Select со всеми full-проектами</b> (sketch-проекты исключены) в шапке scs-config. Активный проект — первым в списке.',

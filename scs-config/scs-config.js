@@ -39,6 +39,10 @@ import {
   loadAllRacksForActiveProject, saveAllRacksForActiveProject,
   migrateLegacyInstances, LS_TEMPLATES_GLOBAL
 } from '../shared/rack-storage.js';
+// v0.59.516: дополнительный источник стоек — POR (Phase 2.5). Стойки,
+// добавленные через engine mirror или через POR Playground / другие
+// модули, тоже должны быть видны в scs-config.
+import { getObjects as porGetObjects } from '../shared/por.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;               // оставлен для storage-listener совместимости
 const LS_CATALOG   = 'scs-config.catalog.v1';           // глобальный каталог IT-типов
@@ -258,12 +262,62 @@ function scPrompt(title, defaultValue) {
 }
 
 /* ---- persistence ------------------------------------------------------- */
+/**
+ * v0.59.516: конвертер POR-объекта type='rack' → scs-config rack record.
+ * scs-config работает с плоской структурой: { id, name, manufacturer, u,
+ * width, depth, demandKw, cosphi, ... }. POR хранит то же в domains.
+ * mechanical/electrical. Если у POR-объекта есть legacyRackId — используем
+ * его как id (чтобы при наличии legacy-копии они дедуплицировались).
+ */
+function _porRackToScsRack(obj) {
+  if (!obj) return null;
+  const m = (obj.domains && obj.domains.mechanical) || {};
+  const e = (obj.domains && obj.domains.electrical) || {};
+  const id = obj.legacyRackId || obj.id;
+  return {
+    id,
+    porObjectId:  obj.id,
+    name:         obj.name || obj.tag || 'Стойка',
+    manufacturer: obj.manufacturer || '',
+    tag:          obj.tag || '',
+    u:            Number(m.rackUnits) || 42,
+    width:        Number(m.widthMm)   || 600,
+    depth:        Number(m.depthMm)   || 800,
+    demandKw:     Number(e.demandKw)  || 0,
+    cosphi:       Number(e.cosPhi)    || 0.95,
+    phases:       Number(e.phases)    || 3,
+    pdus: [],
+    accessories: [],
+    _source: 'por',  // маркер — отрисовка в UI, чтобы понятно было откуда
+  };
+}
+
 function loadRacks() {
-  // v0.59.278: объединение глобальных шаблонов + экземпляров активного
-  // проекта. Шаблоны общие, экземпляры — строго в рамках проекта.
+  // v0.59.278/516: объединение легаси-источников + POR (Phase 2.5).
+  // Источники:
+  //   1. rack-storage: глобальные шаблоны + project-scoped экземпляры.
+  //   2. POR: type='rack' для активного проекта.
+  // Дедуп по id (POR.legacyRackId совпадает с legacy id у мигрированных).
   try {
     migrateLegacyInstances();
-    return loadAllRacksForActiveProject();
+    const legacy = loadAllRacksForActiveProject() || [];
+    const seenIds = new Set(legacy.map(r => r && r.id).filter(Boolean));
+    const out = [...legacy];
+
+    let porPid = null;
+    try { porPid = getActiveProjectId(); } catch {}
+    if (porPid) {
+      let porRacks = [];
+      try { porRacks = porGetObjects(porPid, { type: 'rack' }) || []; } catch {}
+      for (const obj of porRacks) {
+        const r = _porRackToScsRack(obj);
+        if (!r || !r.id) continue;
+        if (seenIds.has(r.id)) continue;   // legacy-копия уже в списке
+        seenIds.add(r.id);
+        out.push(r);
+      }
+    }
+    return out;
   } catch (e) { console.warn('[scs-config] loadRacks error', e); return []; }
 }
 function saveRacks() {
