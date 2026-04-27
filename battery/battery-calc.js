@@ -766,34 +766,39 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     parts.push(`<text x="${tx + 2}" y="${ty + 1}" fill="${stroke}" font-weight="600">${escHtml(lbl)}</text>`);
   }
 
-  // Легенда справа вверху — КЛИКАБЕЛЬНАЯ (toggle видимости).
-  const legendX = W - padR - 130;
-  const legendY = padT + 8;
-  parts.push(`<rect x="${legendX - 6}" y="${legendY - 12}" width="130" height="${endVs.length * 18 + 14}" fill="#fff" stroke="#e0e3ea" rx="4"/>`);
-  parts.push(`<text x="${legendX}" y="${legendY}" fill="#6b7280" font-size="10">Клик — скрыть/показать</text>`);
-  endVs.forEach((ev, idx) => {
-    const color = palette[idx % palette.length];
-    const y = legendY + 8 + idx * 18 + 8;
-    const visible = visibleSet.has(ev);
-    const op = visible ? 1 : 0.35;
-    parts.push(`<g data-legend-ev="${ev}" style="cursor:pointer" opacity="${op}">`);
-    parts.push(`<rect x="${legendX - 4}" y="${y - 9}" width="128" height="16" fill="transparent"/>`);
-    parts.push(`<rect x="${legendX}" y="${y - 6}" width="12" height="12" fill="${visible ? color : '#fff'}" stroke="${color}" stroke-width="1.5" rx="2"/>`);
-    if (visible) parts.push(`<polyline points="${legendX + 2.5},${y} ${legendX + 5},${y + 2.5} ${legendX + 9},${y - 2}" fill="none" stroke="#fff" stroke-width="1.8"/>`);
-    parts.push(`<text x="${legendX + 18}" y="${y + 4}" fill="#1f2430">${ev} В/эл</text>`);
-    parts.push(`</g>`);
-  });
-
-  // Невидимый rect-перехватчик для crosshair (отдельно от tick-сетки).
+  // Сначала — невидимая зона для crosshair (её перекроют легенда и
+  // highlight, чтобы клики по ним не блокировались hover-областью).
   parts.push(`<rect class="chart-hover-area" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" pointer-events="all"/>`);
   // Crosshair-группа (изначально скрыта).
   parts.push(`<g class="chart-crosshair" style="display:none;pointer-events:none">`);
   parts.push(`<line class="cx-vline" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="#888" stroke-width="1" stroke-dasharray="3 3"/>`);
   parts.push(`</g>`);
 
+  // Легенда справа вверху — КЛИКАБЕЛЬНАЯ (toggle видимости). Кладём
+  // ПОСЛЕ hover-area, чтобы клики приходили на неё.
+  const legendX = W - padR - 130;
+  const legendY = padT + 8;
+  parts.push(`<g class="chart-legend" pointer-events="auto">`);
+  parts.push(`<rect x="${legendX - 6}" y="${legendY - 12}" width="130" height="${endVs.length * 18 + 14}" fill="#fff" stroke="#e0e3ea" rx="4"/>`);
+  parts.push(`<text x="${legendX}" y="${legendY}" fill="#6b7280" font-size="10" pointer-events="none">Клик — скрыть/показать</text>`);
+  endVs.forEach((ev, idx) => {
+    const color = palette[idx % palette.length];
+    const y = legendY + 8 + idx * 18 + 8;
+    const visible = visibleSet.has(ev);
+    const op = visible ? 1 : 0.35;
+    parts.push(`<g data-legend-ev="${ev}" style="cursor:pointer" opacity="${op}">`);
+    parts.push(`<rect x="${legendX - 4}" y="${y - 9}" width="128" height="16" fill="#fff" fill-opacity="0.01"/>`);
+    parts.push(`<rect x="${legendX}" y="${y - 6}" width="12" height="12" fill="${visible ? color : '#fff'}" stroke="${color}" stroke-width="1.5" rx="2" pointer-events="none"/>`);
+    if (visible) parts.push(`<polyline points="${legendX + 2.5},${y} ${legendX + 5},${y + 2.5} ${legendX + 9},${y - 2}" fill="none" stroke="#fff" stroke-width="1.8" pointer-events="none"/>`);
+    parts.push(`<text x="${legendX + 18}" y="${y + 4}" fill="#1f2430" pointer-events="none">${ev} В/эл</text>`);
+    parts.push(`</g>`);
+  });
+  parts.push(`</g>`);
+
   parts.push('</svg>');
-  // Wrap SVG + tooltip overlay в relative-контейнер.
-  mount.innerHTML = `<div style="position:relative">${parts.join('')}<div class="chart-tooltip" style="position:absolute;display:none;background:#1f2430;color:#fff;font-size:11px;padding:6px 8px;border-radius:4px;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);line-height:1.5;z-index:10"></div></div>`;
+  // Wrap SVG + tooltip overlay в relative-контейнер. overflow:hidden чтобы
+  // tooltip не выводил скролл за пределы графика.
+  mount.innerHTML = `<div style="position:relative;overflow:hidden">${parts.join('')}<div class="chart-tooltip" style="position:absolute;display:none;background:#1f2430;color:#fff;font-size:11px;padding:6px 8px;border-radius:4px;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);line-height:1.5;z-index:10;max-width:240px"></div></div>`;
 
   // ──────── Интерактив ────────
   const svg = mount.querySelector('svg');
@@ -848,8 +853,9 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     vline.setAttribute('x2', xSvg);
     // Удаляем старые точки
     svg.querySelectorAll('.cx-pt').forEach(n => n.remove());
-    // Точки на каждой видимой кривой
-    const lines = [`<b>${fmt(t)} мин</b>`];
+    // Точки на каждой видимой кривой. Tooltip: «t мин · P В/эл = X W/блок» —
+    // время одинаковое (фиксируем X), мощность — своя для каждой кривой.
+    const lines = [`<b>Время разряда: ${fmt(t)} мин</b>`];
     endVs.forEach((ev, idx) => {
       if (!visibleSet.has(ev)) return;
       const c = curvesByEv.get(ev);
@@ -868,13 +874,25 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
       dot.setAttribute('stroke-width', '1.5');
       dot.style.pointerEvents = 'none';
       svg.appendChild(dot);
-      lines.push(`<span style="color:${c.color}">●</span> ${ev} В/эл: <b>${fmt(p)} W/блок</b>`);
+      lines.push(`<span style="color:${c.color}">●</span> ${ev} В/эл → <b>${fmt(p)}</b> W/блок`);
     });
     tooltip.innerHTML = lines.join('<br>');
     tooltip.style.display = '';
-    const r = svg.getBoundingClientRect();
-    const tx = (e.clientX - r.left) + 12;
-    const ty = (e.clientY - r.top) + 12;
+    // Позиционируем относительно SVG-контейнера. После innerHTML измеряем
+    // размер tooltip и держим его внутри bounds контейнера.
+    const wrap = mount.firstElementChild; // div со SVG и tooltip
+    const wrapR = wrap.getBoundingClientRect();
+    const tw = tooltip.offsetWidth;
+    const th = tooltip.offsetHeight;
+    const margin = 10;
+    const cx = e.clientX - wrapR.left;
+    const cy = e.clientY - wrapR.top;
+    let tx = cx + 14;
+    let ty = cy + 14;
+    // По горизонтали — если не помещается справа, ставим слева от курсора.
+    if (tx + tw + margin > wrapR.width) tx = Math.max(margin, cx - tw - 14);
+    // По вертикали — если не помещается снизу, ставим сверху курсора.
+    if (ty + th + margin > wrapR.height) ty = Math.max(margin, cy - th - 14);
     tooltip.style.left = tx + 'px';
     tooltip.style.top = ty + 'px';
   });
@@ -1921,60 +1939,86 @@ function _renderCalcDischargeChart(params, calcResult, blocksPerString, blockV) 
     blockPowerW = calcResult.found.result?.blockPowerW;
     extrapolated = !!calcResult.found.result?.extrapolated;
   }
-  // v0.59.456: точка должна лежать НА кривой разряда. Раньше использовали
-  // (autonomyMin, blockPowerW) — это были ВВОДЫ (целевое время + мощность
-  // на блок при выбранном N), и они часто не совпадали с кривой, что
-  // выглядело визуально как «точка ниже кривой». Теперь фиксируем мощность
-  // (фактическая нагрузка на блок) и считаем РЕАЛЬНОЕ время разряда по
-  // кривой через interpTimeByPower — точка всегда на кривой.
-  let highlight = null;
-  if (Number.isFinite(blockPowerW) && blockPowerW > 0) {
-    let curveTMin = null;
-    let onCurveTag = '';
-    if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
-      const r = interpTimeByPower(battery.dischargeTable, endV || 1.75, blockPowerW);
-      if (r === Infinity) { curveTMin = autonomyMin; onCurveTag = ' (мощность ниже таблицы → автономия ≥ макс. табличной)'; }
-      else if (r && typeof r === 'object') { curveTMin = r.tMin; onCurveTag = ' (экстраполяция)'; }
-      else if (Number.isFinite(r)) { curveTMin = r; }
-    } else if (Number.isFinite(autonomyMin)) {
-      curveTMin = autonomyMin;
-    }
-    if (Number.isFinite(curveTMin) && curveTMin > 0) {
-      highlight = {
-        tMin: curveTMin,
-        powerW: blockPowerW,
-        extrapolated: extrapolated || onCurveTag.includes('экстрап'),
-        label: `${fmt(curveTMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}${onCurveTag}`
-      };
-    }
-  }
-  // Если есть таблица — рисуем ТОЛЬКО кривую выбранного endV (ближайшее
-  // значение из таблицы), не все 5+ кривых.
+  // v0.59.457: универсальный snap-to-curve. Сначала строим rows (либо из
+  // таблицы, либо синтетически), затем интерполируем t из P ИМЕННО по
+  // этим rows — гарантия что точка лежит на видимой кривой независимо
+  // от источника данных.
+  let rows, endVsForChart, bestEv;
   if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
     const all = battery.dischargeTable;
-    const endVs = [...new Set(all.map(p => p.endV))].sort((a, b) => a - b);
-    let bestEv = endVs[0], bestDiff = Math.abs(endVs[0] - (endV || 1.75));
-    for (const ev of endVs) {
+    const allEvs = [...new Set(all.map(p => p.endV))].sort((a, b) => a - b);
+    bestEv = allEvs[0];
+    let bestDiff = Math.abs(allEvs[0] - (endV || 1.75));
+    for (const ev of allEvs) {
       const d = Math.abs(ev - (endV || 1.75));
       if (d < bestDiff) { bestDiff = d; bestEv = ev; }
     }
-    const rows = all.filter(p => p.endV === bestEv);
-    _renderDischargeChart(mount, rows, [bestEv], highlight);
-    return;
+    rows = all.filter(p => p.endV === bestEv);
+    endVsForChart = [bestEv];
+  } else {
+    const chem = (battery && battery.chemistry) || chemistry || 'vrla';
+    const cap = (battery && battery.capacityAh) || capacityAh || 100;
+    const blkV = (battery && battery.blockVoltage) || blockV || 12;
+    const tPoints = [1, 3, 5, 10, 15, 30, 60, 120, 180, 240, 360, 480, 600];
+    rows = tPoints.map(t => {
+      const eff = _avgEffShim(chem, t);
+      const usableWh = blkV * cap * eff;
+      const powerW = usableWh / (t / 60);
+      return { endV: endV || 1.75, tMin: t, powerW };
+    });
+    bestEv = endV || 1.75;
+    endVsForChart = [bestEv];
   }
-  // Иначе — синтетическая кривая через avgEfficiency для chemistry
-  const chem = (battery && battery.chemistry) || chemistry || 'vrla';
-  const cap = (battery && battery.capacityAh) || capacityAh || 100;
-  const blkV = (battery && battery.blockVoltage) || blockV || 12;
-  // Импорт avgEfficiency: реэкспортирован из battery-discharge.js
-  const tPoints = [1, 3, 5, 10, 15, 30, 60, 120, 180, 240, 360, 480, 600];
-  const rows = tPoints.map(t => {
-    const eff = _avgEffShim(chem, t);
-    const usableWh = blkV * cap * eff;
-    const powerW = usableWh / (t / 60);
-    return { endV: endV || 1.75, tMin: t, powerW };
-  });
-  _renderDischargeChart(mount, rows, [endV || 1.75], highlight);
+  const highlight = _snapHighlightToCurve(rows, bestEv, blockPowerW, autonomyMin, extrapolated);
+  _renderDischargeChart(mount, rows, endVsForChart, highlight);
+}
+
+// v0.59.457: единая функция snap-to-curve. Берёт строки кривой и мощность
+// на блок, возвращает highlight {tMin, powerW, label} где tMin — точка
+// на кривой, соответствующая powerW. Кривая интерпретируется ровно так
+// же как в _renderDischargeChart: линейная по (t, P), монотонно убывающая.
+function _snapHighlightToCurve(rows, ev, blockPowerW, fallbackTMin, extrapolatedFlag) {
+  if (!Number.isFinite(blockPowerW) || blockPowerW <= 0) return null;
+  const curve = rows.filter(r => r.endV === ev && r.powerW > 0 && r.tMin > 0).sort((a, b) => a.tMin - b.tMin);
+  if (!curve.length) return null;
+  // Кривая: при росте t — P убывает. Ищем t такое, что P(t) = blockPowerW.
+  let snappedT = null;
+  let outOfTable = '';
+  if (blockPowerW > curve[0].powerW) {
+    // мощность выше первой точки → экстраполяция влево
+    if (curve.length >= 2) {
+      const a = curve[0], b = curve[1];
+      if (a.powerW !== b.powerW) {
+        const k = (a.powerW - blockPowerW) / (a.powerW - b.powerW);
+        snappedT = Math.max(0, a.tMin + (b.tMin - a.tMin) * k);
+        outOfTable = ' (экстраполяция)';
+      }
+    }
+  } else if (blockPowerW < curve[curve.length - 1].powerW) {
+    // мощность ниже последней точки → автономия больше последней tMin
+    snappedT = curve[curve.length - 1].tMin;
+    outOfTable = ' (P ниже таблицы → автономия ≥ макс. табличной)';
+  } else {
+    for (let i = 0; i < curve.length - 1; i++) {
+      const a = curve[i], b = curve[i + 1];
+      if (blockPowerW <= a.powerW && blockPowerW >= b.powerW) {
+        if (a.powerW === b.powerW) { snappedT = a.tMin; break; }
+        const k = (a.powerW - blockPowerW) / (a.powerW - b.powerW);
+        snappedT = a.tMin + (b.tMin - a.tMin) * k;
+        break;
+      }
+    }
+  }
+  if (!Number.isFinite(snappedT) || snappedT <= 0) {
+    if (Number.isFinite(fallbackTMin) && fallbackTMin > 0) snappedT = fallbackTMin;
+    else return null;
+  }
+  return {
+    tMin: snappedT,
+    powerW: blockPowerW,
+    extrapolated: !!extrapolatedFlag || outOfTable.includes('экстрап'),
+    label: `${fmt(snappedT)} мин · ${fmt(blockPowerW)} W/блок${extrapolatedFlag ? ' (условно)' : ''}${outOfTable}`,
+  };
 }
 // v0.59.414: zoomed chart — окно вокруг рабочей точки, линейные шкалы.
 // Filtering rows: tMin ∈ [highlight.tMin × 0.3 … × 3], powerW аналогично.
@@ -1997,26 +2041,13 @@ function _renderCalcDischargeChartZoom(params, calcResult, blocksPerString, bloc
     mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет рабочей точки для детализации</div>';
     return;
   }
-  // v0.59.456: точка снапится на кривую (см. _renderCalcDischargeChart).
-  let curveTMin = autonomyMin;
-  let onCurveTag = '';
-  if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
-    const r = interpTimeByPower(battery.dischargeTable, endV || 1.75, blockPowerW);
-    if (r === Infinity) { onCurveTag = ' (P ниже таблицы)'; }
-    else if (r && typeof r === 'object') { curveTMin = r.tMin; onCurveTag = ' (экстраполяция)'; }
-    else if (Number.isFinite(r)) { curveTMin = r; }
-  }
-  if (!Number.isFinite(curveTMin) || curveTMin <= 0) {
-    mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет рабочей точки для детализации</div>';
-    return;
-  }
-  const highlight = { tMin: curveTMin, powerW: blockPowerW, extrapolated: extrapolated || onCurveTag.includes('экстрап'), label: `${fmt(curveTMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}${onCurveTag}` };
-  // Источник кривых
-  let allRows, endVs;
+  // v0.59.457: snap-to-curve по rows, что будут реально нарисованы.
+  let allRows, endVs, bestEv;
   if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
     const all = battery.dischargeTable;
     const allEvs = [...new Set(all.map(p => p.endV))].sort((a, b) => a - b);
-    let bestEv = allEvs[0], bestDiff = Math.abs(allEvs[0] - (endV || 1.75));
+    bestEv = allEvs[0];
+    let bestDiff = Math.abs(allEvs[0] - (endV || 1.75));
     for (const ev of allEvs) {
       const d = Math.abs(ev - (endV || 1.75));
       if (d < bestDiff) { bestDiff = d; bestEv = ev; }
@@ -2034,7 +2065,13 @@ function _renderCalcDischargeChartZoom(params, calcResult, blocksPerString, bloc
       const powerW = usableWh / (t / 60);
       return { endV: endV || 1.75, tMin: t, powerW };
     });
-    endVs = [endV || 1.75];
+    bestEv = endV || 1.75;
+    endVs = [bestEv];
+  }
+  const highlight = _snapHighlightToCurve(allRows, bestEv, blockPowerW, autonomyMin, extrapolated);
+  if (!highlight) {
+    mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет рабочей точки для детализации</div>';
+    return;
   }
   // Окно
   const filterWindow = (factor) => {
