@@ -1471,15 +1471,31 @@ const _handoffVdc = { min: 0, max: 0 };
 
 // v0.59.413: Расчётные коэффициенты (IEEE 485 / IEC 62040).
 // Старение, температура, конструктивный запас, окно V_DC, SoC-min для Li.
-// v0.59.469/472: расчёт k_temp из температуры АКБ.
-// При T < 25°C: IEEE 485 § 6.2 — k_temp = 1 + 0.008 · (25 − T) (по ёмкости).
-// При T > 25°C: учёт ускоренного старения по Аррениусу — каждые +10°C
-// удваивают скорость старения; компенсируем коэффициентом ~0.005·(T-25).
-// При 35°C → k≈1.05, при 45°C → k≈1.10. Этот запас рекомендован
-// инженерной практикой для production-систем (тропики, серверные
-// без активного охлаждения).
-function _kTempFromCelsius(tC) {
+// v0.59.469/472/474: расчёт k_temp из температуры АКБ — раздельно по химии.
+//
+// VRLA (свинцово-кислотные):
+//   • T < 25°C: IEEE 485 § 6.2 — k = 1 + 0.008·(25 − T) (потеря ёмкости).
+//   • T > 25°C: запас на ускоренное старение по Аррениусу — k = 1 + 0.005·(T−25).
+//
+// Li-Ion (LFP):
+//   • Холод влияет СИЛЬНЕЕ: при 0°C ~75% ёмкости, при −10°C ~50%, при −20°C
+//     BMS отключает разряд. Используем k = 1 + 0.015·(25 − T) при 0…25°C;
+//     при T < 0°C добавляем «обрыв» (k *= 1.5) — нужен подогрев.
+//   • Жара: BMS защищает от мгновенных проблем, но идёт календарное
+//     старение. Меньше ёмкостной поправки (0.003), но всё равно нужен запас.
+function _kTempFromCelsius(tC, chemistry) {
   if (!Number.isFinite(tC)) return 1.0;
+  const isLi = chemistry === 'li-ion';
+  if (isLi) {
+    if (tC < 0) {
+      // Резкий сброс ёмкости + критическая работа BMS. Запас 1.5×.
+      const baseK = 1 + 0.015 * (25 - tC); // линейная экстраполяция
+      return baseK * 1.5;
+    }
+    if (tC < 25) return 1 + 0.015 * (25 - tC); // 0°C → 1.375; 10°C → 1.225
+    return 1 + 0.003 * (tC - 25); // меньшее влияние тепла на ёмкость
+  }
+  // VRLA
   if (tC < 25) return 1 + 0.008 * (25 - tC);
   return 1 + 0.005 * (tC - 25);
 }
@@ -1489,8 +1505,12 @@ function _readDerating() {
   // v0.59.469: k_temp вычисляется из температуры (если поле задано),
   // hidden-input calc-k-temp хранит результат для preserve-on-miss совместимости.
   const tEl = document.getElementById('calc-temp-c');
+  const chemEl = document.getElementById('calc-chem');
+  const battSel = document.getElementById('calc-battery');
+  const battery = battSel?.value ? getBattery(battSel.value) : null;
+  const chemistry = (battery && battery.chemistry) || (chemEl?.value || 'vrla');
   const kTemp = tEl
-    ? _kTempFromCelsius(Number(tEl.value))
+    ? _kTempFromCelsius(Number(tEl.value), chemistry)
     : Math.max(1, get('calc-k-temp') || 1.00);
   const kDesign = Math.max(1, get('calc-k-design') || 1.10);
   const vdcSafetyPct = Math.max(0, Math.min(20, get('calc-vdc-safety') || 0));
@@ -2037,21 +2057,43 @@ function doCalc() {
     blocksPerString = Math.max(1, opt.N);
     dcWarn = `Невозможно строго уложить цепочку в диапазон ИБП ${vRange.min}…${vRange.max} В при блоке ${blockV} В, endV ${endV} В/эл (≈${opt.endVperBlock.toFixed(1)} В/блок) и float ≈${opt.floatVperBlock.toFixed(1)} В/блок. Нижняя граница N=${opt.nLow}, верхняя N=${opt.nHigh}. Принят минимум ${blocksPerString}.`;
   }
+  // v0.59.474: в режиме 'autonomy' пользователь может задать N вручную.
+  // Если значение валидно — используем его; иначе fallback на авто-подбор.
+  if (mode === 'autonomy') {
+    const manualN = Number(get('calc-blocks')?.value);
+    if (Number.isFinite(manualN) && manualN >= 1) {
+      blocksPerString = manualN;
+      // Проверка: лежит ли вне V_DC окна — даём warning.
+      if (opt.feasible && (manualN < opt.nLow || manualN > opt.nHigh)) {
+        dcWarn = `N=${manualN} вне рекомендованного диапазона V_DC ИБП [${opt.nLow}…${opt.nHigh}]. Расчёт продолжается, но при разряде V_DC может выйти за паспорт ИБП.`;
+      }
+    }
+  }
   const dcVoltage = blocksPerString * blockV;
 
   // Авто-выбор числа цепочек (strings).
   // Стратегия: минимум strings, при котором мощность на блок не превышает
   // максимум таблицы (или хотя бы feasible в усреднённой модели).
   // При loadKw=0 — strings=1 (нет нагрузки).
-  const stringsAuto = _autoSelectStrings({
-    battery, loadKw: loadKwEff, blocksPerString, blockV, endV, invEff, chemistry,
-    capacityAh: battery ? battery.capacityAh : capacityAh,
-    mode, targetMin,
-  });
-  const strings = stringsAuto.strings;
-  // Отражаем авто-значение в UI
+  // v0.59.474: в режиме 'autonomy' пользователь может задать M вручную.
+  let strings;
+  let stringsAuto = { warning: null };
+  if (mode === 'autonomy') {
+    const manualM = Number(get('calc-strings-manual')?.value);
+    strings = (Number.isFinite(manualM) && manualM >= 1) ? manualM : 1;
+  } else {
+    stringsAuto = _autoSelectStrings({
+      battery, loadKw: loadKwEff, blocksPerString, blockV, endV, invEff, chemistry,
+      capacityAh: battery ? battery.capacityAh : capacityAh,
+      mode, targetMin,
+    });
+    strings = stringsAuto.strings;
+  }
+  // Отражаем значение в UI (display-поля для каждого режима)
   const strEl = get('calc-strings');
   if (strEl) strEl.value = strings;
+  const strADEl = get('calc-strings-auto-display');
+  if (strADEl) strADEl.value = strings;
   const dcEl = get('calc-dcv');
   if (dcEl) dcEl.value = dcVoltage;
 
@@ -2690,11 +2732,15 @@ function wireCalcForm() {
     _renderCapacityRecommend();
   });
   modeSel.dispatchEvent(new Event('change'));
-  // v0.59.469: температура → k_temp + display update.
+  // v0.59.469/474: температура → k_temp + display update (с учётом химии).
   const tempEl = document.getElementById('calc-temp-c');
   const updateKTemp = () => {
     const tC = Number(tempEl?.value);
-    const k = _kTempFromCelsius(tC);
+    const battSel = document.getElementById('calc-battery');
+    const battery = battSel?.value ? getBattery(battSel.value) : null;
+    const chemEl = document.getElementById('calc-chem');
+    const chemistry = (battery && battery.chemistry) || (chemEl?.value || 'vrla');
+    const k = _kTempFromCelsius(tC, chemistry);
     const hidden = document.getElementById('calc-k-temp');
     if (hidden) hidden.value = k.toFixed(2);
     const disp = document.getElementById('calc-k-temp-display');
@@ -2705,6 +2751,11 @@ function wireCalcForm() {
     tempEl.addEventListener('input', updateKTemp);
     updateKTemp();
   }
+  // Также обновляем при смене химии или АКБ.
+  ['calc-chem', 'calc-battery'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => updateKTemp());
+  });
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
   const btnPrn = document.getElementById('btn-battery-print');
