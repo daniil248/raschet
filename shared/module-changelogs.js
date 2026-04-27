@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.493', date: '2026-04-27', items: [
+      '✅ <b>Schneider Galaxy VS 10 / 20 kW — V_DC окно verified + Fix фаз у VS 10.</b> Раньше V_DC были сильно занижены (VS 10 = 192-240, VS 20 = 240-360) и VS 10 был помечен как 1ф — обе ошибки. По datasheet «Galaxy VS UPS for External Batteries Tech Spec 990-91141» (10-100 kW 400V):',
+      '• <b>VS 10 kW</b> (GVSUPS10KB4HS): external battery <b>384-576 VDC</b> (32-48 × 12В VRLA), EoD 384V at full load, float ~545V. Phases: <b>3</b> (раньше 1 — ошибка; вся серия Galaxy VS 10-150 kW трёхфазная per Schneider product range 65772; вариант 208V имеет 1ф input через внутренний трансформатор, но система 3ф).',
+      '• <b>VS 20 kW</b> (GVSUPS20KGS / B4HS): external battery <b>384-576 VDC</b>, EoD 384V. То же окно что у уже verified VS 40/60/100.',
+      '• Записи добавлены в <code>shared/ups-verified.js</code> → green ✓ в Battery-calc.',
+      '• seedVersion 14→15 force-upsert.',
+      'Файлы: <code>shared/catalogs/ups-schneider.js</code> (vs-10k phases 1→3 + vdcMin/Max + notes; vs-20k vdcMin/Max + notes), <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.492', date: '2026-04-27', items: [
       '🎯 <b>Авто-оптимум: blockV всегда = пользовательскому выбору.</b> Раньше при отсутствии выбранной АКБ из каталога перебирались все варианты [2, 4, 6, 12] В, и в таблице «Топ N вариантов» строки с blockV ≠ выбранному засоряли результат (пример из скриншота: при выбранном 12В таблица содержала строки с 6/4/2 В).',
       '• Теперь <code>bvCandidates = [blockV]</code> — единственное значение из поля «Напряжение блока» или паспорта АКБ, если выбрана.',

@@ -12,24 +12,33 @@ export const SCHNEIDER_UPSES = [
   {
     id: 'schneider-galaxy-vs-10k', supplier: 'Schneider Electric',
     model: 'Galaxy VS 10 kVA', kind: 'ups', upsType: 'monoblock',
-    capacityKva: 10, capacityKw: 10, phases: 1,
+    // Galaxy VS — вся серия 10-150 kW трёхфазная (per Schneider product range
+    // 65772). Раньше у этой записи стояло phases:1 — ошибочно (вариант 208V
+    // имеет 1ph input через внутренний трансформатор, но система 3ph).
+    capacityKva: 10, capacityKw: 10, phases: 3,
     efficiency: 96, cosPhi: 1.0,
-    vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
+    // Galaxy VS 10kW 400V (GVSUPS10KB4HS / B2HS): external battery
+    // 384-576 VDC (32-48 блоков 12В VRLA), EoD 384 V at full load,
+    // float ~545 V. Раньше 192-240 — было сильно занижено.
+    vdcMin: 384, vdcMax: 576, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VS datasheet 2024',
+    source: 'Schneider Galaxy VS UPS for External Batteries Tech Spec 990-91141 (10-100 kW 400V, 384-576 VDC, 32-48 × 12В VRLA)',
     importedAt: 0, custom: false,
-    notes: 'Моноблок 10 кВА · 1ф · внешние АКБ VRLA или Li-Ion (Galaxy Li-Ion BC).',
+    notes: 'Моноблок 10 кВА · 3ф · 32…48 × 12В VRLA, 384…576 VDC, EoD 384V (40 jars).',
   },
   {
     id: 'schneider-galaxy-vs-20k', supplier: 'Schneider Electric',
     model: 'Galaxy VS 20 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 20, capacityKw: 20, phases: 3,
     efficiency: 96, cosPhi: 1.0,
-    vdcMin: 240, vdcMax: 360, inputs: 1, outputs: 1,
+    // Galaxy VS 20kW 480V (GVSUPS20KGS): external battery 384-576 VDC.
+    // 400V вариант (GVSUPS20KB4HS) — то же окно 384-576. Раньше 240-360 —
+    // было сильно занижено.
+    vdcMin: 384, vdcMax: 576, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VS datasheet 2024',
+    source: 'Schneider Galaxy VS 20kW External Batteries Tech Spec (GVSUPS20KGS / B4HS, 384-576 VDC, EoD 384V)',
     importedAt: 0, custom: false,
-    notes: 'Моноблок 20 кВА · 3ф · 30/32/40 SLA-блоков 12V.',
+    notes: 'Моноблок 20 кВА · 3ф · 32…48 × 12В VRLA, 384…576 VDC.',
   },
   {
     id: 'schneider-galaxy-vs-40k', supplier: 'Schneider Electric',
