@@ -260,21 +260,40 @@ function openKitCatalogModal() {
     else if (kitMfg.includes(userMfg) || userMfg.includes(kitMfg)) s += 5;
     return Math.min(100, Math.round(s));
   }
+  // v0.59.471: кросс-фильтрация селектов — опции каждого зависят от
+  // значений всех остальных. Если выбран Schneider, в формате U
+  // показываются только те значения, что есть у Schneider; и наоборот.
+  // Запомнено как общий принцип проекта (memory/feedback_cross_filter.md).
+  const matchesExcept = (k, exceptKey) => {
+    if (!k.id) return false;
+    const q2 = state.search.trim().toLowerCase();
+    const mfg = (k.preset && k.preset.manufacturer) || '';
+    if (exceptKey !== 'mfg' && state.mfg !== '__all__' && mfg !== state.mfg) return false;
+    if (exceptKey !== 'u' && state.u !== '__all__' && k.preset.u !== +state.u) return false;
+    if (exceptKey !== 'width' && state.width !== '__all__' && k.preset.width !== +state.width) return false;
+    if (exceptKey !== 'depth' && state.depth !== '__all__' && k.preset.depth !== +state.depth) return false;
+    if (exceptKey !== 'search' && q2 && !(k.sku.toLowerCase().includes(q2)
+             || k.name.toLowerCase().includes(q2)
+             || mfg.toLowerCase().includes(q2))) return false;
+    return true;
+  };
   function render() {
-    const q = state.search.trim().toLowerCase();
-    const rows = KITS.filter(k => {
-      if (!k.id) return false; // «Произвольная» — отдельная кнопка внизу
-      const mfg = (k.preset && k.preset.manufacturer) || '';
-      if (state.mfg !== '__all__' && mfg !== state.mfg) return false;
-      if (state.u !== '__all__' && k.preset.u !== +state.u) return false;
-      if (state.width !== '__all__' && k.preset.width !== +state.width) return false;
-      if (state.depth !== '__all__' && k.preset.depth !== +state.depth) return false;
-      if (q && !(k.sku.toLowerCase().includes(q)
-               || k.name.toLowerCase().includes(q)
-               || mfg.toLowerCase().includes(q))) return false;
-      return true;
-    }).map(k => ({ k, score: scoreKit(k) }))
+    // Динамические опции: subset KITS отфильтрованный по остальным критериям.
+    const mfgsAvail = Array.from(new Set(KITS.filter(k => matchesExcept(k, 'mfg')).map(k => (k.preset && k.preset.manufacturer) || '—'))).sort();
+    const usAvail = Array.from(new Set(KITS.filter(k => matchesExcept(k, 'u')).map(k => k.preset.u))).sort((a,b)=>a-b);
+    const widthsAvail = Array.from(new Set(KITS.filter(k => matchesExcept(k, 'width')).map(k => k.preset.width))).sort((a,b)=>a-b);
+    const depthsAvail = Array.from(new Set(KITS.filter(k => matchesExcept(k, 'depth')).map(k => k.preset.depth))).sort((a,b)=>a-b);
+    // Если ранее выбранное значение исчезло из новых опций — сбросить.
+    if (state.mfg !== '__all__' && !mfgsAvail.includes(state.mfg)) state.mfg = '__all__';
+    if (state.u !== '__all__' && !usAvail.includes(+state.u)) state.u = '__all__';
+    if (state.width !== '__all__' && !widthsAvail.includes(+state.width)) state.width = '__all__';
+    if (state.depth !== '__all__' && !depthsAvail.includes(+state.depth)) state.depth = '__all__';
+
+    const rows = KITS.filter(k => matchesExcept(k, null))
+      .map(k => ({ k, score: scoreKit(k) }))
       .sort((a, b) => b.score - a.score);
+    // Подменяем mfgs/us/widths/depths на available для рендера селектов
+    const mfgs = mfgsAvail, us = usAvail, widths = widthsAvail, depths = depthsAvail;
     box.innerHTML = `
       <div style="padding:16px 20px;border-bottom:1px solid var(--rs-border-soft);display:flex;justify-content:space-between;align-items:center">
         <h3 style="margin:0">Каталог базовых комплектов стоек</h3>
