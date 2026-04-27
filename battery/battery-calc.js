@@ -17,6 +17,7 @@ let lastBatteryCalc = null;
 import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
 import { KEHUA_S3_BATTERIES } from '../shared/catalogs/battery-kehua-s3.js';
 import { listUpses, getUps } from '../shared/ups-catalog.js';
+import { isUpsVdcVerified } from '../shared/ups-verified.js';
 // v0.59.446: единый источник правды seed-данных ИБП (Kehua MR33/S3 AIO,
 // Schneider, Eaton, Legrand, DKC). Импорт инициализирует каталог.
 import '../shared/ups-seed.js';
@@ -852,18 +853,16 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     }
     // Обратная функция xOf: t = tMin + (x - padL)/plotW * (tMax - tMin)
     const t = tMin + ((xSvg - padL) / plotW) * (tMax - tMin);
-    // Обратная yOf для log Y: P = 10^(logPMin + (1 - (y-padT)/plotH) * (logPMax-logPMin))
-    const cursorPower = Math.pow(10, logPMin + (1 - (ySvg - padT) / plotH) * (logPMax - logPMin));
     crossG.style.display = '';
-    vline.setAttribute('x1', xSvg);
-    vline.setAttribute('x2', xSvg);
-    hline.setAttribute('y1', ySvg);
-    hline.setAttribute('y2', ySvg);
+    // v0.59.459: линии crosshair проходят ЧЕРЕЗ точку на кривой разряда,
+    // а не через положение курсора. Vertical — на t (фиксируется курсором X),
+    // horizontal — на Y кривой, ближайшей к курсору (если видимых несколько).
     // Удаляем старые точки
     svg.querySelectorAll('.cx-pt').forEach(n => n.remove());
-    // Точки на каждой видимой кривой. Tooltip: «t мин · P В/эл = X W/блок» —
-    // время одинаковое (фиксируем X), мощность — своя для каждой кривой.
-    const lines = [`<b>Время разряда: ${fmt(t)} мин</b>`, `<span style="color:#aaa">Курсор: ${fmt(cursorPower)} W/блок</span>`];
+    const lines = [`<b>Время разряда: ${fmt(t)} мин</b>`];
+    let bestSnapY = null;
+    let bestSnapDist = Infinity;
+    const ns = svg.namespaceURI;
     endVs.forEach((ev, idx) => {
       if (!visibleSet.has(ev)) return;
       const c = curvesByEv.get(ev);
@@ -871,7 +870,6 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
       const p = interpPower(c.curve, t);
       if (!Number.isFinite(p) || p <= 0) return;
       const cy = yOf(p);
-      const ns = svg.namespaceURI;
       const dot = document.createElementNS(ns, 'circle');
       dot.setAttribute('class', 'cx-pt');
       dot.setAttribute('cx', xSvg.toFixed(1));
@@ -883,7 +881,16 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
       dot.style.pointerEvents = 'none';
       svg.appendChild(dot);
       lines.push(`<span style="color:${c.color}">●</span> ${ev} В/эл → <b>${fmt(p)}</b> W/блок`);
+      const dist = Math.abs(cy - ySvg);
+      if (dist < bestSnapDist) { bestSnapDist = dist; bestSnapY = cy; }
     });
+    vline.setAttribute('x1', xSvg);
+    vline.setAttribute('x2', xSvg);
+    // Горизонтальная — на уровне ближайшей видимой кривой; если ни одна
+    // не видна — по позиции курсора как fallback.
+    const hY = (bestSnapY != null) ? bestSnapY : ySvg;
+    hline.setAttribute('y1', hY);
+    hline.setAttribute('y2', hY);
     tooltip.innerHTML = lines.join('<br>');
     tooltip.style.display = '';
     // Позиционируем относительно SVG-контейнера. После innerHTML измеряем
@@ -2334,7 +2341,14 @@ function _applyUpsPickerLock() {
     }
     _setDcvRangeHint(u.vdcMin, u.vdcMax, `по паспорту ${u.supplier || ''} ${u.model || ''}`.trim());
     _refreshDcExplanation();
-    if (info) info.innerHTML = `Выбран: <b>${escHtml(u.supplier)} ${escHtml(u.model)}</b> · ${u.capacityKw} кВт · η=${(((u.efficiency||0.94)*100<1?(u.efficiency*100):u.efficiency)||94).toFixed(0)}% · V<sub>DC</sub> ${u.vdcMin||'?'}…${u.vdcMax||'?'} В`;
+    if (info) {
+      const verified = isUpsVdcVerified(u);
+      const vdcBadge = verified
+        ? '<span title="V_DC подтверждено datasheet" style="color:#2e7d32">✓</span>'
+        : '<span title="V_DC — оценка по аналогии или по ном. напряжению. Сверьте с реальным datasheet ИБП перед использованием." style="color:#e65100">⚠</span>';
+      info.innerHTML = `Выбран: <b>${escHtml(u.supplier)} ${escHtml(u.model)}</b> · ${u.capacityKw} кВт · η=${(((u.efficiency||0.94)*100<1?(u.efficiency*100):u.efficiency)||94).toFixed(0)}% · V<sub>DC</sub> ${u.vdcMin||'?'}…${u.vdcMax||'?'} В ${vdcBadge}`
+        + (verified ? '' : `<div style="margin-top:4px;padding:6px 8px;background:#fff3e0;border:1px solid #ffb74d;border-radius:4px;font-size:11px;color:#7a4a00">⚠ Окно V<sub>DC</sub> для этой модели — <b>оценка по аналогии</b>, не подтверждено datasheet. Перед production-расчётом сверьте с паспортом ИБП. Verified-модели: Eaton 93PM 50/100/200, 93PS 40; Schneider Galaxy VS 60; вся линейка Kehua.</div>`);
+    }
   } else {
     const loadEl = document.getElementById('calc-load');
     if (loadEl) { loadEl.readOnly = false; loadEl.style.background = ''; loadEl.title = ''; loadEl.placeholder = ''; loadEl.removeAttribute('max'); }

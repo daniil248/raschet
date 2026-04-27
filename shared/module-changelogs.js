@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.459', date: '2026-04-27', items: [
+      '🎯 <b>Crosshair снапится на кривую разряда.</b> Теперь горизонтальная линия проходит через точку <i>на кривой</i> при текущем t, а не через позицию курсора по Y. Если видимых кривых несколько — выбирается ближайшая по Y к курсору. Удалена строка «Курсор: …» из tooltip — она больше не нужна, поскольку обе линии проходят через реальную точку на кривой.',
+      '✅ <b>Метка верификации V_DC окна для ИБП.</b> Создан <code>shared/ups-verified.js</code> — единый список ИБП, у которых V_DC подтверждено datasheet. В info-строке выбранного ИБП в Battery-calc — значок ✓ (verified) или ⚠ (оценка). Под info — explanatory-блок при оценочных значениях с инструкцией «сверьте с паспортом перед production-расчётом».',
+      '• Verified: Eaton 93PM 50/100/200 (PQ131012EN), Eaton 93PS 40 (PS153045), Schneider Galaxy VS 60 (GVSUPS60KGS), вся линейка Kehua MR33/S3 AIO/KR/Myria/FR-UK33/KR33/KR33-H (Kehua UPS Catalog 2024-10-22 с указанием страниц). Пользовательские записи (custom:true) считаются verified автоматически — пользователь сам отвечает за свои данные.',
+      '• Unverified (требуют сверки): Eaton 9PX/93PS 8/20/9395P, Schneider Galaxy VS 10/20/40/100, VL 200/300/500, VX 750/1500, Legrand Keor LP/SP/T evo/HP/HPE/MOD/MP, DKC Small/TwinDom/Modulys.',
+      'Файлы: <code>battery/battery-calc.js</code>, <code>shared/ups-verified.js</code> (новый).',
+    ] },
     { version: '0.59.458', date: '2026-04-27', items: [
       '➕ <b>Горизонтальная линия crosshair.</b> Раньше была только вертикальная (текущее t), теперь добавлена горизонтальная — на уровне Y курсора, плюс в tooltip строка «Курсор: P W/блок» с расчётом мощности по log-обратной формуле <code>P = 10^(logPmin + (1 - (y-padT)/plotH)·(logPmax-logPmin))</code>. Полный crosshair как положено.',
       'Файлы: <code>battery/battery-calc.js</code> — добавлен элемент <code>.cx-hline</code>, обработчик mousemove обновляет y1/y2.',
