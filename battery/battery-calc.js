@@ -829,12 +829,12 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     curvesByEv.set(ev, { color, curve });
     if (!visibleSet.has(ev)) return;
     const ptsScreen = curve.map(p => ({ x: xOf(p.tMin), y: yOf(p.powerW) }));
-    // v0.59.462: используем ПРЯМЫЕ отрезки (piecewise linear в screen
-    // coords), а не Hermite-сплайн. Это нужно чтобы tooltip-точка ЛИНЕЙНОЙ
-    // лог-интерполяцией ровно совпадала с нарисованной линией. Сплайн
-    // изгибался между точками → точка съезжала с кривой.
-    const d = ptsScreen.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+    // v0.59.463: монотонный Hermite-сплайн (Fritsch-Carlson) — гладкая кривая
+    // без overshoot. Чтобы точки/tooltip/snap лежали ровно на ней, мы
+    // помечаем path атрибутом data-ev и считаем Y(x) через getPointAtLength
+    // в обработчике hover (общий метод для отрисовки и интерполяции).
+    const d = _smoothPathMonotone(ptsScreen);
+    parts.push(`<path data-ev="${ev}" d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
     for (const p of curve) {
       // v0.59.460: аномальные точки помечены жёлтым (значение интерполировано).
       const isAnomaly = !!p._anomaly;
@@ -915,25 +915,36 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   const vline = svg.querySelector('.cx-vline');
   const hline = svg.querySelector('.cx-hline');
   const tooltip = mount.querySelector('.chart-tooltip');
-  // v0.59.461/462: ОДИН И ТОТ ЖЕ метод для кривой и для точек на ней —
-  // piecewise-linear в screen-координатах (xOf, yOf), что эквивалентно
-  // линейной интерполяции в (t, log P). Кривая в _renderDischargeChart
-  // рисуется через `M x,y L x,y L x,y` — те же отрезки. Раньше chart
-  // использовал Hermite-сплайн → точки съезжали с визуальной линии.
-  const interpPower = (curve, t) => {
-    if (!curve.length) return null;
-    if (t <= curve[0].tMin) return curve[0].powerW;
-    if (t >= curve[curve.length - 1].tMin) return curve[curve.length - 1].powerW;
-    for (let i = 0; i < curve.length - 1; i++) {
-      const a = curve[i], b = curve[i + 1];
-      if (t >= a.tMin && t <= b.tMin) {
-        const k = (t - a.tMin) / (b.tMin - a.tMin);
-        // Лог-интерполяция: log P = log P_a + k·(log P_b − log P_a).
-        const lp = Math.log(a.powerW) + k * (Math.log(b.powerW) - Math.log(a.powerW));
-        return Math.exp(lp);
-      }
+  // v0.59.463: ОДИН И ТОТ ЖЕ метод для кривой и для точек на ней —
+  // запрашиваем Y у самого SVG-path через getPointAtLength + binary search
+  // по длине дуги до заданного X. Так точка ВСЕГДА на сплайне, какой бы
+  // он ни был (Hermite, Bezier и т.д.).
+  const yOfPathAtX = (path, targetX) => {
+    if (!path) return null;
+    const total = path.getTotalLength();
+    if (!(total > 0)) return null;
+    // Binary search: длина дуги монотонно возрастает с t (параметр сплайна),
+    // и path-X монотонна по t (т.к. xOf — монотонна по tMin).
+    let lo = 0, hi = total;
+    for (let i = 0; i < 24; i++) { // 2^24 точность, достаточно
+      const mid = (lo + hi) / 2;
+      const pt = path.getPointAtLength(mid);
+      if (pt.x < targetX) lo = mid;
+      else hi = mid;
+      if (hi - lo < 0.05) break;
     }
-    return null;
+    const pt = path.getPointAtLength((lo + hi) / 2);
+    return pt.y;
+  };
+  // Возвращает powerW при заданном t для конкретного endV — берём Y из path.
+  const interpPower = (ev, t) => {
+    const path = svg.querySelector(`path[data-ev="${ev}"]`);
+    if (!path) return null;
+    const yScreen = yOfPathAtX(path, xOf(t));
+    if (yScreen == null) return null;
+    // Обратная yOf: log10(P) = logPMin + (1 - (y - padT)/plotH) * (logPMax - logPMin)
+    const logP = logPMin + (1 - (yScreen - padT) / plotH) * (logPMax - logPMin);
+    return Math.pow(10, logP);
   };
   // Координата мыши → координата SVG (учёт scaling из viewBox).
   const ptInSvg = (e) => {
@@ -967,9 +978,14 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
       if (!visibleSet.has(ev)) return;
       const c = curvesByEv.get(ev);
       if (!c) return;
-      const p = interpPower(c.curve, t);
+      // v0.59.463: yOnPath — Y координата на самом SVG-сплайне в этом X.
+      const path = svg.querySelector(`path[data-ev="${ev}"]`);
+      const cy = yOfPathAtX(path, xSvg);
+      if (cy == null) return;
+      // Обратная yOf для tooltip-метки (log Y).
+      const logP = logPMin + (1 - (cy - padT) / plotH) * (logPMax - logPMin);
+      const p = Math.pow(10, logP);
       if (!Number.isFinite(p) || p <= 0) return;
-      const cy = yOf(p);
       const dot = document.createElementNS(ns, 'circle');
       dot.setAttribute('class', 'cx-pt');
       dot.setAttribute('cx', xSvg.toFixed(1));
