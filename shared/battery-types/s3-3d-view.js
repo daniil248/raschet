@@ -657,9 +657,7 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
       x += w;
     }
     parts.push(`<text x="${svgW - 6}" y="${yTop + (D_MM*scale)/2}" text-anchor="end" font-size="8" fill="#8a93a6" transform="rotate(-90 ${svgW-6} ${yTop + (D_MM*scale)/2})">${D_MM} мм</text>`);
-    // v0.59.477: общая ширина ряда снизу
-    const total_w = totalRowWidth();
-    const total_d = Math.max(D_MM, COMB_D);
+    // v0.59.477/479: общая ширина ряда снизу (total_w уже объявлен выше).
     const dimY = yTop + total_d * scale + 22;
     parts.push(`<line x1="20" y1="${dimY}" x2="${20 + total_w*scale}" y2="${dimY}" stroke="#444" stroke-width="0.7"/>`);
     parts.push(`<line x1="20" y1="${dimY-4}" x2="20" y2="${dimY+4}" stroke="#444" stroke-width="0.7"/>`);
@@ -753,8 +751,7 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     }
     // высота слева
     parts.push(`<text x="14" y="${yTop + (H_MM*scale)/2}" text-anchor="middle" font-size="8" fill="#8a93a6" transform="rotate(-90 14 ${yTop + (H_MM*scale)/2})">${H_MM} мм</text>`);
-    // v0.59.477: общие размеры — ширина внизу, высота сбоку.
-    const total_w = totalRowWidth();
+    // v0.59.477/479: общие размеры — ширина внизу, высота сбоку (total_w уже выше).
     const dimY = yTop + H_MM * scale + 22;
     parts.push(`<line x1="20" y1="${dimY}" x2="${20 + total_w*scale}" y2="${dimY}" stroke="#444" stroke-width="0.7"/>`);
     parts.push(`<line x1="20" y1="${dimY-4}" x2="20" y2="${dimY+4}" stroke="#444" stroke-width="0.7"/>`);

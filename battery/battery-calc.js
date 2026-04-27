@@ -1905,7 +1905,7 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
     html += `<div class="result-block">`;
     html += `<div class="result-title">Автономия системы Kehua S³ (${escHtml(battery.type)})</div>`;
     html += `<div class="result-value">${Number.isFinite(r.autonomyMin) ? fmt(r.autonomyMin) + ' мин' : '∞'}</div>`;
-    html += `<div class="result-sub">Конфигурация (авто): <b>${s3Cfg.cabinetsCount} шкаф(ов) × ${s3Cfg.modulesPerCabinet} модулей</b> = ${s3Cfg.totalModules} мод. · V<sub>DC</sub>=${s3Cfg.vdcOper} В (${s3Cfg.wiring === 'series' ? 'series 2×240' : 'parallel 240'})</div>`;
+    html += `<div class="result-sub">Конфигурация (авто): <b>${s3Cfg.cabinetsCount} шкаф(ов) × ${s3Cfg.modulesPerCabinet} модулей</b> = ${s3Cfg.totalModules} мод. · V<sub>DC</sub>=${s3Cfg.vdcOper} В (${s3Cfg.wiring === 'series' ? '±240 В биполярная (series 2×240)' : '240 В параллельная (parallel)'})</div>`;
     html += `<div class="result-sub">Шкаф: <b>${escHtml(s3Cfg.cabinetModel)}</b> · паспорт ${fmt(s3Cfg.cabinetPowerKw)} кВт · до ${s3Cfg.nMax} модулей</div>`;
     html += `<div class="result-sub">На модуль: <b>${fmt(s3Cfg.powerPerModuleW)} W</b> · ёмкость системы: <b>${fmt(s3Cfg.totalKwh)} кВт·ч</b></div>`;
     html += `<div class="result-sub">Требуемая мощность от АКБ: ${fmt(s3Cfg.batteryPwrReqKw)} кВт · паспорт системы: ${fmt(s3Cfg.systemPowerKw)} кВт</div>`;
@@ -1949,7 +1949,7 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
       html += `<div class="result-block">`;
       html += `<div class="result-title">Минимум для автономии ≥ ${targetMin} мин (Kehua S³ ${escHtml(battery.type)})</div>`;
       html += `<div class="result-value">${found.cabinetsCount} шкаф(ов) × ${found.modulesPerCabinet} мод. = ${found.total}</div>`;
-      html += `<div class="result-sub">V<sub>DC</sub>=${s3Cfg.vdcOper} В (${s3Cfg.wiring === 'series' ? 'series 2×240' : 'parallel 240'}) · шкаф <b>${escHtml(s3Cfg.cabinetModel)}</b> · паспорт ${fmt(s3Cfg.cabinetPowerKw)} кВт</div>`;
+      html += `<div class="result-sub">V<sub>DC</sub>=${s3Cfg.vdcOper} В (${s3Cfg.wiring === 'series' ? '±240 В биполярная (series 2×240)' : '240 В параллельная (parallel)'}) · шкаф <b>${escHtml(s3Cfg.cabinetModel)}</b> · паспорт ${fmt(s3Cfg.cabinetPowerKw)} кВт</div>`;
       html += `<div class="result-sub">Реальная автономия: <b>${fmt(found.autonomyMin)} мин</b> · на модуль: <b>${fmt(s3Cfg.powerPerModuleW)} W</b> · ёмкость: <b>${fmt(s3Cfg.totalKwh)} кВт·ч</b></div>`;
       if (found.limitedByPower) html += `<div class="result-sub" style="color:#666;font-size:11px">Число шкафов ограничено паспортной мощностью системы (${fmt(s3Cfg.systemPowerKw)} кВт).</div>`;
       if (derate.kTotal > 1.001 || derate.socMinPct > 0) {

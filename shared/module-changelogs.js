@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.479', date: '2026-04-27', items: [
+      '🩹 <b>Hotfix: SyntaxError в s3-3d-view.js — двойное объявление <code>total_w</code>.</b> В моём v0.59.477 я добавил размерные стрелки в renderTopView/renderFrontView через <code>const total_w = totalRowWidth()</code>, но эта переменная уже была объявлена в начале каждой функции. Браузер бросал <code>SyntaxError: Identifier \'total_w\' has already been declared</code> → весь скрипт не загружался → конфигуратор не работал. Удалены повторные объявления.',
+      '🏷 <b>Подписи режима подключения S³ → ИБП Kehua: «±240 В биполярная» вместо технического «series 2×240».</b> Реальное физическое подключение S³ к Kehua MR33 — биполярная DC-шина ±240 В (нейтраль посередине). Раньше выводилось «series 2×240» — корректно по топологии (два выхода 240 В в series=480 В между плюсом и минусом), но непонятно для пользователя. Теперь: <code>±240 В биполярная (series 2×240)</code> для series-режима и <code>240 В параллельная (parallel)</code> для parallel.',
+      'Файлы: <code>shared/battery-types/s3-3d-view.js</code>, <code>battery/battery-calc.js</code>.',
+    ] },
     { version: '0.59.478', date: '2026-04-27', items: [
       '🔇 <b>Fix: ложные «Удалённые изменения проекта» когда пользователь один.</b> Раньше echo-detection делалось только по окну времени (10 сек после save). На медленной сети или когда Firestore возвращал snapshot с задержкой, своё же сохранение определялось как «чужой write» — появлялась модалка с предложением принять/отвергнуть собственные изменения.',
       '• Добавлен надёжный детектор по UID: при <code>saveProject()</code> в документ записываются <code>_lastWriterUid / _lastWriterName / _lastWriterEmail</code>. В subscribe-callback сравниваем <code>doc._lastWriterUid === state.currentUser.uid</code> — если совпадает, всегда трактуем как свой echo (даже из другой вкладки).',
