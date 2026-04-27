@@ -532,6 +532,11 @@ function render() {
     // v0.59.377: legacy-СКС в этом проекте — данные лежат под
     // raschet.project.<p.id>.scs-design.links.v1 (без подпроекта).
     // Если они есть — показываем единичную «СКС-проект (в проекте)» строку.
+    // v0.59.556: legacy-режим устаревает. Авто-миграция выполняется в
+    // scs-design.js при первом заходе в проект. Здесь просто показываем
+    // строку — но без «костыльных» отметок «в проекте»: если данные
+    // legacy остались, scs-design сам перенесёт их в default sub-project
+    // (без явного шага создания), пользователь увидит уже единый «СКС».
     try {
       const scsLinksRaw = localStorage.getItem(`raschet.project.${p.id}.scs-design.links.v1`);
       const scsPlanRaw  = localStorage.getItem(`raschet.project.${p.id}.scs-design.plan.v1`);
@@ -543,8 +548,7 @@ function render() {
         const meta = `${scsLinks.length} связ${scsLinks.length === 1 ? 'ь' : (scsLinks.length < 5 ? 'и' : 'ей')}` + (hasPlan ? ' · план' : '');
         const rowHtml = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
           <span style="font-size:16px">🔗</span>
-          <span style="background:#0d9488;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">в проекте</span>
-          <span style="flex:1;min-width:0">СКС-данные проекта <span class="muted" style="font-size:11px">· ${esc(meta)}</span></span>
+          <span style="flex:1;min-width:0">СКС <span class="muted" style="font-size:11px">· ${esc(meta)}</span></span>
           <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px;text-decoration:none">Открыть →</a>
         </div>`;
         _enrichGroup('scs-design', rowHtml, 1);

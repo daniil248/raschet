@@ -39,6 +39,35 @@ const OLD_KEYS = {
   plan:      'scs-design.plan.v1',
 };
 
+// v0.59.556: миграция legacy-СКС (данные под id parent project'а) в
+// под-проект. Копирует все raschet.project.<parentPid>.scs-design.* ключи
+// в raschet.project.<subPid>.scs-design.*; удаляет источник. Не перезаписывает
+// существующие ключи в назначении (preserve user data).
+function _migrateLegacyScsToSub(parentPid, subPid) {
+  if (!parentPid || !subPid || parentPid === subPid) return [];
+  const prefix = `raschet.project.${parentPid}.scs-design.`;
+  const subPrefix = `raschet.project.${subPid}.scs-design.`;
+  const toMove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix)) toMove.push(k);
+  }
+  const moved = [];
+  for (const k of toMove) {
+    const newKey = subPrefix + k.slice(prefix.length);
+    if (localStorage.getItem(newKey) != null) continue; // не затираем
+    const val = localStorage.getItem(k);
+    if (val == null) continue;
+    try {
+      localStorage.setItem(newKey, val);
+      localStorage.removeItem(k);
+      moved.push(k);
+    } catch (e) { console.warn('[scs-design] migrate failed for', k, e); }
+  }
+  if (moved.length) console.info(`[scs-design] legacy → sub ${subPid}: перенесено ${moved.length} ключей`, moved);
+  return moved;
+}
+
 function renderProjectBadge(pid) {
   const host = document.getElementById('sd-project-badge');
   if (!host) return;
@@ -99,9 +128,7 @@ function renderProjectBadge(pid) {
 
   // v0.59.378: legacy-режим — активный проект = сам родитель, подпроектов
   // нет, но в LS-неймспейсе родителя уже лежат СКС-данные (links/plan).
-  // Это режим до v0.59.372: один СКС на проект, без обозначения. Покажем
-  // явный индикатор и спрятав плейсхолдер «не выбран», который тут никогда
-  // не выберется.
+  // Это режим до v0.59.372: один СКС на проект, без обозначения.
   let legacyActive = false;
   try {
     if (parent && pid === parent.id && subs.length === 0) {
@@ -113,28 +140,75 @@ function renderProjectBadge(pid) {
     }
   } catch {}
 
+  // v0.59.556: legacy-режим автоматически мигрируется в под-проект.
+  // - Если есть legacy-данные и нет под-проектов → создать default sub
+  //   «СКС» (без designation), перенести все scs-design.* ключи туда,
+  //   активировать его и перезагрузиться. Пользователь не видит шага
+  //   «создайте под-проект».
+  // - Если есть legacy-данные И уже есть под-проекты — переносим в первый
+  //   (мерж), не перезаписывая ключи приёмника.
+  if (legacyActive && parent && !parentIsOrphan) {
+    try {
+      let dest = subs[0];
+      if (!dest) {
+        dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
+      }
+      if (dest && dest.id) {
+        const moved = _migrateLegacyScsToSub(parent.id, dest.id);
+        if (moved.length) {
+          console.info(`[scs-design] auto-migrated legacy → sub ${dest.id}, moved ${moved.length} keys; reloading`);
+        }
+        setActiveProjectId(dest.id);
+        location.reload();
+        return;
+      }
+    } catch (e) { console.warn('[scs-design] auto-migrate legacy failed:', e); }
+  }
+
+  // v0.59.556: если у parent ровно 1 под-проект — авто-активируем его
+  // (когда зашли по ?project=parentId). Иначе данные уйдут в legacy.
+  if (parent && !parentIsOrphan && subs.length === 1 && pid === parent.id) {
+    try {
+      setActiveProjectId(subs[0].id);
+      location.reload();
+      return;
+    } catch (e) { console.warn('[scs-design] auto-activate single sub failed:', e); }
+  }
+
   // v0.59.531: для orphan-sketch родителем является сам sketch — у него
   // нет подпроектов, и кнопку «+ Новый СКС-проект» здесь скрываем (нельзя
   // создать sub под sketch'ом без full-родителя).
-  const subOpts = parentIsOrphan
-    ? `<option value="" selected>— мини-проект (без подпроектов) —</option>`
-    : (subs.length
-        ? subs.map(s => {
-            const labelDesig = s.designation ? `[${esc(s.designation)}] ` : '';
-            return `<option value="${esc(s.id)}"${s.id === activeSubId ? ' selected' : ''}>${labelDesig}${esc(s.name || '(без имени)')}</option>`;
-          }).join('')
-        : (legacyActive
-            ? `<option value="" selected>— СКС в проекте (legacy, без обозначения) —</option>`
-            : `<option value="" selected>— подпроект СКС не выбран —</option>`));
+  // v0.59.556: новая логика отображения «СКС-проект» поля:
+  //   - parentIsOrphan: статичный текст «мини-проект».
+  //   - subs.length === 0 (нет легаси, нет sub): только кнопка «➕ Создать СКС».
+  //   - subs.length === 1: показываем имя как статичный label + маленькая ➕ кнопка
+  //     рядом (для редкого случая, когда нужно 2+ вариантов СКС). Никакого
+  //     dropdown'а, чтобы пользователь не путался / не сменил случайно.
+  //   - subs.length >= 2: полноценный dropdown.
+  let subBlockHtml;
+  if (parentIsOrphan) {
+    subBlockHtml = `<span class="muted" style="margin-left:8px">— мини-проект (без подпроектов) —</span>`;
+  } else if (subs.length === 0) {
+    subBlockHtml = `<button type="button" class="sd-btn-sel" id="sd-sub-new" style="margin-left:8px" title="Создать СКС-подпроект внутри выбранного проекта">＋ Создать СКС</button>`;
+  } else if (subs.length === 1) {
+    const s = subs[0];
+    const label = s.designation ? `[${esc(s.designation)}] ${esc(s.name || '(СКС)')}` : esc(s.name || 'СКС');
+    subBlockHtml = `<span class="muted" style="margin-left:14px">СКС:</span> <b>${label}</b>` +
+      `<button type="button" class="sd-btn-sel" id="sd-sub-new" title="Добавить ещё один вариант СКС в этом проекте (например, для альтернативного решения)" style="margin-left:6px;font-size:11px;padding:2px 8px">＋ ещё вариант</button>`;
+  } else {
+    const subOpts = subs.map(s => {
+      const labelDesig = s.designation ? `[${esc(s.designation)}] ` : '';
+      return `<option value="${esc(s.id)}"${s.id === activeSubId ? ' selected' : ''}>${labelDesig}${esc(s.name || '(без имени)')}</option>`;
+    }).join('');
+    subBlockHtml = `<span class="muted" style="margin-left:14px">СКС-проект:</span>
+      <select id="sd-subproject-switcher" title="Выберите вариант СКС внутри проекта">${subOpts}</select>
+      <button type="button" class="sd-btn-sel" id="sd-sub-new" title="Добавить ещё один вариант СКС">＋</button>`;
+  }
 
   host.innerHTML = `
     <span class="muted">Проект:</span>
     ${parentSel}
-    <span class="muted" style="margin-left:14px">СКС-проект:</span>
-    <select id="sd-subproject-switcher" ${parentIsOrphan ? 'disabled' : ''} title="${parentIsOrphan ? 'Мини-проект СКС — самостоятельный контекст, у него нет под-проектов' : 'Подпроект СКС внутри выбранного проекта'}">${subOpts}</select>
-    ${parentIsOrphan ? '' : `<button type="button" class="sd-btn-sel" id="sd-sub-new" title="Создать новый СКС-подпроект внутри выбранного проекта (имя + обозначение, напр. «СКС-1»)">＋ Новый СКС-проект</button>`}
-    ${p && p.parentProjectId === parent?.id ? `<span class="muted" style="margin-left:8px">${p.designation ? `· обозначение: <b>${esc(p.designation)}</b>` : '· без обозначения'}</span>` : ''}
-    ${legacyActive ? `<span class="muted" title="Эти СКС-данные хранятся под id самого проекта, без отдельного подпроекта (старый формат до v0.59.372). Создайте подпроект, если хотите вести несколько вариантов СКС в одном объекте." style="margin-left:8px;color:#b45309;cursor:help">· legacy режим ⓘ</span>` : ''}
+    ${subBlockHtml}
     <a href="../projects/" style="margin-left:auto">→ управлять проектами</a>
   `;
 
