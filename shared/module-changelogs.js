@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.484', date: '2026-04-27', items: [
+      '🔧 <b>Fix: «развернуть» 3D-вид — нормальный fullscreen-оверлей.</b> Раньше при клике 3D-окно «застревало» в верхней части страницы (после v0.59.479 кнопка работала, но переключение position:fixed на самом wrap не давало корректный результат — родительский <code>display:flex</code> и стили мешали). Теперь:',
+      '• Создаётся выделенный <code>position:fixed; inset:0; z-index:99999</code> body-level overlay.',
+      '• Wrap временно ПЕРЕНОСИТСЯ в overlay через <code>appendChild</code>, после exit — возвращается на исходное место (через якорь-comment node).',
+      '• <code>renderer.setSize(w, h, true)</code> вместо <code>false</code> — обновляет style canvas, а не только intrinsic размер. Раньше canvas style.height застревал на старом значении и 3D рендерился маленьким в углу.',
+      'Verified в preview: overlay covers viewport (684×568), canvas заполняет 660×544 без артефактов layout. Файлы: <code>shared/battery-types/s3-3d-view.js</code>.',
+    ] },
     { version: '0.59.483', date: '2026-04-27', items: [
       '✅ <b>Schneider Galaxy VS 100 kW — V_DC окно verified.</b> 384-480 (estimate) → <b>384-576 В</b> по datasheet (securepower.com GVSUPS100KGS): external battery 480-576 VDC at float, EoD 384 VDC. То же окно что у уже verified VS 60 kW — общее семейство.',
       '• Запись в <code>shared/ups-verified.js</code>, seedVersion 10→11 force-upsert.',

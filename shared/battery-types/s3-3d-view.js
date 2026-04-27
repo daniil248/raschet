@@ -877,66 +877,75 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   }
   loop();
 
-  // ресайз
+  // ресайз. v0.59.484: setSize(true) — обновляем И style canvas, иначе при
+  // расширении wrap (например, fullscreen) canvas.style.height застревал
+  // на старом значении и трёхмерное изображение оставалось мелким в углу.
   const resize = () => {
     const w = wrap.clientWidth;
     const h = wrap.clientHeight;
     if (!w || !h) return;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h, false);
+    renderer.setSize(w, h, true);
   };
   const ro = new ResizeObserver(resize);
   ro.observe(wrap);
 
   // === модалка «Развернуть» ===
-  // v0.59.445: чистый подход — не перекладываем wrap в DOM, а просто
-  // переключаем его в position:fixed inset:0. Это надёжнее, чем вложенные
-  // overlay+wrap (там были артефакты). Чтобы под модалкой не скроллилось,
-  // блокируем body overflow.
+  // v0.59.484: используем выделенный body-level overlay вместо переключения
+  // position:fixed на самом wrap. Раньше при position:fixed родительские
+  // стили (display:flex, transforms) ломали layout — wrap «застревал» в
+  // углу. Сейчас wrap временно ПЕРЕНОСИТСЯ в overlay, а после exit —
+  // возвращается на исходное место (через placeholder-якорь).
   let isFs = false;
-  let closeBtnFs = null;
+  let fsOverlay = null;
+  let fsAnchor = null;
   let bodyOverflowSaved = '';
   const origStyles = {};
   function enterFullscreen() {
     if (isFs) return;
     isFs = true;
-    // сохраняем стили wrap
-    for (const k of ['position','left','top','right','bottom','width','height',
-                     'flex','minWidth','maxWidth','border','borderRadius','zIndex']) {
-      origStyles[k] = wrap.style[k];
-    }
     bodyOverflowSaved = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-
-    wrap.style.position = 'fixed';
-    wrap.style.left = '0';
-    wrap.style.top = '0';
-    wrap.style.right = '0';
-    wrap.style.bottom = '0';
-    wrap.style.width = '100vw';
-    wrap.style.height = '100vh';
-    wrap.style.flex = '0 0 auto';
+    // Сохраняем оригинальные стили wrap, чтобы вернуть их при exit.
+    for (const k of ['position','flex','minWidth','maxWidth','width','height','border','borderRadius']) {
+      origStyles[k] = wrap.style[k];
+    }
+    // Якорь на месте, куда вернуть wrap после exit.
+    fsAnchor = document.createComment('s3-3d-anchor');
+    wrap.parentNode.insertBefore(fsAnchor, wrap);
+    // Создаём overlay поверх всего, переносим wrap в него.
+    fsOverlay = document.createElement('div');
+    fsOverlay.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:99999',
+      'background:rgba(10,15,25,0.94)',
+      'display:flex', 'align-items:center', 'justify-content:center',
+      'padding:12px', 'box-sizing:border-box',
+    ].join(';');
+    document.body.appendChild(fsOverlay);
+    // Перенос wrap в overlay + новые размеры.
+    wrap.style.position = 'relative';
+    wrap.style.flex = '1 1 auto';
     wrap.style.minWidth = '0';
     wrap.style.maxWidth = 'none';
+    wrap.style.width = '100%';
+    wrap.style.height = '100%';
     wrap.style.border = 'none';
-    wrap.style.borderRadius = '0';
-    wrap.style.zIndex = '9999';
-
-    closeBtnFs = document.createElement('button');
-    closeBtnFs.type = 'button';
-    closeBtnFs.style.cssText =
-      'position:fixed;right:18px;top:18px;z-index:10000;font:13px system-ui;' +
+    wrap.style.borderRadius = '6px';
+    fsOverlay.appendChild(wrap);
+    // Кнопка закрытия.
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.style.cssText =
+      'position:absolute;right:18px;top:18px;z-index:10;font:13px system-ui;' +
       'color:#fff;background:#a83a3a;border:1px solid #c95252;border-radius:4px;' +
       'padding:9px 18px;cursor:pointer;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.4)';
-    closeBtnFs.textContent = '✕ Закрыть (Esc)';
-    closeBtnFs.addEventListener('click', exitFullscreen);
-    document.body.appendChild(closeBtnFs);
-
+    closeBtn.textContent = '✕ Закрыть (Esc)';
+    closeBtn.addEventListener('click', exitFullscreen);
+    fsOverlay.appendChild(closeBtn);
     fullBtn.textContent = '⤓ Свернуть';
     document.addEventListener('keydown', escHandler);
-    // Перерисовываем canvas. ResizeObserver сам сработает, но
-    // подстрахуем двойным rAF — чтобы layout успел применить fixed.
+    // Resize canvas под новые размеры — двойной rAF чтобы DOM применил.
     requestAnimationFrame(() => requestAnimationFrame(resize));
   }
   function exitFullscreen() {
@@ -944,20 +953,22 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     isFs = false;
     document.removeEventListener('keydown', escHandler);
     document.body.style.overflow = bodyOverflowSaved;
-    if (closeBtnFs) { closeBtnFs.remove(); closeBtnFs = null; }
-    for (const k of Object.keys(origStyles)) {
-      wrap.style[k] = origStyles[k];
+    // Возвращаем wrap на исходное место.
+    if (fsAnchor && fsAnchor.parentNode) {
+      fsAnchor.parentNode.insertBefore(wrap, fsAnchor);
+      fsAnchor.remove();
+      fsAnchor = null;
     }
-    // Возвращаем точные дефолты
+    // Восстанавливаем оригинальные стили + дефолты модуля.
     wrap.style.position = 'relative';
     wrap.style.flex = '0 1 560px';
     wrap.style.minWidth = '340px';
     wrap.style.maxWidth = '680px';
+    wrap.style.width = '';
     wrap.style.height = `${height}px`;
     wrap.style.border = '1px solid #2a2f3a';
     wrap.style.borderRadius = '8px';
-    wrap.style.zIndex = '';
-    wrap.style.left = wrap.style.top = wrap.style.right = wrap.style.bottom = wrap.style.width = '';
+    if (fsOverlay) { fsOverlay.remove(); fsOverlay = null; }
     fullBtn.textContent = '⛶ Развернуть';
     requestAnimationFrame(() => requestAnimationFrame(resize));
   }
