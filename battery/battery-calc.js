@@ -769,9 +769,11 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   // Сначала — невидимая зона для crosshair (её перекроют легенда и
   // highlight, чтобы клики по ним не блокировались hover-областью).
   parts.push(`<rect class="chart-hover-area" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" pointer-events="all"/>`);
-  // Crosshair-группа (изначально скрыта).
+  // Crosshair-группа (изначально скрыта). Содержит обе линии: вертикальную
+  // (текущее t) и горизонтальную (текущая P в позиции курсора).
   parts.push(`<g class="chart-crosshair" style="display:none;pointer-events:none">`);
   parts.push(`<line class="cx-vline" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="#888" stroke-width="1" stroke-dasharray="3 3"/>`);
+  parts.push(`<line class="cx-hline" x1="${padL}" y1="0" x2="${padL + plotW}" y2="0" stroke="#888" stroke-width="1" stroke-dasharray="3 3"/>`);
   parts.push(`</g>`);
 
   // Легенда справа вверху — КЛИКАБЕЛЬНАЯ (toggle видимости). Кладём
@@ -816,6 +818,7 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   const hoverArea = svg.querySelector('.chart-hover-area');
   const crossG = svg.querySelector('.chart-crosshair');
   const vline = svg.querySelector('.cx-vline');
+  const hline = svg.querySelector('.cx-hline');
   const tooltip = mount.querySelector('.chart-tooltip');
   // Линейная интерполяция P(t) внутри curve (t возрастает).
   const interpPower = (curve, t) => {
@@ -835,11 +838,12 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   const ptInSvg = (e) => {
     const r = svg.getBoundingClientRect();
     const x = ((e.clientX - r.left) / r.width) * W;
-    return x;
+    const y = ((e.clientY - r.top) / r.height) * H;
+    return { x, y };
   };
   hoverArea.addEventListener('mousemove', (e) => {
-    const xSvg = ptInSvg(e);
-    if (xSvg < padL || xSvg > padL + plotW) {
+    const { x: xSvg, y: ySvg } = ptInSvg(e);
+    if (xSvg < padL || xSvg > padL + plotW || ySvg < padT || ySvg > padT + plotH) {
       crossG.style.display = 'none';
       tooltip.style.display = 'none';
       // удалить временные маркеры
@@ -848,14 +852,18 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     }
     // Обратная функция xOf: t = tMin + (x - padL)/plotW * (tMax - tMin)
     const t = tMin + ((xSvg - padL) / plotW) * (tMax - tMin);
+    // Обратная yOf для log Y: P = 10^(logPMin + (1 - (y-padT)/plotH) * (logPMax-logPMin))
+    const cursorPower = Math.pow(10, logPMin + (1 - (ySvg - padT) / plotH) * (logPMax - logPMin));
     crossG.style.display = '';
     vline.setAttribute('x1', xSvg);
     vline.setAttribute('x2', xSvg);
+    hline.setAttribute('y1', ySvg);
+    hline.setAttribute('y2', ySvg);
     // Удаляем старые точки
     svg.querySelectorAll('.cx-pt').forEach(n => n.remove());
     // Точки на каждой видимой кривой. Tooltip: «t мин · P В/эл = X W/блок» —
     // время одинаковое (фиксируем X), мощность — своя для каждой кривой.
-    const lines = [`<b>Время разряда: ${fmt(t)} мин</b>`];
+    const lines = [`<b>Время разряда: ${fmt(t)} мин</b>`, `<span style="color:#aaa">Курсор: ${fmt(cursorPower)} W/блок</span>`];
     endVs.forEach((ev, idx) => {
       if (!visibleSet.has(ev)) return;
       const c = curvesByEv.get(ev);
