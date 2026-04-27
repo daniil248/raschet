@@ -18,7 +18,7 @@ import {
   LS_TEMPLATES_GLOBAL
 } from '../shared/rack-storage.js';
 // v0.59.348: stickers-baner о виртуальных стойках из схемы.
-import { loadSchemeVirtualRacks } from '../shared/scheme-rack-bridge.js';
+import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks } from '../shared/scheme-rack-bridge.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;              // для совместимости storage-listener
 const LS_CATALOG   = 'scs-config.catalog.v1';          // глобальный каталог IT
@@ -514,8 +514,11 @@ function _materializeVirtualForPlan(virtId, tag) {
     console.warn('[scs-design] tag busy: ' + tag);
     return null;
   }
-  const virtuals = loadSchemeVirtualRacks(getActiveProjectId());
-  const v = virtuals.find(x => x.id === virtId);
+  // v0.59.544: ищем virtId и среди scheme-, и среди POR-group-виртуалов.
+  const pid = getActiveProjectId();
+  const schemeVs = loadSchemeVirtualRacks(pid);
+  const porGroupVs = loadPorGroupVirtualRacks(pid);
+  const v = schemeVs.find(x => x.id === virtId) || porGroupVs.find(x => x.id === virtId);
   if (!v) {
     console.warn('[scs-design] virtual rack not found: ' + virtId);
     return null;
@@ -526,7 +529,9 @@ function _materializeVirtualForPlan(virtId, tag) {
     name: v.name,
     u: v.u || 42,
     occupied: v.occupied || 0,
-    comment: `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, экземпляр ${v.schemeIndex}/${v.schemeTotal})`,
+    comment: v.fromPorGroup
+      ? `Материализовано из POR-группы ${new Date().toISOString().slice(0, 10)} (group ${v.porGroupId}, slot ${v.porGroupSlot}/${v.schemeTotal})`
+      : `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, экземпляр ${v.schemeIndex}/${v.schemeTotal})`,
     schemeNodeId: v.schemeNodeId,
     schemeIndex: v.schemeIndex,
   };
@@ -1288,7 +1293,11 @@ function renderRacksSummary() {
   // в них нет содержимого. Чтобы участвовать в проектировании СКС — нужно
   // материализовать в Компоновщике.
   const pid = getActiveProjectId();
-  const virtuals = (() => { try { return loadSchemeVirtualRacks(pid) || []; } catch { return []; } })();
+  // v0.59.544: + POR consumer-group виртуалы (дедуп по id).
+  const _schVs = (() => { try { return loadSchemeVirtualRacks(pid) || []; } catch { return []; } })();
+  const _porGVs = (() => { try { return loadPorGroupVirtualRacks(pid) || []; } catch { return []; } })();
+  const _seenVids = new Set(_schVs.map(v => v.id));
+  const virtuals = [..._schVs, ..._porGVs.filter(v => !_seenVids.has(v.id))];
   // Считаем нескрытые: тег ещё не занят реальной стойкой
   const tags = loadJson(LS_RACKTAGS, {});
   const usedTags = new Set(Object.values(tags).map(t => (t || '').trim()).filter(Boolean));
@@ -1662,22 +1671,30 @@ function renderPlan() {
   // v0.59.354: виртуальные стойки из схемы (consumer/rack узлы), которые
   // ещё не материализованы в scs-config. Показываем их в палитре отдельным
   // блоком — при drop материализуются inline (создаётся real-instance).
+  // v0.59.544: + POR consumer-group rack-members (анонимные слоты ×N).
+  // Дедуп по autoTag — реальная стойка с тем же тегом скрывает виртуал.
   const pid = getActiveProjectId();
-  const allVirtuals = loadSchemeVirtualRacks(pid);
-  const realByNode = new Map();
+  const schemeVs = loadSchemeVirtualRacks(pid);
+  const porGroupVs = loadPorGroupVirtualRacks(pid);
+  const seenIds = new Set(schemeVs.map(v => v.id));
+  const allVirtuals = [...schemeVs, ...porGroupVs.filter(v => !seenIds.has(v.id))];
+  const usedTags = new Set();
   racks.forEach(r => {
-    if (r.schemeNodeId) {
-      const k = r.schemeNodeId + ':' + (r.schemeIndex || 1);
-      realByNode.set(k, true);
-    }
+    const t = (getRackTag(r.id) || '').trim().toLowerCase();
+    if (t) usedTags.add(t);
   });
-  const virtualsOnly = allVirtuals.filter(v => !realByNode.has(v.schemeNodeId + ':' + v.schemeIndex));
+  const virtualsOnly = allVirtuals.filter(v => !usedTags.has((v.autoTag || '').trim().toLowerCase()));
 
   // Палитра
   const realChips = unplaced.map(r => `<span class="sd-plan-chip" draggable="true" data-id="${escapeAttr(r.id)}">${escapeHtml(getRackShortLabel(r.id))}</span>`).join('');
-  const virtChips = virtualsOnly.map(v =>
-    `<span class="sd-plan-chip sd-plan-chip-virt" draggable="true" data-virt-id="${escapeAttr(v.id)}" data-virt-tag="${escapeAttr(v.autoTag)}" title="Виртуальная стойка из схемы (узел ${escapeAttr(v.schemeNodeId)}, ${v.schemeIndex}/${v.schemeTotal}). При drop будет материализована.">📐 ${escapeHtml(v.autoTag)} <small>· из схемы</small></span>`
-  ).join('');
+  const virtChips = virtualsOnly.map(v => {
+    const icon = v.fromPorGroup ? '⊞' : '📐';
+    const src  = v.fromPorGroup ? 'из группы' : 'из схемы';
+    const titleSrc = v.fromPorGroup
+      ? `POR-группа ${v.porGroupId}, slot ${v.porGroupSlot}/${v.schemeTotal}`
+      : `узел ${v.schemeNodeId}, ${v.schemeIndex}/${v.schemeTotal}`;
+    return `<span class="sd-plan-chip sd-plan-chip-virt" draggable="true" data-virt-id="${escapeAttr(v.id)}" data-virt-tag="${escapeAttr(v.autoTag)}" title="Виртуальная стойка (${escapeAttr(titleSrc)}). При drop будет материализована.">${icon} ${escapeHtml(v.autoTag)} <small>· ${src}</small></span>`;
+  }).join('');
   if (!realChips && !virtChips) {
     palette.innerHTML = '<span class="muted">Все стойки размещены на плане.</span>';
   } else {
