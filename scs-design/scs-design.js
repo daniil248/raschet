@@ -207,6 +207,23 @@ function renderProjectBadge(pid) {
     } catch (e) { console.warn('[scs-design] auto-activate single sub failed:', e); }
   }
 
+  // v0.59.561: при первом заходе в свежий проект (subs.length===0,
+  // нет legacy-данных) — auto-create default sub «СКС» прозрачно.
+  // Пользователь не должен видеть концепцию «создайте подпроект СКС»;
+  // подпроект появляется сам и сразу активируется. Концепция нескольких
+  // вариантов СКС (через «＋ ещё вариант СКС») остаётся доступной.
+  if (parent && !parentIsOrphan && subs.length === 0 && !legacyActive) {
+    try {
+      const dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
+      if (dest && dest.id) {
+        console.info(`[scs-design] auto-created default sub-project ${dest.id} for fresh project ${parent.id}; reloading`);
+        setActiveProjectId(dest.id);
+        location.reload();
+        return;
+      }
+    } catch (e) { console.warn('[scs-design] auto-create default sub failed:', e); }
+  }
+
   // v0.59.531: для orphan-sketch родителем является сам sketch — у него
   // нет подпроектов, и кнопку «+ Новый СКС-проект» здесь скрываем (нельзя
   // создать sub под sketch'ом без full-родителя).
