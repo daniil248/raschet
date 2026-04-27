@@ -651,7 +651,7 @@ function renderLinksTab() {
     empty.innerHTML = `
       <p>В проекте ещё нет шкафов. Сначала создайте их:</p>
       <p>→ <a href="../rack-config/">Конфигуратор шкафа — корпус</a> (шаблоны)<br>
-      → <a href="../scs-config/">Шкафы проекта</a> (наполнение).</p>
+      → <a href="../scs-config/">Компоновщик шкафа</a> (наполнение).</p>
     `;
     renderLinksList();
     return;

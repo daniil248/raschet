@@ -3,128 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Raschet · Шкафы проекта</title>
-  <link rel="stylesheet" href="../shared/styles/base.css">
-  <link rel="stylesheet" href="../shared/app-header.css">
-  <link rel="stylesheet" href="scs-config.css">
-</head>
-<body>
-  <div id="rs-header-mount"></div>
-  <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    mountHeader({ title: 'Шкафы проекта', home: '../hub.html' });
-  </script>
-
-  <!-- v0.59.364: если в проекте уже есть стойки — перейти сразу в Компоновщик
-       (rack.html), потому что список стоек дублируется сайдбаром «Шкафы».
-       Параметр ?list=1 в URL отключает редирект (позволяет открыть список явно). -->
-  <script type="module">
-    (async () => {
-      try {
-        const sp = new URLSearchParams(location.search);
-        if (sp.get('list') === '1') return;             // явно запрошен список
-        const { ensureDefaultProject, getActiveProjectId, projectKey } =
-          await import('../shared/project-storage.js');
-        const { loadAllRacksForActiveProject } = await import('../shared/rack-storage.js');
-        ensureDefaultProject();
-        const pid = getActiveProjectId();
-        const racks = loadAllRacksForActiveProject() || [];
-        let hasContent = racks.length > 0;
-        // дополнительно: проверим что есть хоть один tag или хоть какое-то содержимое
-        if (!hasContent) {
-          try {
-            const tagsRaw = localStorage.getItem(projectKey(pid, 'scs-config', 'rackTags.v1'));
-            const tags = tagsRaw ? JSON.parse(tagsRaw) : {};
-            hasContent = Object.values(tags || {}).some(v => (v || '').trim());
-          } catch {}
-        }
-        if (hasContent) {
-          const qs = location.search ? location.search : '';
-          location.replace('./rack.html' + qs);
-        }
-      } catch (e) { console.warn('[scs-config index redirect]', e); }
+  <title>Raschet · Компоновщик шкафа</title>
+  <!-- v0.59.522: страница «Шкафы проекта» (реестр) удалена — её
+       функциональность полностью покрывает sidebar Компоновщика
+       (rack.html). URL /scs-config/ безусловно редиректит на rack.html,
+       сохраняя совместимость со всеми внешними ссылками
+       (projects/project.js, scs-design, hub, закладки пользователя).
+       Параметр ?list=1 (если был у пользователя) — игнорируется. -->
+  <script>
+    (function() {
+      var qs = location.search || '';
+      // очищаем list=1 если был, чтобы не зацикливать редирект если где-то остался
+      qs = qs.replace(/[?&]list=1\b/, '').replace(/^&/, '?').replace(/^$/, '');
+      location.replace('./rack.html' + qs);
     })();
   </script>
-
-  <div class="sc-wrap">
-    <nav class="rs-breadcrumb">
-      <strong>🗄 Шкафы проекта</strong>
-      <span class="spacer"></span>
-      <a href="./inventory.html">📋 Реестр IT-оборудования</a>
-    </nav>
-
-    <div id="sc-project-badge" style="margin:8px 0 12px;padding:6px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;color:#334155"></div>
-
-    <section class="sc-section">
-      <h2>Все шкафы проекта</h2>
-      <p class="sc-hint muted">
-        Реестр шкафов. <b>Реальные стойки</b> (с тегом вида «DH1.SR2») — те, что
-        физически стоят на объекте. <b>Черновики</b> без тега — пустые шаблоны
-        корпуса или ещё не развёрнутые проработки. Кнопка «+ тег» рядом со
-        строкой-черновиком превращает его в реальную стойку. Корпусные шаблоны
-        (габариты, U, PDU, заземление) задаются в
-        <a href="../rack-config/">Конфигураторе шкафа — корпус</a>.
-      </p>
-      <table class="sc-cat" id="racks-table">
-        <thead>
-          <tr>
-            <th>Тег (TIA-942)</th>
-            <th>Название / шаблон</th>
-            <th>U всего</th>
-            <th>Занято U (корпус)</th>
-            <th>Устройств</th>
-            <th>Загрузка U</th>
-            <th style="width:140px"></th>
-          </tr>
-        </thead>
-        <tbody id="racks-tbody"></tbody>
-      </table>
-      <div class="sc-tools">
-        <button type="button" class="sc-btn" id="btn-new-rack" title="Создать экземпляр стойки прямо в активном проекте. Шаблон в глобальной библиотеке не создаётся.">➕ Новая стойка в проект</button>
-        <button type="button" class="sc-btn" id="btn-deploy">🚀 Развернуть из шаблона корпуса</button>
-        <a class="sc-btn" href="./rack.html">↻ Открыть последний активный</a>
-        <a class="sc-btn" href="../rack-config/" style="margin-left:auto" title="Библиотека шаблонов корпусов (общая для всех проектов)">📐 Шаблоны корпусов…</a>
-      </div>
-
-      <div id="deploy-box" style="display:none;margin-top:12px;padding:12px;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px">
-        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
-          <label style="display:flex;flex-direction:column;font-size:12px;color:#475569">
-            <span>Шаблон-корпус</span>
-            <select id="deploy-template" style="font:inherit;padding:4px 6px;min-width:240px"></select>
-          </label>
-          <label style="display:flex;flex-direction:column;font-size:12px;color:#475569">
-            <span>Тег стойки (TIA-942)</span>
-            <input id="deploy-tag" type="text" placeholder="напр. DH1.SR2" maxlength="24"
-              style="font:inherit;padding:4px 6px;width:140px">
-          </label>
-          <label style="display:flex;flex-direction:column;font-size:12px;color:#475569">
-            <span>Имя экземпляра</span>
-            <input id="deploy-name" type="text" placeholder="Серверная №2" maxlength="64"
-              style="font:inherit;padding:4px 6px;width:200px">
-          </label>
-          <button type="button" class="sc-btn" id="btn-deploy-go">✓ Развернуть</button>
-          <button type="button" class="sc-btn" id="btn-deploy-cancel">Отмена</button>
-        </div>
-        <div class="muted" style="margin-top:6px;font-size:12px">
-          Клонирует корпус шаблона (габариты, U, PDU, заземление) в новую стойку
-          с уникальным id и тегом. Содержимое (железо) у клонированной стойки
-          пустое — настраивается отдельно в <code>rack.html</code>.
-        </div>
-      </div>
-    </section>
-
-    <section class="sc-section">
-      <h2>Сводка</h2>
-      <div id="summary"></div>
-    </section>
-  </div>
-
-  <script type="module" src="./racks-list.js"></script>
-  <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
-    import { CHANGELOGS } from '../shared/module-changelogs.js';
-    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'scs-config', moduleTitle: 'СКС', entries: CHANGELOGS['scs-config'] || [] });
-  </script>
+</head>
+<body>
+  <noscript>
+    <p>JavaScript отключён. Перейдите вручную: <a href="./rack.html">Компоновщик шкафа</a>.</p>
+  </noscript>
 </body>
 </html>

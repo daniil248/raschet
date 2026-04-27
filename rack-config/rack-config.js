@@ -2050,7 +2050,7 @@ async function deleteTemplate() {
   const curId = state.currentId;
   const used = countInstancesUsingTemplate(curId);
   if (used > 0) {
-    rsToast(`Нельзя удалить: шаблон используется ${used} стойками. Сначала измените корпус этих стоек или удалите сами стойки в «Шкафы проекта».`, 'warn');
+    rsToast(`Нельзя удалить: шаблон используется ${used} стойками. Сначала измените корпус этих стоек или удалите сами стойки в «Компоновщике шкафа».`, 'warn');
     return;
   }
   if (!(await rsConfirm('Удалить текущий шаблон?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' }))) return;
