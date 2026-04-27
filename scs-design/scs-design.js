@@ -224,9 +224,14 @@ function renderProjectBadge(pid) {
     subBlockHtml = `<button type="button" class="sd-btn-sel" id="sd-sub-new" style="margin-left:8px" title="Создать СКС-подпроект внутри выбранного проекта">＋ Создать СКС</button>`;
   } else if (subs.length === 1) {
     const s = subs[0];
-    const label = s.designation ? `[${esc(s.designation)}] ${esc(s.name || '(СКС)')}` : esc(s.name || 'СКС');
-    subBlockHtml = `<span class="muted" style="margin-left:14px">СКС:</span> <b>${label}</b>` +
-      `<button type="button" class="sd-btn-sel" id="sd-sub-new" title="Добавить ещё один вариант СКС в этом проекте (например, для альтернативного решения)" style="margin-left:6px;font-size:11px;padding:2px 8px">＋ ещё вариант</button>`;
+    // v0.59.558: при одном sub без designation и с именем «СКС»
+    // (default из автомиграции) — дублирование «СКС: СКС» некрасиво.
+    // Показываем просто chip с иконкой ⊞ и именем; если есть
+    // designation — добавляем его в скобках.
+    const nm = (s.name || 'СКС').trim();
+    const desigPart = s.designation ? ` <span class="muted" style="font-size:11px">[${esc(s.designation)}]</span>` : '';
+    subBlockHtml = `<span style="margin-left:14px;padding:2px 8px;background:#dbeafe;color:#1e3a8a;border-radius:4px;font-size:12px;font-weight:500" title="СКС-подпроект: ${esc(nm)}${s.designation ? ' (обозначение ' + esc(s.designation) + ')' : ''}">⊞ ${esc(nm)}${desigPart}</span>` +
+      `<button type="button" class="sd-btn-sel" id="sd-sub-new" title="Добавить ещё один вариант СКС в этом проекте (например, для альтернативного решения)" style="margin-left:6px;font-size:11px;padding:2px 8px">＋ ещё вариант СКС</button>`;
   } else {
     const subOpts = subs.map(s => {
       const labelDesig = s.designation ? `[${esc(s.designation)}] ` : '';
