@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '11'; // v0.59.483: Schneider Galaxy VS 100 kW — verified V_DC 384-576 (datasheet)
+const CURRENT_VERSION = '12'; // v0.59.488: Eaton 93PS 8/20 — verified V_DC 336-480 (datasheet)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,

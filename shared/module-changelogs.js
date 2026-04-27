@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.488', date: '2026-04-27', items: [
+      '✅ <b>Eaton 93PS 8 / 20 kW — V_DC окно verified.</b> Datasheet 93PS 8-10 kW: internal battery 384V, external <b>336-480 VDC</b>. Серия 93PS 8-40 kW имеет одинаковое окно — то же что у уже verified 93PS 40.',
+      '• Раньше 93PS 8 = 240-360, 93PS 20 = 360-480 (estimate). Теперь оба 336-480.',
+      '• <code>shared/ups-verified.js</code>: добавлены <code>eaton-93ps-8k</code>, <code>eaton-93ps-20k</code>.',
+      '• seedVersion 11→12 force-upsert.',
+      'Verified в preview: 93PS 8 kW → V_DC 336…480 В ✓, 93PS 20 kW → V_DC 336…480 В ✓.',
+    ] },
     { version: '0.59.487', date: '2026-04-27', items: [
       '🧹 <b>Финальная зачистка слова «химия» в UI.</b> Артефакты, которые ещё всплывали в отчёте PDF/print: «усреднённая модель, химия vrla» (две точки — buildBatteryReportBlocks и аналогичная функция для S³). Заменено на «усреднённая модель, тип АКБ: Свинцово-кислотные (VRLA/AGM)» через <code>chemLabel()</code>.',
       '• Также tooltip заблокированного селекта «Заблокировано — химия определена…» → «Заблокировано — тип АКБ определён…».',

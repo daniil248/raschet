@@ -15,7 +15,7 @@
 const VERIFIED_VDC_IDS = new Set([
   // Eaton (verified through datasheet web-search)
   'eaton-93pm-50k', 'eaton-93pm-100k', 'eaton-93pm-200k',
-  'eaton-93ps-40k',
+  'eaton-93ps-8k', 'eaton-93ps-20k', 'eaton-93ps-40k',
   'eaton-9395-500k', 'eaton-9395-1100k',
   // Schneider
   'schneider-galaxy-vs-60k', 'schneider-galaxy-vs-100k',
