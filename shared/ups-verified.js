@@ -15,6 +15,10 @@
 //   • Schneider Galaxy VX 750/1500   → 384-576 (Tech Spec 990-5783, та же battery system что у VL)
 //   • Legrand Keor S 6/10 (id «sp»)  → 200-288 (Brochure_KEOR_S_GB, 240V ном., 20 × 12В VRLA)
 //   • Legrand Keor T EVO 10/20      → 240-576 (Manual LE10507AD, 24…40 × 12В VRLA)
+//   • Legrand Keor LP 3              → 60-86 (310158 datasheet, 6 × 12В VRLA)
+//   • Legrand Keor MOD 25 (id 30)    → 440-634 (Tech Spec 38559, split bus +/-264V, 44 × 12В)
+//   • Legrand Keor MP 200 (id 300)   → 432-600 (Brochure + UPS_LGR_0241, 432-600 VDC VRLA)
+//   • Legrand Keor HPE 400           → 620-840 (Tech Spec UPS-LGR-0120 + 200-300KVA, 360-372 cells × 12В)
 //   • Все Kehua MR33/S3 AIO  → паспорт Kehua UPS Catalog 2024-10-22
 // ======================================================================
 
@@ -32,6 +36,9 @@ const VERIFIED_VDC_IDS = new Set([
   // Legrand
   'legrand-keor-sp-6k', 'legrand-keor-sp-10k',
   'legrand-keor-tevo-10k', 'legrand-keor-tevo-20k',
+  'legrand-keor-lp-3k',
+  'legrand-keor-mod-30k', 'legrand-keor-mp-300k',
+  'legrand-keor-hpe-400k',
   // Kehua — указаны страницы каталога в source
   'kehua-mr33120-30k', 'kehua-mr33200-50k', 'kehua-mr33300-50k',
   'kehua-mr33400-50k', 'kehua-mr33500-50k', 'kehua-mr33600-50k',

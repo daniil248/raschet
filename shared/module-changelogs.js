@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.497', date: '2026-04-27', items: [
+      '✅ <b>Legrand Keor LP 3 + HPE 400 + MOD 30 (→25) + MP 300 (→200) — V_DC verified.</b> Использован <code>pdftotext</code> локально на скачанных PDFs (Web-search snippets были недостаточны). Исправлены также два model-name discrepancy:',
+      '• <b>Keor LP 3 kVA</b> (datasheet 310158): 72V ном., 6 × 12В VRLA, 36 ячеек. EoD 1.67 → float 2.40 VPC = <b>60…86 VDC</b>. Раньше 72-96 — превышало boost-предел VRLA.',
+      '• <b>Keor HPE 400 kVA</b> (Tech Spec UPS-LGR-0120 + Data-sheet-Keor-HPE_200-250-300KVA): 360-372 cells × 12В VRLA (60-62 jars), float 812-840V, EoD 620-632V. Operating range = <b>620…840 VDC</b>. Brochure HPE 60-600: «Common Battery Kit» — battery system общая для всей серии. Раньше 432-540 — wildly off.',
+      '• <b>Keor MOD 25 (id mod-30k)</b> (Tech Spec 38559-keor-mod-25kw): split bus +/-264V, 22 jars × 12В × 2 drawers per string = 44 jars (132 ячеек/рейл). Operating window rail-to-rail = <b>440…634 VDC</b>. Раньше 360-480 — занижено. Также: <b>real module power = 25 kW, не 30</b> (per Brochure_KeorMod-EN). Display name «Keor MOD 30» → «Keor MOD 25», capacityKva/Kw/moduleKwRated 30→25, moduleSlots 4→5, frameKw 120→125.',
+      '• <b>Keor MP 200 (id mp-300k)</b> (Brochure Keor MP 60-200 kVA + UPS_LGR_0241_GB_AA): «Nominal battery voltage 432 Vdc ~ 600 Vdc» VRLA (или 512-614 Vdc Li-ion). Operating range = <b>432…600 VDC</b>. Раньше 432-540 — занижено по верхней границе. Также: <b>Keor MP серия — 60-200 kVA, не 300</b>. Display «Keor MP 300» → «Keor MP 200 kVA», capacityKva/Kw 300→200.',
+      '• Все 4 id (id-ы сохранены) добавлены в <code>shared/ups-verified.js</code>.',
+      '• seedVersion 18→19 force-upsert.',
+      '⏳ <b>Ещё не verified:</b> Keor HP 100/200 — datasheet brochure не содержит explicit DC voltage table (только nominal kVA/kW и mechanical specs); per-model datasheet не найден в открытом доступе.',
+      'Файлы: <code>shared/catalogs/ups-legrand.js</code> (lp-3k / hpe-400k / mod-30k full update / mp-300k full update), <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.496', date: '2026-04-27', items: [
       '✅ <b>Legrand Keor S 6 / 10 + Keor T EVO 10 / 20 — V_DC окно verified + Fix модели.</b>',
       '🔤 <b>Rename Keor SP 6/10 → Keor S 6/10.</b> Раньше в каталоге значилось «Keor SP», но реальная серия — <b>Keor S</b> (3-6-10 kVA online double-conversion VFI-SS-111). Keor SP — это другая серия, line-interactive 600-2000 VA, у нас не используется. Id (<code>legrand-keor-sp-6k/10k</code>) сохранены для обратной совместимости — комментарий поясняет.',

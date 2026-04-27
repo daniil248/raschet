@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '18'; // v0.59.496: Legrand Keor S 6/10 (был SP) + T EVO 10/20 — verified V_DC; rename SP→S
+const CURRENT_VERSION = '19'; // v0.59.497: Legrand Keor LP 3 + HPE 400 + MOD 30 (→25) + MP 300 (→200) — verified V_DC через pdftotext PDFs
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,
