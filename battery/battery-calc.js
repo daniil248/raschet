@@ -117,6 +117,10 @@ function renderCatalog() {
   // Применяем фильтры (включая каскад Производитель → Серия → Модель)
   // и сортировку (по поставщику → V блока → Ah → модели).
   const list = _sortBatteries(all.filter(b => {
+    // v0.59.460: справочник АКБ показывает только сами АКБ-модули.
+    // Шкафы (cabinet) и аксессуары (combiner, networking, blank panels,
+    // wire kits) скрыты — они не АКБ, а компоненты систем.
+    if (b.systemSubtype === 'cabinet' || b.systemSubtype === 'accessory') return false;
     if (chem && (b.chemistry || '').toLowerCase() !== chem) return false;
     if (custom === 'imported' && b.custom === true) return false;
     if (custom === 'custom' && b.custom !== true) return false;
@@ -582,14 +586,78 @@ function openDischargeTableModal(battery) {
     // График разряда — одна кривая на каждое endV
     html += '<h4 style="margin:18px 0 6px;font-size:13px">График разряда</h4>';
     html += `<div id="dtable-chart-wrap" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div>`;
-    bodyEl.innerHTML = html;
-    // Отрисовка SVG-графика
+    // v0.59.460: детекция аномалий в данных производителя.
+    // Для каждой кривой (endV) проверяем что powerW монотонно убывает с ростом t.
+    // Если точка выпадает: соседи P_a (t_a) и P_b (t_b), ожидаемое P_exp по
+    // лог-линейной интерполяции; |log(P_x) − log(P_exp)| > порог → аномалия.
+    const anomalies = _detectDischargeAnomalies(rows);
+    if (anomalies.length) {
+      html = html.replace('<h4 style="margin:18px 0 6px;font-size:13px">График разряда</h4>',
+        `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:8px 10px;border-radius:4px;margin-top:14px;font-size:12px;line-height:1.5">`
+        + `<b>⚠ В данных производителя обнаружены ${anomalies.length} аномалий</b> (точки явно выпадают из монотонной кривой). На графике они помечены жёлтым кружком; в расчётах используется интерполяция соседних точек:`
+        + `<ul style="margin:6px 0 0 18px;padding:0">`
+        + anomalies.map(a => `<li>endV=<b>${fmt(a.endV)}</b> В/эл, t=<b>${fmt(a.tMin)}</b> мин: значение <b>${fmt(a.actual)}</b> W → ожидалось ≈ <b>${fmt(a.expected)}</b> W (отклонение в ${fmt(a.ratio)}× раз)</li>`).join('')
+        + `</ul></div>`
+        + `<h4 style="margin:18px 0 6px;font-size:13px">График разряда</h4>`);
+      bodyEl.innerHTML = html;
+    } else {
+      bodyEl.innerHTML = html;
+    }
+    // Заменяем powerW аномалий на ожидаемое значение для отрисовки
+    // (но оригинальные данные не трогаем — таблица показывается как есть).
+    const rowsForChart = rows.map(p => {
+      const a = anomalies.find(x => x.endV === p.endV && x.tMin === p.tMin);
+      return a ? { ...p, powerW: a.expected, _anomaly: true, _origPower: a.actual } : p;
+    });
     _renderDischargeChart(
       document.getElementById('dtable-chart-wrap'),
-      rows, endVs
+      rowsForChart, endVs
     );
   }
   modal.classList.add('show');
+}
+
+// v0.59.460: детектор аномалий в таблице разряда.
+// Идея: на каждой кривой (фиксированный endV) точки сортируются по tMin,
+// powerW должен монотонно убывать. Для каждой внутренней точки берём
+// соседей слева/справа, считаем ожидаемое значение по лог-линейной
+// интерполяции в (log(t), log(P)). Если отношение фактическое/ожидаемое
+// больше threshold (5×) или меньше 0.2× — это аномалия.
+//
+// Типичная ошибка datasheet: пропущенный десятичный разделитель
+// (например, «4218» вместо «421.8») — даёт скачок в ~10×.
+function _detectDischargeAnomalies(rows) {
+  if (!Array.isArray(rows) || rows.length < 3) return [];
+  const out = [];
+  const byEv = new Map();
+  for (const p of rows) {
+    if (!Number.isFinite(p.tMin) || !Number.isFinite(p.powerW) || p.tMin <= 0 || p.powerW <= 0) continue;
+    if (!byEv.has(p.endV)) byEv.set(p.endV, []);
+    byEv.get(p.endV).push(p);
+  }
+  const THRESHOLD = 3.0; // отклонение в 3× раз от лог-интерполяции = аномалия
+  for (const [ev, pts] of byEv.entries()) {
+    pts.sort((a, b) => a.tMin - b.tMin);
+    if (pts.length < 3) continue;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const a = pts[i - 1], x = pts[i], b = pts[i + 1];
+      // Лог-линейная интерполяция P_exp в точке log(t_x)
+      const ltA = Math.log(a.tMin), ltX = Math.log(x.tMin), ltB = Math.log(b.tMin);
+      if (ltA === ltB) continue;
+      const k = (ltX - ltA) / (ltB - ltA);
+      const lpExp = Math.log(a.powerW) + k * (Math.log(b.powerW) - Math.log(a.powerW));
+      const pExp = Math.exp(lpExp);
+      const ratio = x.powerW / pExp;
+      if (ratio > THRESHOLD || ratio < 1 / THRESHOLD) {
+        out.push({
+          endV: ev, tMin: x.tMin,
+          actual: x.powerW, expected: pExp,
+          ratio: ratio > 1 ? ratio : 1 / ratio,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 // v0.59.415: монотонный кубический Hermite (Fritsch-Carlson) — сглаживает
@@ -748,7 +816,13 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     const d = _smoothPathMonotone(ptsScreen);
     parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
     for (const p of curve) {
-      parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1"><title>${ev} В · ${p.tMin} мин · ${p.powerW} W</title></circle>`);
+      // v0.59.460: аномальные точки помечены жёлтым (значение интерполировано).
+      const isAnomaly = !!p._anomaly;
+      const fill = isAnomaly ? '#fbc02d' : color;
+      const r = isAnomaly ? 5 : 3;
+      const sw = isAnomaly ? 2 : 1;
+      const titleSuffix = isAnomaly ? ` · ⚠ интерполировано вместо ${p._origPower} W (аномалия в datasheet)` : '';
+      parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="${r}" fill="${fill}" stroke="#fff" stroke-width="${sw}"><title>${ev} В · ${p.tMin} мин · ${fmt(p.powerW)} W${titleSuffix}</title></circle>`);
     }
   });
 
