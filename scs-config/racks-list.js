@@ -292,7 +292,32 @@ function materializeFromScheme(virtId, tag) {
   saveAllRacksForActiveProject(racks);
   tags[inst.id] = tag;
   saveJson(LS_RACKTAGS, tags);
-  rsToast('Стойка ' + tag + ' материализована', 'ok');
+  // v0.59.537: переносим contents/matrix от виртуала к новому inst-*.
+  // Иначе труд пользователя (PDU, устройства, патч-корды), вложенный в
+  // виртуальную стойку до материализации, был бы потерян (виртуал после
+  // материализации скрывается mergeWithSchemeRacks по tag-overlap).
+  try {
+    const contents = loadJson(LS_CONTENTS, {});
+    const matrix = loadJson('scs-config.matrix.v1', {});
+    const matKeyProj = (() => {
+      try {
+        const pid = getActiveProjectId();
+        return pid ? `raschet.project.${pid}.scs-config.matrix.v1` : null;
+      } catch { return null; }
+    })();
+    const matrixProj = matKeyProj ? loadJson(matKeyProj, {}) : null;
+    if (contents[virtId] && Array.isArray(contents[virtId])) {
+      contents[inst.id] = contents[virtId];
+      delete contents[virtId];
+      saveJson(LS_CONTENTS, contents);
+    }
+    if (matrixProj && matrixProj[virtId] && Array.isArray(matrixProj[virtId])) {
+      matrixProj[inst.id] = matrixProj[virtId];
+      delete matrixProj[virtId];
+      saveJson(matKeyProj, matrixProj);
+    }
+  } catch (e) { console.warn('[racks-list] contents transfer failed:', e); }
+  rsToast('Стойка ' + tag + ' материализована (контент перенесён)', 'ok');
   render();
 }
 
@@ -308,7 +333,16 @@ function materializeAllFromScheme() {
   const tags = loadJson(LS_RACKTAGS, {});
   const usedTags = new Set(Object.values(tags).map(t => (t || '').trim()).filter(Boolean));
   const racks = loadAllRacksForActiveProject();
-  let created = 0, skipped = 0;
+  // v0.59.537: для bulk также переносим contents/matrix от виртуалов.
+  const contents = loadJson(LS_CONTENTS, {});
+  const matKeyProj = (() => {
+    try {
+      const _pid = getActiveProjectId();
+      return _pid ? `raschet.project.${_pid}.scs-config.matrix.v1` : null;
+    } catch { return null; }
+  })();
+  const matrixProj = matKeyProj ? loadJson(matKeyProj, {}) : null;
+  let created = 0, skipped = 0, contentMoved = 0;
   for (const v of virtuals) {
     if (usedTags.has(v.autoTag)) { skipped++; continue; }
     const inst = {
@@ -325,12 +359,23 @@ function materializeAllFromScheme() {
     racks.push(inst);
     tags[inst.id] = v.autoTag;
     usedTags.add(v.autoTag);
+    if (contents[v.id] && Array.isArray(contents[v.id])) {
+      contents[inst.id] = contents[v.id];
+      delete contents[v.id];
+      contentMoved++;
+    }
+    if (matrixProj && matrixProj[v.id] && Array.isArray(matrixProj[v.id])) {
+      matrixProj[inst.id] = matrixProj[v.id];
+      delete matrixProj[v.id];
+    }
     created++;
   }
   saveAllRacksForActiveProject(racks);
   saveJson(LS_RACKTAGS, tags);
+  saveJson(LS_CONTENTS, contents);
+  if (matKeyProj && matrixProj) saveJson(matKeyProj, matrixProj);
   const msg = created
-    ? `Создано ${created} стоек${skipped ? ` (${skipped} пропущено — теги заняты)` : ''}`
+    ? `Создано ${created} стоек${contentMoved ? ` · перенесён контент ${contentMoved}` : ''}${skipped ? ` (${skipped} пропущено — теги заняты)` : ''}`
     : 'Все теги уже заняты — нечего материализовать';
   rsToast(msg, created ? 'ok' : 'info');
   render();
