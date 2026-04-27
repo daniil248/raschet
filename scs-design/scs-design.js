@@ -166,35 +166,43 @@ function renderProjectBadge(pid) {
   } catch {}
 
   // v0.59.556: legacy-режим автоматически мигрируется в под-проект.
-  // - Если есть legacy-данные и нет под-проектов → создать default sub
-  //   «СКС» (без designation), перенести все scs-design.* ключи туда,
-  //   активировать его и перезагрузиться. Пользователь не видит шага
-  //   «создайте под-проект».
-  // - Если есть legacy-данные И уже есть под-проекты — переносим в первый
-  //   (мерж), не перезаписывая ключи приёмника.
-  // v0.59.557: reload+return ТОЛЬКО если что-то реально перенеслось ИЛИ
-  // создан новый sub. Иначе (subs[0] не пуст, конфликт ключей) —
-  // оставляем legacy как есть и продолжаем рендер с предупреждением.
+  // v0.59.557: reload+return ТОЛЬКО если что-то реально перенеслось.
+  // v0.59.564: session-flag предотвращает повторные попытки за вкладку.
+  //   Без флага renderProjectBadge на каждом ре-рендере (storage-event,
+  //   tab-switch, …) запускал миграцию заново, и при «dest не пуст»
+  //   спамил console.warn сотнями раз → подвисание UI-потока.
   if (legacyActive && parent && !parentIsOrphan) {
-    try {
-      let dest = subs[0];
-      let createdSub = false;
-      if (!dest) {
-        dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
-        createdSub = true;
-      }
-      if (dest && dest.id) {
-        const moved = _migrateLegacyScsToSub(parent.id, dest.id);
-        if (moved.length || createdSub) {
-          console.info(`[scs-design] auto-migrated legacy → sub ${dest.id}, moved ${moved.length} keys, createdSub=${createdSub}; reloading`);
-          setActiveProjectId(dest.id);
-          location.reload();
-          return;
+    const _attemptedFlag = `raschet.scs-design.legacy-migrate-attempted.${parent.id}.session`;
+    const alreadyAttempted = (() => {
+      try { return sessionStorage.getItem(_attemptedFlag) === '1'; } catch { return false; }
+    })();
+    if (!alreadyAttempted) {
+      try {
+        let dest = subs[0];
+        let createdSub = false;
+        if (!dest) {
+          dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
+          createdSub = true;
         }
-        // dest существовал и не пуст — миграция не выполнилась.
-        console.warn(`[scs-design] legacy data persists in parent ${parent.id} — sub ${dest.id} already has content; manual merge required`);
+        if (dest && dest.id) {
+          const moved = _migrateLegacyScsToSub(parent.id, dest.id);
+          // Помечаем попытку — независимо от результата, чтобы не повторять.
+          try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
+          if (moved.length || createdSub) {
+            console.info(`[scs-design] auto-migrated legacy → sub ${dest.id}, moved ${moved.length} keys, createdSub=${createdSub}; reloading`);
+            setActiveProjectId(dest.id);
+            location.reload();
+            return;
+          }
+          // dest существовал и не пуст — миграция не выполнилась.
+          // Логируем ОДИН раз благодаря флагу выше.
+          console.warn(`[scs-design] legacy data persists in parent ${parent.id} — sub ${dest.id} already has content; manual merge required`);
+        }
+      } catch (e) {
+        try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
+        console.warn('[scs-design] auto-migrate legacy failed:', e);
       }
-    } catch (e) { console.warn('[scs-design] auto-migrate legacy failed:', e); }
+    }
   }
 
   // v0.59.556: если у parent ровно 1 под-проект — авто-активируем его
@@ -209,19 +217,28 @@ function renderProjectBadge(pid) {
 
   // v0.59.561: при первом заходе в свежий проект (subs.length===0,
   // нет legacy-данных) — auto-create default sub «СКС» прозрачно.
-  // Пользователь не должен видеть концепцию «создайте подпроект СКС»;
-  // подпроект появляется сам и сразу активируется. Концепция нескольких
-  // вариантов СКС (через «＋ ещё вариант СКС») остаётся доступной.
+  // v0.59.564: session-flag предотвращает повторные попытки на
+  // ре-рендере, если createSubProject вернул null или произошла ошибка.
   if (parent && !parentIsOrphan && subs.length === 0 && !legacyActive) {
-    try {
-      const dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
-      if (dest && dest.id) {
-        console.info(`[scs-design] auto-created default sub-project ${dest.id} for fresh project ${parent.id}; reloading`);
-        setActiveProjectId(dest.id);
-        location.reload();
-        return;
+    const _attemptedFlag = `raschet.scs-design.auto-create-sub-attempted.${parent.id}.session`;
+    const alreadyAttempted = (() => {
+      try { return sessionStorage.getItem(_attemptedFlag) === '1'; } catch { return false; }
+    })();
+    if (!alreadyAttempted) {
+      try {
+        const dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
+        try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
+        if (dest && dest.id) {
+          console.info(`[scs-design] auto-created default sub-project ${dest.id} for fresh project ${parent.id}; reloading`);
+          setActiveProjectId(dest.id);
+          location.reload();
+          return;
+        }
+      } catch (e) {
+        try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
+        console.warn('[scs-design] auto-create default sub failed:', e);
       }
-    } catch (e) { console.warn('[scs-design] auto-create default sub failed:', e); }
+    }
   }
 
   // v0.59.531: для orphan-sketch родителем является сам sketch — у него
