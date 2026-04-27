@@ -617,15 +617,19 @@ function openDischargeTableModal(battery) {
   modal.classList.add('show');
 }
 
-// v0.59.460: детектор аномалий в таблице разряда.
-// Идея: на каждой кривой (фиксированный endV) точки сортируются по tMin,
-// powerW должен монотонно убывать. Для каждой внутренней точки берём
-// соседей слева/справа, считаем ожидаемое значение по лог-линейной
-// интерполяции в (log(t), log(P)). Если отношение фактическое/ожидаемое
-// больше threshold (5×) или меньше 0.2× — это аномалия.
+// v0.59.460/461: детектор аномалий в таблице разряда (итеративный).
+// На каждой кривой (фиксированный endV) точки сортируются по tMin.
+// Алгоритм:
+//   1. Для каждой внутренней точки считаем лог-линейную интерполяцию
+//      по соседям слева/справа в (log t, log P).
+//   2. Берём точку с максимальным отклонением (если оно > THRESHOLD).
+//   3. Помечаем её аномальной, заменяем powerW на ожидаемое значение
+//      во ВНУТРЕННЕЙ копии и идём на шаг 1.
+//   4. Повторяем пока находятся аномалии (max iterations = N/2).
 //
-// Типичная ошибка datasheet: пропущенный десятичный разделитель
-// (например, «4218» вместо «421.8») — даёт скачок в ~10×.
+// Так мы удаляем самый сильный выброс первым; соседи, ошибочно
+// «провалившиеся» относительно него, на следующей итерации уже не
+// помечаются — потому что интерполяция считается по исправленным значениям.
 function _detectDischargeAnomalies(rows) {
   if (!Array.isArray(rows) || rows.length < 3) return [];
   const out = [];
@@ -635,26 +639,38 @@ function _detectDischargeAnomalies(rows) {
     if (!byEv.has(p.endV)) byEv.set(p.endV, []);
     byEv.get(p.endV).push(p);
   }
-  const THRESHOLD = 3.0; // отклонение в 3× раз от лог-интерполяции = аномалия
-  for (const [ev, pts] of byEv.entries()) {
-    pts.sort((a, b) => a.tMin - b.tMin);
+  const THRESHOLD = 2.0; // отклонение в 2× от лог-интерполяции = аномалия
+  for (const [ev, ptsOrig] of byEv.entries()) {
+    const pts = ptsOrig.slice().sort((a, b) => a.tMin - b.tMin);
     if (pts.length < 3) continue;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const a = pts[i - 1], x = pts[i], b = pts[i + 1];
-      // Лог-линейная интерполяция P_exp в точке log(t_x)
-      const ltA = Math.log(a.tMin), ltX = Math.log(x.tMin), ltB = Math.log(b.tMin);
-      if (ltA === ltB) continue;
-      const k = (ltX - ltA) / (ltB - ltA);
-      const lpExp = Math.log(a.powerW) + k * (Math.log(b.powerW) - Math.log(a.powerW));
-      const pExp = Math.exp(lpExp);
-      const ratio = x.powerW / pExp;
-      if (ratio > THRESHOLD || ratio < 1 / THRESHOLD) {
-        out.push({
-          endV: ev, tMin: x.tMin,
-          actual: x.powerW, expected: pExp,
-          ratio: ratio > 1 ? ratio : 1 / ratio,
-        });
+    // Рабочая копия powerW (мутируем при «исправлении»)
+    const work = pts.map(p => p.powerW);
+    const maxIter = Math.max(1, Math.floor(pts.length / 2));
+    for (let iter = 0; iter < maxIter; iter++) {
+      let worstIdx = -1, worstScore = 0, worstExpected = 0;
+      for (let i = 1; i < pts.length - 1; i++) {
+        const a = pts[i - 1], x = pts[i], b = pts[i + 1];
+        const ltA = Math.log(a.tMin), ltX = Math.log(x.tMin), ltB = Math.log(b.tMin);
+        if (ltA === ltB) continue;
+        const k = (ltX - ltA) / (ltB - ltA);
+        const lpExp = Math.log(work[i - 1]) + k * (Math.log(work[i + 1]) - Math.log(work[i - 1]));
+        const pExp = Math.exp(lpExp);
+        const ratio = work[i] / pExp;
+        const score = ratio > 1 ? ratio : 1 / ratio;
+        if (score > THRESHOLD && score > worstScore) {
+          worstScore = score;
+          worstIdx = i;
+          worstExpected = pExp;
+        }
       }
+      if (worstIdx < 0) break;
+      // Записываем аномалию (на оригинальном значении), исправляем рабочую копию.
+      out.push({
+        endV: ev, tMin: pts[worstIdx].tMin,
+        actual: pts[worstIdx].powerW, expected: worstExpected,
+        ratio: worstScore,
+      });
+      work[worstIdx] = worstExpected;
     }
   }
   return out;
@@ -895,7 +911,10 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   const vline = svg.querySelector('.cx-vline');
   const hline = svg.querySelector('.cx-hline');
   const tooltip = mount.querySelector('.chart-tooltip');
-  // Линейная интерполяция P(t) внутри curve (t возрастает).
+  // v0.59.461: интерполяция P(t) идёт ровно так же, как chart рисует
+  // линию — линейно в (t, log P), потому что ось Y — log. Раньше была
+  // линейная (t, P) → точка съезжала с линии, особенно сильно на
+  // 2-точечных кривых с большим перепадом по P.
   const interpPower = (curve, t) => {
     if (!curve.length) return null;
     if (t <= curve[0].tMin) return curve[0].powerW;
@@ -904,7 +923,9 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
       const a = curve[i], b = curve[i + 1];
       if (t >= a.tMin && t <= b.tMin) {
         const k = (t - a.tMin) / (b.tMin - a.tMin);
-        return a.powerW + (b.powerW - a.powerW) * k;
+        // Лог-интерполяция: log P = log P_a + k·(log P_b − log P_a).
+        const lp = Math.log(a.powerW) + k * (Math.log(b.powerW) - Math.log(a.powerW));
+        return Math.exp(lp);
       }
     }
     return null;
@@ -2073,26 +2094,30 @@ function _snapHighlightToCurve(rows, ev, blockPowerW, fallbackTMin, extrapolated
   // Кривая: при росте t — P убывает. Ищем t такое, что P(t) = blockPowerW.
   let snappedT = null;
   let outOfTable = '';
+  // v0.59.461: snap идёт по той же формуле, что используется при отрисовке
+  // линии разряда (линейно в log P, ось Y — log). Линейная по P давала
+  // смещение точки с кривой особенно на 2-точечных и крутых сегментах.
+  const lp = Math.log(blockPowerW);
   if (blockPowerW > curve[0].powerW) {
-    // мощность выше первой точки → экстраполяция влево
     if (curve.length >= 2) {
       const a = curve[0], b = curve[1];
-      if (a.powerW !== b.powerW) {
-        const k = (a.powerW - blockPowerW) / (a.powerW - b.powerW);
+      const lpA = Math.log(a.powerW), lpB = Math.log(b.powerW);
+      if (lpA !== lpB) {
+        const k = (lp - lpA) / (lpB - lpA);
         snappedT = Math.max(0, a.tMin + (b.tMin - a.tMin) * k);
         outOfTable = ' (экстраполяция)';
       }
     }
   } else if (blockPowerW < curve[curve.length - 1].powerW) {
-    // мощность ниже последней точки → автономия больше последней tMin
     snappedT = curve[curve.length - 1].tMin;
     outOfTable = ' (P ниже таблицы → автономия ≥ макс. табличной)';
   } else {
     for (let i = 0; i < curve.length - 1; i++) {
       const a = curve[i], b = curve[i + 1];
       if (blockPowerW <= a.powerW && blockPowerW >= b.powerW) {
-        if (a.powerW === b.powerW) { snappedT = a.tMin; break; }
-        const k = (a.powerW - blockPowerW) / (a.powerW - b.powerW);
+        const lpA = Math.log(a.powerW), lpB = Math.log(b.powerW);
+        if (lpA === lpB) { snappedT = a.tMin; break; }
+        const k = (lp - lpA) / (lpB - lpA);
         snappedT = a.tMin + (b.tMin - a.tMin) * k;
         break;
       }
