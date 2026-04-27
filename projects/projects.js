@@ -525,15 +525,83 @@ try {
   }
 } catch (e) { console.warn('[projects.js] Auth.init failed:', e); }
 
+// v0.59.566: после auth/Storage готов — синкуем cloud-схемы → LS-контейнеры.
+// Для каждой cloud-схемы (window.Storage.listMyProjects) проверяем имя; если
+// LS-контейнера с таким именем нет — создаём. Это решает проблему «проект
+// есть в облаке, но нет в LS на этом устройстве, поэтому в scs-design
+// dropdown не виден». Идемпотентно — повторный запуск не создаёт дубликатов.
+async function syncCloudToLsContainers() {
+  try {
+    if (!window.Storage || typeof window.Storage.listMyProjects !== 'function') return;
+    let cloudSchemes = [];
+    try { cloudSchemes = await window.Storage.listMyProjects(); }
+    catch (e) { console.warn('[projects.js] listMyProjects failed:', e); return; }
+    if (!Array.isArray(cloudSchemes) || !cloudSchemes.length) return;
+
+    // Все имена существующих LS-контейнеров (full-projects), нормализованные.
+    const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const lsContainers = listProjects().filter(p =>
+      (p.kind || 'full') === 'full' &&
+      !(typeof p.id === 'string' && p.id.startsWith('lp_')) &&
+      !('scheme' in p) && !('memberUids' in p)
+    );
+    const lsContainerNames = new Set(lsContainers.map(p => norm(p.name)));
+
+    // Имя для контейнера: пытаемся scheme.projectName/projectId-resolved/name.
+    let created = 0;
+    const seen = new Set();
+    for (const sch of cloudSchemes) {
+      if (!sch) continue;
+      // Если у схемы уже есть projectId на валидный LS-контейнер — пропускаем.
+      const existingPid = sch.projectId || sch.parentProjectId || null;
+      if (existingPid && lsContainers.some(p => p.id === existingPid)) continue;
+
+      // Имя для контейнера. Берём projectName, иначе scheme.name, иначе scheme.label.
+      const candidateName = (sch.projectName || sch.name || sch.label || '').trim();
+      if (!candidateName) continue;
+      const key = norm(candidateName);
+      if (seen.has(key)) continue;     // не создаём дубликаты в одном проходе
+      if (lsContainerNames.has(key)) continue; // уже есть LS-контейнер с этим именем
+      seen.add(key);
+      try {
+        const ctx = createProject({
+          name: candidateName,
+          description: 'Контейнер создан автоматически на основе cloud-схемы. Связанные cloud-схемы будут привязаны при следующем заходе на /projects/.',
+        });
+        if (ctx) created++;
+      } catch (e) { console.warn('[projects.js] auto-create container failed for', candidateName, e); }
+    }
+    if (created > 0) {
+      console.info(`[projects.js] cloud→LS sync: создано ${created} контейнеров`);
+      prToast(`☁→💾 Синхронизировано: создано ${created} LS-контейнеров из облака`, 'info');
+    }
+  } catch (e) { console.warn('[projects.js] syncCloudToLsContainers failed:', e); }
+}
+
 function _initAfterDom() {
   ensureDefaultProject();
   render();
+
+  // v0.59.566: одноразовая (за загрузку) попытка синка cloud→LS. После
+  // sync — снова render + повторная orphan-migration, чтобы schemas
+  // получили правильный projectId по имени.
+  syncCloudToLsContainers().then(() => {
+    try {
+      const r = migrateOrphanSchemes();
+      if (r && (r.matched > 0 || r.created > 0)) {
+        console.info(`[projects.js] post-sync orphan-migration: matched=${r.matched}, created=${r.created}`);
+      }
+    } catch {}
+    render();
+  });
 
   // Re-render при изменении auth-state (Storage переключится в cloud).
   try {
     if (window.Auth && typeof window.Auth.onAuthChange === 'function') {
       window.Auth.onAuthChange(() => {
         try { render(); } catch (e) { console.warn('[projects.js] re-render on auth-change failed:', e); }
+        // Auth теперь готов — снова запускаем sync.
+        syncCloudToLsContainers().then(() => { try { render(); } catch {} });
       });
     }
   } catch {}
