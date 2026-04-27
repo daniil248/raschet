@@ -365,12 +365,16 @@ function render() {
       const p = listProjects().find(x => x.id === id); if (!p) return;
       const s = projectStats(p.id);
       const total = s.nodes + s.racks + s.links + s.inventory + s.facility;
-      const tail = total
-        ? `\n\nБудут стёрты project-scoped данные: ⚡${s.nodes} узл · 🗄${s.racks} стоек · 🔗${s.links} связей · 📋${s.inventory} IT · 🏭${s.facility} поз. объекта. Действие необратимо.`
-        : '\n\n(в проекте нет данных — удаление безопасно)';
+      // v0.59.560: HTML-форматирование, как в delete-sketch (v0.59.559).
+      // Красное предупреждение с детализацией по доменам помогает не
+      // потерять работу случайным кликом.
+      const detail = total
+        ? `<b style="color:#b91c1c">Будет удалено: ⚡${s.nodes} узлов схемы, 🗄${s.racks} стоек, 🔗${s.links} связей СКС, 📋${s.inventory} устройств IT, 🏭${s.facility} позиций реестра объекта.</b><br>Действие необратимо!`
+        : 'В проекте нет данных — удаление безопасно.';
       const ok = await prConfirm(
         `Удалить проект «${p.name}»?`,
-        'Удалятся метаданные проекта И все его scoped-данные (raschet.project.' + p.id + '.*).' + tail
+        `Будут стёрты метаданные проекта И все scoped-данные.<br>${detail}`,
+        { okLabel: total ? 'Удалить (и потерять данные)' : 'Удалить', isHtml: true }
       );
       if (!ok) return;
       const { removedKeys } = deleteProject(id);
