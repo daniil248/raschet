@@ -24,11 +24,15 @@
 
 import { listProjects, createProject } from './project-storage.js';
 
-// v2: bump флага, чтобы у пользователей с уже-выставленным v1 миграция
-// прошла ещё раз. Поводы: (а) первая v1 могла не отработать на старых
-// orphan-данных; (б) логика расширилась — теперь сначала ищем контейнер
-// с тем же именем (matched), и только если не нашли — создаём новый.
-const MIGRATION_FLAG = 'raschet.scheme-orphan-migration.v2';
+// v0.59.517: ФЛАГ БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ. Миграция идемпотентна (для уже-
+// привязанных схем — skipped, для orphan — link). Запускается при
+// КАЖДОМ открытии главной «Мои схемы» / /projects/ страницы. Решает
+// проблему «orphan-схемы возвращаются после нового заходa в систему»:
+// раньше флаг блокировал повтор миграции, и если за время между
+// миграциями появлялись новые orphan-схемы (от другого таба, импорта
+// и т.п.), они оставались без привязки. Теперь — авто-привязка по
+// имени при каждом рендере.
+const MIGRATION_FLAG = 'raschet.scheme-orphan-migration.v3';  // оставлен для совместимости с force-reset через консоль
 
 function _isStorageScheme(p) {
   if (!p || typeof p.id !== 'string') return false;
@@ -63,17 +67,12 @@ function _normName(s) {
  * Возвращает { matched, created, skipped, alreadyDone }.
  */
 export function migrateOrphanSchemes(opts) {
-  const force = opts && opts.force === true;
-  try {
-    if (!force && localStorage.getItem(MIGRATION_FLAG) === '1') {
-      return { matched: 0, created: 0, skipped: 0, alreadyDone: true };
-    }
-  } catch {}
-
+  // v0.59.517: флаг отключён — миграция идемпотентна и дёшева, поэтому
+  // запускается всегда. Старые флаги v1/v2 в LS игнорируются. Если в
+  // будущем потребуется опять кэшировать — параметр opts.useCache.
   let arr;
   try { arr = listProjects(); } catch { return { matched: 0, created: 0, skipped: 0, error: 'listProjects failed' }; }
   if (!Array.isArray(arr) || arr.length === 0) {
-    try { localStorage.setItem(MIGRATION_FLAG, '1'); } catch {}
     return { matched: 0, created: 0, skipped: 0 };
   }
 
@@ -134,7 +133,6 @@ export function migrateOrphanSchemes(opts) {
     } catch (e) { console.warn('[orphan-migration] link failed for', p.id, e); }
   }
 
-  try { localStorage.setItem(MIGRATION_FLAG, '1'); } catch {}
   if (matched + created > 0) {
     console.info(`[orphan-migration] завершено: matched ${matched}, created ${created}, skipped ${skipped}`);
   }
