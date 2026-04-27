@@ -80,11 +80,74 @@ export function loadInstances() {
   return Array.isArray(arr) ? arr.filter(r => r && r.id) : [];
 }
 
-/** Объединение: шаблоны + экземпляры активного проекта. Для обратной совместимости с state.racks. */
+/**
+ * v0.59.521: конвертер POR-объекта type='rack' → legacy rack record для
+ * совместимости с потребителями (scs-config / racks-list / scs-design).
+ * scs-config работает с плоской структурой (id, name, manufacturer, u,
+ * width, depth, demandKw, cosphi, ...). POR хранит то же в domains.
+ * mechanical/electrical. id берётся из legacyRackId (если был мигрирован
+ * из legacy) либо из POR id — чтобы при наличии legacy-копии совпадало.
+ */
+function _porRackToLegacy(obj) {
+  if (!obj) return null;
+  const m = (obj.domains && obj.domains.mechanical) || {};
+  const e = (obj.domains && obj.domains.electrical) || {};
+  return {
+    id:           obj.legacyRackId || obj.id,
+    porObjectId:  obj.id,
+    name:         obj.name || obj.tag || 'Стойка',
+    manufacturer: obj.manufacturer || '',
+    tag:          obj.tag || '',
+    u:            Number(m.rackUnits) || 42,
+    width:        Number(m.widthMm)   || 600,
+    depth:        Number(m.depthMm)   || 800,
+    demandKw:     Number(e.demandKw)  || 0,
+    cosphi:       Number(e.cosPhi)    || 0.95,
+    phases:       Number(e.phases)    || 3,
+    pdus: [], accessories: [],
+    _source: 'por',
+  };
+}
+
+/** v0.59.521: загрузить POR-объекты type='rack' для активного проекта. */
+function _loadPorRacks() {
+  try {
+    const pid = getActiveProjectId();
+    if (!pid) return [];
+    // Лениво импортируем POR (циклы предотвращаем): rack-storage НЕ
+    // должен зависеть от POR на этапе загрузки модуля. Но на момент
+    // вызова loadAllRacksForActiveProject — POR уже загружен в окне.
+    if (typeof window === 'undefined' || !window.RaschetPOR) return [];
+    const arr = window.RaschetPOR.getObjects(pid, { type: 'rack' }) || [];
+    return arr.map(_porRackToLegacy).filter(Boolean);
+  } catch (e) { console.warn('[rack-storage] _loadPorRacks failed:', e); return []; }
+}
+
+/**
+ * Объединение: шаблоны + экземпляры активного проекта + POR-объекты
+ * (Phase 2.5). Для обратной совместимости с state.racks.
+ *
+ * v0.59.521: POR-источник добавлен. Дедуп по id: если POR-объект имеет
+ * legacyRackId, совпадающий с legacy-id — POR пропускается (legacy
+ * содержит pdus/accessories для UI). POR-only racks (созданные через
+ * playground / engine mirror / scs-config POR-write) добавляются с
+ * id из legacyRackId || por.id.
+ */
 export function loadAllRacksForActiveProject() {
   const t = loadTemplates();
   const i = loadInstances();
-  return [...t, ...i];
+  const out = [...t, ...i];
+  const seenIds = new Set(out.map(r => r && r.id).filter(Boolean));
+
+  // POR — третий источник.
+  const por = _loadPorRacks();
+  for (const r of por) {
+    if (!r || !r.id) continue;
+    if (seenIds.has(r.id)) continue;
+    seenIds.add(r.id);
+    out.push(r);
+  }
+  return out;
 }
 
 /** Сохранить массив экземпляров в активный проект (ключ project-scoped). */

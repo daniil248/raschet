@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.521', date: '2026-04-27', items: [
+      '🔄 <b>POR-источник стоек интегрирован в <code>shared/rack-storage.js</code></b>. По репорту: «Шкафы проекта · 2», но в Компоновщике шкафа sidebar — 10+ POR-стоек. Это потому что <code>scs-config/racks-list.js</code> (реестр шкафов) и <code>scs-config/scs-config.js</code> (компоновщик) использовали ОДИН и тот же <code>loadAllRacksForActiveProject</code>, но в v0.59.516 я расширил POR-load только в одном месте (scs-config.js), не в общем хелпере.',
+      '• <b>Fix</b>: POR-чтение перенесено в <code>shared/rack-storage.js::loadAllRacksForActiveProject</code> — третий источник после templates и instances. Лениво через <code>window.RaschetPOR.getObjects</code> (без circular import).',
+      '• <b>Эффект</b>: ВСЕ потребители rack-storage (scs-config компоновщик, racks-list реестр, scs-design мастер связей, любые будущие) видят одинаковый список racks = templates + instances + POR.',
+      '• <b>Дедуп по id</b>: POR с <code>legacyRackId</code> совпадающим с legacy — пропускается (legacy содержит pdus/accessories для UI). POR-only racks добавляются с id из <code>legacyRackId || por.id</code>.',
+      '• Конвертер POR → legacy перенесён из <code>scs-config/scs-config.js::_porRackToScsRack</code> в <code>shared/rack-storage.js::_porRackToLegacy</code>.',
+      'Файлы: <code>shared/rack-storage.js</code> (новые <code>_porRackToLegacy</code> + <code>_loadPorRacks</code> + расширенный <code>loadAllRacksForActiveProject</code>), <code>scs-config/scs-config.js</code> (упрощён <code>loadRacks</code>: делегирует rack-storage; убран дублирующий импорт getObjects).',
+    ] },
     { version: '0.59.520', date: '2026-04-27', items: [
       '🏷 <b>scs-config: теги POR-стоек теперь попадают в picker «Стойки проекта»</b>. По репорту пользователя: в SCS-модуле счётчик «6 шт.» (загрузилось из POR), но видно только 2 стойки с тегами (А-01 × 2). При том что в POR Playground 16 stoek с тегами SR01-SR08, CR01, MR01.',
       '• <b>Корень бага</b>: SCS picker (<code>projectRacks()</code>) фильтрует <code>state.racks</code> по <code>state.rackTags[r.id]</code> — это ОТДЕЛЬНАЯ LS-таблица <code>rackId→tag</code> (<code>scs-config.rackTags.v1</code>). Тег из POR-объекта живёт в <code>obj.tag</code> и в моём конвертере попадал в <code>r.tag</code>, но НЕ в <code>state.rackTags</code>. Поэтому picker считал POR-стойки «без тега» и скрывал.',
