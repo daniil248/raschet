@@ -4243,6 +4243,32 @@ function init() {
     try { localStorage.setItem(LS_RACKTAGS, JSON.stringify(state.rackTags)); } catch {}
     console.info('[scs-config] синхронизированы теги из POR → state.rackTags');
   }
+  // v0.59.551: диагностика дубликатов TIA-тегов. Раньше встречался кейс,
+  // когда у двух inst-* стоек был одинаковый тег («А-01» × 2): импорт,
+  // ручная правка до v0.59.255 (когда uniqueness не проверялась) или
+  // конкурентная запись из другой вкладки. На старте показываем
+  // ненавязчивый toast (не блокирующий) с числом конфликтов; при клике
+  // открывается лог в консоли с детализацией.
+  try {
+    const byTag = {};
+    for (const [rid, t] of Object.entries(state.rackTags || {})) {
+      const norm = (t || '').trim().toLowerCase();
+      if (!norm) continue;
+      (byTag[norm] = byTag[norm] || []).push(rid);
+    }
+    const dups = Object.entries(byTag).filter(([, ids]) => ids.length > 1);
+    if (dups.length) {
+      const total = dups.reduce((s, [, ids]) => s + ids.length, 0);
+      console.warn(`[scs-config] обнаружены дубликаты TIA-тегов: ${dups.length} групп, ${total} стоек`,
+        dups.map(([tag, ids]) => ({ tag, ids })));
+      // Toast — но позже, после полной инициализации (scToast зависит от scUiHost).
+      setTimeout(() => {
+        try {
+          scToast(`⚠ Найдены дубликаты тегов: ${dups.length} групп. Проверьте «${dups[0][0]}» — занят ${dups[0][1].length} раз. Подробности в консоли (F12).`, 'warn');
+        } catch {}
+      }, 800);
+    }
+  } catch {}
   // v0.59.275: санитарная проверка catFilter — если сохранённый фильтр скрывает
   // весь каталог (например uMin > max heightU), сбрасываем его, чтобы юзер
   // не видел пустой каталог без подсказки при открытии страницы.
