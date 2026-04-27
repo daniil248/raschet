@@ -829,7 +829,11 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     curvesByEv.set(ev, { color, curve });
     if (!visibleSet.has(ev)) return;
     const ptsScreen = curve.map(p => ({ x: xOf(p.tMin), y: yOf(p.powerW) }));
-    const d = _smoothPathMonotone(ptsScreen);
+    // v0.59.462: используем ПРЯМЫЕ отрезки (piecewise linear в screen
+    // coords), а не Hermite-сплайн. Это нужно чтобы tooltip-точка ЛИНЕЙНОЙ
+    // лог-интерполяцией ровно совпадала с нарисованной линией. Сплайн
+    // изгибался между точками → точка съезжала с кривой.
+    const d = ptsScreen.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
     parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
     for (const p of curve) {
       // v0.59.460: аномальные точки помечены жёлтым (значение интерполировано).
@@ -911,10 +915,11 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   const vline = svg.querySelector('.cx-vline');
   const hline = svg.querySelector('.cx-hline');
   const tooltip = mount.querySelector('.chart-tooltip');
-  // v0.59.461: интерполяция P(t) идёт ровно так же, как chart рисует
-  // линию — линейно в (t, log P), потому что ось Y — log. Раньше была
-  // линейная (t, P) → точка съезжала с линии, особенно сильно на
-  // 2-точечных кривых с большим перепадом по P.
+  // v0.59.461/462: ОДИН И ТОТ ЖЕ метод для кривой и для точек на ней —
+  // piecewise-linear в screen-координатах (xOf, yOf), что эквивалентно
+  // линейной интерполяции в (t, log P). Кривая в _renderDischargeChart
+  // рисуется через `M x,y L x,y L x,y` — те же отрезки. Раньше chart
+  // использовал Hermite-сплайн → точки съезжали с визуальной линии.
   const interpPower = (curve, t) => {
     if (!curve.length) return null;
     if (t <= curve[0].tMin) return curve[0].powerW;
@@ -2094,9 +2099,9 @@ function _snapHighlightToCurve(rows, ev, blockPowerW, fallbackTMin, extrapolated
   // Кривая: при росте t — P убывает. Ищем t такое, что P(t) = blockPowerW.
   let snappedT = null;
   let outOfTable = '';
-  // v0.59.461: snap идёт по той же формуле, что используется при отрисовке
-  // линии разряда (линейно в log P, ось Y — log). Линейная по P давала
-  // смещение точки с кривой особенно на 2-точечных и крутых сегментах.
+  // v0.59.461/462: snap использует ТОТ ЖЕ метод что и отрисовка кривой —
+  // линейно в log P (ось Y чарта log; кривая рисуется отрезками между
+  // экранными координатами точек таблицы).
   const lp = Math.log(blockPowerW);
   if (blockPowerW > curve[0].powerW) {
     if (curve.length >= 2) {
