@@ -702,21 +702,23 @@ function badgeChip(icon, n, label, bg, fg) {
 }
 
 /* ---------- init ---------- */
-document.addEventListener('DOMContentLoaded', async () => {
-  // v0.59.526: инициализируем Firebase Auth если есть window.Auth.
-  // На карточке проекта firebase compat-скрипты загружены, но
-  // initializeApp() вызывается только из window.Auth.init() —
-  // и без этого Storage остаётся в Local-режиме навсегда.
-  // (см. shared/auth.js — init() идемпотентный, безопасно)
-  try {
-    if (window.Auth && typeof window.Auth.init === 'function') {
-      window.Auth.init();
-      // Не блокируем render — дальше Storage сам подхватит cloud
-      // через onAuthStateChanged. Async-блок в render() ждёт
-      // Storage.isCloud до 5с.
-    }
-  } catch (e) { console.warn('[project.js] Auth.init failed:', e); }
+// v0.59.527: инициализация на module-load (НЕ ждём DOMContentLoaded —
+// type="module" скрипты выполняются после парсинга DOM, событие могло
+// уже сработать или вот-вот сработает; addEventListener поздно). Auth.init
+// вызывается сразу; render() — после DOMContentLoaded или сразу если он
+// уже прошёл.
+console.info('[project.js] module loaded, document.readyState=', document.readyState);
+try {
+  if (window.Auth && typeof window.Auth.init === 'function') {
+    console.info('[project.js] calling window.Auth.init()');
+    window.Auth.init();
+  } else {
+    console.warn('[project.js] window.Auth not available at module load');
+  }
+} catch (e) { console.warn('[project.js] Auth.init failed:', e); }
 
+function _initAfterDom() {
+  console.info('[project.js] _initAfterDom run');
   // Синхронизируем активный проект — чтобы старые модули, читающие
   // getActiveProjectId(), видели тот же контекст.
   const pid = getPid();
@@ -728,8 +730,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     if (window.Auth && typeof window.Auth.onAuthChange === 'function') {
       window.Auth.onAuthChange(() => {
+        console.info('[project.js] onAuthChange → re-render');
         try { render(); } catch (e) { console.warn('[project.js] re-render on auth-change failed:', e); }
       });
     }
   } catch {}
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initAfterDom);
+} else {
+  // DOM уже готов — запускаем сразу (type="module" deferred + page parsed).
+  _initAfterDom();
+}

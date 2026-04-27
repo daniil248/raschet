@@ -470,14 +470,16 @@ function dateStamp() {
 }
 
 /* ---------- init ---------- */
-document.addEventListener('DOMContentLoaded', () => {
-  // v0.59.526: инициализируем Firebase Auth если есть window.Auth.
-  // Без этого Storage остаётся в Local-режиме навсегда (initializeApp
-  // не вызывается). См. projects/project.js аналогично.
-  try {
-    if (window.Auth && typeof window.Auth.init === 'function') window.Auth.init();
-  } catch (e) { console.warn('[projects.js] Auth.init failed:', e); }
+// v0.59.527: Auth.init на module-load + надёжный _initAfterDom (как в project.js).
+console.info('[projects.js] module loaded, document.readyState=', document.readyState);
+try {
+  if (window.Auth && typeof window.Auth.init === 'function') {
+    console.info('[projects.js] calling window.Auth.init()');
+    window.Auth.init();
+  }
+} catch (e) { console.warn('[projects.js] Auth.init failed:', e); }
 
+function _initAfterDom() {
   ensureDefaultProject();
   render();
 
@@ -499,4 +501,10 @@ document.addEventListener('DOMContentLoaded', () => {
     prToast('✔ Проект создан и сделан активным');
     render();
   });
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initAfterDom);
+} else {
+  _initAfterDom();
+}
