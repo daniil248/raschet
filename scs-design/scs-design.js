@@ -284,6 +284,9 @@ function getProjectRackIds() {
   // v0.59.281: источник истины — экземпляры активного проекта (inst-*)
   // из project-scoped хранилища + fallback на legacy-contents/tags (на случай
   // миграций). Глобальные шаблоны (tpl-*) никогда сюда не попадают.
+  // v0.59.550: + виртуалы (id 'scheme-*' / 'por-group-*') считаются «в проекте»
+  // — они происходят из engine-схемы / POR этого проекта. На чек чипа они
+  // материализуются в inst-*.
   const ids = new Set();
   try { getProjectInstances().forEach(r => { if (r && r.id) ids.add(r.id); }); } catch {}
   const byContent = loadJson(LS_CONTENTS, {});
@@ -292,6 +295,13 @@ function getProjectRackIds() {
   Object.keys(byTag || {}).forEach(id => {
     if (String(id).startsWith('inst-') && (byTag[id] || '').trim()) ids.add(id);
   });
+  try {
+    const pid = getActiveProjectId();
+    if (pid) {
+      loadSchemeVirtualRacks(pid).forEach(v => ids.add(v.id));
+      loadPorGroupVirtualRacks(pid).forEach(v => ids.add(v.id));
+    }
+  } catch {}
   return ids;
 }
 
@@ -465,7 +475,22 @@ function saveJson(key, val) { try { localStorage.setItem(key, JSON.stringify(val
 
 function getRacks() {
   // v0.59.278: шаблоны глобальные + экземпляры активного проекта.
-  try { migrateLegacyInstances(); return loadAllRacksForActiveProject(); }
+  // v0.59.550: + виртуальные стойки (из схемы / POR-группы), чтобы они
+  // были видимы в Мастере меж-шкафных связей и могли быть выбраны для
+  // материализации (на чек — auto-materialize в обработчике sd-rack-chip).
+  try {
+    migrateLegacyInstances();
+    const real = loadAllRacksForActiveProject() || [];
+    const pid = getActiveProjectId();
+    const sV = pid ? loadSchemeVirtualRacks(pid) : [];
+    const pV = pid ? loadPorGroupVirtualRacks(pid) : [];
+    const seen = new Set(real.map(r => r && r.id).filter(Boolean));
+    const seenV = new Set(sV.map(v => v.id));
+    const out = real.slice();
+    for (const v of sV) { if (!seen.has(v.id)) { seen.add(v.id); out.push(v); } }
+    for (const v of pV) { if (!seen.has(v.id) && !seenV.has(v.id)) { seen.add(v.id); out.push(v); } }
+    return out;
+  }
   catch { const r = loadJson(LS_RACK, []); return Array.isArray(r) ? r : []; }
 }
 function getRackTag(id) { const t = loadJson(LS_RACKTAGS, {}); return (t && typeof t === 'object') ? (t[id] || '') : ''; }
@@ -586,9 +611,14 @@ function portsUsedOn(rackId, devId, excludeLinkId) {
   return used;
 }
 function rackLabel(r) {
-  const tag = getRackTag(r.id);
+  // v0.59.550: для виртуалов — autoTag как effective tag (он не в LS_RACKTAGS).
+  let tag = getRackTag(r.id);
+  if (!tag && r && (r.fromScheme || r.fromPorGroup) && r.autoTag) tag = r.autoTag;
   const name = r.name || 'Без имени';
-  return tag ? `${tag} · ${name}` : name;
+  const suffix = (r && (r.fromScheme || r.fromPorGroup))
+    ? (r.fromPorGroup ? ' · ⊞ из группы' : ' · 🔗 из схемы')
+    : '';
+  return (tag ? `${tag} · ${name}` : name) + suffix;
 }
 function newId() { return 'ln_' + Math.random().toString(36).slice(2, 10); }
 
@@ -709,8 +739,11 @@ function renderLinksTab() {
   const projIds = getProjectRackIds();
   const inProject  = racks.filter(r => projIds.has(r.id)).filter(matches);
   const library    = []; // v0.59.295: библиотека шаблонов убрана из мастера связей
-  const real       = inProject.filter(r => (getRackTag(r.id) || '').trim());
-  const drafts     = inProject.filter(r => !(getRackTag(r.id) || '').trim());
+  // v0.59.550: разделяем real / virtual / draft. Виртуал = fromScheme или
+  // fromPorGroup. Draft = нет тега и не виртуал.
+  const real       = inProject.filter(r => (getRackTag(r.id) || '').trim() && !(r.fromScheme || r.fromPorGroup));
+  const virtuals   = inProject.filter(r => r && (r.fromScheme || r.fromPorGroup));
+  const drafts     = inProject.filter(r => !(getRackTag(r.id) || '').trim() && !(r.fromScheme || r.fromPorGroup));
   const chipHtml = r => {
     const on = selected.has(r.id);
     const label = rackLabel(r);
@@ -722,7 +755,7 @@ function renderLinksTab() {
   const parts = [];
   // поиск
   const totalAll = racks.length;
-  const shown = [...real, ...drafts, ...library];
+  const shown = [...real, ...virtuals, ...drafts, ...library];
   const totalShown = shown.length;
   const allShownSelected = totalShown > 0 && shown.every(r => selected.has(r.id));
   parts.push(`<div class="sd-picker-search">
@@ -736,6 +769,10 @@ function renderLinksTab() {
     parts.push(`<div class="sd-rack-group-h">🗄 Стойки проекта — с тегом (${real.length})</div>`);
     parts.push(`<div class="sd-rack-group">${real.map(chipHtml).join('')}</div>`);
   }
+  if (virtuals.length) {
+    parts.push(`<div class="sd-rack-group-h" style="background:#eff6ff;color:#1e3a8a">🔗 Виртуалы из схемы / POR-группы (${virtuals.length}) — клик материализует в inst-*</div>`);
+    parts.push(`<div class="sd-rack-group">${virtuals.map(chipHtml).join('')}</div>`);
+  }
   if (drafts.length) {
     parts.push(`<div class="sd-rack-group-h draft">📐 Стойки проекта — без тега / черновики (${drafts.length})</div>`);
     parts.push(`<div class="sd-rack-group draft">${drafts.map(chipHtml).join('')}</div>`);
@@ -744,7 +781,7 @@ function renderLinksTab() {
     parts.push(`<div class="sd-rack-group-h" style="opacity:.7">📚 Библиотека шаблонов (${library.length}) — клик добавит в проект</div>`);
     parts.push(`<div class="sd-rack-group" style="opacity:.75">${library.map(chipHtml).join('')}</div>`);
   }
-  if (!real.length && !drafts.length && !library.length && q) {
+  if (!real.length && !virtuals.length && !drafts.length && !library.length && q) {
     parts.push(`<div class="sd-empty-state" style="padding:8px">Ничего не найдено по «${escapeHtml(q)}». Проверьте раскладку или очистите поиск.</div>`);
   }
   picker.innerHTML = parts.join('');
@@ -785,6 +822,22 @@ function renderLinksTab() {
     const id = chip.dataset.id;
     const input = chip.querySelector('input');
     input.addEventListener('change', () => {
+      // v0.59.550: если выбирают виртуал — материализуем перед добавлением
+      // в selection. Связи (кабели) тянутся между УСТРОЙСТВАМИ внутри стоек,
+      // поэтому виртуал без contents бесполезен; материализация даёт реальный
+      // inst-* с тегом=autoTag, контент пользователь добавит позже в Компоновщике.
+      const isVirt = String(id).startsWith('scheme-') || String(id).startsWith('por-group-');
+      if (input.checked && isVirt) {
+        const r = racks.find(x => x.id === id);
+        const tag = r && r.autoTag ? r.autoTag : '';
+        if (!tag) { input.checked = false; return; }
+        const newId = materializeFromVirtual(id, tag);
+        if (!newId) { input.checked = false; return; }
+        selected.add(newId);
+        saveJson(LS_SELECTION, Array.from(selected));
+        renderLinksTab(); // полный re-render — список racks обновится
+        return;
+      }
       // Если пользователь выбирает стойку из библиотеки — автоматически
       // добавляем её в проект (пустая запись contents), чтобы в следующий
       // раз она показалась в группе «Стойки проекта».
