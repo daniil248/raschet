@@ -3506,6 +3506,7 @@ function renderRacksSidebar() {
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-corpus" title="Применить выбранный шаблон корпуса ко всем отмеченным стойкам" style="font-size:10px;padding:3px 8px">📐 Корпус</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-mask" title="Переименовать теги по маске. Поддерживается {n} (1,2,3…) и {n:0K} с zero-padding (например {n:02} → 01,02…)" style="font-size:10px;padding:3px 8px">🏷 Маска</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-attrs" title="Изменить общие параметры (U/ширина/глубина/комментарий) у всех отмеченных" style="font-size:10px;padding:3px 8px">✏️ Параметры</button>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-copy-contents" title="Скопировать содержимое (PDU/устройства/СКС-матрицу) текущей стойки во все отмеченные. Их прежнее содержимое будет заменено." style="font-size:10px;padding:3px 8px">📋 Копир. контент</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-delete" title="Удалить отмеченные стойки (с подтверждением). Виртуалы пропускаются." style="font-size:10px;padding:3px 8px;color:#b91c1c;border-color:#fecaca">🗑 Удалить</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-all" title="Отметить все стойки списка" style="font-size:10px;padding:3px 8px">⊕ Все</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-clear" title="Снять отметку со всех" style="font-size:10px;padding:3px 8px;margin-left:auto">✕</button>
@@ -3582,6 +3583,7 @@ function renderRacksSidebar() {
   host.querySelector('[data-act="bulk-delete"]')?.addEventListener('click', bulkDelete);
   host.querySelector('[data-act="bulk-create"]')?.addEventListener('click', bulkCreateByMask);
   host.querySelector('[data-act="bulk-materialize"]')?.addEventListener('click', bulkMaterializeVirtuals);
+  host.querySelector('[data-act="bulk-copy-contents"]')?.addEventListener('click', bulkCopyContents);
   host.querySelector('[data-act="bulk-all"]')?.addEventListener('click', () => {
     list.forEach(r => state.bulkSelection.add(r.id));
     renderRacksSidebar();
@@ -3942,6 +3944,44 @@ async function bulkCreateByMask() {
   saveRackTags();
   rerender();
   scToast(`Создано ${created} стоек${tpl ? ` с корпусом «${tpl.name}»` : ''}`, 'ok');
+}
+
+/** Копировать содержимое (contents/matrix) текущей стойки во все отмеченные.
+ *  Приёмник = bulk-selection минус источник (current). Виртуалы-приёмники
+ *  пропускаются. Перед записью — подтверждение со списком приёмников. */
+async function bulkCopyContents() {
+  const src = currentRack();
+  if (!src) { scToast('Нет текущей стойки-источника', 'warn'); return; }
+  const sel = _bulkSelected();
+  const dests = sel.filter(r => r.id !== src.id && !(r.fromScheme || r.fromPorGroup));
+  const skippedVirt = sel.filter(r => r.fromScheme || r.fromPorGroup).length;
+  if (!dests.length) { scToast('Нет приёмников (источник = текущая, виртуалы пропускаются)', 'warn'); return; }
+  const srcDevs = state.contents[src.id] || [];
+  const srcMatrix = state.matrix[src.id] || [];
+  const srcLabel = (state.rackTags[src.id] || src.name || src.id).trim();
+  const destLabels = dests.slice(0, 5).map(r => (state.rackTags[r.id] || r.name || r.id).trim()).join(', ')
+    + (dests.length > 5 ? '…' : '');
+  const ok = await scConfirm(
+    `Скопировать содержимое из «${srcLabel}» в ${dests.length} ${dests.length === 1 ? 'стойку' : 'стойки'}?`,
+    `Источник: ${srcDevs.length} устр. + ${srcMatrix.length} связ. матрицы.\nПриёмники: ${destLabels}.\nПрежний контент приёмников будет заменён. Действие необратимо.${skippedVirt ? ` Виртуалов пропущено: ${skippedVirt}.` : ''}`,
+    { okLabel: 'Скопировать' }
+  );
+  if (!ok) return;
+  // Глубокое копирование с регенерацией id устройств (чтобы они были уникальны
+  // в рамках всего проекта; иначе ссылки в scs-design.links будут конфликтовать).
+  const cloneArr = (arr) => (arr || []).map(o => {
+    const c = JSON.parse(JSON.stringify(o));
+    if (c.id) c.id = 'dev-' + Math.random().toString(36).slice(2, 10);
+    return c;
+  });
+  for (const r of dests) {
+    state.contents[r.id] = cloneArr(srcDevs);
+    state.matrix[r.id]   = cloneArr(srcMatrix);
+  }
+  saveContents();
+  saveMatrix();
+  rerender();
+  scToast(`Содержимое скопировано в ${dests.length} стоек${skippedVirt ? ` (${skippedVirt} виртуальных пропущено)` : ''}`, 'ok');
 }
 
 /* v0.59.543: общая логика материализации виртуала.
