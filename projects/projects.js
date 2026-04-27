@@ -471,8 +471,25 @@ function dateStamp() {
 
 /* ---------- init ---------- */
 document.addEventListener('DOMContentLoaded', () => {
+  // v0.59.526: инициализируем Firebase Auth если есть window.Auth.
+  // Без этого Storage остаётся в Local-режиме навсегда (initializeApp
+  // не вызывается). См. projects/project.js аналогично.
+  try {
+    if (window.Auth && typeof window.Auth.init === 'function') window.Auth.init();
+  } catch (e) { console.warn('[projects.js] Auth.init failed:', e); }
+
   ensureDefaultProject();
   render();
+
+  // Re-render при изменении auth-state (Storage переключится в cloud).
+  try {
+    if (window.Auth && typeof window.Auth.onAuthChange === 'function') {
+      window.Auth.onAuthChange(() => {
+        try { render(); } catch (e) { console.warn('[projects.js] re-render on auth-change failed:', e); }
+      });
+    }
+  } catch {}
+
   document.getElementById('pr-new')?.addEventListener('click', async () => {
     const name = await prPrompt('Новый проект', 'Название проекта', '', 'напр. «ЦОД Альфа-1, Тверь»');
     if (!name) return;

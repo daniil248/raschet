@@ -702,10 +702,34 @@ function badgeChip(icon, n, label, bg, fg) {
 }
 
 /* ---------- init ---------- */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // v0.59.526: инициализируем Firebase Auth если есть window.Auth.
+  // На карточке проекта firebase compat-скрипты загружены, но
+  // initializeApp() вызывается только из window.Auth.init() —
+  // и без этого Storage остаётся в Local-режиме навсегда.
+  // (см. shared/auth.js — init() идемпотентный, безопасно)
+  try {
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init();
+      // Не блокируем render — дальше Storage сам подхватит cloud
+      // через onAuthStateChanged. Async-блок в render() ждёт
+      // Storage.isCloud до 5с.
+    }
+  } catch (e) { console.warn('[project.js] Auth.init failed:', e); }
+
   // Синхронизируем активный проект — чтобы старые модули, читающие
   // getActiveProjectId(), видели тот же контекст.
   const pid = getPid();
   if (pid && getProject(pid)) setActiveProjectId(pid);
   render();
+
+  // Re-render когда Auth state resolved — иначе сначала рендер в local
+  // mode, потом cloud Storage появится но render не повторится.
+  try {
+    if (window.Auth && typeof window.Auth.onAuthChange === 'function') {
+      window.Auth.onAuthChange(() => {
+        try { render(); } catch (e) { console.warn('[project.js] re-render on auth-change failed:', e); }
+      });
+    }
+  } catch {}
 });

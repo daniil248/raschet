@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="projects.css">
+  <!-- v0.59.526: Firebase + Auth + Storage adapter — чтобы ссылка
+       «Открыть проект →» вела в проект с уже-инициализированным
+       Storage в cloud-режиме (если user аутентифицирован), и чтобы
+       projects.js мог сам видеть Firestore-схемы. -->
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+  <script src="../js/projects.js"></script>
 </head>
 <body>
   <div id="rs-header-mount"></div>

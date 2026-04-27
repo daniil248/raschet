@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.526', date: '2026-04-27', items: [
+      '🔥 <b>НАСТОЯЩИЙ корень бага «Схем нет на карточке проекта» (через debug в браузере)</b>. Я снова подключился к браузеру, и оказалось что v0.59.525 не помог: <code>fbUser=fb-err</code>, <code>firebaseApps=0</code> — Firebase App вообще никогда не создаётся на /projects/ страницах.',
+      '• <b>Корень</b>: <code>shared/auth.js::init()</code> вызывает <code>firebase.initializeApp(window.FIREBASE_CONFIG)</code>, но он НЕ автозапускается. Должен быть явный вызов <code>window.Auth.init()</code>. На главной <code>js/main.js:6929</code> делает это. На <code>projects/project.js</code> и <code>projects/projects.js</code> — НЕТ. Поэтому Storage адаптер навсегда остаётся в Local-режиме, listMyProjects возвращает 0 для cloud-юзеров.',
+      '• <b>Fix</b>: добавлен <code>window.Auth.init()</code> в <code>DOMContentLoaded</code> в обоих файлах + подписка на <code>onAuthChange</code> для re-render когда Storage переключится в cloud.',
+      '• <b>Также</b>: <code>projects/index.html</code> вообще не подключал Firebase/Auth — добавлены compat-скрипты и <code>shared/auth.js</code> + <code>js/projects.js</code> (раньше там просто никогда не было cloud-режима, listMyProjects всегда был пустой Local).',
+      '• <b>Эффект</b>: после Ctrl+F5 на /projects/ или /projects/project.html — должна появиться авторизация и список Firestore-схем. Console diagnostic: <code>[project.js] schemes load: pid=X mode=firestore total=N mine=M</code>.',
+      'Файлы: <code>projects/project.js</code> (Auth.init + onAuthChange re-render), <code>projects/projects.js</code> (то же), <code>projects/index.html</code> (firebase + auth.js + projects.js scripts).',
+    ] },
     { version: '0.59.525', date: '2026-04-27', items: [
       '🔧 <b>Fix project card schemes (real root cause через debug в браузере)</b>. Подключился к браузеру через Claude in Chrome MCP, обнаружил что user в <b>cloud-режиме</b> (Firestore, аутентифицирован через Gmail) — все схемы лежат в Firestore, в LS только 4 project-контейнера.',
       '• <b>Корень бага</b>: project.html инициализирует Firebase async; в момент рендера <code>Storage.mode === \'local\'</code> и <code>Storage.listMyProjects()</code> возвращает пусто (Local-фильтр исключает project-контейнеры). Через ~1с auth-state resolved, Storage переключается в \'firestore\', но project.js уже отрендерил группу «Схем нет».',
