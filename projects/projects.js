@@ -34,17 +34,22 @@ function prToast(msg, kind = 'info') {
   setTimeout(() => el.remove(), 3000);
 }
 
-function prConfirm(title, text) {
+// v0.59.559: prConfirm 3-й аргумент opts: { okLabel?, isHtml? }.
+// isHtml=true → text вставляется как сырой HTML (для bold/br/счётчиков).
+// По умолчанию (isHtml === undefined/false) — escapeHtml, как раньше.
+function prConfirm(title, text, opts = {}) {
   return new Promise(res => {
     const overlay = document.createElement('div');
     overlay.className = 'pr-overlay';
+    const okLabel = opts.okLabel || 'Подтвердить';
+    const textHtml = opts.isHtml ? text : escapeHtml(text);
     overlay.innerHTML = `
       <div class="pr-modal">
         <h3>${escapeHtml(title)}</h3>
-        <p class="muted">${escapeHtml(text)}</p>
+        <p class="muted">${textHtml}</p>
         <div class="pr-modal-actions">
           <button type="button" class="pr-btn-sel" data-act="no">Отмена</button>
-          <button type="button" class="pr-btn-danger" data-act="yes">Подтвердить</button>
+          <button type="button" class="pr-btn-danger" data-act="yes">${escapeHtml(okLabel)}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -470,9 +475,25 @@ function renderSketches() {
       const row = btn.closest('.pr-sketch-row');
       const id = row?.dataset.id; if (!id) return;
       const s = listProjects().find(x => x.id === id); if (!s) return;
+      // v0.59.559: показать конкретно, что будет удалено — пользователь
+      // должен видеть, есть ли в мини-проекте реальные данные. Раньше
+      // была общая фраза «удалятся scoped-данные», без конкретики, что
+      // могло привести к случайной потере 35 связей или плана зала.
+      const st = projectStats(id);
+      const total = st.nodes + st.racks + st.links + st.inventory + st.facility;
+      const detailParts = [];
+      if (st.nodes)     detailParts.push(`${st.nodes} узлов схемы`);
+      if (st.racks)     detailParts.push(`${st.racks} стоек`);
+      if (st.links)     detailParts.push(`${st.links} связей СКС`);
+      if (st.inventory) detailParts.push(`${st.inventory} устройств`);
+      if (st.facility)  detailParts.push(`${st.facility} позиций реестра`);
+      const dataDescr = total
+        ? `<b style="color:#b91c1c">Будет удалено: ${detailParts.join(', ')}.</b><br>Действие необратимо!`
+        : 'Мини-проект пуст — удаление безопасно.';
       const ok = await prConfirm(
         `Удалить мини-проект «${s.name}»?`,
-        'Удалятся метаданные и все scoped-данные мини-проекта. Модуль, который его создал, перестанет его видеть в своём dropdown\'е.'
+        dataDescr,
+        { okLabel: total ? 'Удалить (и потерять данные)' : 'Удалить', isHtml: true }
       );
       if (!ok) return;
       const { removedKeys } = deleteProject(id);
