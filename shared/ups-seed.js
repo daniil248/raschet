@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '7'; // v0.59.455: реальные V_DC окна Eaton 93PM/93PS 40 (360…540 для 36/40 × 12В VRLA)
+const CURRENT_VERSION = '8'; // v0.59.456: расширены V_DC окна Schneider/Eaton/Legrand/DKC до 360-540 (32/40 × 12В VRLA)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,

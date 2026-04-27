@@ -8,7 +8,7 @@
 import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId } from './battery-catalog.js';
 import { rsToast, rsConfirm } from '../shared/dialog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
-import { calcAutonomy, calcRequiredBlocks } from './battery-discharge.js';
+import { calcAutonomy, calcRequiredBlocks, interpTimeByPower } from './battery-discharge.js';
 import * as Report from '../shared/report/index.js';
 import * as B      from '../shared/report/blocks.js';
 
@@ -43,6 +43,22 @@ const fmt = (n, d = 2) => {
 const escHtml = s => String(s ?? '').replace(/[&<>"']/g, ch => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[ch]));
+
+// v0.59.456: единый человекочитаемый лейбл для chemistry. Раньше показывали
+// сырые id ('vrla', 'li-ion') в UI. Поле называется «Тип АКБ» (соглашение UI).
+const CHEM_LABELS = {
+  'vrla':       'Свинцово-кислотные (VRLA/AGM)',
+  'lead-acid':  'Свинцово-кислотные (VRLA/AGM)',
+  'li-ion':     'Литий-ионные (LFP)',
+  'lifepo4':    'Литий-ионные (LFP)',
+  'nicd':       'Никель-кадмиевые (NiCd)',
+  'nimh':       'Никель-металл-гидридные (NiMH)',
+};
+const chemLabel = (c) => {
+  if (!c) return '—';
+  const k = String(c).toLowerCase();
+  return CHEM_LABELS[k] || String(c).toUpperCase();
+};
 
 function flash(msg, kind = 'info') {
   const el = document.getElementById('flash');
@@ -138,7 +154,7 @@ function renderCatalog() {
       <td title="${escHtml(lockTitle)}" style="text-align:center;font-size:14px;color:${iconColor}">${lockIcon}</td>
       <td>${escHtml(b.supplier)}</td>
       <td>${typeLabel}</td>
-      <td>${escHtml(b.chemistry || '—')}</td>
+      <td>${escHtml(chemLabel(b.chemistry))}</td>
       <td>${fmt(b.blockVoltage)} В</td>
       <td>${b.capacityAh != null ? fmt(b.capacityAh) + ' А·ч' : '—'}</td>
       <td>${b.dischargeTable?.length || 0}</td>
@@ -258,7 +274,7 @@ function openManualBatteryModal(existing = null, prefill = null) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px">
       <label>Поставщик<input id="mb-supplier" type="text" value="${escHtml(e.supplier || '')}" ${existing ? 'disabled' : ''}></label>
       <label>Модель<input id="mb-type" type="text" value="${escHtml(e.type || '')}" ${existing ? 'disabled' : ''}></label>
-      <label>Химия
+      <label>Тип АКБ
         <select id="mb-chemistry">
           <option value="vrla"${e.chemistry === 'vrla' ? ' selected' : ''}>Свинцово-кислотные (VRLA/AGM)</option>
           <option value="li-ion"${e.chemistry === 'li-ion' ? ' selected' : ''}>Литий-ионные (LiFePO4)</option>
@@ -540,7 +556,7 @@ function openDischargeTableModal(battery) {
     let html = `<div class="muted" style="font-size:11px;margin-bottom:8px">
       Модель: <b>${escHtml(battery.type)}</b>
       · Поставщик: <b>${escHtml(battery.supplier)}</b>
-      · Химия: <b>${escHtml(battery.chemistry || '—')}</b>
+      · Тип АКБ: <b>${escHtml(chemLabel(battery.chemistry))}</b>
       · Напр. блока: <b>${fmt(battery.blockVoltage)} В</b>
       ${battery.capacityAh != null ? '· Ёмкость: <b>' + fmt(battery.capacityAh) + ' А·ч</b>' : ''}
       · Точек: <b>${rows.length}</b>
@@ -622,10 +638,27 @@ function _smoothPathMonotone(pts) {
   return d;
 }
 
-// Рисует SVG-кривые разряда: X = время (log), Y = мощность (log),
+// v0.59.456: внутреннее состояние видимости кривых per-mount (по DOM-элементу).
+// Позволяет пользователю включать/выключать кривые endV через клик-чекбоксы
+// в легенде, не теряя выбор при ререндере.
+const _chartVisibilityByMount = new WeakMap();
+
+// Рисует SVG-кривые разряда: X = время (линейная), Y = мощность (log),
 // одна кривая на каждое endV. Линия + маркеры точек.
+// v0.59.456: добавлены (а) hover-crosshair с подписью точки на кривой,
+// (б) кликабельная легенда — toggle видимости каждой endV-кривой.
 function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   if (!mount) return;
+  // Восстанавливаем/инициализируем set видимых endV
+  let visibleSet = _chartVisibilityByMount.get(mount);
+  if (!visibleSet) {
+    visibleSet = new Set(endVs);
+    _chartVisibilityByMount.set(mount, visibleSet);
+  }
+  // Удаляем из set исчезнувшие endV (например, сменили АКБ)
+  for (const ev of [...visibleSet]) if (!endVs.includes(ev)) visibleSet.delete(ev);
+  // Если ничего не видно (после фильтра все исчезли) — показать все
+  if (![...visibleSet].some(ev => endVs.includes(ev))) endVs.forEach(ev => visibleSet.add(ev));
   // Палитра цветов по endV (холодный→тёплый)
   const palette = ['#1565c0', '#2e7d32', '#f57f17', '#c62828', '#6a1b9a', '#00695c'];
   const W = 860, H = 360;
@@ -699,18 +732,20 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
   parts.push(`<text x="${padL + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#1f2430" font-weight="600">Время разряда, мин</text>`);
   parts.push(`<text transform="rotate(-90 16 ${padT + plotH / 2})" x="16" y="${padT + plotH / 2}" text-anchor="middle" fill="#1f2430" font-weight="600">Мощность на блок, W (log)</text>`);
 
-  // Кривые по каждому endV
+  // Кривые по каждому endV (рисуем только видимые, сохраняем сами curves
+  // в map для интерполяции под курсором).
+  const curvesByEv = new Map();
   endVs.forEach((ev, idx) => {
     const color = palette[idx % palette.length];
     const curve = rows.filter(r => r.endV === ev)
       .filter(r => r.powerW > 0 && r.tMin > 0)
       .sort((a, b) => a.tMin - b.tMin);
     if (!curve.length) return;
-    // Линия — гладкий монотонный сплайн (Fritsch-Carlson), без overshoot
+    curvesByEv.set(ev, { color, curve });
+    if (!visibleSet.has(ev)) return;
     const ptsScreen = curve.map(p => ({ x: xOf(p.tMin), y: yOf(p.powerW) }));
     const d = _smoothPathMonotone(ptsScreen);
     parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
-    // Маркеры
     for (const p of curve) {
       parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1"><title>${ev} В · ${p.tMin} мин · ${p.powerW} W</title></circle>`);
     }
@@ -731,20 +766,123 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
     parts.push(`<text x="${tx + 2}" y="${ty + 1}" fill="${stroke}" font-weight="600">${escHtml(lbl)}</text>`);
   }
 
-  // Легенда справа вверху
-  const legendX = W - padR - 110;
+  // Легенда справа вверху — КЛИКАБЕЛЬНАЯ (toggle видимости).
+  const legendX = W - padR - 130;
   const legendY = padT + 8;
-  parts.push(`<rect x="${legendX - 6}" y="${legendY - 12}" width="110" height="${endVs.length * 16 + 8}" fill="#fff" stroke="#e0e3ea" rx="4"/>`);
+  parts.push(`<rect x="${legendX - 6}" y="${legendY - 12}" width="130" height="${endVs.length * 18 + 14}" fill="#fff" stroke="#e0e3ea" rx="4"/>`);
+  parts.push(`<text x="${legendX}" y="${legendY}" fill="#6b7280" font-size="10">Клик — скрыть/показать</text>`);
   endVs.forEach((ev, idx) => {
     const color = palette[idx % palette.length];
-    const y = legendY + idx * 16 + 4;
-    parts.push(`<line x1="${legendX}" y1="${y}" x2="${legendX + 16}" y2="${y}" stroke="${color}" stroke-width="2"/>`);
-    parts.push(`<circle cx="${legendX + 8}" cy="${y}" r="3" fill="${color}" stroke="#fff" stroke-width="1"/>`);
-    parts.push(`<text x="${legendX + 22}" y="${y + 4}" fill="#1f2430">${ev} В/эл</text>`);
+    const y = legendY + 8 + idx * 18 + 8;
+    const visible = visibleSet.has(ev);
+    const op = visible ? 1 : 0.35;
+    parts.push(`<g data-legend-ev="${ev}" style="cursor:pointer" opacity="${op}">`);
+    parts.push(`<rect x="${legendX - 4}" y="${y - 9}" width="128" height="16" fill="transparent"/>`);
+    parts.push(`<rect x="${legendX}" y="${y - 6}" width="12" height="12" fill="${visible ? color : '#fff'}" stroke="${color}" stroke-width="1.5" rx="2"/>`);
+    if (visible) parts.push(`<polyline points="${legendX + 2.5},${y} ${legendX + 5},${y + 2.5} ${legendX + 9},${y - 2}" fill="none" stroke="#fff" stroke-width="1.8"/>`);
+    parts.push(`<text x="${legendX + 18}" y="${y + 4}" fill="#1f2430">${ev} В/эл</text>`);
+    parts.push(`</g>`);
   });
 
+  // Невидимый rect-перехватчик для crosshair (отдельно от tick-сетки).
+  parts.push(`<rect class="chart-hover-area" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" pointer-events="all"/>`);
+  // Crosshair-группа (изначально скрыта).
+  parts.push(`<g class="chart-crosshair" style="display:none;pointer-events:none">`);
+  parts.push(`<line class="cx-vline" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="#888" stroke-width="1" stroke-dasharray="3 3"/>`);
+  parts.push(`</g>`);
+
   parts.push('</svg>');
-  mount.innerHTML = parts.join('');
+  // Wrap SVG + tooltip overlay в relative-контейнер.
+  mount.innerHTML = `<div style="position:relative">${parts.join('')}<div class="chart-tooltip" style="position:absolute;display:none;background:#1f2430;color:#fff;font-size:11px;padding:6px 8px;border-radius:4px;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);line-height:1.5;z-index:10"></div></div>`;
+
+  // ──────── Интерактив ────────
+  const svg = mount.querySelector('svg');
+  if (!svg) return;
+  // Клик по легенде — toggle видимости и re-render.
+  svg.querySelectorAll('[data-legend-ev]').forEach(g => {
+    g.addEventListener('click', () => {
+      const ev = parseFloat(g.getAttribute('data-legend-ev'));
+      if (visibleSet.has(ev)) visibleSet.delete(ev); else visibleSet.add(ev);
+      _renderDischargeChart(mount, rows, endVs, highlight);
+    });
+  });
+  // Hover crosshair: находим под курсором tMin, считаем powerW для каждой
+  // видимой кривой, рисуем точки + подпись.
+  const hoverArea = svg.querySelector('.chart-hover-area');
+  const crossG = svg.querySelector('.chart-crosshair');
+  const vline = svg.querySelector('.cx-vline');
+  const tooltip = mount.querySelector('.chart-tooltip');
+  // Линейная интерполяция P(t) внутри curve (t возрастает).
+  const interpPower = (curve, t) => {
+    if (!curve.length) return null;
+    if (t <= curve[0].tMin) return curve[0].powerW;
+    if (t >= curve[curve.length - 1].tMin) return curve[curve.length - 1].powerW;
+    for (let i = 0; i < curve.length - 1; i++) {
+      const a = curve[i], b = curve[i + 1];
+      if (t >= a.tMin && t <= b.tMin) {
+        const k = (t - a.tMin) / (b.tMin - a.tMin);
+        return a.powerW + (b.powerW - a.powerW) * k;
+      }
+    }
+    return null;
+  };
+  // Координата мыши → координата SVG (учёт scaling из viewBox).
+  const ptInSvg = (e) => {
+    const r = svg.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * W;
+    return x;
+  };
+  hoverArea.addEventListener('mousemove', (e) => {
+    const xSvg = ptInSvg(e);
+    if (xSvg < padL || xSvg > padL + plotW) {
+      crossG.style.display = 'none';
+      tooltip.style.display = 'none';
+      // удалить временные маркеры
+      svg.querySelectorAll('.cx-pt').forEach(n => n.remove());
+      return;
+    }
+    // Обратная функция xOf: t = tMin + (x - padL)/plotW * (tMax - tMin)
+    const t = tMin + ((xSvg - padL) / plotW) * (tMax - tMin);
+    crossG.style.display = '';
+    vline.setAttribute('x1', xSvg);
+    vline.setAttribute('x2', xSvg);
+    // Удаляем старые точки
+    svg.querySelectorAll('.cx-pt').forEach(n => n.remove());
+    // Точки на каждой видимой кривой
+    const lines = [`<b>${fmt(t)} мин</b>`];
+    endVs.forEach((ev, idx) => {
+      if (!visibleSet.has(ev)) return;
+      const c = curvesByEv.get(ev);
+      if (!c) return;
+      const p = interpPower(c.curve, t);
+      if (!Number.isFinite(p) || p <= 0) return;
+      const cy = yOf(p);
+      const ns = svg.namespaceURI;
+      const dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('class', 'cx-pt');
+      dot.setAttribute('cx', xSvg.toFixed(1));
+      dot.setAttribute('cy', cy.toFixed(1));
+      dot.setAttribute('r', '4');
+      dot.setAttribute('fill', c.color);
+      dot.setAttribute('stroke', '#fff');
+      dot.setAttribute('stroke-width', '1.5');
+      dot.style.pointerEvents = 'none';
+      svg.appendChild(dot);
+      lines.push(`<span style="color:${c.color}">●</span> ${ev} В/эл: <b>${fmt(p)} W/блок</b>`);
+    });
+    tooltip.innerHTML = lines.join('<br>');
+    tooltip.style.display = '';
+    const r = svg.getBoundingClientRect();
+    const tx = (e.clientX - r.left) + 12;
+    const ty = (e.clientY - r.top) + 12;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+  });
+  hoverArea.addEventListener('mouseleave', () => {
+    crossG.style.display = 'none';
+    tooltip.style.display = 'none';
+    svg.querySelectorAll('.cx-pt').forEach(n => n.remove());
+  });
 }
 
 async function handleFiles(fileList) {
@@ -1020,13 +1158,13 @@ function _applyBatteryLock() {
   if (b) {
     lock('calc-blockv', b.blockVoltage);
     lock('calc-capAh', b.capacityAh);
-    // Химия: автоматически выбираем по chemistry АКБ и блокируем select
+    // Тип АКБ: автоматически выбираем по chemistry АКБ и блокируем select
     const chemSel = document.getElementById('calc-chem');
     if (chemSel && b.chemistry) {
       // Если в select нет такого option (например, NiCd) — добавим его
       if (!Array.from(chemSel.options).some(o => o.value === b.chemistry)) {
         const op = document.createElement('option');
-        op.value = b.chemistry; op.textContent = b.chemistry.toUpperCase();
+        op.value = b.chemistry; op.textContent = chemLabel(b.chemistry);
         chemSel.appendChild(op);
       }
       chemSel.value = b.chemistry;
@@ -1783,9 +1921,33 @@ function _renderCalcDischargeChart(params, calcResult, blocksPerString, blockV) 
     blockPowerW = calcResult.found.result?.blockPowerW;
     extrapolated = !!calcResult.found.result?.extrapolated;
   }
-  const highlight = (Number.isFinite(autonomyMin) && Number.isFinite(blockPowerW) && autonomyMin > 0 && blockPowerW > 0)
-    ? { tMin: autonomyMin, powerW: blockPowerW, extrapolated, label: `${fmt(autonomyMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}` }
-    : null;
+  // v0.59.456: точка должна лежать НА кривой разряда. Раньше использовали
+  // (autonomyMin, blockPowerW) — это были ВВОДЫ (целевое время + мощность
+  // на блок при выбранном N), и они часто не совпадали с кривой, что
+  // выглядело визуально как «точка ниже кривой». Теперь фиксируем мощность
+  // (фактическая нагрузка на блок) и считаем РЕАЛЬНОЕ время разряда по
+  // кривой через interpTimeByPower — точка всегда на кривой.
+  let highlight = null;
+  if (Number.isFinite(blockPowerW) && blockPowerW > 0) {
+    let curveTMin = null;
+    let onCurveTag = '';
+    if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
+      const r = interpTimeByPower(battery.dischargeTable, endV || 1.75, blockPowerW);
+      if (r === Infinity) { curveTMin = autonomyMin; onCurveTag = ' (мощность ниже таблицы → автономия ≥ макс. табличной)'; }
+      else if (r && typeof r === 'object') { curveTMin = r.tMin; onCurveTag = ' (экстраполяция)'; }
+      else if (Number.isFinite(r)) { curveTMin = r; }
+    } else if (Number.isFinite(autonomyMin)) {
+      curveTMin = autonomyMin;
+    }
+    if (Number.isFinite(curveTMin) && curveTMin > 0) {
+      highlight = {
+        tMin: curveTMin,
+        powerW: blockPowerW,
+        extrapolated: extrapolated || onCurveTag.includes('экстрап'),
+        label: `${fmt(curveTMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}${onCurveTag}`
+      };
+    }
+  }
   // Если есть таблица — рисуем ТОЛЬКО кривую выбранного endV (ближайшее
   // значение из таблицы), не все 5+ кривых.
   if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
@@ -1831,11 +1993,24 @@ function _renderCalcDischargeChartZoom(params, calcResult, blocksPerString, bloc
     blockPowerW = calcResult.found.result?.blockPowerW;
     extrapolated = !!calcResult.found.result?.extrapolated;
   }
-  if (!Number.isFinite(autonomyMin) || !Number.isFinite(blockPowerW) || autonomyMin <= 0 || blockPowerW <= 0) {
+  if (!Number.isFinite(blockPowerW) || blockPowerW <= 0) {
     mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет рабочей точки для детализации</div>';
     return;
   }
-  const highlight = { tMin: autonomyMin, powerW: blockPowerW, extrapolated, label: `${fmt(autonomyMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}` };
+  // v0.59.456: точка снапится на кривую (см. _renderCalcDischargeChart).
+  let curveTMin = autonomyMin;
+  let onCurveTag = '';
+  if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {
+    const r = interpTimeByPower(battery.dischargeTable, endV || 1.75, blockPowerW);
+    if (r === Infinity) { onCurveTag = ' (P ниже таблицы)'; }
+    else if (r && typeof r === 'object') { curveTMin = r.tMin; onCurveTag = ' (экстраполяция)'; }
+    else if (Number.isFinite(r)) { curveTMin = r; }
+  }
+  if (!Number.isFinite(curveTMin) || curveTMin <= 0) {
+    mount.innerHTML = '<div class="muted" style="font-size:12px;text-align:center;padding:20px">Нет рабочей точки для детализации</div>';
+    return;
+  }
+  const highlight = { tMin: curveTMin, powerW: blockPowerW, extrapolated: extrapolated || onCurveTag.includes('экстрап'), label: `${fmt(curveTMin)} мин · ${fmt(blockPowerW)} W/блок${extrapolated ? ' (условно)' : ''}${onCurveTag}` };
   // Источник кривых
   let allRows, endVs;
   if (battery && Array.isArray(battery.dischargeTable) && battery.dischargeTable.length) {

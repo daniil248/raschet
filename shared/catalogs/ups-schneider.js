@@ -47,9 +47,10 @@ export const SCHNEIDER_UPSES = [
     model: 'Galaxy VS 60 kVA', kind: 'ups', upsType: 'monoblock',
     capacityKva: 60, capacityKw: 60, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
+    // Galaxy VS 60kW: подтверждено 384-576 VDC (securepower.com GVSUPS60KGS).
+    vdcMin: 384, vdcMax: 576, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VS datasheet 2024',
+    source: 'Schneider Galaxy VS 60kVA datasheet (battery 384-576 VDC)',
     importedAt: 0, custom: false,
     notes: 'Моноблок 60 кВА · 3ф · 32/40 SLA-блоков.',
   },

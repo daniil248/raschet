@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.456', date: '2026-04-27', items: [
+      '🩹 <b>Исправлен баг «точка ниже кривой разряда».</b> В графике рабочей точки на кривой разряда раньше использовали (autonomyMin, blockPowerW) — это были ВВОДЫ алгоритма (целевое время + мощность на блок), и они часто не совпадали с реальной кривой АКБ. Теперь точка <b>снапится на кривую</b>: фиксируем blockPowerW (фактическая нагрузка), считаем РЕАЛЬНОЕ время разряда через <code>interpTimeByPower(curve, endV, P)</code>. Точка всегда на кривой. Файлы: <code>battery/battery-calc.js</code> — <code>_renderCalcDischargeChart()</code>, <code>_renderCalcDischargeChartZoom()</code>.',
+      '🎯 <b>График разряда: hover-crosshair с подписями + кликабельная легенда.</b> Под курсором — вертикальная пунктирная линия, на каждой видимой кривой — точка с цветом, в tooltip — точное время и мощность для каждого endV. Клик по легенде показывает/скрывает соответствующую кривую (галочка/квадратик меняется). Состояние видимости сохраняется per-mount через WeakMap.',
+      '🏷 <b>Глобальное переименование «Химия» → «Тип АКБ».</b> В Battery-calc и справке: метка фильтра, поле формы расчёта, заголовок info-строки в общем графике, столбец таблицы в Help. Терминология ближе к привычной для электротехников. Также сырые id (\'vrla\', \'li-ion\') заменены на человекочитаемые лейблы через единый <code>chemLabel()</code>: «Свинцово-кислотные (VRLA/AGM)», «Литий-ионные (LFP)», «Никель-кадмиевые (NiCd)», «Никель-металл-гидридные (NiMH)».',
+      '📚 <b>Откат непроверенных правок V_DC окон ИБП.</b> В v0.59.455 я расширил vdcMin/vdcMax у Schneider/Eaton/Legrand/DKC по аналогии с Eaton 93PM, не имея datasheet на руках. Все эти изменения отменены — оставлены только проверенные через web-search/datasheet:',
+      '• <b>Eaton 93PM 50/100/200:</b> 360-540 В (datasheet PQ131012EN: ном. 432 В = 36×12В или 480 В = 40×12В; EoD 1.67-1.75 VPC).',
+      '• <b>Eaton 93PS 40 кВт:</b> 336-480 В (datasheet PS153045: external battery 28-40 × 12В VRLA).',
+      '• <b>Schneider Galaxy VS 60 кВт:</b> 384-576 В (securepower.com GVSUPS60KGS).',
+      '• Остальные модели (Schneider VL/VX, Legrand HP/MOD, DKC TwinDom/Modulys, Eaton 93PS 8/20) возвращены к исходным значениям до verified обновления.',
+      '🔄 <b>seedVersion bump 7→8 + force-upsert.</b>',
+      'Файлы: <code>battery/battery-calc.js</code>, <code>battery/index.html</code>, <code>shared/catalogs/ups-eaton.js</code>, <code>shared/catalogs/ups-schneider.js</code>, <code>shared/catalogs/ups-legrand.js</code>, <code>shared/catalogs/ups-dkc.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.455', date: '2026-04-26', items: [
       '🛠 <b>Fix: V<sub>DC</sub> окно Eaton 93PM 50/100/200 и 93PS 40 кВт.</b> Datasheet 93PM указывает <b>номинальное</b> напряжение АКБ 432 В (36 × 12В = 216 эл.) или 480 В (40 × 12В = 240 эл.). У меня было записано 384…480 В — это <i>середина диапазона</i>, не покрывающая ни глубокий разряд 36-jar, ни флоат 40-jar.',
       '• Исправлено: <b>vdcMin: 360 В</b> (= 36×6×1.67 при EoD 1.67 В/эл.) и <b>vdcMax: 540 В</b> (= 40×6×2.25 при флоате 2.25 В/эл.). Теперь окно реально покрывает обе паспортные конфигурации.',
