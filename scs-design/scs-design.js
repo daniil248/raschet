@@ -41,8 +41,28 @@ const OLD_KEYS = {
 
 // v0.59.556: миграция legacy-СКС (данные под id parent project'а) в
 // под-проект. Копирует все raschet.project.<parentPid>.scs-design.* ключи
-// в raschet.project.<subPid>.scs-design.*; удаляет источник. Не перезаписывает
-// существующие ключи в назначении (preserve user data).
+// в raschet.project.<subPid>.scs-design.*; удаляет источник.
+// v0.59.557: smart-merge — если назначение «пустое» (null, "[]", "{}",
+// '{"items":[]}'), значение источника записывается. Если в назначении
+// уже есть РЕАЛЬНЫЕ данные — источник остаётся и НЕ переносится (чтобы
+// не потерять работу пользователя). Это позволяет миграции сработать
+// даже когда sub уже создан, но пуст (типичный кейс — пользователь
+// создал «СКС-1» вручную, а связи ещё лежат в legacy).
+function _isEmptyValue(raw) {
+  if (raw == null) return true;
+  try {
+    const v = JSON.parse(raw);
+    if (v == null) return true;
+    if (Array.isArray(v)) return v.length === 0;
+    if (typeof v === 'object') {
+      const keys = Object.keys(v);
+      if (keys.length === 0) return true;
+      // частный случай scs-design.plan.v1: { items: [] } считаем пустым
+      if (keys.length === 1 && keys[0] === 'items' && Array.isArray(v.items) && v.items.length === 0) return true;
+    }
+    return false;
+  } catch { return false; }
+}
 function _migrateLegacyScsToSub(parentPid, subPid) {
   if (!parentPid || !subPid || parentPid === subPid) return [];
   const prefix = `raschet.project.${parentPid}.scs-design.`;
@@ -53,9 +73,11 @@ function _migrateLegacyScsToSub(parentPid, subPid) {
     if (k && k.startsWith(prefix)) toMove.push(k);
   }
   const moved = [];
+  const skipped = [];
   for (const k of toMove) {
     const newKey = subPrefix + k.slice(prefix.length);
-    if (localStorage.getItem(newKey) != null) continue; // не затираем
+    const destVal = localStorage.getItem(newKey);
+    if (!_isEmptyValue(destVal)) { skipped.push({ k, reason: 'dest non-empty' }); continue; }
     const val = localStorage.getItem(k);
     if (val == null) continue;
     try {
@@ -65,6 +87,7 @@ function _migrateLegacyScsToSub(parentPid, subPid) {
     } catch (e) { console.warn('[scs-design] migrate failed for', k, e); }
   }
   if (moved.length) console.info(`[scs-design] legacy → sub ${subPid}: перенесено ${moved.length} ключей`, moved);
+  if (skipped.length) console.warn(`[scs-design] legacy → sub ${subPid}: пропущено ${skipped.length} (dest не пуст)`, skipped);
   return moved;
 }
 
@@ -126,12 +149,14 @@ function renderProjectBadge(pid) {
         }</optgroup>` : '')
       }</select>`;
 
-  // v0.59.378: legacy-режим — активный проект = сам родитель, подпроектов
-  // нет, но в LS-неймспейсе родителя уже лежат СКС-данные (links/plan).
-  // Это режим до v0.59.372: один СКС на проект, без обозначения.
+  // v0.59.378: legacy-режим — данные scs-design лежат под id родителя.
+  // v0.59.557: детекция теперь не зависит от subs.length и активного pid —
+  // если в LS есть legacy-ключи parent'а с реальным контентом, считаем
+  // legacy-данные присутствующими и запускаем миграцию (см. ниже). Это
+  // покрывает случай «есть и СКС-1 sub, и старые links/plan под parent».
   let legacyActive = false;
   try {
-    if (parent && pid === parent.id && subs.length === 0) {
+    if (parent) {
       const linksRaw = localStorage.getItem(`raschet.project.${parent.id}.scs-design.links.v1`);
       const planRaw  = localStorage.getItem(`raschet.project.${parent.id}.scs-design.plan.v1`);
       const hasLinks = !!(linksRaw && (() => { try { return (JSON.parse(linksRaw) || []).length > 0; } catch { return false; } })());
@@ -147,20 +172,27 @@ function renderProjectBadge(pid) {
   //   «создайте под-проект».
   // - Если есть legacy-данные И уже есть под-проекты — переносим в первый
   //   (мерж), не перезаписывая ключи приёмника.
+  // v0.59.557: reload+return ТОЛЬКО если что-то реально перенеслось ИЛИ
+  // создан новый sub. Иначе (subs[0] не пуст, конфликт ключей) —
+  // оставляем legacy как есть и продолжаем рендер с предупреждением.
   if (legacyActive && parent && !parentIsOrphan) {
     try {
       let dest = subs[0];
+      let createdSub = false;
       if (!dest) {
         dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
+        createdSub = true;
       }
       if (dest && dest.id) {
         const moved = _migrateLegacyScsToSub(parent.id, dest.id);
-        if (moved.length) {
-          console.info(`[scs-design] auto-migrated legacy → sub ${dest.id}, moved ${moved.length} keys; reloading`);
+        if (moved.length || createdSub) {
+          console.info(`[scs-design] auto-migrated legacy → sub ${dest.id}, moved ${moved.length} keys, createdSub=${createdSub}; reloading`);
+          setActiveProjectId(dest.id);
+          location.reload();
+          return;
         }
-        setActiveProjectId(dest.id);
-        location.reload();
-        return;
+        // dest существовал и не пуст — миграция не выполнилась.
+        console.warn(`[scs-design] legacy data persists in parent ${parent.id} — sub ${dest.id} already has content; manual merge required`);
       }
     } catch (e) { console.warn('[scs-design] auto-migrate legacy failed:', e); }
   }
