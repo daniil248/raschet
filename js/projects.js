@@ -22,10 +22,28 @@ function saveLocal(list) {
 }
 function lid() { return 'lp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
+// v0.59.518: фильтр Storage-схем — отделяем их от project-контекстов
+// (p_*/s_*), которые тоже лежат в raschet.projects.v1 (тот же ключ
+// shared/project-storage.js и js/projects.js). Раньше Local.listMyProjects
+// возвращал ВСЁ, и project-контексты рендерились в «Мои схемы» как
+// фантомные схемы «Без проекта» с именами проектов.
+function _isStorageProject(p) {
+  if (!p || typeof p.id !== 'string') return false;
+  // project-контексты исключаем
+  if (p.id.startsWith('p_') || p.id.startsWith('s_')) return false;
+  if (p.kind === 'full' || p.kind === 'sketch') return false;
+  // Storage-записи: lp_* или поля Storage (scheme/memberUids/ownerId)
+  if (p.id.startsWith('lp_')) return true;
+  if ('scheme' in p) return true;
+  if ('memberUids' in p) return true;
+  if ('ownerEmail' in p || 'ownerName' in p) return true;
+  return true; // остальное — считаем Storage по умолчанию (legacy без префикса)
+}
+
 const Local = {
   mode: 'local',
   async listMyProjects() {
-    return loadLocal().map(p => ({ ...p, _role: 'owner' }));
+    return loadLocal().filter(_isStorageProject).map(p => ({ ...p, _role: 'owner' }));
   },
   async listSharedProjects() { return []; },
   async listAccessRequests() { return []; },
