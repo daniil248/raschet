@@ -1280,10 +1280,26 @@ export function renderGeneralPanel(n) {
     }
     // v0.59.353: кнопки ручной привязки и создания записи. Показываем всегда —
     // даже если S/N пуст (тогда picker сам заполнит поле выбранным значением).
-    h.push(`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-      <button type="button" data-action="link-inventory" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:3px;cursor:pointer">🔗 Привязать вручную…</button>
-      <button type="button" data-action="create-inventory-it" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:3px;cursor:pointer">➕ Создать запись в реестре IT</button>
-    </div>`);
+    // v0.59.563: для consumer-rack узлов IT-реестр не релевантен (реестр
+    // для устройств ВНУТРИ стоек, а сама стойка — инфраструктура).
+    // Заменяем на «🗄 Открыть в Компоновщике» (наполнение PDU/устройствами)
+    // и индикатор POR-объекта (mirror связан или нет).
+    const isRackNode = n.type === 'consumer' && (n.subtype === 'rack' || n.consumerKind === 'rack');
+    if (isRackNode) {
+      const compHref = '../scs-config/rack.html?from=schematic&schemeNodeId=' + encodeURIComponent(n.id);
+      const porBadge = n.porObjectId
+        ? `<span title="Связан с POR-объектом ${escAttr(n.porObjectId)} (engine↔POR mirror)" style="font-size:11px;padding:3px 8px;border:1px solid #86efac;background:#f0fdf4;color:#14532d;border-radius:3px">🔗 POR ✓</span>`
+        : `<span title="Нет связи с POR — mirror создаст объект при следующем sync" style="font-size:11px;padding:3px 8px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:3px">🔗 POR —</span>`;
+      h.push(`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <a href="${escAttr(compHref)}" target="_blank" rel="noopener" style="font-size:11px;padding:3px 8px;border:1px solid #86efac;background:#f0fdf4;color:#14532d;border-radius:3px;text-decoration:none">🗄 Открыть в Компоновщике</a>
+        ${porBadge}
+      </div>`);
+    } else {
+      h.push(`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <button type="button" data-action="link-inventory" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:3px;cursor:pointer">🔗 Привязать вручную…</button>
+        <button type="button" data-action="create-inventory-it" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:3px;cursor:pointer">➕ Создать запись в реестре IT</button>
+      </div>`);
+    }
   } catch {}
   h.push(`<div class="muted" style="font-size:11px;margin-top:4px">UUID: <code style="font-size:11px">${escHtml(n.id)}</code></div>`);
   h.push(`</div>`);
