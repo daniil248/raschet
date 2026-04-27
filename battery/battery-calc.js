@@ -2161,15 +2161,16 @@ function doCalc() {
     html += `</div>`;
   } else if (mode === 'auto') {
     // v0.59.469/473: Авто-оптимум — пользователь задаёт только P+t.
-    // Перебираем (endV × blockV) когда конкретная АКБ не выбрана из каталога;
-    // если выбрана — фиксируем blockV из её паспорта. Для каждой пары:
-    // feasibility по V_DC окну ИБП + N через _pickOptimalBlocks + расчёт.
-    // Критерий выбора (приоритет): max endV (бережнее) → min totalBlocks
-    // (дешевле) → min blockV (стандартные 12В часто экономически оптимальнее).
+    // v0.59.492: blockV всегда фиксирован пользовательским выбором (поле
+    // «Напряжение блока»). Раньше при отсутствии выбранной АКБ перебирались
+    // все варианты [2,4,6,12], что засоряло таблицу строками с blockV ≠
+    // выбранному. Теперь перебираем только endV; blockV — единственное
+    // значение из selectов / паспорта АКБ.
+    // Критерий выбора (приоритет): max endV (бережнее) → min totalBlocks (дешевле).
     const targetMinAuto = Number(get('calc-target-auto')?.value) || targetMin;
     const isLi = chemistry === 'li-ion';
     const evCandidates = isLi ? [2.5, 2.6, 2.7, 2.8, 2.9, 3.0] : [1.65, 1.70, 1.75, 1.80, 1.85, 1.90];
-    const bvCandidates = battery ? [blockV] : (isLi ? [12, 24, 48] : [2, 4, 6, 12]);
+    const bvCandidates = [blockV];
     const trials = [];
     for (const bv of bvCandidates) {
       for (const ev of evCandidates) {
@@ -2189,8 +2190,8 @@ function doCalc() {
     if (!trials.length) {
       html += `<div class="result-block error">Авто-подбор не нашёл подходящей конфигурации. Проверьте V<sub>DC</sub> окно ИБП и нагрузку.</div>`;
     } else {
-      // Сортировка: max endV → min totalBlocks → min blockV
-      trials.sort((a, b) => (b.endV - a.endV) || (a.totalBlocks - b.totalBlocks) || (a.blockV - b.blockV));
+      // Сортировка: max endV → min totalBlocks (blockV единственный — фиксирован пользователем).
+      trials.sort((a, b) => (b.endV - a.endV) || (a.totalBlocks - b.totalBlocks));
       const best = trials[0];
       blocksPerString = best.opt.N;
       const dcVoltageFinal = best.opt.N * best.blockV;
@@ -2206,7 +2207,7 @@ function doCalc() {
       html += `<div class="result-value">${best.found.totalBlocks}</div>`;
       html += `<div class="result-sub">Цепочек: <b>${best.found.strings}</b> × блоков в цепочке: <b>${best.found.blocksPerString}</b> · V<sub>DC</sub>=${dcVoltageFinal} В</div>`;
       html += `<div class="result-sub">Реальная автономия: <b>${fmt(best.found.result.autonomyMin)} мин</b> (цель ${targetMinAuto} мин). На блок: <b>${fmt(best.found.result.blockPowerW)} W</b>.</div>`;
-      html += `<div class="result-sub" style="background:#e8f5e9;padding:6px 8px;border-radius:4px;font-size:11px;margin-top:4px;color:#1b5e20">Приоритет выбора: <b>max endV</b> (бережнее к АКБ → больше ресурс) → <b>min блоков</b> (дешевле/компактнее) → <b>min blockV</b> (стандартные 2В мощнее на блок, но 12В удобнее в монтаже).</div>`;
+      html += `<div class="result-sub" style="background:#e8f5e9;padding:6px 8px;border-radius:4px;font-size:11px;margin-top:4px;color:#1b5e20">Приоритет выбора: <b>max endV</b> (бережнее к АКБ → больше ресурс) → <b>min блоков</b> (дешевле/компактнее). blockV=<b>${best.blockV} В</b> зафиксирован пользователем (поле «Напряжение блока»).</div>`;
       if (derate.kTotal > 1.001) {
         html += `<div class="result-sub" style="background:#f0f7ff;padding:4px 6px;border-radius:3px;font-size:11px">`
           + `Учтены коэффициенты: k<sub>age</sub>×k<sub>temp</sub>×k<sub>design</sub> = <b>${derate.kTotal.toFixed(3)}</b> → расчётная нагрузка <b>${fmt(loadKwEff)} kW</b> (паспортная ${fmt(loadKw)} kW).`
