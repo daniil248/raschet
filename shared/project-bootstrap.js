@@ -55,15 +55,19 @@ const PROJECT_ADAPTER_BINDINGS = [
  */
 export function bootstrapProject(pid) {
   if (!pid) return;
-  // v0.59.508: при первом bootstrap-е любого pid — мигрируем legacy
-  // rack-instances этого проекта в POR (если ещё не мигрировали).
-  // Запускается до setAdapter, чтобы adapter увидел уже мигрированные
-  // данные. Дедуп по legacyRackId.
+  // v0.59.508/511: при каждом bootstrap-е любого pid — мигрируем legacy
+  // rack-instances этого проекта в POR + auto-dedup. Дедуп нужен ВСЕГДА
+  // (а не только из refreshProjects на главной): пользователь может
+  // зайти прямо в playground и кликать по проектам — каждый клик
+  // вызывает bootstrapProject. С детерминистическими id миграция
+  // сама не плодит дубликаты, но старые дубли (от v0.59.508-509) ещё
+  // могут лежать в LS — dedup их вычистит.
   try {
     import('./legacy-rack-migration.js').then(mod => {
-      const r = mod.migrateProjectLegacyRacks(pid);
-      if (r && r.created > 0) {
-        console.info(`[bootstrap] legacy racks for pid=${pid}: +${r.created} POR-объектов`);
+      const m = mod.migrateProjectLegacyRacks(pid);
+      const d = mod.deduplicateProjectRacks(pid);
+      if ((m && m.created > 0) || (d && d.removed > 0)) {
+        console.info(`[bootstrap] pid=${pid}: legacy migrated +${m?.created||0} ~${m?.updated||0}, dedup removed ${d?.removed||0}`);
       }
     }).catch(() => {});
   } catch {}

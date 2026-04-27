@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.511', date: '2026-04-27', items: [
+      '🧽 <b>Fix: dedup при каждом bootstrapProject</b>. По репорту пользователя: «каждый клик на ссылке проекта в playground добавляет новую стойку». Корень: <code>bootstrapProject(pid)</code> запускал <code>migrateProjectLegacyRacks(pid)</code>, но НЕ запускал <code>deduplicateProjectRacks(pid)</code>. Auto-dedup был только в <code>migrateAllLegacyRacks</code> из <code>refreshProjects</code> на главной. Если пользователь сразу заходил в playground (минуя главную) — оставшиеся дубликаты от старой v2-миграции с недетерминистическими id никогда не схлапывались.',
+      '• <b>Fix</b>: в <code>shared/project-bootstrap.js::bootstrapProject</code> после migrateProjectLegacyRacks теперь всегда вызывается deduplicateProjectRacks. Идемпотентно (если дубликатов нет — не делает ничего).',
+      '• <b>Console</b>: <code>[bootstrap] pid=p_xxx: legacy migrated +N ~M, dedup removed K</code>.',
+      'Файлы: <code>shared/project-bootstrap.js</code>.',
+    ] },
     { version: '0.59.510', date: '2026-04-27', items: [
       '🐛 <b>Fix: POR-дубликаты после legacy-миграции стоек</b>. По репорту пользователя: в playground вместо ~6 уникальных стоек проекта показано 42 (A-01 × 6, DH1.SR1 × 6, DH1.SR2 × 3 и т.д.).',
       '• <b>Корень бага</b>: в <code>shared/por.js::addObject</code> поле <code>legacyRackId</code> терялось при <code>_ensureObjectShape</code> (whitelist top-level полей). Поэтому повторный запуск миграции не находил существующий POR-объект по <code>legacyRackId</code> и создавал ещё одну запись.',
