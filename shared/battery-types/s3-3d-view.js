@@ -400,9 +400,9 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   const { THREE, OrbitControls } = mod;
   container.removeChild(ph);
 
-  // v0.59.445: компоновка — 3D уже и выше (max-width 560px, min-height 600px),
-  // справа — 2D-вид с табами (план / спереди / сбоку).
-  const height = opts.height || 600;
+  // v0.59.477: высота 720 (было 600), чтобы вертикальная прокрутка не появлялась
+  // в 2D-табах при обычной разрешающей способности экрана.
+  const height = opts.height || 720;
   const root = document.createElement('div');
   root.style.cssText = `display:flex;flex-wrap:wrap;gap:8px;width:100%;align-items:stretch`;
   container.appendChild(root);
@@ -657,6 +657,14 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
       x += w;
     }
     parts.push(`<text x="${svgW - 6}" y="${yTop + (D_MM*scale)/2}" text-anchor="end" font-size="8" fill="#8a93a6" transform="rotate(-90 ${svgW-6} ${yTop + (D_MM*scale)/2})">${D_MM} мм</text>`);
+    // v0.59.477: общая ширина ряда снизу
+    const total_w = totalRowWidth();
+    const total_d = Math.max(D_MM, COMB_D);
+    const dimY = yTop + total_d * scale + 22;
+    parts.push(`<line x1="20" y1="${dimY}" x2="${20 + total_w*scale}" y2="${dimY}" stroke="#444" stroke-width="0.7"/>`);
+    parts.push(`<line x1="20" y1="${dimY-4}" x2="20" y2="${dimY+4}" stroke="#444" stroke-width="0.7"/>`);
+    parts.push(`<line x1="${20 + total_w*scale}" y1="${dimY-4}" x2="${20 + total_w*scale}" y2="${dimY+4}" stroke="#444" stroke-width="0.7"/>`);
+    parts.push(`<text x="${20 + total_w*scale/2}" y="${dimY+13}" text-anchor="middle" font-size="10" fill="#1a2a44" font-weight="bold">общая ширина ${total_w} мм</text>`);
     parts.push(`</svg>`);
     return parts.join('');
   }
@@ -745,6 +753,13 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     }
     // высота слева
     parts.push(`<text x="14" y="${yTop + (H_MM*scale)/2}" text-anchor="middle" font-size="8" fill="#8a93a6" transform="rotate(-90 14 ${yTop + (H_MM*scale)/2})">${H_MM} мм</text>`);
+    // v0.59.477: общие размеры — ширина внизу, высота сбоку.
+    const total_w = totalRowWidth();
+    const dimY = yTop + H_MM * scale + 22;
+    parts.push(`<line x1="20" y1="${dimY}" x2="${20 + total_w*scale}" y2="${dimY}" stroke="#444" stroke-width="0.7"/>`);
+    parts.push(`<line x1="20" y1="${dimY-4}" x2="20" y2="${dimY+4}" stroke="#444" stroke-width="0.7"/>`);
+    parts.push(`<line x1="${20 + total_w*scale}" y1="${dimY-4}" x2="${20 + total_w*scale}" y2="${dimY+4}" stroke="#444" stroke-width="0.7"/>`);
+    parts.push(`<text x="${20 + total_w*scale/2}" y="${dimY+13}" text-anchor="middle" font-size="10" fill="#1a2a44" font-weight="bold">общая ширина ${total_w} мм · высота ${H_MM} мм</text>`);
     parts.push(`</svg>`);
     return parts.join('');
   }
@@ -802,6 +817,13 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     html += `<div style="margin-top:6px;color:#5a6680">Длина ряда: <b>${total_w} мм</b></div>`;
     html += `<div style="color:#5a6680">Глубина: <b>${total_d} мм</b></div>`;
     html += `<div style="color:#5a6680">Высота: <b>${H_MM} мм</b></div>`;
+    // v0.59.477: общие габариты системы — площадь основания и объём.
+    const areaM2 = (total_w * total_d) / 1e6;
+    const volumeM3 = (total_w * total_d * H_MM) / 1e9;
+    html += `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #e0e3ea;color:#1a2a44">`;
+    html += `Габариты: <b>${total_w}×${total_d}×${H_MM}</b> мм<br>`;
+    html += `Площадь: <b>${areaM2.toFixed(2)} м²</b> · Объём: <b>${volumeM3.toFixed(2)} м³</b>`;
+    html += `</div>`;
     html += '</div>';
     return html;
   }
@@ -944,14 +966,17 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   }
   function escHandler(e) { if (e.key === 'Escape') exitFullscreen(); }
   fullBtn.addEventListener('click', () => {
-    if (modalOverlay) exitFullscreen(); else enterFullscreen();
+    // v0.59.477: было `if (modalOverlay) ...` — но modalOverlay не
+    // определён в текущей реализации (legacy от старого подхода).
+    // Используем isFs — флаг состояния fullscreen.
+    if (isFs) exitFullscreen(); else enterFullscreen();
   });
 
   return {
     dispose() {
       stopped = true;
       try { document.removeEventListener('keydown', escHandler); } catch {}
-      try { if (modalOverlay) modalOverlay.remove(); } catch {}
+      try { if (isFs) exitFullscreen(); } catch {}
       try { ro.disconnect(); } catch {}
       try { controls.dispose(); } catch {}
       try { renderer.dispose(); } catch {}

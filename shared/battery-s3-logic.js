@@ -172,53 +172,57 @@ export function findMinimalS3Config({
   const w = resolveS3Wiring({ module, requestedWiring: dcWiring, vdcMin, vdcMax });
   const activePowerKw = (loadKw || 0) * (cosPhi || 1);
   const batteryPwrReqKw = activePowerKw / Math.max(0.5, invEff || 0.96);
-  const minCByPower = Math.max(1, Math.ceil(batteryPwrReqKw / lim.cabinetPowerKw));
-  if (minCByPower > lim.maxCabinets) {
-    return { ok: false, reason: `Нагрузка ${batteryPwrReqKw.toFixed(1)} кВт требует ${minCByPower} шкафов, но лимит ${lim.maxCabinets}.` };
-  }
-  // Перебор: C от minByPower вверх, для каждого N от 1 до maxPerCabinet
-  for (let C = minCByPower; C <= lim.maxCabinets; C++) {
-    for (let N = 1; N <= lim.maxPerCabinet; N++) {
-      const r = calcAutonomyFn({
-        battery: module,
-        loadKw,
-        dcVoltage: w.vdcOper,
-        strings: C,
-        blocksPerString: N,
-        endV: 1.75,                  // for Li-ion table-driven игнорируется
-        invEff,
-        chemistry: module.chemistry,
-        capacityAh: module.capacityAh,
-      });
-      // v0.59.447 fix: Infinity = «мощность ниже нижней точки таблицы»,
-      // что означает «автономия гарантированно превышает все табличные
-      // значения» (например, для S3M040 при ≤5 кВт/модуль — точно ≥20 мин).
-      // Раньше Number.isFinite(Infinity)===false → конфигурация отклонялась
-      // и Раcчёт говорил «не удалось подобрать», хотя на самом деле модули
-      // выдают нагрузку с большим запасом.
-      const okAutonomy = Number.isFinite(r?.autonomyMin)
-        ? r.autonomyMin >= requiredAutonomyMin
-        : (r?.autonomyMin === Infinity);
-      if (r && r.feasible && okAutonomy) {
-        // v0.59.447: если autonomyMin = Infinity (мощность ниже нижней
-        // точки таблицы — гарантированно ≥ longest tMin), даём верхнюю
-        // оценку «target × 2», чтобы UI не показывал ∞.
-        const reportedAutonomy = Number.isFinite(r.autonomyMin)
-          ? r.autonomyMin
-          : Math.max(requiredAutonomyMin * 2, 60);
-        return {
-          ok: true,
-          modulesPerCabinet: N,
-          cabinetsCount: C,
-          total: N * C,
-          autonomyMin: reportedAutonomy,
-          autonomyExceedsTable: !Number.isFinite(r.autonomyMin),
-          target: requiredAutonomyMin,
-          limitedByPower: C === minCByPower,
-          wiring: w.wiring,
-          vdcOper: w.vdcOper,
-        };
-      }
+  // v0.59.477: новый алгоритм — перебираем ОБЩЕЕ число модулей по
+  // возрастанию, для каждого берём МИНИМАЛЬНОЕ число шкафов
+  // (`ceil(total/maxPerCabinet)`). Раньше внешний цикл шёл по C, и
+  // алгоритм находил первое решение с большим C и почти-пустыми шкафами
+  // (например 3 × 12 вместо 2 × 20). Теперь шкафы автоматически
+  // заполняются полностью прежде чем добавляется следующий.
+  const maxTotal = lim.maxPerCabinet * lim.maxCabinets;
+  for (let total = 1; total <= maxTotal; total++) {
+    const C = Math.max(1, Math.ceil(total / lim.maxPerCabinet));
+    if (C > lim.maxCabinets) break;
+    // Распределение модулей: первые (total mod C) шкафов получают +1.
+    // Для autonomyFn используем strings=C, blocksPerString=ceil(total/C).
+    // Реальная неравномерность ≤1 модуля — не влияет на autonomy расчёт
+    // т.к. модули в S³ соединены в одну параллельную линию через combiner.
+    const N = Math.ceil(total / C);
+    const realTotal = N * C; // фактическое total ≥ запрошенного (округление)
+    if (realTotal !== total) continue; // ищем точные совпадения для чистоты
+    const r = calcAutonomyFn({
+      battery: module,
+      loadKw,
+      dcVoltage: w.vdcOper,
+      strings: C,
+      blocksPerString: N,
+      endV: 1.75,
+      invEff,
+      chemistry: module.chemistry,
+      capacityAh: module.capacityAh,
+    });
+    const okAutonomy = Number.isFinite(r?.autonomyMin)
+      ? r.autonomyMin >= requiredAutonomyMin
+      : (r?.autonomyMin === Infinity);
+    if (r && r.feasible && okAutonomy) {
+      const reportedAutonomy = Number.isFinite(r.autonomyMin)
+        ? r.autonomyMin
+        : Math.max(requiredAutonomyMin * 2, 60);
+      // limitedByPower — если total = ceil(power/moduleRated), то именно
+      // паспортная мощность модуля диктует число модулей.
+      const moduleRatedKw = lim.cabinetPowerKw / lim.maxPerCabinet;
+      const minTotalByPower = Math.ceil(batteryPwrReqKw / moduleRatedKw);
+      return {
+        ok: true,
+        modulesPerCabinet: N,
+        cabinetsCount: C,
+        total: realTotal,
+        autonomyMin: reportedAutonomy,
+        autonomyExceedsTable: !Number.isFinite(r.autonomyMin),
+        target: requiredAutonomyMin,
+        limitedByPower: total === minTotalByPower,
+        wiring: w.wiring,
+        vdcOper: w.vdcOper,
+      };
     }
   }
   return { ok: false, reason: 'Не удалось достичь требуемой автономии в пределах лимитов системы.' };

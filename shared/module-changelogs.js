@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.477', date: '2026-04-27', items: [
+      '🩹 <b>Fix №1: точка экстраполяции вне графика.</b> Раньше bounds chart расширялись через <code>Math.min(tMin, highlight.tMin*0.9)</code> — но логика была хрупкой при граничных случаях. Теперь явные проверки <code>if (highlight.tMin &lt; tMin) tMin = highlight.tMin*0.85</code> с padding 15% (было 10%). Точка с экстраполяцией (например, P&gt;rated) гарантированно внутри plot-области.',
+      '🩹 <b>Fix №2: кнопка «⛶ Развернуть» 3D-вида.</b> Click-handler проверял <code>modalOverlay</code> — переменную из старой реализации, которая не определялась. Из-за этого кнопка ничего не делала. Теперь проверка через <code>isFs</code> (флаг fullscreen-состояния, который actually обновляется в enterFullscreen/exitFullscreen).',
+      '🔧 <b>Fix №3: алгоритм findMinimalS3Config — заполняет шкафы сверху вниз.</b> Раньше внешний цикл шёл по числу шкафов C от <code>minByPower=ceil(P/cabinetPowerKw)</code>, и алгоритм находил первое решение с большим C и почти-пустыми шкафами (например <b>3 шкафа × 12 модулей</b> вместо 2 шкафа × 18 для 36 модулей).',
+      '• Новый алгоритм: внешний цикл по ОБЩЕМУ числу модулей <code>total</code> от 1 до maxTotal. Для каждого <code>total</code> минимальное число шкафов = <code>ceil(total/maxPerCabinet)</code>. Возвращает первое решение, удовлетворяющее автономии.',
+      '• Шкафы заполняются полностью прежде чем добавляется следующий → нет «полупустых» шкафов.',
+      '• Теперь «3 × 12» становится «2 × 18» (90% заполнения вместо 60%).',
+      '📏 <b>3D-окно выше + общие размеры системы.</b>',
+      '• Высота 3D-окна 600 → <b>720 px</b> (вертикальная прокрутка не появляется в 2D-табах).',
+      '• На top-view и front-view добавлены размерные стрелки с подписью «общая ширина X мм» (top) и «общая ширина X мм · высота 2000 мм» (front).',
+      '• В блоке «Состав ряда»: новая секция «Габариты: WxDxH мм · Площадь: X м² · Объём: Y м³» — для оценки требований к помещению.',
+      'Файлы: <code>battery/battery-calc.js</code> (bounds expansion), <code>shared/battery-types/s3-3d-view.js</code> (fullscreen click + height + dimensions), <code>shared/battery-s3-logic.js</code> (findMinimalS3Config rewrite).',
+    ] },
     { version: '0.59.476', date: '2026-04-27', items: [
       '🔧 <b>Fix: расхождение «2 шкафа в шапке vs 1 шкаф в 3D/BOM».</b> В заголовке результата S³-расчёта показывается <code>found.cabinetsCount=2</code> (от <code>findMinimalS3Config</code>, который добавил второй шкаф из-за лимита 200 кВт/шкаф), но <code>_renderS3SystemSpecHtml</code> вызывал <code>buildSystem({totalModules:18})</code> без явного количества шкафов — и тот пересчитывал <code>cabinetsCount = ceil(18/maxPerCabinet=20) = 1</code>. Получалось 1 шкаф в спецификации/3D/BOM, но 2 в шапке. Теперь в <code>_renderS3SystemSpecHtml</code> добавлен параметр <code>requestedCabinetsCount</code>, который передаётся в <code>options.minCabinets</code> для buildSystem. Итого: <code>minCabinets = max(power-limit, requested)</code>. Файлы: <code>battery/battery-calc.js</code>.',
     ] },

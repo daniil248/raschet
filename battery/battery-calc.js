@@ -783,15 +783,17 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null, limits = nu
   let tMax = Math.max(...allT);
   let pMin = Math.min(...allP);
   let pMax = Math.max(...allP);
-  // Расширяем диапазон, чтобы маркер рассчитанной точки гарантированно
-  // попал в видимую область (не упёрся в границу).
+  // v0.59.477: Расширяем диапазон, чтобы маркер рассчитанной точки
+  // гарантированно попал в видимую область с запасом не менее 10% по обе
+  // стороны. Раньше использовали 0.9/1.1 — но если highlight.tMin меньше
+  // tMin таблицы лишь немного, padding мог быть меньше реального шага.
   if (highlight && Number.isFinite(highlight.tMin) && highlight.tMin > 0) {
-    tMin = Math.min(tMin, highlight.tMin * 0.9);
-    tMax = Math.max(tMax, highlight.tMin * 1.1);
+    if (highlight.tMin < tMin) tMin = Math.max(0.01, highlight.tMin * 0.85);
+    if (highlight.tMin > tMax) tMax = highlight.tMin * 1.15;
   }
   if (highlight && Number.isFinite(highlight.powerW) && highlight.powerW > 0) {
-    pMin = Math.min(pMin, highlight.powerW * 0.9);
-    pMax = Math.max(pMax, highlight.powerW * 1.1);
+    if (highlight.powerW < pMin) pMin = Math.max(1, highlight.powerW * 0.85);
+    if (highlight.powerW > pMax) pMax = highlight.powerW * 1.15;
   }
 
   // v0.59.400: ось X — линейная по времени (раньше была log10, искажала
