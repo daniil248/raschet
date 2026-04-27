@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.506', date: '2026-04-27', items: [
+      '🧹 <b>Fix: схемы внутри проекта больше не дублируются как top-level проекты в <code>/projects/</code></b>. По репорту пользователя: создал «Схема S1» через «+ Добавить → Схема» внутри «Тестового проекта» — она появилась И как scheme внутри проекта, И как отдельный top-level проект «S1» в общем списке. Это вносило путаницу.',
+      '• <b>Причина</b>: Storage-схемы (созданные через <code>window.Storage.createProject</code>, id <code>lp_*</code>, поля <code>scheme/memberUids/ownerId</code>) делят с project-контейнерами (<code>p_*</code>/<code>s_*</code>) одну LS-таблицу <code>raschet.projects.v1</code>. Фильтр в <code>/projects/</code> рендере отсекал только sketch-проекты, но не Storage-схемы.',
+      '• <b>Fix</b>: фильтр расширен — записи с <code>id.startsWith(\'lp_\')</code> или с полями <code>scheme/memberUids</code> исключаются из общего списка. Они по-прежнему видны ТОЛЬКО внутри родительского проект-контейнера (Карточка проекта → раздел «Схемы»).',
+      '⏳ <b>TODO следующим приходом</b>: engine-por-mirror зеркалирует только rack-узлы (<code>type=\'consumer\' && subtype=\'rack\'</code>). Расширить на все consumer-подтипы — hvac/lighting/motor/heater будут попадать в POR как <code>consumer-system</code>-объекты (subtype=lighting/ventilation/etc). Также — миграция старых rack-instances из <code>scs-config/contents.v1</code> и <code>rack-config/instances.v1</code> в POR (чтобы 8 стоек в существующих проектах появились в POR без необходимости пересоздавать).',
+      'Файлы: <code>projects/projects.js</code> (расширенный filter в <code>render()</code>).',
+    ] },
     { version: '0.59.505', date: '2026-04-27', items: [
       '🛠 <b>Phase 2.5 PoC: фиксы по результату первой проверки.</b>',
       '🎯 <b>Fix: POR pid теперь = id ПРОЕКТА-КОНТЕЙНЕРА, не отдельной схемы.</b> Раньше bootstrap получал <code>data.id</code> (scheme.id, например <code>lp_xxx</code>), из-за чего разные схемы одного проекта-контейнера НЕ шарили POR-объекты — каждая жила в своём <code>raschet.project.lp_xxx.por.objects.v1</code>. Теперь main.js резолвит <code>data.projectId || data.id</code>: если scheme привязана к project-контейнеру (через <code>+ Схема</code> внутри проекта) — используется <code>p_xxx</code> (контекст), все схемы одного проекта шарят POR. Fallback на scheme.id для отдельных/legacy схем.',

@@ -217,7 +217,21 @@ function render() {
   // v0.59.236: мини-проекты (kind='sketch') создаются из мастеров конкретных
   // модулей (scs-design и т.п.) и живут только в их dropdown'ах. В общий
   // список /projects/ они не попадают — это центр настоящих проектов.
-  let projects = listProjects().filter(p => (p.kind || 'full') !== 'sketch');
+  //
+  // v0.59.506: Storage-схемы (созданные через window.Storage.createProject —
+  // id начинается с 'lp_', есть поле scheme/memberUids) делят с project-
+  // контейнерами (p_*/s_*) одну LS-таблицу raschet.projects.v1. Их НЕ
+  // показываем в общем списке — они должны быть видны ТОЛЬКО внутри своих
+  // родительских project-контейнеров (через Карточку проекта → Схемы).
+  // Раньше схема, созданная через «+ Добавить → Схема» внутри проекта,
+  // лишний раз появлялась как отдельный проект на верхнем уровне.
+  let projects = listProjects().filter(p => {
+    if ((p.kind || 'full') === 'sketch') return false;
+    // Storage-схемы: id 'lp_*' или наличие поля scheme/memberUids/ownerId.
+    if (typeof p.id === 'string' && p.id.startsWith('lp_')) return false;
+    if ('scheme' in p || 'memberUids' in p) return false;
+    return true;
+  });
   const activeId = getActiveProjectId();
 
   // v0.59.238: фильтр архивных.
