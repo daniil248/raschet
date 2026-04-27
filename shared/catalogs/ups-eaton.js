@@ -56,11 +56,12 @@ export const EATON_UPSES = [
     model: '93PS 40 kW', kind: 'ups', upsType: 'monoblock',
     capacityKva: 40, capacityKw: 40, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 1, outputs: 1,
+    // 93PS 40: 30/32/36/40 × 12В VRLA. Окно 360…540 покрывает 36/40-jar.
+    vdcMin: 360, vdcMax: 540, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 93PS datasheet',
+    source: 'Eaton 93PS datasheet (30…40 × 12В VRLA)',
     importedAt: 0, custom: false,
-    notes: 'Моноблок 40 кВт · 3ф · до 4 параллельно.',
+    notes: 'Моноблок 40 кВт · 3ф · до 4 параллельно. АКБ: 30…40 × 12В.',
   },
   // ── 93PM (50–200 kW, modular) ────────────────────────────────────
   {
@@ -69,9 +70,11 @@ export const EATON_UPSES = [
     capacityKva: 50, capacityKw: 50, phases: 3,
     frameKw: 200, moduleKwRated: 50, moduleSlots: 4,
     efficiency: 97, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 1,
+    // Datasheet: ном. напряжение АКБ 432 В (36×12В) или 480 В (40×12В).
+    // Операционное окно: min=36×6×1.67=360.7 (EoD); max=40×6×2.25=540 (float).
+    vdcMin: 360, vdcMax: 540, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 93PM datasheet',
+    source: 'Eaton 93PM datasheet (36/40 × 12В VRLA)',
     importedAt: 0, custom: false,
     notes: 'Модульный 50 кВт (1×50 в фрейме 200) · 3ф · Hot-swap.',
   },
@@ -81,9 +84,11 @@ export const EATON_UPSES = [
     capacityKva: 100, capacityKw: 100, phases: 3,
     frameKw: 200, moduleKwRated: 50, moduleSlots: 4,
     efficiency: 97, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 1,
+    // Datasheet: ном. напряжение АКБ 432 В (36×12В) или 480 В (40×12В).
+    // Операционное окно: min=36×6×1.67=360.7 (EoD); max=40×6×2.25=540 (float).
+    vdcMin: 360, vdcMax: 540, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 93PM datasheet',
+    source: 'Eaton 93PM datasheet (36/40 × 12В VRLA)',
     importedAt: 0, custom: false,
     notes: 'Модульный 100 кВт (2×50 в фрейме 200) · 3ф.',
   },
@@ -93,9 +98,11 @@ export const EATON_UPSES = [
     capacityKva: 200, capacityKw: 200, phases: 3,
     frameKw: 200, moduleKwRated: 50, moduleSlots: 4,
     efficiency: 97, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 1,
+    // Datasheet: ном. напряжение АКБ 432 В (36×12В) или 480 В (40×12В).
+    // Операционное окно: min=36×6×1.67=360.7 (EoD); max=40×6×2.25=540 (float).
+    vdcMin: 360, vdcMax: 540, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 93PM datasheet',
+    source: 'Eaton 93PM datasheet (36/40 × 12В VRLA)',
     importedAt: 0, custom: false,
     notes: 'Модульный 200 кВт (4×50) · 3ф · Energy Saver System 99%.',
   },
