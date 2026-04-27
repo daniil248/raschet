@@ -24,7 +24,11 @@
 
 import { listProjects, createProject } from './project-storage.js';
 
-const MIGRATION_FLAG = 'raschet.scheme-orphan-migration.v1';
+// v2: bump флага, чтобы у пользователей с уже-выставленным v1 миграция
+// прошла ещё раз. Поводы: (а) первая v1 могла не отработать на старых
+// orphan-данных; (б) логика расширилась — теперь сначала ищем контейнер
+// с тем же именем (matched), и только если не нашли — создаём новый.
+const MIGRATION_FLAG = 'raschet.scheme-orphan-migration.v2';
 
 function _isStorageScheme(p) {
   if (!p || typeof p.id !== 'string') return false;

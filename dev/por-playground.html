@@ -68,16 +68,31 @@
 </div>
 
 <div class="panel">
-  <h2>3. Стойки в POR (через DataAdapter)</h2>
+  <h2>3. POR-объекты текущего проекта</h2>
+  <div class="row" style="margin-bottom: 8px">
+    <label>Тип:</label>
+    <select id="filter-type">
+      <option value="">Все типы</option>
+      <option value="rack" selected>rack — стойка</option>
+      <option value="consumer-system">consumer-system — система</option>
+      <option value="consumer-group">consumer-group — группа</option>
+      <option value="site">site — площадка</option>
+      <option value="building">building — здание</option>
+      <option value="floor">floor — этаж</option>
+      <option value="space">space — помещение</option>
+    </select>
+    <button class="ghost" id="cleanup-dups" title="Удалить дубликаты POR-объектов type=rack этого проекта (та же tag/kW/габариты)">🧹 Удалить дубликаты</button>
+    <span class="muted" id="rack-count"></span>
+  </div>
   <table id="racks-table">
     <thead>
-      <tr><th>Tag</th><th>Имя</th><th>U</th><th>W×D мм</th><th>Domains</th><th>kW</th><th>Group</th><th></th></tr>
+      <tr><th>Type</th><th>Tag</th><th>Имя</th><th>U</th><th>W×D мм</th><th>Domains</th><th>kW</th><th>Group</th><th></th></tr>
     </thead>
-    <tbody><tr><td colspan="8" class="muted">Загрузка…</td></tr></tbody>
+    <tbody><tr><td colspan="9" class="muted">Загрузка…</td></tr></tbody>
   </table>
   <div class="muted" style="margin-top: 8px">
-    Рендер использует <code>getAdapter('rack-config').list()</code>. В POR mode видны объекты текущего проекта,
-    в standalone — пустой in-memory store этой вкладки.
+    При фильтре <code>type=rack</code> используется <code>getAdapter('rack-config').list()</code>. Для всех других типов —
+    прямой <code>getObjects(pid, {type})</code>. В POR mode видны объекты текущего проекта.
   </div>
 </div>
 
@@ -212,17 +227,28 @@ function fmtDomains(obj) {
   }).join('');
 }
 
-function renderRacks() {
+async function renderRacks() {
   if (!_adapter) return;
-  const list = _adapter.list();
+  const filterType = $('filter-type') ? $('filter-type').value : 'rack';
   const tbody = $('racks-table').querySelector('tbody');
+  // Если выбран фильтр rack — используем adapter (быстро). Иначе —
+  // прямой запрос к POR ядру для остальных типов.
+  let list = [];
+  if (filterType === 'rack') {
+    list = _adapter.list();
+  } else if (_currentPid) {
+    const por = await import('../shared/por.js');
+    list = filterType ? por.getObjects(_currentPid, { type: filterType }) : por.getObjects(_currentPid);
+  }
+  $('rack-count').textContent = `(${list.length} POR-объектов)`;
+
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="muted">Нет стоек. Добавьте через форму выше.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="9" class="muted">Нет POR-объектов с фильтром «${filterType||'все'}».</td></tr>`;
     return;
   }
-  // Также покажем consumer-group в той же таблице — для группировок.
+  // Также покажем consumer-group в таблице (если фильтр «rack» или «все»).
   let groups = [];
-  if (_currentPid) {
+  if (_currentPid && (filterType === 'rack' || filterType === '')) {
     try { groups = getObjects(_currentPid, { type: 'consumer-group' }); } catch {}
   }
 
@@ -235,6 +261,7 @@ function renderRacks() {
     const groupId = e.groupId || '';
     const groupBadge = groupId ? `<span class="badge badge-project" title="В группе ${groupId}">в группе</span>` : '';
     tr.innerHTML = `
+      <td><span class="muted">${r.type}</span></td>
       <td><input type="checkbox" data-rid="${r.id}" ${checked}/> <code>${r.tag || ''}</code></td>
       <td>${r.name || ''}</td>
       <td class="num">${m.rackUnits || ''}</td>
@@ -364,6 +391,23 @@ $('add-anonymous-group').addEventListener('click', async () => {
   renderRacks();
 });
 $('clear-log').addEventListener('click', () => { $('event-log').textContent = ''; });
+
+// ─── Filter type + cleanup duplicates ────────────────────────────────
+if ($('filter-type')) {
+  $('filter-type').addEventListener('change', () => renderRacks());
+}
+if ($('cleanup-dups')) {
+  $('cleanup-dups').addEventListener('click', async () => {
+    if (!_currentPid) {
+      alert('Cleanup работает только в POR mode (project ID применён).');
+      return;
+    }
+    const mod = await import('../shared/legacy-rack-migration.js');
+    const r = mod.deduplicateProjectRacks(_currentPid);
+    log(`cleanup: kept ${r.kept}, removed ${r.removed} (groups ${r.groups})`);
+    renderRacks();
+  });
+}
 
 // ─── Discover projects with POR / scheme data ───────────────────────
 function discoverProjectsWithData() {

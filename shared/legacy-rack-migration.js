@@ -37,7 +37,10 @@ import { listProjects, projectKey } from './project-storage.js';
 import { getObjects, addObject, patchObject } from './por.js';
 import { getPorType } from './por-types/index.js';
 
-const FLAG_KEY = 'raschet.legacy-rack-migration.v2';
+// v3: переход на детерминистические POR-id (por_legacy_<rackId>) и
+// auto-dedup существующих дублей. Старые записи с v2-флагом будут
+// мигрированы повторно — addObject upsert-перезаписывает по id.
+const FLAG_KEY = 'raschet.legacy-rack-migration.v3';
 
 function _load(key, fallback) {
   try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
@@ -105,6 +108,14 @@ function _collectLegacyRacks(pid) {
  * raw — это объект из rack-config.instances.v1 (имеет поля u, width,
  * depth, demandKw, cosphi, name, tag, ...).
  */
+/** Детерминистический POR-id из legacy-rackId. Коллизия безопасна: одинаковый
+ *  rackId внутри ОДНОГО pid → один POR-id → addObject upsert-перезаписывает. */
+function _legacyPorId(rackId) {
+  // Безопасные символы только: буквы/цифры/_/-. Прочее — заменяем.
+  const safe = String(rackId || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
+  return 'por_legacy_' + (safe || 'noid');
+}
+
 function _legacyToPorPartial(rackId, info) {
   const r = info.raw || {};
   const def = getPorType('rack');
@@ -122,41 +133,101 @@ function _legacyToPorPartial(rackId, info) {
     voltageV:  Number(r.voltageV || 400),
   });
   if (!partial) return null;
-  // Маркеры для дедупликации при повторном запуске и для трассировки
-  // обратно к legacy LS.
+  // v0.59.510: детерминистический id — повторный запуск миграции
+  // upsert-перезапишет вместо создания дубликата. legacyRackId хранится
+  // также для трассировки и совместимости со старой логикой.
+  partial.id = _legacyPorId(rackId);
   partial.legacyRackId = rackId;
   partial.legacySource = info.source;
   return partial;
 }
 
 /**
- * Мигрировать legacy racks одного проекта.
- * Возвращает { created, skipped }.
+ * Мигрировать legacy racks одного проекта. С детерминистическими id —
+ * повторный запуск upsert-перезаписывает существующие POR-объекты, не
+ * создаёт дубли.
+ * Возвращает { created, updated, totalLegacy }.
  */
 export function migrateProjectLegacyRacks(pid, opts) {
-  if (!pid) return { created: 0, skipped: 0 };
+  if (!pid) return { created: 0, updated: 0 };
   const legacy = _collectLegacyRacks(pid);
-  if (!legacy.size) return { created: 0, skipped: 0 };
+  if (!legacy.size) return { created: 0, updated: 0 };
 
-  // Существующие POR-объекты type='rack' для этого pid — для дедупа.
   const existingPor = getObjects(pid, { type: 'rack' });
-  const existingByLegacyId = new Map();
-  for (const o of existingPor) {
-    if (o.legacyRackId) existingByLegacyId.set(o.legacyRackId, o);
-  }
+  const existingIds = new Set(existingPor.map(o => o.id));
 
-  let created = 0, skipped = 0;
+  let created = 0, updated = 0;
   for (const [rackId, info] of legacy.entries()) {
-    if (existingByLegacyId.has(rackId)) { skipped++; continue; }
     const partial = _legacyToPorPartial(rackId, info);
     if (!partial) continue;
+    const isUpdate = existingIds.has(partial.id);
     const obj = addObject(pid, partial);
     if (obj) {
-      created++;
-      console.info(`[legacy-rack-migration] pid=${pid} rack ${rackId} (${info.tag||'no-tag'}) → POR ${obj.id}`);
+      if (isUpdate) updated++; else created++;
+      if (!isUpdate) {
+        console.info(`[legacy-rack-migration] pid=${pid} rack ${rackId} (${info.tag||'no-tag'}) → POR ${obj.id}`);
+      }
     }
   }
-  return { created, skipped };
+  return { created, updated, totalLegacy: legacy.size };
+}
+
+/**
+ * Очистить существующие дубликаты POR-объектов type='rack' в проекте.
+ * Группирует по (tag, demandKw, widthMm, depthMm). Для каждой группы
+ * оставляет ОДИН объект с детерминистическим legacy-id (если есть) или
+ * самый старый. Остальные удаляет.
+ *
+ * Возвращает { removed, kept, groups }.
+ */
+export function deduplicateProjectRacks(pid) {
+  if (!pid) return { removed: 0, kept: 0, groups: 0 };
+  const racks = getObjects(pid, { type: 'rack' });
+  if (!racks.length) return { removed: 0, kept: 0, groups: 0 };
+
+  // Группировка по (tag + ключевые мех./электр. параметры).
+  const groupKey = (o) => {
+    const m = (o.domains && o.domains.mechanical) || {};
+    const e = (o.domains && o.domains.electrical) || {};
+    return [o.tag || '', e.demandKw || 0, m.widthMm || 0, m.depthMm || 0, m.rackUnits || 0].join('|');
+  };
+
+  const groups = new Map();
+  for (const r of racks) {
+    const k = groupKey(r);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+
+  let removed = 0, kept = 0;
+  // Импорт removeObject лениво — circular import safe.
+  const { removeObject } = (typeof require === 'function') ? null : require('./por.js') || {};
+
+  for (const [, arr] of groups.entries()) {
+    if (arr.length === 1) { kept++; continue; }
+    // Выбираем «победителя»:
+    // 1. Детерминистический legacy-id (id начинается с por_legacy_).
+    // 2. Иначе — самый старый (createdAt).
+    arr.sort((a, b) => {
+      const aL = String(a.id || '').startsWith('por_legacy_') ? 0 : 1;
+      const bL = String(b.id || '').startsWith('por_legacy_') ? 0 : 1;
+      if (aL !== bL) return aL - bL;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+    const winner = arr[0];
+    kept++;
+    for (let i = 1; i < arr.length; i++) {
+      // Подгружаем removeObject лениво (избегаем circular).
+      try {
+        // eslint-disable-next-line global-require
+        const por = window.RaschetPOR || {};
+        if (por.removeObject) por.removeObject(pid, arr[i].id);
+        removed++;
+      } catch (e) { console.warn('[dedup] remove failed:', e); }
+    }
+  }
+  console.info(`[legacy-rack-migration] dedup pid=${pid}: kept ${kept}, removed ${removed} (groups ${groups.size})`);
+  return { removed, kept, groups: groups.size };
 }
 
 /**
@@ -175,26 +246,32 @@ export function migrateAllLegacyRacks(opts) {
   try { projects = listProjects(); } catch { return { created: 0, skipped: 0, error: 'listProjects failed' }; }
   if (!Array.isArray(projects)) return { created: 0, skipped: 0 };
 
-  let totalCreated = 0, totalSkipped = 0, processed = 0;
+  let totalCreated = 0, totalUpdated = 0, totalDedupRemoved = 0, processed = 0;
   for (const p of projects) {
     if (!p || !_isProjectLikeId(p.id)) continue;
     const r = migrateProjectLegacyRacks(p.id);
     totalCreated += r.created;
-    totalSkipped += r.skipped;
+    totalUpdated += r.updated;
+    // Сразу после миграции — dedup на случай старых дубликатов из v2.
+    try {
+      const d = deduplicateProjectRacks(p.id);
+      totalDedupRemoved += d.removed;
+    } catch {}
     processed++;
   }
 
   try { localStorage.setItem(FLAG_KEY, '1'); } catch {}
-  if (totalCreated > 0) {
-    console.info(`[legacy-rack-migration] processed ${processed} projects, created ${totalCreated} POR-objects, skipped ${totalSkipped} (already migrated)`);
+  if (totalCreated > 0 || totalDedupRemoved > 0) {
+    console.info(`[legacy-rack-migration] processed ${processed} projects: created ${totalCreated}, updated ${totalUpdated}, dedup removed ${totalDedupRemoved}`);
   }
-  return { created: totalCreated, skipped: totalSkipped, processed };
+  return { created: totalCreated, updated: totalUpdated, dedupRemoved: totalDedupRemoved, processed };
 }
 
 if (typeof window !== 'undefined') {
   window.RaschetLegacyRackMigration = {
     runAll: migrateAllLegacyRacks,
     runOne: migrateProjectLegacyRacks,
+    dedupOne: deduplicateProjectRacks,
     reset: () => { try { localStorage.removeItem(FLAG_KEY); } catch {} },
   };
 }

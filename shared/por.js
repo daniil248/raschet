@@ -153,7 +153,8 @@ export function addObject(pid, partial) {
   const uid = _currentUid();
   const now = _now();
   const oid = partial.id || _uidPor();
-  const obj = _ensureObjectShape({
+  // Базовый shape с whitelist'ом обязательных top-level полей.
+  const baseShape = _ensureObjectShape({
     id: oid, type: partial.type,
     subtype: partial.subtype || '', tag: partial.tag || '', name: partial.name || '',
     manufacturer: partial.manufacturer || '', model: partial.model || '',
@@ -163,11 +164,29 @@ export function addObject(pid, partial) {
     createdBy: uid, createdAt: now, updatedBy: uid, updatedAt: now,
     schemaVersion: SCHEMA_VERSION,
   });
+  // v0.59.510: extra top-level fields из partial passthrough — для legacy-
+  // маркеров (legacyRackId, legacySource), groupId-link'ов и любых
+  // дополнительных меток без нужды расширять whitelist.
+  const obj = baseShape;
+  const RESERVED = new Set(['id','type','subtype','tag','name','manufacturer','model','serialNo','assetId','domains','views','ownerByDomain','createdBy','createdAt','updatedBy','updatedAt','schemaVersion']);
+  for (const [k, v] of Object.entries(partial)) {
+    if (RESERVED.has(k)) continue;
+    obj[k] = v;
+  }
   for (const d of Object.keys(obj.domains)) {
     if (!obj.ownerByDomain[d]) obj.ownerByDomain[d] = uid;
   }
-  const store = _loadStore(pid); store[oid] = obj; _saveStore(pid, store);
-  _emit(pid, { kind: 'add', pid, oid, object: obj, source: 'local' });
+  // Если объект с этим id уже существует — сохраняем его createdBy/At
+  // (перезаписываем только updatedBy/At). Это делает upsert-подобным.
+  const store = _loadStore(pid);
+  const prev = store[oid];
+  if (prev) {
+    obj.createdBy = prev.createdBy || obj.createdBy;
+    obj.createdAt = prev.createdAt || obj.createdAt;
+  }
+  store[oid] = obj;
+  _saveStore(pid, store);
+  _emit(pid, { kind: prev ? 'patch' : 'add', pid, oid, object: obj, before: prev, source: 'local' });
   return obj;
 }
 
