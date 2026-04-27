@@ -117,7 +117,13 @@ function renderProjectBadge(pid) {
   // нельзя терять. Включаем в parent-dropdown отдельной optgroup-ой; при
   // выборе orphan-sketch активируем его как самостоятельный контекст СКС
   // (legacy/standalone режим).
-  const fullProjects = projects.filter(x => x.kind === 'full');
+  // v0.59.567: лояльный фильтр — undefined kind считается 'full'. Раньше
+  // строгий x.kind === 'full' вырезал legacy-проекты без поля kind (созданные
+  // до v0.59.... когда kind ещё не было обязательным), и они не появлялись
+  // в dropdown'е. Теперь как и в /projects/ — (kind||'full') === 'full'.
+  const fullProjects = projects.filter(x => (x.kind || 'full') === 'full' &&
+    !(typeof x.id === 'string' && x.id.startsWith('lp_')) &&
+    !('scheme' in x) && !('memberUids' in x));
   const orphanSketches = projects.filter(x => x.kind === 'sketch' && !x.parentProjectId);
   let parentPid = urlPid;
   // Если активный проект сам — sketch с parentProjectId, наследуем родителя.
