@@ -44,6 +44,7 @@ const els = {
   btnShare: $('btn-share'),
   btnSave: $('btn-save'),
   btnHistory: $('btn-history'),
+  btnPorDebug: $('btn-por-debug'),
   btnRequestAccess: $('btn-request-access'),
   btnNotifications: $('btn-notifications'),
   notifBadge: $('notif-badge'),
@@ -1071,10 +1072,17 @@ async function openProject(id) {
     // Phase 2.5 PoC: bootstrap проектного режима для подменяемых
     // adapter'ов (rack-config / scs-config через POR) + engine-por-mirror
     // (зеркало rack-узлов схемы в POR-объекты type='rack').
+    //
+    // ВАЖНО: pid для POR — это id ПРОЕКТА-КОНТЕЙНЕРА (data.projectId), не
+    // id отдельной схемы (data.id). Иначе несколько схем одного проекта
+    // не шарят racks/POR-объекты. Если scheme.projectId не задан (legacy
+    // или отдельная схема без контейнера) — fallback на scheme.id.
     try {
-      if (data && data.id) {
+      const porPid = (data && (data.projectId || data.id)) || null;
+      if (porPid) {
         const mod = await import('../shared/project-bootstrap.js');
-        mod.bootstrapProject(data.id);
+        mod.bootstrapProject(porPid);
+        console.info(`[main] POR pid resolved to ${porPid} (${data.projectId ? 'projectId / контейнер' : 'scheme.id / fallback'})`);
       }
     } catch (e) { console.warn('[main] bootstrapProject failed:', e); }
 
@@ -1101,6 +1109,13 @@ async function openProject(id) {
     // v0.57.79 C.8: кнопка истории версий — только для облачных проектов
     if (els.btnHistory) {
       els.btnHistory.classList.toggle('hidden', !window.Storage?.isCloud || !data.id || String(data.id).startsWith('_demo_'));
+    }
+    // Phase 2.5 PoC: кнопка «🏗 POR» — показываем когда есть проект-контейнер
+    // или хотя бы scheme.id (POR работает на любом pid).
+    if (els.btnPorDebug) {
+      const _porPid = (data && (data.projectId || data.id)) || null;
+      els.btnPorDebug.classList.toggle('hidden', !_porPid);
+      els.btnPorDebug.dataset.pid = _porPid || '';
     }
     // Сбрасываем состояние автосохранения для свежезагруженного проекта
     state.dirty = false;
@@ -1162,6 +1177,7 @@ function backToProjects() {
     els.btnSave.classList.add('hidden');
     els.btnShare.classList.add('hidden');
     if (els.btnHistory) els.btnHistory.classList.add('hidden');
+    if (els.btnPorDebug) els.btnPorDebug.classList.add('hidden');
     els.btnRequestAccess.classList.add('hidden');
     const url = new URL(location.href);
     url.searchParams.delete('project');
@@ -6689,6 +6705,13 @@ async function init() {
   els.btnSave.addEventListener('click', () => saveCurrent(false));
   els.btnShare.addEventListener('click', openShareModal);
   if (els.btnHistory) els.btnHistory.addEventListener('click', openRevisionsModal);
+  if (els.btnPorDebug) {
+    els.btnPorDebug.addEventListener('click', () => {
+      const pid = els.btnPorDebug.dataset.pid || '';
+      const url = 'dev/por-playground.html' + (pid ? ('?project=' + encodeURIComponent(pid)) : '');
+      window.open(url, '_blank');
+    });
+  }
 
   // Подписка на изменения редактора → автосохранение
   if (window.Raschet && typeof window.Raschet.onChange === 'function') {

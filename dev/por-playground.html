@@ -40,10 +40,13 @@
   <h2>1. Контекст</h2>
   <div class="row">
     <label>Project ID:</label>
-    <input id="pid-input" type="text" placeholder="оставить пустым для standalone" style="width: 240px"/>
+    <input id="pid-input" type="text" placeholder="оставить пустым для standalone" style="width: 240px" list="known-pids"/>
+    <datalist id="known-pids"></datalist>
     <button id="apply-pid">Применить (POR mode)</button>
     <button class="ghost" id="clear-pid">Сбросить (standalone)</button>
+    <button class="ghost" id="discover-pids" title="Сканировать LS на проекты с POR-данными">🔎 Найти проекты</button>
   </div>
+  <div class="muted" id="discovered-list"></div>
   <div class="muted">
     В POR mode adapter подменяется на POR-backed (через <code>bootstrapProject</code>); запись идёт в
     <code>raschet.project.&lt;pid&gt;.por.objects.v1</code>. В standalone — adapter использует in-memory fallback.
@@ -362,6 +365,77 @@ $('add-anonymous-group').addEventListener('click', async () => {
 });
 $('clear-log').addEventListener('click', () => { $('event-log').textContent = ''; });
 
+// ─── Discover projects with POR / scheme data ───────────────────────
+function discoverProjectsWithData() {
+  const pids = new Map(); // pid → {hasPor, hasScheme, porCount}
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      const m = k.match(/^raschet\.project\.([^.]+)\.(.+)$/);
+      if (!m) continue;
+      const [, pid, rest] = m;
+      if (!pids.has(pid)) pids.set(pid, { hasPor: false, hasScheme: false, porCount: 0 });
+      const info = pids.get(pid);
+      if (rest === 'por.objects.v1') {
+        info.hasPor = true;
+        try { info.porCount = Object.keys(JSON.parse(localStorage.getItem(k) || '{}')).length; } catch {}
+      }
+      if (rest === 'engine.scheme.v1') info.hasScheme = true;
+    }
+  } catch {}
+  // Также добавим записи из общей таблицы проектов raschet.projects.v1.
+  // Здесь живут И Storage-схемы (lp_*), И project-context'ы (p_* / s_*).
+  // Для нашей цели интересны только те, где есть POR-данные ИЛИ scheme-данные;
+  // но имена удобно подтянуть из общей таблицы для всех известных pid.
+  try {
+    const list = JSON.parse(localStorage.getItem('raschet.projects.v1') || '[]');
+    if (Array.isArray(list)) {
+      for (const p of list) {
+        if (!p || !p.id) continue;
+        if (!pids.has(p.id)) pids.set(p.id, { hasPor: false, hasScheme: false, porCount: 0, name: p.name, kind: p.kind });
+        else { const info = pids.get(p.id); info.name = p.name; info.kind = p.kind; }
+      }
+    }
+  } catch {}
+  return [...pids.entries()].map(([pid, info]) => ({ pid, ...info }));
+}
+function refreshDiscoveredList() {
+  const list = discoverProjectsWithData();
+  // datalist для autocomplete
+  const dl = $('known-pids');
+  dl.innerHTML = '';
+  for (const it of list) {
+    const opt = document.createElement('option');
+    opt.value = it.pid;
+    opt.label = it.name || (it.hasPor ? `POR: ${it.porCount}` : 'no POR');
+    dl.appendChild(opt);
+  }
+  // Inline-список с кликабельными пид'ами
+  const host = $('discovered-list');
+  if (!list.length) {
+    host.innerHTML = '<i>В localStorage нет проектов с данными. Создай схему в engine или добавь стойку здесь в POR mode.</i>';
+    return;
+  }
+  host.innerHTML = '<b>Найдено в LocalStorage:</b><br/>' + list.map(it => {
+    const tag = (it.hasPor ? '🏗' : '') + (it.hasScheme ? '⚡' : '');
+    const name = it.name ? ` — ${it.name}` : '';
+    const por = it.porCount ? ` (POR-объектов: ${it.porCount})` : '';
+    return `<a href="#" data-pickpid="${it.pid}" style="color:#1976d2">${tag} <code>${it.pid}</code></a>${name}${por}`;
+  }).join('<br/>');
+  host.querySelectorAll('a[data-pickpid]').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const pid = e.target.closest('a').dataset.pickpid;
+      $('pid-input').value = pid;
+      setupAdapter(pid);
+    });
+  });
+}
+$('discover-pids').addEventListener('click', refreshDiscoveredList);
+
+// ─── Export / Import ────────────────────────────────────────────────
+
 // ─── Export / Import ────────────────────────────────────────────────
 $('export-json').addEventListener('click', () => {
   if (!_adapter) return;
@@ -392,7 +466,9 @@ $('import-file').addEventListener('change', async (e) => {
 
 // ─── Init
 window.addEventListener('DOMContentLoaded', () => {
-  // Восстанавливаем pid из URL ?project= если есть
+  // Сначала ищем существующие проекты в LS — заполняем datalist + список.
+  refreshDiscoveredList();
+  // Восстанавливаем pid из URL ?project= если есть.
   const fromUrl = new URLSearchParams(location.search).get('project');
   if (fromUrl) {
     $('pid-input').value = fromUrl;

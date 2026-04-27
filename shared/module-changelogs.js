@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.505', date: '2026-04-27', items: [
+      '🛠 <b>Phase 2.5 PoC: фиксы по результату первой проверки.</b>',
+      '🎯 <b>Fix: POR pid теперь = id ПРОЕКТА-КОНТЕЙНЕРА, не отдельной схемы.</b> Раньше bootstrap получал <code>data.id</code> (scheme.id, например <code>lp_xxx</code>), из-за чего разные схемы одного проекта-контейнера НЕ шарили POR-объекты — каждая жила в своём <code>raschet.project.lp_xxx.por.objects.v1</code>. Теперь main.js резолвит <code>data.projectId || data.id</code>: если scheme привязана к project-контейнеру (через <code>+ Схема</code> внутри проекта) — используется <code>p_xxx</code> (контекст), все схемы одного проекта шарят POR. Fallback на scheme.id для отдельных/legacy схем.',
+      '🏗 <b>Кнопка «🏗 POR» в шапке engine</b>: открывает POR Playground в новой вкладке с уже подставленным pid текущего проекта. Скрыта когда проект не загружен. Решает проблему «нужно вручную копировать pid из URL в playground».',
+      '🔎 <b>Playground auto-discover проектов</b>: при загрузке (и по кнопке «🔎 Найти проекты») сканирует localStorage на ключи <code>raschet.project.&lt;pid&gt;.por.objects.v1</code> и <code>raschet.projects.v1</code>, собирает список найденных pid с метками (🏗 POR, ⚡ scheme), числом POR-объектов и именем проекта. Показывается списком кликабельных ссылок + datalist autocomplete в поле ввода. Bug-fix: ключ был указан как <code>raschet.projects.local.v1</code> (несуществующий), правильный — <code>raschet.projects.v1</code>.',
+      '🎤 <b>Engine mirror: console diagnostics</b>. <code>console.info()</code> при активации (с числом rack-узлов) и при создании каждого POR-объекта. <code>console.debug()</code> со счётчиками <code>+created ~updated</code> на каждом sync. Помогает в DevTools убедиться что mirror работает.',
+      'Файлы: <code>js/main.js</code> (porPid resolution + btnPorDebug handler), <code>index.html</code> (btn-por-debug), <code>shared/engine-por-mirror.js</code> (diagnostics), <code>dev/por-playground.html</code> (auto-discover + datalist + LS-key fix).',
+    ] },
     { version: '0.59.504', date: '2026-04-27', items: [
       '🪞 <b>Phase 2.5 PoC: первая реальная интеграция — Engine ↔ POR mirror.</b> Стойки, добавленные в принципиальную схему (consumer-узлы с subtype=\'rack\'), теперь автоматически зеркалируются в POR-объекты type=\'rack\' с доменами <code>electrical</code> + <code>mechanical</code>. Зеркалирование двустороннее.',
       '• <b>Engine → POR</b>: на каждое <code>notifyChange()</code> рефлекс mirror проходит rack-узлы, создаёт POR-объект если не было (с записью <code>n.porObjectId</code>) или обновляет существующий (tag/name/demandKw/cosPhi/phases/voltageV/widthMm/depthMm/heightMm/rackUnits).',

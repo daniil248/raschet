@@ -94,6 +94,7 @@ function patchPorFromNode(pid, oid, n) {
 function syncEngineToPOR() {
   if (!_activePid || _suppressSync) return;
   _suppressSync = true;
+  let created = 0, updated = 0;
   try {
     // 1) Для каждого rack-узла без porObjectId — создаём POR-объект.
     // 2) Для каждого rack-узла с porObjectId — обновляем POR.
@@ -107,6 +108,7 @@ function syncEngineToPOR() {
         if (obj) {
           patchPorFromNode(_activePid, n.porObjectId, n);
           seenOids.add(n.porObjectId);
+          updated++;
         } else {
           // Объект исчез — пересоздаём.
           n.porObjectId = null;
@@ -115,12 +117,17 @@ function syncEngineToPOR() {
       if (!n.porObjectId) {
         const partial = buildRackPartialFromNode(n);
         if (!partial) continue;
-        const created = addObject(_activePid, partial);
-        if (created) {
-          n.porObjectId = created.id;
-          seenOids.add(created.id);
+        const createdObj = addObject(_activePid, partial);
+        if (createdObj) {
+          n.porObjectId = createdObj.id;
+          seenOids.add(createdObj.id);
+          created++;
+          console.info(`[engine-por-mirror] created POR rack ${createdObj.id} for engine node ${n.id} (${n.tag || ''})`);
         }
       }
+    }
+    if (created || updated) {
+      console.debug(`[engine-por-mirror] sync: +${created} ~${updated}`);
     }
   } finally {
     _suppressSync = false;
@@ -193,7 +200,9 @@ export function enableEngineMirror(pid) {
   // POR → Engine на cross-tab события.
   _unsubPor = porSubscribe(pid, applyPorEvent);
   // Начальная синхронизация: текущая schema → POR.
+  const initialRacks = [...state.nodes.values()].filter(isRackNode).length;
   syncEngineToPOR();
+  console.info(`[engine-por-mirror] activated for pid=${pid} (rack-узлов в схеме: ${initialRacks})`);
   if (typeof window !== 'undefined') {
     window.__engine_por_mirror_pid = pid;
   }
