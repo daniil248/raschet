@@ -996,15 +996,20 @@ function renderCurrentTab() {
 }
 
 // v0.59.336: карточка отдельной схемы с селектом проекта-контекста.
+// v0.59.541: селект «Проект:» убран по запросу пользователя — слишком
+// легко случайно изменить проект-контекст схемы кликом по карточке.
+// Вместо селекта показываем имя проекта как статичный label. Перемещение
+// схемы между проектами теперь делается через явное действие
+// «📦 В проект…» (модалка с подтверждением) или через /projects/.
 function _renderSchemeCard(p, ctxProjects) {
   const card = document.createElement('div');
   card.className = 'project-card';
   const role = p._role || 'viewer';
   const roleLabel = { owner: 'владелец', editor: 'редактор', viewer: 'просмотр' }[role] || role;
-  const optsHtml = [
-    '<option value="">— без проекта —</option>',
-    ...ctxProjects.map(cp => `<option value="${escAttr(cp.id)}"${p.projectId === cp.id ? ' selected' : ''}>${escHtml(cp.name)}${cp.kind === 'sketch' ? ' (мини)' : ''}</option>`),
-  ].join('');
+  const currentProj = p.projectId ? ctxProjects.find(cp => cp.id === p.projectId) : null;
+  const projLabel = currentProj
+    ? `${escHtml(currentProj.name)}${currentProj.kind === 'sketch' ? ' (мини)' : ''}`
+    : '<span style="color:#94a3b8">— без проекта —</span>';
   card.innerHTML = `
     <div class="pc-head">
       <div class="pc-name" title="${escAttr(p.name)}">${escHtml(p.name)}</div>
@@ -1014,11 +1019,12 @@ function _renderSchemeCard(p, ctxProjects) {
       ${p.ownerName ? `<span>${escHtml(p.ownerName)}</span>` : ''}
     </div>
     ${role === 'owner' ? `<div class="pc-proj" style="margin:6px 0;font-size:11px;color:#6b7280">
-      Проект: <select class="pc-projsel" style="font-size:11px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:3px;max-width:160px">${optsHtml}</select>
+      Проект: <span class="pc-proj-name" style="color:#1f2937;font-weight:500">${projLabel}</span>
     </div>` : ''}
     <div class="pc-actions">
       <button class="pc-open">Открыть</button>
       ${role === 'owner' ? '<button class="pc-rename">Переименовать</button>' : ''}
+      ${role === 'owner' ? '<button class="pc-move" title="Переместить эту схему в другой проект (с подтверждением)">📦 В проект…</button>' : ''}
       ${role === 'owner' ? '<button class="pc-delete">Удалить</button>' : ''}
     </div>
   `;
@@ -1040,10 +1046,39 @@ function _renderSchemeCard(p, ctxProjects) {
       refreshProjects();
     } catch (e) { flash(e.message || 'Ошибка', 'error'); }
   };
-  const sel = card.querySelector('.pc-projsel');
-  if (sel) sel.onchange = async () => {
+  // v0.59.541: явный «Переместить» с модалкой выбора + подтверждением.
+  const moveBtn = card.querySelector('.pc-move');
+  if (moveBtn) moveBtn.onclick = async () => {
+    const opts = [
+      { id: '', name: '— без проекта —' },
+      ...ctxProjects.map(cp => ({ id: cp.id, name: `${cp.name}${cp.kind === 'sketch' ? ' (мини)' : ''}` })),
+    ];
+    const newPid = await new Promise(resolve => {
+      const back = document.createElement('div');
+      back.className = 'rs-modal-back';
+      back.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10000;display:flex;align-items:center;justify-content:center';
+      back.innerHTML = `
+        <div style="background:#fff;border-radius:10px;padding:18px 22px;min-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.25);font:13px/1.4 system-ui,sans-serif;color:#0f172a">
+          <div style="font-size:15px;font-weight:600;margin-bottom:10px">📦 Переместить «${escHtml(p.name)}»</div>
+          <div style="margin-bottom:8px;color:#475569">Текущий проект: <b>${currentProj ? escHtml(currentProj.name) : '— без проекта —'}</b></div>
+          <select id="pc-move-sel" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit">
+            ${opts.map(o => `<option value="${escAttr(o.id)}"${(o.id || null) === (p.projectId || null) ? ' selected' : ''}>${escHtml(o.name)}</option>`).join('')}
+          </select>
+          <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+            <button type="button" class="pc-mv-cancel" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer">Отмена</button>
+            <button type="button" class="pc-mv-ok" style="padding:6px 14px;border:1px solid #2563eb;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer">Переместить</button>
+          </div>
+        </div>`;
+      document.body.appendChild(back);
+      const close = (v) => { back.remove(); resolve(v); };
+      back.querySelector('.pc-mv-ok').onclick = () => close(back.querySelector('#pc-move-sel').value);
+      back.querySelector('.pc-mv-cancel').onclick = () => close(null);
+      back.addEventListener('click', ev => { if (ev.target === back) close(null); });
+    });
+    if (newPid === null) return;
+    if ((newPid || null) === (p.projectId || null)) return; // ничего не менялось
     try {
-      await window.Storage.saveProject(p.id, { projectId: sel.value || null });
+      await window.Storage.saveProject(p.id, { projectId: newPid || null });
       refreshProjects();
     } catch (e) { flash(e.message || 'Ошибка', 'error'); }
   };
