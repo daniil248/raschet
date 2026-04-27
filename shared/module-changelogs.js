@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.494', date: '2026-04-27', items: [
+      '✅ <b>Schneider Galaxy VL 200 / 300 / 500 kW — V_DC окно verified.</b> Раньше у всех трёх было 384-480 — это покрывало только 40-block конфигурацию, не 48. По datasheet «Galaxy VL Tech Spec 990-91377 (IEC) / 990-91399 (UL)» Galaxy VL поддерживает обе конфигурации внешних АКБ:',
+      '• <b>40 блоков</b>: 480V ном., float 545V, max boost 571V.',
+      '• <b>48 блоков</b>: 576V ном., float 654V, max boost 685V.',
+      '• EoD at full load = <b>384 VDC</b>. Operating range = <b>384-576 VDC</b> (covers both 40 и 48 block).',
+      '• Battery system общая для всей серии Galaxy VL 200-500 kW (различаются только числом power-модулей 50 кВт), поэтому окно одинаковое для VL 200 / 300 / 500.',
+      '• Записи добавлены в <code>shared/ups-verified.js</code> → green ✓ в Battery-calc.',
+      '• seedVersion 15→16 force-upsert.',
+      'Файлы: <code>shared/catalogs/ups-schneider.js</code> (vl-200k / 300k / 500k vdcMax 480→576 + notes), <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.493', date: '2026-04-27', items: [
       '✅ <b>Schneider Galaxy VS 10 / 20 kW — V_DC окно verified + Fix фаз у VS 10.</b> Раньше V_DC были сильно занижены (VS 10 = 192-240, VS 20 = 240-360) и VS 10 был помечен как 1ф — обе ошибки. По datasheet «Galaxy VS UPS for External Batteries Tech Spec 990-91141» (10-100 kW 400V):',
       '• <b>VS 10 kW</b> (GVSUPS10KB4HS): external battery <b>384-576 VDC</b> (32-48 × 12В VRLA), EoD 384V at full load, float ~545V. Phases: <b>3</b> (раньше 1 — ошибка; вся серия Galaxy VS 10-150 kW трёхфазная per Schneider product range 65772; вариант 208V имеет 1ф input через внутренний трансформатор, но система 3ф).',

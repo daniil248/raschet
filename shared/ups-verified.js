@@ -11,6 +11,7 @@
 //   • Eaton 93PS 40         → 336-480 (PS153045, 28/40 × 12В VRLA)
 //   • Schneider Galaxy VS 10/20 → 384-576 (Tech Spec 990-91141, 32-48 × 12В VRLA)
 //   • Schneider Galaxy VS 60 → 384-576 (securepower.com GVSUPS60KGS)
+//   • Schneider Galaxy VL 200/300/500 → 384-576 (Tech Spec 990-91377/91399)
 //   • Все Kehua MR33/S3 AIO  → паспорт Kehua UPS Catalog 2024-10-22
 // ======================================================================
 
@@ -23,6 +24,7 @@ const VERIFIED_VDC_IDS = new Set([
   // Schneider
   'schneider-galaxy-vs-10k', 'schneider-galaxy-vs-20k',
   'schneider-galaxy-vs-40k', 'schneider-galaxy-vs-60k', 'schneider-galaxy-vs-100k',
+  'schneider-galaxy-vl-200k', 'schneider-galaxy-vl-300k', 'schneider-galaxy-vl-500k',
   // Kehua — указаны страницы каталога в source
   'kehua-mr33120-30k', 'kehua-mr33200-50k', 'kehua-mr33300-50k',
   'kehua-mr33400-50k', 'kehua-mr33500-50k', 'kehua-mr33600-50k',

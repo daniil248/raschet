@@ -85,11 +85,16 @@ export const SCHNEIDER_UPSES = [
     capacityKva: 200, capacityKw: 200, phases: 3,
     frameKw: 500, moduleKwRated: 50, moduleSlots: 10,
     efficiency: 97, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 1,
+    // Galaxy VL 200-500 kW (общая battery system, варьируется только число
+    // power-модулей): external battery 384-576 VDC. 40 blocks → 480V ном.,
+    // float 545V, boost 571V; 48 blocks → 576V ном., float 654V, boost
+    // 685V. EoD at full load = 384 VDC. Раньше 384-480 — покрывало только
+    // 40-block конфигурацию, не 48.
+    vdcMin: 384, vdcMax: 576, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VL datasheet 2024',
+    source: 'Schneider Galaxy VL Tech Spec 990-91377/91399 (200-500 kW, 40-48 × 12В VRLA, 384-576 VDC, EoD 384V)',
     importedAt: 0, custom: false,
-    notes: 'Модульный 200 кВА (4×50 кВт в фрейме 500 кВт) · 3ф · Live Swap.',
+    notes: 'Модульный 200 кВА (4×50 кВт в фрейме 500 кВт) · 3ф · Live Swap. АКБ: 40…48 × 12В, 384…576 VDC.',
   },
   {
     id: 'schneider-galaxy-vl-300k', supplier: 'Schneider Electric',
@@ -97,11 +102,11 @@ export const SCHNEIDER_UPSES = [
     capacityKva: 300, capacityKw: 300, phases: 3,
     frameKw: 500, moduleKwRated: 50, moduleSlots: 10,
     efficiency: 97, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 1,
+    vdcMin: 384, vdcMax: 576, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VL datasheet 2024',
+    source: 'Schneider Galaxy VL Tech Spec 990-91377/91399 (200-500 kW, 40-48 × 12В VRLA, 384-576 VDC, EoD 384V)',
     importedAt: 0, custom: false,
-    notes: 'Модульный 300 кВА (6×50 кВт) · 3ф.',
+    notes: 'Модульный 300 кВА (6×50 кВт) · 3ф. АКБ: 40…48 × 12В, 384…576 VDC.',
   },
   {
     id: 'schneider-galaxy-vl-500k', supplier: 'Schneider Electric',
@@ -109,11 +114,11 @@ export const SCHNEIDER_UPSES = [
     capacityKva: 500, capacityKw: 500, phases: 3,
     frameKw: 500, moduleKwRated: 50, moduleSlots: 10,
     efficiency: 97, cosPhi: 1.0,
-    vdcMin: 384, vdcMax: 480, inputs: 2, outputs: 1,
+    vdcMin: 384, vdcMax: 576, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Schneider Galaxy VL datasheet 2024',
+    source: 'Schneider Galaxy VL Tech Spec 990-91377/91399 (200-500 kW, 40-48 × 12В VRLA, 384-576 VDC, EoD 384V)',
     importedAt: 0, custom: false,
-    notes: 'Модульный 500 кВА (10×50 кВт) · 3ф.',
+    notes: 'Модульный 500 кВА (10×50 кВт) · 3ф. АКБ: 40…48 × 12В, 384…576 VDC.',
   },
   // ── Galaxy VX (500–1500 kVA, large modular) ──────────────────────
   {
