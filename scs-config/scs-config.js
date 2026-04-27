@@ -284,41 +284,15 @@ function loadJson(key, fallback) {
   } catch (e) { return fallback; }
 }
 function saveCatalog()   { try { localStorage.setItem(LS_CATALOG,   JSON.stringify(state.catalog));   } catch {} }
-function saveContents()  {
-  try { localStorage.setItem(LS_CONTENTS,  JSON.stringify(state.contents));  } catch {}
-  // v0.59.529: после сохранения contents — пересчитать Σ powerW для каждой
-  // стойки и записать в POR domains.electrical.contentsBasedKw. Это даёт
-  // electrical-инженеру в engine видеть фактическую нагрузку от наполнения
-  // стойки (не override demandKw, а отдельное поле).
-  try { _syncContentsKwToPor(); } catch (e) { console.warn('[scs-config] _syncContentsKwToPor failed:', e); }
-}
-// v0.59.529: суммируем powerW по contents и пишем в POR domains.electrical.
-function _syncContentsKwToPor() {
-  if (!window.RaschetPOR || typeof window.RaschetPOR.getObjects !== 'function') return;
-  const pid = (typeof getActiveProjectId === 'function') ? getActiveProjectId() : null;
-  if (!pid) return;
-  const porRacks = window.RaschetPOR.getObjects(pid, { type: 'rack' }) || [];
-  if (!porRacks.length) return;
-  // Соберём map (legacyRackId || por.id) → POR object
-  const byKey = new Map();
-  for (const obj of porRacks) {
-    byKey.set(obj.legacyRackId || obj.id, obj);
-  }
-  for (const [rackId, devices] of Object.entries(state.contents || {})) {
-    const obj = byKey.get(rackId);
-    if (!obj) continue;
-    const arr = Array.isArray(devices) ? devices : [];
-    let totalW = 0;
-    for (const d of arr) {
-      const type = state.catalog.find(c => c.id === d.typeId);
-      if (type && type.powerW) totalW += type.powerW;
-    }
-    const kw = Math.round(totalW / 10) / 100; // W → kW с 2 знаками: 1234W → 1.23 kW
-    const cur = (obj.domains && obj.domains.electrical && obj.domains.electrical.contentsBasedKw) || 0;
-    if (Math.abs(cur - kw) < 1e-6) continue;  // ничего не поменялось
-    window.RaschetPOR.patchObject(pid, obj.id, { contentsBasedKw: kw }, { domain: 'electrical' });
-  }
-}
+function saveContents()  { try { localStorage.setItem(LS_CONTENTS,  JSON.stringify(state.contents));  } catch {} }
+// v0.59.530: ОТКАТ contentsBasedKw write в POR.
+// По уточнению пользователя: электрику нужна ЗАПРАШИВАЕМАЯ мощность
+// (от технолога, demandKw), а не суммарная по содержимому стойки. По факту
+// в стойке может быть меньше оборудования, но проектный расчёт
+// (кабель/автомат) ведётся по запрошенной. Поэтому contentsBasedKw как
+// автозапись в POR не нужна — она вводила в заблуждение. Если потребуется
+// видеть «реальное наполнение vs запрос» — это отдельный UI без записи
+// в electrical-домен.
 function saveMatrix()    { try { localStorage.setItem(LS_MATRIX,    JSON.stringify(state.matrix));    } catch {} }
 function saveTemplates() { try { localStorage.setItem(LS_TEMPLATES, JSON.stringify(state.templates)); } catch {} }
 function saveCart()      { try { localStorage.setItem(LS_CART,      JSON.stringify(state.cart));      } catch {} }
