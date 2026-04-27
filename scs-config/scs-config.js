@@ -498,6 +498,17 @@ function renderRackPicker() {
     freeEl.textContent = ranges.length ? ranges.join(', ') : (r ? 'нет' : '—');
     freeEl.title = r ? `Непрерывные свободные U: ${ranges.length} диапазон(ов)` : '';
   }
+  // v0.59.543: показ/скрытие блока «виртуальная стойка» с кнопкой
+  // материализации. Видимость зависит от текущей стойки.
+  const vRow = $('sc-virtual-row');
+  if (vRow) {
+    const isVirt = !!(r && (r.fromScheme || r.fromPorGroup));
+    vRow.style.display = isVirt ? '' : 'none';
+    if (isVirt) {
+      const badge = $('sc-virtual-badge');
+      if (badge) badge.textContent = r.fromScheme ? '🔗 виртуальная (из схемы)' : '⊞ виртуальная (из POR-группы)';
+    }
+  }
 }
 
 /* ---- render: каталог типов --------------------------------------------- */
@@ -3481,9 +3492,17 @@ function renderRacksSidebar() {
     if (!validIds.has(id)) state.bulkSelection.delete(id);
   }
   const selN = state.bulkSelection.size;
+  // v0.59.543: показываем «▸ Материализовать N» если в выборе есть виртуалы.
+  const virtSelCount = [...state.bulkSelection]
+    .map(id => list.find(x => x.id === id))
+    .filter(r => r && (r.fromScheme || r.fromPorGroup)).length;
+  const matBtn = virtSelCount > 0
+    ? `<button type="button" class="sc-btn sc-btn-sm" data-act="bulk-materialize" title="Создать inst-* для каждой виртуальной стойки в выборе с переносом контента" style="font-size:10px;padding:3px 8px;background:#10b981;color:#fff;border-color:#059669">▸ Материализ. ${virtSelCount}</button>`
+    : '';
   const toolbarHtml = selN > 0
     ? `<div class="sc-bulk-toolbar" style="position:sticky;top:0;z-index:5;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <b style="color:#92400e">✓ ${selN}</b>
+        ${matBtn}
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-corpus" title="Применить выбранный шаблон корпуса ко всем отмеченным стойкам" style="font-size:10px;padding:3px 8px">📐 Корпус</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-mask" title="Переименовать теги по маске. Поддерживается {n} (1,2,3…) и {n:0K} с zero-padding (например {n:02} → 01,02…)" style="font-size:10px;padding:3px 8px">🏷 Маска</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-attrs" title="Изменить общие параметры (U/ширина/глубина/комментарий) у всех отмеченных" style="font-size:10px;padding:3px 8px">✏️ Параметры</button>
@@ -3562,6 +3581,7 @@ function renderRacksSidebar() {
   host.querySelector('[data-act="bulk-attrs"]')?.addEventListener('click', bulkEditAttrs);
   host.querySelector('[data-act="bulk-delete"]')?.addEventListener('click', bulkDelete);
   host.querySelector('[data-act="bulk-create"]')?.addEventListener('click', bulkCreateByMask);
+  host.querySelector('[data-act="bulk-materialize"]')?.addEventListener('click', bulkMaterializeVirtuals);
   host.querySelector('[data-act="bulk-all"]')?.addEventListener('click', () => {
     list.forEach(r => state.bulkSelection.add(r.id));
     renderRacksSidebar();
@@ -3924,6 +3944,101 @@ async function bulkCreateByMask() {
   scToast(`Создано ${created} стоек${tpl ? ` с корпусом «${tpl.name}»` : ''}`, 'ok');
 }
 
+/* v0.59.543: общая логика материализации виртуала.
+   Создаёт inst-* запись с тегом=autoTag, переносит state.contents/matrix
+   c virtual-id → inst-id. Возвращает { ok, inst, msg }. */
+function _materializeVirtual(v) {
+  if (!v || !(v.fromScheme || v.fromPorGroup)) return { ok: false, msg: 'не виртуал' };
+  const tag = (v.autoTag || '').trim();
+  if (!tag) return { ok: false, msg: 'нет autoTag' };
+  // Проверяем уникальность тега в проекте.
+  const tagInUse = Object.entries(state.rackTags || {})
+    .some(([rid, t]) => rid !== v.id && (t || '').trim().toLowerCase() === tag.toLowerCase());
+  if (tagInUse) return { ok: false, msg: `тег ${tag} уже занят` };
+  const inst = {
+    id: 'inst-' + Math.random().toString(36).slice(2, 10),
+    name: v.name || tag,
+    u: v.u || 42,
+    occupied: v.occupied || 0,
+    demandKw: v.demandKw || 0,
+    cosphi:   v.cosphi   || 0.95,
+    phases:   v.phases   || 3,
+    voltageV: v.voltageV || 400,
+    comment: v.fromPorGroup
+      ? `Материализовано из POR-группы ${new Date().toISOString().slice(0, 10)} (group ${v.porGroupId}, slot ${v.porGroupSlot}/${v.schemeTotal})`
+      : `Материализовано из схемы ${new Date().toISOString().slice(0, 10)} (узел ${v.schemeNodeId}, экземпляр ${v.schemeIndex}/${v.schemeTotal})`,
+    schemeNodeId: v.schemeNodeId,
+    schemeIndex: v.schemeIndex,
+  };
+  state.racks.push(inst);
+  state.rackTags[inst.id] = tag;
+  // Перенос contents/matrix.
+  if (Array.isArray(state.contents[v.id])) {
+    state.contents[inst.id] = state.contents[v.id];
+    delete state.contents[v.id];
+  }
+  if (Array.isArray(state.matrix[v.id])) {
+    state.matrix[inst.id] = state.matrix[v.id];
+    delete state.matrix[v.id];
+  }
+  return { ok: true, inst };
+}
+
+/** Материализовать текущую виртуальную стойку (кнопка ▸ Материализовать в топбаре). */
+async function materializeCurrent() {
+  const r = currentRack();
+  if (!r) { scToast('Нет выбранной стойки', 'warn'); return; }
+  if (!(r.fromScheme || r.fromPorGroup)) { scToast('Эта стойка уже реальная', 'info'); return; }
+  const ok = await scConfirm(
+    `Материализовать «${r.autoTag || r.name}»?`,
+    `Будет создана реальная inst-* запись с тегом «${r.autoTag}». Содержимое (PDU, устройства, патч-корды) перенесётся. Виртуал в сайдбаре пропадёт.`,
+    { okLabel: 'Материализовать' }
+  );
+  if (!ok) return;
+  const res = _materializeVirtual(r);
+  if (!res.ok) { scToast(`Не удалось: ${res.msg}`, 'err'); return; }
+  saveRacks();
+  saveRackTags();
+  saveContents();
+  saveMatrix();
+  state.currentRackId = res.inst.id;
+  rerender();
+  scToast(`Стойка «${res.inst.name}» материализована`, 'ok');
+  // Sync URL
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('rackId', res.inst.id);
+    history.replaceState(null, '', url);
+  } catch {}
+}
+
+/** Bulk-материализовать выбранные виртуалы. Реальные пропускаются. */
+async function bulkMaterializeVirtuals() {
+  const sel = _bulkSelected();
+  const virtSel = sel.filter(r => r.fromScheme || r.fromPorGroup);
+  if (!virtSel.length) { scToast('В выборе нет виртуальных стоек', 'info'); return; }
+  const ok = await scConfirm(
+    `Материализовать ${virtSel.length} виртуальных стоек?`,
+    `Каждая получит inst-* запись с autoTag (контент перенесётся). Конфликтные теги будут пропущены.`,
+    { okLabel: 'Материализовать' }
+  );
+  if (!ok) return;
+  let created = 0, skipped = 0;
+  const errors = [];
+  for (const v of virtSel) {
+    const res = _materializeVirtual(v);
+    if (res.ok) { created++; state.bulkSelection.delete(v.id); }
+    else { skipped++; errors.push(`${v.autoTag}: ${res.msg}`); }
+  }
+  saveRacks();
+  saveRackTags();
+  saveContents();
+  saveMatrix();
+  rerender();
+  const msg = `Материализовано ${created}${skipped ? ` (пропущено ${skipped}: ${errors.slice(0,2).join(', ')})` : ''}`;
+  scToast(msg, created ? 'ok' : 'warn');
+}
+
 /* ---- init -------------------------------------------------------------- */
 // v0.59.244: project badge — показать активный проект + sketch-warning.
 function renderProjectBadge() {
@@ -4194,6 +4309,8 @@ function init() {
   // v0.59.280: откат применения корпуса + сохранение как новый шаблон.
   $('sc-corpus-revert')?.addEventListener('click', revertCorpus);
   $('sc-corpus-save-as')?.addEventListener('click', saveCorpusAsNewTemplate);
+  // v0.59.543: материализация текущей виртуальной стойки.
+  $('sc-materialize')?.addEventListener('click', materializeCurrent);
 
   /* ---- 1.24.11 переключатель режима (СКС / Питание) ------------------ */
   document.querySelectorAll('.sc-vm-btn').forEach(btn => {

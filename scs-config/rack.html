@@ -155,6 +155,14 @@
             </div>
             <div style="font-size:10px"><span style="color:#64748b">Свободно:</span> <output id="sc-rack-free">—</output></div>
             <div style="font-size:10px"><span style="color:#64748b">⚡ Мощность:</span> <output id="sc-rack-power">—</output></div>
+            <!-- v0.59.543: бэйдж + кнопка материализации видимы только когда
+                 текущая стойка — виртуал из engine-схемы / POR-группы. JS
+                 (renderRackPicker / sc-rack onchange) выставляет display. -->
+            <div id="sc-virtual-row" style="display:none;font-size:11px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:5px 7px;margin:4px 0;color:#1e3a8a">
+              <div style="font-weight:600;margin-bottom:3px"><span id="sc-virtual-badge">🔗 виртуальная</span></div>
+              <div style="font-size:10px;color:#1e40af">Создаётся из узла схемы / POR-группы. Чтобы сохранить контент при удалении источника — материализуйте.</div>
+              <button type="button" id="sc-materialize" class="sc-btn sc-btn-primary" style="font-size:10px;padding:3px 8px;margin-top:5px" title="Создать реальный inst-* с тем же autoTag и перенести содержимое (PDU/устройства)">▸ Материализовать</button>
+            </div>
             <label class="sc-field-v" title="TIA-942 тег стойки.">
               <span style="color:#64748b">Тег (TIA-942)</span>
               <input id="sc-rack-tag" type="text" placeholder="DC1.H3.R05" maxlength="24" style="width:100%">
