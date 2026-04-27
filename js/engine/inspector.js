@@ -1915,6 +1915,51 @@ function _createInventoryEntryForNode(n) {
   window.open(url, '_blank');
 }
 
+// v0.59.549: при смене tag на интегрированном ИБП (kind='ups-integrated')
+// каскадно переименовываем все дочерние panel-узлы — заменяем префикс
+// «<oldTag>.» на «<newTag>.» в их .tag и в .name (если оно тоже содержит
+// старый префикс). Дочки, тег которых пользователь явно переопределил
+// (не начинается с oldPrefix) — не трогаем. Конфликтные новые теги
+// пропускаются с предупреждением.
+function _propagateIntegratedTagChange(n, oldTag, newTag) {
+  if (!n || n.type !== 'ups' || n.kind !== 'ups-integrated') return 0;
+  const ids = Array.isArray(n.integratedChildIds) ? n.integratedChildIds : [];
+  if (!ids.length || !oldTag || oldTag === newTag) return 0;
+  const oldPrefix = oldTag + '.';
+  const newPrefix = newTag + '.';
+  // Соберём занятые новые теги (за исключением самих children) для проверки уникальности.
+  const childIdSet = new Set(ids);
+  const taken = new Set();
+  for (const m of state.nodes.values()) {
+    if (!m || !m.tag) continue;
+    if (m.id === n.id) continue;
+    if (childIdSet.has(m.id)) continue;
+    taken.add(String(m.tag).trim().toLowerCase());
+  }
+  let renamed = 0;
+  const skipped = [];
+  for (const cid of ids) {
+    const c = state.nodes.get(cid);
+    if (!c || !c.tag) continue;
+    if (!c.tag.startsWith(oldPrefix)) continue; // ручной override — не трогаем
+    const candidate = newPrefix + c.tag.slice(oldPrefix.length);
+    if (taken.has(candidate.toLowerCase())) {
+      skipped.push(c.tag + ' → ' + candidate);
+      continue;
+    }
+    c.tag = candidate;
+    if (typeof c.name === 'string' && c.name.startsWith(oldPrefix)) {
+      c.name = newPrefix + c.name.slice(oldPrefix.length);
+    }
+    taken.add(candidate.toLowerCase());
+    renamed++;
+  }
+  if (skipped.length) {
+    flash(`Переименовано ${renamed}, пропущено из-за конфликтов: ${skipped.slice(0,2).join(', ')}${skipped.length>2?'…':''}`, 'info');
+  }
+  return renamed;
+}
+
 // v0.58.50: минимальная провязка инпутов вкладки «Общее» на заданном root.
 // Используется в модалках (openPanelParamsModal/openUpsParamsModal/…),
 // чтобы не дублировать глобальные обработчики кнопок из wireInspectorInputs.
@@ -1936,7 +1981,13 @@ export function wireGeneralPanelInputs(n, root) {
           inp.value = n.tag || '';
           return;
         }
+        const oldTag = n.tag || '';
         n.tag = t;
+        // v0.59.549: каскадное переименование дочек интегрированного ИБП.
+        if (n.type === 'ups' && n.kind === 'ups-integrated' && oldTag && oldTag !== t) {
+          const renamed = _propagateIntegratedTagChange(n, oldTag, t);
+          if (renamed > 0) flash(`Обновлены теги ${renamed} компонентов интегрированного ИБП`, 'ok');
+        }
       } else if (prop === 'on' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         setEffectiveOn(n, v);
       } else if (prop === 'productId') {
@@ -2137,7 +2188,13 @@ export function wireInspectorInputs(n, root) {
           inp.value = n.tag || '';
           return;
         }
+        const oldTag = n.tag || '';
         n.tag = t;
+        // v0.59.549: каскадное переименование дочек интегрированного ИБП.
+        if (n.type === 'ups' && n.kind === 'ups-integrated' && oldTag && oldTag !== t) {
+          const renamed = _propagateIntegratedTagChange(n, oldTag, t);
+          if (renamed > 0) flash(`Обновлены теги ${renamed} компонентов интегрированного ИБП`, 'ok');
+        }
       } else if (prop === 'on' && (n.type === 'source' || n.type === 'generator' || n.type === 'ups')) {
         setEffectiveOn(n, v);
       } else if (prop === 'manualActiveInput') {
