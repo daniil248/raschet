@@ -1471,10 +1471,23 @@ const _handoffVdc = { min: 0, max: 0 };
 
 // v0.59.413: Расчётные коэффициенты (IEEE 485 / IEC 62040).
 // Старение, температура, конструктивный запас, окно V_DC, SoC-min для Li.
+// v0.59.469: расчёт k_temp по IEEE 485 § 6.2 из температуры АКБ.
+// Формула: k_temp = 1 + 0.008 · (25 − T) при T < 25°C; иначе 1.00.
+// При T > 25°C ёмкость условно «выше», но для надёжности не уменьшаем k.
+function _kTempFromCelsius(tC) {
+  if (!Number.isFinite(tC)) return 1.0;
+  if (tC >= 25) return 1.0;
+  return Math.max(1.0, 1 + 0.008 * (25 - tC));
+}
 function _readDerating() {
   const get = id => Number(document.getElementById(id)?.value) || 0;
   const kAge    = Math.max(1, get('calc-k-age')    || 1.25);
-  const kTemp   = Math.max(1, get('calc-k-temp')   || 1.00);
+  // v0.59.469: k_temp вычисляется из температуры (если поле задано),
+  // hidden-input calc-k-temp хранит результат для preserve-on-miss совместимости.
+  const tEl = document.getElementById('calc-temp-c');
+  const kTemp = tEl
+    ? _kTempFromCelsius(Number(tEl.value))
+    : Math.max(1, get('calc-k-temp') || 1.00);
   const kDesign = Math.max(1, get('calc-k-design') || 1.10);
   const vdcSafetyPct = Math.max(0, Math.min(20, get('calc-vdc-safety') || 0));
   const socMinPct    = Math.max(0, Math.min(50, get('calc-soc-min') || 0));
@@ -2069,6 +2082,62 @@ function doCalc() {
     if (r.extrapolated) html += `<div class="warn" style="background:#fff3e0;border:1px solid #ffb74d;padding:6px 8px;border-radius:4px;margin-top:6px"><b>⚠ Условный расчёт.</b> Запрошенное время разряда находится вне таблицы производителя — значение получено линейной экстраполяцией. Не подтверждено производителем.</div>`;
     if (r.warnings.length) html += r.warnings.map(w => `<div class="warn">⚠ ${escHtml(w)}</div>`).join('');
     html += `</div>`;
+  } else if (mode === 'auto') {
+    // v0.59.469: Авто-оптимум — пользователь задаёт только P+t, программа
+    // перебирает endV и для каждого считает feasibility + N. Выбирает endV
+    // дающий лучший компромисс: максимальное endV (бережнее к АКБ → больше
+    // ресурс циклов) среди feasible, при равенстве — минимум блоков (дешевле).
+    const targetMinAuto = Number(get('calc-target-auto')?.value) || targetMin;
+    const isLi = chemistry === 'li-ion';
+    const candidates = isLi ? [2.5, 2.6, 2.7, 2.8, 2.9, 3.0] : [1.65, 1.70, 1.75, 1.80, 1.85, 1.90];
+    const trials = [];
+    for (const ev of candidates) {
+      const optT = _pickOptimalBlocks(vRange.min, vRange.max, blockV, ev, chemistry, derate.vdcSafetyPct);
+      if (!optT.feasible) continue;
+      const f = calcRequiredBlocks({
+        battery, loadKw: loadKwEff, dcVoltage: optT.N * blockV,
+        endV: ev, invEff, chemistry,
+        capacityAh: battery ? battery.capacityAh : capacityAh,
+        blocksPerString: optT.N,
+        targetMin: targetMinAuto,
+      });
+      if (!f) continue;
+      trials.push({ endV: ev, opt: optT, found: f, totalBlocks: f.totalBlocks });
+    }
+    if (!trials.length) {
+      html += `<div class="result-block error">Авто-подбор не нашёл подходящего endV. Проверьте V<sub>DC</sub> окно ИБП и совместимость АКБ.</div>`;
+    } else {
+      trials.sort((a, b) => (b.endV - a.endV) || (a.totalBlocks - b.totalBlocks));
+      const best = trials[0];
+      blocksPerString = best.opt.N;
+      const dcVoltageFinal = best.opt.N * blockV;
+      const dcEl2 = get('calc-dcv'); if (dcEl2) dcEl2.value = dcVoltageFinal;
+      const endvEl = get('calc-endv'); if (endvEl) endvEl.value = best.endV;
+      params.endV = best.endV;
+      params.dcVoltage = dcVoltageFinal;
+      params.targetMin = targetMinAuto;
+      calcResult = { kind: 'required', found: best.found, blocksPerString, derate, loadKwEff, autoEndV: best.endV, autoTrials: trials };
+      html += `<div class="result-block">`;
+      html += `<div class="result-title">🤖 Авто-оптимум: endV = <b style="color:#2e7d32">${best.endV} В/эл</b>, ${best.found.totalBlocks} блоков</div>`;
+      html += `<div class="result-value">${best.found.totalBlocks}</div>`;
+      html += `<div class="result-sub">Цепочек: <b>${best.found.strings}</b> × блоков в цепочке: <b>${best.found.blocksPerString}</b> · V<sub>DC</sub>=${dcVoltageFinal} В</div>`;
+      html += `<div class="result-sub">Реальная автономия: <b>${fmt(best.found.result.autonomyMin)} мин</b> (цель ${targetMinAuto} мин). На блок: <b>${fmt(best.found.result.blockPowerW)} W</b>.</div>`;
+      html += `<div class="result-sub" style="background:#e8f5e9;padding:6px 8px;border-radius:4px;font-size:11px;margin-top:4px;color:#1b5e20">Выбран максимальный endV из feasible — это <b>бережнее к АКБ</b>: меньше глубина разряда → больше циклов, длиннее срок службы. При равенстве по endV выбирается минимум блоков (дешевле и компактнее).</div>`;
+      if (derate.kTotal > 1.001) {
+        html += `<div class="result-sub" style="background:#f0f7ff;padding:4px 6px;border-radius:3px;font-size:11px">`
+          + `Учтены коэффициенты: k<sub>age</sub>×k<sub>temp</sub>×k<sub>design</sub> = <b>${derate.kTotal.toFixed(3)}</b> → расчётная нагрузка <b>${fmt(loadKwEff)} kW</b> (паспортная ${fmt(loadKw)} kW).`
+          + `</div>`;
+      }
+      // Таблица всех вариантов
+      html += `<details style="margin-top:8px"><summary class="muted" style="font-size:11px;cursor:pointer">📋 Все варианты автоподбора (${trials.length})</summary>`;
+      html += `<table style="font-size:11px;margin-top:4px;border-collapse:collapse;width:auto"><thead><tr style="background:#f0f4f8"><th style="padding:3px 10px;text-align:left">endV, В/эл</th><th style="padding:3px 10px">N в цепочке</th><th style="padding:3px 10px">Цепочек</th><th style="padding:3px 10px">Всего</th><th style="padding:3px 10px">Автономия, мин</th></tr></thead><tbody>`;
+      for (const t of trials) {
+        const isBest = t === best;
+        html += `<tr style="${isBest?'background:#e8f5e9;font-weight:600':''}"><td style="padding:2px 10px">${t.endV}${isBest?' ★':''}</td><td style="padding:2px 10px;text-align:center">${t.opt.N}</td><td style="padding:2px 10px;text-align:center">${t.found.strings}</td><td style="padding:2px 10px;text-align:center">${t.totalBlocks}</td><td style="padding:2px 10px;text-align:center">${fmt(t.found.result.autonomyMin)}</td></tr>`;
+      }
+      html += `</tbody></table></details>`;
+      html += `</div>`;
+    }
   } else {
     // Обратная задача: дано — нагрузка + целевое время → сколько блоков
     const found = calcRequiredBlocks({
@@ -2609,6 +2678,21 @@ function wireCalcForm() {
     _renderCapacityRecommend();
   });
   modeSel.dispatchEvent(new Event('change'));
+  // v0.59.469: температура → k_temp + display update.
+  const tempEl = document.getElementById('calc-temp-c');
+  const updateKTemp = () => {
+    const tC = Number(tempEl?.value);
+    const k = _kTempFromCelsius(tC);
+    const hidden = document.getElementById('calc-k-temp');
+    if (hidden) hidden.value = k.toFixed(2);
+    const disp = document.getElementById('calc-k-temp-display');
+    if (disp) disp.textContent = k.toFixed(2);
+    _refreshDerateSummary();
+  };
+  if (tempEl) {
+    tempEl.addEventListener('input', updateKTemp);
+    updateKTemp();
+  }
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
   const btnPrn = document.getElementById('btn-battery-print');

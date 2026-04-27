@@ -248,6 +248,7 @@
           <select id="calc-mode">
             <option value="autonomy">Автономия при заданных блоках</option>
             <option value="required">Сколько блоков для целевого времени</option>
+            <option value="auto">🤖 Авто-оптимум (P + t → подбор endV и N)</option>
           </select>
         </div>
         <div>
@@ -311,6 +312,10 @@
           <label>Целевая автономия, мин</label>
           <input id="calc-target" type="number" min="1" step="1" value="10">
         </div>
+        <div data-mode-only="auto">
+          <label>Целевая автономия, мин <span class="muted" style="font-size:10px;font-weight:400">· для автоподбора</span></label>
+          <input id="calc-target-auto" type="number" min="1" step="1" value="10">
+        </div>
 
         <!-- ============ Расчётные коэффициенты (IEEE 485 / IEC 62040) ============ -->
         <details class="field-full" id="calc-derating-block" style="grid-column:1/-1;margin-top:6px;border:1px solid #d6dde6;border-radius:6px;padding:6px 10px;background:#fafbfc">
@@ -333,29 +338,31 @@
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
             <div>
-              <label style="font-size:11px">k<sub>age</sub> · старение (EOL)</label>
-              <input id="calc-k-age" type="number" min="1" max="2" step="0.01" value="1.25"
-                title="IEEE 485: 1.25 (к концу срока АКБ даёт 80% ёмкости).">
+              <label style="font-size:11px">k<sub>age</sub> · старение (EOL) <span style="cursor:help;color:#5a6680" title="К концу срока службы (10 лет VRLA, 15 лет Li-Ion) АКБ даёт 80% паспортной ёмкости. k_age = 1/0.80 = 1.25 (IEEE 485). Для IEC 62040 — 1.20 (85%). Для нового АКБ без запаса — 1.00 (теор.).">ⓘ</span></label>
+              <input id="calc-k-age" type="number" min="1" max="2" step="0.01" value="1.25">
+              <div class="muted" style="font-size:10px;line-height:1.3;margin-top:2px">1.25 IEEE · 1.20 IEC · 1.00 без запаса</div>
             </div>
             <div>
-              <label style="font-size:11px">k<sub>temp</sub> · температура</label>
-              <input id="calc-k-temp" type="number" min="1" max="2" step="0.01" value="1.00"
-                title="При 25 °C = 1.00. При +10 °C ≈ 1.11. При +5 °C ≈ 1.18.">
+              <label style="font-size:11px">Температура, °C <span style="cursor:help;color:#5a6680" title="Введите ожидаемую температуру АКБ. Программа автоматически посчитает k_temp по IEEE 485: k_temp = 1 + 0.008·(25 − T) при T < 25°C; иначе 1.00. Например, +10°C → k=1.12, +5°C → k=1.16, 0°C → k=1.20, −10°C → k=1.28.">ⓘ</span></label>
+              <input id="calc-temp-c" type="number" min="-30" max="50" step="1" value="25"
+                title="Ожидаемая температура помещения с АКБ. Стандарт IEEE 485 § 6.2: k_temp = 1 + 0.008·(25 − T).">
+              <div class="muted" style="font-size:10px;line-height:1.3;margin-top:2px">k<sub>temp</sub> = <span id="calc-k-temp-display">1.00</span></div>
+              <input id="calc-k-temp" type="hidden" value="1.00">
             </div>
             <div>
-              <label style="font-size:11px">k<sub>design</sub> · конструкт. запас</label>
-              <input id="calc-k-design" type="number" min="1" max="2" step="0.01" value="1.10"
-                title="IEEE 485: 1.10–1.15. Учитывает погрешности расчёта и нагрузки.">
+              <label style="font-size:11px">k<sub>design</sub> · конструкт. запас <span style="cursor:help;color:#5a6680" title="Учёт неопределённости нагрузки, погрешностей измерения, future expansion. IEEE 485: 1.10–1.15 рекомендуется. Если нагрузка известна точно (паспорт ИБП) и не растёт — можно 1.05.">ⓘ</span></label>
+              <input id="calc-k-design" type="number" min="1" max="2" step="0.01" value="1.10">
+              <div class="muted" style="font-size:10px;line-height:1.3;margin-top:2px">1.10 типовое · 1.15 запас на рост · 1.00 точная</div>
             </div>
             <div>
-              <label style="font-size:11px">Окно V<sub>DC</sub>, %</label>
-              <input id="calc-vdc-safety" type="number" min="0" max="20" step="0.5" value="0"
-                title="Сужение диапазона ИБП: vdcMin·(1+x/100) … vdcMax·(1−x/100). По умолчанию 3% — учёт ripple, переходных процессов, падения на шине.">
+              <label style="font-size:11px">Окно V<sub>DC</sub>, % <span style="cursor:help;color:#5a6680" title="Симметричное сужение паспортного диапазона ИБП: эффективное окно = vdcMin·(1+x%) … vdcMax·(1−x%). Учитывает ripple от выпрямителя, переходные провалы, падение на DC-шине, разброс blockV в цепочке. Стандарты: 0% (по spec), 2-3% (типовой инж. запас), 5% (тропики/длинные DC-кабели).">ⓘ</span></label>
+              <input id="calc-vdc-safety" type="number" min="0" max="20" step="0.5" value="0">
+              <div class="muted" style="font-size:10px;line-height:1.3;margin-top:2px">0% по spec · 3% инж.запас · 5% тропики</div>
             </div>
             <div>
-              <label style="font-size:11px">SoC мин (Li), %</label>
-              <input id="calc-soc-min" type="number" min="0" max="50" step="1" value="10"
-                title="Минимально допустимый SoC для Li-ion. 10% — типовой запас (защита BMS). На VRLA не влияет.">
+              <label style="font-size:11px">SoC мин (Li), % <span style="cursor:help;color:#5a6680" title="Минимально допустимый State-of-Charge для Li-Ion. BMS отключит модуль при достижении этого значения. На VRLA не влияет (там endV определяет глубину разряда).">ⓘ</span></label>
+              <input id="calc-soc-min" type="number" min="0" max="50" step="1" value="10">
+              <div class="muted" style="font-size:10px;line-height:1.3;margin-top:2px">10% типовой Li · 5% агрессивный · 20% бережный</div>
             </div>
           </div>
           <div id="calc-derate-summary" class="muted" style="font-size:11px;margin-top:8px;padding:6px 8px;background:#f0f7ff;border:1px solid #b3d4ff;border-radius:4px;line-height:1.5"></div>
