@@ -73,6 +73,15 @@ export function loadSchemeVirtualRacks(pid) {
     const tpl = n.rackTemplate && typeof n.rackTemplate === 'object' ? n.rackTemplate : null;
     const u = (tpl && Number.isFinite(tpl.u)) ? tpl.u : 42;
     const occupied = (tpl && Number.isFinite(tpl.occupied)) ? tpl.occupied : 0;
+    // v0.59.534: запрошенная мощность стойки = n.demandKw (от технолога).
+    // Если узел представляет N стоек count>1, demandKw — на ОДНУ стойку
+    // (engine рассчитывает суммарную нагрузку как demandKw × count
+    // самостоятельно). Это даёт Компоновщику видеть «требование на 1 шкаф»
+    // и сравнивать с фактической Σ powerW устройств.
+    const demandKw = Number(n.demandKw) || 0;
+    const cosPhi   = Number(n.cosPhi)   || 0.95;
+    const phases   = Number(n.phases)   || 3;
+    const voltageV = Number(n.voltageV) || 400;
 
     for (let i = 1; i <= total; i++) {
       const tag = total > 1 ? `${baseTag}-${i}` : baseTag;
@@ -81,6 +90,10 @@ export function loadSchemeVirtualRacks(pid) {
         name: total > 1 ? `${baseName} #${i}` : baseName,
         u,
         occupied,
+        demandKw,
+        cosphi: cosPhi,
+        phases,
+        voltageV,
         fromScheme: true,
         schemeNodeId: n.id,
         schemeIndex: i,
@@ -126,6 +139,14 @@ export function loadPorGroupVirtualRacks(pid) {
     const baseTag  = (g.tag || '').trim() || (g.name || '').trim() || 'GR' + String(g.id).slice(-4);
     const baseName = (g.name || '').trim() || baseTag;
 
+    // v0.59.534: запрошенная мощность одного слота — group.demandKwPerUnit
+    // (от технолога, авторитет для электрики). cosPhi/phases/voltageV
+    // тоже наследуются от группы, чтобы Компоновщик сразу видел контекст.
+    const perUnitKw = Number(e.demandKwPerUnit) || (count ? (Number(e.demandKw) || 0) / count : 0);
+    const cosPhi    = Number(e.cosPhi)    || 0.95;
+    const phases    = Number(e.phases)    || 3;
+    const voltageV  = Number(e.voltageV)  || 400;
+
     for (let i = 1; i <= count; i++) {
       const tag = count > 1 ? `${baseTag}-${i}` : baseTag;
       const memberId = members[i - 1] || null;
@@ -134,6 +155,10 @@ export function loadPorGroupVirtualRacks(pid) {
         name: count > 1 ? `${baseName} #${i}` : baseName,
         u: 42,
         occupied: 0,
+        demandKw: perUnitKw,
+        cosphi: cosPhi,
+        phases,
+        voltageV,
         fromPorGroup: true,
         porGroupId:  g.id,
         porGroupSlot: i,

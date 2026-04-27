@@ -712,6 +712,9 @@ function renderContents() {
     freeEl.textContent = ranges.length ? ranges.join(', ') : (r ? 'нет' : '—');
   }
   // v0.59.268: «⚡ Мощность» — суммарная заявленная, с % от demandKw
+  // v0.59.534: явно — «факт / запрошено». demandKw — авторитет (от
+  // технолога); кабель/автомат считаются по нему. Σ powerW устройств —
+  // фактическая нагрузка по содержимому, информативная.
   const pwEl = $('sc-rack-power');
   if (pwEl) {
     if (r) {
@@ -723,12 +726,12 @@ function renderContents() {
       const demand = +r.demandKw || 0;
       const pct = demand ? Math.round((kw / demand) * 100) : null;
       pwEl.textContent = demand
-        ? `${kw.toFixed(2)} / ${demand.toFixed(2)} кВт (${pct}%)`
-        : `${totalW} Вт`;
+        ? `факт ${kw.toFixed(2)} / запрос ${demand.toFixed(2)} кВт (${pct}%)`
+        : `факт ${totalW} Вт · запрос не задан`;
       pwEl.style.color = (pct != null && pct > 100) ? '#b91c1c' : (pct != null && pct > 80) ? '#c2410c' : '';
       pwEl.title = demand
-        ? `Σ powerW = ${totalW} Вт; demandKw стойки = ${demand} кВт; использование ${pct}%`
-        : `Σ powerW = ${totalW} Вт (demandKw стойки не задан в rack-config)`;
+        ? `Фактически (Σ powerW устройств в стойке) = ${totalW} Вт = ${kw.toFixed(2)} кВт.\nЗапрошено (demandKw, от технолога) = ${demand} кВт.\nРасчёт кабеля/автомата ведётся по запрошенной (это авторитет).\nИспользование = ${pct}% (если >100% — стойка перегружена относительно запроса).`
+        : `Σ powerW = ${totalW} Вт (demandKw не задан — для virtual из POR-группы это перенесено из demandKwPerUnit).`;
     } else {
       pwEl.textContent = '—';
       pwEl.style.color = '';
