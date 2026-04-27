@@ -467,33 +467,55 @@ function render() {
     // (raschet.projects.v1) синхронно — тот же массив записей. Storage-
     // схемы детектируются по lp_-префиксу или Storage-полям
     // (scheme/memberUids/ownerEmail), исключая project-контейнеры.
-    try {
-      const allRecs = listProjects() || [];
-      // v0.59.524: более толерантный фильтр + диагностика. Считаем
-      // схему «принадлежащей проекту», если scheme.projectId === p.id,
-      // ИЛИ scheme.parentProjectId === p.id (legacy-поле). Защищаемся
-      // от попадания project-контейнеров (по id-префиксу p_/s_ и по
-      // kind=full/sketch).
+    // v0.59.525: схемы могут жить ЛИБО в LS (Local mode), ЛИБО в
+    // Firestore (cloud mode). Раньше я переписал на sync listProjects()
+    // — это сломало cloud-режим (схемы там, LS пуст). Теперь используем
+    // window.Storage.listMyProjects() async с ожиданием:
+    //   1. Storage init готов (typeof === 'function')
+    //   2. Если cloud-режим в принципе доступен (Firebase) — ждём auth
+    //      готовности (Storage.isCloud = true) до 5 сек.
+    //
+    // p.id здесь — id проекта-контейнера. Схемы привязаны через
+    // scheme.projectId === p.id (или legacy parentProjectId).
+    (async () => {
       const _isCtx = (s) => {
         if (!s || typeof s.id !== 'string') return false;
         if (s.id.startsWith('p_') || s.id.startsWith('s_')) return true;
         if (s.kind === 'full' || s.kind === 'sketch') return true;
         return false;
       };
-      const mine = allRecs.filter(s => {
-        if (!s || !s.id) return false;
-        if (_isCtx(s)) return false;
-        const sp = s.projectId || s.parentProjectId || '';
-        return sp === p.id;
-      });
-      // Диагностика — поможет если будут ещё проблемы.
       try {
-        const total = allRecs.length;
-        const schemes = allRecs.filter(s => !_isCtx(s)).length;
-        const linkedAny = allRecs.filter(s => !_isCtx(s) && (s.projectId || s.parentProjectId)).length;
-        console.info(`[project.js] schemes load: pid=${p.id} total=${total} schemes=${schemes} linkedAny=${linkedAny} mine=${mine.length}`);
-      } catch {}
-      if (mine.length) {
+        // Ждём Storage. Если Firebase compat загружен (window.firebase) —
+        // ждём пока Storage.isCloud станет true (auth state resolved).
+        // Иначе — Local-режим, можно сразу.
+        const start = Date.now();
+        const hasFirebase = (typeof window.firebase !== 'undefined');
+        while (Date.now() - start < 5000) {
+          if (!window.Storage || typeof window.Storage.listMyProjects !== 'function') {
+            await new Promise(r => setTimeout(r, 100)); continue;
+          }
+          if (hasFirebase && !window.Storage.isCloud) {
+            // Возможно, ещё подключается. Ждём.
+            await new Promise(r => setTimeout(r, 100)); continue;
+          }
+          break; // готово
+        }
+        if (!window.Storage || typeof window.Storage.listMyProjects !== 'function') {
+          console.warn('[project.js] Storage не готов даже после 5с'); return;
+        }
+
+        const all = await window.Storage.listMyProjects();
+        const mine = (all || []).filter(s => {
+          if (!s || !s.id) return false;
+          if (_isCtx(s)) return false;
+          const sp = s.projectId || s.parentProjectId || '';
+          return sp === p.id;
+        });
+        // Диагностика
+        try {
+          console.info(`[project.js] schemes load: pid=${p.id} mode=${window.Storage.mode} total=${(all||[]).length} mine=${mine.length}`);
+        } catch {}
+        if (!mine.length) return;
         const rowsHtml = mine.map(s => {
           const href = '../index.html?project=' + encodeURIComponent(s.id) + '&from=projects&fromCtx=' + encodeURIComponent(p.id);
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
@@ -504,8 +526,8 @@ function render() {
           </div>`;
         }).join('');
         _enrichGroup('schematic', rowsHtml, mine.length);
-      }
-    } catch (e) { console.warn('[project.js] schemes load failed', e); }
+      } catch (e) { console.warn('[project.js] schemes load failed', e); }
+    })();
 
     // v0.59.377: legacy-СКС в этом проекте — данные лежат под
     // raschet.project.<p.id>.scs-design.links.v1 (без подпроекта).

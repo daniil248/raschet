@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.525', date: '2026-04-27', items: [
+      '🔧 <b>Fix project card schemes (real root cause через debug в браузере)</b>. Подключился к браузеру через Claude in Chrome MCP, обнаружил что user в <b>cloud-режиме</b> (Firestore, аутентифицирован через Gmail) — все схемы лежат в Firestore, в LS только 4 project-контейнера.',
+      '• <b>Корень бага</b>: project.html инициализирует Firebase async; в момент рендера <code>Storage.mode === \'local\'</code> и <code>Storage.listMyProjects()</code> возвращает пусто (Local-фильтр исключает project-контейнеры). Через ~1с auth-state resolved, Storage переключается в \'firestore\', но project.js уже отрендерил группу «Схем нет».',
+      '• <b>v0.59.523 fix (sync listProjects)</b> только усугубил: LS пуст для cloud-юзеров, sync read всегда возвращал 0.',
+      '• <b>Real fix (v0.59.525)</b>: вернул async <code>Storage.listMyProjects()</code>, но с <b>правильным ожиданием</b>: если <code>window.firebase</code> загружен, ждём пока <code>Storage.isCloud === true</code> до 5 секунд (polling 100ms). Это гарантирует что Storage уже переключился в cloud-режим перед запросом.',
+      '• <b>Diagnostic в console</b>: <code>[project.js] schemes load: pid=X mode=firestore total=N mine=M</code>.',
+      '• <b>Эффект</b>: после Ctrl+F5 на карточке любого проекта — схемы должны появиться (cloud user) или показать «Схем нет» (local user без схем — корректно).',
+      'Файлы: <code>projects/project.js</code> — async listMyProjects с ожиданием Storage.isCloud.',
+    ] },
     { version: '0.59.524', date: '2026-04-27', items: [
       '🔍 <b>Fix project card schemes: толерантный фильтр + diagnostics</b>. После v0.59.523 пользователь репортит «не работает, для всех проектов в схемах пусто». Возможные причины:',
       '• <b>scheme.projectId</b> мог быть установлен в legacy-поле <code>parentProjectId</code> (пред-Storage версия). Расширил фильтр: <code>(s.projectId || s.parentProjectId) === p.id</code>.',
