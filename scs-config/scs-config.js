@@ -217,18 +217,31 @@ function scUiHost() {
   }
   return h;
 }
-function scToast(msg, kind) {
+function scToast(msg, kind, opts) {
   kind = kind || 'info'; // info | ok | warn | err
+  opts = opts || {};
   const host = scUiHost();
   const el = document.createElement('div');
   el.className = 'sc-toast sc-toast-' + kind;
   el.textContent = msg;
+  // v0.59.552: optional onClick handler — toast становится кликабельным,
+  // курсор pointer, клик вызывает callback и закрывает toast.
+  if (typeof opts.onClick === 'function') {
+    el.style.cursor = 'pointer';
+    el.title = opts.title || 'Кликните для подробностей';
+    el.addEventListener('click', () => {
+      try { opts.onClick(); } catch (e) { console.warn(e); }
+      el.classList.remove('sc-toast-shown');
+      setTimeout(() => el.remove(), 250);
+    });
+  }
   host.appendChild(el);
   requestAnimationFrame(() => el.classList.add('sc-toast-shown'));
+  const ttl = opts.ttl || (kind === 'err' ? 5000 : (typeof opts.onClick === 'function' ? 8000 : 3000));
   setTimeout(() => {
     el.classList.remove('sc-toast-shown');
     setTimeout(() => el.remove(), 250);
-  }, kind === 'err' ? 5000 : 3000);
+  }, ttl);
 }
 function scConfirm(title, message, opts) {
   opts = opts || {};
@@ -3802,6 +3815,146 @@ async function bulkEditAttrs() {
   scToast(`Применены параметры [${Object.keys(result).join(', ')}] к ${realSel.length} стойкам`, 'ok');
 }
 
+/** v0.59.552: разрешить дубликаты TIA-тегов. Принимает результат
+ *  Object.entries(byTag).filter(size>1): [[tagLowerCase, [rid1, rid2, ...]], ...].
+ *  Модалка показывает все группы с radio-выбором «оставить» и inline-инпутами
+ *  для переименования остальных. Live-валидация (новый тег уникальный, не пуст). */
+async function resolveTagDuplicates(dups) {
+  if (!Array.isArray(dups) || !dups.length) { scToast('Дубликаты не найдены', 'info'); return; }
+  // Подготовка: для каждой группы — массив { id, name, originalTag, newTag, keep }.
+  // По умолчанию первый id «оставляется», остальным предлагается tag + '-2', '-3'...
+  const suggestNext = (baseTag, used) => {
+    let n = 2;
+    while (used.has((baseTag + '-' + n).toLowerCase()) && n < 9999) n++;
+    return baseTag + '-' + n;
+  };
+  const groups = dups.map(([tagLc, ids]) => {
+    const originalTag = (state.rackTags[ids[0]] || tagLc).trim();
+    const used = new Set(Object.values(state.rackTags || {}).map(t => (t || '').trim().toLowerCase()).filter(Boolean));
+    const items = ids.map((id, idx) => {
+      const r = state.racks.find(x => x.id === id);
+      const name = r ? (r.name || '(без имени)') : '(нет в state.racks)';
+      let newTag = originalTag;
+      let keep = (idx === 0);
+      if (!keep) {
+        newTag = suggestNext(originalTag, used);
+        used.add(newTag.toLowerCase());
+      }
+      return { id, name, originalTag, newTag, keep };
+    });
+    return { tagLc, items };
+  });
+
+  const result = await new Promise(resolve => {
+    const back = document.createElement('div');
+    back.className = 'sc-modal-back';
+    back.innerHTML = `
+      <div class="sc-modal-card" role="dialog" aria-modal="true" style="min-width:520px;max-width:680px">
+        <div class="sc-modal-title">⚠ Разрешить дубликаты тегов — ${groups.length} групп</div>
+        <div class="sc-modal-msg">В каждой группе выберите ОДНУ стойку, которая «оставит» текущий тег. Остальным проставьте уникальный новый. Поля валидируются live; конфликты подсвечиваются красным.</div>
+        <div id="sc-resolve-list" style="max-height:60vh;overflow:auto;margin-top:10px">${groups.map((g, gi) => `
+          <div class="sc-resolve-group" data-gi="${gi}" style="margin-bottom:14px;padding:8px 10px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px">
+            <div style="font-size:11px;font-weight:600;color:#92400e;margin-bottom:6px">Тег «${escape(g.items[0].originalTag)}» — ${g.items.length} стоек</div>
+            ${g.items.map((it, ii) => `
+              <div class="sc-resolve-row" data-gi="${gi}" data-ii="${ii}" style="display:grid;grid-template-columns:auto 1fr 110px;gap:6px;align-items:center;font-size:12px;padding:3px 0">
+                <label style="cursor:pointer"><input type="radio" name="sc-resolve-keep-${gi}" data-keep="${ii}"${it.keep ? ' checked' : ''}> оставить</label>
+                <div title="${escape(it.id)}"><code style="font-size:10px;color:#64748b">${escape(it.id)}</code> · ${escape(it.name)}</div>
+                <input type="text" data-newtag="${ii}" value="${escape(it.newTag)}"${it.keep ? ' disabled' : ''} placeholder="новый тег" style="padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:11px">
+              </div>`).join('')}
+          </div>`).join('')}</div>
+        <div id="sc-resolve-warn" style="font-size:11px;color:#b91c1c;min-height:14px;margin-top:6px"></div>
+        <div class="sc-modal-actions" style="margin-top:10px">
+          <button type="button" class="sc-btn" data-v="0">Отмена</button>
+          <button type="button" class="sc-btn sc-btn-primary" data-v="1">Применить</button>
+        </div>
+      </div>`;
+    scUiHost().appendChild(back);
+
+    const validate = () => {
+      const warnEl = back.querySelector('#sc-resolve-warn');
+      const usedAcross = new Set();
+      // Сначала «keep» теги — они занимают свой исходный тег.
+      groups.forEach(g => {
+        const keepIt = g.items.find(it => it.keep);
+        if (keepIt) usedAcross.add(keepIt.originalTag.toLowerCase());
+      });
+      // Также теги других стоек (не из dup-групп).
+      const inDup = new Set(groups.flatMap(g => g.items.map(it => it.id)));
+      Object.entries(state.rackTags || {}).forEach(([rid, t]) => {
+        if (inDup.has(rid)) return;
+        const norm = (t || '').trim().toLowerCase();
+        if (norm) usedAcross.add(norm);
+      });
+      let conflicts = 0;
+      groups.forEach((g, gi) => {
+        g.items.forEach((it, ii) => {
+          const inp = back.querySelector(`[data-gi="${gi}"][data-ii="${ii}"] [data-newtag]`);
+          if (!inp) return;
+          if (it.keep) { inp.style.borderColor = '#cbd5e1'; return; }
+          const v = (inp.value || '').trim().toLowerCase();
+          const dup = !v || usedAcross.has(v);
+          inp.style.borderColor = dup ? '#dc2626' : '#cbd5e1';
+          if (dup) conflicts++;
+          else usedAcross.add(v);
+        });
+      });
+      const okBtn = back.querySelector('[data-v="1"]');
+      if (conflicts > 0) {
+        warnEl.textContent = `Конфликтов: ${conflicts}. Исправьте подсвеченные поля.`;
+        okBtn.disabled = true; okBtn.style.opacity = '0.5';
+      } else {
+        warnEl.textContent = '';
+        okBtn.disabled = false; okBtn.style.opacity = '';
+      }
+    };
+
+    back.querySelectorAll('input[type="radio"][data-keep]').forEach(r => {
+      r.addEventListener('change', () => {
+        const gi = +r.closest('[data-gi]').dataset.gi;
+        const ii = +r.dataset.keep;
+        groups[gi].items.forEach((it, idx) => { it.keep = (idx === ii); });
+        // disable новый тег для keep, enable для остальных + восстановить значение.
+        groups[gi].items.forEach((it, idx) => {
+          const inp = back.querySelector(`[data-gi="${gi}"][data-ii="${idx}"] [data-newtag]`);
+          if (!inp) return;
+          if (it.keep) { inp.disabled = true; inp.value = it.originalTag; }
+          else inp.disabled = false;
+        });
+        validate();
+      });
+    });
+    back.querySelectorAll('input[data-newtag]').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const ii = +inp.dataset.newtag;
+        const gi = +inp.closest('[data-gi]').dataset.gi;
+        groups[gi].items[ii].newTag = inp.value.trim();
+        validate();
+      });
+    });
+    validate();
+
+    const close = (v) => { back.classList.remove('sc-modal-open'); setTimeout(() => back.remove(), 150); resolve(v); };
+    back.querySelector('[data-v="1"]').addEventListener('click', () => {
+      // Финальный prepare: { id → newTag } для не-keep записей.
+      const out = {};
+      groups.forEach(g => g.items.forEach(it => { if (!it.keep) out[it.id] = it.newTag; }));
+      close(out);
+    });
+    back.querySelector('[data-v="0"]').addEventListener('click', () => close(null));
+    back.addEventListener('click', ev => { if (ev.target === back) close(null); });
+    requestAnimationFrame(() => back.classList.add('sc-modal-open'));
+  });
+  if (!result || !Object.keys(result).length) return;
+  let renamed = 0;
+  for (const [rid, newTag] of Object.entries(result)) {
+    state.rackTags[rid] = newTag;
+    renamed++;
+  }
+  saveRackTags();
+  rerender();
+  scToast(`Переименовано ${renamed} стоек — дубликаты разрешены`, 'ok');
+}
+
 /** Удалить отмеченные стойки (с подтверждением). Виртуалы пропускаются. */
 async function bulkDelete() {
   const sel = _bulkSelected();
@@ -4264,7 +4417,11 @@ function init() {
       // Toast — но позже, после полной инициализации (scToast зависит от scUiHost).
       setTimeout(() => {
         try {
-          scToast(`⚠ Найдены дубликаты тегов: ${dups.length} групп. Проверьте «${dups[0][0]}» — занят ${dups[0][1].length} раз. Подробности в консоли (F12).`, 'warn');
+          scToast(
+            `⚠ Дубликаты тегов: ${dups.length} групп (${total} стоек). Кликните для исправления →`,
+            'warn',
+            { onClick: () => resolveTagDuplicates(dups), ttl: 12000, title: 'Открыть модалку «Разрешить дубликаты тегов»' }
+          );
         } catch {}
       }, 800);
     }
