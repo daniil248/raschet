@@ -2756,6 +2756,63 @@ function wireCalcForm() {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', () => updateKTemp());
   });
+  // v0.59.475: live-связь поля «Блоков в цепочке (N)» с V_DC окном ИБП.
+  // Под полем — подсказка с допустимым диапазоном, у поля красная рамка
+  // при выходе из диапазона. Обновляется при изменении любого из:
+  // vdcMin/vdcMax/blockV/endV/chem/battery/vdc-safety.
+  const updateBlocksHint = () => {
+    const blocksEl = document.getElementById('calc-blocks');
+    const hintEl = document.getElementById('calc-blocks-hint');
+    if (!blocksEl || !hintEl) return;
+    const vMin = Number(document.getElementById('calc-vdcmin')?.value);
+    const vMax = Number(document.getElementById('calc-vdcmax')?.value);
+    const battSel = document.getElementById('calc-battery');
+    const battery = battSel?.value ? getBattery(battSel.value) : null;
+    const blockV = battery ? battery.blockVoltage : (Number(document.getElementById('calc-blockv')?.value) || 12);
+    const endV = Number(document.getElementById('calc-endv')?.value) || 1.85;
+    const chemEl = document.getElementById('calc-chem');
+    const chemistry = (battery && battery.chemistry) || (chemEl?.value || 'vrla');
+    const safety = Number(document.getElementById('calc-vdc-safety')?.value) || 0;
+    if (!(vMin > 0 && vMax > 0 && blockV > 0)) {
+      hintEl.innerHTML = '<span style="color:#888">Допустимый диапазон N появится после задания V_DC мин/макс и blockV.</span>';
+      blocksEl.style.borderColor = '';
+      return;
+    }
+    const opt = _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry, safety);
+    const N = Number(blocksEl.value);
+    const inRange = opt.feasible && Number.isFinite(N) && N >= opt.nLow && N <= opt.nHigh;
+    const dcAtN = N * blockV;
+    if (!opt.feasible) {
+      hintEl.innerHTML = `<span style="color:#c62828">⚠ V<sub>DC</sub> окно ИБП ${vMin}…${vMax} В не покрывается ни одним N при blockV=${blockV} В, endV=${endV} В/эл, float ${chemistry === 'li-ion' ? 3.45 : 2.25}. Уменьшите endV или возьмите блоки меньшего номинала.</span>`;
+      blocksEl.style.borderColor = '#c62828';
+      return;
+    }
+    const baseHint = `Допустимо N = <b>${opt.nLow}…${opt.nHigh}</b> (V<sub>DC</sub> ${opt.nLow * blockV}…${opt.nHigh * blockV} В при разряде/флоате). Текущее N=${N || '?'} → V<sub>DC</sub> ном. <b>${dcAtN || '?'} В</b>.`;
+    if (Number.isFinite(N) && N >= 1) {
+      if (inRange) {
+        hintEl.innerHTML = `<span style="color:#2e7d32">✓ ${baseHint}</span>`;
+        blocksEl.style.borderColor = '';
+      } else if (N < opt.nLow) {
+        hintEl.innerHTML = `<span style="color:#c62828">⚠ N=${N} ниже минимума ${opt.nLow}: при разряде V<sub>DC</sub> упадёт ниже ${vMin} В → ИБП отключится раньше.</span><br>${baseHint}`;
+        blocksEl.style.borderColor = '#c62828';
+      } else {
+        hintEl.innerHTML = `<span style="color:#c62828">⚠ N=${N} выше максимума ${opt.nHigh}: при флоат-заряде V<sub>DC</sub> превысит ${vMax} В → перезаряд / срабатывание защиты ИБП.</span><br>${baseHint}`;
+        blocksEl.style.borderColor = '#c62828';
+      }
+    } else {
+      hintEl.innerHTML = baseHint;
+      blocksEl.style.borderColor = '';
+    }
+  };
+  ['calc-vdcmin', 'calc-vdcmax', 'calc-blockv', 'calc-endv', 'calc-vdc-safety', 'calc-blocks'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateBlocksHint);
+  });
+  ['calc-chem', 'calc-battery'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => updateBlocksHint());
+  });
+  updateBlocksHint();
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
   const btnPrn = document.getElementById('btn-battery-print');
