@@ -4024,6 +4024,81 @@ function _materializeVirtual(v) {
   return { ok: true, inst };
 }
 
+/** Дублировать текущую стойку: новый inst-* с собственным тегом, клонируется
+ *  корпус + содержимое + СКС-матрица. Если текущая — виртуал, сначала
+ *  предлагается материализовать (фактически duplicate материализует
+ *  её сразу под новым тегом).  */
+async function duplicateCurrent() {
+  const src = currentRack();
+  if (!src) { scToast('Нет выбранной стойки', 'warn'); return; }
+  const srcTag = (state.rackTags[src.id] || src.autoTag || '').trim();
+  // Предлагаем тег с инкрементом: «SR01» → «SR02», «А-01» → «А-02».
+  const suggestNewTag = (oldTag) => {
+    if (!oldTag) return '';
+    const m = oldTag.match(/^(.*?)(\d+)(\D*)$/);
+    if (!m) return oldTag + '-копия';
+    const w = m[2].length;
+    const next = (parseInt(m[2], 10) + 1).toString().padStart(w, '0');
+    let candidate = m[1] + next + m[3];
+    const used = new Set(Object.values(state.rackTags || {}).map(t => (t || '').trim().toLowerCase()));
+    let n = parseInt(m[2], 10) + 1;
+    while (used.has(candidate.toLowerCase())) {
+      n++;
+      candidate = m[1] + String(n).padStart(w, '0') + m[3];
+      if (n > 9999) break;
+    }
+    return candidate;
+  };
+  const newTag = await scPrompt(
+    `Дублировать «${srcTag || src.name || 'стойку'}»: новый тег`,
+    suggestNewTag(srcTag)
+  );
+  if (newTag === null) return;
+  const tag = (newTag || '').trim();
+  if (!tag) { scToast('Тег обязателен', 'warn'); return; }
+  const used = new Set(Object.values(state.rackTags || {}).map(t => (t || '').trim().toLowerCase()));
+  if (used.has(tag.toLowerCase())) {
+    scToast(`Тег «${tag}» уже занят`, 'err');
+    return;
+  }
+  const SKIP = new Set(['id', 'comment', '_corpusBackup', 'fromScheme', 'fromPorGroup',
+    'schemeNodeId', 'schemeIndex', 'schemeTotal', 'autoTag', 'porGroupId',
+    'porGroupSlot', 'porMemberId', '_source', 'porObjectId']);
+  const newId = 'inst-' + Math.random().toString(36).slice(2, 10);
+  const inst = {
+    id: newId,
+    name: tag,
+    comment: `Дубликат «${srcTag || src.name || src.id}» ${new Date().toISOString().slice(0, 10)}`,
+  };
+  for (const [k, v] of Object.entries(src)) {
+    if (SKIP.has(k)) continue;
+    inst[k] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+  }
+  // Глубокий клон контента/матрицы с регенерацией id устройств.
+  const cloneArr = (arr) => (arr || []).map(o => {
+    const c = JSON.parse(JSON.stringify(o));
+    if (c.id) c.id = 'dev-' + Math.random().toString(36).slice(2, 10);
+    return c;
+  });
+  state.racks.push(inst);
+  state.rackTags[inst.id] = tag;
+  state.contents[inst.id] = cloneArr(state.contents[src.id]);
+  state.matrix[inst.id]   = cloneArr(state.matrix[src.id]);
+  saveRacks();
+  saveRackTags();
+  saveContents();
+  saveMatrix();
+  state.currentRackId = inst.id;
+  rerender();
+  scToast(`Создана копия «${tag}»`, 'ok');
+  // Sync URL
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('rackId', inst.id);
+    history.replaceState(null, '', url);
+  } catch {}
+}
+
 /** Материализовать текущую виртуальную стойку (кнопка ▸ Материализовать в топбаре). */
 async function materializeCurrent() {
   const r = currentRack();
@@ -4364,6 +4439,8 @@ function init() {
   $('sc-corpus-save-as')?.addEventListener('click', saveCorpusAsNewTemplate);
   // v0.59.543: материализация текущей виртуальной стойки.
   $('sc-materialize')?.addEventListener('click', materializeCurrent);
+  // v0.59.548: дубликат текущей стойки.
+  $('sc-rack-duplicate')?.addEventListener('click', duplicateCurrent);
 
   /* ---- 1.24.11 переключатель режима (СКС / Питание) ------------------ */
   document.querySelectorAll('.sc-vm-btn').forEach(btn => {
