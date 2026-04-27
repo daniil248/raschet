@@ -3873,14 +3873,36 @@ function init() {
   }
 
   // pick up rack template changes in other tabs
+  // v0.59.536: расширено — реагируем на ВСЕ источники state.racks для
+  // мульти-инженерного режима. Электрик в tab A правит principalku
+  // (engine scheme: count, demandKw на consumer-rack узле или POR
+  // consumer-group) — SCS-инженер в tab B должен сразу увидеть
+  // обновлённые виртуалы в Компоновщике без F5.
   window.addEventListener('storage', e => {
-    if (e.key === LS_RACK) {
-      state.racks = loadRacks();
-      if (!state.racks.find(r => r.id === state.currentRackId)) {
-        state.currentRackId = state.racks[0]?.id || null;
-      }
-      rerender();
+    if (!e.key) return;
+    const pid = (typeof getActiveProjectId === 'function') ? getActiveProjectId() : null;
+    const projPrefix = pid ? `raschet.project.${pid}.` : null;
+    const isProjectScoped = projPrefix && e.key.startsWith(projPrefix);
+    const matters =
+      e.key === LS_RACK                                    // глобальная библиотека шаблонов корпусов
+      || (isProjectScoped && (
+           e.key.endsWith('.engine.scheme.v1')             // схема (consumer-rack count, demandKw)
+        || e.key.endsWith('.por.objects.v1')               // POR (consumer-group, racks)
+        || e.key.endsWith('.rack-config.instances.v1')     // inst-* стойки
+        || e.key.endsWith('.scs-config.rackTags.v1')       // теги — материализация скрывает виртуал
+        || e.key.endsWith('.scs-config.contents.v1')       // содержимое стоек (другой инженер мог
+                                                           // изменить набор устройств в стойке,
+                                                           // которую мы тоже редактируем)
+      ));
+    if (!matters) return;
+    state.racks = loadRacks();
+    if (!state.racks.find(r => r.id === state.currentRackId)) {
+      state.currentRackId = state.racks[0]?.id || null;
     }
+    // contents/rackTags могут поменяться независимо от racks — перечитываем
+    state.contents  = loadJson(LS_CONTENTS,  state.contents  || {});
+    state.rackTags  = loadJson(LS_RACKTAGS,  state.rackTags  || {});
+    rerender();
   });
 }
 
