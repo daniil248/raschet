@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.509', date: '2026-04-27', items: [
+      '🔗 <b>Ссылка на POR Playground в каталоге модулей</b>. Добавлена новая секция «🔧 Инструменты разработки» в <code>modules/index.html</code> с карточкой <code>🏗 POR Playground</code> (тег <span style="background:#fee2e2;color:#991b1b;padding:1px 7px;border-radius:8px;font-size:11px">dev</span>). Описание объясняет назначение: просмотр POR-объектов проекта, cross-tab sync, экспорт/импорт, группировка. Раньше playground был доступен только по прямой ссылке, теперь — через hub → «Модули» → секция dev.',
+      'Файлы: <code>modules/index.html</code> (новая секция + tag.dev стиль).',
+    ] },
     { version: '0.59.508', date: '2026-04-27', items: [
       '🏗 <b>Миграция legacy rack-instances → POR</b>. По репорту пользователя: бейджик «8 стоек» на карточке проекта показывал данные, но в самом СКС-модуле «legacy режим, ничего нет». Это потому что разные модули читают РАЗНЫЕ LS-ключи. POR должен стать единым источником.',
       '• <b>Источники миграции (<code>shared/legacy-rack-migration.js</code>)</b>:',
