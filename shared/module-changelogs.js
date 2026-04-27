@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.520', date: '2026-04-27', items: [
+      '🏷 <b>scs-config: теги POR-стоек теперь попадают в picker «Стойки проекта»</b>. По репорту пользователя: в SCS-модуле счётчик «6 шт.» (загрузилось из POR), но видно только 2 стойки с тегами (А-01 × 2). При том что в POR Playground 16 stoek с тегами SR01-SR08, CR01, MR01.',
+      '• <b>Корень бага</b>: SCS picker (<code>projectRacks()</code>) фильтрует <code>state.racks</code> по <code>state.rackTags[r.id]</code> — это ОТДЕЛЬНАЯ LS-таблица <code>rackId→tag</code> (<code>scs-config.rackTags.v1</code>). Тег из POR-объекта живёт в <code>obj.tag</code> и в моём конвертере попадал в <code>r.tag</code>, но НЕ в <code>state.rackTags</code>. Поэтому picker считал POR-стойки «без тега» и скрывал.',
+      '• <b>Fix</b>: в <code>init()</code> после загрузки <code>state.rackTags</code> — sync из POR-стоек: для каждого <code>r</code> с маркером <code>_source: \'por\'</code> или <code>porObjectId</code>, если <code>r.tag</code> задан и нет записи в <code>state.rackTags[r.id]</code> — копируем. Изменения сохраняются в LS_RACKTAGS.',
+      '• <b>Эффект</b>: после Ctrl+F5 в SCS-модуле для проекта 25013_Qarmet — все 16 POR-стоек должны появиться в picker «Стойки проекта — с тегом» с их POR-тегами (SR01-08, CR01, MR01, A-01, DH1.SR1, DH1.SR2, tpl-*).',
+      '• <b>Console</b>: <code>[scs-config] синхронизированы теги из POR → state.rackTags</code>.',
+      'Файлы: <code>scs-config/scs-config.js</code> — sync-блок в init после <code>state.rackTags</code> load.',
+    ] },
     { version: '0.59.519', date: '2026-04-27', items: [
       '⬇ <b>POR → Engine pull: POR-only racks автоматически появляются в «Неразмещённые»</b>. Раньше mirror был односторонний: engine → POR (rack-узлы из схемы зеркалятся в POR), но НЕ обратно. Если SCS-инженер добавлял стойки в POR Playground / scs-config / другом модуле — engine их не видел, главный инженер не мог разместить их на схеме.',
       '• <b>Логика pull</b>: при активации mirror\'а (<code>enableEngineMirror</code>) и при cross-tab <code>add</code>/<code>sync</code>-events — для каждого POR-объекта <code>type=\'rack\'</code> без соответствующего engine-узла создаётся <b>UNPLACED</b> engine-узел (<code>type=\'consumer\'</code>, <code>subtype=\'rack\'</code>, <code>pageIds=[]</code>, <code>porObjectId</code> линк).',

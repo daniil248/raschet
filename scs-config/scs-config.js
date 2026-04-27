@@ -3562,6 +3562,27 @@ function init() {
   if (!state.rackTags  || typeof state.rackTags  !== 'object' || Array.isArray(state.rackTags))  state.rackTags = {};
   if (!Array.isArray(state.warehouse)) state.warehouse = [];
   if (!state.catalog.length) state.catalog = DEFAULT_CATALOG.slice();
+
+  // v0.59.520: для racks из POR (имеют r.tag и помечены _source:'por'),
+  // если у них нет записи в state.rackTags — добавляем. SCS-picker
+  // фильтрует «Стойки проекта — с тегом» по state.rackTags[r.id], а тег
+  // из POR-объекта живёт в r.tag. Без этой синхронизации POR-стойки не
+  // попадали в picker даже если у них есть obj.tag в POR.
+  let _rackTagsTouched = false;
+  for (const r of state.racks) {
+    if (!r || !r.id) continue;
+    if (r._source !== 'por' && !r.porObjectId) continue;  // только POR
+    const existing = (state.rackTags[r.id] || '').trim();
+    if (existing) continue;
+    const t = (r.tag || '').trim();
+    if (!t) continue;
+    state.rackTags[r.id] = t;
+    _rackTagsTouched = true;
+  }
+  if (_rackTagsTouched) {
+    try { localStorage.setItem(LS_RACKTAGS, JSON.stringify(state.rackTags)); } catch {}
+    console.info('[scs-config] синхронизированы теги из POR → state.rackTags');
+  }
   // v0.59.275: санитарная проверка catFilter — если сохранённый фильтр скрывает
   // весь каталог (например uMin > max heightU), сбрасываем его, чтобы юзер
   // не видел пустой каталог без подсказки при открытии страницы.
