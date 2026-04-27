@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>POR Playground — Phase 2.5 PoC</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 24px; color: #222; background: #fafbfc; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 20px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge-standalone { background: #fff3e0; color: #e65100; }
+  .badge-project    { background: #e8f5e9; color: #1b5e20; }
+  .panel { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { font-size: 16px; margin: 0 0 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; }
+  th { background: #f5f7f9; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  button { padding: 6px 14px; border: 1px solid #1976d2; background: #1976d2; color: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  button.ghost { background: #fff; color: #1976d2; }
+  button.danger { background: #fff; color: #d32f2f; border-color: #d32f2f; }
+  button:hover { opacity: 0.9; }
+  input, select { padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 4px; font: inherit; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .row label { font-size: 12px; color: #555; }
+  pre.events { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; max-height: 200px; overflow: auto; font-size: 11px; }
+  .muted { color: #888; font-size: 11px; }
+  .domain-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-right: 4px; color: #fff; }
+</style>
+</head>
+<body>
+
+<h1>POR Playground</h1>
+<div class="sub">
+  Проверка Phase 2.5 PoC end-to-end: DataAdapter + POR + cross-tab sync. Не трогает существующие конфигураторы.
+  <span id="mode-badge"></span>
+</div>
+
+<div class="panel">
+  <h2>1. Контекст</h2>
+  <div class="row">
+    <label>Project ID:</label>
+    <input id="pid-input" type="text" placeholder="оставить пустым для standalone" style="width: 240px"/>
+    <button id="apply-pid">Применить (POR mode)</button>
+    <button class="ghost" id="clear-pid">Сбросить (standalone)</button>
+  </div>
+  <div class="muted">
+    В POR mode adapter подменяется на POR-backed (через <code>bootstrapProject</code>); запись идёт в
+    <code>raschet.project.&lt;pid&gt;.por.objects.v1</code>. В standalone — adapter использует in-memory fallback.
+    Открой эту страницу в двух вкладках с одинаковым pid → правки видны в обеих.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>2. Добавить стойку (POR-объект type='rack')</h2>
+  <div class="row">
+    <label>Tag:</label>      <input id="new-tag"  type="text" value="R1" style="width: 80px"/>
+    <label>Имя:</label>      <input id="new-name" type="text" value="Серверная стойка" style="width: 200px"/>
+    <label>U:</label>        <input id="new-units" type="number" value="42" style="width: 60px"/>
+    <label>W мм:</label>     <input id="new-w" type="number" value="600" style="width: 70px"/>
+    <label>D мм:</label>     <input id="new-d" type="number" value="800" style="width: 70px"/>
+    <label>kW:</label>       <input id="new-kw" type="number" value="3" step="0.1" style="width: 70px"/>
+    <button id="add-rack">+ Добавить</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>3. Стойки в POR (через DataAdapter)</h2>
+  <table id="racks-table">
+    <thead>
+      <tr><th>Tag</th><th>Имя</th><th>U</th><th>W×D мм</th><th>Domains</th><th>kW</th><th>Group</th><th></th></tr>
+    </thead>
+    <tbody><tr><td colspan="8" class="muted">Загрузка…</td></tr></tbody>
+  </table>
+  <div class="muted" style="margin-top: 8px">
+    Рендер использует <code>getAdapter('rack-config').list()</code>. В POR mode видны объекты текущего проекта,
+    в standalone — пустой in-memory store этой вкладки.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>4. Группа (consumer-group)</h2>
+  <div class="row">
+    <button id="group-selected">Сгруппировать выбранные ☑</button>
+    <button class="ghost" id="add-anonymous-group">+ Анонимная группа ×3 (10 кВт)</button>
+  </div>
+  <div class="muted">
+    Чек-боксы в таблице выше — выбор для группировки. Только идентичные по электрике (phases/cosPhi/demandKw/voltageV)
+    могут быть объединены. Анонимная группа — count+demandKwPerUnit без членов; SCS-инженер позже материализует слоты.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>5. Экспорт / Импорт в файл</h2>
+  <div class="row">
+    <button id="export-json">⬇ Экспорт в JSON</button>
+    <label class="ghost" style="display:inline-block">
+      <input type="file" id="import-file" accept="application/json" style="display:none"/>
+      <button id="import-btn" class="ghost">⬆ Импорт из JSON…</button>
+    </label>
+    <select id="import-mode" style="height: 28px">
+      <option value="merge">merge (upsert по id)</option>
+      <option value="append">append (новые id)</option>
+      <option value="replace">replace (стереть текущие)</option>
+    </select>
+  </div>
+  <div class="muted">
+    Универсальные helper'ы из <code>data-adapter.js</code> работают с ЛЮБЫМ adapter'ом (LS / POR / memory).
+    Конфигуратор импортирует <code>exportAdapter()</code>, <code>downloadExport()</code>, <code>readExportFile()</code>,
+    <code>importIntoAdapter()</code> — не зная откуда данные.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>6. События POR (live-stream)</h2>
+  <pre class="events" id="event-log">подписка установится после применения context…</pre>
+  <button id="clear-log" class="ghost" style="margin-top: 6px">Очистить лог</button>
+</div>
+
+<script type="module">
+import { bootstrapProject, teardownProject } from '../shared/project-bootstrap.js';
+import {
+  getAdapter, registerDefaultAdapterFactory, createMemoryAdapter, onAdapterChange,
+  exportAdapter, downloadExport, importIntoAdapter, readExportFile,
+} from '../shared/data-adapter.js';
+import { getPorType } from '../shared/por-types/index.js';
+import { subscribe as porSubscribe, createGroup, getObjects } from '../shared/por.js';
+import { ensureDefaultProject, listProjects } from '../shared/project-storage.js';
+
+// ─── Standalone fallback: in-memory adapter для rack-config moduleId.
+// Если bootstrapProject(pid) не вызван, getAdapter('rack-config') вернёт этот.
+registerDefaultAdapterFactory('rack-config', () => {
+  const a = createMemoryAdapter();
+  // Адаптируем под тот же контракт что POR-adapter (filter type='rack').
+  return {
+    list: (f) => a.list({ type: 'rack', ...(f || {}) }),
+    get: (id) => a.get(id),
+    add: (p) => a.add({ ...(p || {}), type: 'rack' }),
+    update: (id, patch, opts) => {
+      // Имитируем доменный update: top-level или domains[opts.domain]
+      const cur = a.get(id);
+      if (!cur) return null;
+      let next;
+      if (opts && opts.domain) {
+        const dom = (cur.domains && cur.domains[opts.domain]) || {};
+        next = { ...cur, domains: { ...(cur.domains || {}), [opts.domain]: { ...dom, ...patch } } };
+      } else {
+        next = { ...cur, ...patch };
+      }
+      return a.update(id, next);
+    },
+    remove: (id) => a.remove(id),
+    subscribe: (cb) => a.subscribe(cb),
+  };
+});
+
+// ─── State этой страницы
+let _currentPid = null;
+let _adapter = null;
+let _unsubAdapter = null;
+let _selection = new Set();
+
+const $ = (id) => document.getElementById(id);
+const log = (msg) => {
+  const el = $('event-log');
+  const ts = new Date().toLocaleTimeString();
+  el.textContent = `[${ts}] ${msg}\n` + el.textContent;
+};
+
+function updateModeBadge() {
+  const badge = $('mode-badge');
+  if (_currentPid) {
+    badge.innerHTML = `<span class="badge badge-project">PROJECT MODE: ${_currentPid}</span>`;
+  } else {
+    badge.innerHTML = `<span class="badge badge-standalone">STANDALONE (in-memory)</span>`;
+  }
+}
+
+function setupAdapter(pid) {
+  if (_unsubAdapter) { try { _unsubAdapter(); } catch {} _unsubAdapter = null; }
+  if (pid) {
+    bootstrapProject(pid);
+    _currentPid = pid;
+  } else {
+    teardownProject();
+    _currentPid = null;
+  }
+  _adapter = getAdapter('rack-config');
+  _unsubAdapter = _adapter.subscribe((ev) => {
+    log(`event: ${ev.kind} ${ev.oid || ev.id || ''} ${ev.source ? '['+ev.source+']' : ''}`);
+    renderRacks();
+  });
+  log(`adapter ready (${pid ? 'POR mode pid=' + pid : 'standalone'})`);
+  updateModeBadge();
+  renderRacks();
+}
+
+function fmtDomains(obj) {
+  if (!obj || !obj.domains) return '';
+  return Object.keys(obj.domains).map(d => {
+    const meta = ({
+      electrical: { color: '#1976d2', label: '⚡' },
+      mechanical: { color: '#616161', label: '⚙' },
+      scs:        { color: '#388e3c', label: '🔗' },
+      location:   { color: '#455a64', label: '📍' },
+      hvac:       { color: '#0288d1', label: '❄' },
+    })[d] || { color: '#888', label: d };
+    return `<span class="domain-tag" style="background:${meta.color}" title="${d}">${meta.label}</span>`;
+  }).join('');
+}
+
+function renderRacks() {
+  if (!_adapter) return;
+  const list = _adapter.list();
+  const tbody = $('racks-table').querySelector('tbody');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">Нет стоек. Добавьте через форму выше.</td></tr>';
+    return;
+  }
+  // Также покажем consumer-group в той же таблице — для группировок.
+  let groups = [];
+  if (_currentPid) {
+    try { groups = getObjects(_currentPid, { type: 'consumer-group' }); } catch {}
+  }
+
+  tbody.innerHTML = '';
+  for (const r of list) {
+    const m = (r.domains && r.domains.mechanical) || {};
+    const e = (r.domains && r.domains.electrical) || {};
+    const tr = document.createElement('tr');
+    const checked = _selection.has(r.id) ? 'checked' : '';
+    const groupId = e.groupId || '';
+    const groupBadge = groupId ? `<span class="badge badge-project" title="В группе ${groupId}">в группе</span>` : '';
+    tr.innerHTML = `
+      <td><input type="checkbox" data-rid="${r.id}" ${checked}/> <code>${r.tag || ''}</code></td>
+      <td>${r.name || ''}</td>
+      <td class="num">${m.rackUnits || ''}</td>
+      <td class="num">${(m.widthMm || 0)}×${(m.depthMm || 0)}</td>
+      <td>${fmtDomains(r)}</td>
+      <td class="num">${(e.demandKw || 0).toFixed(1)}</td>
+      <td>${groupBadge}</td>
+      <td><button class="danger" data-del="${r.id}">×</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  // Bind handlers
+  tbody.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const rid = e.target.dataset.rid;
+      if (e.target.checked) _selection.add(rid); else _selection.delete(rid);
+    });
+  });
+  tbody.querySelectorAll('button[data-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.target.dataset.del;
+      _adapter.remove(id);
+      _selection.delete(id);
+      renderRacks();
+    });
+  });
+  // Покажем группы под таблицей.
+  if (groups.length) {
+    const trh = document.createElement('tr');
+    trh.innerHTML = `<td colspan="8" style="background:#f5f7f9;font-weight:600">Группы:</td>`;
+    tbody.appendChild(trh);
+    for (const g of groups) {
+      const ge = (g.domains && g.domains.electrical) || {};
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>—</td><td>${g.name}</td><td>×${ge.count || 0}</td><td>—</td>
+        <td>${fmtDomains(g)}</td><td class="num">${(ge.demandKw || 0).toFixed(1)}</td>
+        <td>members: ${ge.members ? ge.members.length : 0}</td>
+        <td><button class="danger" data-delg="${g.id}">×</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll('button[data-delg]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.dataset.delg;
+        // Удаляем через POR API напрямую (adapter фильтрует только rack).
+        if (_currentPid) {
+          import('../shared/por.js').then(mod => { mod.removeObject(_currentPid, id); renderRacks(); });
+        }
+      });
+    });
+  }
+}
+
+// ─── Handlers
+$('apply-pid').addEventListener('click', () => {
+  const pid = $('pid-input').value.trim();
+  if (!pid) return;
+  // Создадим default-project если нужно (проектная инфра ожидает project)
+  ensureDefaultProject();
+  // Если такого pid нет в listProjects — это нормально, POR создаст ключ при первом save.
+  setupAdapter(pid);
+});
+$('clear-pid').addEventListener('click', () => {
+  $('pid-input').value = '';
+  setupAdapter(null);
+});
+$('add-rack').addEventListener('click', () => {
+  if (!_adapter) return;
+  const def = getPorType('rack');
+  const opts = {
+    tag:       $('new-tag').value,
+    name:      $('new-name').value,
+    rackUnits: Number($('new-units').value) || 42,
+    widthMm:   Number($('new-w').value) || 600,
+    depthMm:   Number($('new-d').value) || 800,
+    demandKw:  Number($('new-kw').value) || 0,
+  };
+  const partial = def.factory(opts);
+  const result = _adapter.add(partial);
+  log(`add: ${result && result.id} tag=${opts.tag}`);
+  // Auto-bump tag for next add
+  const tagEl = $('new-tag');
+  const m = tagEl.value.match(/^(.*?)(\d+)$/);
+  if (m) tagEl.value = m[1] + (Number(m[2]) + 1);
+});
+$('group-selected').addEventListener('click', async () => {
+  if (!_currentPid) {
+    alert('Группы работают только в POR mode. Применить project ID сверху.');
+    return;
+  }
+  if (_selection.size < 2) {
+    alert('Выберите минимум 2 стойки.');
+    return;
+  }
+  const ids = [..._selection];
+  const objs = ids.map(id => _adapter.get(id)).filter(Boolean);
+  const r = createGroup(_currentPid, objs);
+  if (!r.ok) {
+    alert(`Не получилось: ${r.reason}`);
+    return;
+  }
+  log(`group created: ${r.group.id} (${objs.length} members)`);
+  _selection.clear();
+  renderRacks();
+});
+$('add-anonymous-group').addEventListener('click', async () => {
+  if (!_currentPid) {
+    alert('Группы работают только в POR mode.');
+    return;
+  }
+  // Импортируем factory консумер-группы
+  const def = getPorType('consumer-group');
+  const partial = def.factory({
+    count: 3,
+    demandKwPerUnit: 10,
+    phases: 3,
+    cosPhi: 0.95,
+    voltageV: 400,
+    memberType: 'rack',
+    name: 'Серверные стойки ×3 (анонимные)',
+  });
+  if (!partial) return;
+  const mod = await import('../shared/por.js');
+  const grp = mod.addObject(_currentPid, partial);
+  log(`anonymous group created: ${grp.id} count=3`);
+  renderRacks();
+});
+$('clear-log').addEventListener('click', () => { $('event-log').textContent = ''; });
+
+// ─── Export / Import ────────────────────────────────────────────────
+$('export-json').addEventListener('click', () => {
+  if (!_adapter) return;
+  const exp = exportAdapter(_adapter, 'rack-config');
+  const stamp = new Date().toISOString().slice(0, 10);
+  const fname = (_currentPid ? `racks-${_currentPid}` : 'racks-standalone') + '-' + stamp;
+  downloadExport(exp, fname);
+  log(`exported ${exp.items.length} items → ${fname}.json`);
+});
+$('import-btn').addEventListener('click', () => $('import-file').click());
+$('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file || !_adapter) return;
+  try {
+    const exp = await readExportFile(file);
+    const mode = $('import-mode').value;
+    const r = importIntoAdapter(_adapter, exp, mode);
+    log(`imported [${mode}]: +${r.added} ~${r.updated} -${r.removed}` + (r.errors.length ? ` errors=${r.errors.length}` : ''));
+    if (r.errors.length) console.warn('[import] errors:', r.errors);
+    renderRacks();
+  } catch (err) {
+    alert('Ошибка импорта: ' + err.message);
+    log('import error: ' + err.message);
+  } finally {
+    e.target.value = ''; // reset input
+  }
+});
+
+// ─── Init
+window.addEventListener('DOMContentLoaded', () => {
+  // Восстанавливаем pid из URL ?project= если есть
+  const fromUrl = new URLSearchParams(location.search).get('project');
+  if (fromUrl) {
+    $('pid-input').value = fromUrl;
+    setupAdapter(fromUrl);
+  } else {
+    setupAdapter(null);
+  }
+});
+</script>
+
+</body>
+</html>

@@ -194,9 +194,135 @@ export function createLSAdapter(lsKey) {
 
 // ──────────────────────────── Debug ─────────────────────────────────
 
+// ──────────────────────────── Export / Import ──────────────────────
+//
+// Конфигуратор должен уметь сохранить/загрузить свои данные в JSON-файл
+// независимо от того, где они хранятся (LS / POR / cloud). Это generic
+// helper'ы, работают с любым DataAdapter.
+//
+// Формат export-файла:
+//   {
+//     schemaVersion: 1,
+//     module:        '<moduleId>',
+//     exportedAt:    <ms>,
+//     items:         [ ... raw items из adapter.list() ... ],
+//   }
+
+const EXPORT_SCHEMA_VERSION = 1;
+
+/**
+ * Экспортировать содержимое adapter'а в JSON-объект.
+ * filter — опциональный фильтр (передаётся в adapter.list).
+ */
+export function exportAdapter(adapter, moduleId, filter) {
+  if (!adapter || typeof adapter.list !== 'function') {
+    return { schemaVersion: EXPORT_SCHEMA_VERSION, module: moduleId || '', exportedAt: Date.now(), items: [] };
+  }
+  let items = [];
+  try { items = adapter.list(filter) || []; } catch (e) { console.warn('[data-adapter] export.list failed:', e); }
+  return {
+    schemaVersion: EXPORT_SCHEMA_VERSION,
+    module:        moduleId || '',
+    exportedAt:    Date.now(),
+    items:         JSON.parse(JSON.stringify(items)),
+  };
+}
+
+/**
+ * Скачать export как JSON-файл. fileName — без расширения.
+ * Только в браузере (использует Blob + <a download>).
+ */
+export function downloadExport(exportObj, fileName) {
+  if (typeof document === 'undefined') return;
+  const json = JSON.stringify(exportObj, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (fileName || 'export') + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+}
+
+/**
+ * Импортировать items из JSON-объекта в adapter.
+ * mode:
+ *   'merge'   — добавить (если id совпадает — update, иначе add); существующие записи не трогаются.
+ *   'replace' — удалить все текущие, затем добавить новые.
+ *   'append'  — просто add() для каждого item с новым id (игнорируя его id).
+ *
+ * Возвращает { added, updated, removed, errors[] }.
+ */
+export function importIntoAdapter(adapter, exportObj, mode) {
+  const result = { added: 0, updated: 0, removed: 0, errors: [] };
+  if (!adapter || !exportObj) return result;
+  const items = Array.isArray(exportObj.items) ? exportObj.items : [];
+  const m = mode || 'merge';
+
+  if (m === 'replace') {
+    try {
+      const cur = adapter.list() || [];
+      for (const it of cur) {
+        if (it && it.id) { adapter.remove(it.id); result.removed++; }
+      }
+    } catch (e) { result.errors.push('replace clear failed: ' + e.message); }
+  }
+
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    try {
+      if (m === 'append') {
+        const copy = { ...item };
+        delete copy.id;
+        adapter.add(copy);
+        result.added++;
+      } else {
+        // merge / replace: пытаемся upsert по id.
+        const id = item.id;
+        if (id) {
+          const exists = adapter.get ? adapter.get(id) : null;
+          if (exists) {
+            adapter.update(id, item);
+            result.updated++;
+          } else {
+            adapter.add(item);
+            result.added++;
+          }
+        } else {
+          adapter.add(item);
+          result.added++;
+        }
+      }
+    } catch (e) {
+      result.errors.push(`item ${item.id || '(no id)'}: ${e.message}`);
+    }
+  }
+  return result;
+}
+
+/**
+ * Прочитать JSON-файл из <input type="file">. Возвращает Promise<exportObj>.
+ */
+export function readExportFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error('Файл не выбран'));
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const obj = JSON.parse(String(reader.result || ''));
+        resolve(obj);
+      } catch (e) { reject(new Error('Некорректный JSON: ' + e.message)); }
+    };
+    reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+    reader.readAsText(file);
+  });
+}
+
 if (typeof window !== 'undefined') {
   window.RaschetDataAdapter = {
     getAdapter, setAdapter, clearAdapter, registerDefaultAdapterFactory,
     onAdapterChange, createMemoryAdapter, createLSAdapter,
+    exportAdapter, downloadExport, importIntoAdapter, readExportFile,
   };
 }

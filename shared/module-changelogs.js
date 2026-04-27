@@ -4,6 +4,20 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.503', date: '2026-04-27', items: [
+      '🧪 <b>POR Playground (<code>dev/por-playground.html</code>)</b> — интерактивная страница для проверки Phase 2.5 PoC end-to-end. Демонстрирует:',
+      '• Standalone vs project mode (бейдж сверху). Switch by вводу Project ID.',
+      '• Добавление стоек через DataAdapter (<code>getAdapter(\'rack-config\').add</code>).',
+      '• Cross-tab sync: открой две вкладки с одинаковым ?project= → правки видны в обеих автоматически.',
+      '• Группировка отмеченных (consumer-group composed) + анонимная группа (count+demandKwPerUnit, без членов).',
+      '• Live-stream событий от <code>adapter.subscribe()</code>.',
+      '📁 <b>Export / Import в файл</b> (по уточнению пользователя «конфигураторы должны уметь сохранять в пространство пользователя и в/из файловой системы»):',
+      '• Generic helper\'ы в <code>shared/data-adapter.js</code>: <code>exportAdapter(adapter, moduleId, filter?)</code> → JSON, <code>downloadExport(obj, fname)</code> → скачивание <code>.json</code>, <code>readExportFile(file)</code> → Promise<exportObj>, <code>importIntoAdapter(adapter, exportObj, mode)</code> с режимами <code>merge</code> (upsert по id), <code>append</code> (новые id), <code>replace</code> (стереть + добавить).',
+      '• Работают с ЛЮБЫМ DataAdapter (LS / POR / memory) — конфигуратор не знает откуда данные.',
+      '• Format: <code>{schemaVersion, module, exportedAt, items[]}</code>.',
+      '🪛 <b>Status</b>: foundation Phase 2.5 PoC завершён. Pattern проверен на playground: standalone/project/sync/groups/import/export — всё работает. Следующая итерация: миграция первого реального конфигуратора (rack-config) на DataAdapter.',
+      'Файлы: <code>dev/por-playground.html</code> (новый, ~280 строк), <code>shared/data-adapter.js</code> (расширен export/import API).',
+    ] },
     { version: '0.59.502', date: '2026-04-27', items: [
       '💡 <b>POR type \'consumer-system\' — распределённые системы без габарита.</b> По уточнению пользователя: у электрика есть потребители-системы, которые НЕ имеют geometric footprint, но должны учитываться по нагрузке. Примеры: освещение (множество ламп распределены), розеточная сеть (N розеток на пространстве), обогрев трубопроводов (нагревательный кабель вдоль линии).',
       '• <b>Без mechanical-домена</b> (защищает от попыток ввести «габариты системы освещения»). По умолчанию домены: <code>electrical</code> + <code>location</code>.',
