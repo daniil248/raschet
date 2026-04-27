@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.476', date: '2026-04-27', items: [
+      '🔧 <b>Fix: расхождение «2 шкафа в шапке vs 1 шкаф в 3D/BOM».</b> В заголовке результата S³-расчёта показывается <code>found.cabinetsCount=2</code> (от <code>findMinimalS3Config</code>, который добавил второй шкаф из-за лимита 200 кВт/шкаф), но <code>_renderS3SystemSpecHtml</code> вызывал <code>buildSystem({totalModules:18})</code> без явного количества шкафов — и тот пересчитывал <code>cabinetsCount = ceil(18/maxPerCabinet=20) = 1</code>. Получалось 1 шкаф в спецификации/3D/BOM, но 2 в шапке. Теперь в <code>_renderS3SystemSpecHtml</code> добавлен параметр <code>requestedCabinetsCount</code>, который передаётся в <code>options.minCabinets</code> для buildSystem. Итого: <code>minCabinets = max(power-limit, requested)</code>. Файлы: <code>battery/battery-calc.js</code>.',
+    ] },
     { version: '0.59.475', date: '2026-04-27', items: [
       '🔗 <b>Live-связь поля «Блоков в цепочке (N)» с V<sub>DC</sub>-окном ИБП.</b> В режиме «Автономия при заданных блоках» под полем N теперь динамически отображается допустимый диапазон, рассчитанный из <code>vdcMin/vdcMax/blockV/endV/safety/chemistry</code>:',
       '• <b>В диапазоне:</b> зелёная подсказка ✓ «Допустимо N = N_min…N_max (V<sub>DC</sub> X…Y В при разряде/флоате). Текущее N=Z → V<sub>DC</sub> ном. <b>K В</b>».',

@@ -305,7 +305,10 @@
           <span id="calc-dcv-range" style="display:none"></span>
         </div>
         <div data-mode-only="autonomy">
-          <label>Блоков в цепочке (N) <span class="muted" style="font-size:10px;font-weight:400">· редактируется в этом режиме</span></label>
+          <label style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+            <span>Блоков в цепочке (N) <span class="muted" style="font-size:10px;font-weight:400">· редактируется в этом режиме</span></span>
+            <button type="button" id="calc-blocks-auto" class="btn-sm" style="font-size:11px;padding:2px 8px" title="Подставить N = N_min из допустимого диапазона V_DC окна (экономически оптимально — минимум блоков → минимум стоимости и места).">↺ авто</button>
+          </label>
           <input id="calc-blocks" type="number" min="1" step="1" value="32" title="Число блоков в одной цепочке (последовательно). При смене этого поля авто-расчёт V_DC обновляется.">
           <div id="calc-blocks-hint" class="muted" style="font-size:10px;line-height:1.4;margin-top:3px"></div>
         </div>

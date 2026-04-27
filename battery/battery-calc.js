@@ -1757,22 +1757,21 @@ function _autoSelectStrings({ battery, loadKw, blocksPerString, blockV, endV, in
 // s3LiIonType.buildSystem(). Показывает шкафы (master / slave / combiner)
 // и аксессуары (wire-kit / networking device / blank panels), плюс
 // предупреждение от validateMaxCRate если есть.
-function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff) {
+function _renderS3SystemSpecHtml(battery, totalModules, loadKw, invEff, requestedCabinetsCount) {
   if (!battery || !(totalModules > 0)) return '';
   const allBatts = listBatteries();
   const accessoryCatalog = allBatts.filter(b => b.systemSubtype === 'accessory');
-  // v0.59.428: читаем выбранные пользователем опции S³ (master variant /
-  // slave variant / fire-fighting). Дефолты — 'M', 'S', 'X'.
   const masterVariant = (document.getElementById('calc-s3-master-variant')?.value) || 'M';
   const slaveVariant  = (document.getElementById('calc-s3-slave-variant')?.value)  || 'S';
   const fireFighting  = (document.getElementById('calc-s3-fire-fighting')?.value)  || 'X';
-  // v0.59.434: предварительная проверка лимита 200 кВт/шкаф — если он
-  // превышен при «естественном» числе шкафов (по числу модулей), мы
-  // АВТОМАТИЧЕСКИ добавляем шкафы вместо того, чтобы показывать red-бан.
-  // Передаём options.minCabinets в buildSystem; пользователь видит реальную
-  // итоговую конфигурацию, а под таблицей — info-строку «авто-добавлено N шкафов».
+  // v0.59.434: предварительная проверка лимита 200 кВт/шкаф (минимум по power).
+  // v0.59.476: учитываем явно запрошенное число шкафов (от findMinimalS3Config) —
+  // оно может быть больше power-limit, например когда блок-диагностика 2 шкафа.
+  // Берём максимум: max(power-limit, requested).
   const preChk = s3LiIonType.validateMaxCRate({ module: battery, loadKw, totalModules, invEff });
-  const minCabinets = (preChk && preChk.suggestedMinCabinets) || 0;
+  const minByPower = (preChk && preChk.suggestedMinCabinets) || 0;
+  const minByRequest = Number(requestedCabinetsCount) || 0;
+  const minCabinets = Math.max(minByPower, minByRequest);
   const spec = s3LiIonType.buildSystem({
     module: battery, totalModules,
     options: { masterVariant, slaveVariant, fireFighting, minCabinets },
@@ -1967,7 +1966,7 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
   // computeS3Configuration. Показывает master/slave/combiner и BOM-список
   // аксессуаров (Slave Wire Kit, Networking Device, Blank Panel).
   if (s3Cfg && s3Cfg.totalModules > 0) {
-    html += _renderS3SystemSpecHtml(battery, s3Cfg.totalModules, loadKwEff, invEff);
+    html += _renderS3SystemSpecHtml(battery, s3Cfg.totalModules, loadKwEff, invEff, s3Cfg.cabinetsCount);
   }
 
   // График разряда + zoom (как для обычной АКБ — battery.dischargeTable есть).
@@ -2813,6 +2812,34 @@ function wireCalcForm() {
     if (el) el.addEventListener('change', () => updateBlocksHint());
   });
   updateBlocksHint();
+  // v0.59.476: кнопка «↺ авто» — подставить N = N_min (экономически оптимум).
+  const blocksAutoBtn = document.getElementById('calc-blocks-auto');
+  if (blocksAutoBtn) blocksAutoBtn.addEventListener('click', () => {
+    const vMin = Number(document.getElementById('calc-vdcmin')?.value);
+    const vMax = Number(document.getElementById('calc-vdcmax')?.value);
+    const battSel = document.getElementById('calc-battery');
+    const battery = battSel?.value ? getBattery(battSel.value) : null;
+    const blockV = battery ? battery.blockVoltage : (Number(document.getElementById('calc-blockv')?.value) || 12);
+    const endV = Number(document.getElementById('calc-endv')?.value) || 1.85;
+    const chemEl = document.getElementById('calc-chem');
+    const chemistry = (battery && battery.chemistry) || (chemEl?.value || 'vrla');
+    const safety = Number(document.getElementById('calc-vdc-safety')?.value) || 0;
+    if (!(vMin > 0 && vMax > 0 && blockV > 0)) {
+      rsToast('Заполните V_DC мин/макс перед авто-подбором', 'warn');
+      return;
+    }
+    const opt = _pickOptimalBlocks(vMin, vMax, blockV, endV, chemistry, safety);
+    if (!opt.feasible) {
+      rsToast('V_DC окно не покрывается — нет валидного N', 'warn');
+      return;
+    }
+    const blocksEl = document.getElementById('calc-blocks');
+    if (blocksEl) {
+      blocksEl.value = opt.nLow;
+      blocksEl.dispatchEvent(new Event('input'));
+      rsToast(`Подобрано N=${opt.nLow} (экономически оптимум, V_DC=${opt.nLow * blockV} В)`, 'ok');
+    }
+  });
   const btnRpt = document.getElementById('btn-battery-report');
   if (btnRpt) btnRpt.addEventListener('click', exportBatteryReport);
   const btnPrn = document.getElementById('btn-battery-print');
