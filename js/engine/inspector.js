@@ -1412,10 +1412,13 @@ export function renderGeneralPanel(n) {
     // шкафа (наполнение PDU/устройствами), отдельно от rack-config (корпус).
     // ?from=schematic даёт back-link «← Назад в Конструктор схем».
     if (cfg === _CONFIGURATORS.rack) {
-      // Реальные стойки могут быть распознаны по тегу/связке через POR; для
-      // быстрого доступа открываем root компоновщика — там pinned-список и
-      // virtuals из schemeNodeId (count=N узел развернут в N виртуалов).
-      const compHref = '../scs-config/rack.html?from=schematic';
+      // v0.59.547: открываем Компоновщик с явным контекстом — schemeNodeId
+      // данного узла, чтобы там автоматически выбрался первый виртуал
+      // (count>1 → SR1-1 как стартовый), а не случайная стойка из списка.
+      const qp = new URLSearchParams();
+      qp.set('from', 'schematic');
+      qp.set('schemeNodeId', n.id);
+      const compHref = '../scs-config/rack.html?' + qp.toString();
       h.push(`<a class="full-btn" href="${escAttr(compHref)}" target="_blank" rel="noopener" style="display:block;margin-top:6px;text-align:center;text-decoration:none;background:#f0fdf4;color:#14532d;border-color:#86efac">🗄 Компоновщик шкафа (наполнение)</a>`);
     }
     h.push(`<div class="muted" style="font-size:11px;margin-top:4px">${

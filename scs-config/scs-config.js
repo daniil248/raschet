@@ -4195,14 +4195,27 @@ function init() {
   saveCatalog();
   // 1.24.24 URL-роутинг: ?rackId=<id> предпочитает выбор стойки из URL;
   // ?tag=<tia> ищет стойку по TIA-тегу (DC1.H3.R05). Если нет — auto-pick первой.
+  // v0.59.547: + ?schemeNodeId=<id> ищет первый виртуал с данным
+  // schemeNodeId (приходит из инспектора consumer-rack узла).
   const qp = new URLSearchParams(location.search);
   const qRackId = qp.get('rackId');
   const qTag = qp.get('tag');
+  const qSchemeNodeId = qp.get('schemeNodeId');
   let pickedId = null;
   if (qRackId && state.racks.find(r => r.id === qRackId)) pickedId = qRackId;
   else if (qTag) {
     const match = Object.entries(state.rackTags).find(([id, t]) => t.toLowerCase() === qTag.toLowerCase());
     if (match && state.racks.find(r => r.id === match[0])) pickedId = match[0];
+  }
+  if (!pickedId && qSchemeNodeId) {
+    const v = state.racks.find(r => r && r.fromScheme && r.schemeNodeId === qSchemeNodeId);
+    if (v) pickedId = v.id;
+    // Если виртуала нет (например, count=1 узел уже материализован) — ищем
+    // материализованную стойку по схема-привязке.
+    if (!pickedId) {
+      const real = state.racks.find(r => r && !r.fromScheme && !r.fromPorGroup && r.schemeNodeId === qSchemeNodeId);
+      if (real) pickedId = real.id;
+    }
   }
   if (!pickedId && state.racks.length) pickedId = state.racks[0].id;
   state.currentRackId = pickedId;
