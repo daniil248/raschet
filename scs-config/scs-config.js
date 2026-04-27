@@ -3487,10 +3487,14 @@ function renderRacksSidebar() {
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-corpus" title="Применить выбранный шаблон корпуса ко всем отмеченным стойкам" style="font-size:10px;padding:3px 8px">📐 Корпус</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-mask" title="Переименовать теги по маске. Поддерживается {n} (1,2,3…) и {n:0K} с zero-padding (например {n:02} → 01,02…)" style="font-size:10px;padding:3px 8px">🏷 Маска</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-attrs" title="Изменить общие параметры (U/ширина/глубина/комментарий) у всех отмеченных" style="font-size:10px;padding:3px 8px">✏️ Параметры</button>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-delete" title="Удалить отмеченные стойки (с подтверждением). Виртуалы пропускаются." style="font-size:10px;padding:3px 8px;color:#b91c1c;border-color:#fecaca">🗑 Удалить</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-all" title="Отметить все стойки списка" style="font-size:10px;padding:3px 8px">⊕ Все</button>
         <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-clear" title="Снять отметку со всех" style="font-size:10px;padding:3px 8px;margin-left:auto">✕</button>
       </div>`
-    : `<div class="sc-bulk-hint" style="font-size:10px;color:#94a3b8;padding:2px 4px 6px"><label style="cursor:pointer"><input type="checkbox" data-act="bulk-all-cb" style="vertical-align:middle;margin-right:4px"> Множ. выбор</label></div>`;
+    : `<div class="sc-bulk-hint" style="font-size:10px;color:#94a3b8;padding:2px 4px 6px;display:flex;gap:6px;align-items:center">
+        <label style="cursor:pointer;flex:1"><input type="checkbox" data-act="bulk-all-cb" style="vertical-align:middle;margin-right:4px"> Множ. выбор</label>
+        <button type="button" class="sc-btn sc-btn-sm" data-act="bulk-create" title="Создать сразу N стоек по маске тегов с общим шаблоном корпуса" style="font-size:10px;padding:3px 8px">➕ Группа</button>
+      </div>`;
   host.innerHTML = toolbarHtml + list.map(r => {
     const devs = state.contents[r.id] || [];
     const usedU = devs.reduce((s, d) => {
@@ -3556,6 +3560,8 @@ function renderRacksSidebar() {
   host.querySelector('[data-act="bulk-corpus"]')?.addEventListener('click', bulkApplyCorpus);
   host.querySelector('[data-act="bulk-mask"]')?.addEventListener('click', bulkRenameByMask);
   host.querySelector('[data-act="bulk-attrs"]')?.addEventListener('click', bulkEditAttrs);
+  host.querySelector('[data-act="bulk-delete"]')?.addEventListener('click', bulkDelete);
+  host.querySelector('[data-act="bulk-create"]')?.addEventListener('click', bulkCreateByMask);
   host.querySelector('[data-act="bulk-all"]')?.addEventListener('click', () => {
     list.forEach(r => state.bulkSelection.add(r.id));
     renderRacksSidebar();
@@ -3772,6 +3778,150 @@ async function bulkEditAttrs() {
   saveRacks();
   rerender();
   scToast(`Применены параметры [${Object.keys(result).join(', ')}] к ${realSel.length} стойкам`, 'ok');
+}
+
+/** Удалить отмеченные стойки (с подтверждением). Виртуалы пропускаются. */
+async function bulkDelete() {
+  const sel = _bulkSelected();
+  if (!sel.length) { scToast('Не отмечено ни одной стойки', 'warn'); return; }
+  const realSel = sel.filter(r => !(r.fromScheme || r.fromPorGroup));
+  const skippedVirt = sel.length - realSel.length;
+  if (!realSel.length) { scToast('Виртуалы удаляются на стороне схемы / POR-группы.', 'warn'); return; }
+  // Защита: если у каких-то стоек есть подключённые кабели в scs-design,
+  // отказываем (так же как в одиночном удалении устройств).
+  const namesPreview = realSel.slice(0, 5).map(r => (state.rackTags[r.id] || '').trim() || (r.name || r.id)).join(', ')
+    + (realSel.length > 5 ? '…' : '');
+  const ok = await scConfirm(
+    `Удалить ${realSel.length} ${realSel.length === 1 ? 'стойку' : 'стойки'}?`,
+    `Будут удалены: ${namesPreview}. Также пропадут связанные contents/matrix/rackTags. Действие необратимо.${skippedVirt ? ` ${skippedVirt} виртуальных пропущено.` : ''}`,
+    { okLabel: 'Удалить', cancelLabel: 'Отмена' }
+  );
+  if (!ok) return;
+  const idsToDelete = new Set(realSel.map(r => r.id));
+  state.racks = state.racks.filter(r => !idsToDelete.has(r.id));
+  for (const id of idsToDelete) {
+    delete state.contents[id];
+    delete state.matrix[id];
+    delete state.rackTags[id];
+    state.bulkSelection.delete(id);
+  }
+  // Если удалена текущая — переключаемся на первую оставшуюся.
+  if (idsToDelete.has(state.currentRackId)) {
+    state.currentRackId = projectRacks()[0]?.id || null;
+  }
+  saveRacks();
+  saveContents();
+  saveMatrix();
+  saveRackTags();
+  rerender();
+  scToast(`Удалено ${realSel.length} стоек`, 'ok');
+}
+
+/** Создать N новых стоек одним пакетом по маске тегов + общему корпусу. */
+async function bulkCreateByMask() {
+  // Шаблоны корпусов (без тега) — кандидаты.
+  const templates = state.racks.filter(r => !((state.rackTags && state.rackTags[r.id]) || '').trim() && !r.fromScheme && !r.fromPorGroup);
+  const result = await new Promise(resolve => {
+    const back = document.createElement('div');
+    back.className = 'sc-modal-back';
+    back.innerHTML = `
+      <div class="sc-modal-card" role="dialog" aria-modal="true" style="min-width:480px">
+        <div class="sc-modal-title">➕ Создать группу стоек</div>
+        <div class="sc-modal-msg">Создаст N новых inst-* стоек разом. Теги формируются по маске.<br>
+          Маска: <code>{n}</code> = счётчик, <code>{n:0K}</code> = с дополнением нулями (например <code>SR{n:02}</code> → SR01, SR02…).
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 80px 80px;gap:8px;margin-top:8px">
+          <label style="font-size:12px">Маска <input id="sc-bcr-mask" type="text" value="SR{n:02}" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:2px"></label>
+          <label style="font-size:12px">Старт <input id="sc-bcr-start" type="number" value="1" min="0" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:2px"></label>
+          <label style="font-size:12px">Кол-во <input id="sc-bcr-count" type="number" value="8" min="1" max="200" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:2px"></label>
+        </div>
+        <div style="margin-top:10px;font-size:12px">
+          <label>Корпус (шаблон) <select id="sc-bcr-tpl" style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;margin-top:2px">
+            <option value="">— без шаблона (42U/600×1000) —</option>
+            ${templates.map(t => `<option value="${escape(t.id)}">${escape(t.name || t.id)} · ${t.u || 42}U · ${t.width || 600}×${t.depth || 800}мм</option>`).join('')}
+          </select></label>
+        </div>
+        <div id="sc-bcr-preview" style="margin-top:10px;font-size:11px;color:#475569;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:6px 8px;max-height:120px;overflow:auto"></div>
+        <div class="sc-modal-actions" style="margin-top:14px">
+          <button type="button" class="sc-btn" data-v="0">Отмена</button>
+          <button type="button" class="sc-btn sc-btn-primary" data-v="1">Создать</button>
+        </div>
+      </div>`;
+    scUiHost().appendChild(back);
+    const maskEl  = back.querySelector('#sc-bcr-mask');
+    const startEl = back.querySelector('#sc-bcr-start');
+    const countEl = back.querySelector('#sc-bcr-count');
+    const prevEl  = back.querySelector('#sc-bcr-preview');
+    const updatePreview = () => {
+      const start = parseInt(startEl.value, 10) || 0;
+      const cnt   = Math.min(200, Math.max(1, parseInt(countEl.value, 10) || 0));
+      const usedTags = new Set(Object.values(state.rackTags || {}).map(t => (t || '').trim().toLowerCase()).filter(Boolean));
+      const items = [];
+      const tags = [];
+      for (let i = 0; i < cnt; i++) {
+        const t = expandMask(maskEl.value, start + i);
+        tags.push(t);
+        const conflict = usedTags.has(t.toLowerCase()) ? ' <span style="color:#b91c1c">(тег занят)</span>' : '';
+        items.push(`<div><code style="color:#0369a1">${escape(t)}</code>${conflict}</div>`);
+      }
+      const hasDup = new Set(tags).size !== tags.length;
+      prevEl.innerHTML = (hasDup ? '<div style="color:#b91c1c;margin-bottom:4px">⚠ Маска даёт повторяющиеся теги — увеличьте zero-padding.</div>' : '') + items.join('');
+    };
+    [maskEl, startEl, countEl].forEach(el => el.addEventListener('input', updatePreview));
+    updatePreview();
+    const close = (v) => { back.classList.remove('sc-modal-open'); setTimeout(() => back.remove(), 150); resolve(v); };
+    back.querySelector('[data-v="1"]').addEventListener('click', () => close({
+      mask:  maskEl.value,
+      start: parseInt(startEl.value, 10) || 0,
+      count: Math.min(200, Math.max(1, parseInt(countEl.value, 10) || 0)),
+      tplId: back.querySelector('#sc-bcr-tpl').value || '',
+    }));
+    back.querySelector('[data-v="0"]').addEventListener('click', () => close(null));
+    back.addEventListener('click', ev => { if (ev.target === back) close(null); });
+    requestAnimationFrame(() => { back.classList.add('sc-modal-open'); maskEl.focus(); maskEl.select(); });
+  });
+  if (!result) return;
+  // Валидация тегов.
+  const newTags = [];
+  for (let i = 0; i < result.count; i++) newTags.push(expandMask(result.mask, result.start + i));
+  if (new Set(newTags).size !== newTags.length) {
+    scToast('Маска даёт повторяющиеся теги — увеличьте zero-padding', 'err');
+    return;
+  }
+  const usedTags = new Set(Object.values(state.rackTags || {}).map(t => (t || '').trim().toLowerCase()).filter(Boolean));
+  const conflicts = newTags.filter(t => usedTags.has(t.toLowerCase()));
+  if (conflicts.length) {
+    scToast(`Конфликт с существующими тегами: ${conflicts.slice(0,3).join(', ')}${conflicts.length>3?'…':''}`, 'err');
+    return;
+  }
+  const tpl = result.tplId ? state.racks.find(x => x.id === result.tplId) : null;
+  const SKIP = new Set(['id', 'comment', 'sourceTemplateId', 'sourceTemplateName', '_corpusBackup']);
+  let created = 0;
+  for (let i = 0; i < result.count; i++) {
+    const tag = newTags[i];
+    const inst = {
+      id: 'inst-' + Math.random().toString(36).slice(2, 10),
+      name: tag,
+      u: 42, width: 600, depth: 1000, occupied: 0,
+      doorFront: 'metal', doorRear: 'metal',
+      comment: `Создано группой по маске «${result.mask}» ${new Date().toISOString().slice(0, 10)}`,
+    };
+    if (tpl) {
+      Object.keys(tpl).forEach(k => {
+        if (SKIP.has(k)) return;
+        inst[k] = (tpl[k] && typeof tpl[k] === 'object') ? JSON.parse(JSON.stringify(tpl[k])) : tpl[k];
+      });
+      inst.sourceTemplateId = tpl.id;
+      inst.sourceTemplateName = tpl.name || tpl.id;
+    }
+    state.racks.push(inst);
+    state.rackTags[inst.id] = tag;
+    created++;
+  }
+  saveRacks();
+  saveRackTags();
+  rerender();
+  scToast(`Создано ${created} стоек${tpl ? ` с корпусом «${tpl.name}»` : ''}`, 'ok');
 }
 
 /* ---- init -------------------------------------------------------------- */
