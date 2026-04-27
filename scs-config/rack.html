@@ -26,6 +26,9 @@
     <script type="module">
       // v0.59.286: если открыты из другого модуля (?from=scs-design|mv-config|…),
       // показываем «← Назад» слева от крошек, чтобы вернуться без меню.
+      // v0.59.539: fallback через document.referrer, если ?from не задан, но
+      // реферер указывает на известный модуль (полезно для старых ссылок и
+      // для случая, когда пользователь пришёл по прямой ссылке без меток).
       (() => {
         const FROM = {
           'scs-design': { href: '../scs-design/', label: '← Назад в «Проектирование СКС»' },
@@ -36,7 +39,20 @@
           'hub':        { href: '../hub.html',    label: '← Назад на главную' },
         };
         const qp = new URLSearchParams(location.search);
-        const from = (qp.get('from') || '').toLowerCase();
+        let from = (qp.get('from') || '').toLowerCase();
+        if (!from || !FROM[from]) {
+          try {
+            const ref = new URL(document.referrer || '', location.href);
+            if (ref.origin === location.origin) {
+              for (const k of Object.keys(FROM)) {
+                // /<k>/ или /<k>.html в пути реферера
+                if (ref.pathname.includes('/' + k + '/') || ref.pathname.endsWith('/' + k + '.html')) {
+                  from = k; break;
+                }
+              }
+            }
+          } catch {}
+        }
         if (!from || !FROM[from]) return;
         const a = document.getElementById('sc-back-link');
         const sep = document.getElementById('sc-back-sep');

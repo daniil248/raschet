@@ -681,7 +681,7 @@ function renderLinksTab() {
     empty.innerHTML = `
       <p>В проекте ещё нет шкафов. Сначала создайте их:</p>
       <p>→ <a href="../rack-config/">Конфигуратор шкафа — корпус</a> (шаблоны)<br>
-      → <a href="../scs-config/">Компоновщик шкафа</a> (наполнение).</p>
+      → <a href="../scs-config/?from=scs-design">Компоновщик шкафа</a> (наполнение).</p>
     `;
     renderLinksList();
     return;
@@ -981,7 +981,7 @@ function onUnitClick(el) {
     return;
   }
   if (linkStart.rackId === rackId) {
-    updateStatus(`⚠ Связь внутри одного шкафа — настраивается в <a href="../scs-config/">Компоновщике шкафа</a>, не здесь.`);
+    updateStatus(`⚠ Связь внутри одного шкафа — настраивается в <a href="../scs-config/?from=scs-design">Компоновщике шкафа</a>, не здесь.`);
     return;
   }
   // создать связь
@@ -1295,7 +1295,7 @@ function renderRacksSummary() {
   const unmaterialized = virtuals.filter(v => !usedTags.has(v.autoTag));
   const schemeBanner = unmaterialized.length
     ? `<div style="margin-bottom:10px;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;color:#1e3a8a">
-        🔗 В Конструкторе схем размещено <b>${unmaterialized.length}</b> ${unmaterialized.length === 1 ? 'виртуальная стойка' : (unmaterialized.length < 5 ? 'виртуальные стойки' : 'виртуальных стоек')} — они пока не участвуют в плане зала и связях. <a href="../scs-config/" style="color:#1d4ed8;font-weight:600">Материализовать → Компоновщик шкафа</a>
+        🔗 В Конструкторе схем размещено <b>${unmaterialized.length}</b> ${unmaterialized.length === 1 ? 'виртуальная стойка' : (unmaterialized.length < 5 ? 'виртуальные стойки' : 'виртуальных стоек')} — они пока не участвуют в плане зала и связях. <a href="../scs-config/?from=scs-design" style="color:#1d4ed8;font-weight:600">Материализовать → Компоновщик шкафа</a>
       </div>`
     : '';
 
@@ -1303,7 +1303,7 @@ function renderRacksSummary() {
     host.innerHTML = schemeBanner + `<div class="sd-empty-state">
       В проекте ещё нет шкафов. Создайте их в
       <a href="../rack-config/">Конфигураторе шкафа — корпус</a> (шаблоны)
-      и наполните в <a href="../scs-config/">Компоновщике шкафа</a>.
+      и наполните в <a href="../scs-config/?from=scs-design">Компоновщике шкафа</a>.
       ${unmaterialized.length ? '<br>Либо материализуйте виртуальные стойки из схемы (см. баннер выше).' : ''}
     </div>`;
     return;
@@ -1341,7 +1341,7 @@ function renderRacksSummary() {
       <td class="num">${s.linkCount || '<span class="muted">—</span>'}</td>
       <td>
         <button type="button" class="sd-btn-sel ${isSel ? 'on' : ''}" data-act="toggle-sel">${isSel ? '✓ выбрана' : '+ в мастер'}</button>
-        <a href="../scs-config/rack.html?rackId=${encodeURIComponent(r.id)}" class="sd-btn-sel" style="text-decoration:none;margin-left:4px">открыть</a>
+        <a href="../scs-config/rack.html?rackId=${encodeURIComponent(r.id)}&from=scs-design" class="sd-btn-sel" style="text-decoration:none;margin-left:4px">открыть</a>
       </td>
     </tr>`;
   }).join('');
