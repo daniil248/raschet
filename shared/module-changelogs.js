@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.500', date: '2026-04-27', items: [
+      '🏗 <b>Phase 2.5 PoC (роадмап): фундамент Project Object Registry (POR).</b> Новый модуль <code>shared/por.js</code> — единый реестр проектных объектов с многодоменными атрибутами и многостраничными видами. Идея: вместо «каждый модуль хранит свои объекты» — один POR-record на сущность, у которого есть <code>domains[domain]</code> (electrical/scs/mechanical/hvac/…) и <code>views[pageKind]</code> (schematic/layout/data/…).',
+      '• <b>API</b>: <code>getObjects(pid, filter?)</code>, <code>getObject(pid, oid)</code>, <code>addObject(pid, partial)</code>, <code>patchObject(pid, oid, patch, opts)</code> где opts={domain|view}, <code>removeObject(pid, oid)</code>, <code>findByTag(pid, tag)</code>, <code>subscribe(pid, cb)</code>.',
+      '• <b>Pubsub</b>: in-tab Map<pid, Set<cb>> + cross-tab через <code>storage</code>-event. Открыты engine + rack-config + scs-config в разных вкладках одного браузера → синхронизируются автоматически.',
+      '• <b>Storage</b>: <code>raschet.project.&lt;pid&gt;.por.objects.v1</code> через существующий <code>projectKey()/projectLoad()/projectSave()</code>.',
+      '• <b>Schema</b>: каждый объект — <code>{ id, type, subtype, tag, name, manufacturer, model, serialNo, assetId, domains:{…}, views:{…}, ownerByDomain:{…}, createdBy/At, updatedBy/At, schemaVersion }</code>. Доменные factory: <code>createRackPartial(opts)</code> для <code>type=\'rack\'</code> (PoC).',
+      '• <b>Известные домены (POR_DOMAINS)</b>: electrical / scs / mechanical / hvac / suppression / logistics. UI-метаданные в <code>POR_DOMAIN_META</code> (label/icon/color).',
+      '• <b>Группы для электрика (type=\'consumer-group\')</b>: электрик может объединять несколько одинаковых по электрике объектов (стойки, кондеи) в один групповой узел на принципиалке (бейдж «×N»), при этом SCS-инженер по-прежнему видит каждый объект отдельной строкой — данные не размываются. API: <code>canGroupTogether(a, b)</code>, <code>createGroup(pid, members, opts)</code>, <code>addMemberToGroup(pid, gid, m)</code>, <code>removeMemberFromGroup(pid, gid, mid)</code>. Валидация по <code>GROUP_ELECTRICAL_KEYS</code> (phases, cosPhi, demandKw, voltageV) — строгое равенство, иначе reject. Группа автоматически распускается при удалении предпоследнего члена.',
+      '• <b>Debug</b>: <code>window.RaschetPOR.*</code> для console-исследования.',
+      'Файлы: <code>shared/por.js</code> (новый, ~440 строк). UI пока не подключён — следующие шаги PoC: адаптация rack-config / scs-config / engine.',
+    ] },
     { version: '0.59.499', date: '2026-04-27', items: [
       '📐 <b>Phase 2.3 (роадмап): автоматическая расстановка новых элементов на layout-странице.</b> Раньше drop любого элемента из палитры на layout-страницу ставил его ровно туда, где была мышь — обычно «случайное» место поверх существующих или далеко от группы. Теперь:',
       '• На layout-странице drop-позиция <b>игнорируется</b>; новый элемент ставится в <b>staging-колонку слева</b> от уже размещённых.',
