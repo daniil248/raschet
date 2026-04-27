@@ -1357,6 +1357,17 @@ function _applyBatteryLock() {
     const wrap = inp.closest('div') || inp.parentElement;
     if (wrap) wrap.style.display = isS3 ? 'none' : '';
   });
+  // v0.59.489: для S³ переименовываем «Блоков в цепочке (N)» → «Модулей в
+  // шкафу (N)», «Цепочек параллельно (M)» → «Шкафов (M)». Терминология
+  // VRLA не применима к модульной системе.
+  const blocksLbl = document.querySelector('label[for="calc-blocks"], #calc-blocks')?.parentElement?.querySelector('label > span:first-child');
+  if (blocksLbl) blocksLbl.textContent = isS3 ? 'Модулей в шкафу (N)' : 'Блоков в цепочке (N)';
+  const stringsLbl = document.querySelector('#calc-strings-manual')?.parentElement?.querySelector('label');
+  if (stringsLbl) {
+    const tag = stringsLbl.querySelector('.muted');
+    stringsLbl.firstChild.textContent = isS3 ? 'Шкафов (M) ' : 'Цепочек параллельно (M) ';
+    if (tag) stringsLbl.appendChild(tag);
+  }
   const lock = (id, val) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1880,18 +1891,31 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
   // required — calcAutonomy перебирает в findMinimalS3Config.
   let s3Cfg = null, found = null, calcResult = null, html = '';
   if (mode === 'autonomy') {
-    const probe = computeS3Configuration({
-      module: battery, loadKw: loadKwEff,
-      vdcMin: vRange.min, vdcMax: vRange.max, invEff,
-      modulesPerCabinet: Number(lim.maxPerCabinet) || 20,
-      cabinetsCount: 1,
-    });
-    const C = probe ? probe.minCabinetsForLoad : 1;
+    // v0.59.489: для S³ в autonomy режиме читаем РУЧНЫЕ значения N (модулей
+    // в шкафу) и M (шкафов) — пользователь может задать конкретную сборку
+    // из паспортной таблицы Kehua (например, 1 шкаф × 20 модулей для UPS
+    // 200 кВт / 10 мин по «Battery Configuration Table»). Если ручные
+    // значения не заданы — берём авто (max модулей и min шкафов по нагрузке).
+    const manualN = Number(document.getElementById('calc-blocks')?.value);
+    const manualM = Number(document.getElementById('calc-strings-manual')?.value);
+    const maxN = Number(lim.maxPerCabinet) || 20;
+    const useN = (Number.isFinite(manualN) && manualN >= 1 && manualN <= maxN) ? manualN : maxN;
+    let useC;
+    if (Number.isFinite(manualM) && manualM >= 1) {
+      useC = manualM;
+    } else {
+      const probe = computeS3Configuration({
+        module: battery, loadKw: loadKwEff,
+        vdcMin: vRange.min, vdcMax: vRange.max, invEff,
+        modulesPerCabinet: useN, cabinetsCount: 1,
+      });
+      useC = probe ? probe.minCabinetsForLoad : 1;
+    }
     s3Cfg = computeS3Configuration({
       module: battery, loadKw: loadKwEff,
       vdcMin: vRange.min, vdcMax: vRange.max, invEff,
-      modulesPerCabinet: Number(lim.maxPerCabinet) || 20,
-      cabinetsCount: C,
+      modulesPerCabinet: useN,
+      cabinetsCount: useC,
     });
     const r = calcAutonomy({
       battery, loadKw: loadKwEff,

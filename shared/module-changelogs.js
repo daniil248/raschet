@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.489', date: '2026-04-27', items: [
+      '🔧 <b>S³ в режиме «Автономия» — manual N/M + терминология модулей.</b> Раньше для S³ нельзя было задать конкретную сборку (N модулей × M шкафов) — алгоритм всегда брал максимум модулей и минимум шкафов по нагрузке. Теперь:',
+      '• Поле «Блоков в цепочке (N)» → <b>«Модулей в шкафу (N)»</b> при выбранном S³-модуле.',
+      '• Поле «Цепочек параллельно (M)» → <b>«Шкафов (M)»</b>.',
+      '• <code>_doCalcS3()</code> читает manual N и M; если заданы — использует, иначе авто (max/min).',
+      '✅ <b>Соответствие datasheet Kehua S³:</b> для UPS 200 кВт + 1 шкаф × 20 модулей S3M040 (по «Battery Configuration Table»: 10 min initial backup) — расчёт даёт ровно <b>10.00 мин</b> при invEff=100% (без учёта реальных потерь). С invEff=94% — 8.72 мин (с учётом потерь инвертора). Это нормальное расхождение между theoretical-табличными данными и реальным расчётом с учётом invEff.',
+      'Файлы: <code>battery/battery-calc.js</code> — <code>_doCalcS3()</code> autonomy ветка, <code>_applyBatteryLock()</code> dynamic labels.',
+    ] },
     { version: '0.59.488', date: '2026-04-27', items: [
       '✅ <b>Eaton 93PS 8 / 20 kW — V_DC окно verified.</b> Datasheet 93PS 8-10 kW: internal battery 384V, external <b>336-480 VDC</b>. Серия 93PS 8-40 kW имеет одинаковое окно — то же что у уже verified 93PS 40.',
       '• Раньше 93PS 8 = 240-360, 93PS 20 = 360-480 (estimate). Теперь оба 336-480.',
