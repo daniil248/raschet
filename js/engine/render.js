@@ -1474,14 +1474,27 @@ export function renderNodes() {
     const g = el('g', {
       class: 'integrated-ups-shell',
       transform: `translate(${wx},${wy})`,
+      'data-shell-ups-id': n.id,
     });
     // Корпус — заливка и обводка цвета фирменного шкафа.
+    // v0.59.528: шапка (полоса 0..18px высотой) — drag-handle для перемещения
+    // всего интегрированного ИБП за рамку. Остальная площадь — pointer-events:
+    // none, чтобы клики на дочерние модули проходили насквозь.
     g.appendChild(el('rect', {
       x: 0, y: 0, width: ww, height: wh,
       fill: '#fafbfc', 'fill-opacity': '0.55',
       stroke: '#37474f', 'stroke-width': 1.5,
       'stroke-dasharray': '4 3', rx: 6,
       'pointer-events': 'none',
+    }));
+    // Невидимая drag-полоса в верхней части шкафа (там где заголовок).
+    // Высота 22 px — захватывает текст «📦 TAG (Integrated)».
+    g.appendChild(el('rect', {
+      class: 'integrated-ups-shell-drag',
+      'data-shell-ups-id': n.id,
+      x: 0, y: 0, width: ww, height: 22,
+      fill: 'transparent',
+      style: 'cursor:move',
     }));
     // Заголовок «Integrated UPS Cabinet — TAG model».
     const tag = effectiveTag(n) || n.tag || 'UPS';

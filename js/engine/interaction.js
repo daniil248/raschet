@@ -1128,6 +1128,27 @@ export function initInteraction() {
       return;
     }
 
+    // v0.59.528: drag-полоса интегрированного ИБП — за рамку перемещаем
+    // весь шкаф с дочерними PDM-секциями.
+    const shellEl = e.target.closest('.integrated-ups-shell-drag');
+    if (shellEl && !state.readOnly) {
+      const upsId = shellEl.dataset.shellUpsId;
+      const upsN = upsId ? state.nodes.get(upsId) : null;
+      if (upsN && upsN.kind === 'ups-integrated' && Array.isArray(upsN.integratedChildIds)) {
+        const p = clientToSvg(e.clientX, e.clientY);
+        snapshot();
+        const children = upsN.integratedChildIds.map(cid => {
+          const c = state.nodes.get(cid);
+          return c ? { id: cid, dx: c.x - upsN.x, dy: c.y - upsN.y } : null;
+        }).filter(Boolean);
+        state.drag = { nodeId: upsId, dx: p.x - upsN.x, dy: p.y - upsN.y, children };
+        state.selection.clear();
+        selectNode(upsId);
+        render();
+        return;
+      }
+    }
+
     // Связь
     const connEl = e.target.closest('.conn-hit, .conn');
     if (connEl && connEl.dataset.connId) {

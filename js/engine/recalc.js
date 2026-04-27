@@ -393,10 +393,36 @@ function panelCosPhi(panelId) {
 }
 
 // ================= Расчёт мощности =================
+// v0.59.528: пометить связи, идущие ВНУТРИ интегрированного ИБП.
+// Это связи между родительским type='ups' kind='ups-integrated' и его
+// integratedChildIds (PDM-секциями ATS/IT/AC/Bypass), а также между
+// самими секциями. Эти связи — заводские шины внутри шкафа Kehua MR33,
+// для них НЕ нужно считать сечение кабеля и автомат на расчётной схеме
+// (только выходящие — после PDM в схему наружу).
+function _markInternalIntegratedConns() {
+  // Соберём множество членов каждой integrated-группы.
+  // Map<groupKey:string, Set<nodeId>> где groupKey = id родителя.
+  const memberToGroup = new Map();
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'ups' || n.kind !== 'ups-integrated') continue;
+    const ids = Array.isArray(n.integratedChildIds) ? n.integratedChildIds : [];
+    if (!ids.length) continue;
+    memberToGroup.set(n.id, n.id);
+    for (const cid of ids) memberToGroup.set(cid, n.id);
+  }
+  for (const c of state.conns.values()) {
+    const fromGroup = memberToGroup.get(c.from.nodeId);
+    const toGroup   = memberToGroup.get(c.to.nodeId);
+    c._isInternalIntegrated = !!(fromGroup && toGroup && fromGroup === toGroup);
+  }
+}
+
 function recalc() {
   // Сброс кэша maxDownstreamLoad на каждый проход — топология ties / tieStates
   // могла измениться с прошлого recalc.
   _resetMaxDownstreamCache();
+
+  _markInternalIntegratedConns();
 
   // Нормализация мощности модульного ИБП: единственный источник истины —
   // modulesActive + redundancyScheme + moduleKwRated + frameKw.
@@ -2863,6 +2889,29 @@ function recalc() {
     n._deltaUPct = nodeDeltaU(n.id);
     // Превышение допустимого падения напряжения
     n._vdropOverLimit = n._deltaUPct > (GLOBAL.maxVdropPct || 5);
+  }
+
+  // v0.59.528: финальная очистка для внутренних связей интегрированного
+  // ИБП — расчётные поля кабеля/автомата зануляются, чтобы инспектор и
+  // отчёты не показывали для них рекомендации (это заводские шины Kehua
+  // MR33, не проектные кабели). Пользователь оставляет на схеме только
+  // ВЫХОДЯЩИЕ автоматы PDM-секций.
+  for (const c of state.conns.values()) {
+    if (!c._isInternalIntegrated) continue;
+    c._cableSize = null;
+    c._cableMethod = null;
+    c._cableMark = null;
+    c._cableLength = 0;
+    c._cableParallel = 1;
+    c._cableMaterial = null;
+    c._cableInsulation = null;
+    c._maxA = 0;
+    c._loadA = 0;
+    c._breakerIn = null;
+    c._breakerUndersize = false;
+    c._deltaUSegPct = 0;
+    c._moduleResults = null;
+    c._isInternalConnHidden = true;  // флаг для UI / BOM / отчётов
   }
 }
 
