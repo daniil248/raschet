@@ -311,12 +311,89 @@ export function migrateAllLegacyRacks(opts) {
   return { created: totalCreated, updated: totalUpdated, dedupRemoved: totalDedupRemoved, processed };
 }
 
+/**
+ * v0.59.562: hard-очистка фантомов в обоих направлениях.
+ *
+ * Корень проблемы «удаляю tpl-*, а они вновь появляются»:
+ *   1. POR-объект type='rack' с tag/legacyRackId='tpl-*'.
+ *   2. Engine-узел type='consumer'/subtype='rack' с n.porObjectId на этот POR
+ *      и n.tag тоже tpl-*.
+ *   3. × удаляет POR. На следующем sync engine-por-mirror видит
+ *      n.porObjectId без объекта → null → создаёт НОВЫЙ POR с тем же tag.
+ *   → resurrection.
+ *
+ * Решение: убираем POR-фантом И ассоциированный engine-узел из scheme.v1
+ * (вместе со ссылающимися связями). Цикл прерван.
+ */
+export function cleanupPhantomsHard(pid) {
+  if (!pid) return { porRemoved: 0, engineNodesRemoved: 0, connectionsRemoved: 0 };
+  const racks = getObjects(pid, { type: 'rack' });
+  const phantomPorIds = new Set();
+  for (const r of racks) {
+    const lid = String(r.legacyRackId || '');
+    const tag = String(r.tag || '').trim();
+    const isStale =
+      lid.startsWith('tpl-') ||
+      lid.startsWith('scheme-') ||
+      lid.startsWith('por-group-') ||
+      tag.startsWith('tpl-');
+    if (isStale) phantomPorIds.add(r.id);
+  }
+
+  let engineNodesRemoved = 0;
+  let connectionsRemoved = 0;
+  try {
+    const schemeKey = projectKey(pid, 'engine', 'scheme.v1');
+    const raw = localStorage.getItem(schemeKey);
+    if (raw) {
+      const scheme = JSON.parse(raw);
+      if (scheme && Array.isArray(scheme.nodes)) {
+        const removeNodeIds = new Set();
+        for (const n of scheme.nodes) {
+          if (!n) continue;
+          const tag = String(n.tag || '').trim();
+          const isPhantomTag = tag.startsWith('tpl-');
+          const isPhantomLink = n.porObjectId && phantomPorIds.has(n.porObjectId);
+          if (isPhantomTag || isPhantomLink) removeNodeIds.add(n.id);
+        }
+        if (removeNodeIds.size > 0) {
+          const nBefore = scheme.nodes.length;
+          scheme.nodes = scheme.nodes.filter(n => !removeNodeIds.has(n.id));
+          engineNodesRemoved = nBefore - scheme.nodes.length;
+          if (Array.isArray(scheme.connections)) {
+            const cBefore = scheme.connections.length;
+            scheme.connections = scheme.connections.filter(c =>
+              !removeNodeIds.has(c.fromNodeId) && !removeNodeIds.has(c.toNodeId) &&
+              !removeNodeIds.has(c.from?.nodeId) && !removeNodeIds.has(c.to?.nodeId)
+            );
+            connectionsRemoved = cBefore - scheme.connections.length;
+          }
+          try { localStorage.setItem(schemeKey, JSON.stringify(scheme)); }
+          catch (e) { console.warn('[cleanupPhantomsHard] failed to save scheme:', e); }
+        }
+      }
+    }
+  } catch (e) { console.warn('[cleanupPhantomsHard] scheme parse failed:', e); }
+
+  let porRemoved = 0;
+  for (const id of phantomPorIds) {
+    try { if (removeObject(pid, id)) porRemoved++; }
+    catch (e) { console.warn('[cleanupPhantomsHard] removeObject failed:', e); }
+  }
+
+  if (porRemoved || engineNodesRemoved) {
+    console.info(`[cleanupPhantomsHard] pid=${pid}: porRemoved=${porRemoved}, engineNodesRemoved=${engineNodesRemoved}, connectionsRemoved=${connectionsRemoved}`);
+  }
+  return { porRemoved, engineNodesRemoved, connectionsRemoved };
+}
+
 if (typeof window !== 'undefined') {
   window.RaschetLegacyRackMigration = {
     runAll: migrateAllLegacyRacks,
     runOne: migrateProjectLegacyRacks,
     dedupOne: deduplicateProjectRacks,
     cleanupStale: cleanupStalePorRacks,
+    cleanupHard: cleanupPhantomsHard,
     reset: () => { try { localStorage.removeItem(FLAG_KEY); } catch {} },
   };
 }

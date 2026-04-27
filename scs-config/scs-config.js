@@ -4373,17 +4373,26 @@ function init() {
       const _flagKey = `raschet.scs-config.cleanup-stale-pid.${_pid}.session`;
       if (!sessionStorage.getItem(_flagKey)) {
         const lib = window.RaschetLegacyRackMigration;
-        const _r1 = lib.cleanupStale ? lib.cleanupStale(_pid) : { removed: 0 };
+        // v0.59.562: cleanupHard вместо cleanupStale — также удаляет
+        // engine-узлы с tag/porObjectId фантомов из scheme.v1, прерывая
+        // resurrection-цикл (mirror больше не создаст POR заново).
+        const _r1 = lib.cleanupHard
+          ? lib.cleanupHard(_pid)
+          : (lib.cleanupStale ? lib.cleanupStale(_pid) : { porRemoved: 0, engineNodesRemoved: 0 });
         const _r2 = lib.dedupOne ? lib.dedupOne(_pid) : { removed: 0 };
         sessionStorage.setItem(_flagKey, '1');
-        const removed = (_r1.removed || 0) + (_r2.removed || 0);
-        if (removed > 0) {
+        const porR = _r1.porRemoved || _r1.removed || 0;
+        const engR = _r1.engineNodesRemoved || 0;
+        const dupR = _r2.removed || 0;
+        const total = porR + engR + dupR;
+        if (total > 0) {
           const parts = [];
-          if (_r1.removed) parts.push(`фантомов: ${_r1.removed}`);
-          if (_r2.removed) parts.push(`дубликатов: ${_r2.removed}`);
+          if (porR) parts.push(`фантомов POR: ${porR}`);
+          if (engR) parts.push(`engine-узлов: ${engR}`);
+          if (dupR) parts.push(`дубликатов: ${dupR}`);
           console.info(`[scs-config] auto-cleanup: ${parts.join(', ')}`);
           setTimeout(() => {
-            try { scToast(`🧹 Авто-очистка POR: удалено ${removed} (${parts.join(', ')})`, 'ok'); } catch {}
+            try { scToast(`🧹 Авто-очистка: удалено ${total} (${parts.join(', ')})`, 'ok'); } catch {}
           }, 600);
         }
       }

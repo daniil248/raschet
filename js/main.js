@@ -795,6 +795,40 @@ async function refreshProjects() {
       }
     } catch (e) { console.warn('[main] legacy-rack-migration failed:', e); }
 
+    // v0.59.562: hard-cleanup фантомов (tpl-/scheme-/por-group-) для всех
+    // известных проектов. Делает БОТ POR-сторону (removeObject) И engine-
+    // сторону (правит scheme.v1 в LS), ломая resurrection-цикл. Один раз
+    // на сессию через session-flag.
+    try {
+      const _flag = 'raschet.main.cleanup-phantoms-hard.session';
+      if (!sessionStorage.getItem(_flag)) {
+        const mod = await import('../shared/legacy-rack-migration.js');
+        let totals = { porRemoved: 0, engineNodesRemoved: 0 };
+        let projects;
+        try {
+          const ps = await import('../shared/project-storage.js');
+          projects = ps.listProjects();
+        } catch { projects = []; }
+        for (const p of projects || []) {
+          if (!p || !p.id) continue;
+          try {
+            const r = mod.cleanupPhantomsHard(p.id);
+            if (r) {
+              totals.porRemoved += r.porRemoved || 0;
+              totals.engineNodesRemoved += r.engineNodesRemoved || 0;
+            }
+          } catch (e) { console.warn('[main] cleanupPhantomsHard failed for', p.id, e); }
+        }
+        sessionStorage.setItem(_flag, '1');
+        const total = totals.porRemoved + totals.engineNodesRemoved;
+        if (total > 0) {
+          flash(`🧹 Очистка фантомов: удалено ${totals.porRemoved} POR + ${totals.engineNodesRemoved} engine-узлов. Перезагрузить?`, 'info');
+          // Не делаем reload автоматически — engine может быть в активной
+          // сессии с несохранёнными изменениями. Пользователь сам решит.
+        }
+      }
+    } catch (e) { console.warn('[main] cleanup-phantoms-hard failed:', e); }
+
     const handleErr = (label) => (e) => {
       console.error('[refreshProjects:' + label + ']', e);
       if (String(e && e.message || '').includes('index')) {
