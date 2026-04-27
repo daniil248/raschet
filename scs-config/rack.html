@@ -32,6 +32,7 @@
       (() => {
         const FROM = {
           'scs-design': { href: '../scs-design/', label: '← Назад в «Проектирование СКС»' },
+          'schematic':  { href: '../',            label: '← Назад в «Конструктор схем»' },
           'mv-config':  { href: '../mv-config/',  label: '← Назад в «Конфигуратор РУ СН»' },
           'mdc-config': { href: '../mdc-config/', label: '← Назад в «Конфигуратор МЦОД»' },
           'projects':   { href: '../projects/',   label: '← Назад к проектам' },
@@ -49,6 +50,13 @@
                 if (ref.pathname.includes('/' + k + '/') || ref.pathname.endsWith('/' + k + '.html')) {
                   from = k; break;
                 }
+              }
+              // v0.59.546: главная (Конструктор схем) — реферер заканчивается
+              // на корне сайта или index.html, без префикса модуля.
+              if (!from) {
+                const refPath = ref.pathname.replace(/\/index\.html$/i, '/').replace(/\/+$/, '/');
+                const ourBase = location.pathname.split('/scs-config/')[0] + '/';
+                if (refPath === ourBase) from = 'schematic';
               }
             }
           } catch {}

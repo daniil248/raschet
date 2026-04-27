@@ -1408,11 +1408,21 @@ export function renderGeneralPanel(n) {
     }
     const isPanel = (cfg === _CONFIGURATORS.panel || cfg === _CONFIGURATORS.panelMv);
     h.push(`<a class="full-btn" href="${escAttr(href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);
+    // v0.59.546: для consumer-rack — дополнительная ссылка прямо в Компоновщик
+    // шкафа (наполнение PDU/устройствами), отдельно от rack-config (корпус).
+    // ?from=schematic даёт back-link «← Назад в Конструктор схем».
+    if (cfg === _CONFIGURATORS.rack) {
+      // Реальные стойки могут быть распознаны по тегу/связке через POR; для
+      // быстрого доступа открываем root компоновщика — там pinned-список и
+      // virtuals из schemeNodeId (count=N узел развернут в N виртуалов).
+      const compHref = '../scs-config/rack.html?from=schematic';
+      h.push(`<a class="full-btn" href="${escAttr(compHref)}" target="_blank" rel="noopener" style="display:block;margin-top:6px;text-align:center;text-decoration:none;background:#f0fdf4;color:#14532d;border-color:#86efac">🗄 Компоновщик шкафа (наполнение)</a>`);
+    }
     h.push(`<div class="muted" style="font-size:11px;margin-top:4px">${
       isPanel
         ? 'Оболочка, шины, автоматы, учёт, ТТ, мониторинг и аксессуары — всё в wizard конфигуратора. Wizard видит реальные связи узла (ток/тип линии).'
         : 'Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.'
-    }${cfg === _CONFIGURATORS.rack ? ' После настройки нажмите в модуле «↩ Применить к узлу схемы».' : ''}</div>`);
+    }${cfg === _CONFIGURATORS.rack ? ' После настройки нажмите в модуле «↩ Применить к узлу схемы». Наполнение PDU/устройствами — в Компоновщике (количество стоек count=N развёрнуто в N виртуалов).' : ''}</div>`);
 
     // v0.58.81: если к узлу уже применён rack-шаблон — показываем сводку,
     // чтобы было видно без повторного открытия конфигуратора.
