@@ -917,22 +917,45 @@ function _applyStep2Filters(suitable) {
   });
 }
 
-// v0.59.400: заполнить выпадающие списки фильтров шага 2 уникальными значениями
-// из текущего набора подходящих моделей.
+// v0.59.468: КРОСС-ФИЛЬТРАЦИЯ. Опции каждого селекта учитывают значения
+// всех остальных активных фильтров. Раньше «Все» считалось от полного
+// suitable-списка независимо от того что выбрал пользователь — поэтому
+// можно было выбрать невозможную комбинацию (Legrand + All-in-One и т.п.).
 function _populateStep2FilterOptions(suitable) {
   const supSel = document.getElementById('wiz-filter-supplier');
   const topSel = document.getElementById('wiz-filter-topology');
+  // Применяем все фильтры кроме одного — для определения опций этого фильтра.
+  const subset = (excludeId) => {
+    const sup = excludeId === 'sup' ? '' : (document.getElementById('wiz-filter-supplier')?.value || '').toLowerCase();
+    const top = excludeId === 'top' ? '' : (document.getElementById('wiz-filter-topology')?.value || '').toLowerCase();
+    const kwMin = Number(document.getElementById('wiz-filter-kwMin')?.value) || 0;
+    const kwMax = Number(document.getElementById('wiz-filter-kwMax')?.value) || Infinity;
+    const txt = (document.getElementById('wiz-filter-text')?.value || '').trim().toLowerCase();
+    return suitable.filter(({ ups, fitInfo }) => {
+      if (sup && (ups.supplier || '').toLowerCase() !== sup) return false;
+      if (top && (ups.topology || '').toLowerCase() !== top) return false;
+      const kw = fitInfo.usable || ups.frameKw || ups.capacityKw || 0;
+      if (kw < kwMin || kw > kwMax) return false;
+      if (txt) {
+        const hay = [ups.supplier, ups.model, ups.id, ups.series, ups.topology].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(txt)) return false;
+      }
+      return true;
+    });
+  };
   if (supSel) {
     const cur = supSel.value;
-    const sups = [...new Set(suitable.map(s => s.ups.supplier).filter(Boolean))].sort();
+    const sups = [...new Set(subset('sup').map(s => s.ups.supplier).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
     supSel.innerHTML = '<option value="">Все</option>' + sups.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-    if (sups.includes(cur)) supSel.value = cur;
+    if (cur && sups.includes(cur)) supSel.value = cur;
+    else if (cur) supSel.value = '';
   }
   if (topSel) {
     const cur = topSel.value;
-    const tops = [...new Set(suitable.map(s => s.ups.topology).filter(Boolean))].sort();
+    const tops = [...new Set(subset('top').map(s => s.ups.topology).filter(Boolean))].sort();
     topSel.innerHTML = '<option value="">Все</option>' + tops.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-    if (tops.includes(cur)) topSel.value = cur;
+    if (cur && tops.includes(cur)) topSel.value = cur;
+    else if (cur) topSel.value = '';
   }
 }
 
