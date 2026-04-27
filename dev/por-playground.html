@@ -88,6 +88,7 @@
       <option value="space">space — помещение</option>
     </select>
     <button class="ghost" id="cleanup-dups" title="Удалить дубликаты POR-объектов type=rack этого проекта (та же tag/kW/габариты)">🧹 Удалить дубликаты</button>
+    <button class="ghost" id="cleanup-stale" title="Удалить «фантомные» POR-стойки: записи с legacyRackId='tpl-…/scheme-…/por-group-…' (корпус-шаблоны и виртуалы, попавшие сюда из-за legacy-миграции)">🗑 Удалить фантомы</button>
     <span class="muted" id="rack-count"></span>
   </div>
   <table id="racks-table">
@@ -411,6 +412,22 @@ if ($('cleanup-dups')) {
     const mod = await import('../shared/legacy-rack-migration.js');
     const r = mod.deduplicateProjectRacks(_currentPid);
     log(`cleanup: kept ${r.kept}, removed ${r.removed} (groups ${r.groups})`);
+    renderRacks();
+  });
+}
+if ($('cleanup-stale')) {
+  $('cleanup-stale').addEventListener('click', async () => {
+    if (!_currentPid) {
+      alert('Cleanup работает только в POR mode (project ID применён).');
+      return;
+    }
+    const mod = await import('../shared/legacy-rack-migration.js');
+    const r = mod.cleanupStalePorRacks(_currentPid);
+    if (r.removed) {
+      log(`cleanup-stale: removed ${r.removed} phantom racks: ${r.details.map(d => d.tag || d.id).join(', ')}`);
+    } else {
+      log('cleanup-stale: фантомов не найдено');
+    }
     renderRacks();
   });
 }

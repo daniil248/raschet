@@ -60,12 +60,27 @@ function _isProjectLikeId(id) {
  */
 function _collectLegacyRacks(pid) {
   const out = new Map();
+  // v0.59.553: id с префиксом 'tpl-' / 'scheme-' / 'por-group-' — это
+  // соответственно корпус-шаблоны (rack-config), виртуалы из engine-схемы
+  // и POR-group слоты. Они НЕ должны мигрироваться в POR как rack-объекты.
+  // Раньше попадали через rack-config.instances.v1 (если шаблон был сохранён
+  // туда же) или через scs-config.contents/rackTags (если пользователь
+  // добавил контент в виртуал) — захламляли POR-список «Стойка tpl-…»
+  // записями, видимыми в POR Playground и picker'ах.
+  const isStaleId = (id) => {
+    if (typeof id !== 'string') return true;
+    if (id.startsWith('tpl-')) return true;
+    if (id.startsWith('scheme-')) return true;
+    if (id.startsWith('por-group-')) return true;
+    return false;
+  };
 
   // 1) rack-config.instances.v1 — главный источник instance-данных.
   const instances = _load(projectKey(pid, 'rack-config', 'instances.v1'), []);
   if (Array.isArray(instances)) {
     for (const r of instances) {
       if (!r || !r.id) continue;
+      if (isStaleId(r.id)) continue;
       out.set(r.id, {
         tag:    r.tag || r.label || '',
         name:   r.name || r.label || '',
@@ -80,6 +95,7 @@ function _collectLegacyRacks(pid) {
   if (tags && typeof tags === 'object') {
     for (const [rackId, tag] of Object.entries(tags)) {
       if (!rackId) continue;
+      if (isStaleId(rackId)) continue;
       if (!out.has(rackId)) {
         out.set(rackId, { tag: String(tag || ''), name: '', source: 'scs-config.rackTags', raw: null });
       } else if (!out.get(rackId).tag) {
@@ -94,6 +110,7 @@ function _collectLegacyRacks(pid) {
   if (contents && typeof contents === 'object') {
     for (const rackId of Object.keys(contents)) {
       if (!rackId) continue;
+      if (isStaleId(rackId)) continue;
       if (!out.has(rackId)) {
         out.set(rackId, { tag: '', name: '', source: 'scs-config.contents', raw: null });
       }
@@ -101,6 +118,40 @@ function _collectLegacyRacks(pid) {
   }
 
   return out;
+}
+
+/**
+ * v0.59.553: cleanup — удалить «фантомные» POR rack-записи, которые попали
+ * туда из-за legacy-миграции до фильтрации tpl-/scheme-/por-group-id.
+ * Также удаляет rack-объекты, чей tag начинается с 'tpl-' (когда id
+ * детерминистический por_legacy_tpl_*, но tag всё равно показывает 'tpl-').
+ */
+export function cleanupStalePorRacks(pid) {
+  if (!pid) return { removed: 0 };
+  const racks = getObjects(pid, { type: 'rack' });
+  if (!racks.length) return { removed: 0 };
+  let removed = 0;
+  const removedDetails = [];
+  for (const r of racks) {
+    const lid = String(r.legacyRackId || '');
+    const tag = String(r.tag || '').trim();
+    const isStale =
+      lid.startsWith('tpl-') ||
+      lid.startsWith('scheme-') ||
+      lid.startsWith('por-group-') ||
+      tag.startsWith('tpl-');
+    if (!isStale) continue;
+    try {
+      if (removeObject(pid, r.id)) {
+        removed++;
+        removedDetails.push({ id: r.id, tag, legacyRackId: lid });
+      }
+    } catch (e) { console.warn('[cleanup] remove failed:', e); }
+  }
+  if (removed) {
+    console.info(`[legacy-rack-migration] cleanup pid=${pid}: removed ${removed} stale POR racks`, removedDetails);
+  }
+  return { removed, details: removedDetails };
 }
 
 /**
@@ -265,6 +316,7 @@ if (typeof window !== 'undefined') {
     runAll: migrateAllLegacyRacks,
     runOne: migrateProjectLegacyRacks,
     dedupOne: deduplicateProjectRacks,
+    cleanupStale: cleanupStalePorRacks,
     reset: () => { try { localStorage.removeItem(FLAG_KEY); } catch {} },
   };
 }
