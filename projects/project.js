@@ -469,13 +469,30 @@ function render() {
     // (scheme/memberUids/ownerEmail), исключая project-контейнеры.
     try {
       const allRecs = listProjects() || [];
+      // v0.59.524: более толерантный фильтр + диагностика. Считаем
+      // схему «принадлежащей проекту», если scheme.projectId === p.id,
+      // ИЛИ scheme.parentProjectId === p.id (legacy-поле). Защищаемся
+      // от попадания project-контейнеров (по id-префиксу p_/s_ и по
+      // kind=full/sketch).
+      const _isCtx = (s) => {
+        if (!s || typeof s.id !== 'string') return false;
+        if (s.id.startsWith('p_') || s.id.startsWith('s_')) return true;
+        if (s.kind === 'full' || s.kind === 'sketch') return true;
+        return false;
+      };
       const mine = allRecs.filter(s => {
-        if (!s || !s.id || s.projectId !== p.id) return false;
-        // Защита: сюда не должны попадать project-контейнеры
-        if (s.id.startsWith('p_') || s.id.startsWith('s_')) return false;
-        if (s.kind === 'full' || s.kind === 'sketch') return false;
-        return true;
+        if (!s || !s.id) return false;
+        if (_isCtx(s)) return false;
+        const sp = s.projectId || s.parentProjectId || '';
+        return sp === p.id;
       });
+      // Диагностика — поможет если будут ещё проблемы.
+      try {
+        const total = allRecs.length;
+        const schemes = allRecs.filter(s => !_isCtx(s)).length;
+        const linkedAny = allRecs.filter(s => !_isCtx(s) && (s.projectId || s.parentProjectId)).length;
+        console.info(`[project.js] schemes load: pid=${p.id} total=${total} schemes=${schemes} linkedAny=${linkedAny} mine=${mine.length}`);
+      } catch {}
       if (mine.length) {
         const rowsHtml = mine.map(s => {
           const href = '../index.html?project=' + encodeURIComponent(s.id) + '&from=projects&fromCtx=' + encodeURIComponent(p.id);

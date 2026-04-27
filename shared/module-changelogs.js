@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.524', date: '2026-04-27', items: [
+      '🔍 <b>Fix project card schemes: толерантный фильтр + diagnostics</b>. После v0.59.523 пользователь репортит «не работает, для всех проектов в схемах пусто». Возможные причины:',
+      '• <b>scheme.projectId</b> мог быть установлен в legacy-поле <code>parentProjectId</code> (пред-Storage версия). Расширил фильтр: <code>(s.projectId || s.parentProjectId) === p.id</code>.',
+      '• Защита от попадания project-контейнеров вынесена в helper <code>_isCtx(s)</code> для повторного использования.',
+      '• <b>Diagnostic в console</b>: при каждом рендере карточки проекта пишется <code>[project.js] schemes load: pid=X total=N schemes=M linkedAny=K mine=L</code>. Это покажет: сколько вообще записей в LS, сколько из них Storage-схем, сколько имеют какую-то projectId-привязку, и сколько матчится текущему проекту.',
+      '• <b>Если mine=0</b>: значит схемы есть, но ни одна не привязана к этому p.id. Возможно их projectId указывает на устаревший (deleted) контейнер. В этом случае — миграция orphan-схем (v0.59.517) уже должна была привязать их к существующему контейнеру по имени. Если этого не произошло — нужно пройти повторно через консоль: <code>RaschetSchemeMigration.run({force:true})</code> и Ctrl+F5.',
+      'Файлы: <code>projects/project.js</code> — расширенный фильтр + console.info.',
+    ] },
     { version: '0.59.523', date: '2026-04-27', items: [
       '🩹 <b>Fix: карточка проекта показывает «Схемы · 0», хотя на главной «Мои схемы» эта схема привязана</b>. По репорту пользователя — расхождение между двумя страницами проекта 25013_Qarmet Темиртау.',
       '• <b>Корень бага</b>: <code>projects/project.js</code> async-блок enrichment для группы «Схемы» использовал <code>await window.Storage.listMyProjects()</code>. Storage-адаптер инициализируется асинхронно (Firebase compat scripts), и до его готовности listMyProjects может вернуть пусто или закидать в catch. Если не успеет до рендера — группа остаётся «Схем нет».',
