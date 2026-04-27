@@ -254,14 +254,35 @@ function render() {
   const totalArchived = projects.filter(p => p.status === 'archived').length;
   if (!showArchived) projects = projects.filter(p => p.status !== 'archived');
   const filterHost = document.getElementById('pr-status-filter');
+  // v0.59.568: подсчёт пустых full-проектов и кнопка их пакетного удаления.
+  const emptyFullProjects = projects.filter(p => {
+    const s = projectStats(p.id);
+    return (s.nodes + s.racks + s.links + s.inventory + s.facility) === 0;
+  });
   if (filterHost) {
     filterHost.innerHTML = `
       <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#64748b;cursor:pointer">
         <input type="checkbox" id="pr-show-archived" ${showArchived ? 'checked' : ''}>
         Показать архивные ${totalArchived ? `<span style="background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:10px;font-size:11px">${totalArchived}</span>` : ''}
-      </label>`;
+      </label>${emptyFullProjects.length ? `
+      <button type="button" id="pr-delete-empty-full" style="margin-left:14px;background:#fbbf24;color:#78350f;border:1px solid #f59e0b;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500" title="Удалить ВСЕ полные проекты без данных (схема/стойки/связи/реестры). Полезно для очистки тестовых записей.">🧹 Удалить ${emptyFullProjects.length} пустых проектов</button>` : ''}`;
     filterHost.querySelector('#pr-show-archived')?.addEventListener('change', e => {
       showArchived = !!e.target.checked;
+      render();
+    });
+    filterHost.querySelector('#pr-delete-empty-full')?.addEventListener('click', async () => {
+      const ok = await prConfirm(
+        `Удалить ${emptyFullProjects.length} пустых проектов?`,
+        `Будут удалены все полные проекты без данных. Имена: ${emptyFullProjects.slice(0, 5).map(p => p.name || '(без имени)').join(', ')}${emptyFullProjects.length > 5 ? `… и ещё ${emptyFullProjects.length - 5}` : ''}. Действие необратимо.`,
+        { okLabel: 'Удалить все пустые', isHtml: false }
+      );
+      if (!ok) return;
+      let removed = 0;
+      for (const p of emptyFullProjects) {
+        try { deleteProject(p.id); removed++; }
+        catch (e) { console.warn('[projects.js] bulk-delete project failed:', p.id, e); }
+      }
+      prToast(`✔ Удалено ${removed} пустых проектов`);
       render();
     });
   }
@@ -424,13 +445,20 @@ function renderSketches() {
   }[m] || '../');
 
   const totalN = sketches.length;
+  // v0.59.568: счётчик пустых мини-проектов и кнопка их пакетного удаления.
+  const emptySketches = sketches.filter(s => {
+    const st = projectStats(s.id);
+    return st.nodes + st.racks + st.links + st.inventory + st.facility === 0;
+  });
+  const emptyCount = emptySketches.length;
   host.innerHTML = `
     <details class="pr-sketches-panel" ${sketchesOpen ? 'open' : ''} style="margin-top:24px;padding:10px 14px;background:#fafbfc;border:1px solid #e5e7eb;border-radius:8px">
       <summary style="cursor:pointer;font-weight:600;color:#475569;user-select:none">
-        🧪 Мини-проекты (${totalN}) <span class="muted" style="font-weight:400;font-size:12px">— черновики мастеров, живут в своих модулях</span>
+        🧪 Мини-проекты (${totalN}) <span class="muted" style="font-weight:400;font-size:12px">— черновики мастеров, живут в своих модулях</span>${emptyCount ? ` <span style="background:#fef3c7;color:#78350f;padding:1px 6px;border-radius:3px;font-size:11px;font-weight:500;margin-left:6px">${emptyCount} пустых</span>` : ''}
       </summary>
-      <div style="margin-top:10px;color:#64748b;font-size:13px">
-        Мини-проекты создаются внутри конкретного мастера (scs-design, mv-config и т.п.) для быстрых прикидок без создания полноценного проекта. Они видны только в dropdown'е своего модуля. Здесь — аудит на случай, если черновики накопились.
+      <div style="margin-top:10px;color:#64748b;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>Мини-проекты создаются внутри конкретного мастера (scs-design, mv-config и т.п.) для быстрых прикидок без создания полноценного проекта. Они видны только в dropdown'е своего модуля.</span>
+        ${emptyCount ? `<button type="button" id="pr-delete-empty-sketches" style="background:#fbbf24;color:#78350f;border:1px solid #f59e0b;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap" title="Удалить ВСЕ пустые мини-проекты одним кликом (без данных в схеме/стойках/связях)">🧹 Удалить ${emptyCount} пустых</button>` : ''}
       </div>
       ${Object.entries(byOwner).map(([owner, items]) => `
         <div style="margin-top:12px">
@@ -504,6 +532,27 @@ function renderSketches() {
       prToast(`✔ Мини-проект удалён${removedKeys ? ' (стёрто ' + removedKeys + ' ключей LS)' : ''}`);
       render();
     });
+  });
+  // v0.59.568: bulk-удаление пустых мини-проектов.
+  document.getElementById('pr-delete-empty-sketches')?.addEventListener('click', async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const ok = await prConfirm(
+      `Удалить ${emptyCount} пустых мини-проектов?`,
+      `Будут удалены все sketches без данных (схема/стойки/связи/реестры). Действие необратимо. Имена: ${emptySketches.slice(0, 5).map(s => s.name || '(без имени)').join(', ')}${emptyCount > 5 ? `… и ещё ${emptyCount - 5}` : ''}.`,
+      { okLabel: 'Удалить все пустые', isHtml: false }
+    );
+    if (!ok) return;
+    let removed = 0;
+    let removedKeysTotal = 0;
+    for (const s of emptySketches) {
+      try {
+        const r = deleteProject(s.id);
+        removed++;
+        removedKeysTotal += r.removedKeys || 0;
+      } catch (err) { console.warn('[projects.js] bulk-delete sketch failed:', s.id, err); }
+    }
+    prToast(`✔ Удалено ${removed} пустых мини-проектов (${removedKeysTotal} ключей LS)`);
+    render();
   });
 }
 

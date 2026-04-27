@@ -349,24 +349,40 @@ function renderProjectBadge(pid) {
   // v0.59.565: force-merge legacy → активный sub. Перезаписывает
   // существующие ключи sub'а данными из parent.scs-design.* и удаляет
   // их из parent.
+  // v0.59.568: если sub'а нет — создаём «СКС» сами; полностью самодостаточная
+  // кнопка (не требует предварительного создания sub'а пользователем).
   document.getElementById('sd-force-merge-legacy')?.addEventListener('click', async () => {
     if (!parent || parentIsOrphan) return;
-    const dest = subs[0] || (p && p.parentProjectId === parent.id ? p : null);
-    if (!dest || !dest.id) {
-      const ph = document.createElement('div');
-      ph.textContent = 'Сначала выберите/создайте СКС-подпроект.';
-      ph.style.cssText = 'position:fixed;top:60px;right:20px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:6px;z-index:9999';
-      document.body.appendChild(ph);
-      setTimeout(() => ph.remove(), 2500);
-      return;
+    let dest = subs[0] || (p && p.parentProjectId === parent.id ? p : null);
+    let createdSub = false;
+    if (!dest) {
+      try {
+        dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
+        createdSub = true;
+      } catch (e) {
+        console.warn('[scs-design] force-merge: create sub failed:', e);
+        const ph = document.createElement('div');
+        ph.textContent = 'Не удалось создать СКС-подпроект: ' + (e.message || e);
+        ph.style.cssText = 'position:fixed;top:60px;right:20px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:6px;z-index:9999';
+        document.body.appendChild(ph);
+        setTimeout(() => ph.remove(), 3500);
+        return;
+      }
     }
+    if (!dest || !dest.id) return;
     const ok = confirm(
       `Принять legacy-данные из родителя «${parent.name}» в подпроект «${dest.name || dest.designation || 'СКС'}»?\n\n` +
-      `Существующие ключи подпроекта будут ПЕРЕЗАПИСАНЫ данными родителя. ` +
-      `Используйте только если уверены, что подпроект пуст или его данные устарели.`
+      (createdSub ? 'СКС-подпроект будет создан автоматически.\n' : '') +
+      `Существующие ключи подпроекта будут ПЕРЕЗАПИСАНЫ данными родителя.`
     );
-    if (!ok) return;
+    if (!ok) {
+      // Если только что создали sub, но юзер отменил merge — оставляем sub
+      // (можно использовать как пустой контейнер). Reset session flag.
+      try { sessionStorage.removeItem(`raschet.scs-design.legacy-migrate-attempted.${parent.id}.session`); } catch {}
+      return;
+    }
     const moved = _migrateLegacyScsToSub(parent.id, dest.id, { force: true });
+    console.info(`[scs-design] force-merge: createdSub=${createdSub}, moved=${moved.length}`);
     // Сбрасываем session-flag, чтобы при следующем заходе не было
     // «застрял» предупреждения.
     try {
@@ -491,10 +507,15 @@ function getProjectRackIds() {
     if (String(id).startsWith('inst-') && (byTag[id] || '').trim()) ids.add(id);
   });
   try {
-    const pid = getActiveProjectId();
-    if (pid) {
-      loadSchemeVirtualRacks(pid).forEach(v => ids.add(v.id));
-      loadPorGroupVirtualRacks(pid).forEach(v => ids.add(v.id));
+    // v0.59.568: schemePid = parent если active=sub, иначе active.
+    const activePid = getActiveProjectId();
+    const activeProj = activePid ? getProject(activePid) : null;
+    const schemePid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+      ? activeProj.parentProjectId
+      : activePid;
+    if (schemePid) {
+      loadSchemeVirtualRacks(schemePid).forEach(v => ids.add(v.id));
+      loadPorGroupVirtualRacks(schemePid).forEach(v => ids.add(v.id));
     }
   } catch {}
   return ids;
@@ -670,15 +691,22 @@ function saveJson(key, val) { try { localStorage.setItem(key, JSON.stringify(val
 
 function getRacks() {
   // v0.59.278: шаблоны глобальные + экземпляры активного проекта.
-  // v0.59.550: + виртуальные стойки (из схемы / POR-группы), чтобы они
-  // были видимы в Мастере меж-шкафных связей и могли быть выбраны для
-  // материализации (на чек — auto-materialize в обработчике sd-rack-chip).
+  // v0.59.550: + виртуальные стойки (из схемы / POR-группы).
+  // v0.59.568: scheme/POR-data живут в namespace РОДИТЕЛЯ, а не sub'а.
+  // Если активен sub-project (kind='sketch' с parentProjectId) — берём
+  // virtuals из parent.id, иначе из active pid. Без этого виртуалы
+  // SR1-1..SR1-8 не появлялись в Мастере связей после auto-redirect
+  // в sub (v0.59.556).
   try {
     migrateLegacyInstances();
     const real = loadAllRacksForActiveProject() || [];
-    const pid = getActiveProjectId();
-    const sV = pid ? loadSchemeVirtualRacks(pid) : [];
-    const pV = pid ? loadPorGroupVirtualRacks(pid) : [];
+    const activePid = getActiveProjectId();
+    const activeProj = activePid ? getProject(activePid) : null;
+    const schemePid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+      ? activeProj.parentProjectId
+      : activePid;
+    const sV = schemePid ? loadSchemeVirtualRacks(schemePid) : [];
+    const pV = schemePid ? loadPorGroupVirtualRacks(schemePid) : [];
     const seen = new Set(real.map(r => r && r.id).filter(Boolean));
     const seenV = new Set(sV.map(v => v.id));
     const out = real.slice();
@@ -735,7 +763,12 @@ function _materializeVirtualForPlan(virtId, tag) {
     return null;
   }
   // v0.59.544: ищем virtId и среди scheme-, и среди POR-group-виртуалов.
-  const pid = getActiveProjectId();
+  // v0.59.568: schemePid = parent если active=sub.
+  const activePid = getActiveProjectId();
+  const activeProj = activePid ? getProject(activePid) : null;
+  const pid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+    ? activeProj.parentProjectId
+    : activePid;
   const schemeVs = loadSchemeVirtualRacks(pid);
   const porGroupVs = loadPorGroupVirtualRacks(pid);
   const v = schemeVs.find(x => x.id === virtId) || porGroupVs.find(x => x.id === virtId);
@@ -1537,10 +1570,13 @@ function renderRacksSummary() {
   const racks = getProjectInstances();
 
   // v0.59.348: баннер о виртуальных стойках «из схемы» (consumer/rack узлы
-  // в Конструкторе схем). Их нельзя ставить в зал и связывать кабелями —
-  // в них нет содержимого. Чтобы участвовать в проектировании СКС — нужно
-  // материализовать в Компоновщике.
-  const pid = getActiveProjectId();
+  // в Конструкторе схем).
+  // v0.59.568: schemePid = parent если active=sub.
+  const activePid = getActiveProjectId();
+  const activeProj = activePid ? getProject(activePid) : null;
+  const pid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+    ? activeProj.parentProjectId
+    : activePid;
   // v0.59.544: + POR consumer-group виртуалы (дедуп по id).
   const _schVs = (() => { try { return loadSchemeVirtualRacks(pid) || []; } catch { return []; } })();
   const _porGVs = (() => { try { return loadPorGroupVirtualRacks(pid) || []; } catch { return []; } })();
@@ -1920,8 +1956,12 @@ function renderPlan() {
   // ещё не материализованы в scs-config. Показываем их в палитре отдельным
   // блоком — при drop материализуются inline (создаётся real-instance).
   // v0.59.544: + POR consumer-group rack-members (анонимные слоты ×N).
-  // Дедуп по autoTag — реальная стойка с тем же тегом скрывает виртуал.
-  const pid = getActiveProjectId();
+  // v0.59.568: schemePid = parent если active=sub.
+  const activePid = getActiveProjectId();
+  const activeProj = activePid ? getProject(activePid) : null;
+  const pid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+    ? activeProj.parentProjectId
+    : activePid;
   const schemeVs = loadSchemeVirtualRacks(pid);
   const porGroupVs = loadPorGroupVirtualRacks(pid);
   const seenIds = new Set(schemeVs.map(v => v.id));
