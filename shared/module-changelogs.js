@@ -4,6 +4,22 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.502', date: '2026-04-27', items: [
+      '💡 <b>POR type \'consumer-system\' — распределённые системы без габарита.</b> По уточнению пользователя: у электрика есть потребители-системы, которые НЕ имеют geometric footprint, но должны учитываться по нагрузке. Примеры: освещение (множество ламп распределены), розеточная сеть (N розеток на пространстве), обогрев трубопроводов (нагревательный кабель вдоль линии).',
+      '• <b>Без mechanical-домена</b> (защищает от попыток ввести «габариты системы освещения»). По умолчанию домены: <code>electrical</code> + <code>location</code>.',
+      '• <b>Subtypes</b>: <code>lighting</code> / <code>outlets</code> / <code>pipe-heating</code> / <code>snow-melting</code> / <code>ventilation</code> / <code>plinth-heating</code> / <code>custom</code>. Каждый подтип имеет свой icon и свою structure в <code>composition</code>:',
+      '  ⚬ lighting: { unitCount, unitPowerW, lampType }',
+      '  ⚬ outlets: { outletCount, outletRatedA, outletType }',
+      '  ⚬ pipe-heating: { lengthM, powerPerMeterW, cableType, mediumTempC }',
+      '  ⚬ snow-melting: { areaM2, powerPerM2W }',
+      '  ⚬ ventilation: { fanCount, fanPowerKw, controlKind }',
+      '• <b>location.spaces[]</b> — массив пространств (система может быть распределена по нескольким помещениям, в отличие от одного <code>spaceId</code> у rack/panel).',
+      '• <b>kSim</b> — коэф. одновременности (для расчёта пиковой нагрузки от composition).',
+      '• <b>Helper</b>: <code>calcSystemDemandFromComposition(comp, subtype)</code> — авто-вычисление demandKw из composition (lighting = unitCount × unitPowerW / 1000 и т.п.).',
+      '• <b>Группировка</b>: consumer-system наследует <code>groupElectricalKeys</code> — электрик может объединить «8 одинаковых систем освещения на 8 этажах» в consumer-group.',
+      '🏷 <b>POR_TYPE_CATEGORIES</b>: добавлена категория \'system\' (наряду с equipment / container / aggregator / connector). Helper <code>listPorTypesByCategory(\'system\')</code> для UI-палитр.',
+      'Файлы: <code>shared/por-types/consumer-system.js</code> (новый), <code>shared/por-types/index.js</code> (регистрация + categories).',
+    ] },
     { version: '0.59.501', date: '2026-04-27', items: [
       '🏗 <b>Phase 2.5 PoC: расширение POR — registry-pattern + ports + DataAdapter contract + project-bootstrap.</b> Большой шаг согласно ТЗ пользователя: «данные проекта лежат только в проекте, конфигураторы не знают о проектах».',
       '🧩 <b>POR Types Registry (<code>shared/por-types/</code>)</b>: каждый тип объекта в отдельном модуле, регистрируется через <code>registerPorType(typeDef)</code>. Расширяется без правки ядра. PoC-типы:',

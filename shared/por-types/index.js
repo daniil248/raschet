@@ -21,6 +21,7 @@
 import { RACK_TYPE } from './rack.js';
 import { CONTAINER_TYPES } from './containers.js';
 import { CONSUMER_GROUP_TYPE } from './consumer-group.js';
+import { CONSUMER_SYSTEM_TYPE } from './consumer-system.js';
 
 const _registry = new Map();
 
@@ -40,7 +41,18 @@ export function listPorTypeIds() { return [..._registry.keys()]; }
 // ── Регистрация built-in типов ─────────────────────────────────────
 registerPorType(RACK_TYPE);
 registerPorType(CONSUMER_GROUP_TYPE);
+registerPorType(CONSUMER_SYSTEM_TYPE);
 for (const t of CONTAINER_TYPES) registerPorType(t);
+
+// Известные категории type-definition (из .category поля). Используется
+// палитрами / UI для группировки. Системы не имеют габаритов и могут
+// требовать иной UI чем equipment.
+export const POR_TYPE_CATEGORIES = ['equipment', 'system', 'container', 'aggregator', 'connector'];
+
+/** Перечислить type-definitions с указанной категорией. */
+export function listPorTypesByCategory(category) {
+  return listPorTypes().filter(t => t.category === category);
+}
 
 // Удобство: агрегированный набор groupElectricalKeys для типов которые
 // могут быть в consumer-group (если type не объявил свой — defaults).
