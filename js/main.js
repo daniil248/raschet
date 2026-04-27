@@ -1068,6 +1068,16 @@ async function openProject(id) {
       }));
     } catch {}
 
+    // Phase 2.5 PoC: bootstrap проектного режима для подменяемых
+    // adapter'ов (rack-config / scs-config через POR) + engine-por-mirror
+    // (зеркало rack-узлов схемы в POR-объекты type='rack').
+    try {
+      if (data && data.id) {
+        const mod = await import('../shared/project-bootstrap.js');
+        mod.bootstrapProject(data.id);
+      }
+    } catch (e) { console.warn('[main] bootstrapProject failed:', e); }
+
     // Схему даём редактору
     if (data.scheme) {
       window.Raschet.loadScheme(data.scheme);

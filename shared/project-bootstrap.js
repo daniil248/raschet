@@ -21,6 +21,9 @@
 
 import { setAdapter, clearAdapter } from './data-adapter.js';
 import { createPorAdapter, createPorDomainAdapter } from './por-adapters.js';
+// engine-por-mirror импортируется ленивo в bootstrapProject — engine
+// подгружается не на всех страницах (rack-config / scs-config работают
+// без engine), а engine-por-mirror импортирует js/engine/state.js.
 
 // Маппинг moduleId → {type|domain}. Каждая запись определяет, как
 // проектный слой подменяет adapter для конкретного конфигуратора.
@@ -67,12 +70,36 @@ export function bootstrapProject(pid) {
   if (typeof window !== 'undefined') {
     window.__raschet_project_pid = pid;
   }
+  // Engine mirror — активируем только если engine реально загружен на
+  // этой странице (window.Raschet есть). Иначе lazy-import упадёт на
+  // js/engine/state.js (его нет в rack-config / scs-config / etc.)
+  // Ждём DOMContentLoaded, т.к. engine может ещё инициализироваться.
+  if (typeof window !== 'undefined') {
+    const tryEnableMirror = () => {
+      if (!window.Raschet) return false;
+      import('./engine-por-mirror.js')
+        .then(mod => { try { mod.enableEngineMirror(pid); } catch (e) { console.warn('[bootstrap] engine mirror failed:', e); } })
+        .catch(() => {});
+      return true;
+    };
+    if (!tryEnableMirror()) {
+      // Если Raschet ещё не появился — подождём.
+      const check = setInterval(() => {
+        if (tryEnableMirror()) clearInterval(check);
+      }, 200);
+      setTimeout(() => clearInterval(check), 8000);  // give up after 8s
+    }
+  }
 }
 
 /** Выйти из проектного режима — adapter'ы возвращаются к default-фабрикам. */
 export function teardownProject() {
   for (const b of PROJECT_ADAPTER_BINDINGS) clearAdapter(b.moduleId);
   if (typeof window !== 'undefined') delete window.__raschet_project_pid;
+  // Снимаем engine mirror если был активен.
+  if (typeof window !== 'undefined' && window.RaschetEnginePorMirror) {
+    try { window.RaschetEnginePorMirror.disableEngineMirror(); } catch {}
+  }
 }
 
 /**

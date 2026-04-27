@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.504', date: '2026-04-27', items: [
+      '🪞 <b>Phase 2.5 PoC: первая реальная интеграция — Engine ↔ POR mirror.</b> Стойки, добавленные в принципиальную схему (consumer-узлы с subtype=\'rack\'), теперь автоматически зеркалируются в POR-объекты type=\'rack\' с доменами <code>electrical</code> + <code>mechanical</code>. Зеркалирование двустороннее.',
+      '• <b>Engine → POR</b>: на каждое <code>notifyChange()</code> рефлекс mirror проходит rack-узлы, создаёт POR-объект если не было (с записью <code>n.porObjectId</code>) или обновляет существующий (tag/name/demandKw/cosPhi/phases/voltageV/widthMm/depthMm/heightMm/rackUnits).',
+      '• <b>POR → Engine</b>: подписка на <code>por.subscribe(pid)</code>. Когда POR-объект меняется в другой вкладке (или из POR Playground / rack-config / scs-config) — engine-узел получает обновление. Защита от рекурсии через <code>_suppressSync</code>.',
+      '• <b>POR → Engine на cross-tab \'sync\' event</b>: refresh всех связанных узлов из текущего POR-store.',
+      '🔌 <b>Multi-listener change events в engine</b>: <code>state.js</code> расширен — раньше был один <code>setChangeCb</code> (использовался main.js для autosave), теперь добавлен <code>addChangeListener(cb)</code> — отдельный список для дополнительных подписчиков (POR-mirror, плагины). <code>notifyChange()</code> вызывает оба механизма. Backwards-compat сохранён.',
+      '🚀 <b>Auto-bootstrap из main.js</b>: при загрузке проекта (<code>state.currentProject = data</code>) вызывается <code>bootstrapProject(pid)</code> — регистрирует POR-adapter\'ы для rack-config / scs-config / suppression-config и активирует engine-mirror. Конфигуратор НЕ знает про этот вызов — main.js (entry-page для проекта) управляет.',
+      '🎯 <b>Демо сценарий end-to-end</b>: открыть проект в engine → создать consumer-узел с subtype=\'rack\' → задать demandKw=5 → открыть POR Playground в новой вкладке с тем же ?project= → стойка отображается с теми же параметрами. Изменить kW в playground → значение обновится в engine-инспекторе.',
+      'Файлы: <code>js/engine/state.js</code> (multi-listener), <code>js/engine/history.js</code> (notifyChange вызывает listeners), <code>shared/engine-por-mirror.js</code> (новый, ~190 строк), <code>shared/project-bootstrap.js</code> (lazy-импорт mirror), <code>js/main.js</code> (вызов bootstrapProject).',
+    ] },
     { version: '0.59.503', date: '2026-04-27', items: [
       '🧪 <b>POR Playground (<code>dev/por-playground.html</code>)</b> — интерактивная страница для проверки Phase 2.5 PoC end-to-end. Демонстрирует:',
       '• Standalone vs project mode (бейдж сверху). Switch by вводу Project ID.',

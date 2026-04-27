@@ -1,4 +1,4 @@
-import { state, getChangeCb } from './state.js';
+import { state, getChangeCb, getChangeListeners } from './state.js';
 
 // Late-bound dependencies (set by index.js to avoid circular imports)
 let _serialize, _deserialize, _render, _renderInspector;
@@ -77,9 +77,19 @@ export function updateUndoButtons() {
 }
 
 export function notifyChange() {
+  if (state.readOnly || _suppressSnapshot) return;
+  // Главный handler (main.js — autosave + dirty-flag).
   const _changeCb = getChangeCb();
-  if (_changeCb && !state.readOnly && !_suppressSnapshot) {
+  if (_changeCb) {
     try { _changeCb(); } catch (e) { console.error('[onChange]', e); }
+  }
+  // Дополнительные слушатели (POR-mirror, плагины) — отдельный список,
+  // не блокируют главный, ошибки логируются индивидуально.
+  const listeners = getChangeListeners();
+  if (listeners && listeners.size) {
+    for (const cb of listeners) {
+      try { cb(); } catch (e) { console.error('[onChangeListener]', e); }
+    }
   }
 }
 

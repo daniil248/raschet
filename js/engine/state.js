@@ -203,9 +203,22 @@ export function getIdSeq() { return _idSeq; }
 export function setIdSeq(v) { _idSeq = v; }
 
 // ================= Change callback =================
+// Раньше: один _changeCb (используется main.js для save). Теперь:
+// _changeCb остался для обратной совместимости, плюс _changeListeners —
+// массив дополнительных подписчиков (POR-mirror, плагины и т.п.).
+// notifyChange() вызывает всех.
 let _changeCb = null;
+const _changeListeners = new Set();
 export function setChangeCb(cb) { _changeCb = cb; }
 export function getChangeCb() { return _changeCb; }
+
+/** Добавить слушателя изменений schema (вне основного _changeCb). Возвращает unsubscribe. */
+export function addChangeListener(cb) {
+  if (typeof cb !== 'function') return () => {};
+  _changeListeners.add(cb);
+  return () => _changeListeners.delete(cb);
+}
+export function getChangeListeners() { return _changeListeners; }
 
 // ================= DOM refs (lazy) =================
 export let svg, layerZones, layerConns, layerNodes, layerOver, inspectorBody, statsEl, modesListEl;
