@@ -18,22 +18,31 @@ export const EATON_UPSES = [
     model: '9PX 6000', kind: 'ups', upsType: 'monoblock',
     capacityKva: 6, capacityKw: 5.4, phases: 1,
     efficiency: 95, cosPhi: 0.9,
-    vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
+    // Datasheet TD153001EN + 9PXEBM180RT EBM (180 VDC): внутренний пакет 15×12В
+    // VRLA (180V ном., 90 ячеек). Operating window EoD 1.67 → float 2.40 VPC:
+    //   min = 90 × 1.67 = 150.3 → 150 В
+    //   max = 90 × 2.40 = 216.0 → 216 В
+    // Lithium-вариант 9PX6K-L (192V) — отдельная позиция, здесь VRLA.
+    vdcMin: 150, vdcMax: 216, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 9PX datasheet',
+    source: 'Eaton 9PX 5-6 kVA Tech Spec TD153001EN (15 × 12В VRLA, 180V ном., EBM 9PXEBM180RT)',
     importedAt: 0, custom: false,
-    notes: 'Моноблок 6 кВА · 1ф · Online double-conversion · Tower/Rack.',
+    notes: 'Моноблок 6 кВА · 1ф · Online double-conversion · Tower/Rack. АКБ: 15 × 12В, 150…216 VDC.',
   },
   {
     id: 'eaton-9px-11k', supplier: 'Eaton',
     model: '9PX 11000', kind: 'ups', upsType: 'monoblock',
     capacityKva: 11, capacityKw: 10, phases: 1,
     efficiency: 95, cosPhi: 0.9,
-    vdcMin: 192, vdcMax: 240, inputs: 1, outputs: 1,
+    // Datasheet TD153002EN + 9PXEBM240RT EBM (240 VDC): внутренний пакет 20×12В
+    // VRLA (240V ном., 120 ячеек). Operating window EoD 1.67 → float 2.40 VPC:
+    //   min = 120 × 1.67 = 200.4 → 200 В
+    //   max = 120 × 2.40 = 288.0 → 288 В
+    vdcMin: 200, vdcMax: 288, inputs: 1, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 9PX datasheet',
+    source: 'Eaton 9PX 8-11 kVA Tech Spec TD153002EN (20 × 12В VRLA, 240V ном., EBM 9PXEBM240RT)',
     importedAt: 0, custom: false,
-    notes: 'Моноблок 11 кВА · 1ф · 6U Rack.',
+    notes: 'Моноблок 11 кВА · 1ф · 6U Rack. АКБ: 20 × 12В, 200…288 VDC.',
   },
   // ── 93PS (8–40 kW, monoblock 3ph) ────────────────────────────────
   {

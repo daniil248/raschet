@@ -6,6 +6,7 @@
 // напряжению. До явной верификации datasheet их следует помечать ⚠ в UI.
 //
 // Источники для verified:
+//   • Eaton 9PX 6/11        → 150-216 / 200-288 (TD153001EN/TD153002EN, 15/20 × 12В VRLA)
 //   • Eaton 93PM 50/100/200 → 360-540 (PQ131012EN, 36/40 × 12В VRLA)
 //   • Eaton 93PS 40         → 336-480 (PS153045, 28/40 × 12В VRLA)
 //   • Schneider Galaxy VS 60 → 384-576 (securepower.com GVSUPS60KGS)
@@ -14,6 +15,7 @@
 
 const VERIFIED_VDC_IDS = new Set([
   // Eaton (verified through datasheet web-search)
+  'eaton-9px-6k', 'eaton-9px-11k',
   'eaton-93pm-50k', 'eaton-93pm-100k', 'eaton-93pm-200k',
   'eaton-93ps-8k', 'eaton-93ps-20k', 'eaton-93ps-40k',
   'eaton-9395-500k', 'eaton-9395-1100k',

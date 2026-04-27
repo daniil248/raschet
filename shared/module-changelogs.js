@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.491', date: '2026-04-27', items: [
+      '✅ <b>Eaton 9PX 6 / 11 kVA — V_DC окно verified.</b> Раньше у обеих моделей было записано 192-240 VDC — это смесь Lithium-варианта (9PX6K-L = 192V) и нома 11kVA. Для VRLA-конфигураций реальная картина другая:',
+      '• <b>9PX 6000</b> (datasheet TD153001EN + EBM 9PXEBM180RT): внутренний пакет <b>15 × 12В VRLA</b>, 180V ном., 90 ячеек. Operating window EoD 1.67 → float 2.40 VPC = <b>150…216 VDC</b>.',
+      '• <b>9PX 11000</b> (datasheet TD153002EN + EBM 9PXEBM240RT): внутренний пакет <b>20 × 12В VRLA</b>, 240V ном., 120 ячеек. Operating window EoD 1.67 → float 2.40 VPC = <b>200…288 VDC</b>.',
+      '• Записи добавлены в <code>shared/ups-verified.js</code> → green ✓ в Battery-calc.',
+      '• seedVersion 13→14 force-upsert.',
+      'Файлы: <code>shared/catalogs/ups-eaton.js</code> (eaton-9px-6k / 11k), <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.490', date: '2026-04-27', items: [
       '✅ <b>Schneider Galaxy VS 40 kW — V_DC окно verified.</b> 400V вариант GVSUPS40KHS: battery <b>384-480 VDC</b>. Раньше 360-480 estimate. Для 480V варианта (GVSUPS40KGS) — 480-576 VDC, отмечено в notes.',
       '• Запись добавлена в <code>shared/ups-verified.js</code> → green ✓ в Battery-calc.',

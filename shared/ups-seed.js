@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '13'; // v0.59.490: Schneider Galaxy VS 40 — verified V_DC 384-480 (400V datasheet)
+const CURRENT_VERSION = '14'; // v0.59.491: Eaton 9PX 6/11 — verified V_DC (15/20 × 12В VRLA, 150-216 / 200-288)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,
