@@ -67,7 +67,7 @@ export const KEHUA_S3_MODULES = [
       cabinetVariants: ['-M', '-S', '-S2', '-M1', '-M2'],
       maxPerCabinet: 20,
       cabinetPowerKw: 200,
-      cabinetKwh: 46,                     // v0.59.425: уточнено по User Manual A (было 41)
+      cabinetKwh: 41,                     // v0.59.467: брошюра 2023-11-16 — 41 kWh (20 × 2.05 kWh = 41). Ранее ошибочно стояло 46 «по User Manual A» — brochure авторитетнее.
       maxCabinets: 15,
       dcOutputV: '240 / ±240 / 480',
       // v0.59.425: добавлено из User Manual S³ Tech Specifications:
