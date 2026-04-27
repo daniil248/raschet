@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.59.222 (Фаза 1.27.0 — MVP модуля «Проекты»).
+> **Статус:** v0.59.531 (Фаза 1.28 — POR multi-domain object registry, PoC активен; Фаза 1.27 — модуль «Проекты» в проде).
 
 ## Фаза 1.27 — Модуль «Проекты» + разделение проектных данных и библиотеки 🟡
 
@@ -43,6 +43,64 @@
   оверрайдами.
 - Каталоги (elements, breakers, cable-types, цены) — ГЛОБАЛЬНЫЕ, общие для всех проектов.
 - Данные проекта видимы только при выбранном активном проекте.
+
+---
+
+## Фаза 1.28 — Project Object Registry (POR) 🟡 PoC активен
+
+**Требование (2026-04-26):** мульти-инженерное проектирование — несколько
+инженеров (технолог, электрик, СКС, климат) работают над общим объектом
+без дублирования данных. Объект, добавленный одним инженером, виден всем,
+но каждый инженер видит/правит свои домены атрибутов.
+
+**Архитектура:**
+- `shared/por.js` — slim-ядро (CRUD + pubsub + ports + registry-driven factory)
+- `shared/por-types/<id>.js` — type-definitions (`rack`, `consumer-group`,
+  `consumer-system`, `site`/`building`/`floor`/`space` containers)
+- `shared/data-adapter.js` — контракт «как получить данные» (LS/POR-backed)
+- `shared/por-adapters.js` — POR-backed реализации DataAdapter
+- `shared/project-bootstrap.js` — регистрирует POR-адаптеры на проектном уровне
+- `shared/engine-por-mirror.js` — engine ↔ POR двусторонний mirror
+- `dev/por-playground.html` — тестовая площадка
+
+**Storage:** `raschet.project.<pid>.por.objects.v1` (формат `{ [oid]: obj }`),
+in-tab Map + cross-tab через storage event.
+
+**Объект:**
+```
+{ id, type, subtype, tag, name, manufacturer, model, serialNo, assetId,
+  domains: { electrical, scs, mechanical, hvac, suppression, logistics, location },
+  views, ownerByDomain, createdBy/At, updatedBy/At, schemaVersion: 1 }
+```
+
+- [x] **1.28.0** — POR core + 4 базовых type (v0.59.500–509)
+- [x] **1.28.1** — Engine ↔ POR mirror: на каждый `consumer/rack` engine-узел
+  создаётся POR `type='rack'`. Pull POR-only racks → unplaced engine-узлы (v0.59.519)
+- [x] **1.28.2** — scs-config / racks-list / scs-design читают POR через
+  `loadAllRacksForActiveProject` (v0.59.516, v0.59.521)
+- [x] **1.28.3** — Consumer-group (composed/anonymous): `members[] + count`,
+  materializeGroupSlot/materializeAllSlots (v0.59.500+)
+- [x] **1.28.4** — Деаноним sketch-проектов после v0.59.372: orphan-sketches
+  открываемы из /projects/ + видны в scs-design parent-dropdown (v0.59.531)
+- [x] **1.28.5** — Виртуалы для Компоновщика: scs-config sidebar раскрывает
+  consumer-rack count=N узлы схемы и POR consumer-group rack-членов в
+  индивидуальные слоты (v0.59.532)
+- [ ] **1.28.6** — Domain-scoped locks (электрик правит electrical-домен,
+  не блокируя SCS-инженера на scs-домене того же объекта)
+- [ ] **1.28.7** — Реальное наполнение vs запрошенная мощность: отдельный UI
+  «contentsBasedKw vs demandKw» без записи в electrical-домен (откат v0.59.529 → v0.59.530)
+- [ ] **1.28.8** — Migrate всех модулей на DataAdapter contract (config readers
+  не должны импортировать `shared/por.js` напрямую — только через adapter)
+
+**Acceptance:**
+- Один и тот же rack виден SCS-инженеру (как корпус с U-юнитами и contents)
+  и электрику (как нагрузка с demandKw/cosPhi/phases).
+- Изменение в одном модуле сразу видно в другом (cross-tab sync через
+  storage event).
+- `demandKw` (запрошенная электриком) и `contentsBasedKw` (фактическая по
+  наполнению) — разные поля; кабель/автомат считаются по `demandKw`.
+- Группа ×N в принципиалке — один узел для электрика, N посадочных мест
+  для SCS-инженера в Компоновщике.
 
 ---
 

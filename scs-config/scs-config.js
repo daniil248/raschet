@@ -43,6 +43,12 @@ import {
 // shared/rack-storage.js::loadAllRacksForActiveProject (третий источник
 // после templates/instances). scs-config/loadRacks() лишь делегирует
 // — отдельный импорт getObjects из POR здесь больше не нужен.
+// v0.59.532: scheme-rack-bridge — раскрытие consumer-rack count=N узлов
+// схемы и POR consumer-group rack-членов в индивидуальные виртуалы.
+// Без этого Компоновщик показывал только реальные inst-* стойки и POR-
+// objects type='rack' (mirror создаёт по 1 на узел), не видя N-кратных
+// слотов из «×N»-узла.
+import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks } from '../shared/scheme-rack-bridge.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;               // оставлен для storage-listener совместимости
 const LS_CATALOG   = 'scs-config.catalog.v1';           // глобальный каталог IT-типов
@@ -267,9 +273,31 @@ function loadRacks() {
   // shared/rack-storage.js::loadAllRacksForActiveProject. Это даёт
   // одинаковую видимость POR-стоек во ВСЕХ потребителях rack-storage:
   // scs-config / racks-list / scs-design / прочих.
+  // v0.59.532: добавлены virtuals — раскрытие consumer-rack count=N узлов
+  // схемы и POR consumer-group rack-членов в индивидуальные слоты. Их id
+  // имеет префикс 'scheme-' / 'por-group-' (или member-id для уже
+  // материализованных). saveAllRacksForActiveProject отбрасывает не-inst-*
+  // и не-template, поэтому виртуалы безопасны при save (просто не пишутся).
   try {
     migrateLegacyInstances();
-    return loadAllRacksForActiveProject() || [];
+    const real = loadAllRacksForActiveProject() || [];
+    const pid = getActiveProjectId();
+    const virtuals = pid ? [
+      ...loadSchemeVirtualRacks(pid),
+      ...loadPorGroupVirtualRacks(pid),
+    ] : [];
+    if (!virtuals.length) return real;
+    // dedup: если виртуал имеет id, совпадающий с реальным rack — пропускаем
+    // (это уже materialized member, реальная запись авторитетнее).
+    const seen = new Set(real.map(r => r && r.id).filter(Boolean));
+    const out = real.slice();
+    for (const v of virtuals) {
+      if (!v || !v.id) continue;
+      if (seen.has(v.id)) continue;
+      seen.add(v.id);
+      out.push(v);
+    }
+    return out;
   } catch (e) { console.warn('[scs-config] loadRacks error', e); return []; }
 }
 function saveRacks() {
@@ -299,10 +327,14 @@ function saveCart()      { try { localStorage.setItem(LS_CART,      JSON.stringi
 function saveRackTags()  { try { localStorage.setItem(LS_RACKTAGS,  JSON.stringify(state.rackTags));  } catch {} }
 function saveWarehouse() { try { localStorage.setItem(LS_WAREHOUSE, JSON.stringify(state.warehouse)); } catch {} }
 
-/* Текущий TIA-тег стойки (из state.rackTags) или «DC1.R<u>» как fallback */
+/* Текущий TIA-тег стойки (из state.rackTags) или «DC1.R<u>» как fallback.
+   v0.59.532: для виртуалов (fromScheme/fromPorGroup) — autoTag. */
 function currentRackTag() {
   const r = currentRack(); if (!r) return '';
-  return (state.rackTags[r.id] || '').trim();
+  const real = (state.rackTags[r.id] || '').trim();
+  if (real) return real;
+  if ((r.fromScheme || r.fromPorGroup) && r.autoTag) return String(r.autoTag).trim();
+  return '';
 }
 /* Генерируемый тег устройства: <rackTag>.U<bottom> (TIA-606).
    Для многоюнитных устройств адрес определяется НИЖНЕЙ точкой крепления
@@ -310,7 +342,8 @@ function currentRackTag() {
    Высота подставляется отдельно в колонку размера устройства. */
 function deviceTag(d) {
   const r = currentRack(); if (!r) return '';
-  const tag = (state.rackTags[r.id] || '').trim();
+  let tag = (state.rackTags[r.id] || '').trim();
+  if (!tag && (r.fromScheme || r.fromPorGroup) && r.autoTag) tag = String(r.autoTag).trim();
   if (!tag) return '';
   const type = state.catalog.find(c => c.id === d.typeId);
   const h = type ? type.heightU : 1;
@@ -370,7 +403,9 @@ function currentMatrix() {
 
 /* v0.59.255: "Физический шкаф проекта" — только стойки с тегом.
    Без тега — это глобальные шаблоны корпусов (hardware blueprint), они
-   не относятся к проекту и в списках/дропдаунах/сайдбаре модуля СКС не показываются. */
+   не относятся к проекту и в списках/дропдаунах/сайдбаре модуля СКС не показываются.
+   v0.59.532: виртуалы из схемы / POR consumer-group имеют autoTag (свой),
+   тег не хранится в state.rackTags. Их пропускаем по наличию autoTag. */
 function projectRacks() {
   // v0.59.274: если URL содержит ?rackId=<id>, а такая стойка есть в библиотеке,
   // но без TIA-тега в текущем проекте — всё равно включаем её в список, чтобы
@@ -381,7 +416,23 @@ function projectRacks() {
     const qp = new URLSearchParams(location.search);
     pinned = qp.get('rackId') || null;
   } catch {}
+  // v0.59.532: фильтр виртуалов по autoTag, реально занятому inst-* стойкой
+  // (тогда виртуал «материализован» и скрывается).
+  const usedTags = new Set();
+  for (const r of state.racks) {
+    if (r && r.fromScheme) continue;
+    if (r && r.fromPorGroup) continue;
+    const t = ((state.rackTags && state.rackTags[r && r.id]) || '').trim();
+    if (t) usedTags.add(t);
+  }
   return state.racks.filter(r => {
+    if (!r) return false;
+    if (r.fromScheme || r.fromPorGroup) {
+      const tag = (r.autoTag || '').trim();
+      if (!tag) return false;
+      if (usedTags.has(tag)) return false; // материализован — реальный важнее
+      return true;
+    }
     const hasTag = ((state.rackTags && state.rackTags[r.id]) || '').trim();
     if (hasTag) return true;
     if (pinned && r.id === pinned) return true;
@@ -398,7 +449,9 @@ function projectRacks() {
    Это даёт пользователю однозначную строку: «A-02 (600x1200x42U Тип 1 · 42U)». */
 function rackLabel(r) {
   if (!r) return '';
-  const tag = ((state.rackTags && state.rackTags[r.id]) || '').trim();
+  // v0.59.532: для виртуалов используем autoTag как эффективный тег.
+  const realTag = ((state.rackTags && state.rackTags[r.id]) || '').trim();
+  const tag = realTag || (((r.fromScheme || r.fromPorGroup) && r.autoTag) || '');
   // ищем шаблон корпуса по sourceTemplateId; fallback — snapshot'ное имя.
   let corpusName = '';
   if (r.sourceTemplateId) {
@@ -3419,7 +3472,10 @@ function renderRacksSidebar() {
       const t = state.catalog.find(c => c.id === d.typeId);
       return s + (t ? (t.heightU || 1) : 1);
     }, 0);
-    const tag = (state.rackTags[r.id] || '').trim();
+    // v0.59.532: для виртуалов из схемы / POR-группы — autoTag как effective.
+    const realTag = (state.rackTags[r.id] || '').trim();
+    const isVirtual = !!(r.fromScheme || r.fromPorGroup);
+    const tag = realTag || (isVirtual ? (r.autoTag || '') : '');
     const full = r.u || 0;
     const pct = full ? Math.round(((usedU + (r.occupied || 0)) / full) * 100) : 0;
     const active = r.id === state.currentRackId ? ' sc-rack-card-active' : '';
@@ -3430,9 +3486,14 @@ function renderRacksSidebar() {
       const tpl = state.racks.find(x => x.id === r.sourceTemplateId);
       corpusName = tpl ? (tpl.name || '') : (r.sourceTemplateName || '');
     }
-    return `<div class="sc-rack-card${active}" data-rackid="${r.id}" title="Открыть">
+    const virtualBadge = r.fromScheme
+      ? `<span title="Из схемы (count=${r.schemeTotal||1}). Будет материализована при первом сохранении содержимого." style="background:#e0f2fe;color:#0369a1;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">🔗 из схемы</span>`
+      : (r.fromPorGroup
+        ? `<span title="Слот POR-группы потребителей (count=${r.schemeTotal||1}). Может быть анонимным или уже материализованным членом." style="background:#ecfccb;color:#3f6212;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">⊞ из группы</span>`
+        : '');
+    return `<div class="sc-rack-card${active}${isVirtual ? ' sc-rack-card-virtual' : ''}" data-rackid="${r.id}" title="${isVirtual ? 'Виртуальная (из схемы/группы) — открыть и наполнить' : 'Открыть'}">
       <div class="sc-rack-card-top">
-        ${tag ? `<code>${escape(tag)}</code>` : `<span class="muted">—</span>`}
+        ${tag ? `<code>${escape(tag)}</code>` : `<span class="muted">—</span>`}${virtualBadge}
         <span class="muted">${full}U</span>
       </div>
       <div class="sc-rack-card-name">${escape(r.name || 'Без имени')}</div>

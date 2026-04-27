@@ -93,6 +93,61 @@ export function loadSchemeVirtualRacks(pid) {
 }
 
 /**
+ * v0.59.532: виртуальные стойки из POR consumer-group с rack-членами.
+ * Источник: POR.getObjects(pid, { type: 'consumer-group' }) — для каждой
+ * группы с subtype='rack' (или с rack-членами) генерируем `count` виртуалов.
+ * Если у группы есть materialized members[], для каждого члена с известным
+ * id используем его как identity (id виртуала = member.id). Анонимные слоты
+ * получают детерминированный id `por-group-<gid>-<i>`.
+ *
+ * Это нужно для случая, когда электрик нарисовал группу ×N в POR (через
+ * playground / engine mirror anonymous-mode), но индивидуальные racks ещё
+ * не созданы. SCS-инженер должен видеть N посадочных мест в Компоновщике.
+ */
+export function loadPorGroupVirtualRacks(pid) {
+  if (!pid) return [];
+  if (typeof window === 'undefined' || !window.RaschetPOR) return [];
+  let groups = [];
+  try { groups = window.RaschetPOR.getObjects(pid, { type: 'consumer-group' }) || []; }
+  catch { return []; }
+
+  const out = [];
+  for (const g of groups) {
+    if (!g || !g.id) continue;
+    // Группа представляет racks, если subtype='rack' или хотя бы один член — rack.
+    const memberType = (g.subtype || '').trim();
+    if (memberType && memberType !== 'rack' && memberType !== 'consumer-rack') continue;
+
+    const e = (g.domains && g.domains.electrical) || {};
+    const members = Array.isArray(e.members) ? e.members : [];
+    const count   = Math.max(members.length, parseInt(e.count, 10) || 0);
+    if (!count) continue;
+
+    const baseTag  = (g.tag || '').trim() || (g.name || '').trim() || 'GR' + String(g.id).slice(-4);
+    const baseName = (g.name || '').trim() || baseTag;
+
+    for (let i = 1; i <= count; i++) {
+      const tag = count > 1 ? `${baseTag}-${i}` : baseTag;
+      const memberId = members[i - 1] || null;
+      out.push({
+        id: memberId || `por-group-${g.id}-${i}`,
+        name: count > 1 ? `${baseName} #${i}` : baseName,
+        u: 42,
+        occupied: 0,
+        fromPorGroup: true,
+        porGroupId:  g.id,
+        porGroupSlot: i,
+        porMemberId: memberId,            // null для анонимного слота
+        autoTag: tag,
+        schemeTotal: count,
+        schemeIndex: i,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Слить виртуальные «стойки из схемы» с реальным списком стоек.
  * Виртуальные, чей autoTag уже занят реальной стойкой (с тегом), скрываются —
  * пользователь явно «материализовал» эту позицию.
