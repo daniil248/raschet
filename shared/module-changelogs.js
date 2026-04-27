@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.514', date: '2026-04-27', items: [
+      '📦 <b>POR Playground: «Перенести все POR-объекты в другой проект»</b>. По репорту пользователя: 10 чистых стоек (SR01-SR08, CR01, MR01) попали в orphan-проект <code>p_k0w4rpc0en</code> (без имени), а нужно чтобы они принадлежали <code>p_tyux2vnmz4</code> (25013_Qarmet Темиртау).',
+      '• <b>Новый блок в секции «Контекст»</b>: поле «целевой pid» (с datalist autocomplete) + кнопка «📦 Перенести».',
+      '• <b>Логика</b>: copy-then-delete — для каждого POR-объекта в источнике делает <code>addObject(target, obj)</code> (upsert по id, дубликаты перезаписываются) → <code>removeObject(source, obj.id)</code>. После операции UI автоматически переключается на target.',
+      '• <b>Confirm</b> с числом объектов до выполнения. <b>Лог</b>: <code>moved N POR-объектов из source → target</code>.',
+      '• <b>Use case</b>: 10 racks из orphan-проекта в Qarmet — введи p_tyux2vnmz4 в поле, нажми «Перенести» → подтверди → racks теперь в Qarmet.',
+      'Файлы: <code>dev/por-playground.html</code> — UI блок + handler.',
+    ] },
     { version: '0.59.513', date: '2026-04-27', items: [
       '🪞 <b>Engine mirror расширен на consumer-system типы</b> (lighting / pipe-heating / plinth-heating / ventilation / outlets / heater / snow-melting). Раньше зеркалировались только rack-узлы. Теперь:',
       '• <b>Маппинг engine consumer-узла → POR</b>:',

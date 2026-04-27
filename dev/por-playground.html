@@ -47,6 +47,12 @@
     <button class="ghost" id="discover-pids" title="Сканировать LS на проекты с POR-данными">🔎 Найти проекты</button>
   </div>
   <div class="muted" id="discovered-list"></div>
+  <div class="row" style="margin-top: 10px;border-top:1px solid #eee;padding-top:10px">
+    <label>Перенести все POR-объекты в другой проект:</label>
+    <input id="move-target-pid" type="text" placeholder="целевой pid" style="width:200px" list="known-pids"/>
+    <button class="ghost" id="move-objects">📦 Перенести</button>
+    <span class="muted" style="font-size:11px">Копирует все POR-объекты из текущего проекта в указанный, затем удаляет из текущего.</span>
+  </div>
   <div class="muted">
     В POR mode adapter подменяется на POR-backed (через <code>bootstrapProject</code>); запись идёт в
     <code>raschet.project.&lt;pid&gt;.por.objects.v1</code>. В standalone — adapter использует in-memory fallback.
@@ -477,6 +483,47 @@ function refreshDiscoveredList() {
   });
 }
 $('discover-pids').addEventListener('click', refreshDiscoveredList);
+
+// ─── Move all POR objects from currentPid to targetPid ──────────────
+$('move-objects').addEventListener('click', async () => {
+  if (!_currentPid) {
+    alert('Сначала примени Project ID (POR mode) — это будет источник.');
+    return;
+  }
+  const target = ($('move-target-pid').value || '').trim();
+  if (!target) {
+    alert('Укажи целевой pid (поле справа).');
+    return;
+  }
+  if (target === _currentPid) {
+    alert('Источник и цель совпадают — нечего переносить.');
+    return;
+  }
+  const por = await import('../shared/por.js');
+  const sourceObjs = por.getObjects(_currentPid);
+  if (!sourceObjs.length) {
+    alert(`В проекте ${_currentPid} нет POR-объектов.`);
+    return;
+  }
+  if (!confirm(`Перенести ${sourceObjs.length} POR-объектов\nиз ${_currentPid}\nв ${target}?\n\nЦель будет получать копии (id сохраняются — upsert по id, существующие в цели перезапишутся).\nПосле копирования объекты в источнике удаляются.`)) return;
+
+  let moved = 0, failed = 0;
+  for (const obj of sourceObjs) {
+    try {
+      // Копируем объект как partial (с id) → addObject upsert-перезапишет в target.
+      const copy = JSON.parse(JSON.stringify(obj));
+      por.addObject(target, copy);
+      por.removeObject(_currentPid, obj.id);
+      moved++;
+    } catch (e) { console.warn('[move] failed for', obj.id, e); failed++; }
+  }
+  log(`moved ${moved} POR-объектов из ${_currentPid} → ${target}` + (failed ? ` (failed: ${failed})` : ''));
+  alert(`Готово: ${moved} объектов перенесено${failed ? `, ${failed} с ошибкой` : ''}.\nПереключаюсь на целевой проект.`);
+  // Переключаем UI на целевой проект
+  $('pid-input').value = target;
+  setupAdapter(target);
+  refreshDiscoveredList();
+});
 
 // ─── Export / Import ────────────────────────────────────────────────
 
