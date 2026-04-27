@@ -2087,57 +2087,65 @@ function doCalc() {
     if (r.warnings.length) html += r.warnings.map(w => `<div class="warn">⚠ ${escHtml(w)}</div>`).join('');
     html += `</div>`;
   } else if (mode === 'auto') {
-    // v0.59.469: Авто-оптимум — пользователь задаёт только P+t, программа
-    // перебирает endV и для каждого считает feasibility + N. Выбирает endV
-    // дающий лучший компромисс: максимальное endV (бережнее к АКБ → больше
-    // ресурс циклов) среди feasible, при равенстве — минимум блоков (дешевле).
+    // v0.59.469/473: Авто-оптимум — пользователь задаёт только P+t.
+    // Перебираем (endV × blockV) когда конкретная АКБ не выбрана из каталога;
+    // если выбрана — фиксируем blockV из её паспорта. Для каждой пары:
+    // feasibility по V_DC окну ИБП + N через _pickOptimalBlocks + расчёт.
+    // Критерий выбора (приоритет): max endV (бережнее) → min totalBlocks
+    // (дешевле) → min blockV (стандартные 12В часто экономически оптимальнее).
     const targetMinAuto = Number(get('calc-target-auto')?.value) || targetMin;
     const isLi = chemistry === 'li-ion';
-    const candidates = isLi ? [2.5, 2.6, 2.7, 2.8, 2.9, 3.0] : [1.65, 1.70, 1.75, 1.80, 1.85, 1.90];
+    const evCandidates = isLi ? [2.5, 2.6, 2.7, 2.8, 2.9, 3.0] : [1.65, 1.70, 1.75, 1.80, 1.85, 1.90];
+    const bvCandidates = battery ? [blockV] : (isLi ? [12, 24, 48] : [2, 4, 6, 12]);
     const trials = [];
-    for (const ev of candidates) {
-      const optT = _pickOptimalBlocks(vRange.min, vRange.max, blockV, ev, chemistry, derate.vdcSafetyPct);
-      if (!optT.feasible) continue;
-      const f = calcRequiredBlocks({
-        battery, loadKw: loadKwEff, dcVoltage: optT.N * blockV,
-        endV: ev, invEff, chemistry,
-        capacityAh: battery ? battery.capacityAh : capacityAh,
-        blocksPerString: optT.N,
-        targetMin: targetMinAuto,
-      });
-      if (!f) continue;
-      trials.push({ endV: ev, opt: optT, found: f, totalBlocks: f.totalBlocks });
+    for (const bv of bvCandidates) {
+      for (const ev of evCandidates) {
+        const optT = _pickOptimalBlocks(vRange.min, vRange.max, bv, ev, chemistry, derate.vdcSafetyPct);
+        if (!optT.feasible) continue;
+        const f = calcRequiredBlocks({
+          battery, loadKw: loadKwEff, dcVoltage: optT.N * bv,
+          endV: ev, invEff, chemistry,
+          capacityAh: battery ? battery.capacityAh : capacityAh,
+          blocksPerString: optT.N,
+          targetMin: targetMinAuto,
+        });
+        if (!f) continue;
+        trials.push({ endV: ev, blockV: bv, opt: optT, found: f, totalBlocks: f.totalBlocks });
+      }
     }
     if (!trials.length) {
-      html += `<div class="result-block error">Авто-подбор не нашёл подходящего endV. Проверьте V<sub>DC</sub> окно ИБП и совместимость АКБ.</div>`;
+      html += `<div class="result-block error">Авто-подбор не нашёл подходящей конфигурации. Проверьте V<sub>DC</sub> окно ИБП и нагрузку.</div>`;
     } else {
-      trials.sort((a, b) => (b.endV - a.endV) || (a.totalBlocks - b.totalBlocks));
+      // Сортировка: max endV → min totalBlocks → min blockV
+      trials.sort((a, b) => (b.endV - a.endV) || (a.totalBlocks - b.totalBlocks) || (a.blockV - b.blockV));
       const best = trials[0];
       blocksPerString = best.opt.N;
-      const dcVoltageFinal = best.opt.N * blockV;
+      const dcVoltageFinal = best.opt.N * best.blockV;
       const dcEl2 = get('calc-dcv'); if (dcEl2) dcEl2.value = dcVoltageFinal;
       const endvEl = get('calc-endv'); if (endvEl) endvEl.value = best.endV;
+      const bvEl = get('calc-blockv'); if (bvEl) bvEl.value = best.blockV;
       params.endV = best.endV;
       params.dcVoltage = dcVoltageFinal;
       params.targetMin = targetMinAuto;
-      calcResult = { kind: 'required', found: best.found, blocksPerString, derate, loadKwEff, autoEndV: best.endV, autoTrials: trials };
+      calcResult = { kind: 'required', found: best.found, blocksPerString, derate, loadKwEff, autoEndV: best.endV, autoBlockV: best.blockV, autoTrials: trials };
       html += `<div class="result-block">`;
-      html += `<div class="result-title">🤖 Авто-оптимум: endV = <b style="color:#2e7d32">${best.endV} В/эл</b>, ${best.found.totalBlocks} блоков</div>`;
+      html += `<div class="result-title">🤖 Авто-оптимум: blockV=<b style="color:#2e7d32">${best.blockV} В</b>, endV=<b style="color:#2e7d32">${best.endV} В/эл</b>, ${best.found.totalBlocks} блоков</div>`;
       html += `<div class="result-value">${best.found.totalBlocks}</div>`;
       html += `<div class="result-sub">Цепочек: <b>${best.found.strings}</b> × блоков в цепочке: <b>${best.found.blocksPerString}</b> · V<sub>DC</sub>=${dcVoltageFinal} В</div>`;
       html += `<div class="result-sub">Реальная автономия: <b>${fmt(best.found.result.autonomyMin)} мин</b> (цель ${targetMinAuto} мин). На блок: <b>${fmt(best.found.result.blockPowerW)} W</b>.</div>`;
-      html += `<div class="result-sub" style="background:#e8f5e9;padding:6px 8px;border-radius:4px;font-size:11px;margin-top:4px;color:#1b5e20">Выбран максимальный endV из feasible — это <b>бережнее к АКБ</b>: меньше глубина разряда → больше циклов, длиннее срок службы. При равенстве по endV выбирается минимум блоков (дешевле и компактнее).</div>`;
+      html += `<div class="result-sub" style="background:#e8f5e9;padding:6px 8px;border-radius:4px;font-size:11px;margin-top:4px;color:#1b5e20">Приоритет выбора: <b>max endV</b> (бережнее к АКБ → больше ресурс) → <b>min блоков</b> (дешевле/компактнее) → <b>min blockV</b> (стандартные 2В мощнее на блок, но 12В удобнее в монтаже).</div>`;
       if (derate.kTotal > 1.001) {
         html += `<div class="result-sub" style="background:#f0f7ff;padding:4px 6px;border-radius:3px;font-size:11px">`
           + `Учтены коэффициенты: k<sub>age</sub>×k<sub>temp</sub>×k<sub>design</sub> = <b>${derate.kTotal.toFixed(3)}</b> → расчётная нагрузка <b>${fmt(loadKwEff)} kW</b> (паспортная ${fmt(loadKw)} kW).`
           + `</div>`;
       }
-      // Таблица всех вариантов
-      html += `<details style="margin-top:8px"><summary class="muted" style="font-size:11px;cursor:pointer">📋 Все варианты автоподбора (${trials.length})</summary>`;
-      html += `<table style="font-size:11px;margin-top:4px;border-collapse:collapse;width:auto"><thead><tr style="background:#f0f4f8"><th style="padding:3px 10px;text-align:left">endV, В/эл</th><th style="padding:3px 10px">N в цепочке</th><th style="padding:3px 10px">Цепочек</th><th style="padding:3px 10px">Всего</th><th style="padding:3px 10px">Автономия, мин</th></tr></thead><tbody>`;
-      for (const t of trials) {
+      // Таблица всех вариантов: показываем top-12 чтобы не перегружать UI.
+      const showTrials = trials.slice(0, Math.min(12, trials.length));
+      html += `<details style="margin-top:8px"><summary class="muted" style="font-size:11px;cursor:pointer">📋 Топ ${showTrials.length} вариантов автоподбора из ${trials.length}</summary>`;
+      html += `<table style="font-size:11px;margin-top:4px;border-collapse:collapse;width:auto"><thead><tr style="background:#f0f4f8"><th style="padding:3px 10px">blockV</th><th style="padding:3px 10px;text-align:left">endV, В/эл</th><th style="padding:3px 10px">N в цепочке</th><th style="padding:3px 10px">Цепочек</th><th style="padding:3px 10px">Всего</th><th style="padding:3px 10px">V<sub>DC</sub>, В</th><th style="padding:3px 10px">Автономия, мин</th></tr></thead><tbody>`;
+      for (const t of showTrials) {
         const isBest = t === best;
-        html += `<tr style="${isBest?'background:#e8f5e9;font-weight:600':''}"><td style="padding:2px 10px">${t.endV}${isBest?' ★':''}</td><td style="padding:2px 10px;text-align:center">${t.opt.N}</td><td style="padding:2px 10px;text-align:center">${t.found.strings}</td><td style="padding:2px 10px;text-align:center">${t.totalBlocks}</td><td style="padding:2px 10px;text-align:center">${fmt(t.found.result.autonomyMin)}</td></tr>`;
+        html += `<tr style="${isBest?'background:#e8f5e9;font-weight:600':''}"><td style="padding:2px 10px;text-align:center">${t.blockV}${isBest?' ★':''}</td><td style="padding:2px 10px">${t.endV}</td><td style="padding:2px 10px;text-align:center">${t.opt.N}</td><td style="padding:2px 10px;text-align:center">${t.found.strings}</td><td style="padding:2px 10px;text-align:center">${t.totalBlocks}</td><td style="padding:2px 10px;text-align:center">${t.opt.N * t.blockV}</td><td style="padding:2px 10px;text-align:center">${fmt(t.found.result.autonomyMin)}</td></tr>`;
       }
       html += `</tbody></table></details>`;
       html += `</div>`;
