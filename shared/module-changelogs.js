@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.515', date: '2026-04-27', items: [
+      '🔄 <b>scs-config: dropdown переключения проекта прямо в шапке</b>. По вопросу пользователя «как изменить проект для СКС?». Раньше можно было только через ссылку «сменить →» в <code>/projects/</code> — выбрать другой проект и снова перейти в СКС. Теперь:',
+      '• <b>Select со всеми full-проектами</b> (sketch-проекты исключены) в шапке scs-config. Активный проект — первым в списке.',
+      '• <b>onChange → location.href</b> с новым <code>?project=&lt;pid&gt;&from=scs-config</code> — модуль перезагружается с новым контекстом.',
+      '• Сортировка остальных проектов по <code>updatedAt</code> desc — недавние сверху.',
+      '• Если ни один проект не активен — добавляется опция «— выбрать проект —».',
+      'Файлы: <code>scs-config/scs-config.js</code> — переписан <code>renderProjectBadge()</code>: теперь рендерит <code>&lt;select id="sc-project-switch"&gt;</code> с привязанным change-handler.',
+    ] },
     { version: '0.59.514', date: '2026-04-27', items: [
       '📦 <b>POR Playground: «Перенести все POR-объекты в другой проект»</b>. По репорту пользователя: 10 чистых стоек (SR01-SR08, CR01, MR01) попали в orphan-проект <code>p_k0w4rpc0en</code> (без имени), а нужно чтобы они принадлежали <code>p_tyux2vnmz4</code> (25013_Qarmet Темиртау).',
       '• <b>Новый блок в секции «Контекст»</b>: поле «целевой pid» (с datalist autocomplete) + кнопка «📦 Перенести».',

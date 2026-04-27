@@ -3446,19 +3446,45 @@ function renderProjectBadge() {
   const el = document.getElementById('sc-project-badge');
   if (!el) return;
   const pid = getActiveProjectId();
+  // v0.59.515: в шапке — selectable dropdown со списком всех full-проектов.
+  // Раньше тут была статичная подпись + ссылка «сменить →» в /projects/.
+  // Теперь смена проекта происходит in-place: select.onChange → location.href
+  // с новым ?project=<pid>&from=projects.
+  let projects = [];
+  try { projects = (listProjects() || []).filter(x => (x.kind || 'full') !== 'sketch'); } catch {}
+  // Сортировка: активный сверху, остальные по updatedAt desc.
+  projects.sort((a, b) => {
+    if (a.id === pid) return -1;
+    if (b.id === pid) return 1;
+    return (b.updatedAt || 0) - (a.updatedAt || 0);
+  });
+  const optionsHtml = projects.map(p => {
+    const sel = (p.id === pid) ? ' selected' : '';
+    const name = (p.name || p.id).replace(/</g, '&lt;');
+    return `<option value="${p.id}"${sel}>${name}</option>`;
+  }).join('');
+
   if (!pid) {
-    el.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="../projects/" style="color:#1565c0">выбрать проект →</a>';
-    return;
-  }
-  let p = null;
-  try { p = (listProjects() || []).find(x => x.id === pid) || null; } catch {}
-  const pname = (p?.name || pid).replace(/[<>&"]/g, '');
-  if (p?.kind === 'sketch') {
-    const owner = (p.ownerModule || '').replace(/[<>&"]/g, '');
-    const hint = 'Активен мини-проект' + (owner ? ' модуля «' + owner + '»' : '') + '. Шкафы, которые вы здесь создадите, будут видны только в этом черновике. Для полноценной работы выберите или создайте настоящий проект в /projects/.';
-    el.innerHTML = '<span style="color:#b45309">🧪 Мини-проект: <b>' + pname + '</b></span> · <a href="../projects/" style="color:#1565c0">выбрать полноценный →</a> <span title="' + hint.replace(/"/g, '&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
+    el.innerHTML = `<span style="color:#b91c1c">⚠ Вне проекта</span> · <select id="sc-project-switch" style="font-size:13px"><option value="">— выбрать проект —</option>${optionsHtml}</select> · <a href="../projects/" style="color:#1565c0">/projects/</a>`;
   } else {
-    el.innerHTML = '📁 Проект: <b>' + pname + '</b> · <a href="../projects/" style="color:#1565c0">сменить →</a>';
+    let p = null;
+    try { p = (listProjects() || []).find(x => x.id === pid) || null; } catch {}
+    const isSketch = p?.kind === 'sketch';
+    const icon = isSketch ? '🧪' : '📁';
+    const lbl  = isSketch ? 'Мини-проект' : 'Проект';
+    el.innerHTML = `${icon} ${lbl}: <select id="sc-project-switch" style="font-size:13px;font-weight:600">${optionsHtml}</select> · <a href="../projects/" style="color:#1565c0">/projects/</a>`;
+  }
+  // Bind change.
+  const sel = document.getElementById('sc-project-switch');
+  if (sel) {
+    sel.addEventListener('change', () => {
+      const newPid = sel.value;
+      if (!newPid || newPid === pid) return;
+      const url = new URL(location.href);
+      url.searchParams.set('project', newPid);
+      url.searchParams.set('from', 'scs-config');
+      location.href = url.toString();
+    });
   }
 }
 
