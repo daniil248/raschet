@@ -558,6 +558,8 @@ function openDischargeTableModal(battery) {
     const grid = new Map();
     for (const p of rows) grid.set(`${p.endV}|${p.tMin}`, p.powerW);
 
+    const maxPowerW = _getBatteryMaxPowerW(battery);
+    const pk = battery.packaging || {};
     let html = `<div class="muted" style="font-size:11px;margin-bottom:8px">
       Модель: <b>${escHtml(battery.type)}</b>
       · Поставщик: <b>${escHtml(battery.supplier)}</b>
@@ -566,6 +568,8 @@ function openDischargeTableModal(battery) {
       ${battery.capacityAh != null ? '· Ёмкость: <b>' + fmt(battery.capacityAh) + ' А·ч</b>' : ''}
       · Точек: <b>${rows.length}</b>
       · Источник: <b>${escHtml(battery.source || '—')}</b>
+      ${maxPowerW ? `· <b style="color:#c62828">Макс. P/модуль: ${fmt(maxPowerW / 1000)} кВт</b>` : ''}
+      ${pk.cabinetPowerKw ? `· Макс. P/шкаф: <b>${pk.cabinetPowerKw} кВт</b> (${pk.maxPerCabinet} модулей)` : ''}
     </div>`;
     html += '<div style="overflow:auto;max-height:60vh">';
     html += '<table class="dtable-grid"><thead><tr>';
@@ -611,10 +615,28 @@ function openDischargeTableModal(battery) {
     });
     _renderDischargeChart(
       document.getElementById('dtable-chart-wrap'),
-      rowsForChart, endVs
+      rowsForChart, endVs, null, { maxPowerW, cabinetPowerKw: pk.cabinetPowerKw, maxPerCabinet: pk.maxPerCabinet }
     );
   }
   modal.classList.add('show');
+}
+
+// v0.59.465: расчётная номинальная мощность модуля АКБ.
+// Для Kehua S³: rated = packaging.cabinetPowerKw / packaging.maxPerCabinet.
+// Превышать это значение модуль физически не может (BMS отключит), 200 кВт
+// на шкаф (12-20 модулей) — паспортное ограничение системы.
+// Для других АКБ — берём максимум из таблицы разряда (там самая короткая
+// длительность — обычно соответствует rated current).
+function _getBatteryMaxPowerW(b) {
+  if (!b) return null;
+  const pk = b.packaging;
+  if (pk && Number.isFinite(pk.cabinetPowerKw) && Number.isFinite(pk.maxPerCabinet) && pk.maxPerCabinet > 0) {
+    return (pk.cabinetPowerKw / pk.maxPerCabinet) * 1000;
+  }
+  if (Array.isArray(b.dischargeTable) && b.dischargeTable.length) {
+    return Math.max(...b.dischargeTable.map(p => Number(p.powerW) || 0));
+  }
+  return null;
 }
 
 // v0.59.460/461: детектор аномалий в таблице разряда (итеративный).
@@ -732,7 +754,7 @@ const _chartVisibilityByMount = new WeakMap();
 // одна кривая на каждое endV. Линия + маркеры точек.
 // v0.59.456: добавлены (а) hover-crosshair с подписью точки на кривой,
 // (б) кликабельная легенда — toggle видимости каждой endV-кривой.
-function _renderDischargeChart(mount, rows, endVs, highlight = null) {
+function _renderDischargeChart(mount, rows, endVs, highlight = null, limits = null) {
   if (!mount) return;
   // Восстанавливаем/инициализируем set видимых endV
   let visibleSet = _chartVisibilityByMount.get(mount);
@@ -845,6 +867,22 @@ function _renderDischargeChart(mount, rows, endVs, highlight = null) {
       parts.push(`<circle cx="${xOf(p.tMin).toFixed(1)}" cy="${yOf(p.powerW).toFixed(1)}" r="${r}" fill="${fill}" stroke="#fff" stroke-width="${sw}"><title>${ev} В · ${p.tMin} мин · ${fmt(p.powerW)} W${titleSuffix}</title></circle>`);
     }
   });
+
+  // v0.59.465: горизонтальная красная линия — паспортный максимум мощности
+  // на модуль (для S³ Li-Ion: P_cabinet / N_modules; для VRLA — пиковое
+  // значение из таблицы). Превышение этого значения не реализуемо
+  // физически (BMS отключит / превышение DC-rate VRLA).
+  if (limits && Number.isFinite(limits.maxPowerW) && limits.maxPowerW > 0) {
+    const yLim = yOf(limits.maxPowerW);
+    if (yLim >= padT && yLim <= padT + plotH) {
+      parts.push(`<line x1="${padL}" y1="${yLim.toFixed(1)}" x2="${padL + plotW}" y2="${yLim.toFixed(1)}" stroke="#c62828" stroke-width="1.5" stroke-dasharray="6 3" opacity="0.6"/>`);
+      const labelTxt = limits.cabinetPowerKw
+        ? `Макс. P/модуль: ${fmt(limits.maxPowerW / 1000)} кВт (шкаф ${limits.cabinetPowerKw} кВт / ${limits.maxPerCabinet})`
+        : `Макс. P: ${fmt(limits.maxPowerW / 1000)} кВт`;
+      parts.push(`<rect x="${padL + 6}" y="${(yLim - 14).toFixed(1)}" width="${labelTxt.length * 5.5 + 8}" height="14" fill="#fff" stroke="#c62828" rx="2" opacity="0.95"/>`);
+      parts.push(`<text x="${padL + 10}" y="${(yLim - 4).toFixed(1)}" fill="#c62828" font-size="10" font-weight="600">${labelTxt}</text>`);
+    }
+  }
 
   // Маркер рассчитанной точки — крестовина + кружок + подпись
   if (highlight && Number.isFinite(highlight.tMin) && Number.isFinite(highlight.powerW) && highlight.tMin > 0 && highlight.powerW > 0) {
