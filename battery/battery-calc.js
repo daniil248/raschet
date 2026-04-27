@@ -438,7 +438,7 @@ function openHelpModal(which = 'format') {
       <p>Файл может содержать строки разных моделей — парсер автоматически
       сгруппирует их по (Battery_Supplier, Battery_Type) и создаст отдельную
       запись в справочнике для каждой комбинации. Для каждой группы
-      определяется химия (по имени модели: Li/LFP → li-ion, иначе VRLA),
+      определяется тип АКБ (по имени модели: Li/LFP → li-ion, иначе VRLA),
       напряжение блока (эвристика по имени / End_Voltage диапазону) и
       количество элементов в блоке.</p>
 
@@ -1385,7 +1385,7 @@ function _applyBatteryLock() {
       }
       chemSel.value = b.chemistry;
       chemSel.disabled = true;
-      chemSel.title = 'Заблокировано — химия определена выбранной моделью АКБ';
+      chemSel.title = 'Заблокировано — тип АКБ определён выбранной моделью';
       chemSel.style.background = '#f0f0f0';
     }
     // выставим dcVoltage кратно blockV если хоть как-то
@@ -3028,7 +3028,7 @@ function buildBatteryReportBlocks(state) {
   const r = state.calcResult;
   const batName = p.battery
     ? [p.battery.supplier, p.battery.type || p.battery.model, p.battery.capacityAh ? (p.battery.capacityAh + ' А·ч') : ''].filter(Boolean).join(' · ')
-    : 'усреднённая модель, химия ' + p.chemistry;
+    : 'усреднённая модель, тип АКБ: ' + chemLabel(p.chemistry);
   const capAh = p.battery ? p.battery.capacityAh : p.capacityAh;
   const blockV = p.battery ? p.battery.blockVoltage : 12;
   const blocksPerString = r ? r.blocksPerString : Math.max(1, Math.round(p.dcVoltage / blockV) || 1);
@@ -3169,7 +3169,7 @@ function printBatteryReport() {
   const p = s.params, r = s.calcResult;
   const batName = p.battery
     ? [p.battery.supplier, p.battery.type || p.battery.model, p.battery.capacityAh ? (p.battery.capacityAh + ' А·ч') : ''].filter(Boolean).join(' · ')
-    : 'усреднённая модель, химия ' + p.chemistry;
+    : 'усреднённая модель, тип АКБ: ' + chemLabel(p.chemistry);
   const blockV = p.battery ? p.battery.blockVoltage : (s.blockV || 12);
   const capAh = p.battery ? p.battery.capacityAh : p.capacityAh;
   const blocksPerString = r.blocksPerString;

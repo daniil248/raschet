@@ -409,24 +409,26 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   root.style.cssText = `display:flex;flex-wrap:wrap;gap:12px;width:100%;align-items:stretch`;
   container.appendChild(root);
 
-  // ── Левая колонка: «Состав ряда» + габариты ──
+  // ── Левая колонка: превью с табами ──
+  const previewLeft = document.createElement('div');
+  previewLeft.style.cssText =
+    `flex:1 1 600px;min-width:340px;height:${height}px;display:flex;flex-direction:column;` +
+    `border:1px solid #2a2f3a;border-radius:8px;overflow:hidden;background:#f7f8fb`;
+  root.appendChild(previewLeft);
+  // alias для остального кода (был previewRight)
+  const previewRight = previewLeft;
+
+  // ── Правая колонка: «Состав ряда» + габариты ──
   const compositionLeft = document.createElement('div');
   compositionLeft.style.cssText =
     `flex:0 0 240px;min-width:200px;font:11px system-ui;color:#1a2a44;line-height:1.55;` +
     `padding:10px;background:#fafbfc;border:1px solid #e0e3ea;border-radius:8px`;
   root.appendChild(compositionLeft);
 
-  // ── Правая колонка: превью с табами ──
-  const previewRight = document.createElement('div');
-  previewRight.style.cssText =
-    `flex:1 1 600px;min-width:340px;height:${height}px;display:flex;flex-direction:column;` +
-    `border:1px solid #2a2f3a;border-radius:8px;overflow:hidden;background:#f7f8fb`;
-  root.appendChild(previewRight);
-
-  // Табы (3D + 3 × 2D)
+  // Табы + кнопка «Развернуть» справа
   const tabsBar = document.createElement('div');
   tabsBar.style.cssText =
-    'display:flex;gap:0;background:#e6eaf2;border-bottom:1px solid #cdd5e3;flex-shrink:0';
+    'display:flex;gap:0;background:#e6eaf2;border-bottom:1px solid #cdd5e3;flex-shrink:0;align-items:stretch';
   const TABS = [
     { id: '3d',    label: '3D' },
     { id: 'top',   label: 'Сверху' },
@@ -447,6 +449,16 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     tabBtns[t.id] = b;
     tabsBar.appendChild(b);
   }
+  // v0.59.487: кнопка «Развернуть» в шапке табов — работает для активного
+  // вида (3D или любой 2D). Раньше fullBtn был только в 3D-тулбаре, и
+  // 2D-вкладки нельзя было развернуть.
+  const fullBtn = document.createElement('button');
+  fullBtn.type = 'button';
+  fullBtn.style.cssText =
+    'flex:0 0 auto;padding:6px 14px;font:11px system-ui;color:#fff;' +
+    'background:#234a8a;border:none;border-left:1px solid #cdd5e3;cursor:pointer';
+  fullBtn.textContent = '⛶ Развернуть';
+  tabsBar.appendChild(fullBtn);
   previewRight.appendChild(tabsBar);
 
   // Общая область превью — содержит wrap (3D-canvas) и view2dBody (SVG).
@@ -607,11 +619,8 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     toggleBtn.textContent = doorsOpen ? '🚪 Закрыть двери' : '🚪 Открыть двери';
   });
   toolbar.appendChild(toggleBtn);
-
-  const fullBtn = document.createElement('button');
-  fullBtn.style.cssText = btnBase + ';background:#2a3f5a;border-color:#3a557a';
-  fullBtn.textContent = '⛶ Развернуть';
-  toolbar.appendChild(fullBtn);
+  // v0.59.487: fullBtn перенесён в tabs bar previewRight — общий для всех
+  // видов (3D и 2D). Здесь оставляем только тулбар управления дверями.
 
   // === Панель настроек (низ-право): фон + сетка ===
   const settings = document.createElement('div');
@@ -936,19 +945,19 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   let fsAnchor = null;
   let bodyOverflowSaved = '';
   const origStyles = {};
+  // v0.59.487: разворачиваем весь previewRight (табы + body) — работает для
+  // активного вида 3D или 2D. Раньше переносился только wrap (3D-canvas)
+  // → 2D-табы нельзя было развернуть.
   function enterFullscreen() {
     if (isFs) return;
     isFs = true;
     bodyOverflowSaved = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    // Сохраняем оригинальные стили wrap, чтобы вернуть их при exit.
     for (const k of ['position','flex','minWidth','maxWidth','width','height','border','borderRadius']) {
-      origStyles[k] = wrap.style[k];
+      origStyles[k] = previewRight.style[k];
     }
-    // Якорь на месте, куда вернуть wrap после exit.
-    fsAnchor = document.createComment('s3-3d-anchor');
-    wrap.parentNode.insertBefore(fsAnchor, wrap);
-    // Создаём overlay поверх всего, переносим wrap в него.
+    fsAnchor = document.createComment('s3-preview-anchor');
+    previewRight.parentNode.insertBefore(fsAnchor, previewRight);
     fsOverlay = document.createElement('div');
     fsOverlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:99999',
@@ -957,17 +966,15 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
       'padding:12px', 'box-sizing:border-box',
     ].join(';');
     document.body.appendChild(fsOverlay);
-    // Перенос wrap в overlay + новые размеры.
-    wrap.style.position = 'relative';
-    wrap.style.flex = '1 1 auto';
-    wrap.style.minWidth = '0';
-    wrap.style.maxWidth = 'none';
-    wrap.style.width = '100%';
-    wrap.style.height = '100%';
-    wrap.style.border = 'none';
-    wrap.style.borderRadius = '6px';
-    fsOverlay.appendChild(wrap);
-    // Кнопка закрытия.
+    previewRight.style.position = 'relative';
+    previewRight.style.flex = '1 1 auto';
+    previewRight.style.minWidth = '0';
+    previewRight.style.maxWidth = 'none';
+    previewRight.style.width = '100%';
+    previewRight.style.height = '100%';
+    previewRight.style.border = 'none';
+    previewRight.style.borderRadius = '6px';
+    fsOverlay.appendChild(previewRight);
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.style.cssText =
@@ -979,32 +986,36 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     fsOverlay.appendChild(closeBtn);
     fullBtn.textContent = '⤓ Свернуть';
     document.addEventListener('keydown', escHandler);
-    // Resize canvas под новые размеры — двойной rAF чтобы DOM применил.
-    requestAnimationFrame(() => requestAnimationFrame(resize));
+    // Если активен 2D — пере-render под новые размеры; если 3D — resize canvas.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (activeView === '3d') resize();
+      else render2d();
+    }));
   }
   function exitFullscreen() {
     if (!isFs) return;
     isFs = false;
     document.removeEventListener('keydown', escHandler);
     document.body.style.overflow = bodyOverflowSaved;
-    // Возвращаем wrap на исходное место.
     if (fsAnchor && fsAnchor.parentNode) {
-      fsAnchor.parentNode.insertBefore(wrap, fsAnchor);
+      fsAnchor.parentNode.insertBefore(previewRight, fsAnchor);
       fsAnchor.remove();
       fsAnchor = null;
     }
-    // Восстанавливаем оригинальные стили + дефолты модуля.
-    wrap.style.position = 'relative';
-    wrap.style.flex = '0 1 560px';
-    wrap.style.minWidth = '340px';
-    wrap.style.maxWidth = '680px';
-    wrap.style.width = '';
-    wrap.style.height = `${height}px`;
-    wrap.style.border = '1px solid #2a2f3a';
-    wrap.style.borderRadius = '8px';
+    previewRight.style.position = '';
+    previewRight.style.flex = '1 1 600px';
+    previewRight.style.minWidth = '340px';
+    previewRight.style.maxWidth = '';
+    previewRight.style.width = '';
+    previewRight.style.height = `${height}px`;
+    previewRight.style.border = '1px solid #2a2f3a';
+    previewRight.style.borderRadius = '8px';
     if (fsOverlay) { fsOverlay.remove(); fsOverlay = null; }
     fullBtn.textContent = '⛶ Развернуть';
-    requestAnimationFrame(() => requestAnimationFrame(resize));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (activeView === '3d') resize();
+      else render2d();
+    }));
   }
   function escHandler(e) { if (e.key === 'Escape') exitFullscreen(); }
   fullBtn.addEventListener('click', () => {
