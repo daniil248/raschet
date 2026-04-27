@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.482', date: '2026-04-27', items: [
+      '✅ <b>Eaton 9395P 1100 kVA — V_DC окно verified.</b> Datasheet «Power Xpert 9395P 1000-1200 kVA Technical Specification»: 38-41 jars × 12В × 6 cells, EoD 1.67-1.75 VPC, battery DC voltage range <b>456-492 В</b> (то же узкое окно что у 500-600 kVA — характерно для всей серии 9395P).',
+      '• Запись в <code>shared/ups-verified.js</code> — green ✓ в info-строке Battery-calc.',
+      '• seedVersion 9→10 force-upsert.',
+      'Verified в preview: «Eaton 9395P 1100 · 1100 кВт · η=97% · V_DC 456…492 В ✓».',
+    ] },
     { version: '0.59.481', date: '2026-04-27', items: [
       '✅ <b>Eaton 9395P 500 kVA — V_DC окно verified.</b> Раньше 432-540 (estimate); теперь <b>456-492 В</b> по datasheet «Power Xpert 9395P 500-600 kVA Technical Specification». Узкое окно — характерно для серии 9395P.',
       '• Запись добавлена в <code>shared/ups-verified.js</code> с пометкой ✓ — теперь в info-строке выбора этого ИБП в Battery-calc виден зелёный ✓ вместо ⚠.',

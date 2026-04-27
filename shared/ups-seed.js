@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '9'; // v0.59.481: Eaton 9395P 500 kVA — verified V_DC 456-492 (datasheet)
+const CURRENT_VERSION = '10'; // v0.59.482: Eaton 9395P 1100 kVA — verified V_DC 456-492 (datasheet)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,

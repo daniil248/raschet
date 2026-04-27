@@ -138,10 +138,12 @@ export const EATON_UPSES = [
     model: '9395P 1100', kind: 'ups', upsType: 'monoblock',
     capacityKva: 1100, capacityKw: 1100, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
-    vdcMin: 432, vdcMax: 540, inputs: 2, outputs: 1,
+    // Datasheet 1000-1200 kVA: 38-41 jars × 12В × 6 cells, EoD 1.67-1.75 VPC.
+    // Battery DC voltage range 456-492 V (узкое окно семейства 9395P).
+    vdcMin: 456, vdcMax: 492, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 9395P datasheet',
+    source: 'Eaton 9395P 1000-1200 kVA Technical Specification (38-41 × 12В VRLA, 456-492 VDC)',
     importedAt: 0, custom: false,
-    notes: 'Моноблок 1100 кВт · 3ф · ЦОД-класс flagship.',
+    notes: 'Моноблок 1100 кВт · 3ф · ЦОД-класс flagship. АКБ: 38…41 × 12В, EoD 1.67-1.75 VPC.',
   },
 ];
