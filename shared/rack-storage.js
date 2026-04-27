@@ -58,13 +58,19 @@ export function loadTemplates() {
   const scoped = pid ? parseJson(templatesScopedKey(pid), []) : [];
   const out = [];
   const seen = new Set();
+  // v0.59.540: фильтруем виртуалы (scheme-*, por-group-*) даже если они
+  // протекли в legacy storage из-за прежних saveRacks — они не должны
+  // показываться в дропдаунах/picker'ах как настоящие шаблоны.
+  const isVirtualId = (id) => typeof id === 'string' && (id.startsWith('scheme-') || id.startsWith('por-group-'));
   (Array.isArray(global) ? global : []).forEach(r => {
     if (!r || !r.id || String(r.id).startsWith('inst-')) return; // inst-* здесь быть не должно после миграции
+    if (isVirtualId(r.id) || r.fromScheme || r.fromPorGroup) return;
     if (seen.has(r.id)) return;
     seen.add(r.id); out.push(r);
   });
   (Array.isArray(scoped) ? scoped : []).forEach(r => {
     if (!r || !r.id || String(r.id).startsWith('inst-')) return;
+    if (isVirtualId(r.id) || r.fromScheme || r.fromPorGroup) return;
     if (seen.has(r.id)) return;
     seen.add(r.id); out.push(r);
   });
@@ -184,6 +190,14 @@ export function saveAllRacksForActiveProject(arr) {
   }
   arr.forEach(r => {
     if (!r || !r.id) return;
+    // v0.59.540: виртуальные стойки (из engine-схемы или POR-группы) НЕ
+    // должны сохраняться в legacy-хранилища — у них нет identity, они
+    // регенерируются при каждом loadRacks из источника. Раньше попадали
+    // в globalTpls (rack-config.templates.v1), захламляя глобальную
+    // библиотеку и подменяясь при cross-project работе.
+    if (r.fromScheme || r.fromPorGroup) return;
+    if (typeof r.id === 'string' && (r.id.startsWith('scheme-') || r.id.startsWith('por-group-'))) return;
+    if (r._source === 'por') return; // POR-only racks читаются из POR, не из legacy
     if (String(r.id).startsWith('inst-')) { instances.push(r); return; }
     if (scopedTplIds.has(r.id)) return; // пришёл из project-scoped — не трогаем
     globalTpls.push(r);
