@@ -400,37 +400,40 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
   const { THREE, OrbitControls } = mod;
   container.removeChild(ph);
 
-  // v0.59.477: высота 720 (было 600), чтобы вертикальная прокрутка не появлялась
-  // в 2D-табах при обычной разрешающей способности экрана.
+  // v0.59.486: единое окно превью — состав слева, переключатель табов
+  // (3D / Сверху / Спереди / Сбоку) над общей областью просмотра.
+  // Раньше были два отдельных контейнера (3D и 2D), у каждого свои размеры
+  // и свой fullscreen — это было запутанно и занимало много места.
   const height = opts.height || 720;
   const root = document.createElement('div');
-  root.style.cssText = `display:flex;flex-wrap:wrap;gap:8px;width:100%;align-items:stretch`;
+  root.style.cssText = `display:flex;flex-wrap:wrap;gap:12px;width:100%;align-items:stretch`;
   container.appendChild(root);
 
-  const wrap = document.createElement('div');
-  wrap.style.cssText =
-    `position:relative;flex:0 1 560px;min-width:340px;max-width:680px;` +
-    `height:${height}px;border:1px solid #2a2f3a;border-radius:8px;overflow:hidden`;
-  root.appendChild(wrap);
+  // ── Левая колонка: «Состав ряда» + габариты ──
+  const compositionLeft = document.createElement('div');
+  compositionLeft.style.cssText =
+    `flex:0 0 240px;min-width:200px;font:11px system-ui;color:#1a2a44;line-height:1.55;` +
+    `padding:10px;background:#fafbfc;border:1px solid #e0e3ea;border-radius:8px`;
+  root.appendChild(compositionLeft);
 
-  // 2D-вид (фронт / план / сбоку)
-  const view2d = document.createElement('div');
-  view2d.style.cssText =
-    `flex:1 1 360px;min-width:280px;height:${height}px;border:1px solid #2a2f3a;` +
-    `border-radius:8px;background:#f7f8fb;padding:0;box-sizing:border-box;` +
-    `overflow:hidden;font:11px system-ui;color:#1a2a44;display:flex;flex-direction:column`;
-  root.appendChild(view2d);
+  // ── Правая колонка: превью с табами ──
+  const previewRight = document.createElement('div');
+  previewRight.style.cssText =
+    `flex:1 1 600px;min-width:340px;height:${height}px;display:flex;flex-direction:column;` +
+    `border:1px solid #2a2f3a;border-radius:8px;overflow:hidden;background:#f7f8fb`;
+  root.appendChild(previewRight);
 
-  // Табы 2D-вида
-  const tabs2d = document.createElement('div');
-  tabs2d.style.cssText =
+  // Табы (3D + 3 × 2D)
+  const tabsBar = document.createElement('div');
+  tabsBar.style.cssText =
     'display:flex;gap:0;background:#e6eaf2;border-bottom:1px solid #cdd5e3;flex-shrink:0';
   const TABS = [
-    { id: 'top', label: 'План (сверху)' },
-    { id: 'front', label: 'Фасад' },
-    { id: 'side', label: 'Сбоку' },
+    { id: '3d',    label: '3D' },
+    { id: 'top',   label: 'Сверху' },
+    { id: 'front', label: 'Спереди' },
+    { id: 'side',  label: 'Сбоку' },
   ];
-  let active2d = 'top';
+  let activeView = '3d';
   const tabBtns = {};
   for (const t of TABS) {
     const b = document.createElement('button');
@@ -438,26 +441,54 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
     b.dataset.tab = t.id;
     b.textContent = t.label;
     b.style.cssText =
-      'flex:1;padding:7px 6px;font:11px system-ui;border:none;background:transparent;' +
+      'flex:1;padding:8px 6px;font:12px system-ui;border:none;background:transparent;' +
       'cursor:pointer;border-bottom:2px solid transparent;color:#5a6680';
-    b.addEventListener('click', () => {
-      active2d = t.id;
-      for (const id in tabBtns) {
-        tabBtns[id].style.background = id === active2d ? '#fff' : 'transparent';
-        tabBtns[id].style.color = id === active2d ? '#1a2a44' : '#5a6680';
-        tabBtns[id].style.borderBottomColor = id === active2d ? '#234a8a' : 'transparent';
-        tabBtns[id].style.fontWeight = id === active2d ? '600' : 'normal';
-      }
-      render2d();
-    });
+    b.addEventListener('click', () => switchView(t.id));
     tabBtns[t.id] = b;
-    tabs2d.appendChild(b);
+    tabsBar.appendChild(b);
   }
-  view2d.appendChild(tabs2d);
+  previewRight.appendChild(tabsBar);
 
+  // Общая область превью — содержит wrap (3D-canvas) и view2dBody (SVG).
+  // Видимость переключается через display:none.
+  const previewBody = document.createElement('div');
+  previewBody.style.cssText = 'position:relative;flex:1;overflow:hidden';
+  previewRight.appendChild(previewBody);
+
+  // 3D-контейнер (wrap) — внутри previewBody.
+  const wrap = document.createElement('div');
+  wrap.style.cssText =
+    `position:relative;width:100%;height:100%;background:#f7f8fb;overflow:hidden`;
+  previewBody.appendChild(wrap);
+
+  // SVG-2D-контейнер — внутри previewBody (изначально скрыт).
   const view2dBody = document.createElement('div');
-  view2dBody.style.cssText = 'flex:1;overflow:auto;padding:10px';
-  view2d.appendChild(view2dBody);
+  view2dBody.style.cssText =
+    'position:absolute;inset:0;overflow:auto;padding:10px;display:none;background:#f7f8fb';
+  previewBody.appendChild(view2dBody);
+
+  function switchView(id) {
+    activeView = id;
+    for (const k in tabBtns) {
+      const isActive = k === id;
+      tabBtns[k].style.background = isActive ? '#fff' : 'transparent';
+      tabBtns[k].style.color = isActive ? '#1a2a44' : '#5a6680';
+      tabBtns[k].style.borderBottomColor = isActive ? '#234a8a' : 'transparent';
+      tabBtns[k].style.fontWeight = isActive ? '600' : 'normal';
+    }
+    if (id === '3d') {
+      wrap.style.display = '';
+      view2dBody.style.display = 'none';
+      // Resize canvas под новые размеры.
+      requestAnimationFrame(() => requestAnimationFrame(resize));
+    } else {
+      wrap.style.display = 'none';
+      view2dBody.style.display = '';
+      render2d();
+    }
+  }
+  // Инициализация — 3D активен по умолчанию.
+  switchView('3d');
 
   // подсказка
   const hint = document.createElement('div');
@@ -827,14 +858,17 @@ export async function mountS3ThreeDView(container, spec, opts = {}) {
 
   function render2d() {
     let svg = '';
-    if (active2d === 'top') svg = renderTopView();
-    else if (active2d === 'front') svg = renderFrontView();
-    else svg = renderSideView();
-    view2dBody.innerHTML = svg + renderComposition();
+    if (activeView === 'top') svg = renderTopView();
+    else if (activeView === 'front') svg = renderFrontView();
+    else if (activeView === 'side') svg = renderSideView();
+    view2dBody.innerHTML = svg;
   }
-
-  // активируем первый таб
-  tabBtns['top'].click();
+  // v0.59.486: «Состав ряда» рендерится один раз слева, не дублируется
+  // на каждом 2D-табе.
+  function renderCompositionLeft() {
+    compositionLeft.innerHTML = '<div style="font-weight:bold;margin-bottom:6px;font-size:12px;color:#1a2a44">Состав ряда</div>' + renderComposition().replace('<div style="margin-top:10px;line-height:1.55;font-size:11px">', '<div>').replace(/<div style="font-weight:bold;margin-bottom:4px">[^<]*<\/div>/, '');
+  }
+  renderCompositionLeft();
 
   // камера + рендерер
   const initW = wrap.clientWidth || 800;
