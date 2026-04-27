@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.481', date: '2026-04-27', items: [
+      '✅ <b>Eaton 9395P 500 kVA — V_DC окно verified.</b> Раньше 432-540 (estimate); теперь <b>456-492 В</b> по datasheet «Power Xpert 9395P 500-600 kVA Technical Specification». Узкое окно — характерно для серии 9395P.',
+      '• Запись добавлена в <code>shared/ups-verified.js</code> с пометкой ✓ — теперь в info-строке выбора этого ИБП в Battery-calc виден зелёный ✓ вместо ⚠.',
+      '• seedVersion 8→9 force-upsert: у всех существующих пользователей обновится без ручного вмешательства.',
+      'Файлы: <code>shared/catalogs/ups-eaton.js</code>, <code>shared/ups-verified.js</code>, <code>shared/ups-seed.js</code>.',
+    ] },
     { version: '0.59.480', date: '2026-04-27', items: [
       '🔋 <b>findMinimalS3Config: hard-constraint по паспортной мощности модуля.</b> Раньше алгоритм мог вернуть конфигурацию, где per-module power > rated (например 28 модулей при 292 кВт даёт 10.45 кВт/модуль > rated 10 кВт). Это означает перегрузку BMS и срабатывание защиты.',
       '• Теперь нижний предел числа модулей: <code>minTotalByPower = ceil(batteryPwrReqKw / moduleRatedKw)</code>. Алгоритм стартует с этого значения, не пытается меньше.',

@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups-legrand.js';
 import { DKC_UPSES } from './catalogs/ups-dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '8'; // v0.59.456: расширены V_DC окна Schneider/Eaton/Legrand/DKC до 360-540 (32/40 × 12В VRLA)
+const CURRENT_VERSION = '9'; // v0.59.481: Eaton 9395P 500 kVA — verified V_DC 456-492 (datasheet)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,

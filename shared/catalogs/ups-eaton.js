@@ -126,11 +126,12 @@ export const EATON_UPSES = [
     model: '9395P 500', kind: 'ups', upsType: 'monoblock',
     capacityKva: 500, capacityKw: 500, phases: 3,
     efficiency: 96.5, cosPhi: 1.0,
-    vdcMin: 432, vdcMax: 540, inputs: 2, outputs: 1,
+    // Datasheet 500-600 kVA: battery DC voltage 456-492 V (узкое окно).
+    vdcMin: 456, vdcMax: 492, inputs: 2, outputs: 1,
     batteryChemistry: 'vrla',
-    source: 'Eaton 9395P datasheet',
+    source: 'Eaton 9395P 500-600 kVA Technical Specification (battery 456-492 VDC)',
     importedAt: 0, custom: false,
-    notes: 'Моноблок 500 кВт · 3ф · ЦОД-класс · ESS до 99%.',
+    notes: 'Моноблок 500 кВт · 3ф · ЦОД-класс · ESS до 99%. АКБ: 456…492 VDC.',
   },
   {
     id: 'eaton-9395-1100k', supplier: 'Eaton',
