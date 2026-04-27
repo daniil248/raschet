@@ -1188,19 +1188,46 @@ function _calcFilters() {
   };
 }
 function _populateCalcFilterOptions(list) {
-  const supps = [...new Set(list.map(b => b.supplier).filter(Boolean))].sort();
-  const vblks = [...new Set(list.map(b => Number(b.blockVoltage)).filter(v => v > 0))].sort((a,b)=>a-b);
+  // v0.59.466: КРОСС-ФИЛЬТРАЦИЯ. Каждый select ограничен значениями,
+  // которые присутствуют в записях, удовлетворяющих ВСЕМ остальным
+  // фильтрам. Так не бывает «пустых» комбинаций.
+  const f = _calcFilters();
   const sSupp = document.getElementById('calc-filter-supp');
+  const sChem = document.getElementById('calc-filter-chem-flt');
   const sVblk = document.getElementById('calc-filter-vblk');
-  if (sSupp && sSupp.options.length <= 1) {
+  // Поставщик: учитываем все фильтры кроме supp.
+  if (sSupp) {
+    const cur = sSupp.value;
+    const subset = _filterBatteries(list, { ...f, supp: '' });
+    const supps = [...new Set(subset.map(b => b.supplier).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
     let h = '<option value="">Все поставщики</option>';
     for (const s of supps) h += `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
     sSupp.innerHTML = h;
+    if (cur && supps.includes(cur)) sSupp.value = cur;
   }
-  if (sVblk && sVblk.options.length <= 1) {
+  // Тип АКБ (chemistry): учитываем все фильтры кроме chem.
+  if (sChem) {
+    const cur = sChem.value;
+    const subset = _filterBatteries(list, { ...f, chem: '' });
+    const chems = [...new Set(subset.map(b => (b.chemistry || '').toLowerCase()).filter(Boolean))];
+    const all = ['vrla', 'li-ion', 'nicd', 'nimh'];
+    let h = '<option value="">Все типы АКБ</option>';
+    for (const c of all) {
+      if (!chems.includes(c)) continue;
+      h += `<option value="${escHtml(c)}">${escHtml(chemLabel(c))}</option>`;
+    }
+    sChem.innerHTML = h;
+    if (cur && chems.includes(cur)) sChem.value = cur;
+  }
+  // V блока: учитываем все фильтры кроме vblk.
+  if (sVblk) {
+    const cur = sVblk.value;
+    const subset = _filterBatteries(list, { ...f, vblk: '' });
+    const vblks = [...new Set(subset.map(b => Number(b.blockVoltage)).filter(v => v > 0))].sort((a,b)=>a-b);
     let h = '<option value="">V блока: любое</option>';
     for (const v of vblks) h += `<option value="${v}">${v} В</option>`;
     sVblk.innerHTML = h;
+    if (cur && vblks.includes(Number(cur))) sVblk.value = cur;
   }
 }
 function _filterBatteries(list, f) {
@@ -2414,30 +2441,42 @@ function renderUpsPicker() {
   const sel = document.getElementById('calc-ups-pick');
   if (!sel) return;
   const all = listUpses().filter(_isStandaloneUps);
-  // populate filter dropdowns
+  // v0.59.466: КРОСС-ФИЛЬТРАЦИЯ. Опции в каждом select показывают только
+  // те значения, которые присутствуют в записях, удовлетворяющих ВСЕМ
+  // ОСТАЛЬНЫМ фильтрам. Так нельзя выбрать пустую комбинацию (Legrand +
+  // All-in-One), и при выборе типа исчезают поставщики у которых его нет.
+  const f = _upsFilters();
+  const filteredExceptSupp = _filterUpses(all, { ...f, supp: '' });
+  const filteredExceptType = _filterUpses(all, { ...f, type: '' });
   const sSupp = document.getElementById('calc-ups-flt-supp');
-  if (sSupp && sSupp.options.length <= 1) {
-    const supps = [...new Set(all.map(u => u.supplier).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+  if (sSupp) {
+    const cur = sSupp.value;
+    const supps = [...new Set(filteredExceptSupp.map(u => u.supplier).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
     let h = '<option value="">Все поставщики</option>';
     for (const s of supps) h += `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
     sSupp.innerHTML = h;
+    // Сохраняем выбор, если он всё ещё валиден; иначе сбрасываем.
+    if (cur && supps.includes(cur)) sSupp.value = cur;
+    else sSupp.value = '';
   }
-  // v0.59.447: фильтр «Тип» — динамически из реестра плагинов (single
-  // source of truth с wizard'ом ups-config). При первой загрузке
-  // дополняем 2 хардкод-опции (моноблок/модульный) до полного списка
-  // (+ Интегрированный, + All-in-One).
   const sType = document.getElementById('calc-ups-flt-type');
-  if (sType && sType.options.length <= 3) {
+  if (sType) {
     const cur = sType.value;
+    // Доступные типы — те, что встречаются среди ups, прошедших остальные
+    // фильтры (включая supplier).
+    const availTypeIds = new Set(filteredExceptType.map(u => detectUpsType(u)?.id).filter(Boolean));
     let h = '<option value="">Любой тип</option>';
     for (const t of listUpsTypes()) {
+      if (!availTypeIds.has(t.id)) continue;
       h += `<option value="${escHtml(t.id)}">${escHtml(t.label || t.id)}</option>`;
     }
     sType.innerHTML = h;
-    if (cur) sType.value = cur;
+    if (cur && availTypeIds.has(cur)) sType.value = cur;
+    else sType.value = '';
   }
-  const f = _upsFilters();
-  const list = _sortUpses(_filterUpses(all, f));
+  // После пересчёта select'ов перечитываем фильтры (значения могли сброситься).
+  const fApplied = _upsFilters();
+  const list = _sortUpses(_filterUpses(all, fApplied));
   const cur = sel.value;
   let h = '<option value="">— не выбран (заполните вручную параметры расчёта) —</option>';
   for (const u of list) {
