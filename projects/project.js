@@ -295,10 +295,13 @@ function render() {
     // внутри проекта. Кнопка «+ Добавить» создаёт подпроект (sketch с
     // parentProjectId) нужного типа: схема / СКС / шкаф. Реестры (IT и
     // объект) — singleton'ы проекта, выводятся отдельными кнопками.
-    const subSchemes  = listSubProjects(p.id, 'schematic');
-    const subScs      = listSubProjects(p.id, 'scs-design');
-    const subRacks    = listSubProjects(p.id, 'scs-config');
-    const subMdc      = listSubProjects(p.id, 'mdc-config');
+    // v0.59.565: strict=true — каждая плитка показывает СВОИ subs, без
+    // межсемейного «протекания» (раньше mdc-config плитка показывала и
+    // scs-design subs из-за общего MODULE_FAMILIES).
+    const subSchemes  = listSubProjects(p.id, 'schematic',  { strict: true });
+    const subScs      = listSubProjects(p.id, 'scs-design', { strict: true });
+    const subRacks    = listSubProjects(p.id, 'scs-config', { strict: true });
+    const subMdc      = listSubProjects(p.id, 'mdc-config', { strict: true });
 
     const renderSubList = (subs, modHref, icon, emptyHint) => {
       if (!subs.length) return `<div class="muted" style="font-size:12px;padding:6px 0">${emptyHint}</div>`;

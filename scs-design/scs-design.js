@@ -42,12 +42,10 @@ const OLD_KEYS = {
 // v0.59.556: миграция legacy-СКС (данные под id parent project'а) в
 // под-проект. Копирует все raschet.project.<parentPid>.scs-design.* ключи
 // в raschet.project.<subPid>.scs-design.*; удаляет источник.
-// v0.59.557: smart-merge — если назначение «пустое» (null, "[]", "{}",
-// '{"items":[]}'), значение источника записывается. Если в назначении
-// уже есть РЕАЛЬНЫЕ данные — источник остаётся и НЕ переносится (чтобы
-// не потерять работу пользователя). Это позволяет миграции сработать
-// даже когда sub уже создан, но пуст (типичный кейс — пользователь
-// создал «СКС-1» вручную, а связи ещё лежат в legacy).
+// v0.59.557: smart-merge — если назначение «пустое», источник
+// записывается. Иначе пропускается.
+// v0.59.565: + опции { force: true } для перезаписи dest и { mergeArrays:
+// true } для слияния массивов источника+приёмника по id.
 function _isEmptyValue(raw) {
   if (raw == null) return true;
   try {
@@ -63,8 +61,9 @@ function _isEmptyValue(raw) {
     return false;
   } catch { return false; }
 }
-function _migrateLegacyScsToSub(parentPid, subPid) {
+function _migrateLegacyScsToSub(parentPid, subPid, opts = {}) {
   if (!parentPid || !subPid || parentPid === subPid) return [];
+  const force = opts.force === true;
   const prefix = `raschet.project.${parentPid}.scs-design.`;
   const subPrefix = `raschet.project.${subPid}.scs-design.`;
   const toMove = [];
@@ -77,7 +76,8 @@ function _migrateLegacyScsToSub(parentPid, subPid) {
   for (const k of toMove) {
     const newKey = subPrefix + k.slice(prefix.length);
     const destVal = localStorage.getItem(newKey);
-    if (!_isEmptyValue(destVal)) { skipped.push({ k, reason: 'dest non-empty' }); continue; }
+    const destEmpty = _isEmptyValue(destVal);
+    if (!destEmpty && !force) { skipped.push({ k, reason: 'dest non-empty' }); continue; }
     const val = localStorage.getItem(k);
     if (val == null) continue;
     try {
@@ -86,7 +86,7 @@ function _migrateLegacyScsToSub(parentPid, subPid) {
       moved.push(k);
     } catch (e) { console.warn('[scs-design] migrate failed for', k, e); }
   }
-  if (moved.length) console.info(`[scs-design] legacy → sub ${subPid}: перенесено ${moved.length} ключей`, moved);
+  if (moved.length) console.info(`[scs-design] legacy → sub ${subPid}${force?' [FORCE]':''}: перенесено ${moved.length} ключей`, moved);
   if (skipped.length) console.warn(`[scs-design] legacy → sub ${subPid}: пропущено ${skipped.length} (dest не пуст)`, skipped);
   return moved;
 }
@@ -171,11 +171,19 @@ function renderProjectBadge(pid) {
   //   Без флага renderProjectBadge на каждом ре-рендере (storage-event,
   //   tab-switch, …) запускал миграцию заново, и при «dest не пуст»
   //   спамил console.warn сотнями раз → подвисание UI-потока.
+  // v0.59.565: после миграционной попытки фиксируем, остался ли legacy
+  // в parent'е (если migration пропустила некоторые ключи). Кнопка
+  // «🔀 Принять legacy» в badge зовёт force-merge.
+  let legacyStuckAfterAttempt = false;
   if (legacyActive && parent && !parentIsOrphan) {
     const _attemptedFlag = `raschet.scs-design.legacy-migrate-attempted.${parent.id}.session`;
     const alreadyAttempted = (() => {
       try { return sessionStorage.getItem(_attemptedFlag) === '1'; } catch { return false; }
     })();
+    if (alreadyAttempted) {
+      // Уже пробовали — значит legacy «застрял»: показываем кнопку force-merge.
+      legacyStuckAfterAttempt = true;
+    }
     if (!alreadyAttempted) {
       try {
         let dest = subs[0];
@@ -197,10 +205,12 @@ function renderProjectBadge(pid) {
           // dest существовал и не пуст — миграция не выполнилась.
           // Логируем ОДИН раз благодаря флагу выше.
           console.warn(`[scs-design] legacy data persists in parent ${parent.id} — sub ${dest.id} already has content; manual merge required`);
+          legacyStuckAfterAttempt = true;
         }
       } catch (e) {
         try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
         console.warn('[scs-design] auto-migrate legacy failed:', e);
+        legacyStuckAfterAttempt = true;
       }
     }
   }
@@ -276,10 +286,15 @@ function renderProjectBadge(pid) {
       <button type="button" class="sd-btn-sel" id="sd-sub-new" title="Добавить ещё один вариант СКС">＋</button>`;
   }
 
+  // v0.59.565: warning о застрявшем legacy + кнопка force-merge.
+  const stuckBlockHtml = legacyStuckAfterAttempt && !parentIsOrphan && parent
+    ? `<button type="button" id="sd-force-merge-legacy" title="Перенести legacy-данные родителя в выбранный СКС-подпроект, перезаписав существующие. Используйте если auto-migration пропустил данные." style="margin-left:8px;font-size:11px;padding:3px 10px;background:#fbbf24;border:1px solid #f59e0b;color:#78350f;border-radius:4px;cursor:pointer">🔀 Принять legacy</button>`
+    : '';
   host.innerHTML = `
     <span class="muted">Проект:</span>
     ${parentSel}
     ${subBlockHtml}
+    ${stuckBlockHtml}
     <a href="../projects/" style="margin-left:auto">→ управлять проектами</a>
   `;
 
@@ -323,6 +338,35 @@ function renderProjectBadge(pid) {
     const designation = await sdPrompt('Обозначение', 'Короткий код подпроекта (напр. СКС-1)', 'СКС-1');
     const sp = createSubProject(parent.id, 'scs-design', { name, designation: designation || '' });
     setActiveProjectId(sp.id);
+    location.reload();
+  });
+  // v0.59.565: force-merge legacy → активный sub. Перезаписывает
+  // существующие ключи sub'а данными из parent.scs-design.* и удаляет
+  // их из parent.
+  document.getElementById('sd-force-merge-legacy')?.addEventListener('click', async () => {
+    if (!parent || parentIsOrphan) return;
+    const dest = subs[0] || (p && p.parentProjectId === parent.id ? p : null);
+    if (!dest || !dest.id) {
+      const ph = document.createElement('div');
+      ph.textContent = 'Сначала выберите/создайте СКС-подпроект.';
+      ph.style.cssText = 'position:fixed;top:60px;right:20px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:6px;z-index:9999';
+      document.body.appendChild(ph);
+      setTimeout(() => ph.remove(), 2500);
+      return;
+    }
+    const ok = confirm(
+      `Принять legacy-данные из родителя «${parent.name}» в подпроект «${dest.name || dest.designation || 'СКС'}»?\n\n` +
+      `Существующие ключи подпроекта будут ПЕРЕЗАПИСАНЫ данными родителя. ` +
+      `Используйте только если уверены, что подпроект пуст или его данные устарели.`
+    );
+    if (!ok) return;
+    const moved = _migrateLegacyScsToSub(parent.id, dest.id, { force: true });
+    // Сбрасываем session-flag, чтобы при следующем заходе не было
+    // «застрял» предупреждения.
+    try {
+      sessionStorage.removeItem(`raschet.scs-design.legacy-migrate-attempted.${parent.id}.session`);
+    } catch {}
+    setActiveProjectId(dest.id);
     location.reload();
   });
 }

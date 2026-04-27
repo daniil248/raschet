@@ -115,8 +115,20 @@ export function createProject({ name, description = '', status = 'draft', kind =
 // внутри парентa «25013_Qarmet Темиртау» — это отдельная сущность с
 // собственным обозначением (designation), но scoped LS-данные лежат под
 // id подпроекта (не родителя).
-export function listSubProjects(parentProjectId, moduleId) {
+// v0.59.565: 3-й параметр { strict: true } — фильтр строго по
+// ownerModule===moduleId (без family). Нужно для UI карточки /projects/,
+// где плитка «Модульные ЦОД» не должна показывать scs-design подпроекты
+// и наоборот, иначе один и тот же sub появлялся бы в нескольких плитках
+// (т.к. family включает все 4 модуля семейства).
+export function listSubProjects(parentProjectId, moduleId, opts = {}) {
   if (!parentProjectId) return [];
+  if (opts.strict) {
+    return listProjects().filter(p =>
+      p.parentProjectId === parentProjectId &&
+      p.kind === 'sketch' &&
+      p.ownerModule === moduleId
+    );
+  }
   const fam = _familyOf(moduleId);
   return listProjects().filter(p =>
     p.parentProjectId === parentProjectId &&
