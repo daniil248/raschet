@@ -31,9 +31,50 @@ let _suppressSync = false;          // защита от рекурсии (engin
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Маппинг engine consumer-узла → POR-type/subtype.
+ *
+ * Distributed системы (нет geometric footprint) → POR type='consumer-system'
+ * с subtype отражающим вид:
+ *   lighting       → освещение
+ *   pipe-heating   → обогрев трубопроводов
+ *   plinth-heating → плинтусный/тёплый пол
+ *   ventilation    → электр. часть вентиляции
+ *   outlets        → розеточная сеть
+ *
+ * Discrete объекты с габаритом:
+ *   rack           → POR type='rack' (полноценный stand)
+ *
+ * Прочее (motor, hvac-unit, generic consumer без subtype) пока не
+ * мигрируем в POR — оставляем как обычные engine-узлы. Когда придёт
+ * соответствующий POR-type ('hvac-unit', 'motor') — добавим маппинг.
+ */
+const SYSTEM_SUBTYPES = new Set(['lighting', 'pipe-heating', 'plinth-heating', 'ventilation', 'outlets', 'snow-melting', 'heater']);
+
+function _consumerSubtype(n) {
+  return (n && (n.subtype || n.consumerKind)) || '';
+}
+
+function _porMapping(n) {
+  if (!n || n.type !== 'consumer') return null;
+  const sub = _consumerSubtype(n);
+  if (sub === 'rack') return { porType: 'rack', porSubtype: '' };
+  if (SYSTEM_SUBTYPES.has(sub)) {
+    // 'heater' и 'pipe-heating' → один subtype в POR
+    let s = sub;
+    if (sub === 'heater') s = 'plinth-heating';
+    return { porType: 'consumer-system', porSubtype: s };
+  }
+  return null; // прочее не зеркалируем
+}
+
 function isRackNode(n) {
   if (!n || n.type !== 'consumer') return false;
-  return n.subtype === 'rack' || n.consumerKind === 'rack';
+  return _consumerSubtype(n) === 'rack';
+}
+
+function isMirroredNode(n) {
+  return _porMapping(n) != null;
 }
 
 function buildRackPartialFromNode(n) {
@@ -50,6 +91,23 @@ function buildRackPartialFromNode(n) {
     depthMm:   Number(n.depthMm   || (n.geometryMm && n.geometryMm.depthMm)  || 800),
     heightMm:  Number(n.heightMm  || (n.geometryMm && n.geometryMm.heightMm) || 1991),
     rackUnits: Number(n.u || n.units || 42),
+  });
+}
+
+function buildSystemPartialFromNode(n, porSubtype) {
+  const def = getPorType('consumer-system');
+  if (!def) return null;
+  // composition зависит от subtype: для lighting — unitCount/unitPowerW.
+  // PoC: пробрасываем что есть в node, factory заполнит дефолтами.
+  return def.factory({
+    subtype:   porSubtype,
+    tag:       n.tag || '',
+    name:      n.name || '',
+    demandKw:  Number(n.demandKw) || 0,
+    cosPhi:    Number(n.cosPhi)   || 0.95,
+    phases:    Number(n.phases)   || 1,
+    voltageV:  Number(n.voltageV) || 230,
+    composition: n.composition || {},
   });
 }
 
@@ -70,23 +128,24 @@ function applyPorToNode(n, obj) {
   return changed;
 }
 
-function patchPorFromNode(pid, oid, n) {
-  // Top-level
+function patchPorFromNode(pid, oid, n, mapping) {
   patchObject(pid, oid, { tag: n.tag || '', name: n.name || '' });
-  // electrical
+  // electrical — для всех типов
   patchObject(pid, oid, {
     demandKw: Number(n.demandKw) || 0,
     cosPhi:   Number(n.cosPhi)   || 0.95,
-    phases:   Number(n.phases)   || 3,
-    voltageV: Number(n.voltageV) || 400,
+    phases:   Number(n.phases)   || (mapping.porType === 'rack' ? 3 : 1),
+    voltageV: Number(n.voltageV) || (mapping.porType === 'rack' ? 400 : 230),
   }, { domain: 'electrical' });
-  // mechanical
-  patchObject(pid, oid, {
-    widthMm:   Number(n.widthMm   || (n.geometryMm && n.geometryMm.widthMm)  || 600),
-    depthMm:   Number(n.depthMm   || (n.geometryMm && n.geometryMm.depthMm)  || 800),
-    heightMm:  Number(n.heightMm  || (n.geometryMm && n.geometryMm.heightMm) || 1991),
-    rackUnits: Number(n.u || n.units || 42),
-  }, { domain: 'mechanical' });
+  // mechanical — только для rack (системы без габарита).
+  if (mapping.porType === 'rack') {
+    patchObject(pid, oid, {
+      widthMm:   Number(n.widthMm   || (n.geometryMm && n.geometryMm.widthMm)  || 600),
+      depthMm:   Number(n.depthMm   || (n.geometryMm && n.geometryMm.depthMm)  || 800),
+      heightMm:  Number(n.heightMm  || (n.geometryMm && n.geometryMm.heightMm) || 1991),
+      rackUnits: Number(n.u || n.units || 42),
+    }, { domain: 'mechanical' });
+  }
 }
 
 // ─── Engine → POR ────────────────────────────────────────────────────
@@ -96,33 +155,33 @@ function syncEngineToPOR() {
   _suppressSync = true;
   let created = 0, updated = 0;
   try {
-    // 1) Для каждого rack-узла без porObjectId — создаём POR-объект.
-    // 2) Для каждого rack-узла с porObjectId — обновляем POR.
-    // 3) Для POR-объектов type='rack' без соответствующего node — оставляем
-    //    (могли прийти из rack-config / playground / другого модуля).
+    // Обходим все consumer-узлы; для тех что мапятся в POR (rack ИЛИ
+    // distributed system) — upsert. Прочие игнорируем.
     const seenOids = new Set();
     for (const n of state.nodes.values()) {
-      if (!isRackNode(n)) continue;
+      const mapping = _porMapping(n);
+      if (!mapping) continue;
       if (n.porObjectId) {
         const obj = getObject(_activePid, n.porObjectId);
         if (obj) {
-          patchPorFromNode(_activePid, n.porObjectId, n);
+          patchPorFromNode(_activePid, n.porObjectId, n, mapping);
           seenOids.add(n.porObjectId);
           updated++;
         } else {
-          // Объект исчез — пересоздаём.
           n.porObjectId = null;
         }
       }
       if (!n.porObjectId) {
-        const partial = buildRackPartialFromNode(n);
+        const partial = (mapping.porType === 'rack')
+          ? buildRackPartialFromNode(n)
+          : buildSystemPartialFromNode(n, mapping.porSubtype);
         if (!partial) continue;
         const createdObj = addObject(_activePid, partial);
         if (createdObj) {
           n.porObjectId = createdObj.id;
           seenOids.add(createdObj.id);
           created++;
-          console.info(`[engine-por-mirror] created POR rack ${createdObj.id} for engine node ${n.id} (${n.tag || ''})`);
+          console.info(`[engine-por-mirror] created POR ${mapping.porType}${mapping.porSubtype?'/'+mapping.porSubtype:''} ${createdObj.id} for engine node ${n.id} (${n.tag || ''})`);
         }
       }
     }
@@ -200,9 +259,13 @@ export function enableEngineMirror(pid) {
   // POR → Engine на cross-tab события.
   _unsubPor = porSubscribe(pid, applyPorEvent);
   // Начальная синхронизация: текущая schema → POR.
-  const initialRacks = [...state.nodes.values()].filter(isRackNode).length;
+  const all = [...state.nodes.values()];
+  const initialRacks = all.filter(isRackNode).length;
+  const initialSystems = all.filter(n => {
+    const mp = _porMapping(n); return mp && mp.porType === 'consumer-system';
+  }).length;
   syncEngineToPOR();
-  console.info(`[engine-por-mirror] activated for pid=${pid} (rack-узлов в схеме: ${initialRacks})`);
+  console.info(`[engine-por-mirror] activated for pid=${pid} (rack-узлов: ${initialRacks}, систем: ${initialSystems})`);
   if (typeof window !== 'undefined') {
     window.__engine_por_mirror_pid = pid;
   }

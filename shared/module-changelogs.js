@@ -4,6 +4,21 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.513', date: '2026-04-27', items: [
+      '🪞 <b>Engine mirror расширен на consumer-system типы</b> (lighting / pipe-heating / plinth-heating / ventilation / outlets / heater / snow-melting). Раньше зеркалировались только rack-узлы. Теперь:',
+      '• <b>Маппинг engine consumer-узла → POR</b>:',
+      '  ⚬ <code>subtype=\'rack\'</code> → POR <code>type=\'rack\'</code> (как раньше).',
+      '  ⚬ <code>subtype=\'lighting\'</code> → POR <code>type=\'consumer-system\'</code>, <code>subtype=\'lighting\'</code>.',
+      '  ⚬ <code>subtype=\'pipe-heating\'</code> / <code>plinth-heating</code> / <code>heater</code> → consumer-system, subtype соответствующий.',
+      '  ⚬ <code>subtype=\'ventilation\'</code> / <code>outlets</code> / <code>snow-melting</code> → consumer-system.',
+      '  ⚬ Прочее (motor, generic) — пока не зеркалируется.',
+      '• <b>Domain mirror</b>:',
+      '  ⚬ <code>electrical</code> для всех типов: tag, name, demandKw, cosPhi, phases, voltageV.',
+      '  ⚬ <code>mechanical</code> только для rack — у систем нет habarit.',
+      '• <b>Console</b>: <code>activated for pid=X (rack-узлов: N, систем: M)</code>; на каждый создаваемый объект — <code>created POR consumer-system/lighting por_xxx for engine node nNN</code>.',
+      '🎯 <b>Сценарий end-to-end</b>: технолог в engine добавляет узел consumer subtype=lighting → mirror создаёт POR <code>consumer-system</code> с <code>domains.electrical.demandKw</code>. SCS-инженер / климат-инженер открывает POR Playground → видит «💡 Освещение» в списке проекта (фильтр type=consumer-system). Каждый домен может править свой инженер; в инспекторе будет видно владельца и время правки (<code>ownerByDomain</code>).',
+      'Файлы: <code>shared/engine-por-mirror.js</code> (новые helper\'ы _porMapping/buildSystemPartialFromNode, обобщённый syncEngineToPOR, mapping-aware patchPorFromNode).',
+    ] },
     { version: '0.59.512', date: '2026-04-27', items: [
       '🚑 <b>Fix критичные баги в deduplicateProjectRacks</b> (по репорту: «дубликаты не удаляются»).',
       '• <b>Bug 1</b>: <code>removeObject</code> не импортировался из <code>./por.js</code> в <code>shared/legacy-rack-migration.js</code> — функция была недоступна.',
