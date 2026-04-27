@@ -34,7 +34,7 @@
 // ======================================================================
 
 import { listProjects, projectKey } from './project-storage.js';
-import { getObjects, addObject, patchObject } from './por.js';
+import { getObjects, addObject, patchObject, removeObject } from './por.js';
 import { getPorType } from './por-types/index.js';
 
 // v3: переход на детерминистические POR-id (por_legacy_<rackId>) и
@@ -200,9 +200,6 @@ export function deduplicateProjectRacks(pid) {
   }
 
   let removed = 0, kept = 0;
-  // Импорт removeObject лениво — circular import safe.
-  const { removeObject } = (typeof require === 'function') ? null : require('./por.js') || {};
-
   for (const [, arr] of groups.entries()) {
     if (arr.length === 1) { kept++; continue; }
     // Выбираем «победителя»:
@@ -214,15 +211,11 @@ export function deduplicateProjectRacks(pid) {
       if (aL !== bL) return aL - bL;
       return (a.createdAt || 0) - (b.createdAt || 0);
     });
-    const winner = arr[0];
     kept++;
     for (let i = 1; i < arr.length; i++) {
-      // Подгружаем removeObject лениво (избегаем circular).
       try {
-        // eslint-disable-next-line global-require
-        const por = window.RaschetPOR || {};
-        if (por.removeObject) por.removeObject(pid, arr[i].id);
-        removed++;
+        const ok = removeObject(pid, arr[i].id);
+        if (ok) removed++;
       } catch (e) { console.warn('[dedup] remove failed:', e); }
     }
   }

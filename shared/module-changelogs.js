@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.512', date: '2026-04-27', items: [
+      '🚑 <b>Fix критичные баги в deduplicateProjectRacks</b> (по репорту: «дубликаты не удаляются»).',
+      '• <b>Bug 1</b>: <code>removeObject</code> не импортировался из <code>./por.js</code> в <code>shared/legacy-rack-migration.js</code> — функция была недоступна.',
+      '• <b>Bug 2</b>: мёртвая строка <code>const { removeObject } = (typeof require === \'function\') ? null : require(\'./por.js\') || {};</code> выкидывала <code>ReferenceError: require is not defined</code> в браузере → функция падала ДО цикла удаления, ничего не делая.',
+      '• <b>Fix</b>: убрал мёртвую require-строку, добавил <code>removeObject</code> в import. Теперь dedup действительно вызывает <code>removeObject(pid, id)</code> для каждого дубликата и возвращает реальный счётчик.',
+      'Файлы: <code>shared/legacy-rack-migration.js</code>.',
+    ] },
     { version: '0.59.511', date: '2026-04-27', items: [
       '🧽 <b>Fix: dedup при каждом bootstrapProject</b>. По репорту пользователя: «каждый клик на ссылке проекта в playground добавляет новую стойку». Корень: <code>bootstrapProject(pid)</code> запускал <code>migrateProjectLegacyRacks(pid)</code>, но НЕ запускал <code>deduplicateProjectRacks(pid)</code>. Auto-dedup был только в <code>migrateAllLegacyRacks</code> из <code>refreshProjects</code> на главной. Если пользователь сразу заходил в playground (минуя главную) — оставшиеся дубликаты от старой v2-миграции с недетерминистическими id никогда не схлапывались.',
       '• <b>Fix</b>: в <code>shared/project-bootstrap.js::bootstrapProject</code> после migrateProjectLegacyRacks теперь всегда вызывается deduplicateProjectRacks. Идемпотентно (если дубликатов нет — не делает ничего).',
