@@ -1062,7 +1062,7 @@ Phase 10 (`mdc-config/`) желательна для импорта коорди
   - [x] v0.57.95: миллиметровка (grid-mm 10/100 мм) включается автоматически для `kind='layout'`
   - [x] v0.57.94: persist `kind` в JSON + «бета-вид» баннер
   - [~] Drag-элементов с реальными габаритами (`element.geometry.width/height`): v0.57.96 — `getNodeGeometryMm(n)` читает `element.geometry.widthMm/heightMm` через library (и legacy id — upsCatalogId/panelCatalogId/…); на layout-странице рисуется пунктирный прямоугольник реального размера + подпись «W×H мм». Override через `n.geometryMm` зарезервирован.
-  - [ ] Автоматическая расстановка новых слева
+  - [x] Автоматическая расстановка новых слева (v0.59.499): drop на layout игнорирует мышь, ставит элемент в staging-колонку слева от уже размещённых; drag сбрасывает флаг `n.layoutAutoPlaced` — освобождает слот.
   - [ ] Зоны обслуживания (hatched area)
   - [x] Линейка (ruler) по краям холста (v0.57.99): SVG-overlay с major/minor рисками, автоподбор шага под zoom, подписи в мм/м.
 - [ ] **2.4** IEC 81346 обозначения:

@@ -60,6 +60,69 @@ function _rectContains(outer, inner) {
       && inner.x + inner.w <= outer.x + outer.w + EPS
       && inner.y + inner.h <= outer.y + outer.h + EPS;
 }
+// Phase 2.3 (v0.59.499): автоматическая расстановка новых элементов на
+// layout-странице. Стратегия — staging-колонка слева:
+//   • Якорь по X: если есть «не-авто» (вручную размещённые) ноды на
+//     странице, staging-колонка ставится ЛЕВЕЕ их leftmost.x на 200 мм
+//     (с учётом ширины нового). Иначе используется x уже существующих
+//     auto-placed нод (продолжаем колонку), либо 100 мм если страница
+//     пуста.
+//   • Якорь по Y: bottom самого нижнего auto-placed узла + 50 мм. На
+//     пустом staging — y=100.
+// Узел получает n.layoutAutoPlaced=true. Когда пользователь руками
+// перетаскивает узел, флаг сбрасывается (см. mouseup-обработчик), и
+// узел перестаёт «занимать» слот в staging-колонке для следующих новых.
+function _layoutAutoPlacePos(type, opts) {
+  try {
+    const page = getCurrentPage();
+    if (!page || getPageKind(page) !== 'layout') return null;
+    const pageId = page.id;
+    // Габариты будущей ноды — конструируем pseudo-node чтобы прогнать
+    // через getNodeGeometryMm. DEFAULTS может быть функцией (subtype).
+    const defaults = typeof DEFAULTS[type] === 'function'
+      ? DEFAULTS[type](opts && opts.subtype)
+      : DEFAULTS[type] || {};
+    const tmp = { type, ...defaults };
+    if (opts && opts.subtype) tmp.subtype = opts.subtype;
+    const g = getNodeGeometryMm(tmp);
+    const newW = (g && g.widthMm > 0) ? g.widthMm : 600;
+    const newH = (g && g.depthMm > 0) ? g.depthMm : ((g && g.heightMm > 0) ? g.heightMm : 600);
+
+    const onPage = [];
+    for (const n of state.nodes.values()) {
+      const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
+      if (!pids.includes(pageId)) continue;
+      if (n.type === 'zone' || n.type === 'channel') continue;
+      onPage.push(n);
+    }
+    const placed   = onPage.filter(n => !n.layoutAutoPlaced);
+    const staged   = onPage.filter(n =>  n.layoutAutoPlaced);
+
+    let stageX;
+    if (placed.length) {
+      const minX = Math.min(...placed.map(n => Number(n.x) || 0));
+      stageX = Math.round(minX - newW - 200);
+    } else if (staged.length) {
+      stageX = Math.round(Math.min(...staged.map(n => Number(n.x) || 0)));
+    } else {
+      stageX = 100;
+    }
+
+    let stageY = 100;
+    if (staged.length) {
+      let bottomY = 100;
+      for (const sn of staged) {
+        const sg = getNodeGeometryMm(sn);
+        const sh = (sg && sg.depthMm > 0) ? sg.depthMm : ((sg && sg.heightMm > 0) ? sg.heightMm : 600);
+        const sy = (Number(sn.y) || 0) + sh;
+        if (sy > bottomY) bottomY = sy;
+      }
+      stageY = bottomY + 50;
+    }
+    return { x: stageX, y: stageY, widthMm: newW, heightMm: newH };
+  } catch { return null; }
+}
+
 function _layoutCollides(n, nx, ny) {
   const pageId = state.currentPageId;
   if (!pageId) return false;
@@ -640,7 +703,36 @@ export function initInteraction() {
     const initSwitchMode = e.dataTransfer.getData('text/raschet-switchmode') || '';
     if (!type || !DEFAULTS[type]) return;
     const p = clientToSvg(e.clientX, e.clientY);
-    const newId = createNode(type, p.x, p.y, subtype ? { subtype } : undefined);
+    // Phase 2.3 (v0.59.499): на layout-странице drop-позиция игнорируется,
+    // новый узел ставится в staging-колонку слева. Пользователь сразу видит,
+    // что элемент создан, может перетащить в нужное место (drag сбрасывает
+    // флаг layoutAutoPlaced).
+    let dropX = p.x, dropY = p.y;
+    const _autoLayout = _layoutAutoPlacePos(type, { subtype });
+    if (_autoLayout) {
+      // createNode интерпретирует (x, y) как ЦЕНТР узла на схеме: внутри
+      // ставит base.x = x - nodeWidth/2, base.y = y - NODE_H/2. Чтобы
+      // top-left footprint лёг на (auto.x, auto.y), компенсируем сдвиг.
+      // nodeWidth для нового узла зависит от типа/портов — используем
+      // приближённо новую ширину в SVG-юнитах (для layout 1 SVG = 1 мм, и
+      // schematic-ширина < footprint, так что нода окажется около auto.x).
+      dropX = _autoLayout.x + (_autoLayout.widthMm / 2);
+      dropY = _autoLayout.y + (NODE_H / 2);
+    }
+    const newId = createNode(type, dropX, dropY, subtype ? { subtype } : undefined);
+    if (_autoLayout && newId) {
+      const _node = state.nodes.get(newId);
+      if (_node) {
+        // Жёстко выставляем top-left footprint на расчётный staging-слот:
+        // createNode-сдвиг (через nodeWidth) для footprint неточен, поэтому
+        // переписываем n.x/n.y напрямую.
+        _node.x = _autoLayout.x;
+        _node.y = _autoLayout.y;
+        _node.layoutAutoPlaced = true;
+        if (!_node.positionsByPage) _node.positionsByPage = {};
+        _node.positionsByPage[state.currentPageId] = { x: _autoLayout.x, y: _autoLayout.y };
+      }
+    }
     // v0.59.350: для consumer-узлов с domain-подтипом (rack/hvac/motor/lighting)
     // явно записываем n.subtype — DEFAULTS.consumer его не читает, но inspector
     // и render используют это поле для иконок и configurator-кнопки.
@@ -1446,6 +1538,12 @@ export function initInteraction() {
         // «полное обозначение» всегда соответствует главной схеме, даже если
         // объект физически вынесен за пределы зоны на плане.
         const _onLayoutPage = getPageKind(getCurrentPage()) === 'layout';
+        // Phase 2.3 (v0.59.499): drag сбрасывает флаг layoutAutoPlaced —
+        // узел больше не «занимает» слот в staging-колонке слева, и
+        // следующий новый узел встанет в освободившееся место.
+        if (_onLayoutPage && dragged && dragged.layoutAutoPlaced) {
+          delete dragged.layoutAutoPlaced;
+        }
         if (dragged && !_onLayoutPage) {
           if (dragged.type === 'zone') {
             // Зона: проверяем вложенность в родительскую зону

@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.499', date: '2026-04-27', items: [
+      '📐 <b>Phase 2.3 (роадмап): автоматическая расстановка новых элементов на layout-странице.</b> Раньше drop любого элемента из палитры на layout-страницу ставил его ровно туда, где была мышь — обычно «случайное» место поверх существующих или далеко от группы. Теперь:',
+      '• На layout-странице drop-позиция <b>игнорируется</b>; новый элемент ставится в <b>staging-колонку слева</b> от уже размещённых.',
+      '• <b>Якорь по X:</b> если есть «не-авто» (вручную размещённые) ноды на странице — staging.x = leftmost.x − newWidthMm − 200 мм. Если страница пустая или содержит только staging — продолжаем существующую staging-колонку. Совсем пустая страница → x=100 мм.',
+      '• <b>Якорь по Y:</b> bottom самого нижнего staged-узла + 50 мм. Пустой staging → y=100 мм.',
+      '• <b>Сброс флага при drag:</b> когда пользователь руками перетаскивает auto-placed узел, флаг <code>layoutAutoPlaced</code> сбрасывается — узел больше не занимает слот в staging-колонке, и следующий новый встанет в освободившееся место.',
+      '• На schematic / mechanical / data / прочих kind работает как раньше (drop по позиции мыши).',
+      'Файлы: <code>js/engine/interaction.js</code> — новая функция <code>_layoutAutoPlacePos(type, opts)</code>, drop-обработчик на svg, mouseup-обработчик (сброс флага). Размеры берутся из <code>getNodeGeometryMm</code> (depthMm как footprint).',
+    ] },
     { version: '0.59.498', date: '2026-04-27', items: [
       '✅ <b>DKC Small Tower 1/3 + SMALL+ 6/10 + Modulys GP 25/100 — V_DC verified.</b> Использован <code>pdftotext</code> локально + найдены OEM-источники для DKC (DKC ребрендирует UPS других производителей).',
       '• <b>DKC Small Tower 1 kVA</b> (User Manual a696d39a, table 16): «Battery Voltage 24 V - 36 V» (2…3 × 12В VRLA в зависимости от backup-варианта standard/long). Раньше 24-28 — слишком узко.',
