@@ -549,12 +549,59 @@ function render() {
       if ((Array.isArray(scsLinks) && scsLinks.length) || hasPlan) {
         const href = '../scs-design/?project=' + encodeURIComponent(p.id) + '&from=projects';
         const meta = `${scsLinks.length} связ${scsLinks.length === 1 ? 'ь' : (scsLinks.length < 5 ? 'и' : 'ей')}` + (hasPlan ? ' · план' : '');
-        const rowHtml = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
+        // v0.59.571: дублирующая legacy-строка — реальные данные ещё в parent
+        // namespace, но также есть подпроект scs-design (видим пользователю
+        // как «2 строки в плитке СКС-проекты»). Кнопка «🔀 Объединить» зовёт
+        // force-merge: переносит ключи parent→sub и перерисовывает.
+        const rowHtml = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;margin-bottom:4px">
           <span style="font-size:16px">🔗</span>
-          <span style="flex:1;min-width:0">СКС <span class="muted" style="font-size:11px">· ${esc(meta)}</span></span>
+          <span style="flex:1;min-width:0">СКС <span class="muted" style="font-size:11px">· ${esc(meta)} (legacy в родителе)</span></span>
+          <button type="button" class="pr-btn-sel" data-act="merge-legacy-scs" data-pid="${esc(p.id)}" title="Перенести legacy-данные СКС родителя в существующий или новый подпроект СКС. Дубликаты «СКС» в карточке исчезнут — останется один с этими 11 связями." style="font-size:12px;padding:3px 10px;background:#fbbf24;border-color:#f59e0b;color:#78350f">🔀 Объединить</button>
           <a href="${esc(href)}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px;text-decoration:none">Открыть →</a>
         </div>`;
         _enrichGroup('scs-design', rowHtml, 1);
+        // v0.59.571: handler «🔀 Объединить» — force-merge parent.scs-design.*
+        // → существующий sub (или создать). После — re-render карточки.
+        const mergeBtn = modulesHost.querySelector('[data-act="merge-legacy-scs"][data-pid="' + p.id + '"]');
+        if (mergeBtn) mergeBtn.addEventListener('click', async () => {
+          try {
+            const ps = await import('../shared/project-storage.js');
+            // Найдём или создадим sub.
+            const existingSubs = ps.listSubProjects(p.id, 'scs-design');
+            let dest = existingSubs[0];
+            let createdSub = false;
+            if (!dest) {
+              dest = ps.createSubProject(p.id, 'scs-design', { name: 'СКС', designation: '' });
+              createdSub = true;
+            }
+            if (!dest || !dest.id) { prToast('Не удалось создать/найти СКС-подпроект', 'error'); return; }
+            // Force-merge: копируем все scs-design.* ключи parent → sub, удаляем источник.
+            const prefix = 'raschet.project.' + p.id + '.scs-design.';
+            const subPrefix = 'raschet.project.' + dest.id + '.scs-design.';
+            const toMove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (k && k.startsWith(prefix)) toMove.push(k);
+            }
+            let moved = 0;
+            for (const k of toMove) {
+              const v = localStorage.getItem(k);
+              if (v == null) continue;
+              try {
+                localStorage.setItem(subPrefix + k.slice(prefix.length), v);
+                localStorage.removeItem(k);
+                moved++;
+              } catch (e) { console.warn('[project.js] merge failed for', k, e); }
+            }
+            // Сбросить session-flag scs-design'а, чтобы при заходе он не считал legacy «застрявшим».
+            try { sessionStorage.removeItem('raschet.scs-design.legacy-migrate-attempted.' + p.id + '.session'); } catch {}
+            prToast(`✔ Объединено: перенесено ${moved} ключей в подпроект «${dest.name || 'СКС'}»${createdSub ? ' (создан)' : ''}`);
+            render();
+          } catch (e) {
+            console.error('[project.js] merge-legacy-scs failed:', e);
+            prToast('Ошибка объединения: ' + (e.message || e), 'error');
+          }
+        });
       }
     } catch (e) { console.warn('[project.js] legacy scs-design check failed', e); }
 
