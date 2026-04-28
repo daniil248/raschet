@@ -975,17 +975,44 @@ function createBatchLinks(n) {
   const count = Math.min(fromSeq.length, toSeq.length);
   const fromLabel = deviceLabel(lastLink.fromRackId, lastLink.fromDevId);
   const toLabel = deviceLabel(lastLink.toRackId, lastLink.toDevId);
+  // v0.59.588: batchId группирует связи одного "+N подряд", чтобы юзер мог
+  // одной кнопкой откатить пакет — раньше приходилось удалять каждую связь
+  // по одной из таблицы.
+  const batchId = 'batch-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+  const newIds = [];
   for (let i = 0; i < count; i++) {
+    const lid = newId();
+    newIds.push(lid);
     links.push({
-      id: newId(),
+      id: lid,
       fromRackId: lastLink.fromRackId, fromDevId: lastLink.fromDevId, fromLabel,
       toRackId: lastLink.toRackId, toDevId: lastLink.toDevId, toLabel,
       fromPort: fromSeq[i], toPort: toSeq[i],
       cableType: 'cat6a', lengthM: null, note: '', createdAt: Date.now(),
+      batchId,
     });
   }
   setLinks(links);
-  updateStatus(`✔ Добавлено ${count} связей подряд (порты A:${fromSeq[0]}-${fromSeq[count-1]} ↔ B:${toSeq[0]}-${toSeq[count-1]}).`);
+  // v0.59.588: статус-баннер с кнопкой «↶ Отменить пакет».
+  const st = document.getElementById('sd-status');
+  if (st) {
+    st.innerHTML = `
+      <div class="sd-status-batch">
+        ✓ Добавлено ${count} связей подряд (порты A:${fromSeq[0]}-${fromSeq[count-1]} ↔ B:${toSeq[0]}-${toSeq[count-1]}).
+        <button type="button" class="sd-btn-sel" id="sd-batch-undo" data-batch="${batchId}" style="margin-left:10px;background:#fee2e2;color:#991b1b;border-color:#fca5a5">↶ Отменить пакет (${count})</button>
+      </div>`;
+    st.style.display = '';
+    document.getElementById('sd-batch-undo')?.addEventListener('click', () => {
+      const ids = new Set(newIds);
+      setLinks(getLinks().filter(l => !ids.has(l.id)));
+      updateStatus(`✔ Откатили пакет: удалено ${ids.size} связей.`);
+      const selected = new Set(loadJson(LS_SELECTION, []));
+      renderSelected(selected, getRacks());
+      renderLinksList();
+      renderLegend();
+      renderBom();
+    });
+  }
   const selected = new Set(loadJson(LS_SELECTION, []));
   renderSelected(selected, getRacks());
   renderLinksList();
@@ -1290,6 +1317,34 @@ function _hardDeleteRack(r) {
 }
 
 // in-page confirm dialog
+// v0.59.588: общий inline-confirm для произвольных подтверждений (не только
+// удаления стоек). Использует тот же стиль модалки что и sdConfirmDelete.
+function sdConfirmInline(message, opts) {
+  return new Promise(res => {
+    const o = opts || {};
+    const okLabel = o.okLabel || 'Удалить';
+    const noLabel = o.noLabel || 'Отмена';
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10000;display:flex;align-items:center;justify-content:center';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:10px;padding:18px 22px;min-width:380px;max-width:520px;box-shadow:0 10px 40px rgba(0,0,0,.25);font:13px/1.4 system-ui,sans-serif;color:#0f172a">
+        <div style="font-size:14px;color:#1f2937;margin-bottom:14px">${escapeHtml(message)}</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" data-act="no" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer">${escapeHtml(noLabel)}</button>
+          <button type="button" data-act="yes" style="padding:6px 14px;border:1px solid #b91c1c;border-radius:6px;background:#b91c1c;color:#fff;cursor:pointer">${escapeHtml(okLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    const close = (v) => { back.remove(); res(v); };
+    back.addEventListener('click', e => {
+      if (e.target === back) close(false);
+      const a = e.target.dataset?.act;
+      if (a === 'yes') close(true);
+      if (a === 'no') close(false);
+    });
+  });
+}
+
 function sdConfirmDelete(label, warnings) {
   return new Promise(res => {
     const back = document.createElement('div');
@@ -1584,13 +1639,15 @@ function renderLinksList() {
     renderBom();
     return;
   }
-  // фильтр: поиск (шкаф/устройство/заметка) + тип кабеля + только без длины
+  // фильтр: поиск (шкаф/устройство/заметка) + тип кабеля + источник + цель + только без длины
+  // v0.59.588: фильтры источника/цели + кросс-зависимость по MEMORY-правилу
+  // (опции каждого select зависят от значений ВСЕХ остальных фильтров).
   const q = (linksQuery || '').trim().toLowerCase();
   const ct = linksCableFilter || '';
+  const fromR = linksFromRackFilter || '';
+  const toR = linksToRackFilter || '';
   const missingOnly = !!linksMissingOnly;
-  const linkMatches = l => {
-    if (ct && (l.cableType || '') !== ct) return false;
-    if (missingOnly && l.lengthM != null) return false;
+  const linkMatchesQuery = l => {
     if (!q) return true;
     const hay = [
       getRackShortLabel(l.fromRackId), deviceLabel(l.fromRackId, l.fromDevId),
@@ -1599,19 +1656,75 @@ function renderLinksList() {
     ].join(' ').toLowerCase();
     return hay.includes(q);
   };
+  // Полный фильтр (для итоговой таблицы):
+  const linkMatches = l => {
+    if (ct && (l.cableType || '') !== ct) return false;
+    if (missingOnly && l.lengthM != null) return false;
+    if (fromR && l.fromRackId !== fromR) return false;
+    if (toR && l.toRackId !== toR) return false;
+    if (!linkMatchesQuery(l)) return false;
+    return true;
+  };
+  // Кросс-зависимые опции: для каждого фильтра берём всех кандидатов из
+  // allLinks при отключённом ИМЕННО ЭТОМ фильтре. Так если выбран from=CR01,
+  // в to-select показываются только те racks, которые связаны с CR01;
+  // и наоборот — если выбран ct='cat6a', from/to сужаются.
+  const matchesExceptFrom = l => {
+    if (ct && (l.cableType || '') !== ct) return false;
+    if (missingOnly && l.lengthM != null) return false;
+    if (toR && l.toRackId !== toR) return false;
+    return linkMatchesQuery(l);
+  };
+  const matchesExceptTo = l => {
+    if (ct && (l.cableType || '') !== ct) return false;
+    if (missingOnly && l.lengthM != null) return false;
+    if (fromR && l.fromRackId !== fromR) return false;
+    return linkMatchesQuery(l);
+  };
+  const matchesExceptCable = l => {
+    if (missingOnly && l.lengthM != null) return false;
+    if (fromR && l.fromRackId !== fromR) return false;
+    if (toR && l.toRackId !== toR) return false;
+    return linkMatchesQuery(l);
+  };
   const links = allLinks.filter(linkMatches);
+
+  const fromIds = Array.from(new Set(allLinks.filter(matchesExceptFrom).map(l => l.fromRackId))).sort((a, b) => {
+    const ta = getRackShortLabel(a) || a;
+    const tb = getRackShortLabel(b) || b;
+    return String(ta).localeCompare(String(tb), 'ru', { numeric: true });
+  });
+  const toIds = Array.from(new Set(allLinks.filter(matchesExceptTo).map(l => l.toRackId))).sort((a, b) => {
+    const ta = getRackShortLabel(a) || a;
+    const tb = getRackShortLabel(b) || b;
+    return String(ta).localeCompare(String(tb), 'ru', { numeric: true });
+  });
+  const cableIdsAvailable = new Set(allLinks.filter(matchesExceptCable).map(l => l.cableType || ''));
+
+  const fromOpts = ['<option value="">все источники</option>'].concat(
+    fromIds.map(id => `<option value="${escapeAttr(id)}" ${fromR === id ? 'selected' : ''}>${escapeHtml(getRackShortLabel(id) || id)}</option>`)
+  ).join('');
+  const toOpts = ['<option value="">все цели</option>'].concat(
+    toIds.map(id => `<option value="${escapeAttr(id)}" ${toR === id ? 'selected' : ''}>${escapeHtml(getRackShortLabel(id) || id)}</option>`)
+  ).join('');
   const cableOpts = ['<option value="">все типы</option>'].concat(
-    CABLE_TYPES.map(t => `<option value="${t.id}" ${ct === t.id ? 'selected' : ''}>${escapeHtml(t.label)}</option>`)
+    CABLE_TYPES.filter(t => cableIdsAvailable.has(t.id) || ct === t.id).map(t =>
+      `<option value="${t.id}" ${ct === t.id ? 'selected' : ''}>${escapeHtml(t.label)}</option>`
+    )
   ).join('');
   const opts = CABLE_TYPES.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+  const anyFilter = q || ct || missingOnly || fromR || toR;
   // сначала таблицу нарисуем, BOM — отдельной функцией
   host.innerHTML = `
-    <div class="sd-picker-search">
-      <input type="search" id="sd-links-q" placeholder="🔍 шкаф / устройство / заметка" value="${escapeHtml(linksQuery || '')}" autocomplete="off">
+    <div class="sd-picker-search" style="flex-wrap:wrap">
+      <input type="search" id="sd-links-q" placeholder="🔍 шкаф / устройство / заметка" value="${escapeHtml(linksQuery || '')}" autocomplete="off" style="flex:1;min-width:160px">
+      <select id="sd-links-from" title="Фильтр по источнику (откуда)">${fromOpts}</select>
+      <select id="sd-links-to" title="Фильтр по цели (куда)">${toOpts}</select>
       <select id="sd-links-ct" title="Тип кабеля">${cableOpts}</select>
       <label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" id="sd-links-missing" ${missingOnly ? 'checked' : ''}> только без длины</label>
-      <span class="muted">${(q || ct || missingOnly) ? `${links.length}/${allLinks.length}` : `${allLinks.length} шт.`}</span>
-      ${(q || ct || missingOnly) ? '<button type="button" class="sd-btn-sel" id="sd-links-clear">× сброс</button>' : ''}
+      <span class="muted">${anyFilter ? `${links.length}/${allLinks.length}` : `${allLinks.length} шт.`}</span>
+      ${anyFilter ? '<button type="button" class="sd-btn-sel" id="sd-links-clear">× сброс</button>' : ''}
+      ${anyFilter && links.length ? `<button type="button" class="sd-btn-sel" id="sd-links-bulk-del" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5" title="Удалить все ${links.length} связей, попадающих под текущий фильтр">🗑 удалить ${links.length}</button>` : ''}
     </div>
     <table class="sd-links-table">
       <thead>
@@ -1675,8 +1788,29 @@ function renderLinksList() {
     if (q2) { q2.focus(); q2.setSelectionRange(q2.value.length, q2.value.length); }
   });
   document.getElementById('sd-links-ct')?.addEventListener('change', e => { linksCableFilter = e.target.value; renderLinksList(); });
+  document.getElementById('sd-links-from')?.addEventListener('change', e => { linksFromRackFilter = e.target.value; renderLinksList(); });
+  document.getElementById('sd-links-to')?.addEventListener('change', e => { linksToRackFilter = e.target.value; renderLinksList(); });
   document.getElementById('sd-links-missing')?.addEventListener('change', e => { linksMissingOnly = e.target.checked; renderLinksList(); });
-  document.getElementById('sd-links-clear')?.addEventListener('click', () => { linksQuery = ''; linksCableFilter = ''; linksMissingOnly = false; renderLinksList(); });
+  document.getElementById('sd-links-clear')?.addEventListener('click', () => {
+    linksQuery = ''; linksCableFilter = ''; linksMissingOnly = false;
+    linksFromRackFilter = ''; linksToRackFilter = '';
+    renderLinksList();
+  });
+  // v0.59.588: bulk-delete по фильтру — удаляет все отфильтрованные связи
+  // одной кнопкой. Юзер: «если ошибочно добавил связи, потом удалить сложно».
+  document.getElementById('sd-links-bulk-del')?.addEventListener('click', () => {
+    sdConfirmInline(`Удалить ${links.length} связей, попадающих под текущий фильтр? Действие необратимо.`).then(ok => {
+      if (!ok) return;
+      const ids = new Set(links.map(l => l.id));
+      setLinks(getLinks().filter(l => !ids.has(l.id)));
+      updateStatus(`✔ Удалено ${ids.size} связей по фильтру.`);
+      const selected = new Set(loadJson(LS_SELECTION, []));
+      renderSelected(selected, getRacks());
+      renderLinksList();
+      renderLegend();
+      renderBom();
+    });
+  });
   host.querySelectorAll('tr[data-id]').forEach(tr => {
     const id = tr.dataset.id;
     tr.querySelector('[data-act="cable"]').addEventListener('change', e => { updateLink(id, { cableType: e.target.value }); drawLinkOverlay(); });
@@ -2482,6 +2616,10 @@ let pickerQuery = '';
 let linksQuery = '';
 let linksCableFilter = '';
 let linksMissingOnly = false;
+// v0.59.588: фильтры источника / цели в таблице связей. Кросс-зависимы
+// со всеми остальными фильтрами (см. MEMORY: cross-filter selects).
+let linksFromRackFilter = '';
+let linksToRackFilter = '';
 
 // Ближайшая точка на отрезке tray к точке (px, py). Возвращает {qx, qy, d, tray}.
 // tray = {x, y, len, orient} в КЛЕТКАХ; точки возвращаем в px (центр клетки).
@@ -3891,10 +4029,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   document.getElementById('sd-plan-step')?.addEventListener('change', e => {
-    const p = getPlan(); p.step = Math.max(0.1, +e.target.value || PLAN_DEFAULT.step); savePlan(p); updatePlanInfo();
+    // v0.59.588: min 0.05 м (50 мм), сразу перерисовываем план — раньше
+    // updatePlanInfo() менял только текст, сетка оставалась прежней. Теперь
+    // renderPlan() пересчитает размеры стоек (rackSizeCells использует step)
+    // и подписи. Физический размер canvas (PLAN_COLS × PLAN_CELL_PX) не
+    // меняется — меняется только разрешение клеток в реальных метрах.
+    const p = getPlan();
+    p.step = Math.max(0.05, +e.target.value || PLAN_DEFAULT.step);
+    savePlan(p);
+    renderPlan();
   });
   document.getElementById('sd-plan-kroute')?.addEventListener('change', e => {
-    const p = getPlan(); p.kRoute = Math.max(1.0, +e.target.value || PLAN_DEFAULT.kRoute); savePlan(p); updatePlanInfo();
+    const p = getPlan();
+    p.kRoute = Math.max(1.0, +e.target.value || PLAN_DEFAULT.kRoute);
+    savePlan(p);
+    updatePlanInfo();
   });
   window.addEventListener('storage', (e) => {
     if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) renderLinksTab();
