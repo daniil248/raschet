@@ -1412,7 +1412,12 @@ function recalc() {
       fromN.type === 'source' && fromN.sourceSubtype === 'utility'
       && toN.type === 'source' && (toN.sourceSubtype || 'transformer') === 'transformer';
     const threePhase = isUtilityToTransformer ? isThreePhase(fromN) : isThreePhase(toN);
-    const U = isUtilityToTransformer ? nodeVoltage(fromN) : nodeVoltage(toN);
+    // v0.59.603: для 1-фазной линии U должно быть vLN (а не vLL).
+    // ПРОБЛЕМА: до v0.59.601 я починил ток для consumer (потребителя),
+    // но кабельные линии всё ещё использовали nodeVoltage = vLL и для 1ф
+    // получали I = P/(1×400×cos) = 18.8А вместо корректных 32.6А.
+    // nodeCalcVoltage возвращает vLL для 3ф и vLN для 1ф.
+    const U = isUtilityToTransformer ? nodeCalcVoltage(fromN) : nodeCalcVoltage(toN);
 
     // Эффективный cos φ линии:
     //   к потребителю → его cos φ
@@ -2614,7 +2619,7 @@ function recalc() {
       }
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeCalcVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
-      const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
+      const Uph = nodeVoltageLN(n);
       const Zs = sourceImpedance(n);
       n._ikA = Zs > 0 ? (1.1 * Uph / Zs) : Infinity;
     } else if (n.type === 'consumer') {
@@ -2722,7 +2727,7 @@ function recalc() {
     const n = state.nodes.get(nid);
     if (!n) return Infinity;
     if (n.type === 'source' || n.type === 'generator') {
-      const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
+      const Uph = nodeVoltageLN(n);
       const Zs = sourceImpedance(n);
       return Zs > 0 ? (1.1 * Uph / Zs) : Infinity;
     }
@@ -2748,7 +2753,7 @@ function recalc() {
       const rSeg = (rho * L * loopFactor) / S / par;
       // Z_up = Uph / upIk; Z_new = Z_up + rSeg; Ik_new = Uph / Z_new
       const fromN = state.nodes.get(c.from.nodeId);
-      const Uph = isThreePhase(fromN || n) ? nodeVoltage(fromN || n) / Math.sqrt(3) : nodeVoltage(fromN || n);
+      const Uph = nodeVoltageLN(fromN || n);
       const Zup = Uph / upIk;
       const Z = Zup + rSeg;
       return Z > 0 ? Uph / Z : Infinity;
