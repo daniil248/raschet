@@ -488,6 +488,15 @@ function downstreamPQ(nodeId, opts) {
         Q += p * tan;
       } else if (to.type === 'panel' || to.type === 'channel' || to.type === 'junction-box') {
         stack.push(to.id);
+      } else if (to.type === 'source') {
+        // v0.59.629: для цепочки utility → transformer → loads — обходим
+        // через source (трансформатор/прочие пассивные источники), чтобы
+        // utility видел реальные downstream-нагрузки, а не возвращался к
+        // n.cosPhi или GLOBAL.defaultCosPhi. Generator при этом обрабатывается
+        // отдельно (см. ветку ниже): он сам генерирует энергию из топлива.
+        if (to.sourceSubtype !== 'generator') {
+          stack.push(to.id);
+        }
       } else if (to.type === 'generator' && to.auxInput && c.to.port === 0) {
         // auxInput ДГУ — учитываем только собственные нужды как consumer
         const auxKw = Number(to.auxDemandKw) || 0;
@@ -2574,6 +2583,14 @@ function recalc() {
       n._powerP = P;
       n._powerQ = P * tan;
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
+      // v0.59.629: worst-case (все ИБП в байпасе) — для УРКМ на ГРЩ.
+      const pqW = downstreamPQ(n.id, { worstCase: true });
+      const cosW = (pqW.P > 0) ? (pqW.P / Math.sqrt(pqW.P * pqW.P + pqW.Q * pqW.Q)) : (n._cosPhi || GLOBAL.defaultCosPhi);
+      const tanW = Math.sqrt(1 - cosW * cosW) / cosW;
+      n._cosPhiWorst = cosW;
+      n._powerPWorst = P;                      // активная одинакова, потери не зависят от режима ИБП
+      n._powerQWorst = P * tanW;
+      n._powerSWorst = Math.sqrt(P * P + (P * tanW) * (P * tanW));
       n._calcKw = (n._loadKw || 0) * kSim;
       n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeCalcVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка (все потребители на 100%)
@@ -2908,6 +2925,26 @@ function recalc() {
     n._powerQ = agg.Q;
     n._powerS = Math.sqrt(agg.P * agg.P + agg.Q * agg.Q);
     n._cosPhi = (agg.P > 0) ? (agg.P / n._powerS) : null;
+    // v0.59.629: worst-case PQ для секционного контейнера (УРКМ на ГРЩ).
+    // Простой подход: пересчитать через downstreamPQ с worstCase=true,
+    // обходя все секции. Для контейнера — через каждую секцию.
+    {
+      let pW = 0, qW = 0;
+      const seenSec = new Set();
+      for (const sid of secIds) {
+        if (seenSec.has(sid)) continue;
+        seenSec.add(sid);
+        const sub = downstreamPQ(sid, { worstCase: true });
+        pW += sub.P;
+        qW += sub.Q;
+      }
+      // pW не учитывает kSim/потери — но эти эффекты у sectioned одинаковы
+      // в normal и worst-case, поэтому можно скопировать P из обычного.
+      n._powerPWorst = agg.P;
+      n._powerQWorst = qW;
+      n._powerSWorst = Math.sqrt(agg.P * agg.P + qW * qW);
+      n._cosPhiWorst = (agg.P > 0 && n._powerSWorst > 0) ? (agg.P / n._powerSWorst) : (n._cosPhi || null);
+    }
     n._calcKw = agg.P;
     const cosAggPre = n._cosPhi || GLOBAL.defaultCosPhi;
     n._loadA = agg.P > 0

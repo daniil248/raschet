@@ -74,40 +74,13 @@ export function openImpedanceModal(n) {
     // вводе». Энергоснабжающая организация требует cosφ ≥ 0.95 (или 0.99
     // для крупных потребителей). При меньшем — штраф или принудительная
     // установка УКРМ (установка компенсации реактивной мощности).
-    h.push('<h4 style="margin:14px 0 8px">Компенсация реактивной мощности</h4>');
-    h.push(field('Целевой cos φ (по ТУ)',
-      `<input type="number" id="imp-utility-targetCos" min="0.7" max="1.0" step="0.01" value="${n.compTargetCosPhi ?? 0.95}">`));
-    h.push('<div class="muted" style="font-size:10px;margin-top:-4px;line-height:1.4">' +
-      'Стандарт: 0.95 (мелкие/средние потребители) или 0.99 (крупные). ' +
-      'Если фактический cos φ нагрузки ниже целевого — нужна УКРМ.' +
-      '</div>');
-    // v0.59.626: УРКМ должна сайзиться по WORST-CASE — когда все ИБП в байпасе,
-    // реактивка моторных нагрузок «прорывается» к сети. В нормальном режиме
-    // ИБП с PFC её скрывает, и УРКМ выглядит ненужной.
-    const P = Number(n._powerP) || 0;
-    const Q = Number(n._powerQ) || 0;
-    const S = Math.sqrt(P * P + Q * Q);
-    const cosCur = S > 0 ? (P / S) : 1;
-    const Pw = Number(n._powerPWorst) || P;
-    const Qw = Number(n._powerQWorst) || Q;
-    const Sw = Number(n._powerSWorst) || S;
-    const cosWorst = Sw > 0 ? (Pw / Sw) : cosCur;
-    const cosTar = Math.max(0.7, Math.min(1.0, Number(n.compTargetCosPhi) || 0.95));
-    const tanCur = cosCur > 0 ? Math.sqrt(Math.max(0, 1 - cosCur * cosCur)) / cosCur : 0;
-    const tanWorst = cosWorst > 0 ? Math.sqrt(Math.max(0, 1 - cosWorst * cosWorst)) / cosWorst : 0;
-    const tanTar = cosTar > 0 ? Math.sqrt(Math.max(0, 1 - cosTar * cosTar)) / cosTar : 0;
-    const QcompCur   = Math.max(0, P  * (tanCur   - tanTar));
-    const QcompWorst = Math.max(0, Pw * (tanWorst - tanTar));
-    const hasUpsBypassDelta = Math.abs(Qw - Q) > 0.05;
-    h.push(`<div class="muted" style="font-size:11.5px;line-height:1.7;padding:8px 10px;background:#f0f9ff;border-radius:4px;margin-top:6px">
-      <b>Текущий режим</b> (ИБП в работе): P ${P.toFixed(2)} kW · Q ${Q.toFixed(2)} kvar · S ${S.toFixed(2)} kVA<br>
-      &nbsp;&nbsp;cos φ: <b>${cosCur.toFixed(3)}</b> → треб. УКРМ: <b style="color:${QcompCur > 0 ? '#b91c1c' : '#15803d'}">${QcompCur.toFixed(2)} kvar</b>
-      ${hasUpsBypassDelta ? `<br><br><b style="color:#c2410c">⚠ В байпасе всех ИБП</b> (worst-case — для подбора УРКМ):<br>
-      &nbsp;&nbsp;P ${Pw.toFixed(2)} kW · Q ${Qw.toFixed(2)} kvar · S ${Sw.toFixed(2)} kVA<br>
-      &nbsp;&nbsp;cos φ: <b>${cosWorst.toFixed(3)}</b> · Целевой: <b>${cosTar.toFixed(2)}</b> → треб. УКРМ: <b style="color:${QcompWorst > 0 ? '#b91c1c' : '#15803d'}">${QcompWorst.toFixed(2)} kvar</b>` : `<br>Целевой cos φ: <b>${cosTar.toFixed(2)}</b>`}
-      ${(hasUpsBypassDelta ? QcompWorst : QcompCur) > 0
-        ? `<br><span class="muted">Подобрать УКРМ ≥ ${Math.ceil((hasUpsBypassDelta ? QcompWorst : QcompCur) / 25) * 25} kvar (округлено до 25 kvar)${hasUpsBypassDelta ? ' — по worst-case при байпасе ИБП' : ''}</span>`
-        : '<br><span class="muted">Компенсация не требуется (cos φ уже выше целевого).</span>'}
+    // v0.59.629: УРКМ перенесён из utility в параметры панели (ГРЩ / РУ 0,4 LV).
+    // Юзер: «УРКМ нужно ставить после трансформатора на низкой стороне в ГРЩ».
+    // Здесь, на стороне 10 кВ (utility/HV), УРКМ не ставится — конденсаторные
+    // батареи 10 кВ редкость, обычно компенсация на низкой стороне.
+    h.push(`<div class="muted" style="font-size:11px;margin-top:8px;padding:8px 10px;background:#fff7ed;border-left:3px solid #f59e0b;border-radius:4px;line-height:1.5">
+      <b>УКРМ на этой стороне (HV ${n.voltage ? Math.round(n.voltage/1000) : 10} кВ) не задаётся.</b><br>
+      Компенсация реактивной мощности ставится на <b>низкой стороне</b> трансформатора в ГРЩ (РУ 0,4 кВ). Включи её в параметрах соответствующего щита (флаг «Точка установки УКРМ»).
     </div>`);
   } else if (isTransformer) {
     let tOpts = '<option value="">— выберите —</option>';
@@ -742,16 +715,17 @@ export function sourceStatusBlock(n) {
     if (n._powerQ) parts.push(`Q реакт.: <b>${fmt(n._powerQ)} kvar</b>`);
     if (n._powerS) parts.push(`S полн.: <b>${fmt(n._powerS)} kVA</b>`);
     if (n._cosPhi) parts.push(`cos φ: <b>${n._cosPhi.toFixed(2)}</b>`);
-    // v0.59.626: worst-case (все ИБП в байпасе) — для УРКМ и подбора ДГУ.
-    // Показываем, только если отличается от нормального (есть ИБП в цепи).
-    const qDelta = Math.abs((Number(n._powerQWorst) || 0) - (Number(n._powerQ) || 0));
-    if (qDelta > 0.05) {
-      const cosW = Number(n._cosPhiWorst) || 0;
+    // v0.59.626/629: worst-case (все ИБП в байпасе) — для УРКМ и подбора ДГУ.
+    // Всегда показываем обе записи (текущий + наихудший), даже когда они равны.
+    if (Number.isFinite(n._powerPWorst) || Number.isFinite(n._powerQWorst)) {
+      const cosW = Number(n._cosPhiWorst) || (Number(n._cosPhi) || 1);
+      const pW = Number(n._powerPWorst) || (Number(n._powerP) || 0);
       const qW = Number(n._powerQWorst) || 0;
       const sW = Number(n._powerSWorst) || 0;
       const aW = Number(n._loadAWorst) || 0;
+      const qDelta = Math.abs((Number(n._powerQWorst) || 0) - (Number(n._powerQ) || 0));
       parts.push(`<span style="color:#c2410c"><b>В байпасе ИБП</b> (worst-case для УРКМ/ДГУ):</span>`);
-      parts.push(`&nbsp;&nbsp;${fmt(n._powerPWorst || 0)} kW · ${fmt(aW)} A · Q ${fmt(qW)} kvar · S <b>${fmt(sW)} kVA</b> · cos φ <b>${cosW.toFixed(2)}</b>`);
+      parts.push(`&nbsp;&nbsp;${fmt(pW)} kW · ${fmt(aW)} A · Q ${fmt(qW)} kvar · S <b>${fmt(sW)} kVA</b> · cos φ <b>${cosW.toFixed(2)}</b>${qDelta < 0.05 ? ' <span class="muted">(совпадает с текущим)</span>' : ''}`);
     }
     // v0.59.627: для генератора — статус достаточности по worst-case kW + kVA в выбранном режиме ISO 8528.
     if (n.type === 'generator' && n.genRatings && typeof n.genRatings === 'object') {

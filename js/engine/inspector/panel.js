@@ -691,8 +691,64 @@ export function openPanelParamsModal(n) {
     h.push(`<button type="button" id="pp-addSection" style="width:100%;font-size:11px;padding:6px;border:1px dashed #999;background:#f9f9f9;border-radius:4px;cursor:pointer;margin-top:8px">+ Добавить секцию</button>`);
   }
 
+  // v0.59.629: УРКМ — компенсация реактивной мощности (после трансформатора на ГРЩ).
+  // Юзер: «УРКМ нужно ставить после трансформатора на низкой стороне в ГРЩ.
+  // Поставим в РУ 0,4, нужные группы добавь в параметры щита».
+  if (!n.isMv && n.switchMode !== 'terminal') {
+    const ukrmActive = !!n.ukrmActive;
+    const cosTar = Math.max(0.7, Math.min(1.0, Number(n.compTargetCosPhi) || 0.95));
+    const P = Number(n._powerP) || 0;
+    const Q = Number(n._powerQ) || 0;
+    const S = Number(n._powerS) || Math.sqrt(P * P + Q * Q);
+    const cosCur = S > 0 ? (P / S) : 1;
+    const Pw = Number(n._powerPWorst) || P;
+    const Qw = Number(n._powerQWorst) || Q;
+    const Sw = Number(n._powerSWorst) || S;
+    const cosWorst = Sw > 0 ? (Pw / Sw) : cosCur;
+    const tanCur   = cosCur   > 0 ? Math.sqrt(Math.max(0, 1 - cosCur   * cosCur))   / cosCur   : 0;
+    const tanWorst = cosWorst > 0 ? Math.sqrt(Math.max(0, 1 - cosWorst * cosWorst)) / cosWorst : 0;
+    const tanTar   = cosTar   > 0 ? Math.sqrt(Math.max(0, 1 - cosTar   * cosTar))   / cosTar   : 0;
+    const QcompCur   = Math.max(0, P  * (tanCur   - tanTar));
+    const QcompWorst = Math.max(0, Pw * (tanWorst - tanTar));
+    const QcompMax   = Math.max(QcompCur, QcompWorst);
+    const hasUpsBypassDelta = Math.abs(Qw - Q) > 0.05;
+    h.push('<h4 style="margin:18px 0 6px;color:#0c4a6e">🔋 УРКМ — компенсация реактивной мощности</h4>');
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:6px;line-height:1.45">Включи флаг для щита, который физически содержит конденсаторную батарею (обычно ГРЩ / РУ 0,4 кВ — главный щит после трансформатора). Расчёт ведётся по downstream-нагрузкам с этого щита, в текущем и worst-case режимах (все ИБП в байпасе).</div>`);
+    h.push(`<div class="field check"><input type="checkbox" id="pp-ukrm-active"${ukrmActive ? ' checked' : ''}><label>Точка установки УРКМ (этот щит — ГРЩ)</label></div>`);
+    if (ukrmActive) {
+      h.push(field('Целевой cos φ (по ТУ)', `<input type="number" id="pp-ukrm-targetCos" min="0.7" max="1.0" step="0.01" value="${cosTar}">`));
+      h.push(`<div class="muted" style="font-size:10px;margin-top:-4px;line-height:1.4">Стандарт: 0.95 (мелкие/средние) или 0.99 (крупные потребители).</div>`);
+      h.push(`<div class="muted" style="font-size:11.5px;line-height:1.7;padding:8px 10px;background:#f0f9ff;border-radius:4px;margin-top:6px">
+        <b>Текущий режим</b> (ИБП в работе): P ${P.toFixed(2)} kW · Q ${Q.toFixed(2)} kvar · S ${S.toFixed(2)} kVA<br>
+        &nbsp;&nbsp;cos φ: <b>${cosCur.toFixed(3)}</b> → треб. УКРМ: <b style="color:${QcompCur > 0 ? '#b91c1c' : '#15803d'}">${QcompCur.toFixed(2)} kvar</b>
+        <br><br><b style="color:#c2410c">В байпасе всех ИБП</b> (worst-case):<br>
+        &nbsp;&nbsp;P ${Pw.toFixed(2)} kW · Q ${Qw.toFixed(2)} kvar · S ${Sw.toFixed(2)} kVA<br>
+        &nbsp;&nbsp;cos φ: <b>${cosWorst.toFixed(3)}</b> → треб. УКРМ: <b style="color:${QcompWorst > 0 ? '#b91c1c' : '#15803d'}">${QcompWorst.toFixed(2)} kvar</b>
+        ${!hasUpsBypassDelta ? `<br><span class="muted" style="font-size:10px">Совпадает с текущим — нет ИБП в цепи или они уже в байпасе.</span>` : ''}
+        <br><br>Целевой cos φ (по ТУ): <b>${cosTar.toFixed(2)}</b>
+        ${QcompMax > 0
+          ? `<br><span class="muted">Подобрать УРКМ ≥ ${Math.ceil(QcompMax / 25) * 25} kvar (округлено до 25 kvar) — по ${QcompWorst > QcompCur ? 'worst-case при байпасе ИБП' : 'текущему режиму'}</span>`
+          : '<br><span class="muted">Компенсация не требуется ни в одном из режимов (cos φ уже выше целевого).</span>'}
+      </div>`);
+    }
+  }
+
   body.innerHTML = h.join('');
   _wrapModalWithSystemTabs(body, n);
+
+  // v0.59.629: live-toggle УРКМ checkbox — re-render для показа/скрытия блока.
+  const ukrmCb = document.getElementById('pp-ukrm-active');
+  if (ukrmCb) {
+    ukrmCb.addEventListener('change', () => {
+      n.ukrmActive = !!ukrmCb.checked;
+      const tgt = document.getElementById('pp-ukrm-targetCos');
+      if (tgt) {
+        const v = Number(tgt.value);
+        if (Number.isFinite(v) && v >= 0.7 && v <= 1.0) n.compTargetCosPhi = v;
+      }
+      openPanelParamsModal(n);
+    });
+  }
   // Фаза 1.19.7: инлайн-пикер модели НКУ удалён. Подбор оболочки/шин/автоматов
   // делается только в wizard-конфигураторе (кнопка выше).
 
@@ -881,6 +937,12 @@ export function openPanelParamsModal(n) {
     n.capacityA = readNum('pp-capacityA', n.capacityA ?? 160);
     n.marginMinPct = readNum('pp-marginMin', n.marginMinPct ?? 2);
     n.marginMaxPct = readNum('pp-marginMax', n.marginMaxPct ?? 30);
+    // v0.59.629: УРКМ — точка установки + целевой cos φ.
+    n.ukrmActive = document.getElementById('pp-ukrm-active')?.checked === true;
+    if (n.ukrmActive) {
+      const tcVal = Number(document.getElementById('pp-ukrm-targetCos')?.value);
+      if (Number.isFinite(tcVal) && tcVal >= 0.7 && tcVal <= 1.0) n.compTargetCosPhi = tcVal;
+    }
     // Система заземления на выходе щита (пусто = наследовать глобальную)
     const eoVal = document.getElementById('pp-earthingOut')?.value;
     if (eoVal === '' || eoVal == null) delete n.earthingOut;
