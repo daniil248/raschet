@@ -283,30 +283,55 @@ export function openUpsParamsModal(n) {
       <br><b>Запас:</b> <span style="${reserveStyle}">${fmt(reserveKw)} kW</span> <span class="muted">(${reservePct.toFixed(1)}% от ${maxLoadActive ? 'eff capacity' : 'capacity'})</span>${reserveKw < 0 ? ' ⚠ нехватка' : (reservePct < 10 ? ' ⚠ малый запас' : '')}
     </div>`);
 
-    // v0.59.623: список нагрузок с источником K (тип пуска / свой K / default).
+    // v0.59.623/625: список нагрузок с разбивкой group breakdown
+    // (единичная × кол-во = групповая) и источником K.
     if (hvacLoads.length || itLoads.length) {
       const _row = (l, color) => {
         const srcLbl = l.sourceLabel ? ` <span class="muted" style="font-size:10px">(${escHtml(l.sourceLabel)})</span>` : '';
-        return `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;background:${color};border-radius:3px;margin-bottom:2px;align-items:center">
+        // group breakdown: 1 шт. → «35 kW», N шт. → «N × 7 kW = 35 kW»
+        const cnt = Number(l.count) || 1;
+        const Pper = Number(l.Pper) || l.P;
+        const groupCol = cnt > 1
+          ? `<span style="font-size:10px;color:#64748b">${fmt(Pper)} ×</span><span style="font-variant-numeric:tabular-nums;color:#64748b">${cnt}</span><span style="font-variant-numeric:tabular-nums;color:#475569">${fmt(l.P)} kW</span>`
+          : `<span></span><span></span><span style="font-variant-numeric:tabular-nums;color:#475569">${fmt(l.P)} kW</span>`;
+        return `<div style="display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:6px;padding:3px 6px;background:${color};border-radius:3px;margin-bottom:2px;align-items:center">
         <span>${escHtml(l.label)} <span class="muted" style="font-size:10px">[${escHtml(l.sub || '—')}/${escHtml(l.cat || '—')}]</span>${srcLbl}</span>
+        ${groupCol}
         <span style="font-size:10px;color:#64748b">×${(l.derate || 1).toFixed(2)}</span>
-        <span style="font-variant-numeric:tabular-nums;color:#475569">${fmt(l.P)} kW</span>
         <b style="font-variant-numeric:tabular-nums;${l.derate < 0.999 ? 'color:#0c4a6e' : ''}">→ ${fmt(l.Peff)} kW</b>
       </div>`;
       };
+      const sumP_HVAC = hvacLoads.reduce((s, l) => s + (Number(l.P) || 0), 0);
+      const sumPeff_HVAC = hvacLoads.reduce((s, l) => s + (Number(l.Peff) || 0), 0);
+      const sumP_IT = itLoads.reduce((s, l) => s + (Number(l.P) || 0), 0);
+      const sumPeff_IT = itLoads.reduce((s, l) => s + (Number(l.Peff) || 0), 0);
+      const sumP_total = sumP_HVAC + sumP_IT;
+      const sumPeff_total = sumPeff_HVAC + sumPeff_IT;
+      const totalRow = (label, sumP, sumPeff, color) => `<div style="display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:6px;padding:4px 6px;background:${color};border-radius:3px;margin-top:2px;align-items:center;font-weight:600">
+        <span>${escHtml(label)}</span>
+        <span></span><span></span>
+        <span style="font-variant-numeric:tabular-nums">${fmt(sumP)} kW</span>
+        <span></span>
+        <span style="font-variant-numeric:tabular-nums">→ ${fmt(sumPeff)} kW</span>
+      </div>`;
       h.push(`<details style="margin-top:6px" open>
         <summary style="cursor:pointer;font-size:11px;color:#475569">📋 Список нагрузок downstream (${hvacLoads.length + itLoads.length})</summary>
-        <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px;max-height:300px;overflow-y:auto">
-          <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;font-weight:600;color:#475569;border-bottom:1px solid #cbd5e1;margin-bottom:4px;font-size:10px;text-transform:uppercase">
+        <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px;max-height:340px;overflow-y:auto">
+          <div style="display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:6px;padding:3px 6px;font-weight:600;color:#475569;border-bottom:1px solid #cbd5e1;margin-bottom:4px;font-size:10px;text-transform:uppercase">
             <span>Устройство (источник K)</span>
+            <span>P еди­н., kW</span>
+            <span>Шт.</span>
+            <span>P груп­пы, kW</span>
             <span>K_рез</span>
-            <span>P</span>
-            <span>P эфф.</span>
+            <span>P эфф., kW</span>
           </div>
           ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ С резервированием K_рез &lt; 1 (${hvacLoads.length}):</div>` : ''}
           ${hvacLoads.map(l => _row(l, '#dbeafe')).join('')}
+          ${hvacLoads.length ? totalRow(`Подытог: К<1 (${hvacLoads.length})`, sumP_HVAC, sumPeff_HVAC, '#bfdbfe') : ''}
           ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin:8px 0 4px">✓ Без резервирования K_рез = 1 (${itLoads.length}):</div>` : ''}
           ${itLoads.map(l => _row(l, '#dcfce7')).join('')}
+          ${itLoads.length ? totalRow(`Подытог: К=1 (${itLoads.length})`, sumP_IT, sumPeff_IT, '#bbf7d0') : ''}
+          ${(hvacLoads.length && itLoads.length) ? totalRow(`ИТОГО (${hvacLoads.length + itLoads.length})`, sumP_total, sumPeff_total, '#fde68a') : ''}
         </div>
       </details>`);
     }

@@ -131,8 +131,17 @@ function _computeUpsWeightedLoad(upsNode) {
         const derate = dr.factor;
         const Peff = derate > 0 ? Pphys / derate : Pphys;
         weightedTotal += Peff;
-        // v0.59.623: храним source для отображения в UI («тип: inverter», «свой K» и т.п.)
-        const entry = { id: next.id, label, P: Pphys, Peff, sub, cat, derate, source: dr.source, sourceLabel: dr.sourceLabel };
+        // v0.59.625: разбивка group breakdown — кол-во и единичная мощность.
+        // Pper = Pphys / count работает и для uniform (per × count) и для
+        // individual (Σ items.demandKw / items.length).
+        const count = consumerCountEffective(next);
+        const Pper = count > 0 ? Pphys / count : Pphys;
+        const entry = {
+          id: next.id, label, P: Pphys, Peff,
+          count, Pper, // v0.59.625
+          sub, cat, derate,
+          source: dr.source, sourceLabel: dr.sourceLabel, // v0.59.623
+        };
         if (derate < 0.999) {
           totalHVAC += Pphys;
           hvacLoads.push(entry);
