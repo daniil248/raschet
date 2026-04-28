@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.59.620';
+export const APP_VERSION = '0.59.621';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -762,29 +762,51 @@ export const CONSUMER_CATEGORIES = {
   other:      { label: 'Прочее',               icon: '—',  cableCategories: ['power'] },
 };
 
+// v0.59.621 (Phase 18.2): STARTER_TYPES — типы пуска нагрузки. Влияют на
+// K_рез (Capacity Reservation Factor) при питании от ИБП. Inverter / VFD
+// дают плавный старт → K близок к 1.0; DOL (прямой пуск) — пиковый ток
+// 6–8×Iном → K=0.50.
+//
+// Lookup-приоритет в _resolveDerate (recalc.js):
+//   (1) consumer.crfOverride — явное число у нагрузки
+//   (2) STARTER_TYPES[consumer.starterType].crf — по типу пуска
+//   (3) ups.crfMap[consumer.consumerSubtype] — fallback-политика ИБП
+//   (4) 1.0
+export const STARTER_TYPES = [
+  { id: 'unknown',     label: 'Не задан',                    crf: null }, // → fallback
+  { id: 'electronic',  label: 'Электронная (PSU/IT)',       crf: 1.00 },
+  { id: 'vfd',         label: 'Частотный преобразователь (VFD)', crf: 0.95 },
+  { id: 'inverter',    label: 'Инверторный (compressor/scroll)', crf: 0.90 },
+  { id: 'soft',        label: 'Плавный пуск (soft-starter)', crf: 0.75 },
+  { id: 'star_delta',  label: 'Звезда-треугольник (Y/Δ)',    crf: 0.65 },
+  { id: 'dol',         label: 'Прямой пуск (DOL)',           crf: 0.50 },
+];
+
 // breakerMarginPct — рекомендованный запас автомата (% сверх Iрасч) для
 //   исключения ложных срабатываний. Выбор по inrushFactor и роду нагрузки.
 // curveHint — рекомендованный тип/кривая автомата для MCB (inrush-дружественная).
+// defaultStarterType (v0.59.621) — типичный тип пуска для подтипа.
+//   Используется при добавлении нового потребителя как стартовое значение.
 export const CONSUMER_CATALOG = [
   // Phase 2.3: widthMm/heightMm/depthMm/weightKg — типовые физические
   // габариты (front×side или footprint×height, мм). Используются как
   // placeholder/default в модалке «Габариты» и на layout-странице.
-  { id: 'custom',      category: 'other',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, breakerMarginPct: 25, curveHint: 'MCB_C', phase: '3ph' },
-  { id: 'lighting',    category: 'lighting',   label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 300, heightMm: 300, depthMm: 100 },
-  { id: 'socket',      category: 'socket',     label: 'Розеточная группа',   demandKw: 3.5,  cosPhi: 0.95, kUse: 0.3,  inrushFactor: 1, breakerMarginPct: 20, curveHint: 'MCB_C', phase: '1ph', widthMm: 200, heightMm: 100, depthMm: 60 },
-  { id: 'motor',       category: 'power',      label: 'Электродвигатель',    demandKw: 15,   cosPhi: 0.85, kUse: 0.7,  inrushFactor: 7, breakerMarginPct: 50, curveHint: 'MCB_D', phase: '3ph', widthMm: 500, heightMm: 400, depthMm: 500, weightKg: 120 },
-  { id: 'heater',      category: 'power',      label: 'Электрообогрев',      demandKw: 5,    cosPhi: 1,    kUse: 0.8,  inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 600, heightMm: 400, depthMm: 200, weightKg: 15 },
-  { id: 'pump',        category: 'power',      label: 'Насос',               demandKw: 7.5,  cosPhi: 0.85, kUse: 0.7,  inrushFactor: 6, breakerMarginPct: 45, curveHint: 'MCB_D', phase: '3ph', widthMm: 600, heightMm: 500, depthMm: 500, weightKg: 80 },
-  { id: 'fan',         category: 'hvac',       label: 'Вентилятор',          demandKw: 5,    cosPhi: 0.8,  kUse: 0.65, inrushFactor: 5, breakerMarginPct: 40, curveHint: 'MCB_D', phase: '3ph', widthMm: 800, heightMm: 800, depthMm: 600, weightKg: 60 },
-  { id: 'server',      category: 'it',         label: 'Серверная стойка',    demandKw: 10,   cosPhi: 0.98, kUse: 0.8,  inrushFactor: 1, breakerMarginPct: 25, curveHint: 'MCB_C', phase: '3ph', widthMm: 600, heightMm: 2000, depthMm: 1000, weightKg: 150 },
-  { id: 'elevator',    category: 'power',      label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, breakerMarginPct: 40, curveHint: 'MCB_D', phase: '3ph', widthMm: 1100, heightMm: 2100, depthMm: 1400, weightKg: 600 },
+  { id: 'custom',      category: 'other',      label: 'Произвольный',       demandKw: 10,   cosPhi: 0.92, kUse: 1,    inrushFactor: 1, breakerMarginPct: 25, curveHint: 'MCB_C', phase: '3ph', defaultStarterType: 'unknown' },
+  { id: 'lighting',    category: 'lighting',   label: 'Освещение',           demandKw: 2,    cosPhi: 0.95, kUse: 0.9,  inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 300, heightMm: 300, depthMm: 100, defaultStarterType: 'electronic' },
+  { id: 'socket',      category: 'socket',     label: 'Розеточная группа',   demandKw: 3.5,  cosPhi: 0.95, kUse: 0.3,  inrushFactor: 1, breakerMarginPct: 20, curveHint: 'MCB_C', phase: '1ph', widthMm: 200, heightMm: 100, depthMm: 60, defaultStarterType: 'unknown' },
+  { id: 'motor',       category: 'power',      label: 'Электродвигатель',    demandKw: 15,   cosPhi: 0.85, kUse: 0.7,  inrushFactor: 7, breakerMarginPct: 50, curveHint: 'MCB_D', phase: '3ph', widthMm: 500, heightMm: 400, depthMm: 500, weightKg: 120, defaultStarterType: 'dol' },
+  { id: 'heater',      category: 'power',      label: 'Электрообогрев',      demandKw: 5,    cosPhi: 1,    kUse: 0.8,  inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 600, heightMm: 400, depthMm: 200, weightKg: 15, defaultStarterType: 'electronic' },
+  { id: 'pump',        category: 'power',      label: 'Насос',               demandKw: 7.5,  cosPhi: 0.85, kUse: 0.7,  inrushFactor: 6, breakerMarginPct: 45, curveHint: 'MCB_D', phase: '3ph', widthMm: 600, heightMm: 500, depthMm: 500, weightKg: 80, defaultStarterType: 'dol' },
+  { id: 'fan',         category: 'hvac',       label: 'Вентилятор',          demandKw: 5,    cosPhi: 0.8,  kUse: 0.65, inrushFactor: 5, breakerMarginPct: 40, curveHint: 'MCB_D', phase: '3ph', widthMm: 800, heightMm: 800, depthMm: 600, weightKg: 60, defaultStarterType: 'dol' },
+  { id: 'server',      category: 'it',         label: 'Серверная стойка',    demandKw: 10,   cosPhi: 0.98, kUse: 0.8,  inrushFactor: 1, breakerMarginPct: 25, curveHint: 'MCB_C', phase: '3ph', widthMm: 600, heightMm: 2000, depthMm: 1000, weightKg: 150, defaultStarterType: 'electronic' },
+  { id: 'elevator',    category: 'power',      label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, breakerMarginPct: 40, curveHint: 'MCB_D', phase: '3ph', widthMm: 1100, heightMm: 2100, depthMm: 1400, weightKg: 600, defaultStarterType: 'vfd' },
   { id: 'conditioner', category: 'hvac',       label: 'Кондиционер',         demandKw: 5,    cosPhi: 0.85, kUse: 0.7,  inrushFactor: 3, breakerMarginPct: 35, curveHint: 'MCB_D', phase: '1ph',
-    isConditioner: true, outdoorKw: 0.3, outdoorCosPhi: 0.85, widthMm: 900, heightMm: 300, depthMm: 220, weightKg: 12 },
+    isConditioner: true, outdoorKw: 0.3, outdoorCosPhi: 0.85, widthMm: 900, heightMm: 300, depthMm: 220, weightKg: 12, defaultStarterType: 'inverter' },
   // v0.59.617: outdoor_unit (наружный блок кондиционера) — отдельный
   // подтип, чтобы попадал в derate-таблицу и hvac-категорию.
   // Создаётся автоматически при добавлении conditioner (см. consumer.js).
   { id: 'outdoor_unit', category: 'hvac',       label: 'Наружный блок (HVAC)', demandKw: 0.3, cosPhi: 0.85, kUse: 0.7,  inrushFactor: 5, breakerMarginPct: 50, curveHint: 'MCB_D', phase: '1ph',
-    widthMm: 800, heightMm: 600, depthMm: 300, weightKg: 30 },
+    widthMm: 800, heightMm: 600, depthMm: 300, weightKg: 30, defaultStarterType: 'inverter' },
   // Слаботочные системы (lowvoltage) — используют cable-category signal/data/fieldbus
   { id: 'fire-alarm',  category: 'lowvoltage', label: 'Пожарная сигнализация', demandKw: 0.3, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 300, heightMm: 400, depthMm: 120, weightKg: 5 },
   { id: 'sks',         category: 'lowvoltage', label: 'СКС (структурированная кабельная сеть)', demandKw: 0.1, cosPhi: 0.9, kUse: 0.5, inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 600, heightMm: 600, depthMm: 400, weightKg: 20 },

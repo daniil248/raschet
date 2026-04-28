@@ -1,6 +1,6 @@
 // Инспектор: модалка «Параметры потребителя».
 // Выделено из inspector.js. Использует прямые импорты зависимостей.
-import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, CONSUMER_CATEGORIES, NODE_H } from '../constants.js';
+import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, CONSUMER_CATEGORIES, NODE_H, STARTER_TYPES } from '../constants.js';
 import { state, uid } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveTag } from '../zones.js';
@@ -284,6 +284,22 @@ export function openConsumerParamsModal(n) {
       <option value="MCB_D"${cv==='MCB_D'?' selected':''}>MCB кр. D — двигатели, трансформаторы</option>
     </select>`));
     h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Актуально для In ≤ 125 А. Выше — автоматически MCCB/ACB.</div>`);
+  }
+  // v0.59.621: Тип пуска и K_рез (CRF). Влияет ТОЛЬКО при питании от ИБП
+  // и активном n.crfActive у ИБП. На обычной сети — безразлично.
+  {
+    const curStarter = n.starterType || '';
+    const opts = [
+      `<option value=""${curStarter===''?' selected':''}>авто (по подтипу/политике ИБП)</option>`,
+      ...STARTER_TYPES.map(t => {
+        const lbl = t.crf != null ? `${t.label} — K=${t.crf.toFixed(2)}` : t.label;
+        return `<option value="${escAttr(t.id)}"${curStarter===t.id?' selected':''}>${escHtml(lbl)}</option>`;
+      }),
+    ].join('');
+    h.push(field('Тип пуска (для ИБП)' + _lkIcon, `<select id="cp-starterType"${_lk}>${opts}</select>`));
+    const ovVal = (typeof n.crfOverride === 'number' && Number.isFinite(n.crfOverride)) ? String(n.crfOverride) : '';
+    h.push(field('Override K_рез (0.30–1.00)' + _lkIcon, `<input type="number" id="cp-crfOverride" min="0.30" max="1.00" step="0.01" value="${ovVal}" placeholder="по типу пуска"${_lk}>`));
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px;line-height:1.4">Override (если задан) > Тип пуска > политика ИБП по подтипу > 1.00. На сети без ИБП — игнорируется.</div>`);
   }
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
   // Наличие нейтрали (N) и защитного проводника (PE) у этого
@@ -706,6 +722,18 @@ export function openConsumerParamsModal(n) {
     const curveHintRaw = document.getElementById('cp-curveHint')?.value;
     if (!curveHintRaw) delete n.curveHint;
     else n.curveHint = curveHintRaw;
+    // v0.59.621: Тип пуска и Override K_рез (для питания от ИБП).
+    const stRaw = document.getElementById('cp-starterType')?.value || '';
+    if (stRaw) n.starterType = stRaw;
+    else delete n.starterType;
+    const crfOvRaw = document.getElementById('cp-crfOverride')?.value;
+    if (crfOvRaw == null || String(crfOvRaw).trim() === '') {
+      delete n.crfOverride;
+    } else {
+      const ov = Number(crfOvRaw);
+      if (Number.isFinite(ov) && ov >= 0.30 && ov <= 1.00) n.crfOverride = ov;
+      else delete n.crfOverride;
+    }
     n.inputs = readNum('cp-inputs', n.inputs ?? 1);
     // Флаги hasNeutral / hasGround — tri-state (auto/on/off)
     const hnVal = document.getElementById('cp-hasNeutral')?.value;

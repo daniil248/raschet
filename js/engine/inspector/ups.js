@@ -233,25 +233,32 @@ export function openUpsParamsModal(n) {
     const overloadStyle = utilPct > 100 ? 'color:#b91c1c;font-weight:600' : (utilPct > 90 ? 'color:#c2410c' : '');
 
     h.push('<h4 style="margin:16px 0 8px">Коэффициенты резервирования мощности (CRF / Derating Factor)</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">Каждый подтип нагрузки имеет свой K_рез ∈ [0.30, 1.00] — какую долю своей номинальной мощности нагрузка реально использует на ИБП. Значение 0.70 означает: нагрузка резервирует на ИБП 1/0.70 ≈ 1.43× своей P (запас под пусковые токи / нелинейность). Kehua: 0.70 для механики. APC/Eaton: 0.80.</div>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">K_рез ∈ [0.30, 1.00] — какую долю своей номинальной мощности нагрузка реально использует на ИБП. <b>Приоритет:</b> Override на нагрузке → тип пуска нагрузки (DOL/soft/VFD/inverter) → таблица ниже как <i>fallback-политика</i> ИБП по подтипу. Если у нагрузки задан тип пуска — таблица ниже игнорируется для этой нагрузки.</div>');
     h.push(`<details style="margin-bottom:8px">
       <summary style="cursor:pointer;font-size:11px;color:#475569">📖 Подробнее о расчёте</summary>
       <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px">
         <b>Терминология:</b><br>
         RU: Коэффициент резервирования мощности (К_рез)<br>
         EN: Capacity Reservation Factor (CRF) / Derating Factor (DRF)<br>
-        Источники: IEC 62040 (UPS), Kehua/APC manuals, Schneider whitepapers.
+        Это инженерная практика, не нормативный стандарт — значения зависят
+        от типа пуска (DOL / soft-start / VFD).
         <br><br>
         <b>Формула:</b><br>
         <code>load_effective = Σ P_i / K_рез_i</code> (сумма по всем потребителям)<br>
         <code>overload = load_effective &gt; capacity</code><br><br>
-        <b>Lookup K_рез:</b> <code>map[consumer.consumerSubtype]</code> →
-        если не задан, default 1.0 (без резервирования). Категории
-        используются ТОЛЬКО для группировки подтипов в таблице ниже.
+        <b>Приоритет lookup K_рез</b> (v0.59.621):<br>
+        1. <code>consumer.crfOverride</code> — явное число у нагрузки<br>
+        2. <code>consumer.starterType</code> — тип пуска нагрузки
+           (DOL=0.50, Y/Δ=0.65, soft=0.75, inverter=0.90, VFD=0.95, electronic=1.00)<br>
+        3. <code>CONSUMER_CATALOG[subtype].defaultStarterType</code> — типичный пуск для подтипа<br>
+        4. <code>ups.crfMap[subtype]</code> — fallback-политика этого ИБП<br>
+        5. 1.00 (без резервирования)
         <br><br>
-        <b>Пример:</b> ИБП 100 kW. Сервер 60 kW × K_рез=1.0 (без резерва) +
-        Кондиционер 30 kW / K_рез=0.7 = 60 + 42.86 = 102.86 kW.
-        102.86 > 100 → перегруз 3%.
+        <b>Пример смешанной нагрузки:</b> ИБП 100 kW питает:<br>
+        — Сервер 60 kW (electronic, K=1.00) → 60 kW<br>
+        — Чиллер DOL 20 kW (K=0.50) → 40 kW<br>
+        — Кондиционер inverter 15 kW (K=0.90) → 16.7 kW<br>
+        Σ = 116.7 kW &gt; 100 kW → перегруз 16.7%.
         <br><br>
         <b>Важно:</b> K_рез влияет ТОЛЬКО на проверку перегруза этого ИБП.
         Upstream (utility / panel) видит обычную физическую нагрузку.

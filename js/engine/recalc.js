@@ -7,7 +7,7 @@ import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCoun
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
          upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity, upsHvacDerateFactor } from './electrical.js';
-import { CONSUMER_CATALOG } from './constants.js';
+import { CONSUMER_CATALOG, STARTER_TYPES } from './constants.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
@@ -17,22 +17,30 @@ import { runModules as runCalcModules } from '../../shared/calc-modules/index.js
 // Терминология:
 //   RU: Коэффициент резервирования мощности (К_рез ∈ [0.30, 1.00])
 //   EN: Capacity Reservation Factor (CRF) / Derating Factor (DRF)
-//   IEC 62040 (UPS), Kehua/APC/Schneider — derating factor.
+// Это инженерная практика, не нормативный стандарт: значения подбираются
+// по типу нагрузки и характеру пуска (DOL / soft-start / VFD / unity-PF).
 // Семантика: для нагрузки P_phys на ИБП резервируется P_phys / K_рез.
 //   K_рез = 1.0 — без резервирования (физическая = расчётная).
 //   K_рез = 0.7 — резервирует 1/0.7 ≈ 1.43× физической мощности
 //                 (НЕ +30%, +43% — деление, не +умножение).
 //
-// Модель n.crfMap (v0.59.620):
-//   { 'conditioner': 0.65, 'motor': 0.70, 'pump': 0.70, ... }
-// Ключи — id подтипов из CONSUMER_CATALOG.
-// Lookup: map[consumer.consumerSubtype] → 1.0 if not present.
-// Если n.crfActive===false → всегда 1.0.
+// Lookup-приоритет (v0.59.621):
+//   (1) consumer.crfOverride — явное число у нагрузки (datasheet двигателя)
+//   (2) STARTER_TYPES[consumer.starterType].crf — по типу пуска нагрузки
+//       (DOL=0.50, star_delta=0.65, soft=0.75, inverter=0.90, vfd=0.95, electronic=1.00)
+//   (3) STARTER_TYPES[CONSUMER_CATALOG[subtype].defaultStarterType].crf
+//       — типичный пуск для подтипа (motor→DOL, conditioner→inverter, …)
+//   (4) ups.crfMap[consumer.consumerSubtype] — policy ИБП по подтипу
+//   (5) HVAC_DEFAULT_DERATE[subtype] — глобальный default 0.70 для механики
+//   (6) 1.0
+//
+// Это решает кейс «один ИБП питает DOL-двигатель и инверторный компрессор»:
+// раньше оба считались бы по 0.7 (per-subtype map), теперь DOL→0.50 + inverter→0.90.
 //
 // Backward compat: читаем также legacy-поля n.hvacDerateActive / hvacDerateMap
 // из проектов до v0.59.620.
 //
-// Defaults (когда map пустой и derate active):
+// Defaults (для шага 4 — когда тип пуска не задан и map пустой):
 const HVAC_DEFAULT_DERATE = {
   motor: 0.70,
   pump: 0.70,
@@ -49,6 +57,14 @@ function _consumerCategory(n) {
   }
   return n.subtype || 'other';
 }
+// v0.59.621: lookup K_рез по типу пуска. null → нет привязки (fallback).
+function _crfByStarterType(starterTypeId) {
+  if (!starterTypeId) return null;
+  const t = STARTER_TYPES.find(x => x && x.id === starterTypeId);
+  if (!t || t.crf == null) return null;
+  const v = Number(t.crf);
+  return (Number.isFinite(v) && v > 0 && v <= 1) ? v : null;
+}
 function _resolveDerate(consumer, upsNode) {
   if (!upsNode) return 1.0;
   // v0.59.620: новые поля n.crfActive / n.crfMap; legacy fallback на
@@ -57,14 +73,34 @@ function _resolveDerate(consumer, upsNode) {
     ? !!upsNode.crfActive
     : !!upsNode.hvacDerateActive;
   if (!active) return 1.0;
+  // (1) Явный override на нагрузке (высший приоритет).
+  const ov = Number(consumer && consumer.crfOverride);
+  if (Number.isFinite(ov) && ov > 0 && ov <= 1) return ov;
+  // (2) Тип пуска явно задан на нагрузке.
+  const fromStarter = _crfByStarterType(consumer && consumer.starterType);
+  if (fromStarter != null) return fromStarter;
+  // (3) Default-тип пуска по подтипу из CONSUMER_CATALOG.
+  const sub = (consumer && (consumer.consumerSubtype || consumer.consumerType)) || '';
+  if (sub) {
+    const cat = CONSUMER_CATALOG.find(x => x && x.id === sub);
+    if (cat && cat.defaultStarterType) {
+      const fromDefault = _crfByStarterType(cat.defaultStarterType);
+      if (fromDefault != null) return fromDefault;
+    }
+  }
+  // (4) Policy ИБП по подтипу.
   const rawMap = upsNode.crfMap || upsNode.hvacDerateMap;
   const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};
-  const usedMap = Object.keys(map).length ? map : HVAC_DEFAULT_DERATE;
-  const sub = consumer.consumerSubtype || consumer.consumerType || '';
   if (sub) {
-    const v = Number(usedMap[sub]);
+    const v = Number(map[sub]);
     if (Number.isFinite(v) && v > 0 && v <= 1) return v;
+    // (5) Default для механики (если map UPS пустой).
+    if (Object.keys(map).length === 0) {
+      const dv = Number(HVAC_DEFAULT_DERATE[sub]);
+      if (Number.isFinite(dv) && dv > 0 && dv <= 1) return dv;
+    }
   }
+  // (6) Без резервирования.
   return 1.0;
 }
 // Возвращает weighted-нагрузку ИБП с учётом HVAC-derate.
