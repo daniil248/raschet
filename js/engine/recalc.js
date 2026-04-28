@@ -401,7 +401,14 @@ function maxDownstreamLoad(nodeId) {
 // реактивную связь — всё, что ниже, подаётся с его выхода при cos φ = 1,
 // поэтому Q обнуляется, а P остаётся прежним. На статическом байпасе реактивная
 // составляющая идёт напрямую со входа, поэтому cos φ потребителей сохраняется.
-function downstreamPQ(nodeId) {
+//
+// v0.59.626: opts.worstCase = true → ВСЕ ИБП считаются как на байпасе
+// (наихудший сценарий для УРКМ/ДГУ). Используется для проектирования
+// компенсации реактивной мощности и подбора генератора: при потере ИБП
+// (или при сервисном байпасе) реальный cos φ нагрузок «прорывается» к источнику,
+// и сеть/генератор должны это выдержать.
+function downstreamPQ(nodeId, opts) {
+  const worstCase = !!(opts && opts.worstCase);
   let P = 0, Q = 0;
   const seen = new Set();
   const stack = [nodeId];
@@ -436,10 +443,10 @@ function downstreamPQ(nodeId) {
         // НЕ добавляем ДГУ в stack — его downstream питается сам
       } else if (to.type === 'ups') {
         // ИБП: считаем его downstream отдельно и смотрим, в каком он режиме.
-        // При работе через инвертор (не на байпасе) cos φ = 1 → Q сбрасывается.
-        const sub = downstreamPQ(to.id);
-        if (to._onStaticBypass) {
-          // Байпас: поток идёт напрямую, реактивка сохраняется
+        // worstCase=true → принудительно как байпас (Q пропускается).
+        const sub = downstreamPQ(to.id, opts);
+        const treatAsBypass = worstCase || to._onStaticBypass;
+        if (treatAsBypass) {
           P += sub.P;
           Q += sub.Q;
         } else {
@@ -2728,6 +2735,20 @@ function recalc() {
       n._powerQ = n._powerP * tan;
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
       n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeCalcVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      // v0.59.626: worst-case (все ИБП в байпасе) — для УРКМ и подбора ДГУ.
+      // P_worst — почти равен P нормального режима (нагрузки те же, КПД уже учтён);
+      // отличие — Q_worst > Q_normal, т.к. реактивка от моторных/HVAC нагрузок
+      // больше не «закрывается» PFC инвертора ИБП.
+      const pqW = downstreamPQ(n.id, { worstCase: true });
+      const cosW = (pqW.P > 0) ? (pqW.P / Math.sqrt(pqW.P * pqW.P + pqW.Q * pqW.Q)) : n._cosPhi;
+      const tanW = Math.sqrt(1 - cosW * cosW) / cosW;
+      // P_worst оставляем равным n._loadKw (полная активная нагрузка та же),
+      // меняется только Q (реактивка нагрузок не маскируется ИБП).
+      n._cosPhiWorst = cosW;
+      n._powerPWorst = n._powerP;
+      n._powerQWorst = n._powerPWorst * tanW;
+      n._powerSWorst = Math.sqrt(n._powerPWorst * n._powerPWorst + n._powerQWorst * n._powerQWorst);
+      n._loadAWorst = n._powerSWorst > 0 ? computeCurrentA(n._powerPWorst, nodeCalcVoltage(n), cosW, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка.
       // Для генератора с triggerGroups: MAX по всем сценариям.
       // Каждый сценарий = сумма нагрузок за выходами switchover-щита,

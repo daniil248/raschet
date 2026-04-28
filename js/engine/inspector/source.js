@@ -81,21 +81,32 @@ export function openImpedanceModal(n) {
       'Стандарт: 0.95 (мелкие/средние потребители) или 0.99 (крупные). ' +
       'Если фактический cos φ нагрузки ниже целевого — нужна УКРМ.' +
       '</div>');
-    // Расчёт: показываем текущий cos φ (из downstream P/Q), требуемое Q-comp.
+    // v0.59.626: УРКМ должна сайзиться по WORST-CASE — когда все ИБП в байпасе,
+    // реактивка моторных нагрузок «прорывается» к сети. В нормальном режиме
+    // ИБП с PFC её скрывает, и УРКМ выглядит ненужной.
     const P = Number(n._powerP) || 0;
     const Q = Number(n._powerQ) || 0;
     const S = Math.sqrt(P * P + Q * Q);
     const cosCur = S > 0 ? (P / S) : 1;
+    const Pw = Number(n._powerPWorst) || P;
+    const Qw = Number(n._powerQWorst) || Q;
+    const Sw = Number(n._powerSWorst) || S;
+    const cosWorst = Sw > 0 ? (Pw / Sw) : cosCur;
     const cosTar = Math.max(0.7, Math.min(1.0, Number(n.compTargetCosPhi) || 0.95));
     const tanCur = cosCur > 0 ? Math.sqrt(Math.max(0, 1 - cosCur * cosCur)) / cosCur : 0;
+    const tanWorst = cosWorst > 0 ? Math.sqrt(Math.max(0, 1 - cosWorst * cosWorst)) / cosWorst : 0;
     const tanTar = cosTar > 0 ? Math.sqrt(Math.max(0, 1 - cosTar * cosTar)) / cosTar : 0;
-    const Qcomp = Math.max(0, P * (tanCur - tanTar));
+    const QcompCur   = Math.max(0, P  * (tanCur   - tanTar));
+    const QcompWorst = Math.max(0, Pw * (tanWorst - tanTar));
+    const hasUpsBypassDelta = Math.abs(Qw - Q) > 0.05;
     h.push(`<div class="muted" style="font-size:11.5px;line-height:1.7;padding:8px 10px;background:#f0f9ff;border-radius:4px;margin-top:6px">
-      Текущая нагрузка: <b>P = ${P.toFixed(2)} kW · Q = ${Q.toFixed(2)} kvar · S = ${S.toFixed(2)} kVA</b><br>
-      Текущий cos φ: <b>${cosCur.toFixed(3)}</b> · Целевой: <b>${cosTar.toFixed(2)}</b><br>
-      Требуемая мощность УКРМ: <b style="color:${Qcomp > 0 ? '#b91c1c' : '#15803d'}">${Qcomp.toFixed(2)} kvar</b>
-      ${Qcomp > 0
-        ? `<br><span class="muted">Установить конденсаторную батарею ≥ ${Math.ceil(Qcomp / 25) * 25} kvar (округлено до 25 kvar)</span>`
+      <b>Текущий режим</b> (ИБП в работе): P ${P.toFixed(2)} kW · Q ${Q.toFixed(2)} kvar · S ${S.toFixed(2)} kVA<br>
+      &nbsp;&nbsp;cos φ: <b>${cosCur.toFixed(3)}</b> → треб. УКРМ: <b style="color:${QcompCur > 0 ? '#b91c1c' : '#15803d'}">${QcompCur.toFixed(2)} kvar</b>
+      ${hasUpsBypassDelta ? `<br><br><b style="color:#c2410c">⚠ В байпасе всех ИБП</b> (worst-case — для подбора УРКМ):<br>
+      &nbsp;&nbsp;P ${Pw.toFixed(2)} kW · Q ${Qw.toFixed(2)} kvar · S ${Sw.toFixed(2)} kVA<br>
+      &nbsp;&nbsp;cos φ: <b>${cosWorst.toFixed(3)}</b> · Целевой: <b>${cosTar.toFixed(2)}</b> → треб. УКРМ: <b style="color:${QcompWorst > 0 ? '#b91c1c' : '#15803d'}">${QcompWorst.toFixed(2)} kvar</b>` : `<br>Целевой cos φ: <b>${cosTar.toFixed(2)}</b>`}
+      ${(hasUpsBypassDelta ? QcompWorst : QcompCur) > 0
+        ? `<br><span class="muted">Подобрать УКРМ ≥ ${Math.ceil((hasUpsBypassDelta ? QcompWorst : QcompCur) / 25) * 25} kvar (округлено до 25 kvar)${hasUpsBypassDelta ? ' — по worst-case при байпасе ИБП' : ''}</span>`
         : '<br><span class="muted">Компенсация не требуется (cos φ уже выше целевого).</span>'}
     </div>`);
   } else if (isTransformer) {
@@ -564,6 +575,17 @@ export function sourceStatusBlock(n) {
     if (n._powerQ) parts.push(`Q реакт.: <b>${fmt(n._powerQ)} kvar</b>`);
     if (n._powerS) parts.push(`S полн.: <b>${fmt(n._powerS)} kVA</b>`);
     if (n._cosPhi) parts.push(`cos φ: <b>${n._cosPhi.toFixed(2)}</b>`);
+    // v0.59.626: worst-case (все ИБП в байпасе) — для УРКМ и подбора ДГУ.
+    // Показываем, только если отличается от нормального (есть ИБП в цепи).
+    const qDelta = Math.abs((Number(n._powerQWorst) || 0) - (Number(n._powerQ) || 0));
+    if (qDelta > 0.05) {
+      const cosW = Number(n._cosPhiWorst) || 0;
+      const qW = Number(n._powerQWorst) || 0;
+      const sW = Number(n._powerSWorst) || 0;
+      const aW = Number(n._loadAWorst) || 0;
+      parts.push(`<span style="color:#c2410c"><b>В байпасе ИБП</b> (worst-case для УРКМ/ДГУ):</span>`);
+      parts.push(`&nbsp;&nbsp;${fmt(n._powerPWorst || 0)} kW · ${fmt(aW)} A · Q ${fmt(qW)} kvar · S <b>${fmt(sW)} kVA</b> · cos φ <b>${cosW.toFixed(2)}</b>`);
+    }
     if (n._ikA && isFinite(n._ikA)) parts.push(`Ik на шинах: <b>${fmt(n._ikA / 1000)} кА</b>`);
     if (n._deltaUPct > 0) parts.push(`ΔU: <b>${n._deltaUPct.toFixed(2)}%</b>`);
   }
