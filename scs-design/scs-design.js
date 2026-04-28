@@ -136,6 +136,17 @@ function _renderProjectBadgeImpl(pid, host) {
     !('scheme' in x) && !('memberUids' in x));
   const orphanSketches = projects.filter(x => x.kind === 'sketch' && !x.parentProjectId);
   let parentPid = urlPid;
+  // v0.59.573: КРИТИЧНО — если urlPid указывает на SUB (kind='sketch' с
+  // parentProjectId), используем его parentProjectId как настоящего parent.
+  // Без этого URL=sub воспринимался как parent, listSubProjects возвращал
+  // [], срабатывал auto-create-default-sub, создавал ВТОРОЙ sub под первым,
+  // обновлял URL на 2nd_sub, и цикл продолжался — мусор копился.
+  if (parentPid) {
+    const urlProj = getProject(parentPid);
+    if (urlProj && urlProj.kind === 'sketch' && urlProj.parentProjectId) {
+      parentPid = urlProj.parentProjectId;
+    }
+  }
   // Если активный проект сам — sketch с parentProjectId, наследуем родителя.
   if (!parentPid && p && p.kind === 'sketch' && p.parentProjectId) {
     parentPid = p.parentProjectId;
