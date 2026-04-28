@@ -761,7 +761,23 @@ function getRacks() {
   }
   catch { const r = loadJson(LS_RACK, []); return Array.isArray(r) ? r : []; }
 }
-function getRackTag(id) { const t = loadJson(LS_RACKTAGS, {}); return (t && typeof t === 'object') ? (t[id] || '') : ''; }
+// v0.59.577: getRackTag fallback — для POR-стоек (id='por_legacy_*' или
+// virtuals 'scheme-*'/'por-group-*') tag живёт в самом rack-объекте,
+// не в state.rackTags. Без fallback'а POR-стойки не считались
+// «помеченными», и filter «Стойки проекта — с тегом» их отбрасывал →
+// в picker'е была видна только часть стоек.
+function getRackTag(id) {
+  const t = loadJson(LS_RACKTAGS, {});
+  const fromMap = (t && typeof t === 'object') ? (t[id] || '') : '';
+  if (fromMap) return fromMap;
+  // Fallback: ищем тег прямо в массиве racks (для POR/virtuals).
+  try {
+    const racks = getRacks();
+    const r = racks.find(x => x && x.id === id);
+    if (r) return (r.tag || r.autoTag || '').trim();
+  } catch {}
+  return '';
+}
 function getContents(id) {
   const all = loadJson(LS_CONTENTS, {});
   const a = all && typeof all === 'object' ? all[id] : null;
@@ -1010,7 +1026,10 @@ function renderLinksTab() {
   // свернутой — кликом она добавляется в проект (создаётся пустая запись
   // contents), и стойка всплывает наверх в «Стойки проекта».
   const projIds = getProjectRackIds();
-  const inProject  = racks.filter(r => projIds.has(r.id)).filter(matches);
+  // v0.59.577: POR-стойки (_source='por') считаются «в проекте» по умолчанию —
+  // они приходят из POR родителя (с моим fallback v0.59.575). Без этого
+  // 16 POR-стоек SR01-08, MR01, CR01 не попадали в picker.
+  const inProject  = racks.filter(r => projIds.has(r.id) || r._source === 'por').filter(matches);
   const library    = []; // v0.59.295: библиотека шаблонов убрана из мастера связей
   // v0.59.550: разделяем real / virtual / draft. Виртуал = fromScheme или
   // fromPorGroup. Draft = нет тега и не виртуал.
