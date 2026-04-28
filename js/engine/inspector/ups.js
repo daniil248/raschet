@@ -208,14 +208,12 @@ export function openUpsParamsModal(n) {
     const active = !!n.hvacDerateActive;
     const baseCap = Number(n.capacityKw) || 0;
     const map = (n.hvacDerateMap && typeof n.hvacDerateMap === 'object') ? n.hvacDerateMap : {};
-    // Defaults для отображения в таблице (только когда map пустой).
+    // v0.59.611: Defaults — только подтипы (категории = группировка в UI).
     const DEFAULT_DERATE = {
-      'cat:hvac': 0.70,
-      'sub:motor': 0.70, 'sub:pump': 0.70, 'sub:fan': 0.70,
-      'sub:conditioner': 0.70, 'sub:elevator': 0.70, 'sub:outdoor_unit': 0.70,
+      motor: 0.70, pump: 0.70, fan: 0.70,
+      conditioner: 0.70, elevator: 0.70, outdoor_unit: 0.70,
     };
     const effectiveMap = Object.keys(map).length ? map : DEFAULT_DERATE;
-    const ALL_CATS = ['hvac','power','lighting','socket','it','lowvoltage','process','other'];
     const CAT_LABELS = {
       hvac: '❄ Климат / вентиляция', power: '⚙ Силовая нагрузка',
       lighting: '💡 Освещение', socket: '🔌 Розетки',
@@ -239,13 +237,15 @@ export function openUpsParamsModal(n) {
         <b>Формула:</b><br>
         <code>load_effective = Σ P_i / derate_i</code> (сумма по всем потребителям)<br>
         <code>overload = load_effective &gt; capacity</code><br><br>
-        <b>Lookup derate для consumer:</b><br>
-        1. Subtype override: <code>map['sub:&lt;consumerSubtype&gt;']</code> (если задан)<br>
-        2. Category: <code>map['cat:&lt;category&gt;']</code> (если задан)<br>
-        3. Default 1.0 (без derate)
+        <b>Lookup derate:</b> <code>map[consumer.consumerSubtype]</code> →
+        если не задан, default 1.0 (без derate). Категории используются
+        ТОЛЬКО для группировки подтипов в таблице ниже.
         <br><br>
         <b>Пример:</b> ИБП 100 kW. IT (server) 60 kW × 1.0 + Кондиционер
         30 kW / 0.7 = 60 + 42.86 = 102.86 kW. 102.86 > 100 → перегруз 3%.
+        <br><br>
+        <b>Важно:</b> derate влияет ТОЛЬКО на проверку перегруза этого ИБП.
+        Upstream (utility / panel) видит обычную физическую нагрузку.
       </div>
     </details>`);
     h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px">
@@ -253,50 +253,59 @@ export function openUpsParamsModal(n) {
       <span>Применить derate (per-load)</span>
     </label>`);
 
-    // v0.59.610: ТАБЛИЦА категорий + подтипов с per-row derate input.
-    const _coefInput = (key) => {
-      const v = effectiveMap[key];
-      const value = (Number.isFinite(Number(v)) && v > 0) ? Number(v) : '';
-      return `<input type="number" min="0.30" max="1.00" step="0.05" data-derate-key="${escAttr(key)}" value="${value}" placeholder="1.00" style="width:64px;font-size:11px;padding:2px 4px"${active ? '' : ' disabled'}>`;
+    // v0.59.611: subtypes сгруппированы по category. Категория = чекбокс
+    // (selects all subtypes in this category), индивидуальные input
+    // делают чекбокс indeterminate.
+    const CAT_LABELS = {
+      hvac: '❄ Климат / вентиляция', power: '⚙ Силовая нагрузка',
+      lighting: '💡 Освещение', socket: '🔌 Розетки',
+      it: '🖥 IT / серверы', lowvoltage: '📡 Слаботочные',
+      process: '🏭 Технологическая', other: '— Прочее',
     };
-    h.push(`<details style="margin-bottom:8px"${(active ? ' open' : '')}>
-      <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Таблица коэффициентов derate (категории / подтипы)</summary>
-      <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
-        <div style="font-weight:600;margin-bottom:4px">Категории</div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">
-          <thead><tr style="background:#e0f2fe">
-            <th style="text-align:left;padding:3px 6px">Категория</th>
-            <th style="text-align:right;padding:3px 6px;width:90px">derate</th>
-            <th style="padding:3px 6px;width:24px"></th>
-          </tr></thead>
+    // Группировка subtypes по category.
+    const subsByCat = new Map();
+    (CONSUMER_CATALOG || []).forEach(s => {
+      const cat = s.category || 'other';
+      if (!subsByCat.has(cat)) subsByCat.set(cat, []);
+      subsByCat.get(cat).push(s);
+    });
+    const _coefInput = (subId) => {
+      const v = effectiveMap[subId];
+      const value = (Number.isFinite(Number(v)) && v > 0 && v < 1) ? Number(v) : '';
+      return `<input type="number" min="0.30" max="1.00" step="0.05" data-derate-key="${escAttr(subId)}" value="${value}" placeholder="1.00" style="width:64px;font-size:11px;padding:2px 4px"${active ? '' : ' disabled'}>`;
+    };
+    const _catGroup = (catId, subs) => {
+      const subIds = subs.map(s => s.id);
+      const checkedCount = subIds.filter(id => {
+        const v = effectiveMap[id];
+        return Number.isFinite(Number(v)) && v > 0 && v < 1;
+      }).length;
+      const allChecked = checkedCount === subs.length && subs.length > 0;
+      const someChecked = checkedCount > 0 && !allChecked;
+      const ckId = 'up-hvac-cat-cb-' + catId;
+      return `<div style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#e0f2fe;border-radius:4px;font-weight:600">
+          <input type="checkbox" id="${ckId}" data-up-hvac-cat="${catId}"${allChecked ? ' checked' : ''}${active ? '' : ' disabled'}>
+          <label for="${ckId}" style="cursor:pointer;flex:1">${CAT_LABELS[catId] || catId}</label>
+          <span class="muted" style="font-size:10px">${checkedCount}/${subs.length}</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:2px">
           <tbody>
-            ${ALL_CATS.map(c => `<tr style="border-bottom:1px solid #e2e8f0">
-              <td style="padding:3px 6px">${CAT_LABELS[c] || c}</td>
-              <td style="padding:3px 6px;text-align:right">${_coefInput('cat:' + c)}</td>
-              <td style="padding:3px 6px;color:#94a3b8">×</td>
+            ${subs.map(s => `<tr style="border-bottom:1px solid #f1f5f9">
+              <td style="padding:3px 12px">${escHtml(s.label)}</td>
+              <td style="padding:3px 6px;text-align:right;width:90px">${_coefInput(s.id)}</td>
             </tr>`).join('')}
           </tbody>
         </table>
-        <div style="font-weight:600;margin-bottom:4px">Подтипы (override per-subtype)</div>
-        <div class="muted" style="font-size:10px;margin-bottom:4px">Если поле пустое — наследуется derate от категории.</div>
-        <div style="max-height:240px;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <thead><tr style="background:#e0f2fe;position:sticky;top:0">
-              <th style="text-align:left;padding:3px 6px">Подтип</th>
-              <th style="text-align:left;padding:3px 6px;color:#94a3b8;font-weight:400">cat</th>
-              <th style="text-align:right;padding:3px 6px;width:90px">derate</th>
-            </tr></thead>
-            <tbody>
-              ${(CONSUMER_CATALOG || []).map(s => `<tr style="border-bottom:1px solid #e2e8f0">
-                <td style="padding:3px 6px">${escHtml(s.label)}</td>
-                <td style="padding:3px 6px;color:#94a3b8;font-size:10px">${escHtml(s.category)}</td>
-                <td style="padding:3px 6px;text-align:right">${_coefInput('sub:' + s.id)}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
+      </div>`;
+    };
+    h.push(`<details style="margin-bottom:8px"${(active ? ' open' : '')}>
+      <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Коэффициенты derate (по подтипам)</summary>
+      <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
+        <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = derate 1.0 (без снижения).</div>
+        ${Array.from(subsByCat.entries()).map(([catId, subs]) => _catGroup(catId, subs)).join('')}
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-          <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Сбросить к defaults (Kehua 0.70)</button>
+          <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Defaults (HVAC + power 0.70)</button>
           <button type="button" id="up-hvac-derate-clear" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">✕ Очистить все</button>
         </div>
       </div>
@@ -628,13 +637,12 @@ export function openUpsParamsModal(n) {
     });
   }
 
-  // v0.59.610: reset / clear для derate-таблицы.
+  // v0.59.611: reset / clear / category-toggle для derate-таблицы.
   document.getElementById('up-hvac-derate-default')?.addEventListener('click', () => {
     snapshotVisibleFields();
     n.hvacDerateMap = {
-      'cat:hvac': 0.70,
-      'sub:motor': 0.70, 'sub:pump': 0.70, 'sub:fan': 0.70,
-      'sub:conditioner': 0.70, 'sub:elevator': 0.70, 'sub:outdoor_unit': 0.70,
+      motor: 0.70, pump: 0.70, fan: 0.70,
+      conditioner: 0.70, elevator: 0.70, outdoor_unit: 0.70,
     };
     openUpsParamsModal(n);
   });
@@ -646,8 +654,45 @@ export function openUpsParamsModal(n) {
   // Toggle disabled state on coef inputs based on active checkbox.
   document.getElementById('up-hvac-derate-active')?.addEventListener('change', (e) => {
     const dis = !e.target.checked;
-    document.querySelectorAll('[data-derate-key]').forEach(el => { el.disabled = dis; });
+    document.querySelectorAll('[data-derate-key], [data-up-hvac-cat]').forEach(el => {
+      el.disabled = dis;
+    });
   });
+  // Category checkbox: clicking selects/deselects all subtypes in that category.
+  document.querySelectorAll('[data-up-hvac-cat]').forEach(cb => {
+    const cat = cb.getAttribute('data-up-hvac-cat');
+    cb.addEventListener('change', () => {
+      const targetVal = cb.checked ? 0.70 : '';
+      // Find all subtype inputs whose row is within the same category group.
+      const group = cb.closest('div').nextElementSibling; // <table>
+      if (!group) return;
+      group.querySelectorAll('input[data-derate-key]').forEach(inp => {
+        inp.value = targetVal;
+      });
+      _refreshHvacIndeterminate();
+    });
+  });
+  // Update category checkbox state (checked / indeterminate / unchecked) when user
+  // edits an individual subtype derate input.
+  function _refreshHvacIndeterminate() {
+    document.querySelectorAll('[data-up-hvac-cat]').forEach(cb => {
+      const group = cb.closest('div').nextElementSibling;
+      if (!group) return;
+      const inputs = group.querySelectorAll('input[data-derate-key]');
+      let total = 0, filled = 0;
+      inputs.forEach(inp => {
+        total++;
+        const v = Number(inp.value);
+        if (Number.isFinite(v) && v > 0 && v < 1) filled++;
+      });
+      cb.indeterminate = filled > 0 && filled < total;
+      cb.checked = total > 0 && filled === total;
+    });
+  }
+  document.querySelectorAll('input[data-derate-key]').forEach(inp => {
+    inp.addEventListener('input', _refreshHvacIndeterminate);
+  });
+  _refreshHvacIndeterminate();
 
   const applyBtn = document.getElementById('ups-params-apply');
   if (applyBtn) applyBtn.onclick = () => {

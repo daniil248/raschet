@@ -9,27 +9,24 @@ import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCoun
          upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity, upsHvacDerateFactor } from './electrical.js';
 import { CONSUMER_CATALOG } from './constants.js';
 
-// v0.59.610: per-category / per-subtype derate map.
-// Юзер: «выведем в характеристиках ибп список всех категорий и подтипов
-// и для каждой записи вводить коэффициент дирейтинга».
+// v0.59.611: per-subtype derate map. Категории используются ТОЛЬКО для
+// группировки подтипов в UI (юзер: «если есть конкретные подтипы, зачем
+// отдельно для категорий, используй категории только для группирования»).
 //
 // Модель n.hvacDerateMap:
-//   { 'cat:hvac': 0.70, 'cat:power': 0.85, 'sub:conditioner': 0.65, ... }
-// Lookup для консьюмера:
-//   1. n.hvacDerateMap['sub:' + consumerSubtype]  (override per-subtype)
-//   2. n.hvacDerateMap['cat:' + category]         (per-category)
-//   3. 1.0 (no derate)
+//   { 'conditioner': 0.65, 'motor': 0.70, 'pump': 0.70, ... }
+// Ключи — id подтипов из CONSUMER_CATALOG.
+// Lookup: map[consumer.consumerSubtype] → 1.0 if not present.
 // Если n.hvacDerateActive===false → всегда 1.0.
 //
 // Defaults (когда map пустой и derate active):
 const HVAC_DEFAULT_DERATE = {
-  'cat:hvac': 0.70,
-  'sub:motor': 0.70,
-  'sub:pump': 0.70,
-  'sub:fan': 0.70,
-  'sub:conditioner': 0.70,
-  'sub:elevator': 0.70,
-  'sub:outdoor_unit': 0.70,
+  motor: 0.70,
+  pump: 0.70,
+  fan: 0.70,
+  conditioner: 0.70,
+  elevator: 0.70,
+  outdoor_unit: 0.70,
 };
 function _consumerCategory(n) {
   const sub = n.consumerSubtype || n.consumerType || '';
@@ -46,18 +43,10 @@ function _resolveDerate(consumer, upsNode) {
   const usedMap = Object.keys(map).length ? map : HVAC_DEFAULT_DERATE;
   const sub = consumer.consumerSubtype || consumer.consumerType || '';
   if (sub) {
-    const v = Number(usedMap['sub:' + sub]);
-    if (Number.isFinite(v) && v > 0 && v <= 1) return v;
-  }
-  const cat = _consumerCategory(consumer);
-  if (cat) {
-    const v = Number(usedMap['cat:' + cat]);
+    const v = Number(usedMap[sub]);
     if (Number.isFinite(v) && v > 0 && v <= 1) return v;
   }
   return 1.0;
-}
-function _isDerated(consumer, upsNode) {
-  return _resolveDerate(consumer, upsNode) < 0.999;
 }
 // Возвращает weighted-нагрузку ИБП с учётом HVAC-derate.
 // IT-часть считается 1×, механическая часть — 1/derate.
