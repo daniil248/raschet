@@ -200,15 +200,15 @@ export function openUpsParamsModal(n) {
     </div>`);
   }
 
-  // v0.59.623 (Phase 18): K_рез + cap «макс. загрузка ИБП».
-  //   — Чекбокс «Применить коэффициенты резервирования мощности» УБРАН:
-  //     расчёт всегда активен. K_рез теперь определяется только на нагрузке
-  //     (тип пуска / свой K). Без указания → 1.0 (без резервирования).
-  //   — Таблица крф-коэффициентов по подтипам УБРАНА: per-subtype политика
-  //     ИБП больше не используется (legacy crfMap читается ради старых проектов).
-  //   — Добавлен НОВЫЙ блок «Максимальная загрузка ИБП» с чекбоксом и
-  //     полем 0.30..1.00 (например 0.80 = ИБП можно нагружать не более чем
-  //     на 80%). Влияет на отметку «перегруз»: capacity_eff = capacityKw × maxF.
+  // v0.59.623/624 (Phase 18): K_рез + cap «макс. загрузка ИБП».
+  //   — Чекбокс «Применить коэффициенты» УБРАН: расчёт всегда активен.
+  //     K_рез теперь определяется только на нагрузке (тип пуска / свой K).
+  //     Без указания → 1.0 (без резервирования).
+  //   — Таблица K_рез по подтипам на ИБП УБРАНА: per-subtype политика ИБП
+  //     не используется (legacy-чтение тоже удалено, v0.59.624).
+  //   — Блок «Максимальная загрузка ИБП»: чекбокс + поле 0.30..1.00.
+  //     Например 0.80 = ИБП можно нагружать не более чем на 80%.
+  //     capacity_eff = capacityKw × maxF.
   {
     const baseCap = Number(n.capacityKw) || 0;
     const maxLoadActive = !!n.maxLoadFactorActive;
@@ -697,16 +697,7 @@ export function openUpsParamsModal(n) {
       } else if (typeof n.maxLoadFactor !== 'number') {
         n.maxLoadFactor = 0.80; // default
       }
-    } else {
-      // активен=false → значение оставляем (для последующего включения)
     }
-    // v0.59.623: убрана UI таблица crfMap. Поля legacy не трогаем
-    // (читаются _resolveDerateWithSource как fallback для старых проектов).
-    // Cleanup устаревших служебных полей (v0.59.605/609/620).
-    delete n.hvacDerateActive;
-    delete n.hvacDerateCategories;
-    delete n.hvacDerateSubtypes;
-    delete n.crfActive; // v0.59.623: чекбокс убран, расчёт всегда активен
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
       document.getElementById('modal-ups-params').classList.add('hidden');
@@ -1379,22 +1370,32 @@ function _renderUpsBatteryBody(n) {
     let bomBlock = '';
     let s3OverloadBlock = '';
     if (isS3Module && s3Cfg) {
-      // v0.59.416: все BOM-числа берутся из единого расчёта computeS3Configuration.
-      // cabinetPowerKw (200/200/60) — паспортная константа System rated output
-      // power, не зависит от числа модулей в шкафу. Число модулей определяет
-      // только автономию (кВт·ч), не мгновенную мощность.
+      // v0.59.416/624: BOM-числа из computeS3Configuration.
+      // cabinetPowerKw — паспортный номинал (System rated output, 200/60 кВт).
+      // moduleRatedKw  — рейтинг 1 модуля (cabinetPowerKw / maxPerCabinet).
+      // effCabinetPowerKw / effSystemPowerKw — реальная допустимая мощность,
+      //   учитывающая фактическое число установленных модулей.
+      //   Например, S3C050-4C-20: 11 модулей × 10 кВт = 110 кВт допустимо
+      //   (а паспорт шкафа 200 кВт — для полностью заполненного шкафа на 20).
       const pk = picked.packaging;
+      const isPartial = s3Cfg.modulesPerCabinet < s3Cfg.nMax;
+      const cabPowDual = isPartial
+        ? `<b>${fmt(s3Cfg.effCabinetPowerKw)} кВт</b> <span class="muted" style="font-size:10px">(${s3Cfg.modulesPerCabinet} × ${fmt(s3Cfg.moduleRatedKw)} кВт; паспорт ${fmt(s3Cfg.cabinetPowerKw)} кВт)</span>`
+        : `<b>${fmt(s3Cfg.cabinetPowerKw)} кВт</b> <span class="muted" style="font-size:10px">(паспорт = ${s3Cfg.modulesPerCabinet} × ${fmt(s3Cfg.moduleRatedKw)} кВт)</span>`;
+      const sysPowDual = isPartial
+        ? `<b${s3Cfg.overload ? ' style="color:#c62828"' : ''}>${fmt(s3Cfg.effSystemPowerKw)} кВт</b> <span class="muted" style="font-size:10px">(${fmt(s3Cfg.effCabinetPowerKw)} × ${s3Cfg.cabinetsCount}; паспорт ${fmt(s3Cfg.systemPowerKw)} кВт)</span>`
+        : `<b${s3Cfg.overload ? ' style="color:#c62828"' : ''}>${fmt(s3Cfg.systemPowerKw)} кВт</b> <span class="muted" style="font-size:10px">(${fmt(s3Cfg.cabinetPowerKw)} × ${s3Cfg.cabinetsCount})</span>`;
       bomBlock = `
         <div>Шкафов:</div><div><b>${s3Cfg.cabinetsCount}</b> × ${escHtml(s3Cfg.cabinetModel || '—')}</div>
-        <div>Модулей/шкаф:</div><div><b>${s3Cfg.modulesPerCabinet}</b> из ${s3Cfg.nMax}</div>
-        <div>P шкафа:</div><div><b>${fmt(s3Cfg.cabinetPowerKw)} кВт</b> (паспорт System rated output)</div>
-        <div>P системы:</div><div><b${s3Cfg.overload ? ' style="color:#c62828"' : ''}>${fmt(s3Cfg.systemPowerKw)} кВт</b> (${fmt(s3Cfg.cabinetPowerKw)} × ${s3Cfg.cabinetsCount})</div>
+        <div>Модулей/шкаф:</div><div><b>${s3Cfg.modulesPerCabinet}</b> из ${s3Cfg.nMax} <span class="muted" style="font-size:10px">(${fmt(s3Cfg.moduleRatedKw)} кВт/модуль)</span></div>
+        <div>P шкафа (допуст.):</div><div>${cabPowDual}</div>
+        <div>P системы (допуст.):</div><div>${sysPowDual}</div>
         <div>P<sub>треб.</sub> от АКБ:</div><div><b${s3Cfg.overload ? ' style="color:#c62828"' : ''}>${fmt(s3Cfg.batteryPwrReqKw)} кВт</b></div>`;
       if (s3Cfg.overload) {
         s3OverloadBlock = `<div style="margin-top:8px;padding:8px 12px;background:#ffebee;border-left:3px solid #c62828;border-radius:4px;font-size:11px;color:#c62828;line-height:1.6">
           <b>⛔ Лимит системы превышен.</b> Требуемая мощность АКБ <b>${fmt(s3Cfg.batteryPwrReqKw)} кВт</b>
-          превышает суммарную мощность ${s3Cfg.cabinetsCount} шкаф(ов) × ${fmt(s3Cfg.cabinetPowerKw)} кВт = <b>${fmt(s3Cfg.systemPowerKw)} кВт</b>.<br>
-          Увеличьте число шкафов минимум до <b>${s3Cfg.minCabinetsForLoad}</b>${picked.type.startsWith('S3M100') ? ' или выберите модули S3M040/S3M050 (200 кВт на шкаф вместо 60)' : ''}.
+          превышает допустимую мощность системы ${s3Cfg.cabinetsCount} шкаф(ов) × ${s3Cfg.modulesPerCabinet} модулей × ${fmt(s3Cfg.moduleRatedKw)} кВт = <b>${fmt(s3Cfg.effSystemPowerKw)} кВт</b>${isPartial ? ` (паспорт шкафа ${fmt(s3Cfg.cabinetPowerKw)} кВт при ${s3Cfg.nMax} модулях)` : ''}.<br>
+          Увеличьте число модулей в шкафу до ${s3Cfg.nMax} или число шкафов минимум до <b>${s3Cfg.minCabinetsForLoad}</b>${picked.type.startsWith('S3M100') ? ' или выберите модули S3M040/S3M050 (200 кВт на шкаф вместо 60)' : ''}.
         </div>`;
       }
     }

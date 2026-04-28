@@ -108,12 +108,25 @@ export function computeS3Configuration({
   const batteryPwrReqKw = activePowerKw / Math.max(0.5, invEff || 0.96);
   const powerPerModuleW = totalModules > 0 ? (batteryPwrReqKw * 1000) / totalModules : 0;
   const stringCurrentA  = w.vdcOper > 0 ? (batteryPwrReqKw * 1000 / w.vdcOper) / Math.max(1, C) : 0;
-  // System power limit (паспорт System rated output power × C)
-  const systemPowerKw = lim.cabinetPowerKw * C;
-  const overload = batteryPwrReqKw > systemPowerKw + 1e-6;
-  const minCabinetsForLoad = lim.cabinetPowerKw > 0
-    ? Math.max(1, Math.ceil(batteryPwrReqKw / lim.cabinetPowerKw))
-    : 0;
+  // v0.59.624: модель «номинал шкафа vs допустимая мощность по модулям».
+  //   moduleRatedKw    — рейтинг 1 модуля = cabinetPowerKw / maxPerCabinet
+  //                      (для S3C050-4C-20: 200/20 = 10 кВт/модуль)
+  //   cabinetPowerKw   — паспортный номинал шкафа (System rated output, фикс)
+  //   effCabinetPowerKw — реальная допустимая мощность шкафа = N × moduleRatedKw
+  //                       (если шкаф не заполнен полностью — меньше паспорта)
+  //   systemPowerKw     — суммарный паспорт = cabinetPowerKw × C
+  //   effSystemPowerKw  — суммарная допустимая = effCabinetPowerKw × C
+  //   overload — теперь по effSystemPowerKw, а не паспорту.
+  const moduleRatedKw     = lim.maxPerCabinet > 0 ? lim.cabinetPowerKw / lim.maxPerCabinet : 0;
+  const effCabinetPowerKw = N * moduleRatedKw;
+  const systemPowerKw     = lim.cabinetPowerKw * C;        // паспорт
+  const effSystemPowerKw  = effCabinetPowerKw * C;         // по факту модулей
+  const overload = batteryPwrReqKw > effSystemPowerKw + 1e-6;
+  const minCabinetsForLoad = effCabinetPowerKw > 0
+    ? Math.max(1, Math.ceil(batteryPwrReqKw / effCabinetPowerKw))
+    : (lim.cabinetPowerKw > 0
+      ? Math.max(1, Math.ceil(batteryPwrReqKw / lim.cabinetPowerKw))
+      : 0);
   // Energy
   const blockVnom = Number(module.blockVoltage) || 240;
   const capAh     = Number(module.capacityAh)   || 100;
@@ -135,8 +148,11 @@ export function computeS3Configuration({
     cabinetsMax: lim.maxCabinets,
     clampHint,
     // power
-    cabinetPowerKw: lim.cabinetPowerKw,
-    systemPowerKw,
+    cabinetPowerKw: lim.cabinetPowerKw,           // паспорт
+    moduleRatedKw,                                // рейтинг 1 модуля
+    effCabinetPowerKw,                            // допустимая по модулям
+    systemPowerKw,                                // паспорт × C
+    effSystemPowerKw,                             // допустимая × C
     overload,
     minCabinetsForLoad,
     batteryPwrReqKw,

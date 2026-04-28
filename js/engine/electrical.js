@@ -373,51 +373,24 @@ export function consumerInrushCurrent(n) {
   return consumerNominalCurrent(n) * (Number(n.inrushFactor) || 1);
 }
 
-// v0.59.605 (Phase 18): эффективная capacity ИБП с учётом HVAC-derate.
-// v0.59.607: РЕФАКТОРИНГ — derate применяется НЕ ко всей capacity, а только
+// v0.59.605/624 (Phase 18): K_рез применяется НЕ ко всей capacity, а только
 // к механической части нагрузки. Юзер: «коэффициент нужно применять не для
 // всей нагрузки а только для механической нагрузки».
 //
 // Модель:
-//   capacity ИБП — фиксированная, не уменьшается.
-//   load_effective = Σ P_IT × 1 + Σ P_HVAC / derateFactor
-//                  = всё IT с весом 1 + механическая часть с весом 1/derate.
-//   overload = (load_effective > capacity).
+//   capacity ИБП — фиксированная (опционально cap-флаг maxLoadFactor её урезает).
+//   load_effective = Σ P_i / K_рез_i (для каждой нагрузки свой K_рез)
+//   overload = (load_effective > capacity_eff).
 //
-// Пример: ИБП 100кВт + IT 60кВт + HVAC 30кВт + derate 0.7
-//   load_effective = 60 + 30/0.7 = 60 + 42.86 = 102.86 kW
-//   102.86 > 100 → overload (на 3%).
-// Раньше: capacity_eff = 100 × 0.7 = 70, load = 90. 90 > 70 → overload (на 22%).
+// Пример: ИБП 100 кВт + IT 60 кВт (K=1.0) + HVAC inverter 30 кВт (K=0.90)
+//   load_effective = 60/1.0 + 30/0.90 = 60 + 33.33 = 93.33 кВт → 93.3% загрузка.
 //
-// Поля на узле UPS (v0.59.623):
+// Поля на узле UPS (v0.59.624):
 //   n.maxLoadFactorActive: boolean — включён ли cap «макс. загрузка ИБП»
 //   n.maxLoadFactor: 0..1 — например 0.8 = ИБП можно загружать не более 80%
-// Legacy (до v0.59.623, читаются для backward compat):
-//   n.crfActive, n.crfMap, n.hvacDerateActive, n.hvacDerateMap, n.hvacDerateFactor
 //
-// Default factor по производителю (если active=true и factor не задан):
-const HVAC_DERATE_DEFAULTS = {
-  'Kehua':     0.70,
-  'APC':       0.80,
-  'Eaton':     0.80,
-  'Schneider': 0.80,
-  'Vertiv':    0.80,
-  'GE':        0.75,
-  '_default':  0.85,
-};
-export function upsHvacDerateFactor(n) {
-  if (!n) return 1.0;
-  const active = n.crfActive !== undefined ? !!n.crfActive : !!n.hvacDerateActive;
-  if (!active) return 1.0;
-  let factor = Number(n.hvacDerateFactor);
-  if (!Number.isFinite(factor) || factor <= 0) {
-    const vendor = String(n.manufacturer || '').trim();
-    factor = HVAC_DERATE_DEFAULTS[vendor] != null
-      ? HVAC_DERATE_DEFAULTS[vendor]
-      : HVAC_DERATE_DEFAULTS._default;
-  }
-  return Math.max(0.3, Math.min(1.0, factor));
-}
+// K_рез задаётся НА НАГРУЗКЕ (n.starterType / n.crfOverride), а не на ИБП —
+// см. recalc.js _resolveDerateWithSource.
 // v0.59.623: helper возвращает «эффективную ёмкость» с учётом cap-флага
 // «Максимальная загрузка ИБП» (n.maxLoadFactorActive + n.maxLoadFactor).
 // Перегруз определяется по weighted-load, см. recalc.js (n._loadKwWeighted).

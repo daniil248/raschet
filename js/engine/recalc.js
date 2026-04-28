@@ -6,7 +6,7 @@ import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
-         upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity, upsHvacDerateFactor } from './electrical.js';
+         upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity } from './electrical.js';
 import { CONSUMER_CATALOG, STARTER_TYPES } from './constants.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
@@ -24,18 +24,15 @@ import { runModules as runCalcModules } from '../../shared/calc-modules/index.js
 //   K_рез = 0.7 — резервирует 1/0.7 ≈ 1.43× физической мощности
 //                 (НЕ +30%, +43% — деление, не +умножение).
 //
-// Lookup-приоритет (v0.59.623):
+// Lookup-приоритет (v0.59.624):
 //   (1) starterType === 'custom' → consumer.crfOverride (явное число)
 //   (2) consumer.starterType → STARTER_TYPES[].crf
 //       (DOL=0.50, Y/Δ=0.65, soft=0.75, inverter=0.90, VFD=0.95, electronic=1.00)
 //   (3) CONSUMER_CATALOG[subtype].defaultStarterType → STARTER_TYPES[].crf
-//   (4) (legacy) ups.crfMap[subtype] || ups.hvacDerateMap[subtype]
-//       — для проектов до v0.59.623 (UI таблицы убран в этой версии)
-//   (5) 1.0
+//   (4) 1.0
 //
-// v0.59.623: Чекбокс «Применить коэффициенты» удалён — расчёт всегда активен.
-// Если у нагрузки не задан starterType и в каталоге нет default — K=1.0
-// (нет резервирования). Это предсказуемо и не делает «магических» дефолтов.
+// Расчёт всегда активен. Если у нагрузки не задан starterType и в каталоге
+// нет default — K=1.0 (нет резервирования).
 //
 // Это решает кейс «один ИБП питает DOL-двигатель и инверторный компрессор»:
 // DOL→0.50 + inverter→0.90 — у каждой нагрузки свой коэффициент.
@@ -61,8 +58,8 @@ function _starterLabel(starterTypeId) {
   const t = STARTER_TYPES.find(x => x && x.id === starterTypeId);
   return t ? t.label : starterTypeId;
 }
-// v0.59.623: расчёт всегда активен; возвращает {factor, source, sourceLabel}.
-// source: 'override' | 'starter' | 'catalog' | 'legacy_ups_map' | 'default'
+// v0.59.623/624: возвращает {factor, source, sourceLabel}.
+// source: 'override' | 'starter' | 'catalog' | 'default'
 export function _resolveDerateWithSource(consumer, upsNode) {
   if (!upsNode) return { factor: 1.0, source: 'default', sourceLabel: 'нет ИБП' };
   const starterId = (consumer && consumer.starterType) || '';
@@ -90,16 +87,7 @@ export function _resolveDerateWithSource(consumer, upsNode) {
       }
     }
   }
-  // (4) Legacy: ups.crfMap (для проектов до v0.59.623, UI убран).
-  const rawMap = upsNode.crfMap || upsNode.hvacDerateMap;
-  const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};
-  if (sub && map[sub] != null) {
-    const v = Number(map[sub]);
-    if (Number.isFinite(v) && v > 0 && v <= 1) {
-      return { factor: v, source: 'legacy_ups_map', sourceLabel: 'legacy ИБП-policy' };
-    }
-  }
-  // (5) Без резервирования.
+  // (4) Без резервирования.
   return { factor: 1.0, source: 'default', sourceLabel: 'нет данных' };
 }
 function _resolveDerate(consumer, upsNode) {

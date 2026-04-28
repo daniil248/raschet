@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.59.623';
+export const APP_VERSION = '0.59.624';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -768,9 +768,9 @@ export const CONSUMER_CATEGORIES = {
 // 6–8×Iном → K=0.50.
 //
 // Lookup-приоритет в _resolveDerate (recalc.js):
-//   (1) consumer.crfOverride — явное число у нагрузки
+//   (1) starterType==='custom' → consumer.crfOverride
 //   (2) STARTER_TYPES[consumer.starterType].crf — по типу пуска
-//   (3) ups.crfMap[consumer.consumerSubtype] — fallback-политика ИБП
+//   (3) CONSUMER_CATALOG[subtype].defaultStarterType → STARTER_TYPES[].crf
 //   (4) 1.0
 // crf=null → требует override (для 'custom') или fallback (для 'unknown').
 export const STARTER_TYPES = [
