@@ -389,11 +389,13 @@ export function consumerInrushCurrent(n) {
 //   102.86 > 100 → overload (на 3%).
 // Раньше: capacity_eff = 100 × 0.7 = 70, load = 90. 90 > 70 → overload (на 22%).
 //
-// Поля на узле UPS:
-//   n.hvacDerateActive: boolean — пользователь явно включил derate
-//   n.hvacDerateFactor: 0..1 — коэффициент, default 0.7 (Kehua min)
+// Поля на узле UPS (v0.59.620):
+//   n.crfActive: boolean — пользователь явно включил Capacity Reservation
+//   n.crfMap: { subtypeId: factor } — К_рез per-subtype
+// Legacy (до v0.59.620, читаются как fallback):
+//   n.hvacDerateActive, n.hvacDerateMap, n.hvacDerateFactor
 //
-// Default derate factor по производителю (если active=true и factor не задан):
+// Default factor по производителю (если active=true и factor не задан):
 const HVAC_DERATE_DEFAULTS = {
   'Kehua':     0.70,
   'APC':       0.80,
@@ -404,7 +406,9 @@ const HVAC_DERATE_DEFAULTS = {
   '_default':  0.85,
 };
 export function upsHvacDerateFactor(n) {
-  if (!n || !n.hvacDerateActive) return 1.0;
+  if (!n) return 1.0;
+  const active = n.crfActive !== undefined ? !!n.crfActive : !!n.hvacDerateActive;
+  if (!active) return 1.0;
   let factor = Number(n.hvacDerateFactor);
   if (!Number.isFinite(factor) || factor <= 0) {
     const vendor = String(n.manufacturer || '').trim();

@@ -11,7 +11,7 @@ import { CONSUMER_CATALOG } from './constants.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
-// v0.59.611/619: per-subtype Capacity Reservation Factor (CRF / K_рез).
+// v0.59.611/619/620: per-subtype Capacity Reservation Factor (CRF / K_рез).
 // Категории используются ТОЛЬКО для группировки подтипов в UI.
 //
 // Терминология:
@@ -20,13 +20,17 @@ import { runModules as runCalcModules } from '../../shared/calc-modules/index.js
 //   IEC 62040 (UPS), Kehua/APC/Schneider — derating factor.
 // Семантика: для нагрузки P_phys на ИБП резервируется P_phys / K_рез.
 //   K_рез = 1.0 — без резервирования (физическая = расчётная).
-//   K_рез = 0.7 — резервирует 1/0.7 ≈ 1.43× физической мощности.
+//   K_рез = 0.7 — резервирует 1/0.7 ≈ 1.43× физической мощности
+//                 (НЕ +30%, +43% — деление, не +умножение).
 //
-// Модель n.hvacDerateMap (имя поля сохранено для backward compat):
+// Модель n.crfMap (v0.59.620):
 //   { 'conditioner': 0.65, 'motor': 0.70, 'pump': 0.70, ... }
 // Ключи — id подтипов из CONSUMER_CATALOG.
 // Lookup: map[consumer.consumerSubtype] → 1.0 if not present.
-// Если n.hvacDerateActive===false → всегда 1.0.
+// Если n.crfActive===false → всегда 1.0.
+//
+// Backward compat: читаем также legacy-поля n.hvacDerateActive / hvacDerateMap
+// из проектов до v0.59.620.
 //
 // Defaults (когда map пустой и derate active):
 const HVAC_DEFAULT_DERATE = {
@@ -46,9 +50,15 @@ function _consumerCategory(n) {
   return n.subtype || 'other';
 }
 function _resolveDerate(consumer, upsNode) {
-  if (!upsNode || !upsNode.hvacDerateActive) return 1.0;
-  const map = (upsNode.hvacDerateMap && typeof upsNode.hvacDerateMap === 'object')
-    ? upsNode.hvacDerateMap : {};
+  if (!upsNode) return 1.0;
+  // v0.59.620: новые поля n.crfActive / n.crfMap; legacy fallback на
+  // n.hvacDerateActive / n.hvacDerateMap для проектов до v0.59.620.
+  const active = upsNode.crfActive !== undefined
+    ? !!upsNode.crfActive
+    : !!upsNode.hvacDerateActive;
+  if (!active) return 1.0;
+  const rawMap = upsNode.crfMap || upsNode.hvacDerateMap;
+  const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};
   const usedMap = Object.keys(map).length ? map : HVAC_DEFAULT_DERATE;
   const sub = consumer.consumerSubtype || consumer.consumerType || '';
   if (sub) {

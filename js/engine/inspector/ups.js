@@ -205,9 +205,12 @@ export function openUpsParamsModal(n) {
   // и для каждой записи вводить коэффициент дирейтинга. В список нагрузок
   // добавить мощность без дирейтинга и после дирейтинга».
   {
-    const active = !!n.hvacDerateActive;
+    // v0.59.620: новые поля n.crfActive / n.crfMap; legacy fallback на
+    // n.hvacDerateActive / n.hvacDerateMap для проектов до v0.59.620.
+    const active = n.crfActive !== undefined ? !!n.crfActive : !!n.hvacDerateActive;
     const baseCap = Number(n.capacityKw) || 0;
-    const map = (n.hvacDerateMap && typeof n.hvacDerateMap === 'object') ? n.hvacDerateMap : {};
+    const _legacyMap = n.crfMap || n.hvacDerateMap;
+    const map = (_legacyMap && typeof _legacyMap === 'object') ? _legacyMap : {};
     // v0.59.611: Defaults — только подтипы (категории = группировка в UI).
     const DEFAULT_DERATE = {
       motor: 0.70, pump: 0.70, fan: 0.70,
@@ -608,8 +611,9 @@ export function openUpsParamsModal(n) {
       grab('up-' + flag, flag, false, true);
     }
     // v0.59.605 (Phase 18): HVAC derate.
-    grab('up-hvac-derate-active', 'hvacDerateActive', false, true);
-    grab('up-hvac-derate-factor', 'hvacDerateFactor', true);
+    // v0.59.620: новые имена crfActive / crfMap (без HVAC).
+    grab('up-hvac-derate-active', 'crfActive', false, true);
+    grab('up-hvac-derate-factor', 'hvacDerateFactor', true); // legacy single-factor (deprecated)
   };
   const upsTypeSel = document.getElementById('up-upsType');
   if (upsTypeSel) {
@@ -655,15 +659,17 @@ export function openUpsParamsModal(n) {
   // v0.59.611: reset / clear / category-toggle для derate-таблицы.
   document.getElementById('up-hvac-derate-default')?.addEventListener('click', () => {
     snapshotVisibleFields();
-    n.hvacDerateMap = {
+    n.crfMap = {
       motor: 0.70, pump: 0.70, fan: 0.70,
       conditioner: 0.70, elevator: 0.70, outdoor_unit: 0.70,
     };
+    delete n.hvacDerateMap; // legacy cleanup
     openUpsParamsModal(n);
   });
   document.getElementById('up-hvac-derate-clear')?.addEventListener('click', () => {
     snapshotVisibleFields();
-    delete n.hvacDerateMap;
+    delete n.crfMap;
+    delete n.hvacDerateMap; // legacy cleanup
     openUpsParamsModal(n);
   });
   // v0.59.615: переключатель «Применить снижающие коэффициенты» — переоткрываем
@@ -671,7 +677,8 @@ export function openUpsParamsModal(n) {
   // значения через snapshotVisibleFields.
   document.getElementById('up-hvac-derate-active')?.addEventListener('change', (e) => {
     snapshotVisibleFields();
-    n.hvacDerateActive = !!e.target.checked;
+    n.crfActive = !!e.target.checked;
+    delete n.hvacDerateActive; // legacy cleanup
     openUpsParamsModal(n);
   });
   // Update category checkbox state (checked / indeterminate / unchecked).
@@ -780,8 +787,9 @@ export function openUpsParamsModal(n) {
     if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
       n.inputs = 2;
     }
-    // v0.59.610 (Phase 18): per-category / per-subtype derate map.
-    n.hvacDerateActive = document.getElementById('up-hvac-derate-active')?.checked === true;
+    // v0.59.620 (Phase 18): per-category / per-subtype Capacity Reservation Factor map.
+    // Поля переименованы из hvacDerate* в crf* (Capacity Reservation Factor).
+    n.crfActive = document.getElementById('up-hvac-derate-active')?.checked === true;
     const map = {};
     document.querySelectorAll('[data-derate-key]').forEach(el => {
       const key = el.getAttribute('data-derate-key');
@@ -791,8 +799,10 @@ export function openUpsParamsModal(n) {
       const v = Number(raw);
       if (Number.isFinite(v) && v >= 0.30 && v <= 1.00) map[key] = v;
     });
-    if (Object.keys(map).length) n.hvacDerateMap = map; else delete n.hvacDerateMap;
-    // Cleanup устаревших полей (v0.59.609 хранил cats/subs, v0.59.605 hvacDerateFactor)
+    if (Object.keys(map).length) n.crfMap = map; else delete n.crfMap;
+    // Cleanup устаревших полей (v0.59.620: hvacDerate*; v0.59.609: cats/subs; v0.59.605: hvacDerateFactor)
+    delete n.hvacDerateActive;
+    delete n.hvacDerateMap;
     delete n.hvacDerateCategories;
     delete n.hvacDerateSubtypes;
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
