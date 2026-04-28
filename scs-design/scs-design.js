@@ -3578,16 +3578,52 @@ function computePortInternalPathMm(rackId, devId, plan) {
     const rackHeightMm = u * U_HEIGHT_MM;
     const widthMm = +rack.width || DEFAULT_RACK_WIDTH_MM;
     let positionU = 1;
+    let devHeightU = 1;
+    let devs = [];
     try {
-      const devs = getContents(rackId);
-      const dev = (devs || []).find(d => d && d.id === devId);
-      if (dev) positionU = +dev.positionU || 1;
+      devs = getContents(rackId) || [];
+      const dev = devs.find(d => d && d.id === devId);
+      if (dev) {
+        positionU = +dev.positionU || 1;
+        const t = catalogType(dev.typeId);
+        devHeightU = +dev.heightU || (t && +t.heightU) || 1;
+      }
     } catch {}
     const portHeightMm = (u - positionU + 0.5) * U_HEIGHT_MM;
     const distFromTop = ((rack.distributionFrom || 'top') === 'top');
     const verticalToExit = distFromTop ? (rackHeightMm - portHeightMm) : portHeightMm;
     const horizToSide = widthMm / 2;
-    return ORG_DETOUR_MM + horizToSide + verticalToExit + RISE_TO_TRAY_MM;
+    // v0.59.600 (Phase 16.2): автодетекция ближайшего горизонтального
+    // органайзера. Если в стойке есть kind='cable-manager' выше/ниже
+    // устройства в пределах 5U, считаем, что кабель идёт через него:
+    //   L_a1 = расстояние по вертикали от порта до центра органайзера (в мм)
+    //   L_a2 = horizToSide (горизонтально вдоль U к V-органайзеру/стенке)
+    // Если органайзер не найден, оставляем дефолт ORG_DETOUR_MM (~1U) +
+    // horizToSide (упрощённая модель).
+    let orgDetourMm = ORG_DETOUR_MM;
+    try {
+      const portTopU = positionU;
+      const portBottomU = positionU - devHeightU + 1;
+      // Center U of device (where port row sits, midway).
+      const portU = (portTopU + portBottomU) / 2;
+      let bestDistU = Infinity;
+      for (const od of devs) {
+        if (!od || od.id === devId) continue;
+        if (!isOrganizer(od)) continue;
+        const oTop = +od.positionU || 1;
+        const oT = catalogType(od.typeId);
+        const oH = +od.heightU || (oT && +oT.heightU) || 1;
+        const oCenter = oTop - (oH - 1) / 2;
+        const distU = Math.abs(oCenter - portU);
+        if (distU < bestDistU) bestDistU = distU;
+      }
+      if (bestDistU !== Infinity && bestDistU <= 5) {
+        // расстояние в мм, но не меньше ORG_DETOUR_MM (физически кабель
+        // ещё разгибается из порта)
+        orgDetourMm = Math.max(ORG_DETOUR_MM, bestDistU * U_HEIGHT_MM);
+      }
+    } catch {}
+    return orgDetourMm + horizToSide + verticalToExit + RISE_TO_TRAY_MM;
   } catch { return 0; }
 }
 
