@@ -200,167 +200,110 @@ export function openUpsParamsModal(n) {
     </div>`);
   }
 
-  // v0.59.610 (Phase 18): per-category / per-subtype derate map.
-  // Юзер: «выведем в характеристиках ибп список всех категорий и подтипов
-  // и для каждой записи вводить коэффициент дирейтинга. В список нагрузок
-  // добавить мощность без дирейтинга и после дирейтинга».
+  // v0.59.623 (Phase 18): K_рез + cap «макс. загрузка ИБП».
+  //   — Чекбокс «Применить коэффициенты резервирования мощности» УБРАН:
+  //     расчёт всегда активен. K_рез теперь определяется только на нагрузке
+  //     (тип пуска / свой K). Без указания → 1.0 (без резервирования).
+  //   — Таблица крф-коэффициентов по подтипам УБРАНА: per-subtype политика
+  //     ИБП больше не используется (legacy crfMap читается ради старых проектов).
+  //   — Добавлен НОВЫЙ блок «Максимальная загрузка ИБП» с чекбоксом и
+  //     полем 0.30..1.00 (например 0.80 = ИБП можно нагружать не более чем
+  //     на 80%). Влияет на отметку «перегруз»: capacity_eff = capacityKw × maxF.
   {
-    // v0.59.620: новые поля n.crfActive / n.crfMap; legacy fallback на
-    // n.hvacDerateActive / n.hvacDerateMap для проектов до v0.59.620.
-    const active = n.crfActive !== undefined ? !!n.crfActive : !!n.hvacDerateActive;
     const baseCap = Number(n.capacityKw) || 0;
-    const _legacyMap = n.crfMap || n.hvacDerateMap;
-    const map = (_legacyMap && typeof _legacyMap === 'object') ? _legacyMap : {};
-    // v0.59.611: Defaults — только подтипы (категории = группировка в UI).
-    const DEFAULT_DERATE = {
-      motor: 0.70, pump: 0.70, fan: 0.70,
-      conditioner: 0.70, elevator: 0.70, outdoor_unit: 0.70,
-    };
-    const effectiveMap = Object.keys(map).length ? map : DEFAULT_DERATE;
-    const CAT_LABELS = {
-      hvac: '❄ Климат / вентиляция', power: '⚙ Силовая нагрузка',
-      lighting: '💡 Освещение', socket: '🔌 Розетки',
-      it: '🖥 IT / серверы', lowvoltage: '📡 Слаботочные',
-      process: '🏭 Технологическая', other: '— Прочее',
-    };
+    const maxLoadActive = !!n.maxLoadFactorActive;
+    const maxLoadVal = Number.isFinite(Number(n.maxLoadFactor)) && Number(n.maxLoadFactor) > 0
+      ? Number(n.maxLoadFactor) : 0.80;
+    const effCap = maxLoadActive ? baseCap * Math.max(0.30, Math.min(1.00, maxLoadVal)) : baseCap;
 
     const pIT = Number(n._loadKwIT) || 0;
     const pHVAC = Number(n._loadKwHVAC) || 0;
     const hvacLoads = Array.isArray(n._hvacLoads) ? n._hvacLoads : [];
     const itLoads = Array.isArray(n._itLoads) ? n._itLoads : [];
     const wLoad = Number(n._loadKwWeighted) || (pIT + pHVAC);
-    const utilPct = baseCap > 0 ? (wLoad / baseCap * 100) : 0;
+    const utilPct = effCap > 0 ? (wLoad / effCap * 100) : 0;
     const overloadStyle = utilPct > 100 ? 'color:#b91c1c;font-weight:600' : (utilPct > 90 ? 'color:#c2410c' : '');
 
-    h.push('<h4 style="margin:16px 0 8px">Коэффициенты резервирования мощности (CRF / Derating Factor)</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">K_рез ∈ [0.30, 1.00] — какую долю своей номинальной мощности нагрузка реально использует на ИБП. <b>Приоритет:</b> Override на нагрузке → тип пуска нагрузки (DOL/soft/VFD/inverter) → таблица ниже как <i>fallback-политика</i> ИБП по подтипу. Если у нагрузки задан тип пуска — таблица ниже игнорируется для этой нагрузки.</div>');
+    h.push('<h4 style="margin:16px 0 8px">Резервирование мощности и cap загрузки ИБП</h4>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">K_рез задаётся <b>на каждой нагрузке</b> (тип пуска или «свой K»). Если не задан — нагрузка идёт с K=1.0 (полная мощность). Здесь, на ИБП, можно ограничить максимальную допустимую загрузку (например 80% от номинала) — это отдельный коэффициент-«потолок» для проверки перегруза.</div>');
     h.push(`<details style="margin-bottom:8px">
-      <summary style="cursor:pointer;font-size:11px;color:#475569">📖 Подробнее о расчёте</summary>
+      <summary style="cursor:pointer;font-size:11px;color:#475569">📖 Как это работает</summary>
       <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px">
-        <b>Терминология:</b><br>
-        RU: Коэффициент резервирования мощности (К_рез)<br>
-        EN: Capacity Reservation Factor (CRF) / Derating Factor (DRF)<br>
-        Это инженерная практика, не нормативный стандарт — значения зависят
-        от типа пуска (DOL / soft-start / VFD).
+        <b>K_рез нагрузки</b> (Capacity Reservation Factor / Derating Factor)<br>
+        — задаётся в свойствах <i>каждой нагрузки</i> (поле «Тип пуска»):<br>
+        DOL = 0.50, Y/Δ = 0.65, soft-start = 0.75, inverter = 0.90,
+        VFD = 0.95, electronic = 1.00; либо «Пользовательский (свой K)».<br>
+        Эффективная нагрузка ИБП: <code>Σ P_i / K_рез_i</code>.
         <br><br>
-        <b>Формула:</b><br>
-        <code>load_effective = Σ P_i / K_рез_i</code> (сумма по всем потребителям)<br>
-        <code>overload = load_effective &gt; capacity</code><br><br>
-        <b>Приоритет lookup K_рез</b> (v0.59.621):<br>
-        1. <code>consumer.crfOverride</code> — явное число у нагрузки<br>
-        2. <code>consumer.starterType</code> — тип пуска нагрузки
-           (DOL=0.50, Y/Δ=0.65, soft=0.75, inverter=0.90, VFD=0.95, electronic=1.00)<br>
-        3. <code>CONSUMER_CATALOG[subtype].defaultStarterType</code> — типичный пуск для подтипа<br>
-        4. <code>ups.crfMap[subtype]</code> — fallback-политика этого ИБП<br>
-        5. 1.00 (без резервирования)
+        <b>Приоритет lookup K_рез</b>:<br>
+        1. Если у нагрузки выбран «Пользовательский» → её собственное число<br>
+        2. Иначе — из таблицы STARTER_TYPES по выбранному типу пуска<br>
+        3. Иначе — default тип пуска для подтипа (motor→DOL, conditioner→inverter…)<br>
+        4. Иначе K = 1.00
         <br><br>
-        <b>Пример смешанной нагрузки:</b> ИБП 100 kW питает:<br>
-        — Сервер 60 kW (electronic, K=1.00) → 60 kW<br>
-        — Чиллер DOL 20 kW (K=0.50) → 40 kW<br>
-        — Кондиционер inverter 15 kW (K=0.90) → 16.7 kW<br>
-        Σ = 116.7 kW &gt; 100 kW → перегруз 16.7%.
+        <b>Cap «Максимальная загрузка ИБП»</b> (опционально):<br>
+        Например 0.80 → ИБП считается перегруженным при загрузке &gt; 80%
+        от номинала. <code>capacity_eff = capacityKw × maxLoadFactor</code>.
+        Это инженерный запас на старение, температуру, скачки нагрузки.
         <br><br>
-        <b>Важно:</b> K_рез влияет ТОЛЬКО на проверку перегруза этого ИБП.
-        Upstream (utility / panel) видит обычную физическую нагрузку.
-        ИБП также не пропускает K_рез другим ИБП в цепочке — каждый
-        ИБП имеет свой K_рез, друг другу не передают.
+        <b>Пример:</b> ИБП 100 kW, cap = 0.80, питает:<br>
+        — Сервер 50 kW (K=1.00) → 50 kW<br>
+        — Чиллер DOL 15 kW (K=0.50) → 30 kW<br>
+        Σ = 80 kW; capacity_eff = 80 kW → загрузка ровно 100% (на пределе).
+        <br><br>
+        <b>Важно:</b> K_рез и cap влияют ТОЛЬКО на проверку перегруза этого
+        ИБП. Upstream (utility / panel) видит обычную физическую нагрузку.
       </div>
     </details>`);
-    h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px">
-      <input type="checkbox" id="up-hvac-derate-active"${active ? ' checked' : ''}>
-      <span>Применить коэффициенты резервирования мощности</span>
-    </label>`);
 
-    // v0.59.611: subtypes сгруппированы по category. Категория = чекбокс
-    // (selects all subtypes in this category), индивидуальные input
-    // делают чекбокс indeterminate.
-    // CAT_LABELS уже объявлен выше — переиспользуем.
-    // Группировка subtypes по category.
-    const subsByCat = new Map();
-    (CONSUMER_CATALOG || []).forEach(s => {
-      const cat = s.category || 'other';
-      if (!subsByCat.has(cat)) subsByCat.set(cat, []);
-      subsByCat.get(cat).push(s);
-    });
-    const _coefInput = (subId) => {
-      const v = effectiveMap[subId];
-      const value = (Number.isFinite(Number(v)) && v > 0 && v < 1) ? Number(v) : '';
-      return `<input type="number" min="0.30" max="1.00" step="0.05" data-derate-key="${escAttr(subId)}" value="${value}" placeholder="1.00" style="width:64px;font-size:11px;padding:2px 4px"${active ? '' : ' disabled'}>`;
-    };
-    const _catGroup = (catId, subs) => {
-      const subIds = subs.map(s => s.id);
-      const checkedCount = subIds.filter(id => {
-        const v = effectiveMap[id];
-        return Number.isFinite(Number(v)) && v > 0 && v < 1;
-      }).length;
-      const allChecked = checkedCount === subs.length && subs.length > 0;
-      const someChecked = checkedCount > 0 && !allChecked;
-      const ckId = 'up-hvac-cat-cb-' + catId;
-      return `<div style="margin-bottom:10px">
-        <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#e0f2fe;border-radius:4px;font-weight:600">
-          <input type="checkbox" id="${ckId}" data-up-hvac-cat="${catId}"${allChecked ? ' checked' : ''}${active ? '' : ' disabled'}>
-          <label for="${ckId}" style="cursor:pointer;flex:1">${CAT_LABELS[catId] || catId}</label>
-          <span class="muted" style="font-size:10px">${checkedCount}/${subs.length}</span>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:2px">
-          <tbody>
-            ${subs.map(s => `<tr style="border-bottom:1px solid #f1f5f9">
-              <td style="padding:3px 12px">${escHtml(s.label)}</td>
-              <td style="padding:3px 6px;text-align:right;width:90px">${_coefInput(s.id)}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-    };
-    // v0.59.615: блок коэффициентов появляется ТОЛЬКО если активирован чекбокс
-    // «Применить снижающие коэффициенты» (юзер 2026-04-28). Когда выключен —
-    // блок скрыт, не загромождает интерфейс.
-    if (active) {
-      h.push(`<details style="margin-bottom:8px" open>
-        <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 K_рез по подтипам нагрузки</summary>
-        <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
-          <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = K_рез = 1.0 (без резервирования).</div>
-          ${Array.from(subsByCat.entries()).map(([catId, subs]) => _catGroup(catId, subs)).join('')}
-          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Пресет: K_рез = 0.70 для механики</button>
-            <button type="button" id="up-hvac-derate-clear" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">✕ Очистить все</button>
-          </div>
-        </div>
-      </details>`);
+    // v0.59.623: блок «Максимальная загрузка ИБП» (cap).
+    h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">
+      <input type="checkbox" id="up-maxload-active"${maxLoadActive ? ' checked' : ''}>
+      <span>Применить коэффициент <b>максимальной загрузки</b> ИБП</span>
+    </label>`);
+    if (maxLoadActive) {
+      h.push(`<div class="field" style="margin-bottom:8px">
+        <label style="text-transform:uppercase;font-size:11px;color:#666">Макс. загрузка (0.30–1.00)</label>
+        <input type="number" id="up-maxload-factor" min="0.30" max="1.00" step="0.05" value="${maxLoadVal}">
+        <div class="muted" style="font-size:10px;margin-top:2px">${maxLoadVal.toFixed(2)} = ИБП можно нагружать не более чем на ${(maxLoadVal*100).toFixed(0)}% от номинала. capacity_eff = ${fmt(baseCap)} × ${maxLoadVal.toFixed(2)} = <b>${fmt(effCap)} kW</b>.</div>
+      </div>`);
     }
 
-    // v0.59.616: запас = capacity − эффективная нагрузка.
-    const reserveKw = baseCap - wLoad;
-    const reservePct = baseCap > 0 ? (reserveKw / baseCap * 100) : 0;
+    // v0.59.616/623: запас = effective_capacity − эффективная нагрузка.
+    const reserveKw = effCap - wLoad;
+    const reservePct = effCap > 0 ? (reserveKw / effCap * 100) : 0;
     const reserveStyle = reserveKw < 0
       ? 'color:#b91c1c;font-weight:600'
       : (reservePct < 10 ? 'color:#c2410c' : 'color:#15803d;font-weight:600');
     h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
-      <b>Капасити:</b> ${fmt(baseCap)} kW<br>
-      <b>Без резервирования (K_рез=1.0):</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>С резервированием:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
+      <b>Номинал:</b> ${fmt(baseCap)} kW${maxLoadActive ? ` <span class="muted">(cap ×${maxLoadVal.toFixed(2)} → eff ${fmt(effCap)} kW)</span>` : ''}<br>
+      <b>Без резервирования (K=1.0):</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>С резервированием (K&lt;1):</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
       <b>Эффективная нагрузка:</b> <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
       <br><b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}
-      <br><b>Запас:</b> <span style="${reserveStyle}">${fmt(reserveKw)} kW</span> <span class="muted">(${reservePct.toFixed(1)}% от capacity)</span>${reserveKw < 0 ? ' ⚠ нехватка' : (reservePct < 10 ? ' ⚠ малый запас' : '')}
+      <br><b>Запас:</b> <span style="${reserveStyle}">${fmt(reserveKw)} kW</span> <span class="muted">(${reservePct.toFixed(1)}% от ${maxLoadActive ? 'eff capacity' : 'capacity'})</span>${reserveKw < 0 ? ' ⚠ нехватка' : (reservePct < 10 ? ' ⚠ малый запас' : '')}
     </div>`);
 
-    // v0.59.610: список нагрузок с раздельными колонками P и P_eff.
+    // v0.59.623: список нагрузок с источником K (тип пуска / свой K / default).
     if (hvacLoads.length || itLoads.length) {
-      const _row = (l, color) => `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;background:${color};border-radius:3px;margin-bottom:2px;align-items:center">
-        <span>${escHtml(l.label)} <span class="muted" style="font-size:10px">[${escHtml(l.sub || '—')}/${escHtml(l.cat || '—')}]</span></span>
+      const _row = (l, color) => {
+        const srcLbl = l.sourceLabel ? ` <span class="muted" style="font-size:10px">(${escHtml(l.sourceLabel)})</span>` : '';
+        return `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;background:${color};border-radius:3px;margin-bottom:2px;align-items:center">
+        <span>${escHtml(l.label)} <span class="muted" style="font-size:10px">[${escHtml(l.sub || '—')}/${escHtml(l.cat || '—')}]</span>${srcLbl}</span>
         <span style="font-size:10px;color:#64748b">×${(l.derate || 1).toFixed(2)}</span>
         <span style="font-variant-numeric:tabular-nums;color:#475569">${fmt(l.P)} kW</span>
         <b style="font-variant-numeric:tabular-nums;${l.derate < 0.999 ? 'color:#0c4a6e' : ''}">→ ${fmt(l.Peff)} kW</b>
       </div>`;
+      };
       h.push(`<details style="margin-top:6px" open>
         <summary style="cursor:pointer;font-size:11px;color:#475569">📋 Список нагрузок downstream (${hvacLoads.length + itLoads.length})</summary>
         <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px;max-height:300px;overflow-y:auto">
           <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;font-weight:600;color:#475569;border-bottom:1px solid #cbd5e1;margin-bottom:4px;font-size:10px;text-transform:uppercase">
-            <span>Устройство</span>
+            <span>Устройство (источник K)</span>
             <span>K_рез</span>
             <span>P</span>
             <span>P эфф.</span>
           </div>
-          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ С резервированием K_рез < 1 (${hvacLoads.length}):</div>` : ''}
+          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ С резервированием K_рез &lt; 1 (${hvacLoads.length}):</div>` : ''}
           ${hvacLoads.map(l => _row(l, '#dbeafe')).join('')}
           ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin:8px 0 4px">✓ Без резервирования K_рез = 1 (${itLoads.length}):</div>` : ''}
           ${itLoads.map(l => _row(l, '#dcfce7')).join('')}
@@ -617,10 +560,9 @@ export function openUpsParamsModal(n) {
     for (const flag of ['hasInputBreaker','hasInputBypassBreaker','hasOutputBreaker','hasBypassBreaker','hasBatteryBreaker']) {
       grab('up-' + flag, flag, false, true);
     }
-    // v0.59.605 (Phase 18): HVAC derate.
-    // v0.59.620: новые имена crfActive / crfMap (без HVAC).
-    grab('up-hvac-derate-active', 'crfActive', false, true);
-    grab('up-hvac-derate-factor', 'hvacDerateFactor', true); // legacy single-factor (deprecated)
+    // v0.59.623: cap «Максимальная загрузка ИБП» (новый блок).
+    grab('up-maxload-active', 'maxLoadFactorActive', false, true);
+    grab('up-maxload-factor', 'maxLoadFactor', true);
   };
   const upsTypeSel = document.getElementById('up-upsType');
   if (upsTypeSel) {
@@ -663,64 +605,16 @@ export function openUpsParamsModal(n) {
     });
   }
 
-  // v0.59.611: reset / clear / category-toggle для derate-таблицы.
-  document.getElementById('up-hvac-derate-default')?.addEventListener('click', () => {
+  // v0.59.623: переключатель «Максимальная загрузка ИБП» — переоткрываем
+  // модалку, чтобы поле ввода появилось/исчезло.
+  document.getElementById('up-maxload-active')?.addEventListener('change', (e) => {
     snapshotVisibleFields();
-    n.crfMap = {
-      motor: 0.70, pump: 0.70, fan: 0.70,
-      conditioner: 0.70, elevator: 0.70, outdoor_unit: 0.70,
-    };
-    delete n.hvacDerateMap; // legacy cleanup
+    n.maxLoadFactorActive = !!e.target.checked;
+    if (n.maxLoadFactorActive && (typeof n.maxLoadFactor !== 'number' || !(n.maxLoadFactor > 0 && n.maxLoadFactor <= 1))) {
+      n.maxLoadFactor = 0.80; // default
+    }
     openUpsParamsModal(n);
   });
-  document.getElementById('up-hvac-derate-clear')?.addEventListener('click', () => {
-    snapshotVisibleFields();
-    delete n.crfMap;
-    delete n.hvacDerateMap; // legacy cleanup
-    openUpsParamsModal(n);
-  });
-  // v0.59.615: переключатель «Применить снижающие коэффициенты» — переоткрываем
-  // модалку, чтобы блок коэффициентов появился/исчез. Сохраняем введённые
-  // значения через snapshotVisibleFields.
-  document.getElementById('up-hvac-derate-active')?.addEventListener('change', (e) => {
-    snapshotVisibleFields();
-    n.crfActive = !!e.target.checked;
-    delete n.hvacDerateActive; // legacy cleanup
-    openUpsParamsModal(n);
-  });
-  // Update category checkbox state (checked / indeterminate / unchecked).
-  // ОБЯЗАТЕЛЬНО объявляем ПЕРЕД handlers, которые её вызывают (TDZ для const).
-  const _refreshHvacIndeterminate = () => {
-    document.querySelectorAll('[data-up-hvac-cat]').forEach(cb => {
-      const group = cb.closest('div').nextElementSibling;
-      if (!group) return;
-      const inputs = group.querySelectorAll('input[data-derate-key]');
-      let total = 0, filled = 0;
-      inputs.forEach(inp => {
-        total++;
-        const v = Number(inp.value);
-        if (Number.isFinite(v) && v > 0 && v < 1) filled++;
-      });
-      cb.indeterminate = filled > 0 && filled < total;
-      cb.checked = total > 0 && filled === total;
-    });
-  };
-  // Category checkbox: clicking selects/deselects all subtypes in that category.
-  document.querySelectorAll('[data-up-hvac-cat]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const targetVal = cb.checked ? 0.70 : '';
-      const group = cb.closest('div').nextElementSibling;
-      if (!group) return;
-      group.querySelectorAll('input[data-derate-key]').forEach(inp => {
-        inp.value = targetVal;
-      });
-      _refreshHvacIndeterminate();
-    });
-  });
-  document.querySelectorAll('input[data-derate-key]').forEach(inp => {
-    inp.addEventListener('input', _refreshHvacIndeterminate);
-  });
-  _refreshHvacIndeterminate();
 
   const applyBtn = document.getElementById('ups-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
@@ -794,24 +688,25 @@ export function openUpsParamsModal(n) {
     if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
       n.inputs = 2;
     }
-    // v0.59.620 (Phase 18): per-category / per-subtype Capacity Reservation Factor map.
-    // Поля переименованы из hvacDerate* в crf* (Capacity Reservation Factor).
-    n.crfActive = document.getElementById('up-hvac-derate-active')?.checked === true;
-    const map = {};
-    document.querySelectorAll('[data-derate-key]').forEach(el => {
-      const key = el.getAttribute('data-derate-key');
-      if (!key) return;
-      const raw = String(el.value ?? '').trim();
-      if (raw === '') return; // empty = inherit / no override
-      const v = Number(raw);
-      if (Number.isFinite(v) && v >= 0.30 && v <= 1.00) map[key] = v;
-    });
-    if (Object.keys(map).length) n.crfMap = map; else delete n.crfMap;
-    // Cleanup устаревших полей (v0.59.620: hvacDerate*; v0.59.609: cats/subs; v0.59.605: hvacDerateFactor)
+    // v0.59.623: cap «Максимальная загрузка ИБП».
+    n.maxLoadFactorActive = document.getElementById('up-maxload-active')?.checked === true;
+    if (n.maxLoadFactorActive) {
+      const mf = Number(document.getElementById('up-maxload-factor')?.value);
+      if (Number.isFinite(mf) && mf >= 0.30 && mf <= 1.00) {
+        n.maxLoadFactor = mf;
+      } else if (typeof n.maxLoadFactor !== 'number') {
+        n.maxLoadFactor = 0.80; // default
+      }
+    } else {
+      // активен=false → значение оставляем (для последующего включения)
+    }
+    // v0.59.623: убрана UI таблица crfMap. Поля legacy не трогаем
+    // (читаются _resolveDerateWithSource как fallback для старых проектов).
+    // Cleanup устаревших служебных полей (v0.59.605/609/620).
     delete n.hvacDerateActive;
-    delete n.hvacDerateMap;
     delete n.hvacDerateCategories;
     delete n.hvacDerateSubtypes;
+    delete n.crfActive; // v0.59.623: чекбокс убран, расчёт всегда активен
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
       document.getElementById('modal-ups-params').classList.add('hidden');

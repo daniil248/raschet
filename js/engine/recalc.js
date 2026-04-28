@@ -24,31 +24,22 @@ import { runModules as runCalcModules } from '../../shared/calc-modules/index.js
 //   K_рез = 0.7 — резервирует 1/0.7 ≈ 1.43× физической мощности
 //                 (НЕ +30%, +43% — деление, не +умножение).
 //
-// Lookup-приоритет (v0.59.622):
+// Lookup-приоритет (v0.59.623):
 //   (1) starterType === 'custom' → consumer.crfOverride (явное число)
-//   (2) STARTER_TYPES[consumer.starterType].crf — по типу пуска нагрузки
-//       (DOL=0.50, star_delta=0.65, soft=0.75, inverter=0.90, vfd=0.95, electronic=1.00)
-//   (3) STARTER_TYPES[CONSUMER_CATALOG[subtype].defaultStarterType].crf
-//       — типичный пуск для подтипа (motor→DOL, conditioner→inverter, …)
-//   (4) ups.crfMap[consumer.consumerSubtype] — policy ИБП по подтипу
-//   (5) HVAC_DEFAULT_DERATE[subtype] — глобальный default 0.70 для механики
-//   (6) 1.0
+//   (2) consumer.starterType → STARTER_TYPES[].crf
+//       (DOL=0.50, Y/Δ=0.65, soft=0.75, inverter=0.90, VFD=0.95, electronic=1.00)
+//   (3) CONSUMER_CATALOG[subtype].defaultStarterType → STARTER_TYPES[].crf
+//   (4) (legacy) ups.crfMap[subtype] || ups.hvacDerateMap[subtype]
+//       — для проектов до v0.59.623 (UI таблицы убран в этой версии)
+//   (5) 1.0
+//
+// v0.59.623: Чекбокс «Применить коэффициенты» удалён — расчёт всегда активен.
+// Если у нагрузки не задан starterType и в каталоге нет default — K=1.0
+// (нет резервирования). Это предсказуемо и не делает «магических» дефолтов.
 //
 // Это решает кейс «один ИБП питает DOL-двигатель и инверторный компрессор»:
-// раньше оба считались бы по 0.7 (per-subtype map), теперь DOL→0.50 + inverter→0.90.
-//
-// Backward compat: читаем также legacy-поля n.hvacDerateActive / hvacDerateMap
-// из проектов до v0.59.620.
-//
-// Defaults (для шага 4 — когда тип пуска не задан и map пустой):
-const HVAC_DEFAULT_DERATE = {
-  motor: 0.70,
-  pump: 0.70,
-  fan: 0.70,
-  conditioner: 0.70,
-  elevator: 0.70,
-  outdoor_unit: 0.70,
-};
+// DOL→0.50 + inverter→0.90 — у каждой нагрузки свой коэффициент.
+
 function _consumerCategory(n) {
   const sub = n.consumerSubtype || n.consumerType || '';
   if (sub) {
@@ -65,48 +56,54 @@ function _crfByStarterType(starterTypeId) {
   const v = Number(t.crf);
   return (Number.isFinite(v) && v > 0 && v <= 1) ? v : null;
 }
-function _resolveDerate(consumer, upsNode) {
-  if (!upsNode) return 1.0;
-  // v0.59.620: новые поля n.crfActive / n.crfMap; legacy fallback на
-  // n.hvacDerateActive / n.hvacDerateMap для проектов до v0.59.620.
-  const active = upsNode.crfActive !== undefined
-    ? !!upsNode.crfActive
-    : !!upsNode.hvacDerateActive;
-  if (!active) return 1.0;
-  // (1) Тип пуска === 'custom' → читать crfOverride.
+function _starterLabel(starterTypeId) {
+  if (!starterTypeId) return '';
+  const t = STARTER_TYPES.find(x => x && x.id === starterTypeId);
+  return t ? t.label : starterTypeId;
+}
+// v0.59.623: расчёт всегда активен; возвращает {factor, source, sourceLabel}.
+// source: 'override' | 'starter' | 'catalog' | 'legacy_ups_map' | 'default'
+export function _resolveDerateWithSource(consumer, upsNode) {
+  if (!upsNode) return { factor: 1.0, source: 'default', sourceLabel: 'нет ИБП' };
   const starterId = (consumer && consumer.starterType) || '';
+  // (1) starterType === 'custom' → crfOverride.
   if (starterId === 'custom') {
     const ov = Number(consumer && consumer.crfOverride);
-    if (Number.isFinite(ov) && ov > 0 && ov <= 1) return ov;
-    // custom без override → fallback (как будто starterType не задан).
-  } else {
-    // (2) Тип пуска явно задан на нагрузке (не custom).
-    const fromStarter = _crfByStarterType(starterId);
-    if (fromStarter != null) return fromStarter;
+    if (Number.isFinite(ov) && ov > 0 && ov <= 1) {
+      return { factor: ov, source: 'override', sourceLabel: 'свой K' };
+    }
+  } else if (starterId) {
+    // (2) Тип пуска явно задан на нагрузке.
+    const v = _crfByStarterType(starterId);
+    if (v != null) {
+      return { factor: v, source: 'starter', sourceLabel: 'тип: ' + _starterLabel(starterId) };
+    }
   }
-  // (3) Default-тип пуска по подтипу из CONSUMER_CATALOG.
+  // (3) Default тип пуска по подтипу из CONSUMER_CATALOG.
   const sub = (consumer && (consumer.consumerSubtype || consumer.consumerType)) || '';
   if (sub) {
     const cat = CONSUMER_CATALOG.find(x => x && x.id === sub);
     if (cat && cat.defaultStarterType) {
-      const fromDefault = _crfByStarterType(cat.defaultStarterType);
-      if (fromDefault != null) return fromDefault;
+      const v = _crfByStarterType(cat.defaultStarterType);
+      if (v != null) {
+        return { factor: v, source: 'catalog', sourceLabel: 'default: ' + _starterLabel(cat.defaultStarterType) };
+      }
     }
   }
-  // (4) Policy ИБП по подтипу.
+  // (4) Legacy: ups.crfMap (для проектов до v0.59.623, UI убран).
   const rawMap = upsNode.crfMap || upsNode.hvacDerateMap;
   const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};
-  if (sub) {
+  if (sub && map[sub] != null) {
     const v = Number(map[sub]);
-    if (Number.isFinite(v) && v > 0 && v <= 1) return v;
-    // (5) Default для механики (если map UPS пустой).
-    if (Object.keys(map).length === 0) {
-      const dv = Number(HVAC_DEFAULT_DERATE[sub]);
-      if (Number.isFinite(dv) && dv > 0 && dv <= 1) return dv;
+    if (Number.isFinite(v) && v > 0 && v <= 1) {
+      return { factor: v, source: 'legacy_ups_map', sourceLabel: 'legacy ИБП-policy' };
     }
   }
-  // (6) Без резервирования.
-  return 1.0;
+  // (5) Без резервирования.
+  return { factor: 1.0, source: 'default', sourceLabel: 'нет данных' };
+}
+function _resolveDerate(consumer, upsNode) {
+  return _resolveDerateWithSource(consumer, upsNode).factor;
 }
 // Возвращает weighted-нагрузку ИБП с учётом HVAC-derate.
 // IT-часть считается 1×, механическая часть — 1/derate.
@@ -142,10 +139,12 @@ function _computeUpsWeightedLoad(upsNode) {
         const sub = next.consumerSubtype || next.consumerType || '';
         const cat = _consumerCategory(next);
         const label = next.name || next.tag || sub || next.id;
-        const derate = _resolveDerate(next, upsNode);
+        const dr = _resolveDerateWithSource(next, upsNode);
+        const derate = dr.factor;
         const Peff = derate > 0 ? Pphys / derate : Pphys;
         weightedTotal += Peff;
-        const entry = { id: next.id, label, P: Pphys, Peff, sub, cat, derate };
+        // v0.59.623: храним source для отображения в UI («тип: inverter», «свой K» и т.п.)
+        const entry = { id: next.id, label, P: Pphys, Peff, sub, cat, derate, source: dr.source, sourceLabel: dr.sourceLabel };
         if (derate < 0.999) {
           totalHVAC += Pphys;
           hvacLoads.push(entry);

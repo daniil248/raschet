@@ -285,9 +285,10 @@ export function openConsumerParamsModal(n) {
     </select>`));
     h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Актуально для In ≤ 125 А. Выше — автоматически MCCB/ACB.</div>`);
   }
-  // v0.59.621: Тип пуска и K_рез (CRF). Влияет ТОЛЬКО при питании от ИБП
-  // и активном n.crfActive у ИБП. На обычной сети — безразлично.
+  // v0.59.621: Тип пуска и K_рез (CRF). Влияет ТОЛЬКО при питании от ИБП.
+  // На обычной сети без ИБП — безразлично.
   // v0.59.622: «Пользовательский» в списке → показывает поле ввода K.
+  // v0.59.623: расчёт всегда активен (чекбокс на ИБП убран).
   {
     const curStarter = n.starterType || '';
     const opts = [
@@ -305,7 +306,7 @@ export function openConsumerParamsModal(n) {
       <label style="text-transform:uppercase;font-size:11px;color:#666">Свой K_рез (0.30–1.00)${_lkIcon}</label>
       <input type="number" id="cp-crfOverride" min="0.30" max="1.00" step="0.01" value="${ovVal}" placeholder="например 0.85"${_lk}>
     </div>`);
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px;line-height:1.4">Приоритет: Тип пуска > политика ИБП по подтипу > 1.00. На сети без ИБП — игнорируется.</div>`);
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px;line-height:1.4">K_рез = доля номинала, реально требуемая нагрузке на ИБП. Приоритет: «Пользовательский» (свой K) > выбранный тип пуска > default по подтипу из каталога > 1.00. На обычной сети (без ИБП) — игнорируется.</div>`);
   }
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
   // Наличие нейтрали (N) и защитного проводника (PE) у этого

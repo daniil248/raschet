@@ -16,7 +16,7 @@ import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } 
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
 import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
-import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES } from './engine/constants.js';
+import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG } from './engine/constants.js';
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 import { listProjects as _listProjectCtx, createProject as _createProjectCtx } from '../shared/project-storage.js';
@@ -2848,6 +2848,9 @@ const _CONSUMERS_TABLE_COLUMNS = [
   { id: 'cosPhi', label: 'cos φ', default: true },
   { id: 'kUse', label: 'Kи', default: true },
   { id: 'phase', label: 'Фаза', default: true },
+  // v0.59.623: тип пуска и K_рез (для питания от ИБП).
+  { id: 'starterType', label: 'Тип пуска', default: true },
+  { id: 'crf', label: 'K_рез', default: true },
 ];
 let _consumersTableVisibility = _loadColumnVisibility('consumers', _CONSUMERS_TABLE_COLUMNS);
 
@@ -5836,6 +5839,27 @@ function renderConsumersTable() {
       case 'cosPhi': return Number(n.cosPhi) || 0;
       case 'kUse': return Number(n.kUse) || 0;
       case 'phase': return n.phase || '';
+      case 'starterType': return n.starterType || '';
+      case 'crf': {
+        // v0.59.623: вычисляемый K — для сортировки нужно повторить lookup.
+        const sid = n.starterType || '';
+        if (sid === 'custom') {
+          const ov = Number(n.crfOverride);
+          if (Number.isFinite(ov) && ov > 0 && ov <= 1) return ov;
+        } else if (sid) {
+          const t = (_STARTER_TYPES || []).find(x => x && x.id === sid);
+          if (t && t.crf != null) return Number(t.crf);
+        }
+        const sub = n.consumerSubtype || n.consumerType || '';
+        if (sub) {
+          const cat = (_CONSUMER_CATALOG || []).find(x => x && x.id === sub);
+          if (cat && cat.defaultStarterType) {
+            const t = (_STARTER_TYPES || []).find(x => x && x.id === cat.defaultStarterType);
+            if (t && t.crf != null) return Number(t.crf);
+          }
+        }
+        return 1.0;
+      }
       default: return '';
     }
   };
@@ -5892,6 +5916,8 @@ function renderConsumersTable() {
           ${ifShow('cosPhi', sortHdr('cosPhi', 'cos φ', 'right'))}
           ${ifShow('kUse', sortHdr('kUse', 'Kи', 'right'))}
           ${ifShow('phase', sortHdr('phase', 'Фаза', 'center'))}
+          ${ifShow('starterType', sortHdr('starterType', 'Тип пуска', 'left'))}
+          ${ifShow('crf', sortHdr('crf', 'K_рез', 'right'))}
         </tr>
         <tr style="background:#fafbfc;position:sticky;top:28px;z-index:1">
           <th></th>
@@ -5904,6 +5930,8 @@ function renderConsumersTable() {
           ${ifShow('cosPhi', '<th></th>')}
           ${ifShow('kUse', '<th></th>')}
           ${ifShow('phase', '<th></th>')}
+          ${ifShow('starterType', '<th></th>')}
+          ${ifShow('crf', '<th></th>')}
         </tr>
       </thead>
       <tbody>`];
@@ -5934,6 +5962,43 @@ function renderConsumersTable() {
         ${ifShow('cosPhi', `<td style="padding:5px 8px;text-align:right"><input class="ctc-cosPhi" data-id="${esc(n.id)}" type="number" min="0.1" max="1" step="0.01" value="${Number(n.cosPhi) || 0.92}" style="width:56px;padding:3px 6px;text-align:right"></td>`)}
         ${ifShow('kUse', `<td style="padding:5px 8px;text-align:right"><input class="ctc-kUse" data-id="${esc(n.id)}" type="number" min="0" max="1.5" step="0.05" value="${Number(n.kUse) || 1}" style="width:56px;padding:3px 6px;text-align:right"></td>`)}
         ${ifShow('phase', `<td style="padding:5px 8px;text-align:center;font-size:11px"><select class="ctc-phase" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px"><option value="1ph"${phase === '1ph' ? ' selected' : ''}>1ф</option><option value="3ph"${phase === '3ph' ? ' selected' : ''}>3ф</option><option value="dc"${phase === 'dc' ? ' selected' : ''}>DC</option></select></td>`)}
+        ${ifShow('starterType', (() => {
+          // v0.59.623: тип пуска — для расчёта K_рез на ИБП.
+          const cur = n.starterType || '';
+          const opts = [`<option value=""${cur===''?' selected':''}>авто</option>`]
+            .concat((_STARTER_TYPES || []).map(t => {
+              const lbl = t.crf != null ? `${t.label} — K=${t.crf.toFixed(2)}` : t.label;
+              return `<option value="${esc(t.id)}"${cur===t.id?' selected':''}>${esc(lbl)}</option>`;
+            }))
+            .join('');
+          return `<td style="padding:5px 8px;text-align:left;font-size:11px"><select class="ctc-starterType" data-id="${esc(n.id)}" style="width:100%;padding:3px 4px;font-size:11px">${opts}</select></td>`;
+        })())}
+        ${ifShow('crf', (() => {
+          // v0.59.623: K_рез — read-only вычисленный или поле для custom.
+          const sub = n.consumerSubtype || n.consumerType || '';
+          let kComputed = null, src = '';
+          const sid = n.starterType || '';
+          if (sid === 'custom') {
+            const ov = Number(n.crfOverride);
+            if (Number.isFinite(ov) && ov > 0 && ov <= 1) { kComputed = ov; src = 'свой'; }
+          } else if (sid) {
+            const t = (_STARTER_TYPES || []).find(x => x && x.id === sid);
+            if (t && t.crf != null) { kComputed = Number(t.crf); src = 'тип'; }
+          }
+          if (kComputed == null && sub) {
+            const cat = (_CONSUMER_CATALOG || []).find(x => x && x.id === sub);
+            if (cat && cat.defaultStarterType) {
+              const t = (_STARTER_TYPES || []).find(x => x && x.id === cat.defaultStarterType);
+              if (t && t.crf != null) { kComputed = Number(t.crf); src = 'default'; }
+            }
+          }
+          if (kComputed == null) { kComputed = 1.00; src = '—'; }
+          if (sid === 'custom') {
+            const ov = (typeof n.crfOverride === 'number') ? String(n.crfOverride) : '';
+            return `<td style="padding:5px 8px;text-align:right"><input class="ctc-crfOverride" data-id="${esc(n.id)}" type="number" min="0.30" max="1.00" step="0.01" value="${ov}" placeholder="свой K" style="width:64px;padding:3px 6px;text-align:right"></td>`;
+          }
+          return `<td style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums" title="${esc(src)}">${kComputed.toFixed(2)} <span class="muted" style="font-size:10px">[${esc(src)}]</span></td>`;
+        })())}
       </tr>`);
   }
   const visibleCount = 1 + _CONSUMERS_TABLE_COLUMNS.filter(c => c.id !== 'checkbox' && show(c.id)).length;
@@ -5979,6 +6044,33 @@ function renderConsumersTable() {
     sel.addEventListener('change', () => {
       snap('consumers-table:phase:' + sel.dataset.id);
       apply(sel.dataset.id, (n) => { n.phase = sel.value; });
+      applyAndRerender();
+    });
+  });
+  // v0.59.623: тип пуска — переключает между «фиксированным K» и «своим K».
+  mount.querySelectorAll('.ctc-starterType').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snap('consumers-table:starterType:' + sel.dataset.id);
+      apply(sel.dataset.id, (n) => {
+        const v = sel.value || '';
+        if (v) n.starterType = v; else delete n.starterType;
+        // если переключили НЕ на custom — стираем override (он не релевантен)
+        if (v !== 'custom') delete n.crfOverride;
+      });
+      applyAndRerender();
+    });
+  });
+  // v0.59.623: свой K_рез (показывается только при starterType==='custom').
+  mount.querySelectorAll('.ctc-crfOverride').forEach(inp => {
+    inp.addEventListener('change', () => {
+      snap('consumers-table:crfOverride:' + inp.dataset.id);
+      apply(inp.dataset.id, (n) => {
+        const raw = String(inp.value ?? '').trim();
+        if (raw === '') { delete n.crfOverride; return; }
+        const v = Number(raw);
+        if (Number.isFinite(v) && v >= 0.30 && v <= 1.00) n.crfOverride = v;
+        else delete n.crfOverride;
+      });
       applyAndRerender();
     });
   });

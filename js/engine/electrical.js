@@ -389,11 +389,11 @@ export function consumerInrushCurrent(n) {
 //   102.86 > 100 → overload (на 3%).
 // Раньше: capacity_eff = 100 × 0.7 = 70, load = 90. 90 > 70 → overload (на 22%).
 //
-// Поля на узле UPS (v0.59.620):
-//   n.crfActive: boolean — пользователь явно включил Capacity Reservation
-//   n.crfMap: { subtypeId: factor } — К_рез per-subtype
-// Legacy (до v0.59.620, читаются как fallback):
-//   n.hvacDerateActive, n.hvacDerateMap, n.hvacDerateFactor
+// Поля на узле UPS (v0.59.623):
+//   n.maxLoadFactorActive: boolean — включён ли cap «макс. загрузка ИБП»
+//   n.maxLoadFactor: 0..1 — например 0.8 = ИБП можно загружать не более 80%
+// Legacy (до v0.59.623, читаются для backward compat):
+//   n.crfActive, n.crfMap, n.hvacDerateActive, n.hvacDerateMap, n.hvacDerateFactor
 //
 // Default factor по производителю (если active=true и factor не задан):
 const HVAC_DERATE_DEFAULTS = {
@@ -418,11 +418,18 @@ export function upsHvacDerateFactor(n) {
   }
   return Math.max(0.3, Math.min(1.0, factor));
 }
-// Backward-compat: устаревший helper. Возвращает n.capacityKw — ИБП сохраняет
-// номинальную мощность независимо от типа нагрузки. Перегруз определяется
-// по weighted-load, см. recalc.js (n._loadKwWeighted).
+// v0.59.623: helper возвращает «эффективную ёмкость» с учётом cap-флага
+// «Максимальная загрузка ИБП» (n.maxLoadFactorActive + n.maxLoadFactor).
+// Перегруз определяется по weighted-load, см. recalc.js (n._loadKwWeighted).
+//   capacityKw = 100, maxLoadFactor = 0.80 → effective = 80 кВт.
+//   load > effective → ИБП считается перегруженным.
 export function effectiveUpsCapacity(n) {
-  return Number(n && n.capacityKw) || 0;
+  let cap = Number(n && n.capacityKw) || 0;
+  if (n && n.maxLoadFactorActive) {
+    const f = Number(n.maxLoadFactor);
+    if (Number.isFinite(f) && f > 0 && f <= 1) cap = cap * f;
+  }
+  return cap;
 }
 
 // Мощность заряда ИБП по току в А (переход с chargeA на кВт для учёта в нагрузке)
