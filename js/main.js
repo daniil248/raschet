@@ -2905,6 +2905,13 @@ const _EQUIPMENT_TABLE_COLUMNS = [
   { id: 'ip', label: 'IP', default: true },
   { id: 'standby', label: 'Тир', default: true },
   { id: 'xnav', label: 'Связано', default: true },
+  // v0.59.637: расширенные характеристики (по умолчанию скрыты).
+  { id: 'manufacturer', label: 'Производитель', default: false },
+  { id: 'model', label: 'Модель', default: false },
+  { id: 'snom', label: 'S ном, кВА', default: false },
+  { id: 'efficiency', label: 'КПД, %', default: false },
+  { id: 'redundancy', label: 'Группа резерва', default: false },
+  { id: 'weight', label: 'Вес, кг', default: false },
 ];
 let _equipTableVisibility = _loadColumnVisibility('equipment', _EQUIPMENT_TABLE_COLUMNS);
 // v0.59.633: id выбранного пресета таблицы оборудования.
@@ -2936,6 +2943,8 @@ let _cableTableFilters = {
   curve: '',
   // Phase 1.20.18: фильтр по статусу (ok / warn / error / utility)
   status: '',
+  // v0.59.636: фильтры по материалу / изоляции / bundling.
+  material: '', insulation: '', bundling: '',
 };
 // Phase 1.20.18: оценка статуса линии по её флагам
 function _ctConnStatus(c) {
@@ -3005,6 +3014,7 @@ function openCableTableModal(opts) {
       imaxMin: null, imaxMax: null,
       label: '', fromTo: '',
       category: '', breaker: null, curve: '', status: '',
+      material: '', insulation: '', bundling: '',
     };
     _cableTableSort = { col: 'label', dir: 'asc' };
     const s = document.getElementById('cable-table-search'); if (s) s.value = '';
@@ -3886,6 +3896,7 @@ function renderCableTable() {
       imaxMin: null, imaxMax: null,
       label: '', fromTo: '',
       category: '', breaker: null, curve: '', status: '',
+      material: '', insulation: '', bundling: '',
     };
     const s = document.getElementById('cable-table-search'); if (s) s.value = '';
     const cls = document.getElementById('cable-table-filter-class'); if (cls) cls.value = '';
@@ -6803,6 +6814,13 @@ function renderEquipmentTable() {
         const lv = (GLOBAL_voltageLevels())[n.voltageLevelIdx];
         return lv ? Number(lv.vLL) || 0 : 0;
       }
+      // v0.59.637: sort keys для новых колонок.
+      case 'manufacturer': return (n.manufacturer || '').toLowerCase();
+      case 'model': return (n.model || n.panelCatalogId || n.upsModel || '').toLowerCase();
+      case 'snom': return Number(n.snomKva) || 0;
+      case 'efficiency': return Number(n.efficiency) || 0;
+      case 'redundancy': return (n.redundancyGroup || '').toLowerCase();
+      case 'weight': return Number(n.weightKg) || 0;
       default: return 0;
     }
   };
@@ -6845,6 +6863,12 @@ function renderEquipmentTable() {
           ${ifShow('loadPct', sortHdr('loadPct', 'Загрузка', 'right', 'min-width:80px'))}
           ${ifShow('ip', sortHdr('ip', 'IP', 'center'))}
           ${ifShow('standby', sortHdr('standby', 'Тир', 'center', 'min-width:90px'))}
+          ${ifShow('manufacturer', sortHdr('manufacturer', 'Производитель', 'left'))}
+          ${ifShow('model', sortHdr('model', 'Модель', 'left'))}
+          ${ifShow('snom', sortHdr('snom', 'S ном, кВА', 'right'))}
+          ${ifShow('efficiency', sortHdr('efficiency', 'КПД, %', 'right'))}
+          ${ifShow('redundancy', sortHdr('redundancy', 'Группа резерва', 'left'))}
+          ${ifShow('weight', sortHdr('weight', 'Вес, кг', 'right'))}
           ${ifShow('xnav', '<th style="padding:6px 8px;border-bottom:2px solid #d0d7de;min-width:150px" title="Переход к связанным объектам">Связано</th>')}
         </tr>
       </thead>
@@ -6882,6 +6906,12 @@ function renderEquipmentTable() {
               return `<td style="padding:5px 8px;text-align:center" title="Тир: основной (учитывается в N-1), резервный (backup — включается при отказе основных), подменный (standby — холодный резерв)"><select class="et-tier" data-id="${esc(n.id)}" style="font-size:10px;padding:1px 2px;cursor:pointer"><option value="primary"${tier==='primary'?' selected':''}>основн.</option><option value="backup"${tier==='backup'?' selected':''}>backup</option><option value="standby"${tier==='standby'?' selected':''}>standby</option></select></td>`;
             })()
           : `<td style="padding:5px 8px;text-align:center;color:#ccc">—</td>`)}
+        ${ifShow('manufacturer', `<td style="padding:5px 8px;font-size:11px"><input class="et-manuf" data-id="${esc(n.id)}" type="text" value="${esc(n.manufacturer || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('model', `<td style="padding:5px 8px;font-size:11px"><input class="et-model" data-id="${esc(n.id)}" type="text" value="${esc(n.model || n.panelCatalogId || n.upsModel || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('snom', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px"><input class="et-snom" data-id="${esc(n.id)}" type="number" min="0" step="1" value="${n.snomKva ?? ''}" placeholder="—" style="width:80px;padding:3px 6px;text-align:right;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('efficiency', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px"><input class="et-eff" data-id="${esc(n.id)}" type="number" min="50" max="100" step="0.1" value="${(typeof n.efficiency === 'number') ? n.efficiency : ''}" placeholder="—" style="width:60px;padding:3px 6px;text-align:right;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('redundancy', `<td style="padding:5px 8px;font-size:11px"><input class="et-redgrp" data-id="${esc(n.id)}" type="text" value="${esc(n.redundancyGroup || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('weight', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px"><input class="et-weight" data-id="${esc(n.id)}" type="number" min="0" step="1" value="${n.weightKg ?? ''}" placeholder="—" style="width:70px;padding:3px 6px;text-align:right;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
         ${ifShow('xnav', `<td style="padding:5px 8px;font-size:10px">${(() => {
           let cableCount = 0, consumerCount = 0;
           for (const c of S.conns.values()) {
@@ -6986,6 +7016,45 @@ function renderEquipmentTable() {
       renderEquipmentTable();
     });
   });
+
+  // v0.59.637: text/number editable cells (manuf / model / snom / eff / redgrp / weight).
+  const _etApply = (id, fn) => {
+    const node = S.nodes.get(id);
+    if (!node) return;
+    if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('equip-table:edit:' + id);
+    fn(node);
+    if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+    renderEquipmentTable();
+  };
+  const _etTextField = (cls, prop) => {
+    mount.querySelectorAll('.' + cls).forEach(inp => {
+      inp.addEventListener('change', () => {
+        _etApply(inp.dataset.id, (n) => {
+          const v = String(inp.value || '').trim();
+          if (v) n[prop] = v;
+          else delete n[prop];
+        });
+      });
+    });
+  };
+  const _etNumField = (cls, prop, min, max) => {
+    mount.querySelectorAll('.' + cls).forEach(inp => {
+      inp.addEventListener('change', () => {
+        _etApply(inp.dataset.id, (n) => {
+          const raw = String(inp.value ?? '').trim();
+          if (raw === '') { delete n[prop]; return; }
+          const v = Number(raw);
+          if (Number.isFinite(v) && (min == null || v >= min) && (max == null || v <= max)) n[prop] = v;
+        });
+      });
+    });
+  };
+  _etTextField('et-manuf', 'manufacturer');
+  _etTextField('et-model', 'model');
+  _etNumField('et-snom', 'snomKva', 0, 100000);
+  _etNumField('et-eff', 'efficiency', 50, 100);
+  _etTextField('et-redgrp', 'redundancyGroup');
+  _etNumField('et-weight', 'weightKg', 0, 100000);
 
   // Phase 1.20.30: cross-navigation в таблицы кабелей и потребителей
   mount.querySelectorAll('.et-xnav').forEach(btn => {
