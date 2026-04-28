@@ -11,11 +11,18 @@ import { CONSUMER_CATALOG } from './constants.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
-// v0.59.611: per-subtype derate map. Категории используются ТОЛЬКО для
-// группировки подтипов в UI (юзер: «если есть конкретные подтипы, зачем
-// отдельно для категорий, используй категории только для группирования»).
+// v0.59.611/619: per-subtype Capacity Reservation Factor (CRF / K_рез).
+// Категории используются ТОЛЬКО для группировки подтипов в UI.
 //
-// Модель n.hvacDerateMap:
+// Терминология:
+//   RU: Коэффициент резервирования мощности (К_рез ∈ [0.30, 1.00])
+//   EN: Capacity Reservation Factor (CRF) / Derating Factor (DRF)
+//   IEC 62040 (UPS), Kehua/APC/Schneider — derating factor.
+// Семантика: для нагрузки P_phys на ИБП резервируется P_phys / K_рез.
+//   K_рез = 1.0 — без резервирования (физическая = расчётная).
+//   K_рез = 0.7 — резервирует 1/0.7 ≈ 1.43× физической мощности.
+//
+// Модель n.hvacDerateMap (имя поля сохранено для backward compat):
 //   { 'conditioner': 0.65, 'motor': 0.70, 'pump': 0.70, ... }
 // Ключи — id подтипов из CONSUMER_CATALOG.
 // Lookup: map[consumer.consumerSubtype] → 1.0 if not present.

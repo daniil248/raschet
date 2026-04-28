@@ -229,30 +229,36 @@ export function openUpsParamsModal(n) {
     const utilPct = baseCap > 0 ? (wLoad / baseCap * 100) : 0;
     const overloadStyle = utilPct > 100 ? 'color:#b91c1c;font-weight:600' : (utilPct > 90 ? 'color:#c2410c' : '');
 
-    h.push('<h4 style="margin:16px 0 8px">Снижающие коэффициенты (derate per-load)</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">Для отдельных типов нагрузки можно задать снижающий коэффициент — например для механики (Kehua 0.70, APC/Eaton 0.80) или для пускающихся с большим броском тока. Коэффициент задаётся индивидуально per-subtype.</div>');
+    h.push('<h4 style="margin:16px 0 8px">Коэффициенты резервирования мощности (CRF / Derating Factor)</h4>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">Каждый подтип нагрузки имеет свой K_рез ∈ [0.30, 1.00] — какую долю своей номинальной мощности нагрузка реально использует на ИБП. Значение 0.70 означает: нагрузка резервирует на ИБП 1/0.70 ≈ 1.43× своей P (запас под пусковые токи / нелинейность). Kehua: 0.70 для механики. APC/Eaton: 0.80.</div>');
     h.push(`<details style="margin-bottom:8px">
       <summary style="cursor:pointer;font-size:11px;color:#475569">📖 Подробнее о расчёте</summary>
       <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px">
-        <b>Формула:</b><br>
-        <code>load_effective = Σ P_i / derate_i</code> (сумма по всем потребителям)<br>
-        <code>overload = load_effective &gt; capacity</code><br><br>
-        <b>Lookup derate:</b> <code>map[consumer.consumerSubtype]</code> →
-        если не задан, default 1.0 (без снижения). Категории используются
-        ТОЛЬКО для группировки подтипов в таблице ниже.
+        <b>Терминология:</b><br>
+        RU: Коэффициент резервирования мощности (К_рез)<br>
+        EN: Capacity Reservation Factor (CRF) / Derating Factor (DRF)<br>
+        Источники: IEC 62040 (UPS), Kehua/APC manuals, Schneider whitepapers.
         <br><br>
-        <b>Пример:</b> ИБП 100 kW. Сервер 60 kW × 1.0 (без derate) +
-        Кондиционер 30 kW / 0.7 (derate 0.70) = 60 + 42.86 = 102.86 kW.
+        <b>Формула:</b><br>
+        <code>load_effective = Σ P_i / K_рез_i</code> (сумма по всем потребителям)<br>
+        <code>overload = load_effective &gt; capacity</code><br><br>
+        <b>Lookup K_рез:</b> <code>map[consumer.consumerSubtype]</code> →
+        если не задан, default 1.0 (без резервирования). Категории
+        используются ТОЛЬКО для группировки подтипов в таблице ниже.
+        <br><br>
+        <b>Пример:</b> ИБП 100 kW. Сервер 60 kW × K_рез=1.0 (без резерва) +
+        Кондиционер 30 kW / K_рез=0.7 = 60 + 42.86 = 102.86 kW.
         102.86 > 100 → перегруз 3%.
         <br><br>
-        <b>Важно:</b> derate влияет ТОЛЬКО на проверку перегруза этого ИБП.
+        <b>Важно:</b> K_рез влияет ТОЛЬКО на проверку перегруза этого ИБП.
         Upstream (utility / panel) видит обычную физическую нагрузку.
-        ИБП также не пропускает derate другим ИБП в цепочке.
+        ИБП также не пропускает K_рез другим ИБП в цепочке — каждый
+        ИБП имеет свой K_рез, друг другу не передают.
       </div>
     </details>`);
     h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px">
       <input type="checkbox" id="up-hvac-derate-active"${active ? ' checked' : ''}>
-      <span>Применить снижающие коэффициенты</span>
+      <span>Применить коэффициенты резервирования мощности</span>
     </label>`);
 
     // v0.59.611: subtypes сгруппированы по category. Категория = чекбокс
@@ -301,12 +307,12 @@ export function openUpsParamsModal(n) {
     // блок скрыт, не загромождает интерфейс.
     if (active) {
       h.push(`<details style="margin-bottom:8px" open>
-        <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Коэффициенты по подтипам нагрузки</summary>
+        <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 K_рез по подтипам нагрузки</summary>
         <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
-          <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = коэффициент 1.0 (без снижения).</div>
+          <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = K_рез = 1.0 (без резервирования).</div>
           ${Array.from(subsByCat.entries()).map(([catId, subs]) => _catGroup(catId, subs)).join('')}
           <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Пресет: механическая нагрузка 0.70</button>
+            <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Пресет: K_рез = 0.70 для механики</button>
             <button type="button" id="up-hvac-derate-clear" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">✕ Очистить все</button>
           </div>
         </div>
@@ -321,7 +327,7 @@ export function openUpsParamsModal(n) {
       : (reservePct < 10 ? 'color:#c2410c' : 'color:#15803d;font-weight:600');
     h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
       <b>Капасити:</b> ${fmt(baseCap)} kW<br>
-      <b>Без снижения:</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>Со снижением:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
+      <b>Без резервирования (K_рез=1.0):</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>С резервированием:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
       <b>Эффективная нагрузка:</b> <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
       <br><b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}
       <br><b>Запас:</b> <span style="${reserveStyle}">${fmt(reserveKw)} kW</span> <span class="muted">(${reservePct.toFixed(1)}% от capacity)</span>${reserveKw < 0 ? ' ⚠ нехватка' : (reservePct < 10 ? ' ⚠ малый запас' : '')}
@@ -340,13 +346,13 @@ export function openUpsParamsModal(n) {
         <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px;max-height:300px;overflow-y:auto">
           <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;font-weight:600;color:#475569;border-bottom:1px solid #cbd5e1;margin-bottom:4px;font-size:10px;text-transform:uppercase">
             <span>Устройство</span>
-            <span>коэф.</span>
+            <span>K_рез</span>
             <span>P</span>
             <span>P эфф.</span>
           </div>
-          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ Со снижающим коэффициентом (${hvacLoads.length}):</div>` : ''}
+          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ С резервированием K_рез < 1 (${hvacLoads.length}):</div>` : ''}
           ${hvacLoads.map(l => _row(l, '#dbeafe')).join('')}
-          ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin:8px 0 4px">✓ Без снижения (${itLoads.length}):</div>` : ''}
+          ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin:8px 0 4px">✓ Без резервирования K_рез = 1 (${itLoads.length}):</div>` : ''}
           ${itLoads.map(l => _row(l, '#dcfce7')).join('')}
         </div>
       </details>`);
