@@ -36,6 +36,7 @@ import {
   bindWrapModalTabs as bindWrapModalTabsSource,
   openImpedanceModal,
   openAutomationModal,
+  openGenRatingModal,
   sourceStatusBlock,
   voltageLevelOptions,
 } from './inspector/source.js';
@@ -619,6 +620,8 @@ export function renderInspectorNode(n) {
         }
         h.push('</div>');
       }
+      // v0.59.627: режим ДГУ по ISO 8528-1 + проверка достаточности.
+      h.push(`<button class="full-btn" id="btn-open-genrating" style="margin-top:6px">⚙ Режим работы и номиналы (ISO 8528)</button>`);
     }
 
     // Все номинальные параметры (мощность, напряжение, Ssc, Uk%, Xs/Rs) — в модалке
@@ -2410,6 +2413,9 @@ export function wireInspectorInputs(n, root) {
   if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
   const impBtn = document.getElementById('btn-open-impedance');
   if (impBtn) impBtn.addEventListener('click', () => openImpedanceModal(n));
+  // v0.59.627: ISO 8528 modal для генератора.
+  const genRatingBtn = document.getElementById('btn-open-genrating');
+  if (genRatingBtn) genRatingBtn.addEventListener('click', () => openGenRatingModal(n));
   // Phase 1.20.39 / 1.20.45: модель резервирования источников
   const standbyCb = document.getElementById('src-is-standby');
   if (standbyCb) {
