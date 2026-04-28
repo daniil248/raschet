@@ -229,8 +229,8 @@ export function openUpsParamsModal(n) {
     const utilPct = baseCap > 0 ? (wLoad / baseCap * 100) : 0;
     const overloadStyle = utilPct > 100 ? 'color:#b91c1c;font-weight:600' : (utilPct > 90 ? 'color:#c2410c' : '');
 
-    h.push('<h4 style="margin:16px 0 8px">Derate для механической нагрузки (HVAC)</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки производитель ИБП требует снижения номинала. Kehua: 0.70. APC/Eaton: 0.80. Применяется per-load — для каждой категории/подтипа задаётся свой коэффициент.</div>');
+    h.push('<h4 style="margin:16px 0 8px">Снижающие коэффициенты (derate per-load)</h4>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">Для отдельных типов нагрузки можно задать снижающий коэффициент — например для механики (Kehua 0.70, APC/Eaton 0.80) или для пускающихся с большим броском тока. Коэффициент задаётся индивидуально per-subtype.</div>');
     h.push(`<details style="margin-bottom:8px">
       <summary style="cursor:pointer;font-size:11px;color:#475569">📖 Подробнее о расчёте</summary>
       <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px">
@@ -238,19 +238,21 @@ export function openUpsParamsModal(n) {
         <code>load_effective = Σ P_i / derate_i</code> (сумма по всем потребителям)<br>
         <code>overload = load_effective &gt; capacity</code><br><br>
         <b>Lookup derate:</b> <code>map[consumer.consumerSubtype]</code> →
-        если не задан, default 1.0 (без derate). Категории используются
+        если не задан, default 1.0 (без снижения). Категории используются
         ТОЛЬКО для группировки подтипов в таблице ниже.
         <br><br>
-        <b>Пример:</b> ИБП 100 kW. IT (server) 60 kW × 1.0 + Кондиционер
-        30 kW / 0.7 = 60 + 42.86 = 102.86 kW. 102.86 > 100 → перегруз 3%.
+        <b>Пример:</b> ИБП 100 kW. Сервер 60 kW × 1.0 (без derate) +
+        Кондиционер 30 kW / 0.7 (derate 0.70) = 60 + 42.86 = 102.86 kW.
+        102.86 > 100 → перегруз 3%.
         <br><br>
         <b>Важно:</b> derate влияет ТОЛЬКО на проверку перегруза этого ИБП.
         Upstream (utility / panel) видит обычную физическую нагрузку.
+        ИБП также не пропускает derate другим ИБП в цепочке.
       </div>
     </details>`);
     h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px">
       <input type="checkbox" id="up-hvac-derate-active"${active ? ' checked' : ''}>
-      <span>Применить derate (per-load)</span>
+      <span>Применить снижающие коэффициенты</span>
     </label>`);
 
     // v0.59.611: subtypes сгруппированы по category. Категория = чекбокс
@@ -295,12 +297,12 @@ export function openUpsParamsModal(n) {
       </div>`;
     };
     h.push(`<details style="margin-bottom:8px"${(active ? ' open' : '')}>
-      <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Коэффициенты derate (по подтипам)</summary>
+      <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Коэффициенты по подтипам нагрузки</summary>
       <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
-        <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = derate 1.0 (без снижения).</div>
+        <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = коэффициент 1.0 (без снижения).</div>
         ${Array.from(subsByCat.entries()).map(([catId, subs]) => _catGroup(catId, subs)).join('')}
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-          <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Defaults (HVAC + power 0.70)</button>
+          <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Пресет: механическая нагрузка 0.70</button>
           <button type="button" id="up-hvac-derate-clear" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">✕ Очистить все</button>
         </div>
       </div>
@@ -308,7 +310,7 @@ export function openUpsParamsModal(n) {
 
     h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
       <b>Капасити:</b> ${fmt(baseCap)} kW<br>
-      <b>Нагрузка IT (без derate):</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>Нагрузка с derate:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
+      <b>Без снижения:</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>Со снижением:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
       <b>Эффективная нагрузка:</b> <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
       <br><b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}
     </div>`);
@@ -326,13 +328,13 @@ export function openUpsParamsModal(n) {
         <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px;max-height:300px;overflow-y:auto">
           <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;font-weight:600;color:#475569;border-bottom:1px solid #cbd5e1;margin-bottom:4px;font-size:10px;text-transform:uppercase">
             <span>Устройство</span>
-            <span>derate</span>
+            <span>коэф.</span>
             <span>P</span>
             <span>P эфф.</span>
           </div>
-          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ Деретируемые (${hvacLoads.length}):</div>` : ''}
+          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ Со снижающим коэффициентом (${hvacLoads.length}):</div>` : ''}
           ${hvacLoads.map(l => _row(l, '#dbeafe')).join('')}
-          ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin:8px 0 4px">✓ Без derate (${itLoads.length}):</div>` : ''}
+          ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin:8px 0 4px">✓ Без снижения (${itLoads.length}):</div>` : ''}
           ${itLoads.map(l => _row(l, '#dcfce7')).join('')}
         </div>
       </details>`);
