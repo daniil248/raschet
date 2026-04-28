@@ -115,16 +115,27 @@ function _porRackToLegacy(obj) {
   };
 }
 
-/** v0.59.521: загрузить POR-объекты type='rack' для активного проекта. */
+/** v0.59.521: загрузить POR-объекты type='rack' для активного проекта.
+ * v0.59.575: если active = sub-project (kind='sketch' с parentProjectId),
+ * также пробуем родителя — POR-данные обычно живут на уровне parent
+ * (engine schema там). Без этого scs-design в режиме sub'а не видел
+ * стоек проекта (loadPorRacks возвращал [] для пустого sub.por.objects).
+ */
 function _loadPorRacks() {
   try {
     const pid = getActiveProjectId();
     if (!pid) return [];
-    // Лениво импортируем POR (циклы предотвращаем): rack-storage НЕ
-    // должен зависеть от POR на этапе загрузки модуля. Но на момент
-    // вызова loadAllRacksForActiveProject — POR уже загружен в окне.
     if (typeof window === 'undefined' || !window.RaschetPOR) return [];
-    const arr = window.RaschetPOR.getObjects(pid, { type: 'rack' }) || [];
+    let arr = window.RaschetPOR.getObjects(pid, { type: 'rack' }) || [];
+    if (!arr.length) {
+      // Fallback на parent если active = sub.
+      const projects = listProjects();
+      const activeProj = projects.find(p => p && p.id === pid);
+      const parentPid = activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId;
+      if (parentPid) {
+        arr = window.RaschetPOR.getObjects(parentPid, { type: 'rack' }) || [];
+      }
+    }
     return arr.map(_porRackToLegacy).filter(Boolean);
   } catch (e) { console.warn('[rack-storage] _loadPorRacks failed:', e); return []; }
 }
