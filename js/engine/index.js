@@ -139,6 +139,12 @@ function _tryConsumePendingUpsSelection() {
       if (cfg.batteryVdcMax) node.batteryVdcMax = cfg.batteryVdcMax;
       if (cfg.batteryAutonomyMin) node.batteryAutonomyMin = cfg.batteryAutonomyMin;
       if (cfg.composition) node.composition = cfg.composition;
+      // v0.59.640: round-trip полей параллельной работы и cap «макс. загрузка».
+      if (typeof cfg.canParallel === 'boolean') node.canParallel = cfg.canParallel;
+      if (typeof cfg.maxLoadFactorActive === 'boolean') node.maxLoadFactorActive = cfg.maxLoadFactorActive;
+      if (typeof cfg.maxLoadFactor === 'number' && cfg.maxLoadFactor >= 0.30 && cfg.maxLoadFactor <= 1.00) {
+        node.maxLoadFactor = cfg.maxLoadFactor;
+      }
       console.info('[ups-config] applied configuration', cfg);
     }
     render(); renderInspector(); notifyChange();

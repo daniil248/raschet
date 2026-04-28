@@ -75,6 +75,12 @@ export function openUpsParamsModal(n) {
     if (n.batteryVdcMax) qp.set('vdcMax', String(n.batteryVdcMax));
     if (n.cosPhi) qp.set('cosPhi', String(n.cosPhi));
     qp.set('phases', isThreePhase(n) ? '3' : '1');
+    // v0.59.640: новые поля для round-trip — параллель и cap нагрузки.
+    if (n.canParallel === false) qp.set('canParallel', '0');
+    if (n.maxLoadFactorActive) {
+      qp.set('maxLoadFactorActive', '1');
+      if (typeof n.maxLoadFactor === 'number') qp.set('maxLoadFactor', String(n.maxLoadFactor));
+    }
     h.push(`<div style="margin:4px 0 10px">
       <a href="ups-config/?${qp.toString()}" target="_blank" class="full-btn" style="display:block;text-align:center;padding:6px 10px;background:#f0f4ff;color:#1976d2;text-decoration:none;border:1px solid #d0d7e8;border-radius:4px;font-size:12px">
         ⚙ Сконфигурировать подробно (новая вкладка)

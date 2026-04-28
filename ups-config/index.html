@@ -133,6 +133,30 @@
             </select>
           </label>
         </div>
+        <!-- v0.59.640: дополнительные поля — параллельная работа и cap «макс. загрузка ИБП» -->
+        <details style="margin-top:10px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#475569">⚡ Резервирование и допустимая загрузка</summary>
+          <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label style="display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.4">
+              <input type="checkbox" id="wiz-canParallel" style="margin-top:3px">
+              <span>
+                <b>Поддерживает параллельную работу</b><br>
+                <span class="muted" style="font-size:11px">конструкция допускает работу 2+ ИБП на общую шину; модели должны быть идентичны</span>
+              </span>
+            </label>
+            <div></div>
+            <label style="display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.4">
+              <input type="checkbox" id="wiz-maxLoadActive" style="margin-top:3px">
+              <span>
+                <b>Cap «макс. загрузка ИБП»</b><br>
+                <span class="muted" style="font-size:11px">ограничение на максимальную загрузку (например 0.80 = не более 80% от номинала)</span>
+              </span>
+            </label>
+            <label>Коэффициент загрузки (0.30..1.00)
+              <input type="number" id="wiz-maxLoadFactor" min="0.30" max="1.00" step="0.05" value="0.80">
+            </label>
+          </div>
+        </details>
         <div class="wiz-actions">
           <button id="wiz-btn-cancel" class="btn-sm">Отмена</button>
           <button id="wiz-btn-next-1" class="btn-sm btn-primary">Далее → Подбор фрейма</button>

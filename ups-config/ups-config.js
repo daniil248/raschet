@@ -644,6 +644,10 @@ const wizState = {
     vdcMax: 480,
     cosPhi: 0.9,
     phases: 3,
+    // v0.59.640: новые UPS-поля для round-trip с Конструктором схем.
+    canParallel: true,           // конструкция поддерживает параллельную работу
+    maxLoadFactorActive: false,  // активен ли cap «макс. загрузка»
+    maxLoadFactor: 0.80,         // например 0.80 = ИБП можно нагружать не более 80%
   },
   selected: null, // выбранный фрейм/модель из справочника
   composition: null, // рассчитанная конфигурация
@@ -665,6 +669,13 @@ function initWizard() {
   if (qp.get('vdcMax')) rq.vdcMax = Number(qp.get('vdcMax')) || rq.vdcMax;
   if (qp.get('cosPhi')) rq.cosPhi = Number(qp.get('cosPhi')) || rq.cosPhi;
   if (qp.get('phases')) rq.phases = Number(qp.get('phases')) || rq.phases;
+  // v0.59.640: round-trip параметры из Конструктора схем.
+  if (qp.get('canParallel') === '0') rq.canParallel = false;
+  if (qp.get('maxLoadFactorActive') === '1') rq.maxLoadFactorActive = true;
+  if (qp.get('maxLoadFactor')) {
+    const mf = Number(qp.get('maxLoadFactor'));
+    if (Number.isFinite(mf) && mf >= 0.30 && mf <= 1.00) rq.maxLoadFactor = mf;
+  }
 
   _openWizard({ standalone: false });
   return true;
@@ -824,6 +835,13 @@ function _fillWizStep1Fields() {
   // v0.59.400: резервирование выехало на шаг 2.
   const redSel = document.getElementById('wiz-redundancy');
   if (redSel) redSel.value = rq.redundancy;
+  // v0.59.640: дополнительные поля.
+  const cpEl = document.getElementById('wiz-canParallel');
+  if (cpEl) cpEl.checked = rq.canParallel !== false;
+  const mlActiveEl = document.getElementById('wiz-maxLoadActive');
+  if (mlActiveEl) mlActiveEl.checked = !!rq.maxLoadFactorActive;
+  const mlFactorEl = document.getElementById('wiz-maxLoadFactor');
+  if (mlFactorEl) mlFactorEl.value = rq.maxLoadFactor || 0.80;
 }
 
 function _showStep(n) {
@@ -842,6 +860,16 @@ function _readStep1() {
   rq.upsType = document.getElementById('wiz-upsType').value;
   rq.cosPhi = Number(document.getElementById('wiz-cosPhi').value) || rq.cosPhi;
   rq.phases = Number(document.getElementById('wiz-phases').value) || 3;
+  // v0.59.640: дополнительные поля.
+  const cpEl = document.getElementById('wiz-canParallel');
+  if (cpEl) rq.canParallel = !!cpEl.checked;
+  const mlActiveEl = document.getElementById('wiz-maxLoadActive');
+  if (mlActiveEl) rq.maxLoadFactorActive = !!mlActiveEl.checked;
+  const mlFactorEl = document.getElementById('wiz-maxLoadFactor');
+  if (mlFactorEl) {
+    const v = Number(mlFactorEl.value);
+    if (Number.isFinite(v) && v >= 0.30 && v <= 1.00) rq.maxLoadFactor = v;
+  }
 }
 
 // v0.59.400: чтение фильтров и резервирования с шага 2.
@@ -1338,6 +1366,10 @@ function _applyConfiguration() {
       composition: comp.composition,
       totalPrice: comp.totalPrice,
       currency: comp.currency,
+      // v0.59.640: round-trip полей из/в Конструктор схем.
+      canParallel: rq.canParallel !== false,
+      maxLoadFactorActive: !!rq.maxLoadFactorActive,
+      maxLoadFactor: Number.isFinite(rq.maxLoadFactor) ? rq.maxLoadFactor : 0.80,
     },
     selectedAt: Date.now(),
   };
