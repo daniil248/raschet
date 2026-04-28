@@ -232,15 +232,15 @@ function _renderProjectBadgeImpl(pid, host) {
       try {
         let dest = subs[0];
         let createdSub = false;
+        // v0.59.576: НЕ auto-create sub если его нет. Иначе пользователь
+        // удаляет sub → возвращается → sub создан заново → 5+ раз цикл.
+        // Если sub'а нет — выходим, пользователь увидит «🔀 Принять legacy»
+        // кнопку (legacyStuckAfterAttempt=true) которая создаст sub +
+        // мигрирует ОДНИМ explicit-кликом.
         if (!dest) {
-          dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
-          if (!dest || !dest.id) {
-            // v0.59.569: явная диагностика — раньше silent-fail приводил
-            // к застреванию пользователя на «Создать СКС» + «Принять legacy».
-            console.error('[scs-design] createSubProject returned invalid result:', dest);
-          } else {
-            createdSub = true;
-          }
+          legacyStuckAfterAttempt = true;
+          try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
+          // Возвращаемся в outer if без миграции и reload.
         }
         if (dest && dest.id) {
           const moved = _migrateLegacyScsToSub(parent.id, dest.id);
@@ -292,37 +292,15 @@ function _renderProjectBadgeImpl(pid, host) {
     } catch (e) { console.warn('[scs-design] auto-activate single sub failed:', e); }
   }
 
-  // v0.59.561: при первом заходе в свежий проект (subs.length===0,
-  // нет legacy-данных) — auto-create default sub «СКС» прозрачно.
-  // v0.59.564: session-flag предотвращает повторные попытки на
-  // ре-рендере, если createSubProject вернул null или произошла ошибка.
-  if (parent && !parentIsOrphan && subs.length === 0 && !legacyActive) {
-    const _attemptedFlag = `raschet.scs-design.auto-create-sub-attempted.${parent.id}.session`;
-    const alreadyAttempted = (() => {
-      try { return sessionStorage.getItem(_attemptedFlag) === '1'; } catch { return false; }
-    })();
-    if (!alreadyAttempted) {
-      try {
-        const dest = createSubProject(parent.id, 'scs-design', { name: 'СКС', designation: '' });
-        try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
-        if (dest && dest.id) {
-          console.info(`[scs-design] auto-created default sub-project ${dest.id} for fresh project ${parent.id}; reloading`);
-          setActiveProjectId(dest.id);
-          // v0.59.572: обновить URL чтобы project-context.js не сбрасывал active.
-          try {
-            const url = new URL(location.href);
-            url.searchParams.set('project', dest.id);
-            history.replaceState(null, '', url.toString());
-          } catch {}
-          location.reload();
-          return;
-        }
-      } catch (e) {
-        try { sessionStorage.setItem(_attemptedFlag, '1'); } catch {}
-        console.warn('[scs-design] auto-create default sub failed:', e);
-      }
-    }
-  }
+  // v0.59.561 → v0.59.576: auto-create-default-sub УДАЛЁН.
+  // Жалоба пользователя «удалил уже 5 раз и они вновь появляются» — корень
+  // в этом блоке. Каждый раз при открытии scs-design без sub'а создавался
+  // новый. Теперь — нет. Если у пользователя нет sub'а, в шапке покажется
+  // кнопка «➕ Создать СКС» (subBlockHtml ниже), которую он нажмёт
+  // сознательно. Никаких auto-create.
+  // Для legacy-миграции тоже: если нет sub и есть legacy → НЕ создавать sub
+  // молча. Block legacy-migrate в верхней части уже не пытается auto-create
+  // (см. v0.59.557+) если legacyStuckAfterAttempt.
 
   // v0.59.531: для orphan-sketch родителем является сам sketch — у него
   // нет подпроектов, и кнопку «+ Новый СКС-проект» здесь скрываем (нельзя
