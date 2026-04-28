@@ -200,35 +200,21 @@ export function openUpsParamsModal(n) {
     </div>`);
   }
 
-  // v0.59.605/607/609 (Phase 18): HVAC derate ИБП. Применяется per-load
-  // (только к механической нагрузке, не ко всему ИБП).
-  // v0.59.609: per-UPS конфигурация категорий и подтипов; список
-  // обнаруженных нагрузок с разделением IT / HVAC.
+  // v0.59.610 (Phase 18): per-category / per-subtype derate map.
+  // Юзер: «выведем в характеристиках ибп список всех категорий и подтипов
+  // и для каждой записи вводить коэффициент дирейтинга. В список нагрузок
+  // добавить мощность без дирейтинга и после дирейтинга».
   {
-    const factor = Number.isFinite(Number(n.hvacDerateFactor)) && Number(n.hvacDerateFactor) > 0
-      ? Number(n.hvacDerateFactor) : 0.70;
     const active = !!n.hvacDerateActive;
     const baseCap = Number(n.capacityKw) || 0;
-    const f = active ? Math.max(0.3, Math.min(1, factor)) : 1.0;
-    // Берём посчитанные recalc-ом значения с учётом hvacDerateCategories /
-    // hvacDerateSubtypes этого ИБП (v0.59.609).
-    const pIT = Number(n._loadKwIT) || 0;
-    const pHVAC = Number(n._loadKwHVAC) || 0;
-    const wLoad = pIT + (active ? pHVAC / f : pHVAC);
-    const utilPct = baseCap > 0 ? (wLoad / baseCap * 100) : 0;
-    const hvacLoads = Array.isArray(n._hvacLoads) ? n._hvacLoads : [];
-    const itLoads = Array.isArray(n._itLoads) ? n._itLoads : [];
-
-    // v0.59.609: список доступных категорий / подтипов для конфигурации.
-    // Defaults — те же что в recalc.js _resolveHvacConfig.
-    const DEFAULT_CATS = ['hvac'];
-    const DEFAULT_SUBS = ['motor', 'pump', 'fan', 'conditioner', 'elevator', 'outdoor_unit'];
-    const curCats = Array.isArray(n.hvacDerateCategories) && n.hvacDerateCategories.length
-      ? n.hvacDerateCategories : DEFAULT_CATS.slice();
-    const curSubs = Array.isArray(n.hvacDerateSubtypes) && n.hvacDerateSubtypes.length
-      ? n.hvacDerateSubtypes : DEFAULT_SUBS.slice();
-    // Все категории из CONSUMER_CATEGORIES (импорт chunked в constants.js).
-    // Используем известный набор: hvac, power, lighting, socket, it, lowvoltage, process, other.
+    const map = (n.hvacDerateMap && typeof n.hvacDerateMap === 'object') ? n.hvacDerateMap : {};
+    // Defaults для отображения в таблице (только когда map пустой).
+    const DEFAULT_DERATE = {
+      'cat:hvac': 0.70,
+      'sub:motor': 0.70, 'sub:pump': 0.70, 'sub:fan': 0.70,
+      'sub:conditioner': 0.70, 'sub:elevator': 0.70, 'sub:outdoor_unit': 0.70,
+    };
+    const effectiveMap = Object.keys(map).length ? map : DEFAULT_DERATE;
     const ALL_CATS = ['hvac','power','lighting','socket','it','lowvoltage','process','other'];
     const CAT_LABELS = {
       hvac: '❄ Климат / вентиляция', power: '⚙ Силовая нагрузка',
@@ -236,95 +222,114 @@ export function openUpsParamsModal(n) {
       it: '🖥 IT / серверы', lowvoltage: '📡 Слаботочные',
       process: '🏭 Технологическая', other: '— Прочее',
     };
-    const ALL_SUBS = (CONSUMER_CATALOG || []).map(c => ({ id: c.id, label: c.label, category: c.category }));
+
+    const pIT = Number(n._loadKwIT) || 0;
+    const pHVAC = Number(n._loadKwHVAC) || 0;
+    const hvacLoads = Array.isArray(n._hvacLoads) ? n._hvacLoads : [];
+    const itLoads = Array.isArray(n._itLoads) ? n._itLoads : [];
+    const wLoad = Number(n._loadKwWeighted) || (pIT + pHVAC);
+    const utilPct = baseCap > 0 ? (wLoad / baseCap * 100) : 0;
+    const overloadStyle = utilPct > 100 ? 'color:#b91c1c;font-weight:600' : (utilPct > 90 ? 'color:#c2410c' : '');
 
     h.push('<h4 style="margin:16px 0 8px">Derate для механической нагрузки (HVAC)</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки (кондиционеры, моторы, насосы) производитель ИБП требует снижения номинала. Kehua: 0.70 (минимум). APC/Eaton: 0.80. Применяется ТОЛЬКО к механической части — IT-нагрузка использует полную мощность.</div>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки производитель ИБП требует снижения номинала. Kehua: 0.70. APC/Eaton: 0.80. Применяется per-load — для каждой категории/подтипа задаётся свой коэффициент.</div>');
     h.push(`<details style="margin-bottom:8px">
       <summary style="cursor:pointer;font-size:11px;color:#475569">📖 Подробнее о расчёте</summary>
       <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px">
-        <b>Модель «per-load»:</b> derate применяется только к механической нагрузке. IT — полностью.<br><br>
         <b>Формула:</b><br>
-        <code>load_effective = Σ P_IT + Σ P_HVAC / derate</code><br>
+        <code>load_effective = Σ P_i / derate_i</code> (сумма по всем потребителям)<br>
         <code>overload = load_effective &gt; capacity</code><br><br>
-        <b>Пример:</b> ИБП 100 kW + IT 60 kW + HVAC 30 kW + derate 0.70:<br>
-        <code>load_eff = 60 + 30/0.7 = 60 + 42.86 = 102.86 kW</code><br>
-        102.86 > 100 → перегруз на 3%.<br><br>
-        <b>Классификация:</b> consumer relevant если его category из списка
-        <i>«Категории-HVAC»</i> ИЛИ subtype из списка <i>«Подтипы-HVAC»</i>.
-        По умолчанию category=hvac + subtypes={motor, pump, fan, conditioner,
-        elevator, outdoor_unit}. Можно настроить персонально для этого ИБП.
+        <b>Lookup derate для consumer:</b><br>
+        1. Subtype override: <code>map['sub:&lt;consumerSubtype&gt;']</code> (если задан)<br>
+        2. Category: <code>map['cat:&lt;category&gt;']</code> (если задан)<br>
+        3. Default 1.0 (без derate)
+        <br><br>
+        <b>Пример:</b> ИБП 100 kW. IT (server) 60 kW × 1.0 + Кондиционер
+        30 kW / 0.7 = 60 + 42.86 = 102.86 kW. 102.86 > 100 → перегруз 3%.
       </div>
     </details>`);
-    if (hvacLoads.length && !active) {
-      h.push(`<div style="font-size:11.5px;line-height:1.55;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;margin-bottom:8px;color:#78350f">
-        ⚠ <b>Обнаружено ${hvacLoads.length} HVAC-нагрузок</b> (Σ ${fmt(pHVAC)} kW). Рекомендуется включить derate.
-      </div>`);
-    } else if (hvacLoads.length && active) {
-      h.push(`<div style="font-size:11.5px;line-height:1.55;padding:6px 10px;background:#dcfce7;border:1px solid #86efac;border-radius:4px;margin-bottom:8px;color:#166534">
-        ✓ Derate применён к ${hvacLoads.length} HVAC-нагрузкам.
-      </div>`);
-    }
-    h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">
+    h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px">
       <input type="checkbox" id="up-hvac-derate-active"${active ? ' checked' : ''}>
-      <span>Применить derate для HVAC-нагрузки</span>
+      <span>Применить derate (per-load)</span>
     </label>`);
-    h.push(`<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-      <span style="font-size:11px;color:#475569;width:100px">Коэф. derate</span>
-      <input type="number" id="up-hvac-derate-factor" min="0.3" max="1.0" step="0.05" value="${factor}" style="width:90px"${active ? '' : ' disabled'}>
-      <span style="font-size:11px;color:#94a3b8">0.30…1.00</span>
-    </div>`);
 
-    // v0.59.609: ВЫБОР категорий и подтипов через collapsible детали.
-    h.push(`<details style="margin-bottom:8px"${(n._uiHvacCfgOpen ? ' open' : '')}>
-      <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a">⚙ Что считать механической нагрузкой?</summary>
-      <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
-        <div style="margin-bottom:6px"><b>Категории:</b></div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-          ${ALL_CATS.map(c => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 6px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer">
-            <input type="checkbox" data-up-hvac-cat="${c}"${curCats.includes(c) ? ' checked' : ''}>
-            <span>${CAT_LABELS[c] || c}</span>
-          </label>`).join('')}
+    // v0.59.610: ТАБЛИЦА категорий + подтипов с per-row derate input.
+    const _coefInput = (key) => {
+      const v = effectiveMap[key];
+      const value = (Number.isFinite(Number(v)) && v > 0) ? Number(v) : '';
+      return `<input type="number" min="0.30" max="1.00" step="0.05" data-derate-key="${escAttr(key)}" value="${value}" placeholder="1.00" style="width:64px;font-size:11px;padding:2px 4px"${active ? '' : ' disabled'}>`;
+    };
+    h.push(`<details style="margin-bottom:8px"${(active ? ' open' : '')}>
+      <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Таблица коэффициентов derate (категории / подтипы)</summary>
+      <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
+        <div style="font-weight:600;margin-bottom:4px">Категории</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px">
+          <thead><tr style="background:#e0f2fe">
+            <th style="text-align:left;padding:3px 6px">Категория</th>
+            <th style="text-align:right;padding:3px 6px;width:90px">derate</th>
+            <th style="padding:3px 6px;width:24px"></th>
+          </tr></thead>
+          <tbody>
+            ${ALL_CATS.map(c => `<tr style="border-bottom:1px solid #e2e8f0">
+              <td style="padding:3px 6px">${CAT_LABELS[c] || c}</td>
+              <td style="padding:3px 6px;text-align:right">${_coefInput('cat:' + c)}</td>
+              <td style="padding:3px 6px;color:#94a3b8">×</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <div style="font-weight:600;margin-bottom:4px">Подтипы (override per-subtype)</div>
+        <div class="muted" style="font-size:10px;margin-bottom:4px">Если поле пустое — наследуется derate от категории.</div>
+        <div style="max-height:240px;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr style="background:#e0f2fe;position:sticky;top:0">
+              <th style="text-align:left;padding:3px 6px">Подтип</th>
+              <th style="text-align:left;padding:3px 6px;color:#94a3b8;font-weight:400">cat</th>
+              <th style="text-align:right;padding:3px 6px;width:90px">derate</th>
+            </tr></thead>
+            <tbody>
+              ${(CONSUMER_CATALOG || []).map(s => `<tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:3px 6px">${escHtml(s.label)}</td>
+                <td style="padding:3px 6px;color:#94a3b8;font-size:10px">${escHtml(s.category)}</td>
+                <td style="padding:3px 6px;text-align:right">${_coefInput('sub:' + s.id)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
         </div>
-        <div style="margin-bottom:6px"><b>Конкретные подтипы (catalog id):</b></div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto">
-          ${ALL_SUBS.map(s => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 6px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer" title="category: ${s.category}">
-            <input type="checkbox" data-up-hvac-sub="${escAttr(s.id)}"${curSubs.includes(s.id) ? ' checked' : ''}>
-            <span>${escHtml(s.label)}</span>
-          </label>`).join('')}
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Сбросить к defaults (Kehua 0.70)</button>
+          <button type="button" id="up-hvac-derate-clear" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">✕ Очистить все</button>
         </div>
-        <div class="muted" style="font-size:10px;margin-top:6px">Сохраняется в этом ИБП. По умолчанию: category=hvac + subtypes={motor, pump, fan, conditioner, elevator, outdoor_unit}.</div>
       </div>
     </details>`);
 
-    const overloadStyle = utilPct > 100 ? 'color:#b91c1c;font-weight:600' : (utilPct > 90 ? 'color:#c2410c' : '');
     h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
-      <b>Капасити:</b> ${fmt(baseCap)} kW (без снижения)<br>
-      <b>Нагрузка IT:</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>Нагрузка HVAC:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
-      <b>Эффективная нагрузка</b> (с derate ${active ? f.toFixed(2) : '1.00'}): <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
-      ${active && pHVAC > 0 ? `<span class="muted"> = ${fmt(pIT)} + ${fmt(pHVAC)}/${f.toFixed(2)}</span>` : ''}<br>
-      <b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}
+      <b>Капасити:</b> ${fmt(baseCap)} kW<br>
+      <b>Нагрузка IT (без derate):</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>Нагрузка с derate:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
+      <b>Эффективная нагрузка:</b> <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
+      <br><b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}
     </div>`);
 
-    // v0.59.609: списки HVAC и IT нагрузок downstream (collapsible).
+    // v0.59.610: список нагрузок с раздельными колонками P и P_eff.
     if (hvacLoads.length || itLoads.length) {
-      h.push(`<details style="margin-top:6px">
+      const _row = (l, color) => `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;background:${color};border-radius:3px;margin-bottom:2px;align-items:center">
+        <span>${escHtml(l.label)} <span class="muted" style="font-size:10px">[${escHtml(l.sub || '—')}/${escHtml(l.cat || '—')}]</span></span>
+        <span style="font-size:10px;color:#64748b">×${(l.derate || 1).toFixed(2)}</span>
+        <span style="font-variant-numeric:tabular-nums;color:#475569">${fmt(l.P)} kW</span>
+        <b style="font-variant-numeric:tabular-nums;${l.derate < 0.999 ? 'color:#0c4a6e' : ''}">→ ${fmt(l.Peff)} kW</b>
+      </div>`;
+      h.push(`<details style="margin-top:6px" open>
         <summary style="cursor:pointer;font-size:11px;color:#475569">📋 Список нагрузок downstream (${hvacLoads.length + itLoads.length})</summary>
-        <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px;max-height:200px;overflow-y:auto">
-          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin-bottom:4px">HVAC (${hvacLoads.length}):</div>
-            <div style="margin-bottom:8px">
-              ${hvacLoads.map(l => `<div style="display:flex;justify-content:space-between;padding:2px 4px;background:#dbeafe;border-radius:3px;margin-bottom:2px">
-                <span>${escHtml(l.label)} <span class="muted" style="font-size:10px">[${escHtml(l.sub)}/${escHtml(l.cat)}]</span></span>
-                <b>${fmt(l.P)} kW</b>
-              </div>`).join('')}
-            </div>` : ''}
-          ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin-bottom:4px">IT (${itLoads.length}):</div>
-            <div>
-              ${itLoads.map(l => `<div style="display:flex;justify-content:space-between;padding:2px 4px;background:#dcfce7;border-radius:3px;margin-bottom:2px">
-                <span>${escHtml(l.label)} <span class="muted" style="font-size:10px">[${escHtml(l.sub || '—')}/${escHtml(l.cat || '—')}]</span></span>
-                <b>${fmt(l.P)} kW</b>
-              </div>`).join('')}
-            </div>` : ''}
+        <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px;max-height:300px;overflow-y:auto">
+          <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:6px;padding:3px 6px;font-weight:600;color:#475569;border-bottom:1px solid #cbd5e1;margin-bottom:4px;font-size:10px;text-transform:uppercase">
+            <span>Устройство</span>
+            <span>derate</span>
+            <span>P</span>
+            <span>P эфф.</span>
+          </div>
+          ${hvacLoads.length ? `<div style="font-weight:600;color:#0c4a6e;margin:4px 0 4px">⚙ Деретируемые (${hvacLoads.length}):</div>` : ''}
+          ${hvacLoads.map(l => _row(l, '#dbeafe')).join('')}
+          ${itLoads.length ? `<div style="font-weight:600;color:#166534;margin:8px 0 4px">✓ Без derate (${itLoads.length}):</div>` : ''}
+          ${itLoads.map(l => _row(l, '#dcfce7')).join('')}
         </div>
       </details>`);
     }
@@ -623,6 +628,27 @@ export function openUpsParamsModal(n) {
     });
   }
 
+  // v0.59.610: reset / clear для derate-таблицы.
+  document.getElementById('up-hvac-derate-default')?.addEventListener('click', () => {
+    snapshotVisibleFields();
+    n.hvacDerateMap = {
+      'cat:hvac': 0.70,
+      'sub:motor': 0.70, 'sub:pump': 0.70, 'sub:fan': 0.70,
+      'sub:conditioner': 0.70, 'sub:elevator': 0.70, 'sub:outdoor_unit': 0.70,
+    };
+    openUpsParamsModal(n);
+  });
+  document.getElementById('up-hvac-derate-clear')?.addEventListener('click', () => {
+    snapshotVisibleFields();
+    delete n.hvacDerateMap;
+    openUpsParamsModal(n);
+  });
+  // Toggle disabled state on coef inputs based on active checkbox.
+  document.getElementById('up-hvac-derate-active')?.addEventListener('change', (e) => {
+    const dis = !e.target.checked;
+    document.querySelectorAll('[data-derate-key]').forEach(el => { el.disabled = dis; });
+  });
+
   const applyBtn = document.getElementById('ups-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
     if (n.id !== '__preset_edit__') snapshot('ups-params:' + n.id);
@@ -695,17 +721,21 @@ export function openUpsParamsModal(n) {
     if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
       n.inputs = 2;
     }
-    // v0.59.605 (Phase 18): HVAC derate для механической нагрузки.
+    // v0.59.610 (Phase 18): per-category / per-subtype derate map.
     n.hvacDerateActive = document.getElementById('up-hvac-derate-active')?.checked === true;
-    const _hf = Number(document.getElementById('up-hvac-derate-factor')?.value);
-    if (Number.isFinite(_hf) && _hf > 0) n.hvacDerateFactor = Math.max(0.3, Math.min(1.0, _hf));
-    // v0.59.609: per-UPS конфигурация категорий и подтипов.
-    const cats = Array.from(document.querySelectorAll('[data-up-hvac-cat]:checked'))
-      .map(el => el.getAttribute('data-up-hvac-cat')).filter(Boolean);
-    const subs = Array.from(document.querySelectorAll('[data-up-hvac-sub]:checked'))
-      .map(el => el.getAttribute('data-up-hvac-sub')).filter(Boolean);
-    if (cats.length) n.hvacDerateCategories = cats; else delete n.hvacDerateCategories;
-    if (subs.length) n.hvacDerateSubtypes = subs; else delete n.hvacDerateSubtypes;
+    const map = {};
+    document.querySelectorAll('[data-derate-key]').forEach(el => {
+      const key = el.getAttribute('data-derate-key');
+      if (!key) return;
+      const raw = String(el.value ?? '').trim();
+      if (raw === '') return; // empty = inherit / no override
+      const v = Number(raw);
+      if (Number.isFinite(v) && v >= 0.30 && v <= 1.00) map[key] = v;
+    });
+    if (Object.keys(map).length) n.hvacDerateMap = map; else delete n.hvacDerateMap;
+    // Cleanup устаревших полей (v0.59.609 хранил cats/subs, v0.59.605 hvacDerateFactor)
+    delete n.hvacDerateCategories;
+    delete n.hvacDerateSubtypes;
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
       document.getElementById('modal-ups-params').classList.add('hidden');

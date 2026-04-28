@@ -9,48 +9,73 @@ import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCoun
          upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity, upsHvacDerateFactor } from './electrical.js';
 import { CONSUMER_CATALOG } from './constants.js';
 
-// v0.59.607/609: HVAC-категории. Используется для weighted-нагрузки ИБП.
-// v0.59.609 ФИКС: поле consumer subtype называется n.consumerSubtype
-// (не n.consumerType). Раньше детекция всегда возвращала false для
-// реальных кондиционеров — Юзер: «у L7 кондиционер с категорией Климат
-// / вентиляция, тип кондиционер, но ИБП не знает об этом».
-// Defaults — типы подкатегорий, считающиеся механической нагрузкой.
-const HVAC_DEFAULT_CATEGORIES = ['hvac'];
-const HVAC_DEFAULT_SUBTYPES = ['motor', 'pump', 'fan', 'conditioner', 'elevator', 'outdoor_unit'];
-function _resolveHvacConfig(upsNode) {
-  // Per-UPS override + sensible defaults.
-  let cats = (upsNode && Array.isArray(upsNode.hvacDerateCategories) && upsNode.hvacDerateCategories.length)
-    ? upsNode.hvacDerateCategories : HVAC_DEFAULT_CATEGORIES;
-  let subs = (upsNode && Array.isArray(upsNode.hvacDerateSubtypes) && upsNode.hvacDerateSubtypes.length)
-    ? upsNode.hvacDerateSubtypes : HVAC_DEFAULT_SUBTYPES;
-  return { cats: new Set(cats), subs: new Set(subs) };
-}
-function _isHvacConsumer(n, hvacCfg) {
-  if (!n || n.type !== 'consumer') return false;
-  const cfg = hvacCfg || { cats: new Set(HVAC_DEFAULT_CATEGORIES), subs: new Set(HVAC_DEFAULT_SUBTYPES) };
-  // Subtype check (canonical поле — n.consumerSubtype; fallback n.consumerType
-  // и n.subtype для legacy совместимости).
+// v0.59.610: per-category / per-subtype derate map.
+// Юзер: «выведем в характеристиках ибп список всех категорий и подтипов
+// и для каждой записи вводить коэффициент дирейтинга».
+//
+// Модель n.hvacDerateMap:
+//   { 'cat:hvac': 0.70, 'cat:power': 0.85, 'sub:conditioner': 0.65, ... }
+// Lookup для консьюмера:
+//   1. n.hvacDerateMap['sub:' + consumerSubtype]  (override per-subtype)
+//   2. n.hvacDerateMap['cat:' + category]         (per-category)
+//   3. 1.0 (no derate)
+// Если n.hvacDerateActive===false → всегда 1.0.
+//
+// Defaults (когда map пустой и derate active):
+const HVAC_DEFAULT_DERATE = {
+  'cat:hvac': 0.70,
+  'sub:motor': 0.70,
+  'sub:pump': 0.70,
+  'sub:fan': 0.70,
+  'sub:conditioner': 0.70,
+  'sub:elevator': 0.70,
+  'sub:outdoor_unit': 0.70,
+};
+function _consumerCategory(n) {
   const sub = n.consumerSubtype || n.consumerType || '';
-  if (sub && cfg.subs.has(sub)) return true;
-  // Category check (catalog lookup по subtype).
-  const cat = CONSUMER_CATALOG.find(x => x && x.id === sub);
-  if (cat && cfg.cats.has(cat.category)) return true;
-  // Top-level subtype может содержать категорию ('hvac', 'power').
-  if (n.subtype && cfg.cats.has(n.subtype)) return true;
-  return false;
+  if (sub) {
+    const cat = CONSUMER_CATALOG.find(x => x && x.id === sub);
+    if (cat) return cat.category;
+  }
+  return n.subtype || 'other';
+}
+function _resolveDerate(consumer, upsNode) {
+  if (!upsNode || !upsNode.hvacDerateActive) return 1.0;
+  const map = (upsNode.hvacDerateMap && typeof upsNode.hvacDerateMap === 'object')
+    ? upsNode.hvacDerateMap : {};
+  const usedMap = Object.keys(map).length ? map : HVAC_DEFAULT_DERATE;
+  const sub = consumer.consumerSubtype || consumer.consumerType || '';
+  if (sub) {
+    const v = Number(usedMap['sub:' + sub]);
+    if (Number.isFinite(v) && v > 0 && v <= 1) return v;
+  }
+  const cat = _consumerCategory(consumer);
+  if (cat) {
+    const v = Number(usedMap['cat:' + cat]);
+    if (Number.isFinite(v) && v > 0 && v <= 1) return v;
+  }
+  return 1.0;
+}
+function _isDerated(consumer, upsNode) {
+  return _resolveDerate(consumer, upsNode) < 0.999;
 }
 // Возвращает weighted-нагрузку ИБП с учётом HVAC-derate.
 // IT-часть считается 1×, механическая часть — 1/derate.
 // Если derate не активен — возвращает обычную сумму (=Σ всех загрузок).
 // v0.59.608: ВСЕГДА заполняет _loadKwIT / _loadKwHVAC на узле, даже когда
 // derate не активен — чтобы UI показывал breakdown.
+// v0.59.610: weighted load с per-consumer derate.
+// ВАЖНО (юзер 2026-04-28): эти коэффициенты влияют ТОЛЬКО на проверку
+// перегруза самого ИБП. Upstream-цепочка (utility / panel / источник)
+// НЕ видит derate — она получает n._loadKw (физическая нагрузка) и
+// n._inputKw (с КПД, но без derate). Сам ИБП тоже не пропускает derate
+// другим ИБП в цепочке: BFS через `next.type === 'ups'` continue.
 function _computeUpsWeightedLoad(upsNode) {
   if (!upsNode || upsNode.type !== 'ups') return 0;
-  const factor = upsHvacDerateFactor(upsNode);
-  const hvacCfg = _resolveHvacConfig(upsNode);
   let totalIT = 0, totalHVAC = 0;
-  const hvacLoads = []; // {id, label, P, sub, cat}
-  const itLoads = [];   // {id, label, P, sub, cat}
+  let weightedTotal = 0;
+  const hvacLoads = []; // {id, label, P, Peff, sub, cat, derate}
+  const itLoads = [];   // {id, label, P, Peff, sub, cat, derate}
   const visited = new Set([upsNode.id]);
   const queue = [upsNode.id];
   while (queue.length) {
@@ -61,20 +86,23 @@ function _computeUpsWeightedLoad(upsNode) {
       const next = state.nodes.get(c.to?.nodeId);
       if (!next || visited.has(next.id)) continue;
       visited.add(next.id);
-      // НЕ идём через другие ИБП — у них своя нагрузка, не наша.
       if (next.type === 'ups' && next.id !== upsNode.id) continue;
       if (next.type === 'consumer') {
         const Pphys = (Number(next._loadKw) || 0)
           || (consumerTotalDemandKw(next) * (Number(next.kUse) || 1) * effectiveLoadFactor(next));
         const sub = next.consumerSubtype || next.consumerType || '';
-        const cat = (CONSUMER_CATALOG.find(x => x && x.id === sub) || {}).category || next.subtype || '';
+        const cat = _consumerCategory(next);
         const label = next.name || next.tag || sub || next.id;
-        if (_isHvacConsumer(next, hvacCfg)) {
+        const derate = _resolveDerate(next, upsNode);
+        const Peff = derate > 0 ? Pphys / derate : Pphys;
+        weightedTotal += Peff;
+        const entry = { id: next.id, label, P: Pphys, Peff, sub, cat, derate };
+        if (derate < 0.999) {
           totalHVAC += Pphys;
-          hvacLoads.push({ id: next.id, label, P: Pphys, sub, cat });
+          hvacLoads.push(entry);
         } else {
           totalIT += Pphys;
-          itLoads.push({ id: next.id, label, P: Pphys, sub, cat });
+          itLoads.push(entry);
         }
       }
       queue.push(next.id);
@@ -84,9 +112,7 @@ function _computeUpsWeightedLoad(upsNode) {
   upsNode._loadKwHVAC = totalHVAC;
   upsNode._hvacLoads = hvacLoads;
   upsNode._itLoads = itLoads;
-  // Weighted = IT + HVAC×(1/factor). Если derate не активен factor=1.0,
-  // weighted = IT + HVAC = всё суммарно.
-  return totalIT + (factor > 0 ? totalHVAC / factor : totalHVAC);
+  return weightedTotal;
 }
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
