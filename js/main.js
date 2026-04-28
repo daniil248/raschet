@@ -16,7 +16,7 @@ import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } 
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
 import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
-import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG } from './engine/constants.js';
+import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG, GLOBAL as _GLOBAL } from './engine/constants.js';
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 // v0.59.633: generic preset-система для таблиц — переиспользуется во всех модулях.
@@ -2859,11 +2859,22 @@ const _CONSUMERS_TABLE_COLUMNS = [
   { id: 'name', label: 'Имя', default: true },
   { id: 'parent', label: 'Питающий щит', default: true },
   { id: 'category', label: 'Категория', default: true },
+  // v0.59.634: подтип из CONSUMER_CATALOG (editable select).
+  { id: 'subtype', label: 'Подтип', default: false },
   { id: 'demand', label: 'P, кВт', default: true },
   { id: 'count', label: 'Кол-во (шт.)', default: true },
   { id: 'cosPhi', label: 'cos φ', default: true },
   { id: 'kUse', label: 'Kи', default: true },
   { id: 'phase', label: 'Фаза', default: true },
+  // v0.59.634: уровень напряжения (editable select из GLOBAL.voltageLevels).
+  { id: 'voltage', label: 'U', default: false },
+  // v0.59.634: пусковые / параметры автомата.
+  { id: 'inrush', label: 'Inrush ×', default: false },
+  { id: 'breakerMargin', label: 'Запас, %', default: false },
+  { id: 'curveHint', label: 'Кривая', default: false },
+  // v0.59.634: жилы кабеля (auto / есть / нет).
+  { id: 'hasN', label: 'N', default: false },
+  { id: 'hasG', label: 'PE', default: false },
   // v0.59.623: тип пуска и K_рез (для питания от ИБП).
   { id: 'starterType', label: 'Тип пуска', default: true },
   { id: 'crf', label: 'K_рез', default: true },
@@ -5748,7 +5759,7 @@ document.addEventListener('keydown', (e) => {
 // Используется при переходе «💡 N» из Перечня оборудования, чтобы
 // показать не только напрямую подключённых потребителей, но и всех
 // транзитивных (через секции / вложенные ЩР).
-let _consumersTableFilters = { search: '', phase: '', category: '', parent: '', ancestorIds: null, ancestorLabel: '' };
+let _consumersTableFilters = { search: '', phase: '', category: '', subtype: '', parent: '', ancestorIds: null, ancestorLabel: '' };
 let _consumersTableSelected = new Set();
 let _consumersTableSort = { col: 'tag', dir: 'asc' };
 
@@ -5770,7 +5781,7 @@ function openConsumersTableModal() {
   // Phase 1.20.36
   const resetBtn = document.getElementById('consumers-table-reset-filters');
   if (resetBtn) resetBtn.onclick = () => {
-    _consumersTableFilters = { search: '', phase: '', category: '', parent: '', ancestorIds: null, ancestorLabel: '' };
+    _consumersTableFilters = { search: '', phase: '', category: '', subtype: '', parent: '', ancestorIds: null, ancestorLabel: '' };
     _consumersTableSort = { col: 'tag', dir: 'asc' };
     const s = document.getElementById('consumers-table-search'); if (s) s.value = '';
     const ph = document.getElementById('consumers-table-filter-phase'); if (ph) ph.value = '';
@@ -5840,6 +5851,10 @@ function renderConsumersTable() {
       const cat = catalogById.get(n.consumerCatalogId)?.category || 'other';
       if (cat !== F.category) return false;
     }
+    // v0.59.634: фильтр по subtype.
+    if (F.subtype) {
+      if ((n.consumerSubtype || '') !== F.subtype) return false;
+    }
     if (F.parent) {
       const p = parentPanelById0.get(n.id);
       const pTag = p ? (_effectiveTag(p) || p.tag || p.name || '') : '';
@@ -5877,6 +5892,14 @@ function renderConsumersTable() {
       case 'cosPhi': return Number(n.cosPhi) || 0;
       case 'kUse': return Number(n.kUse) || 0;
       case 'phase': return n.phase || '';
+      // v0.59.634: sort keys для новых колонок.
+      case 'subtype': return n.consumerSubtype || '';
+      case 'voltage': return (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : -1;
+      case 'inrush': return Number(n.inrushFactor) || 1;
+      case 'breakerMargin': return Number(n.breakerMarginPct) || -1; // пусто = -1 (внизу)
+      case 'curveHint': return n.curveHint || '';
+      case 'hasN': return n.hasNeutral === true ? 'on' : (n.hasNeutral === false ? 'off' : 'auto');
+      case 'hasG': return n.hasGround === true ? 'on' : (n.hasGround === false ? 'off' : 'auto');
       case 'starterType': return n.starterType || '';
       case 'crf': {
         // v0.59.623: вычисляемый K — для сортировки нужно повторить lookup.
@@ -5934,6 +5957,11 @@ function renderConsumersTable() {
       <button type="button" id="ctc-bulk-cosPhi" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">cos φ</button>
       <button type="button" id="ctc-bulk-kUse" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">K<sub>и</sub></button>
       <button type="button" id="ctc-bulk-phase" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Фаза</button>
+      <button type="button" id="ctc-bulk-subtype" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Подтип</button>
+      <button type="button" id="ctc-bulk-inrush" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Inrush</button>
+      <button type="button" id="ctc-bulk-brkMargin" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Запас, %</button>
+      <button type="button" id="ctc-bulk-curve" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Кривая</button>
+      <button type="button" id="ctc-bulk-starterType" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Тип пуска</button>
       <span style="flex:1"></span>
       ${_renderTablePresetUI('consumers', _consumersTableCurrentPreset)}
       <button type="button" id="ctc-col-menu" title="Настроить видимость столбцов" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">⚙ Столбцы</button>
@@ -5952,9 +5980,16 @@ function renderConsumersTable() {
           ${ifShow('category', sortHdr('category', 'Категория', 'left'))}
           ${ifShow('demand', sortHdr('demand', 'P, кВт', 'right'))}
           ${ifShow('count', sortHdr('count', 'Шт.', 'right'))}
+          ${ifShow('subtype', sortHdr('subtype', 'Подтип', 'left'))}
           ${ifShow('cosPhi', sortHdr('cosPhi', 'cos φ', 'right'))}
           ${ifShow('kUse', sortHdr('kUse', 'Kи', 'right'))}
           ${ifShow('phase', sortHdr('phase', 'Фаза', 'center'))}
+          ${ifShow('voltage', sortHdr('voltage', 'U', 'center'))}
+          ${ifShow('inrush', sortHdr('inrush', 'Inrush ×', 'right'))}
+          ${ifShow('breakerMargin', sortHdr('breakerMargin', 'Запас, %', 'right'))}
+          ${ifShow('curveHint', sortHdr('curveHint', 'Кривая', 'center'))}
+          ${ifShow('hasN', sortHdr('hasN', 'N', 'center'))}
+          ${ifShow('hasG', sortHdr('hasG', 'PE', 'center'))}
           ${ifShow('starterType', sortHdr('starterType', 'Тип пуска', 'left'))}
           ${ifShow('crf', sortHdr('crf', 'K_рез', 'right'))}
         </tr>
@@ -5964,11 +5999,18 @@ function renderConsumersTable() {
           ${ifShow('name', '<th style="padding:3px 6px;border-bottom:1px solid #d0d7de"><span class="muted" style="font-size:10px">Поиск — в поле сверху</span></th>')}
           ${ifShow('parent', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="parent" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все щиты —</option>${[...distinctParents].sort().map(v => `<option value="${esc(v)}" ${F.parent === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
           ${ifShow('category', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="category" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${[...distinctCats].sort().map(v => `<option value="${esc(v)}" ${F.category === v ? 'selected' : ''}>${esc(CAT_LABELS[v] || v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('subtype', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="subtype" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${(_CONSUMER_CATALOG || []).map(c => `<option value="${esc(c.id)}" ${F.subtype === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></th>`)}
           ${ifShow('demand', '<th></th>')}
           ${ifShow('count', '<th></th>')}
           ${ifShow('cosPhi', '<th></th>')}
           ${ifShow('kUse', '<th></th>')}
           ${ifShow('phase', '<th></th>')}
+          ${ifShow('voltage', '<th></th>')}
+          ${ifShow('inrush', '<th></th>')}
+          ${ifShow('breakerMargin', '<th></th>')}
+          ${ifShow('curveHint', '<th></th>')}
+          ${ifShow('hasN', '<th></th>')}
+          ${ifShow('hasG', '<th></th>')}
           ${ifShow('starterType', '<th></th>')}
           ${ifShow('crf', '<th></th>')}
         </tr>
@@ -5996,11 +6038,64 @@ function renderConsumersTable() {
           return `<a href="#" class="ctc-parent-jump" data-parent-id="${esc(p.id)}" style="color:#1976d2;text-decoration:none">${esc(pt)}</a>`;
         })()}</td>`)}
         ${ifShow('category', `<td style="padding:5px 8px;font-size:11px"><div>${esc(catLabel)}</div><div class="muted" style="font-size:10px">${esc(CAT_LABELS[catCat] || catCat)}</div></td>`)}
+        ${ifShow('subtype', (() => {
+          // v0.59.634: подтип — editable select из CONSUMER_CATALOG.
+          const cur = n.consumerSubtype || '';
+          const opts = ['<option value="">— не задан —</option>']
+            .concat((_CONSUMER_CATALOG || []).map(c =>
+              `<option value="${esc(c.id)}"${cur === c.id ? ' selected' : ''}>${esc(c.label)}</option>`
+            )).join('');
+          return `<td style="padding:5px 8px;font-size:11px"><select class="ctc-subtype" data-id="${esc(n.id)}" style="width:100%;padding:3px 4px;font-size:11px">${opts}</select></td>`;
+        })())}
         ${ifShow('demand', `<td style="padding:5px 8px;text-align:right"><input class="ctc-demand" data-id="${esc(n.id)}" type="number" min="0" step="0.1" value="${Number(n.demandKw) || 0}" style="width:72px;padding:3px 6px;text-align:right"></td>`)}
         ${ifShow('count', `<td style="padding:5px 8px;text-align:right"><input class="ctc-count" data-id="${esc(n.id)}" type="number" min="1" step="1" value="${Number(n.count) || 1}" style="width:52px;padding:3px 6px;text-align:right"></td>`)}
         ${ifShow('cosPhi', `<td style="padding:5px 8px;text-align:right"><input class="ctc-cosPhi" data-id="${esc(n.id)}" type="number" min="0.1" max="1" step="0.01" value="${Number(n.cosPhi) || 0.92}" style="width:56px;padding:3px 6px;text-align:right"></td>`)}
         ${ifShow('kUse', `<td style="padding:5px 8px;text-align:right"><input class="ctc-kUse" data-id="${esc(n.id)}" type="number" min="0" max="1.5" step="0.05" value="${Number(n.kUse) || 1}" style="width:56px;padding:3px 6px;text-align:right"></td>`)}
         ${ifShow('phase', `<td style="padding:5px 8px;text-align:center;font-size:11px"><select class="ctc-phase" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px"><option value="1ph"${phase === '1ph' ? ' selected' : ''}>1ф</option><option value="3ph"${phase === '3ph' ? ' selected' : ''}>3ф</option><option value="dc"${phase === 'dc' ? ' selected' : ''}>DC</option></select></td>`)}
+        ${ifShow('voltage', (() => {
+          // v0.59.634: уровень напряжения — editable select.
+          const lvls = (_GLOBAL && _GLOBAL.voltageLevels) || [];
+          const cur = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : '';
+          const opts = ['<option value="">авто</option>']
+            .concat(lvls.map((l, i) => {
+              const lbl = l.vLL >= 1000 ? `${(l.vLL/1000).toFixed(l.vLL%1000===0?0:1)} kV` : `${l.vLL} V`;
+              return `<option value="${i}"${cur === i ? ' selected' : ''}>${esc(lbl)}</option>`;
+            })).join('');
+          return `<td style="padding:5px 8px;text-align:center;font-size:11px"><select class="ctc-voltage" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px">${opts}</select></td>`;
+        })())}
+        ${ifShow('inrush', `<td style="padding:5px 8px;text-align:right"><input class="ctc-inrush" data-id="${esc(n.id)}" type="number" min="1" max="20" step="0.1" value="${Number(n.inrushFactor) || 1}" style="width:56px;padding:3px 6px;text-align:right"></td>`)}
+        ${ifShow('breakerMargin', (() => {
+          const v = (typeof n.breakerMarginPct === 'number') ? n.breakerMarginPct : '';
+          return `<td style="padding:5px 8px;text-align:right"><input class="ctc-brkMargin" data-id="${esc(n.id)}" type="number" min="0" max="100" step="5" value="${v}" placeholder="авто" style="width:64px;padding:3px 6px;text-align:right"></td>`;
+        })())}
+        ${ifShow('curveHint', (() => {
+          // v0.59.634: кривая автомата — editable select MCB B/C/D.
+          const cur = n.curveHint || '';
+          return `<td style="padding:5px 8px;text-align:center;font-size:11px"><select class="ctc-curve" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px">
+            <option value=""${cur===''?' selected':''}>авто</option>
+            <option value="MCB_B"${cur==='MCB_B'?' selected':''}>B</option>
+            <option value="MCB_C"${cur==='MCB_C'?' selected':''}>C</option>
+            <option value="MCB_D"${cur==='MCB_D'?' selected':''}>D</option>
+          </select></td>`;
+        })())}
+        ${ifShow('hasN', (() => {
+          // v0.59.634: жила N — авто/есть/нет.
+          const v = (typeof n.hasNeutral === 'boolean') ? (n.hasNeutral ? 'on' : 'off') : 'auto';
+          return `<td style="padding:5px 8px;text-align:center;font-size:11px"><select class="ctc-hasN" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px">
+            <option value="auto"${v==='auto'?' selected':''}>авто</option>
+            <option value="on"${v==='on'?' selected':''}>есть</option>
+            <option value="off"${v==='off'?' selected':''}>нет</option>
+          </select></td>`;
+        })())}
+        ${ifShow('hasG', (() => {
+          // v0.59.634: жила PE — авто/есть/нет.
+          const v = (typeof n.hasGround === 'boolean') ? (n.hasGround ? 'on' : 'off') : 'auto';
+          return `<td style="padding:5px 8px;text-align:center;font-size:11px"><select class="ctc-hasG" data-id="${esc(n.id)}" style="padding:3px 4px;font-size:11px">
+            <option value="auto"${v==='auto'?' selected':''}>авто</option>
+            <option value="on"${v==='on'?' selected':''}>есть</option>
+            <option value="off"${v==='off'?' selected':''}>нет</option>
+          </select></td>`;
+        })())}
         ${ifShow('starterType', (() => {
           // v0.59.623: тип пуска — для расчёта K_рез на ИБП.
           const cur = n.starterType || '';
@@ -6086,6 +6181,73 @@ function renderConsumersTable() {
       applyAndRerender();
     });
   });
+  // v0.59.634: подтип — editable select из CONSUMER_CATALOG.
+  mount.querySelectorAll('.ctc-subtype').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snap('consumers-table:subtype:' + sel.dataset.id);
+      apply(sel.dataset.id, (n) => {
+        const v = sel.value || '';
+        if (v) n.consumerSubtype = v;
+        else delete n.consumerSubtype;
+      });
+      applyAndRerender();
+    });
+  });
+  // v0.59.634: уровень напряжения — editable select.
+  mount.querySelectorAll('.ctc-voltage').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snap('consumers-table:voltage:' + sel.dataset.id);
+      apply(sel.dataset.id, (n) => {
+        const raw = sel.value;
+        if (raw === '') { delete n.voltageLevelIdx; return; }
+        const v = Number(raw);
+        if (Number.isFinite(v)) n.voltageLevelIdx = v;
+      });
+      applyAndRerender();
+    });
+  });
+  bindNum('ctc-inrush', 'inrushFactor');
+  // v0.59.634: запас по автомату (пусто = авто).
+  mount.querySelectorAll('.ctc-brkMargin').forEach(inp => {
+    inp.addEventListener('change', () => {
+      snap('consumers-table:brkMargin:' + inp.dataset.id);
+      apply(inp.dataset.id, (n) => {
+        const raw = String(inp.value ?? '').trim();
+        if (raw === '') { delete n.breakerMarginPct; return; }
+        const v = Number(raw);
+        if (Number.isFinite(v) && v >= 0 && v <= 100) n.breakerMarginPct = v;
+      });
+      applyAndRerender();
+    });
+  });
+  // v0.59.634: кривая автомата — auto/MCB_B/MCB_C/MCB_D.
+  mount.querySelectorAll('.ctc-curve').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snap('consumers-table:curve:' + sel.dataset.id);
+      apply(sel.dataset.id, (n) => {
+        const v = sel.value || '';
+        if (v) n.curveHint = v;
+        else delete n.curveHint;
+      });
+      applyAndRerender();
+    });
+  });
+  // v0.59.634: жилы N / PE — auto/on/off → boolean | null.
+  const _bindTriState = (cls, prop) => {
+    mount.querySelectorAll('.' + cls).forEach(sel => {
+      sel.addEventListener('change', () => {
+        snap('consumers-table:' + prop + ':' + sel.dataset.id);
+        apply(sel.dataset.id, (n) => {
+          const v = sel.value;
+          if (v === 'auto') delete n[prop];
+          else n[prop] = (v === 'on');
+        });
+        applyAndRerender();
+      });
+    });
+  };
+  _bindTriState('ctc-hasN', 'hasNeutral');
+  _bindTriState('ctc-hasG', 'hasGround');
   // v0.59.623: тип пуска — переключает между «фиксированным K» и «своим K».
   mount.querySelectorAll('.ctc-starterType').forEach(sel => {
     sel.addEventListener('change', () => {
@@ -6177,7 +6339,7 @@ function renderConsumersTable() {
   });
   const clearBtn = mount.querySelector('#ctc-clear-filters');
   if (clearBtn) clearBtn.addEventListener('click', () => {
-    _consumersTableFilters = { search: '', phase: '', category: '', parent: '', ancestorIds: null, ancestorLabel: '' };
+    _consumersTableFilters = { search: '', phase: '', category: '', subtype: '', parent: '', ancestorIds: null, ancestorLabel: '' };
     const s = document.getElementById('consumers-table-search'); if (s) s.value = '';
     const p = document.getElementById('consumers-table-filter-phase'); if (p) p.value = '';
     renderConsumersTable();
@@ -6251,6 +6413,68 @@ function renderConsumersTable() {
     if (!v) return;
     if (!['1ph', '3ph', 'dc'].includes(v)) { flash('Неверное значение', 'error'); return; }
     bulkApply((n) => { n.phase = v; });
+  });
+  // v0.59.634: новые bulk-кнопки.
+  const subBtn = mount.querySelector('#ctc-bulk-subtype');
+  if (subBtn) subBtn.addEventListener('click', async () => {
+    const ids = (_CONSUMER_CATALOG || []).map(c => c.id);
+    const hint = ids.slice(0, 6).join(', ') + (ids.length > 6 ? ', …' : '');
+    const v = await rsPrompt(`Установить подтип (id из каталога, напр. ${hint}; пусто = снять):`, '');
+    if (v == null) return;
+    const trimmed = String(v).trim();
+    if (trimmed && !ids.includes(trimmed)) { flash('Подтип не найден в каталоге', 'error'); return; }
+    bulkApply((n) => {
+      if (trimmed) n.consumerSubtype = trimmed;
+      else delete n.consumerSubtype;
+    });
+  });
+  const inrBtn = mount.querySelector('#ctc-bulk-inrush');
+  if (inrBtn) inrBtn.addEventListener('click', async () => {
+    const v = await askNum('Установить кратность пускового тока (1..20):', 5, 1, 20);
+    if (v != null) bulkApply((n) => { n.inrushFactor = v; });
+  });
+  const brkmBtn = mount.querySelector('#ctc-bulk-brkMargin');
+  if (brkmBtn) brkmBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить запас по автомату, % (0..100; пусто = авто):', '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    if (raw === '') {
+      bulkApply((n) => { delete n.breakerMarginPct; });
+    } else {
+      const num = Number(raw);
+      if (!(Number.isFinite(num) && num >= 0 && num <= 100)) { flash('Неверное значение', 'error'); return; }
+      bulkApply((n) => { n.breakerMarginPct = num; });
+    }
+  });
+  const curveBtn = mount.querySelector('#ctc-bulk-curve');
+  if (curveBtn) curveBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить кривую автомата (B / C / D; пусто = авто):', '');
+    if (v == null) return;
+    const raw = String(v).trim().toUpperCase();
+    if (raw === '') {
+      bulkApply((n) => { delete n.curveHint; });
+    } else if (['B', 'C', 'D'].includes(raw)) {
+      bulkApply((n) => { n.curveHint = 'MCB_' + raw; });
+    } else {
+      flash('Неверная кривая (только B / C / D)', 'error');
+    }
+  });
+  const stBtn = mount.querySelector('#ctc-bulk-starterType');
+  if (stBtn) stBtn.addEventListener('click', async () => {
+    const ids = (_STARTER_TYPES || []).map(t => t.id).join(' / ');
+    const v = await rsPrompt(`Установить тип пуска (${ids}; пусто = снять):`, '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    if (raw === '') {
+      bulkApply((n) => { delete n.starterType; delete n.crfOverride; });
+    } else if ((_STARTER_TYPES || []).some(t => t.id === raw)) {
+      bulkApply((n) => {
+        n.starterType = raw;
+        if (raw !== 'custom') delete n.crfOverride;
+      });
+    } else {
+      flash('Тип пуска не найден', 'error');
+    }
   });
 }
 
