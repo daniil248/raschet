@@ -1263,13 +1263,13 @@ export function renderGeneralPanel(n) {
           const devLabel = (m.device && (m.device.label || m.device.name)) || '?';
           h.push(`<div style="margin-top:6px;padding:6px 10px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:4px;font-size:11px;color:#065f46">
             ✓ Найден в реестре IT: <b>${escHtml(devLabel)}</b>${tag}
-            <a href="../scs-config/inventory.html" style="margin-left:8px;color:#047857" title="Открыть реестр IT-оборудования">→ открыть</a>
+            <a href="scs-config/inventory.html" style="margin-left:8px;color:#047857" title="Открыть реестр IT-оборудования">→ открыть</a>
           </div>`);
         } else if (m.kind === 'facility') {
           const itLabel = (m.item && (m.item.name || m.item.label)) || '?';
           h.push(`<div style="margin-top:6px;padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;font-size:11px;color:#92400e">
             ✓ Найден в реестре объекта: <b>${escHtml(itLabel)}</b>
-            <a href="../facility-inventory/" style="margin-left:8px;color:#b45309" title="Открыть реестр оборудования объекта">→ открыть</a>
+            <a href="facility-inventory/" style="margin-left:8px;color:#b45309" title="Открыть реестр оборудования объекта">→ открыть</a>
           </div>`);
         }
       } else {
@@ -1286,7 +1286,7 @@ export function renderGeneralPanel(n) {
     // и индикатор POR-объекта (mirror связан или нет).
     const isRackNode = n.type === 'consumer' && (n.subtype === 'rack' || n.consumerKind === 'rack');
     if (isRackNode) {
-      const compHref = '../scs-config/rack.html?from=schematic&schemeNodeId=' + encodeURIComponent(n.id);
+      const compHref = 'scs-config/rack.html?from=schematic&schemeNodeId=' + encodeURIComponent(n.id);
       const porBadge = n.porObjectId
         ? `<span title="Связан с POR-объектом ${escAttr(n.porObjectId)} (engine↔POR mirror)" style="font-size:11px;padding:3px 8px;border:1px solid #86efac;background:#f0fdf4;color:#14532d;border-radius:3px">🔗 POR ✓</span>`
         : `<span title="Нет связи с POR — mirror создаст объект при следующем sync" style="font-size:11px;padding:3px 8px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:3px">🔗 POR —</span>`;
@@ -1434,7 +1434,7 @@ export function renderGeneralPanel(n) {
       const qp = new URLSearchParams();
       qp.set('from', 'schematic');
       qp.set('schemeNodeId', n.id);
-      const compHref = '../scs-config/rack.html?' + qp.toString();
+      const compHref = 'scs-config/rack.html?' + qp.toString();
       h.push(`<a class="full-btn" href="${escAttr(compHref)}" target="_blank" rel="noopener" style="display:block;margin-top:6px;text-align:center;text-decoration:none;background:#f0fdf4;color:#14532d;border-color:#86efac">🗄 Компоновщик шкафа (наполнение)</a>`);
     }
     h.push(`<div class="muted" style="font-size:11px;margin-top:4px">${
