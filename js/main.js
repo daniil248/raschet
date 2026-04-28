@@ -6020,20 +6020,14 @@ function renderConsumersTable() {
     return null;
   };
 
-  const distinctCats = new Set();
-  for (const n of consumers) {
-    const cat = _resolveCatalogEntry(n)?.category || 'other';
-    distinctCats.add(cat);
-  }
   const CAT_LABELS = {
     lighting: 'Освещение', socket: 'Розеточные', power: 'Силовая',
     hvac: 'Климат/HVAC', it: 'IT/Серверы', lowvoltage: 'Слаботочные',
     process: 'Технологическая', other: 'Прочее',
   };
 
-  // Phase 1.20.24: parent-panel map + distinct-значения для фильтра
+  // Phase 1.20.24: parent-panel map (используется в фильтре + рендере)
   const parentPanelById0 = new Map();
-  const distinctParents = new Set();
   for (const n of consumers) {
     let parent = null;
     for (const c of S.conns.values()) {
@@ -6043,27 +6037,28 @@ function renderConsumersTable() {
       }
     }
     parentPanelById0.set(n.id, parent);
-    if (parent) distinctParents.add(_effectiveTag(parent) || parent.tag || parent.name || '?');
   }
 
   const F = _consumersTableFilters;
   const q = (F.search || '').toLowerCase();
-  const filtered = consumers.filter(n => {
-    if (F.phase && (n.phase || '3ph') !== F.phase) return false;
-    if (F.category) {
+  // v0.59.645: cross-filter dropdowns. Каждый из 4 фильтров (phase, category,
+  // subtype, parent) считается БЕЗ учёта самого себя — иначе после выбора
+  // одного значения в селекте остальные опции исчезали бы. Юзер-memory:
+  // «опции каждого select зависят от значений ВСЕХ остальных фильтров».
+  const _passesFilter = (n, exceptKey) => {
+    if (exceptKey !== 'phase' && F.phase && (n.phase || '3ph') !== F.phase) return false;
+    if (exceptKey !== 'category' && F.category) {
       const cat = _resolveCatalogEntry(n)?.category || 'other';
       if (cat !== F.category) return false;
     }
-    // v0.59.634: фильтр по subtype.
-    if (F.subtype) {
+    if (exceptKey !== 'subtype' && F.subtype) {
       if ((n.consumerSubtype || '') !== F.subtype) return false;
     }
-    if (F.parent) {
+    if (exceptKey !== 'parent' && F.parent) {
       const p = parentPanelById0.get(n.id);
       const pTag = p ? (_effectiveTag(p) || p.tag || p.name || '') : '';
       if (pTag !== F.parent) return false;
     }
-    // v0.57.67: транзитивный фильтр — принадлежность к дереву щита-предка
     if (F.ancestorIds && !F.ancestorIds.has(n.id)) return false;
     if (q) {
       const catLabel = _resolveCatalogEntry(n)?.label || '';
@@ -6074,7 +6069,28 @@ function renderConsumersTable() {
       if (!hay.includes(q)) return false;
     }
     return true;
-  });
+  };
+
+  // distinct-наборы для каждого dropdown-фильтра — с исключением своего ключа.
+  const distinctCats = new Set();
+  const distinctSubs = new Set();
+  const distinctParents = new Set();
+  for (const n of consumers) {
+    if (_passesFilter(n, 'category')) {
+      const cat = _resolveCatalogEntry(n)?.category || 'other';
+      distinctCats.add(cat);
+    }
+    if (_passesFilter(n, 'subtype')) {
+      const sub = n.consumerSubtype || '';
+      if (sub) distinctSubs.add(sub);
+    }
+    if (_passesFilter(n, 'parent')) {
+      const p = parentPanelById0.get(n.id);
+      if (p) distinctParents.add(_effectiveTag(p) || p.tag || p.name || '?');
+    }
+  }
+
+  const filtered = consumers.filter(n => _passesFilter(n, ''));
   for (const id of [..._consumersTableSelected]) {
     if (!filtered.find(n => n.id === id)) _consumersTableSelected.delete(id);
   }
@@ -6200,9 +6216,9 @@ function renderConsumersTable() {
           <th></th>
           ${ifShow('tag', '<th style="padding:3px 6px;border-bottom:1px solid #d0d7de"></th>')}
           ${ifShow('name', '<th style="padding:3px 6px;border-bottom:1px solid #d0d7de"><span class="muted" style="font-size:10px">Поиск — в поле сверху</span></th>')}
-          ${ifShow('parent', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="parent" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все щиты —</option>${[...distinctParents].sort().map(v => `<option value="${esc(v)}" ${F.parent === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
-          ${ifShow('category', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="category" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${[...distinctCats].sort().map(v => `<option value="${esc(v)}" ${F.category === v ? 'selected' : ''}>${esc(CAT_LABELS[v] || v)}</option>`).join('')}</select></th>`)}
-          ${ifShow('subtype', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="subtype" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${(_CONSUMER_CATALOG || []).map(c => `<option value="${esc(c.id)}" ${F.subtype === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></th>`)}
+          ${ifShow('parent', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="parent" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все щиты —</option>${[...new Set([...distinctParents, F.parent].filter(Boolean))].sort().map(v => `<option value="${esc(v)}" ${F.parent === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('category', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="category" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${[...new Set([...distinctCats, F.category].filter(Boolean))].sort().map(v => `<option value="${esc(v)}" ${F.category === v ? 'selected' : ''}>${esc(CAT_LABELS[v] || v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('subtype', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ctc-flt" data-flt="subtype" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${(_CONSUMER_CATALOG || []).filter(c => distinctSubs.has(c.id) || F.subtype === c.id).map(c => `<option value="${esc(c.id)}" ${F.subtype === c.id ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></th>`)}
           ${ifShow('demand', '<th></th>')}
           ${ifShow('count', '<th></th>')}
           ${ifShow('cosPhi', '<th></th>')}
