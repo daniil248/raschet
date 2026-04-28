@@ -282,8 +282,20 @@ code, kbd, samp, pre { font-family: var(--rs-font-mono); }
   --rs-sidebar-max-w:   560px;
 }
 .rs-sidebar {
-  position: relative;
+  /* v0.59.587: единый скролл для всех сайдбаров во всех модулях.
+     Сайдбар прилипает к верху viewport'а и имеет собственный overflow,
+     чтобы прокручиваться отдельно от основной области. До этого только
+     .sc-racks-side в scs-config имела свой скролл — на других модулях
+     (рacks-list, scs-design, schematic) сайдбар прокручивался вместе со
+     страницей, и при длинном содержимом терялся доступ к нижним пунктам.
+     Доступная высота = viewport − 16px (8px зазор сверху + 8px снизу). */
+  position: sticky;
+  top: 8px;
+  align-self: start;
   min-width: 0;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overflow-x: hidden;
   box-sizing: border-box;
 }
 .rs-sidebar-resizer {

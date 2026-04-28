@@ -61,6 +61,20 @@
             }
           } catch {}
         }
+        // v0.59.587: sessionStorage-фолбэк. При first-visit с ?from=<src>
+        // сохраняем origin; при последующих переходах внутри scs-config
+        // (например, racks-list → rack.html без ?from в ссылке) восстанавливаем.
+        // Это покрывает цепочку scs-design → scs-config/index → rack.html,
+        // где промежуточный хоп терял ?from.
+        const SS_KEY = 'scs-config.origin.v1';
+        try {
+          if (from && FROM[from]) {
+            sessionStorage.setItem(SS_KEY, from);
+          } else {
+            const stored = (sessionStorage.getItem(SS_KEY) || '').toLowerCase();
+            if (stored && FROM[stored]) from = stored;
+          }
+        } catch {}
         if (!from || !FROM[from]) return;
         const a = document.getElementById('sc-back-link');
         const sep = document.getElementById('sc-back-sep');

@@ -3588,7 +3588,14 @@ function renderRacksSidebar() {
       if (ev.target.closest('.sc-rack-card-del')) return; // × кнопка
       const id = card.dataset.rackid;
       if (id === state.currentRackId) return;
-      location.href = `./rack.html?rackId=${encodeURIComponent(id)}`;
+      // v0.59.587: пробрасываем ?from= и ?project=, чтобы breadcrumb-back и
+      // активный проект не терялись при переключении между стойками сайдбара.
+      const from = (new URLSearchParams(location.search).get('from') || '').trim();
+      const project = (new URLSearchParams(location.search).get('project') || '').trim();
+      let url = `./rack.html?rackId=${encodeURIComponent(id)}`;
+      if (from) url += `&from=${encodeURIComponent(from)}`;
+      if (project) url += `&project=${encodeURIComponent(project)}`;
+      location.href = url;
     });
   });
   // v0.59.583: × delete handler — переиспользует bulkDelete logic для одной стойки.

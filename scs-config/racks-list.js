@@ -41,6 +41,26 @@ const loadJson = (k, f) => { try { const r = localStorage.getItem(k); return r ?
 const saveJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 const escapeHtml = s => String(s ?? '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
 
+// v0.59.587: пробрасываем ?from=<module> в ссылки на rack.html, чтобы
+// breadcrumb «← Назад в Проектирование СКС» работал при цепочке
+// scs-design → scs-config/index.html → rack.html. Раньше из-за обрыва
+// цепочки на index.html ссылка ?from= терялась, и пользователь не мог
+// вернуться в исходный модуль одним кликом.
+function _fromQuery() {
+  try {
+    const q = new URLSearchParams(location.search);
+    const f = (q.get('from') || '').trim().toLowerCase();
+    if (!f) return '';
+    if (!/^[a-z0-9-]{1,32}$/.test(f)) return '';
+    return f;
+  } catch { return ''; }
+}
+function _withFrom(url) {
+  const f = _fromQuery();
+  if (!f) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'from=' + encodeURIComponent(f);
+}
+
 function rowHtmlScheme(r, tag, devs, catalog) {
   const usedU = devs.reduce((s, d) => {
     const t = catalog.find(c => c.id === d.typeId);
@@ -90,7 +110,7 @@ function rowHtml(r, tag, devs, catalog, orphan = false) {
     <td>${devs.length}</td>
     <td>${bar}</td>
     <td>
-      <a class="sc-btn" href="./rack.html?rackId=${encodeURIComponent(r.id)}">▶ Открыть</a>
+      <a class="sc-btn" href="${_withFrom('./rack.html?rackId=' + encodeURIComponent(r.id))}">▶ Открыть</a>
     </td>
   </tr>`;
 }
@@ -201,7 +221,7 @@ function render() {
   tbody.querySelectorAll('tr[data-rackid]:not(.rl-scheme)').forEach(tr => {
     tr.addEventListener('click', ev => {
       if (ev.target.closest('a,button,input')) return;
-      location.href = `./rack.html?rackId=${encodeURIComponent(tr.dataset.rackid)}`;
+      location.href = _withFrom(`./rack.html?rackId=${encodeURIComponent(tr.dataset.rackid)}`);
     });
   });
 
