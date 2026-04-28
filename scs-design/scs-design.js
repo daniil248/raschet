@@ -231,6 +231,13 @@ function _renderProjectBadgeImpl(pid, host) {
           if (moved.length || createdSub) {
             console.info(`[scs-design] auto-migrated legacy → sub ${dest.id}, moved ${moved.length} keys, createdSub=${createdSub}; reloading`);
             setActiveProjectId(dest.id);
+            // v0.59.572: обновляем URL ?project=subId перед reload, иначе
+            // project-context.js синкает URL → active на parent и цикл.
+            try {
+              const url = new URL(location.href);
+              url.searchParams.set('project', dest.id);
+              history.replaceState(null, '', url.toString());
+            } catch {}
             location.reload();
             return;
           }
@@ -249,9 +256,19 @@ function _renderProjectBadgeImpl(pid, host) {
 
   // v0.59.556: если у parent ровно 1 под-проект — авто-активируем его
   // (когда зашли по ?project=parentId). Иначе данные уйдут в legacy.
+  // v0.59.572: КРИТИЧНО — также обновляем URL `?project=subId`. Иначе
+  // shared/project-context.js на следующем рендере опять синкает URL →
+  // active=parent, и наш auto-activate сработает заново → INFINITE LOOP.
+  // Используем history.replaceState (без перезагрузки) чтобы URL уже был
+  // правильным к моменту следующего рендера.
   if (parent && !parentIsOrphan && subs.length === 1 && pid === parent.id) {
     try {
       setActiveProjectId(subs[0].id);
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('project', subs[0].id);
+        history.replaceState(null, '', url.toString());
+      } catch {}
       location.reload();
       return;
     } catch (e) { console.warn('[scs-design] auto-activate single sub failed:', e); }
@@ -273,6 +290,12 @@ function _renderProjectBadgeImpl(pid, host) {
         if (dest && dest.id) {
           console.info(`[scs-design] auto-created default sub-project ${dest.id} for fresh project ${parent.id}; reloading`);
           setActiveProjectId(dest.id);
+          // v0.59.572: обновить URL чтобы project-context.js не сбрасывал active.
+          try {
+            const url = new URL(location.href);
+            url.searchParams.set('project', dest.id);
+            history.replaceState(null, '', url.toString());
+          } catch {}
           location.reload();
           return;
         }
