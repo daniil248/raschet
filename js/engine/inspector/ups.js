@@ -275,8 +275,14 @@ export function openUpsParamsModal(n) {
     const reserveStyle = reserveKw < 0
       ? 'color:#b91c1c;font-weight:600'
       : (reservePct < 10 ? 'color:#c2410c' : 'color:#15803d;font-weight:600');
+    // v0.59.630: учёт параллельной работы — индикация в сводке.
+    const pShare = Number(n._parallelShareApplied) || 1;
+    const pPeers = Number(n._parallelEffectivePeers) || 1;
+    const parallelLine = (pShare !== 1 && pPeers > 1)
+      ? `<br><span class="muted" style="color:#0c4a6e">Параллель ${pPeers}× — данный ИБП несёт <b>1/${pPeers}</b> downstream-нагрузки.</span>`
+      : '';
     h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
-      <b>Номинал:</b> ${fmt(baseCap)} kW${maxLoadActive ? ` <span class="muted">(cap ×${maxLoadVal.toFixed(2)} → eff ${fmt(effCap)} kW)</span>` : ''}<br>
+      <b>Номинал:</b> ${fmt(baseCap)} kW${maxLoadActive ? ` <span class="muted">(cap ×${maxLoadVal.toFixed(2)} → eff ${fmt(effCap)} kW)</span>` : ''}${parallelLine}<br>
       <b>Без резервирования (K=1.0):</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>С резервированием (K&lt;1):</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
       <b>Эффективная нагрузка:</b> <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
       <br><b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}

@@ -153,10 +153,42 @@ function _computeUpsWeightedLoad(upsNode) {
       queue.push(next.id);
     }
   }
+  // v0.59.630: учёт валидной параллельной работы. Если этот ИБП — часть
+  // валидной параллельной группы (одинаковые модели + canParallel), то
+  // нагрузка делится между peers. Каждый ИБП видит totalDownstream / N.
+  // Если параллель невалидна — каждый ИБП считает полную нагрузку (overload).
+  let upsShare = 1;
+  let parallelPeerCount = 1;
+  for (const c of state.conns.values()) {
+    if (c.from?.nodeId !== upsNode.id) continue;
+    if (c._state === 'damaged' || c._state === 'disabled' || c._state === 'dead') continue;
+    const dest = state.nodes.get(c.to?.nodeId);
+    if (!dest || dest.type !== 'panel') continue;
+    const grp = _classifyUpsPeers(dest.id);
+    upsShare = grp.share;
+    parallelPeerCount = (grp.peers && grp.peers.length) || 1;
+    break;
+  }
+  // Делим суммарные показатели и каждую запись на N (если валидная параллель).
+  // Список нагрузок остаётся тем же (downstream одинаковый для всех peers),
+  // но цифры в нём — доля этого ИБП.
+  if (upsShare !== 1) {
+    totalIT *= upsShare;
+    totalHVAC *= upsShare;
+    weightedTotal *= upsShare;
+    for (const e of hvacLoads) {
+      e.P *= upsShare; e.Peff *= upsShare; e.Pper *= upsShare;
+    }
+    for (const e of itLoads) {
+      e.P *= upsShare; e.Peff *= upsShare; e.Pper *= upsShare;
+    }
+  }
   upsNode._loadKwIT = totalIT;
   upsNode._loadKwHVAC = totalHVAC;
   upsNode._hvacLoads = hvacLoads;
   upsNode._itLoads = itLoads;
+  upsNode._parallelShareApplied = upsShare;       // 1.0 если одиночный или невалидный
+  upsNode._parallelEffectivePeers = parallelPeerCount;
   return weightedTotal;
 }
 
