@@ -3389,11 +3389,27 @@ function drawPlanLinks(svg, plan) {
     svg.appendChild(path);
     // бейдж с количеством кабелей в группе (показываем только если >1)
     if (n > 1 && route.pts.length >= 2) {
-      const mid = Math.floor(route.pts.length / 2);
-      const p0 = route.pts[mid - 1] || route.pts[0];
-      const p1 = route.pts[mid] || route.pts[route.pts.length - 1];
-      const mx = (p0[0] + p1[0]) / 2;
-      const my = (p0[1] + p1[1]) / 2;
+      // v0.59.595: вычисляем точку на 50% от длины маршрута, а не по индексу
+      // массива точек. Раньше badge оказывался в случайном месте — на коротком
+      // сегменте, а не геометрически посередине пути.
+      let totalLen = 0;
+      for (let i = 1; i < route.pts.length; i++) {
+        totalLen += Math.abs(route.pts[i][0] - route.pts[i-1][0])
+                  + Math.abs(route.pts[i][1] - route.pts[i-1][1]);
+      }
+      const targetLen = totalLen / 2;
+      let acc = 0, mx = route.pts[0][0], my = route.pts[0][1];
+      for (let i = 1; i < route.pts.length; i++) {
+        const segLen = Math.abs(route.pts[i][0] - route.pts[i-1][0])
+                     + Math.abs(route.pts[i][1] - route.pts[i-1][1]);
+        if (acc + segLen >= targetLen) {
+          const t = (targetLen - acc) / Math.max(0.001, segLen);
+          mx = route.pts[i-1][0] + (route.pts[i][0] - route.pts[i-1][0]) * t;
+          my = route.pts[i-1][1] + (route.pts[i][1] - route.pts[i-1][1]) * t;
+          break;
+        }
+        acc += segLen;
+      }
       const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       const label = `×${n}`;
       const padX = 4, padY = 2;
