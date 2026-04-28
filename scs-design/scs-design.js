@@ -19,6 +19,11 @@ import {
 } from '../shared/rack-storage.js';
 // v0.59.348: stickers-baner о виртуальных стойках из схемы.
 import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks } from '../shared/scheme-rack-bridge.js';
+// v0.59.578: жадно импортируем POR — иначе window.RaschetPOR undefined,
+// rack-storage._loadPorRacks возвращает [], в picker'е НЕ видны POR-стойки
+// родителя (16 шт. SR01-08, MR01, CR01 у тестового проекта).
+import '../shared/por.js';
+import '../shared/por-types/index.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;              // для совместимости storage-listener
 const LS_CATALOG   = 'scs-config.catalog.v1';          // глобальный каталог IT
