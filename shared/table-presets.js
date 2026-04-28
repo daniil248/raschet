@@ -60,6 +60,28 @@ export function loadLastPresetState(tableId) {
   };
 }
 
+// v0.59.643: персистентность ТЕКУЩЕГО состояния таблицы (без явного preset'а).
+// Если юзер настроил фильтры/сортировку, обновил страницу — состояние
+// должно сохраниться. Отдельный LS-ключ от presets (раздельные жизненные циклы).
+const _TABLE_LIVESTATE_KEY = (tableId) => 'raschet.tableLiveState.' + tableId + '.v1';
+
+export function loadTableLiveState(tableId) {
+  try {
+    const raw = localStorage.getItem(_TABLE_LIVESTATE_KEY(tableId));
+    if (raw) {
+      const obj = JSON.parse(raw);
+      if (obj && typeof obj === 'object') return obj;
+    }
+  } catch {}
+  return null;
+}
+
+export function saveTableLiveState(tableId, state) {
+  try {
+    localStorage.setItem(_TABLE_LIVESTATE_KEY(tableId), JSON.stringify(state || {}));
+  } catch {}
+}
+
 export function saveLastPresetId(tableId, id) {
   try {
     if (id) localStorage.setItem(_TABLE_LASTPRESET_KEY(tableId), id);

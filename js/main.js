@@ -25,6 +25,8 @@ import {
   attachTablePresetHandlers as _attachTablePresetHandlersShared,
   loadLastPresetId as _loadLastPresetId,
   loadLastPresetState as _loadLastPresetState,
+  loadTableLiveState as _loadTableLiveState,
+  saveTableLiveState as _saveTableLiveState,
 } from '../shared/table-presets.js';
 import { listProjects as _listProjectCtx, createProject as _createProjectCtx } from '../shared/project-storage.js';
 import { state as _engineState } from './engine/state.js';
@@ -3216,7 +3218,7 @@ function _ctSortHdr(col, label, align, extraStyle, titleAttr) {
 }
 
 function renderCableTable() {
-  // v0.59.635: авто-apply пресета при первом рендере таблицы кабелей.
+  // v0.59.635/643: авто-apply пресета или live-state при первом рендере.
   if (!_cableTablePresetApplied) {
     _cableTablePresetApplied = true;
     const st = _loadLastPresetState('cable');
@@ -3225,7 +3227,19 @@ function renderCableTable() {
       if (st.filters) _cableTableFilters = { ..._cableTableFilters, ...st.filters };
       if (st.sort) _cableTableSort = { ..._cableTableSort, ...st.sort };
       _cableTableCurrentPreset = st.id;
+    } else {
+      const live = _loadTableLiveState('cable');
+      if (live) {
+        if (live.filters) _cableTableFilters = { ..._cableTableFilters, ...live.filters };
+        if (live.sort) _cableTableSort = { ..._cableTableSort, ...live.sort };
+      }
     }
+  }
+  if (!_cableTableCurrentPreset) {
+    _saveTableLiveState('cable', {
+      filters: { ..._cableTableFilters },
+      sort: { ..._cableTableSort },
+    });
   }
   const mount = document.getElementById('cable-table-mount');
   if (!mount) return;
@@ -5946,6 +5960,8 @@ function renderConsumersTable() {
   // v0.59.635: при первом рендере — авто-применение последнего использованного
   // пресета. Юзер настроил «Только IT» и перезагрузил страницу — пресет
   // должен восстановиться, а не сбрасываться к дефолту.
+  // v0.59.643: если пресета нет, восстанавливаем «живое» состояние
+  // (filters + sort) — чтобы reload не терял настройки в середине работы.
   if (!_consumersTablePresetApplied) {
     _consumersTablePresetApplied = true;
     const st = _loadLastPresetState('consumers');
@@ -5954,7 +5970,20 @@ function renderConsumersTable() {
       if (st.filters) _consumersTableFilters = { ..._consumersTableFilters, ...st.filters };
       if (st.sort) _consumersTableSort = { ..._consumersTableSort, ...st.sort };
       _consumersTableCurrentPreset = st.id;
+    } else {
+      const live = _loadTableLiveState('consumers');
+      if (live) {
+        if (live.filters) _consumersTableFilters = { ..._consumersTableFilters, ...live.filters };
+        if (live.sort) _consumersTableSort = { ..._consumersTableSort, ...live.sort };
+      }
     }
+  }
+  // v0.59.643: на каждом рендере — сохраняем текущее состояние (если без preset'а).
+  if (!_consumersTableCurrentPreset) {
+    _saveTableLiveState('consumers', {
+      filters: { ..._consumersTableFilters, ancestorIds: null }, // ancestorIds — Set, не сериализуется
+      sort: { ..._consumersTableSort },
+    });
   }
 
   // v0.57.67: бейдж активного ancestor-фильтра (клик «💡 N» по щиту)
@@ -6784,7 +6813,7 @@ function _equipKindLabel(kind) {
 }
 
 function renderEquipmentTable() {
-  // v0.59.635: авто-apply пресета при первом рендере таблицы оборудования.
+  // v0.59.635/643: авто-apply пресета или live-state при первом рендере.
   if (!_equipTablePresetApplied) {
     _equipTablePresetApplied = true;
     const st = _loadLastPresetState('equipment');
@@ -6793,7 +6822,19 @@ function renderEquipmentTable() {
       if (st.filters) _equipTableFilters = { ..._equipTableFilters, ...st.filters };
       if (st.sort) _equipTableSort = { ..._equipTableSort, ...st.sort };
       _equipTableCurrentPreset = st.id;
+    } else {
+      const live = _loadTableLiveState('equipment');
+      if (live) {
+        if (live.filters) _equipTableFilters = { ..._equipTableFilters, ...live.filters };
+        if (live.sort) _equipTableSort = { ..._equipTableSort, ...live.sort };
+      }
     }
+  }
+  if (!_equipTableCurrentPreset) {
+    _saveTableLiveState('equipment', {
+      filters: { ..._equipTableFilters },
+      sort: { ..._equipTableSort },
+    });
   }
   const mount = document.getElementById('equipment-table-mount');
   if (!mount) return;
