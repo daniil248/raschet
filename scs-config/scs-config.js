@@ -4523,10 +4523,30 @@ function init() {
   // ненавязчивый toast (не блокирующий) с числом конфликтов; при клике
   // открывается лог в консоли с детализацией.
   try {
+    // v0.59.586: чистим state.rackTags от фантомов — записей, у которых нет
+    // соответствующего rack в state.racks. Такие записи — наследие старых
+    // миграций (tp1-node-*, и т.п.) и регулярно вылезали в модалку «Разрешить
+    // дубликаты тегов» на стойках, которых у пользователя уже нет.
+    const realIds = new Set(state.racks.map(r => r && r.id).filter(Boolean));
+    let _tagsTouched = false;
+    for (const rid of Object.keys(state.rackTags || {})) {
+      if (!realIds.has(rid)) {
+        delete state.rackTags[rid];
+        _tagsTouched = true;
+      }
+    }
+    if (_tagsTouched) {
+      try { localStorage.setItem(LS_RACKTAGS, JSON.stringify(state.rackTags)); } catch {}
+      console.info('[scs-config] phantom rackTags entries cleaned (no matching rack in state.racks)');
+    }
+
     const byTag = {};
     for (const [rid, t] of Object.entries(state.rackTags || {})) {
       const norm = (t || '').trim().toLowerCase();
       if (!norm) continue;
+      // v0.59.586: на всякий случай ещё раз фильтруем по realIds —
+      // защита от race-condition / параллельной правки.
+      if (!realIds.has(rid)) continue;
       (byTag[norm] = byTag[norm] || []).push(rid);
     }
     const dups = Object.entries(byTag).filter(([, ids]) => ids.length > 1);

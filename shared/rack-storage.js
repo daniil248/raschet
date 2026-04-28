@@ -127,6 +127,7 @@ function _loadPorRacks() {
     if (!pid) return [];
     if (typeof window === 'undefined' || !window.RaschetPOR) return [];
     let arr = window.RaschetPOR.getObjects(pid, { type: 'rack' }) || [];
+    let effectivePid = pid;
     if (!arr.length) {
       // Fallback на parent если active = sub.
       const projects = listProjects();
@@ -134,10 +135,92 @@ function _loadPorRacks() {
       const parentPid = activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId;
       if (parentPid) {
         arr = window.RaschetPOR.getObjects(parentPid, { type: 'rack' }) || [];
+        effectivePid = parentPid;
       }
     }
-    return arr.map(_porRackToLegacy).filter(Boolean);
+    // v0.59.586: накладываем sidecar-overlay (поля, не моделируемые POR —
+    // pdus, accessories, occupied, doorFront, sourceTemplateId, comment и т.п.).
+    const overlay = parseJson(porOverlayKey(effectivePid), {}) || {};
+    return arr.map(o => {
+      const legacy = _porRackToLegacy(o);
+      if (!legacy) return null;
+      const ov = overlay[legacy.id];
+      if (ov && typeof ov === 'object') {
+        for (const [k, v] of Object.entries(ov)) {
+          // POR-managed (mechanical/electrical/name/tag/manufacturer) важнее
+          // sidecar (он мог отстать от patchObject из других модулей).
+          if (k === 'id' || k === 'porObjectId' || k === '_source') continue;
+          if (k in legacy && (k === 'name' || k === 'tag' || k === 'manufacturer'
+              || k === 'u' || k === 'width' || k === 'depth'
+              || k === 'demandKw' || k === 'cosphi' || k === 'phases')) {
+            // Эти поля — авторитет POR, не sidecar.
+            continue;
+          }
+          legacy[k] = v;
+        }
+      }
+      return legacy;
+    }).filter(Boolean);
   } catch (e) { console.warn('[rack-storage] _loadPorRacks failed:', e); return []; }
+}
+
+// v0.59.586: sidecar-ключ для полей POR-стоек, не имеющих места в POR-схеме
+// (pdus, accessories, occupied, doorFront, sourceTemplateId/Name, comment).
+// Без него bulk-apply корпус/параметры по POR-стойкам не сохранялся между
+// заходами на страницу — saveAllRacksForActiveProject их silently игнорировал.
+function porOverlayKey(pid) {
+  return projectKey(pid, 'rack-config', 'por-overlay.v1');
+}
+function _writePorOverlay(pid, racks) {
+  if (!pid) return;
+  const KEEP = new Set([
+    'pdus', 'accessories', 'occupied', 'doorFront', 'doorBack',
+    'sourceTemplateId', 'sourceTemplateName', 'comment', '_corpusBackup',
+    'frontRailDepth', 'rearRailDepth', 'topPanel', 'sidesPanel',
+    'innerWidthMm', 'innerHeightMm', 'innerDepthMm', 'usableU',
+    'rackHeightMm', 'rackUnitMm', 'mountingDepthMm',
+  ]);
+  let cur = parseJson(porOverlayKey(pid), {}) || {};
+  if (typeof cur !== 'object' || Array.isArray(cur)) cur = {};
+  let touched = false;
+  for (const r of racks) {
+    if (!r || !r.id) continue;
+    const slim = {};
+    let any = false;
+    for (const k of KEEP) {
+      if (k in r && r[k] !== undefined) { slim[k] = r[k]; any = true; }
+    }
+    if (any) { cur[r.id] = slim; touched = true; }
+    else if (cur[r.id]) { delete cur[r.id]; touched = true; }
+  }
+  if (touched) {
+    try { localStorage.setItem(porOverlayKey(pid), JSON.stringify(cur)); } catch {}
+  }
+}
+// v0.59.586: записать изменения POR-rack обратно в POR-реестр + sidecar.
+function _persistPorRack(pid, r) {
+  if (!pid || !r || !r.porObjectId) return;
+  if (typeof window === 'undefined' || !window.RaschetPOR) return;
+  // Маппим legacy-поля на POR-домены.
+  const mech = {
+    rackUnits: Number(r.u) || 42,
+    widthMm:   Number(r.width)  || 600,
+    depthMm:   Number(r.depth)  || 800,
+  };
+  const elec = {
+    demandKw: Number(r.demandKw) || 0,
+    cosPhi:   Number(r.cosphi)   || 0.95,
+    phases:   Number(r.phases)   || 3,
+  };
+  try {
+    window.RaschetPOR.patchObject(pid, r.porObjectId, mech, { domain: 'mechanical' });
+    window.RaschetPOR.patchObject(pid, r.porObjectId, elec, { domain: 'electrical' });
+    if (r.name)         window.RaschetPOR.patchObject(pid, r.porObjectId, { name: String(r.name) });
+    if (r.tag)          window.RaschetPOR.patchObject(pid, r.porObjectId, { tag: String(r.tag) });
+    if (r.manufacturer) window.RaschetPOR.patchObject(pid, r.porObjectId, { manufacturer: String(r.manufacturer) });
+  } catch (e) {
+    console.warn('[rack-storage] _persistPorRack patchObject failed:', e);
+  }
 }
 
 /**
@@ -191,9 +274,17 @@ export function saveAllRacksForActiveProject(arr) {
   if (!Array.isArray(arr)) return;
   const instances = [];
   const globalTpls = [];
+  const porRacks = [];
   // Узнаём, какие id изначально приехали из project-scoped шаблонов — их не
   // перезаписываем в глобальный ключ (иначе шаблон «перелетит» в глобал).
   const pid = getActiveProjectId();
+  // v0.59.586: для POR-pid берём parent если active=sub (POR живёт у parent).
+  let porPid = pid;
+  try {
+    const projects = listProjects();
+    const ap = projects.find(p => p && p.id === pid);
+    if (ap && ap.kind === 'sketch' && ap.parentProjectId) porPid = ap.parentProjectId;
+  } catch {}
   const scopedTplIds = new Set();
   if (pid) {
     const s = parseJson(templatesScopedKey(pid), []);
@@ -208,11 +299,20 @@ export function saveAllRacksForActiveProject(arr) {
     // библиотеку и подменяясь при cross-project работе.
     if (r.fromScheme || r.fromPorGroup) return;
     if (typeof r.id === 'string' && (r.id.startsWith('scheme-') || r.id.startsWith('por-group-'))) return;
-    if (r._source === 'por') return; // POR-only racks читаются из POR, не из legacy
+    // v0.59.586: POR-стойки сохраняются ОБРАТНО в POR-реестр + sidecar overlay
+    // вместо silently-drop (как было до 0.59.586). Без этого bulk-apply корпус,
+    // правки U / demandKw / pdus / occupied не переживали перезаход на страницу.
+    if (r._source === 'por') { porRacks.push(r); return; }
     if (String(r.id).startsWith('inst-')) { instances.push(r); return; }
     if (scopedTplIds.has(r.id)) return; // пришёл из project-scoped — не трогаем
     globalTpls.push(r);
   });
+  // v0.59.586: сначала POR-патчи + overlay (до saveInstances — порядок не
+  // критичен, но логически: сначала «авторитетный» источник, потом легаси).
+  if (porPid && porRacks.length) {
+    porRacks.forEach(r => _persistPorRack(porPid, r));
+    _writePorOverlay(porPid, porRacks);
+  }
   // Сохраняем только те коллекции, куда реально пишем.
   saveInstances(instances);
   // Глобальные шаблоны: мержим с уже существующими (чтобы не потерять записи
