@@ -3968,17 +3968,65 @@ async function bulkDelete() {
   const realSel = sel.filter(r => !(r.fromScheme || r.fromPorGroup));
   const skippedVirt = sel.length - realSel.length;
   if (!realSel.length) { scToast('Виртуалы удаляются на стороне схемы / POR-группы.', 'warn'); return; }
-  // Защита: если у каких-то стоек есть подключённые кабели в scs-design,
-  // отказываем (так же как в одиночном удалении устройств).
-  const namesPreview = realSel.slice(0, 5).map(r => (state.rackTags[r.id] || '').trim() || (r.name || r.id)).join(', ')
-    + (realSel.length > 5 ? '…' : '');
+  // v0.59.582: проверка по ТЗ — если стойка содержит оборудование, подключённое
+  // к другому оборудованию (любой модуль), удалять нельзя. Источники связей:
+  //  - scs-design.links.v1 (fromRackId/toRackId) — внешние СКС-связи
+  //  - engine.scheme.v1.connections через porObjectId — электрические связи
+  // contents (устройства внутри стойки) — НЕ блокирующий фактор (cascade
+  // очистка). Только linked devices/external cables блокируют.
+  const allowedSel = [];
+  const blockedSel = [];
+  const _pid = (typeof getActiveProjectId === 'function') ? getActiveProjectId() : null;
+  const _activeProj = _pid ? (function(){ try { return getProject ? getProject(_pid) : null; } catch { return null; } })() : null;
+  const _schemePid = (_activeProj && _activeProj.kind === 'sketch' && _activeProj.parentProjectId)
+    ? _activeProj.parentProjectId : _pid;
+  const _scsDesignLinks = (function() {
+    try {
+      // Try sub first, then parent.
+      const subKey = `raschet.project.${_pid}.scs-design.links.v1`;
+      const parentKey = `raschet.project.${_schemePid}.scs-design.links.v1`;
+      const sub = JSON.parse(localStorage.getItem(subKey) || 'null') || [];
+      const par = JSON.parse(localStorage.getItem(parentKey) || 'null') || [];
+      return Array.isArray(sub) ? sub : (Array.isArray(par) ? par : []);
+    } catch { return []; }
+  })();
+  const _engineSchema = (function() {
+    try {
+      const k = `raschet.project.${_schemePid}.engine.scheme.v1`;
+      return JSON.parse(localStorage.getItem(k) || 'null');
+    } catch { return null; }
+  })();
+  for (const r of realSel) {
+    const reasons = [];
+    const linksRef = _scsDesignLinks.filter(l => l.fromRackId === r.id || l.toRackId === r.id).length;
+    if (linksRef) reasons.push(`СКС-связи (${linksRef})`);
+    if (_engineSchema && Array.isArray(_engineSchema.nodes) && r.porObjectId) {
+      const eng = _engineSchema.nodes.find(n => n && n.porObjectId === r.porObjectId);
+      if (eng && Array.isArray(_engineSchema.connections)) {
+        const ec = _engineSchema.connections.filter(c =>
+          c?.from?.nodeId === eng.id || c?.to?.nodeId === eng.id).length;
+        if (ec) reasons.push(`электрических связей (${ec})`);
+      }
+    }
+    if (reasons.length) blockedSel.push({ r, reasons });
+    else allowedSel.push(r);
+  }
+  if (!allowedSel.length) {
+    scToast(`Все ${realSel.length} стоек имеют связи и не могут быть удалены`, 'err');
+    return;
+  }
+  const namesPreview = allowedSel.slice(0, 5).map(r => (state.rackTags[r.id] || '').trim() || (r.name || r.id)).join(', ')
+    + (allowedSel.length > 5 ? '…' : '');
+  const blockedHint = blockedSel.length
+    ? `\n\n⚠ ${blockedSel.length} стоек заблокировано (есть связи): ${blockedSel.slice(0,3).map(b => (state.rackTags[b.r.id]||'').trim()||b.r.id).join(', ')}${blockedSel.length>3?'…':''}.`
+    : '';
   const ok = await scConfirm(
-    `Удалить ${realSel.length} ${realSel.length === 1 ? 'стойку' : 'стойки'}?`,
-    `Будут удалены: ${namesPreview}. Также пропадут связанные contents/matrix/rackTags. Действие необратимо.${skippedVirt ? ` ${skippedVirt} виртуальных пропущено.` : ''}`,
+    `Удалить ${allowedSel.length} ${allowedSel.length === 1 ? 'стойку' : 'стойки'}?`,
+    `Будут удалены: ${namesPreview}. Также пропадут связанные contents/matrix/rackTags. Действие необратимо.${skippedVirt ? ` ${skippedVirt} виртуальных пропущено.` : ''}${blockedHint}`,
     { okLabel: 'Удалить', cancelLabel: 'Отмена' }
   );
   if (!ok) return;
-  const idsToDelete = new Set(realSel.map(r => r.id));
+  const idsToDelete = new Set(allowedSel.map(r => r.id));
   state.racks = state.racks.filter(r => !idsToDelete.has(r.id));
   for (const id of idsToDelete) {
     delete state.contents[id];
@@ -3995,7 +4043,8 @@ async function bulkDelete() {
   saveMatrix();
   saveRackTags();
   rerender();
-  scToast(`Удалено ${realSel.length} стоек`, 'ok');
+  const blockedNote = blockedSel.length ? ` (${blockedSel.length} заблокировано)` : '';
+  scToast(`Удалено ${idsToDelete.size} стоек${blockedNote}`, 'ok');
 }
 
 /** Создать N новых стоек одним пакетом по маске тегов + общему корпусу. */
