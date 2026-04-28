@@ -137,10 +137,75 @@ export function rsPrompt(title, defaultValue) {
   return rsConfirm(title, '', { input: defaultValue == null ? '' : String(defaultValue) });
 }
 
+/**
+ * rsPickOne(title, options, currentValue, opts={}) → Promise<string | null>
+ *
+ * Модалка с выпадающим списком вариантов (вместо text input). Для bulk-edit
+ * полей с фиксированным набором значений (тип пуска, кривая автомата,
+ * материал кабеля и т.п.). Возвращает выбранное значение строкой
+ * (включая '' если пользователь выбрал «— снять —»), или null при Cancel.
+ *
+ * options: [{ value: 'cu', label: 'Cu (медь)' }, { value: 'al', label: 'Al' }]
+ * Если opts.allowEmpty !== false (default true), в список добавляется
+ * пункт «— снять / не задано —» с value=''.
+ */
+export function rsPickOne(title, options, currentValue, opts) {
+  opts = opts || {};
+  const allowEmpty = opts.allowEmpty !== false;
+  const message = opts.message || '';
+  return new Promise(resolve => {
+    const h = host();
+    const back = document.createElement('div');
+    back.className = 'rs-modal-back';
+    const cur = currentValue == null ? '' : String(currentValue);
+    const opts2 = [
+      ...(allowEmpty ? [{ value: '', label: opts.emptyLabel || '— снять / не задано —' }] : []),
+      ...(options || []),
+    ];
+    const optsHtml = opts2.map(o =>
+      `<option value="${esc(String(o.value))}"${cur === String(o.value) ? ' selected' : ''}>${esc(o.label || o.value)}</option>`
+    ).join('');
+    back.innerHTML = `
+      <div class="rs-modal-card" role="dialog" aria-modal="true">
+        <div class="rs-modal-title">${esc(title)}</div>
+        ${message ? `<div class="rs-modal-msg">${esc(message)}</div>` : ''}
+        <select class="rs-modal-input" style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #d0d7de;border-radius:4px">${optsHtml}</select>
+        <div class="rs-modal-actions">
+          <button type="button" class="rs-btn" data-v="0">${esc(opts.cancelLabel || 'Отмена')}</button>
+          <button type="button" class="rs-btn rs-btn-primary" data-v="1">${esc(opts.okLabel || 'OK')}</button>
+        </div>
+      </div>`;
+    h.appendChild(back);
+    const select = back.querySelector('.rs-modal-input');
+    let onKey = null;
+    const close = (result) => {
+      if (onKey) document.removeEventListener('keydown', onKey);
+      back.classList.remove('rs-modal-open');
+      setTimeout(() => back.remove(), 150);
+      resolve(result);
+    };
+    back.querySelector('[data-v="1"]').addEventListener('click', () => close(select.value));
+    back.querySelector('[data-v="0"]').addEventListener('click', () => close(null));
+    back.addEventListener('click', ev => {
+      if (ev.target === back) close(null);
+    });
+    onKey = (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); close(null); }
+      else if (ev.key === 'Enter') { ev.preventDefault(); close(select.value); }
+    };
+    document.addEventListener('keydown', onKey);
+    requestAnimationFrame(() => {
+      back.classList.add('rs-modal-open');
+      select.focus();
+    });
+  });
+}
+
 // Глобальные алиасы для legacy-кода (чтобы заменить alert/confirm/prompt
 // одной строкой import + глобальной привязкой). Только если window есть.
 if (typeof window !== 'undefined') {
   window.rsToast   = rsToast;
   window.rsConfirm = rsConfirm;
   window.rsPrompt  = rsPrompt;
+  window.rsPickOne = rsPickOne;
 }

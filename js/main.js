@@ -18,7 +18,7 @@ import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-s
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
 import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG, GLOBAL as _GLOBAL } from './engine/constants.js';
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+import { rsToast, rsConfirm, rsPrompt, rsPickOne } from '../shared/dialog.js';
 // v0.59.633: generic preset-система для таблиц — переиспользуется во всех модулях.
 import {
   renderTablePresetUI as _renderTablePresetUI,
@@ -6197,9 +6197,9 @@ function renderConsumersTable() {
           ${ifShow('name', sortHdr('name', 'Имя', 'left'))}
           ${ifShow('parent', sortHdr('parent', 'Питающий щит', 'left'))}
           ${ifShow('category', sortHdr('category', 'Категория', 'left'))}
+          ${ifShow('subtype', sortHdr('subtype', 'Подтип', 'left'))}
           ${ifShow('demand', sortHdr('demand', 'P, кВт', 'right'))}
           ${ifShow('count', sortHdr('count', 'Шт.', 'right'))}
-          ${ifShow('subtype', sortHdr('subtype', 'Подтип', 'left'))}
           ${ifShow('cosPhi', sortHdr('cosPhi', 'cos φ', 'right'))}
           ${ifShow('kUse', sortHdr('kUse', 'Kи', 'right'))}
           ${ifShow('phase', sortHdr('phase', 'Фаза', 'center'))}
@@ -6630,22 +6630,28 @@ function renderConsumersTable() {
   });
   const phBtn = mount.querySelector('#ctc-bulk-phase');
   if (phBtn) phBtn.addEventListener('click', async () => {
-    const v = await rsPrompt('Установить фазу (1ph / 3ph / dc):', '3ph');
-    if (!v) return;
-    if (!['1ph', '3ph', 'dc'].includes(v)) { flash('Неверное значение', 'error'); return; }
+    // v0.59.646: select-picker вместо text-input.
+    const v = await rsPickOne('Установить фазу для выделенных:', [
+      { value: '1ph', label: '1ф (однофазный)' },
+      { value: '3ph', label: '3ф (трёхфазный)' },
+      { value: 'dc', label: 'DC (постоянный ток)' },
+    ], '3ph', { allowEmpty: false });
+    if (v == null) return;
     bulkApply((n) => { n.phase = v; });
   });
-  // v0.59.634: новые bulk-кнопки.
+  // v0.59.634/646: bulk-edit подтипа через select-picker.
   const subBtn = mount.querySelector('#ctc-bulk-subtype');
   if (subBtn) subBtn.addEventListener('click', async () => {
-    const ids = (_CONSUMER_CATALOG || []).map(c => c.id);
-    const hint = ids.slice(0, 6).join(', ') + (ids.length > 6 ? ', …' : '');
-    const v = await rsPrompt(`Установить подтип (id из каталога, напр. ${hint}; пусто = снять):`, '');
+    const opts = (_CONSUMER_CATALOG || []).map(c => ({
+      value: c.id,
+      label: `${c.label} [${c.id}]`,
+    }));
+    const v = await rsPickOne('Установить подтип для выделенных:', opts, '', {
+      emptyLabel: '— снять подтип —',
+    });
     if (v == null) return;
-    const trimmed = String(v).trim();
-    if (trimmed && !ids.includes(trimmed)) { flash('Подтип не найден в каталоге', 'error'); return; }
     bulkApply((n) => {
-      if (trimmed) n.consumerSubtype = trimmed;
+      if (v) n.consumerSubtype = v;
       else delete n.consumerSubtype;
     });
   });
@@ -6669,33 +6675,38 @@ function renderConsumersTable() {
   });
   const curveBtn = mount.querySelector('#ctc-bulk-curve');
   if (curveBtn) curveBtn.addEventListener('click', async () => {
-    const v = await rsPrompt('Установить кривую автомата (B / C / D; пусто = авто):', '');
+    // v0.59.646: select-picker.
+    const v = await rsPickOne('Установить кривую автомата для выделенных:', [
+      { value: 'MCB_B', label: 'MCB кр. B — резистивная, освещение' },
+      { value: 'MCB_C', label: 'MCB кр. C — общее назначение' },
+      { value: 'MCB_D', label: 'MCB кр. D — двигатели, трансформаторы' },
+    ], '', { emptyLabel: '— авто (по inrush) —' });
     if (v == null) return;
-    const raw = String(v).trim().toUpperCase();
-    if (raw === '') {
-      bulkApply((n) => { delete n.curveHint; });
-    } else if (['B', 'C', 'D'].includes(raw)) {
-      bulkApply((n) => { n.curveHint = 'MCB_' + raw; });
-    } else {
-      flash('Неверная кривая (только B / C / D)', 'error');
-    }
+    bulkApply((n) => {
+      if (v) n.curveHint = v;
+      else delete n.curveHint;
+    });
   });
   const stBtn = mount.querySelector('#ctc-bulk-starterType');
   if (stBtn) stBtn.addEventListener('click', async () => {
-    const ids = (_STARTER_TYPES || []).map(t => t.id).join(' / ');
-    const v = await rsPrompt(`Установить тип пуска (${ids}; пусто = снять):`, '');
+    // v0.59.646: select-picker.
+    const opts = (_STARTER_TYPES || []).map(t => ({
+      value: t.id,
+      label: t.crf != null ? `${t.label} — K=${t.crf.toFixed(2)}` : t.label,
+    }));
+    const v = await rsPickOne('Установить тип пуска для выделенных:', opts, '', {
+      emptyLabel: '— снять (auto) —',
+    });
     if (v == null) return;
-    const raw = String(v).trim();
-    if (raw === '') {
-      bulkApply((n) => { delete n.starterType; delete n.crfOverride; });
-    } else if ((_STARTER_TYPES || []).some(t => t.id === raw)) {
-      bulkApply((n) => {
-        n.starterType = raw;
-        if (raw !== 'custom') delete n.crfOverride;
-      });
-    } else {
-      flash('Тип пуска не найден', 'error');
-    }
+    bulkApply((n) => {
+      if (v) {
+        n.starterType = v;
+        if (v !== 'custom') delete n.crfOverride;
+      } else {
+        delete n.starterType;
+        delete n.crfOverride;
+      }
+    });
   });
 }
 
