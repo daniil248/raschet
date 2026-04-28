@@ -287,6 +287,7 @@ export function openConsumerParamsModal(n) {
   }
   // v0.59.621: Тип пуска и K_рез (CRF). Влияет ТОЛЬКО при питании от ИБП
   // и активном n.crfActive у ИБП. На обычной сети — безразлично.
+  // v0.59.622: «Пользовательский» в списке → показывает поле ввода K.
   {
     const curStarter = n.starterType || '';
     const opts = [
@@ -298,8 +299,13 @@ export function openConsumerParamsModal(n) {
     ].join('');
     h.push(field('Тип пуска (для ИБП)' + _lkIcon, `<select id="cp-starterType"${_lk}>${opts}</select>`));
     const ovVal = (typeof n.crfOverride === 'number' && Number.isFinite(n.crfOverride)) ? String(n.crfOverride) : '';
-    h.push(field('Override K_рез (0.30–1.00)' + _lkIcon, `<input type="number" id="cp-crfOverride" min="0.30" max="1.00" step="0.01" value="${ovVal}" placeholder="по типу пуска"${_lk}>`));
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px;line-height:1.4">Override (если задан) > Тип пуска > политика ИБП по подтипу > 1.00. На сети без ИБП — игнорируется.</div>`);
+    const isCustom = curStarter === 'custom';
+    const customStyle = isCustom ? '' : 'display:none';
+    h.push(`<div id="cp-crfOverride-wrap" class="field" style="${customStyle}">
+      <label style="text-transform:uppercase;font-size:11px;color:#666">Свой K_рез (0.30–1.00)${_lkIcon}</label>
+      <input type="number" id="cp-crfOverride" min="0.30" max="1.00" step="0.01" value="${ovVal}" placeholder="например 0.85"${_lk}>
+    </div>`);
+    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px;line-height:1.4">Приоритет: Тип пуска > политика ИБП по подтипу > 1.00. На сети без ИБП — игнорируется.</div>`);
   }
   h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
   // Наличие нейтрали (N) и защитного проводника (PE) у этого
@@ -612,6 +618,15 @@ export function openConsumerParamsModal(n) {
     });
   }
 
+  // v0.59.622: показываем поле «Свой K_рез» только при выборе «Пользовательский».
+  const starterSel = document.getElementById('cp-starterType');
+  if (starterSel) {
+    starterSel.addEventListener('change', () => {
+      const wrap = document.getElementById('cp-crfOverride-wrap');
+      if (wrap) wrap.style.display = (starterSel.value === 'custom') ? '' : 'none';
+    });
+  }
+
   const applyBtn = document.getElementById('consumer-params-apply');
   if (applyBtn) applyBtn.onclick = () => {
     if (n.id !== '__preset_edit__') snapshot('consumer-params:' + n.id);
@@ -722,17 +737,23 @@ export function openConsumerParamsModal(n) {
     const curveHintRaw = document.getElementById('cp-curveHint')?.value;
     if (!curveHintRaw) delete n.curveHint;
     else n.curveHint = curveHintRaw;
-    // v0.59.621: Тип пуска и Override K_рез (для питания от ИБП).
+    // v0.59.621/622: Тип пуска и K_рез (для питания от ИБП).
+    // crfOverride сохраняется только при starterType==='custom' — в остальных
+    // случаях K_рез берётся из STARTER_TYPES, поле override игнорируется.
     const stRaw = document.getElementById('cp-starterType')?.value || '';
     if (stRaw) n.starterType = stRaw;
     else delete n.starterType;
-    const crfOvRaw = document.getElementById('cp-crfOverride')?.value;
-    if (crfOvRaw == null || String(crfOvRaw).trim() === '') {
-      delete n.crfOverride;
+    if (stRaw === 'custom') {
+      const crfOvRaw = document.getElementById('cp-crfOverride')?.value;
+      if (crfOvRaw == null || String(crfOvRaw).trim() === '') {
+        delete n.crfOverride;
+      } else {
+        const ov = Number(crfOvRaw);
+        if (Number.isFinite(ov) && ov >= 0.30 && ov <= 1.00) n.crfOverride = ov;
+        else delete n.crfOverride;
+      }
     } else {
-      const ov = Number(crfOvRaw);
-      if (Number.isFinite(ov) && ov >= 0.30 && ov <= 1.00) n.crfOverride = ov;
-      else delete n.crfOverride;
+      delete n.crfOverride; // не custom → override не релевантен
     }
     n.inputs = readNum('cp-inputs', n.inputs ?? 1);
     // Флаги hasNeutral / hasGround — tri-state (auto/on/off)

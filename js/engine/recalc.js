@@ -24,8 +24,8 @@ import { runModules as runCalcModules } from '../../shared/calc-modules/index.js
 //   K_рез = 0.7 — резервирует 1/0.7 ≈ 1.43× физической мощности
 //                 (НЕ +30%, +43% — деление, не +умножение).
 //
-// Lookup-приоритет (v0.59.621):
-//   (1) consumer.crfOverride — явное число у нагрузки (datasheet двигателя)
+// Lookup-приоритет (v0.59.622):
+//   (1) starterType === 'custom' → consumer.crfOverride (явное число)
 //   (2) STARTER_TYPES[consumer.starterType].crf — по типу пуска нагрузки
 //       (DOL=0.50, star_delta=0.65, soft=0.75, inverter=0.90, vfd=0.95, electronic=1.00)
 //   (3) STARTER_TYPES[CONSUMER_CATALOG[subtype].defaultStarterType].crf
@@ -73,12 +73,17 @@ function _resolveDerate(consumer, upsNode) {
     ? !!upsNode.crfActive
     : !!upsNode.hvacDerateActive;
   if (!active) return 1.0;
-  // (1) Явный override на нагрузке (высший приоритет).
-  const ov = Number(consumer && consumer.crfOverride);
-  if (Number.isFinite(ov) && ov > 0 && ov <= 1) return ov;
-  // (2) Тип пуска явно задан на нагрузке.
-  const fromStarter = _crfByStarterType(consumer && consumer.starterType);
-  if (fromStarter != null) return fromStarter;
+  // (1) Тип пуска === 'custom' → читать crfOverride.
+  const starterId = (consumer && consumer.starterType) || '';
+  if (starterId === 'custom') {
+    const ov = Number(consumer && consumer.crfOverride);
+    if (Number.isFinite(ov) && ov > 0 && ov <= 1) return ov;
+    // custom без override → fallback (как будто starterType не задан).
+  } else {
+    // (2) Тип пуска явно задан на нагрузке (не custom).
+    const fromStarter = _crfByStarterType(starterId);
+    if (fromStarter != null) return fromStarter;
+  }
   // (3) Default-тип пуска по подтипу из CONSUMER_CATALOG.
   const sub = (consumer && (consumer.consumerSubtype || consumer.consumerType)) || '';
   if (sub) {

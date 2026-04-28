@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.59.621';
+export const APP_VERSION = '0.59.622';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -772,6 +772,7 @@ export const CONSUMER_CATEGORIES = {
 //   (2) STARTER_TYPES[consumer.starterType].crf — по типу пуска
 //   (3) ups.crfMap[consumer.consumerSubtype] — fallback-политика ИБП
 //   (4) 1.0
+// crf=null → требует override (для 'custom') или fallback (для 'unknown').
 export const STARTER_TYPES = [
   { id: 'unknown',     label: 'Не задан',                    crf: null }, // → fallback
   { id: 'electronic',  label: 'Электронная (PSU/IT)',       crf: 1.00 },
@@ -780,6 +781,7 @@ export const STARTER_TYPES = [
   { id: 'soft',        label: 'Плавный пуск (soft-starter)', crf: 0.75 },
   { id: 'star_delta',  label: 'Звезда-треугольник (Y/Δ)',    crf: 0.65 },
   { id: 'dol',         label: 'Прямой пуск (DOL)',           crf: 0.50 },
+  { id: 'custom',      label: 'Пользовательский (свой K)',  crf: null }, // → читать crfOverride
 ];
 
 // breakerMarginPct — рекомендованный запас автомата (% сверх Iрасч) для
