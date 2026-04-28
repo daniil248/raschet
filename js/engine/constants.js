@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.59.616';
+export const APP_VERSION = '0.59.617';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -780,6 +780,11 @@ export const CONSUMER_CATALOG = [
   { id: 'elevator',    category: 'power',      label: 'Лифт',               demandKw: 20,   cosPhi: 0.85, kUse: 0.3,  inrushFactor: 5, breakerMarginPct: 40, curveHint: 'MCB_D', phase: '3ph', widthMm: 1100, heightMm: 2100, depthMm: 1400, weightKg: 600 },
   { id: 'conditioner', category: 'hvac',       label: 'Кондиционер',         demandKw: 5,    cosPhi: 0.85, kUse: 0.7,  inrushFactor: 3, breakerMarginPct: 35, curveHint: 'MCB_D', phase: '1ph',
     isConditioner: true, outdoorKw: 0.3, outdoorCosPhi: 0.85, widthMm: 900, heightMm: 300, depthMm: 220, weightKg: 12 },
+  // v0.59.617: outdoor_unit (наружный блок кондиционера) — отдельный
+  // подтип, чтобы попадал в derate-таблицу и hvac-категорию.
+  // Создаётся автоматически при добавлении conditioner (см. consumer.js).
+  { id: 'outdoor_unit', category: 'hvac',       label: 'Наружный блок (HVAC)', demandKw: 0.3, cosPhi: 0.85, kUse: 0.7,  inrushFactor: 5, breakerMarginPct: 50, curveHint: 'MCB_D', phase: '1ph',
+    widthMm: 800, heightMm: 600, depthMm: 300, weightKg: 30 },
   // Слаботочные системы (lowvoltage) — используют cable-category signal/data/fieldbus
   { id: 'fire-alarm',  category: 'lowvoltage', label: 'Пожарная сигнализация', demandKw: 0.3, cosPhi: 0.9, kUse: 1,    inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 300, heightMm: 400, depthMm: 120, weightKg: 5 },
   { id: 'sks',         category: 'lowvoltage', label: 'СКС (структурированная кабельная сеть)', demandKw: 0.1, cosPhi: 0.9, kUse: 0.5, inrushFactor: 1, breakerMarginPct: 15, curveHint: 'MCB_B', phase: '1ph', widthMm: 600, heightMm: 600, depthMm: 400, weightKg: 20 },
