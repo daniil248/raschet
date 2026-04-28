@@ -1,7 +1,8 @@
 // Инспектор и модалки для ИБП: параметры, управление, статус-блок.
 // Выделено из inspector.js для поддержки. Использует прямые импорты
 // зависимостей (render/history/utils) — инъекция не нужна.
-import { GLOBAL, autoUpsBreakerNominals } from '../constants.js';
+import { GLOBAL, autoUpsBreakerNominals, CONSUMER_CATALOG } from '../constants.js';
+import { state } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
 import { effectiveOn } from '../modes.js';
 import { effectiveTag } from '../zones.js';
@@ -193,14 +194,50 @@ export function openUpsParamsModal(n) {
   // v0.59.605 (Phase 18): HVAC derate. Применяется ко ВСЕМ типам ИБП
   // (моноблок / модульный / интегрированный). Юзер: «при подключении
   // механической нагрузки нужно уменьшать мощность как минимум на 30%».
+  // v0.59.606: авто-детекция HVAC-нагрузки downstream + рекомендация.
   {
     const factor = Number.isFinite(Number(n.hvacDerateFactor)) && Number(n.hvacDerateFactor) > 0
       ? Number(n.hvacDerateFactor) : 0.70;
     const active = !!n.hvacDerateActive;
     const baseCap = Number(n.capacityKw) || 0;
     const effCap = active ? baseCap * Math.max(0.3, Math.min(1, factor)) : baseCap;
+    // BFS downstream от ИБП — ищем механическую нагрузку.
+    const HVAC_TYPE_IDS = new Set(['motor', 'pump', 'fan', 'conditioner', 'elevator']);
+    const detected = [];
+    try {
+      const visited = new Set([n.id]);
+      const queue = [n.id];
+      while (queue.length) {
+        const id = queue.shift();
+        for (const c of state.conns.values()) {
+          if (c.from?.nodeId !== id || c._state === 'damaged' || c._state === 'disabled') continue;
+          const next = state.nodes.get(c.to?.nodeId);
+          if (!next || visited.has(next.id)) continue;
+          visited.add(next.id);
+          if (next.type === 'consumer') {
+            const cat = CONSUMER_CATALOG.find(x => x.id === next.consumerType);
+            const isHvac = (cat && cat.category === 'hvac')
+              || HVAC_TYPE_IDS.has(next.consumerType);
+            if (isHvac) {
+              detected.push({ id: next.id, label: next.name || next.tag || next.consumerType });
+            }
+          }
+          queue.push(next.id);
+        }
+      }
+    } catch {}
     h.push('<h4 style="margin:16px 0 8px">Derate для механической нагрузки (HVAC)</h4>');
     h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки (кондиционеры, моторы, насосы) производитель ИБП требует снижения номинала. Kehua: 0.70 (минимум). APC/Eaton: 0.80. Включайте если downstream есть HVAC.</div>');
+    if (detected.length && !active) {
+      h.push(`<div style="font-size:11.5px;line-height:1.55;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;margin-bottom:8px;color:#78350f">
+        ⚠ <b>Обнаружена HVAC/механическая нагрузка downstream</b> (${detected.length}): ${detected.slice(0, 3).map(d => escHtml(d.label)).join(', ')}${detected.length > 3 ? '…' : ''}.
+        Рекомендуется включить derate (минимум 0.70 для Kehua) — иначе при пуске моторов возможен выход в защиту.
+      </div>`);
+    } else if (detected.length && active) {
+      h.push(`<div style="font-size:11.5px;line-height:1.55;padding:6px 10px;background:#dcfce7;border:1px solid #86efac;border-radius:4px;margin-bottom:8px;color:#166534">
+        ✓ Derate применён к ${detected.length} HVAC-нагрузке (${detected.slice(0, 3).map(d => escHtml(d.label)).join(', ')}${detected.length > 3 ? '…' : ''}).
+      </div>`);
+    }
     h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">
       <input type="checkbox" id="up-hvac-derate-active"${active ? ' checked' : ''}>
       <span>Применить derate для HVAC-нагрузки</span>
