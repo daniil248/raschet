@@ -3560,9 +3560,13 @@ function renderRacksSidebar() {
         ? `<span title="Слот POR-группы потребителей (count=${r.schemeTotal||1}). Может быть анонимным или уже материализованным членом." style="background:#ecfccb;color:#3f6212;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px">⊞ из группы</span>`
         : '');
     const isChecked = state.bulkSelection.has(r.id);
+    // v0.59.583: × кнопка удаления карточки + bulk-чекбокс. Видна для
+    // не-виртуальных карточек; click stop-propagation для не-навигации.
+    const delBtnHtml = isVirtual ? '' : `<button type="button" class="sc-rack-card-del" data-del-rackid="${r.id}" title="Удалить стойку (если не задействована в других модулях)" onclick="event.stopPropagation();" style="position:absolute;top:6px;right:24px;background:transparent;border:0;color:#b91c1c;cursor:pointer;font-size:13px;font-weight:bold;padding:0 3px;line-height:14px;z-index:3">×</button>`;
     return `<div class="sc-rack-card${active}${isVirtual ? ' sc-rack-card-virtual' : ''}${isChecked ? ' sc-rack-card-bulk' : ''}" data-rackid="${r.id}" title="${isVirtual ? 'Виртуальная (из схемы/группы) — открыть и наполнить' : 'Открыть'}" style="${isChecked ? 'box-shadow:0 0 0 2px #f59e0b;background:#fffbeb;' : ''}position:relative">
       <input type="checkbox" class="sc-rack-card-cb" data-bulk-rackid="${r.id}" ${isChecked ? 'checked' : ''} title="Множественный выбор" style="position:absolute;top:6px;right:6px;cursor:pointer;width:14px;height:14px;margin:0;z-index:2">
-      <div class="sc-rack-card-top" style="padding-right:22px">
+      ${delBtnHtml}
+      <div class="sc-rack-card-top" style="padding-right:42px">
         ${tag ? `<code>${escape(tag)}</code>` : `<span class="muted">—</span>`}${virtualBadge}
         <span class="muted">${full}U</span>
       </div>
@@ -3577,12 +3581,31 @@ function renderRacksSidebar() {
   // v0.59.255: клик — явный переход (URL + full reload), чтобы пользователь
   // не переключал стойку случайно. Активная карточка не кликабельна.
   // v0.59.538: клик по чекбоксу/тулбару не должен триггерить навигацию.
+  // v0.59.583: + клик по × кнопке.
   host.querySelectorAll('.sc-rack-card').forEach(card => {
     card.addEventListener('click', (ev) => {
       if (ev.target.closest('.sc-rack-card-cb')) return; // чекбокс
+      if (ev.target.closest('.sc-rack-card-del')) return; // × кнопка
       const id = card.dataset.rackid;
       if (id === state.currentRackId) return;
       location.href = `./rack.html?rackId=${encodeURIComponent(id)}`;
+    });
+  });
+  // v0.59.583: × delete handler — переиспользует bulkDelete logic для одной стойки.
+  host.querySelectorAll('.sc-rack-card-del').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation(); ev.preventDefault();
+      const rackId = btn.dataset.delRackid;
+      if (!rackId) return;
+      // Установим bulkSelection ровно на эту стойку и вызовем bulkDelete.
+      const prevSelection = new Set(state.bulkSelection);
+      state.bulkSelection = new Set([rackId]);
+      await bulkDelete();
+      // Если не удалили (отмена/блокировка) — восстановим предыдущий выбор.
+      if (state.bulkSelection.size > 0 && state.bulkSelection.has(rackId)) {
+        state.bulkSelection = prevSelection;
+        renderRacksSidebar();
+      }
     });
   });
   // Чекбоксы: toggle selection.
