@@ -1419,6 +1419,11 @@ function drawLinkOverlay() {
   const wrap = svg?.parentElement;
   const row = document.getElementById('sd-racks-row');
   if (!svg || !wrap || !row) return;
+  // v0.59.589: видимость управляется кнопкой 👁; при false просто очищаем SVG.
+  if (!linksOverlayVisible) {
+    svg.innerHTML = '';
+    return;
+  }
   const wrapRect = wrap.getBoundingClientRect();
   svg.setAttribute('width', wrapRect.width);
   svg.setAttribute('height', wrapRect.height);
@@ -1458,10 +1463,17 @@ function drawLinkOverlay() {
     const bend = Math.max(40, dx * 0.35);
     const c1x = A.x + (fromSide === 'right' ? bend : -bend);
     const c2x = B.x + (toSide === 'right' ? bend : -bend);
+    // v0.59.589: провисающие линии (как реальные кабели). Контрольные точки
+    // опускаются ниже эндпойнтов на sag — получается catenary-подобная форма.
+    // sag растёт пропорционально расстоянию между стойками, но капается
+    // потолком, чтобы при близких устройствах кабель не свисал слишком низко.
+    const sag = linksSagEnabled ? Math.min(120, Math.max(20, dx * 0.18)) : 0;
+    const c1y = A.y + sag;
+    const c2y = B.y + sag;
     const color = CABLE_COLOR(l.cableType);
     const fromTxt = getRackShortLabel(l.fromRackId) + ' · ' + deviceLabel(l.fromRackId, l.fromDevId) + (l.fromPort ? ` p${l.fromPort}` : '');
     const toTxt   = getRackShortLabel(l.toRackId)   + ' · ' + deviceLabel(l.toRackId,   l.toDevId)   + (l.toPort   ? ` p${l.toPort}`   : '');
-    parts.push(`<path class="sd-link-path" d="M ${A.x} ${A.y} C ${c1x} ${A.y}, ${c2x} ${B.y}, ${B.x} ${B.y}" stroke="${color}"><title>${escapeAttr(fromTxt + ' ↔ ' + toTxt)}</title></path>`);
+    parts.push(`<path class="sd-link-path" d="M ${A.x} ${A.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${B.x} ${B.y}" stroke="${color}"><title>${escapeAttr(fromTxt + ' ↔ ' + toTxt)}</title></path>`);
   });
   svg.innerHTML = parts.join('');
 }
@@ -2046,7 +2058,22 @@ function exportRacksCsv() {
 
 /* ---------- Tab «План зала» ---------- */
 const PLAN_DEFAULT = { step: 0.6, kRoute: 1.3, positions: {}, zoom: 1, trays: [] };
-const TRAY_W_CELLS = 1; // ширина трассы (клеток поперёк оси)
+// v0.59.589: толщина канала рендерится в НАТУРАЛЬНОМ масштабе по widthMm
+// (запрос юзера: «ширину канала сделай как он есть в натуральную величину,
+// учитывая масштаб»). До этого все каналы были TRAY_W_CELLS=1 клетка = 600мм
+// при step=0.6, что закрывало всю ширину прохода. Минимальная отрисовка
+// 4px чтобы канал оставался кликабельным.
+const TRAY_W_CELLS = 1; // legacy default — fallback если widthMm отсутствует
+function trayWidthCells(t, plan) {
+  const w = (t && +t.widthMm) || 100;
+  const step = (plan && +plan.step) || 0.6;
+  // ширина в клетках = widthMm / 1000 / step. Минимум 4px эквивалент.
+  const minCells = 4 / PLAN_CELL_PX;
+  return Math.max(minCells, w / 1000 / step);
+}
+function trayWidthPx(t, plan) {
+  return trayWidthCells(t, plan) * PLAN_CELL_PX;
+}
 const PLAN_CELL_PX = 24; // одна клетка = 24 px на экране
 const PLAN_COLS = 40, PLAN_ROWS = 24;
 const PLAN_ZOOM_MIN = 0.25, PLAN_ZOOM_MAX = 4;
@@ -2620,6 +2647,13 @@ let linksMissingOnly = false;
 // со всеми остальными фильтрами (см. MEMORY: cross-filter selects).
 let linksFromRackFilter = '';
 let linksToRackFilter = '';
+// v0.59.589: видимость overlay-линий + провисание (как у реальных кабелей).
+let linksOverlayVisible = (() => {
+  try { return localStorage.getItem('scs-design.linksOverlay.visible.v1') !== '0'; } catch { return true; }
+})();
+let linksSagEnabled = (() => {
+  try { return localStorage.getItem('scs-design.linksOverlay.sag.v1') !== '0'; } catch { return true; }
+})();
 
 // Ближайшая точка на отрезке tray к точке (px, py). Возвращает {qx, qy, d, tray}.
 // tray = {x, y, len, orient} в КЛЕТКАХ; точки возвращаем в px (центр клетки).
@@ -2649,63 +2683,63 @@ function nearestOnTray(px, py, t) {
 // перпендикулярный. Радиус snap расширен до 1.8 клетки для удобства.
 // Float-координаты сохраняются (не Math.round).
 function snapTrayPosition(t, nx, ny, plan) {
-  const SNAP = 1.8;
+  // v0.59.589: SNAP уменьшен с 1.8 до 0.6 клетки чтобы канал НЕ «прилипал»
+  // насильно — юзер: «не могу разместить между или над стойками». При большом
+  // SNAP канал шириной 100 мм (≈4 px) не помещался в проход и его уносило
+  // к стене стойки.
+  const SNAP = 0.6;
+  const trayW = trayWidthCells(t, plan); // натуральная ширина в клетках
   const others = (plan.trays || []).filter(o => o.id !== t.id);
   let snapped = false;
   const isH = t.orient === 'h';
   // bbox активного канала
-  const tL = nx, tR = nx + (isH ? t.len : TRAY_W_CELLS);
-  const tT = ny, tB = ny + (isH ? TRAY_W_CELLS : t.len);
+  const tL = nx, tR = nx + (isH ? t.len : trayW);
+  const tT = ny, tB = ny + (isH ? trayW : t.len);
   const tCx = (tL + tR) / 2, tCy = (tT + tB) / 2;
   for (const o of others) {
     const oH = o.orient === 'h';
-    const oL = o.x, oR = o.x + (oH ? o.len : TRAY_W_CELLS);
-    const oT = o.y, oB = o.y + (oH ? TRAY_W_CELLS : o.len);
+    const oW = trayWidthCells(o, plan);
+    const oL = o.x, oR = o.x + (oH ? o.len : oW);
+    const oT = o.y, oB = o.y + (oH ? oW : o.len);
     const oCx = (oL + oR) / 2, oCy = (oT + oB) / 2;
 
     if (isH && !oH) {
-      // H активный, V сосед. Два класса стыка:
-      // (a) крест/T — H пересекает V: выравниваем центр H на центр V по Y.
-      //     Сработает, если X-проекции пересекаются (ось V внутри отрезка H)
-      //     или близки (до SNAP).
       const overlapX = oCx >= tL - SNAP && oCx <= tR + SNAP;
       if (overlapX) {
-        if (Math.abs(tT - oT) <= SNAP)      { ny = oT; snapped = true; }       // верх H ↔ верх V
-        else if (Math.abs(tB - oB) <= SNAP) { ny = oB - TRAY_W_CELLS; snapped = true; } // низ ↔ низ
-        else if (Math.abs(tCy - oCy) <= SNAP) { ny = oCy - TRAY_W_CELLS / 2; snapped = true; } // центры
+        if (Math.abs(tT - oT) <= SNAP)      { ny = oT; snapped = true; }
+        else if (Math.abs(tB - oB) <= SNAP) { ny = oB - trayW; snapped = true; }
+        else if (Math.abs(tCy - oCy) <= SNAP) { ny = oCy - trayW / 2; snapped = true; }
       }
-      // (b) торец H примыкает к стене V (L-угол): конец H ↔ стена V.
       if (Math.abs(tR - oL) <= SNAP) { nx = oL - t.len; snapped = true; }
       else if (Math.abs(tL - oR) <= SNAP) { nx = oR; snapped = true; }
-      else if (Math.abs(tR - oR) <= SNAP) { nx = oR - t.len; snapped = true; } // конец H заподлицо с правой стеной V
+      else if (Math.abs(tR - oR) <= SNAP) { nx = oR - t.len; snapped = true; }
       else if (Math.abs(tL - oL) <= SNAP) { nx = oL; snapped = true; }
     } else if (!isH && oH) {
       const overlapY = oCy >= tT - SNAP && oCy <= tB + SNAP;
       if (overlapY) {
         if (Math.abs(tL - oL) <= SNAP)      { nx = oL; snapped = true; }
-        else if (Math.abs(tR - oR) <= SNAP) { nx = oR - TRAY_W_CELLS; snapped = true; }
-        else if (Math.abs(tCx - oCx) <= SNAP) { nx = oCx - TRAY_W_CELLS / 2; snapped = true; }
+        else if (Math.abs(tR - oR) <= SNAP) { nx = oR - trayW; snapped = true; }
+        else if (Math.abs(tCx - oCx) <= SNAP) { nx = oCx - trayW / 2; snapped = true; }
       }
       if (Math.abs(tB - oT) <= SNAP) { ny = oT - t.len; snapped = true; }
       else if (Math.abs(tT - oB) <= SNAP) { ny = oB; snapped = true; }
       else if (Math.abs(tB - oB) <= SNAP) { ny = oB - t.len; snapped = true; }
       else if (Math.abs(tT - oT) <= SNAP) { ny = oT; snapped = true; }
     } else if (isH && oH) {
-      // коллинеарные: стык торцами + общая y-ось
       if (Math.abs(tT - oT) <= SNAP) { ny = oT; snapped = true; }
-      else if (Math.abs(tB - oB) <= SNAP) { ny = oB - TRAY_W_CELLS; snapped = true; }
+      else if (Math.abs(tB - oB) <= SNAP) { ny = oB - trayW; snapped = true; }
       if (Math.abs(tL - oR) <= SNAP) { nx = oR; snapped = true; }
       else if (Math.abs(tR - oL) <= SNAP) { nx = oL - t.len; snapped = true; }
     } else {
       if (Math.abs(tL - oL) <= SNAP) { nx = oL; snapped = true; }
-      else if (Math.abs(tR - oR) <= SNAP) { nx = oR - TRAY_W_CELLS; snapped = true; }
+      else if (Math.abs(tR - oR) <= SNAP) { nx = oR - trayW; snapped = true; }
       if (Math.abs(tT - oB) <= SNAP) { ny = oB; snapped = true; }
       else if (Math.abs(tB - oT) <= SNAP) { ny = oT - t.len; snapped = true; }
     }
   }
-  // v0.59.316: snap канала к стенам/углам стоек.
-  // Если стена канала близко к стене стойки — прилипаем (угол стойки важнее
-  // узла сетки, т.к. стойка 800мм ≠ кратна шагу сетки 600мм).
+  // v0.59.589: snap к стенам/углам стоек — только если канал достаточно
+  // близко (SNAP=0.6 клетки). Канал может проходить над стойками или между
+  // ними, snap его не выталкивает.
   const racksList = getRacks();
   for (const [rid, rp] of Object.entries(plan.positions || {})) {
     const rr = racksList.find(x => x.id === rid);
@@ -2715,25 +2749,23 @@ function snapTrayPosition(t, nx, ny, plan) {
     const rL = +rp.x, rR = +rp.x + rwF;
     const rT = +rp.y, rB = +rp.y + rhF;
     if (isH) {
-      // канал по y прилипает к верхней/нижней стене стойки
       if (Math.abs(ny - rB) <= SNAP) { ny = rB; snapped = true; }
-      else if (Math.abs(ny + TRAY_W_CELLS - rT) <= SNAP) { ny = rT - TRAY_W_CELLS; snapped = true; }
-      // по x — начало/конец канала к левому/правому углу стойки
+      else if (Math.abs(ny + trayW - rT) <= SNAP) { ny = rT - trayW; snapped = true; }
       if (Math.abs(nx - rL) <= SNAP) { nx = rL; snapped = true; }
       else if (Math.abs(nx - rR) <= SNAP) { nx = rR; snapped = true; }
       if (Math.abs((nx + t.len) - rR) <= SNAP) { nx = rR - t.len; snapped = true; }
       else if (Math.abs((nx + t.len) - rL) <= SNAP) { nx = rL - t.len; snapped = true; }
     } else {
       if (Math.abs(nx - rR) <= SNAP) { nx = rR; snapped = true; }
-      else if (Math.abs(nx + TRAY_W_CELLS - rL) <= SNAP) { nx = rL - TRAY_W_CELLS; snapped = true; }
+      else if (Math.abs(nx + trayW - rL) <= SNAP) { nx = rL - trayW; snapped = true; }
       if (Math.abs(ny - rT) <= SNAP) { ny = rT; snapped = true; }
       else if (Math.abs(ny - rB) <= SNAP) { ny = rB; snapped = true; }
       if (Math.abs((ny + t.len) - rB) <= SNAP) { ny = rB - t.len; snapped = true; }
       else if (Math.abs((ny + t.len) - rT) <= SNAP) { ny = rT - t.len; snapped = true; }
     }
   }
-  const wCells = isH ? t.len : TRAY_W_CELLS;
-  const hCells = isH ? TRAY_W_CELLS : t.len;
+  const wCells = isH ? t.len : trayW;
+  const hCells = isH ? trayW : t.len;
   nx = Math.max(0, Math.min(PLAN_COLS - wCells, nx));
   ny = Math.max(0, Math.min(PLAN_ROWS - hCells, ny));
   return { x: nx, y: ny, snapped };
@@ -3067,8 +3099,10 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
   const div = document.createElement('div');
   div.className = 'sd-plan-tray' + (t.orient === 'v' ? ' v' : ' h');
   div.dataset.id = t.id;
-  const w = (t.orient === 'h' ? t.len : TRAY_W_CELLS) * PLAN_CELL_PX;
-  const h = (t.orient === 'v' ? t.len : TRAY_W_CELLS) * PLAN_CELL_PX;
+  // v0.59.589: ширина в натуральном масштабе по widthMm.
+  const wPx = trayWidthPx(t, plan);
+  const w = (t.orient === 'h' ? t.len * PLAN_CELL_PX : wPx);
+  const h = (t.orient === 'v' ? t.len * PLAN_CELL_PX : wPx);
   div.style.left = (t.x * PLAN_CELL_PX) + 'px';
   div.style.top = (t.y * PLAN_CELL_PX) + 'px';
   div.style.width = w + 'px';
@@ -4045,6 +4079,35 @@ document.addEventListener('DOMContentLoaded', () => {
     savePlan(p);
     updatePlanInfo();
   });
+  // v0.59.589: toggle видимости overlay-линий + переключатель провисания.
+  const toggleVisBtn = document.getElementById('sd-links-toggle-vis');
+  const updateToggleLabel = () => {
+    if (toggleVisBtn) toggleVisBtn.textContent = linksOverlayVisible ? '👁 Скрыть связи' : '👁 Показать связи';
+  };
+  updateToggleLabel();
+  toggleVisBtn?.addEventListener('click', () => {
+    linksOverlayVisible = !linksOverlayVisible;
+    try { localStorage.setItem('scs-design.linksOverlay.visible.v1', linksOverlayVisible ? '1' : '0'); } catch {}
+    updateToggleLabel();
+    drawLinkOverlay();
+  });
+  // Hotkey 'L' переключает видимость overlay-связей (если фокус не в инпуте).
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'l' && e.key !== 'L') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    toggleVisBtn?.click();
+  });
+  const sagCb = document.getElementById('sd-links-sag');
+  if (sagCb) {
+    sagCb.checked = linksSagEnabled;
+    sagCb.addEventListener('change', e => {
+      linksSagEnabled = !!e.target.checked;
+      try { localStorage.setItem('scs-design.linksOverlay.sag.v1', linksSagEnabled ? '1' : '0'); } catch {}
+      drawLinkOverlay();
+    });
+  }
   window.addEventListener('storage', (e) => {
     if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) renderLinksTab();
   });

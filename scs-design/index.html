@@ -54,7 +54,15 @@
       </div>
 
       <div class="sd-card">
-        <h2>Выбранные стойки</h2>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <h2 style="margin:0">Выбранные стойки</h2>
+          <span style="flex:1"></span>
+          <!-- v0.59.589: toggle отображения связей в overlay над стойками. -->
+          <button type="button" id="sd-links-toggle-vis" class="sd-btn-sel" title="Показать / скрыть линии связей в обзоре стоек (комбинация: L)">👁 Скрыть связи</button>
+          <label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:12px" title="Линии связей рисуются провисающими, как реальные кабели">
+            <input type="checkbox" id="sd-links-sag" checked> провисающие
+          </label>
+        </div>
         <p class="muted" style="margin-bottom:8px">
           Кликните на устройство в одной стойке — оно подсветится.
           Затем кликните на устройство в другой стойке — появится связь в таблице ниже.
@@ -173,6 +181,14 @@
           мощность и число меж-шкафных связей (участвует как endpoint).
           Кнопка «Выбрать» добавляет стойку в мастер связей.
         </p>
+        <!-- v0.59.589: панель управления стойками — создание новой, открытие
+             компоновщика, экспорт. Удаление одной стойки — × в Связях/sidebar
+             Компоновщика; здесь — bulk-операции и общий список. -->
+        <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" id="sd-racks-new" class="sd-btn-export sd-btn-primary" title="Создать новую стойку в этом проекте">＋ Новая стойка</button>
+          <a href="../scs-config/?from=scs-design" class="sd-btn-export" style="text-decoration:none;display:inline-block" title="Открыть Компоновщик шкафа — там удаление, корпус, наполнение">🗄 Компоновщик шкафа</a>
+          <a href="../rack-config/" class="sd-btn-export" style="text-decoration:none;display:inline-block" title="Шаблоны корпусов">📐 Конфигуратор корпусов</a>
+        </div>
         <div id="sd-racks-summary"></div>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
           <button type="button" id="sd-racks-csv" class="sd-btn-export">⬇ Экспорт CSV (сводка по стойкам)</button>
