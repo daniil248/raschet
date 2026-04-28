@@ -6845,6 +6845,19 @@ function renderEquipmentTable() {
     .map(n => ({ n, kind: _equipKindOf(n) }))
     .filter(e => e.kind);
 
+  // v0.59.644: distinct-значения для datalist-автокомплита (производитель,
+  // модель, группа резерва). Один раз пробегаемся по всему оборудованию.
+  const _distinctManuf = new Set();
+  const _distinctModel = new Set();
+  const _distinctRedGrp = new Set();
+  for (const e of equip) {
+    const n = e.n;
+    if (n.manufacturer) _distinctManuf.add(String(n.manufacturer).trim());
+    const m = n.model || n.panelCatalogId || n.upsModel;
+    if (m) _distinctModel.add(String(m).trim());
+    if (n.redundancyGroup) _distinctRedGrp.add(String(n.redundancyGroup).trim());
+  }
+
   const F = _equipTableFilters;
   const q = (F.search || '').toLowerCase();
   const filtered = equip.filter(e => {
@@ -6991,11 +7004,11 @@ function renderEquipmentTable() {
               return `<td style="padding:5px 8px;text-align:center" title="Тир: основной (учитывается в N-1), резервный (backup — включается при отказе основных), подменный (standby — холодный резерв)"><select class="et-tier" data-id="${esc(n.id)}" style="font-size:10px;padding:1px 2px;cursor:pointer"><option value="primary"${tier==='primary'?' selected':''}>основн.</option><option value="backup"${tier==='backup'?' selected':''}>backup</option><option value="standby"${tier==='standby'?' selected':''}>standby</option></select></td>`;
             })()
           : `<td style="padding:5px 8px;text-align:center;color:#ccc">—</td>`)}
-        ${ifShow('manufacturer', `<td style="padding:5px 8px;font-size:11px"><input class="et-manuf" data-id="${esc(n.id)}" type="text" value="${esc(n.manufacturer || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
-        ${ifShow('model', `<td style="padding:5px 8px;font-size:11px"><input class="et-model" data-id="${esc(n.id)}" type="text" value="${esc(n.model || n.panelCatalogId || n.upsModel || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('manufacturer', `<td style="padding:5px 8px;font-size:11px"><input class="et-manuf" list="et-dl-manuf" data-id="${esc(n.id)}" type="text" value="${esc(n.manufacturer || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('model', `<td style="padding:5px 8px;font-size:11px"><input class="et-model" list="et-dl-model" data-id="${esc(n.id)}" type="text" value="${esc(n.model || n.panelCatalogId || n.upsModel || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
         ${ifShow('snom', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px"><input class="et-snom" data-id="${esc(n.id)}" type="number" min="0" step="1" value="${n.snomKva ?? ''}" placeholder="—" style="width:80px;padding:3px 6px;text-align:right;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
         ${ifShow('efficiency', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px"><input class="et-eff" data-id="${esc(n.id)}" type="number" min="50" max="100" step="0.1" value="${(typeof n.efficiency === 'number') ? n.efficiency : ''}" placeholder="—" style="width:60px;padding:3px 6px;text-align:right;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
-        ${ifShow('redundancy', `<td style="padding:5px 8px;font-size:11px"><input class="et-redgrp" data-id="${esc(n.id)}" type="text" value="${esc(n.redundancyGroup || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
+        ${ifShow('redundancy', `<td style="padding:5px 8px;font-size:11px"><input class="et-redgrp" list="et-dl-redgrp" data-id="${esc(n.id)}" type="text" value="${esc(n.redundancyGroup || '')}" placeholder="—" style="width:100%;padding:3px 6px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
         ${ifShow('weight', `<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px"><input class="et-weight" data-id="${esc(n.id)}" type="number" min="0" step="1" value="${n.weightKg ?? ''}" placeholder="—" style="width:70px;padding:3px 6px;text-align:right;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></td>`)}
         ${ifShow('xnav', `<td style="padding:5px 8px;font-size:10px">${(() => {
           let cableCount = 0, consumerCount = 0;
@@ -7029,6 +7042,12 @@ function renderEquipmentTable() {
     html.push(`<tr><td colspan="${visCount}" style="padding:20px;text-align:center;color:#999">Нет оборудования по текущим фильтрам</td></tr>`);
   }
   html.push('</tbody></table>');
+  // v0.59.644: datalist'ы для autocomplete'а текстовых полей.
+  const _dlOpts = (set) => [...set].sort((a, b) => a.localeCompare(b, 'ru'))
+    .map(v => `<option value="${esc(v)}"></option>`).join('');
+  html.push(`<datalist id="et-dl-manuf">${_dlOpts(_distinctManuf)}</datalist>`);
+  html.push(`<datalist id="et-dl-model">${_dlOpts(_distinctModel)}</datalist>`);
+  html.push(`<datalist id="et-dl-redgrp">${_dlOpts(_distinctRedGrp)}</datalist>`);
   mount.innerHTML = html.join('');
 
   // Sort handlers
