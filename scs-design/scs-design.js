@@ -2975,19 +2975,28 @@ let linksSelected = new Set();
 
 // Ближайшая точка на отрезке tray к точке (px, py). Возвращает {qx, qy, d, tray}.
 // tray = {x, y, len, orient} в КЛЕТКАХ; точки возвращаем в px (центр клетки).
+// v0.59.597: nearestOnTray использует НАТУРАЛЬНУЮ геометрию канала
+// (юзер: «линии должны попадать прям в канал и непрерывно идти по каналам»).
+// Раньше использовалась модель «канал = 1 клетка шириной», и центр считался
+// как (t.y + 0.5) × PLAN_CELL_PX. После того как канал стал рисоваться
+// в натуральном масштабе по widthMm (v0.59.589), центр уехал — линия
+// не попадала в реальное тело канала. Теперь:
+//   trayWPx — реальная ширина канала в пикселях (widthMm × PIXELS_PER_METER / 1000)
+//   centerline H-канала: y = t.y × CELL + trayWPx / 2
+//   диапазон длины: x ∈ [t.x × CELL, (t.x + t.len) × CELL]
 function nearestOnTray(px, py, t) {
-  const cx0 = (t.x + 0.5) * PLAN_CELL_PX;
-  const cy0 = (t.y + 0.5) * PLAN_CELL_PX;
+  const wMm = (+t.widthMm) || 100;
+  const trayWPx = Math.max(4, wMm * PIXELS_PER_METER / 1000);
   let qx, qy;
   if (t.orient === 'h') {
-    const x1 = cx0;
-    const x2 = (t.x + t.len - 1 + 0.5) * PLAN_CELL_PX;
+    const x1 = t.x * PLAN_CELL_PX;
+    const x2 = (t.x + t.len) * PLAN_CELL_PX;
     qx = Math.max(x1, Math.min(x2, px));
-    qy = cy0;
+    qy = t.y * PLAN_CELL_PX + trayWPx / 2;
   } else {
-    const y1 = cy0;
-    const y2 = (t.y + t.len - 1 + 0.5) * PLAN_CELL_PX;
-    qx = cx0;
+    const y1 = t.y * PLAN_CELL_PX;
+    const y2 = (t.y + t.len) * PLAN_CELL_PX;
+    qx = t.x * PLAN_CELL_PX + trayWPx / 2;
     qy = Math.max(y1, Math.min(y2, py));
   }
   const d = Math.abs(px - qx) + Math.abs(py - qy);
