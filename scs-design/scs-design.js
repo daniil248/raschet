@@ -813,7 +813,19 @@ function rackById(id) { return getRacks().find(r => r.id === id); }
    с развёрнутыми стойками текущего проекта (id = inst-*). Глобальные
    шаблоны (tpl-*) — это дизайны корпусов, их не размещают в зал. */
 function getProjectInstances() {
-  return getRacks().filter(r => r && r.id && String(r.id).startsWith('inst-'));
+  // v0.59.584: на план-зал и в «Стойки проекта» включаем не только inst-*
+  // (реальные экземпляры из scs-config), но и POR-стойки (_source='por').
+  // Без этого после миграции legacy → POR пользователь видит «10 шт» в picker
+  // (там фильтр уже пропускает POR), но 0 на плане и в сводке.
+  // Виртуалы (id 'scheme-*' / 'por-group-*') исключаем — их материализуют
+  // отдельным флоу.
+  return getRacks().filter(r => {
+    if (!r || !r.id) return false;
+    if (String(r.id).startsWith('scheme-') || String(r.id).startsWith('por-group-')) return false;
+    if (String(r.id).startsWith('inst-')) return true;
+    if (r._source === 'por') return true;
+    return false;
+  });
 }
 
 /* v0.59.354: материализация виртуальной (из схемы) стойки прямо на плане
@@ -3401,10 +3413,20 @@ function escapeSvg(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* Автораскладка: реальные стойки с тегом группируются по «ряду» — префиксу
-   до первой точки (например, DH1.SR1/DH1.SR2 → ряд DH1). Каждый ряд —
-   отдельная строка плана, стойки вдоль неё. Черновики (без тега) — в отдельный
-   последний ряд. Ряды разделены 2 клетками аисла. */
+/* v0.59.584: Автораскладка по ТЗ — стандартные ряды ЦОД с холодным/горячим
+   коридором 1200 мм и нумерацией «по одному» право-лево-право-лево.
+
+   Алгоритма:
+   1. Стойки группируются по префиксу тега до первой точки (DH1.SR1, DH1.SR2 →
+      группа DH1). Черновики (без тега) — в отдельную группу __draft__.
+   2. В пределах группы сортировка по тегу (numeric).
+   3. Каждая группа размещается двумя ПАРАЛЛЕЛЬНЫМИ рядами:
+        Ряд A (правый/верхний) — стойки с чётным индексом (0, 2, 4 …)
+        Ряд B (левый/нижний)   — стойки с нечётным индексом (1, 3, 5 …)
+      Это даёт «право-лево-право-лево» при последовательном чтении 1,2,3,4…
+   4. Между двумя рядами одной группы — 1200 мм коридор (hot/cold aisle).
+   5. Между разными группами — 2 клетки доп. отступа.
+*/
 function autoLayout() {
   const racks = getRacks();
   if (!racks.length) return;
@@ -3412,7 +3434,7 @@ function autoLayout() {
   const tags = {};
   racks.forEach(r => { tags[r.id] = (getRackTag(r.id) || '').trim(); });
 
-  const rows = new Map(); // rowKey -> [rackIds]
+  const groups = new Map(); // groupKey -> [racks]
   racks.forEach(r => {
     const tag = tags[r.id];
     let key;
@@ -3421,48 +3443,77 @@ function autoLayout() {
       const dot = tag.indexOf('.');
       key = dot > 0 ? tag.slice(0, dot) : tag;
     }
-    if (!rows.has(key)) rows.set(key, []);
-    rows.get(key).push(r);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
   });
 
-  // В рамках ряда сортируем по тегу (SR1 перед SR2…)
-  for (const arr of rows.values()) {
+  // В рамках группы сортируем по тегу (SR01 перед SR02…)
+  for (const arr of groups.values()) {
     arr.sort((a, b) => (tags[a.id] || '').localeCompare(tags[b.id] || '', 'ru', { numeric: true }));
   }
 
-  const positions = {};
-  const rowKeys = Array.from(rows.keys()).sort((a, b) => {
+  const groupKeys = Array.from(groups.keys()).sort((a, b) => {
     if (a === '__draft__') return 1;
     if (b === '__draft__') return -1;
     return a.localeCompare(b, 'ru', { numeric: true });
   });
-  const rowGap = 2;  // клетки между рядами (hot/cold aisle approximation)
-  const colGap = 0;  // соседние стойки впритык
-  // v0.59.311: autoLayout учитывает физические размеры стойки + поворот.
-  // Высота ряда = max(h_i) из всех стоек ряда, ширина i-й стойки = её wC.
+
+  const positions = {};
+  const step = (plan && +plan.step) || 0.6;          // м/клетка
+  const aisleCells = Math.max(1, 1.2 / step);        // 1200 мм коридор
+  const groupGap = 2;                                // клеток между группами
+  const colGap = 0;                                  // соседние стойки впритык
+
   let curRow = 1;
-  rowKeys.forEach(key => {
-    const arr = rows.get(key);
-    let col = 1;
-    let rowMaxH = 1;
-    arr.forEach(r => {
+  groupKeys.forEach(key => {
+    const arr = groups.get(key);
+    // Разбиваем на 2 параллельных ряда: A — чётные, B — нечётные.
+    const rowA = arr.filter((_, i) => i % 2 === 0);
+    const rowB = arr.filter((_, i) => i % 2 === 1);
+
+    // Высоты рядов = максимум hC по их стойкам.
+    const heightOf = list => list.reduce((m, r) => {
       const rot = rackRot(plan, r.id);
-      const [wC, hC] = rackSizeCells(r, plan, rot);
-      if (col + wC > PLAN_COLS) {
-        col = 1;
-        curRow += rowMaxH + rowGap;
-        rowMaxH = 1;
-      }
-      positions[r.id] = { x: col, y: curRow, rot };
-      col += wC + colGap;
-      if (hC > rowMaxH) rowMaxH = hC;
-    });
-    curRow += rowMaxH + rowGap;
+      const [, hC] = rackSizeCells(r, plan, rot);
+      return Math.max(m, Math.ceil(hC));
+    }, 1);
+    const hA = heightOf(rowA);
+    const hB = heightOf(rowB);
+
+    // Расставляем ряд по горизонтали с обёрткой по PLAN_COLS.
+    // wrap-row: при переполнении ряд продолжается ниже, после ряда B.
+    const placeRow = (list, baseY) => {
+      let col = 1;
+      let yShift = 0;
+      let lineH = 1;
+      list.forEach(r => {
+        const rot = rackRot(plan, r.id);
+        const [wC, hC] = rackSizeCells(r, plan, rot);
+        if (col + wC > PLAN_COLS) {
+          col = 1;
+          yShift += lineH + 1;
+          lineH = 1;
+        }
+        positions[r.id] = { x: col, y: baseY + yShift, rot };
+        col += wC + colGap;
+        if (hC > lineH) lineH = Math.ceil(hC);
+      });
+      return yShift + lineH; // фактическая высота ряда (с учётом обёрток)
+    };
+
+    const usedA = rowA.length ? placeRow(rowA, curRow) : 0;
+    if (rowB.length) {
+      const yB = curRow + (usedA ? usedA : hA) + aisleCells;
+      const usedB = placeRow(rowB, yB);
+      curRow = yB + usedB + groupGap;
+    } else {
+      curRow += (usedA || hA) + groupGap;
+    }
   });
 
   savePlan({ ...plan, positions });
   renderPlan();
-  updateStatus(`✔ Автораскладка: ${Object.keys(positions).length} стоек размещено в ${rowKeys.length} рядов.`);
+  updateStatus(`✔ Автораскладка: ${Object.keys(positions).length} стоек в ${groupKeys.length} ${groupKeys.length === 1 ? 'группе' : 'группах'}, коридор 1200 мм, нумерация право-лево.`);
 }
 
 /* v0.59.306: автогенерация каналов.
