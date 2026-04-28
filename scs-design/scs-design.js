@@ -2284,8 +2284,28 @@ function trayWidthCells(t, plan) {
 function trayWidthPx(t, plan) {
   return trayWidthCells(t, plan) * PLAN_CELL_PX;
 }
-const PLAN_CELL_PX = 24; // одна клетка = 24 px на экране
-const PLAN_COLS = 40, PLAN_ROWS = 24;
+// v0.59.591: габариты плана не зависят от шага сетки (запрос юзера: «шаг
+// сетки не должен менять габариты плана, только размер сетки»). Решение:
+//   PIXELS_PER_METER — константа конвертации физического метра в пиксели.
+//   PLAN_CELL_PX = step × PIXELS_PER_METER — мутирует при смене step.
+//   PLAN_COLS / PLAN_ROWS — мутируют так, чтобы canvas px размер оставался
+//   константным (CANVAS_AREA_M_W × PIXELS_PER_METER).
+//   Позиции (pos.x, pos.y, tray.x/y/len) хранятся в КЛЕТКАХ; при смене
+//   step все позиции пересчитываются на factor=oldStep/newStep, чтобы
+//   физическое (в метрах) положение объектов сохранилось.
+const PIXELS_PER_METER = 40;
+const CANVAS_AREA_M_W = 24;   // 24 метра ширины плана = 960 px
+const CANVAS_AREA_M_H = 14.4; // 14.4 метра высоты плана = 576 px
+let PLAN_CELL_PX = 24;        // обновляется в updatePlanGrid()
+let PLAN_COLS = 40, PLAN_ROWS = 24;
+// v0.59.591: пересчитать grid-параметры под текущий plan.step. Вызывается
+// в начале renderPlan() и в step-change handler.
+function updatePlanGrid(plan) {
+  const step = (plan && +plan.step) || 0.6;
+  PLAN_CELL_PX = Math.max(2, PIXELS_PER_METER * step);
+  PLAN_COLS = Math.max(8, Math.ceil(CANVAS_AREA_M_W / step));
+  PLAN_ROWS = Math.max(6, Math.ceil(CANVAS_AREA_M_H / step));
+}
 const PLAN_ZOOM_MIN = 0.25, PLAN_ZOOM_MAX = 4;
 let planZoom = 1;
 let selectedTrayId = null;
@@ -2553,6 +2573,8 @@ function renderPlan() {
   if (!canvas || !palette) return;
 
   const plan = getPlan();
+  // v0.59.591: пересчёт PLAN_CELL_PX / PLAN_COLS / PLAN_ROWS под текущий step.
+  updatePlanGrid(plan);
   if (stepIn) stepIn.value = plan.step;
   if (krIn) krIn.value = plan.kRoute;
 
@@ -3256,6 +3278,7 @@ function drawPlanLinks(svg, plan) {
     groups.get(key).links.push(l);
   });
 
+  let directCount = 0;
   groups.forEach(g => {
     const [ax, ay] = rackCenterPx(g.fromRackId, plan);
     const [bx, by] = rackCenterPx(g.toRackId, plan);
@@ -3263,9 +3286,13 @@ function drawPlanLinks(svg, plan) {
     const n = g.links.length;
     const isFocused = focusRackId && (g.fromRackId === focusRackId || g.toRackId === focusRackId);
     const dimmed = focusRackId && !isFocused;
-    // цвет — усреднённо нейтральный серый (группа может содержать кабели
-    // разных типов), толщина растёт с числом кабелей.
-    const color = '#475569';
+    // v0.59.591: visual warning для direct-маршрутов (без трассы) — red dashed
+    // line. Direct допустим только когда стойки ближе друг другу, чем до
+    // ближайшей трассы (см. feedback_cable_routing.md). Если есть трассы
+    // на плане и кабель всё равно ушёл direct — это исключение, юзер видит.
+    const isDirect = !route.viaTray && trays.length > 0;
+    if (isDirect) directCount++;
+    const color = isDirect ? '#dc2626' : '#475569';
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', ptsToPath(route.pts));
     path.setAttribute('stroke', color);
@@ -3275,6 +3302,13 @@ function drawPlanLinks(svg, plan) {
     path.setAttribute('opacity', dimmed ? '0.15' : (isFocused ? '1' : '0.7'));
     path.setAttribute('stroke-linecap', 'round');
     path.setAttribute('stroke-linejoin', 'round');
+    if (isDirect) {
+      path.setAttribute('stroke-dasharray', '8,4');
+      // tooltip с объяснением, почему линия красная
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      t.textContent = `⚠ Direct-маршрут (без трассы). Стойки расположены ближе друг к другу, чем до ближайшей трассы — это допустимое исключение из правила.`;
+      path.appendChild(t);
+    }
     svg.appendChild(path);
     // бейдж с количеством кабелей в группе (показываем только если >1)
     if (n > 1 && route.pts.length >= 2) {
@@ -3309,6 +3343,19 @@ function drawPlanLinks(svg, plan) {
       svg.appendChild(txt);
     }
   });
+  // v0.59.591: индикатор в углу — кол-во direct-маршрутов (если есть).
+  // Юзер сразу видит сколько связей идёт без трассы, чтобы добавить трассы
+  // или согласиться, что эти исключения допустимы.
+  const indicator = document.getElementById('sd-plan-direct-info');
+  if (indicator) {
+    if (directCount > 0 && trays.length > 0) {
+      indicator.textContent = `⚠ ${directCount} direct (без трассы — красные линии)`;
+      indicator.style.display = '';
+    } else {
+      indicator.textContent = '';
+      indicator.style.display = 'none';
+    }
+  }
 }
 
 function computeSuggestedLength(link, plan) {
@@ -4290,13 +4337,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   document.getElementById('sd-plan-step')?.addEventListener('change', e => {
-    // v0.59.588: min 0.05 м (50 мм), сразу перерисовываем план — раньше
-    // updatePlanInfo() менял только текст, сетка оставалась прежней. Теперь
-    // renderPlan() пересчитает размеры стоек (rackSizeCells использует step)
-    // и подписи. Физический размер canvas (PLAN_COLS × PLAN_CELL_PX) не
-    // меняется — меняется только разрешение клеток в реальных метрах.
+    // v0.59.591: при смене шага сетки физические габариты плана и положения
+    // объектов сохраняются (юзер: «шаг сетки не должен менять габариты
+    // плана, только размер сетки»). Реализация:
+    //   1. PLAN_CELL_PX = step × PIXELS_PER_METER — размер клетки на экране
+    //      МЕНЬШЕ при меньшем шаге (визуально плотнее сетка).
+    //   2. PLAN_COLS / PLAN_ROWS пересчитываются так, чтобы canvas px размер
+    //      = CANVAS_AREA_M × PIXELS_PER_METER (стабилен).
+    //   3. Все позиции (cells) умножаются на factor=oldStep/newStep так,
+    //      что cells × newStep = old_cells × oldStep ⇒ физическая координата
+    //      в метрах сохраняется.
     const p = getPlan();
-    p.step = Math.max(0.05, +e.target.value || PLAN_DEFAULT.step);
+    const oldStep = +p.step || 0.6;
+    const newStep = Math.max(0.05, +e.target.value || PLAN_DEFAULT.step);
+    if (oldStep !== newStep) {
+      const factor = oldStep / newStep;
+      for (const id of Object.keys(p.positions || {})) {
+        const pos = p.positions[id];
+        if (pos) {
+          pos.x = (+pos.x || 0) * factor;
+          pos.y = (+pos.y || 0) * factor;
+        }
+      }
+      for (const t of (p.trays || [])) {
+        t.x = (+t.x || 0) * factor;
+        t.y = (+t.y || 0) * factor;
+        t.len = (+t.len || 0) * factor;
+      }
+    }
+    p.step = newStep;
     savePlan(p);
     renderPlan();
   });
