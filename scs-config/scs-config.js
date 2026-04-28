@@ -49,6 +49,12 @@ import {
 // objects type='rack' (mirror создаёт по 1 на узел), не видя N-кратных
 // слотов из «×N»-узла.
 import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks } from '../shared/scheme-rack-bridge.js';
+// v0.59.580: жадный импорт POR — иначе window.RaschetPOR undefined,
+// rack-storage._loadPorRacks возвращает [], в sidebar Компоновщика
+// «В проекте нет физических шкафов» при том что в POR есть 16 стоек
+// родителя. Симметрично fix v0.59.578 для scs-design.
+import '../shared/por.js';
+import '../shared/por-types/index.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;               // оставлен для storage-listener совместимости
 const LS_CATALOG   = 'scs-config.catalog.v1';           // глобальный каталог IT-типов
