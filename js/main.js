@@ -2893,6 +2893,8 @@ let _consumersTableCurrentPreset = _loadLastPresetId('consumers');
 let _consumersTablePresetApplied = false; // v0.59.635: гарант одного авто-apply
 
 const _EQUIPMENT_TABLE_COLUMNS = [
+  // v0.59.638: чекбокс для bulk-edit (обязательная колонка как в других таблицах).
+  { id: 'checkbox', label: '(чекбокс)', required: true, default: true },
   { id: 'tag', label: 'Обозначение', default: true },
   { id: 'kind', label: 'Тип', default: true },
   { id: 'name', label: 'Имя / Модель', default: true },
@@ -2913,6 +2915,8 @@ const _EQUIPMENT_TABLE_COLUMNS = [
   { id: 'redundancy', label: 'Группа резерва', default: false },
   { id: 'weight', label: 'Вес, кг', default: false },
 ];
+// v0.59.638: выбранные строки для bulk-edit.
+const _equipTableSelected = new Set();
 let _equipTableVisibility = _loadColumnVisibility('equipment', _EQUIPMENT_TABLE_COLUMNS);
 // v0.59.633: id выбранного пресета таблицы оборудования.
 let _equipTableCurrentPreset = _loadLastPresetId('equipment');
@@ -6848,10 +6852,25 @@ function renderEquipmentTable() {
     return `<th class="et-sort" data-sort-col="${col}" style="padding:6px 8px;text-align:${align};border-bottom:2px solid #d0d7de;cursor:pointer;user-select:none;${color}${extra ? extra + ';' : ''}">${label}${arrow}</th>`;
   };
 
+  // v0.59.638: bulk-edit toolbar.
+  const selCount = _equipTableSelected.size;
+  const bulkDisabled = selCount === 0;
   const html = [`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;margin-bottom:8px;font-size:12px;flex-wrap:wrap">
+      <b>Выделено: ${selCount}</b>
+      <button type="button" id="et-bulk-manuf" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Производитель</button>
+      <button type="button" id="et-bulk-model" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Модель</button>
+      <button type="button" id="et-bulk-eff" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">КПД, %</button>
+      <button type="button" id="et-bulk-redgrp" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Группа резерва</button>
+      <span style="flex:1"></span>
+      <button type="button" id="et-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
+    </div>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead>
         <tr style="background:#f6f8fa;position:sticky;top:0;z-index:2">
+          <th style="padding:6px 4px;border-bottom:2px solid #d0d7de;width:28px;text-align:center">
+            <input type="checkbox" id="et-select-all" ${filtered.length && filtered.every(x => _equipTableSelected.has(x.n.id)) ? 'checked' : ''} title="Выделить все">
+          </th>
           ${ifShow('tag', sortHdr('tag', 'Обозначение', 'left', 'min-width:130px'))}
           ${ifShow('kind', sortHdr('kind', 'Тип', 'left'))}
           ${ifShow('name', sortHdr('name', 'Имя / Модель', 'left'))}
@@ -6888,8 +6907,11 @@ function renderEquipmentTable() {
     const voltage = lv ? Math.round(Number(lv.vLL) || 0) : '—';
     const model = n.panelCatalogId || n.mvSwitchgearId || n.upsModel || '';
 
+    const checked = _equipTableSelected.has(n.id);
+    const rowBg = checked ? 'background:#eef5ff;' : '';
     html.push(`
-      <tr data-id="${esc(n.id)}" style="border-bottom:1px solid #eaecef">
+      <tr data-id="${esc(n.id)}" style="border-bottom:1px solid #eaecef;${rowBg}">
+        <td style="padding:5px 4px;text-align:center"><input type="checkbox" class="et-row-sel" data-id="${esc(n.id)}" ${checked ? 'checked' : ''}></td>
         ${ifShow('tag', `<td style="padding:5px 8px;font-weight:600"><a href="#" class="et-jump" data-id="${esc(n.id)}" style="color:${KIND_COLOR[e.kind] || '#1976d2'};text-decoration:none">${esc(tag)} <span style="font-size:10px;opacity:0.7">↗</span></a></td>`)}
         ${ifShow('kind', `<td style="padding:5px 8px;font-size:11px"><span style="font-size:14px;margin-right:4px">${KIND_ICON[e.kind] || '▫'}</span>${esc(_equipKindLabel(e.kind))}</td>`)}
         ${ifShow('name', `<td style="padding:5px 8px;font-size:11px"><div>${esc(n.name || '—')}</div>${model ? `<div class="muted" style="font-size:10px">${esc(model)}</div>` : ''}</td>`)}
@@ -7055,6 +7077,73 @@ function renderEquipmentTable() {
   _etNumField('et-eff', 'efficiency', 50, 100);
   _etTextField('et-redgrp', 'redundancyGroup');
   _etNumField('et-weight', 'weightKg', 0, 100000);
+
+  // v0.59.638: row selection + bulk-edit.
+  mount.querySelectorAll('.et-row-sel').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) _equipTableSelected.add(cb.dataset.id);
+      else _equipTableSelected.delete(cb.dataset.id);
+      renderEquipmentTable();
+    });
+  });
+  const selAll = mount.querySelector('#et-select-all');
+  if (selAll) selAll.addEventListener('change', () => {
+    if (selAll.checked) for (const e of filtered) _equipTableSelected.add(e.n.id);
+    else for (const e of filtered) _equipTableSelected.delete(e.n.id);
+    renderEquipmentTable();
+  });
+  const clearSel = mount.querySelector('#et-clear-sel');
+  if (clearSel) clearSel.addEventListener('click', () => {
+    _equipTableSelected.clear();
+    renderEquipmentTable();
+  });
+  // bulkApply: snapshot once + iterate selection + rerender.
+  const _equipBulkApply = (fn) => {
+    const ids = [..._equipTableSelected];
+    if (!ids.length) return;
+    if (typeof window.Raschet?.snapshot === 'function') window.Raschet.snapshot('equip-table:bulk:' + ids.length);
+    let affected = 0;
+    for (const id of ids) {
+      const node = S.nodes.get(id);
+      if (!node) continue;
+      fn(node);
+      affected++;
+    }
+    if (typeof window.Raschet?.rerender === 'function') window.Raschet.rerender();
+    renderEquipmentTable();
+    flash(`Изменено: ${affected} из ${ids.length}`);
+  };
+  const manufBtn = mount.querySelector('#et-bulk-manuf');
+  if (manufBtn) manufBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить производителя для выделенных (пусто = снять):', '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    _equipBulkApply((n) => { if (raw) n.manufacturer = raw; else delete n.manufacturer; });
+  });
+  const modelBtn = mount.querySelector('#et-bulk-model');
+  if (modelBtn) modelBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить модель для выделенных (пусто = снять):', '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    _equipBulkApply((n) => { if (raw) n.model = raw; else delete n.model; });
+  });
+  const effBtn = mount.querySelector('#et-bulk-eff');
+  if (effBtn) effBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить КПД, % (50..100; пусто = снять):', '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    if (raw === '') { _equipBulkApply((n) => { delete n.efficiency; }); return; }
+    const num = Number(raw);
+    if (!(Number.isFinite(num) && num >= 50 && num <= 100)) { flash('КПД вне диапазона 50..100', 'error'); return; }
+    _equipBulkApply((n) => { n.efficiency = num; });
+  });
+  const redBtn = mount.querySelector('#et-bulk-redgrp');
+  if (redBtn) redBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить группу резерва для выделенных (напр. T или DGU; пусто = снять):', '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    _equipBulkApply((n) => { if (raw) n.redundancyGroup = raw; else delete n.redundancyGroup; });
+  });
 
   // Phase 1.20.30: cross-navigation в таблицы кабелей и потребителей
   mount.querySelectorAll('.et-xnav').forEach(btn => {
