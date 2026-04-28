@@ -91,6 +91,11 @@ export function openImpedanceModal(n) {
     h.push(field('Типовой номинал (ГОСТ 11677)', `<select id="imp-tCatalog">${tOpts}</select>`));
     h.push(`<div class="muted" style="font-size:10px;margin-top:-4px">При выборе заполняются Uk, Pk, P0 по ГОСТ. Поле Snom остаётся ручным для редактирования.</div>`);
     h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
+  } else if (subtype === 'generator') {
+    // v0.59.631: ISO 8528-1 режимы работы ДГУ — теперь в этой же модалке
+    // (юзер: «не используй настройку в нескольких местах, только в Параметры
+    // источника»). Раньше был отдельный modal-genrating.
+    h.push(_renderGenIsoBlock(n));
   } else {
     h.push(field('Номинальная мощность (Snom), кВА', `<input type="number" id="imp-snom" min="1" max="100000" step="1" value="${n.snomKva ?? 400}">`));
   }
@@ -204,6 +209,16 @@ export function openImpedanceModal(n) {
   body.innerHTML = h.join('');
   try { _wrapModalWithSystemTabs(body, n); } catch {}
 
+  // v0.59.631: live-обновление подсказки режима ISO 8528 (для ДГУ).
+  const grModeEl = document.getElementById('gr-mode');
+  if (grModeEl) {
+    grModeEl.addEventListener('change', () => {
+      const mode = GEN_RATING_MODES.find(m => m.id === grModeEl.value);
+      const hintEl = document.getElementById('gr-mode-hint');
+      if (hintEl && mode) hintEl.textContent = mode.hint;
+    });
+  }
+
   const tCatEl = document.getElementById('imp-tCatalog');
   if (tCatEl) {
     tCatEl.addEventListener('change', () => {
@@ -244,7 +259,14 @@ export function openImpedanceModal(n) {
     const impName = document.getElementById('imp-name')?.value?.trim();
     if (impName) n.name = impName;
     if (!isUtility) {
-      n.snomKva = readNum('imp-snom', n.snomKva ?? 400);
+      // v0.59.631: для генератора — read ISO 8528 поля; они САМИ синхронизируют
+      // n.snomKva и n.capacityKw с активным режимом (см. _applyGenIsoFields).
+      // imp-snom для ДГУ не показывается. Для трансформатора и прочих — читаем.
+      if (subtype === 'generator') {
+        _applyGenIsoFields(n);
+      } else {
+        n.snomKva = readNum('imp-snom', n.snomKva ?? 400);
+      }
     }
     const levels = GLOBAL.voltageLevels || [];
     const outEl = document.getElementById('imp-voltage-out');
@@ -325,31 +347,36 @@ export function openImpedanceModal(n) {
 }
 
 // ================= Модалка «Режим работы и номиналы (ISO 8528)» =================
-// v0.59.627 (Phase B): режимы работы ДГУ по ISO 8528-1:2018.
+// v0.59.627/631 (Phase B): режимы работы ДГУ по ISO 8528-1:2018.
 // У каждого режима — своя пара рейтингов (kW, kVA), потому что производитель
 // допускает разную нагрузку в зависимости от продолжительности и характера.
 //
-//   ESP (Emergency Standby Power) — макс. 200 ч/год, средняя нагрузка ≤25%/год.
-//                                    Для аварийного питания при отказе сети.
-//   PRP (Prime Power)             — неограниченное время, переменная нагрузка
-//                                    со средней ≤70% от номинала.
-//   LTP (Limited Time Prime)      — макс. 500 ч/год, постоянная номинальная.
-//                                    Промежуточный режим между PRP и COP.
-//   COP (Continuous Operating Power)— неограниченное время, постоянная нагрузка.
-//                                    Для базового питания (off-grid).
-//   DCC (Data Center Continuous)  — расширение для дата-центров: continuous
-//                                    с возможностью кратковременного step-load.
-//   EMG («Emergency») — синоним ESP, оставлен для совместимости с маркировкой
-//                       некоторых производителей (Cummins, Caterpillar).
+// Сортировка ниже — ПО НАРАСТАНИЮ РЕЙТИНГА (от самого требовательного режима,
+// где допустимая мощность минимальна, к самому щадящему, где макс).
+// Между режимами есть приблизительные соотношения для дизельных ДГУ:
+//   ESP > LTP ≈ ESP × 0.91 > PRP ≈ ESP × 0.91 > COP ≈ PRP × 0.90 > DCC ≈ COP
+//
+//   DCC (Data Center Continuous)  — continuous + кратковременные step-load
+//                                    (mission-critical DC). Самая жёсткая
+//                                    эксплуатация → самая низкая допустимая P.
+//   COP (Continuous Operating Power)— неограниченное время, постоянная нагрузка
+//                                    (off-grid).
+//   PRP (Prime Power)             — неограниченные часы, переменная нагрузка
+//                                    со средней ≤70% от PRP-рейтинга.
+//   LTP (Limited Time Prime)      — ≤500 ч/год, постоянная номинальная.
+//   ESP (Emergency Standby Power) — ≤200 ч/год, средняя ≤25%/год. Только для
+//                                    аварийного резерва. Самая высокая P.
+//
+// v0.59.631: убран EMG — это не термин ISO 8528, а маркетинговое обозначение
+// некоторых производителей. По стандарту используем только ESP.
 //
 // Источник: ISO 8528-1:2018 §13.3.
 const GEN_RATING_MODES = [
-  { id: 'ESP', label: 'ESP — Emergency Standby Power',     hint: '≤200 ч/год, ср. нагрузка ≤25% от ESP-рейтинга; типичный режим для аварийного резерва' },
+  { id: 'DCC', label: 'DCC — Data Center Continuous',      hint: 'continuous с возможностью кратковременных скачков нагрузки (mission-critical DC)' },
+  { id: 'COP', label: 'COP — Continuous Operating Power',  hint: 'неограниченное время, постоянная номинальная нагрузка (off-grid)' },
   { id: 'PRP', label: 'PRP — Prime Power',                 hint: 'неограниченные часы, переменная нагрузка со средней ≤70% от PRP-рейтинга' },
   { id: 'LTP', label: 'LTP — Limited Time Prime',          hint: '≤500 ч/год, постоянная номинальная нагрузка' },
-  { id: 'COP', label: 'COP — Continuous Operating Power',  hint: 'неограниченное время, постоянная номинальная нагрузка (off-grid)' },
-  { id: 'DCC', label: 'DCC — Data Center Continuous',      hint: 'continuous с возможностью кратковременных скачков нагрузки (mission-critical DC)' },
-  { id: 'EMG', label: 'EMG — Emergency (синоним ESP)',     hint: 'устаревший термин, эквивалент ESP — для совместимости с обозначениями производителя' },
+  { id: 'ESP', label: 'ESP — Emergency Standby Power',     hint: '≤200 ч/год, ср. нагрузка ≤25% от ESP-рейтинга; типичный режим для аварийного резерва' },
 ];
 function _genRatingDefaults() {
   // Типичное соотношение между режимами для дизельных ДГУ:
@@ -362,37 +389,35 @@ function _genRatingDefaults() {
   for (const m of GEN_RATING_MODES) out[m.id] = { kW: null, kVA: null };
   return out;
 }
-export function openGenRatingModal(n) {
-  const body = document.getElementById('genrating-body');
-  if (!body) return;
+// v0.59.631: блок ISO 8528 для генератора, встраивается в openImpedanceModal
+// (юзер: «не используй настройку в нескольких местах, только в Параметры
+// источника»). Возвращает HTML-строку. Apply-handler в openImpedanceModal
+// читает поля по data-gr-mode/data-gr-field + #gr-mode + #gr-cosPhi.
+function _renderGenIsoBlock(n) {
   const ratings = (n.genRatings && typeof n.genRatings === 'object') ? n.genRatings : _genRatingDefaults();
   const curMode = n.genRatingMode || 'ESP';
-  const cosNom = Number(n.genCosPhi) || 0.8; // ISO 8528 default cos φ для ДГУ = 0.8
-
+  const cosNom = Number(n.genCosPhi) || 0.8;
   const h = [];
-  h.push('<div class="muted" style="font-size:11.5px;line-height:1.5;margin-bottom:10px">');
-  h.push('Стандарт ISO 8528-1:2018 определяет 5 режимов работы ДГУ (плюс EMG как синоним ESP). ');
-  h.push('У каждого режима — свой допустимый рейтинг по kW и kVA. Производитель публикует их в табличке оборудования. ');
-  h.push('Программа проверяет достаточность по <b>обоим</b> (kW + kVA) против worst-case нагрузки (все ИБП в байпасе).');
+  h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.5">');
+  h.push('Стандарт <b>ISO 8528-1:2018</b> определяет 5 режимов работы ДГУ. ');
+  h.push('Сортировка ниже — по нарастанию рейтинга (от самого требовательного DCC к самому щадящему ESP). ');
+  h.push('У каждого режима свой допустимый рейтинг по kW и kVA — заполните по табличке производителя. ');
+  h.push('Программа проверяет достаточность по <b>обоим</b> (kW + kVA) против worst-case нагрузки.');
   h.push('</div>');
 
-  h.push('<h4 style="margin:8px 0 6px">Активный режим работы</h4>');
   let opts = '';
   for (const m of GEN_RATING_MODES) {
     opts += `<option value="${m.id}"${curMode === m.id ? ' selected' : ''}>${escHtml(m.label)}</option>`;
   }
-  h.push(field('Режим', `<select id="gr-mode">${opts}</select>`));
+  h.push(field('Активный режим работы (ISO 8528)', `<select id="gr-mode">${opts}</select>`));
   const curHint = (GEN_RATING_MODES.find(m => m.id === curMode) || {}).hint || '';
   h.push(`<div class="muted" id="gr-mode-hint" style="font-size:11px;margin-top:-4px;margin-bottom:8px;line-height:1.4;color:#475569">${escHtml(curHint)}</div>`);
 
   h.push(field('Номинальный cos φ ДГУ',
     `<input type="number" id="gr-cosPhi" min="0.5" max="1.0" step="0.01" value="${cosNom}">`));
-  h.push('<div class="muted" style="font-size:10px;margin-top:-4px">По умолчанию 0.80 (ISO 8528-1 §7.2.2). Для специальных ДГУ — по табличке.</div>');
+  h.push('<div class="muted" style="font-size:10px;margin-top:-4px;margin-bottom:6px">По умолчанию 0.80 (ISO 8528-1 §7.2.2). Если задано только одно из kW/kVA — другое посчитается через cos φ на Apply.</div>');
 
-  h.push('<h4 style="margin:14px 0 6px">Рейтинги по режимам (паспорт ДГУ)</h4>');
-  h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">Заполните пары kW / kVA из таблички производителя. Пустые поля — режим не используется. Связь: kW = kVA × cos φ (если задано одно — авто-расчёт второго на Apply).</div>');
-
-  h.push('<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f6f8fa">');
+  h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px"><thead><tr style="background:#f6f8fa">');
   h.push('<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #d0d7de">Режим</th>');
   h.push('<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #d0d7de;width:90px">kW</th>');
   h.push('<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #d0d7de;width:90px">kVA</th>');
@@ -409,86 +434,69 @@ export function openGenRatingModal(n) {
   }
   h.push('</tbody></table>');
 
-  // Сводка достаточности (по worst-case + текущему режиму).
+  // v0.59.631: проверка достаточности — используем _maxLoadKw для backup ДГУ
+  // (текущий _powerP=0 у не-активного резерва). Считаем kVA через cos φ
+  // worst-case: S_max = P_max / cos_worst.
   const r = ratings[curMode] || {};
   const ratedKw = Number(r.kW) || 0;
   const ratedKva = Number(r.kVA) || 0;
-  const Pworst = Number(n._powerPWorst) || Number(n._powerP) || 0;
-  const Sworst = Number(n._powerSWorst) || Number(n._powerS) || 0;
-  const utilP = ratedKw > 0 ? (Pworst / ratedKw) : 0;
-  const utilS = ratedKva > 0 ? (Sworst / ratedKva) : 0;
+  const cosW = Number(n._cosPhiWorst) || Number(n._cosPhi) || cosNom;
+  const Pmax = Number(n._maxLoadKw) || Number(n._powerPWorst) || Number(n._powerP) || 0;
+  const Smax = (Pmax > 0 && cosW > 0) ? (Pmax / cosW) : 0;
+  const utilP = ratedKw > 0 ? (Pmax / ratedKw) : 0;
+  const utilS = ratedKva > 0 ? (Smax / ratedKva) : 0;
   const util = Math.max(utilP, utilS);
   let status = '—', color = '#6b7280';
-  if (ratedKw > 0 && ratedKva > 0) {
+  if (ratedKw > 0 && ratedKva > 0 && Pmax > 0) {
     if (util > 1.0)        { status = '⛔ Недостаточно'; color = '#b91c1c'; }
     else if (util >= 0.85) { status = '⚠ Достаточно (близко к пределу)'; color = '#c2410c'; }
     else if (util >= 0.50) { status = '✓ Нормально'; color = '#15803d'; }
     else                   { status = 'ℹ Слишком много (oversized, <50%)'; color = '#0369a1'; }
+  } else if (ratedKw > 0 && ratedKva > 0 && Pmax === 0) {
+    status = 'нет downstream-нагрузки на ДГУ'; color = '#6b7280';
   }
-  h.push(`<div style="margin-top:14px;padding:10px 12px;background:#f0f9ff;border-radius:4px;font-size:11.5px;line-height:1.7">
-    <b>Проверка достаточности по worst-case:</b><br>
-    Нагрузка (все ИБП в байпасе): <b>${Pworst.toFixed(2)} kW</b> · <b>${Sworst.toFixed(2)} kVA</b><br>
+  h.push(`<div style="margin-top:10px;padding:8px 10px;background:#f0f9ff;border-radius:4px;font-size:11px;line-height:1.7">
+    <b>Проверка достаточности по worst-case (макс. сценарий нагрузки):</b><br>
+    Нагрузка (все ИБП в байпасе): <b>${Pmax.toFixed(2)} kW</b> · <b>${Smax.toFixed(2)} kVA</b> <span class="muted">(cos φ ${cosW.toFixed(3)})</span><br>
     Рейтинг ${escHtml(curMode)}: <b>${ratedKw ? ratedKw.toFixed(0) : '—'} kW</b> · <b>${ratedKva ? ratedKva.toFixed(0) : '—'} kVA</b><br>
     Загрузка: kW <b>${(utilP * 100).toFixed(0)}%</b> · kVA <b>${(utilS * 100).toFixed(0)}%</b> → max <b>${(util * 100).toFixed(0)}%</b><br>
     Статус: <b style="color:${color}">${status}</b>
   </div>`);
 
-  body.innerHTML = h.join('');
-
-  // Изменение режима — обновить подсказку.
-  const modeSel = document.getElementById('gr-mode');
-  if (modeSel) {
-    modeSel.addEventListener('change', () => {
-      const mode = GEN_RATING_MODES.find(m => m.id === modeSel.value);
-      const hintEl = document.getElementById('gr-mode-hint');
-      if (hintEl && mode) hintEl.textContent = mode.hint;
-    });
+  return h.join('');
+}
+// v0.59.631: helper для apply-handler в openImpedanceModal — читает поля
+// ISO 8528 и пишет в n.genRatings / n.genRatingMode / n.genCosPhi + sync.
+function _applyGenIsoFields(n) {
+  const modeEl = document.getElementById('gr-mode');
+  if (!modeEl) return; // не на ДГУ
+  n.genRatingMode = modeEl.value || 'ESP';
+  const newCos = Number(document.getElementById('gr-cosPhi')?.value);
+  if (Number.isFinite(newCos) && newCos >= 0.5 && newCos <= 1.0) n.genCosPhi = newCos;
+  const cos = Number(n.genCosPhi) || 0.8;
+  const next = {};
+  for (const m of GEN_RATING_MODES) next[m.id] = { kW: null, kVA: null };
+  document.querySelectorAll('[data-gr-mode]').forEach(inp => {
+    const mode = inp.getAttribute('data-gr-mode');
+    const fld = inp.getAttribute('data-gr-field');
+    const raw = String(inp.value || '').trim();
+    if (raw === '') return;
+    const v = Number(raw);
+    if (!(Number.isFinite(v) && v > 0)) return;
+    if (!next[mode]) next[mode] = { kW: null, kVA: null };
+    next[mode][fld] = v;
+  });
+  // Auto-fill: если одно из kW/kVA задано — посчитать другое через cos φ.
+  for (const m of GEN_RATING_MODES) {
+    const r = next[m.id];
+    if (r.kW && !r.kVA && cos > 0)  r.kVA = Math.round(r.kW / cos);
+    if (r.kVA && !r.kW && cos > 0)  r.kW = Math.round(r.kVA * cos);
   }
-
-  const applyBtn = document.getElementById('genrating-apply');
-  if (applyBtn) applyBtn.onclick = () => {
-    if (n.id !== '__preset_edit__') snapshot('genrating:' + n.id);
-    n.genRatingMode = document.getElementById('gr-mode')?.value || 'ESP';
-    const newCos = Number(document.getElementById('gr-cosPhi')?.value);
-    if (Number.isFinite(newCos) && newCos >= 0.5 && newCos <= 1.0) n.genCosPhi = newCos;
-    const cos = Number(n.genCosPhi) || 0.8;
-    const next = {};
-    for (const m of GEN_RATING_MODES) next[m.id] = { kW: null, kVA: null };
-    document.querySelectorAll('[data-gr-mode]').forEach(inp => {
-      const mode = inp.getAttribute('data-gr-mode');
-      const field = inp.getAttribute('data-gr-field');
-      const raw = String(inp.value || '').trim();
-      if (raw === '') return;
-      const v = Number(raw);
-      if (!(Number.isFinite(v) && v > 0)) return;
-      if (!next[mode]) next[mode] = { kW: null, kVA: null };
-      next[mode][field] = v;
-    });
-    // Авто-доп: если задано только одно из kW/kVA — другое посчитать через cos φ.
-    for (const m of GEN_RATING_MODES) {
-      const r = next[m.id];
-      if (r.kW && !r.kVA && cos > 0)  r.kVA = Math.round(r.kW / cos);
-      if (r.kVA && !r.kW && cos > 0)  r.kW = Math.round(r.kVA * cos);
-    }
-    n.genRatings = next;
-    // Синхронизация старых полей capacityKw / snomKva с активным режимом —
-    // чтобы остальные части программы (overload, отчёт) видели актуальную мощность.
-    const active = next[n.genRatingMode] || {};
-    if (active.kW)  n.capacityKw = active.kW;
-    if (active.kVA) n.snomKva    = active.kVA;
-    if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
-      window.Raschet._presetEditCallback(n);
-      document.getElementById('modal-genrating').classList.add('hidden');
-      return;
-    }
-    document.getElementById('modal-genrating').classList.add('hidden');
-    render();
-    _invokeRenderInspector();
-    notifyChange();
-    flash('Режим и рейтинги ДГУ обновлены');
-  };
-
-  document.getElementById('modal-genrating').classList.remove('hidden');
+  n.genRatings = next;
+  // Синхронизация capacityKw / snomKva с активным режимом.
+  const active = next[n.genRatingMode] || {};
+  if (active.kW)  n.capacityKw = active.kW;
+  if (active.kVA) n.snomKva    = active.kVA;
 }
 
 // ================= Модалка «Автоматизация» =================
@@ -727,20 +735,26 @@ export function sourceStatusBlock(n) {
       parts.push(`<span style="color:#c2410c"><b>В байпасе ИБП</b> (worst-case для УРКМ/ДГУ):</span>`);
       parts.push(`&nbsp;&nbsp;${fmt(pW)} kW · ${fmt(aW)} A · Q ${fmt(qW)} kvar · S <b>${fmt(sW)} kVA</b> · cos φ <b>${cosW.toFixed(2)}</b>${qDelta < 0.05 ? ' <span class="muted">(совпадает с текущим)</span>' : ''}`);
     }
-    // v0.59.627: для генератора — статус достаточности по worst-case kW + kVA в выбранном режиме ISO 8528.
+    // v0.59.627/631: для генератора — статус достаточности по worst-case
+    // kW + kVA в выбранном режиме ISO 8528. Используем _maxLoadKw — макс.
+    // сценарий нагрузки, который ДГУ должен покрыть при активации
+    // (для backup-генератора _powerP=0 в нормальном режиме, нельзя сайзить
+    // по нему). kVA считаем как P_max / cos_worst.
     if (n.type === 'generator' && n.genRatings && typeof n.genRatings === 'object') {
       const mode = n.genRatingMode || 'ESP';
       const r = n.genRatings[mode] || {};
       const ratedKw = Number(r.kW) || 0;
       const ratedKva = Number(r.kVA) || 0;
       if (ratedKw > 0 && ratedKva > 0) {
-        const Pworst = Number(n._powerPWorst) || Number(n._powerP) || 0;
-        const Sworst = Number(n._powerSWorst) || Number(n._powerS) || 0;
-        const utilP = Pworst / ratedKw;
-        const utilS = Sworst / ratedKva;
+        const cosW = Number(n._cosPhiWorst) || Number(n._cosPhi) || Number(n.genCosPhi) || 0.8;
+        const Pmax = Number(n._maxLoadKw) || Number(n._powerPWorst) || Number(n._powerP) || 0;
+        const Smax = (Pmax > 0 && cosW > 0) ? (Pmax / cosW) : 0;
+        const utilP = Pmax / ratedKw;
+        const utilS = Smax / ratedKva;
         const util = Math.max(utilP, utilS);
         let st = '', col = '#6b7280';
-        if (util > 1.0)        { st = '⛔ недостаточно';           col = '#b91c1c'; }
+        if (Pmax === 0) { st = 'нет нагрузки'; col = '#6b7280'; }
+        else if (util > 1.0)        { st = '⛔ недостаточно';           col = '#b91c1c'; }
         else if (util >= 0.85) { st = '⚠ достаточно (близко к пределу)'; col = '#c2410c'; }
         else if (util >= 0.50) { st = '✓ нормально';                col = '#15803d'; }
         else                   { st = 'ℹ слишком много';            col = '#0369a1'; }
