@@ -204,15 +204,17 @@ export function openUpsParamsModal(n) {
   // v0.59.607: derate применяется ТОЛЬКО к механической части нагрузки,
   // не ко всему ИБП. Юзер: «коэффициент нужно применять не для всей
   // нагрузки а только для механической нагрузки».
+  // v0.59.608: используем recalc-stored значения n._loadKwIT/HVAC/Weighted
+  // для согласованности с тем, что считает recalc. BFS только для списка
+  // detected (для UX-сообщения), не для P-сумм.
   {
     const factor = Number.isFinite(Number(n.hvacDerateFactor)) && Number(n.hvacDerateFactor) > 0
       ? Number(n.hvacDerateFactor) : 0.70;
     const active = !!n.hvacDerateActive;
     const baseCap = Number(n.capacityKw) || 0;
-    // BFS downstream от ИБП — ищем механическую нагрузку и считаем P_IT/P_HVAC.
+    // BFS downstream от ИБП — собираем список HVAC для warn-сообщения.
     const HVAC_TYPE_IDS = new Set(['motor', 'pump', 'fan', 'conditioner', 'elevator']);
     const detected = [];
-    let pIT = 0, pHVAC = 0;
     try {
       const visited = new Set([n.id]);
       const queue = [n.id];
@@ -223,24 +225,24 @@ export function openUpsParamsModal(n) {
           const next = state.nodes.get(c.to?.nodeId);
           if (!next || visited.has(next.id)) continue;
           visited.add(next.id);
-          if (next.type === 'ups' && next.id !== n.id) continue; // нагрузка чужого ИБП
+          if (next.type === 'ups' && next.id !== n.id) continue;
           if (next.type === 'consumer') {
             const cat = CONSUMER_CATALOG.find(x => x.id === next.consumerType);
             const isHvac = (cat && cat.category === 'hvac') || HVAC_TYPE_IDS.has(next.consumerType);
-            const P = Number(next._loadKw) || 0;
-            if (isHvac) {
-              pHVAC += P;
-              detected.push({ id: next.id, label: next.name || next.tag || next.consumerType });
-            } else {
-              pIT += P;
-            }
+            if (isHvac) detected.push({ id: next.id, label: next.name || next.tag || next.consumerType });
           }
           queue.push(next.id);
         }
       }
     } catch {}
     const f = active ? Math.max(0.3, Math.min(1, factor)) : 1.0;
-    const wLoad = pIT + (active ? pHVAC / f : pHVAC);
+    // Берём посчитанные recalc-ом значения (если есть) — они учитывают
+    // активное состояние модулей, режимы и т.п. Иначе fallback на _loadKw.
+    const pIT = Number(n._loadKwIT) || 0;
+    const pHVAC = Number(n._loadKwHVAC) || 0;
+    const wLoad = (Number(n._loadKwWeighted) > 0 && active)
+      ? Number(n._loadKwWeighted)
+      : (pIT + (active ? pHVAC / f : pHVAC));
     const utilPct = baseCap > 0 ? (wLoad / baseCap * 100) : 0;
     h.push('<h4 style="margin:16px 0 8px">Derate для механической нагрузки (HVAC)</h4>');
     h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки (кондиционеры, моторы, насосы) производитель ИБП требует снижения номинала. Kehua: 0.70 (минимум). APC/Eaton: 0.80. Применяется ТОЛЬКО к механической части — IT-нагрузка использует полную мощность.</div>');

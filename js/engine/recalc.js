@@ -20,12 +20,12 @@ function _isHvacConsumer(n) {
 }
 // Возвращает weighted-нагрузку ИБП с учётом HVAC-derate.
 // IT-часть считается 1×, механическая часть — 1/derate.
-// Если derate не активен — возвращает обычную сумму (=loadKw).
+// Если derate не активен — возвращает обычную сумму (=Σ всех загрузок).
+// v0.59.608: ВСЕГДА заполняет _loadKwIT / _loadKwHVAC на узле, даже когда
+// derate не активен — чтобы UI показывал breakdown.
 function _computeUpsWeightedLoad(upsNode) {
   if (!upsNode || upsNode.type !== 'ups') return 0;
   const factor = upsHvacDerateFactor(upsNode);
-  if (factor >= 0.999) return Number(upsNode._loadKw) || 0;
-  let total = 0;
   let totalIT = 0, totalHVAC = 0;
   const visited = new Set([upsNode.id]);
   const queue = [upsNode.id];
@@ -42,20 +42,17 @@ function _computeUpsWeightedLoad(upsNode) {
       if (next.type === 'consumer') {
         const Pphys = (Number(next._loadKw) || 0)
           || (consumerTotalDemandKw(next) * (Number(next.kUse) || 1) * effectiveLoadFactor(next));
-        if (_isHvacConsumer(next)) {
-          totalHVAC += Pphys;
-          total += Pphys / factor;
-        } else {
-          totalIT += Pphys;
-          total += Pphys;
-        }
+        if (_isHvacConsumer(next)) totalHVAC += Pphys;
+        else                       totalIT   += Pphys;
       }
       queue.push(next.id);
     }
   }
   upsNode._loadKwIT = totalIT;
   upsNode._loadKwHVAC = totalHVAC;
-  return total;
+  // Weighted = IT + HVAC×(1/factor). Если derate не активен factor=1.0,
+  // weighted = IT + HVAC = всё суммарно.
+  return totalIT + (factor > 0 ? totalHVAC / factor : totalHVAC);
 }
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
