@@ -1609,13 +1609,16 @@ function renderRackCard(r) {
           <span class="u-label">⇋ ${escapeHtml(d.label || d.typeId || 'Органайзер')}${hBadge}</span>
         </div>`);
       } else {
+        // v0.59.592: подсветка А/B сохраняется при перерисовке rack-карточек.
         const isStart = linkStart && linkStart.rackId === r.id && linkStart.devId === d.id;
+        const isEnd   = linkEnd   && linkEnd.rackId   === r.id && linkEnd.devId   === d.id;
+        const selCls = isStart ? ' sel' : (isEnd ? ' sel-end' : '');
         const ports = devicePorts(r.id, d.id);
         const used = ports ? portsUsedOn(r.id, d.id).size : 0;
         const portBadge = ports > 1
           ? `<span class="u-pbadge${used >= ports ? ' full' : used ? ' part' : ''}" title="${used} из ${ports} портов занято">${used}/${ports}</span>`
           : '';
-        units.push(`<div class="sd-unit${h>1?' multi':''}${isStart ? ' sel' : ''}"${style} data-rack-id="${escapeAttr(r.id)}" data-dev-id="${escapeAttr(d.id)}" title="${escapeAttr(d.label || d.typeId || '')}">
+        units.push(`<div class="sd-unit${h>1?' multi':''}${selCls}"${style} data-rack-id="${escapeAttr(r.id)}" data-dev-id="${escapeAttr(d.id)}" title="${escapeAttr(d.label || d.typeId || '')}">
           <span class="u-num">${uRange}</span>
           <span class="u-label">${escapeHtml(d.label || d.typeId || '—')}${hBadge}${portBadge}</span>
         </div>`);
@@ -4465,6 +4468,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     e.preventDefault();
     toggleVisBtn?.click();
+  });
+  // v0.59.593: Esc снимает выделение A/B; Enter создаёт связь если выбрана пара.
+  document.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (e.key === 'Escape' && (linkStart || linkEnd)) {
+      e.preventDefault();
+      linkStart = null; linkEnd = null;
+      _refreshSelectionUI();
+    } else if (e.key === 'Enter' && linkStart && linkEnd) {
+      e.preventDefault();
+      _createLinkFromSelection();
+    }
   });
   const sagCb = document.getElementById('sd-links-sag');
   if (sagCb) {
