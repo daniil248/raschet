@@ -24,7 +24,11 @@ _пусто_
 
 ## ✨ UX / полировка
 
-_пусто_
+- **ups-config: wizard «Настройка ИБП с CRF» (для внешнего вызова из других модулей)** — реализовать в `ups-config/` мастер, который проводит юзера через все этапы (тип, мощность, входы, байпас, K_рез по типам нагрузки, max load factor, parallel, …) аналогично тому что сейчас в `js/engine/inspector/ups.js`. Если запущен из `?from=schematic` (или другого модуля) — все известные параметры (capacityKw, voltage, manufacturer, и т.п.) предзаполнены из исходного узла, проходить нужно только недостающие. Возврат — обновляет узел в исходной схеме (через postMessage / localStorage handshake / URL callback). См. v0.59.624–632 для текущей логики.
+
+- **Расширить колонки и bulk-edit во всех таблицах**: subtype, inrush, breakerMargin, curveHint, voltage, hasN, hasG, weight, dimensions для consumers; больше полей для cable/equipment. Сделать generic registry колонок (декларативный с metadata), чтобы добавлять колонки одной строкой.
+
+- **Применить presets-систему (`shared/table-presets.js`) к таблицам в других модулях**: scs-config (contents, racks), scs-design (links, bom), inventory, logistics, etc. Сейчас работает только в Конструкторе схем (consumers/cable/equipment).
 
 ## 🔧 Технический долг
 

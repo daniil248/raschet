@@ -1288,7 +1288,10 @@ export function renderGeneralPanel(n) {
     // и индикатор POR-объекта (mirror связан или нет).
     const isRackNode = n.type === 'consumer' && (n.subtype === 'rack' || n.consumerKind === 'rack');
     if (isRackNode) {
-      const compHref = 'scs-config/rack.html?from=schematic&schemeNodeId=' + encodeURIComponent(n.id);
+      // v0.59.633: передаём return-URL чтобы кнопка «Назад» возвращалась
+      // в эту же схему, а не на главную выбора схемы.
+      const compHref = 'scs-config/rack.html?from=schematic&schemeNodeId=' + encodeURIComponent(n.id)
+        + '&return=' + encodeURIComponent(location.href);
       const porBadge = n.porObjectId
         ? `<span title="Связан с POR-объектом ${escAttr(n.porObjectId)} (engine↔POR mirror)" style="font-size:11px;padding:3px 8px;border:1px solid #86efac;background:#f0fdf4;color:#14532d;border-radius:3px">🔗 POR ✓</span>`
         : `<span title="Нет связи с POR — mirror создаст объект при следующем sync" style="font-size:11px;padding:3px 8px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:3px">🔗 POR —</span>`;
@@ -1433,9 +1436,11 @@ export function renderGeneralPanel(n) {
       // v0.59.547: открываем Компоновщик с явным контекстом — schemeNodeId
       // данного узла, чтобы там автоматически выбрался первый виртуал
       // (count>1 → SR1-1 как стартовый), а не случайная стойка из списка.
+      // v0.59.633: + return-URL для кнопки «Назад».
       const qp = new URLSearchParams();
       qp.set('from', 'schematic');
       qp.set('schemeNodeId', n.id);
+      qp.set('return', location.href);
       const compHref = 'scs-config/rack.html?' + qp.toString();
       h.push(`<a class="full-btn" href="${escAttr(compHref)}" target="_blank" rel="noopener" style="display:block;margin-top:6px;text-align:center;text-decoration:none;background:#f0fdf4;color:#14532d;border-color:#86efac">🗄 Компоновщик шкафа (наполнение)</a>`);
     }

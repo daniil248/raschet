@@ -19,6 +19,12 @@ import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog
 import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG } from './engine/constants.js';
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+// v0.59.633: generic preset-система для таблиц — переиспользуется во всех модулях.
+import {
+  renderTablePresetUI as _renderTablePresetUI,
+  attachTablePresetHandlers as _attachTablePresetHandlersShared,
+  loadLastPresetId as _loadLastPresetId,
+} from '../shared/table-presets.js';
 import { listProjects as _listProjectCtx, createProject as _createProjectCtx } from '../shared/project-storage.js';
 import { state as _engineState } from './engine/state.js';
 import { selectNode as _engineSelectNode } from './engine/inspector.js';
@@ -2812,6 +2818,14 @@ function _openColumnMenu(anchorBtn, table, allCols, visibility, onToggle) {
   });
 }
 
+// v0.59.633: пресеты вынесены в shared/table-presets.js — переиспользуются всеми
+// модулями (Конструктор схем, scs-config, scs-design, …). Здесь — только адаптер.
+function _attachTablePresetHandlers(mountEl, tableId, getState, applyState) {
+  return _attachTablePresetHandlersShared(mountEl, tableId, getState, applyState, {
+    rsPrompt, rsConfirm, flash,
+  });
+}
+
 // ================= Перечень кабелей (Фаза 1.20) =================
 // Быстрое редактирование всех кабельных линий: марка, длина, способ прокладки.
 // Изменения применяются сразу в state и триггерят recalc+render.
@@ -2836,6 +2850,8 @@ const _CABLE_TABLE_COLUMNS = [
   { id: 'status', label: 'Статус', default: true },
 ];
 let _cableTableVisibility = _loadColumnVisibility('cable', _CABLE_TABLE_COLUMNS);
+// v0.59.633: id выбранного пресета таблицы кабелей.
+let _cableTableCurrentPreset = _loadLastPresetId('cable');
 
 const _CONSUMERS_TABLE_COLUMNS = [
   { id: 'checkbox', label: '(чекбокс)', required: true, default: true },
@@ -2853,6 +2869,9 @@ const _CONSUMERS_TABLE_COLUMNS = [
   { id: 'crf', label: 'K_рез', default: true },
 ];
 let _consumersTableVisibility = _loadColumnVisibility('consumers', _CONSUMERS_TABLE_COLUMNS);
+// v0.59.633: id выбранного пресета (для отображения в UI). Загрузка стейта
+// из пресета — при монтировании таблицы (см. renderConsumersTable).
+let _consumersTableCurrentPreset = _loadLastPresetId('consumers');
 
 const _EQUIPMENT_TABLE_COLUMNS = [
   { id: 'tag', label: 'Обозначение', default: true },
@@ -2869,6 +2888,8 @@ const _EQUIPMENT_TABLE_COLUMNS = [
   { id: 'xnav', label: 'Связано', default: true },
 ];
 let _equipTableVisibility = _loadColumnVisibility('equipment', _EQUIPMENT_TABLE_COLUMNS);
+// v0.59.633: id выбранного пресета таблицы оборудования.
+let _equipTableCurrentPreset = _loadLastPresetId('equipment');
 
 function _ctNodeTag(n) {
   if (!n) return '?';
@@ -3407,6 +3428,7 @@ function renderCableTable() {
         if (!fixableInView.length) return '';
         return `<button type="button" id="ct-bulk-autofix" title="Применить автофиксы ко всем ошибкам в выборке" style="padding:4px 10px;border:1px solid #2e7d32;background:#e8f5e9;color:#2e7d32;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600">🔧 Исправить всё (${fixableInView.length})</button>`;
       })()}
+      ${_renderTablePresetUI('cable', _cableTableCurrentPreset)}
       <button type="button" id="ct-col-menu" title="Настроить видимость столбцов" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">⚙ Столбцы</button>
       <button type="button" id="ct-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
       <button type="button" id="ct-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
@@ -3806,6 +3828,22 @@ function renderCableTable() {
       renderCableTable();
     });
   });
+  // v0.59.633: пресеты таблицы кабелей.
+  _attachTablePresetHandlers(
+    mount, 'cable',
+    () => ({
+      columns: { ..._cableTableVisibility },
+      filters: { ..._cableTableFilters },
+      sort: { ..._cableTableSort },
+    }),
+    ({ columns, filters, sort, presetId }) => {
+      if (columns) _cableTableVisibility = { ..._cableTableVisibility, ...columns };
+      if (filters) _cableTableFilters = { ..._cableTableFilters, ...filters };
+      if (sort) _cableTableSort = { ..._cableTableSort, ...sort };
+      _cableTableCurrentPreset = presetId || '';
+      renderCableTable();
+    }
+  );
   // Phase 1.20.29: автофикс всех error-линий в текущей выборке одной кнопкой
   const autofixBtn = mount.querySelector('#ct-bulk-autofix');
   if (autofixBtn) autofixBtn.addEventListener('click', async () => {
@@ -5897,6 +5935,7 @@ function renderConsumersTable() {
       <button type="button" id="ctc-bulk-kUse" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">K<sub>и</sub></button>
       <button type="button" id="ctc-bulk-phase" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Фаза</button>
       <span style="flex:1"></span>
+      ${_renderTablePresetUI('consumers', _consumersTableCurrentPreset)}
       <button type="button" id="ctc-col-menu" title="Настроить видимость столбцов" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">⚙ Столбцы</button>
       <button type="button" id="ctc-clear-filters" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Сбросить фильтры</button>
       <button type="button" id="ctc-clear-sel" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Снять выделение</button>
@@ -6148,6 +6187,23 @@ function renderConsumersTable() {
     _consumersTableSelected.clear();
     renderConsumersTable();
   });
+
+  // v0.59.633: пресеты — save/saveAs/delete + select.
+  _attachTablePresetHandlers(
+    mount, 'consumers',
+    () => ({
+      columns: { ..._consumersTableVisibility },
+      filters: { ..._consumersTableFilters },
+      sort: { ..._consumersTableSort },
+    }),
+    ({ columns, filters, sort, presetId }) => {
+      if (columns) _consumersTableVisibility = { ..._consumersTableVisibility, ...columns };
+      if (filters) _consumersTableFilters = { ..._consumersTableFilters, ...filters };
+      if (sort) _consumersTableSort = { ..._consumersTableSort, ...sort };
+      _consumersTableCurrentPreset = presetId || '';
+      renderConsumersTable();
+    }
+  );
 
   // Phase 1.20.17: snapshot один раз на всю bulk-операцию для Ctrl+Z
   const bulkApply = (fn) => {
@@ -6498,6 +6554,26 @@ function renderEquipmentTable() {
         renderEquipmentTable();
       });
     });
+  }
+  // v0.59.633: пресеты equipment-таблицы.
+  const presetMount = document.getElementById('equipment-table-presets-mount');
+  if (presetMount) {
+    presetMount.innerHTML = _renderTablePresetUI('equipment', _equipTableCurrentPreset);
+    _attachTablePresetHandlers(
+      presetMount, 'equipment',
+      () => ({
+        columns: { ..._equipTableVisibility },
+        filters: { ..._equipTableFilters },
+        sort: { ..._equipTableSort },
+      }),
+      ({ columns, filters, sort, presetId }) => {
+        if (columns) _equipTableVisibility = { ..._equipTableVisibility, ...columns };
+        if (filters) _equipTableFilters = { ..._equipTableFilters, ...filters };
+        if (sort) _equipTableSort = { ..._equipTableSort, ...sort };
+        _equipTableCurrentPreset = presetId || '';
+        renderEquipmentTable();
+      }
+    );
   }
   mount.querySelectorAll('.et-jump').forEach(a => {
     a.addEventListener('click', (e) => {

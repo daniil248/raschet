@@ -30,17 +30,32 @@
       // реферер указывает на известный модуль (полезно для старых ссылок и
       // для случая, когда пользователь пришёл по прямой ссылке без меток).
       (() => {
+        // v0.59.633: упрощён label на «← Назад». Если приходит ?return=<url>,
+        // используется именно эта ссылка (возврат в КОНКРЕТНУЮ схему/состояние,
+        // а не на главную модуля). Юзер: «пользователь всегда должен
+        // возвращаться именно туда, откуда пришёл, и кнопку назови просто
+        // "Вернуться" или "Назад"».
         const FROM = {
-          'scs-design': { href: '../scs-design/', label: '← Назад в «Проектирование СКС»' },
-          'schematic':  { href: '../',            label: '← Назад в «Конструктор схем»' },
-          'mv-config':  { href: '../mv-config/',  label: '← Назад в «Конфигуратор РУ СН»' },
-          'mdc-config': { href: '../mdc-config/', label: '← Назад в «Конфигуратор МЦОД»' },
-          'projects':   { href: '../projects/',   label: '← Назад к проектам' },
-          'rack-config':{ href: '../rack-config/',label: '← Назад в Конфигуратор стойки' },
-          'hub':        { href: '../hub.html',    label: '← Назад на главную' },
+          'scs-design': { href: '../scs-design/', label: '← Назад' },
+          'schematic':  { href: '../',            label: '← Назад' },
+          'mv-config':  { href: '../mv-config/',  label: '← Назад' },
+          'mdc-config': { href: '../mdc-config/', label: '← Назад' },
+          'projects':   { href: '../projects/',   label: '← Назад' },
+          'rack-config':{ href: '../rack-config/',label: '← Назад' },
+          'hub':        { href: '../hub.html',    label: '← Назад' },
         };
         const qp = new URLSearchParams(location.search);
         let from = (qp.get('from') || '').toLowerCase();
+        // v0.59.633: явный return-URL имеет приоритет над from.
+        let explicitReturn = '';
+        try {
+          const r = qp.get('return');
+          if (r) {
+            const u = new URL(r, location.href);
+            // безопасность: только same-origin
+            if (u.origin === location.origin) explicitReturn = u.href;
+          }
+        } catch {}
         if (!from || !FROM[from]) {
           try {
             const ref = new URL(document.referrer || '', location.href);
@@ -75,12 +90,16 @@
             if (stored && FROM[stored]) from = stored;
           }
         } catch {}
-        if (!from || !FROM[from]) return;
+        if (!from || !FROM[from]) {
+          // v0.59.633: если from неизвестно, но есть явный return — всё равно
+          // показываем кнопку «← Назад» с return-URL.
+          if (!explicitReturn) return;
+        }
         const a = document.getElementById('sc-back-link');
         const sep = document.getElementById('sc-back-sep');
         if (!a || !sep) return;
-        a.href = FROM[from].href;
-        a.textContent = FROM[from].label;
+        a.href = explicitReturn || FROM[from].href;
+        a.textContent = '← Назад';
         a.style.display = '';
         sep.style.display = '';
       })();
