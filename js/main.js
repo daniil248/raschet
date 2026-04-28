@@ -2844,6 +2844,11 @@ const _CABLE_TABLE_COLUMNS = [
   { id: 'parallel', label: 'Линий', default: true },
   { id: 'length', label: 'Длина, м', default: true },
   { id: 'method', label: 'Способ прокладки', default: true },
+  // v0.59.636: материал / изоляция / ambient — для гибкого подбора и bulk-edit.
+  { id: 'material', label: 'Материал', default: false },
+  { id: 'insulation', label: 'Изоляция', default: false },
+  { id: 'ambient', label: 'Ambient, °C', default: false },
+  { id: 'bundling', label: 'Группировка', default: false },
   { id: 'breaker', label: 'Автомат', default: true },
   { id: 'curve', label: 'Тип автомата', default: false },
   { id: 'imax', label: 'Imax / Iдоп', default: true },
@@ -3072,6 +3077,10 @@ function exportCableTableCsv() {
       const catVal = rec?.category || (c._isHV ? 'hv' : (c._isDC ? 'dc' : 'power'));
       if (catVal !== fCategory) return false;
     }
+    // v0.59.636: фильтры по материалу, изоляции, bundling.
+    if (F.material && (c.material || '') !== F.material) return false;
+    if (F.insulation && (c.insulation || '') !== F.insulation) return false;
+    if (F.bundling && (c.bundling || '') !== F.bundling) return false;
     return true;
   });
 
@@ -3094,6 +3103,11 @@ function exportCableTableCsv() {
       case 'method': return String(c._cableMethod || c.installMethod || '').toLowerCase();
       case 'imax': return Number(c._maxA) || 0;
       case 'class': return c._isHV ? 2 : (c._isDC ? 1 : 0);
+      // v0.59.636: sort keys для новых колонок.
+      case 'material': return c.material || '';
+      case 'insulation': return c.insulation || '';
+      case 'ambient': return (typeof c.ambientC === 'number') ? c.ambientC : -999;
+      case 'bundling': return c.bundling || '';
       default: return 0;
     }
   };
@@ -3447,6 +3461,9 @@ function renderCableTable() {
       <button type="button" id="ct-bulk-scale" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Умножить длины на коэффициент">× Длина</button>
       <button type="button" id="ct-bulk-breaker" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Назначить / снять ручной номинал автомата">Автомат</button>
       <button type="button" id="ct-bulk-curve" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}" title="Назначить тип автомата (кривую)">Тип</button>
+      <button type="button" id="ct-bulk-material" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Материал</button>
+      <button type="button" id="ct-bulk-insulation" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Изоляция</button>
+      <button type="button" id="ct-bulk-ambient" ${bulkDisabled ? 'disabled' : ''} style="padding:4px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer;font-size:11px;${bulkDisabled ? 'opacity:0.5;cursor:not-allowed' : ''}">Ambient °C</button>
       <span style="flex:1"></span>
       ${(() => {
         // Phase 1.20.29: автофикс всех error-линий в текущей выборке
@@ -3472,6 +3489,10 @@ function renderCableTable() {
           ${ifShow('parallel', _ctSortHdr('parallel', 'Линий', 'right', '', 'Параллельные проводники (линий)'))}
           ${ifShow('length', _ctSortHdr('length', 'Длина, м', 'right'))}
           ${ifShow('method', _ctSortHdr('method', 'Способ прокладки', 'left', 'min-width:150px'))}
+          ${ifShow('material', _ctSortHdr('material', 'Материал', 'left'))}
+          ${ifShow('insulation', _ctSortHdr('insulation', 'Изоляция', 'left'))}
+          ${ifShow('ambient', _ctSortHdr('ambient', 'Ambient, °C', 'right'))}
+          ${ifShow('bundling', _ctSortHdr('bundling', 'Группировка', 'left'))}
           ${ifShow('breaker', _ctSortHdr('breaker', 'Автомат', 'right', 'min-width:110px'))}
           ${ifShow('curve', _ctSortHdr('curve', 'Тип', 'left', 'min-width:95px', 'Тип автомата / кривая'))}
           ${ifShow('imax', _ctSortHdr('imax', 'Imax / Iдоп', 'right'))}
@@ -3487,6 +3508,10 @@ function renderCableTable() {
           ${ifShow('parallel', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="parallel" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option>${sortedParallels.map(v => `<option value="${v}" ${F.parallel === v ? 'selected' : ''}>${v}</option>`).join('')}</select></th>`)}
           ${ifShow('length', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap"><input type="number" class="ct-flt" data-flt="lengthMin" placeholder="от" value="${F.lengthMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><input type="number" class="ct-flt" data-flt="lengthMax" placeholder="до" value="${F.lengthMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>`)}
           ${ifShow('method', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="method" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все способы —</option>${sortedMethods.map(v => `<option value="${esc(v)}" ${F.method === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
+          ${ifShow('material', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="material" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option><option value="Cu"${F.material==='Cu'?' selected':''}>Cu</option><option value="Al"${F.material==='Al'?' selected':''}>Al</option></select></th>`)}
+          ${ifShow('insulation', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="insulation" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option><option value="PVC"${F.insulation==='PVC'?' selected':''}>PVC</option><option value="XLPE"${F.insulation==='XLPE'?' selected':''}>XLPE</option><option value="EPR"${F.insulation==='EPR'?' selected':''}>EPR</option><option value="FRLS"${F.insulation==='FRLS'?' selected':''}>FRLS</option><option value="LSZH"${F.insulation==='LSZH'?' selected':''}>LSZH</option></select></th>`)}
+          ${ifShow('ambient', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"></th>`)}
+          ${ifShow('bundling', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="bundling" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option><option value="touching"${F.bundling==='touching'?' selected':''}>touching</option><option value="spaced"${F.bundling==='spaced'?' selected':''}>spaced</option></select></th>`)}
           ${ifShow('breaker', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="breaker" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">все</option>${sortedBreakers.map(v => `<option value="${v}" ${F.breaker === v ? 'selected' : ''}>${v ? v + ' А' : '—'}</option>`).join('')}</select></th>`)}
           ${ifShow('curve', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de"><select class="ct-flt" data-flt="curve" style="width:100%;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><option value="">— все —</option>${sortedCurves.map(v => `<option value="${esc(v)}" ${F.curve === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></th>`)}
           ${ifShow('imax', `<th style="padding:3px 4px;border-bottom:1px solid #d0d7de;white-space:nowrap"><input type="number" class="ct-flt" data-flt="imaxMin" placeholder="от" value="${F.imaxMin ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"><input type="number" class="ct-flt" data-flt="imaxMax" placeholder="до" value="${F.imaxMax ?? ''}" style="width:44px;padding:2px 4px;font-size:11px;border:1px solid #d0d7de;border-radius:2px"></th>`)}
@@ -3565,6 +3590,27 @@ function renderCableTable() {
         ${ifShow('parallel', `<td style="padding:5px 8px;text-align:right;font-size:11px;${parallelN > 1 ? 'color:#1976d2;font-weight:600' : 'color:#999'}">${parallelN}</td>`)}
         ${ifShow('length', `<td style="padding:5px 8px;text-align:right"><input class="ct-length" data-id="${esc(c.id)}" type="number" min="0" step="0.5" value="${lengthVal}" style="width:70px;padding:3px 6px;text-align:right"></td>`)}
         ${ifShow('method', `<td style="padding:5px 8px"><select class="ct-method" data-id="${esc(c.id)}" style="width:100%;padding:3px 6px;font-size:11px">${methodOpts}</select></td>`)}
+        ${ifShow('material', (() => {
+          // v0.59.636: материал — Cu / Al.
+          const cur = c.material || '';
+          return `<td style="padding:5px 8px;font-size:11px"><select class="ct-material" data-id="${esc(c.id)}" style="padding:3px 6px;font-size:11px"><option value=""${cur===''?' selected':''}>авто</option><option value="Cu"${cur==='Cu'?' selected':''}>Cu</option><option value="Al"${cur==='Al'?' selected':''}>Al</option></select></td>`;
+        })())}
+        ${ifShow('insulation', (() => {
+          // v0.59.636: изоляция — PVC / XLPE / EPR / FRLS / LSZH.
+          const cur = c.insulation || '';
+          const opts = ['', 'PVC', 'XLPE', 'EPR', 'FRLS', 'LSZH'];
+          return `<td style="padding:5px 8px;font-size:11px"><select class="ct-insulation" data-id="${esc(c.id)}" style="padding:3px 6px;font-size:11px">${
+            opts.map(v => `<option value="${esc(v)}"${cur===v?' selected':''}>${v||'авто'}</option>`).join('')
+          }</select></td>`;
+        })())}
+        ${ifShow('ambient', (() => {
+          const v = (typeof c.ambientC === 'number') ? c.ambientC : '';
+          return `<td style="padding:5px 8px;text-align:right"><input class="ct-ambient" data-id="${esc(c.id)}" type="number" min="-30" max="80" step="1" value="${v}" placeholder="авто" style="width:60px;padding:3px 6px;text-align:right"></td>`;
+        })())}
+        ${ifShow('bundling', (() => {
+          const cur = c.bundling || '';
+          return `<td style="padding:5px 8px;font-size:11px"><select class="ct-bundling" data-id="${esc(c.id)}" style="padding:3px 6px;font-size:11px"><option value=""${cur===''?' selected':''}>авто</option><option value="touching"${cur==='touching'?' selected':''}>touching</option><option value="spaced"${cur==='spaced'?' selected':''}>spaced</option></select></td>`;
+        })())}
         ${ifShow('breaker', `<td style="padding:5px 8px;text-align:right;font-size:11px">${(() => {
           const auto = Number(c._breakerIn) || 0;
           const manual = !!(c.manualBreakerIn || c.manualFuseIn);
@@ -3658,6 +3704,49 @@ function renderCableTable() {
     sel.addEventListener('change', () => {
       snap('cable-table:method:' + sel.dataset.id);
       apply(sel.dataset.id, (c) => { c.installMethod = sel.value || undefined; });
+      applyAndRerender();
+    });
+  });
+  // v0.59.636: материал / изоляция / ambient / bundling — change handlers.
+  mount.querySelectorAll('.ct-material').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snap('cable-table:material:' + sel.dataset.id);
+      apply(sel.dataset.id, (c) => {
+        if (sel.value) c.material = sel.value;
+        else delete c.material;
+      });
+      applyAndRerender();
+    });
+  });
+  mount.querySelectorAll('.ct-insulation').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snap('cable-table:insulation:' + sel.dataset.id);
+      apply(sel.dataset.id, (c) => {
+        if (sel.value) c.insulation = sel.value;
+        else delete c.insulation;
+      });
+      applyAndRerender();
+    });
+  });
+  mount.querySelectorAll('.ct-ambient').forEach(inp => {
+    inp.addEventListener('change', () => {
+      snap('cable-table:ambient:' + inp.dataset.id);
+      apply(inp.dataset.id, (c) => {
+        const raw = String(inp.value ?? '').trim();
+        if (raw === '') { delete c.ambientC; return; }
+        const v = Number(raw);
+        if (Number.isFinite(v) && v >= -30 && v <= 80) c.ambientC = v;
+      });
+      applyAndRerender();
+    });
+  });
+  mount.querySelectorAll('.ct-bundling').forEach(sel => {
+    sel.addEventListener('change', () => {
+      snap('cable-table:bundling:' + sel.dataset.id);
+      apply(sel.dataset.id, (c) => {
+        if (sel.value) c.bundling = sel.value;
+        else delete c.bundling;
+      });
       applyAndRerender();
     });
   });
@@ -3846,6 +3935,35 @@ function renderCableTable() {
   if (brkBtn) brkBtn.addEventListener('click', () => _openBulkCableDialog('breaker', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
   const curveBtn = mount.querySelector('#ct-bulk-curve');
   if (curveBtn) curveBtn.addEventListener('click', () => _openBulkCableDialog('curve', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
+  // v0.59.636: bulk-edit материал / изоляция / ambient.
+  const matBtn = mount.querySelector('#ct-bulk-material');
+  if (matBtn) matBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить материал (Cu / Al; пусто = снять):', '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    if (raw === '') { bulkApply((c) => { delete c.material; }); return; }
+    if (!['Cu', 'Al'].includes(raw)) { flash('Допустимы только Cu или Al', 'error'); return; }
+    bulkApply((c) => { c.material = raw; });
+  });
+  const insBtn = mount.querySelector('#ct-bulk-insulation');
+  if (insBtn) insBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить изоляцию (PVC / XLPE / EPR / FRLS / LSZH; пусто = снять):', '');
+    if (v == null) return;
+    const raw = String(v).trim().toUpperCase();
+    if (raw === '') { bulkApply((c) => { delete c.insulation; }); return; }
+    if (!['PVC', 'XLPE', 'EPR', 'FRLS', 'LSZH'].includes(raw)) { flash('Неверная изоляция', 'error'); return; }
+    bulkApply((c) => { c.insulation = raw; });
+  });
+  const ambBtn = mount.querySelector('#ct-bulk-ambient');
+  if (ambBtn) ambBtn.addEventListener('click', async () => {
+    const v = await rsPrompt('Установить температуру окружающей среды, °C (-30..80; пусто = авто):', '');
+    if (v == null) return;
+    const raw = String(v).trim();
+    if (raw === '') { bulkApply((c) => { delete c.ambientC; }); return; }
+    const num = Number(raw);
+    if (!(Number.isFinite(num) && num >= -30 && num <= 80)) { flash('Температура вне диапазона -30..80 °C', 'error'); return; }
+    bulkApply((c) => { c.ambientC = num; });
+  });
   // Phase 1.20.31: меню настройки столбцов
   const colBtn = mount.querySelector('#ct-col-menu');
   if (colBtn) colBtn.addEventListener('click', () => {
