@@ -658,23 +658,9 @@ export function openUpsParamsModal(n) {
       el.disabled = dis;
     });
   });
-  // Category checkbox: clicking selects/deselects all subtypes in that category.
-  document.querySelectorAll('[data-up-hvac-cat]').forEach(cb => {
-    const cat = cb.getAttribute('data-up-hvac-cat');
-    cb.addEventListener('change', () => {
-      const targetVal = cb.checked ? 0.70 : '';
-      // Find all subtype inputs whose row is within the same category group.
-      const group = cb.closest('div').nextElementSibling; // <table>
-      if (!group) return;
-      group.querySelectorAll('input[data-derate-key]').forEach(inp => {
-        inp.value = targetVal;
-      });
-      _refreshHvacIndeterminate();
-    });
-  });
-  // Update category checkbox state (checked / indeterminate / unchecked) when user
-  // edits an individual subtype derate input.
-  function _refreshHvacIndeterminate() {
+  // Update category checkbox state (checked / indeterminate / unchecked).
+  // ОБЯЗАТЕЛЬНО объявляем ПЕРЕД handlers, которые её вызывают (TDZ для const).
+  const _refreshHvacIndeterminate = () => {
     document.querySelectorAll('[data-up-hvac-cat]').forEach(cb => {
       const group = cb.closest('div').nextElementSibling;
       if (!group) return;
@@ -688,7 +674,19 @@ export function openUpsParamsModal(n) {
       cb.indeterminate = filled > 0 && filled < total;
       cb.checked = total > 0 && filled === total;
     });
-  }
+  };
+  // Category checkbox: clicking selects/deselects all subtypes in that category.
+  document.querySelectorAll('[data-up-hvac-cat]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const targetVal = cb.checked ? 0.70 : '';
+      const group = cb.closest('div').nextElementSibling;
+      if (!group) return;
+      group.querySelectorAll('input[data-derate-key]').forEach(inp => {
+        inp.value = targetVal;
+      });
+      _refreshHvacIndeterminate();
+    });
+  });
   document.querySelectorAll('input[data-derate-key]').forEach(inp => {
     inp.addEventListener('input', _refreshHvacIndeterminate);
   });

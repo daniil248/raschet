@@ -8,6 +8,8 @@ import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCoun
          consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
          upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity, upsHvacDerateFactor } from './electrical.js';
 import { CONSUMER_CATALOG } from './constants.js';
+import { effectiveOn, effectiveLoadFactor } from './modes.js';
+import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
 // v0.59.611: per-subtype derate map. Категории используются ТОЛЬКО для
 // группировки подтипов в UI (юзер: «если есть конкретные подтипы, зачем
@@ -103,8 +105,6 @@ function _computeUpsWeightedLoad(upsNode) {
   upsNode._itLoads = itLoads;
   return weightedTotal;
 }
-import { effectiveOn, effectiveLoadFactor } from './modes.js';
-import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
 // Полная downstream-нагрузка за узлом (без share, без visited-блокировок).
 // Считает суммарную мощность ВСЕХ уникальных потребителей за данным узлом.
