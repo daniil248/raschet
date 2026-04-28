@@ -3413,19 +3413,20 @@ function escapeSvg(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* v0.59.584: Автораскладка по ТЗ — стандартные ряды ЦОД с холодным/горячим
-   коридором 1200 мм и нумерацией «по одному» право-лево-право-лево.
+/* v0.59.585: Автораскладка по ТЗ — стандартные ряды с коридором 1200 мм
+   и нумерацией «по одному» право-лево-право-лево.
 
-   Алгоритма:
-   1. Стойки группируются по префиксу тега до первой точки (DH1.SR1, DH1.SR2 →
-      группа DH1). Черновики (без тега) — в отдельную группу __draft__.
-   2. В пределах группы сортировка по тегу (numeric).
-   3. Каждая группа размещается двумя ПАРАЛЛЕЛЬНЫМИ рядами:
-        Ряд A (правый/верхний) — стойки с чётным индексом (0, 2, 4 …)
-        Ряд B (левый/нижний)   — стойки с нечётным индексом (1, 3, 5 …)
-      Это даёт «право-лево-право-лево» при последовательном чтении 1,2,3,4…
-   4. Между двумя рядами одной группы — 1200 мм коридор (hot/cold aisle).
-   5. Между разными группами — 2 клетки доп. отступа.
+   Логика:
+   1. ВСЕ стойки сортируются по тегу (numeric, SR01 < SR02 < … < SR10 < CR01).
+      Без тега (черновики) сортируются в конец по id.
+   2. По чтению последовательности: чётный индекс (0, 2, 4 …) → Ряд A (верх),
+      нечётный (1, 3, 5 …) → Ряд B (низ). Так номера 1, 2, 3, 4, 5 … ложатся
+      «право-лево-право-лево».
+   3. Стойки в каждом ряду идут впритык по X. Когда ряд A упирается в правый
+      край плана — оба ряда переносятся вниз (сначала ряд B текущей пары
+      замыкается, затем после groupGap начинается новая пара рядов).
+   4. Расстояние между рядом A и рядом B (одной пары) = 1200 мм (cold/hot
+      aisle, рассчитано из plan.step). Между разными ПАРАМИ рядов — 2 клетки.
 */
 function autoLayout() {
   const racks = getRacks();
@@ -3434,86 +3435,79 @@ function autoLayout() {
   const tags = {};
   racks.forEach(r => { tags[r.id] = (getRackTag(r.id) || '').trim(); });
 
-  const groups = new Map(); // groupKey -> [racks]
-  racks.forEach(r => {
-    const tag = tags[r.id];
-    let key;
-    if (!tag) key = '__draft__';
-    else {
-      const dot = tag.indexOf('.');
-      key = dot > 0 ? tag.slice(0, dot) : tag;
-    }
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(r);
-  });
-
-  // В рамках группы сортируем по тегу (SR01 перед SR02…)
-  for (const arr of groups.values()) {
-    arr.sort((a, b) => (tags[a.id] || '').localeCompare(tags[b.id] || '', 'ru', { numeric: true }));
-  }
-
-  const groupKeys = Array.from(groups.keys()).sort((a, b) => {
-    if (a === '__draft__') return 1;
-    if (b === '__draft__') return -1;
-    return a.localeCompare(b, 'ru', { numeric: true });
+  // Глобальная сортировка: тегованные сначала (numeric), без тега — в конец.
+  const sorted = racks.slice().sort((a, b) => {
+    const ta = tags[a.id] || '';
+    const tb = tags[b.id] || '';
+    if (!!ta !== !!tb) return ta ? -1 : 1;
+    if (ta && tb) return ta.localeCompare(tb, 'ru', { numeric: true });
+    return (a.id || '').localeCompare(b.id || '');
   });
 
   const positions = {};
   const step = (plan && +plan.step) || 0.6;          // м/клетка
-  const aisleCells = Math.max(1, 1.2 / step);        // 1200 мм коридор
-  const groupGap = 2;                                // клеток между группами
+  const aisleCells = Math.max(1, Math.round(1.2 / step)); // 1200 мм коридор
+  const pairGap = 2;                                 // клеток между парами рядов
   const colGap = 0;                                  // соседние стойки впритык
 
-  let curRow = 1;
-  groupKeys.forEach(key => {
-    const arr = groups.get(key);
-    // Разбиваем на 2 параллельных ряда: A — чётные, B — нечётные.
-    const rowA = arr.filter((_, i) => i % 2 === 0);
-    const rowB = arr.filter((_, i) => i % 2 === 1);
+  // sizeOf(r) — размеры стойки в клетках с учётом текущего rot.
+  const sizeOf = (r) => {
+    const rot = rackRot(plan, r.id);
+    const [wC, hC] = rackSizeCells(r, plan, rot);
+    return { wC, hC: Math.max(1, Math.ceil(hC)), rot };
+  };
 
-    // Высоты рядов = максимум hC по их стойкам.
-    const heightOf = list => list.reduce((m, r) => {
-      const rot = rackRot(plan, r.id);
-      const [, hC] = rackSizeCells(r, plan, rot);
-      return Math.max(m, Math.ceil(hC));
-    }, 1);
-    const hA = heightOf(rowA);
-    const hB = heightOf(rowB);
+  // Размещаем парами: сначала идём по A, потом B, X-координаты совпадают.
+  // При переполнении A → закрываем текущую пару, открываем новую ниже.
+  let baseY = 1;            // верх текущей пары рядов (Y ряда A)
+  let colA = 1;             // текущая X-позиция в ряду A
+  let pairIndex = 0;        // 0 = ждём rack для A, 1 = ждём rack для B
+  let pendingA = null;      // последняя положенная A-стойка (для совпадения X у B)
+  let rowAMaxH = 1;         // макс. высота ряда A текущей пары
+  let rowBMaxH = 1;         // макс. высота ряда B текущей пары
 
-    // Расставляем ряд по горизонтали с обёрткой по PLAN_COLS.
-    // wrap-row: при переполнении ряд продолжается ниже, после ряда B.
-    const placeRow = (list, baseY) => {
-      let col = 1;
-      let yShift = 0;
-      let lineH = 1;
-      list.forEach(r => {
-        const rot = rackRot(plan, r.id);
-        const [wC, hC] = rackSizeCells(r, plan, rot);
-        if (col + wC > PLAN_COLS) {
-          col = 1;
-          yShift += lineH + 1;
-          lineH = 1;
-        }
-        positions[r.id] = { x: col, y: baseY + yShift, rot };
-        col += wC + colGap;
-        if (hC > lineH) lineH = Math.ceil(hC);
-      });
-      return yShift + lineH; // фактическая высота ряда (с учётом обёрток)
-    };
+  // Открываем новую пару рядов: переносим baseY ниже и сбрасываем колонки.
+  const closePair = () => {
+    baseY = baseY + rowAMaxH + aisleCells + rowBMaxH + pairGap;
+    colA = 1;
+    pendingA = null;
+    pairIndex = 0;
+    rowAMaxH = 1;
+    rowBMaxH = 1;
+  };
 
-    const usedA = rowA.length ? placeRow(rowA, curRow) : 0;
-    if (rowB.length) {
-      const yB = curRow + (usedA ? usedA : hA) + aisleCells;
-      const usedB = placeRow(rowB, yB);
-      curRow = yB + usedB + groupGap;
+  for (let i = 0; i < sorted.length; i++) {
+    const r = sorted[i];
+    const sz = sizeOf(r);
+
+    if (pairIndex === 0) {
+      // Кладём в ряд A.
+      if (colA + sz.wC > PLAN_COLS + 1) {
+        // Не помещается — закрываем пару (хотя бы с одной A-стойкой).
+        closePair();
+      }
+      positions[r.id] = { x: colA, y: baseY, rot: sz.rot };
+      pendingA = { x: colA, wC: sz.wC, hC: sz.hC };
+      if (sz.hC > rowAMaxH) rowAMaxH = sz.hC;
+      colA += sz.wC + colGap;
+      pairIndex = 1;
     } else {
-      curRow += (usedA || hA) + groupGap;
+      // Кладём в ряд B — X-позиция совпадает с парной A-стойкой,
+      // Y = baseY + rowAMaxH + aisleCells.
+      const xB = pendingA ? pendingA.x : 1;
+      const yB = baseY + rowAMaxH + aisleCells;
+      positions[r.id] = { x: xB, y: yB, rot: sz.rot };
+      if (sz.hC > rowBMaxH) rowBMaxH = sz.hC;
+      pairIndex = 0;
     }
-  });
+  }
+
+  // Если последняя стойка ушла в A без пары B — фиксируем B-высоту = 1, чтобы
+  // отступ для следующих авторасклад был корректным (положительным).
 
   savePlan({ ...plan, positions });
   renderPlan();
-  updateStatus(`✔ Автораскладка: ${Object.keys(positions).length} стоек в ${groupKeys.length} ${groupKeys.length === 1 ? 'группе' : 'группах'}, коридор 1200 мм, нумерация право-лево.`);
+  updateStatus(`✔ Автораскладка: ${Object.keys(positions).length} стоек, коридор 1200 мм, нумерация право-лево-право-лево.`);
 }
 
 /* v0.59.306: автогенерация каналов.
