@@ -214,11 +214,35 @@ export function deleteNode(id, opts = {}) {
   // n.porObjectId. Иначе engine-por-mirror.pullPorRacksToEngine на
   // следующем sync создаст engine-узел заново → resurrection. Симметрично
   // фиксу v0.59.562 для tpl-* phantoms, но для обычных rack-узлов.
+  // v0.59.601 (Phase 1.28.11): + tombstone + очистка legacy-storage,
+  // чтобы migrateProjectLegacyRacks при следующем bootstrap НЕ восстановил
+  // удалённую стойку из rack-config.instances/scs-config.contents/rackTags.
   if (opts.hard && n && n.porObjectId && typeof window !== 'undefined' && window.RaschetPOR) {
     try {
       const pid = (typeof window.__engine_por_mirror_pid !== 'undefined' && window.__engine_por_mirror_pid) || null;
-      if (pid && typeof window.RaschetPOR.removeObject === 'function') {
-        window.RaschetPOR.removeObject(pid, n.porObjectId);
+      if (pid) {
+        // Извлекаем legacyRackId ДО удаления POR-объекта.
+        let legacyRackId = null;
+        try {
+          const obj = window.RaschetPOR.getObject && window.RaschetPOR.getObject(pid, n.porObjectId);
+          if (obj) legacyRackId = obj.legacyRackId || null;
+        } catch {}
+        if (typeof window.RaschetPOR.removeObject === 'function') {
+          window.RaschetPOR.removeObject(pid, n.porObjectId);
+        }
+        // Tombstone + cleanup legacy storage. Импорт ленивый — модуль
+        // присутствует только когда подключён legacy-rack-migration.
+        try {
+          import('../../shared/legacy-rack-migration.js').then(mod => {
+            try {
+              if (legacyRackId && mod.addRackTombstone) mod.addRackTombstone(pid, legacyRackId);
+              if (legacyRackId && mod.cleanupLegacyRackEntries) mod.cleanupLegacyRackEntries(pid, legacyRackId);
+              // Также добавляем tombstone по POR-id (на всякий случай — если в будущем
+              // legacyRackId не сохраняется или объект создавался не из legacy).
+              if (mod.addRackTombstone) mod.addRackTombstone(pid, n.porObjectId);
+            } catch (e) { console.warn('[graph] tombstone failed:', e); }
+          }).catch(() => {});
+        } catch {}
       }
     } catch (e) { console.warn('[graph] delete POR object failed:', e); }
   }

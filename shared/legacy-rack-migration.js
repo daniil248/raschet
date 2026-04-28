@@ -46,6 +46,65 @@ function _load(key, fallback) {
   try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
   catch { return fallback; }
 }
+function _save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+}
+
+// v0.59.601 (Phase 1.28.11): tombstones — список rack-id, которые юзер
+// явно удалил и которые НЕ должны воскрешаться через legacy-миграцию.
+// Раньше при `× в Неразмещённые` POR-объект удалялся, но
+// `migrateProjectLegacyRacks` читал rack-config.instances/scs-config.rackTags
+// /scs-config.contents и создавал POR заново при следующем bootstrap.
+function _tombstonesKey(pid) {
+  return projectKey(pid, 'rack-config', 'tombstones.v1');
+}
+export function loadRackTombstones(pid) {
+  const arr = _load(_tombstonesKey(pid), []);
+  return Array.isArray(arr) ? arr : [];
+}
+export function addRackTombstone(pid, rackId) {
+  if (!pid || !rackId) return;
+  const ts = loadRackTombstones(pid);
+  if (ts.includes(rackId)) return;
+  ts.push(rackId);
+  _save(_tombstonesKey(pid), ts);
+}
+/** Очистить legacy-записи, ссылающиеся на rackId.
+ *  Вызывается при удалении rack-узла, чтобы legacy-миграция при следующем
+ *  bootstrap НЕ нашла этот rackId и не пересоздала POR-объект. */
+export function cleanupLegacyRackEntries(pid, rackId) {
+  if (!pid || !rackId) return { changed: 0 };
+  let changed = 0;
+  // 1. rack-config.instances.v1 — массив { id, ... }
+  const instKey = projectKey(pid, 'rack-config', 'instances.v1');
+  const inst = _load(instKey, []);
+  if (Array.isArray(inst)) {
+    const filtered = inst.filter(r => r && r.id !== rackId);
+    if (filtered.length !== inst.length) { _save(instKey, filtered); changed++; }
+  }
+  // 2. scs-config.rackTags.v1 — { rackId: tag }
+  const tagsKey = projectKey(pid, 'scs-config', 'rackTags.v1');
+  const tags = _load(tagsKey, {});
+  if (tags && typeof tags === 'object' && rackId in tags) {
+    delete tags[rackId];
+    _save(tagsKey, tags); changed++;
+  }
+  // 3. scs-config.contents.v1 — { rackId: [devices...] }
+  const contKey = projectKey(pid, 'scs-config', 'contents.v1');
+  const cont = _load(contKey, {});
+  if (cont && typeof cont === 'object' && rackId in cont) {
+    delete cont[rackId];
+    _save(contKey, cont); changed++;
+  }
+  // 4. POR overlay sidecar (v0.59.586): чистим запись по rackId.
+  const ovKey = projectKey(pid, 'rack-config', 'por-overlay.v1');
+  const ov = _load(ovKey, {});
+  if (ov && typeof ov === 'object' && rackId in ov) {
+    delete ov[rackId];
+    _save(ovKey, ov); changed++;
+  }
+  return { changed };
+}
 
 function _isProjectLikeId(id) {
   if (typeof id !== 'string') return false;
@@ -74,6 +133,10 @@ function _collectLegacyRacks(pid) {
     if (id.startsWith('por-group-')) return true;
     return false;
   };
+  // v0.59.601 (Phase 1.28.11): фильтруем по tombstones — id, явно удалённые
+  // юзером, не должны мигрироваться обратно. Также проверяем, что в
+  // tombstones мог попасть POR-id (por_legacy_<rackId>) — извлекаем legacy.
+  const tombstones = new Set(loadRackTombstones(pid));
 
   // 1) rack-config.instances.v1 — главный источник instance-данных.
   const instances = _load(projectKey(pid, 'rack-config', 'instances.v1'), []);
@@ -81,6 +144,7 @@ function _collectLegacyRacks(pid) {
     for (const r of instances) {
       if (!r || !r.id) continue;
       if (isStaleId(r.id)) continue;
+      if (tombstones.has(r.id)) continue;
       out.set(r.id, {
         tag:    r.tag || r.label || '',
         name:   r.name || r.label || '',
@@ -96,6 +160,7 @@ function _collectLegacyRacks(pid) {
     for (const [rackId, tag] of Object.entries(tags)) {
       if (!rackId) continue;
       if (isStaleId(rackId)) continue;
+      if (tombstones.has(rackId)) continue;
       if (!out.has(rackId)) {
         out.set(rackId, { tag: String(tag || ''), name: '', source: 'scs-config.rackTags', raw: null });
       } else if (!out.get(rackId).tag) {
@@ -111,6 +176,7 @@ function _collectLegacyRacks(pid) {
     for (const rackId of Object.keys(contents)) {
       if (!rackId) continue;
       if (isStaleId(rackId)) continue;
+      if (tombstones.has(rackId)) continue;
       if (!out.has(rackId)) {
         out.set(rackId, { tag: '', name: '', source: 'scs-config.contents', raw: null });
       }

@@ -92,6 +92,49 @@ in-tab Map + cross-tab через storage event.
 - [ ] **1.28.8** — Migrate всех модулей на DataAdapter contract (config readers
   не должны импортировать `shared/por.js` напрямую — только через adapter)
 
+- [ ] **1.28.9** — Авто-merge при drag-drop совместимых стоек в consumer-group
+  - Юзер (2026-04-28, feedback_rack_merge.md): «если на размещенную стойку
+    перетаскивается ещё одна стойка с аналогичными электрическими
+    параметрами, должны объединиться в групповой потребитель».
+  - Hit-test на drop unplaced rack onto canvas: попадание в bbox
+    существующего consumer-rack → проверка совместимости (phases, cosPhi,
+    demandKw ±5%, voltageV, widthMm/depthMm/rackUnits).
+  - Совместимы → модалка подтверждения → создание / расширение
+    consumer-group POR-объекта с `members[]` и `count`.
+  - Несовместимы → drop как отдельная стойка рядом + toast с указанием
+    различающихся параметров.
+
+- [ ] **1.28.10** — Cross-discipline reconciliation
+  - Юзер (2026-04-28, feedback_rack_merge.md): «электрик уже разместил
+    стойки от себя и технолог добавил стойки в СКС → возможность
+    сопоставить эти стойки а не размещать дважды и перерисовывать связи».
+  - Кнопка «🔗 Связать с существующей стойкой» в инспекторе rack-узла.
+    Picker всех POR-rack-объектов проекта (фильтр по tag/name).
+  - Merge slave → master: переадресация всех ссылок (engine.node /
+    scs-config / links / placements) на master.id, удаление slave POR.
+  - Auto-suggest: при создании rack-объекта с tag, который уже есть
+    в проекте → toast «Стойка SR01 уже существует — связать?».
+  - Приоритеты доменов (юзер): электрик управляет ТОЛЬКО полем
+    `panelDesignation` (обозначение щита) в `domains.electrical`.
+    Все остальные поля (name, tag, mechanical, scs, demandKw, cosPhi,
+    phases, voltageV) — приоритет технолога/SCS-инженера. При merge
+    конфликте — версия технолога (кроме panelDesignation).
+  - UI: при попытке электрика отредактировать поле, не относящееся
+    к щитам, — warning «Это поле управляется технологом».
+
+- [ ] **1.28.11** — Tombstones для предотвращения резурекции
+  - Юзер (2026-04-28): «удаление стоек A-01, A-02 не приводит к их
+    удалению, после перезагрузки страницы они вновь появляются».
+  - При удалении rack-узла из «Неразмещённые» (× в палитре):
+    POR-объект удаляется → но `migrateProjectLegacyRacks` на следующий
+    bootstrap пересоздаёт его из legacy storage (rack-config.instances /
+    scs-config.rackTags / scs-config.contents).
+  - Решение: tombstones-список deleted rack-id в LS
+    `raschet.project.<pid>.rack-config.tombstones.v1`.
+    `_collectLegacyRacks` фильтрует по списку → resurrected ids
+    больше не возвращаются.
+  - Также cleanup legacy entries (rackTags, contents) при удалении.
+
 **Acceptance:**
 - Один и тот же rack виден SCS-инженеру (как корпус с U-юнитами и contents)
   и электрику (как нагрузка с demandKw/cosPhi/phases).

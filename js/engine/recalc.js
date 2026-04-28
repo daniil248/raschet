@@ -3,7 +3,7 @@ import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, 
 import { selectCableSize, selectBreaker, selectFuse, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
 import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
 import { getEcoMethod } from '../methods/economic/index.js';
-import { nodeVoltage, nodeVoltageLN, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
+import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
          upsChargeKw, sourceImpedance, isNodeDC } from './electrical.js';
@@ -2334,7 +2334,7 @@ function recalc() {
       n._powerQ = P * tan;
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
       n._calcKw = (n._loadKw || 0) * kSim;
-      n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
+      n._loadA = n._calcKw > 0 ? computeCurrentA(n._calcKw, nodeCalcVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка (все потребители на 100%)
       // Для щита коммутации (switchPanel) — MAX по сценариям генератора,
       // т.к. одновременно включаются только выходы одного сценария.
@@ -2395,7 +2395,7 @@ function recalc() {
         break; // один генератор управляет этим щитом
       }
       n._maxLoadKw = panelMaxKw !== null ? panelMaxKw : maxDownstreamLoad(n.id);
-      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
+      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeCalcVoltage(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;
 
       // Проверка номинала шкафа — в амперах (основная единица для щитов).
       // margin% = (In - Iрасч) / Iрасч × 100
@@ -2406,7 +2406,7 @@ function recalc() {
         // Вычисляем эквивалентную номинальную мощность шкафа при текущем
         // напряжении и cos φ (или default cos φ если downstream пусто).
         const cos = n._cosPhi || GLOBAL.defaultCosPhi;
-        n._capacityKwFromA = capA * nodeVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cos / 1000;
+        n._capacityKwFromA = capA * nodeCalcVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cos / 1000;
       } else {
         n._capacityKwFromA = 0;
       }
@@ -2534,8 +2534,8 @@ function recalc() {
       }
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
       n._cosPhi = n._powerS > 0 ? (n._powerP / n._powerS) : (Number(n.cosPhi) || GLOBAL.defaultCosPhi);
-      n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
-      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeCalcVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeCalcVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
     } else if (n.type === 'source' || n.type === 'generator') {
       // cos φ из downstream PQ, но P/S привязаны к _loadKw (walkUp result)
       const pq = downstreamPQ(n.id);
@@ -2545,7 +2545,7 @@ function recalc() {
       n._powerP = n._loadKw || 0;
       n._powerQ = n._powerP * tan;
       n._powerS = Math.sqrt(n._powerP * n._powerP + n._powerQ * n._powerQ);
-      n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      n._loadA = n._loadKw > 0 ? computeCurrentA(n._loadKw, nodeCalcVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Максимально возможная нагрузка.
       // Для генератора с triggerGroups: MAX по всем сценариям.
       // Каждый сценарий = сумма нагрузок за выходами switchover-щита,
@@ -2612,7 +2612,7 @@ function recalc() {
         // складывать сверху НЕ нужно.
         n._maxLoadKw = maxDownstreamLoad(n.id);
       }
-      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
+      n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeCalcVoltage(n), n._cosPhi, isThreePhase(n)) : 0;
       // Ток КЗ на шинах источника: Ik = c × U / (√3 × Zs), c=1.1 (IEC 60909)
       const Uph = isThreePhase(n) ? nodeVoltage(n) / Math.sqrt(3) : nodeVoltage(n);
       const Zs = sourceImpedance(n);
@@ -2654,10 +2654,10 @@ function recalc() {
     n._calcKw = agg.P;
     const cosAggPre = n._cosPhi || GLOBAL.defaultCosPhi;
     n._loadA = agg.P > 0
-      ? computeCurrentA(agg.P, nodeVoltage(n), cosAggPre, isThreePhase(n))
+      ? computeCurrentA(agg.P, nodeCalcVoltage(n), cosAggPre, isThreePhase(n))
       : 0;
     n._maxLoadA = agg.maxKw > 0
-      ? computeCurrentA(agg.maxKw, nodeVoltage(n), cosAggPre, isThreePhase(n))
+      ? computeCurrentA(agg.maxKw, nodeCalcVoltage(n), cosAggPre, isThreePhase(n))
       : 0;
     // Номинал многосекционного щита определяется автоматически:
     //  - не меньше максимального номинала среди секций (сборка через СВ
@@ -2684,7 +2684,7 @@ function recalc() {
     const capA = Number(n.capacityA) || 0;
     const cosAgg = n._cosPhi || GLOBAL.defaultCosPhi;
     if (capA > 0) {
-      n._capacityKwFromA = capA * nodeVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cosAgg / 1000;
+      n._capacityKwFromA = capA * nodeCalcVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cosAgg / 1000;
       const maxA = n._maxLoadA || 0;
       if (maxA > 0) {
         const margin = ((capA - maxA) / maxA) * 100;

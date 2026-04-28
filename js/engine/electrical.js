@@ -49,6 +49,18 @@ export function nodeVoltageLN(n) {
   return ((n.phase || '3ph') === '3ph') ? GLOBAL.voltage1ph : GLOBAL.voltage1ph;
 }
 
+// v0.59.601: «расчётное» напряжение для подстановки в формулу тока
+// I = P / (k × U × cos):
+//   - 3-фазный узел  → vLL (линейное)
+//   - 1-фазный узел  → vLN (фазное)
+// Раньше во всех вызовах computeCurrentA передавали nodeVoltage(n) = vLL,
+// и для 1-фазной нагрузки 7.2кВт получался ток 18.8А вместо 32.6А (делили
+// на 400 вместо 230). Юзер: «однофазная нагрузка 7,2 кВт посчиталась
+// как 18,8 А — проверь и исправь для всего модуля».
+export function nodeCalcVoltage(n) {
+  return isThreePhase(n) ? nodeVoltage(n) : nodeVoltageLN(n);
+}
+
 // Фазность: из n.phase, затем voltage level, затем дефолт 3ph.
 // 3ph → true, 2ph/1ph/A/B/C → false (для расчёта тока и жил)
 export function isThreePhase(n) {
@@ -298,8 +310,11 @@ export function consumerGroupItems(n) {
 // своим cos φ — раньше использовался общий n.cosPhi и завышал/занижал
 // ток при смешанных нагрузках (двигатель 0.85 + освещение 1.0).
 export function consumerNominalCurrent(n) {
-  const U = nodeVoltage(n);
+  // v0.59.601: для 1-фазной нагрузки U = vLN (а не vLL) — иначе ток
+  // занижается в √3 раз (для систем 400/230 это даёт 18.8А вместо 32.6А
+  // для 7.2кВт). См. nodeCalcVoltage.
   const ph3 = isThreePhase(n);
+  const U = nodeCalcVoltage(n);
   const dc = isNodeDC(n);
   if (n && n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 0) {
     const members = consumerGroupItems(n);
@@ -314,8 +329,9 @@ export function consumerNominalCurrent(n) {
 // v0.59.95: для individual-группы применяется Ки и cos φ каждого прибора
 // индивидуально (с фолбэком на группу), а не общий n.kUse на всю группу.
 export function consumerRatedCurrent(n) {
-  const U = nodeVoltage(n);
+  // v0.59.601: см. consumerNominalCurrent — U = vLN для 1-фазной нагрузки.
   const ph3 = isThreePhase(n);
+  const U = nodeCalcVoltage(n);
   const dc = isNodeDC(n);
   const lf = effectiveLoadFactor(n);
   if (n && n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 0) {
@@ -340,8 +356,9 @@ export function consumerRatedCurrent(n) {
 export function consumerInrushCurrent(n) {
   if (n && n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 0) {
     const members = consumerGroupItems(n);
-    const U = nodeVoltage(n);
+    // v0.59.601: U = vLN для 1-фазной (см. consumerNominalCurrent).
     const ph3 = isThreePhase(n);
+    const U = nodeCalcVoltage(n);
     const dc = isNodeDC(n);
     let sumInom = 0;
     let maxDelta = 0;
