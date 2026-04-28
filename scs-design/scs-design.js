@@ -94,6 +94,16 @@ function _migrateLegacyScsToSub(parentPid, subPid, opts = {}) {
 function renderProjectBadge(pid) {
   const host = document.getElementById('sd-project-badge');
   if (!host) return;
+  // v0.59.570: оборачиваем всё в try/catch — раньше тихий throw приводил
+  // к пустому badge, и пользователь оказывался без UI смены проекта.
+  try {
+    return _renderProjectBadgeImpl(pid, host);
+  } catch (e) {
+    console.error('[scs-design] renderProjectBadge crashed:', e, e?.stack);
+    host.innerHTML = `<span style="color:#b91c1c;font-size:12px">⚠ Ошибка инициализации шапки: ${String(e.message || e).slice(0, 200)} — <a href="../projects/" style="color:#1565c0">→ к списку проектов</a></span>`;
+  }
+}
+function _renderProjectBadgeImpl(pid, host) {
   const esc = s => String(s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
   const projects = listProjectsForModule('scs-design');
   const p = pid ? getProject(pid) : null;
