@@ -8,6 +8,10 @@
 // drawer не смонтирован (например, iframe без body), просто сдвигаем в конец.
 
 const LS_KEY = 'raschet.refDrawer.open.v1:' + (location.pathname || '/');
+// v0.59.641: ширина drawer'а — узкая (420px) или fullscreen (95vw).
+// Юзер: «сделать нормальное окно справочника, может быть на всю ширину окна,
+// чтобы было удобно работать». Сохраняется отдельно от open/closed.
+const LS_KEY_WIDTH = 'raschet.refDrawer.fullwidth.v1';
 
 function buildDrawer() {
   if (document.getElementById('rs-ref-drawer')) return document.getElementById('rs-ref-drawer');
@@ -16,9 +20,11 @@ function buildDrawer() {
   style.textContent = `
     #rs-ref-drawer{position:fixed;left:0;top:0;bottom:0;width:420px;max-width:90vw;
       background:#f8fafc;border-right:1px solid #cbd5e1;box-shadow:2px 0 12px rgba(0,0,0,.08);
-      transform:translateX(-100%);transition:transform .22s ease;z-index:9998;
+      transform:translateX(-100%);transition:transform .22s ease, width .18s ease;z-index:9998;
       display:flex;flex-direction:column;overflow:hidden}
     #rs-ref-drawer.is-open{transform:translateX(0)}
+    /* v0.59.641: full-width режим — почти всё окно. */
+    #rs-ref-drawer.is-fullwidth{width:95vw;max-width:95vw}
     #rs-ref-drawer .rs-ref-head{flex:0 0 auto;padding:10px 14px;border-bottom:1px solid #e2e8f0;
       display:flex;align-items:center;gap:8px;background:#fff;font-weight:600;color:#334155}
     #rs-ref-drawer .rs-ref-head .rs-ref-title{flex:1;font-size:13px;letter-spacing:.3px}
@@ -44,6 +50,7 @@ function buildDrawer() {
   drawer.innerHTML = `
     <div class="rs-ref-head">
       <span class="rs-ref-title">📚 Справочники / база данных</span>
+      <button type="button" id="rs-ref-fullwidth" title="Развернуть на всю ширину окна / свернуть">⤢ На весь экран</button>
       <button type="button" id="rs-ref-close" title="Закрыть">✕ Закрыть</button>
     </div>
     <div class="rs-ref-body" id="rs-ref-body"></div>
@@ -66,12 +73,24 @@ function buildDrawer() {
     backdrop.classList.toggle('is-open', !!open);
     try { localStorage.setItem(LS_KEY, open ? '1' : '0'); } catch {}
   }
+  // v0.59.641: переключатель fullscreen-ширины.
+  function setFullwidth(full) {
+    drawer.classList.toggle('is-fullwidth', !!full);
+    const btn = drawer.querySelector('#rs-ref-fullwidth');
+    if (btn) btn.textContent = full ? '⤡ Свернуть' : '⤢ На весь экран';
+    try { localStorage.setItem(LS_KEY_WIDTH, full ? '1' : '0'); } catch {}
+  }
   handle.addEventListener('click', () => setOpen(!drawer.classList.contains('is-open')));
   backdrop.addEventListener('click', () => setOpen(false));
   drawer.querySelector('#rs-ref-close').addEventListener('click', () => setOpen(false));
+  drawer.querySelector('#rs-ref-fullwidth').addEventListener('click', () => {
+    setFullwidth(!drawer.classList.contains('is-fullwidth'));
+  });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
 
   try { if (localStorage.getItem(LS_KEY) === '1') setOpen(true); } catch {}
+  // v0.59.641: восстановление fullscreen-режима.
+  try { if (localStorage.getItem(LS_KEY_WIDTH) === '1') setFullwidth(true); } catch {}
   return drawer;
 }
 
