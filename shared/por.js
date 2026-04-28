@@ -39,7 +39,7 @@
 // Pubsub:  in-tab Map<pid, Set<cb>> + cross-tab через storage-event.
 // ======================================================================
 
-import { projectKey, projectLoad, projectSave, getActiveProjectId } from './project-storage.js';
+import { projectKey, projectLoad, projectSave, getActiveProjectId, listProjects } from './project-storage.js';
 import { getPorType, listPorTypes, registerPorType, listPorTypeIds } from './por-types/index.js';
 import {
   canGroupTogether       as _grp_canGroupTogether,
@@ -77,7 +77,29 @@ function _currentUid() {
   try { return localStorage.getItem('raschet.uid') || 'anon'; } catch { return 'anon'; }
 }
 
-function _resolvePid(pid) { return pid || getActiveProjectId() || null; }
+// v0.59.602: pid resolution с auto-redirect sketch → parent.
+// ПРОБЛЕМА: scs-design открыт в подпроекте (kind='sketch') s_o0evc10etc
+// у parent p_tyux2vnmz4. Юзер добавляет стойку → POR-объект пишется
+// в s_o0evc10etc, но parent p_tyux2vnmz4 не видит. POR-данные физических
+// стоек должны быть ОДНИ на весь проект (sketch = "вариант СКС-вида",
+// не отдельная физическая инсталляция).
+//
+// РЕШЕНИЕ: _resolvePid авто-редиректит sketch → parent. Для всех
+// CRUD-операций POR-объекты живут в parent. sketch остаётся для
+// scs-design/scs-config/links/contents storage (это его собственные
+// данные), но POR (физические объекты — стойки/группы) — у parent.
+function _resolvePid(pid) {
+  let id = pid || getActiveProjectId() || null;
+  if (!id) return null;
+  try {
+    const projects = listProjects();
+    const proj = projects.find(p => p && p.id === id);
+    if (proj && proj.kind === 'sketch' && proj.parentProjectId) {
+      return proj.parentProjectId;
+    }
+  } catch {}
+  return id;
+}
 
 function _loadStore(pid) {
   pid = _resolvePid(pid); if (!pid) return {};

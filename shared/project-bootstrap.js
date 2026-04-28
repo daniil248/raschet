@@ -55,6 +55,37 @@ const PROJECT_ADAPTER_BINDINGS = [
  */
 export function bootstrapProject(pid) {
   if (!pid) return;
+  // v0.59.602: если pid — sketch с parent, мигрируем POR-объекты sub → parent.
+  // ПРОБЛЕМА: до v0.59.602 POR-объекты могли создаваться в подпроекте
+  // (sketch), а после фикса _resolvePid они идут в parent. Без миграции
+  // старые объекты в подпроекте остаются «утерянными» — parent их не видит.
+  try {
+    import('./project-storage.js').then(ps => {
+      const projects = ps.listProjects ? ps.listProjects() : [];
+      const proj = projects.find(p => p && p.id === pid);
+      if (proj && proj.kind === 'sketch' && proj.parentProjectId) {
+        const parentPid = proj.parentProjectId;
+        const subStore = ps.projectLoad ? (ps.projectLoad(pid, 'por', 'objects.v1', {}) || {}) : {};
+        const subKeys = Object.keys(subStore);
+        if (subKeys.length > 0) {
+          const parentStore = ps.projectLoad(parentPid, 'por', 'objects.v1', {}) || {};
+          let merged = 0;
+          for (const oid of subKeys) {
+            // Если в parent уже есть с таким же id — пропускаем (parent авторитет).
+            if (parentStore[oid]) continue;
+            parentStore[oid] = subStore[oid];
+            merged++;
+          }
+          if (merged > 0) {
+            ps.projectSave(parentPid, 'por', 'objects.v1', parentStore);
+            console.info(`[bootstrap] sub→parent POR merge: pid=${pid} → ${parentPid}, +${merged} объектов`);
+          }
+          // Очищаем sub POR — все объекты теперь в parent.
+          ps.projectSave(pid, 'por', 'objects.v1', {});
+        }
+      }
+    }).catch(() => {});
+  } catch {}
   // v0.59.508/511: при каждом bootstrap-е любого pid — мигрируем legacy
   // rack-instances этого проекта в POR + auto-dedup. Дедуп нужен ВСЕГДА
   // (а не только из refreshProjects на главной): пользователь может
