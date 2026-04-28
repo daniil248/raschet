@@ -256,12 +256,7 @@ export function openUpsParamsModal(n) {
     // v0.59.611: subtypes сгруппированы по category. Категория = чекбокс
     // (selects all subtypes in this category), индивидуальные input
     // делают чекбокс indeterminate.
-    const CAT_LABELS = {
-      hvac: '❄ Климат / вентиляция', power: '⚙ Силовая нагрузка',
-      lighting: '💡 Освещение', socket: '🔌 Розетки',
-      it: '🖥 IT / серверы', lowvoltage: '📡 Слаботочные',
-      process: '🏭 Технологическая', other: '— Прочее',
-    };
+    // CAT_LABELS уже объявлен выше — переиспользуем.
     // Группировка subtypes по category.
     const subsByCat = new Map();
     (CONSUMER_CATALOG || []).forEach(s => {
