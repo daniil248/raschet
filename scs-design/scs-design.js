@@ -1385,9 +1385,18 @@ function renderLegend() {
 
 function renderSelected(selected, racks) {
   const row = document.getElementById('sd-racks-row');
-  const arr = racks.filter(r => selected.has(r.id));
+  // v0.59.590: используем порядок из LS_SELECTION (массив), а не порядок
+  // racks. Это сохраняет user-defined ordering при drag-reorder.
+  const selectionArr = loadJson(LS_SELECTION, []);
+  const racksById = new Map(racks.map(r => [r.id, r]));
+  const arr = selectionArr.map(id => racksById.get(id)).filter(Boolean);
+  // Добавляем оставшиеся выбранные racks, которых нет в selectionArr (защита
+  // на случай если кто-то добавил id в Set, минуя массив).
+  for (const r of racks) {
+    if (selected.has(r.id) && !selectionArr.includes(r.id)) arr.push(r);
+  }
   if (!arr.length) {
-    row.innerHTML = `<div class="sd-empty-state">Выберите чекбоксами стойки выше — они появятся здесь рядом для проектирования связей.</div>`;
+    row.innerHTML = `<div class="sd-empty-state">Выберите чекбоксами стойки в левой панели — они появятся здесь рядом для проектирования связей.</div>`;
     drawLinkOverlay();
     return;
   }
@@ -1408,6 +1417,63 @@ function renderSelected(selected, racks) {
   row.querySelectorAll('.sd-unit[data-dev-id]').forEach(el => {
     const key = el.dataset.rackId + '|' + el.dataset.devId;
     el.classList.toggle('linked', involved.has(key));
+  });
+
+  // v0.59.590: drag-and-drop reorder. HTML5 drag API: dragstart на карточке
+  // сохраняет id источника, dragover на другой карточке подсвечивает место
+  // вставки (before/after по horizontal middle), drop переставляет в массиве
+  // LS_SELECTION и сохраняет.
+  let dragSrcId = null;
+  row.querySelectorAll('.sd-rack-card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      // запускаем drag только если grip захвачен (или вообще с заголовка)
+      if (e.target.closest('.sd-unit') || e.target.closest('.sd-rack-edit')) {
+        e.preventDefault();
+        return;
+      }
+      dragSrcId = card.dataset.rackCardId;
+      card.classList.add('dragging-reorder');
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/sd-rack-reorder', dragSrcId); } catch {}
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging-reorder');
+      row.querySelectorAll('.drop-target-before,.drop-target-after').forEach(el => {
+        el.classList.remove('drop-target-before', 'drop-target-after');
+      });
+    });
+    card.addEventListener('dragover', (e) => {
+      if (!dragSrcId) return;
+      const tgtId = card.dataset.rackCardId;
+      if (!tgtId || tgtId === dragSrcId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const r = card.getBoundingClientRect();
+      const before = (e.clientX - r.left) < r.width / 2;
+      // Очищаем все маркеры и ставим текущему — для визуального фидбека.
+      row.querySelectorAll('.drop-target-before,.drop-target-after').forEach(el => {
+        el.classList.remove('drop-target-before', 'drop-target-after');
+      });
+      card.classList.add(before ? 'drop-target-before' : 'drop-target-after');
+    });
+    card.addEventListener('drop', (e) => {
+      if (!dragSrcId) return;
+      const tgtId = card.dataset.rackCardId;
+      if (!tgtId || tgtId === dragSrcId) return;
+      e.preventDefault();
+      // Переставляем dragSrcId перед/после tgtId в массиве LS_SELECTION.
+      const cur = loadJson(LS_SELECTION, []);
+      const arrCur = cur.filter(id => id !== dragSrcId);
+      const idx = arrCur.indexOf(tgtId);
+      if (idx < 0) return;
+      const r = card.getBoundingClientRect();
+      const before = (e.clientX - r.left) < r.width / 2;
+      arrCur.splice(before ? idx : idx + 1, 0, dragSrcId);
+      saveJson(LS_SELECTION, arrCur);
+      const sel = new Set(arrCur);
+      renderSelected(sel, getRacks());
+      renderLinksTab();
+    });
   });
 
   drawLinkOverlay();
@@ -1473,9 +1539,26 @@ function drawLinkOverlay() {
     const color = CABLE_COLOR(l.cableType);
     const fromTxt = getRackShortLabel(l.fromRackId) + ' · ' + deviceLabel(l.fromRackId, l.fromDevId) + (l.fromPort ? ` p${l.fromPort}` : '');
     const toTxt   = getRackShortLabel(l.toRackId)   + ' · ' + deviceLabel(l.toRackId,   l.toDevId)   + (l.toPort   ? ` p${l.toPort}`   : '');
-    parts.push(`<path class="sd-link-path" d="M ${A.x} ${A.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${B.x} ${B.y}" stroke="${color}"><title>${escapeAttr(fromTxt + ' ↔ ' + toTxt)}</title></path>`);
+    const isSel = linksSelected.has(l.id);
+    parts.push(`<path class="sd-link-path${isSel ? ' selected' : ''}" data-link-id="${escapeAttr(l.id)}" d="M ${A.x} ${A.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${B.x} ${B.y}" stroke="${color}" style="cursor:pointer"><title>${escapeAttr(fromTxt + ' ↔ ' + toTxt)} (клик: выделить связь, Shift+клик — добавить)</title></path>`);
   });
   svg.innerHTML = parts.join('');
+  // v0.59.590: клик по линии — выделение связи в таблице (Shift = добавить).
+  svg.querySelectorAll('path[data-link-id]').forEach(p => {
+    p.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = p.dataset.linkId;
+      if (!id) return;
+      if (!e.shiftKey) linksSelected.clear();
+      if (linksSelected.has(id)) linksSelected.delete(id);
+      else linksSelected.add(id);
+      renderLinksList();
+      drawLinkOverlay();
+      // прокрутить таблицу к выбранной строке
+      const tr = document.querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+      if (tr) tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
 }
 
 // Перерисовка линий при скролле/ресайзе
@@ -1540,9 +1623,12 @@ function renderRackCard(r) {
 
   // v0.59.283: кнопка ✎ ведёт в Компоновщик шкафа (rack.html) с этим rackId.
   const editBtn = `<a class="sd-rack-edit" href="../scs-config/rack.html?rackId=${encodeURIComponent(r.id)}&from=scs-design" title="Редактировать стойку в Компоновщике (мастере)" onclick="event.stopPropagation()">✎</a>`;
-  return `<div class="sd-rack-card" data-rack-card-id="${escapeAttr(r.id)}">
-    <div class="sd-rack-head">
-      <span style="display:flex;align-items:center;gap:4px;flex:1;min-width:0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.name || 'Без имени')}</span>${editBtn}</span>
+  // v0.59.590: drag-handle для перестановки стоек в мастере связей.
+  return `<div class="sd-rack-card" data-rack-card-id="${escapeAttr(r.id)}" draggable="true">
+    <div class="sd-rack-head sd-rack-card-handle" title="Перетащите карточку стойки, чтобы изменить порядок в мастере связей">
+      <span style="display:flex;align-items:center;gap:4px;flex:1;min-width:0">
+        <span class="sd-rack-card-grip" style="cursor:grab;color:#94a3b8;font-size:14px;line-height:1;user-select:none" title="Перетащить">⋮⋮</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.name || 'Без имени')}</span>${editBtn}</span>
       <span class="tag">${escapeHtml(tag || '—')}</span>
     </div>
     <div class="sd-units">${units.join('')}</div>
@@ -1726,21 +1812,58 @@ function renderLinksList() {
   ).join('');
   const opts = CABLE_TYPES.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
   const anyFilter = q || ct || missingOnly || fromR || toR;
-  // сначала таблицу нарисуем, BOM — отдельной функцией
+  // v0.59.590: чистка stale-id'шников из linksSelected (если связи были удалены).
+  const validIds = new Set(allLinks.map(l => l.id));
+  for (const id of Array.from(linksSelected)) if (!validIds.has(id)) linksSelected.delete(id);
+  const visibleIds = links.map(l => l.id);
+  const visibleSelectedCount = visibleIds.filter(id => linksSelected.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
+  const someVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
+  const selectedCount = linksSelected.size;
+  // v0.59.590: bulk-toolbar появляется при size >= 1. Действия:
+  //   🗑 удалить N — удалить выделенные связи
+  //   тип кабеля — сменить cableType у всех выделенных
+  //   длина — задать lengthM у всех выделенных
+  //   ✕ снять — сбросить выделение
+  const bulkBar = selectedCount > 0
+    ? `<div class="sd-links-bulk-bar" style="margin:6px 0;padding:8px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px">
+        <b style="color:#1e3a8a">Выделено: ${selectedCount}</b>
+        <select id="sd-links-bulk-cable" title="Сменить тип кабеля у выделенных">
+          <option value="">— сменить кабель —</option>
+          ${CABLE_TYPES.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('')}
+        </select>
+        <label style="display:inline-flex;align-items:center;gap:4px">
+          Длина: <input type="number" min="0" step="0.1" id="sd-links-bulk-length" placeholder="м" style="width:70px">
+          <button type="button" class="sd-btn-sel" id="sd-links-bulk-length-apply">Применить</button>
+        </label>
+        <button type="button" class="sd-btn-sel" id="sd-links-bulk-del" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5" title="Удалить выделенные связи">🗑 удалить ${selectedCount}</button>
+        <button type="button" class="sd-btn-sel" id="sd-links-bulk-clear" title="Снять выделение">✕ снять</button>
+      </div>`
+    : '';
+  // Excel-style фильтры — каждый ПРЯМО НАД соответствующим столбцом
+  // (см. MEMORY: feedback_column_filters.md).
+  const summaryRow = `<div class="muted" style="font-size:11px;margin:4px 0;display:flex;gap:8px;align-items:center">
+      <span>${anyFilter ? `Показано ${links.length}/${allLinks.length}` : `Всего ${allLinks.length} связей`}</span>
+      ${anyFilter ? '<button type="button" class="sd-btn-sel" id="sd-links-clear">× сброс фильтров</button>' : ''}
+      ${anyFilter && links.length && selectedCount === 0 ? `<button type="button" class="sd-btn-sel" id="sd-links-bulk-del-filtered" style="background:#fef3c7;color:#854d0e;border-color:#fde68a" title="Удалить все ${links.length} связей под фильтром">🗑 удалить отфильтрованные (${links.length})</button>` : ''}
+    </div>`;
   host.innerHTML = `
-    <div class="sd-picker-search" style="flex-wrap:wrap">
-      <input type="search" id="sd-links-q" placeholder="🔍 шкаф / устройство / заметка" value="${escapeHtml(linksQuery || '')}" autocomplete="off" style="flex:1;min-width:160px">
-      <select id="sd-links-from" title="Фильтр по источнику (откуда)">${fromOpts}</select>
-      <select id="sd-links-to" title="Фильтр по цели (куда)">${toOpts}</select>
-      <select id="sd-links-ct" title="Тип кабеля">${cableOpts}</select>
-      <label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" id="sd-links-missing" ${missingOnly ? 'checked' : ''}> только без длины</label>
-      <span class="muted">${anyFilter ? `${links.length}/${allLinks.length}` : `${allLinks.length} шт.`}</span>
-      ${anyFilter ? '<button type="button" class="sd-btn-sel" id="sd-links-clear">× сброс</button>' : ''}
-      ${anyFilter && links.length ? `<button type="button" class="sd-btn-sel" id="sd-links-bulk-del" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5" title="Удалить все ${links.length} связей, попадающих под текущий фильтр">🗑 удалить ${links.length}</button>` : ''}
-    </div>
+    ${summaryRow}
+    ${bulkBar}
     <table class="sd-links-table">
       <thead>
+        <tr class="sd-links-filter-row">
+          <th><input type="checkbox" id="sd-links-sel-all" title="Выделить всё видимое" ${allVisibleSelected ? 'checked' : ''}></th>
+          <th></th>
+          <th><select id="sd-links-from" title="Фильтр по источнику (откуда)">${fromOpts}</select></th>
+          <th><select id="sd-links-to" title="Фильтр по цели (куда)">${toOpts}</select></th>
+          <th><select id="sd-links-ct" title="Тип кабеля">${cableOpts}</select></th>
+          <th><label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;white-space:nowrap"><input type="checkbox" id="sd-links-missing" ${missingOnly ? 'checked' : ''}> без длины</label></th>
+          <th><input type="search" id="sd-links-q" placeholder="🔍 поиск" value="${escapeHtml(linksQuery || '')}" autocomplete="off" style="width:100%;min-width:120px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:11px"></th>
+          <th></th>
+        </tr>
         <tr>
+          <th><input type="checkbox" disabled style="visibility:hidden"></th>
           <th>#</th>
           <th>Откуда (шкаф → устройство)</th>
           <th>Куда (шкаф → устройство)</th>
@@ -1761,8 +1884,10 @@ function renderLinksList() {
           const portInput = (who, max, dup, val) => max > 1
             ? `<input class="sd-port-in${dup ? ' sd-err' : ''}" data-act="${who}-port" type="number" min="1" max="${max}" value="${val == null ? '' : val}" placeholder="порт 1-${max}" style="width:78px;font-size:11px;margin-top:3px" title="Физический порт на устройстве (1…${max})${dup ? ' — конфликт: занят другой связью' : ''}">`
             : '';
+          const isSelected = linksSelected.has(l.id);
           return `
-          <tr data-id="${escapeAttr(l.id)}">
+          <tr data-id="${escapeAttr(l.id)}" class="${isSelected ? 'sd-row-selected' : ''}">
+            <td><input type="checkbox" data-act="select-row" ${isSelected ? 'checked' : ''}></td>
             <td>${i + 1}</td>
             <td>
               <div><b>${escapeHtml(getRackShortLabel(l.fromRackId))}</b></div>
@@ -1777,7 +1902,6 @@ function renderLinksList() {
             <td>
               <select data-act="cable">${opts.replace(`value="${l.cableType}"`, `value="${l.cableType}" selected`)}</select>
               ${(() => {
-                // v0.59.281: валидатор совместимости порт ↔ кабель.
                 const c = linkCompat(l);
                 if (c.ok) return '';
                 return `<div class="sd-link-warn" style="margin-top:4px;font-size:11px;color:#b91c1c" title="${escapeAttr(c.reason)}">⚠ ${escapeHtml(c.reason)}</div>`;
@@ -1792,6 +1916,9 @@ function renderLinksList() {
     </table>
     <div class="sd-links-footer muted">Показано: ${links.length} из ${allLinks.length}. Хранилище: <code>scs-design.links.v1</code>.</div>
   `;
+  // v0.59.590: индетерминантное состояние «выбрать всё» — когда часть выбрана.
+  const selAll = document.getElementById('sd-links-sel-all');
+  if (selAll) selAll.indeterminate = someVisibleSelected;
   const qInput = document.getElementById('sd-links-q');
   if (qInput) qInput.addEventListener('input', e => {
     linksQuery = e.target.value;
@@ -1808,9 +1935,91 @@ function renderLinksList() {
     linksFromRackFilter = ''; linksToRackFilter = '';
     renderLinksList();
   });
-  // v0.59.588: bulk-delete по фильтру — удаляет все отфильтрованные связи
-  // одной кнопкой. Юзер: «если ошибочно добавил связи, потом удалить сложно».
+  // v0.59.590: per-row checkbox toggling.
+  host.querySelectorAll('input[data-act="select-row"]').forEach(cb => {
+    cb.addEventListener('change', e => {
+      e.stopPropagation();
+      const tr = cb.closest('tr');
+      const id = tr?.dataset.id;
+      if (!id) return;
+      if (cb.checked) linksSelected.add(id);
+      else linksSelected.delete(id);
+      renderLinksList();
+      drawLinkOverlay(); // обновить подсветку SVG-линий
+    });
+  });
+  // Клик по строке (вне input/button/select) тоже toggle-ит выделение.
+  host.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', e => {
+      const t = e.target;
+      if (!t) return;
+      if (t.closest('input,button,select,textarea,a')) return;
+      const id = tr.dataset.id;
+      if (!id) return;
+      if (linksSelected.has(id)) linksSelected.delete(id);
+      else linksSelected.add(id);
+      renderLinksList();
+      drawLinkOverlay();
+    });
+  });
+  // Select all / none для видимых.
+  document.getElementById('sd-links-sel-all')?.addEventListener('change', e => {
+    if (e.target.checked) visibleIds.forEach(id => linksSelected.add(id));
+    else visibleIds.forEach(id => linksSelected.delete(id));
+    renderLinksList();
+    drawLinkOverlay();
+  });
+  // Bulk: смена кабеля у выделенных.
+  document.getElementById('sd-links-bulk-cable')?.addEventListener('change', e => {
+    const newCable = e.target.value;
+    if (!newCable) return;
+    const ids = new Set(linksSelected);
+    setLinks(getLinks().map(l => ids.has(l.id) ? { ...l, cableType: newCable } : l));
+    updateStatus(`✔ Тип кабеля «${newCable}» применён к ${ids.size} связям.`);
+    renderLinksList();
+    renderLegend();
+    renderBom();
+    drawLinkOverlay();
+  });
+  // Bulk: задать длину у выделенных.
+  document.getElementById('sd-links-bulk-length-apply')?.addEventListener('click', () => {
+    const inp = document.getElementById('sd-links-bulk-length');
+    if (!inp) return;
+    const v = inp.value;
+    const lengthM = v === '' ? null : Math.max(0, +v);
+    if (Number.isNaN(lengthM)) { updateStatus('⚠ Длина: некорректное значение.'); return; }
+    const ids = new Set(linksSelected);
+    setLinks(getLinks().map(l => ids.has(l.id) ? { ...l, lengthM } : l));
+    updateStatus(`✔ Длина ${lengthM == null ? '— (очищена)' : lengthM + ' м'} применена к ${ids.size} связям.`);
+    renderLinksList();
+    renderBom();
+  });
+  // Bulk: удалить выделенные.
   document.getElementById('sd-links-bulk-del')?.addEventListener('click', () => {
+    const n = linksSelected.size;
+    if (!n) return;
+    sdConfirmInline(`Удалить ${n} выделенных связей? Действие необратимо.`).then(ok => {
+      if (!ok) return;
+      const ids = new Set(linksSelected);
+      setLinks(getLinks().filter(l => !ids.has(l.id)));
+      linksSelected.clear();
+      updateStatus(`✔ Удалено ${ids.size} связей.`);
+      const selected = new Set(loadJson(LS_SELECTION, []));
+      renderSelected(selected, getRacks());
+      renderLinksList();
+      renderLegend();
+      renderBom();
+      drawLinkOverlay();
+    });
+  });
+  // Снять выделение.
+  document.getElementById('sd-links-bulk-clear')?.addEventListener('click', () => {
+    linksSelected.clear();
+    renderLinksList();
+    drawLinkOverlay();
+  });
+  // v0.59.588: удалить всё под фильтром (когда ничего не выделено).
+  document.getElementById('sd-links-bulk-del-filtered')?.addEventListener('click', () => {
     sdConfirmInline(`Удалить ${links.length} связей, попадающих под текущий фильтр? Действие необратимо.`).then(ok => {
       if (!ok) return;
       const ids = new Set(links.map(l => l.id));
@@ -1821,6 +2030,7 @@ function renderLinksList() {
       renderLinksList();
       renderLegend();
       renderBom();
+      drawLinkOverlay();
     });
   });
   host.querySelectorAll('tr[data-id]').forEach(tr => {
@@ -2241,6 +2451,12 @@ function applyPlanZoomStyle() {
   // Используем CSS `zoom` вместо `transform: scale`, чтобы scrollbars во wrap
   // корректно расширялись по размеру отмасштабированного канваса.
   canvas.style.zoom = String(planZoom);
+  // v0.59.590: counter-scale для подписей — текст не «увеличивается» при
+  // zoom in/out (юзер: «без увеличения подписей»). Подписи остаются
+  // постоянного размера в пикселях экрана независимо от zoom уровня —
+  // как в нормальных CAD-инструментах.
+  const inv = planZoom > 0 ? (1 / planZoom) : 1;
+  canvas.style.setProperty('--plan-zoom-inv', String(inv));
   const val = document.getElementById('sd-plan-zoom-val');
   if (val) val.textContent = Math.round(planZoom * 100) + '%';
 }
@@ -2654,6 +2870,9 @@ let linksOverlayVisible = (() => {
 let linksSagEnabled = (() => {
   try { return localStorage.getItem('scs-design.linksOverlay.sag.v1') !== '0'; } catch { return true; }
 })();
+// v0.59.590: выбор связей для bulk-edit (Set<linkId>). Кликом по строке /
+// SVG-линии переключается выделение; bulk-toolbar появляется при size >= 1.
+let linksSelected = new Set();
 
 // Ближайшая точка на отрезке tray к точке (px, py). Возвращает {qx, qy, d, tray}.
 // tray = {x, y, len, orient} в КЛЕТКАХ; точки возвращаем в px (центр клетки).
@@ -2846,19 +3065,27 @@ function buildCableRoute(ax, ay, bx, by, trays, fillsMap) {
 
   const interRack = Math.abs(ax - bx) + Math.abs(ay - by);
 
-  // v0.59.324: правило «канал обязателен, если он ближе direct-прямой».
-  // Т.е. если ЕСТЬ хотя бы один канал, точка входа которого ближе, чем
-  // расстояние между стойками — кабель должен идти через канал (пусть даже
-  // обход длиннее). Это соответствует реальной прокладке: кабели кладут в
-  // лотки, а не через свободное пространство. Если же ВСЕ каналы дальше
-  // direct-маршрута — разрешаем direct (канал физически не достижим).
-  const REACH = interRack; // каждый канал «достижим», если ближе чем direct
-  const reachable = trays.filter(t => {
+  // v0.59.590: правило по запросу юзера (feedback_cable_routing.md):
+  // «при любой возможности провести линию по кабельной трассе, нужно делать
+  // через трассу, за редким исключением когда две стойки рядом и до ближайшей
+  // трассы дальше чем до соседней стойки».
+  //
+  // Реализация: distA = ближайшее расстояние от A до любой трассы,
+  // distB = от B. minTrayDist = min(distA, distB). Direct разрешён ТОЛЬКО
+  // если стойки реально ближе друг к другу, чем любая из них до трассы:
+  //   allowDirect = interRack < minTrayDist
+  // В остальных случаях кабель ОБЯЗАН идти через трассу (даже если обход
+  // через неё длиннее).
+  let distA = Infinity, distB = Infinity;
+  for (const t of trays) {
     const qA = nearestOnTray(ax, ay, t);
     const qB = nearestOnTray(bx, by, t);
-    return Math.min(qA.d, qB.d) <= REACH;
-  });
-  const allowDirect = reachable.length === 0;
+    if (qA.d < distA) distA = qA.d;
+    if (qB.d < distB) distB = qB.d;
+  }
+  const minTrayDist = Math.min(distA, distB);
+  const allowDirect = interRack < minTrayDist;
+  const reachable = trays; // все трассы — кандидаты для маршрута
 
   let best = allowDirect
     ? { pts: direct, cells: directCells, weighted: directCells, viaTray: false, trayIds: [] }

@@ -39,60 +39,64 @@
     </div>
 
     <!-- ========== Вкладка Связи ========== -->
-    <section class="sd-panel active" data-panel="links">
-      <div class="sd-card">
-        <h2>🧰 Мастер меж-шкафных связей</h2>
-        <p class="muted">
-          Выберите несколько стоек проекта — они появятся рядом для проектирования
-          связей между конкретными портами/патч-панелями. Содержимое шкафов читается
-          из <a href="../scs-config/">Компоновщика шкафа</a> (LS <code>scs-config.contents.v1</code>).
-          Внутренние патчкорды одного шкафа настраиваются там же — этот модуль про
-          <b>связи между разными шкафами</b>.
-        </p>
-        <div class="sd-rack-picker" id="sd-rack-picker"></div>
-        <div class="sd-empty-state" id="sd-empty" style="display:none"></div>
-      </div>
-
-      <div class="sd-card">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <h2 style="margin:0">Выбранные стойки</h2>
-          <span style="flex:1"></span>
-          <!-- v0.59.589: toggle отображения связей в overlay над стойками. -->
-          <button type="button" id="sd-links-toggle-vis" class="sd-btn-sel" title="Показать / скрыть линии связей в обзоре стоек (комбинация: L)">👁 Скрыть связи</button>
-          <label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:12px" title="Линии связей рисуются провисающими, как реальные кабели">
-            <input type="checkbox" id="sd-links-sag" checked> провисающие
-          </label>
+    <!-- v0.59.590: layout 2 колонки — слева sidebar (rack-picker), справа main.
+         Запрос юзера: «сам блок выбора размести в сайд баре».
+         Sidebar имеет независимую вертикальную прокрутку (rs-sidebar). -->
+    <section class="sd-panel sd-links-layout active" data-panel="links">
+      <aside class="sd-links-side rs-sidebar rs-sidebar-left" id="sd-links-side">
+        <div class="sd-plan-side-block">
+          <div class="sd-plan-side-h">🗄 Стойки в проекте</div>
+          <p class="muted" style="font-size:11px;margin:0 0 6px;line-height:1.3">
+            Выберите стойки — они появятся в области справа для проектирования связей.
+            Содержимое читается из <a href="../scs-config/">Компоновщика</a>.
+          </p>
+          <div class="sd-rack-picker" id="sd-rack-picker"></div>
+          <div class="sd-empty-state" id="sd-empty" style="display:none"></div>
         </div>
-        <p class="muted" style="margin-bottom:8px">
-          Кликните на устройство в одной стойке — оно подсветится.
-          Затем кликните на устройство в другой стойке — появится связь в таблице ниже.
-          Повторный клик по подсвеченному = отмена. Связи внутри одного шкафа — в
-          <a href="../scs-config/">Компоновщике шкафа</a>.
-        </p>
-        <div id="sd-status" style="display:none"></div>
-        <div class="sd-racks-wrap">
-          <div class="sd-racks-row" id="sd-racks-row"></div>
-          <svg class="sd-links-svg" id="sd-links-svg" aria-hidden="true"></svg>
+        <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+      </aside>
+
+      <div class="sd-links-main">
+        <div class="sd-card">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <h2 style="margin:0">Выбранные стойки</h2>
+            <span style="flex:1"></span>
+            <button type="button" id="sd-links-toggle-vis" class="sd-btn-sel" title="Показать / скрыть линии связей в обзоре стоек (комбинация: L)">👁 Скрыть связи</button>
+            <label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:12px" title="Линии связей рисуются провисающими, как реальные кабели">
+              <input type="checkbox" id="sd-links-sag" checked> провисающие
+            </label>
+          </div>
+          <p class="muted" style="margin-bottom:8px">
+            Кликните на устройство в одной стойке — оно подсветится.
+            Затем кликните на устройство в другой стойке — появится связь в таблице ниже.
+            <b>Стойки можно перетаскивать за заголовок</b>, чтобы менять их порядок.
+            Связи внутри одного шкафа — в <a href="../scs-config/">Компоновщике шкафа</a>.
+          </p>
+          <div id="sd-status" style="display:none"></div>
+          <div class="sd-racks-wrap">
+            <div class="sd-racks-row" id="sd-racks-row"></div>
+            <svg class="sd-links-svg" id="sd-links-svg" aria-hidden="true"></svg>
+          </div>
         </div>
-      </div>
 
-      <div class="sd-card">
-        <h2>Меж-шкафные связи</h2>
-        <div id="sd-legend" class="sd-legend"></div>
-        <div id="sd-links-list"></div>
-      </div>
+        <div class="sd-card">
+          <h2>Меж-шкафные связи</h2>
+          <div id="sd-legend" class="sd-legend"></div>
+          <div id="sd-links-list"></div>
+        </div>
 
-      <div class="sd-card">
-        <h2>Кабельный журнал (BOM СКС)</h2>
-        <p class="muted" style="margin-bottom:8px">
-          Агрегация по типу кабеля: количество линий + суммарная длина
-          с коэффициентом запаса 1.3 (манхэттен × запас). Линии без
-          указанной длины в сумму не попадают, но считаются.
-        </p>
-        <div id="sd-bom"></div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" id="sd-export-csv" class="sd-btn-export">⬇ Экспорт CSV (кабельный журнал)</button>
-          <button type="button" id="sd-export-links-csv" class="sd-btn-export">⬇ Экспорт CSV (все связи)</button>
+        <div class="sd-card">
+          <h2>Кабельный журнал (BOM СКС)</h2>
+          <p class="muted" style="margin-bottom:8px">
+            Агрегация по типу кабеля: количество линий + суммарная длина
+            с коэффициентом запаса 1.3 (манхэттен × запас). Линии без
+            указанной длины в сумму не попадают, но считаются.
+          </p>
+          <div id="sd-bom"></div>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" id="sd-export-csv" class="sd-btn-export">⬇ Экспорт CSV (кабельный журнал)</button>
+            <button type="button" id="sd-export-links-csv" class="sd-btn-export">⬇ Экспорт CSV (все связи)</button>
+          </div>
         </div>
       </div>
     </section>

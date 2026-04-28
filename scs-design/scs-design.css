@@ -7,12 +7,39 @@
    справа canvas + scale. На узких экранах (< 1100px) — обе колонки в стек.
    v0.59.589: квалификатор .active обязателен — без него правило display:grid
    побеждало `.sd-panel { display:none }` и план «утекал» в другие табы
-   (Связи / Стойки проекта). */
-.sd-panel.sd-plan-layout.active {
+   (Связи / Стойки проекта).
+   v0.59.590: тот же layout для вкладки «Связи» (rack-picker в sidebar). */
+.sd-panel.sd-plan-layout.active,
+.sd-panel.sd-links-layout.active {
   display: grid;
   grid-template-columns: var(--rs-sidebar-left-w, 280px) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
+}
+.sd-links-side .sd-rack-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: none;
+  margin: 0;
+}
+.sd-links-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.sd-racks-row .sd-rack-card.dragging-reorder {
+  opacity: 0.5;
+  outline: 2px dashed #6366f1;
+}
+.sd-racks-row .sd-rack-card.drop-target-before {
+  box-shadow: -3px 0 0 0 #6366f1;
+}
+.sd-racks-row .sd-rack-card.drop-target-after {
+  box-shadow: 3px 0 0 0 #6366f1;
+}
+/* Заголовок карточки стойки — драгабельная зона. */
+.sd-rack-card .sd-rack-card-handle {
+  cursor: grab;
+}
+.sd-rack-card .sd-rack-card-handle:active {
+  cursor: grabbing;
 }
 .sd-plan-side {
   background: #fff;
@@ -83,10 +110,12 @@
   margin-bottom: 6px;
 }
 @media (max-width: 1100px) {
-  .sd-panel.sd-plan-layout.active {
+  .sd-panel.sd-plan-layout.active,
+  .sd-panel.sd-links-layout.active {
     grid-template-columns: 1fr;
   }
-  .sd-plan-side {
+  .sd-plan-side,
+  .sd-links-side {
     position: static;
     max-height: none;
   }
@@ -417,10 +446,24 @@
   position: absolute; z-index: 2;
   background: #1976d2; color: #fff; border-radius: 3px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 600;
+  /* v0.59.590: подписи размером в реальных пикселях экрана независимо от zoom.
+     --plan-zoom-inv = 1/planZoom выставляется в applyPlanZoomStyle(). */
+  font-size: calc(11px * var(--plan-zoom-inv, 1));
+  font-weight: 600;
   cursor: move; user-select: none;
   box-shadow: 0 2px 4px rgba(0,0,0,.15);
   padding: 0 4px;
+}
+.sd-plan-rack-rot,
+.sd-plan-rm,
+.sd-plan-tray-rot,
+.sd-plan-tray-rm,
+.sd-plan-tray-resize,
+.sd-plan-tray-label,
+.sd-plan-tray .sd-tray-fill-pct,
+.sd-plan-rack-dim {
+  /* Все управляющие кнопки и метки тоже не масштабируются с zoom. */
+  font-size: calc(10px * var(--plan-zoom-inv, 1)) !important;
 }
 /* Цвет по загрузке U. empty — пустая; low — до 70%; mid — 70-89%;
    hi — 90-99%; over — ≥100%. */
