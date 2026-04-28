@@ -190,6 +190,33 @@ export function openUpsParamsModal(n) {
     </div>`);
   }
 
+  // v0.59.605 (Phase 18): HVAC derate. Применяется ко ВСЕМ типам ИБП
+  // (моноблок / модульный / интегрированный). Юзер: «при подключении
+  // механической нагрузки нужно уменьшать мощность как минимум на 30%».
+  {
+    const factor = Number.isFinite(Number(n.hvacDerateFactor)) && Number(n.hvacDerateFactor) > 0
+      ? Number(n.hvacDerateFactor) : 0.70;
+    const active = !!n.hvacDerateActive;
+    const baseCap = Number(n.capacityKw) || 0;
+    const effCap = active ? baseCap * Math.max(0.3, Math.min(1, factor)) : baseCap;
+    h.push('<h4 style="margin:16px 0 8px">Derate для механической нагрузки (HVAC)</h4>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки (кондиционеры, моторы, насосы) производитель ИБП требует снижения номинала. Kehua: 0.70 (минимум). APC/Eaton: 0.80. Включайте если downstream есть HVAC.</div>');
+    h.push(`<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">
+      <input type="checkbox" id="up-hvac-derate-active"${active ? ' checked' : ''}>
+      <span>Применить derate для HVAC-нагрузки</span>
+    </label>`);
+    h.push(`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <span style="font-size:11px;color:#475569;width:100px">Коэф. derate</span>
+      <input type="number" id="up-hvac-derate-factor" min="0.3" max="1.0" step="0.05" value="${factor}" style="width:90px"${active ? '' : ' disabled'}>
+      <span style="font-size:11px;color:#94a3b8">0.30…1.00</span>
+    </div>`);
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.6;padding:6px 8px;background:#f0f9ff;border-radius:4px">
+      Базовый номинал: <b>${fmt(baseCap)} kW</b><br>
+      Эффективный (с derate): <b>${fmt(effCap)} kW</b>
+      ${active ? `<span class="muted"> = ${fmt(baseCap)} × ${factor.toFixed(2)}</span>` : ' <span class="muted">(derate не применён)</span>'}
+    </div>`);
+  }
+
   // v0.59.388: блок «Интегрированные компоненты» для типа integrated.
   // Показывает встроенный АВР и список распред. панелей PDM (read-only).
   // Источник истины — сам узел (n.hasIntegratedAts, n.pdmModules).
@@ -438,6 +465,9 @@ export function openUpsParamsModal(n) {
     for (const flag of ['hasInputBreaker','hasInputBypassBreaker','hasOutputBreaker','hasBypassBreaker','hasBatteryBreaker']) {
       grab('up-' + flag, flag, false, true);
     }
+    // v0.59.605 (Phase 18): HVAC derate.
+    grab('up-hvac-derate-active', 'hvacDerateActive', false, true);
+    grab('up-hvac-derate-factor', 'hvacDerateFactor', true);
   };
   const upsTypeSel = document.getElementById('up-upsType');
   if (upsTypeSel) {
@@ -552,6 +582,10 @@ export function openUpsParamsModal(n) {
     if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
       n.inputs = 2;
     }
+    // v0.59.605 (Phase 18): HVAC derate для механической нагрузки.
+    n.hvacDerateActive = document.getElementById('up-hvac-derate-active')?.checked === true;
+    const _hf = Number(document.getElementById('up-hvac-derate-factor')?.value);
+    if (Number.isFinite(_hf) && _hf > 0) n.hvacDerateFactor = Math.max(0.3, Math.min(1.0, _hf));
     if (n.id === '__preset_edit__' && window.Raschet?._presetEditCallback) {
       window.Raschet._presetEditCallback(n);
       document.getElementById('modal-ups-params').classList.add('hidden');

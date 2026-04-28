@@ -6,7 +6,7 @@ import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
-         upsChargeKw, sourceImpedance, isNodeDC } from './electrical.js';
+         upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity } from './electrical.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
@@ -428,8 +428,14 @@ function recalc() {
   // modulesActive + redundancyScheme + moduleKwRated + frameKw.
   // Пересобираем n.capacityKw отсюда на каждый проход — чтобы отключение
   // модуля в Control modal немедленно влияло на расчёт нагрузки и номинала.
+  // v0.59.605: интегрированные ИБП (kind='ups-integrated') тоже модульные —
+  // явно включаем по наличию moduleKwRated/frameKw, а не только upsType.
+  // Юзер: «MR33 6 слотов × 30кВт = frame 150кВт; в N+1 — 5×30=150, в N+2 —
+  // 4×30=120, в N (без резерва) capped frame на 150».
   for (const n of state.nodes.values()) {
-    if (n.type !== 'ups' || n.upsType !== 'modular') continue;
+    if (n.type !== 'ups') continue;
+    const isModular = n.upsType === 'modular' || n.kind === 'ups-integrated';
+    if (!isModular) continue;
     const modKw = Number(n.moduleKwRated ?? n.moduleKw) || 0;
     if (modKw <= 0) continue;
     const installed = Number(n.moduleInstalled ?? n.moduleCount) || 0;
@@ -1105,9 +1111,11 @@ function recalc() {
     const ai = activeInputs(n.id);
     if (!ai || ai.length === 0) continue;
 
-    // Предварительная проверка байпаса ещё до пост-прохода статусов
-    const overloadRatio = (Number(n.capacityKw) || 1) > 0
-      ? (n._loadKw || 0) / Number(n.capacityKw) * 100
+    // Предварительная проверка байпаса ещё до пост-прохода статусов.
+    // v0.59.605: учитываем effectiveUpsCapacity (с HVAC-derate если применим).
+    const _effCap = effectiveUpsCapacity(n);
+    const overloadRatio = _effCap > 0
+      ? (n._loadKw || 0) / _effCap * 100
       : 0;
     const onBypass = n.staticBypass && (
       n.staticBypassForced ||
@@ -1168,8 +1176,11 @@ function recalc() {
       // Определяем, работает ли статический байпас.
       // Возможно при: принудительном переключении или автоматическом по перегрузке
       // (и только если ИБП получает питание со входа, не с батареи).
-      const overloadRatio = (Number(n.capacityKw) || 1) > 0
-        ? (n._loadKw || 0) / Number(n.capacityKw) * 100
+      // v0.59.605: учитываем effectiveUpsCapacity (HVAC-derate).
+      const _effCap = effectiveUpsCapacity(n);
+      n._effectiveCapacityKw = _effCap;
+      const overloadRatio = _effCap > 0
+        ? (n._loadKw || 0) / _effCap * 100
         : 0;
       const shouldBypass = (
         n.staticBypass && !n._onBattery && n._powered &&
@@ -1189,7 +1200,8 @@ function recalc() {
       } else {
         n._inputKw = 0;
       }
-      if (n._loadKw > Number(n.capacityKw || 0)) n._overload = true;
+      // v0.59.605: перегруз = нагрузка > эффективной capacity (с derate).
+      if (_effCap > 0 && n._loadKw > _effCap) n._overload = true;
     }
   }
 

@@ -373,6 +373,41 @@ export function consumerInrushCurrent(n) {
   return consumerNominalCurrent(n) * (Number(n.inrushFactor) || 1);
 }
 
+// v0.59.605 (Phase 18): эффективная capacity ИБП с учётом HVAC-derate.
+// Юзер: «при подключении механической нагрузки к Kehua-модульным ИБП
+// нужно уменьшать мощность как минимум на 30% — если 100 кВт ИБП с
+// кондиционерами, можно использовать только 70 кВт». Применяется ко
+// всем типам ИБП.
+//
+// Поля на узле UPS:
+//   n.hvacDerateActive: boolean — пользователь явно включил derate
+//   n.hvacDerateFactor: 0..1 — коэффициент, default 0.7 (Kehua min)
+//
+// Default derate factor по производителю (если active=true и factor не задан):
+const HVAC_DERATE_DEFAULTS = {
+  'Kehua':     0.70,
+  'APC':       0.80,
+  'Eaton':     0.80,
+  'Schneider': 0.80,
+  'Vertiv':    0.80,
+  'GE':        0.75,
+  '_default':  0.85,
+};
+export function effectiveUpsCapacity(n) {
+  if (!n) return 0;
+  const base = Number(n.capacityKw) || 0;
+  if (!n.hvacDerateActive) return base;
+  let factor = Number(n.hvacDerateFactor);
+  if (!Number.isFinite(factor) || factor <= 0) {
+    const vendor = String(n.manufacturer || '').trim();
+    factor = HVAC_DERATE_DEFAULTS[vendor] != null
+      ? HVAC_DERATE_DEFAULTS[vendor]
+      : HVAC_DERATE_DEFAULTS._default;
+  }
+  factor = Math.max(0.3, Math.min(1.0, factor));
+  return base * factor;
+}
+
 // Мощность заряда ИБП по току в А (переход с chargeA на кВт для учёта в нагрузке)
 export function upsChargeKw(ups) {
   if (typeof ups.chargeKw === 'number' && !('chargeA' in ups)) return Number(ups.chargeKw) || 0;

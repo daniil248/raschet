@@ -69,6 +69,35 @@ export function openImpedanceModal(n) {
       + 'Используется в Dashboard и sidebar для «общей / доступной мощности». '
       + 'Для городской сети номинальная Snom не имеет смысла — только разрешённый лимит.'
       + `</div>`);
+    // v0.59.605 (Phase 18): расчёт компенсации реактивной мощности.
+    // Юзер: «добавь расчёт компенсации реактивной мощности на городском
+    // вводе». Энергоснабжающая организация требует cosφ ≥ 0.95 (или 0.99
+    // для крупных потребителей). При меньшем — штраф или принудительная
+    // установка УКРМ (установка компенсации реактивной мощности).
+    h.push('<h4 style="margin:14px 0 8px">Компенсация реактивной мощности</h4>');
+    h.push(field('Целевой cos φ (по ТУ)',
+      `<input type="number" id="imp-utility-targetCos" min="0.7" max="1.0" step="0.01" value="${n.compTargetCosPhi ?? 0.95}">`));
+    h.push('<div class="muted" style="font-size:10px;margin-top:-4px;line-height:1.4">' +
+      'Стандарт: 0.95 (мелкие/средние потребители) или 0.99 (крупные). ' +
+      'Если фактический cos φ нагрузки ниже целевого — нужна УКРМ.' +
+      '</div>');
+    // Расчёт: показываем текущий cos φ (из downstream P/Q), требуемое Q-comp.
+    const P = Number(n._powerP) || 0;
+    const Q = Number(n._powerQ) || 0;
+    const S = Math.sqrt(P * P + Q * Q);
+    const cosCur = S > 0 ? (P / S) : 1;
+    const cosTar = Math.max(0.7, Math.min(1.0, Number(n.compTargetCosPhi) || 0.95));
+    const tanCur = cosCur > 0 ? Math.sqrt(Math.max(0, 1 - cosCur * cosCur)) / cosCur : 0;
+    const tanTar = cosTar > 0 ? Math.sqrt(Math.max(0, 1 - cosTar * cosTar)) / cosTar : 0;
+    const Qcomp = Math.max(0, P * (tanCur - tanTar));
+    h.push(`<div class="muted" style="font-size:11.5px;line-height:1.7;padding:8px 10px;background:#f0f9ff;border-radius:4px;margin-top:6px">
+      Текущая нагрузка: <b>P = ${P.toFixed(2)} kW · Q = ${Q.toFixed(2)} kvar · S = ${S.toFixed(2)} kVA</b><br>
+      Текущий cos φ: <b>${cosCur.toFixed(3)}</b> · Целевой: <b>${cosTar.toFixed(2)}</b><br>
+      Требуемая мощность УКРМ: <b style="color:${Qcomp > 0 ? '#b91c1c' : '#15803d'}">${Qcomp.toFixed(2)} kvar</b>
+      ${Qcomp > 0
+        ? `<br><span class="muted">Установить конденсаторную батарею ≥ ${Math.ceil(Qcomp / 25) * 25} kvar (округлено до 25 kvar)</span>`
+        : '<br><span class="muted">Компенсация не требуется (cos φ уже выше целевого).</span>'}
+    </div>`);
   } else if (isTransformer) {
     let tOpts = '<option value="">— выберите —</option>';
     for (const t of TRANSFORMER_CATALOG) {
@@ -261,6 +290,12 @@ export function openImpedanceModal(n) {
       if (pmaxEl && String(pmaxEl.value ?? '').trim() !== '') {
         const v = Number(pmaxEl.value);
         if (Number.isFinite(v)) n.capacityKw = Math.max(0, v);
+      }
+      // v0.59.605 (Phase 18): целевой cos φ для расчёта компенсации Q.
+      const targetEl = document.getElementById('imp-utility-targetCos');
+      if (targetEl && String(targetEl.value ?? '').trim() !== '') {
+        const tv = Number(targetEl.value);
+        if (Number.isFinite(tv)) n.compTargetCosPhi = Math.max(0.7, Math.min(1.0, tv));
       }
     }
     if (isOther || isUtility) {
