@@ -210,6 +210,18 @@ export function deleteNode(id, opts = {}) {
   }
   state.nodes.delete(id);
   for (const m of state.modes) { if (m.overrides) delete m.overrides[id]; }
+  // v0.59.579: hard-delete также удаляет POR-объект, на который ссылался
+  // n.porObjectId. Иначе engine-por-mirror.pullPorRacksToEngine на
+  // следующем sync создаст engine-узел заново → resurrection. Симметрично
+  // фиксу v0.59.562 для tpl-* phantoms, но для обычных rack-узлов.
+  if (opts.hard && n && n.porObjectId && typeof window !== 'undefined' && window.RaschetPOR) {
+    try {
+      const pid = (typeof window.__engine_por_mirror_pid !== 'undefined' && window.__engine_por_mirror_pid) || null;
+      if (pid && typeof window.RaschetPOR.removeObject === 'function') {
+        window.RaschetPOR.removeObject(pid, n.porObjectId);
+      }
+    } catch (e) { console.warn('[graph] delete POR object failed:', e); }
+  }
   // Убрать из sectionIds контейнера
   if (n && n.parentSectionedId) {
     const parent = state.nodes.get(n.parentSectionedId);
