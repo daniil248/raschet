@@ -1044,9 +1044,12 @@ function renderLinksTab() {
   const chipHtml = r => {
     const on = selected.has(r.id);
     const label = rackLabel(r);
+    // v0.59.581: × кнопка удаления стойки если она не задействована
+    // в других модулях (engine schema, scs-config contents и т.п.).
     return `<label class="sd-rack-chip ${on ? 'on' : ''}" data-id="${r.id}">
       <input type="checkbox" ${on ? 'checked' : ''}>
       <span>${escapeHtml(label)}</span>
+      <button type="button" class="sd-rack-chip-del" data-del-id="${escapeAttr(r.id)}" title="Удалить стойку из проекта (только если не задействована в других модулях)" onclick="event.stopPropagation();event.preventDefault();" style="margin-left:6px;background:transparent;border:0;color:#b91c1c;cursor:pointer;font-size:14px;font-weight:bold;padding:0 4px">×</button>
     </label>`;
   };
   const parts = [];
@@ -1149,9 +1152,158 @@ function renderLinksTab() {
     });
   });
 
+  // v0.59.581: handler × кнопки — удалить стойку из проекта если не задействована.
+  picker.querySelectorAll('.sd-rack-chip-del').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation(); ev.preventDefault();
+      const rackId = btn.dataset.delId;
+      const r = racks.find(x => x.id === rackId);
+      if (!r) return;
+      const label = (getRackTag(rackId) || r.name || rackId);
+      const usage = _checkRackUsage(r);
+      if (usage.blocked.length) {
+        const ph = document.createElement('div');
+        ph.style.cssText = 'position:fixed;top:60px;right:20px;background:#b91c1c;color:#fff;padding:12px 16px;border-radius:6px;z-index:9999;max-width:420px;box-shadow:0 4px 12px rgba(0,0,0,.3)';
+        ph.innerHTML = `<b>Нельзя удалить «${escapeHtml(label)}»</b><br>Задействована в: ${usage.blocked.join(', ')}.<br>Снимите её сначала там.`;
+        document.body.appendChild(ph);
+        setTimeout(() => ph.remove(), 5500);
+        return;
+      }
+      const ok = await sdConfirmDelete(label, usage.warnings);
+      if (!ok) return;
+      _hardDeleteRack(r);
+      renderLinksTab();
+    });
+  });
+
   renderSelected(selected, racks);
   renderLinksList();
   renderLegend();
+}
+
+// v0.59.581: проверка использования стойки в текущем модуле и других.
+// ТЗ юзера: «если в стойке размещено оборудование, которое подключено
+// к другому оборудованию (без разницы в каком модуле) то стойку удалять
+// нельзя».
+// blocked[] — реальные внешние связи (block delete).
+// warnings[] — присутствуют изолированные данные (cascade-очистка ок).
+function _checkRackUsage(r) {
+  const blocked = [];
+  const warnings = [];
+  const rackId = r.id;
+  // 1. SCS-design links — fromRackId/toRackId === rackId означает что
+  //    оборудование стойки подключено к оборудованию ДРУГОЙ стойки.
+  const links = getLinks();
+  const linksUsing = links.filter(l => l.fromRackId === rackId || l.toRackId === rackId);
+  if (linksUsing.length) {
+    blocked.push(`СКС-связи (${linksUsing.length} шт.)`);
+  }
+  // 2. Engine schema — если у стойки есть porObjectId, проверяем engine
+  //    state.conns на links from/to этого узла. Engine в scs-design не
+  //    загружен напрямую, но если присутствует scheme в LS родителя —
+  //    можем читать.
+  try {
+    const pid = getActiveProjectId();
+    const activeProj = pid ? getProject(pid) : null;
+    const schemePid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+      ? activeProj.parentProjectId
+      : pid;
+    if (schemePid && r.porObjectId) {
+      const schKey = `raschet.project.${schemePid}.engine.scheme.v1`;
+      const sch = loadJson(schKey, null);
+      if (sch && Array.isArray(sch.nodes)) {
+        // Найти engine-узел с этим porObjectId.
+        const engineNode = sch.nodes.find(n => n && n.porObjectId === r.porObjectId);
+        if (engineNode && Array.isArray(sch.connections)) {
+          const engConns = sch.connections.filter(c =>
+            c?.from?.nodeId === engineNode.id || c?.to?.nodeId === engineNode.id);
+          if (engConns.length) {
+            blocked.push(`электрических связей в схеме (${engConns.length} шт.)`);
+          }
+        }
+      }
+    }
+  } catch {}
+  // 3. scs-config contents — устройства в стойке (warning, не блок).
+  try {
+    const allContents = loadJson(LS_CONTENTS, {});
+    const devs = Array.isArray(allContents[rackId]) ? allContents[rackId] : [];
+    if (devs.length) warnings.push(`устройств в Компоновщике (${devs.length} шт.)`);
+  } catch {}
+  return { blocked, warnings };
+}
+
+// v0.59.581: каскадное hard-удаление стойки: POR-объект (через RaschetPOR),
+// rack-config instance (LS), state.rackTags, scs-config contents/matrix.
+function _hardDeleteRack(r) {
+  const rackId = r.id;
+  // 1. POR-объект (если есть _source='por' или porObjectId).
+  try {
+    if (typeof window !== 'undefined' && window.RaschetPOR) {
+      const pid = getActiveProjectId();
+      const activeProj = pid ? getProject(pid) : null;
+      const targetPid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+        ? activeProj.parentProjectId
+        : pid;
+      // POR id — может быть r.porObjectId или сам r.id (если он por_legacy_*).
+      const porIds = [r.porObjectId, r.id].filter(Boolean);
+      for (const pid2 of porIds) {
+        try { window.RaschetPOR.removeObject(targetPid, pid2); } catch {}
+      }
+    }
+  } catch (e) { console.warn('[scs-design] del POR failed:', e); }
+  // 2. rack-config instance (LS).
+  try {
+    const pid = getActiveProjectId();
+    const activeProj = pid ? getProject(pid) : null;
+    const targetPid = (activeProj && activeProj.kind === 'sketch' && activeProj.parentProjectId)
+      ? activeProj.parentProjectId
+      : pid;
+    if (targetPid) {
+      const instKey = `raschet.project.${targetPid}.rack-config.instances.v1`;
+      const arr = loadJson(instKey, []);
+      const filtered = (Array.isArray(arr) ? arr : []).filter(x => x && x.id !== rackId);
+      if (filtered.length !== arr.length) localStorage.setItem(instKey, JSON.stringify(filtered));
+    }
+  } catch (e) { console.warn('[scs-design] del instance failed:', e); }
+  // 3. scs-config rackTags / contents / matrix (текущий sub).
+  try {
+    const tags = loadJson(LS_RACKTAGS, {});
+    if (tags[rackId]) { delete tags[rackId]; saveJson(LS_RACKTAGS, tags); }
+  } catch {}
+  try {
+    const contents = loadJson(LS_CONTENTS, {});
+    if (contents[rackId]) { delete contents[rackId]; saveJson(LS_CONTENTS, contents); }
+  } catch {}
+}
+
+// in-page confirm dialog
+function sdConfirmDelete(label, warnings) {
+  return new Promise(res => {
+    const back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10000;display:flex;align-items:center;justify-content:center';
+    const warnHtml = warnings && warnings.length
+      ? `<div style="margin-top:8px;padding:8px 10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;color:#92400e;font-size:12px">⚠ Также будут стёрты: ${warnings.join(', ')}</div>`
+      : '';
+    back.innerHTML = `
+      <div style="background:#fff;border-radius:10px;padding:18px 22px;min-width:380px;max-width:480px;box-shadow:0 10px 40px rgba(0,0,0,.25);font:13px/1.4 system-ui,sans-serif;color:#0f172a">
+        <div style="font-size:15px;font-weight:600;margin-bottom:10px;color:#b91c1c">🗑 Удалить «${escapeHtml(label)}»?</div>
+        <div style="color:#475569">Стойка не задействована в других модулях. Будет удалена из POR и Реестра проекта. Действие необратимо.</div>
+        ${warnHtml}
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" data-act="no" style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer">Отмена</button>
+          <button type="button" data-act="yes" style="padding:6px 14px;border:1px solid #b91c1c;border-radius:6px;background:#b91c1c;color:#fff;cursor:pointer">Удалить</button>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    const close = (v) => { back.remove(); res(v); };
+    back.addEventListener('click', e => {
+      if (e.target === back) close(false);
+      const a = e.target.dataset?.act;
+      if (a === 'yes') close(true);
+      if (a === 'no') close(false);
+    });
+  });
 }
 
 function renderLegend() {
