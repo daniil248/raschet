@@ -450,6 +450,22 @@ export function openUpsParamsModal(n) {
   h.push(`<div class="field check"><input type="checkbox" id="up-bypass"${n.staticBypass !== false ? ' checked' : ''}><label>Байпас разрешён (допускается переход на SBS)</label></div>`);
   h.push('<div class="muted" style="font-size:11px;margin-top:-6px">Принудительная активация SBS, разрешение авто-перехода и порог перегруза — в модалке <b>«🔌 Управление ИБП»</b>.</div>');
 
+  // ================= Параллельная работа =================
+  // v0.59.628: флаг «конструкция поддерживает параллельный режим». Без него
+  // ИБП считается одиночным даже если выходом подключён к общей шине с другим.
+  h.push('<h4 style="margin:16px 0 8px">Параллельная работа</h4>');
+  h.push(`<div class="field check"><input type="checkbox" id="up-canParallel"${n.canParallel !== false ? ' checked' : ''}><label>Конструкция поддерживает параллельный режим</label></div>`);
+  h.push('<div class="muted" style="font-size:11px;margin-top:-6px;line-height:1.45">Параллельные ИБП должны быть <b>идентичных моделей</b> (одинаковые мощность, производитель, тип, kind) и иметь поддержку параллельной работы (parallel kit, шина связи). Если флаг снят или модели разные — каждый ИБП будет рассчитан как несущий ПОЛНУЮ нагрузку (overload).</div>');
+  // Информация о текущей группе параллельных пиров (если есть).
+  if (Array.isArray(n._parallelPeerCount !== undefined ? [] : null)) { /* placeholder */ }
+  if (n._parallelPeerCount && n._parallelPeerCount > 1) {
+    if (n._parallelInvalidReason) {
+      h.push(`<div style="margin-top:6px;padding:6px 10px;background:#fef2f2;border-left:3px solid #b91c1c;border-radius:3px;font-size:11px;line-height:1.5;color:#991b1b">⛔ <b>Параллель не валидна:</b> ${escHtml(n._parallelInvalidReason)}.<br>Каждый ИБП считается несущим полную downstream-нагрузку (overload-сценарий).</div>`);
+    } else {
+      h.push(`<div style="margin-top:6px;padding:6px 10px;background:#f0fdf4;border-left:3px solid #15803d;border-radius:3px;font-size:11px;line-height:1.5;color:#14532d">✓ Валидная параллель: <b>${n._parallelPeerCount}</b> идентичных ИБП на общей шине. Нагрузка делится 1/${n._parallelPeerCount}.</div>`);
+    }
+  }
+
   body.innerHTML = h.join('');
   _wrapModalWithSystemTabs(body, n);
 
@@ -581,6 +597,8 @@ export function openUpsParamsModal(n) {
     // Байпас (только конфигурационный флаг «разрешён»; авто/порог/принуд.
     // — в модалке Управление ИБП).
     grab('up-bypass', 'staticBypass', false, true);
+    // v0.59.628: canParallel
+    grab('up-canParallel', 'canParallel', false, true);
     // Флаги автоматов
     for (const flag of ['hasInputBreaker','hasInputBypassBreaker','hasOutputBreaker','hasBypassBreaker','hasBatteryBreaker']) {
       grab('up-' + flag, flag, false, true);
@@ -708,6 +726,8 @@ export function openUpsParamsModal(n) {
     // staticBypassAuto / staticBypassOverloadPct / staticBypassForced —
     // управляются из модалки «🔌 Управление ИБП», здесь не трогаем.
     n.staticBypass = document.getElementById('up-bypass')?.checked !== false;
+    // v0.59.628: canParallel — поддержка параллельной работы (default true).
+    n.canParallel = document.getElementById('up-canParallel')?.checked !== false;
     n.bypassFeedMode = document.getElementById('up-bypassMode')?.value === 'separate' ? 'separate' : 'jumper';
     // В режиме 'separate' ИБП должен иметь как минимум 2 входа
     if (n.bypassFeedMode === 'separate' && (Number(n.inputs) || 0) < 2) {
@@ -2744,6 +2764,14 @@ export function upsStatusBlock(n) {
   if (n._loadKw > 0 && (n._maxLoadKw || 0) > n._loadKw) {
     const curAut = _autonomyFmt(n._loadKw);
     if (curAut) parts.push(`<span class="muted">автономия при текущей (${fmt(n._loadKw)} kW): ${curAut}</span>`);
+  }
+  // v0.59.628: статус параллельной работы.
+  if (n._parallelPeerCount && n._parallelPeerCount > 1) {
+    if (n._parallelInvalidReason) {
+      parts.push(`<span style="color:#b91c1c">⛔ <b>Параллель не валидна:</b> ${escHtml(n._parallelInvalidReason)}. Расчёт идёт как для одиночного ИБП с ПОЛНОЙ нагрузкой downstream.</span>`);
+    } else {
+      parts.push(`<span style="color:#15803d">✓ Параллель валидна: <b>${n._parallelPeerCount} × ${fmt(n.capacityKw)} kW</b> на общей шине, нагрузка делится поровну.</span>`);
+    }
   }
   return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
 }

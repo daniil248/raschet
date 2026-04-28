@@ -162,6 +162,63 @@ function _computeUpsWeightedLoad(upsNode) {
 
 // Полная downstream-нагрузка за узлом (без share, без visited-блокировок).
 // Считает суммарную мощность ВСЕХ уникальных потребителей за данным узлом.
+// v0.59.628: проверка валидности параллельной работы группы ИБП.
+// Юзер: «не все ИБП могут работать в параллель, только одинаковые модели
+// и сама конструкция должна подразумевать использование параллельного режима».
+//
+// Условия валидной параллели:
+//   1. У всех ИБП группы canParallel !== false (default true)
+//   2. Все одинаковые: capacityKw, manufacturer (если задан), model (если задан),
+//      upsType, kind, frameKw (для модульных).
+//
+// Возвращает { valid, reason } — если valid=false, reason описывает почему.
+// При невалидной параллели каждый ИБП должен видеть ПОЛНУЮ downstream-нагрузку,
+// а не 1/N (иначе расчёт перегруза будет занижен и автомат подобран неверно).
+function _isIdenticalUpsPair(a, b) {
+  if (!a || !b) return false;
+  if ((Number(a.capacityKw) || 0) !== (Number(b.capacityKw) || 0)) return false;
+  const _eq = (x, y) => (x || '') === (y || '');
+  if (!_eq(a.manufacturer, b.manufacturer)) return false;
+  if (!_eq(a.model, b.model)) return false;
+  if (!_eq(a.upsType, b.upsType)) return false;
+  if (!_eq(a.kind, b.kind)) return false;
+  // для модульных — рамка тоже должна совпадать
+  if ((a.upsType === 'modular') &&
+      ((Number(a.frameKw) || 0) !== (Number(b.frameKw) || 0))) return false;
+  return true;
+}
+function _classifyUpsPeers(panelId) {
+  // Все ИБП, питающие данный panel.
+  const peers = [];
+  for (const c of state.conns.values()) {
+    if (c.to.nodeId !== panelId) continue;
+    if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+    const f = state.nodes.get(c.from.nodeId);
+    if (f && f.type === 'ups') peers.push(f);
+  }
+  if (peers.length <= 1) {
+    return { peers, valid: true, share: 1, reason: '' };
+  }
+  // Проверка canParallel на каждом
+  const noParallel = peers.find(p => p.canParallel === false);
+  if (noParallel) {
+    return {
+      peers, valid: false, share: 1,
+      reason: `ИБП «${noParallel.name || noParallel.tag || noParallel.id}» помечен как «не поддерживает параллельный режим»`,
+    };
+  }
+  // Проверка идентичности (попарно с первым)
+  for (let i = 1; i < peers.length; i++) {
+    if (!_isIdenticalUpsPair(peers[0], peers[i])) {
+      return {
+        peers, valid: false, share: 1,
+        reason: `Параллельные ИБП должны быть идентичны: «${peers[0].name || peers[0].tag}» ≠ «${peers[i].name || peers[i].tag}»`,
+      };
+    }
+  }
+  return { peers, valid: true, share: 1 / peers.length, reason: '' };
+}
+
 // Используется для определения реальной нагрузки за конкретным UPS:
 //   UPS → UDB (parallel) → потребители = ПОЛНАЯ нагрузка UDB, а не 1/N,
 //   потому что если этот UPS единственный активный — он несёт всё.
@@ -1638,21 +1695,16 @@ function recalc() {
       const capKw = Number(toN.capacityKw) || 0;
       const eff = Math.max(0.01, (Number(toN.efficiency) || 100) / 100);
       const chKw = upsChargeKw(toN);
-      // Downstream за UPS. Учитываем share если UPS делит нагрузку с другими UPS.
+      // Downstream за UPS. Учитываем share только если параллель ВАЛИДНА
+      // (одинаковые модели + canParallel). Иначе каждый ИБП — full load.
       const fullDown = simpleDownstream(toN.id);
-      // Сколько UPS подключены к тому же downstream-щиту?
       let upsShare = 1;
       for (const c2 of state.conns.values()) {
         if (c2.from.nodeId !== toN.id || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
         const dest = state.nodes.get(c2.to.nodeId);
         if (!dest || dest.type !== 'panel') continue;
-        let peerCount = 0;
-        for (const c3 of state.conns.values()) {
-          if (c3.to.nodeId !== dest.id || c3.lineMode === 'damaged' || c3.lineMode === 'disabled') continue;
-          const feeder = state.nodes.get(c3.from.nodeId);
-          if (feeder && feeder.type === 'ups') peerCount++;
-        }
-        if (peerCount > 1) upsShare = 1 / peerCount;
+        const grp = _classifyUpsPeers(dest.id);
+        upsShare = grp.share; // 1 если invalid, 1/N если valid parallel
         break;
       }
       const myLoad = fullDown * upsShare;
@@ -2689,21 +2741,23 @@ function recalc() {
       //     ставим флаг n._maxOverload.
       const cap = Number(n.capacityKw) || 0;
       const rawMax = maxDownstreamLoad(n.id);
-      // Определяем кол-во параллельных ИБП на одном downstream-щите
+      // v0.59.628: share только при валидной параллели (одинаковые модели
+      // + canParallel != false). Иначе full load на каждый ИБП → перегруз.
       let upsShare = 1;
+      let parallelInvalidReason = '';
+      let parallelPeerCount = 1;
       for (const c2 of state.conns.values()) {
         if (c2.from.nodeId !== n.id || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
         const dest = state.nodes.get(c2.to.nodeId);
         if (!dest || dest.type !== 'panel') continue;
-        let peerCount = 0;
-        for (const c3 of state.conns.values()) {
-          if (c3.to.nodeId !== dest.id || c3.lineMode === 'damaged' || c3.lineMode === 'disabled') continue;
-          const feeder = state.nodes.get(c3.from.nodeId);
-          if (feeder && feeder.type === 'ups') peerCount++;
-        }
-        if (peerCount > 1) upsShare = 1 / peerCount;
+        const grp = _classifyUpsPeers(dest.id);
+        upsShare = grp.share;
+        parallelPeerCount = (grp.peers && grp.peers.length) || 1;
+        if (parallelPeerCount > 1 && !grp.valid) parallelInvalidReason = grp.reason;
         break;
       }
+      n._parallelPeerCount = parallelPeerCount;
+      n._parallelInvalidReason = parallelInvalidReason; // '' если valid
       const sharedMax = rawMax * upsShare;
       // Физический лимит ИБП: нельзя отдать больше номинала.
       // Если downstream-share > cap → перегруз.
