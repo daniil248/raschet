@@ -929,7 +929,11 @@ function rackLabel(r) {
 function newId() { return 'ln_' + Math.random().toString(36).slice(2, 10); }
 
 /* ---------- UI state ---------- */
-let linkStart = null; // { rackId, devId, label }
+let linkStart = null; // { rackId, devId, label } — первое выделенное устройство
+// v0.59.592: второе выделенное устройство (потенциальная цель связи). Связь
+// НЕ создаётся автоматически — юзер должен явно нажать «🔗 Создать связь».
+// До этого клики просто выделяли/снимали выделение.
+let linkEnd = null;   // { rackId, devId, label }
 let lastLink = null;  // { fromRackId, fromDevId, toRackId, toDevId } — для batch wire
 
 function promptBatchWire() {
@@ -1635,43 +1639,111 @@ function renderRackCard(r) {
   </div>`;
 }
 
+// v0.59.592: клик по устройству = ВЫБОР, не автоматическое создание связи.
+// Юзер: «клик на оборудовании с портами не должен запускать подключение
+// к портам, а только выбор оборудования».
+// UX:
+//   1-й клик  → linkStart = устройство A, подсветка
+//   2-й клик по тому же → снять выделение
+//   2-й клик по другому в той же стойке → переключить linkStart на новое
+//     (внутри-стоечные связи делаются в Компоновщике, не здесь).
+//   2-й клик по другому в ДРУГОЙ стойке → linkEnd = устройство B; обе
+//     подсвечены. Связь НЕ создаётся — в статус-баре кнопка
+//     «🔗 Создать связь A → B» (юзер явно подтверждает).
+//   3-й клик по любому → если уже двое выбрано, переключаем linkEnd либо
+//     заменяем linkStart (зависит от логики).
 function onUnitClick(el) {
   const rackId = el.dataset.rackId;
   const devId = el.dataset.devId;
   const label = el.querySelector('.u-label').textContent.trim();
+
+  // Нет выбора → выделить как A.
   if (!linkStart) {
     linkStart = { rackId, devId, label };
-    el.classList.add('sel');
-    updateStatus(`Выбран источник: <b>${escapeHtml(label)}</b> (${escapeHtml(getRackShortLabel(rackId))}). Кликните на целевое устройство в другой стойке.`);
+    linkEnd = null;
+    _refreshSelectionUI();
     return;
   }
+  // Клик по тому же устройству, что A → снять выделение.
   if (linkStart.rackId === rackId && linkStart.devId === devId) {
-    // повторный клик по тому же — отмена
-    linkStart = null;
-    el.classList.remove('sel');
-    updateStatus('');
+    linkStart = linkEnd; // если есть B, оно становится A
+    linkEnd = null;
+    _refreshSelectionUI();
     return;
   }
-  if (linkStart.rackId === rackId) {
+  // Клик по B (если есть) → снять B (отмена пары).
+  if (linkEnd && linkEnd.rackId === rackId && linkEnd.devId === devId) {
+    linkEnd = null;
+    _refreshSelectionUI();
+    return;
+  }
+  // Клик по устройству в той же стойке что A → внутри-шкафная связь
+  // не делается здесь, сообщаем + переключаем A на новое устройство.
+  if (linkStart.rackId === rackId && !linkEnd) {
+    linkStart = { rackId, devId, label };
+    updateStatus(`⚠ Связь внутри одного шкафа — настраивается в <a href="../scs-config/?from=scs-design">Компоновщике шкафа</a>. Здесь выбрано <b>${escapeHtml(label)}</b>.`);
+    _refreshSelectionUI(true /* keep status */);
+    return;
+  }
+  // Клик по третьему устройству → перезаписываем B.
+  linkEnd = { rackId, devId, label };
+  _refreshSelectionUI();
+}
+
+// v0.59.592: обновить визуал выделения + статус-бар с кнопкой «🔗 Создать
+// связь». Опция keepStatus — не перезаписывать уже выставленный статус
+// (например, после warning-а про внутри-шкафную связь).
+function _refreshSelectionUI(keepStatus) {
+  const row = document.getElementById('sd-racks-row');
+  if (row) {
+    row.querySelectorAll('.sd-unit.sel,.sd-unit.sel-end').forEach(el => el.classList.remove('sel', 'sel-end'));
+    if (linkStart) {
+      const sel = row.querySelector(`.sd-unit[data-rack-id="${CSS.escape(linkStart.rackId)}"][data-dev-id="${CSS.escape(linkStart.devId)}"]`);
+      if (sel) sel.classList.add('sel');
+    }
+    if (linkEnd) {
+      const sel = row.querySelector(`.sd-unit[data-rack-id="${CSS.escape(linkEnd.rackId)}"][data-dev-id="${CSS.escape(linkEnd.devId)}"]`);
+      if (sel) sel.classList.add('sel-end');
+    }
+  }
+  if (keepStatus) return;
+  if (linkStart && linkEnd) {
+    const aLabel = `${getRackShortLabel(linkStart.rackId)} · ${escapeHtml(linkStart.label)}`;
+    const bLabel = `${getRackShortLabel(linkEnd.rackId)} · ${escapeHtml(linkEnd.label)}`;
+    updateStatus(`✔ Выбрано: <b>${aLabel}</b> ↔ <b>${bLabel}</b>. <button id="sd-link-create" class="sd-btn-sel" style="margin-left:8px;background:#dbeafe;color:#1e40af;border-color:#93c5fd">🔗 Создать связь</button> <button id="sd-link-cancel" class="sd-btn-sel" style="margin-left:4px">✕ Отмена</button>`);
+    document.getElementById('sd-link-create')?.addEventListener('click', _createLinkFromSelection);
+    document.getElementById('sd-link-cancel')?.addEventListener('click', () => {
+      linkStart = null; linkEnd = null; _refreshSelectionUI();
+    });
+  } else if (linkStart) {
+    updateStatus(`Выбрано: <b>${escapeHtml(linkStart.label)}</b> (${escapeHtml(getRackShortLabel(linkStart.rackId))}). Кликните на устройство в другой стойке для пары.`);
+  } else {
+    updateStatus('');
+  }
+}
+
+// v0.59.592: создать связь из текущей пары выбранных устройств.
+// Раньше эта логика была встроена в onUnitClick; теперь — отдельная функция,
+// вызывается явно по кнопке «🔗 Создать связь».
+function _createLinkFromSelection() {
+  if (!linkStart || !linkEnd) return;
+  if (linkStart.rackId === linkEnd.rackId) {
     updateStatus(`⚠ Связь внутри одного шкафа — настраивается в <a href="../scs-config/?from=scs-design">Компоновщике шкафа</a>, не здесь.`);
     return;
   }
-  // создать связь
   const links = getLinks();
   const pFrom = devicePorts(linkStart.rackId, linkStart.devId);
-  const pTo   = devicePorts(rackId, devId);
-  // Если оба устройства многопортовые — автоподбор первых свободных портов
+  const pTo   = devicePorts(linkEnd.rackId,   linkEnd.devId);
   const usedFrom = portsUsedOn(linkStart.rackId, linkStart.devId);
-  const usedTo   = portsUsedOn(rackId, devId);
+  const usedTo   = portsUsedOn(linkEnd.rackId,   linkEnd.devId);
   const firstFree = (max, used) => {
     for (let p = 1; p <= max; p++) if (!used.has(p)) return p;
     return null;
   };
   const fromPort = pFrom > 1 ? firstFree(pFrom, usedFrom) : null;
   const toPort   = pTo   > 1 ? firstFree(pTo,   usedTo)   : null;
-  // v0.59.281: дефолт кабеля зависит от типа порта на концах.
   const fromDev = getContents(linkStart.rackId).find(x => x.id === linkStart.devId);
-  const toDev   = getContents(rackId).find(x => x.id === devId);
+  const toDev   = getContents(linkEnd.rackId).find(x => x.id === linkEnd.devId);
   const pTypeA = inferPortType(fromDev), pTypeB = inferPortType(toDev);
   const fromT = fromDev ? catalogType(fromDev.typeId) : null;
   const toT   = toDev   ? catalogType(toDev.typeId)   : null;
@@ -1680,16 +1752,15 @@ function onUnitClick(el) {
   const needG = Math.max(sA || 0, sB || 0);
   let defCable = 'cat6a';
   if (pTypeA === 'lc' || pTypeB === 'lc' || pTypeA === 'sfp' || pTypeB === 'sfp') {
-    // оптика — выбираем по требуемой скорости
     defCable = needG > 100 ? 'os2' : needG > 40 ? 'om4' : needG > 10 ? 'om4' : 'om3';
   } else if (pTypeA === 'bnc' || pTypeB === 'bnc') defCable = 'coax';
   else if (pTypeA === 'power' || pTypeB === 'power') defCable = 'power-c13';
-  else if (needG > 1) defCable = 'cat6a'; // 10G/25G → Cat.6A
+  else if (needG > 1) defCable = 'cat6a';
   else defCable = 'cat6';
   const newLink = {
     id: newId(),
     fromRackId: linkStart.rackId, fromDevId: linkStart.devId, fromLabel: linkStart.label,
-    toRackId: rackId, toDevId: devId, toLabel: label,
+    toRackId: linkEnd.rackId, toDevId: linkEnd.devId, toLabel: linkEnd.label,
     fromPort, toPort,
     cableType: defCable,
     lengthM: null,
@@ -1698,17 +1769,17 @@ function onUnitClick(el) {
   };
   links.push(newLink);
   setLinks(links);
-  lastLink = { fromRackId: linkStart.rackId, fromDevId: linkStart.devId, toRackId: rackId, toDevId: devId };
-  linkStart = null;
+  lastLink = { fromRackId: linkStart.rackId, fromDevId: linkStart.devId, toRackId: linkEnd.rackId, toDevId: linkEnd.devId };
+  const aLabel = linkStart.label;
   const portInfo = (fromPort || toPort)
     ? ` (${fromPort ? 'A:p'+fromPort : 'A'} ↔ ${toPort ? 'B:p'+toPort : 'B'})`
     : '';
   const batchBtn = (pFrom > 1 && pTo > 1)
     ? ` <button id="sd-batch-btn" class="sd-btn-sel" style="margin-left:8px">+ ещё N связей подряд</button>`
     : '';
-  updateStatus(`✔ Связь добавлена: <b>${escapeHtml(label)}</b>${portInfo}. Всего: ${links.length}.${batchBtn}`);
+  linkStart = null; linkEnd = null;
+  updateStatus(`✔ Связь добавлена: <b>${escapeHtml(aLabel)}</b>${portInfo}. Всего: ${links.length}.${batchBtn}`);
   document.getElementById('sd-batch-btn')?.addEventListener('click', promptBatchWire);
-  // перерисовать стойки (чтобы снять подсветку) и список
   const selected = new Set(loadJson(LS_SELECTION, []));
   renderSelected(selected, getRacks());
   renderLinksList();

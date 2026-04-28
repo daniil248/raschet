@@ -288,6 +288,13 @@
   color: #78350f; font-weight: 600;
   box-shadow: 0 0 0 2px rgba(245, 158, 11, .35);
 }
+/* v0.59.592: вторая выбранная сторона (B) подсвечена зелёным —
+   юзер видит, что выбрана пара, и может нажать «🔗 Создать связь». */
+.sd-unit.sel-end {
+  background: #bbf7d0 !important; border-color: #22c55e !important;
+  color: #064e3b; font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, .35);
+}
 
 #sd-status {
   margin: 8px 0; padding: 8px 12px; border-radius: 6px;
