@@ -53,8 +53,20 @@ const PROJECT_ADAPTER_BINDINGS = [
  *
  * Вызывается в HEAD страницы ДО загрузки скриптов конфигуратора.
  */
+// v0.59.642: guard от повторного bootstrap'а с тем же pid. Раньше при смене
+// проекта + storage-event + DOMContentLoaded функция могла вызваться 2-3 раза
+// с тем же pid, плодя в консоль повторные сообщения миграций / dedup и заново
+// устанавливая adapter'ы. Идемпотентно (миграции не ломают данные), но шумит.
+let _lastBootstrappedPid = null;
+
 export function bootstrapProject(pid) {
   if (!pid) return;
+  // Если уже забутстрапили этот pid в этой сессии — пропускаем.
+  if (_lastBootstrappedPid === pid) {
+    console.info('[bootstrap] skip duplicate call for pid=' + pid);
+    return;
+  }
+  _lastBootstrappedPid = pid;
   // v0.59.602: если pid — sketch с parent, мигрируем POR-объекты sub → parent.
   // ПРОБЛЕМА: до v0.59.602 POR-объекты могли создаваться в подпроекте
   // (sketch), а после фикса _resolvePid они идут в parent. Без миграции
