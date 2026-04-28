@@ -313,11 +313,18 @@ export function openUpsParamsModal(n) {
       </details>`);
     }
 
+    // v0.59.616: запас = capacity − эффективная нагрузка.
+    const reserveKw = baseCap - wLoad;
+    const reservePct = baseCap > 0 ? (reserveKw / baseCap * 100) : 0;
+    const reserveStyle = reserveKw < 0
+      ? 'color:#b91c1c;font-weight:600'
+      : (reservePct < 10 ? 'color:#c2410c' : 'color:#15803d;font-weight:600');
     h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
       <b>Капасити:</b> ${fmt(baseCap)} kW<br>
       <b>Без снижения:</b> ${fmt(pIT)} kW (${itLoads.length} устр.) · <b>Со снижением:</b> ${fmt(pHVAC)} kW (${hvacLoads.length} устр.)<br>
       <b>Эффективная нагрузка:</b> <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
       <br><b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}
+      <br><b>Запас:</b> <span style="${reserveStyle}">${fmt(reserveKw)} kW</span> <span class="muted">(${reservePct.toFixed(1)}% от capacity)</span>${reserveKw < 0 ? ' ⚠ нехватка' : (reservePct < 10 ? ' ⚠ малый запас' : '')}
     </div>`);
 
     // v0.59.610: список нагрузок с раздельными колонками P и P_eff.
