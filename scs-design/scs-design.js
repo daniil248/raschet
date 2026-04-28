@@ -3095,6 +3095,20 @@ function snapTrayPosition(t, nx, ny, plan) {
   const hCells = isH ? trayW : t.len;
   nx = Math.max(0, Math.min(PLAN_COLS - wCells, nx));
   ny = Math.max(0, Math.min(PLAN_ROWS - hCells, ny));
+  // v0.59.598 (Phase 14.7.1): snap-to-100мм при drag, ЕСЛИ snap-to-adjacent
+  // не сработал. Snap-to-adjacent (соседний канал/стойка) имеет приоритет —
+  // не округляем точные примыкания, чтобы не сломать создание фитинга.
+  // Юзер: «сегменты трасс должны привязываться к шагу 100 мм или примыкание
+  // к другому каналу».
+  if (!snapped) {
+    const step = (plan && +plan.step) || 0.6;
+    const gridM = 0.1;            // 100 мм = шаг привязки
+    const gridCells = gridM / step;
+    nx = Math.round(nx / gridCells) * gridCells;
+    ny = Math.round(ny / gridCells) * gridCells;
+    nx = Math.max(0, Math.min(PLAN_COLS - wCells, nx));
+    ny = Math.max(0, Math.min(PLAN_ROWS - hCells, ny));
+  }
   return { x: nx, y: ny, snapped };
 }
 
@@ -3460,6 +3474,50 @@ function drawPlanLinks(svg, plan) {
   }
 }
 
+// v0.59.598: подробный расчёт длины кабеля по физическому маршруту (Phase 16.1-16.5).
+// Юзер: «длина линии должна учитывать расположение порта … расстояние от
+// порта до горизонтального органайзера, до вертикального до выхода из
+// стойки, затем подъём к трассе и по соединённым участкам трасс».
+//
+// Формула:
+//   L_internal_A = L_a1 + L_a2 + L_a3 + L_a4
+//     L_a1 = ~U_HEIGHT (от порта до ближайшего H-органайзера ≈ 1U)
+//     L_a2 = rack.width / 2 (горизонтально вдоль U к V-органайзеру)
+//     L_a3 = (port_height_from_exit_side) — вертикально до верха/низа стойки
+//     L_a4 = RISE_TO_TRAY_MM (подъём на уровень трассы)
+//   L_route = распределение по трассам (Manhattan через trays)
+//   L_internal_B — зеркальный путь
+//   L_total = (L_internal_A + L_route + L_internal_B) × kRoute
+//
+// portHeight = (rack.u − device.positionU + 0.5) × 44.45
+// distFromTop=true (overhead trays) → vertical_to_exit = rackHeightMm − portHeight
+// distFromTop=false (underfloor)    → vertical_to_exit = portHeight
+const U_HEIGHT_MM = 44.45;          // EIA-310-D 1U
+const DEFAULT_RACK_WIDTH_MM = 600;
+const RISE_TO_TRAY_MM = 200;        // подъём к centerline трассы
+const ORG_DETOUR_MM = U_HEIGHT_MM;  // порт → H-органайзер 1U
+function computePortInternalPathMm(rackId, devId, plan) {
+  try {
+    const racks = getRacks();
+    const rack = racks.find(r => r && r.id === rackId);
+    if (!rack) return 0;
+    const u = +rack.u || 42;
+    const rackHeightMm = u * U_HEIGHT_MM;
+    const widthMm = +rack.width || DEFAULT_RACK_WIDTH_MM;
+    let positionU = 1;
+    try {
+      const devs = getContents(rackId);
+      const dev = (devs || []).find(d => d && d.id === devId);
+      if (dev) positionU = +dev.positionU || 1;
+    } catch {}
+    const portHeightMm = (u - positionU + 0.5) * U_HEIGHT_MM;
+    const distFromTop = ((rack.distributionFrom || 'top') === 'top');
+    const verticalToExit = distFromTop ? (rackHeightMm - portHeightMm) : portHeightMm;
+    const horizToSide = widthMm / 2;
+    return ORG_DETOUR_MM + horizToSide + verticalToExit + RISE_TO_TRAY_MM;
+  } catch { return 0; }
+}
+
 function computeSuggestedLength(link, plan) {
   const a = plan.positions[link.fromRackId];
   const b = plan.positions[link.toRackId];
@@ -3467,7 +3525,34 @@ function computeSuggestedLength(link, plan) {
   const [ax, ay] = rackCenterPx(link.fromRackId, plan);
   const [bx, by] = rackCenterPx(link.toRackId, plan);
   const route = buildCableRoute(ax, ay, bx, by, plan.trays || []);
-  return route.cells * plan.step * plan.kRoute;
+  const routeM = route.cells * (plan.step || 0.6);
+  const internalA_M = computePortInternalPathMm(link.fromRackId, link.fromDevId, plan) / 1000;
+  const internalB_M = computePortInternalPathMm(link.toRackId, link.toDevId, plan) / 1000;
+  const k = plan.kRoute || 1.3;
+  return (routeM + internalA_M + internalB_M) * k;
+}
+
+// v0.59.598: подробный breakdown для tooltip / отладки.
+function computeLengthBreakdown(link, plan) {
+  const a = plan.positions[link.fromRackId];
+  const b = plan.positions[link.toRackId];
+  if (!a || !b) return null;
+  const [ax, ay] = rackCenterPx(link.fromRackId, plan);
+  const [bx, by] = rackCenterPx(link.toRackId, plan);
+  const route = buildCableRoute(ax, ay, bx, by, plan.trays || []);
+  const routeM = route.cells * (plan.step || 0.6);
+  const internalA = computePortInternalPathMm(link.fromRackId, link.fromDevId, plan);
+  const internalB = computePortInternalPathMm(link.toRackId, link.toDevId, plan);
+  const k = plan.kRoute || 1.3;
+  const totalM = (routeM + internalA / 1000 + internalB / 1000) * k;
+  return {
+    internalA_mm: internalA,
+    routeM,
+    internalB_mm: internalB,
+    kRoute: k,
+    totalM,
+    viaTray: route.viaTray,
+  };
 }
 
 // Рендер кабельного канала (tray) на плане
@@ -3563,13 +3648,18 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
     if (!dragging) return;
     const z = planZoom || 1;
     movedPx = Math.max(movedPx, Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy));
-    const dx = Math.round((e.clientX - sx) / (PLAN_CELL_PX * z));
-    const dy = Math.round((e.clientY - sy) / (PLAN_CELL_PX * z));
-    const wCells = (t.orient === 'h' ? t.len : TRAY_W_CELLS);
-    const hCells = (t.orient === 'v' ? t.len : TRAY_W_CELLS);
+    // v0.59.598 (Phase 14.7.1): drag по 100мм-сетке (не по целой клетке).
+    const step = (plan && +plan.step) || 0.6;
+    const gridCells = 0.1 / step;
+    const snap = (v) => Math.round(v / gridCells) * gridCells;
+    const dx = snap((e.clientX - sx) / (PLAN_CELL_PX * z));
+    const dy = snap((e.clientY - sy) / (PLAN_CELL_PX * z));
+    const trayWloc = trayWidthCells(t, plan);
+    const wCells = (t.orient === 'h' ? t.len : trayWloc);
+    const hCells = (t.orient === 'v' ? t.len : trayWloc);
     let nx = Math.max(0, Math.min(PLAN_COLS - wCells, sCell.x + dx));
     let ny = Math.max(0, Math.min(PLAN_ROWS - hCells, sCell.y + dy));
-    // v0.59.297: snap к соседним каналам (T/крестовые стыки).
+    // snap-to-adjacent (соседние каналы, стенки стоек) с приоритетом над 100мм.
     const snapped = snapTrayPosition(t, nx, ny, plan);
     nx = snapped.x; ny = snapped.y;
     div.classList.toggle('snapped', snapped.snapped);
@@ -3625,16 +3715,21 @@ function renderTray(canvas, svg, t, plan, fillInfo) {
     handle.addEventListener('pointermove', e => {
       if (!drag) return;
       const z = planZoom || 1;
-      const dx = Math.round((e.clientX - drag.sx) / (PLAN_CELL_PX * z));
-      const dy = Math.round((e.clientY - drag.sy) / (PLAN_CELL_PX * z));
+      // v0.59.598 (Phase 14.7.1): resize по 100мм-сетке. Раньше Math.round
+      // округлял до целой клетки (600 мм при step=0.6 — слишком грубо).
+      const step = (plan && +plan.step) || 0.6;
+      const gridCells = 0.1 / step; // 100 мм в клетках
+      const snap = (v) => Math.round(v / gridCells) * gridCells;
+      const dx = snap((e.clientX - drag.sx) / (PLAN_CELL_PX * z));
+      const dy = snap((e.clientY - drag.sy) / (PLAN_CELL_PX * z));
       const along = (t.orient === 'h') ? dx : dy;
       if (isEnd) {
         // тянем конец → меняется только len
         const maxLen = (t.orient === 'h') ? (PLAN_COLS - drag.sX) : (PLAN_ROWS - drag.sY);
-        t.len = Math.max(2, Math.min(maxLen, drag.sLen + along));
+        t.len = Math.max(gridCells, Math.min(maxLen, drag.sLen + along));
       } else {
         // тянем начало → сдвигаем x/y и уменьшаем/увеличиваем len
-        const newLen = Math.max(2, drag.sLen - along);
+        const newLen = Math.max(gridCells, drag.sLen - along);
         const delta = drag.sLen - newLen;
         if (t.orient === 'h') t.x = Math.max(0, drag.sX + delta);
         else t.y = Math.max(0, drag.sY + delta);
