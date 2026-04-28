@@ -296,17 +296,22 @@ export function openUpsParamsModal(n) {
         </table>
       </div>`;
     };
-    h.push(`<details style="margin-bottom:8px"${(active ? ' open' : '')}>
-      <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Коэффициенты по подтипам нагрузки</summary>
-      <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
-        <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = коэффициент 1.0 (без снижения).</div>
-        ${Array.from(subsByCat.entries()).map(([catId, subs]) => _catGroup(catId, subs)).join('')}
-        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-          <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Пресет: механическая нагрузка 0.70</button>
-          <button type="button" id="up-hvac-derate-clear" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">✕ Очистить все</button>
+    // v0.59.615: блок коэффициентов появляется ТОЛЬКО если активирован чекбокс
+    // «Применить снижающие коэффициенты» (юзер 2026-04-28). Когда выключен —
+    // блок скрыт, не загромождает интерфейс.
+    if (active) {
+      h.push(`<details style="margin-bottom:8px" open>
+        <summary style="cursor:pointer;font-size:11.5px;color:#1e3a8a;padding:4px 0">📊 Коэффициенты по подтипам нагрузки</summary>
+        <div style="font-size:11px;padding:8px 10px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:4px;margin-top:6px">
+          <div class="muted" style="font-size:10px;margin-bottom:8px">Чекбокс категории включает/выключает все подтипы внутри. Ручное редактирование — индивидуально для каждого подтипа. Пустое поле = коэффициент 1.0 (без снижения).</div>
+          ${Array.from(subsByCat.entries()).map(([catId, subs]) => _catGroup(catId, subs)).join('')}
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" id="up-hvac-derate-default" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#e0e7ff;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">↺ Пресет: механическая нагрузка 0.70</button>
+            <button type="button" id="up-hvac-derate-clear" class="ic-btn" style="font-size:10px;padding:3px 8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:4px;cursor:pointer">✕ Очистить все</button>
+          </div>
         </div>
-      </div>
-    </details>`);
+      </details>`);
+    }
 
     h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
       <b>Капасити:</b> ${fmt(baseCap)} kW<br>
@@ -648,12 +653,13 @@ export function openUpsParamsModal(n) {
     delete n.hvacDerateMap;
     openUpsParamsModal(n);
   });
-  // Toggle disabled state on coef inputs based on active checkbox.
+  // v0.59.615: переключатель «Применить снижающие коэффициенты» — переоткрываем
+  // модалку, чтобы блок коэффициентов появился/исчез. Сохраняем введённые
+  // значения через snapshotVisibleFields.
   document.getElementById('up-hvac-derate-active')?.addEventListener('change', (e) => {
-    const dis = !e.target.checked;
-    document.querySelectorAll('[data-derate-key], [data-up-hvac-cat]').forEach(el => {
-      el.disabled = dis;
-    });
+    snapshotVisibleFields();
+    n.hvacDerateActive = !!e.target.checked;
+    openUpsParamsModal(n);
   });
   // Update category checkbox state (checked / indeterminate / unchecked).
   // ОБЯЗАТЕЛЬНО объявляем ПЕРЕД handlers, которые её вызывают (TDZ для const).
