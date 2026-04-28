@@ -1447,7 +1447,19 @@ function recalc() {
     // целевого узла, ручные переопределения consumer.wireCount и
     // conn._wireCountManual. HV-линии всегда 3 жилы.
     c._wireCount = cableWireCount(fromN, toN, c);
-    c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase, _isDC) : 0;
+    // v0.59.604: для линии, идущей К потребителю, ток БЕРЁМ напрямую из
+    // consumer-функций (consumerRatedCurrent), а не пересчитываем по
+    // c._loadKw / U / cos. Юзер: «ты разве в кабель не передаёшь уже
+    // рассчитанные значения, а высчитываешь заново, разве это правильно».
+    // Преимущества:
+    //   1. Учитывается individual-режим (разные cos у каждого члена группы).
+    //   2. kUse применяется per-item для individual.
+    //   3. Согласованность: ток на консьюмере и ток на линии — одно и то же.
+    if (toN.type === 'consumer') {
+      c._loadA = consumerRatedCurrent(toN);
+    } else {
+      c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase, _isDC) : 0;
+    }
 
     // === Расчётный ток для подбора кабеля (максимальный по всем сценариям) ===
     // Кабель должен выдержать максимально возможную нагрузку через ДАННУЮ связь.
@@ -1494,9 +1506,14 @@ function recalc() {
     // Источник/генератор: НЕ ограничиваем downstream его номиналом.
     // Кабель должен быть рассчитан на реальную нагрузку. Если нагрузка
     // превышает номинал источника — это показывается как перегруз (_overload).
-    const maxCurrent = maxKwDownstream > 0
-      ? computeCurrentA(maxKwDownstream, U, cos, threePhase, _isDC)
-      : 0;
+    // v0.59.604: для прямой линии к consumer берём _nominalA (установочный
+    // ток без kUse / loadFactor) — он уже учитывает individual-режим и
+    // правильный U. Не пересчитываем заново.
+    const maxCurrent = (toN.type === 'consumer')
+      ? consumerNominalCurrent(toN)
+      : (maxKwDownstream > 0
+          ? computeCurrentA(maxKwDownstream, U, cos, threePhase, _isDC)
+          : 0);
     c._maxKw = maxKwDownstream;
     c._maxA = maxCurrent;
 
