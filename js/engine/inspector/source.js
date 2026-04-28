@@ -209,13 +209,17 @@ export function openImpedanceModal(n) {
   body.innerHTML = h.join('');
   try { _wrapModalWithSystemTabs(body, n); } catch {}
 
-  // v0.59.631: live-обновление подсказки режима ISO 8528 (для ДГУ).
+  // v0.59.631/632: live-обновление при смене активного режима ISO 8528.
+  // Сохраняем текущие введённые значения, переписываем активный режим и
+  // переоткрываем модалку — чтобы перерисовалась подсветка активной строки
+  // и обновилась проверка достаточности под новый режим.
   const grModeEl = document.getElementById('gr-mode');
   if (grModeEl) {
     grModeEl.addEventListener('change', () => {
-      const mode = GEN_RATING_MODES.find(m => m.id === grModeEl.value);
-      const hintEl = document.getElementById('gr-mode-hint');
-      if (hintEl && mode) hintEl.textContent = mode.hint;
+      // Снимаем текущие введённые значения в genRatings до пере-рендера.
+      _applyGenIsoFields(n);
+      n.genRatingMode = grModeEl.value;
+      openImpedanceModal(n);
     });
   }
 
@@ -351,16 +355,16 @@ export function openImpedanceModal(n) {
 // У каждого режима — своя пара рейтингов (kW, kVA), потому что производитель
 // допускает разную нагрузку в зависимости от продолжительности и характера.
 //
-// Сортировка ниже — ПО НАРАСТАНИЮ РЕЙТИНГА (от самого требовательного режима,
-// где допустимая мощность минимальна, к самому щадящему, где макс).
-// Между режимами есть приблизительные соотношения для дизельных ДГУ:
-//   ESP > LTP ≈ ESP × 0.91 > PRP ≈ ESP × 0.91 > COP ≈ PRP × 0.90 > DCC ≈ COP
+// Сортировка — по нарастанию рейтинга (от самого требовательного, с минимальной
+// допустимой P, к самому щадящему). Типичные соотношения для дизельных ДГУ:
+//   ESP > LTP ≈ ESP × 0.91 > PRP ≈ ESP × 0.91 > DCC ≈ PRP > COP ≈ PRP × 0.90
+// Юзер (v0.59.632): «DCC максимально близок к PRP, иногда даже такой же,
+// так что по порядку поставь его ниже COP» → COP < DCC < PRP < LTP < ESP.
 //
-//   DCC (Data Center Continuous)  — continuous + кратковременные step-load
-//                                    (mission-critical DC). Самая жёсткая
-//                                    эксплуатация → самая низкая допустимая P.
 //   COP (Continuous Operating Power)— неограниченное время, постоянная нагрузка
-//                                    (off-grid).
+//                                    (off-grid). Самая низкая допустимая P.
+//   DCC (Data Center Continuous)  — continuous + кратковременные step-load
+//                                    (mission-critical DC). Рейтинг ~PRP.
 //   PRP (Prime Power)             — неограниченные часы, переменная нагрузка
 //                                    со средней ≤70% от PRP-рейтинга.
 //   LTP (Limited Time Prime)      — ≤500 ч/год, постоянная номинальная.
@@ -371,9 +375,12 @@ export function openImpedanceModal(n) {
 // некоторых производителей. По стандарту используем только ESP.
 //
 // Источник: ISO 8528-1:2018 §13.3.
+// v0.59.632: DCC переставлен между COP и PRP — по рейтингу он близок к PRP
+// (юзер: «DCC максимально близок к режиму PRP, иногда даже такой же,
+// так что по порядку поставь его ниже COP»).
 const GEN_RATING_MODES = [
-  { id: 'DCC', label: 'DCC — Data Center Continuous',      hint: 'continuous с возможностью кратковременных скачков нагрузки (mission-critical DC)' },
   { id: 'COP', label: 'COP — Continuous Operating Power',  hint: 'неограниченное время, постоянная номинальная нагрузка (off-grid)' },
+  { id: 'DCC', label: 'DCC — Data Center Continuous',      hint: 'continuous с возможностью кратковременных скачков нагрузки (mission-critical DC); рейтинг ~ PRP' },
   { id: 'PRP', label: 'PRP — Prime Power',                 hint: 'неограниченные часы, переменная нагрузка со средней ≤70% от PRP-рейтинга' },
   { id: 'LTP', label: 'LTP — Limited Time Prime',          hint: '≤500 ч/год, постоянная номинальная нагрузка' },
   { id: 'ESP', label: 'ESP — Emergency Standby Power',     hint: '≤200 ч/год, ср. нагрузка ≤25% от ESP-рейтинга; типичный режим для аварийного резерва' },
@@ -400,7 +407,7 @@ function _renderGenIsoBlock(n) {
   const h = [];
   h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.5">');
   h.push('Стандарт <b>ISO 8528-1:2018</b> определяет 5 режимов работы ДГУ. ');
-  h.push('Сортировка ниже — по нарастанию рейтинга (от самого требовательного DCC к самому щадящему ESP). ');
+  h.push('Сортировка ниже — по нарастанию рейтинга: COP &lt; DCC ≈ PRP &lt; LTP &lt; ESP. ');
   h.push('У каждого режима свой допустимый рейтинг по kW и kVA — заполните по табличке производителя. ');
   h.push('Программа проверяет достаточность по <b>обоим</b> (kW + kVA) против worst-case нагрузки.');
   h.push('</div>');
@@ -417,6 +424,17 @@ function _renderGenIsoBlock(n) {
     `<input type="number" id="gr-cosPhi" min="0.5" max="1.0" step="0.01" value="${cosNom}">`));
   h.push('<div class="muted" style="font-size:10px;margin-top:-4px;margin-bottom:6px">По умолчанию 0.80 (ISO 8528-1 §7.2.2). Если задано только одно из kW/kVA — другое посчитается через cos φ на Apply.</div>');
 
+  // v0.59.632: проверка — пустой ли активный режим (когда другие заполнены).
+  const activeRating = ratings[curMode] || {};
+  const activeFilled = (Number(activeRating.kW) > 0) && (Number(activeRating.kVA) > 0);
+  const anyOtherFilled = Object.keys(ratings).some(id => id !== curMode &&
+    Number(ratings[id]?.kW) > 0 && Number(ratings[id]?.kVA) > 0);
+  if (!activeFilled && anyOtherFilled) {
+    h.push(`<div style="margin-bottom:8px;padding:8px 10px;background:#fef2f2;border-left:3px solid #b91c1c;border-radius:3px;font-size:11.5px;color:#991b1b;line-height:1.5">
+      ⚠ <b>Активный режим «${escHtml(curMode)}» не заполнен.</b> Заполни строку <b>${escHtml(curMode)}</b> в таблице ниже, или смени активный режим на тот, что уже заполнен. Сейчас проверка достаточности показывает 0%.
+    </div>`);
+  }
+
   h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px"><thead><tr style="background:#f6f8fa">');
   h.push('<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #d0d7de">Режим</th>');
   h.push('<th style="text-align:right;padding:6px 8px;border-bottom:1px solid #d0d7de;width:90px">kW</th>');
@@ -426,13 +444,22 @@ function _renderGenIsoBlock(n) {
     const r = ratings[m.id] || { kW: null, kVA: null };
     const kW  = (r.kW  != null && Number.isFinite(Number(r.kW)))  ? Number(r.kW)  : '';
     const kVA = (r.kVA != null && Number.isFinite(Number(r.kVA))) ? Number(r.kVA) : '';
-    h.push(`<tr style="border-bottom:1px solid #f1f5f9">
-      <td style="padding:6px 8px"><b>${escHtml(m.id)}</b> <span class="muted" style="font-size:10px">${escHtml(m.label.replace(/^[^—]*— ?/, ''))}</span></td>
-      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kW"  value="${kW}"  style="width:80px;padding:3px 6px;text-align:right"></td>
-      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kVA" value="${kVA}" style="width:80px;padding:3px 6px;text-align:right"></td>
+    // v0.59.632: подсветка активной строки + ⚡ маркер.
+    const isActive = m.id === curMode;
+    const rowStyle = isActive
+      ? 'background:#dbeafe;border-left:3px solid #1d4ed8'
+      : 'border-left:3px solid transparent';
+    const idCell = isActive
+      ? `<b style="color:#1d4ed8">⚡ ${escHtml(m.id)}</b>`
+      : `<b>${escHtml(m.id)}</b>`;
+    h.push(`<tr style="border-bottom:1px solid #f1f5f9;${rowStyle}">
+      <td style="padding:6px 8px">${idCell} <span class="muted" style="font-size:10px">${escHtml(m.label.replace(/^[^—]*— ?/, ''))}</span></td>
+      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kW"  value="${kW}"  style="width:80px;padding:3px 6px;text-align:right${isActive ? ';border:1.5px solid #1d4ed8;background:#eff6ff' : ''}"></td>
+      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kVA" value="${kVA}" style="width:80px;padding:3px 6px;text-align:right${isActive ? ';border:1.5px solid #1d4ed8;background:#eff6ff' : ''}"></td>
     </tr>`);
   }
   h.push('</tbody></table>');
+  h.push(`<div class="muted" style="font-size:10px;margin-top:4px;color:#1d4ed8">⚡ — активный режим (используется для проверки достаточности). Сменить можно через селектор «Активный режим работы» вверху.</div>`);
 
   // v0.59.631: проверка достаточности — используем _maxLoadKw для backup ДГУ
   // (текущий _powerP=0 у не-активного резерва). Считаем kVA через cos φ
@@ -493,6 +520,19 @@ function _applyGenIsoFields(n) {
     if (r.kVA && !r.kW && cos > 0)  r.kW = Math.round(r.kVA * cos);
   }
   n.genRatings = next;
+  // v0.59.632: авто-переключение активного режима, если выбранный пуст
+  // и есть заполненные. Берём первый заполненный по порядку GEN_RATING_MODES
+  // (DCC → COP → PRP → LTP → ESP — по нарастанию рейтинга).
+  const activeR = next[n.genRatingMode] || {};
+  if (!(Number(activeR.kW) > 0 && Number(activeR.kVA) > 0)) {
+    for (const m of GEN_RATING_MODES) {
+      const r = next[m.id];
+      if (Number(r.kW) > 0 && Number(r.kVA) > 0) {
+        n.genRatingMode = m.id;
+        break;
+      }
+    }
+  }
   // Синхронизация capacityKw / snomKva с активным режимом.
   const active = next[n.genRatingMode] || {};
   if (active.kW)  n.capacityKw = active.kW;
