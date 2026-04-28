@@ -181,7 +181,16 @@ export function openUpsParamsModal(n) {
     const installedCapKw = (n.moduleInstalled || 0) * (n.moduleKwRated || 0);
     const warnings = [];
     if ((n.moduleInstalled || 0) > (n.moduleSlots || 0)) warnings.push('⚠ Установлено больше, чем слотов');
-    if (installedCapKw > (n.frameKw || 0)) warnings.push('⚠ Суммарная мощность модулей превышает корпус');
+    // v0.59.607: убран false-positive warning «суммарная мощность модулей
+    // превышает корпус». В N+1/N+2 это нормальная картина (резервные модули
+    // не добавляют выходной мощности — она ограничена frame). Реальные
+    // проблемы покрывают остальные warnings:
+    //   • Установлено > слотов  — физически не помещается
+    //   • Working × modKw > frame — рабочих модулей больше, чем frame может
+    //     преобразовать (это и есть истинное «превышение корпуса»).
+    if (working * (n.moduleKwRated || 0) > (n.frameKw || 0)) {
+      warnings.push('⚠ Рабочие модули (' + working + '×' + (n.moduleKwRated || 0) + ' kW) превышают корпус ' + (n.frameKw || 0) + ' kW — мощность ограничена корпусом');
+    }
     if ((n.moduleInstalled || 0) < redundN + 1) warnings.push('⚠ Не хватает модулей для выбранного резервирования');
     h.push(`<div class="muted" style="font-size:11px;line-height:1.7;margin:4px 0 10px;padding:6px 8px;background:#f6f8fa;border-radius:4px">
       Рабочих модулей: <b>${working}</b> × ${fmt(n.moduleKwRated)} kW = <b>${fmt(working * (n.moduleKwRated||0))} kW</b><br>
@@ -191,47 +200,74 @@ export function openUpsParamsModal(n) {
     </div>`);
   }
 
-  // v0.59.605 (Phase 18): HVAC derate. Применяется ко ВСЕМ типам ИБП
-  // (моноблок / модульный / интегрированный). Юзер: «при подключении
-  // механической нагрузки нужно уменьшать мощность как минимум на 30%».
-  // v0.59.606: авто-детекция HVAC-нагрузки downstream + рекомендация.
+  // v0.59.605/607 (Phase 18): HVAC derate. Применяется ко ВСЕМ типам ИБП.
+  // v0.59.607: derate применяется ТОЛЬКО к механической части нагрузки,
+  // не ко всему ИБП. Юзер: «коэффициент нужно применять не для всей
+  // нагрузки а только для механической нагрузки».
   {
     const factor = Number.isFinite(Number(n.hvacDerateFactor)) && Number(n.hvacDerateFactor) > 0
       ? Number(n.hvacDerateFactor) : 0.70;
     const active = !!n.hvacDerateActive;
     const baseCap = Number(n.capacityKw) || 0;
-    const effCap = active ? baseCap * Math.max(0.3, Math.min(1, factor)) : baseCap;
-    // BFS downstream от ИБП — ищем механическую нагрузку.
+    // BFS downstream от ИБП — ищем механическую нагрузку и считаем P_IT/P_HVAC.
     const HVAC_TYPE_IDS = new Set(['motor', 'pump', 'fan', 'conditioner', 'elevator']);
     const detected = [];
+    let pIT = 0, pHVAC = 0;
     try {
       const visited = new Set([n.id]);
       const queue = [n.id];
       while (queue.length) {
         const id = queue.shift();
         for (const c of state.conns.values()) {
-          if (c.from?.nodeId !== id || c._state === 'damaged' || c._state === 'disabled') continue;
+          if (c.from?.nodeId !== id || c._state === 'damaged' || c._state === 'disabled' || c._state === 'dead') continue;
           const next = state.nodes.get(c.to?.nodeId);
           if (!next || visited.has(next.id)) continue;
           visited.add(next.id);
+          if (next.type === 'ups' && next.id !== n.id) continue; // нагрузка чужого ИБП
           if (next.type === 'consumer') {
             const cat = CONSUMER_CATALOG.find(x => x.id === next.consumerType);
-            const isHvac = (cat && cat.category === 'hvac')
-              || HVAC_TYPE_IDS.has(next.consumerType);
+            const isHvac = (cat && cat.category === 'hvac') || HVAC_TYPE_IDS.has(next.consumerType);
+            const P = Number(next._loadKw) || 0;
             if (isHvac) {
+              pHVAC += P;
               detected.push({ id: next.id, label: next.name || next.tag || next.consumerType });
+            } else {
+              pIT += P;
             }
           }
           queue.push(next.id);
         }
       }
     } catch {}
+    const f = active ? Math.max(0.3, Math.min(1, factor)) : 1.0;
+    const wLoad = pIT + (active ? pHVAC / f : pHVAC);
+    const utilPct = baseCap > 0 ? (wLoad / baseCap * 100) : 0;
     h.push('<h4 style="margin:16px 0 8px">Derate для механической нагрузки (HVAC)</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки (кондиционеры, моторы, насосы) производитель ИБП требует снижения номинала. Kehua: 0.70 (минимум). APC/Eaton: 0.80. Включайте если downstream есть HVAC.</div>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.45">При подключении механической нагрузки (кондиционеры, моторы, насосы) производитель ИБП требует снижения номинала. Kehua: 0.70 (минимум). APC/Eaton: 0.80. Применяется ТОЛЬКО к механической части — IT-нагрузка использует полную мощность.</div>');
+    // Help-блок (раскрывается по кнопке ?).
+    h.push(`<details id="up-hvac-help-details" style="margin-bottom:8px"${(n._uiHvacHelpOpen ? ' open' : '')}>
+      <summary style="cursor:pointer;font-size:11px;color:#475569">📖 Подробнее о расчёте</summary>
+      <div style="font-size:11px;line-height:1.55;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin-top:6px">
+        <b>Модель «per-load»:</b> derate применяется только к механической нагрузке. IT — полностью.
+        <br><br>
+        <b>Формула:</b><br>
+        <code>load_effective = Σ P_IT + Σ P_HVAC / derate</code><br>
+        <code>overload = load_effective &gt; capacity</code>
+        <br><br>
+        <b>Пример:</b> ИБП 100 kW + IT 60 kW + HVAC 30 kW + derate 0.70:<br>
+        <code>load_eff = 60 + 30/0.7 = 60 + 42.86 = 102.86 kW</code><br>
+        102.86 > 100 → перегруз на 3% (нужен ИБП ≥ 110 kW или вынести HVAC).
+        <br><br>
+        <b>HVAC-классификация:</b> consumer.consumerType ∈ {motor, pump, fan, conditioner, elevator}
+        ИЛИ catalog.category = 'hvac'.
+        <br><br>
+        <b>Производители:</b> Kehua 0.70 (мин), APC/Eaton/Schneider 0.80, GE 0.75. Default 0.85.
+      </div>
+    </details>`);
     if (detected.length && !active) {
       h.push(`<div style="font-size:11.5px;line-height:1.55;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;margin-bottom:8px;color:#78350f">
         ⚠ <b>Обнаружена HVAC/механическая нагрузка downstream</b> (${detected.length}): ${detected.slice(0, 3).map(d => escHtml(d.label)).join(', ')}${detected.length > 3 ? '…' : ''}.
-        Рекомендуется включить derate (минимум 0.70 для Kehua) — иначе при пуске моторов возможен выход в защиту.
+        Рекомендуется включить derate (минимум 0.70 для Kehua).
       </div>`);
     } else if (detected.length && active) {
       h.push(`<div style="font-size:11.5px;line-height:1.55;padding:6px 10px;background:#dcfce7;border:1px solid #86efac;border-radius:4px;margin-bottom:8px;color:#166534">
@@ -247,10 +283,13 @@ export function openUpsParamsModal(n) {
       <input type="number" id="up-hvac-derate-factor" min="0.3" max="1.0" step="0.05" value="${factor}" style="width:90px"${active ? '' : ' disabled'}>
       <span style="font-size:11px;color:#94a3b8">0.30…1.00</span>
     </div>`);
-    h.push(`<div class="muted" style="font-size:11px;line-height:1.6;padding:6px 8px;background:#f0f9ff;border-radius:4px">
-      Базовый номинал: <b>${fmt(baseCap)} kW</b><br>
-      Эффективный (с derate): <b>${fmt(effCap)} kW</b>
-      ${active ? `<span class="muted"> = ${fmt(baseCap)} × ${factor.toFixed(2)}</span>` : ' <span class="muted">(derate не применён)</span>'}
+    const overloadStyle = utilPct > 100 ? 'color:#b91c1c;font-weight:600' : (utilPct > 90 ? 'color:#c2410c' : '');
+    h.push(`<div class="muted" style="font-size:11px;line-height:1.65;padding:8px 10px;background:#f0f9ff;border-radius:4px">
+      <b>Капасити:</b> ${fmt(baseCap)} kW (без снижения)<br>
+      <b>Нагрузка IT:</b> ${fmt(pIT)} kW · <b>Нагрузка HVAC:</b> ${fmt(pHVAC)} kW<br>
+      <b>Эффективная нагрузка</b> (с derate ${active ? f.toFixed(2) : '1.00'}): <span style="${overloadStyle}">${fmt(wLoad)} kW</span>
+      ${active && pHVAC > 0 ? `<span class="muted"> = ${fmt(pIT)} + ${fmt(pHVAC)}/${f.toFixed(2)}</span>` : ''}<br>
+      <b>Использовано:</b> <span style="${overloadStyle}">${utilPct.toFixed(1)}%</span> ${utilPct > 100 ? '⚠ перегруз' : ''}
     </div>`);
   }
 

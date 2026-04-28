@@ -374,10 +374,20 @@ export function consumerInrushCurrent(n) {
 }
 
 // v0.59.605 (Phase 18): эффективная capacity ИБП с учётом HVAC-derate.
-// Юзер: «при подключении механической нагрузки к Kehua-модульным ИБП
-// нужно уменьшать мощность как минимум на 30% — если 100 кВт ИБП с
-// кондиционерами, можно использовать только 70 кВт». Применяется ко
-// всем типам ИБП.
+// v0.59.607: РЕФАКТОРИНГ — derate применяется НЕ ко всей capacity, а только
+// к механической части нагрузки. Юзер: «коэффициент нужно применять не для
+// всей нагрузки а только для механической нагрузки».
+//
+// Модель:
+//   capacity ИБП — фиксированная, не уменьшается.
+//   load_effective = Σ P_IT × 1 + Σ P_HVAC / derateFactor
+//                  = всё IT с весом 1 + механическая часть с весом 1/derate.
+//   overload = (load_effective > capacity).
+//
+// Пример: ИБП 100кВт + IT 60кВт + HVAC 30кВт + derate 0.7
+//   load_effective = 60 + 30/0.7 = 60 + 42.86 = 102.86 kW
+//   102.86 > 100 → overload (на 3%).
+// Раньше: capacity_eff = 100 × 0.7 = 70, load = 90. 90 > 70 → overload (на 22%).
 //
 // Поля на узле UPS:
 //   n.hvacDerateActive: boolean — пользователь явно включил derate
@@ -393,10 +403,8 @@ const HVAC_DERATE_DEFAULTS = {
   'GE':        0.75,
   '_default':  0.85,
 };
-export function effectiveUpsCapacity(n) {
-  if (!n) return 0;
-  const base = Number(n.capacityKw) || 0;
-  if (!n.hvacDerateActive) return base;
+export function upsHvacDerateFactor(n) {
+  if (!n || !n.hvacDerateActive) return 1.0;
   let factor = Number(n.hvacDerateFactor);
   if (!Number.isFinite(factor) || factor <= 0) {
     const vendor = String(n.manufacturer || '').trim();
@@ -404,8 +412,13 @@ export function effectiveUpsCapacity(n) {
       ? HVAC_DERATE_DEFAULTS[vendor]
       : HVAC_DERATE_DEFAULTS._default;
   }
-  factor = Math.max(0.3, Math.min(1.0, factor));
-  return base * factor;
+  return Math.max(0.3, Math.min(1.0, factor));
+}
+// Backward-compat: устаревший helper. Возвращает n.capacityKw — ИБП сохраняет
+// номинальную мощность независимо от типа нагрузки. Перегруз определяется
+// по weighted-load, см. recalc.js (n._loadKwWeighted).
+export function effectiveUpsCapacity(n) {
+  return Number(n && n.capacityKw) || 0;
 }
 
 // Мощность заряда ИБП по току в А (переход с chargeA на кВт для учёта в нагрузке)

@@ -6,7 +6,57 @@ import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
-         upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity } from './electrical.js';
+         upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity, upsHvacDerateFactor } from './electrical.js';
+import { CONSUMER_CATALOG } from './constants.js';
+
+// v0.59.607: HVAC-категории. Используется для weighted-нагрузки ИБП —
+// механическая нагрузка считается с весом 1/derateFactor.
+const _HVAC_TYPE_IDS = new Set(['motor', 'pump', 'fan', 'conditioner', 'elevator']);
+function _isHvacConsumer(n) {
+  if (!n || n.type !== 'consumer') return false;
+  if (_HVAC_TYPE_IDS.has(n.consumerType)) return true;
+  const cat = CONSUMER_CATALOG.find(x => x && x.id === n.consumerType);
+  return !!(cat && cat.category === 'hvac');
+}
+// Возвращает weighted-нагрузку ИБП с учётом HVAC-derate.
+// IT-часть считается 1×, механическая часть — 1/derate.
+// Если derate не активен — возвращает обычную сумму (=loadKw).
+function _computeUpsWeightedLoad(upsNode) {
+  if (!upsNode || upsNode.type !== 'ups') return 0;
+  const factor = upsHvacDerateFactor(upsNode);
+  if (factor >= 0.999) return Number(upsNode._loadKw) || 0;
+  let total = 0;
+  let totalIT = 0, totalHVAC = 0;
+  const visited = new Set([upsNode.id]);
+  const queue = [upsNode.id];
+  while (queue.length) {
+    const id = queue.shift();
+    for (const c of state.conns.values()) {
+      if (c.from?.nodeId !== id) continue;
+      if (c._state === 'damaged' || c._state === 'disabled' || c._state === 'dead') continue;
+      const next = state.nodes.get(c.to?.nodeId);
+      if (!next || visited.has(next.id)) continue;
+      visited.add(next.id);
+      // НЕ идём через другие ИБП — у них своя нагрузка, не наша.
+      if (next.type === 'ups' && next.id !== upsNode.id) continue;
+      if (next.type === 'consumer') {
+        const Pphys = (Number(next._loadKw) || 0)
+          || (consumerTotalDemandKw(next) * (Number(next.kUse) || 1) * effectiveLoadFactor(next));
+        if (_isHvacConsumer(next)) {
+          totalHVAC += Pphys;
+          total += Pphys / factor;
+        } else {
+          totalIT += Pphys;
+          total += Pphys;
+        }
+      }
+      queue.push(next.id);
+    }
+  }
+  upsNode._loadKwIT = totalIT;
+  upsNode._loadKwHVAC = totalHVAC;
+  return total;
+}
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 
@@ -1112,11 +1162,10 @@ function recalc() {
     if (!ai || ai.length === 0) continue;
 
     // Предварительная проверка байпаса ещё до пост-прохода статусов.
-    // v0.59.605: учитываем effectiveUpsCapacity (с HVAC-derate если применим).
-    const _effCap = effectiveUpsCapacity(n);
-    const overloadRatio = _effCap > 0
-      ? (n._loadKw || 0) / _effCap * 100
-      : 0;
+    // v0.59.607: weighted load (HVAC-derate per-load).
+    const cap0 = Number(n.capacityKw) || 0;
+    const wLoad0 = _computeUpsWeightedLoad(n);
+    const overloadRatio = cap0 > 0 ? (wLoad0 / cap0 * 100) : 0;
     const onBypass = n.staticBypass && (
       n.staticBypassForced ||
       (n.staticBypassAuto && overloadRatio > (Number(n.staticBypassOverloadPct) || 110))
@@ -1173,15 +1222,14 @@ function recalc() {
       n._powered = ai !== null;
       n._onBattery = ai !== null && ai.length === 0;
 
-      // Определяем, работает ли статический байпас.
-      // Возможно при: принудительном переключении или автоматическом по перегрузке
-      // (и только если ИБП получает питание со входа, не с батареи).
-      // v0.59.605: учитываем effectiveUpsCapacity (HVAC-derate).
-      const _effCap = effectiveUpsCapacity(n);
-      n._effectiveCapacityKw = _effCap;
-      const overloadRatio = _effCap > 0
-        ? (n._loadKw || 0) / _effCap * 100
-        : 0;
+      // v0.59.607: weighted load с HVAC-derate (per-load model). capacity
+      // ИБП НЕ уменьшается — derate применяется только к механической части.
+      // load_effective = Σ P_IT × 1 + Σ P_HVAC / derateFactor
+      const cap = Number(n.capacityKw) || 0;
+      const wLoad = _computeUpsWeightedLoad(n);
+      n._loadKwWeighted = wLoad;
+      n._effectiveCapacityKw = cap;
+      const overloadRatio = cap > 0 ? (wLoad / cap * 100) : 0;
       const shouldBypass = (
         n.staticBypass && !n._onBattery && n._powered &&
         (n.staticBypassForced || (n.staticBypassAuto && overloadRatio > (Number(n.staticBypassOverloadPct) || 110)))
@@ -1200,8 +1248,8 @@ function recalc() {
       } else {
         n._inputKw = 0;
       }
-      // v0.59.605: перегруз = нагрузка > эффективной capacity (с derate).
-      if (_effCap > 0 && n._loadKw > _effCap) n._overload = true;
+      // v0.59.607: перегруз = weighted load > capacity. wLoad учитывает HVAC.
+      if (cap > 0 && wLoad > cap) n._overload = true;
     }
   }
 
