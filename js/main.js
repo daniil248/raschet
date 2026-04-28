@@ -5978,10 +5978,22 @@ function renderConsumersTable() {
   let catalog = [];
   try { catalog = window.Raschet?.getConsumerCatalog?.() || []; } catch {}
   const catalogById = new Map(catalog.map(c => [c.id, c]));
+  // v0.59.639: engine-каталог (CONSUMER_CATALOG) — fallback когда у узла
+  // нет consumerCatalogId, но задан consumerSubtype. Раньше в таблице
+  // у таких узлов категория показывалась как «Прочее», хотя реально
+  // engine знает что server→it, motor→power и т.д. (юзер: «что за категория
+  // прочее?»).
+  const engineCatalogById = new Map((_CONSUMER_CATALOG || []).map(c => [c.id, c]));
+  const _resolveCatalogEntry = (n) => {
+    if (n.consumerCatalogId && catalogById.has(n.consumerCatalogId)) return catalogById.get(n.consumerCatalogId);
+    const sub = n.consumerSubtype || n.consumerType;
+    if (sub && engineCatalogById.has(sub)) return engineCatalogById.get(sub);
+    return null;
+  };
 
   const distinctCats = new Set();
   for (const n of consumers) {
-    const cat = catalogById.get(n.consumerCatalogId)?.category || 'other';
+    const cat = _resolveCatalogEntry(n)?.category || 'other';
     distinctCats.add(cat);
   }
   const CAT_LABELS = {
@@ -6010,7 +6022,7 @@ function renderConsumersTable() {
   const filtered = consumers.filter(n => {
     if (F.phase && (n.phase || '3ph') !== F.phase) return false;
     if (F.category) {
-      const cat = catalogById.get(n.consumerCatalogId)?.category || 'other';
+      const cat = _resolveCatalogEntry(n)?.category || 'other';
       if (cat !== F.category) return false;
     }
     // v0.59.634: фильтр по subtype.
@@ -6025,7 +6037,7 @@ function renderConsumersTable() {
     // v0.57.67: транзитивный фильтр — принадлежность к дереву щита-предка
     if (F.ancestorIds && !F.ancestorIds.has(n.id)) return false;
     if (q) {
-      const catLabel = catalogById.get(n.consumerCatalogId)?.label || '';
+      const catLabel = _resolveCatalogEntry(n)?.label || '';
       const pTag = parentPanelById0.get(n.id)
         ? (_effectiveTag(parentPanelById0.get(n.id)) || '')
         : '';
@@ -6044,7 +6056,7 @@ function renderConsumersTable() {
     switch (_consumersTableSort.col) {
       case 'tag': return (n.tag || n.name || '').toLowerCase();
       case 'name': return (n.name || '').toLowerCase();
-      case 'category': return (catalogById.get(n.consumerCatalogId)?.label || '').toLowerCase();
+      case 'category': return (_resolveCatalogEntry(n)?.label || '').toLowerCase();
       case 'parent': {
         const p = parentPanelById.get(n.id);
         return p ? (_effectiveTag(p) || p.tag || p.name || '').toLowerCase() : '~';
@@ -6180,7 +6192,9 @@ function renderConsumersTable() {
       <tbody>`];
 
   for (const n of filtered) {
-    const cat = catalogById.get(n.consumerCatalogId);
+    // v0.59.639: используем _resolveCatalogEntry — fallback на CONSUMER_CATALOG
+    // через consumerSubtype, чтобы не показывать «Прочее» там где известна категория.
+    const cat = _resolveCatalogEntry(n);
     const catLabel = cat?.label || '—';
     const catCat = cat?.category || 'other';
     const checked = _consumersTableSelected.has(n.id);
@@ -6646,11 +6660,19 @@ function exportConsumersTableCsv() {
   let catalog = [];
   try { catalog = window.Raschet?.getConsumerCatalog?.() || []; } catch {}
   const catalogById = new Map(catalog.map(c => [c.id, c]));
+  // v0.59.639: те же fallback-правила как в renderConsumersTable.
+  const engineCatalogById = new Map((_CONSUMER_CATALOG || []).map(c => [c.id, c]));
+  const _resolveCatalogEntry = (n) => {
+    if (n.consumerCatalogId && catalogById.has(n.consumerCatalogId)) return catalogById.get(n.consumerCatalogId);
+    const sub = n.consumerSubtype || n.consumerType;
+    if (sub && engineCatalogById.has(sub)) return engineCatalogById.get(sub);
+    return null;
+  };
   const consumers = [...S.nodes.values()].filter(n => n.type === 'consumer');
   // Phase 1.20.24: включаем «Питающий щит» в экспорт
   const rows = [['Обозначение', 'Имя', 'Питающий щит', 'Категория (тип)', 'Категория (функц.)', 'P, кВт', 'Кол-во', 'cos φ', 'Kи', 'Фаза', 'Iрасч, А']];
   for (const n of consumers) {
-    const cat = catalogById.get(n.consumerCatalogId);
+    const cat = _resolveCatalogEntry(n);
     let parentTag = '';
     for (const c of S.conns.values()) {
       if (c.to?.nodeId === n.id) {
