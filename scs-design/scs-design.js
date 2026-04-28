@@ -1086,12 +1086,15 @@ function renderLinksTab() {
   const drafts     = inProject.filter(r => !(getRackTag(r.id) || '').trim() && !(r.fromScheme || r.fromPorGroup));
   const chipHtml = r => {
     const on = selected.has(r.id);
-    const label = rackLabel(r);
-    // v0.59.581: × кнопка удаления стойки если она не задействована
-    // в других модулях (engine schema, scs-config contents и т.п.).
-    return `<label class="sd-rack-chip ${on ? 'on' : ''}" data-id="${r.id}">
+    const fullLabel = rackLabel(r);
+    // v0.59.594: в чипе показываем КОРОТКУЮ метку (тег / autoTag / id),
+    // полное название уходит в title-tooltip. Это умещает больше чипов
+    // в узкий сайдбар. До этого все чипы рендерились с моделью корпуса
+    // («SR01 · 600x1200x42U 2x32A3P Kehua»), занимая всю ширину sidebar'а.
+    const shortLabel = getRackShortLabel(r.id);
+    return `<label class="sd-rack-chip ${on ? 'on' : ''}" data-id="${r.id}" title="${escapeAttr(fullLabel)}">
       <input type="checkbox" ${on ? 'checked' : ''}>
-      <span>${escapeHtml(label)}</span>
+      <span>${escapeHtml(shortLabel)}</span>
       <button type="button" class="sd-rack-chip-del" data-del-id="${escapeAttr(r.id)}" title="Удалить стойку из проекта (только если не задействована в других модулях)" onclick="event.stopPropagation();event.preventDefault();" style="margin-left:6px;background:transparent;border:0;color:#b91c1c;cursor:pointer;font-size:14px;font-weight:bold;padding:0 4px">×</button>
     </label>`;
   };

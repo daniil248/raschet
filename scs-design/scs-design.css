@@ -17,11 +17,66 @@
   align-items: start;
 }
 .sd-links-side .sd-rack-picker {
+  /* v0.59.594: компактный layout в сайдбаре. Чипсы по 2 в ряд с переносом,
+     поиск + кнопки в один ряд. Раньше был flex-direction:column — каждый
+     чип растягивался во всю ширину, выглядело раздуто. */
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 4px;
   max-height: none;
   margin: 0;
+  font-size: 11px;
+}
+.sd-links-side .sd-picker-search {
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-basis: 100%;
+  margin-bottom: 6px;
+}
+.sd-links-side .sd-picker-search input[type="search"] {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.sd-links-side .sd-picker-search .muted,
+.sd-links-side .sd-picker-search button {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+.sd-links-side .sd-picker-search button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.sd-links-side .sd-rack-group {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.sd-links-side .sd-rack-group-h {
+  flex-basis: 100%;
+  font-size: 10px;
+  margin: 4px 0 2px;
+  white-space: normal;
+}
+.sd-links-side .sd-rack-chip {
+  /* В сайдбаре чипсы компактнее: меньше padding, шрифт 11px. Длинный
+     корпусный лейбл (600x1200…) обрезается через max-width + ellipsis. */
+  padding: 3px 8px;
+  font-size: 11px;
+  max-width: 100%;
+  border-radius: 12px;
+}
+.sd-links-side .sd-rack-chip > span:not(.sd-rack-chip-del) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.sd-links-side .sd-rack-chip-del {
+  margin-left: 2px !important;
+  font-size: 12px !important;
 }
 .sd-links-main { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .sd-racks-row .sd-rack-card.dragging-reorder {
