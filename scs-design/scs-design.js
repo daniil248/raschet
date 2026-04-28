@@ -790,6 +790,34 @@ function getContents(id) {
 }
 function getLinks() { const l = loadJson(LS_LINKS, []); return Array.isArray(l) ? l : []; }
 function setLinks(arr) { saveJson(LS_LINKS, arr); }
+
+// v0.59.599 (Phase 16.7): авто-пересчёт длин при изменении плана/стоек/трасс.
+// Юзер: «длина кабелей пересчитывается автоматически при изменении
+// расположения оборудования с портом или расположение стойки».
+//
+// Пропускаются связи с `link.lengthFrozen === true` (юзер задал вручную).
+// Возвращает количество обновлённых связей.
+function autoRecalcLengths(plan) {
+  try {
+    const p = plan || (typeof getPlan === 'function' ? getPlan() : null);
+    if (!p) return 0;
+    const links = getLinks();
+    let changed = 0;
+    for (const l of links) {
+      if (!l) continue;
+      if (l.lengthFrozen) continue;
+      const newLen = computeSuggestedLength(l, p);
+      if (newLen == null) continue;
+      const rounded = Math.round(newLen * 100) / 100;
+      if (l.lengthM !== rounded) {
+        l.lengthM = rounded;
+        changed++;
+      }
+    }
+    if (changed) setLinks(links);
+    return changed;
+  } catch (e) { console.warn('[scs-design] autoRecalcLengths failed:', e); return 0; }
+}
 /* v0.59.283: фантомные связи (endpoint на tpl-*, на стойку чужого проекта
    или на удалённое устройство) НЕ показываются в UI Проектирования СКС —
    отображаются только «действующие» кабели. В storage исходные записи
@@ -1984,7 +2012,26 @@ function renderLinksList() {
                 return `<div class="sd-link-warn" style="margin-top:4px;font-size:11px;color:#b91c1c" title="${escapeAttr(c.reason)}">⚠ ${escapeHtml(c.reason)}</div>`;
               })()}
             </td>
-            <td><input type="number" min="0" step="0.1" value="${l.lengthM == null ? '' : l.lengthM}" data-act="length" style="width:80px"></td>
+            <td>${(() => {
+              // v0.59.599 (Phase 16.8/16.9): 🔒/🔓 + tooltip с breakdown.
+              const breakdown = computeLengthBreakdown(l, plan);
+              const tt = breakdown
+                ? `Расчёт длины:\n`
+                  + `Внутри A: ${(breakdown.internalA_mm / 1000).toFixed(2)} м\n`
+                  + `По трассе: ${breakdown.routeM.toFixed(2)} м${breakdown.viaTray ? ' (через канал)' : ' (direct)'}\n`
+                  + `Внутри B: ${(breakdown.internalB_mm / 1000).toFixed(2)} м\n`
+                  + `Запас k=${breakdown.kRoute.toFixed(2)}\n`
+                  + `Итого ≈ ${breakdown.totalM.toFixed(2)} м${l.lengthFrozen ? ' (но используется ручное значение)' : ''}`
+                : '';
+              const lockTitle = l.lengthFrozen
+                ? 'Длина задана вручную (заблокирована от авто-пересчёта). Клик — снять блокировку.'
+                : 'Длина рассчитывается автоматически. Клик — заблокировать на текущем значении.';
+              const inpStyle = 'width:78px' + (l.lengthFrozen ? ';background:#fef3c7;border-color:#f59e0b' : '');
+              return `<div style="display:flex;align-items:center;gap:2px" title="${escapeAttr(tt)}">`
+                + `<input type="number" min="0" step="0.1" value="${l.lengthM == null ? '' : l.lengthM}" data-act="length" style="${inpStyle}">`
+                + `<button type="button" data-act="freeze-toggle" title="${escapeAttr(lockTitle)}" style="background:transparent;border:0;cursor:pointer;font-size:14px;padding:0 2px">${l.lengthFrozen ? '🔒' : '🔓'}</button>`
+                + `</div>`;
+            })()}</td>
             <td><input type="text" value="${escapeAttr(l.note || '')}" data-act="note" placeholder="—"></td>
             <td><button data-act="del" class="sd-btn-del" title="Удалить связь">✕</button></td>
           </tr>
@@ -2114,7 +2161,28 @@ function renderLinksList() {
     const id = tr.dataset.id;
     tr.querySelector('[data-act="cable"]').addEventListener('change', e => { updateLink(id, { cableType: e.target.value }); drawLinkOverlay(); });
     tr.querySelector('[data-act="length"]').addEventListener('change', e => {
-      const v = e.target.value; updateLink(id, { lengthM: v === '' ? null : +v });
+      const v = e.target.value;
+      // v0.59.599 (Phase 16.8): ручное редактирование длины автоматически
+      // ставит lengthFrozen=true чтобы значение не сбрасывалось при смене
+      // позиций. Снять можно кнопкой 🔓.
+      updateLink(id, { lengthM: v === '' ? null : +v, lengthFrozen: v !== '' });
+      renderLinksList();
+    });
+    // v0.59.599 (Phase 16.8): toggle freeze.
+    tr.querySelector('[data-act="freeze-toggle"]')?.addEventListener('click', () => {
+      const cur = getLinks().find(x => x.id === id);
+      if (!cur) return;
+      const newFrozen = !cur.lengthFrozen;
+      const patch = { lengthFrozen: newFrozen };
+      // Снимаем lock → пересчитываем длину автоматически.
+      if (!newFrozen) {
+        const plan = getPlan();
+        const auto = computeSuggestedLength(cur, plan);
+        if (auto != null) patch.lengthM = Math.round(auto * 100) / 100;
+      }
+      updateLink(id, patch);
+      renderLinksList();
+      renderBom();
     });
     tr.querySelector('[data-act="note"]').addEventListener('change', e => updateLink(id, { note: e.target.value }));
     tr.querySelector('[data-act="from-port"]')?.addEventListener('change', e => {
@@ -2519,6 +2587,11 @@ function savePlan(p) {
     redoStack.length = 0;
   } catch (_) { /* не блокируем запись из-за ошибки undo */ }
   saveJson(LS_PLAN, p);
+  // v0.59.599 (Phase 16.7): авто-пересчёт длин кабелей. Любое изменение
+  // плана (позиция стойки, добавление/удаление трассы, ресайз трассы)
+  // обновляет неfreeze'нутые `link.lengthM`. Try/catch чтобы не блокировать
+  // savePlan при ошибке.
+  try { autoRecalcLengths(p); } catch (e) { console.warn('[scs-design] auto recalc on savePlan failed:', e); }
 }
 function undoPlan() {
   if (!undoStack.length) { updateStatus('⚠ Нет действий для отмены.'); return; }
@@ -4406,6 +4479,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   setupTabs();
   const cleaned = sanitizeLinks();
+  // v0.59.599 (Phase 16.7): авто-пересчёт длин на старте — для случая
+  // когда другая вкладка/сессия двигала стойки/устройства, а текущие
+  // lengthM устарели. Пропускаем lengthFrozen.
+  try { autoRecalcLengths(); } catch {}
   renderLinksTab();
   // Esc — снять фокус с трассы на плане
   document.addEventListener('keydown', e => {
@@ -4615,7 +4692,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   window.addEventListener('storage', (e) => {
-    if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) renderLinksTab();
+    if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) {
+      renderLinksTab();
+      // v0.59.599 (Phase 16.7): cross-tab пересчёт длин при изменении
+      // содержимого стоек (другая вкладка двигает device.positionU,
+      // переименовывает стойку и т.п.).
+      if (e.key === LS_CONTENTS || e.key === LS_RACK) {
+        try { autoRecalcLengths(); } catch {}
+      }
+    }
   });
   // пересчёт линий при скролле ряда стоек, скролле юнитов внутри карточки и ресайзе окна
   document.getElementById('sd-racks-row')?.addEventListener('scroll', scheduleOverlay, true);
