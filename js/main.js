@@ -24,6 +24,7 @@ import {
   renderTablePresetUI as _renderTablePresetUI,
   attachTablePresetHandlers as _attachTablePresetHandlersShared,
   loadLastPresetId as _loadLastPresetId,
+  loadLastPresetState as _loadLastPresetState,
 } from '../shared/table-presets.js';
 import { listProjects as _listProjectCtx, createProject as _createProjectCtx } from '../shared/project-storage.js';
 import { state as _engineState } from './engine/state.js';
@@ -2852,6 +2853,7 @@ const _CABLE_TABLE_COLUMNS = [
 let _cableTableVisibility = _loadColumnVisibility('cable', _CABLE_TABLE_COLUMNS);
 // v0.59.633: id выбранного пресета таблицы кабелей.
 let _cableTableCurrentPreset = _loadLastPresetId('cable');
+let _cableTablePresetApplied = false; // v0.59.635
 
 const _CONSUMERS_TABLE_COLUMNS = [
   { id: 'checkbox', label: '(чекбокс)', required: true, default: true },
@@ -2881,8 +2883,9 @@ const _CONSUMERS_TABLE_COLUMNS = [
 ];
 let _consumersTableVisibility = _loadColumnVisibility('consumers', _CONSUMERS_TABLE_COLUMNS);
 // v0.59.633: id выбранного пресета (для отображения в UI). Загрузка стейта
-// из пресета — при монтировании таблицы (см. renderConsumersTable).
+// из пресета — при первом рендере таблицы (см. _autoApplyConsumersPreset).
 let _consumersTableCurrentPreset = _loadLastPresetId('consumers');
+let _consumersTablePresetApplied = false; // v0.59.635: гарант одного авто-apply
 
 const _EQUIPMENT_TABLE_COLUMNS = [
   { id: 'tag', label: 'Обозначение', default: true },
@@ -2901,6 +2904,7 @@ const _EQUIPMENT_TABLE_COLUMNS = [
 let _equipTableVisibility = _loadColumnVisibility('equipment', _EQUIPMENT_TABLE_COLUMNS);
 // v0.59.633: id выбранного пресета таблицы оборудования.
 let _equipTableCurrentPreset = _loadLastPresetId('equipment');
+let _equipTablePresetApplied = false; // v0.59.635
 
 function _ctNodeTag(n) {
   if (!n) return '?';
@@ -3184,6 +3188,17 @@ function _ctSortHdr(col, label, align, extraStyle, titleAttr) {
 }
 
 function renderCableTable() {
+  // v0.59.635: авто-apply пресета при первом рендере таблицы кабелей.
+  if (!_cableTablePresetApplied) {
+    _cableTablePresetApplied = true;
+    const st = _loadLastPresetState('cable');
+    if (st) {
+      if (st.columns) _cableTableVisibility = { ..._cableTableVisibility, ...st.columns };
+      if (st.filters) _cableTableFilters = { ..._cableTableFilters, ...st.filters };
+      if (st.sort) _cableTableSort = { ..._cableTableSort, ...st.sort };
+      _cableTableCurrentPreset = st.id;
+    }
+  }
   const mount = document.getElementById('cable-table-mount');
   if (!mount) return;
   const S = window.Raschet?._state;
@@ -5795,6 +5810,20 @@ function renderConsumersTable() {
   const S = window.Raschet?._state;
   if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
 
+  // v0.59.635: при первом рендере — авто-применение последнего использованного
+  // пресета. Юзер настроил «Только IT» и перезагрузил страницу — пресет
+  // должен восстановиться, а не сбрасываться к дефолту.
+  if (!_consumersTablePresetApplied) {
+    _consumersTablePresetApplied = true;
+    const st = _loadLastPresetState('consumers');
+    if (st) {
+      if (st.columns) _consumersTableVisibility = { ..._consumersTableVisibility, ...st.columns };
+      if (st.filters) _consumersTableFilters = { ..._consumersTableFilters, ...st.filters };
+      if (st.sort) _consumersTableSort = { ..._consumersTableSort, ...st.sort };
+      _consumersTableCurrentPreset = st.id;
+    }
+  }
+
   // v0.57.67: бейдж активного ancestor-фильтра (клик «💡 N» по щиту)
   const ancBadgeMount = document.getElementById('consumers-table-ancestor-badge');
   if (ancBadgeMount) {
@@ -6600,6 +6629,17 @@ function _equipKindLabel(kind) {
 }
 
 function renderEquipmentTable() {
+  // v0.59.635: авто-apply пресета при первом рендере таблицы оборудования.
+  if (!_equipTablePresetApplied) {
+    _equipTablePresetApplied = true;
+    const st = _loadLastPresetState('equipment');
+    if (st) {
+      if (st.columns) _equipTableVisibility = { ..._equipTableVisibility, ...st.columns };
+      if (st.filters) _equipTableFilters = { ..._equipTableFilters, ...st.filters };
+      if (st.sort) _equipTableSort = { ..._equipTableSort, ...st.sort };
+      _equipTableCurrentPreset = st.id;
+    }
+  }
   const mount = document.getElementById('equipment-table-mount');
   if (!mount) return;
   const S = window.Raschet?._state;

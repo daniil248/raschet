@@ -42,6 +42,24 @@ export function loadLastPresetId(tableId) {
   try { return localStorage.getItem(_TABLE_LASTPRESET_KEY(tableId)) || ''; } catch { return ''; }
 }
 
+// Возвращает { columns, filters, sort } из последнего использованного пресета
+// или null, если пресет не выбран / не найден. Удобно вызывать на старте
+// рендера таблицы, чтобы восстановить состояние, которое юзер настроил.
+export function loadLastPresetState(tableId) {
+  const id = loadLastPresetId(tableId);
+  if (!id) return null;
+  const list = loadTablePresets(tableId);
+  const p = list.find(x => x.id === id);
+  if (!p) return null;
+  return {
+    id,
+    name: p.name || '',
+    columns: p.columns || null,
+    filters: p.filters || null,
+    sort: p.sort || null,
+  };
+}
+
 export function saveLastPresetId(tableId, id) {
   try {
     if (id) localStorage.setItem(_TABLE_LASTPRESET_KEY(tableId), id);
