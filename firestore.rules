@@ -1,0 +1,103 @@
+rules_version = '2';
+
+// Raschet — правила безопасности Firestore.
+// Назначение: разрешить совместную работу над проектами схемы (presence,
+// locks, обновления scheme owner-ом и editor-ами), сохраняя строгий
+// контроль владельца.
+//
+// Деплой:
+//   1. Установить Firebase CLI:  npm install -g firebase-tools
+//   2. Авторизация:               firebase login
+//   3. Применить правила:         firebase deploy --only firestore:rules --project raschet-f1b2e
+//
+// Альтернативно — Firebase Console:
+//   https://console.firebase.google.com/project/raschet-f1b2e/firestore/rules
+//   Скопировать содержимое этого файла → Publish.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ================= userIndex =================
+    // Каталог email → uid для приглашений по почте.
+    // Каждый залогиненный пользователь читает каталог; писать/обновлять
+    // может только владелец конкретной email-записи (token.email == email).
+    match /userIndex/{email} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.email == email;
+    }
+
+    // ================= projects =================
+    // Хранит схемы проектов (state.json + метаданные доступа).
+    match /projects/{projectId} {
+
+      // READ: владелец, любой участник из memberUids, или (если visibility='link')
+      // любой залогиненный пользователь, имеющий ссылку.
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        request.auth.uid in resource.data.memberUids ||
+        resource.data.visibility == 'link'
+      );
+
+      // CREATE: любой залогиненный, но только со своим ownerId в документе.
+      // (Защита от спама и от попыток чужого user'а создать документ от имени другого.)
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid;
+
+      // UPDATE: владелец — всё. Editor — ТОЛЬКО поля 'scheme' и 'updatedAt'
+      // (т.е. saving схемы), но не может менять права/owner/visibility.
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid
+        ||
+        (
+          request.auth.uid in resource.data.memberUids
+          && resource.data.members[request.auth.uid].role == 'editor'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scheme', 'updatedAt'])
+        )
+      );
+
+      // DELETE: только владелец.
+      allow delete: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+
+      // ================= presence (аватары онлайн-пользователей) =================
+      // Подколлекция projects/{projectId}/presence/{uid}.
+      // Хранит lastSeen + cursor (где смотрит пользователь). Heartbeat каждые
+      // 15-30 секунд из клиента.
+      match /presence/{uid} {
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid ||
+          request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.memberUids ||
+          get(/databases/$(database)/documents/projects/$(projectId)).data.visibility == 'link'
+        );
+        // Писать в presence/{uid} может только сам пользователь uid.
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // ================= locks (живые блокировки узлов/связей) =================
+      // Подколлекция projects/{projectId}/locks/{lockId}.
+      // При начале редактирования узла N клиент ставит локк locks/{N};
+      // другие клиенты видят значок «🔒 редактирует <user>» и блокируют свой UI.
+      match /locks/{lockId} {
+        allow read, write: if request.auth != null && (
+          get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid ||
+          request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.memberUids
+        );
+      }
+    }
+
+    // ================= accessRequests =================
+    // Запрос доступа от пользователя к чужому проекту (по ссылке).
+    // Создаёт сам requester (только со своим uid). Видит — owner и сам requester.
+    // Удалить — только owner (после approve/reject).
+    match /accessRequests/{reqId} {
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.requesterUid == request.auth.uid
+      );
+      allow create: if request.auth != null
+        && request.resource.data.requesterUid == request.auth.uid;
+      allow delete: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}
