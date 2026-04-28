@@ -3964,24 +3964,33 @@ function renderCableTable() {
   if (brkBtn) brkBtn.addEventListener('click', () => _openBulkCableDialog('breaker', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
   const curveBtn = mount.querySelector('#ct-bulk-curve');
   if (curveBtn) curveBtn.addEventListener('click', () => _openBulkCableDialog('curve', filtered, allMarks, byCat, CAT_LABEL, bulkApply));
-  // v0.59.636: bulk-edit материал / изоляция / ambient.
+  // v0.59.636/647: bulk-edit материал / изоляция через select-picker.
   const matBtn = mount.querySelector('#ct-bulk-material');
   if (matBtn) matBtn.addEventListener('click', async () => {
-    const v = await rsPrompt('Установить материал (Cu / Al; пусто = снять):', '');
+    const v = await rsPickOne('Установить материал кабеля для выделенных:', [
+      { value: 'Cu', label: 'Cu — медь' },
+      { value: 'Al', label: 'Al — алюминий' },
+    ], '', { emptyLabel: '— авто (по дефолту проекта) —' });
     if (v == null) return;
-    const raw = String(v).trim();
-    if (raw === '') { bulkApply((c) => { delete c.material; }); return; }
-    if (!['Cu', 'Al'].includes(raw)) { flash('Допустимы только Cu или Al', 'error'); return; }
-    bulkApply((c) => { c.material = raw; });
+    bulkApply((c) => {
+      if (v) c.material = v;
+      else delete c.material;
+    });
   });
   const insBtn = mount.querySelector('#ct-bulk-insulation');
   if (insBtn) insBtn.addEventListener('click', async () => {
-    const v = await rsPrompt('Установить изоляцию (PVC / XLPE / EPR / FRLS / LSZH; пусто = снять):', '');
+    const v = await rsPickOne('Установить изоляцию кабеля для выделенных:', [
+      { value: 'PVC', label: 'PVC — поливинилхлорид (90 °C)' },
+      { value: 'XLPE', label: 'XLPE — сшитый полиэтилен (90 °C)' },
+      { value: 'EPR', label: 'EPR — этилен-пропилен (90 °C)' },
+      { value: 'FRLS', label: 'FRLS — огнестойкая, малодымная' },
+      { value: 'LSZH', label: 'LSZH — без галогенов, малодымная' },
+    ], '', { emptyLabel: '— авто (по дефолту проекта) —' });
     if (v == null) return;
-    const raw = String(v).trim().toUpperCase();
-    if (raw === '') { bulkApply((c) => { delete c.insulation; }); return; }
-    if (!['PVC', 'XLPE', 'EPR', 'FRLS', 'LSZH'].includes(raw)) { flash('Неверная изоляция', 'error'); return; }
-    bulkApply((c) => { c.insulation = raw; });
+    bulkApply((c) => {
+      if (v) c.insulation = v;
+      else delete c.insulation;
+    });
   });
   const ambBtn = mount.querySelector('#ct-bulk-ambient');
   if (ambBtn) ambBtn.addEventListener('click', async () => {
