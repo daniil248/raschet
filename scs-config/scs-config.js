@@ -757,14 +757,41 @@ function renderContents() {
       }, 0);
       const kw = totalW / 1000;
       const demand = +r.demandKw || 0;
+      // v0.59.596: вычисляем макс. мощность стойки = Σ номинала PDU
+      // (запрос юзера feedback_rack_power.md: «максимальная зависит только
+      // от мощности размещенных PDU»). 1ф PDU: rating × 230 V; 3ф PDU:
+      // rating × 400 × √3 ≈ rating × 693 V_eff. Без учёта косинуса (запас).
+      let pduMaxKw = 0;
+      if (Array.isArray(r.pdus)) {
+        for (const p of r.pdus) {
+          const qty = Math.max(1, +p.qty || 1);
+          const rating = +p.rating || 0;
+          if (!rating) continue;
+          const phases = +p.phases || 1;
+          const w = phases === 3 ? rating * 400 * 1.7320508 : rating * 230;
+          pduMaxKw += (w * qty) / 1000;
+        }
+      }
       const pct = demand ? Math.round((kw / demand) * 100) : null;
-      pwEl.textContent = demand
-        ? `факт ${kw.toFixed(2)} / запрос ${demand.toFixed(2)} кВт (${pct}%)`
-        : `факт ${totalW} Вт · запрос не задан`;
-      pwEl.style.color = (pct != null && pct > 100) ? '#b91c1c' : (pct != null && pct > 80) ? '#c2410c' : '';
-      pwEl.title = demand
-        ? `Фактически (Σ powerW устройств в стойке) = ${totalW} Вт = ${kw.toFixed(2)} кВт.\nЗапрошено (demandKw, от технолога) = ${demand} кВт.\nРасчёт кабеля/автомата ведётся по запрошенной (это авторитет).\nИспользование = ${pct}% (если >100% — стойка перегружена относительно запроса).`
-        : `Σ powerW = ${totalW} Вт (demandKw не задан — для virtual из POR-группы это перенесено из demandKwPerUnit).`;
+      const pctMax = pduMaxKw ? Math.round((kw / pduMaxKw) * 100) : null;
+      const parts = [];
+      parts.push(`факт ${kw.toFixed(2)}`);
+      parts.push(`запрос ${demand.toFixed(2)} кВт${pct != null ? ` (${pct}%)` : ''}`);
+      if (pduMaxKw) parts.push(`макс PDU ${pduMaxKw.toFixed(2)} кВт${pctMax != null ? ` (${pctMax}%)` : ''}`);
+      pwEl.textContent = parts.join(' · ');
+      // подсветка: красный если >100% любого из лимитов
+      const overDemand = pct != null && pct > 100;
+      const overMax    = pctMax != null && pctMax > 100;
+      pwEl.style.color = (overDemand || overMax) ? '#b91c1c'
+        : (pct != null && pct > 80) ? '#c2410c' : '';
+      pwEl.title =
+        `Фактически (Σ powerW устройств) = ${totalW} Вт = ${kw.toFixed(2)} кВт.\n` +
+        `Запрошено (rack.demandKw, проектная средняя) = ${demand} кВт. ` +
+        `Расчёт кабеля/автомата ведётся по запрошенной (это авторитет).\n` +
+        (pduMaxKw
+          ? `Макс по PDU (Σ номинала всех PDU × qty) = ${pduMaxKw.toFixed(2)} кВт. ` +
+            `Превышение → PDU не выдержат пиковую нагрузку.`
+          : `PDU не размещены — макс. мощность не вычислена.`);
     } else {
       pwEl.textContent = '—';
       pwEl.style.color = '';
