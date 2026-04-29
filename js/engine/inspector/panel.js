@@ -485,7 +485,11 @@ export function openPanelParamsModal(n) {
     // parallel (все входы проходят на все выходы), но без защиты/kSim/запаса
     // (в BOM — клеммник + маленькая коробка, а не НКУ с автоматами).
     smOpts += `<option value="terminal"${sm === 'terminal' ? ' selected' : ''}>Клеммная коробка</option>`;
-    h.push(field('Тип щита', `<select id="pp-switchMode">${smOpts}</select>`));
+    // v0.59.698: helpIcon про режимы работы щита.
+    h.push(`<div class="field">
+      <label>Тип щита${helpIcon('Щит — обычный распределительный с одним вводом или несколькими параллельными. АВР — автоматическое включение резерва (переключение основной/резервный ввод). Многосекционный — несколько изолированных секций с секционными выключателями (СВ). АВР с привязкой — резерв «пара к паре» в крупных установках. Подменный — холодный резерв. Watchdog — автоматическое восстановление при отказе. Клеммная коробка — пассивный пассaжный узел без защиты.')}</label>
+      <select id="pp-switchMode">${smOpts}</select>
+    </div>`);
   }
 
   const isSectioned = sm === 'sectioned';
@@ -495,12 +499,20 @@ export function openPanelParamsModal(n) {
   if (!isSectioned && !n.isMv) {
     if (isTerminal) {
       // v0.59.328: клеммная коробка — 1:1 passthrough, inputs===outputs.
-      h.push(field('Количество цепей', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`));
-      h.push(`<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px">Каждый вход идёт на свой выход (клеммное соединение). Количество входов = количество выходов.</div>`);
+      h.push(`<div class="field">
+        <label>Количество цепей${helpIcon('Число параллельных цепей в клеммной коробке. Каждый вход i проходит насквозь на выход i (1:1 клеммное соединение). Перемычки между входами допустимы только до защитных аппаратов; распределение нагрузки между цепями не делается.')}</label>
+        <input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">
+      </div>`);
     } else {
       h.push('<div style="display:flex;gap:12px">');
-      h.push('<div style="flex:1">' + field('Входов', `<input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">`) + '</div>');
-      h.push('<div style="flex:1">' + field('Выходов', `<input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">`) + '</div>');
+      h.push(`<div style="flex:1"><div class="field">
+        <label>Входов${helpIcon('Количество вводных линий (фидеров) в щит. 1 — обычный одиночный ввод. 2+ — для АВР (основной + резервный) или параллельной работы. Для Tier-сертификации обычно требуется 2+ независимых ввода с АВР.')}</label>
+        <input type="number" id="pp-inputs" min="1" max="30" step="1" value="${n.inputs}">
+      </div></div>`);
+      h.push(`<div style="flex:1"><div class="field">
+        <label>Выходов${helpIcon('Количество отходящих линий (групповых автоматов). Соответствует числу подключаемых нагрузок / нижестоящих щитов. При меньшем количестве отходящих автоматов в реальности — оставшиеся выходы можно оставить как «резерв» в схеме.')}</label>
+        <input type="number" id="pp-outputs" min="1" max="30" step="1" value="${n.outputs}">
+      </div></div>`);
       h.push('</div>');
     }
     // v0.59.326: клеммная коробка не имеет автоматов, Ксим, запаса — только
@@ -609,8 +621,9 @@ export function openPanelParamsModal(n) {
       if (hasAVR) {
         // Приоритеты — только для стандартного АВР (auto)
         if (sm === 'auto') {
-          h.push('<h4 style="margin:12px 0 8px">Приоритеты входов</h4>');
-          h.push('<div class="muted" style="font-size:10px;margin-bottom:6px">1 = высший. Равные = параллельная работа.</div>');
+          // v0.59.698: пояснение про приоритеты в helpIcon на h4.
+          const _prioTip = '1 = высший приоритет (основной ввод). Низшие — резервные. При отказе основного автоматически включается следующий по приоритету. Равные приоритеты — параллельная работа (нагрузка делится поровну, оба ввода активны одновременно).';
+          h.push(`<h4 style="margin:12px 0 8px">Приоритеты входов${helpIcon(_prioTip)}</h4>`);
           h.push('<div style="display:flex;gap:8px;flex-wrap:wrap">');
           for (let i = 0; i < (n.inputs || 0); i++) {
             const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
