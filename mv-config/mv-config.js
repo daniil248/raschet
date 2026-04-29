@@ -159,6 +159,58 @@ function _fillStep1() {
   document.getElementById('mv-cellsCount').value = rq.cellsCount;
   document.getElementById('mv-IP').value = rq.IP;
   document.getElementById('mv-arcProof').checked = rq.arcProof;
+  // v0.59.732: bidirectional sync для mv-loadA ↔ mv-loadMW.
+  // 3ф: P[МВт] = √3 × U[кВ] × I[А] × cos φ / 1000.
+  // P в МВт удобнее для MV — типичные нагрузки сотни киловатт ~ единицы МВт.
+  _wireMvLoadFields();
+}
+
+let _mvLoadWired = false;
+function _wireMvLoadFields() {
+  if (_mvLoadWired) { _syncMvFromA(); return; }
+  _mvLoadWired = true;
+  const aEl = document.getElementById('mv-loadA');
+  const mwEl = document.getElementById('mv-loadMW');
+  const uEl = document.getElementById('mv-Un');
+  if (!aEl || !mwEl || !uEl) return;
+  let _syncing = false;
+  const COS = 0.9; // типичный для MV
+  // I → P
+  aEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      const a = Number(aEl.value) || 0;
+      const u = Number(uEl.value) || 10;
+      const mw = a > 0 ? (Math.sqrt(3) * u * a * COS) / 1000 : 0;
+      mwEl.value = mw > 0 ? mw.toFixed(3).replace(/\.?0+$/, '') : '';
+    } finally { _syncing = false; }
+  });
+  // P → I
+  mwEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      const mw = Number(mwEl.value) || 0;
+      const u = Number(uEl.value) || 10;
+      const a = mw > 0 ? (mw * 1000) / (Math.sqrt(3) * u * COS) : 0;
+      aEl.value = a > 0 ? a.toFixed(0) : '';
+    } finally { _syncing = false; }
+  });
+  uEl.addEventListener('change', _syncMvFromA);
+  _syncMvFromA();
+}
+function _syncMvFromA() {
+  const aEl = document.getElementById('mv-loadA');
+  const mwEl = document.getElementById('mv-loadMW');
+  const uEl = document.getElementById('mv-Un');
+  if (!aEl || !mwEl || !uEl) return;
+  const a = Number(aEl.value) || 0;
+  const u = Number(uEl.value) || 10;
+  const COS = 0.9;
+  const mw = a > 0 ? (Math.sqrt(3) * u * a * COS) / 1000 : 0;
+  mwEl.value = mw > 0 ? mw.toFixed(3).replace(/\.?0+$/, '') : '';
+}
   // Phase 1.19.13: если lockedId — блокируем выбор типа РУ и показываем
   // плашку «Зафиксировано производителем/серией из проекта».
   if (wizState.lockedManufacturer || wizState.lockedSeries) {

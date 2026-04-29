@@ -131,7 +131,10 @@
               <option value="35">35 кВ</option>
             </select>
           </label>
+          <!-- v0.59.732: парные поля Ток + Мощность с двунаправленным
+               пересчётом (через √3 × U × cos φ для MV — обычно 3ф). -->
           <label>Расчётный ток, A<input type="number" id="mv-loadA" min="0" step="10"></label>
+          <label>Расчётная мощность, МВт<input type="number" id="mv-loadMW" min="0" step="0.1"></label>
           <label>Ток шин (In), A
             <select id="mv-In">
               <option value="400">400</option>
