@@ -425,13 +425,16 @@ export function openConsumerParamsModal(n) {
     const ovVal = (typeof n.crfOverride === 'number' && Number.isFinite(n.crfOverride)) ? String(n.crfOverride) : '';
     const isCustom = curStarter === 'custom';
     const customStyle = isCustom ? '' : 'display:none';
+    // v0.59.701: helpIcon для K_рез — справочный текст в tooltip.
     h.push(`<div id="cp-crfOverride-wrap" class="field" style="${customStyle}">
-      <label style="text-transform:uppercase;font-size:11px;color:#666">Свой K_рез (0.30–1.00)${_lkIcon}</label>
+      <label style="text-transform:uppercase;font-size:11px;color:#666">Свой K_рез (0.30–1.00)${_lkIcon}${helpIcon('K_рез — доля номинала ИБП, реально требуемая нагрузке. Приоритет: «Пользовательский» (свой K) > выбранный тип пуска > default по подтипу из каталога > 1.00. На обычной сети (без ИБП) — параметр игнорируется. Применяется только в схемах с ИБП для оценки фактической загрузки инвертора.')}</label>
       <input type="number" id="cp-crfOverride" min="0.30" max="1.00" step="0.01" value="${ovVal}" placeholder="например 0.85"${_lk}>
     </div>`);
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px;line-height:1.4">K_рез = доля номинала, реально требуемая нагрузке на ИБП. Приоритет: «Пользовательский» (свой K) > выбранный тип пуска > default по подтипу из каталога > 1.00. На обычной сети (без ИБП) — игнорируется.</div>`);
   }
-  h.push(field('Входов', `<input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">`));
+  h.push(`<div class="field">
+    <label>Входов${helpIcon('Количество вводов питания у этого потребителя. 1 — обычное одиночное подключение. 2 — две независимые линии (например, СКС-стойка с двойным вводом A/B для резервирования). При 2 портах в схеме — оба должны быть подключены к разным фидерам.')}</label>
+    <input type="number" id="cp-inputs" min="1" max="2" step="1" value="${Math.min(n.inputs || 1, 2)}">
+  </div>`);
   // Наличие нейтрали (N) и защитного проводника (PE) у этого
   // потребителя. Если флаги не заданы (undefined) — берутся дефолты
   // по системе заземления питающего щита или GLOBAL.earthingSystem.
@@ -440,7 +443,7 @@ export function openConsumerParamsModal(n) {
     const hasN = (typeof n.hasNeutral === 'boolean') ? n.hasNeutral : null;
     const hasG = (typeof n.hasGround  === 'boolean') ? n.hasGround  : null;
     const triState = (val) => val === null ? 'auto' : (val ? 'on' : 'off');
-    h.push('<div class="field"><label style="text-transform:uppercase;font-size:11px;color:#666">Жилы кабеля</label>');
+    h.push(`<div class="field"><label style="text-transform:uppercase;font-size:11px;color:#666">Жилы кабеля${helpIcon('Наличие нейтрали (N) и защитного проводника (PE) у потребителя. «Авто» — определяется по системе заземления питающего щита (TN-S → 5 жил, TN-C → 4 жилы и т.д.). «Есть/Нет» — ручное переопределение для нестандартных подключений (например, симметричная 3ф нагрузка без N: 4 жилы вместо 5).')}</label>`);
     h.push('<div style="display:flex;gap:8px;flex-wrap:wrap">');
     h.push(`<select id="cp-hasNeutral" style="flex:1">
         <option value="auto"${triState(hasN)==='auto'?' selected':''}>N: авто</option>
@@ -453,7 +456,6 @@ export function openConsumerParamsModal(n) {
         <option value="off"${triState(hasG)==='off'?' selected':''}>PE: нет</option>
       </select>`);
     h.push('</div>');
-    h.push('<div class="muted" style="font-size:10px;margin-top:4px">Авто — от системы заземления питающего щита. Фазность берётся из уровня напряжения.</div>');
     h.push('</div>');
   }
 

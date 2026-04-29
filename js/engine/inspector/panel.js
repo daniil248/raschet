@@ -757,9 +757,10 @@ export function openPanelParamsModal(n) {
     const QcompWorst = Math.max(0, Pw * (tanWorst - tanTar));
     const QcompMax   = Math.max(QcompCur, QcompWorst);
     const hasUpsBypassDelta = Math.abs(Qw - Q) > 0.05;
-    h.push('<h4 style="margin:18px 0 6px;color:#0c4a6e">🔋 УРКМ — компенсация реактивной мощности</h4>');
-    h.push(`<div class="muted" style="font-size:11px;margin-bottom:6px;line-height:1.45">Включи флаг для щита, который физически содержит конденсаторную батарею (обычно ГРЩ / РУ 0,4 кВ — главный щит после трансформатора). Расчёт ведётся по downstream-нагрузкам с этого щита, в текущем и worst-case режимах (все ИБП в байпасе).</div>`);
-    h.push(`<div class="field check"><input type="checkbox" id="pp-ukrm-active"${ukrmActive ? ' checked' : ''}><label>Точка установки УРКМ (этот щит — ГРЩ)</label></div>`);
+    // v0.59.701: helpIcon на h4 секции УРКМ.
+    const _ukrmTip = 'УРКМ (Установка компенсации реактивной мощности) — конденсаторная батарея, повышающая cos φ. Применяется для уменьшения штрафов от энергоснабжающей организации (за низкий cos φ) и снижения нагрузки на трансформатор. Устанавливается на ГРЩ / РУ 0,4 кВ — главном щите после трансформатора. Расчёт ведётся по downstream-нагрузкам с этого щита в текущем режиме и в режиме сервисного байпаса ИБП.';
+    h.push(`<h4 style="margin:18px 0 6px;color:#0c4a6e">🔋 УРКМ — компенсация реактивной мощности${helpIcon(_ukrmTip)}</h4>`);
+    h.push(`<div class="field check"><input type="checkbox" id="pp-ukrm-active"${ukrmActive ? ' checked' : ''}><label>Точка установки УРКМ (этот щит — ГРЩ)${helpIcon('Установите флаг для щита, в котором физически смонтирована конденсаторная батарея. Обычно это ГРЩ или РУ 0,4 кВ непосредственно после понижающего трансформатора. На других щитах УРКМ обычно не ставится — это нерационально по топологии.')}</label></div>`);
     if (ukrmActive) {
       h.push(`<div class="field">
         <label>Целевой cos φ (по ТУ)${helpIcon('Целевой коэффициент мощности после компенсации, обычно задаётся в ТУ от энергоснабжающей организации. Стандарт: 0.95 (мелкие/средние потребители) или 0.99 (крупные).')}</label>
