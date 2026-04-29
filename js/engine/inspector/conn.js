@@ -129,12 +129,28 @@ export function renderInspectorConn(c) {
     // линии с большой потерей. Цветовая индикация по уровню падения.
     const _segDrop = Number(c._deltaUSegPct) || 0;
     const _vNom = Number(c._voltage) || 0;
-    const _vEnd = _vNom * (1 - _segDrop / 100);
+    // v0.59.741: cumulative ΔU от источника до конца этого сегмента.
+    // Берётся из to-узла (там уже накоплено), либо вычисляется как
+    // upstream(from) + segment(this). Для внутренних связей ИБП
+    // segment=0, и cumulative наследуется от приходящего кабеля
+    // (см. nodeDeltaU в recalc.js).
+    const _toN = state.nodes.get(c.to.nodeId);
+    const _fromN = state.nodes.get(c.from.nodeId);
+    const _cumDrop = (_toN && Number.isFinite(_toN._deltaUPct))
+      ? Number(_toN._deltaUPct)
+      : ((_fromN && Number.isFinite(_fromN._deltaUPct) ? Number(_fromN._deltaUPct) : 0) + _segDrop);
+    const _vEnd = _vNom * (1 - _cumDrop / 100);
     const _segColor = _segDrop <= 1 ? '#15803d'
       : _segDrop <= 3 ? '#0369a1'
       : _segDrop <= 5 ? '#ca8a04'
       : '#b91c1c';
+    const _cumColor = _cumDrop <= 3 ? '#15803d'
+      : _cumDrop <= 5 ? '#0369a1'
+      : _cumDrop <= 8 ? '#ca8a04'
+      : '#b91c1c';
     const _segDropTip = 'Падение напряжения на ЭТОМ сегменте линии (от начала до конца кабеля). Считается по формуле ΔU = √3 × I × (R cos φ + X sin φ) × L для 3ф или 2 × I × (R cos φ + X sin φ) × L для 1ф (R и X — погонные сопротивление/реактивность кабеля, L — длина). Норма по IEC 60364-5-525: ≤ 5% от источника до конца. На одном сегменте обычно ≤ 1–3%.';
+    const _cumDropTip = 'Накопленное падение напряжения от источника питания до конца этого сегмента. Сумма ΔU всех сегментов вверх по цепи. Для внутренних связей интегрированного ИБП — наследуется от приходящего на ИБП кабеля (внутренние шины считаются нулевой длины). Норма по IEC 60364-5-525: ≤ 5% от источника до самой дальней точки потребления.';
+    const _isInternalConn = !!c._isInternalIntegrated;
     h.push(`<div style="font-size:12px;line-height:1.8">` +
       (_par > 1 ? `Линий: <b>${_par}</b><br>` : '') +
       `Текущая P: <b>${fmt(kwPerLine)} kW</b><br>` +
@@ -142,9 +158,13 @@ export function renderInspectorConn(c) {
       `Расчётный I: <b>${fmt(maxPerLine)} A</b> <span class="muted">(по макс. нагрузке)</span><br>` +
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
       `Напряжение: <b>${_vNom || '-'} В</b>` +
-      (_vNom > 0 && _segDrop > 0
-        ? `<br>ΔU на сегменте: <b style="color:${_segColor}">${_segDrop.toFixed(2)}%</b> ${helpIcon(_segDropTip)}` +
-          `<br>U на конце: <b style="color:${_segColor}">${_vEnd.toFixed(1)} В</b>`
+      (_vNom > 0 && (_segDrop > 0 || _cumDrop > 0)
+        ? (_isInternalConn
+            ? `<br><span class="muted" style="font-size:11px">Внутренняя шина ИБП: ΔU=0 (нулевая длина)</span>`
+            : (_segDrop > 0 ? `<br>ΔU на сегменте: <b style="color:${_segColor}">${_segDrop.toFixed(2)}%</b> ${helpIcon(_segDropTip)}` : '')
+          ) +
+          (_cumDrop > 0 ? `<br>ΔU от источника: <b style="color:${_cumColor}">${_cumDrop.toFixed(2)}%</b> ${helpIcon(_cumDropTip)}` : '') +
+          `<br>U на конце: <b style="color:${_cumColor}">${_vEnd.toFixed(1)} В</b>`
         : '') +
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div>`);
@@ -248,6 +268,11 @@ export function renderInspectorConn(c) {
           const _freeNote = (Number.isFinite(_freeA) && _freeA > 0)
             ? `<br>6) Свободно (резерв) на линию: <b>${fmt(_freeKw || 0)} кВт · ${fmt(_freeA)} А</b> — лимитирует <b>${_freeLimit === 'cable' ? 'кабель (Iz)' : 'автомат (In)'}</b>.`
             : '';
+          // v0.59.741: пометка о бампе по ΔU — показывает, что сечение увеличено
+          // выше требуемого ампасити, чтобы уложиться в IEC 60364-5-525 (≤5%).
+          const _vdNote = c._cableSizeBumpedByVdrop && c._cableSizeBumpedFromS
+            ? `<br>6) <b>Падение напряжения:</b> при ампасити-сечении <b>${c._cableSizeBumpedFromS} мм²</b> ΔU превышало норму, поэтому сечение увеличено до <b>${c._cableSize} мм²</b> (ΔU=<b>${(c._cableVdropPct||0).toFixed(2)}%</b> ≤ ${Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5}% по IEC 60364-5-525).`
+            : (Number.isFinite(c._cableVdropPct) ? `<br>6) Падение напряжения на сегменте: ΔU=<b>${c._cableVdropPct.toFixed(2)}%</b> (норма ≤ ${Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5}%).` : '');
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
             <b>Как подбирался кабель:</b><br>
             1) Линий — <b>${par}</b> (по одной на потребитель, у каждой свой автомат)<br>
@@ -255,7 +280,7 @@ export function renderInspectorConn(c) {
             ${brkRef ? `3) Координация с автоматом линии: Iz ≥ In, требуется Iz ≥ <b>${brkRef} А</b><br>` : ''}
             4) Коэффициенты условий прокладки: Kt=${(c._cableKt||1).toFixed(2)}, Kg=${(c._cableKg||1).toFixed(2)}, K=${(c._cableKtotal||1).toFixed(3)}<br>
             5) Для ${methodLabel} выбрано ближайшее стандартное сечение одной линии <b>${c._cableSize} мм²</b>, дающее Iz=<b>${fmt(Iz)} А</b><br>
-            Правило: Iрасч_линии ≤ Iz и In_линии ≤ Iz.${_freeNote}
+            Правило: Iрасч_линии ≤ Iz и In_линии ≤ Iz.${_vdNote}${_freeNote.replace(/^<br>6\)/, '<br>7)')}
           </div>`);
         } else {
           // v0.59.679: симметричная строка про «Свободно» для одиночной /

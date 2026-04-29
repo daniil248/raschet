@@ -2135,6 +2135,66 @@ function recalc() {
         c._cableKt = sel.kT;
         c._cableKg = sel.kG;
         c._cableKtotal = sel.kT * sel.kG;
+        c._cableSizeBumpedByVdrop = false;
+        c._cableSizeBumpedFromS  = null;
+        c._cableVdropPct          = null;
+
+        // v0.59.741: ампасити-подбор может пройти, но падение напряжения на длинной
+        // линии будет превышать норму IEC 60364-5-525 (≤5%) / ПУЭ 1.2.22.
+        // Проверяем ΔU для выбранного сечения и, если не укладываемся, увеличиваем
+        // сечение до минимального стандартного, проходящего по ΔU. Это первичное
+        // решение — подбор учитывает ОБА критерия (ампасити и vdrop), а не только
+        // ампасити как раньше.
+        // Исключения:
+        //   - HV-кабели: для них ΔU считается отдельно через HV_TABLES, а длины
+        //     линий обычно меньше критических.
+        //   - Внутренние связи интегрированного ИБП (_isInternalIntegrated):
+        //     это заводские шины, физическая длина = 0, на схеме они только
+        //     для визуализации топологии. ΔU для них = 0 по определению, и
+        //     downstream-узлы наследуют ΔU от приходящего на ИБП кабеля
+        //     через накопительный nodeDeltaU (см. ниже).
+        if (sel.s > 0 && !c._isHV && !c._isInternalIntegrated) {
+          const _vdropMaxPct = Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5;
+          const _segLen = Number(c._cableLength || c.lengthM || 0);
+          if (_segLen > 0 && _vdropMaxPct > 0) {
+            const _phases = c._threePhase ? 3 : 1;
+            const _isDC = !!c._isDC;
+            const _U = Number(c._voltage) || 400;
+            const _cosPhi = Number(c._cosPhi) || 0.92;
+            const _maxA = Number(c._maxA) || 0;
+            const _par = Math.max(1, c._cableParallel || 1);
+            const _vd = calcVoltageDrop(_maxA, sel.s, material, _segLen, _U, _phases, _cosPhi, _par, _isDC);
+            c._cableVdropPct = _vd.dUpct;
+            if (_vd.dUpct > _vdropMaxPct) {
+              // Ищем минимальное сечение ≥ текущего, проходящее по ΔU.
+              // availableSizes возвращает стандартный ряд для этой методики.
+              try {
+                const _calcMethod = getMethod(GLOBAL.calcMethod || 'iec');
+                const _sizes = _calcMethod.availableSizes(material, insulation, method)
+                  .filter(s => s >= sel.s && s <= (GLOBAL.maxCableSize || 240));
+                const _bumped = findMinSizeForVdrop(_maxA, material, _segLen, _U, _phases, _cosPhi, _par, _vdropMaxPct, _sizes, _isDC);
+                if (_bumped && _bumped > sel.s) {
+                  // Найти iRef для нового сечения и применить тот же derating.
+                  const _tbl = cableTable(material, insulation, method);
+                  const _entry = _tbl.find(([s]) => s === _bumped);
+                  if (_entry) {
+                    const _newIz = _entry[1] * sel.kT * sel.kG;
+                    const _newVd = calcVoltageDrop(_maxA, _bumped, material, _segLen, _U, _phases, _cosPhi, _par, _isDC);
+                    c._cableSizeBumpedFromS = sel.s;
+                    c._cableSize = _bumped;
+                    c._cableIz = _newIz;
+                    c._cableTotalIz = _newIz * _par;
+                    c._cableSizeBumpedByVdrop = true;
+                    c._cableVdropPct = _newVd.dUpct;
+                  }
+                }
+              } catch (e) {
+                // если что-то сломалось в подборе по ΔU — оставляем ампасити-выбор,
+                // расчётный модуль vdrop в conn-инспекторе всё равно покажет warning.
+              }
+            }
+          }
+        }
         // HV: переподбор по реальной таблице XLPE 6/10/35 кВ (IEC 60502-2).
         // Используем ту же методику derating (kT, kG) и тот же I2-критерий, что
         // и для LV, но ампасити берём из HV_TABLES по классу напряжения.
