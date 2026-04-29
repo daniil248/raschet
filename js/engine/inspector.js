@@ -278,6 +278,18 @@ function renderInspectorPage() {
   }
   h.push(`<button class="full-btn" id="pg-open-project" style="margin-top:8px">📋 Параметры проекта…</button>`);
 
+  // v0.59.702: запрос на ТУ перенесён сюда (из инспектора utility-источника).
+  // Пользователь: «Получение ТУ вынеси в свойства проекта (правый сайдбар)
+  // сделай выбор, ТУ по низкой стороне или ТУ по высокой стороне».
+  // Кнопка доступна всегда — даже если на схеме ещё нет источника. Внутри
+  // модалки можно выбрать ТУ по высокой / низкой стороне (HV / LV) и тогда
+  // расчёт берёт данные с соответствующих узлов схемы.
+  h.push(`<div class="inspector-section" style="margin-top:12px">
+    <h4 style="margin:0 0 6px;font-size:13px">📋 Технические условия (ТУ)</h4>
+    <button class="full-btn" id="pg-open-tu-request" style="background:#0c4a6e;color:#fff;font-weight:600">📋 Запрос на ТУ для подачи в РЭС</button>
+    <div class="muted" style="font-size:10px;margin-top:4px;line-height:1.4">Документ-обоснование заявленной мощности по проекту. Можно выбрать сторону присоединения (низкая 0.4 кВ или высокая 6/10 кВ) внутри модалки.</div>
+  </div>`);
+
   inspectorBody.innerHTML = h.join('');
 
   // Handlers
@@ -371,6 +383,9 @@ function renderInspectorPage() {
   if (openProjBtn && typeof window !== 'undefined' && typeof window.__raschetOpenProjectInfo === 'function') {
     openProjBtn.addEventListener('click', () => window.__raschetOpenProjectInfo());
   }
+  // v0.59.702: запрос на ТУ из свойств страницы.
+  const tuPgBtn = document.getElementById('pg-open-tu-request');
+  if (tuPgBtn) tuPgBtn.addEventListener('click', () => openTuRequestModal(null));
 }
 
 export function renderInspectorNode(n) {
@@ -630,13 +645,12 @@ export function renderInspectorNode(n) {
 
     // Все номинальные параметры (мощность, напряжение, Ssc, Uk%, Xs/Rs) — в модалке
     h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
-    // v0.59.689: для городской сети — кнопка генерации запроса на ТУ
-    // (технические условия) для электроснабжающей организации.
-    // Пользователь: «в городской ввод добавь запрос - расчет, обоснование
-    // Технических условий, для запроса в электроснабжающую организацию».
-    if (subtype === 'utility') {
-      h.push(`<button class="full-btn" id="btn-open-tu-request" style="margin-top:6px;background:#0c4a6e;color:#fff;font-weight:600">📋 Запрос на ТУ (для запроса в РЭС)</button>`);
-    }
+    // v0.59.702: запрос на ТУ перенесён в свойства страницы (правый
+    // сайдбар, когда узел не выбран). Пользователь: «Получение ТУ
+    // вынеси в свойства проекта (правый сайдбар) сделай выбор, ТУ
+    // по низкой стороне или ТУ по высокой стороне».
+    // Здесь, у utility-источника, кнопка убрана — чтобы избежать
+    // дублирования и центральной точки управления документом.
     // Справка: текущие значения из модалки
     const levels = GLOBAL.voltageLevels || [];
     const outLevel = levels[n.voltageLevelIdx] || null;

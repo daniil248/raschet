@@ -794,58 +794,91 @@ export function openAutomationModal(n) {
 
 // ================= Запрос на ТУ (технические условия) =================
 // v0.59.689: формирует развёрнутый расчётный документ для запроса в
-// электроснабжающую организацию (РЭС / Россети). Данные берутся из
-// downstream-нагрузки этого ввода (n._loadKw / _maxLoadKw / _powerS /
-// _cosPhi / _ikA) — это уже посчитано в recalc.
-//
-// Документ содержит:
-//   - заявленную (расчётную) активную, реактивную, полную мощность
-//   - cos φ, ток расчётный, ток пиковый
-//   - ссылку на нормативку (ПУЭ гл. 1.2 — категории надёжности)
-//   - класс напряжения присоединения (по IEC 60502-2)
-//   - короткое обоснование (как считалось — суммарная макс. нагрузка
-//     downstream с учётом коэффициентов)
-//
-// Пользователь: «в городской ввод добавь запрос - расчет, обоснование
-// Технических условий, для запроса в электроснабжающую организацию».
+// электроснабжающую организацию (РЭС / Россети).
+// v0.59.702: вызов с n=null — режим «по проекту»: автоматически находит
+// источники по выбранной стороне присоединения. Пользователь:
+// «Получение ТУ вынеси в свойства проекта, сделай выбор, ТУ по низкой
+// стороне или ТУ по высокой стороне».
 export function openTuRequestModal(n) {
   const body = document.getElementById('tu-request-body');
   if (!body) return;
-  // Аккумулируем downstream через n._maxLoadKw / _powerQ / _powerS — они
+  // Определяем сторону присоединения: HV (>1000 В) или LV (≤1000 В).
+  // Сторона хранится в проектных tuDefaults.side; по умолчанию LV
+  // (типичный сценарий — РЭС подключает на 0.4 кВ).
+  let activeProjectId = null;
+  let projectMeta = {};
+  try {
+    activeProjectId = getActiveProjectId();
+    const proj = activeProjectId ? getProject(activeProjectId) : null;
+    projectMeta = (proj && proj.tuDefaults) || {};
+    if (!projectMeta.applicant && proj?.name) projectMeta = { ...projectMeta, applicant: proj.name };
+    if (!projectMeta.address && proj?.description) projectMeta = { ...projectMeta, address: proj.description };
+  } catch {}
+  // Сторона: 'lv' или 'hv'. По умолчанию из projectMeta или 'lv'.
+  const _initialSide = projectMeta.side === 'hv' ? 'hv' : 'lv';
+  // Helper: найти подходящий источник по стороне.
+  // LV: предпочитаем трансформатор (его выход = LV) или utility с U ≤ 1000.
+  // HV: предпочитаем utility с U > 1000.
+  const _findSourceForSide = (side) => {
+    const sources = [...state.nodes.values()].filter(m =>
+      m.type === 'source' || m.type === 'generator');
+    if (side === 'hv') {
+      const utilHv = sources.find(m =>
+        (m.sourceSubtype || 'transformer') === 'utility' && nodeVoltage(m) > 1000);
+      if (utilHv) return utilHv;
+      // fallback: трансформатор с входом ВН — ищем входящий utility
+      const trafo = sources.find(m =>
+        (m.sourceSubtype || 'transformer') === 'transformer');
+      return trafo || sources[0] || null;
+    }
+    // LV
+    const trafoLv = sources.find(m =>
+      (m.sourceSubtype || 'transformer') === 'transformer' && nodeVoltage(m) <= 1000);
+    if (trafoLv) return trafoLv;
+    const utilLv = sources.find(m =>
+      (m.sourceSubtype || 'transformer') === 'utility' && nodeVoltage(m) <= 1000);
+    if (utilLv) return utilLv;
+    // fallback: первый источник (если в схеме только utility HV — взять его)
+    return sources[0] || null;
+  };
+  // Если n не передан (вызов из свойств страницы) — выбираем по стороне.
+  // Если n передан (legacy — вызов из инспектора utility) — используем его
+  // и стороной считаем класс его напряжения.
+  let refNode = n || _findSourceForSide(_initialSide);
+  let side = _initialSide;
+  if (n) side = nodeVoltage(n) > 1000 ? 'hv' : 'lv';
+  const _renderModal = () => {
+  // Аккумулируем downstream через ref._maxLoadKw / _powerQ / _powerS — они
   // уже посчитаны в recalc. Если есть — берём максимум из текущего и
   // worst-case (байпас ИБП).
-  const Pcur = Number(n._powerP || n._loadKw) || 0;
-  const Qcur = Number(n._powerQ) || 0;
-  const Scur = Number(n._powerS) || Math.sqrt(Pcur * Pcur + Qcur * Qcur);
-  const Pmax = Math.max(Number(n._maxLoadKw) || 0, Number(n._powerPWorst) || 0, Pcur);
-  const Qmax = Math.max(Number(n._powerQWorst) || 0, Qcur);
-  const Smax = Math.max(Number(n._powerSWorst) || 0, Scur,
+  const Pcur = Number(refNode?._powerP || refNode?._loadKw) || 0;
+  const Qcur = Number(refNode?._powerQ) || 0;
+  const Scur = Number(refNode?._powerS) || Math.sqrt(Pcur * Pcur + Qcur * Qcur);
+  const Pmax = Math.max(Number(refNode?._maxLoadKw) || 0, Number(refNode?._powerPWorst) || 0, Pcur);
+  const Qmax = Math.max(Number(refNode?._powerQWorst) || 0, Qcur);
+  const Smax = Math.max(Number(refNode?._powerSWorst) || 0, Scur,
                         Pmax > 0 ? Math.sqrt(Pmax * Pmax + Qmax * Qmax) : 0);
   const cosCur = Scur > 0 ? (Pcur / Scur) : 0;
   const cosWorst = Smax > 0 ? (Pmax / Smax) : cosCur;
-  const Imax = Number(n._maxLoadA) || Number(n._loadA) || 0;
-  const Uvolt = nodeVoltage(n);
-  const Uclass = cableVoltageClass(Uvolt);
+  const Imax = Number(refNode?._maxLoadA) || Number(refNode?._loadA) || 0;
+  const Uvolt = refNode ? nodeVoltage(refNode) : 0;
+  const Uclass = Uvolt > 0 ? cableVoltageClass(Uvolt) : '—';
   // Классификация по ПУЭ 1.2 — для подсказки. По умолчанию категория 2,
   // если есть резервный источник (ДГУ или ещё один utility) — 1.
   const hasGenerator = [...state.nodes.values()].some(m =>
     m.type === 'generator' && m.backupMode);
   const hasParallelUtility = [...state.nodes.values()].some(m =>
-    m.id !== n.id && m.type === 'source' && (m.sourceSubtype || 'transformer') === 'utility');
+    m.id !== (refNode?.id) && m.type === 'source' && (m.sourceSubtype || 'transformer') === 'utility');
   const hasUps = [...state.nodes.values()].some(m => m.type === 'ups');
   let suggestedCat = 2;
   if (hasParallelUtility && hasGenerator && hasUps) suggestedCat = 1; // I особая
   else if (hasParallelUtility || hasGenerator) suggestedCat = 1;
-  // Δt перерыва допустимый по категориям (ПУЭ 1.2.18-1.2.20):
   const catDescr = {
     1: 'Категория I — перерыв питания недопустим, требуется не менее 2 независимых источников + АВР. Особая группа I — дополнительно ИБП с автономией ≥ нормированной.',
     2: 'Категория II — допускается кратковременный перерыв на время оперативного переключения АВР. Минимум 2 источника.',
     3: 'Категория III — допускается перерыв до 1 суток. Один источник питания достаточен.',
   };
-  // Дата для шапки документа.
   const today = new Date().toISOString().slice(0, 10);
-  // Заявленная мощность с округлением вверх до ближайшего стандартного
-  // ряда (для удобства согласования с РЭС).
   const _stdRound = (v) => {
     const series = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000];
     for (const s of series) if (s >= v) return s;
@@ -853,34 +886,36 @@ export function openTuRequestModal(n) {
   };
   const Pdeclared = _stdRound(Pmax);
   const Sdeclared = _stdRound(Smax);
-  // v0.59.692: данные о заявителе берутся ИЗ СВОЙСТВ ПРОЕКТА (общие
-   //  для всей схемы), а не из конкретного источника. Если на схеме
-   //  несколько utility-вводов — данные одинаковые. Хранятся в
-   //  active project через updateProject({tuDefaults: {...}}). На уровне
-   //  узла остаются только местные поля (точка присоединения N) и
-   //  выбранная категория надёжности.
-  let projectMeta = {};
-  let activeProjectId = null;
-  try {
-    activeProjectId = getActiveProjectId();
-    const proj = activeProjectId ? getProject(activeProjectId) : null;
-    projectMeta = (proj && proj.tuDefaults) || {};
-    // fallback: если у проекта ещё нет tuDefaults — подставляем имя/описание.
-    if (!projectMeta.applicant && proj?.name) projectMeta = { ...projectMeta, applicant: proj.name };
-    if (!projectMeta.address && proj?.description) projectMeta = { ...projectMeta, address: proj.description };
-  } catch {}
-  const tu = n.tuRequest || {};
-  // Слияние: per-node (точка присоединения, категория, дата) + project-level
-  // (заявитель, адрес, назначение).
-  const _val = (key) => tu[key] ?? projectMeta[key] ?? '';
+  const tu = (n && n.tuRequest) || {};
+  // Для project-level (без n) пользовательские значения
+  // pointName/date/category хранятся в projectMeta.
+  const _val = (key) => {
+    if (tu[key] != null && tu[key] !== '') return tu[key];
+    if (projectMeta[key] != null && projectMeta[key] !== '') return projectMeta[key];
+    return '';
+  };
   const _esc = (s) => String(s ?? '').replace(/[<>"']/g, ch =>
     ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  // v0.59.702: блок выбора стороны присоединения и индикация какой
+  // источник из схемы используется как «опорный» (refNode).
+  const refLabel = refNode
+    ? `${escAttr(effectiveTag(refNode) || refNode.name || refNode.id)} (${refNode.sourceSubtype || refNode.type}, ${Uvolt} В)`
+    : '— нет источника на схеме';
   body.innerHTML = `
     <div style="font-size:12px;line-height:1.6;max-width:800px">
       <div style="background:#eef5ff;border:1px solid #bbdefb;padding:8px 12px;border-radius:4px;margin-bottom:12px;color:#1565c0">
         ℹ Документ для подачи в электроснабжающую организацию (РЭС / Россети) при
         запросе технических условий на технологическое присоединение.
         Все расчётные значения автоматически собраны из схемы.
+      </div>
+
+      <div class="field" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px 10px;background:#f6f8fa;border-radius:4px">
+        <label style="font-weight:600;font-size:12px;margin:0">Сторона присоединения:</label>
+        <select id="tu-side" style="padding:4px 8px;font-size:12px">
+          <option value="lv"${side === 'lv' ? ' selected' : ''}>Низкая (0.4 кВ — после трансформатора)</option>
+          <option value="hv"${side === 'hv' ? ' selected' : ''}>Высокая (6/10 кВ — до трансформатора)</option>
+        </select>
+        <span class="muted" style="font-size:10px">Опорный источник: <b>${refLabel}</b></span>
       </div>
 
       <h3 style="margin:8px 0 6px;font-size:13px">1. Заявитель и объект</h3>
@@ -892,9 +927,9 @@ export function openTuRequestModal(n) {
         <label>Назначение объекта:</label>
         <input type="text" id="tu-purpose" value="${_esc(_val('purpose'))}" placeholder="ЦОД / производство / административное здание">
         <label>Точка присоединения:</label>
-        <input type="text" id="tu-pointName" value="${_esc(tu.pointName ?? '')}" placeholder="ТП-N / РУ ... / ЛЭП ...">
+        <input type="text" id="tu-pointName" value="${_esc(_val('pointName'))}" placeholder="ТП-N / РУ ... / ЛЭП ...">
         <label>Дата формирования:</label>
-        <input type="text" id="tu-date" value="${_esc(tu.date || today)}">
+        <input type="text" id="tu-date" value="${_esc(_val('date') || today)}">
       </div>
 
       <h3 style="margin:14px 0 6px;font-size:13px">2. Заявленная мощность</h3>
@@ -921,14 +956,14 @@ export function openTuRequestModal(n) {
       <h3 style="margin:14px 0 6px;font-size:13px">3. Категория надёжности (ПУЭ 1.2)</h3>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <select id="tu-cat" style="padding:4px 8px;font-size:12px">
-          <option value="1-special"${tu.category === '1-special' ? ' selected' : ''}>I особая (ЦОД / медицина / непрерывное произв-во)</option>
-          <option value="1"${(tu.category || String(suggestedCat)) === '1' ? ' selected' : ''}>I — недопустим перерыв</option>
-          <option value="2"${(tu.category || String(suggestedCat)) === '2' ? ' selected' : ''}>II — кратковременный перерыв допустим</option>
-          <option value="3"${(tu.category || String(suggestedCat)) === '3' ? ' selected' : ''}>III — перерыв до 1 сут.</option>
+          <option value="1-special"${_val('category') === '1-special' ? ' selected' : ''}>I особая (ЦОД / медицина / непрерывное произв-во)</option>
+          <option value="1"${(_val('category') || String(suggestedCat)) === '1' ? ' selected' : ''}>I — недопустим перерыв</option>
+          <option value="2"${(_val('category') || String(suggestedCat)) === '2' ? ' selected' : ''}>II — кратковременный перерыв допустим</option>
+          <option value="3"${(_val('category') || String(suggestedCat)) === '3' ? ' selected' : ''}>III — перерыв до 1 сут.</option>
         </select>
         <span class="muted" style="font-size:10px">Авто-предложение: <b>${suggestedCat}</b> (по составу схемы)</span>
       </div>
-      <div id="tu-cat-descr" class="muted" style="font-size:10.5px;line-height:1.5">${catDescr[tu.category && tu.category !== '1-special' ? tu.category : suggestedCat] || catDescr[2]}</div>
+      <div id="tu-cat-descr" class="muted" style="font-size:10.5px;line-height:1.5">${catDescr[_val('category') && _val('category') !== '1-special' ? _val('category') : suggestedCat] || catDescr[2]}</div>
 
       <h3 style="margin:14px 0 6px;font-size:13px">4. Состав резервирования (из схемы)</h3>
       <ul style="margin:0;padding-left:18px;font-size:11px;line-height:1.6">
@@ -973,16 +1008,60 @@ export function openTuRequestModal(n) {
     if (activeProjectId) {
       try { updateProject(activeProjectId, { tuDefaults: projDefaults }); } catch {}
     }
-    n.tuRequest = {
-      pointName: _read('tu-pointName'),
-      date:      _read('tu-date'),
-      category:  _read('tu-cat'),
-    };
+    // v0.59.702: при вызове из проекта (n=null) и без opera-указанного
+    // refNode — пишем pointName/date/category в проектные tuDefaults
+    // как глобальные. Если есть refNode — пишем на узел.
+    if (n) {
+      n.tuRequest = {
+        pointName: _read('tu-pointName'),
+        date:      _read('tu-date'),
+        category:  _read('tu-cat'),
+      };
+    } else if (activeProjectId) {
+      try {
+        const cur = (projectMeta && typeof projectMeta === 'object') ? projectMeta : {};
+        const merged = {
+          ...cur,
+          ...projDefaults,
+          pointName: _read('tu-pointName'),
+          date:      _read('tu-date'),
+          category:  _read('tu-cat'),
+        };
+        updateProject(activeProjectId, { tuDefaults: merged });
+        projectMeta = merged;
+      } catch {}
+    }
   };
   ['tu-applicant','tu-address','tu-purpose','tu-pointName','tu-date','tu-cat'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('change', () => { _saveFields(); snapshot('tu-request:' + n.id); notifyChange(); });
+    if (el) el.addEventListener('change', () => {
+      _saveFields();
+      const sid = (refNode && refNode.id) ? refNode.id : 'project';
+      snapshot('tu-request:' + sid);
+      notifyChange();
+    });
   });
+  // v0.59.702: смена стороны присоединения. Сохраняем выбор в проектных
+  // tuDefaults и перерисовываем модалку — refNode пересчитывается под
+  // новую сторону, и все значения обновляются.
+  const sideSel = document.getElementById('tu-side');
+  if (sideSel) {
+    sideSel.addEventListener('change', () => {
+      side = sideSel.value === 'hv' ? 'hv' : 'lv';
+      // Сохраняем выбор в проектных tuDefaults.
+      if (activeProjectId) {
+        try {
+          const cur = (projectMeta && typeof projectMeta === 'object') ? projectMeta : {};
+          updateProject(activeProjectId, { tuDefaults: { ...cur, side } });
+          projectMeta = { ...cur, side };
+        } catch {}
+      }
+      // Если вызов был с конкретного n — оставляем его (юзер явно
+      // выбрал именно этот источник). Иначе переключаем refNode.
+      if (!n) refNode = _findSourceForSide(side);
+      _renderModal();
+    });
+  }
   // Обновление описания категории при смене select.
   const catSel = document.getElementById('tu-cat');
   const catDescrEl = document.getElementById('tu-cat-descr');
@@ -1054,6 +1133,8 @@ export function openTuRequestModal(n) {
       }
     };
   }
+  };
+  _renderModal();
   document.getElementById('modal-tu-request').classList.remove('hidden');
 }
 
