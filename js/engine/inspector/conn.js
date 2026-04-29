@@ -124,13 +124,28 @@ export function renderInspectorConn(c) {
     const loadPerLine = (c._loadA || 0) / _par;
     const maxPerLine = (c._maxA || 0) / _par;
     const kwPerLine = (c._loadKw || 0) / _par;
+    // v0.59.705: показываем падение напряжения на этом сегменте +
+    // напряжение в конце линии. Помогает быстро увидеть «толстые»
+    // линии с большой потерей. Цветовая индикация по уровню падения.
+    const _segDrop = Number(c._deltaUSegPct) || 0;
+    const _vNom = Number(c._voltage) || 0;
+    const _vEnd = _vNom * (1 - _segDrop / 100);
+    const _segColor = _segDrop <= 1 ? '#15803d'
+      : _segDrop <= 3 ? '#0369a1'
+      : _segDrop <= 5 ? '#ca8a04'
+      : '#b91c1c';
+    const _segDropTip = 'Падение напряжения на ЭТОМ сегменте линии (от начала до конца кабеля). Считается по формуле ΔU = √3 × I × (R cos φ + X sin φ) × L для 3ф или 2 × I × (R cos φ + X sin φ) × L для 1ф (R и X — погонные сопротивление/реактивность кабеля, L — длина). Норма по IEC 60364-5-525: ≤ 5% от источника до конца. На одном сегменте обычно ≤ 1–3%.';
     h.push(`<div style="font-size:12px;line-height:1.8">` +
       (_par > 1 ? `Линий: <b>${_par}</b><br>` : '') +
       `Текущая P: <b>${fmt(kwPerLine)} kW</b><br>` +
       `Текущий I: <b>${fmt(loadPerLine)} A</b><br>` +
       `Расчётный I: <b>${fmt(maxPerLine)} A</b> <span class="muted">(по макс. нагрузке)</span><br>` +
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
-      `Напряжение: <b>${c._voltage || '-'} В</b>` +
+      `Напряжение: <b>${_vNom || '-'} В</b>` +
+      (_vNom > 0 && _segDrop > 0
+        ? `<br>ΔU на сегменте: <b style="color:${_segColor}">${_segDrop.toFixed(2)}%</b> ${helpIcon(_segDropTip)}` +
+          `<br>U на конце: <b style="color:${_segColor}">${_vEnd.toFixed(1)} В</b>`
+        : '') +
       (c._ikA && isFinite(c._ikA) ? `<br>Ik в точке: <b>${fmt(c._ikA / 1000)} кА</b>` : '') +
       `</div>`);
     // Блок ПРОВОДНИК — справочная информация
