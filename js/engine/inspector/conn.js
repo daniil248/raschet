@@ -210,6 +210,16 @@ export function renderInspectorConn(c) {
           // Групповая нагрузка: N независимых линий, по одной на потребитель.
           // Никакого «параллельного» деления тока — каждая линия
           // подбирается по своему I_per_unit.
+          // v0.59.676: добавлена строка про «Свободно» — пользователь
+          // попросил «приписку (автомат или кабель можно написать только
+          // в примечаниях к расчету)».
+          const _toN = state.nodes.get(c.to.nodeId);
+          const _freeA = _toN?._freeA;
+          const _freeLimit = _toN?._freeLimit;
+          const _freeKw = _toN?._freeKw;
+          const _freeNote = (Number.isFinite(_freeA) && _freeA > 0)
+            ? `<br>6) Свободно (резерв) на линию: <b>${fmt(_freeKw || 0)} кВт · ${fmt(_freeA)} А</b> — лимитирует <b>${_freeLimit === 'cable' ? 'кабель (Iz)' : 'автомат (In)'}</b>.`
+            : '';
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
             <b>Как подбирался кабель:</b><br>
             1) Линий — <b>${par}</b> (по одной на потребитель, у каждой свой автомат)<br>
@@ -217,7 +227,7 @@ export function renderInspectorConn(c) {
             ${brkRef ? `3) Координация с автоматом линии: Iz ≥ In, требуется Iz ≥ <b>${brkRef} А</b><br>` : ''}
             4) Коэффициенты условий прокладки: Kt=${(c._cableKt||1).toFixed(2)}, Kg=${(c._cableKg||1).toFixed(2)}, K=${(c._cableKtotal||1).toFixed(3)}<br>
             5) Для ${methodLabel} выбрано ближайшее стандартное сечение одной линии <b>${c._cableSize} мм²</b>, дающее Iz=<b>${fmt(Iz)} А</b><br>
-            Правило: Iрасч_линии ≤ Iz и In_линии ≤ Iz.
+            Правило: Iрасч_линии ≤ Iz и In_линии ≤ Iz.${_freeNote}
           </div>`);
         } else {
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">

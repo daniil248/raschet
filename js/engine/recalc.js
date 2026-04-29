@@ -3278,78 +3278,88 @@ function recalc() {
     c._isInternalConnHidden = true;  // флаг для UI / BOM / отчётов
   }
 
-  // v0.59.657: «доступная мощность» — фактический максимум, который узел
-  // может потребить в ТЕКУЩИХ условиях прокладки (с учётом K_t, K_g) и
-  // защиты. Юзер: «для потребителя можно добавить доступную мощность,
-  // которая вычисляется по длительному допустимому току кабеля его
-  // питающего и его защитному автомату».
-  // v0.59.674: ВАЖНОЕ ИСПРАВЛЕНИЕ. Раньше использовалось c._maxA — это
-  // расчётный ток нагрузки (demand), а не пропускная способность кабеля.
-  // Юзер: «мне нужно знать сколько по этому кабелю в текущих условиях
-  // прокладки можно передать ток, вычислить мощность, которую я могу
-  // передать. А ты просто выводишь еще раз номинальный ток и мощность
-  // потребителя». Правильный источник для пропускной способности кабеля:
-  //   c._cableIz — Iдоп НА ЖИЛУ после применения K_t × K_g (на 1 линию)
-  //   c._cableTotalIz — Iдоп всего пучка (Iz × N), для параллельных жил
-  // Для группы (isGroupBreakers): доступно_per_line = min(_cableIz,
-  //   _breakerPerLine) — каждый кабель / автомат свой.
-  // Для параллельной прокладки (par>1, общий автомат): доступно_total =
-  //   min(_cableTotalIz, _breakerIn).
-  // Для одиночной (par=1): доступно = min(_cableIz, _breakerIn).
-  //   I_доступ = min(Iz_eff_actual, In)  — берётся узкое место
-  //   P_доступ = I_доступ × U × cos φ × (√3 если 3ф) / 1000
-  // v0.59.659: расширено на panel / ups / generator / source — там тоже
-  // питающая линия имеет ампасити и защитный автомат сверху.
+  // v0.59.657/675: «Свободно» — резерв пропускной способности линии.
+  // Пользователь: «Используй слово 'Свободно', приписку (автомат или
+  // кабель можно написать только в примечаниях к расчету)». Это разница
+  // между максимальным допустимым током (limit_max = min(Iz_eff, In)) и
+  // фактически потребляемым током (used = расчётный ток через линию).
+  //
+  // Формула:
+  //   limit_max_per_line = min(Iz_eff, In)
+  //     - Iz_eff = c._cableIz — Iдоп жилы после K_t × K_g (per-line)
+  //     - Для параллельной прокладки берём Iz × N = c._cableTotalIz и
+  //       общий автомат c._breakerIn
+  //     - Для группы (isGroupBreakers) — c._cableIz (per-line) и
+  //       c._breakerPerLine
+  //   used_per_line = расчётный ток per-line (c._maxA / par)
+  //   free = max(0, limit_max - used)
+  //   P_свободно = free × U × cos φ × (√3 если 3ф) / 1000
+  //
+  // n._freeKw / n._freeA — резерв per-line (для группового потребителя
+  // именно на 1 кабель = на 1 потребителя). Карточка показывает
+  // напрямую, без деления (см. render.js).
+  // n._freeLimit — что именно лимитирует ('cable' | 'breaker'). Хранится
+  // только для информации в инспекторе / справке отчёта.
   for (const n of state.nodes.values()) {
     if (n.type !== 'consumer' && n.type !== 'panel' && n.type !== 'ups'
         && n.type !== 'generator' && n.type !== 'source') continue;
+    n._freeKw = null;
+    n._freeA = null;
+    n._freeLimit = null;
+    // Совместимость со старыми именами: оставляем алиасы _availableKw /
+    // _availableA / _availableLimit, чтобы внешний код не сломался.
     n._availableKw = null;
     n._availableA = null;
-    n._availableLimit = null; // 'cable' | 'breaker' — что именно ограничивает
+    n._availableLimit = null;
     const ins = (edgesIn.get(n.id) || []).filter(c => !c._virtual);
     if (!ins.length) continue;
-    // Берём первую реальную входящую — обычно один силовой ввод.
-    // Для генератора может быть auxInput на порту 0 (СН) — пропускаем,
-    // если есть силовой вход на другом порту.
     let c = ins[0];
     if (n.type === 'generator' && n.auxInput) {
       const power = ins.find(x => x.to.port !== 0);
       if (power) c = power;
     }
-    // Определяем относится ли соединение к ГРУППЕ потребителей с per-line
-    // защитой (8 потребителей × 8 автоматов) или к одиночной/параллельной
-    // прокладке с общим автоматом.
     const _isGroupCable = !c._breakerIn && c._breakerPerLine && (c._breakerCount || 1) > 1;
     const _par = Math.max(1, Number(c._cableParallel) || 1);
-    // Iz после derating. Для ГРУППЫ — per-line. Для параллельной прокладки —
-    // суммарный (или per-strand × par). Для одиночной — per-cable.
     let cableA;
     if (_isGroupCable) {
-      // Каждая линия группы: своя пропускная способность с применёнными K.
       cableA = Number.isFinite(c._cableIz) && c._cableIz > 0 ? c._cableIz : Infinity;
     } else if (_par > 1) {
-      // Параллельная прокладка: суммарный Iz × N (или используем _cableTotalIz).
       cableA = Number.isFinite(c._cableTotalIz) && c._cableTotalIz > 0
         ? c._cableTotalIz
         : (Number.isFinite(c._cableIz) && c._cableIz > 0 ? c._cableIz * _par : Infinity);
     } else {
       cableA = Number.isFinite(c._cableIz) && c._cableIz > 0 ? c._cableIz : Infinity;
     }
-    // Защита. Для группы — per-line автомат. Для одиночной/параллельной — общий.
     const brkA = _isGroupCable
       ? (Number.isFinite(c._breakerPerLine) && c._breakerPerLine > 0 ? c._breakerPerLine : Infinity)
       : (Number.isFinite(c._breakerIn) && c._breakerIn > 0 ? c._breakerIn : Infinity);
     if (!Number.isFinite(cableA) && !Number.isFinite(brkA)) continue;
-    const Iavail = Math.min(cableA, brkA);
-    if (!Number.isFinite(Iavail) || Iavail <= 0) continue;
+    const Imax = Math.min(cableA, brkA);
+    if (!Number.isFinite(Imax) || Imax <= 0) continue;
     const limit = (cableA <= brkA) ? 'cable' : 'breaker';
+    // Текущий ток через кабель per-line. c._loadA — фактический расчётный
+    // ток через линию с применёнными Ки и множителем нагрузки сценария
+    // (consumerRatedCurrent / _loadKw); это именно «потребляемый» ток.
+    // Для группы — суммарный по группе → делим на par на per-cable.
+    // Используем _loadA (а не _maxA), чтобы «Свободно» считалось от
+    // фактической рабочей нагрузки, а не от номинала. Пользователь:
+    // «Сами параметры в расчетах применяй согласно правил расчета».
+    const Iused = (Number(c._loadA) || 0) / Math.max(1, _par);
+    const Ifree = Math.max(0, Imax - Iused);
     const U = nodeCalcVoltage(n);
-    if (!U || U <= 0) { n._availableA = Iavail; n._availableLimit = limit; continue; }
-    const cos = Math.max(0.1, Math.min(1, Number(n._cosPhi) || Number(n.cosPhi) || GLOBAL.defaultCosPhi || 0.92));
-    const phaseK = isThreePhase(n) ? Math.sqrt(3) : 1;
-    const Pavail = (Iavail * U * cos * phaseK) / 1000;
-    n._availableKw = Pavail;
-    n._availableA = Iavail;
+    let Pfree = null;
+    if (U && U > 0) {
+      const cos = Math.max(0.1, Math.min(1, Number(n._cosPhi) || Number(n.cosPhi) || GLOBAL.defaultCosPhi || 0.92));
+      const phaseK = isThreePhase(n) ? Math.sqrt(3) : 1;
+      Pfree = (Ifree * U * cos * phaseK) / 1000;
+    }
+    n._freeKw = Pfree;
+    n._freeA = Ifree;
+    n._freeLimit = limit;
+    // Backward-compat alias (оставляем доступным до полного перевода
+    // вызывающего кода; новые места используют _free*).
+    n._availableKw = Pfree;
+    n._availableA = Ifree;
     n._availableLimit = limit;
   }
 

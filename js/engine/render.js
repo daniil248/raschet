@@ -1944,20 +1944,17 @@ export function renderNodes() {
       return `${label}: ${parts.join(' · ')}`;
     };
 
-    // v0.59.659/674: «Допустимо» — общий хелпер для всех типов узлов с
-    // входящим кабелем (consumer / panel / ups / generator / source).
-    // Юзер: «доступно (кабель) замени на Допустимо». Это пропускная
-    // способность питающей линии в текущих условиях прокладки (с учётом
-    // K_t × K_g), ограниченная защитным автоматом. Лейбл в скобках —
-    // что именно лимитирует.
+    // v0.59.659/674/676: «Свободно» — общий хелпер для всех типов узлов
+    // с входящим кабелем (consumer / panel / ups / generator / source).
+    // Пользователь: «Используй слово 'Свободно', приписку (автомат или
+    // кабель можно написать только в примечаниях к расчету)». Значение —
+    // резерв (limit − used). Что именно лимитирует (cable / breaker) —
+    // в инспекторе через nn._freeLimit (на карточке не пишется).
     const _availRowFor = (nn) => {
-      if (!Number.isFinite(nn._availableA) || nn._availableA <= 0) return null;
-      const lbl = nn._availableLimit === 'cable'
-        ? 'Допустимо (кабель)'
-        : nn._availableLimit === 'breaker'
-          ? 'Допустимо (автомат)'
-          : 'Допустимо';
-      return _fmtRow(lbl, nn._availableKw, nn._availableA);
+      const v = nn._freeA != null ? nn._freeA : nn._availableA;
+      const p = nn._freeKw != null ? nn._freeKw : nn._availableKw;
+      if (!Number.isFinite(v) || v <= 0) return null;
+      return _fmtRow('Свободно', p, v);
     };
 
     if (n.type === 'source') {
@@ -2058,80 +2055,50 @@ export function renderNodes() {
         _availRowFor(n),
       ].filter(Boolean);
     } else if (n.type === 'consumer') {
-      // v0.59.651: для потребителей такой же формат — текущая + номинальная
-      // (с током). Юзер: «для потребителей добавь сразу возможность
-      // указывать как мощность так и ток, с автоматическим пересчётом».
+      // Карточка потребителя: Номинальная / Расчётная / Свободно.
+      // Расчётная показывается только если отличается от номинальной
+      // (Ки != 1 или множитель != 1). Свободно = limit_max − used.
       const cnt = consumerCountEffective(n);
-      // v0.59.660: для UNIFORM-группы (count > 1, demandKw на единицу)
-      // вся карточка показывается ПО 1 ЕДИНИЦЕ, не по группе. Юзер:
-      // «мощность указана как 7 кВт а ты указал опять для всех 8, 56 кВт.
-      // Здесь должны быть данные только для одного потребителя, так как
-      // кабель у каждого свой». Под карточкой остаётся подпись
-      // «count × demandKw = totalKw» (см. далее в render.js) — она
-      // и показывает суммарную мощность группы.
-      // Для individual-режима (items[] с разными мощностями) per-unit не
-      // имеет смысла — оставляем как было (сумма items).
       const _isUniformGroup = cnt > 1 && n.groupMode !== 'individual';
       const _isIndivGroup = n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 1;
       const cos = Math.max(0.1, Math.min(1, Number(n.cosPhi) || 0.92));
-      // v0.59.664: используем nodeCalcVoltage (vLN для 1ph, vLL для 3ph),
-      // как делает cable engine (consumerNominalCurrent). Раньше брали
-      // nodeVoltage (всегда vLL), что для 1-фазных потребителей в системе
-      // 400/230 давало заниженный ток в √3 раз (18.2 А вместо 31.7 А).
-      // Юзер: «и кабель 25 мм² как получился на 7 кВт». Кабель подобран
-      // ВЕРНО (по 31.7 А с Kg=0.55 + In=40 А → 25 мм²), а карточка
-      // показывала противоречивое 18.2 А — из-за расхождения U.
+      // v0.59.664: nodeCalcVoltage (vLN для 1ph, vLL для 3ph) — как
+      // в cable engine. Иначе для 1ф-нагрузки 400/230 ток занижен в √3.
       const Ucalc = nodeCalcVoltage(n);
-      // Pnom: total → per-unit для uniform-группы
-      const PnomTotal = consumerTotalDemandKw(n); // demandKw × count или Σ items
+      const PnomTotal = consumerTotalDemandKw(n);
       const Pnom = _isUniformGroup ? (PnomTotal / cnt) : PnomTotal;
       const Inom = (Pnom > 0 && Ucalc)
         ? computeCurrentA(Pnom, Ucalc, cos, isThreePhase(n))
         : 0;
-      const PcurTotal = Number(n._loadKw) || 0;
-      const Pcur = _isUniformGroup ? (PcurTotal / cnt) : PcurTotal;
-      const IcurTotal = Number(n._loadA) || (PcurTotal > 0 && Ucalc
-        ? computeCurrentA(PcurTotal, Ucalc, cos, isThreePhase(n)) : 0);
-      const Icur = _isUniformGroup ? (IcurTotal / cnt) : IcurTotal;
+      // v0.59.676: возвращаем «Расчётная» — Pnom × Ki × LF. Пользователь:
+      // «Верни Расчетную мощность на карточку и в расчет». Применяется
+      // в подборе автомата и в проверке загрузки кабеля по правилам
+      // ПУЭ/IEC.
+      const PcalcTotal = Number(n._loadKw) || 0;
+      const Pcalc = _isUniformGroup ? (PcalcTotal / cnt) : PcalcTotal;
+      const IcalcTotal = Number(n._loadA) || (PcalcTotal > 0 && Ucalc
+        ? computeCurrentA(PcalcTotal, Ucalc, cos, isThreePhase(n)) : 0);
+      const Icalc = _isUniformGroup ? (IcalcTotal / cnt) : IcalcTotal;
       if (!n._powered) { statusLine = 'нет питания'; loadCls += ' off'; }
-      // v0.59.658: «доступная мощность» — сколько ЭП может потребить без
-      // срабатывания защиты или превышения ампасити кабеля. Считается в
-      // recalc.js как min(c._maxA, c._breakerIn). Юзер: «для потребителя
-      // можно добавить доступную мощность, которая вычисляется по
-      // длительному допустимому току кабеля и его защитному автомату».
-      // v0.59.662: для uniform-группы кабель в схеме подобран на ВСЮ группу
-      // (под суммарный ток N × I_per_unit), поэтому _availableA в state —
-      // это ток ОДНОГО общего кабеля, который обслуживает всю группу.
-      // Юзер: «про кабель тоже нужно на 1 потребитель». Делим на cnt чтобы
-      // показать долю на 1 ед. (как и текущая/номин). Для individual-группы
-      // строка скрыта (нет смысла усреднять).
-      // v0.59.674: «доступно» → «Допустимо» (юзер: «доступно (кабель)
-      // замени на Допустимо»). Значение тоже исправлено: теперь это
-      // реальная пропускная способность кабеля с учётом K_t × K_g, а
-      // не повтор номинальной нагрузки.
-      const _availLabel = n._availableLimit === 'cable'
-        ? 'Допустимо (кабель)'
-        : n._availableLimit === 'breaker'
-          ? 'Допустимо (автомат)'
-          : 'Допустимо';
-      const _availKw = _isUniformGroup
-        ? (Number.isFinite(n._availableKw) ? n._availableKw / cnt : null)
-        : n._availableKw;
-      const _availA = _isUniformGroup
-        ? (Number.isFinite(n._availableA) ? n._availableA / cnt : null)
-        : n._availableA;
-      // v0.59.675: Пользователь: «для потребителя указывать не текущая,
-      // а номинальная (это про мощность)». Для потребителя «текущая»
-      // и «номин» — это конструктивно одно и то же: установленная
-      // мощность (с применённым Ки/множителем для текущей). Чтобы не
-      // дублировать, оставляем единственную строку «Номинальная»
-      // (= consumerTotalDemandKw / count для группы; для одиночного =
-      // demandKw). При Ки/LF != 1 расчётная видна в инспекторе в блоке
-      // «📊 Расчётная нагрузка».
+      // v0.59.676: «Свободно» — резерв пропускной способности линии =
+      // (limit_max) − (фактически используемый расчётный ток). Считается
+      // в recalc.js per-line. Пользователь: «Используй слово 'Свободно',
+      // приписку (автомат или кабель можно написать только в примечаниях
+      // к расчету)». На карточке без приписки. Что лимитирует — в
+      // инспекторе и в кабельной справке.
+      // _freeA / _freeKw в recalc уже per-line для группы (используется
+      // c._cableIz и c._breakerPerLine, не суммарный _maxA). Деление на
+      // cnt НЕ требуется (раньше давало занижение в N раз).
+      const _freeA = n._freeA;
+      const _freeKw = n._freeKw;
+      // Расчётная показываем только если отличается от номинальной
+      // (т.е. применён Ки или множитель сценария).
+      const _hasCalcDiff = Math.abs(Pcalc - Pnom) > 0.01;
       loadLines = [
         _fmtRow('Номинальная', Pnom, Inom),
-        (!_isIndivGroup && Number.isFinite(_availA) && _availA > 0)
-          ? _fmtRow(_availLabel, _availKw, _availA)
+        _hasCalcDiff ? _fmtRow('Расчётная', Pcalc, Icalc) : null,
+        (!_isIndivGroup && Number.isFinite(_freeA) && _freeA > 0)
+          ? _fmtRow('Свободно', _freeKw, _freeA)
           : null,
       ].filter(Boolean);
     } else if (n.type === 'channel') {
