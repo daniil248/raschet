@@ -620,6 +620,59 @@ function update() {
   renderSummary(r);
   renderPlan(r);
   window.__mdc = r;  // для отладки в консоли
+  // v0.59.734: пересчитать зеркальное поле «ток на стойку» из «кВт на стойку».
+  try {
+    if (document.activeElement?.id !== 'mdc-rack-a') _mdcSyncRackAFromKw();
+  } catch {}
+}
+
+// v0.59.734: bidirectional sync для mdc-rack-kw ↔ mdc-rack-a.
+// ЦОД всегда 3ф 400В (IT-нагрузка). cos φ — из mdc-cosphi (default 0.9).
+// Формула: I[А] = P[кВт]·1000 / (√3·400·cosφ).
+function _mdcKwToA(kw) {
+  if (!(kw > 0)) return 0;
+  const cos = Number($('mdc-cosphi')?.value) || 0.9;
+  return (kw * 1000) / (Math.sqrt(3) * 400 * cos);
+}
+function _mdcAToKw(a) {
+  if (!(a > 0)) return 0;
+  const cos = Number($('mdc-cosphi')?.value) || 0.9;
+  return (a * Math.sqrt(3) * 400 * cos) / 1000;
+}
+function _mdcSyncRackAFromKw() {
+  const kwEl = $('mdc-rack-kw'); const aEl = $('mdc-rack-a');
+  if (!kwEl || !aEl) return;
+  const a = _mdcKwToA(Number(kwEl.value) || 0);
+  aEl.value = a > 0 ? a.toFixed(2).replace(/\.00$/, '') : '';
+}
+let _mdcRackFieldsWired = false;
+function _mdcWireRackFields() {
+  if (_mdcRackFieldsWired) { _mdcSyncRackAFromKw(); return; }
+  const kwEl = $('mdc-rack-kw'); const aEl = $('mdc-rack-a');
+  if (!kwEl || !aEl) return;
+  _mdcRackFieldsWired = true;
+  let _syncing = false;
+  // P → I (kw уже триггерит общий update через 'input', нам нужно только зеркало)
+  kwEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try { _mdcSyncRackAFromKw(); } finally { _syncing = false; }
+  });
+  // I → P (зеркалим, потом провоцируем update через 'input' на kw)
+  aEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      const kw = _mdcAToKw(Number(aEl.value) || 0);
+      kwEl.value = kw > 0 ? kw.toFixed(2).replace(/\.00$/, '') : '';
+      kwEl.dispatchEvent(new Event('input', { bubbles: true }));
+    } finally { _syncing = false; }
+  });
+  // Смена cos φ → пересчитать I из текущей P.
+  $('mdc-cosphi')?.addEventListener('input', _mdcSyncRackAFromKw);
+  $('mdc-cosphi')?.addEventListener('change', _mdcSyncRackAFromKw);
+  // Инициализация
+  _mdcSyncRackAFromKw();
 }
 
 /* ================== ЭКСПОРТ BOM (XLSX) ================== */
@@ -775,6 +828,9 @@ function init() {
     el.addEventListener('change', update);
     if (el.type === 'number' || el.type === 'text') el.addEventListener('input', update);
   }
+  // v0.59.734: связь mdc-rack-kw ↔ mdc-rack-a (двунаправленная).
+  _mdcWireRackFields();
+
   $('mdc-export-bom').addEventListener('click', exportBom);
   $('mdc-send-suppression')?.addEventListener('click', sendToSuppression);
 

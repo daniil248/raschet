@@ -2517,6 +2517,11 @@ export const CHANGELOGS = {
   ],
 
   'mdc-config': [
+    { version: '0.59.734', date: '2026-04-29', items: [
+      '⚖️ Парные поля «Мощность на стойку, кВт» ↔ «Ток на стойку, А» с двусторонним пересчётом — единый паттерн с panel-config (v0.59.731), mv-config (v0.59.732), rack-config (v0.59.733) и cable-calc (v0.59.729-730). Ввод в любое поле моментально пересчитывает второе.',
+      'Фаза фиксированная — 3ф 400В (типовая IT-нагрузка ЦОД). cos φ берётся из mdc-cosphi (default 0.9). Ток автоматически пересчитывается при изменении cos φ.',
+      'Файлы: mdc-config/index.html (+<input id="mdc-rack-a">), mdc-config/mdc-config.js (_mdcKwToA / _mdcAToKw / _mdcWireRackFields / _mdcSyncRackAFromKw + вызов в init и update).',
+    ] },
     { version: '0.59.189', date: '2026-04-22', items: [
       'Левый сайдбар дополнен блоком «Свойства» + «Конфигурации модульных ЦОД» через shared/config-sidebar.js. Существующий опросник остаётся, блок закреплён сверху. В embedded-режиме не монтируется.',
       'Файлы: mdc-config/index.html (#mdc-cfg-mount + mountConfigSidebar).',
