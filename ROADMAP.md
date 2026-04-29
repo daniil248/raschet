@@ -184,7 +184,7 @@ in-tab Map + cross-tab через storage event.
     различающихся параметров.
   - Применяется ко всем consumer-subtype (not only rack).
 
-- [~] **1.28.10** — Cross-discipline reconciliation (частично закрыто v0.59.761/763 для GROUP-merge через Группа-tab; полная реализация требует двух разных сценариев — см. ниже)
+- [~] **1.28.10** — Cross-discipline reconciliation (частично закрыто v0.59.761/763/764/765: IDENTIFY-AS реализован для одиночных (1:1) и групп (1:N) через picker в Группа-tab + Общее-tab. Остаётся: cross-domain visual indicator на canvas (badge alias), POR-domain ownership rules, auto-suggest по tag-prefix, переадресация ссылок engine.node / scs-config / links / placements при полном merge)
   - Юзер (2026-04-28, feedback_rack_merge.md): «электрик уже разместил
     стойки от себя и технолог добавил стойки в СКС → возможность
     сопоставить эти стойки а не размещать дважды и перерисовывать связи».

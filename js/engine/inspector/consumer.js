@@ -658,31 +658,48 @@ export function openConsumerParamsModal(n) {
       // uniform mode. Реализован picker для 1.28.10 (link existing) v0.59.761;
       // 1.28.13 (split-out) пока placeholder.
       h.push(`<div id="cp-items-wrap" class="field" style="display:none"><div id="cp-items-body"></div><span id="cp-items-sum" class="muted"></span></div>`);
-      // v0.59.763: список приборов в группе. Анонимные «слоты» (count − linkedMembers.length)
-      // показываются как «Экземпляр #N» без идентификации. Линкованные через
-      // 1.28.10 picker — с tag/name/kw + кнопка «✂ Исключить» (1.28.13).
-      const _linked = Array.isArray(n.linkedMembers) ? n.linkedMembers : [];
+      // v0.59.766: слоты-список. Юзер: «Именно связать, что стойка экземпляр
+      // один это SR01, экземпляр 1 то SR02 и так далее». Каждый слот в группе
+      // (от 1 до count) либо anonymous, либо привязан к конкретному узлу через
+      // n.linkedAliases[slotIdx]=nodeId.
       const _totalCount = Math.max(1, Number(n.count) || 1);
-      const _anonCount = Math.max(0, _totalCount - _linked.length);
+      // Padding linkedAliases до длины count (заполняем null'ами недостающие)
+      const _aliases = Array.isArray(n.linkedAliases) ? n.linkedAliases.slice() : [];
+      while (_aliases.length < _totalCount) _aliases.push(null);
+      _aliases.length = _totalCount; // truncate если стало меньше
       const _perUnitKw = Number(n.demandKw) || 0;
       h.push(`<div class="field" style="margin-top:8px">
         <label style="font-size:11px;font-weight:600;color:#37474f;margin-bottom:4px;display:block">Список приборов в группе (${_totalCount})</label>
-        <div style="display:flex;flex-direction:column;gap:3px;font-size:11.5px;max-height:240px;overflow-y:auto">
-          ${_linked.map((lm, idx) => `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:3px">
-            <span style="font-size:10px;color:#15803d;font-weight:600;min-width:18px">🔗</span>
-            <span style="font-weight:600">${escHtml(lm.tag || ('#' + (idx + 1)))}</span>
-            <span class="muted">${escHtml(lm.name || '')}</span>
-            <span class="muted" style="margin-left:auto;font-size:10px">${(Number(lm.demandKw) || 0).toFixed(2)} кВт</span>
-            <button type="button" class="cp-unlink-btn" data-unlink-idx="${idx}" title="Исключить из группы (восстановить как отдельный узел)" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px;padding:0 4px">✂</button>
-          </div>`).join('')}
-          ${_anonCount > 0 ? Array.from({length: _anonCount}, (_, i) => `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:3px;color:#6b7280">
-            <span style="font-size:10px;font-weight:600;min-width:18px">·</span>
-            <span style="font-style:italic">Экземпляр #${_linked.length + i + 1}</span>
-            <span class="muted" style="font-size:10px">аноним</span>
-            <span class="muted" style="margin-left:auto;font-size:10px">${_perUnitKw > 0 ? _perUnitKw.toFixed(2) + ' кВт' : '— кВт'}</span>
-          </div>`).join('') : ''}
+        <div style="display:flex;flex-direction:column;gap:3px;font-size:11.5px;max-height:280px;overflow-y:auto">
+          ${_aliases.map((aliasId, slotIdx) => {
+            const slotNo = slotIdx + 1;
+            if (aliasId) {
+              const tgt = state.nodes.get(aliasId);
+              const meta = (Array.isArray(n.linkedMembers) ? n.linkedMembers : []).find(m => m.originalId === aliasId);
+              const tag = tgt?.tag || meta?.tag || aliasId;
+              const name = tgt?.name || meta?.name || '';
+              const kw = Number(tgt?.demandKw ?? meta?.demandKw) || 0;
+              const exists = !!tgt;
+              return `<div class="cp-group-slot" data-slot-idx="${slotIdx}" data-slot-state="linked" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:${exists ? '#f0fdf4' : '#fff7ed'};border:1px solid ${exists ? '#bbf7d0' : '#fed7aa'};border-radius:3px">
+                <span style="font-size:10px;color:#6b7280;font-weight:600;min-width:28px;text-align:right">#${slotNo}</span>
+                <span style="font-size:10px;color:#15803d;font-weight:600">🔗</span>
+                <span style="font-weight:600">${escHtml(tag)}</span>
+                <span class="muted">${escHtml(name)}</span>
+                ${!exists ? `<span class="muted" style="font-size:9.5px;color:#92400e">⚠ узел удалён</span>` : ''}
+                <span class="muted" style="margin-left:auto;font-size:10px">${kw > 0 ? kw.toFixed(2) + ' кВт' : '— кВт'}</span>
+                <button type="button" class="cp-slot-unlink" data-slot-idx="${slotIdx}" title="Разорвать связь — слот вернётся в anonymous" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px;padding:0 4px">✂</button>
+              </div>`;
+            } else {
+              return `<div class="cp-group-slot" data-slot-idx="${slotIdx}" data-slot-state="anon" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:3px;color:#6b7280" title="Перетащите сюда узел из «Неразмещённые» или со схемы для связи">
+                <span style="font-size:10px;font-weight:600;min-width:28px;text-align:right">#${slotNo}</span>
+                <span style="font-size:10px;min-width:14px">·</span>
+                <span style="font-style:italic">аноним <span class="muted" style="font-size:9.5px">(перетащите узел сюда)</span></span>
+                <span class="muted" style="margin-left:auto;font-size:10px">${_perUnitKw > 0 ? _perUnitKw.toFixed(2) + ' кВт' : '— кВт'}</span>
+              </div>`;
+            }
+          }).join('')}
         </div>
-        ${_anonCount > 0 ? `<div class="muted" style="font-size:10px;margin-top:4px;color:#6b7280">Анонимные экземпляры созданы как параметр <code>count</code> без идентификации. Чтобы связать с реальными узлами проекта — используйте picker ниже.</div>` : ''}
+        <div class="muted" style="font-size:10px;margin-top:4px;color:#6b7280">Каждый слот #N может быть связан с конкретным реальным узлом проекта (picker ниже) или оставаться анонимным (учитывается просто как «один из count»).</div>
       </div>`);
 
       // v0.59.761: picker одиночных потребителей для связи с группой
@@ -987,40 +1004,104 @@ export function openConsumerParamsModal(n) {
     }
   }
 
-  // v0.59.763: handlers «✂ Исключить» (split-out, ROADMAP 1.28.13). Восстанавливает
-  // отдельный consumer-узел по метаданным linkedMembers[idx], уменьшает n.count.
+  // v0.59.766: slot-aware handlers. Юзер: «можно перетаскиванием на
+  // соответствующий слот». Кнопка ✂ на linked-слоте — разрывает alias,
+  // слот возвращается в anonymous. Drag-drop на anonymous-слот — линкует
+  // перетащенный узел (из неразмещённых, со схемы или с другой группы).
   {
-    const unlinkBtns = document.querySelectorAll('.cp-unlink-btn');
-    unlinkBtns.forEach(btn => {
+    // Unlink (✂): clear slot + remove src.linkedAlias
+    const slotUnlinkBtns = document.querySelectorAll('.cp-slot-unlink');
+    slotUnlinkBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        const idx = Number(btn.dataset.unlinkIdx);
-        if (!Array.isArray(n.linkedMembers) || idx < 0 || idx >= n.linkedMembers.length) return;
-        const lm = n.linkedMembers[idx];
-        try { snapshot('group-unlink:' + n.id + '/' + lm.originalId); } catch {}
-        // Создаём новый consumer-узел рядом с группой со скопированными параметрами.
-        const ox = (n.x || 0) + 240;
-        const oy = (n.y || 0);
-        const newId = 'n_split_' + Date.now() + '_' + idx;
-        state.nodes.set(newId, {
-          id: newId,
-          type: 'consumer',
-          x: ox, y: oy,
-          tag: lm.tag || '',
-          name: lm.name || ((n.name || 'Потребитель') + ' (отделён)'),
-          demandKw: lm.demandKw || (Number(n.demandKw) || 0),
-          cosPhi: lm.cosPhi != null ? lm.cosPhi : (Number(n.cosPhi) || 0.92),
-          phase: lm.phase || n.phase || '3ph',
-          consumerSubtype: lm.consumerSubtype || n.consumerSubtype || '',
-          voltageLevelIdx: lm.voltageLevelIdx != null ? lm.voltageLevelIdx : n.voltageLevelIdx,
-          count: 1,
-          groupMode: 'uniform',
-          pageIds: Array.isArray(n.pageIds) ? [...n.pageIds] : [],
-          kUse: n.kUse || 1,
+        const slotIdx = Number(btn.dataset.slotIdx);
+        if (!Array.isArray(n.linkedAliases) || slotIdx < 0 || slotIdx >= n.linkedAliases.length) return;
+        const aliasId = n.linkedAliases[slotIdx];
+        if (!aliasId) return;
+        try { snapshot('group-slot-unlink:' + n.id + '#' + (slotIdx + 1)); } catch {}
+        const tgt = state.nodes.get(aliasId);
+        if (tgt && tgt.linkedAlias === n.id) delete tgt.linkedAlias;
+        n.linkedAliases[slotIdx] = null;
+        // Чистим linkedMembers от записей, не присутствующих в linkedAliases
+        if (Array.isArray(n.linkedMembers)) {
+          n.linkedMembers = n.linkedMembers.filter(m => n.linkedAliases.includes(m.originalId));
+        }
+        try { flash(`Слот #${slotIdx + 1} разъединён (узел «${tgt?.tag || aliasId}» остался)`, 'success'); } catch {}
+        notifyChange();
+        openConsumerParamsModal(n);
+      });
+    });
+    // Drag-drop на slot: позволяем притащить узел и привязать к слоту
+    const slotEls = document.querySelectorAll('.cp-group-slot');
+    slotEls.forEach(slotEl => {
+      slotEl.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'link';
+        slotEl.style.outline = '2px dashed #4f46e5';
+        slotEl.style.outlineOffset = '-2px';
+      });
+      slotEl.addEventListener('dragleave', () => {
+        slotEl.style.outline = '';
+        slotEl.style.outlineOffset = '';
+      });
+      slotEl.addEventListener('drop', e => {
+        e.preventDefault();
+        slotEl.style.outline = '';
+        slotEl.style.outlineOffset = '';
+        const slotIdx = Number(slotEl.dataset.slotIdx);
+        // Источник — может быть unplaced-id или node-id (data-raschet-* или в state)
+        let droppedId = e.dataTransfer.getData('text/raschet-unplaced-id') || e.dataTransfer.getData('text/raschet-node-id');
+        if (!droppedId) {
+          // Fallback — попытка прочитать любой text/* с похожим контентом
+          droppedId = e.dataTransfer.getData('text/plain') || '';
+        }
+        if (!droppedId) {
+          try { flash('Не удалось определить перетаскиваемый узел', 'warn'); } catch {}
+          return;
+        }
+        const src = state.nodes.get(droppedId);
+        if (!src) {
+          try { flash(`Узел ${droppedId} не найден`, 'warn'); } catch {}
+          return;
+        }
+        if (src.id === n.id) return;
+        if (src.type !== 'consumer') {
+          try { flash('Только consumer-узлы можно связать с группой', 'warn'); } catch {}
+          return;
+        }
+        if (src.linkedAlias && src.linkedAlias !== n.id) {
+          try { flash(`Узел ${src.tag || src.id} уже связан с другой группой`, 'warn'); } catch {}
+          return;
+        }
+        try { snapshot('group-slot-link:' + n.id + '#' + (slotIdx + 1) + '←' + src.id); } catch {}
+        if (!Array.isArray(n.linkedAliases)) n.linkedAliases = [];
+        if (!Array.isArray(n.linkedMembers)) n.linkedMembers = [];
+        while (n.linkedAliases.length < (Number(n.count) || 1)) n.linkedAliases.push(null);
+        // Если в этом слоте уже что-то — разорвём старую связь
+        const prevId = n.linkedAliases[slotIdx];
+        if (prevId && prevId !== src.id) {
+          const prev = state.nodes.get(prevId);
+          if (prev && prev.linkedAlias === n.id) delete prev.linkedAlias;
+          n.linkedMembers = n.linkedMembers.filter(m => m.originalId !== prevId);
+        }
+        // Если src уже в другом слоте — выкинем оттуда
+        const oldSlot = n.linkedAliases.indexOf(src.id);
+        if (oldSlot >= 0 && oldSlot !== slotIdx) n.linkedAliases[oldSlot] = null;
+        n.linkedAliases[slotIdx] = src.id;
+        src.linkedAlias = n.id;
+        // Сохраняем metadata snapshot
+        n.linkedMembers = n.linkedMembers.filter(m => m.originalId !== src.id);
+        n.linkedMembers.push({
+          originalId: src.id,
+          tag: src.tag || '',
+          name: src.name || '',
+          demandKw: Number(src.demandKw) || 0,
+          cosPhi: Number(src.cosPhi) || null,
+          phase: src.phase || null,
+          consumerSubtype: src.consumerSubtype || '',
+          voltageLevelIdx: Number.isFinite(Number(src.voltageLevelIdx)) ? Number(src.voltageLevelIdx) : null,
+          linkedAt: Date.now(),
         });
-        // Уменьшаем count группы и удаляем запись из linkedMembers.
-        n.count = Math.max(1, (Number(n.count) || 1) - 1);
-        n.linkedMembers.splice(idx, 1);
-        try { flash(`Экземпляр «${lm.tag || lm.originalId}» отделён от группы ${n.tag} (×${n.count})`, 'success'); } catch {}
+        try { flash(`Слот #${slotIdx + 1} ← ${src.tag || src.id}`, 'success'); } catch {}
         notifyChange();
         openConsumerParamsModal(n);
       });
@@ -1058,17 +1139,37 @@ export function openConsumerParamsModal(n) {
           return;
         }
         const ids = checked.map(cb => cb.dataset.linkId).filter(Boolean);
-        try { snapshot('group-link:' + n.id + '←' + ids.join(',')); } catch {}
-        let merged = 0;
-        // v0.59.763: сохраняем метаданные о привязанных экземплярах в
-        // n.linkedMembers[], чтобы в Группа-tab был виден список стоек
-        // (а не просто увеличенный count). Юзер: «стойка присоединилась
-        // но нет списка стоек внутри???» (ROADMAP 1.28.10/1.28.13/1.28.14).
+        try { snapshot('group-alias:' + n.id + '←' + ids.join(',')); } catch {}
+        // v0.59.766: семантика IDENTIFY-AS со СЛОТАМИ. Юзер: «Именно связать,
+        // что стойка экземпляр один это SR01, экземпляр 1 то SR02 и так
+        // далее» — заполняем anonymous-слоты в n.linkedAliases[slotIdx],
+        // НЕ увеличивая count. Если выбранных больше, чем свободных слотов,
+        // — переполнение даёт count++ только для overflow.
         if (!Array.isArray(n.linkedMembers)) n.linkedMembers = [];
+        if (!Array.isArray(n.linkedAliases)) n.linkedAliases = [];
+        // Padding до текущего count
+        while (n.linkedAliases.length < (Number(n.count) || 1)) n.linkedAliases.push(null);
+        // Очистка устаревших linkedMembers (которые не в linkedAliases)
+        n.linkedMembers = n.linkedMembers.filter(m =>
+          n.linkedAliases.includes(m.originalId)
+        );
+        let linked = 0, skipped = 0, overflow = 0;
         for (const id of ids) {
           const src = state.nodes.get(id);
           if (!src) continue;
-          // Snapshot identity ДО удаления узла
+          if (src.linkedAlias && src.linkedAlias !== n.id) { skipped++; continue; }
+          if (n.linkedAliases.includes(id)) { skipped++; continue; }
+          // Найти первый anonymous-слот
+          const slot = n.linkedAliases.indexOf(null);
+          if (slot >= 0) {
+            n.linkedAliases[slot] = src.id;
+          } else {
+            // Overflow — добавляем новый слот, count растёт
+            n.linkedAliases.push(src.id);
+            n.count = (Number(n.count) || 1) + 1;
+            overflow++;
+          }
+          src.linkedAlias = n.id;
           n.linkedMembers.push({
             originalId: src.id,
             tag: src.tag || '',
@@ -1080,20 +1181,17 @@ export function openConsumerParamsModal(n) {
             voltageLevelIdx: Number.isFinite(Number(src.voltageLevelIdx)) ? Number(src.voltageLevelIdx) : null,
             linkedAt: Date.now(),
           });
-          // увеличиваем count группы и удаляем источник со связями
-          n.count = (Number(n.count) || 1) + (Number(src.count) || 1);
-          const connsToDel = [];
-          for (const c of state.conns.values()) {
-            if (c.from?.nodeId === src.id || c.to?.nodeId === src.id) connsToDel.push(c.id);
-          }
-          for (const cid of connsToDel) state.conns.delete(cid);
-          state.nodes.delete(src.id);
-          merged++;
+          linked++;
         }
-        if (merged > 0) {
-          try { flash(`Объединено ${merged} ${merged === 1 ? 'потребитель' : 'потребителя/-ей'} в группу ${n.tag || n.id} (×${n.count})`, 'success'); } catch {}
+        if (linked > 0) {
+          const msgParts = [`Связано ${linked} ${linked === 1 ? 'объект' : 'объекта/-ов'} в группу ${n.tag || n.id}`];
+          if (overflow > 0) msgParts.push(`+${overflow} новых слотов (count → ${n.count})`);
+          if (skipped > 0) msgParts.push(`${skipped} пропущено`);
+          try { flash(msgParts.join(', '), 'success'); } catch {}
           notifyChange();
           openConsumerParamsModal(n);
+        } else if (skipped > 0) {
+          if (linkStatus) linkStatus.textContent = 'Все выбранные уже связаны.';
         }
       });
     }
