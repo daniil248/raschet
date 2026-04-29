@@ -58,17 +58,35 @@ function _isCompatibleConsumer(a, b) {
 
 function _findConsumerOverlapAt(dragged) {
   if (!dragged || dragged.type !== 'consumer') return null;
-  const cx = dragged.x + nodeWidth(dragged) / 2;
-  const cy = dragged.y + nodeHeight(dragged) / 2;
+  // v0.59.760: проверяем ПЕРЕСЕЧЕНИЕ bbox dragged с bbox любого другого
+  // consumer-узла. Раньше требовалось, чтобы центр dragged попадал ровно
+  // в bbox target — это слишком строго (юзер мог положить «рядом», но не в
+  // центр). Теперь — любое пересечение прямоугольников.
+  const dw = nodeWidth(dragged), dh = nodeHeight(dragged);
+  const dx1 = dragged.x, dy1 = dragged.y;
+  const dx2 = dragged.x + dw, dy2 = dragged.y + dh;
+  let bestOverlap = 0, bestNode = null;
   for (const n of state.nodes.values()) {
     if (n.id === dragged.id) continue;
     if (n.type !== 'consumer') continue;
     const nw = nodeWidth(n), nh = nodeHeight(n);
-    if (cx >= n.x && cx <= n.x + nw && cy >= n.y && cy <= n.y + nh) {
-      return n;
+    const nx1 = n.x, ny1 = n.y;
+    const nx2 = n.x + nw, ny2 = n.y + nh;
+    // Площадь пересечения прямоугольников
+    const ix1 = Math.max(dx1, nx1), iy1 = Math.max(dy1, ny1);
+    const ix2 = Math.min(dx2, nx2), iy2 = Math.min(dy2, ny2);
+    if (ix2 > ix1 && iy2 > iy1) {
+      const area = (ix2 - ix1) * (iy2 - iy1);
+      // Требуем ≥ 25% площади dragged-ноды как минимальный overlap, чтобы
+      // случайный край не триггерил merge.
+      const minArea = (dw * dh) * 0.25;
+      if (area >= minArea && area > bestOverlap) {
+        bestOverlap = area;
+        bestNode = n;
+      }
     }
   }
-  return null;
+  return bestNode;
 }
 
 function _mergeConsumersIntoGroup(target, source) {
@@ -747,6 +765,20 @@ export function initInteraction() {
         n.y = Math.round(p.y - 50);
         if (!n.positionsByPage) n.positionsByPage = {};
         n.positionsByPage[state.currentPageId] = { x: n.x, y: n.y };
+        // v0.59.760: после drop'а из «Неразмещённых» — проверка auto-merge
+        // (ROADMAP 1.28.9). Если drop попал на совместимого consumer'а —
+        // n абсорбируется в target, count++.
+        if (n.type === 'consumer') {
+          const target = _findConsumerOverlapAt(n);
+          if (target && _isCompatibleConsumer(n, target)) {
+            const tagBefore = target.tag || target.name || target.id;
+            const newCount = (Number(target.count) || 1) + (Number(n.count) || 1);
+            _mergeConsumersIntoGroup(target, n);
+            state.selectedKind = 'node';
+            state.selectedId = target.id;
+            try { flash(`Объединено в группу ${tagBefore} (×${newCount})`, 'success'); } catch {}
+          }
+        }
         notifyChange();
         render();
       }
