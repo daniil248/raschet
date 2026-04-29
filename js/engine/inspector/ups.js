@@ -2764,7 +2764,11 @@ export function upsStatusBlock(n) {
     parts.push(`P акт.: <b>${fmt(n._powerP)} kW</b>`);
     parts.push(`Q реакт.: <b>${fmt(n._powerQ || 0)} kvar</b> ${n._onStaticBypass ? '' : '<span class="muted">(инвертор — 0)</span>'}`);
     parts.push(`S полн.: <b>${fmt(n._powerS || 0)} kVA</b>`);
-    parts.push(`cos φ: <b>${n._cosPhi ? n._cosPhi.toFixed(2) : '1.00'}</b> ${n._onStaticBypass ? '<span class="muted">(байпас)</span>' : '<span class="muted">(инвертор)</span>'}`);
+    // v0.59.670: methodology-aware short для «cos φ»
+    {
+      const _cosShort = getTerm('powerFactor', GLOBAL.calcMethod || 'iec').short || 'cos φ';
+      parts.push(`${_cosShort}: <b>${n._cosPhi ? n._cosPhi.toFixed(2) : '1.00'}</b> ${n._onStaticBypass ? '<span class="muted">(байпас)</span>' : '<span class="muted">(инвертор)</span>'}`);
+    }
   }
   const maxInputKw = Number(n.capacityKw) / Math.max(0.01, (Number(n.efficiency) || 100) / 100) + upsChargeKw(n);
   const maxInputA = computeCurrentA(maxInputKw, nodeVoltage(n), 1.0, isThreePhase(n));

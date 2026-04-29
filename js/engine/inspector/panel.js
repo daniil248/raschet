@@ -2299,10 +2299,16 @@ export function panelStatusBlock(n) {
   // Текущая нагрузка
   parts.push(`<b>Текущая:</b> ${fmt(n._powerP || 0)} kW · ${fmt(n._loadA || 0)} A`);
   parts.push(`Q реакт.: ${fmt(n._powerQ || 0)} kvar · S полн.: ${fmt(n._powerS || 0)} kVA`);
-  if (Number(n.kSim) && Number(n.kSim) !== 1) {
-    parts.push(`расчётная с Ксим: <b>${fmt(n._calcKw || 0)} kW</b>`);
+  // v0.59.670: methodology-aware «Ксим» / «cos φ итог»
+  {
+    const _mid = GLOBAL.calcMethod || 'iec';
+    const _ksimShort = getTerm('simultaneity', _mid).short || 'Ксим';
+    const _cosShort = getTerm('powerFactor', _mid).short || 'cos φ';
+    if (Number(n.kSim) && Number(n.kSim) !== 1) {
+      parts.push(`расчётная с ${_ksimShort}: <b>${fmt(n._calcKw || 0)} kW</b>`);
+    }
+    if (n._cosPhi) parts.push(`${_cosShort} итог: <b>${n._cosPhi.toFixed(2)}</b>`);
   }
-  if (n._cosPhi) parts.push(`cos φ итог: <b>${n._cosPhi.toFixed(2)}</b>`);
   if (n._ikA && isFinite(n._ikA)) parts.push(`Ik (ток КЗ): <b>${fmt(n._ikA / 1000)} кА</b>`);
   if (n._deltaUPct > 0) parts.push(`ΔU суммарный: <b>${n._deltaUPct.toFixed(2)}%</b>${n._deltaUPct > 5 ? ' ⚠ > 5%' : ''}`);
 

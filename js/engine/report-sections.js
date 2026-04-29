@@ -227,6 +227,9 @@ function collectCables() {
 // 1. ИСТОЧНИКИ ПИТАНИЯ
 function sectionSources() {
   const items = collectSources();
+  // v0.59.670: methodology-aware заголовок «cos φ» (для IEC → PF).
+  const _midS = GLOBAL.calcMethod || 'iec';
+  const _cosShortS = getTerm('powerFactor', _midS).short || 'cos φ';
   const cols = [
     { label: 'Обозн.',     width: 18 },
     { label: 'Имя',        width: 35 },
@@ -235,7 +238,7 @@ function sectionSources() {
     { label: 'Pном, кВт',  align: 'right', width: 18 },
     { label: 'Pнагр, кВт', align: 'right', width: 18 },
     { label: 'Iрасч, А',   align: 'right', width: 16 },
-    { label: 'cos φ',      align: 'right', width: 14 },
+    { label: _cosShortS,   align: 'right', width: 14 },
     { label: 'Статус' },
   ];
   const rows = items.map(s => {
@@ -279,7 +282,7 @@ function sectionSources() {
     blocks.push(B.h2('Перечень источников'));
     blocks.push(B.table(blockCols(cols), rows));
     blocks.push(B.paragraph(
-      'Обозначения: Pном — номинальная мощность источника, Pнагр — текущая нагрузка, Iрасч — расчётный ток, cos φ — коэффициент мощности.'
+      `Обозначения: Pном — номинальная мощность источника, Pнагр — текущая нагрузка, Iрасч — расчётный ток, ${_cosShortS} — ${getTerm('powerFactor', _midS).explain || 'коэффициент мощности'}.`
     ));
   } else {
     text.push('В схеме нет источников питания.');

@@ -771,7 +771,11 @@ export function sourceStatusBlock(n) {
     parts.push(`<b>Текущая:</b> ${fmt(n._powerP || n._loadKw || 0)} kW · ${fmt(n._loadA || 0)} A <span class="muted">(${pct}%)</span>`);
     if (n._powerQ) parts.push(`Q реакт.: <b>${fmt(n._powerQ)} kvar</b>`);
     if (n._powerS) parts.push(`S полн.: <b>${fmt(n._powerS)} kVA</b>`);
-    if (n._cosPhi) parts.push(`cos φ: <b>${n._cosPhi.toFixed(2)}</b>`);
+    // v0.59.670: methodology-aware short для «cos φ»
+    if (n._cosPhi) {
+      const _cosShort = getTerm('powerFactor', GLOBAL.calcMethod || 'iec').short || 'cos φ';
+      parts.push(`${_cosShort}: <b>${n._cosPhi.toFixed(2)}</b>`);
+    }
     // v0.59.626/629: worst-case (все ИБП в байпасе) — для УРКМ и подбора ДГУ.
     // Всегда показываем обе записи (текущий + наихудший), даже когда они равны.
     if (Number.isFinite(n._powerPWorst) || Number.isFinite(n._powerQWorst)) {
