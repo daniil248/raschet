@@ -1369,20 +1369,29 @@ function _renderUpsBatteryBody(n) {
       </span>
       <button type="button" id="ups-batt-lock-toggle" class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px">${lockBtnTxt}</button>
     </div>`);
+    // v0.59.697: helpIcon на ключевых полях АКБ.
     h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('Элементов в блоке',
-      `<input type="number" id="ups-batt-cells" min="1" max="400" step="1" value="${Number(n.batteryCellCount) || cellsPerBlock * blocksPerString}"${disAttr}${readOnlyBg}>`)}</div>`);
-    h.push(`<div style="flex:1">${field('Напр. элемента, В',
-      `<input type="number" id="ups-batt-cellV" min="0.5" max="5" step="0.1" value="${Number(n.batteryCellVoltage) || picked.cellVoltage || 2}"${disAttr}${readOnlyBg}>`)}</div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Элементов в блоке${helpIcon('Количество электрохимических элементов (cells) в одном блоке. Для VRLA/AGM (2 В/эл.) типичный блок 6 элементов (12 В); для Li-Ion LiFePO4 (3.2 В/эл.) — 4 элемента в модуле (12.8 В) или 16 (51.2 В).')}</label>
+      <input type="number" id="ups-batt-cells" min="1" max="400" step="1" value="${Number(n.batteryCellCount) || cellsPerBlock * blocksPerString}"${disAttr}${readOnlyBg}>
+    </div></div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Напр. элемента, В${helpIcon('Номинальное напряжение одного электрохимического элемента. VRLA / AGM: 2.0 В; Li-Ion LiFePO4: 3.2 В; Li-Ion NMC: 3.7 В. Из этого значения и количества элементов вычисляется V_блок_ном.')}</label>
+      <input type="number" id="ups-batt-cellV" min="0.5" max="5" step="0.1" value="${Number(n.batteryCellVoltage) || picked.cellVoltage || 2}"${disAttr}${readOnlyBg}>
+    </div></div>`);
     h.push('</div>');
     h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('Ёмкость блока, А·ч',
-      `<input type="number" id="ups-batt-ah" min="1" step="1" value="${Number(n.batteryCapacityAh) || capAhBlock}"${disAttr}${readOnlyBg}>`)}</div>`);
-    h.push(`<div style="flex:1">${field('Тип батарей',
-      `<select id="ups-batt-type"${disAttr}${readOnlyBg}>
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Ёмкость блока, А·ч${helpIcon('Номинальная ёмкость одного блока в ампер-часах при заданном времени разряда (обычно C10 или C20). Для VRLA: типично 17/26/38/55/65/100/150/200 Ач. Реальное время автономии зависит от end-voltage и температуры (см. ниже).')}</label>
+      <input type="number" id="ups-batt-ah" min="1" step="1" value="${Number(n.batteryCapacityAh) || capAhBlock}"${disAttr}${readOnlyBg}>
+    </div></div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Тип батарей${helpIcon('VRLA / AGM (Lead-Acid): свинцово-кислотные, 2 В/эл. Дешевле, требуют замены каждые 5–10 лет, чувствительны к температуре. Li-Ion LiFePO4: литий-железо-фосфатные, 3.2 В/эл. Дороже, но срок службы 15–20 лет, меньше масса/объём, лучше переносят разряды.')}</label>
+      <select id="ups-batt-type"${disAttr}${readOnlyBg}>
         <option value="lead-acid"${bt === 'lead-acid' ? ' selected' : ''}>VRLA / AGM (2 В)</option>
         <option value="li-ion"${bt === 'li-ion' ? ' selected' : ''}>Li-Ion LiFePO4 (3.2 В)</option>
-      </select>`)}</div>`);
+      </select>
+    </div></div>`);
     h.push('</div>');
     // Селектор режима подключения DC/DC выходов для S³ модулей
     if (isS3Module) {
@@ -1421,24 +1430,31 @@ function _renderUpsBatteryBody(n) {
     const endVopts = isLiIon
       ? [2.50, 2.60, 2.70, 2.80, 2.90, 3.00]
       : [1.60, 1.65, 1.70, 1.75, 1.80, 1.85];
-    h.push(`<div style="flex:1">${field('End V / элемент', `
+    h.push(`<div style="flex:1"><div class="field">
+      <label>End V / элемент${helpIcon('Конечное напряжение разряда на элемент. После него инвертор отключается. Для VRLA: 1.60–1.85 В/эл. (типично 1.75 В/эл. для длительного разряда, 1.65 В/эл. для коротких). Для Li-Ion LiFePO4: 2.50–3.00 В/эл. (типично 2.80 В/эл.). Чем ниже end-V — тем больше отдаваемая ёмкость, но быстрее старение.')}</label>
       <select id="ups-batt-endv">
         ${endVopts.map(v =>
           `<option value="${v}"${Math.abs(v-endVcell)<0.001?' selected':''}>${v.toFixed(2)} В</option>`
         ).join('')}
-      </select>`)}</div>`);
-    h.push(`<div style="flex:1">${field('Температура, °C', `<input type="number" id="ups-batt-temp" min="-20" max="60" step="1" value="${tempC}">`)}</div>`);
+      </select>
+    </div></div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Температура, °C${helpIcon('Рабочая температура АКБ. Влияет на ёмкость: при 25°C — номинальная 100%; при 0°C — 80%; при -20°C — 60%. Высокие температуры (>30°C) ускоряют старение (на каждые 10°C срок службы сокращается вдвое для VRLA). Нормальная рабочая температура — 20–25°C.')}</label>
+      <input type="number" id="ups-batt-temp" min="-20" max="60" step="1" value="${tempC}">
+    </div></div>`);
     h.push('</div>');
 
     // Режим расчёта:
     //   'forward' — задано кол-во модулей/шкафов, считаем автономию
     //   'reverse' — задана целевая автономия, подбираем минимум модулей
     const calcMode = n.batteryCalcMode || 'forward';
-    h.push(field('Режим расчёта', `
+    h.push(`<div class="field">
+      <label>Режим расчёта${helpIcon('Прямой (forward): задано количество блоков/шкафов — программа считает достижимое время автономии. Обратный (reverse): задано требуемое время автономии — программа подбирает минимальное количество блоков. Для проектирования с нуля удобнее reverse, для проверки/инвентаризации — forward.')}</label>
       <select id="ups-batt-mode">
         <option value="forward"${calcMode === 'forward' ? ' selected' : ''}>Проверить автономию (модули → время)</option>
         <option value="reverse"${calcMode === 'reverse' ? ' selected' : ''}>Подобрать модули по автономии (время → модули)</option>
-      </select>`));
+      </select>
+    </div>`);
     h.push(field(
       calcMode === 'reverse' ? 'Требуемая автономия, мин' : 'Требуемая автономия, мин (справочно)',
       `<input type="number" id="ups-batt-target" min="1" max="1440" step="1" value="${targetMin}">`
