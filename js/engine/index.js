@@ -578,6 +578,26 @@ window.Raschet = {
   },
   setGlobal(patch) {
     if (!patch || typeof patch !== 'object') return;
+    // v0.59.725: при смене методики расчёта (IEC ↔ ПУЭ ↔ РТМ) переводим
+    // сохранённые значения c.installMethod / c.bundling и
+    // GLOBAL.defaultInstallMethod на ключи новой методики, чтобы
+    // выбор соответствовал ближайшему аналогу. Делается ДО применения
+    // patch — чтобы migrateConnsForMethodChange знал старое значение.
+    const _newMid = patch.calcMethod;
+    const _oldMid = GLOBAL.calcMethod;
+    if (_newMid && _newMid !== _oldMid) {
+      try {
+        // Динамический импорт чтобы не циклить — install-mapping
+        // импортирует state косвенно через GLOBAL/conns, не имеет
+        // прямой зависимости от методик.
+        import('../methods/install-mapping.js').then(mod => {
+          mod.migrateConnsForMethodChange(state, GLOBAL, _oldMid, _newMid);
+          // Перерисовать после миграции — recalc подхватит новые значения.
+          try { render(); } catch {}
+          try { renderInspector(); } catch {}
+        }).catch(e => console.warn('[install-mapping]', e));
+      } catch (e) { console.warn('[install-mapping]', e); }
+    }
     for (const k of Object.keys(patch)) {
       if (k in GLOBAL) GLOBAL[k] = patch[k];
     }
