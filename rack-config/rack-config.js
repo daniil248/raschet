@@ -864,6 +864,8 @@ function renderForm() {
   renderPduList();
   renderAccList();
   applyKitLocks();
+  // v0.59.733: пересчитать поле «ток» из «мощности» при смене шаблона.
+  try { _rcSyncDemandAFromKw(); } catch {}
   recalc();
 }
 
@@ -1773,6 +1775,11 @@ function recalc() {
   renderWarnings();
   renderBom();
   renderUnitMap();
+  // v0.59.733: фаза стойки могла измениться после правки PDU — пересчитать
+  // зеркальное поле «ток» из текущей «мощности», если фокус не в самом поле.
+  try {
+    if (document.activeElement?.id !== 'rc-demand-a') _rcSyncDemandAFromKw();
+  } catch {}
 }
 
 /* ---------- 2D карта юнитов (Phase 1.23.8) ----------
@@ -2118,6 +2125,73 @@ function sendApplyToHost() {
 }
 
 /* ---------- bind ---------- */
+
+// v0.59.733: bidirectional sync для rc-demand-kw ↔ rc-demand-a.
+// Фаза стойки определяется по существующим PDU: если есть хотя бы
+// один 3ф PDU → 3ф 400В, иначе → 1ф 230В. cos φ берётся из rc-cosphi.
+function _rcGuessRackIs3ph(t) {
+  if (!t || !Array.isArray(t.pdus) || !t.pdus.length) return true; // default 3ф (DC-typical)
+  return t.pdus.some(p => Number(p.phases) === 3);
+}
+function _rcKwToA(kw, t) {
+  if (!(kw > 0)) return 0;
+  const cos = (t && Number(t.cosphi)) || 0.9;
+  const is3 = _rcGuessRackIs3ph(t);
+  const U = is3 ? 400 : 230;
+  const k = is3 ? Math.sqrt(3) : 1;
+  return (kw * 1000) / (k * U * cos);
+}
+function _rcAToKw(a, t) {
+  if (!(a > 0)) return 0;
+  const cos = (t && Number(t.cosphi)) || 0.9;
+  const is3 = _rcGuessRackIs3ph(t);
+  const U = is3 ? 400 : 230;
+  const k = is3 ? Math.sqrt(3) : 1;
+  return (a * k * U * cos) / 1000;
+}
+let _rcDemandFieldsWired = false;
+function _rcSyncDemandAFromKw() {
+  const kwEl = el('rc-demand-kw'); const aEl = el('rc-demand-a');
+  if (!kwEl || !aEl) return;
+  const t = current(); if (!t) return;
+  const a = _rcKwToA(parseFloat(kwEl.value) || 0, t);
+  aEl.value = a > 0 ? a.toFixed(2).replace(/\.00$/, '') : '';
+}
+function _rcWireDemandFields() {
+  const kwEl = el('rc-demand-kw'); const aEl = el('rc-demand-a');
+  if (!kwEl || !aEl) return;
+  if (_rcDemandFieldsWired) { _rcSyncDemandAFromKw(); return; }
+  _rcDemandFieldsWired = true;
+  let _syncing = false;
+  // P → I (mirror only, change/save идёт через существующий change-handler kw)
+  kwEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      const t = current();
+      const a = t ? _rcKwToA(parseFloat(kwEl.value) || 0, t) : 0;
+      aEl.value = a > 0 ? a.toFixed(2).replace(/\.00$/, '') : '';
+    } finally { _syncing = false; }
+  });
+  // I → P (на input — зеркалим в kw, на change — провоцируем save через kw)
+  aEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      const t = current();
+      const kw = t ? _rcAToKw(parseFloat(aEl.value) || 0, t) : 0;
+      kwEl.value = kw > 0 ? kw.toFixed(2).replace(/\.00$/, '') : '';
+    } finally { _syncing = false; }
+  });
+  aEl.addEventListener('change', () => {
+    // Триггерим существующий change-handler у rc-demand-kw, чтобы readForm/recalc прошли.
+    kwEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  // Смена cos φ или phases у PDU → пересчитать I из текущей P.
+  const cosEl = el('rc-cosphi');
+  if (cosEl) cosEl.addEventListener('change', _rcSyncDemandAFromKw);
+}
+
 function bind() {
   const ids = ['rc-name','rc-manufacturer','rc-u','rc-width','rc-depth',
     'rc-door-front','rc-door-rear','rc-door-with-lock','rc-lock',
@@ -2130,6 +2204,8 @@ function bind() {
     if (!node) return;
     node.addEventListener('change', () => { readForm(); renderTemplateList(); recalc(); });
   });
+  // v0.59.733: связь rc-demand-kw ↔ rc-demand-a (двунаправленная).
+  _rcWireDemandFields();
 
   // v0.59.257: 3-поле геометрии рельс — click-to-focus делает поле manual,
   // auto-поле пересчитывается.
