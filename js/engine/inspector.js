@@ -37,6 +37,7 @@ import {
   bindWrapModalTabs as bindWrapModalTabsSource,
   openImpedanceModal,
   openAutomationModal,
+  openTuRequestModal,
   sourceStatusBlock,
   voltageLevelOptions,
 } from './inspector/source.js';
@@ -629,6 +630,13 @@ export function renderInspectorNode(n) {
 
     // Все номинальные параметры (мощность, напряжение, Ssc, Uk%, Xs/Rs) — в модалке
     h.push(`<button class="full-btn" id="btn-open-impedance" style="margin-top:6px">🔌 Параметры источника (IEC 60909)</button>`);
+    // v0.59.689: для городской сети — кнопка генерации запроса на ТУ
+    // (технические условия) для электроснабжающей организации.
+    // Пользователь: «в городской ввод добавь запрос - расчет, обоснование
+    // Технических условий, для запроса в электроснабжающую организацию».
+    if (subtype === 'utility') {
+      h.push(`<button class="full-btn" id="btn-open-tu-request" style="margin-top:6px;background:#0c4a6e;color:#fff;font-weight:600">📋 Запрос на ТУ (для запроса в РЭС)</button>`);
+    }
     // Справка: текущие значения из модалки
     const levels = GLOBAL.voltageLevels || [];
     const outLevel = levels[n.voltageLevelIdx] || null;
@@ -2431,6 +2439,8 @@ export function wireInspectorInputs(n, root) {
   if (autoBtn) autoBtn.addEventListener('click', () => openAutomationModal(n));
   const impBtn = document.getElementById('btn-open-impedance');
   if (impBtn) impBtn.addEventListener('click', () => openImpedanceModal(n));
+  const tuBtn = document.getElementById('btn-open-tu-request');
+  if (tuBtn) tuBtn.addEventListener('click', () => openTuRequestModal(n));
   // v0.59.631: openGenRatingModal удалён — поля ISO 8528 теперь в openImpedanceModal.
   // Phase 1.20.39 / 1.20.45: модель резервирования источников
   const standbyCb = document.getElementById('src-is-standby');

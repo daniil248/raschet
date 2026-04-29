@@ -9,7 +9,7 @@ import { state } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash, helpIcon } from '../utils.js';
 import { effectiveTag } from '../zones.js';
 import { effectiveOn } from '../modes.js';
-import { nodeVoltage, sourceImpedance, formatVoltageLevelLabel } from '../electrical.js';
+import { nodeVoltage, sourceImpedance, formatVoltageLevelLabel, cableVoltageClass } from '../electrical.js';
 import { getTerm, getTermTooltip } from '../../methods/terms.js';
 import { rtmInfoBlock } from './rtm-block.js';
 import { snapshot, notifyChange } from '../history.js';
@@ -758,6 +758,236 @@ export function openAutomationModal(n) {
   }
 
   document.getElementById('modal-automation').classList.remove('hidden');
+}
+
+// ================= Запрос на ТУ (технические условия) =================
+// v0.59.689: формирует развёрнутый расчётный документ для запроса в
+// электроснабжающую организацию (РЭС / Россети). Данные берутся из
+// downstream-нагрузки этого ввода (n._loadKw / _maxLoadKw / _powerS /
+// _cosPhi / _ikA) — это уже посчитано в recalc.
+//
+// Документ содержит:
+//   - заявленную (расчётную) активную, реактивную, полную мощность
+//   - cos φ, ток расчётный, ток пиковый
+//   - ссылку на нормативку (ПУЭ гл. 1.2 — категории надёжности)
+//   - класс напряжения присоединения (по IEC 60502-2)
+//   - короткое обоснование (как считалось — суммарная макс. нагрузка
+//     downstream с учётом коэффициентов)
+//
+// Пользователь: «в городской ввод добавь запрос - расчет, обоснование
+// Технических условий, для запроса в электроснабжающую организацию».
+export function openTuRequestModal(n) {
+  const body = document.getElementById('tu-request-body');
+  if (!body) return;
+  // Аккумулируем downstream через n._maxLoadKw / _powerQ / _powerS — они
+  // уже посчитаны в recalc. Если есть — берём максимум из текущего и
+  // worst-case (байпас ИБП).
+  const Pcur = Number(n._powerP || n._loadKw) || 0;
+  const Qcur = Number(n._powerQ) || 0;
+  const Scur = Number(n._powerS) || Math.sqrt(Pcur * Pcur + Qcur * Qcur);
+  const Pmax = Math.max(Number(n._maxLoadKw) || 0, Number(n._powerPWorst) || 0, Pcur);
+  const Qmax = Math.max(Number(n._powerQWorst) || 0, Qcur);
+  const Smax = Math.max(Number(n._powerSWorst) || 0, Scur,
+                        Pmax > 0 ? Math.sqrt(Pmax * Pmax + Qmax * Qmax) : 0);
+  const cosCur = Scur > 0 ? (Pcur / Scur) : 0;
+  const cosWorst = Smax > 0 ? (Pmax / Smax) : cosCur;
+  const Imax = Number(n._maxLoadA) || Number(n._loadA) || 0;
+  const Uvolt = nodeVoltage(n);
+  const Uclass = cableVoltageClass(Uvolt);
+  // Классификация по ПУЭ 1.2 — для подсказки. По умолчанию категория 2,
+  // если есть резервный источник (ДГУ или ещё один utility) — 1.
+  const hasGenerator = [...state.nodes.values()].some(m =>
+    m.type === 'generator' && m.backupMode);
+  const hasParallelUtility = [...state.nodes.values()].some(m =>
+    m.id !== n.id && m.type === 'source' && (m.sourceSubtype || 'transformer') === 'utility');
+  const hasUps = [...state.nodes.values()].some(m => m.type === 'ups');
+  let suggestedCat = 2;
+  if (hasParallelUtility && hasGenerator && hasUps) suggestedCat = 1; // I особая
+  else if (hasParallelUtility || hasGenerator) suggestedCat = 1;
+  // Δt перерыва допустимый по категориям (ПУЭ 1.2.18-1.2.20):
+  const catDescr = {
+    1: 'Категория I — перерыв питания недопустим, требуется не менее 2 независимых источников + АВР. Особая группа I — дополнительно ИБП с автономией ≥ нормированной.',
+    2: 'Категория II — допускается кратковременный перерыв на время оперативного переключения АВР. Минимум 2 источника.',
+    3: 'Категория III — допускается перерыв до 1 суток. Один источник питания достаточен.',
+  };
+  // Дата для шапки документа.
+  const today = new Date().toISOString().slice(0, 10);
+  // Заявленная мощность с округлением вверх до ближайшего стандартного
+  // ряда (для удобства согласования с РЭС).
+  const _stdRound = (v) => {
+    const series = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000];
+    for (const s of series) if (s >= v) return s;
+    return Math.ceil(v / 1000) * 1000;
+  };
+  const Pdeclared = _stdRound(Pmax);
+  const Sdeclared = _stdRound(Smax);
+  // Параметры формы — заявитель, объект (хранятся в n.tuRequest).
+  const tu = n.tuRequest || {};
+  const _esc = (s) => String(s ?? '').replace(/[<>"']/g, ch =>
+    ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  body.innerHTML = `
+    <div style="font-size:12px;line-height:1.6;max-width:800px">
+      <div style="background:#eef5ff;border:1px solid #bbdefb;padding:8px 12px;border-radius:4px;margin-bottom:12px;color:#1565c0">
+        ℹ Документ для подачи в электроснабжающую организацию (РЭС / Россети) при
+        запросе технических условий на технологическое присоединение.
+        Все расчётные значения автоматически собраны из схемы.
+      </div>
+
+      <h3 style="margin:8px 0 6px;font-size:13px">1. Заявитель и объект</h3>
+      <div style="display:grid;grid-template-columns:160px 1fr;gap:6px 8px;font-size:11px">
+        <label>Наименование заявителя:</label>
+        <input type="text" id="tu-applicant" value="${_esc(tu.applicant)}" placeholder="ООО «...» / ФИО">
+        <label>Адрес объекта:</label>
+        <input type="text" id="tu-address" value="${_esc(tu.address)}" placeholder="г. ..., ул. ..., д. ...">
+        <label>Назначение объекта:</label>
+        <input type="text" id="tu-purpose" value="${_esc(tu.purpose)}" placeholder="ЦОД / производство / административное здание">
+        <label>Точка присоединения:</label>
+        <input type="text" id="tu-pointName" value="${_esc(tu.pointName)}" placeholder="ТП-N / РУ ... / ЛЭП ...">
+        <label>Дата формирования:</label>
+        <input type="text" id="tu-date" value="${_esc(tu.date || today)}">
+      </div>
+
+      <h3 style="margin:14px 0 6px;font-size:13px">2. Заявленная мощность</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <tr><td style="padding:3px 6px;border:1px solid #d7dde5">Активная мощность P, кВт</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;text-align:right;font-weight:600">${fmt(Pdeclared)}</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;color:#666">округлено вверх; расчёт: ${fmt(Pmax)} кВт</td></tr>
+        <tr><td style="padding:3px 6px;border:1px solid #d7dde5">Полная мощность S, кВА</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;text-align:right;font-weight:600">${fmt(Sdeclared)}</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;color:#666">расчёт: ${fmt(Smax)} кВА</td></tr>
+        <tr><td style="padding:3px 6px;border:1px solid #d7dde5">Реактивная мощность Q, квар</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;text-align:right;font-weight:600">${fmt(Qmax)}</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;color:#666">в worst-case (все ИБП в байпасе)</td></tr>
+        <tr><td style="padding:3px 6px;border:1px solid #d7dde5">cos φ (расчётный)</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;text-align:right;font-weight:600">${cosWorst.toFixed(3)}</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;color:#666">текущий: ${cosCur.toFixed(3)}</td></tr>
+        <tr><td style="padding:3px 6px;border:1px solid #d7dde5">Расчётный ток I, А</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;text-align:right;font-weight:600">${fmt(Imax)}</td>
+            <td style="padding:3px 6px;border:1px solid #d7dde5;color:#666">по макс. нагрузке через ввод</td></tr>
+        <tr><td style="padding:3px 6px;border:1px solid #d7dde5">Класс напряжения присоединения</td>
+            <td colspan="2" style="padding:3px 6px;border:1px solid #d7dde5;font-weight:600">${_esc(Uclass)} (Uном = ${Uvolt} В)</td></tr>
+      </table>
+
+      <h3 style="margin:14px 0 6px;font-size:13px">3. Категория надёжности (ПУЭ 1.2)</h3>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <select id="tu-cat" style="padding:4px 8px;font-size:12px">
+          <option value="1-special"${tu.category === '1-special' ? ' selected' : ''}>I особая (ЦОД / медицина / непрерывное произв-во)</option>
+          <option value="1"${(tu.category || String(suggestedCat)) === '1' ? ' selected' : ''}>I — недопустим перерыв</option>
+          <option value="2"${(tu.category || String(suggestedCat)) === '2' ? ' selected' : ''}>II — кратковременный перерыв допустим</option>
+          <option value="3"${(tu.category || String(suggestedCat)) === '3' ? ' selected' : ''}>III — перерыв до 1 сут.</option>
+        </select>
+        <span class="muted" style="font-size:10px">Авто-предложение: <b>${suggestedCat}</b> (по составу схемы)</span>
+      </div>
+      <div id="tu-cat-descr" class="muted" style="font-size:10.5px;line-height:1.5">${catDescr[tu.category && tu.category !== '1-special' ? tu.category : suggestedCat] || catDescr[2]}</div>
+
+      <h3 style="margin:14px 0 6px;font-size:13px">4. Состав резервирования (из схемы)</h3>
+      <ul style="margin:0;padding-left:18px;font-size:11px;line-height:1.6">
+        <li>Резервный ввод (utility или ДГУ): <b>${(hasParallelUtility || hasGenerator) ? 'есть' : 'нет'}</b>${hasGenerator ? ' (ДГУ резервный)' : ''}${hasParallelUtility ? ' (2-й ввод от РЭС)' : ''}</li>
+        <li>ИБП в составе схемы: <b>${hasUps ? 'есть' : 'нет'}</b></li>
+      </ul>
+
+      <h3 style="margin:14px 0 6px;font-size:13px">5. Обоснование расчёта</h3>
+      <div class="muted" style="font-size:10.5px;line-height:1.5">
+        Заявленная мощность = максимальная расчётная активная мощность,
+        потребляемая через данный ввод, с учётом коэффициентов
+        использования (Ки), одновременности (Ко) и worst-case сценария
+        (все ИБП в байпасе — реактивная мощность потребителей идёт
+        насквозь). Округление вверх до ближайшего стандартного значения
+        ряда мощностей. Метод расчёта максимальной нагрузки —
+        ${(GLOBAL.calcMethod === 'rtm') ? 'РТМ 36.18.32.4-92 (упорядоченные диаграммы Г.М.&nbsp;Каялова, приложение 2)' : (GLOBAL.calcMethod === 'pue') ? 'ПУЭ 7' : 'IEC 60364-5-52'}.
+      </div>
+
+      <div style="margin-top:14px;font-size:10.5px;color:#666;border-top:1px dashed #d7dde5;padding-top:8px">
+        Документ сгенерирован автоматически ${today}. При подаче в РЭС
+        прикладываются: однолинейная схема, расчёт нагрузок, ситуационный план.
+      </div>
+    </div>
+  `;
+  // Привязка обработчиков.
+  const _read = (id) => document.getElementById(id)?.value || '';
+  // Авто-сохранение полей в n.tuRequest при изменении (preserve-on-miss):
+  const _saveFields = () => {
+    const next = {
+      applicant: _read('tu-applicant'),
+      address:   _read('tu-address'),
+      purpose:   _read('tu-purpose'),
+      pointName: _read('tu-pointName'),
+      date:      _read('tu-date'),
+      category:  _read('tu-cat'),
+    };
+    n.tuRequest = next;
+  };
+  ['tu-applicant','tu-address','tu-purpose','tu-pointName','tu-date','tu-cat'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => { _saveFields(); snapshot('tu-request:' + n.id); notifyChange(); });
+  });
+  // Обновление описания категории при смене select.
+  const catSel = document.getElementById('tu-cat');
+  const catDescrEl = document.getElementById('tu-cat-descr');
+  if (catSel && catDescrEl) {
+    catSel.addEventListener('change', () => {
+      const k = catSel.value === '1-special' ? '1' : catSel.value;
+      catDescrEl.textContent = catDescr[k] || catDescr[2];
+    });
+  }
+  // Кнопка «копировать в буфер» — собирает текстовый документ.
+  const copyBtn = document.getElementById('tu-request-copy');
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      const cat = _read('tu-cat');
+      const catLbl = cat === '1-special' ? 'I особая' : cat;
+      const lines = [
+        'ЗАЯВКА НА ТЕХНИЧЕСКИЕ УСЛОВИЯ (ТУ)',
+        '═'.repeat(60),
+        '',
+        '1. ЗАЯВИТЕЛЬ И ОБЪЕКТ',
+        '   Заявитель:           ' + _read('tu-applicant'),
+        '   Адрес объекта:       ' + _read('tu-address'),
+        '   Назначение:          ' + _read('tu-purpose'),
+        '   Точка присоединения: ' + _read('tu-pointName'),
+        '   Дата формирования:   ' + _read('tu-date'),
+        '',
+        '2. ЗАЯВЛЕННАЯ МОЩНОСТЬ',
+        '   Активная P:    ' + fmt(Pdeclared) + ' кВт (расчёт: ' + fmt(Pmax) + ')',
+        '   Полная S:      ' + fmt(Sdeclared) + ' кВА (расчёт: ' + fmt(Smax) + ')',
+        '   Реактивная Q:  ' + fmt(Qmax) + ' квар (worst-case)',
+        '   cos φ:         ' + cosWorst.toFixed(3),
+        '   Расчётный I:   ' + fmt(Imax) + ' А',
+        '   Класс U:       ' + Uclass + ' (Uном = ' + Uvolt + ' В)',
+        '',
+        '3. КАТЕГОРИЯ НАДЁЖНОСТИ (ПУЭ 1.2)',
+        '   Категория: ' + catLbl,
+        '   ' + (catDescr[cat === '1-special' ? '1' : cat] || catDescr[2]),
+        '',
+        '4. СОСТАВ РЕЗЕРВИРОВАНИЯ',
+        '   Резервный ввод/ДГУ: ' + ((hasParallelUtility || hasGenerator) ? 'есть' : 'нет')
+          + (hasGenerator ? ' (ДГУ)' : '') + (hasParallelUtility ? ' (2-й ввод РЭС)' : ''),
+        '   ИБП в схеме: ' + (hasUps ? 'есть' : 'нет'),
+        '',
+        '5. ОБОСНОВАНИЕ',
+        '   Заявленная мощность — максимум расчётной активной нагрузки',
+        '   через данный ввод с учётом Ки, Ко и worst-case (все ИБП',
+        '   в байпасе). Метод: ' + ((GLOBAL.calcMethod === 'rtm') ? 'РТМ 36.18.32.4-92'
+          : (GLOBAL.calcMethod === 'pue') ? 'ПУЭ 7' : 'IEC 60364-5-52') + '.',
+        '',
+        'При подаче приложить: однолинейная схема, расчёт нагрузок,',
+        'ситуационный план.',
+      ];
+      const txt = lines.join('\n');
+      try {
+        navigator.clipboard.writeText(txt).then(() => flash('Скопировано в буфер обмена'));
+      } catch (e) {
+        // fallback — выделить и Ctrl+C
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); flash('Скопировано'); } catch {}
+        document.body.removeChild(ta);
+      }
+    };
+  }
+  document.getElementById('modal-tu-request').classList.remove('hidden');
 }
 
 // ================= Блок статуса источника =================
