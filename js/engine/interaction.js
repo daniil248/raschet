@@ -529,6 +529,14 @@ export function initInteraction() {
       if (!item || state.readOnly) { e.preventDefault(); return; }
       const id = item.dataset.unplacedId;
       if (!id) { e.preventDefault(); return; }
+      // v0.59.773: страховка от re-drag linked-aliased (фильтр в renderUnplacedList
+      // должен уже исключать их, но event-handler надёжнее).
+      const n0 = state.nodes.get(id);
+      if (n0 && n0.linkedAlias && state.nodes.get(n0.linkedAlias)) {
+        e.preventDefault();
+        try { flash(`«${n0.tag || id}» связан с группой — сначала разорвите связь`, 'warn'); } catch {}
+        return;
+      }
       _palDragActive = true;
       e.dataTransfer.setData('text/raschet-unplaced-id', id);
       // v0.58.43: 'copyMove' совместимо с dropEffect='copy' на canvas — иначе
@@ -607,6 +615,15 @@ export function initInteraction() {
       if (e.target.closest('.pal-reg-place, .pal-reg-del')) { e.preventDefault(); return; }
       const id = item.dataset.regId;
       if (!id) return;
+      // v0.59.773: блокируем re-drag узлов, уже связанных с группой
+      // (linkedAlias). Юзер: «я смог размещенный экземпляр перетащить
+      // еще раз, так не пойдет».
+      const n0 = state.nodes.get(id);
+      if (n0 && n0.linkedAlias && state.nodes.get(n0.linkedAlias)) {
+        e.preventDefault();
+        try { flash(`«${n0.tag || id}» связан с группой ${state.nodes.get(n0.linkedAlias).tag || ''} — сначала разорвите связь`, 'warn'); } catch {}
+        return;
+      }
       _palDragActive = true;
       e.dataTransfer.setData('text/raschet-unplaced-id', id);
       e.dataTransfer.effectAllowed = 'copyMove';

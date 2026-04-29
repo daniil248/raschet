@@ -717,9 +717,14 @@ export function openConsumerParamsModal(n) {
               } else if (exists && kw === 0 && _perUnitKw > 0) {
                 divergeBadge = `<span title="У этого экземпляра не задана мощность (электрические параметры не указаны технологом)" style="background:#e0e7ff;color:#3730a3;padding:1px 5px;border-radius:2px;font-size:9.5px">∅ kW</span>`;
               }
-              return `<div class="cp-group-slot" data-slot-idx="${slotIdx}" data-slot-state="linked" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:${exists ? '#f0fdf4' : '#fff7ed'};border:1px solid ${exists ? '#bbf7d0' : '#fed7aa'};border-radius:3px">
+              // v0.59.773: клик по строке (вне ✂ и 🔗) — открыть свойства
+              // связанного узла. Клик по 🔗 — навигация к месту узла на схеме
+              // с центрированием. Юзер: «По клику нужно открывать свойства,
+              // а по клику на зеленом кружке, переходить к месту расположения
+              // на схеме с центрированием по центру экрана».
+              return `<div class="cp-group-slot" data-slot-idx="${slotIdx}" data-slot-state="linked" data-link-id="${escAttr(aliasId)}" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:${exists ? '#f0fdf4' : '#fff7ed'};border:1px solid ${exists ? '#bbf7d0' : '#fed7aa'};border-radius:3px;cursor:${exists ? 'pointer' : 'default'}" title="${exists ? 'Клик — открыть свойства связанного узла' : ''}">
                 <span style="font-size:10px;color:#6b7280;font-weight:600;min-width:28px;text-align:right">#${slotNo}</span>
-                <span style="font-size:10px;color:#15803d;font-weight:600">🔗</span>
+                <button type="button" class="cp-slot-locate" data-link-id="${escAttr(aliasId)}" title="Перейти к узлу на схеме (центрировать)" style="background:#dcfce7;border:1px solid #86efac;color:#15803d;font-weight:600;cursor:pointer;font-size:11px;padding:1px 5px;border-radius:50%;line-height:1" ${!exists ? 'disabled' : ''}>🔗</button>
                 <span style="font-weight:600">${escHtml(tag)}</span>
                 <span class="muted">${escHtml(name)}</span>
                 ${!exists ? `<span class="muted" style="font-size:9.5px;color:#92400e">⚠ узел удалён</span>` : ''}
@@ -1163,6 +1168,53 @@ export function openConsumerParamsModal(n) {
         try { flash(`Слот #${slotIdx + 1} ← ${src.tag || src.id}`, 'success'); } catch {}
         notifyChange();
         openConsumerParamsModal(n);
+      });
+    });
+  }
+
+  // v0.59.773: клик по строке linked-слота — открыть свойства связанного
+  // узла. Клик по кнопке 🔗 (cp-slot-locate) — центрировать камеру на узле
+  // и закрыть модалку. Юзер: «По клику нужно открывать свойства, а по
+  // клику на зеленом кружке, переходить к месту расположения на схеме с
+  // центрированием по центру экрана».
+  {
+    document.querySelectorAll('.cp-slot-locate').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.preventDefault(); e.stopPropagation();
+        const linkId = btn.dataset.linkId;
+        if (!linkId) return;
+        const tgt = state.nodes.get(linkId);
+        if (!tgt) { try { flash('Узел не найден (возможно, удалён)', 'warn'); } catch {} return; }
+        // Если узел не на текущей странице — переключаемся
+        const tgtPids = Array.isArray(tgt.pageIds) ? tgt.pageIds : [];
+        if (tgtPids.length > 0 && !tgtPids.includes(state.currentPageId)) {
+          state.currentPageId = tgtPids[0];
+        }
+        state.selectedKind = 'node';
+        state.selectedId = tgt.id;
+        try {
+          const expMod = await import('../export.js');
+          if (expMod && typeof expMod.centerOnNode === 'function') {
+            expMod.centerOnNode(tgt);
+          }
+        } catch (err) { console.warn('[centerOnNode]', err); }
+        // Закрываем модалку чтобы пользователь увидел холст
+        const modal = document.getElementById('modal-consumer-params');
+        if (modal) modal.classList.add('hidden');
+        try { render(); } catch {}
+        if (_renderInspector) { try { _renderInspector(); } catch {} }
+        try { flash(`→ ${tgt.tag || tgt.id}`, 'success'); } catch {}
+      });
+    });
+    // Клик по строке linked-слота (вне ✂ и 🔗) — открыть свойства узла
+    document.querySelectorAll('.cp-group-slot[data-slot-state="linked"]').forEach(row => {
+      row.addEventListener('click', e => {
+        if (e.target.closest('.cp-slot-unlink, .cp-slot-locate')) return;
+        const linkId = row.dataset.linkId;
+        if (!linkId) return;
+        const tgt = state.nodes.get(linkId);
+        if (!tgt) { try { flash('Узел не найден (возможно, удалён)', 'warn'); } catch {} return; }
+        openConsumerParamsModal(tgt);
       });
     });
   }

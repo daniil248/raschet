@@ -584,7 +584,13 @@ export function renderProjectRegistry() {
       const delBtn = connCount === 0
         ? `<button type="button" class="pal-reg-del" data-del-id="${esc(n.id)}" title="Удалить из проекта">×</button>`
         : '';
-      return `<div class="pal-reg-item" draggable="true" data-reg-id="${esc(n.id)}" title="Клик — открыть свойства, drag — разместить на текущей странице">
+      // v0.59.773: linked-aliased узлы не должны быть draggable — они уже
+      // привязаны к группе как экземпляр. Юзер: «я смог размещенный
+      // экземпляр перетащить еще раз, так не пойдет». Перетаскивание
+      // блокируется и в render-разметке (draggable=false) и в interaction.js
+      // dragstart (preventDefault) — двойной guard.
+      const _isAliased = !!_aliasParent;
+      return `<div class="pal-reg-item" draggable="${_isAliased ? 'false' : 'true'}" data-reg-id="${esc(n.id)}" ${_isAliased ? 'data-linked-alias="1"' : ''} title="${_isAliased ? 'Связан с группой — снимите связь чтобы перетащить' : 'Клик — открыть свойства, drag — разместить на текущей странице'}" style="${_isAliased ? 'opacity:0.7;cursor:not-allowed' : ''}">
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>
         <span class="pal-unplaced-name">${esc(name)}</span>
