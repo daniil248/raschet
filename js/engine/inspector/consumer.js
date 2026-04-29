@@ -33,9 +33,17 @@ export function openConsumerParamsModal(n) {
   // пользователь просит редактируемые поля убрать в свою вкладку. Для
   // редактирования имени открывается вкладка «Общее».
   h.push(`<h3 style="margin-bottom:4px">${escHtml(effectiveTag(n))} <span style="font-weight:500">${escHtml(n.name)}</span></h3>`);
+  // v0.59.757: вкладка «Группа» отображается только когда consumer групповой
+  // (count > 1). Содержимое: items-list для individual + плейсхолдеры для
+  // 1.28.10 (cross-discipline reconciliation) и 1.28.13 (split-out).
+  // ROADMAP 1.28.12.
+  const _isGroupTabVisible = (Number(n.count) || 1) > 1;
+  // Active-tab по умолчанию: «Группа» если групповой, иначе «Электрика».
+  const _defaultTab = _isGroupTabVisible ? 'group' : 'electrical';
   h.push(`<div class="tp-tabs" role="tablist">
     <button type="button" class="tp-tab" data-tab="general" role="tab">📋 Общее</button>
-    <button type="button" class="tp-tab active" data-tab="electrical" role="tab">⚡ Электрика</button>
+    <button type="button" class="tp-tab${_defaultTab === 'electrical' ? ' active' : ''}" data-tab="electrical" role="tab">⚡ Электрика</button>
+    ${_isGroupTabVisible ? `<button type="button" class="tp-tab${_defaultTab === 'group' ? ' active' : ''}" data-tab="group" role="tab">👥 Группа</button>` : ''}
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
   </div>`);
   // === Вкладка «Общее» (идентификация + топология) ===
@@ -166,7 +174,7 @@ export function openConsumerParamsModal(n) {
     h.push(`<input type="hidden" id="cp-loadSpec" value="per-unit">`);
   }
   h.push(`</div>`); // /tp-panel general
-  h.push(`<div class="tp-panel" data-panel="electrical">`);
+  h.push(`<div class="tp-panel" data-panel="electrical"${_defaultTab !== 'electrical' ? ' hidden' : ''}>`);
   // v0.59.747: _displayDemand / _demandLabel больше не используются —
   // парные поля v0.59.738 рендерят свои собственные значения и метки.
   // (Раньше через них шёл переключатель loadSpec, теперь n.demandKw —
@@ -360,15 +368,9 @@ export function openConsumerParamsModal(n) {
       </div>
     </div>`;
   };
-  const _itemsCardsHtml = _items.map((it, idx) => _itemCardHtml(it, idx)).join('');
-  h.push(`<div id="cp-items-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? '' : 'display:none'}">
-    <label>Приборы в группе <span class="muted" style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">— каждый с собственными параметрами; пусто = унаследовать от группы</span></label>
-    <div id="cp-items-body">${_itemsCardsHtml}</div>
-    <div style="display:flex;gap:6px;align-items:center;font-size:11px;margin-top:4px">
-      <button type="button" id="cp-it-add" style="padding:3px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer">➕ Добавить прибор</button>
-      <span id="cp-items-sum" class="muted"></span>
-    </div>
-  </div>`);
+  // v0.59.757: items-wrap перенесён в новую вкладку «Группа» (см. конец
+  // функции). Здесь ничего не выводим — переход через табы.
+  // ROADMAP 1.28.12.
 
   // v0.59.684: блоки «Уровень напряжения / Фазность / cos φ» подняты
   // выше (см. ранний h.push в начале функции). Здесь — только Ки и
@@ -587,6 +589,47 @@ export function openConsumerParamsModal(n) {
     h.push('</div>');
   }
   h.push('</div>'); // /panel electrical
+
+  // v0.59.757: панель «Группа» — отдельная вкладка для группового потребителя
+  // (count > 1). Содержимое:
+  //   - individual mode: items-list (cp-items-wrap) с per-item параметрами;
+  //   - uniform mode: список связанных POR-инстансов (placeholder для 1.28.10);
+  //   - кнопка «✂ Исключить экземпляр» (placeholder для 1.28.13).
+  // ROADMAP 1.28.12.
+  if (_isGroupTabVisible) {
+    const _itemsCardsHtml = _items.map((it, idx) => _itemCardHtml(it, idx)).join('');
+    h.push(`<div class="tp-panel" data-panel="group"${_defaultTab !== 'group' ? ' hidden' : ''}>`);
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px;padding:6px 8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px;color:#0369a1">
+      Групповой потребитель ×${_cpCount}. ${_groupMode === 'individual'
+        ? 'Каждый прибор имеет собственные параметры (мощность, фаза, cos φ); пустые поля = унаследовать от группы.'
+        : 'Все приборы одинаковые (uniform). Чтобы задать индивидуальные параметры — включите чекбокс «Последовательное соединение» на вкладке «Общее» и выберите тип группы «Индивидуальная».'}
+    </div>`);
+    if (_groupMode === 'individual') {
+      h.push(`<div id="cp-items-wrap" class="field">
+        <label>Приборы в группе <span class="muted" style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0">— каждый с собственными параметрами; пусто = унаследовать от группы</span></label>
+        <div id="cp-items-body">${_itemsCardsHtml}</div>
+        <div style="display:flex;gap:6px;align-items:center;font-size:11px;margin-top:4px">
+          <button type="button" id="cp-it-add" style="padding:3px 10px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:3px;cursor:pointer">➕ Добавить прибор</button>
+          <span id="cp-items-sum" class="muted"></span>
+        </div>
+      </div>`);
+    } else {
+      // uniform mode — placeholder для 1.28.10 (cross-discipline reconciliation)
+      // и 1.28.13 (split-out). Пока показываем только информационный блок;
+      // полноценная реализация — в следующих коммитах.
+      h.push(`<div id="cp-items-wrap" class="field" style="display:none"><div id="cp-items-body"></div><span id="cp-items-sum" class="muted"></span></div>`);
+      h.push(`<div class="muted" style="font-size:11px;margin-top:8px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;color:#92400e">
+        🔗 <b>Связь с существующими POR-инстансами</b> — в разработке (ROADMAP 1.28.10).
+        В будущем здесь будет список ${escHtml(n.consumerSubtype === 'rack' ? 'стоек' : 'потребителей')}, на которые ссылается эта группа,
+        с возможностью «связать» уже существующие orphan-узлы (например SR01-SR08 → группа SR1).
+      </div>`);
+      h.push(`<div class="muted" style="font-size:11px;margin-top:6px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;color:#92400e">
+        ✂ <b>Исключение экземпляра</b> — в разработке (ROADMAP 1.28.13).
+        Кнопка «Исключить» рядом с каждым связанным экземпляром: уменьшит count группы на 1 и создаст одиночного потребителя со скопированными параметрами.
+      </div>`);
+    }
+    h.push(`</div>`); // /panel group
+  }
 
   // Панель «Габариты (мм)» — Phase 2.3. Читается getNodeGeometryMm в рендере.
   // Пустые поля = брать из библиотеки / из каталога. Здесь только override.
