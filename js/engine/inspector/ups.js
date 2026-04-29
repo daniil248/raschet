@@ -181,23 +181,38 @@ export function openUpsParamsModal(n) {
     if (n.frameKw == null) n.frameKw = n.moduleSlots * n.moduleKwRated;
     if (!n.redundancyScheme) n.redundancyScheme = 'N';
 
-    h.push('<h4 style="margin:16px 0 8px">Модули и резервирование</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:8px">Корпус (frame) задаёт максимум системы. Устанавливаемые модули должны помещаться в слоты. Схема N+X означает: X модулей в резерве, рабочих = Установлено − X.</div>');
+    // v0.59.696: справка о модулях вынесена в helpIcon на заголовке секции.
+    const _modSecTip = 'Корпус (frame) задаёт максимум выходной мощности системы. Устанавливаемые модули должны помещаться в слоты. Схема N+X означает: X модулей в резерве, рабочих = Установлено − X. Реальная мощность системы = min(frame, working × modKw).';
+    h.push(`<h4 style="margin:16px 0 8px">Модули и резервирование${helpIcon(_modSecTip)}</h4>`);
 
     h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('Корпус, kW (frame)', `<input type="number" id="up-frameKw" min="1" step="5" value="${n.frameKw}"${_lockAttr}>`)}</div>`);
-    h.push(`<div style="flex:1">${field('Мощность модуля, kW', `<input type="number" id="up-modKwRated" min="1" step="0.5" value="${n.moduleKwRated}"${_lockAttr}>`)}</div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Корпус, kW (frame)${helpIcon('Максимальная выходная мощность корпуса (frame). Этот предел установлен производителем и зависит от шасси и силовых шин. Установка модулей сверх frame не увеличивает выходную мощность — лишние модули работают как «горячий резерв» (N+X).')}</label>
+      <input type="number" id="up-frameKw" min="1" step="5" value="${n.frameKw}"${_lockAttr}>
+    </div></div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Мощность модуля, kW${helpIcon('Номинальная мощность ОДНОГО силового модуля. Типичные значения: 10/15/25/50/100 kW. Полная мощность ИБП = working_modules × modKw, но не более frame.')}</label>
+      <input type="number" id="up-modKwRated" min="1" step="0.5" value="${n.moduleKwRated}"${_lockAttr}>
+    </div></div>`);
     h.push('</div>');
     h.push('<div style="display:flex;gap:8px">');
-    h.push(`<div style="flex:1">${field('Слотов в корпусе', `<input type="number" id="up-slots" min="1" max="32" step="1" value="${n.moduleSlots}"${_lockAttr}>`)}</div>`);
-    h.push(`<div style="flex:1">${field('Установлено модулей <span class="muted" style="font-size:10px;font-weight:400">· проектное</span>', `<input type="number" id="up-installed" min="0" max="32" step="1" value="${n.moduleInstalled}">`)}</div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Слотов в корпусе${helpIcon('Физическое количество слотов в корпусе. Установлено не может быть больше этого значения. При расширении системы (добавлении модулей) — выбирайте корпус с запасом по слотам, чтобы не менять корпус в будущем.')}</label>
+      <input type="number" id="up-slots" min="1" max="32" step="1" value="${n.moduleSlots}"${_lockAttr}>
+    </div></div>`);
+    h.push(`<div style="flex:1"><div class="field">
+      <label>Установлено модулей${helpIcon('Текущее (проектное) количество установленных силовых модулей. Из них working = Установлено − резерв, остальные — горячий резерв N+X. Работающие модули делят нагрузку поровну.')}</label>
+      <input type="number" id="up-installed" min="0" max="32" step="1" value="${n.moduleInstalled}">
+    </div></div>`);
     h.push('</div>');
-    h.push(field('Схема резервирования', `
+    h.push(`<div class="field">
+      <label>Схема резервирования${helpIcon('N — без резерва, все модули рабочие. N+1 — один модуль в горячем резерве, при отказе одного из работающих он подменяется автоматически без прерывания. N+2 — два резервных, выдерживается одновременный отказ двух модулей. Применяется в Tier III/IV и для критических нагрузок.')}</label>
       <select id="up-redund">
         <option value="N"${n.redundancyScheme === 'N' ? ' selected' : ''}>N (без резерва)</option>
         <option value="N+1"${n.redundancyScheme === 'N+1' ? ' selected' : ''}>N+1</option>
         <option value="N+2"${n.redundancyScheme === 'N+2' ? ' selected' : ''}>N+2</option>
-      </select>`));
+      </select>
+    </div>`);
 
     // Расчёт и предупреждения
     const redundN = n.redundancyScheme === 'N+2' ? 2 : (n.redundancyScheme === 'N+1' ? 1 : 0);
@@ -437,7 +452,10 @@ export function openUpsParamsModal(n) {
   for (let i = 0; i < levels.length; i++) {
     vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
   }
-  h.push(field('Уровень напряжения', `<select id="up-voltage">${vOpts}</select>`));
+  h.push(`<div class="field">
+    <label>Уровень напряжения${helpIcon('Уровень напряжения на выходе ИБП. Должен совпадать со входом — ИБП не преобразует уровень. Стандартно 400/230 В для коммерческих и промышленных применений; 230 В — для одиночных потребителей; 480 В — для крупных ЦОД (более низкие токи на тех же мощностях).')}</label>
+    <select id="up-voltage">${vOpts}</select>
+  </div>`);
   // v0.59.665/686: methodology-aware label + helpIcon с tooltip-справкой.
   {
     const _cosT = getTerm('powerFactor', GLOBAL.calcMethod || 'iec');
@@ -467,14 +485,18 @@ export function openUpsParamsModal(n) {
   // К maintenance-байпасу относится выбор «перемычка / отдельный кабель»:
   // по физике это механическая перемычка вокруг ИБП (или отдельный
   // кабель), а не статический электронный SBS.
-  h.push('<h4 style="margin:16px 0 8px">Байпас обслуживания (QF4)</h4>');
+  // v0.59.696: справка про байпас обслуживания вынесена в helpIcon.
+  const _qf4Tip = 'Байпас обслуживания (QF4) — механическая перемычка вокруг ИБП для безопасного снятия его с обслуживания без отключения нагрузки. В отличие от статического байпаса (SBS), не электронный, не работает автоматически — оператор переводит вручную.';
+  h.push(`<h4 style="margin:16px 0 8px">Байпас обслуживания (QF4)${helpIcon(_qf4Tip)}</h4>`);
   {
     const mode = n.bypassFeedMode || 'jumper';
-    h.push(field('Подключение байпаса',
-      `<select id="up-bypassMode">
+    h.push(`<div class="field">
+      <label>Подключение байпаса${helpIcon('Перемычка от основного ввода (jumper) — байпас идёт от того же фидера что и сетевой вход, экономит кабельный путь. Отдельный кабель (separate) — независимый ввод от другого источника, требует ≥ 2 портов на ИБП. Для Tier III/IV и при необходимости резервирования по двум независимым линиям применяется отдельный кабель.')}</label>
+      <select id="up-bypassMode">
         <option value="jumper"${mode === 'jumper' ? ' selected' : ''}>Перемычка от основного ввода</option>
         <option value="separate"${mode === 'separate' ? ' selected' : ''}>Отдельный кабель</option>
-      </select>`));
+      </select>
+    </div>`);
     if (mode === 'separate') {
       h.push('<div class="muted" style="font-size:11px;margin-top:-6px;margin-bottom:8px;color:#1565c0">В режиме «отдельный кабель» у ИБП должно быть ≥ 2 входов: порт 1 — основной, порт 2 — байпасный. Подведите два независимых фидера.</div>');
     } else {
