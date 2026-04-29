@@ -545,14 +545,20 @@ function sectionRtm() {
 function sectionConsumers() {
   const items = collectConsumers();
   // v0.59.669: methodology-aware заголовок «cos φ».
+  // v0.59.672: добавлена колонка «Ки» (или «k_u» для IEC) — для прозрачности
+  // расчёта Pрасч = Pед × Кол. × Ки × множитель. Юзер ранее: «расчётные
+  // значения должны быть связаны с номинальными через коэффициенты» —
+  // теперь и в отчёте видны промежуточные значения.
   const _midC = GLOBAL.calcMethod || 'iec';
   const _cosShortC = getTerm('powerFactor', _midC).short || 'cos φ';
+  const _kuShortC = getTerm('utilization', _midC).short || 'Ки';
   const cols = [
     { label: 'Обозн.',       width: 18 },
     { label: 'Имя',          width: 38 },
     { label: 'Фаза',         align: 'center', width: 12 },
     { label: 'Pед, кВт',     align: 'right', width: 14 },
     { label: 'Кол.',         align: 'right', width: 10 },
+    { label: _kuShortC,      align: 'right', width: 10 },
     { label: 'Pрасч, кВт',   align: 'right', width: 16 },
     { label: _cosShortC,     align: 'right', width: 12 },
     { label: 'Iуст, А',      align: 'right', width: 12 },
@@ -565,12 +571,14 @@ function sectionConsumers() {
     const per = Number(c.demandKw) || 0;
     const cnt = Math.max(1, Number(c.count) || 1);
     const factor = effectiveLoadFactor(c);
-    const k = (Number(c.kUse) || 1) * factor;
+    const ku = Number(c.kUse) || 1;
+    const k = ku * factor;
     const sum = per * cnt * k;
     if (c._powered) total += sum;
     return [
       fullTag(c), decorateName(c), c.phase || '3ph',
-      fmt(per), String(cnt), fmt(sum),
+      fmt(per), String(cnt), ku.toFixed(2),
+      fmt(sum),
       (Number(c.cosPhi) || 0.92).toFixed(2),
       fmt(c._nominalA || 0), fmt(c._ratedA || 0), fmt(c._inrushA || 0),
       c._powered ? 'ок' : 'БЕЗ ПИТ',
