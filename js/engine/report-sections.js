@@ -1211,6 +1211,73 @@ function sectionChannels() {
   return { text: text.join('\n'), blocks };
 }
 
+// 9a. СОСТОЯНИЕ ПРОЕКТИРОВАНИЯ (краткая сводка)
+// v0.59.718: симметрично с чеклистом в правом сайдбаре (см.
+// js/engine/inspector.js, renderInspectorPage). В отчёте — краткая
+// первая страница для руководителя/проверяющего, сразу видно
+// состав схемы и количество проблем.
+function sectionDesignState() {
+  const all = [...state.nodes.values()];
+  const sources = all.filter(m => m.type === 'source' || m.type === 'generator');
+  const upses = all.filter(m => m.type === 'ups');
+  const panels = all.filter(m => m.type === 'panel');
+  const consumers = all.filter(m => m.type === 'consumer');
+  const unpowered = consumers.filter(m => !m._powered);
+  const overloaded = all.filter(m => m._overload || m._breakerOverload);
+  const vdropOver5 = all.filter(m =>
+    (m.type === 'consumer' || m.type === 'panel') && Number(m._deltaUPct) > 5);
+  const vdropOver10 = all.filter(m =>
+    (m.type === 'consumer' || m.type === 'panel') && Number(m._deltaUPct) > 10);
+  const allConns = [...state.conns.values()].filter(c => c._state === 'active' && !c._isInternalConnHidden);
+  const cableOverflow = allConns.filter(c => c._cableOverflow);
+  const breakerUndersize = allConns.filter(c => c._breakerUndersize);
+  const tuFilled = !!(state.project?.customer || state.project?.object);
+  const cols = [
+    { label: 'Параметр', width: 50 },
+    { label: 'Значение', align: 'right', width: 14 },
+    { label: 'Статус',  align: 'center', width: 14 },
+  ];
+  const _mark = (ok) => ok ? '✓ ОК' : '⚠';
+  const rows = [
+    ['Источников питания', String(sources.length), _mark(sources.length > 0)],
+    ['ИБП', String(upses.length), 'ℹ'],
+    ['Распределительных щитов', String(panels.length), 'ℹ'],
+    ['Потребителей', String(consumers.length), _mark(consumers.length > 0)],
+    ['Потребителей без питания', String(unpowered.length), _mark(unpowered.length === 0)],
+    ['Перегруженных узлов', String(overloaded.length), _mark(overloaded.length === 0)],
+    ['Узлов с ΔU > 5%', String(vdropOver5.length), _mark(vdropOver5.length === 0)],
+    ['  из них ΔU > 10%', String(vdropOver10.length), _mark(vdropOver10.length === 0)],
+    ['Линий с переполненным сечением', String(cableOverflow.length), _mark(cableOverflow.length === 0)],
+    ['Линий с In < Iрасч', String(breakerUndersize.length), _mark(breakerUndersize.length === 0)],
+    ['Информация о проекте заполнена', tuFilled ? 'да' : 'нет', _mark(tuFilled)],
+  ];
+  // Общая оценка готовности — % строк со статусом ОК.
+  const okCount = rows.filter(r => r[2] === '✓ ОК').length;
+  const totalKpis = rows.length - 2; // ИБП и щиты — информационные, не считаем за ОК-критерии
+  const readiness = totalKpis > 0 ? Math.round((okCount / totalKpis) * 100) : 0;
+  const text = [
+    'СОСТОЯНИЕ ПРОЕКТИРОВАНИЯ',
+    '='.repeat(78),
+    ...metaTextLines(),
+    '',
+    `Готовность проекта (по контрольным критериям): ${readiness}%`,
+    '',
+    ...textTable(cols, rows),
+    '',
+    'Подробности — в разделах «Перечень потребителей», «Распределительные щиты»,',
+    '«Кабельные линии и шинопроводы», «Проверки и предупреждения».',
+  ];
+  const blocks = [
+    B.h1('Состояние проектирования'),
+    ...metaBlocks(),
+    B.paragraph(`Готовность проекта по контрольным критериям: <b>${readiness}%</b>. Эта секция — краткая сводка по составу схемы и количеству замечаний; подробности в разделах ниже.`),
+    B.h2('Сводка'),
+    B.table(blockCols(cols), rows),
+    B.paragraph('«ℹ» — информационный показатель, в оценке готовности не учитывается. «✓ ОК» — критерий выполнен. «⚠» — требует внимания.'),
+  ];
+  return { text: text.join('\n'), blocks };
+}
+
 // 9. ПРОВЕРКИ И ПРЕДУПРЕЖДЕНИЯ
 function sectionChecks() {
   const { inSpace } = pageFilters();
@@ -1708,6 +1775,7 @@ function sectionFull() {
   // существующий generateReport() — он исторически стабилен. Блоки —
   // комбинируем из отдельных секций, чтобы PDF содержал все разделы.
   const subs = [
+    { h2: 'Состояние проектирования',        sec: sectionDesignState() },
     { h2: 'Источники питания',               sec: sectionSources() },
     { h2: 'Источники бесперебойного питания', sec: sectionUps() },
     { h2: 'Распределительные щиты',          sec: sectionPanels() },
@@ -1760,10 +1828,18 @@ export function getReportSections() {
     {
       id: 'full',
       title: 'Полный отчёт по схеме',
-      description: 'Все разделы в одном документе: источники, ИБП, щиты, потребители, кабельные линии, расчётные модули, баланс фаз, каналы и проверки.',
+      description: 'Все разделы в одном документе: состояние проектирования, источники, ИБП, щиты, потребители, кабельные линии, расчётные модули, баланс фаз, каналы и проверки.',
       defaultTemplateId: 'builtin-engineering-a4',
       tags: ['инженерный', 'расчёты', 'общее'],
       ...sectionFull(),
+    },
+    {
+      id: 'design-state',
+      title: 'Состояние проектирования',
+      description: 'Краткая сводка по составу схемы и количеству замечаний — для руководителя/проверяющего на первой странице. Готовность по контрольным критериям + таблица параметров с отметками ✓ / ⚠.',
+      defaultTemplateId: 'builtin-engineering-a4',
+      tags: ['инженерный', 'обзор', 'проверка'],
+      ...sectionDesignState(),
     },
     {
       id: 'sources',
