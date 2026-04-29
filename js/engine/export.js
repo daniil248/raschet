@@ -747,6 +747,35 @@ export function initToolbar() {
   updateIconsBtn();
   if (iconsBtn) iconsBtn.onclick = () => { GLOBAL.showConsumerIcons = !GLOBAL.showConsumerIcons; updateIconsBtn(); render(); };
 
+  // v0.59.783 (Phase 19): селектор пресета карточек. User-level хранится в LS;
+  // выбранный пресет применяется ко всем страницам если scheme/project не
+  // переопределяют. Юзер: «Сами настройки нужно так же сохранять в пресеты
+  // чтобы пользователь мог быстро их переключать».
+  (async () => {
+    const presetEl = document.getElementById('card-preset-picker');
+    if (!presetEl) return;
+    try {
+      const mod = await import('../../shared/card-presets.js');
+      const populate = () => {
+        const all = mod.listAllPresets();
+        const active = mod.getUserActivePresetId();
+        presetEl.innerHTML = all.map(p => {
+          const sys = p.system ? ' 🔒' : '';
+          return `<option value="${p.id}"${p.id === active ? ' selected' : ''}>${p.name}${sys}</option>`;
+        }).join('');
+      };
+      populate();
+      presetEl.addEventListener('change', () => {
+        mod.setUserActivePresetId(presetEl.value);
+        render();
+      });
+      window.addEventListener('raschet:card-preset-changed', () => {
+        populate();
+        render();
+      });
+    } catch (e) { console.warn('[card-preset-picker]', e); }
+  })();
+
   // Toolbar: сворачивание групп и всей панели
   const toolbar = document.getElementById('toolbar');
   const tbToggle = document.getElementById('btn-toolbar-toggle');

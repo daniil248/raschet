@@ -1,5 +1,29 @@
 import { state } from './state.js';
 import { svg, layerZones, layerConns, layerNodes, layerOver, statsEl, modesListEl, isOnCurrentPage, sanitizeView, getCurrentPage, getPageKind, PAGE_KINDS_META } from './state.js';
+// v0.59.783 (Phase 19.4): card-preset resolver. Эффективный пресет
+// определяется по иерархии scheme→project→user→system-default. Используется
+// в render для фильтрации полей карточек.
+import { resolveCardPreset, getVisibleFieldIds } from '../../shared/card-presets.js';
+
+// Кэш resolved пресета — сбрасывается на raschet:card-preset-changed event.
+let _cachedCardPreset = null;
+let _cachedCardPresetKey = null;
+function _getActiveCardPreset() {
+  const page = getCurrentPage();
+  const project = state.project;
+  const cacheKey = (page?.cardPresetActiveId || '') + '|' + (project?.cardPresetActiveId || '');
+  if (_cachedCardPreset && _cachedCardPresetKey === cacheKey) return _cachedCardPreset;
+  _cachedCardPreset = resolveCardPreset({ page, project });
+  _cachedCardPresetKey = cacheKey;
+  return _cachedCardPreset;
+}
+try {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('raschet:card-preset-changed', () => {
+      _cachedCardPreset = null; _cachedCardPresetKey = null;
+    });
+  }
+} catch {}
 import { NODE_H, SVG_NS, CHANNEL_TYPES, INSTALL_METHODS, PORT_R, GLOBAL, CONSUMER_CATALOG, BREAKER_TYPES, SYSTEMS_CATALOG, CABLE_SYSTEMS, systemsForPageKind, getSystemMeta } from './constants.js';
 
 // IEC installation method → legacy CHANNEL_TYPES key (для иконок/лейблов)
@@ -1815,20 +1839,38 @@ export function renderNodes() {
       // Текст группы на выступающей части — выровнен по правому краю.
       // Если задано распределение по фазам (результат балансировки для
       // параллельной 1ф группы) — дописываем A/B/C-счётчики.
+      // v0.59.783 (Phase 19.4): фильтр полей по active card-preset.
+      // gLabel содержит kW и count — оба условны.
+      const _curPage = getCurrentPage();
+      const _kind = _curPage ? getPageKind(_curPage) : 'schematic';
+      const _preset = _getActiveCardPreset();
+      const _visible = getVisibleFieldIds(_preset, _kind, 'consumer');
+      const _showKw = _visible.has('demandKw') || _visible.has('maxKw') || _visible.has('nominalKw');
+      const _showCount = _visible.has('count');
+
       const totalKw = consumerTotalDemandKw(n);
       const cntEff = consumerCountEffective(n);
       // v0.57.81: для «индивидуальной» группы подпись Σ (N kW, M шт)
       // потому что мощности разные. Для uniform — старый формат N × P = T.
-      let gLabel = (n.groupMode === 'individual' && Array.isArray(n.items))
-        ? `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`
-        : `${n.count || 1} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
-      if (n.phaseDistribution && !n.serialMode) {
+      let gLabel = '';
+      if (_showKw && _showCount) {
+        gLabel = (n.groupMode === 'individual' && Array.isArray(n.items))
+          ? `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`
+          : `${n.count || 1} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
+      } else if (_showKw) {
+        gLabel = `Σ ${fmtPower(totalKw)}`;
+      } else if (_showCount) {
+        gLabel = `${cntEff} шт.`;
+      }
+      if (gLabel && n.phaseDistribution && !n.serialMode && _visible.has('phase')) {
         const pd = n.phaseDistribution;
         gLabel += `  · A${pd.A || 0}/B${pd.B || 0}/C${pd.C || 0}`;
       }
-      const gt = text(w + ox - 8, NODE_H + oy - 6, gLabel, 'node-load');
-      gt.setAttribute('text-anchor', 'end');
-      g.appendChild(gt);
+      if (gLabel) {
+        const gt = text(w + ox - 8, NODE_H + oy - 6, gLabel, 'node-load');
+        gt.setAttribute('text-anchor', 'end');
+        g.appendChild(gt);
+      }
     }
     // Верхняя карточка (основная, полностью непрозрачная)
     g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
