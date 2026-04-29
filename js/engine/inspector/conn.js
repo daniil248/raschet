@@ -162,7 +162,16 @@ export function renderInspectorConn(c) {
       const protOk = inLeIz;
       const oversize = izRef > 0 && brkRef > 0 && izRef > brkRef * 2 && (c._cableSize || 0) > 1.5;
       const bgColor = !protOk ? '#ffebee' : oversize ? '#fff8e1' : '#f5f5f5';
-      const methodLabel = GLOBAL.calcMethod === 'pue' ? 'ПУЭ' : 'IEC 60364';
+      // v0.59.673: явное указание fallback методики при выборе РТМ.
+      // РТМ задаёт только расчёт максимума нагрузки; для подбора кабеля
+      // используется ПУЭ (см. js/methods/index.js → getMethod). Раньше
+      // 'rtm' обрабатывался как 'iec' (default fallback в этом тернарнике),
+      // что показывало неверный лейбл.
+      const methodLabel = GLOBAL.calcMethod === 'pue'
+        ? 'ПУЭ'
+        : GLOBAL.calcMethod === 'rtm'
+          ? 'ПУЭ (РТМ → ПУЭ для кабеля)'
+          : 'IEC 60364';
       // v0.59.663: для ГРУППОВОГО потребителя (isGroupBreakers — у каждой
       // линии свой автомат и своя нагрузка) терминология «параллельных жил»
       // и суммарного тока неуместна. Юзер: «для кабелей групповых
