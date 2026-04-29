@@ -8,6 +8,7 @@ import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { isTagUnique } from '../graph.js';
 import { consumerGroupItems } from '../electrical.js';
+import { getTerm, getTermTooltip } from '../../methods/terms.js';
 // Фаза 1.19.7: panel-catalog / panel-picker больше не используются в
 // инлайн-модалке параметров щита. Подбор оболочки НКУ перенесён в
 // wizard-конфигуратор (panel-config/), избавляемся от неиспользуемых
@@ -505,7 +506,21 @@ export function openPanelParamsModal(n) {
     // клеммник + маленькая коробка. Эти поля не показываем.
     if (!isTerminal) {
       h.push('<div style="display:flex;gap:12px">');
-      h.push('<div style="flex:1">' + field('Ксим', `<input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}">`) + '</div>');
+      // v0.59.661: methodology-aware label для Ксим (коэф. одновременности
+      // = simultaneity / diversity factor). РТМ: «Ко» (но в РТМ обычно
+      // зашит в Кмакс, поэтому помечен used:false — но в этой панели
+      // продолжает использоваться как простой множитель). ПУЭ: «Ко».
+      // IEC: «k_s — diversity factor».
+      const _ksimT = getTerm('simultaneity', GLOBAL.calcMethod || 'iec');
+      const _ksimTip = getTermTooltip('simultaneity', GLOBAL.calcMethod || 'iec');
+      // Если методика не использует параметр (РТМ) — оставляем поле,
+      // но с пояснением «в РТМ обычно зашит в Кмакс».
+      const _ksimLabel = _ksimT.label || 'Ксим';
+      const _ksimAliases = _ksimT.aliases || '';
+      h.push(`<div style="flex:1" title="${escAttr(_ksimTip)}">
+        <div class="field"><label>${escHtml(_ksimLabel)}<span class="muted" style="font-size:10px;font-weight:400;margin-left:4px">${escHtml(_ksimAliases)}</span></label>
+        <input type="number" id="pp-kSim" min="0" max="1.2" step="0.05" value="${n.kSim ?? 1}"></div>
+      </div>`);
       {
         const curA = n.capacityA ?? 160;
         let opts = '';

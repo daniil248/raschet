@@ -11,6 +11,7 @@ import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort, copyZoneWithMembers } from './zones.js';
 import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './cable.js';
 import { getMethod } from '../methods/index.js';
+import { getTerm, getTermTooltip, isTermUsed } from '../methods/terms.js';
 import { listTransformers } from '../../shared/transformer-catalog.js';
 import { mountTransformerPicker, applyTransformerModel } from '../../shared/transformer-picker.js';
 // v0.59.351: автоматический матч узла схемы с реестрами проекта по S/N или Инв.№.
@@ -597,8 +598,11 @@ export function renderInspectorNode(n) {
     h.push(field('Цвет линии', buildColorPalette(n)));
     // cos φ источника рассчитывается автоматически из downstream нагрузки.
     // Для генератора номинальный cos φ задаётся в параметрах источника.
+    // v0.59.661: methodology-aware label + tooltip с аналогами других методик.
     if (n._cosPhi) {
-      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">cos φ (расчётный): <b>${n._cosPhi.toFixed(3)}</b></div>`);
+      const _cosT = getTerm('powerFactor', GLOBAL.calcMethod || 'iec');
+      const _cosTip = getTermTooltip('powerFactor', GLOBAL.calcMethod || 'iec');
+      h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px" title="${escAttr(_cosTip)}">${escHtml(_cosT.label)} (расчётный): <b>${n._cosPhi.toFixed(3)}</b><span style="margin-left:6px;font-size:10px">${escHtml(_cosT.aliases)}</span></div>`);
     }
     // v0.58.49: «В работе» перенесён на вкладку «Общее» (влияет на все системы).
 
@@ -857,9 +861,19 @@ export function renderInspectorNode(n) {
     const cnt = Math.max(1, n.count || 1);
     const ph = n.phase || '3ph';
     const phLabel = ph === '3ph' ? '3Ф' : ph;
+    // v0.59.661: methodology-aware короткие обозначения в сводной строке.
+    const _mid = GLOBAL.calcMethod || 'iec';
+    const _cosShort = getTerm('powerFactor', _mid).short || 'cos φ';
+    const _kuShort = getTerm('utilization', _mid).short || 'Ки';
+    const _kuTip = getTermTooltip('utilization', _mid);
+    const _cosTip = getTermTooltip('powerFactor', _mid);
+    const _kuPart = isTermUsed('utilization', _mid)
+      ? ` · <span title="${escAttr(_kuTip)}">${escHtml(_kuShort)}: <b>${(n.kUse ?? 1).toFixed(2)}</b></span>`
+      : '';
     h.push(`<div class="muted" style="font-size:11px;line-height:1.6;margin-bottom:8px">` +
       (cnt > 1 ? `Группа: <b>${cnt} × ${fmt(n.demandKw)} kW = ${fmt(cnt * (n.demandKw || 0))} kW</b>` : `P: <b>${fmt(n.demandKw)} kW</b>`) +
-      ` · ${phLabel} · cos φ: <b>${(n.cosPhi ?? 0.92).toFixed(2)}</b> · Ки: <b>${(n.kUse ?? 1).toFixed(2)}</b>` +
+      ` · ${phLabel} · <span title="${escAttr(_cosTip)}">${escHtml(_cosShort)}: <b>${(n.cosPhi ?? 0.92).toFixed(2)}</b></span>` +
+      _kuPart +
       `</div>`);
 
     // Фаза — только для однофазных потребителей
