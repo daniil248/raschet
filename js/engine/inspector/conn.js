@@ -26,21 +26,34 @@ export function buildInstallConditionsBlock(method, bundling, ambientC, grouping
   const h = [];
   h.push('<details class="inspector-section">');
   h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Условия прокладки</summary>');
+  // v0.59.690: подсказки полей вынесены в helpIcon рядом с лейблом.
   // Способы прокладки из текущей методики
   const cm = getMethod(GLOBAL.calcMethod);
   const methodOpts = Object.entries(cm.installMethods).map(([k, v]) =>
     `<option value="${k}"${method === k ? ' selected' : ''}>${escHtml(v)}</option>`).join('');
-  h.push(field('Способ прокладки', `<select ${propPrefix}="installMethod">${methodOpts}</select>`));
+  h.push(`<div class="field">
+    <label>Способ прокладки${helpIcon('Метод по IEC 60364-5-52 (или ПУЭ). Влияет на ампасити Iz_табл и поправочные коэффициенты Kg. Открытая прокладка — выше Iz; в трубе/коробе — ниже из-за ухудшенного теплоотвода. В земле — отдельная таблица. ВН — обычно в трубе или в земле.')}</label>
+    <select ${propPrefix}="installMethod">${methodOpts}</select>
+  </div>`);
   // Укладка из текущей методики
   const bundOpts = cm.hasBundling
     ? Object.entries(cm.bundlingOptions).map(([k, v]) =>
         `<option value="${k}"${bundling === k ? ' selected' : ''}>${escHtml(v)}</option>`).join('')
     : `<option value="touching" selected>Стандарт</option>`;
-  h.push(field('Расположение кабелей', `<select ${propPrefix}="bundling">${bundOpts}</select>`));
+  h.push(`<div class="field">
+    <label>Расположение кабелей${helpIcon('Вплотную (touching) — кабели прижаты друг к другу, минимальный Kb (≈0.85–0.9). С зазором (spaced) — между кабелями зазор ≥ диаметра, Kb = 1.0 (без снижения). В пучке (bundled) — связаны вместе, наибольшее снижение (Kb ≈ 0.7–0.8) из-за ухудшенного теплоотвода.')}</label>
+    <select ${propPrefix}="bundling">${bundOpts}</select>
+  </div>`);
   // Иконки способа прокладки и расположения
   h.push(`<div style="display:flex;gap:12px;justify-content:center;margin:8px 0">${channelIconSVG(method, 48)}${bundlingIconSVG(bundling, 48)}</div>`);
-  h.push(field('Температура среды, °C', `<input type="number" min="10" max="70" step="5" ${propPrefix}="ambientC" value="${ambientC || 30}">`));
-  h.push(field('Цепей в группе', `<input type="number" min="1" max="50" step="1" ${propPrefix}="grouping" value="${grouping || 1}">`));
+  h.push(`<div class="field">
+    <label>Температура среды, °C${helpIcon('Температура окружающего воздуха или грунта, в которой проложен кабель. Влияет на коэффициент Kt (IEC 60364-5-52 табл. B.52.14). При +30°C для PVC Kt=1.0, для XLPE — другой ряд. Высокие температуры (≥+40°C) серьёзно снижают допустимый ток (Kt < 0.85).')}</label>
+    <input type="number" min="10" max="70" step="5" ${propPrefix}="ambientC" value="${ambientC || 30}">
+  </div>`);
+  h.push(`<div class="field">
+    <label>Цепей в группе${helpIcon('Количество соседних силовых цепей в общем канале/трассе/пучке. Чем больше цепей — тем сильнее взаимный нагрев, тем меньше Kg (IEC 60364-5-52 табл. B.52.17). Для 1 цепи Kg=1.0, для 8 цепей в трубе — Kg≈0.55, для 20+ → Kg≈0.4. Считается автоматически если кабель проходит через каналы.')}</label>
+    <input type="number" min="1" max="50" step="1" ${propPrefix}="grouping" value="${grouping || 1}">
+  </div>`);
   // Коэффициенты
   h.push(installCoefficientBlock(method, ambientC, circuits, bundling, insulation || 'PVC'));
   h.push('</details>');
@@ -263,13 +276,15 @@ export function renderInspectorConn(c) {
 
   h.push('<details class="inspector-section">');
   h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Подбор проводника</summary>');
-  h.push(field('Тип проводника',
-    `<select data-conn-prop="cableType">
+  h.push(`<div class="field">
+    <label>Тип проводника${helpIcon('Многожильный — несколько изолированных жил в одной оболочке (наиболее распространён). Одножильный многопроволочный — гибкий, состоит из мелких проволок (классы 5/6 по IEC 60228). Цельная жила (rigid) — для сечений до 10 мм², класс 1/2 — жёсткий, дешевле. Шинопровод — алюминиевые/медные шины в металлическом коробе для In ≥ 200 А.')}</label>
+    <select data-conn-prop="cableType">
       <option value="multi"${ct === 'multi' ? ' selected' : ''}>Многожильный</option>
       <option value="single"${ct === 'single' ? ' selected' : ''}>Одножильный многопроволочный</option>
       <option value="solid"${ct === 'solid' ? ' selected' : ''}>Цельная жила (класс 1–2, до 10 мм²)</option>
       <option value="busbar"${ct === 'busbar' ? ' selected' : ''}>Шинопровод</option>
-    </select>`));
+    </select>
+  </div>`);
 
   // Марка кабеля из справочника (shared/cable-types-catalog.js, Фаза 0.3 + 1.11 + 1.15)
   // Информационный выбор — при выборе авто-заполняются material/insulation.
