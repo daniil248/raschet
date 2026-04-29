@@ -124,6 +124,18 @@
       "enabled": true
     },
     {
+      "id": "tech-workspace",
+      "name": "Технолог ЦОД",
+      "description": "Предпроектная стадия ЦОД: концепция объекта (стойки, IT-нагрузка, ИБП, климат, ввод ТП/ДГУ, PDU, площади), multi-variant compare, handoff в детальное проектирование. Два режима входа — список параметров или план зала.",
+      "path": "tech-workspace/",
+      "icon": "purple",
+      "badge": "wip",
+      "requires": ["shared/auth", "shared/project-storage"],
+      "dbCollections": [],
+      "permissions": ["tech-workspace.use"],
+      "enabled": true
+    },
+    {
       "id": "logistics",
       "name": "Рабочее место логиста",
       "description": "Отправления, склады, тарифы перевозчиков, калькулятор доставки. Интеграция с контрагентами и BOM проекта",

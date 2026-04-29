@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Рабочее место технолога ЦОД</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="tech-workspace.css">
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountHelp } from '../shared/help-panel.js';
+    mountHeader({ title: 'Технолог ЦОД', home: '../hub.html', moduleId: 'tech-workspace', moduleTitle: 'Технолог ЦОД' });
+    mountHelp({
+      module: 'tech-workspace',
+      title: 'Рабочее место технолога ЦОД',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Предпроектная стадия ЦОД: формирование <b>концепции объекта</b> до углубления в детальное проектирование. Технолог определяет количество стоек, мощности, резервирование, площади помещений, мощности ТП/ДГУ — без выбора конкретных моделей оборудования (это делают электрик / СКС / климатик на следующем этапе).</p>
+        <h4>Два режима входа</h4>
+        <ul>
+          <li><b>📋 Список компонентов</b> — заполнить параметры по разделам (стойки → ИБП → климат → ввод → площади). Подходит когда есть готовые ТЗ от заказчика и нужно быстро посчитать мощности.</li>
+          <li><b>🗺 План зала</b> — начать с расстановки помещений и оборудования на сетке. Подходит когда заказчик дал план или есть площадка с фиксированными размерами.</li>
+        </ul>
+        <h4>Опциональная привязка к каталогу</h4>
+        <p>Каждый параметрический узел (стойка, ИБП, кондиционер, ТП, ДГУ, PDU) можно <b>привязать к конкретной модели из каталога</b> — кнопка «📦 Привязать модель…». После этого параметры читаются из каталога; ручной ввод остаётся доступен как override.</p>
+        <h4>Multi-variant compare</h4>
+        <p>В левой панели — список вариантов концепции (например «Базовый», «Расширение N+1», «2N для финансового сектора»). Side-by-side сравнение мощностей, площадей и стоимости concept-уровня.</p>
+        <h4>Handoff в детальное проектирование</h4>
+        <p>После согласования с заказчиком — кнопка «📤 Передать в проектирование». Концепция переходит в read-only и предзаполняет <code>schematic/</code> (главная схема), <code>scs-design/</code> (план СКС) и <code>mdc-config/</code> (если МЦОД).</p>
+      `,
+      calcs: `
+        <h4>Расчёты</h4>
+        <h5>Итоговая IT-нагрузка</h5>
+        <p><code>P<sub>IT</sub> = N<sub>стоек</sub> · P<sub>стойка</sub></code></p>
+        <h5>Достаточность ИБП</h5>
+        <p><code>P<sub>ИБП,доступная</sub> = N<sub>работающих</sub> · S<sub>ном</sub> · cos φ · k<sub>ЗАГ</sub></code>, где N<sub>работающих</sub> = N − N<sub>резерв</sub> по схеме (N+1: −1; 2N: ÷2).</p>
+        <h5>Достаточность климата</h5>
+        <p>Холодопроизводительность <code>≥ P<sub>IT</sub> · 1.0</code> с учётом потерь по ASHRAE TC 9.9.</p>
+        <h5>Площади помещений</h5>
+        <ul>
+          <li>Машзал: <code>S = N<sub>стоек</sub> · 2.5 м² + проходы</code> (при шаге между рядами 1.2 м, hot/cold aisle).</li>
+          <li>ИБП-зал: <code>S = N<sub>ИБП</sub> · 4 м² + проходы</code>.</li>
+          <li>АКБ-зал: <code>S = E<sub>АКБ</sub> · 0.8 м²/кА·ч</code> для VRLA или <code>0.4</code> для Li-Ion.</li>
+        </ul>
+        <p>Минимумы по ТКП 308-2011 / TIA-942 / Uptime Tier-III.</p>
+      `
+    });
+  </script>
+
+  <main class="tw-main">
+    <!-- Левая панель: варианты + переключатель режима -->
+    <aside class="tw-sidebar">
+      <div class="tw-mode-toggle">
+        <button type="button" class="tw-mode-btn active" data-mode="list" title="Заполнение параметров по разделам">📋 Список</button>
+        <button type="button" class="tw-mode-btn" data-mode="plan" title="План зала с drag-drop">🗺 План</button>
+      </div>
+      <div class="tw-variants-head">
+        <h3>Варианты концепции</h3>
+        <button type="button" id="tw-variant-add" title="Добавить новый вариант">➕</button>
+      </div>
+      <div id="tw-variants-list" class="tw-variants-list"></div>
+      <div class="tw-actions">
+        <button type="button" id="tw-handoff" disabled title="Передать в детальное проектирование (заполняет schematic/scs-design/mdc-config из concept.*)">📤 Передать в проектирование</button>
+      </div>
+    </aside>
+
+    <!-- Правая панель: содержимое активного варианта -->
+    <section class="tw-content">
+      <div class="tw-content-header">
+        <h2 id="tw-variant-name">— выберите вариант —</h2>
+        <div class="tw-content-meta">
+          <span class="muted" id="tw-content-summary"></span>
+          <span class="tw-readonly-badge" id="tw-readonly-badge" hidden>🔒 read-only (после handoff)</span>
+        </div>
+      </div>
+
+      <!-- Mode: List (по умолчанию) -->
+      <div id="tw-mode-list" class="tw-mode-pane">
+        <div class="tw-section">
+          <h3>1. Концепция стоек</h3>
+          <div class="tw-grid">
+            <label>Количество стоек:<input type="number" id="tw-rack-count" min="0" step="1" value="0"></label>
+            <label>Мощность на стойку, кВт:<input type="number" id="tw-rack-kw" min="0" step="0.5" value="0"></label>
+            <label>Профиль:
+              <select id="tw-rack-profile">
+                <option value="it">IT-rack</option>
+                <option value="blade">Blade</option>
+                <option value="gpu">GPU-heavy</option>
+                <option value="network">Network</option>
+                <option value="storage">Storage</option>
+              </select>
+            </label>
+            <label>Ширина, мм:<input type="number" id="tw-rack-width" min="600" step="100" value="600"></label>
+            <label>Глубина, мм:<input type="number" id="tw-rack-depth" min="800" step="100" value="1200"></label>
+          </div>
+          <div class="tw-summary">
+            <b>Σ IT-нагрузка:</b> <span id="tw-it-total">0</span> кВт ·
+            <b>Σ площадь машзала (≈):</b> <span id="tw-machroom-area">0</span> м²
+            <button type="button" class="tw-bind-btn" data-bind-domain="rack" title="Привязать к конкретной модели из каталога">📦 Привязать модель…</button>
+          </div>
+        </div>
+
+        <div class="tw-section">
+          <h3>2. Система ИБП</h3>
+          <div class="tw-grid">
+            <label>Кол-во ИБП:<input type="number" id="tw-ups-count" min="1" step="1" value="2"></label>
+            <label>Номинал, кВА:<input type="number" id="tw-ups-kva" min="0" step="50" value="0"></label>
+            <label>Резервирование:
+              <select id="tw-ups-redundancy">
+                <option value="N">N (без резерва)</option>
+                <option value="N+1" selected>N+1</option>
+                <option value="2N">2N</option>
+              </select>
+            </label>
+            <label>cos φ:<input type="number" id="tw-ups-cosphi" min="0.5" max="1" step="0.01" value="0.95"></label>
+            <label>Загрузка, %:<input type="number" id="tw-ups-load" min="20" max="95" step="5" value="80"></label>
+            <label>Автономия, мин:<input type="number" id="tw-ups-autonomy" min="5" step="5" value="15"></label>
+            <label>Тип АКБ:
+              <select id="tw-ups-battery">
+                <option value="vrla">VRLA</option>
+                <option value="lifepo4">Li-Ion (LFP)</option>
+              </select>
+            </label>
+          </div>
+          <div class="tw-summary">
+            <b>Σ кВт доступно:</b> <span id="tw-ups-available">0</span> кВт ·
+            <b>Запас:</b> <span id="tw-ups-margin">—</span>
+            <button type="button" class="tw-bind-btn" data-bind-domain="ups" title="Привязать к конкретной модели ИБП из каталога">📦 Привязать модель…</button>
+          </div>
+        </div>
+
+        <div class="tw-section">
+          <h3>3. Климат</h3>
+          <div class="tw-grid">
+            <label>Кол-во кондиционеров:<input type="number" id="tw-cool-count" min="1" step="1" value="3"></label>
+            <label>Холод на единицу, кВт:<input type="number" id="tw-cool-kw" min="0" step="5" value="0"></label>
+            <label>Тип:
+              <select id="tw-cool-type">
+                <option value="crac">CRAC (downflow)</option>
+                <option value="inrow">In-Row</option>
+                <option value="fancoil">Fan-coil</option>
+                <option value="freecool">Free cooling</option>
+              </select>
+            </label>
+            <label>Резервирование:
+              <select id="tw-cool-redundancy">
+                <option value="N">N</option>
+                <option value="N+1" selected>N+1</option>
+                <option value="2N">2N</option>
+              </select>
+            </label>
+          </div>
+          <div class="tw-summary">
+            <b>Σ холод доступен:</b> <span id="tw-cool-available">0</span> кВт ·
+            <b>Запас:</b> <span id="tw-cool-margin">—</span>
+            <button type="button" class="tw-bind-btn" data-bind-domain="cool" title="Привязать к конкретной модели кондиционера из каталога">📦 Привязать модель…</button>
+          </div>
+        </div>
+
+        <div class="tw-section">
+          <h3>4. Ввод: ТП и ДГУ</h3>
+          <div class="tw-grid">
+            <label class="tw-checkbox"><input type="checkbox" id="tw-tp-needed"> ТП требуется</label>
+            <label>Мощность ТП, кВА:<input type="number" id="tw-tp-kva" min="0" step="100" value="0"></label>
+            <label>Резервирование ТП:
+              <select id="tw-tp-redundancy">
+                <option value="1">1 ввод</option>
+                <option value="2" selected>2 ввода</option>
+                <option value="2-avr">2 ввода + АВР</option>
+              </select>
+            </label>
+            <label class="tw-checkbox"><input type="checkbox" id="tw-dgu-needed"> ДГУ требуется</label>
+            <label>Мощность ДГУ, кВт:<input type="number" id="tw-dgu-kw" min="0" step="100" value="0"></label>
+            <label>Режим ДГУ:
+              <select id="tw-dgu-mode">
+                <option value="esp">ESP (резерв)</option>
+                <option value="prp">PRP (постоянное питание)</option>
+              </select>
+            </label>
+            <label>Резервирование ДГУ:
+              <select id="tw-dgu-redundancy">
+                <option value="none">Нет</option>
+                <option value="N+1" selected>N+1</option>
+                <option value="2N">2N</option>
+              </select>
+            </label>
+          </div>
+          <div class="tw-summary">
+            <b>Σ принятая мощность:</b> <span id="tw-feed-total">0</span> кВт
+            <button type="button" class="tw-bind-btn" data-bind-domain="tp" title="Привязать ТП к каталогу">📦 ТП…</button>
+            <button type="button" class="tw-bind-btn" data-bind-domain="dgu" title="Привязать ДГУ к каталогу">📦 ДГУ…</button>
+          </div>
+        </div>
+
+        <div class="tw-section">
+          <h3>5. PDU (концептуальные требования)</h3>
+          <div class="tw-grid">
+            <label>Тип:
+              <select id="tw-pdu-kind">
+                <option value="basic">Basic</option>
+                <option value="metered" selected>Metered</option>
+                <option value="switched">Switched</option>
+                <option value="monitored">Monitored</option>
+              </select>
+            </label>
+            <label>Фазность:
+              <select id="tw-pdu-phases">
+                <option value="1ph">1ф</option>
+                <option value="3ph" selected>3ф</option>
+              </select>
+            </label>
+            <label>Ток на ввод, А:
+              <select id="tw-pdu-rating">
+                <option value="16">16</option>
+                <option value="32" selected>32</option>
+                <option value="63">63</option>
+              </select>
+            </label>
+            <label>Вводов на стойку:
+              <select id="tw-pdu-inputs">
+                <option value="1">1</option>
+                <option value="2" selected>2 (для N+1 / 2N)</option>
+                <option value="4">4</option>
+              </select>
+            </label>
+          </div>
+          <div class="tw-summary">
+            <span class="muted">Параметры передаются электрику для подбора конкретных моделей PDU.</span>
+            <button type="button" class="tw-bind-btn" data-bind-domain="pdu" title="Привязать конкретную модель PDU">📦 Привязать модель…</button>
+          </div>
+        </div>
+
+        <div class="tw-section">
+          <h3>6. Площади помещений</h3>
+          <div id="tw-areas-table" class="tw-areas-table"></div>
+        </div>
+      </div>
+
+      <!-- Mode: Plan (план зала, MVP — заглушка) -->
+      <div id="tw-mode-plan" class="tw-mode-pane" hidden>
+        <div class="tw-plan-toolbar">
+          <span class="muted">Drag-drop помещений и оборудования на сетку. Выходные данные синхронизируются с разделами «Список».</span>
+        </div>
+        <div id="tw-plan-canvas" class="tw-plan-canvas">
+          <div class="tw-plan-placeholder">
+            🗺 План зала<br>
+            <small>MVP-заглушка. Полный редактор появится в 20.7.</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="tw-empty-state" class="tw-empty-state">
+        <div>
+          <h3>Создайте вариант концепции</h3>
+          <p class="muted">Слева — кнопка ➕ для нового варианта. Можно начать со списка параметров или сразу с плана зала.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="tech-workspace.js"></script>
+</body>
+</html>
