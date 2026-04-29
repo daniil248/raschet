@@ -294,6 +294,10 @@ function renderInspectorPage() {
       (m.type === 'consumer' || m.type === 'panel') && Number(m._deltaUPct) > 5);
     const vdropOver10 = allNodes.filter(m =>
       (m.type === 'consumer' || m.type === 'panel') && Number(m._deltaUPct) > 10);
+    // v0.59.716: подсчёт кабельных проблем
+    const allConns = [...state.conns.values()].filter(c => c._state === 'active' && !c._isInternalConnHidden);
+    const cableOverflow = allConns.filter(c => c._cableOverflow);
+    const breakerUndersize = allConns.filter(c => c._breakerUndersize);
     const tuFilled = (() => {
       try {
         const ps = state.project?.customer || state.project?.object;
@@ -323,6 +327,8 @@ function renderInspectorPage() {
       ${_row(isOk(overloaded.length) ? '✓' : '⛔', isOk(overloaded.length) ? '#15803d' : '#b91c1c', 'Перегруженных узлов', overloaded.length, null, _firstId(overloaded))}
       ${_row(isOk(vdropOver5.length) ? '✓' : '⚠', isOk(vdropOver5.length) ? '#15803d' : '#ca8a04', 'ΔU > 5%', vdropOver5.length, null, _firstId(vdropOver5))}
       ${vdropOver10.length > 0 ? _row('⛔', '#b91c1c', 'из них ΔU > 10%', vdropOver10.length, null, _firstId(vdropOver10)) : ''}
+      ${_row(isOk(cableOverflow.length) ? '✓' : '⛔', isOk(cableOverflow.length) ? '#15803d' : '#b91c1c', 'Кабелей переполнено', cableOverflow.length)}
+      ${_row(isOk(breakerUndersize.length) ? '✓' : '⛔', isOk(breakerUndersize.length) ? '#15803d' : '#b91c1c', 'Автоматов: In < Iрасч', breakerUndersize.length)}
       ${_row(tuFilled ? '✓' : 'ℹ', tuFilled ? '#15803d' : '#6b7280', 'Информация о проекте', tuFilled ? 'есть' : 'не заполнена')}
       <div style="margin-top:6px;padding-top:6px;border-top:1px dashed #d7dde5">
         <button type="button" id="pg-open-reports-checks" class="full-btn" style="font-size:11px;padding:4px 8px">📊 Подробный отчёт «Проверки и предупреждения»</button>
