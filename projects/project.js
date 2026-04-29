@@ -105,6 +105,14 @@ function fmtDate(ts) {
    на узле схемы откроет cable с уже подставленными параметрами). */
 const PROJECT_MODULES = [
   {
+    id: 'tech-workspace',
+    href: '../tech-workspace/',
+    icon: '🧮',
+    label: 'Технолог ЦОД',
+    desc: 'Предпроектная стадия: концепция объекта (стойки, IT-нагрузка, ИБП, климат, ввод ТП/ДГУ, площади), multi-variant compare, handoff в schematic/scs-design/mdc-config.',
+    color: '#7c3aed',
+  },
+  {
     id: 'schematic',
     href: '../index.html',
     icon: '⚡',

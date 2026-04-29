@@ -327,8 +327,26 @@ async function renderRacks() {
     });
   });
   tbody.querySelectorAll('button[data-del]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       const id = e.target.dataset.del;
+      // v0.59.781 (Phase 1.28.11): добавляем tombstone + чистим legacy-storage
+      // ДО физического удаления, чтобы migrateProjectLegacyRacks при
+      // следующем bootstrap НЕ восстановил стойку из rack-config.instances.
+      if (_currentPid) {
+        try {
+          const por = await import('../shared/por.js');
+          const obj = por.getObject ? por.getObject(_currentPid, id) : null;
+          const legacyRackId = obj && obj.legacyRackId ? obj.legacyRackId : null;
+          const mig = await import('../shared/legacy-rack-migration.js');
+          if (mig.addRackTombstone) {
+            if (legacyRackId) mig.addRackTombstone(_currentPid, legacyRackId);
+            mig.addRackTombstone(_currentPid, id);
+          }
+          if (legacyRackId && mig.cleanupLegacyRackEntries) {
+            mig.cleanupLegacyRackEntries(_currentPid, legacyRackId);
+          }
+        } catch (err) { console.warn('[por-playground] tombstone failed', err); }
+      }
       _adapter.remove(id);
       _selection.delete(id);
       renderRacks();
@@ -351,10 +369,16 @@ async function renderRacks() {
       tbody.appendChild(tr);
     }
     tbody.querySelectorAll('button[data-delg]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const id = e.target.dataset.delg;
         // Удаляем через POR API напрямую (adapter фильтрует только rack).
+        // v0.59.781 (Phase 1.28.11): tombstone — consumer-group тоже может
+        // восстанавливаться (через engine-por-mirror), пишем tombstone.
         if (_currentPid) {
+          try {
+            const mig = await import('../shared/legacy-rack-migration.js');
+            if (mig.addRackTombstone) mig.addRackTombstone(_currentPid, id);
+          } catch (err) { console.warn('[por-playground] group-tombstone failed', err); }
           import('../shared/por.js').then(mod => { mod.removeObject(_currentPid, id); renderRacks(); });
         }
       });

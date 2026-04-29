@@ -69,6 +69,7 @@ export const MODULE_LABELS = {
   'transformer-config':    '🔄 Конфигуратор трансформатора',
   'mdc-config':            '🏗 Модульный ЦОД',
   'suppression-config':    '🔥 АГПТ',
+  'tech-workspace':        '🧮 Технолог ЦОД',
   'hub':                   '🏠 Программы',
 };
 export function moduleLabel(id) { return MODULE_LABELS[id] || id || ''; }
