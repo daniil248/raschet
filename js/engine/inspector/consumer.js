@@ -125,7 +125,10 @@ export function openConsumerParamsModal(n) {
 
   h.push(field('Количество в группе', `<input type="number" id="cp-count" min="1" max="999" step="1" value="${n.count || 1}">`));
   const _cpCount = Math.max(1, Number(n.count) || 1);
-  const _loadSpec = (n.loadSpec === 'total') ? 'total' : 'per-unit';
+  // v0.59.747: _loadSpec / _isTotalDisplay удалены — после ввода парных
+  // полей (v0.59.738) и отказа от селектора loadSpec (v0.59.744) эти
+  // переменные больше нигде не используются. n.loadSpec в данных
+  // фиксируется как 'per-unit' в apply-handler.
   // v0.57.81: режим группы. 'uniform' — один demandKw на все приборы
   // (count × demandKw). 'individual' — массив items [{name, demandKw}]
   // с разными мощностями. Показывается только когда count > 1.
@@ -164,15 +167,10 @@ export function openConsumerParamsModal(n) {
   }
   h.push(`</div>`); // /tp-panel general
   h.push(`<div class="tp-panel" data-panel="electrical">`);
-  // v0.59.381: режим «На всю группу» теперь не зависит от serialMode —
-  // умножаем/делим всегда, когда count>1 и loadSpec=total.
-  const _isTotalDisplay = (_cpCount > 1 && _loadSpec === 'total');
-  const _displayDemand = _isTotalDisplay
-    ? (Number(n.demandKw || 0) * _cpCount)
-    : Number(n.demandKw || 0);
-  const _demandLabel = (_cpCount > 1)
-    ? (_isTotalDisplay ? 'Мощность всей группы, kW' : 'Мощность каждого, kW')
-    : 'Установленная мощность, kW';
+  // v0.59.747: _displayDemand / _demandLabel больше не используются —
+  // парные поля v0.59.738 рендерят свои собственные значения и метки.
+  // (Раньше через них шёл переключатель loadSpec, теперь n.demandKw —
+  // ВСЕГДА per-unit, group-итог считается × count в HTML.)
   // v0.59.99.2: флаг блокировки полей, зависящих от каталожного изделия.
   // Используется `disabled + title` на input, а для select — `disabled`
   // (readonly на select не работает). Отвязка — кнопкой на «Общее».
@@ -232,9 +230,19 @@ export function openConsumerParamsModal(n) {
   // U_term = U_nominal × (1 - deltaUPct/100); deltaUPct накапливается в
   // recalc.js по всем участкам линии от источника.
   {
-    const _uNom = (levels[curIdx]?.vLL) || 0;
+    // v0.59.747: для 1-фазного — берём vLN ИЗ определения уровня (level
+    // объявляет и vLL и vLN явно: { vLL:400, vLN:230 }). Раньше код считал
+    // vLL/√3 ≈ 231 для уровня 400/230, что давало рассинхронизацию с
+    // recalc.js (там для 1-фазной линии c._voltage = vLN = 230 из level'а).
+    // Получалось: consumer-modal показывал U_term=230.6 В (231 × (1-0.2%)),
+    // а conn-инспектор — 229.6 В (230 × (1-0.19%)) для одной и той же
+    // точки клемм. Юзер: «как напряжение на клеммах щита выше чем у
+    // источника?» — это и был артефакт неправильного nominal для 1ф.
     const _isPh1 = (ph === '1ph' || ph === 'A' || ph === 'B' || ph === 'C');
-    const _uNomPhase = _isPh1 ? Math.round(_uNom / Math.sqrt(3)) : _uNom;
+    const _level = levels[curIdx];
+    const _uNomPhase = _isPh1
+      ? (Number(_level?.vLN) || Math.round((Number(_level?.vLL) || 0) / Math.sqrt(3)))
+      : (Number(_level?.vLL) || 0);
     const _drop = Number(n._deltaUPct) || 0;
     const _uTerm = _uNomPhase * (1 - _drop / 100);
     // Допустимый диапазон: ±10% по ГОСТ 32144-2013 (норма качества
