@@ -811,8 +811,22 @@ export function openTuRequestModal(n) {
     activeProjectId = getActiveProjectId();
     const proj = activeProjectId ? getProject(activeProjectId) : null;
     projectMeta = (proj && proj.tuDefaults) || {};
-    if (!projectMeta.applicant && proj?.name) projectMeta = { ...projectMeta, applicant: proj.name };
-    if (!projectMeta.address && proj?.description) projectMeta = { ...projectMeta, address: proj.description };
+    // v0.59.711: цепочка fallback'ов для автозаполнения полей ТУ из
+    // свойств проекта. Приоритет:
+    //   1) tuDefaults (явно заданные значения для ТУ)
+    //   2) state.project.customer / object / name (поля «Информация о
+    //      проекте» — модалка «📋 Параметры проекта…»)
+    //   3) Зарегистрированный в project-storage project.name / description
+    const stateProj = (state.project && typeof state.project === 'object') ? state.project : {};
+    if (!projectMeta.applicant) {
+      projectMeta = { ...projectMeta, applicant: stateProj.customer || proj?.name || '' };
+    }
+    if (!projectMeta.address) {
+      projectMeta = { ...projectMeta, address: stateProj.object || proj?.description || '' };
+    }
+    if (!projectMeta.purpose) {
+      projectMeta = { ...projectMeta, purpose: stateProj.name || '' };
+    }
   } catch {}
   // Сторона: 'lv' или 'hv'. По умолчанию из projectMeta или 'lv'.
   const _initialSide = projectMeta.side === 'hv' ? 'hv' : 'lv';
