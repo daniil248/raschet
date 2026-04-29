@@ -128,8 +128,14 @@
               <option value="motor">Двигательный (ЩМ)</option>
             </select>
           </label>
+          <!-- v0.59.731: парные поля Мощность + Ток с двунаправленным
+               пересчётом (P ↔ I через U/cos φ/фазу). Симметрично с
+               cable/index.html v0.59.729 и инспектором потребителя. -->
           <label>Расч. нагрузка, kW
             <input type="number" id="pc-loadKw" min="0" step="0.5" value="20">
+          </label>
+          <label>Расчётный ток, А
+            <input type="number" id="pc-loadA" min="0" step="0.1" value="">
           </label>
           <label>Напряжение
             <select id="pc-voltage">

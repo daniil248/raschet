@@ -454,6 +454,65 @@ function _pcFillStep1() {
   document.getElementById('pc-ip').value = rq.ip;
   document.getElementById('pc-form').value = rq.form;
   document.getElementById('pc-reserve').value = rq.reserve;
+  // v0.59.731: связь pc-loadKw ↔ pc-loadA (двунаправленный пересчёт).
+  _pcWireLoadFields();
+}
+
+// v0.59.731: bidirectional sync для pc-loadKw ↔ pc-loadA. Вызывается
+// один раз из _pcFillStep1 при первой инициализации.
+let _pcLoadFieldsWired = false;
+function _pcWireLoadFields() {
+  if (_pcLoadFieldsWired) {
+    // На повторных вызовах просто обновляем pc-loadA из текущего kW.
+    _pcSyncFromKw();
+    return;
+  }
+  _pcLoadFieldsWired = true;
+  const kwEl = document.getElementById('pc-loadKw');
+  const aEl = document.getElementById('pc-loadA');
+  const vEl = document.getElementById('pc-voltage');
+  if (!kwEl || !aEl || !vEl) return;
+  let _syncing = false;
+  // P → I
+  kwEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      const kw = Number(kwEl.value) || 0;
+      const v = vEl.value;
+      const i = kw > 0 ? _pcCalcCurrent(kw, v) : 0;
+      aEl.value = i > 0 ? i.toFixed(2).replace(/\.00$/, '') : '';
+    } finally { _syncing = false; }
+  });
+  // I → P (формула обратная: P = I × √3 × U × cosφ / 1000 для 3ф или
+  //   I × U × cosφ / 1000 для 1ф)
+  aEl.addEventListener('input', () => {
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      const i = Number(aEl.value) || 0;
+      const v = vEl.value;
+      const U = v === 'lv-230' ? 230 : (v === 'lv-690' ? 690 : 400);
+      const is1ph = v === 'lv-230';
+      const cos = 0.9;
+      const kw = is1ph ? (i * U * cos) / 1000 : (i * Math.sqrt(3) * U * cos) / 1000;
+      kwEl.value = kw > 0 ? kw.toFixed(2).replace(/\.00$/, '') : '';
+    } finally { _syncing = false; }
+  });
+  // Смена напряжения — пересчитать I из текущей P.
+  vEl.addEventListener('change', _pcSyncFromKw);
+  // Инициализация — заполнить pc-loadA из дефолтного pc-loadKw.
+  _pcSyncFromKw();
+}
+function _pcSyncFromKw() {
+  const kwEl = document.getElementById('pc-loadKw');
+  const aEl = document.getElementById('pc-loadA');
+  const vEl = document.getElementById('pc-voltage');
+  if (!kwEl || !aEl || !vEl) return;
+  const kw = Number(kwEl.value) || 0;
+  const v = vEl.value;
+  const i = kw > 0 ? _pcCalcCurrent(kw, v) : 0;
+  aEl.value = i > 0 ? i.toFixed(2).replace(/\.00$/, '') : '';
 }
 
 function _pcReadStep1() {
