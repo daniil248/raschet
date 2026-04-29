@@ -133,6 +133,7 @@ const AUTO_SAVE_DELAY = 1500; // мс после последнего измен
 function _stopCollab() {
   if (state.presenceTimer) { clearInterval(state.presenceTimer); state.presenceTimer = null; }
   if (state.lockHeartbeatTimer) { clearInterval(state.lockHeartbeatTimer); state.lockHeartbeatTimer = null; }
+  if (state.lockStalePruneTimer) { clearInterval(state.lockStalePruneTimer); state.lockStalePruneTimer = null; }
   if (typeof state.unsubPresence === 'function') { try { state.unsubPresence(); } catch {} state.unsubPresence = null; }
   if (typeof state.unsubProjectDoc === 'function') { try { state.unsubProjectDoc(); } catch {} state.unsubProjectDoc = null; }
   if (typeof state.unsubLocks === 'function') { try { state.unsubLocks(); } catch {} state.unsubLocks = null; }
@@ -211,11 +212,21 @@ function _startCollab(project, initialUpdatedAtMs) {
         if (lockUid) return `пользователь ${String(lockUid).slice(0, 6)}…`;
         return 'другой участник';
       };
+      // v0.59.740: stale-lock check. subscribeLocks-snapshot не обновляется,
+      // если другой пользователь закрыл вкладку без записи (нет нового
+      // heartbeat'а → нет snapshot tick'а). Локально считаем lock устаревшим,
+      // если lastSeen старше 60 с — пропускаем блокировку и идём в acquireLock,
+      // который перезахватит документ на сервере (см. projects.js:314).
+      const _isLockStale = (lock) => {
+        if (!lock) return true;
+        const age = Date.now() - (Number(lock.lastSeen) || 0);
+        return age >= 60_000;
+      };
       // Берём новый лок для node или conn
       if (newKey) {
-        // Проверка: не заблокирован ли кем-то другим
+        // Проверка: не заблокирован ли кем-то другим (с учётом устаревания)
         const remote = state.remoteLocks?.[newKey];
-        if (remote && remote.uid !== uid) {
+        if (remote && remote.uid !== uid && !_isLockStale(remote)) {
           const owner = _ownerLabel(remote.uid, remote.name, remote.email);
           flash(`🔒 Объект редактирует ${owner}`, 'info');
           return false; // отменить выделение
@@ -237,6 +248,29 @@ function _startCollab(project, initialUpdatedAtMs) {
       window.Storage.heartbeatLock(project.id, state.myLockNodeId, uid);
     }
   }, 20_000);
+
+  // v0.59.740: периодическая локальная чистка устаревших чужих локов.
+  // subscribeLocks-snapshot не приходит, если у другого пользователя нет
+  // активной записи (он закрыл вкладку), поэтому stale-локи висят в
+  // state.remoteLocks без обновления. Каждые 15 с фильтруем по lastSeen
+  // и перерисовываем canvas, чтобы оверлей лока пропал визуально.
+  state.lockStalePruneTimer = setInterval(() => {
+    const cur = state.remoteLocks || {};
+    const now = Date.now();
+    let changed = false;
+    const fresh = {};
+    for (const [k, lock] of Object.entries(cur)) {
+      if (!lock) { changed = true; continue; }
+      const age = now - (Number(lock.lastSeen) || 0);
+      if (age >= 60_000) { changed = true; continue; }
+      fresh[k] = lock;
+    }
+    if (changed) {
+      state.remoteLocks = fresh;
+      window.__remoteLocks = fresh;
+      try { window.Raschet?.rerender?.(); } catch {}
+    }
+  }, 15_000);
 
   // Подписка на presence — рисуем аватары + обновляем карту курсоров (C.6)
   state.unsubPresence = window.Storage.subscribePresence(project.id, (list) => {

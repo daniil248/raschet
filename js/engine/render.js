@@ -1330,8 +1330,15 @@ export function decorateRemoteLocks() {
     if (lock.uid) return `${String(lock.uid).slice(0, 6)}…`;
     return '?';
   };
+  // v0.59.740: defensive фильтр устаревших локов на случай, если периодический
+  // прун в main.js (lockStalePruneTimer) ещё не отработал. Лок считается
+  // активным только если lastSeen ≤ 60 с назад.
+  const _now = Date.now();
   for (const key of keys) {
     const lock = locks[key];
+    if (!lock) continue;
+    const _age = _now - (Number(lock.lastSeen) || 0);
+    if (_age >= 60_000) continue; // stale → не рисуем оверлей
     const owner = _ownerLabel(lock);
     const ownerShort = '🔒 ' + (owner.length > 12 ? owner.slice(0, 12) + '…' : owner);
     // v0.57.76: conn locks имеют ключ вида "conn:xxx"
