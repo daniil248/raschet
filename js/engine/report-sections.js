@@ -581,6 +581,17 @@ function sectionConsumers() {
     const sum = per * cnt * k;
     if (c._powered) total += sum;
     const freeA = (Number.isFinite(c._freeA) && c._freeA > 0) ? fmt(c._freeA) : '—';
+    // v0.59.678: статус — «ПЕРЕГРУЗ» если фиксированный автомат/кабель не
+    // справляется, иначе «без пит» / «ок».
+    let st;
+    if (c._breakerOverload) {
+      const info = c._breakerOverloadInfo || {};
+      st = `⚠ ПЕРЕГРУЗ (Iрасч ${fmt(info.designA || 0)} > In ${info.breakerIn || 0})`;
+    } else if (!c._powered) {
+      st = 'БЕЗ ПИТ';
+    } else {
+      st = 'ок';
+    }
     return [
       fullTag(c), decorateName(c), c.phase || '3ph',
       fmt(per), String(cnt), ku.toFixed(2),
@@ -588,7 +599,7 @@ function sectionConsumers() {
       (Number(c.cosPhi) || 0.92).toFixed(2),
       fmt(c._nominalA || 0), fmt(c._ratedA || 0), fmt(c._inrushA || 0),
       freeA,
-      c._powered ? 'ок' : 'БЕЗ ПИТ',
+      st,
     ];
   });
 
@@ -1113,6 +1124,17 @@ function sectionChecks() {
     }
     if (n._overload) {
       issues.push({ level: 'warn', text: `${fullTag(n) || n.name}: перегруз (${fmt(n._loadKw)}/${fmt(n.capacityKw)} кВт)` });
+    }
+    // v0.59.678: перегруз по фиксированному автомату/кабелю на питающей линии.
+    if (n._breakerOverload) {
+      const info = n._breakerOverloadInfo || {};
+      const what = info.lockedBreaker && info.lockedCable
+        ? 'автомат и кабель зафиксированы'
+        : info.lockedBreaker ? 'автомат зафиксирован' : 'кабель зафиксирован';
+      issues.push({
+        level: 'warn',
+        text: `${fullTag(n) || n.name}: расчётный ток ${fmt(info.designA || 0)} А превышает номинал автомата ${info.breakerIn || 0} А (${what} вручную — авто-пересчёт отключён)`,
+      });
     }
   }
 

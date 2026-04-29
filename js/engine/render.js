@@ -1956,6 +1956,18 @@ export function renderNodes() {
       if (!Number.isFinite(v) || v <= 0) return null;
       return _fmtRow('Свободно', p, v);
     };
+    // v0.59.678: статус-строка перегруза по фиксированному автомату/кабелю.
+    // Возвращает текст для добавления к statusLine; CSS-класс overload
+    // нужно добавить отдельно. Применяется к panel/source/ups/generator,
+    // так же как для consumer выше (там вызывается inline).
+    const _breakerOverloadStatusFor = (nn) => {
+      if (!nn._breakerOverload) return null;
+      const info = nn._breakerOverloadInfo || {};
+      const what = info.lockedBreaker && info.lockedCable
+        ? 'автомат и кабель'
+        : info.lockedBreaker ? 'автомат' : 'кабель';
+      return `⚠ ПЕРЕГРУЗ: ${what} зафикс., Iрасч=${fmt(info.designA || 0)} А > In=${info.breakerIn || 0} А`;
+    };
 
     if (n.type === 'source') {
       const cos = Number(n._cosPhi) || Number(n.cosPhi) || GLOBAL.defaultCosPhi || 1.0;
@@ -1969,6 +1981,11 @@ export function renderNodes() {
         : (n.capacityKw > 0 ? n.capacityKw / Math.max(0.1, cos) : 0);
       if (!effectiveOn(n)) { statusLine = `Отключён`; loadCls += ' off'; }
       if (n._overload) loadCls += ' overload';
+      // v0.59.678: предупреждение о перегрузе фиксированного автомата/кабеля
+      {
+        const _bo = _breakerOverloadStatusFor(n);
+        if (_bo) { statusLine = (statusLine ? statusLine + ' · ' : '') + _bo; loadCls += ' overload'; }
+      }
       loadLines = [
         _fmtRow('текущая', n._loadKw, n._loadA),
         _fmtRow('макс.расч', n._maxLoadKw, n._maxLoadA),
@@ -1994,6 +2011,10 @@ export function renderNodes() {
         statusLine = 'Дежурство'; loadCls += ' off';
       }
       if (n._overload) loadCls += ' overload';
+      {
+        const _bo = _breakerOverloadStatusFor(n);
+        if (_bo) { statusLine = (statusLine ? statusLine + ' · ' : '') + _bo; loadCls += ' overload'; }
+      }
       loadLines = [
         _fmtRow('текущая', n._loadKw, n._loadA),
         _fmtRow('макс.расч', n._maxLoadKw, n._maxLoadA),
@@ -2017,6 +2038,10 @@ export function renderNodes() {
         ? computeCurrentA(PnomSum, nodeVoltage(n), cos, isThreePhase(n))
         : 0;
       if (n._marginWarn === 'low') loadCls += ' overload';
+      {
+        const _bo = _breakerOverloadStatusFor(n);
+        if (_bo) { statusLine = (statusLine ? statusLine + ' · ' : '') + _bo; loadCls += ' overload'; }
+      }
       loadLines = [
         _fmtRow('текущая', n._loadKw, n._loadA),
         _fmtRow('макс.расч', n._maxLoadKw, n._maxLoadA),
@@ -2048,6 +2073,10 @@ export function renderNodes() {
         ? Number(n.capacityKva)
         : (n.capacityKw > 0 ? n.capacityKw / Math.max(0.1, cosForCap) : 0);
       if (n._overload) loadCls += ' overload';
+      {
+        const _bo = _breakerOverloadStatusFor(n);
+        if (_bo) { statusLine = (statusLine ? statusLine + ' · ' : '') + _bo; loadCls += ' overload'; }
+      }
       loadLines = [
         _fmtRow('текущая', n._loadKw, n._loadA),
         _fmtRow('макс.расч', n._maxLoadKw, n._maxLoadA),
@@ -2080,6 +2109,20 @@ export function renderNodes() {
         ? computeCurrentA(PcalcTotal, Ucalc, cos, isThreePhase(n)) : 0);
       const Icalc = _isUniformGroup ? (IcalcTotal / cnt) : IcalcTotal;
       if (!n._powered) { statusLine = 'нет питания'; loadCls += ' off'; }
+      // v0.59.678: Превышение по фиксированному автомату или кабелю.
+      // Пользователь: «если автомат на кабеле зафиксирован, то превышение
+      // на потребителе прежде всего должно выводить предупреждение на
+      // самом потребителе». Флаг ставится в recalc.js когда
+      // c._breakerUndersize && (manualBreakerIn || manualCableSize).
+      if (n._breakerOverload) {
+        const info = n._breakerOverloadInfo || {};
+        const what = info.lockedBreaker && info.lockedCable
+          ? 'автомат и кабель'
+          : info.lockedBreaker ? 'автомат' : 'кабель';
+        statusLine = (statusLine ? statusLine + ' · ' : '')
+          + `⚠ ПЕРЕГРУЗ: ${what} зафиксирован, Iрасч=${fmt(info.designA || 0)} А > In=${info.breakerIn || 0} А`;
+        loadCls += ' overload';
+      }
       // v0.59.676: «Свободно» — резерв пропускной способности линии =
       // (limit_max) − (фактически используемый расчётный ток). Считается
       // в recalc.js per-line. Пользователь: «Используй слово 'Свободно',

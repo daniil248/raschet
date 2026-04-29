@@ -3278,6 +3278,52 @@ function recalc() {
     c._isInternalConnHidden = true;  // флаг для UI / BOM / отчётов
   }
 
+  // v0.59.678: Перегруз по фиксированному автомату/кабелю.
+  // Пользователь: «если автомат на кабеле зафиксирован, то превышение
+  // на потребителе прежде всего должно выводить предупреждение на самом
+  // потребителе, и на кабеле и в отчете, чтобы пользователь сразу видел
+  // что он перебрал мощностью. Если же автомат или кабель не зафиксированы,
+  // то можно пересчитывать всю схему».
+  //
+  // Логика: если на питающей линии есть c._breakerUndersize === true и
+  // защита/сечение зафиксированы вручную (c.manualBreakerIn или
+  // c.manualCableSize), то ставим n._breakerOverload на узле-потребителе
+  // (panel / consumer / ups / generator). Это превращает «бесшумную»
+  // ошибку cable engine (когда он не может авто-увеличить кабель) в
+  // явное предупреждение на карточке узла и в отчёте.
+  //
+  // Если автомат и кабель НЕ зафиксированы, cable engine сам подберёт
+  // больший номинал — флаг _breakerUndersize в этом случае не появится
+  // (engine увеличит сечение/автомат на следующей итерации).
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'consumer' && n.type !== 'panel' && n.type !== 'ups'
+        && n.type !== 'generator' && n.type !== 'source') continue;
+    n._breakerOverload = false;
+    n._breakerOverloadInfo = null;
+    const ins = (edgesIn.get(n.id) || []).filter(c => !c._virtual);
+    if (!ins.length) continue;
+    let c = ins[0];
+    if (n.type === 'generator' && n.auxInput) {
+      const power = ins.find(x => x.to.port !== 0);
+      if (power) c = power;
+    }
+    if (!c._breakerUndersize) continue;
+    const isFixed = !!(c.manualBreakerIn || c.manualFuseIn || c.manualCableSize);
+    if (!isFixed) continue;
+    n._breakerOverload = true;
+    const inA = Number(c._breakerIn) || Number(c._breakerPerLine) || Number(c.manualBreakerIn) || 0;
+    const par = Math.max(1, Number(c._cableParallel) || 1);
+    const Iperline = (Number(c._maxA) || 0) / par;
+    n._breakerOverloadInfo = {
+      breakerIn: inA,
+      designA: Iperline,
+      cableSize: c._cableSize || null,
+      cableIz: c._cableIz || null,
+      lockedBreaker: !!(c.manualBreakerIn || c.manualFuseIn),
+      lockedCable: !!c.manualCableSize,
+    };
+  }
+
   // v0.59.657/675: «Свободно» — резерв пропускной способности линии.
   // Пользователь: «Используй слово 'Свободно', приписку (автомат или
   // кабель можно написать только в примечаниях к расчету)». Это разница
