@@ -150,13 +150,13 @@ export function openConsumerParamsModal(n) {
     // v0.59.381: «Указание нагрузки» теперь доступно ВСЕГДА при count>1
     // (не только при последовательном) — пользователь может ввести
     // суммарную мощность группы и не пересчитывать единичную вручную.
-    h.push(`<div id="cp-loadSpec-wrap" class="field" style="${_groupMode === 'individual' ? 'display:none' : ''}">
-      <label>Указание нагрузки</label>
-      <select id="cp-loadSpec">
-        <option value="per-unit"${_loadSpec === 'per-unit' ? ' selected' : ''}>На каждый элемент</option>
-        <option value="total"${_loadSpec === 'total' ? ' selected' : ''}>На всю группу</option>
-      </select>
-    </div>`);
+    // v0.59.744: селектор «Указание нагрузки» (per-unit / total) удалён —
+    // оба значения теперь видны в парных полях «Мощность каждого» +
+    // «Мощность всей группы», переключатель потерял смысл (юзер сам
+    // правит то поле, в категориях которого ему удобнее думать).
+    // Скрытый input нужен только для обратной совместимости readForm
+    // (n.loadSpec оставлен в схеме данных, но всегда 'per-unit').
+    h.push(`<input type="hidden" id="cp-loadSpec" value="per-unit">`);
   }
   h.push(`</div>`); // /tp-panel general
   h.push(`<div class="tp-panel" data-panel="electrical">`);
@@ -783,8 +783,10 @@ export function openConsumerParamsModal(n) {
 
   // Live-обновление полей serial/loadSpec
   const serialCb = document.getElementById('cp-serialMode');
+  // v0.59.744: loadSpec-селектор удалён, остался hidden input. Оставляем
+  // переменную для backward-compat по апплаю (см. apply ниже), но никаких
+  // event-listener на ней нет (всегда 'per-unit').
   const loadSpecSel = document.getElementById('cp-loadSpec');
-  const loadSpecWrap = document.getElementById('cp-loadSpec-wrap');
   const demandInput = document.getElementById('cp-demandKw');
   const demandLabel = document.getElementById('cp-demandKw-label');
   const demandALabel = document.getElementById('cp-demandA-label');
@@ -792,11 +794,8 @@ export function openConsumerParamsModal(n) {
   // v0.59.738: cp-demandKw / cp-demandA ВСЕГДА хранят per-unit-значения.
   // Группа показывается отдельной парой полей выше (cp-demandKwGroup /
   // cp-demandAGroup) и пересчитывается из per-unit × count в _wireGroupSync.
-  // loadSpec-селектор больше не переключает значение (no multiply/divide
-  // on change) — он лишь подсказывает, какую строку юзеру удобнее править.
   const updateDemandUi = () => {
     const cnt = Math.max(1, Number(countInput?.value) || 1);
-    if (loadSpecWrap) loadSpecWrap.style.display = (cnt > 1) ? '' : 'none';
     if (demandLabel) demandLabel.textContent = (cnt > 1) ? 'Мощность каждого, kW' : 'Установленная мощность, kW';
     if (demandALabel) {
       // Заменить только текстовый префикс лейбла, сохранив helpIcon.
@@ -807,7 +806,6 @@ export function openConsumerParamsModal(n) {
       demandALabel.innerHTML = prefix + helpHtml;
     }
   };
-  if (loadSpecSel) loadSpecSel.addEventListener('change', updateDemandUi);
   if (countInput) countInput.addEventListener('change', updateDemandUi);
   if (serialCb) {
     serialCb.addEventListener('change', () => {
@@ -1046,12 +1044,12 @@ export function openConsumerParamsModal(n) {
         }
       } finally { _calcSyncing = false; }
     });
-    // При изменении Ки / множителя / P_ном / count / loadSpec — пересчитать P_calc.
+    // При изменении Ки / множителя / P_ном / count — пересчитать P_calc.
+    // v0.59.744: loadSpec-селектор удалён.
     kuInput.addEventListener('input', _refreshCalc);
     if (lfInput) lfInput.addEventListener('input', _refreshCalc);
     if (demandInput) demandInput.addEventListener('input', _refreshCalc);
     if (countInputForCalc) countInputForCalc.addEventListener('change', _refreshCalc);
-    if (loadSpecSel) loadSpecSel.addEventListener('change', _refreshCalc);
     // Инициализация при открытии формы.
     _refreshCalc();
   }
