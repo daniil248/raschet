@@ -994,54 +994,70 @@ export function openConsumerParamsModal(n) {
         }
       } finally { _calcSyncing = false; }
     };
+    // v0.59.745: clamp Pcalc/Icalc до номинальных (×LF). Юзер: «в расчётной
+    // мощности и токе запретить выбирать значения выше номинальных». Раньше
+    // при вводе Pcalc выше Pном×LF сама величина оставалась в поле, а
+    // Ки клампился до 1 — получалась рассинхронизация (показано P_расч=0.4
+    // при P_ном=0.21 LF=1, хотя Ки уже =1). Теперь:
+    //   max Pcalc = Pnom × LF  (соответствует Ki=1)
+    //   max Icalc = _PtoI(max Pcalc)
+    // Если юзер ввёл выше — поле клампится до max + Ki=1.
+    const _writeCalcGroupSpans = (Pcalc) => {
+      const cnt = _readCount();
+      if (cnt > 1 && _calcGroupKwSpan) {
+        const PcalcGroup = Pcalc * cnt;
+        const IcalcGroup = _PtoI(PcalcGroup);
+        _calcGroupKwSpan.textContent = PcalcGroup > 0 ? PcalcGroup.toFixed(2).replace(/\.00$/, '') : '—';
+        if (_calcGroupASpan) _calcGroupASpan.textContent = IcalcGroup > 0 ? IcalcGroup.toFixed(2).replace(/\.00$/, '') : '—';
+      }
+    };
     // Юзер ввёл расчётную P → пересчитать Ки.
-    // Pcalc и Pnom оба в текущем режиме (per-unit или total) — Ки = Pcalc / (Pnom × LF)
+    // Pcalc и Pnom оба в режиме per-unit — Ки = Pcalc / (Pnom × LF), Pcalc ≤ Pnom × LF.
     calcKwInput.addEventListener('input', () => {
       if (_calcSyncing) return;
       _calcSyncing = true;
       try {
         const PnomDisp = _readPnomDisplay();
         const lf = _readLf();
-        const Pcalc = Number(calcKwInput.value) || 0;
+        const Pmax = PnomDisp * lf; // максимум при Ki=1
+        let Pcalc = Number(calcKwInput.value) || 0;
+        // Cap до номинальной × LF
+        if (PnomDisp > 0 && lf > 0 && Pcalc > Pmax) {
+          Pcalc = Pmax;
+          calcKwInput.value = Pmax > 0 ? Pmax.toFixed(2).replace(/\.00$/, '') : '';
+        }
         if (PnomDisp > 0 && lf > 0) {
           const newKu = Pcalc / (PnomDisp * lf);
           kuInput.value = Math.max(0, Math.min(1, newKu)).toFixed(3).replace(/\.?0+$/, '');
         }
-        // I_calc — синхронизируем
+        // I_calc — синхронизируем (с уже clamped Pcalc)
         const Icalc = _PtoI(Pcalc);
         if (calcAInput) calcAInput.value = Icalc > 0 ? Icalc.toFixed(2).replace(/\.00$/, '') : '';
-        // Справочно для группы (только если per-unit)
-        const cnt = _readCount();
-        if (cnt > 1 && _calcGroupKwSpan) {
-          const PcalcGroup = Pcalc * cnt;
-          const IcalcGroup = _PtoI(PcalcGroup);
-          _calcGroupKwSpan.textContent = PcalcGroup > 0 ? PcalcGroup.toFixed(2).replace(/\.00$/, '') : '—';
-          if (_calcGroupASpan) _calcGroupASpan.textContent = IcalcGroup > 0 ? IcalcGroup.toFixed(2).replace(/\.00$/, '') : '—';
-        }
+        _writeCalcGroupSpans(Pcalc);
       } finally { _calcSyncing = false; }
     });
-    // Юзер ввёл расчётный I → P_calc → Ки.
+    // Юзер ввёл расчётный I → P_calc → Ки. С clamping до номинального тока.
     if (calcAInput) calcAInput.addEventListener('input', () => {
       if (_calcSyncing) return;
       _calcSyncing = true;
       try {
-        const a = Number(calcAInput.value) || 0;
-        const Pcalc = _ItoP(a);
-        calcKwInput.value = Pcalc > 0 ? Pcalc.toFixed(2).replace(/\.00$/, '') : '';
         const PnomDisp = _readPnomDisplay();
         const lf = _readLf();
+        const Pmax = PnomDisp * lf;
+        const Imax = _PtoI(Pmax); // верхняя граница Icalc
+        let a = Number(calcAInput.value) || 0;
+        // Cap до номинального тока × LF
+        if (Imax > 0 && a > Imax) {
+          a = Imax;
+          calcAInput.value = Imax.toFixed(2).replace(/\.00$/, '');
+        }
+        const Pcalc = _ItoP(a);
+        calcKwInput.value = Pcalc > 0 ? Pcalc.toFixed(2).replace(/\.00$/, '') : '';
         if (PnomDisp > 0 && lf > 0) {
           const newKu = Pcalc / (PnomDisp * lf);
           kuInput.value = Math.max(0, Math.min(1, newKu)).toFixed(3).replace(/\.?0+$/, '');
         }
-        // Справочно для группы (только если per-unit)
-        const cnt = _readCount();
-        if (cnt > 1 && _calcGroupKwSpan) {
-          const PcalcGroup = Pcalc * cnt;
-          const IcalcGroup = _PtoI(PcalcGroup);
-          _calcGroupKwSpan.textContent = PcalcGroup > 0 ? PcalcGroup.toFixed(2).replace(/\.00$/, '') : '—';
-          if (_calcGroupASpan) _calcGroupASpan.textContent = IcalcGroup > 0 ? IcalcGroup.toFixed(2).replace(/\.00$/, '') : '—';
-        }
+        _writeCalcGroupSpans(Pcalc);
       } finally { _calcSyncing = false; }
     });
     // При изменении Ки / множителя / P_ном / count — пересчитать P_calc.
