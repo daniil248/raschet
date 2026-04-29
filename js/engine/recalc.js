@@ -3279,15 +3279,27 @@ function recalc() {
   }
 
   // v0.59.657: «доступная мощность» — фактический максимум, который узел
-  // может потребить без срабатывания защиты или превышения длительно
-  // допустимого тока питающего кабеля. Юзер: «для потребителя можно
-  // добавить доступную мощность, которая вычисляется по длительному
-  // допустимому току кабеля его питающего и его защитному автомату».
-  //   I_доступ = min(c._maxA, c._breakerIn)  — берётся узкое место
+  // может потребить в ТЕКУЩИХ условиях прокладки (с учётом K_t, K_g) и
+  // защиты. Юзер: «для потребителя можно добавить доступную мощность,
+  // которая вычисляется по длительному допустимому току кабеля его
+  // питающего и его защитному автомату».
+  // v0.59.674: ВАЖНОЕ ИСПРАВЛЕНИЕ. Раньше использовалось c._maxA — это
+  // расчётный ток нагрузки (demand), а не пропускная способность кабеля.
+  // Юзер: «мне нужно знать сколько по этому кабелю в текущих условиях
+  // прокладки можно передать ток, вычислить мощность, которую я могу
+  // передать. А ты просто выводишь еще раз номинальный ток и мощность
+  // потребителя». Правильный источник для пропускной способности кабеля:
+  //   c._cableIz — Iдоп НА ЖИЛУ после применения K_t × K_g (на 1 линию)
+  //   c._cableTotalIz — Iдоп всего пучка (Iz × N), для параллельных жил
+  // Для группы (isGroupBreakers): доступно_per_line = min(_cableIz,
+  //   _breakerPerLine) — каждый кабель / автомат свой.
+  // Для параллельной прокладки (par>1, общий автомат): доступно_total =
+  //   min(_cableTotalIz, _breakerIn).
+  // Для одиночной (par=1): доступно = min(_cableIz, _breakerIn).
+  //   I_доступ = min(Iz_eff_actual, In)  — берётся узкое место
   //   P_доступ = I_доступ × U × cos φ × (√3 если 3ф) / 1000
   // v0.59.659: расширено на panel / ups / generator / source — там тоже
-  // питающая линия имеет ампасити и защитный автомат сверху (для source —
-  // только если он не «корневой» источник без входа).
+  // питающая линия имеет ампасити и защитный автомат сверху.
   for (const n of state.nodes.values()) {
     if (n.type !== 'consumer' && n.type !== 'panel' && n.type !== 'ups'
         && n.type !== 'generator' && n.type !== 'source') continue;
@@ -3304,8 +3316,29 @@ function recalc() {
       const power = ins.find(x => x.to.port !== 0);
       if (power) c = power;
     }
-    const cableA = Number.isFinite(c._maxA) && c._maxA > 0 ? c._maxA : Infinity;
-    const brkA   = Number.isFinite(c._breakerIn) && c._breakerIn > 0 ? c._breakerIn : Infinity;
+    // Определяем относится ли соединение к ГРУППЕ потребителей с per-line
+    // защитой (8 потребителей × 8 автоматов) или к одиночной/параллельной
+    // прокладке с общим автоматом.
+    const _isGroupCable = !c._breakerIn && c._breakerPerLine && (c._breakerCount || 1) > 1;
+    const _par = Math.max(1, Number(c._cableParallel) || 1);
+    // Iz после derating. Для ГРУППЫ — per-line. Для параллельной прокладки —
+    // суммарный (или per-strand × par). Для одиночной — per-cable.
+    let cableA;
+    if (_isGroupCable) {
+      // Каждая линия группы: своя пропускная способность с применёнными K.
+      cableA = Number.isFinite(c._cableIz) && c._cableIz > 0 ? c._cableIz : Infinity;
+    } else if (_par > 1) {
+      // Параллельная прокладка: суммарный Iz × N (или используем _cableTotalIz).
+      cableA = Number.isFinite(c._cableTotalIz) && c._cableTotalIz > 0
+        ? c._cableTotalIz
+        : (Number.isFinite(c._cableIz) && c._cableIz > 0 ? c._cableIz * _par : Infinity);
+    } else {
+      cableA = Number.isFinite(c._cableIz) && c._cableIz > 0 ? c._cableIz : Infinity;
+    }
+    // Защита. Для группы — per-line автомат. Для одиночной/параллельной — общий.
+    const brkA = _isGroupCable
+      ? (Number.isFinite(c._breakerPerLine) && c._breakerPerLine > 0 ? c._breakerPerLine : Infinity)
+      : (Number.isFinite(c._breakerIn) && c._breakerIn > 0 ? c._breakerIn : Infinity);
     if (!Number.isFinite(cableA) && !Number.isFinite(brkA)) continue;
     const Iavail = Math.min(cableA, brkA);
     if (!Number.isFinite(Iavail) || Iavail <= 0) continue;

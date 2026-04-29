@@ -172,15 +172,19 @@ export function renderInspectorConn(c) {
         : GLOBAL.calcMethod === 'rtm'
           ? 'ПУЭ (РТМ → ПУЭ для кабеля)'
           : 'IEC 60364';
-      // v0.59.663: для ГРУППОВОГО потребителя (isGroupBreakers — у каждой
+      // v0.59.663/674: для ГРУППОВОГО потребителя (isGroupBreakers — у каждой
       // линии свой автомат и своя нагрузка) терминология «параллельных жил»
       // и суммарного тока неуместна. Юзер: «для кабелей групповых
       // потребителей не нужно указывать слово параллельных жил и считать
       // общий ток». Каждая линия — независимая, со своим током I_per_unit.
-      // Для НАСТОЯЩЕЙ параллельной прокладки одного силового луча
-      // (par > 1, но isGroupBreakers === false) — старая wording с «жилами»
-      // и Iz·n остаётся корректной (там действительно ток делится).
-      const _IperLine = isGroupBreakers ? (c._maxA || 0) : ((c._maxA || 0) / par);
+      // v0.59.674: c._maxA в обоих режимах — это СУММАРНЫЙ ток (см. recalc.js,
+      // line 1810: maxCurrent = consumerNominalCurrent(toN) для всей группы).
+      // Per-line ВСЕГДА = total/par, независимо от режима. В v0.59.663 здесь
+      // было `isGroupBreakers ? c._maxA : c._maxA/par` — это давало 253.6 А
+      // вместо 31.7 А для группы 8×7кВт. Юзер: «здесь 8 потребителей, ток
+      // нагрузки 31.7 А а ты написал 253.6 А (ток одного потребителя). Это
+      // не верно».
+      const _IperLine = (c._maxA || 0) / par;
       h.push(`<div style="font-size:11px;line-height:1.6;margin-top:4px;padding:6px;background:${bgColor};border-radius:4px">` +
         (cableSpec ? cableSpec + '<br>' : '') +
         (effectiveBrkIn ? `Автомат: <b>${effectiveBrkIn} A</b><br>` : '') +
