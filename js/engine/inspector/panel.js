@@ -766,16 +766,25 @@ export function openPanelParamsModal(n) {
         <label>Целевой cos φ (по ТУ)${helpIcon('Целевой коэффициент мощности после компенсации, обычно задаётся в ТУ от энергоснабжающей организации. Стандарт: 0.95 (мелкие/средние потребители) или 0.99 (крупные).')}</label>
         <input type="number" id="pp-ukrm-targetCos" min="0.7" max="1.0" step="0.01" value="${cosTar}">
       </div>`);
+      // v0.59.755: фразу «треб. УКРМ: 0.00 kvar» заменили на «не требуется»,
+      // когда cos φ уже выше целевого (нечего компенсировать). Также
+      // термин «worst-case» убран — заменён на русское «наиболее тяжёлый режим».
+      // Юзер: «если косинус фи больше чем нужно, то нужно сообщить
+      // пользователю, что УКРМ не требуется, а не писать что требуется
+      // 0,00 кВар» / «worst-case так же не следует употреблять».
+      const _qLabel = (q) => q > 0
+        ? `треб. УКРМ: <b style="color:#b91c1c">${q.toFixed(2)} kvar</b>`
+        : `<b style="color:#15803d">УКРМ не требуется</b> <span class="muted" style="font-size:10.5px">(cos φ уже ≥ целевого)</span>`;
       h.push(`<div class="muted" style="font-size:11.5px;line-height:1.7;padding:8px 10px;background:#f0f9ff;border-radius:4px;margin-top:6px">
         <b>Текущий режим</b> (ИБП в работе): P ${P.toFixed(2)} kW · Q ${Q.toFixed(2)} kvar · S ${S.toFixed(2)} kVA<br>
-        &nbsp;&nbsp;cos φ: <b>${cosCur.toFixed(3)}</b> → треб. УКРМ: <b style="color:${QcompCur > 0 ? '#b91c1c' : '#15803d'}">${QcompCur.toFixed(2)} kvar</b>
-        <br><br><b style="color:#c2410c">В байпасе всех ИБП</b> (worst-case):<br>
+        &nbsp;&nbsp;cos φ: <b>${cosCur.toFixed(3)}</b> → ${_qLabel(QcompCur)}
+        <br><br><b style="color:#c2410c">В байпасе всех ИБП</b> <span class="muted">(наиболее тяжёлый режим)</span>:<br>
         &nbsp;&nbsp;P ${Pw.toFixed(2)} kW · Q ${Qw.toFixed(2)} kvar · S ${Sw.toFixed(2)} kVA<br>
-        &nbsp;&nbsp;cos φ: <b>${cosWorst.toFixed(3)}</b> → треб. УКРМ: <b style="color:${QcompWorst > 0 ? '#b91c1c' : '#15803d'}">${QcompWorst.toFixed(2)} kvar</b>
+        &nbsp;&nbsp;cos φ: <b>${cosWorst.toFixed(3)}</b> → ${_qLabel(QcompWorst)}
         ${!hasUpsBypassDelta ? `<br><span class="muted" style="font-size:10px">Совпадает с текущим — нет ИБП в цепи или они уже в байпасе.</span>` : ''}
         <br><br>Целевой cos φ (по ТУ): <b>${cosTar.toFixed(2)}</b>
         ${QcompMax > 0
-          ? `<br><span class="muted">Подобрать УРКМ ≥ ${Math.ceil(QcompMax / 25) * 25} kvar (округлено до 25 kvar) — по ${QcompWorst > QcompCur ? 'worst-case при байпасе ИБП' : 'текущему режиму'}</span>`
+          ? `<br><span class="muted">Подобрать УРКМ ≥ ${Math.ceil(QcompMax / 25) * 25} kvar (округлено до 25 kvar) — по ${QcompWorst > QcompCur ? 'наиболее тяжёлому режиму (байпас ИБП)' : 'текущему режиму'}</span>`
           : '<br><span class="muted">Компенсация не требуется ни в одном из режимов (cos φ уже выше целевого).</span>'}
       </div>`);
     }
