@@ -2922,6 +2922,27 @@ export function renderConns() {
       }
       path.dataset.connId = c.id;
       layerConns.appendChild(path);
+
+      // v0.59.721: красная полупрозрачная подложка для проблемных линий —
+      // визуальный сигнал на канвасе. Применяется при:
+      //   - c._cableOverflow (engine не смог подобрать сечение)
+      //   - c._breakerUndersize (In < Iрасч)
+      //   - ΔU на сегменте > 5% (норма IEC 60364-5-525)
+      // Подложка рисуется ПЕРЕД основным path, чтобы основная линия
+      // (с сорсцветом) перекрывала подложку, оставляя только красное
+      // «свечение» по краям. Толщина 6px для заметности при любом zoom.
+      const _hasIssue = c._cableOverflow || c._breakerUndersize ||
+        (Number(c._deltaUSegPct) > 5);
+      if (_hasIssue) {
+        const issuePath = el('path', {
+          d,
+          class: 'conn-issue-overlay',
+          style: 'stroke:#dc2626;stroke-width:6;fill:none;opacity:0.35;pointer-events:none',
+        });
+        // Вставляем ПЕРЕД основным path (т.е. ниже в z-order, но в SVG
+        // более ранние элементы рисуются под более поздними).
+        layerConns.insertBefore(issuePath, path);
+      }
     }
 
     // Подпись на активных линиях.
