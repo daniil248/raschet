@@ -10,6 +10,7 @@ import { setEffectiveLoadFactor } from '../modes.js';
 import { render } from '../render.js';
 import { formatVoltageLevelLabel } from '../electrical.js';
 import { rsPrompt } from '../../../shared/dialog.js';
+import { getTerm, getTermTooltip, isTermUsed } from '../../methods/terms.js';
 
 let _renderInspector = null;
 export function bindInspectorConsumerDeps({ renderInspector }) {
@@ -268,8 +269,31 @@ export function openConsumerParamsModal(n) {
     <option value="2ph"${ph === '2ph' ? ' selected' : ''}>2-фазный (split-phase)</option>
     <option value="1ph"${ph === '1ph' || ph === 'A' || ph === 'B' || ph === 'C' ? ' selected' : ''}>1-фазный</option>
   </select>`));
-  h.push(field('cos φ' + _lkIcon, `<input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}"${_lk}>`));
-  h.push(field('Ки — коэффициент использования' + _lkIcon, `<input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}"${_lk}>`));
+  // v0.59.657: лейблы и подсказки полей зависят от выбранной методики
+  // (юзер: «термины которые в разных методиках называются по разному —
+  // выводить соответствующее название, в подсказке аналоги и разъяснение»).
+  // Если параметр не используется в методике (isTermUsed=false) — поле
+  // скрывается («поля должны быть связаны с выбранной методикой»).
+  const _method = GLOBAL.calcMethod || 'iec';
+  const _cosTerm = getTerm('powerFactor', _method);
+  const _cosTip  = getTermTooltip('powerFactor', _method);
+  h.push(`<div class="field" title="${escAttr(_cosTip)}">
+    <label>${escHtml(_cosTerm.label)}${_lkIcon}<span class="muted" style="font-size:10px;font-weight:400;margin-left:4px">${escHtml(_cosTerm.aliases)}</span></label>
+    <input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}"${_lk}>
+    ${_cosTerm.explain ? `<div class="muted" style="font-size:10px;margin-top:2px">${escHtml(_cosTerm.explain)}</div>` : ''}
+  </div>`);
+  if (isTermUsed('utilization', _method)) {
+    const _kuTerm = getTerm('utilization', _method);
+    const _kuTip  = getTermTooltip('utilization', _method);
+    h.push(`<div class="field" title="${escAttr(_kuTip)}">
+      <label>${escHtml(_kuTerm.label)}${_lkIcon}<span class="muted" style="font-size:10px;font-weight:400;margin-left:4px">${escHtml(_kuTerm.aliases)}</span></label>
+      <input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}"${_lk}>
+      ${_kuTerm.explain ? `<div class="muted" style="font-size:10px;margin-top:2px">${escHtml(_kuTerm.explain)}</div>` : ''}
+    </div>`);
+  } else {
+    // Поле всё равно создаём (скрытое), чтобы apply-хендлер мог читать значение
+    h.push(`<input type="hidden" id="cp-kUse" value="${n.kUse ?? 1}">`);
+  }
   // Множитель нагрузки в текущем сценарии (нормальный или аварийный режим).
   // 1 = 100%, 0 = не считается, 0.5 = 50%.
   if (state.activeModeId) {
@@ -307,7 +331,17 @@ export function openConsumerParamsModal(n) {
     </div>
     <div class="muted" style="font-size:10px;margin-top:4px;line-height:1.4">Связано с номинальной нагрузкой через коэффициенты: P_расч = P_ном${_cpCount > 1 ? ' × N (количество)' : ''} × Ки × множитель; I_расч = P_расч × 1000 / (U × cos φ × √3<sub>3ф</sub>). При изменении расчётной P или I пересчитается Ки. При изменении Ки / множителя / P_ном${_cpCount > 1 ? ' / count' : ''} — пересчитается расчётная.</div>
   </div>`);
-  h.push(field('Кратность пускового тока' + _lkIcon, `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}"${_lk}>`));
+  // v0.59.657: methodology-aware inrush label
+  if (isTermUsed('inrush', _method)) {
+    const _inTerm = getTerm('inrush', _method);
+    const _inTip  = getTermTooltip('inrush', _method);
+    h.push(`<div class="field" title="${escAttr(_inTip)}">
+      <label>${escHtml(_inTerm.label)}${_lkIcon}<span class="muted" style="font-size:10px;font-weight:400;margin-left:4px">${escHtml(_inTerm.aliases)}</span></label>
+      <input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}"${_lk}>
+    </div>`);
+  } else {
+    h.push(`<input type="hidden" id="cp-inrush" value="${n.inrushFactor ?? 1}">`);
+  }
 
   // Запас по автомату — override категории/авто. Пустое поле = авто по inrush.
   {
