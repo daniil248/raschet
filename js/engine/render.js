@@ -2120,6 +2120,19 @@ export function renderNodes() {
           + `⚠ Перегруз: ${fmt(info.designA || 0)} > ${info.breakerIn || 0} А`;
         loadCls += ' overload';
       }
+      // v0.59.706: предупреждение о падении напряжения на клеммах потребителя.
+      // Пользователь ранее: «нужно проверять допустимое напряжение».
+      // ГОСТ 32144-2013: норма ±10%; от 5% IEC рекомендует увеличить сечение.
+      // Используем _deltaUPct из recalc.js (накопленное падение от источника).
+      const _vdrop = Number(n._deltaUPct) || 0;
+      if (_vdrop > 10) {
+        statusLine = (statusLine ? statusLine + ' · ' : '')
+          + `⛔ ΔU=-${_vdrop.toFixed(1)}% (вне ±10%)`;
+        loadCls += ' overload';
+      } else if (_vdrop > 5) {
+        statusLine = (statusLine ? statusLine + ' · ' : '')
+          + `⚠ ΔU=-${_vdrop.toFixed(1)}%`;
+      }
       // v0.59.676: «Свободно» — резерв пропускной способности линии =
       // (limit_max) − (фактически используемый расчётный ток). Считается
       // в recalc.js per-line. Пользователь: «Используй слово 'Свободно',
