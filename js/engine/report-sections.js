@@ -552,6 +552,10 @@ function sectionConsumers() {
   const _midC = GLOBAL.calcMethod || 'iec';
   const _cosShortC = getTerm('powerFactor', _midC).short || 'cos φ';
   const _kuShortC = getTerm('utilization', _midC).short || 'Ки';
+  // v0.59.677: добавлена колонка «Свободно, А» — резерв пропускной
+  // способности линии (limit_max − Iрасч), per-line. Удобно для
+  // быстрого скана: видно где ещё есть запас, а где линия близка к
+  // пределу. См. n._freeA в recalc.js.
   const cols = [
     { label: 'Обозн.',       width: 18 },
     { label: 'Имя',          width: 38 },
@@ -564,6 +568,7 @@ function sectionConsumers() {
     { label: 'Iуст, А',      align: 'right', width: 12 },
     { label: 'Iрасч, А',     align: 'right', width: 12 },
     { label: 'Iпуск, А',     align: 'right', width: 12 },
+    { label: 'Свободно, А',  align: 'right', width: 13 },
     { label: 'Статус' },
   ];
   let total = 0;
@@ -575,12 +580,14 @@ function sectionConsumers() {
     const k = ku * factor;
     const sum = per * cnt * k;
     if (c._powered) total += sum;
+    const freeA = (Number.isFinite(c._freeA) && c._freeA > 0) ? fmt(c._freeA) : '—';
     return [
       fullTag(c), decorateName(c), c.phase || '3ph',
       fmt(per), String(cnt), ku.toFixed(2),
       fmt(sum),
       (Number(c.cosPhi) || 0.92).toFixed(2),
       fmt(c._nominalA || 0), fmt(c._ratedA || 0), fmt(c._inrushA || 0),
+      freeA,
       c._powered ? 'ок' : 'БЕЗ ПИТ',
     ];
   });
