@@ -720,11 +720,17 @@ export function openConsumerParamsModal(n) {
       const _grpKw = Number(n.demandKw) || 0;
       const _candidates = [];
       const _curPageId = state.currentPageId;
+      // v0.59.768: исключаем уже связанных с текущей группой (в любом slot'е)
+      // и связанных с другой группой. Юзер: «почему стойки не ушли сразу из
+      // нижнего списка». Также исключаем сам узел.
+      const _alreadyLinkedSet = new Set(Array.isArray(n.linkedAliases) ? n.linkedAliases.filter(Boolean) : []);
       for (const m of state.nodes.values()) {
         if (m.id === n.id) continue;
         if (m.type !== 'consumer') continue;
         if ((Number(m.count) || 1) !== 1) continue;
         if (m.groupMode === 'individual') continue;
+        if (_alreadyLinkedSet.has(m.id)) continue;          // уже связан с этой группой
+        if (m.linkedAlias && m.linkedAlias !== n.id) continue; // связан с другой
         // Categorize match level
         const mSubtype = m.consumerSubtype || '';
         const mPhase = m.phase || '3ph';
@@ -763,30 +769,27 @@ export function openConsumerParamsModal(n) {
           else if (cand.matchLevel === 'loose') parts.push('<span style="background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:2px;font-size:9.5px" title="Существенное расхождение параметров">⛔ разные</span>');
           return parts.join(' ');
         };
+        // v0.59.768: убраны чекбоксы и кнопки «Объединить» / «Точные» / «Все».
+        // Юзер: «убери чек боксы и оставь только перетаскивание». Каждая
+        // строка draggable — пользователь тянет её на нужный slot выше.
         h.push(`<div class="field" style="margin-top:8px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px">
           <label style="font-size:11px;font-weight:600;color:#15803d;margin-bottom:6px;display:block">🔗 Связать с существующими ${_grpSubtype === 'rack' ? 'стойками' : 'потребителями'} (${_candidates.length})</label>
           <div class="muted" style="font-size:10.5px;margin-bottom:6px;color:#166534;line-height:1.4">
-            Список включает <b>размещённые</b>, <b>не размещённые</b> и <b>с других страниц</b>. Параметры группы: ${_grpKw > 0 ? _grpKw + ' кВт, ' : ''}${_grpPhase}, cos φ ${_grpCos.toFixed(2)}, subtype «${_grpSubtype || '—'}». Отметьте кандидатов и нажмите «Объединить».
+            <b>Перетащите</b> нужный узел в свободный слот списка выше (#1, #2, …). Параметры группы: ${_grpKw > 0 ? _grpKw + ' кВт, ' : ''}${_grpPhase}, cos φ ${_grpCos.toFixed(2)}, subtype «${_grpSubtype || '—'}».
           </div>
-          <div id="cp-link-candidates" style="display:flex;flex-direction:column;gap:4px;max-height:240px;overflow-y:auto;font-size:11.5px">
-            ${_candidates.map(c => `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#fff;border:1px solid #d4d4d4;border-radius:3px;cursor:pointer">
-              <input type="checkbox" class="cp-link-cb" data-link-id="${escAttr(c.node.id)}">
+          <div id="cp-link-candidates" style="display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;font-size:11.5px">
+            ${_candidates.map(c => `<div class="cp-link-row" draggable="true" data-link-id="${escAttr(c.node.id)}" title="Перетащите на нужный слот выше" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#fff;border:1px solid #d4d4d4;border-radius:3px;cursor:grab">
+              <span style="font-size:12px;color:#9ca3af">⋮⋮</span>
               <span style="font-weight:600">${escHtml(c.node.tag || c.node.id)}</span>
               <span class="muted">${escHtml(c.node.name || '')}</span>
               ${_badge(c)}
               <span class="muted" style="margin-left:auto;font-size:10px">${c.mKw > 0 ? c.mKw.toFixed(2) + ' кВт' : '— кВт'}</span>
-            </label>`).join('')}
-          </div>
-          <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <button type="button" id="cp-link-apply" style="padding:4px 12px;border:1px solid #15803d;background:#15803d;color:#fff;border-radius:3px;cursor:pointer;font-size:11px">🔗 Объединить отмеченные</button>
-            <button type="button" id="cp-link-all" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px" title="Выделить только exact-совпадения">✓ Точные</button>
-            <button type="button" id="cp-link-all-with-warn" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px" title="Выделить все включая частичные/разные">▣ Все</button>
-            <span id="cp-link-status" class="muted" style="font-size:10.5px"></span>
+            </div>`).join('')}
           </div>
         </div>`);
       } else {
         h.push(`<div class="muted" style="font-size:11px;margin-top:8px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;color:#6b7280">
-          🔗 В проекте нет одиночных ${_grpSubtype === 'rack' ? 'стоек' : 'потребителей'} для связи. Создайте новый узел через палитру или добавьте импортом.
+          🔗 В проекте нет ${_grpSubtype === 'rack' ? 'стоек' : 'потребителей'} для связи (все уже связаны или находятся в других группах).
         </div>`);
       }
       // 1.28.13 (исключение) — реализовано в v0.59.763 через ✂ кнопку
@@ -1108,94 +1111,25 @@ export function openConsumerParamsModal(n) {
     });
   }
 
-  // v0.59.761: handlers для picker «🔗 Связать с существующими» (ROADMAP 1.28.10).
-  // Объединяет выбранные одиночные consumer-узлы в текущую группу: count += 1
-  // на каждого, узел и его связи удаляются.
+  // v0.59.768: picker-rows теперь draggable. Юзер: «убери чек боксы и
+  // оставь только перетаскивание». Dragstart sets text/raschet-node-id,
+  // drop-handler в slot-row уже умеет это принимать (см. v0.59.766).
   {
-    const linkApplyBtn = document.getElementById('cp-link-apply');
-    const linkAllBtn = document.getElementById('cp-link-all');
-    const linkAllWarnBtn = document.getElementById('cp-link-all-with-warn');
-    const linkStatus = document.getElementById('cp-link-status');
-    // v0.59.762: «Точные» — только exact-совпадения (без warning-бейджей).
-    if (linkAllBtn) {
-      linkAllBtn.addEventListener('click', () => {
-        document.querySelectorAll('.cp-link-cb').forEach(cb => {
-          const labelEl = cb.closest('label');
-          const hasWarn = !!labelEl?.querySelector('span[title]');
-          cb.checked = !hasWarn;
-        });
+    document.querySelectorAll('.cp-link-row').forEach(row => {
+      row.addEventListener('dragstart', e => {
+        const id = row.dataset.linkId;
+        if (!id) return;
+        try { e.dataTransfer.setData('text/raschet-node-id', id); } catch {}
+        try { e.dataTransfer.setData('text/plain', id); } catch {}
+        e.dataTransfer.effectAllowed = 'link';
+        row.style.opacity = '0.5';
       });
-    }
-    if (linkAllWarnBtn) {
-      linkAllWarnBtn.addEventListener('click', () => {
-        document.querySelectorAll('.cp-link-cb').forEach(cb => { cb.checked = true; });
-      });
-    }
-    if (linkApplyBtn) {
-      linkApplyBtn.addEventListener('click', () => {
-        const checked = [...document.querySelectorAll('.cp-link-cb:checked')];
-        if (!checked.length) {
-          if (linkStatus) linkStatus.textContent = 'Не выбрано ни одного потребителя.';
-          return;
-        }
-        const ids = checked.map(cb => cb.dataset.linkId).filter(Boolean);
-        try { snapshot('group-alias:' + n.id + '←' + ids.join(',')); } catch {}
-        // v0.59.766: семантика IDENTIFY-AS со СЛОТАМИ. Юзер: «Именно связать,
-        // что стойка экземпляр один это SR01, экземпляр 1 то SR02 и так
-        // далее» — заполняем anonymous-слоты в n.linkedAliases[slotIdx],
-        // НЕ увеличивая count. Если выбранных больше, чем свободных слотов,
-        // — переполнение даёт count++ только для overflow.
-        if (!Array.isArray(n.linkedMembers)) n.linkedMembers = [];
-        if (!Array.isArray(n.linkedAliases)) n.linkedAliases = [];
-        // Padding до текущего count
-        while (n.linkedAliases.length < (Number(n.count) || 1)) n.linkedAliases.push(null);
-        // Очистка устаревших linkedMembers (которые не в linkedAliases)
-        n.linkedMembers = n.linkedMembers.filter(m =>
-          n.linkedAliases.includes(m.originalId)
-        );
-        let linked = 0, skipped = 0, overflow = 0;
-        for (const id of ids) {
-          const src = state.nodes.get(id);
-          if (!src) continue;
-          if (src.linkedAlias && src.linkedAlias !== n.id) { skipped++; continue; }
-          if (n.linkedAliases.includes(id)) { skipped++; continue; }
-          // Найти первый anonymous-слот
-          const slot = n.linkedAliases.indexOf(null);
-          if (slot >= 0) {
-            n.linkedAliases[slot] = src.id;
-          } else {
-            // Overflow — добавляем новый слот, count растёт
-            n.linkedAliases.push(src.id);
-            n.count = (Number(n.count) || 1) + 1;
-            overflow++;
-          }
-          src.linkedAlias = n.id;
-          n.linkedMembers.push({
-            originalId: src.id,
-            tag: src.tag || '',
-            name: src.name || '',
-            demandKw: Number(src.demandKw) || 0,
-            cosPhi: Number(src.cosPhi) || null,
-            phase: src.phase || null,
-            consumerSubtype: src.consumerSubtype || '',
-            voltageLevelIdx: Number.isFinite(Number(src.voltageLevelIdx)) ? Number(src.voltageLevelIdx) : null,
-            linkedAt: Date.now(),
-          });
-          linked++;
-        }
-        if (linked > 0) {
-          const msgParts = [`Связано ${linked} ${linked === 1 ? 'объект' : 'объекта/-ов'} в группу ${n.tag || n.id}`];
-          if (overflow > 0) msgParts.push(`+${overflow} новых слотов (count → ${n.count})`);
-          if (skipped > 0) msgParts.push(`${skipped} пропущено`);
-          try { flash(msgParts.join(', '), 'success'); } catch {}
-          notifyChange();
-          openConsumerParamsModal(n);
-        } else if (skipped > 0) {
-          if (linkStatus) linkStatus.textContent = 'Все выбранные уже связаны.';
-        }
-      });
-    }
+      row.addEventListener('dragend', () => { row.style.opacity = ''; });
+    });
   }
+
+  // v0.59.768: legacy checkbox-picker удалён. Связь теперь только через
+  // drag-drop (см. обработчики выше в slotEl + dragstart на cp-link-row).
 
   // Навесить обработчики на уже отрисованные карточки
   if (itemsBody) {

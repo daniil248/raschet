@@ -399,6 +399,11 @@ export function renderUnplacedPalette() {
   if (pageId) {
     for (const n of state.nodes.values()) {
       if (n.type === 'zone') continue; // зоны не участвуют
+      // v0.59.768: linked-aliased узлы СЧИТАЮТСЯ размещёнными через
+      // группу-родитель и не должны попадать в Неразмещённые. Юзер: «они
+      // сразу должны удалятся из неразмещенных и в реестре числится как
+      // размещенные».
+      if (n.linkedAlias && state.nodes.get(n.linkedAlias)) continue;
       const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
       if (pids.includes(pageId)) continue; // уже на этой странице
       if (!_nodeCompatibleWithPageKind(n, kind)) continue; // нет подходящего порта/системы
@@ -558,10 +563,15 @@ export function renderProjectRegistry() {
       const name = n.name || n.type || '';
       const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
       const onPage = state.currentPageId && pids.includes(state.currentPageId);
-      const placement = pids.length === 0
-        ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён ни на одной странице">нигде</span>'
-        : `<span class="pal-reg-badge pal-reg-badge-pages" title="Размещён на ${pids.length} стр.">${pids.length}</span>`;
-      const placeBtn = onPage
+      // v0.59.768: linked-aliased узлы числятся размещёнными через группу
+      // (не отдельно). Показываем «↪ в группе X» вместо «нигде».
+      const _aliasParent = n.linkedAlias ? state.nodes.get(n.linkedAlias) : null;
+      const placement = _aliasParent
+        ? `<span class="pal-reg-badge pal-reg-badge-pages" title="Связан с группой ${esc(_aliasParent.tag || _aliasParent.id)} (учтён там)" style="background:#dbeafe;color:#1e40af">↪ ${esc(_aliasParent.tag || 'группа')}</span>`
+        : (pids.length === 0
+          ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён ни на одной странице">нигде</span>'
+          : `<span class="pal-reg-badge pal-reg-badge-pages" title="Размещён на ${pids.length} стр.">${pids.length}</span>`);
+      const placeBtn = (onPage || _aliasParent)
         ? ''
         : `<button type="button" class="pal-reg-place" data-place-id="${esc(n.id)}" title="Добавить на текущую страницу">＋</button>`;
       const connCount = _nodeConnCount(n.id);
