@@ -1729,6 +1729,9 @@ function openSettingsModal() {
   if (redNEl) redNEl.checked = !!G.allowReducedNeutral;
   const centerEl = document.getElementById('set-autoCenterOnSelect');
   if (centerEl) centerEl.checked = !!G.autoCenterOnSelect;
+  // v0.59.723: тумблер подсветки проблем на схеме
+  const issueHlEl = document.getElementById('set-showIssueHighlights');
+  if (issueHlEl) issueHlEl.checked = G.showIssueHighlights !== false;
   openModal('modal-settings');
 }
 
@@ -1747,6 +1750,7 @@ function saveSettingsModal() {
     showHelp:             !!document.getElementById('set-showHelp')?.checked,
     allowReducedNeutral:  !!document.getElementById('set-allowReducedNeutral')?.checked,
     autoCenterOnSelect:   !!document.getElementById('set-autoCenterOnSelect')?.checked,
+    showIssueHighlights:  !!document.getElementById('set-showIssueHighlights')?.checked,
   };
   if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
     window.Raschet.setGlobal(patch);

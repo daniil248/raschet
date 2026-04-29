@@ -1736,9 +1736,13 @@ export function renderNodes() {
     // v0.59.722: расширены условия класса 'overload' — теперь также
     // включает n._breakerOverload (зафиксированный автомат не справляется,
     // см. v0.59.678) и ΔU > 10% (вне ±10% по ГОСТ 32144).
-    const _hasNodeIssue = n._overload
+    // v0.59.723: подсветка отключаема через GLOBAL.showIssueHighlights.
+    const _showHl = GLOBAL.showIssueHighlights !== false;
+    const _hasNodeIssue = _showHl && (
+      n._overload
       || n._breakerOverload
-      || (Number(n._deltaUPct) > 10 && (n.type === 'consumer' || n.type === 'panel'));
+      || (Number(n._deltaUPct) > 10 && (n.type === 'consumer' || n.type === 'panel'))
+    );
     const cls = [
       'node', n.type,
       selected ? 'selected' : '',
@@ -2937,8 +2941,10 @@ export function renderConns() {
       // Подложка рисуется ПЕРЕД основным path, чтобы основная линия
       // (с сорсцветом) перекрывала подложку, оставляя только красное
       // «свечение» по краям. Толщина 6px для заметности при любом zoom.
-      const _hasIssue = c._cableOverflow || c._breakerUndersize ||
-        (Number(c._deltaUSegPct) > 5);
+      const _hasIssue = (GLOBAL.showIssueHighlights !== false) && (
+        c._cableOverflow || c._breakerUndersize ||
+        (Number(c._deltaUSegPct) > 5)
+      );
       if (_hasIssue) {
         const issuePath = el('path', {
           d,

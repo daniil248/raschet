@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.59.722';
+export const APP_VERSION = '0.59.723';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -134,6 +134,12 @@ export const GLOBAL = {
   snapToGrid: true,
   gridStep: 40,
   showSourceColors: false,  // false = все красным, true = по цвету источника
+  // v0.59.723: подсветка проблемных узлов и линий на схеме (красная рамка
+  // у узлов с _overload/_breakerOverload/ΔU > 10%; красная подложка под
+  // линиями с _cableOverflow/_breakerUndersize/ΔU > 5%). По умолчанию ON
+  // для обучения и обнаружения проблем; можно выключить для чистых
+  // скриншотов или презентаций.
+  showIssueHighlights: true,
   // Расчётные параметры
   voltage3ph: 400,
   voltage1ph: 230,
