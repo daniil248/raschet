@@ -278,6 +278,50 @@ function renderInspectorPage() {
   }
   h.push(`<button class="full-btn" id="pg-open-project" style="margin-top:8px">📋 Параметры проекта…</button>`);
 
+  // v0.59.712: чеклист состояния проектирования. Сводка по схеме —
+  // что готово, что требует внимания. Заменяет ручной обход через
+  // отчёт «Проверки и предупреждения» — быстрый просмотр прямо в
+  // правом сайдбаре, без открытия отчётов.
+  {
+    const allNodes = [...state.nodes.values()];
+    const sources = allNodes.filter(m => m.type === 'source' || m.type === 'generator');
+    const upses = allNodes.filter(m => m.type === 'ups');
+    const panels = allNodes.filter(m => m.type === 'panel');
+    const consumers = allNodes.filter(m => m.type === 'consumer');
+    const unpoweredConsumers = consumers.filter(m => !m._powered);
+    const overloaded = allNodes.filter(m => m._overload || m._breakerOverload);
+    const vdropOver5 = allNodes.filter(m =>
+      (m.type === 'consumer' || m.type === 'panel') && Number(m._deltaUPct) > 5);
+    const vdropOver10 = allNodes.filter(m =>
+      (m.type === 'consumer' || m.type === 'panel') && Number(m._deltaUPct) > 10);
+    const tuFilled = (() => {
+      try {
+        const ps = state.project?.customer || state.project?.object;
+        return !!ps;
+      } catch { return false; }
+    })();
+    const _row = (icon, color, label, count, total) => {
+      const txt = total != null ? `${count}/${total}` : (count != null ? String(count) : '');
+      return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;line-height:1.6">
+        <span><span style="color:${color}">${icon}</span> ${label}</span>
+        <b style="color:${color}">${txt}</b>
+      </div>`;
+    };
+    const isOk = (v) => v === 0 || v === true;
+    h.push(`<div class="inspector-section" style="margin-top:12px;padding:8px 10px;background:#f9fafb;border-radius:4px">
+      <h4 style="margin:0 0 6px;font-size:13px">📐 Состояние проектирования</h4>
+      ${_row(sources.length ? '✓' : '⚠', sources.length ? '#15803d' : '#ca8a04', 'Источников питания', sources.length)}
+      ${_row(upses.length ? '✓' : 'ℹ', upses.length ? '#15803d' : '#6b7280', 'ИБП', upses.length)}
+      ${_row(panels.length ? '✓' : 'ℹ', panels.length ? '#15803d' : '#6b7280', 'Распределительных щитов', panels.length)}
+      ${_row(consumers.length ? '✓' : '⚠', consumers.length ? '#15803d' : '#ca8a04', 'Потребителей', consumers.length)}
+      ${_row(isOk(unpoweredConsumers.length) ? '✓' : '⚠', isOk(unpoweredConsumers.length) ? '#15803d' : '#ca8a04', 'Без питания', unpoweredConsumers.length)}
+      ${_row(isOk(overloaded.length) ? '✓' : '⛔', isOk(overloaded.length) ? '#15803d' : '#b91c1c', 'Перегруженных узлов', overloaded.length)}
+      ${_row(isOk(vdropOver5.length) ? '✓' : '⚠', isOk(vdropOver5.length) ? '#15803d' : '#ca8a04', 'ΔU > 5%', vdropOver5.length)}
+      ${vdropOver10.length > 0 ? _row('⛔', '#b91c1c', 'из них ΔU > 10%', vdropOver10.length) : ''}
+      ${_row(tuFilled ? '✓' : 'ℹ', tuFilled ? '#15803d' : '#6b7280', 'Информация о проекте', tuFilled ? 'есть' : 'не заполнена')}
+    </div>`);
+  }
+
   // v0.59.702: запрос на ТУ перенесён сюда (из инспектора utility-источника).
   // Пользователь: «Получение ТУ вынеси в свойства проекта (правый сайдбар)
   // сделай выбор, ТУ по низкой стороне или ТУ по высокой стороне».
