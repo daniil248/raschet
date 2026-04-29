@@ -278,6 +278,24 @@ export function openConsumerParamsModal(n) {
       `<input type="number" id="cp-normalLoadFactor" min="0" max="3" step="0.1" value="${nlf}">`));
     h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">1.0 = номинал, 0.5 = 50%, 0 = выключено.</div>`);
   }
+  // v0.59.652: Расчётная мощность и ток — двунаправленный пересчёт через Ки.
+  // P_расч = P_ном × Ки × множитель_нагрузки
+  // Ки = P_расч / (P_ном × множитель_нагрузки)
+  // I_расч = computeCurrentA(P_расч, U, cos φ, фаза)
+  // Юзер: «автоматический пересчёт расчётной мощности из коэффициентов
+  // или коэффициентов из известной расчётной мощности».
+  h.push(`<div style="margin-top:6px;padding:8px 10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px">
+    <div class="muted" style="font-size:10px;margin-bottom:4px;font-weight:600;color:#0369a1">📊 Расчётная нагрузка (P × Ки × множитель)</div>
+    <div class="field" style="margin-bottom:4px">
+      <label style="font-size:11px">Расчётная мощность P, кВт</label>
+      <input type="number" id="cp-calcKw" min="0" step="0.1" value="">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label style="font-size:11px">Расчётный ток I, А</label>
+      <input type="number" id="cp-calcA" min="0" step="0.1" value="">
+    </div>
+    <div class="muted" style="font-size:10px;margin-top:4px;line-height:1.4">При изменении расчётной P или I пересчитается Ки. При изменении Ки/множителя/P_ном — пересчитается расчётная.</div>
+  </div>`);
   h.push(field('Кратность пускового тока' + _lkIcon, `<input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}"${_lk}>`));
 
   // Запас по автомату — override категории/авто. Пустое поле = авто по inrush.
@@ -715,6 +733,81 @@ export function openConsumerParamsModal(n) {
     if (cosInput) cosInput.addEventListener('input', _refreshI);
     if (phaseSel) phaseSel.addEventListener('change', _refreshI);
     if (voltSel) voltSel.addEventListener('change', _refreshI);
+  }
+
+  // v0.59.652: блок «Расчётная нагрузка» — двунаправленный пересчёт
+  // P_calc ↔ Ки и P_calc ↔ I_calc.
+  const calcKwInput = document.getElementById('cp-calcKw');
+  const calcAInput = document.getElementById('cp-calcA');
+  const kuInput = document.getElementById('cp-kUse');
+  const lfInput = document.getElementById('cp-loadFactor') || document.getElementById('cp-normalLoadFactor');
+  const countInputForCalc = document.getElementById('cp-count');
+  if (calcKwInput && kuInput) {
+    let _calcSyncing = false;
+    const _readCount = () => Math.max(1, Number(countInputForCalc?.value) || 1);
+    const _readNomTotal = () => {
+      const per = Number(demandInput?.value) || 0;
+      // demandKw в форме хранится либо как per-unit, либо как total
+      // (зависит от cp-loadSpec). Считаем total.
+      const ls = (loadSpecSel?.value === 'total') ? 'total' : 'per-unit';
+      const cnt = _readCount();
+      return ls === 'total' ? per : per * cnt;
+    };
+    const _readKu = () => Math.max(0, Math.min(1, Number(kuInput.value) || 0));
+    const _readLf = () => Math.max(0, Math.min(3, Number(lfInput?.value) || 1));
+    const _refreshCalc = () => {
+      if (_calcSyncing) return;
+      _calcSyncing = true;
+      try {
+        const Pnom = _readNomTotal();
+        const ku = _readKu();
+        const lf = _readLf();
+        const Pcalc = Pnom * ku * lf;
+        calcKwInput.value = Pcalc > 0 ? Pcalc.toFixed(2).replace(/\.00$/, '') : '';
+        const Icalc = _PtoI(Pcalc);
+        if (calcAInput) calcAInput.value = Icalc > 0 ? Icalc.toFixed(2).replace(/\.00$/, '') : '';
+      } finally { _calcSyncing = false; }
+    };
+    // Юзер ввёл расчётную P → пересчитать Ки.
+    calcKwInput.addEventListener('input', () => {
+      if (_calcSyncing) return;
+      _calcSyncing = true;
+      try {
+        const Pnom = _readNomTotal();
+        const lf = _readLf();
+        const Pcalc = Number(calcKwInput.value) || 0;
+        if (Pnom > 0 && lf > 0) {
+          const newKu = Pcalc / (Pnom * lf);
+          kuInput.value = Math.max(0, Math.min(1, newKu)).toFixed(3).replace(/\.?0+$/, '');
+        }
+        // I_calc — синхронизируем
+        const Icalc = _PtoI(Pcalc);
+        if (calcAInput) calcAInput.value = Icalc > 0 ? Icalc.toFixed(2).replace(/\.00$/, '') : '';
+      } finally { _calcSyncing = false; }
+    });
+    // Юзер ввёл расчётный I → P_calc → Ки.
+    if (calcAInput) calcAInput.addEventListener('input', () => {
+      if (_calcSyncing) return;
+      _calcSyncing = true;
+      try {
+        const a = Number(calcAInput.value) || 0;
+        const Pcalc = _ItoP(a);
+        calcKwInput.value = Pcalc > 0 ? Pcalc.toFixed(2).replace(/\.00$/, '') : '';
+        const Pnom = _readNomTotal();
+        const lf = _readLf();
+        if (Pnom > 0 && lf > 0) {
+          const newKu = Pcalc / (Pnom * lf);
+          kuInput.value = Math.max(0, Math.min(1, newKu)).toFixed(3).replace(/\.?0+$/, '');
+        }
+      } finally { _calcSyncing = false; }
+    });
+    // При изменении Ки / множителя / P_ном / count — пересчитать P_calc.
+    kuInput.addEventListener('input', _refreshCalc);
+    if (lfInput) lfInput.addEventListener('input', _refreshCalc);
+    if (demandInput) demandInput.addEventListener('input', _refreshCalc);
+    if (countInputForCalc) countInputForCalc.addEventListener('change', _refreshCalc);
+    // Инициализация при открытии формы.
+    _refreshCalc();
   }
 
   const applyBtn = document.getElementById('consumer-params-apply');
