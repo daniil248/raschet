@@ -443,6 +443,94 @@ function sectionPanels() {
   return { text: text.join('\n'), blocks };
 }
 
+// 3a. РАСЧЁТ ПО РТМ 36.18.32.4-92 (для Tier-сертификации и ТУ)
+// v0.59.668: отдельная секция отчёта со всеми параметрами расчёта
+// максимума по упорядоченным диаграммам Каялова. Юзер ранее: «нужны
+// расчёты максимума для прохождения сертификации Uptime Institute и
+// расчёты для получения ТУ». РТМ-параметры считаются в recalc.js
+// (n._rtmMax) для всех агрегаторов независимо от GLOBAL.calcMethod;
+// этот раздел собирает их в табличный формат, удобный для PDF / DOCX.
+function sectionRtm() {
+  const aggregators = [...state.nodes.values()]
+    .filter(n => (n.type === 'panel' || n.type === 'source'
+                  || n.type === 'generator' || n.type === 'ups')
+                 && n._rtmMax && Number.isFinite(n._rtmMax.Pmax)
+                 && n._rtmMax.count > 0);
+  // Сортировка: сначала источники / генераторы / ИБП (вершина дерева),
+  // потом щиты, внутри — по тегу.
+  const order = { source: 0, generator: 1, ups: 2, panel: 3 };
+  aggregators.sort((a, b) => {
+    const da = order[a.type] ?? 9, db = order[b.type] ?? 9;
+    if (da !== db) return da - db;
+    return (fullTag(a) || '').localeCompare(fullTag(b) || '');
+  });
+  const cols = [
+    { label: 'Обозн.',           width: 18 },
+    { label: 'Имя',              width: 32 },
+    { label: 'Тип',              width: 14 },
+    { label: 'ЭП',               align: 'right', width: 8 },
+    { label: 'n_э',              align: 'right', width: 10 },
+    { label: 'Ки.ср',            align: 'right', width: 10 },
+    { label: 'Кмакс',            align: 'right', width: 10 },
+    { label: 'P_ср, кВт',        align: 'right', width: 14 },
+    { label: 'P_макс, кВт',      align: 'right', width: 16 },
+    { label: 'Q_макс, квар',     align: 'right', width: 14 },
+    { label: 'S_макс, кВА',      align: 'right', width: 14 },
+  ];
+  const typeLabels = { source: 'Источник', generator: 'Генератор', ups: 'ИБП', panel: 'Щит' };
+  const rows = aggregators.map(n => {
+    const r = n._rtmMax;
+    return [
+      fullTag(n),
+      decorateName(n),
+      typeLabels[n.type] || n.type,
+      String(r.count),
+      r.ne ? r.ne.toFixed(1) : '—',
+      r.kuAvg ? r.kuAvg.toFixed(3) : '—',
+      r.Kmax ? r.Kmax.toFixed(3) : '—',
+      fmt(r.Pavg || 0),
+      fmt(r.Pmax || 0),
+      fmt(r.Qmax || 0),
+      fmt(r.Smax || 0),
+    ];
+  });
+  const text = [
+    'РАСЧЁТ ПО РТМ 36.18.32.4-92 (упорядоченные диаграммы)',
+    '='.repeat(78),
+    ...metaTextLines(),
+    '',
+  ];
+  const blocks = [
+    B.h1('Расчёт по РТМ 36.18.32.4-92'),
+    ...metaBlocks(),
+  ];
+  const isActive = (GLOBAL.calcMethod === 'rtm');
+  const noteActive = isActive
+    ? '✓ РТМ — активная методика расчёта (P_макс применяется как _maxLoadKw в схеме).'
+    : 'ℹ Активная методика — не РТМ (' + (GLOBAL.calcMethod || 'iec').toUpperCase()
+      + '). Эта таблица — справочные параметры для верификации, отчётов Tier-сертификации Uptime Institute, получения технических условий (ТУ).';
+  blocks.push(B.paragraph(noteActive));
+  text.push(noteActive);
+  text.push('');
+  if (rows.length) {
+    text.push(...textTable(cols, rows));
+    text.push('');
+    blocks.push(B.h2('Параметры по РТМ для агрегаторов нагрузок'));
+    blocks.push(B.table(blockCols(cols), rows));
+    blocks.push(B.paragraph(
+      'Алгоритм (РТМ 36.18.32.4-92, п. 1.4): n_э = (Σ P_ном)² / Σ (P_ном²); ' +
+      'Ки.ср = Σ (Ки×P_ном) / Σ P_ном; Кмакс — из таблицы приложения 2 ' +
+      'по (n_э, Ки.ср) с линейной интерполяцией; P_макс = Кмакс × Σ Ки×P_ном; ' +
+      "Кмакс' = 1.1 при n_э ≤ 10, иначе 1.0; Q_макс = Кмакс' × Σ tan(φ)×Ки×P_ном; " +
+      'S_макс = √(P_макс² + Q_макс²). При n_э ≥ 200 или Ки.ср ≥ 0.8 принимается Кмакс = 1.0.'
+    ));
+  } else {
+    text.push('Нет агрегаторов с подключёнными ЭП.');
+    blocks.push(B.paragraph('Нет агрегаторов с подключёнными ЭП.'));
+  }
+  return { text: text.join('\n'), blocks };
+}
+
 // 4. ПОТРЕБИТЕЛИ
 function sectionConsumers() {
   const items = collectConsumers();
@@ -1446,6 +1534,7 @@ function sectionFull() {
     { h2: 'Источники питания',               sec: sectionSources() },
     { h2: 'Источники бесперебойного питания', sec: sectionUps() },
     { h2: 'Распределительные щиты',          sec: sectionPanels() },
+    { h2: 'Расчёт по РТМ 36.18.32.4-92',     sec: sectionRtm() },
     { h2: 'Потребители',                     sec: sectionConsumers() },
     { h2: 'Кабельные линии и шинопроводы',   sec: sectionCables() },
     { h2: 'Расчётные модули по линиям',      sec: sectionModules() },
@@ -1522,6 +1611,14 @@ export function getReportSections() {
       defaultTemplateId: 'builtin-panel-report',
       tags: ['щит', 'panel', 'конфигурация'],
       ...sectionPanels(),
+    },
+    {
+      id: 'rtm',
+      title: 'Расчёт по РТМ 36.18.32.4-92',
+      description: 'Параметры расчёта максимума по упорядоченным диаграммам Каялова: n_э, Ки.ср, Кмакс, P_ср, P_макс, Q_макс, S_макс. Для верификации, отчётов Tier-сертификации Uptime Institute и получения технических условий (ТУ).',
+      defaultTemplateId: 'builtin-engineering-a4',
+      tags: ['расчёты', 'инженерный', 'ртм', 'tier', 'ту', 'максимум'],
+      ...sectionRtm(),
     },
     {
       id: 'consumers',
