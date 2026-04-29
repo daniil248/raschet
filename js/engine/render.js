@@ -1956,17 +1956,15 @@ export function renderNodes() {
       if (!Number.isFinite(v) || v <= 0) return null;
       return _fmtRow('Свободно', p, v);
     };
-    // v0.59.678: статус-строка перегруза по фиксированному автомату/кабелю.
-    // Возвращает текст для добавления к statusLine; CSS-класс overload
-    // нужно добавить отдельно. Применяется к panel/source/ups/generator,
-    // так же как для consumer выше (там вызывается inline).
+    // v0.59.678/680: статус-строка перегруза по фиксированному
+    // автомату/кабелю. Текст компактный, чтобы влезать в карточку
+    // (мин. ширина 200 px). Деталь «автомат/кабель зафиксирован» — в
+    // тултипе/инспекторе, на карточке только цифры.
+    // Пользователь: «не выходи за пределы карточки».
     const _breakerOverloadStatusFor = (nn) => {
       if (!nn._breakerOverload) return null;
       const info = nn._breakerOverloadInfo || {};
-      const what = info.lockedBreaker && info.lockedCable
-        ? 'автомат и кабель'
-        : info.lockedBreaker ? 'автомат' : 'кабель';
-      return `⚠ ПЕРЕГРУЗ: ${what} зафикс., Iрасч=${fmt(info.designA || 0)} А > In=${info.breakerIn || 0} А`;
+      return `⚠ Перегруз: ${fmt(info.designA || 0)} > ${info.breakerIn || 0} А`;
     };
 
     if (n.type === 'source') {
@@ -2114,13 +2112,12 @@ export function renderNodes() {
       // на потребителе прежде всего должно выводить предупреждение на
       // самом потребителе». Флаг ставится в recalc.js когда
       // c._breakerUndersize && (manualBreakerIn || manualCableSize).
+      // v0.59.680: компактный текст, не выходящий за пределы карточки.
+      // Деталь «автомат/кабель зафиксирован» — в инспекторе и отчёте.
       if (n._breakerOverload) {
         const info = n._breakerOverloadInfo || {};
-        const what = info.lockedBreaker && info.lockedCable
-          ? 'автомат и кабель'
-          : info.lockedBreaker ? 'автомат' : 'кабель';
         statusLine = (statusLine ? statusLine + ' · ' : '')
-          + `⚠ ПЕРЕГРУЗ: ${what} зафиксирован, Iрасч=${fmt(info.designA || 0)} А > In=${info.breakerIn || 0} А`;
+          + `⚠ Перегруз: ${fmt(info.designA || 0)} > ${info.breakerIn || 0} А`;
         loadCls += ' overload';
       }
       // v0.59.676: «Свободно» — резерв пропускной способности линии =
