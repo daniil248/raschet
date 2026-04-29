@@ -617,58 +617,91 @@ export function openConsumerParamsModal(n) {
       // uniform mode. Реализован picker для 1.28.10 (link existing) v0.59.761;
       // 1.28.13 (split-out) пока placeholder.
       h.push(`<div id="cp-items-wrap" class="field" style="display:none"><div id="cp-items-body"></div><span id="cp-items-sum" class="muted"></span></div>`);
-      // v0.59.761: Список совместимых одиночных потребителей (count=1) на схеме,
-      // которых можно слить в текущую группу. Совместимость по subtype/phase/
-      // voltage/cosPhi±0.05/demandKw±5%. Юзер: «8 в группе SR1 это те же
-      // SR01-SR08, как их сопоставить» (ROADMAP 1.28.10).
+      // v0.59.761: picker одиночных потребителей для связи с группой
+      // (ROADMAP 1.28.10). v0.59.762 расширение: включаем НЕ ТОЛЬКО размещённых
+      // на текущей странице, но и unplaced (POR-объекты от технолога без
+      // engine-узла или с pageIds=[]) + потребителей с неуказанной мощностью
+      // (kw=0). Юзер: «должны попадать не только размещенные потребители но
+      // и не размещенные, включая потребители с неуказанными параметрами
+      // мощности».
+      // Уровни совместимости (для UI-сортировки и пометки):
+      //   exact   — все параметры совпадают (subtype/phase/voltage/cosPhi/kw)
+      //   partial — kw отличается > 5% или не задан, остальное совпадает
+      //   loose   — больше расхождений (subtype или phase отличается)
       const _grpSubtype = (n.consumerSubtype || '');
       const _grpPhase = n.phase || '3ph';
       const _grpV = Number(n.voltageLevelIdx);
       const _grpCos = Number(n.cosPhi) || 0.92;
       const _grpKw = Number(n.demandKw) || 0;
-      const _grpGm = n.groupMode || 'uniform';
       const _candidates = [];
-      if (_grpKw > 0) {
-        for (const m of state.nodes.values()) {
-          if (m.id === n.id) continue;
-          if (m.type !== 'consumer') continue;
-          if ((Number(m.count) || 1) !== 1) continue; // только одиночные
-          if ((m.consumerSubtype || '') !== _grpSubtype) continue;
-          if ((m.phase || '3ph') !== _grpPhase) continue;
-          const mV = Number(m.voltageLevelIdx);
-          if (Number.isFinite(_grpV) && Number.isFinite(mV) && _grpV !== mV) continue;
-          const mCos = Number(m.cosPhi) || 0.92;
-          if (Math.abs(mCos - _grpCos) > 0.05) continue;
-          const mKw = Number(m.demandKw) || 0;
-          if (mKw <= 0) continue;
-          if (Math.abs(mKw - _grpKw) / Math.max(mKw, _grpKw) > 0.05) continue;
-          if (m.groupMode === 'individual') continue;
-          _candidates.push(m);
-        }
+      const _curPageId = state.currentPageId;
+      for (const m of state.nodes.values()) {
+        if (m.id === n.id) continue;
+        if (m.type !== 'consumer') continue;
+        if ((Number(m.count) || 1) !== 1) continue;
+        if (m.groupMode === 'individual') continue;
+        // Categorize match level
+        const mSubtype = m.consumerSubtype || '';
+        const mPhase = m.phase || '3ph';
+        const mV = Number(m.voltageLevelIdx);
+        const mCos = Number(m.cosPhi) || 0.92;
+        const mKw = Number(m.demandKw) || 0;
+        const mPids = Array.isArray(m.pageIds) ? m.pageIds : [];
+        const isUnplaced = !mPids.includes(_curPageId) && mPids.length === 0;
+        const isOnOtherPage = !mPids.includes(_curPageId) && mPids.length > 0;
+        // Hard exclusions: явное несоответствие subtype или phase делает
+        // связь бессмысленной (это разные нагрузки), но мы их ВСЁ ЕЩЁ показываем
+        // в категории «loose» с warning — пусть юзер сам решит.
+        const subtypeMatch = mSubtype === _grpSubtype;
+        const phaseMatch = mPhase === _grpPhase;
+        const voltMatch = !Number.isFinite(_grpV) || !Number.isFinite(mV) || _grpV === mV;
+        const cosMatch = Math.abs(mCos - _grpCos) <= 0.05;
+        const kwExact = mKw > 0 && _grpKw > 0 && Math.abs(mKw - _grpKw) / Math.max(mKw, _grpKw) <= 0.05;
+        const kwUnknown = mKw <= 0 || _grpKw <= 0;
+        let matchLevel;
+        if (subtypeMatch && phaseMatch && voltMatch && cosMatch && kwExact) matchLevel = 'exact';
+        else if (subtypeMatch && phaseMatch && voltMatch && (cosMatch || kwUnknown)) matchLevel = 'partial';
+        else matchLevel = 'loose';
+        const placement = isUnplaced ? 'unplaced' : (isOnOtherPage ? 'other-page' : 'placed');
+        _candidates.push({ node: m, matchLevel, placement, mKw });
       }
+      // Sort: exact placed → exact unplaced → partial placed → partial unplaced → loose
+      const _matchRank = { exact: 0, partial: 1, loose: 2 };
+      const _placeRank = { placed: 0, unplaced: 1, 'other-page': 2 };
+      _candidates.sort((a, b) => (_matchRank[a.matchLevel] - _matchRank[b.matchLevel]) || (_placeRank[a.placement] - _placeRank[b.placement]));
       if (_candidates.length > 0) {
+        const _badge = (cand) => {
+          const parts = [];
+          if (cand.placement === 'unplaced') parts.push('<span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:2px;font-size:9.5px">🧪 не размещён</span>');
+          else if (cand.placement === 'other-page') parts.push('<span style="background:#e0e7ff;color:#3730a3;padding:1px 5px;border-radius:2px;font-size:9.5px">📄 на другой стр.</span>');
+          if (cand.matchLevel === 'partial') parts.push('<span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:2px;font-size:9.5px" title="Параметры частично отличаются от группы">⚠ частично</span>');
+          else if (cand.matchLevel === 'loose') parts.push('<span style="background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:2px;font-size:9.5px" title="Существенное расхождение параметров">⛔ разные</span>');
+          return parts.join(' ');
+        };
         h.push(`<div class="field" style="margin-top:8px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px">
           <label style="font-size:11px;font-weight:600;color:#15803d;margin-bottom:6px;display:block">🔗 Связать с существующими ${_grpSubtype === 'rack' ? 'стойками' : 'потребителями'} (${_candidates.length})</label>
           <div class="muted" style="font-size:10.5px;margin-bottom:6px;color:#166534;line-height:1.4">
-            На схеме найдены одиночные ${_grpSubtype === 'rack' ? 'стойки' : 'потребители'} с такими же параметрами (${_grpKw} кВт, cos φ ${_grpCos.toFixed(2)}). Отметьте их и нажмите «Объединить» — каждый увеличит счётчик группы на 1, а сам исчезнет со схемы (связи также удаляются).
+            Список включает <b>размещённые</b>, <b>не размещённые</b> и <b>с других страниц</b>. Параметры группы: ${_grpKw > 0 ? _grpKw + ' кВт, ' : ''}${_grpPhase}, cos φ ${_grpCos.toFixed(2)}, subtype «${_grpSubtype || '—'}». Отметьте кандидатов и нажмите «Объединить».
           </div>
-          <div id="cp-link-candidates" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;font-size:11.5px">
-            ${_candidates.map(m => `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#fff;border:1px solid #d4d4d4;border-radius:3px;cursor:pointer">
-              <input type="checkbox" class="cp-link-cb" data-link-id="${escAttr(m.id)}">
-              <span style="font-weight:600">${escHtml(m.tag || m.id)}</span>
-              <span class="muted">${escHtml(m.name || '')}</span>
-              <span class="muted" style="margin-left:auto;font-size:10px">${(Number(m.demandKw)||0).toFixed(2)} кВт</span>
+          <div id="cp-link-candidates" style="display:flex;flex-direction:column;gap:4px;max-height:240px;overflow-y:auto;font-size:11.5px">
+            ${_candidates.map(c => `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#fff;border:1px solid #d4d4d4;border-radius:3px;cursor:pointer">
+              <input type="checkbox" class="cp-link-cb" data-link-id="${escAttr(c.node.id)}">
+              <span style="font-weight:600">${escHtml(c.node.tag || c.node.id)}</span>
+              <span class="muted">${escHtml(c.node.name || '')}</span>
+              ${_badge(c)}
+              <span class="muted" style="margin-left:auto;font-size:10px">${c.mKw > 0 ? c.mKw.toFixed(2) + ' кВт' : '— кВт'}</span>
             </label>`).join('')}
           </div>
-          <div style="margin-top:6px;display:flex;gap:6px;align-items:center">
+          <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <button type="button" id="cp-link-apply" style="padding:4px 12px;border:1px solid #15803d;background:#15803d;color:#fff;border-radius:3px;cursor:pointer;font-size:11px">🔗 Объединить отмеченные</button>
-            <button type="button" id="cp-link-all" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px">Выделить все</button>
+            <button type="button" id="cp-link-all" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px" title="Выделить только exact-совпадения">✓ Точные</button>
+            <button type="button" id="cp-link-all-with-warn" style="padding:4px 10px;border:1px solid #999;background:#fff;color:#555;border-radius:3px;cursor:pointer;font-size:11px" title="Выделить все включая частичные/разные">▣ Все</button>
             <span id="cp-link-status" class="muted" style="font-size:10.5px"></span>
           </div>
         </div>`);
       } else {
         h.push(`<div class="muted" style="font-size:11px;margin-top:8px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;color:#6b7280">
-          🔗 На схеме нет одиночных ${_grpSubtype === 'rack' ? 'стоек' : 'потребителей'} с совместимыми параметрами (${_grpKw} кВт, ${_grpPhase}, cos φ ${_grpCos.toFixed(2)}, subtype «${_grpSubtype || '—'}»). Связывать нечего.
+          🔗 В проекте нет одиночных ${_grpSubtype === 'rack' ? 'стоек' : 'потребителей'} для связи. Создайте новый узел через палитру или добавьте импортом.
         </div>`);
       }
       h.push(`<div class="muted" style="font-size:11px;margin-top:6px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:4px;color:#92400e">
@@ -860,9 +893,20 @@ export function openConsumerParamsModal(n) {
   {
     const linkApplyBtn = document.getElementById('cp-link-apply');
     const linkAllBtn = document.getElementById('cp-link-all');
+    const linkAllWarnBtn = document.getElementById('cp-link-all-with-warn');
     const linkStatus = document.getElementById('cp-link-status');
+    // v0.59.762: «Точные» — только exact-совпадения (без warning-бейджей).
     if (linkAllBtn) {
       linkAllBtn.addEventListener('click', () => {
+        document.querySelectorAll('.cp-link-cb').forEach(cb => {
+          const labelEl = cb.closest('label');
+          const hasWarn = !!labelEl?.querySelector('span[title]');
+          cb.checked = !hasWarn;
+        });
+      });
+    }
+    if (linkAllWarnBtn) {
+      linkAllWarnBtn.addEventListener('click', () => {
         document.querySelectorAll('.cp-link-cb').forEach(cb => { cb.checked = true; });
       });
     }
