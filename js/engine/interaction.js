@@ -1211,6 +1211,16 @@ export function initInteraction() {
       // Обычный клик -- одиночное выделение
       state.selection.clear();
       selectNode(id);
+      // v0.59.749: диагностика для пользовательских отчётов «не могу двигать
+      // щит». Если state.readOnly=true (роль viewer/guest или ручной toggle)
+      // — явно сообщаем в консоль, чтобы диагностика занимала секунды,
+      // а не часы. Один раз на ~5 с (rate-limit).
+      if (state.readOnly) {
+        if (!window.__dragBlockedLogTs || (Date.now() - window.__dragBlockedLogTs) > 5000) {
+          window.__dragBlockedLogTs = Date.now();
+          console.warn('[interaction] drag blocked: state.readOnly=true. node=' + id + '. Откройте проект в роли owner/editor или проверьте window.Raschet.setReadOnly().');
+        }
+      }
       if (!state.readOnly) {
         snapshot();
         const n = state.nodes.get(id);
