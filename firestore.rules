@@ -43,15 +43,20 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.ownerId == request.auth.uid;
 
-      // UPDATE: владелец — всё. Editor — ТОЛЬКО поля 'scheme' и 'updatedAt'
-      // (т.е. saving схемы), но не может менять права/owner/visibility.
+      // UPDATE: владелец — всё. Editor — ТОЛЬКО поля 'scheme', 'updatedAt'
+      // и метаданные автора (_lastWriter*), но не может менять права/owner/visibility.
+      // _lastWriter* нужны клиенту для echo-детекции в subscribeProjectDoc
+      // (отличить свой write от чужого).
       allow update: if request.auth != null && (
         resource.data.ownerId == request.auth.uid
         ||
         (
           request.auth.uid in resource.data.memberUids
           && resource.data.members[request.auth.uid].role == 'editor'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scheme', 'updatedAt'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'scheme', 'updatedAt',
+               '_lastWriterUid', '_lastWriterName', '_lastWriterEmail', '_lastWriterSessionId'
+             ])
         )
       );
 

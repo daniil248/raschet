@@ -312,15 +312,23 @@ function _startCollab(project, initialUpdatedAtMs) {
   state.unsubProjectDoc = window.Storage.subscribeProjectDoc(project.id, (doc) => {
     const u = doc.updatedAt?.toMillis ? doc.updatedAt.toMillis() : (doc.updatedAt || 0);
     if (!u || u <= state.lastKnownUpdatedAtMs) return;
-    // v0.59.478: главный детектор echo — по uid автора. Если writer = я,
-    // это всегда мой write (даже если я открыл проект в двух вкладках).
-    // Окно времени остаётся как fallback для совместимости со старыми
-    // doc'ами без _lastWriterUid.
+    // v0.59.478/649: echo-детектор. Раньше: «writer === я по uid → echo»
+    // ломало sync между вкладками одного пользователя. Теперь:
+    //   - своя сессия (writerSessionId === mySessionId) → echo (всегда)
+    //   - чужая сессия, но тот же uid (другая вкладка моего юзера) → НЕ echo
+    //     (применяем remote scheme как от чужого write)
+    //   - чужой uid → НЕ echo (явный remote)
+    //   - fallback по времени (старые doc'ы без sessionId)
+    const ownSession = state.sessionId || '';
+    const writerSession = doc._lastWriterSessionId || '';
+    const isOwnBySession = ownSession && writerSession && ownSession === writerSession;
     const ownUid = state.currentUser?.uid || '';
     const writerUid = doc._lastWriterUid || '';
-    const isOwnByUid = ownUid && writerUid && ownUid === writerUid;
+    // Backward compat: если sessionId нет в doc'е (старые сохранения), всё ещё
+    // полагаемся на uid — это false-positive для multi-tab, но безопасно.
+    const isOwnByUidLegacy = !writerSession && ownUid && writerUid && ownUid === writerUid;
     const isOwnByTime = state.saving || (Date.now() - state.lastLocalWriteAtMs < 10000);
-    if (isOwnByUid || isOwnByTime) {
+    if (isOwnBySession || isOwnByUidLegacy || isOwnByTime) {
       state.lastKnownUpdatedAtMs = u;
       return;
     }
@@ -1358,10 +1366,16 @@ async function saveCurrent(isAuto) {
     // надёжно отличить свой echo от чужого write (раньше использовалось
     // только окно времени lastLocalWriteAtMs ≤ 10s, и одинокий пользователь
     // на медленной сети получал ложные «удалённые изменения»).
+    // v0.59.649: ДОБАВЛЕН sessionId. Юзер отметил: «даже если схема открыта
+    // в двух окнах браузера, не обновляется автоматически». Причина была в
+    // том, что в обоих окнах одинаковый uid → isOwnByUid=true → snapshot
+    // от другой вкладки фильтровался как свой. Теперь сравниваем sessionId
+    // (уникальный per-window) — sync работает между вкладками одного юзера.
     const writerInfo = {
       _lastWriterUid: state.currentUser?.uid || '',
       _lastWriterName: state.currentUser?.name || '',
       _lastWriterEmail: state.currentUser?.email || '',
+      _lastWriterSessionId: state.sessionId || '',
     };
     const saved = await Promise.race([window.Storage.saveProject(p.id, { scheme, ...writerInfo }), _timeoutP]);
     // Обновляем lastKnownUpdatedAtMs, чтобы snapshot от нашего же write не поднял тост
