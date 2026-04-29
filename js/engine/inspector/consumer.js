@@ -705,12 +705,25 @@ export function openConsumerParamsModal(n) {
               const name = tgt?.name || meta?.name || '';
               const kw = Number(tgt?.demandKw ?? meta?.demandKw) || 0;
               const exists = !!tgt;
+              // v0.59.771: warning при расхождении мощности экземпляра и
+              // проектной (group's demandKw). ROADMAP 1.28.14 — частично.
+              let divergeBadge = '';
+              if (exists && kw > 0 && _perUnitKw > 0) {
+                const div = Math.abs(kw - _perUnitKw) / _perUnitKw * 100;
+                if (div > 5) {
+                  const dirArrow = kw > _perUnitKw ? '↑' : '↓';
+                  divergeBadge = `<span title="Реальная мощность ${kw.toFixed(2)} кВт отличается от проектной ${_perUnitKw.toFixed(2)} кВт на ${div.toFixed(0)}%. Технолог обновил параметры — проверьте, нужно ли пересчитывать кабель/автомат." style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:2px;font-size:9.5px;font-weight:600;border:1px solid #fcd34d">⚠ ${dirArrow} ${div.toFixed(0)}%</span>`;
+                }
+              } else if (exists && kw === 0 && _perUnitKw > 0) {
+                divergeBadge = `<span title="У этого экземпляра не задана мощность (электрические параметры не указаны технологом)" style="background:#e0e7ff;color:#3730a3;padding:1px 5px;border-radius:2px;font-size:9.5px">∅ kW</span>`;
+              }
               return `<div class="cp-group-slot" data-slot-idx="${slotIdx}" data-slot-state="linked" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:${exists ? '#f0fdf4' : '#fff7ed'};border:1px solid ${exists ? '#bbf7d0' : '#fed7aa'};border-radius:3px">
                 <span style="font-size:10px;color:#6b7280;font-weight:600;min-width:28px;text-align:right">#${slotNo}</span>
                 <span style="font-size:10px;color:#15803d;font-weight:600">🔗</span>
                 <span style="font-weight:600">${escHtml(tag)}</span>
                 <span class="muted">${escHtml(name)}</span>
                 ${!exists ? `<span class="muted" style="font-size:9.5px;color:#92400e">⚠ узел удалён</span>` : ''}
+                ${divergeBadge}
                 <span class="muted" style="margin-left:auto;font-size:10px">${kw > 0 ? kw.toFixed(2) + ' кВт' : '— кВт'}</span>
                 <button type="button" class="cp-slot-unlink" data-slot-idx="${slotIdx}" title="Разорвать связь — слот вернётся в anonymous" style="background:none;border:none;color:#c62828;cursor:pointer;font-size:13px;padding:0 4px">✂</button>
               </div>`;
