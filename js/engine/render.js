@@ -2120,9 +2120,16 @@ export function renderNodes() {
       const _availA = _isUniformGroup
         ? (Number.isFinite(n._availableA) ? n._availableA / cnt : null)
         : n._availableA;
+      // v0.59.675: Пользователь: «для потребителя указывать не текущая,
+      // а номинальная (это про мощность)». Для потребителя «текущая»
+      // и «номин» — это конструктивно одно и то же: установленная
+      // мощность (с применённым Ки/множителем для текущей). Чтобы не
+      // дублировать, оставляем единственную строку «Номинальная»
+      // (= consumerTotalDemandKw / count для группы; для одиночного =
+      // demandKw). При Ки/LF != 1 расчётная видна в инспекторе в блоке
+      // «📊 Расчётная нагрузка».
       loadLines = [
-        _fmtRow('текущая', Pcur, Icur),
-        _fmtRow('номин', Pnom, Inom),
+        _fmtRow('Номинальная', Pnom, Inom),
         (!_isIndivGroup && Number.isFinite(_availA) && _availA > 0)
           ? _fmtRow(_availLabel, _availKw, _availA)
           : null,
