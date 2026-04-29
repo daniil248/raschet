@@ -94,16 +94,16 @@ export function effectiveCount(consumers) {
 }
 
 // Главный helper: дано — массив ЭП с {Pnom, Ku, cosPhi}.
-// Возвращает { Pmax, Pavg, Qmax, Qavg, Smax, ne, kuAvg, Kmax, KmaxQ, count }.
+// Возвращает { Pmax, Pavg, Qmax, Qavg, Smax, ne, kuAvg, Kmax, KmaxQ, count, PnomSum, QnomSum, SnomSum }.
 //
 // Для смешанной группы (разные Ки) РТМ предписывает считать кучами по
 // одинаковым Ки или использовать средневзвешенный Ки. Здесь — упрощённо
 // средневзвешенный (РТМ §1.4.4).
 export function rtmComputeMax(consumers) {
   if (!Array.isArray(consumers) || consumers.length === 0) {
-    return { Pmax: 0, Pavg: 0, Qmax: 0, Qavg: 0, Smax: 0, ne: 0, kuAvg: 0, Kmax: 1, KmaxQ: 1, count: 0 };
+    return { Pmax: 0, Pavg: 0, Qmax: 0, Qavg: 0, Smax: 0, ne: 0, kuAvg: 0, Kmax: 1, KmaxQ: 1, count: 0, PnomSum: 0, QnomSum: 0, SnomSum: 0 };
   }
-  let sumP = 0, sumKuP = 0, sumQavg = 0, sumP2 = 0;
+  let sumP = 0, sumQnom = 0, sumKuP = 0, sumQavg = 0, sumP2 = 0;
   let count = 0;
   for (const c of consumers) {
     const p = Number(c.Pnom) || 0;
@@ -113,12 +113,13 @@ export function rtmComputeMax(consumers) {
     const tan = Math.sqrt(Math.max(0, 1 - cos * cos)) / cos;
     sumP += p;
     sumP2 += p * p;
+    sumQnom += tan * p;       // v0.59.654: реактивная номинальная (без Ки)
     sumKuP += ku * p;
     sumQavg += tan * ku * p;
     count++;
   }
   if (sumP <= 0) {
-    return { Pmax: 0, Pavg: 0, Qmax: 0, Qavg: 0, Smax: 0, ne: 0, kuAvg: 0, Kmax: 1, KmaxQ: 1, count };
+    return { Pmax: 0, Pavg: 0, Qmax: 0, Qavg: 0, Smax: 0, ne: 0, kuAvg: 0, Kmax: 1, KmaxQ: 1, count, PnomSum: 0, QnomSum: 0, SnomSum: 0 };
   }
   const ne = sumP2 > 0 ? (sumP * sumP) / sumP2 : 0;
   const kuAvg = sumKuP / sumP;
@@ -130,5 +131,11 @@ export function rtmComputeMax(consumers) {
   const Pmax = Kmax * Pavg;
   const Qmax = KmaxQ * Qavg;
   const Smax = Math.sqrt(Pmax * Pmax + Qmax * Qmax);
-  return { Pmax, Pavg, Qmax, Qavg, Smax, ne, kuAvg, Kmax, KmaxQ, count };
+  // v0.59.654: суммарные номинальные значения (без Ки/Кмакс) — для отображения
+  // «номинальной нагрузки» панели/щита (юзер: «номинальная мощность щита
+  // должна считаться по номинальной нагрузке, а не по шинам»).
+  const PnomSum = sumP;
+  const QnomSum = sumQnom;
+  const SnomSum = Math.sqrt(PnomSum * PnomSum + QnomSum * QnomSum);
+  return { Pmax, Pavg, Qmax, Qavg, Smax, ne, kuAvg, Kmax, KmaxQ, count, PnomSum, QnomSum, SnomSum };
 }

@@ -1965,16 +1965,21 @@ export function renderNodes() {
     } else if (n.type === 'panel') {
       if (n.maintenance) { statusLine = 'Обслуживание'; loadCls += ' off'; }
       else if (!n._powered) { statusLine = 'Без питания'; loadCls += ' off'; }
+      // v0.59.654: «номин» для щита = СУММА P_ном downstream-нагрузок (а не
+      // capacityA × U × cos φ — это физический лимит шин/автомата щита).
+      // Юзер: «почему ты номинальную мощность щита считаешь по номиналу
+      // шин щита, а не по номинальной нагрузке?». capacityA остаётся для
+      // проверки перегруза (см. n._marginWarn в recalc).
       const cos = Number(n._cosPhi) || GLOBAL.defaultCosPhi || 1.0;
-      const capA = Number(n.capacityA) || 0;
-      const capKw = capA > 0 && nodeVoltage(n)
-        ? (capA * nodeVoltage(n) * (isThreePhase(n) ? Math.sqrt(3) : 1) * cos / 1000)
+      const PnomSum = (n._rtmMax && Number.isFinite(n._rtmMax.PnomSum)) ? n._rtmMax.PnomSum : 0;
+      const InomSum = (PnomSum > 0 && nodeVoltage(n))
+        ? computeCurrentA(PnomSum, nodeVoltage(n), cos, isThreePhase(n))
         : 0;
       if (n._marginWarn === 'low') loadCls += ' overload';
       loadLines = [
         _fmtRow('текущая', n._loadKw, n._loadA),
         _fmtRow('макс.расч', n._maxLoadKw, n._maxLoadA),
-        _fmtRow('номин', capKw, capA),
+        _fmtRow('номин', PnomSum, InomSum),
       ].filter(Boolean);
       // Таймер АВР — добавляем к статусу
       if (n._avrSwitchCountdown > 0) {

@@ -3287,10 +3287,11 @@ function recalc() {
     try {
       const consumers = collectDownstreamConsumers(n.id);
       n._rtmMax = _rtmComputeMax(consumers);
-      // Если включён режим РТМ глобально — используем Pmax_РТМ как _maxLoadKw.
-      // По умолчанию (calcMaxMethod !== 'rtm') — оставляем существующий
-      // _maxLoadKw как есть (сумма прямая), РТМ только для отображения.
-      if (GLOBAL.calcMaxMethod === 'rtm' && n._rtmMax.Pmax > 0) {
+      // v0.59.654: метод РТМ выбран в селекторе «Методика расчёта» —
+      // используем P_макс_РТМ как _maxLoadKw. По умолчанию (iec/pue)
+      // оставляем существующий _maxLoadKw (линейная сумма), РТМ только
+      // для отчётов.
+      if (GLOBAL.calcMethod === 'rtm' && n._rtmMax.Pmax > 0) {
         n._maxLoadKw = n._rtmMax.Pmax;
         if (nodeCalcVoltage(n)) {
           n._maxLoadA = computeCurrentA(
