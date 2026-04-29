@@ -735,6 +735,10 @@ export function initToolbar() {
   renderPageTabs();
   // Экспонируем для вызова после десериализации / undo
   window.__raschetRenderPageTabs = renderPageTabs;
+  // v0.59.775: switchPage экспонируется чтобы внешние модули (interaction.js
+  // Ctrl+click navigation, inspector slot-locate) могли корректно
+  // переключать страницу с сохранением view/positions.
+  window.__raschetSwitchPage = switchPage;
 
   // Иконки потребителей — глобальный toggle
   if (!('showConsumerIcons' in GLOBAL)) GLOBAL.showConsumerIcons = true;

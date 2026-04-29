@@ -1185,10 +1185,20 @@ export function openConsumerParamsModal(n) {
         if (!linkId) return;
         const tgt = state.nodes.get(linkId);
         if (!tgt) { try { flash('Узел не найден (возможно, удалён)', 'warn'); } catch {} return; }
-        // Если узел не на текущей странице — переключаемся
+        // Если узел не на текущей странице — переключаемся (через
+        // switchPage чтобы корректно сохранить/восстановить view+positions)
         const tgtPids = Array.isArray(tgt.pageIds) ? tgt.pageIds : [];
         if (tgtPids.length > 0 && !tgtPids.includes(state.currentPageId)) {
-          state.currentPageId = tgtPids[0];
+          try {
+            if (typeof window !== 'undefined' && typeof window.__raschetSwitchPage === 'function') {
+              window.__raschetSwitchPage(tgtPids[0]);
+            } else {
+              state.currentPageId = tgtPids[0];
+            }
+          } catch {}
+        } else if (tgtPids.length === 0) {
+          try { flash(`«${tgt.tag || tgt.id}» не размещён ни на одной странице`, 'warn'); } catch {}
+          return;
         }
         state.selectedKind = 'node';
         state.selectedId = tgt.id;

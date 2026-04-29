@@ -594,7 +594,7 @@ export function renderProjectRegistry() {
       // блокируется и в render-разметке (draggable=false) и в interaction.js
       // dragstart (preventDefault) — двойной guard.
       const _isAliased = !!_aliasParent;
-      return `<div class="pal-reg-item" draggable="${_isAliased ? 'false' : 'true'}" data-reg-id="${esc(n.id)}" ${_isAliased ? 'data-linked-alias="1"' : ''} title="${_isAliased ? 'Связан с группой — снимите связь чтобы перетащить' : 'Клик — открыть свойства, drag — разместить на текущей странице'}" style="${_isAliased ? 'opacity:0.7;cursor:not-allowed' : ''}">
+      return `<div class="pal-reg-item" draggable="${_isAliased ? 'false' : 'true'}" data-reg-id="${esc(n.id)}" ${_isAliased ? 'data-linked-alias="1"' : ''} title="${_isAliased ? 'Связан с группой — снимите связь чтобы перетащить' : 'Клик — открыть свойства, Ctrl+клик — центрировать на схеме, drag — разместить на текущей странице'}" style="${_isAliased ? 'opacity:0.7;cursor:not-allowed' : ''}">
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>
         <span class="pal-unplaced-name">${esc(name)}</span>

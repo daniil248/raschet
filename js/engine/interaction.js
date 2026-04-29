@@ -1,6 +1,6 @@
 /* interaction.js -- all canvas/palette event handling (ES module) */
 
-import { state, svg, layerOver, uid, getCurrentPage, getPageKind } from './state.js';
+import { state, svg, layerOver, uid, getCurrentPage, getPageKind, saveCurrentPagePositions, loadPagePositions } from './state.js';
 import { NODE_H, SVG_NS, DEFAULTS, GLOBAL } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos, getNodeGeometryMm } from './geometry.js';
 import { snapshot, notifyChange } from './history.js';
@@ -633,6 +633,54 @@ export function initInteraction() {
     });
     regList.addEventListener('click', e => {
       if (state.readOnly) return;
+      // v0.59.775: Ctrl+click (или Meta+click на macOS) по объекту в реестре —
+      // центрирование камеры на нём + переключение страницы если узел на
+      // другой. Юзер: «давай добавим клик с ctrl отцентрирует по центру
+      // экрана выбранный в реестре объект».
+      if ((e.ctrlKey || e.metaKey) && !e.target.closest('.pal-reg-place, .pal-reg-del')) {
+        const item = e.target.closest('.pal-reg-item');
+        if (item) {
+          e.preventDefault(); e.stopPropagation();
+          const id = item.dataset.regId;
+          const tgt = state.nodes.get(id);
+          if (!tgt) { try { flash('Узел не найден', 'warn'); } catch {} return; }
+          const tgtPids = Array.isArray(tgt.pageIds) ? tgt.pageIds : [];
+          // Если узел на другой странице — переключаемся туда (через
+          // switchPage чтобы корректно сохранить/восстановить view+positions)
+          if (tgtPids.length > 0 && !tgtPids.includes(state.currentPageId)) {
+            try {
+              if (typeof window !== 'undefined' && typeof window.__raschetSwitchPage === 'function') {
+                window.__raschetSwitchPage(tgtPids[0]);
+              } else {
+                saveCurrentPagePositions(state.currentPageId);
+                state.currentPageId = tgtPids[0];
+                loadPagePositions(state.currentPageId);
+              }
+            } catch {}
+          } else if (tgtPids.length === 0) {
+            try { flash(`«${tgt.tag || id}» не размещён ни на одной странице`, 'warn'); } catch {}
+            return;
+          }
+          state.selectedKind = 'node';
+          state.selectedId = tgt.id;
+          (async () => {
+            try {
+              const expMod = await import('./export.js');
+              if (expMod && typeof expMod.centerOnNode === 'function') {
+                expMod.centerOnNode(tgt);
+              }
+            } catch (err) { console.warn('[centerOnNode]', err); }
+            try { render(); } catch {}
+            try {
+              if (typeof window !== 'undefined' && typeof window.__raschetRenderInspector === 'function') {
+                window.__raschetRenderInspector();
+              }
+            } catch {}
+            try { flash(`→ ${tgt.tag || tgt.id}`, 'success'); } catch {}
+          })();
+          return;
+        }
+      }
       const placeBtn = e.target.closest('.pal-reg-place');
       if (placeBtn) {
         e.stopPropagation();
