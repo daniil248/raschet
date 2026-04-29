@@ -1,25 +1,26 @@
 // =========================================================================
-// tech-workspace.js — v0.59.779 (Phase 20.1, скелет)
+// tech-workspace.js — v0.59.784 (Phase 20.1, multi-group rebuild)
 //
-// Рабочее место технолога ЦОД. Концепция объекта на предпроектной стадии:
-// количество стоек / IT-нагрузка / ИБП / климат / ввод (ТП+ДГУ) / PDU /
-// площади / multi-variant compare / handoff в детальное проектирование.
+// Юзер (2026-04-30): «по стойкам может быть несколько групп стоек с разной
+// мощностью, так же и ИБП могут быть разные для IT и для кондиционирования.
+// PDU тоже в рамках стойки конфигурируется».
 //
-// MVP реализует:
-//   - Список вариантов (CRUD): add / duplicate / delete / make-primary
-//   - Заполнение параметров по разделам (20.2-20.7)
-//   - Real-time расчёт IT-нагрузки, доступной мощности ИБП, холода, площадей
-//   - Storage в LS: raschet.project.<pid>.tech-workspace.variants.v1
-//   - Переключатель режимов: Список / План (План — заглушка)
-//   - Кнопки «Привязать модель…» — открывают catalog-picker (toast если
-//     модуль каталога не подключён)
-//
-// Не реализовано (откладывается):
-//   - Полноценный план зала с drag-drop (20.7 → отдельная фаза)
-//   - DOCX-выгрузка пояснительной записки (20.9)
-//   - Multi-variant compare side-by-side (20.10) — пока показывается один
-//     вариант, переключение через клик на левой панели
-//   - Handoff в schematic / scs-design / mdc-config (20.11)
+// Data shape:
+//   variant.concept = {
+//     rackGroups: [{
+//       id, name, count, kwPerRack, profile, widthMm, depthMm, modelRef,
+//       pdu: { kind, phases, ratingA, inputsPerRack, modelRef }   ← per group
+//     }],
+//     upsSystems: [{
+//       id, name, purpose: 'it'|'cooling'|'mixed',
+//       count, ratedKva, redundancy, cosPhi, loadFactor,
+//       autonomyMin, batteryTech, modelRef
+//     }],
+//     coolingUnits: [{
+//       id, name, count, kwPerUnit, type, redundancy, modelRef
+//     }],
+//     feed: { tp: {...}, dgu: {...} }
+//   }
 // =========================================================================
 
 import { ensureDefaultProject, projectKey } from '../shared/project-storage.js';
@@ -28,9 +29,9 @@ const $ = (id) => document.getElementById(id);
 
 // ─── State
 let _pid = null;
-let _variants = []; // массив объектов варианта
+let _variants = [];
 let _activeId = null;
-let _mode = 'list'; // 'list' | 'plan'
+let _mode = 'list';
 
 // ─── Storage
 const KEY_VARIANTS = ['tech-workspace', 'variants.v1'];
@@ -50,6 +51,39 @@ function saveJson(suffix, value) {
   try { localStorage.setItem(projectKey(_pid, ...suffix), JSON.stringify(value)); } catch {}
 }
 
+// ─── ID generator
+function _newId(prefix) { return prefix + '-' + Math.random().toString(36).slice(2, 10); }
+
+// ─── Default factories
+function newRackGroup(name) {
+  return {
+    id: _newId('rg'),
+    name: name || 'Группа стоек',
+    count: 0, kwPerRack: 0, profile: 'it',
+    widthMm: 600, depthMm: 1200,
+    modelRef: null,
+    pdu: { kind: 'metered', phases: '3ph', ratingA: 32, inputsPerRack: 2, modelRef: null },
+  };
+}
+function newUpsSystem(name, purpose) {
+  return {
+    id: _newId('us'),
+    name: name || (purpose === 'cooling' ? 'ИБП климат' : 'ИБП IT'),
+    purpose: purpose || 'it',
+    count: 2, ratedKva: 0, redundancy: 'N+1',
+    cosPhi: 0.95, loadFactor: 0.8, autonomyMin: 15, batteryTech: 'vrla',
+    modelRef: null,
+  };
+}
+function newCoolingUnit(name) {
+  return {
+    id: _newId('cu'),
+    name: name || 'Климат',
+    count: 3, kwPerUnit: 0, type: 'crac', redundancy: 'N+1',
+    modelRef: null,
+  };
+}
+
 // ─── Variant data shape
 function newVariant(name) {
   return {
@@ -59,62 +93,154 @@ function newVariant(name) {
     readOnly: false,
     createdAt: Date.now(),
     concept: {
-      racks: { count: 0, kwPerRack: 0, profile: 'it', widthMm: 600, depthMm: 1200, modelRef: null },
-      ups: { count: 2, ratedKva: 0, redundancy: 'N+1', cosPhi: 0.95, loadFactor: 0.8, autonomyMin: 15, batteryTech: 'vrla', modelRef: null },
-      cooling: { count: 3, kwPerUnit: 0, type: 'crac', redundancy: 'N+1', modelRef: null },
+      rackGroups: [newRackGroup('Стойки IT')],
+      upsSystems: [newUpsSystem('ИБП IT', 'it')],
+      coolingUnits: [newCoolingUnit('Климат')],
       feed: {
         tp: { needed: false, kva: 0, redundancy: '2', modelRef: null },
         dgu: { needed: false, kw: 0, mode: 'esp', redundancy: 'N+1', modelRef: null },
       },
-      pdu: { kind: 'metered', phases: '3ph', ratingA: 32, inputsPerRack: 2, modelRef: null },
     },
   };
 }
 
+// ─── Migration: backward-compat для старых variants со скалярными полями
+function migrateVariant(v) {
+  if (!v || !v.concept) return v;
+  const c = v.concept;
+  // racks (single) → rackGroups[]
+  if (!Array.isArray(c.rackGroups)) {
+    if (c.racks) {
+      const rg = newRackGroup('Стойки IT');
+      Object.assign(rg, {
+        count: c.racks.count || 0,
+        kwPerRack: c.racks.kwPerRack || 0,
+        profile: c.racks.profile || 'it',
+        widthMm: c.racks.widthMm || 600,
+        depthMm: c.racks.depthMm || 1200,
+        modelRef: c.racks.modelRef || null,
+      });
+      // pdu из старой schema жил как concept.pdu (один на всё) — копируем
+      // в первую группу.
+      if (c.pdu) {
+        rg.pdu = {
+          kind: c.pdu.kind || 'metered',
+          phases: c.pdu.phases || '3ph',
+          ratingA: Number(c.pdu.ratingA) || 32,
+          inputsPerRack: Number(c.pdu.inputsPerRack) || 2,
+          modelRef: c.pdu.modelRef || null,
+        };
+      }
+      c.rackGroups = [rg];
+    } else {
+      c.rackGroups = [newRackGroup('Стойки IT')];
+    }
+    delete c.racks;
+    delete c.pdu;
+  }
+  // ups (single) → upsSystems[]
+  if (!Array.isArray(c.upsSystems)) {
+    if (c.ups) {
+      const us = newUpsSystem('ИБП IT', 'it');
+      Object.assign(us, {
+        count: c.ups.count || 2,
+        ratedKva: c.ups.ratedKva || 0,
+        redundancy: c.ups.redundancy || 'N+1',
+        cosPhi: c.ups.cosPhi || 0.95,
+        loadFactor: c.ups.loadFactor || 0.8,
+        autonomyMin: c.ups.autonomyMin || 15,
+        batteryTech: c.ups.batteryTech || 'vrla',
+        modelRef: c.ups.modelRef || null,
+      });
+      c.upsSystems = [us];
+    } else {
+      c.upsSystems = [newUpsSystem('ИБП IT', 'it')];
+    }
+    delete c.ups;
+  }
+  // cooling (single) → coolingUnits[]
+  if (!Array.isArray(c.coolingUnits)) {
+    if (c.cooling) {
+      const cu = newCoolingUnit('Климат');
+      Object.assign(cu, {
+        count: c.cooling.count || 3,
+        kwPerUnit: c.cooling.kwPerUnit || 0,
+        type: c.cooling.type || 'crac',
+        redundancy: c.cooling.redundancy || 'N+1',
+        modelRef: c.cooling.modelRef || null,
+      });
+      c.coolingUnits = [cu];
+    } else {
+      c.coolingUnits = [newCoolingUnit('Климат')];
+    }
+    delete c.cooling;
+  }
+  if (!c.feed) c.feed = {
+    tp: { needed: false, kva: 0, redundancy: '2', modelRef: null },
+    dgu: { needed: false, kw: 0, mode: 'esp', redundancy: 'N+1', modelRef: null },
+  };
+  return v;
+}
+
 // ─── Calculations
 function calcITTotal(c) {
-  return (Number(c.racks.count) || 0) * (Number(c.racks.kwPerRack) || 0);
+  // Сумма по всем rack-группам с profile in {it, blade, gpu, storage} (не network)
+  return (c.rackGroups || []).reduce((s, rg) => {
+    if (rg.profile === 'network') return s; // network — не IT-нагрузка
+    return s + (Number(rg.count) || 0) * (Number(rg.kwPerRack) || 0);
+  }, 0);
+}
+function calcRackGroupKw(rg) {
+  return (Number(rg.count) || 0) * (Number(rg.kwPerRack) || 0);
 }
 function calcMachroomArea(c) {
-  // Грубая оценка: 2.5 м²/стойка + проходы (×1.4 для hot/cold aisle)
-  const N = Number(c.racks.count) || 0;
+  const N = (c.rackGroups || []).reduce((s, rg) => s + (Number(rg.count) || 0), 0);
   return Math.round(N * 2.5 * 1.4);
 }
-function calcUpsAvailable(c) {
-  const u = c.ups;
-  const count = Number(u.count) || 0;
-  const reserve = u.redundancy === 'N+1' ? 1 : (u.redundancy === '2N' ? Math.floor(count / 2) : 0);
+function _upsAvail(us) {
+  const count = Number(us.count) || 0;
+  const reserve = us.redundancy === 'N+1' ? 1 : (us.redundancy === '2N' ? Math.floor(count / 2) : 0);
   const N = Math.max(1, count - reserve);
-  const kva = Number(u.ratedKva) || 0;
-  const cos = Number(u.cosPhi) || 0.95;
-  const lf = Number(u.loadFactor) || 0.8;
+  const kva = Number(us.ratedKva) || 0;
+  const cos = Number(us.cosPhi) || 0.95;
+  const lf = Number(us.loadFactor) || 0.8;
   return Math.round(N * kva * cos * lf * 10) / 10;
 }
-function calcCoolAvailable(c) {
-  const co = c.cooling;
-  const count = Number(co.count) || 0;
-  const reserve = co.redundancy === 'N+1' ? 1 : (co.redundancy === '2N' ? Math.floor(count / 2) : 0);
+function calcUpsByPurpose(c) {
+  const out = { it: 0, cooling: 0, mixed: 0, total: 0 };
+  for (const us of (c.upsSystems || [])) {
+    const kw = _upsAvail(us);
+    out[us.purpose || 'it'] = (out[us.purpose || 'it'] || 0) + kw;
+    out.total += kw;
+  }
+  return out;
+}
+function _coolAvail(cu) {
+  const count = Number(cu.count) || 0;
+  const reserve = cu.redundancy === 'N+1' ? 1 : (cu.redundancy === '2N' ? Math.floor(count / 2) : 0);
   const N = Math.max(1, count - reserve);
-  return Math.round(N * (Number(co.kwPerUnit) || 0) * 10) / 10;
+  return Math.round(N * (Number(cu.kwPerUnit) || 0) * 10) / 10;
+}
+function calcCoolTotal(c) {
+  return (c.coolingUnits || []).reduce((s, cu) => s + _coolAvail(cu), 0);
 }
 function calcFeedTotal(c) {
-  // Принятая мощность объекта = max(ТП, IT × 1.3 c учётом потерь и климата)
   const itTotal = calcITTotal(c);
-  const climateLoss = itTotal * 0.3; // 30% на климат + потери
+  const climateLoss = itTotal * 0.3;
   const totalNeeded = itTotal + climateLoss;
-  const tp = c.feed.tp.needed ? Number(c.feed.tp.kva) || 0 : 0;
-  return Math.max(totalNeeded, tp * 0.8); // tp в кВА → kW при cos=0.8
+  const tp = c.feed?.tp?.needed ? Number(c.feed.tp.kva) || 0 : 0;
+  return Math.max(totalNeeded, tp * 0.8);
 }
 function calcAreas(c) {
-  const N = Number(c.racks.count) || 0;
-  const upsCount = Number(c.ups.count) || 0;
-  const upsKva = Number(c.ups.ratedKva) || 0;
-  const coolCount = Number(c.cooling.count) || 0;
-  // Очень грубо. Минимумы по ТКП 308-2011 / TIA-942.
+  const N = (c.rackGroups || []).reduce((s, rg) => s + (Number(rg.count) || 0), 0);
+  const upsCount = (c.upsSystems || []).reduce((s, us) => s + (Number(us.count) || 0), 0);
+  const upsKvaTotal = (c.upsSystems || []).reduce((s, us) => s + (Number(us.ratedKva) || 0) * (Number(us.count) || 0), 0);
+  const hasVrla = (c.upsSystems || []).some(us => us.batteryTech === 'vrla');
+  const coolCount = (c.coolingUnits || []).reduce((s, cu) => s + (Number(cu.count) || 0), 0);
   const areas = [
     { name: 'Машзал (стойки)', m2: Math.max(20, Math.round(N * 2.5 * 1.4)) },
     { name: 'ИБП-зал', m2: Math.max(15, Math.round(upsCount * 4)) },
-    { name: 'АКБ-зал (VRLA)', m2: c.ups.batteryTech === 'vrla' ? Math.max(10, Math.round(upsCount * upsKva * 0.012)) : 0 },
+    { name: 'АКБ-зал (VRLA)', m2: hasVrla ? Math.max(10, Math.round(upsKvaTotal * 0.012)) : 0 },
     { name: 'Климат-зал', m2: Math.max(20, Math.round(coolCount * 6)) },
     { name: 'ТП', m2: c.feed.tp.needed ? Math.max(20, Math.round((Number(c.feed.tp.kva) || 0) * 0.025)) : 0 },
     { name: 'ДГУ-зал', m2: c.feed.dgu.needed ? Math.max(30, Math.round((Number(c.feed.dgu.kw) || 0) * 0.04)) : 0 },
@@ -124,7 +250,7 @@ function calcAreas(c) {
   return areas;
 }
 
-// ─── Render
+// ─── Render: variants list (sidebar)
 function renderVariantsList() {
   const root = $('tw-variants-list');
   if (!root) return;
@@ -148,6 +274,190 @@ function renderVariantsList() {
   }).join('');
 }
 
+// ─── Render: bind-button HTML helper
+function _bindBtnHtml(domain, refId, modelRef) {
+  const has = !!(modelRef && modelRef.id);
+  const txt = has
+    ? `📦 ${escHtml((modelRef.manufacturer || '') + ' ' + (modelRef.model || ''))} ✏`
+    : '📦 Привязать модель…';
+  const cls = has ? 'tw-bind-btn tw-bind-btn-bound' : 'tw-bind-btn';
+  return `<button type="button" class="${cls}" data-bind-domain="${domain}" data-ref-id="${escAttr(refId)}">${txt}</button>`;
+}
+
+// ─── Render: rack group card
+function renderRackGroupCard(rg, isReadOnly) {
+  const ro = isReadOnly ? 'disabled' : '';
+  const kw = calcRackGroupKw(rg);
+  return `<div class="tw-card" data-card-kind="rack" data-card-id="${rg.id}">
+    <div class="tw-card-head">
+      <input type="text" class="tw-card-name" data-field="name" value="${escAttr(rg.name)}" placeholder="Название группы" ${ro}>
+      <span class="tw-card-summary muted">${rg.count} × ${rg.kwPerRack} кВт = ${kw.toFixed(1)} кВт</span>
+      <button type="button" class="tw-card-del" data-card-action="delete" title="Удалить группу" ${ro}>×</button>
+    </div>
+    <div class="tw-grid">
+      <label>Кол-во стоек:<input type="number" data-field="count" min="0" step="1" value="${rg.count}" ${ro}></label>
+      <label>Мощность на стойку, кВт:<input type="number" data-field="kwPerRack" min="0" step="0.5" value="${rg.kwPerRack}" ${ro}></label>
+      <label>Профиль:
+        <select data-field="profile" ${ro}>
+          <option value="it"${rg.profile === 'it' ? ' selected' : ''}>IT-rack</option>
+          <option value="blade"${rg.profile === 'blade' ? ' selected' : ''}>Blade</option>
+          <option value="gpu"${rg.profile === 'gpu' ? ' selected' : ''}>GPU-heavy</option>
+          <option value="network"${rg.profile === 'network' ? ' selected' : ''}>Network</option>
+          <option value="storage"${rg.profile === 'storage' ? ' selected' : ''}>Storage</option>
+        </select>
+      </label>
+      <label>Ширина, мм:<input type="number" data-field="widthMm" min="600" step="100" value="${rg.widthMm}" ${ro}></label>
+      <label>Глубина, мм:<input type="number" data-field="depthMm" min="800" step="100" value="${rg.depthMm}" ${ro}></label>
+    </div>
+    ${_bindBtnHtml('rack', rg.id, rg.modelRef)}
+    <!-- PDU sub-section внутри группы стоек (юзер: «PDU тоже в рамках стойки конфигурируется») -->
+    <div class="tw-subsection">
+      <h5>🔌 PDU для этой группы</h5>
+      <div class="tw-grid">
+        <label>Тип:
+          <select data-field="pdu.kind" ${ro}>
+            <option value="basic"${rg.pdu.kind === 'basic' ? ' selected' : ''}>Basic</option>
+            <option value="metered"${rg.pdu.kind === 'metered' ? ' selected' : ''}>Metered</option>
+            <option value="switched"${rg.pdu.kind === 'switched' ? ' selected' : ''}>Switched</option>
+            <option value="monitored"${rg.pdu.kind === 'monitored' ? ' selected' : ''}>Monitored</option>
+          </select>
+        </label>
+        <label>Фазность:
+          <select data-field="pdu.phases" ${ro}>
+            <option value="1ph"${rg.pdu.phases === '1ph' ? ' selected' : ''}>1ф</option>
+            <option value="3ph"${rg.pdu.phases === '3ph' ? ' selected' : ''}>3ф</option>
+          </select>
+        </label>
+        <label>Ток на ввод, А:
+          <select data-field="pdu.ratingA" ${ro}>
+            <option value="16"${rg.pdu.ratingA === 16 ? ' selected' : ''}>16</option>
+            <option value="32"${rg.pdu.ratingA === 32 ? ' selected' : ''}>32</option>
+            <option value="63"${rg.pdu.ratingA === 63 ? ' selected' : ''}>63</option>
+          </select>
+        </label>
+        <label>Вводов на стойку:
+          <select data-field="pdu.inputsPerRack" ${ro}>
+            <option value="1"${rg.pdu.inputsPerRack === 1 ? ' selected' : ''}>1</option>
+            <option value="2"${rg.pdu.inputsPerRack === 2 ? ' selected' : ''}>2 (N+1 / 2N)</option>
+            <option value="4"${rg.pdu.inputsPerRack === 4 ? ' selected' : ''}>4</option>
+          </select>
+        </label>
+      </div>
+      ${_bindBtnHtml('pdu', rg.id, rg.pdu.modelRef)}
+    </div>
+  </div>`;
+}
+
+// ─── Render: ups system card
+function renderUpsCard(us, isReadOnly) {
+  const ro = isReadOnly ? 'disabled' : '';
+  const kw = _upsAvail(us);
+  return `<div class="tw-card" data-card-kind="ups" data-card-id="${us.id}">
+    <div class="tw-card-head">
+      <input type="text" class="tw-card-name" data-field="name" value="${escAttr(us.name)}" placeholder="Название" ${ro}>
+      <span class="tw-card-summary muted">${us.count} × ${us.ratedKva} кВА · доступно ${kw.toFixed(1)} кВт</span>
+      <button type="button" class="tw-card-del" data-card-action="delete" title="Удалить систему" ${ro}>×</button>
+    </div>
+    <div class="tw-grid">
+      <label>Назначение:
+        <select data-field="purpose" ${ro}>
+          <option value="it"${us.purpose === 'it' ? ' selected' : ''}>⚡ IT-нагрузка</option>
+          <option value="cooling"${us.purpose === 'cooling' ? ' selected' : ''}>❄ Климат / кондиционирование</option>
+          <option value="mixed"${us.purpose === 'mixed' ? ' selected' : ''}>🔄 Смешанное</option>
+        </select>
+      </label>
+      <label>Кол-во ИБП:<input type="number" data-field="count" min="1" step="1" value="${us.count}" ${ro}></label>
+      <label>Номинал, кВА:<input type="number" data-field="ratedKva" min="0" step="50" value="${us.ratedKva}" ${ro}></label>
+      <label>Резервирование:
+        <select data-field="redundancy" ${ro}>
+          <option value="N"${us.redundancy === 'N' ? ' selected' : ''}>N (без резерва)</option>
+          <option value="N+1"${us.redundancy === 'N+1' ? ' selected' : ''}>N+1</option>
+          <option value="2N"${us.redundancy === '2N' ? ' selected' : ''}>2N</option>
+        </select>
+      </label>
+      <label>cos φ:<input type="number" data-field="cosPhi" min="0.5" max="1" step="0.01" value="${us.cosPhi}" ${ro}></label>
+      <label>Загрузка, %:<input type="number" data-field="loadFactor" min="20" max="95" step="5" value="${Math.round((us.loadFactor || 0.8) * 100)}" ${ro}></label>
+      <label>Автономия, мин:<input type="number" data-field="autonomyMin" min="5" step="5" value="${us.autonomyMin}" ${ro}></label>
+      <label>Тип АКБ:
+        <select data-field="batteryTech" ${ro}>
+          <option value="vrla"${us.batteryTech === 'vrla' ? ' selected' : ''}>VRLA</option>
+          <option value="lifepo4"${us.batteryTech === 'lifepo4' ? ' selected' : ''}>Li-Ion (LFP)</option>
+        </select>
+      </label>
+    </div>
+    ${_bindBtnHtml('ups', us.id, us.modelRef)}
+  </div>`;
+}
+
+// ─── Render: cooling unit card
+function renderCoolCard(cu, isReadOnly) {
+  const ro = isReadOnly ? 'disabled' : '';
+  const kw = _coolAvail(cu);
+  return `<div class="tw-card" data-card-kind="cool" data-card-id="${cu.id}">
+    <div class="tw-card-head">
+      <input type="text" class="tw-card-name" data-field="name" value="${escAttr(cu.name)}" placeholder="Название" ${ro}>
+      <span class="tw-card-summary muted">${cu.count} × ${cu.kwPerUnit} кВт холода · доступно ${kw.toFixed(1)} кВт</span>
+      <button type="button" class="tw-card-del" data-card-action="delete" title="Удалить" ${ro}>×</button>
+    </div>
+    <div class="tw-grid">
+      <label>Кол-во кондиционеров:<input type="number" data-field="count" min="1" step="1" value="${cu.count}" ${ro}></label>
+      <label>Холод на единицу, кВт:<input type="number" data-field="kwPerUnit" min="0" step="5" value="${cu.kwPerUnit}" ${ro}></label>
+      <label>Тип:
+        <select data-field="type" ${ro}>
+          <option value="crac"${cu.type === 'crac' ? ' selected' : ''}>CRAC (downflow)</option>
+          <option value="inrow"${cu.type === 'inrow' ? ' selected' : ''}>In-Row</option>
+          <option value="fancoil"${cu.type === 'fancoil' ? ' selected' : ''}>Fan-coil</option>
+          <option value="freecool"${cu.type === 'freecool' ? ' selected' : ''}>Free cooling</option>
+        </select>
+      </label>
+      <label>Резервирование:
+        <select data-field="redundancy" ${ro}>
+          <option value="N"${cu.redundancy === 'N' ? ' selected' : ''}>N</option>
+          <option value="N+1"${cu.redundancy === 'N+1' ? ' selected' : ''}>N+1</option>
+          <option value="2N"${cu.redundancy === '2N' ? ' selected' : ''}>2N</option>
+        </select>
+      </label>
+    </div>
+    ${_bindBtnHtml('cool', cu.id, cu.modelRef)}
+  </div>`;
+}
+
+// ─── Render: feed (TP/DGU)
+function renderFeedSection(feed, isReadOnly) {
+  const ro = isReadOnly ? 'disabled' : '';
+  return `<div class="tw-grid">
+    <label class="tw-checkbox"><input type="checkbox" data-field="tp.needed"${feed.tp.needed ? ' checked' : ''} ${ro}> ТП требуется</label>
+    <label>Мощность ТП, кВА:<input type="number" data-field="tp.kva" min="0" step="100" value="${feed.tp.kva}" ${ro}></label>
+    <label>Резервирование ТП:
+      <select data-field="tp.redundancy" ${ro}>
+        <option value="1"${feed.tp.redundancy === '1' ? ' selected' : ''}>1 ввод</option>
+        <option value="2"${feed.tp.redundancy === '2' ? ' selected' : ''}>2 ввода</option>
+        <option value="2-avr"${feed.tp.redundancy === '2-avr' ? ' selected' : ''}>2 ввода + АВР</option>
+      </select>
+    </label>
+    <label class="tw-checkbox"><input type="checkbox" data-field="dgu.needed"${feed.dgu.needed ? ' checked' : ''} ${ro}> ДГУ требуется</label>
+    <label>Мощность ДГУ, кВт:<input type="number" data-field="dgu.kw" min="0" step="100" value="${feed.dgu.kw}" ${ro}></label>
+    <label>Режим ДГУ:
+      <select data-field="dgu.mode" ${ro}>
+        <option value="esp"${feed.dgu.mode === 'esp' ? ' selected' : ''}>ESP (резерв)</option>
+        <option value="prp"${feed.dgu.mode === 'prp' ? ' selected' : ''}>PRP (постоянное)</option>
+      </select>
+    </label>
+    <label>Резервирование ДГУ:
+      <select data-field="dgu.redundancy" ${ro}>
+        <option value="none"${feed.dgu.redundancy === 'none' ? ' selected' : ''}>Нет</option>
+        <option value="N+1"${feed.dgu.redundancy === 'N+1' ? ' selected' : ''}>N+1</option>
+        <option value="2N"${feed.dgu.redundancy === '2N' ? ' selected' : ''}>2N</option>
+      </select>
+    </label>
+  </div>
+  <div class="tw-summary">
+    <button type="button" class="tw-bind-btn ${feed.tp.modelRef ? 'tw-bind-btn-bound' : ''}" data-bind-domain="tp" data-ref-id="feed-tp">📦 ${feed.tp.modelRef ? escHtml((feed.tp.modelRef.manufacturer || '') + ' ' + (feed.tp.modelRef.model || '')) + ' ✏' : 'Привязать модель ТП'}</button>
+    <button type="button" class="tw-bind-btn ${feed.dgu.modelRef ? 'tw-bind-btn-bound' : ''}" data-bind-domain="dgu" data-ref-id="feed-dgu">📦 ${feed.dgu.modelRef ? escHtml((feed.dgu.modelRef.manufacturer || '') + ' ' + (feed.dgu.modelRef.model || '')) + ' ✏' : 'Привязать модель ДГУ'}</button>
+  </div>`;
+}
+
+// ─── Render: active variant (right pane)
 function renderActiveVariant() {
   const v = _variants.find(x => x.id === _activeId);
   const empty = $('tw-empty-state');
@@ -163,136 +473,182 @@ function renderActiveVariant() {
   }
   if (empty) empty.style.display = 'none';
   if (handoffBtn) handoffBtn.disabled = !!v.readOnly;
-  // mode panes
   if (listPane) listPane.hidden = (_mode !== 'list');
   if (planPane) planPane.hidden = (_mode !== 'plan');
-  // Header
   $('tw-variant-name').textContent = v.name + (v.primary ? ' ⭐' : '');
   $('tw-readonly-badge').hidden = !v.readOnly;
   const c = v.concept;
-  // Sync inputs
-  const setVal = (id, val) => { const el = $(id); if (el) el.value = val; };
-  const setChk = (id, val) => { const el = $(id); if (el) el.checked = !!val; };
-  setVal('tw-rack-count', c.racks.count);
-  setVal('tw-rack-kw', c.racks.kwPerRack);
-  setVal('tw-rack-profile', c.racks.profile);
-  setVal('tw-rack-width', c.racks.widthMm);
-  setVal('tw-rack-depth', c.racks.depthMm);
-  setVal('tw-ups-count', c.ups.count);
-  setVal('tw-ups-kva', c.ups.ratedKva);
-  setVal('tw-ups-redundancy', c.ups.redundancy);
-  setVal('tw-ups-cosphi', c.ups.cosPhi);
-  setVal('tw-ups-load', Math.round((c.ups.loadFactor || 0.8) * 100));
-  setVal('tw-ups-autonomy', c.ups.autonomyMin);
-  setVal('tw-ups-battery', c.ups.batteryTech);
-  setVal('tw-cool-count', c.cooling.count);
-  setVal('tw-cool-kw', c.cooling.kwPerUnit);
-  setVal('tw-cool-type', c.cooling.type);
-  setVal('tw-cool-redundancy', c.cooling.redundancy);
-  setChk('tw-tp-needed', c.feed.tp.needed);
-  setVal('tw-tp-kva', c.feed.tp.kva);
-  setVal('tw-tp-redundancy', c.feed.tp.redundancy);
-  setChk('tw-dgu-needed', c.feed.dgu.needed);
-  setVal('tw-dgu-kw', c.feed.dgu.kw);
-  setVal('tw-dgu-mode', c.feed.dgu.mode);
-  setVal('tw-dgu-redundancy', c.feed.dgu.redundancy);
-  setVal('tw-pdu-kind', c.pdu.kind);
-  setVal('tw-pdu-phases', c.pdu.phases);
-  setVal('tw-pdu-rating', String(c.pdu.ratingA));
-  setVal('tw-pdu-inputs', String(c.pdu.inputsPerRack));
-  // Disable inputs if readOnly
-  document.querySelectorAll('.tw-content input, .tw-content select').forEach(el => {
-    el.disabled = !!v.readOnly;
-  });
+  const ro = !!v.readOnly;
   // Compute summaries
   const itKw = calcITTotal(c);
   const machM2 = calcMachroomArea(c);
-  const upsKw = calcUpsAvailable(c);
-  const coolKw = calcCoolAvailable(c);
+  const upsByPurpose = calcUpsByPurpose(c);
+  const coolKw = calcCoolTotal(c);
   const feedKw = calcFeedTotal(c);
-  $('tw-it-total').textContent = itKw.toFixed(1);
-  $('tw-machroom-area').textContent = machM2;
-  $('tw-ups-available').textContent = upsKw.toFixed(1);
-  $('tw-ups-margin').textContent = (itKw > 0)
-    ? (upsKw >= itKw ? `✓ +${(upsKw - itKw).toFixed(1)} кВт` : `⚠ −${(itKw - upsKw).toFixed(1)} кВт`)
-    : '—';
-  $('tw-cool-available').textContent = coolKw.toFixed(1);
-  $('tw-cool-margin').textContent = (itKw > 0)
-    ? (coolKw >= itKw ? `✓ +${(coolKw - itKw).toFixed(1)} кВт` : `⚠ −${(itKw - coolKw).toFixed(1)} кВт`)
-    : '—';
-  $('tw-feed-total').textContent = feedKw.toFixed(1);
-  // Areas table
-  const areas = calcAreas(c);
-  const sumM2 = areas.reduce((s, a) => s + a.m2, 0);
-  const areasRoot = $('tw-areas-table');
-  if (areasRoot) {
-    areasRoot.innerHTML = `<table class="tw-areas">
-      <thead><tr><th>Помещение</th><th class="num">Площадь, м²</th></tr></thead>
-      <tbody>${areas.map(a => `<tr><td>${escHtml(a.name)}</td><td class="num">${a.m2}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td><b>Σ</b></td><td class="num"><b>${sumM2}</b></td></tr></tfoot>
-    </table>`;
-  }
-  // Summary line
-  $('tw-content-summary').textContent = `${c.racks.count} стоек × ${c.racks.kwPerRack} кВт = ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
-  // v0.59.782: bind-button состояние с модель-ссылкой
-  const setBindState = (domain, modelRef) => {
-    const btn = document.querySelector(`.tw-bind-btn[data-bind-domain="${domain}"]`);
-    if (!btn) return;
-    if (modelRef && modelRef.id) {
-      btn.dataset.bound = '1';
-      btn.innerHTML = `📦 ${escHtml(modelRef.manufacturer || '')} ${escHtml(modelRef.model || '')} ✏`;
-      btn.title = `Привязана модель: ${modelRef.manufacturer || ''} ${modelRef.model || ''}. Click — изменить или снять.`;
-    } else {
-      btn.removeAttribute('data-bound');
-      btn.innerHTML = '📦 Привязать модель…';
-      const map = { rack: 'стойки', ups: 'ИБП', cool: 'кондиционера', tp: 'трансформатора ТП', dgu: 'ДГУ', pdu: 'PDU' };
-      btn.title = `Привязать к конкретной модели ${map[domain] || domain} из каталога`;
+  const upsItKw = upsByPurpose.it + upsByPurpose.mixed;
+  const upsCoolKw = upsByPurpose.cooling + upsByPurpose.mixed;
+
+  // Build full list pane HTML
+  if (listPane && _mode === 'list') {
+    const upsItMargin = (itKw > 0)
+      ? (upsItKw >= itKw ? `<span style="color:#16a34a">✓ +${(upsItKw - itKw).toFixed(1)} кВт</span>` : `<span style="color:#dc2626">⚠ −${(itKw - upsItKw).toFixed(1)} кВт</span>`)
+      : '—';
+    listPane.innerHTML = `
+      <div class="tw-section">
+        <div class="tw-section-head">
+          <h3>1. Концепция стоек</h3>
+          <button type="button" class="tw-add-btn" data-add-card="rack" ${ro ? 'disabled' : ''}>➕ Группа стоек</button>
+        </div>
+        <div class="tw-cards" data-cards-for="rack">
+          ${(c.rackGroups || []).map(rg => renderRackGroupCard(rg, ro)).join('')}
+        </div>
+        <div class="tw-summary">
+          <b>Σ IT-нагрузка:</b> <span>${itKw.toFixed(1)}</span> кВт ·
+          <b>Σ площадь машзала (≈):</b> <span>${machM2}</span> м²
+        </div>
+      </div>
+
+      <div class="tw-section">
+        <div class="tw-section-head">
+          <h3>2. Системы ИБП</h3>
+          <button type="button" class="tw-add-btn" data-add-card="ups" ${ro ? 'disabled' : ''}>➕ Система ИБП</button>
+        </div>
+        <div class="tw-cards" data-cards-for="ups">
+          ${(c.upsSystems || []).map(us => renderUpsCard(us, ro)).join('')}
+        </div>
+        <div class="tw-summary">
+          <b>⚡ ИБП IT:</b> ${upsItKw.toFixed(1)} кВт ${upsItMargin} ·
+          <b>❄ ИБП климат:</b> ${upsCoolKw.toFixed(1)} кВт ·
+          <b>Σ итого:</b> ${upsByPurpose.total.toFixed(1)} кВт
+        </div>
+      </div>
+
+      <div class="tw-section">
+        <div class="tw-section-head">
+          <h3>3. Климат</h3>
+          <button type="button" class="tw-add-btn" data-add-card="cool" ${ro ? 'disabled' : ''}>➕ Группа кондиционеров</button>
+        </div>
+        <div class="tw-cards" data-cards-for="cool">
+          ${(c.coolingUnits || []).map(cu => renderCoolCard(cu, ro)).join('')}
+        </div>
+        <div class="tw-summary">
+          <b>Σ холод доступен:</b> ${coolKw.toFixed(1)} кВт ·
+          <b>Запас:</b> ${itKw > 0 ? (coolKw >= itKw ? `<span style="color:#16a34a">✓ +${(coolKw - itKw).toFixed(1)} кВт</span>` : `<span style="color:#dc2626">⚠ −${(itKw - coolKw).toFixed(1)} кВт</span>`) : '—'}
+        </div>
+      </div>
+
+      <div class="tw-section">
+        <div class="tw-section-head"><h3>4. Ввод: ТП и ДГУ</h3></div>
+        ${renderFeedSection(c.feed, ro)}
+        <div class="tw-summary">
+          <b>Σ принятая мощность:</b> ${feedKw.toFixed(1)} кВт
+        </div>
+      </div>
+
+      <div class="tw-section">
+        <div class="tw-section-head"><h3>5. Площади помещений</h3></div>
+        <div id="tw-areas-table"></div>
+      </div>
+    `;
+    // Render areas
+    const areas = calcAreas(c);
+    const sumM2 = areas.reduce((s, a) => s + a.m2, 0);
+    const areasRoot = listPane.querySelector('#tw-areas-table');
+    if (areasRoot) {
+      areasRoot.innerHTML = `<table class="tw-areas">
+        <thead><tr><th>Помещение</th><th class="num">Площадь, м²</th></tr></thead>
+        <tbody>${areas.map(a => `<tr><td>${escHtml(a.name)}</td><td class="num">${a.m2}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td><b>Σ</b></td><td class="num"><b>${sumM2}</b></td></tr></tfoot>
+      </table>`;
     }
-  };
-  setBindState('rack', c.racks.modelRef);
-  setBindState('ups', c.ups.modelRef);
-  setBindState('cool', c.cooling.modelRef);
-  setBindState('tp', c.feed.tp.modelRef);
-  setBindState('dgu', c.feed.dgu.modelRef);
-  setBindState('pdu', c.pdu.modelRef);
+    $('tw-content-summary').textContent = `${(c.rackGroups || []).reduce((s, rg) => s + (rg.count || 0), 0)} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
+  }
 }
 
 // ─── Persistence
 function persistVariants() { saveJson(KEY_VARIANTS, _variants); }
 function persistActive() { saveJson(KEY_ACTIVE, _activeId); }
 
-// ─── Field bindings (input → variant.concept.*)
-function bindInputs() {
-  const set = (id, evt, fn) => { const el = $(id); if (el) el.addEventListener(evt, fn); };
-  const v = () => _variants.find(x => x.id === _activeId);
-  const onChange = () => { renderActiveVariant(); persistVariants(); };
-  set('tw-rack-count', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.racks.count = Number(e.target.value) || 0; onChange(); });
-  set('tw-rack-kw', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.racks.kwPerRack = Number(e.target.value) || 0; onChange(); });
-  set('tw-rack-profile', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.racks.profile = e.target.value; onChange(); });
-  set('tw-rack-width', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.racks.widthMm = Number(e.target.value) || 600; onChange(); });
-  set('tw-rack-depth', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.racks.depthMm = Number(e.target.value) || 1200; onChange(); });
-  set('tw-ups-count', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.ups.count = Number(e.target.value) || 0; onChange(); });
-  set('tw-ups-kva', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.ups.ratedKva = Number(e.target.value) || 0; onChange(); });
-  set('tw-ups-redundancy', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.ups.redundancy = e.target.value; onChange(); });
-  set('tw-ups-cosphi', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.ups.cosPhi = Number(e.target.value) || 0.95; onChange(); });
-  set('tw-ups-load', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.ups.loadFactor = (Number(e.target.value) || 80) / 100; onChange(); });
-  set('tw-ups-autonomy', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.ups.autonomyMin = Number(e.target.value) || 15; onChange(); });
-  set('tw-ups-battery', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.ups.batteryTech = e.target.value; onChange(); });
-  set('tw-cool-count', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.cooling.count = Number(e.target.value) || 0; onChange(); });
-  set('tw-cool-kw', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.cooling.kwPerUnit = Number(e.target.value) || 0; onChange(); });
-  set('tw-cool-type', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.cooling.type = e.target.value; onChange(); });
-  set('tw-cool-redundancy', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.cooling.redundancy = e.target.value; onChange(); });
-  set('tw-tp-needed', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.feed.tp.needed = !!e.target.checked; onChange(); });
-  set('tw-tp-kva', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.feed.tp.kva = Number(e.target.value) || 0; onChange(); });
-  set('tw-tp-redundancy', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.feed.tp.redundancy = e.target.value; onChange(); });
-  set('tw-dgu-needed', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.feed.dgu.needed = !!e.target.checked; onChange(); });
-  set('tw-dgu-kw', 'input', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.feed.dgu.kw = Number(e.target.value) || 0; onChange(); });
-  set('tw-dgu-mode', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.feed.dgu.mode = e.target.value; onChange(); });
-  set('tw-dgu-redundancy', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.feed.dgu.redundancy = e.target.value; onChange(); });
-  set('tw-pdu-kind', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.pdu.kind = e.target.value; onChange(); });
-  set('tw-pdu-phases', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.pdu.phases = e.target.value; onChange(); });
-  set('tw-pdu-rating', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.pdu.ratingA = Number(e.target.value) || 32; onChange(); });
-  set('tw-pdu-inputs', 'change', e => { const cur = v(); if (!cur || cur.readOnly) return; cur.concept.pdu.inputsPerRack = Number(e.target.value) || 2; onChange(); });
+// ─── Field bindings via event delegation
+// Каждая card имеет data-card-kind + data-card-id + data-field на input/select.
+// Контейнер #tw-mode-list слушает input/change events.
+function bindListEvents() {
+  const root = $('tw-mode-list');
+  if (!root) return;
+  const handle = (e) => {
+    const cur = _variants.find(x => x.id === _activeId);
+    if (!cur || cur.readOnly) return;
+    const target = e.target;
+    if (!target || (!target.matches('input, select'))) return;
+    const card = target.closest('.tw-card');
+    const field = target.dataset.field;
+    if (!field) return;
+    const value = (target.type === 'checkbox') ? target.checked
+      : (target.type === 'number' ? Number(target.value) || 0 : target.value);
+    if (card) {
+      const kind = card.dataset.cardKind;
+      const id = card.dataset.cardId;
+      const arr = cur.concept[kind === 'rack' ? 'rackGroups' : kind === 'ups' ? 'upsSystems' : 'coolingUnits'];
+      const obj = arr.find(x => x.id === id);
+      if (!obj) return;
+      // Поддержка nested путей вроде "pdu.kind"
+      _setNested(obj, field, kind === 'ups' && field === 'loadFactor' ? value / 100 : value);
+    } else {
+      // feed.tp.* / feed.dgu.* — относится к concept.feed
+      _setNested(cur.concept.feed, field, value);
+    }
+    persistVariants();
+    renderActiveVariant();
+  };
+  root.addEventListener('input', handle);
+  root.addEventListener('change', handle);
+  // Кнопки add/delete card
+  root.addEventListener('click', (e) => {
+    const cur = _variants.find(x => x.id === _activeId);
+    if (!cur || cur.readOnly) return;
+    const addBtn = e.target.closest('.tw-add-btn[data-add-card]');
+    if (addBtn) {
+      const kind = addBtn.dataset.addCard;
+      if (kind === 'rack') cur.concept.rackGroups.push(newRackGroup(`Группа ${cur.concept.rackGroups.length + 1}`));
+      else if (kind === 'ups') cur.concept.upsSystems.push(newUpsSystem('ИБП', 'it'));
+      else if (kind === 'cool') cur.concept.coolingUnits.push(newCoolingUnit('Климат'));
+      persistVariants(); renderActiveVariant();
+      return;
+    }
+    const delBtn = e.target.closest('.tw-card-del[data-card-action="delete"]');
+    if (delBtn) {
+      const card = delBtn.closest('.tw-card');
+      if (!card) return;
+      const kind = card.dataset.cardKind;
+      const id = card.dataset.cardId;
+      const arrName = kind === 'rack' ? 'rackGroups' : kind === 'ups' ? 'upsSystems' : 'coolingUnits';
+      const arr = cur.concept[arrName];
+      const idx = arr.findIndex(x => x.id === id);
+      if (idx < 0) return;
+      if (arr.length === 1) {
+        alert('Нельзя удалить последнюю запись. Добавьте новую перед удалением.');
+        return;
+      }
+      if (!confirm(`Удалить «${arr[idx].name}»?`)) return;
+      arr.splice(idx, 1);
+      persistVariants(); renderActiveVariant();
+      return;
+    }
+    const bindBtn = e.target.closest('.tw-bind-btn[data-bind-domain]');
+    if (bindBtn) {
+      openModelPicker(bindBtn.dataset.bindDomain, bindBtn.dataset.refId);
+    }
+  });
+}
+
+function _setNested(obj, path, value) {
+  const parts = path.split('.');
+  let o = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!o[parts[i]] || typeof o[parts[i]] !== 'object') o[parts[i]] = {};
+    o = o[parts[i]];
+  }
+  o[parts[parts.length - 1]] = value;
 }
 
 // ─── Variant CRUD
@@ -314,6 +670,10 @@ function duplicateVariant(id) {
   copy.primary = false;
   copy.readOnly = false;
   copy.createdAt = Date.now();
+  // Переназначить id вложенных объектов чтобы они не пересекались
+  for (const rg of (copy.concept.rackGroups || [])) rg.id = _newId('rg');
+  for (const us of (copy.concept.upsSystems || [])) us.id = _newId('us');
+  for (const cu of (copy.concept.coolingUnits || [])) cu.id = _newId('cu');
   _variants.push(copy);
   _activeId = copy.id;
   persistVariants(); persistActive();
@@ -322,10 +682,9 @@ function duplicateVariant(id) {
 function deleteVariant(id) {
   const idx = _variants.findIndex(v => v.id === id);
   if (idx < 0) return;
-  if (!confirm(`Удалить вариант «${_variants[idx].name}»? Действие необратимо.`)) return;
+  if (!confirm(`Удалить вариант «${_variants[idx].name}»?`)) return;
   _variants.splice(idx, 1);
   if (_activeId === id) _activeId = _variants[0]?.id || null;
-  // Если удалили primary — назначаем primary первому оставшемуся
   if (!_variants.some(v => v.primary) && _variants.length > 0) {
     _variants[0].primary = true;
   }
@@ -345,48 +704,32 @@ function setMode(mode) {
   renderActiveVariant();
 }
 
-// ─── Bind-model buttons → catalog-picker
-// v0.59.782: интеграция с element-library — пользователь может выбрать
-// конкретную модель из общего каталога. Юзер: «может сразу выбрать
-// конкретные изделия, а не только подобрать и определить параметры».
-//
-// Маппинг domain → element kind (см. shared/element-library.js):
-//   rack → 'rack'
-//   ups  → 'ups'
-//   cool → 'cooler' (если в библиотеке нет — fallback к фильтру по category)
-//   tp   → 'transformer'
-//   dgu  → 'generator'
-//   pdu  → 'pdu'
+// ─── Catalog picker
 const DOMAIN_KIND = {
-  rack: 'rack',
-  ups: 'ups',
-  cool: 'cooler',
-  tp: 'transformer',
-  dgu: 'generator',
-  pdu: 'pdu',
+  rack: 'rack', ups: 'ups', cool: 'cooler',
+  tp: 'transformer', dgu: 'generator', pdu: 'pdu',
 };
 const DOMAIN_LABEL = {
   rack: 'Стойка', ups: 'ИБП', cool: 'Кондиционер',
   tp: 'Трансформатор', dgu: 'ДГУ', pdu: 'PDU',
 };
 
-async function openModelPicker(domain) {
+async function openModelPicker(domain, refId) {
   const cur = _variants.find(x => x.id === _activeId);
   if (!cur) return;
   const kind = DOMAIN_KIND[domain];
-  if (!kind) { alert(`Неизвестный domain: ${domain}`); return; }
+  if (!kind) return;
   let elements = [];
   try {
     const lib = await import('../shared/element-library.js');
     elements = lib.listElements({ kind }) || [];
-  } catch (e) {
-    alert(`Не удалось загрузить библиотеку: ${e.message || e}`);
-    return;
-  }
+  } catch (e) { alert(`Не удалось загрузить библиотеку: ${e.message || e}`); return; }
+  // Ищем текущий modelRef для подсветки
+  const target = _findBindTarget(cur.concept, domain, refId);
+  const currentRefId = target?.modelRef?.id || null;
   const overlay = document.createElement('div');
   overlay.className = 'tw-picker-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:inherit';
-  const currentRefId = cur.concept[_domainPath(domain)]?.modelRef?.id || null;
   const rows = elements.map(el => {
     const sel = el.id === currentRefId ? ' style="background:#dbeafe;border-color:#1e40af"' : '';
     const kw = el.demandKw ?? el.kva ?? el.power ?? '';
@@ -403,12 +746,12 @@ async function openModelPicker(domain) {
       <button type="button" class="tw-picker-close">×</button>
     </div>
     <div class="tw-picker-search-row">
-      <input type="text" class="tw-picker-search" placeholder="🔍 Поиск по производителю / модели...">
+      <input type="text" class="tw-picker-search" placeholder="🔍 Поиск...">
       <span class="muted" style="font-size:11px">${elements.length} моделей</span>
     </div>
     <div class="tw-picker-list">
       ${elements.length === 0
-        ? `<div class="muted" style="padding:20px;text-align:center">В библиотеке нет элементов kind="${kind}". Добавьте их в каталоге (catalog/).</div>`
+        ? `<div class="muted" style="padding:20px;text-align:center">В библиотеке нет элементов kind="${kind}". Добавьте их в catalog/.</div>`
         : rows}
     </div>
     <div class="tw-picker-actions">
@@ -422,7 +765,6 @@ async function openModelPicker(domain) {
   overlay.querySelector('.tw-picker-close').addEventListener('click', close);
   overlay.querySelector('.tw-picker-cancel').addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  // Search filter
   const search = overlay.querySelector('.tw-picker-search');
   if (search) {
     search.addEventListener('input', () => {
@@ -434,123 +776,97 @@ async function openModelPicker(domain) {
     });
     search.focus();
   }
-  // Click row → bind
   overlay.querySelectorAll('.tw-picker-row').forEach(row => {
     row.addEventListener('click', () => {
-      const elId = row.dataset.id;
-      const el = elements.find(e => e.id === elId);
-      if (!el) return;
-      _bindModel(domain, el);
-      close();
+      const el = elements.find(e => e.id === row.dataset.id);
+      if (el) { _bindModel(domain, refId, el); close(); }
     });
   });
-  // Clear binding
   const clearBtn = overlay.querySelector('.tw-picker-clear');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => { _bindModel(domain, null); close(); });
-  }
+  if (clearBtn) clearBtn.addEventListener('click', () => { _bindModel(domain, refId, null); close(); });
 }
 
-function _domainPath(domain) {
-  // Возвращает имя поля внутри concept для данного domain'а.
-  if (domain === 'rack') return 'racks';
-  if (domain === 'ups') return 'ups';
-  if (domain === 'cool') return 'cooling';
-  if (domain === 'tp') return null;  // tp/dgu — внутри feed.*
-  if (domain === 'dgu') return null;
-  if (domain === 'pdu') return 'pdu';
+function _findBindTarget(concept, domain, refId) {
+  if (domain === 'rack') return (concept.rackGroups || []).find(rg => rg.id === refId);
+  if (domain === 'ups') return (concept.upsSystems || []).find(us => us.id === refId);
+  if (domain === 'cool') return (concept.coolingUnits || []).find(cu => cu.id === refId);
+  if (domain === 'pdu') {
+    // refId — это id rack-группы; modelRef лежит в rg.pdu.modelRef
+    const rg = (concept.rackGroups || []).find(rg => rg.id === refId);
+    return rg ? rg.pdu : null;
+  }
+  if (domain === 'tp') return concept.feed?.tp;
+  if (domain === 'dgu') return concept.feed?.dgu;
   return null;
 }
 
-function _bindModel(domain, element) {
+function _bindModel(domain, refId, element) {
   const cur = _variants.find(x => x.id === _activeId);
   if (!cur || cur.readOnly) return;
+  const target = _findBindTarget(cur.concept, domain, refId);
+  if (!target) return;
   const ref = element ? {
     id: element.id,
     manufacturer: element.manufacturer || '',
     model: element.model || element.name || element.id,
     kind: element.kind,
   } : null;
-  const path = _domainPath(domain);
-  if (path) {
-    cur.concept[path].modelRef = ref;
-    // Авто-копирование параметров: если модель содержит ключевые поля,
-    // подставляем их (но НЕ перезаписываем то что юзер уже ввёл вручную
-    // и оно отличается от прежнего modelRef).
-    if (element && domain === 'rack') {
-      if (Number.isFinite(element.widthMm)) cur.concept.racks.widthMm = element.widthMm;
-      if (Number.isFinite(element.depthMm)) cur.concept.racks.depthMm = element.depthMm;
-      if (Number.isFinite(element.demandKw) && !cur.concept.racks.kwPerRack) {
-        cur.concept.racks.kwPerRack = element.demandKw;
-      }
-    } else if (element && domain === 'ups') {
-      if (Number.isFinite(element.kva || element.ratedKva) && !cur.concept.ups.ratedKva) {
-        cur.concept.ups.ratedKva = element.kva || element.ratedKva;
-      }
-    } else if (element && domain === 'cool') {
-      if (Number.isFinite(element.kwCool || element.kw) && !cur.concept.cooling.kwPerUnit) {
-        cur.concept.cooling.kwPerUnit = element.kwCool || element.kw;
-      }
-    }
-  } else if (domain === 'tp') {
-    cur.concept.feed.tp.modelRef = ref;
-    if (element && Number.isFinite(element.kva) && !cur.concept.feed.tp.kva) {
-      cur.concept.feed.tp.kva = element.kva;
-    }
-  } else if (domain === 'dgu') {
-    cur.concept.feed.dgu.modelRef = ref;
-    if (element && Number.isFinite(element.kw) && !cur.concept.feed.dgu.kw) {
-      cur.concept.feed.dgu.kw = element.kw;
+  target.modelRef = ref;
+  // Авто-копирование параметров
+  if (element) {
+    if (domain === 'rack') {
+      if (Number.isFinite(element.widthMm)) target.widthMm = element.widthMm;
+      if (Number.isFinite(element.depthMm)) target.depthMm = element.depthMm;
+      if (Number.isFinite(element.demandKw) && !target.kwPerRack) target.kwPerRack = element.demandKw;
+    } else if (domain === 'ups') {
+      const kva = element.kva || element.ratedKva;
+      if (Number.isFinite(kva) && !target.ratedKva) target.ratedKva = kva;
+    } else if (domain === 'cool') {
+      const kw = element.kwCool || element.kw;
+      if (Number.isFinite(kw) && !target.kwPerUnit) target.kwPerUnit = kw;
+    } else if (domain === 'tp') {
+      if (Number.isFinite(element.kva) && !target.kva) target.kva = element.kva;
+    } else if (domain === 'dgu') {
+      if (Number.isFinite(element.kw) && !target.kw) target.kw = element.kw;
     }
   }
   persistVariants();
   renderActiveVariant();
-  if (element) alert(`✓ Модель «${ref.model}» привязана. Параметры обновлены из каталога.`);
-  else alert('✗ Привязка снята. Параметры остались — скорректируйте вручную.');
 }
 
-function bindModelButtons() {
-  document.querySelectorAll('.tw-bind-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const dom = btn.dataset.bindDomain;
-      openModelPicker(dom);
-    });
-  });
-}
-
-// ─── Handoff (placeholder)
+// ─── Handoff
 function bindHandoff() {
   const btn = $('tw-handoff');
   if (!btn) return;
   btn.addEventListener('click', () => {
     const v = _variants.find(x => x.id === _activeId);
     if (!v || v.readOnly) return;
-    if (!confirm(`📤 Передать вариант «${v.name}» в детальное проектирование?\n\nПосле передачи variant станет read-only. Параметры будут предзаполнены в schematic / scs-design / mdc-config.\n\nПродолжить?`)) return;
+    if (!confirm(`📤 Передать вариант «${v.name}» в детальное проектирование?\n\nПосле передачи variant станет read-only. Продолжить?`)) return;
     v.readOnly = true;
     v.handoffAt = Date.now();
     persistVariants();
     renderVariantsList(); renderActiveVariant();
-    alert(`✓ Вариант передан в проектирование.\n\nHandoff-логика (заполнение schematic/scs-design/mdc-config) — в разработке (Phase 20.11).`);
+    alert(`✓ Вариант передан. Handoff в schematic/scs-design — в разработке (Phase 20.11).`);
   });
 }
 
 // ─── Main
 function init() {
   _pid = ensureDefaultProject();
-  _variants = loadJson(KEY_VARIANTS, []);
+  _variants = (loadJson(KEY_VARIANTS, []) || []).map(migrateVariant);
   _activeId = loadJson(KEY_ACTIVE, null);
   if (!_variants.length) {
-    // Авто-создание базового варианта при первом входе
     addVariant();
   } else if (!_variants.some(v => v.id === _activeId)) {
     _activeId = _variants[0].id;
   }
+  // Сохраним мигрированные данные обратно
+  persistVariants();
   renderVariantsList();
   renderActiveVariant();
-  bindInputs();
-  bindModelButtons();
+  bindListEvents();
   bindHandoff();
-  // Левая панель: клик по варианту / actions
+  // Sidebar variants list events
   $('tw-variants-list').addEventListener('click', (e) => {
     const actBtn = e.target.closest('button[data-act]');
     if (actBtn) {
@@ -570,9 +886,7 @@ function init() {
       renderActiveVariant();
     }
   });
-  // Add variant
   $('tw-variant-add').addEventListener('click', addVariant);
-  // Mode toggle
   document.querySelectorAll('.tw-mode-btn').forEach(b => {
     b.addEventListener('click', () => setMode(b.dataset.mode));
   });

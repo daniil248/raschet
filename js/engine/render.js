@@ -566,7 +566,20 @@ export function renderProjectRegistry() {
     const hay = `${n.tag || ''} ${n.name || ''} ${n.type || ''}`.toLowerCase();
     return hay.includes(filterQ);
   };
-  const filtered = all.filter(matches);
+  // v0.59.784: группы с populated linkedAliases — это контейнеры, а не
+  // отдельные элементы. Скрываем их из реестра, в списке остаются ТОЛЬКО
+  // их linked-аliases как самостоятельные строки. Раньше группа отображалась
+  // через effectiveTag = первый alias-tag, что давало визуальную коллизию
+  // (alias SR02 и группа displayed как SR02 — две строки с одинаковым
+  // обозначением, юзер: «стойки (в группе) просто пропали»).
+  const filtered = all.filter(n => {
+    if (!matches(n)) return false;
+    if (n.type === 'consumer' && Array.isArray(n.linkedAliases)
+        && n.linkedAliases.some(aid => aid && state.nodes.has(aid))) {
+      return false;
+    }
+    return true;
+  });
   const byType = new Map();
   for (const n of filtered) {
     const t = n.type || 'other';
