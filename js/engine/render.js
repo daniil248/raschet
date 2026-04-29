@@ -1733,11 +1733,17 @@ export function renderNodes() {
     if (!isOnCurrentPage(n)) continue;
     const w = nodeWidth(n);
     const selected = state.selectedKind === 'node' && state.selectedId === n.id;
+    // v0.59.722: расширены условия класса 'overload' — теперь также
+    // включает n._breakerOverload (зафиксированный автомат не справляется,
+    // см. v0.59.678) и ΔU > 10% (вне ±10% по ГОСТ 32144).
+    const _hasNodeIssue = n._overload
+      || n._breakerOverload
+      || (Number(n._deltaUPct) > 10 && (n.type === 'consumer' || n.type === 'panel'));
     const cls = [
       'node', n.type,
       selected ? 'selected' : '',
       state.selection.has(n.id) ? 'multi-selected' : '',
-      n._overload ? 'overload' : '',
+      _hasNodeIssue ? 'overload' : '',
       (!n._powered && (n.type === 'panel' || n.type === 'consumer' || n.type === 'ups')) ? 'unpowered' : '',
       (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
       (n.type === 'ups' && n._onStaticBypass) ? 'onbypass' : '',
