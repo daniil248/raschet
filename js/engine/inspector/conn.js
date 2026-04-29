@@ -632,8 +632,10 @@ export function renderInspectorConn(c) {
       for (const nom of SERIES) {
         brkOpts += `<option value="${nom}"${nom === currentVal ? ' selected' : ''}>${nom} А</option>`;
       }
-      h.push(field(_isFuse ? 'Номинал предохранителя' : 'Номинал автомата',
-        `<select data-conn-prop="${manualProp}">${brkOpts}</select>`));
+      h.push(`<div class="field">
+        <label>${_isFuse ? 'Номинал предохранителя' : 'Номинал автомата'}${helpIcon('Правило координации (IEC 60364-4-43): Iрасч ≤ In ≤ Iz. Iрасч — расчётный ток через линию; In — номинал автомата; Iz — длительно допустимый ток кабеля с учётом коэффициентов прокладки. Выбор больше Iz означает что кабель не защищён от перегрузки. Стандартный ряд: 6/10/16/20/25/32/40/50/63/80/100/125/160/200/250/315/400/500/630/800/1000/1250 А.')}</label>
+        <select data-conn-prop="${manualProp}">${brkOpts}</select>
+      </div>`);
       h.push(marginBlock());
       // Warning если запас по автомату меньше заданного минимума
       if (_brkMarginPct != null && _brkMarginPct >= 0 && _brkMarginPct < _minMarginPct) {
@@ -737,9 +739,12 @@ export function renderInspectorConn(c) {
       h.push('</div>');
       if (curveManual) {
         const opts = CURVES.map(([v, lbl]) => `<option value="${v}"${v===curveEff?' selected':''}>${lbl}</option>`).join('');
-        h.push(field('Тип / кривая', `<select data-conn-prop="breakerCurve">${opts}</select>`));
+        h.push(`<div class="field">
+          <label>Тип / кривая${helpIcon('MCB кр. B (3–5×In) — резистивная нагрузка, освещение. C (5–10×In) — общее назначение. D (10–20×In) — двигатели, трансформаторы, ёмкостная нагрузка. MCCB (литой корпус) — для In ≥ 100 А, регулируемые уставки. ACB (воздушный) — In ≥ 1000 А, главные вводные автоматы.')}</label>
+          <select data-conn-prop="breakerCurve">${opts}</select>
+        </div>`);
       } else {
-        h.push(`<div class="muted" style="font-size:10px;margin-bottom:4px">Определяется по типу нагрузки (inrush потребителя) и номиналу In.</div>`);
+        h.push(`<div class="muted" style="font-size:10px;margin-bottom:4px">Определяется автоматически по типу нагрузки (inrush потребителя) и номиналу In.${helpIcon('Алгоритм авто-выбора: кратность пуска ≤ 1.2 → B; 1.2–4 → C; > 4 → D. Для In > 125 А автомат типа MCB заменяется на MCCB / ACB по In.')}</div>`);
       }
 
       // Настройки регулируемого автомата — MCCB/ACB/VCB
@@ -771,7 +776,8 @@ export function renderInspectorConn(c) {
         h.push(row('Isd (short-time)',  'Isd', s.Isd, 1,    40000, 10, 'А'));
         h.push(row('tsd (short delay)', 'tsd', s.tsd, 0,    1,    0.05, 'с'));
         h.push(row('Ii (instant)',      'Ii',  s.Ii,  1,    40000, 10, 'А'));
-        h.push(`<div class="muted" style="font-size:10px;margin-top:2px">Ir — уставка длительной перегрузки; Isd·tsd — короткая селективная; Ii — мгновенное отключение. Уставки автоматически отражаются на TCC-графике и в проверке селективности.</div>`);
+        // v0.59.688: общее пояснение по уставкам в виде подсказки на h-блоке.
+        h.push(`<div class="muted" style="font-size:10px;margin-top:2px">Уставки регулируемого автомата (MCCB / ACB).${helpIcon('Ir (long-time, длительная) — уставка тока перегрузки, защищает кабель от долгого нагрева. Isd × tsd (short-time) — селективная задержка, чтобы мелкий автомат успел сработать первым. Ii (instant, мгновенный) — короткое замыкание, отключение без задержки. Уставки отражаются на TCC-графике и в проверке селективности.')}</div>`);
       }
       h.push('</details>');
     }
@@ -784,13 +790,16 @@ export function renderInspectorConn(c) {
         ? 'индивидуальная (на каждую жилу + общий)'
         : (c._parallelProtectionEff === 'common' ? 'общая (один автомат на все жилы)' : 'по умолчанию');
       h.push(`<details class="inspector-section" style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Защита параллельных линий</summary>`);
-      h.push(`<div class="muted" style="font-size:10.5px;margin-bottom:4px;line-height:1.4">Текущий режим: <b>${_effLabel}</b>. Для «общей» защиты координация In ≤ Iz·n — условная (общий автомат не гарантирует отключение отдельной жилы при её повреждении).</div>`);
+      h.push(`<div class="muted" style="font-size:10.5px;margin-bottom:4px;line-height:1.4">Текущий режим: <b>${_effLabel}</b>.</div>`);
       const selOpts = [
         ['',           `— по настройкам проекта (сейчас: ${_globalMode === 'individual' ? 'индивидуальная' : 'общая'})`],
         ['individual', 'Индивидуальная защита (per-line + общий)'],
         ['common',     'Общая защита (один автомат на все жилы)'],
       ].map(([v, l]) => `<option value="${v}"${v === _curMode ? ' selected' : ''}>${l}</option>`).join('');
-      h.push(field('Режим', `<select data-conn-prop="parallelProtection">${selOpts}</select>`));
+      h.push(`<div class="field">
+        <label>Режим${helpIcon('Индивидуальная защита (рекомендуется): на каждую параллельную жилу свой автомат + общий вводной. Гарантирует отключение повреждённой жилы. Общая защита: один автомат на все жилы. Допустимо если линии идентичны и нагрузка симметрична, но не гарантирует 100% координации Iz·n при повреждении одной жилы.')}</label>
+        <select data-conn-prop="parallelProtection">${selOpts}</select>
+      </div>`);
       h.push('</details>');
     }
 
