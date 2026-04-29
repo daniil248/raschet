@@ -12,6 +12,7 @@ import { render } from '../render.js';
 import { mountBatteryPicker } from '../../../shared/battery-picker.js';
 import { readUpsDcParams, mountUpsPicker, applyUpsModel } from '../../../shared/ups-picker.js';
 import { getTerm, getTermTooltip } from '../../methods/terms.js';
+import { rtmInfoBlock } from './rtm-block.js';
 import { listUpses } from '../../../shared/ups-catalog.js';
 // v0.59.386: реестр типов ИБП-плагинов (см. shared/ups-types/).
 import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from '../../../shared/ups-types/index.js';
@@ -2796,5 +2797,6 @@ export function upsStatusBlock(n) {
       parts.push(`<span style="color:#15803d">✓ Параллель валидна: <b>${n._parallelPeerCount} × ${fmt(n.capacityKw)} kW</b> на общей шине, нагрузка делится поровну.</span>`);
     }
   }
-  return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>`;
+  // v0.59.667: справка по РТМ 36.18.32.4-92 — общий хелпер rtmInfoBlock.
+  return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>${rtmInfoBlock(n)}`;
 }

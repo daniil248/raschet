@@ -9,6 +9,7 @@ import { render } from '../render.js';
 import { isTagUnique } from '../graph.js';
 import { consumerGroupItems } from '../electrical.js';
 import { getTerm, getTermTooltip } from '../../methods/terms.js';
+import { rtmInfoBlock } from './rtm-block.js';
 // Фаза 1.19.7: panel-catalog / panel-picker больше не используются в
 // инлайн-модалке параметров щита. Подбор оболочки НКУ перенесён в
 // wizard-конфигуратор (panel-config/), избавляемся от неиспользуемых
@@ -2322,37 +2323,8 @@ export function panelStatusBlock(n) {
       }
     }
   }
-  // v0.59.666: справка по РТМ 36.18.32.4-92 — n_э, Кмакс, Ки.ср, P_ср, Q_ср, S_макс.
-  // Юзер: «нужны расчёты максимума для прохождения сертификации Uptime
-  // Institute и расчёты для получения ТУ». РТМ-параметры считаются в
-  // recalc.js всегда (n._rtmMax заполняется независимо от calcMethod),
-  // но активно применяются только при calcMethod='rtm'. Этот блок
-  // показывает их для верификации и отчётов.
-  const rtm = n._rtmMax;
-  const rtmHtml = (rtm && Number.isFinite(rtm.Pmax) && rtm.count > 0)
-    ? (() => {
-        const isActive = (GLOBAL.calcMethod === 'rtm');
-        const bg = isActive ? '#e8f5e9' : '#f5f5f5';
-        const border = isActive ? '#4caf50' : '#cfd6df';
-        const head = isActive
-          ? '✓ РТМ 36.18.32.4-92 (активная методика)'
-          : 'ℹ РТМ 36.18.32.4-92 (справочно)';
-        return `<div class="inspector-section">
-          <div style="font-size:11px;padding:6px 8px;background:${bg};border-left:3px solid ${border};border-radius:3px;line-height:1.7">
-            <b style="font-size:11px;color:#37474f">${head}</b><br>
-            <span class="muted">ЭП в группе:</span> <b>${rtm.count}</b><br>
-            <span class="muted">n_э (эфф. число):</span> <b>${rtm.ne ? rtm.ne.toFixed(1) : '—'}</b><br>
-            <span class="muted">Ки.ср (средневзв.):</span> <b>${rtm.kuAvg ? rtm.kuAvg.toFixed(3) : '—'}</b><br>
-            <span class="muted">Кмакс:</span> <b>${rtm.Kmax ? rtm.Kmax.toFixed(3) : '—'}</b>
-            ${rtm.KmaxQ ? ` · Кмакс' (реакт.): <b>${rtm.KmaxQ.toFixed(2)}</b>` : ''}<br>
-            <span class="muted">P_ср = Σ Ки×P_ном:</span> <b>${fmt(rtm.Pavg || 0)} kW</b><br>
-            <span class="muted">P_макс = Кмакс × P_ср:</span> <b style="color:#1565c0">${fmt(rtm.Pmax || 0)} kW</b><br>
-            <span class="muted">Q_макс:</span> <b>${fmt(rtm.Qmax || 0)} kvar</b> ·
-            <span class="muted">S_макс:</span> <b>${fmt(rtm.Smax || 0)} kVA</b>
-          </div>
-        </div>`;
-      })()
-    : '';
-  return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>${rtmHtml}`;
+  // v0.59.667: справка по РТМ 36.18.32.4-92 — общий хелпер rtmInfoBlock
+  // (см. inspector/rtm-block.js). Раньше HTML дублировался в 3 местах.
+  return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>${rtmInfoBlock(n)}`;
 }
 
