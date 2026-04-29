@@ -83,6 +83,44 @@ export function mapBundling(fromMid, toMid, value) {
   return value;
 }
 
+// v0.59.726: маппинг cableType (multi/single/solid/busbar).
+// IEC: multi, single, solid (rigid, до 10 мм²), busbar (шинопровод)
+// ПУЭ: multi (3-жильный), single (одножильный) — solid и busbar не выделены
+//      в таблицах ПУЭ; используем single для solid (одна жила) и multi
+//      для busbar (нет аналога — fallback).
+const IEC_TO_PUE_CTYPE = {
+  multi:  'multi',
+  single: 'single',
+  solid:  'single',  // цельная жила = одножильный для ПУЭ
+  busbar: 'multi',   // шинопровод — нет в ПУЭ, fallback на multi
+};
+const PUE_TO_IEC_CTYPE = {
+  multi:  'multi',
+  single: 'single',
+};
+
+/** Маппинг cableType при смене методики. */
+export function mapCableType(fromMid, toMid, value) {
+  const f = _norm(fromMid), t = _norm(toMid);
+  if (f === t) return value;
+  if (f === 'iec' && t === 'pue') return IEC_TO_PUE_CTYPE[value] || 'multi';
+  if (f === 'pue' && t === 'iec') return PUE_TO_IEC_CTYPE[value] || 'multi';
+  return value;
+}
+
+// Изоляция: IEC PVC + XLPE; ПУЭ только PVC. XLPE → PVC для ПУЭ.
+const IEC_TO_PUE_INSUL = { PVC: 'PVC', XLPE: 'PVC' };
+const PUE_TO_IEC_INSUL = { PVC: 'PVC' };
+
+/** Маппинг изоляции (insulation). XLPE доступен только в IEC; для ПУЭ → PVC. */
+export function mapInsulation(fromMid, toMid, value) {
+  const f = _norm(fromMid), t = _norm(toMid);
+  if (f === t) return value;
+  if (f === 'iec' && t === 'pue') return IEC_TO_PUE_INSUL[value] || 'PVC';
+  if (f === 'pue' && t === 'iec') return PUE_TO_IEC_INSUL[value] || 'PVC';
+  return value;
+}
+
 /**
  * Хождение по схеме и трансляция всех c.installMethod / c.bundling +
  * GLOBAL.defaultInstallMethod при смене методики. Применять ПЕРЕД
@@ -98,12 +136,29 @@ export function mapBundling(fromMid, toMid, value) {
 export function migrateConnsForMethodChange(state, GLOBAL, fromMid, toMid) {
   if (_norm(fromMid) === _norm(toMid)) return 0;
   let migrated = 0;
-  // Глобальный default
-  if (GLOBAL && GLOBAL.defaultInstallMethod) {
-    const next = mapInstallMethod(fromMid, toMid, GLOBAL.defaultInstallMethod);
-    if (next && next !== GLOBAL.defaultInstallMethod) {
-      GLOBAL.defaultInstallMethod = next;
-      migrated++;
+  // Глобальные defaults
+  if (GLOBAL) {
+    if (GLOBAL.defaultInstallMethod) {
+      const next = mapInstallMethod(fromMid, toMid, GLOBAL.defaultInstallMethod);
+      if (next && next !== GLOBAL.defaultInstallMethod) {
+        GLOBAL.defaultInstallMethod = next;
+        migrated++;
+      }
+    }
+    // v0.59.726: defaultCableType и defaultInsulation тоже мигрируем
+    if (GLOBAL.defaultCableType) {
+      const next = mapCableType(fromMid, toMid, GLOBAL.defaultCableType);
+      if (next && next !== GLOBAL.defaultCableType) {
+        GLOBAL.defaultCableType = next;
+        migrated++;
+      }
+    }
+    if (GLOBAL.defaultInsulation) {
+      const next = mapInsulation(fromMid, toMid, GLOBAL.defaultInsulation);
+      if (next && next !== GLOBAL.defaultInsulation) {
+        GLOBAL.defaultInsulation = next;
+        migrated++;
+      }
     }
   }
   // Per-connection overrides
@@ -120,6 +175,21 @@ export function migrateConnsForMethodChange(state, GLOBAL, fromMid, toMid) {
         const nextB = mapBundling(fromMid, toMid, c.bundling);
         if (nextB && nextB !== c.bundling) {
           c.bundling = nextB;
+          migrated++;
+        }
+      }
+      // v0.59.726: cableType и insulation
+      if (c.cableType) {
+        const nextC = mapCableType(fromMid, toMid, c.cableType);
+        if (nextC && nextC !== c.cableType) {
+          c.cableType = nextC;
+          migrated++;
+        }
+      }
+      if (c.insulation) {
+        const nextI = mapInsulation(fromMid, toMid, c.insulation);
+        if (nextI && nextI !== c.insulation) {
+          c.insulation = nextI;
           migrated++;
         }
       }
