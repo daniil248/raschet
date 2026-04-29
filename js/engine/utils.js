@@ -53,3 +53,20 @@ export function field(label, html) {
 export function checkField(label, prop, val) {
   return `<div class="field check"><input type="checkbox" data-prop="${prop}"${val ? ' checked' : ''}><label>${label}</label></div>`;
 }
+
+// v0.59.685: «?»-иконка с подсказкой, появляющейся в всплывающем окне
+// при наведении. Пользователь: «подсказки и справку показывай только в
+// всплывающем окне над параметром или над знаком вопроса в кружке после
+// названия параметра».
+//
+// Использование: helpIcon('Краткое описание параметра. Аналоги в других
+// методиках. Формула. Ссылка на нормативку.') возвращает HTML span,
+// который встраивается рядом с <label> любого поля.
+//
+// CSS-классы: .help-icon (синий кружок «?» в углу), .help-icon[title]:hover
+// показывает нативный browser tooltip. Для более богатых тултипов с
+// форматированием можно позже подменить на JS-popover.
+export function helpIcon(tip) {
+  if (!tip) return '';
+  return `<span class="help-icon" title="${escAttr(tip)}" tabindex="0" aria-label="Справка">?</span>`;
+}

@@ -29,6 +29,33 @@ input, select { font: inherit; }
 .hidden { display: none !important; }
 .muted { color: #9aa3b5; font-size: 13px; }
 
+/* v0.59.685: Иконка «?» с подсказкой/справкой по параметру.
+   Пользователь: «подсказки и справку показывай только в всплывающем окне
+   над параметром или над знаком вопроса в кружке после названия параметра».
+   Используется через helpIcon(tip) из js/engine/utils.js. Tooltip — нативный
+   браузерный (атрибут title). */
+.help-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  background: #bbdefb;
+  color: #1565c0;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+  cursor: help;
+  user-select: none;
+  vertical-align: middle;
+  font-family: -apple-system, sans-serif;
+}
+.help-icon:hover, .help-icon:focus {
+  background: #90caf9;
+  outline: none;
+}
+
 /* ================= Header ================= */
 #header {
   flex: none;

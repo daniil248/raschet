@@ -2,7 +2,7 @@
 // Выделено из inspector.js. Использует прямые импорты зависимостей.
 import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, CONSUMER_CATEGORIES, NODE_H, STARTER_TYPES } from '../constants.js';
 import { state, uid } from '../state.js';
-import { escHtml, escAttr, fmt, field, flash } from '../utils.js';
+import { escHtml, escAttr, fmt, field, flash, helpIcon } from '../utils.js';
 import { effectiveTag } from '../zones.js';
 import { nextFreeTag } from '../graph.js';
 import { snapshot, notifyChange } from '../history.js';
@@ -174,34 +174,65 @@ export function openConsumerParamsModal(n) {
   // (readonly на select не работает). Отвязка — кнопкой на «Общее».
   const _lk = n.catalogLocked ? ' disabled title="Привязано к каталогу — отвяжите на вкладке Общее"' : '';
   const _lkIcon = n.catalogLocked ? ' 🔒' : '';
-  h.push(`<div id="cp-demandKw-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? 'display:none' : ''}">
-    <label id="cp-demandKw-label">${_demandLabel}${_lkIcon}</label>
-    <input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}"${_lk}>
-  </div>`);
-  // v0.59.651: парный ввод тока, А — двунаправленный пересчёт с мощностью.
-  // Юзер: «для потребителей добавь сразу возможность указывать как мощность
-  // так и ток, с автоматическим пересчётом других параметров».
-  // I = P × 1000 / (U × cos φ × √3 фазный коэф.); P = I × U × cos φ × √3 / 1000.
-  // При изменении одного поля пересчитываем другое — ведущим является тот,
-  // в котором юзер только что печатал. cos φ и фаза берутся из текущих
-  // значений в форме; при их изменении ток пересчитывается из мощности.
-  // v0.59.656: переименовали в «Номинальный ток» — связан с установленной
-  // мощностью (P_ном), а не с расчётной. Юзер: «почему расчётные значения
-  // не связаны с номинальными через коэффициенты». Расчётная нагрузка
-  // (с учётом Ки и множителя) — в отдельном блоке ниже.
-  const _nomIlabel = (_cpCount > 1)
-    ? (_isTotalDisplay ? 'Номинальный ток группы I, А' : 'Номинальный ток (на единицу) I, А')
-    : 'Номинальный ток I, А';
-  h.push(`<div id="cp-demandA-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? 'display:none' : ''}">
-    <label>${_nomIlabel} ${_lkIcon}</label>
-    <input type="number" id="cp-demandA" min="0" step="0.1" value=""${_lk}>
-    <div class="muted" style="font-size:10px;margin-top:2px">Связан с «${_demandLabel.replace(', kW','')}» через U/cos φ/фазу: I = P × 1000 / (U × cos φ × √3<sub>3ф</sub>). При изменении одного поля автоматически пересчитывается другое.</div>
-  </div>`);
   // v0.59.91: общие параметры нужны раньше (в карточках членов group'а для
   // «унаследовать от родителя» и в основных селектах ниже).
   const levels = GLOBAL.voltageLevels || [];
   const curIdx = (typeof n.voltageLevelIdx === 'number') ? n.voltageLevelIdx : 0;
   const ph = n.phase || '3ph';
+  // v0.59.684: ПЕРЕУПОРЯДОЧИВАНИЕ полей в модалке параметров потребителя.
+  // Пользователь: «Уровень напряжения, Фазность, cos φ размести в самом
+  // начале, так как эти значения общие, потом номинальная мощность, это
+  // из паспорта и только потом расчетные значения».
+  // Порядок:
+  //   1. Уровень напряжения
+  //   2. Фазность
+  //   3. cos φ (общий параметр для расчёта)
+  //   4. Установленная мощность (паспорт)
+  //   5. Номинальный ток I (производное от мощности)
+  //   6. Группа (если individual)
+  //   7. Ки
+  //   8. Множитель нагрузки
+  //   9. Расчётная нагрузка (P × Ки × множитель)
+  //  10. Кратность пуска
+  //  11. Запас автомата + Кривая автомата
+  let vOpts = '';
+  for (let i = 0; i < levels.length; i++) {
+    vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
+  }
+  // v0.59.685: подсказка вынесена в «?» иконку рядом с лейблом.
+  h.push(`<div class="field">
+    <label>Уровень напряжения${helpIcon('Класс напряжения для расчёта тока. Должен совпадать с классом источника. В будущем будет наследоваться от питающей линии (расчёт через падение напряжения).')}</label>
+    <select id="cp-voltage">${vOpts}</select>
+  </div>`);
+  h.push(`<div class="field">
+    <label>Фазность${helpIcon('3-фазный — нагрузка на 3 фазы (cos φ × √3 в формуле тока). 2-фазный — split-phase (две фазы + нейтраль). 1-фазный — фаза + нейтраль (vLN, без √3).')}</label>
+    <select id="cp-phase">
+      <option value="3ph"${ph === '3ph' ? ' selected' : ''}>3-фазный</option>
+      <option value="2ph"${ph === '2ph' ? ' selected' : ''}>2-фазный (split-phase)</option>
+      <option value="1ph"${ph === '1ph' || ph === 'A' || ph === 'B' || ph === 'C' ? ' selected' : ''}>1-фазный</option>
+    </select>
+  </div>`);
+  // v0.59.657: лейблы и подсказки полей зависят от выбранной методики.
+  const _method = GLOBAL.calcMethod || 'iec';
+  const _cosTerm = getTerm('powerFactor', _method);
+  const _cosTip  = getTermTooltip('powerFactor', _method);
+  h.push(`<div class="field">
+    <label>${escHtml(_cosTerm.label)}${_lkIcon}${_cosTip ? helpIcon(_cosTip) : ''}</label>
+    <input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}"${_lk}>
+  </div>`);
+  // ===== Установленная (номинальная) мощность — паспорт =====
+  h.push(`<div id="cp-demandKw-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? 'display:none' : ''}">
+    <label id="cp-demandKw-label">${_demandLabel}${_lkIcon}</label>
+    <input type="number" id="cp-demandKw" min="0" step="0.1" value="${_displayDemand}"${_lk}>
+  </div>`);
+  // Парный ввод тока — производное от мощности через U/cos φ/фазу.
+  const _nomIlabel = (_cpCount > 1)
+    ? (_isTotalDisplay ? 'Номинальный ток группы I, А' : 'Номинальный ток (на единицу) I, А')
+    : 'Номинальный ток I, А';
+  h.push(`<div id="cp-demandA-wrap" class="field" style="${_groupMode === 'individual' && _cpCount > 1 ? 'display:none' : ''}">
+    <label>${_nomIlabel}${_lkIcon}${helpIcon(`Связан с «${_demandLabel.replace(', kW','')}» через U/cos φ/фазу: I = P × 1000 / (U × cos φ × √3 для 3ф). При изменении одного поля автоматически пересчитывается другое.`)}</label>
+    <input type="number" id="cp-demandA" min="0" step="0.1" value=""${_lk}>
+  </div>`);
   // v0.59.91: групповой потребитель (individual) = оболочка над N членами.
   // Каждый член = «обычный потребитель» со своими параметрами (не только
   // name+kW как было раньше). Раскладка — карточки, как секции многосекционного
@@ -267,55 +298,41 @@ export function openConsumerParamsModal(n) {
     </div>
   </div>`);
 
-  let vOpts = '';
-  for (let i = 0; i < levels.length; i++) {
-    vOpts += `<option value="${i}"${i === curIdx ? ' selected' : ''}>${escHtml(formatVoltageLevelLabel(levels[i]))}</option>`;
-  }
-  h.push(field('Уровень напряжения', `<select id="cp-voltage">${vOpts}</select>`));
-  h.push(field('Фазность', `<select id="cp-phase">
-    <option value="3ph"${ph === '3ph' ? ' selected' : ''}>3-фазный</option>
-    <option value="2ph"${ph === '2ph' ? ' selected' : ''}>2-фазный (split-phase)</option>
-    <option value="1ph"${ph === '1ph' || ph === 'A' || ph === 'B' || ph === 'C' ? ' selected' : ''}>1-фазный</option>
-  </select>`));
-  // v0.59.657: лейблы и подсказки полей зависят от выбранной методики
-  // (юзер: «термины которые в разных методиках называются по разному —
-  // выводить соответствующее название, в подсказке аналоги и разъяснение»).
-  // Если параметр не используется в методике (isTermUsed=false) — поле
-  // скрывается («поля должны быть связаны с выбранной методикой»).
-  const _method = GLOBAL.calcMethod || 'iec';
-  const _cosTerm = getTerm('powerFactor', _method);
-  const _cosTip  = getTermTooltip('powerFactor', _method);
-  h.push(`<div class="field" title="${escAttr(_cosTip)}">
-    <label>${escHtml(_cosTerm.label)}${_lkIcon}<span class="muted" style="font-size:10px;font-weight:400;margin-left:4px">${escHtml(_cosTerm.aliases)}</span></label>
-    <input type="number" id="cp-cosPhi" min="0.1" max="1" step="0.01" value="${n.cosPhi ?? 0.92}"${_lk}>
-    ${_cosTerm.explain ? `<div class="muted" style="font-size:10px;margin-top:2px">${escHtml(_cosTerm.explain)}</div>` : ''}
-  </div>`);
+  // v0.59.684: блоки «Уровень напряжения / Фазность / cos φ» подняты
+  // выше (см. ранний h.push в начале функции). Здесь — только Ки и
+  // множитель (расчётные значения).
+  // v0.59.685: подсказки и справка показываются только в всплывающем
+  // окне на знаке вопроса «?» рядом с лейблом (см. helpIcon в utils.js).
+  // Пользователь: «подсказки и справку показывай только в всплывающем
+  // окне над параметром или над знаком вопроса в кружке после названия
+  // параметра».
   if (isTermUsed('utilization', _method)) {
     const _kuTerm = getTerm('utilization', _method);
     const _kuTip  = getTermTooltip('utilization', _method);
-    h.push(`<div class="field" title="${escAttr(_kuTip)}">
-      <label>${escHtml(_kuTerm.label)}${_lkIcon}<span class="muted" style="font-size:10px;font-weight:400;margin-left:4px">${escHtml(_kuTerm.aliases)}</span></label>
+    h.push(`<div class="field">
+      <label>${escHtml(_kuTerm.label)}${_lkIcon}${_kuTip ? helpIcon(_kuTip) : ''}</label>
       <input type="number" id="cp-kUse" min="0" max="1" step="0.05" value="${n.kUse ?? 1}"${_lk}>
-      ${_kuTerm.explain ? `<div class="muted" style="font-size:10px;margin-top:2px">${escHtml(_kuTerm.explain)}</div>` : ''}
     </div>`);
   } else {
-    // Поле всё равно создаём (скрытое), чтобы apply-хендлер мог читать значение
     h.push(`<input type="hidden" id="cp-kUse" value="${n.kUse ?? 1}">`);
   }
   // Множитель нагрузки в текущем сценарии (нормальный или аварийный режим).
-  // 1 = 100%, 0 = не считается, 0.5 = 50%.
   if (state.activeModeId) {
     const curMode = (state.modes || []).find(m => m.id === state.activeModeId);
     const lf = (curMode?.overrides?.[n.id]?.loadFactor);
     const lfVal = typeof lf === 'number' ? lf : 1;
-    h.push(field(`Множитель нагрузки (0–3)`,
-      `<input type="number" id="cp-loadFactor" min="0" max="3" step="0.1" value="${lfVal}">`));
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">В текущем сценарии «${escHtml(curMode?.name || '')}». 0 = выключено. Не влияет на другие режимы.</div>`);
+    const _lfTip = `Множитель нагрузки в текущем сценарии «${curMode?.name || ''}». 1.0 = номинал, 0.5 = 50%, 0 = выключено. Не влияет на другие режимы.`;
+    h.push(`<div class="field">
+      <label>Множитель нагрузки (0–3)${helpIcon(_lfTip)}</label>
+      <input type="number" id="cp-loadFactor" min="0" max="3" step="0.1" value="${lfVal}">
+    </div>`);
   } else {
     const nlf = typeof n.normalLoadFactor === 'number' ? n.normalLoadFactor : 1;
-    h.push(field(`Множитель нагрузки (0–3)`,
-      `<input type="number" id="cp-normalLoadFactor" min="0" max="3" step="0.1" value="${nlf}">`));
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">1.0 = номинал, 0.5 = 50%, 0 = выключено.</div>`);
+    const _lfTip = 'Множитель нагрузки. 1.0 = номинал, 0.5 = 50%, 0 = выключено.';
+    h.push(`<div class="field">
+      <label>Множитель нагрузки (0–3)${helpIcon(_lfTip)}</label>
+      <input type="number" id="cp-normalLoadFactor" min="0" max="3" step="0.1" value="${nlf}">
+    </div>`);
   }
   // v0.59.652: Расчётная мощность и ток — двунаправленный пересчёт через Ки.
   // P_расч = P_ном × N × Ки × множитель_нагрузки
@@ -342,8 +359,10 @@ export function openConsumerParamsModal(n) {
         ? 'P_ном × Ки × множитель (на всю группу)'
         : 'P_ном × Ки × множитель (на 1 ед.)')
     : 'P_ном × Ки × множитель';
+  // v0.59.685: подсказки расчётной нагрузки вынесены в «?» иконку.
+  const _calcMainTip = `Расчётная нагрузка = P_ном × Ки × множитель сценария. I_расч = P_расч × 1000 / (U × cos φ × √3 для 3ф). При изменении расчётной P или I — пересчитается Ки. При изменении Ки / множителя / P_ном — пересчитается расчётная.${_calcPerUnit ? ' Для группы суммарная Pрасч и Iрасч показываются справочно ниже.' : ''}`;
   h.push(`<div style="margin-top:6px;padding:8px 10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px">
-    <div class="muted" style="font-size:10px;margin-bottom:4px;font-weight:600;color:#0369a1">📊 Расчётная нагрузка = ${_calcHeader}</div>
+    <div class="muted" style="font-size:10px;margin-bottom:4px;font-weight:600;color:#0369a1">📊 Расчётная нагрузка = ${_calcHeader}${helpIcon(_calcMainTip)}</div>
     <div class="field" style="margin-bottom:4px">
       <label style="font-size:11px">Расчётная мощность P, кВт</label>
       <input type="number" id="cp-calcKw" min="0" step="0.1" value="">
@@ -355,14 +374,13 @@ export function openConsumerParamsModal(n) {
     ${_calcPerUnit
       ? `<div class="muted" id="cp-calcGroupHint" style="font-size:10px;margin-top:4px;color:#0369a1;font-weight:600">Для группы (справочно): P_расч_группы = <span id="cp-calcKwGroup">—</span> кВт · I_расч_группы = <span id="cp-calcAGroup">—</span> А</div>`
       : ''}
-    <div class="muted" style="font-size:10px;margin-top:4px;line-height:1.4">Связано с номинальной нагрузкой через коэффициенты: P_расч = P_ном × Ки × множитель; I_расч = P_расч × 1000 / (U × cos φ × √3<sub>3ф</sub>). При изменении расчётной P или I пересчитается Ки. При изменении Ки / множителя / P_ном — пересчитается расчётная.</div>
   </div>`);
-  // v0.59.657: methodology-aware inrush label
+  // v0.59.657: methodology-aware inrush label с «?» иконкой подсказки.
   if (isTermUsed('inrush', _method)) {
     const _inTerm = getTerm('inrush', _method);
     const _inTip  = getTermTooltip('inrush', _method);
-    h.push(`<div class="field" title="${escAttr(_inTip)}">
-      <label>${escHtml(_inTerm.label)}${_lkIcon}<span class="muted" style="font-size:10px;font-weight:400;margin-left:4px">${escHtml(_inTerm.aliases)}</span></label>
+    h.push(`<div class="field">
+      <label>${escHtml(_inTerm.label)}${_lkIcon}${_inTip ? helpIcon(_inTip) : ''}</label>
       <input type="number" id="cp-inrush" min="1" max="10" step="0.1" value="${n.inrushFactor ?? 1}"${_lk}>
     </div>`);
   } else {
@@ -372,19 +390,23 @@ export function openConsumerParamsModal(n) {
   // Запас по автомату — override категории/авто. Пустое поле = авто по inrush.
   {
     const mv = (typeof n.breakerMarginPct === 'number') ? String(n.breakerMarginPct) : '';
-    h.push(field('Запас по автомату, %' + _lkIcon, `<input type="number" id="cp-brkMargin" min="0" max="100" step="5" value="${mv}" placeholder="авто"${_lk}>`));
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Пусто = авто по inrush (лёгкий 20%, средний 35%, тяжёлый 50%). Используется для подбора номинала автомата защиты линии.</div>`);
+    h.push(`<div class="field">
+      <label>Запас по автомату, %${_lkIcon}${helpIcon('Пусто = авто по кратности пуска (лёгкий 20%, средний 35%, тяжёлый 50%). Используется для подбора номинала автомата защиты линии.')}</label>
+      <input type="number" id="cp-brkMargin" min="0" max="100" step="5" value="${mv}" placeholder="авто"${_lk}>
+    </div>`);
   }
   // Кривая/тип автомата — подсказка для авто-подбора
   {
     const cv = n.curveHint || '';
-    h.push(field('Кривая автомата (подсказка)' + _lkIcon, `<select id="cp-curveHint"${_lk}>
-      <option value=""${cv===''?' selected':''}>авто (по inrush и In)</option>
-      <option value="MCB_B"${cv==='MCB_B'?' selected':''}>MCB кр. B — резистивная, освещение</option>
-      <option value="MCB_C"${cv==='MCB_C'?' selected':''}>MCB кр. C — общее назначение</option>
-      <option value="MCB_D"${cv==='MCB_D'?' selected':''}>MCB кр. D — двигатели, трансформаторы</option>
-    </select>`));
-    h.push(`<div class="muted" style="font-size:10px;margin-top:-2px">Актуально для In ≤ 125 А. Выше — автоматически MCCB/ACB.</div>`);
+    h.push(`<div class="field">
+      <label>Кривая автомата (подсказка)${_lkIcon}${helpIcon('Актуально для In ≤ 125 А. Выше — автоматически MCCB/ACB. Кривая B — резистивная (освещение), C — общее назначение, D — двигатели/трансформаторы.')}</label>
+      <select id="cp-curveHint"${_lk}>
+        <option value=""${cv===''?' selected':''}>авто (по inrush и In)</option>
+        <option value="MCB_B"${cv==='MCB_B'?' selected':''}>MCB кр. B — резистивная, освещение</option>
+        <option value="MCB_C"${cv==='MCB_C'?' selected':''}>MCB кр. C — общее назначение</option>
+        <option value="MCB_D"${cv==='MCB_D'?' selected':''}>MCB кр. D — двигатели, трансформаторы</option>
+      </select>
+    </div>`);
   }
   // v0.59.621: Тип пуска и K_рез (CRF). Влияет ТОЛЬКО при питании от ИБП.
   // На обычной сети без ИБП — безразлично.
