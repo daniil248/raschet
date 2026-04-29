@@ -2060,27 +2060,38 @@ export function renderNodes() {
       // (с током). Юзер: «для потребителей добавь сразу возможность
       // указывать как мощность так и ток, с автоматическим пересчётом».
       const cnt = consumerCountEffective(n);
-      const Pnom = consumerTotalDemandKw(n); // demandKw × count или Σ items
+      // v0.59.660: для UNIFORM-группы (count > 1, demandKw на единицу)
+      // вся карточка показывается ПО 1 ЕДИНИЦЕ, не по группе. Юзер:
+      // «мощность указана как 7 кВт а ты указал опять для всех 8, 56 кВт.
+      // Здесь должны быть данные только для одного потребителя, так как
+      // кабель у каждого свой». Под карточкой остаётся подпись
+      // «count × demandKw = totalKw» (см. далее в render.js) — она
+      // и показывает суммарную мощность группы.
+      // Для individual-режима (items[] с разными мощностями) per-unit не
+      // имеет смысла — оставляем как было (сумма items).
+      const _isUniformGroup = cnt > 1 && n.groupMode !== 'individual';
+      const _isIndivGroup = n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 1;
       const cos = Math.max(0.1, Math.min(1, Number(n.cosPhi) || 0.92));
+      // Pnom: total → per-unit для uniform-группы
+      const PnomTotal = consumerTotalDemandKw(n); // demandKw × count или Σ items
+      const Pnom = _isUniformGroup ? (PnomTotal / cnt) : PnomTotal;
       const Inom = (Pnom > 0 && nodeVoltage(n))
         ? computeCurrentA(Pnom, nodeVoltage(n), cos, isThreePhase(n))
         : 0;
-      const Pcur = Number(n._loadKw) || 0;
-      const Icur = Number(n._loadA) || (Pcur > 0 && nodeVoltage(n)
-        ? computeCurrentA(Pcur, nodeVoltage(n), cos, isThreePhase(n)) : 0);
+      const PcurTotal = Number(n._loadKw) || 0;
+      const Pcur = _isUniformGroup ? (PcurTotal / cnt) : PcurTotal;
+      const IcurTotal = Number(n._loadA) || (PcurTotal > 0 && nodeVoltage(n)
+        ? computeCurrentA(PcurTotal, nodeVoltage(n), cos, isThreePhase(n)) : 0);
+      const Icur = _isUniformGroup ? (IcurTotal / cnt) : IcurTotal;
       if (!n._powered) { statusLine = 'нет питания'; loadCls += ' off'; }
       // v0.59.658: «доступная мощность» — сколько ЭП может потребить без
       // срабатывания защиты или превышения ампасити кабеля. Считается в
       // recalc.js как min(c._maxA, c._breakerIn). Юзер: «для потребителя
       // можно добавить доступную мощность, которая вычисляется по
       // длительному допустимому току кабеля и его защитному автомату».
-      // v0.59.659: для ГРУППЫ потребителей «доступно» НЕ показываем —
-      // юзер: «для групповой испортил, здесь должны быть данные только
-      // для одного потребителя, так как кабель у каждого свой». Кабель
-      // в схеме — на 1 ед., а текущая/номин — на всю группу. Смешивать
-      // эти величины в одной карточке нельзя. Для group case данные
-      // на 1 ед. доступны через инспектор каждого члена.
-      const _isGroup = (cnt > 1) || (n.groupMode === 'individual' && Array.isArray(n.items) && n.items.length > 1);
+      // Для uniform-группы _availableKw / _availableA уже на 1 ед. (кабель
+      // привязан к одному потребителю в схеме), поэтому показываются как
+      // есть. Для individual-группы скрываем (см. v0.59.659).
       const _availLabel = n._availableLimit === 'cable'
         ? 'доступно (кабель)'
         : n._availableLimit === 'breaker'
@@ -2089,7 +2100,7 @@ export function renderNodes() {
       loadLines = [
         _fmtRow('текущая', Pcur, Icur),
         _fmtRow('номин', Pnom, Inom),
-        (!_isGroup && Number.isFinite(n._availableA) && n._availableA > 0)
+        (!_isIndivGroup && Number.isFinite(n._availableA) && n._availableA > 0)
           ? _fmtRow(_availLabel, n._availableKw, n._availableA)
           : null,
       ].filter(Boolean);
