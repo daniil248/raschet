@@ -609,24 +609,30 @@ function sectionConsumers() {
   // способности линии (limit_max − Iрасч), per-line. Удобно для
   // быстрого скана: видно где ещё есть запас, а где линия близка к
   // пределу. См. n._freeA в recalc.js.
+  // v0.59.707: добавлена колонка «ΔU, %» — накопленное падение
+  // напряжения от источника до потребителя (n._deltaUPct). Норма
+  // ≤ 5% по IEC 60364-5-525, превышение → требуется увеличить
+  // сечение питающих кабелей.
   const cols = [
     { label: 'Обозн.',       width: 18 },
-    { label: 'Имя',          width: 38 },
-    { label: 'Фаза',         align: 'center', width: 12 },
-    { label: 'Pед, кВт',     align: 'right', width: 14 },
-    { label: 'Кол.',         align: 'right', width: 10 },
-    { label: _kuShortC,      align: 'right', width: 10 },
-    { label: 'Pрасч, кВт',   align: 'right', width: 16 },
-    { label: _cosShortC,     align: 'right', width: 12 },
-    { label: 'Iуст, А',      align: 'right', width: 12 },
-    { label: 'Iрасч, А',     align: 'right', width: 12 },
-    { label: 'Iпуск, А',     align: 'right', width: 12 },
-    { label: 'Свободно, А',  align: 'right', width: 13 },
+    { label: 'Имя',          width: 36 },
+    { label: 'Фаза',         align: 'center', width: 10 },
+    { label: 'Pед, кВт',     align: 'right', width: 13 },
+    { label: 'Кол.',         align: 'right', width: 8 },
+    { label: _kuShortC,      align: 'right', width: 8 },
+    { label: 'Pрасч, кВт',   align: 'right', width: 14 },
+    { label: _cosShortC,     align: 'right', width: 10 },
+    { label: 'Iуст, А',      align: 'right', width: 11 },
+    { label: 'Iрасч, А',     align: 'right', width: 11 },
+    { label: 'Iпуск, А',     align: 'right', width: 11 },
+    { label: 'ΔU, %',        align: 'right', width: 11 },
+    { label: 'Свободно, А',  align: 'right', width: 12 },
     { label: 'Статус' },
   ];
   let total = 0;
   let totalFreeKw = 0;
   let overloadCount = 0;
+  let vdropOverlimit = 0;
   const rows = items.map(c => {
     const per = Number(c.demandKw) || 0;
     const cnt = Math.max(1, Number(c.count) || 1);
@@ -643,14 +649,21 @@ function sectionConsumers() {
     }
     if (c._breakerOverload) overloadCount++;
     const freeA = (Number.isFinite(c._freeA) && c._freeA > 0) ? fmt(c._freeA) : '—';
-    // v0.59.678: статус — «ПЕРЕГРУЗ» если фиксированный автомат/кабель не
-    // справляется, иначе «без пит» / «ок».
+    // v0.59.707: накопленное падение напряжения от источника
+    const vdrop = Number(c._deltaUPct) || 0;
+    const vdropStr = vdrop > 0 ? `-${vdrop.toFixed(2)}` : '0';
+    if (vdrop > 5) vdropOverlimit++;
+    // v0.59.678/707: статус — приоритет: ПЕРЕГРУЗ > ВНЕ ±10% > ΔU>5% > ОК
     let st;
     if (c._breakerOverload) {
       const info = c._breakerOverloadInfo || {};
       st = `⚠ ПЕРЕГРУЗ (Iрасч ${fmt(info.designA || 0)} > In ${info.breakerIn || 0})`;
     } else if (!c._powered) {
       st = 'БЕЗ ПИТ';
+    } else if (vdrop > 10) {
+      st = `⛔ ΔU=-${vdrop.toFixed(1)}% (вне ±10%)`;
+    } else if (vdrop > 5) {
+      st = `⚠ ΔU=-${vdrop.toFixed(1)}%`;
     } else {
       st = 'ок';
     }
@@ -660,6 +673,7 @@ function sectionConsumers() {
       fmt(sum),
       (Number(c.cosPhi) || 0.92).toFixed(2),
       fmt(c._nominalA || 0), fmt(c._ratedA || 0), fmt(c._inrushA || 0),
+      vdropStr,
       freeA,
       st,
     ];
@@ -683,6 +697,9 @@ function sectionConsumers() {
     if (overloadCount > 0) {
       text.push(`⚠ ПЕРЕГРУЖЕНО ЛИНИЙ: ${overloadCount} (расчётный ток превышает зафиксированный автомат — см. колонку «Статус»)`);
     }
+    if (vdropOverlimit > 0) {
+      text.push(`⚠ С ПАДЕНИЕМ НАПРЯЖЕНИЯ > 5%: ${vdropOverlimit} (норма IEC 60364-5-525 нарушена — см. колонку «ΔU, %»)`);
+    }
     text.push('');
     blocks.push(B.h2('Потребители'));
     blocks.push(B.table(blockCols(cols), rows));
@@ -690,6 +707,9 @@ function sectionConsumers() {
     blocks.push(B.paragraph('ИТОГО свободно (резерв) по линиям потребителей: ' + fmt(totalFreeKw) + ' кВт. Это сумма свободной пропускной способности по каждой питающей линии — можно догрузить без замены кабелей и автоматов.'));
     if (overloadCount > 0) {
       blocks.push(B.paragraph(`⚠ Перегружено линий: ${overloadCount}. На этих линиях расчётный ток превышает номинал зафиксированного автомата — авто-пересчёт отключён, требуется ручная корректировка автомата/сечения или снижение нагрузки. Подробности — в колонке «Статус» и в разделе «Проверки и предупреждения».`));
+    }
+    if (vdropOverlimit > 0) {
+      blocks.push(B.paragraph(`⚠ Линий с накопленным падением напряжения > 5%: ${vdropOverlimit}. Превышение нормы IEC 60364-5-525 — рекомендуется увеличить сечение питающих кабелей. При ΔU > 10% потребители работают вне допустимых пределов ГОСТ 32144-2013 (±10%). См. колонку «ΔU, %» — отрицательные значения превышают порог.`));
     }
   } else {
     text.push('В схеме нет потребителей.');
