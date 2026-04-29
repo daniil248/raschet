@@ -424,21 +424,26 @@ function sectionPanels() {
   // v0.59.682: добавлены колонки «Свободно, А» (резерв на вводе щита)
   // и «Статус» — сразу видно где есть запас и где входной автомат
   // зафиксирован и не справляется.
+  // v0.59.708: добавлена колонка «ΔU, %» — накопленное падение
+  // напряжения от источника до щита (p._deltaUPct), как и в отчёте
+  // потребителей.
   const cols = [
     { label: 'Обозн.',      width: 18 },
-    { label: 'Имя',         width: 32 },
-    { label: 'Iном, А',     align: 'right', width: 14 },
-    { label: 'Вх/Вых',      align: 'center', width: 12 },
-    { label: 'Pрасч, кВт',  align: 'right', width: 16 },
-    { label: 'Iрасч, А',    align: 'right', width: 12 },
-    { label: _ksimShort,    align: 'right', width: 10 },
-    { label: _cosShort,     align: 'right', width: 12 },
-    { label: 'Свободно, А', align: 'right', width: 13 },
-    { label: 'Режим',       align: 'center', width: 10 },
+    { label: 'Имя',         width: 30 },
+    { label: 'Iном, А',     align: 'right', width: 12 },
+    { label: 'Вх/Вых',      align: 'center', width: 11 },
+    { label: 'Pрасч, кВт',  align: 'right', width: 14 },
+    { label: 'Iрасч, А',    align: 'right', width: 11 },
+    { label: _ksimShort,    align: 'right', width: 9 },
+    { label: _cosShort,     align: 'right', width: 10 },
+    { label: 'ΔU, %',       align: 'right', width: 10 },
+    { label: 'Свободно, А', align: 'right', width: 12 },
+    { label: 'Режим',       align: 'center', width: 9 },
     { label: 'Статус' },
   ];
   let totalFreeKwPanels = 0;
   let panelOverloadCount = 0;
+  let panelVdropOverlimit = 0;
   const rows = items.map(p => {
     const mode = p.switchMode === 'manual' ? 'РУЧН'
                : p.switchMode === 'parallel' ? 'ЩИТ'
@@ -446,6 +451,9 @@ function sectionPanels() {
                : 'АВР';
     const freeA = (Number.isFinite(p._freeA) && p._freeA > 0) ? fmt(p._freeA) : '—';
     if (Number.isFinite(p._freeKw) && p._freeKw > 0) totalFreeKwPanels += p._freeKw;
+    const vdrop = Number(p._deltaUPct) || 0;
+    const vdropStr = vdrop > 0 ? `-${vdrop.toFixed(2)}` : '0';
+    if (vdrop > 5) panelVdropOverlimit++;
     let st;
     if (p._breakerOverload) {
       const info = p._breakerOverloadInfo || {};
@@ -453,6 +461,10 @@ function sectionPanels() {
       panelOverloadCount++;
     } else if (p._marginWarn === 'low') {
       st = '⚠ запас < 0';
+    } else if (vdrop > 10) {
+      st = `⛔ ΔU=-${vdrop.toFixed(1)}%`;
+    } else if (vdrop > 5) {
+      st = `⚠ ΔU=-${vdrop.toFixed(1)}%`;
     } else {
       st = 'ок';
     }
@@ -464,6 +476,7 @@ function sectionPanels() {
       fmt(p._loadA || 0),
       (p.kSim || 1).toFixed(2),
       p._cosPhi ? p._cosPhi.toFixed(2) : '—',
+      vdropStr,
       freeA,
       mode,
       st,
@@ -487,17 +500,24 @@ function sectionPanels() {
     if (panelOverloadCount > 0) {
       text.push(`⚠ ПЕРЕГРУЖЕНО ВВОДОВ ЩИТОВ: ${panelOverloadCount}`);
     }
+    if (panelVdropOverlimit > 0) {
+      text.push(`⚠ ЩИТОВ С ΔU > 5%: ${panelVdropOverlimit} (норма IEC 60364-5-525 нарушена)`);
+    }
     text.push('');
     blocks.push(B.h2('Состав щитов'));
     blocks.push(B.table(blockCols(cols), rows));
     blocks.push(B.paragraph(
       `${_ksimShort} — ${getTerm('simultaneity', _mid).explain || 'коэффициент одновременности'}. ` +
       'Режим: ЩИТ — обычный ввод, АВР — автоматическое включение резерва, РУЧН — ручное переключение. ' +
-      'Свободно, А — резерв пропускной способности входной линии щита (limit_max − Iрасч).'
+      'Свободно, А — резерв пропускной способности входной линии щита (limit_max − Iрасч). ' +
+      'ΔU, % — накопленное падение напряжения от источника (норма ≤ 5% по IEC 60364-5-525).'
     ));
     blocks.push(B.paragraph('ИТОГО свободно (резерв) по вводам щитов: ' + fmt(totalFreeKwPanels) + ' кВт.'));
     if (panelOverloadCount > 0) {
       blocks.push(B.paragraph(`⚠ Перегружено вводов щитов: ${panelOverloadCount}. Расчётный ток ввода превышает зафиксированный автомат — авто-пересчёт отключён, требуется ручная корректировка автомата ввода или увеличение сечения входного кабеля. Подробности — в разделе «Проверки и предупреждения».`));
+    }
+    if (panelVdropOverlimit > 0) {
+      blocks.push(B.paragraph(`⚠ Щитов с накопленным падением напряжения > 5%: ${panelVdropOverlimit}. Превышение нормы IEC 60364-5-525 — рекомендуется увеличить сечение питающих кабелей до этих щитов. Все downstream-нагрузки получают пониженное напряжение и могут работать вне допустимых пределов.`));
     }
   } else {
     text.push('В схеме нет распределительных щитов.');
