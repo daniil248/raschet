@@ -58,9 +58,51 @@ export function zonePrefix(zone) {
   return chain.map(z => z.zonePrefix || z.tag || '').filter(Boolean).join('.');
 }
 
+// v0.59.792 (ROADMAP 1.28.19): property inheritance для aliases. Пользователь:
+// «свойства расположенных внутри объектов связаны с основным (кроме
+// обозначений)». Если node — alias (linkedAlias указывает на shell),
+// читаем электрику из shell. Tag/name остаются индивидуальные.
+//
+// Стратегия: GETTER без мутации. Старые stored-значения на alias'е
+// остаются как fallback (если shell удалён) или для legacy-данных,
+// но при наличии shell приоритет — у shell'а.
+function _shellOf(n) {
+  if (n && n.linkedAlias && state.nodes && state.nodes.get) {
+    const s = state.nodes.get(n.linkedAlias);
+    return s || null;
+  }
+  return null;
+}
+export function effectiveDemandKw(n) {
+  const s = _shellOf(n);
+  if (s) return Number(s.demandKw) || 0;
+  return Number(n?.demandKw) || 0;
+}
+export function effectiveCosPhi(n) {
+  const s = _shellOf(n);
+  if (s && Number.isFinite(Number(s.cosPhi))) return Number(s.cosPhi);
+  return Number(n?.cosPhi) || 0.95;
+}
+export function effectivePhase(n) {
+  const s = _shellOf(n);
+  if (s && s.phase) return s.phase;
+  return n?.phase || '3ph';
+}
+export function effectiveVoltageLevelIdx(n) {
+  const s = _shellOf(n);
+  if (s && Number.isFinite(Number(s.voltageLevelIdx))) return Number(s.voltageLevelIdx);
+  return Number(n?.voltageLevelIdx) || 0;
+}
+export function effectiveConsumerSubtype(n) {
+  const s = _shellOf(n);
+  if (s && s.consumerSubtype) return s.consumerSubtype;
+  return n?.consumerSubtype || '';
+}
+export function isAliasOfShell(n) { return !!_shellOf(n); }
+
 // v0.59.774: базовое обозначение узла. Для consumer-группы с привязанными
 // экземплярами (linkedAliases) — берём обозначение первого экземпляра
-// в естественной сортировке (SR01 < SR02 < SR10). Юзер: «группа
+// в естественной сортировке (SR01 < SR02 < SR10). Пользователь: «группа
 // потребителей должна иметь обозначение по обозначению первого экземпляра
 // (не размещенного а по сортировке)». Для остальных — просто n.tag.
 function _baseTag(n) {
