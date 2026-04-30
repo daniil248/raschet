@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.59.818 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
+> **Статус:** v0.59.819 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
 
 > **Правило ведения:** roadmap обновляется ПОСТОЯННО — при появлении новой фичи / задачи и при закрытии любого этапа. Hotfix'ы (regressions, мелкие правки UX) НЕ попадают в roadmap, только содержательная функциональность. Это правило зафиксировано пользователем 2026-04-29.
 
@@ -357,6 +357,22 @@ in-tab Map + cross-tab через storage event.
     - inspector.js: при выборе consumer-container показывает список
       слотов (linked-узлы с tag/name/kW + placeholder-строки). Полный
       редактор (drag-drop slots / split / merge / cross-disc) — позже.
+  - **Phase 6 baseline — Recalc (закрыто v0.59.819):**
+    - electrical.js: `isConsumerLike(n)` + `expandConsumerLike(n)` —
+      хелперы для агрегации нагрузки контейнера.
+    - recalc.js: `collectDownstreamConsumers` теперь раскрывает container
+      на per-slot записи (linked → реальный узел с его per-unit/count;
+      placeholder → одна запись со спекой). Это критично для подбора
+      автомата материнского щита по РТМ (n_э зависит от индивидуальных
+      P_ном).
+    - recalc.js: `simpleDownstream` суммирует kW slot'ов контейнера для
+      ИБП-агрегации.
+    - recalc.js: UPS-аггрегация (collectDownstream) принимает container
+      как consumer-узел через consumerTotalDemandKw (Phase 1 helper).
+    - **Не покрыто (Phase 6 extended, следующие коммиты):**
+      per-line breaker/cable derivation для container.slots; phase
+      balance; serialMode/lineGroup для членов контейнера; POR-mirror;
+      Реестр (правая панель) пока показывает container как unknown type.
   - **Открыто (следующие коммиты):**
     - Phase 2: render контейнера как stacked card (использует effectiveTag/
       Name из linked-членов); contained consumers скрыты с canvas

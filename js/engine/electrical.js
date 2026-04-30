@@ -259,6 +259,54 @@ export function isNodeDC(n) {
   return lv.dc === true || (typeof lv.hz === 'number' && lv.hz === 0);
 }
 
+// v0.59.819 (1.28.20 Phase 6): «consumer-like» — узел является потребителем
+// или контейнером потребителей (organisational wrapper). Используется в
+// recalc/registry/POR проверках, чтобы 'consumer-container' попадал в
+// аггрегации нагрузки наравне с 'consumer'.
+export function isConsumerLike(n) {
+  if (!n) return false;
+  return n.type === 'consumer' || n.type === 'consumer-container';
+}
+
+// v0.59.819: раскрыть узел в массив пседо-consumer entities для агрегации
+// нагрузки. Для consumer — массив [n] (или раскрытый items для individual
+// группы). Для consumer-container — раскрывает slots: linked → реальный
+// узел, placeholder → инлайн-спека как pseudo-consumer.
+// Возвращает массив объектов с полями {demandKw, cosPhi, phase, voltage,
+// voltageLevelIdx, kUse, inrushFactor, consumerSubtype, count, id, isPlaceholder}.
+export function expandConsumerLike(n) {
+  if (!n) return [];
+  if (n.type === 'consumer-container' && Array.isArray(n.slots)) {
+    const out = [];
+    for (const s of n.slots) {
+      if (!s) continue;
+      if (s.kind === 'linked' && s.nodeId) {
+        const a = state.nodes && state.nodes.get && state.nodes.get(s.nodeId);
+        if (a) out.push(...expandConsumerLike(a));
+      } else if (s.kind === 'placeholder') {
+        out.push({
+          id: `${n.id}:ph${out.length}`,
+          isPlaceholder: true,
+          demandKw: Number(s.demandKw) || 0,
+          cosPhi: Number(s.cosPhi) || 0.95,
+          phase: s.phase || '3ph',
+          voltage: Number(s.voltage) || 400,
+          voltageLevelIdx: Number(s.voltageLevelIdx) || 0,
+          kUse: Number(s.kUse) || 1,
+          inrushFactor: Number(s.inrushFactor) || 1,
+          consumerSubtype: s.subtype || 'custom',
+          count: 1,
+        });
+      }
+    }
+    return out;
+  }
+  // Обычный consumer (включая uniform group с count>1) — возвращаем как есть.
+  // individual-mode пока обрабатывается на месте вызова через items[]
+  // (как и было до Phase 6).
+  return [n];
+}
+
 // v0.57.81: суммарная установленная мощность группы/одиночного
 // потребителя. Учитывает новый режим groupMode='individual' — когда
 // у группы неоднородные приборы, мощности задаются поштучно в

@@ -123,10 +123,12 @@ function _computeUpsWeightedLoad(upsNode) {
       if (!next || visited.has(next.id)) continue;
       visited.add(next.id);
       if (next.type === 'ups' && next.id !== upsNode.id) continue;
-      if (next.type === 'consumer') {
+      if (next.type === 'consumer' || next.type === 'consumer-container') {
+        // v0.59.819 (1.28.20 Phase 6): consumer-container аггрегируется
+        // через consumerTotalDemandKw (он раскрывает slots[]).
         const Pphys = (Number(next._loadKw) || 0)
           || (consumerTotalDemandKw(next) * (Number(next.kUse) || 1) * effectiveLoadFactor(next));
-        const sub = next.consumerSubtype || next.consumerType || '';
+        const sub = next.consumerSubtype || next.consumerType || (next.type === 'consumer-container' ? 'group' : '');
         const cat = _consumerCategory(next);
         const label = next.name || next.tag || sub || next.id;
         const dr = _resolveDerateWithSource(next, upsNode);
@@ -268,7 +270,7 @@ export function collectDownstreamConsumers(nodeId) {
       if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
       const to = state.nodes.get(c.to?.nodeId);
       if (!to) continue;
-      if (to.type === 'consumer') {
+      if (to.type === 'consumer' || to.type === 'consumer-container') {
         // v0.59.759: РТМ требует считать КАЖДЫЙ электроприёмник отдельно (n_э
         // зависит от распределения P_ном по штукам). Раньше для группы count=N
         // отправлялась одна запись с Pnom = P × N — и n_э = N²/N² = 1, то есть
@@ -277,22 +279,49 @@ export function collectDownstreamConsumers(nodeId) {
         // individual-группа → по записи на каждый item.demandKw.
         // Юзер: «электроприёмников в группе указано 4 но не учтено что есть
         // групповые потребители, это нужно учитывать».
-        const Ku = Math.max(0, Math.min(1, Number(to.kUse) || 0));
-        const cosPhi = Math.max(0.1, Math.min(1, Number(to.cosPhi) || 0.92));
-        if (to.groupMode === 'individual' && Array.isArray(to.items) && to.items.length > 0) {
-          for (const it of to.items) {
-            const itemP = Number(it?.demandKw) || 0;
-            if (itemP <= 0) continue;
-            const itemKu = (it?.kUse != null && it?.kUse !== '') ? Math.max(0, Math.min(1, Number(it.kUse))) : Ku;
-            const itemCos = (it?.cosPhi != null && it?.cosPhi !== '') ? Math.max(0.1, Math.min(1, Number(it.cosPhi))) : cosPhi;
-            out.push({ Pnom: itemP, Ku: itemKu, cosPhi: itemCos, id: to.id + ':' + (it.id || it.name || itemP) });
+        // v0.59.819 (1.28.20 Phase 6): consumer-container раскрывается в
+        // массив pseudo-consumer entities (linked + placeholders).
+        if (to.type === 'consumer-container' && Array.isArray(to.slots)) {
+          for (const s of to.slots) {
+            if (!s) continue;
+            if (s.kind === 'linked' && s.nodeId) {
+              const a = state.nodes.get(s.nodeId);
+              if (!a) continue;
+              const aKu = Math.max(0, Math.min(1, Number(a.kUse) || 0));
+              const aCos = Math.max(0.1, Math.min(1, Number(a.cosPhi) || 0.92));
+              const perUnit = Number(a.demandKw) || 0;
+              const cnt = consumerCountEffective(a);
+              if (perUnit > 0) {
+                for (let i = 0; i < cnt; i++) {
+                  out.push({ Pnom: perUnit, Ku: aKu, cosPhi: aCos, id: a.id + (cnt > 1 ? ('#' + (i + 1)) : '') });
+                }
+              }
+            } else if (s.kind === 'placeholder') {
+              const pP = Number(s.demandKw) || 0;
+              if (pP <= 0) continue;
+              const pKu = Number(s.kUse) || 0;
+              const pCos = Math.max(0.1, Math.min(1, Number(s.cosPhi) || 0.92));
+              out.push({ Pnom: pP, Ku: pKu, cosPhi: pCos, id: to.id + ':ph' + out.length });
+            }
           }
         } else {
-          const perUnit = Number(to.demandKw) || 0;
-          const count = consumerCountEffective(to);
-          if (perUnit > 0) {
-            for (let i = 0; i < count; i++) {
-              out.push({ Pnom: perUnit, Ku, cosPhi, id: to.id + (count > 1 ? ('#' + (i + 1)) : '') });
+          const Ku = Math.max(0, Math.min(1, Number(to.kUse) || 0));
+          const cosPhi = Math.max(0.1, Math.min(1, Number(to.cosPhi) || 0.92));
+          if (to.groupMode === 'individual' && Array.isArray(to.items) && to.items.length > 0) {
+            for (const it of to.items) {
+              const itemP = Number(it?.demandKw) || 0;
+              if (itemP <= 0) continue;
+              const itemKu = (it?.kUse != null && it?.kUse !== '') ? Math.max(0, Math.min(1, Number(it.kUse))) : Ku;
+              const itemCos = (it?.cosPhi != null && it?.cosPhi !== '') ? Math.max(0.1, Math.min(1, Number(it.cosPhi))) : cosPhi;
+              out.push({ Pnom: itemP, Ku: itemKu, cosPhi: itemCos, id: to.id + ':' + (it.id || it.name || itemP) });
+            }
+          } else {
+            const perUnit = Number(to.demandKw) || 0;
+            const count = consumerCountEffective(to);
+            if (perUnit > 0) {
+              for (let i = 0; i < count; i++) {
+                out.push({ Pnom: perUnit, Ku, cosPhi, id: to.id + (count > 1 ? ('#' + (i + 1)) : '') });
+              }
             }
           }
         }
@@ -330,6 +359,23 @@ function simpleDownstream(nodeId) {
         const per = Number(to.demandKw) || 0;
         const cnt = Math.max(1, Number(to.count) || 1);
         total += per * cnt;
+      } else if (to.type === 'consumer-container') {
+        // v0.59.819 (1.28.20 Phase 6): contaier раскрывается в slots.
+        if (Array.isArray(to.slots)) {
+          for (const s of to.slots) {
+            if (!s) continue;
+            if (s.kind === 'linked' && s.nodeId) {
+              const a = state.nodes.get(s.nodeId);
+              if (a) {
+                const ap = Number(a.demandKw) || 0;
+                const ac = Math.max(1, Number(a.count) || 1);
+                total += ap * ac;
+              }
+            } else if (s.kind === 'placeholder') {
+              total += Number(s.demandKw) || 0;
+            }
+          }
+        }
       } else if (to.type === 'ups') {
         const capKw = Number(to.capacityKw) || 0;
         const down = walk(to.id);
