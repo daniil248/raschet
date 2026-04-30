@@ -30,9 +30,12 @@
     <section class="pr-card">
       <div class="pr-toolbar">
         <h2 style="margin:0;flex:1">📁 Проекты Raschet</h2>
-        <button type="button" id="pr-restore-links" title="Привязать схемы из «Без проекта» к контейнерам по совпадению имени. Также выводит диагностику в консоль (F12)." style="padding:6px 12px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500">🔧 Восстановить связи</button>
+        <button type="button" id="pr-backup" title="Скачать ПОЛНЫЙ бэкап всех данных Raschet (LocalStorage) как JSON-файл. Сохраните файл в надёжное место — это ваша страховка от потери." style="padding:6px 12px;background:#dcfce7;border:1px solid #16a34a;color:#15803d;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500">💾 Бэкап</button>
+        <button type="button" id="pr-restore-backup" title="Восстановить данные из ранее сохранённого JSON-бэкапа. ВНИМАНИЕ: текущие данные будут перезаписаны." style="padding:6px 12px;background:#dbeafe;border:1px solid #2563eb;color:#1e40af;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500">📂 Восстановить</button>
+        <button type="button" id="pr-restore-links" title="Привязать схемы из «Без проекта» к контейнерам по совпадению имени. Также сканирует orphan project-data." style="padding:6px 12px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500">🔧 Восстановить связи</button>
         <button type="button" id="pr-new" class="pr-btn-primary">＋ Новый проект</button>
       </div>
+      <input type="file" id="pr-restore-backup-file" accept="application/json,.json" hidden>
       <p class="muted" style="margin:8px 0 0">
         Проект = единица проектной работы по объекту. Содержит схему электроснабжения,
         СКС (меж-шкафные связи, план зала), шкафы с содержимым, реестры оборудования,

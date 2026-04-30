@@ -10,6 +10,8 @@ import {
 } from '../shared/project-storage.js';
 import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
 import { migrateOrphanSchemes } from '../shared/scheme-orphan-migration.js';
+import { downloadBackup, readBackupFile, restoreFromJson, getLastBackupInfo } from '../shared/backup.js';
+import { APP_VERSION } from '../js/engine/constants.js';
 
 // v0.59.507: автоматическая миграция orphan-схем при первом заходе на
 // /projects/. Schemes без projectId → привязываем к контейнеру с тем же
@@ -700,6 +702,41 @@ function _initAfterDom() {
       });
     }
   } catch {}
+
+  // v0.59.854: «💾 Бэкап» — скачать ВСЕ данные LocalStorage как JSON-файл.
+  document.getElementById('pr-backup')?.addEventListener('click', () => {
+    try {
+      const payload = downloadBackup({ appVersion: APP_VERSION });
+      prToast(`✓ Бэкап скачан: ${payload.keyCount} ключей, ${(JSON.stringify(payload).length / 1024).toFixed(0)} KB`, 'ok');
+    } catch (e) {
+      console.error('[backup] failed:', e);
+      alert('Ошибка бэкапа: ' + (e.message || e));
+    }
+  });
+  // v0.59.854: «📂 Восстановить» — открывает file input → restore.
+  document.getElementById('pr-restore-backup')?.addEventListener('click', () => {
+    document.getElementById('pr-restore-backup-file')?.click();
+  });
+  document.getElementById('pr-restore-backup-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const payload = await readBackupFile(file);
+      const summary = `Бэкап от: ${payload.exportedAt || 'неизвестно'}\nВерсия: ${payload.appVersion || '?'}\nКлючей в бэкапе: ${payload.keyCount || Object.keys(payload.data || {}).length}\n\nСтратегия:\n  • OK = MERGE (объединить с текущими данными — безопаснее)\n  • Cancel = отмена`;
+      const useMerge = confirm(summary);
+      if (!useMerge) { e.target.value = ''; return; }
+      const wantReplace = confirm('Хотите ПОЛНОСТЬЮ ЗАМЕНИТЬ текущие данные данными из бэкапа?\n\n  • OK = REPLACE (стереть текущие, записать из бэкапа)\n  • Cancel = MERGE (рекомендуется)');
+      const strategy = wantReplace ? 'replace' : 'merge';
+      const result = restoreFromJson(payload, { strategy });
+      alert(`✓ Восстановлено: ${result.written} ключей (стратегия: ${result.strategy}).\nСтраница перезагрузится.`);
+      e.target.value = '';
+      location.reload();
+    } catch (err) {
+      console.error('[restore] failed:', err);
+      alert('Ошибка восстановления: ' + (err.message || err));
+      e.target.value = '';
+    }
+  });
 
   // v0.59.852: «🔧 Восстановить связи» — две задачи в одной кнопке.
   //   1. Сканируем localStorage на orphan project-data:
