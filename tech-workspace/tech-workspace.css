@@ -924,3 +924,74 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 }
 .tw-modal-ok:hover { background: #4338ca; }
 .tw-modal-cancel:hover { border-color: #6b7280; }
+
+/* ─── v0.59.893: МЦОД detail card */
+.tw-mdc-link {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tw-mdc-linked { font-size: 12.5px; color: #15803d; }
+.tw-mdc-unlinked { font-size: 12px; font-style: italic; }
+.tw-mdc-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tw-mdc-summary {
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  padding: 10px 12px;
+}
+.tw-mdc-summary h5 {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6b7280;
+}
+.tw-mdc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 6px 16px;
+  font-size: 12.5px;
+}
+.tw-mdc-multi {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #1e40af;
+}
+
+/* ─── v0.59.893: tw-modal pick-from-list */
+.tw-modal-pick { width: min(520px, 92vw); }
+.tw-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.tw-pick-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  color: #111827;
+}
+.tw-pick-row:hover { background: #eff6ff; border-color: #93c5fd; }

@@ -21,7 +21,7 @@ import {
 import { getProject } from './project-storage.js';
 
 // Известные пути модулей — для авто-ребайнда ссылок (см. _wireModuleLinks).
-const MODULE_PATH_RX = /\/(schematic|cable|scs-design|scs-config|facility-inventory|rack-config|mv-config|ups-config|panel-config|pdu-config|transformer-config|mdc-config|suppression-config|projects|tech-workspace|help)\//;
+const MODULE_PATH_RX = /\/(schematic|cable|scs-design|scs-config|facility-inventory|rack-config|mv-config|ups-config|panel-config|pdu-config|transformer-config|mdc-config|suppression-config|projects|tech-workspace|meteo|help)\//;
 
 // Эвристическое определение moduleId из location.pathname.
 // Используется если вызывающий не передал moduleId явно.

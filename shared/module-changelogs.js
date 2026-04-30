@@ -4,6 +4,40 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.896', date: '2026-04-30', items: [
+      '📦 <b>BOM с ценами по дате (Etap E)</b>. По задаче: «Цены из каталога если есть. иначе запрос пользователя или пусто. Цена должна быть привязана к выбранной дате, если цена изменилась позже, берем предыдущую цену».',
+      '• В Технологе ЦОД новый блок «📦 BOM» в left-rail. Дата для цен — input в шапке (default = today).',
+      '• Lookup: для каждого элемента концепции (стойки/PDU/ИБП/климат/ТП/ДГУ) — <code>pricesForElement(elementId, { recordedBefore: dateMs })</code> возвращает price-records с recordedAt ≤ выбранной дате; берётся самая поздняя.',
+      '• Если modelRef не привязан или цены нет — поле «Цена» пустое, пользователь вводит вручную (overrides сохраняются в <code>concept.bomOverrides[key]</code>).',
+      '• Σ Итого по валютам (мульти-валютный набор записей не суммируется в одну, выводится отдельно).',
+      'Файл: <code>tech-workspace/tech-workspace.js</code> (_renderBomDetails + _collectBomItems + bom-price change-handler).',
+    ] },
+    { version: '0.59.895', date: '2026-04-30', items: [
+      '📊 <b>PUE расчёт в Технологе ЦОД (Etap D)</b>. По задаче: «Нужен расчет PUE по исходным данным климата и/или метеостанции … Auto-compute и ручной, выбирается пользователем».',
+      '• Новый блок «📊 PUE» в left-rail с chip-значением PUE.',
+      '• <b>Auto-режим</b>: PUE = 1 + (P<sub>cooling</sub> + P<sub>losses</sub>) / P<sub>IT</sub>, где P<sub>cooling</sub> зависит от доли FreeCool часов из активного meteo-датасета (T&lt;14°C → COP 15, иначе COP 3.5). Если meteo нет — fallback 55% часов FreeCool по среднестатистическому климату.',
+      '• <b>Manual</b>: юзер вводит PUE напрямую (1.05–3.0). Сохраняется в <code>concept.pue.manualPue</code>.',
+      '• Разбивка показывает: IT-нагрузку, источник meteo, часы FreeCool, расчётный PUE. Если meteo не загружен — ссылка на модуль /meteo/.',
+      'Файл: <code>tech-workspace/tech-workspace.js</code> (calcPue/calcPueAuto + pue-блок в renderListRail/renderDetails).',
+    ] },
+    { version: '0.59.894', date: '2026-04-30', items: [
+      '🌐 <b>Stand-alone модуль метеоданных (Etap C, plugin-arch)</b>. По задаче: «Нужен модуль запроса погоды с публичных сайтов … rp5.kz … Open-Meteo. модули загрузки с разных сайтов отличающихся по методу делай отдельными модулями».',
+      '• Новый каталог <code>meteo/</code>: index.html + meteo.js + meteo.css + meteo-api.js.',
+      '• <b>Plugin-архитектура источников</b>: <code>meteo/sources/registry.js</code> (Map с <code>register/getAll/get</code>) + <code>meteo/sources/index.js</code> (точка-импорт всех плагинов). Чтобы добавить источник — создаёте файл, импортируете в <code>sources/index.js</code>; кнопка появится в UI автоматически без правки ядра.',
+      '• <b>Включённые источники</b>: <code>meteo/sources/open-meteo.js</code> (Open-Meteo Historical Weather REST, бесплатно по координатам) + <code>meteo/sources/rp5.js</code> (ручная загрузка CSV-архива с rp5.kz/rp5.ru, парсер semicolon-CSV с автодетектом колонок T/U/Ff).',
+      '• <b>UI</b>: левый sidebar — список датасетов + динамические кнопки импорта; правая панель — KPI (T средн / min / max / 99% / FreeCool / N), гистограмма распределения температуры (canvas) с зелёной подложкой для T&lt;14°C, сводка HDD/CDD/T1%.',
+      '• Активный датасет помечается ⭐ и используется другими модулями через <code>meteo/meteo-api.js::getActiveDataset(pid)</code>.',
+      '• Хранилище: <code>raschet.project.&lt;pid&gt;.meteo.datasets.v1</code> + <code>activeId.v1</code>.',
+      'Файлы: <code>meteo/{index.html,meteo.js,meteo.css,meteo-api.js,util.js}</code>, <code>meteo/sources/{registry.js,index.js,open-meteo.js,rp5.js}</code>, <code>hub.html</code> (карточка), <code>shared/app-header.js</code> (regex модуля).',
+    ] },
+    { version: '0.59.893', date: '2026-04-30', items: [
+      '🏢 <b>Блок МЦОД в Технологе ЦОД (Etap B)</b>. По задаче: «добавить блок МЦОД, для здания МЦОД использовать блоки сделанные для модуля конфигуратор МЦОД GDM600 … сохраняем по id».',
+      '• <code>concept.mdcBuildings: []</code> — массив зданий МЦОД. Каждое здание ссылается на mdc-config sub-проект (sketch-проект с <code>ownerModule="mdc-config"</code>) через <code>mdcSubProjectId</code>.',
+      '• В rail новая секция «🏢 МЦОД». Запись показывает summary из mdc-config sub-проекта (totalRacks × rackKw = ItKw), либо пометку «не сконфигурирован» если sub нет.',
+      '• Details-панель: имя, configurator (gdm600), кол-во одинаковых зданий + действия «↗ Открыть в mdc-config / ➕ Создать новый / 🔗 Привязать существующий / 🔌 Отвязать». Сводка из mdc-config показывается read-only (правится только в самом mdc-config).',
+      '• Если есть несколько sub-mdc в проекте — picker (новый <code>twPickFromList</code> модал-инстанс).',
+      'Файл: <code>tech-workspace/tech-workspace.js</code> (newMdcBuilding + _readMdcSummary + rail/details renderer + mdc-action handlers + миграция concept.mdcBuildings), <code>tech-workspace/tech-workspace.css</code> (tw-mdc-link / tw-mdc-summary / tw-modal-pick).',
+    ] },
     { version: '0.59.892', date: '2026-04-30', items: [
       '🧰 <b>Технолог ЦОД — двухпанельный layout управления блоками (Etap A)</b>. По задаче: «приоритет управление оборудованием, список, управление характеристиками стоек через свойства группы. Управление группами и другими блоками переработать для удобной работы».',
       '• <b>Summary-bar</b> сверху: KPI-карточки с цветовой индикацией (Стоек / IT-нагрузка / ⚡ ИБП IT / ❄ Холод / Σ Принятая / Площадь). Зелёный — запас есть, красный — недостаток.',

@@ -29,7 +29,8 @@
 //   }
 // =========================================================================
 
-import { ensureDefaultProject, projectKey } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects } from '../shared/project-storage.js';
+import { pricesForElement } from '../shared/price-records.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -92,6 +93,22 @@ function newCoolingUnit(name) {
     modelRef: null,
   };
 }
+// v0.59.893 (Etap B): блок МЦОД. count — сколько одинаковых зданий этого
+// типа. mdcSubProjectId — id sketch-подпроекта в mdc-config (хранит полную
+// конфигурацию модулей, ИБП, климата и т.п.). Если null — здание ещё не
+// сконфигурировано в mdc-config; tech-workspace показывает заглушку и
+// предлагает «📦 Создать в Конфигураторе МЦОД».
+function newMdcBuilding(name) {
+  return {
+    id: _newId('mdc'),
+    name: name || 'МЦОД',
+    configurator: 'gdm600',
+    mdcSubProjectId: null,
+    count: 1,
+    // Кэш summary из mdc-config: подгружается лениво в renderDetails (read-only).
+    _cachedSummary: null,
+  };
+}
 
 // ─── Variant data shape
 function newVariant(name) {
@@ -105,10 +122,17 @@ function newVariant(name) {
       rackGroups: [newRackGroup('Стойки IT')],
       upsSystems: [newUpsSystem('ИБП IT', 'it')],
       coolingUnits: [newCoolingUnit('Климат')],
+      // v0.59.893: блоки МЦОД — массив зданий с привязкой к sub-project mdc-config.
+      // По умолчанию пустой (стационарный ЦОД); пользователь добавляет МЦОД явно.
+      mdcBuildings: [],
       feed: {
         tp: { needed: false, kva: 0, redundancy: '2', modelRef: null },
         dgu: { needed: false, kw: 0, mode: 'esp', redundancy: 'N+1', modelRef: null },
       },
+      // v0.59.895 (Etap D): PUE — режим mode = 'auto' (расчёт по meteo +
+      // нагрузкам) или 'manual' (юзер вводит). Кэш меньше зависит от mode:
+      // в auto — пересчитывается на каждом render, в manual — фиксированное.
+      pue: { mode: 'auto', value: 1.4, manualPue: 1.4 },
     },
   };
 }
@@ -188,6 +212,12 @@ function migrateVariant(v) {
     tp: { needed: false, kva: 0, redundancy: '2', modelRef: null },
     dgu: { needed: false, kw: 0, mode: 'esp', redundancy: 'N+1', modelRef: null },
   };
+  // v0.59.893: миграция МЦОД (если не задано — пустой массив; не подменяем дефолтом)
+  if (!Array.isArray(c.mdcBuildings)) c.mdcBuildings = [];
+  // v0.59.895: миграция PUE (мягкая — не перезаписывать существующие пользовательские значения)
+  if (!c.pue || typeof c.pue !== 'object') c.pue = { mode: 'auto', value: 1.4, manualPue: 1.4 };
+  if (typeof c.pue.mode !== 'string') c.pue.mode = 'auto';
+  if (typeof c.pue.manualPue !== 'number') c.pue.manualPue = 1.4;
   return v;
 }
 
@@ -549,13 +579,70 @@ function _ensureSelectedBlock(c) {
     if (kind === 'rack' && (c.rackGroups || []).some(rg => rg.id === id)) return;
     if (kind === 'ups' && (c.upsSystems || []).some(us => us.id === id)) return;
     if (kind === 'cool' && (c.coolingUnits || []).some(cu => cu.id === id)) return;
-    if (kind === 'feed' || kind === 'areas') return;
+    if (kind === 'mdc' && (c.mdcBuildings || []).some(b => b.id === id)) return;
+    if (kind === 'feed' || kind === 'areas' || kind === 'pue' || kind === 'bom') return;
   }
   if ((c.rackGroups || []).length) {
     _selectedBlock = { kind: 'rack', id: c.rackGroups[0].id };
   } else {
     _selectedBlock = { kind: 'feed', id: null };
   }
+}
+
+// v0.59.895 (Etap D): расчёт PUE.
+// Auto-режим:
+//   PUE_auto = 1 + (P_cooling + P_losses) / P_IT
+//   где P_cooling зависит от freecool-доли по meteo (T<14°C → freecool, иначе чиллер).
+//   P_losses ≈ 5% (UPS + потери на ТП/ДГУ + slaboточ/освещение).
+// Если meteo нет — fallback на климатический коэффициент по ASHRAE-A2 = 1.45.
+// Manual: юзер задаёт значение явно (любое разумное число).
+function calcPueAuto(c, meteoSummary) {
+  const itKw = calcITTotal(c);
+  if (itKw <= 0) return 1.4;
+  // Доля FreeCool часов в году
+  let freecoolFraction = 0;
+  if (meteoSummary?.stats?.n) {
+    freecoolFraction = (meteoSummary.stats.freecoolHours || 0) / Math.max(1, meteoSummary.stats.n);
+  } else {
+    // Без meteo — по среднестатистическому климату умеренной полосы (КЗ/РФ)
+    freecoolFraction = 0.55; // 55% часов в году T<14°C
+  }
+  // Энергопотребление климат-системы:
+  //   freecool COP ≈ 15..20 (вентиляторы)
+  //   чиллер     COP ≈ 3..4 (компрессоры)
+  const copFC = 15;
+  const copChiller = 3.5;
+  const coolKwAvg = itKw * (freecoolFraction / copFC + (1 - freecoolFraction) / copChiller);
+  // UPS-потери ≈ 5% IT, прочие (ТП/ДГУ-холостой/осветка/слаботочка) ≈ 5% IT
+  const lossesKw = itKw * 0.05 + itKw * 0.05;
+  const pue = 1 + (coolKwAvg + lossesKw) / itKw;
+  return Math.round(pue * 100) / 100;
+}
+function calcPue(c, meteoSummary) {
+  if (!c.pue) return 1.4;
+  if (c.pue.mode === 'manual') return Number(c.pue.manualPue) || 1.4;
+  return calcPueAuto(c, meteoSummary);
+}
+
+// v0.59.893: чтение summary из mdc-config sub-project. mdc-config хранит
+// in-memory state в LS под ключом raschet.mdc-config.v1, который scoped
+// к active project. tech-workspace читает свежий снимок при каждом render
+// (через project-storage projectKey + sub pid).
+function _readMdcSummary(subPid) {
+  if (!subPid) return null;
+  try {
+    const raw = localStorage.getItem(projectKey(subPid, 'mdc-config', 'v1'));
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    return {
+      totalRacks: Number(s.totalRacks) || 0,
+      rackKw: Number(s.rackKw) || 0,
+      itKw: (Number(s.totalRacks) || 0) * (Number(s.rackKw) || 0),
+      redundancy: s.redundancy || 'N+1',
+      withDgu: !!s.withDgu, withTp: !!s.withTp,
+      ashrae: s.ashrae || 'A2',
+    };
+  } catch { return null; }
 }
 
 function renderListRail(c, ro) {
@@ -643,6 +730,29 @@ function renderListRail(c, ro) {
 
     <div class="tw-rail-section">
       <div class="tw-rail-head">
+        <span class="tw-rail-title">🏢 МЦОД <span class="muted">·${(c.mdcBuildings || []).length}</span></span>
+        <button type="button" class="tw-rail-add" data-add-card="mdc" title="Добавить блок МЦОД" ${ro ? 'disabled' : ''}>➕</button>
+      </div>
+      <div class="tw-rail-list">${(() => {
+        const arr = (c.mdcBuildings || []);
+        if (!arr.length) return '<div class="tw-rail-empty muted">Нет (стационарный ЦОД)</div>';
+        return arr.map(b => {
+          const summary = _readMdcSummary(b.mdcSubProjectId);
+          const sub = summary
+            ? `${b.configurator.toUpperCase()} · ${summary.totalRacks} стоек × ${summary.rackKw} кВт`
+            : `${b.configurator.toUpperCase()} · не сконфигурирован`;
+          const itKw = summary ? (summary.itKw * (Number(b.count) || 1)) : 0;
+          return `<button type="button" class="tw-rail-item${(_selectedBlock?.kind === 'mdc' && _selectedBlock.id === b.id) ? ' active' : ''}" data-bk="mdc" data-bid="${escAttr(b.id)}">
+            <span class="tw-rail-name">${escHtml(b.name)} ${(Number(b.count) || 1) > 1 ? `<span class="muted">×${b.count}</span>` : ''}</span>
+            <span class="tw-rail-sub">${escHtml(sub)}</span>
+            ${itKw > 0 ? `<span class="tw-rail-chip">${itKw.toFixed(0)} кВт</span>` : '<span class="tw-rail-chip tw-rail-chip-warn">—</span>'}
+          </button>`;
+        }).join('');
+      })()}</div>
+    </div>
+
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
         <span class="tw-rail-title">🔌 Ввод</span>
       </div>
       <div class="tw-rail-list">
@@ -667,7 +777,46 @@ function renderListRail(c, ro) {
         </button>
       </div>
     </div>
+
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
+        <span class="tw-rail-title">📊 PUE</span>
+      </div>
+      <div class="tw-rail-list">
+        ${(() => {
+          const meteoSum = _readMeteoSummary();
+          const pueVal = calcPue(c, meteoSum);
+          const sub = c.pue?.mode === 'manual' ? 'Ручной режим' : (meteoSum ? `Авто · meteo: ${meteoSum.locationName || meteoSum.dateFrom || '?'}` : 'Авто · без meteo (среднестат.)');
+          return `<button type="button" class="tw-rail-item${_selCls('pue', null)}" data-bk="pue" data-bid="">
+            <span class="tw-rail-name">Расчёт PUE</span>
+            <span class="tw-rail-sub">${escHtml(sub)}</span>
+            <span class="tw-rail-chip">${pueVal.toFixed(2)}</span>
+          </button>`;
+        })()}
+      </div>
+    </div>
+
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
+        <span class="tw-rail-title">📦 BOM</span>
+      </div>
+      <div class="tw-rail-list">
+        <button type="button" class="tw-rail-item${_selCls('bom', null)}" data-bk="bom" data-bid="">
+          <span class="tw-rail-name">Спецификация</span>
+          <span class="tw-rail-sub">Цены из каталога по дате</span>
+          <span class="tw-rail-chip">→</span>
+        </button>
+      </div>
+    </div>
   `;
+}
+
+function _readMeteoSummary() {
+  if (!_pid) return null;
+  try {
+    const all = JSON.parse(localStorage.getItem(projectKey(_pid, 'meteo', 'datasets.v1')) || '[]');
+    return all.find(d => d.activeForProject) || all[0] || null;
+  } catch { return null; }
 }
 
 function renderDetails(c, ro) {
@@ -691,6 +840,57 @@ function renderDetails(c, ro) {
     return _detailsHeaderHtml('❄ Группа кондиционеров', cu.id, ro, 'cool', `${cu.count} × ${cu.kwPerUnit} кВт · ${_coolAvail(cu).toFixed(1)} кВт доступно`)
       + renderCoolCard(cu, ro);
   }
+  if (sel.kind === 'mdc') {
+    const b = (c.mdcBuildings || []).find(x => x.id === sel.id);
+    if (!b) return '<div class="tw-details-empty muted">Блок удалён. Выберите другой слева.</div>';
+    const summary = _readMdcSummary(b.mdcSubProjectId);
+    const subProjects = _pid ? listSubProjects(_pid, 'mdc-config') : [];
+    const linked = subProjects.find(p => p.id === b.mdcSubProjectId);
+    const cnt = Number(b.count) || 1;
+    const totalKw = summary ? (summary.itKw * cnt) : 0;
+    const totalRacks = summary ? (summary.totalRacks * cnt) : 0;
+    const summaryStr = summary
+      ? `${cnt > 1 ? cnt + ' × ' : ''}${summary.totalRacks} стоек × ${summary.rackKw} кВт = ${totalKw.toFixed(1)} кВт IT`
+      : 'Не сконфигурирован — откройте Конфигуратор МЦОД';
+    return _detailsHeaderHtml('🏢 Блок МЦОД', b.id, ro, 'mdc', summaryStr)
+      + `<div class="tw-card" data-card-kind="mdc" data-card-id="${b.id}">
+          <div class="tw-card-head">
+            <input type="text" class="tw-card-name" data-field="name" value="${escAttr(b.name)}" placeholder="Название" ${ro ? 'disabled' : ''}>
+          </div>
+          <div class="tw-grid">
+            <label>Тип конфигуратора:
+              <select data-field="configurator" ${ro ? 'disabled' : ''}>
+                <option value="gdm600"${b.configurator === 'gdm600' ? ' selected' : ''}>GDM-600 (модульный)</option>
+              </select>
+            </label>
+            <label>Кол-во одинаковых зданий:<input type="number" data-field="count" min="1" step="1" value="${cnt}" ${ro ? 'disabled' : ''}></label>
+          </div>
+          <div class="tw-mdc-link">
+            ${linked
+              ? `<div class="tw-mdc-linked"><b>📦 Привязано:</b> «${escHtml(linked.name)}» <span class="muted">(${linked.designation || ''})</span></div>`
+              : '<div class="tw-mdc-unlinked muted">Здание ещё не привязано к sub-проекту mdc-config.</div>'}
+            <div class="tw-mdc-actions">
+              ${linked
+                ? `<button type="button" class="tw-bind-btn" data-mdc-action="open" data-bid="${b.id}">↗ Открыть в Конфигураторе МЦОД</button>
+                   <button type="button" class="tw-details-btn" data-mdc-action="unlink" data-bid="${b.id}" ${ro ? 'disabled' : ''}>🔌 Отвязать</button>`
+                : `<button type="button" class="tw-bind-btn" data-mdc-action="create" data-bid="${b.id}" ${ro ? 'disabled' : ''}>➕ Создать новый</button>
+                   ${subProjects.length ? `<button type="button" class="tw-details-btn" data-mdc-action="link" data-bid="${b.id}" ${ro ? 'disabled' : ''}>🔗 Привязать существующий…</button>` : ''}`}
+            </div>
+          </div>
+          ${summary ? `<div class="tw-mdc-summary">
+            <h5>Конфигурация (read-only — править в mdc-config)</h5>
+            <div class="tw-mdc-grid">
+              <div><span class="muted">Стоек на здание:</span> <b>${summary.totalRacks}</b></div>
+              <div><span class="muted">Мощность на стойку:</span> <b>${summary.rackKw} кВт</b></div>
+              <div><span class="muted">IT-нагрузка на здание:</span> <b>${summary.itKw.toFixed(1)} кВт</b></div>
+              <div><span class="muted">Резервирование ИБП:</span> <b>${summary.redundancy}</b></div>
+              <div><span class="muted">ASHRAE-класс:</span> <b>${summary.ashrae}</b></div>
+              <div><span class="muted">ТП / ДГУ:</span> <b>${summary.withTp ? '✓' : '✗'} / ${summary.withDgu ? '✓' : '✗'}</b></div>
+            </div>
+            ${cnt > 1 ? `<div class="tw-mdc-multi">× ${cnt} зданий = <b>${totalRacks} стоек, ${totalKw.toFixed(1)} кВт IT</b></div>` : ''}
+          </div>` : ''}
+        </div>`;
+  }
   if (sel.kind === 'feed') {
     const feedKw = calcFeedTotal(c);
     return `<div class="tw-details-head">
@@ -698,6 +898,48 @@ function renderDetails(c, ro) {
         <span class="muted tw-details-sub">Σ принятая мощность: ${feedKw.toFixed(1)} кВт</span>
       </div>
       <div class="tw-details-body">${renderFeedSection(c.feed, ro)}</div>`;
+  }
+  if (sel.kind === 'pue') {
+    const meteoSum = _readMeteoSummary();
+    const pueVal = calcPue(c, meteoSum);
+    const isAuto = c.pue?.mode !== 'manual';
+    const itKw = calcITTotal(c);
+    const fc = meteoSum?.stats?.freecoolHours || 0;
+    const fcN = meteoSum?.stats?.n || 0;
+    const fcPct = fcN > 0 ? (fc / fcN * 100).toFixed(1) : '—';
+    return `<div class="tw-details-head">
+        <h3>📊 Расчёт PUE</h3>
+        <span class="muted tw-details-sub">PUE = ${pueVal.toFixed(2)} (${isAuto ? 'автоматически' : 'вручную'})</span>
+      </div>
+      <div class="tw-details-body">
+        <div class="tw-card" data-card-kind="pue" data-card-id="-">
+          <div class="tw-grid">
+            <label>Режим:
+              <select data-field="pue.mode" ${ro ? 'disabled' : ''}>
+                <option value="auto"${isAuto ? ' selected' : ''}>Автоматически (по meteo)</option>
+                <option value="manual"${!isAuto ? ' selected' : ''}>Вручную</option>
+              </select>
+            </label>
+            ${!isAuto ? `<label>PUE (вручную):<input type="number" step="0.01" min="1.05" max="3.0" data-field="pue.manualPue" value="${c.pue.manualPue}" ${ro ? 'disabled' : ''}></label>` : ''}
+          </div>
+          ${isAuto ? `<div class="tw-pue-breakdown">
+            <h5>Разбивка автоматического расчёта</h5>
+            <div class="tw-mdc-grid">
+              <div><span class="muted">IT-нагрузка:</span> <b>${itKw.toFixed(1)} кВт</b></div>
+              <div><span class="muted">Источник meteo:</span> <b>${meteoSum ? escHtml(meteoSum.locationName || meteoSum.source) : '<i>нет (среднестат. 55%)</i>'}</b></div>
+              <div><span class="muted">Часы FreeCool (T &lt; 14 °C):</span> <b>${fc} ч (${fcPct}%)</b></div>
+              <div><span class="muted">PUE расчётный:</span> <b>${pueVal.toFixed(2)}</b></div>
+            </div>
+            <p class="tw-pue-note muted">Формула: PUE = 1 + (P<sub>cooling</sub> + P<sub>losses</sub>) / P<sub>IT</sub>.<br>
+              P<sub>cooling</sub> зависит от доли FreeCool часов (COP ≈ 15) и часов с компрессорным охлаждением (COP ≈ 3.5).<br>
+              P<sub>losses</sub> ≈ 10% × P<sub>IT</sub> (5% UPS + 5% прочее).</p>
+            ${!meteoSum ? `<p class="tw-pue-warning">⚠ Нет загруженных метеоданных. <a href="../meteo/">Загрузить через модуль «Метеоданные»</a> для уточнения PUE по локации.</p>` : ''}
+          </div>` : '<p class="muted tw-details-note">В ручном режиме введите PUE напрямую — он будет использован в отчётах и BOM как-есть.</p>'}
+        </div>
+      </div>`;
+  }
+  if (sel.kind === 'bom') {
+    return _renderBomDetails(c, ro);
   }
   if (sel.kind === 'areas') {
     const areas = calcAreas(c);
@@ -716,6 +958,143 @@ function renderDetails(c, ro) {
       </div>`;
   }
   return '<div class="tw-details-empty muted">Выберите блок слева.</div>';
+}
+
+// v0.59.896 (Etap E): BOM с ценами из каталога по выбранной дате.
+// Дата берётся из concept.bomDate (ISO YYYY-MM-DD, default = today).
+// Для каждого элемента концепции (rack-group, ups-system, cooling-unit, tp,
+// dgu) подбираем самую позднюю цену из price-records с recordedAt ≤ dateMs.
+// Если нет — поле «Цена» пустое, юзер может ввести вручную в overrides.
+function _renderBomDetails(c, ro) {
+  const dateStr = c.bomDate || new Date().toISOString().slice(0, 10);
+  const dateMs = new Date(dateStr + 'T23:59:59').getTime();
+
+  const items = _collectBomItems(c);
+  // overrides: { [bomKey]: { unitPrice, currency } }
+  if (!c.bomOverrides || typeof c.bomOverrides !== 'object') c.bomOverrides = {};
+  const ov = c.bomOverrides;
+
+  let grandSum = {};
+  const rows = items.map(it => {
+    const ovr = ov[it.key];
+    let unitPrice = null, currency = null, source = '';
+    if (ovr && Number.isFinite(Number(ovr.unitPrice))) {
+      unitPrice = Number(ovr.unitPrice);
+      currency = ovr.currency || 'RUB';
+      source = '✏ ручной';
+    } else if (it.elementId) {
+      const r = pricesForElement(it.elementId, { recordedBefore: dateMs });
+      if (r.prices && r.prices.length) {
+        unitPrice = Number(r.prices[0].price);
+        currency = r.prices[0].currency;
+        source = `📋 ${new Date(r.prices[0].recordedAt).toISOString().slice(0,10)}`;
+      }
+    }
+    const total = unitPrice != null ? (unitPrice * it.qty) : null;
+    if (total != null && currency) {
+      grandSum[currency] = (grandSum[currency] || 0) + total;
+    }
+    return { ...it, unitPrice, currency, source, total };
+  });
+
+  const noPriceCnt = rows.filter(r => r.unitPrice == null).length;
+  const sumStr = Object.entries(grandSum).map(([cur, v]) => `${v.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ${cur}`).join(' + ') || '—';
+
+  return `<div class="tw-details-head">
+      <h3>📦 BOM (спецификация)</h3>
+      <span class="muted tw-details-sub">Σ ${sumStr} ${noPriceCnt > 0 ? `· <span class="tw-bom-warn">${noPriceCnt} без цены</span>` : ''}</span>
+    </div>
+    <div class="tw-details-body">
+      <div class="tw-bom-toolbar">
+        <label>Дата для цен:<input type="date" data-field="bomDate" value="${escAttr(dateStr)}" ${ro ? 'disabled' : ''}></label>
+        <span class="muted tw-bom-hint">Цена для каждой позиции — самая поздняя из price-records на эту дату. Если цены нет — введите вручную.</span>
+        <a class="tw-bom-link" href="../catalog/" target="_blank">📚 Открыть каталог цен →</a>
+      </div>
+      <table class="tw-bom-table">
+        <thead><tr>
+          <th>Позиция</th>
+          <th class="num">Кол-во</th>
+          <th class="num">Цена за ед.</th>
+          <th>Источник</th>
+          <th class="num">Итого</th>
+        </tr></thead>
+        <tbody>${rows.map(r => `<tr data-bom-key="${escAttr(r.key)}">
+          <td>${escHtml(r.label)}<br><span class="muted">${escHtml(r.subLabel || '')}</span></td>
+          <td class="num">${r.qty}</td>
+          <td class="num"><input type="number" step="0.01" min="0" class="tw-bom-price" data-bom-key="${escAttr(r.key)}" value="${r.unitPrice != null ? r.unitPrice : ''}" placeholder="—" ${ro ? 'disabled' : ''}> ${r.currency || 'RUB'}</td>
+          <td><span class="tw-bom-src">${escHtml(r.source || '<i>нет</i>')}</span></td>
+          <td class="num">${r.total != null ? `<b>${r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</b> ${r.currency}` : '—'}</td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr>
+          <td colspan="4"><b>Σ Итого:</b></td>
+          <td class="num"><b>${sumStr}</b></td>
+        </tr></tfoot>
+      </table>
+      ${noPriceCnt > 0 ? `<p class="tw-pue-warning">⚠ ${noPriceCnt} позиций без цены. Откройте <a href="../catalog/" target="_blank">каталог цен</a> и добавьте записи (можно историю — расчёт BOM возьмёт цену на нужную дату).</p>` : ''}
+    </div>`;
+}
+
+// v0.59.896: собирает позиции для BOM из концепции.
+//   key — стабильный id (для overrides), elementId — id из catalog (для price lookup),
+//   label — отображение, qty — количество, subLabel — детали.
+function _collectBomItems(c) {
+  const out = [];
+  for (const rg of (c.rackGroups || [])) {
+    if (!rg.count) continue;
+    out.push({
+      key: 'rack:' + rg.id,
+      elementId: rg.modelRef?.id || null,
+      label: `Стойка — ${rg.name || ''}`,
+      subLabel: rg.modelRef ? `${rg.modelRef.manufacturer || ''} ${rg.modelRef.model || ''}` : 'модель не привязана',
+      qty: rg.count,
+    });
+    out.push({
+      key: 'pdu:' + rg.id,
+      elementId: rg.pdu?.modelRef?.id || null,
+      label: `PDU для «${rg.name || ''}»`,
+      subLabel: rg.pdu ? `${rg.pdu.kind} ${rg.pdu.phases} ${rg.pdu.ratingA}А ×${rg.pdu.inputsPerRack}` : '',
+      qty: (rg.count || 0) * (rg.pdu?.inputsPerRack || 0),
+    });
+  }
+  for (const us of (c.upsSystems || [])) {
+    if (!us.count) continue;
+    out.push({
+      key: 'ups:' + us.id,
+      elementId: us.modelRef?.id || null,
+      label: `ИБП — ${us.name || ''}`,
+      subLabel: us.modelRef ? `${us.modelRef.manufacturer || ''} ${us.modelRef.model || ''} · ${us.ratedKva} кВА` : `${us.ratedKva} кВА (модель не привязана)`,
+      qty: us.count,
+    });
+  }
+  for (const cu of (c.coolingUnits || [])) {
+    if (!cu.count) continue;
+    out.push({
+      key: 'cool:' + cu.id,
+      elementId: cu.modelRef?.id || null,
+      label: `Кондиционер — ${cu.name || ''}`,
+      subLabel: cu.modelRef ? `${cu.modelRef.manufacturer || ''} ${cu.modelRef.model || ''}` : `${cu.kwPerUnit} кВт холода`,
+      qty: cu.count,
+    });
+  }
+  if (c.feed?.tp?.needed) {
+    out.push({
+      key: 'tp',
+      elementId: c.feed.tp.modelRef?.id || null,
+      label: 'ТП (трансформатор)',
+      subLabel: c.feed.tp.modelRef ? `${c.feed.tp.modelRef.manufacturer || ''} ${c.feed.tp.modelRef.model || ''} · ${c.feed.tp.kva} кВА` : `${c.feed.tp.kva} кВА`,
+      qty: c.feed.tp.redundancy === '2' || c.feed.tp.redundancy === '2-avr' ? 2 : 1,
+    });
+  }
+  if (c.feed?.dgu?.needed) {
+    out.push({
+      key: 'dgu',
+      elementId: c.feed.dgu.modelRef?.id || null,
+      label: 'ДГУ',
+      subLabel: c.feed.dgu.modelRef ? `${c.feed.dgu.modelRef.manufacturer || ''} ${c.feed.dgu.modelRef.model || ''} · ${c.feed.dgu.kw} кВт` : `${c.feed.dgu.kw} кВт`,
+      qty: c.feed.dgu.redundancy === '2N' ? 2 : (c.feed.dgu.redundancy === 'N+1' ? 2 : 1),
+    });
+  }
+  return out;
 }
 
 function _detailsHeaderHtml(title, id, ro, kind, summary) {
@@ -837,17 +1216,51 @@ function bindListEvents() {
     if (!target || (!target.matches('input, select'))) return;
     const card = target.closest('.tw-card');
     const field = target.dataset.field;
-    if (!field) return;
+    // BOM-цены не имеют data-field (они идентифицируются через data-bom-key)
+    if (!field && !target.classList.contains('tw-bom-price')) return;
     const value = (target.type === 'checkbox') ? target.checked
       : (target.type === 'number' ? Number(target.value) || 0 : target.value);
+    // Early-handle BOM price overrides (изолировано от card-kind branching)
+    if (target.classList.contains('tw-bom-price')) {
+      const key = target.dataset.bomKey;
+      if (!key) return;
+      if (!cur.concept.bomOverrides) cur.concept.bomOverrides = {};
+      if (target.value === '') delete cur.concept.bomOverrides[key];
+      else cur.concept.bomOverrides[key] = { unitPrice: Number(target.value) || 0, currency: 'RUB' };
+      persistVariants(); renderActiveVariant();
+      return;
+    }
     if (card) {
       const kind = card.dataset.cardKind;
       const id = card.dataset.cardId;
-      const arr = cur.concept[kind === 'rack' ? 'rackGroups' : kind === 'ups' ? 'upsSystems' : 'coolingUnits'];
+      // PUE-карточка хранит данные в concept.pue (объект, не массив)
+      if (kind === 'pue') {
+        if (!cur.concept.pue) cur.concept.pue = { mode: 'auto', value: 1.4, manualPue: 1.4 };
+        _setNested(cur.concept, field, value);
+        persistVariants();
+        renderActiveVariant();
+        return;
+      }
+      const arrName = kind === 'rack' ? 'rackGroups'
+        : kind === 'ups' ? 'upsSystems'
+        : kind === 'cool' ? 'coolingUnits'
+        : kind === 'mdc' ? 'mdcBuildings'
+        : null;
+      if (!arrName) return;
+      const arr = cur.concept[arrName];
       const obj = arr.find(x => x.id === id);
       if (!obj) return;
       // Поддержка nested путей вроде "pdu.kind"
       _setNested(obj, field, kind === 'ups' && field === 'loadFactor' ? value / 100 : value);
+    } else if (target.classList.contains('tw-bom-price')) {
+      // BOM override (per-row price input)
+      const key = target.dataset.bomKey;
+      if (!key) return;
+      if (!cur.concept.bomOverrides) cur.concept.bomOverrides = {};
+      if (target.value === '') delete cur.concept.bomOverrides[key];
+      else cur.concept.bomOverrides[key] = { unitPrice: Number(target.value) || 0, currency: 'RUB' };
+    } else if (field === 'bomDate') {
+      cur.concept.bomDate = target.value;
     } else {
       // feed.tp.* / feed.dgu.* — относится к concept.feed
       _setNested(cur.concept.feed, field, value);
@@ -888,6 +1301,10 @@ function bindListEvents() {
       } else if (kind === 'cool') {
         newObj = newCoolingUnit('Климат');
         cur.concept.coolingUnits.push(newObj);
+      } else if (kind === 'mdc') {
+        if (!Array.isArray(cur.concept.mdcBuildings)) cur.concept.mdcBuildings = [];
+        newObj = newMdcBuilding(`МЦОД-${cur.concept.mdcBuildings.length + 1}`);
+        cur.concept.mdcBuildings.push(newObj);
       }
       if (newObj) _selectedBlock = { kind, id: newObj.id };
       persistVariants(); renderActiveVariant();
@@ -900,12 +1317,19 @@ function bindListEvents() {
       const act = blockAct.dataset.blockAction;
       const bk = blockAct.dataset.bk;
       const bid = blockAct.dataset.bid;
-      const arrName = bk === 'rack' ? 'rackGroups' : bk === 'ups' ? 'upsSystems' : 'coolingUnits';
+      const arrName = bk === 'rack' ? 'rackGroups'
+        : bk === 'ups' ? 'upsSystems'
+        : bk === 'cool' ? 'coolingUnits'
+        : bk === 'mdc' ? 'mdcBuildings'
+        : null;
+      if (!arrName) return;
       const arr = cur.concept[arrName];
       const idx = arr.findIndex(x => x.id === bid);
       if (idx < 0) return;
       if (act === 'delete') {
-        if (arr.length === 1) {
+        // mdcBuildings допускает 0 (стационарный ЦОД), для остальных — last guard
+        const allowEmpty = (bk === 'mdc');
+        if (!allowEmpty && arr.length === 1) {
           twToast('Нельзя удалить последний блок этого типа. Добавьте ещё один перед удалением.', 'warn');
           return;
         }
@@ -918,10 +1342,51 @@ function bindListEvents() {
         persistVariants(); renderActiveVariant();
       } else if (act === 'duplicate') {
         const copy = JSON.parse(JSON.stringify(arr[idx]));
-        copy.id = _newId(bk === 'rack' ? 'rg' : bk === 'ups' ? 'us' : 'cu');
+        copy.id = _newId(bk === 'rack' ? 'rg' : bk === 'ups' ? 'us' : bk === 'mdc' ? 'mdc' : 'cu');
         copy.name = (arr[idx].name || '') + ' (копия)';
+        // Для МЦОД: при duplicate привязка к sub-проекту НЕ копируется —
+        // юзер должен явно создать или привязать новое здание (иначе два
+        // блока ссылаются на один и тот же sub-проект, что путает summary).
+        if (bk === 'mdc') copy.mdcSubProjectId = null;
         arr.splice(idx + 1, 0, copy);
         _selectedBlock = { kind: bk, id: copy.id };
+        persistVariants(); renderActiveVariant();
+      }
+      return;
+    }
+
+    // 🏢 МЦОД actions: open / create / link / unlink
+    const mdcAct = e.target.closest('[data-mdc-action]');
+    if (mdcAct) {
+      const act = mdcAct.dataset.mdcAction;
+      const bid = mdcAct.dataset.bid;
+      const b = (cur.concept.mdcBuildings || []).find(x => x.id === bid);
+      if (!b) return;
+      if (act === 'open') {
+        if (b.mdcSubProjectId) {
+          // mdc-config читает active project из LS — переключаем перед переходом
+          try { localStorage.setItem('raschet.activeProject.v1', JSON.stringify({ id: b.mdcSubProjectId })); } catch {}
+          location.href = `../mdc-config/?project=${encodeURIComponent(b.mdcSubProjectId)}`;
+        }
+      } else if (act === 'create') {
+        // Создать новый sub-project mdc-config внутри текущего родителя
+        if (!_pid) { twToast('Нет активного проекта.', 'warn'); return; }
+        const sub = createSubProject(_pid, 'mdc-config', { name: b.name, designation: b.name });
+        b.mdcSubProjectId = sub.id;
+        persistVariants();
+        try { localStorage.setItem('raschet.activeProject.v1', JSON.stringify({ id: sub.id })); } catch {}
+        location.href = `../mdc-config/?project=${encodeURIComponent(sub.id)}`;
+      } else if (act === 'link') {
+        const subProjects = listSubProjects(_pid, 'mdc-config');
+        if (!subProjects.length) { twToast('Нет существующих МЦОД sub-проектов в этом проекте.', 'warn'); return; }
+        const picked = await twPickFromList(subProjects.map(p => ({ id: p.id, label: `${p.name} ${p.designation ? `(${p.designation})` : ''}` })), 'Выбор существующего МЦОД');
+        if (!picked) return;
+        b.mdcSubProjectId = picked;
+        persistVariants(); renderActiveVariant();
+      } else if (act === 'unlink') {
+        const ok = await twConfirm(`Отвязать здание «${b.name}» от sub-проекта? Сам sub-проект не удаляется.`, 'Отвязать');
+        if (!ok) return;
+        b.mdcSubProjectId = null;
         persistVariants(); renderActiveVariant();
       }
       return;
@@ -1029,6 +1494,31 @@ function twConfirm(msg, title = 'Подтверждение') {
   });
 }
 
+// v0.59.893: пикер из списка опций (id+label). Returns picked id or null.
+function twPickFromList(items, title = 'Выбор') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'tw-modal-overlay';
+    const rows = items.map(it => `<button type="button" class="tw-pick-row" data-id="${escAttr(it.id)}">${escHtml(it.label)}</button>`).join('');
+    overlay.innerHTML = `<div class="tw-modal tw-modal-pick" role="dialog" aria-modal="true">
+      <div class="tw-modal-head"><h3>${escHtml(title)}</h3></div>
+      <div class="tw-modal-body tw-pick-list">${rows || '<div class="muted">Список пуст.</div>'}</div>
+      <div class="tw-modal-actions">
+        <button type="button" class="tw-modal-btn tw-modal-cancel">Отмена</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = (val) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
+    const onKey = (e) => { if (e.key === 'Escape') close(null); };
+    overlay.querySelector('.tw-modal-cancel').addEventListener('click', () => close(null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    overlay.querySelectorAll('.tw-pick-row').forEach(row => {
+      row.addEventListener('click', () => close(row.dataset.id));
+    });
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 function _setNested(obj, path, value) {
   const parts = path.split('.');
   let o = obj;
@@ -1062,6 +1552,9 @@ function duplicateVariant(id) {
   for (const rg of (copy.concept.rackGroups || [])) rg.id = _newId('rg');
   for (const us of (copy.concept.upsSystems || [])) us.id = _newId('us');
   for (const cu of (copy.concept.coolingUnits || [])) cu.id = _newId('cu');
+  // v0.59.893: МЦОД блоки получают новые id, но привязка к sub-проекту сохраняется
+  // (sub-проект — независимая сущность, может быть общей для нескольких вариантов).
+  for (const b of (copy.concept.mdcBuildings || [])) b.id = _newId('mdc');
   _variants.push(copy);
   _activeId = copy.id;
   persistVariants(); persistActive();

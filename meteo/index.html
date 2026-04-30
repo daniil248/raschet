@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Метеоданные</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="meteo.css">
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+  <script src="../shared/auth-gate.js" defer></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountHelp } from '../shared/help-panel.js';
+    mountHeader({ title: 'Метеоданные', home: '../hub.html', moduleId: 'meteo', moduleTitle: 'Метеоданные' });
+    mountHelp({
+      module: 'meteo',
+      title: 'Модуль метеоданных',
+      usage: `
+        <h4>Назначение</h4>
+        <p>Сбор климатических рядов (температура, влажность, ветер) для расчёта PUE, freecooling-потенциала, диаграмм i-d (psychrometrics) и параметров климат-системы ЦОД. Данные привязаны к конкретной локации (lat, lon) и хранятся как набор «датасетов» внутри проекта.</p>
+        <h4>Источники данных</h4>
+        <ul>
+          <li><b>🌐 Open-Meteo REST</b> — бесплатный публичный API. Достаточно ввести координаты локации и диапазон дат, скачивание занимает 1–3 секунды.</li>
+          <li><b>📥 rp5.kz / rp5.ru — ручная загрузка</b> — можно скачать архив с сайта rp5 в формате CSV/XLS и подгрузить файлом. Парсер автоматически определяет колонки температуры/влажности.</li>
+        </ul>
+        <h4>Использование</h4>
+        <p>Каждый датасет можно «активировать» как источник для других модулей (Технолог ЦОД, ID-диаграмма). Активный датасет помечен ⭐ в списке.</p>
+      `,
+      calcs: `
+        <h4>Производные показатели</h4>
+        <ul>
+          <li>T<sub>min</sub>, T<sub>max</sub>, T<sub>средн</sub>, T<sub>99%</sub> — для подбора климат-системы по ASHRAE TC 9.9.</li>
+          <li>HDD/CDD (heating/cooling degree-days) — энергия отопления/охлаждения за период.</li>
+          <li>FreeCool-часы — кол-во часов в году, когда T&lt;14 °C (прямой freecooling) или T&lt;18 °C (косвенный).</li>
+          <li>Влажность абсолютная (г/кг) — для psychrometric-расчётов.</li>
+        </ul>
+      `
+    });
+  </script>
+
+  <main class="mt-main">
+    <aside class="mt-sidebar rs-sidebar">
+      <div class="mt-section">
+        <h3>📊 Датасеты</h3>
+        <div id="mt-datasets-list" class="mt-datasets-list"></div>
+      </div>
+      <div class="mt-section">
+        <!-- Кнопки импорта генерируются динамически из meteo/sources/index.js.
+             Чтобы добавить новый источник — создайте файл в meteo/sources/
+             и импортируйте его в sources/index.js. -->
+        <h3>➕ Импорт</h3>
+      </div>
+    </aside>
+
+    <section class="mt-content">
+      <div class="mt-content-header">
+        <h2 id="mt-active-name">— нет датасета —</h2>
+        <div class="mt-content-meta">
+          <span class="muted" id="mt-active-meta"></span>
+        </div>
+      </div>
+
+      <div id="mt-empty" class="mt-empty">
+        <div>
+          <h3>Нет загруженных метеоданных</h3>
+          <p class="muted">Слева — кнопки импорта. Open-Meteo REST загружается автоматически по координатам, rp5-архив — файлом.</p>
+        </div>
+      </div>
+
+      <div id="mt-active-pane" class="mt-active-pane" hidden>
+        <div class="mt-kpi-bar">
+          <div class="mt-kpi"><span class="mt-kpi-lbl">T средн</span><span class="mt-kpi-val" id="mt-kpi-tmean">—</span></div>
+          <div class="mt-kpi"><span class="mt-kpi-lbl">T min</span><span class="mt-kpi-val" id="mt-kpi-tmin">—</span></div>
+          <div class="mt-kpi"><span class="mt-kpi-lbl">T max</span><span class="mt-kpi-val" id="mt-kpi-tmax">—</span></div>
+          <div class="mt-kpi"><span class="mt-kpi-lbl">T 99%</span><span class="mt-kpi-val" id="mt-kpi-t99">—</span></div>
+          <div class="mt-kpi"><span class="mt-kpi-lbl">FreeCool ч</span><span class="mt-kpi-val" id="mt-kpi-fc">—</span></div>
+          <div class="mt-kpi"><span class="mt-kpi-lbl">Записей</span><span class="mt-kpi-val" id="mt-kpi-n">—</span></div>
+        </div>
+
+        <div class="mt-section-card">
+          <h3>📈 Распределение температуры (бины по 1 °C)</h3>
+          <canvas id="mt-hist-canvas" width="900" height="220"></canvas>
+        </div>
+
+        <div class="mt-section-card">
+          <h3>📋 Сводка</h3>
+          <div id="mt-summary"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="meteo.js"></script>
+</body>
+</html>
