@@ -1,9 +1,15 @@
 // =========================================================================
-// tech-workspace.js — v0.59.784 (Phase 20.1, multi-group rebuild)
+// tech-workspace.js — v0.59.892 (Phase 20.13, blocks-rail UX)
 //
-// Пользователь (2026-04-30): «по стойкам может быть несколько групп стоек с разной
-// мощностью, так же и ИБП могут быть разные для IT и для кондиционирования.
-// PDU тоже в рамках стойки конфигурируется».
+// v0.59.892 (Etap A): двухпанельный layout управления блоками концепции.
+// Пользователь: «приоритет управление оборудованием, список, управление
+// характеристиками стоек через свойства группы. Управление группами и
+// другими блоками переработать для удобной работы».
+//
+// Layout: левый rail со списком блоков (стойки/ИБП/климат/ввод/площади) +
+// правая панель деталей выбранного блока. Над rail — summary-bar с
+// ключевыми итогами объекта. Карточные редакторы остались, но рендерятся
+// по одной за раз — нет визуального шума от 5+ распахнутых секций сразу.
 //
 // Data shape:
 //   variant.concept = {
@@ -32,6 +38,9 @@ let _pid = null;
 let _variants = [];
 let _activeId = null;
 let _mode = 'list';
+// v0.59.892: выбранный блок в left rail. kind ∈ rack/ups/cool/feed/areas.
+// id — идентификатор элемента массива (для feed/areas — null).
+let _selectedBlock = null;
 
 // ─── Storage
 const KEY_VARIANTS = ['tech-workspace', 'variants.v1'];
@@ -531,6 +540,220 @@ function renderCompareMode() {
   </div>`;
 }
 
+// v0.59.892: Helpers для left-rail
+function _blockKey(kind, id) { return id ? `${kind}:${id}` : kind; }
+function _ensureSelectedBlock(c) {
+  // Если selected пустой или указывает на удалённый объект — выбрать первый rack-group
+  if (_selectedBlock) {
+    const { kind, id } = _selectedBlock;
+    if (kind === 'rack' && (c.rackGroups || []).some(rg => rg.id === id)) return;
+    if (kind === 'ups' && (c.upsSystems || []).some(us => us.id === id)) return;
+    if (kind === 'cool' && (c.coolingUnits || []).some(cu => cu.id === id)) return;
+    if (kind === 'feed' || kind === 'areas') return;
+  }
+  if ((c.rackGroups || []).length) {
+    _selectedBlock = { kind: 'rack', id: c.rackGroups[0].id };
+  } else {
+    _selectedBlock = { kind: 'feed', id: null };
+  }
+}
+
+function renderListRail(c, ro) {
+  const itKw = calcITTotal(c);
+  const upsByPurpose = calcUpsByPurpose(c);
+  const coolKw = calcCoolTotal(c);
+  const feedKw = calcFeedTotal(c);
+  const areas = calcAreas(c);
+  const sumM2 = areas.reduce((s, a) => s + a.m2, 0);
+  const sel = _selectedBlock || { kind: 'rack', id: null };
+
+  const _selCls = (kind, id) => (sel.kind === kind && (sel.id || null) === (id || null)) ? ' active' : '';
+  const _kvtChip = (kw) => `<span class="tw-rail-chip">${kw.toFixed(1)} кВт</span>`;
+  const _redChip = (txt) => `<span class="tw-rail-chip tw-rail-chip-warn">${txt}</span>`;
+
+  const rackRows = (c.rackGroups || []).map(rg => {
+    const kw = calcRackGroupKw(rg);
+    const profileLbl = ({ 'it': 'IT', 'blade': 'Blade', 'gpu': 'GPU', 'network': 'Net', 'storage': 'Stor' }[rg.profile]) || rg.profile;
+    const sub = `${rg.count} × ${rg.kwPerRack} кВт · ${profileLbl}`;
+    return `<button type="button" class="tw-rail-item${_selCls('rack', rg.id)}" data-bk="rack" data-bid="${escAttr(rg.id)}">
+      <span class="tw-rail-name">${escHtml(rg.name || 'Группа стоек')}</span>
+      <span class="tw-rail-sub">${sub}</span>
+      ${_kvtChip(kw)}
+    </button>`;
+  }).join('');
+
+  const upsRows = (c.upsSystems || []).map(us => {
+    const kw = _upsAvail(us);
+    const purp = ({ 'it': '⚡', 'cooling': '❄', 'mixed': '🔄' }[us.purpose]) || '⚡';
+    const sub = `${purp} ${us.count} × ${us.ratedKva} кВА · ${us.redundancy}`;
+    return `<button type="button" class="tw-rail-item${_selCls('ups', us.id)}" data-bk="ups" data-bid="${escAttr(us.id)}">
+      <span class="tw-rail-name">${escHtml(us.name || 'ИБП')}</span>
+      <span class="tw-rail-sub">${sub}</span>
+      ${_kvtChip(kw)}
+    </button>`;
+  }).join('');
+
+  const coolRows = (c.coolingUnits || []).map(cu => {
+    const kw = _coolAvail(cu);
+    const tp = ({ 'crac': 'CRAC', 'inrow': 'In-Row', 'fancoil': 'Fan-coil', 'freecool': 'Free' }[cu.type]) || cu.type;
+    const sub = `${tp} · ${cu.count} × ${cu.kwPerUnit} кВт · ${cu.redundancy}`;
+    return `<button type="button" class="tw-rail-item${_selCls('cool', cu.id)}" data-bk="cool" data-bid="${escAttr(cu.id)}">
+      <span class="tw-rail-name">${escHtml(cu.name || 'Климат')}</span>
+      <span class="tw-rail-sub">${sub}</span>
+      ${_kvtChip(kw)}
+    </button>`;
+  }).join('');
+
+  // Feed: ТП + ДГУ — две подстроки в одном «блоке»
+  const feedTpSub = c.feed?.tp?.needed ? `ТП ${c.feed.tp.kva} кВА · ${({'1':'1 ввод','2':'2 ввода','2-avr':'2 ввода + АВР'}[c.feed.tp.redundancy] || c.feed.tp.redundancy)}` : 'ТП — не требуется';
+  const feedDguSub = c.feed?.dgu?.needed ? `ДГУ ${c.feed.dgu.kw} кВт · ${({'esp':'ESP','prp':'PRP'}[c.feed.dgu.mode] || c.feed.dgu.mode)}` : 'ДГУ — не требуется';
+
+  // ИБП IT недостаток
+  const upsItKw = upsByPurpose.it + upsByPurpose.mixed;
+  const upsItMissing = (itKw > 0 && upsItKw < itKw) ? _redChip(`−${(itKw - upsItKw).toFixed(1)} кВт`) : '';
+  const coolMissing = (itKw > 0 && coolKw < itKw) ? _redChip(`−${(itKw - coolKw).toFixed(1)} кВт`) : '';
+
+  return `
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
+        <span class="tw-rail-title">🗄 Стойки <span class="muted">·${(c.rackGroups || []).length}</span></span>
+        <button type="button" class="tw-rail-add" data-add-card="rack" title="Добавить группу стоек" ${ro ? 'disabled' : ''}>➕</button>
+      </div>
+      <div class="tw-rail-list">${rackRows || '<div class="tw-rail-empty muted">Нет групп</div>'}</div>
+      <div class="tw-rail-foot">Σ ${itKw.toFixed(1)} кВт IT</div>
+    </div>
+
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
+        <span class="tw-rail-title">⚡ ИБП <span class="muted">·${(c.upsSystems || []).length}</span></span>
+        <button type="button" class="tw-rail-add" data-add-card="ups" title="Добавить систему ИБП" ${ro ? 'disabled' : ''}>➕</button>
+      </div>
+      <div class="tw-rail-list">${upsRows || '<div class="tw-rail-empty muted">Нет систем</div>'}</div>
+      <div class="tw-rail-foot">Σ ${upsByPurpose.total.toFixed(1)} кВт ${upsItMissing}</div>
+    </div>
+
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
+        <span class="tw-rail-title">❄ Климат <span class="muted">·${(c.coolingUnits || []).length}</span></span>
+        <button type="button" class="tw-rail-add" data-add-card="cool" title="Добавить группу кондиционеров" ${ro ? 'disabled' : ''}>➕</button>
+      </div>
+      <div class="tw-rail-list">${coolRows || '<div class="tw-rail-empty muted">Нет групп</div>'}</div>
+      <div class="tw-rail-foot">Σ ${coolKw.toFixed(1)} кВт холода ${coolMissing}</div>
+    </div>
+
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
+        <span class="tw-rail-title">🔌 Ввод</span>
+      </div>
+      <div class="tw-rail-list">
+        <button type="button" class="tw-rail-item${_selCls('feed', null)}" data-bk="feed" data-bid="">
+          <span class="tw-rail-name">ТП и ДГУ</span>
+          <span class="tw-rail-sub">${escHtml(feedTpSub)}</span>
+          <span class="tw-rail-sub">${escHtml(feedDguSub)}</span>
+          <span class="tw-rail-chip">${feedKw.toFixed(1)} кВт</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="tw-rail-section">
+      <div class="tw-rail-head">
+        <span class="tw-rail-title">📐 Площади</span>
+      </div>
+      <div class="tw-rail-list">
+        <button type="button" class="tw-rail-item${_selCls('areas', null)}" data-bk="areas" data-bid="">
+          <span class="tw-rail-name">Помещения</span>
+          <span class="tw-rail-sub">${areas.length} зон · расчёт по ТКП 308-2011</span>
+          <span class="tw-rail-chip">Σ ${sumM2} м²</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderDetails(c, ro) {
+  const sel = _selectedBlock || { kind: 'rack', id: null };
+  if (sel.kind === 'rack') {
+    const rg = (c.rackGroups || []).find(x => x.id === sel.id);
+    if (!rg) return '<div class="tw-details-empty muted">Группа удалена. Выберите блок слева.</div>';
+    return _detailsHeaderHtml('🗄 Группа стоек', rg.id, ro, 'rack', `${rg.count} × ${rg.kwPerRack} кВт = ${calcRackGroupKw(rg).toFixed(1)} кВт`)
+      + renderRackGroupCard(rg, ro)
+      + _bulkRackToolbar(c, ro);
+  }
+  if (sel.kind === 'ups') {
+    const us = (c.upsSystems || []).find(x => x.id === sel.id);
+    if (!us) return '<div class="tw-details-empty muted">Система удалена. Выберите блок слева.</div>';
+    return _detailsHeaderHtml('⚡ Система ИБП', us.id, ro, 'ups', `${us.count} × ${us.ratedKva} кВА · ${_upsAvail(us).toFixed(1)} кВт доступно`)
+      + renderUpsCard(us, ro);
+  }
+  if (sel.kind === 'cool') {
+    const cu = (c.coolingUnits || []).find(x => x.id === sel.id);
+    if (!cu) return '<div class="tw-details-empty muted">Группа удалена. Выберите блок слева.</div>';
+    return _detailsHeaderHtml('❄ Группа кондиционеров', cu.id, ro, 'cool', `${cu.count} × ${cu.kwPerUnit} кВт · ${_coolAvail(cu).toFixed(1)} кВт доступно`)
+      + renderCoolCard(cu, ro);
+  }
+  if (sel.kind === 'feed') {
+    const feedKw = calcFeedTotal(c);
+    return `<div class="tw-details-head">
+        <h3>🔌 Ввод: ТП и ДГУ</h3>
+        <span class="muted tw-details-sub">Σ принятая мощность: ${feedKw.toFixed(1)} кВт</span>
+      </div>
+      <div class="tw-details-body">${renderFeedSection(c.feed, ro)}</div>`;
+  }
+  if (sel.kind === 'areas') {
+    const areas = calcAreas(c);
+    const sumM2 = areas.reduce((s, a) => s + a.m2, 0);
+    return `<div class="tw-details-head">
+        <h3>📐 Площади помещений</h3>
+        <span class="muted tw-details-sub">Σ ${sumM2} м² · расчёт по ТКП 308-2011 / TIA-942</span>
+      </div>
+      <div class="tw-details-body">
+        <table class="tw-areas">
+          <thead><tr><th>Помещение</th><th class="num">Площадь, м²</th></tr></thead>
+          <tbody>${areas.map(a => `<tr><td>${escHtml(a.name)}</td><td class="num">${a.m2}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td><b>Σ</b></td><td class="num"><b>${sumM2}</b></td></tr></tfoot>
+        </table>
+        <p class="muted tw-details-note">Площади рассчитываются автоматически из параметров стоек, ИБП, климата и ввода. Чтобы изменить — отредактируйте соответствующие блоки слева.</p>
+      </div>`;
+  }
+  return '<div class="tw-details-empty muted">Выберите блок слева.</div>';
+}
+
+function _detailsHeaderHtml(title, id, ro, kind, summary) {
+  return `<div class="tw-details-head">
+    <h3>${title}</h3>
+    <span class="muted tw-details-sub">${escHtml(summary)}</span>
+    <span class="tw-details-actions">
+      <button type="button" class="tw-details-btn" data-block-action="duplicate" data-bk="${kind}" data-bid="${escAttr(id)}" title="Дублировать блок" ${ro ? 'disabled' : ''}>📋 Дублировать</button>
+      <button type="button" class="tw-details-btn tw-details-btn-danger" data-block-action="delete" data-bk="${kind}" data-bid="${escAttr(id)}" title="Удалить блок" ${ro ? 'disabled' : ''}>🗑 Удалить</button>
+    </span>
+  </div>
+  <div class="tw-details-body">`;
+}
+
+// v0.59.892: Bulk-toolbar для стоек — применить размеры/PDU параметры ко всем
+// группам сразу. Появляется только если групп ≥2.
+function _bulkRackToolbar(c, ro) {
+  const groups = c.rackGroups || [];
+  if (groups.length < 2) return '</div>';
+  return `</div>
+  <div class="tw-bulk-toolbar">
+    <h5>📦 Применить ко всем группам стоек</h5>
+    <div class="tw-bulk-row">
+      <span class="muted">Габариты:</span>
+      <button type="button" class="tw-bulk-btn" data-bulk="rack-size" data-w="600" data-d="1000" ${ro ? 'disabled' : ''}>600 × 1000</button>
+      <button type="button" class="tw-bulk-btn" data-bulk="rack-size" data-w="600" data-d="1200" ${ro ? 'disabled' : ''}>600 × 1200</button>
+      <button type="button" class="tw-bulk-btn" data-bulk="rack-size" data-w="800" data-d="1200" ${ro ? 'disabled' : ''}>800 × 1200</button>
+      <button type="button" class="tw-bulk-btn" data-bulk="rack-size" data-w="800" data-d="1100" ${ro ? 'disabled' : ''}>800 × 1100</button>
+    </div>
+    <div class="tw-bulk-row">
+      <span class="muted">PDU:</span>
+      <button type="button" class="tw-bulk-btn" data-bulk="pdu" data-kind="metered" data-rating="32" data-inputs="2" ${ro ? 'disabled' : ''}>Metered 32А ×2</button>
+      <button type="button" class="tw-bulk-btn" data-bulk="pdu" data-kind="switched" data-rating="32" data-inputs="2" ${ro ? 'disabled' : ''}>Switched 32А ×2</button>
+      <button type="button" class="tw-bulk-btn" data-bulk="pdu" data-kind="basic" data-rating="16" data-inputs="2" ${ro ? 'disabled' : ''}>Basic 16А ×2</button>
+    </div>
+  </div>`;
+}
+
 // ─── Render: active variant (right pane)
 function renderActiveVariant() {
   const v = _variants.find(x => x.id === _activeId);
@@ -559,87 +782,35 @@ function renderActiveVariant() {
   const ro = !!v.readOnly;
   // Compute summaries
   const itKw = calcITTotal(c);
-  const machM2 = calcMachroomArea(c);
   const upsByPurpose = calcUpsByPurpose(c);
   const coolKw = calcCoolTotal(c);
   const feedKw = calcFeedTotal(c);
+  const areas = calcAreas(c);
+  const sumM2 = areas.reduce((s, a) => s + a.m2, 0);
   const upsItKw = upsByPurpose.it + upsByPurpose.mixed;
-  const upsCoolKw = upsByPurpose.cooling + upsByPurpose.mixed;
+  const totalRacks = (c.rackGroups || []).reduce((s, rg) => s + (Number(rg.count) || 0), 0);
 
-  // Build full list pane HTML
+  // Build list pane HTML (two-panel rail + details)
   if (listPane && _mode === 'list') {
-    const upsItMargin = (itKw > 0)
-      ? (upsItKw >= itKw ? `<span style="color:#16a34a">✓ +${(upsItKw - itKw).toFixed(1)} кВт</span>` : `<span style="color:#dc2626">⚠ −${(itKw - upsItKw).toFixed(1)} кВт</span>`)
-      : '—';
-    listPane.innerHTML = `
-      <div class="tw-section">
-        <div class="tw-section-head">
-          <h3>1. Концепция стоек</h3>
-          <button type="button" class="tw-add-btn" data-add-card="rack" ${ro ? 'disabled' : ''}>➕ Группа стоек</button>
-        </div>
-        <div class="tw-cards" data-cards-for="rack">
-          ${(c.rackGroups || []).map(rg => renderRackGroupCard(rg, ro)).join('')}
-        </div>
-        <div class="tw-summary">
-          <b>Σ IT-нагрузка:</b> <span>${itKw.toFixed(1)}</span> кВт ·
-          <b>Σ площадь машзала (≈):</b> <span>${machM2}</span> м²
-        </div>
-      </div>
+    _ensureSelectedBlock(c);
+    // Top summary bar — ключевые KPI
+    const upsItOk = (itKw > 0 && upsItKw >= itKw);
+    const coolOk = (itKw > 0 && coolKw >= itKw);
+    const summaryBar = `<div class="tw-summary-bar">
+      <div class="tw-kpi"><span class="tw-kpi-lbl">Стоек</span><span class="tw-kpi-val">${totalRacks}</span></div>
+      <div class="tw-kpi"><span class="tw-kpi-lbl">IT-нагрузка</span><span class="tw-kpi-val">${itKw.toFixed(1)} <small>кВт</small></span></div>
+      <div class="tw-kpi ${itKw > 0 ? (upsItOk ? 'ok' : 'bad') : ''}"><span class="tw-kpi-lbl">⚡ ИБП IT</span><span class="tw-kpi-val">${upsItKw.toFixed(1)} <small>кВт</small></span></div>
+      <div class="tw-kpi ${itKw > 0 ? (coolOk ? 'ok' : 'bad') : ''}"><span class="tw-kpi-lbl">❄ Холод</span><span class="tw-kpi-val">${coolKw.toFixed(1)} <small>кВт</small></span></div>
+      <div class="tw-kpi"><span class="tw-kpi-lbl">Σ Принятая</span><span class="tw-kpi-val">${feedKw.toFixed(1)} <small>кВт</small></span></div>
+      <div class="tw-kpi"><span class="tw-kpi-lbl">Площадь</span><span class="tw-kpi-val">${sumM2} <small>м²</small></span></div>
+    </div>`;
 
-      <div class="tw-section">
-        <div class="tw-section-head">
-          <h3>2. Системы ИБП</h3>
-          <button type="button" class="tw-add-btn" data-add-card="ups" ${ro ? 'disabled' : ''}>➕ Система ИБП</button>
-        </div>
-        <div class="tw-cards" data-cards-for="ups">
-          ${(c.upsSystems || []).map(us => renderUpsCard(us, ro)).join('')}
-        </div>
-        <div class="tw-summary">
-          <b>⚡ ИБП IT:</b> ${upsItKw.toFixed(1)} кВт ${upsItMargin} ·
-          <b>❄ ИБП климат:</b> ${upsCoolKw.toFixed(1)} кВт ·
-          <b>Σ итого:</b> ${upsByPurpose.total.toFixed(1)} кВт
-        </div>
-      </div>
-
-      <div class="tw-section">
-        <div class="tw-section-head">
-          <h3>3. Климат</h3>
-          <button type="button" class="tw-add-btn" data-add-card="cool" ${ro ? 'disabled' : ''}>➕ Группа кондиционеров</button>
-        </div>
-        <div class="tw-cards" data-cards-for="cool">
-          ${(c.coolingUnits || []).map(cu => renderCoolCard(cu, ro)).join('')}
-        </div>
-        <div class="tw-summary">
-          <b>Σ холод доступен:</b> ${coolKw.toFixed(1)} кВт ·
-          <b>Запас:</b> ${itKw > 0 ? (coolKw >= itKw ? `<span style="color:#16a34a">✓ +${(coolKw - itKw).toFixed(1)} кВт</span>` : `<span style="color:#dc2626">⚠ −${(itKw - coolKw).toFixed(1)} кВт</span>`) : '—'}
-        </div>
-      </div>
-
-      <div class="tw-section">
-        <div class="tw-section-head"><h3>4. Ввод: ТП и ДГУ</h3></div>
-        ${renderFeedSection(c.feed, ro)}
-        <div class="tw-summary">
-          <b>Σ принятая мощность:</b> ${feedKw.toFixed(1)} кВт
-        </div>
-      </div>
-
-      <div class="tw-section">
-        <div class="tw-section-head"><h3>5. Площади помещений</h3></div>
-        <div id="tw-areas-table"></div>
-      </div>
-    `;
-    // Render areas
-    const areas = calcAreas(c);
-    const sumM2 = areas.reduce((s, a) => s + a.m2, 0);
-    const areasRoot = listPane.querySelector('#tw-areas-table');
-    if (areasRoot) {
-      areasRoot.innerHTML = `<table class="tw-areas">
-        <thead><tr><th>Помещение</th><th class="num">Площадь, м²</th></tr></thead>
-        <tbody>${areas.map(a => `<tr><td>${escHtml(a.name)}</td><td class="num">${a.m2}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td><b>Σ</b></td><td class="num"><b>${sumM2}</b></td></tr></tfoot>
-      </table>`;
-    }
-    $('tw-content-summary').textContent = `${(c.rackGroups || []).reduce((s, rg) => s + (rg.count || 0), 0)} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
+    listPane.innerHTML = `${summaryBar}
+      <div class="tw-list-layout">
+        <aside class="tw-list-rail">${renderListRail(c, ro)}</aside>
+        <div class="tw-list-details">${renderDetails(c, ro)}</div>
+      </div>`;
+    $('tw-content-summary').textContent = `${totalRacks} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
   }
 }
 
@@ -686,19 +857,108 @@ function bindListEvents() {
   };
   // ТОЛЬКО change — НЕ input. Иначе фокус теряется на каждом keystroke.
   root.addEventListener('change', handle);
-  // Кнопки add/delete card
-  root.addEventListener('click', (e) => {
+  // Кнопки add/delete card / rail-item click / block-actions / bulk-toolbar
+  root.addEventListener('click', async (e) => {
     const cur = _variants.find(x => x.id === _activeId);
-    if (!cur || cur.readOnly) return;
-    const addBtn = e.target.closest('.tw-add-btn[data-add-card]');
+    if (!cur) return;
+
+    // Rail item click → выбор блока (работает даже в read-only)
+    const railItem = e.target.closest('.tw-rail-item[data-bk]');
+    if (railItem) {
+      const bk = railItem.dataset.bk;
+      const bid = railItem.dataset.bid || null;
+      _selectedBlock = { kind: bk, id: bid };
+      renderActiveVariant();
+      return;
+    }
+
+    if (cur.readOnly) return;
+
+    // ➕ Добавить блок (из rail)
+    const addBtn = e.target.closest('[data-add-card]');
     if (addBtn) {
       const kind = addBtn.dataset.addCard;
-      if (kind === 'rack') cur.concept.rackGroups.push(newRackGroup(`Группа ${cur.concept.rackGroups.length + 1}`));
-      else if (kind === 'ups') cur.concept.upsSystems.push(newUpsSystem('ИБП', 'it'));
-      else if (kind === 'cool') cur.concept.coolingUnits.push(newCoolingUnit('Климат'));
+      let newObj = null;
+      if (kind === 'rack') {
+        newObj = newRackGroup(`Группа ${cur.concept.rackGroups.length + 1}`);
+        cur.concept.rackGroups.push(newObj);
+      } else if (kind === 'ups') {
+        newObj = newUpsSystem('ИБП', 'it');
+        cur.concept.upsSystems.push(newObj);
+      } else if (kind === 'cool') {
+        newObj = newCoolingUnit('Климат');
+        cur.concept.coolingUnits.push(newObj);
+      }
+      if (newObj) _selectedBlock = { kind, id: newObj.id };
       persistVariants(); renderActiveVariant();
       return;
     }
+
+    // 🗑 Удалить / 📋 Дублировать блок (из details-header)
+    const blockAct = e.target.closest('[data-block-action]');
+    if (blockAct) {
+      const act = blockAct.dataset.blockAction;
+      const bk = blockAct.dataset.bk;
+      const bid = blockAct.dataset.bid;
+      const arrName = bk === 'rack' ? 'rackGroups' : bk === 'ups' ? 'upsSystems' : 'coolingUnits';
+      const arr = cur.concept[arrName];
+      const idx = arr.findIndex(x => x.id === bid);
+      if (idx < 0) return;
+      if (act === 'delete') {
+        if (arr.length === 1) {
+          twToast('Нельзя удалить последний блок этого типа. Добавьте ещё один перед удалением.', 'warn');
+          return;
+        }
+        const ok = await twConfirm(`Удалить блок «${arr[idx].name || ''}»?`, 'Удаление блока');
+        if (!ok) return;
+        arr.splice(idx, 1);
+        // Перевыбрать соседний блок
+        const next = arr[Math.min(idx, arr.length - 1)];
+        _selectedBlock = next ? { kind: bk, id: next.id } : { kind: 'feed', id: null };
+        persistVariants(); renderActiveVariant();
+      } else if (act === 'duplicate') {
+        const copy = JSON.parse(JSON.stringify(arr[idx]));
+        copy.id = _newId(bk === 'rack' ? 'rg' : bk === 'ups' ? 'us' : 'cu');
+        copy.name = (arr[idx].name || '') + ' (копия)';
+        arr.splice(idx + 1, 0, copy);
+        _selectedBlock = { kind: bk, id: copy.id };
+        persistVariants(); renderActiveVariant();
+      }
+      return;
+    }
+
+    // Bulk-toolbar для стоек
+    const bulkBtn = e.target.closest('[data-bulk]');
+    if (bulkBtn) {
+      const op = bulkBtn.dataset.bulk;
+      const groups = cur.concept.rackGroups || [];
+      if (op === 'rack-size') {
+        const w = Number(bulkBtn.dataset.w) || 600;
+        const d = Number(bulkBtn.dataset.d) || 1200;
+        const ok = await twConfirm(`Применить размеры ${w} × ${d} мм ко всем ${groups.length} группам стоек?`, 'Bulk-операция');
+        if (!ok) return;
+        groups.forEach(rg => { rg.widthMm = w; rg.depthMm = d; });
+        persistVariants(); renderActiveVariant();
+        twToast(`Размеры ${w} × ${d} мм применены к ${groups.length} группам`, 'ok');
+      } else if (op === 'pdu') {
+        const kind = bulkBtn.dataset.kind || 'metered';
+        const rating = Number(bulkBtn.dataset.rating) || 32;
+        const inputs = Number(bulkBtn.dataset.inputs) || 2;
+        const ok = await twConfirm(`Применить PDU «${kind} ${rating}А ×${inputs}» ко всем ${groups.length} группам стоек?`, 'Bulk-операция');
+        if (!ok) return;
+        groups.forEach(rg => {
+          if (!rg.pdu) rg.pdu = { kind: 'metered', phases: '3ph', ratingA: 32, inputsPerRack: 2, modelRef: null };
+          rg.pdu.kind = kind;
+          rg.pdu.ratingA = rating;
+          rg.pdu.inputsPerRack = inputs;
+        });
+        persistVariants(); renderActiveVariant();
+        twToast(`PDU «${kind} ${rating}А ×${inputs}» применён к ${groups.length} группам`, 'ok');
+      }
+      return;
+    }
+
+    // Удалить блок через × в шапке карточки (старый путь — оставлено для совместимости)
     const delBtn = e.target.closest('.tw-card-del[data-card-action="delete"]');
     if (delBtn) {
       const card = delBtn.closest('.tw-card');
@@ -710,18 +970,62 @@ function bindListEvents() {
       const idx = arr.findIndex(x => x.id === id);
       if (idx < 0) return;
       if (arr.length === 1) {
-        alert('Нельзя удалить последнюю запись. Добавьте новую перед удалением.');
+        twToast('Нельзя удалить последний блок. Добавьте ещё один перед удалением.', 'warn');
         return;
       }
-      if (!confirm(`Удалить «${arr[idx].name}»?`)) return;
+      const ok = await twConfirm(`Удалить «${arr[idx].name}»?`, 'Удаление блока');
+      if (!ok) return;
       arr.splice(idx, 1);
+      const next = arr[Math.min(idx, arr.length - 1)];
+      _selectedBlock = next ? { kind, id: next.id } : { kind: 'feed', id: null };
       persistVariants(); renderActiveVariant();
       return;
     }
+
     const bindBtn = e.target.closest('.tw-bind-btn[data-bind-domain]');
     if (bindBtn) {
       openModelPicker(bindBtn.dataset.bindDomain, bindBtn.dataset.refId);
     }
+  });
+}
+
+// ─── v0.59.892: Inline UI вместо browser dialogs (по правилу из MEMORY.md)
+function twToast(msg, kind = 'info') {
+  const el = document.createElement('div');
+  el.className = `tw-toast tw-toast-${kind}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  // Reflow + add visible class for transition
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 250);
+  }, 2800);
+}
+
+function twConfirm(msg, title = 'Подтверждение') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'tw-modal-overlay';
+    overlay.innerHTML = `<div class="tw-modal" role="dialog" aria-modal="true">
+      <div class="tw-modal-head"><h3>${escHtml(title)}</h3></div>
+      <div class="tw-modal-body">${escHtml(msg)}</div>
+      <div class="tw-modal-actions">
+        <button type="button" class="tw-modal-btn tw-modal-cancel">Отмена</button>
+        <button type="button" class="tw-modal-btn tw-modal-ok">OK</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = (val) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') close(false);
+      else if (e.key === 'Enter') close(true);
+    };
+    overlay.querySelector('.tw-modal-cancel').addEventListener('click', () => close(false));
+    overlay.querySelector('.tw-modal-ok').addEventListener('click', () => close(true));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+    document.addEventListener('keydown', onKey);
+    requestAnimationFrame(() => overlay.querySelector('.tw-modal-ok').focus());
   });
 }
 
@@ -763,10 +1067,11 @@ function duplicateVariant(id) {
   persistVariants(); persistActive();
   renderVariantsList(); renderActiveVariant();
 }
-function deleteVariant(id) {
+async function deleteVariant(id) {
   const idx = _variants.findIndex(v => v.id === id);
   if (idx < 0) return;
-  if (!confirm(`Удалить вариант «${_variants[idx].name}»?`)) return;
+  const ok = await twConfirm(`Удалить вариант «${_variants[idx].name}»?`, 'Удаление варианта');
+  if (!ok) return;
   _variants.splice(idx, 1);
   if (_activeId === id) _activeId = _variants[0]?.id || null;
   if (!_variants.some(v => v.primary) && _variants.length > 0) {
@@ -807,7 +1112,7 @@ async function openModelPicker(domain, refId) {
   try {
     const lib = await import('../shared/element-library.js');
     elements = lib.listElements({ kind }) || [];
-  } catch (e) { alert(`Не удалось загрузить библиотеку: ${e.message || e}`); return; }
+  } catch (e) { twToast(`Не удалось загрузить библиотеку: ${e.message || e}`, 'warn'); return; }
   // Ищем текущий modelRef для подсветки
   const target = _findBindTarget(cur.concept, domain, refId);
   const currentRefId = target?.modelRef?.id || null;
@@ -1299,12 +1604,12 @@ function bindReport() {
   if (!btn) return;
   btn.addEventListener('click', () => {
     const v = _variants.find(x => x.id === _activeId);
-    if (!v) { alert('Сначала выберите вариант.'); return; }
+    if (!v) { twToast('Сначала выберите вариант.', 'warn'); return; }
     const html = generateReportHtml(v);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const w = window.open(url, '_blank');
-    if (!w) { alert('Браузер заблокировал открытие. Разрешите попапы для этого сайта.'); }
+    if (!w) { twToast('Браузер заблокировал открытие. Разрешите попапы для этого сайта.', 'warn'); }
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   });
 }
@@ -1315,26 +1620,28 @@ function bindHandoff() {
   btn.addEventListener('click', async () => {
     const v = _variants.find(x => x.id === _activeId);
     if (!v || v.readOnly) return;
-    if (!confirm(`📤 Передать вариант «${v.name}» в детальное проектирование?\n\nБудет создана схема в Конструкторе с предзаполненными узлами:\n• Источник (${v.concept.feed?.tp?.needed ? 'ТП' : 'Utility'})\n• ГРЩ\n• ${v.concept.upsSystems?.length || 0} ИБП-узлов\n• ${v.concept.rackGroups?.length || 0} групп стоек\n• ${v.concept.coolingUnits?.length || 0} кондиционеров\n\nСвязи между узлами вы проведёте вручную в Конструкторе.\n\nПосле handoff variant станет read-only. Продолжить?`)) return;
+    const summary = `📤 Передать «${v.name}» в детальное проектирование? Будет создана схема в Конструкторе: источник (${v.concept.feed?.tp?.needed ? 'ТП' : 'Utility'}), ГРЩ, ${v.concept.upsSystems?.length || 0} ИБП, ${v.concept.rackGroups?.length || 0} групп стоек, ${v.concept.coolingUnits?.length || 0} кондиционеров. Связи проведёте вручную. Variant станет read-only.`;
+    const ok = await twConfirm(summary, 'Handoff в проектирование');
+    if (!ok) return;
     try {
       const scheme = _buildSchemeFromConcept(v.concept, v.name);
       // Записываем в engine.scheme.v1 проекта
       const key = projectKey(_pid, 'engine', 'scheme.v1');
       const existing = localStorage.getItem(key);
       if (existing) {
-        if (!confirm(`Внимание! В проекте уже есть схема. Заменить её на сгенерированную из концепции?\n\nСтарая схема будет потеряна (Ctrl+Z в Конструкторе не поможет).`)) return;
+        const ok2 = await twConfirm('В проекте уже есть схема. Заменить её на сгенерированную из концепции? Старая схема будет потеряна (Ctrl+Z в Конструкторе не поможет).', 'Перезапись схемы');
+        if (!ok2) return;
       }
       localStorage.setItem(key, JSON.stringify(scheme));
       v.readOnly = true;
       v.handoffAt = Date.now();
       persistVariants();
       renderVariantsList(); renderActiveVariant();
-      if (confirm(`✓ Схема создана. Открыть Конструктор?`)) {
-        location.href = '../index.html';
-      }
+      const goNow = await twConfirm('✓ Схема создана. Открыть Конструктор?', 'Готово');
+      if (goNow) location.href = '../index.html';
     } catch (e) {
       console.error('[handoff]', e);
-      alert(`Ошибка handoff: ${e.message || e}`);
+      twToast(`Ошибка handoff: ${e.message || e}`, 'warn');
     }
   });
 }

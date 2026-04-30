@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.892', date: '2026-04-30', items: [
+      '🧰 <b>Технолог ЦОД — двухпанельный layout управления блоками (Etap A)</b>. По задаче: «приоритет управление оборудованием, список, управление характеристиками стоек через свойства группы. Управление группами и другими блоками переработать для удобной работы».',
+      '• <b>Summary-bar</b> сверху: KPI-карточки с цветовой индикацией (Стоек / IT-нагрузка / ⚡ ИБП IT / ❄ Холод / Σ Принятая / Площадь). Зелёный — запас есть, красный — недостаток.',
+      '• <b>Left rail</b>: компактный список блоков по разделам (🗄 Стойки · ⚡ ИБП · ❄ Климат · 🔌 Ввод · 📐 Площади). У каждого блока: имя + sub-line с параметрами + chip с мощностью. Кнопка ➕ добавления — в шапке секции.',
+      '• <b>Right details</b>: распахнутый редактор только для выбранного блока. Шапка details содержит summary блока + кнопки 📋 Дублировать / 🗑 Удалить.',
+      '• <b>Bulk-toolbar</b> для стоек (если групп ≥2): пресеты «600 × 1000 / 600 × 1200 / 800 × 1200 / 800 × 1100» и PDU-пресеты «Metered/Switched/Basic 32А ×2». Применяется ко всем группам сразу с подтверждением.',
+      '• <b>Inline UI вместо browser dialogs</b>: <code>twToast</code> + <code>twConfirm</code> (по правилу из MEMORY.md «No browser dialogs»). Удалены все <code>alert/confirm</code> в tech-workspace (handoff, удаление варианта/блока, ошибки).',
+      '• <b>Ranged-state</b>: <code>_selectedBlock = { kind, id }</code>, авто-перевыбор после удаления (соседний блок), авто-fallback на первую rack-группу при загрузке.',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code> (renderListRail/renderDetails/_bulkRackToolbar + twToast/twConfirm + bindListEvents с rail-click/block-action/bulk-handlers), <code>tech-workspace/tech-workspace.css</code> (~280 строк новых стилей: tw-summary-bar / tw-list-layout / tw-list-rail / tw-list-details / tw-bulk-toolbar / tw-toast / tw-modal). <code>js/engine/constants.js</code> (APP_VERSION 0.59.892).',
+    ] },
     { version: '0.59.891', date: '2026-04-30', items: [
       '🔒 <b>HARD-FIX дубликатов: pullPorRacksToEngine больше не материализует POR-объекты с id=por_legacy_*</b>. v0.59.890 добавлял tag-dedup, но фантомы продолжали появляться: после reload и cleanup engine-state, POR-объекты <code>por_legacy_*</code> persisted в LS, и pullPorRacksToEngine создавал из них новые engine-узлы (с новыми ids n255-n257) ДО deserialize основной схемы — tagsByRack пустой → dedup не срабатывал.',
       '• <b>Решение</b>: жёсткий guard в начале pull-цикла — если <code>obj.id.startsWith("por_legacy_")</code>, пропускаем без проверок. Эти POR-объекты — артефакты legacy-rack-migration (зеркало templates/instances из LS), они НЕ должны материализоваться в engine. Реальные стойки приходят из tech-workspace handoff с <code>por_&lt;random&gt;</code> id.',

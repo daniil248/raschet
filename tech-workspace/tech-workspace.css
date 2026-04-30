@@ -566,3 +566,361 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   font-size: 10.5px;
   font-weight: 600;
 }
+
+/* ─── v0.59.892: Two-panel blocks UX (Etap A) */
+.tw-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.tw-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  min-width: 0;
+}
+.tw-kpi.ok { border-color: #86efac; background: #f0fdf4; }
+.tw-kpi.bad { border-color: #fca5a5; background: #fef2f2; }
+.tw-kpi-lbl {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6b7280;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.tw-kpi-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.tw-kpi-val small { font-size: 11px; color: #6b7280; font-weight: 500; }
+.tw-kpi.ok .tw-kpi-val { color: #15803d; }
+.tw-kpi.bad .tw-kpi-val { color: #b91c1c; }
+
+.tw-list-layout {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.tw-list-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.tw-rail-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.tw-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+.tw-rail-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #374151;
+}
+.tw-rail-add {
+  width: 22px; height: 22px;
+  border: 1px solid #4f46e5;
+  background: #4f46e5; color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+}
+.tw-rail-add:hover { background: #4338ca; }
+.tw-rail-add:disabled { background: #9ca3af; border-color: #9ca3af; cursor: not-allowed; }
+.tw-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+}
+.tw-rail-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background 0.1s;
+}
+.tw-rail-item:hover { background: #f3f4f6; }
+.tw-rail-item.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.tw-rail-name {
+  grid-column: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tw-rail-sub {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tw-rail-chip {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 2px 7px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tw-rail-item.active .tw-rail-chip {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+.tw-rail-chip-warn {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+.tw-rail-empty {
+  padding: 8px 10px;
+  font-size: 11.5px;
+  font-style: italic;
+}
+.tw-rail-foot {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #4b5563;
+  background: #fafafa;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tw-list-details {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.tw-details-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+.tw-details-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+.tw-details-sub {
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.tw-details-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.tw-details-btn {
+  padding: 5px 10px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #374151;
+}
+.tw-details-btn:hover { background: #f9fafb; border-color: #4f46e5; color: #4f46e5; }
+.tw-details-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tw-details-btn-danger:hover { background: #fef2f2; border-color: #dc2626; color: #b91c1c; }
+.tw-details-body { display: flex; flex-direction: column; gap: 10px; }
+.tw-details-empty {
+  padding: 30px;
+  text-align: center;
+  font-size: 13px;
+}
+.tw-details-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* В details-режиме скрываем лишний × из старой шапки карточки —
+   удаление теперь через кнопку в details-head. */
+.tw-list-details .tw-card-del { display: none; }
+.tw-list-details .tw-card { border: none; padding: 0; background: transparent; gap: 12px; }
+.tw-list-details .tw-card-head { border-bottom: 1px dashed #e5e7eb; padding-bottom: 8px; }
+
+.tw-bulk-toolbar {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: #fefce8;
+  border: 1px solid #fde047;
+  border-radius: 5px;
+}
+.tw-bulk-toolbar h5 {
+  margin: 0 0 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #854d0e;
+}
+.tw-bulk-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.tw-bulk-row .muted { font-size: 11.5px; min-width: 70px; }
+.tw-bulk-btn {
+  padding: 4px 10px;
+  border: 1px solid #d4a72c;
+  background: #fff;
+  color: #854d0e;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.tw-bulk-btn:hover { background: #fef9c3; }
+.tw-bulk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 900px) {
+  .tw-list-layout { grid-template-columns: 1fr; }
+  .tw-list-rail { position: static; max-height: none; }
+}
+
+/* ─── v0.59.892: Inline toast / confirm-modal (вместо browser dialogs) */
+.tw-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10001;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 10px 14px;
+  border-radius: 5px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.2s, transform 0.2s;
+  max-width: 360px;
+}
+.tw-toast.show { opacity: 1; transform: translateY(0); }
+.tw-toast-warn { background: #b45309; }
+.tw-toast-ok { background: #15803d; }
+
+.tw-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+.tw-modal {
+  background: #fff;
+  border-radius: 8px;
+  width: min(440px, 92vw);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+}
+.tw-modal-head {
+  padding: 14px 18px 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.tw-modal-head h3 { margin: 0; font-size: 15px; color: #111827; font-weight: 600; }
+.tw-modal-body {
+  padding: 14px 18px;
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+}
+.tw-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 18px 14px;
+}
+.tw-modal-btn {
+  padding: 7px 16px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+.tw-modal-btn:hover { background: #f9fafb; }
+.tw-modal-ok {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+.tw-modal-ok:hover { background: #4338ca; }
+.tw-modal-cancel:hover { border-color: #6b7280; }
