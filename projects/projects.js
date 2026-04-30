@@ -10,7 +10,7 @@ import {
 } from '../shared/project-storage.js';
 import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
 import { migrateOrphanSchemes } from '../shared/scheme-orphan-migration.js';
-import { downloadBackup, readBackupFile, restoreFromJson, getLastBackupInfo } from '../shared/backup.js';
+import { downloadBackup, readBackupFile, restoreFromJson, getLastBackupInfo, getAutoBackupSettings } from '../shared/backup.js';
 import { APP_VERSION } from '../js/engine/constants.js';
 
 // v0.59.507: автоматическая миграция orphan-схем при первом заходе на
@@ -237,6 +237,61 @@ function statsBadges(s) {
 }
 
 /* ---------- Рендер ---------- */
+// v0.59.858: backup-nudge — показывает баннер сверху /projects/ если
+// auto-backup не настроен и есть значимые данные.
+function _renderBackupNudge() {
+  const host = document.getElementById('pr-backup-nudge');
+  if (!host) return;
+  // Не показываем если уже dismissed в этой сессии
+  try { if (sessionStorage.getItem('raschet.backupNudgeDismissed') === '1') { host.innerHTML = ''; return; } } catch {}
+  const settings = getAutoBackupSettings();
+  const last = getLastBackupInfo();
+  if (settings.enabled) { host.innerHTML = ''; return; } // авто-бэкап включён — баннер не нужен
+  // Есть ли у пользователя данные кроме default? Считаем не-default проекты + любые scheme-keys.
+  let dataCount = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith('raschet.project.')) dataCount++;
+      if (k === 'rack-config.templates.v1') dataCount += 2;
+    }
+  } catch {}
+  if (dataCount < 2) { host.innerHTML = ''; return; } // мало данных — не пристаём
+  const lastInfo = last
+    ? `Последний бэкап: <b>${new Date(last.at).toLocaleDateString()}</b>`
+    : '<b style="color:#dc2626">Бэкапов ещё не было.</b>';
+  host.innerHTML = `
+    <div style="margin:8px 0 14px;padding:12px 16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:22px">⚠</span>
+      <div style="flex:1;min-width:240px">
+        <div style="font-weight:600;color:#78350f;font-size:13px">Защита данных не настроена</div>
+        <div style="color:#92400e;font-size:12px;margin-top:2px">${lastInfo}. Очистка cookies/cache в браузере или ошибка миграции уничтожит ваши данные. <b>Включите авто-бэкап</b> — раз в час платформа будет писать JSON-снимок в выбранную папку.</div>
+      </div>
+      <button type="button" id="pr-nudge-setup" style="padding:8px 16px;background:#16a34a;color:#fff;border:0;border-radius:5px;cursor:pointer;font-weight:600;font-size:13px">⚙ Настроить</button>
+      <button type="button" id="pr-nudge-backup-now" style="padding:6px 12px;background:#fff;border:1px solid #d97706;color:#92400e;border-radius:5px;cursor:pointer;font-size:12px">💾 Скачать бэкап сейчас</button>
+      <button type="button" id="pr-nudge-dismiss" title="Скрыть до перезагрузки" style="background:transparent;border:0;color:#92400e;cursor:pointer;font-size:18px;padding:0 6px">✕</button>
+    </div>
+  `;
+  document.getElementById('pr-nudge-setup')?.addEventListener('click', () => {
+    // Открыть глобальные настройки (там есть секция «💾 Резервное копирование»)
+    try {
+      import('../shared/global-settings.js').then(m => m.openSettingsModal());
+    } catch (e) { console.warn('open settings failed', e); }
+  });
+  document.getElementById('pr-nudge-backup-now')?.addEventListener('click', () => {
+    try {
+      const r = downloadBackup({ appVersion: APP_VERSION });
+      prToast(`✓ Бэкап скачан: ${r.keyCount} ключей`, 'ok');
+      _renderBackupNudge();
+    } catch (e) { alert('Ошибка: ' + (e.message || e)); }
+  });
+  document.getElementById('pr-nudge-dismiss')?.addEventListener('click', () => {
+    try { sessionStorage.setItem('raschet.backupNudgeDismissed', '1'); } catch {}
+    host.innerHTML = '';
+  });
+}
+
 function render() {
   const host = document.getElementById('pr-list');
   if (!host) return;
@@ -259,6 +314,11 @@ function render() {
     return true;
   });
   const activeId = getActiveProjectId();
+
+  // v0.59.858: backup-nudge banner — если у пользователя есть данные но
+  // авто-бэкап не настроен, показываем баннер с напоминанием.
+  // Принцип: «не хочу чтобы пользователь мог потерять свои данные».
+  _renderBackupNudge();
 
   // v0.59.797 (ROADMAP 1.27.5): multi-status фильтр chip-bar вместо
   // одиночного «show archived». Pre-фильтрация (всего по статусу) +
