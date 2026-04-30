@@ -751,8 +751,10 @@ export function initToolbar() {
   // выбранный пресет применяется ко всем страницам если scheme/project не
   // переопределяют. Юзер: «Сами настройки нужно так же сохранять в пресеты
   // чтобы пользователь мог быстро их переключать».
+  // v0.59.787 (Phase 19.3): кнопка ✎ открывает редактор пресетов.
   (async () => {
     const presetEl = document.getElementById('card-preset-picker');
+    const editBtn = document.getElementById('btn-card-preset-edit');
     if (!presetEl) return;
     try {
       const mod = await import('../../shared/card-presets.js');
@@ -773,6 +775,14 @@ export function initToolbar() {
         populate();
         render();
       });
+      if (editBtn) {
+        editBtn.addEventListener('click', async () => {
+          try {
+            const editor = await import('../../shared/card-presets-editor.js');
+            editor.openCardPresetEditor();
+          } catch (e) { console.warn('[card-preset-editor]', e); alert('Не удалось открыть редактор: ' + (e.message || e)); }
+        });
+      }
     } catch (e) { console.warn('[card-preset-picker]', e); }
   })();
 
