@@ -912,6 +912,50 @@ export function openConsumerParamsModal(n) {
       }
       // 1.28.13 (исключение) — реализовано в v0.59.763 через ✂ кнопку
       // на каждом linked-экземпляре в списке выше.
+
+      // v0.59.813 (ROADMAP 1.28.10 ext): Cross-discipline reconciliation —
+      // секция «🔀 Похожие группы» для merge'а двух групп в одну. Сценарий:
+      // электрик и технолог добавили дубликаты одного объекта (например
+      // SR1×8 vs SR01×8) → пользователь выбирает какая «правда», другая
+      // удаляется с переносом aliases по tag-match.
+      const _otherGroups = [];
+      for (const m of state.nodes.values()) {
+        if (m.id === n.id) continue;
+        if (m.type !== 'consumer') continue;
+        if (!Array.isArray(m.linkedAliases) || !m.linkedAliases.some(Boolean)) continue;
+        // Кандидат — другая группа с похожими параметрами или count
+        const mCount = (Number(m.count) || 1);
+        const nCount = (Number(n.count) || 1);
+        const subtypeMatch = (m.consumerSubtype || '') === (n.consumerSubtype || '');
+        // Heuristic: count в пределах ±20% И subtype совпадает
+        if (subtypeMatch && Math.abs(mCount - nCount) / Math.max(mCount, nCount) <= 0.2) {
+          _otherGroups.push(m);
+        }
+      }
+      if (_otherGroups.length > 0) {
+        h.push(`<div class="field" style="margin-top:8px;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px">
+          <label style="font-size:11px;font-weight:600;color:#78350f;margin-bottom:4px;display:block">🔀 Похожие группы в проекте (${_otherGroups.length})</label>
+          <div class="muted" style="font-size:10.5px;margin-bottom:6px;color:#92400e;line-height:1.4">
+            Возможный <b>дубликат cross-discipline</b> (например электрик и технолог добавили одни и те же стойки разными группами).
+            Click <kbd>🔀</kbd> чтобы оставить ЭТУ группу как «правду» и удалить выбранную другую с переносом её экземпляров.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;max-height:200px;overflow-y:auto">
+            ${_otherGroups.map(og => {
+              const ogTag = effectiveTag(og) || og.tag || og.id;
+              const ogName = og.name || '';
+              const ogCount = Number(og.count) || 1;
+              const ogKw = Number(og.demandKw) || 0;
+              return `<div class="cp-other-group-row" style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#fff;border:1px solid #fcd34d;border-radius:3px">
+                <span style="font-weight:600">${escHtml(ogTag)}</span>
+                <span class="muted">${escHtml(ogName)}</span>
+                <span class="muted" style="font-size:10px">×${ogCount}</span>
+                <span class="muted" style="font-size:10px">${ogKw > 0 ? ogKw.toFixed(2) + ' кВт' : ''}</span>
+                <button type="button" class="cp-merge-other-group" data-other-id="${escAttr(og.id)}" title="Слить с этой группой: эта (${escAttr(effectiveTag(n) || n.tag || n.id)}) останется как «правда», ${escAttr(ogTag)} будет удалена, её слоты перенесены сюда." style="margin-left:auto;padding:3px 9px;border:1px solid #b45309;background:#f59e0b;color:#fff;border-radius:3px;cursor:pointer;font-size:10.5px;font-weight:600">🔀 Объединить</button>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`);
+      }
     }
     h.push(`</div>`); // /panel group
   }
@@ -1523,6 +1567,67 @@ export function openConsumerParamsModal(n) {
         openConsumerParamsModal(n);
       });
     }
+  }
+
+  // v0.59.813: handler «🔀 Объединить» — merge другой группы в эту.
+  // Текущая (n) остаётся как «правда», другая (other) удаляется,
+  // её linked-aliases переносятся по tag-match (если в n есть alias
+  // с тем же tag — оставить как есть; если нет — добавить).
+  {
+    document.querySelectorAll('.cp-merge-other-group').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const otherId = btn.dataset.otherId;
+        const other = state.nodes.get(otherId);
+        if (!other) return;
+        const otherTag = effectiveTag(other) || other.tag || other.id;
+        const myTag = effectiveTag(n) || n.tag || n.id;
+        const otherAliases = Array.isArray(other.linkedAliases)
+          ? other.linkedAliases.filter(Boolean) : [];
+        if (!confirm(`🔀 Объединить группы:\n\n  ОСТАВИТЬ: «${myTag}» (${n.count || 1} экз.) — эта группа\n  УДАЛИТЬ: «${otherTag}» (${other.count || 1} экз.) — её слоты перенесём сюда\n\nЭкземпляры из ${otherTag} с теми же tag, что в этой группе, не дублируются. Уникальные — добавляются как новые слоты.\n\nЭто необратимо без Ctrl+Z. Продолжить?`)) return;
+        try { snapshot('group-merge:' + n.id + '←' + other.id); } catch {}
+        if (!Array.isArray(n.linkedAliases)) n.linkedAliases = [];
+        // Build set of existing alias tags in n
+        const myAliasTags = new Set();
+        for (const aid of n.linkedAliases) {
+          if (!aid) continue;
+          const a = state.nodes.get(aid);
+          if (a && a.tag) myAliasTags.add(a.tag);
+        }
+        let transferred = 0, skipped = 0;
+        for (const oaid of otherAliases) {
+          const oa = state.nodes.get(oaid);
+          if (!oa) continue;
+          if (oa.tag && myAliasTags.has(oa.tag)) {
+            // Уже есть alias с таким tag — пропускаем (other's exemplar теряется)
+            // Тоже снимаем его linkedAlias чтобы не висел
+            if (oa.linkedAlias === other.id) delete oa.linkedAlias;
+            skipped++;
+            continue;
+          }
+          // Переносим: меняем linkedAlias на n.id, добавляем в n.linkedAliases
+          oa.linkedAlias = n.id;
+          n.linkedAliases.push(oa.id);
+          n.count = (Number(n.count) || 1) + 1;
+          if (oa.tag) myAliasTags.add(oa.tag);
+          transferred++;
+        }
+        // Удаляем other-group узел
+        try {
+          // Чистим все ещё висящие back-references
+          if (Array.isArray(other.linkedAliases)) {
+            for (const aid of other.linkedAliases) {
+              if (!aid) continue;
+              const a = state.nodes.get(aid);
+              if (a && a.linkedAlias === other.id) delete a.linkedAlias;
+            }
+          }
+          state.nodes.delete(other.id);
+        } catch {}
+        try { flash(`✓ Объединено: перенесено ${transferred} экземпляров, ${skipped} пропущено (дубликаты по tag). «${otherTag}» удалена.`, 'success'); } catch {}
+        notifyChange();
+        openConsumerParamsModal(n);
+      });
+    });
   }
 
   // v0.59.768: picker-rows теперь draggable. Юзер: «убери чек боксы и
