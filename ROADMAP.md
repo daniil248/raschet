@@ -106,9 +106,12 @@ calculation, K_max таблицы. Файл: `shared/calc-modules/rtm-load.js`,
   - Содержимое шкафов, теги, IT-реестр, не-IT имущество
 - [ ] **1.27.4** — ExportProject содержит ВСЕ scoped-данные (полный backup)
   - Учитывается: что именно входит в «Объём поставки» на основе проекта
-- [ ] **1.27.5** — статусы проекта: `draft | planned | installed | operating`
-  - Фильтр в списке проектов по статусу
-  - Разделение: `draft/planned` = проектировщик, `installed/operating` = объект
+- [x] **1.27.5** — статусы проекта: `draft | planned | installed | operating` (закрыто v0.59.797)
+  - Фильтр в списке проектов по статусу: chip-bar с группировкой
+    «Проектирование» (draft/planned) / «Объект» (installed/operating) /
+    архив. Каждый chip — toggle, с цифрой количества проектов.
+  - Состояние filter сохраняется в LS (raschet.projects.statusFilter.v1).
+  - Кнопка «Все» — показать все статусы.
 
 **Правила разделения (acceptance):**
 - Конфигуратор (rack-config / mv-config / ups-config / pdu-config / panel-config /

@@ -153,7 +153,15 @@ const STATUSES = [
   { id: 'archived',  label: 'Архив',           color: '#475569', bg: '#f1f5f9' },
 ];
 function statusMeta(id) { return STATUSES.find(s => s.id === id) || STATUSES[0]; }
-let showArchived = false;
+// v0.59.797 (ROADMAP 1.27.5): multi-status фильтр. Хранится в LS, по
+// умолчанию — все КРОМЕ archived. Конкретные значения см. STATUSES.
+let statusFilter = (() => {
+  try {
+    const raw = localStorage.getItem('raschet.projects.statusFilter.v1');
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : null;
+  } catch { return null; }
+})();
 
 /* ---------- Счётчики содержимого проекта (Фаза 1.27.6) ---------- */
 // Читаем project-scoped LS-ключи и считаем: узлов в схеме, стоек в scs-config,
@@ -250,24 +258,62 @@ function render() {
   });
   const activeId = getActiveProjectId();
 
-  // v0.59.238: фильтр архивных.
+  // v0.59.797 (ROADMAP 1.27.5): multi-status фильтр chip-bar вместо
+  // одиночного «show archived». Pre-фильтрация (всего по статусу) +
+  // подсчёт активных по статусу для показа цифры в чипе.
+  if (!Array.isArray(statusFilter) || statusFilter.length === 0) {
+    // Default: показывать всё КРОМЕ архивных
+    statusFilter = STATUSES.filter(s => s.id !== 'archived').map(s => s.id);
+  }
   const totalArchived = projects.filter(p => p.status === 'archived').length;
-  if (!showArchived) projects = projects.filter(p => p.status !== 'archived');
+  // Подсчёт по каждому статусу (на полном списке, до фильтра)
+  const countByStatus = {};
+  for (const s of STATUSES) countByStatus[s.id] = projects.filter(p => (p.status || 'draft') === s.id).length;
+  // Применяем фильтр
+  const _statusSet = new Set(statusFilter);
+  projects = projects.filter(p => _statusSet.has(p.status || 'draft'));
   const filterHost = document.getElementById('pr-status-filter');
-  // v0.59.568: подсчёт пустых full-проектов и кнопка их пакетного удаления.
   const emptyFullProjects = projects.filter(p => {
     const s = projectStats(p.id);
     return (s.nodes + s.racks + s.links + s.inventory + s.facility) === 0;
   });
   if (filterHost) {
+    // Группировка: проектирование (draft/planned) / объект (installed/operating) / архив
+    const _projGroup = ['draft', 'planned'];
+    const _objGroup = ['installed', 'operating'];
+    const _archGroup = ['archived'];
+    const chipHtml = (sid) => {
+      const s = statusMeta(sid);
+      const isOn = _statusSet.has(sid);
+      const cnt = countByStatus[sid] || 0;
+      return `<button type="button" class="pr-status-chip" data-status="${escapeHtml(sid)}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid ${isOn ? s.color : '#cbd5e1'};background:${isOn ? s.bg : '#fff'};color:${isOn ? s.color : '#94a3b8'};border-radius:14px;cursor:pointer;font-size:12px;font-weight:${isOn ? 600 : 400}" title="${isOn ? 'Скрыть статус' : 'Показать статус'} «${escapeHtml(s.label)}»">${escapeHtml(s.label)}${cnt ? ` <span style="background:${isOn ? '#fff' : '#f1f5f9'};color:${isOn ? s.color : '#94a3b8'};padding:0 5px;border-radius:8px;font-size:10px">${cnt}</span>` : ''}</button>`;
+    };
     filterHost.innerHTML = `
-      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#64748b;cursor:pointer">
-        <input type="checkbox" id="pr-show-archived" ${showArchived ? 'checked' : ''}>
-        Показать архивные ${totalArchived ? `<span style="background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:10px;font-size:11px">${totalArchived}</span>` : ''}
-      </label>${emptyFullProjects.length ? `
-      <button type="button" id="pr-delete-empty-full" style="margin-left:14px;background:#fbbf24;color:#78350f;border:1px solid #f59e0b;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500" title="Удалить ВСЕ полные проекты без данных (схема/стойки/связи/реестры). Полезно для очистки тестовых записей.">🧹 Удалить ${emptyFullProjects.length} пустых проектов</button>` : ''}`;
-    filterHost.querySelector('#pr-show-archived')?.addEventListener('change', e => {
-      showArchived = !!e.target.checked;
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11.5px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Проектирование:</span>
+        ${_projGroup.map(chipHtml).join('')}
+        <span style="font-size:11.5px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;margin-left:8px">Объект:</span>
+        ${_objGroup.map(chipHtml).join('')}
+        <span style="border-left:1px solid #e2e8f0;height:18px;margin:0 4px"></span>
+        ${_archGroup.map(chipHtml).join('')}
+        <button type="button" id="pr-status-all" style="padding:3px 9px;border:1px solid #cbd5e1;background:#f9fafb;color:#475569;border-radius:14px;cursor:pointer;font-size:11.5px" title="Показать все статусы">Все</button>
+        ${emptyFullProjects.length ? `
+        <span style="border-left:1px solid #e2e8f0;height:18px;margin:0 4px"></span>
+        <button type="button" id="pr-delete-empty-full" style="background:#fbbf24;color:#78350f;border:1px solid #f59e0b;padding:3px 9px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500" title="Удалить ВСЕ полные проекты без данных (схема/стойки/связи/реестры). Полезно для очистки тестовых записей.">🧹 Удалить ${emptyFullProjects.length} пустых</button>` : ''}
+      </div>`;
+    filterHost.querySelectorAll('.pr-status-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const sid = chip.dataset.status;
+        const next = new Set(_statusSet);
+        if (next.has(sid)) next.delete(sid); else next.add(sid);
+        statusFilter = Array.from(next);
+        try { localStorage.setItem('raschet.projects.statusFilter.v1', JSON.stringify(statusFilter)); } catch {}
+        render();
+      });
+    });
+    filterHost.querySelector('#pr-status-all')?.addEventListener('click', () => {
+      statusFilter = STATUSES.map(s => s.id);
+      try { localStorage.setItem('raschet.projects.statusFilter.v1', JSON.stringify(statusFilter)); } catch {}
       render();
     });
     filterHost.querySelector('#pr-delete-empty-full')?.addEventListener('click', async () => {
