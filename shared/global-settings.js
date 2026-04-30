@@ -19,6 +19,12 @@
 // ломает автономность подпрограмм.
 // ======================================================================
 
+import {
+  getAutoBackupSettings, setAutoBackupSettings, getLastBackupInfo,
+  pickBackupFolder, downloadBackup, writeBackupToFolder,
+  startAutoBackupTimer, stopAutoBackupTimer,
+} from './backup.js';
+
 const STORAGE_KEY = 'raschet.global.v1';
 
 // Дефолты — минимальный набор, нужный всем подпрограммам. Главный
@@ -283,6 +289,94 @@ function _renderVoltageTable(container) {
   });
 }
 
+// v0.59.855: секция авто-бэкапа в модалке настроек.
+function _renderBackupSection(host) {
+  const settings = getAutoBackupSettings();
+  const last = getLastBackupInfo();
+  const fsaSupport = ('showDirectoryPicker' in window);
+  const lastInfo = last
+    ? `<div class="muted" style="font-size:12px;margin-top:4px">Последний бэкап: <b>${new Date(last.at).toLocaleString()}</b> (${last.keys || '?'} ключей${last.fileName ? ', ' + last.fileName : ''})</div>`
+    : '<div class="muted" style="font-size:12px;margin-top:4px">Бэкапов ещё не делалось.</div>';
+  host.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;padding:10px 14px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:6px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" id="rs-gs-backup-now" style="padding:6px 14px;background:#16a34a;color:#fff;border:0;border-radius:4px;cursor:pointer;font-weight:500">💾 Сделать бэкап сейчас (скачать)</button>
+        ${fsaSupport ? `<button type="button" id="rs-gs-pick-folder" style="padding:6px 14px;background:#2563eb;color:#fff;border:0;border-radius:4px;cursor:pointer">📁 Выбрать папку для авто-бэкапа</button>` : ''}
+      </div>
+      ${!fsaSupport ? '<div class="muted" style="font-size:11px;color:#92400e">⚠ Авто-бэкап в папку требует File System Access API. Браузер не поддерживает (Safari/Firefox). Используйте «Бэкап сейчас» вручную.</div>' : ''}
+
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="rs-gs-auto-enabled" ${settings.enabled ? 'checked' : ''} ${!fsaSupport ? 'disabled' : ''}>
+        <span>Включить авто-бэкап в выбранную папку</span>
+      </label>
+
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+        <label>Интервал:
+          <input type="number" id="rs-gs-auto-interval" min="5" max="1440" step="5" value="${settings.intervalMin || 60}" style="width:70px;padding:4px;border:1px solid #cbd5e1;border-radius:3px"> мин
+        </label>
+      </div>
+
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="rs-gs-auto-on-close" ${settings.onClose ? 'checked' : ''} ${!fsaSupport ? 'disabled' : ''}>
+        <span>Доп. бэкап при закрытии вкладки (best-effort)</span>
+      </label>
+
+      ${lastInfo}
+    </div>
+  `;
+
+  const refresh = () => _renderBackupSection(host);
+
+  // Бэкап сейчас (всегда работает — скачивает .json)
+  host.querySelector('#rs-gs-backup-now')?.addEventListener('click', () => {
+    try {
+      const v = (window.RASCHET_VERSION) || '';
+      const r = downloadBackup({ appVersion: v });
+      alert(`✓ Бэкап скачан: ${r.keyCount} ключей.`);
+      refresh();
+    } catch (e) { alert('Ошибка: ' + (e.message || e)); }
+  });
+
+  // Выбрать папку
+  host.querySelector('#rs-gs-pick-folder')?.addEventListener('click', async () => {
+    try {
+      await pickBackupFolder();
+      const v = (window.RASCHET_VERSION) || '';
+      const r = await writeBackupToFolder({ appVersion: v });
+      alert(`✓ Папка выбрана. Тестовый бэкап записан: ${r.fileName} (${r.keyCount} ключей).`);
+      refresh();
+    } catch (e) { alert('Не удалось: ' + (e.message || e)); }
+  });
+
+  // Toggle enabled
+  host.querySelector('#rs-gs-auto-enabled')?.addEventListener('change', e => {
+    setAutoBackupSettings({ enabled: !!e.target.checked });
+    if (e.target.checked) {
+      const v = (window.RASCHET_VERSION) || '';
+      startAutoBackupTimer({ appVersion: v });
+    } else {
+      stopAutoBackupTimer();
+    }
+  });
+
+  // Interval input
+  host.querySelector('#rs-gs-auto-interval')?.addEventListener('change', e => {
+    const m = Math.max(5, Math.min(1440, Number(e.target.value) || 60));
+    setAutoBackupSettings({ intervalMin: m });
+    e.target.value = m;
+    // Перезапустить таймер с новым интервалом, если включён.
+    if (getAutoBackupSettings().enabled) {
+      const v = (window.RASCHET_VERSION) || '';
+      startAutoBackupTimer({ appVersion: v });
+    }
+  });
+
+  // Toggle on-close
+  host.querySelector('#rs-gs-auto-on-close')?.addEventListener('change', e => {
+    setAutoBackupSettings({ onClose: !!e.target.checked });
+  });
+}
+
 /**
  * Открыть модалку глобальных настроек. Не зависит от наличия main-app.
  */
@@ -301,6 +395,10 @@ export function openSettingsModal() {
         <button type="button" class="rs-gs-close" aria-label="Закрыть">×</button>
       </div>
       <div class="rs-gs-body">
+        <h4>💾 Резервное копирование</h4>
+        <div class="muted" style="margin-bottom:8px">Защита от потери данных. Раз в час (или другой интервал) приложение автоматически записывает JSON-бэкап в выбранную папку.</div>
+        <div id="rs-gs-backup-section" style="margin-bottom:18px"></div>
+
         <h4>Справочник уровней напряжения</h4>
         <div class="muted">Единый источник для всех подпрограмм платформы. Метка формируется автоматически из V<sub>LL</sub> / phases / DC — изменения видны во всех модулях сразу.</div>
         <div id="rs-gs-voltage-table" style="margin-top:10px"></div>
@@ -314,6 +412,10 @@ export function openSettingsModal() {
 
   const tableHost = overlay.querySelector('#rs-gs-voltage-table');
   _renderVoltageTable(tableHost);
+
+  // v0.59.855: секция авто-бэкапа.
+  const backupHost = overlay.querySelector('#rs-gs-backup-section');
+  if (backupHost) _renderBackupSection(backupHost);
 
   const close = () => overlay.remove();
   overlay.querySelector('.rs-gs-close').addEventListener('click', close);

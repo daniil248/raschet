@@ -13,6 +13,7 @@
 
 import { openSettingsModal } from './global-settings.js';
 import { rsToast, rsConfirm } from './dialog.js';
+import { startAutoBackupTimer, attachOnCloseBackup } from './backup.js';
 import {
   getProjectContext, getPreviousStep, navigateBack, moduleLabel, pushNavStep,
   buildModuleHref,
@@ -76,6 +77,15 @@ export function mountHeader(opts = {}) {
     moduleId: explicitModuleId = null,
   } = opts;
   const moduleId = explicitModuleId || inferModuleId();
+
+  // v0.59.855: автозапуск таймера авто-бэкапа на любой странице где
+  // mountHeader вызывается. Безопасно — если в settings disabled,
+  // startAutoBackupTimer ничего не делает.
+  try {
+    const v = (typeof window !== 'undefined' && window.RASCHET_VERSION) || '';
+    startAutoBackupTimer({ appVersion: v });
+    attachOnCloseBackup({ appVersion: v });
+  } catch (e) { console.warn('[app-header] auto-backup init failed:', e); }
 
   const mountEl = typeof mount === 'string' ? document.querySelector(mount) : mount;
   if (!mountEl) {
