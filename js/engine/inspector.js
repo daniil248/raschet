@@ -1489,8 +1489,10 @@ function _wireContainerMembersModal(n, body, modal) {
       if (!slot || slot.kind !== 'placeholder') return;
       snapshot('container-materialize:' + n.id + ':#' + idx);
       const newId = uid();
+      // v0.59.841: tag по маске соседних linked-членов (SR07 если SR01..SR06).
+      const suggestedTag = _suggestTagFromContainer(n) || nextFreeTag('consumer');
       const newConsumer = {
-        id: newId, type: 'consumer', name: 'Потребитель', tag: nextFreeTag('consumer'),
+        id: newId, type: 'consumer', name: 'Потребитель', tag: suggestedTag,
         x: Number(n.x) || 0, y: Number(n.y) || 0,
         demandKw: Number(slot.demandKw) || 0, cosPhi: Number(slot.cosPhi) || 0.95,
         phase: slot.phase || '3ph', voltage: Number(slot.voltage) || 400,
@@ -1546,6 +1548,56 @@ function _wireContainerMembersModal(n, body, modal) {
   modal.querySelectorAll('.modal-close').forEach(btn => {
     btn.addEventListener('click', () => { modal.classList.add('hidden'); }, { once: true });
   });
+}
+
+// v0.59.841: при materialize placeholder'а — сгенерировать tag по маске
+// соседних linked-членов того же контейнера. Например, если в контейнере
+// уже SR01, SR02, SR03, SR05 — следующий materialized = SR06 (или SR04
+// если задумаемся о пропусках, но проще: max+1).
+// Если linked-члены имеют разные префиксы (SR01, CR01) — берём префикс
+// первого linked-члена (по натуральной сортировке). Если linked-членов
+// нет вообще — fallback на nextFreeTag('consumer') = L1, L2 и т.д.
+function _suggestTagFromContainer(container) {
+  if (!container || !Array.isArray(container.slots)) return null;
+  const linkedTags = [];
+  for (const s of container.slots) {
+    if (s && s.kind === 'linked' && s.nodeId) {
+      const a = state.nodes.get(s.nodeId);
+      if (a && a.tag) linkedTags.push(a.tag);
+    }
+  }
+  if (!linkedTags.length) return null;
+  // Сортировка натуральная, берём первый — определяет префикс/формат
+  linkedTags.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+  const first = linkedTags[0];
+  // Парсим формат: <prefix><digits>, где digits может иметь leading zeros
+  const m = first.match(/^([^\d]*)(\d+)$/);
+  if (!m) return null;
+  const prefix = m[1];
+  const sampleDigits = m[2]; // например "01" — длина 2
+  const padLen = sampleDigits.length;
+  // Найти максимальный номер среди linked-tags с тем же префиксом
+  let maxN = 0;
+  for (const t of linkedTags) {
+    const tm = t.match(/^([^\d]*)(\d+)$/);
+    if (!tm || tm[1] !== prefix) continue;
+    const n = parseInt(tm[2], 10);
+    if (Number.isFinite(n) && n > maxN) maxN = n;
+  }
+  // Сгенерировать N+1 с тем же padding
+  const nextN = maxN + 1;
+  const padded = String(nextN).padStart(padLen, '0');
+  const candidate = prefix + padded;
+  // Проверка уникальности — если занят, пробуем дальше
+  for (let bump = 0; bump < 100; bump++) {
+    const tag = prefix + String(nextN + bump).padStart(padLen, '0');
+    let used = false;
+    for (const node of state.nodes.values()) {
+      if (node.tag === tag) { used = true; break; }
+    }
+    if (!used) return tag;
+  }
+  return candidate;
 }
 
 // v0.59.822: обработчики slot-actions в инспекторе consumer-container.

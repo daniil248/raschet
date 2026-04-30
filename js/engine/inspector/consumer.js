@@ -48,6 +48,10 @@ export function openConsumerParamsModal(n) {
   </div>`);
   // === Вкладка «Общее» (идентификация + топология) ===
   h.push(`<div class="tp-panel" data-panel="general" hidden>`);
+  // v0.59.841: возвращено редактирование обозначения (tag) в модалке.
+  // Пользователь: «верни возможность менять обозначение». Раньше tag
+  // был только в sidebar, в модалке только read-only заголовок.
+  h.push(field('Обозначение', `<input type="text" id="cp-tag" value="${escAttr(n.tag || '')}" placeholder="L1, SR01, …" autocomplete="off">`));
   h.push(field('Имя', `<input type="text" id="cp-name" value="${escAttr(n.name || '')}">`));
 
   // v0.59.99: «Конфигурировать» и «Выбрать из каталога» — два быстрых
@@ -2079,6 +2083,22 @@ export function openConsumerParamsModal(n) {
       };
       const _autoSt = _categoryToSubtype[cat.category];
       if (_autoSt) n.subtype = _autoSt;
+    }
+    // v0.59.841: применить tag если изменён и не конфликтует
+    const tagInput = document.getElementById('cp-tag')?.value?.trim();
+    if (tagInput && tagInput !== n.tag) {
+      // Проверка уникальности через _isTagUnique helper (он уже есть в
+      // graph-deps). Если конфликт — не меняем, показываем toast.
+      try {
+        if (typeof window.__raschetIsTagUnique === 'function'
+            && !window.__raschetIsTagUnique(tagInput, n.id)) {
+          flash(`Обозначение «${tagInput}» уже занято — оставлено прежнее «${n.tag}»`, 'warn');
+        } else {
+          n.tag = tagInput;
+        }
+      } catch {
+        n.tag = tagInput; // если helper'а нет — применяем без проверки
+      }
     }
     const nameInput = document.getElementById('cp-name')?.value?.trim();
     n.name = nameInput || (cat ? cat.label : n.name || 'Потребитель');

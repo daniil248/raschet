@@ -350,6 +350,8 @@ if (typeof window !== 'undefined') {
   window.__raschetPersistUserCatalog = persistUserConsumerCatalog;
   // v0.59.825: bridge для dblclick handler в interaction.js
   window.__raschetInspector = { openContainerMembersModal };
+  // v0.59.841: bridge для tag-uniqueness проверки в модалке consumer
+  window.__raschetIsTagUnique = isTagUnique;
 }
 
 // === Связывание зависимостей (late-binding) ===
