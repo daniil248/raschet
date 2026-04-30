@@ -244,6 +244,24 @@ export function openConsumerParamsModal(n) {
   }
   h.push(`</div>`); // /tp-panel general
   h.push(`<div class="tp-panel" data-panel="electrical"${_defaultTab !== 'electrical' ? ' hidden' : ''}>`);
+  // v0.59.793 (ROADMAP 1.28.19): property inheritance для alias-узлов.
+  // Если этот узел — alias (linkedAlias указывает на существующий shell),
+  // электрические поля наследуются от shell. Показываем banner и блокируем
+  // редактирование. Пользователь: «свойства расположенных внутри объектов
+  // связаны с основным (кроме обозначений)».
+  const _isAliasOfShell = !!(n.linkedAlias && state.nodes.get(n.linkedAlias));
+  if (_isAliasOfShell) {
+    const _shell = state.nodes.get(n.linkedAlias);
+    const _shellTag = effectiveTag(_shell) || _shell.tag || _shell.id;
+    h.push(`<div class="field" style="padding:8px 10px;background:#dbeafe;border:1px solid #93c5fd;border-radius:4px;margin-bottom:10px">
+      <div style="font-size:11.5px;color:#1e40af;line-height:1.4">
+        🔗 <b>Электрические параметры наследуются от оболочки</b> «${escHtml(_shellTag)}».
+        Здесь поля показаны для справки и заблокированы. Чтобы изменить —
+        откройте свойства оболочки и редактируйте там; изменения применятся
+        ко всем экземплярам автоматически.
+      </div>
+    </div>`);
+  }
   // v0.59.747: _displayDemand / _demandLabel больше не используются —
   // парные поля v0.59.738 рендерят свои собственные значения и метки.
   // (Раньше через них шёл переключатель loadSpec, теперь n.demandKw —
@@ -929,6 +947,34 @@ export function openConsumerParamsModal(n) {
   </div>`);
 
   body.innerHTML = h.join('');
+
+  // v0.59.793 (ROADMAP 1.28.19): для alias-узлов (свойства наследуются
+  // от shell) — блокируем редактирование электрических параметров.
+  // Tag/name остаются индивидуальными (вкладка «Общее»).
+  if (_isAliasOfShell) {
+    const elPanel = body.querySelector('.tp-panel[data-panel="electrical"]');
+    if (elPanel) {
+      // Подставляем effective-значения (от shell) в input/select полях
+      // и делаем их disabled.
+      const _shell = state.nodes.get(n.linkedAlias);
+      const _setIfExists = (id, val) => {
+        const el = elPanel.querySelector('#' + id);
+        if (el && val != null) el.value = val;
+      };
+      if (_shell) {
+        _setIfExists('cp-voltage', _shell.voltageLevelIdx ?? n.voltageLevelIdx);
+        _setIfExists('cp-phase', _shell.phase || n.phase || '3ph');
+        _setIfExists('cp-cosPhi', _shell.cosPhi != null ? _shell.cosPhi : n.cosPhi);
+        _setIfExists('cp-demand', _shell.demandKw != null ? _shell.demandKw : n.demandKw);
+      }
+      elPanel.querySelectorAll('input, select, textarea').forEach(inp => {
+        if (inp.type === 'hidden') return;
+        inp.disabled = true;
+        inp.style.background = '#f3f4f6';
+        inp.style.cursor = 'not-allowed';
+      });
+    }
+  }
 
   // Переключение вкладок
   const tabsEl = body.querySelector('.tp-tabs');
