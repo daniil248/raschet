@@ -1557,12 +1557,71 @@ function drawLinkOverlay() {
     return (r.left + r.right) / 2 - wrapRect.left;
   };
 
+  // v0.59.869: для over-rack режима — собираем top Y и x-bounds всех
+  // карточек шкафов, чтобы рассчитать «потолочный уровень» (channelY)
+  // — общая высота, выше которой пройдут все over-rack линии.
+  const _rackCards = Array.from(row.querySelectorAll('.sd-rack-card'));
+  let _channelY = 0;
+  let _minRackTop = Infinity;
+  for (const c of _rackCards) {
+    const cr = c.getBoundingClientRect();
+    const t = cr.top - wrapRect.top;
+    if (t < _minRackTop) _minRackTop = t;
+  }
+  if (Number.isFinite(_minRackTop)) {
+    // 30 px отступ выше самой высокой стойки = «потолок» канала.
+    _channelY = Math.max(8, _minRackTop - 30);
+  }
+  const cardTopForRack = (rackId) => {
+    const firstUnit = row.querySelector(`.sd-unit[data-rack-id="${CSS.escape(rackId)}"]`);
+    if (!firstUnit) return null;
+    const card = firstUnit.closest('.sd-rack-card');
+    if (!card) return null;
+    const cr = card.getBoundingClientRect();
+    return cr.top - wrapRect.top;
+  };
+
   const parts = [];
   const links = getVisibleLinks();
   links.forEach(l => {
     const fromCenter = cardXCenter(l.fromRackId);
     const toCenter = cardXCenter(l.toRackId);
     if (fromCenter == null || toCenter == null) return;
+    const color = CABLE_COLOR(l.cableType);
+    const fromTxt = getRackShortLabel(l.fromRackId) + ' · ' + deviceLabel(l.fromRackId, l.fromDevId) + (l.fromPort ? ` p${l.fromPort}` : '');
+    const toTxt   = getRackShortLabel(l.toRackId)   + ' · ' + deviceLabel(l.toRackId,   l.toDevId)   + (l.toPort   ? ` p${l.toPort}`   : '');
+    const isSel = linksSelected.has(l.id);
+    const titleAttr = escapeAttr(fromTxt + ' ↔ ' + toTxt);
+
+    if (linksOverRackEnabled) {
+      // v0.59.869: маршрут «над стойками».
+      //   из устройства A → подъём до channelY → горизонталь → спуск
+      //   до устройства B. Одна и та же стойка → внутрикорпусный U-образный
+      //   маршрут. Разные стойки → выход вверх обеих карточек, общий канал.
+      const A = getCenter(l.fromRackId, l.fromDevId, 'left'); // используем center, x скорректируем ниже
+      const B = getCenter(l.toRackId, l.toDevId, 'left');
+      if (!A || !B) return;
+      // По X — выход через CENTER верхней грани стойки (cardXCenter), а не
+      // боковая стенка как в bezier-режиме.
+      const ax = fromCenter, bx = toCenter;
+      const ay = A.y, by = B.y;
+      const fromTop = cardTopForRack(l.fromRackId);
+      const toTop = cardTopForRack(l.toRackId);
+      // Подъём начинается из устройства, выходит через верх своей стойки,
+      // потом до channelY. Если устройство выше channelY — пропускаем подъём.
+      const upY = Math.min(ay, fromTop != null ? fromTop : ay) - 4;
+      const downY = Math.min(by, toTop != null ? toTop : by) - 4;
+      const chY = Math.min(_channelY, Math.min(upY, downY) - 16);
+      // Path: M ax,ay → V (перпендикулярно вверх до chY)
+      //       → H bx (горизонталь по каналу)
+      //       → V by (спуск до устройства)
+      // Полупрозрачно (opacity 0.55), штрих чуть толще для читаемости.
+      const dPath = `M ${ax} ${ay} L ${ax} ${upY} L ${ax} ${chY} L ${bx} ${chY} L ${bx} ${downY} L ${bx} ${by}`;
+      parts.push(`<path class="sd-link-path sd-link-overrack${isSel ? ' selected' : ''}" data-link-id="${escapeAttr(l.id)}" d="${dPath}" fill="none" stroke="${color}" stroke-width="2.5" stroke-opacity="0.55" stroke-linejoin="round" stroke-linecap="round" style="cursor:pointer"><title>${titleAttr} (клик: выделить связь, Shift+клик — добавить)</title></path>`);
+      return;
+    }
+
+    // Bezier-mode (default): bezier по бокам с провисанием.
     const fromSide = fromCenter < toCenter ? 'right' : 'left';
     const toSide   = fromCenter < toCenter ? 'left'  : 'right';
     const A = getCenter(l.fromRackId, l.fromDevId, fromSide);
@@ -1572,18 +1631,10 @@ function drawLinkOverlay() {
     const bend = Math.max(40, dx * 0.35);
     const c1x = A.x + (fromSide === 'right' ? bend : -bend);
     const c2x = B.x + (toSide === 'right' ? bend : -bend);
-    // v0.59.589: провисающие линии (как реальные кабели). Контрольные точки
-    // опускаются ниже эндпойнтов на sag — получается catenary-подобная форма.
-    // sag растёт пропорционально расстоянию между стойками, но капается
-    // потолком, чтобы при близких устройствах кабель не свисал слишком низко.
     const sag = linksSagEnabled ? Math.min(120, Math.max(20, dx * 0.18)) : 0;
     const c1y = A.y + sag;
     const c2y = B.y + sag;
-    const color = CABLE_COLOR(l.cableType);
-    const fromTxt = getRackShortLabel(l.fromRackId) + ' · ' + deviceLabel(l.fromRackId, l.fromDevId) + (l.fromPort ? ` p${l.fromPort}` : '');
-    const toTxt   = getRackShortLabel(l.toRackId)   + ' · ' + deviceLabel(l.toRackId,   l.toDevId)   + (l.toPort   ? ` p${l.toPort}`   : '');
-    const isSel = linksSelected.has(l.id);
-    parts.push(`<path class="sd-link-path${isSel ? ' selected' : ''}" data-link-id="${escapeAttr(l.id)}" d="M ${A.x} ${A.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${B.x} ${B.y}" stroke="${color}" style="cursor:pointer"><title>${escapeAttr(fromTxt + ' ↔ ' + toTxt)} (клик: выделить связь, Shift+клик — добавить)</title></path>`);
+    parts.push(`<path class="sd-link-path${isSel ? ' selected' : ''}" data-link-id="${escapeAttr(l.id)}" d="M ${A.x} ${A.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${B.x} ${B.y}" stroke="${color}" style="cursor:pointer"><title>${titleAttr} (клик: выделить связь, Shift+клик — добавить)</title></path>`);
   });
   svg.innerHTML = parts.join('');
   // v0.59.590: клик по линии — выделение связи в таблице (Shift = добавить).
@@ -3131,6 +3182,12 @@ let linksOverlayVisible = (() => {
 })();
 let linksSagEnabled = (() => {
   try { return localStorage.getItem('scs-design.linksOverlay.sag.v1') !== '0'; } catch { return true; }
+})();
+// v0.59.869: over-rack mode — линии выходят сверху шкафов и идут
+// полупрозрачно над всеми стойками (как настоящий кабель через
+// потолочный канал). Default off — старое поведение (bezier сбоку).
+let linksOverRackEnabled = (() => {
+  try { return localStorage.getItem('scs-design.linksOverlay.overrack.v1') === '1'; } catch { return false; }
 })();
 // v0.59.590: выбор связей для bulk-edit (Set<linkId>). Кликом по строке /
 // SVG-линии переключается выделение; bulk-toolbar появляется при size >= 1.
@@ -4817,6 +4874,32 @@ document.addEventListener('DOMContentLoaded', () => {
       drawLinkOverlay();
     });
   }
+  // v0.59.869: «над стойками» режим — кабели идут полупрозрачно через
+  // потолок над всеми шкафами вместо bezier по бокам.
+  const overRackCb = document.getElementById('sd-links-overrack');
+  if (overRackCb) {
+    overRackCb.checked = linksOverRackEnabled;
+    overRackCb.addEventListener('change', e => {
+      linksOverRackEnabled = !!e.target.checked;
+      try { localStorage.setItem('scs-design.linksOverlay.overrack.v1', linksOverRackEnabled ? '1' : '0'); } catch {}
+      // sag и over-rack — взаимоисключающие визуально (sag-bezier vs прямые
+      // линии через канал). При включении over-rack — sag отключаем.
+      if (linksOverRackEnabled && linksSagEnabled) {
+        linksSagEnabled = false;
+        try { localStorage.setItem('scs-design.linksOverlay.sag.v1', '0'); } catch {}
+        if (sagCb) sagCb.checked = false;
+      }
+      drawLinkOverlay();
+    });
+  }
+  // Hotkey 'O' — переключает over-rack режим.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'o' && e.key !== 'O' && e.key !== 'щ' && e.key !== 'Щ') return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    overRackCb?.click();
+  });
   window.addEventListener('storage', (e) => {
     if ([LS_RACK, LS_CONTENTS, LS_RACKTAGS, LS_LINKS].includes(e.key)) {
       renderLinksTab();

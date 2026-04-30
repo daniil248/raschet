@@ -279,6 +279,14 @@
   opacity: 1; stroke-width: 5;
   filter: drop-shadow(0 0 6px currentColor);
 }
+/* v0.59.869: над-стоечный режим — линия идёт через потолочный канал. */
+.sd-link-path.sd-link-overrack {
+  stroke-dasharray: 0;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.sd-link-path.sd-link-overrack:hover { stroke-opacity: 0.85 !important; stroke-width: 3.5; }
+.sd-link-path.sd-link-overrack.selected { stroke-opacity: 1 !important; stroke-width: 4.5; filter: drop-shadow(0 0 6px currentColor); }
 
 .sd-unit[data-dev-id].linked {
   background: #dcfce7 !important; border-color: #16a34a !important;
