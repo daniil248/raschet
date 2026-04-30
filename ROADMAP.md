@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.59.819 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
+> **Статус:** v0.59.820 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
 
 > **Правило ведения:** roadmap обновляется ПОСТОЯННО — при появлении новой фичи / задачи и при закрытии любого этапа. Hotfix'ы (regressions, мелкие правки UX) НЕ попадают в roadmap, только содержательная функциональность. Это правило зафиксировано пользователем 2026-04-29.
 
@@ -357,6 +357,23 @@ in-tab Map + cross-tab через storage event.
     - inspector.js: при выборе consumer-container показывает список
       слотов (linked-узлы с tag/name/kW + placeholder-строки). Полный
       редактор (drag-drop slots / split / merge / cross-disc) — позже.
+  - **Phase 3 — Drop-merge (закрыто v0.59.820):**
+    - interaction.js `_mergeIntoContainer(target, source)`: создаёт/пополняет
+      consumer-container при drag-drop совместимых консумеров.
+    - Логика: target.type==='consumer-container' → добавить в него; target
+      имеет containerId → найти контейнер, добавить; иначе → создать
+      НОВЫЙ контейнер на месте target'а: target.pageIds/positionsByPage/x/y
+      переносятся в контейнер; все state.conns(/sysConns) where ?.nodeId
+      ===target.id перенаправляются на container.id; target и source
+      становятся скрытыми членами (containerId установлен, pageIds=[]).
+    - `_findConsumerOverlapAt` принимает container как валидный target.
+    - `_isCompatibleConsumer`: drop на existing container всегда совместим
+      (сам контейнер параметров не имеет); drop контейнера на consumer
+      запрещён (только consumer на container).
+    - Заменяет вызовы `_aliasConsumerToGroup` на `_mergeIntoContainer`
+      в двух call-sites (drop unplaced→canvas, mouseup-merge).
+    - Старый _aliasConsumerToGroup остаётся в файле как dead code до
+      Phase 5 enable + Phase 4 manual link picker.
   - **Phase 6 baseline — Recalc (закрыто v0.59.819):**
     - electrical.js: `isConsumerLike(n)` + `expandConsumerLike(n)` —
       хелперы для агрегации нагрузки контейнера.

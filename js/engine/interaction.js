@@ -37,6 +37,10 @@ export function bindInteractionDeps({ undo, redo, fitAll, serialize }) {
 //     target.count += source.count, source удаляется вместе с её связями.
 function _isCompatibleConsumer(a, b) {
   if (!a || !b || a.id === b.id) return false;
+  // v0.59.820 (Phase 3): drop на существующий контейнер всегда совместим
+  // (контейнер сам параметров не имеет, любой consumer становится новым слотом).
+  if (a.type === 'consumer-container') return b.type === 'consumer';
+  if (b.type === 'consumer-container') return false; // не разрешаем drop контейнера на consumer
   if (a.type !== 'consumer' || b.type !== 'consumer') return false;
   if ((a.consumerSubtype || '') !== (b.consumerSubtype || '')) return false;
   if ((a.phase || '3ph') !== (b.phase || '3ph')) return false;
@@ -62,13 +66,14 @@ function _findConsumerOverlapAt(dragged) {
   // consumer-узла. Раньше требовалось, чтобы центр dragged попадал ровно
   // в bbox target — это слишком строго (юзер мог положить «рядом», но не в
   // центр). Теперь — любое пересечение прямоугольников.
+  // v0.59.820 (Phase 3): таргет может быть consumer ИЛИ consumer-container.
   const dw = nodeWidth(dragged), dh = nodeHeight(dragged);
   const dx1 = dragged.x, dy1 = dragged.y;
   const dx2 = dragged.x + dw, dy2 = dragged.y + dh;
   let bestOverlap = 0, bestNode = null;
   for (const n of state.nodes.values()) {
     if (n.id === dragged.id) continue;
-    if (n.type !== 'consumer') continue;
+    if (n.type !== 'consumer' && n.type !== 'consumer-container') continue;
     const nw = nodeWidth(n), nh = nodeHeight(n);
     const nx1 = n.x, ny1 = n.y;
     const nx2 = n.x + nw, ny2 = n.y + nh;
@@ -122,6 +127,92 @@ function _aliasConsumerToGroup(target, source) {
   // v0.59.776: спрятать source с canvas (групповой потребитель = контейнер).
   hideAliasSourceFromCanvas(source);
   return { linked: true, slotIdx: slot, overflow };
+}
+
+// v0.59.820 (1.28.20 Phase 3): drop-merge с созданием/пополнением контейнера.
+// Заменяет _aliasConsumerToGroup для drag-drop путей (mouseup-merge,
+// drop-unplaced→canvas).
+//
+// Поведение:
+//   1. target.type==='consumer-container' → добавляем source как linked-slot
+//   2. target.containerId установлен → находим этот контейнер, добавляем source
+//   3. Иначе → создаём НОВЫЙ контейнер на месте target'а:
+//      - переносим target.pageIds/positionsByPage/x/y → container
+//      - перенаправляем все state.conns (и sysConns) where ?.nodeId===target.id
+//        на container.id
+//      - target.containerId = container.id, target.pageIds=[]
+//      - container.slots = [{linked:target.id}]
+//      - затем добавляем source как ещё один linked-slot
+//
+// source независимо от ветки:
+//   - source.containerId = container.id
+//   - source.pageIds=[], positionsByPage={}
+//   - все state.conns/sysConns с участием source — удаляются (он скрыт)
+//
+// Возвращает {container, slotIdx} или null.
+function _mergeIntoContainer(target, source) {
+  if (!target || !source || target.id === source.id) return null;
+  if (source.type !== 'consumer') return null;
+  if (target.type !== 'consumer' && target.type !== 'consumer-container') return null;
+  // Ищем container
+  let container = null;
+  if (target.type === 'consumer-container') {
+    container = target;
+  } else if (target.containerId && state.nodes.get(target.containerId)) {
+    const _c = state.nodes.get(target.containerId);
+    if (_c && _c.type === 'consumer-container') container = _c;
+  }
+  // Создаём новый контейнер если нет
+  if (!container) {
+    const cid = uid('cn');
+    container = {
+      id: cid,
+      type: 'consumer-container',
+      name: 'Контейнер потребителей',
+      tag: nextFreeTag('consumer-container'),
+      x: target.x, y: target.y,
+      pageIds: Array.isArray(target.pageIds) ? target.pageIds.slice() : [],
+      positionsByPage: target.positionsByPage
+        ? JSON.parse(JSON.stringify(target.positionsByPage)) : undefined,
+      inputs: Math.max(1, Number(target.inputs) || 1),
+      outputs: 0,
+      inputSide: target.inputSide || 'top',
+      slots: [{ kind: 'linked', nodeId: target.id }],
+    };
+    state.nodes.set(cid, container);
+    // Перенаправить connections target → container
+    for (const c of state.conns.values()) {
+      if (c.from && c.from.nodeId === target.id) c.from.nodeId = cid;
+      if (c.to   && c.to.nodeId   === target.id) c.to.nodeId   = cid;
+    }
+    if (state.sysConns) {
+      for (const sc of state.sysConns.values()) {
+        if (sc.fromNodeId === target.id) sc.fromNodeId = cid;
+        if (sc.toNodeId   === target.id) sc.toNodeId   = cid;
+      }
+    }
+    // Target теперь — скрытый член контейнера
+    target.containerId = cid;
+    target.pageIds = [];
+    if (target.positionsByPage) target.positionsByPage = {};
+  }
+  // Проверяем, не там ли уже source
+  if (Array.isArray(container.slots)) {
+    for (const s of container.slots) {
+      if (s && s.kind === 'linked' && s.nodeId === source.id) {
+        return null; // уже в контейнере
+      }
+    }
+  } else {
+    container.slots = [];
+  }
+  // Source: удаляем connections, скрываем
+  hideAliasSourceFromCanvas(source);
+  source.containerId = container.id;
+  delete source.linkedAlias; // legacy чистим
+  // Добавляем slot
+  container.slots.push({ kind: 'linked', nodeId: source.id });
+  return { container, slotIdx: container.slots.length - 1 };
 }
 
 function _mergeConsumersIntoGroup(target, source) {
@@ -875,19 +966,20 @@ export function initInteraction() {
           // Пользователь: «потребитель с похожими характеристиками»
           // — значит, drop на несовместимый consumer должен оставить
           // обоих как отдельные узлы.
+          // v0.59.820 (Phase 3): drop создаёт контейнер вместо linkedAliases.
           if (target && _isCompatibleConsumer(target, n)) {
             const tagBefore = target.tag || target.name || target.id;
-            const result = _aliasConsumerToGroup(target, n);
+            const result = _mergeIntoContainer(target, n);
             if (result) {
               // unplaced источник остаётся unplaced (pageIds не нужно
-              // добавлять — он представлен через target). Уберём добавление
+              // добавлять — он представлен через container). Уберём добавление
               // на текущую страницу, которое сделал стандартный drop-handler.
               if (Array.isArray(n.pageIds)) {
                 n.pageIds = n.pageIds.filter(p => p !== state.currentPageId);
               }
               state.selectedKind = 'node';
-              state.selectedId = target.id;
-              try { flash(`«${n.tag || n.id}» связан с группой ${tagBefore} (слот #${result.slotIdx + 1})`, 'success'); } catch {}
+              state.selectedId = result.container.id;
+              try { flash(`«${n.tag || n.id}» добавлен в контейнер «${tagBefore}» (слот #${result.slotIdx + 1})`, 'success'); } catch {}
             }
           } else if (target) {
             try { flash(`Параметры ${n.tag || n.id} и ${target.tag || target.id} не совпадают — добавлен как отдельный потребитель. Если это один объект — используйте Группа-tab для ручной связи.`, 'info'); } catch {}
@@ -1845,13 +1937,13 @@ export function initInteraction() {
         if (dragged && dragged.type === 'consumer') {
           const target = _findConsumerOverlapAt(dragged);
           if (target && _isCompatibleConsumer(target, dragged)) {
-            try { snapshot('consumer-alias:' + target.id + '←' + dragged.id); } catch {}
+            try { snapshot('consumer-container:' + target.id + '←' + dragged.id); } catch {}
             const tagBefore = target.tag || target.name || target.id;
-            const result = _aliasConsumerToGroup(target, dragged);
+            const result = _mergeIntoContainer(target, dragged);
             if (result) {
               state.selectedKind = 'node';
-              state.selectedId = target.id;
-              try { flash(`«${dragged.tag || dragged.id}» связан с группой ${tagBefore} (слот #${result.slotIdx + 1}${result.overflow ? ', count → ' + target.count : ''})`, 'success'); } catch {}
+              state.selectedId = result.container.id;
+              try { flash(`«${dragged.tag || dragged.id}» добавлен в контейнер «${tagBefore}» (слот #${result.slotIdx + 1})`, 'success'); } catch {}
               render();
             }
           } else if (target) {
