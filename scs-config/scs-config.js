@@ -494,6 +494,12 @@ function rackLabel(r) {
 function renderRackPicker() {
   const sel = $('sc-rack');
   const list = projectRacks();
+  // v0.59.847: natural-sort.
+  list.sort((a, b) => {
+    const ta = (state.rackTags[a.id] || '').trim() || (a.autoTag || '') || a.id || '';
+    const tb = (state.rackTags[b.id] || '').trim() || (b.autoTag || '') || b.id || '';
+    return ta.localeCompare(tb, 'ru', { numeric: true, sensitivity: 'base' });
+  });
   sel.innerHTML = list.length
     ? list.map(r => `<option value="${r.id}">${escape(rackLabel(r))}</option>`).join('')
     : `<option value="">— в проекте нет физических шкафов; разверните в Реестре IT-оборудования —</option>`;
@@ -3531,6 +3537,14 @@ function rerender() { renderRackPicker(); renderRacksSidebar(); renderTemplates(
 function renderRacksSidebar() {
   const host = $('sc-racks-side'); if (!host) return;
   const list = projectRacks();
+  // v0.59.847: natural-sort шкафов по обозначению (CR01, MR1, SR01, SR02,
+  // SR03, SR04, SR05, SR6, SR07, SR08). Пользователь: «здесь список не
+  // по порядку».
+  list.sort((a, b) => {
+    const ta = (state.rackTags[a.id] || '').trim() || (a.autoTag || '') || a.id || '';
+    const tb = (state.rackTags[b.id] || '').trim() || (b.autoTag || '') || b.id || '';
+    return ta.localeCompare(tb, 'ru', { numeric: true, sensitivity: 'base' });
+  });
   if (!list.length) {
     host.innerHTML = `<div class="sc-cart-empty">В проекте нет физических шкафов.<br>
       <button type="button" class="sc-btn sc-btn-primary" data-act="new-rack" style="margin-top:8px">➕ Новая стойка</button>
