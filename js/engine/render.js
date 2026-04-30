@@ -429,6 +429,14 @@ export function renderUnplacedPalette() {
       // сразу должны удалятся из неразмещенных и в реестре числится как
       // размещенные».
       if (n.linkedAlias && state.nodes.get(n.linkedAlias)) continue;
+      // v0.59.828 (1.28.20): consumer внутри consumer-container — тоже
+      // считается размещённым через контейнер. Раньше после миграции
+      // legacy→container члены попадали в «Неразмещённые», т.к. фильтр
+      // проверял только linkedAlias.
+      if (n.containerId) {
+        const _c = state.nodes.get(n.containerId);
+        if (_c && _c.type === 'consumer-container') continue;
+      }
       const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
       if (pids.includes(pageId)) continue; // уже на этой странице
       if (!_nodeCompatibleWithPageKind(n, kind)) continue; // нет подходящего порта/системы
@@ -1915,7 +1923,13 @@ export function renderNodes() {
       const _curPage = getCurrentPage();
       _presetKind = _curPage ? getPageKind(_curPage) : 'schematic';
       _presetActive = _getActiveCardPreset();
-      _presetVisible = getVisibleFieldIds(_presetActive, _presetKind, n.type);
+      // v0.59.828 (1.28.20): consumer-container использует preset от 'consumer'
+      // (рендерится идентично групповому потребителю — поля, иконка, цвет,
+      // расположение). Пользователь: «для группв потребителей должно быть
+      // такая же настройка полей и общий вид, включая цвет карточек и месте
+      // расположения полей».
+      const _presetTypeKey = (n.type === 'consumer-container') ? 'consumer' : n.type;
+      _presetVisible = getVisibleFieldIds(_presetActive, _presetKind, _presetTypeKey);
       const _ELECTRICAL = ['demandKw', 'kvAOrVA', 'currentA', 'maxKw', 'maxA',
         'nominalKw', 'cosPhi', 'phase', 'voltage', 'breakerIn', 'cableSpec',
         'deltaUPct', 'capacityA', 'snomKva', 'sscMva', 'ukPct', 'kva', 'kw',
@@ -2331,7 +2345,7 @@ export function renderNodes() {
     // Свободно» не соответствовали выбору полей. Теперь каждое selected
     // поле = отдельная строка «label: value». Пользователь:
     // «не соотносятся выбранные свойства и отображение на лайауте».
-    if (_presetShowLoadInfo && (n.type === 'consumer' || n.type === 'panel' ||
+    if (_presetShowLoadInfo && (n.type === 'consumer' || n.type === 'consumer-container' || n.type === 'panel' ||
         n.type === 'source' || n.type === 'ups' || n.type === 'generator')) {
       const fmtDigits = (v) => Number.isFinite(v) ? fmt(v) : null;
       const cos = Number(n._cosPhi) || Number(n.cosPhi) || GLOBAL.defaultCosPhi || 0.95;
@@ -2339,7 +2353,39 @@ export function renderNodes() {
       // Compute values per node type
       let valueMap = {};
       let labelMap = {};
-      if (n.type === 'consumer') {
+      // v0.59.828 (1.28.20): consumer-container рендерится как consumer
+      // (по образцу группового потребителя). Параметры — суммарные (Σ kW)
+      // или взвешенные средние (cos). Tag/voltage/phase fallback берутся
+      // от первого linked-члена через nodeVoltage/isThreePhase (Phase 6 ext).
+      if (n.type === 'consumer-container') {
+        const cnt = consumerCountEffective(n);
+        const PnomTotal = consumerTotalDemandKw(n);
+        const Pnom = cnt > 0 ? PnomTotal / cnt : PnomTotal;
+        const Inom = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cos, isThreePhase(n)) : 0;
+        const Snom = Pnom > 0 ? Pnom / Math.max(0.1, cos) : 0;
+        const PcalcTotal = Number(n._loadKw) || 0;
+        const Pcalc = cnt > 0 ? PcalcTotal / cnt : PcalcTotal;
+        const Icalc = cnt > 0 ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
+        const _vdrop = Number(n._deltaUPct) || 0;
+        valueMap = {
+          demandKw:   { v: fmtDigits(Pnom)  },
+          nominalKw:  { v: fmtDigits(Pnom)  },
+          kvAOrVA:    { v: fmtDigits(Snom)  },
+          currentA:   { v: fmtDigits(Inom)  },
+          maxKw:      { v: fmtDigits(Pcalc) },
+          maxA:       { v: fmtDigits(Icalc) },
+          freeKw:     { v: fmtDigits(n._freeKw) },
+          freeA:      { v: fmtDigits(n._freeA)  },
+          cosPhi:     { v: cos.toFixed(2) },
+          voltage:    { v: Ucalc ? fmt(Ucalc) : null },
+          phase:      { v: isThreePhase(n) ? '3ph' : '1ph' },
+          breakerIn:  { v: null },
+          cableSpec:  { v: n._cableSpec || null },
+          deltaUPct:  { v: Number.isFinite(_vdrop) ? _vdrop.toFixed(1) : null },
+          count:      { v: cnt > 1 ? String(cnt) : null },
+        };
+        labelMap = null;
+      } else if (n.type === 'consumer') {
         const cnt = consumerCountEffective(n);
         const _isUniformGroup = cnt > 1 && n.groupMode !== 'individual';
         const cosC = Math.max(0.1, Math.min(1, Number(n.cosPhi) || 0.92));
@@ -2452,7 +2498,10 @@ export function renderNodes() {
       // пользователю реально размещать поля по зонам карточки. Раньше всё
       // шло линейно в body. Пользователь: «карточка не изменяет зоны
       // информации и не соответствует карточке на поле».
-      const _zoneLayout = _presetActive?.zoneLayout?.[_presetKind]?.[n.type];
+      // v0.59.828: для consumer-container используем preset/fields/labels
+      // от 'consumer' (рендеринг идентичен групповому потребителю).
+      const _renderTypeKey = (n.type === 'consumer-container') ? 'consumer' : n.type;
+      const _zoneLayout = _presetActive?.zoneLayout?.[_presetKind]?.[_renderTypeKey];
       const _zones = _zoneLayout?.zones || [
         { id: 'header',   position: 'header'   },
         { id: 'topRight', position: 'topRight' },
@@ -2468,7 +2517,7 @@ export function renderNodes() {
         return 'body';
       };
 
-      const orderedFields = listCardFields(_presetKind, n.type);
+      const orderedFields = listCardFields(_presetKind, _renderTypeKey);
       const rowsByPos = { header: [], topRight: [], body: [], footer: [] };
       for (const f of orderedFields) {
         if (!_presetVisible.has(f.id)) continue;
@@ -2480,10 +2529,10 @@ export function renderNodes() {
             f.id === 'zonePrefix') continue;
         const d = valueMap[f.id];
         if (!d || d.v == null || d.v === '') continue;
-        const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[n.type]?.[f.id];
+        const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[_renderTypeKey]?.[f.id];
         const label = (typeof customLabel === 'string' && customLabel.trim())
-          ? customLabel : shortLabel(_presetKind, n.type, f.id);
-        const unit = (d.unit != null) ? d.unit : fieldUnit(_presetKind, n.type, f.id);
+          ? customLabel : shortLabel(_presetKind, _renderTypeKey, f.id);
+        const unit = (d.unit != null) ? d.unit : fieldUnit(_presetKind, _renderTypeKey, f.id);
         const txt = `${label}: ${d.v}${unit ? ' ' + unit : ''}`;
         const zid = _zoneAssign[f.id] || _defaultZone(f.id);
         const z = _zones.find(x => x.id === zid);
