@@ -33,17 +33,17 @@ export function openConsumerParamsModal(n) {
   // пользователь просит редактируемые поля убрать в свою вкладку. Для
   // редактирования имени открывается вкладка «Общее».
   h.push(`<h3 style="margin-bottom:4px">${escHtml(effectiveTag(n))} <span style="font-weight:500">${escHtml(n.name)}</span></h3>`);
-  // v0.59.757: вкладка «Группа» отображается только когда consumer групповой
-  // (count > 1). Содержимое: items-list для individual + плейсхолдеры для
-  // 1.28.10 (cross-discipline reconciliation) и 1.28.13 (split-out).
-  // ROADMAP 1.28.12.
-  const _isGroupTabVisible = (Number(n.count) || 1) > 1;
-  // Active-tab по умолчанию: «Группа» если групповой, иначе «Электрика».
-  const _defaultTab = _isGroupTabVisible ? 'group' : 'electrical';
+  // v0.59.838: вкладка «Группа» удалена для consumer (count>1) — её
+  // функции (alias-link, split-out, slot picker) теперь покрываются
+  // консьюмер-контейнером. Пользователь: «для простого группового
+  // потребителя теперь нет смысла в вкладке группа, удаляй».
+  // _isGroupTabVisible оставлен как const false для backward-совместимости
+  // ниже по файлу (see line 689) — блок просто не рендерится.
+  const _isGroupTabVisible = false;
+  const _defaultTab = 'electrical';
   h.push(`<div class="tp-tabs" role="tablist">
     <button type="button" class="tp-tab" data-tab="general" role="tab">📋 Общее</button>
     <button type="button" class="tp-tab${_defaultTab === 'electrical' ? ' active' : ''}" data-tab="electrical" role="tab">⚡ Электрика</button>
-    ${_isGroupTabVisible ? `<button type="button" class="tp-tab${_defaultTab === 'group' ? ' active' : ''}" data-tab="group" role="tab">👥 Группа</button>` : ''}
     <button type="button" class="tp-tab" data-tab="geometry" role="tab">📐 Габариты</button>
   </div>`);
   // === Вкладка «Общее» (идентификация + топология) ===

@@ -1342,6 +1342,10 @@ export function openContainerMembersModal(container) {
 function _wireContainerMembersModal(n, body, modal) {
   // Edit member full inspector — выбираем член, закрываем модалку, открываем
   // обычный consumer-modal через openConsumerParamsModal.
+  // v0.59.838: после закрытия consumer-модалки возвращаемся в контейнер
+  // (а не оставляем пользователя у пустого канваса). Пользователь:
+  // «после открытия карточки потребителя из группы, нужно вернуться
+  // обратно в группу а не просто закрыть окно».
   body.querySelectorAll('[data-cm-edit]').forEach(btn => {
     btn.addEventListener('click', () => {
       const aid = btn.getAttribute('data-cm-edit');
@@ -1350,10 +1354,30 @@ function _wireContainerMembersModal(n, body, modal) {
       modal.classList.add('hidden');
       // open standard consumer params modal
       try {
-        // временно показать узел на canvas (через containerId он скрыт)
-        // — открываем full inspector через select+modal
         selectNode(a.id);
         openConsumerParamsModal(a);
+        // Установим one-shot return-to-container handler на consumer modal
+        const cpModal = document.getElementById('modal-consumer-params');
+        if (cpModal) {
+          const _onClose = () => {
+            if (cpModal.classList.contains('hidden')) {
+              cpModal.removeEventListener('animationend', _onClose);
+              _observer.disconnect();
+              // Возвращаемся в контейнер
+              setTimeout(() => openContainerMembersModal(n), 50);
+            }
+          };
+          // Используем MutationObserver для отслеживания добавления .hidden
+          const _observer = new MutationObserver(() => {
+            if (cpModal.classList.contains('hidden')) {
+              _observer.disconnect();
+              setTimeout(() => {
+                if (state.nodes.get(n.id)) openContainerMembersModal(n);
+              }, 50);
+            }
+          });
+          _observer.observe(cpModal, { attributes: true, attributeFilter: ['class'] });
+        }
       } catch {}
     });
   });
