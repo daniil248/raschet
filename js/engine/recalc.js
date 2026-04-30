@@ -1435,7 +1435,14 @@ function recalc() {
   }
 
   for (const n of state.nodes.values()) {
-    if (n.type !== 'consumer') continue;
+    // v0.59.863: consumer-container тоже участвует в walkUp. Без этого
+    // линия от panel к контейнеру оставалась с _loadKw=0 (cable 0 А),
+    // потому что linked-консьюмеры контейнера не имеют собственных
+    // активных входов (их connections были перенаправлены на контейнер
+    // в _mergeIntoContainer), а сам контейнер раньше пропускался.
+    // consumerTotalDemandKw(n) уже корректно раскрывает slots[] для
+    // консьюмер-контейнера — суммирует linked + placeholder demand.
+    if (n.type !== 'consumer' && n.type !== 'consumer-container') continue;
     const ai = activeInputs(n.id);
     n._powered = ai !== null;
     if (!n._powered) continue;

@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.863', date: '2026-04-30', items: [
+      '⚡ <b>Fix: потребители из consumer-container теперь влияют на ток кабеля до контейнера</b>. По репорту пользователя «потребители с группы не влияют на кабели, а должны».',
+      '• <b>Корень бага</b>: в <code>recalc.js</code> цикл walkUp в ~line 1438 фильтровал <code>if (n.type !== \'consumer\') continue;</code> — пропускал <code>consumer-container</code>. Линки внутри контейнера тоже не вносили вклад: их connections были перенаправлены на контейнер в <code>_mergeIntoContainer</code>, и <code>activeInputs(linked)</code> возвращало null → <code>_powered=false</code> → skip. Контейнер сам тоже пропускался из-за фильтра. Итог: <code>conn._loadKw</code> на линии panel→container оставался 0 → cable rated на 0 А.',
+      '• <b>Fix</b>: фильтр расширен до <code>n.type !== \'consumer\' &amp;&amp; n.type !== \'consumer-container\'</code>. <code>consumerTotalDemandKw()</code> уже корректно раскрывает <code>slots[]</code> контейнера — суммирует linked + placeholder demand. Cable теперь рассчитывается на полную нагрузку группы.',
+      '• <b>Симптом до фикса</b>: ток на линии «PD-1 → Контейнер потребителей» = 0 А, кабель «не подобран» в BOM, даже когда внутри контейнера 5 потребителей по 2 кВт.',
+      '• <b>Симптом после фикса</b>: ток = computeCurrentA(Σ slots × Ки × loadFactor, U, cos, …), кабель подбирается под суммарную нагрузку группы.',
+      'Файл: <code>js/engine/recalc.js</code> (~line 1437-1452, walkUp loop фильтр).',
+    ] },
     { version: '0.59.862', date: '2026-04-30', items: [
       '🪄 <b>Карточки модулей в проекте — hide-when-empty</b>. По репорту пользователя: «карточка должна появляется только тогда когда проект создал в соответствующем модуле данные, иначе через кнопку + Добавить. Относится ко всем модулям.»',
       '• <b>Singletons</b> (Технолог ЦОД, Реестр IT, Реестр оборудования объекта): карточка показывается ТОЛЬКО если в LS есть данные — соответственно <code>tech-workspace.variants.v1</code>, <code>scs-config.inventory.v1</code>, <code>facility-inventory.v1</code>. Если данных нет — модуль доступен через «＋ Добавить ▾» (просто навигация в модуль с projectId родителя).',
