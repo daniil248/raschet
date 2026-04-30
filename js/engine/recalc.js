@@ -9,6 +9,7 @@ import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCoun
          upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity } from './electrical.js';
 import { CONSUMER_CATALOG, STARTER_TYPES } from './constants.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
+import { normalizeContainers } from './zones.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 // v0.59.653: РТМ 36.18.32.4-92 — расчёт максимума по упорядоченным диаграммам.
 import { rtmComputeMax as _rtmComputeMax } from '../../shared/calc-modules/rtm-load.js';
@@ -783,6 +784,14 @@ function recalc() {
   // Сброс кэша maxDownstreamLoad на каждый проход — топология ties / tieStates
   // могла измениться с прошлого recalc.
   _resetMaxDownstreamCache();
+
+  // v0.59.830 (1.28.20): нормализация контейнеров перед расчётом.
+  // Авто-коллапс single-slot контейнеров → их consumer-узлы; чистка битых
+  // ссылок. Без normalize получаются «контейнеры с одним потребителем»
+  // которые user не просил.
+  try {
+    normalizeContainers();
+  } catch {}
 
   _markInternalIntegratedConns();
 

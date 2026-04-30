@@ -179,6 +179,86 @@ export function isInContainer(n) {
   return !!(c && c.type === 'consumer-container');
 }
 
+// v0.59.830 (1.28.20): нормализация контейнеров.
+//   1. Чистка битых ссылок: slot.nodeId не существует → slot удаляется.
+//   2. Авто-коллапс: если в контейнере остался ровно 1 валидный linked-слот
+//      и нет placeholder'ов, контейнер сворачивается в этот consumer-узел
+//      (consumer возвращается на canvas: pageIds container'а; connections
+//      container.id перенаправляются на consumer.id; контейнер удаляется).
+//   3. Пустой контейнер удаляется.
+// Пользователь: «если потребитель был отвергнут группой, не следует
+// все равно создавать группу с одним слотом и этим потребителем,
+// нужно оставить его как простой потребитель».
+export function normalizeContainers() {
+  const toDelete = [];
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'consumer-container') continue;
+    if (!Array.isArray(n.slots)) { n.slots = []; }
+    // 1. Чистка битых linked-ссылок
+    n.slots = n.slots.filter(s => {
+      if (!s) return false;
+      if (s.kind === 'linked') {
+        if (!s.nodeId) return false;
+        const a = state.nodes.get(s.nodeId);
+        if (!a) return false;
+      }
+      return true;
+    });
+    // 2. Подсчёт linked + placeholders
+    let linkedCount = 0, phCount = 0, lastLinkedId = null;
+    for (const s of n.slots) {
+      if (s.kind === 'linked' && s.nodeId) { linkedCount++; lastLinkedId = s.nodeId; }
+      else if (s.kind === 'placeholder') phCount++;
+    }
+    // 3. Авто-коллапс: 1 linked + 0 placeholder → выкатить consumer обратно
+    if (linkedCount === 1 && phCount === 0 && lastLinkedId) {
+      const a = state.nodes.get(lastLinkedId);
+      if (a) {
+        // consumer возвращается на canvas: получает pageIds от контейнера
+        a.pageIds = Array.isArray(n.pageIds) ? n.pageIds.slice() : [];
+        if (n.positionsByPage) {
+          a.positionsByPage = JSON.parse(JSON.stringify(n.positionsByPage));
+        }
+        a.x = n.x; a.y = n.y;
+        delete a.containerId;
+        // Перенаправить connections container → consumer
+        for (const c of state.conns.values()) {
+          if (c.from && c.from.nodeId === n.id) c.from.nodeId = a.id;
+          if (c.to   && c.to.nodeId   === n.id) c.to.nodeId   = a.id;
+        }
+        if (state.sysConns) {
+          for (const sc of state.sysConns.values()) {
+            if (sc.fromNodeId === n.id) sc.fromNodeId = a.id;
+            if (sc.toNodeId   === n.id) sc.toNodeId   = a.id;
+          }
+        }
+        toDelete.push(n.id);
+        continue;
+      }
+    }
+    // 4. Пустой контейнер — удалить
+    if (n.slots.length === 0) {
+      toDelete.push(n.id);
+    }
+  }
+  for (const id of toDelete) {
+    // Снять containerId со всех бывших членов (их consumer-узлы остаются
+    // в state.nodes но без containerId — они либо уже унаследовали pageIds
+    // в коллапсе, либо остаются unplaced).
+    const removed = state.nodes.get(id);
+    if (removed && Array.isArray(removed.slots)) {
+      for (const s of removed.slots) {
+        if (s && s.kind === 'linked' && s.nodeId) {
+          const a = state.nodes.get(s.nodeId);
+          if (a && a.containerId === id) delete a.containerId;
+        }
+      }
+    }
+    state.nodes.delete(id);
+  }
+  return toDelete.length;
+}
+
 // v0.59.811: эффективное имя узла. Для shell-группы с linkedAliases —
 // имя первого alias-узла (как и effectiveTag). Иначе n.name.
 // Пользователь: «обозначается по первому потребителю в группе» —

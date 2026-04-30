@@ -61,7 +61,12 @@ function getZoneLayout(preset, kind, type) {
     layouts[kind][type] = {
       zones: JSON.parse(JSON.stringify(DEFAULT_ZONES)),
       assignments: {},
+      order: [],   // v0.59.830: явный порядок field-id для отображения чипов
     };
+  }
+  // Backward-compat: layout без order
+  if (!Array.isArray(layouts[kind][type].order)) {
+    layouts[kind][type].order = [];
   }
   return layouts[kind][type];
 }
@@ -222,13 +227,16 @@ function _renderFieldsTabSplit(sel, isSystem) {
         ${Object.keys(byGroup).map(g => `<div class="cpe-fields-group">
           <h4>${escHtml(groupLabel(g))}</h4>
           ${byGroup[g].map(f => {
+            // v0.59.830: чекбокс убран — добавление/удаление через drag-drop
+            // в зону / ×-кнопку. Поле всегда draggable. Если поле уже в
+            // карточке — показываем ✓ маркер, иначе нет.
             const isReq = required.has(f.id);
             const isOn = activeIds.has(f.id) || isReq;
             const inZone = layout.assignments[f.id] || (isOn ? defaultZoneAssignment(f.id) : null);
             const customLabel = sel.fieldLabels?.[kind]?.[type]?.[f.id] || '';
-            return `<div class="cpe-field-row${isReq ? ' cpe-field-required' : ''}${!isOn ? ' cpe-field-off' : ''}" draggable="${isOn ? 'true' : 'false'}" data-field-id="${escAttr(f.id)}">
-              <span class="cpe-field-handle" title="${isOn ? 'Перетащите в зону карточки справа' : 'Сначала включите чекбокс'}">${isOn ? '⋮⋮' : '·'}</span>
-              <input type="checkbox" data-field-id="${escAttr(f.id)}" ${isOn ? 'checked' : ''}${isReq ? ' disabled' : ''}>
+            return `<div class="cpe-field-row${isReq ? ' cpe-field-required' : ''}${!isOn ? ' cpe-field-off' : ''}" draggable="true" data-field-id="${escAttr(f.id)}">
+              <span class="cpe-field-handle" title="Перетащите в зону карточки справа">⋮⋮</span>
+              <span class="cpe-field-on-mark" title="${isOn ? 'В карточке' : 'Не в карточке'}" style="font-weight:600;color:${isOn ? '#16a34a' : '#cbd5e1'};font-size:13px;width:14px;display:inline-block;text-align:center">${isOn ? '✓' : '·'}</span>
               <input type="text" class="cpe-field-label-input" data-field-id="${escAttr(f.id)}" value="${escAttr(customLabel || f.label)}" placeholder="${escAttr(f.label)}" title="Подпись на карточке (кликните и измените). Пустое поле = вернуть стандартную подпись «${escAttr(f.label)}»">
               <code class="cpe-field-id muted">${escHtml(f.id)}</code>
               ${isReq ? '<span class="cpe-field-req">обяз.</span>' : ''}
@@ -376,6 +384,19 @@ function _renderCardPreview(sel, kind, type, fields, activeIds, required, layout
     if (!byZone[zid]) byZone[zid] = [];   // зона исчезла — fallback
     byZone[zid].push(f);
   }
+  // v0.59.830: сортировка чипов в каждой зоне по layout.order (если есть).
+  // Поля без записи в order — в конце списка (по дефолтной сортировке fields).
+  if (Array.isArray(layout.order) && layout.order.length) {
+    const orderIdx = new Map();
+    layout.order.forEach((fid, i) => orderIdx.set(fid, i));
+    for (const zid of Object.keys(byZone)) {
+      byZone[zid].sort((a, b) => {
+        const ia = orderIdx.has(a.id) ? orderIdx.get(a.id) : 1e9;
+        const ib = orderIdx.has(b.id) ? orderIdx.get(b.id) : 1e9;
+        return ia - ib;
+      });
+    }
+  }
   const zonePos = (pos) => layout.zones.filter(z => z.position === pos);
   const renderZoneArea = (pos) => {
     const zones = zonePos(pos);
@@ -384,14 +405,15 @@ function _renderCardPreview(sel, kind, type, fields, activeIds, required, layout
         <input type="text" class="cpe-zone-label" value="${escAttr(z.label)}" data-zone-id="${escAttr(z.id)}" title="Подпись зоны (можно изменить)">
         <span class="cpe-zone-cnt muted">(${(byZone[z.id] || []).length})</span>
       </div>
-      <div class="cpe-zone-chips">
-        ${(byZone[z.id] || []).map(f => {
+      <div class="cpe-zone-chips" data-zone-id="${escAttr(z.id)}">
+        ${(byZone[z.id] || []).map((f, idx) => {
           // v0.59.802: использовать custom label если есть в пресете
           const _customLabel = sel.fieldLabels?.[_state.activeModeTab]?.[_state.activeTypeTab]?.[f.id];
           const _displayLabel = _customLabel || f.label;
-          return `<span class="cpe-chip${required.has(f.id) ? ' cpe-chip-req' : ''}" draggable="true" data-field-id="${escAttr(f.id)}" data-from-zone="${escAttr(z.id)}" title="${escAttr(f.id)} — перетащите в другую зону">
+          return `<span class="cpe-chip${required.has(f.id) ? ' cpe-chip-req' : ''}" draggable="true" data-field-id="${escAttr(f.id)}" data-from-zone="${escAttr(z.id)}" data-chip-pos="${idx}" title="${escAttr(f.id)} — перетащите в другую зону или измените порядок">
+            <span class="cpe-chip-grip" title="перетащить">⋮⋮</span>
             ${escHtml(_displayLabel)}
-            ${!required.has(f.id) ? `<button type="button" class="cpe-chip-x" data-field-id="${escAttr(f.id)}" title="Убрать из зоны (поле останется выключенным)">×</button>` : ''}
+            ${!required.has(f.id) ? `<button type="button" class="cpe-chip-x" data-field-id="${escAttr(f.id)}" title="Удалить поле из карточки">×</button>` : ''}
           </span>`;
         }).join('')}
         ${(byZone[z.id] || []).length === 0 ? '<span class="cpe-zone-empty muted">пусто</span>' : ''}
@@ -732,6 +754,65 @@ function _wireDragDrop(modal, host) {
       setUserPresetFields(sel.id, kind, type, Array.from(current));
       const layout = getZoneLayout(sel, kind, type);
       layout.assignments[fid] = targetZoneId;
+      // v0.59.830: drop на пустую область зоны — append в конец order
+      if (!Array.isArray(layout.order)) layout.order = [];
+      const _idx = layout.order.indexOf(fid);
+      if (_idx >= 0) layout.order.splice(_idx, 1);
+      // Append в конец среди тех что в этой зоне
+      layout.order.push(fid);
+      saveZoneLayout(sel, kind, type, layout);
+      render(host); wire(host);
+    });
+  });
+  // v0.59.830: drop на конкретный chip — вставить ПЕРЕД ним в order
+  // (для drag-reorder внутри зоны или перемещения между зонами с
+  // конкретной позицией).
+  modal.querySelectorAll('.cpe-chip[draggable="true"]').forEach(chip => {
+    chip.addEventListener('dragover', e => {
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch {}
+      chip.classList.add('cpe-chip-drop-target');
+    });
+    chip.addEventListener('dragleave', () => {
+      chip.classList.remove('cpe-chip-drop-target');
+    });
+    chip.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      chip.classList.remove('cpe-chip-drop-target');
+      let fid = _dragFieldId;
+      if (!fid) { try { fid = e.dataTransfer.getData('text/plain'); } catch {} }
+      _dragFieldId = null;
+      if (!fid) return;
+      const targetFid = chip.dataset.fieldId;
+      if (!targetFid || fid === targetFid) return;
+      // zone того chip'а на который дропнули
+      const zoneEl = chip.closest('.cpe-zone');
+      const targetZoneId = zoneEl ? zoneEl.dataset.zoneId : (chip.dataset.fromZone || null);
+      const sel = getPresetById(_state.selectedPresetId);
+      if (!sel || sel.system) return;
+      const kind = _state.activeModeTab, type = _state.activeTypeTab;
+      const fields = listCardFields(kind, type);
+      const required = requiredFieldIds(kind, type);
+      const current = new Set(sel.perMode?.[kind]?.perType?.[type] || fields.map(f => f.id));
+      current.add(fid);
+      for (const r of required) current.add(r);
+      setUserPresetFields(sel.id, kind, type, Array.from(current));
+      const layout = getZoneLayout(sel, kind, type);
+      if (targetZoneId) layout.assignments[fid] = targetZoneId;
+      if (!Array.isArray(layout.order)) layout.order = [];
+      // Удалить fid из order если уже есть
+      const _idxOld = layout.order.indexOf(fid);
+      if (_idxOld >= 0) layout.order.splice(_idxOld, 1);
+      // Найти позицию targetFid и вставить ПЕРЕД ним
+      const _idxTarget = layout.order.indexOf(targetFid);
+      if (_idxTarget >= 0) {
+        layout.order.splice(_idxTarget, 0, fid);
+      } else {
+        // targetFid ещё не в order — добавляем сначала targetFid, потом fid перед ним
+        layout.order.push(fid);
+        layout.order.push(targetFid);
+      }
       saveZoneLayout(sel, kind, type, layout);
       render(host); wire(host);
     });
