@@ -81,12 +81,19 @@ async function init() {
 
   if (!hasValidConfig()) {
     console.info('[auth] Firebase config пуст — локальный режим');
-    notify();
+    // v0.59.850 BUG-FIX: НЕ перезаписываем raschet.currentUserId на
+    // 'anonymous' в локальном режиме. Используем definitive=false —
+    // сохраняем предыдущий UID если он был. Иначе после v0.59.834
+    // (auth.js во всех модулях) каждая загрузка страницы в local-режиме
+    // обнуляла scope user-данных (пресеты, каталог, проекты привязанные
+    // к UID), и пользователь видел «всё пропало».
+    notify({ definitive: false });
     return;
   }
   if (typeof firebase === 'undefined' || !firebase.initializeApp) {
     console.warn('[auth] Firebase SDK не загрузился (проверьте подключение к интернету)');
-    notify();
+    // v0.59.850 BUG-FIX: SDK не загрузился — не перетираем UID.
+    notify({ definitive: false });
     return;
   }
   try {
