@@ -4,6 +4,7 @@ import { svg, layerZones, layerConns, layerNodes, layerOver, statsEl, modesListE
 // определяется по иерархии scheme→project→user→system-default. Используется
 // в render для фильтрации полей карточек.
 import { resolveCardPreset, getVisibleFieldIds } from '../../shared/card-presets.js';
+import { listCardFields } from '../../shared/card-fields-registry.js';
 
 // Кэш resolved пресета — сбрасывается на raschet:card-preset-changed event.
 let _cachedCardPreset = null;
@@ -2291,79 +2292,135 @@ export function renderNodes() {
       drawBundlingIcon(g, w - 82, n.bundling || 'touching');
     }
 
-    // v0.59.802 (Phase 19.4 deeper): per-field rendering для consumer.
-    // Раньше combined rows «Номинальная / Расчётная / Свободно» не
-    // соответствовали выбору полей — пользователь выбирал только demandKw
-    // и видел все 3 строки с kVA/A которые не выбирал. Пользователь:
+    // v0.59.803 (Phase 19.4 deeper): per-field rendering для consumer/
+    // panel/source/ups/generator. Раньше combined rows «текущая/макс/номин/
+    // Свободно» не соответствовали выбору полей. Теперь каждое selected
+    // поле = отдельная строка «label: value». Пользователь:
     // «не соотносятся выбранные свойства и отображение на лайауте».
-    // Теперь: каждое selected поле = отдельная строка «label: value».
-    if (_presetShowLoadInfo && n.type === 'consumer') {
-      // Per-field display for consumer
-      const cnt = consumerCountEffective(n);
-      const _isUniformGroup = cnt > 1 && n.groupMode !== 'individual';
-      const cos = Math.max(0.1, Math.min(1, Number(n.cosPhi) || 0.92));
-      const Ucalc = nodeCalcVoltage(n);
-      const PnomTotal = consumerTotalDemandKw(n);
-      const Pnom = _isUniformGroup ? (PnomTotal / cnt) : PnomTotal;
-      const Inom = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cos, isThreePhase(n)) : 0;
-      const Snom = Pnom > 0 ? Pnom / cos : 0;
-      const PcalcTotal = Number(n._loadKw) || 0;
-      const Pcalc = _isUniformGroup ? (PcalcTotal / cnt) : PcalcTotal;
-      const Icalc = _isUniformGroup ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
-      const Scalc = Pcalc > 0 ? Pcalc / cos : 0;
-      const _vdrop = Number(n._deltaUPct) || 0;
-      const _free = (k) => n[k];
+    if (_presetShowLoadInfo && (n.type === 'consumer' || n.type === 'panel' ||
+        n.type === 'source' || n.type === 'ups' || n.type === 'generator')) {
       const fmtDigits = (v) => Number.isFinite(v) ? fmt(v) : null;
-      // Map fieldId → { label, value }
-      const FIELD_DISPLAY = {
-        demandKw:   { v: fmtDigits(Pnom),  unit: 'кВт' },
-        nominalKw:  { v: fmtDigits(Pnom),  unit: 'кВт' },
-        kvAOrVA:    { v: fmtDigits(Snom),  unit: 'кВА' },
-        currentA:   { v: fmtDigits(Inom),  unit: 'А' },
-        maxKw:      { v: fmtDigits(Pcalc), unit: 'кВт' },
-        maxA:       { v: fmtDigits(Icalc), unit: 'А' },
-        cosPhi:     { v: cos.toFixed(2),   unit: '' },
-        voltage:    { v: Ucalc ? fmt(Ucalc) : null, unit: 'В' },
-        phase:      { v: n.phase || '', unit: '' },
-        breakerIn:  { v: Number.isFinite(Number(n.breakerIn)) && n.breakerIn ? String(n.breakerIn) : null, unit: 'А' },
-        cableSpec:  { v: n._cableSpec || null, unit: '' },
-        deltaUPct:  { v: Number.isFinite(_vdrop) ? _vdrop.toFixed(1) : null, unit: '%' },
-        count:      { v: (Number(n.count) || 1) > 1 ? String(n.count) : null, unit: 'шт.' },
-      };
-      // Сборка row'ов в порядке как в registry — стабильность layout
-      const rows = [];
-      const allFields = listCardFields ? null : null; // skip — уже в зарегистрированном порядке через iteration
-      const ORDER = ['demandKw', 'nominalKw', 'kvAOrVA', 'currentA', 'maxKw', 'maxA',
-        'cosPhi', 'voltage', 'phase', 'breakerIn', 'cableSpec', 'deltaUPct', 'count'];
-      const fieldDef = (id) => {
-        // Ищем в registry для label (см. card-fields-registry.js consumer)
-        const labels = {
-          demandKw: 'Мощность',
-          nominalKw: 'Номинал',
-          kvAOrVA: 'кВА',
-          currentA: 'Ток',
-          maxKw: 'Макс.',
-          maxA: 'Макс. ток',
-          cosPhi: 'cos φ',
-          voltage: 'U',
-          phase: 'Фаза',
-          breakerIn: 'Автомат',
-          cableSpec: 'Кабель',
-          deltaUPct: 'ΔU',
-          count: '×',
+      const cos = Number(n._cosPhi) || Number(n.cosPhi) || GLOBAL.defaultCosPhi || 0.95;
+      const Ucalc = nodeCalcVoltage(n) || nodeVoltage(n) || 0;
+      // Compute values per node type
+      let valueMap = {};
+      let labelMap = {};
+      if (n.type === 'consumer') {
+        const cnt = consumerCountEffective(n);
+        const _isUniformGroup = cnt > 1 && n.groupMode !== 'individual';
+        const cosC = Math.max(0.1, Math.min(1, Number(n.cosPhi) || 0.92));
+        const PnomTotal = consumerTotalDemandKw(n);
+        const Pnom = _isUniformGroup ? (PnomTotal / cnt) : PnomTotal;
+        const Inom = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cosC, isThreePhase(n)) : 0;
+        const Snom = Pnom > 0 ? Pnom / cosC : 0;
+        const PcalcTotal = Number(n._loadKw) || 0;
+        const Pcalc = _isUniformGroup ? (PcalcTotal / cnt) : PcalcTotal;
+        const Icalc = _isUniformGroup ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
+        const _vdrop = Number(n._deltaUPct) || 0;
+        valueMap = {
+          demandKw:   { v: fmtDigits(Pnom),  unit: 'кВт' },
+          nominalKw:  { v: fmtDigits(Pnom),  unit: 'кВт' },
+          kvAOrVA:    { v: fmtDigits(Snom),  unit: 'кВА' },
+          currentA:   { v: fmtDigits(Inom),  unit: 'А' },
+          maxKw:      { v: fmtDigits(Pcalc), unit: 'кВт' },
+          maxA:       { v: fmtDigits(Icalc), unit: 'А' },
+          cosPhi:     { v: cosC.toFixed(2),  unit: '' },
+          voltage:    { v: Ucalc ? fmt(Ucalc) : null, unit: 'В' },
+          phase:      { v: n.phase || '', unit: '' },
+          breakerIn:  { v: Number.isFinite(Number(n.breakerIn)) && n.breakerIn ? String(n.breakerIn) : null, unit: 'А' },
+          cableSpec:  { v: n._cableSpec || null, unit: '' },
+          deltaUPct:  { v: Number.isFinite(_vdrop) ? _vdrop.toFixed(1) : null, unit: '%' },
+          count:      { v: (Number(n.count) || 1) > 1 ? String(n.count) : null, unit: 'шт.' },
         };
-        return labels[id] || id;
-      };
-      for (const id of ORDER) {
-        if (!_presetVisible.has(id)) continue;
-        const d = FIELD_DISPLAY[id];
+        labelMap = {
+          demandKw: 'Мощность', nominalKw: 'Номинал', kvAOrVA: 'кВА', currentA: 'Ток',
+          maxKw: 'Макс.', maxA: 'Макс. ток', cosPhi: 'cos φ', voltage: 'U',
+          phase: 'Фаза', breakerIn: 'Автомат', cableSpec: 'Кабель',
+          deltaUPct: 'ΔU', count: '×',
+        };
+      } else if (n.type === 'panel') {
+        const PnomSum = (n._rtmMax && Number.isFinite(n._rtmMax.PnomSum)) ? n._rtmMax.PnomSum : 0;
+        const SnomSum = (n._rtmMax && Number.isFinite(n._rtmMax.SnomSum)) ? n._rtmMax.SnomSum : 0;
+        const InomSum = (PnomSum > 0 && Ucalc) ? computeCurrentA(PnomSum, Ucalc, cos, isThreePhase(n)) : 0;
+        const margin = (n._marginPct == null) ? null : Number(n._marginPct);
+        const sectCount = Array.isArray(n.sectionIds) ? n.sectionIds.length : 0;
+        valueMap = {
+          capacityA:   { v: Number.isFinite(Number(n.capacityA)) ? String(n.capacityA) : null, unit: 'А' },
+          currentA:    { v: fmtDigits(n._loadA), unit: 'А' },
+          marginPct:   { v: margin != null ? margin.toFixed(1) : null, unit: '%' },
+          kSim:        { v: Number.isFinite(Number(n.kSim)) ? Number(n.kSim).toFixed(2) : null, unit: '' },
+          switchMode:  { v: n.switchMode || null, unit: '' },
+          sectionsCount: { v: sectCount > 0 ? String(sectCount) : null, unit: 'секц.' },
+        };
+        labelMap = {
+          capacityA: 'Номинал', currentA: 'Ток', marginPct: 'Запас',
+          kSim: 'Kисп', switchMode: 'Режим', sectionsCount: 'Секций',
+        };
+      } else if (n.type === 'source') {
+        const SnomNameplate = (Number(n.snomKva) > 0)
+          ? Number(n.snomKva)
+          : (n.capacityKw > 0 ? n.capacityKw / Math.max(0.1, cos) : 0);
+        valueMap = {
+          sourceSubtype: { v: n.sourceSubtype || null, unit: '' },
+          voltage:    { v: Ucalc ? fmt(Ucalc) : null, unit: 'В' },
+          snomKva:    { v: fmtDigits(SnomNameplate), unit: 'кВА' },
+          capacityKw: { v: fmtDigits(n.capacityKw), unit: 'кВт' },
+          sscMva:     { v: Number.isFinite(Number(n.sscMva)) ? Number(n.sscMva).toFixed(0) : null, unit: 'МВА' },
+          ukPct:      { v: Number.isFinite(Number(n.ukPct)) ? Number(n.ukPct).toFixed(1) : null, unit: '%' },
+        };
+        labelMap = {
+          sourceSubtype: 'Тип', voltage: 'U', snomKva: 'Sном',
+          capacityKw: 'Pном', sscMva: 'Sкз', ukPct: 'uк',
+        };
+      } else if (n.type === 'generator') {
+        const SnomNameplate = (Number(n.snomKva) > 0)
+          ? Number(n.snomKva)
+          : (n.capacityKw > 0 ? n.capacityKw / Math.max(0.1, cos) : 0);
+        const triggerCount = (Array.isArray(n.triggerNodeIds) ? n.triggerNodeIds.length : 0)
+          + (Array.isArray(n.triggerGroups) ? n.triggerGroups.length : 0);
+        valueMap = {
+          capacityKw: { v: fmtDigits(n.capacityKw), unit: 'кВт' },
+          snomKva:    { v: fmtDigits(SnomNameplate), unit: 'кВА' },
+          backupMode: { v: n.backupMode ? 'резерв' : 'основной', unit: '' },
+          triggerInfo: { v: triggerCount > 0 ? String(triggerCount) : null, unit: 'триг.' },
+        };
+        labelMap = {
+          capacityKw: 'Pном', snomKva: 'Sном',
+          backupMode: 'Режим', triggerInfo: 'Триггеры',
+        };
+      } else if (n.type === 'ups') {
+        const cosForCap = n._cosPhi || Number(n.cosPhi) || GLOBAL.defaultCosPhi || 1.0;
+        const capA = (n.capacityKw && Ucalc)
+          ? computeCurrentA(n.capacityKw, Ucalc, cosForCap, isThreePhase(n))
+          : 0;
+        const SnomNameplate = (Number(n.capacityKva) > 0)
+          ? Number(n.capacityKva)
+          : (n.capacityKw > 0 ? n.capacityKw / Math.max(0.1, cosForCap) : 0);
+        valueMap = {
+          kva:        { v: fmtDigits(SnomNameplate), unit: 'кВА' },
+          kw:         { v: fmtDigits(n.capacityKw), unit: 'кВт' },
+          autonomyMin: { v: Number.isFinite(Number(n.autonomyMin)) ? String(n.autonomyMin) : null, unit: 'мин' },
+          currentA:   { v: fmtDigits(n._loadA || capA), unit: 'А' },
+          redundancy: { v: n.redundancy || null, unit: '' },
+        };
+        labelMap = {
+          kva: 'Sном', kw: 'Pном', autonomyMin: 'Автономия',
+          currentA: 'Ток', redundancy: 'Резерв',
+        };
+      }
+      // Build rows in registry order
+      const orderedFields = listCardFields(_presetKind, n.type);
+      const rows = [];
+      for (const f of orderedFields) {
+        if (!_presetVisible.has(f.id)) continue;
+        const d = valueMap[f.id];
         if (!d || d.v == null || d.v === '') continue;
-        // Effective label: предусмотрен per-preset override (зарезервировано)
-        const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[n.type]?.[id];
-        const label = (typeof customLabel === 'string' && customLabel.trim()) ? customLabel : fieldDef(id);
+        const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[n.type]?.[f.id];
+        const label = (typeof customLabel === 'string' && customLabel.trim())
+          ? customLabel : (labelMap[f.id] || f.label);
         rows.push(`${label}: ${d.v}${d.unit ? ' ' + d.unit : ''}`);
       }
-      // Render rows стопкой снизу
+      // Render rows стопкой снизу + статус-строка над load-блоком
       const lineH = 12;
       const baseY = NODE_H - 12;
       const statusOffset = statusLine ? lineH : 0;
