@@ -267,7 +267,101 @@ export function renderDaysInRangeTable(hourly, opts = {}) {
   </table>`;
 }
 
-// ─── 5. Helper для генерации CSV из произвольной 2D-таблицы (rows × cells)
+// ─── 5. Wind rose: круговая диаграмма распределения ветра по 16 румбам.
+//    Каждая «лепесток» — один из 16 секторов (по 22.5°) с длиной = доля
+//    часов с этим направлением. Цвет — средняя сила ветра в секторе.
+export function drawWindRose(cvs, hourly) {
+  const ctx = cvs.getContext('2d');
+  const W = cvs.width, H = cvs.height;
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const R = Math.min(W, H) / 2 - 30;
+  const SECTORS = 16;          // 22.5° each
+  const sectorDeg = 360 / SECTORS;
+  // Aggregate
+  const sectors = Array.from({ length: SECTORS }, () => ({ count: 0, windSum: 0 }));
+  let total = 0;
+  for (const h of (hourly || [])) {
+    const dir = Number(h.windDir);
+    const w = Number(h.wind);
+    if (!Number.isFinite(dir) || !Number.isFinite(w)) continue;
+    // Откуда дует: 0° = N, 90° = E, 180° = S, 270° = W. Открытое сектор — от dir.
+    const idx = Math.round(((dir % 360) + 360) % 360 / sectorDeg) % SECTORS;
+    sectors[idx].count++;
+    sectors[idx].windSum += w;
+    total++;
+  }
+  if (!total) {
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Нет данных по направлению ветра', cx, cy);
+    return;
+  }
+  // Цветовая шкала по средней силе (до 10 m/s = насыщенный)
+  const colorFor = (avgW) => {
+    const t = Math.min(1, avgW / 10);
+    const r = Math.round(180 - t * 40);
+    const g = Math.round(220 - t * 100);
+    const b = Math.round(240 - t * 40);
+    return `rgb(${r},${g},${b})`;
+  };
+  const maxFrac = Math.max(...sectors.map(s => s.count / total));
+  // Draw sector petals
+  for (let i = 0; i < SECTORS; i++) {
+    const s = sectors[i];
+    if (s.count === 0) continue;
+    const frac = s.count / total;
+    const r = (frac / maxFrac) * R;
+    const a1 = (i * sectorDeg - 90 - sectorDeg / 2) * Math.PI / 180;
+    const a2 = (i * sectorDeg - 90 + sectorDeg / 2) * Math.PI / 180;
+    const avgW = s.windSum / s.count;
+    ctx.fillStyle = colorFor(avgW);
+    ctx.strokeStyle = '#1e40af';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, a1, a2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  // Reference circles (25%, 50%, 75% of maxFrac)
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'left';
+  for (const [frac, label] of [[0.25, '25%'], [0.5, '50%'], [0.75, '75%'], [1, '100%']]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * frac, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillText(label, cx + R * frac + 2, cy);
+  }
+  // Cardinal labels
+  ctx.fillStyle = '#1f2937';
+  ctx.font = '12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const card = [
+    { label: 'С', a: -90 }, { label: 'В', a: 0 }, { label: 'Ю', a: 90 }, { label: 'З', a: 180 },
+  ];
+  for (const c of card) {
+    const a = c.a * Math.PI / 180;
+    const x = cx + Math.cos(a) * (R + 18);
+    const y = cy + Math.sin(a) * (R + 18);
+    ctx.fillText(c.label, x, y);
+  }
+  ctx.textBaseline = 'alphabetic';
+  // Title
+  ctx.fillStyle = '#374151';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${total.toLocaleString('ru-RU')} часов`, 8, 14);
+  ctx.textAlign = 'right';
+  ctx.fillText('цвет = средняя сила ветра', W - 8, 14);
+}
+
+// ─── 6. Helper для генерации CSV из произвольной 2D-таблицы (rows × cells)
 export function tableToCsv(rows) {
   return rows.map(r => r.map(c => {
     const s = String(c == null ? '' : c);

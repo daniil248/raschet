@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.899', date: '2026-04-30', items: [
+      '🔄 <b>Завершение интеграции meteo ↔ tech-workspace + новые фичи (Phase 21.3)</b>.',
+      '🌐 <b>Auto-fetch в Технологе ЦОД</b>: в блоке PUE появилась кнопка «🌐 Загрузить метео для проекта (1 клик)» — открывает station-picker (карта/список) и загружает 1 год почасовых данных через Open-Meteo, сохраняя как активный датасет проекта. PUE сразу пересчитывается по реальному климату без переключения в /meteo/.',
+      '🧭 <b>Wind rose</b> на tab «📊 Графики»: круговая диаграмма по 16 румбам (по 22.5°). Длина лепестка — доля часов с этим направлением; цвет — средняя сила ветра в секторе. Reference circles 25/50/75/100% и cardinal labels (С/В/Ю/З).',
+      '💨 <b>wind_direction_10m</b> добавлен в Open-Meteo и ASHRAE fetch — теперь все датасеты содержат поле <code>windDir</code>.',
+      '📋 <b>Generic CSV plugin</b> (<code>meteo/sources/csv-generic.js</code>): универсальный импорт любого CSV/TSV. Auto-detect разделителя (<code>; , \\t</code>), column-mapper UI (selects для Время/T/RH/Ветер/Направление). Поддержка форматов времени: ISO 8601, «DD.MM.YYYY HH:MM», «MM/DD/YYYY HH:MM», unix-timestamp, Excel serial date. Дополняет специфичный rp5-парсер для всех остальных форматов.',
+      '• Plugin-арх не нарушена: csv-generic.js добавлен одной строкой <code>import \'./csv-generic.js\'</code> в <code>sources/index.js</code>. Теперь 4 источника: Open-Meteo, rp5, ASHRAE, CSV/TSV.',
+      'Файлы (новые): <code>meteo/sources/csv-generic.js</code>. Изменены: <code>meteo/charts.js</code> (+drawWindRose), <code>meteo/meteo.js</code> (windrose в Charts tab), <code>meteo/index.html</code> (windrose canvas), <code>meteo/sources/{open-meteo.js,ashrae.js,index.js}</code> (windDir + plugin registration), <code>tech-workspace/tech-workspace.js</code> (fetch-meteo handler в PUE-блоке).',
+    ] },
     { version: '0.59.898', date: '2026-04-30', items: [
       '🌐 <b>Метеоданные: расширение функционала по запросу пользователя (Phase 21.2)</b>.',
       '🐛 <b>Hist-Y label fix</b>: было «365» без подписи (читалось как «365 дней»). Теперь Y-ось — «дней / год» с нормировкой hours/24×year-scale. Понятно с первого взгляда.',

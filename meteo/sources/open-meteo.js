@@ -74,7 +74,7 @@ async function fetchOpenMeteo({ ctx, name, lat, lon, locationName, dateFrom, dat
     return null;
   }
   try {
-    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${dateFrom}&end_date=${dateTo}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=auto`;
+    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${dateFrom}&end_date=${dateTo}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m&timezone=auto`;
     const res = await fetch(url);
     if (!res.ok) { toast(`Open-Meteo ${res.status}: ${res.statusText}`, 'warn'); return null; }
     const json = await res.json();
@@ -82,7 +82,8 @@ async function fetchOpenMeteo({ ctx, name, lat, lon, locationName, dateFrom, dat
     const T = json.hourly?.temperature_2m || [];
     const RH = json.hourly?.relative_humidity_2m || [];
     const W = json.hourly?.wind_speed_10m || [];
-    const hourly = times.map((t, i) => ({ t, T: T[i], RH: RH[i], wind: W[i] }));
+    const WD = json.hourly?.wind_direction_10m || [];
+    const hourly = times.map((t, i) => ({ t, T: T[i], RH: RH[i], wind: W[i], windDir: WD[i] }));
     if (!hourly.length) { toast('API вернул пустой ряд.', 'warn'); return null; }
     try { localStorage.setItem('raschet.meteo.last-loc.v1', JSON.stringify({ lat, lon, name: locationName })); } catch {}
     const stats = computeStats(hourly);

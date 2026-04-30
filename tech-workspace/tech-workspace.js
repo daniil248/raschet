@@ -933,7 +933,13 @@ function renderDetails(c, ro) {
             <p class="tw-pue-note muted">Формула: PUE = 1 + (P<sub>cooling</sub> + P<sub>losses</sub>) / P<sub>IT</sub>.<br>
               P<sub>cooling</sub> зависит от доли FreeCool часов (COP ≈ 15) и часов с компрессорным охлаждением (COP ≈ 3.5).<br>
               P<sub>losses</sub> ≈ 10% × P<sub>IT</sub> (5% UPS + 5% прочее).</p>
-            ${!meteoSum ? `<p class="tw-pue-warning">⚠ Нет загруженных метеоданных. <a href="../meteo/">Загрузить через модуль «Метеоданные»</a> для уточнения PUE по локации.</p>` : ''}
+            ${!meteoSum ? `<div class="tw-pue-warning">
+              <p>⚠ Нет загруженных метеоданных. PUE считается по среднестатистическому климату (FreeCool 55%).</p>
+              <div class="tw-pue-actions">
+                <button type="button" class="tw-bind-btn" data-tw-action="fetch-meteo" ${ro ? 'disabled' : ''}>🌐 Загрузить метео для проекта (1 клик)</button>
+                <a class="tw-pue-link" href="../meteo/" target="_blank">↗ Открыть модуль «Метеоданные»</a>
+              </div>
+            </div>` : `<p class="muted tw-details-note">📍 Источник: <a href="../meteo/" target="_blank">${escHtml(meteoSum.locationName || meteoSum.source)}</a></p>`}
           </div>` : '<p class="muted tw-details-note">В ручном режиме введите PUE напрямую — он будет использован в отчётах и BOM как-есть.</p>'}
         </div>
       </div>`;
@@ -1417,6 +1423,70 @@ function bindListEvents() {
         if (!ok) return;
         b.mdcSubProjectId = null;
         persistVariants(); renderActiveVariant();
+      }
+      return;
+    }
+
+    // 🌐 Auto-fetch meteo для проекта (Phase 21.3) — 1-кликовая загрузка
+    const twAct = e.target.closest('[data-tw-action="fetch-meteo"]');
+    if (twAct) {
+      try {
+        const { pickStation } = await import('../meteo/station-picker.js');
+        const picked = await pickStation({ title: '🌐 Загрузка метеоданных для проекта' });
+        if (!picked || picked.manual) {
+          if (picked?.manual) twToast('Для авто-загрузки нужна станция из каталога. Используйте картy/список или загрузите вручную через /meteo/.', 'warn');
+          return;
+        }
+        twToast('Загрузка 1 года почасовых данных…', 'info');
+        const today = new Date().toISOString().slice(0, 10);
+        const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${picked.lat}&longitude=${picked.lon}&start_date=${yearAgo}&end_date=${today}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m&timezone=auto`;
+        const res = await fetch(url);
+        if (!res.ok) { twToast(`Open-Meteo вернул ${res.status}: ${res.statusText}`, 'warn'); return; }
+        const json = await res.json();
+        const times = json.hourly?.time || [];
+        const T = json.hourly?.temperature_2m || [];
+        const RH = json.hourly?.relative_humidity_2m || [];
+        const W = json.hourly?.wind_speed_10m || [];
+        const WD = json.hourly?.wind_direction_10m || [];
+        const hourly = times.map((t, i) => ({ t, T: T[i], RH: RH[i], wind: W[i], windDir: WD[i] }));
+        if (!hourly.length) { twToast('API вернул пустой ряд.', 'warn'); return; }
+        // Compute stats inline (минимально нужное для PUE)
+        const temps = hourly.map(h => Number(h.T)).filter(Number.isFinite);
+        const sorted = [...temps].sort((a, b) => a - b);
+        const stats = {
+          tmin: Math.round(sorted[0] * 10) / 10,
+          tmax: Math.round(sorted[sorted.length - 1] * 10) / 10,
+          tmean: Math.round((sorted.reduce((s, v) => s + v, 0) / sorted.length) * 10) / 10,
+          t99: Math.round(sorted[Math.floor(sorted.length * 0.99)] * 10) / 10,
+          freecoolHours: temps.filter(t => t < 14).length,
+          n: temps.length,
+        };
+        // Save dataset to LS (in same format as meteo module)
+        const dsId = 'ds-' + Math.random().toString(36).slice(2, 10);
+        const dataset = {
+          id: dsId,
+          name: `${picked.name} (${yearAgo}…${today})`,
+          source: 'open-meteo', lat: picked.lat, lon: picked.lon,
+          locationName: picked.name, stationId: picked.id || null,
+          dateFrom: yearAgo, dateTo: today,
+          hourly, stats,
+          activeForProject: true,
+          createdAt: Date.now(),
+        };
+        // Сбрасываем active у других, добавляем новый как ⭐
+        const dsKey = projectKey(_pid, 'meteo', 'datasets.v1');
+        let existing = [];
+        try { existing = JSON.parse(localStorage.getItem(dsKey) || '[]'); } catch {}
+        for (const d of existing) d.activeForProject = false;
+        existing.unshift(dataset);
+        localStorage.setItem(dsKey, JSON.stringify(existing));
+        localStorage.setItem(projectKey(_pid, 'meteo', 'activeId.v1'), JSON.stringify(dsId));
+        twToast(`✓ Загружено: ${stats.n} часов, T ${stats.tmin}…${stats.tmax} °C, FreeCool ${(stats.freecoolHours / stats.n * 100).toFixed(0)}%`, 'ok');
+        renderActiveVariant();
+      } catch (e) {
+        console.error('[fetch-meteo]', e);
+        twToast(`Ошибка загрузки: ${e.message || e}`, 'warn');
       }
       return;
     }

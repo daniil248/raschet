@@ -19,7 +19,7 @@
 import { ensureDefaultProject, projectKey } from '../shared/project-storage.js';
 import * as util from './util.js';
 import { getAll as getSources } from './sources/index.js';
-import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, renderDaysInRangeTable } from './charts.js';
+import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, drawWindRose, renderDaysInRangeTable } from './charts.js';
 import { COLUMNS, buildBinData, renderAnnualTable, exportAnnualTableCsv, renderColumnPicker } from './annual-table.js';
 
 const $ = (id) => document.getElementById(id);
@@ -157,6 +157,8 @@ function renderActiveTab() {
     if (cvsRH) drawHumidityHistogram(cvsRH, d.hourly || []);
     const cvsM = $('mt-monthly-canvas');
     if (cvsM) drawMonthlyTempChart(cvsM, d.hourly || []);
+    const cvsW = $('mt-windrose-canvas');
+    if (cvsW) drawWindRose(cvsW, d.hourly || []);
     const pivot = $('mt-pivot-table');
     if (pivot) pivot.innerHTML = renderDaysInRangeTable(d.hourly || []);
   } else if (_activeTab === 'annual') {
