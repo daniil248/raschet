@@ -1041,3 +1041,76 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   align-items: center;
   margin-top: 6px;
 }
+
+/* ─── v0.59.901: layout-mode picker */
+.tw-layout-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  margin-bottom: 8px;
+}
+.tw-layout-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+.tw-layout-btn {
+  padding: 5px 10px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #374151;
+}
+.tw-layout-btn:hover { background: #eff6ff; border-color: #93c5fd; color: #1e40af; }
+.tw-layout-btn.active {
+  background: #dbeafe;
+  border-color: #1e40af;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+/* «Карточки» layout — все блоки развёрнуты как секции */
+.tw-cards-layout { display: flex; flex-direction: column; gap: 14px; }
+.tw-cards-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+/* «Компакт» layout — узкий rail без deтails-панели */
+.tw-layout-compact { grid-template-columns: 1fr; }
+.tw-layout-compact .tw-list-rail {
+  position: static;
+  max-height: none;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* «Таблица» layout — сводная узкая таблица */
+.tw-table-layout {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 14px;
+}
+.tw-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.tw-summary-table th, .tw-summary-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+.tw-summary-table thead th {
+  background: #f3f4f6;
+  font-weight: 600;
+  color: #374151;
+}
+.tw-summary-table td.num, .tw-summary-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tw-summary-table tbody tr:hover { background: #fafafa; }

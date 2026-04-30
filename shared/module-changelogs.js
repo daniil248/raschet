@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.901', date: '2026-04-30', items: [
+      '⚙ <b>Расширение системы охлаждения в Технологе ЦОД</b> по запросу: «для системы охлаждения нет выбора опций фрикулинг и его тип чиллеров или конденсаторов вообще нет, как без этого можно считать PUE».',
+      '• Новый блок «⚙ Топология» в rail-секции «❄ Климат». Параметры: топология (chiller-fc / chiller / dx / adiabatic / immersion) с типичными PUE-диапазонами в подсказках; setpoint холодного коридора; ΔT холодный↔горячий; freecool (enabled/тип direct/indirect/glycol/tCutoff); chiller spec (rated capacity/COP/ambient/correction).',
+      '• <b>PUE auto-расчёт переписан</b>: теперь учитывает топологию (5 пресетов с своими COP), freecool с типом (direct=COP×1.0, indirect=×0.85, glycol=×0.75) и tCutoff из настроек, а не фиксированных 14°C. Если есть hourly meteo — точный подсчёт freecool часов по фактическому tCutoff. Без meteo — fallback 55%.',
+      '🗂 <b>Layout-mode picker для деталей в Технологе ЦОД</b> по запросу: «Блок в 2 колонки уже лучше но еще не идеально, предложи несколько вариантов». 4 режима с persistent-выбором:',
+      '• <b>📋 Сплит</b> (default) — rail слева + детали справа (текущий).',
+      '• <b>🗂 Карточки</b> — все блоки развёрнуты вертикально (как было до v0.59.892, обзор всего сразу).',
+      '• <b>📑 Компакт</b> — только узкий rail по центру, без панели деталей (read-only обзор).',
+      '• <b>📊 Таблица</b> — сводная плоская таблица всех блоков (стойки + ИБП + климат) для быстрого скана.',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code> (newCoolingSystem + TOPOLOGY_DEFAULTS + расширенный calcPueAuto + coolsys-блок в rail/details + layout-picker + renderAllCardsLayout + renderTableLayout), <code>tech-workspace/tech-workspace.css</code> (~80 строк новых стилей).',
+    ] },
     { version: '0.59.900', date: '2026-04-30', items: [
       '🚨 <b>CRITICAL fix: табы в meteo не работали</b>. CSS правило <code>.mt-tab-pane { display: flex }</code> перебивало HTML-атрибут <code>hidden</code> — все панели были видны одновременно и переключение не работало. Добавил <code>.mt-tab-pane[hidden] { display: none !important }</code>.',
       '📊 <b>Chart.js вместо ручных canvas</b> для графиков по запросу пользователя «Качество графиков в модуле просто ужасное». Подключён <code>chart.js@4.4.4</code> через CDN jsdelivr (~73 КБ gzip). Переписаны: T-histogram (бины 1°C, FreeCool-zone подсветка), RH-histogram (бины 5%), monthly-T (line с min/max envelope, легенда). Wind rose остался на canvas (улучшенная версия с 8 направлениями + градиентная легенда силы ветра внизу).',

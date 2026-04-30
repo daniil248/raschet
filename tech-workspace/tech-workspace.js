@@ -43,9 +43,17 @@ let _mode = 'list';
 // id — идентификатор элемента массива (для feed/areas — null).
 let _selectedBlock = null;
 
+// v0.59.901: режим отображения деталей в Список-режиме.
+// 'split'  — двухпанельный (rail + details, default, лучшее для редактирования)
+// 'cards'  — все блоки распахнуты карточками (для обзора всего сразу)
+// 'compact' — только summary-bar + rail (без details; click открывает modal)
+// 'table'  — табличный вид (плотная сетка для bulk-редактирования)
+let _layoutMode = 'split';
+
 // ─── Storage
 const KEY_VARIANTS = ['tech-workspace', 'variants.v1'];
 const KEY_ACTIVE = ['tech-workspace', 'activeVariantId.v1'];
+const KEY_LAYOUT = ['tech-workspace', 'layoutMode.v1'];
 
 function loadJson(suffix, fallback) {
   if (!_pid) return fallback;
@@ -93,6 +101,36 @@ function newCoolingUnit(name) {
     modelRef: null,
   };
 }
+
+// v0.59.901: глобальные настройки системы охлаждения. Влияет на расчёт PUE
+// и BOM. coolingUnits[] остаётся как было (внутренние блоки CRAC/InRow),
+// а coolingSystem задаёт топологию объекта целиком.
+//
+// topology:
+//   chiller-fc  — чиллер с фрикулингом (наиболее эффективная для холодных
+//                 регионов; PUE 1.2–1.4)
+//   chiller     — чиллер без фрикулинга (PUE 1.5–1.7)
+//   dx          — DX (прямое расширение, конденсаторы) — для малых ЦОД
+//   adiabatic   — адиабатический freecool (с водяной завесой)
+//   immersion   — погружное охлаждение (для GPU-кластеров)
+//
+// freeCool.type:
+//   direct    — наружный воздух прямо в зал (требует фильтрации)
+//   indirect  — теплообменник воздух-воздух
+//   glycol    — гликолевый контур к dry-cooler/градирне
+//   none      — нет фрикулинга
+//
+// chillerSpec — линкуется с meteo/chiller-spec для расчёта годовой энергии
+// (синхронизация tech-workspace ↔ meteo через общий project-scoped LS-key).
+function newCoolingSystem() {
+  return {
+    topology: 'chiller-fc',
+    freeCool: { enabled: true, type: 'indirect', tCutoffC: 14 },
+    setpointTC: 22,           // целевая T в холодном коридоре
+    deltaTcorridorC: 12,      // ΔT хол/гор коридор
+    chillerSpec: { ratedCapKw: 0, ratedCOP: 3.5, ambientRated: 35, capCorrPctPerC: -1.5 },
+  };
+}
 // v0.59.893 (Etap B): блок МЦОД. count — сколько одинаковых зданий этого
 // типа. mdcSubProjectId — id sketch-подпроекта в mdc-config (хранит полную
 // конфигурацию модулей, ИБП, климата и т.п.). Если null — здание ещё не
@@ -134,6 +172,7 @@ function newVariant(name) {
       rackGroups: [newRackGroup('Стойки IT')],
       upsSystems: [newUpsSystem('ИБП IT', 'it')],
       coolingUnits: [newCoolingUnit('Климат')],
+      coolingSystem: newCoolingSystem(),
       // v0.59.893: блоки МЦОД — массив зданий с привязкой к sub-project mdc-config.
       // По умолчанию пустой (стационарный ЦОД); пользователь добавляет МЦОД явно.
       mdcBuildings: [],
@@ -234,6 +273,16 @@ function migrateVariant(v) {
   if (!c.projectData || typeof c.projectData !== 'object') {
     c.projectData = { designation: '', customer: '', city: '', address: '',
       lat: null, lon: null, stage: 'concept', designer: '', dateOfDesign: '', notes: '' };
+  }
+  // v0.59.901: миграция coolingSystem (мягко — не перезаписывать пользовательские)
+  if (!c.coolingSystem || typeof c.coolingSystem !== 'object') {
+    c.coolingSystem = newCoolingSystem();
+  } else {
+    if (typeof c.coolingSystem.topology !== 'string') c.coolingSystem.topology = 'chiller-fc';
+    if (!c.coolingSystem.freeCool) c.coolingSystem.freeCool = { enabled: true, type: 'indirect', tCutoffC: 14 };
+    if (typeof c.coolingSystem.setpointTC !== 'number') c.coolingSystem.setpointTC = 22;
+    if (typeof c.coolingSystem.deltaTcorridorC !== 'number') c.coolingSystem.deltaTcorridorC = 12;
+    if (!c.coolingSystem.chillerSpec) c.coolingSystem.chillerSpec = { ratedCapKw: 0, ratedCOP: 3.5, ambientRated: 35, capCorrPctPerC: -1.5 };
   }
   return v;
 }
@@ -597,7 +646,7 @@ function _ensureSelectedBlock(c) {
     if (kind === 'ups' && (c.upsSystems || []).some(us => us.id === id)) return;
     if (kind === 'cool' && (c.coolingUnits || []).some(cu => cu.id === id)) return;
     if (kind === 'mdc' && (c.mdcBuildings || []).some(b => b.id === id)) return;
-    if (kind === 'project' || kind === 'feed' || kind === 'areas' || kind === 'pue' || kind === 'bom') return;
+    if (kind === 'project' || kind === 'feed' || kind === 'areas' || kind === 'pue' || kind === 'bom' || kind === 'coolsys') return;
   }
   if ((c.rackGroups || []).length) {
     _selectedBlock = { kind: 'rack', id: c.rackGroups[0].id };
@@ -606,32 +655,74 @@ function _ensureSelectedBlock(c) {
   }
 }
 
-// v0.59.895 (Etap D): расчёт PUE.
-// Auto-режим:
+// v0.59.901 (расширенный Etap D): PUE авто-расчёт с учётом топологии охлаждения.
 //   PUE_auto = 1 + (P_cooling + P_losses) / P_IT
-//   где P_cooling зависит от freecool-доли по meteo (T<14°C → freecool, иначе чиллер).
-//   P_losses ≈ 5% (UPS + потери на ТП/ДГУ + slaboточ/освещение).
-// Если meteo нет — fallback на климатический коэффициент по ASHRAE-A2 = 1.45.
-// Manual: юзер задаёт значение явно (любое разумное число).
+// P_cooling зависит от:
+//   1. Топология (chiller-fc / chiller / dx / adiabatic / immersion)
+//   2. Freecool настроек (enabled, type, tCutoff °C)
+//   3. Климата (доля часов T < tCutoff из meteo)
+//   4. Chiller spec (ratedCOP) если задан, иначе типовой COP
+//
+// Без meteo — fallback по среднестатистическому климату умеренной полосы.
+// Без coolingSystem — fallback к v0.59.895 формуле.
+
+const TOPOLOGY_DEFAULTS = {
+  // [defaultCop, fcCopBoost, hasFreeCool, baseLossPct, label]
+  'chiller-fc':  { copBase: 3.5, copFC: 15.0, hasFC: true,  baseLossPct: 10, label: 'Чиллер с фрикулингом' },
+  'chiller':     { copBase: 3.5, copFC: 0,    hasFC: false, baseLossPct: 10, label: 'Чиллер без фрикулинга' },
+  'dx':          { copBase: 3.0, copFC: 0,    hasFC: false, baseLossPct: 10, label: 'DX (прямое расш., конденсаторы)' },
+  'adiabatic':   { copBase: 4.0, copFC: 25.0, hasFC: true,  baseLossPct: 9,  label: 'Адиабатический freecool' },
+  'immersion':   { copBase: 8.0, copFC: 0,    hasFC: false, baseLossPct: 8,  label: 'Погружное охлаждение' },
+};
+
 function calcPueAuto(c, meteoSummary) {
   const itKw = calcITTotal(c);
   if (itKw <= 0) return 1.4;
-  // Доля FreeCool часов в году
+
+  const cs = c.coolingSystem || newCoolingSystem();
+  const topo = TOPOLOGY_DEFAULTS[cs.topology] || TOPOLOGY_DEFAULTS['chiller-fc'];
+  const fc = cs.freeCool || { enabled: false, type: 'none', tCutoffC: 14 };
+  const fcEnabled = topo.hasFC && fc.enabled;
+  const tCut = Number(fc.tCutoffC) || 14;
+
+  // Доля часов с фрикулингом: считаем по meteo, если есть; иначе fallback.
   let freecoolFraction = 0;
-  if (meteoSummary?.stats?.n) {
-    freecoolFraction = (meteoSummary.stats.freecoolHours || 0) / Math.max(1, meteoSummary.stats.n);
-  } else {
-    // Без meteo — по среднестатистическому климату умеренной полосы (КЗ/РФ)
-    freecoolFraction = 0.55; // 55% часов в году T<14°C
+  if (fcEnabled) {
+    if (meteoSummary?.stats?.n) {
+      // Если в датасете есть hourly — считаем точно по T < tCut
+      const hourly = meteoSummary.hourly || [];
+      if (hourly.length > 0) {
+        const fcHours = hourly.filter(h => Number.isFinite(Number(h.T)) && Number(h.T) < tCut).length;
+        freecoolFraction = fcHours / Math.max(1, hourly.length);
+      } else {
+        // Только stats — используем существующее freecoolHours (T<14)
+        freecoolFraction = (meteoSummary.stats.freecoolHours || 0) / Math.max(1, meteoSummary.stats.n);
+      }
+    } else {
+      freecoolFraction = 0.55; // среднестат. умеренной полосы
+    }
   }
-  // Энергопотребление климат-системы:
-  //   freecool COP ≈ 15..20 (вентиляторы)
-  //   чиллер     COP ≈ 3..4 (компрессоры)
-  const copFC = 15;
-  const copChiller = 3.5;
-  const coolKwAvg = itKw * (freecoolFraction / copFC + (1 - freecoolFraction) / copChiller);
-  // UPS-потери ≈ 5% IT, прочие (ТП/ДГУ-холостой/осветка/слаботочка) ≈ 5% IT
-  const lossesKw = itKw * 0.05 + itKw * 0.05;
+
+  // COP чиллера (rated если задан, иначе типовой по топологии)
+  const copBase = (cs.chillerSpec && Number(cs.chillerSpec.ratedCOP) > 0)
+    ? Number(cs.chillerSpec.ratedCOP)
+    : topo.copBase;
+  const copFC = topo.copFC || 15;
+
+  // Type-correction для freecool (indirect/glycol хуже direct из-за теплообменника)
+  const fcTypeFactor = ({ direct: 1.0, indirect: 0.85, glycol: 0.75, none: 0 }[fc.type]) || 1.0;
+  const effectiveCopFC = copFC * fcTypeFactor;
+
+  let coolKwAvg;
+  if (fcEnabled && freecoolFraction > 0 && effectiveCopFC > 0) {
+    coolKwAvg = itKw * (
+      freecoolFraction / effectiveCopFC +
+      (1 - freecoolFraction) / copBase
+    );
+  } else {
+    coolKwAvg = itKw / copBase;
+  }
+  const lossesKw = itKw * (topo.baseLossPct / 100);
   const pue = 1 + (coolKwAvg + lossesKw) / itKw;
   return Math.round(pue * 100) / 100;
 }
@@ -761,7 +852,23 @@ function renderListRail(c, ro) {
         <span class="tw-rail-title">❄ Климат <span class="muted">·${(c.coolingUnits || []).length}</span></span>
         <button type="button" class="tw-rail-add" data-add-card="cool" title="Добавить группу кондиционеров" ${ro ? 'disabled' : ''}>➕</button>
       </div>
-      <div class="tw-rail-list">${coolRows || '<div class="tw-rail-empty muted">Нет групп</div>'}</div>
+      <div class="tw-rail-list">
+        ${(() => {
+          const cs = c.coolingSystem || {};
+          const topo = TOPOLOGY_DEFAULTS[cs.topology] || TOPOLOGY_DEFAULTS['chiller-fc'];
+          const fc = cs.freeCool || {};
+          const fcLine = topo.hasFC && fc.enabled
+            ? `Freecool: ${({direct:'прямой',indirect:'косвенный',glycol:'гликоль',none:'—'}[fc.type] || fc.type)} · T < ${fc.tCutoffC}°C`
+            : 'без фрикулинга';
+          return `<button type="button" class="tw-rail-item${_selCls('coolsys', null)}" data-bk="coolsys" data-bid="">
+            <span class="tw-rail-name">⚙ Топология</span>
+            <span class="tw-rail-sub">${escHtml(topo.label)}</span>
+            <span class="tw-rail-sub">${escHtml(fcLine)}</span>
+            <span class="tw-rail-chip">${cs.chillerSpec?.ratedCOP || topo.copBase}</span>
+          </button>`;
+        })()}
+        ${coolRows || ''}
+      </div>
       <div class="tw-rail-foot">Σ ${coolKw.toFixed(1)} кВт холода ${coolMissing}</div>
     </div>
 
@@ -918,6 +1025,56 @@ function renderDetails(c, ro) {
     if (!cu) return '<div class="tw-details-empty muted">Группа удалена. Выберите блок слева.</div>';
     return _detailsHeaderHtml('❄ Группа кондиционеров', cu.id, ro, 'cool', `${cu.count} × ${cu.kwPerUnit} кВт · ${_coolAvail(cu).toFixed(1)} кВт доступно`)
       + renderCoolCard(cu, ro);
+  }
+  // v0.59.901: топология охлаждения
+  if (sel.kind === 'coolsys') {
+    const cs = c.coolingSystem || newCoolingSystem();
+    const topo = TOPOLOGY_DEFAULTS[cs.topology] || TOPOLOGY_DEFAULTS['chiller-fc'];
+    const fc = cs.freeCool || {};
+    const fcEnabled = topo.hasFC && fc.enabled;
+    return `<div class="tw-details-head">
+        <h3>⚙ Топология системы охлаждения</h3>
+        <span class="muted tw-details-sub">${escHtml(topo.label)} · ${fcEnabled ? `freecool ${fc.type} T<${fc.tCutoffC}°C` : 'без фрикулинга'}</span>
+      </div>
+      <div class="tw-details-body">
+        <div class="tw-card" data-card-kind="coolsys" data-card-id="-">
+          <div class="tw-grid">
+            <label>Топология:
+              <select data-field="coolingSystem.topology" ${ro ? 'disabled' : ''}>
+                <option value="chiller-fc"${cs.topology === 'chiller-fc' ? ' selected' : ''}>❄ Чиллер с фрикулингом (PUE 1.2–1.4)</option>
+                <option value="chiller"${cs.topology === 'chiller' ? ' selected' : ''}>🌡 Чиллер без фрикулинга (PUE 1.5–1.7)</option>
+                <option value="dx"${cs.topology === 'dx' ? ' selected' : ''}>💨 DX / Конденсаторы (PUE 1.5–2.0)</option>
+                <option value="adiabatic"${cs.topology === 'adiabatic' ? ' selected' : ''}>💧 Адиабатический freecool (PUE 1.1–1.3)</option>
+                <option value="immersion"${cs.topology === 'immersion' ? ' selected' : ''}>🛢 Погружное охлаждение (PUE 1.05–1.15)</option>
+              </select>
+            </label>
+            <label>Setpoint холодного коридора, °C:<input type="number" min="18" max="30" step="1" data-field="coolingSystem.setpointTC" value="${cs.setpointTC}" ${ro ? 'disabled' : ''}></label>
+            <label>ΔT горячий ↔ холодный, °C:<input type="number" min="6" max="20" step="1" data-field="coolingSystem.deltaTcorridorC" value="${cs.deltaTcorridorC}" ${ro ? 'disabled' : ''}></label>
+          </div>
+          ${topo.hasFC ? `
+            <h5 class="tw-section-h5">💨 Фрикулинг</h5>
+            <div class="tw-grid">
+              <label class="tw-checkbox"><input type="checkbox" data-field="coolingSystem.freeCool.enabled"${fc.enabled ? ' checked' : ''} ${ro ? 'disabled' : ''}> Фрикулинг включен</label>
+              <label>Тип:
+                <select data-field="coolingSystem.freeCool.type" ${ro ? 'disabled' : ''}>
+                  <option value="direct"${fc.type === 'direct' ? ' selected' : ''}>Прямой (DAC, наружный воздух в зал)</option>
+                  <option value="indirect"${fc.type === 'indirect' ? ' selected' : ''}>Косвенный (теплообменник AAHX)</option>
+                  <option value="glycol"${fc.type === 'glycol' ? ' selected' : ''}>Гликолевый (dry-cooler контур)</option>
+                </select>
+              </label>
+              <label>T cutoff (порог), °C:<input type="number" min="0" max="25" step="1" data-field="coolingSystem.freeCool.tCutoffC" value="${fc.tCutoffC}" ${ro ? 'disabled' : ''}></label>
+            </div>
+          ` : '<p class="muted tw-details-note">Топология «' + escHtml(topo.label) + '» не поддерживает фрикулинг.</p>'}
+          <h5 class="tw-section-h5">⚙ Параметры чиллера / источника холода</h5>
+          <div class="tw-grid">
+            <label>Rated capacity, кВт:<input type="number" step="1" min="0" data-field="coolingSystem.chillerSpec.ratedCapKw" value="${cs.chillerSpec?.ratedCapKw || 0}" ${ro ? 'disabled' : ''}></label>
+            <label>Rated COP:<input type="number" step="0.1" min="1" max="20" data-field="coolingSystem.chillerSpec.ratedCOP" value="${cs.chillerSpec?.ratedCOP || 3.5}" ${ro ? 'disabled' : ''}></label>
+            <label>Rated ambient T, °C:<input type="number" step="1" data-field="coolingSystem.chillerSpec.ambientRated" value="${cs.chillerSpec?.ambientRated || 35}" ${ro ? 'disabled' : ''}></label>
+            <label>Capacity correction, %/°C:<input type="number" step="0.1" data-field="coolingSystem.chillerSpec.capCorrPctPerC" value="${cs.chillerSpec?.capCorrPctPerC || -1.5}" ${ro ? 'disabled' : ''}></label>
+          </div>
+          <p class="muted tw-details-note">📊 Эти параметры используются в расчёте PUE (см. блок «📊 PUE») и в годовой энергии чиллера в /meteo/. Rated COP — типовая эффективность при rated ambient.</p>
+        </div>
+      </div>`;
   }
   if (sel.kind === 'mdc') {
     const b = (c.mdcBuildings || []).find(x => x.id === sel.id);
@@ -1198,6 +1355,57 @@ function _collectBomItems(c) {
   return out;
 }
 
+// v0.59.901: «Карточки» — все блоки развёрнуты (как было до v0.59.892)
+function renderAllCardsLayout(c, ro) {
+  return `<div class="tw-cards-layout">
+    <section class="tw-cards-section">
+      <div class="tw-section-head">
+        <h3>🏷 Объект</h3>
+      </div>
+      ${renderDetails(c, ro).replace(/<div class="tw-details-head">[\s\S]*?<\/div>/, '')}
+    </section>
+    <section class="tw-cards-section">
+      <div class="tw-section-head"><h3>🗄 Группы стоек</h3>
+        <button type="button" class="tw-add-btn" data-add-card="rack" ${ro ? 'disabled' : ''}>➕ Группа стоек</button>
+      </div>
+      ${(c.rackGroups || []).map(rg => renderRackGroupCard(rg, ro)).join('') || '<p class="muted">Нет групп.</p>'}
+    </section>
+    <section class="tw-cards-section">
+      <div class="tw-section-head"><h3>⚡ Системы ИБП</h3>
+        <button type="button" class="tw-add-btn" data-add-card="ups" ${ro ? 'disabled' : ''}>➕ Система ИБП</button>
+      </div>
+      ${(c.upsSystems || []).map(us => renderUpsCard(us, ro)).join('') || '<p class="muted">Нет.</p>'}
+    </section>
+    <section class="tw-cards-section">
+      <div class="tw-section-head"><h3>❄ Климат</h3>
+        <button type="button" class="tw-add-btn" data-add-card="cool" ${ro ? 'disabled' : ''}>➕ Группа</button>
+      </div>
+      ${(c.coolingUnits || []).map(cu => renderCoolCard(cu, ro)).join('') || '<p class="muted">Нет.</p>'}
+    </section>
+    <section class="tw-cards-section">
+      <div class="tw-section-head"><h3>🔌 Ввод</h3></div>
+      ${renderFeedSection(c.feed, ro)}
+    </section>
+  </div>`;
+}
+
+// v0.59.901: «Таблица» — узкая сводная таблица для bulk-обзора
+function renderTableLayout(c, ro) {
+  const rgRows = (c.rackGroups || []).map(rg =>
+    `<tr><td>🗄</td><td>${escHtml(rg.name)}</td><td class="num">${rg.count}</td><td class="num">${rg.kwPerRack} кВт</td><td>${rg.profile}</td><td>${rg.widthMm}×${rg.depthMm}</td><td>${rg.pdu?.kind || '—'} ${rg.pdu?.ratingA || ''}А</td></tr>`).join('');
+  const usRows = (c.upsSystems || []).map(us =>
+    `<tr><td>⚡</td><td>${escHtml(us.name)}</td><td class="num">${us.count}</td><td class="num">${us.ratedKva} кВА</td><td>${us.purpose}</td><td>${us.redundancy}</td><td>${us.batteryTech}</td></tr>`).join('');
+  const cuRows = (c.coolingUnits || []).map(cu =>
+    `<tr><td>❄</td><td>${escHtml(cu.name)}</td><td class="num">${cu.count}</td><td class="num">${cu.kwPerUnit} кВт</td><td>${cu.type}</td><td>${cu.redundancy}</td><td>—</td></tr>`).join('');
+  return `<div class="tw-table-layout">
+    <p class="muted tw-details-note">Сводная read-only таблица всех блоков. Для редактирования переключитесь на «📋 Сплит» или «🗂 Карточки».</p>
+    <table class="tw-summary-table">
+      <thead><tr><th></th><th>Имя</th><th class="num">Кол-во</th><th class="num">Мощность</th><th>Тип</th><th>Резерв</th><th>Доп.</th></tr></thead>
+      <tbody>${rgRows}${usRows}${cuRows}</tbody>
+    </table>
+  </div>`;
+}
+
 function _detailsHeaderHtml(title, id, ro, kind, summary) {
   return `<div class="tw-details-head">
     <h3>${title}</h3>
@@ -1298,11 +1506,32 @@ function renderActiveVariant() {
       <div class="tw-kpi"><span class="tw-kpi-lbl">Площадь</span><span class="tw-kpi-val">${sumM2} <small>м²</small></span></div>
     </div>`;
 
-    listPane.innerHTML = `${summaryBar}
-      <div class="tw-list-layout">
+    // v0.59.901: layout-mode picker над summary
+    const layoutPicker = `<div class="tw-layout-picker">
+      <span class="muted tw-layout-lbl">Вид:</span>
+      <button type="button" class="tw-layout-btn${_layoutMode === 'split' ? ' active' : ''}" data-layout="split" title="Список + детали (по умолчанию)">📋 Сплит</button>
+      <button type="button" class="tw-layout-btn${_layoutMode === 'cards' ? ' active' : ''}" data-layout="cards" title="Все блоки развёрнуты">🗂 Карточки</button>
+      <button type="button" class="tw-layout-btn${_layoutMode === 'compact' ? ' active' : ''}" data-layout="compact" title="Узкий список без деталей">📑 Компакт</button>
+      <button type="button" class="tw-layout-btn${_layoutMode === 'table' ? ' active' : ''}" data-layout="table" title="Сводная таблица всех блоков">📊 Таблица</button>
+    </div>`;
+
+    let bodyHtml = '';
+    if (_layoutMode === 'split') {
+      bodyHtml = `<div class="tw-list-layout">
         <aside class="tw-list-rail">${renderListRail(c, ro)}</aside>
         <div class="tw-list-details">${renderDetails(c, ro)}</div>
       </div>`;
+    } else if (_layoutMode === 'cards') {
+      bodyHtml = renderAllCardsLayout(c, ro);
+    } else if (_layoutMode === 'compact') {
+      bodyHtml = `<div class="tw-list-layout tw-layout-compact">
+        <aside class="tw-list-rail">${renderListRail(c, ro)}</aside>
+      </div>`;
+    } else if (_layoutMode === 'table') {
+      bodyHtml = renderTableLayout(c, ro);
+    }
+
+    listPane.innerHTML = `${layoutPicker}${summaryBar}${bodyHtml}`;
     $('tw-content-summary').textContent = `${totalRacks} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
   }
 }
@@ -1366,6 +1595,14 @@ function bindListEvents() {
         renderActiveVariant();
         return;
       }
+      // v0.59.901: coolsys-карточка хранит в concept.coolingSystem
+      if (kind === 'coolsys') {
+        if (!cur.concept.coolingSystem) cur.concept.coolingSystem = newCoolingSystem();
+        _setNested(cur.concept, field, value);
+        persistVariants();
+        renderActiveVariant();
+        return;
+      }
       const arrName = kind === 'rack' ? 'rackGroups'
         : kind === 'ups' ? 'upsSystems'
         : kind === 'cool' ? 'coolingUnits'
@@ -1399,6 +1636,15 @@ function bindListEvents() {
   root.addEventListener('click', async (e) => {
     const cur = _variants.find(x => x.id === _activeId);
     if (!cur) return;
+
+    // v0.59.901: layout-mode buttons
+    const layoutBtn = e.target.closest('.tw-layout-btn[data-layout]');
+    if (layoutBtn) {
+      _layoutMode = layoutBtn.dataset.layout;
+      saveJson(KEY_LAYOUT, _layoutMode);
+      renderActiveVariant();
+      return;
+    }
 
     // Rail item click → выбор блока (работает даже в read-only)
     const railItem = e.target.closest('.tw-rail-item[data-bk]');
@@ -2360,6 +2606,8 @@ function init() {
   _pid = ensureDefaultProject();
   _variants = (loadJson(KEY_VARIANTS, []) || []).map(migrateVariant);
   _activeId = loadJson(KEY_ACTIVE, null);
+  _layoutMode = loadJson(KEY_LAYOUT, 'split');
+  if (!['split','cards','compact','table'].includes(_layoutMode)) _layoutMode = 'split';
   if (!_variants.length) {
     addVariant();
   } else if (!_variants.some(v => v.id === _activeId)) {
