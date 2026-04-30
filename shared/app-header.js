@@ -131,6 +131,7 @@ export function mountHeader(opts = {}) {
     `</div>` +
     `<div class="rs-header-right">` +
       `<button type="button" class="rs-storage-mode-btn" aria-label="Режим хранения" title="Режим хранения данных — локальный или облачный (Firebase)"></button>` +
+      `<button type="button" class="rs-icon-btn rs-help-btn" aria-label="Помощь" title="Открыть Центр помощи на статью о текущем модуле">❓</button>` +
       `<button type="button" class="rs-icon-btn rs-gear-btn" aria-label="Глобальные настройки" title="Глобальные настройки платформы">${GEAR_SVG}</button>` +
       `<div class="rs-auth-widget">` +
         `<button type="button" class="rs-icon-btn rs-signin-btn" style="display:none" title="Войти">${USER_SVG}<span style="margin-left:6px">Войти</span></button>` +
@@ -144,6 +145,32 @@ export function mountHeader(opts = {}) {
   // Шестерёнка
   const gearBtn = header.querySelector('.rs-gear-btn');
   if (gearBtn) gearBtn.addEventListener('click', () => openSettingsModal());
+
+  // v0.59.800: кнопка ❓ — открывает Центр помощи на статью о текущем
+  // модуле. inferModuleId уже есть, используем для маппинга moduleId →
+  // article-id. Если модуль не имеет своей статьи — открываем главную.
+  const helpBtn = header.querySelector('.rs-help-btn');
+  if (helpBtn) {
+    const MODULE_TO_ARTICLE = {
+      'schematic': 'module-schematic',
+      'tech-workspace': 'module-tech-workspace',
+      'scs-design': 'module-scs-design',
+      'scs-config': 'module-scs-config',
+      'projects': 'module-projects',
+      'project-detail': 'module-projects',
+      'mdc-config': 'module-mdc-config',
+      'help': 'help-center-meta',
+      'hub': 'intro',
+    };
+    helpBtn.addEventListener('click', () => {
+      const mid = (typeof moduleId === 'string' && moduleId) || inferModuleId();
+      const article = MODULE_TO_ARTICLE[mid] || 'intro';
+      const inSub = location.pathname.split('/').filter(Boolean).length > 1;
+      const helpHref = (inSub ? '../help/' : './help/') + '#' + article;
+      try { window.open(helpHref, '_blank', 'noopener'); }
+      catch { location.href = helpHref; }
+    });
+  }
 
   // v0.59.780: режим хранения — Local / Online (Firebase). Юзер может
   // переключиться в local чтобы не палить квоту, или в cloud для
