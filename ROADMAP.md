@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.59.797 (2026-04-30). Фаза 1.27 — «Проекты» (1.27.4/5 закрыты), Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.10–19). Фаза 19 (пресеты карточек) полностью закрыта: 19.1/2/3/4/5/6 — реестр полей, 4 системных + custom user-пресеты, UI-редактор, live-переключение, импорт/экспорт. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Новый: Центр помощи с 19 статьями.
+> **Статус:** v0.59.810 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19). Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
 
 > **Правило ведения:** roadmap обновляется ПОСТОЯННО — при появлении новой фичи / задачи и при закрытии любого этапа. Hotfix'ы (regressions, мелкие правки UX) НЕ попадают в roadmap, только содержательная функциональность. Это правило зафиксировано пользователем 2026-04-29.
 
@@ -94,16 +94,20 @@ calculation, K_max таблицы. Файл: `shared/calc-modules/rtm-load.js`,
      getActiveProjectId / setActiveProjectId / ensureDefaultProject /
      projectKey / projectLoad / projectSave / exportProject / importProject`
   - Плитка «📁 Проекты» первой в hub.html
-- [ ] **1.27.1** — scs-design → проектный неймспейс
-  - Ключи `raschet.scs-design.*` → `raschet.project.<pid>.scs-design.*`
-  - Миграция: старые ключи копируются в текущий активный проект при первом запуске (idempotent)
-  - В UI модуля — индикатор текущего проекта + быстрый переход на список
-- [ ] **1.27.2** — главная схема (`raschet.schema.v1` → проект)
-  - app.js / engine переводит сохранение/загрузку через `projectLoad/projectSave`
-  - Важно: конфигурации, открытые ИЗ конструктора (элементы, MV-настройки,
-    ИБП-настройки в схеме) — живут в схеме (= в проекте), а не в mv-config/ups-config
-- [ ] **1.27.3** — scs-config / inventory / facility-inventory → проект
-  - Содержимое шкафов, теги, IT-реестр, не-IT имущество
+- [x] **1.27.1** — scs-design → проектный неймспейс (закрыто фактически)
+  - Все production data ключи `raschet.scs-design.*` → `raschet.project.<pid>.scs-design.*`
+    (см. `shared/scheme-orphan-migration.js`, `scs-design.js`).
+  - Остаются только session-flags (legacy-migrate-attempted) — не data, OK.
+  - В UI модуля — project-badge в шапке (mountHeader project context).
+- [x] **1.27.2** — главная схема (`raschet.schema.v1` → проект) (закрыто фактически)
+  - engine.scheme.v1 хранится в `raschet.project.<pid>.engine.scheme.v1`
+    (см. `shared/project-storage.js`, `js/engine/serialization.js`).
+  - Конфигурации (mv/ups/panel) хранятся в схеме как параметры узлов.
+- [x] **1.27.3** — scs-config / inventory / facility-inventory → проект (закрыто фактически)
+  - Все per-rack данные хранятся под `raschet.project.<pid>.scs-config.*` /
+    `raschet.project.<pid>.scs-config.contents.v1` / etc.
+  - schema-string `raschet.scs-config.v1` в export — это metadata-tag,
+    не storage-key.
 - [x] **1.27.4** — ExportProject содержит ВСЕ scoped-данные (полный backup) (закрыто фактически в shared/project-storage.js — `collectScoped()` собирает все ключи `raschet.project.<pid>.*` без явных whitelist'ов; exportProject упаковывает их в JSON-blob `{ schema, exportedAt, project, scoped }`. importProject восстанавливает.)
   - Учитывается: что именно входит в «Объём поставки» на основе проекта (BOM-аспект — отдельная задача)
 - [x] **1.27.5** — статусы проекта: `draft | planned | installed | operating` (закрыто v0.59.797)

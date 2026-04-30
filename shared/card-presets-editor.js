@@ -226,6 +226,7 @@ function _renderFieldsTabSplit(sel, isSystem) {
             const inZone = layout.assignments[f.id] || (isOn ? defaultZoneAssignment(f.id) : null);
             const customLabel = sel.fieldLabels?.[kind]?.[type]?.[f.id] || '';
             return `<div class="cpe-field-row${isReq ? ' cpe-field-required' : ''}${!isOn ? ' cpe-field-off' : ''}" draggable="${isOn ? 'true' : 'false'}" data-field-id="${escAttr(f.id)}">
+              <span class="cpe-field-handle" title="${isOn ? 'Перетащите в зону карточки справа' : 'Сначала включите чекбокс'}">${isOn ? '⋮⋮' : '·'}</span>
               <input type="checkbox" data-field-id="${escAttr(f.id)}" ${isOn ? 'checked' : ''}${isReq ? ' disabled' : ''}>
               <input type="text" class="cpe-field-label-input" data-field-id="${escAttr(f.id)}" value="${escAttr(customLabel || f.label)}" placeholder="${escAttr(f.label)}" title="Подпись на карточке (кликните и измените). Пустое поле = вернуть стандартную подпись «${escAttr(f.label)}»">
               <code class="cpe-field-id muted">${escHtml(f.id)}</code>
@@ -867,6 +868,13 @@ const CPE_CSS = `
 .cpe-field-row:hover { background: #f0f9ff; border-color: #93c5fd; }
 .cpe-field-row.cpe-field-required { background: #fef3c7; border-color: #fcd34d; cursor: default; }
 .cpe-field-row.cpe-field-off { opacity: 0.55; cursor: default; }
+.cpe-field-handle {
+  font-size: 11px; color: #94a3b8; cursor: grab;
+  user-select: none; min-width: 14px; text-align: center;
+  font-weight: 600;
+}
+.cpe-field-row[draggable="true"] .cpe-field-handle:hover { color: #4f46e5; }
+.cpe-field-row[draggable="false"] .cpe-field-handle { cursor: default; }
 .cpe-field-label { flex: 1; }
 .cpe-field-label-input {
   flex: 1; min-width: 0;
