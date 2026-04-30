@@ -735,8 +735,13 @@ export function initInteraction() {
         if (item) {
           e.preventDefault(); e.stopPropagation();
           const id = item.dataset.regId;
-          const tgt = state.nodes.get(id);
+          let tgt = state.nodes.get(id);
           if (!tgt) { try { flash('Узел не найден', 'warn'); } catch {} return; }
+          // v0.59.842: для члена контейнера центрируемся на КОНТЕЙНЕРЕ.
+          if (tgt.containerId) {
+            const _c = state.nodes.get(tgt.containerId);
+            if (_c && _c.type === 'consumer-container') tgt = _c;
+          }
           const tgtPids = Array.isArray(tgt.pageIds) ? tgt.pageIds : [];
           // Если узел на другой странице — переключаемся туда (через
           // switchPage чтобы корректно сохранить/восстановить view+positions)
@@ -840,10 +845,19 @@ export function initInteraction() {
         const id = item.dataset.regId;
         const n = state.nodes.get(id);
         if (n) {
+          // v0.59.842: если узел — член контейнера (containerId), переход
+          // должен быть на КОНТЕЙНЕР (он на canvas). Член сам скрыт через
+          // pageIds=[]. Пользователь: «по клику перехода, переходить на
+          // группу».
+          let target = n;
+          if (n.containerId) {
+            const _c = state.nodes.get(n.containerId);
+            if (_c && _c.type === 'consumer-container') target = _c;
+          }
           // Переключаемся на вкладку Свойства и открываем инспектор
           const propsTab = document.querySelector('.insp-tab[data-insp-tab="props"]');
           if (propsTab) propsTab.click();
-          selectNode(id);
+          selectNode(target.id);
         }
       }
     });
