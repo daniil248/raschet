@@ -189,8 +189,20 @@ export function mountHeader(opts = {}) {
   const storageModeBtn = header.querySelector('.rs-storage-mode-btn');
   if (storageModeBtn) {
     const updateStorageBadge = () => {
-      const userMode = (window.Storage && window.Storage.userMode) || 'auto';
-      const effective = (window.Storage && window.Storage.effectiveMode) || 'local';
+      // v0.59.857: принцип «нельзя действие — не показывай кнопку».
+      // Если на этой странице нет нашего window.Storage (а есть только
+      // встроенный браузерный Storage-конструктор у которого нет
+      // userMode/setUserMode/syncLocalToCloud) — chip скрываем целиком.
+      // Раньше клик показывал warn-toast, что нарушает UX-принцип.
+      const S = window.Storage;
+      const isOurStorage = !!(S && typeof S.setUserMode === 'function' && typeof S.syncLocalToCloud === 'function');
+      if (!isOurStorage) {
+        storageModeBtn.style.display = 'none';
+        return;
+      }
+      storageModeBtn.style.display = '';
+      const userMode = S.userMode || 'auto';
+      const effective = S.effectiveMode || 'local';
       const isCloud = effective === 'cloud';
       const overrideMark = (userMode !== 'auto') ? ' 🔒' : '';
       storageModeBtn.innerHTML = isCloud ? `☁ Онлайн${overrideMark}` : `💾 Локально${overrideMark}`;
@@ -202,7 +214,8 @@ export function mountHeader(opts = {}) {
     };
     updateStorageBadge();
     window.addEventListener('raschet:storage-mode-changed', updateStorageBadge);
-    setTimeout(updateStorageBadge, 800); // дождаться window.Auth ready
+    setTimeout(updateStorageBadge, 800); // дождаться window.Auth / window.Storage ready
+    setTimeout(updateStorageBadge, 2000); // повторно — на случай поздней инициализации
     storageModeBtn.addEventListener('click', () => openStorageModeModal());
   }
 
