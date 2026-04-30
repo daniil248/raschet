@@ -1048,9 +1048,22 @@ export function renderInspectorNode(n) {
     if (!slots.length) {
       h.push('<div class="muted" style="font-size:12px;padding:6px 0">Контейнер пуст. Drop потребителя на канвасе сюда — добавится как слот. Или нажмите кнопку «➕ Placeholder» внизу.</div>');
     } else {
+      // v0.59.840: сортировка слотов по обозначению (natural sort: SR01<SR02<SR10).
+      // Linked-slot имеет tag реального узла; placeholder без tag — в конец.
+      // Пользователь: «сортировка по обозначению».
+      const _sorted = slots.map((s, i) => {
+        let _key = '￿'; // placeholders в конец
+        if (s && s.kind === 'linked' && s.nodeId) {
+          const a = state.nodes.get(s.nodeId);
+          if (a && a.tag) _key = String(a.tag);
+        }
+        return { s, i, key: _key };
+      });
+      _sorted.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true, sensitivity: 'base' }));
       h.push('<div style="display:flex;flex-direction:column;gap:3px;font-size:12px">');
-      slots.forEach((s, i) => {
-        if (!s) return;
+      for (const entry of _sorted) {
+        const s = entry.s; const i = entry.i;
+        if (!s) continue;
         if (s.kind === 'linked' && s.nodeId) {
           const a = state.nodes.get(s.nodeId);
           if (a) {
@@ -1078,7 +1091,7 @@ export function renderInspectorNode(n) {
             <button type="button" data-slot-remove="${escAttr(String(i))}" style="padding:1px 6px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer" title="Удалить slot">×</button>
           </div>`);
         }
-      });
+      }
       h.push('</div>');
     }
     h.push('<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">');
@@ -1272,9 +1285,20 @@ export function openContainerMembersModal(container) {
   if (!slots.length) {
     h.push('<div style="padding:24px;text-align:center;color:#778899">Контейнер пуст. Drop потребителя на канвасе сюда — добавится.</div>');
   } else {
+    // v0.59.840: сортировка по обозначению (natural sort) — placeholders в конец.
+    const _sortedM = slots.map((s, i) => {
+      let _key = '￿';
+      if (s && s.kind === 'linked' && s.nodeId) {
+        const a = state.nodes.get(s.nodeId);
+        if (a && a.tag) _key = String(a.tag);
+      }
+      return { s, i, key: _key };
+    });
+    _sortedM.sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true, sensitivity: 'base' }));
     h.push('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:12px">');
-    slots.forEach((s, i) => {
-      if (!s) return;
+    for (const entry of _sortedM) {
+      const s = entry.s; const i = entry.i;
+      if (!s) continue;
       if (s.kind === 'linked' && s.nodeId) {
         const a = state.nodes.get(s.nodeId);
         if (!a) {
@@ -1282,7 +1306,7 @@ export function openContainerMembersModal(container) {
             Слот #${i + 1}: битая ссылка
             <button type="button" data-cm-remove="${escAttr(String(i))}" style="margin-top:8px;padding:3px 10px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer">× Удалить</button>
           </div>`);
-          return;
+          continue;
         }
         const tag = effectiveTag(a) || a.tag || a.id;
         const name = a.name || '';
@@ -1328,7 +1352,7 @@ export function openContainerMembersModal(container) {
           </div>
         </div>`);
       }
-    });
+    }
     h.push('</div>');
   }
   h.push('<div style="padding:12px;border-top:1px solid #e0e7ee;display:flex;gap:8px;justify-content:flex-end">');
