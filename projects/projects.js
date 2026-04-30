@@ -724,6 +724,9 @@ function _initAfterDom() {
         const dotIdx = rest.indexOf('.');
         if (dotIdx < 0) continue;
         const pid = rest.slice(0, dotIdx);
+        // v0.59.853 fix: только string-pid с валидным префиксом p_/s_/lp_
+        if (typeof pid !== 'string' || !pid) continue;
+        if (!/^[ps]_|^lp_/.test(pid)) continue;
         if (knownPids.has(pid)) continue;
         if (!orphanPids.has(pid)) orphanPids.set(pid, null);
       }
