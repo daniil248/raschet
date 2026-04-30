@@ -1335,9 +1335,12 @@ export function openContainerMembersModal(container) {
           </div>
         </div>`);
       } else if (s.kind === 'placeholder') {
+        // v0.59.843: preview будущего tag'а при materialize (по маске
+        // соседних linked-членов).
+        const _futureTag = _suggestTagFromContainer(n);
         h.push(`<div style="padding:10px 12px;background:#fef9c3;border:1px solid #facc15;border-radius:6px;display:flex;flex-direction:column;gap:4px">
           <div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid #fde68a;padding-bottom:5px">
-            <span style="flex:1;font-weight:600;font-size:13px;color:#92400e"><i>placeholder</i></span>
+            <span style="flex:1;font-weight:600;font-size:13px;color:#92400e">${_futureTag ? `<span style="color:#a16207">${escHtml(_futureTag)}</span> <span style="font-weight:400;font-style:italic">(будущий)</span>` : '<i>placeholder</i>'}</span>
             <span style="color:#92400e;font-size:11px">#${i + 1}</span>
           </div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:11px;color:#78350f;align-items:center">

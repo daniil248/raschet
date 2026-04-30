@@ -210,9 +210,28 @@ function _mergeIntoContainer(target, source) {
   hideAliasSourceFromCanvas(source);
   source.containerId = container.id;
   delete source.linkedAlias; // legacy чистим
-  // Добавляем slot
-  container.slots.push({ kind: 'linked', nodeId: source.id });
-  return { container, slotIdx: container.slots.length - 1 };
+  // v0.59.843: если есть placeholder со совместимой спекой — заменяем его
+  // на linked, не добавляя новый слот. Совместимость: subtype совпадает,
+  // demandKw в ±10% (мягкая проверка). Иначе — append.
+  let _slotIdx = -1;
+  for (let i = 0; i < container.slots.length; i++) {
+    const s = container.slots[i];
+    if (!s || s.kind !== 'placeholder') continue;
+    const sSub = s.subtype || 'custom';
+    const cSub = source.consumerSubtype || 'custom';
+    if (sSub !== cSub) continue;
+    const sKw = Number(s.demandKw) || 0;
+    const cKw = Number(source.demandKw) || 0;
+    if (sKw > 0 && cKw > 0 && Math.abs(sKw - cKw) / Math.max(sKw, cKw) > 0.1) continue;
+    container.slots[i] = { kind: 'linked', nodeId: source.id };
+    _slotIdx = i;
+    break;
+  }
+  if (_slotIdx < 0) {
+    container.slots.push({ kind: 'linked', nodeId: source.id });
+    _slotIdx = container.slots.length - 1;
+  }
+  return { container, slotIdx: _slotIdx };
 }
 
 function _mergeConsumersIntoGroup(target, source) {

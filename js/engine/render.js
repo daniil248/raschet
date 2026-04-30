@@ -550,10 +550,14 @@ function _systemDotsHtml(n) {
 
 // v0.58.13: «Реестр» — ВСЕ элементы проекта, сгруппированные по типу.
 // Показывает где элемент размещён (кол-во страниц) или «нигде».
-const REG_TYPE_ORDER = ['source','generator','panel','ups','consumer','channel','zone'];
+// v0.59.843: 'consumer-container' добавлен в порядок реестра (сразу
+// после consumer) с понятной меткой «Группы потребителей».
+const REG_TYPE_ORDER = ['source','generator','panel','ups','consumer','consumer-container','channel','zone'];
 const REG_TYPE_LABEL = {
   source: 'Источники', generator: 'Генераторы', panel: 'НКУ / РУ',
-  ups: 'ИБП', consumer: 'Потребители', channel: 'Кабельные каналы', zone: 'Зоны'
+  ups: 'ИБП', consumer: 'Потребители',
+  'consumer-container': 'Группы потребителей',
+  channel: 'Кабельные каналы', zone: 'Зоны'
 };
 export function renderProjectRegistry() {
   const list = document.getElementById('pal-registry-list');
