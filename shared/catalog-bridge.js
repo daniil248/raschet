@@ -59,17 +59,14 @@ async function _loadUpses() {
 }
 
 async function _loadBatteries() {
-  // battery-catalog.js может лежать либо в shared/, либо в battery/
-  // Проверим оба варианта
-  const candidates = ['./battery-catalog.js', '../battery/battery-catalog.js'];
-  for (const path of candidates) {
-    try {
-      const m = await import(/* @vite-ignore */ path);
-      const list = m.listBatteries ? m.listBatteries() : [];
-      return list.map(fromBatteryRecord).filter(Boolean);
-    } catch { /* try next */ }
-  }
-  return [];
+  // v0.59.871: battery-catalog.js физически живёт в /battery/ — раньше
+  // первым кандидатом был './battery-catalog.js' (shared/), который дал
+  // постоянный 404 в консоли. Убрали несуществующий путь.
+  try {
+    const m = await import('../battery/battery-catalog.js');
+    const list = m.listBatteries ? m.listBatteries() : [];
+    return list.map(fromBatteryRecord).filter(Boolean);
+  } catch (e) { console.warn('[catalog-bridge] batteries', e.message); return []; }
 }
 
 async function _loadTransformers() {
@@ -187,7 +184,7 @@ async function _subscribeSameTab() {
   const sources = [
     { path: './panel-catalog.js',         hook: 'onPanelsChange' },
     { path: './ups-catalog.js',           hook: 'onUpsesChange' },
-    { path: './battery-catalog.js',       hook: 'onBatteriesChange' },
+    // v0.59.871: убрали несуществующий './battery-catalog.js' — давал 404.
     { path: '../battery/battery-catalog.js', hook: 'onBatteriesChange' },
     { path: './transformer-catalog.js',   hook: 'onTransformersChange' },
     { path: './cable-types-catalog.js',   hook: 'onCableTypesChange' },

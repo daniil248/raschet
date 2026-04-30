@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.871', date: '2026-04-30', items: [
+      '🧹 <b>Убраны 404-ошибки в консоли браузера</b>. По репорту: «проверь ошибки из браузера».',
+      '• <code>shared/battery-catalog.js</code> — модуль физически живёт в <code>battery/battery-catalog.js</code>. Раньше <code>catalog-bridge.js</code> пробовал shared-вариант первым (постоянный 404), потом battery/-вариант. Убрали несуществующий кандидат из <code>_loadBatteries()</code> и <code>_subscribeSameTab()</code>.',
+      '• <code>shared/catalogs/element-library.js</code> — в <code>shared/catalogs/_helpers.js::_ensureLib()</code> был import <code>./element-library.js</code> (= shared/catalogs/element-library.js, не существует). Файл живёт в <code>shared/element-library.js</code>. Исправили путь на <code>../element-library.js</code>.',
+      '• Эти 404-ошибки были некритичными (try/catch проглатывал), но засоряли консоль. Теперь чистый старт.',
+      '• <b>Не починено</b>: <code>/favicon.ico</code> 404 — нет favicon в репозитории. Косметика; добавим если ходить будет браузер браузера.',
+      '• <b>Не починено</b>: «Password field is not contained in a form» — это <i>warning</i> Chrome, не ошибка. Поле <code>#pwd-input</code> используется для in-page password prompt и в <code>&lt;form&gt;</code> заворачивать не нужно (нет submit-flow).',
+      'Файлы: <code>shared/catalog-bridge.js</code> (_loadBatteries + _subscribeSameTab), <code>shared/catalogs/_helpers.js</code> (_ensureLib).',
+    ] },
     { version: '0.59.870', date: '2026-04-30', items: [
       '🔌 <b>scs-config: модалка «Порты устройства» (port-management)</b>. По репорту: «click-on-equipment modal с port-management».',
       '• <b>Открытие</b>: dblclick по полосе любого устройства в Компоновщике шкафа (kind=switch / patch-panel / pdu / server) → откроется модалка со списком всех портов.',

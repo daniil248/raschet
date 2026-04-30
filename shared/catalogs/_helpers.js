@@ -16,7 +16,10 @@ let __listElements = null;
 async function _ensureLib() {
   if (__listElements) return __listElements;
   try {
-    const m = await import('./element-library.js');
+    // v0.59.871: путь относительно shared/catalogs/_helpers.js → ../element-library.js.
+    // Раньше был './element-library.js' — давало 404 в консоли (файл живёт
+    // в shared/, а не shared/catalogs/).
+    const m = await import('../element-library.js');
     __listElements = m.listElements;
   } catch { __listElements = () => []; }
   return __listElements;
