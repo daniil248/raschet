@@ -1894,13 +1894,20 @@ export function renderNodes() {
       // предупреждение».
       const _homo = _isContainer ? containerHomogeneity(n) : null;
       const _isMixed = _homo && !_homo.homogeneous;
+      // v0.59.882: gLabel снизу контейнера показывает Pуст и (если Ки<1)
+      // Pрасч в скобках. Раньше только Pуст — пользователь: «вроде мы
+      // внизу считали расчётную мощность а не номинальную».
+      const _calcKwTotal = _isContainer ? consumerCalcDemandKw(n) : 0;
+      const _hasKi = _isContainer && Math.abs(_calcKwTotal - totalKw) > 0.01 && _calcKwTotal > 0;
       let gLabel = '';
       if (_showKw && _showCount) {
         if (_isContainer) {
           if (_homo && _homo.homogeneous && _homo.count > 1 && _homo.common && _homo.common.demandKw > 0) {
             gLabel = `${_homo.count} × ${fmtPower(_homo.common.demandKw)} = ${fmtPower(totalKw)}`;
+            if (_hasKi) gLabel += ` (Pрасч ${fmtPower(_calcKwTotal)})`;
           } else {
             gLabel = `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`;
+            if (_hasKi) gLabel += ` · Pрасч ${fmtPower(_calcKwTotal)}`;
             if (_isMixed) gLabel += ' ⚠';
           }
         } else {
@@ -1910,6 +1917,7 @@ export function renderNodes() {
         }
       } else if (_showKw) {
         gLabel = `Σ ${fmtPower(totalKw)}`;
+        if (_hasKi) gLabel += ` (Pрасч ${fmtPower(_calcKwTotal)})`;
         if (_isMixed) gLabel += ' ⚠';
       } else if (_showCount) {
         gLabel = `${cntEff} шт.${_isMixed ? ' ⚠' : ''}`;
@@ -2379,12 +2387,25 @@ export function renderNodes() {
       if (n.type === 'consumer-container') {
         const cnt = consumerCountEffective(n);
         const PnomTotal = consumerTotalDemandKw(n);
-        const Pnom = cnt > 0 ? PnomTotal / cnt : PnomTotal;
+        // v0.59.882: для однородного контейнера значения per-piece берём
+        // из первого slot'а (демонстрирует РЕАЛЬНОЕ значение одного
+        // потребителя). Для разнородного — среднее. Раньше использовалось
+        // PnomTotal/cnt даже для однородных — давало искажённое 9.2 вместо
+        // реальных 8.8 (если члены имели count>1 внутри).
+        const _homoForCard = containerHomogeneity(n);
+        const Pnom = (_homoForCard.homogeneous && _homoForCard.common && _homoForCard.common.demandKw > 0)
+          ? _homoForCard.common.demandKw
+          : (cnt > 0 ? PnomTotal / cnt : PnomTotal);
         const Inom = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cos, isThreePhase(n)) : 0;
         const Snom = Pnom > 0 ? Pnom / Math.max(0.1, cos) : 0;
         const PcalcTotal = Number(n._loadKw) || 0;
-        const Pcalc = cnt > 0 ? PcalcTotal / cnt : PcalcTotal;
-        const Icalc = cnt > 0 ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
+        // Pcalc per-piece: для однородного — Pnom × kUse (per piece);
+        // для разнородного — средний.
+        const Pcalc = (_homoForCard.homogeneous && _homoForCard.common && _homoForCard.common.demandKw > 0)
+          ? _homoForCard.common.demandKw * (_homoForCard.common.kUse || 1)
+          : (cnt > 0 ? PcalcTotal / cnt : PcalcTotal);
+        // Icalc per-piece: пересчитываем из per-piece Pcalc.
+        const Icalc = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         const _vdrop = Number(n._deltaUPct) || 0;
         valueMap = {
           demandKw:   { v: fmtDigits(Pnom)  },
