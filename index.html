@@ -319,11 +319,17 @@
                 <button id="btn-toggle-breakers" title="Номиналы автоматов">А</button>
                 <button id="btn-toggle-colors" title="Цвета по источникам">🎨</button>
                 <button id="btn-toggle-icons" title="Иконки потребителей">⚙</button>
-                <select id="card-preset-picker" title="Пресет отображения карточек (Phase 19): фильтр полей по ролям. Иерархия: схема→проект→пользователь" style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;background:#fff;cursor:pointer">
-                  <!-- Заполняется в js/main.js при инициализации -->
-                </select>
-                <button id="btn-card-preset-edit" type="button" title="Редактировать пресеты карточек: добавить новый, изменить набор полей, удалить" style="padding:2px 6px;border:1px solid #d1d5db;border-radius:3px;background:#fff;cursor:pointer;font-size:11px">✎</button>
               </div>
+            </div>
+            <!-- v0.59.794: Пресет карточек — всегда видимый (не в свернутой
+                 группе). Пользователь: «а ты куда спрятал настройку вида
+                 карточек?». -->
+            <div class="tb-group" data-group="card-preset" style="display:flex;align-items:center;gap:4px">
+              <span style="font-size:11px;color:#6b7280;font-weight:600">🎴</span>
+              <select id="card-preset-picker" title="Пресет отображения карточек (Phase 19): фильтр полей по ролям. Иерархия: схема→проект→пользователь" style="font-size:11px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;background:#fff;cursor:pointer">
+                <!-- Заполняется в export.js при инициализации -->
+              </select>
+              <button id="btn-card-preset-edit" type="button" title="Редактировать пресеты карточек: добавить новый, изменить набор полей, удалить" style="padding:2px 6px;border:1px solid #d1d5db;border-radius:3px;background:#fff;cursor:pointer;font-size:11px">✎</button>
             </div>
             <div class="tb-group collapsed" data-group="links">
               <button class="tb-head" type="button" title="Ссылки/разрывы">Ссылки ▸</button>
