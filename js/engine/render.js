@@ -2593,13 +2593,30 @@ export function renderNodes() {
             f.id === 'icon' || f.id === 'sourceSubtype' || f.id === 'switchMode' ||
             f.id === 'zonePrefix') continue;
         // v0.59.868: если поле — primary активной пары, рендерим объединённую строку.
+        // v0.59.878: каждое значение в combined-row показывается со СВОЕЙ
+        // единицей измерения (currentA=А, count=шт., voltage=В, …). Раньше
+        // юнит брался от primary и применялся ко всем — это давало бред
+        // вида «8 А» для count=8 (на самом деле 8 шт.). Если у обоих полей
+        // юнит совпадает — выводим один раз в конце.
         const pair = _activePairs.find(p => p.primary === f.id);
         if (pair) {
           const a = valueMap[pair.primary], b = valueMap[pair.secondary];
           const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[_renderTypeKey]?.[pair.primary];
           const lbl = (typeof customLabel === 'string' && customLabel.trim())
             ? customLabel : pair.label;
-          const txt = `${lbl}: ${a.v} / ${b.v}${pair.unit ? ' ' + pair.unit : ''}`;
+          const unitA = (a.unit != null) ? a.unit : fieldUnit(_presetKind, _renderTypeKey, pair.primary);
+          const unitB = (b.unit != null) ? b.unit : fieldUnit(_presetKind, _renderTypeKey, pair.secondary);
+          let txt;
+          if (unitA && unitB && unitA === unitB) {
+            // одинаковые единицы — компактный формат «val1 / val2 unit»
+            txt = `${lbl}: ${a.v} / ${b.v} ${unitA}`;
+          } else if (!unitA && !unitB) {
+            // обе без юнитов
+            txt = `${lbl}: ${a.v} / ${b.v}`;
+          } else {
+            // разные единицы (или одна без) — каждое со своей: «val1 unit1 / val2 unit2»
+            txt = `${lbl}: ${a.v}${unitA ? ' ' + unitA : ''} / ${b.v}${unitB ? ' ' + unitB : ''}`;
+          }
           const zid = _zoneAssign[pair.primary] || _defaultZone(pair.primary);
           const z = _zones.find(x => x.id === zid);
           const pos = z ? z.position : 'body';
