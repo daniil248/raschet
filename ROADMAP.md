@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.59.821 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
+> **Статус:** v0.59.822 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
 
 > **Правило ведения:** roadmap обновляется ПОСТОЯННО — при появлении новой фичи / задачи и при закрытии любого этапа. Hotfix'ы (regressions, мелкие правки UX) НЕ попадают в roadmap, только содержательная функциональность. Это правило зафиксировано пользователем 2026-04-29.
 
@@ -355,10 +355,17 @@ in-tab Map + cross-tab через storage event.
       становятся consumer-container со slots. Один-раз на проект.
     - render.js registry: badge «↪ контейнер X» для членов контейнера
       (через containerId), как и раньше для linkedAlias.
-  - **Phase 4 stub — Inspector (закрыто v0.59.818):**
-    - inspector.js: при выборе consumer-container показывает список
-      слотов (linked-узлы с tag/name/kW + placeholder-строки). Полный
-      редактор (drag-drop slots / split / merge / cross-disc) — позже.
+  - **Phase 4 — Container inspector (закрыто v0.59.822):**
+    - inspector.js: при выборе consumer-container показывает Σ-нагрузку и
+      список слотов с действиями:
+      • Linked-slot: click row → открыть инспектор члена; ↗ извлечь
+        (split-out: член становится standalone consumer на канвасе);
+        ✂ разъединить (член → placeholder, узел удаляется).
+      • Placeholder-slot: inline edit kW; ⊕ materialize (создать реальный
+        consumer с этой спекой как член контейнера); × удалить.
+      • Битая ссылка: × удалить slot.
+      • Кнопка ➕ Placeholder-слот (наследует спеку первого linked-члена).
+    - Если контейнер опустевает — автоматически удаляется.
   - **Phase 3 — Drop-merge (закрыто v0.59.820):**
     - interaction.js `_mergeIntoContainer(target, source)`: создаёт/пополняет
       consumer-container при drag-drop совместимых консумеров.

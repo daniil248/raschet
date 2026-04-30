@@ -1027,17 +1027,27 @@ export function renderInspectorNode(n) {
     }
     h.push(statusBlock(n));
   } else if (n.type === 'consumer-container') {
-    // v0.59.818 (1.28.20 Phase 4 minimal): инспектор контейнера потребителей.
-    // Показывает список слотов: linked (real consumer-узел) или placeholder
-    // (анонимная спека). Полный редактор будет в Phase 4 — пока заглушка
-    // чтобы выбор контейнера не показывал пустоту.
+    // v0.59.822 (1.28.20 Phase 4): полный инспектор contaier-узла.
+    // Слоты редактируются: open (click → инспектор члена), извлечь
+    // (split-out из контейнера в standalone), unlink (slot → placeholder),
+    // materialize (placeholder → реальный consumer-узел), add placeholder.
     const slots = Array.isArray(n.slots) ? n.slots : [];
+    let totalKw = 0;
+    for (const s of slots) {
+      if (!s) continue;
+      if (s.kind === 'linked' && s.nodeId) {
+        const a = state.nodes.get(s.nodeId);
+        if (a) totalKw += (Number(a.demandKw) || 0) * Math.max(1, Number(a.count) || 1);
+      } else if (s.kind === 'placeholder') {
+        totalKw += Number(s.demandKw) || 0;
+      }
+    }
     h.push('<div class="inspector-section"><h4>Контейнер потребителей</h4>');
-    h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">Контейнер сам не считается потребителем. Слоты внутри — независимые сущности (реальные consumer-узлы или placeholder-спецификации).</div>');
+    h.push(`<div class="muted" style="font-size:11px;margin-bottom:8px">Σ нагрузка: <b>${totalKw.toFixed(2)} кВт</b> · слотов: <b>${slots.length}</b>. Контейнер сам не считается потребителем — нагрузка считается по составу slot'ов.</div>`);
     if (!slots.length) {
-      h.push('<div class="muted" style="font-size:12px">Контейнер пуст. Drop потребителя сюда — добавится как слот.</div>');
+      h.push('<div class="muted" style="font-size:12px;padding:6px 0">Контейнер пуст. Drop потребителя на канвасе сюда — добавится как слот. Или нажмите кнопку «➕ Placeholder» внизу.</div>');
     } else {
-      h.push('<div style="display:flex;flex-direction:column;gap:4px;font-size:12px">');
+      h.push('<div style="display:flex;flex-direction:column;gap:3px;font-size:12px">');
       slots.forEach((s, i) => {
         if (!s) return;
         if (s.kind === 'linked' && s.nodeId) {
@@ -1046,17 +1056,33 @@ export function renderInspectorNode(n) {
             const tag = a.tag || a.id;
             const name = a.name || '';
             const kw = Number(a.demandKw) || 0;
-            h.push(`<div style="padding:4px 6px;background:#f5f7fa;border-radius:4px;display:flex;justify-content:space-between"><span><b>${escHtml(tag)}</b> ${escHtml(name)}</span><span class="muted">#${i + 1} · ${kw} кВт</span></div>`);
+            const cnt = Math.max(1, Number(a.count) || 1);
+            const kwLabel = cnt > 1 ? `${cnt}×${kw} = ${(kw * cnt).toFixed(1)} кВт` : `${kw} кВт`;
+            h.push(`<div style="padding:5px 6px;background:#f5f7fa;border-radius:4px;display:flex;align-items:center;gap:6px;cursor:pointer" data-slot-open="${escAttr(a.id)}" title="Открыть свойства члена контейнера">
+              <span style="flex:1"><b>${escHtml(tag)}</b> ${escHtml(name)}</span>
+              <span class="muted" style="font-size:11px">#${i + 1} · ${kwLabel}</span>
+              <button type="button" data-slot-extract="${escAttr(String(i))}" style="padding:1px 6px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer" title="Извлечь как standalone-потребителя">↗</button>
+              <button type="button" data-slot-unlink="${escAttr(String(i))}" style="padding:1px 6px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer" title="Разъединить (стать placeholder)">✂</button>
+            </div>`);
           } else {
-            h.push(`<div style="padding:4px 6px;background:#fee;border-radius:4px;color:#991b1b">Слот #${i + 1}: битая ссылка ${escHtml(s.nodeId)}</div>`);
+            h.push(`<div style="padding:4px 6px;background:#fee;border-radius:4px;color:#991b1b;display:flex;align-items:center;gap:6px"><span style="flex:1">Слот #${i + 1}: битая ссылка ${escHtml(s.nodeId)}</span><button type="button" data-slot-remove="${escAttr(String(i))}" style="padding:1px 6px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer">×</button></div>`);
           }
         } else if (s.kind === 'placeholder') {
-          h.push(`<div style="padding:4px 6px;background:#fef3c7;border-radius:4px;display:flex;justify-content:space-between"><span><i>placeholder</i></span><span class="muted">#${i + 1} · ${Number(s.demandKw) || 0} кВт</span></div>`);
+          const kw = Number(s.demandKw) || 0;
+          const subtype = s.subtype || 'custom';
+          h.push(`<div style="padding:5px 6px;background:#fef3c7;border-radius:4px;display:flex;align-items:center;gap:6px">
+            <span style="flex:1"><i style="color:#92400e">placeholder</i> · ${escHtml(subtype)}</span>
+            <input type="number" data-slot-kw="${escAttr(String(i))}" value="${kw}" min="0" step="0.5" style="width:60px;padding:1px 4px;font-size:11px" title="Мощность slot'а, кВт"> кВт
+            <button type="button" data-slot-materialize="${escAttr(String(i))}" style="padding:1px 6px;font-size:11px;border:1px solid #16a34a;background:#dcfce7;color:#15803d;border-radius:3px;cursor:pointer" title="Создать реальный consumer-узел из этой спеки">⊕</button>
+            <button type="button" data-slot-remove="${escAttr(String(i))}" style="padding:1px 6px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer" title="Удалить slot">×</button>
+          </div>`);
         }
       });
       h.push('</div>');
     }
-    h.push('<div class="muted" style="font-size:11px;margin-top:8px">⚙ Полный редактор слотов (drag-drop / split / merge / cross-discipline) — Phase 4 (1.28.20).</div>');
+    h.push('<div style="display:flex;gap:6px;margin-top:8px">');
+    h.push('<button type="button" id="btn-add-placeholder" class="full-btn" style="padding:5px 10px;font-size:12px">➕ Placeholder-слот</button>');
+    h.push('</div>');
     h.push('</div>');
   }
 
@@ -1206,6 +1232,179 @@ export function renderInspectorNode(n) {
 
   const saveBtn = document.getElementById('btn-save-preset');
   if (saveBtn) saveBtn.addEventListener('click', () => saveNodeAsPreset(n));
+
+  // v0.59.822 (1.28.20 Phase 4): wire для consumer-container slot-actions.
+  if (n.type === 'consumer-container') {
+    _wireContainerSlots(n);
+  }
+}
+
+// v0.59.822: обработчики slot-actions в инспекторе consumer-container.
+function _wireContainerSlots(n) {
+  // Click по строке linked-slot — открыть инспектор члена.
+  inspectorBody.querySelectorAll('[data-slot-open]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      // не реагируем на клики по кнопкам/инпутам внутри строки
+      if (e.target.closest('button') || e.target.closest('input')) return;
+      const aid = row.getAttribute('data-slot-open');
+      if (aid) selectNode(aid);
+    });
+  });
+  // Извлечь slot — split-out: удаляем slot из контейнера, делаем consumer
+  // standalone (восстанавливаем pageIds = current page).
+  inspectorBody.querySelectorAll('[data-slot-extract]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.getAttribute('data-slot-extract'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'linked' || !slot.nodeId) return;
+      const a = state.nodes.get(slot.nodeId);
+      if (!a) return;
+      snapshot('container-extract:' + n.id + ':' + a.id);
+      // Восстанавливаем consumer как standalone
+      delete a.containerId;
+      a.pageIds = state.currentPageId ? [state.currentPageId] : [];
+      // Размещаем рядом с контейнером (offset 240px вправо)
+      a.x = (Number(n.x) || 0) + 240 + idx * 20;
+      a.y = (Number(n.y) || 0);
+      n.slots.splice(idx, 1);
+      // Если контейнер опустел — удаляем его
+      if (!n.slots.length) {
+        try { _deleteNode(n.id, { hard: true, silent: true }); } catch {}
+      }
+      _render();
+      renderInspector();
+      notifyChange();
+    });
+  });
+  // Разъединить slot — slot становится placeholder со спекой члена.
+  inspectorBody.querySelectorAll('[data-slot-unlink]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.getAttribute('data-slot-unlink'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'linked' || !slot.nodeId) return;
+      const a = state.nodes.get(slot.nodeId);
+      if (!a) return;
+      snapshot('container-unlink:' + n.id + ':#' + idx);
+      // Сохраняем спеку в slot, удаляем consumer-узел из state.nodes
+      n.slots[idx] = {
+        kind: 'placeholder',
+        demandKw: Number(a.demandKw) || 0,
+        cosPhi: Number(a.cosPhi) || 0.95,
+        phase: a.phase || '3ph',
+        voltage: Number(a.voltage) || 400,
+        voltageLevelIdx: Number(a.voltageLevelIdx) || 0,
+        subtype: a.consumerSubtype || 'custom',
+        kUse: Number(a.kUse) || 1,
+      };
+      // Удаляем сам consumer-узел
+      try { _deleteNode(a.id, { hard: true, silent: true, force: true }); } catch {}
+      _render();
+      renderInspector();
+      notifyChange();
+    });
+  });
+  // Удалить slot.
+  inspectorBody.querySelectorAll('[data-slot-remove]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.getAttribute('data-slot-remove'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      snapshot('container-removeslot:' + n.id + ':#' + idx);
+      // Если slot был linked, удаляем consumer-узел
+      if (slot && slot.kind === 'linked' && slot.nodeId) {
+        try { _deleteNode(slot.nodeId, { hard: true, silent: true, force: true }); } catch {}
+      }
+      n.slots.splice(idx, 1);
+      if (!n.slots.length) {
+        try { _deleteNode(n.id, { hard: true, silent: true }); } catch {}
+      }
+      _render();
+      renderInspector();
+      notifyChange();
+    });
+  });
+  // Materialize placeholder → реальный consumer-узел.
+  inspectorBody.querySelectorAll('[data-slot-materialize]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.getAttribute('data-slot-materialize'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'placeholder') return;
+      snapshot('container-materialize:' + n.id + ':#' + idx);
+      const newId = uid();
+      const newConsumer = {
+        id: newId,
+        type: 'consumer',
+        name: 'Потребитель',
+        tag: nextFreeTag('consumer'),
+        x: Number(n.x) || 0, y: Number(n.y) || 0,
+        demandKw: Number(slot.demandKw) || 0,
+        cosPhi: Number(slot.cosPhi) || 0.95,
+        phase: slot.phase || '3ph',
+        voltage: Number(slot.voltage) || 400,
+        voltageLevelIdx: Number(slot.voltageLevelIdx) || 0,
+        consumerSubtype: slot.subtype || 'custom',
+        kUse: Number(slot.kUse) || 1,
+        inputs: 1, outputs: 0,
+        count: 1,
+        priorities: [1, 2],
+        containerId: n.id,
+        pageIds: [],
+      };
+      state.nodes.set(newId, newConsumer);
+      n.slots[idx] = { kind: 'linked', nodeId: newId };
+      _render();
+      renderInspector();
+      notifyChange();
+    });
+  });
+  // Inline edit kW для placeholder.
+  inspectorBody.querySelectorAll('[data-slot-kw]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const idx = Number(inp.getAttribute('data-slot-kw'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'placeholder') return;
+      snapshot('container-slot-kw:' + n.id + ':#' + idx);
+      slot.demandKw = Math.max(0, Number(inp.value) || 0);
+      _render();
+      notifyChange();
+    });
+  });
+  // Add placeholder.
+  const addBtn = document.getElementById('btn-add-placeholder');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      snapshot('container-addplaceholder:' + n.id);
+      if (!Array.isArray(n.slots)) n.slots = [];
+      // Дефолты — со спекой первого linked-члена, если есть
+      let demandKw = 5, cosPhi = 0.95, phase = '3ph', voltage = 400, vIdx = 0, subtype = 'custom';
+      for (const s of n.slots) {
+        if (s && s.kind === 'linked' && s.nodeId) {
+          const a = state.nodes.get(s.nodeId);
+          if (a) {
+            demandKw = Number(a.demandKw) || demandKw;
+            cosPhi = Number(a.cosPhi) || cosPhi;
+            phase = a.phase || phase;
+            voltage = Number(a.voltage) || voltage;
+            vIdx = Number(a.voltageLevelIdx) || vIdx;
+            subtype = a.consumerSubtype || subtype;
+            break;
+          }
+        }
+      }
+      n.slots.push({ kind: 'placeholder', demandKw, cosPhi, phase, voltage, voltageLevelIdx: vIdx, subtype });
+      renderInspector();
+      _render();
+      notifyChange();
+    });
+  }
 }
 
 // v0.58.15: блок «Системы» — чекбоксы для всех систем каталога.
