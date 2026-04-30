@@ -1171,7 +1171,13 @@ export function sourceStatusBlock(n) {
     }
     // v0.59.626/629: worst-case (все ИБП в байпасе) — для УРКМ и подбора ДГУ.
     // Всегда показываем обе записи (текущий + наихудший), даже когда они равны.
-    if (Number.isFinite(n._powerPWorst) || Number.isFinite(n._powerQWorst)) {
+    // v0.59.867: для городской сети (utility) НЕ показываем worst-case блок.
+    // Пользователь: «для городской сети просто показывай финальный косинус фи
+    // с учетом всех компенсаторов (УКРМ) и потребителей. Про режим что ИБП
+    // в байпасе не упоминая». Для трансформатора и генератора — оставляем
+    // (там нужен подбор УРКМ / ДГУ по worst-case).
+    const _isUtility = (n.sourceSubtype || (n.type === 'generator' ? 'generator' : 'transformer')) === 'utility';
+    if (!_isUtility && (Number.isFinite(n._powerPWorst) || Number.isFinite(n._powerQWorst))) {
       const cosW = Number(n._cosPhiWorst) || (Number(n._cosPhi) || 1);
       const pW = Number(n._powerPWorst) || (Number(n._powerP) || 0);
       const qW = Number(n._powerQWorst) || 0;
