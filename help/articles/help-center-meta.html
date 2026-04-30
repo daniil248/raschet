@@ -1,0 +1,84 @@
+<h2>Что это</h2>
+<p>Центр помощи — справочник по платформе Raschet. Открывается из Hub'а (главного экрана) или прямой ссылкой <code>/help/</code>. Состоит из набора статей в 4 категориях.</p>
+
+<h2>Структура</h2>
+<svg class="hc-fig" viewBox="0 0 700 230" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:700px">
+  <rect x="10" y="10" width="200" height="210" rx="6" fill="#f3f4f6" stroke="#cbd5e1"/>
+  <text x="110" y="32" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">📋 Sidebar</text>
+
+  <rect x="20" y="45" width="180" height="22" rx="3" fill="#fff" stroke="#cbd5e1"/>
+  <text x="30" y="60" font-size="10" fill="#374151">🔍 Поиск...</text>
+
+  <text x="20" y="85" font-size="10" font-weight="600" fill="#6b7280">🏁 НАЧАЛО РАБОТЫ</text>
+  <rect x="25" y="92" width="170" height="16" rx="2" fill="#dbeafe" stroke="#1e40af"/>
+  <text x="32" y="103" font-size="10" fill="#1e3a8a">▸ Что такое Raschet</text>
+
+  <text x="20" y="130" font-size="10" font-weight="600" fill="#6b7280">📦 МОДУЛИ</text>
+  <text x="32" y="148" font-size="10" fill="#6b7280">▸ Технолог ЦОД</text>
+  <text x="32" y="163" font-size="10" fill="#6b7280">▸ Конструктор схем</text>
+
+  <text x="20" y="185" font-size="10" font-weight="600" fill="#6b7280">✨ ВОЗМОЖНОСТИ</text>
+  <text x="32" y="203" font-size="10" fill="#6b7280">▸ Пресеты карточек</text>
+
+  <!-- Right pane -->
+  <rect x="220" y="10" width="470" height="210" rx="6" fill="#fff" stroke="#cbd5e1"/>
+  <text x="230" y="30" font-size="10" fill="#6b7280">Помощь › Начало › Что такое Raschet</text>
+
+  <text x="230" y="55" font-size="14" font-weight="600" fill="#111">Что такое Raschet</text>
+  <rect x="230" y="62" width="450" height="32" rx="3" fill="#f9fafb" stroke="#cbd5e1"/>
+  <text x="240" y="80" font-size="10" fill="#475569">Платформа сквозного проектирования электроснабжения...</text>
+
+  <text x="230" y="115" font-size="11" fill="#374151">📖 Содержимое статьи (HTML с диаграммами,</text>
+  <text x="230" y="130" font-size="11" fill="#374151">    кросс-ссылками, таблицами)</text>
+
+  <line x1="230" y1="155" x2="680" y2="155" stroke="#e5e7eb" stroke-dasharray="3,3"/>
+  <text x="230" y="175" font-size="10" font-weight="600" fill="#6b7280">СМ. ТАКЖЕ</text>
+  <rect x="230" y="182" width="220" height="28" rx="3" fill="#f9fafb" stroke="#cbd5e1"/>
+  <text x="240" y="195" font-size="10" font-weight="600" fill="#1e40af">Работа с проектами</text>
+  <text x="240" y="207" font-size="9" fill="#475569">Каждый проект хранит схему, СКС...</text>
+
+  <rect x="455" y="182" width="220" height="28" rx="3" fill="#f9fafb" stroke="#cbd5e1"/>
+  <text x="465" y="195" font-size="10" font-weight="600" fill="#1e40af">Технолог ЦОД</text>
+  <text x="465" y="207" font-size="9" fill="#475569">Концепция объекта, multi-variant...</text>
+</svg>
+
+<h2>Категории статей</h2>
+<table>
+  <thead><tr><th>Категория</th><th>Содержимое</th></tr></thead>
+  <tbody>
+    <tr><td>🏁 Начало работы</td><td>Введение в платформу, обзор проектов и модулей</td></tr>
+    <tr><td>📦 Модули</td><td>Описание каждого модуля (Конструктор / Технолог / СКС / МЦОД и др.)</td></tr>
+    <tr><td>✨ Возможности</td><td>Кросс-модульные фичи: пресеты, статусы, режимы хранения и т.д.</td></tr>
+    <tr><td>🏗 Архитектура</td><td>Внутреннее устройство: data-model, ключи storage</td></tr>
+  </tbody>
+</table>
+
+<h2>Поиск</h2>
+<p>В шапке sidebar — поле поиска. Ищет по названиям и summary статей. Категории, в которых нет совпадений, скрываются. Очистка поля — возвращает полный список.</p>
+
+<h2>Cross-references</h2>
+<p>Внутри статей есть ссылки вида <a data-article-link href="#intro">«вот эта»</a> (с пунктирной линией) — клик переключает на связанную статью с обновлением breadcrumb и блока «См. также» внизу.</p>
+
+<p>Список «См. также» (<code>related[]</code> в манифесте) под каждой статьёй автоматически фильтруется по доступу к модулям.</p>
+
+<h2>Доступ к статьям</h2>
+<p>Каждая статья может иметь поле <code>requiresModule</code>. Если этот модуль отключён в <code>modules.json</code> (поле <code>enabled: false</code>) — статья:</p>
+<ul>
+  <li>Скрыта в sidebar</li>
+  <li>Скрыта в «См. также»</li>
+  <li>При открытии прямой ссылкой (<code>#article-id</code>) показывает «Доступ ограничен»</li>
+</ul>
+
+<p>Это аналог permission'ов модулей — пользователь видит ровно то, что соответствует его конфигурации платформы.</p>
+
+<h2>Прямые ссылки</h2>
+<p>URL вида <code>/help/#feature-card-presets</code> открывает конкретную статью. Hash-routing — можно делиться ссылкой с коллегой, она откроет ту же статью.</p>
+
+<h2>Как добавлять статьи</h2>
+<ol>
+  <li>Создайте HTML-файл в <code>help/articles/&lt;id&gt;.html</code> с содержимым (без &lt;html&gt; / &lt;body&gt; — только тело).</li>
+  <li>Добавьте запись в <code>help/articles.json</code> с <code>id</code>, <code>title</code>, <code>category</code>, <code>summary</code>, <code>file</code>, <code>related[]</code>, опционально <code>requiresModule</code>.</li>
+  <li>Используйте классы <code>.note / .warn / .ok</code> для блоков предупреждений.</li>
+  <li>Inline SVG для диаграмм с классом <code>hc-fig</code>.</li>
+  <li>Cross-ref: <code>&lt;a data-article-link href="#other-id"&gt;…&lt;/a&gt;</code></li>
+</ol>

@@ -1,0 +1,53 @@
+<h2>Жизненный цикл проекта</h2>
+<p>Каждый проект имеет статус, отражающий стадию жизненного цикла. По умолчанию новый проект — <code>draft</code> (черновик).</p>
+
+<h2>5 статусов</h2>
+<table>
+  <thead><tr><th>Статус</th><th>Цвет</th><th>Что означает</th><th>Группа</th></tr></thead>
+  <tbody>
+    <tr><td><b>Черновик</b> (draft)</td><td>серый</td><td>Эскиз, нечёткое ТЗ, тестовые данные</td><td>Проектирование</td></tr>
+    <tr><td><b>Проектируется</b> (planned)</td><td>синий</td><td>Активная работа над схемой</td><td>Проектирование</td></tr>
+    <tr><td><b>Смонтирован</b> (installed)</td><td>оранжевый</td><td>Объект собран, идёт пуско-наладка</td><td>Объект</td></tr>
+    <tr><td><b>Эксплуатируется</b> (operating)</td><td>зелёный</td><td>Объект в нормальной эксплуатации</td><td>Объект</td></tr>
+    <tr><td><b>Архив</b> (archived)</td><td>светло-серый</td><td>Завершённый, не активный</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h2>Multi-status фильтр</h2>
+<p>В списке проектов (модуль 📁 Проекты) над сеткой карточек — chip-bar с группировкой:</p>
+<svg class="hc-fig" viewBox="0 0 700 80" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:700px">
+  <text x="10" y="25" font-size="11" font-weight="600" fill="#64748b">ПРОЕКТИРОВАНИЕ:</text>
+  <rect x="135" y="12" width="90" height="22" rx="11" fill="#e2e8f0" stroke="#64748b"/>
+  <text x="180" y="27" text-anchor="middle" font-size="11" fill="#64748b" font-weight="600">Черновик 3</text>
+  <rect x="232" y="12" width="120" height="22" rx="11" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="292" y="27" text-anchor="middle" font-size="11" fill="#1d4ed8" font-weight="600">Проектируется 7</text>
+
+  <text x="365" y="25" font-size="11" font-weight="600" fill="#64748b">ОБЪЕКТ:</text>
+  <rect x="425" y="12" width="100" height="22" rx="11" fill="#fef3c7" stroke="#b45309"/>
+  <text x="475" y="27" text-anchor="middle" font-size="11" fill="#b45309" font-weight="600">Смонтирован 2</text>
+  <rect x="532" y="12" width="125" height="22" rx="11" fill="#d1fae5" stroke="#047857"/>
+  <text x="594" y="27" text-anchor="middle" font-size="11" fill="#047857" font-weight="600">Эксплуатируется 5</text>
+
+  <line x1="667" y1="10" x2="667" y2="36" stroke="#e2e8f0"/>
+  <rect x="10" y="50" width="80" height="22" rx="11" fill="#fff" stroke="#cbd5e1"/>
+  <text x="50" y="65" text-anchor="middle" font-size="11" fill="#94a3b8">Архив 1</text>
+  <rect x="100" y="50" width="50" height="22" rx="11" fill="#f9fafb" stroke="#cbd5e1"/>
+  <text x="125" y="65" text-anchor="middle" font-size="11" fill="#475569">Все</text>
+</svg>
+
+<p>Каждый chip — toggle:</p>
+<ul>
+  <li><b>Активный</b> (цветной фон) — проекты этого статуса видимы в списке</li>
+  <li><b>Неактивный</b> (серый) — скрыты</li>
+  <li>Цифра справа — количество проектов в этом статусе</li>
+</ul>
+
+<p><b>«Все»</b> — кнопка для быстрого включения всех статусов.</p>
+
+<h2>Сохранение фильтра</h2>
+<p>Текущий состав активных статусов сохраняется в LocalStorage (<code>raschet.projects.statusFilter.v1</code>) — между сеансами. По умолчанию (при первом входе) — все статусы кроме «Архив».</p>
+
+<h2>Как сменить статус проекта</h2>
+<p>В карточке проекта на главной странице (<a data-article-link href="#module-projects">📁 Проекты</a>) кнопка с текущим статусом — клик открывает picker всех 5 статусов. Также доступно из карточки конкретного проекта (project.html) — кнопка <kbd>Статус ▾</kbd>.</p>
+
+<div class="ok">💡 <b>Совет:</b> для большой команды — фильтр «Проектируется» + «Смонтирован» даст актуальный список проектов в работе, без черновиков и архива.</div>

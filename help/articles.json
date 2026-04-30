@@ -76,7 +76,7 @@
       "category": "modules",
       "summary": "Центр управления проектами.",
       "file": "module-projects.html",
-      "related": ["projects-overview", "feature-storage-mode"],
+      "related": ["projects-overview", "feature-storage-mode", "feature-status-filter"],
       "requiresModule": "projects"
     },
     {
@@ -144,6 +144,22 @@
       "summary": "Связь экземпляров стоек: shell — оболочка с младшим обозначением, остальные внутри. Свойства наследуются.",
       "file": "feature-shell-container.html",
       "related": ["module-schematic", "module-scs-config"]
+    },
+    {
+      "id": "feature-status-filter",
+      "title": "🏷 Статусы проектов и фильтр",
+      "category": "features",
+      "summary": "5 статусов проекта (draft/planned/installed/operating/archived) + multi-status chip-фильтр в списке.",
+      "file": "feature-status-filter.html",
+      "related": ["module-projects", "projects-overview"]
+    },
+    {
+      "id": "help-center-meta",
+      "title": "❓ О Центре помощи",
+      "category": "getting-started",
+      "summary": "Как устроен сам центр помощи: cross-references, поиск, доступ по модулям.",
+      "file": "help-center-meta.html",
+      "related": ["intro"]
     },
     {
       "id": "feature-storage-mode",
