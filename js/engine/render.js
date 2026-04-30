@@ -1880,6 +1880,27 @@ export function renderNodes() {
     // Верхняя карточка (основная, полностью непрозрачная)
     g.appendChild(el('rect', { class: 'node-body', x: 0, y: 0, width: w, height: NODE_H }));
 
+    // v0.59.801 (Phase 19.4 fix): per-node preset visibility flags.
+    // Считаем один раз и используем для subtitle / icon / load-блока.
+    // Пользователь: «я включил только иконку, а отобразилось все».
+    let _presetShowSubtitle = true;
+    let _presetShowIcon = true;
+    let _presetShowLoadInfo = true;
+    {
+      const _curPage = getCurrentPage();
+      const _kind = _curPage ? getPageKind(_curPage) : 'schematic';
+      const _preset = _getActiveCardPreset();
+      const _vis = getVisibleFieldIds(_preset, _kind, n.type);
+      const _ELECTRICAL = ['demandKw', 'kvAOrVA', 'currentA', 'maxKw', 'maxA',
+        'nominalKw', 'cosPhi', 'phase', 'voltage', 'breakerIn', 'cableSpec',
+        'deltaUPct', 'capacityA', 'snomKva', 'sscMva', 'ukPct', 'kva', 'kw',
+        'autonomyMin', 'marginPct'];
+      _presetShowLoadInfo = _ELECTRICAL.some(id => _vis.has(id));
+      _presetShowSubtitle = _vis.has('subtitle') || _vis.has('sourceSubtype') ||
+        _vis.has('switchMode');
+      _presetShowIcon = _vis.has('icon');
+    }
+
     // v0.58.16: полоска «Системы» вдоль верхнего края карточки — сегменты
     // цветов по системам, в которые входит элемент. Система, совпадающая с
     // видом текущей страницы, выделяется выше (4 px), прочие — 2 px.
@@ -1894,7 +1915,8 @@ export function renderNodes() {
 
     // Иконка потребителя по подтипу — в правом верхнем углу карточки.
     // Для группы с serialMode — дополнительно ряд мелких иконок вдоль нижнего края.
-    if (n.type === 'consumer' && GLOBAL.showConsumerIcons !== false) {
+    // v0.59.801: фильтр по preset (поле 'icon').
+    if (n.type === 'consumer' && GLOBAL.showConsumerIcons !== false && _presetShowIcon) {
       const iconG = el('g', { transform: `translate(${w - 22},16)`, class: 'node-icon' });
       drawConsumerIconTo(iconG, n.consumerSubtype || 'custom');
       g.appendChild(iconG);
@@ -2004,12 +2026,15 @@ export function renderNodes() {
     // v0.57.91: для канала label способа прокладки может быть длинным
     // («F — Лестничный лоток / одножильные касающиеся») и вылезать за
     // правую границу карточки. Переносим по словам через textWrapped.
-    if (n.type === 'channel') {
-      // Грубая оценка: ~6.5 px на символ у 12 px шрифта, pad по 12 слева+справа.
-      const maxChars = Math.max(16, Math.floor((w - 24) / 6.5));
-      g.appendChild(textWrapped(12, 49, subTxt, 'node-sub', maxChars));
-    } else {
-      g.appendChild(text(12, 49, subTxt, 'node-sub'));
+    // v0.59.801: subtitle фильтруется через preset ('subtitle' для consumer,
+    // 'sourceSubtype' для source, 'switchMode' для panel и т.п.).
+    if (subTxt && _presetShowSubtitle) {
+      if (n.type === 'channel') {
+        const maxChars = Math.max(16, Math.floor((w - 24) / 6.5));
+        g.appendChild(textWrapped(12, 49, subTxt, 'node-sub', maxChars));
+      } else {
+        g.appendChild(text(12, 49, subTxt, 'node-sub'));
+      }
     }
 
     // v0.59.651: единый формат карточки (вариант B по запросу юзера) для
@@ -2262,25 +2287,8 @@ export function renderNodes() {
     }
 
     // Рендер: либо одной строкой (consumer/channel/устаревший формат),
-    // либо 3-строчным блоком (новый вариант B).
-    // v0.59.795 (Phase 19.4): фильтр по active card-preset. Если для
-    // текущего (kind, type) preset не разрешает ни одного non-required
-    // поля → скрываем весь load-блок (для пресета «Минимум»). Status-line
-    // (off, ⚠ перегруз и т.п.) всегда виден — это критичная информация.
-    let _showLoadInfo = true;
-    {
-      const _curPage = getCurrentPage();
-      const _kind = _curPage ? getPageKind(_curPage) : 'schematic';
-      const _preset = _getActiveCardPreset();
-      const _vis = getVisibleFieldIds(_preset, _kind, n.type);
-      // Required = tag/name; если в preset больше ничего нет — скрываем
-      let _hasNonRequired = false;
-      for (const id of _vis) {
-        if (id !== 'tag' && id !== 'name') { _hasNonRequired = true; break; }
-      }
-      _showLoadInfo = _hasNonRequired;
-    }
-    if (_showLoadInfo) {
+    // v0.59.801 (Phase 19.4 fix): использует _presetShowLoadInfo (вычислен выше).
+    if (_presetShowLoadInfo) {
       if (loadLines && loadLines.length) {
         const lineCount = loadLines.length;
         const baseY = NODE_H - 12;

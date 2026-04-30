@@ -28,6 +28,7 @@ const COMMON_REQUIRED = [
 const SCHEMATIC_FIELDS = {
   consumer: [
     ...COMMON_REQUIRED,
+    { id: 'subtitle',     label: 'Подзаголовок (тип / вход)', group: 'identification' },
     { id: 'demandKw',     label: 'Мощность (кВт)',         group: 'electrical' },
     { id: 'kvAOrVA',      label: 'кВА',                     group: 'electrical' },
     { id: 'currentA',     label: 'Ток (А)',                 group: 'electrical' },

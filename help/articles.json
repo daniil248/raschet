@@ -88,6 +88,123 @@
       "related": ["module-tech-workspace"],
       "requiresModule": "mdc-config"
     },
+    {
+      "id": "module-cable",
+      "title": "🧮 Расчёт кабельной линии",
+      "category": "modules",
+      "summary": "Точечный калькулятор подбора сечения кабеля по IEC 60364 / ПУЭ.",
+      "file": "module-cable.html",
+      "related": ["module-schematic"],
+      "requiresModule": "cable"
+    },
+    {
+      "id": "module-ups-config",
+      "title": "🔋 Конфигуратор ИБП",
+      "category": "modules",
+      "summary": "Подбор конфигурации ИБП по нагрузке: тип, резервирование, входы, батарейная цепь.",
+      "file": "module-ups-config.html",
+      "related": ["module-battery", "module-tech-workspace"],
+      "requiresModule": "ups-config"
+    },
+    {
+      "id": "module-panel-config",
+      "title": "🔌 Конфигуратор НКУ (LV щит)",
+      "category": "modules",
+      "summary": "Низковольтные комплектные устройства до 1 кВ по IEC 61439.",
+      "file": "module-panel-config.html",
+      "related": ["module-mv-config"],
+      "requiresModule": "panel-config"
+    },
+    {
+      "id": "module-mv-config",
+      "title": "⚡ Конфигуратор РУ СН",
+      "category": "modules",
+      "summary": "Распределительные устройства 6-35 кВ.",
+      "file": "module-mv-config.html",
+      "related": ["module-panel-config", "module-transformer-config"],
+      "requiresModule": "mv-config"
+    },
+    {
+      "id": "module-transformer-config",
+      "title": "🔄 Конфигуратор трансформатора",
+      "category": "modules",
+      "summary": "Силовые трансформаторы (ТМГ, ТСЛ, ТМЗ).",
+      "file": "module-transformer-config.html",
+      "related": ["module-schematic", "module-mv-config"],
+      "requiresModule": "transformer-config"
+    },
+    {
+      "id": "module-battery",
+      "title": "🔋 Расчёт АКБ",
+      "category": "modules",
+      "summary": "Подбор аккумуляторной батареи для ИБП / СОПТ / АСУ ТП.",
+      "file": "module-battery.html",
+      "related": ["module-ups-config"],
+      "requiresModule": "battery"
+    },
+    {
+      "id": "module-catalog",
+      "title": "📦 Каталог и библиотека",
+      "category": "modules",
+      "summary": "Единый источник оборудования + цены + импорт прайс-листов.",
+      "file": "module-catalog.html",
+      "related": ["feature-catalog-picker"],
+      "requiresModule": "catalog"
+    },
+    {
+      "id": "module-logistics",
+      "title": "🚚 Рабочее место логиста",
+      "category": "modules",
+      "summary": "Расчёт доставки, маршруты, склады.",
+      "file": "module-logistics.html",
+      "related": ["module-catalog"],
+      "requiresModule": "logistics"
+    },
+    {
+      "id": "module-reports",
+      "title": "📄 Шаблоны отчётов",
+      "category": "modules",
+      "summary": "Подготовка шаблонов PDF/DOCX отчётов.",
+      "file": "module-reports.html",
+      "related": ["feature-report"],
+      "requiresModule": "reports"
+    },
+    {
+      "id": "module-rack-config",
+      "title": "🗄 Конфигуратор стойки",
+      "category": "modules",
+      "summary": "Корпус стойки: размеры, нагрузки, аксессуары.",
+      "file": "module-rack-config.html",
+      "related": ["module-scs-config"],
+      "requiresModule": "rack-config"
+    },
+    {
+      "id": "module-suppression-config",
+      "title": "🔥 Конфигуратор АГПТ",
+      "category": "modules",
+      "summary": "Автоматическое газовое пожаротушение для серверных.",
+      "file": "module-suppression-config.html",
+      "related": [],
+      "requiresModule": "suppression-config"
+    },
+    {
+      "id": "module-pdu-config",
+      "title": "🔌 Конфигуратор PDU",
+      "category": "modules",
+      "summary": "Power Distribution Unit для серверной стойки.",
+      "file": "module-pdu-config.html",
+      "related": ["feature-multi-rack-groups"],
+      "requiresModule": "pdu-config"
+    },
+    {
+      "id": "module-facility-inventory",
+      "title": "🏭 Реестр оборудования объекта",
+      "category": "modules",
+      "summary": "Не-IT имущество: мебель, ЗИП, КИПиА.",
+      "file": "module-facility-inventory.html",
+      "related": [],
+      "requiresModule": "facility-inventory"
+    },
 
     {
       "id": "feature-multi-rack-groups",
