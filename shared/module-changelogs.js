@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.874', date: '2026-04-30', items: [
+      '🐛 <b>НАСТОЯЩИЙ корень бага «drag-drop с палитры в зону не работает»</b>. Найден через MCP-debug в браузере: race-condition между <code>setUserPresetFields()</code> и <code>saveZoneLayout()</code>.',
+      '• <b>Сценарий</b>: drop на зону → handler вызывает <code>setUserPresetFields(sel.id, …)</code> (обновляет perMode в LS), затем <code>saveZoneLayout(sel, …)</code>. Старая логика saveZoneLayout: <code>all[idx] = preset</code> — полностью перезаписывала FRESH preset из LS in-memory ссылкой <code>preset</code>, у которой perMode НЕ содержит только что добавленное поле. Симптом: assignment сохранялся, но perMode тут же затирался — поле формально не в пресете, на канвасе не отображается.',
+      '• <b>Подтверждено в браузере</b>: после drop assignment[fid]=\'header\', а perMode НЕ содержит fid. Manual-replicate handler (через console) работал — это указало на race в saveZoneLayout.',
+      '• <b>Fix</b>: saveZoneLayout теперь МЕРЖИТ только <code>zoneLayout</code> и <code>fieldLabels</code> в fresh-копию из LS, не трогая <code>perMode</code>/<code>name</code>/прочее. Это безопаснее и не теряет параллельные обновления.',
+      'Файл: <code>shared/card-presets-editor.js::saveZoneLayout</code> (line 74).',
+    ] },
     { version: '0.59.873', date: '2026-04-30', items: [
       '🐛 <b>Финальный фикс drag-drop и × в редакторе пресетов карточек</b>. По репорту: «в самой карточке перетаскивание работает но вот с палитры на карточку не перетаскивается и с карточки по крестику не удаляется».',
       '• <b>Корень бага</b>: <code>draggable="true"</code> стоял на ВСЁМ chip (span) и ВСЁМ field-row (div). Браузер интерпретировал mousedown на любом дочернем элементе (× кнопка, label-input) как начало drag — событие click подавлялось, drop с палитры в зону тоже не отрабатывал стабильно (HTML5 DnD конфликтовал с click delegation).',

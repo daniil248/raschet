@@ -79,7 +79,21 @@ function saveZoneLayout(preset, kind, type, layout) {
   if (!preset.system) {
     const all = loadUserPresets();
     const idx = all.findIndex(p => p.id === preset.id);
-    if (idx >= 0) { all[idx] = preset; saveUserPresets(all); }
+    if (idx >= 0) {
+      // v0.59.874: фикс race-condition с setUserPresetFields. Раньше:
+      //   all[idx] = preset
+      // полностью перезаписывало FRESH preset из LS старой in-memory
+      // ссылкой `preset`. Если до этого был вызов setUserPresetFields
+      // (обновляет perMode и пишет в LS), его обновление терялось —
+      // потому что in-memory `preset` его НЕ содержит. Симптом: drag-drop
+      // с палитры в зону «не работал» — assignment сохранялся, но perMode
+      // тут же затирался обратно. Теперь — мержим только zoneLayout и
+      // fieldLabels в fresh-копию, остальное (perMode, name, …) оставляем
+      // тем что лежит в LS на этот момент.
+      all[idx].zoneLayout = preset.zoneLayout;
+      if (preset.fieldLabels) all[idx].fieldLabels = preset.fieldLabels;
+      saveUserPresets(all);
+    }
   }
 }
 
