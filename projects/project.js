@@ -8,6 +8,8 @@ import {
   setActiveProjectId, exportProject,
   // v0.59.373: подпроекты — артефакты внутри родителя (схемы, СКС, шкафы).
   listSubProjects, createSubProject,
+  // v0.59.862: hide-when-empty — для определения «есть ли данные модуля».
+  projectKey,
 } from '../shared/project-storage.js';
 import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
 
@@ -311,8 +313,36 @@ function render() {
     const subRacks    = listSubProjects(p.id, 'scs-config', { strict: true });
     const subMdc      = listSubProjects(p.id, 'mdc-config', { strict: true });
 
-    const renderSubList = (subs, modHref, icon, emptyHint) => {
-      if (!subs.length) return `<div class="muted" style="font-size:12px;padding:6px 0">${emptyHint}</div>`;
+    // v0.59.862: «Карточка модуля появляется только когда есть данные».
+    // Singleton-модули (Технолог ЦОД, IT-инвентарь, реестр объекта) видимы
+    // если в LS есть их данные; multi-instance (схемы/СКС/шкафы/МЦОД) —
+    // если есть подпроекты или (для схемы) Storage-схемы привязаны через
+    // scheme.projectId. Те, у которых данных нет — доступны через
+    // «+ Добавить ▾».
+    const _lsHasContent = (key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return false;
+        const v = JSON.parse(raw);
+        if (Array.isArray(v)) return v.length > 0;
+        if (v && typeof v === 'object') return Object.keys(v).length > 0;
+        return v != null;
+      } catch { return false; }
+    };
+    const hasTechWorkspace = _lsHasContent(projectKey(p.id, 'tech-workspace', 'variants.v1'));
+    const hasInventoryIT   = _lsHasContent(projectKey(p.id, 'scs-config', 'inventory.v1'));
+    const hasFacilityInv   = _lsHasContent(projectKey(p.id, 'facility-inventory', 'v1'));
+    // SCS legacy-данные в parent namespace (см. async-блок ниже).
+    const hasScsLegacy = (() => {
+      try {
+        const links = JSON.parse(localStorage.getItem(projectKey(p.id, 'scs-design', 'links.v1')) || 'null');
+        const plan  = JSON.parse(localStorage.getItem(projectKey(p.id, 'scs-design', 'plan.v1')) || 'null');
+        return (Array.isArray(links) && links.length) || (plan && (plan.items || []).length);
+      } catch { return false; }
+    })();
+
+    const renderSubList = (subs, modHref, icon) => {
+      if (!subs.length) return '';
       return subs.map(sp => {
         const href = buildModuleHref(modHref, { projectId: sp.id, fromModule: 'projects' });
         const desig = sp.designation ? `<span style="background:#1d4ed8;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-right:6px">${esc(sp.designation)}</span>` : '';
@@ -328,45 +358,120 @@ function render() {
       }).join('');
     };
 
+    // v0.59.862: единый список модулей проекта. type=multi → можно создать
+    // несколько; type=singleton → один экземпляр на проект. visible flag
+    // решает, рендерить ли карточку. «hidden» модули доступны через
+    // «+ Добавить ▾». Свойство `latent` для schematic/scs-design — карточка
+    // может «просветиться» позже (через async _enrichGroup): держим её
+    // в DOM, но display:none, на случай если данные появятся.
+    const MODULES = [
+      {
+        id: 'tech-workspace', type: 'singleton',
+        title: '🧮 Технолог ЦОД', subtitle: 'концепция',
+        color: '#7c3aed', accent: '#ede9fe', border: '#c4b5fd',
+        href: '../tech-workspace/',
+        visible: hasTechWorkspace,
+        addLabel: '🧮 Технолог ЦОД (концепция)',
+        bodyHtml: `<div style="font-size:12px;color:#475569;margin-bottom:8px">Концепция стоек, IT-нагрузка, ИБП, климат. Multi-variant compare и handoff в схему/СКС.</div>
+                   <a href="${esc(buildModuleHref('../tech-workspace/', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel" style="display:inline-block;text-decoration:none;padding:5px 10px;font-size:12px;background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;border-radius:4px">Открыть Технолог ЦОД →</a>`,
+      },
+      {
+        id: 'schematic', type: 'multi',
+        title: '⚡ Схемы', count: subSchemes.length,
+        color: '#1d4ed8',
+        href: '../index.html',
+        visible: subSchemes.length > 0, // м.б. дополнено async-Storage
+        latent: true,
+        addLabel: '⚡ Добавить схему',
+        bodyHtml: renderSubList(subSchemes, '../index.html', '⚡'),
+      },
+      {
+        id: 'scs-design', type: 'multi',
+        title: '🔗 СКС-проекты', count: subScs.length,
+        color: '#0d9488',
+        href: '../scs-design/',
+        visible: subScs.length > 0 || hasScsLegacy,
+        latent: true,
+        addLabel: '🔗 Добавить СКС-проект',
+        bodyHtml: renderSubList(subScs, '../scs-design/', '🔗'),
+      },
+      {
+        id: 'scs-config', type: 'multi',
+        title: '🗄 Компоновки шкафов', count: subRacks.length,
+        color: '#7c3aed',
+        href: '../scs-config/',
+        visible: subRacks.length > 0,
+        addLabel: '🗄 Добавить шкаф (компоновка)',
+        bodyHtml: renderSubList(subRacks, '../scs-config/', '🗄'),
+      },
+      {
+        id: 'mdc-config', type: 'multi',
+        title: '🏗 Модульные ЦОД', count: subMdc.length,
+        color: '#be185d',
+        href: '../mdc-config/',
+        visible: subMdc.length > 0,
+        addLabel: '🏗 Добавить модульный ЦОД',
+        bodyHtml: renderSubList(subMdc, '../mdc-config/', '🏗'),
+      },
+      {
+        id: 'inventory-it', type: 'singleton',
+        title: '📦 Реестр IT-оборудования', subtitle: '',
+        color: '#0369a1', accent: '#e0f2fe', border: '#7dd3fc',
+        href: '../scs-config/inventory.html',
+        visible: hasInventoryIT,
+        addLabel: '📦 Реестр IT-оборудования',
+        bodyHtml: `<div style="font-size:12px;color:#475569;margin-bottom:8px">S/N, IP, MAC экземпляров серверов и свичей.</div>
+                   <a href="${esc(buildModuleHref('../scs-config/inventory.html', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel" style="display:inline-block;text-decoration:none;padding:5px 10px;font-size:12px;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:4px">Открыть реестр →</a>`,
+      },
+      {
+        id: 'facility-inventory', type: 'singleton',
+        title: '🏭 Реестр оборудования объекта', subtitle: '',
+        color: '#a16207', accent: '#fef3c7', border: '#fcd34d',
+        href: '../facility-inventory/',
+        visible: hasFacilityInv,
+        addLabel: '🏭 Реестр оборудования объекта',
+        bodyHtml: `<div style="font-size:12px;color:#475569;margin-bottom:8px">Не-IT имущество: мебель, стеллажи, ЗИП.</div>
+                   <a href="${esc(buildModuleHref('../facility-inventory/', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel" style="display:inline-block;text-decoration:none;padding:5px 10px;font-size:12px;background:#fef3c7;color:#a16207;border:1px solid #fcd34d;border-radius:4px">Открыть реестр →</a>`,
+      },
+    ];
+
+    // v0.59.862: пункты для меню «+ Добавить ▾».
+    // Multi — всегда; Singleton — только если карточки ещё нет.
+    const addMenuItems = MODULES.filter(m => m.type === 'multi' || !m.visible);
+
+    const moduleCardHtml = (m) => {
+      // latent: карточка в DOM, но display:none, готова просветиться
+      // позже из async-загрузчика (Storage-схемы / SCS-legacy).
+      const hidden = !m.visible;
+      const display = hidden ? 'display:none;' : '';
+      const countSpan = m.type === 'multi'
+        ? ` <span class="muted" style="font-weight:400">· ${m.count || 0}</span>`
+        : (m.subtitle ? ` <span class="muted" style="font-weight:400">· ${esc(m.subtitle)}</span>` : '');
+      return `<div class="pr-art-group" data-kind="${esc(m.id)}" style="${display}padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+        <div style="font-weight:600;font-size:13px;color:${m.color};margin-bottom:8px">${m.title}${countSpan}</div>
+        ${m.bodyHtml}
+      </div>`;
+    };
+
     modulesHost.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <div style="position:relative">
           <button type="button" class="pr-btn-primary" id="pr-add-btn">＋ Добавить ▾</button>
-          <div id="pr-add-menu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:10;min-width:240px">
-            <button type="button" data-add="schematic" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px">⚡ Добавить схему</button>
-            <button type="button" data-add="scs-design" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px;border-top:1px solid #f1f5f9">🔗 Добавить СКС-проект</button>
-            <button type="button" data-add="scs-config" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px;border-top:1px solid #f1f5f9">🗄 Добавить шкаф (компоновка)</button>
-            <button type="button" data-add="mdc-config" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px;border-top:1px solid #f1f5f9">🏗 Добавить модульный ЦОД</button>
+          <div id="pr-add-menu" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:10;min-width:280px">
+            ${addMenuItems.map((m, i) => `<button type="button" data-add="${esc(m.id)}" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:transparent;cursor:pointer;font-size:13px;${i > 0 ? 'border-top:1px solid #f1f5f9;' : ''}">${esc(m.addLabel || m.title)}</button>`).join('')}
+            ${addMenuItems.length === 0 ? '<div class="muted" style="padding:10px 14px;font-size:12px">Все модули уже подключены — добавьте новый подпроект из карточки модуля.</div>' : ''}
           </div>
         </div>
-        <a href="${esc(buildModuleHref('../scs-config/inventory.html', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel pr-mod-card" style="text-decoration:none">📦 Реестр IT-оборудования</a>
-        <a href="${esc(buildModuleHref('../facility-inventory/', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel pr-mod-card" style="text-decoration:none">🏭 Реестр оборудования объекта</a>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
-        <!-- v0.59.856: «Технолог ЦОД» добавлен в плитки модулей проекта.
-             Пользователь: «Технологию ЦОД так же добавь в проекты». -->
-        <div class="pr-art-group" data-kind="tech-workspace" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
-          <div style="font-weight:600;font-size:13px;color:#7c3aed;margin-bottom:8px">🧮 Технолог ЦОД <span class="muted" style="font-weight:400">· концепция</span></div>
-          <div style="font-size:12px;color:#475569;margin-bottom:8px">Концепция стоек, IT-нагрузка, ИБП, климат. Multi-variant compare и handoff в схему/СКС.</div>
-          <a href="${esc(buildModuleHref('../tech-workspace/', { projectId: p.id, fromModule: 'projects' }))}" class="pr-btn-sel" style="display:inline-block;text-decoration:none;padding:5px 10px;font-size:12px;background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;border-radius:4px">Открыть Технолог ЦОД →</a>
-        </div>
-        <div class="pr-art-group" data-kind="schematic" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
-          <div style="font-weight:600;font-size:13px;color:#1d4ed8;margin-bottom:8px">⚡ Схемы <span class="muted" style="font-weight:400">· ${subSchemes.length}</span></div>
-          ${renderSubList(subSchemes, '../index.html', '⚡', 'Схем нет — нажмите «+ Добавить → схему».')}
-        </div>
-        <div class="pr-art-group" data-kind="scs-design" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
-          <div style="font-weight:600;font-size:13px;color:#0d9488;margin-bottom:8px">🔗 СКС-проекты <span class="muted" style="font-weight:400">· ${subScs.length}</span></div>
-          ${renderSubList(subScs, '../scs-design/', '🔗', 'СКС-проектов нет — нажмите «+ Добавить → СКС».')}
-        </div>
-        <div class="pr-art-group" data-kind="scs-config" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
-          <div style="font-weight:600;font-size:13px;color:#7c3aed;margin-bottom:8px">🗄 Компоновки шкафов <span class="muted" style="font-weight:400">· ${subRacks.length}</span></div>
-          ${renderSubList(subRacks, '../scs-config/', '🗄', 'Компоновок нет — нажмите «+ Добавить → шкаф».')}
-        </div>
-        ${subMdc.length ? `<div class="pr-art-group" data-kind="mdc-config" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
-          <div style="font-weight:600;font-size:13px;color:#be185d;margin-bottom:8px">🏗 Модульные ЦОД <span class="muted" style="font-weight:400">· ${subMdc.length}</span></div>
-          ${renderSubList(subMdc, '../mdc-config/', '🏗', '')}
+      ${MODULES.every(m => !m.visible) ? `
+        <div id="pr-empty-modules" style="text-align:center;padding:24px;color:#64748b;background:#f1f5f9;border-radius:8px;border:1px dashed #cbd5e1;margin-bottom:14px">
+          <div style="font-size:14px;margin-bottom:6px">📦 В проекте пока нет данных</div>
+          <div style="font-size:12px">Нажмите «＋ Добавить ▾» вверху, чтобы начать с концепции (Технолог ЦОД), схемы, СКС или шкафа.</div>
         </div>` : ''}
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
+        ${MODULES.filter(m => m.visible || m.latent).map(moduleCardHtml).join('')}
       </div>`;
 
     // — меню «+ Добавить ▾»
@@ -377,11 +482,16 @@ function render() {
       addMenu.style.display = addMenu.style.display === 'block' ? 'none' : 'block';
     });
     document.addEventListener('click', () => { if (addMenu) addMenu.style.display = 'none'; });
+    // v0.59.862: addOpts расширен singletons (kind=singleton — просто
+    // navigate в модуль; данные создадутся при первом сейве).
     const addOpts = {
-      'schematic':  { label: 'схема',         href: '../index.html',     defaultDesig: 'Схема-1', defaultName: 'Схема' },
-      'scs-design': { label: 'СКС-проект',    href: '../scs-design/',    defaultDesig: 'СКС-1',   defaultName: 'СКС-проект' },
-      'scs-config': { label: 'шкаф',          href: '../scs-config/',    defaultDesig: 'Ш-1',     defaultName: 'Компоновка шкафа' },
-      'mdc-config': { label: 'модульный ЦОД', href: '../mdc-config/',    defaultDesig: 'МЦОД-1',  defaultName: 'Модульный ЦОД' },
+      'schematic':          { kind: 'multi-storage',    label: 'схема',         href: '../index.html',     defaultDesig: 'Схема-1', defaultName: 'Схема' },
+      'scs-design':         { kind: 'multi-sub',        label: 'СКС-проект',    href: '../scs-design/',    defaultDesig: 'СКС-1',   defaultName: 'СКС-проект' },
+      'scs-config':         { kind: 'multi-sub',        label: 'шкаф',          href: '../scs-config/',    defaultDesig: 'Ш-1',     defaultName: 'Компоновка шкафа' },
+      'mdc-config':         { kind: 'multi-sub',        label: 'модульный ЦОД', href: '../mdc-config/',    defaultDesig: 'МЦОД-1',  defaultName: 'Модульный ЦОД' },
+      'tech-workspace':     { kind: 'singleton',        label: 'Технолог ЦОД',  href: '../tech-workspace/' },
+      'inventory-it':       { kind: 'singleton',        label: 'Реестр IT-оборудования', href: '../scs-config/inventory.html' },
+      'facility-inventory': { kind: 'singleton',        label: 'Реестр оборудования объекта', href: '../facility-inventory/' },
     };
     modulesHost.querySelectorAll('[data-add]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -389,6 +499,14 @@ function render() {
         const moduleId = btn.dataset.add;
         const opt = addOpts[moduleId];
         if (!opt) return;
+
+        // v0.59.862: singleton — просто открываем модуль с projectId родителя.
+        if (opt.kind === 'singleton') {
+          try { clearNavStack(); } catch {}
+          location.href = buildModuleHref(opt.href, { projectId: p.id, fromModule: 'projects' });
+          return;
+        }
+
         const name = await prPrompt(`Добавить ${opt.label}`, 'Имя', opt.defaultName);
         if (name == null) return;
 
@@ -396,7 +514,7 @@ function render() {
         // создаём legacy-схему и привязываем к проекту через
         // scheme.projectId. Так схема видна и на главной «Мои схемы»,
         // и на странице проекта (без двойного списка sub-проектов).
-        if (moduleId === 'schematic') {
+        if (opt.kind === 'multi-storage') {
           try {
             if (!window.Storage || typeof window.Storage.createProject !== 'function') {
               prToast('Storage не готов — попробуйте позже', 'error'); return;
@@ -456,11 +574,20 @@ function render() {
       a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
     });
 
-    // v0.59.377: helper — заменить empty-hint и обновить счётчик группы
+    // v0.59.377: helper — заменить empty-hint и обновить счётчик группы.
+    // v0.59.862: latent-карточка (display:none на старте) — un-hide когда
+    // приходят async-данные. Также убираем «+ Добавить → схему» и т.д.
+    // из меню «+ Добавить ▾», т.к. модуль теперь имеет данные (для multi
+    // он остаётся, для singleton — убираем).
     const _enrichGroup = (kindAttr, addedRowsHtml, addedCount) => {
       if (!addedRowsHtml) return;
       const grp = modulesHost.querySelector(`.pr-art-group[data-kind="${kindAttr}"]`);
       if (!grp) return;
+      // un-hide карточку если она была latent
+      if (grp.style.display === 'none') grp.style.display = '';
+      // спрятать «В проекте пока нет данных», если она была показана
+      const emptyHint = modulesHost.querySelector('#pr-empty-modules');
+      if (emptyHint) emptyHint.remove();
       // убрать «X нет — нажмите…»
       const placeholder = Array.from(grp.children).find(c => c.classList && c.classList.contains('muted'));
       if (placeholder) placeholder.remove();
